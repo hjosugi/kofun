@@ -1,12 +1,12 @@
 # 直接機械語バックエンド (Direct Machine Code Backend)
 
-Cofn compiles straight to x86-64 machine code. The native path shells out to
+Kofun compiles straight to x86-64 machine code. The native path shells out to
 nothing: no C, no clang, no `as`, no `ld`, no libc. The compiler encodes
 instructions itself, writes the ELF64 container itself, and talks to the kernel
 through syscalls.
 
 ```
-Cofn source (.cofn)
+Kofun source (.kf)
       │
       ▼
   lexer / parser
@@ -32,13 +32,13 @@ Cofn source (.cofn)
 Native is the default backend.
 
 ```bash
-cofn build program.cofn -o program     # direct machine code
-cofn build program.cofn --backend c    # C11 + system compiler
+kofun build program.kf -o program     # direct machine code
+kofun build program.kf --backend c    # C11 + system compiler
 ```
 
 ## Measured results
 
-`examples/fibonacci_native.cofn`, x86-64, best of 5.
+`examples/fibonacci_native.kf`, x86-64, best of 5.
 
 | | native | C11 + `cc -O3` |
 |---|---|---|

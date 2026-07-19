@@ -1,6 +1,6 @@
 """Direct x86-64 native backend.
 
-This lowers Cofn straight to machine code. Nothing in this path shells out:
+This lowers Kofun straight to machine code. Nothing in this path shells out:
 no C, no clang, no `as`, no `ld`, no libc. The output is a static ELF64
 executable that talks to the kernel through syscalls.
 

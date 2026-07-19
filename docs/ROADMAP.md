@@ -2,7 +2,7 @@
 
 ## Release rule
 
-Cofnはfeature countではなく、correctness gateでmilestoneを進めます。
+Kofunはfeature countではなく、correctness gateでmilestoneを進めます。
 
 - unsupported behaviorをsilent fallbackしない
 - safety claimにはnegative testとthreat modelを付ける
@@ -41,7 +41,7 @@ Current Stage 0 achievements:
 - `law monad` bounded exhaustive checker
 - complete Bool/Optional[Bool] function-space enumeration
 - versioned JSON law evidence and assurance gates
-- Cofn-written Stage 1 arithmetic compiler seed built as native code by Stage 0
+- Kofun-written Stage 1 arithmetic compiler seed built as native code by Stage 0
 - interpreted/native Stage 1 fixture-output equivalence
 - 13,500 generated implementation issues
 
@@ -58,9 +58,9 @@ Deliverables:
 - full CLI skeleton
 - package manifest and lockfile draft
 - formatter and language server prototype
-- Stage 1 frontend written in Cofn
-- Stage 1 type, ownership, and law checker written in Cofn
-- Stage 1 C11 backend written in Cofn
+- Stage 1 frontend written in Kofun
+- Stage 1 type, ownership, and law checker written in Kofun
+- Stage 1 C11 backend written in Kofun
 - Stage 2 self-recompile pipeline
 - normalized Stage 1/Stage 2 artifact comparison
 
@@ -207,7 +207,7 @@ Exit criteria:
 
 ```text
 B0  Stage 0 type-checks Stage 1 source
-B1  Stage 1 compiles a useful Cofn Core subset
+B1  Stage 1 compiles a useful Kofun Core subset
 B2  Stage 1 contains the full frontend
 B3  Stage 1 contains safety and law checking
 B4  Stage 1 compiles itself

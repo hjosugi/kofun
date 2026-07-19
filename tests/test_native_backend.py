@@ -16,9 +16,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from cofn.frontend import check_source                      # noqa: E402
-from cofn.native_backend import NativeBackend, compile_to_executable  # noqa: E402
-from cofn.c_backend import BackendFailure                   # noqa: E402
+from kofun.frontend import check_source                      # noqa: E402
+from kofun.native_backend import NativeBackend, compile_to_executable  # noqa: E402
+from kofun.c_backend import BackendFailure                   # noqa: E402
 
 
 PROGRAMS: dict[str, str] = {
@@ -143,7 +143,7 @@ fn main() {
     "text_literal": """
 fn main() {
     print("hello")
-    print("Cofn")
+    print("Kofun")
 }
 """,
     "loop_control": """
@@ -173,7 +173,7 @@ fn main() {
 
 def run_interpreted(path: Path) -> str:
     result = subprocess.run(
-        [sys.executable, "-m", "cofn.cli", "run", str(path)],
+        [sys.executable, "-m", "kofun.cli", "run", str(path)],
         capture_output=True, text=True, cwd=ROOT,
         env={"PYTHONPATH": str(ROOT / "src"), "PATH": "/usr/bin:/bin"},
     )
@@ -204,7 +204,7 @@ class NativeDifferentialTest(unittest.TestCase):
             with self.subTest(program=name):
                 with tempfile.TemporaryDirectory() as tmp:
                     workdir = Path(tmp)
-                    source_path = workdir / f"{name}.cofn"
+                    source_path = workdir / f"{name}.kf"
                     source_path.write_text(source)
 
                     expected = run_interpreted(source_path)

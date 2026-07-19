@@ -1,8 +1,8 @@
-# Cofn bootstrap
+# Kofun bootstrap
 
 - `manifest.json`: machine-readable stage status
-- `stage1/compiler.cofn`: compiler seed written in Cofn
-- `fixtures/answer.cofn`: Cofn Core input used by the bootstrap test
+- `stage1/compiler.kf`: compiler seed written in Kofun
+- `fixtures/answer.kf`: Kofun Core input used by the bootstrap test
 - `check_bootstrap.py`: interpreted/native Stage 1 differential verification
 
 Run:

@@ -2,18 +2,18 @@
 
 ## Working title
 
-このprototypeでは`Cofn`をworking titleとして使う。
+このprototypeでは`Kofun`をworking titleとして使う。
 
 意図:
 
-- Rustへのcofnrationを出発点にする
+- Rustへのkofunrationを出発点にする
 - functional + Rustを連想しやすい
 - CLI名が短い
-- `.cofn` extensionを使いやすい
+- `.kf` extensionを使いやすい
 
 ## Collision risk
 
-`cofn`という名前はすでにRust ecosystemのcrate名として使われている。また、過去に「functional Rust」の略として同じ発想が公開された例もある。
+`kofun`という名前はすでにRust ecosystemのcrate名として使われている。また、過去に「functional Rust」の略として同じ発想が公開された例もある。
 
 したがって、public launch前に次を必須とする。
 

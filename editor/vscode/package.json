@@ -1,9 +1,9 @@
 {
-  "name": "cofn-language-bootstrap",
-  "displayName": "Cofn Language Bootstrap",
-  "description": "Basic syntax highlighting and bracket support for the Cofn bootstrap language.",
+  "name": "kofun-language-bootstrap",
+  "displayName": "Kofun Language Bootstrap",
+  "description": "Basic syntax highlighting and bracket support for the Kofun bootstrap language.",
   "version": "0.2.0",
-  "publisher": "cofn-language-project",
+  "publisher": "kofun-language-project",
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -13,17 +13,17 @@
   "contributes": {
     "languages": [
       {
-        "id": "cofn",
-        "aliases": ["Cofn", "cofn"],
-        "extensions": [".cofn"],
+        "id": "kofun",
+        "aliases": ["Kofun", "kofun"],
+        "extensions": [".kf"],
         "configuration": "./language-configuration.json"
       }
     ],
     "grammars": [
       {
-        "language": "cofn",
-        "scopeName": "source.cofn",
-        "path": "./syntaxes/cofn.tmLanguage.json"
+        "language": "kofun",
+        "scopeName": "source.kf",
+        "path": "./syntaxes/kofun.tmLanguage.json"
       }
     ]
   }

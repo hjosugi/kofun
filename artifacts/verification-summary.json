@@ -1,14 +1,14 @@
 {
-  "schema": "cofn.verification/v1",
+  "schema": "kofun.verification/v1",
   "verified_on": "2026-07-19",
   "toolchain": {
-    "cofn": "0.2.0-bootstrap",
+    "kofun": "0.2.0-bootstrap",
     "python": "3.13.5",
     "c_compiler": "GCC 14.2.0"
   },
   "tests": {
     "python_unit": 31,
-    "cofn_language": 5,
+    "kofun_language": 5,
     "native_fibonacci_20": 6765
   },
   "laws": {

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import unittest
 
-from cofn.frontend import check_source, parse_source
-from cofn.lexer import Lexer
-from cofn.tokens import TokenKind
+from kofun.frontend import check_source, parse_source
+from kofun.lexer import Lexer
+from kofun.tokens import TokenKind
 
 
 class LexerParserTests(unittest.TestCase):

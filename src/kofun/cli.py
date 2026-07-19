@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .c_backend import BackendFailure, CBackend, compile_c
 from .native_backend import compile_to_executable
-from .diagnostics import Diagnostic, CofnError, read_source, render_diagnostic
+from .diagnostics import Diagnostic, KofunError, read_source, render_diagnostic
 from .evaluator import Evaluator, display
 from .formatter import format_source
 from .frontend import check_source, parse_source
@@ -32,10 +32,10 @@ ASSURANCE_CHOICES = ("bounded-exhaustive", "proven-finite", "proven")
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="cofn",
-        description="Cofn bootstrap language toolchain",
+        prog="kofun",
+        description="Kofun bootstrap language toolchain",
     )
-    parser.add_argument("--version", action="version", version=f"Cofn {VERSION}")
+    parser.add_argument("--version", action="version", version=f"Kofun {VERSION}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     run = sub.add_parser("run", help="type-check and run a source file")
@@ -83,7 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="reject declared laws below this evidence level",
     )
 
-    fmt = sub.add_parser("fmt", help="format Cofn source")
+    fmt = sub.add_parser("fmt", help="format Kofun source")
     fmt.add_argument("files", nargs="+")
     fmt.add_argument("-w", "--write", action="store_true")
     fmt.add_argument("--check", action="store_true")
@@ -91,10 +91,10 @@ def build_parser() -> argparse.ArgumentParser:
     repl = sub.add_parser("repl", help="start an interactive reference interpreter")
     repl.add_argument("--no-banner", action="store_true")
 
-    test = sub.add_parser("test", help="run .cofn files containing # expect: output directives")
-    test.add_argument("path", nargs="?", default="tests/cofn")
+    test = sub.add_parser("test", help="run .kf files containing # expect: output directives")
+    test.add_argument("path", nargs="?", default="tests/kofun")
 
-    new = sub.add_parser("new", help="create a small Cofn project")
+    new = sub.add_parser("new", help="create a small Kofun project")
     new.add_argument("name")
 
     ast_cmd = sub.add_parser("ast", help="print the parsed AST for debugging")
@@ -138,7 +138,7 @@ def command_run(args: argparse.Namespace) -> int:
     if args.native:
         try:
             c_source = CBackend().emit_program(result.program, filename)
-            with tempfile.TemporaryDirectory(prefix="cofn-") as directory:
+            with tempfile.TemporaryDirectory(prefix="kofun-") as directory:
                 output = Path(directory) / "program"
                 compile_c(c_source, output, emit_c=args.emit_c)
                 completed = subprocess.run([str(output), *args.program_args], check=False)
@@ -153,7 +153,7 @@ def command_run(args: argparse.Namespace) -> int:
     try:
         evaluator.evaluate_program(result.program)
         return 0
-    except CofnError as error:
+    except KofunError as error:
         print(render_diagnostic(source, error.diagnostic, filename), file=sys.stderr)
         return 1
 
@@ -271,7 +271,7 @@ def command_fmt(args: argparse.Namespace) -> int:
 
 def command_repl(args: argparse.Namespace) -> int:
     if not args.no_banner:
-        print(f"Cofn {VERSION} reference REPL. :quit exits; :help shows commands.")
+        print(f"Kofun {VERSION} reference REPL. :quit exits; :help shows commands.")
     evaluator = Evaluator()
     buffer: list[str] = []
     balance = 0
@@ -309,16 +309,16 @@ def command_repl(args: argparse.Namespace) -> int:
             value = evaluator.evaluate_program(parsed.program, call_main=False)
             if value is not None:
                 print(display(value))
-        except CofnError as error:
+        except KofunError as error:
             print(render_diagnostic(source, error.diagnostic, "<repl>"), file=sys.stderr)
     return 0
 
 
 def command_test(args: argparse.Namespace) -> int:
     root = Path(args.path)
-    files = [root] if root.is_file() else sorted(root.rglob("*.cofn"))
+    files = [root] if root.is_file() else sorted(root.rglob("*.kf"))
     if not files:
-        print(f"no .cofn tests found under {root}", file=sys.stderr)
+        print(f"no .kf tests found under {root}", file=sys.stderr)
         return 1
     passed = 0
     failed = 0
@@ -337,7 +337,7 @@ def command_test(args: argparse.Namespace) -> int:
             with contextlib.redirect_stdout(capture):
                 evaluator.evaluate_program(result.program)
             actual = capture.getvalue().splitlines()
-        except CofnError as error:
+        except KofunError as error:
             print(f"FAIL {path}: {error.diagnostic.message}")
             failed += 1
             continue
@@ -357,16 +357,16 @@ def command_new(args: argparse.Namespace) -> int:
         print(f"destination is not empty: {root}", file=sys.stderr)
         return 1
     (root / "src").mkdir(parents=True, exist_ok=True)
-    (root / "tests" / "cofn").mkdir(parents=True, exist_ok=True)
-    (root / "cofn.toml").write_text(
+    (root / "tests" / "kofun").mkdir(parents=True, exist_ok=True)
+    (root / "kofun.toml").write_text(
         '[package]\nname = "' + root.name + '"\nversion = "0.1.0"\n\n[build]\nbackend = "interpreter"\n',
         encoding="utf-8",
     )
-    (root / "src" / "main.cofn").write_text(
-        'fn main() {\n    let message = "hello from Cofn"\n    print(message)\n}\n',
+    (root / "src" / "main.kf").write_text(
+        'fn main() {\n    let message = "hello from Kofun"\n    print(message)\n}\n',
         encoding="utf-8",
     )
-    (root / "tests" / "cofn" / "basic.cofn").write_text(
+    (root / "tests" / "kofun" / "basic.kf").write_text(
         '# expect: 42\nfn main() {\n    print(40 + 2)\n}\n',
         encoding="utf-8",
     )
@@ -455,8 +455,8 @@ def law_evidence_document(
     violations: list[dict[str, str]],
 ) -> dict[str, object]:
     return {
-        "schema": "cofn.law-evidence/v1",
-        "compiler": {"name": "Cofn", "version": VERSION},
+        "schema": "kofun.law-evidence/v1",
+        "compiler": {"name": "Kofun", "version": VERSION},
         "source": {
             "path": filename,
             "sha256": hashlib.sha256(source.encode("utf-8")).hexdigest(),

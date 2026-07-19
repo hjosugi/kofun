@@ -1,6 +1,6 @@
 """Static ELF64 executable writer.
 
-This replaces the system linker. Cofn emits one PT_LOAD segment holding code
+This replaces the system linker. Kofun emits one PT_LOAD segment holding code
 and read-only data, points `e_entry` at the generated `_start`, and writes the
 file. There is no dynamic loader, no libc, and no relocation processing: the
 binary is self-contained and the kernel can execute it directly.

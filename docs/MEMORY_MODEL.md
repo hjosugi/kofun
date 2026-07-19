@@ -2,7 +2,7 @@
 
 ## 1. Goals
 
-Cofnのmemory modelは、次を同時に満たすことを目標にする。
+Kofunのmemory modelは、次を同時に満たすことを目標にする。
 
 - 普通のapplication codeではGC言語のように書ける
 - file、socket、lock、transaction、GPU bufferはdeterministicに解放できる
@@ -17,7 +17,7 @@ Cofnのmemory modelは、次を同時に満たすことを目標にする。
 
 `Int`、`Float`、`Bool`、small tupleなどはcopy valueである。
 
-```cofn
+```kofun
 let a = 42
 let b = a
 print(a)
@@ -30,7 +30,7 @@ copyは明示的なheap allocationを必要としない。
 
 `Text`、普通の`List[T]`、records、closures、graph dataなどはmanaged heapに置ける。
 
-```cofn
+```kofun
 let names = ["A", "B", "C"]
 let alias = names
 ```
@@ -53,7 +53,7 @@ compilerは次を自由に最適化できる。
 
 external resourceまたはdeterministic cleanupが必要なvalueは`own`で束縛する。
 
-```cofn
+```kofun
 let own file = File.open("data.csv")
 ```
 
@@ -72,7 +72,7 @@ linearではなくaffineにする理由は、早期returnや未使用resourceで
 
 read-only、non-owning view。
 
-```cofn
+```kofun
 fn checksum(read bytes: Bytes) -> Int {
     # bytes cannot be mutated or consumed here
 }
@@ -89,7 +89,7 @@ fn checksum(read bytes: Bytes) -> Int {
 
 exclusive mutable view。
 
-```cofn
+```kofun
 fn normalize(edit values: Array[Float]) {
     # exclusive mutation is allowed
 }
@@ -106,7 +106,7 @@ fn normalize(edit values: Array[Float]) {
 
 ownership transfer。
 
-```cofn
+```kofun
 fn send(take socket: Socket, read payload: Bytes) {
     # socket is owned by this call
 }
@@ -114,7 +114,7 @@ fn send(take socket: Socket, read payload: Bytes) {
 
 call site:
 
-```cofn
+```kofun
 let own socket = Socket.connect(address)
 send(socket, payload)
 
@@ -126,7 +126,7 @@ print(socket.peer())
 
 ## 4. `let own`
 
-```cofn
+```kofun
 let own file = File.open(path)
 ```
 
@@ -152,7 +152,7 @@ live + active read -> edit/take
 
 ## 5. Branches
 
-```cofn
+```kofun
 let own socket = connect()
 
 if should_send {
@@ -166,7 +166,7 @@ if should_send {
 
 片方だけconsumeする場合も、conservativeなv1 checkerではbranch後に使えない。
 
-```cofn
+```kofun
 if should_send {
     send(socket)
 }
@@ -180,7 +180,7 @@ if should_send {
 
 outer owned valueをloop内でconsumeする場合、loopが0回または褢数回実行される可能性がある。
 
-```cofn
+```kofun
 let own socket = connect()
 
 while condition {
@@ -190,7 +190,7 @@ while condition {
 
 安全な形:
 
-```cofn
+```kofun
 let mut pending: Socket? = connect()
 
 while condition && pending != null {
@@ -206,7 +206,7 @@ while condition && pending != null {
 
 closure captureは3種類に分類する。
 
-```cofn
+```kofun
 fn make_reader(read data: Bytes) -> fn() -> Int
 fn make_editor(edit data: Buffer) -> fn() -> Void
 fn make_owner(take data: Resource) -> fn() -> Void
@@ -249,10 +249,10 @@ production runtimeのdefaultはgenerational precise tracing GCを想定する。
 ### Operational controls
 
 ```text
-COFN_GC_NURSERY_MB
-COFN_GC_MAX_HEAP_MB
-COFN_GC_PAUSE_TARGET_MS
-COFN_GC_LOG
+KOFUN_GC_NURSERY_MB
+KOFUN_GC_MAX_HEAP_MB
+KOFUN_GC_PAUSE_TARGET_MS
+KOFUN_GC_LOG
 ```
 
 名称は未確定であり、production APIではmanifestとCLI configに統合する。
@@ -261,7 +261,7 @@ COFN_GC_LOG
 
 長く共有したいresource wrapperは明示的に`share`する。
 
-```cofn
+```kofun
 let own client = Client.connect(endpoint)
 let shared = share(client)
 ```
@@ -291,7 +291,7 @@ safe language coreから外れる操作は、通常moduleと分離する。
 
 予定例:
 
-```cofn
+```kofun
 import trusted.memory
 
 trusted fn from_raw_pointer[T](ptr: Ptr[T], len: Int) -> Slice[T]

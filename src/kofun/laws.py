@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from . import ast
-from .diagnostics import Diagnostic, CofnError
+from .diagnostics import Diagnostic, KofunError
 from .evaluator import BuiltinFunction, CompleteFunctionSpace, Evaluator, display
 
 
@@ -90,7 +90,7 @@ class LawChecker:
         reports: list[LawReport] = []
         try:
             evaluator.evaluate_program(program, call_main=False)
-        except CofnError as error:
+        except KofunError as error:
             diagnostics.append(
                 Diagnostic(
                     f"compile-time law environment failed: {error.diagnostic.message}",
@@ -155,7 +155,7 @@ class LawChecker:
                 if "complete" in declaration.entries
                 else False
             )
-        except CofnError as error:
+        except KofunError as error:
             diagnostic = Diagnostic(
                 f"cannot construct finite model for monad law `{declaration.name}`: {error.diagnostic.message}",
                 error.diagnostic.span,
@@ -258,7 +258,7 @@ class LawChecker:
                                 display(right),
                             )
                         )
-                except (CofnError, Exception) as error:  # normalized below
+                except (KofunError, Exception) as error:  # normalized below
                     checked += 1
                     failures.append(
                         LawFailure(
@@ -285,7 +285,7 @@ class LawChecker:
                             display(right),
                         )
                     )
-            except (CofnError, Exception) as error:
+            except (KofunError, Exception) as error:
                 checked += 1
                 failures.append(
                     LawFailure(
@@ -329,7 +329,7 @@ class LawChecker:
                                     display(right),
                                 )
                             )
-                    except (CofnError, Exception) as error:
+                    except (KofunError, Exception) as error:
                         checked += 1
                         failures.append(
                             LawFailure(
@@ -532,6 +532,6 @@ class LawChecker:
 
     @staticmethod
     def _error_text(error: BaseException) -> str:
-        if isinstance(error, CofnError):
+        if isinstance(error, KofunError):
             return f"{error.diagnostic.code}: {error.diagnostic.message}"
         return f"{type(error).__name__}: {error}"

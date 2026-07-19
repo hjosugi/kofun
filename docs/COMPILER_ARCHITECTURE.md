@@ -259,7 +259,7 @@ fix edits
 explanation key
 ```
 
-backend stderrをそのままuserへ投げず、source mappingできる範囲をCofn diagnosticへ変換する。
+backend stderrをそのままuserへ投げず、source mappingできる範囲をKofun diagnosticへ変換する。
 
 ## Testing strategy
 
@@ -281,18 +281,18 @@ backend stderrをそのままuserへ投げず、source mappingできる範囲を
 ## Stage 0 source layout
 
 ```text
-src/cofn/ast.py
-src/cofn/tokens.py
-src/cofn/lexer.py
-src/cofn/parser.py
-src/cofn/typesys.py
-src/cofn/laws.py
-src/cofn/evaluator.py
-src/cofn/c_backend.py
-src/cofn/c_runtime.py
-src/cofn/formatter.py
-src/cofn/frontend.py
-src/cofn/cli.py
+src/kofun/ast.py
+src/kofun/tokens.py
+src/kofun/lexer.py
+src/kofun/parser.py
+src/kofun/typesys.py
+src/kofun/laws.py
+src/kofun/evaluator.py
+src/kofun/c_backend.py
+src/kofun/c_runtime.py
+src/kofun/formatter.py
+src/kofun/frontend.py
+src/kofun/cli.py
 ```
 
 依存packageなしで動くため、language UXとtest corpusを先に育てられる。
@@ -305,8 +305,8 @@ Stage 0: Python reference compiler
   -> lowers Stage 1 source to C11 and builds a native Stage 1
   -> compares interpreted/native Stage 1 output on a fixture
 
-Stage 1: compiler written in Cofn
-  -> currently compiles the arithmetic Cofn Core fixture
+Stage 1: compiler written in Kofun
+  -> currently compiles the arithmetic Kofun Core fixture
   -> future gate: builds its own Stage 1 source
 
 Stage 2: self-compiled compiler

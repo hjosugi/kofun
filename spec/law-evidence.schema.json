@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://cofn-lang.invalid/spec/law-evidence.schema.json",
-  "title": "Cofn law evidence",
+  "$id": "https://kofun-lang.invalid/spec/law-evidence.schema.json",
+  "title": "Kofun law evidence",
   "type": "object",
   "required": [
     "schema",
@@ -14,12 +14,12 @@
     "reports"
   ],
   "properties": {
-    "schema": {"const": "cofn.law-evidence/v1"},
+    "schema": {"const": "kofun.law-evidence/v1"},
     "compiler": {
       "type": "object",
       "required": ["name", "version"],
       "properties": {
-        "name": {"const": "Cofn"},
+        "name": {"const": "Kofun"},
         "version": {"type": "string"}
       },
       "additionalProperties": false

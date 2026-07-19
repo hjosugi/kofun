@@ -2,7 +2,7 @@
 
 ## Safe-by-default contract
 
-Safe Cofn code must not produce:
+Safe Kofun code must not produce:
 
 - use-after-free
 - double free

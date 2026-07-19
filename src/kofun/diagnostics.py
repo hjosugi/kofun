@@ -16,7 +16,7 @@ class Diagnostic:
     severity: str = "error"
 
 
-class CofnError(Exception):
+class KofunError(Exception):
     def __init__(self, diagnostic: Diagnostic):
         super().__init__(diagnostic.message)
         self.diagnostic = diagnostic

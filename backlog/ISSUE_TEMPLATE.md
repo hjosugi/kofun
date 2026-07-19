@@ -1,4 +1,4 @@
-# COFN-XXXXX — Title
+# KOFUN-XXXXX — Title
 
 - State: planned
 - Priority: P0/P1/P2/P3

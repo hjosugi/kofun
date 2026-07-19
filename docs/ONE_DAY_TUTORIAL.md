@@ -1,16 +1,16 @@
-# Cofn one-day tutorial
+# Kofun one-day tutorial
 
 このtutorialは、8時間でbasic applicationとinterview algorithmを書ける状態を目標にする。
 
 ## Hour 1: Run and values
 
 ```bash
-./bin/cofn run examples/hello.cofn
+./bin/kofun run examples/hello.kf
 ```
 
-```cofn
+```kofun
 fn main() {
-    let name = "Cofn"
+    let name = "Kofun"
     let answer = 40 + 2
     print(name)
     print(answer)
@@ -26,7 +26,7 @@ fn main() {
 
 ## Hour 2: Types and null
 
-```cofn
+```kofun
 let count: Int = 10
 let ratio: Float = 0.5
 let enabled: Bool = true
@@ -36,7 +36,7 @@ let missing: Int? = null
 
 fallback:
 
-```cofn
+```kofun
 let effective = missing ?? 0
 ```
 
@@ -44,7 +44,7 @@ let effective = missing ?? 0
 
 ## Hour 3: Functions and branches
 
-```cofn
+```kofun
 fn grade(score: Int) -> Text {
     return if score >= 90 {
         "A"
@@ -60,7 +60,7 @@ functionはvalueを返す。`if`もvalueを返せる。
 
 ## Hour 4: Lists and pipelines
 
-```cofn
+```kofun
 fn main() {
     let values = 1 .. 8
     let answer = values
@@ -80,7 +80,7 @@ fn main() {
 
 ## Hour 5: Loops and interview code
 
-```cofn
+```kofun
 fn binary_search(values: List[Int], target: Int) -> Int {
     let mut left = 0
     let mut right = len(values) - 1
@@ -105,7 +105,7 @@ fn binary_search(values: List[Int], target: Int) -> Int {
 
 ## Hour 6: Ownership
 
-```cofn
+```kofun
 fn inspect(read socket: Resource) -> Bool {
     return is_open(socket)
 }
@@ -132,7 +132,7 @@ fn main() {
 
 ## Hour 7: Scientific computing
 
-```cofn
+```kofun
 fn main() {
     let x = linspace(0.0, 1.0, 5)
     let y = vmul(x, x)
@@ -149,18 +149,18 @@ Stage 0ではList-based vector API。production designではunboxed N-dimensiona
 check:
 
 ```bash
-./bin/cofn check examples/pipeline.cofn
+./bin/kofun check examples/pipeline.kf
 ```
 
 format:
 
 ```bash
-./bin/cofn fmt -w examples/pipeline.cofn
+./bin/kofun fmt -w examples/pipeline.kf
 ```
 
 test file:
 
-```cofn
+```kofun
 # expect: 42
 fn main() {
     print(40 + 2)
@@ -170,20 +170,20 @@ fn main() {
 run:
 
 ```bash
-./bin/cofn test tests/cofn
+./bin/kofun test tests/kofun
 ```
 
 native subset:
 
 ```bash
-./bin/cofn build examples/fibonacci_native.cofn -o build/fibonacci
+./bin/kofun build examples/fibonacci_native.kf -o build/fibonacci
 ./build/fibonacci
 ```
 
 Monad則をcompilerで確認:
 
 ```bash
-./bin/cofn laws examples/proven_optional_bool_monad.cofn \
+./bin/kofun laws examples/proven_optional_bool_monad.kf \
   --require-assurance proven-finite \
   --output artifacts/optional-bool-monad.evidence.json
 ```

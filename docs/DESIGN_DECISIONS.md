@@ -74,7 +74,7 @@ No C-style textual preprocessor. Quote/unquote operates on token trees or typed 
 
 ## DD-014: One standard tool
 
-`cofn` owns build, run, check, test, format, lint, docs, packages, and profiling workflows.
+`kofun` owns build, run, check, test, format, lint, docs, packages, and profiling workflows.
 
 ## DD-015: C-speed as a measured goal
 
@@ -90,11 +90,11 @@ Do not claim C/Rust parity without workload-specific benchmarks. Build unboxed n
 
 ## DD-018: Versioned machine-readable law evidence
 
-law resultは`cofn.law-evidence/v1` JSON artifactとして保存できる。source hash、compiler version、model digest、case count、diagnostics、counterexamplesを含める。
+law resultは`kofun.law-evidence/v1` JSON artifactとして保存できる。source hash、compiler version、model digest、case count、diagnostics、counterexamplesを含める。
 
 ## DD-019: Self-hosting means a fixed point
 
-Cofnで書かれたcompiler sourceが存在するだけではself-hostingと呼ばない。Stage 1 self-recompileとStage 1/Stage 2 artifact equivalenceを満たした時だけfixed-point bootstrapと呼ぶ。
+Kofunで書かれたcompiler sourceが存在するだけではself-hostingと呼ばない。Stage 1 self-recompileとStage 1/Stage 2 artifact equivalenceを満たした時だけfixed-point bootstrapと呼ぶ。
 
 ## DD-020: Two Stage 1 execution paths
 

@@ -2,7 +2,7 @@
 
 ## Objective
 
-Cofnのinterview profileは、language ceremonyではなくalgorithmの説明に集中できることを目標にする。
+Kofunのinterview profileは、language ceremonyではなくalgorithmの説明に集中できることを目標にする。
 
 ## Standard names
 
@@ -38,7 +38,7 @@ zip(left, right)
 
 ## Binary search
 
-```cofn
+```kofun
 fn binary_search(values: List[Int], target: Int) -> Int {
     let mut left = 0
     let mut right = len(values) - 1
@@ -61,7 +61,7 @@ fn binary_search(values: List[Int], target: Int) -> Int {
 
 ## Functional alternative
 
-```cofn
+```kofun
 fn squares_of_even(values: List[Int]) -> List[Int] {
     return values
         |> filter(fn(x) => x % 2 == 0)
@@ -96,9 +96,9 @@ Mutation: returns a new persistent value / edits exclusively
 planned:
 
 ```bash
-cofn interview new binary-search
-cofn interview test solution.cofn
-cofn interview bench solution.cofn
+kofun interview new binary-search
+kofun interview test solution.kf
+kofun interview bench solution.kf
 ```
 
 constraints:
@@ -111,6 +111,6 @@ constraints:
 
 ## Google-style interview relevance
 
-Cofn自体がGoogle interviewで許可される保証はない。実際のinterviewでは許可言語を確認する必要がある。
+Kofun自体がGoogle interviewで許可される保証はない。実際のinterviewでは許可言語を確認する必要がある。
 
 このprofileの価値は、algorithmを明確に表現するlanguage designと、Python/Rust/Java/C++へ移植しやすい思考習慣を作ることにある。

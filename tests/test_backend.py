@@ -6,8 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from cofn.c_backend import BackendFailure, CBackend, compile_c
-from cofn.frontend import check_source
+from kofun.c_backend import BackendFailure, CBackend, compile_c
+from kofun.frontend import check_source
 
 
 class CBackendTests(unittest.TestCase):
@@ -18,8 +18,8 @@ class CBackendTests(unittest.TestCase):
         )
         result = check_source(source)
         self.assertTrue(result.ok)
-        emitted = CBackend().emit_program(result.program, "test.cofn")
-        self.assertIn("cofn_fn_add", emitted)
+        emitted = CBackend().emit_program(result.program, "test.kf")
+        self.assertIn("kofun_fn_add", emitted)
         self.assertIn("PRId64", emitted)
 
     @unittest.skipUnless(shutil.which("cc") or shutil.which("clang") or shutil.which("gcc"), "C compiler unavailable")
@@ -33,7 +33,7 @@ class CBackendTests(unittest.TestCase):
         )
         result = check_source(source)
         self.assertTrue(result.ok, [d.message for d in result.diagnostics])
-        emitted = CBackend().emit_program(result.program, "fib.cofn")
+        emitted = CBackend().emit_program(result.program, "fib.kf")
         with tempfile.TemporaryDirectory() as tmp:
             binary = compile_c(emitted, Path(tmp) / "fib")
             completed = subprocess.run([str(binary)], text=True, capture_output=True, check=False)
@@ -45,7 +45,7 @@ class CBackendTests(unittest.TestCase):
         result = check_source(source)
         self.assertTrue(result.ok)
         with self.assertRaises(BackendFailure):
-            CBackend().emit_program(result.program, "list.cofn")
+            CBackend().emit_program(result.program, "list.kf")
 
 
 if __name__ == "__main__":

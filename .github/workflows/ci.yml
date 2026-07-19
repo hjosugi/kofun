@@ -41,7 +41,7 @@ jobs:
 
       # Deliberately no C compiler step: the native path must not need one.
       - name: Build with the direct machine code backend
-        run: ./bin/cofn build examples/fibonacci_native.cofn -o build/fibonacci
+        run: ./bin/kofun build examples/fibonacci_native.kf -o build/fibonacci
 
       - name: Check the binary is static and correct
         run: |

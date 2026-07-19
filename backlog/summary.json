@@ -13,10 +13,10 @@
     "P2": 4050,
     "P3": 2700
   },
-  "first_id": "COFN-00001",
-  "generator_sha256": "ea639235e049d9f4e53fb2212b9c7e843cd77135c6e3a34165ecb80e8a5f7e85",
+  "first_id": "KOFUN-00001",
+  "generator_sha256": "50cc0a4a2daaee94172fbbe20fedccbd0a4349d26967368df5dcaa2d1af10f6d",
   "issues_per_area": 500,
-  "last_id": "COFN-13500",
+  "last_id": "KOFUN-13500",
   "schema": 1,
   "total": 13500
 }

@@ -1,0 +1,63 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Kofun",
+  "scopeName": "source.kf",
+  "patterns": [
+    {"include": "#comments"},
+    {"include": "#strings"},
+    {"include": "#numbers"},
+    {"include": "#keywords"},
+    {"include": "#types"},
+    {"include": "#functions"},
+    {"include": "#operators"}
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {"name": "comment.line.number-sign.kf", "match": "#.*$"}
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.kf",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {"name": "constant.character.escape.kf", "match": "\\\\(?:[nrt\\\"\\\\]|u\\{[0-9A-Fa-f]+\\})"}
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {"name": "constant.numeric.float.kf", "match": "\\b(?:[0-9][0-9_]*\\.[0-9_]+(?:[eE][+-]?[0-9_]+)?|[0-9][0-9_]*[eE][+-]?[0-9_]+)\\b"},
+        {"name": "constant.numeric.integer.kf", "match": "\\b(?:0[xX][0-9A-Fa-f_]+|0[bB][01_]+|[0-9][0-9_]*)\\b"}
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {"name": "keyword.control.kf", "match": "\\b(?:if|else|for|while|in|return|break|continue)\\b"},
+        {"name": "storage.type.function.kf", "match": "\\b(?:fn|meta|law|monad)\\b"},
+        {"name": "storage.modifier.kf", "match": "\\b(?:let|mut|own|read|edit|take)\\b"},
+        {"name": "constant.language.kf", "match": "\\b(?:true|false|null)\\b"}
+      ]
+    },
+    "types": {
+      "patterns": [
+        {"name": "support.type.kf", "match": "\\b(?:Int|Float|Bool|Text|Void|Any|Resource|List|Tuple)\\b"},
+        {"name": "entity.name.type.kf", "match": "\\b[A-Z][A-Za-z0-9_]*\\b"}
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {"name": "entity.name.function.kf", "match": "(?<=\\bfn\\s)[\\p{L}_][\\p{L}\\p{N}_]*"}
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {"name": "keyword.operator.kf", "match": "\\|>|\\?\\?|//|\\*\\*|==|!=|<=|>=|&&|\\|\\||->|=>|\\.\\.|[-+*/%<>=!?]"}
+      ]
+    }
+  }
+}

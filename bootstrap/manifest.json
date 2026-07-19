@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "bootstrap_model": "stage0-python -> stage1-cofn-native-seed -> stage2-self-recompile",
+  "bootstrap_model": "stage0-python -> stage1-kofun-native-seed -> stage2-self-recompile",
   "stages": {
     "stage0": {
       "implementation": "Python 3.11+",
@@ -8,9 +8,9 @@
       "role": "reference lexer, parser, type checker, law checker, interpreter, and C11 backend"
     },
     "stage1": {
-      "implementation": "bootstrap/stage1/compiler.cofn",
+      "implementation": "bootstrap/stage1/compiler.kf",
       "status": "working-seed",
-      "role": "Cofn-written compiler for the documented arithmetic Cofn Core subset; Stage 0 builds it as a native executable"
+      "role": "Kofun-written compiler for the documented arithmetic Kofun Core subset; Stage 0 builds it as a native executable"
     },
     "stage2": {
       "implementation": "stage1 compiles its own source and reproduces an equivalent artifact",
@@ -28,5 +28,5 @@
     "stage1_stage2_artifact_equivalence": "open",
     "diverse_double_compilation": "open"
   },
-  "truthful_status": "The repository contains a Cofn-written compiler seed that Stage 0 can build as a native executable. It is not yet fully self-hosting because Stage 1 cannot compile its own source and the Stage 2 fixed-point gate remains open."
+  "truthful_status": "The repository contains a Kofun-written compiler seed that Stage 0 can build as a native executable. It is not yet fully self-hosting because Stage 1 cannot compile its own source and the Stage 2 fixed-point gate remains open."
 }

@@ -15,14 +15,14 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 sys.path.insert(0, str(SRC))
 
-from cofn.c_backend import BackendFailure, CBackend, compile_c  # noqa: E402
-from cofn.evaluator import Evaluator  # noqa: E402
-from cofn.frontend import check_source  # noqa: E402
+from kofun.c_backend import BackendFailure, CBackend, compile_c  # noqa: E402
+from kofun.evaluator import Evaluator  # noqa: E402
+from kofun.frontend import check_source  # noqa: E402
 
 
 def verify_stage1() -> tuple[bool, str]:
-    compiler_path = ROOT / "bootstrap" / "stage1" / "compiler.cofn"
-    fixture_path = ROOT / "bootstrap" / "fixtures" / "answer.cofn"
+    compiler_path = ROOT / "bootstrap" / "stage1" / "compiler.kf"
+    fixture_path = ROOT / "bootstrap" / "fixtures" / "answer.kf"
     source = compiler_path.read_text(encoding="utf-8")
     result = check_source(source)
     if not result.ok:
@@ -33,15 +33,15 @@ def verify_stage1() -> tuple[bool, str]:
     if cc is None:
         return False, "no C compiler found"
 
-    with tempfile.TemporaryDirectory(prefix="cofn-bootstrap-") as directory:
+    with tempfile.TemporaryDirectory(prefix="kofun-bootstrap-") as directory:
         work = Path(directory)
         interpreted_c = work / "answer-interpreted.c"
         native_c = work / "answer-native.c"
-        stage1_c = work / "cofn-stage1.c"
-        stage1_binary = work / "cofn-stage1"
+        stage1_c = work / "kofun-stage1.c"
+        stage1_binary = work / "kofun-stage1"
         answer_binary = work / "answer"
 
-        # Path A: Stage 0 interpreter executes the Cofn-written compiler.
+        # Path A: Stage 0 interpreter executes the Kofun-written compiler.
         evaluator = Evaluator(program_args=[str(fixture_path), str(interpreted_c)])
         captured = io.StringIO()
         with contextlib.redirect_stdout(captured):

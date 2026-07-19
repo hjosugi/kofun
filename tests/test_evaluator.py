@@ -4,8 +4,8 @@ import contextlib
 import io
 import unittest
 
-from cofn.evaluator import Evaluator
-from cofn.frontend import check_source
+from kofun.evaluator import Evaluator
+from kofun.frontend import check_source
 
 
 def run(source: str) -> list[str]:

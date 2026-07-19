@@ -84,7 +84,7 @@
 | complete function enumeration | implemented | `finite_functions(domain, codomain)` |
 | `proven-finite` Bool carrier | implemented | complete Bool and Optional[Bool] models |
 | custom equality | implemented | optional `equal` function |
-| JSON evidence artifact | implemented | `cofn.law-evidence/v1` with source hash and model digest |
+| JSON evidence artifact | implemented | `kofun.law-evidence/v1` with source hash and model digest |
 | assurance build gate | implemented | `--require-assurance` / `--require-law-assurance`, L200 |
 | Functor/Applicative/Monoid laws | designed | backlog |
 | generic proof-term kernel | not started | required for `proven` evidence |
@@ -151,8 +151,8 @@
 | Feature | Status | Notes |
 |---|---|---|
 | Stage 0 Python toolchain | implemented | current reference implementation |
-| Cofn-written compiler seed | implemented | `bootstrap/stage1/compiler.cofn` |
-| Stage 1 Cofn Core to C11 | prototype | arithmetic `print(EXPR)` subset |
+| Kofun-written compiler seed | implemented | `bootstrap/stage1/compiler.kf` |
+| Stage 1 Kofun Core to C11 | prototype | arithmetic `print(EXPR)` subset |
 | Stage 0 builds native Stage 1 | implemented | C11 backend plus host C compiler |
 | interpreted/native Stage 1 equivalence | implemented | generated fixture C11 is byte-identical |
 | Stage 1 native fixture | implemented | generated program returns 42 |
@@ -167,15 +167,15 @@
 
 | Feature | Status | Notes |
 |---|---|---|
-| `cofn run` | implemented | interpreter and `--native` |
-| `cofn check` | implemented | structured text diagnostics |
-| `cofn laws` | implemented | text/JSON evidence, model summary, assurance gate |
-| `cofn build` | implemented | C11 bootstrap |
-| `cofn fmt` | prototype | conservative indentation formatter |
-| `cofn test` | implemented | `# expect:` golden output |
-| `cofn repl` | prototype | persistent evaluator, no full incremental checker |
-| `cofn new` | implemented | project scaffold |
-| `cofn ast` | implemented | debug AST output |
+| `kofun run` | implemented | interpreter and `--native` |
+| `kofun check` | implemented | structured text diagnostics |
+| `kofun laws` | implemented | text/JSON evidence, model summary, assurance gate |
+| `kofun build` | implemented | C11 bootstrap |
+| `kofun fmt` | prototype | conservative indentation formatter |
+| `kofun test` | implemented | `# expect:` golden output |
+| `kofun repl` | prototype | persistent evaluator, no full incremental checker |
+| `kofun new` | implemented | project scaffold |
+| `kofun ast` | implemented | debug AST output |
 | JSON diagnostics | not started | backlog |
 | linter | not started | backlog |
 | documentation generator | not started | backlog |
@@ -186,9 +186,9 @@
 At the current repository revision:
 
 - 31 Python unit tests pass
-- 5 `.cofn` language tests pass
+- 5 `.kf` language tests pass
 - native Fibonacci demo compiles and returns 6765 (`fib(20)`); backend unit fixture also checks `fib(10) = 55`
-- Stage 0 builds the Cofn-written Stage 1 seed as native code
+- Stage 0 builds the Kofun-written Stage 1 seed as native code
 - interpreted and native Stage 1 emit byte-identical C11; the generated fixture returns 42
 - `Optional[Bool]` Monad finite proof checks all 264 cases
 - law evidence JSON and `proven-finite` assurance gate are covered by tests
