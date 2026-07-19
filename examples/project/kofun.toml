@@ -1,0 +1,13 @@
+# A Kofun workspace. `kofun build` needs no other tool installed:
+# no C compiler, no linker, no external build system.
+[workspace]
+name = "demo"
+default_targets = ["app", "bench"]
+
+[target.app]
+kind = "binary"
+srcs = ["src/main.kf"]
+
+[target.bench]
+kind = "binary"
+srcs = ["src/bench.kf"]

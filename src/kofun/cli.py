@@ -13,6 +13,16 @@ from pathlib import Path
 
 from .c_backend import BackendFailure, CBackend, compile_c
 from .native_backend import compile_to_executable
+from .build_system import (
+    MANIFEST_NAME,
+    BuildError,
+    Builder,
+    Manifest,
+    Target,
+    clean,
+    find_manifest,
+)
+from .tui import make_renderer
 from .diagnostics import Diagnostic, KofunError, read_source, render_diagnostic
 from .evaluator import Evaluator, display
 from .formatter import format_source
@@ -62,8 +72,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="reject declared laws below this evidence level",
     )
 
-    build = sub.add_parser("build", help="compile a source file to a native executable")
-    build.add_argument("file")
+    build = sub.add_parser(
+        "build",
+        help="compile a source file, or build the targets in kofun.toml",
+    )
+    build.add_argument(
+        "file",
+        nargs="?",
+        help="source file; omit to build the workspace described by kofun.toml",
+    )
+    build.add_argument("targets", nargs="*", help="targets to build (workspace mode)")
+    build.add_argument("-j", "--jobs", type=int, default=0, help="parallel jobs")
+    build.add_argument("--no-cache", action="store_true", help="ignore the action cache")
+    build.add_argument("--no-tui", action="store_true", help="plain output, no live view")
     build.add_argument("-o", "--output", type=Path)
     build.add_argument(
         "--backend",
@@ -81,6 +102,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--require-law-assurance",
         choices=ASSURANCE_CHOICES,
         help="reject declared laws below this evidence level",
+    )
+
+    clean_cmd = sub.add_parser("clean", help="remove build outputs")
+    clean_cmd.add_argument(
+        "--cache", action="store_true", help="also clear the content-addressed cache"
     )
 
     fmt = sub.add_parser("fmt", help="format Kofun source")
@@ -114,6 +140,8 @@ def main(argv: list[str] | None = None) -> int:
             return command_laws(args)
         if args.command == "build":
             return command_build(args)
+        if args.command == "clean":
+            return command_clean(args)
         if args.command == "fmt":
             return command_fmt(args)
         if args.command == "repl":
@@ -209,6 +237,93 @@ def command_laws(args: argparse.Namespace) -> int:
 
 
 def command_build(args: argparse.Namespace) -> int:
+    # No file argument means workspace mode: find kofun.toml and build it.
+    if args.file is None or args.file in {t for t in getattr(args, "targets", [])}:
+        return command_build_workspace(args)
+    return command_build_file(args)
+
+
+def command_build_workspace(args: argparse.Namespace) -> int:
+    manifest_path = find_manifest(Path.cwd())
+    if manifest_path is None:
+        print(
+            f"no {MANIFEST_NAME} found in this directory or any parent\n"
+            "hint: pass a source file to compile it directly, "
+            "or run `kofun new <name>` to create a project",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        manifest = Manifest.load(manifest_path)
+    except BuildError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+
+    requested = [t for t in ([args.file] if args.file else []) + list(args.targets) if t]
+
+    def compile_one(target: Target, output: Path) -> None:
+        # Every source of a target is compiled in this same process. There is no
+        # fork, no exec, and no dynamic link between the manifest and the
+        # machine code, which is where competing build tools spend most of their
+        # wall clock.
+        if len(target.srcs) != 1:
+            raise BuildError(
+                f"target `{target.name}`: multi-file targets need module support "
+                "(see the module-system issue); use one src for now"
+            )
+        path = target.srcs[0]
+        source = path.read_text(encoding="utf-8")
+        checked = check_source(source)
+        if checked.diagnostics:
+            report_diagnostics(source, str(path), checked.diagnostics)
+            raise BuildError(f"{path}: {len(checked.diagnostics)} diagnostic(s)")
+        compile_to_executable(checked.program, str(output), str(path))
+
+    try:
+        builder = Builder(
+            manifest,
+            compile_target=compile_one,
+            use_cache=not args.no_cache,
+            jobs=args.jobs,
+        )
+        renderer = make_renderer(no_tui=args.no_tui)
+        order = requested or manifest.default_targets
+        renderer.start(len(_plan_size(manifest, order)))
+        report = builder.build(order, on_event=renderer.on_event)
+        renderer.finish(report)
+    except BuildError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+
+    return 0 if report.ok else 1
+
+
+def _plan_size(manifest: Manifest, requested: list[str]) -> list[str]:
+    """Names in the transitive closure, for the progress total."""
+    seen: list[str] = []
+    stack = list(requested)
+    while stack:
+        name = stack.pop()
+        if name in seen or name not in manifest.targets:
+            continue
+        seen.append(name)
+        stack.extend(manifest.targets[name].deps)
+    return seen
+
+
+def command_clean(args: argparse.Namespace) -> int:
+    manifest_path = find_manifest(Path.cwd())
+    root = manifest_path.parent if manifest_path else Path.cwd()
+    removed = clean(root, cache=args.cache)
+    for path in removed:
+        print(f"removed {path}")
+    if not removed:
+        print("nothing to clean")
+    return 0
+
+
+def command_build_file(args: argparse.Namespace) -> int:
     source, filename = read_source(args.file)
     result = check_source(source)
     if not report_diagnostics(source, filename, result.diagnostics):
