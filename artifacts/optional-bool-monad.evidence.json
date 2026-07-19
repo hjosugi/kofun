@@ -1,0 +1,27 @@
+{
+  "assurance_violations": [],
+  "compiler": {
+    "name": "Frost",
+    "version": "0.2.0-bootstrap"
+  },
+  "diagnostics": [],
+  "reports": [
+    {
+      "assurance": "proven-finite",
+      "cases_checked": 264,
+      "cases_planned": 264,
+      "failures": [],
+      "family": "monad",
+      "model_digest": "2a14942cdc1b6c15",
+      "name": "OptionalBoolMonad",
+      "status": "passed"
+    }
+  ],
+  "required_assurance": "proven-finite",
+  "schema": "frost.law-evidence/v1",
+  "source": {
+    "path": "examples/proven_optional_bool_monad.frost",
+    "sha256": "0adb5fea24c34657e63598c4ad01cbf7a9d38206e16eeeada839278a3009ece6"
+  },
+  "status": "passed"
+}

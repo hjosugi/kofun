@@ -1,0 +1,30 @@
+{
+  "name": "frost-language-bootstrap",
+  "displayName": "Frost Language Bootstrap",
+  "description": "Basic syntax highlighting and bracket support for the Frost bootstrap language.",
+  "version": "0.2.0",
+  "publisher": "frost-language-project",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "frost",
+        "aliases": ["Frost", "frost"],
+        "extensions": [".frost"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "frost",
+        "scopeName": "source.frost",
+        "path": "./syntaxes/frost.tmLanguage.json"
+      }
+    ]
+  }
+}

@@ -1,0 +1,40 @@
+fn list_pure(value: Int) -> List[Int] {
+    return [value]
+}
+
+fn list_bind(values: List[Int], next: Fn[Int, List[Int]]) -> List[Int] {
+    return fold(
+    values,
+    [],
+    fn(acc: List[Int], value: Int) => concat(acc, next(value))
+    )
+}
+
+fn keep(value: Int) -> List[Int] {
+    return [value]
+}
+
+fn increment(value: Int) -> List[Int] {
+    return [value + 1]
+}
+
+fn duplicate(value: Int) -> List[Int] {
+    return [value, value]
+}
+
+fn discard(value: Int) -> List[Int] {
+    return []
+}
+
+law monad ListMonad {
+    pure = list_pure
+    bind = list_bind
+    values = [-2, -1, 0, 1, 2]
+    monads = [[], [0], [1], [-1, 2], [0, 1, 2]]
+    functions = [keep, increment, duplicate, discard]
+    limit = 1000
+}
+
+fn main() {
+    print("ListMonad passed its declared finite model")
+}

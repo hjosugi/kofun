@@ -1,0 +1,9 @@
+fn main() {
+    let x = linspace(0.0, 1.0, 5)
+    let squared = vmul(x, x)
+
+    print(x)
+    print(squared)
+    print(mean(squared))
+    print(dot(x, squared))
+}

@@ -1,0 +1,6 @@
+fn main() {
+    let language = "Frost"
+    let answer = 40 + 2
+    print(language)
+    print(answer)
+}

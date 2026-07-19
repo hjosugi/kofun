@@ -1,0 +1,6 @@
+# expect: 42
+# expect: 3.5
+fn main() {
+    print(6 * 7)
+    print(7 / 2)
+}

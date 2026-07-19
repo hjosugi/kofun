@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frost-lang.invalid/spec/law-evidence.schema.json",
+  "title": "Frost law evidence",
+  "type": "object",
+  "required": [
+    "schema",
+    "compiler",
+    "source",
+    "status",
+    "required_assurance",
+    "assurance_violations",
+    "diagnostics",
+    "reports"
+  ],
+  "properties": {
+    "schema": {"const": "frost.law-evidence/v1"},
+    "compiler": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"const": "Frost"},
+        "version": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      },
+      "additionalProperties": false
+    },
+    "status": {"enum": ["passed", "failed"]},
+    "required_assurance": {
+      "type": ["string", "null"],
+      "enum": [null, "bounded-exhaustive", "proven-finite", "proven"]
+    },
+    "assurance_violations": {"type": "array"},
+    "diagnostics": {"type": "array"},
+    "reports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "family",
+          "status",
+          "assurance",
+          "cases_checked",
+          "cases_planned",
+          "model_digest",
+          "failures"
+        ],
+        "properties": {
+          "name": {"type": "string"},
+          "family": {"type": "string"},
+          "status": {"enum": ["passed", "failed"]},
+          "assurance": {"type": "string"},
+          "cases_checked": {"type": "integer", "minimum": 0},
+          "cases_planned": {"type": "integer", "minimum": 0},
+          "model_digest": {"type": "string"},
+          "failures": {"type": "array"}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

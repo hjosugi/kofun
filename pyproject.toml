@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "frost-lang-bootstrap"
+version = "0.2.0"
+description = "A bootstrap implementation of the Frost programming language"
+requires-python = ">=3.11"
+license = {text = "Apache-2.0 OR MIT"}
+authors = [{name = "Frost Language Project"}]
+dependencies = []
+
+[project.scripts]
+frost = "frost.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

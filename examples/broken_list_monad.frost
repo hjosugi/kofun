@@ -1,0 +1,27 @@
+fn broken_pure(value: Int) -> List[Int] {
+    return [value, value]
+}
+
+fn list_bind(values: List[Int], next: Fn[Int, List[Int]]) -> List[Int] {
+    return fold(
+    values,
+    [],
+    fn(acc: List[Int], value: Int) => concat(acc, next(value))
+    )
+}
+
+fn keep(value: Int) -> List[Int] {
+    return [value]
+}
+
+law monad BrokenListMonad {
+    pure = broken_pure
+    bind = list_bind
+    values = [0, 1]
+    monads = [[], [0], [1]]
+    functions = [keep]
+}
+
+fn main() {
+    print("this program must not compile")
+}

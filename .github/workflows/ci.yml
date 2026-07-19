@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: verify (${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      # binutils supplies objdump, which the x86-64 encoder is
+      # differential-tested against.
+      - name: Install binutils
+        run: sudo apt-get update && sudo apt-get install -y binutils
+
+      - name: Run the full verification suite
+        run: make verify
+
+  native-backend:
+    name: native backend emits a working static ELF
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Deliberately no C compiler step: the native path must not need one.
+      - name: Build with the direct machine code backend
+        run: ./bin/frost build examples/fibonacci_native.frost -o build/fibonacci
+
+      - name: Check the binary is static and correct
+        run: |
+          file build/fibonacci
+          file build/fibonacci | grep -q 'statically linked'
+          test "$(./build/fibonacci)" = "6765"
+
+      - name: Confirm it runs with no dynamic dependencies
+        run: |
+          ! ldd build/fibonacci 2>/dev/null | grep -q 'libc'
+          echo "no libc dependency"

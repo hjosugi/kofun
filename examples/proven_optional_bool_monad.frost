@@ -1,0 +1,25 @@
+fn optional_pure(value: Bool) -> Bool? {
+    return value
+}
+
+fn optional_bind(value: Bool?, next: Fn[Bool, Bool?]) -> Bool? {
+    return if value == null {
+        null
+    } else {
+        next(unwrap(value))
+    }
+}
+
+law monad OptionalBoolMonad {
+    pure = optional_pure
+    bind = optional_bind
+    values = [false, true]
+    monads = [null, false, true]
+    functions = finite_functions([false, true], [null, false, true])
+    complete = true
+    limit = 1000
+}
+
+fn main() {
+    print("OptionalBoolMonad is proven over its complete finite carrier")
+}

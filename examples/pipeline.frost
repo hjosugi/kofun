@@ -1,0 +1,9 @@
+fn main() {
+    let values = 1 .. 8
+    let answer = values
+    |> map(fn(x: Int) => x * x)
+    |> filter(fn(x: Int) => x % 2 == 0)
+    |> sum()
+
+    print(answer)
+}

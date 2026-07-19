@@ -1,0 +1,91 @@
+(* Frost Stage 0 grammar, draft 0.2-bootstrap. *)
+
+program          = separators, { declaration, separators }, EOF ;
+
+declaration      = law_decl
+                 | function_decl
+                 | meta_function_decl
+                 | statement ;
+
+law_decl         = "law", "monad", identifier, separators,
+                   "{", separators,
+                   { law_entry, separators, [ "," ], separators },
+                   "}" ;
+law_entry        = identifier, "=", expression ;
+
+meta_function_decl = "meta", "fn", function_tail ;
+function_decl    = "fn", function_tail ;
+function_tail    = identifier, "(", parameters, ")",
+                   [ "->", type_ref ],
+                   ( "=", expression | block ) ;
+
+parameters       = [ parameter, { separators, ",", separators, parameter } ] ;
+parameter        = [ "read" | "edit" | "take" ], identifier,
+                   [ ":", type_ref ] ;
+
+type_ref         = identifier,
+                   [ "[", type_ref, { ",", type_ref }, "]" ],
+                   [ "?" ] ;
+
+block            = "{", separators, { declaration_in_block, separators }, "}" ;
+declaration_in_block = function_decl | meta_function_decl | statement ;
+
+statement        = let_stmt
+                 | return_stmt
+                 | while_stmt
+                 | for_stmt
+                 | take_stmt
+                 | "break"
+                 | "continue"
+                 | assignment_or_expr ;
+
+let_stmt         = "let", [ "own" ], [ "mut" ], [ "own" ], identifier,
+                   [ ":", type_ref ], "=", expression ;
+return_stmt      = "return", [ expression ] ;
+while_stmt       = "while", expression, block ;
+for_stmt         = "for", identifier, "in", expression, block ;
+take_stmt        = "take", identifier ;
+assignment_or_expr = expression, [ "=", expression ] ;
+
+expression       = pipeline ;
+pipeline         = coalesce, { "|>", coalesce } ;
+coalesce         = logic_or, { "??", logic_or } ;
+logic_or         = logic_and, { "||", logic_and } ;
+logic_and        = equality, { "&&", equality } ;
+equality         = comparison, { ( "==" | "!=" ), comparison } ;
+comparison       = range, { ( "<" | "<=" | ">" | ">=" ), range } ;
+range            = additive, { "..", additive } ;
+additive         = multiplicative, { ( "+" | "-" ), multiplicative } ;
+multiplicative   = power, { ( "*" | "/" | "//" | "%" ), power } ;
+power            = unary, [ "**", power ] ;
+unary            = [ "+" | "-" | "!" ], postfix ;
+postfix          = primary, { call | member | index } ;
+call             = "(", arguments, ")" ;
+member           = ".", identifier ;
+index            = "[", expression, "]" ;
+arguments        = [ expression, { separators, ",", separators, expression } ] ;
+
+primary          = integer
+                 | float
+                 | string
+                 | "true"
+                 | "false"
+                 | "null"
+                 | identifier
+                 | list
+                 | tuple_or_group
+                 | if_expr
+                 | lambda ;
+
+list             = "[", arguments, "]" ;
+tuple_or_group   = "(", [ expression, [ ",", arguments ] ], ")" ;
+if_expr          = "if", expression, block,
+                   [ separators, "else", separators, ( if_expr | block ) ] ;
+lambda           = "fn", "(", parameters, ")",
+                   ( "=>", expression | block ) ;
+
+separators       = { NEWLINE | ";" } ;
+identifier       = IDENT ;
+integer          = INT ;
+float            = FLOAT ;
+string           = STRING ;

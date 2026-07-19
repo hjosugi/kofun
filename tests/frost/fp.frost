@@ -1,0 +1,8 @@
+# expect: 24
+fn main() {
+    let answer = 1 .. 6
+    |> map(fn(x: Int) => x * 2)
+    |> filter(fn(x: Int) => x > 4)
+    |> sum()
+    print(answer)
+}

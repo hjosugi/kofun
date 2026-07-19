@@ -1,0 +1,40 @@
+{
+  "schema": "frost.verification/v1",
+  "verified_on": "2026-07-19",
+  "toolchain": {
+    "frost": "0.2.0-bootstrap",
+    "python": "3.13.5",
+    "c_compiler": "GCC 14.2.0"
+  },
+  "tests": {
+    "python_unit": 31,
+    "frost_language": 5,
+    "native_fibonacci_20": 6765
+  },
+  "laws": {
+    "list_monad": {
+      "assurance": "bounded-exhaustive",
+      "cases": 105,
+      "status": "passed"
+    },
+    "optional_bool_monad": {
+      "assurance": "proven-finite",
+      "cases": 264,
+      "status": "passed"
+    },
+    "broken_monad_rejected": true
+  },
+  "bootstrap": {
+    "stage0_builds_native_stage1": true,
+    "interpreted_native_stage1_c11_equal": true,
+    "native_fixture_output": 42,
+    "stage2_self_recompile": false,
+    "full_self_hosting": false
+  },
+  "backlog": {
+    "issues": 13500,
+    "areas": 27,
+    "unique_and_contiguous": true
+  },
+  "verification_command": "make verify"
+}

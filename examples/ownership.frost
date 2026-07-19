@@ -1,0 +1,16 @@
+fn inspect(read handle: Resource) -> Bool {
+    return is_open(handle)
+}
+
+fn consume(take handle: Resource) {
+    print(inspect(handle))
+}
+
+fn main() {
+    let own socket = resource("demo-socket")
+    print(inspect(socket))
+    consume(socket)
+
+    # Uncommenting this line produces E330: value was already taken.
+    # print(inspect(socket))
+}

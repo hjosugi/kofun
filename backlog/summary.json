@@ -1,0 +1,22 @@
+{
+  "areas": 27,
+  "by_milestone": {
+    "M0-spec": 2025,
+    "M1-bootstrap": 3375,
+    "M2-alpha": 3375,
+    "M3-beta": 2700,
+    "M4-1.0": 2025
+  },
+  "by_priority": {
+    "P0": 3375,
+    "P1": 3375,
+    "P2": 4050,
+    "P3": 2700
+  },
+  "first_id": "FROST-00001",
+  "generator_sha256": "48c74622bdd39d0de860cef3ab4810e7b6bfff7c77eb886a44de7bac748243d2",
+  "issues_per_area": 500,
+  "last_id": "FROST-13500",
+  "schema": 1,
+  "total": 13500
+}

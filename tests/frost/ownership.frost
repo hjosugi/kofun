@@ -1,0 +1,9 @@
+# expect: true
+fn consume(take item: Resource) {
+    print(is_open(item))
+}
+
+fn main() {
+    let own item = resource("test")
+    consume(item)
+}

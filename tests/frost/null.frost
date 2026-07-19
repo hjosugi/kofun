@@ -1,0 +1,5 @@
+# expect: 9
+fn main() {
+    let value: Int? = null
+    print(value ?? 9)
+}

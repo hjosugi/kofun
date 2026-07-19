@@ -1,0 +1,16 @@
+fn label(score: Int) -> Text {
+    return if score >= 90 {
+        "excellent"
+    } else if score >= 70 {
+        "good"
+    } else {
+        "keep going"
+    }
+}
+
+fn main() {
+    let missing: Int? = null
+    let fallback = missing ?? 42
+    print(label(82))
+    print(fallback)
+}
