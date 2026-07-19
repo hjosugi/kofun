@@ -1,10 +1,31 @@
 # Frost implementation backlog
 
-This directory contains **13,500 discrete implementation issues**.
+This directory contains **13,500 generated planning rows**.
 Each area has 25 concrete subjects. Each subject has a 20-step lifecycle from requirements to release acceptance.
 Every row has a stable ID, priority, milestone, acceptance criterion, validation method, dependency, and content fingerprint.
 
 The generated backlog is intentionally broader than the bootstrap implementation. `docs/MVP_IMPLEMENTED.md` records what currently works.
+
+## これはGitHub issuesではありません
+
+**この13,500行は意図的にファイルとして保持しています。** GitHub issuesには登録しません。
+
+理由は3つあります。
+
+1. **中身がテンプレートです。** 27エリア × 25トピック × 同一の20ステップを機械的に組み合わせたもので、
+   「Define contract: X」「Design data structures: X」のようにトピック名を差し替えただけの文面です。
+   計画の網羅性を示す資料としては有用ですが、着手できる単位の作業記述ではありません。
+2. **GitHubのcontent作成上限は約500件/時です。** 13,500件の登録には27時間以上かかり、
+   スパム判定によるアカウント制限のリスクが高くなります。
+3. **登録すると検索も巡回も実質不可能になります。** 同一文面が数千件並ぶissue trackerは、
+   実際のバグや設計判断を埋もれさせます。
+
+実際に着手できる作業は、**GitHub issuesに34件を登録済み**です。
+そちらは実測値・該当ファイル・行番号・受け入れ条件を伴う、粒度のある課題です。
+
+https://github.com/hjosugi/frost-lang/issues
+
+この生成バックログは、その34件が全体計画のどこに位置するかを示す地図として使ってください。
 
 ## Counts
 
