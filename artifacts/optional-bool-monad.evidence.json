@@ -1,7 +1,7 @@
 {
   "assurance_violations": [],
   "compiler": {
-    "name": "Frost",
+    "name": "Cofn",
     "version": "0.2.0-bootstrap"
   },
   "diagnostics": [],
@@ -18,9 +18,9 @@
     }
   ],
   "required_assurance": "proven-finite",
-  "schema": "frost.law-evidence/v1",
+  "schema": "cofn.law-evidence/v1",
   "source": {
-    "path": "examples/proven_optional_bool_monad.frost",
+    "path": "examples/proven_optional_bool_monad.cofn",
     "sha256": "0adb5fea24c34657e63598c4ad01cbf7a9d38206e16eeeada839278a3009ece6"
   },
   "status": "passed"

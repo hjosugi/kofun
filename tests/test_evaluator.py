@@ -4,8 +4,8 @@ import contextlib
 import io
 import unittest
 
-from frost.evaluator import Evaluator
-from frost.frontend import check_source
+from cofn.evaluator import Evaluator
+from cofn.frontend import check_source
 
 
 def run(source: str) -> list[str]:

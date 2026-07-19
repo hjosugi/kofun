@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKLOG = ROOT / "backlog"
-ROW = re.compile(r"^\| (FROST-(\d{5})) \| (planned|prototype|done) \| (P[0-3]) \| ([^|]+) \| ([^|]+) \|")
+ROW = re.compile(r"^\| (COFN-(\d{5})) \| (planned|prototype|done) \| (P[0-3]) \| ([^|]+) \| ([^|]+) \|")
 
 
 def main() -> int:
@@ -21,7 +21,7 @@ def main() -> int:
     for path in files:
         count = 0
         for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-            if not line.startswith("| FROST-"):
+            if not line.startswith("| COFN-"):
                 continue
             match = ROW.match(line)
             if not match:

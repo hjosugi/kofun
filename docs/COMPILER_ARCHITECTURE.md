@@ -259,7 +259,7 @@ fix edits
 explanation key
 ```
 
-backend stderrをそのままuserへ投げず、source mappingできる範囲をFrost diagnosticへ変換する。
+backend stderrをそのままuserへ投げず、source mappingできる範囲をCofn diagnosticへ変換する。
 
 ## Testing strategy
 
@@ -281,18 +281,18 @@ backend stderrをそのままuserへ投げず、source mappingできる範囲を
 ## Stage 0 source layout
 
 ```text
-src/frost/ast.py
-src/frost/tokens.py
-src/frost/lexer.py
-src/frost/parser.py
-src/frost/typesys.py
-src/frost/laws.py
-src/frost/evaluator.py
-src/frost/c_backend.py
-src/frost/c_runtime.py
-src/frost/formatter.py
-src/frost/frontend.py
-src/frost/cli.py
+src/cofn/ast.py
+src/cofn/tokens.py
+src/cofn/lexer.py
+src/cofn/parser.py
+src/cofn/typesys.py
+src/cofn/laws.py
+src/cofn/evaluator.py
+src/cofn/c_backend.py
+src/cofn/c_runtime.py
+src/cofn/formatter.py
+src/cofn/frontend.py
+src/cofn/cli.py
 ```
 
 依存packageなしで動くため、language UXとtest corpusを先に育てられる。
@@ -305,8 +305,8 @@ Stage 0: Python reference compiler
   -> lowers Stage 1 source to C11 and builds a native Stage 1
   -> compares interpreted/native Stage 1 output on a fixture
 
-Stage 1: compiler written in Frost
-  -> currently compiles the arithmetic Frost Core fixture
+Stage 1: compiler written in Cofn
+  -> currently compiles the arithmetic Cofn Core fixture
   -> future gate: builds its own Stage 1 source
 
 Stage 2: self-compiled compiler

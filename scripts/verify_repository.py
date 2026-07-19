@@ -11,7 +11,7 @@ from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[1]
 TEXT_SUFFIXES = {
-    ".frost",
+    ".cofn",
     ".py",
     ".md",
     ".json",
@@ -45,11 +45,11 @@ def check_required_files(errors: list[str]) -> None:
         "LICENSE-APACHE",
         "LICENSE-MIT",
         "NOTICE",
-        "bin/frost",
-        "src/frost/cli.py",
-        "src/frost/c_runtime.py",
-        "src/frost/laws.py",
-        "bootstrap/stage1/compiler.frost",
+        "bin/cofn",
+        "src/cofn/cli.py",
+        "src/cofn/c_runtime.py",
+        "src/cofn/laws.py",
+        "bootstrap/stage1/compiler.cofn",
         "bootstrap/manifest.json",
         "artifacts/optional-bool-monad.evidence.json",
         "artifacts/verification-summary.json",
@@ -57,7 +57,7 @@ def check_required_files(errors: list[str]) -> None:
         "spec/law-evidence.schema.json",
         "spec/semantics.md",
         "editor/vscode/package.json",
-        "editor/vscode/syntaxes/frost.tmLanguage.json",
+        "editor/vscode/syntaxes/cofn.tmLanguage.json",
         "backlog/summary.json",
     )
     for relative in required:
@@ -68,8 +68,8 @@ def check_required_files(errors: list[str]) -> None:
 
 def check_versions(errors: list[str]) -> None:
     pyproject = read_utf8(ROOT / "pyproject.toml", errors)
-    init_source = read_utf8(ROOT / "src/frost/__init__.py", errors)
-    cli_source = read_utf8(ROOT / "src/frost/cli.py", errors)
+    init_source = read_utf8(ROOT / "src/cofn/__init__.py", errors)
+    cli_source = read_utf8(ROOT / "src/cofn/cli.py", errors)
     editor = json.loads(read_utf8(ROOT / "editor/vscode/package.json", errors) or "{}")
 
     project_match = re.search(r'^version\s*=\s*"([^"]+)"', pyproject, re.MULTILINE)
@@ -160,8 +160,8 @@ def check_backlog_metadata(errors: list[str]) -> None:
     summary = json.loads(read_utf8(summary_path, errors) or "{}")
     expected = {
         "total": 13_500,
-        "first_id": "FROST-00001",
-        "last_id": "FROST-13500",
+        "first_id": "COFN-00001",
+        "last_id": "COFN-13500",
         "areas": 27,
     }
     for key, value in expected.items():
@@ -208,7 +208,7 @@ def check_documented_counts(errors: list[str]) -> None:
     for required in (
         "13,500",
         "proven-finite",
-        "frost.law-evidence/v1",
+        "cofn.law-evidence/v1",
         "Stage 2 self-recompile",
         "full self-hosting",
     ):
@@ -219,10 +219,10 @@ def check_documented_counts(errors: list[str]) -> None:
 def check_law_evidence(errors: list[str]) -> None:
     evidence_path = ROOT / "artifacts/optional-bool-monad.evidence.json"
     evidence = json.loads(read_utf8(evidence_path, errors) or "{}")
-    source_path = ROOT / "examples/proven_optional_bool_monad.frost"
+    source_path = ROOT / "examples/proven_optional_bool_monad.cofn"
     source_bytes = source_path.read_bytes()
     expected_hash = hashlib.sha256(source_bytes).hexdigest()
-    if evidence.get("schema") != "frost.law-evidence/v1":
+    if evidence.get("schema") != "cofn.law-evidence/v1":
         fail(errors, "law evidence schema mismatch")
     if evidence.get("status") != "passed":
         fail(errors, "law evidence must be passing")
@@ -248,10 +248,10 @@ def check_law_evidence(errors: list[str]) -> None:
 def check_verification_summary(errors: list[str]) -> None:
     summary = json.loads(read_utf8(ROOT / "artifacts/verification-summary.json", errors) or "{}")
     expected_paths = {
-        ("schema",): "frost.verification/v1",
-        ("toolchain", "frost"): "0.2.0-bootstrap",
+        ("schema",): "cofn.verification/v1",
+        ("toolchain", "cofn"): "0.2.0-bootstrap",
         ("tests", "python_unit"): 31,
-        ("tests", "frost_language"): 5,
+        ("tests", "cofn_language"): 5,
         ("laws", "optional_bool_monad", "cases"): 264,
         ("bootstrap", "stage0_builds_native_stage1"): True,
         ("bootstrap", "stage2_self_recompile"): False,

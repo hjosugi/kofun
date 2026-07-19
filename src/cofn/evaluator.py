@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from . import ast
-from .diagnostics import Diagnostic, FrostError
+from .diagnostics import Diagnostic, CofnError
 
 
 @dataclass(slots=True)
@@ -102,7 +102,7 @@ class BuiltinFunction:
             raise runtime_error(f"`{self.name}` expects {expected} arguments, found {len(args)}", span, "R006")
         try:
             return self.fn(*args)
-        except FrostError:
+        except CofnError:
             raise
         except Exception as exc:
             raise runtime_error(f"`{self.name}` failed: {exc}", span, "R007") from exc
@@ -576,8 +576,8 @@ class ContinueFlow(Exception):
     pass
 
 
-def runtime_error(message: str, span: ast.Span, code: str) -> FrostError:
-    return FrostError(Diagnostic(message, span, code))
+def runtime_error(message: str, span: ast.Span, code: str) -> CofnError:
+    return CofnError(Diagnostic(message, span, code))
 
 
 def truthy(value: Any) -> bool:

@@ -2,18 +2,18 @@
 
 ## Working title
 
-このprototypeでは`Frost`をworking titleとして使う。
+このprototypeでは`Cofn`をworking titleとして使う。
 
 意図:
 
-- Rustへのfrostrationを出発点にする
+- Rustへのcofnrationを出発点にする
 - functional + Rustを連想しやすい
 - CLI名が短い
-- `.frost` extensionを使いやすい
+- `.cofn` extensionを使いやすい
 
 ## Collision risk
 
-`frost`という名前はすでにRust ecosystemのcrate名として使われている。また、過去に「functional Rust」の略として同じ発想が公開された例もある。
+`cofn`という名前はすでにRust ecosystemのcrate名として使われている。また、過去に「functional Rust」の略として同じ発想が公開された例もある。
 
 したがって、public launch前に次を必須とする。
 

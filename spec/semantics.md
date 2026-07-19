@@ -26,7 +26,7 @@ Top-level function headers are collected before bodies are checked, enabling rec
 
 `law monad` is compile-time-only. It cannot execute ordinary I/O. The compiler checks left identity, right identity, and associativity over the declared finite model. `bounded-exhaustive` is not a universal proof. `proven-finite` is emitted only for compiler-certified complete finite carriers and complete total-function spaces.
 
-Law evidence may be serialized as `frost.law-evidence/v1`. The artifact binds results to the source SHA-256 and compiler version. A caller may require a minimum assurance; a declared law below that level is rejected with `L200`.
+Law evidence may be serialized as `cofn.law-evidence/v1`. The artifact binds results to the source SHA-256 and compiler version. A caller may require a minimum assurance; a declared law below that level is rejected with `L200`.
 
 ## Backends
 

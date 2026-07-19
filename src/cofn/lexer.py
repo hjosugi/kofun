@@ -218,7 +218,7 @@ class Lexer:
         span = Span(line, col, self.line, self.column)
         hint = None
         if ch == "'":
-            hint = 'Frost strings use double quotes: "text"'
+            hint = 'Cofn strings use double quotes: "text"'
         self.diagnostics.error(f"unexpected character `{ch}`", span, "E100", hint)
 
     def _advance(self) -> str:

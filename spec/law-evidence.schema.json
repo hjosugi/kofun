@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://frost-lang.invalid/spec/law-evidence.schema.json",
-  "title": "Frost law evidence",
+  "$id": "https://cofn-lang.invalid/spec/law-evidence.schema.json",
+  "title": "Cofn law evidence",
   "type": "object",
   "required": [
     "schema",
@@ -14,12 +14,12 @@
     "reports"
   ],
   "properties": {
-    "schema": {"const": "frost.law-evidence/v1"},
+    "schema": {"const": "cofn.law-evidence/v1"},
     "compiler": {
       "type": "object",
       "required": ["name", "version"],
       "properties": {
-        "name": {"const": "Frost"},
+        "name": {"const": "Cofn"},
         "version": {"type": "string"}
       },
       "additionalProperties": false

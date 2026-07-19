@@ -1,4 +1,4 @@
-# FROST-XXXXX — Title
+# COFN-XXXXX — Title
 
 - State: planned
 - Priority: P0/P1/P2/P3

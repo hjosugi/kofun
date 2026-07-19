@@ -22,7 +22,7 @@
 
 small syntax abstraction向け。
 
-```frost
+```cofn
 macro assert_close(actual, expected, tolerance) {
     # token-tree expansion
 }
@@ -32,7 +32,7 @@ macro assert_close(actual, expected, tolerance) {
 
 declarationやexpressionをtyped nodeとして操作する。
 
-```frost
+```cofn
 meta fn derive_show(info: TypeInfo) -> Decl {
     quote {
         impl Show[$(info.type)] {
@@ -48,7 +48,7 @@ meta fn derive_show(info: TypeInfo) -> Decl {
 
 pure、deterministic、boundedな計算。
 
-```frost
+```cofn
 const table = meta generate_lookup_table(256)
 ```
 
@@ -115,15 +115,15 @@ private bodyやarbitrary compiler internalsはstable APIにしない。
 ## Expansion inspection
 
 ```bash
-frost expand src/main.frost
-frost expand --macro derive_json src/model.frost
+cofn expand src/main.cofn
+cofn expand --macro derive_json src/model.cofn
 ```
 
 outputにはgenerated source、source mapping、type informationを含める。
 
 ## Macro testing
 
-```frost
+```cofn
 meta test "derive JSON" {
     let expanded = expand(quote { @derive(json) type User = { id: Int } })
     expect(expanded).to_match_snapshot()

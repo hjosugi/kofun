@@ -2,9 +2,9 @@
 
 ## 完了条件
 
-Frost compilerを「自己ホスト済み」と呼ぶための最低条件は次です。
+Cofn compilerを「自己ホスト済み」と呼ぶための最低条件は次です。
 
-1. Stage 0 compilerがFrostで書かれたStage 1 compilerをbuildできる。
+1. Stage 0 compilerがCofnで書かれたStage 1 compilerをbuildできる。
 2. Stage 1 compilerが自分自身のsourceをbuildできる。
 3. 生成されたStage 2 compilerが同じsourceを再buildできる。
 4. Stage 1とStage 2の意味的artifactが一致する。
@@ -19,7 +19,7 @@ Frost compilerを「自己ホスト済み」と呼ぶための最低条件は次
 | Stage | Implementation | Status |
 |---|---|---|
 | Stage 0 | Python reference toolchain | working |
-| Stage 1 | `bootstrap/stage1/compiler.frost` | working native seed |
+| Stage 1 | `bootstrap/stage1/compiler.cofn` | working native seed |
 | Stage 2 | Stage 1 self-recompile | open |
 
 Stage 0には次が含まれます。
@@ -34,9 +34,9 @@ Stage 0には次が含まれます。
 - C11 backend
 - CLI
 
-Stage 1 seedはFrostで書かれています。現在は次のFrost Core subsetをC11へ変換します。
+Stage 1 seedはCofnで書かれています。現在は次のCofn Core subsetをC11へ変換します。
 
-```frost
+```cofn
 fn main() {
     print((6 + 1) * 6)
 }
@@ -76,10 +76,10 @@ PYTHONPATH=src python3 bootstrap/check_bootstrap.py
 実行内容:
 
 ```text
-Stage 0 parses and type-checks bootstrap/stage1/compiler.frost
-  -> Path A: Stage 0 interpreter runs the Frost-written compiler
+Stage 0 parses and type-checks bootstrap/stage1/compiler.cofn
+  -> Path A: Stage 0 interpreter runs the Cofn-written compiler
   -> Path B: Stage 0 C11 backend builds a native Stage 1 compiler
-  -> both Stage 1 paths compile bootstrap/fixtures/answer.frost
+  -> both Stage 1 paths compile bootstrap/fixtures/answer.cofn
   -> generated C11 artifacts must be byte-for-byte identical
   -> host C compiler builds the generated C11
   -> native program runs
@@ -160,10 +160,10 @@ self-hosting後もbootstrap attackを避けるため、次を計画します。
 
 | Label | Meaning |
 |---|---|
-| Frost-written compiler seed | compiler codeの一部がFrostで動く |
-| native Frost-written compiler seed | Stage 0がFrost compiler seedをnative executableへbuild可能 |
-| self-hosting frontend | frontend自身をFrostでbuild可能 |
+| Cofn-written compiler seed | compiler codeの一部がCofnで動く |
+| native Cofn-written compiler seed | Stage 0がCofn compiler seedをnative executableへbuild可能 |
+| self-hosting frontend | frontend自身をCofnでbuild可能 |
 | self-hosting compiler | Stage 1が自分自身をbuild可能 |
 | fixed-point bootstrap | Stage 1/Stage 2 artifact equivalenceを確認済み |
 
-このrepositoryの現在のlabelは**native Frost-written compiler seed**です。Stage 1 self-recompileがopenなので、self-hosting compilerまたはfixed-point bootstrapとは呼びません。
+このrepositoryの現在のlabelは**native Cofn-written compiler seed**です。Stage 1 self-recompileがopenなので、self-hosting compilerまたはfixed-point bootstrapとは呼びません。

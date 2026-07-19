@@ -1,9 +1,9 @@
 {
-  "name": "frost-language-bootstrap",
-  "displayName": "Frost Language Bootstrap",
-  "description": "Basic syntax highlighting and bracket support for the Frost bootstrap language.",
+  "name": "cofn-language-bootstrap",
+  "displayName": "Cofn Language Bootstrap",
+  "description": "Basic syntax highlighting and bracket support for the Cofn bootstrap language.",
   "version": "0.2.0",
-  "publisher": "frost-language-project",
+  "publisher": "cofn-language-project",
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -13,17 +13,17 @@
   "contributes": {
     "languages": [
       {
-        "id": "frost",
-        "aliases": ["Frost", "frost"],
-        "extensions": [".frost"],
+        "id": "cofn",
+        "aliases": ["Cofn", "cofn"],
+        "extensions": [".cofn"],
         "configuration": "./language-configuration.json"
       }
     ],
     "grammars": [
       {
-        "language": "frost",
-        "scopeName": "source.frost",
-        "path": "./syntaxes/frost.tmLanguage.json"
+        "language": "cofn",
+        "scopeName": "source.cofn",
+        "path": "./syntaxes/cofn.tmLanguage.json"
       }
     ]
   }

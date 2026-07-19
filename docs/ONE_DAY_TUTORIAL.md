@@ -1,16 +1,16 @@
-# Frost one-day tutorial
+# Cofn one-day tutorial
 
 このtutorialは、8時間でbasic applicationとinterview algorithmを書ける状態を目標にする。
 
 ## Hour 1: Run and values
 
 ```bash
-./bin/frost run examples/hello.frost
+./bin/cofn run examples/hello.cofn
 ```
 
-```frost
+```cofn
 fn main() {
-    let name = "Frost"
+    let name = "Cofn"
     let answer = 40 + 2
     print(name)
     print(answer)
@@ -26,7 +26,7 @@ fn main() {
 
 ## Hour 2: Types and null
 
-```frost
+```cofn
 let count: Int = 10
 let ratio: Float = 0.5
 let enabled: Bool = true
@@ -36,7 +36,7 @@ let missing: Int? = null
 
 fallback:
 
-```frost
+```cofn
 let effective = missing ?? 0
 ```
 
@@ -44,7 +44,7 @@ let effective = missing ?? 0
 
 ## Hour 3: Functions and branches
 
-```frost
+```cofn
 fn grade(score: Int) -> Text {
     return if score >= 90 {
         "A"
@@ -60,7 +60,7 @@ functionはvalueを返す。`if`もvalueを返せる。
 
 ## Hour 4: Lists and pipelines
 
-```frost
+```cofn
 fn main() {
     let values = 1 .. 8
     let answer = values
@@ -80,7 +80,7 @@ fn main() {
 
 ## Hour 5: Loops and interview code
 
-```frost
+```cofn
 fn binary_search(values: List[Int], target: Int) -> Int {
     let mut left = 0
     let mut right = len(values) - 1
@@ -105,7 +105,7 @@ fn binary_search(values: List[Int], target: Int) -> Int {
 
 ## Hour 6: Ownership
 
-```frost
+```cofn
 fn inspect(read socket: Resource) -> Bool {
     return is_open(socket)
 }
@@ -132,7 +132,7 @@ fn main() {
 
 ## Hour 7: Scientific computing
 
-```frost
+```cofn
 fn main() {
     let x = linspace(0.0, 1.0, 5)
     let y = vmul(x, x)
@@ -149,18 +149,18 @@ Stage 0ではList-based vector API。production designではunboxed N-dimensiona
 check:
 
 ```bash
-./bin/frost check examples/pipeline.frost
+./bin/cofn check examples/pipeline.cofn
 ```
 
 format:
 
 ```bash
-./bin/frost fmt -w examples/pipeline.frost
+./bin/cofn fmt -w examples/pipeline.cofn
 ```
 
 test file:
 
-```frost
+```cofn
 # expect: 42
 fn main() {
     print(40 + 2)
@@ -170,20 +170,20 @@ fn main() {
 run:
 
 ```bash
-./bin/frost test tests/frost
+./bin/cofn test tests/cofn
 ```
 
 native subset:
 
 ```bash
-./bin/frost build examples/fibonacci_native.frost -o build/fibonacci
+./bin/cofn build examples/fibonacci_native.cofn -o build/fibonacci
 ./build/fibonacci
 ```
 
 Monad則をcompilerで確認:
 
 ```bash
-./bin/frost laws examples/proven_optional_bool_monad.frost \
+./bin/cofn laws examples/proven_optional_bool_monad.cofn \
   --require-assurance proven-finite \
   --output artifacts/optional-bool-monad.evidence.json
 ```

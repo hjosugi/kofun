@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from frost.formatter import format_source
+from cofn.formatter import format_source
 
 
 class FormatterTests(unittest.TestCase):

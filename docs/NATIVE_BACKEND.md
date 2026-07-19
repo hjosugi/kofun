@@ -1,12 +1,12 @@
 # 直接機械語バックエンド (Direct Machine Code Backend)
 
-Frost compiles straight to x86-64 machine code. The native path shells out to
+Cofn compiles straight to x86-64 machine code. The native path shells out to
 nothing: no C, no clang, no `as`, no `ld`, no libc. The compiler encodes
 instructions itself, writes the ELF64 container itself, and talks to the kernel
 through syscalls.
 
 ```
-Frost source (.frost)
+Cofn source (.cofn)
       │
       ▼
   lexer / parser
@@ -32,13 +32,13 @@ Frost source (.frost)
 Native is the default backend.
 
 ```bash
-frost build program.frost -o program     # direct machine code
-frost build program.frost --backend c    # C11 + system compiler
+cofn build program.cofn -o program     # direct machine code
+cofn build program.cofn --backend c    # C11 + system compiler
 ```
 
 ## Measured results
 
-`examples/fibonacci_native.frost`, x86-64, best of 5.
+`examples/fibonacci_native.cofn`, x86-64, best of 5.
 
 | | native | C11 + `cc -O3` |
 |---|---|---|

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import unittest
 
-from frost.frontend import check_source, parse_source
-from frost.lexer import Lexer
-from frost.tokens import TokenKind
+from cofn.frontend import check_source, parse_source
+from cofn.lexer import Lexer
+from cofn.tokens import TokenKind
 
 
 class LexerParserTests(unittest.TestCase):

@@ -18,8 +18,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from frost import x64                                        # noqa: E402
-from frost.x64 import (                                      # noqa: E402
+from cofn import x64                                        # noqa: E402
+from cofn.x64 import (                                      # noqa: E402
     RAX, RCX, RDX, RBX, RSP, RBP, RSI, RDI, R10, R11, R12, R13, R15,
     Assembler,
 )

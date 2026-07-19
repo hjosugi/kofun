@@ -2,13 +2,13 @@
 
 ## Mission
 
-Frostのmissionは、systems safetyとhigh-level productivityの間にある日常的な摩擦を減らすことだ。
+Cofnのmissionは、systems safetyとhigh-level productivityの間にある日常的な摩擦を減らすことだ。
 
 Rustは、ownershipとborrowingによってGCなしのmemory safetyを実用化した。一方で、すべてのapplication codeが同じ粒度でlifetime、borrowing、wrapper type、conversionを扱う必要はない。
 
 PythonとJuliaは、探索、科学計算、面接、scriptで非常に速く書ける。一方で、大規模化したときの型・memory・concurrencyの保証は別の仕組みに依存する。
 
-Frostは次の分離を行う。
+Cofnは次の分離を行う。
 
 - 日常データはGC-managed、immutable-by-default、type-inferred
 - resourceはowned、affine、deterministic cleanup
@@ -78,7 +78,7 @@ syntaxだけでなく、失敗時のexperienceをspec化する。
 - exact source span
 - why it is unsafe or ambiguous
 - direct correction
-- `frost explain CODE`
+- `cofn explain CODE`
 - IDE fix-it
 
 ## Non-goals

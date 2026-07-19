@@ -1,8 +1,8 @@
-# Frost bootstrap
+# Cofn bootstrap
 
 - `manifest.json`: machine-readable stage status
-- `stage1/compiler.frost`: compiler seed written in Frost
-- `fixtures/answer.frost`: Frost Core input used by the bootstrap test
+- `stage1/compiler.cofn`: compiler seed written in Cofn
+- `fixtures/answer.cofn`: Cofn Core input used by the bootstrap test
 - `check_bootstrap.py`: interpreted/native Stage 1 differential verification
 
 Run:

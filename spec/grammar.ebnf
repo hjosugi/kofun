@@ -1,4 +1,4 @@
-(* Frost Stage 0 grammar, draft 0.2-bootstrap. *)
+(* Cofn Stage 0 grammar, draft 0.2-bootstrap. *)
 
 program          = separators, { declaration, separators }, EOF ;
 

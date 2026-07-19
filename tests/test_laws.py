@@ -7,8 +7,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from frost import cli
-from frost.frontend import check_source
+from cofn import cli
+from cofn.frontend import check_source
 
 
 GOOD_MONAD = """
@@ -113,13 +113,13 @@ fn main() { print(42) }
 
     def test_cli_emits_machine_readable_law_evidence(self) -> None:
         root = Path(__file__).resolve().parents[1]
-        source_path = root / "examples" / "proven_optional_bool_monad.frost"
+        source_path = root / "examples" / "proven_optional_bool_monad.cofn"
         capture = io.StringIO()
         with contextlib.redirect_stdout(capture):
             status = cli.main(["laws", str(source_path), "--json", "--require-assurance", "proven-finite"])
         self.assertEqual(status, 0)
         evidence = json.loads(capture.getvalue())
-        self.assertEqual(evidence["schema"], "frost.law-evidence/v1")
+        self.assertEqual(evidence["schema"], "cofn.law-evidence/v1")
         self.assertEqual(evidence["status"], "passed")
         self.assertEqual(len(evidence["source"]["sha256"]), 64)
         self.assertEqual(evidence["reports"][0]["assurance"], "proven-finite")
@@ -127,8 +127,8 @@ fn main() { print(42) }
 
     def test_cli_assurance_gate_rejects_bounded_evidence(self) -> None:
         root = Path(__file__).resolve().parents[1]
-        source_path = root / "examples" / "lawful_list_monad.frost"
-        with tempfile.TemporaryDirectory(prefix="frost-law-test-") as directory:
+        source_path = root / "examples" / "lawful_list_monad.cofn"
+        with tempfile.TemporaryDirectory(prefix="cofn-law-test-") as directory:
             output = Path(directory) / "evidence.json"
             capture = io.StringIO()
             with contextlib.redirect_stdout(capture):

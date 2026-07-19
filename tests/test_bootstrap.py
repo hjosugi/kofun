@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
-    "frost_bootstrap_check",
+    "cofn_bootstrap_check",
     ROOT / "bootstrap" / "check_bootstrap.py",
 )
 assert SPEC is not None and SPEC.loader is not None
@@ -16,7 +16,7 @@ SPEC.loader.exec_module(MODULE)
 
 
 class BootstrapTests(unittest.TestCase):
-    def test_frost_written_stage1_seed_compiles_native_fixture(self) -> None:
+    def test_cofn_written_stage1_seed_compiles_native_fixture(self) -> None:
         ok, detail = MODULE.verify_stage1()
         self.assertTrue(ok, detail)
 

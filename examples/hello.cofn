@@ -1,5 +1,5 @@
 fn main() {
-    let language = "Frost"
+    let language = "Cofn"
     let answer = 40 + 2
     print(language)
     print(answer)

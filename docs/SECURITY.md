@@ -2,7 +2,7 @@
 
 ## Safe-by-default contract
 
-Safe Frost code must not produce:
+Safe Cofn code must not produce:
 
 - use-after-free
 - double free

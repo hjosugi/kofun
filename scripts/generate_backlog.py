@@ -133,7 +133,7 @@ AREAS: tuple[Area, ...] = (
         "deadlock diagnostics", "distributed task protocol",
     )),
     Area("packages", "Build Package and Registry", "tooling", (
-        "frost new", "frost run", "frost check", "frost build", "frost test", "frost fmt", "frost lint", "frost doc", "frost bench",
+        "cofn new", "cofn run", "cofn check", "cofn build", "cofn test", "cofn fmt", "cofn lint", "cofn doc", "cofn bench",
         "manifest format", "lockfile", "semantic versions", "dependency resolver", "workspace support", "build scripts", "feature flags",
         "binary dependencies", "registry protocol", "package signing", "checksum verification", "offline mode", "vendor mode", "incremental builds",
         "remote cache", "reproducible builds",
@@ -170,7 +170,7 @@ AREAS: tuple[Area, ...] = (
         "proof-term kernel", "SMT proof certificates", "counterexample minimization", "law-aware optimization", "law evidence ABI",
     )),
     Area("bootstrap", "Self Hosting and Bootstrap", "compiler", (
-        "Stage 0 reference compiler", "Stage 1 Frost frontend", "Stage 1 Frost type checker", "Stage 1 ownership checker", "Stage 1 law checker",
+        "Stage 0 reference compiler", "Stage 1 Cofn frontend", "Stage 1 Cofn type checker", "Stage 1 ownership checker", "Stage 1 law checker",
         "Stage 1 HIR lowering", "Stage 1 C11 backend", "Stage 1 native driver", "Stage 2 self compilation", "Stage 2 artifact comparison",
         "bootstrap fixed point", "reproducible compiler build", "trusted computing base inventory", "bootstrap binary provenance", "diverse double compilation",
         "bootstrap parser parity", "bootstrap type parity", "bootstrap diagnostics parity", "bootstrap runtime parity", "bootstrap law parity",
@@ -282,7 +282,7 @@ PROFILES: dict[str, tuple[tuple[str, str, str, str], ...]] = {
         ("release", "Complete library stabilization", "API, correctness, performance, security, and docs are release-ready.", "library sign-off exists"),
     ),
     "tooling": (
-        ("ux", "Define command and workflow UX", "Common workflows are direct, discoverable, and consistent with the single Frost tool.", "UX review passes"),
+        ("ux", "Define command and workflow UX", "Common workflows are direct, discoverable, and consistent with the single Cofn tool.", "UX review passes"),
         ("contract", "Specify configuration and protocol", "Inputs, outputs, defaults, schemas, and versioning are explicit.", "schema validation passes"),
         ("prototype", "Build end-to-end prototype", "A minimal real workflow completes without manual hidden steps.", "smoke workflow passes"),
         ("core", "Implement core operation", "The tool handles the baseline workflow with deterministic results.", "core integration tests pass"),
@@ -376,7 +376,7 @@ def generate() -> dict[str, object]:
         for subject_index, subject in enumerate(area.subjects, start=1):
             previous = "-"
             for stage, (kind, action, acceptance, validation) in enumerate(tasks, start=1):
-                issue_id = f"FROST-{next_id:05d}"
+                issue_id = f"COFN-{next_id:05d}"
                 title = f"{action}: {subject}"
                 concrete_acceptance = f"For {subject}: {acceptance}"
                 row = {
@@ -403,7 +403,7 @@ def generate() -> dict[str, object]:
             f"# {area.name} backlog",
             "",
             f"- Issues: {len(rows)}",
-            f"- Range: FROST-{start_id:05d} through FROST-{end_id:05d}",
+            f"- Range: COFN-{start_id:05d} through COFN-{end_id:05d}",
             f"- Profile: `{area.profile}`",
             "",
             "| ID | State | Priority | Milestone | Kind | Title | Acceptance criteria | Validation | Depends on | Fingerprint |",
@@ -426,7 +426,7 @@ def generate() -> dict[str, object]:
         by_milestone[row["milestone"]] = by_milestone.get(row["milestone"], 0) + 1
 
     index = [
-        "# Frost implementation backlog",
+        "# Cofn implementation backlog",
         "",
         f"This directory contains **{total:,} discrete implementation issues**.",
         "Each area has 25 concrete subjects. Each subject has a 20-step lifecycle from requirements to release acceptance.",
@@ -450,7 +450,7 @@ def generate() -> dict[str, object]:
         "|---|---|---:|---|",
     ]
     for filename, name, count, start, end in index_rows:
-        index.append(f"| [{filename}]({filename}) | {escape(name)} | {count} | FROST-{start:05d}–FROST-{end:05d} |")
+        index.append(f"| [{filename}]({filename}) | {escape(name)} | {count} | COFN-{start:05d}–COFN-{end:05d} |")
     index += [
         "",
         "## Generation and verification",

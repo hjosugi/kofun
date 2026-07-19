@@ -13,10 +13,10 @@
     "P2": 4050,
     "P3": 2700
   },
-  "first_id": "FROST-00001",
-  "generator_sha256": "48c74622bdd39d0de860cef3ab4810e7b6bfff7c77eb886a44de7bac748243d2",
+  "first_id": "COFN-00001",
+  "generator_sha256": "ea639235e049d9f4e53fb2212b9c7e843cd77135c6e3a34165ecb80e8a5f7e85",
   "issues_per_area": 500,
-  "last_id": "FROST-13500",
+  "last_id": "COFN-13500",
   "schema": 1,
   "total": 13500
 }
