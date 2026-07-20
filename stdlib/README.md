@@ -35,6 +35,11 @@ flat-document profile with typed scalar values and failures. Its canonical
 record API is also beyond current Stage 2 code generation; its gate executes a
 deterministic Int-Core projection and documents the unsupported TOML surface.
 
+The platform-independent [`regex/`](regex/) checkpoint defines a small Regex v1
+surface for literals, wildcard, repetition, and anchors with typed compile
+errors and explicit backtracking costs. Its canonical ADT surface is gated by a
+deterministic C11/x86-64 Int-Core projection until the compiler can lower it.
+
 Run the repository-local, Python-free contract checks with:
 
 ```sh

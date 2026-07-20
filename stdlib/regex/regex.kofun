@@ -1,0 +1,162 @@
+# Small, platform-independent regular-expression checkpoint.
+#
+# Regex v1 recognizes Unicode-scalar literals, `.` (any scalar), postfix `*`,
+# `^` at the beginning, and `$` at the end. A backslash quotes the following
+# scalar. Compilation rejects every other operator instead of silently treating
+# it as a literal.
+
+type RegexError =
+    | NothingToRepeat(Int)
+    | RepeatedQuantifier(Int)
+    | MisplacedStartAnchor(Int)
+    | MisplacedEndAnchor(Int)
+    | DanglingEscape(Int)
+    | UnsupportedOperator(Int, Text)
+
+type RegexAtom =
+    | RegexLiteral(Text)
+    | RegexAny
+
+type RegexPiece = {
+    atom: RegexAtom,
+    repeated: Bool,
+}
+
+type Regex = {
+    pieces: List[RegexPiece],
+    anchored_start: Bool,
+    anchored_end: Bool,
+}
+
+type RegexMatch = {
+    start: Int,
+    end: Int,
+}
+
+fn regex_compile(pattern: Text) -> Result[Regex, RegexError] {
+    let symbols = chars(pattern)
+    let anchored_start = len(symbols) > 0 && symbols[0] == "^"
+    let anchored_end = len(symbols) > 0 && symbols[len(symbols) - 1] == "$"
+    let mut offset = if anchored_start { 1 } else { 0 }
+    let limit = if anchored_end { len(symbols) - 1 } else { len(symbols) }
+    let mut pieces: List[RegexPiece] = []
+
+    while offset < limit {
+        let symbol = symbols[offset]
+        if symbol == "*" {
+            return Err(NothingToRepeat(offset))
+        }
+        if symbol == "^" {
+            return Err(MisplacedStartAnchor(offset))
+        }
+        if symbol == "$" {
+            return Err(MisplacedEndAnchor(offset))
+        }
+
+        let mut atom = RegexAny
+        if symbol == "\\" {
+            if offset + 1 >= limit {
+                return Err(DanglingEscape(offset))
+            }
+            atom = RegexLiteral(symbols[offset + 1])
+            offset = offset + 2
+        } else {
+            if contains("+?()[]{}|", symbol) {
+                return Err(UnsupportedOperator(offset, symbol))
+            }
+            atom = if symbol == "." { RegexAny } else { RegexLiteral(symbol) }
+            offset = offset + 1
+        }
+
+        let repeated = offset < limit && symbols[offset] == "*"
+        if repeated {
+            if offset + 1 < limit && symbols[offset + 1] == "*" {
+                return Err(RepeatedQuantifier(offset + 1))
+            }
+            offset = offset + 1
+        }
+        pieces = push(pieces, RegexPiece { atom: atom, repeated: repeated })
+    }
+
+    return Ok(Regex {
+        pieces: pieces,
+        anchored_start: anchored_start,
+        anchored_end: anchored_end,
+    })
+}
+
+fn regex_atom_matches(atom: RegexAtom, candidate: Text) -> Bool {
+    return match atom {
+        RegexLiteral(expected) => expected == candidate,
+        RegexAny => true,
+    }
+}
+
+# Returns the exclusive end scalar offset, or null when this start fails.
+# Repetition tries consumption before the empty branch, so the result is greedy
+# at a fixed start. The implementation is deliberately the readable reference
+# algorithm; its worst-case backtracking cost is documented rather than hidden.
+fn regex_match_here(
+    regex: Regex,
+    piece_index: Int,
+    input: List[Text],
+    input_index: Int
+) -> Int? {
+    if piece_index == len(regex.pieces) {
+        if regex.anchored_end && input_index != len(input) {
+            return null
+        }
+        return input_index
+    }
+
+    let piece = regex.pieces[piece_index]
+    if piece.repeated {
+        if input_index < len(input) &&
+           regex_atom_matches(piece.atom, input[input_index]) {
+            let consumed = regex_match_here(
+                regex, piece_index, input, input_index + 1,
+            )
+            if consumed != null {
+                return consumed
+            }
+        }
+        return regex_match_here(regex, piece_index + 1, input, input_index)
+    }
+
+    if input_index >= len(input) ||
+       !regex_atom_matches(piece.atom, input[input_index]) {
+        return null
+    }
+    return regex_match_here(regex, piece_index + 1, input, input_index + 1)
+}
+
+fn regex_find_from(regex: Regex, input: Text, start: Int) -> RegexMatch? {
+    let symbols = chars(input)
+    if start < 0 || start > len(symbols) {
+        return null
+    }
+    if regex.anchored_start && start != 0 {
+        return null
+    }
+
+    let mut candidate = start
+    while candidate <= len(symbols) {
+        let end = regex_match_here(regex, 0, symbols, candidate)
+        if end != null {
+            return RegexMatch { start: candidate, end: end }
+        }
+        if regex.anchored_start {
+            return null
+        }
+        candidate = candidate + 1
+    }
+    return null
+}
+
+fn regex_find(regex: Regex, input: Text) -> RegexMatch? {
+    return regex_find_from(regex, input, 0)
+}
+
+fn regex_is_match(regex: Regex, input: Text) -> Bool {
+    return regex_find(regex, input) != null
+}

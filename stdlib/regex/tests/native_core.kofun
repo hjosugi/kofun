@@ -1,0 +1,89 @@
+# Compact cross-backend projection. It stays below the current direct-x86-64
+# Core image-size boundary while exercising the same literal, wildcard,
+# leftmost-search, repetition, and anchored-full-match rules as checkpoint.kofun.
+
+fn pow10(exponent: Int) -> Int {
+    if exponent == 0 { return 1 }
+    return 10 * pow10(exponent - 1)
+}
+
+fn quotient(value: Int, divisor: Int) -> Int {
+    if value >= divisor * 1000 { return 1000 + quotient(value - divisor * 1000, divisor) }
+    if value >= divisor * 100 { return 100 + quotient(value - divisor * 100, divisor) }
+    if value >= divisor * 10 { return 10 + quotient(value - divisor * 10, divisor) }
+    if value < divisor { return 0 }
+    return 1 + quotient(value - divisor, divisor)
+}
+
+fn remainder(value: Int, divisor: Int) -> Int {
+    if value >= divisor * 1000 { return remainder(value - divisor * 1000, divisor) }
+    if value >= divisor * 100 { return remainder(value - divisor * 100, divisor) }
+    if value >= divisor * 10 { return remainder(value - divisor * 10, divisor) }
+    if value < divisor { return value }
+    return remainder(value - divisor, divisor)
+}
+
+fn symbol_at(source: Int, length: Int, index: Int) -> Int {
+    return remainder(quotient(source, pow10(length - index - 1)), 10)
+}
+
+fn atom_matches(pattern_symbol: Int, input_symbol: Int) -> Int {
+    if pattern_symbol == 3 { return 1 }
+    if pattern_symbol == input_symbol { return 1 }
+    return 0
+}
+
+fn exact_match(pattern: Int, pattern_length: Int, input: Int, input_length: Int, index: Int) -> Int {
+    if index == pattern_length { return same_length(pattern_length, input_length) }
+    if index == input_length { return 0 }
+    if atom_matches(symbol_at(pattern, pattern_length, index), symbol_at(input, input_length, index)) == 0 { return 0 }
+    return exact_match(pattern, pattern_length, input, input_length, index + 1)
+}
+
+fn same_length(left: Int, right: Int) -> Int {
+    if left == right { return 1 }
+    return 0
+}
+
+fn find_two(pattern: Int, input: Int, input_length: Int, start: Int) -> Int {
+    if start + 2 > input_length { return 0 }
+    if atom_matches(symbol_at(pattern, 2, 0), symbol_at(input, input_length, start)) == 0 {
+        return find_two(pattern, input, input_length, start + 1)
+    }
+    if atom_matches(symbol_at(pattern, 2, 1), symbol_at(input, input_length, start + 1)) == 0 {
+        return find_two(pattern, input, input_length, start + 1)
+    }
+    return (start + 1) * 1000 + start + 3
+}
+
+fn star_then(atom: Int, tail: Int, input: Int, input_length: Int, index: Int) -> Int {
+    if index == input_length { return 0 }
+    if symbol_at(input, input_length, index) == atom {
+        return star_after_atom(atom, tail, input, input_length, index)
+    }
+    if symbol_at(input, input_length, index) == tail {
+        return same_length(index + 1, input_length)
+    }
+    return 0
+}
+
+fn star_after_atom(atom: Int, tail: Int, input: Int, input_length: Int, index: Int) -> Int {
+    if star_then(atom, tail, input, input_length, index + 1) == 1 { return 1 }
+    return 0
+}
+
+fn star_end(atom: Int, input: Int, input_length: Int, index: Int) -> Int {
+    if index == input_length { return index + 1 }
+    if symbol_at(input, input_length, index) != atom { return index + 1 }
+    return star_end(atom, input, input_length, index + 1)
+}
+
+fn main() {
+    print(exact_match(12, 2, 12, 2, 0))
+    print(exact_match(12, 2, 11, 2, 0))
+    print(exact_match(132, 3, 172, 3, 0))
+    print(find_two(12, 7127, 4, 0))
+    print(star_then(1, 2, 1112, 4, 0))
+    print(star_then(1, 2, 2, 1, 0))
+    print(1000 + star_end(1, 1112, 4, 0))
+}
