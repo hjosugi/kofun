@@ -1,0 +1,219 @@
+# CSV text codec checkpoint.
+#
+# The parser accepts LF and CRLF record separators and preserves either form
+# when it occurs inside a quoted field. The renderer uses the dialect's chosen
+# line ending. Delimiters and quote markers are exactly one Unicode scalar.
+
+type CsvLineEnding =
+    | Lf
+    | CrLf
+
+type CsvDialect = {
+    delimiter: Text,
+    quote: Text,
+    line_ending: CsvLineEnding,
+}
+
+type CsvDocument = {
+    rows: List[List[Text]],
+}
+
+# `offset` is a zero-based Unicode-scalar offset in the input, not a byte
+# offset. Invalid-dialect errors carry the rejected text.
+type CsvError =
+    | InvalidDelimiter(Text)
+    | InvalidQuote(Text)
+    | ConflictingDelimiterAndQuote(Text)
+    | UnexpectedQuote(Int)
+    | UnexpectedCharacterAfterQuote(Int, Text)
+    | BareCarriageReturn(Int)
+    | UnclosedQuotedField(Int)
+
+type CsvParserState =
+    | FieldStart
+    | UnquotedField
+    | QuotedField
+    | AfterClosingQuote
+
+fn csv_default_dialect() -> CsvDialect {
+    return CsvDialect {
+        delimiter: ",",
+        quote: "\"",
+        line_ending: CrLf,
+    }
+}
+
+fn csv_validate_dialect(read dialect: CsvDialect) -> Result[Void, CsvError] {
+    if len(chars(dialect.delimiter)) != 1 ||
+       dialect.delimiter == "\r" || dialect.delimiter == "\n" {
+        return Err(InvalidDelimiter(dialect.delimiter))
+    }
+    if len(chars(dialect.quote)) != 1 ||
+       dialect.quote == "\r" || dialect.quote == "\n" {
+        return Err(InvalidQuote(dialect.quote))
+    }
+    if dialect.delimiter == dialect.quote {
+        return Err(ConflictingDelimiterAndQuote(dialect.delimiter))
+    }
+    return Ok(())
+}
+
+fn csv_parse(source: Text, read dialect: CsvDialect) -> Result[CsvDocument, CsvError] {
+    match csv_validate_dialect(dialect) {
+        Err(error) => return Err(error),
+        Ok(_) => (),
+    }
+
+    let symbols = chars(source)
+    let mut rows: List[List[Text]] = []
+    let mut row: List[Text] = []
+    let mut field = ""
+    let mut state = FieldStart
+    let mut offset = 0
+    let mut row_started = false
+
+    while offset < len(symbols) {
+        let symbol = symbols[offset]
+
+        if state == QuotedField {
+            if symbol == dialect.quote {
+                if offset + 1 < len(symbols) &&
+                   symbols[offset + 1] == dialect.quote {
+                    field = field + dialect.quote
+                    offset = offset + 2
+                } else {
+                    state = AfterClosingQuote
+                    offset = offset + 1
+                }
+            } else {
+                field = field + symbol
+                offset = offset + 1
+            }
+        } else if state == AfterClosingQuote {
+            if symbol == dialect.delimiter {
+                row = push(row, field)
+                field = ""
+                state = FieldStart
+                row_started = true
+                offset = offset + 1
+            } else if symbol == "\n" {
+                rows = push(rows, push(row, field))
+                row = []
+                field = ""
+                state = FieldStart
+                row_started = false
+                offset = offset + 1
+            } else if symbol == "\r" {
+                if offset + 1 >= len(symbols) || symbols[offset + 1] != "\n" {
+                    return Err(BareCarriageReturn(offset))
+                }
+                rows = push(rows, push(row, field))
+                row = []
+                field = ""
+                state = FieldStart
+                row_started = false
+                offset = offset + 2
+            } else {
+                return Err(UnexpectedCharacterAfterQuote(offset, symbol))
+            }
+        } else if state == UnquotedField {
+            if symbol == dialect.quote {
+                return Err(UnexpectedQuote(offset))
+            } else if symbol == dialect.delimiter {
+                row = push(row, field)
+                field = ""
+                state = FieldStart
+                offset = offset + 1
+            } else if symbol == "\n" {
+                rows = push(rows, push(row, field))
+                row = []
+                field = ""
+                state = FieldStart
+                row_started = false
+                offset = offset + 1
+            } else if symbol == "\r" {
+                if offset + 1 >= len(symbols) || symbols[offset + 1] != "\n" {
+                    return Err(BareCarriageReturn(offset))
+                }
+                rows = push(rows, push(row, field))
+                row = []
+                field = ""
+                state = FieldStart
+                row_started = false
+                offset = offset + 2
+            } else {
+                field = field + symbol
+                offset = offset + 1
+            }
+        } else {
+            row_started = true
+            if symbol == dialect.quote {
+                state = QuotedField
+                offset = offset + 1
+            } else if symbol == dialect.delimiter {
+                row = push(row, "")
+                offset = offset + 1
+            } else if symbol == "\n" {
+                rows = push(rows, push(row, ""))
+                row = []
+                row_started = false
+                offset = offset + 1
+            } else if symbol == "\r" {
+                if offset + 1 >= len(symbols) || symbols[offset + 1] != "\n" {
+                    return Err(BareCarriageReturn(offset))
+                }
+                rows = push(rows, push(row, ""))
+                row = []
+                row_started = false
+                offset = offset + 2
+            } else {
+                field = symbol
+                state = UnquotedField
+                offset = offset + 1
+            }
+        }
+    }
+
+    if state == QuotedField {
+        return Err(UnclosedQuotedField(offset))
+    }
+    if row_started {
+        rows = push(rows, push(row, field))
+    }
+    return Ok(CsvDocument { rows: rows })
+}
+
+fn csv_field_requires_quotes(field: Text, read dialect: CsvDialect) -> Bool {
+    return contains(field, dialect.delimiter) ||
+        contains(field, dialect.quote) ||
+        contains(field, "\r") || contains(field, "\n")
+}
+
+fn csv_render_field(field: Text, read dialect: CsvDialect) -> Text {
+    if !csv_field_requires_quotes(field, dialect) {
+        return field
+    }
+    return dialect.quote +
+        replace(field, dialect.quote, dialect.quote + dialect.quote) +
+        dialect.quote
+}
+
+fn csv_render(document: CsvDocument, read dialect: CsvDialect) -> Result[Text, CsvError] {
+    match csv_validate_dialect(dialect) {
+        Err(error) => return Err(error),
+        Ok(_) => (),
+    }
+
+    let separator = match dialect.line_ending {
+        Lf => "\n",
+        CrLf => "\r\n",
+    }
+    let mut rendered_rows: List[Text] = []
+    for row in document.rows {
+        rendered_rows = push(
+            rendered_rows,
+            text_join(map(row, fn(field: Text) => csv_render_field(field, dialect)), dialect.delimiter),
+        )
+    }
+    return Ok(text_join(rendered_rows, separator))
+}

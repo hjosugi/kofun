@@ -1,0 +1,176 @@
+# Executable Int-Core projection of stdlib/csv/csv.kofun.
+# Symbol codes: 1 ordinary data, 2 delimiter, 3 quote, 4 LF, 5 CR.
+# State codes: 0 field start, 1 unquoted, 2 quoted, 3 after quote.
+# Successful bundles are rows * 10000 + fields * 100 + decoded characters.
+# Errors are status * 1000000: unexpected quote, trailing data, bare CR,
+# and unclosed quoted field use statuses 1 through 4 respectively.
+
+fn pow10(exponent: Int) -> Int {
+    if exponent == 0 { return 1 }
+    return 10 * pow10(exponent - 1)
+}
+
+fn symbol_at(source: Int, length: Int, index: Int) -> Int {
+    return (source // pow10(length - index - 1)) % 10
+}
+
+fn success(rows: Int, fields: Int, characters: Int) -> Int {
+    return rows * 10000 + fields * 100 + characters
+}
+
+fn scan(
+    source: Int,
+    length: Int,
+    index: Int,
+    state: Int,
+    rows: Int,
+    fields: Int,
+    characters: Int,
+    row_started: Int
+) -> Int {
+    if index == length {
+        if state == 2 { return 4000000 }
+        if row_started == 1 {
+            return success(rows + 1, fields + 1, characters)
+        }
+        return success(rows, fields, characters)
+    }
+
+    let symbol = symbol_at(source, length, index)
+    if state == 2 {
+        if symbol == 3 {
+            if index + 1 < length {
+                if symbol_at(source, length, index + 1) == 3 {
+                    return scan(source, length, index + 2, 2, rows, fields,
+                        characters + 1, 1)
+                }
+            }
+            return scan(source, length, index + 1, 3, rows, fields,
+                characters, 1)
+        }
+        return scan(source, length, index + 1, 2, rows, fields,
+            characters + 1, 1)
+    }
+
+    if state == 3 {
+        if symbol == 2 {
+            return scan(source, length, index + 1, 0, rows, fields + 1,
+                characters, 1)
+        }
+        if symbol == 4 {
+            return scan(source, length, index + 1, 0, rows + 1, fields + 1,
+                characters, 0)
+        }
+        if symbol == 5 {
+            if index + 1 >= length {
+                return 3000000
+            }
+            if symbol_at(source, length, index + 1) != 4 {
+                return 3000000
+            }
+            return scan(source, length, index + 2, 0, rows + 1, fields + 1,
+                characters, 0)
+        }
+        return 2000000
+    }
+
+    if state == 1 {
+        if symbol == 3 { return 1000000 }
+        if symbol == 2 {
+            return scan(source, length, index + 1, 0, rows, fields + 1,
+                characters, 1)
+        }
+        if symbol == 4 {
+            return scan(source, length, index + 1, 0, rows + 1, fields + 1,
+                characters, 0)
+        }
+        if symbol == 5 {
+            if index + 1 >= length {
+                return 3000000
+            }
+            if symbol_at(source, length, index + 1) != 4 {
+                return 3000000
+            }
+            return scan(source, length, index + 2, 0, rows + 1, fields + 1,
+                characters, 0)
+        }
+        return scan(source, length, index + 1, 1, rows, fields,
+            characters + 1, 1)
+    }
+
+    if symbol == 3 {
+        return scan(source, length, index + 1, 2, rows, fields,
+            characters, 1)
+    }
+    if symbol == 2 {
+        return scan(source, length, index + 1, 0, rows, fields + 1,
+            characters, 1)
+    }
+    if symbol == 4 {
+        return scan(source, length, index + 1, 0, rows + 1, fields + 1,
+            characters, 0)
+    }
+    if symbol == 5 {
+        if index + 1 >= length {
+            return 3000000
+        }
+        if symbol_at(source, length, index + 1) != 4 {
+            return 3000000
+        }
+        return scan(source, length, index + 2, 0, rows + 1, fields + 1,
+            characters, 0)
+    }
+    return scan(source, length, index + 1, 1, rows, fields,
+        characters + 1, 1)
+}
+
+fn parse(source: Int, length: Int) -> Int {
+    return scan(source, length, 0, 0, 0, 0, 0, 0)
+}
+
+fn needs_quotes(source: Int, length: Int, index: Int) -> Int {
+    if index == length { return 0 }
+    let symbol = symbol_at(source, length, index)
+    if symbol == 2 { return 1 }
+    if symbol == 3 { return 1 }
+    if symbol == 4 { return 1 }
+    if symbol == 5 { return 1 }
+    return needs_quotes(source, length, index + 1)
+}
+
+fn escaped_length(source: Int, length: Int, index: Int) -> Int {
+    if index == length { return 0 }
+    let width = if symbol_at(source, length, index) == 3 { 2 } else { 1 }
+    return width + escaped_length(source, length, index + 1)
+}
+
+fn rendered_field_length(source: Int, length: Int) -> Int {
+    let content = escaped_length(source, length, 0)
+    if needs_quotes(source, length, 0) == 1 { return content + 2 }
+    return content
+}
+
+fn main() {
+    # Empty input, ordinary records, trailing empty fields, and a blank row.
+    print(parse(0, 0))
+    print(parse(12154121, 8))
+    print(parse(12, 2))
+    print(parse(4, 1))
+
+    # Delimiters, doubled quotes, and line endings inside quoted fields.
+    print(parse(31213, 5))
+    print(parse(313313, 6))
+    print(parse(3141321, 7))
+
+    # Each malformed boundary has a distinct non-sentinel status.
+    print(parse(13, 2))
+    print(parse(3131, 4))
+    print(parse(15, 2))
+    print(parse(31, 2))
+
+    # Rendering quotes only when needed and doubles embedded quotes.
+    print(rendered_field_length(111, 3))
+    print(rendered_field_length(121, 3))
+    print(rendered_field_length(131, 3))
+    print(rendered_field_length(141, 3))
+}
