@@ -174,6 +174,18 @@ node examples/wasm-browser/serve.mjs build/wasm-browser
 See `bootstrap/wasm/README.md` for the host imports, browser URL, executable
 checks, and exact arithmetic Core boundary.
 
+Or open the no-install interactive learning tour. Every step is editable and
+runnable in the page, and the source can be shared in a URL fragment:
+
+```sh
+node examples/wasm-browser/serve.mjs docs/tour
+# open http://127.0.0.1:8080/
+```
+
+The browser compiler is byte-checked against the current bounded wasm32 seed.
+See `docs/tour/README.md` for its exact limits and the Python, TypeScript, Go,
+and Rust coming-from guides.
+
 Generated C11 can be inspected with:
 
 ```sh

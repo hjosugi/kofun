@@ -1,4 +1,4 @@
-.PHONY: help compiler test diagnostics fuzz check bootstrap stage2 native wasm c-abi rust-shim http cli-framework stdlib build-system packages lsp roadmap syntax repository-check verify clean
+.PHONY: help compiler test diagnostics fuzz check bootstrap stage2 native wasm tour c-abi rust-shim http cli-framework stdlib build-system packages lsp roadmap syntax repository-check verify clean
 
 KOFUN := ./bin/kofun
 
@@ -13,6 +13,7 @@ help:
 	  'make stage2           Verify the Stage 2 semantic frontend checkpoint' \
 	  'make native           Build and execute the Kofun-emitted ELF64 fixture' \
 	  'make wasm             Build and execute the wasm32 arithmetic Core' \
+	  'make tour             Verify the no-install browser learning tour' \
 	  'make c-abi            Verify explicit dynamic C ABI interoperability' \
 	  'make rust-shim        Verify the vendored Rust crate shim offline' \
 	  'make http             Verify the first-party HTTP/API framework' \
@@ -60,6 +61,9 @@ native:
 wasm:
 	sh bootstrap/wasm/check.sh
 
+tour:
+	sh docs/tour/check.sh
+
 c-abi:
 	sh bootstrap/c_abi/check.sh
 
@@ -100,11 +104,12 @@ repository-check:
 	@grep -q '"extensions": \[".kofun"\]' editor/vscode/package.json
 	@printf '%s\n' 'PASS: .kofun sources only; no Python implementation'
 
-verify: test diagnostics fuzz check bootstrap stage2 native wasm c-abi rust-shim http cli-framework stdlib build-system packages lsp roadmap syntax repository-check
+verify: test diagnostics fuzz check bootstrap stage2 native wasm tour c-abi rust-shim http cli-framework stdlib build-system packages lsp roadmap syntax repository-check
 	@sh -n bin/kofun bootstrap/stage1/check.sh bootstrap/stage2/check.sh \
 	  bootstrap/native/check.sh bootstrap/native/emit-fixture.sh \
 	  bootstrap/wasm/check.sh \
 	  examples/wasm-browser/build.sh \
+	  docs/tour/check.sh \
 	  bootstrap/c_abi/check.sh \
 	  examples/rust-shim/check.sh examples/rust-shim/benchmark.sh \
 	  framework/http/build.sh tests/http/check.sh \
