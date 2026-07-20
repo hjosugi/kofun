@@ -24,6 +24,7 @@ from .c_backend import BackendFailure
 from .typesys import BOOL, INT, LIST, TEXT, VOID, Type
 from .x64 import (
     ARG_REGS,
+    CC_A,
     CC_AE,
     CC_B,
     CC_BE,
@@ -115,6 +116,9 @@ class NativeBackend:
         self.depth = 0          # outstanding 8-byte pushes, for call alignment
         self.loops: list[_Loop] = []
         self.strings: dict[str, str] = {}   # text value -> label
+        #: Declared record layouts, name -> ordered field names. Declaration
+        #: order is memory order, so field N sits at offset 8*N.
+        self.records: dict[str, list[str]] = {}
         self.counter = 0
 
     # ---- helpers -----------------------------------------------------------
@@ -239,11 +243,19 @@ class NativeBackend:
         if ref is None:
             return VOID
         mapping = {"Int": INT, "Bool": BOOL, "Text": TEXT, "Unit": VOID}
-        if ref.name not in mapping or ref.args:
-            raise BackendFailure(
-                f"native backend does not support type `{ref}` yet", span
+        if ref.name in mapping and not ref.args:
+            return mapping[ref.name]
+        # A record is one pointer, so it crosses a call boundary like any other
+        # value. Its layout is static, so nothing else is needed here.
+        if ref.name in self.records and not ref.args:
+            return Type(ref.name)
+        if ref.name == "List":
+            return LIST(
+                self._type_from_ref(ref.args[0], span) if ref.args else INT
             )
-        return mapping[ref.name]
+        raise BackendFailure(
+            f"native backend does not support type `{ref}` yet", span
+        )
 
     # ---- program -----------------------------------------------------------
 
@@ -252,9 +264,13 @@ class NativeBackend:
     ) -> tuple[bytes, int, int]:
         """Return (blob, entry offset, offset where writable data begins)."""
         functions = [n for n in program.declarations if isinstance(n, ast.FunctionDecl)]
+        for declaration in program.declarations:
+            if isinstance(declaration, ast.RecordDecl):
+                self.records[declaration.name] = [f.name for f in declaration.fields]
+
         rejected = [
             n for n in program.declarations
-            if not isinstance(n, (ast.FunctionDecl, ast.LawDecl))
+            if not isinstance(n, (ast.FunctionDecl, ast.LawDecl, ast.RecordDecl))
         ]
         if rejected:
             raise BackendFailure(
@@ -294,6 +310,7 @@ class NativeBackend:
         self._emit_text_concat()
         self._emit_text_eq()
         self._emit_text_len()
+        self._emit_text_cmp()
         self._emit_list_new()
         self._emit_list_index()
         self._emit_list_concat()
@@ -549,6 +566,14 @@ class NativeBackend:
                 )
             return
 
+        if isinstance(node, ast.RecordLiteral):
+            self._record_literal(node)
+            return
+
+        if isinstance(node, ast.MemberExpr):
+            self._member(node)
+            return
+
         if isinstance(node, ast.ListLiteral):
             self._list_literal(node)
             return
@@ -674,6 +699,55 @@ class NativeBackend:
         self.asm.test_rr(RAX, RAX)
         self.asm.jcc(CC_E, label)
 
+    def _record_literal(self, node: ast.RecordLiteral) -> None:
+        """Lay a record out as a flat block of eight-byte fields.
+
+        A record has no runtime tag: its type is static, so the layout is known
+        at every use site and nothing needs to be stored to recover it. Fields
+        are written in declaration order, which is what makes field access a
+        constant offset rather than a lookup.
+        """
+        asm = self.asm
+        order = self.records.get(node.name)
+        if order is None:
+            raise BackendFailure(f"unknown record `{node.name}`", node.span)
+
+        supplied = dict(node.values)
+        missing = [name for name in order if name not in supplied]
+        if missing:
+            raise BackendFailure(
+                f"record `{node.name}` is missing field(s): {', '.join(missing)}",
+                node.span,
+            )
+
+        asm.mov_ri(RDI, len(order))
+        self._aligned_call("rt.list_new")     # same shape: header plus n words
+        self._push(RAX)
+
+        for index, name in enumerate(order):
+            self._expr(supplied[name])
+            asm.mov_rm(RCX, RSP, 0)
+            asm.mov_mr(RCX, 8 + 8 * index, RAX)
+
+        self._pop(RAX)
+
+    def _member(self, node: ast.MemberExpr) -> None:
+        """Read a field. The offset is static, so this is a single load."""
+        asm = self.asm
+        target_type = self._expr_type(node.target)
+        order = self.records.get(target_type.name)
+        if order is None:
+            raise BackendFailure(
+                f"native backend cannot take `.{node.name}` of {target_type}", node.span
+            )
+        if node.name not in order:
+            raise BackendFailure(
+                f"record `{target_type.name}` has no field `{node.name}`", node.span
+            )
+
+        self._expr(node.target)
+        asm.mov_rm(RAX, RAX, 8 + 8 * order.index(node.name))
+
     def _list_literal(self, node: ast.ListLiteral) -> None:
         """Allocate a list and fill it, leaving the pointer in rax.
 
@@ -722,9 +796,9 @@ class NativeBackend:
         self._aligned_call("rt.list_concat")
 
     def _text_binary(self, node: ast.BinaryExpr) -> None:
-        """Lower `+`, `==`, and `!=` on Text. Ordering is not defined yet."""
+        """Lower `+`, equality, and ordering on Text."""
         asm = self.asm
-        if node.op not in {"+", "==", "!="}:
+        if node.op not in {"+", "==", "!=", "<", "<=", ">", ">="}:
             raise BackendFailure(
                 f"native backend does not support `{node.op}` on Text", node.span
             )
@@ -739,6 +813,16 @@ class NativeBackend:
 
         if node.op == "+":
             self._aligned_call("rt.text_concat")
+            return
+
+        if node.op in {"<", "<=", ">", ">="}:
+            # text_cmp yields -1, 0 or 1, so the ordering test is the same
+            # comparison against zero that the Int path uses.
+            self._aligned_call("rt.text_cmp")
+            asm.xor_rr(RCX, RCX)
+            asm.cmp_rr(RAX, RCX)
+            asm.setcc(COMPARISONS[node.op], RAX)
+            asm.movzx_r8(RAX, RAX)
             return
 
         self._aligned_call("rt.text_eq")
@@ -1197,6 +1281,60 @@ class NativeBackend:
         asm.ret()
         asm.label(false_label)
         asm.xor_rr(RAX, RAX)
+        asm.ret()
+
+    def _emit_text_cmp(self) -> None:
+        """`rt.text_cmp(rdi = a, rsi = b) -> rax` as -1, 0 or 1.
+
+        Compares bytes, which is correct for codepoint ordering: UTF-8 is
+        designed so that byte-lexicographic order and codepoint order agree.
+        That is why this does not need to decode anything.
+        """
+        asm = self.asm
+        asm.label("rt.text_cmp")
+        loop = "rt.text_cmp.loop"
+        by_length = "rt.text_cmp.by_length"
+        less = "rt.text_cmp.less"
+        greater = "rt.text_cmp.greater"
+        equal = "rt.text_cmp.equal"
+
+        asm.mov_rm(RDX, RDI, 0)          # length of a
+        asm.mov_rm(RCX, RSI, 0)          # length of b
+        asm.add_ri(RDI, 8)
+        asm.add_ri(RSI, 8)
+
+        # Walk the shared prefix: min(len a, len b) bytes.
+        asm.mov_rr(R8, RDX)
+        asm.cmp_rr(R8, RCX)
+        asm.jcc(CC_BE, loop)
+        asm.mov_rr(R8, RCX)
+
+        asm.label(loop)
+        asm.test_rr(R8, R8)
+        asm.jcc(CC_E, by_length)
+        asm.movzx_r8_m(RAX, RDI, 0)
+        asm.movzx_r8_m(R9, RSI, 0)
+        asm.cmp_rr(RAX, R9)
+        asm.jcc(CC_B, less)
+        asm.jcc(CC_A, greater)
+        asm.add_ri(RDI, 1)
+        asm.add_ri(RSI, 1)
+        asm.sub_ri(R8, 1)
+        asm.jmp(loop)
+
+        # A shared prefix means the shorter string sorts first.
+        asm.label(by_length)
+        asm.cmp_rr(RDX, RCX)
+        asm.jcc(CC_B, less)
+        asm.jcc(CC_A, greater)
+        asm.label(equal)
+        asm.xor_rr(RAX, RAX)
+        asm.ret()
+        asm.label(less)
+        asm.mov_ri(RAX, -1)
+        asm.ret()
+        asm.label(greater)
+        asm.mov_ri(RAX, 1)
         asm.ret()
 
     def _emit_text_len(self) -> None:

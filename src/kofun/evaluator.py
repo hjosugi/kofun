@@ -138,6 +138,31 @@ class UserFunction:
         return f"<fn {self.name}>"
 
 
+class RecordValue:
+    """A record instance. Field order follows the declaration, which is also
+    the order the native backend lays fields out in memory."""
+
+    __slots__ = ("type_name", "fields")
+
+    def __init__(self, type_name: str, fields: "dict[str, Any]") -> None:
+        self.type_name = type_name
+        self.fields = fields
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, RecordValue)
+            and self.type_name == other.type_name
+            and self.fields == other.fields
+        )
+
+    def __hash__(self) -> int:
+        return hash((self.type_name, tuple(sorted(self.fields.items(), key=str))))
+
+    def __repr__(self) -> str:
+        body = ", ".join(f"{name}: {value!r}" for name, value in self.fields.items())
+        return f"{self.type_name} {{{body}}}"
+
+
 class Evaluator:
     def __init__(self, *, program_args: list[str] | None = None, allow_io: bool = True) -> None:
         self.globals = Environment()
@@ -145,6 +170,9 @@ class Evaluator:
         self.output: list[str] = []
         self.program_args = list(program_args or [])
         self.allow_io = allow_io
+        #: Declared field order per record, so a literal builds its fields in
+        #: declaration order rather than the order they were written.
+        self.record_fields: dict[str, list[str]] = {}
         self._install_builtins()
 
     def evaluate_program(self, program: ast.Program, *, call_main: bool = True) -> Any:
@@ -176,6 +204,9 @@ class Evaluator:
             self.env.define(node.name, UserFunction(node, self.env, node.name))
             return None
         if isinstance(node, ast.LawDecl):
+            return None
+        if isinstance(node, ast.RecordDecl):
+            self.record_fields[node.name] = [field.name for field in node.fields]
             return None
         if isinstance(node, ast.LetStmt):
             value = self._eval(node.value)
@@ -254,8 +285,20 @@ class Evaluator:
         if isinstance(node, ast.CallExpr):
             callee = self._eval(node.callee)
             return self._call_ast(callee, node.args, node.span)
+        if isinstance(node, ast.RecordLiteral):
+            values = {label: self._eval(value) for label, value in node.values}
+            order = self.record_fields.get(node.name, list(values))
+            return RecordValue(node.name, {name: values[name] for name in order if name in values})
         if isinstance(node, ast.MemberExpr):
             target = self._eval(node.target)
+            if isinstance(target, RecordValue):
+                if node.name not in target.fields:
+                    raise runtime_error(
+                        f"record `{target.type_name}` has no field `{node.name}`",
+                        node.span,
+                        "R012",
+                    )
+                return target.fields[node.name]
             return BoundMethod(target, node.name)
         if isinstance(node, ast.IndexExpr):
             target = self._eval(node.target)

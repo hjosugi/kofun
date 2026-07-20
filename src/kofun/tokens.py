@@ -66,6 +66,7 @@ class TokenKind(Enum):
     META = auto()
     LAW = auto()
     MONAD = auto()
+    RECORD = auto()
 
 
 KEYWORDS = {
@@ -90,6 +91,7 @@ KEYWORDS = {
     "meta": TokenKind.META,
     "law": TokenKind.LAW,
     "monad": TokenKind.MONAD,
+    "record": TokenKind.RECORD,
 }
 
 

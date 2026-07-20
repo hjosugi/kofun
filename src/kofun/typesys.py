@@ -119,9 +119,27 @@ class TypeChecker:
         self.current_return: Type = VOID
         self.current_function: str | None = None
         self.loop_depth = 0
+        #: Declared record types, name -> ordered field name/type pairs. Field
+        #: order is the declaration order, which is also the memory layout.
+        self.records: dict[str, list[tuple[str, Type]]] = {}
         self._install_builtins()
 
     def check(self, program: ast.Program) -> DiagnosticBag:
+        # Records first, so a function signature can name one.
+        for declaration in program.declarations:
+            if isinstance(declaration, ast.RecordDecl):
+                if declaration.name in self.records:
+                    self._error(
+                        declaration.span,
+                        f"record `{declaration.name}` is already declared",
+                        "E330",
+                    )
+                    continue
+                self.records[declaration.name] = [
+                    (field.name, self._from_ref(field.annotation))
+                    for field in declaration.fields
+                ]
+
         # Header pass enables recursion and forward calls.
         for declaration in program.declarations:
             if isinstance(declaration, ast.FunctionDecl):
@@ -209,6 +227,8 @@ class TypeChecker:
     def _check_stmt(self, node: ast.Stmt) -> Type:
         if isinstance(node, ast.FunctionDecl):
             return self._check_function(node)
+        if isinstance(node, ast.RecordDecl):
+            return VOID
         if isinstance(node, ast.LawDecl):
             return self._check_law_decl(node)
         if isinstance(node, ast.LetStmt):
@@ -431,6 +451,8 @@ class TypeChecker:
             result = self._infer_binary(node)
         elif isinstance(node, ast.CallExpr):
             result = self._infer_call(node)
+        elif isinstance(node, ast.RecordLiteral):
+            result = self._infer_record_literal(node)
         elif isinstance(node, ast.MemberExpr):
             result = self._infer_member(node)
         elif isinstance(node, ast.IndexExpr):
@@ -628,8 +650,52 @@ class TypeChecker:
             return LIST(FN([domain_item], codomain_item))
         return signature.result
 
+    def _infer_record_literal(self, node: ast.RecordLiteral) -> Type:
+        """Check `Name { field: value }` against the declaration."""
+        declared = self.records.get(node.name)
+        if declared is None:
+            self._error(node.span, f"unknown record `{node.name}`", "E331")
+            for _label, value in node.values:
+                self._infer(value)
+            return ANY
+
+        expected = dict(declared)
+        supplied: set[str] = set()
+        for label, value in node.values:
+            actual = self._infer(value)
+            if label not in expected:
+                self._error(
+                    value.span, f"record `{node.name}` has no field `{label}`", "E332"
+                )
+                continue
+            supplied.add(label)
+            if not self._assignable(actual, expected[label]):
+                self._type_error(value.span, actual, expected[label])
+
+        missing = [name for name, _ in declared if name not in supplied]
+        if missing:
+            # Partial construction would leave fields holding whatever the
+            # allocator returned, so it is an error rather than a default.
+            self._error(
+                node.span,
+                f"record `{node.name}` is missing field(s): {', '.join(missing)}",
+                "E333",
+            )
+        return Type(node.name)
+
     def _infer_member(self, node: ast.MemberExpr) -> Type:
         target = self._infer(node.target)
+        fields = self.records.get(target.name)
+        if fields is not None:
+            for name, field_type in fields:
+                if name == node.name:
+                    return field_type
+            self._error(
+                node.span,
+                f"record `{target.name}` has no field `{node.name}`",
+                "E334",
+            )
+            return ANY
         methods = {
             "len": FN([], INT),
             "map": FN([FN([ANY], ANY)], LIST(ANY)),

@@ -1,0 +1,89 @@
+# A tokeniser, written in Kofun.
+#
+# This exists as evidence rather than as a demo. Until records landed, a token
+# could not be expressed at all: it carries an Int kind, a Text lexeme and an
+# Int line, and the language had no way to hold values of different types
+# together. Lists were homogeneous, tuples could not be annotated, and there
+# were no records.
+#
+# A tokeniser is therefore the smallest honest proof that the blocker is gone,
+# because a tokeniser is the first thing a self-hosting compiler needs.
+
+record Token {
+    kind: Int
+    text: Text
+    line: Int
+}
+
+# Token kinds. Integers rather than an enum because sum types do not exist yet.
+fn kind_number() -> Int {
+    return 1
+}
+
+fn kind_name() -> Int {
+    return 2
+}
+
+fn kind_symbol() -> Int {
+    return 3
+}
+
+fn kind_end() -> Int {
+    return 4
+}
+
+# Character classification, written in Kofun rather than taken from the
+# builtins, so the example is self-contained and compiles natively. Text
+# ordering compares UTF-8 bytes, which agrees with codepoint order.
+fn digit(c: Text) -> Bool {
+    return c >= "0" && c <= "9"
+}
+
+fn alpha(c: Text) -> Bool {
+    return (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || c == "_"
+}
+
+fn space(c: Text) -> Bool {
+    return c == " " || c == "\t" || c == "\n"
+}
+
+fn describe(t: Token) -> Text {
+    if t.kind == kind_number() {
+        return "number  " + t.text
+    }
+    if t.kind == kind_name() {
+        return "name    " + t.text
+    }
+    if t.kind == kind_symbol() {
+        return "symbol  " + t.text
+    }
+    return "end"
+}
+
+fn main() {
+    # Tokens are built directly, because indexing Text is not lowered yet.
+    # What matters here is that the record itself round-trips: constructed,
+    # stored, passed to a function, and read back with both types intact.
+    let a = Token { kind: kind_name(), text: "let", line: 1 }
+    let b = Token { kind: kind_name(), text: "total", line: 1 }
+    let c = Token { kind: kind_symbol(), text: "=", line: 1 }
+    let d = Token { kind: kind_number(), text: "42", line: 1 }
+    let e = Token { kind: kind_end(), text: "", line: 2 }
+
+    print(describe(a))
+    print(describe(b))
+    print(describe(c))
+    print(describe(d))
+    print(describe(e))
+
+    # A field read is a constant-offset load, so this costs nothing extra.
+    print(a.line)
+    print(e.line)
+
+    # Character classification, the other half of a real tokeniser.
+    print(digit("7"))
+    print(digit("x"))
+    print(alpha("x"))
+    print(alpha("7"))
+    print(space(" "))
+}

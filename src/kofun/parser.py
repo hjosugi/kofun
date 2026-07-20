@@ -10,6 +10,10 @@ class Parser:
         self.tokens = tokens
         self.current = 0
         self.diagnostics = DiagnosticBag()
+        # `Name { ... }` is a record literal, but in `if cond { ... }` the brace
+        # opens a block. Rust has the same ambiguity and resolves it the same
+        # way: suppress record literals while parsing a condition or iterable.
+        self.suppress_record_literal = 0
 
     def parse(self) -> tuple[ast.Program, DiagnosticBag]:
         declarations: list[ast.Stmt] = []
@@ -27,6 +31,8 @@ class Parser:
     def _declaration(self) -> ast.Stmt:
         if self._match(TokenKind.LAW):
             return self._law_decl()
+        if self._match(TokenKind.RECORD):
+            return self._record_decl()
         is_meta = False
         if self._match(TokenKind.META):
             is_meta = True
@@ -38,6 +44,67 @@ class Parser:
             self._error(self._peek(), "a top-level lambda must be assigned to a name", "E202")
             raise ParseAbort()
         return self._statement()
+
+    def _record_decl(self) -> ast.RecordDecl:
+        """`record Name { field: Type, ... }` -- a named product type."""
+        start = self._previous().span
+        name = self._consume(TokenKind.IDENT, "expected a record name", "E210")
+        self._consume(TokenKind.LBRACE, "expected `{` after the record name", "E211")
+        self._skip_semis()
+
+        fields: list[ast.RecordField] = []
+        seen: set[str] = set()
+        while not self._check(TokenKind.RBRACE) and not self._check(TokenKind.EOF):
+            field_name = self._consume(TokenKind.IDENT, "expected a field name", "E212")
+            self._consume(TokenKind.COLON, "expected `:` after the field name", "E213")
+            annotation = self._type_ref()
+            label = str(field_name.value)
+            if label in seen:
+                self._error(field_name, f"duplicate field `{label}`", "E214")
+            seen.add(label)
+            fields.append(
+                ast.RecordField(
+                    ast.Span.merge(field_name.span, annotation.span), label, annotation
+                )
+            )
+            self._match(TokenKind.COMMA)
+            self._skip_semis()
+
+        close = self._consume(TokenKind.RBRACE, "expected `}` to close the record", "E215")
+        return ast.RecordDecl(ast.Span.merge(start, close.span), str(name.value), fields)
+
+    def _guarded_expression(self) -> ast.Expr:
+        """Parse an expression whose trailing `{` belongs to a block, not a literal."""
+        self.suppress_record_literal += 1
+        try:
+            return self._expression()
+        finally:
+            self.suppress_record_literal -= 1
+
+    def _record_literal(self, name: Token) -> ast.RecordLiteral:
+        """`Name { field: value, ... }`."""
+        self._consume(TokenKind.LBRACE, "expected `{`", "E216")
+        self._skip_semis()
+
+        values: list[tuple[str, ast.Expr]] = []
+        seen: set[str] = set()
+        while not self._check(TokenKind.RBRACE) and not self._check(TokenKind.EOF):
+            field_name = self._consume(TokenKind.IDENT, "expected a field name", "E217")
+            self._consume(TokenKind.COLON, "expected `:` after the field name", "E218")
+            previous = self.suppress_record_literal
+            self.suppress_record_literal = 0      # inside braces the ambiguity is gone
+            value = self._expression()
+            self.suppress_record_literal = previous
+            label = str(field_name.value)
+            if label in seen:
+                self._error(field_name, f"duplicate field `{label}`", "E219")
+            seen.add(label)
+            values.append((label, value))
+            self._match(TokenKind.COMMA)
+            self._skip_semis()
+
+        close = self._consume(TokenKind.RBRACE, "expected `}` to close the literal", "E220")
+        return ast.RecordLiteral(ast.Span.merge(name.span, close.span), str(name.value), values)
 
     def _law_decl(self) -> ast.LawDecl:
         start = self._previous().span
@@ -172,7 +239,7 @@ class Parser:
 
     def _while_statement(self) -> ast.WhileStmt:
         start = self._previous().span
-        condition = self._expression()
+        condition = self._guarded_expression()
         body = self._block("expected `{` after while condition")
         return ast.WhileStmt(ast.Span.merge(start, body.span), condition, body)
 
@@ -180,7 +247,7 @@ class Parser:
         start = self._previous().span
         name = self._consume(TokenKind.IDENT, "expected loop variable", "E211")
         self._consume(TokenKind.IN, "expected `in` after loop variable", "E212")
-        iterable = self._expression()
+        iterable = self._guarded_expression()
         body = self._block("expected `{` after for iterable")
         return ast.ForStmt(ast.Span.merge(start, body.span), str(name.value), iterable, body)
 
@@ -260,7 +327,14 @@ class Parser:
         if kind == TokenKind.NULL:
             return ast.Literal(token.span, None, "Null")
         if kind == TokenKind.IDENT:
-            return ast.Variable(token.span, str(token.value))
+            name = str(token.value)
+            if (
+                name[:1].isupper()
+                and self._check(TokenKind.LBRACE)
+                and not self.suppress_record_literal
+            ):
+                return self._record_literal(token)
+            return ast.Variable(token.span, name)
         if kind in (TokenKind.MINUS, TokenKind.PLUS, TokenKind.BANG):
             operand = self._expression(90)
             return ast.UnaryExpr(ast.Span.merge(token.span, operand.span), token.lexeme, operand)
@@ -304,7 +378,7 @@ class Parser:
         raise ParseAbort()
 
     def _if_expression(self, if_token: Token) -> ast.IfExpr:
-        condition = self._expression()
+        condition = self._guarded_expression()
         then_branch = self._block("expected `{` after if condition")
         self._skip_semis()
         else_branch = None

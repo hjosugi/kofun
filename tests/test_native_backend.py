@@ -288,6 +288,68 @@ fn main() {
     print(total)
 }
 """,
+    # The value that was impossible before records: an Int and a Text held
+    # together, crossing a function boundary with both types intact.
+    "records": """
+record Token {
+    kind: Int
+    text: Text
+    line: Int
+}
+
+fn describe(t: Token) -> Text {
+    return t.text
+}
+
+fn line_of(t: Token) -> Int {
+    return t.line
+}
+
+fn main() {
+    let t = Token { kind: 1, text: "let", line: 7 }
+    print(t.kind)
+    print(t.text)
+    print(t.line)
+    print(describe(t))
+    print(line_of(t))
+    let u = Token { kind: 2, text: "x", line: 9 }
+    print(u.text)
+    print(u.line)
+    print(t.text + " " + u.text)
+    print(t.kind + u.kind)
+}
+""",
+    # Field order follows the declaration, not the literal, so a literal
+    # written out of order must still read back correctly.
+    "record_field_order": """
+record Pair {
+    first: Int
+    second: Text
+}
+
+fn main() {
+    let a = Pair { first: 1, second: "one" }
+    let b = Pair { second: "two", first: 2 }
+    print(a.first)
+    print(a.second)
+    print(b.first)
+    print(b.second)
+}
+""",
+    "text_ordering": """
+fn main() {
+    print("a" < "b")
+    print("b" < "a")
+    print("a" == "a")
+    print("abc" < "abd")
+    print("ab" < "abc")
+    print("abc" > "ab")
+    print("" < "a")
+    print("Z" < "a")
+    print("z" >= "a")
+    print("apple" <= "apple")
+}
+""",
     "big_numbers": """
 fn main() {
     print(1000000)

@@ -76,6 +76,20 @@ class LawDecl(Stmt):
 
 
 @dataclass(slots=True)
+class RecordField(Node):
+    name: str
+    annotation: TypeRef
+
+
+@dataclass(slots=True)
+class RecordDecl(Stmt):
+    """A named product type: `record Token { kind: Int, text: Text }`."""
+
+    name: str
+    fields: list[RecordField]
+
+
+@dataclass(slots=True)
 class Block(Node):
     statements: list[Stmt]
 
@@ -152,6 +166,14 @@ class Variable(Expr):
 @dataclass(slots=True)
 class ListLiteral(Expr):
     items: list[Expr]
+
+
+@dataclass(slots=True)
+class RecordLiteral(Expr):
+    """Construction by name: `Token { kind: 1, text: "x" }`."""
+
+    name: str
+    values: list[tuple[str, Expr]]
 
 
 @dataclass(slots=True)
