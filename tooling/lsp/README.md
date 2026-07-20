@@ -26,3 +26,8 @@ against the latency and memory gates in the LSP contract.
 All protocol positions are UTF-16, as negotiated by `initialize`. This matches
 LSP's default and JavaScript editor strings, including combining characters
 and surrogate pairs.
+
+For resource safety, framing headers are limited to 8 KiB and message bodies to
+32 MiB. Oversized or unterminated headers receive a parse error and terminate
+the connection. Delimiter nesting uses linear storage and constant-time
+enclosing-block lookup.

@@ -8,6 +8,9 @@ class Client {
     this.buffer = Buffer.alloc(0);
     this.messages = [];
     this.waiters = [];
+    this.exitPromise = new Promise((resolve) => {
+      this.child.once('exit', (code, signal) => resolve({ code, signal }));
+    });
     this.child.stdout.on('data', (chunk) => {
       this.buffer = Buffer.concat([this.buffer, chunk]);
       this.drain();
@@ -77,17 +80,17 @@ class Client {
     await this.waitFor((message) => message.id === nextId);
     this.send({ jsonrpc: '2.0', method: 'exit', params: null });
     this.child.stdin.end();
-    await new Promise((resolve, reject) => {
+    const exited = await new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.child.kill();
         reject(new Error('language server did not exit'));
       }, 5000);
-      this.child.once('exit', (code) => {
+      this.exitPromise.then((result) => {
         clearTimeout(timer);
-        if (code === 0) resolve();
-        else reject(new Error(`language server exited with ${code}`));
+        resolve(result);
       });
     });
+    if (exited.code !== 0) throw new Error(`language server exited with ${exited.code}`);
   }
 }
 

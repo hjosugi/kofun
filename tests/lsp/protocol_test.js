@@ -163,8 +163,55 @@ async function main() {
   id += 1;
   assert.strictEqual(unknown.error.code, -32601);
 
+  // A deep delimiter stack used to clone and scan the entire stack for every
+  // token. This balanced corpus must stay linear and still publish a trailing
+  // lexical diagnostic.
+  const deepUri = 'file:///workspace/deep-delimiters.kofun';
+  const depth = 25000;
+  const deepSource = `${'('.repeat(depth)}0${')'.repeat(depth)}\n"`;
+  const deepStart = process.hrtime.bigint();
+  client.send({
+    jsonrpc: '2.0', method: 'textDocument/didOpen',
+    params: {
+      textDocument: {
+        uri: deepUri, languageId: 'kofun', version: 1, text: deepSource
+      }
+    }
+  });
+  const deepDiagnostics = await client.waitFor((message) =>
+    message.method === 'textDocument/publishDiagnostics' &&
+    message.params.uri === deepUri && message.params.version === 1, 2000);
+  const deepMilliseconds = Number(process.hrtime.bigint() - deepStart) / 1e6;
+  assert.ok(deepMilliseconds < 1000,
+    `deep delimiter analysis took ${deepMilliseconds.toFixed(2)}ms`);
+  assert.deepStrictEqual(
+    deepDiagnostics.params.diagnostics.map((item) => item.code), ['KLS0001']
+  );
+  client.send({
+    jsonrpc: '2.0', method: 'textDocument/didClose',
+    params: { textDocument: { uri: deepUri } }
+  });
+  await client.waitFor((message) =>
+    message.method === 'textDocument/publishDiagnostics' &&
+    message.params.uri === deepUri && message.params.diagnostics.length === 0);
+
   await client.stop(id);
-  process.stdout.write('PASS: LSP framing, lifecycle, UTF-16, diagnostics, definition, hover, and stale-version guard\n');
+
+  // A peer that never terminates its header cannot grow the server buffer
+  // without bound. It receives one explicit parse error before termination.
+  const oversized = new Client(server);
+  oversized.child.stdin.write(Buffer.alloc(8193, 65));
+  const headerError = await oversized.waitFor((message) =>
+    message.error && message.error.code === -32700);
+  assert.match(headerError.error.message, /header exceeds 8192 bytes/);
+  const oversizedExit = await oversized.exitPromise;
+  assert.strictEqual(oversizedExit.code, 1);
+
+  process.stdout.write(
+    `PASS: LSP framing/header bounds, lifecycle, UTF-16, diagnostics, ` +
+    `definition, hover, stale-version guard, and ${depth}-deep delimiters ` +
+    `(${deepMilliseconds.toFixed(2)}ms)\n`
+  );
 }
 
 main().catch((caught) => {

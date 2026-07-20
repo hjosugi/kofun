@@ -10,13 +10,15 @@
 const fs = require('fs');
 
 const documents = new Map();
+const MAX_HEADER_BYTES = 8 * 1024;
 let input = Buffer.alloc(0);
 let shutdownRequested = false;
+let framingFailed = false;
 
-function send(message) {
+function send(message, callback) {
   const body = Buffer.from(JSON.stringify(message), 'utf8');
-  process.stdout.write(`Content-Length: ${body.length}\r\n\r\n`);
-  process.stdout.write(body);
+  const header = Buffer.from(`Content-Length: ${body.length}\r\n\r\n`, 'ascii');
+  process.stdout.write(Buffer.concat([header, body]), callback);
 }
 
 function response(id, result) {
@@ -25,6 +27,17 @@ function response(id, result) {
 
 function error(id, code, message) {
   send({ jsonrpc: '2.0', id: id === undefined ? null : id, error: { code, message } });
+}
+
+function fatalFraming(message) {
+  if (framingFailed) return;
+  framingFailed = true;
+  input = Buffer.alloc(0);
+  process.stdin.pause();
+  send({
+    jsonrpc: '2.0', id: null,
+    error: { code: -32700, message }
+  }, () => process.exit(1));
 }
 
 function lineStarts(text) {
@@ -86,6 +99,7 @@ function tokenize(doc) {
   const tokens = [];
   const diagnostics = [];
   const delimiters = [];
+  const curlyContainers = [];
   let curlyDepth = 0;
 
   function push(kind, start, end, container) {
@@ -103,8 +117,8 @@ function tokenize(doc) {
       while (i < text.length && text.charCodeAt(i) !== 10) i += 1;
       continue;
     }
-    const container = [...delimiters].reverse().find((entry) => entry.kind === '{');
-    const containerIndex = container ? container.index : -1;
+    const containerIndex = curlyContainers.length > 0
+      ? curlyContainers[curlyContainers.length - 1] : -1;
     if (code === 34) {
       const start = i++;
       let closed = false;
@@ -157,7 +171,10 @@ function tokenize(doc) {
     if ('{(['.includes(character)) {
       const index = push(character, i, i + 1, containerIndex);
       delimiters.push({ kind: character, index });
-      if (character === '{') curlyDepth += 1;
+      if (character === '{') {
+        curlyContainers.push(index);
+        curlyDepth += 1;
+      }
       i += 1;
       continue;
     }
@@ -171,7 +188,10 @@ function tokenize(doc) {
         ));
         push(character, i, i + 1, containerIndex);
       } else {
-        if (character === '}') curlyDepth -= 1;
+        if (character === '}') {
+          curlyContainers.pop();
+          curlyDepth -= 1;
+        }
         const index = push(character, i, i + 1, containerIndex);
         tokens[top.index].match = index;
         tokens[index].match = top.index;
@@ -604,7 +624,16 @@ function drain() {
       headerEnd = input.indexOf('\n\n');
       separatorLength = 2;
     }
-    if (headerEnd < 0) return;
+    if (headerEnd < 0) {
+      if (input.length > MAX_HEADER_BYTES) {
+        fatalFraming(`header exceeds ${MAX_HEADER_BYTES} bytes`);
+      }
+      return;
+    }
+    if (headerEnd > MAX_HEADER_BYTES) {
+      fatalFraming(`header exceeds ${MAX_HEADER_BYTES} bytes`);
+      return;
+    }
     const header = input.subarray(0, headerEnd).toString('ascii');
     const match = /(?:^|\r?\n)Content-Length:\s*(\d+)\s*(?:\r?\n|$)/i.exec(header);
     if (!match) {
@@ -631,6 +660,7 @@ function drain() {
 }
 
 process.stdin.on('data', (chunk) => {
+  if (framingFailed) return;
   input = Buffer.concat([input, chunk]);
   drain();
 });
