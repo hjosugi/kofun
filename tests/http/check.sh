@@ -30,7 +30,28 @@ implementation_commit=$(
         "$RESULTS"
 )
 test "${#implementation_commit}" -eq 40
-git cat-file -e "$implementation_commit^{commit}"
+
+check_recorded_hash() {
+    key=$1
+    file=$2
+    recorded=$(
+        sed -n \
+            "s/.*\"$key\": \"\\([0-9a-f][0-9a-f]*\\)\".*/\\1/p" \
+            "$RESULTS"
+    )
+    test "${#recorded}" -eq 64
+    actual=$(sha256sum "$file")
+    actual=${actual%% *}
+    test "$recorded" = "$actual" || {
+        echo "http benchmark source hash is stale for $file" >&2
+        exit 1
+    }
+}
+
+check_recorded_hash framework framework/http/src/kofun_http.c
+check_recorded_hash kofun_sample examples/api_server.kofun
+check_recorded_hash load_client benchmarks/http/load_client.c
+check_recorded_hash minimal_server benchmarks/http/minimal_server.c
 
 mkdir -p build
 ./framework/http/build.sh examples/api_server.kofun build/http-api-test
