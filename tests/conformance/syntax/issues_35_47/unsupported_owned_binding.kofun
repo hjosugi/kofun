@@ -1,0 +1,4 @@
+fn main() -> Int {
+    let own resource = open()
+    return 0
+}

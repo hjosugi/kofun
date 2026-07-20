@@ -1,0 +1,27 @@
+# Structural projection fixture. Acceptance does not imply semantic support.
+
+fn classify(score: Int) -> Text {
+    if score >= 90 {
+        return "excellent"
+    } else if score >= 70 {
+        return "good"
+    }
+    return "keep going"
+}
+
+fn future_surface() {
+    let immutable = 1
+    let mut mutable = 2
+    let double = fn(value: Int) => value * 2
+    let own socket = connect()
+    for value in values {
+        print(value)
+    }
+    while mutable > 0 {
+        mutable = mutable - 1
+    }
+    let label = match immutable {
+        1 => "one",
+        _ => "other",
+    }
+}

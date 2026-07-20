@@ -1,0 +1,7 @@
+# expect-stdout: 42
+
+fn main() {
+    let base: Int = 40
+    let answer = base + 2
+    print(answer)
+}
