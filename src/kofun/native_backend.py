@@ -62,6 +62,10 @@ CHUNK_BYTES = 1 << 20
 
 COMPARISONS = {"==": CC_E, "!=": CC_NE, "<": 12, "<=": 14, ">": 15, ">=": CC_GE}
 
+#: The condition that holds exactly when its key does not. Used to branch
+#: directly on a comparison instead of materialising a boolean and testing it.
+INVERSE_CC = {CC_E: CC_NE, CC_NE: CC_E, 12: CC_GE, CC_GE: 12, 14: 15, 15: 14}
+
 
 @dataclass(slots=True)
 class _Loop:
@@ -310,9 +314,7 @@ class NativeBackend:
         top = self._label("while")
         end = self._label("wend")
         asm.label(top)
-        self._expr(node.condition)
-        asm.test_rr(RAX, RAX)
-        asm.jcc(CC_E, end)
+        self._branch_unless(node.condition, end)
         self.loops.append(_Loop(continue_label=top, break_label=end))
         self._block(node.body)
         self.loops.pop()
@@ -434,11 +436,7 @@ class NativeBackend:
                 "native backend does not support Text operators yet", node.span
             )
 
-        self._expr(node.left)
-        self._push(RAX)
-        self._expr(node.right)
-        asm.mov_rr(RCX, RAX)
-        self._pop(RAX)
+        self._operands(node)
 
         if op == "+":
             asm.add_rr(RAX, RCX)
@@ -458,6 +456,65 @@ class NativeBackend:
             raise BackendFailure(
                 f"native backend cannot lower operator `{op}`", node.span
             )
+
+    def _is_simple(self, node: ast.Expr) -> bool:
+        """True when `node` can be loaded into a register with one instruction.
+
+        Integer and boolean literals and local variables qualify. Text literals
+        do not: they need a RIP-relative `lea`, and Text has no arithmetic yet.
+        """
+        if isinstance(node, ast.Literal):
+            return node.kind in ("Int", "Bool")
+        return isinstance(node, ast.Variable)
+
+    def _load_simple(self, node: ast.Expr, reg: int) -> None:
+        """Load a literal or local directly into `reg`, touching no other state."""
+        if isinstance(node, ast.Literal):
+            if node.kind == "Int":
+                self.asm.mov_ri(reg, int(node.value))
+            else:
+                self.asm.mov_ri(reg, 1 if node.value else 0)
+            return
+        self.asm.mov_rm(reg, RBP, self._lookup(node.name, node.span))
+
+    def _operands(self, node: ast.BinaryExpr) -> None:
+        """Leave the left operand in rax and the right in rcx.
+
+        When the right operand is a literal or a local it is loaded straight
+        into rcx, which removes the push/pop of the left operand. That pair is
+        two memory round-trips per operation, and in code like `n - 1` or
+        `n < 2` it was the entire cost of the expression.
+        """
+        self._expr(node.left)
+        if self._is_simple(node.right):
+            self._load_simple(node.right, RCX)
+            return
+        self._push(RAX)
+        self._expr(node.right)
+        self.asm.mov_rr(RCX, RAX)
+        self._pop(RAX)
+
+    def _branch_unless(self, condition: ast.Expr, label: str) -> None:
+        """Evaluate `condition` and jump to `label` when it is false.
+
+        A comparison used as a condition previously materialised a boolean it
+        immediately discarded: `cmp` / `setcc` / `movzx` / `test` / `jcc`. Here
+        the comparison drives the branch directly, so `if n < 2` becomes
+        `cmp` / `jge` -- five instructions down to two.
+        """
+        if (
+            isinstance(condition, ast.BinaryExpr)
+            and condition.op in COMPARISONS
+            and self._expr_type(condition.left) != TEXT
+        ):
+            self._operands(condition)
+            self.asm.cmp_rr(RAX, RCX)
+            self.asm.jcc(INVERSE_CC[COMPARISONS[condition.op]], label)
+            return
+
+        self._expr(condition)
+        self.asm.test_rr(RAX, RAX)
+        self.asm.jcc(CC_E, label)
 
     def _floor_div(self, node: ast.BinaryExpr) -> None:
         """rax = floor(rax / rcx), matching the interpreter rather than C.
@@ -529,9 +586,7 @@ class NativeBackend:
         else_label = self._label("else")
         end = self._label("endif")
 
-        self._expr(node.condition)
-        asm.test_rr(RAX, RAX)
-        asm.jcc(CC_E, else_label)
+        self._branch_unless(node.condition, else_label)
         self._block(node.then_branch)
         asm.jmp(end)
         asm.label(else_label)
