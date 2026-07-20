@@ -11,7 +11,7 @@ from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[1]
 TEXT_SUFFIXES = {
-    ".kf",
+    ".kofun",
     ".py",
     ".md",
     ".json",
@@ -49,7 +49,7 @@ def check_required_files(errors: list[str]) -> None:
         "src/kofun/cli.py",
         "src/kofun/c_runtime.py",
         "src/kofun/laws.py",
-        "bootstrap/stage1/compiler.kf",
+        "bootstrap/stage1/compiler.kofun",
         "bootstrap/manifest.json",
         "artifacts/optional-bool-monad.evidence.json",
         "artifacts/verification-summary.json",
@@ -219,7 +219,7 @@ def check_documented_counts(errors: list[str]) -> None:
 def check_law_evidence(errors: list[str]) -> None:
     evidence_path = ROOT / "artifacts/optional-bool-monad.evidence.json"
     evidence = json.loads(read_utf8(evidence_path, errors) or "{}")
-    source_path = ROOT / "examples/proven_optional_bool_monad.kf"
+    source_path = ROOT / "examples/proven_optional_bool_monad.kofun"
     source_bytes = source_path.read_bytes()
     expected_hash = hashlib.sha256(source_bytes).hexdigest()
     if evidence.get("schema") != "kofun.law-evidence/v1":

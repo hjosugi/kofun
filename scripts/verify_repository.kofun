@@ -1,0 +1,110 @@
+# Repository invariants that can be checked by the Kofun bootstrap runtime.
+#
+# This intentionally checks content, not host-specific metadata. UTF-8 decoding
+# is guaranteed by read_text(); required files fail at the point they are read.
+
+fn require_nonempty(path: Text) -> Text {
+    let source = read_text(path)
+    assert(len(source) > 0)
+    return source
+}
+
+fn require_contains(path: Text, expected: Text) {
+    let source = require_nonempty(path)
+    assert(contains(source, expected))
+}
+
+fn validate_json_shape(source: Text) {
+    let symbols = chars(source)
+    let mut braces = 0
+    let mut brackets = 0
+    let mut in_string = false
+    let mut escaped = false
+
+    for index in 0 .. len(symbols) {
+        let symbol = symbols[index]
+        if in_string {
+            if escaped {
+                escaped = false
+            } else if symbol == "\\" {
+                escaped = true
+            } else if symbol == "\"" {
+                in_string = false
+            }
+        } else if symbol == "\"" {
+            in_string = true
+        } else if symbol == "{" {
+            braces = braces + 1
+        } else if symbol == "}" {
+            braces = braces - 1
+            assert(braces >= 0)
+        } else if symbol == "[" {
+            brackets = brackets + 1
+        } else if symbol == "]" {
+            brackets = brackets - 1
+            assert(brackets >= 0)
+        }
+    }
+
+    assert(!in_string)
+    assert(!escaped)
+    assert_eq(braces, 0)
+    assert_eq(brackets, 0)
+}
+
+fn validate_json_file(path: Text) {
+    let source = require_nonempty(path)
+    assert(starts_with(trim(source), "{") || starts_with(trim(source), "["))
+    validate_json_shape(source)
+}
+
+fn main() {
+    let required = [
+    "README.md",
+    "Makefile",
+    "LICENSE-APACHE",
+    "LICENSE-MIT",
+    "NOTICE",
+    "bin/kofun",
+    "bootstrap/stage1/compiler.kofun",
+    "bootstrap/check_bootstrap.kofun",
+    "scripts/verify_backlog.kofun",
+    "scripts/verify_repository.kofun",
+    "spec/grammar.ebnf",
+    "spec/semantics.md",
+    "spec/law-evidence.schema.json",
+    "artifacts/optional-bool-monad.evidence.json",
+    "artifacts/verification-summary.json",
+    "editor/vscode/package.json",
+    "editor/vscode/syntaxes/kofun.tmLanguage.json",
+    "backlog/summary.json"
+    ]
+    for index in 0 .. len(required) {
+        require_nonempty(required[index])
+    }
+
+    let json_files = [
+    "bootstrap/manifest.json",
+    "spec/law-evidence.schema.json",
+    "artifacts/optional-bool-monad.evidence.json",
+    "artifacts/verification-summary.json",
+    "editor/vscode/package.json",
+    "editor/vscode/language-configuration.json",
+    "editor/vscode/syntaxes/kofun.tmLanguage.json",
+    "backlog/summary.json"
+    ]
+    for index in 0 .. len(json_files) {
+        validate_json_file(json_files[index])
+    }
+
+    require_contains("README.md", "13,500")
+    require_contains("README.md", "proven-finite")
+    require_contains("spec/law-evidence.schema.json", "kofun.law-evidence/v1")
+    require_contains("artifacts/optional-bool-monad.evidence.json", "\"status\": \"passed\"")
+    require_contains("artifacts/optional-bool-monad.evidence.json", "\"cases_checked\": 264")
+    require_contains("backlog/summary.json", "\"total\": 13500")
+    require_contains("backlog/summary.json", "\"areas\": 27")
+    require_contains("bootstrap/manifest.json", "bootstrap/stage1/compiler.kofun")
+
+    print("verified required files, JSON structure, law evidence, bootstrap metadata, and backlog metadata")
+}

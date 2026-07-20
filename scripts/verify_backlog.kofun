@@ -1,0 +1,114 @@
+# Verify the checked-in implementation backlog without a Python runtime.
+#
+# The backlog is deliberately split into a fixed 27-file corpus. Keeping the
+# paths explicit makes this verifier deterministic and lets a missing file fail
+# at read_text(), even on a minimal bootstrap runtime without directory walking.
+
+fn count_char(value: Text, wanted: Text) -> Int {
+    let symbols = chars(value)
+    let mut count = 0
+    for index in 0 .. len(symbols) {
+        if symbols[index] == wanted {
+            count = count + 1
+        }
+    }
+    return count
+}
+
+fn is_lower_hex(value: Text) -> Bool {
+    let symbols = chars(value)
+    if len(symbols) != 12 {
+        return false
+    }
+    for index in 0 .. len(symbols) {
+        let symbol = symbols[index]
+        if !contains("0123456789abcdef", symbol) {
+            return false
+        }
+    }
+    return true
+}
+
+fn verify_issue_row(line: Text, expected_id: Int) {
+    assert(starts_with(line, "| KOFUN-"))
+    assert_eq(count_char(line, "|"), 11)
+    assert(!contains(line, " |  |"))
+    assert(contains(line, " | planned | "))
+
+    let numeric = parse_int(text_slice(line, 8, 13))
+    assert_eq(numeric, expected_id)
+
+    let fingerprint = text_slice(line, len(line) - 15, len(line) - 3)
+    assert(is_lower_hex(fingerprint))
+    assert(ends_with(line, "` |"))
+}
+
+fn verify_area(path: Text, first_id: Int) -> Int {
+    let source = read_text(path)
+    assert(contains(source, "- Issues: 500"))
+    assert(contains(source, "| ID | State | Priority | Milestone |"))
+
+    let symbols = chars(source)
+    let mut line_start = 0
+    let mut issue_count = 0
+    let mut next_id = first_id
+    for index in 0 .. len(symbols) {
+        if symbols[index] == "\n" {
+            let line = text_slice(source, line_start, index)
+            if starts_with(line, "| KOFUN-") {
+                verify_issue_row(line, next_id)
+                issue_count = issue_count + 1
+                next_id = next_id + 1
+            }
+            line_start = index + 1
+        }
+    }
+    assert_eq(issue_count, 500)
+    return next_id
+}
+
+fn main() {
+    let files = [
+    "backlog/issues-01-syntax.md",
+    "backlog/issues-02-parser.md",
+    "backlog/issues-03-diagnostics.md",
+    "backlog/issues-04-modules.md",
+    "backlog/issues-05-inference.md",
+    "backlog/issues-06-types.md",
+    "backlog/issues-07-ownership.md",
+    "backlog/issues-08-memory.md",
+    "backlog/issues-09-effects.md",
+    "backlog/issues-10-meta.md",
+    "backlog/issues-11-ir.md",
+    "backlog/issues-12-optimizer.md",
+    "backlog/issues-13-codegen.md",
+    "backlog/issues-14-vm.md",
+    "backlog/issues-15-stdlib.md",
+    "backlog/issues-16-collections.md",
+    "backlog/issues-17-science.md",
+    "backlog/issues-18-concurrency.md",
+    "backlog/issues-19-packages.md",
+    "backlog/issues-20-docs_tools.md",
+    "backlog/issues-21-developer_tools.md",
+    "backlog/issues-22-interop.md",
+    "backlog/issues-23-platforms.md",
+    "backlog/issues-24-laws.md",
+    "backlog/issues-25-bootstrap.md",
+    "backlog/issues-26-quality.md",
+    "backlog/issues-27-ecosystem.md"
+    ]
+
+    let mut next_id = 1
+    for index in 0 .. len(files) {
+        next_id = verify_area(files[index], next_id)
+    }
+    assert_eq(next_id, 13501)
+
+    let summary = read_text("backlog/summary.json")
+    assert(contains(summary, "\"total\": 13500"))
+    assert(contains(summary, "\"areas\": 27"))
+    assert(contains(summary, "\"issues_per_area\": 500"))
+    assert(contains(summary, "\"first_id\": \"KOFUN-00001\""))
+    assert(contains(summary, "\"last_id\": \"KOFUN-13500\""))
+    print("verified 13500 contiguous Kofun backlog issues across 27 files")
+}
