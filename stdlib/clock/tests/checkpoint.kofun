@@ -1,0 +1,262 @@
+# Executable Int-Core projection of stdlib/clock/clock.kofun.
+# Clock tags are 0 (monotonic) and 1 (realtime). Status values are 0 for
+# success, then distinct negative values for invalid instant, invalid duration,
+# different clocks, backwards time, and arithmetic overflow.
+
+fn nanoseconds_per_second() -> Int {
+    return 10000 * 10000 * 10
+}
+
+fn million() -> Int {
+    return 1000 * 1000
+}
+
+# Spelled from small literals so this same projection is accepted by the
+# deliberately tiny direct-x86 Core, whose source literals stop at 65535.
+fn int_max() -> Int {
+    let mut value = 9
+    value = value * 10 + 2
+    value = value * 10 + 2
+    value = value * 10 + 3
+    value = value * 10 + 3
+    value = value * 10 + 7
+    value = value * 10 + 2
+    value = value * 10 + 0
+    value = value * 10 + 3
+    value = value * 10 + 6
+    value = value * 10 + 8
+    value = value * 10 + 5
+    value = value * 10 + 4
+    value = value * 10 + 7
+    value = value * 10 + 7
+    value = value * 10 + 5
+    value = value * 10 + 8
+    value = value * 10 + 0
+    value = value * 10 + 7
+    return value
+}
+
+fn int_min() -> Int {
+    return -int_max() - 1
+}
+
+fn valid_nanoseconds(nanoseconds: Int) -> Int {
+    if nanoseconds < 0 { return 0 }
+    if nanoseconds >= nanoseconds_per_second() { return 0 }
+    return 1
+}
+
+fn instant_status(nanoseconds: Int) -> Int {
+    if valid_nanoseconds(nanoseconds) == 0 { return -1 }
+    return 0
+}
+
+fn duration_status(seconds: Int, nanoseconds: Int) -> Int {
+    if seconds < 0 { return -2 }
+    if valid_nanoseconds(nanoseconds) == 0 { return -2 }
+    return 0
+}
+
+fn compare_parts(
+    left_clock: Int,
+    left_seconds: Int,
+    left_nanoseconds: Int,
+    right_clock: Int,
+    right_seconds: Int,
+    right_nanoseconds: Int
+) -> Int {
+    if instant_status(left_nanoseconds) != 0 { return -10 }
+    if instant_status(right_nanoseconds) != 0 { return -10 }
+    if left_clock != right_clock { return -3 }
+    if left_seconds < right_seconds { return -1 }
+    if left_seconds > right_seconds { return 1 }
+    if left_nanoseconds < right_nanoseconds { return -1 }
+    if left_nanoseconds > right_nanoseconds { return 1 }
+    return 0
+}
+
+fn difference_overflows(later: Int, earlier: Int) -> Int {
+    if earlier < 0 {
+        if later > int_max() + earlier { return 1 }
+    }
+    return 0
+}
+
+fn elapsed_status(
+    start_clock: Int,
+    start_seconds: Int,
+    start_nanoseconds: Int,
+    end_clock: Int,
+    end_seconds: Int,
+    end_nanoseconds: Int
+) -> Int {
+    if instant_status(start_nanoseconds) != 0 { return -1 }
+    if instant_status(end_nanoseconds) != 0 { return -1 }
+    if start_clock != end_clock { return -3 }
+    let order = compare_parts(
+        start_clock, start_seconds, start_nanoseconds,
+        end_clock, end_seconds, end_nanoseconds
+    )
+    if order > 0 { return -4 }
+    let adjusted_end_seconds = if end_nanoseconds < start_nanoseconds {
+        end_seconds - 1
+    } else {
+        end_seconds
+    }
+    if difference_overflows(adjusted_end_seconds, start_seconds) == 1 {
+        return -5
+    }
+    return 0
+}
+
+fn elapsed_seconds(
+    start_seconds: Int,
+    start_nanoseconds: Int,
+    end_seconds: Int,
+    end_nanoseconds: Int
+) -> Int {
+    let adjusted_end_seconds = if end_nanoseconds < start_nanoseconds {
+        end_seconds - 1
+    } else {
+        end_seconds
+    }
+    return adjusted_end_seconds - start_seconds
+}
+
+fn elapsed_nanoseconds(start_nanoseconds: Int, end_nanoseconds: Int) -> Int {
+    if end_nanoseconds < start_nanoseconds {
+        return end_nanoseconds + nanoseconds_per_second() - start_nanoseconds
+    }
+    return end_nanoseconds - start_nanoseconds
+}
+
+fn add_status(
+    instant_nanoseconds: Int,
+    duration_seconds: Int,
+    duration_nanoseconds: Int,
+    instant_seconds: Int
+) -> Int {
+    if instant_status(instant_nanoseconds) != 0 { return -1 }
+    if duration_status(duration_seconds, duration_nanoseconds) != 0 {
+        return -2
+    }
+    let nanosecond_sum = instant_nanoseconds + duration_nanoseconds
+    let carry = if nanosecond_sum >= nanoseconds_per_second() { 1 } else { 0 }
+    if instant_seconds > int_max() - duration_seconds {
+        return -5
+    }
+    let second_sum = instant_seconds + duration_seconds
+    if carry == 1 {
+        if second_sum == int_max() { return -5 }
+    }
+    return 0
+}
+
+fn added_seconds(
+    instant_seconds: Int,
+    instant_nanoseconds: Int,
+    duration_seconds: Int,
+    duration_nanoseconds: Int
+) -> Int {
+    let carry = if instant_nanoseconds + duration_nanoseconds >=
+        nanoseconds_per_second() {
+        1
+    } else {
+        0
+    }
+    return instant_seconds + duration_seconds + carry
+}
+
+fn added_nanoseconds(
+    instant_nanoseconds: Int,
+    duration_nanoseconds: Int
+) -> Int {
+    return (instant_nanoseconds + duration_nanoseconds) %
+        nanoseconds_per_second()
+}
+
+fn deadline_reached(
+    now_clock: Int,
+    now_seconds: Int,
+    now_nanoseconds: Int,
+    deadline_clock: Int,
+    deadline_seconds: Int,
+    deadline_nanoseconds: Int
+) -> Int {
+    let order = compare_parts(
+        now_clock, now_seconds, now_nanoseconds,
+        deadline_clock, deadline_seconds, deadline_nanoseconds
+    )
+    if order == -3 { return -3 }
+    if order >= 0 { return 1 }
+    return 0
+}
+
+fn main() {
+    # Nanosecond and duration constructor boundaries.
+    print(valid_nanoseconds(-1))
+    print(valid_nanoseconds(0))
+    print(valid_nanoseconds(nanoseconds_per_second() - 1))
+    print(valid_nanoseconds(nanoseconds_per_second()))
+    print(duration_status(-1, 0))
+    print(duration_status(0, nanoseconds_per_second()))
+    print(duration_status(2, 3))
+
+    # Same-clock total ordering and explicit domain mismatch.
+    print(compare_parts(0, 4, 9, 0, 5, 0))
+    print(compare_parts(0, 5, 0, 0, 5, 0))
+    print(compare_parts(0, 5, 1, 0, 5, 0))
+    print(compare_parts(0, 5, 0, 1, 5, 0))
+
+    # Elapsed-time borrow, backwards, mismatch, invalid, and overflow paths.
+    print(elapsed_status(0, 10, 900 * million(), 0, 12, 100 * million()))
+    print(elapsed_seconds(10, 900 * million(), 12, 100 * million()))
+    print(elapsed_nanoseconds(900 * million(), 100 * million()))
+    print(elapsed_status(
+        0, 12, 0, 0, 11, nanoseconds_per_second() - 1
+    ))
+    print(elapsed_status(0, 1, 0, 1, 2, 0))
+    print(elapsed_status(0, 1, -1, 0, 2, 0))
+    print(elapsed_status(
+        0, int_min(), 0,
+        0, 0, 0
+    ))
+    # Borrow makes this otherwise-too-wide second difference representable.
+    print(elapsed_status(
+        0, int_min(), 900 * million(),
+        0, 0, 100 * million()
+    ))
+    print(elapsed_seconds(
+        int_min(), 900 * million(),
+        0, 100 * million()
+    ))
+
+    # Addition carry and its exact signed-Int boundary.
+    print(add_status(900 * million(), 2, 200 * million(), 10))
+    print(added_seconds(10, 900 * million(), 2, 200 * million()))
+    print(added_nanoseconds(900 * million(), 200 * million()))
+    print(add_status(900 * million(), 0, 100 * million(), int_max()))
+    print(add_status(900 * million(), 0, 100 * million(), int_max() - 1))
+    print(added_seconds(
+        int_max() - 1, 900 * million(), 0, 100 * million()
+    ))
+
+    # Deadline decisions and an explicit-state ManualClock projection.
+    print(deadline_reached(0, 3, 0, 0, 3, 1))
+    print(deadline_reached(0, 3, 1, 0, 3, 1))
+    print(deadline_reached(0, 4, 0, 0, 3, 1))
+    print(deadline_reached(0, 4, 0, 1, 3, 1))
+
+    let mut manual_seconds = 20
+    let mut manual_nanoseconds = 750 * million()
+    print(manual_seconds)
+    print(manual_nanoseconds)
+    manual_seconds = added_seconds(
+        manual_seconds, manual_nanoseconds, 1, 500 * million()
+    )
+    manual_nanoseconds = added_nanoseconds(
+        manual_nanoseconds, 500 * million()
+    )
+    print(manual_seconds)
+    print(manual_nanoseconds)
+}

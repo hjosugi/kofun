@@ -1,0 +1,225 @@
+# Explicit clock values and deterministic clock arithmetic.
+#
+# Instants from different clocks are deliberately incomparable. Monotonic time
+# is for elapsed time and deadlines; realtime is a Unix-era observation that
+# may move when the system clock is adjusted. Reading an operating-system clock
+# lives in a platform adapter rather than in these pure value operations.
+
+let CLOCK_NANOSECONDS_PER_SECOND = 1000000000
+let CLOCK_INT_MAX = 9223372036854775807
+
+type Clock =
+    | MonotonicClock
+    | RealtimeClock
+
+type Instant = {
+    clock: Clock,
+    seconds: Int,
+    nanoseconds: Int,
+}
+
+# Duration is non-negative and canonical: nanoseconds is always less than one
+# second. This keeps elapsed-time and deadline arithmetic unambiguous.
+type Duration = {
+    seconds: Int,
+    nanoseconds: Int,
+}
+
+type ManualClock = {
+    current: Instant,
+}
+
+type ClockError =
+    | InvalidInstantNanoseconds(Int)
+    | InvalidDuration(Int, Int)
+    | DifferentClocks(Clock, Clock)
+    | EndBeforeStart
+    | ClockArithmeticOverflow
+
+fn clock_valid_nanoseconds(nanoseconds: Int) -> Bool {
+    return nanoseconds >= 0 &&
+        nanoseconds < CLOCK_NANOSECONDS_PER_SECOND
+}
+
+fn clock_instant(
+    clock: Clock,
+    seconds: Int,
+    nanoseconds: Int,
+) -> Result[Instant, ClockError] {
+    if !clock_valid_nanoseconds(nanoseconds) {
+        return Err(InvalidInstantNanoseconds(nanoseconds))
+    }
+    return Ok(Instant {
+        clock: clock,
+        seconds: seconds,
+        nanoseconds: nanoseconds,
+    })
+}
+
+fn clock_duration(
+    seconds: Int,
+    nanoseconds: Int,
+) -> Result[Duration, ClockError] {
+    if seconds < 0 || !clock_valid_nanoseconds(nanoseconds) {
+        return Err(InvalidDuration(seconds, nanoseconds))
+    }
+    return Ok(Duration { seconds: seconds, nanoseconds: nanoseconds })
+}
+
+fn clock_same(left: Clock, right: Clock) -> Bool {
+    return match left {
+        MonotonicClock => match right {
+            MonotonicClock => true,
+            RealtimeClock => false,
+        },
+        RealtimeClock => match right {
+            MonotonicClock => false,
+            RealtimeClock => true,
+        },
+    }
+}
+
+fn clock_validate_instant(read instant: Instant) -> Result[Void, ClockError] {
+    if !clock_valid_nanoseconds(instant.nanoseconds) {
+        return Err(InvalidInstantNanoseconds(instant.nanoseconds))
+    }
+    return Ok(())
+}
+
+fn clock_validate_duration(read duration: Duration) -> Result[Void, ClockError] {
+    if duration.seconds < 0 ||
+       !clock_valid_nanoseconds(duration.nanoseconds) {
+        return Err(InvalidDuration(duration.seconds, duration.nanoseconds))
+    }
+    return Ok(())
+}
+
+# Returns -1, 0, or 1. Mismatched clock domains are a typed error rather than
+# an ordering based on their record representation.
+fn clock_compare(
+    read left: Instant,
+    read right: Instant,
+) -> Result[Int, ClockError] {
+    match clock_validate_instant(left) {
+        Ok(_) => (),
+        Err(error) => return Err(error),
+    }
+    match clock_validate_instant(right) {
+        Ok(_) => (),
+        Err(error) => return Err(error),
+    }
+    if !clock_same(left.clock, right.clock) {
+        return Err(DifferentClocks(left.clock, right.clock))
+    }
+    if left.seconds < right.seconds { return Ok(-1) }
+    if left.seconds > right.seconds { return Ok(1) }
+    if left.nanoseconds < right.nanoseconds { return Ok(-1) }
+    if left.nanoseconds > right.nanoseconds { return Ok(1) }
+    return Ok(0)
+}
+
+fn clock_difference_overflows(later: Int, earlier: Int) -> Bool {
+    return earlier < 0 && later > CLOCK_INT_MAX + earlier
+}
+
+# Computes a non-negative elapsed duration. Realtime callers must accept that a
+# later read can compare before an earlier read; that case is EndBeforeStart.
+fn clock_elapsed(
+    read start: Instant,
+    read end: Instant,
+) -> Result[Duration, ClockError] {
+    let order = match clock_compare(start, end) {
+        Ok(value) => value,
+        Err(error) => return Err(error),
+    }
+    if order > 0 {
+        return Err(EndBeforeStart)
+    }
+
+    let borrow = end.nanoseconds < start.nanoseconds
+    let adjusted_end_seconds = if borrow {
+        end.seconds - 1
+    } else {
+        end.seconds
+    }
+    if clock_difference_overflows(adjusted_end_seconds, start.seconds) {
+        return Err(ClockArithmeticOverflow)
+    }
+
+    let seconds = adjusted_end_seconds - start.seconds
+    let nanoseconds = if borrow {
+        end.nanoseconds + CLOCK_NANOSECONDS_PER_SECOND - start.nanoseconds
+    } else {
+        end.nanoseconds - start.nanoseconds
+    }
+    return Ok(Duration { seconds: seconds, nanoseconds: nanoseconds })
+}
+
+fn clock_add(
+    read instant: Instant,
+    read duration: Duration,
+) -> Result[Instant, ClockError] {
+    match clock_validate_instant(instant) {
+        Ok(_) => (),
+        Err(error) => return Err(error),
+    }
+    match clock_validate_duration(duration) {
+        Ok(_) => (),
+        Err(error) => return Err(error),
+    }
+
+    let nanosecond_sum = instant.nanoseconds + duration.nanoseconds
+    let carry = if nanosecond_sum >= CLOCK_NANOSECONDS_PER_SECOND {
+        1
+    } else {
+        0
+    }
+    if instant.seconds > CLOCK_INT_MAX - duration.seconds {
+        return Err(ClockArithmeticOverflow)
+    }
+    let second_sum = instant.seconds + duration.seconds
+    if carry == 1 && second_sum == CLOCK_INT_MAX {
+        return Err(ClockArithmeticOverflow)
+    }
+    return Ok(Instant {
+        clock: instant.clock,
+        seconds: second_sum + carry,
+        nanoseconds: nanosecond_sum % CLOCK_NANOSECONDS_PER_SECOND,
+    })
+}
+
+fn clock_deadline_reached(
+    read now: Instant,
+    read deadline: Instant,
+) -> Result[Bool, ClockError] {
+    return match clock_compare(now, deadline) {
+        Ok(order) => Ok(order >= 0),
+        Err(error) => Err(error),
+    }
+}
+
+# ManualClock is the deterministic clock for tests and simulations. It has no
+# ambient reads: callers choose the start and every non-negative advance.
+fn clock_manual(read start: Instant) -> Result[ManualClock, ClockError] {
+    return match clock_validate_instant(start) {
+        Ok(_) => Ok(ManualClock { current: start }),
+        Err(error) => Err(error),
+    }
+}
+
+fn clock_manual_now(read clock: ManualClock) -> Instant {
+    return clock.current
+}
+
+fn clock_manual_advance(
+    edit clock: ManualClock,
+    read duration: Duration,
+) -> Result[Instant, ClockError] {
+    return match clock_add(clock.current, duration) {
+        Ok(current) => {
+            clock.current = current
+            Ok(current)
+        },
+        Err(error) => Err(error),
+    }
+}

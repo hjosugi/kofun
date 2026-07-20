@@ -1,0 +1,34 @@
+import stdlib.clock.clock
+import stdlib.linux_x86_64.abi
+import stdlib.linux_x86_64.time
+
+# Linux clock_gettime(2) adapter. Platform clock IDs and SysError stay here;
+# deterministic clock arithmetic remains in clock.kofun.
+
+let LINUX_CLOCK_REALTIME = 0
+let LINUX_CLOCK_MONOTONIC = 1
+
+type ClockReadError =
+    | ClockReadSystem(SysError)
+    | ClockReadInvalid(ClockError)
+
+fn clock_linux_id(clock: Clock) -> Int {
+    return match clock {
+        MonotonicClock => LINUX_CLOCK_MONOTONIC,
+        RealtimeClock => LINUX_CLOCK_REALTIME,
+    }
+}
+
+fn clock_read(clock: Clock) -> Result[Instant, ClockReadError] {
+    return match clock_now(clock_linux_id(clock)) {
+        Ok(timestamp) => match clock_instant(
+            clock,
+            timestamp.seconds,
+            timestamp.nanoseconds,
+        ) {
+            Ok(instant) => Ok(instant),
+            Err(error) => Err(ClockReadInvalid(error)),
+        },
+        Err(error) => Err(ClockReadSystem(error)),
+    }
+}

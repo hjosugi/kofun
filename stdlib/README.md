@@ -40,6 +40,11 @@ surface for literals, wildcard, repetition, and anchors with typed compile
 errors and explicit backtracking costs. Its canonical ADT surface is gated by a
 deterministic C11/x86-64 Int-Core projection until the compiler can lower it.
 
+The platform-independent [`clock/`](clock/) checkpoint defines clock-tagged
+instants, non-negative durations, checked elapsed/deadline arithmetic, and an
+explicit manual clock. Its Linux adapter is the only system-time read; the
+focused gate executes a deterministic Int-Core projection of the pure rules.
+
 Run the repository-local, Python-free contract checks with:
 
 ```sh
