@@ -161,6 +161,52 @@ fn main() {
     }
 }
 """,
+    # More bindings than the callee-saved pool, so this function falls back to
+    # frame slots and keeps its frame pointer. Exercises the path the
+    # register-allocated functions no longer take.
+    "spills_to_frame": """
+fn main() {
+    let a = 1
+    let b = 2
+    let c = 3
+    let d = 4
+    let e = 5
+    let f = 6
+    let g = 7
+    let h = 8
+    print(a + b + c + d + e + f + g + h)
+    let mut total = 0
+    for i in 0 .. 5 {
+        total = total + i + a
+    }
+    print(total)
+}
+""",
+    # Two parameters means an even number of saved registers, which flips the
+    # stack alignment the ABI requires at a call. Recursion makes it visible.
+    "even_saved_registers": """
+fn gcd(a: Int, b: Int) -> Int {
+    if b == 0 {
+        return a
+    }
+    return gcd(b, a % b)
+}
+
+fn ack(m: Int, n: Int) -> Int {
+    if m == 0 {
+        return n + 1
+    }
+    if n == 0 {
+        return ack(m - 1, 1)
+    }
+    return ack(m - 1, ack(m, n - 1))
+}
+
+fn main() {
+    print(gcd(1071, 462))
+    print(ack(2, 3))
+}
+""",
     "big_numbers": """
 fn main() {
     print(1000000)

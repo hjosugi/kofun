@@ -32,6 +32,7 @@ from .x64 import (
     CC_NE,
     CC_NS,
     RAX,
+    RBX,
     RCX,
     RDI,
     RDX,
@@ -41,6 +42,10 @@ from .x64 import (
     R8,
     R9,
     R10,
+    R12,
+    R13,
+    R14,
+    R15,
     Assembler,
 )
 
@@ -67,6 +72,22 @@ COMPARISONS = {"==": CC_E, "!=": CC_NE, "<": 12, "<=": 14, ">": 15, ">=": CC_GE}
 INVERSE_CC = {CC_E: CC_NE, CC_NE: CC_E, 12: CC_GE, CC_GE: 12, 14: 15, 15: 14}
 
 
+#: Registers a local can live in across a call. The System V ABI requires a
+#: callee to preserve these, so a value parked here survives recursion without
+#: the code generator spilling anything. Caller-saved registers would not: rax,
+#: rcx, rdx, rsi, rdi and r8-r11 are all clobbered by the expression evaluator
+#: or by argument passing.
+CALLEE_SAVED = (RBX, R12, R13, R14, R15)
+
+
+@dataclass(frozen=True, slots=True)
+class _Loc:
+    """Where a binding lives: a callee-saved register, or a frame slot."""
+
+    in_register: bool
+    value: int      # register number, or a negative offset from rbp
+
+
 @dataclass(slots=True)
 class _Loop:
     continue_label: str
@@ -86,9 +107,11 @@ class NativeBackend:
     def __init__(self) -> None:
         self.asm = Assembler()
         self.functions: dict[str, _Function] = {}
-        self.scopes: list[dict[str, int]] = []
+        self.scopes: list[dict[str, _Loc]] = []
         self.slot_count = 0
         self.max_slots = 0
+        self.registers: tuple[int, ...] = ()    # pool for the current function
+        self.register_next = 0
         self.depth = 0          # outstanding 8-byte pushes, for call alignment
         self.loops: list[_Loop] = []
         self.strings: dict[str, str] = {}   # text value -> label
@@ -108,21 +131,92 @@ class NativeBackend:
         self.asm.pop(reg)
         self.depth -= 1
 
-    def _alloc_slot(self) -> int:
+    def _alloc_slot(self) -> _Loc:
         self.slot_count += 1
         self.max_slots = max(self.max_slots, self.slot_count)
-        return -8 * self.slot_count
+        return _Loc(in_register=False, value=-8 * self.slot_count)
 
-    def _declare(self, name: str) -> int:
-        slot = self._alloc_slot()
-        self.scopes[-1][name] = slot
-        return slot
+    def _alloc(self) -> _Loc:
+        """Take the next register if this function got a register budget."""
+        if self.register_next < len(self.registers):
+            location = _Loc(in_register=True, value=self.registers[self.register_next])
+            self.register_next += 1
+            return location
+        return self._alloc_slot()
 
-    def _lookup(self, name: str, span: ast.Span) -> int:
+    def _declare(self, name: str) -> _Loc:
+        location = self._alloc()
+        self.scopes[-1][name] = location
+        return location
+
+    def _lookup(self, name: str, span: ast.Span) -> _Loc:
         for scope in reversed(self.scopes):
             if name in scope:
                 return scope[name]
         raise BackendFailure(f"native backend: unknown binding `{name}`", span)
+
+    def _store(self, location: _Loc, src: int = RAX) -> None:
+        """Write `src` into a binding."""
+        if location.in_register:
+            self.asm.mov_rr(location.value, src)
+        else:
+            self.asm.mov_mr(RBP, location.value, src)
+
+    def _load(self, location: _Loc, dst: int) -> None:
+        """Read a binding into `dst`."""
+        if location.in_register:
+            self.asm.mov_rr(dst, location.value)
+        else:
+            self.asm.mov_rm(dst, RBP, location.value)
+
+    def _count_bindings(self, fn: ast.FunctionDecl) -> int:
+        """How many named bindings the function body introduces, params included.
+
+        Scopes reuse frame slots but not registers, so this deliberately counts
+        every declaration rather than the peak live count. It only decides
+        whether the whole function fits in the register pool; overflow falls
+        back to slots, so an over-count costs nothing but a missed optimisation.
+        """
+        total = len(fn.params)
+
+        def walk(node: object) -> None:
+            nonlocal total
+            if isinstance(node, ast.LetStmt):
+                total += 1
+                walk(node.value)
+            elif isinstance(node, ast.ForStmt):
+                total += 2          # the loop variable, plus a hidden limit
+                walk(node.iterable)
+                walk(node.body)
+            elif isinstance(node, ast.Block):
+                for statement in node.statements:
+                    walk(statement)
+            elif isinstance(node, ast.WhileStmt):
+                walk(node.condition)
+                walk(node.body)
+            elif isinstance(node, ast.IfExpr):
+                walk(node.condition)
+                walk(node.then_branch)
+                if node.else_branch is not None:
+                    walk(node.else_branch)
+            elif isinstance(node, ast.ExprStmt):
+                walk(node.expr)
+            elif isinstance(node, ast.ReturnStmt):
+                if node.value is not None:
+                    walk(node.value)
+            elif isinstance(node, ast.AssignStmt):
+                walk(node.value)
+            elif isinstance(node, ast.BinaryExpr):
+                walk(node.left)
+                walk(node.right)
+            elif isinstance(node, ast.UnaryExpr):
+                walk(node.operand)
+            elif isinstance(node, ast.CallExpr):
+                for argument in node.args:
+                    walk(argument)
+
+        walk(fn.body)
+        return total
 
     def _string_label(self, value: str) -> str:
         if value not in self.strings:
@@ -228,19 +322,44 @@ class NativeBackend:
         self.depth = 0
         self.loops = []
 
-        asm.label(f"fn.{fn.name}")
-        asm.push(RBP)
-        asm.mov_rr(RBP, RSP)
+        # Give the function a register budget only if every binding fits. A
+        # partial allocation would need spill decisions, which is a much larger
+        # change; falling back wholesale to slots keeps this predictable.
+        needed = self._count_bindings(fn)
+        fits_in_registers = needed <= len(CALLEE_SAVED)
+        self.registers = CALLEE_SAVED[:needed] if fits_in_registers else ()
+        self.register_next = 0
+        self.saved = self.registers
 
-        # The frame size is not known until the body has been scanned, so the
-        # `sub rsp, N` is emitted as a fixed-width placeholder and patched.
-        sub_at = asm.offset
-        asm.sub_ri(RSP, 0x7FFFFFFF)     # forces the 32-bit imm encoding
-        sub_imm_at = asm.offset - 4
+        # When every binding lives in a register there is nothing to address
+        # relative to rbp, so the frame pointer itself can go. That removes
+        # push/mov on entry and mov/pop on exit -- four instructions per call,
+        # which for a small recursive function is a real fraction of its cost.
+        self.use_frame = not fits_in_registers
+        # Entry leaves rsp ≡ 8 (mod 16); each push flips it. Without a frame to
+        # absorb the difference, an even number of saved registers needs a
+        # manual adjustment so calls see the alignment the ABI requires.
+        pad = 8 if (not self.use_frame and len(self.saved) % 2 == 0) else 0
+        self.frame_pad = pad
+
+        asm.label(f"fn.{fn.name}")
+        sub_imm_at = None
+        if self.use_frame:
+            asm.push(RBP)
+            asm.mov_rr(RBP, RSP)
+        for register in self.saved:
+            asm.push(register)
+
+        if self.use_frame:
+            # The frame size is not known until the body has been scanned, so
+            # `sub rsp, N` is emitted as a fixed-width placeholder and patched.
+            asm.sub_ri(RSP, 0x7FFFFFFF)     # forces the 32-bit imm encoding
+            sub_imm_at = asm.offset - 4
+        elif pad:
+            asm.sub_ri(RSP, pad)
 
         for index, param in enumerate(fn.params):
-            slot = self._declare(param.name)
-            asm.mov_mr(RBP, slot, ARG_REGS[index])
+            self._store(self._declare(param.name), ARG_REGS[index])
 
         for statement in fn.body.statements:
             self._statement(statement)
@@ -248,13 +367,36 @@ class NativeBackend:
         # Falling off the end returns 0, matching the interpreter's unit value.
         asm.xor_rr(RAX, RAX)
         asm.label(f"fn.{fn.name}.epilogue")
-        asm.mov_rr(RSP, RBP)
-        asm.pop(RBP)
-        asm.ret()
+        self._emit_epilogue()
 
-        frame = (self.max_slots * 8 + 15) & ~15
-        asm.code[sub_imm_at:sub_imm_at + 4] = frame.to_bytes(4, "little")
-        assert sub_at < sub_imm_at
+        if sub_imm_at is not None:
+            # An odd number of saved registers flips the alignment the ABI
+            # requires at the next call; the frame absorbs it.
+            frame = (self.max_slots * 8 + 15) & ~15
+            if len(self.saved) % 2 == 1:
+                frame += 8
+            asm.code[sub_imm_at:sub_imm_at + 4] = frame.to_bytes(4, "little")
+
+    def _emit_epilogue(self) -> None:
+        """Restore saved registers, drop the frame if there is one, and return."""
+        asm = self.asm
+        if self.use_frame:
+            if self.saved:
+                # rbp marks the slot holding the caller's rbp, so the saved
+                # registers sit immediately below it.
+                asm.mov_rr(RSP, RBP)
+                asm.sub_ri(RSP, 8 * len(self.saved))
+            else:
+                asm.mov_rr(RSP, RBP)
+            for register in reversed(self.saved):
+                asm.pop(register)
+            asm.pop(RBP)
+        else:
+            if self.frame_pad:
+                asm.add_ri(RSP, self.frame_pad)
+            for register in reversed(self.saved):
+                asm.pop(register)
+        asm.ret()
 
     # ---- statements --------------------------------------------------------
 
@@ -262,21 +404,18 @@ class NativeBackend:
         asm = self.asm
         if isinstance(node, ast.LetStmt):
             self._expr(node.value)
-            slot = self._declare(node.name)
-            asm.mov_mr(RBP, slot, RAX)
+            self._store(self._declare(node.name))
             return
         if isinstance(node, ast.AssignStmt):
             self._expr(node.value)
-            asm.mov_mr(RBP, self._lookup(node.name, node.span), RAX)
+            self._store(self._lookup(node.name, node.span))
             return
         if isinstance(node, ast.ReturnStmt):
             if node.value is not None:
                 self._expr(node.value)
             else:
                 asm.xor_rr(RAX, RAX)
-            asm.mov_rr(RSP, RBP)
-            asm.pop(RBP)
-            asm.ret()
+            self._emit_epilogue()
             return
         if isinstance(node, ast.ExprStmt):
             self._expr(node.expr, discard=True)
@@ -334,19 +473,19 @@ class NativeBackend:
         saved = self.slot_count
 
         self._expr(iterable.left)
-        index_slot = self._declare(node.name)
-        asm.mov_mr(RBP, index_slot, RAX)
+        index = self._declare(node.name)
+        self._store(index)
 
         self._expr(iterable.right)
-        limit_slot = self._alloc_slot()
-        asm.mov_mr(RBP, limit_slot, RAX)
+        limit = self._alloc()
+        self._store(limit)
 
         top = self._label("for")
         step = self._label("fstep")
         end = self._label("fend")
         asm.label(top)
-        asm.mov_rm(RAX, RBP, index_slot)
-        asm.mov_rm(RCX, RBP, limit_slot)
+        self._load(index, RAX)
+        self._load(limit, RCX)
         asm.cmp_rr(RAX, RCX)
         asm.jcc(CC_GE, end)
 
@@ -355,9 +494,9 @@ class NativeBackend:
         self.loops.pop()
 
         asm.label(step)
-        asm.mov_rm(RAX, RBP, index_slot)
+        self._load(index, RAX)
         asm.add_ri(RAX, 1)
-        asm.mov_mr(RBP, index_slot, RAX)
+        self._store(index)
         asm.jmp(top)
         asm.label(end)
 
@@ -384,7 +523,7 @@ class NativeBackend:
             return
 
         if isinstance(node, ast.Variable):
-            asm.mov_rm(RAX, RBP, self._lookup(node.name, node.span))
+            self._load(self._lookup(node.name, node.span), RAX)
             return
 
         if isinstance(node, ast.UnaryExpr):
@@ -475,7 +614,7 @@ class NativeBackend:
             else:
                 self.asm.mov_ri(reg, 1 if node.value else 0)
             return
-        self.asm.mov_rm(reg, RBP, self._lookup(node.name, node.span))
+        self._load(self._lookup(node.name, node.span), reg)
 
     def _operands(self, node: ast.BinaryExpr) -> None:
         """Leave the left operand in rax and the right in rcx.
