@@ -1,0 +1,8 @@
+# diagnostic-mode: compile
+# expect-code: E2S22
+# expect-span: byte 120
+fn main() -> Int {
+    let answer: Int = 41
+    answer = answer + 1
+    return answer
+}
