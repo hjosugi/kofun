@@ -1,0 +1,12 @@
+import framework.tui
+
+fn main() {
+    # no_tui=1 makes this sample deterministic when its output is redirected.
+    let ui = kofun_tui_begin(1)
+    kofun_tui_set_size(ui, 48, 8)
+    kofun_tui_progress(ui, "compile 東京", 3, 4, 2)
+    kofun_tui_table2(ui, "Target", "State", "linux-x86_64", "ready")
+    kofun_tui_tree_item(ui, "artifact", 1, 1, 1)
+    kofun_tui_log(ui, 7, 1, "build complete")
+    return kofun_tui_end(ui)
+}

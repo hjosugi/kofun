@@ -1,0 +1,32 @@
+# Public Kofun declarations for the host-C terminal UI checkpoint.
+
+extern "C" fn kofun_tui_begin(no_tui: CInt) -> CLong
+extern "C" fn kofun_tui_end(handle: CLong) -> CInt
+extern "C" fn kofun_tui_set_size(handle: CLong, columns: CLong, rows: CLong) -> CInt
+extern "C" fn kofun_tui_progress(
+    handle: CLong,
+    label: CStr,
+    completed: CLong,
+    total: CLong,
+    phase: CLong,
+) -> CInt
+extern "C" fn kofun_tui_table2(
+    handle: CLong,
+    left_heading: CStr,
+    right_heading: CStr,
+    left_value: CStr,
+    right_value: CStr,
+) -> CInt
+extern "C" fn kofun_tui_tree_item(
+    handle: CLong,
+    label: CStr,
+    depth: CLong,
+    last: CInt,
+    expanded: CInt,
+) -> CInt
+extern "C" fn kofun_tui_log(
+    handle: CLong,
+    sequence: CLong,
+    level: CLong,
+    message: CStr,
+) -> CInt

@@ -34,7 +34,7 @@ This is not yet a semantic self-hosting fixed point. The checked-in C11 seed
 starts the Kofun-written compiler, but Stage 1 cannot compile all constructs in
 its own source yet.
 
-Seven Python-free checkpoints now exercise the path beyond that Core:
+Eight Python-free checkpoints now exercise the path beyond that Core:
 
 - `bootstrap/stage2/` lexes and structurally parses Kofun, emits a deterministic
   function IR, and reaches a byte-stable source/token/IR round trip;
@@ -51,10 +51,12 @@ Seven Python-free checkpoints now exercise the path beyond that Core:
   epoll HTTP/1.1 library configured with routes from Kofun source;
 - `framework/cli/` compiles declarative command metadata into a direct-static
   Linux x86-64 application whose help and runtime dispatch share that metadata;
+- `framework/tui/` exposes bounded, Unicode-width-aware progress, table, tree,
+  and log rendering to Kofun programs with terminal capability degradation;
 - `stdlib/` defines the raw syscall ABI, value-level errno conversion, affine
   resource wrappers, and the file round-trip acceptance fixture in Kofun.
 
-All seven have executable gates. The complete Stage 2 self-recompile and
+All eight have executable gates. The complete Stage 2 self-recompile and
 general native lowering remain open.
 
 ## Measured project status
@@ -155,6 +157,16 @@ Or scaffold a clean project with
 `./bin/kofun new demo-cli --template cli`. See
 `framework/cli/README.md` for the bounded declaration profile, generated help,
 TTY/`NO_COLOR` behavior, security boundary, and Linux x86-64 limitations.
+
+Build the shared terminal UI sample through the host-C profile:
+
+```sh
+framework/tui/build.sh examples/tui_dashboard.kofun build/tui-dashboard
+./build/tui-dashboard
+```
+
+See `framework/tui/README.md` for Unicode width, component, resize, capability,
+and frame-budget contracts.
 
 Build the WebAssembly arithmetic sample:
 
