@@ -9,13 +9,13 @@
 | build/run/check/test CLI | Core only | `tests/cli.sh` |
 | explicit skip reporting and coverage | implemented | `kofun test` |
 | semantic compiler self-recompile | open | bootstrap manifest |
-| Stage 2 lexer and structural function parser | checkpoint implemented | `bootstrap/stage2/check.sh` |
+| Stage 2 lexer, parser, and integer Core lowering | checkpoint implemented | `bootstrap/stage2/check.sh` |
 | general parser/type checker | open | no active gate |
 | ownership and law checking | open | specification only |
 | ELF64/x86-64 native image writer | checkpoint implemented | `bootstrap/native/check.sh` |
-| general native lowering | open | integer exit fixture only |
+| general native lowering | open | three executable Core-shaped fixtures |
 | Linux x86-64 syscall/stdlib API | Kofun source contract | `stdlib/tests/verify.sh` |
-| syscall file round-trip execution | open | explicit runner skip |
+| syscall file round-trip execution | implemented | native ELF success and errno failure gates |
 | formatter, REPL, LSP | open | design only |
 | checked Int64 contract | implemented for Core | numeric conformance corpus |
 

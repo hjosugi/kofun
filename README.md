@@ -38,8 +38,8 @@ Three Python-free checkpoints now exercise the path beyond that Core:
 - `stdlib/` defines the raw syscall ABI, value-level errno conversion, affine
   resource wrappers, and the file round-trip acceptance fixture in Kofun.
 
-The first two have executable gates. The complete Stage 2 self-recompile,
-general native lowering, and executable syscall file round trip remain open.
+All three have executable gates. The complete Stage 2 self-recompile and
+general native lowering remain open.
 
 ## Requirements
 
