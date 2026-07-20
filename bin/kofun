@@ -14,7 +14,7 @@ usage() {
     cat <<'EOF'
 usage:
   kofun build INPUT.kofun [-o OUTPUT] [--emit-c OUTPUT.c]
-              [--target x86_64-linux|aarch64-linux]
+              [--target x86_64-linux|aarch64-linux] [-g]
   kofun run INPUT.kofun
   kofun check INPUT.kofun
   kofun test [PATH]
@@ -75,7 +75,11 @@ build_native_file() (
     ensure_native_compiler
     temporary="$2.tmp.$$"
     trap 'rm -f "$temporary"' 0 1 2 15
-    "$NATIVE_COMPILER" "$1" "$3" "$temporary"
+    if test "$4" = true; then
+        "$NATIVE_COMPILER" "$1" "$3" -g "$temporary"
+    else
+        "$NATIVE_COMPILER" "$1" "$3" "$temporary"
+    fi
     test -s "$temporary"
     chmod +x "$temporary"
     mv "$temporary" "$2"
@@ -110,6 +114,7 @@ case ${1-} in
         emitted=
         backend=
         target=
+        debug=false
         while test "$#" -gt 0; do
             case "$1" in
                 -o|--output)
@@ -135,6 +140,10 @@ case ${1-} in
                     target=$2
                     shift 2
                     ;;
+                -g)
+                    debug=true
+                    shift
+                    ;;
                 *)
                     printf '%s\n' "kofun: unknown build option: $1" >&2
                     exit 2
@@ -152,10 +161,19 @@ case ${1-} in
                     "kofun: --backend c cannot be combined with --target" >&2
                 exit 2
             }
+            if "$debug" && test "$target" != x86_64-linux; then
+                printf '%s\n' \
+                    "kofun: -g currently requires --target x86_64-linux" >&2
+                exit 2
+            fi
             mkdir -p "$(dirname "$output")"
-            build_native_file "$input" "$output" "$target"
+            build_native_file "$input" "$output" "$target" "$debug"
             printf '%s\n' "$output"
             exit 0
+        fi
+        if "$debug"; then
+            printf '%s\n' "kofun: -g requires --target x86_64-linux" >&2
+            exit 2
         fi
         if test -z "$emitted"; then
             emitted="$BUILD_DIR/$(basename "${input%.kofun}").c"

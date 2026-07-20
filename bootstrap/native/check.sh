@@ -21,6 +21,12 @@ mkdir -p "$WORK"
 cmp "$NATIVE/encoder.kofun" "$WORK/encoder.kofun"
 grep '^function|elf64_core_answer_debug_image|0|' \
     "$WORK/encoder.ir" >/dev/null
+grep '^function|dwarf_debug_strings_for|1|' \
+    "$WORK/encoder.ir" >/dev/null
+grep '^function|dwarf_debug_info_for|8|' \
+    "$WORK/encoder.ir" >/dev/null
+grep '^function|dwarf_debug_line_for|6|' \
+    "$WORK/encoder.ir" >/dev/null
 
 expand_fixture() (
     fixture=$1
@@ -110,6 +116,74 @@ for target in x86_64-linux aarch64-linux; do
     cmp "$WORK/$stem.elf" "$WORK/$stem.second.elf"
     test "$(wc -c <"$WORK/$stem.elf" | tr -d ' ')" -eq 4099
 done
+
+DEBUG_SOURCE="bootstrap/native/fixtures/core_debug_lines_42.kofun"
+(
+    cd "$ROOT"
+    "$KOFUN" build "$DEBUG_SOURCE" \
+        --target x86_64-linux \
+        -o "$WORK/core_debug_lines_42-release.elf" >/dev/null
+    "$KOFUN" build "$DEBUG_SOURCE" \
+        --target x86_64-linux \
+        -g \
+        -o "$WORK/core_debug_lines_42-debug.elf" >/dev/null
+    "$KOFUN" build "$DEBUG_SOURCE" \
+        --target x86_64-linux \
+        -g \
+        -o "$WORK/core_debug_lines_42-debug.second.elf" >/dev/null
+)
+cmp \
+    "$WORK/core_debug_lines_42-debug.elf" \
+    "$WORK/core_debug_lines_42-debug.second.elf"
+
+set +e
+(
+    cd "$ROOT"
+    "$KOFUN" build "$DEBUG_SOURCE" \
+        -g \
+        -o "$WORK/core_debug_lines_42-missing-target.elf"
+) >"$WORK/core_debug_lines_42-missing-target.stdout" \
+    2>"$WORK/core_debug_lines_42-missing-target.stderr"
+missing_target_status=$?
+(
+    cd "$ROOT"
+    "$KOFUN" build "$DEBUG_SOURCE" \
+        --target aarch64-linux \
+        -g \
+        -o "$WORK/core_debug_lines_42-aarch64-debug.elf"
+) >"$WORK/core_debug_lines_42-aarch64-debug.stdout" \
+    2>"$WORK/core_debug_lines_42-aarch64-debug.stderr"
+aarch64_debug_status=$?
+set -e
+test "$missing_target_status" -eq 2
+test "$aarch64_debug_status" -eq 2
+test ! -e "$WORK/core_debug_lines_42-missing-target.elf"
+test ! -e "$WORK/core_debug_lines_42-aarch64-debug.elf"
+grep -q -- '-g requires --target x86_64-linux' \
+    "$WORK/core_debug_lines_42-missing-target.stderr"
+grep -q -- '-g currently requires --target x86_64-linux' \
+    "$WORK/core_debug_lines_42-aarch64-debug.stderr"
+
+# Source formatting and debug mode must not perturb the release artifact.
+cmp \
+    "$WORK/core_return_42-x86_64.elf" \
+    "$WORK/core_debug_lines_42-release.elf"
+test "$(wc -c <"$WORK/core_debug_lines_42-release.elf" | tr -d ' ')" \
+    -eq 4099
+test "$(wc -c <"$WORK/core_debug_lines_42-debug.elf" | tr -d ' ')" \
+    -gt 4099
+
+# Apart from the ELF section-table fields in the first 64 bytes, the complete
+# loaded release image is byte-identical in the debug file.
+dd if="$WORK/core_debug_lines_42-release.elf" \
+    of="$WORK/core_debug_lines_42-release.loaded" \
+    bs=1 skip=64 count=4035 2>/dev/null
+dd if="$WORK/core_debug_lines_42-debug.elf" \
+    of="$WORK/core_debug_lines_42-debug.loaded" \
+    bs=1 skip=64 count=4035 2>/dev/null
+cmp \
+    "$WORK/core_debug_lines_42-release.loaded" \
+    "$WORK/core_debug_lines_42-debug.loaded"
 
 (
     cd "$WORK"
@@ -216,13 +290,68 @@ grep -Eq 'Number of program headers:[[:space:]]+2' \
 test "$(grep -c 'LOAD' \
     "$WORK/core_return_42-aarch64.program-headers.txt")" -eq 2
 
+readelf -h "$WORK/core_debug_lines_42-release.elf" \
+    >"$WORK/core_debug_lines_42-release.header.txt"
+readelf -h "$WORK/core_debug_lines_42-debug.elf" \
+    >"$WORK/core_debug_lines_42-debug.header.txt"
+grep -Eq 'Number of section headers:[[:space:]]+0' \
+    "$WORK/core_debug_lines_42-release.header.txt"
+grep -Eq 'Number of section headers:[[:space:]]+10' \
+    "$WORK/core_debug_lines_42-debug.header.txt"
+
+readelf --wide --sections "$WORK/core_debug_lines_42-debug.elf" \
+    >"$WORK/core_debug_lines_42-debug.sections.txt"
+for section in \
+    .text \
+    .data \
+    .debug_abbrev \
+    .debug_info \
+    .debug_line \
+    .debug_str \
+    .symtab \
+    .strtab \
+    .shstrtab
+do
+    grep -F "$section" \
+        "$WORK/core_debug_lines_42-debug.sections.txt" >/dev/null
+done
+
+readelf --wide --symbols "$WORK/core_debug_lines_42-debug.elf" \
+    >"$WORK/core_debug_lines_42-debug.symbols.txt"
+grep -Eq '[[:space:]]FUNC[[:space:]]+GLOBAL.*[[:space:]]main$' \
+    "$WORK/core_debug_lines_42-debug.symbols.txt"
+
+readelf --wide --debug-dump=info \
+    "$WORK/core_debug_lines_42-debug.elf" \
+    >"$WORK/core_debug_lines_42-debug.info.txt"
+grep -q 'DW_TAG_compile_unit' \
+    "$WORK/core_debug_lines_42-debug.info.txt"
+grep -q 'DW_TAG_subprogram' \
+    "$WORK/core_debug_lines_42-debug.info.txt"
+grep -Eq 'DW_AT_name[[:space:]]+:.*core_debug_lines_42.kofun$' \
+    "$WORK/core_debug_lines_42-debug.info.txt"
+grep -Eq 'DW_AT_name[[:space:]]+:.*main$' \
+    "$WORK/core_debug_lines_42-debug.info.txt"
+
+readelf --wide --debug-dump=decodedline \
+    "$WORK/core_debug_lines_42-debug.elf" \
+    >"$WORK/core_debug_lines_42-debug.lines.txt"
+grep -Eq \
+    'bootstrap/native/fixtures/core_debug_lines_42.kofun[[:space:]]+3[[:space:]]+0x4000b0' \
+    "$WORK/core_debug_lines_42-debug.lines.txt"
+grep -Eq \
+    'bootstrap/native/fixtures/core_debug_lines_42.kofun[[:space:]]+4[[:space:]]+0x4000c1' \
+    "$WORK/core_debug_lines_42-debug.lines.txt"
+
 chmod +x \
     "$WORK/exit_42.elf" \
     "$WORK/print_sum_42.elf" \
     "$WORK/core_answer.elf" \
     "$WORK/core_answer_debug.elf" \
     "$WORK/core_return_42-x86_64.elf" \
-    "$WORK/core_return_42-aarch64.elf"
+    "$WORK/core_return_42-aarch64.elf" \
+    "$WORK/core_debug_lines_42-release.elf" \
+    "$WORK/core_debug_lines_42-debug.elf"
 
 # The digits are not pre-baked in the file: native arithmetic fills both zero
 # bytes before write(1, buffer, 3). Only the newline starts initialized.
@@ -282,6 +411,21 @@ test "$status" -eq 42
 cmp "$WORK/core_answer.expected" "$WORK/core_answer_debug.stdout"
 test ! -s "$WORK/core_answer_debug.stderr"
 
+for mode in release debug; do
+    set +e
+    "$WORK/core_debug_lines_42-$mode.elf" \
+        >"$WORK/core_debug_lines_42-$mode.stdout" \
+        2>"$WORK/core_debug_lines_42-$mode.stderr"
+    status=$?
+    set -e
+    test "$status" -eq 0
+    printf '42\n' >"$WORK/core_debug_lines_42.expected"
+    cmp \
+        "$WORK/core_debug_lines_42.expected" \
+        "$WORK/core_debug_lines_42-$mode.stdout"
+    test ! -s "$WORK/core_debug_lines_42-$mode.stderr"
+done
+
 if command -v gdb >/dev/null 2>&1; then
     (
         cd "$ROOT"
@@ -305,8 +449,30 @@ if command -v gdb >/dev/null 2>&1; then
     grep -Eq \
         'main .*core_answer_debug.kofun:4' \
         "$WORK/core_answer_debug.gdb.txt"
+
+    (
+        cd "$ROOT"
+        gdb -q -nx -batch \
+            -ex 'set debuginfod enabled off' \
+            -ex 'set pagination off' \
+            -ex 'break main' \
+            -ex 'run' \
+            -ex 'bt' \
+            -ex 'next' \
+            -ex 'frame' \
+            "$WORK/core_debug_lines_42-debug.elf"
+    ) >"$WORK/core_debug_lines_42-debug.gdb.txt" 2>&1
+    grep -Eq \
+        'Breakpoint 1, main .*core_debug_lines_42.kofun:3' \
+        "$WORK/core_debug_lines_42-debug.gdb.txt"
+    grep -Eq \
+        '#0[[:space:]]+main .*core_debug_lines_42.kofun:3' \
+        "$WORK/core_debug_lines_42-debug.gdb.txt"
+    grep -Eq \
+        'main .*core_debug_lines_42.kofun:4' \
+        "$WORK/core_debug_lines_42-debug.gdb.txt"
     printf '%s\n' \
-        "PASS: gdb stepped Kofun lines and named main in the backtrace"
+        "PASS: gdb stepped CLI-built Kofun lines and named main in backtrace"
 else
     printf '%s\n' \
         "SKIP: gdb unavailable; readelf DWARF structure was still verified"
@@ -415,5 +581,7 @@ printf '%s\n' \
     "PASS: rel32 Core call/message fixups printed and exited with 42" \
     "PASS: opt-in debug image has ELF sections, DWARF lines, and a main DIE" \
     "PASS: release Core image remains byte-identical and 231 bytes" \
+    "PASS: build --target x86_64-linux -g emitted source-specific DWARF" \
+    "PASS: general Native Core release stayed byte-identical and 4099 bytes" \
     "PASS: --target aarch64-linux emitted deterministic static EM_AARCH64 ELF" \
     "PASS: x86-64 and AArch64 consume one target-independent parsed Core"

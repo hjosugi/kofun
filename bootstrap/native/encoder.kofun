@@ -638,54 +638,111 @@ fn dwarf_debug_abbrev() -> List[Int] {
     ]
 }
 
-fn dwarf_debug_strings() -> List[Int] {
+fn dwarf_debug_strings_for(source_path: List[Int]) -> List[Int] {
     let producer = [
         75, 111, 102, 117, 110, 32,
         98, 111, 111, 116, 115, 116, 114, 97, 112, 32,
         110, 97, 116, 105, 118, 101, 32,
         101, 110, 99, 111, 100, 101, 114, 0,
     ]
-    let source = concat(dwarf_source_path(), [0])
+    let source = concat(source_path, [0])
     return concat(producer, concat(source, [109, 97, 105, 110, 0]))
 }
 
-fn dwarf_debug_info() -> List[Int] {
-    let producer_offset = 0
-    let source_offset = 31
-    let main_offset = 81
-    let start_address = 4194480 # 0x4000b0
-    let main_address = 4194494  # 0x4000be
+fn dwarf_debug_strings() -> List[Int] {
+    return dwarf_debug_strings_for(dwarf_source_path())
+}
 
+fn dwarf_debug_info_for(
+    source_offset: Int,
+    main_offset: Int,
+    compilation_address: Int,
+    compilation_size: Int,
+    main_address: Int,
+    main_size: Int,
+    main_line: Int,
+) -> List[Int] {
+    if source_offset < 0 || main_offset < 0 ||
+       compilation_address < 0 || compilation_size < 0 ||
+       main_address < 0 || main_size < 0 ||
+       main_line < 1 || main_line > 255 {
+        return []
+    }
     let mut body = u16_le(4) # DWARF v4
     body = concat(body, u32_le(0)) # abbreviation table offset
     body = concat(body, [8]) # address size
     body = concat(body, [1]) # compile_unit abbreviation
-    body = concat(body, u32_le(producer_offset))
+    body = concat(body, u32_le(0)) # producer string offset
     body = concat(body, u16_le(32768)) # implementation-defined Kofun language
     body = concat(body, u32_le(source_offset))
     body = concat(body, u32_le(0)) # .debug_line offset
-    body = concat(body, u64_le(start_address))
-    body = concat(body, u64_le(52)) # complete executable text range
+    body = concat(body, u64_le(compilation_address))
+    body = concat(body, u64_le(compilation_size))
 
     body = concat(body, [2]) # subprogram abbreviation
     body = concat(body, u32_le(main_offset))
-    body = concat(body, [1, 1]) # file 1, declaration line 1
+    body = concat(body, [1, main_line]) # file 1 and declaration line
     body = concat(body, u64_le(main_address))
-    body = concat(body, u64_le(38)) # main through ret
+    body = concat(body, u64_le(main_size))
     body = concat(body, [0]) # end compile_unit children
     return concat(u32_le(len(body)), body)
 }
 
-fn dwarf_line_row(pc_advance: Int) -> List[Int] {
-    # Advance the address, advance one source line, then append a row.
-    return [
-        2, pc_advance, # DW_LNS_advance_pc
-        3, 1,          # DW_LNS_advance_line
-        1,             # DW_LNS_copy
-    ]
+fn dwarf_debug_info() -> List[Int] {
+    return dwarf_debug_info_for(
+        31,
+        81,
+        4194480, # complete fixture starts at _start
+        52,
+        4194494, # main at 0x4000be
+        38,
+        1,
+    )
 }
 
-fn dwarf_debug_line() -> List[Int] {
+fn uleb128(value: Int) -> List[Int] {
+    if value < 0 {
+        return []
+    }
+    let mut remaining = value
+    let mut encoded = []
+    while remaining >= 128 {
+        encoded = concat(encoded, [remaining % 128 + 128])
+        remaining = remaining // 128
+    }
+    return concat(encoded, [remaining])
+}
+
+fn sleb128(value: Int) -> List[Int] {
+    let mut remaining = value
+    let mut encoded = []
+    let mut done = false
+    while !done {
+        let mut next = remaining % 128
+        remaining = remaining // 128
+        let sign = next >= 64
+        if (remaining == 0 && !sign) || (remaining == -1 && sign) {
+            done = true
+        } else {
+            next = next + 128
+        }
+        encoded = concat(encoded, [next])
+    }
+    return encoded
+}
+
+fn dwarf_debug_line_for(
+    source_path: List[Int],
+    start_address: Int,
+    address_offsets: List[Int],
+    source_lines: List[Int],
+    end_offset: Int,
+) -> List[Int] {
+    if start_address < 0 ||
+       len(address_offsets) == 0 ||
+       len(address_offsets) != len(source_lines) {
+        return []
+    }
     let mut header = [
         1,   # minimum instruction length
         1,   # maximum operations per instruction
@@ -696,23 +753,59 @@ fn dwarf_debug_line() -> List[Int] {
         0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 1,
         0,   # empty include-directory table
     ]
-    header = concat(header, dwarf_source_path())
+    header = concat(header, source_path)
     header = concat(header, [0, 0, 0, 0, 0]) # file terminator and table end
 
     let mut program = [0, 9, 2] # extended DW_LNE_set_address
-    program = concat(program, u64_le(4194494)) # main at 0x4000be
-    program = concat(program, [3, 1, 1]) # line 2 at main entry
-    program = concat(program, dwarf_line_row(5))  # line 3
-    program = concat(program, dwarf_line_row(3))  # line 4
-    program = concat(program, dwarf_line_row(3))  # line 5
-    program = concat(program, dwarf_line_row(25)) # line 6
-    program = concat(program, [2, 2, 0, 1, 1]) # end at 0x4000e4
+    program = concat(program, u64_le(start_address))
+
+    let mut current_offset = 0
+    let mut current_line = 1
+    for index in 0 .. len(address_offsets) {
+        let offset = address_offsets[index]
+        let line = source_lines[index]
+        if offset < current_offset || offset > end_offset || line < 1 {
+            return []
+        }
+        if offset != current_offset {
+            program = concat(program, [2])
+            program = concat(
+                program,
+                uleb128(offset - current_offset),
+            )
+        }
+        if line != current_line {
+            program = concat(program, [3])
+            program = concat(program, sleb128(line - current_line))
+        }
+        program = concat(program, [1])
+        current_offset = offset
+        current_line = line
+    }
+    if end_offset < current_offset {
+        return []
+    }
+    if end_offset != current_offset {
+        program = concat(program, [2])
+        program = concat(program, uleb128(end_offset - current_offset))
+    }
+    program = concat(program, [0, 1, 1]) # DW_LNE_end_sequence
 
     let body = concat(
         u16_le(4),
         concat(u32_le(len(header)), concat(header, program)),
     )
     return concat(u32_le(len(body)), body)
+}
+
+fn dwarf_debug_line() -> List[Int] {
+    return dwarf_debug_line_for(
+        dwarf_source_path(),
+        4194494,
+        [0, 5, 8, 11, 36],
+        [2, 3, 4, 5, 6],
+        38,
+    )
 }
 
 fn elf64_symbol(

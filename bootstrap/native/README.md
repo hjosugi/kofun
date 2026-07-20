@@ -90,25 +90,40 @@ Unlike the page-backed print fixture, this image keeps its message in the RX
 segment. It demonstrates deterministic multi-label rel32 resolution for both a
 forward `call` and a RIP-relative data reference.
 
-## Opt-in debug image
+## Opt-in x86-64 debug information
 
-`elf64_core_answer_debug_image()` preserves the compact fixture's machine code,
-read-only data, and `PT_LOAD` descriptors, then appends non-allocating ELF
-sections. Only the ELF header's section-table fields differ within the original
-231-byte file range:
+The general Native Core CLI accepts `-g` for x86-64 Linux:
+
+```sh
+./bin/kofun build source.kofun \
+  --target x86_64-linux -g -o build/program
+```
+
+The frontend retains source lines on parsed expression nodes. x86-64 lowering
+records the exact instruction offset for each distinct line, then the shared
+metadata builder appends non-allocating ELF sections:
 
 ```text
 .text           executable Core code
-.rodata         "42\n"
+.data           output buffer
 .debug_abbrev   DWARF v4 compile-unit and subprogram declarations
-.debug_info     Kofun compilation unit and `main` function DIE
-.debug_line     addresses 0x4000be..0x4000e4 mapped to source lines 2..6
+.debug_info     source-specific Kofun compilation unit and `main` function DIE
+.debug_line     emitted instruction addresses mapped to parsed source lines
 .debug_str      producer, source path, and function name
-.symtab/.strtab `_start` and `main` symbols
+.symtab/.strtab `main` function symbol
 .shstrtab       ELF section names
 ```
 
-The fixture emitter makes debug metadata explicitly opt-in:
+Without `-g`, the compiler follows the original release path: a 4,099-byte
+static ELF with no section table. The gate compares the release artifact to its
+pre-debug SHA-256 and compares every loaded byte after the ELF header with the
+debug image. Debug metadata therefore cannot change the executable code, data,
+entry point, or `PT_LOAD` layout.
+
+`core_compiler.c` mirrors the generic `dwarf_debug_*_for` builder in canonical
+`encoder.kofun`; it does not maintain a second fixture-specific DWARF layout.
+The compact historical fixture remains available as an independent metadata
+regression:
 
 ```sh
 sh bootstrap/native/emit-fixture.sh \
@@ -124,16 +139,16 @@ unchanged. All layout and DWARF bytes are authored by `encoder.kofun`; the
 current Stage1-compatible packed bridge only transports those bytes until
 Stage1 can compile the encoder's list operations.
 
-`check.sh` requires `readelf` and verifies every section, the `main`
-`DW_TAG_subprogram`, and exact source-line rows. When `gdb` is installed, it
-also runs a batch session that breaks at `main`, steps from Kofun line 2 to
-lines 3 and 4, and checks that the backtrace names `main`.
+`check.sh` requires `readelf` and validates every section, the source path,
+`main` `DW_TAG_subprogram`, symbol, and exact line rows of a CLI-built program.
+When `gdb` is installed, a batch session breaks at `main`, shows Kofun line 3,
+steps to line 4, and verifies a named Kofun `main` backtrace.
 
-This is an end-to-end debug-info slice for the native Core checkpoint, not a
-claim that the general CLI has a native `-g` path. `bin/kofun build -g` remains
-blocked on registering general Kofun-native lowering with the Python-free CLI.
-Issue #13 therefore remains open until that integration uses the same metadata
-builder for arbitrary functions and spans.
+Native Core currently admits exactly one function, `main`, so one function DIE
+is complete for every accepted program. When calls and more functions enter
+Native Core, lowering must add one DIE and symbol for each emitted function.
+`-g` on AArch64 is rejected explicitly; AArch64 and Mach-O debug formats are
+separate future work.
 
 ## Labels and fixups
 
@@ -197,7 +212,7 @@ Implemented here:
 - distinct RX and RW mappings;
 - three end-to-end Linux x86-64 executable artifact gates;
 - opt-in section headers, symbols, and DWARF v4 line/function information for
-  the compact Core checkpoint.
+  arbitrary source accepted by the general x86-64 Native Core CLI.
 
 Still open:
 
@@ -208,4 +223,4 @@ Still open:
 - native stdout/stderr formatting and canonical `R010` diagnostics;
 - conditional branches, allocation, Mach-O, and additional targets;
 - registering the native backend in the full differential runner;
-- wiring debug metadata and `-g` into general Python-free CLI native builds.
+- AArch64 debug information and variable/location DIEs.

@@ -76,6 +76,7 @@ make verify
 
 ```text
 kofun build INPUT.kofun [-o OUTPUT] [--emit-c OUTPUT.c]
+            [--target x86_64-linux|aarch64-linux] [-g]
 kofun run INPUT.kofun
 kofun check INPUT.kofun
 kofun test [PATH]
