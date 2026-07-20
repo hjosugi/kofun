@@ -1,8 +1,9 @@
-# Stage 2 currently accepts mutable declaration syntax but not assignment.
+# Stage 2 Core executes assignment to a mutable Int binding.
 
 fn main() -> Int {
     let base: Int = 40
-    let mut adjustment: Int = 2
+    let mut adjustment: Int = 1
+    adjustment = adjustment + 1
     print(base + adjustment)
     return 0
 }

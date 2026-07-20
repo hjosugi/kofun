@@ -1173,6 +1173,63 @@ static char *emit_condition(
     return condition.data;
 }
 
+static int binding_mutability_before(
+    const char *source,
+    int64_t body_open,
+    int64_t assignment_start,
+    const char *binding_name
+) {
+    int64_t cursor = skip_trivia(source, token_end(source, body_open));
+    int result = -1;
+    while (cursor < assignment_start) {
+        if (token_equal(source, cursor, "let")) {
+            int64_t name_cursor = skip_trivia(
+                source,
+                token_end(source, cursor)
+            );
+            bool mutable = false;
+            if (
+                name_cursor < assignment_start &&
+                token_equal(source, name_cursor, "mut")
+            ) {
+                mutable = true;
+                name_cursor = skip_trivia(
+                    source,
+                    token_end(source, name_cursor)
+                );
+            }
+            if (
+                name_cursor < assignment_start &&
+                strcmp(token_kind(source, name_cursor), "identifier") == 0 &&
+                token_equal(source, name_cursor, binding_name)
+            ) {
+                result = mutable ? 1 : 0;
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return result;
+}
+
+static char *assignment_error(
+    const char *message,
+    const char *name,
+    int64_t cursor,
+    const char *hint
+) {
+    Buffer error;
+    buffer_init(&error);
+    buffer_format(
+        &error,
+        "error[E2S22]: %s `%s` at byte %" PRId64 "; %s",
+        message,
+        name,
+        cursor,
+        hint
+    );
+    return error.data;
+}
+
 static char *lower_body(
     const char *source,
     int64_t open,
@@ -1369,25 +1426,89 @@ static char *lower_body(
         } else if (
             strcmp(token_kind(source, cursor), "identifier") == 0
         ) {
-            int64_t value_end = expression_end(source, cursor);
-            if (value_end < 0) {
-                free(emitted.data);
-                return lower_error(
-                    "E2S12",
-                    "invalid expression statement",
-                    cursor
+            int64_t assignment_start = cursor;
+            char *name = token_copy(source, cursor);
+            int64_t equals = skip_trivia(source, token_end(source, cursor));
+            if (equals < length && token_equal(source, equals, "=")) {
+                int mutability = binding_mutability_before(
+                    source,
+                    open,
+                    assignment_start,
+                    name
                 );
+                if (mutability < 0) {
+                    char *error = assignment_error(
+                        "unknown assignment target",
+                        name,
+                        assignment_start,
+                        "declare it before assignment"
+                    );
+                    free(name);
+                    free(emitted.data);
+                    return error;
+                }
+                if (mutability == 0) {
+                    char *error = assignment_error(
+                        "cannot assign to immutable binding",
+                        name,
+                        assignment_start,
+                        "declare it with `let mut`"
+                    );
+                    free(name);
+                    free(emitted.data);
+                    return error;
+                }
+                int64_t value_start = skip_trivia(
+                    source,
+                    token_end(source, equals)
+                );
+                int64_t value_end = expression_end(source, value_start);
+                if (value_end < 0) {
+                    free(name);
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S12",
+                        "invalid Int expression",
+                        value_start
+                    );
+                }
+                char *value = emit_expression(source, value_start, value_end);
+                buffer_format(
+                    &emitted,
+                    "    {\n"
+                    "        int64_t kofun_replacement = %s;\n"
+                    "        if (kofun_failed) return %s;\n"
+                    "        k_%s = kofun_replacement;\n"
+                    "    }\n",
+                    value,
+                    failure_result,
+                    name
+                );
+                free(value);
+                cursor = skip_trivia(source, value_end);
+            } else {
+                int64_t value_end = expression_end(source, cursor);
+                if (value_end < 0) {
+                    free(name);
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S12",
+                        "invalid expression statement",
+                        cursor
+                    );
+                }
+                char *value = emit_expression(source, cursor, value_end);
+                buffer_format(
+                    &emitted,
+                    "    (void)%s;\n"
+                    "    if (kofun_failed) return %s;\n",
+                    value,
+                    failure_result
+                );
+                free(value);
+                cursor = skip_trivia(source, value_end);
             }
-            char *value = emit_expression(source, cursor, value_end);
-            buffer_format(
-                &emitted,
-                "    (void)%s;\n"
-                "    if (kofun_failed) return %s;\n",
-                value,
-                failure_result
-            );
-            free(value);
-            cursor = skip_trivia(source, value_end);
+            free(name);
         } else {
             free(emitted.data);
             return lower_error("E2S10", "unsupported Core statement", cursor);

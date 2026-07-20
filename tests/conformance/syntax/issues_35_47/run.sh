@@ -43,6 +43,31 @@ expect_stage2_unsupported() {
     printf '%s\n' "PASS unsupported: $stem"
 }
 
+expect_stage2_diagnostic() {
+    source=$1
+    expected=$2
+    stem=$(basename "${source%.kofun}")
+    set +e
+    "$WORK/kofun-stage2" \
+        "$source" \
+        "$WORK/$stem.c" \
+        "$WORK/$stem.ir" \
+        "$WORK/$stem.tokens" \
+        >"$WORK/$stem.stdout" 2>"$WORK/$stem.stderr"
+    status=$?
+    set -e
+
+    test "$status" -eq 1 ||
+        fail "$stem: Stage 2 unexpectedly returned $status"
+    test ! -e "$WORK/$stem.c" ||
+        fail "$stem: Stage 2 emitted C after a compile error"
+    test ! -s "$WORK/$stem.stderr" ||
+        fail "$stem: Stage 2 wrote an unexpected stderr diagnostic"
+    cmp "$expected" "$WORK/$stem.stdout" ||
+        fail "$stem: Stage 2 diagnostic changed"
+    printf '%s\n' "PASS diagnostic: $stem"
+}
+
 for issue in 35 36 37 38 39 40 41 42 43 44 45 46 47; do
     grep "^## #$issue — " "$SPEC" >/dev/null ||
         fail "normative section for issue #$issue is missing"
@@ -88,6 +113,13 @@ grep '^function|main|0|' "$WORK/mutable.ir" >/dev/null ||
     fail "Stage 2 IR did not record fn main"
 printf '%s\n' "PASS executable Stage 2 immutable/mutable declarations"
 
+expect_stage2_diagnostic \
+    "$CASES/immutable_assignment.kofun" \
+    "$CASES/immutable_assignment.stdout"
+expect_stage2_diagnostic \
+    "$CASES/unknown_assignment.kofun" \
+    "$CASES/unknown_assignment.stdout"
+
 "$WORK/kofun-stage2" \
     "$CASES/structural_surface.kofun" \
     "$WORK/structural.kofun" \
@@ -131,4 +163,4 @@ expect_stage2_unsupported "$CASES/unsupported_while.kofun"
 
 printf '%s\n' \
     "PASS: syntax issues #35-#47 bootstrap capability checkpoint" \
-    "coverage: 13 subjects; 4 partial; 1 Core-implemented; 8 unsupported via 7 fixtures"
+    "coverage: 13 subjects; 3 partial; 2 Core-implemented; 8 unsupported via 7 fixtures"
