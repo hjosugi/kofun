@@ -1,0 +1,92 @@
+# Small, platform-independent List checkpoint.
+#
+# Version 1 is deliberately specialized to List[Int]. Int is Copy, so reads,
+# callback arguments, and returned elements do not pretend that generic
+# non-Copy element borrowing is already specified or implemented.
+
+type ListError =
+    | ListEmpty
+    | ListIndexOutOfBounds(Int, Int)
+
+fn list_int_empty() -> List[Int] {
+    let values: List[Int] = []
+    return values
+}
+
+fn list_int_length(read values: List[Int]) -> Int {
+    return len(values)
+}
+
+fn list_int_is_empty(read values: List[Int]) -> Bool {
+    return len(values) == 0
+}
+
+# Positive indexes count from the front. Negative indexes count from the end,
+# so -1 is the last element. The error retains the requested index and length.
+fn list_int_get(
+    read values: List[Int],
+    index: Int,
+) -> Result[Int, ListError] {
+    let length = len(values)
+    if index < -length || index >= length {
+        return Err(ListIndexOutOfBounds(index, length))
+    }
+    return Ok(values[index])
+}
+
+fn list_int_first(read values: List[Int]) -> Result[Int, ListError] {
+    if len(values) == 0 {
+        return Err(ListEmpty)
+    }
+    return Ok(values[0])
+}
+
+fn list_int_last(read values: List[Int]) -> Result[Int, ListError] {
+    if len(values) == 0 {
+        return Err(ListEmpty)
+    }
+    return Ok(values[-1])
+}
+
+# These operations are eager and return independent List values. The source
+# lists remain unchanged.
+fn list_int_push(read values: List[Int], value: Int) -> List[Int] {
+    return push(values, value)
+}
+
+fn list_int_concat(
+    read left: List[Int],
+    read right: List[Int],
+) -> List[Int] {
+    return concat(left, right)
+}
+
+fn list_int_reverse(read values: List[Int]) -> List[Int] {
+    return reverse(values)
+}
+
+fn list_int_map(
+    read values: List[Int],
+    transform: fn(Int) -> Int,
+) -> List[Int] {
+    return map(values, transform)
+}
+
+fn list_int_filter(
+    read values: List[Int],
+    predicate: fn(Int) -> Bool,
+) -> List[Int] {
+    return filter(values, predicate)
+}
+
+fn list_int_fold(
+    read values: List[Int],
+    initial: Int,
+    combine: fn(Int, Int) -> Int,
+) -> Int {
+    return fold(values, initial, combine)
+}
+
+fn list_int_contains(read values: List[Int], target: Int) -> Bool {
+    return contains(values, target)
+}

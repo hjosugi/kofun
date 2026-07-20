@@ -1,0 +1,39 @@
+# Compact C11/x86-64 projection of checked List index semantics.
+# Outcomes: 0 = value, 1 = ListEmpty, 2 = ListIndexOutOfBounds.
+
+fn normalized_index(length: Int, index: Int) -> Int {
+    if index < 0 {
+        return length + index
+    }
+    return index
+}
+
+fn get_outcome(length: Int, index: Int) -> Int {
+    if normalized_index(length, index) < 0 {
+        return 2
+    }
+    if normalized_index(length, index) >= length {
+        return 2
+    }
+    return 0
+}
+
+fn edge_outcome(length: Int) -> Int {
+    if length == 0 {
+        return 1
+    }
+    return 0
+}
+
+fn main() {
+    print(normalized_index(5, 0))
+    print(normalized_index(5, -1))
+    print(normalized_index(5, -5))
+    print(get_outcome(5, 4))
+    print(get_outcome(5, -5))
+    print(get_outcome(5, 5))
+    print(get_outcome(5, -6))
+    print(get_outcome(0, 0))
+    print(edge_outcome(5))
+    print(edge_outcome(0))
+}

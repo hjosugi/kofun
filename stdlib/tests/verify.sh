@@ -140,6 +140,7 @@ printf 'stdlib Stage 1 errno Core: PASS\n'
 
 sh "$stdlib_dir/testing/tests/verify.sh"
 sh "$stdlib_dir/logging/tests/verify.sh"
+sh "$stdlib_dir/list/tests/verify.sh"
 
 [ "$(uname -s)" = Linux ] ||
     fail 'native file round-trip requires Linux'

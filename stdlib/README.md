@@ -45,6 +45,11 @@ instants, non-negative durations, checked elapsed/deadline arithmetic, and an
 explicit manual clock. Its Linux adapter is the only system-time read; the
 focused gate executes a deterministic Int-Core projection of the pure rules.
 
+The platform-independent [`list/`](list/) checkpoint defines an eager,
+value-returning `List[Int]` surface with typed empty/index failures and ordered
+pipeline contracts. Its gate executes real Lists through direct x86-64 plus a
+compact checked-access projection through both C11 and x86-64.
+
 Run the repository-local, Python-free contract checks with:
 
 ```sh
