@@ -1,0 +1,4 @@
+# Machine-readable Kofun manifest for the user-defined function corpus.
+fn expected_cases() -> Int {
+    return 5
+}

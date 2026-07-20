@@ -205,12 +205,38 @@ require_source() {
 
 emit_c() (
     require_source "$1"
-    ensure_compiler
-    temporary="$2.tmp.$$"
-    trap 'rm -f "$temporary"' 0 1 2 15
-    "$COMPILER" "$1" "$temporary"
+    temporary="$2.tmp.$$.c"
+    stage1_stdout="$2.stage1.stdout.$$"
+    stage1_stderr="$2.stage1.stderr.$$"
+    stage2_stdout="$2.stage2.stdout.$$"
+    stage2_stderr="$2.stage2.stderr.$$"
+    stage2_ir="$2.stage2.ir.$$"
+    stage2_tokens="$2.stage2.tokens.$$"
+    trap 'rm -f "$temporary" "$stage1_stdout" "$stage1_stderr" "$stage2_stdout" "$stage2_stderr" "$stage2_ir" "$stage2_tokens"' 0 1 2 15
+    ensure_stage2_compiler
+    set +e
+    "$STAGE2_COMPILER" \
+        "$1" "$temporary" "$stage2_ir" "$stage2_tokens" \
+        >"$stage2_stdout" 2>"$stage2_stderr"
+    stage2_status=$?
+    set -e
+    if test "$stage2_status" -ne 0; then
+        rm -f "$temporary"
+        ensure_compiler
+        set +e
+        "$COMPILER" "$1" "$temporary" \
+            >"$stage1_stdout" 2>"$stage1_stderr"
+        stage1_status=$?
+        set -e
+        if test "$stage1_status" -ne 0; then
+            test ! -s "$stage2_stderr" || cat "$stage2_stderr" >&2
+            test ! -s "$stage2_stdout" || cat "$stage2_stdout" >&2
+            exit "$stage2_status"
+        fi
+    fi
     test -s "$temporary" || exit 1
     mv "$temporary" "$2"
+    printf '%s\n' "$2"
 )
 
 emit_c_abi() (

@@ -23,10 +23,11 @@ Python runtime or source is part of the bootstrap.
 ## Stage 2 frontend checkpoint
 
 `bootstrap/stage2/compiler.kofun` implements lexical scanning, token spans,
-top-level function structure, deterministic textual IR, and a parse-gated
-identity emitter. Its audited C11 seed round-trips the Stage 1 compiler, the
-Stage 2 frontend, and a fixture. Repeating the projection produces identical
-source, token tape, and IR.
+top-level function structure, deterministic textual IR, a parse-gated identity
+emitter, and bounded multi-function `Int` Core C11 lowering. The lowerer
+supports parameters, results, recursion, and forward references. Its audited
+C11 seed round-trips the Stage 1 compiler, the Stage 2 frontend, and a fixture.
+Repeating the projection produces identical source, token tape, and IR.
 
 Run:
 
@@ -34,8 +35,10 @@ Run:
 sh bootstrap/stage2/check.sh
 ```
 
-This is a deterministic frontend boundary, not the Stage 2 fixed point. It does
-not yet lower its own function bodies or reproduce its executable seed.
+This is a deterministic frontend boundary, not the Stage 2 fixed point. It
+lowers the dedicated Int Core fixture, but cannot yet lower the Text, List,
+file-I/O, and control-flow surface used by its own source or reproduce its
+executable seed.
 
 ## Honest status
 

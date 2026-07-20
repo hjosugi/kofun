@@ -22,14 +22,20 @@ Two executable checkpoints extend this path without claiming full integration:
 ```text
 bootstrap/stage2/compiler.kofun
   -> token-span tape + structural function IR + stable Kofun projection
+  -> bounded multi-function Int Core C11 lowering
 
 bootstrap/native/encoder.kofun
   -> ELF64 headers + x86-64 instruction bytes
   -> static Linux executable
 ```
 
-The Stage 2 checkpoint does not lower function bodies yet, and the native
-checkpoint is not registered as a general CLI backend.
+The Stage 2 checkpoint lowers a bounded `Int` Core with parameters, results,
+recursion, and forward references. It does not lower its own Text/List/file-I/O
+implementation. The native checkpoint is registered for explicit Linux
+targets. Its x86-64 Int profile executes parameters, results, forward and mutual
+recursion, guarded returns, and checked arithmetic directly; the shared
+x86-64/AArch64 scalar profile and the x86-64 List/Text profiles remain separate
+bounded frontends.
 
 ## Target pipeline
 

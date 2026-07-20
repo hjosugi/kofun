@@ -1,0 +1,7 @@
+fn square(value: Int) -> Int {
+    return value * value
+}
+
+fn main() {
+    print(square(square(square(65535))))
+}

@@ -1,0 +1,18 @@
+# expect-stdout: 42
+fn even_step(n: Int) -> Int {
+    if n == 0 {
+        return 42
+    }
+    return odd_step(n - 1)
+}
+
+fn odd_step(n: Int) -> Int {
+    if n == 0 {
+        return 0
+    }
+    return even_step(n - 1)
+}
+
+fn main() {
+    print(even_step(10))
+}

@@ -488,8 +488,35 @@ fn primary_end(source: Text, start: Int) -> Int {
         return -1
     }
     let kind = token_kind(source, cursor)
-    if kind == "integer" || kind == "identifier" {
+    if kind == "integer" {
         return token_end(source, cursor)
+    }
+    if kind == "identifier" {
+        let open = skip_trivia(source, token_end(source, cursor))
+        if open >= len(source) || token_text(source, open) != "(" {
+            return token_end(source, cursor)
+        }
+        let mut argument = skip_trivia(source, token_end(source, open))
+        if argument < len(source) && token_text(source, argument) == ")" {
+            return token_end(source, argument)
+        }
+        while argument < len(source) {
+            let argument_end = expression_end(source, argument)
+            if argument_end < 0 {
+                return -1
+            }
+            let separator = skip_trivia(source, argument_end)
+            if separator < len(source) &&
+               token_text(source, separator) == ")" {
+                return token_end(source, separator)
+            }
+            if separator >= len(source) ||
+               token_text(source, separator) != "," {
+                return -1
+            }
+            argument = skip_trivia(source, token_end(source, separator))
+        }
+        return -1
     }
     if token_text(source, cursor) == "(" {
         let value_start = skip_trivia(source, token_end(source, cursor))
@@ -568,7 +595,30 @@ fn emit_primary(source: Text, start: Int, end: Int) -> Text {
         replace(text_slice(source, cursor, end), "_", "") + ")"
     }
     if kind == "identifier" {
-        return "k_" + text_slice(source, cursor, end)
+        let name = token_text(source, cursor)
+        let open = skip_trivia(source, token_end(source, cursor))
+        if open >= end || token_text(source, open) != "(" {
+            return "k_" + name
+        }
+        let mut emitted = "kofun_fn_" + name + "("
+        let mut argument = skip_trivia(source, token_end(source, open))
+        let mut arguments = 0
+        while argument < end && token_text(source, argument) != ")" {
+            let argument_end = expression_end(source, argument)
+            if arguments > 0 {
+                emitted = emitted + ", "
+            }
+            emitted = emitted +
+            emit_expression(source, argument, argument_end)
+            arguments = arguments + 1
+            let separator = skip_trivia(source, argument_end)
+            if separator < end && token_text(source, separator) == "," {
+                argument = skip_trivia(source, token_end(source, separator))
+            } else {
+                argument = separator
+            }
+        }
+        return emitted + ")"
     }
     if token_text(source, cursor) == "(" {
         let value_start = skip_trivia(source, token_end(source, cursor))
@@ -640,13 +690,131 @@ fn emit_expression(source: Text, start: Int, end: Int) -> Text {
     return emitted
 }
 
-fn core_body_open(source: Text, function_start: Int) -> Int {
+fn function_arity(source: Text, wanted: Text) -> Int {
+    let mut cursor = skip_trivia(source, 0)
+    let mut found = -1
+    while cursor < len(source) {
+        if function_name(source, cursor) == wanted {
+            if found >= 0 {
+                return -2
+            }
+            found = parameter_count(source, cursor)
+        }
+        cursor = skip_trivia(source, function_end(source, cursor))
+    }
+    return found
+}
+
+fn call_arity(source: Text, open: Int) -> Int {
+    let mut cursor = skip_trivia(source, token_end(source, open))
+    if cursor < len(source) && token_text(source, cursor) == ")" {
+        return 0
+    }
+    let mut arity = 0
+    while cursor < len(source) {
+        let argument_end = expression_end(source, cursor)
+        if argument_end < 0 {
+            return -1
+        }
+        arity = arity + 1
+        let separator = skip_trivia(source, argument_end)
+        if separator < len(source) && token_text(source, separator) == ")" {
+            return arity
+        }
+        if separator >= len(source) || token_text(source, separator) != "," {
+            return -1
+        }
+        cursor = skip_trivia(source, token_end(source, separator))
+    }
+    return -1
+}
+
+fn validate_core_calls(source: Text) -> Text {
+    let mut cursor = skip_trivia(source, 0)
+    let mut previous = ""
+    while cursor < len(source) {
+        if token_kind(source, cursor) == "identifier" {
+            let name = token_text(source, cursor)
+            let open = skip_trivia(source, token_end(source, cursor))
+            if previous != "fn" && name != "print" &&
+               open < len(source) && token_text(source, open) == "(" {
+                let expected = function_arity(source, name)
+                if expected == -2 {
+                    return "error[E2S16]: duplicate Core function `" + name +
+                    "` at byte " + to_text(cursor)
+                }
+                if expected < 0 {
+                    return "error[E2S16]: unknown Core function `" + name +
+                    "` at byte " + to_text(cursor)
+                }
+                let actual = call_arity(source, open)
+                if actual != expected {
+                    return "error[E2S17]: Core function `" + name +
+                    "` expects " + to_text(expected) + " arguments, got " +
+                    to_text(actual) + " at byte " + to_text(cursor)
+                }
+            }
+        }
+        previous = token_text(source, cursor)
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return "ok"
+}
+
+fn core_parameters(source: Text, function_start: Int) -> Text {
+    let parameters = parameter_open(source, function_start)
+    if parameters < 0 {
+        return "error[E2S15]: malformed Core parameter list"
+    }
+    let parameters_end = balanced_end(source, parameters, "(", ")")
+    if parameters_end < 0 {
+        return "error[E2S15]: malformed Core parameter list"
+    }
+    let mut cursor = skip_trivia(source, token_end(source, parameters))
+    let mut emitted = ""
+    let mut count = 0
+    while cursor < parameters_end && token_text(source, cursor) != ")" {
+        if token_kind(source, cursor) != "identifier" {
+            return "error[E2S15]: expected Core parameter name at byte " +
+            to_text(cursor)
+        }
+        let name = token_text(source, cursor)
+        let colon = skip_trivia(source, token_end(source, cursor))
+        let type_cursor = skip_trivia(source, token_end(source, colon))
+        if colon >= parameters_end || token_text(source, colon) != ":" ||
+           type_cursor >= parameters_end ||
+           token_text(source, type_cursor) != "Int" {
+            return "error[E2S15]: Core parameters must have type Int at byte " +
+            to_text(cursor)
+        }
+        if count > 0 {
+            emitted = emitted + ", "
+        }
+        emitted = emitted + "int64_t k_" + name
+        count = count + 1
+        let separator = skip_trivia(source, token_end(source, type_cursor))
+        if separator < parameters_end &&
+           token_text(source, separator) == "," {
+            cursor = skip_trivia(source, token_end(source, separator))
+        } else {
+            cursor = separator
+        }
+    }
+    return emitted
+}
+
+fn core_body_open(
+    source: Text,
+    function_start: Int,
+    is_main: Bool
+) -> Int {
     let parameters = parameter_open(source, function_start)
     if parameters < 0 {
         return -1
     }
     let parameters_end = balanced_end(source, parameters, "(", ")")
-    if parameters_end < 0 {
+    if parameters_end < 0 ||
+       starts_with(core_parameters(source, function_start), "error[") {
         return -1
     }
     let mut cursor = skip_trivia(source, parameters_end)
@@ -656,6 +824,8 @@ fn core_body_open(source: Text, function_start: Int) -> Int {
             return -1
         }
         cursor = skip_trivia(source, token_end(source, cursor))
+    } else if !is_main {
+        return -1
     }
     if cursor >= len(source) || token_text(source, cursor) != "{" {
         return -1
@@ -663,10 +833,41 @@ fn core_body_open(source: Text, function_start: Int) -> Int {
     return cursor
 }
 
-fn lower_body(source: Text, open: Int) -> Text {
+fn emit_condition(source: Text, start: Int, open: Int) -> Text {
+    let left_end = expression_end(source, start)
+    if left_end < 0 {
+        return "error[E2S18]: invalid Core condition at byte " + to_text(start)
+    }
+    let operator_cursor = skip_trivia(source, left_end)
+    let operator = token_text(source, operator_cursor)
+    if operator != "==" && operator != "!=" && operator != "<" &&
+       operator != "<=" && operator != ">" && operator != ">=" {
+        return "error[E2S18]: Core condition requires a comparison at byte " +
+        to_text(operator_cursor)
+    }
+    let right_start = skip_trivia(source, token_end(source, operator_cursor))
+    let right_end = expression_end(source, right_start)
+    if right_end < 0 || skip_trivia(source, right_end) != open {
+        return "error[E2S18]: invalid Core comparison at byte " +
+        to_text(right_start)
+    }
+    return emit_expression(source, start, left_end) + " " + operator + " " +
+    emit_expression(source, right_start, right_end)
+}
+
+fn lower_body(
+    source: Text,
+    open: Int,
+    is_main: Bool,
+    append_default: Bool
+) -> Text {
     let mut emitted = ""
     let mut cursor = skip_trivia(source, token_end(source, open))
     let mut returned = false
+    let mut failure_result = "0"
+    if is_main {
+        failure_result = "1"
+    }
     while cursor < len(source) && token_text(source, cursor) != "}" {
         if returned {
             return "error[E2S14]: statement follows `return` at byte " +
@@ -704,7 +905,7 @@ fn lower_body(source: Text, open: Int) -> Text {
             }
             emitted = emitted + "    int64_t k_" + name + " = " +
             emit_expression(source, value_start, value_end) + ";\n" +
-            "    if (kofun_failed) return 1;\n"
+            "    if (kofun_failed) return " + failure_result + ";\n"
             cursor = skip_trivia(source, value_end)
         } else if statement == "print" {
             let call_open = skip_trivia(source, token_end(source, cursor))
@@ -729,10 +930,51 @@ fn lower_body(source: Text, open: Int) -> Text {
             "    {\n" +
             "        int64_t kofun_value = " +
             emit_expression(source, value_start, value_end) + ";\n" +
-            "        if (kofun_failed) return 1;\n" +
+            "        if (kofun_failed) return " + failure_result + ";\n" +
             "        printf(\"%\" PRId64 \"\\n\", kofun_value);\n" +
             "    }\n"
             cursor = skip_trivia(source, token_end(source, call_close))
+        } else if statement == "if" {
+            let condition_start = skip_trivia(source, token_end(source, cursor))
+            let left_end = expression_end(source, condition_start)
+            if left_end < 0 {
+                return "error[E2S18]: malformed Core if at byte " +
+                to_text(cursor)
+            }
+            let operator_cursor = skip_trivia(source, left_end)
+            let right_start = skip_trivia(
+                source,
+                token_end(source, operator_cursor)
+            )
+            let right_end = expression_end(source, right_start)
+            if right_end < 0 {
+                return "error[E2S18]: malformed Core if at byte " +
+                to_text(cursor)
+            }
+            let branch_open = skip_trivia(source, right_end)
+            if branch_open >= len(source) ||
+               token_text(source, branch_open) != "{" {
+                return "error[E2S18]: malformed Core if at byte " +
+                to_text(cursor)
+            }
+            let condition = emit_condition(
+                source,
+                condition_start,
+                branch_open
+            )
+            if starts_with(condition, "error[") {
+                return condition
+            }
+            let branch = lower_body(source, branch_open, is_main, false)
+            if starts_with(branch, "error[") {
+                return branch
+            }
+            emitted = emitted + "    if (" + condition + ") {\n" +
+            branch + "    }\n"
+            cursor = skip_trivia(
+                source,
+                balanced_end(source, branch_open, "{", "}")
+            )
         } else if statement == "return" {
             let value_start = skip_trivia(source, token_end(source, cursor))
             if value_start < len(source) &&
@@ -749,12 +991,28 @@ fn lower_body(source: Text, open: Int) -> Text {
                 "    {\n" +
                 "        int64_t kofun_result = " +
                 emit_expression(source, value_start, value_end) + ";\n" +
-                "        if (kofun_failed) return 1;\n" +
-                "        return (int)kofun_result;\n" +
+                "        if (kofun_failed) return " + failure_result + ";\n"
+                if is_main {
+                    emitted = emitted +
+                    "        return (int)kofun_result;\n"
+                } else {
+                    emitted = emitted + "        return kofun_result;\n"
+                }
+                emitted = emitted +
                 "    }\n"
                 cursor = skip_trivia(source, value_end)
             }
             returned = true
+        } else if token_kind(source, cursor) == "identifier" {
+            let value_end = expression_end(source, cursor)
+            if value_end < 0 {
+                return "error[E2S12]: invalid expression statement at byte " +
+                to_text(cursor)
+            }
+            emitted = emitted + "    (void)" +
+            emit_expression(source, cursor, value_end) + ";\n" +
+            "    if (kofun_failed) return " + failure_result + ";\n"
+            cursor = skip_trivia(source, value_end)
         } else {
             return "error[E2S10]: unsupported Core statement at byte " +
             to_text(cursor)
@@ -763,31 +1021,70 @@ fn lower_body(source: Text, open: Int) -> Text {
     if cursor >= len(source) || token_text(source, cursor) != "}" {
         return "error[E2S03]: missing function close"
     }
-    if !returned {
+    if !returned && append_default {
+        if !is_main {
+            return "error[E2S19]: Core function may complete without returning Int at byte " +
+            to_text(open)
+        }
         emitted = emitted + "    return 0;\n"
     }
     return emitted
 }
 
 fn lower_c(source: Text) -> Text {
-    let function_start = skip_trivia(source, 0)
-    if function_start >= len(source) ||
-       function_name(source, function_start) != "main" ||
-       parameter_count(source, function_start) != 0 {
-        return "error[E2S10]: C11 Core requires one `fn main()`"
+    let call_check = validate_core_calls(source)
+    if starts_with(call_check, "error[") {
+        return call_check
     }
-    let function_close = function_end(source, function_start)
-    if function_close < 0 ||
-       skip_trivia(source, function_close) != len(source) {
-        return "error[E2S10]: C11 Core requires exactly one function"
+    let mut prototypes = ""
+    let mut bodies = ""
+    let mut cursor = skip_trivia(source, 0)
+    let mut main_count = 0
+    while cursor < len(source) {
+        let name = function_name(source, cursor)
+        if function_arity(source, name) == -2 {
+            return "error[E2S16]: duplicate Core function `" + name +
+            "` at byte " + to_text(cursor)
+        }
+        let is_main = name == "main"
+        let arity = parameter_count(source, cursor)
+        let parameters = core_parameters(source, cursor)
+        if starts_with(parameters, "error[") {
+            return parameters
+        }
+        let mut c_parameters = parameters
+        if len(c_parameters) == 0 {
+            c_parameters = "void"
+        }
+        if is_main {
+            main_count = main_count + 1
+            if arity != 0 {
+                return "error[E2S15]: Core main must have zero parameters"
+            }
+        } else {
+            prototypes = prototypes + "static int64_t kofun_fn_" + name +
+            "(" + c_parameters + ");\n"
+        }
+        let open = core_body_open(source, cursor, is_main)
+        if open < 0 {
+            return "error[E2S15]: Core function `" + name +
+            "` requires Int parameters and an Int return"
+        }
+        let body = lower_body(source, open, is_main, true)
+        if starts_with(body, "error[") {
+            return body
+        }
+        if is_main {
+            bodies = bodies + "int main(void) {\n" +
+            "    (void)kofun_failed;\n" + body + "}\n"
+        } else {
+            bodies = bodies + "static int64_t kofun_fn_" + name +
+            "(" + c_parameters + ") {\n" + body + "}\n"
+        }
+        cursor = skip_trivia(source, function_end(source, cursor))
     }
-    let open = core_body_open(source, function_start)
-    if open < 0 {
-        return "error[E2S10]: Core main return type must be Int"
-    }
-    let body = lower_body(source, open)
-    if starts_with(body, "error[") {
-        return body
+    if main_count != 1 {
+        return "error[E2S15]: C11 Core requires exactly one `fn main()`"
     }
     return "/* Generated by the Kofun-written Stage 2 Core lowerer. */\n" +
     "#include <inttypes.h>\n" +
@@ -838,10 +1135,7 @@ fn lower_c(source: Text) -> Text {
     "    int64_t r = a % b;\n" +
     "    if (r != 0 && ((r < 0) != (b < 0))) { r += b; }\n" +
     "    return r;\n" +
-    "}\n\n" +
-    "int main(void) {\n" +
-    "    (void)kofun_failed;\n" +
-    body + "}\n"
+    "}\n\n" + prototypes + "\n" + bodies
 }
 
 fn emit_kofun(source: Text, ir: Text) -> Text {

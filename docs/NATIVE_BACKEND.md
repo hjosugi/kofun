@@ -8,7 +8,9 @@ AArch64 Linux. The x86-64 profile additionally lowers local `Int` and
 `List[Int]` bindings; List literals, length, indexing, and generated
 `map`/`filter`/`fold` loops with typed inline lambdas; plus UTF-8 Text
 concatenation, equality, codepoint length, runtime `chars`, and codepoint
-indexing:
+indexing. A separate bounded Int profile lowers up to six function arguments,
+returns, forward and mutual recursion, comparison-guarded early returns,
+checked arithmetic, and signed Int64 output directly:
 
 ```sh
 ./bin/kofun build source.kofun \
@@ -35,11 +37,12 @@ The remaining native backend work includes:
 
 - general AST/IR lowering and register allocation;
 - connecting general Text/List calls and types to Stage 2 (#33);
+- local bindings and general control flow inside user-defined functions;
 - allocator reuse/reclamation and general raw syscall intrinsic lowering;
-- checked `Int64` operations and canonical runtime diagnostics;
+- canonical runtime diagnostic codes shared with the C11 backend;
+- AArch64 user-defined functions;
 - AArch64 List/Text lowering;
 - AArch64 debug information and variable-location DIEs;
-- expanding the registered native adapter beyond the active List and Text
-  corpora.
+- unifying the currently separate function, List, and Text profiles.
 
 Unsupported cases must be explicit skips, never implicit passes.
