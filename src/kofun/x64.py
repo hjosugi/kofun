@@ -262,6 +262,9 @@ class Assembler:
     def sar_ri(self, dst: int, imm: int) -> None:
         self.emit(_rex(w=1, b=dst >> 3), 0xC1, _modrm(3, 7, dst), imm & 0xFF)
 
+    def shl_ri(self, dst: int, imm: int) -> None:
+        self.emit(_rex(w=1, b=dst >> 3), 0xC1, _modrm(3, 4, dst), imm & 0xFF)
+
     def setcc(self, cc: int, reg: int) -> None:
         """Set the low byte of `reg` to 1 or 0 based on flags."""
         # REX (even if empty) is required to address sil/dil/spl/bpl as 8-bit.

@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 
 from . import ast, elf
 from .c_backend import BackendFailure
-from .typesys import BOOL, INT, TEXT, VOID, Type
+from .typesys import BOOL, INT, LIST, TEXT, VOID, Type
 from .x64 import (
     ARG_REGS,
     CC_AE,
@@ -294,6 +294,10 @@ class NativeBackend:
         self._emit_text_concat()
         self._emit_text_eq()
         self._emit_text_len()
+        self._emit_list_new()
+        self._emit_list_index()
+        self._emit_list_concat()
+        self._emit_index_error()
         self._emit_alloc()
         self._emit_chunk()
         self._emit_oom()
@@ -545,6 +549,14 @@ class NativeBackend:
                 )
             return
 
+        if isinstance(node, ast.ListLiteral):
+            self._list_literal(node)
+            return
+
+        if isinstance(node, ast.IndexExpr):
+            self._index(node)
+            return
+
         if isinstance(node, ast.BinaryExpr):
             self._binary(node)
             return
@@ -577,6 +589,9 @@ class NativeBackend:
         left_type = self._expr_type(node.left)
         if left_type == TEXT:
             self._text_binary(node)
+            return
+        if left_type.name == "List":
+            self._list_binary(node)
             return
 
         self._operands(node)
@@ -658,6 +673,53 @@ class NativeBackend:
         self._expr(condition)
         self.asm.test_rr(RAX, RAX)
         self.asm.jcc(CC_E, label)
+
+    def _list_literal(self, node: ast.ListLiteral) -> None:
+        """Allocate a list and fill it, leaving the pointer in rax.
+
+        The pointer is parked on the stack across each element, because an
+        element can be an arbitrary expression -- including a call, which would
+        clobber any caller-saved register holding it.
+        """
+        asm = self.asm
+        asm.mov_ri(RDI, len(node.items))
+        self._aligned_call("rt.list_new")
+        self._push(RAX)
+
+        for index, item in enumerate(node.items):
+            self._expr(item)
+            asm.mov_rm(RCX, RSP, 0)     # the list, without disturbing the stack
+            asm.mov_mr(RCX, 8 + 8 * index, RAX)
+
+        self._pop(RAX)
+
+    def _index(self, node: ast.IndexExpr) -> None:
+        asm = self.asm
+        target_type = self._expr_type(node.target)
+        if target_type.name != "List":
+            raise BackendFailure(
+                f"native backend can only index List, not {target_type}", node.span
+            )
+
+        self._expr(node.target)
+        self._push(RAX)
+        self._expr(node.index)
+        asm.mov_rr(RSI, RAX)
+        self._pop(RDI)
+        self._aligned_call("rt.list_index")
+
+    def _list_binary(self, node: ast.BinaryExpr) -> None:
+        asm = self.asm
+        if node.op != "+":
+            raise BackendFailure(
+                f"native backend does not support `{node.op}` on List", node.span
+            )
+        self._expr(node.left)
+        self._push(RAX)
+        self._expr(node.right)
+        asm.mov_rr(RSI, RAX)
+        self._pop(RDI)
+        self._aligned_call("rt.list_concat")
 
     def _text_binary(self, node: ast.BinaryExpr) -> None:
         """Lower `+`, `==`, and `!=` on Text. Ordering is not defined yet."""
@@ -779,14 +841,20 @@ class NativeBackend:
         if name == "len":
             if len(node.args) != 1:
                 raise BackendFailure("`len` takes exactly one argument", node.span)
-            if self._expr_type(node.args[0]) != TEXT:
-                raise BackendFailure(
-                    "native backend only supports `len` on Text yet", node.span
-                )
+            argument_type = self._expr_type(node.args[0])
             self._expr(node.args[0])
-            asm.mov_rr(RDI, RAX)
-            self._aligned_call("rt.text_len")
-            return
+            if argument_type == TEXT:
+                # Text length is a codepoint count, so it has to walk the bytes.
+                asm.mov_rr(RDI, RAX)
+                self._aligned_call("rt.text_len")
+                return
+            if argument_type.name == "List":
+                # A list stores its length in its header; no call needed.
+                asm.mov_rm(RAX, RAX, 0)
+                return
+            raise BackendFailure(
+                f"native backend cannot take `len` of {argument_type}", node.span
+            )
 
         fn = self.functions.get(name)
         if fn is None:
@@ -1018,7 +1086,7 @@ class NativeBackend:
         asm.mov_ri(RDI, STDERR)
         asm.mov_ri(RAX, SYS_WRITE)
         asm.syscall()
-        asm.mov_ri(RDI, 70)              # EX_SOFTWARE
+        asm.mov_ri(RDI, 1)               # match the interpreter's exit code
         asm.mov_ri(RAX, SYS_EXIT)
         asm.syscall()
         asm.ud2()                        # unreachable: exit does not return
@@ -1187,6 +1255,131 @@ class NativeBackend:
         asm.mov_rr(RSP, RBP)
         asm.pop(RBP)
         asm.ret()
+
+    # ---- List runtime ------------------------------------------------------
+    #
+    # A List value is one pointer to `[length: i64][element: i64] * n`, the same
+    # length-prefixed shape as Text so the two stay consistent. Every element is
+    # eight bytes, which is exactly an Int, a Bool, or a pointer to a Text or
+    # another List -- so one representation serves every element type the
+    # backend can currently produce.
+
+    def _emit_list_new(self) -> None:
+        """`rt.list_new(count in rdi) -> rax`, elements left uninitialised."""
+        asm = self.asm
+        asm.label("rt.list_new")
+        asm.push(RBP)
+        asm.mov_rr(RBP, RSP)
+        asm.push(RBX)
+        asm.sub_ri(RSP, 8)              # keep rsp aligned for the call below
+
+        asm.mov_rr(RBX, RDI)            # remember the count
+        asm.shl_ri(RDI, 3)              # elements are eight bytes each
+        asm.add_ri(RDI, 8)              # plus the length header
+        asm.call("rt.alloc")
+        asm.mov_mr(RAX, 0, RBX)
+
+        asm.add_ri(RSP, 8)
+        asm.pop(RBX)
+        asm.pop(RBP)
+        asm.ret()
+
+    def _emit_list_index(self) -> None:
+        """`rt.list_index(list in rdi, index in rsi) -> rax`.
+
+        A negative index counts from the end, matching the reference
+        interpreter -- `xs[-1]` is the last element, not an error. Anything
+        still out of range after that adjustment is a diagnostic and an exit,
+        never a read of whatever happened to be next in memory.
+        """
+        asm = self.asm
+        asm.label("rt.list_index")
+        nonneg = "rt.list_index.nonneg"
+        bad = "rt.list_index.bad"
+
+        asm.mov_rm(RDX, RDI, 0)         # length
+        asm.test_rr(RSI, RSI)
+        asm.jcc(CC_NS, nonneg)
+        asm.add_rr(RSI, RDX)            # negative: count from the end
+        asm.label(nonneg)
+
+        asm.test_rr(RSI, RSI)
+        asm.jcc(8, bad)                 # CC_S: still negative
+        asm.cmp_rr(RSI, RDX)
+        asm.jcc(CC_GE, bad)
+
+        asm.mov_rr(RAX, RSI)
+        asm.shl_ri(RAX, 3)
+        asm.add_rr(RAX, RDI)
+        asm.mov_rm(RAX, RAX, 8)         # skip the header
+        asm.ret()
+
+        asm.label(bad)
+        asm.call("rt.index_error")
+        asm.ud2()
+
+    def _emit_list_concat(self) -> None:
+        """`rt.list_concat(a in rdi, b in rsi) -> rax`, a fresh joined list."""
+        asm = self.asm
+        asm.label("rt.list_concat")
+        asm.push(RBP)
+        asm.mov_rr(RBP, RSP)
+        for register in (RBX, R12, R13, R14, R15):
+            asm.push(register)
+        asm.sub_ri(RSP, 8)
+
+        asm.mov_rr(RBX, RDI)
+        asm.mov_rr(R12, RSI)
+        asm.mov_rm(R13, RBX, 0)         # length of a
+        asm.mov_rm(R14, R12, 0)         # length of b
+
+        asm.mov_rr(RDI, R13)
+        asm.add_rr(RDI, R14)
+        asm.call("rt.list_new")
+        asm.mov_rr(R15, RAX)
+
+        # Elements are opaque eight-byte words, so copying them is a byte copy.
+        asm.mov_rr(RDI, R15)
+        asm.add_ri(RDI, 8)
+        asm.mov_rr(RSI, RBX)
+        asm.add_ri(RSI, 8)
+        asm.mov_rr(RDX, R13)
+        asm.shl_ri(RDX, 3)
+        asm.call("rt.memcpy")
+
+        asm.mov_rr(RDI, R15)
+        asm.add_ri(RDI, 8)
+        asm.mov_rr(RAX, R13)
+        asm.shl_ri(RAX, 3)
+        asm.add_rr(RDI, RAX)
+        asm.mov_rr(RSI, R12)
+        asm.add_ri(RSI, 8)
+        asm.mov_rr(RDX, R14)
+        asm.shl_ri(RDX, 3)
+        asm.call("rt.memcpy")
+
+        asm.mov_rr(RAX, R15)
+        asm.add_ri(RSP, 8)
+        for register in (R15, R14, R13, R12, RBX):
+            asm.pop(register)
+        asm.pop(RBP)
+        asm.ret()
+
+    def _emit_index_error(self) -> None:
+        """Report an out-of-range index on stderr and exit."""
+        asm = self.asm
+        message = "kofun: list index out of range\n"
+        asm.label("rt.index_error")
+        asm.lea_label(RSI, self._string_label(message))
+        asm.mov_rm(RDX, RSI, 0)
+        asm.add_ri(RSI, 8)
+        asm.mov_ri(RDI, STDERR)
+        asm.mov_ri(RAX, SYS_WRITE)
+        asm.syscall()
+        asm.mov_ri(RDI, 1)              # match the interpreter's exit code
+        asm.mov_ri(RAX, SYS_EXIT)
+        asm.syscall()
+        asm.ud2()
 
     def _emit_strings(self) -> None:
         asm = self.asm

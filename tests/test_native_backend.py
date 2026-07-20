@@ -241,6 +241,53 @@ fn main() {
     print(ack(2, 3))
 }
 """,
+    "lists": """
+fn main() {
+    let xs = [10, 20, 30]
+    print(len(xs))
+    print(xs[0])
+    print(xs[2])
+    let empty = []
+    print(len(empty))
+    let joined = [1, 2] + [3, 4]
+    print(len(joined))
+    print(joined[3])
+    let words = ["alpha", "beta"]
+    print(words[1])
+    print(len(words))
+    let nested = [1 + 1, 2 * 3]
+    print(nested[0])
+    print(nested[1])
+}
+""",
+    # A negative index counts from the end, matching the interpreter. A C-style
+    # bounds check would read out of bounds here instead.
+    "list_negative_index": """
+fn main() {
+    let xs = [10, 20, 30]
+    print(xs[-1])
+    print(xs[-2])
+    print(xs[-3])
+    let one = [7]
+    print(one[-1])
+}
+""",
+    "list_of_computed_values": """
+fn double(n: Int) -> Int {
+    return n * 2
+}
+
+fn main() {
+    let xs = [double(1), double(2), double(3)]
+    print(xs[0])
+    print(xs[2])
+    let mut total = 0
+    for i in 0 .. 3 {
+        total = total + xs[i]
+    }
+    print(total)
+}
+""",
     "big_numbers": """
 fn main() {
     print(1000000)
@@ -337,9 +384,22 @@ class NativeExecutableTest(unittest.TestCase):
             self.assertEqual(flags[1], 0x6, "data segment must be read+write")
 
     def test_unsupported_features_fail_loudly(self) -> None:
-        # Lists are not lowered yet; the backend must refuse rather than
-        # silently emit something with different meaning.
-        checked = check_source("fn main() {\n    let xs = [1, 2, 3]\n    print(xs[0])\n}\n")
+        # Float is not lowered yet: it needs SSE2 and a float formatter. The
+        # backend must refuse rather than silently emit something with a
+        # different meaning. (Lists used to be the example here, until they
+        # were implemented.)
+        checked = check_source(
+            "fn half(x: Float) -> Float {\n    return x\n}\n\n"
+            "fn main() {\n    print(half(1.5))\n}\n"
+        )
+        with self.assertRaises(BackendFailure):
+            NativeBackend().emit_program(checked.program, "test")
+
+    def test_indexing_a_non_list_is_refused(self) -> None:
+        # Text indexing has different semantics from list indexing and is not
+        # implemented; refusing beats returning a byte where a character is
+        # expected.
+        checked = check_source('fn main() {\n    let s = "abc"\n    print(s[0])\n}\n')
         with self.assertRaises(BackendFailure):
             NativeBackend().emit_program(checked.program, "test")
 
