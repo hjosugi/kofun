@@ -20,9 +20,12 @@ The checked runtime prefix is generated from the auditable `runtime.c`,
 `start.S`, and `runtime.ld` sources. `template_to_inc.c` locates the config
 anchor, removes the section table from the product, and produces
 `runtime_template.inc`. `SHA256SUMS` binds those sources to the checked prefix.
-The acceptance gate rebuilds the prefix twice, compares it byte for byte, and
-places failing `cc`, `as`, and `ld` spies in front of the active application
-build.
+The acceptance gate rebuilds the prefix twice with the active host toolchain,
+requires those two outputs to be byte-identical, and runs an application
+through a compiler using that reproduced prefix. It does not require different
+C compiler versions to select identical instruction sequences or ELF layout.
+The gate also places failing `cc`, `as`, and `ld` spies in front of the active
+application build.
 
 This bootstrap split is intentional:
 
