@@ -1,0 +1,9 @@
+# This is within the implemented Stage 2 integer Core. It is not a compiler
+# self-hosting, native-Stage1, generics, traits, or LSP fixture.
+fn main() {
+    let left: Int = -7
+    let right = 3
+    print(left // right)
+    print(left % right)
+    return (6 + 1) * 6
+}
