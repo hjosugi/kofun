@@ -1,0 +1,24 @@
+repr(C) struct GraphemeResult {
+    status: CInt,
+    count: CSize,
+    error_offset: CSize,
+}
+
+extern "C" fn kofun_unicode_grapheme_count(
+    bytes: CBytes,
+    length: CSize,
+) -> GraphemeResult
+extern "C" fn kofun_unicode_panic_probe() -> CInt
+
+fn main() {
+    # U+0065 U+0301: two codepoints, one extended grapheme cluster.
+    let valid = kofun_unicode_grapheme_count("\x65\xCC\x81", 3)
+    let invalid = kofun_unicode_grapheme_count("\xFF", 1)
+    let repeated = kofun_unicode_grapheme_count("\x65\xCC\x81", 3)
+    print(valid.status)
+    print(valid.count)
+    print(invalid.status)
+    print(invalid.error_offset)
+    print(repeated.count)
+    print(kofun_unicode_panic_probe())
+}

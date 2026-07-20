@@ -52,6 +52,7 @@ general native lowering remain open.
 - `sha256sum`
 - Linux x86-64 for the native executable gate
 - `rustc` for the required Rust `cdylib` C ABI acceptance gate
+- `cargo` for the required offline vendored-crate shim gate
 
 Python is not required or used.
 
@@ -95,6 +96,17 @@ static direct-native backend:
 
 See `bootstrap/c_abi/README.md` for its bounded type/source slice and trust
 boundary.
+
+The worked Rust crate example wraps vendored `unicode-segmentation 1.13.3`
+behind buffer/length/status and `repr(C)` values. It does not expose Rust
+`String`, `Vec`, `Result`, traits, or unwinding:
+
+```sh
+make rust-shim
+```
+
+See `docs/RUST_CRATE_SHIMS.md` for the offline recipe, ownership/error mapping,
+unsupported Rust surfaces, and measured build-cost definitions.
 
 Run every active gate:
 

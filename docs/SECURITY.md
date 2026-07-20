@@ -114,6 +114,11 @@ The bounded C ABI profile is executable, but the broader FFI policy above
 remains target design. Foreign libraries and their transitive dependencies are
 trusted native code; no operational security team is implied.
 
+The Rust crate shim example keeps managed Rust values inside Rust, catches
+panics before returning, and uses checked buffer/length/status records.
+Vendoring and checksums improve reproducibility but do not make third-party
+native code memory-safe from Kofun's perspective.
+
 ## Compile-time law execution
 
 `law monad` checking evaluates user functions during compilation, so it is a compiler attack surface.

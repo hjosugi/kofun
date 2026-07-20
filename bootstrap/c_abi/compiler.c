@@ -427,7 +427,8 @@ static bool primitive_type(const char *name) {
     static const char *names[] = {
         "Unit", "Bool", "I8", "I16", "I32", "I64",
         "U8", "U16", "U32", "U64", "F32", "F64",
-        "CInt", "CUInt", "CLong", "CULong", "CStr"
+        "CInt", "CUInt", "CLong", "CULong", "CSize",
+        "CStr", "CBytes"
     };
     size_t index;
     for (index = 0U; index < sizeof(names) / sizeof(names[0]); ++index) {
@@ -469,7 +470,9 @@ static const char *c_type(const Type *type) {
     if (strcmp(type->name, "CUInt") == 0) return "unsigned int";
     if (strcmp(type->name, "CLong") == 0) return "long";
     if (strcmp(type->name, "CULong") == 0) return "unsigned long";
+    if (strcmp(type->name, "CSize") == 0) return "size_t";
     if (strcmp(type->name, "CStr") == 0) return "const char *";
+    if (strcmp(type->name, "CBytes") == 0) return "const void *";
     return type->name;
 }
 
@@ -506,7 +509,9 @@ static void type_size_alignment(
         strcmp(type->name, "F64") == 0 ||
         strcmp(type->name, "CLong") == 0 ||
         strcmp(type->name, "CULong") == 0 ||
-        strcmp(type->name, "CStr") == 0
+        strcmp(type->name, "CSize") == 0 ||
+        strcmp(type->name, "CStr") == 0 ||
+        strcmp(type->name, "CBytes") == 0
     ) {
         *size = 8U; *alignment = 8U;
     } else {
@@ -537,11 +542,18 @@ static bool integer_type(const Type *type) {
            strcmp(type->name, "CInt") == 0 ||
            strcmp(type->name, "CUInt") == 0 ||
            strcmp(type->name, "CLong") == 0 ||
-           strcmp(type->name, "CULong") == 0;
+           strcmp(type->name, "CULong") == 0 ||
+           strcmp(type->name, "CSize") == 0;
 }
 
 static bool compatible(const Expression *expression, const Type *wanted) {
     if (same_type(&expression->type, wanted)) {
+        return true;
+    }
+    if (
+        strcmp(expression->type.name, "CStr") == 0 &&
+        strcmp(wanted->name, "CBytes") == 0
+    ) {
         return true;
     }
     if (!expression->integer_literal || !integer_type(wanted)) {
@@ -583,7 +595,8 @@ static bool compatible(const Expression *expression, const Type *wanted) {
     }
     if (
         strcmp(wanted->name, "U64") == 0 ||
-        strcmp(wanted->name, "CULong") == 0
+        strcmp(wanted->name, "CULong") == 0 ||
+        strcmp(wanted->name, "CSize") == 0
     ) {
         return expression->integer_value >= 0;
     }
@@ -993,6 +1006,7 @@ static const char *print_format(const Type *type) {
     if (strcmp(type->name, "CUInt") == 0) return "%u\\n";
     if (strcmp(type->name, "CLong") == 0) return "%ld\\n";
     if (strcmp(type->name, "CULong") == 0) return "%lu\\n";
+    if (strcmp(type->name, "CSize") == 0) return "%zu\\n";
     return NULL;
 }
 

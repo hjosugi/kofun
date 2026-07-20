@@ -17,6 +17,7 @@
 | x86-64 List[Int] and UTF-8 Text Core | checkpoint implemented | `bootstrap/native/check.sh`, `tests/conformance/list`, `tests/conformance/text` |
 | general native lowering | open | Stage 2 bindings/calls and additional target profiles |
 | C ABI `extern` / `repr(C)` profile | bounded host-C implementation | `bootstrap/c_abi/check.sh` |
+| vendored Rust crate through C ABI shim | implemented example | `examples/rust-shim/check.sh` |
 | Linux x86-64 syscall/stdlib API | Kofun source contract | `stdlib/tests/verify.sh` |
 | syscall file round-trip execution | implemented | native ELF success and errno failure gates |
 | formatter, REPL, LSP | open | design only |

@@ -27,6 +27,11 @@ implicitly, accepts library files rather than raw linker flags, and does not
 change the static direct-native `--target` path. Its bounded language and ABI
 contract are documented in `bootstrap/c_abi/README.md`.
 
+Cargo is not invoked by this C ABI build command. A Rust shim may be compiled
+separately and supplied as an unchanged library file; see
+`docs/RUST_CRATE_SHIMS.md` for the offline vendored example and separate
+measurements of Rust compilation versus repeated Kofun rebuild/link work.
+
 `tests/build_system.sh` installs a failing Frost spy next to a manifest and
 proves that the source form never invokes it.
 

@@ -20,7 +20,7 @@ The checked profile accepts:
   fields;
 - `extern "C" fn` declarations;
 - `Unit`, `Bool`, fixed-width integer/float types, `CInt`, `CUInt`, `CLong`,
-  `CULong`, `CStr`, and declared structs at the boundary;
+  `CULong`, `CSize`, `CStr`, `CBytes`, and declared structs at the boundary;
 - foreign calls, positional struct construction, immutable `let`, scalar
   `print`, field access, and integer `return` inside one `fn main()`.
 
@@ -32,7 +32,8 @@ including register/stack argument classification and aggregate pass/return.
 This slice does not yet support callbacks, variadic declarations, managed
 Kofun values, borrowed views, foreign exceptions, ownership transfer, or
 Windows ABIs. `CStr` accepts only a double-quoted static string; it does not
-make managed text ABI-safe.
+make managed text ABI-safe. A static string may be passed to `CBytes`, but the
+callee must use its separate `CSize` length and must not retain the pointer.
 
 `--link-library` is repeatable and accepts only an existing library file. Kofun
 canonicalizes it to an absolute path and passes it as one compiler argument;
