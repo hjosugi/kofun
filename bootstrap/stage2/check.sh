@@ -50,6 +50,9 @@ grep '^function-count|2$' "$temporary/fixture.ir" >/dev/null
 round_trip arrow-lambda "$stage2/arrow_lambda.kofun"
 grep '^function|arrow_fixture|0|' "$temporary/arrow-lambda.ir" >/dev/null
 grep '^function-count|1$' "$temporary/arrow-lambda.ir" >/dev/null
+for arrow_span in '41|43' '74|76' '115|117' '159|161'; do
+    test "$(grep -c "^punctuation|$arrow_span|" "$temporary/arrow-lambda.tokens")" -eq 1
+done
 set +e
 "$temporary/kofun-stage2" \
     "$stage2/arrow_lambda.kofun" \
