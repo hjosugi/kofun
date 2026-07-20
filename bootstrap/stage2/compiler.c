@@ -151,7 +151,7 @@ static int64_t string_end(const char *source, int64_t start) {
 
 static bool pair_token(const char *source, int64_t start) {
     static const char *pairs[] = {
-        "->", "==", "!=", "<=", ">=", "&&", "||",
+        "->", "=>", "==", "!=", "<=", ">=", "&&", "||",
         "//", "..", "**", "??", "|>"
     };
     char pair[3] = {source[start], source[start + 1], '\0'};
@@ -206,6 +206,18 @@ static char *token_copy(const char *source, int64_t start) {
     memcpy(result, source + start, length);
     result[length] = '\0';
     return result;
+}
+
+static bool has_token(const char *source, const char *target) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < length) {
+        if (token_equal(source, cursor, target)) return true;
+        int64_t end = token_end(source, cursor);
+        if (end <= cursor) return false;
+        cursor = skip_trivia(source, end);
+    }
+    return false;
 }
 
 static bool keyword_token(const char *source, int64_t start) {
@@ -2516,6 +2528,11 @@ static char *lower_body(const char *source, int64_t open) {
 }
 
 static char *lower_c(const char *source) {
+    if (has_token(source, "=>")) {
+        return copy_text(
+            "error[E2S10]: arrow lambdas are structural-only in Stage 2"
+        );
+    }
     int64_t length = (int64_t)strlen(source);
     int64_t function_start = skip_trivia(source, 0);
     char *name = function_name(source, function_start);

@@ -1,0 +1,8 @@
+# Issue #547 structural-only arrow and trailing-lambda checkpoint.
+
+fn main() -> Int {
+    let double = x => x * 2
+    let add = (a, b) => a + b
+    values.map { value => value * 2 }
+    return 0
+}

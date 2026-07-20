@@ -67,6 +67,12 @@ requires `else` with `E2S15`, and requires both branches to produce the same
 inside value branches, `else if` values, typed IR, and native/interpreter parity
 remain open.
 
+The Issue #547 syntax checkpoint recognizes `=>` as a two-character pair token
+and preserves expression arrows, parenthesized multi-argument arrows, pipeline
+arrows, and trailing-lambda arrows in structural projection. C11 lowering
+rejects these forms explicitly with `E2S10`; lambda inference, closure values,
+and trailing-lambda execution remain open.
+
 ## Parser recovery
 
 On malformed top-level input, the parser collects diagnostics in source order

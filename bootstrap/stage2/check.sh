@@ -47,6 +47,24 @@ grep '^function|classify|1|' "$temporary/fixture.ir" >/dev/null
 grep '^function|main|0|' "$temporary/fixture.ir" >/dev/null
 grep '^function-count|2$' "$temporary/fixture.ir" >/dev/null
 
+round_trip arrow-lambda "$stage2/arrow_lambda.kofun"
+grep '^function|arrow_fixture|0|' "$temporary/arrow-lambda.ir" >/dev/null
+grep '^function-count|1$' "$temporary/arrow-lambda.ir" >/dev/null
+set +e
+"$temporary/kofun-stage2" \
+    "$stage2/arrow_lambda.kofun" \
+    "$temporary/arrow-lambda.c" \
+    "$temporary/arrow-lambda.c.ir" \
+    "$temporary/arrow-lambda.c.tokens" \
+    >"$temporary/arrow-lambda.stdout" \
+    2>"$temporary/arrow-lambda.stderr"
+arrow_lambda_status=$?
+set -e
+test "$arrow_lambda_status" -eq 1
+cmp "$stage2/arrow_lambda.stdout" "$temporary/arrow-lambda.stdout"
+test ! -s "$temporary/arrow-lambda.stderr"
+test ! -e "$temporary/arrow-lambda.c"
+
 copy_fixture="$stage2/fixtures/borrowed_copy_int.kofun"
 move_fixture="$stage2/fixtures/borrowed_move_text.kofun"
 move_diagnostic="$stage2/fixtures/borrowed_move_text.stderr"

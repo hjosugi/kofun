@@ -1,0 +1,6 @@
+fn arrow_fixture() {
+    let doubled = x => x * 2
+    let summed = (a, b) => a + b
+    let piped = values |> map(x => x * 2)
+    let trailing = values.map { x => x * 2 }
+}

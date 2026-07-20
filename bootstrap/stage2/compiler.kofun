@@ -60,7 +60,8 @@ fn string_end(source: Text, start: Int) -> Int {
 }
 
 fn pair_token(token: Text) -> Bool {
-    return token == "->" || token == "==" || token == "!=" ||
+    return token == "->" || token == "=>" ||
+    token == "==" || token == "!=" ||
     token == "<=" || token == ">=" || token == "&&" ||
     token == "||" || token == "//" || token == ".." ||
     token == "**" || token == "??" || token == "|>"
@@ -108,6 +109,21 @@ fn token_text(source: Text, start: Int) -> Text {
         return ""
     }
     return text_slice(source, start, end)
+}
+
+fn has_token(source: Text, target: Text) -> Bool {
+    let mut cursor = skip_trivia(source, 0)
+    while cursor < len(source) {
+        if token_text(source, cursor) == target {
+            return true
+        }
+        let end = token_end(source, cursor)
+        if end <= cursor {
+            return false
+        }
+        cursor = skip_trivia(source, end)
+    }
+    return false
 }
 
 fn keyword(token: Text) -> Bool {
@@ -1934,6 +1950,9 @@ fn lower_body(source: Text, open: Int) -> Text {
 }
 
 fn lower_c(source: Text) -> Text {
+    if has_token(source, "=>") {
+        return "error[E2S10]: arrow lambdas are structural-only in Stage 2"
+    }
     let function_start = skip_trivia(source, 0)
     if function_start >= len(source) ||
        function_name(source, function_start) != "main" ||

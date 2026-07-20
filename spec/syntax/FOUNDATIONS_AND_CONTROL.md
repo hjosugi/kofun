@@ -25,7 +25,7 @@ compiler cannot yet produce the final diagnostic.
 | #37 | function declarations | Stage 2 records top-level function names, arities, and spans; C lowering accepts only `fn main()` | partial |
 | #38 | automatic statement termination | newline-separated Core statements compile and execute | partial |
 | #39 | mutable bindings | Stage 2 Core executes assignment and rejects immutable reassignment | implemented for Core |
-| #40 | lambda expressions | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
+| #40 | lambda expressions | structural projection preserves `fn` and arrow forms; Core lowering rejects the statement | structural checkpoint |
 | #41 | immutable bindings | Stage 1 and Stage 2 Core compile and execute integer `let` bindings | implemented for Core |
 | #42 | owned bindings | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
 | #43 | if expressions | Stage 2 Core executes statement-position `if`/`else` and narrow Int/Bool value-position `if` | implemented for Core statements and narrow values |
