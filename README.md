@@ -164,8 +164,15 @@ Build the WebAssembly arithmetic sample:
 node bootstrap/wasm/run.mjs build/arithmetic.wasm
 ```
 
-See `bootstrap/wasm/README.md` for the host imports, exact Core boundary, and
-remaining browser/DOM work.
+Or build the Kofun-authored, viewport-lazy browser sample:
+
+```sh
+sh examples/wasm-browser/build.sh
+node examples/wasm-browser/serve.mjs build/wasm-browser
+```
+
+See `bootstrap/wasm/README.md` for the host imports, browser URL, executable
+checks, and exact arithmetic Core boundary.
 
 Generated C11 can be inspected with:
 

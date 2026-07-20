@@ -12,14 +12,30 @@ Build and run the sample:
 node bootstrap/wasm/run.mjs build/arithmetic.wasm
 ```
 
+Build the Kofun-authored browser sample and serve it without package
+installation:
+
+```sh
+sh examples/wasm-browser/build.sh
+node examples/wasm-browser/serve.mjs build/wasm-browser
+# open http://127.0.0.1:8080/
+```
+
+`app.kofun` is the program. It is compiled directly to `app.wasm`; `main.mjs`
+is only the generic browser host that maps `print_i64` to text content and
+checked traps to diagnostics. The host waits for the sample element to enter
+the viewport before it fetches or instantiates the module. Browsers without
+`IntersectionObserver` load it immediately.
+
 The module exports `main(): void` and imports two host functions:
 
 - `kofun.print_i64(value: i64)` observes each Kofun `print`;
 - `kofun.panic(code: i32)` reports a checked arithmetic failure.
 
 These imports are ordinary WebAssembly host bindings. `run.mjs` is the
-non-skipping Node host used by the executable gate; a browser can instantiate
-the same module by supplying equivalent functions.
+non-skipping Node host used by the differential gate. The browser sample
+supplies the same bindings and renders the two Kofun-produced values into an
+`aria-live` output element.
 
 ## Supported source slice
 
@@ -42,8 +58,9 @@ make wasm
 
 ## Honest boundary
 
-This is not the complete issue #26 target. It has no linear-memory object
-layout, Text or List lowering, general functions, WASI profile, JavaScript
-value conversion, DOM API, browser UI sample, or optimizer. The module format
-and CLI target are real, but issue #26 remains open until the general
-differential suite and a browser-rendered sample are implemented.
+This remains a bounded arithmetic target. It has no linear-memory object
+layout, Text or List lowering, general functions, WASI profile, general
+JavaScript value conversion, direct DOM declarations in Kofun, or optimizer.
+The standard module loads in both Node and browsers, the numeric differential
+corpus is executable, and the sample now renders Kofun output in a page. Wider
+language coverage should be tracked independently rather than implied here.

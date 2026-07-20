@@ -18,7 +18,7 @@
 | borrowed-List Copy/move ownership check | narrow Stage 2 checkpoint | `bootstrap/stage2/check.sh` |
 | general ownership and law checking | open | no active general pass |
 | ELF64/x86-64 native image writer | checkpoint implemented | `bootstrap/native/check.sh` |
-| wasm32 Int64 arithmetic Core | executable checkpoint | `bootstrap/wasm/check.sh`, `tests/conformance/numeric` |
+| wasm32 Int64 arithmetic Core + lazy browser host | executable checkpoint | `bootstrap/wasm/check.sh`, `tests/conformance/numeric`, `examples/wasm-browser` |
 | x86-64 List[Int] and UTF-8 Text Core | checkpoint implemented | `bootstrap/native/check.sh`, `tests/conformance/list`, `tests/conformance/text` |
 | general native lowering | open | unified types/control flow and additional target profiles |
 | C ABI `extern` / `repr(C)` profile | bounded host-C implementation | `bootstrap/c_abi/check.sh` |

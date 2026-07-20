@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      name="description"
+      content="A Kofun program compiled directly to WebAssembly and rendered in a browser."
+    >
+    <title>Kofun wasm32 browser sample</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+        background: #111318;
+        color: #eef2ff;
+      }
+
+      body {
+        display: grid;
+        min-height: 100vh;
+        margin: 0;
+        place-items: center;
+      }
+
+      main {
+        width: min(34rem, calc(100% - 3rem));
+        padding: 2rem;
+        border: 1px solid #3d4658;
+        border-radius: 1rem;
+        background: #191d25;
+        box-shadow: 0 1rem 3rem #0008;
+      }
+
+      h1 {
+        margin-block-start: 0;
+        font: inherit;
+        font-size: 1.3rem;
+      }
+
+      [data-kofun-status] {
+        color: #9ca8be;
+      }
+
+      [data-kofun-output] {
+        min-height: 3rem;
+        margin-block-end: 0;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        background: #0d0f13;
+        color: #8cf0be;
+        font: inherit;
+        line-height: 1.5;
+      }
+    </style>
+    <script type="module" src="./main.mjs"></script>
+  </head>
+  <body>
+    <main data-kofun-wasm="./app.wasm" aria-busy="true">
+      <h1>Kofun → wasm32 → DOM</h1>
+      <p data-kofun-status>Waiting until this sample enters the viewport…</p>
+      <pre data-kofun-output aria-live="polite"></pre>
+    </main>
+  </body>
+</html>

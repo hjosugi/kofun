@@ -43,11 +43,28 @@ cmp "$WORK/direct.wasm" "$WORK/cli.wasm"
 cmp "$WORK/cli.wasm" "$WORK/cli-second.wasm"
 
 node --check "$ROOT/bootstrap/wasm/run.mjs"
+node --check "$ROOT/examples/wasm-browser/main.mjs"
+node --check "$ROOT/examples/wasm-browser/check.mjs"
+node --check "$ROOT/examples/wasm-browser/serve.mjs"
 node "$ROOT/bootstrap/wasm/run.mjs" "$WORK/cli.wasm" \
     >"$WORK/sample.stdout" 2>"$WORK/sample.stderr"
 printf '42\n-4\n' >"$WORK/sample.expected"
 cmp "$WORK/sample.expected" "$WORK/sample.stdout"
 test ! -s "$WORK/sample.stderr"
+
+"$ROOT/examples/wasm-browser/build.sh" "$WORK/browser" \
+    >"$WORK/browser-build.stdout"
+node "$ROOT/examples/wasm-browser/check.mjs" "$WORK/browser/app.wasm" \
+    >"$WORK/browser-check.stdout"
+grep -Fq \
+    'PASS: browser host loaded and rendered Kofun WebAssembly' \
+    "$WORK/browser-check.stdout"
+grep -Fq \
+    'PASS: viewport lazy loading deferred the wasm fetch' \
+    "$WORK/browser-check.stdout"
+grep -Fq 'data-kofun-wasm="./app.wasm"' "$WORK/browser/index.html"
+grep -Fq 'src="./main.mjs"' "$WORK/browser/index.html"
+cmp "$ROOT/examples/wasm-browser/main.mjs" "$WORK/browser/main.mjs"
 
 set +e
 "$ROOT/bin/kofun" build \
@@ -75,4 +92,5 @@ sh "$ROOT/tests/conformance/run.sh" \
 printf '%s\n' \
     'PASS: Kofun emitted deterministic, engine-validated WebAssembly' \
     'PASS: wasm32-node matched C11 for all numeric Core observations' \
+    'PASS: Kofun browser sample rendered through a lazy DOM host' \
     'PASS: unsupported source and debug mode failed without artifacts'

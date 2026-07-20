@@ -94,6 +94,7 @@ verify: test diagnostics fuzz check bootstrap stage2 native wasm c-abi rust-shim
 	@sh -n bin/kofun bootstrap/stage1/check.sh bootstrap/stage2/check.sh \
 	  bootstrap/native/check.sh bootstrap/native/emit-fixture.sh \
 	  bootstrap/wasm/check.sh \
+	  examples/wasm-browser/build.sh \
 	  bootstrap/c_abi/check.sh \
 	  examples/rust-shim/check.sh examples/rust-shim/benchmark.sh \
 	  framework/http/build.sh tests/http/check.sh \
