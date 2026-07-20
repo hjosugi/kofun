@@ -1,0 +1,78 @@
+# Int-Core projection of the version-1 text escaping rules.
+# Character classes: 0=ordinary, 1=backslash, 2=quote, 3=LF, 4=CR, 5=tab.
+
+# Two-digit fingerprints encode the replacement token:
+# ordinary=01, backslash=22, quote=23, LF=24, CR=25, tab=26.
+fn escape_code(class: Int) -> Int {
+    if class == 0 { return 1 }
+    if class == 1 { return 22 }
+    if class == 2 { return 23 }
+    if class == 3 { return 24 }
+    if class == 4 { return 25 }
+    if class == 5 { return 26 }
+    return -1
+}
+
+fn escape_width(class: Int) -> Int {
+    if class == 0 { return 1 }
+    if escape_code(class) < 0 { return -1 }
+    return 2
+}
+
+fn escape_hash4(
+    first: Int,
+    second: Int,
+    third: Int,
+    fourth: Int,
+    count: Int
+) -> Int {
+    if count <= 0 { return 0 }
+    if count == 1 { return escape_code(first) }
+    if count == 2 {
+        return escape_code(first) * 31 + escape_code(second)
+    }
+    if count == 3 {
+        return (escape_code(first) * 31 + escape_code(second)) * 31 +
+            escape_code(third)
+    }
+    if count == 4 {
+        return ((escape_code(first) * 31 + escape_code(second)) * 31 +
+            escape_code(third)) * 31 + escape_code(fourth)
+    }
+    return -1
+}
+
+fn escaped_length4(
+    first: Int,
+    second: Int,
+    third: Int,
+    fourth: Int,
+    count: Int
+) -> Int {
+    if count <= 0 { return 0 }
+    if count == 1 { return escape_width(first) }
+    if count == 2 {
+        return escape_width(first) + escape_width(second)
+    }
+    if count == 3 {
+        return escape_width(first) + escape_width(second) +
+            escape_width(third)
+    }
+    if count == 4 {
+        return escape_width(first) + escape_width(second) +
+            escape_width(third) + escape_width(fourth)
+    }
+    return -1
+}
+
+fn main() -> Int {
+    print(escape_code(0))
+    print(escape_code(1))
+    print(escape_code(2))
+    print(escape_code(3))
+    print(escape_code(4))
+    print(escape_code(5))
+    print(escape_hash4(0, 1, 2, 3, 4))
+    print(escaped_length4(0, 1, 2, 3, 4))
+    return 0
+}

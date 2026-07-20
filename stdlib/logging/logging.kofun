@@ -1,0 +1,211 @@
+# Deterministic structured logging checkpoint.
+#
+# This module builds and renders immutable records. It deliberately does not
+# read a clock, inspect process-global configuration, or choose an output sink.
+# Callers can filter with log_enabled/log_render_at and write the returned Text
+# through the I/O boundary appropriate to their application.
+
+let LOG_TEXT_FORMAT_VERSION = 1
+
+type LogLevel =
+    | Trace
+    | Debug
+    | Info
+    | Warn
+    | Error
+
+type LogValue =
+    | LogText(Text)
+    | LogInt(Int)
+    | LogBool(Bool)
+
+type LogField = {
+    key: Text,
+    value: LogValue,
+}
+
+type LogRecord = {
+    level: LogLevel,
+    target: Text,
+    message: Text,
+    fields: List[LogField],
+}
+
+# Indices are zero-based and refer to the caller-supplied field order.
+type LogError =
+    | InvalidFieldKey(Int, Text)
+    | DuplicateFieldKey(Text, Int, Int)
+
+fn log_level_rank(level: LogLevel) -> Int {
+    return match level {
+        Trace => 0,
+        Debug => 1,
+        Info => 2,
+        Warn => 3,
+        Error => 4,
+    }
+}
+
+fn log_level_name(level: LogLevel) -> Text {
+    return match level {
+        Trace => "TRACE",
+        Debug => "DEBUG",
+        Info => "INFO",
+        Warn => "WARN",
+        Error => "ERROR",
+    }
+}
+
+# A minimum level includes itself and every more severe level.
+fn log_enabled(level: LogLevel, minimum: LogLevel) -> Bool {
+    return log_level_rank(level) >= log_level_rank(minimum)
+}
+
+fn log_text_field(key: Text, value: Text) -> LogField {
+    return LogField { key: key, value: LogText(value) }
+}
+
+fn log_int_field(key: Text, value: Int) -> LogField {
+    return LogField { key: key, value: LogInt(value) }
+}
+
+fn log_bool_field(key: Text, value: Bool) -> LogField {
+    return LogField { key: key, value: LogBool(value) }
+}
+
+fn log_field_key_start(symbol: Text) -> Bool {
+    return contains(
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_",
+        symbol,
+    )
+}
+
+fn log_field_key_continue(symbol: Text) -> Bool {
+    return log_field_key_start(symbol) ||
+        contains("0123456789.-", symbol)
+}
+
+fn log_field_key_valid(key: Text) -> Bool {
+    let symbols = chars(key)
+    if len(symbols) == 0 || !log_field_key_start(symbols[0]) {
+        return false
+    }
+    let mut index = 1
+    while index < len(symbols) {
+        if !log_field_key_continue(symbols[index]) {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+# Validation is deterministic: fields are visited from left to right. An
+# invalid key for the current field wins over a duplicate-key error, then the
+# earliest equal prior field is reported.
+fn log_validate_fields(
+    read fields: List[LogField],
+) -> Result[Void, LogError] {
+    let mut index = 0
+    while index < len(fields) {
+        if !log_field_key_valid(fields[index].key) {
+            return Err(InvalidFieldKey(index, fields[index].key))
+        }
+        let mut previous = 0
+        while previous < index {
+            if fields[previous].key == fields[index].key {
+                return Err(DuplicateFieldKey(
+                    fields[index].key,
+                    previous,
+                    index,
+                ))
+            }
+            previous = previous + 1
+        }
+        index = index + 1
+    }
+    return Ok(())
+}
+
+fn log_record(
+    level: LogLevel,
+    target: Text,
+    message: Text,
+    fields: List[LogField],
+) -> Result[LogRecord, LogError] {
+    match log_validate_fields(fields) {
+        Err(error) => return Err(error),
+        Ok(_) => (),
+    }
+    return Ok(LogRecord {
+        level: level,
+        target: target,
+        message: message,
+        fields: fields,
+    })
+}
+
+# Text values are always quoted. Escaping is single-pass so an inserted
+# backslash is never escaped again.
+fn log_escape_text(value: Text) -> Text {
+    let symbols = chars(value)
+    let mut result = ""
+    let mut index = 0
+    while index < len(symbols) {
+        let symbol = symbols[index]
+        if symbol == "\\" {
+            result = result + "\\\\"
+        } else if symbol == "\"" {
+            result = result + "\\\""
+        } else if symbol == "\n" {
+            result = result + "\\n"
+        } else if symbol == "\r" {
+            result = result + "\\r"
+        } else if symbol == "\t" {
+            result = result + "\\t"
+        } else {
+            result = result + symbol
+        }
+        index = index + 1
+    }
+    return result
+}
+
+fn log_quote_text(value: Text) -> Text {
+    return "\"" + log_escape_text(value) + "\""
+}
+
+fn log_render_value(value: LogValue) -> Text {
+    return match value {
+        LogText(text) => log_quote_text(text),
+        LogInt(integer) => to_text(integer),
+        LogBool(boolean) => if boolean { "true" } else { "false" },
+    }
+}
+
+# Version 1 format:
+# level=INFO target="worker" message="ready" retry=3 clean=true
+# Caller field order is preserved exactly.
+fn log_render(read record: LogRecord) -> Text {
+    let mut rendered = "level=" + log_level_name(record.level) +
+        " target=" + log_quote_text(record.target) +
+        " message=" + log_quote_text(record.message)
+    let mut index = 0
+    while index < len(record.fields) {
+        rendered = rendered + " " + record.fields[index].key + "=" +
+            log_render_value(record.fields[index].value)
+        index = index + 1
+    }
+    return rendered
+}
+
+# null is the explicit filtered outcome; an empty Text is never a sentinel.
+fn log_render_at(
+    read record: LogRecord,
+    minimum: LogLevel,
+) -> Text? {
+    if !log_enabled(record.level, minimum) {
+        return null
+    }
+    return log_render(record)
+}

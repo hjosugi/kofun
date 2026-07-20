@@ -1,0 +1,59 @@
+# Int-Core projection of LogLevel ordering, thresholds, and render filtering.
+# Probe-only constructor codes are Trace=101 through Error=105.
+
+fn level_rank(level: Int) -> Int {
+    if level == 101 { return 0 }
+    if level == 102 { return 1 }
+    if level == 103 { return 2 }
+    if level == 104 { return 3 }
+    if level == 105 { return 4 }
+    return -1
+}
+
+# Stable fingerprints for TRACE, DEBUG, INFO, WARN, ERROR.
+fn level_name_code(level: Int) -> Int {
+    if level == 101 { return 105 }
+    if level == 102 { return 205 }
+    if level == 103 { return 304 }
+    if level == 104 { return 404 }
+    if level == 105 { return 505 }
+    return 0
+}
+
+fn enabled(level: Int, minimum: Int) -> Int {
+    if level_rank(level) < level_rank(minimum) { return 0 }
+    return 1
+}
+
+fn enabled_count(minimum: Int) -> Int {
+    return enabled(101, minimum) + enabled(102, minimum) +
+        enabled(103, minimum) + enabled(104, minimum) +
+        enabled(105, minimum)
+}
+
+fn render_length_at(level: Int, minimum: Int, rendered_length: Int) -> Int {
+    if enabled(level, minimum) == 0 { return 0 }
+    return rendered_length
+}
+
+fn main() -> Int {
+    print(level_rank(101))
+    print(level_rank(102))
+    print(level_rank(103))
+    print(level_rank(104))
+    print(level_rank(105))
+    print(level_name_code(101))
+    print(level_name_code(102))
+    print(level_name_code(103))
+    print(level_name_code(104))
+    print(level_name_code(105))
+    print(enabled_count(101))
+    print(enabled_count(102))
+    print(enabled_count(103))
+    print(enabled_count(104))
+    print(enabled_count(105))
+    print(render_length_at(103, 102, 37))
+    print(render_length_at(103, 104, 37))
+    print(render_length_at(105, 105, 37))
+    return 0
+}

@@ -24,6 +24,12 @@ summary helpers. Its canonical ADT surface is not yet connected to executable
 Stage 2 code generation; its gate runs an honest Int-Core projection through
 the C11 and direct x86-64 backends.
 
+The platform-independent [`logging/`](logging/) checkpoint defines structured
+records, explicit level thresholds, typed field-validation errors, and a
+deterministic text renderer. It has no ambient clock, global logger, or sink;
+its canonical ADT surface is likewise gated by a C11/x86-64 Int-Core
+projection until the compiler can lower it directly.
+
 Run the repository-local, Python-free contract checks with:
 
 ```sh

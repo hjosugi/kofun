@@ -1,0 +1,66 @@
+# Int-Core projection of field-key classes and validation precedence.
+# Key classes are 0=invalid, 1=letter/underscore, 2=digit, 3=dot/hyphen.
+
+fn key_start(class: Int) -> Int {
+    if class == 1 { return 1 }
+    return 0
+}
+
+fn key_continue(class: Int) -> Int {
+    if class == 1 { return 1 }
+    if class == 2 { return 1 }
+    if class == 3 { return 1 }
+    return 0
+}
+
+fn key_valid4(
+    first: Int,
+    second: Int,
+    third: Int,
+    fourth: Int,
+    count: Int
+) -> Int {
+    if count <= 0 { return 0 }
+    if count > 4 { return 0 }
+    if key_start(first) == 0 { return 0 }
+    if count < 2 { return 1 }
+    if key_continue(second) == 0 { return 0 }
+    if count < 3 { return 1 }
+    if key_continue(third) == 0 { return 0 }
+    if count < 4 { return 1 }
+    if key_continue(fourth) == 0 { return 0 }
+    return 1
+}
+
+# 100+index is InvalidFieldKey. 200+(prior+1)*10+(current+1) is
+# DuplicateFieldKey. Ordering mirrors canonical left-to-right validation.
+fn validate_three(
+    first_valid: Int,
+    first_key: Int,
+    second_valid: Int,
+    second_key: Int,
+    third_valid: Int,
+    third_key: Int
+) -> Int {
+    if first_valid == 0 { return 100 }
+    if second_valid == 0 { return 101 }
+    if first_key == second_key { return 212 }
+    if third_valid == 0 { return 102 }
+    if first_key == third_key { return 213 }
+    if second_key == third_key { return 223 }
+    return 0
+}
+
+fn main() -> Int {
+    print(key_valid4(1, 2, 3, 1, 4))
+    print(key_valid4(2, 1, 1, 1, 4))
+    print(key_valid4(1, 0, 1, 1, 4))
+    print(key_valid4(1, 1, 1, 1, 0))
+    print(key_valid4(1, 1, 1, 1, 5))
+    print(validate_three(1, 7, 1, 8, 1, 9))
+    print(validate_three(1, 7, 1, 7, 1, 9))
+    print(validate_three(1, 7, 1, 8, 1, 7))
+    print(validate_three(1, 7, 1, 8, 1, 8))
+    print(validate_three(1, 7, 0, 7, 1, 9))
+    return 0
+}
