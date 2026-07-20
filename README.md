@@ -228,8 +228,8 @@ through its registered backend; the runner compares stdout, stderr, and exit
 status and reports backend coverage.
 
 `tests/diagnostics/stage2/` is the first-class must-fail corpus. It currently
-covers all 12 diagnostic codes emitted by the active Stage 2 checkpoint:
-9 cases assert precise source locations and 3 explicitly track missing spans
+covers all 17 diagnostic codes emitted by the active Stage 2 checkpoint:
+14 cases assert precise source locations and 3 explicitly track missing spans
 as debt. Runtime, C ABI, native-backend, and host-I/O diagnostics remain
 separate coverage work.
 

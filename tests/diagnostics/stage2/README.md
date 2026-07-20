@@ -22,7 +22,7 @@ sh tests/diagnostics/stage2/bless.sh
 lowerer, and ownership-slice diagnostic codes. The runner fails if the
 inventory and cases diverge.
 
-This first slice records three existing diagnostics without precise positions
+The current suite records three existing diagnostics without precise positions
 as `expect-span: none`: `E2S04`, `E2S20`, and `E2S21`. They are visible span
 debt, not silently counted as precise diagnostics. Runtime `R010`, C ABI,
 native-backend, and host-I/O diagnostics require separate suites because their
