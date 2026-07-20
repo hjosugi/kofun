@@ -1,0 +1,1 @@
+error[E2S20]: Stage 2 ownership slice requires `for element in read_list`

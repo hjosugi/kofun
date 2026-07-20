@@ -187,6 +187,21 @@ Run every active gate:
 make verify
 ```
 
+Run the compiler-quality gates independently:
+
+```sh
+make diagnostics
+make fuzz
+```
+
+The Stage 2 must-fail corpus pins each active diagnostic code, exact message,
+and declared source span. Its paired `.stderr` files can be regenerated with
+`sh tests/diagnostics/stage2/bless.sh`. The deterministic fuzz smoke tests
+exercise 128 arbitrary token streams with a watchdog and compare 48 generated
+arithmetic programs across an independent expected value, C11, and direct
+x86-64 output. See `tests/diagnostics/stage2/README.md` and
+`tests/fuzz/README.md` for the exact scope and remaining coverage boundaries.
+
 ## CLI
 
 ```text
@@ -211,6 +226,12 @@ defines the direct x86-64 contract for UTF-8 concatenation, equality,
 codepoint length, `chars`, and indexing. Each active corpus executes 9/9 cases
 through its registered backend; the runner compares stdout, stderr, and exit
 status and reports backend coverage.
+
+`tests/diagnostics/stage2/` is the first-class must-fail corpus. It currently
+covers all 12 diagnostic codes emitted by the active Stage 2 checkpoint:
+9 cases assert precise source locations and 3 explicitly track missing spans
+as debt. Runtime, C ABI, native-backend, and host-I/O diagnostics remain
+separate coverage work.
 
 ## Source extension
 

@@ -1,0 +1,9 @@
+# diagnostic-mode: ownership
+# expect-code: E007
+# expect-span: line 6
+fn first(read xs: List[Text]) -> Text {
+    for x in xs {
+        return x
+    }
+    return ""
+}

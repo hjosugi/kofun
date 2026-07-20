@@ -1,4 +1,4 @@
-.PHONY: help compiler test check bootstrap stage2 native c-abi rust-shim http cli-framework stdlib build-system roadmap syntax repository-check verify clean
+.PHONY: help compiler test diagnostics fuzz check bootstrap stage2 native c-abi rust-shim http cli-framework stdlib build-system roadmap syntax repository-check verify clean
 
 KOFUN := ./bin/kofun
 
@@ -6,6 +6,8 @@ help:
 	@printf '%s\n' \
 	  'make compiler         Build the Python-free Kofun compiler seed' \
 	  'make test             Exercise build/run/check/test' \
+	  'make diagnostics      Verify must-fail diagnostic goldens' \
+	  'make fuzz             Run deterministic grammar and semantic fuzz smoke tests' \
 	  'make check            Check canonical bootstrap sources' \
 	  'make bootstrap        Verify the Stage 1 seed path' \
 	  'make stage2           Verify the Stage 2 semantic frontend checkpoint' \
@@ -30,6 +32,13 @@ test: compiler
 	$(KOFUN) test tests/conformance/functions
 	$(KOFUN) test tests/conformance/list
 	$(KOFUN) test tests/conformance/text
+
+diagnostics:
+	sh tests/diagnostics/stage2/run.sh
+
+fuzz:
+	sh tests/fuzz/grammar.sh
+	sh tests/fuzz/semantic_differential.sh
 
 check: compiler
 	$(KOFUN) check bootstrap/fixtures/answer.kofun
@@ -77,7 +86,7 @@ repository-check:
 	@grep -q '"extensions": \[".kofun"\]' editor/vscode/package.json
 	@printf '%s\n' 'PASS: .kofun sources only; no Python implementation'
 
-verify: test check bootstrap stage2 native c-abi rust-shim http cli-framework stdlib build-system roadmap syntax repository-check
+verify: test diagnostics fuzz check bootstrap stage2 native c-abi rust-shim http cli-framework stdlib build-system roadmap syntax repository-check
 	@sh -n bin/kofun bootstrap/stage1/check.sh bootstrap/stage2/check.sh \
 	  bootstrap/native/check.sh bootstrap/native/emit-fixture.sh \
 	  bootstrap/c_abi/check.sh \
@@ -88,6 +97,9 @@ verify: test check bootstrap stage2 native c-abi rust-shim http cli-framework st
 	  stdlib/tests/verify.sh tests/cli.sh tests/build_system.sh \
 	  tests/conformance/run.sh tests/conformance/backends/c11-stage1.sh \
 	  tests/conformance/backends/native-x86_64.sh \
+	  tests/diagnostics/stage2/run.sh \
+	  tests/diagnostics/stage2/bless.sh \
+	  tests/fuzz/grammar.sh tests/fuzz/semantic_differential.sh \
 	  spec/roadmap-31-34/verify-current-gates.sh \
 	  tests/conformance/syntax/issues_35_47/run.sh \
 	  tests/conformance/syntax/issues_48_60/run.sh

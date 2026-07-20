@@ -1,0 +1,4 @@
+# diagnostic-mode: compile
+# expect-code: E2S04
+# expect-span: none
+# This file intentionally contains no declaration.

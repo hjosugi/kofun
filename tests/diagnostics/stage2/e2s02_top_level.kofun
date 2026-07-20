@@ -1,0 +1,4 @@
+# diagnostic-mode: compile
+# expect-code: E2S02
+# expect-span: byte 71
+let answer = 42

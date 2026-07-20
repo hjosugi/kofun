@@ -1,0 +1,8 @@
+# diagnostic-mode: compile
+# expect-code: E2S10
+# expect-span: byte 87
+fn main() {
+    while 1 {
+        print(42)
+    }
+}

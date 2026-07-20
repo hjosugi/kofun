@@ -1,0 +1,118 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
+SUITE="$ROOT/tests/diagnostics/stage2"
+WORK=${KOFUN_DIAGNOSTIC_WORK:-"$ROOT/build/diagnostics-stage2"}
+CC=${CC:-cc}
+
+rm -rf "$WORK"
+mkdir -p "$WORK"
+
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$ROOT/bootstrap/stage2/compiler.c" \
+    -o "$WORK/kofun-stage2"
+
+passed=0
+span_count=0
+span_debt=0
+: >"$WORK/observed.codes"
+
+for source in "$SUITE"/*.kofun; do
+    stem=$(basename "${source%.kofun}")
+    golden="$SUITE/$stem.stderr"
+    actual="$WORK/$stem.actual"
+    internal_stderr="$WORK/$stem.internal.stderr"
+    output="$WORK/$stem.c"
+    ir="$WORK/$stem.ir"
+    tokens="$WORK/$stem.tokens"
+
+    test -f "$golden" || {
+        printf '%s\n' "diagnostics: missing golden for $source" >&2
+        exit 1
+    }
+    mode=$(sed -n 's/^# diagnostic-mode: //p' "$source")
+    code=$(sed -n 's/^# expect-code: //p' "$source")
+    span=$(sed -n 's/^# expect-span: //p' "$source")
+    test -n "$mode" && test -n "$code" && test -n "$span" || {
+        printf '%s\n' \
+            "diagnostics: missing mode/code/span directive in $source" >&2
+        exit 1
+    }
+
+    set +e
+    if test "$mode" = ownership; then
+        "$WORK/kofun-stage2" --check-ownership "$source" \
+            >"$actual" 2>"$internal_stderr"
+    elif test "$mode" = compile; then
+        "$WORK/kofun-stage2" \
+            "$source" "$output" "$ir" "$tokens" \
+            >"$actual" 2>"$internal_stderr"
+    else
+        printf '%s\n' \
+            "diagnostics: unknown mode '$mode' in $source" >&2
+        exit 1
+    fi
+    status=$?
+    set -e
+
+    test "$status" -eq 1 || {
+        printf '%s\n' \
+            "diagnostics: $source exited $status instead of 1" >&2
+        exit 1
+    }
+    test ! -s "$internal_stderr" || {
+        printf '%s\n' \
+            "diagnostics: $source wrote unexpected internal stderr" >&2
+        exit 1
+    }
+    test ! -e "$output" || {
+        printf '%s\n' \
+            "diagnostics: rejected source produced $output" >&2
+        exit 1
+    }
+    cmp "$golden" "$actual" || {
+        printf '%s\n' \
+            "diagnostics: golden mismatch for $source; run bless.sh intentionally" >&2
+        exit 1
+    }
+    grep -F "error[$code]:" "$actual" >/dev/null || {
+        printf '%s\n' \
+            "diagnostics: expected code $code was not emitted for $source" >&2
+        exit 1
+    }
+    if test "$span" = none; then
+        span_debt=$((span_debt + 1))
+    else
+        grep -F "at $span" "$actual" >/dev/null || {
+            printf '%s\n' \
+                "diagnostics: expected span '$span' was not emitted for $source" >&2
+            exit 1
+        }
+        span_count=$((span_count + 1))
+    fi
+    printf '%s\n' "$code" >>"$WORK/observed.codes"
+    passed=$((passed + 1))
+    printf '%s\n' "PASS [stage2-diagnostic] $source"
+done
+
+LC_ALL=C sort -u "$WORK/observed.codes" >"$WORK/observed.sorted"
+cmp "$SUITE/codes.txt" "$WORK/observed.sorted" || {
+    printf '%s\n' \
+        "diagnostics: code inventory and executable cases differ" >&2
+    exit 1
+}
+sed -n \
+    's/.*error\[\(E[0-9A-Z]*\)\].*/\1/p' \
+    "$ROOT/bootstrap/stage2/compiler.kofun" |
+    LC_ALL=C sort -u >"$WORK/compiler.codes"
+cmp "$SUITE/codes.txt" "$WORK/compiler.codes" || {
+    printf '%s\n' \
+        "diagnostics: canonical compiler codes and inventory differ" >&2
+    exit 1
+}
+
+printf '%s\n' \
+    "$passed passed; 0 failed" \
+    "diagnostic-code coverage: $passed/$passed Stage 2 codes" \
+    "precise source spans: $span_count; recorded span debt: $span_debt"

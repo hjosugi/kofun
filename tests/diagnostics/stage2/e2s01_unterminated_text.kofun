@@ -1,0 +1,6 @@
+# diagnostic-mode: compile
+# expect-code: E2S01
+# expect-span: byte 93
+fn main() {
+    print("unterminated)
+}

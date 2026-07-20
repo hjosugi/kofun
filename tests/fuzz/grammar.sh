@@ -1,0 +1,103 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+WORK=${KOFUN_GRAMMAR_FUZZ_WORK:-"$ROOT/build/grammar-fuzz"}
+CC=${CC:-cc}
+CASES=${KOFUN_GRAMMAR_FUZZ_CASES:-128}
+
+command -v timeout >/dev/null 2>&1 || {
+    printf '%s\n' "grammar fuzz: timeout is required" >&2
+    exit 1
+}
+case $CASES in
+    ''|*[!0-9]*|0)
+        printf '%s\n' "grammar fuzz: case count must be positive" >&2
+        exit 2
+        ;;
+esac
+
+rm -rf "$WORK"
+mkdir -p "$WORK"
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$ROOT/bootstrap/stage2/compiler.c" \
+    -o "$WORK/kofun-stage2"
+
+seed=12648430
+next_random() {
+    seed=$(((seed * 1103515245 + 12345) % 2147483648))
+}
+
+token_for() {
+    case $1 in
+        0) printf '%s' 'fn' ;;
+        1) printf '%s' 'main' ;;
+        2) printf '%s' '(' ;;
+        3) printf '%s' ')' ;;
+        4) printf '%s' '{' ;;
+        5) printf '%s' '}' ;;
+        6) printf '%s' 'let' ;;
+        7) printf '%s' 'value' ;;
+        8) printf '%s' '=' ;;
+        9) printf '%s' 'print' ;;
+        10) printf '%s' 'return' ;;
+        11) printf '%s' '0' ;;
+        12) printf '%s' '42' ;;
+        13) printf '%s' '+' ;;
+        14) printf '%s' '-' ;;
+        15) printf '%s' '*' ;;
+        16) printf '%s' '//' ;;
+        17) printf '%s' '%' ;;
+        18) printf '%s' ',' ;;
+        19) printf '%s' ':' ;;
+        20) printf '%s' 'Int' ;;
+        21) printf '%s' '"text"' ;;
+        22) printf '%s' '"' ;;
+        23) printf '%s' '#' ;;
+        *) printf '%s' 'unexpected-token' ;;
+    esac
+}
+
+case_index=0
+while test "$case_index" -lt "$CASES"; do
+    source="$WORK/case-$case_index.kofun"
+    next_random
+    token_count=$((seed % 80 + 1))
+    token_index=0
+    : >"$source"
+    while test "$token_index" -lt "$token_count"; do
+        next_random
+        token=$(token_for $((seed % 25)))
+        printf '%s ' "$token" >>"$source"
+        token_index=$((token_index + 1))
+    done
+    printf '\n' >>"$source"
+
+    set +e
+    timeout 2 "$WORK/kofun-stage2" \
+        "$source" \
+        "$WORK/case-$case_index.out.kofun" \
+        "$WORK/case-$case_index.ir" \
+        "$WORK/case-$case_index.tokens" \
+        >"$WORK/case-$case_index.stdout" \
+        2>"$WORK/case-$case_index.stderr"
+    status=$?
+    set -e
+    case $status in
+        0|1) ;;
+        124|137)
+            printf '%s\n' \
+                "grammar fuzz: case $case_index timed out" >&2
+            exit 1
+            ;;
+        *)
+            printf '%s\n' \
+                "grammar fuzz: case $case_index crashed with status $status" >&2
+            exit 1
+            ;;
+    esac
+    case_index=$((case_index + 1))
+done
+
+printf '%s\n' \
+    "PASS: grammar fuzz completed $CASES deterministic malformed/valid inputs"

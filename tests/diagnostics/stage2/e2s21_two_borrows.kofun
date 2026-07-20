@@ -1,0 +1,12 @@
+# diagnostic-mode: ownership
+# expect-code: E2S21
+# expect-span: none
+fn first(
+    read xs: List[Int],
+    read ys: List[Int],
+) -> Int {
+    for x in xs {
+        return x
+    }
+    return 0
+}
