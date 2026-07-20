@@ -1,0 +1,265 @@
+# Executable Int-Core projection of stdlib/json/json.kofun.
+#
+# Structural token codes are: 1 scalar, 2 `[`, 3 `]`, 4 `{`, 5 `}`,
+# 6 comma, 7 colon, 8 whitespace, and 9 invalid. Number codes are: 1 zero,
+# 2 nonzero digit, 3 minus, 4 decimal point, 5 exponent, and 6 plus.
+# String codes are: 1 raw scalar, 2 closing quote, 3 backslash, 4 supported
+# short escape, 5 Unicode escape, and 6 raw control.
+
+fn pow10(exponent: Int) -> Int {
+    if exponent == 0 { return 1 }
+    return 10 * pow10(exponent - 1)
+}
+
+fn symbol_at(source: Int, length: Int, index: Int) -> Int {
+    return (source // pow10(length - index - 1)) % 10
+}
+
+fn skip_space(source: Int, length: Int, index: Int) -> Int {
+    if index == length { return index }
+    if symbol_at(source, length, index) == 8 {
+        return skip_space(source, length, index + 1)
+    }
+    return index
+}
+
+# Successful parse results are end-offset + 1. Negative results are:
+# unexpected token/end, expected colon, expected comma/end, nesting limit.
+fn parse_value_end(
+    source: Int,
+    length: Int,
+    index: Int,
+    depth: Int
+) -> Int {
+    let start = skip_space(source, length, index)
+    if start == length { return -1 }
+    let symbol = symbol_at(source, length, start)
+    if symbol == 1 { return start + 2 }
+    if symbol == 2 {
+        if depth == 4 { return -4 }
+        return parse_array(source, length, start + 1, depth + 1)
+    }
+    if symbol == 4 {
+        if depth == 4 { return -4 }
+        return parse_object(source, length, start + 1, depth + 1)
+    }
+    return -1
+}
+
+fn parse_array(
+    source: Int,
+    length: Int,
+    index: Int,
+    depth: Int
+) -> Int {
+    let start = skip_space(source, length, index)
+    if start == length { return -1 }
+    if symbol_at(source, length, start) == 3 { return start + 2 }
+    return parse_array_value(source, length, start, depth)
+}
+
+fn parse_array_value(
+    source: Int,
+    length: Int,
+    index: Int,
+    depth: Int
+) -> Int {
+    let parsed = parse_value_end(source, length, index, depth)
+    if parsed < 0 { return parsed }
+    let after = skip_space(source, length, parsed - 1)
+    if after == length { return -1 }
+    let symbol = symbol_at(source, length, after)
+    if symbol == 3 { return after + 2 }
+    if symbol != 6 { return -3 }
+    return parse_array_value(source, length, after + 1, depth)
+}
+
+fn parse_object(
+    source: Int,
+    length: Int,
+    index: Int,
+    depth: Int
+) -> Int {
+    let start = skip_space(source, length, index)
+    if start == length { return -1 }
+    if symbol_at(source, length, start) == 5 { return start + 2 }
+    return parse_object_member(source, length, start, depth)
+}
+
+fn parse_object_member(
+    source: Int,
+    length: Int,
+    index: Int,
+    depth: Int
+) -> Int {
+    let key = skip_space(source, length, index)
+    if key == length { return -1 }
+    if symbol_at(source, length, key) != 1 { return -1 }
+    let colon = skip_space(source, length, key + 1)
+    if colon == length { return -2 }
+    if symbol_at(source, length, colon) != 7 { return -2 }
+    let parsed = parse_value_end(source, length, colon + 1, depth)
+    if parsed < 0 { return parsed }
+    let after = skip_space(source, length, parsed - 1)
+    if after == length { return -1 }
+    let symbol = symbol_at(source, length, after)
+    if symbol == 5 { return after + 2 }
+    if symbol != 6 { return -3 }
+    return parse_object_member(source, length, after + 1, depth)
+}
+
+fn document_status(source: Int, length: Int) -> Int {
+    let parsed = parse_value_end(source, length, 0, 0)
+    if parsed < 0 { return parsed }
+    let trailing = skip_space(source, length, parsed - 1)
+    if trailing != length { return -5 }
+    return 1
+}
+
+fn number_digit(symbol: Int) -> Int {
+    if symbol == 1 { return 1 }
+    if symbol == 2 { return 1 }
+    return 0
+}
+
+# States: start, after minus, zero, integer, decimal point, fraction,
+# exponent marker, exponent sign, exponent digits.
+fn number_scan(
+    source: Int,
+    length: Int,
+    index: Int,
+    state: Int
+) -> Int {
+    if index == length {
+        if state == 2 { return 1 }
+        if state == 3 { return 1 }
+        if state == 5 { return 1 }
+        if state == 8 { return 1 }
+        return 0
+    }
+    let symbol = symbol_at(source, length, index)
+    if state == 0 {
+        if symbol == 3 { return number_scan(source, length, index + 1, 1) }
+        if symbol == 1 { return number_scan(source, length, index + 1, 2) }
+        if symbol == 2 { return number_scan(source, length, index + 1, 3) }
+        return 0
+    }
+    if state == 1 {
+        if symbol == 1 { return number_scan(source, length, index + 1, 2) }
+        if symbol == 2 { return number_scan(source, length, index + 1, 3) }
+        return 0
+    }
+    if state == 2 {
+        if symbol == 4 { return number_scan(source, length, index + 1, 4) }
+        if symbol == 5 { return number_scan(source, length, index + 1, 6) }
+        return 0
+    }
+    if state == 3 {
+        if number_digit(symbol) == 1 {
+            return number_scan(source, length, index + 1, 3)
+        }
+        if symbol == 4 { return number_scan(source, length, index + 1, 4) }
+        if symbol == 5 { return number_scan(source, length, index + 1, 6) }
+        return 0
+    }
+    if state == 4 {
+        if number_digit(symbol) == 1 {
+            return number_scan(source, length, index + 1, 5)
+        }
+        return 0
+    }
+    if state == 5 {
+        if number_digit(symbol) == 1 {
+            return number_scan(source, length, index + 1, 5)
+        }
+        if symbol == 5 { return number_scan(source, length, index + 1, 6) }
+        return 0
+    }
+    if state == 6 {
+        if symbol == 3 {
+            return number_scan(source, length, index + 1, 7)
+        }
+        if symbol == 6 {
+            return number_scan(source, length, index + 1, 7)
+        }
+        if number_digit(symbol) == 1 {
+            return number_scan(source, length, index + 1, 8)
+        }
+        return 0
+    }
+    if state == 7 {
+        if number_digit(symbol) == 1 {
+            return number_scan(source, length, index + 1, 8)
+        }
+        return 0
+    }
+    if number_digit(symbol) == 1 {
+        return number_scan(source, length, index + 1, 8)
+    }
+    return 0
+}
+
+fn number_valid(source: Int, length: Int) -> Int {
+    return number_scan(source, length, 0, 0)
+}
+
+# Positive results are decoded scalar count + 1. Negative results are:
+# unterminated, invalid escape/trailing data, unsupported Unicode, raw control.
+fn string_scan(
+    source: Int,
+    length: Int,
+    index: Int,
+    decoded: Int
+) -> Int {
+    if index == length { return -1 }
+    let symbol = symbol_at(source, length, index)
+    if symbol == 2 {
+        if index + 1 != length { return -2 }
+        return decoded + 1
+    }
+    if symbol == 6 { return -4 }
+    if symbol == 3 {
+        if index + 1 == length { return -1 }
+        let escape = symbol_at(source, length, index + 1)
+        if escape == 5 { return -3 }
+        if escape != 4 { return -2 }
+        return string_scan(source, length, index + 2, decoded + 1)
+    }
+    return string_scan(source, length, index + 1, decoded + 1)
+}
+
+fn main() {
+    # Scalar, empty containers, nesting, and insignificant whitespace.
+    print(document_status(1, 1))
+    print(document_status(23, 2))
+    print(document_status(45, 2))
+    print(document_status(245613, 6))
+    print(document_status(841721358, 9))
+
+    # Missing separators, trailing input, unexpected tokens, and depth limit.
+    print(document_status(2113, 4))
+    print(document_status(4115, 4))
+    print(document_status(11, 2))
+    print(document_status(3, 1))
+    print(document_status(22222133333, 11))
+
+    # JSON number grammar, including arbitrary-length decimal/exponent shape.
+    print(number_valid(1, 1))
+    print(number_valid(222, 3))
+    print(number_valid(31, 2))
+    print(number_valid(142, 3))
+    print(number_valid(322422562, 9))
+    print(number_valid(12, 2))
+    print(number_valid(24, 2))
+    print(number_valid(25, 2))
+    print(number_valid(6, 1))
+
+    # Empty/raw/escaped strings and each explicit unsupported boundary.
+    print(string_scan(2, 1, 0, 0))
+    print(string_scan(112, 3, 0, 0))
+    print(string_scan(342, 3, 0, 0))
+    print(string_scan(352, 3, 0, 0))
+    print(string_scan(312, 3, 0, 0))
+    print(string_scan(62, 2, 0, 0))
+    print(string_scan(1, 1, 0, 0))
+}

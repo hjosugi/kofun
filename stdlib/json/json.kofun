@@ -1,0 +1,474 @@
+# Strict JSON value-codec checkpoint.
+#
+# Version 1 preserves JSON number lexemes instead of coercing them to Int or
+# Float. It accepts direct Unicode scalar values and the short JSON escapes,
+# while reporting `\uXXXX` escapes as unsupported until scalar construction is
+# available in the standard library. Object member order is preserved and
+# duplicate names are rejected.
+
+let JSON_PROFILE_VERSION = 1
+let JSON_MAX_NESTING = 64
+
+type JsonMember = {
+    key: Text,
+    value: JsonValue,
+}
+
+type JsonValue =
+    | JsonNull
+    | JsonBoolean(Bool)
+    | JsonNumber(Text)
+    | JsonText(Text)
+    | JsonArray(List[JsonValue])
+    | JsonObject(List[JsonMember])
+
+# Parse offsets are zero-based Unicode-scalar offsets. DuplicateRenderedKey
+# uses the zero-based member position in a programmatically built object.
+type JsonError =
+    | UnexpectedEnd(Int)
+    | UnexpectedToken(Int, Text)
+    | InvalidLiteral(Int, Text)
+    | InvalidNumber(Int, Text)
+    | UnterminatedString(Int)
+    | InvalidEscape(Int, Text)
+    | UnsupportedUnicodeEscape(Int)
+    | UnescapedControl(Int, Text)
+    | ExpectedColon(Int)
+    | ExpectedCommaOrEnd(Int, Text)
+    | DuplicateKey(Int, Text)
+    | TrailingData(Int, Text)
+    | NestingLimitExceeded(Int, Int)
+    | InvalidRenderedNumber(Text)
+    | DuplicateRenderedKey(Int, Text)
+    | UnrenderableControl(Int, Text)
+
+type JsonTextScan =
+    | JsonTextScanned(Text, Int)
+    | JsonTextScanFailed(JsonError)
+
+type JsonValueScan =
+    | JsonValueScanned(JsonValue, Int)
+    | JsonValueScanFailed(JsonError)
+
+type JsonRendered =
+    | JsonTextRendered(Text)
+    | JsonRenderFailed(JsonError)
+
+fn json_space(symbol: Text) -> Bool {
+    return symbol == " " || symbol == "\t" ||
+        symbol == "\r" || symbol == "\n"
+}
+
+fn json_ascii_digit(symbol: Text) -> Bool {
+    return contains("0123456789", symbol)
+}
+
+fn json_nonzero_digit(symbol: Text) -> Bool {
+    return contains("123456789", symbol)
+}
+
+fn json_raw_control(symbol: Text) -> Bool {
+    return symbol == "\u0000" || symbol == "\u0001" ||
+        symbol == "\u0002" || symbol == "\u0003" ||
+        symbol == "\u0004" || symbol == "\u0005" ||
+        symbol == "\u0006" || symbol == "\u0007" ||
+        symbol == "\u0008" || symbol == "\u0009" ||
+        symbol == "\u000a" || symbol == "\u000b" ||
+        symbol == "\u000c" || symbol == "\u000d" ||
+        symbol == "\u000e" || symbol == "\u000f" ||
+        symbol == "\u0010" || symbol == "\u0011" ||
+        symbol == "\u0012" || symbol == "\u0013" ||
+        symbol == "\u0014" || symbol == "\u0015" ||
+        symbol == "\u0016" || symbol == "\u0017" ||
+        symbol == "\u0018" || symbol == "\u0019" ||
+        symbol == "\u001a" || symbol == "\u001b" ||
+        symbol == "\u001c" || symbol == "\u001d" ||
+        symbol == "\u001e" || symbol == "\u001f"
+}
+
+fn json_skip_space(read symbols: List[Text], start: Int) -> Int {
+    let mut offset = start
+    while offset < len(symbols) && json_space(symbols[offset]) {
+        offset = offset + 1
+    }
+    return offset
+}
+
+fn json_number_lexically_valid(lexeme: Text) -> Bool {
+    let symbols = chars(lexeme)
+    if len(symbols) == 0 { return false }
+
+    let mut offset = 0
+    if symbols[offset] == "-" {
+        offset = offset + 1
+        if offset == len(symbols) { return false }
+    }
+
+    if symbols[offset] == "0" {
+        offset = offset + 1
+        if offset < len(symbols) && json_ascii_digit(symbols[offset]) {
+            return false
+        }
+    } else if json_nonzero_digit(symbols[offset]) {
+        offset = offset + 1
+        while offset < len(symbols) && json_ascii_digit(symbols[offset]) {
+            offset = offset + 1
+        }
+    } else {
+        return false
+    }
+
+    if offset < len(symbols) && symbols[offset] == "." {
+        offset = offset + 1
+        if offset == len(symbols) || !json_ascii_digit(symbols[offset]) {
+            return false
+        }
+        while offset < len(symbols) && json_ascii_digit(symbols[offset]) {
+            offset = offset + 1
+        }
+    }
+
+    if offset < len(symbols) &&
+       (symbols[offset] == "e" || symbols[offset] == "E") {
+        offset = offset + 1
+        if offset < len(symbols) &&
+           (symbols[offset] == "+" || symbols[offset] == "-") {
+            offset = offset + 1
+        }
+        if offset == len(symbols) || !json_ascii_digit(symbols[offset]) {
+            return false
+        }
+        while offset < len(symbols) && json_ascii_digit(symbols[offset]) {
+            offset = offset + 1
+        }
+    }
+
+    return offset == len(symbols)
+}
+
+fn json_number(lexeme: Text) -> Result[JsonValue, JsonError] {
+    if !json_number_lexically_valid(lexeme) {
+        return Err(InvalidRenderedNumber(lexeme))
+    }
+    return Ok(JsonNumber(lexeme))
+}
+
+fn json_scan_text(
+    read symbols: List[Text],
+    quote_offset: Int,
+) -> JsonTextScan {
+    let mut value = ""
+    let mut offset = quote_offset + 1
+    while offset < len(symbols) {
+        let symbol = symbols[offset]
+        if symbol == "\"" {
+            return JsonTextScanned(value, offset + 1)
+        }
+        if json_raw_control(symbol) {
+            return JsonTextScanFailed(UnescapedControl(offset, symbol))
+        }
+        if symbol != "\\" {
+            value = value + symbol
+            offset = offset + 1
+        } else {
+            if offset + 1 >= len(symbols) {
+                return JsonTextScanFailed(UnterminatedString(quote_offset))
+            }
+            let escape = symbols[offset + 1]
+            if escape == "\"" { value = value + "\"" }
+            else if escape == "\\" { value = value + "\\" }
+            else if escape == "/" { value = value + "/" }
+            else if escape == "b" { value = value + "\b" }
+            else if escape == "f" { value = value + "\f" }
+            else if escape == "n" { value = value + "\n" }
+            else if escape == "r" { value = value + "\r" }
+            else if escape == "t" { value = value + "\t" }
+            else if escape == "u" {
+                return JsonTextScanFailed(UnsupportedUnicodeEscape(offset))
+            } else {
+                return JsonTextScanFailed(InvalidEscape(offset, escape))
+            }
+            offset = offset + 2
+        }
+    }
+    return JsonTextScanFailed(UnterminatedString(quote_offset))
+}
+
+fn json_token_end(read symbols: List[Text], start: Int) -> Int {
+    let mut offset = start
+    while offset < len(symbols) && !json_space(symbols[offset]) &&
+          symbols[offset] != "," && symbols[offset] != "]" &&
+          symbols[offset] != "}" {
+        offset = offset + 1
+    }
+    return offset
+}
+
+fn json_scan_number(
+    source: Text,
+    read symbols: List[Text],
+    start: Int,
+) -> JsonValueScan {
+    let end = json_token_end(symbols, start)
+    let lexeme = text_slice(source, start, end)
+    if !json_number_lexically_valid(lexeme) {
+        return JsonValueScanFailed(InvalidNumber(start, lexeme))
+    }
+    return JsonValueScanned(JsonNumber(lexeme), end)
+}
+
+fn json_has_word(source: Text, start: Int, word: Text) -> Bool {
+    let width = len(chars(word))
+    return start + width <= len(chars(source)) &&
+        text_slice(source, start, start + width) == word
+}
+
+fn json_members_have_key(read members: List[JsonMember], key: Text) -> Bool {
+    for member in members {
+        if member.key == key { return true }
+    }
+    return false
+}
+
+fn json_scan_array(
+    source: Text,
+    read symbols: List[Text],
+    open_offset: Int,
+    depth: Int,
+) -> JsonValueScan {
+    let mut values: List[JsonValue] = []
+    let mut offset = json_skip_space(symbols, open_offset + 1)
+    if offset < len(symbols) && symbols[offset] == "]" {
+        return JsonValueScanned(JsonArray(values), offset + 1)
+    }
+    while true {
+        match json_scan_value(source, symbols, offset, depth + 1) {
+            JsonValueScanFailed(error) => return JsonValueScanFailed(error),
+            JsonValueScanned(value, next) => {
+                values = push(values, value)
+                offset = json_skip_space(symbols, next)
+            },
+        }
+        if offset >= len(symbols) {
+            return JsonValueScanFailed(UnexpectedEnd(offset))
+        }
+        if symbols[offset] == "]" {
+            return JsonValueScanned(JsonArray(values), offset + 1)
+        }
+        if symbols[offset] != "," {
+            return JsonValueScanFailed(ExpectedCommaOrEnd(
+                offset,
+                symbols[offset],
+            ))
+        }
+        offset = json_skip_space(symbols, offset + 1)
+    }
+    return JsonValueScanFailed(UnexpectedEnd(offset))
+}
+
+fn json_scan_object(
+    source: Text,
+    read symbols: List[Text],
+    open_offset: Int,
+    depth: Int,
+) -> JsonValueScan {
+    let mut members: List[JsonMember] = []
+    let mut offset = json_skip_space(symbols, open_offset + 1)
+    if offset < len(symbols) && symbols[offset] == "}" {
+        return JsonValueScanned(JsonObject(members), offset + 1)
+    }
+    while true {
+        if offset >= len(symbols) {
+            return JsonValueScanFailed(UnexpectedEnd(offset))
+        }
+        if symbols[offset] != "\"" {
+            return JsonValueScanFailed(UnexpectedToken(offset, symbols[offset]))
+        }
+        let key_offset = offset
+        let key = match json_scan_text(symbols, offset) {
+            JsonTextScanFailed(error) => return JsonValueScanFailed(error),
+            JsonTextScanned(text, next) => {
+                offset = json_skip_space(symbols, next)
+                text
+            },
+        }
+        if json_members_have_key(members, key) {
+            return JsonValueScanFailed(DuplicateKey(key_offset, key))
+        }
+        if offset >= len(symbols) || symbols[offset] != ":" {
+            return JsonValueScanFailed(ExpectedColon(offset))
+        }
+        offset = json_skip_space(symbols, offset + 1)
+        match json_scan_value(source, symbols, offset, depth + 1) {
+            JsonValueScanFailed(error) => return JsonValueScanFailed(error),
+            JsonValueScanned(value, next) => {
+                members = push(members, JsonMember { key: key, value: value })
+                offset = json_skip_space(symbols, next)
+            },
+        }
+        if offset >= len(symbols) {
+            return JsonValueScanFailed(UnexpectedEnd(offset))
+        }
+        if symbols[offset] == "}" {
+            return JsonValueScanned(JsonObject(members), offset + 1)
+        }
+        if symbols[offset] != "," {
+            return JsonValueScanFailed(ExpectedCommaOrEnd(
+                offset,
+                symbols[offset],
+            ))
+        }
+        offset = json_skip_space(symbols, offset + 1)
+    }
+    return JsonValueScanFailed(UnexpectedEnd(offset))
+}
+
+fn json_scan_value(
+    source: Text,
+    read symbols: List[Text],
+    start: Int,
+    depth: Int,
+) -> JsonValueScan {
+    let offset = json_skip_space(symbols, start)
+    if offset >= len(symbols) {
+        return JsonValueScanFailed(UnexpectedEnd(offset))
+    }
+    let symbol = symbols[offset]
+    if symbol == "\"" {
+        return match json_scan_text(symbols, offset) {
+            JsonTextScanFailed(error) => JsonValueScanFailed(error),
+            JsonTextScanned(value, next) =>
+                JsonValueScanned(JsonText(value), next),
+        }
+    }
+    if symbol == "[" || symbol == "{" {
+        if depth >= JSON_MAX_NESTING {
+            return JsonValueScanFailed(NestingLimitExceeded(
+                offset,
+                JSON_MAX_NESTING,
+            ))
+        }
+        if symbol == "[" {
+            return json_scan_array(source, symbols, offset, depth)
+        }
+        return json_scan_object(source, symbols, offset, depth)
+    }
+    if json_has_word(source, offset, "true") {
+        return JsonValueScanned(JsonBoolean(true), offset + 4)
+    }
+    if json_has_word(source, offset, "false") {
+        return JsonValueScanned(JsonBoolean(false), offset + 5)
+    }
+    if json_has_word(source, offset, "null") {
+        return JsonValueScanned(JsonNull, offset + 4)
+    }
+    if symbol == "t" || symbol == "f" || symbol == "n" {
+        return JsonValueScanFailed(InvalidLiteral(
+            offset,
+            text_slice(source, offset, json_token_end(symbols, offset)),
+        ))
+    }
+    if symbol == "-" || json_ascii_digit(symbol) {
+        return json_scan_number(source, symbols, offset)
+    }
+    return JsonValueScanFailed(UnexpectedToken(offset, symbol))
+}
+
+fn json_parse(source: Text) -> Result[JsonValue, JsonError] {
+    let symbols = chars(source)
+    return match json_scan_value(source, symbols, 0, 0) {
+        JsonValueScanFailed(error) => Err(error),
+        JsonValueScanned(value, next) => {
+            let trailing = json_skip_space(symbols, next)
+            if trailing == len(symbols) {
+                Ok(value)
+            } else {
+                Err(TrailingData(trailing, symbols[trailing]))
+            }
+        },
+    }
+}
+
+fn json_render_text(value: Text) -> JsonRendered {
+    let symbols = chars(value)
+    let mut rendered = "\""
+    let mut offset = 0
+    while offset < len(symbols) {
+        let symbol = symbols[offset]
+        if symbol == "\"" { rendered = rendered + "\\\"" }
+        else if symbol == "\\" { rendered = rendered + "\\\\" }
+        else if symbol == "\b" { rendered = rendered + "\\b" }
+        else if symbol == "\f" { rendered = rendered + "\\f" }
+        else if symbol == "\n" { rendered = rendered + "\\n" }
+        else if symbol == "\r" { rendered = rendered + "\\r" }
+        else if symbol == "\t" { rendered = rendered + "\\t" }
+        else if json_raw_control(symbol) {
+            return JsonRenderFailed(UnrenderableControl(offset, symbol))
+        } else {
+            rendered = rendered + symbol
+        }
+        offset = offset + 1
+    }
+    return JsonTextRendered(rendered + "\"")
+}
+
+fn json_render_value(read value: JsonValue) -> JsonRendered {
+    return match value {
+        JsonNull => JsonTextRendered("null"),
+        JsonBoolean(boolean) => if boolean {
+            JsonTextRendered("true")
+        } else {
+            JsonTextRendered("false")
+        },
+        JsonNumber(lexeme) => if json_number_lexically_valid(lexeme) {
+            JsonTextRendered(lexeme)
+        } else {
+            JsonRenderFailed(InvalidRenderedNumber(lexeme))
+        },
+        JsonText(text) => json_render_text(text),
+        JsonArray(values) => {
+            let mut items: List[Text] = []
+            let mut index = 0
+            for item in values {
+                match json_render_value(item) {
+                    JsonRenderFailed(error) => return JsonRenderFailed(error),
+                    JsonTextRendered(text) => items = push(items, text),
+                }
+                index = index + 1
+            }
+            JsonTextRendered("[" + text_join(items, ",") + "]")
+        },
+        JsonObject(members) => {
+            let mut prior: List[JsonMember] = []
+            let mut items: List[Text] = []
+            let mut index = 0
+            for member in members {
+                if json_members_have_key(prior, member.key) {
+                    return JsonRenderFailed(DuplicateRenderedKey(
+                        index,
+                        member.key,
+                    ))
+                }
+                let key = match json_render_text(member.key) {
+                    JsonRenderFailed(error) => return JsonRenderFailed(error),
+                    JsonTextRendered(text) => text,
+                }
+                let item = match json_render_value(member.value) {
+                    JsonRenderFailed(error) => return JsonRenderFailed(error),
+                    JsonTextRendered(text) => text,
+                }
+                items = push(items, key + ":" + item)
+                prior = push(prior, member)
+                index = index + 1
+            }
+            JsonTextRendered("{" + text_join(items, ",") + "}")
+        },
+    }
+}
+
+fn json_render(read value: JsonValue) -> Result[Text, JsonError] {
+    return match json_render_value(value) {
+        JsonRenderFailed(error) => Err(error),
+        JsonTextRendered(text) => Ok(text),
+    }
+}
