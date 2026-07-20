@@ -32,8 +32,8 @@ private suite.
 
 The numeric Core corpus is `tests/conformance/numeric/`. Its Kofun manifest,
 `expectations.kofun`, exposes the same observations to future Kofun-native
-tooling. The active adapter is `c11-stage1`. Future native or WebAssembly
-adapters must consume the same `.kofun` programs.
+tooling. The active numeric adapters are `c11-stage1` and `wasm32-node`.
+Future native adapters must consume the same `.kofun` programs.
 
 ## Unsupported cases and coverage
 

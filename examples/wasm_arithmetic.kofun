@@ -1,0 +1,8 @@
+# The wasm32 arithmetic Core exports main and imports host printing.
+# expect-stdout: 42
+# expect-stdout: -4
+fn main() {
+    let seven: Int = 6 + 1
+    print(seven * 6)
+    print(-7 // 2)
+}
