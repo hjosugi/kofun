@@ -42,11 +42,7 @@ fn count_graphemes(bytes: *const c_void, length: usize) -> KofunGraphemeResult {
             UnicodeSegmentation::graphemes(text, true).count(),
             0,
         ),
-        Err(error) => KofunGraphemeResult::new(
-            KOFUN_UNICODE_INVALID_UTF8,
-            0,
-            error.valid_up_to(),
-        ),
+        Err(error) => KofunGraphemeResult::new(KOFUN_UNICODE_INVALID_UTF8, 0, error.valid_up_to()),
     }
 }
 
@@ -56,9 +52,7 @@ pub extern "C" fn kofun_unicode_grapheme_count(
     length: usize,
 ) -> KofunGraphemeResult {
     catch_unwind(AssertUnwindSafe(|| count_graphemes(bytes, length)))
-        .unwrap_or_else(|_| {
-            KofunGraphemeResult::new(KOFUN_UNICODE_PANIC, 0, 0)
-        })
+        .unwrap_or_else(|_| KofunGraphemeResult::new(KOFUN_UNICODE_PANIC, 0, 0))
 }
 
 #[unsafe(no_mangle)]
@@ -87,10 +81,7 @@ mod tests {
     fn counts_a_grapheme_in_two_codepoints() {
         let input = b"\x65\xCC\x81";
         assert_eq!(std::str::from_utf8(input).unwrap().chars().count(), 2);
-        let result = kofun_unicode_grapheme_count(
-            input.as_ptr().cast::<c_void>(),
-            input.len(),
-        );
+        let result = kofun_unicode_grapheme_count(input.as_ptr().cast::<c_void>(), input.len());
         assert_eq!(result.status, KOFUN_UNICODE_OK);
         assert_eq!(result.count, 1);
     }
@@ -98,10 +89,7 @@ mod tests {
     #[test]
     fn maps_invalid_utf8_and_null_without_panicking() {
         let invalid = [0xFF_u8];
-        let result = kofun_unicode_grapheme_count(
-            invalid.as_ptr().cast::<c_void>(),
-            invalid.len(),
-        );
+        let result = kofun_unicode_grapheme_count(invalid.as_ptr().cast::<c_void>(), invalid.len());
         assert_eq!(result.status, KOFUN_UNICODE_INVALID_UTF8);
         assert_eq!(result.error_offset, 0);
 

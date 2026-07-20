@@ -1,1 +1,2 @@
 *.kofun text eol=lf
+examples/rust-shim/vendor/** -whitespace

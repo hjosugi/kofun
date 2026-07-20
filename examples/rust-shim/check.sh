@@ -3,6 +3,7 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 SHIM="$ROOT/examples/rust-shim"
+MEASUREMENT="$ROOT/artifacts/rust-shim-build-cost.json"
 WORK=${KOFUN_RUST_SHIM_WORK:-"$ROOT/build/rust-shim"}
 CC=${CC:-cc}
 
@@ -92,6 +93,16 @@ grep -Fq 'kofun_unicode_panic_probe' "$WORK/shim-symbols.txt"
 readelf -d "$WORK/kofun-reference" >"$WORK/kofun-dynamic.txt"
 grep -Fq 'libkofun_unicode_shim.so' "$WORK/kofun-dynamic.txt"
 
+test -s "$MEASUREMENT"
+grep -Fq '"schema": "kofun.rust-shim-build-cost/v1"' "$MEASUREMENT"
+grep -Fq '"source_commit": "62c8f5cbf6d191034d5a0dcad6fc433902063dd0"' \
+    "$MEASUREMENT"
+grep -Fq '"worktree_clean": true' "$MEASUREMENT"
+grep -Fq '"samples_ms": [1245, 1266, 1102, 1115, 1224]' "$MEASUREMENT"
+grep -Fq '"samples_ms": [130, 170, 159, 149, 123]' "$MEASUREMENT"
+grep -Fq '"median_ms": 1224' "$MEASUREMENT"
+grep -Fq '"median_ms": 149' "$MEASUREMENT"
+
 if grep -Eq 'String|Vec|Result<|dyn ' "$SHIM/include/kofun_unicode_shim.h"; then
     printf '%s\n' "FAIL: Rust-managed type exposed by the C header" >&2
     exit 1
@@ -103,4 +114,5 @@ printf '%s\n' \
     "PASS: borrowed input survived repeated calls without mutation" \
     "PASS: invalid UTF-8 and null input mapped to explicit status values" \
     "PASS: a caught Rust panic returned status 2 without crossing C ABI" \
-    "PASS: the Kofun executable dynamically linked the Rust crate shim"
+    "PASS: the Kofun executable dynamically linked the Rust crate shim" \
+    "PASS: measured build-cost evidence has five samples for both paths"

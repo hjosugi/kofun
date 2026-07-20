@@ -87,6 +87,7 @@ kofun_median=$(median $kofun_samples)
 rust_array=$(printf '%s' "$rust_samples" | sed -e 's/^ //' -e 's/ /, /g')
 kofun_array=$(printf '%s' "$kofun_samples" | sed -e 's/^ //' -e 's/ /, /g')
 source_commit=$(git -C "$ROOT" rev-parse HEAD)
+source_tree=$(git -C "$ROOT" show -s --format=%T HEAD)
 measured_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 uname_value=$(json_string "$(uname -srm)")
 cpu_value=$(json_string "$(sed -n 's/^model name[[:space:]]*: //p' /proc/cpuinfo | sed -n '1p')")
@@ -102,6 +103,7 @@ printf '%s\n' \
     '  "schema": "kofun.rust-shim-build-cost/v1",' \
     "  \"measured_at_utc\": \"$measured_at\"," \
     "  \"source_commit\": \"$source_commit\"," \
+    "  \"source_tree\": \"$source_tree\"," \
     '  "worktree_clean": true,' \
     "  \"sample_count\": $SAMPLES," \
     '  "clock": "wall milliseconds from date +%s%N; cleanup and warmup excluded",' \
@@ -117,7 +119,7 @@ printf '%s\n' \
     '  },' \
     '  "rust_clean_cdylib_build": {' \
     '    "definition": "target directory removed before each sample; vendored Cargo source and cargo-home retained; release cdylib only",' \
-    '    "command": "CARGO_NET_OFFLINE=true cargo build --offline --locked --release --lib",' \
+    '    "command": "CARGO_HOME=<isolated> CARGO_TARGET_DIR=<removed-per-sample> CARGO_NET_OFFLINE=true cargo build --offline --locked --release --lib",' \
     "    \"samples_ms\": [$rust_array]," \
     "    \"median_ms\": $rust_median" \
     '  },' \

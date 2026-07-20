@@ -9,15 +9,17 @@ fn direct_count(bytes: &[u8]) -> (i32, usize, usize) {
 }
 
 fn main() {
-    assert_eq!(std::str::from_utf8(b"\x65\xCC\x81").unwrap().chars().count(), 2);
+    assert_eq!(
+        std::str::from_utf8(b"\x65\xCC\x81")
+            .unwrap()
+            .chars()
+            .count(),
+        2
+    );
     let valid = direct_count(b"\x65\xCC\x81");
     let invalid = direct_count(&[0xFF]);
     let repeated = direct_count(b"\x65\xCC\x81");
-    let panic_status = if catch_unwind(
-        || panic!("intentional direct Rust panic probe"),
-    )
-    .is_err()
-    {
+    let panic_status = if catch_unwind(|| panic!("intentional direct Rust panic probe")).is_err() {
         2
     } else {
         0
