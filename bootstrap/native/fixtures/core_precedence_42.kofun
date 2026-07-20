@@ -1,0 +1,5 @@
+# The same target-independent parser must preserve multiplication precedence.
+
+fn main() {
+    print(2 + 8 * 5)
+}

@@ -337,13 +337,13 @@ fn x64_core_answer_text() -> List[Int] {
     return concat(linked, [52, 50, 10]) # "42\n"
 }
 
-fn elf64_header(entry: Int) -> List[Int] {
+fn elf64_header_for_machine(entry: Int, machine: Int) -> List[Int] {
     return concat(
         elf_ident(),
         concat(
             u16_le(2),                 # ET_EXEC
             concat(
-                u16_le(62),            # EM_X86_64
+                u16_le(machine),
                 concat(
                     u32_le(1),         # EV_CURRENT
                     concat(
@@ -425,6 +425,10 @@ fn elf64_debug_header(
             ),
         ),
     )
+}
+
+fn elf64_header(entry: Int) -> List[Int] {
+    return elf64_header_for_machine(entry, 62) # EM_X86_64
 }
 
 fn elf64_load_segment(
@@ -847,6 +851,279 @@ fn elf64_core_answer_debug_image() -> List[Int] {
         section_strings_offset, len(section_strings), 0, 0, 1, 0,
     ))
     return concat(image, sections)
+}
+
+# Native Core v1 is a target-independent postfix stream. Every operation is a
+# pair: [opcode, operand]. Literal uses its operand; binary operations require
+# zero. Both x86-64 and AArch64 consume exactly this representation.
+#
+#   1 literal
+#   2 add
+#   3 multiply
+
+fn native_core_valid(core: List[Int]) -> Bool {
+    if len(core) == 0 || len(core) % 2 != 0 {
+        return false
+    }
+    let mut depth = 0
+    let mut values = []
+    let mut index = 0
+    while index < len(core) {
+        let opcode = core[index]
+        let operand = core[index + 1]
+        if opcode == 1 {
+            if operand < 0 || operand > 65535 {
+                return false
+            }
+            depth = depth + 1
+            values = concat(values, [operand])
+        } else if opcode == 2 || opcode == 3 {
+            if operand != 0 || depth < 2 {
+                return false
+            }
+            let left = values[depth - 2]
+            let right = values[depth - 1]
+            let mut result = 0
+            if opcode == 2 {
+                if left > 65535 - right {
+                    return false
+                }
+                result = left + right
+            } else {
+                if right != 0 && left > 65535 // right {
+                    return false
+                }
+                result = left * right
+            }
+            let mut reduced = []
+            for slot in 0 .. depth - 2 {
+                reduced = concat(reduced, [values[slot]])
+            }
+            values = concat(reduced, [result])
+            depth = depth - 1
+        } else {
+            return false
+        }
+        index = index + 2
+    }
+    return depth == 1 && values[0] >= 10 && values[0] <= 99
+}
+
+fn x64_native_core_text(core: List[Int]) -> List[Int] {
+    if !native_core_valid(core) {
+        return []
+    }
+    let mut text = []
+    let mut index = 0
+    while index < len(core) {
+        let opcode = core[index]
+        let operand = core[index + 1]
+        if opcode == 1 {
+            text = concat(text, x64_mov_eax_imm32(operand))
+            text = concat(text, [80]) # push rax
+        } else {
+            text = concat(text, [89, 88]) # pop rcx; pop rax
+            if opcode == 2 {
+                text = concat(text, [1, 200]) # add eax, ecx
+            } else {
+                text = concat(text, [15, 175, 193]) # imul eax, ecx
+            }
+            text = concat(text, [80]) # push result
+        }
+        index = index + 2
+    }
+    text = concat(text, [88]) # pop rax
+
+    # Native Core v1 accepts results 10..99. Convert the runtime result to two
+    # digits in the shared RW page and preserve Stage 1 print semantics.
+    text = concat(text, x64_xor_edx_edx())
+    text = concat(text, x64_mov_ecx_imm32(10))
+    text = concat(text, x64_div_ecx())
+    text = concat(text, x64_add_al_imm8(48))
+    text = concat(text, x64_add_dl_imm8(48))
+    text = concat(text, [136, 4, 37, 0, 16, 64, 0])
+    text = concat(text, [136, 20, 37, 1, 16, 64, 0])
+    text = concat(text, x64_write_stdout(4198400, 3))
+    return concat(text, x64_exit_text(0))
+}
+
+fn a64_instruction(word: Int) -> List[Int] {
+    if word < 0 || word > 4294967295 {
+        return []
+    }
+    return u32_le(word)
+}
+
+fn a64_movz_x(register: Int, value: Int) -> List[Int] {
+    if register < 0 || register > 30 || value < 0 || value > 65535 {
+        return []
+    }
+    return a64_instruction(3531603968 + value * 32 + register)
+}
+
+fn a64_movk_x_lsl16(register: Int, value: Int) -> List[Int] {
+    if register < 0 || register > 30 || value < 0 || value > 65535 {
+        return []
+    }
+    return a64_instruction(4070572032 + value * 32 + register)
+}
+
+fn a64_add_x(register: Int, left: Int, right: Int) -> List[Int] {
+    if register < 0 || register > 30 ||
+       left < 0 || left > 30 || right < 0 || right > 30 {
+        return []
+    }
+    return a64_instruction(
+        2332033024 + right * 65536 + left * 32 + register,
+    )
+}
+
+fn a64_mul_x(register: Int, left: Int, right: Int) -> List[Int] {
+    if register < 0 || register > 30 ||
+       left < 0 || left > 30 || right < 0 || right > 30 {
+        return []
+    }
+    return a64_instruction(
+        2600500224 + right * 65536 + left * 32 + register,
+    )
+}
+
+fn a64_add_x_imm12(register: Int, source: Int, value: Int) -> List[Int] {
+    if register < 0 || register > 30 ||
+       source < 0 || source > 30 || value < 0 || value > 4095 {
+        return []
+    }
+    return a64_instruction(
+        2432696320 + value * 1024 + source * 32 + register,
+    )
+}
+
+fn a64_udiv_x(register: Int, left: Int, right: Int) -> List[Int] {
+    if register < 0 || register > 30 ||
+       left < 0 || left > 30 || right < 0 || right > 30 {
+        return []
+    }
+    return a64_instruction(
+        2596276224 + right * 65536 + left * 32 + register,
+    )
+}
+
+fn a64_msub_x(
+    register: Int,
+    left: Int,
+    right: Int,
+    accumulator: Int,
+) -> List[Int] {
+    if register < 0 || register > 30 ||
+       left < 0 || left > 30 ||
+       right < 0 || right > 30 ||
+       accumulator < 0 || accumulator > 30 {
+        return []
+    }
+    return a64_instruction(
+        2600501248 +
+        right * 65536 +
+        accumulator * 1024 +
+        left * 32 +
+        register,
+    )
+}
+
+fn a64_strb_w_imm12(source: Int, address: Int, offset: Int) -> List[Int] {
+    if source < 0 || source > 30 ||
+       address < 0 || address > 30 ||
+       offset < 0 || offset > 4095 {
+        return []
+    }
+    return a64_instruction(
+        956301312 + offset * 1024 + address * 32 + source,
+    )
+}
+
+fn a64_svc_zero() -> List[Int] {
+    return a64_instruction(3556769793)
+}
+
+fn a64_native_core_text(core: List[Int]) -> List[Int] {
+    if !native_core_valid(core) {
+        return []
+    }
+
+    # Postfix stack slots map to x0..x15. A binary operation overwrites its
+    # left slot, making the same Core stream independent of target registers.
+    let mut text = []
+    let mut depth = 0
+    let mut index = 0
+    while index < len(core) {
+        let opcode = core[index]
+        let operand = core[index + 1]
+        if opcode == 1 {
+            if depth >= 16 {
+                return []
+            }
+            text = concat(text, a64_movz_x(depth, operand))
+            depth = depth + 1
+        } else {
+            let left = depth - 2
+            let right = depth - 1
+            if opcode == 2 {
+                text = concat(text, a64_add_x(left, left, right))
+            } else {
+                text = concat(text, a64_mul_x(left, left, right))
+            }
+            depth = depth - 1
+        }
+        index = index + 2
+    }
+
+    # x0 is the runtime result. Convert 10..99 to two ASCII digits:
+    # quotient=x4, remainder=x5, buffer=x1 at 0x401000.
+    text = concat(text, a64_movz_x(3, 10))
+    text = concat(text, a64_udiv_x(4, 0, 3))
+    text = concat(text, a64_msub_x(5, 4, 3, 0))
+    text = concat(text, a64_add_x_imm12(4, 4, 48))
+    text = concat(text, a64_add_x_imm12(5, 5, 48))
+    text = concat(text, a64_movz_x(1, 4096))
+    text = concat(text, a64_movk_x_lsl16(1, 64))
+    text = concat(text, a64_strb_w_imm12(4, 1, 0))
+    text = concat(text, a64_strb_w_imm12(5, 1, 1))
+
+    # Linux AArch64 write(1, buffer, 3), then exit(0).
+    text = concat(text, a64_movz_x(0, 1))
+    text = concat(text, a64_movz_x(2, 3))
+    text = concat(text, a64_movz_x(8, 64))
+    text = concat(text, a64_svc_zero())
+    text = concat(text, a64_movz_x(0, 0))
+    text = concat(text, a64_movz_x(8, 93))
+    return concat(text, a64_svc_zero())
+}
+
+fn elf64_native_core_image(machine: Int, core: List[Int]) -> List[Int] {
+    let base = 4194304
+    let text_offset = 176
+    let data_offset = 4096
+    let mut text = []
+    if machine == 62 {
+        text = x64_native_core_text(core)
+    } else if machine == 183 {
+        text = a64_native_core_text(core)
+    } else {
+        return []
+    }
+    if len(text) == 0 {
+        return []
+    }
+    let rx_size = text_offset + len(text)
+    let header = elf64_header_for_machine(base + text_offset, machine)
+    let rx = elf64_load_segment(5, 0, base, rx_size, rx_size)
+    let rw = elf64_load_segment(6, data_offset, base + data_offset, 3, 4096)
+    let without_data = concat(header, concat(rx, concat(rw, text)))
+    return concat(pad_to(without_data, data_offset), [0, 0, 10])
+}
+
+fn native_core_answer() -> List[Int] {
+    # Target-independent postfix for (6 + 1) * 6.
+    return [1, 6, 1, 1, 2, 0, 1, 6, 3, 0]
 }
 
 fn main() {

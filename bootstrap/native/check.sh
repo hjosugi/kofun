@@ -97,6 +97,20 @@ cmp \
     -g \
     -o "$WORK/core_answer_debug.elf"
 
+CORE_SOURCE="$NATIVE/fixtures/core_return_42.kofun"
+for target in x86_64-linux aarch64-linux; do
+    case $target in
+        x86_64-linux) stem=core_return_42-x86_64 ;;
+        aarch64-linux) stem=core_return_42-aarch64 ;;
+    esac
+    "$KOFUN" build "$CORE_SOURCE" \
+        --target "$target" -o "$WORK/$stem.elf" >/dev/null
+    "$KOFUN" build "$CORE_SOURCE" \
+        --target "$target" -o "$WORK/$stem.second.elf" >/dev/null
+    cmp "$WORK/$stem.elf" "$WORK/$stem.second.elf"
+    test "$(wc -c <"$WORK/$stem.elf" | tr -d ' ')" -eq 4099
+done
+
 (
     cd "$WORK"
     sha256sum -c "$NATIVE/SHA256SUMS"
@@ -187,11 +201,28 @@ grep -Eq \
     'bootstrap/native/fixtures/core_answer_debug.kofun[[:space:]]+6[[:space:]]+0x4000e2' \
     "$WORK/core_answer_debug.lines.txt"
 
+readelf -h "$WORK/core_return_42-aarch64.elf" \
+    >"$WORK/core_return_42-aarch64.elf-header.txt"
+readelf -l "$WORK/core_return_42-aarch64.elf" \
+    >"$WORK/core_return_42-aarch64.program-headers.txt"
+grep -Eq 'Class:[[:space:]]+ELF64' \
+    "$WORK/core_return_42-aarch64.elf-header.txt"
+grep -Eq 'Machine:[[:space:]]+AArch64' \
+    "$WORK/core_return_42-aarch64.elf-header.txt"
+grep -Eq 'Entry point address:[[:space:]]+0x4000b0' \
+    "$WORK/core_return_42-aarch64.elf-header.txt"
+grep -Eq 'Number of program headers:[[:space:]]+2' \
+    "$WORK/core_return_42-aarch64.elf-header.txt"
+test "$(grep -c 'LOAD' \
+    "$WORK/core_return_42-aarch64.program-headers.txt")" -eq 2
+
 chmod +x \
     "$WORK/exit_42.elf" \
     "$WORK/print_sum_42.elf" \
     "$WORK/core_answer.elf" \
-    "$WORK/core_answer_debug.elf"
+    "$WORK/core_answer_debug.elf" \
+    "$WORK/core_return_42-x86_64.elf" \
+    "$WORK/core_return_42-aarch64.elf"
 
 # The digits are not pre-baked in the file: native arithmetic fills both zero
 # bytes before write(1, buffer, 3). Only the newline starts initialized.
@@ -281,10 +312,108 @@ else
         "SKIP: gdb unavailable; readelf DWARF structure was still verified"
 fi
 
+# The same target-independent parsed Core must drive both instruction
+# encoders. x86-64 executes directly; AArch64 executes under qemu when the
+# emulator is installed. The C11 Stage 1 result is the reference observation.
+run_native_core_differential() (
+    source=$1
+    name=$2
+
+    "$KOFUN" build "$source" --backend c \
+        -o "$WORK/$name-reference" \
+        --emit-c "$WORK/$name-reference.c" >/dev/null
+    "$KOFUN" build "$source" --target x86_64-linux \
+        -o "$WORK/$name-x86_64.elf" >/dev/null
+    "$KOFUN" build "$source" --target aarch64-linux \
+        -o "$WORK/$name-aarch64.elf" >/dev/null
+
+    "$WORK/$name-reference" \
+        >"$WORK/$name-reference.stdout" \
+        2>"$WORK/$name-reference.stderr"
+    reference_status=$?
+    "$WORK/$name-x86_64.elf" \
+        >"$WORK/$name-x86_64.stdout" \
+        2>"$WORK/$name-x86_64.stderr"
+    x86_status=$?
+    test "$x86_status" -eq "$reference_status"
+    cmp "$WORK/$name-reference.stdout" "$WORK/$name-x86_64.stdout"
+    cmp "$WORK/$name-reference.stderr" "$WORK/$name-x86_64.stderr"
+
+    if command -v qemu-aarch64 >/dev/null 2>&1; then
+        qemu-aarch64 "$WORK/$name-aarch64.elf" \
+            >"$WORK/$name-aarch64.stdout" \
+            2>"$WORK/$name-aarch64.stderr"
+        aarch64_status=$?
+        test "$aarch64_status" -eq "$reference_status"
+        cmp "$WORK/$name-reference.stdout" "$WORK/$name-aarch64.stdout"
+        cmp "$WORK/$name-reference.stderr" "$WORK/$name-aarch64.stderr"
+        printf '%s\n' "PASS: $name differential under qemu-aarch64"
+    else
+        printf '%s\n' \
+            "SKIP: $name AArch64 execution (qemu-aarch64 unavailable)"
+    fi
+)
+
+run_native_core_differential \
+    "$NATIVE/fixtures/core_return_42.kofun" \
+    core_return_42
+run_native_core_differential \
+    "$NATIVE/fixtures/core_precedence_42.kofun" \
+    core_precedence_42
+if cmp -s \
+    "$WORK/core_return_42-aarch64.elf" \
+    "$WORK/core_precedence_42-aarch64.elf"
+then
+    printf '%s\n' \
+        "native-check: distinct Core programs emitted identical code" >&2
+    exit 1
+fi
+
+# e_machine is little-endian 183 and the first five instructions prove that
+# the AArch64 image computes (6 + 1) * 6 instead of embedding output bytes.
+machine_bytes=$(od -An -tu1 -j 18 -N 2 \
+    "$WORK/core_return_42-aarch64.elf" | awk '{$1=$1; print}')
+core_bytes=$(od -An -tu1 -j 176 -N 20 \
+    "$WORK/core_return_42-aarch64.elf" |
+    awk '{$1=$1; printf "%s%s", separator, $0; separator=" "} END{print ""}')
+test "$machine_bytes" = "183 0"
+test "$core_bytes" = \
+    "192 0 128 210 33 0 128 210 0 0 1 139 193 0 128 210 0 124 1 155"
+
+if command -v llvm-objdump >/dev/null 2>&1; then
+    llvm-objdump -d --triple=aarch64 \
+        "$WORK/core_return_42-aarch64.elf" \
+        >"$WORK/core_return_42-aarch64.disassembly"
+    grep -Eq 'mov[[:space:]]+x0, #0x6' \
+        "$WORK/core_return_42-aarch64.disassembly"
+    grep -Eq 'add[[:space:]]+x0, x0, x1' \
+        "$WORK/core_return_42-aarch64.disassembly"
+    grep -Eq 'mul[[:space:]]+x0, x0, x1' \
+        "$WORK/core_return_42-aarch64.disassembly"
+    grep -Eq 'udiv[[:space:]]+x4, x0, x3' \
+        "$WORK/core_return_42-aarch64.disassembly"
+    grep -Eq 'svc[[:space:]]+#0' \
+        "$WORK/core_return_42-aarch64.disassembly"
+fi
+
+unsupported="$WORK/unsupported-native-core.elf"
+set +e
+"$KOFUN" build "$NATIVE/fixtures/unsupported_native_core.kofun" \
+    --target aarch64-linux -o "$unsupported" \
+    >"$WORK/unsupported-native-core.stdout" \
+    2>"$WORK/unsupported-native-core.stderr"
+unsupported_status=$?
+set -e
+test "$unsupported_status" -eq 1
+test ! -e "$unsupported"
+grep 'unsupported Core' "$WORK/unsupported-native-core.stderr" >/dev/null
+
 printf '%s\n' \
     "PASS: Kofun emitted deterministic 188-, 231-, and 4099-byte ELF64 images" \
     "PASS: native image exited through Linux x86-64 syscall with status 42" \
     "PASS: native code computed 40 + 2, wrote 42 to stdout, and exited 0" \
     "PASS: rel32 Core call/message fixups printed and exited with 42" \
     "PASS: opt-in debug image has ELF sections, DWARF lines, and a main DIE" \
-    "PASS: release Core image remains byte-identical and 231 bytes"
+    "PASS: release Core image remains byte-identical and 231 bytes" \
+    "PASS: --target aarch64-linux emitted deterministic static EM_AARCH64 ELF" \
+    "PASS: x86-64 and AArch64 consume one target-independent parsed Core"

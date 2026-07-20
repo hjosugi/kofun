@@ -1,9 +1,51 @@
 # Direct native bootstrap
 
-This directory advances issue #33 with a Kofun-owned, Python-free first native
-artifact. `encoder.kofun` is the canonical implementation. It constructs
-little-endian integers, x86-64 instruction bytes, ELF64 headers, and two
-`PT_LOAD` program headers directly. It does not emit assembly or C.
+This directory advances issues #14 and #33 with a Kofun-owned, Python-free
+native path. `encoder.kofun` is the canonical instruction and image
+implementation. It constructs little-endian integers, x86-64 and AArch64
+instruction bytes, target-parameterized ELF64 headers, and two `PT_LOAD`
+program headers directly. It does not emit assembly or invoke a linker.
+
+## AArch64 Native Core v1
+
+The CLI compiles the same deliberately small, target-independent Core through
+both registered Linux targets:
+
+```kofun
+fn main() {
+    print((6 + 1) * 6)
+}
+```
+
+```sh
+./bin/kofun build program.kofun \
+    --target aarch64-linux -o build/program-aarch64
+./bin/kofun build program.kofun \
+    --target x86_64-linux -o build/program-x86_64
+```
+
+Native Core v1 accepts exactly one zero-argument `main`, one `print`, integer
+literals in `0..65535`, parentheses, `+`, and `*`. Checked constant analysis
+must prove every intermediate value fits that range and the final value is a
+two-digit integer. Unsupported input fails before an output file is written.
+
+The frontend creates one AST; both instruction selectors consume it. The
+equivalent canonical Kofun representation is a postfix stream of
+`[opcode, operand]` pairs consumed by `x64_native_core_text` and
+`a64_native_core_text`. This keeps parsing, precedence, constant validation,
+and Core semantics out of the target encoders.
+
+The AArch64 encoder writes 64-bit `MOVZ`, register `ADD`/`MUL`, `UDIV`, `MSUB`,
+`STRB`, `MOVK`, and `SVC` instructions as little-endian words. Runtime code
+computes the expression, converts the result to ASCII in the RW segment, calls
+Linux AArch64 `write` (64), and calls `exit` (93). The ELF header uses
+`EM_AARCH64` (`e_machine = 183`), entry `0x4000b0`, and no interpreter or
+dynamic section.
+
+`core_compiler.c` is the audited C11 bootstrap driver used until the Kofun
+compiler can self-compile the complete `List[Int]` encoder. It shares one
+frontend across both targets and uses no Python, assembler, linker, or target
+cross-compiler when compiling a program.
 
 The deterministic fixture is a 188-byte static `ET_EXEC` image:
 
@@ -120,18 +162,24 @@ emits a run-length-encoded byte stream whose expansion is exactly the image
 returned by its canonical encoder function.
 
 `check.sh` compiles and runs the release bridges and debug packed bridge with
-Kofun, transports their numeric streams to raw bytes using POSIX shell, checks
-image hashes and ELF/DWARF metadata, inspects the resolved rel32 fields, and
-executes all results:
+Kofun, transports their numeric streams to raw bytes using POSIX shell, compiles
+Native Core v1 through both CLI targets, checks image hashes and ELF/DWARF
+metadata, inspects resolved fixups and instructions, and executes every
+host-compatible result:
 
 ```sh
 sh bootstrap/native/check.sh
 ```
 
-The shell does not choose headers or instructions; those values are authored
-in Kofun. No C implementation of the ELF writer is maintained here. The C file
-created under `build/native-check/` is only the current Stage1 bootstrap
-artifact used to execute the Core bridge.
+When `qemu-aarch64` is installed, the gate executes both AArch64 differential
+fixtures and compares exact status, stdout, and stderr with the Stage 1 C11
+reference. Without qemu it reports an explicit execution skip while still
+validating deterministic hashes, ELF metadata, encoded instruction bytes, and
+x86-64/reference parity.
+
+The shell does not choose headers or instructions. Those values are authored
+in Kofun and mirrored by the audited bootstrap seed. No Python, assembly, or
+linker participates.
 
 ## Honest boundary
 
@@ -141,20 +189,23 @@ Implemented here:
 - x86-64 `mov r32, imm32` and `syscall` encoders;
 - deterministic absolute and PC-relative label/fixup resolution;
 - raw `write(1, address, length)` and `exit(status)` sequences;
+- a shared Native Core parser/AST for x86-64 and AArch64 Linux;
+- direct AArch64 instruction encoding and static `EM_AARCH64` ELF output;
+- the public `build --target aarch64-linux` CLI path;
 - native lowering of the fixture expressions `40 + 2` and `(6 + 1) * 6`;
 - two-digit integer-to-ASCII conversion for the fixture result;
 - distinct RX and RW mappings;
-- three end-to-end Linux x86-64 executable artifact gates.
+- three end-to-end Linux x86-64 executable artifact gates;
 - opt-in section headers, symbols, and DWARF v4 line/function information for
   the compact Core checkpoint.
 
 Still open:
 
-- connecting `encoder.kofun` to the Stage2 compiler once lists and calls
+- replacing the audited C11 Native Core driver after lists and calls
   self-compile;
-- lowering arbitrary Core expression trees and bindings;
+- lowering bindings, calls, conditionals, and non-constant expression trees;
 - general signed integer formatting and checked arithmetic diagnostics;
 - native stdout/stderr formatting and canonical `R010` diagnostics;
-- conditional branches, allocation, and more targets;
-- registering the native backend in the full differential runner.
+- conditional branches, allocation, Mach-O, and additional targets;
+- registering the native backend in the full differential runner;
 - wiring debug metadata and `-g` into general Python-free CLI native builds.

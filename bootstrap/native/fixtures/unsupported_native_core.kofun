@@ -1,0 +1,6 @@
+# Bindings are outside Native Core v1 and must fail before an ELF is written.
+
+fn main() {
+    let answer = 42
+    print(answer)
+}

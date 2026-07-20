@@ -1,0 +1,5 @@
+# Native Core v1: one constant Int expression whose result is printed.
+
+fn main() {
+    print((6 + 1) * 6)
+}
