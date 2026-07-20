@@ -148,6 +148,68 @@ cmp "$stage2/core_fixture.stdout" "$temporary/core.stdout"
 test ! -s "$temporary/core.stderr"
 
 "$temporary/kofun-stage2" \
+    "$stage2/functions_fixture.kofun" \
+    "$temporary/functions.c" \
+    "$temporary/functions.ir" \
+    "$temporary/functions.tokens" >/dev/null
+"$temporary/kofun-stage2" \
+    "$stage2/functions_fixture.kofun" \
+    "$temporary/functions-second.c" \
+    "$temporary/functions-second.ir" \
+    "$temporary/functions-second.tokens" >/dev/null
+cmp "$temporary/functions.c" "$temporary/functions-second.c"
+cmp "$temporary/functions.ir" "$temporary/functions-second.ir"
+cmp "$temporary/functions.tokens" "$temporary/functions-second.tokens"
+grep '^function|fib|1|' "$temporary/functions.ir" >/dev/null
+grep '^function|forward_answer|0|' "$temporary/functions.ir" >/dev/null
+grep 'static int64_t kofun_fn_fib' "$temporary/functions.c" >/dev/null
+"$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$temporary/functions.c" -o "$temporary/functions-program"
+"$temporary/functions-program" \
+    >"$temporary/functions.stdout" 2>"$temporary/functions.stderr"
+cmp "$stage2/functions_fixture.stdout" "$temporary/functions.stdout"
+test ! -s "$temporary/functions.stderr"
+
+KOFUN_BUILD_DIR="$temporary/cli-stage1-functions" \
+KOFUN_STAGE2_BUILD_DIR="$temporary/cli-stage2-functions" \
+    "$root/bin/kofun" run "$stage2/functions_fixture.kofun" \
+    >"$temporary/cli-functions.stdout" \
+    2>"$temporary/cli-functions.stderr"
+cmp "$stage2/functions_fixture.stdout" "$temporary/cli-functions.stdout"
+test ! -s "$temporary/cli-functions.stderr"
+
+set +e
+"$temporary/kofun-stage2" \
+    "$stage2/function_arity_error.kofun" \
+    "$temporary/function-arity-error.c" \
+    "$temporary/function-arity-error.ir" \
+    "$temporary/function-arity-error.tokens" \
+    >"$temporary/function-arity-error.stdout" \
+    2>"$temporary/function-arity-error.stderr"
+function_arity_status=$?
+"$temporary/kofun-stage2" \
+    "$stage2/function_unknown_error.kofun" \
+    "$temporary/function-unknown-error.c" \
+    "$temporary/function-unknown-error.ir" \
+    "$temporary/function-unknown-error.tokens" \
+    >"$temporary/function-unknown-error.stdout" \
+    2>"$temporary/function-unknown-error.stderr"
+function_unknown_status=$?
+set -e
+test "$function_arity_status" -eq 1
+test "$function_unknown_status" -eq 1
+cmp \
+    "$stage2/function_arity_error.stdout" \
+    "$temporary/function-arity-error.stdout"
+cmp \
+    "$stage2/function_unknown_error.stdout" \
+    "$temporary/function-unknown-error.stdout"
+test ! -s "$temporary/function-arity-error.stderr"
+test ! -s "$temporary/function-unknown-error.stderr"
+test ! -e "$temporary/function-arity-error.c"
+test ! -e "$temporary/function-unknown-error.c"
+
+"$temporary/kofun-stage2" \
     "$stage2/core_error_fixture.kofun" \
     "$temporary/core-error.c" \
     "$temporary/core-error.ir" \
@@ -214,4 +276,5 @@ fi
 
 echo "PASS: Stage 2 statically compiled Copy Int borrowed-return slice"
 echo "PASS: Stage 2 and kofun check rejected non-Copy Text move with E007"
+echo "PASS: Stage 2 C11 calls support recursion, arity checks, and forward references"
 echo "stage2 semantic frontend check passed"

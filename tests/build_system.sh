@@ -25,6 +25,7 @@ chmod +x "$WORK/frost-spy"
 (
     cd "$WORK/single"
     KOFUN_BUILD_DIR="$WORK/single-compiler" \
+    KOFUN_STAGE2_BUILD_DIR="$WORK/single-compiler" \
     KOFUN_FROST="$WORK/frost-spy" \
     KOFUN_FROST_SPY_LOG="$WORK/frost-spy.log" \
         "$KOFUN" build main.kofun \
@@ -40,8 +41,12 @@ test ! -e "$WORK/frost-spy.log"
 # unusually fast sample cannot pass the gate and shared-host scheduler waits
 # are not misreported as compiler work. exec startup and source/output system
 # work remain included.
-COMPILER="$WORK/single-compiler/kofun-stage1"
-"$COMPILER" "$WORK/single/main.kofun" "$WORK/single/warm.c" >/dev/null
+COMPILER="$WORK/single-compiler/kofun-stage2"
+"$COMPILER" \
+    "$WORK/single/main.kofun" \
+    "$WORK/single/warm.c" \
+    "$WORK/single/warm.ir" \
+    "$WORK/single/warm.tokens" >/dev/null
 "${CC:-cc}" -std=c11 -O2 -Wall -Wextra -Werror \
     "$ROOT/tests/process_cpu_time.c" \
     -o "$WORK/process-cpu-time"
@@ -49,7 +54,9 @@ median_us=$(
     "$WORK/process-cpu-time" \
         "$COMPILER" \
         "$WORK/single/main.kofun" \
-        "$WORK/single/measured.c"
+        "$WORK/single/measured.c" \
+        "$WORK/single/measured.ir" \
+        "$WORK/single/measured.tokens"
 )
 test "$median_us" -lt 5000 || {
     printf '%s\n' \
@@ -132,6 +139,7 @@ printf '%s\n' \
 project_build() (
     cd "$WORK/project"
     KOFUN_BUILD_DIR="$WORK/project-compiler" \
+    KOFUN_STAGE2_BUILD_DIR="$WORK/project-stage2-compiler" \
     KOFUN_FROST="$FROST" \
         "$KOFUN" build --explain
 )

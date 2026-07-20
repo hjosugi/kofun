@@ -1,0 +1,8 @@
+# expect-stdout: 42
+fn sum6(a: Int, b: Int, c: Int, d: Int, e: Int, f: Int) -> Int {
+    return a + b + c + d + e + f
+}
+
+fn main() {
+    print(sum6(7, 7, 7, 7, 7, 7))
+}

@@ -672,8 +672,31 @@ static int64_t primary_end(const char *source, int64_t start) {
     int64_t cursor = skip_trivia(source, start);
     if (cursor >= length) return -1;
     const char *kind = token_kind(source, cursor);
-    if (strcmp(kind, "integer") == 0 || strcmp(kind, "identifier") == 0) {
+    if (strcmp(kind, "integer") == 0) {
         return token_end(source, cursor);
+    }
+    if (strcmp(kind, "identifier") == 0) {
+        int64_t open = skip_trivia(source, token_end(source, cursor));
+        if (open >= length || !token_equal(source, open, "(")) {
+            return token_end(source, cursor);
+        }
+        int64_t argument = skip_trivia(source, token_end(source, open));
+        if (argument < length && token_equal(source, argument, ")")) {
+            return token_end(source, argument);
+        }
+        while (argument < length) {
+            int64_t argument_end = expression_end(source, argument);
+            if (argument_end < 0) return -1;
+            int64_t separator = skip_trivia(source, argument_end);
+            if (separator < length && token_equal(source, separator, ")")) {
+                return token_end(source, separator);
+            }
+            if (separator >= length || !token_equal(source, separator, ",")) {
+                return -1;
+            }
+            argument = skip_trivia(source, token_end(source, separator));
+        }
+        return -1;
     }
     if (token_equal(source, cursor, "(")) {
         int64_t value_start = skip_trivia(source, token_end(source, cursor));
@@ -772,10 +795,33 @@ static char *emit_primary(const char *source, int64_t start, int64_t end) {
         return output.data;
     }
     if (strcmp(kind, "identifier") == 0) {
-        char *name = source_slice(source, cursor, end);
+        char *name = token_copy(source, cursor);
+        int64_t open = skip_trivia(source, token_end(source, cursor));
         Buffer output;
         buffer_init(&output);
-        buffer_format(&output, "k_%s", name);
+        if (open >= end || !token_equal(source, open, "(")) {
+            buffer_format(&output, "k_%s", name);
+            free(name);
+            return output.data;
+        }
+        buffer_format(&output, "kofun_fn_%s(", name);
+        int64_t argument = skip_trivia(source, token_end(source, open));
+        int64_t arguments = 0;
+        while (argument < end && !token_equal(source, argument, ")")) {
+            int64_t argument_end = expression_end(source, argument);
+            char *value = emit_expression(source, argument, argument_end);
+            if (arguments > 0) buffer_append(&output, ", ");
+            buffer_append(&output, value);
+            free(value);
+            ++arguments;
+            int64_t separator = skip_trivia(source, argument_end);
+            if (separator < end && token_equal(source, separator, ",")) {
+                argument = skip_trivia(source, token_end(source, separator));
+            } else {
+                argument = separator;
+            }
+        }
+        buffer_append(&output, ")");
         free(name);
         return output.data;
     }
@@ -870,17 +916,197 @@ static char *emit_expression(const char *source, int64_t start, int64_t end) {
     return emitted;
 }
 
-static int64_t core_body_open(const char *source, int64_t function_start) {
+static char *lower_error(
+    const char *code,
+    const char *message,
+    int64_t cursor
+);
+
+static int64_t function_arity(const char *source, const char *wanted) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, 0);
+    int64_t found = -1;
+    while (cursor < length) {
+        char *name = function_name(source, cursor);
+        if (strcmp(name, wanted) == 0) {
+            if (found >= 0) {
+                free(name);
+                return -2;
+            }
+            found = parameter_count(source, cursor);
+        }
+        free(name);
+        cursor = skip_trivia(source, function_end(source, cursor));
+    }
+    return found;
+}
+
+static int64_t call_arity(const char *source, int64_t open) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, token_end(source, open));
+    if (cursor < length && token_equal(source, cursor, ")")) return 0;
+    int64_t arity = 0;
+    while (cursor < length) {
+        int64_t argument_end = expression_end(source, cursor);
+        if (argument_end < 0) return -1;
+        ++arity;
+        int64_t separator = skip_trivia(source, argument_end);
+        if (separator < length && token_equal(source, separator, ")")) {
+            return arity;
+        }
+        if (separator >= length || !token_equal(source, separator, ",")) {
+            return -1;
+        }
+        cursor = skip_trivia(source, token_end(source, separator));
+    }
+    return -1;
+}
+
+static char *validate_core_calls(const char *source) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, 0);
+    char *previous = owned_text("");
+    while (cursor < length) {
+        if (strcmp(token_kind(source, cursor), "identifier") == 0) {
+            char *name = token_copy(source, cursor);
+            int64_t open = skip_trivia(source, token_end(source, cursor));
+            if (
+                strcmp(previous, "fn") != 0 &&
+                strcmp(name, "print") != 0 &&
+                open < length &&
+                token_equal(source, open, "(")
+            ) {
+                int64_t expected = function_arity(source, name);
+                if (expected == -2) {
+                    Buffer error;
+                    buffer_init(&error);
+                    buffer_format(
+                        &error,
+                        "error[E2S16]: duplicate Core function `%s` "
+                        "at byte %" PRId64,
+                        name,
+                        cursor
+                    );
+                    free(name);
+                    free(previous);
+                    return error.data;
+                }
+                if (expected < 0) {
+                    Buffer error;
+                    buffer_init(&error);
+                    buffer_format(
+                        &error,
+                        "error[E2S16]: unknown Core function `%s` "
+                        "at byte %" PRId64,
+                        name,
+                        cursor
+                    );
+                    free(name);
+                    free(previous);
+                    return error.data;
+                }
+                int64_t actual = call_arity(source, open);
+                if (actual != expected) {
+                    Buffer error;
+                    buffer_init(&error);
+                    buffer_format(
+                        &error,
+                        "error[E2S17]: Core function `%s` expects %" PRId64
+                        " arguments, got %" PRId64 " at byte %" PRId64,
+                        name,
+                        expected,
+                        actual,
+                        cursor
+                    );
+                    free(name);
+                    free(previous);
+                    return error.data;
+                }
+            }
+            free(name);
+        }
+        free(previous);
+        previous = token_copy(source, cursor);
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    free(previous);
+    return owned_text("ok");
+}
+
+static char *core_parameters(const char *source, int64_t function_start) {
+    int64_t parameters = parameter_open(source, function_start);
+    if (parameters < 0) {
+        return owned_text("error[E2S15]: malformed Core parameter list");
+    }
+    int64_t parameters_end = balanced_end(source, parameters, "(", ")");
+    if (parameters_end < 0) {
+        return owned_text("error[E2S15]: malformed Core parameter list");
+    }
+    int64_t cursor = skip_trivia(source, token_end(source, parameters));
+    Buffer emitted;
+    buffer_init(&emitted);
+    int64_t count = 0;
+    while (cursor < parameters_end && !token_equal(source, cursor, ")")) {
+        if (strcmp(token_kind(source, cursor), "identifier") != 0) {
+            free(emitted.data);
+            return lower_error(
+                "E2S15",
+                "expected Core parameter name",
+                cursor
+            );
+        }
+        char *name = token_copy(source, cursor);
+        int64_t colon = skip_trivia(source, token_end(source, cursor));
+        int64_t type_cursor = skip_trivia(source, token_end(source, colon));
+        if (
+            colon >= parameters_end ||
+            !token_equal(source, colon, ":") ||
+            type_cursor >= parameters_end ||
+            !token_equal(source, type_cursor, "Int")
+        ) {
+            free(name);
+            free(emitted.data);
+            return lower_error(
+                "E2S15",
+                "Core parameters must have type Int",
+                cursor
+            );
+        }
+        if (count > 0) buffer_append(&emitted, ", ");
+        buffer_format(&emitted, "int64_t k_%s", name);
+        free(name);
+        ++count;
+        int64_t separator = skip_trivia(source, token_end(source, type_cursor));
+        if (separator < parameters_end && token_equal(source, separator, ",")) {
+            cursor = skip_trivia(source, token_end(source, separator));
+        } else {
+            cursor = separator;
+        }
+    }
+    return emitted.data;
+}
+
+static int64_t core_body_open(
+    const char *source,
+    int64_t function_start,
+    bool is_main
+) {
     int64_t length = (int64_t)strlen(source);
     int64_t parameters = parameter_open(source, function_start);
     if (parameters < 0) return -1;
     int64_t parameters_end = balanced_end(source, parameters, "(", ")");
     if (parameters_end < 0) return -1;
+    char *parameter_text = core_parameters(source, function_start);
+    bool parameters_valid = strncmp(parameter_text, "error[", 6) != 0;
+    free(parameter_text);
+    if (!parameters_valid) return -1;
     int64_t cursor = skip_trivia(source, parameters_end);
     if (cursor < length && token_equal(source, cursor, "->")) {
         cursor = skip_trivia(source, token_end(source, cursor));
         if (cursor >= length || !token_equal(source, cursor, "Int")) return -1;
         cursor = skip_trivia(source, token_end(source, cursor));
+    } else if (!is_main) {
+        return -1;
     }
     if (cursor >= length || !token_equal(source, cursor, "{")) return -1;
     return cursor;
@@ -897,12 +1123,68 @@ static char *lower_error(const char *code, const char *message, int64_t cursor) 
     return error.data;
 }
 
-static char *lower_body(const char *source, int64_t open) {
+static char *emit_condition(
+    const char *source,
+    int64_t start,
+    int64_t open
+) {
+    int64_t left_end = expression_end(source, start);
+    if (left_end < 0) {
+        return lower_error("E2S18", "invalid Core condition", start);
+    }
+    int64_t operator_cursor = skip_trivia(source, left_end);
+    char *operator_text = token_copy(source, operator_cursor);
+    if (
+        strcmp(operator_text, "==") != 0 &&
+        strcmp(operator_text, "!=") != 0 &&
+        strcmp(operator_text, "<") != 0 &&
+        strcmp(operator_text, "<=") != 0 &&
+        strcmp(operator_text, ">") != 0 &&
+        strcmp(operator_text, ">=") != 0
+    ) {
+        free(operator_text);
+        return lower_error(
+            "E2S18",
+            "Core condition requires a comparison",
+            operator_cursor
+        );
+    }
+    int64_t right_start = skip_trivia(
+        source,
+        token_end(source, operator_cursor)
+    );
+    int64_t right_end = expression_end(source, right_start);
+    if (right_end < 0 || skip_trivia(source, right_end) != open) {
+        free(operator_text);
+        return lower_error(
+            "E2S18",
+            "invalid Core comparison",
+            right_start
+        );
+    }
+    char *left = emit_expression(source, start, left_end);
+    char *right = emit_expression(source, right_start, right_end);
+    Buffer condition;
+    buffer_init(&condition);
+    buffer_format(&condition, "%s %s %s", left, operator_text, right);
+    free(right);
+    free(left);
+    free(operator_text);
+    return condition.data;
+}
+
+static char *lower_body(
+    const char *source,
+    int64_t open,
+    bool is_main,
+    bool append_default
+) {
     int64_t length = (int64_t)strlen(source);
     Buffer emitted;
     buffer_init(&emitted);
     int64_t cursor = skip_trivia(source, token_end(source, open));
     bool returned = false;
+    const char *failure_result = is_main ? "1" : "0";
     while (cursor < length && !token_equal(source, cursor, "}")) {
         if (returned) {
             free(emitted.data);
@@ -951,9 +1233,10 @@ static char *lower_body(const char *source, int64_t open) {
             buffer_format(
                 &emitted,
                 "    int64_t k_%s = %s;\n"
-                "    if (kofun_failed) return 1;\n",
+                "    if (kofun_failed) return %s;\n",
                 name,
-                value
+                value,
+                failure_result
             );
             free(value);
             free(name);
@@ -980,13 +1263,69 @@ static char *lower_body(const char *source, int64_t open) {
                 &emitted,
                 "    {\n"
                 "        int64_t kofun_value = %s;\n"
-                "        if (kofun_failed) return 1;\n"
+                "        if (kofun_failed) return %s;\n"
                 "        printf(\"%%\" PRId64 \"\\n\", kofun_value);\n"
                 "    }\n",
-                value
+                value,
+                failure_result
             );
             free(value);
             cursor = skip_trivia(source, token_end(source, call_close));
+        } else if (token_equal(source, cursor, "if")) {
+            int64_t condition_start = skip_trivia(
+                source,
+                token_end(source, cursor)
+            );
+            int64_t left_end = expression_end(source, condition_start);
+            if (left_end < 0) {
+                free(emitted.data);
+                return lower_error("E2S18", "malformed Core if", cursor);
+            }
+            int64_t operator_cursor = skip_trivia(source, left_end);
+            int64_t right_start = skip_trivia(
+                source,
+                token_end(source, operator_cursor)
+            );
+            int64_t right_end = expression_end(source, right_start);
+            if (right_end < 0) {
+                free(emitted.data);
+                return lower_error("E2S18", "malformed Core if", cursor);
+            }
+            int64_t branch_open = skip_trivia(source, right_end);
+            if (
+                branch_open >= length ||
+                !token_equal(source, branch_open, "{")
+            ) {
+                free(emitted.data);
+                return lower_error("E2S18", "malformed Core if", cursor);
+            }
+            char *condition = emit_condition(
+                source,
+                condition_start,
+                branch_open
+            );
+            if (strncmp(condition, "error[", 6) == 0) {
+                free(emitted.data);
+                return condition;
+            }
+            char *branch = lower_body(source, branch_open, is_main, false);
+            if (strncmp(branch, "error[", 6) == 0) {
+                free(condition);
+                free(emitted.data);
+                return branch;
+            }
+            buffer_format(
+                &emitted,
+                "    if (%s) {\n%s    }\n",
+                condition,
+                branch
+            );
+            free(branch);
+            free(condition);
+            cursor = skip_trivia(
+                source,
+                balanced_end(source, branch_open, "{", "}")
+            );
         } else if (token_equal(source, cursor, "return")) {
             int64_t value_start = skip_trivia(source, token_end(source, cursor));
             if (value_start < length && token_equal(source, value_start, "}")) {
@@ -1007,15 +1346,48 @@ static char *lower_body(const char *source, int64_t open) {
                     &emitted,
                     "    {\n"
                     "        int64_t kofun_result = %s;\n"
-                    "        if (kofun_failed) return 1;\n"
-                    "        return (int)kofun_result;\n"
-                    "    }\n",
-                    value
+                    "        if (kofun_failed) return %s;\n",
+                    value,
+                    failure_result
                 );
+                if (is_main) {
+                    buffer_append(
+                        &emitted,
+                        "        return (int)kofun_result;\n"
+                    );
+                } else {
+                    buffer_append(
+                        &emitted,
+                        "        return kofun_result;\n"
+                    );
+                }
+                buffer_append(&emitted, "    }\n");
                 free(value);
                 cursor = skip_trivia(source, value_end);
             }
             returned = true;
+        } else if (
+            strcmp(token_kind(source, cursor), "identifier") == 0
+        ) {
+            int64_t value_end = expression_end(source, cursor);
+            if (value_end < 0) {
+                free(emitted.data);
+                return lower_error(
+                    "E2S12",
+                    "invalid expression statement",
+                    cursor
+                );
+            }
+            char *value = emit_expression(source, cursor, value_end);
+            buffer_format(
+                &emitted,
+                "    (void)%s;\n"
+                "    if (kofun_failed) return %s;\n",
+                value,
+                failure_result
+            );
+            free(value);
+            cursor = skip_trivia(source, value_end);
         } else {
             free(emitted.data);
             return lower_error("E2S10", "unsupported Core statement", cursor);
@@ -1025,45 +1397,137 @@ static char *lower_body(const char *source, int64_t open) {
         free(emitted.data);
         return lower_error("E2S03", "missing function close", -1);
     }
-    if (!returned) buffer_append(&emitted, "    return 0;\n");
+    if (!returned && append_default && !is_main) {
+        free(emitted.data);
+        return lower_error(
+            "E2S19",
+            "Core function may complete without returning Int",
+            open
+        );
+    }
+    if (!returned && append_default) {
+        buffer_append(&emitted, "    return 0;\n");
+    }
     return emitted.data;
 }
 
 static char *lower_c(const char *source) {
     int64_t length = (int64_t)strlen(source);
-    int64_t function_start = skip_trivia(source, 0);
-    char *name = function_name(source, function_start);
-    int64_t arity = parameter_count(source, function_start);
-    if (
-        function_start >= length ||
-        strcmp(name, "main") != 0 ||
-        arity != 0
-    ) {
+    char *call_check = validate_core_calls(source);
+    if (strncmp(call_check, "error[", 6) == 0) return call_check;
+    free(call_check);
+
+    Buffer prototypes;
+    Buffer bodies;
+    buffer_init(&prototypes);
+    buffer_init(&bodies);
+    int64_t cursor = skip_trivia(source, 0);
+    int64_t main_count = 0;
+    while (cursor < length) {
+        char *name = function_name(source, cursor);
+        if (function_arity(source, name) == -2) {
+            Buffer error;
+            buffer_init(&error);
+            buffer_format(
+                &error,
+                "error[E2S16]: duplicate Core function `%s` "
+                "at byte %" PRId64,
+                name,
+                cursor
+            );
+            free(name);
+            free(prototypes.data);
+            free(bodies.data);
+            return error.data;
+        }
+        bool is_main = strcmp(name, "main") == 0;
+        int64_t arity = parameter_count(source, cursor);
+        char *parameters = core_parameters(source, cursor);
+        if (strncmp(parameters, "error[", 6) == 0) {
+            free(name);
+            free(prototypes.data);
+            free(bodies.data);
+            return parameters;
+        }
+        const char *c_parameters =
+            parameters[0] == '\0' ? "void" : parameters;
+        if (is_main) {
+            ++main_count;
+            if (arity != 0) {
+                free(parameters);
+                free(name);
+                free(prototypes.data);
+                free(bodies.data);
+                return lower_error(
+                    "E2S15",
+                    "Core main must have zero parameters",
+                    -1
+                );
+            }
+        } else {
+            buffer_format(
+                &prototypes,
+                "static int64_t kofun_fn_%s(%s);\n",
+                name,
+                c_parameters
+            );
+        }
+        int64_t open = core_body_open(source, cursor, is_main);
+        if (open < 0) {
+            Buffer error;
+            buffer_init(&error);
+            buffer_format(
+                &error,
+                "error[E2S15]: Core function `%s` requires Int parameters "
+                "and an Int return",
+                name
+            );
+            free(parameters);
+            free(name);
+            free(prototypes.data);
+            free(bodies.data);
+            return error.data;
+        }
+        char *body = lower_body(source, open, is_main, true);
+        if (strncmp(body, "error[", 6) == 0) {
+            free(parameters);
+            free(name);
+            free(prototypes.data);
+            free(bodies.data);
+            return body;
+        }
+        if (is_main) {
+            buffer_append(
+                &bodies,
+                "int main(void) {\n"
+                "    (void)kofun_failed;\n"
+            );
+            buffer_append(&bodies, body);
+            buffer_append(&bodies, "}\n");
+        } else {
+            buffer_format(
+                &bodies,
+                "static int64_t kofun_fn_%s(%s) {\n",
+                name,
+                c_parameters
+            );
+            buffer_append(&bodies, body);
+            buffer_append(&bodies, "}\n");
+        }
+        free(body);
+        free(parameters);
         free(name);
-        return lower_error("E2S10", "C11 Core requires one `fn main()`", -1);
+        cursor = skip_trivia(source, function_end(source, cursor));
     }
-    free(name);
-    int64_t function_close = function_end(source, function_start);
-    if (
-        function_close < 0 ||
-        skip_trivia(source, function_close) != length
-    ) {
+    if (main_count != 1) {
+        free(prototypes.data);
+        free(bodies.data);
         return lower_error(
-            "E2S10",
-            "C11 Core requires exactly one function",
+            "E2S15",
+            "C11 Core requires exactly one `fn main()`",
             -1
         );
     }
-    int64_t open = core_body_open(source, function_start);
-    if (open < 0) {
-        return lower_error(
-            "E2S10",
-            "Core main return type must be Int",
-            -1
-        );
-    }
-    char *body = lower_body(source, open);
-    if (strncmp(body, "error[", 6) == 0) return body;
 
     Buffer output;
     buffer_init(&output);
@@ -1119,12 +1583,12 @@ static char *lower_c(const char *source) {
         "    if (r != 0 && ((r < 0) != (b < 0))) { r += b; }\n"
         "    return r;\n"
         "}\n\n"
-        "int main(void) {\n"
-        "    (void)kofun_failed;\n"
     );
-    buffer_append(&output, body);
-    buffer_append(&output, "}\n");
-    free(body);
+    buffer_append(&output, prototypes.data);
+    buffer_append(&output, "\n");
+    buffer_append(&output, bodies.data);
+    free(prototypes.data);
+    free(bodies.data);
     return output.data;
 }
 

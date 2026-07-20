@@ -22,18 +22,29 @@ The frontend performs five concrete operations:
    returning an `Int`, `Float`, `Bool`, or `Unit` iteration element is Copy,
    while moving a non-Copy element such as `Text` is rejected with `E007`.
 
-The identity operation is deliberately conservative. Reapplying it reaches a byte
-fixed point, which gives later lowering work a deterministic frontend boundary.
-When the output path ends in `.c`, the same frontend instead accepts exactly
-one zero-argument `fn main()` and lowers:
+The identity operation is deliberately conservative. Reapplying it reaches a
+byte fixed point, which gives later lowering work a deterministic frontend
+boundary. When the output path ends in `.c`, the same frontend instead accepts
+one zero-argument `fn main()` plus zero or more `Int` Core functions and lowers:
 
 - immutable or mutable `let` bindings, with optional `Int` annotations;
 - integer literals, bindings, parentheses, unary `+`/`-`, `+`, `-`, `*`,
   floor `//`, and floor `%`;
+- `Int` parameters and returns;
+- direct calls in value or statement position, including forward references
+  and recursion;
+- comparison-only `if` blocks without `else`;
 - `print(Int)` and `return Int`.
 
 The emitted C11 uses checked arithmetic helpers and preserves Kofun floor
-division/modulo behavior for negative operands.
+division/modulo behavior for negative operands. Top-level prototypes make
+declaration order irrelevant. The lowerer rejects unknown calls, duplicate
+function names, wrong arity, non-`Int` parameters, and non-`Int` helper return
+types before invoking the host compiler.
+
+The main CLI tries this Stage 2 C11 Core first and uses the Stage 1 seed as a
+compatibility fallback for inputs outside this slice. Direct-native
+user-function lowering is not implemented yet.
 
 ## Verification
 
@@ -50,11 +61,14 @@ determinism, and rejects a missing closing brace. It also lowers
 `core_fixture.kofun` twice, compares the C/IR/token artifacts, compiles the C11
 with warnings as errors, executes it, and compares exact output and status. A
 second generated program verifies the division-by-zero status/stderr contract,
-and a structurally valid non-Core function verifies explicit lowering
-rejection. Dedicated positive and negative fixtures exercise the ownership
-slice both through the Stage 2 seed and `kofun check`; unrelated structural
-programs are explicitly rejected as outside that slice. The gate uses only
-POSIX shell, a C11 compiler, `sha256sum`, and standard comparison/search tools.
+and `functions_fixture.kofun` proves arguments, results, recursion, an ignored
+zero-argument call, and a forward reference through both the seed and the main
+CLI. Exact golden diagnostics cover unknown functions and arity mismatch. A
+structurally valid non-Core function verifies explicit lowering rejection.
+Dedicated positive and negative fixtures exercise the ownership slice both
+through the Stage 2 seed and `kofun check`; unrelated structural programs are
+explicitly rejected as outside that slice. The gate uses only POSIX shell, a
+C11 compiler, `sha256sum`, and standard comparison/search tools.
 
 `compiler.c` is an audited executable transliteration of the Kofun source so
 this checkpoint can run before Stage 1 accepts all of Stage 2. It is part of the

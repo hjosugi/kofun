@@ -1,0 +1,14 @@
+# expect-stdout: -42
+# expect-stdout: 0
+fn negate(value: Int) -> Int {
+    return -value
+}
+
+fn zero() -> Int {
+    return 0
+}
+
+fn main() {
+    print(negate(42))
+    print(zero())
+}

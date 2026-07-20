@@ -527,6 +527,66 @@ run_native_core_differential \
     "$NATIVE/fixtures/core_precedence_42.kofun" \
     core_precedence_42
 
+# The multi-function Int Core is lowered directly to x86-64 calls. This runs
+# the public example rather than a reduced surrogate, so arbitrary-width
+# integer printing, recursion, parameters, returns, and call fixups are all
+# observable in one static ELF.
+"$KOFUN" build "$ROOT/examples/fibonacci_native.kofun" \
+    --target x86_64-linux \
+    -o "$WORK/fibonacci-native.elf" >/dev/null
+"$WORK/fibonacci-native.elf" \
+    >"$WORK/fibonacci-native.stdout" \
+    2>"$WORK/fibonacci-native.stderr"
+printf '6765\n' >"$WORK/fibonacci-native.expected"
+cmp "$WORK/fibonacci-native.expected" "$WORK/fibonacci-native.stdout"
+test ! -s "$WORK/fibonacci-native.stderr"
+
+"$KOFUN" build "$NATIVE/fixtures/function_overflow.kofun" \
+    --target x86_64-linux \
+    -o "$WORK/function-overflow.elf" >/dev/null
+set +e
+"$WORK/function-overflow.elf" \
+    >"$WORK/function-overflow.stdout" \
+    2>"$WORK/function-overflow.stderr"
+function_overflow_status=$?
+"$KOFUN" build "$NATIVE/fixtures/function_unknown.kofun" \
+    --target x86_64-linux \
+    -o "$WORK/function-unknown.elf" \
+    >"$WORK/function-unknown.stdout" \
+    2>"$WORK/function-unknown.stderr"
+function_unknown_status=$?
+"$KOFUN" build "$NATIVE/fixtures/function_arity.kofun" \
+    --target x86_64-linux \
+    -o "$WORK/function-arity.elf" \
+    >"$WORK/function-arity.stdout" \
+    2>"$WORK/function-arity.stderr"
+function_arity_status=$?
+"$KOFUN" build "$ROOT/examples/fibonacci_native.kofun" \
+    --target aarch64-linux \
+    -o "$WORK/fibonacci-native-aarch64.elf" \
+    >"$WORK/fibonacci-native-aarch64.stdout" \
+    2>"$WORK/fibonacci-native-aarch64.stderr"
+function_aarch64_status=$?
+set -e
+test "$function_overflow_status" -eq 1
+test ! -s "$WORK/function-overflow.stdout"
+printf 'kofun: integer overflow\n' \
+    >"$WORK/function-overflow.expected"
+cmp "$WORK/function-overflow.expected" \
+    "$WORK/function-overflow.stderr"
+test "$function_unknown_status" -eq 1
+test ! -e "$WORK/function-unknown.elf"
+grep 'unknown native Core function `missing`' \
+    "$WORK/function-unknown.stderr" >/dev/null
+test "$function_arity_status" -eq 1
+test ! -e "$WORK/function-arity.elf"
+grep 'native Core function `add` expects 2 arguments, got 1' \
+    "$WORK/function-arity.stderr" >/dev/null
+test "$function_aarch64_status" -eq 1
+test ! -e "$WORK/fibonacci-native-aarch64.elf"
+grep 'AArch64 user-defined functions are not implemented yet' \
+    "$WORK/fibonacci-native-aarch64.stderr" >/dev/null
+
 # List[Int] is currently an x86-64 Native Core extension. An independent C11
 # executable is the normative Python-free differential reference for
 # bindings, indexing, map, filter, fold, and their edge cases. Every Kofun case

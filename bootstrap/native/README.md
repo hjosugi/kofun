@@ -30,6 +30,42 @@ constant analysis must prove every known intermediate value fits that range
 and a statically known final integer is two digits. Unsupported input fails
 before an output file is written.
 
+## x86-64 user-defined Int functions
+
+The direct x86-64 backend also accepts a bounded multi-function Int Core:
+
+```kofun
+fn fib(n: Int) -> Int {
+    if n < 2 {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
+fn main() {
+    print(fib(20))
+}
+```
+
+Top-level declarations are collected before bodies are parsed, so forward and
+mutual recursion do not depend on source order. Calls support up to the six
+SysV integer argument registers. Parameters are stored in frame slots, returns
+use `rax`, and every call is resolved as a checked `rel32` fixup. The profile
+supports Int literals, parameters, direct calls, unary `-`, `+`, `-`, `*`,
+integer comparisons, `if { return ... }` guards, expression statements,
+multiple `print(Int)` statements in `main`, and explicit or implicit main
+returns.
+
+Runtime Int output covers zero, negative values, and the complete signed
+64-bit decimal width. Arithmetic branches to a deterministic overflow
+diagnostic. Unknown functions, duplicate declarations or parameters, wrong
+arity, more than six arguments, non-Int signatures, missing helper returns,
+AArch64 output, and `-g` are rejected before an artifact is written.
+
+`tests/conformance/functions` runs the same five programs under the C11 and
+direct x86-64 adapters. It covers ordinary/forward calls, recursion, mutual
+recursion, signed/zero output, and the six-argument boundary.
+
 The x86-64 target also accepts local `Int`/`List[Int]` bindings and a
 deliberately narrow collection Core:
 
@@ -199,9 +235,10 @@ Stage1 can compile the encoder's list operations.
 When `gdb` is installed, a batch session breaks at `main`, shows Kofun line 3,
 steps to line 4, and verifies a named Kofun `main` backtrace.
 
-Native Core currently admits exactly one function, `main`, so one function DIE
-is complete for every accepted program. When calls and more functions enter
-Native Core, lowering must add one DIE and symbol for each emitted function.
+Debug Native Core currently admits exactly one function, `main`, so one
+function DIE is complete for every debug-accepted program. The multi-function
+Int profile rejects `-g` until lowering adds one DIE and symbol for each emitted
+function.
 `-g` on AArch64 is rejected explicitly; AArch64 and Mach-O debug formats are
 separate future work.
 
@@ -223,10 +260,12 @@ fixture.
 
 ## Executable gate
 
-The active Stage1 compiler cannot yet compile lists, general function calls, or
-file output. Therefore `fixtures/exit_42.rle.kofun` is an intentionally narrow
-Stage1-Core bridge. `fixtures/print_sum_42.rle.kofun` is the corresponding
-bridge for `elf64_print_sum_image(40, 2)`, and
+The compatibility Stage 1 seed cannot compile lists, general function calls, or
+file output. The Stage 2 C11 Core now handles bounded Int function calls, but
+does not compile this List-heavy encoder. Therefore
+`fixtures/exit_42.rle.kofun` is an intentionally narrow Stage1-Core bridge.
+`fixtures/print_sum_42.rle.kofun` is the corresponding bridge for
+`elf64_print_sum_image(40, 2)`, and
 `fixtures/core_answer.rle.kofun` bridges `elf64_core_answer_image()`. Each
 emits a run-length-encoded byte stream whose expansion is exactly the image
 returned by its canonical encoder function.
@@ -263,6 +302,12 @@ Implemented here:
 - direct AArch64 instruction encoding and static `EM_AARCH64` ELF output;
 - the public `build --target aarch64-linux` CLI path;
 - native lowering of the fixture expressions `40 + 2` and `(6 + 1) * 6`;
+- direct x86-64 Int function calls with up to six arguments, results, forward
+  references, recursion, mutual recursion, and comparison-guarded returns;
+- checked `+`, `-`, `*`, and unary negation in the function profile;
+- general signed Int64 decimal output for function-profile `print`;
+- registered function conformance coverage with 5/5 cases executed by both
+  the C11 and native x86-64 adapters;
 - x86-64 `List[Int]` literal, `len`, and positive/negative indexing lowering;
 - x86-64 local `Int`/`List[Int]` bindings with frame-backed variable loads;
 - generated `map`, `filter`, and `fold` loops with typed inline Int lambdas;
@@ -274,7 +319,7 @@ Implemented here:
   the native x86-64 adapter;
 - registered Python-free List conformance coverage with 13/13 cases executed by
   the native x86-64 adapter;
-- two-digit integer-to-ASCII conversion for the fixture result;
+- two-digit integer-to-ASCII conversion for the shared scalar fixture;
 - distinct RX and RW mappings;
 - three end-to-end Linux x86-64 executable artifact gates;
 - opt-in section headers, symbols, and DWARF v4 line/function information for
@@ -284,13 +329,13 @@ Still open:
 
 - replacing the audited C11 Native Core driver after lists and calls
   self-compile;
-- lowering general calls, conditionals, and non-constant expression trees;
-- general signed integer formatting and checked arithmetic diagnostics;
+- local bindings and general statement/control-flow lowering inside
+  user-defined functions;
 - native stdout/stderr formatting and canonical `R010` diagnostics;
 - conditional branches, allocator reuse/reclamation, Mach-O, and additional targets;
 - first-class/nested collection lambdas, general collection types, and
   AArch64 lists;
 - general Text bindings/calls and the Stage 1 compiler port tracked by #33;
-- extending the registered native adapter beyond List/Text and adding AArch64
-  List/Text;
+- adding AArch64 user functions, List, and Text to the registered native
+  adapter;
 - AArch64 debug information and variable/location DIEs.

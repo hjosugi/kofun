@@ -10,12 +10,14 @@
 | explicit skip reporting and coverage | implemented | `kofun test` |
 | semantic compiler self-recompile | open | bootstrap manifest |
 | Stage 2 lexer, parser, and integer Core lowering | checkpoint implemented | `bootstrap/stage2/check.sh` |
+| C11 user-function calls | bounded Int Core: recursion and forward calls | `bootstrap/stage2/check.sh` |
+| x86-64 native user-function calls | bounded Int Core: six arguments, guarded returns, recursion | `tests/conformance/functions` |
 | general parser/type checker | open | no active gate |
 | borrowed-List Copy/move ownership check | narrow Stage 2 checkpoint | `bootstrap/stage2/check.sh` |
 | general ownership and law checking | open | no active general pass |
 | ELF64/x86-64 native image writer | checkpoint implemented | `bootstrap/native/check.sh` |
 | x86-64 List[Int] and UTF-8 Text Core | checkpoint implemented | `bootstrap/native/check.sh`, `tests/conformance/list`, `tests/conformance/text` |
-| general native lowering | open | Stage 2 bindings/calls and additional target profiles |
+| general native lowering | open | unified types/control flow and additional target profiles |
 | C ABI `extern` / `repr(C)` profile | bounded host-C implementation | `bootstrap/c_abi/check.sh` |
 | vendored Rust crate through C ABI shim | implemented example | `examples/rust-shim/check.sh` |
 | Linux HTTP/1.1 epoll framework through C ABI | bounded library implementation | `tests/http/check.sh` |

@@ -10,6 +10,25 @@ Kofun advances milestones by correctness gate, not by feature count.
 - distinguish the strength of law evidence as `bounded`, `proven-finite`, or `proven`
 - do not call the project "self-hosting complete" before the Stage 2 fixed point
 
+## Current critical-path order
+
+The roadmap does not schedule frontier features ahead of the two P0 language
+blockers:
+
+1. keep the bounded C11/direct-x86-64 user-function gate green while widening
+   its type and control-flow coverage
+   ([#549](https://github.com/hjosugi/kofun/issues/549); first executable slice
+   complete)
+2. add a heterogeneous product type suitable for tokens and AST nodes
+   ([#546](https://github.com/hjosugi/kofun/issues/546))
+3. generalize the existing Monad-specific checker into declared algebraic laws
+   ([#551](https://github.com/hjosugi/kofun/issues/551))
+
+Advanced effects, dependent or refinement types, concurrency, and an optional
+second backend remain after this sequence. The evidence and keep/defer/reject
+decisions are indexed in the
+[README project-status section](../README.md#measured-project-status).
+
 ## M0 — Specification and UX validation
 
 Deliverables:

@@ -2,6 +2,11 @@
 
 Kofun is an experimental programming language. Source files use `.kofun`.
 
+Kofun's product position is: **the language where you state an algebraic law
+and the compiler hands you a counterexample.** The current implementation only
+supports a bounded Monad-law checkpoint; this sentence is the direction used to
+prioritize future work, not a claim that the general law system is complete.
+
 The active compiler seed is written in Kofun itself:
 
 - canonical source: `bootstrap/stage1/compiler.kofun`
@@ -35,8 +40,8 @@ Six Python-free checkpoints now exercise the path beyond that Core:
   function IR, and reaches a byte-stable source/token/IR round trip;
 - `bootstrap/native/` uses Kofun-authored bytes to build and execute a static
   Linux x86-64 ELF64 image without an assembler or linker; its active x86-64
-  Core includes local List bindings, `map`/`filter`/`fold`, and UTF-8 Text
-  operations;
+  Core includes recursive user functions, local List bindings,
+  `map`/`filter`/`fold`, and UTF-8 Text operations;
 - `bootstrap/c_abi/` provides an explicit host-C/dynamic-linking profile for
   checked `extern "C"` declarations and `repr(C)` structs;
 - `framework/http/` uses that explicit host-C profile to run a reusable Linux
@@ -48,6 +53,45 @@ Six Python-free checkpoints now exercise the path beyond that Core:
 
 All six have executable gates. The complete Stage 2 self-recompile and
 general native lowering remain open.
+
+## Measured project status
+
+This table is the position-paper checklist tracked by
+[issue #281](https://github.com/hjosugi/kofun/issues/281). `Active` means that
+the linked executable gate exercises the feature. A design document alone is
+never enough to move a row to `Active`.
+
+| Requirement | Status | Evidence or blocker |
+|---|---|---|
+| Direct native machine code | **Active, bounded Core** | [`bootstrap/native/check.sh`](bootstrap/native/check.sh) builds and executes direct x86-64 ELF and audits AArch64 output |
+| Static, dependency-free binaries | **Active, bounded Core** | The [native gate](bootstrap/native/check.sh) rejects an interpreter, dynamic section, and dynamic dependencies |
+| Algebraic-law counterexamples | **Active, Monad only** | [`docs/LAW_SYSTEM.md`](docs/LAW_SYSTEM.md) records the executable bounded and finite-model gates; general declarations remain [#551](https://github.com/hjosugi/kofun/issues/551) |
+| Memory safety without GC | **Design only** | [`docs/MEMORY_MODEL.md`](docs/MEMORY_MODEL.md) is target design; the complete checker and reclamation path are not implemented |
+| Runtime performance parity | **Not established** | [`benchmarks/README.md`](benchmarks/README.md) limits current results to smoke and bounded HTTP measurements |
+| Heap allocation | **Active, narrow; no reclamation** | [`bootstrap/native/README.md`](bootstrap/native/README.md) documents the x86-64 `mmap` runtime used by List and Text |
+| Text and homogeneous List values | **Active, bounded x86-64 Core** | [`tests/conformance/`](tests/conformance/) runs the registered Text and List corpora |
+| Heterogeneous records | **Missing** | [#546](https://github.com/hjosugi/kofun/issues/546) blocks a useful token and AST representation |
+| User-defined function calls | **Active, bounded Int Core** | [`tests/conformance/functions`](tests/conformance/functions) executes arguments, results, forward/mutual recursion, and six-argument calls under both C11 and direct x86-64 |
+| C ABI interop | **Active, bounded host-C profile** | [`bootstrap/c_abi/check.sh`](bootstrap/c_abi/check.sh) verifies calls and `repr(C)` layout; it is separate from direct native code |
+| Embedded / freestanding profile | **Missing** | The current direct backend targets Linux syscalls |
+| Semantic self-hosting fixed point | **Missing** | [`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md) and the bootstrap gates keep seed, checkpoint, and fixed-point claims distinct |
+| Stable language specification | **Missing** | [`spec/README.md`](spec/README.md) distinguishes normative contracts from roadmap material |
+| Package ecosystem | **Missing** | Package and registry work remains a later roadmap milestone |
+
+The first P0 execution blocker now has a bounded C11/direct-x86-64 gate
+([#549](https://github.com/hjosugi/kofun/issues/549)). Heterogeneous records
+([#546](https://github.com/hjosugi/kofun/issues/546)) are the next critical
+path before frontier type, effect, concurrency, or backend work.
+
+The research decisions supporting that order are:
+
+| Direction | Decision | Evidence |
+|---|---|---|
+| Native backend / MLIR | Keep the direct self-hosted backend; retain a second-backend interface | [#554](https://github.com/hjosugi/kofun/issues/554) |
+| Ownership and data-race prevention | Keep `read` / `edit` / `take`; defer concurrency and begin with scoped parallelism | [#555](https://github.com/hjosugi/kofun/issues/555) |
+| Effects | Defer advanced handlers; introduce a pure/impure boundary first | [#556](https://github.com/hjosugi/kofun/issues/556) |
+| Type checker | Copy small, proven mechanisms before adding frontier features | [#557](https://github.com/hjosugi/kofun/issues/557) |
+| Dependent types | Reject full dependent types; investigate refinement types instead | [#558](https://github.com/hjosugi/kofun/issues/558) |
 
 ## Requirements
 

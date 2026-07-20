@@ -1,0 +1,13 @@
+# expect-stdout: 42
+fn answer(left: Int, right: Int) -> Int {
+    return add(left, right)
+}
+
+fn add(left: Int, right: Int) -> Int {
+    return left + right
+}
+
+fn main() -> Int {
+    print(answer(40, 2))
+    return 0
+}

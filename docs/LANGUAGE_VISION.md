@@ -5,6 +5,13 @@
 Kofun's mission is to reduce the everyday friction between systems safety and
 high-level productivity.
 
+Its distinguishing product position is: **the language where you state an
+algebraic law and the compiler hands you a counterexample.** The measured
+implementation status for that position and for the wider systems-language
+goals lives in the
+[README checklist](../README.md#measured-project-status). Target design in this
+document must not be read as implemented behavior.
+
 Rust made memory safety without a GC practical, through ownership and
 borrowing. At the same time, not all application code needs to handle
 lifetimes, borrowing, wrapper types, and conversions at the same granularity.
@@ -23,6 +30,29 @@ The long-term design for Kofun draws the following separation.
 - effects are inferred by the compiler and visible at the API boundaries that
   need them
 - performance-critical code is unboxed, specialized, and natively compiled
+
+## Frontier decisions
+
+Kofun is not scheduled as five independent language-research programmes. The
+current decisions are:
+
+- keep the direct, self-hosted native backend and preserve an interface for an
+  optional second backend; do not adopt MLIR ([#554](https://github.com/hjosugi/kofun/issues/554))
+- keep `read` / `edit` / `take`; if concurrency is introduced, begin with
+  scoped parallelism that reuses ownership exclusivity
+  ([#555](https://github.com/hjosugi/kofun/issues/555))
+- introduce a pure/impure boundary before considering effect rows or handlers
+  ([#556](https://github.com/hjosugi/kofun/issues/556))
+- reject full dependent types and investigate refinement types only after the
+  ordinary type checker is complete
+  ([#557](https://github.com/hjosugi/kofun/issues/557),
+  [#558](https://github.com/hjosugi/kofun/issues/558))
+
+These decisions are subordinate to the current compiler path. The bounded
+user-defined call slice now runs under C11 and direct x86-64
+([#549](https://github.com/hjosugi/kofun/issues/549)); heterogeneous records
+remain the next blocker
+([#546](https://github.com/hjosugi/kofun/issues/546)).
 
 ## Product principles
 

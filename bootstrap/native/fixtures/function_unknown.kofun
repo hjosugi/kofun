@@ -1,0 +1,7 @@
+fn answer() -> Int {
+    return missing()
+}
+
+fn main() {
+    print(answer())
+}

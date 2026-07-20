@@ -1,0 +1,33 @@
+# Stage 2 C11 function-call fixture: parameters, results, recursion, an ignored
+# zero-argument call, and a forward reference.
+
+fn twice(value: Int) -> Int {
+    return value * 2
+}
+
+fn fib(value: Int) -> Int {
+    if value < 2 {
+        return value
+    }
+    return fib(value - 1) + fib(value - 2)
+}
+
+fn forward_answer() -> Int {
+    return add(40, 2)
+}
+
+fn ignored() -> Int {
+    return 7
+}
+
+fn add(left: Int, right: Int) -> Int {
+    return left + right
+}
+
+fn main() -> Int {
+    ignored()
+    print(twice(21))
+    print(fib(10))
+    print(forward_answer())
+    return 0
+}
