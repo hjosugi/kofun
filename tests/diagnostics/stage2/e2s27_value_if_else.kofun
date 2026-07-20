@@ -1,0 +1,9 @@
+# diagnostic-mode: compile
+# expect-code: E2S27
+# expect-span: byte 137
+fn main() {
+    let answer: Int = if true {
+        42
+    }
+    print(answer)
+}

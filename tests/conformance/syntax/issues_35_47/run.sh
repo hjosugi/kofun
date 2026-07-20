@@ -141,6 +141,61 @@ expect_stage2_diagnostic \
     "$CASES/if_outer_assignment.stdout"
 
 "$WORK/kofun-stage2" \
+    "$CASES/if_value.kofun" \
+    "$WORK/if-value.c" \
+    "$WORK/if-value.ir" \
+    "$WORK/if-value.tokens" >/dev/null
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$WORK/if-value.c" -o "$WORK/if-value"
+"$WORK/if-value" \
+    >"$WORK/if-value.stdout" 2>"$WORK/if-value.stderr"
+cmp "$CASES/if_value.stdout" "$WORK/if-value.stdout" ||
+    fail "Stage 2 value-position if output differs"
+test ! -s "$WORK/if-value.stderr" ||
+    fail "Stage 2 value-position if wrote unexpected stderr"
+KOFUN_BUILD_DIR="$WORK/cli-stage1" \
+KOFUN_STAGE2_BUILD_DIR="$WORK/cli-stage2" \
+    "$ROOT/bin/kofun" run "$CASES/if_value.kofun" \
+    >"$WORK/if-value-cli.stdout" 2>"$WORK/if-value-cli.stderr"
+cmp "$CASES/if_value.stdout" "$WORK/if-value-cli.stdout" ||
+    fail "public kofun run value-position if output differs"
+test ! -s "$WORK/if-value-cli.stderr" ||
+    fail "public kofun run value-position if wrote stderr"
+printf '%s\n' "PASS executable Stage 2 value-position if"
+
+"$WORK/kofun-stage2" \
+    "$CASES/if_value_selected_error.kofun" \
+    "$WORK/if-value-error.c" \
+    "$WORK/if-value-error.ir" \
+    "$WORK/if-value-error.tokens" >/dev/null
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$WORK/if-value-error.c" -o "$WORK/if-value-error"
+set +e
+"$WORK/if-value-error" \
+    >"$WORK/if-value-error.stdout" 2>"$WORK/if-value-error.stderr"
+if_value_error_status=$?
+set -e
+test "$if_value_error_status" -eq 1 ||
+    fail "selected failing value-if branch returned $if_value_error_status"
+test ! -s "$WORK/if-value-error.stdout" ||
+    fail "selected failing value-if branch wrote stdout"
+cmp \
+    "$CASES/if_value_selected_error.stderr" \
+    "$WORK/if-value-error.stderr" ||
+    fail "selected failing value-if branch diagnostic differs"
+printf '%s\n' "PASS selected-only Stage 2 value-position if evaluation"
+
+expect_stage2_diagnostic \
+    "$ROOT/tests/diagnostics/stage2/e2s27_value_if_else.kofun" \
+    "$ROOT/tests/diagnostics/stage2/e2s27_value_if_else.stderr"
+expect_stage2_diagnostic \
+    "$ROOT/tests/diagnostics/stage2/e2s28_value_if_branch.kofun" \
+    "$ROOT/tests/diagnostics/stage2/e2s28_value_if_branch.stderr"
+expect_stage2_diagnostic \
+    "$CASES/if_value_void_branch.kofun" \
+    "$CASES/if_value_void_branch.stdout"
+
+"$WORK/kofun-stage2" \
     "$CASES/match_bool.kofun" \
     "$WORK/match-bool.c" \
     "$WORK/match-bool.ir" \

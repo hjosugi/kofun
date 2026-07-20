@@ -848,6 +848,155 @@ fn emit_condition(source: Text, start: Int, end: Int) -> Text {
     emit_expression(source, right_start, end) + ")"
 }
 
+fn value_if_branch_end(source: Text, start: Int) -> Int {
+    let cursor = skip_trivia(source, start)
+    if token_text(source, cursor) == "if" {
+        return value_if_end(source, cursor)
+    }
+    return expression_end(source, cursor)
+}
+
+fn value_if_end(source: Text, start: Int) -> Int {
+    let condition_start = skip_trivia(source, token_end(source, start))
+    let condition_close = condition_end(source, condition_start)
+    let then_open = skip_trivia(source, condition_close)
+    let then_start = skip_trivia(source, token_end(source, then_open))
+    let then_end = value_if_branch_end(source, then_start)
+    let then_close = skip_trivia(source, then_end)
+    let else_keyword = skip_trivia(source, token_end(source, then_close))
+    let else_open = skip_trivia(source, token_end(source, else_keyword))
+    let else_start = skip_trivia(source, token_end(source, else_open))
+    let else_end = value_if_branch_end(source, else_start)
+    let else_close = skip_trivia(source, else_end)
+    return token_end(source, else_close)
+}
+
+fn validate_value_if(source: Text, start: Int) -> Text {
+    let cursor = skip_trivia(source, start)
+    if cursor >= len(source) || token_text(source, cursor) != "if" {
+        return "error[E2S28]: expected value-position `if` at byte " +
+        to_text(cursor)
+    }
+    let condition_start = skip_trivia(source, token_end(source, cursor))
+    let condition_close = condition_end(source, condition_start)
+    if condition_close < 0 {
+        return "error[E2S23]: if condition must be Bool or an Int comparison at byte " +
+        to_text(condition_start)
+    }
+    let then_open = skip_trivia(source, condition_close)
+    if then_open >= len(source) || token_text(source, then_open) != "{" {
+        return "error[E2S18]: expected `{` after if condition at byte " +
+        to_text(then_open)
+    }
+    let then_start = skip_trivia(source, token_end(source, then_open))
+    let mut then_end = -1
+    if token_text(source, then_start) == "if" {
+        let nested_result = validate_value_if(source, then_start)
+        if starts_with(nested_result, "error[") {
+            return nested_result
+        }
+        then_end = value_if_end(source, then_start)
+    } else {
+        if token_text(source, then_start) == "print" {
+            return "error[E2S28]: value-position if branch must produce Int, not Void at byte " +
+            to_text(then_start)
+        }
+        then_end = expression_end(source, then_start)
+        if then_end < 0 {
+            return "error[E2S28]: value-position if branch must produce Int at byte " +
+            to_text(then_start)
+        }
+    }
+    let then_close = skip_trivia(source, then_end)
+    if then_close >= len(source) || token_text(source, then_close) != "}" {
+        return "error[E2S28]: value-position if branch must contain one final Int expression at byte " +
+        to_text(then_close)
+    }
+    let else_keyword = skip_trivia(source, token_end(source, then_close))
+    if else_keyword >= len(source) ||
+       token_text(source, else_keyword) != "else" {
+        return "error[E2S27]: value-position if requires `else` at byte " +
+        to_text(else_keyword)
+    }
+    let else_open = skip_trivia(source, token_end(source, else_keyword))
+    if else_open >= len(source) || token_text(source, else_open) != "{" {
+        return "error[E2S18]: expected `{` after `else` at byte " +
+        to_text(else_open)
+    }
+    let else_start = skip_trivia(source, token_end(source, else_open))
+    let mut else_end = -1
+    if token_text(source, else_start) == "if" {
+        let nested_result = validate_value_if(source, else_start)
+        if starts_with(nested_result, "error[") {
+            return nested_result
+        }
+        else_end = value_if_end(source, else_start)
+    } else {
+        if token_text(source, else_start) == "print" {
+            return "error[E2S28]: value-position if branch must produce Int, not Void at byte " +
+            to_text(else_start)
+        }
+        else_end = expression_end(source, else_start)
+        if else_end < 0 {
+            return "error[E2S28]: value-position if branch must produce Int at byte " +
+            to_text(else_start)
+        }
+    }
+    let else_close = skip_trivia(source, else_end)
+    if else_close >= len(source) || token_text(source, else_close) != "}" {
+        return "error[E2S28]: value-position if branch must contain one final Int expression at byte " +
+        to_text(else_close)
+    }
+    return "ok"
+}
+
+fn emit_value_into(
+    source: Text,
+    start: Int,
+    end: Int,
+    target: Text,
+    failure_result: Text
+) -> Text {
+    let cursor = skip_trivia(source, start)
+    if token_text(source, cursor) != "if" {
+        return "    " + target + " = " +
+        emit_expression(source, cursor, end) + ";\n" +
+        "    if (kofun_failed) return " + failure_result + ";\n"
+    }
+    let condition_start = skip_trivia(source, token_end(source, cursor))
+    let condition_close = condition_end(source, condition_start)
+    let then_open = skip_trivia(source, condition_close)
+    let then_start = skip_trivia(source, token_end(source, then_open))
+    let then_end = value_if_branch_end(source, then_start)
+    let then_close = skip_trivia(source, then_end)
+    let else_keyword = skip_trivia(source, token_end(source, then_close))
+    let else_open = skip_trivia(source, token_end(source, else_keyword))
+    let else_start = skip_trivia(source, token_end(source, else_open))
+    let else_end = value_if_branch_end(source, else_start)
+    return "    {\n" +
+    "        bool kofun_value_condition = " +
+    emit_condition(source, condition_start, condition_close) + ";\n" +
+    "        if (kofun_failed) return " + failure_result + ";\n" +
+    "        if (kofun_value_condition) {\n" +
+    emit_value_into(
+        source,
+        then_start,
+        then_end,
+        target,
+        failure_result
+    ) +
+    "        } else {\n" +
+    emit_value_into(
+        source,
+        else_start,
+        else_end,
+        target,
+        failure_result
+    ) +
+    "        }\n" +
+    "    }\n"
+}
+
 fn core_body_open(
     source: Text,
     function_start: Int,
@@ -966,15 +1115,33 @@ fn lower_body(
                 return "error[E2S11]: expected `=` at byte " + to_text(cursor)
             }
             let value_start = skip_trivia(source, token_end(source, cursor))
-            let value_end = expression_end(source, value_start)
-            if value_end < 0 {
-                return "error[E2S12]: invalid Int expression at byte " +
-                to_text(value_start)
+            if token_text(source, value_start) == "if" {
+                let value_check = validate_value_if(source, value_start)
+                if starts_with(value_check, "error[") {
+                    return value_check
+                }
+                let value_end = value_if_end(source, value_start)
+                emitted = emitted + "    int64_t k_" + name +
+                " = INT64_C(0);\n" +
+                emit_value_into(
+                    source,
+                    value_start,
+                    value_end,
+                    "k_" + name,
+                    failure_result
+                )
+                cursor = skip_trivia(source, value_end)
+            } else {
+                let value_end = expression_end(source, value_start)
+                if value_end < 0 {
+                    return "error[E2S12]: invalid Int expression at byte " +
+                    to_text(value_start)
+                }
+                emitted = emitted + "    int64_t k_" + name + " = " +
+                emit_expression(source, value_start, value_end) + ";\n" +
+                "    if (kofun_failed) return " + failure_result + ";\n"
+                cursor = skip_trivia(source, value_end)
             }
-            emitted = emitted + "    int64_t k_" + name + " = " +
-            emit_expression(source, value_start, value_end) + ";\n" +
-            "    if (kofun_failed) return " + failure_result + ";\n"
-            cursor = skip_trivia(source, value_end)
         } else if statement == "print" {
             let call_open = skip_trivia(source, token_end(source, cursor))
             if call_open >= len(source) ||
@@ -983,25 +1150,52 @@ fn lower_body(
                 to_text(cursor)
             }
             let value_start = skip_trivia(source, token_end(source, call_open))
-            let value_end = expression_end(source, value_start)
-            if value_end < 0 {
-                return "error[E2S12]: invalid Int expression at byte " +
-                to_text(value_start)
+            if token_text(source, value_start) == "if" {
+                let value_check = validate_value_if(source, value_start)
+                if starts_with(value_check, "error[") {
+                    return value_check
+                }
+                let value_end = value_if_end(source, value_start)
+                let call_close = skip_trivia(source, value_end)
+                if call_close >= len(source) ||
+                   token_text(source, call_close) != ")" {
+                    return "error[E2S13]: expected `)` at byte " +
+                    to_text(call_close)
+                }
+                emitted = emitted +
+                "    {\n" +
+                "        int64_t kofun_value = INT64_C(0);\n" +
+                emit_value_into(
+                    source,
+                    value_start,
+                    value_end,
+                    "kofun_value",
+                    failure_result
+                ) +
+                "        printf(\"%\" PRId64 \"\\n\", kofun_value);\n" +
+                "    }\n"
+                cursor = skip_trivia(source, token_end(source, call_close))
+            } else {
+                let value_end = expression_end(source, value_start)
+                if value_end < 0 {
+                    return "error[E2S12]: invalid Int expression at byte " +
+                    to_text(value_start)
+                }
+                let call_close = skip_trivia(source, value_end)
+                if call_close >= len(source) ||
+                   token_text(source, call_close) != ")" {
+                    return "error[E2S13]: expected `)` at byte " +
+                    to_text(call_close)
+                }
+                emitted = emitted +
+                "    {\n" +
+                "        int64_t kofun_value = " +
+                emit_expression(source, value_start, value_end) + ";\n" +
+                "        if (kofun_failed) return " + failure_result + ";\n" +
+                "        printf(\"%\" PRId64 \"\\n\", kofun_value);\n" +
+                "    }\n"
+                cursor = skip_trivia(source, token_end(source, call_close))
             }
-            let call_close = skip_trivia(source, value_end)
-            if call_close >= len(source) ||
-               token_text(source, call_close) != ")" {
-                return "error[E2S13]: expected `)` at byte " +
-                to_text(call_close)
-            }
-            emitted = emitted +
-            "    {\n" +
-            "        int64_t kofun_value = " +
-            emit_expression(source, value_start, value_end) + ";\n" +
-            "        if (kofun_failed) return " + failure_result + ";\n" +
-            "        printf(\"%\" PRId64 \"\\n\", kofun_value);\n" +
-            "    }\n"
-            cursor = skip_trivia(source, token_end(source, call_close))
         } else if statement == "if" {
             let condition_start = skip_trivia(
                 source,
@@ -1227,6 +1421,30 @@ fn lower_body(
                token_text(source, value_start) == "}" {
                 emitted = emitted + "    return 0;\n"
                 cursor = value_start
+            } else if token_text(source, value_start) == "if" {
+                let value_check = validate_value_if(source, value_start)
+                if starts_with(value_check, "error[") {
+                    return value_check
+                }
+                let value_end = value_if_end(source, value_start)
+                emitted = emitted +
+                "    {\n" +
+                "        int64_t kofun_result = INT64_C(0);\n" +
+                emit_value_into(
+                    source,
+                    value_start,
+                    value_end,
+                    "kofun_result",
+                    failure_result
+                )
+                if is_main {
+                    emitted = emitted +
+                    "        return (int)kofun_result;\n"
+                } else {
+                    emitted = emitted + "        return kofun_result;\n"
+                }
+                emitted = emitted + "    }\n"
+                cursor = skip_trivia(source, value_end)
             } else {
                 let value_end = expression_end(source, value_start)
                 if value_end < 0 {
@@ -1282,19 +1500,40 @@ fn lower_body(
                     "; declare it with `let mut`"
                 }
                 let value_start = skip_trivia(source, token_end(source, equals))
-                let value_end = expression_end(source, value_start)
-                if value_end < 0 {
-                    return "error[E2S12]: invalid Int expression at byte " +
-                    to_text(value_start)
+                if token_text(source, value_start) == "if" {
+                    let value_check = validate_value_if(source, value_start)
+                    if starts_with(value_check, "error[") {
+                        return value_check
+                    }
+                    let value_end = value_if_end(source, value_start)
+                    emitted = emitted +
+                    "    {\n" +
+                    "        int64_t kofun_replacement = INT64_C(0);\n" +
+                    emit_value_into(
+                        source,
+                        value_start,
+                        value_end,
+                        "kofun_replacement",
+                        failure_result
+                    ) +
+                    "        k_" + name + " = kofun_replacement;\n" +
+                    "    }\n"
+                    cursor = skip_trivia(source, value_end)
+                } else {
+                    let value_end = expression_end(source, value_start)
+                    if value_end < 0 {
+                        return "error[E2S12]: invalid Int expression at byte " +
+                        to_text(value_start)
+                    }
+                    emitted = emitted +
+                    "    {\n" +
+                    "        int64_t kofun_replacement = " +
+                    emit_expression(source, value_start, value_end) + ";\n" +
+                    "        if (kofun_failed) return " + failure_result + ";\n" +
+                    "        k_" + name + " = kofun_replacement;\n" +
+                    "    }\n"
+                    cursor = skip_trivia(source, value_end)
                 }
-                emitted = emitted +
-                "    {\n" +
-                "        int64_t kofun_replacement = " +
-                emit_expression(source, value_start, value_end) + ";\n" +
-                "        if (kofun_failed) return " + failure_result + ";\n" +
-                "        k_" + name + " = kofun_replacement;\n" +
-                "    }\n"
-                cursor = skip_trivia(source, value_end)
             } else {
                 let value_end = expression_end(source, cursor)
                 if value_end < 0 {

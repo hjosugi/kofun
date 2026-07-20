@@ -28,7 +28,7 @@ compiler cannot yet produce the final diagnostic.
 | #40 | lambda expressions | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
 | #41 | immutable bindings | Stage 1 and Stage 2 Core compile and execute integer `let` bindings | implemented for Core |
 | #42 | owned bindings | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
-| #43 | if expressions | Stage 2 lowers statement-position `if` with Bool literals or integer comparisons | partial |
+| #43 | if expressions | Stage 2 lowers statement-position and bounded Int-valued `if` with Bool literals or integer comparisons | partial |
 | #44 | else-if chains | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
 | #45 | for loops | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
 | #46 | match expressions | Stage 2 executes exhaustive statement-position Bool matches and rejects missing/unreachable arms | partial |
@@ -535,13 +535,17 @@ let label = if score >= 90 {
 ```
 
 **Implementation status:** the public Stage 2 C Core lowers statement-position
-`if` with mandatory braces, optional `else`, nesting, Bool-literal conditions,
-and integer comparisons. Its executable fixture also proves that an unselected
-branch is not evaluated. Value-position `if`, general Bool expressions, branch
-type unification, `else if`, interpreter/native differential coverage, and
-full static typing remain open. Mutable assignment is supported within the
-current branch block, while assignment from a branch to an outer binding is
-explicitly rejected as described in #39.
+`if` with optional `else` and bounded Int-valued `if` with mandatory `else`.
+Both forms require braces, accept Bool literals or integer comparisons, support
+nesting, evaluate the condition once, and evaluate only the selected branch.
+The value slice accepts one final Int expression per branch in `let`, `print`,
+assignment, or `return`; `E2S27` rejects a missing `else`, and `E2S28` rejects
+a branch outside that bounded Int type. General Bool expressions, multi-
+statement value blocks, general branch type unification, `else if`,
+interpreter/native differential coverage, and full static typing remain open.
+Mutable assignment is supported within the current branch block, while
+assignment from a branch to an outer binding is explicitly rejected as
+described in #39.
 
 ## #44 — Else-if chains
 

@@ -14,7 +14,7 @@ C11 compiler. It proves:
 - Stage 1 executes an ASCII `fn main()` with newline-terminated immutable
   bindings;
 - Stage 2 executes `let mut` declarations, rebinding, statement-position
-  `if`, and exhaustive statement-position Bool `match`;
+  `if`, Int-valued `if`, and exhaustive statement-position Bool `match`;
 - Stage 2 rejects immutable and undeclared assignment targets with exact,
   span-carrying `E2S22` diagnostics;
 - Stage 2 names missing Bool patterns with `E2S25` and rejects duplicate or
@@ -27,6 +27,15 @@ C11 compiler. It proves:
 Structural round-trip is not semantic support. The unsupported fixtures are
 future conformance inputs retained as negative capability checks until their
 features are implemented.
+
+The bounded value-position `if` slice accepts Bool literals or Int comparisons,
+requires `else`, and requires one final Int expression in each branch. It
+works in `let`, `print`, assignment, and `return`, including nested value
+conditions. The fixture proves condition-once/selected-only lowering by keeping
+checked division-by-zero in unselected branches, then separately proves that a
+selected failing branch still reports the stable runtime error. `E2S27` covers
+a missing value `else`; `E2S28` covers a branch that cannot produce the bounded
+Int result.
 
 The current assignment slice is block-local. A mutable assignment followed by
 an `if` in the same function executes, and a binding declared inside an `if` or

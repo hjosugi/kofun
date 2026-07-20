@@ -12,8 +12,8 @@
 | Stage 2 lexer, parser, and integer Core lowering | checkpoint implemented | `bootstrap/stage2/check.sh` |
 | C11 user-function calls | bounded Int Core: recursion and forward calls | `bootstrap/stage2/check.sh` |
 | x86-64 native user-function calls | bounded Int Core: six arguments, guarded returns, recursion | `tests/conformance/functions` |
-| Stage 2 must-fail diagnostic corpus | 22/22 active codes; 3 span debts | `tests/diagnostics/stage2/run.sh` |
-| deterministic compiler fuzz smoke tests | 128 grammar + 48 arithmetic differential cases | `tests/fuzz/grammar.sh`, `tests/fuzz/semantic_differential.sh` |
+| Stage 2 must-fail diagnostic corpus | 24/24 active codes; 3 span debts | `tests/diagnostics/stage2/run.sh` |
+| deterministic compiler fuzz smoke tests | 128 grammar + 48 arithmetic differential + 32 value-if cases | `tests/fuzz/` |
 | general parser/type checker | open | no active gate |
 | borrowed-List Copy/move ownership check | narrow Stage 2 checkpoint | `bootstrap/stage2/check.sh` |
 | general ownership and law checking | open | no active general pass |

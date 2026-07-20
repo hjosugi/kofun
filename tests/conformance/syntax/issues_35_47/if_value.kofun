@@ -1,0 +1,37 @@
+fn choose(value: Int) -> Int {
+    return if value > 0 {
+        if value == 1 {
+            40 + 2
+        } else {
+            99
+        }
+    } else {
+        -1
+    }
+}
+
+fn probe() -> Int {
+    print(5)
+    return 1
+}
+
+fn main() {
+    let selected: Int = if probe() == 1 {
+        choose(1)
+    } else {
+        1 // 0
+    }
+    print(selected)
+    print(if false {
+        1 // 0
+    } else {
+        7
+    })
+    let mut replacement: Int = 0
+    replacement = if 2 < 3 {
+        9
+    } else {
+        1 // 0
+    }
+    print(replacement)
+}
