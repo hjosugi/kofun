@@ -14,8 +14,8 @@ C11 compiler. It proves:
 - Stage 1 executes an ASCII `fn main()` with newline-terminated immutable
   bindings;
 - Stage 2 executes `let mut` declarations, rebinding, statement-position
-  `if`, Int-valued `if`, and exhaustive statement-position Bool `match` with
-  ordered guards;
+  `if`, Int-valued `if`, and exhaustive statement- and Int-value-position Bool
+  `match` with ordered guards;
 - Stage 2 rejects immutable and undeclared assignment targets with exact,
   span-carrying `E2S22` diagnostics;
 - Stage 2 names missing Bool patterns with `E2S25` and rejects duplicate or
@@ -44,8 +44,10 @@ an `if` in the same function executes, and a binding declared inside an `if` or
 from inside a branch is rejected with `E2S22` and a correction hint until
 lexical scope resolution replaces the bounded declaration scan.
 
-Bool match is deliberately finite and statement-only. The positive fixture
-executes explicit constructor coverage, `_`, nested matches, repeated guarded
+Bool match is deliberately finite. Statement matches execute Core blocks;
+Int-valued matches work in `let`, `print`, assignment, and `return`, and each
+arm contains one final Int value. The positive fixtures
+execute explicit constructor coverage, `_`, nested matches, repeated guarded
 patterns, and a guarded catch-all. Guards run once, in source order, only after
 their pattern matches; a false guard continues to the next arm. Checked
 failures in nonmatching or later guards remain unobserved, while a failure in
@@ -54,3 +56,6 @@ and stop after a checked failure. Guarded arms never contribute static coverage,
 so an unguarded fallback remains mandatory. Exact negative fixtures cover a
 non-Bool scrutinee, each missing Bool constructor, guard-only coverage,
 duplicate/unreachable patterns, and an invalid non-Bool guard (`E2S29`).
+Nested value `if`/`match` forms, scrutinee-once behavior, selected-only value
+arms, and checked failure propagation are executable. `E2S30` rejects a value
+arm that cannot produce the bounded Int result.

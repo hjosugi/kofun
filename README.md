@@ -251,7 +251,10 @@ exercise 128 arbitrary token streams with a watchdog and compare 48 generated
 arithmetic programs across an independent expected value, C11, and direct
 x86-64 output. A further 32 generated Int-valued `if` programs prove that
 Stage 2 evaluates only the selected branch, and 32 guarded Bool matches prove
-source-order fallthrough and selected-only guard evaluation. See
+source-order fallthrough and selected-only guard evaluation. Another 32
+Int-valued Bool matches cover nested value control and selected-only arm
+evaluation, while 32 invalid value matches exercise four stable diagnostic
+codes without emitting C. See
 `tests/diagnostics/stage2/README.md` and
 `tests/fuzz/README.md` for the exact scope and remaining coverage boundaries.
 
@@ -281,8 +284,8 @@ through its registered backend; the runner compares stdout, stderr, and exit
 status and reports backend coverage.
 
 `tests/diagnostics/stage2/` is the first-class must-fail corpus. It currently
-covers all 25 diagnostic codes emitted by the active Stage 2 checkpoint:
-22 cases assert precise source locations and 3 explicitly track missing spans
+covers all 26 diagnostic codes emitted by the active Stage 2 checkpoint:
+23 cases assert precise source locations and 3 explicitly track missing spans
 as debt. Runtime, C ABI, native-backend, and host-I/O diagnostics remain
 separate coverage work.
 

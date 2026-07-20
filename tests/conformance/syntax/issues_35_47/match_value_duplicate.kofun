@@ -1,0 +1,15 @@
+fn main() -> Int {
+    let selected: Int = match true {
+        true => {
+            1
+        },
+        true => {
+            2
+        },
+        false => {
+            0
+        },
+    }
+    print(selected)
+    return 0
+}

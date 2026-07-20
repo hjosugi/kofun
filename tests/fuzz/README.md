@@ -26,6 +26,18 @@ fallbacks provide static coverage without affecting the expected output. The
 regular and ASAN/UBSAN compiler builds must emit byte-identical C, IR, and token
 artifacts for every case.
 
+`match_value.sh` generates 32 Int-valued Bool `match` programs with alternating
+scrutinees. Each case proves ordered guard probes, false-guard fallthrough,
+nested value `if`, and selected-only arm evaluation while division-by-zero is
+hidden behind nonmatching, unselected, and post-selection paths. Normal and
+ASAN/UBSAN compiler builds must emit byte-identical C, IR, and token artifacts.
+
+`match_value_invalid.sh` generates 32 invalid value matches across missing and
+guard-only coverage (`E2S25`), unreachable arms (`E2S26`), invalid guards
+(`E2S29`), and Void, empty, or multi-value arms (`E2S30`). Normal and
+ASAN/UBSAN compilers must agree on status, diagnostic code, IR, and token tape,
+write no internal stderr, and emit no C artifact.
+
 Run all fuzz smoke gates:
 
 ```sh
