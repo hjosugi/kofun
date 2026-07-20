@@ -1,0 +1,40 @@
+fn main() -> Int {
+    let mut score: Int = 80
+    score = score + 8
+    if score >= 90 {
+        print(1)
+    } else {
+        print(2)
+    }
+    if false {
+        print(3)
+    }
+    if 1 + 2 * 3 == 7 {
+        if true {
+            print(42)
+        }
+    }
+    if 2 != 3 {
+        print(10)
+    }
+    if 2 < 3 {
+        print(11)
+    }
+    if 3 <= 3 {
+        print(12)
+    }
+    if 4 > 3 {
+        print(13)
+    }
+    if true {
+        let mut local = 4
+        local = local + 1
+        print(local)
+    }
+    if true {
+        print(7)
+    } else {
+        print(9223372036854775807 + 1)
+    }
+    return 0
+}

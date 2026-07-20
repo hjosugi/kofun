@@ -121,6 +121,25 @@ expect_stage2_diagnostic \
     "$CASES/unknown_assignment.stdout"
 
 "$WORK/kofun-stage2" \
+    "$CASES/if_statement.kofun" \
+    "$WORK/if-statement.c" \
+    "$WORK/if-statement.ir" \
+    "$WORK/if-statement.tokens" >/dev/null
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$WORK/if-statement.c" -o "$WORK/if-statement"
+"$WORK/if-statement" \
+    >"$WORK/if-statement.stdout" 2>"$WORK/if-statement.stderr"
+cmp "$CASES/if_statement.stdout" "$WORK/if-statement.stdout" ||
+    fail "Stage 2 assignment/if output differs"
+test ! -s "$WORK/if-statement.stderr" ||
+    fail "Stage 2 assignment/if wrote unexpected stderr"
+printf '%s\n' "PASS executable Stage 2 assignment followed by if"
+
+expect_stage2_diagnostic \
+    "$CASES/if_outer_assignment.kofun" \
+    "$CASES/if_outer_assignment.stdout"
+
+"$WORK/kofun-stage2" \
     "$CASES/structural_surface.kofun" \
     "$WORK/structural.kofun" \
     "$WORK/structural.ir" \
@@ -156,11 +175,31 @@ printf '%s\n' "PASS unsupported: Unicode identifiers in Stage 2"
 
 expect_stage2_unsupported "$CASES/unsupported_lambda.kofun"
 expect_stage2_unsupported "$CASES/unsupported_owned_binding.kofun"
-expect_stage2_unsupported "$CASES/unsupported_if.kofun"
+expect_stage2_unsupported "$CASES/unsupported_else_if.kofun"
 expect_stage2_unsupported "$CASES/unsupported_for.kofun"
 expect_stage2_unsupported "$CASES/unsupported_match.kofun"
 expect_stage2_unsupported "$CASES/unsupported_while.kofun"
 
+set +e
+"$WORK/kofun-stage2" \
+    "$CASES/invalid_if_condition.kofun" \
+    "$WORK/invalid-if.c" \
+    "$WORK/invalid-if.ir" \
+    "$WORK/invalid-if.tokens" \
+    >"$WORK/invalid-if.stdout" 2>"$WORK/invalid-if.stderr"
+invalid_if_status=$?
+set -e
+test "$invalid_if_status" -eq 1 ||
+    fail "invalid if condition unexpectedly returned $invalid_if_status"
+test ! -e "$WORK/invalid-if.c" ||
+    fail "invalid if condition emitted C"
+test ! -s "$WORK/invalid-if.stderr" ||
+    fail "invalid if condition wrote unexpected stderr"
+grep '^error\[E2S23\]: if condition must be Bool or an Int comparison at byte ' \
+    "$WORK/invalid-if.stdout" >/dev/null ||
+    fail "invalid if condition did not emit E2S23"
+printf '%s\n' "PASS diagnostic: invalid if condition"
+
 printf '%s\n' \
     "PASS: syntax issues #35-#47 bootstrap capability checkpoint" \
-    "coverage: 13 subjects; 3 partial; 2 Core-implemented; 8 unsupported via 7 fixtures"
+    "coverage: 13 subjects; 4 partial; 2 Core-implemented; 7 unsupported via 7 fixtures"

@@ -1,0 +1,1 @@
+error[E2S23]: if condition must be Bool or an Int comparison at byte 97

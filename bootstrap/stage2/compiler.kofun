@@ -803,6 +803,50 @@ fn core_parameters(source: Text, function_start: Int) -> Text {
     return emitted
 }
 
+fn comparison_operator(token: Text) -> Bool {
+    return token == "==" || token == "!=" || token == "<" ||
+    token == "<=" || token == ">" || token == ">="
+}
+
+fn condition_end(source: Text, start: Int) -> Int {
+    let cursor = skip_trivia(source, start)
+    let first = token_text(source, cursor)
+    if first == "true" || first == "false" {
+        return token_end(source, cursor)
+    }
+    let left_end = expression_end(source, cursor)
+    if left_end < 0 {
+        return -1
+    }
+    let operator_start = skip_trivia(source, left_end)
+    if operator_start >= len(source) ||
+       !comparison_operator(token_text(source, operator_start)) {
+        return -1
+    }
+    let right_start = skip_trivia(
+        source,
+        token_end(source, operator_start)
+    )
+    return expression_end(source, right_start)
+}
+
+fn emit_condition(source: Text, start: Int, end: Int) -> Text {
+    let cursor = skip_trivia(source, start)
+    let first = token_text(source, cursor)
+    if first == "true" || first == "false" {
+        return first
+    }
+    let left_end = expression_end(source, cursor)
+    let operator_start = skip_trivia(source, left_end)
+    let right_start = skip_trivia(
+        source,
+        token_end(source, operator_start)
+    )
+    return "(" + emit_expression(source, cursor, left_end) + " " +
+    token_text(source, operator_start) + " " +
+    emit_expression(source, right_start, end) + ")"
+}
+
 fn core_body_open(
     source: Text,
     function_start: Int,
@@ -833,28 +877,6 @@ fn core_body_open(
     return cursor
 }
 
-fn emit_condition(source: Text, start: Int, open: Int) -> Text {
-    let left_end = expression_end(source, start)
-    if left_end < 0 {
-        return "error[E2S18]: invalid Core condition at byte " + to_text(start)
-    }
-    let operator_cursor = skip_trivia(source, left_end)
-    let operator = token_text(source, operator_cursor)
-    if operator != "==" && operator != "!=" && operator != "<" &&
-       operator != "<=" && operator != ">" && operator != ">=" {
-        return "error[E2S18]: Core condition requires a comparison at byte " +
-        to_text(operator_cursor)
-    }
-    let right_start = skip_trivia(source, token_end(source, operator_cursor))
-    let right_end = expression_end(source, right_start)
-    if right_end < 0 || skip_trivia(source, right_end) != open {
-        return "error[E2S18]: invalid Core comparison at byte " +
-        to_text(right_start)
-    }
-    return emit_expression(source, start, left_end) + " " + operator + " " +
-    emit_expression(source, right_start, right_end)
-}
-
 fn binding_mutability_before(
     source: Text,
     body_open: Int,
@@ -863,8 +885,14 @@ fn binding_mutability_before(
 ) -> Int {
     let mut cursor = skip_trivia(source, token_end(source, body_open))
     let mut result = -1
+    let mut depth = 0
     while cursor < assignment_start {
-        if token_text(source, cursor) == "let" {
+        let token = token_text(source, cursor)
+        if token == "{" {
+            depth = depth + 1
+        } else if token == "}" {
+            depth = depth - 1
+        } else if depth == 0 && token == "let" {
             let mut name_cursor = skip_trivia(
                 source,
                 token_end(source, cursor)
@@ -897,7 +925,8 @@ fn lower_body(
     source: Text,
     open: Int,
     is_main: Bool,
-    append_default: Bool
+    append_default: Bool,
+    function_open: Int
 ) -> Text {
     let mut emitted = ""
     let mut cursor = skip_trivia(source, token_end(source, open))
@@ -973,46 +1002,74 @@ fn lower_body(
             "    }\n"
             cursor = skip_trivia(source, token_end(source, call_close))
         } else if statement == "if" {
-            let condition_start = skip_trivia(source, token_end(source, cursor))
-            let left_end = expression_end(source, condition_start)
-            if left_end < 0 {
-                return "error[E2S18]: malformed Core if at byte " +
-                to_text(cursor)
-            }
-            let operator_cursor = skip_trivia(source, left_end)
-            let right_start = skip_trivia(
+            let condition_start = skip_trivia(
                 source,
-                token_end(source, operator_cursor)
+                token_end(source, cursor)
             )
-            let right_end = expression_end(source, right_start)
-            if right_end < 0 {
-                return "error[E2S18]: malformed Core if at byte " +
-                to_text(cursor)
+            let condition_close = condition_end(source, condition_start)
+            if condition_close < 0 {
+                return "error[E2S23]: if condition must be Bool or an Int comparison at byte " +
+                to_text(condition_start)
             }
-            let branch_open = skip_trivia(source, right_end)
+            let branch_open = skip_trivia(source, condition_close)
             if branch_open >= len(source) ||
                token_text(source, branch_open) != "{" {
-                return "error[E2S18]: malformed Core if at byte " +
-                to_text(cursor)
+                return "error[E2S18]: expected `{` after if condition at byte " +
+                to_text(branch_open)
             }
-            let condition = emit_condition(
+            let branch_close = balanced_end(source, branch_open, "{", "}")
+            if branch_close < 0 {
+                return "error[E2S18]: missing `}` after if branch at byte " +
+                to_text(branch_open)
+            }
+            let branch_body = lower_body(
                 source,
-                condition_start,
-                branch_open
+                branch_open,
+                is_main,
+                false,
+                function_open
             )
-            if starts_with(condition, "error[") {
-                return condition
+            if starts_with(branch_body, "error[") {
+                return branch_body
             }
-            let branch = lower_body(source, branch_open, is_main, false)
-            if starts_with(branch, "error[") {
-                return branch
+            emitted = emitted +
+            "    {\n" +
+            "        bool kofun_condition = " +
+            emit_condition(source, condition_start, condition_close) + ";\n" +
+            "        if (kofun_failed) return " + failure_result + ";\n" +
+            "        if (kofun_condition) {\n" +
+            branch_body +
+            "        }"
+            cursor = skip_trivia(source, branch_close)
+            if cursor < len(source) && token_text(source, cursor) == "else" {
+                let else_open = skip_trivia(
+                    source,
+                    token_end(source, cursor)
+                )
+                if else_open >= len(source) ||
+                   token_text(source, else_open) != "{" {
+                    return "error[E2S18]: expected `{` after `else` at byte " +
+                    to_text(else_open)
+                }
+                let else_close = balanced_end(source, else_open, "{", "}")
+                if else_close < 0 {
+                    return "error[E2S18]: missing `}` after else branch at byte " +
+                    to_text(else_open)
+                }
+                let else_body = lower_body(
+                    source,
+                    else_open,
+                    is_main,
+                    false,
+                    function_open
+                )
+                if starts_with(else_body, "error[") {
+                    return else_body
+                }
+                emitted = emitted + " else {\n" + else_body + "        }"
+                cursor = skip_trivia(source, else_close)
             }
-            emitted = emitted + "    if (" + condition + ") {\n" +
-            branch + "    }\n"
-            cursor = skip_trivia(
-                source,
-                balanced_end(source, branch_open, "{", "}")
-            )
+            emitted = emitted + "\n    }\n"
         } else if statement == "return" {
             let value_start = skip_trivia(source, token_end(source, cursor))
             if value_start < len(source) &&
@@ -1053,6 +1110,17 @@ fn lower_body(
                     name
                 )
                 if mutability < 0 {
+                    if open != function_open &&
+                       binding_mutability_before(
+                           source,
+                           function_open,
+                           open,
+                           name
+                       ) >= 0 {
+                        return "error[E2S22]: cannot assign to outer binding `" +
+                        name + "` at byte " + to_text(assignment_start) +
+                        "; assign after the branch"
+                    }
                     return "error[E2S22]: unknown assignment target `" + name +
                     "` at byte " + to_text(assignment_start) +
                     "; declare it before assignment"
@@ -1144,7 +1212,7 @@ fn lower_c(source: Text) -> Text {
             return "error[E2S15]: Core function `" + name +
             "` requires Int parameters and an Int return"
         }
-        let body = lower_body(source, open, is_main, true)
+        let body = lower_body(source, open, is_main, true, open)
         if starts_with(body, "error[") {
             return body
         }

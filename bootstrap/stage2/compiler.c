@@ -1086,6 +1086,70 @@ static char *core_parameters(const char *source, int64_t function_start) {
     return emitted.data;
 }
 
+static bool comparison_operator(const char *source, int64_t cursor) {
+    return token_equal(source, cursor, "==") ||
+           token_equal(source, cursor, "!=") ||
+           token_equal(source, cursor, "<") ||
+           token_equal(source, cursor, "<=") ||
+           token_equal(source, cursor, ">") ||
+           token_equal(source, cursor, ">=");
+}
+
+static int64_t condition_end(const char *source, int64_t start) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, start);
+    if (
+        token_equal(source, cursor, "true") ||
+        token_equal(source, cursor, "false")
+    ) {
+        return token_end(source, cursor);
+    }
+    int64_t left_end = expression_end(source, cursor);
+    if (left_end < 0) return -1;
+    int64_t operator_start = skip_trivia(source, left_end);
+    if (
+        operator_start >= length ||
+        !comparison_operator(source, operator_start)
+    ) {
+        return -1;
+    }
+    int64_t right_start = skip_trivia(
+        source,
+        token_end(source, operator_start)
+    );
+    return expression_end(source, right_start);
+}
+
+static char *emit_condition(
+    const char *source,
+    int64_t start,
+    int64_t end
+) {
+    int64_t cursor = skip_trivia(source, start);
+    if (
+        token_equal(source, cursor, "true") ||
+        token_equal(source, cursor, "false")
+    ) {
+        return token_copy(source, cursor);
+    }
+    int64_t left_end = expression_end(source, cursor);
+    int64_t operator_start = skip_trivia(source, left_end);
+    int64_t right_start = skip_trivia(
+        source,
+        token_end(source, operator_start)
+    );
+    char *left = emit_expression(source, cursor, left_end);
+    char *operator_text = token_copy(source, operator_start);
+    char *right = emit_expression(source, right_start, end);
+    Buffer output;
+    buffer_init(&output);
+    buffer_format(&output, "(%s %s %s)", left, operator_text, right);
+    free(left);
+    free(operator_text);
+    free(right);
+    return output.data;
+}
+
 static int64_t core_body_open(
     const char *source,
     int64_t function_start,
@@ -1123,56 +1187,6 @@ static char *lower_error(const char *code, const char *message, int64_t cursor) 
     return error.data;
 }
 
-static char *emit_condition(
-    const char *source,
-    int64_t start,
-    int64_t open
-) {
-    int64_t left_end = expression_end(source, start);
-    if (left_end < 0) {
-        return lower_error("E2S18", "invalid Core condition", start);
-    }
-    int64_t operator_cursor = skip_trivia(source, left_end);
-    char *operator_text = token_copy(source, operator_cursor);
-    if (
-        strcmp(operator_text, "==") != 0 &&
-        strcmp(operator_text, "!=") != 0 &&
-        strcmp(operator_text, "<") != 0 &&
-        strcmp(operator_text, "<=") != 0 &&
-        strcmp(operator_text, ">") != 0 &&
-        strcmp(operator_text, ">=") != 0
-    ) {
-        free(operator_text);
-        return lower_error(
-            "E2S18",
-            "Core condition requires a comparison",
-            operator_cursor
-        );
-    }
-    int64_t right_start = skip_trivia(
-        source,
-        token_end(source, operator_cursor)
-    );
-    int64_t right_end = expression_end(source, right_start);
-    if (right_end < 0 || skip_trivia(source, right_end) != open) {
-        free(operator_text);
-        return lower_error(
-            "E2S18",
-            "invalid Core comparison",
-            right_start
-        );
-    }
-    char *left = emit_expression(source, start, left_end);
-    char *right = emit_expression(source, right_start, right_end);
-    Buffer condition;
-    buffer_init(&condition);
-    buffer_format(&condition, "%s %s %s", left, operator_text, right);
-    free(right);
-    free(left);
-    free(operator_text);
-    return condition.data;
-}
-
 static int binding_mutability_before(
     const char *source,
     int64_t body_open,
@@ -1181,8 +1195,13 @@ static int binding_mutability_before(
 ) {
     int64_t cursor = skip_trivia(source, token_end(source, body_open));
     int result = -1;
+    int depth = 0;
     while (cursor < assignment_start) {
-        if (token_equal(source, cursor, "let")) {
+        if (token_equal(source, cursor, "{")) {
+            ++depth;
+        } else if (token_equal(source, cursor, "}")) {
+            --depth;
+        } else if (depth == 0 && token_equal(source, cursor, "let")) {
             int64_t name_cursor = skip_trivia(
                 source,
                 token_end(source, cursor)
@@ -1234,7 +1253,8 @@ static char *lower_body(
     const char *source,
     int64_t open,
     bool is_main,
-    bool append_default
+    bool append_default,
+    int64_t function_open
 ) {
     int64_t length = (int64_t)strlen(source);
     Buffer emitted;
@@ -1333,56 +1353,118 @@ static char *lower_body(
                 source,
                 token_end(source, cursor)
             );
-            int64_t left_end = expression_end(source, condition_start);
-            if (left_end < 0) {
+            int64_t condition_close = condition_end(source, condition_start);
+            if (condition_close < 0) {
                 free(emitted.data);
-                return lower_error("E2S18", "malformed Core if", cursor);
+                return lower_error(
+                    "E2S23",
+                    "if condition must be Bool or an Int comparison",
+                    condition_start
+                );
             }
-            int64_t operator_cursor = skip_trivia(source, left_end);
-            int64_t right_start = skip_trivia(
-                source,
-                token_end(source, operator_cursor)
-            );
-            int64_t right_end = expression_end(source, right_start);
-            if (right_end < 0) {
-                free(emitted.data);
-                return lower_error("E2S18", "malformed Core if", cursor);
-            }
-            int64_t branch_open = skip_trivia(source, right_end);
+            int64_t branch_open = skip_trivia(source, condition_close);
             if (
                 branch_open >= length ||
                 !token_equal(source, branch_open, "{")
             ) {
                 free(emitted.data);
-                return lower_error("E2S18", "malformed Core if", cursor);
+                return lower_error(
+                    "E2S18",
+                    "expected `{` after if condition",
+                    branch_open
+                );
+            }
+            int64_t branch_close = balanced_end(
+                source,
+                branch_open,
+                "{",
+                "}"
+            );
+            if (branch_close < 0) {
+                free(emitted.data);
+                return lower_error(
+                    "E2S18",
+                    "missing `}` after if branch",
+                    branch_open
+                );
+            }
+            char *branch_body = lower_body(
+                source,
+                branch_open,
+                is_main,
+                false,
+                function_open
+            );
+            if (strncmp(branch_body, "error[", 6) == 0) {
+                free(emitted.data);
+                return branch_body;
             }
             char *condition = emit_condition(
                 source,
                 condition_start,
-                branch_open
+                condition_close
             );
-            if (strncmp(condition, "error[", 6) == 0) {
-                free(emitted.data);
-                return condition;
-            }
-            char *branch = lower_body(source, branch_open, is_main, false);
-            if (strncmp(branch, "error[", 6) == 0) {
-                free(condition);
-                free(emitted.data);
-                return branch;
-            }
             buffer_format(
                 &emitted,
-                "    if (%s) {\n%s    }\n",
+                "    {\n"
+                "        bool kofun_condition = %s;\n"
+                "        if (kofun_failed) return %s;\n"
+                "        if (kofun_condition) {\n"
+                "%s"
+                "        }",
                 condition,
-                branch
+                failure_result,
+                branch_body
             );
-            free(branch);
             free(condition);
-            cursor = skip_trivia(
-                source,
-                balanced_end(source, branch_open, "{", "}")
-            );
+            free(branch_body);
+            cursor = skip_trivia(source, branch_close);
+            if (cursor < length && token_equal(source, cursor, "else")) {
+                int64_t else_open = skip_trivia(
+                    source,
+                    token_end(source, cursor)
+                );
+                if (
+                    else_open >= length ||
+                    !token_equal(source, else_open, "{")
+                ) {
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S18",
+                        "expected `{` after `else`",
+                        else_open
+                    );
+                }
+                int64_t else_close = balanced_end(
+                    source,
+                    else_open,
+                    "{",
+                    "}"
+                );
+                if (else_close < 0) {
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S18",
+                        "missing `}` after else branch",
+                        else_open
+                    );
+                }
+                char *else_body = lower_body(
+                    source,
+                    else_open,
+                    is_main,
+                    false,
+                    function_open
+                );
+                if (strncmp(else_body, "error[", 6) == 0) {
+                    free(emitted.data);
+                    return else_body;
+                }
+                buffer_format(&emitted, " else {\n%s        }", else_body);
+                free(else_body);
+                cursor = skip_trivia(source, else_close);
+            }
+            buffer_append(&emitted, "\n    }\n");
         } else if (token_equal(source, cursor, "return")) {
             int64_t value_start = skip_trivia(source, token_end(source, cursor));
             if (value_start < length && token_equal(source, value_start, "}")) {
@@ -1437,6 +1519,25 @@ static char *lower_body(
                     name
                 );
                 if (mutability < 0) {
+                    if (
+                        open != function_open &&
+                        binding_mutability_before(
+                            source,
+                            function_open,
+                            open,
+                            name
+                        ) >= 0
+                    ) {
+                        char *error = assignment_error(
+                            "cannot assign to outer binding",
+                            name,
+                            assignment_start,
+                            "assign after the branch"
+                        );
+                        free(name);
+                        free(emitted.data);
+                        return error;
+                    }
                     char *error = assignment_error(
                         "unknown assignment target",
                         name,
@@ -1609,7 +1710,7 @@ static char *lower_c(const char *source) {
             free(bodies.data);
             return error.data;
         }
-        char *body = lower_body(source, open, is_main, true);
+        char *body = lower_body(source, open, is_main, true, open);
         if (strncmp(body, "error[", 6) == 0) {
             free(parameters);
             free(name);
@@ -1649,7 +1750,6 @@ static char *lower_c(const char *source) {
             -1
         );
     }
-
     Buffer output;
     buffer_init(&output);
     buffer_append(
