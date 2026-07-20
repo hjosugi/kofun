@@ -1,0 +1,16 @@
+import framework.http
+
+fn main() {
+    let server = kofun_http_server_new(
+        "127.0.0.1",
+        0,
+        16,
+        8192,
+        4096,
+        1000,
+        1000,
+    )
+    # Handler kind 1 requires a named path parameter.
+    kofun_http_route(server, "GET", "/missing-parameter", 1)
+    return kofun_http_server_run(server)
+}

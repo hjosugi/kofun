@@ -1,0 +1,19 @@
+import framework.http
+
+# Port 0 asks Linux for an ephemeral localhost port. The server reports it as
+# `READY <port>` after every route has been registered.
+fn main() {
+    let server = kofun_http_server_new(
+        "127.0.0.1",
+        0,
+        128,
+        8192,
+        4096,
+        5000,
+        3000,
+    )
+    kofun_http_route(server, "GET", "/hello/:name", 1)
+    kofun_http_route(server, "POST", "/sum", 2)
+    kofun_http_route(server, "GET", "/bench", 3)
+    return kofun_http_server_run(server)
+}

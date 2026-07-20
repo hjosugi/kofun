@@ -1,0 +1,20 @@
+# Kofun declarations for the explicit host-C HTTP framework profile.
+
+extern "C" fn kofun_http_server_new(
+    bind_address: CStr,
+    port: CInt,
+    maximum_connections: CLong,
+    maximum_header_bytes: CLong,
+    maximum_body_bytes: CLong,
+    idle_timeout_ms: CLong,
+    drain_timeout_ms: CLong,
+) -> CLong
+
+extern "C" fn kofun_http_route(
+    server_handle: CLong,
+    method: CStr,
+    pattern: CStr,
+    handler_kind: CInt,
+) -> CInt
+
+extern "C" fn kofun_http_server_run(server_handle: CLong) -> CInt
