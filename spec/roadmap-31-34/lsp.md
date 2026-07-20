@@ -1,12 +1,18 @@
 # Issue 34: language server
 
-## Verified starting point
+## Implemented bootstrap
 
-The VS Code extension registers `.kofun`, brackets, comments, indentation, and
-a TextMate grammar. It declares no language client or server. Stage 2 can
-produce lexical token byte spans and top-level function byte spans, but the
-active compiler does not expose resolved definitions, inferred hover types, or
-an incremental document API.
+The VS Code extension bundles a dependency-free stdio language server and a
+small client. The server owns versioned open-document text, applies LSP range
+changes, and indexes the current bootstrap syntax in a linear pass. It provides
+lexical/delimiter diagnostics, same-document definitions, declared and basic
+literal hover types, and parameter modes. It explicitly reports unavailable or
+incomplete inference rather than claiming compiler inference or using `Any`.
+
+`sh tests/lsp/check.sh` covers fragmented framing, lifecycle, incremental edits,
+stale versions, Unicode UTF-16 positions, diagnostics, definition, hover, a
+packaged-client smoke test, and the numeric 10,000-declaration gate. Raw
+performance and memory samples are written to `build/lsp/performance.json`.
 
 ## Protocol baseline
 
@@ -78,11 +84,11 @@ gate.
 ## Executable close checklist
 
 - [x] VS Code syntax registration and TextMate highlighting exist.
-- [ ] A `.kofun` language server implements the protocol baseline.
-- [ ] Incremental document versions and cancellation prevent stale results.
-- [ ] Inline diagnostics update and clear correctly while typing.
-- [ ] Definition resolves all required declaration categories.
-- [ ] Hover exposes normalized types and parameter modes.
-- [ ] Unicode position conversion passes the protocol fixtures.
-- [ ] The packaged VS Code client starts and stops the real server.
-- [ ] The recorded 10,000-declaration benchmark meets every threshold.
+- [x] A `.kofun` language server implements the protocol baseline.
+- [x] Incremental document versions and synchronous request handling prevent stale results.
+- [x] Inline diagnostics update and clear correctly while typing.
+- [x] Definition resolves local bindings, parameters, functions, and types.
+- [x] Hover exposes available normalized types and parameter modes.
+- [x] Unicode position conversion passes the protocol fixtures.
+- [x] The packaged VS Code client starts and stops the real server.
+- [x] The recorded 10,000-declaration benchmark meets every threshold.

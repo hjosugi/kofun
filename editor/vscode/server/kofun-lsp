@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec "${NODE:-node}" --expose-gc --optimize-for-size "$ROOT/server.js"

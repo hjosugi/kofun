@@ -67,11 +67,10 @@ sed -n '/"stage2": {/,/^[[:space:]]*}/p' \
     "$ROOT/bootstrap/manifest.json" |
     grep -q '"status": "open"'
 
-if grep -q '"languageServer"' "$ROOT/editor/vscode/package.json"; then
-    printf '%s\n' \
-        "roadmap 31-34: package unexpectedly declares a language server" >&2
-    exit 1
-fi
+grep -q '"main": "./extension.js"' "$ROOT/editor/vscode/package.json"
+test -x "$ROOT/editor/vscode/server/kofun-lsp"
+test -f "$ROOT/editor/vscode/server/server.js"
+test -f "$ROOT/tests/lsp/check.sh"
 
 if find "$ROADMAP" -type f \
     \( -name '*.py' -o -name '*.pyc' -o -name '*.pyo' \) |
@@ -81,7 +80,9 @@ then
     exit 1
 fi
 
+sh "$ROOT/tests/lsp/check.sh"
+
 printf '%s\n' \
     "PASS: current Stage 2 integer Core probe printed -3 and 2, then exited 42" \
     "PASS: Stage 2 self-recompile and artifact-equivalence gates remain open" \
-    "PASS: VS Code package remains syntax-only; LSP acceptance remains open"
+    "PASS: VS Code package bundles the verified Kofun language server"

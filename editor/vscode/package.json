@@ -1,9 +1,13 @@
 {
   "name": "kofun-language-bootstrap",
   "displayName": "Kofun Language Bootstrap",
-  "description": "Basic syntax highlighting and bracket support for the Kofun bootstrap language.",
-  "version": "0.2.0",
+  "description": "Syntax highlighting, diagnostics, navigation, and hover support for Kofun.",
+  "version": "0.3.0",
   "publisher": "kofun-language-project",
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:kofun"
+  ],
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -25,6 +29,16 @@
         "scopeName": "source.kofun",
         "path": "./syntaxes/kofun.tmLanguage.json"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Kofun",
+      "properties": {
+        "kofun.languageServer.path": {
+          "type": "string",
+          "default": "",
+          "description": "Optional absolute path to kofun-lsp. The bundled server is used by default."
+        }
+      }
+    }
   }
 }
