@@ -1,4 +1,4 @@
-.PHONY: help compiler test check bootstrap stage2 native c-abi rust-shim stdlib build-system roadmap syntax repository-check verify clean
+.PHONY: help compiler test check bootstrap stage2 native c-abi rust-shim http stdlib build-system roadmap syntax repository-check verify clean
 
 KOFUN := ./bin/kofun
 
@@ -12,6 +12,7 @@ help:
 	  'make native           Build and execute the Kofun-emitted ELF64 fixture' \
 	  'make c-abi            Verify explicit dynamic C ABI interoperability' \
 	  'make rust-shim        Verify the vendored Rust crate shim offline' \
+	  'make http             Verify the first-party HTTP/API framework' \
 	  'make stdlib           Verify the Kofun syscall/stdlib contracts' \
 	  'make build-system     Verify direct and Frost-integrated build paths' \
 	  'make roadmap          Verify the executable issues 31-34 roadmap' \
@@ -46,6 +47,9 @@ c-abi:
 rust-shim:
 	sh examples/rust-shim/check.sh
 
+http:
+	sh tests/http/check.sh
+
 stdlib:
 	sh stdlib/tests/verify.sh
 
@@ -68,11 +72,13 @@ repository-check:
 	@grep -q '"extensions": \[".kofun"\]' editor/vscode/package.json
 	@printf '%s\n' 'PASS: .kofun sources only; no Python implementation'
 
-verify: test check bootstrap stage2 native c-abi rust-shim stdlib build-system roadmap syntax repository-check
+verify: test check bootstrap stage2 native c-abi rust-shim http stdlib build-system roadmap syntax repository-check
 	@sh -n bin/kofun bootstrap/stage1/check.sh bootstrap/stage2/check.sh \
 	  bootstrap/native/check.sh bootstrap/native/emit-fixture.sh \
 	  bootstrap/c_abi/check.sh \
 	  examples/rust-shim/check.sh examples/rust-shim/benchmark.sh \
+	  framework/http/build.sh tests/http/check.sh \
+	  benchmarks/http/benchmark.sh \
 	  stdlib/tests/verify.sh tests/cli.sh tests/build_system.sh \
 	  tests/conformance/run.sh tests/conformance/backends/c11-stage1.sh \
 	  tests/conformance/backends/native-x86_64.sh \

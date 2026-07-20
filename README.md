@@ -29,7 +29,7 @@ This is not yet a semantic self-hosting fixed point. The checked-in C11 seed
 starts the Kofun-written compiler, but Stage 1 cannot compile all constructs in
 its own source yet.
 
-Four Python-free checkpoints now exercise the path beyond that Core:
+Five Python-free checkpoints now exercise the path beyond that Core:
 
 - `bootstrap/stage2/` lexes and structurally parses Kofun, emits a deterministic
   function IR, and reaches a byte-stable source/token/IR round trip;
@@ -39,10 +39,12 @@ Four Python-free checkpoints now exercise the path beyond that Core:
   operations;
 - `bootstrap/c_abi/` provides an explicit host-C/dynamic-linking profile for
   checked `extern "C"` declarations and `repr(C)` structs;
+- `framework/http/` uses that explicit host-C profile to run a reusable Linux
+  epoll HTTP/1.1 library configured with routes from Kofun source;
 - `stdlib/` defines the raw syscall ABI, value-level errno conversion, affine
   resource wrappers, and the file round-trip acceptance fixture in Kofun.
 
-All four have executable gates. The complete Stage 2 self-recompile and
+All five have executable gates. The complete Stage 2 self-recompile and
 general native lowering remain open.
 
 ## Requirements
@@ -53,6 +55,7 @@ general native lowering remain open.
 - Linux x86-64 for the native executable gate
 - `rustc` for the required Rust `cdylib` C ABI acceptance gate
 - `cargo` for the required offline vendored-crate shim gate
+- `ar` for the required HTTP framework static-library gate
 
 Python is not required or used.
 
@@ -78,6 +81,16 @@ kofun build
 
 See `docs/BUILD_SYSTEM.md` for the manifest contract, artifacts, and the
 compiler-internal latency gate.
+
+Build the runnable HTTP/API sample through the explicit C ABI profile:
+
+```sh
+sh framework/http/build.sh examples/api_server.kofun build/api-server
+./build/api-server
+```
+
+See `framework/http/README.md` for its bounded HTTP/JSON contract, host-C trust
+boundary, shutdown behavior, and benchmark methodology.
 
 Generated C11 can be inspected with:
 
