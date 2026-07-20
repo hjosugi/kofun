@@ -97,3 +97,25 @@ commit `7df61e3` or newer. It verifies:
 
 If the frost-build checkout is not adjacent, set
 `KOFUN_FROST_TEST_BIN=/path/to/frost` when running the gate.
+
+## Locked external artifacts
+
+The implemented package slice follows a third path only when it is requested
+explicitly:
+
+```sh
+kofun package lock
+kofun build app.kofun --backend c --c-abi \
+  --package answer --offline -o app
+```
+
+`kofun.packages.toml` declares a direct `file:` or HTTPS static-library
+artifact. `kofun.packages.lock` pins its SHA-256, and the resolver verifies the
+bytes before exposing the content-addressed cache entry to the existing C ABI
+link path. `--package` cannot select host C or C ABI implicitly.
+
+This is not yet a source-package builder or a transitive dependency solver.
+That limitation matches the compiler's current external-code surface: exact
+native library files passed to `--link-library`. The manifest, lock format,
+cache selection, offline behavior, and remaining reproducibility boundary are
+documented in `package/README.md`.

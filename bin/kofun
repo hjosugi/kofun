@@ -21,16 +21,21 @@ CLI_BUILD_DIR=${KOFUN_CLI_BUILD_DIR:-"$ROOT/build/native-cli"}
 CLI_SEED_C="$ROOT/framework/cli/compiler.c"
 CLI_TEMPLATE="$ROOT/framework/cli/runtime_template.inc"
 CLI_COMPILER="$CLI_BUILD_DIR/kofun-cli-compiler"
+PACKAGE_MANAGER="$ROOT/package/manager.sh"
 CC=${CC:-cc}
 
 usage() {
     cat <<'EOF'
 usage:
   kofun build INPUT.kofun [-o OUTPUT] [--emit-c OUTPUT.c]
-              [--backend c --c-abi [--link-library FILE]...]
+              [--backend c --c-abi [--link-library FILE|--package NAME]...]
+              [--offline]
               [--framework cli]
               [--target x86_64-linux|aarch64-linux|wasm32] [-g]
   kofun build [TARGET...] [FROST_OPTIONS]  # with ./kofun.toml
+  kofun package lock
+  kofun package fetch [--offline]
+  kofun package path NAME [--offline]
   kofun new DIRECTORY --template cli
   kofun run INPUT.kofun
   kofun check INPUT.kofun
@@ -419,6 +424,10 @@ case ${1-} in
         test "$#" -eq 3 || { usage >&2; exit 2; }
         emit_c "$2" "$3"
         ;;
+    package)
+        shift
+        exec sh "$PACKAGE_MANAGER" "$@"
+        ;;
     check)
         test "$#" -eq 2 || { usage >&2; exit 2; }
         require_source "$2"
@@ -481,6 +490,8 @@ case ${1-} in
         c_abi=false
         framework=
         link_libraries=
+        package_names=
+        offline=false
         target=
         debug=false
         while test "$#" -gt 0; do
@@ -532,6 +543,25 @@ $link_library"
                         "kofun: pass --link-library and its file path separately" >&2
                     exit 2
                     ;;
+                --package)
+                    test "$#" -ge 2 || { usage >&2; exit 2; }
+                    if test -z "$package_names"; then
+                        package_names=$2
+                    else
+                        package_names="$package_names
+$2"
+                    fi
+                    shift 2
+                    ;;
+                --package=*)
+                    printf '%s\n' \
+                        "kofun: pass --package and its dependency name separately" >&2
+                    exit 2
+                    ;;
+                --offline)
+                    offline=true
+                    shift
+                    ;;
                 --target)
                     test "$#" -ge 2 || { usage >&2; exit 2; }
                     target=$2
@@ -556,6 +586,16 @@ $link_library"
         elif test -n "$link_libraries"; then
             printf '%s\n' \
                 "kofun: --link-library requires --backend c --c-abi" >&2
+            exit 2
+        fi
+        if test -n "$package_names" && ! "$c_abi"; then
+            printf '%s\n' \
+                "kofun: --package requires --backend c --c-abi" >&2
+            exit 2
+        fi
+        if "$offline" && test -z "$package_names"; then
+            printf '%s\n' \
+                "kofun: --offline currently applies only to --package" >&2
             exit 2
         fi
         if test -n "$framework"; then
@@ -608,6 +648,24 @@ $link_library"
         if "$debug"; then
             printf '%s\n' "kofun: -g requires --target x86_64-linux" >&2
             exit 2
+        fi
+        if test -n "$package_names"; then
+            previous_ifs=$IFS
+            IFS='
+'
+            for package_name in $package_names; do
+                package_library=$(
+                    KOFUN_OFFLINE=$offline \
+                        sh "$PACKAGE_MANAGER" path "$package_name"
+                )
+                if test -z "$link_libraries"; then
+                    link_libraries=$package_library
+                else
+                    link_libraries="$link_libraries
+$package_library"
+                fi
+            done
+            IFS=$previous_ifs
         fi
         if test -z "$emitted"; then
             emitted="$BUILD_DIR/$(basename "${input%.kofun}").c"

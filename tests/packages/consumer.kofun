@@ -1,0 +1,5 @@
+extern "C" fn kofun_package_answer() -> CInt
+
+fn main() {
+    print(kofun_package_answer())
+}

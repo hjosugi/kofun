@@ -196,6 +196,10 @@ make rust-shim
 See `docs/RUST_CRATE_SHIMS.md` for the offline recipe, ownership/error mapping,
 unsupported Rust surfaces, and measured build-cost definitions.
 
+For direct external C ABI artifacts, `kofun package lock` records an exact
+SHA-256 and `--package NAME --offline` builds from the shared content-addressed
+cache. See `package/README.md` for the intentionally registry-free v1 scope.
+
 Run every active gate:
 
 ```sh
