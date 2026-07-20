@@ -28,7 +28,7 @@ compiler cannot yet produce the final diagnostic.
 | #40 | lambda expressions | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
 | #41 | immutable bindings | Stage 1 and Stage 2 Core compile and execute integer `let` bindings | implemented for Core |
 | #42 | owned bindings | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
-| #43 | if expressions | Stage 2 Core executes statement-position `if`/`else` with a Bool condition | implemented for Core statements |
+| #43 | if expressions | Stage 2 Core executes statement-position `if`/`else` and narrow Int/Bool value-position `if` | implemented for Core statements and narrow values |
 | #44 | else-if chains | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
 | #45 | for loops | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
 | #46 | match expressions | not in the active grammar; structural projection only preserves balanced tokens | unsupported |
@@ -532,7 +532,12 @@ let label = if score >= 90 {
 
 **Implementation status:** the public Stage 2 C Core executes statement-position
 `if`/`else`, requires a Bool condition, preserves lexical branch scopes, and
-checks exact generated-program output. Value-position branch unification and a
+checks exact generated-program output. Its first value-position checkpoint
+accepts `if condition { expression } else { expression }` for immutable `Int`
+or `Bool` results, requires `else`, unifies branch types, evaluates only the
+selected branch, and compares exact generated-program output and diagnostics.
+Each value branch is currently exactly one expression. General value-producing
+blocks, declarations inside value branches, `else if` values, typed IR, and a
 registered interpreter/native differential test remain open.
 
 ## #44 — Else-if chains

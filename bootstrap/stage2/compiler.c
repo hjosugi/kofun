@@ -767,6 +767,68 @@ static int64_t primary_end(const char *source, int64_t start) {
     int64_t cursor = skip_trivia(source, start);
     if (cursor >= length) return -1;
     const char *kind = token_kind(source, cursor);
+    if (token_equal(source, cursor, "if")) {
+        int64_t condition_start = skip_trivia(
+            source,
+            token_end(source, cursor)
+        );
+        int64_t condition_end = expression_end(source, condition_start);
+        if (condition_end < 0) return -1;
+        int64_t then_open = skip_trivia(source, condition_end);
+        if (
+            then_open >= length ||
+            !token_equal(source, then_open, "{")
+        ) {
+            return -1;
+        }
+        int64_t then_start = skip_trivia(
+            source,
+            token_end(source, then_open)
+        );
+        int64_t then_end = expression_end(source, then_start);
+        if (then_end < 0) return -1;
+        int64_t then_close = skip_trivia(source, then_end);
+        if (
+            then_close >= length ||
+            !token_equal(source, then_close, "}")
+        ) {
+            return -1;
+        }
+        int64_t else_keyword = skip_trivia(
+            source,
+            token_end(source, then_close)
+        );
+        if (
+            else_keyword >= length ||
+            !token_equal(source, else_keyword, "else")
+        ) {
+            return token_end(source, then_close);
+        }
+        int64_t else_open = skip_trivia(
+            source,
+            token_end(source, else_keyword)
+        );
+        if (
+            else_open >= length ||
+            !token_equal(source, else_open, "{")
+        ) {
+            return -1;
+        }
+        int64_t else_start = skip_trivia(
+            source,
+            token_end(source, else_open)
+        );
+        int64_t else_end = expression_end(source, else_start);
+        if (else_end < 0) return -1;
+        int64_t else_close = skip_trivia(source, else_end);
+        if (
+            else_close >= length ||
+            !token_equal(source, else_close, "}")
+        ) {
+            return -1;
+        }
+        return token_end(source, else_close);
+    }
     if (
         strcmp(kind, "integer") == 0 ||
         token_equal(source, cursor, "true") ||
@@ -998,6 +1060,61 @@ static char *emit_primary(const char *source, int64_t start, int64_t end) {
         }
         buffer_append(&output, ")");
         free(literal);
+        return output.data;
+    }
+    if (token_equal(source, cursor, "if")) {
+        int64_t condition_start = skip_trivia(
+            source,
+            token_end(source, cursor)
+        );
+        int64_t condition_end = expression_end(source, condition_start);
+        int64_t then_open = skip_trivia(source, condition_end);
+        int64_t then_start = skip_trivia(
+            source,
+            token_end(source, then_open)
+        );
+        int64_t then_end = expression_end(source, then_start);
+        int64_t then_close = skip_trivia(source, then_end);
+        int64_t else_keyword = skip_trivia(
+            source,
+            token_end(source, then_close)
+        );
+        int64_t else_open = skip_trivia(
+            source,
+            token_end(source, else_keyword)
+        );
+        int64_t else_start = skip_trivia(
+            source,
+            token_end(source, else_open)
+        );
+        int64_t else_end = expression_end(source, else_start);
+        char *condition = emit_expression(
+            source,
+            condition_start,
+            condition_end
+        );
+        char *then_value = emit_expression(
+            source,
+            then_start,
+            then_end
+        );
+        char *else_value = emit_expression(
+            source,
+            else_start,
+            else_end
+        );
+        Buffer output;
+        buffer_init(&output);
+        buffer_format(
+            &output,
+            "((%s) ? (%s) : (%s))",
+            condition,
+            then_value,
+            else_value
+        );
+        free(condition);
+        free(then_value);
+        free(else_value);
         return output.data;
     }
     if (strcmp(kind, "identifier") == 0) {
@@ -1319,6 +1436,112 @@ static char *primary_type(
     if (strcmp(token, "true") == 0 || strcmp(token, "false") == 0) {
         free(token);
         return copy_text("Bool");
+    }
+    if (strcmp(token, "if") == 0) {
+        int64_t condition_start = skip_trivia(
+            source,
+            token_end(source, cursor)
+        );
+        int64_t condition_end = expression_end(source, condition_start);
+        char *condition_type = expression_type(
+            source,
+            condition_start,
+            condition_end,
+            environment
+        );
+        if (strncmp(condition_type, "error[", 6) == 0) {
+            free(token);
+            return condition_type;
+        }
+        if (strcmp(condition_type, "Bool") != 0) {
+            free(condition_type);
+            free(token);
+            return type_error(
+                "if expression condition requires Bool",
+                condition_start
+            );
+        }
+        free(condition_type);
+        int64_t then_open = skip_trivia(source, condition_end);
+        int64_t then_start = skip_trivia(
+            source,
+            token_end(source, then_open)
+        );
+        int64_t then_end = expression_end(source, then_start);
+        char *then_type = expression_type(
+            source,
+            then_start,
+            then_end,
+            environment
+        );
+        if (strncmp(then_type, "error[", 6) == 0) {
+            free(token);
+            return then_type;
+        }
+        int64_t then_close = skip_trivia(source, then_end);
+        int64_t else_keyword = skip_trivia(
+            source,
+            token_end(source, then_close)
+        );
+        if (
+            else_keyword >= (int64_t)strlen(source) ||
+            !token_equal(source, else_keyword, "else")
+        ) {
+            Buffer error;
+            buffer_init(&error);
+            buffer_format(
+                &error,
+                "error[E2S15]: value-position if requires `else` at byte %" PRId64,
+                else_keyword
+            );
+            free(then_type);
+            free(token);
+            return error.data;
+        }
+        int64_t else_open = skip_trivia(
+            source,
+            token_end(source, else_keyword)
+        );
+        int64_t else_start = skip_trivia(
+            source,
+            token_end(source, else_open)
+        );
+        int64_t else_end = expression_end(source, else_start);
+        char *else_type = expression_type(
+            source,
+            else_start,
+            else_end,
+            environment
+        );
+        if (strncmp(else_type, "error[", 6) == 0) {
+            free(then_type);
+            free(token);
+            return else_type;
+        }
+        if (strcmp(then_type, else_type) != 0) {
+            free(then_type);
+            free(else_type);
+            free(token);
+            return type_error(
+                "if expression branches must have the same type",
+                else_start
+            );
+        }
+        if (
+            strcmp(then_type, "Int") != 0 &&
+            strcmp(then_type, "Bool") != 0
+        ) {
+            free(then_type);
+            free(else_type);
+            free(token);
+            return type_error(
+                "if expression branches must produce Int or Bool",
+                then_start
+            );
+        }
+        free(else_type);
+        free(token);
+        return then_type;
     }
     if (strcmp(token, "[") == 0) {
         int64_t item_start = skip_trivia(

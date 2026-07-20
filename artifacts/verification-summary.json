@@ -32,6 +32,7 @@
     "native_fixture_output": 42,
     "stage2_integer_core_lowering": true,
     "stage2_list_int_literal_indexing": true,
+    "stage2_value_position_if": true,
     "stage2_bounded_error_recovery": true,
     "native_variable_list_map_filter_fold": true,
     "stdlib_immutable_list_reference": true,

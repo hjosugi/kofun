@@ -237,6 +237,28 @@ cmp "$stage2/control_fixture.stdout" "$temporary/control.stdout"
 test ! -s "$temporary/control.stderr"
 
 "$temporary/kofun-stage2" \
+    "$stage2/if_expression.kofun" \
+    "$temporary/if-expression.c" \
+    "$temporary/if-expression.ir" \
+    "$temporary/if-expression.tokens" >/dev/null
+"$temporary/kofun-stage2" \
+    "$stage2/if_expression.kofun" \
+    "$temporary/if-expression-second.c" \
+    "$temporary/if-expression-second.ir" \
+    "$temporary/if-expression-second.tokens" >/dev/null
+cmp "$temporary/if-expression.c" "$temporary/if-expression-second.c"
+cmp "$temporary/if-expression.ir" "$temporary/if-expression-second.ir"
+cmp "$temporary/if-expression.tokens" "$temporary/if-expression-second.tokens"
+grep ') ? (' "$temporary/if-expression.c" >/dev/null
+"$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$temporary/if-expression.c" -o "$temporary/if-expression-program"
+"$temporary/if-expression-program" \
+    >"$temporary/if-expression.stdout" \
+    2>"$temporary/if-expression.stderr"
+cmp "$stage2/if_expression.stdout" "$temporary/if-expression.stdout"
+test ! -s "$temporary/if-expression.stderr"
+
+"$temporary/kofun-stage2" \
     "$stage2/list_fixture.kofun" \
     "$temporary/list.c" \
     "$temporary/list.ir" \
@@ -329,6 +351,10 @@ lowering_error type_error
 lowering_error list_element_type_error
 lowering_error list_index_type_error
 lowering_error list_unknown_index_error
+lowering_error if_expression_condition_error
+lowering_error if_expression_branch_error
+lowering_error if_expression_else_error
+lowering_error if_expression_value_type_error
 
 set +e
 "$temporary/kofun-stage2" \

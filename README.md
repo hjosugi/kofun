@@ -32,7 +32,8 @@ its own source yet.
 Four Python-free checkpoints now exercise the path beyond that Core:
 
 - `bootstrap/stage2/` lexes and structurally parses Kofun, emits a deterministic
-  function IR, and reaches a byte-stable source/token/IR round trip;
+  function IR, reaches a byte-stable source/token/IR round trip, and lowers
+  narrow Int/Bool value-position `if` expressions with mandatory `else`;
 - `bootstrap/native/` uses Kofun-authored bytes to build and execute a static
   Linux x86-64 ELF64 image without an assembler or linker; its active x86-64
   Core includes local List bindings, `map`/`filter`/`fold`, and UTF-8 Text

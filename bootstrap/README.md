@@ -4,7 +4,8 @@
 - `stage1/compiler.c`: audited C11 bootstrap artifact
 - `stage1/SHA256SUMS`: source and seed digests
 - `stage1/check.sh`: Python-free build and fixture gate
-- `stage2/compiler.kofun`: Kofun lexer, structural parser, IR, and stable emitter
+- `stage2/compiler.kofun`: Kofun lexer, structural parser, IR, stable emitter,
+  and narrow Int/Bool value-position `if` lowering
 - `stage2/compiler.c`: audited executable checkpoint seed
 - `stage2/check.sh`: deterministic source/token/IR round-trip gate
 - `native/encoder.kofun`: direct ELF64/x86-64 encoder
@@ -23,7 +24,8 @@ sh bootstrap/c_abi/check.sh
 ```
 
 Stage 1 builds the Kofun-written compiler seed and compiles the arithmetic
-fixture. Stage 2 validates a deterministic semantic-frontend boundary. Native
+fixture. Stage 2 validates a deterministic semantic-frontend boundary,
+including selected-branch-only value-position `if` evaluation. Native
 builds and executes a static ELF64 fixture. The C ABI profile deliberately
 uses the host C compiler and dynamic linker; it is not part of the static
 direct-native path. Semantic self-recompilation, a Kofun-written C ABI

@@ -1,0 +1,18 @@
+# Issue #74 first acceptance slice: immutable Int/Bool value-position if.
+
+fn main() -> Int {
+    let choose: Bool = true
+    let answer: Int = if choose {
+        40 + 2
+    } else {
+        1 // 0
+    }
+    let alternate: Bool = if false {
+        1 // 0 > 0
+    } else {
+        true
+    }
+    print(answer)
+    print(alternate)
+    return 0
+}

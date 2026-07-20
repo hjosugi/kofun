@@ -10,6 +10,7 @@
 | explicit skip reporting and coverage | implemented | `kofun test` |
 | semantic compiler self-recompile | open | bootstrap manifest |
 | Stage 2 lexer, parser, and integer Core lowering | checkpoint implemented | `bootstrap/stage2/check.sh` |
+| Stage 2 immutable Int/Bool value-position `if` with branch unification | checkpoint implemented | `bootstrap/stage2/check.sh` |
 | general parser/type checker | open | no active gate |
 | borrowed-List Copy/move ownership check | narrow Stage 2 checkpoint | `bootstrap/stage2/check.sh` |
 | general ownership and law checking | open | no active general pass |

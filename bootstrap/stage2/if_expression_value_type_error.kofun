@@ -1,0 +1,9 @@
+fn main() -> Int {
+    let value = if true {
+        [1]
+    } else {
+        [2]
+    }
+    print(value)
+    return 0
+}

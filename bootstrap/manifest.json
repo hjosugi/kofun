@@ -37,6 +37,7 @@
     "stage2_frontend_round_trip": "working",
     "stage2_integer_core_lowering": "working",
     "stage2_list_int_literal_indexing": "working",
+    "stage2_value_position_if": "working",
     "stage2_bounded_recovery": "working",
     "native_elf64_exit_fixture": "working",
     "native_core_rel32_fixture": "working",
