@@ -1,0 +1,238 @@
+# Executable projection of Set semantics over the finite universe 0..7.
+# One Int bit mask represents membership only in this test; it is not the
+# canonical Set representation or a public size/value restriction.
+
+fn set_projection_power(index: Int) -> Int {
+    if index == 0 {
+        return 1
+    }
+    return 2 * set_projection_power(index - 1)
+}
+
+# Inspect the bit mask from high to low using only the current function Core.
+fn set_projection_contains_present(mask: Int, target: Int, probe: Int) -> Int {
+    if probe == target {
+        return 1
+    }
+    return set_projection_contains_at(
+        mask - set_projection_power(probe),
+        target,
+        probe - 1
+    )
+}
+
+fn set_projection_contains_at(mask: Int, target: Int, probe: Int) -> Int {
+    if mask >= set_projection_power(probe) {
+        return set_projection_contains_present(mask, target, probe)
+    }
+    if probe == target {
+        return 0
+    }
+    return set_projection_contains_at(mask, target, probe - 1)
+}
+
+fn set_projection_contains(mask: Int, value: Int) -> Int {
+    if value < 0 {
+        return 0
+    }
+    if value >= 8 {
+        return 0
+    }
+    return set_projection_contains_at(mask, value, 7)
+}
+
+fn set_projection_insert(mask: Int, value: Int) -> Int {
+    if set_projection_contains(mask, value) == 1 {
+        return mask
+    }
+    return mask + set_projection_power(value)
+}
+
+fn set_projection_remove(mask: Int, value: Int) -> Int {
+    if set_projection_contains(mask, value) == 0 {
+        return mask
+    }
+    return mask - set_projection_power(value)
+}
+
+fn set_projection_union_at(left: Int, right: Int, value: Int) -> Int {
+    if value == 8 {
+        return 0
+    }
+    if set_projection_contains(left, value) == 1 {
+        return set_projection_insert(
+            set_projection_union_at(left, right, value + 1),
+            value
+        )
+    }
+    if set_projection_contains(right, value) == 1 {
+        return set_projection_insert(
+            set_projection_union_at(left, right, value + 1),
+            value
+        )
+    }
+    return set_projection_union_at(left, right, value + 1)
+}
+
+fn set_projection_intersection_at(left: Int, right: Int, value: Int) -> Int {
+    if value == 8 {
+        return 0
+    }
+    if set_projection_contains(left, value) == 1 {
+        return set_projection_intersection_present(left, right, value)
+    }
+    return set_projection_intersection_at(left, right, value + 1)
+}
+
+fn set_projection_intersection_present(
+    left: Int,
+    right: Int,
+    value: Int
+) -> Int {
+    if set_projection_contains(right, value) == 1 {
+        return set_projection_insert(
+            set_projection_intersection_at(left, right, value + 1),
+            value
+        )
+    }
+    return set_projection_intersection_at(left, right, value + 1)
+}
+
+fn set_projection_difference_at(left: Int, right: Int, value: Int) -> Int {
+    if value == 8 {
+        return 0
+    }
+    if set_projection_contains(left, value) == 1 {
+        return set_projection_difference_present(left, right, value)
+    }
+    return set_projection_difference_at(left, right, value + 1)
+}
+
+fn set_projection_difference_present(
+    left: Int,
+    right: Int,
+    value: Int
+) -> Int {
+    if set_projection_contains(right, value) == 0 {
+        return set_projection_insert(
+            set_projection_difference_at(left, right, value + 1),
+            value
+        )
+    }
+    return set_projection_difference_at(left, right, value + 1)
+}
+
+fn set_projection_subset_at(candidate: Int, set: Int, value: Int) -> Int {
+    if value == 8 {
+        return 1
+    }
+    if set_projection_contains(candidate, value) == 1 {
+        return set_projection_subset_present(candidate, set, value)
+    }
+    return set_projection_subset_at(candidate, set, value + 1)
+}
+
+fn set_projection_subset_present(candidate: Int, set: Int, value: Int) -> Int {
+    if set_projection_contains(set, value) == 0 {
+        return 0
+    }
+    return set_projection_subset_at(candidate, set, value + 1)
+}
+
+fn set_projection_length_at(mask: Int, value: Int) -> Int {
+    if value == 8 {
+        return 0
+    }
+    if set_projection_contains(mask, value) == 1 {
+        return 1 + set_projection_length_at(mask, value + 1)
+    }
+    return set_projection_length_at(mask, value + 1)
+}
+
+# Decimal digits expose deterministic ascending traversal for this fixture.
+fn set_projection_fold_digits(mask: Int, value: Int, output: Int) -> Int {
+    if value == 8 {
+        return output
+    }
+    if set_projection_contains(mask, value) == 1 {
+        return set_projection_fold_digits(
+            mask,
+            value + 1,
+            output * 10 + value
+        )
+    }
+    return set_projection_fold_digits(mask, value + 1, output)
+}
+
+fn set_projection_left() -> Int {
+    return set_projection_insert(
+        set_projection_insert(set_projection_insert(0, 5), 1),
+        3
+    )
+}
+
+fn set_projection_right() -> Int {
+    return set_projection_insert(
+        set_projection_insert(set_projection_insert(0, 5), 4),
+        3
+    )
+}
+
+fn set_projection_same(left: Int, right: Int) -> Int {
+    if left == right {
+        return 1
+    }
+    return 0
+}
+
+fn main() {
+    print(set_projection_left())
+    print(set_projection_insert(set_projection_left(), 3))
+    print(set_projection_right())
+    print(set_projection_union_at(
+        set_projection_left(),
+        set_projection_right(),
+        0
+    ))
+    print(set_projection_intersection_at(
+        set_projection_left(),
+        set_projection_right(),
+        0
+    ))
+    print(set_projection_difference_at(
+        set_projection_left(),
+        set_projection_right(),
+        0
+    ))
+    print(set_projection_remove(set_projection_left(), 3))
+    print(set_projection_remove(set_projection_left(), 4))
+    print(set_projection_length_at(set_projection_left(), 0))
+    print(set_projection_fold_digits(set_projection_left(), 0, 0))
+    print(set_projection_subset_at(
+        set_projection_intersection_at(
+            set_projection_left(),
+            set_projection_right(),
+            0
+        ),
+        set_projection_left(),
+        0
+    ))
+    print(set_projection_subset_at(
+        set_projection_right(),
+        set_projection_left(),
+        0
+    ))
+    print(set_projection_same(
+        set_projection_union_at(
+            set_projection_left(),
+            set_projection_right(),
+            0
+        ),
+        set_projection_union_at(
+            set_projection_right(),
+            set_projection_left(),
+            0
+        )
+    ))
+    print(set_projection_union_at(set_projection_left(), 0, 0))
+}

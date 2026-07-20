@@ -1,0 +1,159 @@
+# Small, platform-independent Set checkpoint.
+#
+# SetInt stores each Int exactly once in ascending order. The public API treats
+# the record as opaque: callers construct values through set_int_empty or
+# set_int_from_list and obtain deterministic traversal with set_int_to_list.
+
+type SetInt = {
+    values: List[Int],
+}
+
+fn set_int_empty() -> SetInt {
+    let values: List[Int] = []
+    return SetInt { values: values }
+}
+
+fn set_int_length(read set: SetInt) -> Int {
+    return len(set.values)
+}
+
+fn set_int_is_empty(read set: SetInt) -> Bool {
+    return len(set.values) == 0
+}
+
+fn set_int_contains(read set: SetInt, value: Int) -> Bool {
+    let mut index = 0
+    while index < len(set.values) {
+        if set.values[index] == value { return true }
+        if set.values[index] > value { return false }
+        index = index + 1
+    }
+    return false
+}
+
+# Insert into the ordered unique representation. Existing values are ignored.
+fn set_int_insert(read set: SetInt, value: Int) -> SetInt {
+    let mut output: List[Int] = []
+    let mut inserted = false
+    let mut index = 0
+    while index < len(set.values) {
+        let current = set.values[index]
+        if !inserted && value < current {
+            output = push(output, value)
+            inserted = true
+        }
+        if current == value {
+            inserted = true
+        }
+        output = push(output, current)
+        index = index + 1
+    }
+    if !inserted {
+        output = push(output, value)
+    }
+    return SetInt { values: output }
+}
+
+fn set_int_remove(read set: SetInt, value: Int) -> SetInt {
+    let mut output: List[Int] = []
+    let mut index = 0
+    while index < len(set.values) {
+        if set.values[index] != value {
+            output = push(output, set.values[index])
+        }
+        index = index + 1
+    }
+    return SetInt { values: output }
+}
+
+fn set_int_from_list(read values: List[Int]) -> SetInt {
+    let mut result = set_int_empty()
+    let mut index = 0
+    while index < len(values) {
+        result = set_int_insert(result, values[index])
+        index = index + 1
+    }
+    return result
+}
+
+# The returned List is ascending and contains no duplicates.
+fn set_int_to_list(read set: SetInt) -> List[Int] {
+    return map(set.values, fn(value: Int) => value)
+}
+
+fn set_int_union(read left: SetInt, read right: SetInt) -> SetInt {
+    let mut result = SetInt { values: set_int_to_list(left) }
+    let mut index = 0
+    while index < len(right.values) {
+        result = set_int_insert(result, right.values[index])
+        index = index + 1
+    }
+    return result
+}
+
+fn set_int_intersection(read left: SetInt, read right: SetInt) -> SetInt {
+    let mut output: List[Int] = []
+    let mut index = 0
+    while index < len(left.values) {
+        if set_int_contains(right, left.values[index]) {
+            output = push(output, left.values[index])
+        }
+        index = index + 1
+    }
+    return SetInt { values: output }
+}
+
+fn set_int_difference(read left: SetInt, read right: SetInt) -> SetInt {
+    let mut output: List[Int] = []
+    let mut index = 0
+    while index < len(left.values) {
+        if !set_int_contains(right, left.values[index]) {
+            output = push(output, left.values[index])
+        }
+        index = index + 1
+    }
+    return SetInt { values: output }
+}
+
+fn set_int_is_subset(read candidate: SetInt, read set: SetInt) -> Bool {
+    let mut index = 0
+    while index < len(candidate.values) {
+        if !set_int_contains(set, candidate.values[index]) { return false }
+        index = index + 1
+    }
+    return true
+}
+
+fn set_int_equal(read left: SetInt, read right: SetInt) -> Bool {
+    return set_int_is_subset(left, right) && set_int_is_subset(right, left)
+}
+
+# Mapping canonicalizes again because distinct inputs can map to one output.
+fn set_int_map(
+    read set: SetInt,
+    transform: fn(Int) -> Int,
+) -> SetInt {
+    let mut result = set_int_empty()
+    let mut index = 0
+    while index < len(set.values) {
+        result = set_int_insert(result, transform(set.values[index]))
+        index = index + 1
+    }
+    return result
+}
+
+fn set_int_filter(
+    read set: SetInt,
+    predicate: fn(Int) -> Bool,
+) -> SetInt {
+    return SetInt { values: filter(set.values, predicate) }
+}
+
+# Fold order is the ascending order exposed by set_int_to_list.
+fn set_int_fold(
+    read set: SetInt,
+    initial: Int,
+    combine: fn(Int, Int) -> Int,
+) -> Int {
+    return fold(set.values, initial, combine)
+}

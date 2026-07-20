@@ -60,6 +60,11 @@ ordered `Tuple[Int, Int]` helpers for construction, fixed-position access,
 transforms, folds, and comparison. Its gate executes an honest two-scalar
 projection through both C11 and direct x86-64 until tuple lowering exists.
 
+The platform-independent [`set/`](set/) checkpoint defines an eager,
+value-returning `SetInt` surface with unique membership, total algebraic
+operations, and deterministic ascending traversal. Its canonical record is
+gated by a finite C11/x86-64 semantic projection until Set lowering exists.
+
 The platform-independent [`json/`](json/) checkpoint defines a strict JSON v1
 value codec with lossless number lexemes, ordered unique object members, typed
 failures, and bounded nesting. Its recursive ADT surface is gated by a
