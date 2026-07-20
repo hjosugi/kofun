@@ -68,7 +68,8 @@ repository-check:
 
 verify: test check bootstrap stage2 native stdlib roadmap syntax repository-check
 	@sh -n bin/kofun bootstrap/stage1/check.sh bootstrap/stage2/check.sh \
-	  bootstrap/native/check.sh stdlib/tests/verify.sh tests/cli.sh \
+	  bootstrap/native/check.sh bootstrap/native/emit-fixture.sh \
+	  stdlib/tests/verify.sh tests/cli.sh \
 	  tests/conformance/run.sh tests/conformance/backends/c11-stage1.sh \
 	  spec/roadmap-31-34/verify-current-gates.sh \
 	  tests/conformance/syntax/issues_35_47/run.sh \

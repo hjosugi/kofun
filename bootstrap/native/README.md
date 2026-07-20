@@ -48,6 +48,51 @@ Unlike the page-backed print fixture, this image keeps its message in the RX
 segment. It demonstrates deterministic multi-label rel32 resolution for both a
 forward `call` and a RIP-relative data reference.
 
+## Opt-in debug image
+
+`elf64_core_answer_debug_image()` preserves the compact fixture's machine code,
+read-only data, and `PT_LOAD` descriptors, then appends non-allocating ELF
+sections. Only the ELF header's section-table fields differ within the original
+231-byte file range:
+
+```text
+.text           executable Core code
+.rodata         "42\n"
+.debug_abbrev   DWARF v4 compile-unit and subprogram declarations
+.debug_info     Kofun compilation unit and `main` function DIE
+.debug_line     addresses 0x4000be..0x4000e4 mapped to source lines 2..6
+.debug_str      producer, source path, and function name
+.symtab/.strtab `_start` and `main` symbols
+.shstrtab       ELF section names
+```
+
+The fixture emitter makes debug metadata explicitly opt-in:
+
+```sh
+sh bootstrap/native/emit-fixture.sh \
+  -o build/core-answer-release
+sh bootstrap/native/emit-fixture.sh \
+  -g -o build/core-answer-debug
+```
+
+The first command reproduces the unchanged 231-byte release image with no
+section headers. The `-g` command emits a 1,360-byte image with DWARF while
+leaving the executable code, read-only message, entry point, and segment layout
+unchanged. All layout and DWARF bytes are authored by `encoder.kofun`; the
+current Stage1-compatible packed bridge only transports those bytes until
+Stage1 can compile the encoder's list operations.
+
+`check.sh` requires `readelf` and verifies every section, the `main`
+`DW_TAG_subprogram`, and exact source-line rows. When `gdb` is installed, it
+also runs a batch session that breaks at `main`, steps from Kofun line 2 to
+lines 3 and 4, and checks that the backtrace names `main`.
+
+This is an end-to-end debug-info slice for the native Core checkpoint, not a
+claim that the general CLI has a native `-g` path. `bin/kofun build -g` remains
+blocked on registering general Kofun-native lowering with the Python-free CLI.
+Issue #13 therefore remains open until that integration uses the same metadata
+builder for arbitrary functions and spans.
+
 ## Labels and fixups
 
 `encoder.kofun` owns fixup resolution. `patch_u32_le` deterministically rebuilds
@@ -74,9 +119,10 @@ bridge for `elf64_print_sum_image(40, 2)`, and
 emits a run-length-encoded byte stream whose expansion is exactly the image
 returned by its canonical encoder function.
 
-`check.sh` compiles and runs all three bridges with Kofun, transports their decimal
-RLE streams to raw bytes using POSIX shell, checks image hashes and ELF
-metadata, inspects the resolved rel32 fields, and executes all results:
+`check.sh` compiles and runs the release bridges and debug packed bridge with
+Kofun, transports their numeric streams to raw bytes using POSIX shell, checks
+image hashes and ELF/DWARF metadata, inspects the resolved rel32 fields, and
+executes all results:
 
 ```sh
 sh bootstrap/native/check.sh
@@ -99,6 +145,8 @@ Implemented here:
 - two-digit integer-to-ASCII conversion for the fixture result;
 - distinct RX and RW mappings;
 - three end-to-end Linux x86-64 executable artifact gates.
+- opt-in section headers, symbols, and DWARF v4 line/function information for
+  the compact Core checkpoint.
 
 Still open:
 
@@ -109,3 +157,4 @@ Still open:
 - native stdout/stderr formatting and canonical `R010` diagnostics;
 - conditional branches, allocation, and more targets;
 - registering the native backend in the full differential runner.
+- wiring debug metadata and `-g` into general Python-free CLI native builds.

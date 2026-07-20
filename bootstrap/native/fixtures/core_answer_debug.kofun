@@ -1,0 +1,7 @@
+fn main() {
+    let left = 6
+    let incremented = left + 1
+    let answer = incremented * 6
+    print(answer)
+    return answer
+}
