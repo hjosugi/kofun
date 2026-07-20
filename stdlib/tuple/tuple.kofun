@@ -1,0 +1,65 @@
+# Small, platform-independent Tuple checkpoint.
+#
+# Version 1 is deliberately specialized to Tuple[Int, Int]. Int is Copy, so
+# element reads and callback arguments do not imply an unimplemented generic
+# tuple Copy rule for non-Copy values.
+
+let TUPLE2_ARITY = 2
+
+fn tuple2_int(first: Int, second: Int) -> Tuple[Int, Int] {
+    return (first, second)
+}
+
+fn tuple2_int_first(read pair: Tuple[Int, Int]) -> Int {
+    return pair[0]
+}
+
+fn tuple2_int_second(read pair: Tuple[Int, Int]) -> Int {
+    return pair[1]
+}
+
+fn tuple2_int_swap(read pair: Tuple[Int, Int]) -> Tuple[Int, Int] {
+    return (pair[1], pair[0])
+}
+
+# Callback evaluation follows tuple order: first element, then second element.
+fn tuple2_int_map(
+    read pair: Tuple[Int, Int],
+    transform: fn(Int) -> Int,
+) -> Tuple[Int, Int] {
+    return (transform(pair[0]), transform(pair[1]))
+}
+
+fn tuple2_int_bimap(
+    read pair: Tuple[Int, Int],
+    transform_first: fn(Int) -> Int,
+    transform_second: fn(Int) -> Int,
+) -> Tuple[Int, Int] {
+    return (
+        transform_first(pair[0]),
+        transform_second(pair[1]),
+    )
+}
+
+fn tuple2_int_fold(
+    read pair: Tuple[Int, Int],
+    initial: Int,
+    combine: fn(Int, Int) -> Int,
+) -> Int {
+    return combine(combine(initial, pair[0]), pair[1])
+}
+
+fn tuple2_int_contains(read pair: Tuple[Int, Int], target: Int) -> Bool {
+    return pair[0] == target || pair[1] == target
+}
+
+fn tuple2_int_same(
+    read left: Tuple[Int, Int],
+    read right: Tuple[Int, Int],
+) -> Bool {
+    return left[0] == right[0] && left[1] == right[1]
+}
+
+fn tuple2_int_to_list(read pair: Tuple[Int, Int]) -> List[Int] {
+    return [pair[0], pair[1]]
+}

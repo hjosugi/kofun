@@ -1,0 +1,70 @@
+# Executable scalar projection of the Tuple[Int, Int] checkpoint.
+#
+# The active backends cannot lower tuple literals or Tuple types. Two Int
+# parameters preserve the pair operations without pretending tuple storage is
+# executable. The ordered fold appends 2 then 3 to 1 and therefore yields 123.
+
+fn tuple_first(first: Int, second: Int) -> Int {
+    return first + second * 0
+}
+
+fn tuple_second(first: Int, second: Int) -> Int {
+    return second + first * 0
+}
+
+fn tuple_swap_first(first: Int, second: Int) -> Int {
+    return second + first * 0
+}
+
+fn tuple_swap_second(first: Int, second: Int) -> Int {
+    return first + second * 0
+}
+
+fn tuple_map(value: Int) -> Int {
+    return value * 2
+}
+
+fn decimal_append(total: Int, value: Int) -> Int {
+    return total * 10 + value
+}
+
+fn tuple_fold(initial: Int, first: Int, second: Int) -> Int {
+    return decimal_append(decimal_append(initial, first), second)
+}
+
+fn tuple_contains(first: Int, second: Int, target: Int) -> Int {
+    if first == target {
+        return 1
+    }
+    if second == target {
+        return 1
+    }
+    return 0
+}
+
+fn tuple_same(
+    left_first: Int,
+    left_second: Int,
+    right_first: Int,
+    right_second: Int
+) -> Int {
+    if left_first != right_first {
+        return 0
+    }
+    if left_second != right_second {
+        return 0
+    }
+    return 1
+}
+
+fn main() {
+    print(tuple_first(2, 3))
+    print(tuple_second(2, 3))
+    print(tuple_swap_first(2, 3))
+    print(tuple_swap_second(2, 3))
+    print(tuple_map(tuple_first(2, 3)))
+    print(tuple_map(tuple_second(2, 3)))
+    print(tuple_fold(1, 2, 3))
+    print(tuple_contains(2, 3, 3))
+    print(tuple_same(2, 3, 2, 4))
+}

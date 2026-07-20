@@ -55,6 +55,11 @@ ordered `IntVector` reference surface with explicit List conversion and typed
 checked indexing. Its gate executes real List-backed behavior through direct
 x86-64 plus a compact checked-index projection through C11 and x86-64.
 
+The platform-independent [`tuple/`](tuple/) checkpoint defines immutable,
+ordered `Tuple[Int, Int]` helpers for construction, fixed-position access,
+transforms, folds, and comparison. Its gate executes an honest two-scalar
+projection through both C11 and direct x86-64 until tuple lowering exists.
+
 The platform-independent [`json/`](json/) checkpoint defines a strict JSON v1
 value codec with lossless number lexemes, ordered unique object members, typed
 failures, and bounded nesting. Its recursive ADT surface is gated by a
