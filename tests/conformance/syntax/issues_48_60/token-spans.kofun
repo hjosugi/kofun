@@ -1,0 +1,5 @@
+# leading trivia
+fn main() {
+    let value = 1_024 // 2
+    print("a\"b") # trailing trivia
+}
