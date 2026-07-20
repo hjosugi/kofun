@@ -19,9 +19,16 @@ Both binaries:
 The client forks the configured number of workers. Each worker uses one
 persistent HTTP/1.1 connection and validates every complete response. Process
 startup, route registration, and graceful shutdown are outside the timed
-region. One 1000-request warmup precedes the measured samples. The runners are
-alternated Kofun then minimal for each sample. At least five elapsed-time
-samples are collected and the median is reported.
+region. Client worker creation and connection setup are inside it, identically
+for both servers. One 1000-request warmup precedes the measured samples. The
+runners are alternated Kofun then minimal for each sample. At least five
+elapsed-time samples are collected and the median is reported.
+
+The committed `results.json` measurement observed medians of 200,299,366 ns
+(99,850.54 requests/s) for the Kofun-configured server and 203,345,397 ns
+(98,354.82 requests/s) for the minimal direct-C front end. That 1.5% spread is
+within the raw sample variation; it is recorded as parity, not a performance
+win.
 
 Reproduce the measurement:
 
