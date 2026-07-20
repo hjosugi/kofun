@@ -257,3 +257,4 @@ rm -f "$fixture_file"
 printf 'stdlib native file round-trip: PASS\n'
 
 sh "$stdlib_dir/decimal/tests/verify.sh"
+sh "$stdlib_dir/random/tests/verify.sh"

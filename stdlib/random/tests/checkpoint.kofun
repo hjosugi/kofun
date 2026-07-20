@@ -1,0 +1,254 @@
+# Executable Int-Core projection of stdlib/random/random.kofun.
+# It keeps state explicit in function arguments because the active compiler
+# cannot yet lower the canonical Random record and mutable collection API.
+
+fn normalize_seed(seed: Int) -> Int {
+    let normalized = seed % 2147483647
+    if normalized == 0 { return 1 }
+    return normalized
+}
+
+fn next_state(state: Int) -> Int {
+    let high = state // 127773
+    let low = state % 127773
+    let candidate = 16807 * low - 2836 * high
+    if candidate <= 0 { return candidate + 2147483647 }
+    return candidate
+}
+
+fn accepted_state_small(state: Int, upper: Int) -> Int {
+    let candidate_state = next_state(state)
+    let candidate = candidate_state - 1
+    let limit = 2147483646 - 2147483646 % upper
+    if candidate < limit { return candidate_state }
+    return accepted_state_small(candidate_state, upper)
+}
+
+fn accepted_steps_small(state: Int, upper: Int) -> Int {
+    let candidate_state = next_state(state)
+    let candidate = candidate_state - 1
+    let limit = 2147483646 - 2147483646 % upper
+    if candidate < limit { return 1 }
+    return 1 + accepted_steps_small(candidate_state, upper)
+}
+
+fn below_small(state: Int, upper: Int) -> Int {
+    return (accepted_state_small(state, upper) - 1) % upper
+}
+
+fn bound_status(upper: Int) -> Int {
+    if upper <= 0 { return 0 }
+    if upper > 2147483646 { return 2 }
+    return 1
+}
+
+fn sample_status(count: Int, available: Int) -> Int {
+    if count < 0 { return 0 }
+    if count > available { return 0 }
+    return 1
+}
+
+# Bounded-exhaustive proof of the rejection arithmetic on a six-outcome toy
+# domain. Every accepted residue must occur limit / upper times for bounds 1..6.
+fn toy_residue_count(
+    candidate: Int,
+    limit: Int,
+    upper: Int,
+    residue: Int
+) -> Int {
+    if candidate == limit { return 0 }
+    let current = if candidate % upper == residue { 1 } else { 0 }
+    return current + toy_residue_count(
+        candidate + 1,
+        limit,
+        upper,
+        residue
+    )
+}
+
+fn toy_check_residue(upper: Int, residue: Int) -> Int {
+    if residue == upper { return 0 }
+    let limit = 6 - 6 % upper
+    if toy_residue_count(0, limit, upper, residue) != limit // upper {
+        return -1000
+    }
+    let rest = toy_check_residue(upper, residue + 1)
+    if rest < 0 { return rest }
+    return rest + 1
+}
+
+fn toy_check_bound(upper: Int) -> Int {
+    if upper == 7 { return 0 }
+    let current = toy_check_residue(upper, 0)
+    if current < 0 { return current }
+    let rest = toy_check_bound(upper + 1)
+    if rest < 0 { return rest }
+    return current + rest
+}
+
+fn pow10(exponent: Int) -> Int {
+    if exponent == 0 { return 1 }
+    return 10 * pow10(exponent - 1)
+}
+
+fn packed_digit(value: Int, index: Int, length: Int) -> Int {
+    return (value // pow10(length - index - 1)) % 10
+}
+
+fn replace_packed_digit(
+    value: Int,
+    index: Int,
+    length: Int,
+    replacement: Int
+) -> Int {
+    let place = pow10(length - index - 1)
+    return value + (replacement - packed_digit(value, index, length)) * place
+}
+
+fn swap_packed_digits(
+    value: Int,
+    left: Int,
+    right: Int,
+    length: Int
+) -> Int {
+    let left_value = packed_digit(value, left, length)
+    let right_value = packed_digit(value, right, length)
+    return replace_packed_digit(
+        replace_packed_digit(value, left, length, right_value),
+        right,
+        length,
+        left_value
+    )
+}
+
+# Bundle state and the five-digit list in one checked Int return value.
+fn shuffle_bundle(state: Int, packed: Int, remaining: Int) -> Int {
+    if remaining <= 1 { return state * 100000 + packed }
+    let accepted = accepted_state_small(state, remaining)
+    let selected = (accepted - 1) % remaining
+    let swapped = swap_packed_digits(packed, remaining - 1, selected, 5)
+    return shuffle_bundle(accepted, swapped, remaining - 1)
+}
+
+fn sample_bundle(state: Int, packed: Int, index: Int, count: Int) -> Int {
+    if index == count { return state * 100000 + packed }
+    let upper = 5 - index
+    let accepted = accepted_state_small(state, upper)
+    let selected = index + (accepted - 1) % upper
+    let swapped = swap_packed_digits(packed, index, selected, 5)
+    return sample_bundle(accepted, swapped, index + 1, count)
+}
+
+fn sample_prefix(packed: Int) -> Int {
+    return packed_digit(packed, 0, 5) * 100 +
+        packed_digit(packed, 1, 5) * 10 +
+        packed_digit(packed, 2, 5)
+}
+
+# Exact generator-transition measurements for fixed deterministic workloads.
+fn fixed_work_steps(
+    state: Int,
+    remaining: Int,
+    upper: Int
+) -> Int {
+    if remaining == 0 { return 0 }
+    let steps = accepted_steps_small(state, upper)
+    let accepted = accepted_state_small(state, upper)
+    return steps + fixed_work_steps(accepted, remaining - 1, upper)
+}
+
+fn shuffle_work_steps(state: Int, remaining: Int) -> Int {
+    if remaining <= 1 { return 0 }
+    let steps = accepted_steps_small(state, remaining)
+    let accepted = accepted_state_small(state, remaining)
+    return steps + shuffle_work_steps(accepted, remaining - 1)
+}
+
+fn main() {
+    # Seed normalization boundaries.
+    print(normalize_seed(0))
+    print(normalize_seed(2147483647))
+    print(normalize_seed(-1))
+
+    # Published version-1 vector for seed 1.
+    let mut state = normalize_seed(1)
+    state = next_state(state)
+    print(state - 1)
+    state = next_state(state)
+    print(state - 1)
+    state = next_state(state)
+    print(state - 1)
+    state = next_state(state)
+    print(state - 1)
+    state = next_state(state)
+    print(state - 1)
+    state = next_state(state)
+    print(state - 1)
+    state = next_state(state)
+    print(state - 1)
+    state = next_state(state)
+    print(state - 1)
+    state = next_state(state)
+    print(state - 1)
+    state = next_state(state)
+    print(state - 1)
+
+    # Rejection-sampled bound 10, with state carried between calls.
+    state = normalize_seed(1)
+    state = accepted_state_small(state, 10)
+    print((state - 1) % 10)
+    state = accepted_state_small(state, 10)
+    print((state - 1) % 10)
+    state = accepted_state_small(state, 10)
+    print((state - 1) % 10)
+    state = accepted_state_small(state, 10)
+    print((state - 1) % 10)
+    state = accepted_state_small(state, 10)
+    print((state - 1) % 10)
+    state = accepted_state_small(state, 10)
+    print((state - 1) % 10)
+    state = accepted_state_small(state, 10)
+    print((state - 1) % 10)
+    state = accepted_state_small(state, 10)
+    print((state - 1) % 10)
+
+    # A high-rejection bound fixes the retry path, not only the happy path.
+    print(accepted_steps_small(normalize_seed(100000), 1073741824))
+    print(below_small(normalize_seed(100000), 1073741824))
+    print(toy_check_bound(1))
+
+    # Invalid, largest-supported, and explicitly unsupported bound statuses.
+    print(bound_status(0))
+    print(bound_status(2147483646))
+    print(bound_status(2147483647))
+    print(sample_status(-1, 5))
+    print(sample_status(3, 5))
+    print(sample_status(6, 5))
+
+    # First six deterministic filled bytes.
+    state = normalize_seed(1)
+    state = accepted_state_small(state, 256)
+    print((state - 1) % 256)
+    state = accepted_state_small(state, 256)
+    print((state - 1) % 256)
+    state = accepted_state_small(state, 256)
+    print((state - 1) % 256)
+    state = accepted_state_small(state, 256)
+    print((state - 1) % 256)
+    state = accepted_state_small(state, 256)
+    print((state - 1) % 256)
+    state = accepted_state_small(state, 256)
+    print((state - 1) % 256)
+
+    # Fisher-Yates shuffle and partial-shuffle sample of [1, 2, 3, 4, 5].
+    let shuffled = shuffle_bundle(normalize_seed(42), 12345, 5)
+    print(shuffled % 100000)
+    let sampled = sample_bundle(normalize_seed(42), 12345, 0, 3)
+    print(sample_prefix(sampled % 100000))
+
+    # Measured generator-transition costs (rejections included).
+    print(fixed_work_steps(normalize_seed(1), 1000, 10))
+    print(fixed_work_steps(normalize_seed(1), 256, 256))
+    print(shuffle_work_steps(normalize_seed(1), 128))
+    print(fixed_work_steps(normalize_seed(1), 1000, 1073741824))
+}

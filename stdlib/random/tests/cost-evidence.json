@@ -1,0 +1,57 @@
+{
+  "schema": "kofun.random-cost-evidence/v1",
+  "algorithm": "park-miller-minstd-schrage-v1",
+  "source": {
+    "path": "stdlib/random/random.kofun",
+    "sha256": "1c62893826236a2670e7d646264b1fb934dde4065b152adefd6a5e045ce2720a"
+  },
+  "measurement": {
+    "unit": "generator transitions",
+    "method": "exact counters executed by the deterministic Kofun Int-Core projection and compared with an independent C11 oracle",
+    "wall_clock_claimed": false,
+    "allocations_claimed": false
+  },
+  "workloads": [
+    {
+      "name": "below-10",
+      "seed": 1,
+      "operations": 1000,
+      "generator_transitions": 1000,
+      "rejections": 0
+    },
+    {
+      "name": "fill-256-bytes",
+      "seed": 1,
+      "operations": 256,
+      "generator_transitions": 256,
+      "rejections": 0
+    },
+    {
+      "name": "shuffle-128",
+      "seed": 1,
+      "operations": 127,
+      "generator_transitions": 127,
+      "rejections": 0
+    },
+    {
+      "name": "below-1073741824",
+      "seed": 1,
+      "operations": 1000,
+      "generator_transitions": 2000,
+      "rejections": 1000
+    }
+  ],
+  "retry_probe": {
+    "seed": 100000,
+    "upper_exclusive": 1073741824,
+    "generator_transitions": 4,
+    "result": 28330344
+  },
+  "complexity": {
+    "next": "O(1)",
+    "below": "expected O(1)",
+    "fill_bytes": "expected O(n)",
+    "shuffle_int": "expected O(n) time and O(1) auxiliary storage",
+    "sample_int": "O(n + count^2) time and O(n + count) storage with immutable push"
+  }
+}

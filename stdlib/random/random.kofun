@@ -1,0 +1,147 @@
+import stdlib.linux_x86_64.bytes
+
+# Deterministic non-cryptographic random generator.
+#
+# Version 1 is Park-Miller MINSTD (modulus 2^31 - 1, multiplier 16807),
+# advanced with Schrage reduction so checked Int arithmetic cannot overflow.
+# A Random value is mutable state: callers must pass it with `edit` and cannot
+# accidentally draw from an implicit process-global generator.
+
+let RANDOM_ALGORITHM_VERSION = 1
+let RANDOM_MODULUS = 2147483647
+let RANDOM_DOMAIN = 2147483646
+let RANDOM_MULTIPLIER = 16807
+let RANDOM_QUOTIENT = 127773
+let RANDOM_REMAINDER = 2836
+
+type Random = {
+    state: Int,
+}
+
+type RandomError =
+    | InvalidUpperBound(Int)
+    | UpperBoundTooLarge(Int, Int)
+    | InvalidSampleSize(Int, Int)
+
+# Every Int seed is accepted. Kofun `%` with this positive modulus produces a
+# value in 0 .. RANDOM_MODULUS - 1. Zero residues map to state 1, so seeds that
+# are congruent modulo RANDOM_MODULUS deliberately produce the same stream.
+fn random_seeded(seed: Int) -> Random {
+    let normalized = seed % RANDOM_MODULUS
+    if normalized == 0 {
+        return Random { state: 1 }
+    }
+    return Random { state: normalized }
+}
+
+fn random_advance(state: Int) -> Int {
+    let high = state // RANDOM_QUOTIENT
+    let low = state % RANDOM_QUOTIENT
+    let candidate = RANDOM_MULTIPLIER * low - RANDOM_REMAINDER * high
+    if candidate <= 0 {
+        return candidate + RANDOM_MODULUS
+    }
+    return candidate
+}
+
+# Advances once and returns a uniform value in 0 .. RANDOM_DOMAIN - 1.
+fn random_next(edit generator: Random) -> Int {
+    generator.state = random_advance(generator.state)
+    return generator.state - 1
+}
+
+# Preconditions are checked by random_below. This helper also serves shuffle,
+# sampling, and byte filling, whose bounds are known to be positive.
+fn random_below_valid(edit generator: Random, upper_exclusive: Int) -> Int {
+    let limit = RANDOM_DOMAIN - RANDOM_DOMAIN % upper_exclusive
+    while true {
+        let candidate = random_next(generator)
+        if candidate < limit {
+            return candidate % upper_exclusive
+        }
+    }
+}
+
+# Uniformly selects 0 .. upper_exclusive - 1 for bounds no greater than the
+# generator's exact 2147483646-outcome domain. Invalid and unsupported bounds
+# are values, not a sentinel, panic, or implicit clamp. Every successful call
+# consumes state, including upper_exclusive == 1.
+fn random_below(
+    edit generator: Random,
+    upper_exclusive: Int,
+) -> Result[Int, RandomError] {
+    if upper_exclusive <= 0 {
+        return Err(InvalidUpperBound(upper_exclusive))
+    }
+    if upper_exclusive > RANDOM_DOMAIN {
+        return Err(UpperBoundTooLarge(upper_exclusive, RANDOM_DOMAIN))
+    }
+    return Ok(random_below_valid(generator, upper_exclusive))
+}
+
+# Fills existing storage with deterministic pseudo-random bytes. This is for
+# simulation fixtures and reproducible protocols, never keys, nonces, tokens,
+# salts, or other secrets. Allocation remains the caller's explicit choice.
+fn random_fill_bytes(edit generator: Random, edit destination: Bytes) -> Void {
+    let mut offset = 0
+    while offset < len(destination) {
+        byte_set(destination, offset, random_below_valid(generator, 256))
+        offset = offset + 1
+    }
+}
+
+fn random_swap_int(edit values: List[Int], left: Int, right: Int) -> Void {
+    if left == right {
+        return ()
+    }
+    let held = values[left]
+    values[left] = values[right]
+    values[right] = held
+}
+
+# In-place Fisher-Yates shuffle: O(n) generator calls, O(1) auxiliary storage.
+# Invalid indices cannot arise because random_below_valid uses the live prefix.
+fn random_shuffle_int(
+    edit generator: Random,
+    edit values: List[Int],
+) -> Void {
+    let mut remaining = len(values)
+    while remaining > 1 {
+        let selected = random_below_valid(generator, remaining)
+        random_swap_int(values, remaining - 1, selected)
+        remaining = remaining - 1
+    }
+}
+
+# Samples positions without replacement, so duplicate input values can remain
+# duplicate output values. The input remains unchanged. The pool copy costs
+# O(n), the partial Fisher-Yates pass costs O(count), and rebuilding the result
+# with immutable `push` is conservatively O(count^2). Affine/generic element
+# sampling waits for trait bounds and move-aware list mutation; this checkpoint
+# does not pretend those compiler features exist.
+fn random_sample_int(
+    edit generator: Random,
+    read values: List[Int],
+    count: Int,
+) -> Result[List[Int], RandomError] {
+    if count < 0 || count > len(values) {
+        return Err(InvalidSampleSize(count, len(values)))
+    }
+
+    let mut pool = map(values, fn(value: Int) => value)
+    let mut index = 0
+    while index < count {
+        let selected = index +
+            random_below_valid(generator, len(pool) - index)
+        random_swap_int(pool, index, selected)
+        index = index + 1
+    }
+
+    let mut result: List[Int] = []
+    index = 0
+    while index < count {
+        result = push(result, pool[index])
+        index = index + 1
+    }
+    return Ok(result)
+}

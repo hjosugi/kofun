@@ -1,0 +1,54 @@
+import stdlib.linux_x86_64.bytes
+import stdlib.linux_x86_64.process
+import stdlib.random.random
+
+# Explicit Linux entropy adapter for the deterministic Random core. This file
+# is the only point in stdlib/random that obtains nondeterministic input.
+
+type RandomEntropyError =
+    | RandomEntropySystem(SysError)
+    | RandomEntropyBuffer(ByteError)
+
+fn random_seed_from_bytes(read source: Bytes) -> Result[Int, ByteError] {
+    let mut seed = 0
+    let mut offset = 0
+    while offset < len(source) {
+        let item = match byte_at(source, offset) {
+            Ok(value) => value,
+            Err(error) => return Err(error),
+        }
+        seed = (seed * 256 + item) % RANDOM_MODULUS
+        offset = offset + 1
+    }
+    return Ok(seed)
+}
+
+# Seeds a non-cryptographic generator from eight bytes supplied by
+# getrandom(2). Short successful reads and EINTR are retried. The resulting
+# Random is still unsuitable for secrets: its effective state is only one of
+# RANDOM_DOMAIN states and future values are predictable from observed state.
+fn random_from_system() -> Result[Random, RandomEntropyError] {
+    let allocated = bytes_zeroed(8)
+    let mut seed_bytes = match allocated {
+        Ok(buffer) => buffer,
+        Err(error) => return Err(RandomEntropyBuffer(error)),
+    }
+
+    while true {
+        match random_fill(seed_bytes, 0) {
+            Ok(received) if received == len(seed_bytes) => {
+                return match random_seed_from_bytes(seed_bytes) {
+                    Ok(seed) => Ok(random_seeded(seed)),
+                    Err(error) => Err(RandomEntropyBuffer(error)),
+                }
+            }
+            Ok(_) => {
+                # A later full read overwrites all eight bytes.
+            }
+            Err(error) if error.errno == EINTR => {
+                # Retry without exposing an implicit fallback seed.
+            }
+            Err(error) => return Err(RandomEntropySystem(error)),
+        }
+    }
+}
