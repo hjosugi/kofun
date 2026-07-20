@@ -1,0 +1,2 @@
+fn missing_close(value: Int) -> Int {
+    return value + 1

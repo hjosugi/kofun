@@ -1,0 +1,46 @@
+import stdlib.linux_x86_64.abi
+
+let TIMESPEC_SIZE = 16
+
+type Timestamp = {
+    seconds: Int,
+    nanoseconds: Int,
+}
+
+type Duration = {
+    seconds: Int,
+    nanoseconds: Int,
+}
+
+fn clock_now(clock: Int) -> SysResult[Timestamp] {
+    let mut encoded = abi_bytes_zeroed(TIMESPEC_SIZE)
+    let raw = raw_clock_gettime(
+        clock,
+        abi_bytes_edit_address(encoded, 0),
+    )
+    return match syscall_result("clock_gettime", raw) {
+        Ok(_) => Ok(Timestamp {
+            seconds: abi_load_i64(encoded, 0),
+            nanoseconds: abi_load_i64(encoded, 8),
+        })
+        Err(error) => Err(error)
+    }
+}
+
+fn sleep_once(read duration: Duration) -> SysResult[Void] {
+    if duration.seconds < 0 ||
+       duration.nanoseconds < 0 ||
+       duration.nanoseconds >= 1000000000 {
+        return Err(SysError { operation: "nanosleep", errno: 22 })
+    }
+    let mut request = abi_bytes_zeroed(TIMESPEC_SIZE)
+    abi_store_i64(request, 0, duration.seconds)
+    abi_store_i64(request, 8, duration.nanoseconds)
+    return match syscall_result(
+        "nanosleep",
+        raw_nanosleep(abi_bytes_address(request, 0), 0),
+    ) {
+        Ok(_) => Ok(())
+        Err(error) => Err(error)
+    }
+}

@@ -2,9 +2,11 @@
 
 ## Objective
 
-Kofunは、Python/NumPyとJuliaが持つ探索速度を保ちつつ、production deploymentではnative code、static types、memory safetyを得ることを目標にする。
+The goal for Kofun is to keep the exploration speed of Python/NumPy and Julia
+while getting native code, static types, and memory safety for production
+deployment.
 
-対象:
+Target areas:
 
 - numerical simulation
 - statistics
@@ -17,30 +19,32 @@ Kofunは、Python/NumPyとJuliaが持つ探索速度を保ちつつ、production
 
 ## Array model
 
-long-term core type:
+The long-term core type:
 
 ```kofun
 Array[T, Rank]
 ```
 
-例:
+Example:
 
 ```kofun
 let vector: Array[Float, 1]
 let matrix: Array[Float, 2]
 ```
 
-shapeを完全にstaticにする必要はない。
+The shape does not have to be fully static.
 
 ```kofun
 Array[Float, rank = 2]
 ```
 
-compilerがshapeを知る場合はbounds check、allocation、vectorizationを最適化する。dynamic shapeも普通に扱える。
+When the compiler knows the shape, the design calls for optimizing bounds
+checks, allocation, and vectorization. Dynamic shapes stay ordinary, handled
+cases.
 
 ## Surface syntax
 
-Python/NumPyに近い直感を優先する。
+The design prefers intuitions close to Python/NumPy.
 
 ```kofun
 let c = a + b   # elementwise with broadcasting
@@ -48,44 +52,47 @@ let d = a * b   # elementwise
 let m = a @ b   # matrix multiplication
 ```
 
-scalar broadcasting:
+Scalar broadcasting:
 
 ```kofun
 let normalized = (x - mean(x)) / std(x)
 ```
 
-slicing proposal:
+Slicing proposal:
 
 ```kofun
 let row = matrix[3, 0..]
 let block = matrix[0..10, 5..15]
 ```
 
-viewを返せる場合はallocationしない。viewのmutationは`edit` contractに従う。
+Where a view can be returned, the design avoids allocating. Mutation through a
+view follows the `edit` contract.
 
 ## Broadcasting
 
-broadcastingはshape ruleを型・runtime両方で検査する。
+Broadcasting is planned to check shape rules in both the type system and at
+runtime.
 
-- compile-time shapeが分かる場合はstatic error
-- dynamic shapeではchecked runtime error
-- silent truncationを禁止
-- errorには両shapeとfailing dimensionを表示
+- static error when the compile-time shape is known
+- checked runtime error for dynamic shapes
+- no silent truncation
+- errors show both shapes and the failing dimension
 
 ## Missing data
 
-`T?`と`null`をそのまま使う。
+`T?` and `null` are used as they are.
 
 ```kofun
 let temperature: Float? = row.temperature
 let safe = temperature ?? default_temperature
 ```
 
-array storageではbitmask、sentinel-free nullable layout、Arrow-compatible layoutを選択できる。
+For array storage, the plan is to allow selecting between a bitmask, a
+sentinel-free nullable layout, and an Arrow-compatible layout.
 
 ## Linear algebra
 
-standard science distribution:
+Standard science distribution:
 
 ```text
 science.array
@@ -99,7 +106,8 @@ science.units
 science.data
 ```
 
-BLAS/LAPACK backendはruntime discoveryだけに依存せず、manifestでreproducibleに選択できるようにする。
+The BLAS/LAPACK backend should not depend on runtime discovery alone; the plan
+is to make it selectable reproducibly from the manifest.
 
 ```toml
 [science]
@@ -111,7 +119,8 @@ threads = 8
 
 ### Unboxed storage
 
-`Array[Float, 2]`はobject pointerのListではなく、contiguous `Float64` bufferを標準layoutにする。
+The intended standard layout for `Array[Float, 2]` is a contiguous `Float64`
+buffer, not a List of object pointers.
 
 ### Kernel fusion
 
@@ -122,7 +131,8 @@ let result = values
     |> sum()
 ```
 
-可能な場合、intermediate Listを作らず一つのloopへfusionする。
+Where possible, the plan is to fuse this into a single loop rather than
+building intermediate Lists.
 
 ### SIMD
 
@@ -130,7 +140,7 @@ let result = values
 - vector width abstraction
 - masked tails
 - deterministic fallback
-- fast-mathをopt-in
+- fast-math as opt-in
 
 ### Parallelism
 
@@ -138,11 +148,13 @@ let result = values
 let result = values.parallel().map(transform).sum()
 ```
 
-parallel executionはexplicitに見える形を基本とする。libraryがautomatic parallelismを使う場合はthresholdとdeterminismをdocumentする。
+Parallel execution is meant to stay explicitly visible by default. When a
+library uses automatic parallelism, it must document the threshold and the
+determinism it provides.
 
 ### GPU
 
-proposed API:
+Proposed API:
 
 ```kofun
 let device = gpu.default()?
@@ -151,18 +163,19 @@ let result = gpu.on(device) {
 }
 ```
 
-compilerはhost/device ownership transfer、async completion、buffer lifetimeを追跡する。
+The compiler is intended to track host/device ownership transfer, async
+completion, and buffer lifetimes.
 
 ## Automatic differentiation
 
-function transformationとして扱う。
+Treated as a function transformation.
 
 ```kofun
 let gradient = grad(loss)
 let weights2 = weights - learning_rate * gradient(weights)
 ```
 
-requirements:
+Requirements:
 
 - reverse and forward mode
 - custom derivative
@@ -174,7 +187,7 @@ requirements:
 
 ## Units of measure
 
-planned:
+Planned:
 
 ```kofun
 let distance = 120.0[m]
@@ -182,7 +195,8 @@ let time = 10.0[s]
 let speed = distance / time # Float[m / s]
 ```
 
-unit metadataをzero-runtime-costにできる場合はcompile-time onlyにする。dynamic unitsもseparate typeで扱う。
+Where unit metadata can be made zero-runtime-cost, it is to stay compile-time
+only. Dynamic units are handled as a separate type.
 
 ## Notebook and REPL
 
@@ -194,11 +208,12 @@ unit metadataをzero-runtime-costにできる場合はcompile-time onlyにする
 - deterministic environment snapshot
 - package lock integration
 
-notebookだけで動くhidden stateを減らすため、cell dependency graphとexportable scriptを提供する。
+To reduce hidden state that only works inside a notebook, the design calls for
+a cell dependency graph and an exportable script.
 
 ## Interoperability
 
-priority:
+Priority:
 
 1. C ABI
 2. BLAS/LAPACK
@@ -208,11 +223,11 @@ priority:
 6. GPU APIs
 7. Fortran ABI
 
-conversionはcopy/view/ownership transferを明示する。
+Conversions are to make copy, view, and ownership transfer explicit.
 
 ## Stage 0
 
-現在はPython Listを使う小さなAPIのみ。
+Today there is only a small API built on Python lists.
 
 ```text
 linspace
@@ -226,4 +241,5 @@ vmul
 vdiv
 ```
 
-これはsyntaxとworkflowのprototypeであり、performance claimの対象ではない。
+This is a prototype of the syntax and the workflow. It is not a basis for
+performance claims.

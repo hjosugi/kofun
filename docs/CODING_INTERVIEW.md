@@ -2,7 +2,7 @@
 
 ## Objective
 
-Kofunのinterview profileは、language ceremonyではなくalgorithmの説明に集中できることを目標にする。
+The goal of the Kofun interview profile is to let you concentrate on explaining the algorithm rather than on language ceremony.
 
 ## Standard names
 
@@ -19,7 +19,7 @@ UnionFind
 Graph[T]
 ```
 
-MVPではListと一部persistent-style helperのみ実装済み。残りは13,500件backlogに含む。
+In the MVP, only List and some persistent-style helpers are implemented. The rest is part of the 13,500-item backlog.
 
 ## Required operations
 
@@ -71,18 +71,18 @@ fn squares_of_even(values: List[Int]) -> List[Int] {
 
 ## Why GC is useful here
 
-ordinary interview data structuresはGC-managedにする。
+Ordinary interview data structures are GC-managed.
 
-- linked list nodeでlifetime annotation不要
-- graph adjacencyでshared nodeを扱いやすい
-- tree recursionでownership splitを説明する必要がない
-- algorithm complexityに集中できる
+- no lifetime annotations on linked list nodes
+- shared nodes in graph adjacency are easy to work with
+- no need to explain ownership splitting for tree recursion
+- you can concentrate on algorithmic complexity
 
-file、socket、lockのようなresourceだけownership contractを使う。
+Only resources such as files, sockets, and locks use ownership contracts.
 
 ## Complexity documentation
 
-standard library referenceは各operationに次を表示する。
+The standard library reference shows the following for each operation.
 
 ```text
 Time: amortized O(1)
@@ -97,20 +97,20 @@ planned:
 
 ```bash
 kofun interview new binary-search
-kofun interview test solution.kf
-kofun interview bench solution.kf
+kofun interview test solution.kofun
+kofun interview bench solution.kofun
 ```
 
 constraints:
 
-- network不要
-- standard libraryだけで解ける
-- startupが速い
+- no network required
+- solvable with the standard library alone
+- fast startup
 - deterministic output
-- hidden magic importなし
+- no hidden magic imports
 
 ## Google-style interview relevance
 
-Kofun自体がGoogle interviewで許可される保証はない。実際のinterviewでは許可言語を確認する必要がある。
+There is no guarantee that Kofun itself is permitted in a Google interview. In an actual interview you need to confirm which languages are allowed.
 
-このprofileの価値は、algorithmを明確に表現するlanguage designと、Python/Rust/Java/C++へ移植しやすい思考習慣を作ることにある。
+The value of this profile lies in a language design that expresses algorithms clearly, and in building thinking habits that port easily to Python/Rust/Java/C++.

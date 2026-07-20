@@ -1,0 +1,7 @@
+# Generated C11 must report checked integer failure without printing a value.
+
+fn main() -> Int {
+    let zero = 3 - 3
+    print(7 // zero)
+    return 0
+}

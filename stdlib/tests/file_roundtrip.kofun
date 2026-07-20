@@ -1,0 +1,51 @@
+# expect-exit: 0
+# expect-stdout: syscall-file-roundtrip: ok
+
+import stdlib.linux_x86_64.bytes
+import stdlib.linux_x86_64.io
+import stdlib.linux_x86_64.process
+
+fn syscall_failure() -> Never {
+    print("syscall-file-roundtrip: failed")
+    return process_exit(1)
+}
+
+fn main() {
+    let own file = match file_create(
+        "kofun-syscall-roundtrip.fixture",
+        384,
+    ) {
+        Ok(opened) => opened
+        Err(_) => syscall_failure()
+    }
+
+    let payload = bytes_from_utf8("KOFUN\n")
+    match file_write_all(file, payload) {
+        Ok(_) => {}
+        Err(_) => syscall_failure()
+    }
+
+    match file_seek(file, 0, SEEK_SET) {
+        Ok(_) => {}
+        Err(_) => syscall_failure()
+    }
+
+    let mut received = match bytes_zeroed(len(payload)) {
+        Ok(buffer) => buffer
+        Err(_) => syscall_failure()
+    }
+    match file_read_exact(file, received) {
+        Ok(_) => {}
+        Err(_) => syscall_failure()
+    }
+
+    if !bytes_same(payload, received) {
+        syscall_failure()
+    }
+
+    match file_close(file) {
+        Ok(_) => {}
+        Err(_) => syscall_failure()
+    }
+    print("syscall-file-roundtrip: ok")
+}

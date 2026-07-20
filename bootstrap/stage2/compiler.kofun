@@ -1,0 +1,728 @@
+# Kofun Stage 2 semantic-front-end checkpoint.
+#
+# This compiler is intentionally written in the typed bootstrap subset already
+# used by Stage 1: Int, Bool, Text, List[Text], control flow, direct calls, and
+# file/text builtins.  Its first fixed-point projection is conservative:
+# tokenize and parse a Kofun compilation unit, emit a stable textual IR, then
+# reproduce the accepted Kofun source byte-for-byte. A statement/expression
+# parser also lowers the integer Core to deterministic, checked C11.
+#
+# The exact source projection remains useful before this compiler can lower its
+# own full source: any change made by the front end would make the second
+# projection differ.
+
+fn identifier_start(symbol: Text) -> Bool {
+    return symbol == "_" ||
+    contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", symbol)
+}
+
+fn identifier_continue(symbol: Text) -> Bool {
+    return identifier_start(symbol) || is_digit(symbol)
+}
+
+fn skip_trivia(source: Text, start: Int) -> Int {
+    let symbols = chars(source)
+    let mut cursor = start
+    while cursor < len(symbols) {
+        if is_space(symbols[cursor]) {
+            cursor = cursor + 1
+        } else if symbols[cursor] == "#" {
+            while cursor < len(symbols) && symbols[cursor] != "\n" {
+                cursor = cursor + 1
+            }
+        } else {
+            return cursor
+        }
+    }
+    return cursor
+}
+
+fn string_end(source: Text, start: Int) -> Int {
+    let symbols = chars(source)
+    let mut cursor = start + 1
+    let mut escaped = false
+    while cursor < len(symbols) {
+        let symbol = symbols[cursor]
+        if escaped {
+            escaped = false
+        } else if symbol == "\\" {
+            escaped = true
+        } else if symbol == "\"" {
+            return cursor + 1
+        } else if symbol == "\n" {
+            return -1
+        }
+        cursor = cursor + 1
+    }
+    return -1
+}
+
+fn pair_token(token: Text) -> Bool {
+    return token == "->" || token == "==" || token == "!=" ||
+    token == "<=" || token == ">=" || token == "&&" ||
+    token == "||" || token == "//" || token == ".." ||
+    token == "**" || token == "??" || token == "|>"
+}
+
+fn token_end(source: Text, start: Int) -> Int {
+    let symbols = chars(source)
+    if start >= len(symbols) {
+        return start
+    }
+
+    let first = symbols[start]
+    if first == "\"" {
+        return string_end(source, start)
+    }
+
+    let mut cursor = start + 1
+    if identifier_start(first) {
+        while cursor < len(symbols) && identifier_continue(symbols[cursor]) {
+            cursor = cursor + 1
+        }
+        return cursor
+    }
+
+    if is_digit(first) {
+        while cursor < len(symbols) &&
+              (is_digit(symbols[cursor]) || symbols[cursor] == "_") {
+            cursor = cursor + 1
+        }
+        return cursor
+    }
+
+    if cursor < len(symbols) {
+        let pair = text_slice(source, start, cursor + 1)
+        if pair_token(pair) {
+            return cursor + 1
+        }
+    }
+    return cursor
+}
+
+fn token_text(source: Text, start: Int) -> Text {
+    let end = token_end(source, start)
+    if end < 0 {
+        return ""
+    }
+    return text_slice(source, start, end)
+}
+
+fn keyword(token: Text) -> Bool {
+    return token == "fn" || token == "let" || token == "mut" ||
+    token == "return" || token == "if" || token == "else" ||
+    token == "while" || token == "for" || token == "in" ||
+    token == "break" || token == "continue" || token == "true" ||
+    token == "false"
+}
+
+fn token_kind(source: Text, start: Int) -> Text {
+    let token = token_text(source, start)
+    if len(token) == 0 {
+        return "invalid"
+    }
+    let symbols = chars(token)
+    if symbols[0] == "\"" {
+        return "string"
+    }
+    if identifier_start(symbols[0]) {
+        if keyword(token) {
+            return "keyword"
+        }
+        return "identifier"
+    }
+    if is_digit(symbols[0]) {
+        return "integer"
+    }
+    return "punctuation"
+}
+
+fn line_at(source: Text, target: Int) -> Int {
+    let symbols = chars(source)
+    let mut line = 1
+    let mut cursor = 0
+    while cursor < target && cursor < len(symbols) {
+        if symbols[cursor] == "\n" {
+            line = line + 1
+        }
+        cursor = cursor + 1
+    }
+    return line
+}
+
+fn lex(source: Text) -> Text {
+    let mut tape = "kofun-token-tape/v1\n"
+    let mut cursor = skip_trivia(source, 0)
+    while cursor < len(source) {
+        let end = token_end(source, cursor)
+        if end <= cursor {
+            return "error[E2S01]: unterminated string at byte " +
+            to_text(cursor)
+        }
+        tape = tape + token_kind(source, cursor) + "|" +
+        to_text(cursor) + "|" + to_text(end) + "|" +
+        to_text(line_at(source, cursor)) + "\n"
+        cursor = skip_trivia(source, end)
+    }
+    return tape
+}
+
+fn balanced_end(source: Text, start: Int, open: Text, close: Text) -> Int {
+    let mut cursor = start
+    let mut depth = 0
+    while cursor < len(source) {
+        cursor = skip_trivia(source, cursor)
+        if cursor >= len(source) {
+            return -1
+        }
+        let token = token_text(source, cursor)
+        let end = token_end(source, cursor)
+        if len(token) == 0 || end <= cursor {
+            return -1
+        }
+        if token == open {
+            depth = depth + 1
+        } else if token == close {
+            depth = depth - 1
+            if depth == 0 {
+                return end
+            }
+        }
+        cursor = end
+    }
+    return -1
+}
+
+fn function_name(source: Text, start: Int) -> Text {
+    let after_fn = skip_trivia(source, token_end(source, start))
+    if after_fn >= len(source) || token_kind(source, after_fn) != "identifier" {
+        return ""
+    }
+    return token_text(source, after_fn)
+}
+
+fn parameter_open(source: Text, start: Int) -> Int {
+    let after_fn = skip_trivia(source, token_end(source, start))
+    let after_name = skip_trivia(source, token_end(source, after_fn))
+    if after_name >= len(source) || token_text(source, after_name) != "(" {
+        return -1
+    }
+    return after_name
+}
+
+fn parameter_count(source: Text, start: Int) -> Int {
+    let open = parameter_open(source, start)
+    if open < 0 {
+        return -1
+    }
+    let close = balanced_end(source, open, "(", ")")
+    if close < 0 {
+        return -1
+    }
+
+    let mut cursor = skip_trivia(source, token_end(source, open))
+    if cursor >= close || token_text(source, cursor) == ")" {
+        return 0
+    }
+
+    let mut count = 1
+    let mut paren_depth = 0
+    let mut bracket_depth = 0
+    while cursor < close {
+        let token = token_text(source, cursor)
+        if token == "(" {
+            paren_depth = paren_depth + 1
+        } else if token == ")" {
+            if paren_depth == 0 {
+                return count
+            }
+            paren_depth = paren_depth - 1
+        } else if token == "[" {
+            bracket_depth = bracket_depth + 1
+        } else if token == "]" {
+            bracket_depth = bracket_depth - 1
+        } else if token == "," && paren_depth == 0 && bracket_depth == 0 {
+            count = count + 1
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return count
+}
+
+fn function_end(source: Text, start: Int) -> Int {
+    if token_text(source, start) != "fn" || len(function_name(source, start)) == 0 {
+        return -1
+    }
+
+    let open = parameter_open(source, start)
+    if open < 0 {
+        return -1
+    }
+    let parameters_end = balanced_end(source, open, "(", ")")
+    if parameters_end < 0 {
+        return -1
+    }
+
+    let mut cursor = skip_trivia(source, parameters_end)
+    if cursor < len(source) && token_text(source, cursor) == "->" {
+        cursor = skip_trivia(source, token_end(source, cursor))
+        let mut type_tokens = 0
+        while cursor < len(source) && token_text(source, cursor) != "{" {
+            if token_text(source, cursor) == "=" {
+                return -1
+            }
+            type_tokens = type_tokens + 1
+            cursor = skip_trivia(source, token_end(source, cursor))
+        }
+        if type_tokens == 0 {
+            return -1
+        }
+    }
+
+    if cursor >= len(source) || token_text(source, cursor) != "{" {
+        return -1
+    }
+    return balanced_end(source, cursor, "{", "}")
+}
+
+fn parse_program(source: Text) -> Text {
+    let mut ir = "kofun-stage2-ir/v1\nsource-bytes|" +
+    to_text(len(source)) + "\n"
+    let mut cursor = skip_trivia(source, 0)
+    let mut functions = 0
+    while cursor < len(source) {
+        if token_text(source, cursor) != "fn" {
+            return "error[E2S02]: expected top-level `fn` at byte " +
+            to_text(cursor)
+        }
+        let name = function_name(source, cursor)
+        let arity = parameter_count(source, cursor)
+        let end = function_end(source, cursor)
+        if len(name) == 0 || arity < 0 || end < 0 {
+            return "error[E2S03]: malformed function at byte " +
+            to_text(cursor)
+        }
+        ir = ir + "function|" + name + "|" + to_text(arity) + "|" +
+        to_text(cursor) + "|" + to_text(end) + "\n"
+        functions = functions + 1
+        cursor = skip_trivia(source, end)
+    }
+    if functions == 0 {
+        return "error[E2S04]: compilation unit has no functions"
+    }
+    return ir + "function-count|" + to_text(functions) + "\n"
+}
+
+fn primary_end(source: Text, start: Int) -> Int {
+    let cursor = skip_trivia(source, start)
+    if cursor >= len(source) {
+        return -1
+    }
+    let kind = token_kind(source, cursor)
+    if kind == "integer" || kind == "identifier" {
+        return token_end(source, cursor)
+    }
+    if token_text(source, cursor) == "(" {
+        let value_start = skip_trivia(source, token_end(source, cursor))
+        let value_end = expression_end(source, value_start)
+        if value_end < 0 {
+            return -1
+        }
+        let close = skip_trivia(source, value_end)
+        if close >= len(source) || token_text(source, close) != ")" {
+            return -1
+        }
+        return token_end(source, close)
+    }
+    return -1
+}
+
+fn unary_end(source: Text, start: Int) -> Int {
+    let cursor = skip_trivia(source, start)
+    let token = token_text(source, cursor)
+    if token == "+" || token == "-" {
+        return unary_end(source, skip_trivia(source, token_end(source, cursor)))
+    }
+    return primary_end(source, cursor)
+}
+
+fn product_end(source: Text, start: Int) -> Int {
+    let mut cursor = unary_end(source, start)
+    if cursor < 0 {
+        return -1
+    }
+    let mut operator_start = skip_trivia(source, cursor)
+    while operator_start < len(source) &&
+          (token_text(source, operator_start) == "*" ||
+           token_text(source, operator_start) == "//" ||
+           token_text(source, operator_start) == "%") {
+        let right_start = skip_trivia(
+            source,
+            token_end(source, operator_start)
+        )
+        cursor = unary_end(source, right_start)
+        if cursor < 0 {
+            return -1
+        }
+        operator_start = skip_trivia(source, cursor)
+    }
+    return cursor
+}
+
+fn expression_end(source: Text, start: Int) -> Int {
+    let mut cursor = product_end(source, start)
+    if cursor < 0 {
+        return -1
+    }
+    let mut operator_start = skip_trivia(source, cursor)
+    while operator_start < len(source) &&
+          (token_text(source, operator_start) == "+" ||
+           token_text(source, operator_start) == "-") {
+        let right_start = skip_trivia(
+            source,
+            token_end(source, operator_start)
+        )
+        cursor = product_end(source, right_start)
+        if cursor < 0 {
+            return -1
+        }
+        operator_start = skip_trivia(source, cursor)
+    }
+    return cursor
+}
+
+fn emit_primary(source: Text, start: Int, end: Int) -> Text {
+    let cursor = skip_trivia(source, start)
+    let kind = token_kind(source, cursor)
+    if kind == "integer" {
+        return "INT64_C(" +
+        replace(text_slice(source, cursor, end), "_", "") + ")"
+    }
+    if kind == "identifier" {
+        return "k_" + text_slice(source, cursor, end)
+    }
+    if token_text(source, cursor) == "(" {
+        let value_start = skip_trivia(source, token_end(source, cursor))
+        let close = skip_trivia(source, expression_end(source, value_start))
+        return "(" + emit_expression(source, value_start, close) + ")"
+    }
+    return ""
+}
+
+fn emit_unary(source: Text, start: Int, end: Int) -> Text {
+    let cursor = skip_trivia(source, start)
+    let token = token_text(source, cursor)
+    if token == "+" {
+        let value_start = skip_trivia(source, token_end(source, cursor))
+        return emit_unary(source, value_start, end)
+    }
+    if token == "-" {
+        let value_start = skip_trivia(source, token_end(source, cursor))
+        return "kofun_neg(" + emit_unary(source, value_start, end) + ")"
+    }
+    return emit_primary(source, cursor, end)
+}
+
+fn emit_product(source: Text, start: Int, end: Int) -> Text {
+    let mut cursor = unary_end(source, start)
+    let mut emitted = emit_unary(source, start, cursor)
+    let mut operator_start = skip_trivia(source, cursor)
+    while operator_start < end {
+        let operator = token_text(source, operator_start)
+        let right_start = skip_trivia(
+            source,
+            token_end(source, operator_start)
+        )
+        let right_end = unary_end(source, right_start)
+        let right = emit_unary(source, right_start, right_end)
+        if operator == "*" {
+            emitted = "kofun_mul(" + emitted + ", " + right + ")"
+        } else if operator == "//" {
+            emitted = "kofun_floor_div(" + emitted + ", " + right + ")"
+        } else if operator == "%" {
+            emitted = "kofun_floor_mod(" + emitted + ", " + right + ")"
+        }
+        cursor = right_end
+        operator_start = skip_trivia(source, cursor)
+    }
+    return emitted
+}
+
+fn emit_expression(source: Text, start: Int, end: Int) -> Text {
+    let mut cursor = product_end(source, start)
+    let mut emitted = emit_product(source, start, cursor)
+    let mut operator_start = skip_trivia(source, cursor)
+    while operator_start < end {
+        let operator = token_text(source, operator_start)
+        let right_start = skip_trivia(
+            source,
+            token_end(source, operator_start)
+        )
+        let right_end = product_end(source, right_start)
+        let right = emit_product(source, right_start, right_end)
+        if operator == "+" {
+            emitted = "kofun_add(" + emitted + ", " + right + ")"
+        } else if operator == "-" {
+            emitted = "kofun_sub(" + emitted + ", " + right + ")"
+        }
+        cursor = right_end
+        operator_start = skip_trivia(source, cursor)
+    }
+    return emitted
+}
+
+fn core_body_open(source: Text, function_start: Int) -> Int {
+    let parameters = parameter_open(source, function_start)
+    if parameters < 0 {
+        return -1
+    }
+    let parameters_end = balanced_end(source, parameters, "(", ")")
+    if parameters_end < 0 {
+        return -1
+    }
+    let mut cursor = skip_trivia(source, parameters_end)
+    if cursor < len(source) && token_text(source, cursor) == "->" {
+        cursor = skip_trivia(source, token_end(source, cursor))
+        if cursor >= len(source) || token_text(source, cursor) != "Int" {
+            return -1
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    if cursor >= len(source) || token_text(source, cursor) != "{" {
+        return -1
+    }
+    return cursor
+}
+
+fn lower_body(source: Text, open: Int) -> Text {
+    let mut emitted = ""
+    let mut cursor = skip_trivia(source, token_end(source, open))
+    let mut returned = false
+    while cursor < len(source) && token_text(source, cursor) != "}" {
+        if returned {
+            return "error[E2S14]: statement follows `return` at byte " +
+            to_text(cursor)
+        }
+        let statement = token_text(source, cursor)
+        if statement == "let" {
+            cursor = skip_trivia(source, token_end(source, cursor))
+            if cursor < len(source) && token_text(source, cursor) == "mut" {
+                cursor = skip_trivia(source, token_end(source, cursor))
+            }
+            if cursor >= len(source) ||
+               token_kind(source, cursor) != "identifier" {
+                return "error[E2S11]: expected binding name at byte " +
+                to_text(cursor)
+            }
+            let name = token_text(source, cursor)
+            cursor = skip_trivia(source, token_end(source, cursor))
+            if cursor < len(source) && token_text(source, cursor) == ":" {
+                cursor = skip_trivia(source, token_end(source, cursor))
+                if cursor >= len(source) || token_text(source, cursor) != "Int" {
+                    return "error[E2S11]: Core binding type must be Int at byte " +
+                    to_text(cursor)
+                }
+                cursor = skip_trivia(source, token_end(source, cursor))
+            }
+            if cursor >= len(source) || token_text(source, cursor) != "=" {
+                return "error[E2S11]: expected `=` at byte " + to_text(cursor)
+            }
+            let value_start = skip_trivia(source, token_end(source, cursor))
+            let value_end = expression_end(source, value_start)
+            if value_end < 0 {
+                return "error[E2S12]: invalid Int expression at byte " +
+                to_text(value_start)
+            }
+            emitted = emitted + "    int64_t k_" + name + " = " +
+            emit_expression(source, value_start, value_end) + ";\n" +
+            "    if (kofun_failed) return 1;\n"
+            cursor = skip_trivia(source, value_end)
+        } else if statement == "print" {
+            let call_open = skip_trivia(source, token_end(source, cursor))
+            if call_open >= len(source) ||
+               token_text(source, call_open) != "(" {
+                return "error[E2S13]: expected `print(` at byte " +
+                to_text(cursor)
+            }
+            let value_start = skip_trivia(source, token_end(source, call_open))
+            let value_end = expression_end(source, value_start)
+            if value_end < 0 {
+                return "error[E2S12]: invalid Int expression at byte " +
+                to_text(value_start)
+            }
+            let call_close = skip_trivia(source, value_end)
+            if call_close >= len(source) ||
+               token_text(source, call_close) != ")" {
+                return "error[E2S13]: expected `)` at byte " +
+                to_text(call_close)
+            }
+            emitted = emitted +
+            "    {\n" +
+            "        int64_t kofun_value = " +
+            emit_expression(source, value_start, value_end) + ";\n" +
+            "        if (kofun_failed) return 1;\n" +
+            "        printf(\"%\" PRId64 \"\\n\", kofun_value);\n" +
+            "    }\n"
+            cursor = skip_trivia(source, token_end(source, call_close))
+        } else if statement == "return" {
+            let value_start = skip_trivia(source, token_end(source, cursor))
+            if value_start < len(source) &&
+               token_text(source, value_start) == "}" {
+                emitted = emitted + "    return 0;\n"
+                cursor = value_start
+            } else {
+                let value_end = expression_end(source, value_start)
+                if value_end < 0 {
+                    return "error[E2S12]: invalid return expression at byte " +
+                    to_text(value_start)
+                }
+                emitted = emitted +
+                "    {\n" +
+                "        int64_t kofun_result = " +
+                emit_expression(source, value_start, value_end) + ";\n" +
+                "        if (kofun_failed) return 1;\n" +
+                "        return (int)kofun_result;\n" +
+                "    }\n"
+                cursor = skip_trivia(source, value_end)
+            }
+            returned = true
+        } else {
+            return "error[E2S10]: unsupported Core statement at byte " +
+            to_text(cursor)
+        }
+    }
+    if cursor >= len(source) || token_text(source, cursor) != "}" {
+        return "error[E2S03]: missing function close"
+    }
+    if !returned {
+        emitted = emitted + "    return 0;\n"
+    }
+    return emitted
+}
+
+fn lower_c(source: Text) -> Text {
+    let function_start = skip_trivia(source, 0)
+    if function_start >= len(source) ||
+       function_name(source, function_start) != "main" ||
+       parameter_count(source, function_start) != 0 {
+        return "error[E2S10]: C11 Core requires one `fn main()`"
+    }
+    let function_close = function_end(source, function_start)
+    if function_close < 0 ||
+       skip_trivia(source, function_close) != len(source) {
+        return "error[E2S10]: C11 Core requires exactly one function"
+    }
+    let open = core_body_open(source, function_start)
+    if open < 0 {
+        return "error[E2S10]: Core main return type must be Int"
+    }
+    let body = lower_body(source, open)
+    if starts_with(body, "error[") {
+        return body
+    }
+    return "/* Generated by the Kofun-written Stage 2 Core lowerer. */\n" +
+    "#include <inttypes.h>\n" +
+    "#include <stdbool.h>\n" +
+    "#include <stdint.h>\n" +
+    "#include <stdio.h>\n\n" +
+    "static bool kofun_failed;\n" +
+    "static inline void kofun_error(const char *message) {\n" +
+    "    if (!kofun_failed) { fputs(message, stderr); fputc('\\n', stderr); }\n" +
+    "    kofun_failed = true;\n" +
+    "}\n" +
+    "static inline int64_t kofun_add(int64_t a, int64_t b) {\n" +
+    "    int64_t r; if (__builtin_add_overflow(a, b, &r)) {\n" +
+    "        kofun_error(\"error[R010]: integer overflow in operator `+`\"); return 0;\n" +
+    "    } return r;\n" +
+    "}\n" +
+    "static inline int64_t kofun_sub(int64_t a, int64_t b) {\n" +
+    "    int64_t r; if (__builtin_sub_overflow(a, b, &r)) {\n" +
+    "        kofun_error(\"error[R010]: integer overflow in operator `-`\"); return 0;\n" +
+    "    } return r;\n" +
+    "}\n" +
+    "static inline int64_t kofun_mul(int64_t a, int64_t b) {\n" +
+    "    int64_t r; if (__builtin_mul_overflow(a, b, &r)) {\n" +
+    "        kofun_error(\"error[R010]: integer overflow in operator `*`\"); return 0;\n" +
+    "    } return r;\n" +
+    "}\n" +
+    "static inline int64_t kofun_neg(int64_t value) {\n" +
+    "    if (value == INT64_MIN) {\n" +
+    "        kofun_error(\"error[R010]: integer overflow in unary operator `-`\"); return 0;\n" +
+    "    } return -value;\n" +
+    "}\n" +
+    "static inline int64_t kofun_floor_div(int64_t a, int64_t b) {\n" +
+    "    if (b == 0) {\n" +
+    "        kofun_error(\"error[R010]: operator `//` failed: division by zero\"); return 0;\n" +
+    "    }\n" +
+    "    if (a == INT64_MIN && b == -1) {\n" +
+    "        kofun_error(\"error[R010]: integer overflow in operator `//`\"); return 0;\n" +
+    "    }\n" +
+    "    int64_t q = a / b; int64_t r = a % b;\n" +
+    "    if (r != 0 && ((r < 0) != (b < 0))) { --q; }\n" +
+    "    return q;\n" +
+    "}\n" +
+    "static inline int64_t kofun_floor_mod(int64_t a, int64_t b) {\n" +
+    "    if (b == 0) {\n" +
+    "        kofun_error(\"error[R010]: operator `%` failed: division by zero\"); return 0;\n" +
+    "    }\n" +
+    "    if (a == INT64_MIN && b == -1) return 0;\n" +
+    "    int64_t r = a % b;\n" +
+    "    if (r != 0 && ((r < 0) != (b < 0))) { r += b; }\n" +
+    "    return r;\n" +
+    "}\n\n" +
+    "int main(void) {\n" +
+    "    (void)kofun_failed;\n" +
+    body + "}\n"
+}
+
+fn emit_kofun(source: Text, ir: Text) -> Text {
+    if starts_with(ir, "error[") {
+        return ""
+    }
+    return source
+}
+
+fn compile_file(
+    input_path: Text,
+    output_path: Text,
+    ir_path: Text,
+    tokens_path: Text
+) -> Bool {
+    let source = read_text(input_path)
+    let tokens = lex(source)
+    if starts_with(tokens, "error[") {
+        print(tokens)
+        return false
+    }
+    let ir = parse_program(source)
+    if starts_with(ir, "error[") {
+        print(ir)
+        return false
+    }
+    write_text(tokens_path, tokens)
+    write_text(ir_path, ir)
+    if ends_with(output_path, ".c") {
+        let c_source = lower_c(source)
+        if starts_with(c_source, "error[") {
+            print(c_source)
+            return false
+        }
+        write_text(output_path, c_source)
+    } else {
+        write_text(output_path, emit_kofun(source, ir))
+    }
+    print(output_path)
+    return true
+}
+
+fn main() -> Int {
+    let arguments = args()
+    if len(arguments) != 4 {
+        print("usage: kofun-stage2 INPUT.kofun OUTPUT.kofun OUTPUT.ir OUTPUT.tokens")
+        return 2
+    }
+    if !compile_file(arguments[0], arguments[1], arguments[2], arguments[3]) {
+        return 1
+    }
+    return 0
+}

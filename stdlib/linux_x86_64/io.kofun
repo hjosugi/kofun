@@ -1,0 +1,166 @@
+import stdlib.linux_x86_64.abi
+
+let O_RDONLY = 0
+let O_RDWR = 2
+let O_CREAT = 64
+let O_TRUNC = 512
+let SEEK_SET = 0
+let STAT_SIZE = 144
+
+type File = {
+    descriptor: Int,
+}
+
+type FileStat = {
+    raw: Bytes,
+}
+
+type ReadExactError =
+    | ReadExactSystem(SysError)
+    | UnexpectedEof(Int)
+
+fn file_open_read(path: Text) -> SysResult[File] {
+    if contains(path, "\0") {
+        return Err(SysError { operation: "open", errno: 22 })
+    }
+    let raw = raw_open(abi_text_c_address(path), O_RDONLY, 0)
+    return match syscall_result("open", raw) {
+        Ok(descriptor) => Ok(File { descriptor: descriptor })
+        Err(error) => Err(error)
+    }
+}
+
+fn file_create(path: Text, mode: Int) -> SysResult[File] {
+    if contains(path, "\0") {
+        return Err(SysError { operation: "open", errno: 22 })
+    }
+    let flags = O_RDWR + O_CREAT + O_TRUNC
+    let raw = raw_open(abi_text_c_address(path), flags, mode)
+    return match syscall_result("open", raw) {
+        Ok(descriptor) => Ok(File { descriptor: descriptor })
+        Err(error) => Err(error)
+    }
+}
+
+fn file_read(
+    read file: File,
+    edit destination: Bytes,
+    offset: Int,
+    length: Int,
+) -> SysResult[Int] {
+    if offset < 0 || length < 0 ||
+       offset > len(destination) ||
+       length > len(destination) - offset {
+        return Err(SysError { operation: "read", errno: 22 })
+    }
+    let address = abi_bytes_edit_address(destination, offset)
+    return syscall_result(
+        "read",
+        raw_read(file.descriptor, address, length),
+    )
+}
+
+fn file_write(
+    read file: File,
+    read source: Bytes,
+    offset: Int,
+    length: Int,
+) -> SysResult[Int] {
+    if offset < 0 || length < 0 ||
+       offset > len(source) ||
+       length > len(source) - offset {
+        return Err(SysError { operation: "write", errno: 22 })
+    }
+    let address = abi_bytes_address(source, offset)
+    return syscall_result(
+        "write",
+        raw_write(file.descriptor, address, length),
+    )
+}
+
+fn file_write_all(read file: File, read source: Bytes) -> SysResult[Void] {
+    let mut offset = 0
+    while offset < len(source) {
+        let attempt = file_write(file, source, offset, len(source) - offset)
+        match attempt {
+            Ok(written) if written > 0 => {
+                offset = offset + written
+            }
+            Ok(_) => {
+                return Err(SysError { operation: "write", errno: 5 })
+            }
+            Err(error) if error.errno == EINTR => {
+                # Retry while the owned descriptor remains live.
+            }
+            Err(error) => {
+                return Err(error)
+            }
+        }
+    }
+    return Ok(())
+}
+
+fn file_read_exact(
+    read file: File,
+    edit destination: Bytes,
+) -> Result[Void, ReadExactError] {
+    let mut offset = 0
+    while offset < len(destination) {
+        let attempt = file_read(
+            file,
+            destination,
+            offset,
+            len(destination) - offset,
+        )
+        match attempt {
+            Ok(received) if received > 0 => {
+                offset = offset + received
+            }
+            Ok(_) => {
+                return Err(UnexpectedEof(offset))
+            }
+            Err(error) if error.errno == EINTR => {
+                # Retry while the owned descriptor remains live.
+            }
+            Err(error) => {
+                return Err(ReadExactSystem(error))
+            }
+        }
+    }
+    return Ok(())
+}
+
+fn file_seek(read file: File, offset: Int, whence: Int) -> SysResult[Int] {
+    return syscall_result(
+        "lseek",
+        raw_lseek(file.descriptor, offset, whence),
+    )
+}
+
+fn path_stat(path: Text) -> SysResult[FileStat] {
+    if contains(path, "\0") {
+        return Err(SysError { operation: "stat", errno: 22 })
+    }
+    let mut raw_buffer = abi_bytes_zeroed(STAT_SIZE)
+    let raw = raw_stat(
+        abi_text_c_address(path),
+        abi_bytes_edit_address(raw_buffer, 0),
+    )
+    return match syscall_result("stat", raw) {
+        Ok(_) => Ok(FileStat { raw: raw_buffer })
+        Err(error) => Err(error)
+    }
+}
+
+fn file_close(take file: File) -> SysResult[Void] {
+    # Consumes on every result. In particular, never retry close after EINTR.
+    return match syscall_result("close", raw_close(file.descriptor)) {
+        Ok(_) => Ok(())
+        Err(error) => Err(error)
+    }
+}
+
+fn file_drop(take file: File) -> Void {
+    # The ownership runtime calls this at scope exit and discards close errors.
+    file_close(file)
+}

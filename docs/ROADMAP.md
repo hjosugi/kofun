@@ -2,13 +2,13 @@
 
 ## Release rule
 
-Kofunはfeature countではなく、correctness gateでmilestoneを進めます。
+Kofun advances milestones by correctness gate, not by feature count.
 
-- unsupported behaviorをsilent fallbackしない
-- safety claimにはnegative testとthreat modelを付ける
-- performance claimにはreproducible benchmarkを付ける
-- law evidenceの強さを`bounded`、`proven-finite`、`proven`で区別する
-- Stage 2 fixed point前に「self-hosting complete」と呼ばない
+- never silently fall back on unsupported behavior
+- attach a negative test and a threat model to every safety claim
+- attach a reproducible benchmark to every performance claim
+- distinguish the strength of law evidence as `bounded`, `proven-finite`, or `proven`
+- do not call the project "self-hosting complete" before the Stage 2 fixed point
 
 ## M0 — Specification and UX validation
 
@@ -27,16 +27,16 @@ Deliverables:
 
 Exit criteria:
 
-- core syntaxにunresolved P0 ambiguityがない
-- ownership examplesをRust経験なしで説明できる
-- null/optional behaviorが固定される
-- coding interview sample setが完成する
-- law assurance labelが誤解を生まない
-- bootstrap statusをmachine-readableに検証できる
+- no unresolved P0 ambiguity in the core syntax
+- ownership examples can be explained without Rust experience
+- null/optional behavior is fixed
+- the coding interview sample set is complete
+- law assurance labels do not mislead
+- bootstrap status can be verified machine-readably
 
 Current Stage 0 achievements:
 
-- Python reference frontend/interpreter/C11 backend
+- Kofun-written Python-free arithmetic Core compiler seed
 - affine ownership prototype
 - `law monad` bounded exhaustive checker
 - complete Bool/Optional[Bool] function-space enumeration

@@ -1,0 +1,16 @@
+import stdlib.linux_x86_64.abi
+
+fn random_fill(edit destination: Bytes, flags: Int) -> SysResult[Int] {
+    return syscall_result(
+        "getrandom",
+        raw_getrandom(
+            abi_bytes_edit_address(destination, 0),
+            len(destination),
+            flags,
+        ),
+    )
+}
+
+fn process_exit(status: Int) -> Never {
+    return raw_exit_group(status)
+}

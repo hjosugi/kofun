@@ -1,4 +1,210 @@
 #!/usr/bin/env sh
 set -eu
+
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m kofun.cli "$@"
+BUILD_DIR=${KOFUN_BUILD_DIR:-"$ROOT/build/bootstrap-stage1"}
+SEED_C="$ROOT/bootstrap/stage1/compiler.c"
+COMPILER="$BUILD_DIR/kofun-stage1"
+CC=${CC:-cc}
+
+usage() {
+    cat <<'EOF'
+usage:
+  kofun build INPUT.kofun [-o OUTPUT] [--emit-c OUTPUT.c]
+  kofun run INPUT.kofun
+  kofun check INPUT.kofun
+  kofun test [PATH]
+  kofun bootstrap
+  kofun emit-c INPUT.kofun OUTPUT.c
+  kofun --version
+EOF
+}
+
+ensure_compiler() {
+    mkdir -p "$BUILD_DIR"
+    if [ ! -x "$COMPILER" ] || [ "$SEED_C" -nt "$COMPILER" ]; then
+        "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+            "$SEED_C" -lm -o "$COMPILER"
+    fi
+}
+
+require_source() {
+    case ${1-} in
+        *.kofun) ;;
+        *)
+            printf '%s\n' "kofun: source must use the .kofun extension" >&2
+            exit 2
+            ;;
+    esac
+    test -f "$1" || {
+        printf '%s\n' "kofun: source not found: $1" >&2
+        exit 2
+    }
+}
+
+emit_c() (
+    require_source "$1"
+    ensure_compiler
+    temporary="$2.tmp.$$"
+    trap 'rm -f "$temporary"' 0 1 2 15
+    "$COMPILER" "$1" "$temporary"
+    test -s "$temporary" || exit 1
+    mv "$temporary" "$2"
+)
+
+build_file() (
+    emit_c "$1" "$3" >/dev/null
+    "$CC" -std=c11 -O2 -Wall -Wextra -Werror "$3" -o "$2"
+)
+
+case ${1-} in
+    --version|-V|version)
+        printf '%s\n' "Kofun Stage 1 0.3.0-seed"
+        ;;
+    bootstrap)
+        test "$#" -eq 1 || { usage >&2; exit 2; }
+        exec sh "$ROOT/bootstrap/stage1/check.sh"
+        ;;
+    emit-c)
+        test "$#" -eq 3 || { usage >&2; exit 2; }
+        emit_c "$2" "$3"
+        ;;
+    check)
+        test "$#" -eq 2 || { usage >&2; exit 2; }
+        require_source "$2"
+        work=$(mktemp -d "${TMPDIR:-/tmp}/kofun-check.XXXXXX")
+        trap 'rm -rf "$work"' 0 1 2 15
+        emit_c "$2" "$work/output.c" >/dev/null
+        printf '%s\n' "ok: $2"
+        ;;
+    build)
+        shift
+        input=${1-}
+        test "$#" -gt 0 && shift
+        require_source "$input"
+        output=${input%.kofun}
+        emitted=
+        while test "$#" -gt 0; do
+            case "$1" in
+                -o|--output)
+                    test "$#" -ge 2 || { usage >&2; exit 2; }
+                    output=$2
+                    shift 2
+                    ;;
+                --emit-c)
+                    test "$#" -ge 2 || { usage >&2; exit 2; }
+                    emitted=$2
+                    shift 2
+                    ;;
+                --backend)
+                    test "$#" -ge 2 && test "$2" = c || {
+                        printf '%s\n' "kofun: Stage 1 exposes only the C11 bootstrap backend" >&2
+                        exit 2
+                    }
+                    shift 2
+                    ;;
+                *)
+                    printf '%s\n' "kofun: unknown build option: $1" >&2
+                    exit 2
+                    ;;
+            esac
+        done
+        if test -z "$emitted"; then
+            emitted="$BUILD_DIR/$(basename "${input%.kofun}").c"
+        fi
+        mkdir -p "$(dirname "$output")" "$(dirname "$emitted")"
+        build_file "$input" "$output" "$emitted"
+        printf '%s\n' "$output"
+        ;;
+    run)
+        test "$#" -eq 2 || { usage >&2; exit 2; }
+        require_source "$2"
+        work=$(mktemp -d "${TMPDIR:-/tmp}/kofun-run.XXXXXX")
+        trap 'rm -rf "$work"' 0 1 2 15
+        build_file "$2" "$work/program" "$work/program.c"
+        "$work/program"
+        ;;
+    test)
+        test "$#" -le 2 || { usage >&2; exit 2; }
+        root=${2-"$ROOT/bootstrap/fixtures"}
+        if test -d "$root" &&
+           test -f "$root/expectations.kofun" &&
+           test -f "$ROOT/tests/conformance/run.sh"
+        then
+            exec sh "$ROOT/tests/conformance/run.sh" "$root"
+        fi
+        ensure_compiler
+        work=$(mktemp -d "${TMPDIR:-/tmp}/kofun-test.XXXXXX")
+        trap 'rm -rf "$work"' 0 1 2 15
+        passed=0
+        skipped=0
+        failed=0
+        if test -f "$root"; then
+            files=$root
+        else
+            files=$(find "$root" -type f -name '*.kofun' \
+                ! -name 'expectations.kofun' -print | LC_ALL=C sort)
+        fi
+        for source in $files; do
+            stem=$(basename "${source%.kofun}")
+            c_file="$work/$stem.c"
+            binary="$work/$stem"
+            if ! emit_c "$source" "$c_file" >/dev/null 2>&1; then
+                printf '%s\n' "SKIP $source (outside Stage 1 Core)"
+                skipped=$((skipped + 1))
+                continue
+            fi
+            if ! "$CC" -std=c11 -O2 -Wall -Wextra -Werror "$c_file" -o "$binary"; then
+                printf '%s\n' "FAIL $source"
+                failed=$((failed + 1))
+                continue
+            fi
+            set +e
+            "$binary" >"$work/$stem.stdout" 2>"$work/$stem.stderr"
+            status=$?
+            set -e
+            actual_stdout=$(cat "$work/$stem.stdout")
+            actual_stderr=$(cat "$work/$stem.stderr")
+            expected_status=$(sed -n 's/^# expect-exit: //p' "$source" | sed -n '1p')
+            expected_stdout=$(sed -n \
+                -e 's/^# expect: //p' \
+                -e 's/^# expect-stdout: //p' "$source")
+            expected_stderr=$(sed -n 's/^# expect-stderr: //p' "$source")
+            if test -z "$expected_status"; then
+                expected_status=0
+            fi
+            if test "$status" -ne "$expected_status"; then
+                printf '%s\n' "FAIL $source (expected exit $expected_status, got $status)"
+                failed=$((failed + 1))
+                continue
+            fi
+            if test -n "$expected_stdout" && test "$actual_stdout" != "$expected_stdout"; then
+                printf '%s\n' "FAIL $source (stdout mismatch)"
+                failed=$((failed + 1))
+                continue
+            fi
+            if test -n "$expected_stderr" && test "$actual_stderr" != "$expected_stderr"; then
+                printf '%s\n' "FAIL $source (stderr mismatch)"
+                failed=$((failed + 1))
+                continue
+            fi
+            printf '%s\n' "PASS $source"
+            passed=$((passed + 1))
+        done
+        total=$((passed + failed + skipped))
+        executed=$((passed + failed))
+        printf '%s\n' \
+            "$passed passed; $failed failed; $skipped explicitly skipped" \
+            "coverage: $executed/$total cases executed by Stage 1"
+        test "$passed" -gt 0
+        test "$failed" -eq 0
+        ;;
+    ""|-h|--help|help)
+        usage
+        ;;
+    *)
+        printf '%s\n' "kofun: unknown command: ${1-}" >&2
+        usage >&2
+        exit 2
+        ;;
+esac

@@ -1,21 +1,25 @@
 # Kofun bootstrap
 
-- `manifest.json`: machine-readable stage status
-- `stage1/compiler.kofun`: compiler seed written in Kofun
-- `fixtures/answer.kofun`: Kofun Core input used by the bootstrap test
-- `check_bootstrap.py`: interpreted/native Stage 1 differential verification
+- `stage1/compiler.kofun`: canonical Kofun compiler source
+- `stage1/compiler.c`: audited C11 bootstrap artifact
+- `stage1/SHA256SUMS`: source and seed digests
+- `stage1/check.sh`: Python-free build and fixture gate
+- `stage2/compiler.kofun`: Kofun lexer, structural parser, IR, and stable emitter
+- `stage2/compiler.c`: audited executable checkpoint seed
+- `stage2/check.sh`: deterministic source/token/IR round-trip gate
+- `native/encoder.kofun`: direct ELF64/x86-64 encoder
+- `native/check.sh`: Kofun Core to executable Linux image gate
+- `fixtures/answer.kofun`: arithmetic Core fixture
 
-Run:
+Run all three checkpoints:
 
-```bash
-PYTHONPATH=src python3 bootstrap/check_bootstrap.py
+```sh
+sh bootstrap/stage1/check.sh
+sh bootstrap/stage2/check.sh
+sh bootstrap/native/check.sh
 ```
 
-The check performs both paths:
-
-```text
-Stage 0 interpreter -> Stage 1 -> fixture C11
-Stage 0 C11 backend -> native Stage 1 -> fixture C11
-```
-
-The two C11 artifacts must be byte-identical, then compile and print `42`. The native Stage 1 seed is working, but the Stage 2 self-recompile gate is still open. See `docs/SELF_HOSTING.md`.
+Stage 1 builds the Kofun-written compiler seed and compiles the arithmetic
+fixture. Stage 2 validates a deterministic semantic-frontend boundary. Native
+builds and executes a static ELF64 fixture. Semantic self-recompilation and a
+general native compiler remain open.

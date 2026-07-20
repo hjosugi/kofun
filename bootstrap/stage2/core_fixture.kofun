@@ -1,0 +1,12 @@
+# Stage 2 C11 lowering fixture: declarations, precedence, floor arithmetic,
+# print statements, and an explicit Int return.
+
+fn main() -> Int {
+    let six: Int = 2 * 3
+    let answer = six * 7
+    print(answer)
+    print(1 + 2 * 3)
+    print(-7 // 2)
+    print(-7 % 2)
+    return 0
+}

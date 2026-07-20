@@ -2,15 +2,15 @@
 
 ## Files
 
-標準extensionは仮に`.kf`とする。
+The standard extension is tentatively `.kofun`.
 
-UTF-8を標準とし、identifierはUnicodeを許可する。
+UTF-8 is the standard, and identifiers may use Unicode.
 
 ```kofun
 let 合計 = 40 + 2
 ```
 
-public APIではconfusable文字にwarningを出す。
+Confusable characters produce a warning in public APIs.
 
 ## Comments
 
@@ -18,7 +18,7 @@ public APIではconfusable文字にwarningを出す。
 # line comment
 ```
 
-nested block commentはplanned:
+Nested block comments are planned:
 
 ```kofun
 /* outer
@@ -34,7 +34,7 @@ let mut count = 0
 let own file = File.open(path)
 ```
 
-defaultはimmutable。
+The default is immutable.
 
 ## Functions
 
@@ -86,7 +86,7 @@ if score >= 90 {
 }
 ```
 
-`if`はexpression。
+`if` is an expression.
 
 ```kofun
 let label = if ready { "ready" } else { "waiting" }
@@ -99,7 +99,7 @@ let port: Int? = null
 let effective = port ?? 8080
 ```
 
-`nil`、`None`はkeywordではない。
+`nil` and `None` are not keywords.
 
 ## Lists and tuples
 
@@ -115,11 +115,11 @@ let counts = { "a": 1, "b": 2 }
 let ids = set { 10, 20, 30 }
 ```
 
-literal syntaxはblock/recordとのambiguityをUX testして確定する。
+The literal syntax will be settled by UX testing the ambiguity against blocks and records.
 
 ## Operators
 
-precedenceは高い順に概ね次の通り。
+Precedence, roughly from highest to lowest.
 
 ```text
 postfix:       call, member, index
@@ -165,7 +165,7 @@ value |> function(a, b)    => function(value, a, b)
 0 .. 10
 ```
 
-upper boundはexclusive。
+The upper bound is exclusive.
 
 planned inclusive range:
 
@@ -250,7 +250,7 @@ impl Show[Point] {
 
 ## Compile-time law declarations
 
-Stage 0では`Monad`則をtop-levelで宣言できます。
+In Stage 0, `Monad` laws can be declared at the top level.
 
 ```kofun
 law monad OptionalBoolMonad {
@@ -264,9 +264,9 @@ law monad OptionalBoolMonad {
 }
 ```
 
-entryはnewlineまたはcommaで区切れます。必須entryは`pure`、`bind`、`values`、`monads`、`functions`です。任意entryは`equal`、`limit`、`complete`です。
+Entries are separated by a newline or a comma. The required entries are `pure`, `bind`, `values`, `monads`, and `functions`. The optional entries are `equal`, `limit`, and `complete`.
 
-`law` declarationはruntime statementではありません。type checking後、code generation前にdeterministic compile-time evaluatorで検査されます。違反はcompile errorになり、C backendへは出力されません。
+A `law` declaration is not a runtime statement. It is checked by a deterministic compile-time evaluator after type checking and before code generation. A violation becomes a compile error and is not emitted to the C backend.
 
 ## Imports
 
@@ -280,9 +280,9 @@ from collections import Map, Set
 
 ## Semicolons
 
-不要。newlineと`}`でstatement boundaryを決める。
+Not required. Statement boundaries are determined by newlines and `}`.
 
-line continuationはdelimiter内、またはoperatorで明示する。
+Line continuation is either inside a delimiter or made explicit with an operator.
 
 ```kofun
 let answer = values
@@ -290,4 +290,4 @@ let answer = values
     |> sum()
 ```
 
-Stage 0 lexerはleading pipelineを特別に継続扱いする。
+The Stage 0 lexer treats a leading pipeline as a continuation as a special case.

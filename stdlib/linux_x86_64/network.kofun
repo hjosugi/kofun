@@ -1,0 +1,136 @@
+import stdlib.linux_x86_64.abi
+
+type Socket = {
+    descriptor: Int,
+}
+
+type SocketAddress = {
+    encoded: Bytes,
+}
+
+fn socket_open(domain: Int, kind: Int, protocol: Int) -> SysResult[Socket] {
+    return match syscall_result(
+        "socket",
+        raw_socket(domain, kind, protocol),
+    ) {
+        Ok(descriptor) => Ok(Socket { descriptor: descriptor })
+        Err(error) => Err(error)
+    }
+}
+
+fn socket_bind(
+    read socket: Socket,
+    read address: SocketAddress,
+) -> SysResult[Void] {
+    let raw = raw_bind(
+        socket.descriptor,
+        abi_bytes_address(address.encoded, 0),
+        len(address.encoded),
+    )
+    return match syscall_result("bind", raw) {
+        Ok(_) => Ok(())
+        Err(error) => Err(error)
+    }
+}
+
+fn socket_listen(read socket: Socket, backlog: Int) -> SysResult[Void] {
+    return match syscall_result(
+        "listen",
+        raw_listen(socket.descriptor, backlog),
+    ) {
+        Ok(_) => Ok(())
+        Err(error) => Err(error)
+    }
+}
+
+fn socket_accept(read socket: Socket, flags: Int) -> SysResult[Socket] {
+    # Address capture is a separate API; this minimal form accepts anonymously.
+    return match syscall_result(
+        "accept4",
+        raw_accept4(socket.descriptor, 0, 0, flags),
+    ) {
+        Ok(descriptor) => Ok(Socket { descriptor: descriptor })
+        Err(error) => Err(error)
+    }
+}
+
+fn socket_connect(
+    read socket: Socket,
+    read address: SocketAddress,
+) -> SysResult[Void] {
+    let raw = raw_connect(
+        socket.descriptor,
+        abi_bytes_address(address.encoded, 0),
+        len(address.encoded),
+    )
+    return match syscall_result("connect", raw) {
+        Ok(_) => Ok(())
+        Err(error) => Err(error)
+    }
+}
+
+fn socket_set_option(
+    read socket: Socket,
+    level: Int,
+    option: Int,
+    read value: Bytes,
+) -> SysResult[Void] {
+    let raw = raw_setsockopt(
+        socket.descriptor,
+        level,
+        option,
+        abi_bytes_address(value, 0),
+        len(value),
+    )
+    return match syscall_result("setsockopt", raw) {
+        Ok(_) => Ok(())
+        Err(error) => Err(error)
+    }
+}
+
+fn socket_read(
+    read socket: Socket,
+    edit destination: Bytes,
+    offset: Int,
+    length: Int,
+) -> SysResult[Int] {
+    if offset < 0 || length < 0 ||
+       offset > len(destination) ||
+       length > len(destination) - offset {
+        return Err(SysError { operation: "read", errno: 22 })
+    }
+    let address = abi_bytes_edit_address(destination, offset)
+    return syscall_result(
+        "read",
+        raw_read(socket.descriptor, address, length),
+    )
+}
+
+fn socket_write(
+    read socket: Socket,
+    read source: Bytes,
+    offset: Int,
+    length: Int,
+) -> SysResult[Int] {
+    if offset < 0 || length < 0 ||
+       offset > len(source) ||
+       length > len(source) - offset {
+        return Err(SysError { operation: "write", errno: 22 })
+    }
+    let address = abi_bytes_address(source, offset)
+    return syscall_result(
+        "write",
+        raw_write(socket.descriptor, address, length),
+    )
+}
+
+fn socket_close(take socket: Socket) -> SysResult[Void] {
+    return match syscall_result("close", raw_close(socket.descriptor)) {
+        Ok(_) => Ok(())
+        Err(error) => Err(error)
+    }
+}
+
+fn socket_drop(take socket: Socket) -> Void {
+    socket_close(socket)
+}

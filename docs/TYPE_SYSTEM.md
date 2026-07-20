@@ -2,12 +2,12 @@
 
 ## Design target
 
-Kofunの型システムは、二つの入口を持つ。
+The Kofun type system has two entry points.
 
-1. beginnerはannotationなしでlocal programを書ける。
-2. advanced userはADT、traits、effects、row polymorphism、type-level computationを使える。
+1. Beginners can write local programs without annotations.
+2. Advanced users can use ADTs, traits, effects, row polymorphism, and type-level computation.
 
-難しい型機能を使わないコードに、その複雑さを漏らさない。
+Code that does not use the hard type features does not pay for their complexity.
 
 ## Primitive types
 
@@ -24,7 +24,7 @@ Void
 Never
 ```
 
-`String`はaliasとして提供する可能性があるが、canonical nameは`Text`とする。
+`String` may be provided as an alias, but the canonical name is `Text`.
 
 ## Optional types
 
@@ -33,14 +33,14 @@ let age: Int? = null
 let safe_age = age ?? 0
 ```
 
-rule:
+Rules:
 
-- `null`は`T?`にのみ代入できる
-- `T`へimplicit null injectionしない
-- `T?`から`T`へimplicit conversionしない
-- `??`、pattern matching、guardでnarrowingする
+- `null` can only be assigned to `T?`
+- no implicit null injection into `T`
+- no implicit conversion from `T?` to `T`
+- narrowing happens through `??`, pattern matching, or guards
 
-予定するpattern:
+Planned pattern:
 
 ```kofun
 match user.name {
@@ -49,7 +49,7 @@ match user.name {
 }
 ```
 
-`None`や`Nil`という別constructorはoptional用途では使わない。domain-specific ADTでは任意のconstructor名を使える。
+Separate constructors named `None` or `Nil` are not used for the optional case. Domain-specific ADTs may use any constructor name.
 
 ## Type inference
 
@@ -59,27 +59,27 @@ let ratio = 0.5         # Float
 let names = ["a", "b"] # List[Text]
 ```
 
-推論範囲:
+Inference covers:
 
-- local binding
-- return type
-- lambda parameter when call context exists
+- local bindings
+- return types
+- lambda parameters when a call context exists
 - generic arguments
 - effects
 - optional branch joins
 
-public APIでは、stabilityとdocumentationのためannotationを推奨する。
+For public APIs, annotations are recommended for stability and documentation.
 
 ## Numeric conversion
 
-予定rule:
+Planned rules:
 
-- widening conversionは限定的にimplicit
-- narrowing conversionはexplicit
+- widening conversions are implicit in limited cases
+- narrowing conversions are explicit
 - `Int + Float -> Float`
 - `Int / Int -> Float`
 - `Int // Int -> Int`
-- overflow modeはdebug/releaseで暗黙に変えず、build profileで明示する
+- the overflow mode is not changed implicitly between debug and release; it is stated explicitly in the build profile
 
 ```kofun
 let exact = 7 // 2 # 3
@@ -88,7 +88,7 @@ let ratio = 7 / 2  # 3.5
 
 ## Generics
 
-angle bracketではなくsquare bracketを使う。
+Square brackets are used instead of angle brackets.
 
 ```kofun
 fn identity[T](value: T) -> T = value
@@ -99,11 +99,11 @@ type Pair[A, B] = {
 }
 ```
 
-理由:
+Reasons:
 
-- comparison operatorとのlexer ambiguityを減らす
-- `List[Int]`がPython/TypeScript userにも読める
-- type applicationとindexingはparser contextで区別できる
+- it reduces lexer ambiguity with comparison operators
+- `List[Int]` is readable to Python and TypeScript users as well
+- type application and indexing can be distinguished by parser context
 
 ## Algebraic data types
 
@@ -113,7 +113,7 @@ type Tree[T] =
     | Node(value: T, left: Tree[T], right: Tree[T])
 ```
 
-pattern matching:
+Pattern matching:
 
 ```kofun
 fn size[T](tree: Tree[T]) -> Int {
@@ -124,11 +124,11 @@ fn size[T](tree: Tree[T]) -> Int {
 }
 ```
 
-compilerはexhaustivenessとunreachable patternを検査する。
+The compiler checks exhaustiveness and unreachable patterns.
 
 ## Records
 
-nominal record:
+Nominal record:
 
 ```kofun
 type User = {
@@ -137,32 +137,32 @@ type User = {
 }
 ```
 
-structural record boundary:
+Structural record boundary:
 
 ```kofun
 fn render(user: { name: Text, ..R }) -> Text
 ```
 
-row polymorphismはJSON、web API、data frame、testing doubleで有用だが、layout-sensitive system APIではnominal typeを優先する。
+Row polymorphism is useful for JSON, web APIs, data frames, and testing doubles, but nominal types are preferred for layout-sensitive system APIs.
 
 ## Union and intersection types
 
-TypeScriptの表現力は取り入れるが、uncontrolled union explosionは避ける。
+The expressiveness of TypeScript is adopted, but uncontrolled union explosion is avoided.
 
 ```kofun
 type Input = Text | Bytes
 ```
 
-主な用途:
+Main uses:
 
-- external data boundary
+- external data boundaries
 - gradual migration
 - generated API bindings
 - pattern narrowing
 
-internal domain modelではADTを推奨する。
+For internal domain models, ADTs are recommended.
 
-intersection typeはcapability compositionなど限定用途にする。
+Intersection types are restricted to limited uses such as capability composition.
 
 ## Traits
 
@@ -176,7 +176,7 @@ trait Iterator[I, Item] {
 }
 ```
 
-features:
+Features:
 
 - generic traits
 - associated types
@@ -184,13 +184,13 @@ features:
 - auto traits for send/share/copy
 - coherence
 - orphan rule
-- specializationは明示的で限定的
+- specialization is explicit and limited
 
 ## Effects
 
-普通の関数syntaxを維持しつつ、effect rowを推論する。
+Ordinary function syntax is kept, while the effect row is inferred.
 
-概念型:
+Conceptual types:
 
 ```text
 fn parse(Text) -> User
@@ -198,13 +198,13 @@ fn load(Path) -> User ! {io, error[FsError]}
 fn fetch(Url) -> User ! {async, io, error[HttpError]}
 ```
 
-source上でeffect annotationを毎回書く必要はない。public API、trait contract、no-effect保証では明示できる。
+Effect annotations do not have to be written every time in source. They can be stated explicitly for public APIs, trait contracts, and no-effect guarantees.
 
 ```kofun
 pure fn normalize(value: Float) -> Float
 ```
 
-`pure` keywordを採用するかは、effect inferenceとdiagnostic UXを検証して決める。
+Whether to adopt the `pure` keyword will be decided after evaluating effect inference and diagnostic UX.
 
 ## Result and error propagation
 
@@ -215,13 +215,13 @@ fn load_user(path: Path) -> Result[User, LoadError] {
 }
 ```
 
-`?`はoptional suffixとの文脈衝突をparserが解決する。
+The parser resolves the contextual conflict between `?` and the optional suffix.
 
-errorはtype parameterとして保持でき、context追加APIを標準化する。
+Errors can be carried as a type parameter, and the API for adding context is standardized.
 
 ## Ownership in types
 
-parameter modeはtype constructorではなくcall contractとして表す。
+Parameter modes are expressed as a call contract, not as a type constructor.
 
 ```kofun
 fn hash(read bytes: Bytes) -> Digest
@@ -229,9 +229,9 @@ fn fill(edit buffer: Buffer) -> Void
 fn submit(take request: Request) -> Response
 ```
 
-これにより、`&T`、`&mut T`、explicit lifetimeの記号負荷を減らす。
+This reduces the notational load of `&T`, `&mut T`, and explicit lifetimes.
 
-advanced APIではview lifetimeを型レベルに公開できるが、standard user codeには出さない。
+Advanced APIs can expose view lifetimes at the type level, but standard user code does not see them.
 
 ## Const generics and shapes
 
@@ -239,9 +239,9 @@ advanced APIではview lifetimeを型レベルに公開できるが、standard u
 fn dot[N](left: Array[Float, N], right: Array[Float, N]) -> Float
 ```
 
-N-dimensional arraysではrankと一部shapeをcompile-time valueとして扱う。
+For N-dimensional arrays, the rank and some shapes are treated as compile-time values.
 
-ただしdynamic shapeも第一級にする。
+Dynamic shapes remain first class as well.
 
 ```kofun
 Array[Float, rank = 2]
@@ -254,9 +254,9 @@ DynArray[Float]
 type fn OutputShape[A, B] = Broadcast[A, B]
 ```
 
-制約:
+Constraints:
 
-- terminationまたはfuel limit
+- termination or a fuel limit
 - deterministic
 - no IO
 - good diagnostics
@@ -264,24 +264,24 @@ type fn OutputShape[A, B] = Broadcast[A, B]
 
 ## Stage 0 implementation
 
-実装済み:
+Implemented:
 
-- `Int`、`Float`、`Bool`、`Text`、`Null`、`Void`、`Any`
-- `List[T]`、Tuple
+- `Int`, `Float`, `Bool`, `Text`, `Null`, `Void`, `Any`
+- `List[T]`, Tuple
 - `T?`
 - basic function types
 - local inference
 - numeric promotion
 - branch/list joins
-- built-in polymorphic behaviorの一部
+- part of the built-in polymorphic behavior
 - `read` / `edit` / `take` parameter metadata
 - typed `law monad` declarations and compiler-integrated law checking
 - evidence distinction between `bounded-exhaustive` and `proven-finite`
 
-未実装:
+Not implemented:
 
 - user-defined generics
-- ADT、match
+- ADTs, match
 - traits
 - union/intersection
 - row polymorphism

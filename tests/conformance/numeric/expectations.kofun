@@ -5,7 +5,7 @@
 # Python test harness.
 
 fn backend_names() -> List[Text] {
-    return ["interpreter", "c11", "native"]
+    return ["c11-stage1"]
 }
 
 fn case_names() -> List[Text] {

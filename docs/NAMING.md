@@ -2,36 +2,36 @@
 
 ## Working title
 
-このprototypeでは`Kofun`をworking titleとして使う。
+This prototype uses `Kofun` as a working title.
 
-意図:
+Intent:
 
-- Rustへのkofunrationを出発点にする
-- functional + Rustを連想しやすい
-- CLI名が短い
-- `.kf` extensionを使いやすい
+- Start from frustration with Rust
+- Easy to associate with functional + Rust
+- Short CLI name
+- Easy to use with the `.kofun` extension
 
 ## Collision risk
 
-`kofun`という名前はすでにRust ecosystemのcrate名として使われている。また、過去に「functional Rust」の略として同じ発想が公開された例もある。
+The name `kofun` is already used as a crate name in the Rust ecosystem. The same idea has also been published before as shorthand for "functional Rust".
 
-したがって、public launch前に次を必須とする。
+The following are therefore mandatory before any public launch.
 
-1. crates.io、PyPI、npm、GitHub、GitLab、主要Linux distributionを検索する。
-2. programming language、compiler、database、developer toolの商標を調査する。
-3. domain、social handle、package namespaceを確認する。
-4. 日本、米国、EUを最低限の対象として法律専門家に確認する。
-5. project名、CLI名、package prefix、file extensionを別々に評価する。
+1. Search crates.io, PyPI, npm, GitHub, GitLab, and the major Linux distributions.
+2. Investigate trademarks for programming languages, compilers, databases, and developer tools.
+3. Check domains, social handles, and package namespaces.
+4. Consult a legal professional, covering Japan, the United States, and the EU at minimum.
+5. Evaluate the project name, CLI name, package prefix, and file extension separately.
 
 ## Candidate direction
 
-最終名称は、次を満たす短い造語を優先する。
+For the final name, prefer a short coined word that satisfies the following.
 
-- 4〜7文字
-- 日本語話者と英語話者が発音しやすい
-- `fn`やpipelineの軽さを連想できる
-- Rust派生言語と誤認させすぎない
-- searchabilityが高い
-- package namespaceを確保できる
+- 4 to 7 characters
+- Easy to pronounce for both Japanese and English speakers
+- Evokes the lightness of `fn` and pipelines
+- Not so close as to be mistaken for a Rust-derived language
+- Highly searchable
+- Package namespace can be secured
 
-このZIPでは名前を固定せず、compiler内部のnamespace変更を一括実行できるようにする。
+This ZIP does not fix the name, and is set up so that namespace changes inside the compiler can be applied in bulk.

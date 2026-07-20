@@ -1,13 +1,14 @@
 # Numeric backend conformance corpus
 
-This directory is the shared numeric corpus for the reference interpreter,
-C11 backend, and direct native backend. Programs are Kofun source; no
-backend-specific copy of a case is permitted.
+This directory is the shared numeric corpus for every Kofun backend. The active
+backend is `c11-stage1`; future native or WebAssembly backends must use these
+same files rather than creating backend-specific copies.
 
-`expectations.kofun` is the executable manifest. It registers all required
-backends and returns the expected stdout, stderr, and exit status for each
-case. A runner executes the manifest with the reference interpreter, then
-executes every listed case with every registered backend.
+Each corpus file carries its expected stdout, stderr, and exit status in
+`# expect-*` headers. `expectations.kofun` exposes the same observations to
+future Kofun-native tooling. `./bin/kofun test tests/conformance/numeric`
+dispatches the common runner across every adapter in
+`tests/conformance/backends/`.
 
 The runner records one of two states for every backend/case pair:
 
@@ -16,12 +17,9 @@ The runner records one of two states for every backend/case pair:
 - `unsupported`: print the backend's explicit compile diagnostic and count the
   case as skipped.
 
-Missing results are failures, never implicit skips. The summary reports
-`ran/total` coverage for each backend. Adding a backend therefore requires one
-entry in `backend_names()` and a command registration in the runner, not a new
-test suite.
+Missing results, crashes, signals, and timeouts are failures, never implicit
+skips. The summary reports `ran/total` coverage for each backend. Adding a
+backend therefore requires one adapter file, not a new test suite.
 
-The corpus intentionally remains outside the legacy `tests/kofun` golden
-runner until the Kofun-native differential runner lands. Running error cases
-with the stdout-only legacy runner would turn a required runtime failure into
-an unhelpful harness failure.
+`make verify` runs this corpus. Runtime failures are captured as ordinary
+stdout/stderr/exit observations rather than treated as harness failures.

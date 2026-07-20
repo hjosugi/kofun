@@ -1,16 +1,26 @@
 {
   "schema": 1,
-  "bootstrap_model": "stage0-python -> stage1-kofun-native-seed -> stage2-self-recompile",
+  "bootstrap_model": "trusted-c11-seed -> stage1-kofun -> stage2-self-recompile",
   "stages": {
-    "stage0": {
-      "implementation": "Python 3.11+",
+    "trusted_seed": {
+      "implementation": "bootstrap/stage1/compiler.c",
       "status": "working",
-      "role": "reference lexer, parser, type checker, law checker, interpreter, and C11 backend"
+      "role": "audited C11 artifact used to start the Kofun-written compiler"
     },
     "stage1": {
       "implementation": "bootstrap/stage1/compiler.kofun",
-      "status": "working-seed",
-      "role": "Kofun-written compiler for the documented arithmetic Kofun Core subset; Stage 0 builds it as a native executable"
+      "status": "working-python-free-seed",
+      "role": "Kofun-written compiler for the documented arithmetic Core subset"
+    },
+    "stage2_frontend_checkpoint": {
+      "implementation": "bootstrap/stage2/compiler.kofun",
+      "status": "working-checkpoint",
+      "role": "Kofun lexer, structural parser, textual IR, and deterministic source projection; not an executable self-recompile"
+    },
+    "native_checkpoint": {
+      "implementation": "bootstrap/native/encoder.kofun",
+      "status": "working-exit-fixture",
+      "role": "Kofun-authored ELF64/x86-64 encoder with an executable static image gate"
     },
     "stage2": {
       "implementation": "stage1 compiles its own source and reproduces an equivalent artifact",
@@ -19,14 +29,17 @@
     }
   },
   "gates": {
-    "stage0_typechecks_stage1": "working",
-    "stage0_interprets_stage1": "working",
-    "stage0_builds_native_stage1": "working",
-    "interpreted_native_stage1_equivalence": "working",
+    "python_free_bootstrap": "working",
+    "seed_hash_verification": "working",
+    "stage1_builds_from_seed": "working",
     "stage1_compiles_fixture": "working",
+    "stage2_frontend_round_trip": "working",
+    "native_elf64_exit_fixture": "working",
+    "syscall_stdlib_source_contract": "working",
+    "syscall_file_round_trip_execution": "open",
     "stage1_self_recompile": "open",
     "stage1_stage2_artifact_equivalence": "open",
     "diverse_double_compilation": "open"
   },
-  "truthful_status": "The repository contains a Kofun-written compiler seed that Stage 0 can build as a native executable. It is not yet fully self-hosting because Stage 1 cannot compile its own source and the Stage 2 fixed-point gate remains open."
+  "truthful_status": "The repository contains a Python-free Kofun-written compiler seed. It is not fully self-hosting because Stage 1 cannot semantically compile its complete own source."
 }

@@ -2,20 +2,22 @@
 
 ## 1. Goals
 
-Kofunのmemory modelは、次を同時に満たすことを目標にする。
+Kofun's memory model aims to satisfy all of the following at once.
 
-- 普通のapplication codeではGC言語のように書ける
-- file、socket、lock、transaction、GPU bufferはdeterministicに解放できる
-- use-after-free、double free、data raceをsafe codeで防ぐ
-- 日常コードにlifetime parameterを書かない
-- compilerがunique valueを検出してin-place reuseできる
-- embedded、real-time、high-performance向けにno-GC profileへ進める
+- ordinary application code can be written as if in a GC language
+- files, sockets, locks, transactions, and GPU buffers can be released
+  deterministically
+- use-after-free, double free, and data races are prevented in safe code
+- no lifetime parameters are written in everyday code
+- the compiler can detect unique values and reuse them in place
+- a no-GC profile can be reached for embedded, real-time, and
+  high-performance use
 
 ## 2. Three memory domains
 
 ### 2.1 Copy values
 
-`Int`、`Float`、`Bool`、small tupleなどはcopy valueである。
+`Int`, `Float`, `Bool`, small tuples, and the like are copy values.
 
 ```kofun
 let a = 42
@@ -24,53 +26,58 @@ print(a)
 print(b)
 ```
 
-copyは明示的なheap allocationを必要としない。
+A copy does not require an explicit heap allocation.
 
 ### 2.2 Managed values
 
-`Text`、普通の`List[T]`、records、closures、graph dataなどはmanaged heapに置ける。
+`Text`, an ordinary `List[T]`, records, closures, graph data, and the like can
+live on the managed heap.
 
 ```kofun
 let names = ["A", "B", "C"]
 let alias = names
 ```
 
-通常のmanaged valueはGCによって回収する。言語表面ではimmutable-by-defaultなので、aliasがあってもdata raceやunexpected mutationを起こしにくい。
+Ordinary managed values are reclaimed by the GC. The language surface is
+immutable by default, so even with aliases, data races and unexpected mutation
+are unlikely.
 
-compilerは次を自由に最適化できる。
+The compiler is free to apply any of the following optimizations.
 
 - stack allocation
 - scalar replacement
 - arena allocation
 - reference counting
 - tracing GC
-- owned allocationへのpromotion
+- promotion to owned allocation
 - in-place reuse
 
-ただしobservable semanticsを変えてはならない。
+It must not change the observable semantics, however.
 
 ### 2.3 Owned resources
 
-external resourceまたはdeterministic cleanupが必要なvalueは`own`で束縛する。
+An external resource, or a value that needs deterministic cleanup, is bound
+with `own`.
 
 ```kofun
 let own file = File.open("data.csv")
 ```
 
-owned valueはaffineである。
+Owned values are affine.
 
-- 0回または1回consumeできる
-- 2回consumeできない
-- scope終了時に未消費なら自動dropされる
-- `take`後は元のbindingを使えない
+- can be consumed zero times or once
+- cannot be consumed twice
+- automatically dropped at end of scope if not consumed
+- the original binding cannot be used after `take`
 
-linearではなくaffineにする理由は、早期returnや未使用resourceでもscope cleanupが安全に処理できるためである。
+The reason for affine rather than linear is that scope cleanup can then safely
+handle early returns and unused resources.
 
 ## 3. Parameter modes
 
 ### 3.1 `read T`
 
-read-only、non-owning view。
+A read-only, non-owning view.
 
 ```kofun
 fn checksum(read bytes: Bytes) -> Int {
@@ -78,16 +85,16 @@ fn checksum(read bytes: Bytes) -> Int {
 }
 ```
 
-性質:
+Properties:
 
-- 複数の`read` viewを同時に持てる
-- 元valueをconsumeしない
-- viewはv1では関数外へescapeできない
-- compilerがlifetimeをlexical scopeから推論する
+- multiple `read` views can be held at the same time
+- does not consume the original value
+- in v1, a view cannot escape the function
+- the compiler infers the lifetime from the lexical scope
 
 ### 3.2 `edit T`
 
-exclusive mutable view。
+An exclusive mutable view.
 
 ```kofun
 fn normalize(edit values: Array[Float]) {
@@ -95,16 +102,16 @@ fn normalize(edit values: Array[Float]) {
 }
 ```
 
-性質:
+Properties:
 
-- 同じ期間に別の`read`または`edit` viewを作れない
-- 元valueをconsumeしない
-- v1ではnon-escaping
-- mutationはeffectとして記録される
+- no other `read` or `edit` view can be created for the same period
+- does not consume the original value
+- non-escaping in v1
+- the mutation is recorded as an effect
 
 ### 3.3 `take T`
 
-ownership transfer。
+Ownership transfer.
 
 ```kofun
 fn send(take socket: Socket, read payload: Bytes) {
@@ -112,7 +119,7 @@ fn send(take socket: Socket, read payload: Bytes) {
 }
 ```
 
-call site:
+Call site:
 
 ```kofun
 let own socket = Socket.connect(address)
@@ -122,7 +129,11 @@ send(socket, payload)
 print(socket.peer())
 ```
 
-`take`をcall siteにも書かせるかはUX testで決める。初期案ではparameter declarationだけに置き、compiler diagnosticでownership transferを明示する。高度なreviewが必要なAPIでは`send(take socket, payload)`というcall-site annotationを許可する案もbacklogに含める。
+Whether `take` must also be written at the call site will be decided by UX
+testing. The initial proposal puts it only on the parameter declaration and
+makes the ownership transfer explicit through a compiler diagnostic. A proposal
+to allow the call-site annotation `send(take socket, payload)` for APIs that
+need close review is also in the backlog.
 
 ## 4. `let own`
 
@@ -130,7 +141,7 @@ print(socket.peer())
 let own file = File.open(path)
 ```
 
-このbindingには次の状態machineがある。
+This binding has the following state machine.
 
 ```text
 uninitialized
@@ -139,7 +150,7 @@ uninitialized
     -> dropped
 ```
 
-禁止transition:
+Forbidden transitions:
 
 ```text
 taken -> read
@@ -162,9 +173,11 @@ if should_send {
 }
 ```
 
-両branchでconsumeされるため、branch後は`sock`を使えない。
+Because it is consumed in both branches, `socket` cannot be used after the
+branch.
 
-片方だけconsumeする場合も、conservativeなv1 checkerではbranch後に使えない。
+Even when only one branch consumes it, the conservative v1 checker forbids use
+after the branch.
 
 ```kofun
 if should_send {
@@ -174,11 +187,13 @@ if should_send {
 # compile error in v1: socket may have been taken
 ```
 
-将来はstate refinementで、boolean conditionとresource stateを関連付けられるようにする。
+Later, state refinement will allow a boolean condition to be related to the
+resource state.
 
 ## 6. Loops
 
-outer owned valueをloop内でconsumeする場合、loopが0回または褢数回実行される可能性がある。
+When an outer owned value is consumed inside a loop, the loop may run zero
+times or multiple times.
 
 ```kofun
 let own socket = connect()
@@ -188,7 +203,7 @@ while condition {
 }
 ```
 
-安全な形:
+The safe form:
 
 ```kofun
 let mut pending: Socket? = connect()
@@ -200,11 +215,12 @@ while condition && pending != null {
 }
 ```
 
-より良いstate APIはADTとpattern matchingの実装後に提供する。
+A better state API will be provided once ADTs and pattern matching are
+implemented.
 
 ## 7. Closures
 
-closure captureは3種類に分類する。
+Closure capture is classified into 3 kinds.
 
 ```kofun
 fn make_reader(read data: Bytes) -> fn() -> Int
@@ -212,16 +228,17 @@ fn make_editor(edit data: Buffer) -> fn() -> Void
 fn make_owner(take data: Resource) -> fn() -> Void
 ```
 
-v1 rule:
+v1 rules:
 
-- `read` / `edit` captureはescaping closureに入れられない
-- escaping closureはmanaged valueまたはtaken owned valueのみcaptureできる
-- async taskへ渡す値は`Send`相当のauto traitを満たす
-- thread間共有値は`Share`相当を満たす
+- a `read` / `edit` capture cannot go into an escaping closure
+- an escaping closure can only capture managed values or taken owned values
+- values passed to an async task satisfy a `Send`-equivalent auto trait
+- values shared between threads satisfy a `Share` equivalent
 
 ## 8. GC design
 
-production runtimeのdefaultはgenerational precise tracing GCを想定する。
+The production runtime is expected to default to a generational precise
+tracing GC.
 
 ### Nursery
 
@@ -232,7 +249,7 @@ production runtimeのdefaultはgenerational precise tracing GCを想定する。
 
 ### Old generation
 
-- compactingまたはregion-based collector
+- compacting or region-based collector
 - large object space
 - optional concurrent marking
 - pinned object support
@@ -241,7 +258,7 @@ production runtimeのdefaultはgenerational precise tracing GCを想定する。
 
 - safepoint insertion
 - exact root map
-- write barrier insertionとelimination
+- write barrier insertion and elimination
 - escape analysis
 - object layout metadata
 - ownership-based allocation avoidance
@@ -255,41 +272,45 @@ KOFUN_GC_PAUSE_TARGET_MS
 KOFUN_GC_LOG
 ```
 
-名称は未確定であり、production APIではmanifestとCLI configに統合する。
+The names are not final; in the production API they will be integrated into
+the manifest and CLI config.
 
 ## 9. Owned-to-managed conversion
 
-長く共有したいresource wrapperは明示的に`share`する。
+A resource wrapper meant to be shared for a long time is explicitly `share`d.
 
 ```kofun
 let own client = Client.connect(endpoint)
 let shared = share(client)
 ```
 
-`share`後:
+After `share`:
 
-- original owned bindingはtaken
-- shared handleはGCまたはatomic reference countingで管理できる
-- deterministic closeが必要なら`Shared[Client]`のprotocolに従う
-- finalizerだけにcorrectnessを依存させない
+- the original owned binding is taken
+- the shared handle can be managed by the GC or by atomic reference counting
+- if a deterministic close is needed, follow the `Shared[Client]` protocol
+- do not make correctness depend on finalizers alone
 
 ## 10. Finalizers
 
-GC finalizerはlast-resort cleanupであり、normal resource protocolでは使わない。
+A GC finalizer is last-resort cleanup and is not used in the normal resource
+protocol.
 
-禁止する設計:
+Designs that are forbidden:
 
-- transaction commitをfinalizerに任せる
-- lock releaseのtimingをfinalizerに任せる
-- file flushのcorrectnessをfinalizerに任せる
+- leaving a transaction commit to a finalizer
+- leaving lock release timing to a finalizer
+- leaving the correctness of a file flush to a finalizer
 
-resourceはscope cleanup、`take`、`with`相当のresource scopeで処理する。
+Resources are handled by scope cleanup, `take`, or a `with`-equivalent
+resource scope.
 
 ## 11. Unsafe boundary
 
-safe language coreから外れる操作は、通常moduleと分離する。
+Operations that fall outside the safe language core are separated from ordinary
+modules.
 
-予定例:
+Planned example:
 
 ```kofun
 import trusted.memory
@@ -297,24 +318,27 @@ import trusted.memory
 trusted fn from_raw_pointer[T](ptr: Ptr[T], len: Int) -> Slice[T]
 ```
 
-原則:
+Principles:
 
-- `unsafe`を短いescape hatchとしてばらまかない
-- trusted moduleがpreconditionとpostconditionを型・contractで公開する
-- linterがtrusted surface areaを計測する
-- package metadataにunsafe capabilityを記録する
+- do not scatter `unsafe` around as a short escape hatch
+- a trusted module exposes its preconditions and postconditions through types
+  and contracts
+- a linter measures the trusted surface area
+- unsafe capabilities are recorded in the package metadata
 
-keyword名は`trusted`を候補とし、最終決定はRFCで行う。
+`trusted` is the candidate keyword name; the final decision will be made by
+RFC.
 
 ## 12. Stage 0 implementation
 
-現在のprototypeでは:
+In the current prototype:
 
-- ordinary valuesはPython runtimeのGC上にある
-- `let own`をtype checkerとruntime bindingが追跡する
-- `take` statementと`take` parameterを実装している
-- use-after-takeをE330で検出する
-- scope終了時に`close()`を持つowned valueを自動disposeする
-- borrow lifetime、alias graph、async captureは未実装
+- ordinary heap values will use the Kofun runtime's tracing GC
+- the type checker and runtime binding track `let own`
+- the `take` statement and `take` parameters are implemented
+- use-after-take is detected as E330
+- owned values with a `close()` are automatically disposed at end of scope
+- borrow lifetimes, alias graphs, and async capture are not implemented
 
-Stage 0はsyntaxとdiagnostic UXの検証用であり、production memory safety proofではない。
+Stage 0 exists to validate the syntax and diagnostic UX. It is not a production
+memory safety proof.

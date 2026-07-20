@@ -2,25 +2,25 @@
 
 ## Goals
 
-- Lispのquote/unquoteの楽しさ
-- Perlのpragmatic code generation
-- Rust derive macroの実用性
-- TypeScript compiler APIのtype-aware tooling
-- build reproducibilityとsecurity
+- the fun of Lisp quote/unquote
+- Perl's pragmatic code generation
+- the practicality of Rust derive macros
+- the type-aware tooling of the TypeScript compiler API
+- build reproducibility and security
 
 ## Non-goals
 
 - textual substitution
 - unrestricted compiler-process execution
 - order-dependent global mutation
-- source locationの消失
-- macro expansionでtype safetyを迂回すること
+- loss of source locations
+- bypassing type safety through macro expansion
 
 ## Levels
 
 ### Token macros
 
-small syntax abstraction向け。
+For small syntax abstractions.
 
 ```kofun
 macro assert_close(actual, expected, tolerance) {
@@ -30,7 +30,7 @@ macro assert_close(actual, expected, tolerance) {
 
 ### Typed AST macros
 
-declarationやexpressionをtyped nodeとして操作する。
+Operate on declarations and expressions as typed nodes.
 
 ```kofun
 meta fn derive_show(info: TypeInfo) -> Decl {
@@ -46,7 +46,7 @@ meta fn derive_show(info: TypeInfo) -> Decl {
 
 ### Compile-time functions
 
-pure、deterministic、boundedな計算。
+Pure, deterministic, bounded computation.
 
 ```kofun
 const table = meta generate_lookup_table(256)
@@ -54,14 +54,14 @@ const table = meta generate_lookup_table(256)
 
 ## Hygiene
 
-- generated identifierはmacro scopeに属する
-- caller bindingをcaptureする場合は明示APIを使う
-- generated and call-site spanを両方保持する
-- diagnosticsはexpansion stackを表示する
+- a generated identifier belongs to the macro scope
+- capturing a caller binding requires an explicit API
+- both the generated span and the call-site span are retained
+- diagnostics show the expansion stack
 
 ## Staging
 
-概念phase:
+Conceptual phases:
 
 ```text
 parse
@@ -73,11 +73,11 @@ parse
 -> lowering
 ```
 
-phase cycleを禁止し、dependency graphをdeterministicにする。
+Phase cycles are forbidden, which keeps the dependency graph deterministic.
 
 ## Sandboxing
 
-macro default capability:
+Default macro capabilities:
 
 ```text
 no network
@@ -89,18 +89,18 @@ bounded memory
 bounded instructions
 ```
 
-必要なinputはmanifestで宣言する。
+Required inputs are declared in the manifest.
 
 ```toml
 [meta.inputs]
 files = ["schema/*.json"]
 ```
 
-compilerはinput content hashをbuild cache keyに含める。
+The compiler includes the input content hash in the build cache key.
 
 ## Reflection
 
-exposeする情報:
+Information exposed:
 
 - type name
 - fields and constructors
@@ -110,16 +110,16 @@ exposeする情報:
 - source span
 - trait implementations where stable
 
-private bodyやarbitrary compiler internalsはstable APIにしない。
+Private bodies and arbitrary compiler internals are not part of the stable API.
 
 ## Expansion inspection
 
 ```bash
-kofun expand src/main.kf
-kofun expand --macro derive_json src/model.kf
+kofun expand src/main.kofun
+kofun expand --macro derive_json src/model.kofun
 ```
 
-outputにはgenerated source、source mapping、type informationを含める。
+The output includes generated source, source mapping, and type information.
 
 ## Macro testing
 
@@ -130,11 +130,11 @@ meta test "derive JSON" {
 }
 ```
 
-compiler conformance suiteではhygiene、determinism、resource limit、error spanを検査する。
+The compiler conformance suite checks hygiene, determinism, resource limits, and error spans.
 
 ## Compatibility
 
-macro APIはcompiler internal ASTを直接公開しない。versioned public meta IRを介する。
+The macro API does not expose the compiler's internal AST directly. It goes through a versioned public meta IR.
 
 - stable schema
 - capability declaration
@@ -144,4 +144,4 @@ macro APIはcompiler internal ASTを直接公開しない。versioned public met
 
 ## Stage 0
 
-未実装。parserは`meta fn` declaration flagだけ保持できる。実行、quote/unquote、hygiene、sandboxはbacklog対象。
+Unimplemented. The parser can hold nothing more than a `meta fn` declaration flag. Execution, quote/unquote, hygiene, and sandboxing are all backlog items.

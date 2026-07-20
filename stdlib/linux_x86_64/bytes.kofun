@@ -1,0 +1,39 @@
+import stdlib.linux_x86_64.abi
+
+type ByteError =
+    | NegativeLength(Int)
+    | ByteOutOfBounds(Int)
+    | InvalidByte(Int)
+
+fn bytes_zeroed(length: Int) -> Result[Bytes, ByteError] {
+    if length < 0 {
+        return Err(NegativeLength(length))
+    }
+    return Ok(abi_bytes_zeroed(length))
+}
+
+fn bytes_from_utf8(read value: Text) -> Bytes {
+    return abi_text_utf8_bytes(value)
+}
+
+fn bytes_same(read left: Bytes, read right: Bytes) -> Bool {
+    return abi_bytes_equal(left, right)
+}
+
+fn byte_at(read value: Bytes, offset: Int) -> Result[Int, ByteError] {
+    if offset < 0 || offset >= len(value) {
+        return Err(ByteOutOfBounds(offset))
+    }
+    return Ok(abi_load_u8(value, offset))
+}
+
+fn byte_set(edit value: Bytes, offset: Int, item: Int) -> Result[Void, ByteError] {
+    if offset < 0 || offset >= len(value) {
+        return Err(ByteOutOfBounds(offset))
+    }
+    if item < 0 || item > 255 {
+        return Err(InvalidByte(item))
+    }
+    abi_store_u8(value, offset, item)
+    return Ok(())
+}
