@@ -1,4 +1,4 @@
-.PHONY: help compiler test check bootstrap stage2 native stdlib roadmap syntax repository-check verify clean
+.PHONY: help compiler test check bootstrap stage2 native stdlib build-system roadmap syntax repository-check verify clean
 
 KOFUN := ./bin/kofun
 
@@ -11,6 +11,7 @@ help:
 	  'make stage2           Verify the Stage 2 semantic frontend checkpoint' \
 	  'make native           Build and execute the Kofun-emitted ELF64 fixture' \
 	  'make stdlib           Verify the Kofun syscall/stdlib contracts' \
+	  'make build-system     Verify direct and Frost-integrated build paths' \
 	  'make roadmap          Verify the executable issues 31-34 roadmap' \
 	  'make syntax           Verify syntax contracts for issues 35-60' \
 	  'make repository-check Require .kofun sources and the Kofun toolchain' \
@@ -38,6 +39,9 @@ native:
 stdlib:
 	sh stdlib/tests/verify.sh
 
+build-system:
+	sh tests/build_system.sh
+
 roadmap:
 	sh spec/roadmap-31-34/verify-current-gates.sh
 
@@ -54,14 +58,16 @@ repository-check:
 	@grep -q '"extensions": \[".kofun"\]' editor/vscode/package.json
 	@printf '%s\n' 'PASS: .kofun sources only; no Python implementation'
 
-verify: test check bootstrap stage2 native stdlib roadmap syntax repository-check
+verify: test check bootstrap stage2 native stdlib build-system roadmap syntax repository-check
 	@sh -n bin/kofun bootstrap/stage1/check.sh bootstrap/stage2/check.sh \
 	  bootstrap/native/check.sh bootstrap/native/emit-fixture.sh \
-	  stdlib/tests/verify.sh tests/cli.sh \
+	  stdlib/tests/verify.sh tests/cli.sh tests/build_system.sh \
 	  tests/conformance/run.sh tests/conformance/backends/c11-stage1.sh \
 	  spec/roadmap-31-34/verify-current-gates.sh \
 	  tests/conformance/syntax/issues_35_47/run.sh \
 	  tests/conformance/syntax/issues_48_60/run.sh
+	@$(CC) -std=c11 -fsyntax-only -Wall -Wextra -Werror \
+	  tests/process_cpu_time.c
 	@git diff --check
 
 clean:

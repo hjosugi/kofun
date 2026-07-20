@@ -60,6 +60,19 @@ Python is not required or used.
 ./build/answer
 ```
 
+Single-file build is always the direct path: it does not inspect a manifest,
+look up an incremental cache, contact a daemon, or require frost-build. In a
+directory containing `kofun.toml`, the argument-free form upgrades the same
+command to the frost-build incremental engine:
+
+```sh
+cd examples/project
+kofun build
+```
+
+See `docs/BUILD_SYSTEM.md` for the manifest contract, artifacts, and the
+compiler-internal latency gate.
+
 Generated C11 can be inspected with:
 
 ```sh
@@ -77,6 +90,7 @@ make verify
 ```text
 kofun build INPUT.kofun [-o OUTPUT] [--emit-c OUTPUT.c]
             [--target x86_64-linux|aarch64-linux] [-g]
+kofun build [TARGET...] [FROST_OPTIONS]  # with ./kofun.toml
 kofun run INPUT.kofun
 kofun check INPUT.kofun
 kofun test [PATH]

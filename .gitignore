@@ -1,6 +1,7 @@
 # Build output
 build/
 .tmp-*
+.kofun/
 
 # Editors
 .vscode/

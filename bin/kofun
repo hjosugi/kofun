@@ -15,6 +15,7 @@ usage() {
 usage:
   kofun build INPUT.kofun [-o OUTPUT] [--emit-c OUTPUT.c]
               [--target x86_64-linux|aarch64-linux] [-g]
+  kofun build [TARGET...] [FROST_OPTIONS]  # with ./kofun.toml
   kofun run INPUT.kofun
   kofun check INPUT.kofun
   kofun test [PATH]
@@ -41,6 +42,108 @@ ensure_native_compiler() {
             "$NATIVE_SEED_C" -o "$NATIVE_COMPILER"
     fi
 }
+
+resolve_frost() {
+    if test -n "${KOFUN_FROST-}"; then
+        test -x "$KOFUN_FROST" || {
+            printf '%s\n' \
+                "kofun: KOFUN_FROST is not executable: $KOFUN_FROST" >&2
+            exit 2
+        }
+        printf '%s\n' "$KOFUN_FROST"
+        return
+    fi
+    if command -v frost >/dev/null 2>&1; then
+        command -v frost
+        return
+    fi
+    printf '%s\n' \
+        "kofun: kofun.toml requires the frost-build engine; set KOFUN_FROST or install frost" >&2
+    exit 2
+}
+
+prepare_frost_workspace() {
+    project_root=$1
+    engine_root=$2
+    manifest=$project_root/kofun.toml
+
+    test ! -L "$project_root/.kofun" &&
+        test ! -L "$engine_root" || {
+        printf '%s\n' \
+            "kofun: refusing a symlinked .kofun build directory" >&2
+        exit 2
+    }
+    mkdir -p "$engine_root"
+    if test ! -f "$engine_root/frost.toml" ||
+       ! cmp -s "$manifest" "$engine_root/frost.toml"
+    then
+        temporary_manifest="$engine_root/frost.toml.tmp.$$"
+        trap 'rm -f "$temporary_manifest"' 0 1 2 15
+        cp "$manifest" "$temporary_manifest"
+        mv "$temporary_manifest" "$engine_root/frost.toml"
+        trap - 0 1 2 15
+    fi
+
+    for mirrored in \
+        "$engine_root"/* \
+        "$engine_root"/.[!.]* \
+        "$engine_root"/..?*
+    do
+        test -e "$mirrored" || test -L "$mirrored" || continue
+        name=${mirrored##*/}
+        case $name in
+            .|..|.frost|frost.toml) continue ;;
+        esac
+        if test -L "$mirrored"; then
+            test -e "$mirrored" || rm -f "$mirrored"
+        else
+            printf '%s\n' \
+                "kofun: unexpected generated workspace entry: $mirrored" >&2
+            exit 2
+        fi
+    done
+
+    for entry in \
+        "$project_root"/* \
+        "$project_root"/.[!.]* \
+        "$project_root"/..?*
+    do
+        test -e "$entry" || test -L "$entry" || continue
+        name=${entry##*/}
+        case $name in
+            .|..|.git|.frost|.kofun|frost.toml|kofun.toml) continue ;;
+        esac
+        mirrored=$engine_root/$name
+        if test -L "$mirrored"; then
+            test "$(readlink "$mirrored")" = "$entry" || {
+                printf '%s\n' \
+                    "kofun: stale project mirror: $mirrored" >&2
+                exit 2
+            }
+        elif test -e "$mirrored"; then
+            printf '%s\n' \
+                "kofun: project mirror conflicts with: $mirrored" >&2
+            exit 2
+        else
+            ln -s "$entry" "$mirrored"
+        fi
+    done
+}
+
+build_project() (
+    project_root=$(pwd -P)
+    manifest=$project_root/kofun.toml
+    test -f "$manifest" || {
+        printf '%s\n' \
+            "kofun: project build requires ./kofun.toml" >&2
+        exit 2
+    }
+    frost=$(resolve_frost)
+    engine_root=$project_root/.kofun/frost-workspace
+    prepare_frost_workspace "$project_root" "$engine_root"
+    PATH="$ROOT/bin${PATH:+:$PATH}" \
+        "$frost" -C "$engine_root" build "$@"
+)
 
 require_source() {
     case ${1-} in
@@ -107,6 +210,20 @@ case ${1-} in
         ;;
     build)
         shift
+        case ${1-} in
+            *.kofun) ;;
+            *)
+                if test -f ./kofun.toml; then
+                    build_project "$@"
+                    exit $?
+                fi
+                test "$#" -gt 0 || {
+                    printf '%s\n' \
+                        "kofun: build needs INPUT.kofun or ./kofun.toml" >&2
+                    exit 2
+                }
+                ;;
+        esac
         input=${1-}
         test "$#" -gt 0 && shift
         require_source "$input"

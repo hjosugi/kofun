@@ -1,13 +1,16 @@
-# A Kofun workspace. `kofun build` needs no other tool installed:
-# no C compiler, no linker, no external build system.
+# A Kofun workspace. Run `kofun build` here to use frost-build's incremental
+# engine. A standalone `kofun build main.kofun` never enters this path.
 [workspace]
 name = "demo"
 default_targets = ["app", "bench"]
 
+[toolchain]
+kofunc = "kofun"
+
 [target.app]
-kind = "binary"
+kind = "kofun_binary"
 srcs = ["src/main.kofun"]
 
 [target.bench]
-kind = "binary"
+kind = "kofun_binary"
 srcs = ["src/bench.kofun"]

@@ -1,11 +1,3 @@
-fn square(n: Int) -> Int {
-    return n * n
-}
-
 fn main() {
-    let mut total = 0
-    for i in 0 .. 10 {
-        total = total + square(i)
-    }
-    print(total)
+    print(9 * 9)
 }
