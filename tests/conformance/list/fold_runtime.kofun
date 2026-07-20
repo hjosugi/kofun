@@ -1,0 +1,5 @@
+# expect: 41
+fn main() {
+    let values = [10, 20, 3]
+    print(fold(values, 8, fn(total: Int, value: Int) => total + value))
+}

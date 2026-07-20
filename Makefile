@@ -24,6 +24,7 @@ compiler:
 test: compiler
 	sh tests/cli.sh
 	$(KOFUN) test tests/conformance/numeric
+	$(KOFUN) test tests/conformance/list
 	$(KOFUN) test tests/conformance/text
 
 check: compiler

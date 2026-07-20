@@ -1,0 +1,5 @@
+# expect: 42
+fn main() {
+    let values = [10, 42, 99]
+    print(values[-2])
+}

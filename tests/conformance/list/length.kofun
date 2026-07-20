@@ -1,0 +1,5 @@
+# expect: 42
+fn main() {
+    let values = [7, 8, 9]
+    print(len(values) + 39)
+}

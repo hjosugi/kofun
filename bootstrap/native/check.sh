@@ -527,67 +527,117 @@ run_native_core_differential \
     "$NATIVE/fixtures/core_precedence_42.kofun" \
     core_precedence_42
 
-# List[Int] is currently an x86-64 Native Core extension. Its in-memory ABI is
-# checked against an independent C11 reference, then the actual static ELF
-# exercises length, negative indexing, bounds failure, and mmap failure.
+# List[Int] is currently an x86-64 Native Core extension. An independent C11
+# executable is the normative Python-free differential reference for
+# bindings, indexing, map, filter, fold, and their edge cases. Every Kofun case
+# below is compiled to and executed as a static ELF.
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
     "$NATIVE/fixtures/list_int_reference.c" \
     -o "$WORK/core-list-reference"
-"$KOFUN" build "$NATIVE/fixtures/core_list_index_42.kofun" \
-    --target x86_64-linux \
-    -o "$WORK/core-list-index-x86_64.elf" >/dev/null
-"$KOFUN" build "$NATIVE/fixtures/core_list_positive_42.kofun" \
-    --target x86_64-linux \
-    -o "$WORK/core-list-positive-x86_64.elf" >/dev/null
-"$KOFUN" build "$NATIVE/fixtures/core_list_len_42.kofun" \
-    --target x86_64-linux \
-    -o "$WORK/core-list-len-x86_64.elf" >/dev/null
-"$KOFUN" build "$NATIVE/fixtures/core_list_oob.kofun" \
-    --target x86_64-linux \
-    -o "$WORK/core-list-oob-x86_64.elf" >/dev/null
+LIST_CORPUS="$ROOT/tests/conformance/list"
 
-"$WORK/core-list-reference" >"$WORK/core-list-reference.stdout"
-"$WORK/core-list-index-x86_64.elf" \
-    >"$WORK/core-list-index.stdout" \
-    2>"$WORK/core-list-index.stderr"
-cmp "$WORK/core-list-reference.stdout" "$WORK/core-list-index.stdout"
-test ! -s "$WORK/core-list-index.stderr"
+run_native_list_differential() {
+    source=$1
+    stem=$2
+    mode=$3
+    "$KOFUN" build "$source" \
+        --target x86_64-linux \
+        -o "$WORK/$stem-x86_64.elf" >/dev/null
+    "$WORK/core-list-reference" "$mode" \
+        >"$WORK/$stem-reference.stdout"
+    "$WORK/$stem-x86_64.elf" \
+        >"$WORK/$stem.stdout" \
+        2>"$WORK/$stem.stderr"
+    cmp "$WORK/$stem-reference.stdout" "$WORK/$stem.stdout"
+    test ! -s "$WORK/$stem.stderr"
+}
 
-"$WORK/core-list-positive-x86_64.elf" \
-    >"$WORK/core-list-positive.stdout" \
-    2>"$WORK/core-list-positive.stderr"
-cmp "$WORK/core-list-reference.stdout" "$WORK/core-list-positive.stdout"
-test ! -s "$WORK/core-list-positive.stderr"
+run_native_list_differential \
+    "$NATIVE/fixtures/core_list_index_42.kofun" \
+    core-list-index \
+    index-negative
+run_native_list_differential \
+    "$NATIVE/fixtures/core_list_positive_42.kofun" \
+    core-list-positive \
+    binding
+run_native_list_differential \
+    "$NATIVE/fixtures/core_list_len_42.kofun" \
+    core-list-len \
+    length
+run_native_list_differential \
+    "$LIST_CORPUS/binding_index.kofun" \
+    core-list-binding \
+    binding
+run_native_list_differential \
+    "$LIST_CORPUS/map_runtime.kofun" \
+    core-list-map \
+    map
+run_native_list_differential \
+    "$LIST_CORPUS/filter_runtime.kofun" \
+    core-list-filter \
+    filter
+run_native_list_differential \
+    "$LIST_CORPUS/fold_runtime.kofun" \
+    core-list-fold \
+    fold
+run_native_list_differential \
+    "$LIST_CORPUS/pipeline_runtime.kofun" \
+    core-list-pipeline \
+    pipeline
+run_native_list_differential \
+    "$LIST_CORPUS/empty_map.kofun" \
+    core-list-empty-map \
+    empty-map
+run_native_list_differential \
+    "$LIST_CORPUS/empty_filter.kofun" \
+    core-list-empty-filter \
+    empty-filter
+run_native_list_differential \
+    "$LIST_CORPUS/empty_fold.kofun" \
+    core-list-empty-fold \
+    empty-fold
+run_native_list_differential \
+    "$LIST_CORPUS/filter_all_false.kofun" \
+    core-list-all-false \
+    all-false
+run_native_list_differential \
+    "$LIST_CORPUS/filter_negative_values.kofun" \
+    core-list-negative-predicate \
+    negative-predicate
+"$KOFUN" build "$LIST_CORPUS/index_out_of_range.kofun" \
+    --target x86_64-linux \
+    -o "$WORK/core-list-variable-oob-x86_64.elf" >/dev/null
 
-"$WORK/core-list-len-x86_64.elf" \
-    >"$WORK/core-list-len.stdout" \
-    2>"$WORK/core-list-len.stderr"
-cmp "$WORK/core-list-reference.stdout" "$WORK/core-list-len.stdout"
-test ! -s "$WORK/core-list-len.stderr"
+# At 2560 KiB the source and map output allocations both succeed. The chained
+# filter/map/fold case needs a third 1 MiB mmap and must take the exact OOM
+# path. This proves the failure is observed during real multi-allocation
+# higher-order execution rather than only while materializing a source literal.
+(
+    ulimit -v 2560
+    exec "$WORK/core-list-map-x86_64.elf"
+) >"$WORK/core-list-two-allocations.stdout" \
+    2>"$WORK/core-list-two-allocations.stderr"
+cmp \
+    "$WORK/core-list-map-reference.stdout" \
+    "$WORK/core-list-two-allocations.stdout"
+test ! -s "$WORK/core-list-two-allocations.stderr"
 
 set +e
-"$WORK/core-list-oob-x86_64.elf" \
+"$WORK/core-list-variable-oob-x86_64.elf" \
     >"$WORK/core-list-oob.stdout" \
     2>"$WORK/core-list-oob.stderr"
 list_oob_status=$?
 (
-    ulimit -v 512
-    exec "$WORK/core-list-index-x86_64.elf"
+    ulimit -v 2560
+    exec "$WORK/core-list-pipeline-x86_64.elf"
 ) >"$WORK/core-list-oom.stdout" 2>"$WORK/core-list-oom.stderr"
 list_oom_status=$?
-"$KOFUN" build "$NATIVE/fixtures/core_list_index_42.kofun" \
+"$KOFUN" build "$LIST_CORPUS/binding_index.kofun" \
     --target aarch64-linux \
-    -o "$WORK/core-list-index-aarch64.elf" \
-    >"$WORK/core-list-index-aarch64.stdout" \
-    2>"$WORK/core-list-index-aarch64.stderr"
+    -o "$WORK/core-list-binding-aarch64.elf" \
+    >"$WORK/core-list-binding-aarch64.stdout" \
+    2>"$WORK/core-list-binding-aarch64.stderr"
 list_aarch64_status=$?
-"$KOFUN" build \
-    "$NATIVE/fixtures/core_list_higher_order_unsupported.kofun" \
-    --target x86_64-linux \
-    -o "$WORK/core-list-higher-order.elf" \
-    >"$WORK/core-list-higher-order.stdout" \
-    2>"$WORK/core-list-higher-order.stderr"
-list_higher_order_status=$?
 set -e
 
 test "$list_oob_status" -eq 1
@@ -600,12 +650,9 @@ test ! -s "$WORK/core-list-oom.stdout"
 printf 'kofun: out of memory\n' >"$WORK/core-list-oom.expected"
 cmp "$WORK/core-list-oom.expected" "$WORK/core-list-oom.stderr"
 test "$list_aarch64_status" -eq 1
-test ! -e "$WORK/core-list-index-aarch64.elf"
+test ! -e "$WORK/core-list-binding-aarch64.elf"
 grep 'AArch64 native Core does not support List\[Int\] yet' \
-    "$WORK/core-list-index-aarch64.stderr" >/dev/null
-test "$list_higher_order_status" -eq 1
-test ! -e "$WORK/core-list-higher-order.elf"
-grep 'unsupported Core' "$WORK/core-list-higher-order.stderr" >/dev/null
+    "$WORK/core-list-binding-aarch64.stderr" >/dev/null
 
 # Text uses `[byte length: i64][UTF-8 bytes]`. Each generated static ELF is
 # compared with an independent C11 codepoint scanner, including multi-byte
@@ -772,5 +819,5 @@ printf '%s\n' \
     "PASS: general Native Core release stayed byte-identical and 4099 bytes" \
     "PASS: --target aarch64-linux emitted deterministic static EM_AARCH64 ELF" \
     "PASS: x86-64 and AArch64 consume one target-independent parsed Core" \
-    "PASS: x86-64 List[Int] matched C11 and defined OOB/OOM diagnostics" \
+    "PASS: x86-64 List bindings/map/filter/fold matched C11 with OOB/OOM contracts" \
     "PASS: x86-64 Text matched C11 UTF-8 codepoint and failure semantics"

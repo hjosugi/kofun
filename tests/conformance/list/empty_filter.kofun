@@ -1,0 +1,5 @@
+# expect: 61
+fn main() {
+    let filtered = filter([], fn(value: Int) => value > 0)
+    print(len(filtered) + 61)
+}

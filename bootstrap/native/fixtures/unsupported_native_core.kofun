@@ -1,4 +1,4 @@
-# Bindings are outside Native Core v1 and must fail before an ELF is written.
+# AArch64 local bindings must fail before an ELF is written.
 
 fn main() {
     let answer = 42

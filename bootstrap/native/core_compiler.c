@@ -169,12 +169,24 @@ typedef enum {
     NODE_TEXT_CONCAT,
     NODE_TEXT_EQUAL,
     NODE_TEXT_NOT_EQUAL,
+    NODE_INT_EQUAL,
+    NODE_INT_NOT_EQUAL,
+    NODE_INT_LESS,
+    NODE_INT_LESS_EQUAL,
+    NODE_INT_GREATER,
+    NODE_INT_GREATER_EQUAL,
     NODE_MULTIPLY,
     NODE_NEGATE,
+    NODE_VARIABLE,
+    NODE_PARAMETER,
+    NODE_LET,
     NODE_LIST,
     NODE_CHARS,
     NODE_INDEX,
     NODE_LENGTH,
+    NODE_MAP,
+    NODE_FILTER,
+    NODE_FOLD,
 } NodeKind;
 
 typedef enum {
@@ -198,9 +210,25 @@ struct Node {
     size_t source_line;
     Node *left;
     Node *right;
+    Node *third;
     Node **items;
     size_t item_count;
+    size_t slot;
 };
+
+enum {
+    MAX_CORE_BINDINGS = 64,
+    MAX_CORE_NAME = 64,
+};
+
+typedef struct {
+    char name[MAX_CORE_NAME];
+    ValueKind value_kind;
+    ValueKind element_kind;
+    size_t item_count;
+    size_t slot;
+    bool parameter;
+} Binding;
 
 typedef struct {
     const char *source;
@@ -208,6 +236,10 @@ typedef struct {
     const char *error;
     size_t main_line;
     size_t print_line;
+    Binding bindings[MAX_CORE_BINDINGS + 2];
+    size_t binding_count;
+    size_t local_count;
+    size_t max_lambda_parameters;
 } Parser;
 
 static size_t source_line(const char *source, size_t offset) {
@@ -278,12 +310,15 @@ static Node *node(
     result->source_line = line;
     result->left = left;
     result->right = right;
+    result->third = NULL;
     result->items = NULL;
     result->item_count = 0;
+    result->slot = 0;
     return result;
 }
 
 static Node *parse_expression(Parser *parser);
+static void free_node(Node *expression);
 
 static size_t utf8_width(const uint8_t *bytes, size_t remaining) {
     if (remaining == 0) return 0;
@@ -414,6 +449,217 @@ static Node *parse_text_literal(Parser *parser, size_t literal_at) {
     return result;
 }
 
+static bool identifier_start(char value) {
+    return isalpha((unsigned char)value) || value == '_';
+}
+
+static bool parse_identifier(
+    Parser *parser,
+    char name[MAX_CORE_NAME]
+) {
+    skip_trivia(parser);
+    if (!identifier_start(parser->source[parser->cursor])) return false;
+    size_t start = parser->cursor++;
+    while (word_continue(parser->source[parser->cursor])) {
+        ++parser->cursor;
+    }
+    size_t length = parser->cursor - start;
+    if (length >= MAX_CORE_NAME) {
+        parse_error(parser, "native Core identifier is too long");
+        return false;
+    }
+    memcpy(name, parser->source + start, length);
+    name[length] = '\0';
+    return true;
+}
+
+static const Binding *find_binding(
+    const Parser *parser,
+    const char *name
+) {
+    for (size_t index = parser->binding_count; index > 0; --index) {
+        const Binding *binding = &parser->bindings[index - 1];
+        if (strcmp(binding->name, name) == 0) return binding;
+    }
+    return NULL;
+}
+
+static bool add_binding(
+    Parser *parser,
+    const char *name,
+    ValueKind value_kind,
+    ValueKind element_kind,
+    size_t item_count,
+    size_t slot,
+    bool parameter
+) {
+    if (parser->binding_count >= MAX_CORE_BINDINGS + 2) {
+        parse_error(parser, "native Core has too many bindings");
+        return false;
+    }
+    Binding *binding = &parser->bindings[parser->binding_count++];
+    memcpy(binding->name, name, strlen(name) + 1);
+    binding->value_kind = value_kind;
+    binding->element_kind = element_kind;
+    binding->item_count = item_count;
+    binding->slot = slot;
+    binding->parameter = parameter;
+    return true;
+}
+
+static Node *parse_lambda(Parser *parser, size_t parameter_count) {
+    if (!consume_word(parser, "fn") || !consume_char(parser, '(')) {
+        parse_error(parser, "expected native Core `fn(...) =>` lambda");
+        return NULL;
+    }
+    char names[2][MAX_CORE_NAME] = {{0}};
+    for (size_t index = 0; index < parameter_count; ++index) {
+        if (!parse_identifier(parser, names[index])) {
+            parse_error(parser, "expected lambda parameter name");
+            return NULL;
+        }
+        if (consume_char(parser, ':') &&
+            !consume_word(parser, "Int")) {
+            parse_error(parser, "native Core lambda parameters must be Int");
+            return NULL;
+        }
+        if (index + 1 < parameter_count && !consume_char(parser, ',')) {
+            parse_error(parser, "expected `,` between lambda parameters");
+            return NULL;
+        }
+    }
+    if (!consume_char(parser, ')')) {
+        parse_error(parser, "expected `)` after lambda parameters");
+        return NULL;
+    }
+    skip_trivia(parser);
+    if (parser->source[parser->cursor] != '=' ||
+        parser->source[parser->cursor + 1] != '>') {
+        parse_error(parser, "expected `=>` after lambda parameters");
+        return NULL;
+    }
+    parser->cursor += 2;
+
+    size_t outer_count = parser->binding_count;
+    if (parameter_count > parser->max_lambda_parameters) {
+        parser->max_lambda_parameters = parameter_count;
+    }
+    for (size_t index = 0; index < parameter_count; ++index) {
+        if (!add_binding(
+                parser,
+                names[index],
+                VALUE_INT,
+                VALUE_INT,
+                0,
+                parser->local_count + index,
+                true)) {
+            parser->binding_count = outer_count;
+            return NULL;
+        }
+    }
+    Node *body = parse_expression(parser);
+    parser->binding_count = outer_count;
+    return body;
+}
+
+static bool contains_higher_order(const Node *expression) {
+    if (expression == NULL) return false;
+    if (expression->kind == NODE_MAP ||
+        expression->kind == NODE_FILTER ||
+        expression->kind == NODE_FOLD) {
+        return true;
+    }
+    if (contains_higher_order(expression->left) ||
+        contains_higher_order(expression->right) ||
+        contains_higher_order(expression->third)) {
+        return true;
+    }
+    for (size_t index = 0;
+         expression->items != NULL && index < expression->item_count;
+         ++index) {
+        if (contains_higher_order(expression->items[index])) return true;
+    }
+    return false;
+}
+
+static Node *parse_higher_order(
+    Parser *parser,
+    NodeKind kind,
+    size_t call_at
+) {
+    if (!consume_char(parser, '(')) {
+        parse_error(parser, "expected `(` after List operation");
+        return NULL;
+    }
+    Node *list = parse_expression(parser);
+    if (!consume_char(parser, ',')) {
+        parse_error(parser, "expected `,` after List argument");
+        return list;
+    }
+    Node *initial = NULL;
+    size_t parameters = 1;
+    if (kind == NODE_FOLD) {
+        initial = parse_expression(parser);
+        if (!consume_char(parser, ',')) {
+            parse_error(parser, "expected `,` before fold lambda");
+            return list;
+        }
+        parameters = 2;
+    }
+    Node *lambda = parse_lambda(parser, parameters);
+    if (!consume_char(parser, ')')) {
+        parse_error(parser, "expected `)` after List operation");
+    }
+    if (list == NULL ||
+        list->value_kind != VALUE_LIST ||
+        list->element_kind != VALUE_INT) {
+        parse_error(parser, "native Core List operation requires List[Int]");
+        return list;
+    }
+    if (kind == NODE_FOLD &&
+        (initial == NULL || initial->value_kind != VALUE_INT)) {
+        parse_error(parser, "native Core fold initial value must be Int");
+        return list;
+    }
+    ValueKind expected =
+        kind == NODE_FILTER ? VALUE_BOOL : VALUE_INT;
+    if (lambda == NULL || lambda->value_kind != expected) {
+        parse_error(
+            parser,
+            kind == NODE_FILTER
+                ? "native Core filter lambda must return Bool"
+                : "native Core map/fold lambda must return Int"
+        );
+        return list;
+    }
+    if (contains_higher_order(lambda)) {
+        parse_error(
+            parser,
+            "native Core List lambdas cannot contain nested List operations"
+        );
+        return list;
+    }
+
+    Node *result = node(
+        kind,
+        kind == NODE_FOLD ? VALUE_INT : VALUE_LIST,
+        0,
+        false,
+        source_line(parser->source, call_at),
+        list,
+        kind == NODE_FOLD ? initial : lambda
+    );
+    result->slot = parser->local_count;
+    if (kind == NODE_FOLD) {
+        result->third = lambda;
+    } else {
+        result->element_kind = VALUE_INT;
+        result->item_count =
+            kind == NODE_MAP ? list->item_count : 0;
+    }
+    return result;
+}
+
 static Node *parse_atom(Parser *parser) {
     skip_trivia(parser);
     if (consume_char(parser, '(')) {
@@ -486,6 +732,33 @@ static Node *parse_atom(Parser *parser) {
         list->item_count = length;
         list->element_kind = element_kind;
         return list;
+    }
+
+    skip_trivia(parser);
+    if (consume_word(parser, "map")) {
+        return parse_higher_order(
+            parser,
+            NODE_MAP,
+            literal_at
+        );
+    }
+
+    skip_trivia(parser);
+    if (consume_word(parser, "filter")) {
+        return parse_higher_order(
+            parser,
+            NODE_FILTER,
+            literal_at
+        );
+    }
+
+    skip_trivia(parser);
+    if (consume_word(parser, "fold")) {
+        return parse_higher_order(
+            parser,
+            NODE_FOLD,
+            literal_at
+        );
     }
 
     skip_trivia(parser);
@@ -573,10 +846,34 @@ static Node *parse_atom(Parser *parser) {
     }
 
     skip_trivia(parser);
+    if (identifier_start(parser->source[parser->cursor])) {
+        char name[MAX_CORE_NAME];
+        if (!parse_identifier(parser, name)) return NULL;
+        const Binding *binding = find_binding(parser, name);
+        if (binding == NULL) {
+            parse_error(parser, "unknown native Core binding");
+            return NULL;
+        }
+        Node *variable = node(
+            binding->parameter ? NODE_PARAMETER : NODE_VARIABLE,
+            binding->value_kind,
+            0,
+            false,
+            source_line(parser->source, literal_at),
+            NULL,
+            NULL
+        );
+        variable->element_kind = binding->element_kind;
+        variable->item_count = binding->item_count;
+        variable->slot = binding->slot;
+        return variable;
+    }
+
+    skip_trivia(parser);
     if (!isdigit((unsigned char)parser->source[parser->cursor])) {
         parse_error(
             parser,
-            "expected integer, Text, List, `chars`, `len`, or `(`"
+            "expected integer, binding, Text, List, or Core call"
         );
         return NULL;
     }
@@ -632,7 +929,7 @@ static Node *parse_primary(Parser *parser) {
             value->value_kind == VALUE_TEXT
                 ? VALUE_TEXT
                 : value->element_kind;
-        bool known = index->value_known;
+        bool known = value->value_known && index->value_known;
         if (known) {
             int64_t wanted = index->value;
             if (wanted < 0) wanted += (int64_t)target_length;
@@ -842,40 +1139,67 @@ static Node *parse_expression(Parser *parser) {
     Node *left = parse_sum(parser);
     while (parser->error == NULL) {
         skip_trivia(parser);
-        NodeKind kind;
         size_t operator_at = parser->cursor;
-        if (parser->source[parser->cursor] == '=' &&
-            parser->source[parser->cursor + 1] == '=') {
-            kind = NODE_TEXT_EQUAL;
-        } else if (parser->source[parser->cursor] == '!' &&
-                   parser->source[parser->cursor + 1] == '=') {
-            kind = NODE_TEXT_NOT_EQUAL;
-        } else {
+        char first = parser->source[parser->cursor];
+        char second = parser->source[parser->cursor + 1];
+        bool equal = first == '=' && second == '=';
+        bool not_equal = first == '!' && second == '=';
+        bool less_equal = first == '<' && second == '=';
+        bool greater_equal = first == '>' && second == '=';
+        bool less = first == '<' && !less_equal;
+        bool greater = first == '>' && !greater_equal;
+        if (!equal && !not_equal && !less_equal &&
+            !greater_equal && !less && !greater) {
             break;
         }
-        parser->cursor += 2;
+        parser->cursor +=
+            equal || not_equal || less_equal || greater_equal ? 2 : 1;
         Node *right = parse_sum(parser);
         if (right == NULL) return left;
-        if (left->value_kind != VALUE_TEXT ||
-            right->value_kind != VALUE_TEXT) {
-            parse_error(parser, "native Core equality requires Text operands");
-            return left;
-        }
         bool known = left->value_known && right->value_known;
-        bool equal = false;
-        if (known) {
-            equal =
-                left->text_length == right->text_length &&
-                memcmp(
-                    left->text_value,
-                    right->text_value,
-                    left->text_length
-                ) == 0;
+        bool result = false;
+        NodeKind kind;
+        if (left->value_kind == VALUE_TEXT &&
+            right->value_kind == VALUE_TEXT &&
+            (equal || not_equal)) {
+            kind = equal ? NODE_TEXT_EQUAL : NODE_TEXT_NOT_EQUAL;
+            if (known) {
+                bool same =
+                    left->text_length == right->text_length &&
+                    memcmp(
+                        left->text_value,
+                        right->text_value,
+                        left->text_length
+                    ) == 0;
+                result = equal ? same : !same;
+            }
+        } else if (left->value_kind == VALUE_INT &&
+                   right->value_kind == VALUE_INT) {
+            if (equal) kind = NODE_INT_EQUAL;
+            else if (not_equal) kind = NODE_INT_NOT_EQUAL;
+            else if (less) kind = NODE_INT_LESS;
+            else if (less_equal) kind = NODE_INT_LESS_EQUAL;
+            else if (greater) kind = NODE_INT_GREATER;
+            else kind = NODE_INT_GREATER_EQUAL;
+            if (known) {
+                if (equal) result = left->value == right->value;
+                else if (not_equal) result = left->value != right->value;
+                else if (less) result = left->value < right->value;
+                else if (less_equal) result = left->value <= right->value;
+                else if (greater) result = left->value > right->value;
+                else result = left->value >= right->value;
+            }
+        } else {
+            parse_error(
+                parser,
+                "native Core comparison requires matching Int or Text"
+            );
+            return left;
         }
         left = node(
             kind,
             VALUE_BOOL,
-            kind == NODE_TEXT_EQUAL ? equal : !equal,
+            result,
             known,
             source_line(parser->source, operator_at),
             left,
@@ -886,6 +1210,8 @@ static Node *parse_expression(Parser *parser) {
 }
 
 static Node *parse_program(Parser *parser) {
+    Node *initializers[MAX_CORE_BINDINGS] = {0};
+    size_t let_count = 0;
     skip_trivia(parser);
     parser->main_line = source_line(parser->source, parser->cursor);
     if (!consume_word(parser, "fn") ||
@@ -900,6 +1226,49 @@ static Node *parse_program(Parser *parser) {
         return NULL;
     }
 
+    while (consume_word(parser, "let")) {
+        char name[MAX_CORE_NAME];
+        if (!parse_identifier(parser, name)) {
+            parse_error(parser, "expected binding name after `let`");
+            return NULL;
+        }
+        if (find_binding(parser, name) != NULL) {
+            parse_error(parser, "duplicate native Core binding");
+            return NULL;
+        }
+        if (!consume_char(parser, '=')) {
+            parse_error(parser, "expected `=` after binding name");
+            return NULL;
+        }
+        Node *initializer = parse_expression(parser);
+        if (initializer == NULL) return NULL;
+        if (initializer->value_kind != VALUE_INT &&
+            !(initializer->value_kind == VALUE_LIST &&
+              initializer->element_kind == VALUE_INT)) {
+            parse_error(
+                parser,
+                "native Core bindings currently require Int or List[Int]"
+            );
+            return initializer;
+        }
+        if (let_count >= MAX_CORE_BINDINGS) {
+            parse_error(parser, "native Core has too many let bindings");
+            return initializer;
+        }
+        size_t slot = parser->local_count++;
+        if (!add_binding(
+                parser,
+                name,
+                initializer->value_kind,
+                initializer->element_kind,
+                initializer->item_count,
+                slot,
+                false)) {
+            return initializer;
+        }
+        initializers[let_count++] = initializer;
+    }
+
     skip_trivia(parser);
     parser->print_line = source_line(parser->source, parser->cursor);
     if (!consume_word(parser, "print") || !consume_char(parser, '(')) {
@@ -907,6 +1276,9 @@ static Node *parse_program(Parser *parser) {
             parser,
             "native Core requires `fn main() { print(EXPRESSION) }`"
         );
+        for (size_t index = 0; index < let_count; ++index) {
+            free_node(initializers[index]);
+        }
         return NULL;
     }
 
@@ -936,13 +1308,37 @@ static Node *parse_program(Parser *parser) {
         (expression->value < 10 || expression->value > 99)) {
         parse_error(parser, "native Core print result must be 10..99");
     }
+    for (size_t index = let_count; index > 0; --index) {
+        Node *body = expression;
+        Node *let = node(
+            NODE_LET,
+            body == NULL ? VALUE_INT : body->value_kind,
+            body == NULL ? 0 : body->value,
+            body != NULL && body->value_known,
+            initializers[index - 1]->source_line,
+            initializers[index - 1],
+            body
+        );
+        let->element_kind =
+            body == NULL ? VALUE_INT : body->element_kind;
+        let->item_count = body == NULL ? 0 : body->item_count;
+        let->slot = index - 1;
+        expression = let;
+    }
     return expression;
 }
 
 static size_t register_depth(const Node *expression) {
     if (expression->kind == NODE_LITERAL ||
-        expression->kind == NODE_TEXT_LITERAL) {
+        expression->kind == NODE_TEXT_LITERAL ||
+        expression->kind == NODE_VARIABLE ||
+        expression->kind == NODE_PARAMETER) {
         return 1;
+    }
+    if (expression->kind == NODE_LET) {
+        size_t initializer = register_depth(expression->left);
+        size_t body = register_depth(expression->right);
+        return initializer > body ? initializer : body;
     }
     if (expression->kind == NODE_NEGATE ||
         expression->kind == NODE_LENGTH) {
@@ -970,7 +1366,10 @@ static void free_node(Node *expression) {
     if (expression == NULL) return;
     free_node(expression->left);
     free_node(expression->right);
-    for (size_t index = 0; index < expression->item_count; ++index) {
+    free_node(expression->third);
+    for (size_t index = 0;
+         expression->items != NULL && index < expression->item_count;
+         ++index) {
         free_node(expression->items[index]);
     }
     free(expression->text_value);
@@ -982,16 +1381,23 @@ static bool uses_list(const Node *expression) {
     if (expression == NULL) return false;
     if (expression->kind == NODE_LIST ||
         expression->kind == NODE_CHARS ||
+        expression->kind == NODE_MAP ||
+        expression->kind == NODE_FILTER ||
+        expression->kind == NODE_FOLD ||
         (expression->kind == NODE_INDEX &&
          expression->left->value_kind == VALUE_LIST) ||
         (expression->kind == NODE_LENGTH &&
          expression->left->value_kind == VALUE_LIST)) {
         return true;
     }
-    if (uses_list(expression->left) || uses_list(expression->right)) {
+    if (uses_list(expression->left) ||
+        uses_list(expression->right) ||
+        uses_list(expression->third)) {
         return true;
     }
-    for (size_t index = 0; index < expression->item_count; ++index) {
+    for (size_t index = 0;
+         expression->items != NULL && index < expression->item_count;
+         ++index) {
         if (uses_list(expression->items[index])) return true;
     }
     return false;
@@ -1007,11 +1413,35 @@ static bool uses_text(const Node *expression) {
          expression->left->value_kind == VALUE_TEXT)) {
         return true;
     }
-    if (uses_text(expression->left) || uses_text(expression->right)) {
+    if (uses_text(expression->left) ||
+        uses_text(expression->right) ||
+        uses_text(expression->third)) {
         return true;
     }
-    for (size_t index = 0; index < expression->item_count; ++index) {
+    for (size_t index = 0;
+         expression->items != NULL && index < expression->item_count;
+         ++index) {
         if (uses_text(expression->items[index])) return true;
+    }
+    return false;
+}
+
+static bool uses_local_bindings(const Node *expression) {
+    if (expression == NULL) return false;
+    if (expression->kind == NODE_LET ||
+        expression->kind == NODE_VARIABLE ||
+        expression->kind == NODE_PARAMETER) {
+        return true;
+    }
+    if (uses_local_bindings(expression->left) ||
+        uses_local_bindings(expression->right) ||
+        uses_local_bindings(expression->third)) {
+        return true;
+    }
+    for (size_t index = 0;
+         expression->items != NULL && index < expression->item_count;
+         ++index) {
+        if (uses_local_bindings(expression->items[index])) return true;
     }
     return false;
 }
@@ -1154,6 +1584,43 @@ static void x64_call_runtime(
     u32_le(text, 0);
 }
 
+static uint32_t x64_local_displacement(size_t slot) {
+    if (slot >= (size_t)INT32_MAX / sizeof(uint64_t)) {
+        fatal("native Core local frame is too large");
+    }
+    int32_t displacement =
+        -(int32_t)((slot + 1) * sizeof(uint64_t));
+    return (uint32_t)displacement;
+}
+
+static void x64_load_local(
+    Bytes *text,
+    size_t slot
+) {
+    byte(text, UINT8_C(0x48));
+    byte(text, UINT8_C(0x8b));
+    byte(text, UINT8_C(0x85)); /* mov rax, [rbp + disp32] */
+    u32_le(text, x64_local_displacement(slot));
+}
+
+static void x64_store_local(
+    Bytes *text,
+    size_t slot
+) {
+    byte(text, UINT8_C(0x48));
+    byte(text, UINT8_C(0x89));
+    byte(text, UINT8_C(0x85)); /* mov [rbp + disp32], rax */
+    u32_le(text, x64_local_displacement(slot));
+}
+
+static size_t x64_local_jcc(Bytes *text, uint8_t condition);
+static size_t x64_local_jmp(Bytes *text);
+static void x64_emit(
+    Bytes *text,
+    const uint8_t *instructions,
+    size_t length
+);
+
 static void x64_expression(
     Bytes *text,
     const Node *expression,
@@ -1164,6 +1631,23 @@ static void x64_expression(
         line_row(rows, text->length, expression->source_line);
         x64_mov_eax_imm32(text, (uint32_t)expression->value);
         byte(text, UINT8_C(0x50)); /* push rax */
+        return;
+    }
+
+    if (expression->kind == NODE_VARIABLE ||
+        expression->kind == NODE_PARAMETER) {
+        line_row(rows, text->length, expression->source_line);
+        x64_load_local(text, expression->slot);
+        byte(text, UINT8_C(0x50)); /* push local value */
+        return;
+    }
+
+    if (expression->kind == NODE_LET) {
+        x64_expression(text, expression->left, rows, runtime);
+        line_row(rows, text->length, expression->source_line);
+        byte(text, UINT8_C(0x58)); /* pop initializer */
+        x64_store_local(text, expression->slot);
+        x64_expression(text, expression->right, rows, runtime);
         return;
     }
 
@@ -1243,6 +1727,157 @@ static void x64_expression(
             byte(text, UINT8_C(0x8a)); /* mov [rdx + disp32], rcx */
             u32_le(text, (uint32_t)(8 + index * sizeof(uint64_t)));
         }
+        return;
+    }
+
+    if (expression->kind == NODE_MAP) {
+        x64_expression(text, expression->left, rows, runtime);
+        line_row(rows, text->length, expression->source_line);
+        byte(text, UINT8_C(0x5b)); /* pop rbx: source list */
+        const uint8_t map_allocate[] = {
+            UINT8_C(0x4c), UINT8_C(0x8b), UINT8_C(0x33), /* r14 = len */
+            UINT8_C(0x4c), UINT8_C(0x89), UINT8_C(0xf7), /* rdi = len */
+            UINT8_C(0x48), UINT8_C(0xc1), UINT8_C(0xe7), UINT8_C(0x03),
+            UINT8_C(0x48), UINT8_C(0x83), UINT8_C(0xc7), UINT8_C(0x08),
+        };
+        x64_emit(text, map_allocate, sizeof(map_allocate));
+        x64_call_alloc(text, runtime);
+        const uint8_t map_open[] = {
+            UINT8_C(0x49), UINT8_C(0x89), UINT8_C(0xc4), /* r12 = output */
+            UINT8_C(0x4d), UINT8_C(0x89), UINT8_C(0x34), UINT8_C(0x24),
+            UINT8_C(0x45), UINT8_C(0x31), UINT8_C(0xed), /* r13 = 0 */
+        };
+        x64_emit(text, map_open, sizeof(map_open));
+        size_t loop = text->length;
+        const uint8_t map_compare[] = {
+            UINT8_C(0x4d), UINT8_C(0x39), UINT8_C(0xf5), /* r13 vs r14 */
+        };
+        x64_emit(text, map_compare, sizeof(map_compare));
+        size_t done = x64_local_jcc(text, UINT8_C(0x8d)); /* jge */
+        const uint8_t map_load[] = {
+            UINT8_C(0x4a), UINT8_C(0x8b), UINT8_C(0x44),
+            UINT8_C(0xeb), UINT8_C(0x08),
+        };
+        x64_emit(text, map_load, sizeof(map_load));
+        x64_store_local(text, expression->slot);
+        x64_expression(text, expression->right, rows, runtime);
+        byte(text, UINT8_C(0x58)); /* pop mapped element */
+        const uint8_t map_store_next[] = {
+            UINT8_C(0x4b), UINT8_C(0x89), UINT8_C(0x44),
+            UINT8_C(0xec), UINT8_C(0x08),
+            UINT8_C(0x49), UINT8_C(0xff), UINT8_C(0xc5), /* inc r13 */
+        };
+        x64_emit(text, map_store_next, sizeof(map_store_next));
+        size_t back = x64_local_jmp(text);
+        size_t done_at = text->length;
+        byte(text, UINT8_C(0x41));
+        byte(text, UINT8_C(0x54)); /* push r12 */
+        x64_patch_rel32(text, done, done_at);
+        x64_patch_rel32(text, back, loop);
+        return;
+    }
+
+    if (expression->kind == NODE_FILTER) {
+        x64_expression(text, expression->left, rows, runtime);
+        line_row(rows, text->length, expression->source_line);
+        byte(text, UINT8_C(0x5b)); /* pop rbx: source list */
+        const uint8_t filter_allocate[] = {
+            UINT8_C(0x4c), UINT8_C(0x8b), UINT8_C(0x3b), /* r15 = len */
+            UINT8_C(0x4c), UINT8_C(0x89), UINT8_C(0xff), /* rdi = len */
+            UINT8_C(0x48), UINT8_C(0xc1), UINT8_C(0xe7), UINT8_C(0x03),
+            UINT8_C(0x48), UINT8_C(0x83), UINT8_C(0xc7), UINT8_C(0x08),
+        };
+        x64_emit(text, filter_allocate, sizeof(filter_allocate));
+        x64_call_alloc(text, runtime);
+        const uint8_t filter_open[] = {
+            UINT8_C(0x49), UINT8_C(0x89), UINT8_C(0xc4), /* r12 = output */
+            UINT8_C(0x45), UINT8_C(0x31), UINT8_C(0xed), /* r13 = index */
+            UINT8_C(0x45), UINT8_C(0x31), UINT8_C(0xf6), /* r14 = count */
+        };
+        x64_emit(text, filter_open, sizeof(filter_open));
+        size_t loop = text->length;
+        const uint8_t filter_compare[] = {
+            UINT8_C(0x4d), UINT8_C(0x39), UINT8_C(0xfd), /* r13 vs r15 */
+        };
+        x64_emit(text, filter_compare, sizeof(filter_compare));
+        size_t done = x64_local_jcc(text, UINT8_C(0x8d)); /* jge */
+        const uint8_t filter_load[] = {
+            UINT8_C(0x4a), UINT8_C(0x8b), UINT8_C(0x44),
+            UINT8_C(0xeb), UINT8_C(0x08),
+        };
+        x64_emit(text, filter_load, sizeof(filter_load));
+        x64_store_local(text, expression->slot);
+        x64_expression(text, expression->right, rows, runtime);
+        byte(text, UINT8_C(0x58)); /* pop predicate */
+        byte(text, UINT8_C(0x48));
+        byte(text, UINT8_C(0x85));
+        byte(text, UINT8_C(0xc0)); /* test rax, rax */
+        size_t skip = x64_local_jcc(text, UINT8_C(0x84)); /* je */
+        x64_load_local(text, expression->slot);
+        const uint8_t filter_store[] = {
+            UINT8_C(0x4b), UINT8_C(0x89), UINT8_C(0x44),
+            UINT8_C(0xf4), UINT8_C(0x08),
+            UINT8_C(0x49), UINT8_C(0xff), UINT8_C(0xc6), /* inc r14 */
+        };
+        x64_emit(text, filter_store, sizeof(filter_store));
+        size_t skip_at = text->length;
+        const uint8_t filter_next[] = {
+            UINT8_C(0x49), UINT8_C(0xff), UINT8_C(0xc5), /* inc r13 */
+        };
+        x64_emit(text, filter_next, sizeof(filter_next));
+        size_t back = x64_local_jmp(text);
+        size_t done_at = text->length;
+        const uint8_t filter_close[] = {
+            UINT8_C(0x4d), UINT8_C(0x89), UINT8_C(0x34), UINT8_C(0x24),
+            UINT8_C(0x41), UINT8_C(0x54), /* push r12 */
+        };
+        x64_emit(text, filter_close, sizeof(filter_close));
+        x64_patch_rel32(text, done, done_at);
+        x64_patch_rel32(text, skip, skip_at);
+        x64_patch_rel32(text, back, loop);
+        return;
+    }
+
+    if (expression->kind == NODE_FOLD) {
+        x64_expression(text, expression->left, rows, runtime);
+        x64_expression(text, expression->right, rows, runtime);
+        line_row(rows, text->length, expression->source_line);
+        byte(text, UINT8_C(0x41));
+        byte(text, UINT8_C(0x5e)); /* pop r14: accumulator */
+        byte(text, UINT8_C(0x5b)); /* pop rbx: source list */
+        const uint8_t fold_open[] = {
+            UINT8_C(0x4c), UINT8_C(0x8b), UINT8_C(0x2b), /* r13 = len */
+            UINT8_C(0x45), UINT8_C(0x31), UINT8_C(0xe4), /* r12 = index */
+        };
+        x64_emit(text, fold_open, sizeof(fold_open));
+        size_t loop = text->length;
+        const uint8_t fold_compare[] = {
+            UINT8_C(0x4d), UINT8_C(0x39), UINT8_C(0xec), /* r12 vs r13 */
+        };
+        x64_emit(text, fold_compare, sizeof(fold_compare));
+        size_t done = x64_local_jcc(text, UINT8_C(0x8d)); /* jge */
+        byte(text, UINT8_C(0x4c));
+        byte(text, UINT8_C(0x89));
+        byte(text, UINT8_C(0xf0)); /* mov rax, r14 */
+        x64_store_local(text, expression->slot);
+        const uint8_t fold_load[] = {
+            UINT8_C(0x4a), UINT8_C(0x8b), UINT8_C(0x44),
+            UINT8_C(0xe3), UINT8_C(0x08),
+        };
+        x64_emit(text, fold_load, sizeof(fold_load));
+        x64_store_local(text, expression->slot + 1);
+        x64_expression(text, expression->third, rows, runtime);
+        byte(text, UINT8_C(0x41));
+        byte(text, UINT8_C(0x5e)); /* pop r14: next accumulator */
+        byte(text, UINT8_C(0x49));
+        byte(text, UINT8_C(0xff));
+        byte(text, UINT8_C(0xc4)); /* inc r12 */
+        size_t back = x64_local_jmp(text);
+        size_t done_at = text->length;
+        byte(text, UINT8_C(0x41));
+        byte(text, UINT8_C(0x56)); /* push r14 */
+        x64_patch_rel32(text, done, done_at);
+        x64_patch_rel32(text, back, loop);
         return;
     }
 
@@ -1354,6 +1989,42 @@ static void x64_expression(
             }
         }
         byte(text, UINT8_C(0x50)); /* push result */
+        return;
+    }
+
+    if (expression->kind == NODE_INT_EQUAL ||
+        expression->kind == NODE_INT_NOT_EQUAL ||
+        expression->kind == NODE_INT_LESS ||
+        expression->kind == NODE_INT_LESS_EQUAL ||
+        expression->kind == NODE_INT_GREATER ||
+        expression->kind == NODE_INT_GREATER_EQUAL) {
+        x64_expression(text, expression->left, rows, runtime);
+        x64_expression(text, expression->right, rows, runtime);
+        line_row(rows, text->length, expression->source_line);
+        byte(text, UINT8_C(0x59)); /* pop rcx: right */
+        byte(text, UINT8_C(0x58)); /* pop rax: left */
+        byte(text, UINT8_C(0x48));
+        byte(text, UINT8_C(0x39));
+        byte(text, UINT8_C(0xc8)); /* cmp rax, rcx */
+        byte(text, UINT8_C(0x0f));
+        uint8_t condition = UINT8_C(0x94); /* sete */
+        if (expression->kind == NODE_INT_NOT_EQUAL) {
+            condition = UINT8_C(0x95);
+        } else if (expression->kind == NODE_INT_LESS) {
+            condition = UINT8_C(0x9c);
+        } else if (expression->kind == NODE_INT_LESS_EQUAL) {
+            condition = UINT8_C(0x9e);
+        } else if (expression->kind == NODE_INT_GREATER) {
+            condition = UINT8_C(0x9f);
+        } else if (expression->kind == NODE_INT_GREATER_EQUAL) {
+            condition = UINT8_C(0x9d);
+        }
+        byte(text, condition);
+        byte(text, UINT8_C(0xc0)); /* setcc al */
+        byte(text, UINT8_C(0x0f));
+        byte(text, UINT8_C(0xb6));
+        byte(text, UINT8_C(0xc0)); /* movzx eax, al */
+        byte(text, UINT8_C(0x50));
         return;
     }
 
@@ -2266,9 +2937,22 @@ static void x64_text(
     Bytes *text,
     const Node *expression,
     LineRows *rows,
-    size_t print_line
+    size_t print_line,
+    size_t local_count
 ) {
     X64Runtime runtime = {0};
+    if (local_count > 0) {
+        if (local_count > UINT32_MAX / sizeof(uint64_t)) {
+            fatal("native Core local frame is too large");
+        }
+        const uint8_t frame_open[] = {
+            UINT8_C(0x55),                         /* push rbp */
+            UINT8_C(0x48), UINT8_C(0x89), UINT8_C(0xe5),
+            UINT8_C(0x48), UINT8_C(0x81), UINT8_C(0xec),
+        };
+        x64_emit(text, frame_open, sizeof(frame_open));
+        u32_le(text, (uint32_t)(local_count * sizeof(uint64_t)));
+    }
     x64_expression(text, expression, rows, &runtime);
     line_row(rows, text->length, print_line);
     byte(text, UINT8_C(0x58)); /* pop rax */
@@ -3108,6 +3792,15 @@ int main(int argc, char **argv) {
         free(source);
         return 1;
     }
+    if (aarch64 && uses_local_bindings(expression)) {
+        fputs(
+            "kofun native: AArch64 unsupported Core local bindings\n",
+            stderr
+        );
+        free_node(expression);
+        free(source);
+        return 1;
+    }
     if (aarch64 && register_depth(expression) > 16) {
         fprintf(stderr, "kofun native: AArch64 Core needs over 16 registers\n");
         free_node(expression);
@@ -3122,7 +3815,13 @@ int main(int argc, char **argv) {
     if (aarch64) {
         a64_text(&text, expression);
     } else {
-        x64_text(&text, expression, &rows, parser.print_line);
+        x64_text(
+            &text,
+            expression,
+            &rows,
+            parser.print_line,
+            parser.local_count + parser.max_lambda_parameters
+        );
     }
 
     Bytes image;

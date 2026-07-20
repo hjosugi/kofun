@@ -35,7 +35,8 @@ Four Python-free checkpoints now exercise the path beyond that Core:
   function IR, and reaches a byte-stable source/token/IR round trip;
 - `bootstrap/native/` uses Kofun-authored bytes to build and execute a static
   Linux x86-64 ELF64 image without an assembler or linker; its active x86-64
-  Core includes `List[Int]` and UTF-8 Text operations;
+  Core includes local List bindings, `map`/`filter`/`fold`, and UTF-8 Text
+  operations;
 - `bootstrap/c_abi/` provides an explicit host-C/dynamic-linking profile for
   checked `extern "C"` declarations and `repr(C)` structs;
 - `stdlib/` defines the raw syscall ABI, value-level errno conversion, affine

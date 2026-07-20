@@ -1,0 +1,6 @@
+# expect: 99
+fn main() {
+    let values = [1, 2, 42, 99]
+    let filtered = filter(values, fn(value: Int) => value > 2)
+    print(filtered[1])
+}

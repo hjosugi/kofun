@@ -24,16 +24,20 @@ fn main() {
     --target x86_64-linux -o build/program-x86_64
 ```
 
-Native Core v1 accepts exactly one zero-argument `main`, one `print`, integer
-literals in `0..65535`, parentheses, `+`, and `*`. Checked constant analysis
-must prove every intermediate value fits that range and the final value is a
-two-digit integer. Unsupported input fails before an output file is written.
+The shared scalar Native Core accepts exactly one zero-argument `main`, one
+`print`, integer literals in `0..65535`, parentheses, `+`, and `*`. Checked
+constant analysis must prove every known intermediate value fits that range
+and a statically known final integer is two digits. Unsupported input fails
+before an output file is written.
 
-The x86-64 target also accepts a deliberately narrow `List[Int]` Core:
+The x86-64 target also accepts local `Int`/`List[Int]` bindings and a
+deliberately narrow collection Core:
 
 ```kofun
 fn main() {
-    print([10, 20 + 22, 99][-2])
+    let values = [1, 2, 3]
+    let mapped = map(values, fn(value: Int) => value * 21)
+    print(mapped[1])
 }
 ```
 
@@ -42,14 +46,19 @@ List values use the historical native ABI
 through a raw Linux `mmap` runtime, indexing executes against that storage,
 negative indexes count from the end, and `len` reads the header. An invalid
 index writes `kofun: list index out of range` to stderr and exits 1. Allocation
-failure writes `kofun: out of memory` and exits 70. The gate executes both
-failure paths in the generated static ELF and compares the successful result
-with an independent C11 reference.
+failure writes `kofun: out of memory` and exits 70. `map`, `filter`, and
+`fold` execute real generated loops over that storage. `map` allocates an
+output List, `filter` records its actual result length, and `fold` carries a
+runtime accumulator. Their typed inline `fn` lambdas may use integer
+arithmetic, comparisons, parameters, and captured Core locals. The gate
+compares bindings and every operation, including their composition, with an
+independent C11 implementation.
 
-This is not general collection lowering yet. The Core has no bindings,
-closures, or general calls, so `map`, `filter`, and `fold` remain unsupported.
-AArch64 rejects `List[Int]` with an explicit diagnostic instead of emitting
-scalar code with different semantics.
+This remains a closed collection Core rather than general collection
+lowering: lambdas are inline and non-escaping, nested higher-order operations
+inside a lambda body are rejected, and allocation uses one mmap chunk per
+List. AArch64 rejects `List[Int]` and local bindings with explicit diagnostics
+instead of emitting scalar code with different semantics.
 
 The x86-64 target also implements immutable UTF-8 `Text` values with the
 historical native ABI `[byte length: i64][UTF-8 bytes]`. Literals live in the
@@ -69,10 +78,11 @@ Japanese, accented Latin, and emoji cases with an independent C11 UTF-8
 reference and executes the Text OOM and index-failure paths.
 
 The obsolete `tests/kofun/*.kf` acceptance path no longer exists. The active
-Python-free `tests/conformance/text` corpus is registered with the native
-x86-64 adapter and executes all 9 cases. General Text bindings, calls, and the
-Stage 1 compiler port are tracked separately by issue #33. AArch64 Text is a
-follow-up target boundary and rejects with an explicit diagnostic today.
+Python-free `tests/conformance/list` and `tests/conformance/text` corpora are
+registered with the native x86-64 adapter and execute all 22 cases. General
+Text bindings, calls, and the Stage 1 compiler port are tracked separately by
+issue #33. AArch64 List and Text support is a follow-up target boundary and
+rejects with an explicit diagnostic today.
 
 The frontend creates one AST; both instruction selectors consume it. The
 equivalent canonical Kofun representation is a postfix stream of
@@ -254,11 +264,15 @@ Implemented here:
 - the public `build --target aarch64-linux` CLI path;
 - native lowering of the fixture expressions `40 + 2` and `(6 + 1) * 6`;
 - x86-64 `List[Int]` literal, `len`, and positive/negative indexing lowering;
+- x86-64 local `Int`/`List[Int]` bindings with frame-backed variable loads;
+- generated `map`, `filter`, and `fold` loops with typed inline Int lambdas;
 - raw `mmap` list allocation with defined OOM and bounds diagnostics;
 - x86-64 UTF-8 Text literals, concatenation, equality, codepoint `len`, and
   positive/negative codepoint indexing;
 - runtime `chars` lowering to allocated List[Text] and Text/Bool printing;
 - registered Python-free Text conformance coverage with 9/9 cases executed by
+  the native x86-64 adapter;
+- registered Python-free List conformance coverage with 13/13 cases executed by
   the native x86-64 adapter;
 - two-digit integer-to-ASCII conversion for the fixture result;
 - distinct RX and RW mappings;
@@ -270,11 +284,13 @@ Still open:
 
 - replacing the audited C11 Native Core driver after lists and calls
   self-compile;
-- lowering bindings, calls, conditionals, and non-constant expression trees;
+- lowering general calls, conditionals, and non-constant expression trees;
 - general signed integer formatting and checked arithmetic diagnostics;
 - native stdout/stderr formatting and canonical `R010` diagnostics;
 - conditional branches, allocator reuse/reclamation, Mach-O, and additional targets;
-- general `List[Int]` bindings, `map`, `filter`, `fold`, and AArch64 lists;
+- first-class/nested collection lambdas, general collection types, and
+  AArch64 lists;
 - general Text bindings/calls and the Stage 1 compiler port tracked by #33;
-- extending the registered native adapter beyond Text and adding AArch64 Text;
+- extending the registered native adapter beyond List/Text and adding AArch64
+  List/Text;
 - AArch64 debug information and variable/location DIEs.

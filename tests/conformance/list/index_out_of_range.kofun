@@ -1,0 +1,6 @@
+# expect-stderr: kofun: list index out of range
+# expect-exit: 1
+fn main() {
+    let values = [10, 20]
+    print(values[2])
+}

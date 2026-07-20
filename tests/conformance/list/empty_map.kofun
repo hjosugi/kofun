@@ -1,0 +1,5 @@
+# expect: 60
+fn main() {
+    let mapped = map([], fn(value: Int) => value * 2)
+    print(len(mapped) + 60)
+}

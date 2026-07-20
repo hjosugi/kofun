@@ -1,7 +1,7 @@
 # Adapter for the Python-free direct x86-64 static ELF backend.
 
 BACKEND_NAME=native-x86_64
-BACKEND_CORPORA=text
+BACKEND_CORPORA='list text'
 
 backend_compile() {
     source=$1

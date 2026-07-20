@@ -1,0 +1,6 @@
+# expect: 63
+fn main() {
+    let values = [1, 2, 3]
+    let mapped = map(values, fn(value: Int) => value * 21)
+    print(mapped[2])
+}

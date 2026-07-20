@@ -1,3 +1,0 @@
-fn main() {
-    print(fold(map(filter([1, 2, 3], fn(value: Int) => value > 1), fn(value: Int) => value * 20), 2, fn(total: Int, value: Int) => total + value))
-}

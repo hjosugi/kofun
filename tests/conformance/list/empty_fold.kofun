@@ -1,0 +1,4 @@
+# expect: 62
+fn main() {
+    print(fold([], 62, fn(total: Int, value: Int) => total + value))
+}
