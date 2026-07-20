@@ -831,11 +831,18 @@ fn condition_end(source: Text, start: Int) -> Int {
     return expression_end(source, right_start)
 }
 
-fn emit_condition(source: Text, start: Int, end: Int) -> Text {
+fn emit_condition_into(
+    source: Text,
+    start: Int,
+    end: Int,
+    target: Text,
+    failure_result: Text,
+    indent: Text
+) -> Text {
     let cursor = skip_trivia(source, start)
     let first = token_text(source, cursor)
     if first == "true" || first == "false" {
-        return first
+        return indent + "bool " + target + " = " + first + ";\n"
     }
     let left_end = expression_end(source, cursor)
     let operator_start = skip_trivia(source, left_end)
@@ -843,9 +850,15 @@ fn emit_condition(source: Text, start: Int, end: Int) -> Text {
         source,
         token_end(source, operator_start)
     )
-    return "(" + emit_expression(source, cursor, left_end) + " " +
-    token_text(source, operator_start) + " " +
-    emit_expression(source, right_start, end) + ")"
+    return indent + "int64_t kofun_condition_left = " +
+    emit_expression(source, cursor, left_end) + ";\n" +
+    indent + "if (kofun_failed) return " + failure_result + ";\n" +
+    indent + "int64_t kofun_condition_right = " +
+    emit_expression(source, right_start, end) + ";\n" +
+    indent + "if (kofun_failed) return " + failure_result + ";\n" +
+    indent + "bool " + target + " = kofun_condition_left " +
+    token_text(source, operator_start) +
+    " kofun_condition_right;\n"
 }
 
 fn value_if_branch_end(source: Text, start: Int) -> Int {
@@ -974,9 +987,14 @@ fn emit_value_into(
     let else_start = skip_trivia(source, token_end(source, else_open))
     let else_end = value_if_branch_end(source, else_start)
     return "    {\n" +
-    "        bool kofun_value_condition = " +
-    emit_condition(source, condition_start, condition_close) + ";\n" +
-    "        if (kofun_failed) return " + failure_result + ";\n" +
+    emit_condition_into(
+        source,
+        condition_start,
+        condition_close,
+        "kofun_value_condition",
+        failure_result,
+        "        "
+    ) +
     "        if (kofun_value_condition) {\n" +
     emit_value_into(
         source,
@@ -1229,9 +1247,14 @@ fn lower_body(
             }
             emitted = emitted +
             "    {\n" +
-            "        bool kofun_condition = " +
-            emit_condition(source, condition_start, condition_close) + ";\n" +
-            "        if (kofun_failed) return " + failure_result + ";\n" +
+            emit_condition_into(
+                source,
+                condition_start,
+                condition_close,
+                "kofun_condition",
+                failure_result,
+                "        "
+            ) +
             "        if (kofun_condition) {\n" +
             branch_body +
             "        }"
@@ -1286,12 +1309,10 @@ fn lower_body(
                 source,
                 token_end(source, arms_open)
             )
-            let mut seen_true = false
-            let mut seen_false = false
+            let mut covered_true = false
+            let mut covered_false = false
             let mut seen_catchall = false
-            let mut true_body = ""
-            let mut false_body = ""
-            let mut catchall_body = ""
+            let mut dispatch = ""
             while arm_cursor < len(source) &&
                   token_text(source, arm_cursor) != "}" {
                 let pattern_start = arm_cursor
@@ -1300,15 +1321,15 @@ fn lower_body(
                     return "error[E2S26]: pattern after catch-all is unreachable at byte " +
                     to_text(pattern_start)
                 }
-                if pattern == "true" && seen_true {
+                if pattern == "true" && covered_true {
                     return "error[E2S26]: duplicate `true` pattern is unreachable at byte " +
                     to_text(pattern_start)
                 }
-                if pattern == "false" && seen_false {
+                if pattern == "false" && covered_false {
                     return "error[E2S26]: duplicate `false` pattern is unreachable at byte " +
                     to_text(pattern_start)
                 }
-                if pattern == "_" && seen_true && seen_false {
+                if pattern == "_" && covered_true && covered_false {
                     return "error[E2S26]: catch-all pattern is unreachable at byte " +
                     to_text(pattern_start)
                 }
@@ -1321,19 +1342,32 @@ fn lower_body(
                     source,
                     token_end(source, pattern_start)
                 )
-                if after_pattern < len(source) &&
-                   token_text(source, after_pattern) == "if" {
-                    return "error[E2S24]: guards are outside bounded Bool match at byte " +
-                    to_text(after_pattern)
+                let mut guarded = false
+                let mut guard_start = -1
+                let mut guard_end = -1
+                let mut arrow = after_pattern
+                if arrow < len(source) &&
+                   token_text(source, arrow) == "if" {
+                    guarded = true
+                    guard_start = skip_trivia(
+                        source,
+                        token_end(source, arrow)
+                    )
+                    guard_end = condition_end(source, guard_start)
+                    if guard_end < 0 {
+                        return "error[E2S29]: match guard must be Bool or an Int comparison at byte " +
+                        to_text(guard_start)
+                    }
+                    arrow = skip_trivia(source, guard_end)
                 }
-                if after_pattern >= len(source) ||
-                   token_text(source, after_pattern) != "=>" {
+                if arrow >= len(source) ||
+                   token_text(source, arrow) != "=>" {
                     return "error[E2S24]: expected `=>` after Bool pattern at byte " +
-                    to_text(after_pattern)
+                    to_text(arrow)
                 }
                 let arm_open = skip_trivia(
                     source,
-                    token_end(source, after_pattern)
+                    token_end(source, arrow)
                 )
                 if arm_open >= len(source) ||
                    token_text(source, arm_open) != "{" {
@@ -1355,15 +1389,46 @@ fn lower_body(
                 if starts_with(arm_body, "error[") {
                     return arm_body
                 }
+
+                let mut pattern_condition = "true"
                 if pattern == "true" {
-                    seen_true = true
-                    true_body = arm_body
+                    pattern_condition = "kofun_match_value"
                 } else if pattern == "false" {
-                    seen_false = true
-                    false_body = arm_body
+                    pattern_condition = "!kofun_match_value"
+                }
+                if guarded {
+                    dispatch = dispatch +
+                    "        if (!kofun_match_selected && " +
+                    pattern_condition + ") {\n" +
+                    emit_condition_into(
+                        source,
+                        guard_start,
+                        guard_end,
+                        "kofun_match_guard",
+                        failure_result,
+                        "            "
+                    ) +
+                    "            if (kofun_match_guard) {\n" +
+                    arm_body +
+                    "                kofun_match_selected = true;\n" +
+                    "            }\n" +
+                    "        }\n"
                 } else {
-                    seen_catchall = true
-                    catchall_body = arm_body
+                    dispatch = dispatch +
+                    "        if (!kofun_match_selected && " +
+                    pattern_condition + ") {\n" +
+                    arm_body +
+                    "            kofun_match_selected = true;\n" +
+                    "        }\n"
+                    if pattern == "true" {
+                        covered_true = true
+                    } else if pattern == "false" {
+                        covered_false = true
+                    } else {
+                        covered_true = true
+                        covered_false = true
+                        seen_catchall = true
+                    }
                 }
                 arm_cursor = skip_trivia(source, arm_close)
                 if arm_cursor < len(source) &&
@@ -1383,36 +1448,31 @@ fn lower_body(
                 return "error[E2S24]: missing `}` after match arms at byte " +
                 to_text(arms_open)
             }
-            if !seen_true && !seen_false && !seen_catchall {
+            if !covered_true && !covered_false {
                 return "error[E2S25]: non-exhaustive Bool match; missing patterns `true`, `false` at byte " +
                 to_text(match_start)
             }
-            if !seen_true && !seen_catchall {
+            if !covered_true {
                 return "error[E2S25]: non-exhaustive Bool match; missing pattern `true` at byte " +
                 to_text(match_start)
             }
-            if !seen_false && !seen_catchall {
+            if !covered_false {
                 return "error[E2S25]: non-exhaustive Bool match; missing pattern `false` at byte " +
                 to_text(match_start)
             }
-            let mut emitted_true = catchall_body
-            let mut emitted_false = catchall_body
-            if seen_true {
-                emitted_true = true_body
-            }
-            if seen_false {
-                emitted_false = false_body
-            }
             emitted = emitted +
             "    {\n" +
-            "        bool kofun_match_value = " +
-            emit_condition(source, value_start, value_end) + ";\n" +
-            "        if (kofun_failed) return " + failure_result + ";\n" +
-            "        if (kofun_match_value) {\n" +
-            emitted_true +
-            "        } else {\n" +
-            emitted_false +
-            "        }\n" +
+            emit_condition_into(
+                source,
+                value_start,
+                value_end,
+                "kofun_match_value",
+                failure_result,
+                "        "
+            ) +
+            "        (void)kofun_match_value;\n" +
+            "        bool kofun_match_selected = false;\n" +
+            dispatch +
             "    }\n"
             cursor = skip_trivia(source, token_end(source, arm_cursor))
         } else if statement == "return" {
@@ -1608,7 +1668,14 @@ fn lower_c(source: Text) -> Text {
         }
         if is_main {
             bodies = bodies + "int main(void) {\n" +
-            "    (void)kofun_failed;\n" + body + "}\n"
+            "    (void)kofun_failed;\n" +
+            "    (void)kofun_add;\n" +
+            "    (void)kofun_sub;\n" +
+            "    (void)kofun_mul;\n" +
+            "    (void)kofun_neg;\n" +
+            "    (void)kofun_floor_div;\n" +
+            "    (void)kofun_floor_mod;\n" +
+            body + "}\n"
         } else {
             bodies = bodies + "static int64_t kofun_fn_" + name +
             "(" + c_parameters + ") {\n" + body + "}\n"

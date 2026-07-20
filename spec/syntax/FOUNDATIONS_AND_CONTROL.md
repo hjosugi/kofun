@@ -31,7 +31,7 @@ compiler cannot yet produce the final diagnostic.
 | #43 | if expressions | Stage 2 lowers statement-position and bounded Int-valued `if` with Bool literals or integer comparisons | partial |
 | #44 | else-if chains | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
 | #45 | for loops | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
-| #46 | match expressions | Stage 2 executes exhaustive statement-position Bool matches and rejects missing/unreachable arms | partial |
+| #46 | match expressions | Stage 2 executes exhaustive guarded statement-position Bool matches and rejects missing/unreachable arms | partial |
 | #47 | while loops | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
 
 The executable evidence is in
@@ -703,13 +703,17 @@ let text = match flag {
 **Implementation status:** Stage 2 classifies `match` as a keyword and lowers a
 bounded statement-position Bool slice. Bool literals and integer comparisons
 may be matched by `true`, `false`, and `_` block arms. The compiler evaluates
-the scrutinee once, executes only the selected arm, accepts complete
-`true`/`false` coverage without a catch-all, and statically rejects missing,
-duplicate, or unreachable cases. The exact finite-set algorithm and diagnostics
-are specified in `spec/bool-match-exhaustiveness.md`.
+the scrutinee once and checks arms in source order. Optional Bool guards run
+only after their pattern matches; false continues to the next arm, and no
+later guard runs after selection. Guarded arms do not provide static coverage,
+so an unguarded fallback remains mandatory. The compiler accepts complete
+unguarded `true`/`false` coverage without a catch-all and statically rejects
+missing, duplicate, unreachable, or non-Bool-guard cases. The exact finite-set
+algorithm and diagnostics are specified in
+`spec/bool-match-exhaustiveness.md`.
 
 Value-producing match, arm type unification, bindings, ADTs, payload and nested
-patterns, or-patterns, guards, and ownership-aware destructuring remain open.
+patterns, or-patterns, and ownership-aware destructuring remain open.
 
 ## #47 — While loops
 

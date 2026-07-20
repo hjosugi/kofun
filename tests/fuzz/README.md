@@ -17,7 +17,16 @@ evaluation as well as wrong comparison or result lowering. The regular and
 ASAN/UBSAN compiler builds must also emit byte-identical C, IR, and token
 artifacts for every generated case.
 
-Run both:
+`match_guard.sh` generates 32 valid guarded Bool `match` programs for Stage 2.
+Each program independently expects two ordered guard probes followed by the
+selected arm value. A division-by-zero guard is placed behind a nonmatching
+pattern and another behind an already-selected matching pattern, so eager or
+out-of-order guard evaluation fails at runtime. Unguarded `true` and `false`
+fallbacks provide static coverage without affecting the expected output. The
+regular and ASAN/UBSAN compiler builds must emit byte-identical C, IR, and token
+artifacts for every case.
+
+Run all fuzz smoke gates:
 
 ```sh
 make fuzz
