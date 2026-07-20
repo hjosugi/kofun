@@ -1120,17 +1120,31 @@ static int64_t condition_end(const char *source, int64_t start) {
     return expression_end(source, right_start);
 }
 
-static char *emit_condition(
+static char *emit_condition_into(
     const char *source,
     int64_t start,
-    int64_t end
+    int64_t end,
+    const char *target,
+    const char *failure_result,
+    const char *indent
 ) {
     int64_t cursor = skip_trivia(source, start);
     if (
         token_equal(source, cursor, "true") ||
         token_equal(source, cursor, "false")
     ) {
-        return token_copy(source, cursor);
+        char *literal = token_copy(source, cursor);
+        Buffer output;
+        buffer_init(&output);
+        buffer_format(
+            &output,
+            "%sbool %s = %s;\n",
+            indent,
+            target,
+            literal
+        );
+        free(literal);
+        return output.data;
     }
     int64_t left_end = expression_end(source, cursor);
     int64_t operator_start = skip_trivia(source, left_end);
@@ -1143,7 +1157,25 @@ static char *emit_condition(
     char *right = emit_expression(source, right_start, end);
     Buffer output;
     buffer_init(&output);
-    buffer_format(&output, "(%s %s %s)", left, operator_text, right);
+    buffer_format(
+        &output,
+        "%sint64_t kofun_condition_left = %s;\n"
+        "%sif (kofun_failed) return %s;\n"
+        "%sint64_t kofun_condition_right = %s;\n"
+        "%sif (kofun_failed) return %s;\n"
+        "%sbool %s = kofun_condition_left %s kofun_condition_right;\n",
+        indent,
+        left,
+        indent,
+        failure_result,
+        indent,
+        right,
+        indent,
+        failure_result,
+        indent,
+        target,
+        operator_text
+    );
     free(left);
     free(operator_text);
     free(right);
@@ -1330,10 +1362,13 @@ static char *emit_value_into(
     char *result = parse_value_if(source, cursor, &parts);
     if (strncmp(result, "error[", 6) == 0) return result;
     free(result);
-    char *condition = emit_condition(
+    char *condition = emit_condition_into(
         source,
         parts.condition_start,
-        parts.condition_end
+        parts.condition_end,
+        "kofun_value_condition",
+        failure_result,
+        "        "
     );
     char *then_body = emit_value_into(
         source,
@@ -1363,8 +1398,7 @@ static char *emit_value_into(
     buffer_format(
         &emitted,
         "    {\n"
-        "        bool kofun_value_condition = %s;\n"
-        "        if (kofun_failed) return %s;\n"
+        "%s"
         "        if (kofun_value_condition) {\n"
         "%s"
         "        } else {\n"
@@ -1372,7 +1406,6 @@ static char *emit_value_into(
         "        }\n"
         "    }\n",
         condition,
-        failure_result,
         then_body,
         else_body
     );
@@ -1481,14 +1514,16 @@ static char *assignment_error(
     return error.data;
 }
 
-static void free_match_bodies(
-    char *true_body,
-    char *false_body,
-    char *catchall_body
+static char *lower_match_error(
+    Buffer *emitted,
+    Buffer *dispatch,
+    const char *code,
+    const char *message,
+    int64_t cursor
 ) {
-    free(true_body);
-    free(false_body);
-    free(catchall_body);
+    free(dispatch->data);
+    free(emitted->data);
+    return lower_error(code, message, cursor);
 }
 
 static char *lower_body(
@@ -1726,21 +1761,22 @@ static char *lower_body(
                 free(emitted.data);
                 return branch_body;
             }
-            char *condition = emit_condition(
+            char *condition = emit_condition_into(
                 source,
                 condition_start,
-                condition_close
+                condition_close,
+                "kofun_condition",
+                failure_result,
+                "        "
             );
             buffer_format(
                 &emitted,
                 "    {\n"
-                "        bool kofun_condition = %s;\n"
-                "        if (kofun_failed) return %s;\n"
+                "%s"
                 "        if (kofun_condition) {\n"
                 "%s"
                 "        }",
                 condition,
-                failure_result,
                 branch_body
             );
             free(condition);
@@ -1799,9 +1835,12 @@ static char *lower_body(
                 token_end(source, cursor)
             );
             int64_t value_end = condition_end(source, value_start);
+            Buffer dispatch;
+            buffer_init(&dispatch);
             if (value_end < 0) {
-                free(emitted.data);
-                return lower_error(
+                return lower_match_error(
+                    &emitted,
+                    &dispatch,
                     "E2S24",
                     "bounded match scrutinee must be Bool",
                     value_start
@@ -1812,8 +1851,9 @@ static char *lower_body(
                 arms_open >= length ||
                 !token_equal(source, arms_open, "{")
             ) {
-                free(emitted.data);
-                return lower_error(
+                return lower_match_error(
+                    &emitted,
+                    &dispatch,
                     "E2S24",
                     "expected `{` after match scrutinee",
                     arms_open
@@ -1823,12 +1863,9 @@ static char *lower_body(
                 source,
                 token_end(source, arms_open)
             );
-            bool seen_true = false;
-            bool seen_false = false;
+            bool covered_true = false;
+            bool covered_false = false;
             bool seen_catchall = false;
-            char *true_body = NULL;
-            char *false_body = NULL;
-            char *catchall_body = NULL;
             while (
                 arm_cursor < length &&
                 !token_equal(source, arm_cursor, "}")
@@ -1850,52 +1887,40 @@ static char *lower_body(
                     "_"
                 );
                 if (seen_catchall) {
-                    free_match_bodies(
-                        true_body,
-                        false_body,
-                        catchall_body
-                    );
-                    free(emitted.data);
-                    return lower_error(
+                    return lower_match_error(
+                        &emitted,
+                        &dispatch,
                         "E2S26",
                         "pattern after catch-all is unreachable",
                         pattern_start
                     );
                 }
-                if (pattern_true && seen_true) {
-                    free_match_bodies(
-                        true_body,
-                        false_body,
-                        catchall_body
-                    );
-                    free(emitted.data);
-                    return lower_error(
+                if (pattern_true && covered_true) {
+                    return lower_match_error(
+                        &emitted,
+                        &dispatch,
                         "E2S26",
                         "duplicate `true` pattern is unreachable",
                         pattern_start
                     );
                 }
-                if (pattern_false && seen_false) {
-                    free_match_bodies(
-                        true_body,
-                        false_body,
-                        catchall_body
-                    );
-                    free(emitted.data);
-                    return lower_error(
+                if (pattern_false && covered_false) {
+                    return lower_match_error(
+                        &emitted,
+                        &dispatch,
                         "E2S26",
                         "duplicate `false` pattern is unreachable",
                         pattern_start
                     );
                 }
-                if (pattern_catchall && seen_true && seen_false) {
-                    free_match_bodies(
-                        true_body,
-                        false_body,
-                        catchall_body
-                    );
-                    free(emitted.data);
-                    return lower_error(
+                if (
+                    pattern_catchall &&
+                    covered_true &&
+                    covered_false
+                ) {
+                    return lower_match_error(
+                        &emitted,
+                        &dispatch,
                         "E2S26",
                         "catch-all pattern is unreachable",
                         pattern_start
@@ -1906,13 +1931,9 @@ static char *lower_body(
                     !pattern_false &&
                     !pattern_catchall
                 ) {
-                    free_match_bodies(
-                        true_body,
-                        false_body,
-                        catchall_body
-                    );
-                    free(emitted.data);
-                    return lower_error(
+                    return lower_match_error(
+                        &emitted,
+                        &dispatch,
                         "E2S24",
                         "bounded Bool pattern must be `true`, `false`, or `_`",
                         pattern_start
@@ -1922,33 +1943,40 @@ static char *lower_body(
                     source,
                     token_end(source, pattern_start)
                 );
+                bool guarded = false;
+                int64_t guard_start = -1;
+                int64_t guard_end = -1;
                 if (
                     after_pattern < length &&
                     token_equal(source, after_pattern, "if")
                 ) {
-                    free_match_bodies(
-                        true_body,
-                        false_body,
-                        catchall_body
+                    guarded = true;
+                    guard_start = skip_trivia(
+                        source,
+                        token_end(source, after_pattern)
                     );
-                    free(emitted.data);
-                    return lower_error(
-                        "E2S24",
-                        "guards are outside bounded Bool match",
-                        after_pattern
+                    guard_end = condition_end(source, guard_start);
+                    if (guard_end < 0) {
+                        return lower_match_error(
+                            &emitted,
+                            &dispatch,
+                            "E2S29",
+                            "match guard must be Bool or an Int comparison",
+                            guard_start
+                        );
+                    }
+                    after_pattern = skip_trivia(
+                        source,
+                        guard_end
                     );
                 }
                 if (
                     after_pattern >= length ||
                     !token_equal(source, after_pattern, "=>")
                 ) {
-                    free_match_bodies(
-                        true_body,
-                        false_body,
-                        catchall_body
-                    );
-                    free(emitted.data);
-                    return lower_error(
+                    return lower_match_error(
+                        &emitted,
+                        &dispatch,
                         "E2S24",
                         "expected `=>` after Bool pattern",
                         after_pattern
@@ -1962,13 +1990,9 @@ static char *lower_body(
                     arm_open >= length ||
                     !token_equal(source, arm_open, "{")
                 ) {
-                    free_match_bodies(
-                        true_body,
-                        false_body,
-                        catchall_body
-                    );
-                    free(emitted.data);
-                    return lower_error(
+                    return lower_match_error(
+                        &emitted,
+                        &dispatch,
                         "E2S24",
                         "bounded Bool match arm must use a block",
                         arm_open
@@ -1981,13 +2005,9 @@ static char *lower_body(
                     "}"
                 );
                 if (arm_close < 0) {
-                    free_match_bodies(
-                        true_body,
-                        false_body,
-                        catchall_body
-                    );
-                    free(emitted.data);
-                    return lower_error(
+                    return lower_match_error(
+                        &emitted,
+                        &dispatch,
                         "E2S24",
                         "missing `}` after match arm",
                         arm_open
@@ -2001,24 +2021,61 @@ static char *lower_body(
                     function_open
                 );
                 if (strncmp(arm_body, "error[", 6) == 0) {
-                    free_match_bodies(
-                        true_body,
-                        false_body,
-                        catchall_body
-                    );
+                    free(dispatch.data);
                     free(emitted.data);
                     return arm_body;
                 }
+
+                const char *pattern_condition = "true";
                 if (pattern_true) {
-                    seen_true = true;
-                    true_body = arm_body;
+                    pattern_condition = "kofun_match_value";
                 } else if (pattern_false) {
-                    seen_false = true;
-                    false_body = arm_body;
-                } else {
-                    seen_catchall = true;
-                    catchall_body = arm_body;
+                    pattern_condition = "!kofun_match_value";
                 }
+                if (guarded) {
+                    char *guard = emit_condition_into(
+                        source,
+                        guard_start,
+                        guard_end,
+                        "kofun_match_guard",
+                        failure_result,
+                        "            "
+                    );
+                    buffer_format(
+                        &dispatch,
+                        "        if (!kofun_match_selected && %s) {\n"
+                        "%s"
+                        "            if (kofun_match_guard) {\n"
+                        "%s"
+                        "                kofun_match_selected = true;\n"
+                        "            }\n"
+                        "        }\n",
+                        pattern_condition,
+                        guard,
+                        arm_body
+                    );
+                    free(guard);
+                } else {
+                    buffer_format(
+                        &dispatch,
+                        "        if (!kofun_match_selected && %s) {\n"
+                        "%s"
+                        "            kofun_match_selected = true;\n"
+                        "        }\n",
+                        pattern_condition,
+                        arm_body
+                    );
+                    if (pattern_true) {
+                        covered_true = true;
+                    } else if (pattern_false) {
+                        covered_false = true;
+                    } else {
+                        covered_true = true;
+                        covered_false = true;
+                        seen_catchall = true;
+                    }
+                }
+                free(arm_body);
                 arm_cursor = skip_trivia(source, arm_close);
                 if (
                     arm_cursor < length &&
@@ -2032,13 +2089,9 @@ static char *lower_body(
                     arm_cursor >= length ||
                     !token_equal(source, arm_cursor, "}")
                 ) {
-                    free_match_bodies(
-                        true_body,
-                        false_body,
-                        catchall_body
-                    );
-                    free(emitted.data);
-                    return lower_error(
+                    return lower_match_error(
+                        &emitted,
+                        &dispatch,
                         "E2S24",
                         "expected `,` between match arms",
                         arm_cursor
@@ -2049,86 +2102,62 @@ static char *lower_body(
                 arm_cursor >= length ||
                 !token_equal(source, arm_cursor, "}")
             ) {
-                free_match_bodies(
-                    true_body,
-                    false_body,
-                    catchall_body
-                );
-                free(emitted.data);
-                return lower_error(
+                return lower_match_error(
+                    &emitted,
+                    &dispatch,
                     "E2S24",
                     "missing `}` after match arms",
                     arms_open
                 );
             }
-            if (!seen_true && !seen_false && !seen_catchall) {
-                free_match_bodies(
-                    true_body,
-                    false_body,
-                    catchall_body
-                );
-                free(emitted.data);
-                return lower_error(
+            if (!covered_true && !covered_false) {
+                return lower_match_error(
+                    &emitted,
+                    &dispatch,
                     "E2S25",
                     "non-exhaustive Bool match; missing patterns `true`, `false`",
                     match_start
                 );
             }
-            if (!seen_true && !seen_catchall) {
-                free_match_bodies(
-                    true_body,
-                    false_body,
-                    catchall_body
-                );
-                free(emitted.data);
-                return lower_error(
+            if (!covered_true) {
+                return lower_match_error(
+                    &emitted,
+                    &dispatch,
                     "E2S25",
                     "non-exhaustive Bool match; missing pattern `true`",
                     match_start
                 );
             }
-            if (!seen_false && !seen_catchall) {
-                free_match_bodies(
-                    true_body,
-                    false_body,
-                    catchall_body
-                );
-                free(emitted.data);
-                return lower_error(
+            if (!covered_false) {
+                return lower_match_error(
+                    &emitted,
+                    &dispatch,
                     "E2S25",
                     "non-exhaustive Bool match; missing pattern `false`",
                     match_start
                 );
             }
-            const char *emitted_true = seen_true
-                ? true_body
-                : catchall_body;
-            const char *emitted_false = seen_false
-                ? false_body
-                : catchall_body;
-            char *match_value = emit_condition(
+            char *match_value = emit_condition_into(
                 source,
                 value_start,
-                value_end
+                value_end,
+                "kofun_match_value",
+                failure_result,
+                "        "
             );
             buffer_format(
                 &emitted,
                 "    {\n"
-                "        bool kofun_match_value = %s;\n"
-                "        if (kofun_failed) return %s;\n"
-                "        if (kofun_match_value) {\n"
                 "%s"
-                "        } else {\n"
+                "        (void)kofun_match_value;\n"
+                "        bool kofun_match_selected = false;\n"
                 "%s"
-                "        }\n"
                 "    }\n",
                 match_value,
-                failure_result,
-                emitted_true,
-                emitted_false
+                dispatch.data
             );
             free(match_value);
-            free_match_bodies(true_body, false_body, catchall_body);
+            free(dispatch.data);
             cursor = skip_trivia(source, token_end(source, arm_cursor));
         } else if (token_equal(source, cursor, "return")) {
             int64_t value_start = skip_trivia(source, token_end(source, cursor));
@@ -2469,6 +2498,12 @@ static char *lower_c(const char *source) {
                 &bodies,
                 "int main(void) {\n"
                 "    (void)kofun_failed;\n"
+                "    (void)kofun_add;\n"
+                "    (void)kofun_sub;\n"
+                "    (void)kofun_mul;\n"
+                "    (void)kofun_neg;\n"
+                "    (void)kofun_floor_div;\n"
+                "    (void)kofun_floor_mod;\n"
             );
             buffer_append(&bodies, body);
             buffer_append(&bodies, "}\n");

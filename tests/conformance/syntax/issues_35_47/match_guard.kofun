@@ -1,0 +1,47 @@
+fn probe(value: Int) -> Int {
+    print(value)
+    return value
+}
+
+fn main() -> Int {
+    match true {
+        true if probe(1) == 0 => {
+            print(99)
+        },
+        true if probe(2) == 2 => {
+            print(20)
+        },
+        true => {
+            print(9223372036854775807 + 1)
+        },
+        false if 1 // 0 == 0 => {
+            print(98)
+        },
+        false => {
+            print(97)
+        },
+    }
+    match false {
+        true if 1 // 0 == 0 => {
+            print(96)
+        },
+        false if false => {
+            print(95)
+        },
+        _ => {
+            print(30)
+        },
+    }
+    match true {
+        _ if false => {
+            print(94)
+        },
+        true => {
+            print(40)
+        },
+        false => {
+            print(93)
+        },
+    }
+    return 0
+}

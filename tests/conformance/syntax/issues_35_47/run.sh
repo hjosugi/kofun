@@ -210,6 +210,52 @@ test ! -s "$WORK/match-bool.stderr" ||
     fail "Stage 2 Bool match wrote unexpected stderr"
 printf '%s\n' "PASS executable Stage 2 exhaustive Bool match"
 
+"$WORK/kofun-stage2" \
+    "$CASES/match_guard.kofun" \
+    "$WORK/match-guard.c" \
+    "$WORK/match-guard.ir" \
+    "$WORK/match-guard.tokens" >/dev/null
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$WORK/match-guard.c" -o "$WORK/match-guard"
+"$WORK/match-guard" \
+    >"$WORK/match-guard.stdout" 2>"$WORK/match-guard.stderr"
+cmp "$CASES/match_guard.stdout" "$WORK/match-guard.stdout" ||
+    fail "Stage 2 guarded Bool match output differs"
+test ! -s "$WORK/match-guard.stderr" ||
+    fail "Stage 2 guarded Bool match wrote unexpected stderr"
+KOFUN_BUILD_DIR="$WORK/guard-cli-stage1" \
+KOFUN_STAGE2_BUILD_DIR="$WORK/guard-cli-stage2" \
+    "$ROOT/bin/kofun" run "$CASES/match_guard.kofun" \
+    >"$WORK/match-guard-cli.stdout" 2>"$WORK/match-guard-cli.stderr"
+cmp "$CASES/match_guard.stdout" "$WORK/match-guard-cli.stdout" ||
+    fail "public kofun run guarded Bool match output differs"
+test ! -s "$WORK/match-guard-cli.stderr" ||
+    fail "public kofun run guarded Bool match wrote stderr"
+printf '%s\n' "PASS ordered Stage 2 Bool match guards"
+
+"$WORK/kofun-stage2" \
+    "$CASES/match_guard_error.kofun" \
+    "$WORK/match-guard-error.c" \
+    "$WORK/match-guard-error.ir" \
+    "$WORK/match-guard-error.tokens" >/dev/null
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$WORK/match-guard-error.c" -o "$WORK/match-guard-error"
+set +e
+"$WORK/match-guard-error" \
+    >"$WORK/match-guard-error.stdout" \
+    2>"$WORK/match-guard-error.stderr"
+match_guard_error_status=$?
+set -e
+test "$match_guard_error_status" -eq 1 ||
+    fail "selected failing match guard returned $match_guard_error_status"
+test ! -s "$WORK/match-guard-error.stdout" ||
+    fail "selected failing match guard wrote stdout"
+cmp \
+    "$CASES/match_guard_error.stderr" \
+    "$WORK/match-guard-error.stderr" ||
+    fail "selected failing match guard diagnostic differs"
+printf '%s\n' "PASS selected-only Stage 2 match guard evaluation"
+
 expect_stage2_diagnostic \
     "$CASES/match_missing_false.kofun" \
     "$CASES/match_missing_false.stdout"
@@ -226,15 +272,18 @@ expect_stage2_diagnostic \
     "$CASES/match_unreachable_catchall.kofun" \
     "$CASES/match_unreachable_catchall.stdout"
 expect_stage2_diagnostic \
-    "$CASES/match_guard_unsupported.kofun" \
-    "$CASES/match_guard_unsupported.stdout"
+    "$CASES/match_guard_non_exhaustive.kofun" \
+    "$CASES/match_guard_non_exhaustive.stdout"
 expect_stage2_diagnostic \
     "$CASES/match_non_bool.kofun" \
     "$CASES/match_non_bool.stdout"
+expect_stage2_diagnostic \
+    "$ROOT/tests/diagnostics/stage2/e2s29_match_guard.kofun" \
+    "$ROOT/tests/diagnostics/stage2/e2s29_match_guard.stderr"
 
 grep '^# Bounded Bool match exhaustiveness' "$MATCH_SPEC" >/dev/null ||
     fail "bounded Bool match specification is missing"
-for code in E2S24 E2S25 E2S26; do
+for code in E2S24 E2S25 E2S26 E2S29; do
     grep "\`$code\`" "$MATCH_SPEC" >/dev/null ||
         fail "bounded Bool match specification omits $code"
 done

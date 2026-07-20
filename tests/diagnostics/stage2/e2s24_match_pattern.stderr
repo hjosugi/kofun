@@ -1,0 +1,1 @@
+error[E2S24]: bounded Bool pattern must be `true`, `false`, or `_` at byte 116
