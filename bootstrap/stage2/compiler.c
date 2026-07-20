@@ -2019,6 +2019,7 @@ static char *lower_block(
     Buffer emitted;
     buffer_init(&emitted);
     char *local_environment = copy_text(environment);
+    char *local_bindings = copy_text(";");
     int64_t cursor = skip_trivia(source, token_end(source, open));
     bool returned = false;
     char *prefix = indentation(depth);
@@ -2039,7 +2040,23 @@ static char *lower_block(
             ) {
                 return lower_error("E2S11", "expected binding name", cursor);
             }
+            int64_t name_start = cursor;
             char *name = token_copy(source, cursor);
+            Buffer binding_marker;
+            buffer_init(&binding_marker);
+            buffer_format(&binding_marker, ";%s;", name);
+            if (strstr(local_bindings, binding_marker.data) != NULL) {
+                Buffer error;
+                buffer_init(&error);
+                buffer_format(
+                    &error,
+                    "error[E2S33]: duplicate binding `%s` in the same scope at byte %" PRId64,
+                    name,
+                    name_start
+                );
+                return error.data;
+            }
+            free(binding_marker.data);
             cursor = skip_trivia(source, token_end(source, cursor));
             char *declared_type = copy_text("");
             if (cursor < length && token_equal(source, cursor, ":")) {
@@ -2160,6 +2177,11 @@ static char *lower_block(
             );
             free(local_environment);
             local_environment = next_environment;
+            Buffer next_bindings;
+            buffer_init(&next_bindings);
+            buffer_format(&next_bindings, ";%s;%s", name, local_bindings);
+            free(local_bindings);
+            local_bindings = next_bindings.data;
             free(value);
             free(name);
             free(value_type);

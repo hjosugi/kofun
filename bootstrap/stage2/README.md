@@ -51,11 +51,13 @@ equal to that length exits with status 1 and writes exactly
 
 The lowerer carries a lexical binding environment through each block. A child
 block can read and mutate eligible outer bindings, but declarations in the
-child do not escape it. Unknown or out-of-scope names use `E2S30`, immutable
-assignment uses `E2S31`, and Int/Bool misuse uses `E2S32`; diagnostics include a
-stable byte offset and fail before a C output artifact is written. List
-elements and indexes are checked as `Int`; unknown index bindings retain the
-same `E2S30` contract.
+child do not escape it. A child declaration may shadow an outer binding and the
+outer binding is restored at block exit. Repeating a name in the same lexical
+block is rejected with `E2S33`. Unknown or out-of-scope names use `E2S30`,
+immutable assignment uses `E2S31`, and Int/Bool misuse uses `E2S32`;
+diagnostics include a stable byte offset and fail before a C output artifact is
+written. List elements and indexes are checked as `Int`; unknown index bindings
+retain the same `E2S30` contract.
 
 This is deliberately the first Issue #8 acceptance slice. Empty and mutable
 lists, general native-backend or interpreter parity, and collection operations
@@ -120,6 +122,9 @@ second generated program verifies the division-by-zero status/stderr contract,
 and a structurally valid non-Core function verifies explicit lowering
 rejection. A nested branch/loop fixture observes mutation, lexical scope,
 comparison, Bool printing, and short-circuit behavior in compiled C11.
+The Issue #112 shadowing fixture observes an inner binding and the restored
+outer binding, while a negative fixture compares the exact same-scope
+duplicate-name `E2S33` diagnostic and verifies that no C artifact is written.
 The value-position-if fixture checks immutable Int/Bool results and places
 division by zero in both unselected branches to prove selected-branch-only
 evaluation. Negative fixtures compare exact mandatory-else, condition-type,

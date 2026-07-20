@@ -1,0 +1,1 @@
+error[E2S33]: duplicate binding `value` in the same scope at byte 45

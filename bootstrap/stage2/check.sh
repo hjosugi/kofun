@@ -258,6 +258,27 @@ cmp "$stage2/control_fixture.stdout" "$temporary/control.stdout"
 test ! -s "$temporary/control.stderr"
 
 "$temporary/kofun-stage2" \
+    "$stage2/shadowing_fixture.kofun" \
+    "$temporary/shadowing.c" \
+    "$temporary/shadowing.ir" \
+    "$temporary/shadowing.tokens" >/dev/null
+"$temporary/kofun-stage2" \
+    "$stage2/shadowing_fixture.kofun" \
+    "$temporary/shadowing-second.c" \
+    "$temporary/shadowing-second.ir" \
+    "$temporary/shadowing-second.tokens" >/dev/null
+cmp "$temporary/shadowing.c" "$temporary/shadowing-second.c"
+cmp "$temporary/shadowing.ir" "$temporary/shadowing-second.ir"
+cmp "$temporary/shadowing.tokens" "$temporary/shadowing-second.tokens"
+test "$(grep -c 'int64_t k_value' "$temporary/shadowing.c")" -eq 2
+"$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$temporary/shadowing.c" -o "$temporary/shadowing-program"
+"$temporary/shadowing-program" \
+    >"$temporary/shadowing.stdout" 2>"$temporary/shadowing.stderr"
+cmp "$stage2/shadowing_fixture.stdout" "$temporary/shadowing.stdout"
+test ! -s "$temporary/shadowing.stderr"
+
+"$temporary/kofun-stage2" \
     "$stage2/if_expression.kofun" \
     "$temporary/if-expression.c" \
     "$temporary/if-expression.ir" \
@@ -367,6 +388,7 @@ lowering_error() {
 }
 
 lowering_error scope_error
+lowering_error shadowing_duplicate_error
 lowering_error immutable_error
 lowering_error type_error
 lowering_error list_element_type_error

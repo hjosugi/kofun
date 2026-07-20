@@ -1562,6 +1562,7 @@ fn lower_block(
 ) -> Text {
     let mut emitted = ""
     let mut local_environment = environment
+    let mut local_bindings = ";"
     let mut cursor = skip_trivia(source, token_end(source, open))
     let mut returned = false
     let prefix = indentation(depth)
@@ -1583,7 +1584,12 @@ fn lower_block(
                 return "error[E2S11]: expected binding name at byte " +
                 to_text(cursor)
             }
+            let name_start = cursor
             let name = token_text(source, cursor)
+            if contains(local_bindings, ";" + name + ";") {
+                return "error[E2S33]: duplicate binding `" + name +
+                "` in the same scope at byte " + to_text(name_start)
+            }
             cursor = skip_trivia(source, token_end(source, cursor))
             let mut declared_type = ""
             if cursor < len(source) && token_text(source, cursor) == ":" {
@@ -1671,6 +1677,7 @@ fn lower_block(
                 value_type,
                 mutable
             )
+            local_bindings = ";" + name + ";" + local_bindings
             cursor = skip_trivia(source, value_end)
         } else if statement == "print" {
             let call_open = skip_trivia(source, token_end(source, cursor))

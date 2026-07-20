@@ -1,0 +1,11 @@
+# Issue #112: a child block may shadow without replacing its outer binding.
+
+fn main() -> Int {
+    let value = 1
+    if true {
+        let value = 2
+        print(value)
+    }
+    print(value)
+    return 0
+}
