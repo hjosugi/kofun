@@ -1,0 +1,5 @@
+extern "Rust" fn hidden(value: CInt) -> CInt
+
+fn main() {
+    hidden(1)
+}

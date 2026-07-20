@@ -110,7 +110,9 @@ A production project must publish:
 - CVE process
 - disclosure policy
 
-Stage 0 repository contains design only; no operational security team is implied.
+The bounded C ABI profile is executable, but the broader FFI policy above
+remains target design. Foreign libraries and their transitive dependencies are
+trusted native code; no operational security team is implied.
 
 ## Compile-time law execution
 
@@ -139,8 +141,9 @@ The JSON evidence includes a source SHA-256 and compiler version, but it is not 
 
 ## Bootstrap security
 
-The active bootstrap contains no Python runtime or source. Its trusted computing
-base is the checked-in Kofun and C11 seed, the host C compiler/linker, and the
-operating system. Stage 1 and Stage 2 artifact checks are reproducibility gates,
-not a defense against a malicious seed and host compiler acting together.
-Diverse double compilation remains open in `bootstrap/manifest.json`.
+The active bootstrap contains no Python runtime or source. Its trusted
+computing base is the checked-in Kofun sources, C11 seeds and C ABI compiler,
+the host C compiler/linker, and the operating system. Stage 1, Stage 2, and C
+ABI artifact checks are reproducibility gates, not a defense against a
+malicious seed and host compiler acting together. Diverse double compilation
+remains open in `bootstrap/manifest.json`.

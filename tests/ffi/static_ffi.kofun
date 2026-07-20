@@ -1,0 +1,5 @@
+extern "C" fn kofun_static_add(left: CInt, right: CInt) -> CInt
+
+fn main() {
+    print(kofun_static_add(19, 23))
+}

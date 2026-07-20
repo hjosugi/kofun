@@ -15,6 +15,18 @@ The C11 bootstrap backend may invoke the configured C compiler; “no external
 build tool” means that a standalone file does not require frost-build or
 another project build orchestrator.
 
+Foreign linking is a separate, explicit single-file profile:
+
+```sh
+kofun build ffi.kofun --backend c --c-abi \
+  --link-library /absolute/path/to/libffi_example.so -o ffi
+```
+
+This path invokes the host C compiler and system linker. It is never selected
+implicitly, accepts library files rather than raw linker flags, and does not
+change the static direct-native `--target` path. Its bounded language and ABI
+contract are documented in `bootstrap/c_abi/README.md`.
+
 `tests/build_system.sh` installs a failing Frost spy next to a manifest and
 proves that the source form never invokes it.
 

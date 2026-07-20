@@ -11,12 +11,16 @@ NATIVE_COMPILER="$NATIVE_BUILD_DIR/kofun-native-core"
 STAGE2_BUILD_DIR=${KOFUN_STAGE2_BUILD_DIR:-"$ROOT/build/stage2"}
 STAGE2_SEED_C="$ROOT/bootstrap/stage2/compiler.c"
 STAGE2_COMPILER="$STAGE2_BUILD_DIR/kofun-stage2"
+C_ABI_BUILD_DIR=${KOFUN_C_ABI_BUILD_DIR:-"$ROOT/build/c-abi"}
+C_ABI_SEED_C="$ROOT/bootstrap/c_abi/compiler.c"
+C_ABI_COMPILER="$C_ABI_BUILD_DIR/kofun-c-abi"
 CC=${CC:-cc}
 
 usage() {
     cat <<'EOF'
 usage:
   kofun build INPUT.kofun [-o OUTPUT] [--emit-c OUTPUT.c]
+              [--backend c --c-abi [--link-library FILE]...]
               [--target x86_64-linux|aarch64-linux] [-g]
   kofun build [TARGET...] [FROST_OPTIONS]  # with ./kofun.toml
   kofun run INPUT.kofun
@@ -53,6 +57,16 @@ ensure_stage2_compiler() {
     then
         "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
             "$STAGE2_SEED_C" -o "$STAGE2_COMPILER"
+    fi
+}
+
+ensure_c_abi_compiler() {
+    mkdir -p "$C_ABI_BUILD_DIR"
+    if [ ! -x "$C_ABI_COMPILER" ] ||
+       [ "$C_ABI_SEED_C" -nt "$C_ABI_COMPILER" ]
+    then
+        "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+            "$C_ABI_SEED_C" -o "$C_ABI_COMPILER"
     fi
 }
 
@@ -182,9 +196,60 @@ emit_c() (
     mv "$temporary" "$2"
 )
 
+emit_c_abi() (
+    require_source "$1"
+    ensure_c_abi_compiler
+    temporary="$2.tmp.$$"
+    trap 'rm -f "$temporary"' 0 1 2 15
+    "$C_ABI_COMPILER" "$1" "$temporary"
+    test -s "$temporary" || exit 1
+    mv "$temporary" "$2"
+)
+
 build_file() (
     emit_c "$1" "$3" >/dev/null
     "$CC" -std=c11 -O2 -Wall -Wextra -Werror "$3" -o "$2"
+)
+
+canonical_link_library() (
+    candidate=$1
+    case $candidate in
+        -*|*'
+'*)
+            printf '%s\n' \
+                "kofun: --link-library must be a file path, not an option" >&2
+            exit 2
+            ;;
+    esac
+    test -f "$candidate" || {
+        printf '%s\n' \
+            "kofun: --link-library is not a regular file: $candidate" >&2
+        exit 2
+    }
+    directory=$(dirname "$candidate")
+    basename=$(basename "$candidate")
+    canonical_directory=$(CDPATH= cd -P -- "$directory" && pwd)
+    printf '%s/%s\n' "$canonical_directory" "$basename"
+)
+
+build_c_abi_file() (
+    input=$1
+    output=$2
+    emitted=$3
+    link_libraries=$4
+    emit_c_abi "$input" "$emitted"
+    set -f
+    if test -n "$link_libraries"; then
+        previous_ifs=$IFS
+        IFS='
+'
+        set -- $link_libraries
+        IFS=$previous_ifs
+    else
+        set --
+    fi
+    "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+        "$emitted" "$@" -o "$output"
 )
 
 build_native_file() (
@@ -272,6 +337,8 @@ case ${1-} in
         output=${input%.kofun}
         emitted=
         backend=
+        c_abi=false
+        link_libraries=
         target=
         debug=false
         while test "$#" -gt 0; do
@@ -294,6 +361,26 @@ case ${1-} in
                     backend=c
                     shift 2
                     ;;
+                --c-abi)
+                    c_abi=true
+                    shift
+                    ;;
+                --link-library)
+                    test "$#" -ge 2 || { usage >&2; exit 2; }
+                    link_library=$(canonical_link_library "$2")
+                    if test -z "$link_libraries"; then
+                        link_libraries=$link_library
+                    else
+                        link_libraries="$link_libraries
+$link_library"
+                    fi
+                    shift 2
+                    ;;
+                --link-library=*)
+                    printf '%s\n' \
+                        "kofun: pass --link-library and its file path separately" >&2
+                    exit 2
+                    ;;
                 --target)
                     test "$#" -ge 2 || { usage >&2; exit 2; }
                     target=$2
@@ -309,6 +396,17 @@ case ${1-} in
                     ;;
             esac
         done
+        if "$c_abi"; then
+            test "$backend" = c || {
+                printf '%s\n' \
+                    "kofun: --c-abi requires explicit --backend c" >&2
+                exit 2
+            }
+        elif test -n "$link_libraries"; then
+            printf '%s\n' \
+                "kofun: --link-library requires --backend c --c-abi" >&2
+            exit 2
+        fi
         if test -n "$target"; then
             test -z "$emitted" || {
                 printf '%s\n' \
@@ -338,7 +436,12 @@ case ${1-} in
             emitted="$BUILD_DIR/$(basename "${input%.kofun}").c"
         fi
         mkdir -p "$(dirname "$output")" "$(dirname "$emitted")"
-        build_file "$input" "$output" "$emitted"
+        if "$c_abi"; then
+            build_c_abi_file \
+                "$input" "$output" "$emitted" "$link_libraries"
+        else
+            build_file "$input" "$output" "$emitted"
+        fi
         printf '%s\n' "$output"
         ;;
     run)
