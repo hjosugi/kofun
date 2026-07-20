@@ -1,0 +1,6 @@
+# diagnostic-mode: compile
+# expect-code: E2S11
+# expect-span: byte 91
+fn main() {
+    let = 42
+}

@@ -1,0 +1,10 @@
+# diagnostic-mode: compile
+# expect-code: E2S19
+# expect-span: byte 89
+fn value() -> Int {
+    let answer = 42
+}
+
+fn main() {
+    print(value())
+}

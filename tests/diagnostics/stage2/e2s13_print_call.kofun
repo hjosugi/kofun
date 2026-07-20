@@ -1,0 +1,6 @@
+# diagnostic-mode: compile
+# expect-code: E2S13
+# expect-span: byte 87
+fn main() {
+    print 42
+}

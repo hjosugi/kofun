@@ -1,0 +1,10 @@
+# diagnostic-mode: compile
+# expect-code: E2S15
+# expect-span: byte 80
+fn value(input: Text) -> Int {
+    return 0
+}
+
+fn main() {
+    print(value(1))
+}

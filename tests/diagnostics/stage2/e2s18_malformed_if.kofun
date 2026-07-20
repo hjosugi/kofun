@@ -1,0 +1,6 @@
+# diagnostic-mode: compile
+# expect-code: E2S18
+# expect-span: byte 87
+fn main() {
+    if
+}

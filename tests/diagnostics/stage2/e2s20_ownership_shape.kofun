@@ -1,0 +1,6 @@
+# diagnostic-mode: ownership
+# expect-code: E2S20
+# expect-span: none
+fn main() {
+    print(42)
+}
