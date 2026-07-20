@@ -13,7 +13,9 @@ C11 compiler. It proves:
 
 - Stage 1 executes an ASCII `fn main()` with newline-terminated immutable
   bindings;
-- Stage 2 executes the same surface plus a `let mut` declaration;
+- Stage 2 executes `let mut` declarations and rebinding for Core `Int` values;
+- Stage 2 rejects immutable and undeclared assignment targets with exact,
+  span-carrying `E2S22` diagnostics;
 - Stage 2 structural IR preserves names, arities, spans, and balanced bodies;
 - the current frontends reject Unicode names; and
 - Stage 2 C lowering explicitly rejects lambda, owned-binding, `if`,

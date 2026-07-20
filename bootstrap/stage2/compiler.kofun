@@ -855,6 +855,44 @@ fn emit_condition(source: Text, start: Int, open: Int) -> Text {
     emit_expression(source, right_start, right_end)
 }
 
+fn binding_mutability_before(
+    source: Text,
+    body_open: Int,
+    assignment_start: Int,
+    binding_name: Text
+) -> Int {
+    let mut cursor = skip_trivia(source, token_end(source, body_open))
+    let mut result = -1
+    while cursor < assignment_start {
+        if token_text(source, cursor) == "let" {
+            let mut name_cursor = skip_trivia(
+                source,
+                token_end(source, cursor)
+            )
+            let mut mutable = false
+            if name_cursor < assignment_start &&
+               token_text(source, name_cursor) == "mut" {
+                mutable = true
+                name_cursor = skip_trivia(
+                    source,
+                    token_end(source, name_cursor)
+                )
+            }
+            if name_cursor < assignment_start &&
+               token_kind(source, name_cursor) == "identifier" &&
+               token_text(source, name_cursor) == binding_name {
+                if mutable {
+                    result = 1
+                } else {
+                    result = 0
+                }
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return result
+}
+
 fn lower_body(
     source: Text,
     open: Int,
@@ -1004,15 +1042,51 @@ fn lower_body(
             }
             returned = true
         } else if token_kind(source, cursor) == "identifier" {
-            let value_end = expression_end(source, cursor)
-            if value_end < 0 {
-                return "error[E2S12]: invalid expression statement at byte " +
-                to_text(cursor)
+            let assignment_start = cursor
+            let name = token_text(source, cursor)
+            let equals = skip_trivia(source, token_end(source, cursor))
+            if equals < len(source) && token_text(source, equals) == "=" {
+                let mutability = binding_mutability_before(
+                    source,
+                    open,
+                    assignment_start,
+                    name
+                )
+                if mutability < 0 {
+                    return "error[E2S22]: unknown assignment target `" + name +
+                    "` at byte " + to_text(assignment_start) +
+                    "; declare it before assignment"
+                }
+                if mutability == 0 {
+                    return "error[E2S22]: cannot assign to immutable binding `" +
+                    name + "` at byte " + to_text(assignment_start) +
+                    "; declare it with `let mut`"
+                }
+                let value_start = skip_trivia(source, token_end(source, equals))
+                let value_end = expression_end(source, value_start)
+                if value_end < 0 {
+                    return "error[E2S12]: invalid Int expression at byte " +
+                    to_text(value_start)
+                }
+                emitted = emitted +
+                "    {\n" +
+                "        int64_t kofun_replacement = " +
+                emit_expression(source, value_start, value_end) + ";\n" +
+                "        if (kofun_failed) return " + failure_result + ";\n" +
+                "        k_" + name + " = kofun_replacement;\n" +
+                "    }\n"
+                cursor = skip_trivia(source, value_end)
+            } else {
+                let value_end = expression_end(source, cursor)
+                if value_end < 0 {
+                    return "error[E2S12]: invalid expression statement at byte " +
+                    to_text(cursor)
+                }
+                emitted = emitted + "    (void)" +
+                emit_expression(source, cursor, value_end) + ";\n" +
+                "    if (kofun_failed) return " + failure_result + ";\n"
+                cursor = skip_trivia(source, value_end)
             }
-            emitted = emitted + "    (void)" +
-            emit_expression(source, cursor, value_end) + ";\n" +
-            "    if (kofun_failed) return " + failure_result + ";\n"
-            cursor = skip_trivia(source, value_end)
         } else {
             return "error[E2S10]: unsupported Core statement at byte " +
             to_text(cursor)

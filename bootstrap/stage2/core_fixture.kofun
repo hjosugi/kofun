@@ -3,7 +3,8 @@
 
 fn main() -> Int {
     let six: Int = 2 * 3
-    let answer = six * 7
+    let mut answer = six
+    answer = answer * 7
     print(answer)
     print(1 + 2 * 3)
     print(-7 // 2)

@@ -24,7 +24,7 @@ compiler cannot yet produce the final diagnostic.
 | #36 | Unicode identifiers | Stage 1 and Stage 2 deliberately accept ASCII identifiers only | unsupported |
 | #37 | function declarations | Stage 2 records top-level function names, arities, and spans; C lowering accepts only `fn main()` | partial |
 | #38 | automatic statement termination | newline-separated Core statements compile and execute | partial |
-| #39 | mutable bindings | Stage 2 Core accepts `let mut`, but assignment is not lowered | partial |
+| #39 | mutable bindings | Stage 2 Core executes mutable `Int` rebinding and rejects immutable or undeclared targets | implemented for Core |
 | #40 | lambda expressions | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
 | #41 | immutable bindings | Stage 1 and Stage 2 Core compile and execute integer `let` bindings | implemented for Core |
 | #42 | owned bindings | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
@@ -330,10 +330,12 @@ remaining = remaining - 1
 let remaining mut: Int = 3
 ```
 
-**Implementation status:** Stage 2 Core accepts and executes the declaration
-surface, but currently emits the same C storage as immutable `let` and does not
-lower assignment. Mutability checking, capture checking, and assignment
-diagnostics remain open.
+**Implementation status:** Stage 2 Core accepts and executes mutable `Int`
+declarations and assignment. It evaluates checked replacement expressions
+before changing storage, and emits span-carrying `E2S22` diagnostics with
+correction hints for immutable or undeclared targets. Assignment through
+members/indexes, non-`Int` type checking, and closure capture checking remain
+open.
 
 ## #40 — Lambda expressions
 

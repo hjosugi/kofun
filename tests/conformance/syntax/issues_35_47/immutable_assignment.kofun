@@ -1,0 +1,7 @@
+# Assignment to an immutable binding is a compile-time error.
+
+fn main() -> Int {
+    let answer: Int = 41
+    answer = answer + 1
+    return answer
+}

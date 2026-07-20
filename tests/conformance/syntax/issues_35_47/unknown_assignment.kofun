@@ -1,0 +1,6 @@
+# Assignment requires a declaration that precedes it.
+
+fn main() -> Int {
+    answer = 42
+    return answer
+}

@@ -141,6 +141,12 @@ grep '^function|main|0|' "$temporary/core.ir" >/dev/null
 grep 'kofun_mul' "$temporary/core.c" >/dev/null
 grep 'kofun_floor_div' "$temporary/core.c" >/dev/null
 grep 'kofun_floor_mod' "$temporary/core.c" >/dev/null
+awk '
+    /int64_t kofun_replacement =/ { state = 1; next }
+    state == 1 && /if \(kofun_failed\) return 1;/ { state = 2; next }
+    state == 2 && /k_answer = kofun_replacement;/ { found = 1 }
+    END { if (!found) exit 1 }
+' "$temporary/core.c"
 "$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
     "$temporary/core.c" -o "$temporary/core-program"
 "$temporary/core-program" >"$temporary/core.stdout" 2>"$temporary/core.stderr"

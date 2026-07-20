@@ -28,6 +28,8 @@ boundary. When the output path ends in `.c`, the same frontend instead accepts
 one zero-argument `fn main()` plus zero or more `Int` Core functions and lowers:
 
 - immutable or mutable `let` bindings, with optional `Int` annotations;
+- assignment to declared mutable `Int` bindings, with immutable and unknown
+  targets rejected before C emission;
 - integer literals, bindings, parentheses, unary `+`/`-`, `+`, `-`, `*`,
   floor `//`, and floor `%`;
 - `Int` parameters and returns;
@@ -37,7 +39,8 @@ one zero-argument `fn main()` plus zero or more `Int` Core functions and lowers:
 - `print(Int)` and `return Int`.
 
 The emitted C11 uses checked arithmetic helpers and preserves Kofun floor
-division/modulo behavior for negative operands. Top-level prototypes make
+division/modulo behavior for negative operands. Assignment evaluates and checks
+the replacement value before changing the binding. Top-level prototypes make
 declaration order irrelevant. The lowerer rejects unknown calls, duplicate
 function names, wrong arity, non-`Int` parameters, and non-`Int` helper return
 types before invoking the host compiler.
