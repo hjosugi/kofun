@@ -1,0 +1,4 @@
+fn main() -> Int {
+    let double = fn(value: Int) => value * 2
+    return 0
+}

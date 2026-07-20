@@ -82,20 +82,20 @@ Do not claim C/Rust parity without workload-specific benchmarks. Build unboxed n
 
 ## DD-016: Algebraic laws are compiler artifacts
 
-`Monad`などの抽象はmethod signatureだけで完了としない。source-level `law` declarationをtype checking後に検査し、失敗をcompile errorにする。
+Abstractions such as `Monad` are not considered complete from method signatures alone. Source-level `law` declarations are checked after type checking, and a failure is a compile error.
 
 ## DD-017: Evidence levels are never conflated
 
-`bounded-exhaustive`、`proven-finite`、`proven`を別のassuranceとして扱う。sample検査を普遍証明と表示せず、optimizerとCIは最低assuranceを明示する。
+Treat `bounded-exhaustive`, `proven-finite`, and `proven` as separate assurance levels. Sampled checking is never presented as universal proof, and the optimizer and CI state the minimum assurance explicitly.
 
 ## DD-018: Versioned machine-readable law evidence
 
-law resultは`kofun.law-evidence/v1` JSON artifactとして保存できる。source hash、compiler version、model digest、case count、diagnostics、counterexamplesを含める。
+A law result can be stored as a `kofun.law-evidence/v1` JSON artifact. It includes the source hash, compiler version, model digest, case count, diagnostics, and counterexamples.
 
 ## DD-019: Self-hosting means a fixed point
 
-Kofunで書かれたcompiler sourceが存在するだけではself-hostingと呼ばない。Stage 1 self-recompileとStage 1/Stage 2 artifact equivalenceを満たした時だけfixed-point bootstrapと呼ぶ。
+The existence of compiler source written in Kofun is not by itself self-hosting. Only when Stage 1 self-recompile and Stage 1/Stage 2 artifact equivalence are both satisfied is it called a fixed-point bootstrap.
 
 ## DD-020: Two Stage 1 execution paths
 
-bootstrap初期段階では、Stage 0 interpreter版とStage 0 C11 backendからbuildしたnative版のStage 1 outputを比較する。両者の一致をStage 2以前のdifferential gateにする。
+In the early bootstrap stages, compare the Stage 1 output of the Stage 0 interpreter build against the Stage 1 output of the native build produced by the Stage 0 C11 backend. Agreement between the two is the differential gate that precedes Stage 2.

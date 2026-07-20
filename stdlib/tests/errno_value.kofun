@@ -1,0 +1,33 @@
+# Stage 2 value-level contract: raw negative returns become SysError values.
+
+import stdlib.linux_x86_64.abi
+import stdlib.linux_x86_64.process
+
+fn fail() -> Never {
+    return process_exit(1)
+}
+
+fn expect_error(raw: Int, expected_errno: Int) -> Void {
+    match syscall_result("fixture", raw) {
+        Ok(_) => fail()
+        Err(error) if error.operation == "fixture" &&
+                      error.errno == expected_errno => {}
+        Err(_) => fail()
+    }
+}
+
+fn main() {
+    expect_error(-1, 1)
+    expect_error(-2, 2)
+    expect_error(-4095, 4095)
+
+    match syscall_result("fixture", 0) {
+        Ok(value) if value == 0 => {}
+        _ => fail()
+    }
+    match syscall_result("fixture", -4096) {
+        Ok(value) if value == -4096 => {}
+        _ => fail()
+    }
+    print("syscall-errno-values: ok")
+}

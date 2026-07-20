@@ -12,7 +12,31 @@ Stage 0 has `Int`, `Float`, `Bool`, `Text`, `Null`, `List[T]`, `Tuple[...]`, fun
 
 ## Numeric operators
 
-`/` returns `Float`. `//` performs floor division in the reference interpreter. The current C11 backend accepts only a restricted numeric subset and documents backend-specific gaps rather than silently changing unsupported semantics.
+`Int` is a signed 64-bit value in the inclusive range
+`-9223372036854775808 .. 9223372036854775807`.
+
+Integer `+`, `-`, `*`, and unary `-` use checked arithmetic. A result outside
+the `Int` range is runtime error `R010`; it writes one canonical diagnostic
+line naming the operator to stderr and exits with status 1. Implementations
+must not wrap, saturate, or vary this behavior between debug and release
+builds. `INT64_MIN // -1` is the same overflow error. A future explicit
+wrapping API does not change ordinary arithmetic.
+
+`/` returns `Float`. `//` computes the mathematical floor of the quotient.
+`%` is paired with that quotient:
+
+```text
+left == (left // right) * right + (left % right)
+```
+
+For a non-zero remainder, `%` has the divisor's sign. A zero divisor for `//`
+or `%` is runtime error `R010` with status 1, including when the zero is known
+only at runtime. Every backend must produce the same value, diagnostic, and
+exit status or reject the construct as unsupported before execution.
+
+The executable boundary cases and failure observations are defined by
+`tests/conformance/numeric/` under the
+`kofun.backend-differential/v1` contract.
 
 ## Control flow
 
@@ -30,4 +54,9 @@ Law evidence may be serialized as `kofun.law-evidence/v1`. The artifact binds re
 
 ## Backends
 
-The interpreter defines the broadest Stage 0 behavior. The C11 backend is intentionally strict and rejects unsupported constructs with an error. It includes a narrow `List[Text]` and text/file runtime for the native Stage 1 seed. No backend may silently reinterpret a construct with different semantics.
+The active Stage 1 C11 backend accepts a deliberately small integer Core and
+rejects unsupported constructs before execution. The native checkpoint does
+not yet lower general Kofun programs and therefore is not a registered
+semantic backend. As more backends become executable, each must satisfy the
+differential contract for every construct it accepts. No backend may silently
+reinterpret a construct with different semantics.

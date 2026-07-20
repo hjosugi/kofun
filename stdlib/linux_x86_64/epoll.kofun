@@ -1,0 +1,69 @@
+import stdlib.linux_x86_64.abi
+import stdlib.linux_x86_64.network
+
+let EPOLL_EVENT_SIZE = 12
+
+type Epoll = {
+    descriptor: Int,
+}
+
+type EpollEvent = {
+    encoded: Bytes,
+}
+
+fn epoll_create(flags: Int) -> SysResult[Epoll] {
+    return match syscall_result(
+        "epoll_create1",
+        raw_epoll_create1(flags),
+    ) {
+        Ok(descriptor) => Ok(Epoll { descriptor: descriptor })
+        Err(error) => Err(error)
+    }
+}
+
+fn epoll_control(
+    read epoll: Epoll,
+    operation: Int,
+    read socket: Socket,
+    read event: EpollEvent,
+) -> SysResult[Void] {
+    let raw = raw_epoll_ctl(
+        epoll.descriptor,
+        operation,
+        socket.descriptor,
+        abi_bytes_address(event.encoded, 0),
+    )
+    return match syscall_result("epoll_ctl", raw) {
+        Ok(_) => Ok(())
+        Err(error) => Err(error)
+    }
+}
+
+fn epoll_wait(
+    read epoll: Epoll,
+    edit events: Bytes,
+    maximum_events: Int,
+    timeout_ms: Int,
+) -> SysResult[Int] {
+    if len(events) < maximum_events * EPOLL_EVENT_SIZE {
+        return Err(SysError { operation: "epoll_wait", errno: 22 })
+    }
+    let raw = raw_epoll_wait(
+        epoll.descriptor,
+        abi_bytes_edit_address(events, 0),
+        maximum_events,
+        timeout_ms,
+    )
+    return syscall_result("epoll_wait", raw)
+}
+
+fn epoll_close(take epoll: Epoll) -> SysResult[Void] {
+    return match syscall_result("close", raw_close(epoll.descriptor)) {
+        Ok(_) => Ok(())
+        Err(error) => Err(error)
+    }
+}
+
+fn epoll_drop(take epoll: Epoll) -> Void {
+    epoll_close(epoll)
+}

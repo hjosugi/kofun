@@ -1,0 +1,17 @@
+kofun-token-tape/v1
+keyword|17|19|2
+identifier|20|24|2
+punctuation|24|25|2
+punctuation|25|26|2
+punctuation|27|28|2
+keyword|33|36|3
+identifier|37|42|3
+punctuation|43|44|3
+integer|45|50|3
+punctuation|51|53|3
+integer|54|55|3
+identifier|60|65|4
+punctuation|65|66|4
+string|66|72|4
+punctuation|72|73|4
+punctuation|92|93|5

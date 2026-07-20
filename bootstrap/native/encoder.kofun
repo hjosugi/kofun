@@ -1,0 +1,506 @@
+# Canonical Kofun implementation of the first direct native image writer.
+#
+# This module deliberately emits bytes, not assembly text and not C. The first
+# target is a static Linux x86-64 ET_EXEC image with one RX load segment and one
+# zero-filled RW load segment.
+
+fn u16_le(value: Int) -> List[Int] {
+    return [
+        value % 256,
+        (value // 256) % 256,
+    ]
+}
+
+fn u32_le(value: Int) -> List[Int] {
+    return [
+        value % 256,
+        (value // 256) % 256,
+        (value // 65536) % 256,
+        (value // 16777216) % 256,
+    ]
+}
+
+fn u64_le(value: Int) -> List[Int] {
+    return [
+        value % 256,
+        (value // 256) % 256,
+        (value // 65536) % 256,
+        (value // 16777216) % 256,
+        (value // 4294967296) % 256,
+        (value // 1099511627776) % 256,
+        (value // 281474976710656) % 256,
+        (value // 72057594037927936) % 256,
+    ]
+}
+
+fn patch_u32_le(
+    image: List[Int],
+    field_offset: Int,
+    value: Int,
+) -> List[Int] {
+    # Rebuilding the list makes fixup application deterministic and keeps the
+    # canonical encoder independent of mutable byte-buffer semantics.
+    if field_offset < 0 || field_offset + 4 > len(image) {
+        return []
+    }
+    let encoded = u32_le(value)
+    let mut patched = []
+    for index in 0 .. len(image) {
+        if index >= field_offset && index < field_offset + 4 {
+            patched = concat(patched, [encoded[index - field_offset]])
+        } else {
+            patched = concat(patched, [image[index]])
+        }
+    }
+    return patched
+}
+
+fn resolve_abs32_fixup(
+    image: List[Int],
+    field_offset: Int,
+    image_base: Int,
+    label_offset: Int,
+    addend: Int,
+) -> List[Int] {
+    let resolved = image_base + label_offset + addend
+    if resolved < 0 || resolved > 4294967295 {
+        return []
+    }
+    return patch_u32_le(
+        image,
+        field_offset,
+        resolved,
+    )
+}
+
+fn resolve_rel32_fixup(
+    image: List[Int],
+    field_offset: Int,
+    instruction_end: Int,
+    label_offset: Int,
+) -> List[Int] {
+    let displacement = label_offset - instruction_end
+    if displacement < -2147483648 || displacement > 2147483647 {
+        return []
+    }
+    return patch_u32_le(
+        image,
+        field_offset,
+        displacement,
+    )
+}
+
+fn label_offset(
+    label_ids: List[Int],
+    label_offsets: List[Int],
+    wanted: Int,
+) -> Int {
+    if len(label_ids) != len(label_offsets) {
+        return -1
+    }
+
+    let mut found = -1
+    for index in 0 .. len(label_ids) {
+        if label_ids[index] == wanted {
+            # Duplicate labels are invalid; traversal order must not choose.
+            if found >= 0 {
+                return -1
+            }
+            found = label_offsets[index]
+        }
+    }
+    return found
+}
+
+fn resolve_rel32_fixups(
+    code: List[Int],
+    label_ids: List[Int],
+    label_offsets: List[Int],
+    fixup_offsets: List[Int],
+    instruction_ends: List[Int],
+    fixup_label_ids: List[Int],
+) -> List[Int] {
+    if len(label_ids) != len(label_offsets) ||
+       len(fixup_offsets) != len(instruction_ends) ||
+       len(fixup_offsets) != len(fixup_label_ids) {
+        return []
+    }
+
+    let mut linked = code
+    for index in 0 .. len(fixup_offsets) {
+        let target = label_offset(
+            label_ids,
+            label_offsets,
+            fixup_label_ids[index],
+        )
+        if target < 0 {
+            return []
+        }
+        linked = resolve_rel32_fixup(
+            linked,
+            fixup_offsets[index],
+            instruction_ends[index],
+            target,
+        )
+        if len(linked) == 0 {
+            return []
+        }
+    }
+    return linked
+}
+
+fn pad_to(image: List[Int], size: Int) -> List[Int] {
+    let mut padded = image
+    while len(padded) < size {
+        padded = concat(padded, [0])
+    }
+    return padded
+}
+
+fn elf_ident() -> List[Int] {
+    return [
+        127, 69, 76, 70, # ELF magic
+        2,                # ELFCLASS64
+        1,                # ELFDATA2LSB
+        1,                # EV_CURRENT
+        0,                # System V ABI
+        0,                # ABI version
+        0, 0, 0, 0, 0, 0, 0,
+    ]
+}
+
+fn x64_mov_r32_imm32(opcode: Int, value: Int) -> List[Int] {
+    # B8+rd id encodes mov r32, imm32 for the eight legacy registers.
+    if opcode < 184 || opcode > 191 || value < 0 || value > 4294967295 {
+        return []
+    }
+    return concat([opcode], u32_le(value))
+}
+
+fn x64_mov_eax_imm32(value: Int) -> List[Int] {
+    return x64_mov_r32_imm32(184, value)
+}
+
+fn x64_mov_ecx_imm32(value: Int) -> List[Int] {
+    return x64_mov_r32_imm32(185, value)
+}
+
+fn x64_mov_edi_imm32(value: Int) -> List[Int] {
+    return x64_mov_r32_imm32(191, value)
+}
+
+fn x64_mov_esi_imm32(value: Int) -> List[Int] {
+    return x64_mov_r32_imm32(190, value)
+}
+
+fn x64_mov_edx_imm32(value: Int) -> List[Int] {
+    return x64_mov_r32_imm32(186, value)
+}
+
+fn x64_syscall() -> List[Int] {
+    return [15, 5]
+}
+
+fn x64_add_eax_imm8(value: Int) -> List[Int] {
+    if value < 0 || value > 127 {
+        return []
+    }
+    return [131, 192, value]
+}
+
+fn x64_xor_edx_edx() -> List[Int] {
+    return [49, 210]
+}
+
+fn x64_div_ecx() -> List[Int] {
+    return [247, 241]
+}
+
+fn x64_add_al_imm8(value: Int) -> List[Int] {
+    if value < 0 || value > 255 {
+        return []
+    }
+    return [4, value]
+}
+
+fn x64_add_dl_imm8(value: Int) -> List[Int] {
+    if value < 0 || value > 255 {
+        return []
+    }
+    return [128, 194, value]
+}
+
+fn x64_store_al_abs32_placeholder() -> List[Int] {
+    # 88 /r with SIB base=5 carries a zero placeholder for an absolute disp32.
+    return [136, 4, 37, 0, 0, 0, 0]
+}
+
+fn x64_store_dl_abs32_placeholder() -> List[Int] {
+    return [136, 20, 37, 0, 0, 0, 0]
+}
+
+fn x64_jmp_rel32_placeholder() -> List[Int] {
+    return [233, 0, 0, 0, 0]
+}
+
+fn x64_call_rel32_placeholder() -> List[Int] {
+    return [232, 0, 0, 0, 0]
+}
+
+fn x64_lea_rsi_rel32_placeholder() -> List[Int] {
+    # 48 8D 35 disp32 loads a RIP-relative address into rsi.
+    return [72, 141, 53, 0, 0, 0, 0]
+}
+
+fn x64_imul_eax_imm8(value: Int) -> List[Int] {
+    if value < 0 || value > 127 {
+        return []
+    }
+    return [107, 192, value]
+}
+
+fn x64_write_stdout(address: Int, length: Int) -> List[Int] {
+    # Linux x86-64 write(1, address, length). The initial static-image format
+    # keeps addresses and lengths within the imm32 range.
+    if address < 0 || address > 4294967295 ||
+       length < 0 || length > 4294967295 {
+        return []
+    }
+    return concat(
+        x64_mov_eax_imm32(1),
+        concat(
+            x64_mov_edi_imm32(1),
+            concat(
+                x64_mov_esi_imm32(address),
+                concat(x64_mov_edx_imm32(length), x64_syscall()),
+            ),
+        ),
+    )
+}
+
+fn x64_exit_text(status: Int) -> List[Int] {
+    # Linux x86-64: exit(status) is syscall 60 with status in edi.
+    if status < 0 || status > 255 {
+        return []
+    }
+    return concat(
+        x64_mov_eax_imm32(60),
+        concat(x64_mov_edi_imm32(status), x64_syscall()),
+    )
+}
+
+fn x64_core_answer_text() -> List[Int] {
+    # Lower this Stage 1 arithmetic Core behavior:
+    #
+    #   fn main() {
+    #       print((6 + 1) * 6)
+    #   }
+    #
+    # _start calls main and exits with its result. main prints through a
+    # RIP-relative message label. Both forward references are rel32 fixups.
+    let main_label = 1
+    let message_label = 2
+
+    let mut code = x64_call_rel32_placeholder()
+    let call_fixup_at = 1
+    let call_end = len(code)
+    code = concat(code, [137, 199]) # mov edi,eax
+    code = concat(code, x64_mov_eax_imm32(60))
+    code = concat(code, x64_syscall())
+
+    let main_offset = len(code)
+    code = concat(code, x64_mov_eax_imm32(6))
+    code = concat(code, x64_add_eax_imm8(1))
+    code = concat(code, x64_imul_eax_imm8(6))
+    code = concat(code, [80]) # push rax: preserve the Core result
+    code = concat(code, x64_mov_eax_imm32(1))
+    code = concat(code, x64_mov_edi_imm32(1))
+
+    let lea_offset = len(code)
+    code = concat(code, x64_lea_rsi_rel32_placeholder())
+    let lea_fixup_at = lea_offset + 3
+    let lea_end = len(code)
+
+    code = concat(code, x64_mov_edx_imm32(3))
+    code = concat(code, x64_syscall())
+    code = concat(code, [88, 195]) # pop rax; ret
+
+    let message_offset = len(code)
+    let linked = resolve_rel32_fixups(
+        code,
+        [main_label, message_label],
+        [main_offset, message_offset],
+        [call_fixup_at, lea_fixup_at],
+        [call_end, lea_end],
+        [main_label, message_label],
+    )
+    return concat(linked, [52, 50, 10]) # "42\n"
+}
+
+fn elf64_header(entry: Int) -> List[Int] {
+    return concat(
+        elf_ident(),
+        concat(
+            u16_le(2),                 # ET_EXEC
+            concat(
+                u16_le(62),            # EM_X86_64
+                concat(
+                    u32_le(1),         # EV_CURRENT
+                    concat(
+                        u64_le(entry),
+                        concat(
+                            u64_le(64), # program-header offset
+                            concat(
+                                u64_le(0),
+                                concat(
+                                    u32_le(0),
+                                    concat(
+                                        u16_le(64),
+                                        concat(
+                                            u16_le(56),
+                                            concat(
+                                                u16_le(2),
+                                                concat(
+                                                    u16_le(0),
+                                                    concat(u16_le(0), u16_le(0)),
+                                                ),
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+}
+
+fn elf64_load_segment(
+    flags: Int,
+    file_offset: Int,
+    address: Int,
+    file_size: Int,
+    memory_size: Int,
+) -> List[Int] {
+    return concat(
+        u32_le(1), # PT_LOAD
+        concat(
+            u32_le(flags),
+            concat(
+                u64_le(file_offset),
+                concat(
+                    u64_le(address),
+                    concat(
+                        u64_le(address),
+                        concat(
+                            u64_le(file_size),
+                            concat(u64_le(memory_size), u64_le(4096)),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+}
+
+fn elf64_exit_image(status: Int) -> List[Int] {
+    let base = 4194304
+    let text_offset = 176
+    let rw_address = base + 4096
+    let text = x64_exit_text(status)
+    let image_size = text_offset + len(text)
+    let header = elf64_header(base + text_offset)
+    let rx = elf64_load_segment(5, 0, base, image_size, image_size)
+    let rw = elf64_load_segment(6, 4096, rw_address, 0, 4096)
+    return concat(header, concat(rx, concat(rw, text)))
+}
+
+fn x64_print_sum_text(left: Int, right: Int) -> List[Int] {
+    # This first lowering fixture intentionally covers non-negative two-digit
+    # results. It computes the value at runtime, divides by ten, converts both
+    # digits to ASCII, stores them in the RW segment, then writes the buffer.
+    let arithmetic = concat(
+        x64_mov_eax_imm32(left),
+        concat(
+            x64_add_eax_imm8(right),
+            concat(
+                x64_xor_edx_edx(),
+                concat(
+                    x64_mov_ecx_imm32(10),
+                    concat(
+                        x64_div_ecx(),
+                        concat(
+                            x64_add_al_imm8(48),
+                            x64_add_dl_imm8(48),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+    let stores = concat(
+        x64_store_al_abs32_placeholder(),
+        x64_store_dl_abs32_placeholder(),
+    )
+    let raw = concat(
+        arithmetic,
+        concat(
+            stores,
+            concat(x64_write_stdout(0, 3), x64_exit_text(0)),
+        ),
+    )
+
+    # Fixup fields are measured from the start of text. The data label is a
+    # file/virtual offset because both PT_LOAD mappings share image_base.
+    let image_base = 4194304
+    let buffer_label = 4096
+    let tens_fixed = resolve_abs32_fixup(raw, 25, image_base, buffer_label, 0)
+    let ones_fixed = resolve_abs32_fixup(
+        tens_fixed,
+        32,
+        image_base,
+        buffer_label,
+        1,
+    )
+    return resolve_abs32_fixup(
+        ones_fixed,
+        47,
+        image_base,
+        buffer_label,
+        0,
+    )
+}
+
+fn elf64_print_sum_image(left: Int, right: Int) -> List[Int] {
+    let base = 4194304
+    let text_offset = 176
+    let data_offset = 4096
+    let text = x64_print_sum_text(left, right)
+    let rx_size = text_offset + len(text)
+    let header = elf64_header(base + text_offset)
+    let rx = elf64_load_segment(5, 0, base, rx_size, rx_size)
+    let rw = elf64_load_segment(6, data_offset, base + data_offset, 3, 4096)
+    let without_data = concat(header, concat(rx, concat(rw, text)))
+    # The first two bytes are overwritten by generated code; newline is static.
+    return concat(pad_to(without_data, data_offset), [0, 0, 10])
+}
+
+fn elf64_core_answer_image() -> List[Int] {
+    let base = 4194304
+    let text_offset = 176
+    let rw_address = base + 4096
+    let text = x64_core_answer_text()
+    let image_size = text_offset + len(text)
+    let header = elf64_header(base + text_offset)
+    let rx = elf64_load_segment(5, 0, base, image_size, image_size)
+    let rw = elf64_load_segment(6, 4096, rw_address, 0, 4096)
+    return concat(header, concat(rx, concat(rw, text)))
+}
+
+fn main() {
+    for byte in elf64_print_sum_image(40, 2) {
+        print(byte)
+    }
+}

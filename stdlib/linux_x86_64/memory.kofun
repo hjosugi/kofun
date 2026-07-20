@@ -1,0 +1,39 @@
+import stdlib.linux_x86_64.abi
+
+let PROT_READ = 1
+let PROT_WRITE = 2
+let MAP_PRIVATE = 2
+let MAP_ANONYMOUS = 32
+
+type MemoryMap = {
+    address: Int,
+    length: Int,
+}
+
+fn memory_allocate(length: Int) -> SysResult[MemoryMap] {
+    if length <= 0 {
+        return Err(SysError { operation: "mmap", errno: 22 })
+    }
+
+    let protection = PROT_READ + PROT_WRITE
+    let flags = MAP_PRIVATE + MAP_ANONYMOUS
+    let raw = raw_mmap(0, length, protection, flags, -1, 0)
+    return match syscall_result("mmap", raw) {
+        Ok(address) => Ok(MemoryMap { address: address, length: length })
+        Err(error) => Err(error)
+    }
+}
+
+fn memory_unmap(take mapping: MemoryMap) -> SysResult[Void] {
+    return match syscall_result(
+        "munmap",
+        raw_munmap(mapping.address, mapping.length),
+    ) {
+        Ok(_) => Ok(())
+        Err(error) => Err(error)
+    }
+}
+
+fn memory_drop(take mapping: MemoryMap) -> Void {
+    memory_unmap(mapping)
+}

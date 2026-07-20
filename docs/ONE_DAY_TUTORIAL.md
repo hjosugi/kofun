@@ -1,11 +1,12 @@
 # Kofun one-day tutorial
 
-このtutorialは、8時間でbasic applicationとinterview algorithmを書ける状態を目標にする。
+This tutorial aims to get you to the point where you can write a basic
+application and interview algorithms in eight hours.
 
 ## Hour 1: Run and values
 
 ```bash
-./bin/kofun run examples/hello.kf
+./bin/kofun run examples/hello.kofun
 ```
 
 ```kofun
@@ -17,12 +18,12 @@ fn main() {
 }
 ```
 
-覚えること:
+What to remember:
 
-- entry pointは`fn main()`
-- bindingは`let`
-- semicolon不要
-- stringはdouble quote
+- the entry point is `fn main()`
+- bindings use `let`
+- no semicolons
+- strings use double quotes
 
 ## Hour 2: Types and null
 
@@ -34,13 +35,13 @@ let title: Text = "report"
 let missing: Int? = null
 ```
 
-fallback:
+Fallback:
 
 ```kofun
 let effective = missing ?? 0
 ```
 
-`null`はoptional typeにしか入らない。
+`null` fits only into an optional type.
 
 ## Hour 3: Functions and branches
 
@@ -56,7 +57,7 @@ fn grade(score: Int) -> Text {
 }
 ```
 
-functionはvalueを返す。`if`もvalueを返せる。
+A function returns a value. `if` can return a value too.
 
 ## Hour 4: Lists and pipelines
 
@@ -72,11 +73,11 @@ fn main() {
 }
 ```
 
-覚えること:
+What to remember:
 
-- `0 .. 10`は10を含まない
-- lambdaは`fn(x) => expression`
-- `|>`は左のvalueを次のfunctionの先頭argumentへ渡す
+- `0 .. 10` does not include 10
+- a lambda is `fn(x) => expression`
+- `|>` passes the value on the left as the first argument of the next function
 
 ## Hour 5: Loops and interview code
 
@@ -101,7 +102,7 @@ fn binary_search(values: List[Int], target: Int) -> Int {
 }
 ```
 
-局所mutationは`let mut`で使える。`//`はinteger division。
+Local mutation is available with `let mut`. `//` is integer division.
 
 ## Hour 6: Ownership
 
@@ -121,14 +122,14 @@ fn main() {
 }
 ```
 
-覚えること:
+What to remember:
 
-- 普通のdataはGC-managed
-- resourceは`let own`
-- `read`は読むだけ
-- `edit`はexclusive update
-- `take`はownership transfer
-- taken valueは再利用できない
+- ordinary data is GC-managed
+- resources use `let own`
+- `read` only reads
+- `edit` is an exclusive update
+- `take` transfers ownership
+- a taken value cannot be used again
 
 ## Hour 7: Scientific computing
 
@@ -142,20 +143,21 @@ fn main() {
 }
 ```
 
-Stage 0ではList-based vector API。production designではunboxed N-dimensional arrayへ置き換える。
+Stage 0 has a List-based vector API. The production design calls for replacing
+it with unboxed N-dimensional arrays.
 
 ## Hour 8: Tools and tests
 
 check:
 
 ```bash
-./bin/kofun check examples/pipeline.kf
+./bin/kofun check examples/pipeline.kofun
 ```
 
 format:
 
 ```bash
-./bin/kofun fmt -w examples/pipeline.kf
+./bin/kofun fmt -w examples/pipeline.kofun
 ```
 
 test file:
@@ -176,19 +178,20 @@ run:
 native subset:
 
 ```bash
-./bin/kofun build examples/fibonacci_native.kf -o build/fibonacci
+./bin/kofun build examples/fibonacci_native.kofun -o build/fibonacci
 ./build/fibonacci
 ```
 
-Monad則をcompilerで確認:
+Check the monad laws with the compiler:
 
 ```bash
-./bin/kofun laws examples/proven_optional_bool_monad.kf \
+./bin/kofun laws examples/proven_optional_bool_monad.kofun \
   --require-assurance proven-finite \
   --output artifacts/optional-bool-monad.evidence.json
 ```
 
-壊れた実装ではleft identity、right identity、associativityの反例がcompile errorになります。
+For a broken implementation, counterexamples to left identity, right identity,
+and associativity become compile errors.
 
 ## First-day cheat sheet
 
@@ -221,4 +224,4 @@ law monad Name { ... }
 - native ABI
 - GC write barrier
 
-これらは必要になった段階で学べるようにする。
+These are meant to be learnable at the point where you actually need them.

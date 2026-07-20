@@ -1,3 +1,4 @@
+# expect: 42
 fn main() {
     print((6 + 1) * 6)
 }

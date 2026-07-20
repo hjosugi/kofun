@@ -1,0 +1,8 @@
+# Structurally valid Kofun, but control-flow lowering is outside Stage 2 Core.
+
+fn main() -> Int {
+    if true {
+        return 0
+    }
+    return 1
+}

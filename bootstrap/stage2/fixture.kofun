@@ -1,0 +1,18 @@
+# Braces and comment markers inside strings are lexical data: "{ # }".
+
+fn classify(value: Int) -> Text {
+    if value < 0 {
+        return "negative {value}"
+    } else if value == 0 {
+        return "# zero"
+    }
+    return "positive"
+}
+
+fn main() {
+    let mut total = 0
+    for value in 0 .. 4 {
+        total = total + value
+    }
+    print(classify(total))
+}

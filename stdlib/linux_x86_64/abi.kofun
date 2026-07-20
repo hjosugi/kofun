@@ -1,0 +1,285 @@
+# Canonical Linux x86-64 freestanding ABI.
+# This is the only trusted module in the syscall standard library.
+
+let SYS_READ = 0
+let SYS_WRITE = 1
+let SYS_OPEN = 2
+let SYS_CLOSE = 3
+let SYS_STAT = 4
+let SYS_LSEEK = 8
+let SYS_MMAP = 9
+let SYS_MUNMAP = 11
+let SYS_NANOSLEEP = 35
+let SYS_SOCKET = 41
+let SYS_CONNECT = 42
+let SYS_ACCEPT4 = 288
+let SYS_BIND = 49
+let SYS_LISTEN = 50
+let SYS_SETSOCKOPT = 54
+let SYS_EXIT = 60
+let SYS_CLOCK_GETTIME = 228
+let SYS_EXIT_GROUP = 231
+let SYS_EPOLL_WAIT = 232
+let SYS_EPOLL_CTL = 233
+let SYS_EPOLL_CREATE1 = 291
+let SYS_GETRANDOM = 318
+
+let LINUX_ERROR_LOW = -4095
+let LINUX_ERROR_HIGH = -1
+let EINTR = 4
+
+type SysError = {
+    operation: Text,
+    errno: Int,
+}
+
+type SysResult[T] =
+    | Ok(T)
+    | Err(SysError)
+
+trusted intrinsic fn __linux_syscall0(number: Int) -> Int
+trusted intrinsic fn __linux_syscall1(number: Int, arg1: Int) -> Int
+trusted intrinsic fn __linux_syscall2(number: Int, arg1: Int, arg2: Int) -> Int
+trusted intrinsic fn __linux_syscall3(
+    number: Int,
+    arg1: Int,
+    arg2: Int,
+    arg3: Int,
+) -> Int
+trusted intrinsic fn __linux_syscall4(
+    number: Int,
+    arg1: Int,
+    arg2: Int,
+    arg3: Int,
+    arg4: Int,
+) -> Int
+trusted intrinsic fn __linux_syscall5(
+    number: Int,
+    arg1: Int,
+    arg2: Int,
+    arg3: Int,
+    arg4: Int,
+    arg5: Int,
+) -> Int
+trusted intrinsic fn __linux_syscall6(
+    number: Int,
+    arg1: Int,
+    arg2: Int,
+    arg3: Int,
+    arg4: Int,
+    arg5: Int,
+    arg6: Int,
+) -> Int
+
+trusted intrinsic fn __text_c_address(read value: Text) -> Int
+trusted intrinsic fn __bytes_address(read value: Bytes, offset: Int) -> Int
+trusted intrinsic fn __bytes_edit_address(edit value: Bytes, offset: Int) -> Int
+trusted intrinsic fn __bytes_zeroed(length: Int) -> Bytes
+trusted intrinsic fn __text_utf8_bytes(read value: Text) -> Bytes
+trusted intrinsic fn __bytes_equal(read left: Bytes, read right: Bytes) -> Bool
+trusted intrinsic fn __load_u8(read value: Bytes, offset: Int) -> Int
+trusted intrinsic fn __store_u8(edit value: Bytes, offset: Int, item: Int) -> Void
+trusted intrinsic fn __load_i64(read value: Bytes, offset: Int) -> Int
+trusted intrinsic fn __store_i64(edit value: Bytes, offset: Int, item: Int) -> Void
+
+fn abi_text_c_address(read value: Text) -> Int {
+    return __text_c_address(value)
+}
+
+fn abi_bytes_address(read value: Bytes, offset: Int) -> Int {
+    return __bytes_address(value, offset)
+}
+
+fn abi_bytes_edit_address(edit value: Bytes, offset: Int) -> Int {
+    return __bytes_edit_address(value, offset)
+}
+
+fn abi_bytes_zeroed(length: Int) -> Bytes {
+    return __bytes_zeroed(length)
+}
+
+fn abi_text_utf8_bytes(read value: Text) -> Bytes {
+    return __text_utf8_bytes(value)
+}
+
+fn abi_bytes_equal(read left: Bytes, read right: Bytes) -> Bool {
+    return __bytes_equal(left, right)
+}
+
+fn abi_load_u8(read value: Bytes, offset: Int) -> Int {
+    return __load_u8(value, offset)
+}
+
+fn abi_store_u8(edit value: Bytes, offset: Int, item: Int) -> Void {
+    __store_u8(value, offset, item)
+}
+
+fn abi_load_i64(read value: Bytes, offset: Int) -> Int {
+    return __load_i64(value, offset)
+}
+
+fn abi_store_i64(edit value: Bytes, offset: Int, item: Int) -> Void {
+    __store_i64(value, offset, item)
+}
+
+fn syscall_failed(raw: Int) -> Bool {
+    return raw >= LINUX_ERROR_LOW && raw <= LINUX_ERROR_HIGH
+}
+
+fn syscall_result(operation: Text, raw: Int) -> SysResult[Int] {
+    if syscall_failed(raw) {
+        return Err(SysError { operation: operation, errno: -raw })
+    }
+    return Ok(raw)
+}
+
+fn raw_read(descriptor: Int, address: Int, length: Int) -> Int {
+    return __linux_syscall3(SYS_READ, descriptor, address, length)
+}
+
+fn raw_write(descriptor: Int, address: Int, length: Int) -> Int {
+    return __linux_syscall3(SYS_WRITE, descriptor, address, length)
+}
+
+fn raw_open(path_address: Int, flags: Int, mode: Int) -> Int {
+    return __linux_syscall3(SYS_OPEN, path_address, flags, mode)
+}
+
+fn raw_close(descriptor: Int) -> Int {
+    return __linux_syscall1(SYS_CLOSE, descriptor)
+}
+
+fn raw_stat(path_address: Int, stat_address: Int) -> Int {
+    return __linux_syscall2(SYS_STAT, path_address, stat_address)
+}
+
+fn raw_lseek(descriptor: Int, offset: Int, whence: Int) -> Int {
+    return __linux_syscall3(SYS_LSEEK, descriptor, offset, whence)
+}
+
+fn raw_mmap(
+    address: Int,
+    length: Int,
+    protection: Int,
+    flags: Int,
+    descriptor: Int,
+    offset: Int,
+) -> Int {
+    return __linux_syscall6(
+        SYS_MMAP,
+        address,
+        length,
+        protection,
+        flags,
+        descriptor,
+        offset,
+    )
+}
+
+fn raw_munmap(address: Int, length: Int) -> Int {
+    return __linux_syscall2(SYS_MUNMAP, address, length)
+}
+
+fn raw_socket(domain: Int, kind: Int, protocol: Int) -> Int {
+    return __linux_syscall3(SYS_SOCKET, domain, kind, protocol)
+}
+
+fn raw_bind(descriptor: Int, address: Int, length: Int) -> Int {
+    return __linux_syscall3(SYS_BIND, descriptor, address, length)
+}
+
+fn raw_listen(descriptor: Int, backlog: Int) -> Int {
+    return __linux_syscall2(SYS_LISTEN, descriptor, backlog)
+}
+
+fn raw_accept4(
+    descriptor: Int,
+    address: Int,
+    length_address: Int,
+    flags: Int,
+) -> Int {
+    return __linux_syscall4(
+        SYS_ACCEPT4,
+        descriptor,
+        address,
+        length_address,
+        flags,
+    )
+}
+
+fn raw_connect(descriptor: Int, address: Int, length: Int) -> Int {
+    return __linux_syscall3(SYS_CONNECT, descriptor, address, length)
+}
+
+fn raw_setsockopt(
+    descriptor: Int,
+    level: Int,
+    option: Int,
+    value_address: Int,
+    value_length: Int,
+) -> Int {
+    return __linux_syscall5(
+        SYS_SETSOCKOPT,
+        descriptor,
+        level,
+        option,
+        value_address,
+        value_length,
+    )
+}
+
+fn raw_epoll_create1(flags: Int) -> Int {
+    return __linux_syscall1(SYS_EPOLL_CREATE1, flags)
+}
+
+fn raw_epoll_ctl(
+    descriptor: Int,
+    operation: Int,
+    watched: Int,
+    event_address: Int,
+) -> Int {
+    return __linux_syscall4(
+        SYS_EPOLL_CTL,
+        descriptor,
+        operation,
+        watched,
+        event_address,
+    )
+}
+
+fn raw_epoll_wait(
+    descriptor: Int,
+    events_address: Int,
+    maximum_events: Int,
+    timeout_ms: Int,
+) -> Int {
+    return __linux_syscall4(
+        SYS_EPOLL_WAIT,
+        descriptor,
+        events_address,
+        maximum_events,
+        timeout_ms,
+    )
+}
+
+fn raw_clock_gettime(clock: Int, timespec_address: Int) -> Int {
+    return __linux_syscall2(SYS_CLOCK_GETTIME, clock, timespec_address)
+}
+
+fn raw_nanosleep(request_address: Int, remaining_address: Int) -> Int {
+    return __linux_syscall2(SYS_NANOSLEEP, request_address, remaining_address)
+}
+
+fn raw_getrandom(address: Int, length: Int, flags: Int) -> Int {
+    return __linux_syscall3(SYS_GETRANDOM, address, length, flags)
+}
+
+fn raw_exit(status: Int) -> Never {
+    __linux_syscall1(SYS_EXIT, status)
+    unreachable()
+}
+
+fn raw_exit_group(status: Int) -> Never {
+    __linux_syscall1(SYS_EXIT_GROUP, status)
+    unreachable()
+}

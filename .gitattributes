@@ -1,16 +1,18 @@
 *.kofun text eol=lf
 
 # Kofun source. GitHub's Linguist does not know this language yet, so these
-# files currently count as nothing in the repository language statistics. See
-# the Linguist submission requirements: a language needs a syntax-highlighting
-# grammar and demonstrable use across many repositories before it is accepted.
+# files currently count as nothing in the repository language statistics.
+# Getting them counted requires acceptance into github-linguist/linguist, which
+# needs a syntax-highlighting grammar and demonstrable use across many
+# repositories.
 *.kofun linguist-detectable=true
 
 # The bootstrap C is compiler *output*, not hand-written source. Without these
-# markers it dominates the language statistics and makes a language that emits
-# machine code directly look like a C project.
+# markers it dominates the language statistics and makes a language whose whole
+# premise is emitting machine code without a C compiler look like a C project.
 bootstrap/stage1/compiler.c linguist-generated=true
 bootstrap/stage2/compiler.c linguist-generated=true
 
 # Driver scripts are plumbing, not the project's content.
 bin/kofun linguist-generated=true
+bin/kofun-py linguist-generated=true

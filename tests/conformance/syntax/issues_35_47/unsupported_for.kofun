@@ -1,0 +1,6 @@
+fn main() -> Int {
+    for value in 0 .. 3 {
+        print(value)
+    }
+    return 0
+}

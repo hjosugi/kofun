@@ -1,0 +1,48 @@
+48	valid	0 .. 10
+48	valid	start + 1 .. finish - 1
+48	invalid	0 ..= 10
+48	invalid	0 .. 10 .. 20
+49	valid	source |> parse
+49	valid	source |> parse(mode) |> emit(target)
+49	invalid	source |> 1 + 2
+49	invalid	source | > consume
+50	valid	let missing: Int? = null
+50	valid	let value = missing ?? 42
+50	invalid	let answer: Int = null
+50	invalid	if null { print("yes") }
+51	valid	List[Int]?
+51	valid	List[Int?]
+51	invalid	Int??
+51	invalid	?Int
+52	valid	("answer", 42)
+52	valid	("only",)
+52	invalid	()
+52	invalid	(, 1)
+53	valid	[1, 2, 3]
+53	valid	let empty: List[Int] = []
+53	invalid	[1,, 2]
+53	invalid	let unknown = []
+54	valid	{"a": 1, "b": 2}
+54	valid	let empty: Map[Text, Int] = {}
+54	invalid	{"a", 1}
+54	invalid	{"a": 1, "a": 2}
+55	valid	9_223_372_036_854_775_807
+55	valid	6.02e+23
+55	invalid	1__0
+55	invalid	0xFF
+56	valid	"hello ${name}"
+56	valid	"literal \${not_interpolated}"
+56	invalid	"empty ${}"
+56	invalid	"missing ${value"
+57	valid	set {1, 2, 3}
+57	valid	let empty: Set[Text] = set {}
+57	invalid	{1, 2, 3}
+57	invalid	set [1, 2]
+58	valid	a + b * c
+58	valid	a ?? b |> consume
+58	invalid	a < b < c
+58	invalid	0 .. 10 .. 20
+59	valid	# whole-line comment
+59	valid	let answer = 42 # trailing comment
+59	invalid	/* block comment */
+59	invalid	// not a comment

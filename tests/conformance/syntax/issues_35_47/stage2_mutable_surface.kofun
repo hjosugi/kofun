@@ -1,0 +1,8 @@
+# Stage 2 currently accepts mutable declaration syntax but not assignment.
+
+fn main() -> Int {
+    let base: Int = 40
+    let mut adjustment: Int = 2
+    print(base + adjustment)
+    return 0
+}

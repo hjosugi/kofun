@@ -1,0 +1,13 @@
+# Stage 1 executable slice of the Linux negative-return contract.
+# The active integer Core compiler compiles and runs this fixture.
+
+fn main() {
+    let raw_eperm = -1
+    let raw_enoent = -2
+    let raw_error_low = -4095
+    let success = 7
+    print(-raw_eperm)
+    print(-raw_enoent)
+    print(-raw_error_low)
+    print(success)
+}
