@@ -45,26 +45,14 @@ syntax:
 	sh tests/conformance/syntax/issues_35_47/run.sh
 	sh tests/conformance/syntax/issues_48_60/run.sh
 
-# This gate used to assert that no Python existed anywhere in the tree. That is
-# the goal, but asserting it today is not honest: the Kofun bootstrap seed
-# cannot yet compile examples/hello.kofun or examples/fibonacci_native.kofun,
-# while the Python implementation compiles both straight to machine code. A
-# green gate would have meant "the working compiler was deleted", which is the
-# opposite of progress.
-#
-# So the gate now gates what is actually true. The exit condition is the Stage 2
-# fixed point: once the Kofun compiler compiles itself and passes the
-# differential suite, delete src/kofun, Makefile.python and bin/kofun-py, and
-# restore the no-Python assertion here.
 repository-check:
 	@! find . -path './.git' -prune -o -path './build' -prune -o \
+	  -type f \( -name '*.py' -o -name '*.pyc' -o -name '*.pyo' \) -print | grep -q .
+	@! find . -path './.git' -prune -o -path './build' -prune -o \
 	  -type f -name '*.kf' -print | grep -q .
+	@test ! -e pyproject.toml
 	@grep -q '"extensions": \[".kofun"\]' editor/vscode/package.json
-	@test -f bin/kofun && test -f bootstrap/stage1/compiler.kofun
-	@printf '%s\n' 'PASS: .kofun sources; Kofun toolchain present'
-	@printf '%s\n' 'NOTE: the Python reference implementation is still present.'
-	@printf '%s\n' '      It is the only toolchain that compiles the examples.'
-	@printf '%s\n' '      Removing it is gated on the Stage 2 fixed point.'
+	@printf '%s\n' 'PASS: .kofun sources only; no Python implementation'
 
 verify: test check bootstrap stage2 native stdlib roadmap syntax repository-check
 	@sh -n bin/kofun bootstrap/stage1/check.sh bootstrap/stage2/check.sh \
