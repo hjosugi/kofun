@@ -28,7 +28,7 @@ compiler cannot yet produce the final diagnostic.
 | #40 | lambda expressions | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
 | #41 | immutable bindings | Stage 1 and Stage 2 Core compile and execute integer `let` bindings | implemented for Core |
 | #42 | owned bindings | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
-| #43 | if expressions | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
+| #43 | if expressions | Stage 2 lowers statement-position `if` with Bool literals or integer comparisons | partial |
 | #44 | else-if chains | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
 | #45 | for loops | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
 | #46 | match expressions | not in the active grammar; structural projection only preserves balanced tokens | unsupported |
@@ -335,7 +335,9 @@ declarations and assignment. It evaluates checked replacement expressions
 before changing storage, and emits span-carrying `E2S22` diagnostics with
 correction hints for immutable or undeclared targets. Assignment through
 members/indexes, non-`Int` type checking, and closure capture checking remain
-open.
+open. Until lexical scope resolution replaces the bounded declaration scan,
+assignment to an outer binding from inside an `if` branch is explicitly
+rejected with `E2S22`; same-block assignment followed by `if` executes.
 
 ## #40 — Lambda expressions
 
@@ -532,10 +534,14 @@ let label = if score >= 90 {
 }
 ```
 
-**Implementation status:** the active grammar describes `if`, and the
-Kofun-written seeds use it internally. The public Stage 2 C Core explicitly
-rejects `if`; there is no registered interpreter/native differential test for
-the construct.
+**Implementation status:** the public Stage 2 C Core lowers statement-position
+`if` with mandatory braces, optional `else`, nesting, Bool-literal conditions,
+and integer comparisons. Its executable fixture also proves that an unselected
+branch is not evaluated. Value-position `if`, general Bool expressions, branch
+type unification, `else if`, interpreter/native differential coverage, and
+full static typing remain open. Mutable assignment is supported within the
+current branch block, while assignment from a branch to an outer binding is
+explicitly rejected as described in #39.
 
 ## #44 — Else-if chains
 

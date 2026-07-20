@@ -1,0 +1,1 @@
+error[E2S22]: cannot assign to outer binding `score` at byte 63; assign after the branch

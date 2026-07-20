@@ -1,0 +1,7 @@
+fn main() -> Int {
+    let mut score = 1
+    if true {
+        score = 2
+    }
+    return 0
+}
