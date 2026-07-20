@@ -1,15 +1,17 @@
 {
   "schema": "kofun.verification/v1",
-  "verified_on": "2026-07-19",
+  "verified_on": "2026-07-20",
   "toolchain": {
-    "kofun": "0.2.0-bootstrap",
-    "python": "3.13.5",
-    "c_compiler": "GCC 14.2.0"
+    "kofun": "0.3.0-seed",
+    "host_c_compiler": "GCC 16.1.1",
+    "shell": "POSIX sh"
   },
   "tests": {
-    "python_unit": 31,
-    "kofun_language": 5,
-    "native_fibonacci_20": 6765
+    "numeric_conformance": 9,
+    "stage2_frontend_gate": "passed",
+    "native_elf64_fixtures": 6,
+    "stdlib_native_gates": 6,
+    "forbidden_implementation_files": 0
   },
   "laws": {
     "list_monad": {
@@ -25,9 +27,15 @@
     "broken_monad_rejected": true
   },
   "bootstrap": {
-    "stage0_builds_native_stage1": true,
-    "interpreted_native_stage1_c11_equal": true,
+    "kofun_source_and_c_seed_checksums_match": true,
+    "stage1_builds_c11_fixture": true,
     "native_fixture_output": 42,
+    "stage2_integer_core_lowering": true,
+    "stage2_list_int_literal_indexing": true,
+    "stage2_bounded_error_recovery": true,
+    "native_variable_list_map_filter_fold": true,
+    "stdlib_immutable_list_reference": true,
+    "list_source_native_interpreter_parity": false,
     "stage2_self_recompile": false,
     "full_self_hosting": false
   },

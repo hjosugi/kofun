@@ -1,0 +1,21 @@
+# Recovery keeps valid top-level functions around malformed regions.
+
+orphan top level
+
+fn kept_one() {
+    print(1)
+}
+
+fn () {
+    print(2)
+}
+
+fn kept_two(value: Int) -> Int {
+    return value
+}
+
+unexpected @ token
+
+fn kept_three() {
+    print(3)
+}

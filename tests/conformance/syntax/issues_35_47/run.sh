@@ -43,6 +43,35 @@ expect_stage2_unsupported() {
     printf '%s\n' "PASS unsupported: $stem"
 }
 
+expect_stage2_supported() {
+    source=$1
+    expected=$2
+    stem=$(basename "${source%.kofun}")
+
+    "$WORK/kofun-stage2" \
+        "$source" \
+        "$WORK/$stem.c" \
+        "$WORK/$stem.ir" \
+        "$WORK/$stem.tokens" \
+        >"$WORK/$stem.compiler.stdout" 2>"$WORK/$stem.compiler.stderr"
+    test "$(cat "$WORK/$stem.compiler.stdout")" = "$WORK/$stem.c" ||
+        fail "$stem: Stage 2 did not report the generated C path"
+    test ! -s "$WORK/$stem.compiler.stderr" ||
+        fail "$stem: Stage 2 wrote unexpected compiler stderr"
+
+    "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+        "$WORK/$stem.c" -o "$WORK/$stem"
+    set +e
+    output=$("$WORK/$stem")
+    status=$?
+    set -e
+    test "$status" -eq 0 ||
+        fail "$stem: generated program returned $status"
+    test "$output" = "$expected" ||
+        fail "$stem: expected stdout $expected, got $output"
+    printf '%s\n' "PASS executable Stage 2: $stem"
+}
+
 for issue in 35 36 37 38 39 40 41 42 43 44 45 46 47; do
     grep "^## #$issue — " "$SPEC" >/dev/null ||
         fail "normative section for issue #$issue is missing"
@@ -124,11 +153,11 @@ printf '%s\n' "PASS unsupported: Unicode identifiers in Stage 2"
 
 expect_stage2_unsupported "$CASES/unsupported_lambda.kofun"
 expect_stage2_unsupported "$CASES/unsupported_owned_binding.kofun"
-expect_stage2_unsupported "$CASES/unsupported_if.kofun"
 expect_stage2_unsupported "$CASES/unsupported_for.kofun"
 expect_stage2_unsupported "$CASES/unsupported_match.kofun"
-expect_stage2_unsupported "$CASES/unsupported_while.kofun"
+expect_stage2_supported "$CASES/if_statement.kofun" 42
+expect_stage2_supported "$CASES/while_statement.kofun" 3
 
 printf '%s\n' \
     "PASS: syntax issues #35-#47 bootstrap capability checkpoint" \
-    "coverage: 13 subjects; 4 partial; 1 Core-implemented; 8 unsupported via 7 fixtures"
+    "coverage: 13 subjects; 4 partial; 4 Core-implemented; 5 unsupported via 5 fixtures"

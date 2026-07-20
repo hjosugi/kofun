@@ -1,0 +1,165 @@
+# Pure-Kofun immutable List[Int] correctness reference.
+
+let INT_LIST_HEADER_BYTES = 8
+let INT_LIST_ITEM_BYTES = 8
+let INT_LIST_ALIGNMENT = 16
+let MAX_INT_LIST_LENGTH = 1152921504606846973
+
+type IntListError =
+    | InvalidLength(Int)
+    | IndexOutOfBounds(Int, Int)
+    | SliceOutOfBounds(Int, Int, Int)
+    | LengthOverflow(Int, Int)
+    | AllocationSizeOverflow(Int)
+
+type ImmutableIntList = {
+    items: List[Int],
+}
+
+fn int_list_allocation_size(length: Int) -> Result[Int, IntListError] {
+    if length < 0 {
+        return Err(InvalidLength(length))
+    }
+    if length > MAX_INT_LIST_LENGTH {
+        return Err(AllocationSizeOverflow(length))
+    }
+
+    let raw = INT_LIST_HEADER_BYTES + length * INT_LIST_ITEM_BYTES
+    let remainder = raw % INT_LIST_ALIGNMENT
+    if remainder == 0 {
+        return Ok(raw)
+    }
+    return Ok(raw + INT_LIST_ALIGNMENT - remainder)
+}
+
+fn int_list_checked_length_sum(
+    left: Int,
+    right: Int,
+) -> Result[Int, IntListError] {
+    if left < 0 {
+        return Err(InvalidLength(left))
+    }
+    if right < 0 {
+        return Err(InvalidLength(right))
+    }
+    if right > MAX_INT_LIST_LENGTH || left > MAX_INT_LIST_LENGTH - right {
+        return Err(LengthOverflow(left, right))
+    }
+    return Ok(left + right)
+}
+
+fn int_list_validate(
+    read items: List[Int],
+) -> Result[ImmutableIntList, IntListError] {
+    match int_list_allocation_size(len(items)) {
+        Err(error) => return Err(error)
+        Ok(_) => {}
+    }
+    return Ok(ImmutableIntList { items: items })
+}
+
+fn int_list_length(read value: ImmutableIntList) -> Int {
+    return len(value.items)
+}
+
+fn int_list_get(
+    read value: ImmutableIntList,
+    index: Int,
+) -> Result[Int, IntListError] {
+    let length = len(value.items)
+    if index < 0 || index >= length {
+        return Err(IndexOutOfBounds(index, length))
+    }
+    return Ok(value.items[index])
+}
+
+fn int_list_slice(
+    read value: ImmutableIntList,
+    start: Int,
+    end: Int,
+) -> Result[ImmutableIntList, IntListError] {
+    let length = len(value.items)
+    if start < 0 || end < start || end > length {
+        return Err(SliceOutOfBounds(start, end, length))
+    }
+
+    let mut result = []
+    for index in start .. end {
+        result = concat(result, [value.items[index]])
+    }
+    return int_list_validate(result)
+}
+
+fn int_list_concat(
+    read left: ImmutableIntList,
+    read right: ImmutableIntList,
+) -> Result[ImmutableIntList, IntListError] {
+    match int_list_checked_length_sum(
+        len(left.items),
+        len(right.items),
+    ) {
+        Err(error) => return Err(error)
+        Ok(_) => {}
+    }
+    return int_list_validate(concat(left.items, right.items))
+}
+
+fn int_list_equal(
+    read left: ImmutableIntList,
+    read right: ImmutableIntList,
+) -> Bool {
+    if len(left.items) != len(right.items) {
+        return false
+    }
+    for index in 0 .. len(left.items) {
+        if left.items[index] != right.items[index] {
+            return false
+        }
+    }
+    return true
+}
+
+fn int_list_map(
+    read value: ImmutableIntList,
+    transform: fn(Int) -> Int,
+) -> Result[ImmutableIntList, IntListError] {
+    match int_list_allocation_size(len(value.items)) {
+        Err(error) => return Err(error)
+        Ok(_) => {}
+    }
+
+    let mut result = []
+    for item in value.items {
+        result = concat(result, [transform(item)])
+    }
+    return int_list_validate(result)
+}
+
+fn int_list_filter(
+    read value: ImmutableIntList,
+    predicate: fn(Int) -> Bool,
+) -> Result[ImmutableIntList, IntListError] {
+    let mut result = []
+    for item in value.items {
+        if predicate(item) {
+            result = concat(result, [item])
+        }
+    }
+    return int_list_validate(result)
+}
+
+fn int_list_fold(
+    read value: ImmutableIntList,
+    initial: Int,
+    combine: fn(Int, Int) -> Int,
+) -> Int {
+    let mut accumulator = initial
+    for item in value.items {
+        accumulator = combine(accumulator, item)
+    }
+    return accumulator
+}
+
+fn int_list_to_list(read value: ImmutableIntList) -> List[Int] {
+    return value.items
+}

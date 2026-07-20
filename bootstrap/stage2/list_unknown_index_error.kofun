@@ -1,0 +1,5 @@
+fn main() -> Int {
+    let xs: List[Int] = [1, 2, 3]
+    print(xs[missing])
+    return 0
+}

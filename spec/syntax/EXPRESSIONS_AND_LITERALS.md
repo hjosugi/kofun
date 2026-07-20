@@ -420,8 +420,11 @@ let unknown = []  # no element type context
 
 The Stage 0 grammar and language examples use list literals, and the bootstrap
 runtime has a narrow `List[Text]` capability for compiler internals. The
-current Stage 2 executable Core does not parse or lower general list literals.
-Generic list inference, evaluation, and native support remain open.
+current Stage 2 executable Core parses non-empty homogeneous `List[Int]`
+literals, infers or checks `List[Int]`, and lowers checked runtime indexing to
+C11. It does not yet accept empty, mutable, or generic-element lists, trailing
+commas, or general collection calls. Generic list inference/evaluation and
+source-to-native List lowering remain open.
 
 ## Issue 54: map literals
 

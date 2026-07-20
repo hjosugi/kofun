@@ -1,0 +1,13 @@
+error[E2S20]: recovered top-level parse
+kofun-stage2-recovery/v1
+source-bytes|250
+diagnostic|E2S02|70|88|expected-top-level-fn
+function|kept_one|0|88|118
+diagnostic|E2S03|120|144|malformed-function
+function|kept_two|1|144|195
+diagnostic|E2S02|197|217|expected-top-level-fn
+function|kept_three|0|217|249
+diagnostic-count|3
+function-count|3
+diagnostic-limit|8
+truncated|false

@@ -1,0 +1,68 @@
+# Positive semantic fixture for the pure-Kofun immutable List[Int] reference.
+
+import stdlib.list.reference
+
+fn require_int_list(items: List[Int]) -> ImmutableIntList {
+    return match int_list_validate(items) {
+        Ok(value) => value
+        Err(_) => unreachable()
+    }
+}
+
+fn increment(value: Int) -> Int {
+    return value + 1
+}
+
+fn is_even(value: Int) -> Bool {
+    return value % 2 == 0
+}
+
+fn add(total: Int, value: Int) -> Int {
+    return total + value
+}
+
+fn main() {
+    let xs = require_int_list([1, 2, 3, 4, 5])
+    assert(int_list_length(xs) == 5)
+    assert(match int_list_allocation_size(5) {
+        Ok(48) => true
+        _ => false
+    })
+    assert(match int_list_get(xs, 2) {
+        Ok(3) => true
+        _ => false
+    })
+
+    let middle = match int_list_slice(xs, 1, 4) {
+        Ok(value) => value
+        Err(_) => unreachable()
+    }
+    assert(int_list_equal(middle, require_int_list([2, 3, 4])))
+
+    let joined = match int_list_concat(
+        require_int_list([1, 2]),
+        require_int_list([3, 4, 5]),
+    ) {
+        Ok(value) => value
+        Err(_) => unreachable()
+    }
+    assert(int_list_equal(xs, joined))
+    assert(!int_list_equal(xs, middle))
+
+    let mapped = match int_list_map(xs, increment) {
+        Ok(value) => value
+        Err(_) => unreachable()
+    }
+    assert(int_list_equal(mapped, require_int_list([2, 3, 4, 5, 6])))
+
+    let filtered = match int_list_filter(xs, is_even) {
+        Ok(value) => value
+        Err(_) => unreachable()
+    }
+    assert(int_list_equal(filtered, require_int_list([2, 4])))
+
+    assert(int_list_fold(xs, 0, add) == 15)
+    assert(int_list_fold(mapped, 0, add) == 20)
+    assert(int_list_fold(filtered, 0, add) == 6)
+    print("list-reference: ok")
+}

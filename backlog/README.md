@@ -48,11 +48,14 @@ The generated backlog is intentionally broader than the bootstrap implementation
 | [issues-26-quality.md](issues-26-quality.md) | Testing Security and Performance | 500 | KOFUN-12501–KOFUN-13000 |
 | [issues-27-ecosystem.md](issues-27-ecosystem.md) | Governance Ecosystem and Adoption | 500 | KOFUN-13001–KOFUN-13500 |
 
-## Generation and verification
+## Verification
 
 ```bash
-python3 scripts/generate_backlog.py
-python3 scripts/verify_backlog.py
+make verify
 ```
 
-Do not edit generated area files manually. Change the generator, regenerate, and review the diff.
+The checked-in verifier sources are Kofun. Executing their full
+Text/List/file-I/O workload becomes a gate when Stage 2 can compile that subset;
+until then, `make verify` runs the available structural repository gates.
+Regeneration is intentionally disabled until a Kofun generator replaces the
+retired host-language generator. Do not edit the generated area files manually.

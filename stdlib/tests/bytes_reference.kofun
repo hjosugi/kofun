@@ -1,0 +1,98 @@
+# Stage 2 semantic fixture for the pure-Kofun Bytes reference.
+
+import stdlib.bytes.reference
+
+fn require_bytes(items: List[Int]) -> BytesValue {
+    return match bytes_from_list(items) {
+        Ok(value) => value
+        Err(_) => unreachable()
+    }
+}
+
+fn main() {
+    let value = require_bytes([0, 1, 127, 128, 255])
+    assert(bytes_length(value) == 5)
+    assert(match bytes_get(value, 4) {
+        Ok(255) => true
+        _ => false
+    })
+
+    let middle = match bytes_slice(value, 1, 4) {
+        Ok(items) => items
+        Err(_) => unreachable()
+    }
+    assert(bytes_equal(middle, require_bytes([1, 127, 128])))
+    assert(bytes_equal(
+        match bytes_concat(require_bytes([1, 2]), require_bytes([3, 4, 5])) {
+            Ok(items) => items
+            Err(_) => unreachable()
+        },
+        require_bytes([1, 2, 3, 4, 5]),
+    ))
+    assert(!bytes_equal(value, middle))
+
+    let encoded = require_bytes([52, 18, 120, 86, 52, 18, 0, 0])
+    assert(match bytes_read_u16_le(encoded, 0) {
+        Ok(4660) => true
+        _ => false
+    })
+    assert(match bytes_read_u32_le(encoded, 2) {
+        Ok(305419896) => true
+        _ => false
+    })
+
+    let zeroes = require_bytes([0, 0, 0, 0, 0, 0, 0, 0])
+    let unsigned = match bytes_write_uint_le(
+        zeroes,
+        1,
+        7,
+        72057594037927935,
+    ) {
+        Ok(items) => items
+        Err(_) => unreachable()
+    }
+    assert(match bytes_read_uint_le(unsigned, 1, 7) {
+        Ok(72057594037927935) => true
+        _ => false
+    })
+
+    let minus_two = match bytes_write_i64_le(zeroes, 0, -2) {
+        Ok(items) => items
+        Err(_) => unreachable()
+    }
+    assert(bytes_equal(
+        minus_two,
+        require_bytes([254, 255, 255, 255, 255, 255, 255, 255]),
+    ))
+    assert(match bytes_read_i64_le(minus_two, 0) {
+        Ok(-2) => true
+        _ => false
+    })
+
+    let minimum = match bytes_write_i64_le(
+        zeroes,
+        0,
+        -9223372036854775808,
+    ) {
+        Ok(items) => items
+        Err(_) => unreachable()
+    }
+    assert(match bytes_read_i64_le(minimum, 0) {
+        Ok(-9223372036854775808) => true
+        _ => false
+    })
+
+    let maximum = match bytes_write_i64_le(
+        zeroes,
+        0,
+        9223372036854775807,
+    ) {
+        Ok(items) => items
+        Err(_) => unreachable()
+    }
+    assert(match bytes_read_i64_le(maximum, 0) {
+        Ok(9223372036854775807) => true
+        _ => false
+    })
+    print("bytes-reference: ok")
+}

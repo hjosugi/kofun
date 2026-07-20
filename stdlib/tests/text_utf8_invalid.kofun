@@ -1,0 +1,76 @@
+# Stage 2 negative fixture: every malformed input returns a typed error.
+
+import stdlib.text.utf8
+
+fn main() {
+    assert(match decode_utf8_at([], 0) {
+        Err(IndexOutOfBounds(0, 0)) => true
+        _ => false
+    })
+    assert(match decode_utf8_at([65], -1) {
+        Err(IndexOutOfBounds(-1, 1)) => true
+        _ => false
+    })
+    assert(match decode_utf8_at([65], 1) {
+        Err(IndexOutOfBounds(1, 1)) => true
+        _ => false
+    })
+    assert(match require_width([65], -1, 1) {
+        Err(IndexOutOfBounds(-1, 1)) => true
+        _ => false
+    })
+    assert(match require_width([65], 0, 0) {
+        Err(InvalidWidth(0)) => true
+        _ => false
+    })
+    assert(match require_continuation([], 0) {
+        Err(IndexOutOfBounds(0, 0)) => true
+        _ => false
+    })
+    assert(match text_from_utf8([128]) {
+        Err(UnexpectedContinuation(0, 128)) => true
+        _ => false
+    })
+    assert(match text_from_utf8([192, 175]) {
+        Err(OverlongEncoding(0)) => true
+        _ => false
+    })
+    assert(match text_from_utf8([229, 143]) {
+        Err(TruncatedSequence(0, 3, 2)) => true
+        _ => false
+    })
+    assert(match text_from_utf8([229, 65, 164]) {
+        Err(InvalidContinuation(1, 65)) => true
+        _ => false
+    })
+    assert(match text_from_utf8([237, 160, 128]) {
+        Err(SurrogateScalar(0)) => true
+        _ => false
+    })
+    assert(match text_from_utf8([244, 144, 128, 128]) {
+        Err(ScalarOutOfRange(0)) => true
+        _ => false
+    })
+    assert(match text_from_utf8([255]) {
+        Err(InvalidLead(0, 255)) => true
+        _ => false
+    })
+    assert(match text_from_utf8([256]) {
+        Err(InvalidByte(0, 256)) => true
+        _ => false
+    })
+
+    let value = match text_from_utf8([65]) {
+        Ok(text) => text
+        Err(_) => unreachable()
+    }
+    assert(match text_at(value, -1) {
+        Err(IndexOutOfBounds(-1, 1)) => true
+        _ => false
+    })
+    assert(match text_at(value, 1) {
+        Err(IndexOutOfBounds(1, 1)) => true
+        _ => false
+    })
+    print("text-utf8-negative: ok")
+}

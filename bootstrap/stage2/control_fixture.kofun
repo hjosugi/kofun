@@ -1,0 +1,35 @@
+# Nested control flow, mutation, Bool operators, and short-circuit observation.
+
+fn main() -> Int {
+    let mut index = 0
+    let mut total = 0
+    let zero = 0
+    let enabled: Bool = true
+
+    while enabled && index < 5 {
+        if index == 2 || false {
+            let scoped = 10
+            total = total + scoped
+        } else {
+            if index < 4 && !(index == 2) {
+                total = total + index
+            } else {
+                total = total + 4
+            }
+        }
+        index = index + 1
+    }
+
+    if false && (1 // zero > 0) {
+        print(999)
+    } else {
+        print(total)
+    }
+    print(index == 5)
+    print(true != false)
+    print(true || (1 // zero > 0))
+    print(4 <= 5)
+    print(5 > 4)
+    print(5 >= 5)
+    return 0
+}

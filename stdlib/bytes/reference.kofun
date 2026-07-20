@@ -1,0 +1,279 @@
+# Pure-Kofun immutable Bytes correctness reference.
+
+let MAX_BYTES_LENGTH = 9223372036854775807
+let UINT56_FACTOR = 72057594037927936
+
+type BytesError =
+    | InvalidByte(Int, Int)
+    | IndexOutOfBounds(Int, Int)
+    | SliceOutOfBounds(Int, Int, Int)
+    | InvalidWidth(Int)
+    | SpanOutOfBounds(Int, Int, Int)
+    | UnsignedOutOfRange(Int, Int)
+    | InvalidLength(Int)
+    | LengthOverflow(Int, Int)
+
+type BytesValue = {
+    items: List[Int],
+}
+
+fn bytes_from_list(
+    read items: List[Int],
+) -> Result[BytesValue, BytesError] {
+    for index in 0 .. len(items) {
+        let value = items[index]
+        if value < 0 || value > 255 {
+            return Err(InvalidByte(index, value))
+        }
+    }
+    return Ok(BytesValue { items: items })
+}
+
+fn bytes_length(read value: BytesValue) -> Int {
+    return len(value.items)
+}
+
+fn bytes_get(
+    read value: BytesValue,
+    index: Int,
+) -> Result[Int, BytesError] {
+    if index < 0 || index >= len(value.items) {
+        return Err(IndexOutOfBounds(index, len(value.items)))
+    }
+    return Ok(value.items[index])
+}
+
+fn bytes_slice(
+    read value: BytesValue,
+    start: Int,
+    end: Int,
+) -> Result[BytesValue, BytesError] {
+    if start < 0 || end < start || end > len(value.items) {
+        return Err(SliceOutOfBounds(start, end, len(value.items)))
+    }
+
+    let mut result = []
+    for index in start .. end {
+        result = concat(result, [value.items[index]])
+    }
+    return Ok(BytesValue { items: result })
+}
+
+fn bytes_concat(
+    read left: BytesValue,
+    read right: BytesValue,
+) -> Result[BytesValue, BytesError] {
+    let left_length = len(left.items)
+    let right_length = len(right.items)
+    match bytes_checked_length_sum(left_length, right_length) {
+        Err(error) => return Err(error)
+        Ok(_) => {}
+    }
+    return Ok(BytesValue {
+        items: concat(left.items, right.items),
+    })
+}
+
+fn bytes_checked_length_sum(
+    left: Int,
+    right: Int,
+) -> Result[Int, BytesError] {
+    if left < 0 {
+        return Err(InvalidLength(left))
+    }
+    if right < 0 {
+        return Err(InvalidLength(right))
+    }
+    if left > MAX_BYTES_LENGTH - right {
+        return Err(LengthOverflow(left, right))
+    }
+    return Ok(left + right)
+}
+
+fn bytes_equal(read left: BytesValue, read right: BytesValue) -> Bool {
+    if len(left.items) != len(right.items) {
+        return false
+    }
+    for index in 0 .. len(left.items) {
+        if left.items[index] != right.items[index] {
+            return false
+        }
+    }
+    return true
+}
+
+fn bytes_to_list(read value: BytesValue) -> List[Int] {
+    return value.items
+}
+
+fn bytes_require_span(
+    read value: BytesValue,
+    offset: Int,
+    width: Int,
+) -> Result[Void, BytesError] {
+    if width <= 0 {
+        return Err(InvalidWidth(width))
+    }
+    if offset < 0 || offset > len(value.items) {
+        return Err(IndexOutOfBounds(offset, len(value.items)))
+    }
+    if width > len(value.items) - offset {
+        return Err(SpanOutOfBounds(offset, width, len(value.items)))
+    }
+    return Ok(())
+}
+
+fn max_unsigned_for_width(width: Int) -> Result[Int, BytesError] {
+    if width <= 0 || width > 7 {
+        return Err(InvalidWidth(width))
+    }
+    let mut factor = 1
+    for _ in 0 .. width {
+        factor = factor * 256
+    }
+    return Ok(factor - 1)
+}
+
+fn bytes_read_uint_le(
+    read value: BytesValue,
+    offset: Int,
+    width: Int,
+) -> Result[Int, BytesError] {
+    if width > 7 {
+        return Err(InvalidWidth(width))
+    }
+    match bytes_require_span(value, offset, width) {
+        Err(error) => return Err(error)
+        Ok(_) => {}
+    }
+
+    let mut result = 0
+    let mut factor = 1
+    for index in 0 .. width {
+        result = result + value.items[offset + index] * factor
+        factor = factor * 256
+    }
+    return Ok(result)
+}
+
+fn replace_bytes(
+    read original: BytesValue,
+    offset: Int,
+    read replacement: List[Int],
+) -> Result[BytesValue, BytesError] {
+    match bytes_require_span(original, offset, len(replacement)) {
+        Err(error) => return Err(error)
+        Ok(_) => {}
+    }
+    let mut result = []
+    for index in 0 .. len(original.items) {
+        if index >= offset && index - offset < len(replacement) {
+            result = concat(result, [replacement[index - offset]])
+        } else {
+            result = concat(result, [original.items[index]])
+        }
+    }
+    return Ok(BytesValue { items: result })
+}
+
+fn bytes_write_uint_le(
+    read value: BytesValue,
+    offset: Int,
+    width: Int,
+    number: Int,
+) -> Result[BytesValue, BytesError] {
+    if width > 7 {
+        return Err(InvalidWidth(width))
+    }
+    match bytes_require_span(value, offset, width) {
+        Err(error) => return Err(error)
+        Ok(_) => {}
+    }
+    let maximum = match max_unsigned_for_width(width) {
+        Ok(item) => item
+        Err(error) => return Err(error)
+    }
+    if number < 0 || number > maximum {
+        return Err(UnsignedOutOfRange(number, width))
+    }
+
+    let mut remaining = number
+    let mut replacement = []
+    for _ in 0 .. width {
+        replacement = concat(replacement, [remaining % 256])
+        remaining = remaining // 256
+    }
+    return replace_bytes(value, offset, replacement)
+}
+
+fn bytes_read_u16_le(
+    read value: BytesValue,
+    offset: Int,
+) -> Result[Int, BytesError] {
+    return bytes_read_uint_le(value, offset, 2)
+}
+
+fn bytes_read_u32_le(
+    read value: BytesValue,
+    offset: Int,
+) -> Result[Int, BytesError] {
+    return bytes_read_uint_le(value, offset, 4)
+}
+
+fn bytes_write_u16_le(
+    read value: BytesValue,
+    offset: Int,
+    number: Int,
+) -> Result[BytesValue, BytesError] {
+    return bytes_write_uint_le(value, offset, 2, number)
+}
+
+fn bytes_write_u32_le(
+    read value: BytesValue,
+    offset: Int,
+    number: Int,
+) -> Result[BytesValue, BytesError] {
+    return bytes_write_uint_le(value, offset, 4, number)
+}
+
+fn bytes_read_i64_le(
+    read value: BytesValue,
+    offset: Int,
+) -> Result[Int, BytesError] {
+    match bytes_require_span(value, offset, 8) {
+        Err(error) => return Err(error)
+        Ok(_) => {}
+    }
+    let low = match bytes_read_uint_le(value, offset, 7) {
+        Ok(item) => item
+        Err(error) => return Err(error)
+    }
+    let high = value.items[offset + 7]
+    if high <= 127 {
+        return Ok(low + high * UINT56_FACTOR)
+    }
+    return Ok(
+        low -
+        (255 - high) * UINT56_FACTOR -
+        UINT56_FACTOR
+    )
+}
+
+fn bytes_write_i64_le(
+    read value: BytesValue,
+    offset: Int,
+    number: Int,
+) -> Result[BytesValue, BytesError] {
+    match bytes_require_span(value, offset, 8) {
+        Err(error) => return Err(error)
+        Ok(_) => {}
+    }
+
+    let mut remaining = number
+    let mut replacement = []
+    for _ in 0 .. 8 {
+        replacement = concat(replacement, [remaining % 256])
+        remaining = remaining // 256
+    }
+    return replace_bytes(value, offset, replacement)
+}

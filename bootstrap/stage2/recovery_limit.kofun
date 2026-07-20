@@ -1,0 +1,12 @@
+# Ten malformed boundaries exercise the eight-diagnostic cap.
+
+fn () {}
+fn () {}
+fn () {}
+fn () {}
+fn () {}
+fn () {}
+fn () {}
+fn () {}
+fn () {}
+fn () {}

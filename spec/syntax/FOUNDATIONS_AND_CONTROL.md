@@ -24,15 +24,15 @@ compiler cannot yet produce the final diagnostic.
 | #36 | Unicode identifiers | Stage 1 and Stage 2 deliberately accept ASCII identifiers only | unsupported |
 | #37 | function declarations | Stage 2 records top-level function names, arities, and spans; C lowering accepts only `fn main()` | partial |
 | #38 | automatic statement termination | newline-separated Core statements compile and execute | partial |
-| #39 | mutable bindings | Stage 2 Core accepts `let mut`, but assignment is not lowered | partial |
+| #39 | mutable bindings | Stage 2 Core executes assignment and rejects immutable reassignment | implemented for Core |
 | #40 | lambda expressions | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
 | #41 | immutable bindings | Stage 1 and Stage 2 Core compile and execute integer `let` bindings | implemented for Core |
 | #42 | owned bindings | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
-| #43 | if expressions | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
+| #43 | if expressions | Stage 2 Core executes statement-position `if`/`else` with a Bool condition | implemented for Core statements |
 | #44 | else-if chains | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
 | #45 | for loops | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
 | #46 | match expressions | not in the active grammar; structural projection only preserves balanced tokens | unsupported |
-| #47 | while loops | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
+| #47 | while loops | Stage 2 Core executes Bool-guarded pre-test loops and mutable assignment | implemented for Core |
 
 The executable evidence is in
 `tests/conformance/syntax/issues_35_47/`. A structural projection proves only
@@ -330,10 +330,10 @@ remaining = remaining - 1
 let remaining mut: Int = 3
 ```
 
-**Implementation status:** Stage 2 Core accepts and executes the declaration
-surface, but currently emits the same C storage as immutable `let` and does not
-lower assignment. Mutability checking, capture checking, and assignment
-diagnostics remain open.
+**Implementation status:** Stage 2 Core accepts and executes mutable
+declarations and assignment. Its typed lexical environment rejects assignment
+to immutable bindings and replacement values of the wrong type. Closure
+capture checking and non-Core storage semantics remain open.
 
 ## #40 — Lambda expressions
 
@@ -530,10 +530,10 @@ let label = if score >= 90 {
 }
 ```
 
-**Implementation status:** the active grammar describes `if`, and the
-Kofun-written seeds use it internally. The public Stage 2 C Core explicitly
-rejects `if`; there is no registered interpreter/native differential test for
-the construct.
+**Implementation status:** the public Stage 2 C Core executes statement-position
+`if`/`else`, requires a Bool condition, preserves lexical branch scopes, and
+checks exact generated-program output. Value-position branch unification and a
+registered interpreter/native differential test remain open.
 
 ## #44 — Else-if chains
 
@@ -738,10 +738,10 @@ while remaining {
 }
 ```
 
-**Implementation status:** `while` is in the active grammar and is used by the
-Kofun-written bootstrap source. Public Core lowering rejects it, and no
-executable checker currently enforces Boolean conditions, assignment in the
-body, `break`/`continue`, or zero-iteration behavior.
+**Implementation status:** the public Stage 2 C Core executes `while`, requires
+a Bool condition, supports assignment in the body, and gates both repeated and
+zero-iteration behavior through its control-flow fixtures. `break`, `continue`,
+and non-Core loop bodies remain open.
 
 ## Conformance requirements
 

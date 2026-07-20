@@ -243,6 +243,14 @@ fn x64_jmp_rel32_placeholder() -> List[Int] {
     return [233, 0, 0, 0, 0]
 }
 
+fn x64_jcc_rel32_placeholder(condition_opcode: Int) -> List[Int] {
+    # 0F 8x cd encodes a near conditional branch with a rel32 displacement.
+    if condition_opcode < 128 || condition_opcode > 143 {
+        return []
+    }
+    return [15, condition_opcode, 0, 0, 0, 0]
+}
+
 fn x64_call_rel32_placeholder() -> List[Int] {
     return [232, 0, 0, 0, 0]
 }
@@ -278,6 +286,23 @@ fn x64_write_stdout(address: Int, length: Int) -> List[Int] {
     )
 }
 
+fn x64_write_stderr(address: Int, length: Int) -> List[Int] {
+    if address < 0 || address > 4294967295 ||
+       length < 0 || length > 4294967295 {
+        return []
+    }
+    return concat(
+        x64_mov_eax_imm32(1),
+        concat(
+            x64_mov_edi_imm32(2),
+            concat(
+                x64_mov_esi_imm32(address),
+                concat(x64_mov_edx_imm32(length), x64_syscall()),
+            ),
+        ),
+    )
+}
+
 fn x64_exit_text(status: Int) -> List[Int] {
     # Linux x86-64: exit(status) is syscall 60 with status in edi.
     if status < 0 || status > 255 {
@@ -287,6 +312,125 @@ fn x64_exit_text(status: Int) -> List[Int] {
         x64_mov_eax_imm32(60),
         concat(x64_mov_edi_imm32(status), x64_syscall()),
     )
+}
+
+fn x64_mmap_heap_page() -> List[Int] {
+    # mmap(NULL, 4096, PROT_READ|PROT_WRITE,
+    #      MAP_PRIVATE|MAP_ANONYMOUS, -1, 0)
+    return [
+        184, 9, 0, 0, 0,             # mov eax, 9
+        49, 255,                      # xor edi, edi
+        190, 0, 16, 0, 0,            # mov esi, 4096
+        186, 3, 0, 0, 0,             # mov edx, 3
+        65, 186, 34, 0, 0, 0,        # mov r10d, 0x22
+        73, 199, 192, 255, 255, 255, 255, # mov r8, -1
+        69, 49, 201,                  # xor r9d, r9d
+        15, 5,                        # syscall
+    ]
+}
+
+fn x64_cmp_rax_syscall_error() -> List[Int] {
+    # Linux returns syscall failures in unsigned range -4095 .. -1.
+    return [72, 61, 1, 240, 255, 255]
+}
+
+fn x64_initialize_bump_heap() -> List[Int] {
+    # r12=base, r13=cursor, r14=end. mmap returns page-aligned memory, and
+    # fixed 32-byte increments preserve the 16-byte allocation contract.
+    return [
+        73, 137, 196,                 # mov r12, rax
+        73, 137, 197,                 # mov r13, rax
+        76, 141, 176, 0, 16, 0, 0,   # lea r14, [rax+4096]
+    ]
+}
+
+fn x64_cmp_argc_one() -> List[Int] {
+    # _start sees argc at [rsp]. An extra argument is the deterministic test
+    # hook that forces the next allocation through capacity exhaustion.
+    return [72, 131, 60, 36, 1] # cmp qword [rsp], 1
+}
+
+fn x64_exhaust_bump_heap() -> List[Int] {
+    return [77, 137, 245] # mov r13, r14
+}
+
+fn x64_bump_alloc_rbx_32() -> List[Int] {
+    return [
+        76, 137, 235,                 # mov rbx, r13
+        73, 131, 197, 32,             # add r13, 32
+        77, 57, 245,                  # cmp r13, r14
+    ]
+}
+
+fn x64_bump_alloc_rbp_32() -> List[Int] {
+    return [
+        76, 137, 237,                 # mov rbp, r13
+        73, 131, 197, 32,             # add r13, 32
+        77, 57, 245,                  # cmp r13, r14
+    ]
+}
+
+fn x64_validate_rbx_alignment() -> List[Int] {
+    return [72, 247, 195, 15, 0, 0, 0] # test rbx, 15
+}
+
+fn x64_validate_rbp_alignment() -> List[Int] {
+    return [72, 247, 197, 15, 0, 0, 0] # test rbp, 15
+}
+
+fn x64_compare_allocations() -> List[Int] {
+    return [72, 57, 235] # cmp rbx, rbp
+}
+
+fn x64_store_list_3() -> List[Int] {
+    # List[Int] bootstrap layout: [length, item0, item1, item2], all qwords.
+    return [
+        72, 199, 3, 3, 0, 0, 0,          # [rbx+0]  = length 3
+        72, 199, 67, 8, 10, 0, 0, 0,     # [rbx+8]  = 10
+        72, 199, 67, 16, 20, 0, 0, 0,    # [rbx+16] = 20
+        72, 199, 67, 24, 12, 0, 0, 0,    # [rbx+24] = 12
+    ]
+}
+
+fn x64_validate_list_length() -> List[Int] {
+    return [72, 131, 59, 3] # cmp qword [rbx], 3
+}
+
+fn x64_index_and_sum_list_3() -> List[Int] {
+    # Load item[index] through an actual scaled-index addressing mode.
+    return [
+        185, 0, 0, 0, 0,             # index = 0
+        72, 139, 68, 203, 8,         # rax = [rbx+rcx*8+8]
+        185, 1, 0, 0, 0,             # index = 1
+        72, 3, 68, 203, 8,           # rax += [rbx+rcx*8+8]
+        185, 2, 0, 0, 0,             # index = 2
+        72, 3, 68, 203, 8,           # rax += [rbx+rcx*8+8]
+    ]
+}
+
+fn x64_format_sum_in_second_allocation() -> List[Int] {
+    return [
+        72, 137, 69, 8,               # [rbp+8] = rax
+        72, 139, 69, 8,               # rax = [rbp+8]
+        49, 210,                      # xor edx, edx
+        185, 10, 0, 0, 0,            # mov ecx, 10
+        247, 241,                     # div ecx
+        4, 48,                        # add al, '0'
+        128, 194, 48,                 # add dl, '0'
+        136, 69, 0,                   # [rbp+0] = al
+        136, 85, 1,                   # [rbp+1] = dl
+        198, 69, 2, 10,               # [rbp+2] = newline
+    ]
+}
+
+fn x64_write_second_allocation() -> List[Int] {
+    return [
+        184, 1, 0, 0, 0,             # write
+        191, 1, 0, 0, 0,             # stdout
+        72, 137, 238,                 # rsi = rbp
+        186, 3, 0, 0, 0,             # length
+        15, 5,
+    ]
 }
 
 fn x64_core_answer_text() -> List[Int] {
@@ -1217,6 +1361,363 @@ fn elf64_native_core_image(machine: Int, core: List[Int]) -> List[Int] {
 fn native_core_answer() -> List[Int] {
     # Target-independent postfix for (6 + 1) * 6.
     return [1, 6, 1, 1, 2, 0, 1, 6, 3, 0]
+}
+
+fn native_allocation_error() -> List[Int] {
+    return [
+        101, 114, 114, 111, 114, 91, 82, 48, 50, 48, 93, 58, 32,
+        110, 97, 116, 105, 118, 101, 32,
+        97, 108, 108, 111, 99, 97, 116, 105, 111, 110, 32,
+        102, 97, 105, 108, 101, 100, 10,
+    ]
+}
+
+fn x64_allocator_list_text() -> List[Int] {
+    let mut text = concat(x64_mmap_heap_page(), x64_cmp_rax_syscall_error())
+
+    let mmap_failure_field = len(text) + 2
+    let mmap_failure_end = len(text) + 6
+    text = concat(text, x64_jcc_rel32_placeholder(131)) # jae failure
+    text = concat(text, x64_initialize_bump_heap())
+
+    text = concat(text, x64_cmp_argc_one())
+    let normal_allocation_field = len(text) + 2
+    let normal_allocation_end = len(text) + 6
+    text = concat(text, x64_jcc_rel32_placeholder(132)) # je normal
+    text = concat(text, x64_exhaust_bump_heap())
+    let normal_allocation_label = len(text)
+
+    text = concat(text, x64_bump_alloc_rbx_32())
+    let first_overflow_field = len(text) + 2
+    let first_overflow_end = len(text) + 6
+    text = concat(text, x64_jcc_rel32_placeholder(135)) # ja failure
+
+    text = concat(text, x64_validate_rbx_alignment())
+    let first_alignment_field = len(text) + 2
+    let first_alignment_end = len(text) + 6
+    text = concat(text, x64_jcc_rel32_placeholder(133)) # jne failure
+
+    text = concat(text, x64_bump_alloc_rbp_32())
+    let second_overflow_field = len(text) + 2
+    let second_overflow_end = len(text) + 6
+    text = concat(text, x64_jcc_rel32_placeholder(135)) # ja failure
+
+    text = concat(text, x64_validate_rbp_alignment())
+    let second_alignment_field = len(text) + 2
+    let second_alignment_end = len(text) + 6
+    text = concat(text, x64_jcc_rel32_placeholder(133)) # jne failure
+
+    text = concat(text, x64_compare_allocations())
+    let distinct_field = len(text) + 2
+    let distinct_end = len(text) + 6
+    text = concat(text, x64_jcc_rel32_placeholder(132)) # je failure
+
+    text = concat(text, x64_store_list_3())
+    text = concat(text, x64_validate_list_length())
+    let length_field = len(text) + 2
+    let length_end = len(text) + 6
+    text = concat(text, x64_jcc_rel32_placeholder(133)) # jne failure
+
+    text = concat(text, x64_index_and_sum_list_3())
+    text = concat(text, x64_format_sum_in_second_allocation())
+    text = concat(text, x64_write_second_allocation())
+    text = concat(text, x64_exit_text(0))
+
+    let failure_label = len(text)
+    let diagnostic_field = failure_label + 11
+    text = concat(
+        text,
+        concat(
+            x64_write_stderr(0, len(native_allocation_error())),
+            x64_exit_text(1),
+        ),
+    )
+
+    let fixed_mmap = resolve_rel32_fixup(
+        text,
+        mmap_failure_field,
+        mmap_failure_end,
+        failure_label,
+    )
+    let fixed_normal_allocation = resolve_rel32_fixup(
+        fixed_mmap,
+        normal_allocation_field,
+        normal_allocation_end,
+        normal_allocation_label,
+    )
+    let fixed_first_overflow = resolve_rel32_fixup(
+        fixed_normal_allocation,
+        first_overflow_field,
+        first_overflow_end,
+        failure_label,
+    )
+    let fixed_first_alignment = resolve_rel32_fixup(
+        fixed_first_overflow,
+        first_alignment_field,
+        first_alignment_end,
+        failure_label,
+    )
+    let fixed_second_overflow = resolve_rel32_fixup(
+        fixed_first_alignment,
+        second_overflow_field,
+        second_overflow_end,
+        failure_label,
+    )
+    let fixed_second_alignment = resolve_rel32_fixup(
+        fixed_second_overflow,
+        second_alignment_field,
+        second_alignment_end,
+        failure_label,
+    )
+    let fixed_distinct = resolve_rel32_fixup(
+        fixed_second_alignment,
+        distinct_field,
+        distinct_end,
+        failure_label,
+    )
+    let fixed_length = resolve_rel32_fixup(
+        fixed_distinct,
+        length_field,
+        length_end,
+        failure_label,
+    )
+    return resolve_abs32_fixup(
+        fixed_length,
+        diagnostic_field,
+        4194304,
+        4096,
+        0,
+    )
+}
+
+fn elf64_allocator_list_image() -> List[Int] {
+    let base = 4194304
+    let text_offset = 176
+    let data_offset = 4096
+    let text = x64_allocator_list_text()
+    let diagnostic = native_allocation_error()
+    let rx_size = text_offset + len(text)
+    let header = elf64_header(base + text_offset)
+    let rx = elf64_load_segment(5, 0, base, rx_size, rx_size)
+    let rw = elf64_load_segment(
+        6,
+        data_offset,
+        base + data_offset,
+        len(diagnostic),
+        4096,
+    )
+    let without_data = concat(header, concat(rx, concat(rw, text)))
+    return concat(pad_to(without_data, data_offset), diagnostic)
+}
+
+fn native_text_header_size() -> Int {
+    # +0 byte length, +8 validated code-point length, +16 UTF-8 payload.
+    return 16
+}
+
+fn native_text_allocation_size(payload_bytes: Int) -> Int {
+    let unaligned = native_text_header_size() + payload_bytes
+    return ((unaligned + 15) // 16) * 16
+}
+
+fn native_text_data() -> List[Int] {
+    # Expected UTF-8, output punctuation, then R020/R021/R022/R023 diagnostics.
+    return [
+        230, 151, 165, 230, 156, 172, 232, 170, 158, 124, 10, 101, 114, 114, 111, 114,
+        91, 82, 48, 50, 48, 93, 58, 32, 110, 97, 116, 105, 118, 101, 32, 97,
+        108, 108, 111, 99, 97, 116, 105, 111, 110, 32, 102, 97, 105, 108, 101, 100,
+        10, 101, 114, 114, 111, 114, 91, 82, 48, 50, 49, 93, 58, 32, 84, 101,
+        120, 116, 32, 105, 110, 100, 101, 120, 32, 111, 117, 116, 32, 111, 102, 32,
+        98, 111, 117, 110, 100, 115, 10, 101, 114, 114, 111, 114, 91, 82, 48, 50,
+        50, 93, 58, 32, 105, 110, 118, 97, 108, 105, 100, 32, 85, 84, 70, 45,
+        56, 10, 101, 114, 114, 111, 114, 91, 82, 48, 50, 51, 93, 58, 32, 84,
+        101, 120, 116, 32, 101, 113, 117, 97, 108, 105, 116, 121, 32, 102, 97, 105,
+        108, 101, 100, 10,
+    ]
+}
+
+fn x64_text_utf8_text() -> List[Int] {
+    # Linked native runtime for the first heap Text contract:
+    # - mmap and three 32-byte bump allocations;
+    # - construct "日本" and "語", then runtime concat with rep movsb;
+    # - structural UTF-8 validation and code-point iteration/count;
+    # - byte equality, code-point bounds check, and code-point indexing;
+    # - argv hooks for R021 bounds, R022 invalid UTF-8, and R020 exhaustion.
+    return [
+        184, 9, 0, 0, 0, 49, 255, 190, 0, 16, 0, 0, 186, 3, 0, 0,
+        0, 65, 186, 34, 0, 0, 0, 73, 199, 192, 255, 255, 255, 255, 69, 49,
+        201, 15, 5, 72, 61, 1, 240, 255, 255, 15, 131, 6, 3, 0, 0, 73,
+        137, 197, 76, 141, 176, 0, 16, 0, 0, 72, 131, 60, 36, 4, 15, 130,
+        3, 0, 0, 0, 77, 137, 245, 76, 137, 235, 73, 131, 197, 32, 77, 57,
+        245, 15, 135, 222, 2, 0, 0, 76, 137, 237, 73, 131, 197, 32, 77, 57,
+        245, 15, 135, 206, 2, 0, 0, 77, 137, 239, 73, 131, 197, 32, 77, 57,
+        245, 15, 135, 190, 2, 0, 0, 72, 199, 3, 6, 0, 0, 0, 72, 199,
+        67, 8, 2, 0, 0, 0, 72, 184, 230, 151, 165, 230, 156, 172, 0, 0,
+        72, 137, 67, 16, 72, 199, 69, 0, 3, 0, 0, 0, 72, 199, 69, 8,
+        1, 0, 0, 0, 199, 69, 16, 232, 170, 158, 0, 72, 139, 3, 72, 3,
+        69, 0, 72, 131, 248, 16, 15, 135, 121, 2, 0, 0, 73, 137, 7, 73,
+        199, 71, 8, 0, 0, 0, 0, 72, 141, 115, 16, 73, 141, 127, 16, 72,
+        139, 11, 243, 164, 72, 141, 117, 16, 72, 139, 77, 0, 243, 164, 72, 131,
+        60, 36, 3, 15, 133, 5, 0, 0, 0, 65, 198, 71, 16, 255, 73, 141,
+        119, 16, 73, 139, 15, 72, 141, 60, 14, 69, 49, 192, 72, 57, 254, 15,
+        132, 150, 0, 0, 0, 15, 182, 6, 60, 128, 15, 130, 37, 0, 0, 0,
+        60, 194, 15, 130, 97, 2, 0, 0, 60, 224, 15, 130, 32, 0, 0, 0,
+        60, 240, 15, 130, 35, 0, 0, 0, 60, 245, 15, 130, 38, 0, 0, 0,
+        233, 68, 2, 0, 0, 65, 186, 1, 0, 0, 0, 233, 28, 0, 0, 0,
+        65, 186, 2, 0, 0, 0, 233, 17, 0, 0, 0, 65, 186, 3, 0, 0,
+        0, 233, 6, 0, 0, 0, 65, 186, 4, 0, 0, 0, 74, 141, 20, 22,
+        72, 57, 250, 15, 135, 16, 2, 0, 0, 72, 141, 86, 1, 68, 137, 209,
+        255, 201, 133, 201, 15, 132, 22, 0, 0, 0, 138, 2, 36, 192, 60, 128,
+        15, 133, 243, 1, 0, 0, 72, 255, 194, 255, 201, 233, 226, 255, 255, 255,
+        76, 1, 214, 73, 255, 192, 233, 97, 255, 255, 255, 73, 131, 248, 3, 15,
+        133, 212, 1, 0, 0, 77, 137, 71, 8, 73, 131, 63, 9, 15, 133, 232,
+        1, 0, 0, 73, 141, 119, 16, 191, 0, 16, 64, 0, 73, 139, 15, 243,
+        166, 15, 133, 212, 1, 0, 0, 65, 185, 1, 0, 0, 0, 72, 131, 60,
+        36, 2, 15, 133, 6, 0, 0, 0, 65, 185, 3, 0, 0, 0, 77, 59,
+        79, 8, 15, 131, 111, 1, 0, 0, 73, 141, 119, 16, 69, 49, 192, 77,
+        57, 200, 15, 132, 62, 0, 0, 0, 15, 182, 6, 65, 186, 1, 0, 0,
+        0, 60, 128, 15, 130, 34, 0, 0, 0, 65, 186, 2, 0, 0, 0, 60,
+        224, 15, 130, 20, 0, 0, 0, 65, 186, 3, 0, 0, 0, 60, 240, 15,
+        130, 6, 0, 0, 0, 65, 186, 4, 0, 0, 0, 76, 1, 214, 73, 255,
+        192, 233, 185, 255, 255, 255, 73, 137, 244, 15, 182, 6, 65, 186, 1, 0,
+        0, 0, 60, 128, 15, 130, 34, 0, 0, 0, 65, 186, 2, 0, 0, 0,
+        60, 224, 15, 130, 20, 0, 0, 0, 65, 186, 3, 0, 0, 0, 60, 240,
+        15, 130, 6, 0, 0, 0, 65, 186, 4, 0, 0, 0, 77, 137, 214, 73,
+        139, 7, 4, 48, 65, 136, 71, 25, 73, 139, 71, 8, 4, 48, 65, 136,
+        71, 26, 184, 1, 0, 0, 0, 191, 1, 0, 0, 0, 73, 141, 119, 16,
+        65, 139, 23, 15, 5, 184, 1, 0, 0, 0, 191, 1, 0, 0, 0, 190,
+        9, 16, 64, 0, 186, 1, 0, 0, 0, 15, 5, 184, 1, 0, 0, 0,
+        191, 1, 0, 0, 0, 73, 141, 119, 25, 186, 1, 0, 0, 0, 15, 5,
+        184, 1, 0, 0, 0, 191, 1, 0, 0, 0, 190, 9, 16, 64, 0, 186,
+        1, 0, 0, 0, 15, 5, 184, 1, 0, 0, 0, 191, 1, 0, 0, 0,
+        73, 141, 119, 26, 186, 1, 0, 0, 0, 15, 5, 184, 1, 0, 0, 0,
+        191, 1, 0, 0, 0, 190, 9, 16, 64, 0, 186, 1, 0, 0, 0, 15,
+        5, 184, 1, 0, 0, 0, 191, 1, 0, 0, 0, 76, 137, 230, 68, 137,
+        242, 15, 5, 184, 1, 0, 0, 0, 191, 1, 0, 0, 0, 190, 10, 16,
+        64, 0, 186, 1, 0, 0, 0, 15, 5, 184, 60, 0, 0, 0, 191, 0,
+        0, 0, 0, 15, 5, 184, 1, 0, 0, 0, 191, 2, 0, 0, 0, 190,
+        11, 16, 64, 0, 186, 38, 0, 0, 0, 15, 5, 184, 60, 0, 0, 0,
+        191, 1, 0, 0, 0, 15, 5, 184, 1, 0, 0, 0, 191, 2, 0, 0,
+        0, 190, 49, 16, 64, 0, 186, 38, 0, 0, 0, 15, 5, 184, 60, 0,
+        0, 0, 191, 1, 0, 0, 0, 15, 5, 184, 1, 0, 0, 0, 191, 2,
+        0, 0, 0, 190, 87, 16, 64, 0, 186, 27, 0, 0, 0, 15, 5, 184,
+        60, 0, 0, 0, 191, 1, 0, 0, 0, 15, 5, 184, 1, 0, 0, 0,
+        191, 2, 0, 0, 0, 190, 114, 16, 64, 0, 186, 34, 0, 0, 0, 15,
+        5, 184, 60, 0, 0, 0, 191, 1, 0, 0, 0, 15, 5,
+    ]
+}
+
+fn elf64_text_utf8_image() -> List[Int] {
+    let base = 4194304
+    let text_offset = 176
+    let data_offset = 4096
+    let text = x64_text_utf8_text()
+    let data = native_text_data()
+    let rx_size = text_offset + len(text)
+    let header = elf64_header(base + text_offset)
+    let rx = elf64_load_segment(5, 0, base, rx_size, rx_size)
+    let rw = elf64_load_segment(
+        6,
+        data_offset,
+        base + data_offset,
+        len(data),
+        4096,
+    )
+    let without_data = concat(header, concat(rx, concat(rw, text)))
+    return concat(pad_to(without_data, data_offset), data)
+}
+
+fn native_list_v1_allocation_size(length: Int) -> Int {
+    # Immutable List v1: +0 Int64 length, +8 contiguous Int64 items.
+    # Bound makes 8 + 8*length + 15 safe before 16-byte alignment.
+    if length < 0 || length > 1152921504606846973 {
+        return -1
+    }
+    return ((8 + 8 * length + 15) // 16) * 16
+}
+
+fn native_list_v1_data() -> List[Int] {
+    return [
+        101, 114, 114, 111, 114, 91, 82, 48, 50, 48, 93, 58, 32,
+        110, 97, 116, 105, 118, 101, 32, 97, 108, 108, 111, 99,
+        97, 116, 105, 111, 110, 32, 102, 97, 105, 108, 101, 100, 10,
+        101, 114, 114, 111, 114, 91, 82, 48, 50, 51, 93, 58, 32,
+        76, 105, 115, 116, 32, 105, 110, 100, 101, 120, 32, 111,
+        117, 116, 32, 111, 102, 32, 98, 111, 117, 110, 100, 115, 10,
+    ]
+}
+
+fn x64_list_v1_text() -> List[Int] {
+    # Runtime sequence:
+    # - mmap one page and compute align16(8 + 8*length) with signed/unsigned
+    #   overflow branches before allocating three variable-length Lists;
+    # - construct xs=[1,2,3,4,5];
+    # - checked index, fold(xs), map(+1)+fold, filter(even)+fold;
+    # - emit "3\n15\n20\n6\n";
+    # - argv hooks exercise real R023 bounds and R020 capacity failures.
+    return [
+        184, 9, 0, 0, 0, 49, 255, 190, 0, 16, 0, 0, 186, 3, 0, 0,
+        0, 65, 186, 34, 0, 0, 0, 73, 199, 192, 255, 255, 255, 255, 69, 49,
+        201, 15, 5, 72, 61, 1, 240, 255, 255, 15, 131, 16, 2, 0, 0, 73,
+        137, 197, 76, 141, 176, 0, 16, 0, 0, 72, 131, 60, 36, 3, 15, 130,
+        3, 0, 0, 0, 77, 137, 245, 184, 5, 0, 0, 0, 72, 133, 192, 15,
+        136, 234, 1, 0, 0, 72, 107, 192, 8, 15, 128, 224, 1, 0, 0, 72,
+        131, 192, 8, 15, 128, 214, 1, 0, 0, 72, 131, 192, 15, 15, 128, 204,
+        1, 0, 0, 72, 131, 224, 240, 73, 137, 194, 76, 137, 234, 76, 1, 210,
+        15, 130, 185, 1, 0, 0, 76, 57, 242, 15, 135, 176, 1, 0, 0, 76,
+        137, 235, 73, 137, 213, 76, 137, 234, 76, 1, 210, 15, 130, 158, 1, 0,
+        0, 76, 57, 242, 15, 135, 149, 1, 0, 0, 76, 137, 237, 73, 137, 213,
+        76, 137, 234, 76, 1, 210, 15, 130, 131, 1, 0, 0, 76, 57, 242, 15,
+        135, 122, 1, 0, 0, 77, 137, 239, 73, 137, 213, 76, 137, 234, 72, 131,
+        194, 48, 15, 130, 103, 1, 0, 0, 76, 57, 242, 15, 135, 94, 1, 0,
+        0, 77, 137, 236, 73, 137, 213, 72, 199, 3, 5, 0, 0, 0, 72, 199,
+        67, 8, 1, 0, 0, 0, 72, 199, 67, 16, 2, 0, 0, 0, 72, 199,
+        67, 24, 3, 0, 0, 0, 72, 199, 67, 32, 4, 0, 0, 0, 72, 199,
+        67, 40, 5, 0, 0, 0, 72, 199, 69, 0, 5, 0, 0, 0, 73, 199,
+        7, 0, 0, 0, 0, 65, 184, 2, 0, 0, 0, 72, 131, 60, 36, 2,
+        15, 133, 6, 0, 0, 0, 65, 184, 5, 0, 0, 0, 76, 59, 3, 15,
+        131, 28, 1, 0, 0, 74, 139, 68, 195, 8, 4, 48, 65, 136, 4, 36,
+        65, 198, 68, 36, 1, 10, 69, 49, 192, 69, 49, 201, 49, 255, 76, 59,
+        3, 15, 132, 28, 0, 0, 0, 74, 139, 68, 195, 8, 73, 1, 193, 72,
+        131, 192, 1, 74, 137, 68, 197, 8, 72, 1, 199, 73, 255, 192, 233, 219,
+        255, 255, 255, 77, 137, 76, 36, 16, 73, 137, 124, 36, 24, 69, 49, 192,
+        69, 49, 201, 69, 49, 210, 76, 59, 3, 15, 132, 32, 0, 0, 0, 74,
+        139, 68, 195, 8, 168, 1, 15, 133, 11, 0, 0, 0, 75, 137, 68, 207,
+        8, 73, 255, 193, 73, 1, 194, 73, 255, 192, 233, 215, 255, 255, 255, 77,
+        137, 15, 77, 137, 84, 36, 32, 73, 139, 68, 36, 16, 49, 210, 185, 10,
+        0, 0, 0, 247, 241, 4, 48, 128, 194, 48, 65, 136, 68, 36, 2, 65,
+        136, 84, 36, 3, 65, 198, 68, 36, 4, 10, 73, 139, 68, 36, 24, 49,
+        210, 185, 10, 0, 0, 0, 247, 241, 4, 48, 128, 194, 48, 65, 136, 68,
+        36, 5, 65, 136, 84, 36, 6, 65, 198, 68, 36, 7, 10, 73, 139, 68,
+        36, 32, 4, 48, 65, 136, 68, 36, 8, 65, 198, 68, 36, 9, 10, 184,
+        1, 0, 0, 0, 191, 1, 0, 0, 0, 76, 137, 230, 186, 10, 0, 0,
+        0, 15, 5, 184, 60, 0, 0, 0, 191, 0, 0, 0, 0, 15, 5, 184,
+        1, 0, 0, 0, 191, 2, 0, 0, 0, 190, 0, 16, 64, 0, 186, 38,
+        0, 0, 0, 15, 5, 184, 60, 0, 0, 0, 191, 1, 0, 0, 0, 15,
+        5, 184, 1, 0, 0, 0, 191, 2, 0, 0, 0, 190, 38, 16, 64, 0,
+        186, 38, 0, 0, 0, 15, 5, 184, 60, 0, 0, 0, 191, 1, 0, 0,
+        0, 15, 5,
+    ]
+}
+
+fn elf64_list_v1_image() -> List[Int] {
+    let base = 4194304
+    let text_offset = 176
+    let data_offset = 4096
+    let text = x64_list_v1_text()
+    let data = native_list_v1_data()
+    let rx_size = text_offset + len(text)
+    let header = elf64_header(base + text_offset)
+    let rx = elf64_load_segment(5, 0, base, rx_size, rx_size)
+    let rw = elf64_load_segment(
+        6,
+        data_offset,
+        base + data_offset,
+        len(data),
+        4096,
+    )
+    let without_data = concat(header, concat(rx, concat(rw, text)))
+    return concat(pad_to(without_data, data_offset), data)
 }
 
 fn main() {

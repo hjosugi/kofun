@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "bootstrap_model": "trusted-c11-seed -> stage1-kofun -> stage2-self-recompile",
+  "bootstrap_model": "trusted-c11-seed -> stage1-kofun -> stage2-typed-core-checkpoint -> open-self-recompile",
   "stages": {
     "trusted_seed": {
       "implementation": "bootstrap/stage1/compiler.c",
@@ -14,13 +14,13 @@
     },
     "stage2_frontend_checkpoint": {
       "implementation": "bootstrap/stage2/compiler.kofun",
-      "status": "working-checkpoint",
-      "role": "Kofun lexer, structural parser, textual IR, and deterministic source projection; not an executable self-recompile"
+      "status": "working-typed-core-checkpoint",
+      "role": "Kofun lexer, structural parser, bounded recovery, textual IR, deterministic source projection, and checked Int/Bool Core with control flow plus immutable List[Int] literal/index lowering to C11; not an executable self-recompile"
     },
     "native_checkpoint": {
       "implementation": "bootstrap/native/encoder.kofun",
-      "status": "working-exit-fixture",
-      "role": "Kofun-authored ELF64/x86-64 encoder with an executable static image gate"
+      "status": "working-core-rel32-allocator-text-list-v1-checkpoint",
+      "role": "Kofun-authored ELF64/x86-64 encoder with absolute and rel32 fixups, Core-shaped executable images, mmap bump allocation, heap Text, and checked fixed plus variable-length immutable List[Int] fixtures"
     },
     "stage2": {
       "implementation": "stage1 compiles its own source and reproduces an equivalent artifact",
@@ -30,16 +30,32 @@
   },
   "gates": {
     "python_free_bootstrap": "working",
+    "python_and_legacy_kf_source_absence": "working",
     "seed_hash_verification": "working",
     "stage1_builds_from_seed": "working",
     "stage1_compiles_fixture": "working",
     "stage2_frontend_round_trip": "working",
+    "stage2_integer_core_lowering": "working",
+    "stage2_list_int_literal_indexing": "working",
+    "stage2_bounded_recovery": "working",
     "native_elf64_exit_fixture": "working",
+    "native_core_rel32_fixture": "working",
+    "native_mmap_allocator_list_fixture": "working",
+    "native_variable_list_map_filter_fold_fixture": "working",
+    "native_heap_text_utf8_fixture": "working",
     "syscall_stdlib_source_contract": "working",
-    "syscall_file_round_trip_execution": "open",
+    "syscall_file_round_trip_execution": "working",
+    "strict_utf8_text_reference_execution": "working",
+    "immutable_bytes_reference_execution": "working",
+    "immutable_list_reference_execution": "working",
+    "stage2_bool_if_while_lowering": "working",
+    "general_native_text_lowering": "open",
+    "general_native_list_lowering": "open",
+    "list_source_native_interpreter_parity": "open",
+    "builtin_text_bytes_list_wiring": "open",
     "stage1_self_recompile": "open",
     "stage1_stage2_artifact_equivalence": "open",
     "diverse_double_compilation": "open"
   },
-  "truthful_status": "The repository contains a Python-free Kofun-written compiler seed. It is not fully self-hosting because Stage 1 cannot semantically compile its complete own source."
+  "truthful_status": "The repository contains a Python-free Kofun-written compiler seed plus executable Stage 2 typed Core/control-flow/List-indexing, native ELF/Core/allocator/Text/List, syscall, strict UTF-8 Text-reference, immutable Bytes-reference, and immutable List-reference checkpoints. It is not fully self-hosting: Stage 1 cannot semantically rebuild its complete source, and the native and built-in library checkpoints are not general backend wiring."
 }

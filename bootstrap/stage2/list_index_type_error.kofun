@@ -1,0 +1,6 @@
+fn main() -> Int {
+    let xs: List[Int] = [1, 2, 3]
+    let i: Bool = true
+    print(xs[i])
+    return 0
+}

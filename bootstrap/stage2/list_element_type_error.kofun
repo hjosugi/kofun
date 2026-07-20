@@ -1,0 +1,5 @@
+fn main() -> Int {
+    let xs: List[Int] = [1, true, 3]
+    print(xs[0])
+    return 0
+}

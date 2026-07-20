@@ -1,0 +1,59 @@
+# Stage 2 semantic fixture for the pure-Kofun Text reference.
+
+import stdlib.text.utf8
+
+fn require_text(bytes: List[Int]) -> Utf8Text {
+    return match text_from_utf8(bytes) {
+        Ok(value) => value
+        Err(_) => unreachable()
+    }
+}
+
+fn main() {
+    let ascii = require_text([75, 111, 102, 117, 110]) # Kofun
+    let japanese = require_text([229, 143, 164, 229, 162, 179]) # 古墳
+    let arabic = require_text([
+        217, 133, 216, 177, 216, 173, 216, 168, 216, 167,
+    ]) # مرحبا
+    let hindi = require_text([
+        224, 164, 168, 224, 164, 174, 224, 164, 184,
+        224, 165, 141, 224, 164, 164, 224, 165, 135,
+    ]) # नमस्ते
+    let emoji = require_text([240, 159, 153, 130]) # 🙂
+
+    assert(text_byte_length(ascii) == 5)
+    assert(text_length(ascii) == 5)
+    assert(text_byte_length(japanese) == 6)
+    assert(text_length(japanese) == 2)
+    assert(text_byte_length(arabic) == 10)
+    assert(text_length(arabic) == 5)
+    assert(text_byte_length(hindi) == 18)
+    assert(text_length(hindi) == 6)
+    assert(text_byte_length(emoji) == 4)
+    assert(text_length(emoji) == 1)
+
+    let old = match text_at(japanese, 0) {
+        Ok(point) => point
+        Err(_) => unreachable()
+    }
+    let tomb = match text_at(japanese, 1) {
+        Ok(point) => point
+        Err(_) => unreachable()
+    }
+    assert(old.scalar == 21476)
+    assert(old.byte_offset == 0)
+    assert(old.byte_length == 3)
+    assert(tomb.scalar == 22707)
+    assert(tomb.byte_offset == 3)
+    assert(len(text_chars(hindi)) == 6)
+
+    let joined = text_concat(japanese, arabic)
+    assert(text_byte_length(joined) == 16)
+    assert(text_length(joined) == 7)
+    assert(text_equal(joined, require_text(concat(
+        text_utf8_bytes(japanese),
+        text_utf8_bytes(arabic),
+    ))))
+    assert(!text_equal(ascii, japanese))
+    print("text-utf8-reference: ok")
+}

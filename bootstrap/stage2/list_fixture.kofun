@@ -1,0 +1,8 @@
+# Issue #8 first acceptance slice: immutable List[Int] and runtime Int index.
+
+fn main() -> Int {
+    let xs: List[Int] = [1, 2, 3, 4, 5]
+    let i: Int = 2
+    print(xs[i])
+    return 0
+}

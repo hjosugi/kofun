@@ -1,0 +1,272 @@
+# Pure-Kofun strict UTF-8 reference implementation.
+
+type Utf8Error =
+    | InvalidByte(Int, Int)
+    | UnexpectedContinuation(Int, Int)
+    | InvalidLead(Int, Int)
+    | InvalidContinuation(Int, Int)
+    | TruncatedSequence(Int, Int, Int)
+    | OverlongEncoding(Int)
+    | SurrogateScalar(Int)
+    | ScalarOutOfRange(Int)
+    | IndexOutOfBounds(Int, Int)
+    | InvalidWidth(Int)
+
+type CodePoint = {
+    scalar: Int,
+    byte_offset: Int,
+    byte_length: Int,
+}
+
+type Utf8Text = {
+    encoded: List[Int],
+    code_point_length: Int,
+}
+
+fn valid_physical_byte(value: Int) -> Bool {
+    return value >= 0 && value <= 255
+}
+
+fn continuation(value: Int) -> Bool {
+    return value >= 128 && value <= 191
+}
+
+fn require_width(
+    read encoded: List[Int],
+    offset: Int,
+    width: Int,
+) -> Result[Void, Utf8Error] {
+    if offset < 0 || offset > len(encoded) {
+        return Err(IndexOutOfBounds(offset, len(encoded)))
+    }
+    if width <= 0 {
+        return Err(InvalidWidth(width))
+    }
+    let available = len(encoded) - offset
+    if available < width {
+        return Err(TruncatedSequence(offset, width, available))
+    }
+    return Ok(())
+}
+
+fn require_continuation(
+    read encoded: List[Int],
+    offset: Int,
+) -> Result[Int, Utf8Error] {
+    if offset < 0 || offset >= len(encoded) {
+        return Err(IndexOutOfBounds(offset, len(encoded)))
+    }
+    let value = encoded[offset]
+    if !valid_physical_byte(value) {
+        return Err(InvalidByte(offset, value))
+    }
+    if !continuation(value) {
+        return Err(InvalidContinuation(offset, value))
+    }
+    return Ok(value)
+}
+
+fn decode_utf8_at(
+    read encoded: List[Int],
+    offset: Int,
+) -> Result[CodePoint, Utf8Error] {
+    if offset < 0 || offset >= len(encoded) {
+        return Err(IndexOutOfBounds(offset, len(encoded)))
+    }
+    let lead = encoded[offset]
+    if !valid_physical_byte(lead) {
+        return Err(InvalidByte(offset, lead))
+    }
+
+    if lead <= 127 {
+        return Ok(CodePoint {
+            scalar: lead,
+            byte_offset: offset,
+            byte_length: 1,
+        })
+    }
+    if lead >= 128 && lead <= 191 {
+        return Err(UnexpectedContinuation(offset, lead))
+    }
+    if lead == 192 || lead == 193 {
+        return Err(OverlongEncoding(offset))
+    }
+
+    if lead >= 194 && lead <= 223 {
+        match require_width(encoded, offset, 2) {
+            Err(error) => return Err(error)
+            Ok(_) => {}
+        }
+        let second = match require_continuation(encoded, offset + 1) {
+            Ok(value) => value
+            Err(error) => return Err(error)
+        }
+        let scalar = (lead - 192) * 64 + (second - 128)
+        return Ok(CodePoint {
+            scalar: scalar,
+            byte_offset: offset,
+            byte_length: 2,
+        })
+    }
+
+    if lead >= 224 && lead <= 239 {
+        match require_width(encoded, offset, 3) {
+            Err(error) => return Err(error)
+            Ok(_) => {}
+        }
+        let second = match require_continuation(encoded, offset + 1) {
+            Ok(value) => value
+            Err(error) => return Err(error)
+        }
+        let third = match require_continuation(encoded, offset + 2) {
+            Ok(value) => value
+            Err(error) => return Err(error)
+        }
+
+        if lead == 224 && second < 160 {
+            return Err(OverlongEncoding(offset))
+        }
+        if lead == 237 && second >= 160 {
+            return Err(SurrogateScalar(offset))
+        }
+
+        let scalar =
+            (lead - 224) * 4096 +
+            (second - 128) * 64 +
+            (third - 128)
+        return Ok(CodePoint {
+            scalar: scalar,
+            byte_offset: offset,
+            byte_length: 3,
+        })
+    }
+
+    if lead >= 240 && lead <= 244 {
+        match require_width(encoded, offset, 4) {
+            Err(error) => return Err(error)
+            Ok(_) => {}
+        }
+        let second = match require_continuation(encoded, offset + 1) {
+            Ok(value) => value
+            Err(error) => return Err(error)
+        }
+        let third = match require_continuation(encoded, offset + 2) {
+            Ok(value) => value
+            Err(error) => return Err(error)
+        }
+        let fourth = match require_continuation(encoded, offset + 3) {
+            Ok(value) => value
+            Err(error) => return Err(error)
+        }
+
+        if lead == 240 && second < 144 {
+            return Err(OverlongEncoding(offset))
+        }
+        if lead == 244 && second > 143 {
+            return Err(ScalarOutOfRange(offset))
+        }
+
+        let scalar =
+            (lead - 240) * 262144 +
+            (second - 128) * 4096 +
+            (third - 128) * 64 +
+            (fourth - 128)
+        return Ok(CodePoint {
+            scalar: scalar,
+            byte_offset: offset,
+            byte_length: 4,
+        })
+    }
+
+    if lead >= 245 && lead <= 247 {
+        return Err(ScalarOutOfRange(offset))
+    }
+    return Err(InvalidLead(offset, lead))
+}
+
+fn text_from_utf8(
+    read encoded: List[Int],
+) -> Result[Utf8Text, Utf8Error] {
+    let mut offset = 0
+    let mut count = 0
+    while offset < len(encoded) {
+        let point = match decode_utf8_at(encoded, offset) {
+            Ok(value) => value
+            Err(error) => return Err(error)
+        }
+        offset = offset + point.byte_length
+        count = count + 1
+    }
+    return Ok(Utf8Text {
+        encoded: encoded,
+        code_point_length: count,
+    })
+}
+
+fn text_byte_length(read value: Utf8Text) -> Int {
+    return len(value.encoded)
+}
+
+fn text_length(read value: Utf8Text) -> Int {
+    return value.code_point_length
+}
+
+fn text_at(
+    read value: Utf8Text,
+    index: Int,
+) -> Result[CodePoint, Utf8Error] {
+    if index < 0 || index >= value.code_point_length {
+        return Err(IndexOutOfBounds(index, value.code_point_length))
+    }
+
+    let mut current = 0
+    let mut offset = 0
+    while current < index {
+        let point = match decode_utf8_at(value.encoded, offset) {
+            Ok(item) => item
+            Err(error) => return Err(error)
+        }
+        offset = offset + point.byte_length
+        current = current + 1
+    }
+    return decode_utf8_at(value.encoded, offset)
+}
+
+fn text_chars(read value: Utf8Text) -> List[CodePoint] {
+    let mut result = []
+    let mut offset = 0
+    while offset < len(value.encoded) {
+        # Stored Utf8Text was already validated, so this Err is unreachable.
+        let point = match decode_utf8_at(value.encoded, offset) {
+            Ok(item) => item
+            Err(_) => unreachable()
+        }
+        result = concat(result, [point])
+        offset = offset + point.byte_length
+    }
+    return result
+}
+
+fn text_concat(read left: Utf8Text, read right: Utf8Text) -> Utf8Text {
+    return Utf8Text {
+        encoded: concat(left.encoded, right.encoded),
+        code_point_length:
+            left.code_point_length + right.code_point_length,
+    }
+}
+
+fn text_equal(read left: Utf8Text, read right: Utf8Text) -> Bool {
+    if len(left.encoded) != len(right.encoded) {
+        return false
+    }
+    for offset in 0 .. len(left.encoded) {
+        if left.encoded[offset] != right.encoded[offset] {
+            return false
+        }
+    }
+    return true
+}
+
+fn text_utf8_bytes(read value: Utf8Text) -> List[Int] {
+    return value.encoded
+}

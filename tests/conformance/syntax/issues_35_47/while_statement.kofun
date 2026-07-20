@@ -1,0 +1,8 @@
+fn main() -> Int {
+    let mut current = 0
+    while current < 3 {
+        current = current + 1
+    }
+    print(current)
+    return 0
+}

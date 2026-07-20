@@ -380,40 +380,106 @@ static int64_t function_end(const char *source, int64_t start) {
     return balanced_end(source, cursor, "{", "}");
 }
 
+static bool top_level_boundary(const char *source, int64_t start) {
+    if (start == 0) return true;
+    int64_t length = (int64_t)strlen(source);
+    return start > 0 && start <= length && source[start - 1] == '\n';
+}
+
+static int64_t sync_top_level(const char *source, int64_t start) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = start;
+    int64_t scanned = 0;
+    while (cursor < length && scanned < 4096) {
+        cursor = skip_trivia(source, cursor);
+        if (cursor >= length) return length;
+        if (
+            token_equal(source, cursor, "fn") &&
+            top_level_boundary(source, cursor)
+        ) {
+            return cursor;
+        }
+        int64_t end = token_end(source, cursor);
+        cursor = end <= cursor ? cursor + 1 : end;
+        ++scanned;
+    }
+    return cursor < length ? -1 : length;
+}
+
 static char *parse_program(const char *source) {
     Buffer ir;
+    Buffer recovered;
     buffer_init(&ir);
+    buffer_init(&recovered);
     int64_t length = (int64_t)strlen(source);
     buffer_format(&ir, "kofun-stage2-ir/v1\nsource-bytes|%" PRId64 "\n", length);
     int64_t cursor = skip_trivia(source, 0);
     int64_t functions = 0;
+    int64_t diagnostics = 0;
+    bool truncated = false;
     while (cursor < length) {
         if (!token_equal(source, cursor, "fn")) {
-            ir.length = 0;
-            ir.data[0] = '\0';
+            int64_t start = cursor;
+            int64_t after = token_end(source, cursor);
+            int64_t next = sync_top_level(source, after);
+            if (next < 0) {
+                next = length;
+                truncated = true;
+            }
+            if (next <= cursor) next = cursor + 1;
             buffer_format(
-                &ir,
-                "error[E2S02]: expected top-level `fn` at byte %" PRId64,
-                cursor
+                &recovered,
+                "diagnostic|E2S02|%" PRId64 "|%" PRId64
+                "|expected-top-level-fn\n",
+                start,
+                next
             );
-            return ir.data;
+            ++diagnostics;
+            cursor = next;
+            if (diagnostics >= 8 && cursor < length) {
+                truncated = true;
+                cursor = length;
+            }
+            continue;
         }
         char *name = function_name(source, cursor);
         int64_t arity = parameter_count(source, cursor);
         int64_t end = function_end(source, cursor);
         if (name[0] == '\0' || arity < 0 || end < 0) {
             free(name);
-            ir.length = 0;
-            ir.data[0] = '\0';
+            int64_t start = cursor;
+            int64_t after = token_end(source, cursor);
+            int64_t next = sync_top_level(source, after);
+            if (next < 0) {
+                next = length;
+                truncated = true;
+            }
+            if (next <= cursor) next = cursor + 1;
             buffer_format(
-                &ir,
-                "error[E2S03]: malformed function at byte %" PRId64,
-                cursor
+                &recovered,
+                "diagnostic|E2S03|%" PRId64 "|%" PRId64
+                "|malformed-function\n",
+                start,
+                next
             );
-            return ir.data;
+            ++diagnostics;
+            cursor = next;
+            if (diagnostics >= 8 && cursor < length) {
+                truncated = true;
+                cursor = length;
+            }
+            continue;
         }
         buffer_format(
             &ir,
+            "function|%s|%" PRId64 "|%" PRId64 "|%" PRId64 "\n",
+            name,
+            arity,
+            cursor,
+            end
+        );
+        buffer_format(
+            &recovered,
             "function|%s|%" PRId64 "|%" PRId64 "|%" PRId64 "\n",
             name,
             arity,
@@ -424,12 +490,41 @@ static char *parse_program(const char *source) {
         ++functions;
         cursor = skip_trivia(source, end);
     }
-    if (functions == 0) {
-        ir.length = 0;
-        ir.data[0] = '\0';
-        buffer_append(&ir, "error[E2S04]: compilation unit has no functions");
-        return ir.data;
+    if (functions == 0 && diagnostics < 8) {
+        buffer_format(
+            &recovered,
+            "diagnostic|E2S04|0|%" PRId64
+            "|compilation-unit-has-no-functions\n",
+            length
+        );
+        ++diagnostics;
     }
+    if (diagnostics > 0) {
+        Buffer report;
+        buffer_init(&report);
+        buffer_format(
+            &report,
+            "error[E2S20]: recovered top-level parse\n"
+            "kofun-stage2-recovery/v1\n"
+            "source-bytes|%" PRId64 "\n",
+            length
+        );
+        buffer_append(&report, recovered.data);
+        buffer_format(
+            &report,
+            "diagnostic-count|%" PRId64 "\n"
+            "function-count|%" PRId64 "\n"
+            "diagnostic-limit|8\n"
+            "truncated|%s\n",
+            diagnostics,
+            functions,
+            truncated ? "true" : "false"
+        );
+        free(recovered.data);
+        free(ir.data);
+        return report.data;
+    }
+    free(recovered.data);
     buffer_format(&ir, "function-count|%" PRId64 "\n", functions);
     return ir.data;
 }
@@ -672,8 +767,59 @@ static int64_t primary_end(const char *source, int64_t start) {
     int64_t cursor = skip_trivia(source, start);
     if (cursor >= length) return -1;
     const char *kind = token_kind(source, cursor);
-    if (strcmp(kind, "integer") == 0 || strcmp(kind, "identifier") == 0) {
+    if (
+        strcmp(kind, "integer") == 0 ||
+        token_equal(source, cursor, "true") ||
+        token_equal(source, cursor, "false")
+    ) {
         return token_end(source, cursor);
+    }
+    if (strcmp(kind, "identifier") == 0) {
+        int64_t name_end = token_end(source, cursor);
+        int64_t bracket = skip_trivia(source, name_end);
+        if (bracket < length && token_equal(source, bracket, "[")) {
+            int64_t index_start = skip_trivia(
+                source,
+                token_end(source, bracket)
+            );
+            int64_t index_end = expression_end(source, index_start);
+            if (index_end < 0) return -1;
+            int64_t close = skip_trivia(source, index_end);
+            if (close >= length || !token_equal(source, close, "]")) return -1;
+            return token_end(source, close);
+        }
+        return name_end;
+    }
+    if (token_equal(source, cursor, "[")) {
+        int64_t item_start = skip_trivia(
+            source,
+            token_end(source, cursor)
+        );
+        if (item_start < length && token_equal(source, item_start, "]")) {
+            return token_end(source, item_start);
+        }
+        while (item_start < length) {
+            int64_t item_end = expression_end(source, item_start);
+            if (item_end < 0) return -1;
+            int64_t separator = skip_trivia(source, item_end);
+            if (
+                separator < length &&
+                token_equal(source, separator, "]")
+            ) {
+                return token_end(source, separator);
+            }
+            if (
+                separator >= length ||
+                !token_equal(source, separator, ",")
+            ) {
+                return -1;
+            }
+            item_start = skip_trivia(
+                source,
+                token_end(source, separator)
+            );
+        }
+        return -1;
     }
     if (token_equal(source, cursor, "(")) {
         int64_t value_start = skip_trivia(source, token_end(source, cursor));
@@ -688,7 +834,11 @@ static int64_t primary_end(const char *source, int64_t start) {
 
 static int64_t unary_end(const char *source, int64_t start) {
     int64_t cursor = skip_trivia(source, start);
-    if (token_equal(source, cursor, "+") || token_equal(source, cursor, "-")) {
+    if (
+        token_equal(source, cursor, "+") ||
+        token_equal(source, cursor, "-") ||
+        token_equal(source, cursor, "!")
+    ) {
         return unary_end(source, skip_trivia(source, token_end(source, cursor)));
     }
     return primary_end(source, cursor);
@@ -716,7 +866,7 @@ static int64_t product_end(const char *source, int64_t start) {
     return cursor;
 }
 
-static int64_t expression_end(const char *source, int64_t start) {
+static int64_t sum_end(const char *source, int64_t start) {
     int64_t length = (int64_t)strlen(source);
     int64_t cursor = product_end(source, start);
     if (cursor < 0) return -1;
@@ -731,6 +881,75 @@ static int64_t expression_end(const char *source, int64_t start) {
             token_end(source, operator_start)
         );
         cursor = product_end(source, right_start);
+        if (cursor < 0) return -1;
+        operator_start = skip_trivia(source, cursor);
+    }
+    return cursor;
+}
+
+static bool comparison_operator(const char *source, int64_t start) {
+    return token_equal(source, start, "==") ||
+           token_equal(source, start, "!=") ||
+           token_equal(source, start, "<") ||
+           token_equal(source, start, "<=") ||
+           token_equal(source, start, ">") ||
+           token_equal(source, start, ">=");
+}
+
+static int64_t comparison_end(const char *source, int64_t start) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = sum_end(source, start);
+    if (cursor < 0) return -1;
+    int64_t operator_start = skip_trivia(source, cursor);
+    if (operator_start < length && comparison_operator(source, operator_start)) {
+        int64_t right_start = skip_trivia(
+            source,
+            token_end(source, operator_start)
+        );
+        cursor = sum_end(source, right_start);
+        if (cursor < 0) return -1;
+        int64_t trailing = skip_trivia(source, cursor);
+        if (trailing < length && comparison_operator(source, trailing)) {
+            return -1;
+        }
+    }
+    return cursor;
+}
+
+static int64_t and_end(const char *source, int64_t start) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = comparison_end(source, start);
+    if (cursor < 0) return -1;
+    int64_t operator_start = skip_trivia(source, cursor);
+    while (
+        operator_start < length &&
+        token_equal(source, operator_start, "&&")
+    ) {
+        int64_t right_start = skip_trivia(
+            source,
+            token_end(source, operator_start)
+        );
+        cursor = comparison_end(source, right_start);
+        if (cursor < 0) return -1;
+        operator_start = skip_trivia(source, cursor);
+    }
+    return cursor;
+}
+
+static int64_t expression_end(const char *source, int64_t start) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = and_end(source, start);
+    if (cursor < 0) return -1;
+    int64_t operator_start = skip_trivia(source, cursor);
+    while (
+        operator_start < length &&
+        token_equal(source, operator_start, "||")
+    ) {
+        int64_t right_start = skip_trivia(
+            source,
+            token_end(source, operator_start)
+        );
+        cursor = and_end(source, right_start);
         if (cursor < 0) return -1;
         operator_start = skip_trivia(source, cursor);
     }
@@ -756,6 +975,16 @@ static char *format_two(const char *name, const char *left, const char *right) {
 static char *emit_primary(const char *source, int64_t start, int64_t end) {
     int64_t cursor = skip_trivia(source, start);
     const char *kind = token_kind(source, cursor);
+    if (token_equal(source, cursor, "true")) {
+        char *value = allocate(5);
+        memcpy(value, "true", 5);
+        return value;
+    }
+    if (token_equal(source, cursor, "false")) {
+        char *value = allocate(6);
+        memcpy(value, "false", 6);
+        return value;
+    }
     if (strcmp(kind, "integer") == 0) {
         char *literal = source_slice(source, cursor, end);
         Buffer output;
@@ -772,11 +1001,66 @@ static char *emit_primary(const char *source, int64_t start, int64_t end) {
         return output.data;
     }
     if (strcmp(kind, "identifier") == 0) {
-        char *name = source_slice(source, cursor, end);
+        char *name = token_copy(source, cursor);
+        int64_t name_end = token_end(source, cursor);
+        int64_t bracket = skip_trivia(source, name_end);
         Buffer output;
         buffer_init(&output);
-        buffer_format(&output, "k_%s", name);
+        if (bracket < end && token_equal(source, bracket, "[")) {
+            int64_t index_start = skip_trivia(
+                source,
+                token_end(source, bracket)
+            );
+            int64_t index_end = expression_end(source, index_start);
+            char *index = emit_expression(source, index_start, index_end);
+            buffer_format(
+                &output,
+                "kofun_list_index(k_%s, %s)",
+                name,
+                index
+            );
+            free(index);
+        } else {
+            buffer_format(&output, "k_%s", name);
+        }
         free(name);
+        return output.data;
+    }
+    if (token_equal(source, cursor, "[")) {
+        int64_t item_start = skip_trivia(
+            source,
+            token_end(source, cursor)
+        );
+        int64_t count = 0;
+        Buffer items;
+        buffer_init(&items);
+        while (item_start < end && !token_equal(source, item_start, "]")) {
+            int64_t item_end = expression_end(source, item_start);
+            char *item = emit_expression(source, item_start, item_end);
+            if (count > 0) buffer_append(&items, ", ");
+            buffer_append(&items, item);
+            free(item);
+            ++count;
+            int64_t separator = skip_trivia(source, item_end);
+            if (token_equal(source, separator, ",")) {
+                item_start = skip_trivia(
+                    source,
+                    token_end(source, separator)
+                );
+            } else {
+                item_start = separator;
+            }
+        }
+        Buffer output;
+        buffer_init(&output);
+        buffer_format(
+            &output,
+            "(kofun_list_int){INT64_C(%" PRId64
+            "), (const int64_t[]){%s}}",
+            count,
+            items.data
+        );
+        free(items.data);
         return output.data;
     }
     if (token_equal(source, cursor, "(")) {
@@ -806,6 +1090,15 @@ static char *emit_unary(const char *source, int64_t start, int64_t end) {
         Buffer output;
         buffer_init(&output);
         buffer_format(&output, "kofun_neg(%s)", value);
+        free(value);
+        return output.data;
+    }
+    if (token_equal(source, cursor, "!")) {
+        int64_t value_start = skip_trivia(source, token_end(source, cursor));
+        char *value = emit_unary(source, value_start, end);
+        Buffer output;
+        buffer_init(&output);
+        buffer_format(&output, "(!%s)", value);
         free(value);
         return output.data;
     }
@@ -842,7 +1135,7 @@ static char *emit_product(const char *source, int64_t start, int64_t end) {
     return emitted;
 }
 
-static char *emit_expression(const char *source, int64_t start, int64_t end) {
+static char *emit_sum(const char *source, int64_t start, int64_t end) {
     int64_t cursor = product_end(source, start);
     char *emitted = emit_product(source, start, cursor);
     int64_t operator_start = skip_trivia(source, cursor);
@@ -868,6 +1161,590 @@ static char *emit_expression(const char *source, int64_t start, int64_t end) {
         operator_start = skip_trivia(source, cursor);
     }
     return emitted;
+}
+
+static char *emit_comparison(const char *source, int64_t start, int64_t end) {
+    int64_t left_end = sum_end(source, start);
+    int64_t operator_start = skip_trivia(source, left_end);
+    if (operator_start >= end) return emit_sum(source, start, end);
+    char *operator_text = token_copy(source, operator_start);
+    int64_t right_start = skip_trivia(
+        source,
+        token_end(source, operator_start)
+    );
+    char *left = emit_sum(source, start, left_end);
+    char *right = emit_sum(source, right_start, end);
+    Buffer output;
+    buffer_init(&output);
+    buffer_format(&output, "(%s %s %s)", left, operator_text, right);
+    free(left);
+    free(right);
+    free(operator_text);
+    return output.data;
+}
+
+static char *emit_and(const char *source, int64_t start, int64_t end) {
+    int64_t cursor = comparison_end(source, start);
+    char *emitted = emit_comparison(source, start, cursor);
+    int64_t operator_start = skip_trivia(source, cursor);
+    while (operator_start < end) {
+        int64_t right_start = skip_trivia(
+            source,
+            token_end(source, operator_start)
+        );
+        int64_t right_end = comparison_end(source, right_start);
+        char *right = emit_comparison(source, right_start, right_end);
+        Buffer combined;
+        buffer_init(&combined);
+        buffer_format(&combined, "(%s && %s)", emitted, right);
+        free(emitted);
+        free(right);
+        emitted = combined.data;
+        cursor = right_end;
+        operator_start = skip_trivia(source, cursor);
+    }
+    return emitted;
+}
+
+static char *emit_expression(const char *source, int64_t start, int64_t end) {
+    int64_t cursor = and_end(source, start);
+    char *emitted = emit_and(source, start, cursor);
+    int64_t operator_start = skip_trivia(source, cursor);
+    while (operator_start < end) {
+        int64_t right_start = skip_trivia(
+            source,
+            token_end(source, operator_start)
+        );
+        int64_t right_end = and_end(source, right_start);
+        char *right = emit_and(source, right_start, right_end);
+        Buffer combined;
+        buffer_init(&combined);
+        buffer_format(&combined, "(%s || %s)", emitted, right);
+        free(emitted);
+        free(right);
+        emitted = combined.data;
+        cursor = right_end;
+        operator_start = skip_trivia(source, cursor);
+    }
+    return emitted;
+}
+
+static char *copy_text(const char *value) {
+    size_t length = strlen(value);
+    char *copy = allocate(length + 1);
+    memcpy(copy, value, length + 1);
+    return copy;
+}
+
+static char *type_error(const char *message, int64_t start) {
+    Buffer error;
+    buffer_init(&error);
+    buffer_format(
+        &error,
+        "error[E2S32]: %s at byte %" PRId64,
+        message,
+        start
+    );
+    return error.data;
+}
+
+static char *bind_environment(
+    const char *environment,
+    const char *name,
+    const char *value_type,
+    bool mutable
+) {
+    Buffer result;
+    buffer_init(&result);
+    buffer_format(
+        &result,
+        ";%s=%s:%s;%s",
+        name,
+        value_type,
+        mutable ? "1" : "0",
+        environment
+    );
+    return result.data;
+}
+
+static char *binding_type(const char *environment, const char *name) {
+    Buffer marker;
+    buffer_init(&marker);
+    buffer_format(&marker, ";%s=", name);
+    const char *position = strstr(environment, marker.data);
+    free(marker.data);
+    if (position == NULL) return copy_text("");
+    position += strlen(name) + 2;
+    const char *colon = strchr(position, ':');
+    if (colon == NULL) return copy_text("");
+    size_t length = (size_t)(colon - position);
+    char *result = allocate(length + 1);
+    memcpy(result, position, length);
+    result[length] = '\0';
+    return result;
+}
+
+static bool binding_mutable(const char *environment, const char *name) {
+    Buffer marker;
+    buffer_init(&marker);
+    buffer_format(&marker, ";%s=", name);
+    const char *position = strstr(environment, marker.data);
+    free(marker.data);
+    if (position == NULL) return false;
+    position += strlen(name) + 2;
+    const char *colon = strchr(position, ':');
+    return colon != NULL && colon[1] == '1';
+}
+
+static char *expression_type(
+    const char *source,
+    int64_t start,
+    int64_t end,
+    const char *environment
+);
+
+static char *primary_type(
+    const char *source,
+    int64_t start,
+    int64_t end,
+    const char *environment
+) {
+    int64_t cursor = skip_trivia(source, start);
+    char *token = token_copy(source, cursor);
+    const char *kind = token_kind(source, cursor);
+    if (strcmp(kind, "integer") == 0) {
+        free(token);
+        return copy_text("Int");
+    }
+    if (strcmp(token, "true") == 0 || strcmp(token, "false") == 0) {
+        free(token);
+        return copy_text("Bool");
+    }
+    if (strcmp(token, "[") == 0) {
+        int64_t item_start = skip_trivia(
+            source,
+            token_end(source, cursor)
+        );
+        if (
+            item_start < (int64_t)strlen(source) &&
+            token_equal(source, item_start, "]")
+        ) {
+            free(token);
+            return type_error(
+                "List[Int] literal requires at least one element",
+                cursor
+            );
+        }
+        while (item_start < end && !token_equal(source, item_start, "]")) {
+            int64_t item_end = expression_end(source, item_start);
+            char *item_type = expression_type(
+                source,
+                item_start,
+                item_end,
+                environment
+            );
+            if (strncmp(item_type, "error[", 6) == 0) {
+                free(token);
+                return item_type;
+            }
+            if (strcmp(item_type, "Int") != 0) {
+                free(item_type);
+                free(token);
+                return type_error(
+                    "List[Int] element requires Int",
+                    item_start
+                );
+            }
+            free(item_type);
+            int64_t separator = skip_trivia(source, item_end);
+            if (token_equal(source, separator, ",")) {
+                item_start = skip_trivia(
+                    source,
+                    token_end(source, separator)
+                );
+            } else {
+                item_start = separator;
+            }
+        }
+        free(token);
+        return copy_text("List[Int]");
+    }
+    if (strcmp(kind, "identifier") == 0) {
+        char *found = binding_type(environment, token);
+        if (found[0] == '\0') {
+            free(found);
+            Buffer error;
+            buffer_init(&error);
+            buffer_format(
+                &error,
+                "error[E2S30]: unknown binding `%s` at byte %" PRId64,
+                token,
+                cursor
+            );
+            free(token);
+            return error.data;
+        }
+        int64_t name_end = token_end(source, cursor);
+        int64_t bracket = skip_trivia(source, name_end);
+        if (bracket < end && token_equal(source, bracket, "[")) {
+            if (strcmp(found, "List[Int]") != 0) {
+                free(found);
+                free(token);
+                return type_error(
+                    "index base requires List[Int]",
+                    cursor
+                );
+            }
+            int64_t index_start = skip_trivia(
+                source,
+                token_end(source, bracket)
+            );
+            int64_t index_end = expression_end(source, index_start);
+            char *index_type = expression_type(
+                source,
+                index_start,
+                index_end,
+                environment
+            );
+            if (strncmp(index_type, "error[", 6) == 0) {
+                free(found);
+                free(token);
+                return index_type;
+            }
+            if (strcmp(index_type, "Int") != 0) {
+                free(index_type);
+                free(found);
+                free(token);
+                return type_error(
+                    "List index requires Int",
+                    index_start
+                );
+            }
+            free(index_type);
+            free(found);
+            free(token);
+            return copy_text("Int");
+        }
+        free(token);
+        return found;
+    }
+    if (strcmp(token, "(") == 0) {
+        int64_t value_start = skip_trivia(source, token_end(source, cursor));
+        int64_t close = skip_trivia(
+            source,
+            expression_end(source, value_start)
+        );
+        free(token);
+        return expression_type(source, value_start, close, environment);
+    }
+    free(token);
+    return type_error(
+        "expected Int, Bool, or List[Int] expression",
+        cursor
+    );
+}
+
+static char *unary_type(
+    const char *source,
+    int64_t start,
+    int64_t end,
+    const char *environment
+) {
+    int64_t cursor = skip_trivia(source, start);
+    char *operator_text = token_copy(source, cursor);
+    if (
+        strcmp(operator_text, "+") == 0 ||
+        strcmp(operator_text, "-") == 0 ||
+        strcmp(operator_text, "!") == 0
+    ) {
+        int64_t value_start = skip_trivia(source, token_end(source, cursor));
+        char *value_type = unary_type(
+            source,
+            value_start,
+            end,
+            environment
+        );
+        if (strncmp(value_type, "error[", 6) == 0) {
+            free(operator_text);
+            return value_type;
+        }
+        if (
+            strcmp(operator_text, "!") == 0 &&
+            strcmp(value_type, "Bool") != 0
+        ) {
+            free(operator_text);
+            free(value_type);
+            return type_error("operator `!` requires Bool", cursor);
+        }
+        if (
+            strcmp(operator_text, "!") != 0 &&
+            strcmp(value_type, "Int") != 0
+        ) {
+            free(operator_text);
+            free(value_type);
+            return type_error("unary arithmetic requires Int", cursor);
+        }
+        free(operator_text);
+        return value_type;
+    }
+    free(operator_text);
+    return primary_type(source, cursor, end, environment);
+}
+
+static char *product_type(
+    const char *source,
+    int64_t start,
+    int64_t end,
+    const char *environment
+) {
+    int64_t cursor = unary_end(source, start);
+    char *first = unary_type(source, start, cursor, environment);
+    if (strncmp(first, "error[", 6) == 0) return first;
+    if (
+        strcmp(first, "Int") != 0 &&
+        skip_trivia(source, cursor) < end
+    ) {
+        free(first);
+        return type_error("multiplicative operators require Int", start);
+    }
+    int64_t operator_start = skip_trivia(source, cursor);
+    while (operator_start < end) {
+        int64_t right_start = skip_trivia(
+            source,
+            token_end(source, operator_start)
+        );
+        int64_t right_end = unary_end(source, right_start);
+        char *right = unary_type(
+            source,
+            right_start,
+            right_end,
+            environment
+        );
+        if (strncmp(right, "error[", 6) == 0) {
+            free(first);
+            return right;
+        }
+        if (strcmp(first, "Int") != 0 || strcmp(right, "Int") != 0) {
+            free(first);
+            free(right);
+            return type_error(
+                "multiplicative operators require Int",
+                operator_start
+            );
+        }
+        free(right);
+        cursor = right_end;
+        operator_start = skip_trivia(source, cursor);
+    }
+    return first;
+}
+
+static char *sum_type(
+    const char *source,
+    int64_t start,
+    int64_t end,
+    const char *environment
+) {
+    int64_t cursor = product_end(source, start);
+    char *first = product_type(source, start, cursor, environment);
+    if (strncmp(first, "error[", 6) == 0) return first;
+    if (
+        strcmp(first, "Int") != 0 &&
+        skip_trivia(source, cursor) < end
+    ) {
+        free(first);
+        return type_error("additive operators require Int", start);
+    }
+    int64_t operator_start = skip_trivia(source, cursor);
+    while (operator_start < end) {
+        int64_t right_start = skip_trivia(
+            source,
+            token_end(source, operator_start)
+        );
+        int64_t right_end = product_end(source, right_start);
+        char *right = product_type(
+            source,
+            right_start,
+            right_end,
+            environment
+        );
+        if (strncmp(right, "error[", 6) == 0) {
+            free(first);
+            return right;
+        }
+        if (strcmp(first, "Int") != 0 || strcmp(right, "Int") != 0) {
+            free(first);
+            free(right);
+            return type_error(
+                "additive operators require Int",
+                operator_start
+            );
+        }
+        free(right);
+        cursor = right_end;
+        operator_start = skip_trivia(source, cursor);
+    }
+    return first;
+}
+
+static char *comparison_type(
+    const char *source,
+    int64_t start,
+    int64_t end,
+    const char *environment
+) {
+    int64_t left_end = sum_end(source, start);
+    char *left = sum_type(source, start, left_end, environment);
+    if (strncmp(left, "error[", 6) == 0) return left;
+    int64_t operator_start = skip_trivia(source, left_end);
+    if (operator_start >= end) return left;
+    char *operator_text = token_copy(source, operator_start);
+    int64_t right_start = skip_trivia(
+        source,
+        token_end(source, operator_start)
+    );
+    char *right = sum_type(source, right_start, end, environment);
+    if (strncmp(right, "error[", 6) == 0) {
+        free(left);
+        free(operator_text);
+        return right;
+    }
+    if (
+        strcmp(operator_text, "==") == 0 ||
+        strcmp(operator_text, "!=") == 0
+    ) {
+        if (strcmp(left, right) != 0) {
+            free(left);
+            free(right);
+            free(operator_text);
+            return type_error(
+                "equality operands must have the same type",
+                operator_start
+            );
+        }
+        if (strcmp(left, "List[Int]") == 0) {
+            free(left);
+            free(right);
+            free(operator_text);
+            return type_error(
+                "List[Int] equality is not supported",
+                operator_start
+            );
+        }
+        free(left);
+        free(right);
+        free(operator_text);
+        return copy_text("Bool");
+    }
+    if (strcmp(left, "Int") != 0 || strcmp(right, "Int") != 0) {
+        free(left);
+        free(right);
+        free(operator_text);
+        return type_error("ordered comparison requires Int", operator_start);
+    }
+    free(left);
+    free(right);
+    free(operator_text);
+    return copy_text("Bool");
+}
+
+static char *and_type(
+    const char *source,
+    int64_t start,
+    int64_t end,
+    const char *environment
+) {
+    int64_t cursor = comparison_end(source, start);
+    char *first = comparison_type(source, start, cursor, environment);
+    if (strncmp(first, "error[", 6) == 0) return first;
+    int64_t operator_start = skip_trivia(source, cursor);
+    if (operator_start < end && strcmp(first, "Bool") != 0) {
+        free(first);
+        return type_error("operator `&&` requires Bool", operator_start);
+    }
+    while (operator_start < end) {
+        int64_t right_start = skip_trivia(
+            source,
+            token_end(source, operator_start)
+        );
+        int64_t right_end = comparison_end(source, right_start);
+        char *right = comparison_type(
+            source,
+            right_start,
+            right_end,
+            environment
+        );
+        if (strncmp(right, "error[", 6) == 0) {
+            free(first);
+            return right;
+        }
+        if (strcmp(right, "Bool") != 0) {
+            free(first);
+            free(right);
+            return type_error("operator `&&` requires Bool", operator_start);
+        }
+        free(right);
+        cursor = right_end;
+        operator_start = skip_trivia(source, cursor);
+    }
+    return first;
+}
+
+static char *expression_type(
+    const char *source,
+    int64_t start,
+    int64_t end,
+    const char *environment
+) {
+    int64_t cursor = and_end(source, start);
+    char *first = and_type(source, start, cursor, environment);
+    if (strncmp(first, "error[", 6) == 0) return first;
+    int64_t operator_start = skip_trivia(source, cursor);
+    if (operator_start < end && strcmp(first, "Bool") != 0) {
+        free(first);
+        return type_error("operator `||` requires Bool", operator_start);
+    }
+    while (operator_start < end) {
+        int64_t right_start = skip_trivia(
+            source,
+            token_end(source, operator_start)
+        );
+        int64_t right_end = and_end(source, right_start);
+        char *right = and_type(
+            source,
+            right_start,
+            right_end,
+            environment
+        );
+        if (strncmp(right, "error[", 6) == 0) {
+            free(first);
+            return right;
+        }
+        if (strcmp(right, "Bool") != 0) {
+            free(first);
+            free(right);
+            return type_error("operator `||` requires Bool", operator_start);
+        }
+        free(right);
+        cursor = right_end;
+        operator_start = skip_trivia(source, cursor);
+    }
+    return first;
+}
+
+static char *indentation(int64_t depth) {
+    Buffer result;
+    buffer_init(&result);
+    for (int64_t index = 0; index < depth; ++index) {
+        buffer_append(&result, "    ");
+    }
+    return result.data;
+}
+
+static const char *c_value_type(const char *value_type) {
+    if (strcmp(value_type, "Bool") == 0) return "bool";
+    if (strcmp(value_type, "List[Int]") == 0) return "kofun_list_int";
+    return "int64_t";
 }
 
 static int64_t core_body_open(const char *source, int64_t function_start) {
@@ -897,136 +1774,522 @@ static char *lower_error(const char *code, const char *message, int64_t cursor) 
     return error.data;
 }
 
-static char *lower_body(const char *source, int64_t open) {
+static char *lower_block(
+    const char *source,
+    int64_t open,
+    const char *environment,
+    int64_t depth
+) {
     int64_t length = (int64_t)strlen(source);
     Buffer emitted;
     buffer_init(&emitted);
+    char *local_environment = copy_text(environment);
     int64_t cursor = skip_trivia(source, token_end(source, open));
     bool returned = false;
+    char *prefix = indentation(depth);
     while (cursor < length && !token_equal(source, cursor, "}")) {
         if (returned) {
-            free(emitted.data);
             return lower_error("E2S14", "statement follows `return`", cursor);
         }
         if (token_equal(source, cursor, "let")) {
             cursor = skip_trivia(source, token_end(source, cursor));
+            bool mutable = false;
             if (cursor < length && token_equal(source, cursor, "mut")) {
+                mutable = true;
                 cursor = skip_trivia(source, token_end(source, cursor));
             }
             if (
                 cursor >= length ||
                 strcmp(token_kind(source, cursor), "identifier") != 0
             ) {
-                free(emitted.data);
                 return lower_error("E2S11", "expected binding name", cursor);
             }
             char *name = token_copy(source, cursor);
             cursor = skip_trivia(source, token_end(source, cursor));
+            char *declared_type = copy_text("");
             if (cursor < length && token_equal(source, cursor, ":")) {
                 cursor = skip_trivia(source, token_end(source, cursor));
-                if (cursor >= length || !token_equal(source, cursor, "Int")) {
-                    free(name);
-                    free(emitted.data);
+                if (cursor < length && token_equal(source, cursor, "List")) {
+                    int64_t list_start = cursor;
+                    int64_t element_open = skip_trivia(
+                        source,
+                        token_end(source, cursor)
+                    );
+                    if (
+                        element_open >= length ||
+                        !token_equal(source, element_open, "[")
+                    ) {
+                        return lower_error(
+                            "E2S11",
+                            "Core binding type must be Int, Bool, or List[Int]",
+                            list_start
+                        );
+                    }
+                    int64_t element = skip_trivia(
+                        source,
+                        token_end(source, element_open)
+                    );
+                    if (
+                        element >= length ||
+                        !token_equal(source, element, "Int")
+                    ) {
+                        return lower_error(
+                            "E2S11",
+                            "Core binding type must be Int, Bool, or List[Int]",
+                            list_start
+                        );
+                    }
+                    int64_t element_close = skip_trivia(
+                        source,
+                        token_end(source, element)
+                    );
+                    if (
+                        element_close >= length ||
+                        !token_equal(source, element_close, "]")
+                    ) {
+                        return lower_error(
+                            "E2S11",
+                            "Core binding type must be Int, Bool, or List[Int]",
+                            list_start
+                        );
+                    }
+                    free(declared_type);
+                    declared_type = copy_text("List[Int]");
+                    cursor = skip_trivia(
+                        source,
+                        token_end(source, element_close)
+                    );
+                } else if (
+                    cursor < length &&
+                    (token_equal(source, cursor, "Int") ||
+                     token_equal(source, cursor, "Bool"))
+                ) {
+                    free(declared_type);
+                    declared_type = token_copy(source, cursor);
+                    cursor = skip_trivia(source, token_end(source, cursor));
+                } else {
                     return lower_error(
                         "E2S11",
-                        "Core binding type must be Int",
+                        "Core binding type must be Int, Bool, or List[Int]",
                         cursor
                     );
                 }
-                cursor = skip_trivia(source, token_end(source, cursor));
             }
             if (cursor >= length || !token_equal(source, cursor, "=")) {
-                free(name);
-                free(emitted.data);
                 return lower_error("E2S11", "expected `=`", cursor);
             }
             int64_t value_start = skip_trivia(source, token_end(source, cursor));
             int64_t value_end = expression_end(source, value_start);
             if (value_end < 0) {
-                free(name);
-                free(emitted.data);
-                return lower_error("E2S12", "invalid Int expression", value_start);
+                return lower_error("E2S12", "invalid expression", value_start);
+            }
+            char *value_type = expression_type(
+                source,
+                value_start,
+                value_end,
+                local_environment
+            );
+            if (strncmp(value_type, "error[", 6) == 0) return value_type;
+            if (
+                declared_type[0] != '\0' &&
+                strcmp(declared_type, value_type) != 0
+            ) {
+                return type_error(
+                    "binding annotation does not match initializer",
+                    value_start
+                );
+            }
+            if (mutable && strcmp(value_type, "List[Int]") == 0) {
+                return lower_error(
+                    "E2S11",
+                    "mutable List[Int] bindings are not supported",
+                    value_start
+                );
             }
             char *value = emit_expression(source, value_start, value_end);
             buffer_format(
                 &emitted,
-                "    int64_t k_%s = %s;\n"
-                "    if (kofun_failed) return 1;\n",
+                "%s%s k_%s = %s;\n"
+                "%sif (kofun_failed) return 1;\n",
+                prefix,
+                c_value_type(value_type),
                 name,
-                value
+                value,
+                prefix
             );
+            char *next_environment = bind_environment(
+                local_environment,
+                name,
+                value_type,
+                mutable
+            );
+            free(local_environment);
+            local_environment = next_environment;
             free(value);
             free(name);
+            free(value_type);
+            free(declared_type);
             cursor = skip_trivia(source, value_end);
         } else if (token_equal(source, cursor, "print")) {
             int64_t call_open = skip_trivia(source, token_end(source, cursor));
             if (call_open >= length || !token_equal(source, call_open, "(")) {
-                free(emitted.data);
                 return lower_error("E2S13", "expected `print(`", cursor);
             }
             int64_t value_start = skip_trivia(source, token_end(source, call_open));
             int64_t value_end = expression_end(source, value_start);
             if (value_end < 0) {
-                free(emitted.data);
-                return lower_error("E2S12", "invalid Int expression", value_start);
+                return lower_error("E2S12", "invalid expression", value_start);
+            }
+            char *value_type = expression_type(
+                source,
+                value_start,
+                value_end,
+                local_environment
+            );
+            if (strncmp(value_type, "error[", 6) == 0) return value_type;
+            if (strcmp(value_type, "List[Int]") == 0) {
+                free(value_type);
+                return type_error(
+                    "print requires Int or Bool",
+                    value_start
+                );
             }
             int64_t call_close = skip_trivia(source, value_end);
             if (call_close >= length || !token_equal(source, call_close, ")")) {
-                free(emitted.data);
                 return lower_error("E2S13", "expected `)`", call_close);
             }
             char *value = emit_expression(source, value_start, value_end);
             buffer_format(
                 &emitted,
-                "    {\n"
-                "        int64_t kofun_value = %s;\n"
-                "        if (kofun_failed) return 1;\n"
-                "        printf(\"%%\" PRId64 \"\\n\", kofun_value);\n"
-                "    }\n",
-                value
+                "%s{\n"
+                "%s    %s kofun_value = %s;\n"
+                "%s    if (kofun_failed) return 1;\n",
+                prefix,
+                prefix,
+                c_value_type(value_type),
+                value,
+                prefix
             );
+            if (strcmp(value_type, "Bool") == 0) {
+                buffer_format(
+                    &emitted,
+                    "%s    printf(\"%%s\\n\", kofun_value ? \"true\" : \"false\");\n",
+                    prefix
+                );
+            } else {
+                buffer_format(
+                    &emitted,
+                    "%s    printf(\"%%\" PRId64 \"\\n\", kofun_value);\n",
+                    prefix
+                );
+            }
+            buffer_format(&emitted, "%s}\n", prefix);
+            free(value_type);
             free(value);
             cursor = skip_trivia(source, token_end(source, call_close));
+        } else if (token_equal(source, cursor, "if")) {
+            int64_t condition_start = skip_trivia(
+                source,
+                token_end(source, cursor)
+            );
+            int64_t condition_end = expression_end(source, condition_start);
+            if (condition_end < 0) {
+                return lower_error(
+                    "E2S12",
+                    "invalid if condition",
+                    condition_start
+                );
+            }
+            char *condition_type = expression_type(
+                source,
+                condition_start,
+                condition_end,
+                local_environment
+            );
+            if (strncmp(condition_type, "error[", 6) == 0) {
+                return condition_type;
+            }
+            if (strcmp(condition_type, "Bool") != 0) {
+                return type_error("if condition requires Bool", condition_start);
+            }
+            int64_t then_open = skip_trivia(source, condition_end);
+            if (then_open >= length || !token_equal(source, then_open, "{")) {
+                return lower_error(
+                    "E2S13",
+                    "expected `{` after if condition",
+                    then_open
+                );
+            }
+            int64_t then_end = balanced_end(source, then_open, "{", "}");
+            if (then_end < 0) {
+                return lower_error("E2S03", "missing if block close", -1);
+            }
+            char *then_body = lower_block(
+                source,
+                then_open,
+                local_environment,
+                depth + 2
+            );
+            if (strncmp(then_body, "error[", 6) == 0) return then_body;
+            char *condition = emit_expression(
+                source,
+                condition_start,
+                condition_end
+            );
+            buffer_format(
+                &emitted,
+                "%s{\n"
+                "%s    bool kofun_condition = %s;\n"
+                "%s    if (kofun_failed) return 1;\n"
+                "%s    if (kofun_condition) {\n",
+                prefix,
+                prefix,
+                condition,
+                prefix,
+                prefix
+            );
+            buffer_append(&emitted, then_body);
+            buffer_format(&emitted, "%s    }", prefix);
+            cursor = skip_trivia(source, then_end);
+            if (cursor < length && token_equal(source, cursor, "else")) {
+                int64_t else_open = skip_trivia(
+                    source,
+                    token_end(source, cursor)
+                );
+                if (
+                    else_open >= length ||
+                    !token_equal(source, else_open, "{")
+                ) {
+                    return lower_error(
+                        "E2S13",
+                        "expected `{` after else",
+                        else_open
+                    );
+                }
+                int64_t else_end = balanced_end(source, else_open, "{", "}");
+                if (else_end < 0) {
+                    return lower_error("E2S03", "missing else block close", -1);
+                }
+                char *else_body = lower_block(
+                    source,
+                    else_open,
+                    local_environment,
+                    depth + 2
+                );
+                if (strncmp(else_body, "error[", 6) == 0) return else_body;
+                buffer_append(&emitted, " else {\n");
+                buffer_append(&emitted, else_body);
+                buffer_format(&emitted, "%s    }\n", prefix);
+                cursor = skip_trivia(source, else_end);
+            } else {
+                buffer_append(&emitted, "\n");
+            }
+            buffer_format(&emitted, "%s}\n", prefix);
+        } else if (token_equal(source, cursor, "while")) {
+            int64_t condition_start = skip_trivia(
+                source,
+                token_end(source, cursor)
+            );
+            int64_t condition_end = expression_end(source, condition_start);
+            if (condition_end < 0) {
+                return lower_error(
+                    "E2S12",
+                    "invalid while condition",
+                    condition_start
+                );
+            }
+            char *condition_type = expression_type(
+                source,
+                condition_start,
+                condition_end,
+                local_environment
+            );
+            if (strncmp(condition_type, "error[", 6) == 0) {
+                return condition_type;
+            }
+            if (strcmp(condition_type, "Bool") != 0) {
+                return type_error(
+                    "while condition requires Bool",
+                    condition_start
+                );
+            }
+            int64_t loop_open = skip_trivia(source, condition_end);
+            if (loop_open >= length || !token_equal(source, loop_open, "{")) {
+                return lower_error(
+                    "E2S13",
+                    "expected `{` after while condition",
+                    loop_open
+                );
+            }
+            int64_t loop_end = balanced_end(source, loop_open, "{", "}");
+            if (loop_end < 0) {
+                return lower_error("E2S03", "missing while block close", -1);
+            }
+            char *loop_body = lower_block(
+                source,
+                loop_open,
+                local_environment,
+                depth + 2
+            );
+            if (strncmp(loop_body, "error[", 6) == 0) return loop_body;
+            char *condition = emit_expression(
+                source,
+                condition_start,
+                condition_end
+            );
+            buffer_format(
+                &emitted,
+                "%s{\n"
+                "%s    for (;;) {\n"
+                "%s        bool kofun_condition = %s;\n"
+                "%s        if (kofun_failed) return 1;\n"
+                "%s        if (!kofun_condition) break;\n",
+                prefix,
+                prefix,
+                prefix,
+                condition,
+                prefix,
+                prefix
+            );
+            buffer_append(&emitted, loop_body);
+            buffer_format(
+                &emitted,
+                "%s    }\n"
+                "%s}\n",
+                prefix,
+                prefix
+            );
+            cursor = skip_trivia(source, loop_end);
         } else if (token_equal(source, cursor, "return")) {
             int64_t value_start = skip_trivia(source, token_end(source, cursor));
             if (value_start < length && token_equal(source, value_start, "}")) {
-                buffer_append(&emitted, "    return 0;\n");
+                buffer_format(&emitted, "%sreturn 0;\n", prefix);
                 cursor = value_start;
             } else {
                 int64_t value_end = expression_end(source, value_start);
                 if (value_end < 0) {
-                    free(emitted.data);
                     return lower_error(
                         "E2S12",
                         "invalid return expression",
                         value_start
                     );
                 }
+                char *value_type = expression_type(
+                    source,
+                    value_start,
+                    value_end,
+                    local_environment
+                );
+                if (strncmp(value_type, "error[", 6) == 0) return value_type;
+                if (strcmp(value_type, "Int") != 0) {
+                    return type_error("main return requires Int", value_start);
+                }
                 char *value = emit_expression(source, value_start, value_end);
                 buffer_format(
                     &emitted,
-                    "    {\n"
-                    "        int64_t kofun_result = %s;\n"
-                    "        if (kofun_failed) return 1;\n"
-                    "        return (int)kofun_result;\n"
-                    "    }\n",
-                    value
+                    "%s{\n"
+                    "%s    int64_t kofun_result = %s;\n"
+                    "%s    if (kofun_failed) return 1;\n"
+                    "%s    return (int)kofun_result;\n"
+                    "%s}\n",
+                    prefix,
+                    prefix,
+                    value,
+                    prefix,
+                    prefix,
+                    prefix
                 );
-                free(value);
                 cursor = skip_trivia(source, value_end);
             }
             returned = true;
+        } else if (strcmp(token_kind(source, cursor), "identifier") == 0) {
+            int64_t name_start = cursor;
+            char *name = token_copy(source, cursor);
+            char *value_type = binding_type(local_environment, name);
+            if (value_type[0] == '\0') {
+                Buffer error;
+                buffer_init(&error);
+                buffer_format(
+                    &error,
+                    "error[E2S30]: unknown binding `%s` at byte %" PRId64,
+                    name,
+                    cursor
+                );
+                return error.data;
+            }
+            if (!binding_mutable(local_environment, name)) {
+                Buffer error;
+                buffer_init(&error);
+                buffer_format(
+                    &error,
+                    "error[E2S31]: cannot assign immutable binding `%s` at byte %" PRId64,
+                    name,
+                    cursor
+                );
+                return error.data;
+            }
+            cursor = skip_trivia(source, token_end(source, cursor));
+            if (cursor >= length || !token_equal(source, cursor, "=")) {
+                return lower_error(
+                    "E2S10",
+                    "unsupported Core statement",
+                    name_start
+                );
+            }
+            int64_t value_start = skip_trivia(source, token_end(source, cursor));
+            int64_t value_end = expression_end(source, value_start);
+            if (value_end < 0) {
+                return lower_error(
+                    "E2S12",
+                    "invalid assignment expression",
+                    value_start
+                );
+            }
+            char *assigned_type = expression_type(
+                source,
+                value_start,
+                value_end,
+                local_environment
+            );
+            if (strncmp(assigned_type, "error[", 6) == 0) {
+                return assigned_type;
+            }
+            if (strcmp(assigned_type, value_type) != 0) {
+                return type_error("assignment type mismatch", value_start);
+            }
+            char *value = emit_expression(source, value_start, value_end);
+            buffer_format(
+                &emitted,
+                "%s{\n"
+                "%s    %s kofun_assignment = %s;\n"
+                "%s    if (kofun_failed) return 1;\n"
+                "%s    k_%s = kofun_assignment;\n"
+                "%s}\n",
+                prefix,
+                prefix,
+                c_value_type(value_type),
+                value,
+                prefix,
+                prefix,
+                name,
+                prefix
+            );
+            cursor = skip_trivia(source, value_end);
         } else {
-            free(emitted.data);
             return lower_error("E2S10", "unsupported Core statement", cursor);
         }
     }
     if (cursor >= length || !token_equal(source, cursor, "}")) {
-        free(emitted.data);
         return lower_error("E2S03", "missing function close", -1);
     }
-    if (!returned) buffer_append(&emitted, "    return 0;\n");
+    if (!returned && depth == 1) {
+        buffer_format(&emitted, "%sreturn 0;\n", prefix);
+    }
     return emitted.data;
+}
+
+static char *lower_body(const char *source, int64_t open) {
+    return lower_block(source, open, "", 1);
 }
 
 static char *lower_c(const char *source) {
@@ -1074,6 +2337,10 @@ static char *lower_c(const char *source) {
         "#include <stdbool.h>\n"
         "#include <stdint.h>\n"
         "#include <stdio.h>\n\n"
+        "typedef struct {\n"
+        "    int64_t length;\n"
+        "    const int64_t *items;\n"
+        "} kofun_list_int;\n\n"
         "static bool kofun_failed;\n"
         "static inline void kofun_error(const char *message) {\n"
         "    if (!kofun_failed) { fputs(message, stderr); fputc('\\n', stderr); }\n"
@@ -1118,9 +2385,23 @@ static char *lower_c(const char *source) {
         "    int64_t r = a % b;\n"
         "    if (r != 0 && ((r < 0) != (b < 0))) { r += b; }\n"
         "    return r;\n"
+        "}\n"
+        "static inline int64_t kofun_list_index(kofun_list_int list, int64_t index) {\n"
+        "    if (index < 0 || index >= list.length) {\n"
+        "        kofun_error(\"error[R023]: List index out of bounds\"); return 0;\n"
+        "    }\n"
+        "    return list.items[index];\n"
         "}\n\n"
         "int main(void) {\n"
         "    (void)kofun_failed;\n"
+        "    (void)kofun_error;\n"
+        "    (void)kofun_add;\n"
+        "    (void)kofun_sub;\n"
+        "    (void)kofun_mul;\n"
+        "    (void)kofun_neg;\n"
+        "    (void)kofun_floor_div;\n"
+        "    (void)kofun_floor_mod;\n"
+        "    (void)kofun_list_index;\n"
     );
     buffer_append(&output, body);
     buffer_append(&output, "}\n");
@@ -1166,10 +2447,19 @@ int main(int argc, char **argv) {
     if (argc == 3 && strcmp(argv[1], "--check-ownership") == 0) {
         return check_ownership_file(argv[2]);
     }
-    if (argc != 5) {
+    if (argc != 5 && argc != 6) {
         fputs(
             "usage: kofun-stage2 INPUT.kofun OUTPUT.kofun OUTPUT.ir OUTPUT.tokens\n"
-            "       kofun-stage2 --check-ownership INPUT.kofun\n",
+            "       kofun-stage2 --check-ownership INPUT.kofun\n"
+            "       kofun-stage2 INPUT.kofun UNUSED.kofun OUTPUT.ir OUTPUT.tokens --recover\n",
+            stdout
+        );
+        return 2;
+    }
+    bool recovery = argc == 6;
+    if (recovery && strcmp(argv[5], "--recover") != 0) {
+        fputs(
+            "usage: kofun-stage2 INPUT.kofun OUTPUT.kofun OUTPUT.ir OUTPUT.tokens [--recover]\n",
             stdout
         );
         return 2;
@@ -1184,6 +2474,22 @@ int main(int argc, char **argv) {
         return 1;
     }
     char *ir = parse_program(source);
+    if (recovery) {
+        write_file(argv[3], ir);
+        write_file(argv[4], tokens);
+        if (strncmp(ir, "error[", 6) == 0) {
+            puts(ir);
+            free(ir);
+            free(tokens);
+            free(source);
+            return 1;
+        }
+        puts(argv[3]);
+        free(ir);
+        free(tokens);
+        free(source);
+        return 0;
+    }
     if (strncmp(ir, "error[", 6) == 0) {
         puts(ir);
         free(ir);

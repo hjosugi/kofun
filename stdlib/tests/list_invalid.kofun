@@ -1,0 +1,51 @@
+# Negative semantic fixture: List boundaries are typed values, not sentinels.
+
+import stdlib.list.reference
+
+fn main() {
+    assert(match int_list_allocation_size(-1) {
+        Err(InvalidLength(-1)) => true
+        _ => false
+    })
+    assert(match int_list_allocation_size(1152921504606846974) {
+        Err(AllocationSizeOverflow(1152921504606846974)) => true
+        _ => false
+    })
+    assert(match int_list_checked_length_sum(-1, 0) {
+        Err(InvalidLength(-1)) => true
+        _ => false
+    })
+    assert(match int_list_checked_length_sum(
+        1152921504606846973,
+        1,
+    ) {
+        Err(LengthOverflow(1152921504606846973, 1)) => true
+        _ => false
+    })
+
+    let xs = match int_list_validate([1, 2, 3, 4, 5]) {
+        Ok(value) => value
+        Err(_) => unreachable()
+    }
+    assert(match int_list_get(xs, -1) {
+        Err(IndexOutOfBounds(-1, 5)) => true
+        _ => false
+    })
+    assert(match int_list_get(xs, 5) {
+        Err(IndexOutOfBounds(5, 5)) => true
+        _ => false
+    })
+    assert(match int_list_slice(xs, -1, 2) {
+        Err(SliceOutOfBounds(-1, 2, 5)) => true
+        _ => false
+    })
+    assert(match int_list_slice(xs, 4, 3) {
+        Err(SliceOutOfBounds(4, 3, 5)) => true
+        _ => false
+    })
+    assert(match int_list_slice(xs, 0, 6) {
+        Err(SliceOutOfBounds(0, 6, 5)) => true
+        _ => false
+    })
+    print("list-negative: ok")
+}

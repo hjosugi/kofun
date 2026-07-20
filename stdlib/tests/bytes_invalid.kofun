@@ -1,0 +1,72 @@
+# Stage 2 negative fixture: Bytes errors are values, never sentinels.
+
+import stdlib.bytes.reference
+
+fn main() {
+    assert(match bytes_from_list([-1]) {
+        Err(InvalidByte(0, -1)) => true
+        _ => false
+    })
+    assert(match bytes_from_list([0, 256]) {
+        Err(InvalidByte(1, 256)) => true
+        _ => false
+    })
+    assert(match bytes_checked_length_sum(-1, 0) {
+        Err(InvalidLength(-1)) => true
+        _ => false
+    })
+    assert(match bytes_checked_length_sum(9223372036854775807, 1) {
+        Err(LengthOverflow(9223372036854775807, 1)) => true
+        _ => false
+    })
+
+    let value = match bytes_from_list([1, 2, 3, 4]) {
+        Ok(items) => items
+        Err(_) => unreachable()
+    }
+    assert(match bytes_get(value, -1) {
+        Err(IndexOutOfBounds(-1, 4)) => true
+        _ => false
+    })
+    assert(match bytes_get(value, 4) {
+        Err(IndexOutOfBounds(4, 4)) => true
+        _ => false
+    })
+    assert(match bytes_slice(value, -1, 2) {
+        Err(SliceOutOfBounds(-1, 2, 4)) => true
+        _ => false
+    })
+    assert(match bytes_slice(value, 3, 2) {
+        Err(SliceOutOfBounds(3, 2, 4)) => true
+        _ => false
+    })
+    assert(match bytes_slice(value, 0, 5) {
+        Err(SliceOutOfBounds(0, 5, 4)) => true
+        _ => false
+    })
+    assert(match bytes_read_uint_le(value, 0, 0) {
+        Err(InvalidWidth(0)) => true
+        _ => false
+    })
+    assert(match bytes_read_uint_le(value, 0, 8) {
+        Err(InvalidWidth(8)) => true
+        _ => false
+    })
+    assert(match bytes_read_uint_le(value, 3, 2) {
+        Err(SpanOutOfBounds(3, 2, 4)) => true
+        _ => false
+    })
+    assert(match bytes_write_uint_le(value, 0, 2, -1) {
+        Err(UnsignedOutOfRange(-1, 2)) => true
+        _ => false
+    })
+    assert(match bytes_write_uint_le(value, 0, 2, 65536) {
+        Err(UnsignedOutOfRange(65536, 2)) => true
+        _ => false
+    })
+    assert(match bytes_read_i64_le(value, 0) {
+        Err(SpanOutOfBounds(0, 8, 4)) => true
+        _ => false
+    })
+    print("bytes-negative: ok")
+}

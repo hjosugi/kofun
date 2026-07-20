@@ -1,0 +1,5 @@
+fn main() -> Int {
+    let mixed = true == 1
+    print(mixed)
+    return 0
+}

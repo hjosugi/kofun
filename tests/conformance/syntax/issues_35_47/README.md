@@ -13,12 +13,14 @@ C11 compiler. It proves:
 
 - Stage 1 executes an ASCII `fn main()` with newline-terminated immutable
   bindings;
-- Stage 2 executes the same surface plus a `let mut` declaration;
+- Stage 2 executes the same surface plus `let mut`, assignment, statement
+  `if`/`else`, and pre-test `while`;
 - Stage 2 structural IR preserves names, arities, spans, and balanced bodies;
 - the current frontends reject Unicode names; and
-- Stage 2 C lowering explicitly rejects lambda, owned-binding, `if`,
-  `for`, `match`, and `while` fixtures rather than treating them as supported.
+- Stage 2 C lowering explicitly rejects lambda, owned-binding, `for`, and
+  `match` fixtures rather than treating them as supported.
 
 Structural round-trip is not semantic support. The unsupported fixtures are
 future conformance inputs retained as negative capability checks until their
-features are implemented.
+features are implemented. The positive `if` and `while` fixtures compile to
+C11 and execute with exact stdout and status checks.

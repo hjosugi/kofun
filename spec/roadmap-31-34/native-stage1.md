@@ -42,12 +42,12 @@ artifacts from clean directories and compare:
 An unsupported feature must be an explicit failure with a stable diagnostic,
 not a skip that counts as agreement.
 
-The issue predates the Python-free migration and names
-`check_bootstrap.py`. The maintained equivalent is
-`bootstrap/check_bootstrap.kofun`, driven by a POSIX shell gate. Reintroducing
-Python to satisfy the stale filename is forbidden. The current Kofun checker
-already specifies equality of two nonempty Stage 1 C artifacts, but the native
-producer needed for its second input does not exist.
+The issue predates the Python-free migration and names a retired host-language
+checker. The maintained equivalent is `bootstrap/check_bootstrap.kofun`,
+driven by a POSIX shell gate. Reintroducing the retired implementation to
+satisfy a stale filename is forbidden. The current Kofun checker already
+specifies equality of two nonempty Stage 1 C artifacts, but the native producer
+needed for its second input does not exist.
 
 ## Required implementation order
 

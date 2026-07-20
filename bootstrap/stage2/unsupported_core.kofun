@@ -1,8 +1,8 @@
-# Structurally valid Kofun, but control-flow lowering is outside Stage 2 Core.
+# Structurally valid Kofun, but `for` lowering is outside Stage 2 Core.
 
 fn main() -> Int {
-    if true {
-        return 0
+    for value in 0 .. 3 {
+        print(value)
     }
-    return 1
+    return 0
 }
