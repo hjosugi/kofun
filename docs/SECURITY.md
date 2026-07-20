@@ -139,4 +139,8 @@ The JSON evidence includes a source SHA-256 and compiler version, but it is not 
 
 ## Bootstrap security
 
-The current bootstrap trusted computing base includes Python, Stage 0 source, the host C compiler/linker, and the operating system. Interpreted/native Stage 1 output equivalence is a differential check, not a defense against a malicious Stage 0 and host compiler acting together. Diverse double compilation remains an open gate in `bootstrap/manifest.json`.
+The active bootstrap contains no Python runtime or source. Its trusted computing
+base is the checked-in Kofun and C11 seed, the host C compiler/linker, and the
+operating system. Stage 1 and Stage 2 artifact checks are reproducibility gates,
+not a defense against a malicious seed and host compiler acting together.
+Diverse double compilation remains open in `bootstrap/manifest.json`.
