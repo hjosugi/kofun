@@ -51,6 +51,29 @@ closures, or general calls, so `map`, `filter`, and `fold` remain unsupported.
 AArch64 rejects `List[Int]` with an explicit diagnostic instead of emitting
 scalar code with different semantics.
 
+The x86-64 target also implements immutable UTF-8 `Text` values with the
+historical native ABI `[byte length: i64][UTF-8 bytes]`. Literals live in the
+read-only image, while concatenation and one-codepoint indexing allocate the
+same layout through the mmap runtime. `+`, `==`, `!=`, direct Text printing,
+codepoint `len`, and positive or negative codepoint indexing execute in the
+generated ELF. Consequently, `len("aé古🌍")` is 4 rather than its UTF-8 byte
+length.
+
+`chars` scans its runtime Text value into the existing list ABI with Text
+pointers as its elements. Each one-codepoint Text and the List[Text] storage
+are allocated by the generated ELF. The closed Core frontend also retains
+codepoint metadata for static typing and result validation. A Text index
+outside the codepoint range
+writes `kofun: text index out of range` to stderr and exits 1. The gate compares
+Japanese, accented Latin, and emoji cases with an independent C11 UTF-8
+reference and executes the Text OOM and index-failure paths.
+
+The obsolete `tests/kofun/*.kf` acceptance path no longer exists. The active
+Python-free `tests/conformance/text` corpus is registered with the native
+x86-64 adapter and executes all 9 cases. General Text bindings, calls, and the
+Stage 1 compiler port are tracked separately by issue #33. AArch64 Text is a
+follow-up target boundary and rejects with an explicit diagnostic today.
+
 The frontend creates one AST; both instruction selectors consume it. The
 equivalent canonical Kofun representation is a postfix stream of
 `[opcode, operand]` pairs consumed by `x64_native_core_text` and
@@ -232,6 +255,11 @@ Implemented here:
 - native lowering of the fixture expressions `40 + 2` and `(6 + 1) * 6`;
 - x86-64 `List[Int]` literal, `len`, and positive/negative indexing lowering;
 - raw `mmap` list allocation with defined OOM and bounds diagnostics;
+- x86-64 UTF-8 Text literals, concatenation, equality, codepoint `len`, and
+  positive/negative codepoint indexing;
+- runtime `chars` lowering to allocated List[Text] and Text/Bool printing;
+- registered Python-free Text conformance coverage with 9/9 cases executed by
+  the native x86-64 adapter;
 - two-digit integer-to-ASCII conversion for the fixture result;
 - distinct RX and RW mappings;
 - three end-to-end Linux x86-64 executable artifact gates;
@@ -247,5 +275,6 @@ Still open:
 - native stdout/stderr formatting and canonical `R010` diagnostics;
 - conditional branches, allocator reuse/reclamation, Mach-O, and additional targets;
 - general `List[Int]` bindings, `map`, `filter`, `fold`, and AArch64 lists;
-- registering the native backend in the full differential runner;
+- general Text bindings/calls and the Stage 1 compiler port tracked by #33;
+- extending the registered native adapter beyond Text and adding AArch64 Text;
 - AArch64 debug information and variable/location DIEs.

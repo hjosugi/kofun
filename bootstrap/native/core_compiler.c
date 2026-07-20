@@ -7,10 +7,9 @@
  *       print(CONSTANT_EXPRESSION)
  *   }
  *
- * CONSTANT_EXPRESSION supports non-negative literals, parentheses, +, and *.
- * Its result must be 10..99 so both registered targets exercise the same
- * two-digit runtime formatting contract. The AST is shared. Only instruction
- * selection and encoding are target-specific.
+ * CONSTANT_EXPRESSION supports a narrow integer, List[Int], and Text Core.
+ * The AST is shared. Only instruction selection and encoding are
+ * target-specific.
  *
  * This C11 seed is temporary bootstrap machinery. Canonical instruction, ELF,
  * and postfix Core encoders live in encoder.kofun; no Python implementation is
@@ -165,16 +164,23 @@ static char *read_source(const char *path) {
 
 typedef enum {
     NODE_LITERAL,
+    NODE_TEXT_LITERAL,
     NODE_ADD,
+    NODE_TEXT_CONCAT,
+    NODE_TEXT_EQUAL,
+    NODE_TEXT_NOT_EQUAL,
     NODE_MULTIPLY,
     NODE_NEGATE,
     NODE_LIST,
+    NODE_CHARS,
     NODE_INDEX,
     NODE_LENGTH,
 } NodeKind;
 
 typedef enum {
     VALUE_INT,
+    VALUE_BOOL,
+    VALUE_TEXT,
     VALUE_LIST,
 } ValueKind;
 
@@ -185,6 +191,10 @@ struct Node {
     ValueKind value_kind;
     int64_t value;
     bool value_known;
+    uint8_t *text_value;
+    size_t text_length;
+    size_t text_codepoints;
+    ValueKind element_kind;
     size_t source_line;
     Node *left;
     Node *right;
@@ -261,6 +271,10 @@ static Node *node(
     result->value_kind = value_kind;
     result->value = value;
     result->value_known = value_known;
+    result->text_value = NULL;
+    result->text_length = 0;
+    result->text_codepoints = 0;
+    result->element_kind = VALUE_INT;
     result->source_line = line;
     result->left = left;
     result->right = right;
@@ -270,6 +284,135 @@ static Node *node(
 }
 
 static Node *parse_expression(Parser *parser);
+
+static size_t utf8_width(const uint8_t *bytes, size_t remaining) {
+    if (remaining == 0) return 0;
+    uint8_t first = bytes[0];
+    if (first < UINT8_C(0x80)) return 1;
+    if (first >= UINT8_C(0xc2) && first <= UINT8_C(0xdf)) {
+        if (remaining < 2 ||
+            (bytes[1] & UINT8_C(0xc0)) != UINT8_C(0x80)) {
+            return 0;
+        }
+        return 2;
+    }
+    if (first >= UINT8_C(0xe0) && first <= UINT8_C(0xef)) {
+        if (remaining < 3 ||
+            (bytes[1] & UINT8_C(0xc0)) != UINT8_C(0x80) ||
+            (bytes[2] & UINT8_C(0xc0)) != UINT8_C(0x80) ||
+            (first == UINT8_C(0xe0) && bytes[1] < UINT8_C(0xa0)) ||
+            (first == UINT8_C(0xed) && bytes[1] >= UINT8_C(0xa0))) {
+            return 0;
+        }
+        return 3;
+    }
+    if (first >= UINT8_C(0xf0) && first <= UINT8_C(0xf4)) {
+        if (remaining < 4 ||
+            (bytes[1] & UINT8_C(0xc0)) != UINT8_C(0x80) ||
+            (bytes[2] & UINT8_C(0xc0)) != UINT8_C(0x80) ||
+            (bytes[3] & UINT8_C(0xc0)) != UINT8_C(0x80) ||
+            (first == UINT8_C(0xf0) && bytes[1] < UINT8_C(0x90)) ||
+            (first == UINT8_C(0xf4) && bytes[1] >= UINT8_C(0x90))) {
+            return 0;
+        }
+        return 4;
+    }
+    return 0;
+}
+
+static bool utf8_count(
+    const uint8_t *bytes,
+    size_t length,
+    size_t *codepoints
+) {
+    size_t cursor = 0;
+    size_t count = 0;
+    while (cursor < length) {
+        size_t width = utf8_width(bytes + cursor, length - cursor);
+        if (width == 0) return false;
+        cursor += width;
+        ++count;
+    }
+    *codepoints = count;
+    return true;
+}
+
+static uint8_t *copy_bytes(const uint8_t *bytes, size_t length) {
+    uint8_t *copy = allocate(length);
+    if (length > 0) memcpy(copy, bytes, length);
+    return copy;
+}
+
+static Node *text_node(
+    NodeKind kind,
+    const uint8_t *bytes,
+    size_t length,
+    size_t codepoints,
+    size_t line,
+    Node *left,
+    Node *right
+) {
+    Node *result = node(
+        kind,
+        VALUE_TEXT,
+        0,
+        true,
+        line,
+        left,
+        right
+    );
+    result->text_value = copy_bytes(bytes, length);
+    result->text_length = length;
+    result->text_codepoints = codepoints;
+    return result;
+}
+
+static Node *parse_text_literal(Parser *parser, size_t literal_at) {
+    Bytes bytes;
+    bytes_init(&bytes);
+    while (parser->source[parser->cursor] != '\0' &&
+           parser->source[parser->cursor] != '"') {
+        unsigned char value =
+            (unsigned char)parser->source[parser->cursor++];
+        if (value == '\\') {
+            char escaped = parser->source[parser->cursor++];
+            if (escaped == 'n') value = '\n';
+            else if (escaped == 'r') value = '\r';
+            else if (escaped == 't') value = '\t';
+            else if (escaped == '\\') value = '\\';
+            else if (escaped == '"') value = '"';
+            else {
+                parse_error(parser, "unsupported Text escape");
+                free(bytes.data);
+                return NULL;
+            }
+        }
+        byte(&bytes, (uint8_t)value);
+    }
+    if (parser->source[parser->cursor] != '"') {
+        parse_error(parser, "unterminated Text literal");
+        free(bytes.data);
+        return NULL;
+    }
+    ++parser->cursor;
+    size_t codepoints = 0;
+    if (!utf8_count(bytes.data, bytes.length, &codepoints)) {
+        parse_error(parser, "Text literal is not valid UTF-8");
+        free(bytes.data);
+        return NULL;
+    }
+    Node *result = text_node(
+        NODE_TEXT_LITERAL,
+        bytes.data,
+        bytes.length,
+        codepoints,
+        source_line(parser->source, literal_at),
+        NULL,
+        NULL
+    );
+    free(bytes.data);
+    return result;
+}
 
 static Node *parse_atom(Parser *parser) {
     skip_trivia(parser);
@@ -283,17 +426,36 @@ static Node *parse_atom(Parser *parser) {
 
     skip_trivia(parser);
     size_t literal_at = parser->cursor;
+    if (parser->source[parser->cursor] == '"') {
+        ++parser->cursor;
+        return parse_text_literal(parser, literal_at);
+    }
+
     if (consume_char(parser, '[')) {
         Node **items = NULL;
         size_t length = 0;
         size_t capacity = 0;
+        ValueKind element_kind = VALUE_INT;
         skip_trivia(parser);
         if (!consume_char(parser, ']')) {
             for (;;) {
                 Node *item = parse_expression(parser);
                 if (item == NULL || parser->error != NULL) break;
-                if (item->value_kind != VALUE_INT) {
-                    parse_error(parser, "List[Int] literal requires Int elements");
+                if (item->value_kind != VALUE_INT &&
+                    item->value_kind != VALUE_TEXT) {
+                    parse_error(
+                        parser,
+                        "native Core lists require Int or Text elements"
+                    );
+                    break;
+                }
+                if (length == 0) {
+                    element_kind = item->value_kind;
+                } else if (item->value_kind != element_kind) {
+                    parse_error(
+                        parser,
+                        "native Core list elements must have one type"
+                    );
                     break;
                 }
                 if (length == capacity) {
@@ -322,6 +484,56 @@ static Node *parse_atom(Parser *parser) {
         );
         list->items = items;
         list->item_count = length;
+        list->element_kind = element_kind;
+        return list;
+    }
+
+    skip_trivia(parser);
+    if (consume_word(parser, "chars")) {
+        if (!consume_char(parser, '(')) {
+            parse_error(parser, "expected `(` after `chars`");
+            return NULL;
+        }
+        Node *value = parse_expression(parser);
+        if (!consume_char(parser, ')')) {
+            parse_error(parser, "expected `)` after `chars` argument");
+        }
+        if (value == NULL || value->value_kind != VALUE_TEXT) {
+            parse_error(parser, "`chars` native Core argument must be Text");
+            return value;
+        }
+        Node *list = node(
+            NODE_CHARS,
+            VALUE_LIST,
+            0,
+            true,
+            source_line(parser->source, literal_at),
+            value,
+            NULL
+        );
+        list->element_kind = VALUE_TEXT;
+        list->item_count = value->text_codepoints;
+        list->items = allocate(
+            list->item_count * sizeof(*list->items)
+        );
+        size_t byte_at = 0;
+        for (size_t index = 0; index < list->item_count; ++index) {
+            size_t width = utf8_width(
+                value->text_value + byte_at,
+                value->text_length - byte_at
+            );
+            if (width == 0) fatal("validated Text became invalid UTF-8");
+            list->items[index] = text_node(
+                NODE_TEXT_LITERAL,
+                value->text_value + byte_at,
+                width,
+                1,
+                source_line(parser->source, literal_at),
+                NULL,
+                NULL
+            );
+            byte_at += width;
+        }
         return list;
     }
 
@@ -335,14 +547,25 @@ static Node *parse_atom(Parser *parser) {
         if (!consume_char(parser, ')')) {
             parse_error(parser, "expected `)` after `len` argument");
         }
-        if (value != NULL && value->value_kind != VALUE_LIST) {
-            parse_error(parser, "`len` native Core argument must be List[Int]");
+        if (value != NULL &&
+            value->value_kind != VALUE_LIST &&
+            value->value_kind != VALUE_TEXT) {
+            parse_error(
+                parser,
+                "`len` native Core argument must be List or Text"
+            );
         }
         return node(
             NODE_LENGTH,
             VALUE_INT,
-            value == NULL ? 0 : (int64_t)value->item_count,
-            value != NULL,
+            value == NULL
+                ? 0
+                : (int64_t)(
+                    value->value_kind == VALUE_TEXT
+                        ? value->text_codepoints
+                        : value->item_count
+                ),
+            value != NULL && value->value_known,
             source_line(parser->source, literal_at),
             value,
             NULL
@@ -353,7 +576,7 @@ static Node *parse_atom(Parser *parser) {
     if (!isdigit((unsigned char)parser->source[parser->cursor])) {
         parse_error(
             parser,
-            "expected integer, List[Int], `len`, or `(`"
+            "expected integer, Text, List, `chars`, `len`, or `(`"
         );
         return NULL;
     }
@@ -387,38 +610,81 @@ static Node *parse_primary(Parser *parser) {
         size_t index_at = parser->cursor - 1;
         Node *index = parse_expression(parser);
         if (!consume_char(parser, ']')) {
-            parse_error(parser, "expected `]` after List[Int] index");
+            parse_error(parser, "expected `]` after native Core index");
             return value;
         }
-        if (value->value_kind != VALUE_LIST ||
+        if ((value->value_kind != VALUE_LIST &&
+             value->value_kind != VALUE_TEXT) ||
             index == NULL ||
             index->value_kind != VALUE_INT) {
-            parse_error(parser, "native Core indexing requires List[Int]");
+            parse_error(parser, "native Core indexing requires List or Text");
             return value;
         }
 
         int64_t resolved = 0;
+        uint8_t *resolved_text = NULL;
+        size_t resolved_text_length = 0;
+        size_t target_length =
+            value->value_kind == VALUE_TEXT
+                ? value->text_codepoints
+                : value->item_count;
+        ValueKind result_kind =
+            value->value_kind == VALUE_TEXT
+                ? VALUE_TEXT
+                : value->element_kind;
         bool known = index->value_known;
         if (known) {
             int64_t wanted = index->value;
-            if (wanted < 0) wanted += (int64_t)value->item_count;
-            if (wanted < 0 || (uint64_t)wanted >= value->item_count) {
+            if (wanted < 0) wanted += (int64_t)target_length;
+            if (wanted < 0 || (uint64_t)wanted >= target_length) {
                 known = false;
+            } else if (value->value_kind == VALUE_TEXT) {
+                size_t byte_at = 0;
+                for (int64_t current = 0; current < wanted; ++current) {
+                    byte_at += utf8_width(
+                        value->text_value + byte_at,
+                        value->text_length - byte_at
+                    );
+                }
+                resolved_text_length = utf8_width(
+                    value->text_value + byte_at,
+                    value->text_length - byte_at
+                );
+                resolved_text = copy_bytes(
+                    value->text_value + byte_at,
+                    resolved_text_length
+                );
             } else {
                 Node *item = value->items[(size_t)wanted];
                 known = item->value_known;
-                resolved = item->value;
+                if (result_kind == VALUE_TEXT) {
+                    resolved_text_length = item->text_length;
+                    resolved_text = copy_bytes(
+                        item->text_value,
+                        item->text_length
+                    );
+                } else {
+                    resolved = item->value;
+                }
             }
         }
-        value = node(
+        Node *indexed = node(
             NODE_INDEX,
-            VALUE_INT,
+            result_kind,
             resolved,
             known,
             source_line(parser->source, index_at),
             value,
             index
         );
+        if (known && result_kind == VALUE_TEXT) {
+            indexed->text_value = resolved_text;
+            indexed->text_length = resolved_text_length;
+            indexed->text_codepoints = 1;
+        } else {
+            free(resolved_text);
+        }
+        value = indexed;
     }
     return value;
 }
@@ -505,7 +771,7 @@ static Node *parse_product(Parser *parser) {
     return left;
 }
 
-static Node *parse_expression(Parser *parser) {
+static Node *parse_sum(Parser *parser) {
     Node *left = parse_product(parser);
     while (parser->error == NULL) {
         skip_trivia(parser);
@@ -514,9 +780,44 @@ static Node *parse_expression(Parser *parser) {
         ++parser->cursor;
         Node *right = parse_product(parser);
         if (right == NULL) return left;
+        if (left->value_kind == VALUE_TEXT &&
+            right->value_kind == VALUE_TEXT) {
+            if (left->text_length > SIZE_MAX - right->text_length) {
+                fatal("Text concatenation is too large");
+            }
+            size_t length = left->text_length + right->text_length;
+            uint8_t *joined = allocate(length);
+            if (left->text_length > 0) {
+                memcpy(joined, left->text_value, left->text_length);
+            }
+            if (right->text_length > 0) {
+                memcpy(
+                    joined + left->text_length,
+                    right->text_value,
+                    right->text_length
+                );
+            }
+            Node *combined = text_node(
+                NODE_TEXT_CONCAT,
+                joined,
+                length,
+                left->text_codepoints + right->text_codepoints,
+                source_line(parser->source, operator_at),
+                left,
+                right
+            );
+            combined->value_known =
+                left->value_known && right->value_known;
+            free(joined);
+            left = combined;
+            continue;
+        }
         if (left->value_kind != VALUE_INT ||
             right->value_kind != VALUE_INT) {
-            parse_error(parser, "operator `+` requires Int operands");
+            parse_error(
+                parser,
+                "operator `+` requires two Int or two Text operands"
+            );
             return left;
         }
         int64_t value = 0;
@@ -529,6 +830,53 @@ static Node *parse_expression(Parser *parser) {
             VALUE_INT,
             value,
             left->value_known && right->value_known,
+            source_line(parser->source, operator_at),
+            left,
+            right
+        );
+    }
+    return left;
+}
+
+static Node *parse_expression(Parser *parser) {
+    Node *left = parse_sum(parser);
+    while (parser->error == NULL) {
+        skip_trivia(parser);
+        NodeKind kind;
+        size_t operator_at = parser->cursor;
+        if (parser->source[parser->cursor] == '=' &&
+            parser->source[parser->cursor + 1] == '=') {
+            kind = NODE_TEXT_EQUAL;
+        } else if (parser->source[parser->cursor] == '!' &&
+                   parser->source[parser->cursor + 1] == '=') {
+            kind = NODE_TEXT_NOT_EQUAL;
+        } else {
+            break;
+        }
+        parser->cursor += 2;
+        Node *right = parse_sum(parser);
+        if (right == NULL) return left;
+        if (left->value_kind != VALUE_TEXT ||
+            right->value_kind != VALUE_TEXT) {
+            parse_error(parser, "native Core equality requires Text operands");
+            return left;
+        }
+        bool known = left->value_known && right->value_known;
+        bool equal = false;
+        if (known) {
+            equal =
+                left->text_length == right->text_length &&
+                memcmp(
+                    left->text_value,
+                    right->text_value,
+                    left->text_length
+                ) == 0;
+        }
+        left = node(
+            kind,
+            VALUE_BOOL,
+            kind == NODE_TEXT_EQUAL ? equal : !equal,
+            known,
             source_line(parser->source, operator_at),
             left,
             right
@@ -574,9 +922,16 @@ static Node *parse_program(Parser *parser) {
     if (parser->source[parser->cursor] != '\0') {
         parse_error(parser, "unexpected source after native Core main");
     }
-    if (expression != NULL && expression->value_kind != VALUE_INT) {
-        parse_error(parser, "native Core print expression must produce Int");
+    if (expression != NULL &&
+        expression->value_kind != VALUE_INT &&
+        expression->value_kind != VALUE_BOOL &&
+        expression->value_kind != VALUE_TEXT) {
+        parse_error(
+            parser,
+            "native Core print expression must produce Int, Bool, or Text"
+        );
     } else if (expression != NULL &&
+        expression->value_kind == VALUE_INT &&
         expression->value_known &&
         (expression->value < 10 || expression->value > 99)) {
         parse_error(parser, "native Core print result must be 10..99");
@@ -585,13 +940,20 @@ static Node *parse_program(Parser *parser) {
 }
 
 static size_t register_depth(const Node *expression) {
-    if (expression->kind == NODE_LITERAL) return 1;
+    if (expression->kind == NODE_LITERAL ||
+        expression->kind == NODE_TEXT_LITERAL) {
+        return 1;
+    }
     if (expression->kind == NODE_NEGATE ||
         expression->kind == NODE_LENGTH) {
         return register_depth(expression->left);
     }
-    if (expression->kind == NODE_LIST) {
+    if (expression->kind == NODE_LIST ||
+        expression->kind == NODE_CHARS) {
         size_t depth = 1;
+        if (expression->kind == NODE_CHARS) {
+            depth = register_depth(expression->left);
+        }
         for (size_t index = 0; index < expression->item_count; ++index) {
             size_t item = 1 + register_depth(expression->items[index]);
             if (item > depth) depth = item;
@@ -611,6 +973,7 @@ static void free_node(Node *expression) {
     for (size_t index = 0; index < expression->item_count; ++index) {
         free_node(expression->items[index]);
     }
+    free(expression->text_value);
     free(expression->items);
     free(expression);
 }
@@ -618,8 +981,11 @@ static void free_node(Node *expression) {
 static bool uses_list(const Node *expression) {
     if (expression == NULL) return false;
     if (expression->kind == NODE_LIST ||
-        expression->kind == NODE_INDEX ||
-        expression->kind == NODE_LENGTH) {
+        expression->kind == NODE_CHARS ||
+        (expression->kind == NODE_INDEX &&
+         expression->left->value_kind == VALUE_LIST) ||
+        (expression->kind == NODE_LENGTH &&
+         expression->left->value_kind == VALUE_LIST)) {
         return true;
     }
     if (uses_list(expression->left) || uses_list(expression->right)) {
@@ -627,6 +993,25 @@ static bool uses_list(const Node *expression) {
     }
     for (size_t index = 0; index < expression->item_count; ++index) {
         if (uses_list(expression->items[index])) return true;
+    }
+    return false;
+}
+
+static bool uses_text(const Node *expression) {
+    if (expression == NULL) return false;
+    if (expression->value_kind == VALUE_TEXT ||
+        expression->element_kind == VALUE_TEXT ||
+        expression->kind == NODE_TEXT_EQUAL ||
+        expression->kind == NODE_TEXT_NOT_EQUAL ||
+        (expression->kind == NODE_LENGTH &&
+         expression->left->value_kind == VALUE_TEXT)) {
+        return true;
+    }
+    if (uses_text(expression->left) || uses_text(expression->right)) {
+        return true;
+    }
+    for (size_t index = 0; index < expression->item_count; ++index) {
+        if (uses_text(expression->items[index])) return true;
     }
     return false;
 }
@@ -643,10 +1028,31 @@ typedef struct {
 } Offsets;
 
 typedef struct {
+    size_t field;
+    const Node *literal;
+} TextFixup;
+
+typedef struct {
+    TextFixup *items;
+    size_t length;
+    size_t capacity;
+} TextFixups;
+
+typedef struct {
     bool used;
     Offsets alloc_calls;
     Offsets oom_jumps;
-    Offsets index_jumps;
+    Offsets list_index_jumps;
+    Offsets text_index_jumps;
+    Offsets text_concat_calls;
+    Offsets text_equal_calls;
+    Offsets text_length_calls;
+    Offsets text_index_calls;
+    Offsets text_chars_calls;
+    Offsets newline_addresses;
+    Offsets bool_true_addresses;
+    Offsets bool_false_addresses;
+    TextFixups text_literals;
 } X64Runtime;
 
 static void offsets_add(Offsets *offsets, size_t field) {
@@ -664,10 +1070,42 @@ static void offsets_add(Offsets *offsets, size_t field) {
     offsets->fields[offsets->length++] = field;
 }
 
+static void text_fixups_add(
+    TextFixups *fixups,
+    size_t field,
+    const Node *literal
+) {
+    if (fixups->length == fixups->capacity) {
+        size_t capacity =
+            fixups->capacity == 0 ? 8 : fixups->capacity * 2;
+        TextFixup *grown = realloc(
+            fixups->items,
+            capacity * sizeof(*fixups->items)
+        );
+        if (grown == NULL) fatal("out of memory");
+        fixups->items = grown;
+        fixups->capacity = capacity;
+    }
+    fixups->items[fixups->length++] = (TextFixup){
+        .field = field,
+        .literal = literal,
+    };
+}
+
 static void x64_runtime_free(X64Runtime *runtime) {
     free(runtime->alloc_calls.fields);
     free(runtime->oom_jumps.fields);
-    free(runtime->index_jumps.fields);
+    free(runtime->list_index_jumps.fields);
+    free(runtime->text_index_jumps.fields);
+    free(runtime->text_concat_calls.fields);
+    free(runtime->text_equal_calls.fields);
+    free(runtime->text_length_calls.fields);
+    free(runtime->text_index_calls.fields);
+    free(runtime->text_chars_calls.fields);
+    free(runtime->newline_addresses.fields);
+    free(runtime->bool_true_addresses.fields);
+    free(runtime->bool_false_addresses.fields);
+    free(runtime->text_literals.items);
 }
 
 static void x64_patch_rel32(Bytes *text, size_t field, size_t target) {
@@ -705,6 +1143,17 @@ static void x64_call_alloc(Bytes *text, X64Runtime *runtime) {
     u32_le(text, 0);
 }
 
+static void x64_call_runtime(
+    Bytes *text,
+    X64Runtime *runtime,
+    Offsets *calls
+) {
+    runtime->used = true;
+    byte(text, UINT8_C(0xe8));
+    offsets_add(calls, text->length);
+    u32_le(text, 0);
+}
+
 static void x64_expression(
     Bytes *text,
     const Node *expression,
@@ -715,6 +1164,20 @@ static void x64_expression(
         line_row(rows, text->length, expression->source_line);
         x64_mov_eax_imm32(text, (uint32_t)expression->value);
         byte(text, UINT8_C(0x50)); /* push rax */
+        return;
+    }
+
+    if (expression->kind == NODE_TEXT_LITERAL) {
+        runtime->used = true;
+        line_row(rows, text->length, expression->source_line);
+        byte(text, UINT8_C(0xb8)); /* mov eax, Text address */
+        text_fixups_add(
+            &runtime->text_literals,
+            text->length,
+            expression
+        );
+        u32_le(text, 0);
+        byte(text, UINT8_C(0x50)); /* push Text */
         return;
     }
 
@@ -729,10 +1192,23 @@ static void x64_expression(
         return;
     }
 
+    if (expression->kind == NODE_CHARS) {
+        x64_expression(text, expression->left, rows, runtime);
+        line_row(rows, text->length, expression->source_line);
+        byte(text, UINT8_C(0x5f)); /* pop rdi: source Text */
+        x64_call_runtime(
+            text,
+            runtime,
+            &runtime->text_chars_calls
+        );
+        byte(text, UINT8_C(0x50)); /* push List[Text] */
+        return;
+    }
+
     if (expression->kind == NODE_LIST) {
         if (expression->item_count >
             (UINT32_MAX - 8) / sizeof(uint64_t)) {
-            fatal("List[Int] literal is too large");
+            fatal("native Core list is too large");
         }
         runtime->used = true;
         line_row(rows, text->length, expression->source_line);
@@ -773,10 +1249,18 @@ static void x64_expression(
     if (expression->kind == NODE_LENGTH) {
         x64_expression(text, expression->left, rows, runtime);
         line_row(rows, text->length, expression->source_line);
-        byte(text, UINT8_C(0x58)); /* pop rax */
-        byte(text, UINT8_C(0x48));
-        byte(text, UINT8_C(0x8b));
-        byte(text, UINT8_C(0x00)); /* mov rax, [rax] */
+        byte(text, UINT8_C(0x5f)); /* pop rdi */
+        if (expression->left->value_kind == VALUE_TEXT) {
+            x64_call_runtime(
+                text,
+                runtime,
+                &runtime->text_length_calls
+            );
+        } else {
+            byte(text, UINT8_C(0x48));
+            byte(text, UINT8_C(0x8b));
+            byte(text, UINT8_C(0x07)); /* mov rax, [rdi] */
+        }
         byte(text, UINT8_C(0x50)); /* push length */
         return;
     }
@@ -786,6 +1270,17 @@ static void x64_expression(
         x64_expression(text, expression->left, rows, runtime);
         x64_expression(text, expression->right, rows, runtime);
         line_row(rows, text->length, expression->source_line);
+        if (expression->left->value_kind == VALUE_TEXT) {
+            byte(text, UINT8_C(0x5e)); /* pop rsi: codepoint index */
+            byte(text, UINT8_C(0x5f)); /* pop rdi: Text */
+            x64_call_runtime(
+                text,
+                runtime,
+                &runtime->text_index_calls
+            );
+            byte(text, UINT8_C(0x50)); /* push one-codepoint Text */
+            return;
+        }
         byte(text, UINT8_C(0x59)); /* pop rcx: index */
         byte(text, UINT8_C(0x5a)); /* pop rdx: list */
         byte(text, UINT8_C(0x4c));
@@ -810,7 +1305,7 @@ static void x64_expression(
             text,
             UINT8_C(0x0f),
             UINT8_C(0x88),
-            &runtime->index_jumps
+            &runtime->list_index_jumps
         ); /* js index error */
         byte(text, UINT8_C(0x4c));
         byte(text, UINT8_C(0x39));
@@ -819,7 +1314,7 @@ static void x64_expression(
             text,
             UINT8_C(0x0f),
             UINT8_C(0x8d),
-            &runtime->index_jumps
+            &runtime->list_index_jumps
         ); /* jge index error */
         const uint8_t load[] = {
             UINT8_C(0x48), UINT8_C(0x8b), UINT8_C(0x44),
@@ -829,6 +1324,36 @@ static void x64_expression(
             byte(text, load[index]); /* mov rax, [rdx + rcx*8 + 8] */
         }
         byte(text, UINT8_C(0x50)); /* push element */
+        return;
+    }
+
+    if (expression->kind == NODE_TEXT_CONCAT ||
+        expression->kind == NODE_TEXT_EQUAL ||
+        expression->kind == NODE_TEXT_NOT_EQUAL) {
+        x64_expression(text, expression->left, rows, runtime);
+        x64_expression(text, expression->right, rows, runtime);
+        line_row(rows, text->length, expression->source_line);
+        byte(text, UINT8_C(0x5e)); /* pop rsi: right Text */
+        byte(text, UINT8_C(0x5f)); /* pop rdi: left Text */
+        if (expression->kind == NODE_TEXT_CONCAT) {
+            x64_call_runtime(
+                text,
+                runtime,
+                &runtime->text_concat_calls
+            );
+        } else {
+            x64_call_runtime(
+                text,
+                runtime,
+                &runtime->text_equal_calls
+            );
+            if (expression->kind == NODE_TEXT_NOT_EQUAL) {
+                byte(text, UINT8_C(0x83));
+                byte(text, UINT8_C(0xf0));
+                byte(text, UINT8_C(0x01)); /* xor eax, 1 */
+            }
+        }
+        byte(text, UINT8_C(0x50)); /* push result */
         return;
     }
 
@@ -888,6 +1413,34 @@ static void x64_patch_u32(Bytes *text, size_t field, uint32_t value) {
     }
 }
 
+static void x64_emit(
+    Bytes *text,
+    const uint8_t *instructions,
+    size_t length
+) {
+    for (size_t index = 0; index < length; ++index) {
+        byte(text, instructions[index]);
+    }
+}
+
+static size_t x64_local_jcc(
+    Bytes *text,
+    uint8_t condition
+) {
+    byte(text, UINT8_C(0x0f));
+    byte(text, condition);
+    size_t field = text->length;
+    u32_le(text, 0);
+    return field;
+}
+
+static size_t x64_local_jmp(Bytes *text) {
+    byte(text, UINT8_C(0xe9));
+    size_t field = text->length;
+    u32_le(text, 0);
+    return field;
+}
+
 static void x64_runtime(Bytes *text, X64Runtime *runtime) {
     if (!runtime->used) return;
 
@@ -941,6 +1494,550 @@ static void x64_runtime(Bytes *text, X64Runtime *runtime) {
     ); /* jae oom */
     byte(text, UINT8_C(0xc3)); /* ret */
 
+    size_t text_length_at = text->length;
+    const uint8_t text_length_open[] = {
+        UINT8_C(0x48), UINT8_C(0x8b), UINT8_C(0x17), /* mov rdx, [rdi] */
+        UINT8_C(0x48), UINT8_C(0x83), UINT8_C(0xc7), UINT8_C(0x08),
+        UINT8_C(0x31), UINT8_C(0xc0), /* xor eax, eax */
+    };
+    x64_emit(
+        text,
+        text_length_open,
+        sizeof(text_length_open)
+    );
+    size_t text_length_loop = text->length;
+    const uint8_t text_length_test[] = {
+        UINT8_C(0x48), UINT8_C(0x85), UINT8_C(0xd2), /* test rdx, rdx */
+    };
+    x64_emit(text, text_length_test, sizeof(text_length_test));
+    size_t text_length_done_jump =
+        x64_local_jcc(text, UINT8_C(0x84)); /* je done */
+    const uint8_t text_length_byte[] = {
+        UINT8_C(0x0f), UINT8_C(0xb6), UINT8_C(0x0f), /* movzx ecx, [rdi] */
+        UINT8_C(0x80), UINT8_C(0xe1), UINT8_C(0xc0), /* and cl, 0xc0 */
+        UINT8_C(0x80), UINT8_C(0xf9), UINT8_C(0x80), /* cmp cl, 0x80 */
+    };
+    x64_emit(text, text_length_byte, sizeof(text_length_byte));
+    size_t text_length_skip_jump =
+        x64_local_jcc(text, UINT8_C(0x84)); /* je skip */
+    const uint8_t text_length_increment[] = {
+        UINT8_C(0x48), UINT8_C(0xff), UINT8_C(0xc0), /* inc rax */
+    };
+    x64_emit(
+        text,
+        text_length_increment,
+        sizeof(text_length_increment)
+    );
+    size_t text_length_skip = text->length;
+    const uint8_t text_length_next[] = {
+        UINT8_C(0x48), UINT8_C(0xff), UINT8_C(0xc7), /* inc rdi */
+        UINT8_C(0x48), UINT8_C(0xff), UINT8_C(0xca), /* dec rdx */
+    };
+    x64_emit(text, text_length_next, sizeof(text_length_next));
+    size_t text_length_back = x64_local_jmp(text);
+    size_t text_length_done = text->length;
+    byte(text, UINT8_C(0xc3)); /* ret */
+    x64_patch_rel32(text, text_length_done_jump, text_length_done);
+    x64_patch_rel32(text, text_length_skip_jump, text_length_skip);
+    x64_patch_rel32(text, text_length_back, text_length_loop);
+
+    size_t text_equal_at = text->length;
+    const uint8_t text_equal_open[] = {
+        UINT8_C(0x48), UINT8_C(0x8b), UINT8_C(0x17), /* mov rdx, [rdi] */
+        UINT8_C(0x48), UINT8_C(0x3b), UINT8_C(0x16), /* cmp rdx, [rsi] */
+    };
+    x64_emit(text, text_equal_open, sizeof(text_equal_open));
+    size_t text_equal_false_length =
+        x64_local_jcc(text, UINT8_C(0x85)); /* jne false */
+    const uint8_t text_equal_data[] = {
+        UINT8_C(0x48), UINT8_C(0x83), UINT8_C(0xc7), UINT8_C(0x08),
+        UINT8_C(0x48), UINT8_C(0x83), UINT8_C(0xc6), UINT8_C(0x08),
+    };
+    x64_emit(text, text_equal_data, sizeof(text_equal_data));
+    size_t text_equal_loop = text->length;
+    const uint8_t text_equal_test[] = {
+        UINT8_C(0x48), UINT8_C(0x85), UINT8_C(0xd2), /* test rdx, rdx */
+    };
+    x64_emit(text, text_equal_test, sizeof(text_equal_test));
+    size_t text_equal_true_jump =
+        x64_local_jcc(text, UINT8_C(0x84)); /* je true */
+    const uint8_t text_equal_byte[] = {
+        UINT8_C(0x8a), UINT8_C(0x07), /* mov al, [rdi] */
+        UINT8_C(0x3a), UINT8_C(0x06), /* cmp al, [rsi] */
+    };
+    x64_emit(text, text_equal_byte, sizeof(text_equal_byte));
+    size_t text_equal_false_byte =
+        x64_local_jcc(text, UINT8_C(0x85)); /* jne false */
+    const uint8_t text_equal_next[] = {
+        UINT8_C(0x48), UINT8_C(0xff), UINT8_C(0xc7), /* inc rdi */
+        UINT8_C(0x48), UINT8_C(0xff), UINT8_C(0xc6), /* inc rsi */
+        UINT8_C(0x48), UINT8_C(0xff), UINT8_C(0xca), /* dec rdx */
+    };
+    x64_emit(text, text_equal_next, sizeof(text_equal_next));
+    size_t text_equal_back = x64_local_jmp(text);
+    size_t text_equal_true = text->length;
+    x64_mov_eax_imm32(text, 1);
+    byte(text, UINT8_C(0xc3)); /* ret */
+    size_t text_equal_false = text->length;
+    byte(text, UINT8_C(0x31));
+    byte(text, UINT8_C(0xc0)); /* xor eax, eax */
+    byte(text, UINT8_C(0xc3)); /* ret */
+    x64_patch_rel32(text, text_equal_false_length, text_equal_false);
+    x64_patch_rel32(text, text_equal_true_jump, text_equal_true);
+    x64_patch_rel32(text, text_equal_false_byte, text_equal_false);
+    x64_patch_rel32(text, text_equal_back, text_equal_loop);
+
+    size_t text_concat_at = text->length;
+    const uint8_t text_concat_open[] = {
+        UINT8_C(0x53),                         /* push rbx */
+        UINT8_C(0x41), UINT8_C(0x54),         /* push r12 */
+        UINT8_C(0x41), UINT8_C(0x55),         /* push r13 */
+        UINT8_C(0x41), UINT8_C(0x56),         /* push r14 */
+        UINT8_C(0x41), UINT8_C(0x57),         /* push r15 */
+        UINT8_C(0x48), UINT8_C(0x89), UINT8_C(0xfb), /* rbx = rdi */
+        UINT8_C(0x49), UINT8_C(0x89), UINT8_C(0xf4), /* r12 = rsi */
+        UINT8_C(0x4c), UINT8_C(0x8b), UINT8_C(0x2b), /* r13 = [rbx] */
+        UINT8_C(0x4d), UINT8_C(0x8b), UINT8_C(0x34), UINT8_C(0x24),
+        UINT8_C(0x4c), UINT8_C(0x89), UINT8_C(0xef), /* rdi = r13 */
+        UINT8_C(0x4c), UINT8_C(0x01), UINT8_C(0xf7), /* rdi += r14 */
+        UINT8_C(0x48), UINT8_C(0x83), UINT8_C(0xc7), UINT8_C(0x08),
+    };
+    x64_emit(text, text_concat_open, sizeof(text_concat_open));
+    x64_call_alloc(text, runtime);
+    const uint8_t text_concat_header[] = {
+        UINT8_C(0x49), UINT8_C(0x89), UINT8_C(0xc7), /* r15 = rax */
+        UINT8_C(0x4c), UINT8_C(0x89), UINT8_C(0xe9), /* rcx = r13 */
+        UINT8_C(0x4c), UINT8_C(0x01), UINT8_C(0xf1), /* rcx += r14 */
+        UINT8_C(0x49), UINT8_C(0x89), UINT8_C(0x0f), /* [r15] = rcx */
+        UINT8_C(0x4c), UINT8_C(0x89), UINT8_C(0xff), /* rdi = r15 */
+        UINT8_C(0x48), UINT8_C(0x83), UINT8_C(0xc7), UINT8_C(0x08),
+        UINT8_C(0x48), UINT8_C(0x89), UINT8_C(0xde), /* rsi = rbx */
+        UINT8_C(0x48), UINT8_C(0x83), UINT8_C(0xc6), UINT8_C(0x08),
+        UINT8_C(0x4c), UINT8_C(0x89), UINT8_C(0xea), /* rdx = r13 */
+    };
+    x64_emit(text, text_concat_header, sizeof(text_concat_header));
+    size_t concat_left_test = text->length;
+    const uint8_t concat_test[] = {
+        UINT8_C(0x48), UINT8_C(0x85), UINT8_C(0xd2),
+    };
+    x64_emit(text, concat_test, sizeof(concat_test));
+    size_t concat_left_done =
+        x64_local_jcc(text, UINT8_C(0x84)); /* je right */
+    const uint8_t concat_copy[] = {
+        UINT8_C(0x8a), UINT8_C(0x06), /* mov al, [rsi] */
+        UINT8_C(0x88), UINT8_C(0x07), /* mov [rdi], al */
+        UINT8_C(0x48), UINT8_C(0xff), UINT8_C(0xc6),
+        UINT8_C(0x48), UINT8_C(0xff), UINT8_C(0xc7),
+        UINT8_C(0x48), UINT8_C(0xff), UINT8_C(0xca),
+    };
+    x64_emit(text, concat_copy, sizeof(concat_copy));
+    size_t concat_left_back = x64_local_jmp(text);
+    size_t concat_right = text->length;
+    const uint8_t concat_right_open[] = {
+        UINT8_C(0x4c), UINT8_C(0x89), UINT8_C(0xe6), /* rsi = r12 */
+        UINT8_C(0x48), UINT8_C(0x83), UINT8_C(0xc6), UINT8_C(0x08),
+        UINT8_C(0x4c), UINT8_C(0x89), UINT8_C(0xf2), /* rdx = r14 */
+    };
+    x64_emit(text, concat_right_open, sizeof(concat_right_open));
+    size_t concat_right_test = text->length;
+    x64_emit(text, concat_test, sizeof(concat_test));
+    size_t concat_right_done =
+        x64_local_jcc(text, UINT8_C(0x84)); /* je done */
+    x64_emit(text, concat_copy, sizeof(concat_copy));
+    size_t concat_right_back = x64_local_jmp(text);
+    size_t concat_done = text->length;
+    const uint8_t text_concat_close[] = {
+        UINT8_C(0x4c), UINT8_C(0x89), UINT8_C(0xf8), /* rax = r15 */
+        UINT8_C(0x41), UINT8_C(0x5f),
+        UINT8_C(0x41), UINT8_C(0x5e),
+        UINT8_C(0x41), UINT8_C(0x5d),
+        UINT8_C(0x41), UINT8_C(0x5c),
+        UINT8_C(0x5b),
+        UINT8_C(0xc3),
+    };
+    x64_emit(text, text_concat_close, sizeof(text_concat_close));
+    x64_patch_rel32(text, concat_left_done, concat_right);
+    x64_patch_rel32(text, concat_left_back, concat_left_test);
+    x64_patch_rel32(text, concat_right_done, concat_done);
+    x64_patch_rel32(text, concat_right_back, concat_right_test);
+
+    size_t text_index_at = text->length;
+    const uint8_t text_index_open[] = {
+        UINT8_C(0x53),
+        UINT8_C(0x41), UINT8_C(0x54),
+        UINT8_C(0x41), UINT8_C(0x55),
+        UINT8_C(0x41), UINT8_C(0x56),
+        UINT8_C(0x41), UINT8_C(0x57),
+        UINT8_C(0x48), UINT8_C(0x89), UINT8_C(0xfb), /* rbx = Text */
+        UINT8_C(0x49), UINT8_C(0x89), UINT8_C(0xf4), /* r12 = index */
+        UINT8_C(0x4d), UINT8_C(0x85), UINT8_C(0xe4), /* test r12, r12 */
+    };
+    x64_emit(text, text_index_open, sizeof(text_index_open));
+    size_t text_index_nonnegative =
+        x64_local_jcc(text, UINT8_C(0x89)); /* jns */
+    const uint8_t text_index_length_arg[] = {
+        UINT8_C(0x48), UINT8_C(0x89), UINT8_C(0xdf), /* rdi = rbx */
+        UINT8_C(0xe8),
+    };
+    x64_emit(
+        text,
+        text_index_length_arg,
+        sizeof(text_index_length_arg)
+    );
+    size_t text_index_length_call = text->length;
+    u32_le(text, 0);
+    x64_patch_rel32(text, text_index_length_call, text_length_at);
+    const uint8_t text_index_adjust[] = {
+        UINT8_C(0x49), UINT8_C(0x01), UINT8_C(0xc4), /* r12 += rax */
+    };
+    x64_emit(text, text_index_adjust, sizeof(text_index_adjust));
+    size_t text_index_nonnegative_at = text->length;
+    x64_patch_rel32(
+        text,
+        text_index_nonnegative,
+        text_index_nonnegative_at
+    );
+    const uint8_t text_index_negative_test[] = {
+        UINT8_C(0x4d), UINT8_C(0x85), UINT8_C(0xe4),
+    };
+    x64_emit(
+        text,
+        text_index_negative_test,
+        sizeof(text_index_negative_test)
+    );
+    x64_rel32_placeholder(
+        text,
+        UINT8_C(0x0f),
+        UINT8_C(0x88),
+        &runtime->text_index_jumps
+    ); /* js Text index error */
+    const uint8_t text_index_scan_open[] = {
+        UINT8_C(0x4c), UINT8_C(0x8b), UINT8_C(0x2b), /* r13 = byte len */
+        UINT8_C(0x4c), UINT8_C(0x8d), UINT8_C(0x73), UINT8_C(0x08),
+        UINT8_C(0x45), UINT8_C(0x31), UINT8_C(0xff), /* r15 = cp index */
+    };
+    x64_emit(text, text_index_scan_open, sizeof(text_index_scan_open));
+    size_t text_index_scan = text->length;
+    const uint8_t text_index_remaining_test[] = {
+        UINT8_C(0x4d), UINT8_C(0x85), UINT8_C(0xed),
+    };
+    x64_emit(
+        text,
+        text_index_remaining_test,
+        sizeof(text_index_remaining_test)
+    );
+    x64_rel32_placeholder(
+        text,
+        UINT8_C(0x0f),
+        UINT8_C(0x84),
+        &runtime->text_index_jumps
+    ); /* je Text index error */
+    const uint8_t text_index_compare[] = {
+        UINT8_C(0x4d), UINT8_C(0x39), UINT8_C(0xe7), /* cmp r15, r12 */
+    };
+    x64_emit(text, text_index_compare, sizeof(text_index_compare));
+    size_t text_index_found =
+        x64_local_jcc(text, UINT8_C(0x84)); /* je found */
+    const uint8_t text_index_advance[] = {
+        UINT8_C(0x49), UINT8_C(0xff), UINT8_C(0xc6), /* inc r14 */
+        UINT8_C(0x49), UINT8_C(0xff), UINT8_C(0xcd), /* dec r13 */
+    };
+    x64_emit(text, text_index_advance, sizeof(text_index_advance));
+    size_t text_index_continuation = text->length;
+    x64_emit(
+        text,
+        text_index_remaining_test,
+        sizeof(text_index_remaining_test)
+    );
+    size_t text_index_next_cp =
+        x64_local_jcc(text, UINT8_C(0x84)); /* je next cp */
+    const uint8_t text_index_cont_byte[] = {
+        UINT8_C(0x41), UINT8_C(0x0f), UINT8_C(0xb6), UINT8_C(0x06),
+        UINT8_C(0x24), UINT8_C(0xc0), /* and al, 0xc0 */
+        UINT8_C(0x3c), UINT8_C(0x80), /* cmp al, 0x80 */
+    };
+    x64_emit(text, text_index_cont_byte, sizeof(text_index_cont_byte));
+    size_t text_index_not_cont =
+        x64_local_jcc(text, UINT8_C(0x85)); /* jne next cp */
+    x64_emit(text, text_index_advance, sizeof(text_index_advance));
+    size_t text_index_cont_back = x64_local_jmp(text);
+    size_t text_index_next_cp_at = text->length;
+    const uint8_t text_index_cp_increment[] = {
+        UINT8_C(0x49), UINT8_C(0xff), UINT8_C(0xc7), /* inc r15 */
+    };
+    x64_emit(
+        text,
+        text_index_cp_increment,
+        sizeof(text_index_cp_increment)
+    );
+    size_t text_index_scan_back = x64_local_jmp(text);
+    size_t text_index_found_at = text->length;
+    const uint8_t text_index_width_open[] = {
+        UINT8_C(0x41), UINT8_C(0xbf),
+        UINT8_C(0x01), UINT8_C(0x00), UINT8_C(0x00), UINT8_C(0x00),
+    };
+    x64_emit(text, text_index_width_open, sizeof(text_index_width_open));
+    size_t text_index_width = text->length;
+    const uint8_t text_index_width_compare[] = {
+        UINT8_C(0x4d), UINT8_C(0x39), UINT8_C(0xef), /* cmp r15, r13 */
+    };
+    x64_emit(
+        text,
+        text_index_width_compare,
+        sizeof(text_index_width_compare)
+    );
+    size_t text_index_width_done =
+        x64_local_jcc(text, UINT8_C(0x8d)); /* jge */
+    const uint8_t text_index_width_byte[] = {
+        UINT8_C(0x43), UINT8_C(0x0f), UINT8_C(0xb6),
+        UINT8_C(0x04), UINT8_C(0x3e), /* byte [r14 + r15] */
+        UINT8_C(0x24), UINT8_C(0xc0),
+        UINT8_C(0x3c), UINT8_C(0x80),
+    };
+    x64_emit(
+        text,
+        text_index_width_byte,
+        sizeof(text_index_width_byte)
+    );
+    size_t text_index_width_not_cont =
+        x64_local_jcc(text, UINT8_C(0x85)); /* jne done */
+    x64_emit(
+        text,
+        text_index_cp_increment,
+        sizeof(text_index_cp_increment)
+    );
+    size_t text_index_width_back = x64_local_jmp(text);
+    size_t text_index_width_done_at = text->length;
+    const uint8_t text_index_allocate_size[] = {
+        UINT8_C(0x4c), UINT8_C(0x89), UINT8_C(0xff), /* rdi = width */
+        UINT8_C(0x48), UINT8_C(0x83), UINT8_C(0xc7), UINT8_C(0x08),
+    };
+    x64_emit(
+        text,
+        text_index_allocate_size,
+        sizeof(text_index_allocate_size)
+    );
+    x64_call_alloc(text, runtime);
+    const uint8_t text_index_copy_open[] = {
+        UINT8_C(0x4c), UINT8_C(0x89), UINT8_C(0x38), /* [rax] = width */
+        UINT8_C(0x48), UINT8_C(0x8d), UINT8_C(0x78), UINT8_C(0x08),
+        UINT8_C(0x4c), UINT8_C(0x89), UINT8_C(0xf6), /* rsi = start */
+        UINT8_C(0x4c), UINT8_C(0x89), UINT8_C(0xfa), /* rdx = width */
+    };
+    x64_emit(
+        text,
+        text_index_copy_open,
+        sizeof(text_index_copy_open)
+    );
+    size_t text_index_copy = text->length;
+    x64_emit(text, concat_test, sizeof(concat_test));
+    size_t text_index_copy_done =
+        x64_local_jcc(text, UINT8_C(0x84));
+    const uint8_t text_index_copy_byte[] = {
+        UINT8_C(0x8a), UINT8_C(0x0e), /* mov cl, [rsi] */
+        UINT8_C(0x88), UINT8_C(0x0f), /* mov [rdi], cl */
+        UINT8_C(0x48), UINT8_C(0xff), UINT8_C(0xc6),
+        UINT8_C(0x48), UINT8_C(0xff), UINT8_C(0xc7),
+        UINT8_C(0x48), UINT8_C(0xff), UINT8_C(0xca),
+    };
+    x64_emit(
+        text,
+        text_index_copy_byte,
+        sizeof(text_index_copy_byte)
+    );
+    size_t text_index_copy_back = x64_local_jmp(text);
+    size_t text_index_copy_done_at = text->length;
+    const uint8_t text_index_close[] = {
+        UINT8_C(0x41), UINT8_C(0x5f),
+        UINT8_C(0x41), UINT8_C(0x5e),
+        UINT8_C(0x41), UINT8_C(0x5d),
+        UINT8_C(0x41), UINT8_C(0x5c),
+        UINT8_C(0x5b),
+        UINT8_C(0xc3),
+    };
+    x64_emit(text, text_index_close, sizeof(text_index_close));
+    x64_patch_rel32(text, text_index_found, text_index_found_at);
+    x64_patch_rel32(text, text_index_next_cp, text_index_next_cp_at);
+    x64_patch_rel32(text, text_index_not_cont, text_index_next_cp_at);
+    x64_patch_rel32(
+        text,
+        text_index_cont_back,
+        text_index_continuation
+    );
+    x64_patch_rel32(text, text_index_scan_back, text_index_scan);
+    x64_patch_rel32(
+        text,
+        text_index_width_done,
+        text_index_width_done_at
+    );
+    x64_patch_rel32(
+        text,
+        text_index_width_not_cont,
+        text_index_width_done_at
+    );
+    x64_patch_rel32(text, text_index_width_back, text_index_width);
+    x64_patch_rel32(
+        text,
+        text_index_copy_done,
+        text_index_copy_done_at
+    );
+    x64_patch_rel32(text, text_index_copy_back, text_index_copy);
+
+    size_t text_chars_at = text->length;
+    const uint8_t text_chars_open[] = {
+        UINT8_C(0x55),                         /* push rbp */
+        UINT8_C(0x53),                         /* push rbx */
+        UINT8_C(0x41), UINT8_C(0x54),
+        UINT8_C(0x41), UINT8_C(0x55),
+        UINT8_C(0x41), UINT8_C(0x56),
+        UINT8_C(0x41), UINT8_C(0x57),
+        UINT8_C(0x48), UINT8_C(0x89), UINT8_C(0xfb), /* rbx = Text */
+        UINT8_C(0x48), UINT8_C(0x89), UINT8_C(0xdf), /* rdi = Text */
+        UINT8_C(0xe8),
+    };
+    x64_emit(text, text_chars_open, sizeof(text_chars_open));
+    size_t text_chars_length_call = text->length;
+    u32_le(text, 0);
+    x64_patch_rel32(text, text_chars_length_call, text_length_at);
+    const uint8_t text_chars_allocate_list[] = {
+        UINT8_C(0x49), UINT8_C(0x89), UINT8_C(0xc4), /* r12 = count */
+        UINT8_C(0x4c), UINT8_C(0x89), UINT8_C(0xe7), /* rdi = count */
+        UINT8_C(0x48), UINT8_C(0xc1), UINT8_C(0xe7), UINT8_C(0x03),
+        UINT8_C(0x48), UINT8_C(0x83), UINT8_C(0xc7), UINT8_C(0x08),
+    };
+    x64_emit(
+        text,
+        text_chars_allocate_list,
+        sizeof(text_chars_allocate_list)
+    );
+    x64_call_alloc(text, runtime);
+    const uint8_t text_chars_list_header[] = {
+        UINT8_C(0x49), UINT8_C(0x89), UINT8_C(0xc5), /* r13 = list */
+        UINT8_C(0x4d), UINT8_C(0x89), UINT8_C(0x65), UINT8_C(0x00),
+        UINT8_C(0x4c), UINT8_C(0x8d), UINT8_C(0x73), UINT8_C(0x08),
+        UINT8_C(0x4c), UINT8_C(0x8b), UINT8_C(0x3b), /* r15 = bytes */
+        UINT8_C(0x31), UINT8_C(0xed), /* ebp = element index */
+    };
+    x64_emit(
+        text,
+        text_chars_list_header,
+        sizeof(text_chars_list_header)
+    );
+    size_t text_chars_loop = text->length;
+    const uint8_t text_chars_remaining_test[] = {
+        UINT8_C(0x4d), UINT8_C(0x85), UINT8_C(0xff), /* test r15, r15 */
+    };
+    x64_emit(
+        text,
+        text_chars_remaining_test,
+        sizeof(text_chars_remaining_test)
+    );
+    size_t text_chars_done =
+        x64_local_jcc(text, UINT8_C(0x84)); /* je done */
+    x64_mov_r32_imm32(text, UINT8_C(0xbb), 1); /* ebx = width */
+    size_t text_chars_width = text->length;
+    const uint8_t text_chars_width_compare[] = {
+        UINT8_C(0x4c), UINT8_C(0x39), UINT8_C(0xfb), /* cmp rbx, r15 */
+    };
+    x64_emit(
+        text,
+        text_chars_width_compare,
+        sizeof(text_chars_width_compare)
+    );
+    size_t text_chars_width_done =
+        x64_local_jcc(text, UINT8_C(0x8d)); /* jge */
+    const uint8_t text_chars_width_byte[] = {
+        UINT8_C(0x41), UINT8_C(0x0f), UINT8_C(0xb6),
+        UINT8_C(0x04), UINT8_C(0x1e), /* byte [r14 + rbx] */
+        UINT8_C(0x24), UINT8_C(0xc0),
+        UINT8_C(0x3c), UINT8_C(0x80),
+    };
+    x64_emit(
+        text,
+        text_chars_width_byte,
+        sizeof(text_chars_width_byte)
+    );
+    size_t text_chars_not_cont =
+        x64_local_jcc(text, UINT8_C(0x85)); /* jne width done */
+    const uint8_t text_chars_width_increment[] = {
+        UINT8_C(0x48), UINT8_C(0xff), UINT8_C(0xc3), /* inc rbx */
+    };
+    x64_emit(
+        text,
+        text_chars_width_increment,
+        sizeof(text_chars_width_increment)
+    );
+    size_t text_chars_width_back = x64_local_jmp(text);
+    size_t text_chars_width_done_at = text->length;
+    const uint8_t text_chars_allocate_text[] = {
+        UINT8_C(0x48), UINT8_C(0x89), UINT8_C(0xdf), /* rdi = width */
+        UINT8_C(0x48), UINT8_C(0x83), UINT8_C(0xc7), UINT8_C(0x08),
+    };
+    x64_emit(
+        text,
+        text_chars_allocate_text,
+        sizeof(text_chars_allocate_text)
+    );
+    x64_call_alloc(text, runtime);
+    const uint8_t text_chars_store[] = {
+        UINT8_C(0x48), UINT8_C(0x89), UINT8_C(0x18), /* [rax] = width */
+        UINT8_C(0x49), UINT8_C(0x89), UINT8_C(0x44),
+        UINT8_C(0xed), UINT8_C(0x08), /* list[rbp] = rax */
+        UINT8_C(0x48), UINT8_C(0x8d), UINT8_C(0x78), UINT8_C(0x08),
+        UINT8_C(0x4c), UINT8_C(0x89), UINT8_C(0xf6), /* rsi = cursor */
+        UINT8_C(0x48), UINT8_C(0x89), UINT8_C(0xda), /* rdx = width */
+    };
+    x64_emit(text, text_chars_store, sizeof(text_chars_store));
+    size_t text_chars_copy = text->length;
+    x64_emit(text, concat_test, sizeof(concat_test));
+    size_t text_chars_copy_done =
+        x64_local_jcc(text, UINT8_C(0x84));
+    x64_emit(
+        text,
+        text_index_copy_byte,
+        sizeof(text_index_copy_byte)
+    );
+    size_t text_chars_copy_back = x64_local_jmp(text);
+    size_t text_chars_copy_done_at = text->length;
+    const uint8_t text_chars_next[] = {
+        UINT8_C(0x49), UINT8_C(0x01), UINT8_C(0xde), /* r14 += rbx */
+        UINT8_C(0x49), UINT8_C(0x29), UINT8_C(0xdf), /* r15 -= rbx */
+        UINT8_C(0x48), UINT8_C(0xff), UINT8_C(0xc5), /* inc rbp */
+    };
+    x64_emit(text, text_chars_next, sizeof(text_chars_next));
+    size_t text_chars_back = x64_local_jmp(text);
+    size_t text_chars_done_at = text->length;
+    const uint8_t text_chars_close[] = {
+        UINT8_C(0x4c), UINT8_C(0x89), UINT8_C(0xe8), /* rax = list */
+        UINT8_C(0x41), UINT8_C(0x5f),
+        UINT8_C(0x41), UINT8_C(0x5e),
+        UINT8_C(0x41), UINT8_C(0x5d),
+        UINT8_C(0x41), UINT8_C(0x5c),
+        UINT8_C(0x5b),
+        UINT8_C(0x5d),
+        UINT8_C(0xc3),
+    };
+    x64_emit(text, text_chars_close, sizeof(text_chars_close));
+    x64_patch_rel32(text, text_chars_done, text_chars_done_at);
+    x64_patch_rel32(
+        text,
+        text_chars_width_done,
+        text_chars_width_done_at
+    );
+    x64_patch_rel32(
+        text,
+        text_chars_not_cont,
+        text_chars_width_done_at
+    );
+    x64_patch_rel32(text, text_chars_width_back, text_chars_width);
+    x64_patch_rel32(
+        text,
+        text_chars_copy_done,
+        text_chars_copy_done_at
+    );
+    x64_patch_rel32(text, text_chars_copy_back, text_chars_copy);
+    x64_patch_rel32(text, text_chars_back, text_chars_loop);
+
     size_t oom_at = text->length;
     const char oom_message[] = "kofun: out of memory\n";
     size_t oom_address = x64_diagnostic(
@@ -949,11 +2046,21 @@ static void x64_runtime(Bytes *text, X64Runtime *runtime) {
         70
     );
 
-    size_t index_at = text->length;
-    const char index_message[] = "kofun: list index out of range\n";
-    size_t index_address = x64_diagnostic(
+    size_t list_index_at = text->length;
+    const char list_index_message[] =
+        "kofun: list index out of range\n";
+    size_t list_index_address = x64_diagnostic(
         text,
-        (uint32_t)(sizeof(index_message) - 1),
+        (uint32_t)(sizeof(list_index_message) - 1),
+        1
+    );
+
+    size_t text_index_error_at = text->length;
+    const char text_index_message[] =
+        "kofun: text index out of range\n";
+    size_t text_index_address = x64_diagnostic(
+        text,
+        (uint32_t)(sizeof(text_index_message) - 1),
         1
     );
 
@@ -961,10 +2068,38 @@ static void x64_runtime(Bytes *text, X64Runtime *runtime) {
     for (size_t index = 0; index < sizeof(oom_message) - 1; ++index) {
         byte(text, (uint8_t)oom_message[index]);
     }
-    size_t index_message_at = text->length;
-    for (size_t index = 0; index < sizeof(index_message) - 1; ++index) {
-        byte(text, (uint8_t)index_message[index]);
+    size_t list_index_message_at = text->length;
+    for (
+        size_t index = 0;
+        index < sizeof(list_index_message) - 1;
+        ++index
+    ) {
+        byte(text, (uint8_t)list_index_message[index]);
     }
+    size_t text_index_message_at = text->length;
+    for (
+        size_t index = 0;
+        index < sizeof(text_index_message) - 1;
+        ++index
+    ) {
+        byte(text, (uint8_t)text_index_message[index]);
+    }
+    size_t newline_at = text->length;
+    byte(text, '\n');
+    size_t bool_true_at = text->length;
+    const char bool_true[] = "true\n";
+    x64_emit(
+        text,
+        (const uint8_t *)bool_true,
+        sizeof(bool_true) - 1
+    );
+    size_t bool_false_at = text->length;
+    const char bool_false[] = "false\n";
+    x64_emit(
+        text,
+        (const uint8_t *)bool_false,
+        sizeof(bool_false) - 1
+    );
 
     for (size_t index = 0; index < runtime->alloc_calls.length; ++index) {
         x64_patch_rel32(
@@ -980,11 +2115,81 @@ static void x64_runtime(Bytes *text, X64Runtime *runtime) {
             oom_at
         );
     }
-    for (size_t index = 0; index < runtime->index_jumps.length; ++index) {
+    for (
+        size_t index = 0;
+        index < runtime->list_index_jumps.length;
+        ++index
+    ) {
         x64_patch_rel32(
             text,
-            runtime->index_jumps.fields[index],
-            index_at
+            runtime->list_index_jumps.fields[index],
+            list_index_at
+        );
+    }
+    for (
+        size_t index = 0;
+        index < runtime->text_index_jumps.length;
+        ++index
+    ) {
+        x64_patch_rel32(
+            text,
+            runtime->text_index_jumps.fields[index],
+            text_index_error_at
+        );
+    }
+    for (
+        size_t index = 0;
+        index < runtime->text_concat_calls.length;
+        ++index
+    ) {
+        x64_patch_rel32(
+            text,
+            runtime->text_concat_calls.fields[index],
+            text_concat_at
+        );
+    }
+    for (
+        size_t index = 0;
+        index < runtime->text_equal_calls.length;
+        ++index
+    ) {
+        x64_patch_rel32(
+            text,
+            runtime->text_equal_calls.fields[index],
+            text_equal_at
+        );
+    }
+    for (
+        size_t index = 0;
+        index < runtime->text_length_calls.length;
+        ++index
+    ) {
+        x64_patch_rel32(
+            text,
+            runtime->text_length_calls.fields[index],
+            text_length_at
+        );
+    }
+    for (
+        size_t index = 0;
+        index < runtime->text_index_calls.length;
+        ++index
+    ) {
+        x64_patch_rel32(
+            text,
+            runtime->text_index_calls.fields[index],
+            text_index_at
+        );
+    }
+    for (
+        size_t index = 0;
+        index < runtime->text_chars_calls.length;
+        ++index
+    ) {
+        x64_patch_rel32(
+            text,
+            runtime->text_chars_calls.fields[index],
+            text_chars_at
         );
     }
     x64_patch_u32(
@@ -994,9 +2199,67 @@ static void x64_runtime(Bytes *text, X64Runtime *runtime) {
     );
     x64_patch_u32(
         text,
-        index_address,
-        (uint32_t)(IMAGE_BASE + TEXT_OFFSET + index_message_at)
+        list_index_address,
+        (uint32_t)(
+            IMAGE_BASE + TEXT_OFFSET + list_index_message_at
+        )
     );
+    x64_patch_u32(
+        text,
+        text_index_address,
+        (uint32_t)(
+            IMAGE_BASE + TEXT_OFFSET + text_index_message_at
+        )
+    );
+    for (
+        size_t index = 0;
+        index < runtime->newline_addresses.length;
+        ++index
+    ) {
+        x64_patch_u32(
+            text,
+            runtime->newline_addresses.fields[index],
+            (uint32_t)(IMAGE_BASE + TEXT_OFFSET + newline_at)
+        );
+    }
+    for (
+        size_t index = 0;
+        index < runtime->bool_true_addresses.length;
+        ++index
+    ) {
+        x64_patch_u32(
+            text,
+            runtime->bool_true_addresses.fields[index],
+            (uint32_t)(IMAGE_BASE + TEXT_OFFSET + bool_true_at)
+        );
+    }
+    for (
+        size_t index = 0;
+        index < runtime->bool_false_addresses.length;
+        ++index
+    ) {
+        x64_patch_u32(
+            text,
+            runtime->bool_false_addresses.fields[index],
+            (uint32_t)(IMAGE_BASE + TEXT_OFFSET + bool_false_at)
+        );
+    }
+    for (
+        size_t index = 0;
+        index < runtime->text_literals.length;
+        ++index
+    ) {
+        while (text->length % sizeof(uint64_t) != 0) byte(text, 0);
+        size_t literal_at = text->length;
+        const Node *literal = runtime->text_literals.items[index].literal;
+        u64_le(text, (uint64_t)literal->text_length);
+        x64_emit(text, literal->text_value, literal->text_length);
+        x64_patch_u32(
+            text,
+            runtime->text_literals.items[index].field,
+            (uint32_t)(IMAGE_BASE + TEXT_OFFSET + literal_at)
+        );
+    }
 }
 
 static void x64_text(
@@ -1010,39 +2273,84 @@ static void x64_text(
     line_row(rows, text->length, print_line);
     byte(text, UINT8_C(0x58)); /* pop rax */
 
-    byte(text, UINT8_C(0x31));
-    byte(text, UINT8_C(0xd2)); /* xor edx, edx */
-    x64_mov_r32_imm32(text, UINT8_C(0xb9), 10); /* mov ecx, 10 */
-    byte(text, UINT8_C(0xf7));
-    byte(text, UINT8_C(0xf1)); /* div ecx */
-    byte(text, UINT8_C(0x04));
-    byte(text, UINT8_C(48)); /* add al, '0' */
-    byte(text, UINT8_C(0x80));
-    byte(text, UINT8_C(0xc2));
-    byte(text, UINT8_C(48)); /* add dl, '0' */
+    if (expression->value_kind == VALUE_INT) {
+        byte(text, UINT8_C(0x31));
+        byte(text, UINT8_C(0xd2)); /* xor edx, edx */
+        x64_mov_r32_imm32(text, UINT8_C(0xb9), 10); /* mov ecx, 10 */
+        byte(text, UINT8_C(0xf7));
+        byte(text, UINT8_C(0xf1)); /* div ecx */
+        byte(text, UINT8_C(0x04));
+        byte(text, UINT8_C(48)); /* add al, '0' */
+        byte(text, UINT8_C(0x80));
+        byte(text, UINT8_C(0xc2));
+        byte(text, UINT8_C(48)); /* add dl, '0' */
 
-    const uint8_t tens[] = {
-        UINT8_C(0x88), UINT8_C(0x04), UINT8_C(0x25),
-        UINT8_C(0x00), UINT8_C(0x10), UINT8_C(0x40), UINT8_C(0x00),
-    };
-    const uint8_t ones[] = {
-        UINT8_C(0x88), UINT8_C(0x14), UINT8_C(0x25),
-        UINT8_C(0x01), UINT8_C(0x10), UINT8_C(0x40), UINT8_C(0x00),
-    };
-    for (size_t index = 0; index < sizeof(tens); ++index) {
-        byte(text, tens[index]);
-    }
-    for (size_t index = 0; index < sizeof(ones); ++index) {
-        byte(text, ones[index]);
-    }
+        const uint8_t tens[] = {
+            UINT8_C(0x88), UINT8_C(0x04), UINT8_C(0x25),
+            UINT8_C(0x00), UINT8_C(0x10), UINT8_C(0x40), UINT8_C(0x00),
+        };
+        const uint8_t ones[] = {
+            UINT8_C(0x88), UINT8_C(0x14), UINT8_C(0x25),
+            UINT8_C(0x01), UINT8_C(0x10), UINT8_C(0x40), UINT8_C(0x00),
+        };
+        for (size_t index = 0; index < sizeof(tens); ++index) {
+            byte(text, tens[index]);
+        }
+        for (size_t index = 0; index < sizeof(ones); ++index) {
+            byte(text, ones[index]);
+        }
 
-    x64_mov_r32_imm32(text, UINT8_C(0xb8), 1); /* write */
-    x64_mov_r32_imm32(text, UINT8_C(0xbf), 1); /* stdout */
-    x64_mov_r32_imm32(
-        text, UINT8_C(0xbe), (uint32_t)DATA_ADDRESS
-    );
-    x64_mov_r32_imm32(text, UINT8_C(0xba), 3);
-    x64_syscall(text);
+        x64_mov_r32_imm32(text, UINT8_C(0xb8), 1); /* write */
+        x64_mov_r32_imm32(text, UINT8_C(0xbf), 1); /* stdout */
+        x64_mov_r32_imm32(
+            text, UINT8_C(0xbe), (uint32_t)DATA_ADDRESS
+        );
+        x64_mov_r32_imm32(text, UINT8_C(0xba), 3);
+        x64_syscall(text);
+    } else if (expression->value_kind == VALUE_TEXT) {
+        runtime.used = true;
+        const uint8_t text_output[] = {
+            UINT8_C(0x48), UINT8_C(0x8b), UINT8_C(0x10),
+            UINT8_C(0x48), UINT8_C(0x8d), UINT8_C(0x70), UINT8_C(0x08),
+        };
+        x64_emit(text, text_output, sizeof(text_output));
+        x64_mov_r32_imm32(text, UINT8_C(0xb8), 1);
+        x64_mov_r32_imm32(text, UINT8_C(0xbf), 1);
+        x64_syscall(text);
+        x64_mov_r32_imm32(text, UINT8_C(0xb8), 1);
+        x64_mov_r32_imm32(text, UINT8_C(0xbf), 1);
+        byte(text, UINT8_C(0xbe));
+        offsets_add(&runtime.newline_addresses, text->length);
+        u32_le(text, 0);
+        x64_mov_r32_imm32(text, UINT8_C(0xba), 1);
+        x64_syscall(text);
+    } else {
+        runtime.used = true;
+        byte(text, UINT8_C(0x48));
+        byte(text, UINT8_C(0x85));
+        byte(text, UINT8_C(0xc0)); /* test rax, rax */
+        size_t false_jump =
+            x64_local_jcc(text, UINT8_C(0x84)); /* je false */
+        x64_mov_r32_imm32(text, UINT8_C(0xb8), 1);
+        x64_mov_r32_imm32(text, UINT8_C(0xbf), 1);
+        byte(text, UINT8_C(0xbe));
+        offsets_add(&runtime.bool_true_addresses, text->length);
+        u32_le(text, 0);
+        x64_mov_r32_imm32(text, UINT8_C(0xba), 5);
+        x64_syscall(text);
+        size_t bool_done = x64_local_jmp(text);
+        size_t bool_false = text->length;
+        x64_mov_r32_imm32(text, UINT8_C(0xb8), 1);
+        x64_mov_r32_imm32(text, UINT8_C(0xbf), 1);
+        byte(text, UINT8_C(0xbe));
+        offsets_add(&runtime.bool_false_addresses, text->length);
+        u32_le(text, 0);
+        x64_mov_r32_imm32(text, UINT8_C(0xba), 6);
+        x64_syscall(text);
+        size_t bool_done_at = text->length;
+        x64_patch_rel32(text, false_jump, bool_false);
+        x64_patch_rel32(text, bool_done, bool_done_at);
+    }
     x64_mov_r32_imm32(text, UINT8_C(0xb8), 60); /* exit */
     x64_mov_r32_imm32(text, UINT8_C(0xbf), 0);
     x64_syscall(text);
@@ -1777,6 +3085,15 @@ int main(int argc, char **argv) {
             "kofun native: unsupported Core at byte %zu: %s\n",
             parser.cursor,
             parser.error == NULL ? "invalid expression" : parser.error
+        );
+        free_node(expression);
+        free(source);
+        return 1;
+    }
+    if (aarch64 && uses_text(expression)) {
+        fputs(
+            "kofun native: AArch64 native Core does not support Text yet\n",
+            stderr
         );
         free_node(expression);
         free(source);

@@ -1,0 +1,4 @@
+# expect: 古墳
+fn main() {
+    print("古" + "墳")
+}

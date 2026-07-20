@@ -1,0 +1,4 @@
+# Registry marker for the Text corpus.
+fn corpus_name() -> Text {
+    return "text"
+}

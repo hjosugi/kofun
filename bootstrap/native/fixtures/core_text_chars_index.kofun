@@ -1,0 +1,3 @@
+fn main() {
+    print(chars("古" + "墳")[-2])
+}

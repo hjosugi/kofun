@@ -1,0 +1,4 @@
+# expect: 42
+fn main() {
+    print(len("aé古🌍") + 38)
+}

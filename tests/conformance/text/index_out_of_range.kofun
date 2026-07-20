@@ -1,0 +1,5 @@
+# expect-stderr: kofun: text index out of range
+# expect-exit: 1
+fn main() {
+    print("古墳"[2])
+}

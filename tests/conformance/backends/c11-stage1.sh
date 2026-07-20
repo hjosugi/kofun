@@ -1,6 +1,7 @@
 # Adapter for the active Kofun-written Stage 1 C11 backend.
 
 BACKEND_NAME=c11-stage1
+BACKEND_CORPORA=numeric
 
 backend_compile() {
     source=$1

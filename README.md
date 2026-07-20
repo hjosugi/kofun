@@ -34,7 +34,8 @@ Three Python-free checkpoints now exercise the path beyond that Core:
 - `bootstrap/stage2/` lexes and structurally parses Kofun, emits a deterministic
   function IR, and reaches a byte-stable source/token/IR round trip;
 - `bootstrap/native/` uses Kofun-authored bytes to build and execute a static
-  Linux x86-64 ELF64 image without an assembler or linker;
+  Linux x86-64 ELF64 image without an assembler or linker; its active x86-64
+  Core includes `List[Int]` and UTF-8 Text operations;
 - `stdlib/` defines the raw syscall ABI, value-level errno conversion, affine
   resource wrappers, and the file round-trip acceptance fixture in Kofun.
 
@@ -100,10 +101,12 @@ kofun emit-c INPUT.kofun OUTPUT.c
 
 ## Semantic corpus
 
-`tests/conformance/numeric/` defines the backend contract for floor division,
-division by zero, Int64 boundaries, and overflow. All nine active cases execute
-through Stage 1; the runner compares stdout, stderr, and exit status and reports
-backend coverage.
+`tests/conformance/numeric/` defines the Stage 1 contract for floor division,
+division by zero, Int64 boundaries, and overflow. `tests/conformance/text/`
+defines the direct x86-64 contract for UTF-8 concatenation, equality,
+codepoint length, `chars`, and indexing. Each active corpus executes 9/9 cases
+through its registered backend; the runner compares stdout, stderr, and exit
+status and reports backend coverage.
 
 ## Source extension
 

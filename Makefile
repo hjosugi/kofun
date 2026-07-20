@@ -23,6 +23,7 @@ compiler:
 test: compiler
 	sh tests/cli.sh
 	$(KOFUN) test tests/conformance/numeric
+	$(KOFUN) test tests/conformance/text
 
 check: compiler
 	$(KOFUN) check bootstrap/fixtures/answer.kofun
@@ -63,6 +64,7 @@ verify: test check bootstrap stage2 native stdlib build-system roadmap syntax re
 	  bootstrap/native/check.sh bootstrap/native/emit-fixture.sh \
 	  stdlib/tests/verify.sh tests/cli.sh tests/build_system.sh \
 	  tests/conformance/run.sh tests/conformance/backends/c11-stage1.sh \
+	  tests/conformance/backends/native-x86_64.sh \
 	  spec/roadmap-31-34/verify-current-gates.sh \
 	  tests/conformance/syntax/issues_35_47/run.sh \
 	  tests/conformance/syntax/issues_48_60/run.sh

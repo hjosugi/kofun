@@ -4,7 +4,9 @@
 little-endian encoding, ELF64 and program/section headers, separate RX/RW
 segments, immediate moves, Linux syscalls, and generic DWARF v4 metadata.
 The Python-free CLI exposes the supported arithmetic Core for x86-64 and
-AArch64 Linux:
+AArch64 Linux. The x86-64 profile additionally lowers `List[Int]` literals,
+length, and indexing plus UTF-8 Text concatenation, equality, codepoint length,
+runtime `chars`, and codepoint indexing:
 
 ```sh
 ./bin/kofun build source.kofun \
@@ -30,10 +32,11 @@ sh bootstrap/native/check.sh
 The remaining native backend work includes:
 
 - general AST/IR lowering and register allocation;
-- connecting the Kofun `List[Int]` encoder to Stage 2;
-- raw syscall intrinsic lowering and allocation support;
+- connecting general Text/List bindings and calls to Stage 2 (#33);
+- allocator reuse/reclamation and general raw syscall intrinsic lowering;
 - checked `Int64` operations and canonical runtime diagnostics;
+- AArch64 List/Text lowering;
 - AArch64 debug information and variable-location DIEs;
-- registration in the shared differential corpus.
+- expanding the registered native adapter beyond the active Text corpus.
 
 Unsupported cases must be explicit skips, never implicit passes.

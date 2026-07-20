@@ -1,0 +1,4 @@
+# expect: true
+fn main() {
+    print("古墳" != "古")
+}

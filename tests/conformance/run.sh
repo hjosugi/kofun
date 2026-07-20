@@ -4,6 +4,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 CORPUS=${1-"$ROOT/tests/conformance/numeric"}
 BACKENDS="$ROOT/tests/conformance/backends"
+CORPUS_NAME=$(basename "$CORPUS")
 
 test -d "$CORPUS" || {
     printf '%s\n' "conformance: corpus not found: $CORPUS" >&2
@@ -21,6 +22,23 @@ run_backend() (
         printf '%s\n' "conformance: adapter has no BACKEND_NAME: $adapter" >&2
         exit 2
     }
+    test -n "${BACKEND_CORPORA-}" || {
+        printf '%s\n' \
+            "conformance: adapter has no BACKEND_CORPORA: $adapter" >&2
+        exit 2
+    }
+    supports_corpus=false
+    for supported in $BACKEND_CORPORA; do
+        if test "$supported" = "$CORPUS_NAME"; then
+            supports_corpus=true
+            break
+        fi
+    done
+    if test "$supports_corpus" != true; then
+        printf '%s\n' \
+            "UNSUPPORTED [$BACKEND_NAME] corpus $CORPUS_NAME"
+        exit 125
+    fi
     command -v backend_compile >/dev/null 2>&1 || {
         printf '%s\n' "conformance: adapter has no backend_compile: $adapter" >&2
         exit 2
@@ -131,23 +149,40 @@ run_backend() (
     printf '%s\n' \
         "$passed passed; $failed failed; $skipped explicitly skipped" \
         "coverage: $executed/$total cases executed by $BACKEND_NAME"
-    test "$total" -gt 0
-    test "$executed" -gt 0
-    test "$failed" -eq 0
+    if test "$total" -eq 0 ||
+       test "$executed" -eq 0 ||
+       test "$failed" -ne 0
+    then
+        exit 1
+    fi
 )
 
 found=0
+applicable=0
 status=0
 for adapter in "$BACKENDS"/*.sh; do
     test -f "$adapter" || continue
     found=$((found + 1))
-    if ! run_backend "$adapter"; then
+    set +e
+    run_backend "$adapter"
+    backend_status=$?
+    set -e
+    if test "$backend_status" -eq 125; then
+        continue
+    fi
+    applicable=$((applicable + 1))
+    if test "$backend_status" -ne 0; then
         status=1
     fi
 done
 
 test "$found" -gt 0 || {
     printf '%s\n' "conformance: no backend adapters registered in $BACKENDS" >&2
+    exit 2
+}
+test "$applicable" -gt 0 || {
+    printf '%s\n' \
+        "conformance: no backend supports corpus $CORPUS_NAME" >&2
     exit 2
 }
 exit "$status"

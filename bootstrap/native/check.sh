@@ -607,6 +607,112 @@ test "$list_higher_order_status" -eq 1
 test ! -e "$WORK/core-list-higher-order.elf"
 grep 'unsupported Core' "$WORK/core-list-higher-order.stderr" >/dev/null
 
+# Text uses `[byte length: i64][UTF-8 bytes]`. Each generated static ELF is
+# compared with an independent C11 codepoint scanner, including multi-byte
+# Japanese, accented Latin, and emoji input.
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$NATIVE/fixtures/text_reference.c" \
+    -o "$WORK/core-text-reference"
+
+run_native_text_differential() {
+    source=$1
+    stem=$2
+    mode=$3
+    "$KOFUN" build "$source" \
+        --target x86_64-linux \
+        -o "$WORK/$stem.elf" >/dev/null
+    "$WORK/core-text-reference" "$mode" \
+        >"$WORK/$stem.reference"
+    "$WORK/$stem.elf" \
+        >"$WORK/$stem.stdout" \
+        2>"$WORK/$stem.stderr"
+    cmp "$WORK/$stem.reference" "$WORK/$stem.stdout"
+    test ! -s "$WORK/$stem.stderr"
+}
+
+run_native_text_differential \
+    "$NATIVE/fixtures/core_text_concat.kofun" \
+    core-text-concat \
+    concat
+run_native_text_differential \
+    "$NATIVE/fixtures/core_text_equal.kofun" \
+    core-text-equal \
+    equal
+run_native_text_differential \
+    "$NATIVE/fixtures/core_text_not_equal.kofun" \
+    core-text-not-equal \
+    not-equal
+run_native_text_differential \
+    "$NATIVE/fixtures/core_text_len_42.kofun" \
+    core-text-len-42 \
+    len
+run_native_text_differential \
+    "$NATIVE/fixtures/core_text_index.kofun" \
+    core-text-index \
+    index
+run_native_text_differential \
+    "$NATIVE/fixtures/core_text_negative_index.kofun" \
+    core-text-negative-index \
+    negative-index
+run_native_text_differential \
+    "$NATIVE/fixtures/core_text_chars_index.kofun" \
+    core-text-chars-index \
+    chars-index
+run_native_text_differential \
+    "$NATIVE/fixtures/core_text_empty_chars_len_42.kofun" \
+    core-text-empty-chars-len-42 \
+    empty-chars-len
+
+"$KOFUN" build "$NATIVE/fixtures/core_text_oob.kofun" \
+    --target x86_64-linux \
+    -o "$WORK/core-text-oob.elf" >/dev/null
+{
+    printf 'fn main() {\n    print("'
+    printf '\300\257'
+    printf '")\n}\n'
+} >"$WORK/core-text-invalid-utf8.kofun"
+set +e
+"$WORK/core-text-oob.elf" \
+    >"$WORK/core-text-oob.stdout" \
+    2>"$WORK/core-text-oob.stderr"
+text_oob_status=$?
+"$KOFUN" build "$WORK/core-text-invalid-utf8.kofun" \
+    --target x86_64-linux \
+    -o "$WORK/core-text-invalid-utf8.elf" \
+    >"$WORK/core-text-invalid-utf8.stdout" \
+    2>"$WORK/core-text-invalid-utf8.stderr"
+text_invalid_utf8_status=$?
+(
+    ulimit -v 512
+    exec "$WORK/core-text-concat.elf"
+) >"$WORK/core-text-oom.stdout" 2>"$WORK/core-text-oom.stderr"
+text_oom_status=$?
+"$KOFUN" build "$NATIVE/fixtures/core_text_concat.kofun" \
+    --target aarch64-linux \
+    -o "$WORK/core-text-aarch64.elf" \
+    >"$WORK/core-text-aarch64.stdout" \
+    2>"$WORK/core-text-aarch64.stderr"
+text_aarch64_status=$?
+set -e
+
+test "$text_oob_status" -eq 1
+test ! -s "$WORK/core-text-oob.stdout"
+printf 'kofun: text index out of range\n' \
+    >"$WORK/core-text-oob.expected"
+cmp "$WORK/core-text-oob.expected" "$WORK/core-text-oob.stderr"
+test "$text_invalid_utf8_status" -eq 1
+test ! -e "$WORK/core-text-invalid-utf8.elf"
+grep 'Text literal is not valid UTF-8' \
+    "$WORK/core-text-invalid-utf8.stderr" >/dev/null
+test "$text_oom_status" -eq 70
+test ! -s "$WORK/core-text-oom.stdout"
+printf 'kofun: out of memory\n' >"$WORK/core-text-oom.expected"
+cmp "$WORK/core-text-oom.expected" "$WORK/core-text-oom.stderr"
+test "$text_aarch64_status" -eq 1
+test ! -e "$WORK/core-text-aarch64.elf"
+grep 'AArch64 native Core does not support Text yet' \
+    "$WORK/core-text-aarch64.stderr" >/dev/null
+
 if cmp -s \
     "$WORK/core_return_42-aarch64.elf" \
     "$WORK/core_precedence_42-aarch64.elf"
@@ -666,4 +772,5 @@ printf '%s\n' \
     "PASS: general Native Core release stayed byte-identical and 4099 bytes" \
     "PASS: --target aarch64-linux emitted deterministic static EM_AARCH64 ELF" \
     "PASS: x86-64 and AArch64 consume one target-independent parsed Core" \
-    "PASS: x86-64 List[Int] matched C11 and defined OOB/OOM diagnostics"
+    "PASS: x86-64 List[Int] matched C11 and defined OOB/OOM diagnostics" \
+    "PASS: x86-64 Text matched C11 UTF-8 codepoint and failure semantics"

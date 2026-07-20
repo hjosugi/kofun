@@ -1,0 +1,4 @@
+# expect: 墳
+fn main() {
+    print("aé古墳🌍"[3])
+}
