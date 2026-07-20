@@ -1,0 +1,1 @@
+error[E007]: cannot move non-Copy element `x: Text` out of borrowed collection `xs` at line 3; return a Copy scalar or clone the element

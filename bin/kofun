@@ -8,6 +8,9 @@ COMPILER="$BUILD_DIR/kofun-stage1"
 NATIVE_BUILD_DIR=${KOFUN_NATIVE_BUILD_DIR:-"$ROOT/build/native-core"}
 NATIVE_SEED_C="$ROOT/bootstrap/native/core_compiler.c"
 NATIVE_COMPILER="$NATIVE_BUILD_DIR/kofun-native-core"
+STAGE2_BUILD_DIR=${KOFUN_STAGE2_BUILD_DIR:-"$ROOT/build/stage2"}
+STAGE2_SEED_C="$ROOT/bootstrap/stage2/compiler.c"
+STAGE2_COMPILER="$STAGE2_BUILD_DIR/kofun-stage2"
 CC=${CC:-cc}
 
 usage() {
@@ -40,6 +43,16 @@ ensure_native_compiler() {
     then
         "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
             "$NATIVE_SEED_C" -o "$NATIVE_COMPILER"
+    fi
+}
+
+ensure_stage2_compiler() {
+    mkdir -p "$STAGE2_BUILD_DIR"
+    if [ ! -x "$STAGE2_COMPILER" ] ||
+       [ "$STAGE2_SEED_C" -nt "$STAGE2_COMPILER" ]
+    then
+        "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+            "$STAGE2_SEED_C" -o "$STAGE2_COMPILER"
     fi
 }
 
@@ -205,8 +218,37 @@ case ${1-} in
         require_source "$2"
         work=$(mktemp -d "${TMPDIR:-/tmp}/kofun-check.XXXXXX")
         trap 'rm -rf "$work"' 0 1 2 15
-        emit_c "$2" "$work/output.c" >/dev/null
-        printf '%s\n' "ok: $2"
+        set +e
+        emit_c "$2" "$work/output.c" \
+            >"$work/stage1.stdout" 2>"$work/stage1.stderr"
+        stage1_status=$?
+        set -e
+        if test "$stage1_status" -eq 0; then
+            printf '%s\n' "ok: $2"
+            exit 0
+        fi
+        ensure_stage2_compiler
+        set +e
+        "$STAGE2_COMPILER" --check-ownership "$2" \
+            >"$work/stage2.stdout" 2>"$work/stage2.stderr"
+        stage2_status=$?
+        set -e
+        if test "$stage2_status" -ne 0; then
+            if grep -q 'error\[E2S20\]' "$work/stage2.stdout"; then
+                test ! -s "$work/stage1.stderr" ||
+                    cat "$work/stage1.stderr" >&2
+                test ! -s "$work/stage1.stdout" ||
+                    cat "$work/stage1.stdout"
+                exit "$stage1_status"
+            fi
+            test ! -s "$work/stage2.stderr" ||
+                cat "$work/stage2.stderr" >&2
+            test ! -s "$work/stage2.stdout" ||
+                cat "$work/stage2.stdout" >&2
+            exit "$stage2_status"
+        fi
+        printf '%s\n' \
+            "ok: $2 (Stage 2 Copy/borrow ownership slice; codegen unavailable)"
         ;;
     build)
         shift

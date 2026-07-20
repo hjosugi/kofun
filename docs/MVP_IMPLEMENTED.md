@@ -11,7 +11,8 @@
 | semantic compiler self-recompile | open | bootstrap manifest |
 | Stage 2 lexer, parser, and integer Core lowering | checkpoint implemented | `bootstrap/stage2/check.sh` |
 | general parser/type checker | open | no active gate |
-| ownership and law checking | open | specification only |
+| borrowed-List Copy/move ownership check | narrow Stage 2 checkpoint | `bootstrap/stage2/check.sh` |
+| general ownership and law checking | open | no active general pass |
 | ELF64/x86-64 native image writer | checkpoint implemented | `bootstrap/native/check.sh` |
 | general native lowering | open | three executable Core-shaped fixtures |
 | Linux x86-64 syscall/stdlib API | Kofun source contract | `stdlib/tests/verify.sh` |

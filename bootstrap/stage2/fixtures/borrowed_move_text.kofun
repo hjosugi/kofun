@@ -1,0 +1,6 @@
+fn first(read xs: List[Text]) -> Text {
+    for x in xs {
+        return x
+    }
+    return ""
+}

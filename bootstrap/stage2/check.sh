@@ -47,6 +47,60 @@ grep '^function|classify|1|' "$temporary/fixture.ir" >/dev/null
 grep '^function|main|0|' "$temporary/fixture.ir" >/dev/null
 grep '^function-count|2$' "$temporary/fixture.ir" >/dev/null
 
+copy_fixture="$stage2/fixtures/borrowed_copy_int.kofun"
+move_fixture="$stage2/fixtures/borrowed_move_text.kofun"
+move_diagnostic="$stage2/fixtures/borrowed_move_text.stderr"
+
+round_trip borrowed-copy "$copy_fixture"
+grep '^function|first|1|' "$temporary/borrowed-copy.ir" >/dev/null
+round_trip borrowed-move "$move_fixture"
+grep '^function|first|1|' "$temporary/borrowed-move.ir" >/dev/null
+
+"$temporary/kofun-stage2" --check-ownership "$copy_fixture" \
+    >"$temporary/borrowed-copy.stdout" \
+    2>"$temporary/borrowed-copy.stderr"
+test ! -s "$temporary/borrowed-copy.stdout"
+test ! -s "$temporary/borrowed-copy.stderr"
+
+set +e
+"$temporary/kofun-stage2" --check-ownership "$move_fixture" \
+    >"$temporary/borrowed-move.stdout" \
+    2>"$temporary/borrowed-move.stderr"
+borrowed_move_status=$?
+"$temporary/kofun-stage2" --check-ownership "$stage2/fixture.kofun" \
+    >"$temporary/ownership-unsupported.stdout" \
+    2>"$temporary/ownership-unsupported.stderr"
+ownership_unsupported_status=$?
+set -e
+test "$borrowed_move_status" -eq 1
+cmp "$move_diagnostic" "$temporary/borrowed-move.stdout"
+test ! -s "$temporary/borrowed-move.stderr"
+test "$ownership_unsupported_status" -eq 1
+grep 'error\[E2S20\]' "$temporary/ownership-unsupported.stdout" >/dev/null
+test ! -s "$temporary/ownership-unsupported.stderr"
+
+KOFUN_BUILD_DIR="$temporary/cli-stage1" \
+KOFUN_STAGE2_BUILD_DIR="$temporary/cli-stage2" \
+    "$root/bin/kofun" check "$copy_fixture" \
+    >"$temporary/cli-borrowed-copy.stdout" \
+    2>"$temporary/cli-borrowed-copy.stderr"
+grep -F \
+    "ok: $copy_fixture (Stage 2 Copy/borrow ownership slice; codegen unavailable)" \
+    "$temporary/cli-borrowed-copy.stdout" >/dev/null
+test ! -s "$temporary/cli-borrowed-copy.stderr"
+
+set +e
+KOFUN_BUILD_DIR="$temporary/cli-stage1" \
+KOFUN_STAGE2_BUILD_DIR="$temporary/cli-stage2" \
+    "$root/bin/kofun" check "$move_fixture" \
+    >"$temporary/cli-borrowed-move.stdout" \
+    2>"$temporary/cli-borrowed-move.stderr"
+cli_borrowed_move_status=$?
+set -e
+test "$cli_borrowed_move_status" -eq 1
+test ! -s "$temporary/cli-borrowed-move.stdout"
+cmp "$move_diagnostic" "$temporary/cli-borrowed-move.stderr"
+
 round_trip stage1 "$root/bootstrap/stage1/compiler.kofun"
 grep '^function|emit_c|1|' "$temporary/stage1.ir" >/dev/null
 grep '^function|compile_file|2|' "$temporary/stage1.ir" >/dev/null
@@ -55,9 +109,11 @@ grep '^function-count|11$' "$temporary/stage1.ir" >/dev/null
 round_trip stage2 "$stage2/compiler.kofun"
 grep '^function|lex|1|' "$temporary/stage2.ir" >/dev/null
 grep '^function|parse_program|1|' "$temporary/stage2.ir" >/dev/null
+grep '^function|borrowed_collection_check|1|' "$temporary/stage2.ir" >/dev/null
 grep '^function|lower_c|1|' "$temporary/stage2.ir" >/dev/null
 grep '^function|emit_kofun|2|' "$temporary/stage2.ir" >/dev/null
 grep '^function|compile_file|4|' "$temporary/stage2.ir" >/dev/null
+grep '^function|check_ownership_file|1|' "$temporary/stage2.ir" >/dev/null
 
 "$temporary/kofun-stage2" \
     "$stage2/compiler.kofun" \
@@ -156,4 +212,6 @@ then
     exit 1
 fi
 
+echo "PASS: Stage 2 statically compiled Copy Int borrowed-return slice"
+echo "PASS: Stage 2 and kofun check rejected non-Copy Text move with E007"
 echo "stage2 semantic frontend check passed"

@@ -9,7 +9,7 @@ bootstrap subset already exercised by the Stage 1 seed:
 - `args`, `read_text`, `write_text`, `chars`, `len`, `text_slice`,
   `contains`, `starts_with`, `is_digit`, `is_space`, and `to_text`.
 
-The frontend performs four concrete operations:
+The frontend performs five concrete operations:
 
 1. lexical scanning that ignores comments and treats escaped strings as single
    tokens, producing a deterministic token-span tape;
@@ -18,6 +18,9 @@ The frontend performs four concrete operations:
 3. an identity source projection gated by successful lexing and parsing.
 4. statement and precedence-aware expression parsing for a deliberately small
    integer Core, followed by deterministic standalone C11 lowering.
+5. a type-directed ownership slice for explicitly typed borrowed Lists:
+   returning an `Int`, `Float`, `Bool`, or `Unit` iteration element is Copy,
+   while moving a non-Copy element such as `Text` is rejected with `E007`.
 
 The identity operation is deliberately conservative. Reapplying it reaches a byte
 fixed point, which gives later lowering work a deterministic frontend boundary.
@@ -48,8 +51,10 @@ determinism, and rejects a missing closing brace. It also lowers
 with warnings as errors, executes it, and compares exact output and status. A
 second generated program verifies the division-by-zero status/stderr contract,
 and a structurally valid non-Core function verifies explicit lowering
-rejection. The gate uses only POSIX shell, a C11 compiler, `sha256sum`, and
-standard comparison/search tools.
+rejection. Dedicated positive and negative fixtures exercise the ownership
+slice both through the Stage 2 seed and `kofun check`; unrelated structural
+programs are explicitly rejected as outside that slice. The gate uses only
+POSIX shell, a C11 compiler, `sha256sum`, and standard comparison/search tools.
 
 `compiler.c` is an audited executable transliteration of the Kofun source so
 this checkpoint can run before Stage 1 accepts all of Stage 2. It is part of the
@@ -59,3 +64,8 @@ List[Text], file-I/O, and control-flow-heavy implementation. Full semantic
 self-compilation therefore remains open. The next bootstrap milestone is to
 extend the Kofun compiler path until it can rebuild this seed from
 `compiler.kofun`, then compare the resulting artifact.
+
+The Copy/borrow checker is likewise intentionally bounded. It recognizes one
+explicit `read List[T]` parameter per function, a named `for` iteration, and a
+same-line return that contains the element. It does not claim full inference,
+borrow lifetimes, `take` call resolution, or collection code generation.

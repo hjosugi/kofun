@@ -17,7 +17,9 @@ Kofun's memory model aims to satisfy all of the following at once.
 
 ### 2.1 Copy values
 
-`Int`, `Float`, `Bool`, small tuples, and the like are copy values.
+The initial closed Copy set is `Int`, `Float`, `Bool`, and `Unit`. Copy is not
+user-implementable. Tuples and records remain non-Copy until a later
+type-directed derivation decision.
 
 ```kofun
 let a = 42
@@ -338,6 +340,8 @@ In the current prototype:
 - the `take` statement and `take` parameters are implemented
 - use-after-take is detected as E330
 - owned values with a `close()` are automatically disposed at end of scope
+- the narrow Stage 2 ownership slice reports E007 when a `Text` element is
+  returned by value from an explicitly typed borrowed `List[Text]`
 - borrow lifetimes, alias graphs, and async capture are not implemented
 
 Stage 0 exists to validate the syntax and diagnostic UX. It is not a production

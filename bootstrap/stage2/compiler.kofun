@@ -313,6 +313,175 @@ fn parse_program(source: Text) -> Text {
     return ir + "function-count|" + to_text(functions) + "\n"
 }
 
+fn copy_type(type_name: Text) -> Bool {
+    return type_name == "Int" || type_name == "Float" ||
+    type_name == "Bool" || type_name == "Unit"
+}
+
+fn return_move_at(
+    source: Text,
+    body_open: Int,
+    body_end: Int,
+    element_name: Text
+) -> Int {
+    let mut cursor = skip_trivia(source, token_end(source, body_open))
+    while cursor < body_end {
+        if token_text(source, cursor) == "return" {
+            let return_line = line_at(source, cursor)
+            let mut value_cursor = skip_trivia(
+                source,
+                token_end(source, cursor)
+            )
+            while value_cursor < body_end &&
+                  line_at(source, value_cursor) == return_line {
+                if token_text(source, value_cursor) == element_name {
+                    return value_cursor
+                }
+                value_cursor = skip_trivia(
+                    source,
+                    token_end(source, value_cursor)
+                )
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return -1
+}
+
+fn borrowed_collection_check(source: Text) -> Text {
+    let mut function_cursor = skip_trivia(source, 0)
+    let mut recognized_loops = 0
+    while function_cursor < len(source) {
+        let parameters_open = parameter_open(source, function_cursor)
+        if parameters_open < 0 {
+            return "error[E2S03]: malformed function"
+        }
+        let parameters_end = balanced_end(
+            source,
+            parameters_open,
+            "(",
+            ")"
+        )
+        if parameters_end < 0 {
+            return "error[E2S03]: malformed parameters"
+        }
+
+        let mut borrowed_name = ""
+        let mut element_type = ""
+        let mut borrowed_lists = 0
+        let mut parameter_cursor = skip_trivia(
+            source,
+            token_end(source, parameters_open)
+        )
+        while parameter_cursor < parameters_end &&
+              token_text(source, parameter_cursor) != ")" {
+            if token_text(source, parameter_cursor) == "read" {
+                let name_cursor = skip_trivia(
+                    source,
+                    token_end(source, parameter_cursor)
+                )
+                let colon_cursor = skip_trivia(
+                    source,
+                    token_end(source, name_cursor)
+                )
+                let list_cursor = skip_trivia(
+                    source,
+                    token_end(source, colon_cursor)
+                )
+                let bracket_cursor = skip_trivia(
+                    source,
+                    token_end(source, list_cursor)
+                )
+                let element_cursor = skip_trivia(
+                    source,
+                    token_end(source, bracket_cursor)
+                )
+                if token_kind(source, name_cursor) == "identifier" &&
+                   token_text(source, colon_cursor) == ":" &&
+                   token_text(source, list_cursor) == "List" &&
+                   token_text(source, bracket_cursor) == "[" &&
+                   token_kind(source, element_cursor) == "identifier" {
+                    borrowed_lists = borrowed_lists + 1
+                    if borrowed_lists > 1 {
+                        return "error[E2S21]: ownership slice supports one borrowed List parameter per function"
+                    }
+                    borrowed_name = token_text(source, name_cursor)
+                    element_type = token_text(source, element_cursor)
+                }
+            }
+            parameter_cursor = skip_trivia(
+                source,
+                token_end(source, parameter_cursor)
+            )
+        }
+
+        let function_end_cursor = function_end(source, function_cursor)
+        let mut body_open = skip_trivia(source, parameters_end)
+        while body_open < function_end_cursor &&
+              token_text(source, body_open) != "{" {
+            body_open = skip_trivia(source, token_end(source, body_open))
+        }
+        if function_end_cursor < 0 || body_open >= function_end_cursor {
+            return "error[E2S03]: malformed function body"
+        }
+
+        let mut cursor = skip_trivia(source, token_end(source, body_open))
+        while cursor < function_end_cursor {
+            if token_text(source, cursor) == "for" {
+                let element_cursor = skip_trivia(
+                    source,
+                    token_end(source, cursor)
+                )
+                let in_cursor = skip_trivia(
+                    source,
+                    token_end(source, element_cursor)
+                )
+                let collection_cursor = skip_trivia(
+                    source,
+                    token_end(source, in_cursor)
+                )
+                let loop_open = skip_trivia(
+                    source,
+                    token_end(source, collection_cursor)
+                )
+                if token_kind(source, element_cursor) == "identifier" &&
+                   token_text(source, in_cursor) == "in" &&
+                   token_kind(source, collection_cursor) == "identifier" &&
+                   token_text(source, loop_open) == "{" {
+                    let loop_end = balanced_end(source, loop_open, "{", "}")
+                    if loop_end < 0 {
+                        return "error[E2S03]: malformed for body"
+                    }
+                    if len(borrowed_name) > 0 &&
+                       token_text(source, collection_cursor) == borrowed_name {
+                        recognized_loops = recognized_loops + 1
+                        let element_name = token_text(source, element_cursor)
+                        let move_at = return_move_at(
+                            source,
+                            loop_open,
+                            loop_end,
+                            element_name
+                        )
+                        if move_at >= 0 && !copy_type(element_type) {
+                            return "error[E007]: cannot move non-Copy element `" +
+                            element_name + ": " + element_type +
+                            "` out of borrowed collection `" + borrowed_name +
+                            "` at line " + to_text(line_at(source, move_at)) +
+                            "; return a Copy scalar or clone the element"
+                        }
+                    }
+                }
+            }
+            cursor = skip_trivia(source, token_end(source, cursor))
+        }
+        function_cursor = skip_trivia(source, function_end_cursor)
+    }
+    if recognized_loops == 0 {
+        return "error[E2S20]: Stage 2 ownership slice requires `for element in read_list`"
+    }
+    return "ok"
+}
+
 fn primary_end(source: Text, start: Int) -> Int {
     let cursor = skip_trivia(source, start)
     if cursor >= len(source) {
@@ -715,10 +884,39 @@ fn compile_file(
     return true
 }
 
+fn check_ownership_file(input_path: Text) -> Bool {
+    let source = read_text(input_path)
+    let tokens = lex(source)
+    if starts_with(tokens, "error[") {
+        print(tokens)
+        return false
+    }
+    let ir = parse_program(source)
+    if starts_with(ir, "error[") {
+        print(ir)
+        return false
+    }
+    let result = borrowed_collection_check(source)
+    if starts_with(result, "error[") {
+        print(result)
+        return false
+    }
+    return true
+}
+
 fn main() -> Int {
     let arguments = args()
+    if len(arguments) == 2 && arguments[0] == "--check-ownership" {
+        if !check_ownership_file(arguments[1]) {
+            return 1
+        }
+        return 0
+    }
     if len(arguments) != 4 {
-        print("usage: kofun-stage2 INPUT.kofun OUTPUT.kofun OUTPUT.ir OUTPUT.tokens")
+        print(
+            "usage: kofun-stage2 INPUT.kofun OUTPUT.kofun OUTPUT.ir OUTPUT.tokens\n" +
+            "       kofun-stage2 --check-ownership INPUT.kofun"
+        )
         return 2
     }
     if !compile_file(arguments[0], arguments[1], arguments[2], arguments[3]) {

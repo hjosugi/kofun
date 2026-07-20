@@ -1,0 +1,6 @@
+fn first(read xs: List[Int]) -> Int {
+    for x in xs {
+        return x
+    }
+    return 0
+}

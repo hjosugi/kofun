@@ -434,6 +434,236 @@ static char *parse_program(const char *source) {
     return ir.data;
 }
 
+static char *owned_text(const char *text) {
+    size_t length = strlen(text);
+    char *copy = allocate(length + 1);
+    memcpy(copy, text, length + 1);
+    return copy;
+}
+
+static bool copy_type(const char *type_name) {
+    return strcmp(type_name, "Int") == 0 ||
+           strcmp(type_name, "Float") == 0 ||
+           strcmp(type_name, "Bool") == 0 ||
+           strcmp(type_name, "Unit") == 0;
+}
+
+static int64_t return_move_at(
+    const char *source,
+    int64_t body_open,
+    int64_t body_end,
+    const char *element_name
+) {
+    int64_t cursor = skip_trivia(source, token_end(source, body_open));
+    while (cursor < body_end) {
+        if (token_equal(source, cursor, "return")) {
+            int64_t return_line = line_at(source, cursor);
+            int64_t value_cursor = skip_trivia(
+                source,
+                token_end(source, cursor)
+            );
+            while (
+                value_cursor < body_end &&
+                line_at(source, value_cursor) == return_line
+            ) {
+                if (token_equal(source, value_cursor, element_name)) {
+                    return value_cursor;
+                }
+                value_cursor = skip_trivia(
+                    source,
+                    token_end(source, value_cursor)
+                );
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return -1;
+}
+
+static char *borrowed_collection_check(const char *source) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t function_cursor = skip_trivia(source, 0);
+    int64_t recognized_loops = 0;
+    while (function_cursor < length) {
+        int64_t parameters_open = parameter_open(source, function_cursor);
+        if (parameters_open < 0) {
+            return owned_text("error[E2S03]: malformed function");
+        }
+        int64_t parameters_end = balanced_end(
+            source,
+            parameters_open,
+            "(",
+            ")"
+        );
+        if (parameters_end < 0) {
+            return owned_text("error[E2S03]: malformed parameters");
+        }
+
+        char *borrowed_name = owned_text("");
+        char *element_type = owned_text("");
+        int64_t borrowed_lists = 0;
+        int64_t parameter_cursor = skip_trivia(
+            source,
+            token_end(source, parameters_open)
+        );
+        while (
+            parameter_cursor < parameters_end &&
+            !token_equal(source, parameter_cursor, ")")
+        ) {
+            if (token_equal(source, parameter_cursor, "read")) {
+                int64_t name_cursor = skip_trivia(
+                    source,
+                    token_end(source, parameter_cursor)
+                );
+                int64_t colon_cursor = skip_trivia(
+                    source,
+                    token_end(source, name_cursor)
+                );
+                int64_t list_cursor = skip_trivia(
+                    source,
+                    token_end(source, colon_cursor)
+                );
+                int64_t bracket_cursor = skip_trivia(
+                    source,
+                    token_end(source, list_cursor)
+                );
+                int64_t element_cursor = skip_trivia(
+                    source,
+                    token_end(source, bracket_cursor)
+                );
+                if (
+                    strcmp(token_kind(source, name_cursor), "identifier") == 0 &&
+                    token_equal(source, colon_cursor, ":") &&
+                    token_equal(source, list_cursor, "List") &&
+                    token_equal(source, bracket_cursor, "[") &&
+                    strcmp(token_kind(source, element_cursor), "identifier") == 0
+                ) {
+                    ++borrowed_lists;
+                    if (borrowed_lists > 1) {
+                        free(element_type);
+                        free(borrowed_name);
+                        return owned_text(
+                            "error[E2S21]: ownership slice supports one "
+                            "borrowed List parameter per function"
+                        );
+                    }
+                    free(borrowed_name);
+                    free(element_type);
+                    borrowed_name = token_copy(source, name_cursor);
+                    element_type = token_copy(source, element_cursor);
+                }
+            }
+            parameter_cursor = skip_trivia(
+                source,
+                token_end(source, parameter_cursor)
+            );
+        }
+
+        int64_t function_end_cursor = function_end(source, function_cursor);
+        if (function_end_cursor < 0) {
+            free(element_type);
+            free(borrowed_name);
+            return owned_text("error[E2S03]: malformed function body");
+        }
+        int64_t body_open = skip_trivia(source, parameters_end);
+        while (
+            body_open < function_end_cursor &&
+            !token_equal(source, body_open, "{")
+        ) {
+            body_open = skip_trivia(source, token_end(source, body_open));
+        }
+        if (body_open >= function_end_cursor) {
+            free(element_type);
+            free(borrowed_name);
+            return owned_text("error[E2S03]: malformed function body");
+        }
+
+        int64_t cursor = skip_trivia(source, token_end(source, body_open));
+        while (cursor < function_end_cursor) {
+            if (token_equal(source, cursor, "for")) {
+                int64_t element_cursor = skip_trivia(
+                    source,
+                    token_end(source, cursor)
+                );
+                int64_t in_cursor = skip_trivia(
+                    source,
+                    token_end(source, element_cursor)
+                );
+                int64_t collection_cursor = skip_trivia(
+                    source,
+                    token_end(source, in_cursor)
+                );
+                int64_t loop_open = skip_trivia(
+                    source,
+                    token_end(source, collection_cursor)
+                );
+                if (
+                    strcmp(token_kind(source, element_cursor), "identifier") == 0 &&
+                    token_equal(source, in_cursor, "in") &&
+                    strcmp(token_kind(source, collection_cursor), "identifier") == 0 &&
+                    token_equal(source, loop_open, "{")
+                ) {
+                    int64_t loop_end = balanced_end(
+                        source,
+                        loop_open,
+                        "{",
+                        "}"
+                    );
+                    if (loop_end < 0) {
+                        free(element_type);
+                        free(borrowed_name);
+                        return owned_text("error[E2S03]: malformed for body");
+                    }
+                    if (
+                        borrowed_name[0] != '\0' &&
+                        token_equal(source, collection_cursor, borrowed_name)
+                    ) {
+                        ++recognized_loops;
+                        char *element_name = token_copy(source, element_cursor);
+                        int64_t move_at = return_move_at(
+                            source,
+                            loop_open,
+                            loop_end,
+                            element_name
+                        );
+                        if (move_at >= 0 && !copy_type(element_type)) {
+                            Buffer error;
+                            buffer_init(&error);
+                            buffer_format(
+                                &error,
+                                "error[E007]: cannot move non-Copy element "
+                                "`%s: %s` out of borrowed collection `%s` "
+                                "at line %" PRId64 "; return a Copy scalar "
+                                "or clone the element",
+                                element_name,
+                                element_type,
+                                borrowed_name,
+                                line_at(source, move_at)
+                            );
+                            free(element_name);
+                            free(element_type);
+                            free(borrowed_name);
+                            return error.data;
+                        }
+                        free(element_name);
+                    }
+                }
+            }
+            cursor = skip_trivia(source, token_end(source, cursor));
+        }
+        free(element_type);
+        free(borrowed_name);
+        function_cursor = skip_trivia(source, function_end_cursor);
+    }
+    if (recognized_loops == 0) {
+        return owned_text(
+            "error[E2S20]: Stage 2 ownership slice requires "
+            "`for element in read_list`"
+        );
+    }
+    return owned_text("ok");
+}
+
 static int64_t expression_end(const char *source, int64_t start);
 static char *emit_expression(const char *source, int64_t start, int64_t end);
 
@@ -905,10 +1135,41 @@ static bool ends_with(const char *value, const char *suffix) {
            strcmp(value + value_length - suffix_length, suffix) == 0;
 }
 
+static int check_ownership_file(const char *path) {
+    char *source = read_file(path);
+    char *tokens = lex_source(source);
+    if (strncmp(tokens, "error[", 6) == 0) {
+        puts(tokens);
+        free(tokens);
+        free(source);
+        return 1;
+    }
+    char *ir = parse_program(source);
+    if (strncmp(ir, "error[", 6) == 0) {
+        puts(ir);
+        free(ir);
+        free(tokens);
+        free(source);
+        return 1;
+    }
+    char *result = borrowed_collection_check(source);
+    bool ok = strcmp(result, "ok") == 0;
+    if (!ok) puts(result);
+    free(result);
+    free(ir);
+    free(tokens);
+    free(source);
+    return ok ? 0 : 1;
+}
+
 int main(int argc, char **argv) {
+    if (argc == 3 && strcmp(argv[1], "--check-ownership") == 0) {
+        return check_ownership_file(argv[2]);
+    }
     if (argc != 5) {
         fputs(
-            "usage: kofun-stage2 INPUT.kofun OUTPUT.kofun OUTPUT.ir OUTPUT.tokens\n",
+            "usage: kofun-stage2 INPUT.kofun OUTPUT.kofun OUTPUT.ir OUTPUT.tokens\n"
+            "       kofun-stage2 --check-ownership INPUT.kofun\n",
             stdout
         );
         return 2;
