@@ -95,13 +95,13 @@ grep -Fq 'libkofun_unicode_shim.so' "$WORK/kofun-dynamic.txt"
 
 test -s "$MEASUREMENT"
 grep -Fq '"schema": "kofun.rust-shim-build-cost/v1"' "$MEASUREMENT"
-grep -Fq '"source_commit": "62c8f5cbf6d191034d5a0dcad6fc433902063dd0"' \
+grep -Fq '"source_commit": "6461fc2fbc2c19cabf7c4f7108b033027051f777"' \
     "$MEASUREMENT"
 grep -Fq '"worktree_clean": true' "$MEASUREMENT"
-grep -Fq '"samples_ms": [1245, 1266, 1102, 1115, 1224]' "$MEASUREMENT"
-grep -Fq '"samples_ms": [130, 170, 159, 149, 123]' "$MEASUREMENT"
-grep -Fq '"median_ms": 1224' "$MEASUREMENT"
-grep -Fq '"median_ms": 149' "$MEASUREMENT"
+grep -Fq '"samples_ms": [3131, 3061, 2351, 1124, 1132]' "$MEASUREMENT"
+grep -Fq '"samples_ms": [51, 49, 52, 50, 53]' "$MEASUREMENT"
+grep -Fq '"median_ms": 2351' "$MEASUREMENT"
+grep -Fq '"median_ms": 51' "$MEASUREMENT"
 
 if grep -Eq 'String|Vec|Result<|dyn ' "$SHIM/include/kofun_unicode_shim.h"; then
     printf '%s\n' "FAIL: Rust-managed type exposed by the C header" >&2

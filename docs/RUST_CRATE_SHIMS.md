@@ -139,20 +139,20 @@ claims.
 
 ### Recorded result
 
-Measured at 2026-07-20 07:16:11 UTC from clean implementation commit
-`62c8f5cbf6d191034d5a0dcad6fc433902063dd0` (tree
-`0feb5f23ac67f010f0b53decd6d583a1c5129e7b`) on Linux
+Measured at 2026-07-20 07:22:00 UTC from clean implementation commit
+`6461fc2fbc2c19cabf7c4f7108b033027051f777` (tree
+`76148300d5666a07de3b7a5e2919b269d128fa05`) on Linux
 7.1.2-3-cachyos x86-64, AMD Ryzen 3 7330U, 8 logical CPUs:
 
 | Measurement | Five wall-time samples | Median |
 |---|---|---:|
-| clean offline Rust release cdylib build | 1245, 1266, 1102, 1115, 1224 ms | 1224 ms |
-| full Kofun rebuild/relink with unchanged prebuilt cdylib | 130, 170, 159, 149, 123 ms | 149 ms |
+| clean offline Rust release cdylib build | 3131, 3061, 2351, 1124, 1132 ms | 2351 ms |
+| full Kofun rebuild/relink with unchanged prebuilt cdylib | 51, 49, 52, 50, 53 ms | 51 ms |
 
 Toolchain: rustc 1.96.1 commit
 `31fca3adb283cc9dfd56b49cdee9a96eb9c96ffd` with LLVM 21.1.8,
 Cargo 1.96.2, and GCC 16.1.1. The measured shim was 498,296 bytes
-(`bd51c70d4574cb7cd8dab43800e557d3dae33c5ce9fc8ae0576cc15d6f730f7d`);
+(`fc9fd2a88489238f2370cc95c5632b75ff42530bce46b03b2c8ed8b4ef01843a`);
 the linked Kofun executable was 16,152 bytes.
 
 On this machine and run, the prebuilt-artifact Kofun path had the lower median.
