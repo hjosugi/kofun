@@ -167,16 +167,29 @@ typedef enum {
     NODE_LITERAL,
     NODE_ADD,
     NODE_MULTIPLY,
+    NODE_NEGATE,
+    NODE_LIST,
+    NODE_INDEX,
+    NODE_LENGTH,
 } NodeKind;
+
+typedef enum {
+    VALUE_INT,
+    VALUE_LIST,
+} ValueKind;
 
 typedef struct Node Node;
 
 struct Node {
     NodeKind kind;
-    uint64_t value;
+    ValueKind value_kind;
+    int64_t value;
+    bool value_known;
     size_t source_line;
     Node *left;
     Node *right;
+    Node **items;
+    size_t item_count;
 };
 
 typedef struct {
@@ -236,23 +249,29 @@ static void parse_error(Parser *parser, const char *message) {
 
 static Node *node(
     NodeKind kind,
-    uint64_t value,
+    ValueKind value_kind,
+    int64_t value,
+    bool value_known,
     size_t line,
     Node *left,
     Node *right
 ) {
     Node *result = allocate(sizeof(*result));
     result->kind = kind;
+    result->value_kind = value_kind;
     result->value = value;
+    result->value_known = value_known;
     result->source_line = line;
     result->left = left;
     result->right = right;
+    result->items = NULL;
+    result->item_count = 0;
     return result;
 }
 
 static Node *parse_expression(Parser *parser);
 
-static Node *parse_primary(Parser *parser) {
+static Node *parse_atom(Parser *parser) {
     skip_trivia(parser);
     if (consume_char(parser, '(')) {
         Node *inside = parse_expression(parser);
@@ -264,8 +283,78 @@ static Node *parse_primary(Parser *parser) {
 
     skip_trivia(parser);
     size_t literal_at = parser->cursor;
+    if (consume_char(parser, '[')) {
+        Node **items = NULL;
+        size_t length = 0;
+        size_t capacity = 0;
+        skip_trivia(parser);
+        if (!consume_char(parser, ']')) {
+            for (;;) {
+                Node *item = parse_expression(parser);
+                if (item == NULL || parser->error != NULL) break;
+                if (item->value_kind != VALUE_INT) {
+                    parse_error(parser, "List[Int] literal requires Int elements");
+                    break;
+                }
+                if (length == capacity) {
+                    capacity = capacity == 0 ? 4 : capacity * 2;
+                    Node **grown = realloc(items, capacity * sizeof(*items));
+                    if (grown == NULL) fatal("out of memory");
+                    items = grown;
+                }
+                items[length++] = item;
+                if (consume_char(parser, ']')) break;
+                if (!consume_char(parser, ',')) {
+                    parse_error(parser, "expected `,` or `]` in List[Int]");
+                    break;
+                }
+                if (consume_char(parser, ']')) break;
+            }
+        }
+        Node *list = node(
+            NODE_LIST,
+            VALUE_LIST,
+            0,
+            true,
+            source_line(parser->source, literal_at),
+            NULL,
+            NULL
+        );
+        list->items = items;
+        list->item_count = length;
+        return list;
+    }
+
+    skip_trivia(parser);
+    if (consume_word(parser, "len")) {
+        if (!consume_char(parser, '(')) {
+            parse_error(parser, "expected `(` after `len`");
+            return NULL;
+        }
+        Node *value = parse_expression(parser);
+        if (!consume_char(parser, ')')) {
+            parse_error(parser, "expected `)` after `len` argument");
+        }
+        if (value != NULL && value->value_kind != VALUE_LIST) {
+            parse_error(parser, "`len` native Core argument must be List[Int]");
+        }
+        return node(
+            NODE_LENGTH,
+            VALUE_INT,
+            value == NULL ? 0 : (int64_t)value->item_count,
+            value != NULL,
+            source_line(parser->source, literal_at),
+            value,
+            NULL
+        );
+    }
+
+    skip_trivia(parser);
     if (!isdigit((unsigned char)parser->source[parser->cursor])) {
-        parse_error(parser, "expected non-negative integer or `(`");
+        parse_error(
+            parser,
+            "expected integer, List[Int], `len`, or `(`"
+        );
         return NULL;
     }
 
@@ -281,29 +370,102 @@ static Node *parse_primary(Parser *parser) {
     }
     return node(
         NODE_LITERAL,
-        value,
+        VALUE_INT,
+        (int64_t)value,
+        true,
         source_line(parser->source, literal_at),
         NULL,
         NULL
     );
 }
 
+static Node *parse_primary(Parser *parser) {
+    Node *value = parse_atom(parser);
+    while (value != NULL && parser->error == NULL) {
+        skip_trivia(parser);
+        if (!consume_char(parser, '[')) break;
+        size_t index_at = parser->cursor - 1;
+        Node *index = parse_expression(parser);
+        if (!consume_char(parser, ']')) {
+            parse_error(parser, "expected `]` after List[Int] index");
+            return value;
+        }
+        if (value->value_kind != VALUE_LIST ||
+            index == NULL ||
+            index->value_kind != VALUE_INT) {
+            parse_error(parser, "native Core indexing requires List[Int]");
+            return value;
+        }
+
+        int64_t resolved = 0;
+        bool known = index->value_known;
+        if (known) {
+            int64_t wanted = index->value;
+            if (wanted < 0) wanted += (int64_t)value->item_count;
+            if (wanted < 0 || (uint64_t)wanted >= value->item_count) {
+                known = false;
+            } else {
+                Node *item = value->items[(size_t)wanted];
+                known = item->value_known;
+                resolved = item->value;
+            }
+        }
+        value = node(
+            NODE_INDEX,
+            VALUE_INT,
+            resolved,
+            known,
+            source_line(parser->source, index_at),
+            value,
+            index
+        );
+    }
+    return value;
+}
+
+static Node *parse_unary(Parser *parser) {
+    skip_trivia(parser);
+    size_t operator_at = parser->cursor;
+    if (consume_char(parser, '-')) {
+        Node *operand = parse_unary(parser);
+        if (operand == NULL || operand->value_kind != VALUE_INT) {
+            parse_error(parser, "native Core unary `-` requires Int");
+            return operand;
+        }
+        return node(
+            NODE_NEGATE,
+            VALUE_INT,
+            operand->value_known ? -operand->value : 0,
+            operand->value_known,
+            source_line(parser->source, operator_at),
+            operand,
+            NULL
+        );
+    }
+    return parse_primary(parser);
+}
+
 static bool checked_value(
     Parser *parser,
     NodeKind kind,
-    uint64_t left,
-    uint64_t right,
-    uint64_t *result
+    int64_t left,
+    int64_t right,
+    int64_t *result
 ) {
+    if (left < 0 || right < 0) {
+        parse_error(parser, "Core arithmetic requires non-negative operands");
+        return false;
+    }
     if (kind == NODE_ADD) {
-        if (left > UINT64_C(65535) - right) {
+        if ((uint64_t)left > UINT64_C(65535) - (uint64_t)right) {
             parse_error(parser, "Core addition exceeds 65535");
             return false;
         }
         *result = left + right;
         return true;
     }
-    if (right != 0 && left > UINT64_C(65535) / right) {
+    if (right != 0 &&
+        (uint64_t)left > UINT64_C(65535) / (uint64_t)right) {
         parse_error(parser, "Core multiplication exceeds 65535");
         return false;
     }
@@ -312,22 +474,29 @@ static bool checked_value(
 }
 
 static Node *parse_product(Parser *parser) {
-    Node *left = parse_primary(parser);
+    Node *left = parse_unary(parser);
     while (parser->error == NULL) {
         skip_trivia(parser);
         if (parser->source[parser->cursor] != '*') break;
         size_t operator_at = parser->cursor;
         ++parser->cursor;
-        Node *right = parse_primary(parser);
+        Node *right = parse_unary(parser);
         if (right == NULL) return left;
-        uint64_t value = 0;
+        if (left->value_kind != VALUE_INT ||
+            right->value_kind != VALUE_INT) {
+            parse_error(parser, "operator `*` requires Int operands");
+            return left;
+        }
+        int64_t value = 0;
         if (!checked_value(
                 parser, NODE_MULTIPLY, left->value, right->value, &value)) {
             return left;
         }
         left = node(
             NODE_MULTIPLY,
+            VALUE_INT,
             value,
+            left->value_known && right->value_known,
             source_line(parser->source, operator_at),
             left,
             right
@@ -345,14 +514,21 @@ static Node *parse_expression(Parser *parser) {
         ++parser->cursor;
         Node *right = parse_product(parser);
         if (right == NULL) return left;
-        uint64_t value = 0;
+        if (left->value_kind != VALUE_INT ||
+            right->value_kind != VALUE_INT) {
+            parse_error(parser, "operator `+` requires Int operands");
+            return left;
+        }
+        int64_t value = 0;
         if (!checked_value(
                 parser, NODE_ADD, left->value, right->value, &value)) {
             return left;
         }
         left = node(
             NODE_ADD,
+            VALUE_INT,
             value,
+            left->value_known && right->value_known,
             source_line(parser->source, operator_at),
             left,
             right
@@ -398,7 +574,10 @@ static Node *parse_program(Parser *parser) {
     if (parser->source[parser->cursor] != '\0') {
         parse_error(parser, "unexpected source after native Core main");
     }
-    if (expression != NULL &&
+    if (expression != NULL && expression->value_kind != VALUE_INT) {
+        parse_error(parser, "native Core print expression must produce Int");
+    } else if (expression != NULL &&
+        expression->value_known &&
         (expression->value < 10 || expression->value > 99)) {
         parse_error(parser, "native Core print result must be 10..99");
     }
@@ -407,6 +586,18 @@ static Node *parse_program(Parser *parser) {
 
 static size_t register_depth(const Node *expression) {
     if (expression->kind == NODE_LITERAL) return 1;
+    if (expression->kind == NODE_NEGATE ||
+        expression->kind == NODE_LENGTH) {
+        return register_depth(expression->left);
+    }
+    if (expression->kind == NODE_LIST) {
+        size_t depth = 1;
+        for (size_t index = 0; index < expression->item_count; ++index) {
+            size_t item = 1 + register_depth(expression->items[index]);
+            if (item > depth) depth = item;
+        }
+        return depth;
+    }
     size_t left = register_depth(expression->left);
     size_t right = register_depth(expression->right);
     size_t with_left_live = 1 + right;
@@ -417,7 +608,27 @@ static void free_node(Node *expression) {
     if (expression == NULL) return;
     free_node(expression->left);
     free_node(expression->right);
+    for (size_t index = 0; index < expression->item_count; ++index) {
+        free_node(expression->items[index]);
+    }
+    free(expression->items);
     free(expression);
+}
+
+static bool uses_list(const Node *expression) {
+    if (expression == NULL) return false;
+    if (expression->kind == NODE_LIST ||
+        expression->kind == NODE_INDEX ||
+        expression->kind == NODE_LENGTH) {
+        return true;
+    }
+    if (uses_list(expression->left) || uses_list(expression->right)) {
+        return true;
+    }
+    for (size_t index = 0; index < expression->item_count; ++index) {
+        if (uses_list(expression->items[index])) return true;
+    }
+    return false;
 }
 
 static void x64_mov_eax_imm32(Bytes *text, uint32_t value) {
@@ -425,10 +636,80 @@ static void x64_mov_eax_imm32(Bytes *text, uint32_t value) {
     u32_le(text, value);
 }
 
+typedef struct {
+    size_t *fields;
+    size_t length;
+    size_t capacity;
+} Offsets;
+
+typedef struct {
+    bool used;
+    Offsets alloc_calls;
+    Offsets oom_jumps;
+    Offsets index_jumps;
+} X64Runtime;
+
+static void offsets_add(Offsets *offsets, size_t field) {
+    if (offsets->length == offsets->capacity) {
+        size_t capacity =
+            offsets->capacity == 0 ? 8 : offsets->capacity * 2;
+        size_t *grown = realloc(
+            offsets->fields,
+            capacity * sizeof(*offsets->fields)
+        );
+        if (grown == NULL) fatal("out of memory");
+        offsets->fields = grown;
+        offsets->capacity = capacity;
+    }
+    offsets->fields[offsets->length++] = field;
+}
+
+static void x64_runtime_free(X64Runtime *runtime) {
+    free(runtime->alloc_calls.fields);
+    free(runtime->oom_jumps.fields);
+    free(runtime->index_jumps.fields);
+}
+
+static void x64_patch_rel32(Bytes *text, size_t field, size_t target) {
+    int64_t displacement =
+        (int64_t)target - (int64_t)(field + sizeof(uint32_t));
+    if (displacement < INT32_MIN || displacement > INT32_MAX) {
+        fatal("x86-64 native Core rel32 is out of range");
+    }
+    uint32_t encoded = (uint32_t)(int32_t)displacement;
+    if (field > text->length || text->length - field < sizeof(encoded)) {
+        fatal("x86-64 native Core rel32 field is outside text");
+    }
+    for (unsigned index = 0; index < 4; ++index) {
+        text->data[field + index] =
+            (uint8_t)(encoded >> (index * 8));
+    }
+}
+
+static void x64_rel32_placeholder(
+    Bytes *text,
+    uint8_t first,
+    uint8_t second,
+    Offsets *offsets
+) {
+    byte(text, first);
+    byte(text, second);
+    offsets_add(offsets, text->length);
+    u32_le(text, 0);
+}
+
+static void x64_call_alloc(Bytes *text, X64Runtime *runtime) {
+    runtime->used = true;
+    byte(text, UINT8_C(0xe8));
+    offsets_add(&runtime->alloc_calls, text->length);
+    u32_le(text, 0);
+}
+
 static void x64_expression(
     Bytes *text,
     const Node *expression,
-    LineRows *rows
+    LineRows *rows,
+    X64Runtime *runtime
 ) {
     if (expression->kind == NODE_LITERAL) {
         line_row(rows, text->length, expression->source_line);
@@ -437,8 +718,122 @@ static void x64_expression(
         return;
     }
 
-    x64_expression(text, expression->left, rows);
-    x64_expression(text, expression->right, rows);
+    if (expression->kind == NODE_NEGATE) {
+        x64_expression(text, expression->left, rows, runtime);
+        line_row(rows, text->length, expression->source_line);
+        byte(text, UINT8_C(0x58)); /* pop rax */
+        byte(text, UINT8_C(0x48));
+        byte(text, UINT8_C(0xf7));
+        byte(text, UINT8_C(0xd8)); /* neg rax */
+        byte(text, UINT8_C(0x50)); /* push result */
+        return;
+    }
+
+    if (expression->kind == NODE_LIST) {
+        if (expression->item_count >
+            (UINT32_MAX - 8) / sizeof(uint64_t)) {
+            fatal("List[Int] literal is too large");
+        }
+        runtime->used = true;
+        line_row(rows, text->length, expression->source_line);
+        uint32_t bytes = (uint32_t)(
+            8 + expression->item_count * sizeof(uint64_t)
+        );
+        byte(text, UINT8_C(0xbf)); /* mov edi, allocation size */
+        u32_le(text, bytes);
+        x64_call_alloc(text, runtime);
+        byte(text, UINT8_C(0x50)); /* keep list pointer on stack */
+
+        byte(text, UINT8_C(0xb9)); /* mov ecx, element count */
+        u32_le(text, (uint32_t)expression->item_count);
+        const uint8_t list_from_stack[] = {
+            UINT8_C(0x48), UINT8_C(0x8b), UINT8_C(0x14), UINT8_C(0x24),
+        };
+        for (size_t index = 0; index < sizeof(list_from_stack); ++index) {
+            byte(text, list_from_stack[index]); /* mov rdx, [rsp] */
+        }
+        byte(text, UINT8_C(0x48));
+        byte(text, UINT8_C(0x89));
+        byte(text, UINT8_C(0x0a)); /* mov [rdx], rcx */
+
+        for (size_t index = 0; index < expression->item_count; ++index) {
+            x64_expression(text, expression->items[index], rows, runtime);
+            byte(text, UINT8_C(0x59)); /* pop rcx */
+            for (size_t part = 0; part < sizeof(list_from_stack); ++part) {
+                byte(text, list_from_stack[part]); /* mov rdx, [rsp] */
+            }
+            byte(text, UINT8_C(0x48));
+            byte(text, UINT8_C(0x89));
+            byte(text, UINT8_C(0x8a)); /* mov [rdx + disp32], rcx */
+            u32_le(text, (uint32_t)(8 + index * sizeof(uint64_t)));
+        }
+        return;
+    }
+
+    if (expression->kind == NODE_LENGTH) {
+        x64_expression(text, expression->left, rows, runtime);
+        line_row(rows, text->length, expression->source_line);
+        byte(text, UINT8_C(0x58)); /* pop rax */
+        byte(text, UINT8_C(0x48));
+        byte(text, UINT8_C(0x8b));
+        byte(text, UINT8_C(0x00)); /* mov rax, [rax] */
+        byte(text, UINT8_C(0x50)); /* push length */
+        return;
+    }
+
+    if (expression->kind == NODE_INDEX) {
+        runtime->used = true;
+        x64_expression(text, expression->left, rows, runtime);
+        x64_expression(text, expression->right, rows, runtime);
+        line_row(rows, text->length, expression->source_line);
+        byte(text, UINT8_C(0x59)); /* pop rcx: index */
+        byte(text, UINT8_C(0x5a)); /* pop rdx: list */
+        byte(text, UINT8_C(0x4c));
+        byte(text, UINT8_C(0x8b));
+        byte(text, UINT8_C(0x02)); /* mov r8, [rdx] */
+        byte(text, UINT8_C(0x48));
+        byte(text, UINT8_C(0x85));
+        byte(text, UINT8_C(0xc9)); /* test rcx, rcx */
+        byte(text, UINT8_C(0x0f));
+        byte(text, UINT8_C(0x89)); /* jns nonnegative */
+        size_t nonnegative = text->length;
+        u32_le(text, 0);
+        byte(text, UINT8_C(0x4c));
+        byte(text, UINT8_C(0x01));
+        byte(text, UINT8_C(0xc1)); /* add rcx, r8 */
+        x64_patch_rel32(text, nonnegative, text->length);
+
+        byte(text, UINT8_C(0x48));
+        byte(text, UINT8_C(0x85));
+        byte(text, UINT8_C(0xc9)); /* test rcx, rcx */
+        x64_rel32_placeholder(
+            text,
+            UINT8_C(0x0f),
+            UINT8_C(0x88),
+            &runtime->index_jumps
+        ); /* js index error */
+        byte(text, UINT8_C(0x4c));
+        byte(text, UINT8_C(0x39));
+        byte(text, UINT8_C(0xc1)); /* cmp rcx, r8 */
+        x64_rel32_placeholder(
+            text,
+            UINT8_C(0x0f),
+            UINT8_C(0x8d),
+            &runtime->index_jumps
+        ); /* jge index error */
+        const uint8_t load[] = {
+            UINT8_C(0x48), UINT8_C(0x8b), UINT8_C(0x44),
+            UINT8_C(0xca), UINT8_C(0x08),
+        };
+        for (size_t index = 0; index < sizeof(load); ++index) {
+            byte(text, load[index]); /* mov rax, [rdx + rcx*8 + 8] */
+        }
+        byte(text, UINT8_C(0x50)); /* push element */
+        return;
+    }
+
+    x64_expression(text, expression->left, rows, runtime);
+    x64_expression(text, expression->right, rows, runtime);
     line_row(rows, text->length, expression->source_line);
     byte(text, UINT8_C(0x59)); /* pop rcx */
     byte(text, UINT8_C(0x58)); /* pop rax */
@@ -463,13 +858,155 @@ static void x64_syscall(Bytes *text) {
     byte(text, UINT8_C(0x05));
 }
 
+static size_t x64_diagnostic(
+    Bytes *text,
+    uint32_t length,
+    uint32_t status
+) {
+    x64_mov_r32_imm32(text, UINT8_C(0xb8), 1); /* write */
+    x64_mov_r32_imm32(text, UINT8_C(0xbf), 2); /* stderr */
+    byte(text, UINT8_C(0xbe)); /* mov esi, message address */
+    size_t address_field = text->length;
+    u32_le(text, 0);
+    x64_mov_r32_imm32(text, UINT8_C(0xba), length);
+    x64_syscall(text);
+    x64_mov_r32_imm32(text, UINT8_C(0xb8), 60); /* exit */
+    x64_mov_r32_imm32(text, UINT8_C(0xbf), status);
+    x64_syscall(text);
+    byte(text, UINT8_C(0x0f));
+    byte(text, UINT8_C(0x0b)); /* ud2 */
+    return address_field;
+}
+
+static void x64_patch_u32(Bytes *text, size_t field, uint32_t value) {
+    if (field > text->length || text->length - field < 4) {
+        fatal("x86-64 native Core u32 field is outside text");
+    }
+    for (unsigned index = 0; index < 4; ++index) {
+        text->data[field + index] =
+            (uint8_t)(value >> (index * 8));
+    }
+}
+
+static void x64_runtime(Bytes *text, X64Runtime *runtime) {
+    if (!runtime->used) return;
+
+    size_t allocate_at = text->length;
+    byte(text, UINT8_C(0x89));
+    byte(text, UINT8_C(0xfe)); /* mov esi, edi */
+    byte(text, UINT8_C(0x81));
+    byte(text, UINT8_C(0xfe)); /* cmp esi, 1 MiB */
+    u32_le(text, UINT32_C(1) << 20);
+    x64_rel32_placeholder(
+        text,
+        UINT8_C(0x0f),
+        UINT8_C(0x87),
+        &runtime->oom_jumps
+    ); /* ja oom */
+    x64_mov_r32_imm32(
+        text,
+        UINT8_C(0xbe),
+        UINT32_C(1) << 20
+    ); /* one fixed-size mmap chunk */
+    byte(text, UINT8_C(0x31));
+    byte(text, UINT8_C(0xff)); /* xor edi, edi */
+    x64_mov_r32_imm32(
+        text,
+        UINT8_C(0xba),
+        UINT32_C(0x3)
+    ); /* PROT_READ | PROT_WRITE */
+    byte(text, UINT8_C(0x41));
+    byte(text, UINT8_C(0xba));
+    u32_le(text, UINT32_C(0x22)); /* r10d = MAP_PRIVATE | MAP_ANONYMOUS */
+    const uint8_t minus_one[] = {
+        UINT8_C(0x49), UINT8_C(0xc7), UINT8_C(0xc0),
+        UINT8_C(0xff), UINT8_C(0xff), UINT8_C(0xff), UINT8_C(0xff),
+    };
+    for (size_t index = 0; index < sizeof(minus_one); ++index) {
+        byte(text, minus_one[index]); /* mov r8, -1 */
+    }
+    byte(text, UINT8_C(0x45));
+    byte(text, UINT8_C(0x31));
+    byte(text, UINT8_C(0xc9)); /* xor r9d, r9d */
+    x64_mov_r32_imm32(text, UINT8_C(0xb8), 9); /* mmap */
+    x64_syscall(text);
+    byte(text, UINT8_C(0x48));
+    byte(text, UINT8_C(0x3d)); /* cmp rax, -4095 */
+    u32_le(text, UINT32_C(0xfffff001));
+    x64_rel32_placeholder(
+        text,
+        UINT8_C(0x0f),
+        UINT8_C(0x83),
+        &runtime->oom_jumps
+    ); /* jae oom */
+    byte(text, UINT8_C(0xc3)); /* ret */
+
+    size_t oom_at = text->length;
+    const char oom_message[] = "kofun: out of memory\n";
+    size_t oom_address = x64_diagnostic(
+        text,
+        (uint32_t)(sizeof(oom_message) - 1),
+        70
+    );
+
+    size_t index_at = text->length;
+    const char index_message[] = "kofun: list index out of range\n";
+    size_t index_address = x64_diagnostic(
+        text,
+        (uint32_t)(sizeof(index_message) - 1),
+        1
+    );
+
+    size_t oom_message_at = text->length;
+    for (size_t index = 0; index < sizeof(oom_message) - 1; ++index) {
+        byte(text, (uint8_t)oom_message[index]);
+    }
+    size_t index_message_at = text->length;
+    for (size_t index = 0; index < sizeof(index_message) - 1; ++index) {
+        byte(text, (uint8_t)index_message[index]);
+    }
+
+    for (size_t index = 0; index < runtime->alloc_calls.length; ++index) {
+        x64_patch_rel32(
+            text,
+            runtime->alloc_calls.fields[index],
+            allocate_at
+        );
+    }
+    for (size_t index = 0; index < runtime->oom_jumps.length; ++index) {
+        x64_patch_rel32(
+            text,
+            runtime->oom_jumps.fields[index],
+            oom_at
+        );
+    }
+    for (size_t index = 0; index < runtime->index_jumps.length; ++index) {
+        x64_patch_rel32(
+            text,
+            runtime->index_jumps.fields[index],
+            index_at
+        );
+    }
+    x64_patch_u32(
+        text,
+        oom_address,
+        (uint32_t)(IMAGE_BASE + TEXT_OFFSET + oom_message_at)
+    );
+    x64_patch_u32(
+        text,
+        index_address,
+        (uint32_t)(IMAGE_BASE + TEXT_OFFSET + index_message_at)
+    );
+}
+
 static void x64_text(
     Bytes *text,
     const Node *expression,
     LineRows *rows,
     size_t print_line
 ) {
-    x64_expression(text, expression, rows);
+    X64Runtime runtime = {0};
+    x64_expression(text, expression, rows, &runtime);
     line_row(rows, text->length, print_line);
     byte(text, UINT8_C(0x58)); /* pop rax */
 
@@ -509,6 +1046,8 @@ static void x64_text(
     x64_mov_r32_imm32(text, UINT8_C(0xb8), 60); /* exit */
     x64_mov_r32_imm32(text, UINT8_C(0xbf), 0);
     x64_syscall(text);
+    x64_runtime(text, &runtime);
+    x64_runtime_free(&runtime);
 }
 
 static void a64_word(Bytes *text, uint32_t instruction) {
@@ -1238,6 +1777,15 @@ int main(int argc, char **argv) {
             "kofun native: unsupported Core at byte %zu: %s\n",
             parser.cursor,
             parser.error == NULL ? "invalid expression" : parser.error
+        );
+        free_node(expression);
+        free(source);
+        return 1;
+    }
+    if (aarch64 && uses_list(expression)) {
+        fputs(
+            "kofun native: AArch64 native Core does not support List[Int] yet\n",
+            stderr
         );
         free_node(expression);
         free(source);

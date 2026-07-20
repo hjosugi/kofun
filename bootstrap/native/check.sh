@@ -526,6 +526,87 @@ run_native_core_differential \
 run_native_core_differential \
     "$NATIVE/fixtures/core_precedence_42.kofun" \
     core_precedence_42
+
+# List[Int] is currently an x86-64 Native Core extension. Its in-memory ABI is
+# checked against an independent C11 reference, then the actual static ELF
+# exercises length, negative indexing, bounds failure, and mmap failure.
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$NATIVE/fixtures/list_int_reference.c" \
+    -o "$WORK/core-list-reference"
+"$KOFUN" build "$NATIVE/fixtures/core_list_index_42.kofun" \
+    --target x86_64-linux \
+    -o "$WORK/core-list-index-x86_64.elf" >/dev/null
+"$KOFUN" build "$NATIVE/fixtures/core_list_positive_42.kofun" \
+    --target x86_64-linux \
+    -o "$WORK/core-list-positive-x86_64.elf" >/dev/null
+"$KOFUN" build "$NATIVE/fixtures/core_list_len_42.kofun" \
+    --target x86_64-linux \
+    -o "$WORK/core-list-len-x86_64.elf" >/dev/null
+"$KOFUN" build "$NATIVE/fixtures/core_list_oob.kofun" \
+    --target x86_64-linux \
+    -o "$WORK/core-list-oob-x86_64.elf" >/dev/null
+
+"$WORK/core-list-reference" >"$WORK/core-list-reference.stdout"
+"$WORK/core-list-index-x86_64.elf" \
+    >"$WORK/core-list-index.stdout" \
+    2>"$WORK/core-list-index.stderr"
+cmp "$WORK/core-list-reference.stdout" "$WORK/core-list-index.stdout"
+test ! -s "$WORK/core-list-index.stderr"
+
+"$WORK/core-list-positive-x86_64.elf" \
+    >"$WORK/core-list-positive.stdout" \
+    2>"$WORK/core-list-positive.stderr"
+cmp "$WORK/core-list-reference.stdout" "$WORK/core-list-positive.stdout"
+test ! -s "$WORK/core-list-positive.stderr"
+
+"$WORK/core-list-len-x86_64.elf" \
+    >"$WORK/core-list-len.stdout" \
+    2>"$WORK/core-list-len.stderr"
+cmp "$WORK/core-list-reference.stdout" "$WORK/core-list-len.stdout"
+test ! -s "$WORK/core-list-len.stderr"
+
+set +e
+"$WORK/core-list-oob-x86_64.elf" \
+    >"$WORK/core-list-oob.stdout" \
+    2>"$WORK/core-list-oob.stderr"
+list_oob_status=$?
+(
+    ulimit -v 512
+    exec "$WORK/core-list-index-x86_64.elf"
+) >"$WORK/core-list-oom.stdout" 2>"$WORK/core-list-oom.stderr"
+list_oom_status=$?
+"$KOFUN" build "$NATIVE/fixtures/core_list_index_42.kofun" \
+    --target aarch64-linux \
+    -o "$WORK/core-list-index-aarch64.elf" \
+    >"$WORK/core-list-index-aarch64.stdout" \
+    2>"$WORK/core-list-index-aarch64.stderr"
+list_aarch64_status=$?
+"$KOFUN" build \
+    "$NATIVE/fixtures/core_list_higher_order_unsupported.kofun" \
+    --target x86_64-linux \
+    -o "$WORK/core-list-higher-order.elf" \
+    >"$WORK/core-list-higher-order.stdout" \
+    2>"$WORK/core-list-higher-order.stderr"
+list_higher_order_status=$?
+set -e
+
+test "$list_oob_status" -eq 1
+test ! -s "$WORK/core-list-oob.stdout"
+printf 'kofun: list index out of range\n' \
+    >"$WORK/core-list-oob.expected"
+cmp "$WORK/core-list-oob.expected" "$WORK/core-list-oob.stderr"
+test "$list_oom_status" -eq 70
+test ! -s "$WORK/core-list-oom.stdout"
+printf 'kofun: out of memory\n' >"$WORK/core-list-oom.expected"
+cmp "$WORK/core-list-oom.expected" "$WORK/core-list-oom.stderr"
+test "$list_aarch64_status" -eq 1
+test ! -e "$WORK/core-list-index-aarch64.elf"
+grep 'AArch64 native Core does not support List\[Int\] yet' \
+    "$WORK/core-list-index-aarch64.stderr" >/dev/null
+test "$list_higher_order_status" -eq 1
+test ! -e "$WORK/core-list-higher-order.elf"
+grep 'unsupported Core' "$WORK/core-list-higher-order.stderr" >/dev/null
+
 if cmp -s \
     "$WORK/core_return_42-aarch64.elf" \
     "$WORK/core_precedence_42-aarch64.elf"
@@ -584,4 +665,5 @@ printf '%s\n' \
     "PASS: build --target x86_64-linux -g emitted source-specific DWARF" \
     "PASS: general Native Core release stayed byte-identical and 4099 bytes" \
     "PASS: --target aarch64-linux emitted deterministic static EM_AARCH64 ELF" \
-    "PASS: x86-64 and AArch64 consume one target-independent parsed Core"
+    "PASS: x86-64 and AArch64 consume one target-independent parsed Core" \
+    "PASS: x86-64 List[Int] matched C11 and defined OOB/OOM diagnostics"

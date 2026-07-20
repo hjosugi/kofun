@@ -29,6 +29,28 @@ literals in `0..65535`, parentheses, `+`, and `*`. Checked constant analysis
 must prove every intermediate value fits that range and the final value is a
 two-digit integer. Unsupported input fails before an output file is written.
 
+The x86-64 target also accepts a deliberately narrow `List[Int]` Core:
+
+```kofun
+fn main() {
+    print([10, 20 + 22, 99][-2])
+}
+```
+
+List values use the historical native ABI
+`[length: i64][element: i64] * length`. Literals allocate writable storage
+through a raw Linux `mmap` runtime, indexing executes against that storage,
+negative indexes count from the end, and `len` reads the header. An invalid
+index writes `kofun: list index out of range` to stderr and exits 1. Allocation
+failure writes `kofun: out of memory` and exits 70. The gate executes both
+failure paths in the generated static ELF and compares the successful result
+with an independent C11 reference.
+
+This is not general collection lowering yet. The Core has no bindings,
+closures, or general calls, so `map`, `filter`, and `fold` remain unsupported.
+AArch64 rejects `List[Int]` with an explicit diagnostic instead of emitting
+scalar code with different semantics.
+
 The frontend creates one AST; both instruction selectors consume it. The
 equivalent canonical Kofun representation is a postfix stream of
 `[opcode, operand]` pairs consumed by `x64_native_core_text` and
@@ -208,6 +230,8 @@ Implemented here:
 - direct AArch64 instruction encoding and static `EM_AARCH64` ELF output;
 - the public `build --target aarch64-linux` CLI path;
 - native lowering of the fixture expressions `40 + 2` and `(6 + 1) * 6`;
+- x86-64 `List[Int]` literal, `len`, and positive/negative indexing lowering;
+- raw `mmap` list allocation with defined OOM and bounds diagnostics;
 - two-digit integer-to-ASCII conversion for the fixture result;
 - distinct RX and RW mappings;
 - three end-to-end Linux x86-64 executable artifact gates;
@@ -221,6 +245,7 @@ Still open:
 - lowering bindings, calls, conditionals, and non-constant expression trees;
 - general signed integer formatting and checked arithmetic diagnostics;
 - native stdout/stderr formatting and canonical `R010` diagnostics;
-- conditional branches, allocation, Mach-O, and additional targets;
+- conditional branches, allocator reuse/reclamation, Mach-O, and additional targets;
+- general `List[Int]` bindings, `map`, `filter`, `fold`, and AArch64 lists;
 - registering the native backend in the full differential runner;
 - AArch64 debug information and variable/location DIEs.
