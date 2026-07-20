@@ -42,13 +42,13 @@ laws:
 
 native:
 	@printf '%s\n' '--- direct x86-64 backend (no C, no clang, no ld) ---'
-	$(KOFUN) build examples/fibonacci_native.kofun -o build/fibonacci
-	./build/fibonacci
-	@file build/fibonacci | grep -q 'statically linked' || \
+	$(KOFUN) build examples/fibonacci_native.kofun -o build/python/fibonacci
+	./build/python/fibonacci
+	@file build/python/fibonacci | grep -q 'statically linked' || \
 	  (printf '%s\n' 'native backend produced a non-static binary' >&2; exit 1)
 	@printf '%s\n' '--- C11 bootstrap backend ---'
-	$(KOFUN) build examples/fibonacci_native.kofun --backend c -o build/fibonacci-c
-	./build/fibonacci-c
+	$(KOFUN) build examples/fibonacci_native.kofun --backend c -o build/python/fibonacci-c
+	./build/python/fibonacci-c
 
 bootstrap:
 	PYTHONPATH=src $(PYTHON) bootstrap/check_bootstrap.py
