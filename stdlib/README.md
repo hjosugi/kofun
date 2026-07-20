@@ -30,6 +30,11 @@ deterministic text renderer. It has no ambient clock, global logger, or sink;
 its canonical ADT surface is likewise gated by a C11/x86-64 Int-Core
 projection until the compiler can lower it directly.
 
+The platform-independent [`toml/`](toml/) checkpoint defines a strict TOML 1.0
+flat-document profile with typed scalar values and failures. Its canonical
+record API is also beyond current Stage 2 code generation; its gate executes a
+deterministic Int-Core projection and documents the unsupported TOML surface.
+
 Run the repository-local, Python-free contract checks with:
 
 ```sh

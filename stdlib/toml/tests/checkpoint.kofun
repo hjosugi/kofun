@@ -1,0 +1,261 @@
+# Executable Int-Core projection of stdlib/toml/toml.kofun.
+#
+# Document token codes are: 1/2 key identities, 3 equals, 4 horizontal
+# whitespace, 5 Text, 6 Int, 7 true, 8 false, and 9 line break. The lexer is
+# projected separately below for basic-string escapes and decimal integers.
+
+fn pow10(exponent: Int) -> Int {
+    if exponent == 0 { return 1 }
+    return 10 * pow10(exponent - 1)
+}
+
+fn token_at(source: Int, length: Int, index: Int) -> Int {
+    return (source // pow10(length - index - 1)) % 10
+}
+
+fn key_bit(key: Int) -> Int {
+    if key == 1 { return 1 }
+    return 2
+}
+
+fn value_weight(token: Int) -> Int {
+    if token == 5 { return 1 }
+    if token == 6 { return 10 }
+    if token == 7 { return 100 }
+    return 1000
+}
+
+# Success is entry count * 10000 + the sum of scalar-kind weights. Structural
+# errors 1..5 are expected-key, expected-equals, expected-value, trailing-data,
+# and duplicate-key respectively.
+fn document_scan(
+    source: Int,
+    length: Int,
+    index: Int,
+    state: Int,
+    key: Int,
+    seen: Int,
+    entries: Int,
+    kinds: Int
+) -> Int {
+    if index == length {
+        if state == 1 { return 2000000 }
+        if state == 2 { return 3000000 }
+        return entries * 10000 + kinds
+    }
+
+    let token = token_at(source, length, index)
+    if state == 0 {
+        if token == 4 {
+            return document_scan(source, length, index + 1, 0, 0,
+                seen, entries, kinds)
+        }
+        if token == 9 {
+            return document_scan(source, length, index + 1, 0, 0,
+                seen, entries, kinds)
+        }
+        if token == 1 {
+            return document_scan(source, length, index + 1, 1, token,
+                seen, entries, kinds)
+        }
+        if token == 2 {
+            return document_scan(source, length, index + 1, 1, token,
+                seen, entries, kinds)
+        }
+        return 1000000
+    }
+
+    if state == 1 {
+        if token == 4 {
+            return document_scan(source, length, index + 1, 1, key,
+                seen, entries, kinds)
+        }
+        if token == 3 {
+            return document_scan(source, length, index + 1, 2, key,
+                seen, entries, kinds)
+        }
+        return 2000000
+    }
+
+    if state == 2 {
+        if token == 4 {
+            return document_scan(source, length, index + 1, 2, key,
+                seen, entries, kinds)
+        }
+        if token >= 5 {
+            if token <= 8 {
+                let bit = key_bit(key)
+                if (seen // bit) % 2 == 1 { return 5000000 }
+                return document_scan(source, length, index + 1, 3, key,
+                    seen + bit, entries + 1, kinds + value_weight(token))
+            }
+        }
+        return 3000000
+    }
+
+    if token == 4 {
+        return document_scan(source, length, index + 1, 3, key,
+            seen, entries, kinds)
+    }
+    if token == 9 {
+        return document_scan(source, length, index + 1, 0, 0,
+            seen, entries, kinds)
+    }
+    return 4000000
+}
+
+fn parse_document(source: Int, length: Int) -> Int {
+    return document_scan(source, length, 0, 0, 0, 0, 0, 0)
+}
+
+# Basic-string token codes are: 1 ordinary, 2 backslash, 3 closing quote,
+# 4 supported escape, 5 unsupported Unicode escape, 6 invalid escape, and
+# 7 forbidden raw control. Success is decoded scalar count; errors 6..9 are
+# unterminated, invalid escape, unsupported escape, and raw control.
+fn basic_string_scan(
+    source: Int,
+    length: Int,
+    index: Int,
+    escaped: Int,
+    decoded: Int
+) -> Int {
+    if index == length {
+        if escaped == 1 { return 7000000 }
+        return 6000000
+    }
+    let token = token_at(source, length, index)
+    if escaped == 1 {
+        if token == 4 {
+            return basic_string_scan(source, length, index + 1, 0,
+                decoded + 1)
+        }
+        if token == 5 { return 8000000 }
+        return 7000000
+    }
+    if token == 3 { return decoded }
+    if token == 2 {
+        return basic_string_scan(source, length, index + 1, 1, decoded)
+    }
+    if token == 7 { return 9000000 }
+    return basic_string_scan(source, length, index + 1, 0, decoded + 1)
+}
+
+fn parse_basic_string(source: Int, length: Int) -> Int {
+    return basic_string_scan(source, length, 0, 0, 0)
+}
+
+# Decimal token codes are: 1 zero, 2 a nonzero digit, and 3 underscore. The
+# fixed nonzero digit has value seven so grammar and sign behavior are visible.
+# Invalid lexical forms return status 10.
+fn decimal_scan(
+    source: Int,
+    length: Int,
+    index: Int,
+    previous_digit: Int,
+    value: Int
+) -> Int {
+    if index == length {
+        if previous_digit == 1 { return value }
+        return 10000000
+    }
+    let token = token_at(source, length, index)
+    if token == 3 {
+        if previous_digit == 0 {
+            return 10000000
+        }
+        if index + 1 == length {
+            return 10000000
+        }
+        let next = token_at(source, length, index + 1)
+        if next != 1 {
+            if next != 2 { return 10000000 }
+        }
+        return decimal_scan(source, length, index + 1, 0, value)
+    }
+    if token != 1 {
+        if token != 2 { return 10000000 }
+    }
+    if index == 0 {
+        if token == 1 {
+            if length > 1 { return 10000000 }
+        }
+    }
+    let digit = if token == 1 { 0 } else { 7 }
+    return decimal_scan(source, length, index + 1, 1,
+        value * 10 + digit)
+}
+
+fn parse_decimal(source: Int, length: Int, negative: Int) -> Int {
+    let value = decimal_scan(source, length, 0, 0, 0)
+    if value == 10000000 { return value }
+    if negative == 1 { return -value }
+    return value
+}
+
+# comparison is the 19-digit magnitude compared with the positive Int maximum.
+# A negative boundary may be exactly max + 1 (the signed Int minimum).
+fn int_range_allowed(
+    digits: Int,
+    comparison: Int,
+    negative: Int,
+    exact_minimum: Int
+) -> Int {
+    if digits < 19 { return 1 }
+    if digits > 19 { return 0 }
+    if comparison < 1 { return 1 }
+    if negative == 1 {
+        if exact_minimum == 1 { return 1 }
+    }
+    return 0
+}
+
+# token 9 is LF; token 8 followed by 9 is CRLF. Bare CR is status 11.
+fn line_break_status(first: Int, second: Int) -> Int {
+    if first == 9 { return 1 }
+    if first == 8 {
+        if second == 9 { return 2 }
+    }
+    return 11000000
+}
+
+fn main() {
+    # Empty/whitespace documents and all four scalar kinds.
+    print(parse_document(0, 0))
+    print(parse_document(44949, 5))
+    print(parse_document(1359236, 7))
+    print(parse_document(1379238, 7))
+
+    # Every structural failure is distinct, including duplicate keys.
+    print(parse_document(5, 1))
+    print(parse_document(1, 1))
+    print(parse_document(13, 2))
+    print(parse_document(1356, 4))
+    print(parse_document(1359136, 7))
+
+    # Basic strings: plain, escaped, and all malformed boundaries.
+    print(parse_basic_string(113, 3))
+    print(parse_basic_string(12413, 5))
+    print(parse_basic_string(11, 2))
+    print(parse_basic_string(12, 2))
+    print(parse_basic_string(1253, 4))
+    print(parse_basic_string(17, 2))
+
+    # Decimal grammar, sign, separator, leading-zero, and range decisions.
+    print(parse_decimal(1, 1, 0))
+    print(parse_decimal(2, 1, 0))
+    print(parse_decimal(2322, 4, 0))
+    print(parse_decimal(21, 2, 1))
+    print(parse_decimal(12, 2, 0))
+    print(parse_decimal(23, 2, 0))
+    print(parse_decimal(2332, 4, 0))
+    print(int_range_allowed(18, 1, 0, 0))
+    print(int_range_allowed(20, -1, 0, 0))
+    print(int_range_allowed(19, 0, 0, 0))
+    print(int_range_allowed(19, 1, 0, 0))
+    print(int_range_allowed(19, 1, 1, 1))
+
+    # LF and CRLF are deterministic; bare CR is not normalized.
+    print(line_break_status(9, 0))
+    print(line_break_status(8, 9))
+    print(line_break_status(8, 1))
+}

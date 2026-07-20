@@ -262,3 +262,4 @@ printf 'stdlib native file round-trip: PASS\n'
 sh "$stdlib_dir/decimal/tests/verify.sh"
 sh "$stdlib_dir/random/tests/verify.sh"
 sh "$stdlib_dir/csv/tests/verify.sh"
+sh "$stdlib_dir/toml/tests/verify.sh"
