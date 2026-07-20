@@ -1,0 +1,19 @@
+{
+  "schema": "kofun.decimal-law-evidence/v1",
+  "producer": "stdlib/decimal/tests/verify.sh",
+  "decimal_addition": {
+    "status": "passed",
+    "assurance": "bounded-exhaustive",
+    "cases_checked": 125,
+    "cases_planned": 125,
+    "model": ["-1.2", "-0.05", "0", "0.1", "0.25"]
+  },
+  "float_addition": {
+    "status": "failed",
+    "assurance": "counterexample",
+    "counterexample": [10000000000000000, -10000000000000000, 1],
+    "left_associated": 1,
+    "right_associated": 0
+  },
+  "compiler_law_checker": "not-yet-general"
+}

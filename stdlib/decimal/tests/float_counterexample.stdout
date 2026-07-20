@@ -1,0 +1,4 @@
+left=1
+right=0
+equal=false
+counterexample=[10000000000000000,-10000000000000000,1]

@@ -255,3 +255,5 @@ rm -f "$fixture_file"
     fail 'native file round-trip fixture cleanup failed'
 
 printf 'stdlib native file round-trip: PASS\n'
+
+sh "$stdlib_dir/decimal/tests/verify.sh"

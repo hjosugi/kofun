@@ -1,0 +1,299 @@
+# Exact base-10 arithmetic checkpoint.
+#
+# Decimal(s, scale) denotes s / 10^scale.  The current compiler gives Int a
+# signed 64-bit representation, so this module is exact only while every
+# intermediate Int operation remains in range.  The public design deliberately
+# does not overload `/`: callers choose exact division or a scale and rounding
+# mode explicitly.
+
+type Decimal = {
+    significand: Int,
+    scale: Int,
+}
+
+type RoundingMode =
+    | HalfUp
+    | HalfEven
+    | TowardZero
+    | Floor
+    | Ceiling
+
+type DecimalError =
+    | DivisionByZero
+    | InexactDivision
+    | InvalidScale(Int)
+    | ScaleMismatch(Int, Int)
+
+type DecimalResult =
+    | DecimalValue(Decimal)
+    | DecimalFailure(DecimalError)
+
+# Fixed carries the assignment scale with the value.  A future const-generic
+# form can move this field into Fixed[scale]; the current type system cannot yet
+# enforce a value parameter statically.
+type Fixed = {
+    significand: Int,
+    scale: Int,
+}
+
+type FixedResult =
+    | FixedValue(Fixed)
+    | FixedFailure(DecimalError)
+
+fn decimal_pow10(scale: Int) -> Int {
+    if scale == 0 {
+        return 1
+    }
+    return 10 * decimal_pow10(scale - 1)
+}
+
+fn decimal_scale_valid(scale: Int) -> Bool {
+    return scale >= 0 && scale <= 18
+}
+
+fn decimal_normalized(significand: Int, scale: Int) -> Decimal {
+    let mut normalized_significand = significand
+    let mut normalized_scale = scale
+    while normalized_scale > 0 && normalized_significand % 10 == 0 {
+        normalized_significand = normalized_significand // 10
+        normalized_scale = normalized_scale - 1
+    }
+    return Decimal {
+        significand: normalized_significand,
+        scale: normalized_scale,
+    }
+}
+
+fn decimal_new(significand: Int, scale: Int) -> DecimalResult {
+    if !decimal_scale_valid(scale) {
+        return DecimalFailure(InvalidScale(scale))
+    }
+    return DecimalValue(decimal_normalized(significand, scale))
+}
+
+fn decimal_max_scale(read left: Decimal, read right: Decimal) -> Int {
+    if left.scale >= right.scale {
+        return left.scale
+    }
+    return right.scale
+}
+
+fn decimal_rescale_significand(
+    significand: Int,
+    from_scale: Int,
+    to_scale: Int,
+) -> Int {
+    return significand * decimal_pow10(to_scale - from_scale)
+}
+
+fn decimal_equal(read left: Decimal, read right: Decimal) -> Bool {
+    let scale = decimal_max_scale(left, right)
+    return decimal_rescale_significand(
+        left.significand,
+        left.scale,
+        scale,
+    ) == decimal_rescale_significand(
+        right.significand,
+        right.scale,
+        scale,
+    )
+}
+
+fn decimal_add(read left: Decimal, read right: Decimal) -> Decimal {
+    let scale = decimal_max_scale(left, right)
+    return decimal_normalized(
+        decimal_rescale_significand(left.significand, left.scale, scale) +
+        decimal_rescale_significand(right.significand, right.scale, scale),
+        scale,
+    )
+}
+
+fn decimal_negate(read value: Decimal) -> Decimal {
+    return Decimal {
+        significand: -value.significand,
+        scale: value.scale,
+    }
+}
+
+fn decimal_subtract(read left: Decimal, read right: Decimal) -> Decimal {
+    return decimal_add(left, decimal_negate(right))
+}
+
+fn decimal_multiply(read left: Decimal, read right: Decimal) -> DecimalResult {
+    let scale = left.scale + right.scale
+    if !decimal_scale_valid(scale) {
+        return DecimalFailure(InvalidScale(scale))
+    }
+    return DecimalValue(decimal_normalized(
+        left.significand * right.significand,
+        scale,
+    ))
+}
+
+# denominator must be positive.  `//` and `%` give floor quotient and a
+# non-negative remainder, which makes all five signed rounding modes explicit.
+fn decimal_round_quotient(
+    numerator: Int,
+    denominator: Int,
+    mode: RoundingMode,
+) -> Int {
+    let lower = numerator // denominator
+    let remainder = numerator % denominator
+    if remainder == 0 {
+        return lower
+    }
+    return match mode {
+        TowardZero => if numerator < 0 { lower + 1 } else { lower },
+        Floor => lower,
+        Ceiling => lower + 1,
+        HalfUp => if remainder * 2 < denominator {
+            lower
+        } else if remainder * 2 > denominator {
+            lower + 1
+        } else if numerator < 0 {
+            lower
+        } else {
+            lower + 1
+        },
+        HalfEven => if remainder * 2 < denominator {
+            lower
+        } else if remainder * 2 > denominator {
+            lower + 1
+        } else if lower % 2 == 0 {
+            lower
+        } else {
+            lower + 1
+        },
+    }
+}
+
+fn decimal_round(
+    read value: Decimal,
+    target_scale: Int,
+    mode: RoundingMode,
+) -> DecimalResult {
+    if !decimal_scale_valid(target_scale) {
+        return DecimalFailure(InvalidScale(target_scale))
+    }
+    if target_scale >= value.scale {
+        return DecimalValue(value)
+    }
+    let divisor = decimal_pow10(value.scale - target_scale)
+    return DecimalValue(decimal_normalized(
+        decimal_round_quotient(value.significand, divisor, mode),
+        target_scale,
+    ))
+}
+
+# Exact division performs decimal long division and succeeds only when the
+# remainder reaches zero within the supported scale.  A zero divisor is never
+# folded into InexactDivision.
+fn decimal_divide_exact_step(
+    numerator: Int,
+    denominator: Int,
+    scale: Int,
+) -> DecimalResult {
+    if numerator % denominator == 0 {
+        return decimal_new(numerator // denominator, scale)
+    }
+    if scale == 18 {
+        return DecimalFailure(InexactDivision)
+    }
+    return decimal_divide_exact_step(numerator * 10, denominator, scale + 1)
+}
+
+fn decimal_divide_exact(
+    read numerator: Decimal,
+    read denominator: Decimal,
+) -> DecimalResult {
+    if denominator.significand == 0 {
+        return DecimalFailure(DivisionByZero)
+    }
+    let scaled_numerator = numerator.significand *
+        decimal_pow10(denominator.scale)
+    let scaled_denominator = denominator.significand *
+        decimal_pow10(numerator.scale)
+    if scaled_denominator < 0 {
+        return decimal_divide_exact_step(
+            -scaled_numerator,
+            -scaled_denominator,
+            0,
+        )
+    }
+    return decimal_divide_exact_step(
+        scaled_numerator,
+        scaled_denominator,
+        0,
+    )
+}
+
+# Inexact division is defined by both a result scale and a rounding mode.
+fn decimal_divide(
+    read numerator: Decimal,
+    read denominator: Decimal,
+    result_scale: Int,
+    mode: RoundingMode,
+) -> DecimalResult {
+    if denominator.significand == 0 {
+        return DecimalFailure(DivisionByZero)
+    }
+    if !decimal_scale_valid(result_scale) {
+        return DecimalFailure(InvalidScale(result_scale))
+    }
+    let exponent = denominator.scale + result_scale - numerator.scale
+    let mut scaled_numerator = numerator.significand
+    let mut scaled_denominator = denominator.significand
+    if exponent >= 0 {
+        scaled_numerator = scaled_numerator * decimal_pow10(exponent)
+    } else {
+        scaled_denominator = scaled_denominator * decimal_pow10(-exponent)
+    }
+    if scaled_denominator < 0 {
+        scaled_numerator = -scaled_numerator
+        scaled_denominator = -scaled_denominator
+    }
+    return DecimalValue(decimal_normalized(
+        decimal_round_quotient(scaled_numerator, scaled_denominator, mode),
+        result_scale,
+    ))
+}
+
+# Assignment to Fixed is the only operation that deliberately retains trailing
+# zeroes.  The destination scale and mode are mandatory at the store boundary.
+fn fixed_assign(
+    read value: Decimal,
+    scale: Int,
+    mode: RoundingMode,
+) -> FixedResult {
+    if !decimal_scale_valid(scale) {
+        return FixedFailure(InvalidScale(scale))
+    }
+    if scale >= value.scale {
+        return FixedValue(Fixed {
+            significand: decimal_rescale_significand(
+                value.significand,
+                value.scale,
+                scale,
+            ),
+            scale: scale,
+        })
+    }
+    return FixedValue(Fixed {
+        significand: decimal_round_quotient(
+            value.significand,
+            decimal_pow10(value.scale - scale),
+            mode,
+        ),
+        scale: scale,
+    })
+}
+
+fn fixed_add(read left: Fixed, read right: Fixed) -> FixedResult {
+    if left.scale != right.scale {
+        return FixedFailure(ScaleMismatch(left.scale, right.scale))
+    }
+    return FixedValue(Fixed {
+        significand: left.significand + right.significand,
+        scale: left.scale,
+    })
+}

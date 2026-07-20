@@ -1,0 +1,257 @@
+# Executable Int-Core projection of stdlib/decimal/decimal.kofun.
+# Mode codes: 1 HalfUp, 2 HalfEven, 3 TowardZero, 4 Floor, 5 Ceiling.
+
+fn pow10(scale: Int) -> Int {
+    if scale == 0 {
+        return 1
+    }
+    return 10 * pow10(scale - 1)
+}
+
+fn max_scale(left: Int, right: Int) -> Int {
+    if left >= right {
+        return left
+    }
+    return right
+}
+
+fn aligned(significand: Int, from_scale: Int, to_scale: Int) -> Int {
+    return significand * pow10(to_scale - from_scale)
+}
+
+fn add_significand(
+    left_significand: Int,
+    left_scale: Int,
+    right_significand: Int,
+    right_scale: Int
+) -> Int {
+    let scale = max_scale(left_scale, right_scale)
+    return aligned(left_significand, left_scale, scale) +
+        aligned(right_significand, right_scale, scale)
+}
+
+fn decimal_equal(
+    left_significand: Int,
+    left_scale: Int,
+    right_significand: Int,
+    right_scale: Int
+) -> Int {
+    let scale = max_scale(left_scale, right_scale)
+    if aligned(left_significand, left_scale, scale) ==
+       aligned(right_significand, right_scale, scale) {
+        return 1
+    }
+    return 0
+}
+
+fn sample_significand(index: Int) -> Int {
+    if index == 0 { return -12 }
+    if index == 1 { return -5 }
+    if index == 2 { return 0 }
+    if index == 3 { return 1 }
+    return 25
+}
+
+fn sample_scale(index: Int) -> Int {
+    if index == 0 { return 1 }
+    if index == 1 { return 2 }
+    if index == 2 { return 0 }
+    if index == 3 { return 1 }
+    return 2
+}
+
+fn left_associated(a: Int, b: Int, c: Int) -> Int {
+    let ab_scale = max_scale(sample_scale(a), sample_scale(b))
+    let ab_significand = add_significand(
+        sample_significand(a),
+        sample_scale(a),
+        sample_significand(b),
+        sample_scale(b)
+    )
+    return add_significand(
+        ab_significand,
+        ab_scale,
+        sample_significand(c),
+        sample_scale(c)
+    )
+}
+
+fn right_associated(a: Int, b: Int, c: Int) -> Int {
+    let bc_scale = max_scale(sample_scale(b), sample_scale(c))
+    let bc_significand = add_significand(
+        sample_significand(b),
+        sample_scale(b),
+        sample_significand(c),
+        sample_scale(c)
+    )
+    return add_significand(
+        sample_significand(a),
+        sample_scale(a),
+        bc_significand,
+        bc_scale
+    )
+}
+
+fn check_c(a: Int, b: Int, c: Int) -> Int {
+    if c == 5 {
+        return 0
+    }
+    if left_associated(a, b, c) != right_associated(a, b, c) {
+        return -1000
+    }
+    let rest = check_c(a, b, c + 1)
+    if rest < 0 {
+        return rest
+    }
+    return rest + 1
+}
+
+fn check_b(a: Int, b: Int) -> Int {
+    if b == 5 {
+        return 0
+    }
+    let current = check_c(a, b, 0)
+    if current < 0 {
+        return current
+    }
+    let rest = check_b(a, b + 1)
+    if rest < 0 {
+        return rest
+    }
+    return current + rest
+}
+
+fn check_a(a: Int) -> Int {
+    if a == 5 {
+        return 0
+    }
+    let current = check_b(a, 0)
+    if current < 0 {
+        return current
+    }
+    let rest = check_a(a + 1)
+    if rest < 0 {
+        return rest
+    }
+    return current + rest
+}
+
+fn round_quotient(numerator: Int, denominator: Int, mode: Int) -> Int {
+    let lower = numerator // denominator
+    let remainder = numerator % denominator
+    if remainder == 0 { return lower }
+    if mode == 3 {
+        if numerator < 0 { return lower + 1 }
+        return lower
+    }
+    if mode == 4 { return lower }
+    if mode == 5 { return lower + 1 }
+    if remainder * 2 < denominator { return lower }
+    if remainder * 2 > denominator { return lower + 1 }
+    if mode == 1 {
+        if numerator < 0 { return lower }
+        return lower + 1
+    }
+    if lower % 2 == 0 { return lower }
+    return lower + 1
+}
+
+fn round_significand(
+    significand: Int,
+    from_scale: Int,
+    to_scale: Int,
+    mode: Int
+) -> Int {
+    if to_scale >= from_scale {
+        return significand * pow10(to_scale - from_scale)
+    }
+    return round_quotient(significand, pow10(from_scale - to_scale), mode)
+}
+
+fn exact_division_status_step(
+    numerator: Int,
+    denominator: Int,
+    places: Int
+) -> Int {
+    if denominator == 0 { return 0 }
+    if numerator % denominator == 0 { return 1 }
+    if places == 18 { return 2 }
+    return exact_division_status_step(numerator * 10, denominator, places + 1)
+}
+
+fn exact_division_status(numerator: Int, denominator: Int) -> Int {
+    return exact_division_status_step(numerator, denominator, 0)
+}
+
+fn divide_to_scale(
+    numerator_significand: Int,
+    numerator_scale: Int,
+    denominator_significand: Int,
+    denominator_scale: Int,
+    result_scale: Int,
+    mode: Int
+) -> Int {
+    let exponent = denominator_scale + result_scale - numerator_scale
+    if exponent >= 0 {
+        return round_quotient(
+            numerator_significand * pow10(exponent),
+            denominator_significand,
+            mode
+        )
+    }
+    return round_quotient(
+        numerator_significand,
+        denominator_significand * pow10(-exponent),
+        mode
+    )
+}
+
+fn line_tax(amount_cents: Int) -> Int {
+    return round_quotient(amount_cents * 825, 10000, 1)
+}
+
+fn main() {
+    # Bounded-exhaustive Decimal addition associativity: five values cubed.
+    print(check_a(0))
+
+    # Exact 0.1 + 0.2 == 0.3.
+    print(decimal_equal(add_significand(1, 1, 2, 1), 1, 3, 1))
+
+    # Every rounding mode at positive and negative ties.
+    print(round_significand(25, 1, 0, 1))
+    print(round_significand(-25, 1, 0, 1))
+    print(round_significand(25, 1, 0, 2))
+    print(round_significand(-25, 1, 0, 2))
+    print(round_significand(25, 1, 0, 3))
+    print(round_significand(-25, 1, 0, 3))
+    print(round_significand(25, 1, 0, 4))
+    print(round_significand(-25, 1, 0, 4))
+    print(round_significand(25, 1, 0, 5))
+    print(round_significand(-25, 1, 0, 5))
+
+    # Exact, inexact, and zero-divisor statuses are distinct.
+    print(exact_division_status(1, 8))
+    print(exact_division_status(1, 3))
+    print(exact_division_status(1, 0))
+    print(divide_to_scale(1, 0, 8, 0, 3, 1))
+    print(divide_to_scale(1, 0, 8, 0, 2, 2))
+    print(divide_to_scale(1, 0, 8, 0, 2, 1))
+    print(divide_to_scale(2, 0, 3, 0, 2, 1))
+
+    # Fixed assignment preserves a requested two-place scale, including carry.
+    print(round_significand(1999, 3, 2, 1))
+    print(2)
+
+    # Ledger amounts and tax are minor units. Rate 0.0825 is 825 / 10^4.
+    let subtotal = 1999 + 575 + 12340
+    let tax1 = line_tax(1999)
+    let tax2 = line_tax(575)
+    let tax3 = line_tax(12340)
+    let tax = tax1 + tax2 + tax3
+    print(subtotal)
+    print(tax1)
+    print(tax2)
+    print(tax3)
+    print(tax)
+    print(subtotal + tax)
+}
