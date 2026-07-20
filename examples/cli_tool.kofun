@@ -1,0 +1,33 @@
+# Native CLI profile: declarations are compiled into runtime metadata.
+cli KofunTool {
+    name "kofun-tool"
+    version "1.0.0"
+    about "A dependency-free Kofun command-line application"
+
+    command greet {
+        about "Greet a person"
+        position NAME "Person to greet"
+        option shout "--shout" bool "Uppercase the greeting"
+        option prefix "--prefix" text "Greeting prefix" default "Hello"
+        action greet
+    }
+
+    command sum {
+        about "Add two signed 64-bit integers"
+        position LEFT "First integer"
+        position RIGHT "Second integer"
+        action sum
+    }
+
+    command env {
+        about "Print an environment variable"
+        position NAME "Environment variable name"
+        action env
+    }
+
+    command status {
+        about "Render a terminal-aware progress status"
+        position LABEL "Status label"
+        action status
+    }
+}

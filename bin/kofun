@@ -14,6 +14,10 @@ STAGE2_COMPILER="$STAGE2_BUILD_DIR/kofun-stage2"
 C_ABI_BUILD_DIR=${KOFUN_C_ABI_BUILD_DIR:-"$ROOT/build/c-abi"}
 C_ABI_SEED_C="$ROOT/bootstrap/c_abi/compiler.c"
 C_ABI_COMPILER="$C_ABI_BUILD_DIR/kofun-c-abi"
+CLI_BUILD_DIR=${KOFUN_CLI_BUILD_DIR:-"$ROOT/build/native-cli"}
+CLI_SEED_C="$ROOT/framework/cli/compiler.c"
+CLI_TEMPLATE="$ROOT/framework/cli/runtime_template.inc"
+CLI_COMPILER="$CLI_BUILD_DIR/kofun-cli-compiler"
 CC=${CC:-cc}
 
 usage() {
@@ -21,8 +25,10 @@ usage() {
 usage:
   kofun build INPUT.kofun [-o OUTPUT] [--emit-c OUTPUT.c]
               [--backend c --c-abi [--link-library FILE]...]
+              [--framework cli]
               [--target x86_64-linux|aarch64-linux] [-g]
   kofun build [TARGET...] [FROST_OPTIONS]  # with ./kofun.toml
+  kofun new DIRECTORY --template cli
   kofun run INPUT.kofun
   kofun check INPUT.kofun
   kofun test [PATH]
@@ -67,6 +73,17 @@ ensure_c_abi_compiler() {
     then
         "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
             "$C_ABI_SEED_C" -o "$C_ABI_COMPILER"
+    fi
+}
+
+ensure_cli_compiler() {
+    mkdir -p "$CLI_BUILD_DIR"
+    if [ ! -x "$CLI_COMPILER" ] ||
+       [ "$CLI_SEED_C" -nt "$CLI_COMPILER" ] ||
+       [ "$CLI_TEMPLATE" -nt "$CLI_COMPILER" ]
+    then
+        "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+            "$CLI_SEED_C" -o "$CLI_COMPILER"
     fi
 }
 
@@ -266,6 +283,73 @@ build_native_file() (
     mv "$temporary" "$2"
 )
 
+build_cli_file() (
+    ensure_cli_compiler
+    temporary="$2.tmp.$$"
+    trap 'rm -f "$temporary"' 0 1 2 15
+    "$CLI_COMPILER" "$1" "$temporary"
+    test -s "$temporary"
+    chmod +x "$temporary"
+    mv "$temporary" "$2"
+)
+
+new_cli_project() (
+    project=$1
+    case $project in
+        ''|-*|*[!A-Za-z0-9_./-]*)
+            printf '%s\n' \
+                "kofun: CLI project path contains unsupported characters: $project" >&2
+            exit 2
+            ;;
+    esac
+    test ! -e "$project" && test ! -L "$project" || {
+        printf '%s\n' "kofun: project path already exists: $project" >&2
+        exit 2
+    }
+    project_name=${project##*/}
+    case $project_name in
+        ''|[!A-Za-z]*|*[!A-Za-z0-9_-]*)
+            printf '%s\n' \
+                "kofun: CLI project name must start with a letter and use letters, digits, '_' or '-'" >&2
+            exit 2
+            ;;
+    esac
+    type_name=$(printf '%s' "$project_name" | tr '-' '_')
+    mkdir -p "$project/src"
+    cat >"$project/src/main.kofun" <<EOF
+cli $type_name {
+    name "$project_name"
+    version "0.1.0"
+    about "A native Kofun CLI application"
+
+    command greet {
+        about "Greet a person"
+        position NAME "Person to greet"
+        option shout "--shout" bool "Uppercase the greeting"
+        option prefix "--prefix" text "Greeting prefix" default "Hello"
+        action greet
+    }
+
+    command status {
+        about "Render a terminal-aware progress status"
+        position LABEL "Status label"
+        action status
+    }
+}
+EOF
+    cat >"$project/README.md" <<EOF
+# $project_name
+
+Build the Linux x86-64 static executable:
+
+\`\`\`sh
+kofun build src/main.kofun --framework cli -o build/$project_name
+./build/$project_name --help
+\`\`\`
+EOF
+    printf '%s\n' "$project"
+)
+
 case ${1-} in
     --version|-V|version)
         printf '%s\n' "Kofun Stage 1 0.3.0-seed"
@@ -273,6 +357,15 @@ case ${1-} in
     bootstrap)
         test "$#" -eq 1 || { usage >&2; exit 2; }
         exec sh "$ROOT/bootstrap/stage1/check.sh"
+        ;;
+    new)
+        test "$#" -eq 4 &&
+            test "$3" = --template &&
+            test "$4" = cli || {
+            usage >&2
+            exit 2
+        }
+        new_cli_project "$2"
         ;;
     emit-c)
         test "$#" -eq 3 || { usage >&2; exit 2; }
@@ -338,6 +431,7 @@ case ${1-} in
         emitted=
         backend=
         c_abi=false
+        framework=
         link_libraries=
         target=
         debug=false
@@ -364,6 +458,15 @@ case ${1-} in
                 --c-abi)
                     c_abi=true
                     shift
+                    ;;
+                --framework)
+                    test "$#" -ge 2 && test "$2" = cli || {
+                        printf '%s\n' \
+                            "kofun: supported application framework is cli" >&2
+                        exit 2
+                    }
+                    framework=cli
+                    shift 2
                     ;;
                 --link-library)
                     test "$#" -ge 2 || { usage >&2; exit 2; }
@@ -406,6 +509,20 @@ $link_library"
             printf '%s\n' \
                 "kofun: --link-library requires --backend c --c-abi" >&2
             exit 2
+        fi
+        if test -n "$framework"; then
+            test -z "$backend" &&
+                test -z "$target" &&
+                test -z "$emitted" &&
+                test "$debug" = false || {
+                printf '%s\n' \
+                    "kofun: --framework cli cannot be combined with backend, target, emit-c, or debug options" >&2
+                exit 2
+            }
+            mkdir -p "$(dirname "$output")"
+            build_cli_file "$input" "$output"
+            printf '%s\n' "$output"
+            exit 0
         fi
         if test -n "$target"; then
             test -z "$emitted" || {

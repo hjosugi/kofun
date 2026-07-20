@@ -1,0 +1,17 @@
+cli DuplicateOption {
+    name "duplicate"
+    version "0.0.0"
+    about "Duplicate option fixture"
+    command greet {
+        about "Greet"
+        position NAME "Name"
+        option shout "--shout" bool "First"
+        option prefix "--shout" text "Duplicate long option" default "Hello"
+        action greet
+    }
+    command status {
+        about "Status"
+        position LABEL "Label"
+        action status
+    }
+}

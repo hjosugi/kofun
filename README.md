@@ -29,7 +29,7 @@ This is not yet a semantic self-hosting fixed point. The checked-in C11 seed
 starts the Kofun-written compiler, but Stage 1 cannot compile all constructs in
 its own source yet.
 
-Five Python-free checkpoints now exercise the path beyond that Core:
+Six Python-free checkpoints now exercise the path beyond that Core:
 
 - `bootstrap/stage2/` lexes and structurally parses Kofun, emits a deterministic
   function IR, and reaches a byte-stable source/token/IR round trip;
@@ -41,10 +41,12 @@ Five Python-free checkpoints now exercise the path beyond that Core:
   checked `extern "C"` declarations and `repr(C)` structs;
 - `framework/http/` uses that explicit host-C profile to run a reusable Linux
   epoll HTTP/1.1 library configured with routes from Kofun source;
+- `framework/cli/` compiles declarative command metadata into a direct-static
+  Linux x86-64 application whose help and runtime dispatch share that metadata;
 - `stdlib/` defines the raw syscall ABI, value-level errno conversion, affine
   resource wrappers, and the file round-trip acceptance fixture in Kofun.
 
-All five have executable gates. The complete Stage 2 self-recompile and
+All six have executable gates. The complete Stage 2 self-recompile and
 general native lowering remain open.
 
 ## Requirements
@@ -56,6 +58,7 @@ general native lowering remain open.
 - `rustc` for the required Rust `cdylib` C ABI acceptance gate
 - `cargo` for the required offline vendored-crate shim gate
 - `ar` for the required HTTP framework static-library gate
+- `ld`, `readelf`, `file`, `ldd`, and `script` for native CLI prefix auditing
 
 Python is not required or used.
 
@@ -91,6 +94,19 @@ sh framework/http/build.sh examples/api_server.kofun build/api-server
 
 See `framework/http/README.md` for its bounded HTTP/JSON contract, host-C trust
 boundary, shutdown behavior, and benchmark methodology.
+
+Build the dependency-free native CLI sample:
+
+```sh
+./bin/kofun build examples/cli_tool.kofun \
+  --framework cli -o build/kofun-tool
+./build/kofun-tool greet Ada --prefix Welcome
+```
+
+Or scaffold a clean project with
+`./bin/kofun new demo-cli --template cli`. See
+`framework/cli/README.md` for the bounded declaration profile, generated help,
+TTY/`NO_COLOR` behavior, security boundary, and Linux x86-64 limitations.
 
 Generated C11 can be inspected with:
 
@@ -132,8 +148,10 @@ make verify
 ```text
 kofun build INPUT.kofun [-o OUTPUT] [--emit-c OUTPUT.c]
             [--backend c --c-abi [--link-library FILE]...]
+            [--framework cli]
             [--target x86_64-linux|aarch64-linux] [-g]
 kofun build [TARGET...] [FROST_OPTIONS]  # with ./kofun.toml
+kofun new DIRECTORY --template cli
 kofun run INPUT.kofun
 kofun check INPUT.kofun
 kofun test [PATH]

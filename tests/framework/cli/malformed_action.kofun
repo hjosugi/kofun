@@ -1,0 +1,15 @@
+cli BrokenAction {
+    name "broken"
+    version "0.0.0"
+    about "Malformed action fixture"
+    command first {
+        about "First"
+        position VALUE "Value"
+        action shell
+    }
+    command second {
+        about "Second"
+        position VALUE "Value"
+        action status
+    }
+}

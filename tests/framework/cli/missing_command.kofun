@@ -1,0 +1,10 @@
+cli MissingCommand {
+    name "missing"
+    version "0.0.0"
+    about "Too few commands"
+    command only {
+        about "Only command"
+        position VALUE "Value"
+        action status
+    }
+}

@@ -42,7 +42,10 @@ Mitigations:
 - structured backend invocation
 - fuzzing and corpus testing
 
-The Stage 0 C compiler invocation uses an argument vector through `subprocess.run`, not a shell command string.
+The active host-C profiles pass link inputs as argument-vector entries and
+never interpolate them into a shell command. The direct-static native CLI
+application compiler does not invoke a host compiler, assembler, linker, or
+shell while emitting the final ELF.
 
 ## Runtime threat model
 
@@ -118,6 +121,12 @@ The Rust crate shim example keeps managed Rust values inside Rust, catches
 panics before returning, and uses checked buffer/length/status records.
 Vendoring and checksums improve reproducibility but do not make third-party
 native code memory-safe from Kofun's perspective.
+
+The bounded native CLI profile validates declaration sizes, command and option
+uniqueness, and action shapes before serialization. Its product uses only
+Linux `write`, `ioctl`, and `exit` syscalls, but process-provided argument and
+environment bytes are still untrusted terminal output. See
+`framework/cli/SECURITY.md` for its exact boundary.
 
 ## Compile-time law execution
 
