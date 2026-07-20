@@ -84,7 +84,7 @@ fn emit_c(expression: Text) -> Text {
 fn main() {
     let arguments = args()
     if len(arguments) < 2 {
-        print("usage: compiler.kf INPUT.kf OUTPUT.c")
+        print("usage: compiler.kofun INPUT.kofun OUTPUT.c")
         return
     }
 

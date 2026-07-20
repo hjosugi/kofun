@@ -204,7 +204,7 @@ class NativeDifferentialTest(unittest.TestCase):
             with self.subTest(program=name):
                 with tempfile.TemporaryDirectory() as tmp:
                     workdir = Path(tmp)
-                    source_path = workdir / f"{name}.kf"
+                    source_path = workdir / f"{name}.kofun"
                     source_path.write_text(source)
 
                     expected = run_interpreted(source_path)
@@ -235,12 +235,128 @@ class NativeExecutableTest(unittest.TestCase):
             compile_to_executable(checked.program, str(binary), "test")
             self.assertEqual(subprocess.run([str(binary)]).returncode, 7)
 
+    def test_image_has_separate_executable_and_writable_segments(self) -> None:
+        # The heap pointer lives in writable memory, but code must not be
+        # writable and data must not be executable.
+        with tempfile.TemporaryDirectory() as tmp:
+            binary = Path(tmp) / "seg"
+            checked = check_source("fn main() {\n    print(1)\n}\n")
+            compile_to_executable(checked.program, str(binary), "test")
+            image = binary.read_bytes()
+
+            phoff = int.from_bytes(image[32:40], "little")
+            phentsize = int.from_bytes(image[54:56], "little")
+            phnum = int.from_bytes(image[56:58], "little")
+            self.assertEqual(phnum, 2, "expected one R|X and one R|W segment")
+
+            flags = []
+            for index in range(phnum):
+                header = image[phoff + index * phentsize:][:phentsize]
+                flags.append(int.from_bytes(header[4:8], "little"))
+            self.assertEqual(flags[0], 0x5, "text segment must be read+execute")
+            self.assertEqual(flags[1], 0x6, "data segment must be read+write")
+
     def test_unsupported_features_fail_loudly(self) -> None:
         # Lists are not lowered yet; the backend must refuse rather than
         # silently emit something with different meaning.
         checked = check_source("fn main() {\n    let xs = [1, 2, 3]\n    print(xs[0])\n}\n")
         with self.assertRaises(BackendFailure):
             NativeBackend().emit_program(checked.program, "test")
+
+
+class HeapAllocatorTest(unittest.TestCase):
+    """The mmap-backed bump allocator, exercised directly.
+
+    There is no language syntax that allocates yet, so the runtime routine is
+    driven by a hand-written entry point. Once `Text` and `List` are lowered,
+    these guarantees are what they will rest on.
+    """
+
+    def _run_driver(self, emit_driver) -> str:
+        from kofun import elf
+        from kofun.native_backend import NativeBackend
+
+        backend = NativeBackend()
+        checked = check_source("fn main() {\n    print(0)\n}\n")
+        backend._emit_start = lambda: emit_driver(backend)
+        code, entry, data_offset = backend.emit_program(checked.program, "test")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            binary = Path(tmp) / "driver"
+            elf.write_executable(str(binary), code, entry, data_offset)
+            result = subprocess.run([str(binary)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            return result.stdout
+
+    def test_allocations_are_distinct_aligned_and_writable(self) -> None:
+        from kofun.x64 import RAX, RCX, RDI, R12, R13
+
+        def driver(backend) -> None:
+            asm = backend.asm
+            asm.label("_start")
+            asm.mov_ri(RDI, 32)
+            asm.call("rt.alloc")
+            asm.mov_rr(R12, RAX)
+            asm.mov_ri(RCX, 111)
+            asm.mov_mr(R12, 0, RCX)          # write into the first block
+
+            asm.mov_ri(RDI, 64)
+            asm.call("rt.alloc")
+            asm.mov_rr(R13, RAX)
+            asm.mov_ri(RCX, 222)
+            asm.mov_mr(R13, 0, RCX)          # write into the second
+
+            asm.mov_rm(RDI, R12, 0)          # first survived the second write
+            asm.call("rt.print_int")
+            asm.mov_rm(RDI, R13, 0)
+            asm.call("rt.print_int")
+            asm.mov_rr(RDI, R13)             # blocks do not overlap
+            asm.sub_rr(RDI, R12)
+            asm.call("rt.print_int")
+            asm.mov_rr(RDI, R12)             # pointers are 16-byte aligned
+            asm.and_ri(RDI, 15)
+            asm.call("rt.print_int")
+
+            asm.mov_ri(RDI, 0)
+            asm.mov_ri(RAX, 60)
+            asm.syscall()
+            asm.ud2()
+
+        self.assertEqual(self._run_driver(driver), "111\n222\n32\n0\n")
+
+    def test_allocating_past_a_chunk_boundary_takes_a_new_chunk(self) -> None:
+        # 300 allocations of 8 KiB is 2.4 MiB, more than the 1 MiB chunk, so the
+        # allocator must fall back to mmap mid-loop and keep returning usable
+        # memory across the boundary.
+        from kofun.x64 import RAX, RCX, RDI, R12, R13, R14
+
+        def driver(backend) -> None:
+            asm = backend.asm
+            asm.label("_start")
+            asm.xor_rr(R13, R13)             # loop counter
+            asm.xor_rr(R14, R14)             # running checksum
+
+            asm.label("loop")
+            asm.mov_ri(RDI, 8192)
+            asm.call("rt.alloc")
+            asm.mov_rr(R12, RAX)
+            asm.mov_rr(RCX, R13)
+            asm.mov_mr(R12, 0, RCX)          # stamp the block with its index
+            asm.mov_mr(R12, 8184, RCX)       # and near its far end
+            asm.mov_rm(RCX, R12, 8184)       # read the far end back
+            asm.add_rr(R14, RCX)
+            asm.add_ri(R13, 1)
+            asm.cmp_ri(R13, 300)
+            asm.jcc(12, "loop")              # CC_L
+
+            asm.mov_rr(RDI, R14)             # expect sum(0..299) == 44850
+            asm.call("rt.print_int")
+            asm.mov_ri(RDI, 0)
+            asm.mov_ri(RAX, 60)
+            asm.syscall()
+            asm.ud2()
+
+        self.assertEqual(self._run_driver(driver), f"{sum(range(300))}\n")
 
 
 if __name__ == "__main__":

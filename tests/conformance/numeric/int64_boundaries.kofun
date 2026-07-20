@@ -1,0 +1,20 @@
+# contract: kofun.backend-differential/v1
+# expect-exit: 0
+# expect-stdout: 9223372036854775807
+# expect-stdout: -9223372036854775808
+# expect-stdout: 9223372036854775806
+# expect-stdout: -9223372036854775807
+# expect-stdout: 0
+
+fn main() {
+    let maximum = 9223372036854775807
+    let minimum = -9223372036854775807 - 1
+
+    print(maximum)
+    print(minimum)
+    print(maximum - 1)
+    print(minimum + 1)
+
+    # The quotient is not representable, but the mathematical remainder is.
+    print(minimum % -1)
+}

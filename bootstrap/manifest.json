@@ -8,7 +8,7 @@
       "role": "reference lexer, parser, type checker, law checker, interpreter, and C11 backend"
     },
     "stage1": {
-      "implementation": "bootstrap/stage1/compiler.kf",
+      "implementation": "bootstrap/stage1/compiler.kofun",
       "status": "working-seed",
       "role": "Kofun-written compiler for the documented arithmetic Kofun Core subset; Stage 0 builds it as a native executable"
     },

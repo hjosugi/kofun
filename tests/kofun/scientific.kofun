@@ -1,0 +1,14 @@
+# expect: scientific ok
+fn main() {
+    let left = [1.0, 2.0, 3.0]
+    let right = [4.0, 5.0, 6.0]
+    assert_eq(dot(left, right), 32.0)
+    assert_eq(mean(left), 2.0)
+    assert_eq(vadd(left, right), [5.0, 7.0, 9.0])
+    assert_eq(vsub(right, left), [3.0, 3.0, 3.0])
+    assert_eq(vmul(left, right), [4.0, 10.0, 18.0])
+    assert_eq(zeros(3), [0.0, 0.0, 0.0])
+    assert_eq(ones(3), [1.0, 1.0, 1.0])
+    assert_eq(linspace(0.0, 1.0, 3), [0.0, 0.5, 1.0])
+    print("scientific ok")
+}

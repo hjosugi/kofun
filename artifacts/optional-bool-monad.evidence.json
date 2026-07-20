@@ -20,7 +20,7 @@
   "required_assurance": "proven-finite",
   "schema": "kofun.law-evidence/v1",
   "source": {
-    "path": "examples/proven_optional_bool_monad.kf",
+    "path": "examples/proven_optional_bool_monad.kofun",
     "sha256": "0adb5fea24c34657e63598c4ad01cbf7a9d38206e16eeeada839278a3009ece6"
   },
   "status": "passed"

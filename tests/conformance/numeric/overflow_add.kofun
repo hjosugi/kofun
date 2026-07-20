@@ -1,0 +1,8 @@
+# contract: kofun.backend-differential/v1
+# expect-exit: 1
+# expect-stderr: error[R010]: integer overflow in operator `+`
+
+fn main() {
+    let maximum = 9223372036854775807
+    print(maximum + 1)
+}

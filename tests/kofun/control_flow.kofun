@@ -1,0 +1,42 @@
+# expect: control flow ok
+fn fib(n: Int) -> Int {
+    if n < 2 {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
+fn classify(value: Int) -> Text {
+    return if value < 0 {
+        "negative"
+    } else if value == 0 {
+        "zero"
+    } else {
+        "positive"
+    }
+}
+
+fn main() {
+    let mut total = 0
+    for value in 0 .. 10 {
+        if value == 3 {
+            continue
+        }
+        if value == 7 {
+            break
+        }
+        total = total + value
+    }
+    assert_eq(total, 18)
+
+    let mut count = 0
+    while count < 4 {
+        count = count + 1
+    }
+    assert_eq(count, 4)
+    assert_eq(fib(10), 55)
+    assert_eq(classify(-1), "negative")
+    assert_eq(classify(0), "zero")
+    assert_eq(classify(1), "positive")
+    print("control flow ok")
+}

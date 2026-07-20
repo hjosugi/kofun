@@ -1,0 +1,15 @@
+# expect: text ok
+fn main() {
+    let value = "  Kofun language  "
+    assert_eq(trim(value), "Kofun language")
+    assert_eq(chars("古墳"), ["古", "墳"])
+    assert_eq(text_join(["self", "hosted"], "-"), "self-hosted")
+    assert_eq(text_slice("bootstrap", 4, 9), "strap")
+    assert_eq(replace("stage0-stage0", "stage0", "stage1"), "stage1-stage1")
+    assert(starts_with("compiler.kofun", "compiler"))
+    assert(ends_with("compiler.kofun", ".kofun"))
+    assert_eq(find("self-hosting", "host"), 5)
+    assert_eq(parse_int(" 42 "), 42)
+    assert_eq(to_text([1, 2, 3]), "[1, 2, 3]")
+    print("text ok")
+}

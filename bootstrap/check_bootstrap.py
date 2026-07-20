@@ -21,8 +21,8 @@ from kofun.frontend import check_source  # noqa: E402
 
 
 def verify_stage1() -> tuple[bool, str]:
-    compiler_path = ROOT / "bootstrap" / "stage1" / "compiler.kf"
-    fixture_path = ROOT / "bootstrap" / "fixtures" / "answer.kf"
+    compiler_path = ROOT / "bootstrap" / "stage1" / "compiler.kofun"
+    fixture_path = ROOT / "bootstrap" / "fixtures" / "answer.kofun"
     source = compiler_path.read_text(encoding="utf-8")
     result = check_source(source)
     if not result.ok:

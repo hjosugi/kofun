@@ -19,35 +19,35 @@ test:
 	$(KOFUN) test tests/kofun
 
 demo:
-	$(KOFUN) run examples/hello.kf
-	$(KOFUN) run examples/pipeline.kf
-	$(KOFUN) run examples/science.kf
-	$(KOFUN) run examples/ownership.kf
+	$(KOFUN) run examples/hello.kofun
+	$(KOFUN) run examples/pipeline.kofun
+	$(KOFUN) run examples/science.kofun
+	$(KOFUN) run examples/ownership.kofun
 
 check:
-	$(KOFUN) check examples/hello.kf
-	$(KOFUN) check examples/pipeline.kf
-	$(KOFUN) check examples/science.kf
-	$(KOFUN) check examples/ownership.kf
-	$(KOFUN) check examples/lawful_list_monad.kf
-	$(KOFUN) check examples/proven_optional_bool_monad.kf
+	$(KOFUN) check examples/hello.kofun
+	$(KOFUN) check examples/pipeline.kofun
+	$(KOFUN) check examples/science.kofun
+	$(KOFUN) check examples/ownership.kofun
+	$(KOFUN) check examples/lawful_list_monad.kofun
+	$(KOFUN) check examples/proven_optional_bool_monad.kofun
 
 laws:
-	$(KOFUN) laws examples/lawful_list_monad.kf
-	$(KOFUN) laws examples/proven_optional_bool_monad.kf \
+	$(KOFUN) laws examples/lawful_list_monad.kofun
+	$(KOFUN) laws examples/proven_optional_bool_monad.kofun \
 	  --require-assurance proven-finite \
 	  --output artifacts/optional-bool-monad.evidence.json
-	@! $(KOFUN) laws examples/broken_list_monad.kf >/dev/null 2>&1 || \
+	@! $(KOFUN) laws examples/broken_list_monad.kofun >/dev/null 2>&1 || \
 	  (printf '%s\n' 'broken Monad fixture unexpectedly passed' >&2; exit 1)
 
 native:
 	@printf '%s\n' '--- direct x86-64 backend (no C, no clang, no ld) ---'
-	$(KOFUN) build examples/fibonacci_native.kf -o build/fibonacci
+	$(KOFUN) build examples/fibonacci_native.kofun -o build/fibonacci
 	./build/fibonacci
 	@file build/fibonacci | grep -q 'statically linked' || \
 	  (printf '%s\n' 'native backend produced a non-static binary' >&2; exit 1)
 	@printf '%s\n' '--- C11 bootstrap backend ---'
-	$(KOFUN) build examples/fibonacci_native.kf --backend c -o build/fibonacci-c
+	$(KOFUN) build examples/fibonacci_native.kofun --backend c -o build/fibonacci-c
 	./build/fibonacci-c
 
 bootstrap:
@@ -61,7 +61,7 @@ repository-check:
 	$(PYTHON) scripts/verify_repository.py
 
 verify: test check laws native bootstrap repository-check
-	$(KOFUN) fmt --check examples/*.kf tests/kofun/*.kf bootstrap/stage1/*.kf bootstrap/fixtures/*.kf
+	$(KOFUN) fmt --check examples/*.kofun tests/kofun/*.kofun bootstrap/stage1/*.kofun bootstrap/fixtures/*.kofun
 
 clean:
 	rm -rf build .tmp-* .pytest_cache .mypy_cache .ruff_cache

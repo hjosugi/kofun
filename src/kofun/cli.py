@@ -117,7 +117,7 @@ def build_parser() -> argparse.ArgumentParser:
     repl = sub.add_parser("repl", help="start an interactive reference interpreter")
     repl.add_argument("--no-banner", action="store_true")
 
-    test = sub.add_parser("test", help="run .kf files containing # expect: output directives")
+    test = sub.add_parser("test", help="run .kofun files containing # expect: output directives")
     test.add_argument("path", nargs="?", default="tests/kofun")
 
     new = sub.add_parser("new", help="create a small Kofun project")
@@ -431,9 +431,9 @@ def command_repl(args: argparse.Namespace) -> int:
 
 def command_test(args: argparse.Namespace) -> int:
     root = Path(args.path)
-    files = [root] if root.is_file() else sorted(root.rglob("*.kf"))
+    files = [root] if root.is_file() else sorted(root.rglob("*.kofun"))
     if not files:
-        print(f"no .kf tests found under {root}", file=sys.stderr)
+        print(f"no .kofun tests found under {root}", file=sys.stderr)
         return 1
     passed = 0
     failed = 0
@@ -477,11 +477,11 @@ def command_new(args: argparse.Namespace) -> int:
         '[package]\nname = "' + root.name + '"\nversion = "0.1.0"\n\n[build]\nbackend = "interpreter"\n',
         encoding="utf-8",
     )
-    (root / "src" / "main.kf").write_text(
+    (root / "src" / "main.kofun").write_text(
         'fn main() {\n    let message = "hello from Kofun"\n    print(message)\n}\n',
         encoding="utf-8",
     )
-    (root / "tests" / "kofun" / "basic.kf").write_text(
+    (root / "tests" / "kofun" / "basic.kofun").write_text(
         '# expect: 42\nfn main() {\n    print(40 + 2)\n}\n',
         encoding="utf-8",
     )

@@ -24,6 +24,9 @@ from .c_backend import BackendFailure
 from .typesys import BOOL, INT, TEXT, VOID, Type
 from .x64 import (
     ARG_REGS,
+    CC_AE,
+    CC_B,
+    CC_BE,
     CC_E,
     CC_GE,
     CC_NE,
@@ -36,14 +39,26 @@ from .x64 import (
     RSI,
     RSP,
     R8,
+    R9,
     R10,
     Assembler,
 )
 
 # Linux x86-64 syscall numbers.
 SYS_WRITE = 1
+SYS_MMAP = 9
 SYS_EXIT = 60
 STDOUT = 1
+STDERR = 2
+
+# mmap flags, from the kernel's uapi headers.
+PROT_READ, PROT_WRITE = 0x1, 0x2
+MAP_PRIVATE, MAP_ANONYMOUS = 0x02, 0x20
+
+PAGE_SIZE = 0x1000
+#: Chunk size requested from the kernel when the heap runs dry. Large enough
+#: that mmap is rare, small enough that a trivial program stays cheap.
+CHUNK_BYTES = 1 << 20
 
 COMPARISONS = {"==": CC_E, "!=": CC_NE, "<": 12, "<=": 14, ">": 15, ">=": CC_GE}
 
@@ -134,7 +149,10 @@ class NativeBackend:
 
     # ---- program -----------------------------------------------------------
 
-    def emit_program(self, program: ast.Program, source_name: str = "<input>") -> tuple[bytes, int]:
+    def emit_program(
+        self, program: ast.Program, source_name: str = "<input>"
+    ) -> tuple[bytes, int, int]:
+        """Return (blob, entry offset, offset where writable data begins)."""
         functions = [n for n in program.declarations if isinstance(n, ast.FunctionDecl)]
         rejected = [
             n for n in program.declarations
@@ -173,10 +191,14 @@ class NativeBackend:
             self._emit_function(fn)
         self._emit_print_int()
         self._emit_print_str()
+        self._emit_alloc()
+        self._emit_chunk()
+        self._emit_oom()
         self._emit_strings()
+        data_offset = self._emit_data()
 
         code = self.asm.link()
-        return code, self.asm.labels["_start"]
+        return code, self.asm.labels["_start"], data_offset
 
     def _emit_start(self) -> None:
         """Process entry: call main, then exit with its value (or 0)."""
@@ -665,15 +687,132 @@ class NativeBackend:
         asm.syscall()
         asm.ret()
 
+    def _emit_alloc(self) -> None:
+        """`rt.alloc(size in rdi) -> pointer in rax`.
+
+        A bump allocator over chunks obtained from `mmap`. There is no libc, so
+        memory comes straight from the kernel.
+
+        Nothing is freed yet. Reclamation belongs with the ownership model --
+        `take` already records statically where a value dies -- and wiring that
+        up is separate work. Until then a program's peak memory equals its total
+        allocation, which is acceptable for a compiler that runs once and exits,
+        and unacceptable for a server. That distinction is tracked, not ignored.
+        """
+        asm = self.asm
+        asm.label("rt.alloc")
+        asm.push(RBP)
+        asm.mov_rr(RBP, RSP)
+
+        # Round the request up to 16 bytes so every pointer returned is aligned
+        # for any scalar the backend can store.
+        asm.add_ri(RDI, 15)
+        asm.and_ri(RDI, -16)
+
+        asm.lea_label(RCX, "data.heap_ptr")
+        asm.mov_rm(RAX, RCX, 0)          # current bump pointer
+        asm.mov_rm(RDX, RCX, 8)          # end of the current chunk
+
+        asm.mov_rr(R8, RAX)
+        asm.add_rr(R8, RDI)              # where the pointer would land
+        asm.cmp_rr(R8, RDX)
+        asm.jcc(CC_BE, "rt.alloc.fits")
+
+        # Out of room: take a fresh chunk, then redo the bump against it.
+        asm.push(RDI)
+        asm.call("rt.chunk")
+        asm.pop(RDI)
+        asm.lea_label(RCX, "data.heap_ptr")
+        asm.mov_rm(RAX, RCX, 0)
+        asm.mov_rr(R8, RAX)
+        asm.add_rr(R8, RDI)
+
+        asm.label("rt.alloc.fits")
+        asm.mov_mr(RCX, 0, R8)           # commit the bump pointer
+        asm.mov_rr(RSP, RBP)
+        asm.pop(RBP)
+        asm.ret()
+
+    def _emit_chunk(self) -> None:
+        """`rt.chunk(minimum in rdi)` -- mmap a chunk and install it as the heap."""
+        asm = self.asm
+        asm.label("rt.chunk")
+        asm.push(RBP)
+        asm.mov_rr(RBP, RSP)
+
+        # length = max(request, CHUNK_BYTES), rounded up to a whole page.
+        asm.mov_rr(RSI, RDI)
+        asm.mov_ri(RAX, CHUNK_BYTES)
+        asm.cmp_rr(RSI, RAX)
+        asm.jcc(CC_AE, "rt.chunk.sized")
+        asm.mov_rr(RSI, RAX)
+        asm.label("rt.chunk.sized")
+        asm.add_ri(RSI, PAGE_SIZE - 1)
+        asm.and_ri(RSI, -PAGE_SIZE)
+
+        asm.xor_rr(RDI, RDI)                              # addr: let the kernel pick
+        asm.mov_ri(RDX, PROT_READ | PROT_WRITE)
+        asm.mov_ri(R10, MAP_PRIVATE | MAP_ANONYMOUS)      # syscalls use r10, not rcx
+        asm.mov_ri(R8, -1)                                # fd
+        asm.xor_rr(R9, R9)                                # offset
+        asm.mov_ri(RAX, SYS_MMAP)
+        asm.syscall()
+
+        # The raw syscall reports failure as a small negative value rather than
+        # MAP_FAILED: anything in [-4095, -1] is an errno.
+        asm.cmp_ri(RAX, -4095)
+        asm.jcc(CC_B, "rt.chunk.ok")
+        asm.call("rt.oom")
+
+        asm.label("rt.chunk.ok")
+        asm.lea_label(RCX, "data.heap_ptr")
+        asm.mov_mr(RCX, 0, RAX)          # heap_ptr = base
+        asm.add_rr(RAX, RSI)
+        asm.mov_mr(RCX, 8, RAX)          # heap_end = base + length
+        asm.mov_rr(RSP, RBP)
+        asm.pop(RBP)
+        asm.ret()
+
+    def _emit_oom(self) -> None:
+        """Report allocation failure on stderr and exit, never return garbage."""
+        asm = self.asm
+        message = "kofun: out of memory"
+        asm.label("rt.oom")
+        asm.lea_label(RSI, self._string_label(message))
+        asm.mov_ri(RDX, len(message.encode("utf-8")) + 1)
+        asm.mov_ri(RDI, STDERR)
+        asm.mov_ri(RAX, SYS_WRITE)
+        asm.syscall()
+        asm.mov_ri(RDI, 70)              # EX_SOFTWARE
+        asm.mov_ri(RAX, SYS_EXIT)
+        asm.syscall()
+        asm.ud2()                        # unreachable: exit does not return
+
     def _emit_strings(self) -> None:
         for value, label in self.strings.items():
             self.asm.label(label)
             self.asm.emit_bytes(value.encode("utf-8") + b"\n")
+
+    def _emit_data(self) -> int:
+        """Emit the writable section, returning its offset within the blob.
+
+        Virtual addresses track file offsets exactly, so padding to a page
+        boundary here is what lets the ELF writer hand this region its own
+        read-write segment while the code stays read-execute.
+        """
+        asm = self.asm
+        asm.emit_bytes(b"\0" * elf.padding_to_page(asm.offset))
+        data_offset = asm.offset
+        asm.label("data.heap_ptr")
+        asm.emit_bytes((0).to_bytes(8, "little"))
+        asm.label("data.heap_end")
+        asm.emit_bytes((0).to_bytes(8, "little"))
+        return data_offset
 
 
 def compile_to_executable(
     program: ast.Program, output: str, source_name: str = "<input>"
 ) -> str:
     backend = NativeBackend()
-    code, entry = backend.emit_program(program, source_name)
-    return str(elf.write_executable(output, code, entry))
+    code, entry, data_offset = backend.emit_program(program, source_name)
+    return str(elf.write_executable(output, code, entry, data_offset))

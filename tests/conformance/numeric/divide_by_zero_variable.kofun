@@ -1,0 +1,8 @@
+# contract: kofun.backend-differential/v1
+# expect-exit: 1
+# expect-stderr: error[R010]: operator `//` failed: division by zero
+
+fn main() {
+    let zero = 3 - 3
+    print(7 // zero)
+}

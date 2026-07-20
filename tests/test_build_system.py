@@ -51,7 +51,7 @@ class ManifestTest(unittest.TestCase):
     def test_parses_targets_and_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            write(root, "src/main.kf", "fn main() {}\n")
+            write(root, "src/main.kofun", "fn main() {}\n")
             path = write(root, "kofun.toml", """
                 [workspace]
                 name = "demo"
@@ -59,7 +59,7 @@ class ManifestTest(unittest.TestCase):
 
                 [target.app]
                 kind = "binary"
-                srcs = ["src/main.kf"]
+                srcs = ["src/main.kofun"]
             """)
             manifest = Manifest.load(path)
             self.assertEqual(manifest.name, "demo")
@@ -69,14 +69,14 @@ class ManifestTest(unittest.TestCase):
     def test_defaults_to_every_runnable_target_when_unspecified(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            write(root, "a.kf", "fn main() {}\n")
-            write(root, "b.kf", "fn main() {}\n")
+            write(root, "a.kofun", "fn main() {}\n")
+            write(root, "b.kofun", "fn main() {}\n")
             path = write(root, "kofun.toml", """
                 [target.app]
-                srcs = ["a.kf"]
+                srcs = ["a.kofun"]
 
                 [target.tool]
-                srcs = ["b.kf"]
+                srcs = ["b.kofun"]
             """)
             self.assertEqual(Manifest.load(path).default_targets, ["app", "tool"])
 
@@ -85,11 +85,11 @@ class ManifestTest(unittest.TestCase):
         # compilation, so a library could not be linked into anything.
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            write(root, "a.kf", "fn helper() {}\n")
+            write(root, "a.kofun", "fn helper() {}\n")
             path = write(root, "kofun.toml", """
                 [target.helper]
                 kind = "library"
-                srcs = ["a.kf"]
+                srcs = ["a.kofun"]
             """)
             with self.assertRaisesRegex(BuildError, "not supported yet"):
                 Manifest.load(path)
@@ -99,7 +99,7 @@ class ManifestTest(unittest.TestCase):
             root = Path(tmp)
             path = write(root, "kofun.toml", """
                 [target.app]
-                srcs = ["nope.kf"]
+                srcs = ["nope.kofun"]
             """)
             with self.assertRaisesRegex(BuildError, "does not exist"):
                 Manifest.load(path)
@@ -109,7 +109,7 @@ class ManifestTest(unittest.TestCase):
             root = Path(tmp)
             path = write(root, "kofun.toml", """
                 [target.app]
-                srcs = ["../outside.kf"]
+                srcs = ["../outside.kofun"]
             """)
             with self.assertRaisesRegex(BuildError, "stay inside the workspace"):
                 Manifest.load(path)
@@ -117,10 +117,10 @@ class ManifestTest(unittest.TestCase):
     def test_unknown_key_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            write(root, "a.kf", "fn main() {}\n")
+            write(root, "a.kofun", "fn main() {}\n")
             path = write(root, "kofun.toml", """
                 [target.app]
-                srcs = ["a.kf"]
+                srcs = ["a.kofun"]
                 optimise = true
             """)
             with self.assertRaisesRegex(BuildError, "unknown keys"):
@@ -129,10 +129,10 @@ class ManifestTest(unittest.TestCase):
     def test_find_manifest_walks_upwards(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            write(root, "a.kf", "fn main() {}\n")
+            write(root, "a.kofun", "fn main() {}\n")
             write(root, "kofun.toml", """
                 [target.app]
-                srcs = ["a.kf"]
+                srcs = ["a.kofun"]
             """)
             nested = root / "src" / "deep" / "deeper"
             nested.mkdir(parents=True)
@@ -144,10 +144,10 @@ class ManifestTest(unittest.TestCase):
 class IncrementalBuildTest(unittest.TestCase):
     def _workspace(self, tmp: str) -> tuple[Manifest, Path]:
         root = Path(tmp)
-        write(root, "src/main.kf", "fn main() {}\n")
+        write(root, "src/main.kofun", "fn main() {}\n")
         path = write(root, "kofun.toml", """
             [target.app]
-            srcs = ["src/main.kf"]
+            srcs = ["src/main.kofun"]
         """)
         return Manifest.load(path), root
 
@@ -173,7 +173,7 @@ class IncrementalBuildTest(unittest.TestCase):
             compiler = RecordingCompiler()
             Builder(manifest, compile_target=compiler).build()
 
-            write(root, "src/main.kf", "fn main() { print(1) }\n")
+            write(root, "src/main.kofun", "fn main() { print(1) }\n")
             manifest = Manifest.load(root / "kofun.toml")
             report = Builder(manifest, compile_target=compiler).build()
 
@@ -187,11 +187,11 @@ class IncrementalBuildTest(unittest.TestCase):
             compiler = RecordingCompiler()
             Builder(manifest, compile_target=compiler).build()
 
-            write(root, "src/main.kf", "fn main() { print(1) }\n")
+            write(root, "src/main.kofun", "fn main() { print(1) }\n")
             Builder(manifest=Manifest.load(root / "kofun.toml"),
                     compile_target=compiler).build()
 
-            write(root, "src/main.kf", "fn main() {}\n")
+            write(root, "src/main.kofun", "fn main() {}\n")
             report = Builder(manifest=Manifest.load(root / "kofun.toml"),
                              compile_target=compiler).build()
             self.assertEqual(report.cached, 1, "reverting should hit the cache")
@@ -225,20 +225,20 @@ class DependencyTest(unittest.TestCase):
     def _graph(self, tmp: str) -> Manifest:
         root = Path(tmp)
         for name in ("base", "middle", "app"):
-            write(root, f"{name}.kf", f"fn {name}() {{}}\n")
+            write(root, f"{name}.kofun", f"fn {name}() {{}}\n")
         path = write(root, "kofun.toml", """
             [workspace]
             default_targets = ["app"]
 
             [target.base]
-            srcs = ["base.kf"]
+            srcs = ["base.kofun"]
 
             [target.middle]
-            srcs = ["middle.kf"]
+            srcs = ["middle.kofun"]
             deps = ["base"]
 
             [target.app]
-            srcs = ["app.kf"]
+            srcs = ["app.kofun"]
             deps = ["middle"]
         """)
         return Manifest.load(path)
@@ -257,7 +257,7 @@ class DependencyTest(unittest.TestCase):
             compiler = RecordingCompiler()
             Builder(manifest, compile_target=compiler).build()
 
-            write(root, "base.kf", "fn base() { print(9) }\n")
+            write(root, "base.kofun", "fn base() { print(9) }\n")
             report = Builder(Manifest.load(root / "kofun.toml"),
                              compile_target=compiler).build()
             self.assertEqual(
@@ -268,15 +268,15 @@ class DependencyTest(unittest.TestCase):
     def test_cycles_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            write(root, "a.kf", "fn a() {}\n")
-            write(root, "b.kf", "fn b() {}\n")
+            write(root, "a.kofun", "fn a() {}\n")
+            write(root, "b.kofun", "fn b() {}\n")
             path = write(root, "kofun.toml", """
                 [target.a]
-                srcs = ["a.kf"]
+                srcs = ["a.kofun"]
                 deps = ["b"]
 
                 [target.b]
-                srcs = ["b.kf"]
+                srcs = ["b.kofun"]
                 deps = ["a"]
             """)
             builder = Builder(Manifest.load(path), compile_target=RecordingCompiler())
@@ -286,10 +286,10 @@ class DependencyTest(unittest.TestCase):
     def test_unknown_dependency_is_reported(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            write(root, "a.kf", "fn a() {}\n")
+            write(root, "a.kofun", "fn a() {}\n")
             path = write(root, "kofun.toml", """
                 [target.a]
-                srcs = ["a.kf"]
+                srcs = ["a.kofun"]
                 deps = ["ghost"]
             """)
             builder = Builder(Manifest.load(path), compile_target=RecordingCompiler())
@@ -317,10 +317,10 @@ class CleanTest(unittest.TestCase):
     def test_clean_removes_outputs_but_keeps_the_cache(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            write(root, "a.kf", "fn main() {}\n")
+            write(root, "a.kofun", "fn main() {}\n")
             path = write(root, "kofun.toml", """
                 [target.app]
-                srcs = ["a.kf"]
+                srcs = ["a.kofun"]
             """)
             manifest = Manifest.load(path)
             Builder(manifest, compile_target=RecordingCompiler()).build()

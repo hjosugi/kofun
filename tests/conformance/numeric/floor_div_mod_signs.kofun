@@ -1,0 +1,22 @@
+# contract: kofun.backend-differential/v1
+# expect-exit: 0
+# expect-stdout: 3
+# expect-stdout: -4
+# expect-stdout: -4
+# expect-stdout: 3
+# expect-stdout: 1
+# expect-stdout: 1
+# expect-stdout: -1
+# expect-stdout: -1
+
+fn main() {
+    print(7 // 2)
+    print(-7 // 2)
+    print(7 // -2)
+    print(-7 // -2)
+
+    print(7 % 2)
+    print(-7 % 2)
+    print(7 % -2)
+    print(-7 % -2)
+}

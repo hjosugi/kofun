@@ -1,0 +1,5 @@
+# expect-error: E310
+fn main() {
+    let answer: Int = null
+    print(answer)
+}

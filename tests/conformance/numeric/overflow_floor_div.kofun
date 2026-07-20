@@ -1,0 +1,8 @@
+# contract: kofun.backend-differential/v1
+# expect-exit: 1
+# expect-stderr: error[R010]: integer overflow in operator `//`
+
+fn main() {
+    let minimum = -9223372036854775807 - 1
+    print(minimum // -1)
+}

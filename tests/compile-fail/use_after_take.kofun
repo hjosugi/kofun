@@ -1,0 +1,10 @@
+# expect-error: E330
+fn consume(take item: Resource) {
+    print(is_open(item))
+}
+
+fn main() {
+    let own item = resource("fixture")
+    consume(item)
+    print(is_open(item))
+}

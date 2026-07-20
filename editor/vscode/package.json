@@ -15,14 +15,14 @@
       {
         "id": "kofun",
         "aliases": ["Kofun", "kofun"],
-        "extensions": [".kf"],
+        "extensions": [".kofun"],
         "configuration": "./language-configuration.json"
       }
     ],
     "grammars": [
       {
         "language": "kofun",
-        "scopeName": "source.kf",
+        "scopeName": "source.kofun",
         "path": "./syntaxes/kofun.tmLanguage.json"
       }
     ]

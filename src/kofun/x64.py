@@ -237,6 +237,12 @@ class Assembler:
     def cmp_ri(self, dst: int, imm: int) -> None:
         self._alu_ri(7, dst, imm)
 
+    def and_ri(self, dst: int, imm: int) -> None:
+        self._alu_ri(4, dst, imm)
+
+    def or_ri(self, dst: int, imm: int) -> None:
+        self._alu_ri(1, dst, imm)
+
     def neg(self, reg: int) -> None:
         self.emit(_rex(w=1, b=reg >> 3), 0xF7, _modrm(3, 3, reg))
 

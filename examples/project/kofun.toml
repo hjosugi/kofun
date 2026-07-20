@@ -6,8 +6,8 @@ default_targets = ["app", "bench"]
 
 [target.app]
 kind = "binary"
-srcs = ["src/main.kf"]
+srcs = ["src/main.kofun"]
 
 [target.bench]
 kind = "binary"
-srcs = ["src/bench.kf"]
+srcs = ["src/bench.kofun"]

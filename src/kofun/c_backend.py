@@ -465,7 +465,7 @@ def compile_c(c_source: str, output: Path, *, emit_c: Path | None = None, compil
         raise BackendFailure("no C compiler found; install `cc`, `clang`, or `gcc`")
     output = output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
-    c_path = emit_c.resolve() if emit_c else output.with_suffix(output.suffix + ".kf.c")
+    c_path = emit_c.resolve() if emit_c else output.with_suffix(output.suffix + ".kofun.c")
     c_path.parent.mkdir(parents=True, exist_ok=True)
     c_path.write_text(c_source, encoding="utf-8")
     command = [compiler, "-std=c11", "-O3", "-Wall", "-Wextra", "-Werror", str(c_path), "-lm", "-o", str(output)]

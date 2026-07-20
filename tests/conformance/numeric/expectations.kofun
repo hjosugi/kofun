@@ -1,0 +1,82 @@
+# Executable manifest for kofun.backend-differential/v1.
+#
+# This file is read by the Kofun conformance runner. It is not itself a corpus
+# case. Keeping expectations in Kofun makes the contract independent of a
+# Python test harness.
+
+fn backend_names() -> List[Text] {
+    return ["interpreter", "c11", "native"]
+}
+
+fn case_names() -> List[Text] {
+    return [
+    "floor_div_mod_signs.kofun",
+    "divide_by_zero_variable.kofun",
+    "modulo_by_zero_variable.kofun",
+    "int64_boundaries.kofun",
+    "overflow_add.kofun",
+    "overflow_subtract.kofun",
+    "overflow_multiply.kofun",
+    "overflow_negate.kofun",
+    "overflow_floor_div.kofun"
+    ]
+}
+
+fn expected_exit(name: Text) -> Int {
+    if name == "floor_div_mod_signs.kofun" || name == "int64_boundaries.kofun" {
+        return 0
+    }
+    return 1
+}
+
+fn expected_stdout(name: Text) -> Text {
+    if name == "floor_div_mod_signs.kofun" {
+        return "3\n-4\n-4\n3\n1\n1\n-1\n-1\n"
+    }
+    if name == "int64_boundaries.kofun" {
+        return "9223372036854775807\n-9223372036854775808\n9223372036854775806\n-9223372036854775807\n0\n"
+    }
+    return ""
+}
+
+fn expected_stderr(name: Text) -> Text {
+    if name == "divide_by_zero_variable.kofun" {
+        return "error[R010]: operator `//` failed: division by zero\n"
+    }
+    if name == "modulo_by_zero_variable.kofun" {
+        return "error[R010]: operator `%` failed: division by zero\n"
+    }
+    if name == "overflow_add.kofun" {
+        return "error[R010]: integer overflow in operator `+`\n"
+    }
+    if name == "overflow_subtract.kofun" {
+        return "error[R010]: integer overflow in operator `-`\n"
+    }
+    if name == "overflow_multiply.kofun" {
+        return "error[R010]: integer overflow in operator `*`\n"
+    }
+    if name == "overflow_negate.kofun" {
+        return "error[R010]: integer overflow in unary operator `-`\n"
+    }
+    if name == "overflow_floor_div.kofun" {
+        return "error[R010]: integer overflow in operator `//`\n"
+    }
+    return ""
+}
+
+fn escaped(value: Text) -> Text {
+    return replace(replace(value, "\\", "\\\\"), "\n", "\\n")
+}
+
+fn main() {
+    print("contract:kofun.backend-differential/v1")
+    for backend in backend_names() {
+        print("backend:" + backend)
+    }
+    for name in case_names() {
+        print("case:" + name)
+        print("exit:" + to_text(expected_exit(name)))
+        print("stdout:" + escaped(expected_stdout(name)))
+        print("stderr:" + escaped(expected_stderr(name)))
+    }
+}
