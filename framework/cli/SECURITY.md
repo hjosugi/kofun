@@ -30,7 +30,10 @@ than color.
 The embedded declaration table is trusted compiler output. Editing or
 corrupting the emitted ELF after compilation is outside the runtime's trust
 boundary. The active gate protects the checked runtime prefix with source
-hashes and byte-for-byte regeneration.
+hashes. It also requires byte-stable regeneration within one host toolchain
+and executes a program built from that regenerated prefix. Cross-toolchain
+byte equality is not claimed because compiler versions can select different
+instructions and page-aligned layouts.
 
 The C11 compiler and checked x86-64 runtime prefix are bootstrap artifacts.
 They do not establish memory safety for arbitrary native Kofun code, and this

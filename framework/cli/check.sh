@@ -27,7 +27,11 @@ mkdir -p "$WORK/template" "$WORK/spies"
     sha256sum -c SHA256SUMS
 )
 
-# Rebuild the audited freestanding runtime and reproduce its checked-in prefix.
+# Rebuild the audited freestanding runtime twice with the active host toolchain.
+# Compiler versions may choose different instruction sequences and can move the
+# page-aligned config segment, so cross-toolchain byte equality is not a valid
+# reproducibility claim. Instead, require byte stability within this toolchain
+# and execute a compiler built against the reproduced prefix.
 "$CC" -std=c11 -Os -ffreestanding -fno-builtin \
     -fno-stack-protector -fno-pie \
     -fno-asynchronous-unwind-tables -fno-unwind-tables \
@@ -47,7 +51,18 @@ ld -nostdlib -static --build-id=none \
 "$WORK/template/template-to-inc" \
     "$WORK/template/runtime.elf" "$WORK/template/second.inc"
 cmp "$WORK/template/first.inc" "$WORK/template/second.inc"
-cmp "$ROOT/framework/cli/runtime_template.inc" "$WORK/template/first.inc"
+cp "$ROOT/framework/cli/compiler.c" "$WORK/template/compiler.c"
+cp "$WORK/template/first.inc" "$WORK/template/runtime_template.inc"
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$WORK/template/compiler.c" \
+    -o "$WORK/template/reproduced-compiler"
+"$WORK/template/reproduced-compiler" \
+    "$SOURCE" "$WORK/template/reproduced-program"
+test "$("$WORK/template/reproduced-program" sum -8 50)" = 42
+"$WORK/template/reproduced-program" --help \
+    >"$WORK/template/reproduced-help.txt"
+grep -Fq 'Usage: kofun-tool <command> [options]' \
+    "$WORK/template/reproduced-help.txt"
 
 # Build the declaration compiler with strict warnings and with ASAN/UBSAN.
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
