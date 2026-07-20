@@ -68,9 +68,21 @@ class Binding:
     owned: bool = False
     moved: bool = False
     declaration_span: ast.Span | None = None
+    #: The type this binding was declared with. `type` may be temporarily
+    #: narrower inside a branch that has proved the value is not null; the
+    #: declared type is what assignment is checked against, so a narrowing can
+    #: never make a legal assignment illegal.
+    declared_type: Type | None = None
+
+    @property
+    def declared(self) -> Type:
+        return self.declared_type if self.declared_type is not None else self.type
 
     def clone(self) -> "Binding":
-        return Binding(self.type, self.mutable, self.owned, self.moved, self.declaration_span)
+        return Binding(
+            self.type, self.mutable, self.owned, self.moved,
+            self.declaration_span, self.declared_type,
+        )
 
 
 class Scope:
@@ -226,8 +238,15 @@ class TypeChecker:
             if not binding.mutable:
                 self._error(node.span, f"cannot assign to immutable binding `{node.name}`", "E305", "declare it with `let mut`")
             value_type = self._infer(node.value)
-            if not self._assignable(value_type, binding.type):
-                self._type_error(node.value.span, value_type, binding.type)
+            # Check against the declared type, not any narrowing in force: a
+            # binding declared `Int?` must still accept null even inside a
+            # branch that proved it was not null a moment ago.
+            target = binding.declared
+            if not self._assignable(value_type, target):
+                self._type_error(node.value.span, value_type, target)
+            # The assignment invalidates what the narrowing proved.
+            binding.type = target
+            binding.declared_type = None
             return VOID
         if isinstance(node, ast.ReturnStmt):
             actual = VOID if node.value is None else self._infer(node.value)
@@ -450,12 +469,17 @@ class TypeChecker:
         elif isinstance(node, ast.IfExpr):
             condition = self._infer(node.condition)
             self._expect_bool(condition, node.condition.span)
+            narrow_true, narrow_false = self._narrowing_from(node.condition)
             before = self._capture_visible_bindings()
             value_context = node.else_branch is not None and not statement_context
+
+            self._apply_narrowing(narrow_true)
             then_type = self._check_branch(node.then_branch, value_context=value_context)
             then_state = self._capture_visible_bindings()
             self._restore_visible_bindings(before)
+
             if node.else_branch:
+                self._apply_narrowing(narrow_false)
                 else_type = self._check_branch(node.else_branch, value_context=value_context)
                 else_state = self._capture_visible_bindings()
             else:
@@ -463,6 +487,12 @@ class TypeChecker:
                 else_state = self._capture_visible_bindings()
             self._restore_visible_bindings(before)
             self._merge_branch_moves(then_state, else_state)
+
+            # Guard form: `if x == null { return }` leaves the rest of the
+            # function on the branch where x is present, so the narrowing holds
+            # from here on rather than only inside the block.
+            if narrow_false and self._block_definitely_returns(node.then_branch):
+                self._apply_narrowing(narrow_false)
             result = self._join(then_type, else_type, node.span) if node.else_branch and not statement_context else VOID
         elif isinstance(node, ast.PipeExpr):
             result = self._infer_pipe(node)
@@ -764,19 +794,66 @@ class TypeChecker:
             result = self._join(result, value, span)
         return result
 
-    def _capture_visible_bindings(self) -> dict[int, tuple[Binding, bool]]:
-        result: dict[int, tuple[Binding, bool]] = {}
+    def _narrowing_from(
+        self, condition: ast.Expr
+    ) -> tuple[list[tuple[Binding, Type]], list[tuple[Binding, Type]]]:
+        """Work out what a null test proves, per branch.
+
+        Returns (narrowed when true, narrowed when false). `x != null` proves
+        `x` is present on the true side; `x == null` proves it on the false
+        side. Only a direct comparison of a name against `null` is recognised:
+        anything more clever risks claiming a guarantee the program does not
+        actually make, and an unsound narrowing is far worse than a missing one.
+        """
+        if not isinstance(condition, ast.BinaryExpr) or condition.op not in ("==", "!="):
+            return [], []
+
+        for name_side, null_side in (
+            (condition.left, condition.right),
+            (condition.right, condition.left),
+        ):
+            if not isinstance(name_side, ast.Variable):
+                continue
+            if not (isinstance(null_side, ast.Literal) and null_side.kind == "Null"):
+                continue
+
+            binding = self.scope.resolve(name_side.name)
+            if binding is None:
+                continue
+            inner = binding.type.optional_inner
+            if inner is None:
+                continue        # not optional: nothing to narrow
+
+            present = [(binding, inner)]
+            return (present, []) if condition.op == "!=" else ([], present)
+
+        return [], []
+
+    @staticmethod
+    def _apply_narrowing(narrowed: list[tuple[Binding, Type]]) -> None:
+        for binding, narrower in narrowed:
+            if binding.declared_type is None:
+                binding.declared_type = binding.type
+            binding.type = narrower
+
+    def _capture_visible_bindings(self) -> dict[int, tuple[Binding, bool, Type]]:
+        result: dict[int, tuple[Binding, bool, Type]] = {}
         scope: Scope | None = self.scope
         while scope:
             for binding in scope.values.values():
-                result[id(binding)] = (binding, binding.moved)
+                result[id(binding)] = (binding, binding.moved, binding.type)
             scope = scope.parent
         return result
 
     @staticmethod
-    def _restore_visible_bindings(snapshot: dict[int, tuple[Binding, bool]]) -> None:
-        for binding, moved in snapshot.values():
+    def _restore_visible_bindings(
+        snapshot: dict[int, tuple[Binding, bool, Type]]
+    ) -> None:
+        # Types are restored alongside move state, so a narrowing applied inside
+        # one branch cannot leak into the other or outlive the `if`.
+        for binding, moved, declared in snapshot.values():
             binding.moved = moved
+            binding.type = declared
 
     @staticmethod
     def _state_by_name(scope: Scope) -> dict[str, Binding]:
@@ -790,17 +867,18 @@ class TypeChecker:
 
     def _merge_branch_moves(
         self,
-        then_state: dict[int, tuple[Binding, bool]],
-        else_state: dict[int, tuple[Binding, bool]],
+        then_state: dict[int, tuple[Binding, bool, Type]],
+        else_state: dict[int, tuple[Binding, bool, Type]],
     ) -> None:
-        for key, (binding, then_moved) in then_state.items():
-            else_moved = else_state.get(key, (binding, False))[1]
+        for key, (binding, then_moved, _type) in then_state.items():
+            entry = else_state.get(key)
+            else_moved = entry[1] if entry is not None else False
             if binding.owned:
                 binding.moved = then_moved or else_moved
 
-    def _merge_loop_moves(self, before: dict[int, tuple[Binding, bool]]) -> None:
+    def _merge_loop_moves(self, before: dict[int, tuple[Binding, bool, Type]]) -> None:
         # A loop may run, so any outer value consumed in its body is considered consumed after it.
-        for key, (binding, was_moved) in before.items():
+        for key, (binding, was_moved, _type) in before.items():
             if binding.owned:
                 binding.moved = binding.moved or was_moved
 
