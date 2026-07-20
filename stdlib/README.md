@@ -18,6 +18,12 @@ The boundary is deliberately split in two:
 - the remaining modules expose `SysResult[T]` and affine resources. Raw negative
   kernel returns never escape those modules.
 
+The platform-independent [`testing/`](testing/) checkpoint defines pure,
+value-returning assertions for `Int`, `Bool`, and `Text`, plus deterministic
+summary helpers. Its canonical ADT surface is not yet connected to executable
+Stage 2 code generation; its gate runs an honest Int-Core projection through
+the C11 and direct x86-64 backends.
+
 Run the repository-local, Python-free contract checks with:
 
 ```sh

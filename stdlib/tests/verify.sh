@@ -138,6 +138,8 @@ cmp "$tmp_dir/errno-core.expected" "$tmp_dir/errno-core.out" ||
 printf 'stdlib contract: PASS\n'
 printf 'stdlib Stage 1 errno Core: PASS\n'
 
+sh "$stdlib_dir/testing/tests/verify.sh"
+
 [ "$(uname -s)" = Linux ] ||
     fail 'native file round-trip requires Linux'
 [ "$(uname -m)" = x86_64 ] ||

@@ -1,0 +1,116 @@
+# Deterministic, value-returning testing API checkpoint.
+#
+# Assertion functions never abort and never print.  They return data so a
+# caller can preserve source order, collect every failure, or compose results
+# with List pipelines.  AssertionFailure constructor fields are ordered as
+# (case name, expected, actual).
+
+type AssertionFailure =
+    | ExpectedTrue(Text)
+    | ExpectedFalse(Text)
+    | IntNotEqual(Text, Int, Int)
+    | BoolNotEqual(Text, Bool, Bool)
+    | TextNotEqual(Text, Text, Text)
+
+type TestResult =
+    | TestPassed(Text)
+    | TestFailed(AssertionFailure)
+
+type TestSummary = {
+    passed: Int,
+    failed: Int,
+}
+
+fn expect_true(name: Text, actual: Bool) -> TestResult {
+    if actual {
+        return TestPassed(name)
+    }
+    return TestFailed(ExpectedTrue(name))
+}
+
+fn expect_false(name: Text, actual: Bool) -> TestResult {
+    if !actual {
+        return TestPassed(name)
+    }
+    return TestFailed(ExpectedFalse(name))
+}
+
+fn expect_equal_int(
+    name: Text,
+    actual: Int,
+    expected: Int,
+) -> TestResult {
+    if actual == expected {
+        return TestPassed(name)
+    }
+    return TestFailed(IntNotEqual(name, expected, actual))
+}
+
+fn expect_equal_bool(
+    name: Text,
+    actual: Bool,
+    expected: Bool,
+) -> TestResult {
+    if actual == expected {
+        return TestPassed(name)
+    }
+    return TestFailed(BoolNotEqual(name, expected, actual))
+}
+
+fn expect_equal_text(
+    name: Text,
+    actual: Text,
+    expected: Text,
+) -> TestResult {
+    if actual == expected {
+        return TestPassed(name)
+    }
+    return TestFailed(TextNotEqual(name, expected, actual))
+}
+
+fn test_passed(read result: TestResult) -> Bool {
+    return match result {
+        TestPassed(_) => true,
+        TestFailed(_) => false,
+    }
+}
+
+fn test_failed(read result: TestResult) -> Bool {
+    return !test_passed(result)
+}
+
+fn test_summary_empty() -> TestSummary {
+    return TestSummary { passed: 0, failed: 0 }
+}
+
+fn test_summary_add(
+    read summary: TestSummary,
+    read result: TestResult,
+) -> TestSummary {
+    if test_passed(result) {
+        return TestSummary {
+            passed: summary.passed + 1,
+            failed: summary.failed,
+        }
+    }
+    return TestSummary {
+        passed: summary.passed,
+        failed: summary.failed + 1,
+    }
+}
+
+fn test_summarize(read results: List[TestResult]) -> TestSummary {
+    return fold(
+        results,
+        test_summary_empty(),
+        fn(summary: TestSummary, result: TestResult) =>
+            test_summary_add(summary, result),
+    )
+}
+
+fn test_exit_code(read summary: TestSummary) -> Int {
+    if summary.failed == 0 {
+        return 0
+    }
+    return 1
+}

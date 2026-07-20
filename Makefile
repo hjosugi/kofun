@@ -120,7 +120,8 @@ verify: test diagnostics fuzz check bootstrap stage2 native wasm tour c-abi rust
 	  framework/cli/check.sh \
 	  framework/tui/build.sh framework/tui/check.sh \
 	  benchmarks/http/benchmark.sh \
-	  stdlib/tests/verify.sh tests/cli.sh tests/build_system.sh \
+	  stdlib/tests/verify.sh stdlib/testing/tests/verify.sh \
+	  tests/cli.sh tests/build_system.sh \
 	  package/manager.sh tests/package_manager.sh \
 	  tests/lsp/check.sh tooling/lsp/kofun-lsp \
 	  editor/vscode/server/kofun-lsp \

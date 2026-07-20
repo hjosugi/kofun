@@ -1,0 +1,55 @@
+# Active Int-Core projection of stdlib/testing/testing.kofun.
+# expect-stdout: 1
+# expect-stdout: 0
+# expect-stdout: 1
+# expect-stdout: 0
+# expect-stdout: 2
+# expect-stdout: 2
+# expect-stdout: 1
+# expect-stdout: 0
+
+fn testing_expect_equal_int(actual: Int, expected: Int) -> Int {
+    if actual == expected {
+        return 1
+    }
+    return 0
+}
+
+fn testing_expect_true(actual: Int) -> Int {
+    if actual != 0 {
+        return 1
+    }
+    return 0
+}
+
+fn testing_count_passed(
+    first: Int,
+    second: Int,
+    third: Int,
+    fourth: Int
+) -> Int {
+    return first + second + third + fourth
+}
+
+fn testing_exit_code(failed: Int) -> Int {
+    if failed == 0 {
+        return 0
+    }
+    return 1
+}
+
+fn testing_total_passed() -> Int {
+    return testing_count_passed(testing_expect_equal_int(42, 42), testing_expect_equal_int(41, 42), testing_expect_true(7), testing_expect_true(0))
+}
+
+fn main() -> Int {
+    print(testing_expect_equal_int(42, 42))
+    print(testing_expect_equal_int(41, 42))
+    print(testing_expect_true(7))
+    print(testing_expect_true(0))
+    print(testing_total_passed())
+    print(4 - testing_total_passed())
+    print(testing_exit_code(4 - testing_total_passed()))
+    print(testing_exit_code(0))
+    return 0
+}
