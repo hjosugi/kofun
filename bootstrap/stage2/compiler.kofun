@@ -61,7 +61,8 @@ fn pair_token(token: Text) -> Bool {
     return token == "->" || token == "==" || token == "!=" ||
     token == "<=" || token == ">=" || token == "&&" ||
     token == "||" || token == "//" || token == ".." ||
-    token == "**" || token == "??" || token == "|>"
+    token == "**" || token == "??" || token == "|>" ||
+    token == "=>"
 }
 
 fn token_end(source: Text, start: Int) -> Int {
@@ -113,7 +114,7 @@ fn keyword(token: Text) -> Bool {
     token == "return" || token == "if" || token == "else" ||
     token == "while" || token == "for" || token == "in" ||
     token == "break" || token == "continue" || token == "true" ||
-    token == "false"
+    token == "false" || token == "match"
 }
 
 fn token_kind(source: Text, start: Int) -> Text {
@@ -1070,6 +1071,156 @@ fn lower_body(
                 cursor = skip_trivia(source, else_close)
             }
             emitted = emitted + "\n    }\n"
+        } else if statement == "match" {
+            let match_start = cursor
+            let value_start = skip_trivia(
+                source,
+                token_end(source, cursor)
+            )
+            let value_end = condition_end(source, value_start)
+            if value_end < 0 {
+                return "error[E2S24]: bounded match scrutinee must be Bool at byte " +
+                to_text(value_start)
+            }
+            let arms_open = skip_trivia(source, value_end)
+            if arms_open >= len(source) ||
+               token_text(source, arms_open) != "{" {
+                return "error[E2S24]: expected `{` after match scrutinee at byte " +
+                to_text(arms_open)
+            }
+            let mut arm_cursor = skip_trivia(
+                source,
+                token_end(source, arms_open)
+            )
+            let mut seen_true = false
+            let mut seen_false = false
+            let mut seen_catchall = false
+            let mut true_body = ""
+            let mut false_body = ""
+            let mut catchall_body = ""
+            while arm_cursor < len(source) &&
+                  token_text(source, arm_cursor) != "}" {
+                let pattern_start = arm_cursor
+                let pattern = token_text(source, pattern_start)
+                if seen_catchall {
+                    return "error[E2S26]: pattern after catch-all is unreachable at byte " +
+                    to_text(pattern_start)
+                }
+                if pattern == "true" && seen_true {
+                    return "error[E2S26]: duplicate `true` pattern is unreachable at byte " +
+                    to_text(pattern_start)
+                }
+                if pattern == "false" && seen_false {
+                    return "error[E2S26]: duplicate `false` pattern is unreachable at byte " +
+                    to_text(pattern_start)
+                }
+                if pattern == "_" && seen_true && seen_false {
+                    return "error[E2S26]: catch-all pattern is unreachable at byte " +
+                    to_text(pattern_start)
+                }
+                if pattern != "true" && pattern != "false" &&
+                   pattern != "_" {
+                    return "error[E2S24]: bounded Bool pattern must be `true`, `false`, or `_` at byte " +
+                    to_text(pattern_start)
+                }
+                let after_pattern = skip_trivia(
+                    source,
+                    token_end(source, pattern_start)
+                )
+                if after_pattern < len(source) &&
+                   token_text(source, after_pattern) == "if" {
+                    return "error[E2S24]: guards are outside bounded Bool match at byte " +
+                    to_text(after_pattern)
+                }
+                if after_pattern >= len(source) ||
+                   token_text(source, after_pattern) != "=>" {
+                    return "error[E2S24]: expected `=>` after Bool pattern at byte " +
+                    to_text(after_pattern)
+                }
+                let arm_open = skip_trivia(
+                    source,
+                    token_end(source, after_pattern)
+                )
+                if arm_open >= len(source) ||
+                   token_text(source, arm_open) != "{" {
+                    return "error[E2S24]: bounded Bool match arm must use a block at byte " +
+                    to_text(arm_open)
+                }
+                let arm_close = balanced_end(source, arm_open, "{", "}")
+                if arm_close < 0 {
+                    return "error[E2S24]: missing `}` after match arm at byte " +
+                    to_text(arm_open)
+                }
+                let arm_body = lower_body(
+                    source,
+                    arm_open,
+                    is_main,
+                    false,
+                    function_open
+                )
+                if starts_with(arm_body, "error[") {
+                    return arm_body
+                }
+                if pattern == "true" {
+                    seen_true = true
+                    true_body = arm_body
+                } else if pattern == "false" {
+                    seen_false = true
+                    false_body = arm_body
+                } else {
+                    seen_catchall = true
+                    catchall_body = arm_body
+                }
+                arm_cursor = skip_trivia(source, arm_close)
+                if arm_cursor < len(source) &&
+                   token_text(source, arm_cursor) == "," {
+                    arm_cursor = skip_trivia(
+                        source,
+                        token_end(source, arm_cursor)
+                    )
+                } else if arm_cursor >= len(source) ||
+                          token_text(source, arm_cursor) != "}" {
+                    return "error[E2S24]: expected `,` between match arms at byte " +
+                    to_text(arm_cursor)
+                }
+            }
+            if arm_cursor >= len(source) ||
+               token_text(source, arm_cursor) != "}" {
+                return "error[E2S24]: missing `}` after match arms at byte " +
+                to_text(arms_open)
+            }
+            if !seen_true && !seen_false && !seen_catchall {
+                return "error[E2S25]: non-exhaustive Bool match; missing patterns `true`, `false` at byte " +
+                to_text(match_start)
+            }
+            if !seen_true && !seen_catchall {
+                return "error[E2S25]: non-exhaustive Bool match; missing pattern `true` at byte " +
+                to_text(match_start)
+            }
+            if !seen_false && !seen_catchall {
+                return "error[E2S25]: non-exhaustive Bool match; missing pattern `false` at byte " +
+                to_text(match_start)
+            }
+            let mut emitted_true = catchall_body
+            let mut emitted_false = catchall_body
+            if seen_true {
+                emitted_true = true_body
+            }
+            if seen_false {
+                emitted_false = false_body
+            }
+            emitted = emitted +
+            "    {\n" +
+            "        bool kofun_match_value = " +
+            emit_condition(source, value_start, value_end) + ";\n" +
+            "        if (kofun_failed) return " + failure_result + ";\n" +
+            "        if (kofun_match_value) {\n" +
+            emitted_true +
+            "        } else {\n" +
+            emitted_false +
+            "        }\n" +
+            "    }\n"
+            cursor = skip_trivia(source, token_end(source, arm_cursor))
         } else if statement == "return" {
             let value_start = skip_trivia(source, token_end(source, cursor))
             if value_start < len(source) &&

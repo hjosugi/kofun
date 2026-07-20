@@ -31,7 +31,7 @@ compiler cannot yet produce the final diagnostic.
 | #43 | if expressions | Stage 2 lowers statement-position `if` with Bool literals or integer comparisons | partial |
 | #44 | else-if chains | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
 | #45 | for loops | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
-| #46 | match expressions | not in the active grammar; structural projection only preserves balanced tokens | unsupported |
+| #46 | match expressions | Stage 2 executes exhaustive statement-position Bool matches and rejects missing/unreachable arms | partial |
 | #47 | while loops | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
 
 The executable evidence is in
@@ -696,10 +696,16 @@ let text = match flag {
 }
 ```
 
-**Implementation status:** `match` is not in the active `grammar.ebnf` and is
-not classified as a keyword by Stage 2. Balanced tokens survive structural
-projection only. Pattern AST/HIR, exhaustiveness, guards, ownership behavior,
-evaluation, diagnostics, and lowering are all open.
+**Implementation status:** Stage 2 classifies `match` as a keyword and lowers a
+bounded statement-position Bool slice. Bool literals and integer comparisons
+may be matched by `true`, `false`, and `_` block arms. The compiler evaluates
+the scrutinee once, executes only the selected arm, accepts complete
+`true`/`false` coverage without a catch-all, and statically rejects missing,
+duplicate, or unreachable cases. The exact finite-set algorithm and diagnostics
+are specified in `spec/bool-match-exhaustiveness.md`.
+
+Value-producing match, arm type unification, bindings, ADTs, payload and nested
+patterns, or-patterns, guards, and ownership-aware destructuring remain open.
 
 ## #47 — While loops
 

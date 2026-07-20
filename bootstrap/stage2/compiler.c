@@ -152,7 +152,7 @@ static int64_t string_end(const char *source, int64_t start) {
 static bool pair_token(const char *source, int64_t start) {
     static const char *pairs[] = {
         "->", "==", "!=", "<=", ">=", "&&", "||",
-        "//", "..", "**", "??", "|>"
+        "//", "..", "**", "??", "|>", "=>"
     };
     char pair[3] = {source[start], source[start + 1], '\0'};
     size_t count = sizeof(pairs) / sizeof(pairs[0]);
@@ -211,7 +211,7 @@ static char *token_copy(const char *source, int64_t start) {
 static bool keyword_token(const char *source, int64_t start) {
     static const char *keywords[] = {
         "fn", "let", "mut", "return", "if", "else", "while", "for",
-        "in", "break", "continue", "true", "false"
+        "in", "break", "continue", "true", "false", "match"
     };
     size_t count = sizeof(keywords) / sizeof(keywords[0]);
     for (size_t index = 0; index < count; ++index) {
@@ -1249,6 +1249,16 @@ static char *assignment_error(
     return error.data;
 }
 
+static void free_match_bodies(
+    char *true_body,
+    char *false_body,
+    char *catchall_body
+) {
+    free(true_body);
+    free(false_body);
+    free(catchall_body);
+}
+
 static char *lower_body(
     const char *source,
     int64_t open,
@@ -1465,6 +1475,344 @@ static char *lower_body(
                 cursor = skip_trivia(source, else_close);
             }
             buffer_append(&emitted, "\n    }\n");
+        } else if (token_equal(source, cursor, "match")) {
+            int64_t match_start = cursor;
+            int64_t value_start = skip_trivia(
+                source,
+                token_end(source, cursor)
+            );
+            int64_t value_end = condition_end(source, value_start);
+            if (value_end < 0) {
+                free(emitted.data);
+                return lower_error(
+                    "E2S24",
+                    "bounded match scrutinee must be Bool",
+                    value_start
+                );
+            }
+            int64_t arms_open = skip_trivia(source, value_end);
+            if (
+                arms_open >= length ||
+                !token_equal(source, arms_open, "{")
+            ) {
+                free(emitted.data);
+                return lower_error(
+                    "E2S24",
+                    "expected `{` after match scrutinee",
+                    arms_open
+                );
+            }
+            int64_t arm_cursor = skip_trivia(
+                source,
+                token_end(source, arms_open)
+            );
+            bool seen_true = false;
+            bool seen_false = false;
+            bool seen_catchall = false;
+            char *true_body = NULL;
+            char *false_body = NULL;
+            char *catchall_body = NULL;
+            while (
+                arm_cursor < length &&
+                !token_equal(source, arm_cursor, "}")
+            ) {
+                int64_t pattern_start = arm_cursor;
+                bool pattern_true = token_equal(
+                    source,
+                    pattern_start,
+                    "true"
+                );
+                bool pattern_false = token_equal(
+                    source,
+                    pattern_start,
+                    "false"
+                );
+                bool pattern_catchall = token_equal(
+                    source,
+                    pattern_start,
+                    "_"
+                );
+                if (seen_catchall) {
+                    free_match_bodies(
+                        true_body,
+                        false_body,
+                        catchall_body
+                    );
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S26",
+                        "pattern after catch-all is unreachable",
+                        pattern_start
+                    );
+                }
+                if (pattern_true && seen_true) {
+                    free_match_bodies(
+                        true_body,
+                        false_body,
+                        catchall_body
+                    );
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S26",
+                        "duplicate `true` pattern is unreachable",
+                        pattern_start
+                    );
+                }
+                if (pattern_false && seen_false) {
+                    free_match_bodies(
+                        true_body,
+                        false_body,
+                        catchall_body
+                    );
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S26",
+                        "duplicate `false` pattern is unreachable",
+                        pattern_start
+                    );
+                }
+                if (pattern_catchall && seen_true && seen_false) {
+                    free_match_bodies(
+                        true_body,
+                        false_body,
+                        catchall_body
+                    );
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S26",
+                        "catch-all pattern is unreachable",
+                        pattern_start
+                    );
+                }
+                if (
+                    !pattern_true &&
+                    !pattern_false &&
+                    !pattern_catchall
+                ) {
+                    free_match_bodies(
+                        true_body,
+                        false_body,
+                        catchall_body
+                    );
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S24",
+                        "bounded Bool pattern must be `true`, `false`, or `_`",
+                        pattern_start
+                    );
+                }
+                int64_t after_pattern = skip_trivia(
+                    source,
+                    token_end(source, pattern_start)
+                );
+                if (
+                    after_pattern < length &&
+                    token_equal(source, after_pattern, "if")
+                ) {
+                    free_match_bodies(
+                        true_body,
+                        false_body,
+                        catchall_body
+                    );
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S24",
+                        "guards are outside bounded Bool match",
+                        after_pattern
+                    );
+                }
+                if (
+                    after_pattern >= length ||
+                    !token_equal(source, after_pattern, "=>")
+                ) {
+                    free_match_bodies(
+                        true_body,
+                        false_body,
+                        catchall_body
+                    );
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S24",
+                        "expected `=>` after Bool pattern",
+                        after_pattern
+                    );
+                }
+                int64_t arm_open = skip_trivia(
+                    source,
+                    token_end(source, after_pattern)
+                );
+                if (
+                    arm_open >= length ||
+                    !token_equal(source, arm_open, "{")
+                ) {
+                    free_match_bodies(
+                        true_body,
+                        false_body,
+                        catchall_body
+                    );
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S24",
+                        "bounded Bool match arm must use a block",
+                        arm_open
+                    );
+                }
+                int64_t arm_close = balanced_end(
+                    source,
+                    arm_open,
+                    "{",
+                    "}"
+                );
+                if (arm_close < 0) {
+                    free_match_bodies(
+                        true_body,
+                        false_body,
+                        catchall_body
+                    );
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S24",
+                        "missing `}` after match arm",
+                        arm_open
+                    );
+                }
+                char *arm_body = lower_body(
+                    source,
+                    arm_open,
+                    is_main,
+                    false,
+                    function_open
+                );
+                if (strncmp(arm_body, "error[", 6) == 0) {
+                    free_match_bodies(
+                        true_body,
+                        false_body,
+                        catchall_body
+                    );
+                    free(emitted.data);
+                    return arm_body;
+                }
+                if (pattern_true) {
+                    seen_true = true;
+                    true_body = arm_body;
+                } else if (pattern_false) {
+                    seen_false = true;
+                    false_body = arm_body;
+                } else {
+                    seen_catchall = true;
+                    catchall_body = arm_body;
+                }
+                arm_cursor = skip_trivia(source, arm_close);
+                if (
+                    arm_cursor < length &&
+                    token_equal(source, arm_cursor, ",")
+                ) {
+                    arm_cursor = skip_trivia(
+                        source,
+                        token_end(source, arm_cursor)
+                    );
+                } else if (
+                    arm_cursor >= length ||
+                    !token_equal(source, arm_cursor, "}")
+                ) {
+                    free_match_bodies(
+                        true_body,
+                        false_body,
+                        catchall_body
+                    );
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S24",
+                        "expected `,` between match arms",
+                        arm_cursor
+                    );
+                }
+            }
+            if (
+                arm_cursor >= length ||
+                !token_equal(source, arm_cursor, "}")
+            ) {
+                free_match_bodies(
+                    true_body,
+                    false_body,
+                    catchall_body
+                );
+                free(emitted.data);
+                return lower_error(
+                    "E2S24",
+                    "missing `}` after match arms",
+                    arms_open
+                );
+            }
+            if (!seen_true && !seen_false && !seen_catchall) {
+                free_match_bodies(
+                    true_body,
+                    false_body,
+                    catchall_body
+                );
+                free(emitted.data);
+                return lower_error(
+                    "E2S25",
+                    "non-exhaustive Bool match; missing patterns `true`, `false`",
+                    match_start
+                );
+            }
+            if (!seen_true && !seen_catchall) {
+                free_match_bodies(
+                    true_body,
+                    false_body,
+                    catchall_body
+                );
+                free(emitted.data);
+                return lower_error(
+                    "E2S25",
+                    "non-exhaustive Bool match; missing pattern `true`",
+                    match_start
+                );
+            }
+            if (!seen_false && !seen_catchall) {
+                free_match_bodies(
+                    true_body,
+                    false_body,
+                    catchall_body
+                );
+                free(emitted.data);
+                return lower_error(
+                    "E2S25",
+                    "non-exhaustive Bool match; missing pattern `false`",
+                    match_start
+                );
+            }
+            const char *emitted_true = seen_true
+                ? true_body
+                : catchall_body;
+            const char *emitted_false = seen_false
+                ? false_body
+                : catchall_body;
+            char *match_value = emit_condition(
+                source,
+                value_start,
+                value_end
+            );
+            buffer_format(
+                &emitted,
+                "    {\n"
+                "        bool kofun_match_value = %s;\n"
+                "        if (kofun_failed) return %s;\n"
+                "        if (kofun_match_value) {\n"
+                "%s"
+                "        } else {\n"
+                "%s"
+                "        }\n"
+                "    }\n",
+                match_value,
+                failure_result,
+                emitted_true,
+                emitted_false
+            );
+            free(match_value);
+            free_match_bodies(true_body, false_body, catchall_body);
+            cursor = skip_trivia(source, token_end(source, arm_cursor));
         } else if (token_equal(source, cursor, "return")) {
             int64_t value_start = skip_trivia(source, token_end(source, cursor));
             if (value_start < length && token_equal(source, value_start, "}")) {
