@@ -165,6 +165,11 @@ class Assembler:
         """dst = zero_extend(src as 8-bit)"""
         self.emit(_rex(w=1, r=dst >> 3, b=src >> 3), 0x0F, 0xB6, _modrm(3, dst, src))
 
+    def movzx_r8_m(self, dst: int, base: int, disp: int) -> None:
+        """dst = zero_extend(byte at [base + disp])"""
+        self.emit(_rex(w=1, r=dst >> 3, b=base >> 3), 0x0F, 0xB6)
+        self._mem(dst, base, disp)
+
     def mov_m8_r(self, base: int, disp: int, src: int) -> None:
         """[base + disp] = low byte of src.
 

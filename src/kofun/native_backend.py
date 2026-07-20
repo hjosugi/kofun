@@ -289,6 +289,11 @@ class NativeBackend:
             self._emit_function(fn)
         self._emit_print_int()
         self._emit_print_str()
+        self._emit_print_text()
+        self._emit_memcpy()
+        self._emit_text_concat()
+        self._emit_text_eq()
+        self._emit_text_len()
         self._emit_alloc()
         self._emit_chunk()
         self._emit_oom()
@@ -571,9 +576,8 @@ class NativeBackend:
 
         left_type = self._expr_type(node.left)
         if left_type == TEXT:
-            raise BackendFailure(
-                "native backend does not support Text operators yet", node.span
-            )
+            self._text_binary(node)
+            return
 
         self._operands(node)
 
@@ -654,6 +658,33 @@ class NativeBackend:
         self._expr(condition)
         self.asm.test_rr(RAX, RAX)
         self.asm.jcc(CC_E, label)
+
+    def _text_binary(self, node: ast.BinaryExpr) -> None:
+        """Lower `+`, `==`, and `!=` on Text. Ordering is not defined yet."""
+        asm = self.asm
+        if node.op not in {"+", "==", "!="}:
+            raise BackendFailure(
+                f"native backend does not support `{node.op}` on Text", node.span
+            )
+
+        # Both operands must survive into the call, so neither can sit in a
+        # scratch register while the other is evaluated.
+        self._expr(node.left)
+        self._push(RAX)
+        self._expr(node.right)
+        asm.mov_rr(RSI, RAX)
+        self._pop(RDI)
+
+        if node.op == "+":
+            self._aligned_call("rt.text_concat")
+            return
+
+        self._aligned_call("rt.text_eq")
+        if node.op == "!=":
+            # rt.text_eq returns 0 or 1, so flipping it is a single test.
+            asm.test_rr(RAX, RAX)
+            asm.setcc(CC_E, RAX)
+            asm.movzx_r8(RAX, RAX)
 
     def _floor_div(self, node: ast.BinaryExpr) -> None:
         """rax = floor(rax / rcx), matching the interpreter rather than C.
@@ -745,6 +776,18 @@ class NativeBackend:
             self._print(node)
             return
 
+        if name == "len":
+            if len(node.args) != 1:
+                raise BackendFailure("`len` takes exactly one argument", node.span)
+            if self._expr_type(node.args[0]) != TEXT:
+                raise BackendFailure(
+                    "native backend only supports `len` on Text yet", node.span
+                )
+            self._expr(node.args[0])
+            asm.mov_rr(RDI, RAX)
+            self._aligned_call("rt.text_len")
+            return
+
         fn = self.functions.get(name)
         if fn is None:
             raise BackendFailure(
@@ -781,30 +824,25 @@ class NativeBackend:
         arg_type = self._expr_type(arg)
 
         if arg_type == TEXT:
-            if not (isinstance(arg, ast.Literal) and arg.kind == "Text"):
-                raise BackendFailure(
-                    "native backend can only print Text literals yet", arg.span
-                )
-            value = arg.value
-            asm.lea_label(RDI, self._string_label(value))
-            asm.mov_ri(RSI, len(value.encode("utf-8")) + 1)   # include newline
-            self._aligned_call("rt.print_str")
+            self._expr(arg)
+            asm.mov_rr(RDI, RAX)
+            self._aligned_call("rt.print_text")
             return
 
         if arg_type == BOOL:
+            # `true` and `false` are ordinary interned Text values, so this
+            # goes through the same printer as any other string.
             true_label = self._label("btrue")
             end = self._label("bend")
             self._expr(arg)
             asm.test_rr(RAX, RAX)
             asm.jcc(CC_NE, true_label)
             asm.lea_label(RDI, self._string_label("false"))
-            asm.mov_ri(RSI, len("false") + 1)
             asm.jmp(end + ".call")
             asm.label(true_label)
             asm.lea_label(RDI, self._string_label("true"))
-            asm.mov_ri(RSI, len("true") + 1)
             asm.label(end + ".call")
-            self._aligned_call("rt.print_str")
+            self._aligned_call("rt.print_text")
             asm.label(end)
             return
 
@@ -970,10 +1008,13 @@ class NativeBackend:
     def _emit_oom(self) -> None:
         """Report allocation failure on stderr and exit, never return garbage."""
         asm = self.asm
-        message = "kofun: out of memory"
+        message = "kofun: out of memory\n"
         asm.label("rt.oom")
+        # Interned Text carries an 8-byte length header, so the bytes start
+        # after it and the length is read from it.
         asm.lea_label(RSI, self._string_label(message))
-        asm.mov_ri(RDX, len(message.encode("utf-8")) + 1)
+        asm.mov_rm(RDX, RSI, 0)
+        asm.add_ri(RSI, 8)
         asm.mov_ri(RDI, STDERR)
         asm.mov_ri(RAX, SYS_WRITE)
         asm.syscall()
@@ -982,10 +1023,182 @@ class NativeBackend:
         asm.syscall()
         asm.ud2()                        # unreachable: exit does not return
 
+    # ---- Text runtime ------------------------------------------------------
+    #
+    # A Text value is a single pointer to `[byte length: i64][utf-8 bytes]`.
+    # Literals are emitted into rodata in exactly that layout, so a literal and
+    # a heap-built string are indistinguishable at runtime and no operation has
+    # to branch on which it got. Text is immutable, which is what makes sharing
+    # the read-only segment safe.
+
+    def _emit_memcpy(self) -> None:
+        """`rt.memcpy(rdi = dst, rsi = src, rdx = n)` -- byte at a time."""
+        asm = self.asm
+        asm.label("rt.memcpy")
+        done = "rt.memcpy.done"
+        loop = "rt.memcpy.loop"
+        asm.test_rr(RDX, RDX)
+        asm.jcc(CC_E, done)
+        asm.label(loop)
+        asm.movzx_r8_m(RAX, RSI, 0)
+        asm.mov_m8_r(RDI, 0, RAX)
+        asm.add_ri(RSI, 1)
+        asm.add_ri(RDI, 1)
+        asm.sub_ri(RDX, 1)
+        asm.jcc(CC_NE, loop)
+        asm.label(done)
+        asm.ret()
+
+    def _emit_text_concat(self) -> None:
+        """`rt.text_concat(rdi = a, rsi = b) -> rax` -- a fresh joined Text."""
+        asm = self.asm
+        asm.label("rt.text_concat")
+        asm.push(RBP)
+        asm.mov_rr(RBP, RSP)
+        for register in (RBX, R12, R13, R14, R15):
+            asm.push(register)
+        asm.sub_ri(RSP, 8)          # five pushes leave rsp misaligned for calls
+
+        asm.mov_rr(RBX, RDI)                 # a
+        asm.mov_rr(R12, RSI)                 # b
+        asm.mov_rm(R13, RBX, 0)              # length of a
+        asm.mov_rm(R14, R12, 0)              # length of b
+
+        asm.mov_rr(RDI, R13)
+        asm.add_rr(RDI, R14)
+        asm.add_ri(RDI, 8)                   # header
+        asm.call("rt.alloc")
+        asm.mov_rr(R15, RAX)                 # the new block
+
+        asm.mov_rr(RCX, R13)
+        asm.add_rr(RCX, R14)
+        asm.mov_mr(R15, 0, RCX)              # combined length
+
+        asm.mov_rr(RDI, R15)
+        asm.add_ri(RDI, 8)
+        asm.mov_rr(RSI, RBX)
+        asm.add_ri(RSI, 8)
+        asm.mov_rr(RDX, R13)
+        asm.call("rt.memcpy")
+
+        asm.mov_rr(RDI, R15)
+        asm.add_ri(RDI, 8)
+        asm.add_rr(RDI, R13)                 # just past a's bytes
+        asm.mov_rr(RSI, R12)
+        asm.add_ri(RSI, 8)
+        asm.mov_rr(RDX, R14)
+        asm.call("rt.memcpy")
+
+        asm.mov_rr(RAX, R15)
+        asm.add_ri(RSP, 8)
+        for register in (R15, R14, R13, R12, RBX):
+            asm.pop(register)
+        asm.pop(RBP)
+        asm.ret()
+
+    def _emit_text_eq(self) -> None:
+        """`rt.text_eq(rdi = a, rsi = b) -> rax` as 1 or 0."""
+        asm = self.asm
+        asm.label("rt.text_eq")
+        false_label = "rt.text_eq.false"
+        true_label = "rt.text_eq.true"
+        loop = "rt.text_eq.loop"
+
+        asm.mov_rm(RAX, RDI, 0)
+        asm.mov_rm(RCX, RSI, 0)
+        asm.cmp_rr(RAX, RCX)
+        asm.jcc(CC_NE, false_label)          # different lengths cannot be equal
+
+        asm.mov_rr(RDX, RAX)
+        asm.add_ri(RDI, 8)
+        asm.add_ri(RSI, 8)
+        asm.label(loop)
+        asm.test_rr(RDX, RDX)
+        asm.jcc(CC_E, true_label)
+        asm.movzx_r8_m(RAX, RDI, 0)
+        asm.movzx_r8_m(RCX, RSI, 0)
+        asm.cmp_rr(RAX, RCX)
+        asm.jcc(CC_NE, false_label)
+        asm.add_ri(RDI, 1)
+        asm.add_ri(RSI, 1)
+        asm.sub_ri(RDX, 1)
+        asm.jmp(loop)
+
+        asm.label(true_label)
+        asm.mov_ri(RAX, 1)
+        asm.ret()
+        asm.label(false_label)
+        asm.xor_rr(RAX, RAX)
+        asm.ret()
+
+    def _emit_text_len(self) -> None:
+        """`rt.text_len(rdi = text) -> rax`, counted in codepoints.
+
+        The reference interpreter is Python, where `len` on a string counts
+        codepoints rather than bytes, so `len("héllo")` is 5 and not 6. Matching
+        that means counting bytes which are not UTF-8 continuation bytes, i.e.
+        those whose top two bits are not `10`.
+        """
+        asm = self.asm
+        asm.label("rt.text_len")
+        loop = "rt.text_len.loop"
+        skip = "rt.text_len.skip"
+        done = "rt.text_len.done"
+
+        asm.mov_rm(RDX, RDI, 0)              # length in bytes
+        asm.add_ri(RDI, 8)
+        asm.xor_rr(RAX, RAX)                 # codepoint count
+
+        asm.label(loop)
+        asm.test_rr(RDX, RDX)
+        asm.jcc(CC_E, done)
+        asm.movzx_r8_m(RCX, RDI, 0)
+        asm.and_ri(RCX, 0xC0)
+        asm.cmp_ri(RCX, 0x80)
+        asm.jcc(CC_E, skip)                  # continuation byte: not a new one
+        asm.add_ri(RAX, 1)
+        asm.label(skip)
+        asm.add_ri(RDI, 1)
+        asm.sub_ri(RDX, 1)
+        asm.jmp(loop)
+        asm.label(done)
+        asm.ret()
+
+    def _emit_print_text(self) -> None:
+        """`rt.print_text(rdi = text)` -- the bytes, then a newline."""
+        asm = self.asm
+        asm.label("rt.print_text")
+        asm.push(RBP)
+        asm.mov_rr(RBP, RSP)
+
+        asm.mov_rm(RDX, RDI, 0)              # byte length
+        asm.mov_rr(RSI, RDI)
+        asm.add_ri(RSI, 8)                   # first byte
+        asm.mov_ri(RAX, SYS_WRITE)
+        asm.mov_ri(RDI, STDOUT)
+        asm.syscall()
+
+        asm.lea_label(RSI, "rt.newline")
+        asm.mov_ri(RDX, 1)
+        asm.mov_ri(RAX, SYS_WRITE)
+        asm.mov_ri(RDI, STDOUT)
+        asm.syscall()
+
+        asm.mov_rr(RSP, RBP)
+        asm.pop(RBP)
+        asm.ret()
+
     def _emit_strings(self) -> None:
+        asm = self.asm
+        asm.label("rt.newline")
+        asm.emit_bytes(b"\n")
         for value, label in self.strings.items():
-            self.asm.label(label)
-            self.asm.emit_bytes(value.encode("utf-8") + b"\n")
+            encoded = value.encode("utf-8")
+            # The length field is read as a 64-bit word, so it must be aligned.
+            asm.emit_bytes(b"\0" * (-asm.offset % 8))
+            asm.label(label)
+            asm.emit_bytes(len(encoded).to_bytes(8, "little"))
+            asm.emit_bytes(encoded)
 
     def _emit_data(self) -> int:
         """Emit the writable section, returning its offset within the blob.

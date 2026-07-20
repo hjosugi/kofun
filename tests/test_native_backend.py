@@ -146,6 +146,40 @@ fn main() {
     print("Kofun")
 }
 """,
+    "text_operations": """
+fn greet(name: Text) -> Text {
+    return "hello, " + name
+}
+
+fn main() {
+    let a = "hello"
+    let b = "world"
+    print(a + " " + b)
+    print(a == "hello")
+    print(a == b)
+    print(a != b)
+    print(greet("kofun"))
+    print(greet(greet("nested")))
+    print("" + a)
+    print(a + "")
+    print("" == "")
+}
+""",
+    # `len` counts codepoints, matching the interpreter, so multi-byte UTF-8
+    # must not be counted per byte. These strings are 6, 9, and 4 bytes but 5,
+    # 3, and 1 codepoints respectively.
+    "text_unicode_length": """
+fn main() {
+    print(len("hello"))
+    print(len("héllo"))
+    print(len("日本語"))
+    print(len("🌍"))
+    print(len(""))
+    print(len("a" + "é"))
+    print("日本語" == "日本語")
+    print("é" == "e")
+}
+""",
     "loop_control": """
 fn main() {
     let mut i = 0
