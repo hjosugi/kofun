@@ -1192,10 +1192,23 @@ typedef struct {
     int64_t end;
 } ValueIfParts;
 
+typedef struct {
+    int64_t value_start;
+    int64_t value_end;
+    int64_t arms_open;
+    int64_t end;
+} ValueMatchParts;
+
 static char *parse_value_if(
     const char *source,
     int64_t start,
     ValueIfParts *parts
+);
+
+static char *parse_value_match(
+    const char *source,
+    int64_t start,
+    ValueMatchParts *parts
 );
 
 static char *value_if_branch_end(
@@ -1214,6 +1227,14 @@ static char *value_if_branch_end(
     if (token_equal(source, cursor, "if")) {
         ValueIfParts nested;
         char *result = parse_value_if(source, cursor, &nested);
+        if (strncmp(result, "error[", 6) == 0) return result;
+        free(result);
+        *end = nested.end;
+        return owned_text("ok");
+    }
+    if (token_equal(source, cursor, "match")) {
+        ValueMatchParts nested;
+        char *result = parse_value_match(source, cursor, &nested);
         if (strncmp(result, "error[", 6) == 0) return result;
         free(result);
         *end = nested.end;
@@ -1334,6 +1355,274 @@ static char *parse_value_if(
     return owned_text("ok");
 }
 
+static char *parse_value_match(
+    const char *source,
+    int64_t start,
+    ValueMatchParts *parts
+) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, start);
+    if (cursor >= length || !token_equal(source, cursor, "match")) {
+        return lower_error(
+            "E2S30",
+            "expected value-position `match`",
+            cursor
+        );
+    }
+
+    parts->value_start = skip_trivia(source, token_end(source, cursor));
+    parts->value_end = condition_end(source, parts->value_start);
+    if (parts->value_end < 0) {
+        return lower_error(
+            "E2S24",
+            "bounded match scrutinee must be Bool",
+            parts->value_start
+        );
+    }
+    parts->arms_open = skip_trivia(source, parts->value_end);
+    if (
+        parts->arms_open >= length ||
+        !token_equal(source, parts->arms_open, "{")
+    ) {
+        return lower_error(
+            "E2S24",
+            "expected `{` after match scrutinee",
+            parts->arms_open
+        );
+    }
+
+    int64_t arm_cursor = skip_trivia(
+        source,
+        token_end(source, parts->arms_open)
+    );
+    bool covered_true = false;
+    bool covered_false = false;
+    bool seen_catchall = false;
+    while (
+        arm_cursor < length &&
+        !token_equal(source, arm_cursor, "}")
+    ) {
+        int64_t pattern_start = arm_cursor;
+        bool pattern_true = token_equal(source, pattern_start, "true");
+        bool pattern_false = token_equal(source, pattern_start, "false");
+        bool pattern_catchall = token_equal(source, pattern_start, "_");
+        if (seen_catchall) {
+            return lower_error(
+                "E2S26",
+                "pattern after catch-all is unreachable",
+                pattern_start
+            );
+        }
+        if (pattern_true && covered_true) {
+            return lower_error(
+                "E2S26",
+                "duplicate `true` pattern is unreachable",
+                pattern_start
+            );
+        }
+        if (pattern_false && covered_false) {
+            return lower_error(
+                "E2S26",
+                "duplicate `false` pattern is unreachable",
+                pattern_start
+            );
+        }
+        if (pattern_catchall && covered_true && covered_false) {
+            return lower_error(
+                "E2S26",
+                "catch-all pattern is unreachable",
+                pattern_start
+            );
+        }
+        if (!pattern_true && !pattern_false && !pattern_catchall) {
+            return lower_error(
+                "E2S24",
+                "bounded Bool pattern must be `true`, `false`, or `_`",
+                pattern_start
+            );
+        }
+
+        int64_t after_pattern = skip_trivia(
+            source,
+            token_end(source, pattern_start)
+        );
+        bool guarded = false;
+        int64_t arrow = after_pattern;
+        if (arrow < length && token_equal(source, arrow, "if")) {
+            guarded = true;
+            int64_t guard_start = skip_trivia(
+                source,
+                token_end(source, arrow)
+            );
+            int64_t guard_end = condition_end(source, guard_start);
+            if (guard_end < 0) {
+                return lower_error(
+                    "E2S29",
+                    "match guard must be Bool or an Int comparison",
+                    guard_start
+                );
+            }
+            arrow = skip_trivia(source, guard_end);
+        }
+        if (arrow >= length || !token_equal(source, arrow, "=>")) {
+            return lower_error(
+                "E2S24",
+                "expected `=>` after Bool pattern",
+                arrow
+            );
+        }
+        int64_t arm_open = skip_trivia(
+            source,
+            token_end(source, arrow)
+        );
+        if (arm_open >= length || !token_equal(source, arm_open, "{")) {
+            return lower_error(
+                "E2S24",
+                "bounded Bool match arm must use a block",
+                arm_open
+            );
+        }
+
+        int64_t arm_start = skip_trivia(
+            source,
+            token_end(source, arm_open)
+        );
+        int64_t arm_end = -1;
+        if (token_equal(source, arm_start, "if")) {
+            ValueIfParts nested;
+            char *result = parse_value_if(source, arm_start, &nested);
+            if (strncmp(result, "error[", 6) == 0) return result;
+            free(result);
+            arm_end = nested.end;
+        } else if (token_equal(source, arm_start, "match")) {
+            ValueMatchParts nested;
+            char *result = parse_value_match(source, arm_start, &nested);
+            if (strncmp(result, "error[", 6) == 0) return result;
+            free(result);
+            arm_end = nested.end;
+        } else {
+            if (token_equal(source, arm_start, "print")) {
+                return lower_error(
+                    "E2S30",
+                    "value-position match arm must produce Int, not Void",
+                    arm_start
+                );
+            }
+            arm_end = expression_end(source, arm_start);
+            if (arm_end < 0) {
+                return lower_error(
+                    "E2S30",
+                    "value-position match arm must produce Int",
+                    arm_start
+                );
+            }
+        }
+        int64_t arm_close = skip_trivia(source, arm_end);
+        if (arm_close >= length || !token_equal(source, arm_close, "}")) {
+            return lower_error(
+                "E2S30",
+                "value-position match arm must contain one final Int expression",
+                arm_close
+            );
+        }
+
+        if (!guarded) {
+            if (pattern_true) {
+                covered_true = true;
+            } else if (pattern_false) {
+                covered_false = true;
+            } else {
+                covered_true = true;
+                covered_false = true;
+                seen_catchall = true;
+            }
+        }
+        arm_cursor = skip_trivia(source, token_end(source, arm_close));
+        if (
+            arm_cursor < length &&
+            token_equal(source, arm_cursor, ",")
+        ) {
+            arm_cursor = skip_trivia(
+                source,
+                token_end(source, arm_cursor)
+            );
+        } else if (
+            arm_cursor >= length ||
+            !token_equal(source, arm_cursor, "}")
+        ) {
+            return lower_error(
+                "E2S24",
+                "expected `,` between match arms",
+                arm_cursor
+            );
+        }
+    }
+
+    if (arm_cursor >= length || !token_equal(source, arm_cursor, "}")) {
+        return lower_error(
+            "E2S24",
+            "missing `}` after match arms",
+            parts->arms_open
+        );
+    }
+    if (!covered_true && !covered_false) {
+        return lower_error(
+            "E2S25",
+            "non-exhaustive Bool match; missing patterns `true`, `false`",
+            cursor
+        );
+    }
+    if (!covered_true) {
+        return lower_error(
+            "E2S25",
+            "non-exhaustive Bool match; missing pattern `true`",
+            cursor
+        );
+    }
+    if (!covered_false) {
+        return lower_error(
+            "E2S25",
+            "non-exhaustive Bool match; missing pattern `false`",
+            cursor
+        );
+    }
+    parts->end = token_end(source, arm_cursor);
+    return owned_text("ok");
+}
+
+static bool value_control(const char *source, int64_t cursor) {
+    return token_equal(source, cursor, "if") ||
+           token_equal(source, cursor, "match");
+}
+
+static char *parse_value_control(
+    const char *source,
+    int64_t start,
+    int64_t *end
+) {
+    int64_t cursor = skip_trivia(source, start);
+    if (token_equal(source, cursor, "if")) {
+        ValueIfParts parts;
+        char *result = parse_value_if(source, cursor, &parts);
+        if (strncmp(result, "error[", 6) == 0) return result;
+        *end = parts.end;
+        return result;
+    }
+    ValueMatchParts parts;
+    char *result = parse_value_match(source, cursor, &parts);
+    if (strncmp(result, "error[", 6) == 0) return result;
+    *end = parts.end;
+    return result;
+}
+
+static char *emit_value_match_into(
+    const char *source,
+    int64_t start,
+    int64_t end,
+    const char *target,
+    const char *failure_result
+);
+
 static char *emit_value_into(
     const char *source,
     int64_t start,
@@ -1342,6 +1631,15 @@ static char *emit_value_into(
     const char *failure_result
 ) {
     int64_t cursor = skip_trivia(source, start);
+    if (token_equal(source, cursor, "match")) {
+        return emit_value_match_into(
+            source,
+            cursor,
+            end,
+            target,
+            failure_result
+        );
+    }
     if (!token_equal(source, cursor, "if")) {
         char *value = emit_expression(source, cursor, end);
         Buffer emitted;
@@ -1412,6 +1710,152 @@ static char *emit_value_into(
     free(condition);
     free(then_body);
     free(else_body);
+    return emitted.data;
+}
+
+static char *emit_value_match_into(
+    const char *source,
+    int64_t start,
+    int64_t end,
+    const char *target,
+    const char *failure_result
+) {
+    ValueMatchParts parts;
+    char *result = parse_value_match(source, start, &parts);
+    if (strncmp(result, "error[", 6) == 0) return result;
+    free(result);
+
+    Buffer dispatch;
+    buffer_init(&dispatch);
+    int64_t arm_cursor = skip_trivia(
+        source,
+        token_end(source, parts.arms_open)
+    );
+    while (arm_cursor < end && !token_equal(source, arm_cursor, "}")) {
+        bool pattern_true = token_equal(source, arm_cursor, "true");
+        bool pattern_false = token_equal(source, arm_cursor, "false");
+        int64_t arrow = skip_trivia(
+            source,
+            token_end(source, arm_cursor)
+        );
+        bool guarded = false;
+        int64_t guard_start = -1;
+        int64_t guard_end = -1;
+        if (arrow < end && token_equal(source, arrow, "if")) {
+            guarded = true;
+            guard_start = skip_trivia(source, token_end(source, arrow));
+            guard_end = condition_end(source, guard_start);
+            arrow = skip_trivia(source, guard_end);
+        }
+
+        int64_t arm_open = skip_trivia(source, token_end(source, arrow));
+        int64_t arm_start = skip_trivia(
+            source,
+            token_end(source, arm_open)
+        );
+        int64_t arm_end = -1;
+        if (value_control(source, arm_start)) {
+            char *arm_result = parse_value_control(
+                source,
+                arm_start,
+                &arm_end
+            );
+            if (strncmp(arm_result, "error[", 6) == 0) {
+                free(dispatch.data);
+                return arm_result;
+            }
+            free(arm_result);
+        } else {
+            arm_end = expression_end(source, arm_start);
+        }
+
+        char *arm_body = emit_value_into(
+            source,
+            arm_start,
+            arm_end,
+            target,
+            failure_result
+        );
+        if (strncmp(arm_body, "error[", 6) == 0) {
+            free(dispatch.data);
+            return arm_body;
+        }
+        const char *pattern_condition = "true";
+        if (pattern_true) {
+            pattern_condition = "kofun_match_value";
+        } else if (pattern_false) {
+            pattern_condition = "!kofun_match_value";
+        }
+
+        if (guarded) {
+            char *guard = emit_condition_into(
+                source,
+                guard_start,
+                guard_end,
+                "kofun_match_guard",
+                failure_result,
+                "            "
+            );
+            buffer_format(
+                &dispatch,
+                "        if (!kofun_match_selected && %s) {\n"
+                "%s"
+                "            if (kofun_match_guard) {\n"
+                "%s"
+                "                kofun_match_selected = true;\n"
+                "            }\n"
+                "        }\n",
+                pattern_condition,
+                guard,
+                arm_body
+            );
+            free(guard);
+        } else {
+            buffer_format(
+                &dispatch,
+                "        if (!kofun_match_selected && %s) {\n"
+                "%s"
+                "            kofun_match_selected = true;\n"
+                "        }\n",
+                pattern_condition,
+                arm_body
+            );
+        }
+        free(arm_body);
+
+        int64_t arm_close = skip_trivia(source, arm_end);
+        arm_cursor = skip_trivia(source, token_end(source, arm_close));
+        if (arm_cursor < end && token_equal(source, arm_cursor, ",")) {
+            arm_cursor = skip_trivia(
+                source,
+                token_end(source, arm_cursor)
+            );
+        }
+    }
+
+    char *match_value = emit_condition_into(
+        source,
+        parts.value_start,
+        parts.value_end,
+        "kofun_match_value",
+        failure_result,
+        "        "
+    );
+    Buffer emitted;
+    buffer_init(&emitted);
+    buffer_format(
+        &emitted,
+        "    {\n"
+        "%s"
+        "        (void)kofun_match_value;\n"
+        "        bool kofun_match_selected = false;\n"
+        "%s"
+        "    }\n",
+        match_value,
+        dispatch.data
+    );
+    free(match_value);
+    free(dispatch.data);
     return emitted.data;
 }
 
@@ -1577,9 +2021,13 @@ static char *lower_body(
                 return lower_error("E2S11", "expected `=`", cursor);
             }
             int64_t value_start = skip_trivia(source, token_end(source, cursor));
-            if (token_equal(source, value_start, "if")) {
-                ValueIfParts parts;
-                char *result = parse_value_if(source, value_start, &parts);
+            if (value_control(source, value_start)) {
+                int64_t value_end = -1;
+                char *result = parse_value_control(
+                    source,
+                    value_start,
+                    &value_end
+                );
                 if (strncmp(result, "error[", 6) == 0) {
                     free(name);
                     free(emitted.data);
@@ -1592,7 +2040,7 @@ static char *lower_body(
                 char *value_body = emit_value_into(
                     source,
                     value_start,
-                    parts.end,
+                    value_end,
                     target.data,
                     failure_result
                 );
@@ -1612,7 +2060,7 @@ static char *lower_body(
                 free(value_body);
                 free(target.data);
                 free(name);
-                cursor = skip_trivia(source, parts.end);
+                cursor = skip_trivia(source, value_end);
                 continue;
             }
             int64_t value_end = expression_end(source, value_start);
@@ -1640,15 +2088,19 @@ static char *lower_body(
                 return lower_error("E2S13", "expected `print(`", cursor);
             }
             int64_t value_start = skip_trivia(source, token_end(source, call_open));
-            if (token_equal(source, value_start, "if")) {
-                ValueIfParts parts;
-                char *result = parse_value_if(source, value_start, &parts);
+            if (value_control(source, value_start)) {
+                int64_t value_end = -1;
+                char *result = parse_value_control(
+                    source,
+                    value_start,
+                    &value_end
+                );
                 if (strncmp(result, "error[", 6) == 0) {
                     free(emitted.data);
                     return result;
                 }
                 free(result);
-                int64_t call_close = skip_trivia(source, parts.end);
+                int64_t call_close = skip_trivia(source, value_end);
                 if (
                     call_close >= length ||
                     !token_equal(source, call_close, ")")
@@ -1663,7 +2115,7 @@ static char *lower_body(
                 char *value_body = emit_value_into(
                     source,
                     value_start,
-                    parts.end,
+                    value_end,
                     "kofun_value",
                     failure_result
                 );
@@ -2164,9 +2616,13 @@ static char *lower_body(
             if (value_start < length && token_equal(source, value_start, "}")) {
                 buffer_append(&emitted, "    return 0;\n");
                 cursor = value_start;
-            } else if (token_equal(source, value_start, "if")) {
-                ValueIfParts parts;
-                char *result = parse_value_if(source, value_start, &parts);
+            } else if (value_control(source, value_start)) {
+                int64_t value_end = -1;
+                char *result = parse_value_control(
+                    source,
+                    value_start,
+                    &value_end
+                );
                 if (strncmp(result, "error[", 6) == 0) {
                     free(emitted.data);
                     return result;
@@ -2175,7 +2631,7 @@ static char *lower_body(
                 char *value_body = emit_value_into(
                     source,
                     value_start,
-                    parts.end,
+                    value_end,
                     "kofun_result",
                     failure_result
                 );
@@ -2202,7 +2658,7 @@ static char *lower_body(
                 }
                 buffer_append(&emitted, "    }\n");
                 free(value_body);
-                cursor = skip_trivia(source, parts.end);
+                cursor = skip_trivia(source, value_end);
             } else {
                 int64_t value_end = expression_end(source, value_start);
                 if (value_end < 0) {
@@ -2296,12 +2752,12 @@ static char *lower_body(
                     source,
                     token_end(source, equals)
                 );
-                if (token_equal(source, value_start, "if")) {
-                    ValueIfParts parts;
-                    char *result = parse_value_if(
+                if (value_control(source, value_start)) {
+                    int64_t value_end = -1;
+                    char *result = parse_value_control(
                         source,
                         value_start,
-                        &parts
+                        &value_end
                     );
                     if (strncmp(result, "error[", 6) == 0) {
                         free(name);
@@ -2312,7 +2768,7 @@ static char *lower_body(
                     char *value_body = emit_value_into(
                         source,
                         value_start,
-                        parts.end,
+                        value_end,
                         "kofun_replacement",
                         failure_result
                     );
@@ -2335,7 +2791,7 @@ static char *lower_body(
                     );
                     free(value_body);
                     free(name);
-                    cursor = skip_trivia(source, parts.end);
+                    cursor = skip_trivia(source, value_end);
                     continue;
                 }
                 int64_t value_end = expression_end(source, value_start);

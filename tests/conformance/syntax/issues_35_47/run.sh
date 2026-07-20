@@ -256,6 +256,52 @@ cmp \
     fail "selected failing match guard diagnostic differs"
 printf '%s\n' "PASS selected-only Stage 2 match guard evaluation"
 
+"$WORK/kofun-stage2" \
+    "$CASES/match_value.kofun" \
+    "$WORK/match-value.c" \
+    "$WORK/match-value.ir" \
+    "$WORK/match-value.tokens" >/dev/null
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$WORK/match-value.c" -o "$WORK/match-value"
+"$WORK/match-value" \
+    >"$WORK/match-value.stdout" 2>"$WORK/match-value.stderr"
+cmp "$CASES/match_value.stdout" "$WORK/match-value.stdout" ||
+    fail "Stage 2 value-position Bool match output differs"
+test ! -s "$WORK/match-value.stderr" ||
+    fail "Stage 2 value-position Bool match wrote unexpected stderr"
+KOFUN_BUILD_DIR="$WORK/match-value-cli-stage1" \
+KOFUN_STAGE2_BUILD_DIR="$WORK/match-value-cli-stage2" \
+    "$ROOT/bin/kofun" run "$CASES/match_value.kofun" \
+    >"$WORK/match-value-cli.stdout" 2>"$WORK/match-value-cli.stderr"
+cmp "$CASES/match_value.stdout" "$WORK/match-value-cli.stdout" ||
+    fail "public kofun run value-position Bool match output differs"
+test ! -s "$WORK/match-value-cli.stderr" ||
+    fail "public kofun run value-position Bool match wrote stderr"
+printf '%s\n' "PASS executable Stage 2 value-position Bool match"
+
+"$WORK/kofun-stage2" \
+    "$CASES/match_value_error.kofun" \
+    "$WORK/match-value-error.c" \
+    "$WORK/match-value-error.ir" \
+    "$WORK/match-value-error.tokens" >/dev/null
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$WORK/match-value-error.c" -o "$WORK/match-value-error"
+set +e
+"$WORK/match-value-error" \
+    >"$WORK/match-value-error.stdout" \
+    2>"$WORK/match-value-error.stderr"
+match_value_error_status=$?
+set -e
+test "$match_value_error_status" -eq 1 ||
+    fail "selected failing value-match arm returned $match_value_error_status"
+test ! -s "$WORK/match-value-error.stdout" ||
+    fail "selected failing value-match arm wrote stdout"
+cmp \
+    "$CASES/match_value_error.stderr" \
+    "$WORK/match-value-error.stderr" ||
+    fail "selected failing value-match arm diagnostic differs"
+printf '%s\n' "PASS selected-only Stage 2 value-match arm evaluation"
+
 expect_stage2_diagnostic \
     "$CASES/match_missing_false.kofun" \
     "$CASES/match_missing_false.stdout"
@@ -280,10 +326,19 @@ expect_stage2_diagnostic \
 expect_stage2_diagnostic \
     "$ROOT/tests/diagnostics/stage2/e2s29_match_guard.kofun" \
     "$ROOT/tests/diagnostics/stage2/e2s29_match_guard.stderr"
+expect_stage2_diagnostic \
+    "$CASES/match_value_non_exhaustive.kofun" \
+    "$CASES/match_value_non_exhaustive.stdout"
+expect_stage2_diagnostic \
+    "$CASES/match_value_duplicate.kofun" \
+    "$CASES/match_value_duplicate.stdout"
+expect_stage2_diagnostic \
+    "$ROOT/tests/diagnostics/stage2/e2s30_match_value_arm.kofun" \
+    "$ROOT/tests/diagnostics/stage2/e2s30_match_value_arm.stderr"
 
 grep '^# Bounded Bool match exhaustiveness' "$MATCH_SPEC" >/dev/null ||
     fail "bounded Bool match specification is missing"
-for code in E2S24 E2S25 E2S26 E2S29; do
+for code in E2S24 E2S25 E2S26 E2S29 E2S30; do
     grep "\`$code\`" "$MATCH_SPEC" >/dev/null ||
         fail "bounded Bool match specification omits $code"
 done

@@ -126,11 +126,11 @@ fn size[T](tree: Tree[T]) -> Int {
 
 The compiler checks exhaustiveness and unreachable patterns.
 
-Executable checkpoint: Stage 2 currently performs this check only for
-statement-position `Bool` matches over `true`, `false`, and `_`, including
-ordered Bool guards with conservative unguarded coverage. See
-`spec/bool-match-exhaustiveness.md`. General ADT, nested, and value-producing
-pattern checking remains planned.
+Executable checkpoint: Stage 2 currently performs this check for bounded
+statement-position and Int-valued `Bool` matches over `true`, `false`, and `_`,
+including ordered Bool guards with conservative unguarded coverage. See
+`spec/bool-match-exhaustiveness.md`. General ADT, nested-pattern, and arm-type
+unification remains planned.
 
 ## Records
 

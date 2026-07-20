@@ -31,7 +31,7 @@ compiler cannot yet produce the final diagnostic.
 | #43 | if expressions | Stage 2 lowers statement-position and bounded Int-valued `if` with Bool literals or integer comparisons | partial |
 | #44 | else-if chains | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
 | #45 | for loops | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
-| #46 | match expressions | Stage 2 executes exhaustive guarded statement-position Bool matches and rejects missing/unreachable arms | partial |
+| #46 | match expressions | Stage 2 executes exhaustive guarded statement- and Int-value-position Bool matches | partial |
 | #47 | while loops | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
 
 The executable evidence is in
@@ -701,8 +701,8 @@ let text = match flag {
 ```
 
 **Implementation status:** Stage 2 classifies `match` as a keyword and lowers a
-bounded statement-position Bool slice. Bool literals and integer comparisons
-may be matched by `true`, `false`, and `_` block arms. The compiler evaluates
+bounded statement- and Int-value-position Bool slice. Bool literals and integer
+comparisons may be matched by `true`, `false`, and `_` block arms. The compiler evaluates
 the scrutinee once and checks arms in source order. Optional Bool guards run
 only after their pattern matches; false continues to the next arm, and no
 later guard runs after selection. Guarded arms do not provide static coverage,
@@ -712,8 +712,13 @@ missing, duplicate, unreachable, or non-Bool-guard cases. The exact finite-set
 algorithm and diagnostics are specified in
 `spec/bool-match-exhaustiveness.md`.
 
-Value-producing match, arm type unification, bindings, ADTs, payload and nested
-patterns, or-patterns, and ownership-aware destructuring remain open.
+The bounded value form requires each arm block to contain exactly one final
+Int value and is accepted in `let`, `print`, assignment, and `return`. Nested
+value `if` and value `match` forms preserve selected-only evaluation. This is
+an executable Int specialization, not general arm type unification.
+
+General arm type unification, bindings, ADTs, payload and nested patterns,
+or-patterns, and ownership-aware destructuring remain open.
 
 ## #47 — While loops
 

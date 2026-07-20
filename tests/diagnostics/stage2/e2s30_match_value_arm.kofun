@@ -1,0 +1,15 @@
+# diagnostic-mode: compile
+# expect-code: E2S30
+# expect-span: byte 158
+fn main() -> Int {
+    let selected: Int = match true {
+        true => {
+            print(1)
+        },
+        false => {
+            0
+        },
+    }
+    print(selected)
+    return 0
+}

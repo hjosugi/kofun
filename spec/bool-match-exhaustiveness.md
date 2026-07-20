@@ -10,7 +10,8 @@ Bool = { true, false }
 
 ## Accepted Core
 
-The statement-position form follows the normative match syntax:
+The bounded statement- and value-position forms follow the normative match
+syntax:
 
 ```text
 match bool-expression {
@@ -19,10 +20,19 @@ match bool-expression {
 }
 
 bool-pattern := "true" | "false" | "_"
+
+value-match := "match" bool-expression "{"
+               value-arm ("," value-arm)* ","? "}"
+value-arm   := bool-pattern ("if" bool-expression)? "=>"
+               "{" int-value "}"
+int-value   := int-expression | value-if | value-match
 ```
 
 `bool-expression` is currently a Bool literal or one integer comparison using
-`==`, `!=`, `<`, `<=`, `>`, or `>=`. Each arm must use a block. The scrutinee
+`==`, `!=`, `<`, `<=`, `>`, or `>=`. Each arm must use a block. A value arm
+must contain exactly one final bounded Int value. Int-valued matches work in
+`let`, `print`, assignment, and `return`, including nested value `if` and
+value `match` forms. The scrutinee
 is evaluated exactly once. Arms are considered in source order. A guard is
 evaluated exactly once only after its pattern matches; a false guard continues
 with the next arm. Once an arm is selected, no later arm or guard executes.
@@ -60,18 +70,20 @@ runtime.
 - `E2S25` reports non-exhaustiveness and names every missing Bool pattern.
 - `E2S26` reports duplicate or otherwise unreachable arms.
 - `E2S29` reports a guard that is not a Bool literal or an integer comparison.
+- `E2S30` reports a value arm that does not produce exactly one bounded Int
+  value.
 
-All four diagnostics carry the relevant source byte. They are compile errors,
+All five diagnostics carry the relevant source byte. They are compile errors,
 and Stage 2 emits no C artifact for them.
 
 ## Deliberate boundary
 
-This checkpoint does not implement value-producing match, arm type unification,
-bindings, algebraic variants, constructor payloads, or-patterns, nested
-patterns, or ownership-aware destructuring. It advances the issue #30 guard
-requirement only for this finite Bool slice; guarded and nested ADT patterns
-still require the general typed pattern matrix after ADT representation and
-name/type resolution are available.
+This checkpoint does not implement general arm type unification, bindings,
+algebraic variants, constructor payloads, or-patterns, nested patterns, or
+ownership-aware destructuring. Value production is deliberately restricted to
+Int in this finite Bool slice; guarded and nested ADT patterns still require
+the general typed pattern matrix after ADT representation and name/type
+resolution are available.
 
 Assignment remains block-local in the current Core. A match arm may declare and
 change its own mutable binding, but changing an outer binding from an arm is
