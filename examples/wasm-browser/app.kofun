@@ -1,0 +1,7 @@
+# This Kofun program is compiled to app.wasm by build.sh.
+# The browser host renders each print as one output line.
+fn main() {
+    let six: Int = 2 * 3
+    print(six * 7)
+    print(-7 // 2)
+}
