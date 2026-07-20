@@ -1,0 +1,11 @@
+# diagnostic-mode: compile
+# expect-code: E2S25
+# expect-span: byte 94
+fn main() -> Int {
+    match true {
+        true => {
+            print(1)
+        },
+    }
+    return 0
+}

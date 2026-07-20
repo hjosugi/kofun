@@ -4,6 +4,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../../.." && pwd)
 CASES="$ROOT/tests/conformance/syntax/issues_35_47"
 SPEC="$ROOT/spec/syntax/FOUNDATIONS_AND_CONTROL.md"
+MATCH_SPEC="$ROOT/spec/bool-match-exhaustiveness.md"
 CC=${CC:-cc}
 
 command -v "$CC" >/dev/null 2>&1 || {
@@ -140,6 +141,51 @@ expect_stage2_diagnostic \
     "$CASES/if_outer_assignment.stdout"
 
 "$WORK/kofun-stage2" \
+    "$CASES/match_bool.kofun" \
+    "$WORK/match-bool.c" \
+    "$WORK/match-bool.ir" \
+    "$WORK/match-bool.tokens" >/dev/null
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$WORK/match-bool.c" -o "$WORK/match-bool"
+"$WORK/match-bool" \
+    >"$WORK/match-bool.stdout" 2>"$WORK/match-bool.stderr"
+cmp "$CASES/match_bool.stdout" "$WORK/match-bool.stdout" ||
+    fail "Stage 2 Bool match output differs"
+test ! -s "$WORK/match-bool.stderr" ||
+    fail "Stage 2 Bool match wrote unexpected stderr"
+printf '%s\n' "PASS executable Stage 2 exhaustive Bool match"
+
+expect_stage2_diagnostic \
+    "$CASES/match_missing_false.kofun" \
+    "$CASES/match_missing_false.stdout"
+expect_stage2_diagnostic \
+    "$CASES/match_missing_true.kofun" \
+    "$CASES/match_missing_true.stdout"
+expect_stage2_diagnostic \
+    "$CASES/match_duplicate_true.kofun" \
+    "$CASES/match_duplicate_true.stdout"
+expect_stage2_diagnostic \
+    "$CASES/match_after_catchall.kofun" \
+    "$CASES/match_after_catchall.stdout"
+expect_stage2_diagnostic \
+    "$CASES/match_unreachable_catchall.kofun" \
+    "$CASES/match_unreachable_catchall.stdout"
+expect_stage2_diagnostic \
+    "$CASES/match_guard_unsupported.kofun" \
+    "$CASES/match_guard_unsupported.stdout"
+expect_stage2_diagnostic \
+    "$CASES/match_non_bool.kofun" \
+    "$CASES/match_non_bool.stdout"
+
+grep '^# Bounded Bool match exhaustiveness' "$MATCH_SPEC" >/dev/null ||
+    fail "bounded Bool match specification is missing"
+for code in E2S24 E2S25 E2S26; do
+    grep "\`$code\`" "$MATCH_SPEC" >/dev/null ||
+        fail "bounded Bool match specification omits $code"
+done
+printf '%s\n' "PASS bounded Bool match specification"
+
+"$WORK/kofun-stage2" \
     "$CASES/structural_surface.kofun" \
     "$WORK/structural.kofun" \
     "$WORK/structural.ir" \
@@ -177,7 +223,6 @@ expect_stage2_unsupported "$CASES/unsupported_lambda.kofun"
 expect_stage2_unsupported "$CASES/unsupported_owned_binding.kofun"
 expect_stage2_unsupported "$CASES/unsupported_else_if.kofun"
 expect_stage2_unsupported "$CASES/unsupported_for.kofun"
-expect_stage2_unsupported "$CASES/unsupported_match.kofun"
 expect_stage2_unsupported "$CASES/unsupported_while.kofun"
 
 set +e
@@ -202,4 +247,4 @@ printf '%s\n' "PASS diagnostic: invalid if condition"
 
 printf '%s\n' \
     "PASS: syntax issues #35-#47 bootstrap capability checkpoint" \
-    "coverage: 13 subjects; 4 partial; 2 Core-implemented; 7 unsupported via 7 fixtures"
+    "coverage: 13 subjects; 5 partial; 2 Core-implemented; 6 unsupported via 6 fixtures"

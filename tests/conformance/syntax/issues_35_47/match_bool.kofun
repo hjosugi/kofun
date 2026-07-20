@@ -1,0 +1,39 @@
+fn main() -> Int {
+    match true {
+        true => {
+            print(1)
+        },
+        false => {
+            print(9223372036854775807 + 1)
+        },
+    }
+    match 1 > 2 {
+        true => {
+            print(0)
+        },
+        false => {
+            print(2)
+        },
+    }
+    match true {
+        true => {
+            match false {
+                true => {
+                    print(0)
+                },
+                _ => {
+                    print(42)
+                },
+            }
+        },
+        _ => {
+            print(0)
+        },
+    }
+    match false {
+        _ => {
+            print(3)
+        },
+    }
+    return 0
+}

@@ -1,0 +1,11 @@
+fn main() -> Int {
+    match false {
+        _ => {
+            print(1)
+        },
+        false => {
+            print(2)
+        },
+    }
+    return 0
+}
