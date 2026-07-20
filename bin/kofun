@@ -35,7 +35,6 @@ usage:
   kofun build [TARGET...] [FROST_OPTIONS]  # with ./kofun.toml
   kofun package lock
   kofun package fetch [--offline]
-  kofun package path NAME [--offline]
   kofun new DIRECTORY --template cli
   kofun run INPUT.kofun
   kofun check INPUT.kofun
@@ -298,6 +297,36 @@ build_c_abi_file() (
     output=$2
     emitted=$3
     link_libraries=$4
+    package_names=$5
+    offline=$6
+    package_build_directory=
+    if test -n "$package_names"; then
+        previous_umask=$(umask)
+        umask 077
+        package_build_directory=$(
+            mktemp -d "${TMPDIR:-/tmp}/kofun-package-build.XXXXXX"
+        )
+        umask "$previous_umask"
+        trap 'rm -rf "$package_build_directory"' 0 1 2 15
+        set -f
+        previous_ifs=$IFS
+        IFS='
+'
+        for package_name in $package_names; do
+            package_library=$(
+                KOFUN_OFFLINE=$offline \
+                    sh "$PACKAGE_MANAGER" snapshot \
+                    "$package_name" "$package_build_directory"
+            )
+            if test -z "$link_libraries"; then
+                link_libraries=$package_library
+            else
+                link_libraries="$link_libraries
+$package_library"
+            fi
+        done
+        IFS=$previous_ifs
+    fi
     emit_c_abi "$input" "$emitted"
     set -f
     if test -n "$link_libraries"; then
@@ -649,31 +678,14 @@ $2"
             printf '%s\n' "kofun: -g requires --target x86_64-linux" >&2
             exit 2
         fi
-        if test -n "$package_names"; then
-            previous_ifs=$IFS
-            IFS='
-'
-            for package_name in $package_names; do
-                package_library=$(
-                    KOFUN_OFFLINE=$offline \
-                        sh "$PACKAGE_MANAGER" path "$package_name"
-                )
-                if test -z "$link_libraries"; then
-                    link_libraries=$package_library
-                else
-                    link_libraries="$link_libraries
-$package_library"
-                fi
-            done
-            IFS=$previous_ifs
-        fi
         if test -z "$emitted"; then
             emitted="$BUILD_DIR/$(basename "${input%.kofun}").c"
         fi
         mkdir -p "$(dirname "$output")" "$(dirname "$emitted")"
         if "$c_abi"; then
             build_c_abi_file \
-                "$input" "$output" "$emitted" "$link_libraries"
+                "$input" "$output" "$emitted" "$link_libraries" \
+                "$package_names" "$offline"
         else
             build_file "$input" "$output" "$emitted"
         fi

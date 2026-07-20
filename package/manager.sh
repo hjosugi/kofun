@@ -5,6 +5,8 @@ set -eu
 # system.  The current Kofun compiler's external-code boundary is an explicit
 # C ABI library file, so v1 resolves exactly that artifact by URL and SHA-256.
 
+umask 077
+
 MANIFEST=${KOFUN_PACKAGE_MANIFEST:-kofun.packages.toml}
 LOCKFILE=${KOFUN_PACKAGE_LOCK:-kofun.packages.lock}
 PROJECT_ROOT=$(pwd -P)
@@ -263,7 +265,7 @@ store_cache_entry() (
         return
     fi
 
-    temporary=$directory/.tmp.$$
+    temporary=$(mktemp "$directory/.tmp.XXXXXX")
     trap 'rm -f "$temporary"' 0 1 2 15
     cp "$source_file" "$temporary"
     chmod 444 "$temporary"
@@ -285,8 +287,12 @@ check_manifest_lock_agreement() {
     manifest_records=$1
     lock_records=$2
     lock_declarations=$3
-    parse_manifest "$MANIFEST" | LC_ALL=C sort >"$manifest_records"
-    parse_lockfile "$LOCKFILE" | LC_ALL=C sort >"$lock_records"
+    manifest_unsorted=$manifest_records.unsorted
+    lock_unsorted=$lock_records.unsorted
+    parse_manifest "$MANIFEST" >"$manifest_unsorted"
+    LC_ALL=C sort "$manifest_unsorted" >"$manifest_records"
+    parse_lockfile "$LOCKFILE" >"$lock_unsorted"
+    LC_ALL=C sort "$lock_unsorted" >"$lock_records"
     awk -F '	' 'BEGIN { OFS = FS } { print $1, $2, $3 }' \
         "$lock_records" >"$lock_declarations"
     cmp -s "$manifest_records" "$lock_declarations" ||
@@ -297,7 +303,9 @@ lock_packages() {
     work=$(workspace)
     trap 'rm -rf "$work"' 0 1 2 15
     records=$work/manifest
-    parse_manifest "$MANIFEST" | LC_ALL=C sort >"$records"
+    unsorted_records=$work/manifest.unsorted
+    parse_manifest "$MANIFEST" >"$unsorted_records"
+    LC_ALL=C sort "$unsorted_records" >"$records"
 
     temporary_lock=$work/lock
     printf '%s\n' 'format = 1' >"$temporary_lock"
@@ -319,7 +327,9 @@ lock_packages() {
 
     lock_directory=$(dirname "$LOCKFILE")
     mkdir -p "$lock_directory"
-    installed_lock=$lock_directory/.kofun-packages-lock.$$
+    installed_lock=$(
+        mktemp "$lock_directory/.kofun-packages-lock.XXXXXX"
+    )
     cp "$temporary_lock" "$installed_lock"
     mv "$installed_lock" "$LOCKFILE"
     trap - 0 1 2 15
@@ -330,6 +340,7 @@ lock_packages() {
 resolve_packages() {
     requested=${1-}
     offline=${2-false}
+    snapshot_directory=${3-}
     work=$(workspace)
     trap 'rm -rf "$work"' 0 1 2 15
     manifest_records=$work/manifest
@@ -359,7 +370,24 @@ resolve_packages() {
             store_cache_entry "$artifact" "$hash"
         fi
         if test -n "$requested"; then
-            printf '%s\n' "$entry"
+            test -n "$snapshot_directory" ||
+                die "internal error: package snapshot directory is missing"
+            test -d "$snapshot_directory" &&
+                test ! -L "$snapshot_directory" ||
+                die "package snapshot directory is not a private directory"
+            snapshot_temporary=$(
+                mktemp "$snapshot_directory/.package.XXXXXX"
+            )
+            trap 'rm -rf "$work"; rm -f "$snapshot_temporary"' 0 1 2 15
+            cp "$entry" "$snapshot_temporary"
+            snapshot_hash=$(sha256_file "$snapshot_temporary")
+            test "$snapshot_hash" = "$hash" ||
+                die "snapshot content hash mismatch for package $name: expected $hash, got $snapshot_hash"
+            chmod 400 "$snapshot_temporary"
+            snapshot=$snapshot_directory/$name-$hash.a
+            mv "$snapshot_temporary" "$snapshot"
+            trap 'rm -rf "$work"' 0 1 2 15
+            printf '%s\n' "$snapshot"
         fi
         count=$((count + 1))
     done <"$lock_records"
@@ -377,7 +405,6 @@ usage() {
 usage:
   kofun package lock
   kofun package fetch [--offline]
-  kofun package path NAME [--offline]
 EOF
 }
 
@@ -400,14 +427,14 @@ case ${1-} in
         resolve_packages "" "$offline"
         printf '%s\n' "fetched $RESOLVED_COUNT package(s)"
         ;;
-    path)
-        test "$#" -ge 2 && test "$#" -le 3 || {
+    snapshot)
+        test "$#" -ge 3 && test "$#" -le 4 || {
             usage >&2
             exit 2
         }
         offline=${KOFUN_OFFLINE:-false}
-        if test "$#" -eq 3; then
-            test "$3" = --offline || { usage >&2; exit 2; }
+        if test "$#" -eq 4; then
+            test "$4" = --offline || { usage >&2; exit 2; }
             offline=true
         fi
         case $offline in
@@ -415,7 +442,7 @@ case ${1-} in
             false|0|'') offline=false ;;
             *) die "KOFUN_OFFLINE must be true, false, 1, or 0" ;;
         esac
-        resolve_packages "$2" "$offline"
+        resolve_packages "$2" "$offline" "$3"
         ;;
     *)
         usage >&2
