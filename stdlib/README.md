@@ -50,6 +50,11 @@ value-returning `List[Int]` surface with typed empty/index failures and ordered
 pipeline contracts. Its gate executes real Lists through direct x86-64 plus a
 compact checked-access projection through both C11 and x86-64.
 
+The platform-independent [`vector/`](vector/) checkpoint defines an immutable,
+ordered `IntVector` reference surface with explicit List conversion and typed
+checked indexing. Its gate executes real List-backed behavior through direct
+x86-64 plus a compact checked-index projection through C11 and x86-64.
+
 The platform-independent [`json/`](json/) checkpoint defines a strict JSON v1
 value codec with lossless number lexemes, ordered unique object members, typed
 failures, and bounded nesting. Its recursive ADT surface is gated by a

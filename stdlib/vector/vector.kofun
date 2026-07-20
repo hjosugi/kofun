@@ -1,0 +1,91 @@
+# Small, platform-independent Vector checkpoint.
+#
+# Version 1 is deliberately specialized to IntVector. Int is Copy, so checked
+# reads, callback arguments, and returned elements have precise ownership while
+# generic element borrowing and move-aware mutation remain open.
+
+type IntVector = {
+    values: List[Int],
+}
+
+type VectorError =
+    | VectorIndexOutOfBounds(Int, Int)
+
+fn vector_int_empty() -> IntVector {
+    return IntVector { values: [] }
+}
+
+# Construction copies the ordered value sequence. Neither side observes future
+# storage identity or mutation through the other.
+fn vector_int_from_list(read values: List[Int]) -> IntVector {
+    return IntVector {
+        values: map(values, fn(value: Int) => value),
+    }
+}
+
+fn vector_int_to_list(read vector: IntVector) -> List[Int] {
+    return map(vector.values, fn(value: Int) => value)
+}
+
+fn vector_int_length(read vector: IntVector) -> Int {
+    return len(vector.values)
+}
+
+fn vector_int_is_empty(read vector: IntVector) -> Bool {
+    return len(vector.values) == 0
+}
+
+# Positive indexes count from the front and negative indexes from the end.
+# The failure retains both the requested index and the observed length.
+fn vector_int_get(
+    read vector: IntVector,
+    index: Int,
+) -> Result[Int, VectorError] {
+    let length = len(vector.values)
+    if index < -length || index >= length {
+        return Err(VectorIndexOutOfBounds(index, length))
+    }
+    return Ok(vector.values[index])
+}
+
+# Value-returning operations leave every input Vector unchanged.
+fn vector_int_push(read vector: IntVector, value: Int) -> IntVector {
+    return IntVector { values: push(vector.values, value) }
+}
+
+fn vector_int_concat(
+    read left: IntVector,
+    read right: IntVector,
+) -> IntVector {
+    return IntVector { values: concat(left.values, right.values) }
+}
+
+fn vector_int_reverse(read vector: IntVector) -> IntVector {
+    return IntVector { values: reverse(vector.values) }
+}
+
+fn vector_int_map(
+    read vector: IntVector,
+    transform: fn(Int) -> Int,
+) -> IntVector {
+    return IntVector { values: map(vector.values, transform) }
+}
+
+fn vector_int_filter(
+    read vector: IntVector,
+    predicate: fn(Int) -> Bool,
+) -> IntVector {
+    return IntVector { values: filter(vector.values, predicate) }
+}
+
+fn vector_int_fold(
+    read vector: IntVector,
+    initial: Int,
+    combine: fn(Int, Int) -> Int,
+) -> Int {
+    return fold(vector.values, initial, combine)
+}
+
+fn vector_int_contains(read vector: IntVector, target: Int) -> Bool {
+    return contains(vector.values, target)
+}

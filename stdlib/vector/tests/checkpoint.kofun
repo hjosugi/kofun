@@ -1,0 +1,27 @@
+# Executable Vector[Int] projection for the direct x86-64 collection Core.
+# The checksum observes ordered access, map, stable filter, ordinary/empty
+# fold, and a filter-map-fold pipeline.
+
+fn main() {
+    let values = [3, 1, 4, 1, 5]
+    let mapped = map(values, fn(value: Int) => value * 2)
+    let filtered = filter(values, fn(value: Int) => value > 2)
+    let pipeline = map(
+        filter(values, fn(value: Int) => value > 1),
+        fn(value: Int) => value * 1
+    )
+    let total = fold(values, 0, fn(total: Int, value: Int) => total + value)
+    let empty_total = fold([], 42, fn(total: Int, value: Int) => total + value)
+    let pipeline_total = fold(pipeline, 0, fn(total: Int, value: Int) => total + value)
+    print(
+        len(values) +
+        values[0] +
+        values[-1] +
+        mapped[2] +
+        len(filtered) +
+        filtered[1] +
+        total +
+        empty_total +
+        pipeline_total
+    )
+}

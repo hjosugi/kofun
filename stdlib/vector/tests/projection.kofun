@@ -1,0 +1,26 @@
+# Compact C11/x86-64 projection of checked Vector index semantics.
+# Outcomes: 0 = value and 1 = VectorIndexOutOfBounds.
+
+fn normalized_index(length: Int, index: Int) -> Int {
+    if index < 0 {
+        return length + index
+    }
+    return index
+}
+
+fn get_outcome(length: Int, index: Int) -> Int {
+    if normalized_index(length, index) < 0 { return 1 }
+    if normalized_index(length, index) >= length { return 1 }
+    return 0
+}
+
+fn main() {
+    print(normalized_index(4, 0))
+    print(normalized_index(4, -1))
+    print(normalized_index(4, -4))
+    print(get_outcome(4, 3))
+    print(get_outcome(4, -4))
+    print(get_outcome(4, 4))
+    print(get_outcome(4, -5))
+    print(get_outcome(0, 0))
+}
