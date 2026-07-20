@@ -10,6 +10,13 @@ expected result independently, and compares exact stdout/stderr across the C11
 reference and direct x86-64 backend. It is deterministic so every CI failure
 can be reproduced from its case number and generated source.
 
+`value_if.sh` generates valid bounded Int-valued `if` programs for Stage 2,
+calculates the selected result independently, and places checked
+division-by-zero in every unselected branch. This catches eager branch
+evaluation as well as wrong comparison or result lowering. The regular and
+ASAN/UBSAN compiler builds must also emit byte-identical C, IR, and token
+artifacts for every generated case.
+
 Run both:
 
 ```sh

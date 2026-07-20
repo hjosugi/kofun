@@ -1150,6 +1150,238 @@ static char *emit_condition(
     return output.data;
 }
 
+typedef struct {
+    int64_t condition_start;
+    int64_t condition_end;
+    int64_t then_start;
+    int64_t then_end;
+    int64_t else_start;
+    int64_t else_end;
+    int64_t end;
+} ValueIfParts;
+
+static char *parse_value_if(
+    const char *source,
+    int64_t start,
+    ValueIfParts *parts
+);
+
+static char *value_if_branch_end(
+    const char *source,
+    int64_t start,
+    int64_t *end
+) {
+    int64_t cursor = skip_trivia(source, start);
+    if (token_equal(source, cursor, "print")) {
+        return lower_error(
+            "E2S28",
+            "value-position if branch must produce Int, not Void",
+            cursor
+        );
+    }
+    if (token_equal(source, cursor, "if")) {
+        ValueIfParts nested;
+        char *result = parse_value_if(source, cursor, &nested);
+        if (strncmp(result, "error[", 6) == 0) return result;
+        free(result);
+        *end = nested.end;
+        return owned_text("ok");
+    }
+    *end = expression_end(source, cursor);
+    if (*end < 0) {
+        return lower_error(
+            "E2S28",
+            "value-position if branch must produce Int",
+            cursor
+        );
+    }
+    return owned_text("ok");
+}
+
+static char *parse_value_if(
+    const char *source,
+    int64_t start,
+    ValueIfParts *parts
+) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, start);
+    if (cursor >= length || !token_equal(source, cursor, "if")) {
+        return lower_error(
+            "E2S28",
+            "expected value-position `if`",
+            cursor
+        );
+    }
+
+    parts->condition_start = skip_trivia(
+        source,
+        token_end(source, cursor)
+    );
+    parts->condition_end = condition_end(source, parts->condition_start);
+    if (parts->condition_end < 0) {
+        return lower_error(
+            "E2S23",
+            "if condition must be Bool or an Int comparison",
+            parts->condition_start
+        );
+    }
+
+    int64_t then_open = skip_trivia(source, parts->condition_end);
+    if (then_open >= length || !token_equal(source, then_open, "{")) {
+        return lower_error(
+            "E2S18",
+            "expected `{` after if condition",
+            then_open
+        );
+    }
+    parts->then_start = skip_trivia(
+        source,
+        token_end(source, then_open)
+    );
+    char *then_result = value_if_branch_end(
+        source,
+        parts->then_start,
+        &parts->then_end
+    );
+    if (strncmp(then_result, "error[", 6) == 0) return then_result;
+    free(then_result);
+    int64_t then_close = skip_trivia(source, parts->then_end);
+    if (then_close >= length || !token_equal(source, then_close, "}")) {
+        return lower_error(
+            "E2S28",
+            "value-position if branch must contain one final Int expression",
+            then_close
+        );
+    }
+
+    int64_t else_keyword = skip_trivia(
+        source,
+        token_end(source, then_close)
+    );
+    if (
+        else_keyword >= length ||
+        !token_equal(source, else_keyword, "else")
+    ) {
+        return lower_error(
+            "E2S27",
+            "value-position if requires `else`",
+            else_keyword
+        );
+    }
+    int64_t else_open = skip_trivia(
+        source,
+        token_end(source, else_keyword)
+    );
+    if (else_open >= length || !token_equal(source, else_open, "{")) {
+        return lower_error(
+            "E2S18",
+            "expected `{` after `else`",
+            else_open
+        );
+    }
+    parts->else_start = skip_trivia(
+        source,
+        token_end(source, else_open)
+    );
+    char *else_result = value_if_branch_end(
+        source,
+        parts->else_start,
+        &parts->else_end
+    );
+    if (strncmp(else_result, "error[", 6) == 0) return else_result;
+    free(else_result);
+    int64_t else_close = skip_trivia(source, parts->else_end);
+    if (else_close >= length || !token_equal(source, else_close, "}")) {
+        return lower_error(
+            "E2S28",
+            "value-position if branch must contain one final Int expression",
+            else_close
+        );
+    }
+    parts->end = token_end(source, else_close);
+    return owned_text("ok");
+}
+
+static char *emit_value_into(
+    const char *source,
+    int64_t start,
+    int64_t end,
+    const char *target,
+    const char *failure_result
+) {
+    int64_t cursor = skip_trivia(source, start);
+    if (!token_equal(source, cursor, "if")) {
+        char *value = emit_expression(source, cursor, end);
+        Buffer emitted;
+        buffer_init(&emitted);
+        buffer_format(
+            &emitted,
+            "    %s = %s;\n"
+            "    if (kofun_failed) return %s;\n",
+            target,
+            value,
+            failure_result
+        );
+        free(value);
+        return emitted.data;
+    }
+
+    ValueIfParts parts;
+    char *result = parse_value_if(source, cursor, &parts);
+    if (strncmp(result, "error[", 6) == 0) return result;
+    free(result);
+    char *condition = emit_condition(
+        source,
+        parts.condition_start,
+        parts.condition_end
+    );
+    char *then_body = emit_value_into(
+        source,
+        parts.then_start,
+        parts.then_end,
+        target,
+        failure_result
+    );
+    if (strncmp(then_body, "error[", 6) == 0) {
+        free(condition);
+        return then_body;
+    }
+    char *else_body = emit_value_into(
+        source,
+        parts.else_start,
+        parts.else_end,
+        target,
+        failure_result
+    );
+    if (strncmp(else_body, "error[", 6) == 0) {
+        free(condition);
+        free(then_body);
+        return else_body;
+    }
+    Buffer emitted;
+    buffer_init(&emitted);
+    buffer_format(
+        &emitted,
+        "    {\n"
+        "        bool kofun_value_condition = %s;\n"
+        "        if (kofun_failed) return %s;\n"
+        "        if (kofun_value_condition) {\n"
+        "%s"
+        "        } else {\n"
+        "%s"
+        "        }\n"
+        "    }\n",
+        condition,
+        failure_result,
+        then_body,
+        else_body
+    );
+    free(condition);
+    free(then_body);
+    free(else_body);
+    return emitted.data;
+}
+
 static int64_t core_body_open(
     const char *source,
     int64_t function_start,
@@ -1310,6 +1542,44 @@ static char *lower_body(
                 return lower_error("E2S11", "expected `=`", cursor);
             }
             int64_t value_start = skip_trivia(source, token_end(source, cursor));
+            if (token_equal(source, value_start, "if")) {
+                ValueIfParts parts;
+                char *result = parse_value_if(source, value_start, &parts);
+                if (strncmp(result, "error[", 6) == 0) {
+                    free(name);
+                    free(emitted.data);
+                    return result;
+                }
+                free(result);
+                Buffer target;
+                buffer_init(&target);
+                buffer_format(&target, "k_%s", name);
+                char *value_body = emit_value_into(
+                    source,
+                    value_start,
+                    parts.end,
+                    target.data,
+                    failure_result
+                );
+                if (strncmp(value_body, "error[", 6) == 0) {
+                    free(target.data);
+                    free(name);
+                    free(emitted.data);
+                    return value_body;
+                }
+                buffer_format(
+                    &emitted,
+                    "    int64_t k_%s = INT64_C(0);\n"
+                    "%s",
+                    name,
+                    value_body
+                );
+                free(value_body);
+                free(target.data);
+                free(name);
+                cursor = skip_trivia(source, parts.end);
+                continue;
+            }
             int64_t value_end = expression_end(source, value_start);
             if (value_end < 0) {
                 free(name);
@@ -1335,6 +1605,53 @@ static char *lower_body(
                 return lower_error("E2S13", "expected `print(`", cursor);
             }
             int64_t value_start = skip_trivia(source, token_end(source, call_open));
+            if (token_equal(source, value_start, "if")) {
+                ValueIfParts parts;
+                char *result = parse_value_if(source, value_start, &parts);
+                if (strncmp(result, "error[", 6) == 0) {
+                    free(emitted.data);
+                    return result;
+                }
+                free(result);
+                int64_t call_close = skip_trivia(source, parts.end);
+                if (
+                    call_close >= length ||
+                    !token_equal(source, call_close, ")")
+                ) {
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S13",
+                        "expected `)`",
+                        call_close
+                    );
+                }
+                char *value_body = emit_value_into(
+                    source,
+                    value_start,
+                    parts.end,
+                    "kofun_value",
+                    failure_result
+                );
+                if (strncmp(value_body, "error[", 6) == 0) {
+                    free(emitted.data);
+                    return value_body;
+                }
+                buffer_format(
+                    &emitted,
+                    "    {\n"
+                    "        int64_t kofun_value = INT64_C(0);\n"
+                    "%s"
+                    "        printf(\"%%\" PRId64 \"\\n\", kofun_value);\n"
+                    "    }\n",
+                    value_body
+                );
+                free(value_body);
+                cursor = skip_trivia(
+                    source,
+                    token_end(source, call_close)
+                );
+                continue;
+            }
             int64_t value_end = expression_end(source, value_start);
             if (value_end < 0) {
                 free(emitted.data);
@@ -1818,6 +2135,45 @@ static char *lower_body(
             if (value_start < length && token_equal(source, value_start, "}")) {
                 buffer_append(&emitted, "    return 0;\n");
                 cursor = value_start;
+            } else if (token_equal(source, value_start, "if")) {
+                ValueIfParts parts;
+                char *result = parse_value_if(source, value_start, &parts);
+                if (strncmp(result, "error[", 6) == 0) {
+                    free(emitted.data);
+                    return result;
+                }
+                free(result);
+                char *value_body = emit_value_into(
+                    source,
+                    value_start,
+                    parts.end,
+                    "kofun_result",
+                    failure_result
+                );
+                if (strncmp(value_body, "error[", 6) == 0) {
+                    free(emitted.data);
+                    return value_body;
+                }
+                buffer_append(
+                    &emitted,
+                    "    {\n"
+                    "        int64_t kofun_result = INT64_C(0);\n"
+                );
+                buffer_append(&emitted, value_body);
+                if (is_main) {
+                    buffer_append(
+                        &emitted,
+                        "        return (int)kofun_result;\n"
+                    );
+                } else {
+                    buffer_append(
+                        &emitted,
+                        "        return kofun_result;\n"
+                    );
+                }
+                buffer_append(&emitted, "    }\n");
+                free(value_body);
+                cursor = skip_trivia(source, parts.end);
             } else {
                 int64_t value_end = expression_end(source, value_start);
                 if (value_end < 0) {
@@ -1911,6 +2267,48 @@ static char *lower_body(
                     source,
                     token_end(source, equals)
                 );
+                if (token_equal(source, value_start, "if")) {
+                    ValueIfParts parts;
+                    char *result = parse_value_if(
+                        source,
+                        value_start,
+                        &parts
+                    );
+                    if (strncmp(result, "error[", 6) == 0) {
+                        free(name);
+                        free(emitted.data);
+                        return result;
+                    }
+                    free(result);
+                    char *value_body = emit_value_into(
+                        source,
+                        value_start,
+                        parts.end,
+                        "kofun_replacement",
+                        failure_result
+                    );
+                    if (strncmp(value_body, "error[", 6) == 0) {
+                        free(name);
+                        free(emitted.data);
+                        return value_body;
+                    }
+                    buffer_append(
+                        &emitted,
+                        "    {\n"
+                        "        int64_t kofun_replacement = INT64_C(0);\n"
+                    );
+                    buffer_append(&emitted, value_body);
+                    buffer_format(
+                        &emitted,
+                        "        k_%s = kofun_replacement;\n"
+                        "    }\n",
+                        name
+                    );
+                    free(value_body);
+                    free(name);
+                    cursor = skip_trivia(source, parts.end);
+                    continue;
+                }
                 int64_t value_end = expression_end(source, value_start);
                 if (value_end < 0) {
                     free(name);

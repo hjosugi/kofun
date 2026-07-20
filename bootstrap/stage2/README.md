@@ -37,6 +37,8 @@ one zero-argument `fn main()` plus zero or more `Int` Core functions and lowers:
   and recursion;
 - statement-position `if` with mandatory braces, optional `else`, nesting,
   Bool literals, and integer `==`, `!=`, `<`, `<=`, `>`, `>=` conditions;
+- bounded Int-valued `if` in `let`, `print`, assignment, and `return`, with
+  mandatory `else`, nested values, and selected-only evaluation;
 - exhaustive statement-position Bool `match` with `true`, `false`, and `_`
   block arms, including nested matches;
 - `print(Int)` and `return Int`.
@@ -44,11 +46,12 @@ one zero-argument `fn main()` plus zero or more `Int` Core functions and lowers:
 The emitted C11 uses checked arithmetic helpers and preserves Kofun floor
 division/modulo behavior for negative operands. Assignment evaluates and checks
 the replacement value before changing the binding. Conditions evaluate once
-and only the selected branch executes. Value-producing `if`, `else if`,
-general Bool expressions, and loops remain outside this Core slice. Bool match
-uses a finite `{true, false}` coverage check; `E2S25` names missing patterns
-and `E2S26` rejects duplicate or unreachable arms. Value-producing match,
-guards, ADTs, bindings, and nested patterns remain outside this slice.
+and only the selected branch executes. Value `if` requires one final Int
+expression in each branch; general typed value blocks, `else if`, general Bool
+expressions, and loops remain outside this Core slice. Bool match uses a finite
+`{true, false}` coverage check; `E2S25` names missing patterns and `E2S26`
+rejects duplicate or unreachable arms. Value-producing match, guards, ADTs,
+bindings, and nested patterns remain outside this slice.
 Assignment is currently block-local: changing an outer binding from inside an
 `if` or `match` branch is rejected with `E2S22` rather than being silently
 miscompiled.

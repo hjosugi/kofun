@@ -1,0 +1,7 @@
+fn main() {
+    print(if true {
+        1 // 0
+    } else {
+        42
+    })
+}
