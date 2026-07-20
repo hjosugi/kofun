@@ -1,4 +1,4 @@
-.PHONY: help compiler test diagnostics fuzz check bootstrap stage2 native c-abi rust-shim http cli-framework stdlib build-system roadmap syntax repository-check verify clean
+.PHONY: help compiler test diagnostics fuzz check bootstrap stage2 native wasm c-abi rust-shim http cli-framework stdlib build-system roadmap syntax repository-check verify clean
 
 KOFUN := ./bin/kofun
 
@@ -12,6 +12,7 @@ help:
 	  'make bootstrap        Verify the Stage 1 seed path' \
 	  'make stage2           Verify the Stage 2 semantic frontend checkpoint' \
 	  'make native           Build and execute the Kofun-emitted ELF64 fixture' \
+	  'make wasm             Build and execute the wasm32 arithmetic Core' \
 	  'make c-abi            Verify explicit dynamic C ABI interoperability' \
 	  'make rust-shim        Verify the vendored Rust crate shim offline' \
 	  'make http             Verify the first-party HTTP/API framework' \
@@ -52,6 +53,9 @@ stage2:
 native:
 	sh bootstrap/native/check.sh
 
+wasm:
+	sh bootstrap/wasm/check.sh
+
 c-abi:
 	sh bootstrap/c_abi/check.sh
 
@@ -86,9 +90,10 @@ repository-check:
 	@grep -q '"extensions": \[".kofun"\]' editor/vscode/package.json
 	@printf '%s\n' 'PASS: .kofun sources only; no Python implementation'
 
-verify: test diagnostics fuzz check bootstrap stage2 native c-abi rust-shim http cli-framework stdlib build-system roadmap syntax repository-check
+verify: test diagnostics fuzz check bootstrap stage2 native wasm c-abi rust-shim http cli-framework stdlib build-system roadmap syntax repository-check
 	@sh -n bin/kofun bootstrap/stage1/check.sh bootstrap/stage2/check.sh \
 	  bootstrap/native/check.sh bootstrap/native/emit-fixture.sh \
+	  bootstrap/wasm/check.sh \
 	  bootstrap/c_abi/check.sh \
 	  examples/rust-shim/check.sh examples/rust-shim/benchmark.sh \
 	  framework/http/build.sh tests/http/check.sh \
@@ -100,6 +105,7 @@ verify: test diagnostics fuzz check bootstrap stage2 native c-abi rust-shim http
 	  tests/diagnostics/stage2/run.sh \
 	  tests/diagnostics/stage2/bless.sh \
 	  tests/fuzz/grammar.sh tests/fuzz/semantic_differential.sh \
+	  tests/conformance/backends/wasm32-node.sh \
 	  spec/roadmap-31-34/verify-current-gates.sh \
 	  tests/conformance/syntax/issues_35_47/run.sh \
 	  tests/conformance/syntax/issues_48_60/run.sh

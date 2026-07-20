@@ -17,7 +17,8 @@ kofun-stage1 INPUT.kofun OUTPUT.c
 The current frontend validates `fn main() { print(EXPR) }`, where `EXPR` is the
 documented integer arithmetic Core, and emits deterministic standalone C11.
 
-Two executable checkpoints extend this path without claiming full integration:
+Three executable checkpoints extend this path without claiming full
+integration:
 
 ```text
 bootstrap/stage2/compiler.kofun
@@ -27,6 +28,10 @@ bootstrap/stage2/compiler.kofun
 bootstrap/native/encoder.kofun
   -> ELF64 headers + x86-64 instruction bytes
   -> static Linux executable
+
+bootstrap/wasm/compiler.c
+  -> bounded arithmetic Core parser + direct WebAssembly module bytes
+  -> engine-validated module exporting main
 ```
 
 The Stage 2 checkpoint lowers a bounded `Int` Core with parameters, results,
@@ -35,7 +40,8 @@ implementation. The native checkpoint is registered for explicit Linux
 targets. Its x86-64 Int profile executes parameters, results, forward and mutual
 recursion, guarded returns, and checked arithmetic directly; the shared
 x86-64/AArch64 scalar profile and the x86-64 List/Text profiles remain separate
-bounded frontends.
+bounded frontends. wasm32 supports a separately registered Int64 arithmetic
+Core profile; it does not yet share a general typed IR with the native targets.
 
 ## Target pipeline
 

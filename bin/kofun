@@ -8,6 +8,9 @@ COMPILER="$BUILD_DIR/kofun-stage1"
 NATIVE_BUILD_DIR=${KOFUN_NATIVE_BUILD_DIR:-"$ROOT/build/native-core"}
 NATIVE_SEED_C="$ROOT/bootstrap/native/core_compiler.c"
 NATIVE_COMPILER="$NATIVE_BUILD_DIR/kofun-native-core"
+WASM_BUILD_DIR=${KOFUN_WASM_BUILD_DIR:-"$ROOT/build/wasm-core"}
+WASM_SEED_C="$ROOT/bootstrap/wasm/compiler.c"
+WASM_COMPILER="$WASM_BUILD_DIR/kofun-wasm-core"
 STAGE2_BUILD_DIR=${KOFUN_STAGE2_BUILD_DIR:-"$ROOT/build/stage2"}
 STAGE2_SEED_C="$ROOT/bootstrap/stage2/compiler.c"
 STAGE2_COMPILER="$STAGE2_BUILD_DIR/kofun-stage2"
@@ -26,7 +29,7 @@ usage:
   kofun build INPUT.kofun [-o OUTPUT] [--emit-c OUTPUT.c]
               [--backend c --c-abi [--link-library FILE]...]
               [--framework cli]
-              [--target x86_64-linux|aarch64-linux] [-g]
+              [--target x86_64-linux|aarch64-linux|wasm32] [-g]
   kofun build [TARGET...] [FROST_OPTIONS]  # with ./kofun.toml
   kofun new DIRECTORY --template cli
   kofun run INPUT.kofun
@@ -53,6 +56,16 @@ ensure_native_compiler() {
     then
         "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
             "$NATIVE_SEED_C" -o "$NATIVE_COMPILER"
+    fi
+}
+
+ensure_wasm_compiler() {
+    mkdir -p "$WASM_BUILD_DIR"
+    if [ ! -x "$WASM_COMPILER" ] ||
+       [ "$WASM_SEED_C" -nt "$WASM_COMPILER" ]
+    then
+        "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+            "$WASM_SEED_C" -o "$WASM_COMPILER"
     fi
 }
 
@@ -306,6 +319,15 @@ build_native_file() (
     fi
     test -s "$temporary"
     chmod +x "$temporary"
+    mv "$temporary" "$2"
+)
+
+build_wasm_file() (
+    ensure_wasm_compiler
+    temporary="$2.tmp.$$"
+    trap 'rm -f "$temporary"' 0 1 2 15
+    "$WASM_COMPILER" "$1" "$temporary"
+    test -s "$temporary"
     mv "$temporary" "$2"
 )
 
@@ -567,7 +589,19 @@ $link_library"
                 exit 2
             fi
             mkdir -p "$(dirname "$output")"
-            build_native_file "$input" "$output" "$target" "$debug"
+            case "$target" in
+                wasm32)
+                    build_wasm_file "$input" "$output"
+                    ;;
+                x86_64-linux|aarch64-linux)
+                    build_native_file "$input" "$output" "$target" "$debug"
+                    ;;
+                *)
+                    printf '%s\n' \
+                        "kofun: unsupported target: $target" >&2
+                    exit 2
+                    ;;
+            esac
             printf '%s\n' "$output"
             exit 0
         fi

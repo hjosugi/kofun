@@ -34,7 +34,7 @@ This is not yet a semantic self-hosting fixed point. The checked-in C11 seed
 starts the Kofun-written compiler, but Stage 1 cannot compile all constructs in
 its own source yet.
 
-Six Python-free checkpoints now exercise the path beyond that Core:
+Seven Python-free checkpoints now exercise the path beyond that Core:
 
 - `bootstrap/stage2/` lexes and structurally parses Kofun, emits a deterministic
   function IR, and reaches a byte-stable source/token/IR round trip;
@@ -42,6 +42,9 @@ Six Python-free checkpoints now exercise the path beyond that Core:
   Linux x86-64 ELF64 image without an assembler or linker; its active x86-64
   Core includes recursive user functions, local List bindings,
   `map`/`filter`/`fold`, and UTF-8 Text operations;
+- `bootstrap/wasm/` directly emits a standard wasm32 module for the checked
+  Int64 arithmetic Core and differentially executes it in a WebAssembly
+  engine;
 - `bootstrap/c_abi/` provides an explicit host-C/dynamic-linking profile for
   checked `extern "C"` declarations and `repr(C)` structs;
 - `framework/http/` uses that explicit host-C profile to run a reusable Linux
@@ -51,7 +54,7 @@ Six Python-free checkpoints now exercise the path beyond that Core:
 - `stdlib/` defines the raw syscall ABI, value-level errno conversion, affine
   resource wrappers, and the file round-trip acceptance fixture in Kofun.
 
-All six have executable gates. The complete Stage 2 self-recompile and
+All seven have executable gates. The complete Stage 2 self-recompile and
 general native lowering remain open.
 
 ## Measured project status
@@ -103,6 +106,7 @@ The research decisions supporting that order are:
 - `cargo` for the required offline vendored-crate shim gate
 - `ar` for the required HTTP framework static-library gate
 - `ld`, `readelf`, `file`, `ldd`, and `script` for native CLI prefix auditing
+- `node` for the required wasm32 engine and differential gate
 
 Python is not required or used.
 
@@ -151,6 +155,17 @@ Or scaffold a clean project with
 `./bin/kofun new demo-cli --template cli`. See
 `framework/cli/README.md` for the bounded declaration profile, generated help,
 TTY/`NO_COLOR` behavior, security boundary, and Linux x86-64 limitations.
+
+Build the WebAssembly arithmetic sample:
+
+```sh
+./bin/kofun build examples/wasm_arithmetic.kofun \
+  --target wasm32 -o build/arithmetic.wasm
+node bootstrap/wasm/run.mjs build/arithmetic.wasm
+```
+
+See `bootstrap/wasm/README.md` for the host imports, exact Core boundary, and
+remaining browser/DOM work.
 
 Generated C11 can be inspected with:
 
@@ -208,7 +223,7 @@ x86-64 output. See `tests/diagnostics/stage2/README.md` and
 kofun build INPUT.kofun [-o OUTPUT] [--emit-c OUTPUT.c]
             [--backend c --c-abi [--link-library FILE]...]
             [--framework cli]
-            [--target x86_64-linux|aarch64-linux] [-g]
+            [--target x86_64-linux|aarch64-linux|wasm32] [-g]
 kofun build [TARGET...] [FROST_OPTIONS]  # with ./kofun.toml
 kofun new DIRECTORY --template cli
 kofun run INPUT.kofun
