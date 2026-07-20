@@ -1,8 +1,8 @@
 {
   "schema": "kofun.rust-shim-build-cost/v1",
-  "measured_at_utc": "2026-07-20T07:22:00Z",
-  "source_commit": "6461fc2fbc2c19cabf7c4f7108b033027051f777",
-  "source_tree": "76148300d5666a07de3b7a5e2919b269d128fa05",
+  "measured_at_utc": "2026-07-20T07:26:42Z",
+  "source_commit": "11dd1f48e84afe583ebbb9a8994d9fb408e6492b",
+  "source_tree": "0de1ca817b0c0631b307f15c56fd966f5acef818",
   "worktree_clean": true,
   "sample_count": 5,
   "clock": "wall milliseconds from date +%s%N; cleanup and warmup excluded",
@@ -19,14 +19,14 @@
   "rust_clean_cdylib_build": {
     "definition": "target directory removed before each sample; vendored Cargo source and cargo-home retained; release cdylib only",
     "command": "CARGO_HOME=<isolated> CARGO_TARGET_DIR=<removed-per-sample> CARGO_NET_OFFLINE=true cargo build --offline --locked --release --lib",
-    "samples_ms": [3131, 3061, 2351, 1124, 1132],
-    "median_ms": 2351
+    "samples_ms": [2701, 2715, 3307, 3190, 2607],
+    "median_ms": 2715
   },
   "kofun_prebuilt_rebuild_relink": {
     "definition": "unchanged prebuilt cdylib; full single-file Kofun C-ABI emit, host-C compile, and dynamic link; one warmup excluded; no incremental cache claimed",
     "command": "./bin/kofun build examples/rust-shim/graphemes.kofun --backend c --c-abi --link-library <prebuilt-so> --emit-c <output.c> -o <output>",
-    "samples_ms": [51, 49, 52, 50, 53],
-    "median_ms": 51
+    "samples_ms": [140, 120, 105, 116, 137],
+    "median_ms": 120
   },
   "artifacts": {
     "shim_sha256": "fc9fd2a88489238f2370cc95c5632b75ff42530bce46b03b2c8ed8b4ef01843a",

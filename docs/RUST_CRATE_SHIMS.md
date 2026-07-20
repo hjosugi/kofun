@@ -139,15 +139,15 @@ claims.
 
 ### Recorded result
 
-Measured at 2026-07-20 07:22:00 UTC from clean implementation commit
-`6461fc2fbc2c19cabf7c4f7108b033027051f777` (tree
-`76148300d5666a07de3b7a5e2919b269d128fa05`) on Linux
+Measured at 2026-07-20 07:26:42 UTC from clean implementation commit
+`11dd1f48e84afe583ebbb9a8994d9fb408e6492b` (tree
+`0de1ca817b0c0631b307f15c56fd966f5acef818`) on Linux
 7.1.2-3-cachyos x86-64, AMD Ryzen 3 7330U, 8 logical CPUs:
 
 | Measurement | Five wall-time samples | Median |
 |---|---|---:|
-| clean offline Rust release cdylib build | 3131, 3061, 2351, 1124, 1132 ms | 2351 ms |
-| full Kofun rebuild/relink with unchanged prebuilt cdylib | 51, 49, 52, 50, 53 ms | 51 ms |
+| clean offline Rust release cdylib build | 2701, 2715, 3307, 3190, 2607 ms | 2715 ms |
+| full Kofun rebuild/relink with unchanged prebuilt cdylib | 140, 120, 105, 116, 137 ms | 120 ms |
 
 Toolchain: rustc 1.96.1 commit
 `31fca3adb283cc9dfd56b49cdee9a96eb9c96ffd` with LLVM 21.1.8,
