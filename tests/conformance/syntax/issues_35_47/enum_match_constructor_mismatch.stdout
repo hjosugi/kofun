@@ -1,0 +1,1 @@
+error[E2S32]: constructor `Automatic` does not belong to enum `Signal` at byte 106

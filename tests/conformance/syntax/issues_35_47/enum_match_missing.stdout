@@ -1,0 +1,1 @@
+error[E2S25]: non-exhaustive enum `Signal` match; missing constructors `Blue` at byte 88

@@ -1,0 +1,7 @@
+type Signal = | Red | Blue
+
+fn main() -> Int {
+    let signal = Red
+    print(0)
+    return 0
+}

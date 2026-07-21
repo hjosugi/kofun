@@ -1,0 +1,12 @@
+type Signal = | Red | Green | Blue
+
+fn main() -> Int {
+    let signal: Signal = Red
+    match signal {
+        Red => { print(1) },
+        Red => { print(2) },
+        Green => { print(3) },
+        Blue => { print(4) },
+    }
+    return 0
+}

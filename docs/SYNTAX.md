@@ -212,13 +212,27 @@ fn(Int, Int) -> Int
 
 ## ADT declarations
 
-planned:
+The executable Stage 2 checkpoint accepts concrete payload-free enums:
+
+```kofun
+type Signal =
+    | Red
+    | Yellow
+    | Green
+```
+
+The checkpoint requires explicit local typing (`let signal: Signal = Green`)
+and supports exhaustive statement-position matching. Type parameters and
+constructor payloads remain planned:
 
 ```kofun
 type Result[T, E] =
     | Ok(T)
     | Err(E)
 ```
+
+See `spec/enum-match-exhaustiveness.md` for the bounded constructor namespace,
+coverage, diagnostic, and implementation limits.
 
 ## Records
 

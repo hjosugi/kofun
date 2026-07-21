@@ -1,0 +1,8 @@
+type Signal = | Red | Green
+type Mode = | Manual | Automatic
+
+fn main() -> Int {
+    let signal: Signal = Automatic
+    print(0)
+    return 0
+}

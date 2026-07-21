@@ -1,0 +1,1 @@
+error[E2S32]: concrete enum constructor `Red` is only valid in an explicitly typed enum initializer or match pattern at byte 64

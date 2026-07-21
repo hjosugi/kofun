@@ -65,7 +65,7 @@ canonical_status=$?
 set -e
 [ "$canonical_status" -ne 0 ] ||
     fail 'canonical record/ADT source unexpectedly claimed executable codegen'
-grep -Fq 'error[E2S02]: expected top-level `fn`' \
+grep -Fq 'error[E2S02]: expected top-level `fn` or `type`' \
     "$work/canonical.check.stderr" ||
     fail 'canonical API did not expose the documented compiler boundary'
 

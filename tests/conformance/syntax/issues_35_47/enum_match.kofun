@@ -1,0 +1,52 @@
+type Signal = | Red | Green | Blue
+
+fn probe(value: Int) -> Int {
+    print(value)
+    return value
+}
+
+fn Red(value: Int) -> Int {
+    return value
+}
+
+fn constructor_parameter(Red: Int) -> Int {
+    return Red
+}
+
+fn main() -> Int {
+    let explicit: Signal = Blue
+    match explicit {
+        Red => { print(1) },
+        Green => { print(2) },
+        Blue => {
+            print(3)
+            if true {
+                match explicit {
+                    Red => { print(9006) },
+                    Green => { print(9007) },
+                    Blue => { print(8) },
+                }
+            }
+        },
+    }
+
+    let guarded: Signal = Red
+    match guarded {
+        Blue if 1 // 0 == 0 => { print(9001) },
+        Red if probe(4) == 5 => { print(9002) },
+        Red if probe(5) == 5 => { print(42) },
+        Red if 1 // 0 == 0 => { print(9003) },
+        _ => { print(9004) },
+    }
+
+    let wildcard: Signal = Green
+    match wildcard {
+        Red => { print(9005) },
+        _ => { print(7) },
+    }
+    print(Red(10))
+    let Red: Int = 6
+    print(Red)
+    print(constructor_parameter(9))
+    return 0
+}

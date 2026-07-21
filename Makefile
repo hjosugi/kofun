@@ -48,6 +48,7 @@ fuzz:
 	sh tests/fuzz/match_guard.sh
 	sh tests/fuzz/match_value.sh
 	sh tests/fuzz/match_value_invalid.sh
+	sh tests/fuzz/enum_match.sh
 
 check: compiler
 	$(KOFUN) check bootstrap/fixtures/answer.kofun
@@ -138,6 +139,7 @@ verify: test diagnostics fuzz check bootstrap stage2 native wasm tour c-abi rust
 	  tests/fuzz/grammar.sh tests/fuzz/semantic_differential.sh \
 	  tests/fuzz/value_if.sh tests/fuzz/match_guard.sh \
 	  tests/fuzz/match_value.sh tests/fuzz/match_value_invalid.sh \
+	  tests/fuzz/enum_match.sh \
 	  tests/conformance/backends/wasm32-node.sh \
 	  spec/roadmap-31-34/verify-current-gates.sh \
 	  tests/conformance/syntax/issues_35_47/run.sh \

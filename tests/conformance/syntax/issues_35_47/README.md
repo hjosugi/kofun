@@ -20,6 +20,11 @@ C11 compiler. It proves:
   span-carrying `E2S22` diagnostics;
 - Stage 2 names missing Bool patterns with `E2S25` and rejects duplicate or
   unreachable arms with `E2S26`;
+- Stage 2 records concrete payload-free enum types/constructors in structural
+  IR, executes exhaustive statement matches, and applies `E2S25`/`E2S26` to
+  their finite constructor sets;
+- malformed or duplicate enum declarations use `E2S31`, while unresolved or
+  mismatched enum types/constructors use `E2S32`;
 - Stage 2 structural IR preserves names, arities, spans, and balanced bodies;
 - the current frontends reject Unicode names; and
 - Stage 2 C lowering explicitly rejects lambda, owned-binding, `else if`,
@@ -59,3 +64,18 @@ duplicate/unreachable patterns, and an invalid non-Bool guard (`E2S29`).
 Nested value `if`/`match` forms, scrutinee-once behavior, selected-only value
 arms, and checked failure propagation are executable. `E2S30` rejects a value
 arm that cannot produce the bounded Int result.
+
+The concrete enum slice is deliberately payload-free and non-generic. A
+compilation unit accepts at most 32 enum types and 64 constructors per type;
+constructor names are unique across the unit, built-in type names cannot be
+shadowed, and `_` remains reserved for catch-all patterns. An explicitly typed
+immutable local such as `let signal: Signal = Green` can be inspected by a
+statement-position match. Explicit constructor coverage needs no `_`; guarded
+arms do not provide static coverage; and `_` covers every constructor still
+uncovered. The conformance fixture checks structural type/constructor IR,
+declaration-order tags, explicit coverage, ordered guards, selected-only
+evaluation, wildcard coverage, missing/duplicate arms, and constructor/type
+resolution failures. It also proves lexical visibility from nested blocks and
+rejects both enum-tag escape into Int expressions and constructor use without
+an explicitly typed enum initializer. Generic/payload constructors and
+value-producing enum matches remain unsupported.
