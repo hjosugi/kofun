@@ -1,0 +1,198 @@
+# Small, platform-independent Map checkpoint.
+#
+# IntMap is deliberately specialized to Int keys and Int values. Entries are
+# kept in ascending key order so lookup, snapshots, callbacks, and folds have
+# one deterministic traversal order independent of construction history.
+
+type IntMapEntry = {
+    key: Int,
+    value: Int,
+}
+
+type IntMap = {
+    entries: List[IntMapEntry],
+}
+
+type MapError =
+    | MapKeyMissing(Int)
+
+fn map_int_entry(key: Int, value: Int) -> IntMapEntry {
+    return IntMapEntry { key: key, value: value }
+}
+
+fn map_int_empty() -> IntMap {
+    let entries: List[IntMapEntry] = []
+    return IntMap { entries: entries }
+}
+
+fn map_int_length(read map: IntMap) -> Int {
+    return len(map.entries)
+}
+
+fn map_int_is_empty(read map: IntMap) -> Bool {
+    return len(map.entries) == 0
+}
+
+fn map_int_contains_key(read map: IntMap, key: Int) -> Bool {
+    let mut index = 0
+    while index < len(map.entries) {
+        if map.entries[index].key == key { return true }
+        if map.entries[index].key > key { return false }
+        index = index + 1
+    }
+    return false
+}
+
+fn map_int_get(read map: IntMap, key: Int) -> Result[Int, MapError] {
+    let mut index = 0
+    while index < len(map.entries) {
+        if map.entries[index].key == key {
+            return Ok(map.entries[index].value)
+        }
+        if map.entries[index].key > key {
+            return Err(MapKeyMissing(key))
+        }
+        index = index + 1
+    }
+    return Err(MapKeyMissing(key))
+}
+
+# Insertion is an immutable upsert. Reusing a key replaces its value without
+# changing its ascending traversal position.
+fn map_int_insert(read map: IntMap, key: Int, value: Int) -> IntMap {
+    let mut output: List[IntMapEntry] = []
+    let mut inserted = false
+    let mut index = 0
+    while index < len(map.entries) {
+        let current = map.entries[index]
+        if !inserted && key < current.key {
+            output = push(output, map_int_entry(key, value))
+            inserted = true
+        }
+        if current.key == key {
+            output = push(output, map_int_entry(key, value))
+            inserted = true
+        } else {
+            output = push(output, map_int_entry(current.key, current.value))
+        }
+        index = index + 1
+    }
+    if !inserted {
+        output = push(output, map_int_entry(key, value))
+    }
+    return IntMap { entries: output }
+}
+
+fn map_int_remove(read map: IntMap, key: Int) -> IntMap {
+    let mut output: List[IntMapEntry] = []
+    let mut index = 0
+    while index < len(map.entries) {
+        let current = map.entries[index]
+        if current.key != key {
+            output = push(output, map_int_entry(current.key, current.value))
+        }
+        index = index + 1
+    }
+    return IntMap { entries: output }
+}
+
+# Entries are consumed in input order. If a key repeats, its last input value
+# wins; the returned map is still canonicalized by ascending key.
+fn map_int_from_entries(read entries: List[IntMapEntry]) -> IntMap {
+    let mut result = map_int_empty()
+    let mut index = 0
+    while index < len(entries) {
+        result = map_int_insert(
+            result,
+            entries[index].key,
+            entries[index].value,
+        )
+        index = index + 1
+    }
+    return result
+}
+
+fn map_int_to_entries(read map: IntMap) -> List[IntMapEntry] {
+    let mut output: List[IntMapEntry] = []
+    let mut index = 0
+    while index < len(map.entries) {
+        output = push(
+            output,
+            map_int_entry(map.entries[index].key, map.entries[index].value),
+        )
+        index = index + 1
+    }
+    return output
+}
+
+fn map_int_keys(read map: IntMap) -> List[Int] {
+    let mut output: List[Int] = []
+    let mut index = 0
+    while index < len(map.entries) {
+        output = push(output, map.entries[index].key)
+        index = index + 1
+    }
+    return output
+}
+
+fn map_int_values(read map: IntMap) -> List[Int] {
+    let mut output: List[Int] = []
+    let mut index = 0
+    while index < len(map.entries) {
+        output = push(output, map.entries[index].value)
+        index = index + 1
+    }
+    return output
+}
+
+fn map_int_map_values(
+    read map: IntMap,
+    transform: fn(Int, Int) -> Int,
+) -> IntMap {
+    let mut output: List[IntMapEntry] = []
+    let mut index = 0
+    while index < len(map.entries) {
+        let entry = map.entries[index]
+        output = push(
+            output,
+            map_int_entry(entry.key, transform(entry.key, entry.value)),
+        )
+        index = index + 1
+    }
+    return IntMap { entries: output }
+}
+
+fn map_int_filter(
+    read map: IntMap,
+    predicate: fn(Int, Int) -> Bool,
+) -> IntMap {
+    let mut output: List[IntMapEntry] = []
+    let mut index = 0
+    while index < len(map.entries) {
+        let entry = map.entries[index]
+        if predicate(entry.key, entry.value) {
+            output = push(output, map_int_entry(entry.key, entry.value))
+        }
+        index = index + 1
+    }
+    return IntMap { entries: output }
+}
+
+# Fold order is the ascending key order exposed by map_int_to_entries.
+fn map_int_fold(
+    read map: IntMap,
+    initial: Int,
+    combine: fn(Int, Int, Int) -> Int,
+) -> Int {
+    let mut result = initial
+    let mut index = 0
+    while index < len(map.entries) {
+        result = combine(
+            result,
+            map.entries[index].key,
+            map.entries[index].value,
+        )
+        index = index + 1
+    }
+    return result
+}

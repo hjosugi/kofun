@@ -65,6 +65,11 @@ value-returning `SetInt` surface with unique membership, total algebraic
 operations, and deterministic ascending traversal. Its canonical record is
 gated by a finite C11/x86-64 semantic projection until Set lowering exists.
 
+The platform-independent [`map/`](map/) checkpoint defines an immutable
+Int-to-Int map with typed missing-key lookup, value-returning upsert/removal,
+and deterministic ascending-key traversal. Its canonical record is gated by a
+finite C11/x86-64 semantic projection until Map lowering exists.
+
 The platform-independent [`json/`](json/) checkpoint defines a strict JSON v1
 value codec with lossless number lexemes, ordered unique object members, typed
 failures, and bounded nesting. Its recursive ADT surface is gated by a
