@@ -1,0 +1,7 @@
+# diagnostic-mode: compile
+# expect-code: E2S33
+# expect-span: bytes 77..88
+
+pub private fn main() -> Int {
+    return 0
+}

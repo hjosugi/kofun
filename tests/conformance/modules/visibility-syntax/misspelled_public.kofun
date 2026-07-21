@@ -1,0 +1,5 @@
+type Marker = | Ready
+
+publc fn main() -> Int {
+    return 0
+}

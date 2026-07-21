@@ -1,0 +1,4 @@
+fn main() -> Int {
+    pub let answer: Int = 42
+    return answer
+}

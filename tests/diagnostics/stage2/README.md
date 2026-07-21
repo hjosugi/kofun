@@ -27,3 +27,8 @@ as `expect-span: none`: `E2S04`, `E2S20`, and `E2S21`. They are visible span
 debt, not silently counted as precise diagnostics. Runtime `R010`, C ABI,
 native-backend, and host-I/O diagnostics require separate suites because their
 execution and location models differ.
+
+Visibility syntax uses `E2S33` for malformed/conflicting basic modifiers and
+`E2S34` for unsupported aliases or deferred restricted forms. Both diagnostics
+report the rejected modifier/form byte range and are emitted before output
+artifacts are written.

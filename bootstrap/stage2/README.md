@@ -14,8 +14,8 @@ The frontend performs five concrete operations:
 1. lexical scanning that ignores comments and treats escaped strings as single
    tokens, producing a deterministic token-span tape;
 2. structural parsing of a compilation unit into textual function and
-   payload-free enum IR, including names, constructor tags, arities, and byte
-   spans;
+   payload-free enum IR, including names, constructor tags, arities, byte
+   spans, and top-level function visibility metadata;
 3. an identity source projection gated by successful lexing and parsing.
 4. statement and precedence-aware expression parsing for a deliberately small
    integer Core, followed by deterministic standalone C11 lowering.
@@ -76,6 +76,15 @@ declaration order irrelevant. The lowerer rejects unknown calls, duplicate
 function names, wrong arity, non-`Int` parameters, and non-`Int` helper return
 types before invoking the host compiler.
 
+Top-level functions accept an omitted modifier, `private`, `internal`, or
+`pub`. Structural IR preserves semantic visibility, implicit versus explicit
+origin, the modifier/declaration spans, `file:0`, and a declaration-order
+symbol identity. These spellings remain identifier tokens elsewhere. `E2S33`
+rejects malformed, duplicate, conflicting, or misplaced basic modifiers;
+`E2S34` rejects Java/Rust aliases and deferred `pub(...)` forms. This slice
+does not enforce access across files, modules, packages, imports, signatures,
+tooling, FFI, or linker symbols.
+
 The main CLI tries this Stage 2 C11 Core first and uses the Stage 1 seed as a
 compatibility fallback for inputs outside this slice. Direct-native
 user-function lowering is not implemented yet.
@@ -103,6 +112,11 @@ Dedicated positive and negative fixtures exercise the ownership slice both
 through the Stage 2 seed and `kofun check`; unrelated structural programs are
 explicitly rejected as outside that slice. The gate uses only POSIX shell, a
 C11 compiler, `sha256sum`, and standard comparison/search tools.
+
+`tests/conformance/modules/visibility-syntax/run.sh` separately covers all
+basic visibility forms, same-file forward calls and execution, contextual
+identifier uses, exact modifier diagnostics, artifact absence, and
+byte-identical repeated output.
 
 `compiler.c` is an audited executable transliteration of the Kofun source so
 this checkpoint can run before Stage 1 accepts all of Stage 2. It is part of the

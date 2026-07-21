@@ -1,0 +1,8 @@
+private fn helper() -> Int {
+    return 42
+}
+
+fn main() -> Int {
+    print(helper())
+    return 0
+}

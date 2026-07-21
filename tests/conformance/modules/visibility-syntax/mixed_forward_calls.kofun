@@ -1,0 +1,20 @@
+fn main() -> Int {
+    print(public_answer())
+    return 0
+}
+
+pub fn public_answer() -> Int {
+    return internal_answer()
+}
+
+internal fn internal_answer() -> Int {
+    return explicit_private_answer()
+}
+
+private fn explicit_private_answer() -> Int {
+    return implicit_private_answer()
+}
+
+fn implicit_private_answer() -> Int {
+    return 42
+}

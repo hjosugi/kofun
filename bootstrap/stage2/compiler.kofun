@@ -194,6 +194,150 @@ fn balanced_end(source: Text, start: Int, open: Text, close: Text) -> Int {
     return -1
 }
 
+fn basic_visibility_modifier(source: Text, start: Int) -> Bool {
+    let token = token_text(source, start)
+    return token == "pub" || token == "internal" || token == "private"
+}
+
+fn visibility_word(source: Text, start: Int) -> Bool {
+    let token = token_text(source, start)
+    return basic_visibility_modifier(source, start) ||
+    token == "public" || token == "protected"
+}
+
+fn visibility_prefix_candidate(source: Text, start: Int) -> Bool {
+    if visibility_word(source, start) {
+        return true
+    }
+    if token_kind(source, start) != "identifier" {
+        return false
+    }
+    let next = skip_trivia(source, token_end(source, start))
+    return token_text(source, next) == "fn"
+}
+
+fn function_declaration_start(source: Text, start: Int) -> Int {
+    if token_text(source, start) == "fn" {
+        return start
+    }
+    if !basic_visibility_modifier(source, start) {
+        return -1
+    }
+    let after_modifier = skip_trivia(source, token_end(source, start))
+    if after_modifier < len(source) &&
+       token_text(source, after_modifier) == "fn" {
+        return after_modifier
+    }
+    return -1
+}
+
+fn visibility_level(source: Text, start: Int) -> Text {
+    if token_text(source, start) == "pub" {
+        return "public"
+    }
+    if token_text(source, start) == "internal" {
+        return "internal"
+    }
+    return "private"
+}
+
+fn visibility_prefix_error(source: Text, start: Int) -> Text {
+    let modifier = token_text(source, start)
+    if modifier == "public" || modifier == "protected" {
+        return "error[E2S34]: unsupported visibility modifier `" +
+        modifier + "`; use `pub`, `internal`, or `private` at bytes " +
+        to_text(start) + ".." + to_text(token_end(source, start))
+    }
+    if !basic_visibility_modifier(source, start) {
+        let next = skip_trivia(source, token_end(source, start))
+        if token_kind(source, start) == "identifier" &&
+           next < len(source) && token_text(source, next) == "fn" {
+            return "error[E2S33]: unknown visibility modifier `" +
+            modifier + "`; expected `pub`, `internal`, or `private` at bytes " +
+            to_text(start) + ".." + to_text(token_end(source, start))
+        }
+        return ""
+    }
+
+    let next = skip_trivia(source, token_end(source, start))
+    if next < len(source) && token_text(source, next) == "fn" {
+        return ""
+    }
+    if next < len(source) && basic_visibility_modifier(source, next) {
+        let second = token_text(source, next)
+        let mut kind = "conflicting"
+        if modifier == second {
+            kind = "repeated"
+        }
+        return "error[E2S33]: " + kind + " visibility modifiers `" +
+        modifier + "` and `" + second + "` at bytes " +
+        to_text(start) + ".." + to_text(token_end(source, next))
+    }
+    if modifier == "pub" && next < len(source) &&
+       token_text(source, next) == "(" {
+        let mut form_end = balanced_end(source, next, "(", ")")
+        if form_end < 0 {
+            form_end = token_end(source, next)
+        }
+        let form_name = skip_trivia(source, token_end(source, next))
+        let name = token_text(source, form_name)
+        let mut form_kind = "restricted"
+        if name == "crate" || name == "super" || name == "in" {
+            form_kind = "Rust-style"
+        }
+        return "error[E2S34]: " + form_kind +
+        " `pub(...)` visibility is not supported in this frontend slice at bytes " +
+        to_text(start) + ".." + to_text(form_end)
+    }
+    return "error[E2S33]: visibility modifier `" + modifier +
+    "` must be followed by a top-level `fn` declaration at bytes " +
+    to_text(start) + ".." + to_text(token_end(source, start))
+}
+
+fn local_visibility_error(
+    source: Text,
+    function_start: Int,
+    function_close: Int
+) -> Text {
+    let open = parameter_open(source, function_start)
+    if open < 0 {
+        return ""
+    }
+    let mut cursor = balanced_end(source, open, "(", ")")
+    while cursor >= 0 && cursor < function_close &&
+          token_text(source, cursor) != "{" {
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    if cursor < 0 || cursor >= function_close {
+        return ""
+    }
+    cursor = skip_trivia(source, token_end(source, cursor))
+    while cursor < function_close {
+        let token = token_text(source, cursor)
+        let basic = basic_visibility_modifier(source, cursor)
+        let alias = token == "public" || token == "protected"
+        if basic || alias {
+            let next = skip_trivia(source, token_end(source, cursor))
+            let next_token = token_text(source, next)
+            let declaration_like = next < function_close &&
+            (next_token == "fn" || next_token == "let" ||
+             next_token == "var" || next_token == "type" ||
+             basic_visibility_modifier(source, next))
+            if declaration_like {
+                let mut code = "E2S33"
+                if alias {
+                    code = "E2S34"
+                }
+                return "error[" + code + "]: visibility modifier `" +
+                token + "` is not supported in local scope at bytes " +
+                to_text(cursor) + ".." + to_text(token_end(source, cursor))
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return ""
+}
+
 fn function_name(source: Text, start: Int) -> Text {
     let after_fn = skip_trivia(source, token_end(source, start))
     if after_fn >= len(source) || token_kind(source, after_fn) != "identifier" {
@@ -323,7 +467,8 @@ fn type_declaration_end(source: Text, start: Int) -> Int {
         return -1
     }
     if pipe < len(source) && token_text(source, pipe) != "fn" &&
-       token_text(source, pipe) != "type" {
+       token_text(source, pipe) != "type" &&
+       !visibility_prefix_candidate(source, pipe) {
         return -1
     }
     return last_end
@@ -333,7 +478,11 @@ fn top_level_end(source: Text, start: Int) -> Int {
     if token_text(source, start) == "type" {
         return type_declaration_end(source, start)
     }
-    return function_end(source, start)
+    let function_start = function_declaration_start(source, start)
+    if function_start < 0 {
+        return -1
+    }
+    return function_end(source, function_start)
 }
 
 fn next_function_start(source: Text, start: Int) -> Int {
@@ -345,7 +494,11 @@ fn next_function_start(source: Text, start: Int) -> Int {
         }
         cursor = skip_trivia(source, end)
     }
-    return cursor
+    let function_start = function_declaration_start(source, cursor)
+    if function_start < 0 {
+        return cursor
+    }
+    return function_start
 }
 
 fn enum_declaration_start(source: Text, wanted: Text) -> Int {
@@ -531,6 +684,10 @@ fn parse_program(source: Text) -> Text {
     let mut declared_types = "|"
     let mut declared_constructors = "|"
     while cursor < len(source) {
+        let visibility_error = visibility_prefix_error(source, cursor)
+        if len(visibility_error) > 0 {
+            return visibility_error
+        }
         if token_text(source, cursor) == "type" {
             let name = type_name(source, cursor)
             let end = type_declaration_end(source, cursor)
@@ -604,19 +761,45 @@ fn parse_program(source: Text) -> Text {
                 pipe = skip_trivia(source, token_end(source, constructor))
             }
             cursor = skip_trivia(source, end)
-        } else if token_text(source, cursor) != "fn" {
+        } else if function_declaration_start(source, cursor) < 0 {
             return "error[E2S02]: expected top-level `fn` or `type` at byte " +
             to_text(cursor)
         } else {
-            let name = function_name(source, cursor)
-            let arity = parameter_count(source, cursor)
-            let end = function_end(source, cursor)
+            let declaration_start = cursor
+            let function_start = function_declaration_start(
+                source,
+                declaration_start
+            )
+            let name = function_name(source, function_start)
+            let arity = parameter_count(source, function_start)
+            let end = function_end(source, function_start)
             if len(name) == 0 || arity < 0 || end < 0 {
                 return "error[E2S03]: malformed function at byte " +
-                to_text(cursor)
+                to_text(function_start)
+            }
+            let local_error = local_visibility_error(
+                source,
+                function_start,
+                end
+            )
+            if len(local_error) > 0 {
+                return local_error
+            }
+            let explicit_visibility = declaration_start != function_start
+            let mut origin = "implicit"
+            let mut modifier_start = -1
+            let mut modifier_end = -1
+            if explicit_visibility {
+                origin = "explicit"
+                modifier_start = declaration_start
+                modifier_end = token_end(source, declaration_start)
             }
             ir = ir + "function|" + name + "|" + to_text(arity) + "|" +
-            to_text(cursor) + "|" + to_text(end) + "\n"
+            to_text(function_start) + "|" + to_text(end) + "|" +
+            visibility_level(source, declaration_start) + "|" + origin + "|" +
+            to_text(modifier_start) + "|" + to_text(modifier_end) + "|" +
+            to_text(declaration_start) + "|" + to_text(end) +
+            "|file:0|symbol:" + to_text(functions) + "\n"
             functions = functions + 1
             cursor = skip_trivia(source, end)
         }

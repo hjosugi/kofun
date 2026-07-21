@@ -1,0 +1,3 @@
+pub(to application) fn main() -> Int {
+    return 0
+}
