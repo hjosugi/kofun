@@ -2,6 +2,11 @@
 
 Kofun keeps two intentionally separate build paths behind one CLI command.
 
+The normative root-selection, logical-path, and package-identity rules are in
+[`spec/modules/package-roots.md`](../spec/modules/package-roots.md). This
+document describes executable build integration and must not redefine package
+identity from an absolute checkout path.
+
 ## Single-file fast path
 
 ```sh

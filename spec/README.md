@@ -17,6 +17,8 @@ Python-free bootstrap implementation.
   treating planned syntax as implemented behavior.
 - `parser/TOKEN_SPANS.md` defines the current Stage 2 byte-span prototype and
   the work still required for a lossless parser.
+- `modules/package-roots.md` defines deterministic manifest and anonymous
+  single-file package roots and the versioned `PackageIdPayload` contract.
 - `law-evidence.schema.json` defines the machine-readable
   `kofun.law-evidence/v1` artifact.
 
