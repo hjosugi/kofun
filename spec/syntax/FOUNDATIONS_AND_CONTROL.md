@@ -94,6 +94,13 @@ feature should prefer a contextual word only when its position is already
 unambiguous and treating it as contextual cannot change the tokenization of an
 existing program.
 
+`pub`, `internal`, and `private` are contextual declaration modifiers under
+the normative [visibility contract](../modules/visibility.md). They are
+recognized only before a declaration or member and are not hard keywords in
+other positions. `public` and `protected` are not visibility aliases. The
+active bootstrap frontend has not implemented these modifiers yet; #578 owns
+the first bounded syntax/HIR slice.
+
 ### Canonical and rejected forms
 
 ```kofun
