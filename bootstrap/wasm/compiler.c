@@ -11,7 +11,8 @@ enum {
     MAX_SOURCE_BYTES = 1024 * 1024,
     MAX_BINDINGS = 128,
     MAX_NODES = 1024,
-    MAX_STATEMENTS = 256
+    MAX_STATEMENTS = 256,
+    MAX_EXPRESSION_NESTING = 256
 };
 
 typedef struct {
@@ -98,6 +99,7 @@ typedef struct {
     Statement statements[MAX_STATEMENTS];
     size_t statement_count;
     size_t print_count;
+    size_t expression_nesting;
 } Parser;
 
 static void fatal(const char *message) {
@@ -413,11 +415,35 @@ static int find_binding(
 
 static int parse_expression(Parser *parser);
 
+static bool enter_expression_nesting(Parser *parser) {
+    if (parser->expression_nesting >= MAX_EXPRESSION_NESTING) {
+        parse_error(
+            parser,
+            "expression nesting exceeds wasm32 limit of 256"
+        );
+        return false;
+    }
+    ++parser->expression_nesting;
+    return true;
+}
+
+static void leave_expression_nesting(Parser *parser) {
+    if (parser->expression_nesting == 0) {
+        fatal("internal expression nesting underflow");
+    }
+    --parser->expression_nesting;
+}
+
 static int parse_primary(Parser *parser) {
     if (consume(parser, TOKEN_LEFT_PAREN)) {
+        if (!enter_expression_nesting(parser)) return -1;
         int expression = parse_expression(parser);
-        expect(parser, TOKEN_RIGHT_PAREN,
-               "expected `)` in wasm32 Core expression");
+        leave_expression_nesting(parser);
+        if (expression < 0) return -1;
+        if (!expect(parser, TOKEN_RIGHT_PAREN,
+                    "expected `)` in wasm32 Core expression")) {
+            return -1;
+        }
         return expression;
     }
     if (parser->token.kind == TOKEN_INTEGER) {
@@ -446,21 +472,35 @@ static int parse_primary(Parser *parser) {
 }
 
 static int parse_unary(Parser *parser) {
-    if (consume(parser, TOKEN_PLUS)) return parse_unary(parser);
-    if (consume(parser, TOKEN_MINUS)) {
-        if (parser->token.kind == TOKEN_INTEGER) {
-            uint64_t magnitude = parser->token.magnitude;
-            next_token(parser);
-            int64_t value =
-                magnitude == UINT64_C(9223372036854775808)
-                    ? INT64_MIN
-                    : -(int64_t)magnitude;
-            return add_node(parser, NODE_LITERAL, -1, -1, -1, value);
-        }
-        int operand = parse_unary(parser);
-        return add_node(parser, NODE_NEGATE, operand, -1, -1, 0);
+    bool negate;
+    if (consume(parser, TOKEN_PLUS)) {
+        negate = false;
+    } else if (consume(parser, TOKEN_MINUS)) {
+        negate = true;
+    } else {
+        return parse_primary(parser);
     }
-    return parse_primary(parser);
+
+    if (!enter_expression_nesting(parser)) return -1;
+    int result;
+    if (negate && parser->token.kind == TOKEN_INTEGER) {
+        uint64_t magnitude = parser->token.magnitude;
+        next_token(parser);
+        int64_t value =
+            magnitude == UINT64_C(9223372036854775808)
+                ? INT64_MIN
+                : -(int64_t)magnitude;
+        result = add_node(parser, NODE_LITERAL, -1, -1, -1, value);
+    } else {
+        int operand = parse_unary(parser);
+        if (operand < 0 || !negate) {
+            result = operand;
+        } else {
+            result = add_node(parser, NODE_NEGATE, operand, -1, -1, 0);
+        }
+    }
+    leave_expression_nesting(parser);
+    return result;
 }
 
 static int parse_term(Parser *parser) {

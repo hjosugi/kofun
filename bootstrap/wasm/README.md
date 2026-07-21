@@ -43,7 +43,11 @@ The current profile supports one zero-argument `fn main`, immutable `Int`
 bindings, `print`, Int64 literals and variables, parentheses, unary `+`/`-`,
 and checked `+`, `-`, `*`, `/`, `//`, and `%`. Division and modulo follow the
 same truncating or floor semantics and stable runtime diagnostics as the C11
-Stage 1 backend.
+Stage 1 backend. Parenthesized expressions and unary operators share one
+deterministic 256-level nesting limit: 128 nested parentheses combined with
+128 unary operators are accepted, while any combined depth of 257 is rejected.
+This makes hostile inputs fail with a compile diagnostic instead of exhausting
+the C stack.
 
 `tests/conformance/backends/wasm32-node.sh` registers the target against the
 shared numeric corpus. All nine success and failure cases execute under the
