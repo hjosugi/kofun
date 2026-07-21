@@ -1,0 +1,144 @@
+# Small, platform-independent BinaryHeap checkpoint.
+#
+# BinaryHeapInt is a min-heap specialized to Copy Int values. The public API
+# treats the record as opaque and exposes ascending traversal explicitly rather
+# than exposing the implementation's level-order storage as iteration order.
+
+type BinaryHeapInt = {
+    values: List[Int],
+}
+
+type BinaryHeapError =
+    | BinaryHeapEmpty
+
+type BinaryHeapPopInt = {
+    value: Int,
+    heap: BinaryHeapInt,
+}
+
+fn binary_heap_int_swap(
+    edit values: List[Int],
+    left: Int,
+    right: Int,
+) -> Void {
+    let held = values[left]
+    values[left] = values[right]
+    values[right] = held
+}
+
+fn binary_heap_int_sift_up(edit values: List[Int], start: Int) -> Void {
+    let mut index = start
+    while index > 0 {
+        let parent = (index - 1) // 2
+        if values[parent] <= values[index] { return }
+        binary_heap_int_swap(values, parent, index)
+        index = parent
+    }
+}
+
+fn binary_heap_int_sift_down(edit values: List[Int], start: Int) -> Void {
+    let mut index = start
+    while index * 2 + 1 < len(values) {
+        let left = index * 2 + 1
+        let right = left + 1
+        let mut child = left
+        if right < len(values) && values[right] < values[left] {
+            child = right
+        }
+        if values[index] <= values[child] { return }
+        binary_heap_int_swap(values, index, child)
+        index = child
+    }
+}
+
+fn binary_heap_int_empty() -> BinaryHeapInt {
+    return BinaryHeapInt { values: [] }
+}
+
+fn binary_heap_int_length(read heap: BinaryHeapInt) -> Int {
+    return len(heap.values)
+}
+
+fn binary_heap_int_is_empty(read heap: BinaryHeapInt) -> Bool {
+    return len(heap.values) == 0
+}
+
+fn binary_heap_int_peek_min(
+    read heap: BinaryHeapInt,
+) -> Result[Int, BinaryHeapError] {
+    if len(heap.values) == 0 {
+        return Err(BinaryHeapEmpty)
+    }
+    return Ok(heap.values[0])
+}
+
+# Value-returning insertion copies the backing List before restoring the heap
+# invariant. The input heap is unchanged.
+fn binary_heap_int_push(
+    read heap: BinaryHeapInt,
+    value: Int,
+) -> BinaryHeapInt {
+    let mut values = map(heap.values, fn(item: Int) => item)
+    values = push(values, value)
+    binary_heap_int_sift_up(values, len(values) - 1)
+    return BinaryHeapInt { values: values }
+}
+
+fn binary_heap_int_from_list(read values: List[Int]) -> BinaryHeapInt {
+    let mut heap = binary_heap_int_empty()
+    let mut index = 0
+    while index < len(values) {
+        heap = binary_heap_int_push(heap, values[index])
+        index = index + 1
+    }
+    return heap
+}
+
+# Internal non-empty case shared by pop and deterministic traversal.
+fn binary_heap_int_pop_present(
+    read heap: BinaryHeapInt,
+) -> BinaryHeapPopInt {
+    let minimum = heap.values[0]
+    let length = len(heap.values)
+    let mut values: List[Int] = []
+    if length > 1 {
+        values = push(values, heap.values[length - 1])
+        let mut index = 1
+        while index < length - 1 {
+            values = push(values, heap.values[index])
+            index = index + 1
+        }
+        binary_heap_int_sift_down(values, 0)
+    }
+    return BinaryHeapPopInt {
+        value: minimum,
+        heap: BinaryHeapInt { values: values },
+    }
+}
+
+# The result carries both the minimum and the remaining independent heap.
+fn binary_heap_int_pop_min(
+    read heap: BinaryHeapInt,
+) -> Result[BinaryHeapPopInt, BinaryHeapError] {
+    if len(heap.values) == 0 {
+        return Err(BinaryHeapEmpty)
+    }
+    return Ok(binary_heap_int_pop_present(heap))
+}
+
+# This is the checkpoint's deterministic iteration/pipeline bridge. Repeated
+# values are preserved and the returned List is ascending.
+fn binary_heap_int_to_sorted_list(
+    read heap: BinaryHeapInt,
+) -> List[Int] {
+    let mut remaining = BinaryHeapInt {
+        values: map(heap.values, fn(value: Int) => value),
+    }
+    let mut output: List[Int] = []
+    while len(remaining.values) > 0 {
+        let popped = binary_heap_int_pop_present(remaining)
+        output = push(output, popped.value)
+        remaining = popped.heap
+    }
+    return output
+}

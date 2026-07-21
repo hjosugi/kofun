@@ -146,6 +146,7 @@ sh "$stdlib_dir/array/tests/verify.sh"
 sh "$stdlib_dir/tuple/tests/verify.sh"
 sh "$stdlib_dir/set/tests/verify.sh"
 sh "$stdlib_dir/map/tests/verify.sh"
+sh "$stdlib_dir/binary_heap/tests/verify.sh"
 
 [ "$(uname -s)" = Linux ] ||
     fail 'native file round-trip requires Linux'

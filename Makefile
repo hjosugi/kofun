@@ -128,7 +128,8 @@ verify: test diagnostics fuzz check bootstrap stage2 native wasm tour c-abi rust
 	  stdlib/clock/tests/verify.sh stdlib/list/tests/verify.sh \
 	  stdlib/vector/tests/verify.sh stdlib/array/tests/verify.sh \
 	  stdlib/tuple/tests/verify.sh stdlib/set/tests/verify.sh \
-	  stdlib/map/tests/verify.sh stdlib/json/tests/verify.sh \
+	  stdlib/map/tests/verify.sh stdlib/binary_heap/tests/verify.sh \
+	  stdlib/json/tests/verify.sh \
 	  tests/cli.sh tests/build_system.sh \
 	  package/manager.sh tests/package_manager.sh \
 	  tests/lsp/check.sh tooling/lsp/kofun-lsp \

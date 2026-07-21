@@ -1,0 +1,207 @@
+# Executable Int-Core projection of observable BinaryHeapInt min-heap rules.
+#
+# Two bit planes record up to two occurrences of each fixture value 0..7. This
+# finite multiset is not the public heap representation, value range, or
+# capacity. Parent/child and sift choices are projected separately so the file
+# stays inside the small function Core shared by C11 and direct x86-64.
+
+fn binary_heap_projection_power(index: Int) -> Int {
+    if index == 0 { return 1 }
+    return 2 * binary_heap_projection_power(index - 1)
+}
+
+fn binary_heap_projection_contains_present(
+    state: Int,
+    target: Int,
+    probe: Int
+) -> Int {
+    if probe == target { return 1 }
+    return binary_heap_projection_contains_at(
+        state - binary_heap_projection_power(probe),
+        target,
+        probe - 1
+    )
+}
+
+fn binary_heap_projection_contains_at(
+    state: Int,
+    target: Int,
+    probe: Int
+) -> Int {
+    if state >= binary_heap_projection_power(probe) {
+        return binary_heap_projection_contains_present(state, target, probe)
+    }
+    if probe == target { return 0 }
+    return binary_heap_projection_contains_at(state, target, probe - 1)
+}
+
+fn binary_heap_projection_contains(state: Int, bit: Int) -> Int {
+    return binary_heap_projection_contains_at(state, bit, 15)
+}
+
+fn binary_heap_projection_push_duplicate(state: Int, value: Int) -> Int {
+    if binary_heap_projection_contains(state, value + 8) == 1 {
+        return state
+    }
+    return state + binary_heap_projection_power(value + 8)
+}
+
+fn binary_heap_projection_push(state: Int, value: Int) -> Int {
+    if binary_heap_projection_contains(state, value) == 1 {
+        return binary_heap_projection_push_duplicate(state, value)
+    }
+    return state + binary_heap_projection_power(value)
+}
+
+fn binary_heap_projection_peek_at(state: Int, value: Int) -> Int {
+    if binary_heap_projection_contains(state, value) == 1 { return value }
+    return binary_heap_projection_peek_at(state, value + 1)
+}
+
+fn binary_heap_projection_peek_min(state: Int) -> Int {
+    return binary_heap_projection_peek_at(state, 0)
+}
+
+fn binary_heap_projection_pop_found(state: Int, value: Int) -> Int {
+    if binary_heap_projection_contains(state, value + 8) == 1 {
+        return state - binary_heap_projection_power(value + 8)
+    }
+    return state - binary_heap_projection_power(value)
+}
+
+fn binary_heap_projection_pop_min(state: Int) -> Int {
+    return binary_heap_projection_pop_found(
+        state,
+        binary_heap_projection_peek_min(state)
+    )
+}
+
+fn binary_heap_projection_length_at(state: Int, bit: Int) -> Int {
+    if bit == 16 { return 0 }
+    return binary_heap_projection_contains(state, bit) +
+        binary_heap_projection_length_at(state, bit + 1)
+}
+
+fn binary_heap_projection_length(state: Int) -> Int {
+    return binary_heap_projection_length_at(state, 0)
+}
+
+fn binary_heap_projection_peek_status(state: Int) -> Int {
+    if state == 0 { return 1 }
+    return 0
+}
+
+fn binary_heap_projection_pop_status(state: Int) -> Int {
+    if state == 0 { return 1 }
+    return 0
+}
+
+fn binary_heap_projection_append(output: Int, value: Int) -> Int {
+    return output * 10 + value
+}
+
+fn binary_heap_projection_drain(state: Int, output: Int) -> Int {
+    if state == 0 { return output }
+    return binary_heap_projection_drain(
+        binary_heap_projection_pop_min(state),
+        binary_heap_projection_append(
+            output,
+            binary_heap_projection_peek_min(state)
+        )
+    )
+}
+
+fn binary_heap_projection_half(value: Int) -> Int {
+    if value < 2 { return 0 }
+    return 1 + binary_heap_projection_half(value - 2)
+}
+
+fn binary_heap_projection_parent(index: Int) -> Int {
+    return binary_heap_projection_half(index - 1)
+}
+
+fn binary_heap_projection_left(index: Int) -> Int {
+    return index * 2 + 1
+}
+
+fn binary_heap_projection_right(index: Int) -> Int {
+    return index * 2 + 2
+}
+
+fn binary_heap_projection_min(left: Int, right: Int) -> Int {
+    if left <= right { return left }
+    return right
+}
+
+# The value moved into the parent position by one sift-up comparison.
+fn binary_heap_projection_sift_up(parent: Int, child: Int) -> Int {
+    return binary_heap_projection_min(parent, child)
+}
+
+# The value moved into the root position by one sift-down comparison.
+fn binary_heap_projection_sift_down(root: Int, left: Int, right: Int) -> Int {
+    return binary_heap_projection_min(
+        root,
+        binary_heap_projection_min(left, right)
+    )
+}
+
+fn binary_heap_projection_fixture() -> Int {
+    return binary_heap_projection_push(
+        binary_heap_projection_push(
+            binary_heap_projection_push(
+                binary_heap_projection_push(
+                    binary_heap_projection_push(
+                        binary_heap_projection_push(0, 5),
+                        1
+                    ),
+                    7
+                ),
+                3
+            ),
+            3
+        ),
+        2
+    )
+}
+
+fn binary_heap_projection_same_values() -> Int {
+    return binary_heap_projection_push(
+        binary_heap_projection_push(
+            binary_heap_projection_push(
+                binary_heap_projection_push(
+                    binary_heap_projection_push(
+                        binary_heap_projection_push(0, 3),
+                        7
+                    ),
+                    2
+                ),
+                5
+            ),
+            1
+        ),
+        3
+    )
+}
+
+fn main() {
+    print(binary_heap_projection_length(binary_heap_projection_fixture()))
+    print(binary_heap_projection_peek_min(binary_heap_projection_fixture()))
+    print(binary_heap_projection_drain(binary_heap_projection_fixture(), 0))
+    print(binary_heap_projection_drain(binary_heap_projection_same_values(), 0))
+    print(binary_heap_projection_peek_status(0))
+    print(binary_heap_projection_pop_status(0))
+    print(binary_heap_projection_peek_status(binary_heap_projection_fixture()))
+    print(binary_heap_projection_pop_status(binary_heap_projection_fixture()))
+    print(binary_heap_projection_length(
+        binary_heap_projection_pop_min(binary_heap_projection_fixture())
+    ))
+    print(binary_heap_projection_peek_min(
+        binary_heap_projection_pop_min(binary_heap_projection_fixture())
+    ))
+    print(binary_heap_projection_parent(5))
+    print(binary_heap_projection_left(2))
+    print(binary_heap_projection_right(2))
+    print(binary_heap_projection_sift_up(4, 2))
+    print(binary_heap_projection_sift_down(5, 3, 7))
+}
