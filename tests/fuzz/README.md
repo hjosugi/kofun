@@ -38,6 +38,16 @@ guard-only coverage (`E2S25`), unreachable arms (`E2S26`), invalid guards
 ASAN/UBSAN compilers must agree on status, diagnostic code, IR, and token tape,
 write no internal stderr, and emit no C artifact.
 
+`enum_match.sh` generates 32 valid and 32 invalid payload-free enum programs.
+The valid side checks constructor selection, ordered guards, catch-all
+fallbacks, and selected-only execution. The invalid side covers missing and
+unreachable constructors (`E2S25`/`E2S26`), malformed or colliding declarations
+(`E2S31`), and unknown or mismatched enum uses (`E2S32`). Normal and ASAN/UBSAN
+compiler builds must agree on diagnostics and emitted artifacts, and both the
+normal and sanitized generated C programs must produce the expected output.
+The invalid corpus also crosses the 256-occurrence per-function enum-use bound
+and requires `E2S32` without a C artifact.
+
 Run all fuzz smoke gates:
 
 ```sh

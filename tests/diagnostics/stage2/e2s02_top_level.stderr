@@ -1,1 +1,1 @@
-error[E2S02]: expected top-level `fn` at byte 71
+error[E2S02]: expected top-level `fn` or `type` at byte 71

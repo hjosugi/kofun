@@ -12,8 +12,9 @@
 | Stage 2 lexer, parser, and integer Core lowering | checkpoint implemented | `bootstrap/stage2/check.sh` |
 | C11 user-function calls | bounded Int Core: recursion and forward calls | `bootstrap/stage2/check.sh` |
 | x86-64 native user-function calls | bounded Int Core: six arguments, guarded returns, recursion | `tests/conformance/functions` |
-| Stage 2 must-fail diagnostic corpus | 26/26 active codes; 3 span debts | `tests/diagnostics/stage2/run.sh` |
-| deterministic compiler fuzz smoke tests | 128 grammar + 48 arithmetic differential + 32 value-if + 32 match-guard + 32 valid/32 invalid match-value cases | `tests/fuzz/` |
+| Stage 2 must-fail diagnostic corpus | 28/28 active codes; 3 span debts | `tests/diagnostics/stage2/run.sh` |
+| deterministic compiler fuzz smoke tests | 128 grammar + 48 arithmetic differential + 32 value-if + 32 match-guard + 32 valid/32 invalid match-value + 32 valid/32 invalid enum-match cases | `tests/fuzz/` |
+| payload-free concrete enum matching | bounded Stage 2 C11 slice with constructor-set exhaustiveness | `tests/conformance/syntax/issues_35_47/run.sh`, `tests/fuzz/enum_match.sh` |
 | general parser/type checker | open | no active gate |
 | borrowed-List Copy/move ownership check | narrow Stage 2 checkpoint | `bootstrap/stage2/check.sh` |
 | general ownership and law checking | open | no active general pass |

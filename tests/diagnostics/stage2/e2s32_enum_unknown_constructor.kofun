@@ -1,0 +1,10 @@
+# diagnostic-mode: compile
+# expect-code: E2S32
+# expect-span: byte 152
+type Signal = | Red | Green | Blue
+
+fn main() -> Int {
+    let signal: Signal = Yellow
+    print(0)
+    return 0
+}

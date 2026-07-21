@@ -5,6 +5,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../../.." && pwd)
 CASES="$ROOT/tests/conformance/syntax/issues_35_47"
 SPEC="$ROOT/spec/syntax/FOUNDATIONS_AND_CONTROL.md"
 MATCH_SPEC="$ROOT/spec/bool-match-exhaustiveness.md"
+ENUM_MATCH_SPEC="$ROOT/spec/enum-match-exhaustiveness.md"
 CC=${CC:-cc}
 
 command -v "$CC" >/dev/null 2>&1 || {
@@ -302,6 +303,37 @@ cmp \
     fail "selected failing value-match arm diagnostic differs"
 printf '%s\n' "PASS selected-only Stage 2 value-match arm evaluation"
 
+"$WORK/kofun-stage2" \
+    "$CASES/enum_match.kofun" \
+    "$WORK/enum-match.c" \
+    "$WORK/enum-match.ir" \
+    "$WORK/enum-match.tokens" >/dev/null
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$WORK/enum-match.c" -o "$WORK/enum-match"
+"$WORK/enum-match" \
+    >"$WORK/enum-match.stdout" 2>"$WORK/enum-match.stderr"
+cmp "$CASES/enum_match.stdout" "$WORK/enum-match.stdout" ||
+    fail "Stage 2 payload-free enum match output differs"
+test ! -s "$WORK/enum-match.stderr" ||
+    fail "Stage 2 payload-free enum match wrote unexpected stderr"
+KOFUN_BUILD_DIR="$WORK/enum-match-cli-stage1" \
+KOFUN_STAGE2_BUILD_DIR="$WORK/enum-match-cli-stage2" \
+    "$ROOT/bin/kofun" run "$CASES/enum_match.kofun" \
+    >"$WORK/enum-match-cli.stdout" 2>"$WORK/enum-match-cli.stderr"
+cmp "$CASES/enum_match.stdout" "$WORK/enum-match-cli.stdout" ||
+    fail "public kofun run payload-free enum match output differs"
+test ! -s "$WORK/enum-match-cli.stderr" ||
+    fail "public kofun run payload-free enum match wrote stderr"
+grep '^type|Signal|3|' "$WORK/enum-match.ir" >/dev/null ||
+    fail "Stage 2 IR omitted the Signal type record"
+grep '^constructor|Red|Signal|0|' "$WORK/enum-match.ir" >/dev/null ||
+    fail "Stage 2 IR omitted the Red constructor tag"
+grep '^constructor|Green|Signal|1|' "$WORK/enum-match.ir" >/dev/null ||
+    fail "Stage 2 IR omitted the Green constructor tag"
+grep '^constructor|Blue|Signal|2|' "$WORK/enum-match.ir" >/dev/null ||
+    fail "Stage 2 IR omitted the Blue constructor tag"
+printf '%s\n' "PASS executable Stage 2 payload-free enum match"
+
 expect_stage2_diagnostic \
     "$CASES/match_missing_false.kofun" \
     "$CASES/match_missing_false.stdout"
@@ -335,6 +367,30 @@ expect_stage2_diagnostic \
 expect_stage2_diagnostic \
     "$ROOT/tests/diagnostics/stage2/e2s30_match_value_arm.kofun" \
     "$ROOT/tests/diagnostics/stage2/e2s30_match_value_arm.stderr"
+expect_stage2_diagnostic \
+    "$CASES/enum_match_missing.kofun" \
+    "$CASES/enum_match_missing.stdout"
+expect_stage2_diagnostic \
+    "$CASES/enum_match_duplicate.kofun" \
+    "$CASES/enum_match_duplicate.stdout"
+expect_stage2_diagnostic \
+    "$CASES/enum_match_guard_non_exhaustive.kofun" \
+    "$CASES/enum_match_guard_non_exhaustive.stdout"
+expect_stage2_diagnostic \
+    "$CASES/enum_match_constructor_mismatch.kofun" \
+    "$CASES/enum_match_constructor_mismatch.stdout"
+expect_stage2_diagnostic \
+    "$CASES/enum_match_tag_escape.kofun" \
+    "$CASES/enum_match_tag_escape.stdout"
+expect_stage2_diagnostic \
+    "$CASES/enum_constructor_escape.kofun" \
+    "$CASES/enum_constructor_escape.stdout"
+expect_stage2_diagnostic \
+    "$ROOT/tests/diagnostics/stage2/e2s31_enum_duplicate_constructor.kofun" \
+    "$ROOT/tests/diagnostics/stage2/e2s31_enum_duplicate_constructor.stderr"
+expect_stage2_diagnostic \
+    "$ROOT/tests/diagnostics/stage2/e2s32_enum_unknown_constructor.kofun" \
+    "$ROOT/tests/diagnostics/stage2/e2s32_enum_unknown_constructor.stderr"
 
 grep '^# Bounded Bool match exhaustiveness' "$MATCH_SPEC" >/dev/null ||
     fail "bounded Bool match specification is missing"
@@ -343,6 +399,19 @@ for code in E2S24 E2S25 E2S26 E2S29 E2S30; do
         fail "bounded Bool match specification omits $code"
 done
 printf '%s\n' "PASS bounded Bool match specification"
+
+grep '^# Bounded payload-free enum match exhaustiveness' \
+    "$ENUM_MATCH_SPEC" >/dev/null ||
+    fail "bounded payload-free enum match specification is missing"
+for code in E2S25 E2S26 E2S29 E2S31 E2S32; do
+    grep "\`$code\`" "$ENUM_MATCH_SPEC" >/dev/null ||
+        fail "bounded enum match specification omits $code"
+done
+grep 'at most 32 enum types' "$ENUM_MATCH_SPEC" >/dev/null ||
+    fail "bounded enum match specification omits the type limit"
+grep 'at most 64 constructors' "$ENUM_MATCH_SPEC" >/dev/null ||
+    fail "bounded enum match specification omits the constructor limit"
+printf '%s\n' "PASS bounded payload-free enum match specification"
 
 "$WORK/kofun-stage2" \
     "$CASES/structural_surface.kofun" \

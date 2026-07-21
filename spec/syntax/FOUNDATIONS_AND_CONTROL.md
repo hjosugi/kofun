@@ -31,7 +31,7 @@ compiler cannot yet produce the final diagnostic.
 | #43 | if expressions | Stage 2 lowers statement-position and bounded Int-valued `if` with Bool literals or integer comparisons | partial |
 | #44 | else-if chains | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
 | #45 | for loops | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
-| #46 | match expressions | Stage 2 executes exhaustive guarded statement- and Int-value-position Bool matches | partial |
+| #46 | match expressions | Stage 2 executes exhaustive guarded Bool matches and statement-position concrete payload-free enum matches | partial |
 | #47 | while loops | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
 
 The executable evidence is in
@@ -717,8 +717,16 @@ Int value and is accepted in `let`, `print`, assignment, and `return`. Nested
 value `if` and value `match` forms preserve selected-only evaluation. This is
 an executable Int specialization, not general arm type unification.
 
-General arm type unification, bindings, ADTs, payload and nested patterns,
-or-patterns, and ownership-aware destructuring remain open.
+The next bounded specialization accepts concrete payload-free enum
+declarations, explicitly typed local constructor bindings, and exhaustive
+statement-position enum matches. Constructor coverage, guards, `_`, and
+unreachable-arm checks use the same finite-set rules as Bool. The exact type
+and constructor limits, structural IR, and diagnostics are specified in
+`spec/enum-match-exhaustiveness.md`.
+
+General arm type unification, payload and generic ADTs, pattern bindings,
+nested patterns, or-patterns, value-producing enum matches, and ownership-aware
+destructuring remain open.
 
 ## #47 — While loops
 

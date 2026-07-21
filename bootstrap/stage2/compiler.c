@@ -211,7 +211,7 @@ static char *token_copy(const char *source, int64_t start) {
 static bool keyword_token(const char *source, int64_t start) {
     static const char *keywords[] = {
         "fn", "let", "mut", "return", "if", "else", "while", "for",
-        "in", "break", "continue", "true", "false", "match"
+        "in", "break", "continue", "true", "false", "match", "type"
     };
     size_t count = sizeof(keywords) / sizeof(keywords[0]);
     for (size_t index = 0; index < count; ++index) {
@@ -380,50 +380,476 @@ static int64_t function_end(const char *source, int64_t start) {
     return balanced_end(source, cursor, "{", "}");
 }
 
+static char *type_name(const char *source, int64_t start) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t name = skip_trivia(source, token_end(source, start));
+    if (
+        name >= length ||
+        strcmp(token_kind(source, name), "identifier") != 0
+    ) {
+        char *empty = allocate(1);
+        empty[0] = '\0';
+        return empty;
+    }
+    return token_copy(source, name);
+}
+
+static int64_t type_declaration_end(const char *source, int64_t start) {
+    int64_t length = (int64_t)strlen(source);
+    char *name_text = type_name(source, start);
+    bool valid_start = token_equal(source, start, "type") &&
+                       name_text[0] != '\0';
+    free(name_text);
+    if (!valid_start) return -1;
+
+    int64_t name = skip_trivia(source, token_end(source, start));
+    int64_t equals = skip_trivia(source, token_end(source, name));
+    if (equals >= length || !token_equal(source, equals, "=")) return -1;
+    int64_t pipe = skip_trivia(source, token_end(source, equals));
+    int64_t constructors = 0;
+    int64_t last_end = -1;
+    while (pipe < length && token_equal(source, pipe, "|")) {
+        int64_t constructor = skip_trivia(source, token_end(source, pipe));
+        if (
+            constructor >= length ||
+            strcmp(token_kind(source, constructor), "identifier") != 0
+        ) {
+            return -1;
+        }
+        ++constructors;
+        if (constructors > 64) return -2;
+        last_end = token_end(source, constructor);
+        pipe = skip_trivia(source, last_end);
+    }
+    if (constructors == 0) return -1;
+    if (
+        pipe < length &&
+        !token_equal(source, pipe, "fn") &&
+        !token_equal(source, pipe, "type")
+    ) {
+        return -1;
+    }
+    return last_end;
+}
+
+static int64_t top_level_end(const char *source, int64_t start) {
+    if (token_equal(source, start, "type")) {
+        return type_declaration_end(source, start);
+    }
+    return function_end(source, start);
+}
+
+static int64_t next_function_start(const char *source, int64_t start) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, start);
+    while (cursor < length && token_equal(source, cursor, "type")) {
+        int64_t end = type_declaration_end(source, cursor);
+        if (end <= cursor) return length;
+        cursor = skip_trivia(source, end);
+    }
+    return cursor;
+}
+
+static int64_t enum_declaration_start(
+    const char *source,
+    const char *wanted
+) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < length) {
+        if (token_equal(source, cursor, "type")) {
+            char *name = type_name(source, cursor);
+            bool found = strcmp(name, wanted) == 0;
+            free(name);
+            if (found) return cursor;
+        }
+        int64_t end = top_level_end(source, cursor);
+        if (end <= cursor) return -1;
+        cursor = skip_trivia(source, end);
+    }
+    return -1;
+}
+
+static int64_t enum_constructor_count(
+    const char *source,
+    const char *enum_type
+) {
+    int64_t declaration = enum_declaration_start(source, enum_type);
+    if (declaration < 0) return -1;
+    int64_t name = skip_trivia(source, token_end(source, declaration));
+    int64_t equals = skip_trivia(source, token_end(source, name));
+    int64_t pipe = skip_trivia(source, token_end(source, equals));
+    int64_t end = type_declaration_end(source, declaration);
+    int64_t count = 0;
+    while (pipe < end && token_equal(source, pipe, "|")) {
+        int64_t constructor = skip_trivia(source, token_end(source, pipe));
+        ++count;
+        pipe = skip_trivia(source, token_end(source, constructor));
+    }
+    return count;
+}
+
+static int64_t enum_constructor_index(
+    const char *source,
+    const char *enum_type,
+    const char *wanted
+) {
+    int64_t declaration = enum_declaration_start(source, enum_type);
+    if (declaration < 0) return -1;
+    int64_t name = skip_trivia(source, token_end(source, declaration));
+    int64_t equals = skip_trivia(source, token_end(source, name));
+    int64_t pipe = skip_trivia(source, token_end(source, equals));
+    int64_t end = type_declaration_end(source, declaration);
+    int64_t tag = 0;
+    while (pipe < end && token_equal(source, pipe, "|")) {
+        int64_t constructor = skip_trivia(source, token_end(source, pipe));
+        if (token_equal(source, constructor, wanted)) return tag;
+        ++tag;
+        pipe = skip_trivia(source, token_end(source, constructor));
+    }
+    return -1;
+}
+
+static bool enum_name_covered(const char *covered, const char *name) {
+    Buffer key;
+    buffer_init(&key);
+    buffer_format(&key, "|%s|", name);
+    bool found = strstr(covered, key.data) != NULL;
+    free(key.data);
+    return found;
+}
+
+static bool enum_constructors_covered(
+    const char *source,
+    const char *enum_type,
+    const char *covered
+) {
+    int64_t declaration = enum_declaration_start(source, enum_type);
+    if (declaration < 0) return false;
+    int64_t name = skip_trivia(source, token_end(source, declaration));
+    int64_t equals = skip_trivia(source, token_end(source, name));
+    int64_t pipe = skip_trivia(source, token_end(source, equals));
+    int64_t end = type_declaration_end(source, declaration);
+    while (pipe < end && token_equal(source, pipe, "|")) {
+        int64_t constructor = skip_trivia(source, token_end(source, pipe));
+        char *constructor_name = token_copy(source, constructor);
+        bool found = enum_name_covered(covered, constructor_name);
+        free(constructor_name);
+        if (!found) return false;
+        pipe = skip_trivia(source, token_end(source, constructor));
+    }
+    return true;
+}
+
+static char *enum_missing_constructors(
+    const char *source,
+    const char *enum_type,
+    const char *covered
+) {
+    int64_t declaration = enum_declaration_start(source, enum_type);
+    int64_t name = skip_trivia(source, token_end(source, declaration));
+    int64_t equals = skip_trivia(source, token_end(source, name));
+    int64_t pipe = skip_trivia(source, token_end(source, equals));
+    int64_t end = type_declaration_end(source, declaration);
+    Buffer missing;
+    buffer_init(&missing);
+    while (pipe < end && token_equal(source, pipe, "|")) {
+        int64_t constructor = skip_trivia(source, token_end(source, pipe));
+        char *constructor_name = token_copy(source, constructor);
+        if (!enum_name_covered(covered, constructor_name)) {
+            if (missing.length > 0) buffer_append(&missing, ", ");
+            buffer_format(&missing, "`%s`", constructor_name);
+        }
+        free(constructor_name);
+        pipe = skip_trivia(source, token_end(source, constructor));
+    }
+    return missing.data;
+}
+
+static bool reserved_type_name(const char *name) {
+    return strcmp(name, "Int") == 0 || strcmp(name, "Bool") == 0 ||
+           strcmp(name, "Float") == 0 || strcmp(name, "Unit") == 0 ||
+           strcmp(name, "Text") == 0 || strcmp(name, "List") == 0 ||
+           strcmp(name, "_") == 0;
+}
+
 static char *parse_program(const char *source) {
     Buffer ir;
+    Buffer declared_types;
+    Buffer declared_constructors;
     buffer_init(&ir);
+    buffer_init(&declared_types);
+    buffer_init(&declared_constructors);
+    buffer_append(&declared_types, "|");
+    buffer_append(&declared_constructors, "|");
     int64_t length = (int64_t)strlen(source);
     buffer_format(&ir, "kofun-stage2-ir/v1\nsource-bytes|%" PRId64 "\n", length);
     int64_t cursor = skip_trivia(source, 0);
     int64_t functions = 0;
+    int64_t types = 0;
     while (cursor < length) {
-        if (!token_equal(source, cursor, "fn")) {
-            ir.length = 0;
-            ir.data[0] = '\0';
+        if (token_equal(source, cursor, "type")) {
+            char *name = type_name(source, cursor);
+            int64_t end = type_declaration_end(source, cursor);
+            if (end == -2) {
+                free(name);
+                free(declared_types.data);
+                free(declared_constructors.data);
+                ir.length = 0;
+                ir.data[0] = '\0';
+                buffer_format(
+                    &ir,
+                    "error[E2S31]: concrete enum constructor limit is 64 "
+                    "at byte %" PRId64,
+                    cursor
+                );
+                return ir.data;
+            }
+            if (name[0] == '\0' || end < 0) {
+                free(name);
+                free(declared_types.data);
+                free(declared_constructors.data);
+                ir.length = 0;
+                ir.data[0] = '\0';
+                buffer_format(
+                    &ir,
+                    "error[E2S31]: malformed concrete enum declaration "
+                    "at byte %" PRId64,
+                    cursor
+                );
+                return ir.data;
+            }
+            if (reserved_type_name(name)) {
+                Buffer error;
+                buffer_init(&error);
+                buffer_format(
+                    &error,
+                    "error[E2S31]: concrete enum cannot shadow built-in "
+                    "type `%s` at byte %" PRId64,
+                    name,
+                    cursor
+                );
+                free(name);
+                free(declared_types.data);
+                free(declared_constructors.data);
+                free(ir.data);
+                return error.data;
+            }
+            ++types;
+            if (types > 32) {
+                free(name);
+                free(declared_types.data);
+                free(declared_constructors.data);
+                ir.length = 0;
+                ir.data[0] = '\0';
+                buffer_format(
+                    &ir,
+                    "error[E2S31]: concrete enum limit is 32 types "
+                    "at byte %" PRId64,
+                    cursor
+                );
+                return ir.data;
+            }
+            if (enum_name_covered(declared_types.data, name)) {
+                Buffer error;
+                buffer_init(&error);
+                buffer_format(
+                    &error,
+                    "error[E2S31]: duplicate concrete enum type `%s` "
+                    "at byte %" PRId64,
+                    name,
+                    cursor
+                );
+                free(name);
+                free(declared_types.data);
+                free(declared_constructors.data);
+                free(ir.data);
+                return error.data;
+            }
+            if (enum_name_covered(declared_constructors.data, name)) {
+                Buffer error;
+                buffer_init(&error);
+                buffer_format(
+                    &error,
+                    "error[E2S31]: concrete enum type `%s` conflicts "
+                    "with a constructor at byte %" PRId64,
+                    name,
+                    cursor
+                );
+                free(name);
+                free(declared_types.data);
+                free(declared_constructors.data);
+                free(ir.data);
+                return error.data;
+            }
+            buffer_append(&declared_types, name);
+            buffer_append(&declared_types, "|");
+            int64_t count = enum_constructor_count(source, name);
+            if (count < 1 || count > 64) {
+                Buffer error;
+                buffer_init(&error);
+                if (count < 1) {
+                    buffer_format(
+                        &error,
+                        "error[E2S31]: concrete enum must declare a "
+                        "constructor at byte %" PRId64,
+                        cursor
+                    );
+                } else {
+                    buffer_format(
+                        &error,
+                        "error[E2S31]: concrete enum constructor limit is "
+                        "64 at byte %" PRId64,
+                        cursor
+                    );
+                }
+                free(name);
+                free(declared_types.data);
+                free(declared_constructors.data);
+                free(ir.data);
+                return error.data;
+            }
             buffer_format(
                 &ir,
-                "error[E2S02]: expected top-level `fn` at byte %" PRId64,
-                cursor
+                "type|%s|%" PRId64 "|%" PRId64 "|%" PRId64 "\n",
+                name,
+                count,
+                cursor,
+                end
             );
-            return ir.data;
-        }
-        char *name = function_name(source, cursor);
-        int64_t arity = parameter_count(source, cursor);
-        int64_t end = function_end(source, cursor);
-        if (name[0] == '\0' || arity < 0 || end < 0) {
+            int64_t name_cursor = skip_trivia(
+                source,
+                token_end(source, cursor)
+            );
+            int64_t equals = skip_trivia(
+                source,
+                token_end(source, name_cursor)
+            );
+            int64_t pipe = skip_trivia(source, token_end(source, equals));
+            int64_t tag = 0;
+            while (pipe < end && token_equal(source, pipe, "|")) {
+                int64_t constructor = skip_trivia(
+                    source,
+                    token_end(source, pipe)
+                );
+                char *constructor_name = token_copy(source, constructor);
+                if (strcmp(constructor_name, "_") == 0) {
+                    Buffer error;
+                    buffer_init(&error);
+                    buffer_format(
+                        &error,
+                        "error[E2S31]: `_` is reserved for enum catch-all "
+                        "patterns at byte %" PRId64,
+                        constructor
+                    );
+                    free(constructor_name);
+                    free(name);
+                    free(declared_types.data);
+                    free(declared_constructors.data);
+                    free(ir.data);
+                    return error.data;
+                }
+                if (
+                    enum_name_covered(
+                        declared_constructors.data,
+                        constructor_name
+                    )
+                ) {
+                    Buffer error;
+                    buffer_init(&error);
+                    buffer_format(
+                        &error,
+                        "error[E2S31]: duplicate concrete enum constructor "
+                        "`%s` at byte %" PRId64,
+                        constructor_name,
+                        constructor
+                    );
+                    free(constructor_name);
+                    free(name);
+                    free(declared_types.data);
+                    free(declared_constructors.data);
+                    free(ir.data);
+                    return error.data;
+                }
+                if (enum_name_covered(declared_types.data, constructor_name)) {
+                    Buffer error;
+                    buffer_init(&error);
+                    buffer_format(
+                        &error,
+                        "error[E2S31]: concrete enum constructor `%s` "
+                        "conflicts with an enum type at byte %" PRId64,
+                        constructor_name,
+                        constructor
+                    );
+                    free(constructor_name);
+                    free(name);
+                    free(declared_types.data);
+                    free(declared_constructors.data);
+                    free(ir.data);
+                    return error.data;
+                }
+                buffer_append(&declared_constructors, constructor_name);
+                buffer_append(&declared_constructors, "|");
+                buffer_format(
+                    &ir,
+                    "constructor|%s|%s|%" PRId64 "|%" PRId64
+                    "|%" PRId64 "\n",
+                    constructor_name,
+                    name,
+                    tag,
+                    constructor,
+                    token_end(source, constructor)
+                );
+                free(constructor_name);
+                ++tag;
+                pipe = skip_trivia(source, token_end(source, constructor));
+            }
             free(name);
+            cursor = skip_trivia(source, end);
+        } else if (!token_equal(source, cursor, "fn")) {
+            free(declared_types.data);
+            free(declared_constructors.data);
             ir.length = 0;
             ir.data[0] = '\0';
             buffer_format(
                 &ir,
-                "error[E2S03]: malformed function at byte %" PRId64,
+                "error[E2S02]: expected top-level `fn` or `type` "
+                "at byte %" PRId64,
                 cursor
             );
             return ir.data;
+        } else {
+            char *name = function_name(source, cursor);
+            int64_t arity = parameter_count(source, cursor);
+            int64_t end = function_end(source, cursor);
+            if (name[0] == '\0' || arity < 0 || end < 0) {
+                free(name);
+                free(declared_types.data);
+                free(declared_constructors.data);
+                ir.length = 0;
+                ir.data[0] = '\0';
+                buffer_format(
+                    &ir,
+                    "error[E2S03]: malformed function at byte %" PRId64,
+                    cursor
+                );
+                return ir.data;
+            }
+            buffer_format(
+                &ir,
+                "function|%s|%" PRId64 "|%" PRId64 "|%" PRId64 "\n",
+                name,
+                arity,
+                cursor,
+                end
+            );
+            free(name);
+            ++functions;
+            cursor = skip_trivia(source, end);
         }
-        buffer_format(
-            &ir,
-            "function|%s|%" PRId64 "|%" PRId64 "|%" PRId64 "\n",
-            name,
-            arity,
-            cursor,
-            end
-        );
-        free(name);
-        ++functions;
-        cursor = skip_trivia(source, end);
     }
+    free(declared_types.data);
+    free(declared_constructors.data);
     if (functions == 0) {
         ir.length = 0;
         ir.data[0] = '\0';
@@ -439,6 +865,80 @@ static char *owned_text(const char *text) {
     char *copy = allocate(length + 1);
     memcpy(copy, text, length + 1);
     return copy;
+}
+
+static char *enum_constructor_owner(
+    const char *source,
+    const char *wanted
+) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < length) {
+        if (token_equal(source, cursor, "type")) {
+            char *enum_type = type_name(source, cursor);
+            if (enum_constructor_index(source, enum_type, wanted) >= 0) {
+                return enum_type;
+            }
+            free(enum_type);
+        }
+        int64_t end = top_level_end(source, cursor);
+        if (end <= cursor) return owned_text("");
+        cursor = skip_trivia(source, end);
+    }
+    return owned_text("");
+}
+
+static char *enum_declaration_names(
+    const char *source,
+    bool constructors
+) {
+    int64_t length = (int64_t)strlen(source);
+    Buffer names;
+    buffer_init(&names);
+    buffer_append(&names, "|");
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < length) {
+        if (token_equal(source, cursor, "type")) {
+            if (constructors) {
+                int64_t type_cursor = skip_trivia(
+                    source,
+                    token_end(source, cursor)
+                );
+                int64_t equals = skip_trivia(
+                    source,
+                    token_end(source, type_cursor)
+                );
+                int64_t pipe = skip_trivia(
+                    source,
+                    token_end(source, equals)
+                );
+                int64_t end = type_declaration_end(source, cursor);
+                while (pipe < end && token_equal(source, pipe, "|")) {
+                    int64_t constructor = skip_trivia(
+                        source,
+                        token_end(source, pipe)
+                    );
+                    char *name = token_copy(source, constructor);
+                    buffer_append(&names, name);
+                    buffer_append(&names, "|");
+                    free(name);
+                    pipe = skip_trivia(
+                        source,
+                        token_end(source, constructor)
+                    );
+                }
+            } else {
+                char *name = type_name(source, cursor);
+                buffer_append(&names, name);
+                buffer_append(&names, "|");
+                free(name);
+            }
+        }
+        int64_t end = top_level_end(source, cursor);
+        if (end <= cursor) return names.data;
+        cursor = skip_trivia(source, end);
+    }
+    return names.data;
 }
 
 static bool copy_type(const char *type_name) {
@@ -482,7 +982,7 @@ static int64_t return_move_at(
 
 static char *borrowed_collection_check(const char *source) {
     int64_t length = (int64_t)strlen(source);
-    int64_t function_cursor = skip_trivia(source, 0);
+    int64_t function_cursor = next_function_start(source, 0);
     int64_t recognized_loops = 0;
     while (function_cursor < length) {
         int64_t parameters_open = parameter_open(source, function_cursor);
@@ -653,7 +1153,7 @@ static char *borrowed_collection_check(const char *source) {
         }
         free(element_type);
         free(borrowed_name);
-        function_cursor = skip_trivia(source, function_end_cursor);
+        function_cursor = next_function_start(source, function_end_cursor);
     }
     if (recognized_loops == 0) {
         return owned_text(
@@ -924,7 +1424,7 @@ static char *lower_error(
 
 static int64_t function_arity(const char *source, const char *wanted) {
     int64_t length = (int64_t)strlen(source);
-    int64_t cursor = skip_trivia(source, 0);
+    int64_t cursor = next_function_start(source, 0);
     int64_t found = -1;
     while (cursor < length) {
         char *name = function_name(source, cursor);
@@ -936,7 +1436,7 @@ static int64_t function_arity(const char *source, const char *wanted) {
             found = parameter_count(source, cursor);
         }
         free(name);
-        cursor = skip_trivia(source, function_end(source, cursor));
+        cursor = next_function_start(source, function_end(source, cursor));
     }
     return found;
 }
@@ -964,7 +1464,7 @@ static int64_t call_arity(const char *source, int64_t open) {
 
 static char *validate_core_calls(const char *source) {
     int64_t length = (int64_t)strlen(source);
-    int64_t cursor = skip_trivia(source, 0);
+    int64_t cursor = next_function_start(source, 0);
     char *previous = owned_text("");
     while (cursor < length) {
         if (strcmp(token_kind(source, cursor), "identifier") == 0) {
@@ -1939,6 +2439,924 @@ static int binding_mutability_before(
     return result;
 }
 
+static char *binding_type_before(
+    const char *source,
+    int64_t body_open,
+    int64_t use_start,
+    const char *binding_name
+) {
+    int64_t cursor = skip_trivia(source, token_end(source, body_open));
+    char *result = owned_text("");
+    int depth = 0;
+    while (cursor < use_start) {
+        if (token_equal(source, cursor, "{")) {
+            ++depth;
+        } else if (token_equal(source, cursor, "}")) {
+            --depth;
+        } else if (depth == 0 && token_equal(source, cursor, "let")) {
+            int64_t name_cursor = skip_trivia(
+                source,
+                token_end(source, cursor)
+            );
+            if (
+                name_cursor < use_start &&
+                token_equal(source, name_cursor, "mut")
+            ) {
+                name_cursor = skip_trivia(
+                    source,
+                    token_end(source, name_cursor)
+                );
+            }
+            if (
+                name_cursor < use_start &&
+                strcmp(token_kind(source, name_cursor), "identifier") == 0 &&
+                token_equal(source, name_cursor, binding_name)
+            ) {
+                free(result);
+                result = owned_text("Int");
+                int64_t colon = skip_trivia(
+                    source,
+                    token_end(source, name_cursor)
+                );
+                if (
+                    colon < use_start &&
+                    token_equal(source, colon, ":")
+                ) {
+                    int64_t type_cursor = skip_trivia(
+                        source,
+                        token_end(source, colon)
+                    );
+                    if (
+                        type_cursor < use_start &&
+                        strcmp(token_kind(source, type_cursor), "identifier") == 0
+                    ) {
+                        free(result);
+                        result = token_copy(source, type_cursor);
+                    }
+                }
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return result;
+}
+
+static int64_t parent_block_open(
+    const char *source,
+    int64_t function_open,
+    int64_t child_open
+) {
+    int64_t cursor = function_open;
+    int64_t parent = -1;
+    while (cursor < child_open) {
+        if (token_equal(source, cursor, "{")) {
+            int64_t candidate_end = balanced_end(source, cursor, "{", "}");
+            if (candidate_end > child_open) parent = cursor;
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return parent;
+}
+
+static char *visible_binding_type(
+    const char *source,
+    int64_t current_open,
+    int64_t function_open,
+    int64_t use_start,
+    const char *binding_name
+) {
+    int64_t block_open = current_open;
+    int64_t block_limit = use_start;
+    while (block_open >= function_open) {
+        char *result = binding_type_before(
+            source,
+            block_open,
+            block_limit,
+            binding_name
+        );
+        if (result[0] != '\0') return result;
+        free(result);
+        if (block_open == function_open) return owned_text("");
+        int64_t parent = parent_block_open(
+            source,
+            function_open,
+            block_open
+        );
+        if (parent < 0 || parent == block_open) return owned_text("");
+        block_limit = block_open;
+        block_open = parent;
+    }
+    return owned_text("");
+}
+
+static bool int_parameter_named(
+    const char *source,
+    int64_t function_start,
+    const char *wanted
+) {
+    int64_t parameters = parameter_open(source, function_start);
+    if (parameters < 0) return false;
+    int64_t parameters_end = balanced_end(source, parameters, "(", ")");
+    if (parameters_end < 0) return false;
+    int64_t cursor = skip_trivia(source, token_end(source, parameters));
+    while (cursor < parameters_end && !token_equal(source, cursor, ")")) {
+        int64_t name = cursor;
+        int64_t colon = skip_trivia(source, token_end(source, name));
+        int64_t type_cursor = skip_trivia(source, token_end(source, colon));
+        if (
+            strcmp(token_kind(source, name), "identifier") == 0 &&
+            token_equal(source, name, wanted) &&
+            token_equal(source, colon, ":") &&
+            token_equal(source, type_cursor, "Int")
+        ) {
+            return true;
+        }
+        int64_t separator = skip_trivia(
+            source,
+            token_end(source, type_cursor)
+        );
+        if (
+            separator < parameters_end &&
+            token_equal(source, separator, ",")
+        ) {
+            cursor = skip_trivia(source, token_end(source, separator));
+        } else {
+            cursor = separator;
+        }
+    }
+    return false;
+}
+
+static char *function_enum_binding_names(
+    const char *source,
+    int64_t function_open,
+    int64_t function_close,
+    const char *enum_types
+) {
+    Buffer names;
+    buffer_init(&names);
+    buffer_append(&names, "|");
+    int64_t cursor = skip_trivia(source, token_end(source, function_open));
+    while (cursor < function_close) {
+        if (token_equal(source, cursor, "let")) {
+            int64_t name = skip_trivia(source, token_end(source, cursor));
+            if (token_equal(source, name, "mut")) {
+                name = skip_trivia(source, token_end(source, name));
+            }
+            int64_t colon = skip_trivia(source, token_end(source, name));
+            if (token_equal(source, colon, ":")) {
+                int64_t type_cursor = skip_trivia(
+                    source,
+                    token_end(source, colon)
+                );
+                char *enum_type_name = token_copy(source, type_cursor);
+                if (enum_name_covered(enum_types, enum_type_name)) {
+                    char *binding_name = token_copy(source, name);
+                    if (!enum_name_covered(names.data, binding_name)) {
+                        buffer_append(&names, binding_name);
+                        buffer_append(&names, "|");
+                    }
+                    free(binding_name);
+                }
+                free(enum_type_name);
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return names.data;
+}
+
+static bool enum_declaration_syntax_token(
+    const char *source,
+    int64_t function_open,
+    int64_t target
+) {
+    int64_t cursor = skip_trivia(source, token_end(source, function_open));
+    while (cursor <= target) {
+        if (token_equal(source, cursor, "let")) {
+            int64_t name = skip_trivia(source, token_end(source, cursor));
+            if (token_equal(source, name, "mut")) {
+                name = skip_trivia(source, token_end(source, name));
+            }
+            if (name == target) return true;
+            int64_t colon = skip_trivia(source, token_end(source, name));
+            if (token_equal(source, colon, ":")) {
+                int64_t type_cursor = skip_trivia(
+                    source,
+                    token_end(source, colon)
+                );
+                if (type_cursor == target) return true;
+                int64_t equals = skip_trivia(
+                    source,
+                    token_end(source, type_cursor)
+                );
+                int64_t initializer = skip_trivia(
+                    source,
+                    token_end(source, equals)
+                );
+                if (
+                    initializer == target &&
+                    token_equal(source, equals, "=")
+                ) {
+                    char *enum_type = token_copy(source, type_cursor);
+                    char *constructor = token_copy(source, initializer);
+                    bool valid = enum_constructor_index(
+                        source,
+                        enum_type,
+                        constructor
+                    ) >= 0;
+                    free(enum_type);
+                    free(constructor);
+                    if (valid) return true;
+                }
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return false;
+}
+
+static bool enum_initializer_constructor_token(
+    const char *source,
+    int64_t function_open,
+    int64_t target
+) {
+    int64_t cursor = skip_trivia(source, token_end(source, function_open));
+    while (cursor <= target) {
+        if (token_equal(source, cursor, "let")) {
+            int64_t name = skip_trivia(source, token_end(source, cursor));
+            if (token_equal(source, name, "mut")) {
+                name = skip_trivia(source, token_end(source, name));
+            }
+            int64_t colon = skip_trivia(source, token_end(source, name));
+            if (token_equal(source, colon, ":")) {
+                int64_t type_cursor = skip_trivia(
+                    source,
+                    token_end(source, colon)
+                );
+                int64_t equals = skip_trivia(
+                    source,
+                    token_end(source, type_cursor)
+                );
+                int64_t initializer = skip_trivia(
+                    source,
+                    token_end(source, equals)
+                );
+                if (
+                    initializer == target &&
+                    token_equal(source, equals, "=")
+                ) {
+                    char *enum_type = token_copy(source, type_cursor);
+                    char *constructor = token_copy(source, initializer);
+                    char *owner = enum_constructor_owner(source, constructor);
+                    bool valid =
+                        enum_constructor_count(source, enum_type) >= 0 &&
+                        owner[0] != '\0';
+                    free(enum_type);
+                    free(constructor);
+                    free(owner);
+                    return valid;
+                }
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return false;
+}
+
+static bool enum_match_pattern_token(
+    const char *source,
+    int64_t function_open,
+    int64_t target
+) {
+    int64_t cursor = skip_trivia(source, token_end(source, function_open));
+    while (cursor < target) {
+        if (token_equal(source, cursor, "match")) {
+            int64_t value_start = skip_trivia(
+                source,
+                token_end(source, cursor)
+            );
+            int64_t direct_end = skip_trivia(
+                source,
+                token_end(source, value_start)
+            );
+            int64_t arms_open = -1;
+            if (
+                strcmp(token_kind(source, value_start), "identifier") == 0 &&
+                token_equal(source, direct_end, "{")
+            ) {
+                arms_open = direct_end;
+            } else {
+                int64_t value_close = condition_end(source, value_start);
+                if (value_close >= 0) {
+                    arms_open = skip_trivia(source, value_close);
+                }
+            }
+            if (
+                arms_open >= 0 && arms_open < target &&
+                token_equal(source, arms_open, "{")
+            ) {
+                int64_t arm_cursor = skip_trivia(
+                    source,
+                    token_end(source, arms_open)
+                );
+                while (
+                    arm_cursor <= target &&
+                    !token_equal(source, arm_cursor, "}")
+                ) {
+                    if (arm_cursor == target) return true;
+                    int64_t arrow = skip_trivia(
+                        source,
+                        token_end(source, arm_cursor)
+                    );
+                    if (token_equal(source, arrow, "if")) {
+                        int64_t guard_start = skip_trivia(
+                            source,
+                            token_end(source, arrow)
+                        );
+                        int64_t guard_end = condition_end(
+                            source,
+                            guard_start
+                        );
+                        if (guard_end < 0) {
+                            arm_cursor = target + 1;
+                        } else {
+                            arrow = skip_trivia(source, guard_end);
+                        }
+                    }
+                    if (
+                        arm_cursor <= target &&
+                        token_equal(source, arrow, "=>")
+                    ) {
+                        int64_t arm_open = skip_trivia(
+                            source,
+                            token_end(source, arrow)
+                        );
+                        int64_t arm_end = balanced_end(
+                            source,
+                            arm_open,
+                            "{",
+                            "}"
+                        );
+                        if (arm_end < 0) {
+                            arm_cursor = target + 1;
+                        } else if (arm_end <= target) {
+                            arm_cursor = skip_trivia(source, arm_end);
+                            if (token_equal(source, arm_cursor, ",")) {
+                                arm_cursor = skip_trivia(
+                                    source,
+                                    token_end(source, arm_cursor)
+                                );
+                            }
+                        } else {
+                            arm_cursor = target + 1;
+                        }
+                    } else {
+                        arm_cursor = target + 1;
+                    }
+                }
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return false;
+}
+
+static char *validate_enum_uses(const char *source) {
+    int64_t length = (int64_t)strlen(source);
+    char *enum_types = enum_declaration_names(source, false);
+    if (strcmp(enum_types, "|") == 0) {
+        free(enum_types);
+        return owned_text("ok");
+    }
+    char *constructor_names = enum_declaration_names(source, true);
+    int64_t function_start = next_function_start(source, 0);
+    while (function_start < length) {
+        int64_t function_close = function_end(source, function_start);
+        int64_t parameters = parameter_open(source, function_start);
+        int64_t parameters_close = balanced_end(
+            source,
+            parameters,
+            "(",
+            ")"
+        );
+        int64_t function_open = skip_trivia(source, parameters_close);
+        while (
+            function_open < function_close &&
+            !token_equal(source, function_open, "{")
+        ) {
+            function_open = skip_trivia(
+                source,
+                token_end(source, function_open)
+            );
+        }
+        char *enum_binding_names = function_enum_binding_names(
+            source,
+            function_open,
+            function_close,
+            enum_types
+        );
+        int64_t related_identifiers = 0;
+        int64_t cursor = skip_trivia(
+            source,
+            token_end(source, function_open)
+        );
+        char *previous = owned_text("");
+        while (cursor < function_close) {
+            if (strcmp(token_kind(source, cursor), "identifier") == 0) {
+                char *name = token_copy(source, cursor);
+                bool related =
+                    enum_name_covered(constructor_names, name) ||
+                    enum_name_covered(enum_binding_names, name);
+                if (related) {
+                    ++related_identifiers;
+                    if (related_identifiers > 256) {
+                        Buffer error;
+                        buffer_init(&error);
+                        buffer_format(
+                            &error,
+                            "error[E2S32]: enum-related identifier use "
+                            "limit is 256 per function at byte %" PRId64,
+                            cursor
+                        );
+                        free(name);
+                        free(previous);
+                        free(enum_binding_names);
+                        free(enum_types);
+                        free(constructor_names);
+                        return error.data;
+                    }
+                    bool pattern_token = enum_match_pattern_token(
+                        source,
+                        function_open,
+                        cursor
+                    );
+                    bool initializer_token =
+                        enum_initializer_constructor_token(
+                            source,
+                            function_open,
+                            cursor
+                        );
+                    bool declaration_token = enum_declaration_syntax_token(
+                        source,
+                        function_open,
+                        cursor
+                    );
+                    if (
+                        !pattern_token && !initializer_token &&
+                        !declaration_token
+                    ) {
+                        int64_t current_open = parent_block_open(
+                            source,
+                            function_open,
+                            cursor
+                        );
+                        if (current_open < 0) current_open = function_open;
+                        char *binding_type = visible_binding_type(
+                            source,
+                            current_open,
+                            function_open,
+                            cursor,
+                            name
+                        );
+                        if (binding_type[0] != '\0') {
+                            if (
+                                enum_constructor_count(
+                                    source,
+                                    binding_type
+                                ) >= 0
+                            ) {
+                                int64_t after = skip_trivia(
+                                    source,
+                                    token_end(source, cursor)
+                                );
+                                bool match_scrutinee =
+                                    strcmp(previous, "match") == 0 &&
+                                    token_equal(source, after, "{");
+                                if (!match_scrutinee) {
+                                    Buffer error;
+                                    buffer_init(&error);
+                                    buffer_format(
+                                        &error,
+                                        "error[E2S32]: concrete enum binding "
+                                        "`%s` is match-only in this Core "
+                                        "slice at byte %" PRId64,
+                                        name,
+                                        cursor
+                                    );
+                                    free(name);
+                                    free(binding_type);
+                                    free(previous);
+                                    free(enum_binding_names);
+                                    free(enum_types);
+                                    free(constructor_names);
+                                    return error.data;
+                                }
+                            }
+                        } else if (!int_parameter_named(
+                            source,
+                            function_start,
+                            name
+                        )) {
+                            int64_t after = skip_trivia(
+                                source,
+                                token_end(source, cursor)
+                            );
+                            bool resolved_function_call =
+                                token_equal(source, after, "(") &&
+                                function_arity(source, name) >= 0;
+                            if (!resolved_function_call) {
+                                char *constructor_owner =
+                                    enum_constructor_owner(
+                                        source,
+                                        name
+                                    );
+                                if (constructor_owner[0] != '\0') {
+                                    Buffer error;
+                                    buffer_init(&error);
+                                    buffer_format(
+                                        &error,
+                                        "error[E2S32]: concrete enum "
+                                        "constructor `%s` is only valid in an "
+                                        "explicitly typed enum initializer or "
+                                        "match pattern at byte %" PRId64,
+                                        name,
+                                        cursor
+                                    );
+                                    free(name);
+                                    free(binding_type);
+                                    free(constructor_owner);
+                                    free(previous);
+                                    free(enum_binding_names);
+                                    free(enum_types);
+                                    free(constructor_names);
+                                    return error.data;
+                                }
+                                free(constructor_owner);
+                            }
+                        }
+                        free(binding_type);
+                    }
+                }
+                free(name);
+            }
+            free(previous);
+            previous = token_copy(source, cursor);
+            cursor = skip_trivia(source, token_end(source, cursor));
+        }
+        free(previous);
+        free(enum_binding_names);
+        function_start = next_function_start(source, function_close);
+    }
+    free(enum_types);
+    free(constructor_names);
+    return owned_text("ok");
+}
+
+static int64_t enum_match_end(const char *source, int64_t start) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t value_start = skip_trivia(source, token_end(source, start));
+    int64_t arms_open = skip_trivia(source, token_end(source, value_start));
+    if (arms_open >= length || !token_equal(source, arms_open, "{")) {
+        return -1;
+    }
+    return balanced_end(source, arms_open, "{", "}");
+}
+
+static char *lower_body(
+    const char *source,
+    int64_t open,
+    bool is_main,
+    bool append_default,
+    int64_t function_open
+);
+
+static char *lower_enum_match_error(
+    Buffer *covered,
+    Buffer *dispatch,
+    const char *code,
+    const char *message,
+    int64_t cursor
+) {
+    free(covered->data);
+    free(dispatch->data);
+    return lower_error(code, message, cursor);
+}
+
+static char *lower_enum_match(
+    const char *source,
+    int64_t match_start,
+    const char *enum_type,
+    bool is_main,
+    int64_t function_open
+) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t value_start = skip_trivia(
+        source,
+        token_end(source, match_start)
+    );
+    int64_t arms_open = skip_trivia(source, token_end(source, value_start));
+    Buffer covered;
+    Buffer dispatch;
+    buffer_init(&covered);
+    buffer_init(&dispatch);
+    buffer_append(&covered, "|");
+    if (arms_open >= length || !token_equal(source, arms_open, "{")) {
+        return lower_enum_match_error(
+            &covered,
+            &dispatch,
+            "E2S24",
+            "expected `{` after enum match scrutinee",
+            arms_open
+        );
+    }
+
+    int64_t arm_cursor = skip_trivia(
+        source,
+        token_end(source, arms_open)
+    );
+    bool seen_catchall = false;
+    const char *failure_result = is_main ? "1" : "0";
+    while (arm_cursor < length && !token_equal(source, arm_cursor, "}")) {
+        int64_t pattern_start = arm_cursor;
+        char *pattern = token_copy(source, pattern_start);
+        bool catchall = strcmp(pattern, "_") == 0;
+        if (seen_catchall) {
+            free(pattern);
+            return lower_enum_match_error(
+                &covered,
+                &dispatch,
+                "E2S26",
+                "pattern after catch-all is unreachable",
+                pattern_start
+            );
+        }
+        int64_t tag = -1;
+        if (catchall) {
+            if (enum_constructors_covered(source, enum_type, covered.data)) {
+                free(pattern);
+                return lower_enum_match_error(
+                    &covered,
+                    &dispatch,
+                    "E2S26",
+                    "catch-all pattern is unreachable",
+                    pattern_start
+                );
+            }
+        } else {
+            if (strcmp(token_kind(source, pattern_start), "identifier") != 0) {
+                free(pattern);
+                return lower_enum_match_error(
+                    &covered,
+                    &dispatch,
+                    "E2S32",
+                    "enum pattern must name a constructor or `_`",
+                    pattern_start
+                );
+            }
+            tag = enum_constructor_index(source, enum_type, pattern);
+            if (tag < 0) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    "constructor `%s` does not belong to enum `%s`",
+                    pattern,
+                    enum_type
+                );
+                free(pattern);
+                char *error = lower_enum_match_error(
+                    &covered,
+                    &dispatch,
+                    "E2S32",
+                    message.data,
+                    pattern_start
+                );
+                free(message.data);
+                return error;
+            }
+            if (enum_name_covered(covered.data, pattern)) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    "duplicate enum constructor pattern `%s` is unreachable",
+                    pattern
+                );
+                free(pattern);
+                char *error = lower_enum_match_error(
+                    &covered,
+                    &dispatch,
+                    "E2S26",
+                    message.data,
+                    pattern_start
+                );
+                free(message.data);
+                return error;
+            }
+        }
+
+        int64_t arrow = skip_trivia(
+            source,
+            token_end(source, pattern_start)
+        );
+        bool guarded = false;
+        int64_t guard_start = -1;
+        int64_t guard_end = -1;
+        if (arrow < length && token_equal(source, arrow, "if")) {
+            guarded = true;
+            guard_start = skip_trivia(source, token_end(source, arrow));
+            guard_end = condition_end(source, guard_start);
+            if (guard_end < 0) {
+                free(pattern);
+                return lower_enum_match_error(
+                    &covered,
+                    &dispatch,
+                    "E2S29",
+                    "match guard must be Bool or an Int comparison",
+                    guard_start
+                );
+            }
+            arrow = skip_trivia(source, guard_end);
+        }
+        if (arrow >= length || !token_equal(source, arrow, "=>")) {
+            free(pattern);
+            return lower_enum_match_error(
+                &covered,
+                &dispatch,
+                "E2S24",
+                "expected `=>` after enum pattern",
+                arrow
+            );
+        }
+        int64_t arm_open = skip_trivia(source, token_end(source, arrow));
+        if (arm_open >= length || !token_equal(source, arm_open, "{")) {
+            free(pattern);
+            return lower_enum_match_error(
+                &covered,
+                &dispatch,
+                "E2S24",
+                "bounded enum match arm must use a block",
+                arm_open
+            );
+        }
+        int64_t arm_close = balanced_end(source, arm_open, "{", "}");
+        if (arm_close < 0) {
+            free(pattern);
+            return lower_enum_match_error(
+                &covered,
+                &dispatch,
+                "E2S24",
+                "missing `}` after enum match arm",
+                arm_open
+            );
+        }
+        char *arm_body = lower_body(
+            source,
+            arm_open,
+            is_main,
+            false,
+            function_open
+        );
+        if (strncmp(arm_body, "error[", 6) == 0) {
+            free(pattern);
+            free(covered.data);
+            free(dispatch.data);
+            return arm_body;
+        }
+
+        Buffer pattern_condition;
+        buffer_init(&pattern_condition);
+        if (catchall) {
+            buffer_append(&pattern_condition, "true");
+        } else {
+            buffer_format(
+                &pattern_condition,
+                "kofun_match_value == INT64_C(%" PRId64 ")",
+                tag
+            );
+        }
+        if (guarded) {
+            char *guard = emit_condition_into(
+                source,
+                guard_start,
+                guard_end,
+                "kofun_match_guard",
+                failure_result,
+                "            "
+            );
+            buffer_format(
+                &dispatch,
+                "        if (!kofun_match_selected && %s) {\n"
+                "%s"
+                "            if (kofun_match_guard) {\n"
+                "%s"
+                "                kofun_match_selected = true;\n"
+                "            }\n"
+                "        }\n",
+                pattern_condition.data,
+                guard,
+                arm_body
+            );
+            free(guard);
+        } else {
+            buffer_format(
+                &dispatch,
+                "        if (!kofun_match_selected && %s) {\n"
+                "%s"
+                "            kofun_match_selected = true;\n"
+                "        }\n",
+                pattern_condition.data,
+                arm_body
+            );
+            if (catchall) {
+                seen_catchall = true;
+            } else {
+                buffer_append(&covered, pattern);
+                buffer_append(&covered, "|");
+            }
+        }
+        free(pattern_condition.data);
+        free(arm_body);
+        free(pattern);
+
+        arm_cursor = skip_trivia(source, arm_close);
+        if (arm_cursor < length && token_equal(source, arm_cursor, ",")) {
+            arm_cursor = skip_trivia(
+                source,
+                token_end(source, arm_cursor)
+            );
+        } else if (
+            arm_cursor >= length ||
+            !token_equal(source, arm_cursor, "}")
+        ) {
+            return lower_enum_match_error(
+                &covered,
+                &dispatch,
+                "E2S24",
+                "expected `,` between enum match arms",
+                arm_cursor
+            );
+        }
+    }
+    if (arm_cursor >= length || !token_equal(source, arm_cursor, "}")) {
+        return lower_enum_match_error(
+            &covered,
+            &dispatch,
+            "E2S24",
+            "missing `}` after enum match arms",
+            arms_open
+        );
+    }
+    if (
+        !seen_catchall &&
+        !enum_constructors_covered(source, enum_type, covered.data)
+    ) {
+        char *missing = enum_missing_constructors(
+            source,
+            enum_type,
+            covered.data
+        );
+        Buffer message;
+        buffer_init(&message);
+        buffer_format(
+            &message,
+            "non-exhaustive enum `%s` match; missing constructors %s",
+            enum_type,
+            missing
+        );
+        free(missing);
+        char *error = lower_enum_match_error(
+            &covered,
+            &dispatch,
+            "E2S25",
+            message.data,
+            match_start
+        );
+        free(message.data);
+        return error;
+    }
+
+    char *value_name = token_copy(source, value_start);
+    Buffer emitted;
+    buffer_init(&emitted);
+    buffer_format(
+        &emitted,
+        "    {\n"
+        "        int64_t kofun_match_value = k_%s;\n"
+        "        (void)kofun_match_value;\n"
+        "        bool kofun_match_selected = false;\n"
+        "%s"
+        "    }\n",
+        value_name,
+        dispatch.data
+    );
+    free(value_name);
+    free(covered.data);
+    free(dispatch.data);
+    return emitted.data;
+}
+
 static char *assignment_error(
     const char *message,
     const char *name,
@@ -1990,7 +3408,9 @@ static char *lower_body(
         }
         if (token_equal(source, cursor, "let")) {
             cursor = skip_trivia(source, token_end(source, cursor));
+            bool mutable = false;
             if (cursor < length && token_equal(source, cursor, "mut")) {
+                mutable = true;
                 cursor = skip_trivia(source, token_end(source, cursor));
             }
             if (
@@ -2001,26 +3421,119 @@ static char *lower_body(
                 return lower_error("E2S11", "expected binding name", cursor);
             }
             char *name = token_copy(source, cursor);
+            char *enum_type = NULL;
             cursor = skip_trivia(source, token_end(source, cursor));
             if (cursor < length && token_equal(source, cursor, ":")) {
                 cursor = skip_trivia(source, token_end(source, cursor));
-                if (cursor >= length || !token_equal(source, cursor, "Int")) {
+                if (
+                    cursor >= length ||
+                    strcmp(token_kind(source, cursor), "identifier") != 0
+                ) {
                     free(name);
                     free(emitted.data);
                     return lower_error(
                         "E2S11",
-                        "Core binding type must be Int",
+                        "expected Core binding type",
                         cursor
                     );
+                }
+                char *declared_type = token_copy(source, cursor);
+                if (strcmp(declared_type, "Int") != 0) {
+                    if (enum_constructor_count(source, declared_type) < 0) {
+                        Buffer message;
+                        buffer_init(&message);
+                        buffer_format(
+                            &message,
+                            "unknown concrete enum type `%s`",
+                            declared_type
+                        );
+                        free(declared_type);
+                        free(name);
+                        free(emitted.data);
+                        char *error = lower_error(
+                            "E2S32",
+                            message.data,
+                            cursor
+                        );
+                        free(message.data);
+                        return error;
+                    }
+                    enum_type = declared_type;
+                } else {
+                    free(declared_type);
                 }
                 cursor = skip_trivia(source, token_end(source, cursor));
             }
             if (cursor >= length || !token_equal(source, cursor, "=")) {
+                free(enum_type);
                 free(name);
                 free(emitted.data);
                 return lower_error("E2S11", "expected `=`", cursor);
             }
             int64_t value_start = skip_trivia(source, token_end(source, cursor));
+            if (enum_type != NULL) {
+                if (mutable) {
+                    free(enum_type);
+                    free(name);
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S32",
+                        "concrete enum bindings are immutable in this Core slice",
+                        value_start
+                    );
+                }
+                if (
+                    value_start >= length ||
+                    strcmp(token_kind(source, value_start), "identifier") != 0
+                ) {
+                    free(enum_type);
+                    free(name);
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S32",
+                        "concrete enum initializer must name a constructor",
+                        value_start
+                    );
+                }
+                char *constructor = token_copy(source, value_start);
+                int64_t tag = enum_constructor_index(
+                    source,
+                    enum_type,
+                    constructor
+                );
+                if (tag < 0) {
+                    Buffer message;
+                    buffer_init(&message);
+                    buffer_format(
+                        &message,
+                        "constructor `%s` does not belong to enum `%s`",
+                        constructor,
+                        enum_type
+                    );
+                    free(constructor);
+                    free(enum_type);
+                    free(name);
+                    free(emitted.data);
+                    char *error = lower_error(
+                        "E2S32",
+                        message.data,
+                        value_start
+                    );
+                    free(message.data);
+                    return error;
+                }
+                buffer_format(
+                    &emitted,
+                    "    int64_t k_%s = INT64_C(%" PRId64 ");\n",
+                    name,
+                    tag
+                );
+                free(constructor);
+                free(enum_type);
+                free(name);
+                cursor = skip_trivia(source, token_end(source, value_start));
+                continue;
+            }
             if (value_control(source, value_start)) {
                 int64_t value_end = -1;
                 char *result = parse_value_control(
@@ -2286,6 +3799,65 @@ static char *lower_body(
                 source,
                 token_end(source, cursor)
             );
+            int64_t direct_end = skip_trivia(
+                source,
+                token_end(source, value_start)
+            );
+            if (
+                strcmp(token_kind(source, value_start), "identifier") == 0 &&
+                direct_end < length &&
+                token_equal(source, direct_end, "{")
+            ) {
+                char *value_name = token_copy(source, value_start);
+                char *enum_type = visible_binding_type(
+                    source,
+                    open,
+                    function_open,
+                    match_start,
+                    value_name
+                );
+                if (
+                    enum_type[0] == '\0' ||
+                    strcmp(enum_type, "Int") == 0 ||
+                    enum_constructor_count(source, enum_type) < 0
+                ) {
+                    Buffer message;
+                    buffer_init(&message);
+                    buffer_format(
+                        &message,
+                        "enum match scrutinee `%s` must be a preceding "
+                        "explicitly typed enum binding",
+                        value_name
+                    );
+                    free(enum_type);
+                    free(value_name);
+                    free(emitted.data);
+                    char *error = lower_error(
+                        "E2S32",
+                        message.data,
+                        value_start
+                    );
+                    free(message.data);
+                    return error;
+                }
+                char *match_body = lower_enum_match(
+                    source,
+                    match_start,
+                    enum_type,
+                    is_main,
+                    function_open
+                );
+                free(enum_type);
+                free(value_name);
+                if (strncmp(match_body, "error[", 6) == 0) {
+                    free(emitted.data);
+                    return match_body;
+                }
+                buffer_append(&emitted, match_body);
+                free(match_body);
+                int64_t match_end = enum_match_end(source, match_start);
+                cursor = skip_trivia(source, match_end);
+            } else {
             int64_t value_end = condition_end(source, value_start);
             Buffer dispatch;
             buffer_init(&dispatch);
@@ -2611,6 +4183,7 @@ static char *lower_body(
             free(match_value);
             free(dispatch.data);
             cursor = skip_trivia(source, token_end(source, arm_cursor));
+            }
         } else if (token_equal(source, cursor, "return")) {
             int64_t value_start = skip_trivia(source, token_end(source, cursor));
             if (value_start < length && token_equal(source, value_start, "}")) {
@@ -2866,6 +4439,11 @@ static char *lower_body(
 
 static char *lower_c(const char *source) {
     int64_t length = (int64_t)strlen(source);
+    char *enum_use_check = validate_enum_uses(source);
+    if (strncmp(enum_use_check, "error[", 6) == 0) {
+        return enum_use_check;
+    }
+    free(enum_use_check);
     char *call_check = validate_core_calls(source);
     if (strncmp(call_check, "error[", 6) == 0) return call_check;
     free(call_check);
@@ -2874,7 +4452,7 @@ static char *lower_c(const char *source) {
     Buffer bodies;
     buffer_init(&prototypes);
     buffer_init(&bodies);
-    int64_t cursor = skip_trivia(source, 0);
+    int64_t cursor = next_function_start(source, 0);
     int64_t main_count = 0;
     while (cursor < length) {
         char *name = function_name(source, cursor);
@@ -2976,7 +4554,7 @@ static char *lower_c(const char *source) {
         free(body);
         free(parameters);
         free(name);
-        cursor = skip_trivia(source, function_end(source, cursor));
+        cursor = next_function_start(source, function_end(source, cursor));
     }
     if (main_count != 1) {
         free(prototypes.data);

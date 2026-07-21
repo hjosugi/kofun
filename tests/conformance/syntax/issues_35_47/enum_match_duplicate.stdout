@@ -1,0 +1,1 @@
+error[E2S26]: duplicate enum constructor pattern `Red` is unreachable at byte 140

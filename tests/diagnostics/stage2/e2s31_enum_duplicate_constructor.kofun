@@ -1,0 +1,9 @@
+# diagnostic-mode: compile
+# expect-code: E2S31
+# expect-span: byte 102
+type Signal = | Red | Green | Red
+
+fn main() -> Int {
+    print(0)
+    return 0
+}
