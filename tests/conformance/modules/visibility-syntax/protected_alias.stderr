@@ -1,0 +1,1 @@
+error[E2S34]: unsupported visibility modifier `protected`; use `pub`, `internal`, or `private` at bytes 0..9

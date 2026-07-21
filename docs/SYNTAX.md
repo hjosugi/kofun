@@ -284,8 +284,9 @@ A `law` declaration is not a runtime statement. It is checked by a deterministic
 
 ## Visibility
 
-planned; the normative contract is
-[`spec/modules/visibility.md`](../spec/modules/visibility.md):
+The normative contract is
+[`spec/modules/visibility.md`](../spec/modules/visibility.md). Stage 2 accepts
+the four basic forms on top-level functions:
 
 ```kofun
 # Public API is intentional. Omission is private.
@@ -299,6 +300,12 @@ fn normalize_name(name: Text) -> Text
 not a directory or textual module. `pub(to ancestor.path)` is specified for
 restricted module access but is deferred beyond the first executable slice.
 There is no `protected` modifier, and capitalization does not affect access.
+
+The executable slice records visibility, implicit versus explicit origin,
+modifier/declaration spans, and stable single-file symbol identities. It does
+not yet enforce access across files, modules, packages, imports, or public
+signatures. `pub`, `internal`, and `private` remain ordinary identifier tokens
+outside a supported declaration-prefix position.
 
 ## Imports
 

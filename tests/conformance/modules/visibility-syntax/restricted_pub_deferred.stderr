@@ -1,0 +1,1 @@
+error[E2S34]: restricted `pub(...)` visibility is not supported in this frontend slice at bytes 0..19

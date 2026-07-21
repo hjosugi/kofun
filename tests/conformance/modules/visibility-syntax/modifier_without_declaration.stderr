@@ -1,0 +1,1 @@
+error[E2S33]: visibility modifier `pub` must be followed by a top-level `fn` declaration at bytes 0..3

@@ -98,8 +98,9 @@ existing program.
 the normative [visibility contract](../modules/visibility.md). They are
 recognized only before a declaration or member and are not hard keywords in
 other positions. `public` and `protected` are not visibility aliases. The
-active bootstrap frontend has not implemented these modifiers yet; #578 owns
-the first bounded syntax/HIR slice.
+Stage 2 frontend implements these modifiers for top-level functions as the
+bounded #578 syntax/HIR slice. Other declarations and access enforcement
+remain future work.
 
 ### Canonical and rejected forms
 
@@ -232,9 +233,11 @@ fn add(value: Int, value: Int) -> Int = value + value
 ```
 
 **Implementation status:** Stage 2 structural IR records top-level function
-names, arities, and byte spans, including forward declarations. It does not
-resolve calls or infer types. Its executable C Core requires exactly one
-zero-argument `fn main()` and does not lower general functions.
+names, arities, byte spans, basic visibility, explicit/implicit origin, and
+stable single-input file/declaration identities, including forward
+declarations. It does not enforce cross-file visibility or infer types. Its
+executable C Core requires exactly one zero-argument `fn main()` and does not
+lower general functions.
 
 ## #38 — Automatic statement termination
 

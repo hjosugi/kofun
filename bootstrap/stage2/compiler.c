@@ -296,6 +296,194 @@ static int64_t balanced_end(
     return -1;
 }
 
+static bool basic_visibility_modifier(const char *source, int64_t start) {
+    return token_equal(source, start, "pub") ||
+           token_equal(source, start, "internal") ||
+           token_equal(source, start, "private");
+}
+
+static bool visibility_word(const char *source, int64_t start) {
+    return basic_visibility_modifier(source, start) ||
+           token_equal(source, start, "public") ||
+           token_equal(source, start, "protected");
+}
+
+static bool visibility_prefix_candidate(const char *source, int64_t start) {
+    if (visibility_word(source, start)) return true;
+    if (strcmp(token_kind(source, start), "identifier") != 0) return false;
+    int64_t next = skip_trivia(source, token_end(source, start));
+    return token_equal(source, next, "fn");
+}
+
+static int64_t function_declaration_start(
+    const char *source,
+    int64_t start
+) {
+    int64_t length = (int64_t)strlen(source);
+    if (token_equal(source, start, "fn")) return start;
+    if (!basic_visibility_modifier(source, start)) return -1;
+    int64_t after_modifier = skip_trivia(source, token_end(source, start));
+    if (
+        after_modifier < length &&
+        token_equal(source, after_modifier, "fn")
+    ) {
+        return after_modifier;
+    }
+    return -1;
+}
+
+static const char *visibility_level(const char *source, int64_t start) {
+    if (token_equal(source, start, "pub")) return "public";
+    if (token_equal(source, start, "internal")) return "internal";
+    return "private";
+}
+
+static int64_t parameter_open(const char *source, int64_t start);
+
+static char *visibility_prefix_error(const char *source, int64_t start) {
+    int64_t length = (int64_t)strlen(source);
+    Buffer error;
+    buffer_init(&error);
+    if (
+        token_equal(source, start, "public") ||
+        token_equal(source, start, "protected")
+    ) {
+        char *alias = token_copy(source, start);
+        buffer_format(
+            &error,
+            "error[E2S34]: unsupported visibility modifier `%s`; "
+            "use `pub`, `internal`, or `private` at bytes %" PRId64
+            "..%" PRId64,
+            alias,
+            start,
+            token_end(source, start)
+        );
+        free(alias);
+        return error.data;
+    }
+    if (!basic_visibility_modifier(source, start)) {
+        int64_t next = skip_trivia(source, token_end(source, start));
+        if (
+            strcmp(token_kind(source, start), "identifier") == 0 &&
+            next < length && token_equal(source, next, "fn")
+        ) {
+            char *modifier = token_copy(source, start);
+            buffer_format(
+                &error,
+                "error[E2S33]: unknown visibility modifier `%s`; expected "
+                "`pub`, `internal`, or `private` at bytes %" PRId64
+                "..%" PRId64,
+                modifier,
+                start,
+                token_end(source, start)
+            );
+            free(modifier);
+        }
+        return error.data;
+    }
+
+    int64_t next = skip_trivia(source, token_end(source, start));
+    if (next < length && token_equal(source, next, "fn")) return error.data;
+    if (next < length && basic_visibility_modifier(source, next)) {
+        char *first = token_copy(source, start);
+        char *second = token_copy(source, next);
+        const char *kind = strcmp(first, second) == 0 ? "repeated" : "conflicting";
+        buffer_format(
+            &error,
+            "error[E2S33]: %s visibility modifiers `%s` and `%s` "
+            "at bytes %" PRId64 "..%" PRId64,
+            kind,
+            first,
+            second,
+            start,
+            token_end(source, next)
+        );
+        free(second);
+        free(first);
+        return error.data;
+    }
+    if (token_equal(source, start, "pub") && next < length &&
+        token_equal(source, next, "(")) {
+        int64_t form_end = balanced_end(source, next, "(", ")");
+        if (form_end < 0) form_end = token_end(source, next);
+        int64_t form_name = skip_trivia(source, token_end(source, next));
+        bool rust_alias = form_name < length &&
+                          (token_equal(source, form_name, "crate") ||
+                           token_equal(source, form_name, "super") ||
+                           token_equal(source, form_name, "in"));
+        buffer_format(
+            &error,
+            "error[E2S34]: %s `pub(...)` visibility is not supported "
+            "in this frontend slice at bytes %" PRId64 "..%" PRId64,
+            rust_alias ? "Rust-style" : "restricted",
+            start,
+            form_end
+        );
+        return error.data;
+    }
+
+    char *modifier = token_copy(source, start);
+    buffer_format(
+        &error,
+        "error[E2S33]: visibility modifier `%s` must be followed by a "
+        "top-level `fn` declaration at bytes %" PRId64 "..%" PRId64,
+        modifier,
+        start,
+        token_end(source, start)
+    );
+    free(modifier);
+    return error.data;
+}
+
+static char *local_visibility_error(
+    const char *source,
+    int64_t function_start,
+    int64_t function_close
+) {
+    Buffer error;
+    buffer_init(&error);
+    int64_t open = parameter_open(source, function_start);
+    if (open < 0) return error.data;
+    int64_t cursor = balanced_end(source, open, "(", ")");
+    while (cursor >= 0 && cursor < function_close &&
+           !token_equal(source, cursor, "{")) {
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    if (cursor < 0 || cursor >= function_close) return error.data;
+    cursor = skip_trivia(source, token_end(source, cursor));
+    while (cursor < function_close) {
+        bool basic = basic_visibility_modifier(source, cursor);
+        bool alias = token_equal(source, cursor, "public") ||
+                     token_equal(source, cursor, "protected");
+        if (basic || alias) {
+            int64_t next = skip_trivia(source, token_end(source, cursor));
+            bool declaration_like =
+                next < function_close &&
+                (token_equal(source, next, "fn") ||
+                 token_equal(source, next, "let") ||
+                 token_equal(source, next, "var") ||
+                 token_equal(source, next, "type") ||
+                 basic_visibility_modifier(source, next));
+            if (declaration_like) {
+                char *modifier = token_copy(source, cursor);
+                buffer_format(
+                    &error,
+                    "error[%s]: visibility modifier `%s` is not supported "
+                    "in local scope at bytes %" PRId64 "..%" PRId64,
+                    alias ? "E2S34" : "E2S33",
+                    modifier,
+                    cursor,
+                    token_end(source, cursor)
+                );
+                free(modifier);
+                return error.data;
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return error.data;
+}
+
 static char *function_name(const char *source, int64_t start) {
     int64_t length = (int64_t)strlen(source);
     int64_t after_fn = skip_trivia(source, token_end(source, start));
@@ -425,7 +613,8 @@ static int64_t type_declaration_end(const char *source, int64_t start) {
     if (
         pipe < length &&
         !token_equal(source, pipe, "fn") &&
-        !token_equal(source, pipe, "type")
+        !token_equal(source, pipe, "type") &&
+        !visibility_prefix_candidate(source, pipe)
     ) {
         return -1;
     }
@@ -436,7 +625,9 @@ static int64_t top_level_end(const char *source, int64_t start) {
     if (token_equal(source, start, "type")) {
         return type_declaration_end(source, start);
     }
-    return function_end(source, start);
+    int64_t function_start = function_declaration_start(source, start);
+    if (function_start < 0) return -1;
+    return function_end(source, function_start);
 }
 
 static int64_t next_function_start(const char *source, int64_t start) {
@@ -447,7 +638,8 @@ static int64_t next_function_start(const char *source, int64_t start) {
         if (end <= cursor) return length;
         cursor = skip_trivia(source, end);
     }
-    return cursor;
+    int64_t function_start = function_declaration_start(source, cursor);
+    return function_start < 0 ? cursor : function_start;
 }
 
 static int64_t enum_declaration_start(
@@ -588,6 +780,14 @@ static char *parse_program(const char *source) {
     int64_t functions = 0;
     int64_t types = 0;
     while (cursor < length) {
+        char *visibility_error = visibility_prefix_error(source, cursor);
+        if (visibility_error[0] != '\0') {
+            free(declared_types.data);
+            free(declared_constructors.data);
+            free(ir.data);
+            return visibility_error;
+        }
+        free(visibility_error);
         if (token_equal(source, cursor, "type")) {
             char *name = type_name(source, cursor);
             int64_t end = type_declaration_end(source, cursor);
@@ -806,7 +1006,7 @@ static char *parse_program(const char *source) {
             }
             free(name);
             cursor = skip_trivia(source, end);
-        } else if (!token_equal(source, cursor, "fn")) {
+        } else if (function_declaration_start(source, cursor) < 0) {
             free(declared_types.data);
             free(declared_constructors.data);
             ir.length = 0;
@@ -819,9 +1019,14 @@ static char *parse_program(const char *source) {
             );
             return ir.data;
         } else {
-            char *name = function_name(source, cursor);
-            int64_t arity = parameter_count(source, cursor);
-            int64_t end = function_end(source, cursor);
+            int64_t declaration_start = cursor;
+            int64_t function_start = function_declaration_start(
+                source,
+                declaration_start
+            );
+            char *name = function_name(source, function_start);
+            int64_t arity = parameter_count(source, function_start);
+            int64_t end = function_end(source, function_start);
             if (name[0] == '\0' || arity < 0 || end < 0) {
                 free(name);
                 free(declared_types.data);
@@ -831,17 +1036,43 @@ static char *parse_program(const char *source) {
                 buffer_format(
                     &ir,
                     "error[E2S03]: malformed function at byte %" PRId64,
-                    cursor
+                    function_start
                 );
                 return ir.data;
             }
+            char *local_error = local_visibility_error(
+                source,
+                function_start,
+                end
+            );
+            if (local_error[0] != '\0') {
+                free(name);
+                free(declared_types.data);
+                free(declared_constructors.data);
+                free(ir.data);
+                return local_error;
+            }
+            free(local_error);
+            bool explicit_visibility = declaration_start != function_start;
+            int64_t modifier_start = explicit_visibility ? declaration_start : -1;
+            int64_t modifier_end = explicit_visibility ?
+                token_end(source, declaration_start) : -1;
             buffer_format(
                 &ir,
-                "function|%s|%" PRId64 "|%" PRId64 "|%" PRId64 "\n",
+                "function|%s|%" PRId64 "|%" PRId64 "|%" PRId64
+                "|%s|%s|%" PRId64 "|%" PRId64 "|%" PRId64
+                "|%" PRId64 "|file:0|symbol:%" PRId64 "\n",
                 name,
                 arity,
-                cursor,
-                end
+                function_start,
+                end,
+                visibility_level(source, declaration_start),
+                explicit_visibility ? "explicit" : "implicit",
+                modifier_start,
+                modifier_end,
+                declaration_start,
+                end,
+                functions
             );
             free(name);
             ++functions;

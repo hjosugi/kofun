@@ -1,0 +1,1 @@
+error[E2S33]: visibility modifier `pub` is not supported in local scope at bytes 23..26

@@ -1,0 +1,18 @@
+fn pub(value: Int) -> Int {
+    return value
+}
+
+fn internal() -> Int {
+    return 1
+}
+
+fn private() -> Int {
+    return 1
+}
+
+fn main() -> Int {
+    let pub: Int = internal()
+    let internal: Int = private()
+    print(pub(pub + internal + 40))
+    return 0
+}

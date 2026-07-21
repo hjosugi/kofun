@@ -1,0 +1,1 @@
+error[E2S33]: repeated visibility modifiers `private` and `private` at bytes 0..15
