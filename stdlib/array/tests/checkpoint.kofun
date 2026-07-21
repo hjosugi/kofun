@@ -1,0 +1,17 @@
+# Executable List-backed observations shared by the IntArray1 contract. The
+# direct collection Core requires one numeric print, so the checksum observes
+# length, positive/negative indexing, ordered map, fold, and empty shape.
+
+fn main() {
+    let values = [1, 2, 3]
+    let doubled = map(values, fn(value: Int) => value * 2)
+    let total = fold(values, 0, fn(total: Int, value: Int) => total + value)
+    print(
+        len(values) +
+        values[0] +
+        values[-1] +
+        doubled[1] +
+        total +
+        len([])
+    )
+}

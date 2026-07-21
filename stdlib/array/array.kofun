@@ -1,0 +1,135 @@
+# Small, platform-independent Array checkpoint.
+#
+# IntArray1 is the rank-one, Int-specialized reference surface for the planned
+# Array[T, Rank] type. Int is Copy, so element reads and callback arguments do
+# not imply unimplemented ownership rules for generic or affine values.
+
+type IntArray1 = {
+    values: List[Int],
+}
+
+type ArrayError =
+    | ArrayNegativeLength(Int)
+    | ArrayIndexOutOfBounds(Int, Int)
+    | ArrayShapeMismatch(Int, Int)
+
+fn array1_int_empty() -> IntArray1 {
+    return IntArray1 { values: [] }
+}
+
+# The input order and length become the array's fixed rank-one shape.
+fn array1_int_from_list(read values: List[Int]) -> IntArray1 {
+    return IntArray1 {
+        values: map(values, fn(value: Int) => value),
+    }
+}
+
+fn array1_int_filled(
+    length: Int,
+    value: Int,
+) -> Result[IntArray1, ArrayError] {
+    if length < 0 {
+        return Err(ArrayNegativeLength(length))
+    }
+    let mut values: List[Int] = []
+    let mut index = 0
+    while index < length {
+        values = push(values, value)
+        index = index + 1
+    }
+    return Ok(IntArray1 { values: values })
+}
+
+fn array1_int_to_list(read array: IntArray1) -> List[Int] {
+    return map(array.values, fn(value: Int) => value)
+}
+
+fn array1_int_length(read array: IntArray1) -> Int {
+    return len(array.values)
+}
+
+fn array1_int_is_empty(read array: IntArray1) -> Bool {
+    return len(array.values) == 0
+}
+
+# Nonnegative indexes count from the front and negative indexes from the end.
+fn array1_int_get(
+    read array: IntArray1,
+    index: Int,
+) -> Result[Int, ArrayError] {
+    let length = len(array.values)
+    if index < -length || index >= length {
+        return Err(ArrayIndexOutOfBounds(index, length))
+    }
+    return Ok(array.values[index])
+}
+
+# A successful update preserves the shape and leaves the input unchanged.
+fn array1_int_set(
+    read array: IntArray1,
+    index: Int,
+    value: Int,
+) -> Result[IntArray1, ArrayError] {
+    let length = len(array.values)
+    if index < -length || index >= length {
+        return Err(ArrayIndexOutOfBounds(index, length))
+    }
+    let mut normalized = index
+    if normalized < 0 {
+        normalized = length + normalized
+    }
+    let mut output: List[Int] = []
+    let mut position = 0
+    while position < length {
+        if position == normalized {
+            output = push(output, value)
+        } else {
+            output = push(output, array.values[position])
+        }
+        position = position + 1
+    }
+    return Ok(IntArray1 { values: output })
+}
+
+fn array1_int_map(
+    read array: IntArray1,
+    transform: fn(Int) -> Int,
+) -> IntArray1 {
+    return IntArray1 { values: map(array.values, transform) }
+}
+
+# Elementwise combination requires identical dynamic lengths. Evaluation is
+# stable from index zero to the final index.
+fn array1_int_zip_map(
+    read left: IntArray1,
+    read right: IntArray1,
+    combine: fn(Int, Int) -> Int,
+) -> Result[IntArray1, ArrayError] {
+    let left_length = len(left.values)
+    let right_length = len(right.values)
+    if left_length != right_length {
+        return Err(ArrayShapeMismatch(left_length, right_length))
+    }
+    let mut output: List[Int] = []
+    let mut index = 0
+    while index < left_length {
+        output = push(
+            output,
+            combine(left.values[index], right.values[index]),
+        )
+        index = index + 1
+    }
+    return Ok(IntArray1 { values: output })
+}
+
+fn array1_int_fold(
+    read array: IntArray1,
+    initial: Int,
+    combine: fn(Int, Int) -> Int,
+) -> Int {
+    return fold(array.values, initial, combine)
+}
+
+fn array1_int_contains(read array: IntArray1, target: Int) -> Bool {
+    return contains(array.values, target)
+}

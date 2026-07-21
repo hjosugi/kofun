@@ -1,0 +1,132 @@
+# Deterministic scalar projection of a rank-one array with three Int elements.
+# Separate scalar parameters are only a compiler-Core test representation; they
+# do not claim an Array ABI, storage layout, or maximum length.
+
+fn array_projection_normalize(index: Int, length: Int) -> Int {
+    if index < 0 {
+        return length + index
+    }
+    return index
+}
+
+fn array_projection_index_error(index: Int, length: Int) -> Int {
+    if array_projection_normalize(index, length) < 0 {
+        return 1
+    }
+    if array_projection_normalize(index, length) >= length {
+        return 1
+    }
+    return 0
+}
+
+# The zero fallback is observed only when the separate error flag is zero.
+fn array_projection_get(
+    first: Int,
+    second: Int,
+    third: Int,
+    index: Int
+) -> Int {
+    if array_projection_normalize(index, 3) == 0 {
+        return first
+    }
+    if array_projection_normalize(index, 3) == 1 {
+        return second
+    }
+    if array_projection_normalize(index, 3) == 2 {
+        return third
+    }
+    return 0
+}
+
+fn array_projection_set_at(
+    first: Int,
+    second: Int,
+    third: Int,
+    index: Int,
+    replacement: Int,
+    position: Int
+) -> Int {
+    if position == array_projection_normalize(index, 3) {
+        return replacement
+    }
+    if position == 0 {
+        return first
+    }
+    if position == 1 {
+        return second
+    }
+    return third
+}
+
+fn array_projection_fold3(
+    first: Int,
+    second: Int,
+    third: Int,
+    initial: Int
+) -> Int {
+    return initial + first + second + third
+}
+
+fn array_projection_contains3(
+    first: Int,
+    second: Int,
+    third: Int,
+    target: Int
+) -> Int {
+    if first == target {
+        return 1
+    }
+    if second == target {
+        return 1
+    }
+    if third == target {
+        return 1
+    }
+    return 0
+}
+
+fn array_projection_zip_fold(
+    left_first: Int,
+    left_second: Int,
+    left_third: Int,
+    right_first: Int,
+    right_second: Int,
+    right_third: Int
+) -> Int {
+    return (left_first + right_first) * 100
+        + (left_second + right_second) * 10
+        + left_third + right_third
+}
+
+fn array_projection_shape_error(left_length: Int, right_length: Int) -> Int {
+    if left_length == right_length {
+        return 0
+    }
+    return 1
+}
+
+fn array_projection_length_error(length: Int) -> Int {
+    if length < 0 {
+        return 1
+    }
+    return 0
+}
+
+fn main() {
+    print(3)
+    print(array_projection_get(10, 20, 30, -1))
+    print(array_projection_get(10, 20, 30, -3))
+    print(array_projection_index_error(3, 3))
+    print(array_projection_index_error(-4, 3))
+    print(array_projection_set_at(10, 20, 30, -2, 99, 0))
+    print(array_projection_set_at(10, 20, 30, -2, 99, 1))
+    print(array_projection_set_at(10, 20, 30, -2, 99, 2))
+    print(array_projection_fold3(20, 40, 60, 0))
+    print(array_projection_zip_fold(1, 2, 3, 4, 5, 6))
+    print(array_projection_contains3(10, 20, 30, 20))
+    print(array_projection_contains3(10, 20, 30, 99))
+    print(array_projection_shape_error(3, 2))
+    print(array_projection_shape_error(3, 3))
+    print(array_projection_length_error(-1))
+    print(array_projection_length_error(0))
+}

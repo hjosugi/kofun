@@ -55,6 +55,11 @@ ordered `IntVector` reference surface with explicit List conversion and typed
 checked indexing. Its gate executes real List-backed behavior through direct
 x86-64 plus a compact checked-index projection through C11 and x86-64.
 
+The platform-independent [`array/`](array/) checkpoint defines dense,
+fixed-shape `IntArray1` values with typed length, index, and shape failures.
+Its gate executes List-backed observations through direct x86-64 plus a finite
+rank-one semantic projection through C11 and x86-64.
+
 The platform-independent [`tuple/`](tuple/) checkpoint defines immutable,
 ordered `Tuple[Int, Int]` helpers for construction, fixed-position access,
 transforms, folds, and comparison. Its gate executes an honest two-scalar
