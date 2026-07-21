@@ -282,6 +282,24 @@ Entries are separated by a newline or a comma. The required entries are `pure`, 
 
 A `law` declaration is not a runtime statement. It is checked by a deterministic compile-time evaluator after type checking and before code generation. A violation becomes a compile error and is not emitted to the C backend.
 
+## Visibility
+
+planned; the normative contract is
+[`spec/modules/visibility.md`](../spec/modules/visibility.md):
+
+```kofun
+# Public API is intentional. Omission is private.
+pub fn create_user(name: Text) -> User
+internal fn generate_id() -> UserId
+private fn validate_name(name: Text)
+fn normalize_name(name: Text) -> Text
+```
+
+`internal` means the package/build unit defined by the package-root contract,
+not a directory or textual module. `pub(to ancestor.path)` is specified for
+restricted module access but is deferred beyond the first executable slice.
+There is no `protected` modifier, and capitalization does not affect access.
+
 ## Imports
 
 planned:

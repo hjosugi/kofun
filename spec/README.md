@@ -19,6 +19,8 @@ Python-free bootstrap implementation.
   the work still required for a lossless parser.
 - `modules/package-roots.md` defines deterministic manifest and anonymous
   single-file package roots and the versioned `PackageIdPayload` contract.
+- `modules/visibility.md` defines default-private declarations, package-scoped
+  `internal`, intentional `pub`, and restricted ancestor visibility.
 - `law-evidence.schema.json` defines the machine-readable
   `kofun.law-evidence/v1` artifact.
 

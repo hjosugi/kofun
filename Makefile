@@ -1,4 +1,4 @@
-.PHONY: help compiler test diagnostics fuzz check bootstrap stage2 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots lsp roadmap syntax repository-check verify clean
+.PHONY: help compiler test diagnostics fuzz check bootstrap stage2 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots visibility-spec lsp roadmap syntax repository-check verify clean
 
 KOFUN := ./bin/kofun
 
@@ -23,6 +23,7 @@ help:
 	  'make build-system     Verify direct and Frost-integrated build paths' \
 	  'make packages         Verify locked package fetch and offline use' \
 	  'make package-roots    Verify package-root specification examples' \
+	  'make visibility-spec  Verify declaration-visibility specification examples' \
 	  'make lsp              Verify the stdio language server and editor client' \
 	  'make roadmap          Verify the executable issues 31-34 roadmap' \
 	  'make syntax           Verify syntax contracts for issues 35-60' \
@@ -96,6 +97,9 @@ packages:
 package-roots:
 	sh spec/package-roots/check.sh
 
+visibility-spec:
+	sh spec/visibility/check.sh
+
 lsp:
 	sh tests/lsp/check.sh
 
@@ -115,7 +119,7 @@ repository-check:
 	@grep -q '"extensions": \[".kofun"\]' editor/vscode/package.json
 	@printf '%s\n' 'PASS: .kofun sources only; no Python implementation'
 
-verify: test diagnostics fuzz check bootstrap stage2 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots lsp roadmap syntax repository-check
+verify: test diagnostics fuzz check bootstrap stage2 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots visibility-spec lsp roadmap syntax repository-check
 	@sh -n bin/kofun bootstrap/stage1/check.sh bootstrap/stage2/check.sh \
 	  bootstrap/native/check.sh bootstrap/native/emit-fixture.sh \
 	  bootstrap/wasm/check.sh \
@@ -137,6 +141,7 @@ verify: test diagnostics fuzz check bootstrap stage2 native wasm tour c-abi rust
 	  tests/cli.sh tests/build_system.sh \
 	  package/manager.sh tests/package_manager.sh \
 	  spec/package-roots/check.sh \
+	  spec/visibility/check.sh \
 	  tests/lsp/check.sh tooling/lsp/kofun-lsp \
 	  editor/vscode/server/kofun-lsp \
 	  tests/conformance/run.sh tests/conformance/backends/c11-stage1.sh \
