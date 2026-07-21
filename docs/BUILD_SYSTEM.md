@@ -7,6 +7,14 @@ The normative root-selection, logical-path, and package-identity rules are in
 document describes executable build integration and must not redefine package
 identity from an absolute checkout path.
 
+The normative source-to-module mapping and `FileId`/`ModuleId` inputs are in
+[`spec/modules/source-file-mapping.md`](../spec/modules/source-file-mapping.md).
+For future manifest source packages, the manifest selects explicit logical
+files and each file's `module` header supplies its semantic module path;
+directory layout is never a fallback. The current Frost adapter still forwards
+independent target sources and does not yet implement that language-level
+multi-file graph.
+
 ## Single-file fast path
 
 ```sh
