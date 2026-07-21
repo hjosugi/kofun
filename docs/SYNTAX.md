@@ -307,6 +307,22 @@ not yet enforce access across files, modules, packages, imports, or public
 signatures. `pub`, `internal`, and `private` remain ordinary identifier tokens
 outside a supported declaration-prefix position.
 
+## Modules
+
+Manifest source files use an explicit module header under the normative
+[`spec/modules/source-file-mapping.md`](../spec/modules/source-file-mapping.md)
+contract:
+
+```kofun
+module user.service
+```
+
+The manifest chooses which files belong to the package; the header alone
+chooses the semantic module path. Paths and directories are not fallback
+module names. Anonymous single-file builds instead use one synthetic root and
+do not accept a module header in v1. This is an accepted design contract; the
+active compiler does not yet parse a general multi-file module graph.
+
 ## Imports
 
 planned:
