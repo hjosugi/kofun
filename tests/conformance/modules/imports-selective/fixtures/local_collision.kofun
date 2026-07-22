@@ -1,0 +1,6 @@
+module app.main
+from lib.math import identity
+
+fn identity(value: Int) -> Int {
+    return value
+}

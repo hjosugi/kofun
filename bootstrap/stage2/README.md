@@ -175,6 +175,19 @@ guarded so the existing standalone collector remains independently buildable.
 A later compiler-library extraction can replace that adapter without changing
 the HIR schema or identities.
 
+`bootstrap/stage2/imports_selective.c` extends the same resolver boundary with
+bounded `from a.b import Name, Other` declarations. Each requested spelling
+binds the accessible declaration in every matching semantic namespace, keeps
+the target `SymbolId`, and derives a distinct selective `ImportBindingId` using
+stable form tag 2. The resolver retains every keyword, path component, name,
+comma, declaration, call, and type-reference span in its deterministic test
+projection. Qualified and selective bindings may coexist; neither introduces
+unlisted, transitive, or re-exported names. Duplicate requests, missing or
+inaccessible names, local/import collisions, wrong-namespace uses, aliases,
+wildcards, malformed lists, and imports after declarations fail before the HIR
+or optional reference C output is committed. The two outputs are installed as
+one rollback-capable transaction. Run the gate with `make imports-selective`.
+
 Focused diagnostics are `E2S59` malformed/order/path, `E2S60` missing module,
 `E2S61` self import, `E2S62` duplicate import, `E2S63` qualifier collision,
 `E2S64` canonical cycle, `E2S65` qualified lookup/signature/arity/lowering,

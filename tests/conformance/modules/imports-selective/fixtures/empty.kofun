@@ -1,0 +1,6 @@
+module app.main
+from lib.math import
+
+fn main() -> Int {
+    return 0
+}

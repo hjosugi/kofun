@@ -1,0 +1,25 @@
+module lib.math
+
+private fn hidden() -> Int {
+    return 0
+}
+
+pub type OnlyType =
+    | Only
+    | Another
+
+pub type Value =
+    | Empty
+    | Filled
+
+pub fn Value() -> Int {
+    return 7
+}
+
+internal fn identity(value: Int) -> Int {
+    return value
+}
+
+pub fn answer() -> Int {
+    return 42
+}

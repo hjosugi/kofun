@@ -1,0 +1,7 @@
+module app.main
+import lib.math
+from lib.math import identity, answer
+
+fn main() -> Int {
+    return identity(math.answer())
+}

@@ -17,6 +17,11 @@
 #define IMPORT_GRAPH_WORK_LIMIT UINT64_C(20000000)
 #define CYCLE_DIAGNOSTIC_LIMIT (2u * 1024u * 1024u)
 
+enum {
+    IMPORT_FORM_QUALIFIED = 1u,
+    IMPORT_FORM_SELECTIVE = 2u
+};
+
 typedef struct {
     size_t start;
     size_t end;
@@ -36,6 +41,8 @@ typedef struct {
 typedef struct {
     size_t importer_index;
     size_t target_index;
+    uint8_t form_tag;
+    bool graph_duplicate;
     char *path;
     char qualifier[IDENTIFIER_LIMIT + 1u];
     ComponentSpan *components;
@@ -83,6 +90,8 @@ typedef struct {
     size_t use_count;
     size_t use_capacity;
     char *expanded_error;
+    void *extension_context;
+    size_t (*find_unqualified_target)(void *context, size_t caller_index, size_t expression_start);
 } ImportResolver;
 
 static ImportResolver *comparison_resolver;
@@ -425,6 +434,7 @@ static bool parse_import(ImportResolver *resolver, size_t module_index, size_t *
     binding = &resolver->imports[resolver->import_count];
     memset(binding, 0, sizeof(*binding));
     binding->importer_index = module_index;
+    binding->form_tag = IMPORT_FORM_QUALIFIED;
     binding->start = module->tokens[*cursor].start;
     if (!parse_source_path(resolver, module, &current, &binding->path,
             &binding->components, &binding->component_count, &end)) return false;
@@ -502,7 +512,7 @@ static void compute_import_binding_id(
     uint8_t digest[32]
 ) {
     static const char domain[] = "kofun.id.import-binding/v1";
-    static const uint8_t form_tag = UINT8_C(1);
+    uint8_t form_tag = (uint8_t)binding->form_tag;
     const Module *importer = &program->modules[binding->importer_index];
     const Module *target = &program->modules[binding->target_index];
     size_t domain_length = strlen(domain);
@@ -557,14 +567,18 @@ static bool resolve_imports(ImportResolver *resolver) {
         binding->target_index = target;
         for (prior = module->first_import; prior < index; prior += 1u) {
             ImportBinding *other = &resolver->imports[prior];
-            if (strcmp(other->path, binding->path) == 0) {
+            if (other->form_tag == IMPORT_FORM_QUALIFIED &&
+                binding->form_tag == IMPORT_FORM_QUALIFIED &&
+                strcmp(other->path, binding->path) == 0) {
                 set_error(program, "E2S62",
                     "duplicate import `%s` in `%s` at bytes %zu..%zu; first import is bytes %zu..%zu; remove one import",
                     binding->path, program->modules[binding->importer_index].logical_path,
                     binding->start, binding->end, other->start, other->end);
                 return false;
             }
-            if (strcmp(other->qualifier, binding->qualifier) == 0) {
+            if (other->form_tag == IMPORT_FORM_QUALIFIED &&
+                binding->form_tag == IMPORT_FORM_QUALIFIED &&
+                strcmp(other->qualifier, binding->qualifier) == 0) {
                 set_error(program, "E2S63",
                     "import qualifier `%s` collides between `%s` bytes %zu..%zu and `%s` bytes %zu..%zu in `%s`; aliases are not supported in this slice",
                     binding->qualifier, other->path, other->start, other->end,
@@ -621,6 +635,7 @@ static bool validate_import_cycles(ImportResolver *resolver) {
     size_t best_length = SIZE_MAX;
     uint64_t work = 0u;
     size_t edge_index;
+    size_t graph_edge_count = 0u;
     size_t start;
     if (resolver->import_count != 0u) {
         edges = malloc(resolver->import_count * sizeof(*edges));
@@ -630,20 +645,21 @@ static bool validate_import_cycles(ImportResolver *resolver) {
         }
     }
     for (edge_index = 0u; edge_index < resolver->import_count; edge_index += 1u) {
-        edges[edge_index] = (ImportEdge){
+        if (resolver->imports[edge_index].graph_duplicate) continue;
+        edges[graph_edge_count++] = (ImportEdge){
             resolver->imports[edge_index].importer_index,
             resolver->imports[edge_index].target_index,
             edge_index
         };
     }
     comparison_resolver = resolver;
-    if (resolver->import_count > 1u) {
-        qsort(edges, resolver->import_count, sizeof(*edges), compare_graph_edges);
+    if (graph_edge_count > 1u) {
+        qsort(edges, graph_edge_count, sizeof(*edges), compare_graph_edges);
     }
     edge_index = 0u;
     for (start = 0u; start < program->module_count; start += 1u) {
         offsets[start] = edge_index;
-        while (edge_index < resolver->import_count && edges[edge_index].from == start) edge_index += 1u;
+        while (edge_index < graph_edge_count && edges[edge_index].from == start) edge_index += 1u;
     }
     offsets[program->module_count] = edge_index;
     for (start = 0u; start < program->module_count; start += 1u) {
@@ -723,7 +739,8 @@ static bool validate_import_cycles(ImportResolver *resolver) {
             ImportBinding *binding = NULL;
             for (binding_index = 0u; binding_index < resolver->import_count; binding_index += 1u) {
                 if (resolver->imports[binding_index].importer_index == from &&
-                    resolver->imports[binding_index].target_index == to) {
+                    resolver->imports[binding_index].target_index == to &&
+                    !resolver->imports[binding_index].graph_duplicate) {
                     binding = &resolver->imports[binding_index];
                     break;
                 }
@@ -1410,6 +1427,10 @@ static bool emit_c_expression(
     if (token->kind == TOKEN_IDENTIFIER && *cursor + 1u < limit &&
         punctuation_equals(module, &module->tokens[*cursor + 1u], '(')) {
         size_t target = find_local_function(program, caller->module_index, module, token);
+        if (target == SIZE_MAX && resolver->find_unqualified_target != NULL) {
+            target = resolver->find_unqualified_target(
+                resolver->extension_context, caller_index, token->start);
+        }
         if (target == SIZE_MAX) {
             set_error(program, "E2S68", "local call lowering invariant failed");
             return false;
@@ -1573,6 +1594,7 @@ static void destroy_resolver(ImportResolver *resolver) {
     destroy_program(&resolver->program);
 }
 
+#ifndef KOFUN_IMPORTS_QUALIFIED_NO_MAIN
 int main(int argc, char **argv) {
     ImportResolver resolver;
     Program *program = &resolver.program;
@@ -1605,3 +1627,4 @@ done:
     destroy_resolver(&resolver);
     return status;
 }
+#endif

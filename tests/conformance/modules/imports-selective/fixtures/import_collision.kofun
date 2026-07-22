@@ -1,0 +1,7 @@
+module app.main
+from lib.math import identity
+from lib.math import identity
+
+fn main() -> Int {
+    return identity(42)
+}
