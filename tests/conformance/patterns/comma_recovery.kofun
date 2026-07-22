@@ -1,0 +1,13 @@
+fn recover(value: Tree) {
+    match value {
+        @ ,
+        Later => { print(1) },
+    }
+    match value {
+        Missing Present,
+        Final => { print(2) },
+    }
+}
+
+fn main() {
+}

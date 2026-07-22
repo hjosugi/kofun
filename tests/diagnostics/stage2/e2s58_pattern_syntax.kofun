@@ -1,0 +1,9 @@
+# diagnostic-mode: compile
+# expect-code: E2S58
+# expect-span: bytes 115..130
+fn main() {
+    match true {
+        value .. other => { print(1) },
+        _ => { print(2) },
+    }
+}

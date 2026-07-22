@@ -168,6 +168,868 @@ fn lex(source: Text) -> Text {
     return tape
 }
 
+# General Pattern syntax is preserved independently from executable match
+# semantics. Results use a one-line state header followed by post-order node
+# records so the bootstrap subset does not need tuples or mutable globals.
+
+fn pattern_depth_limit() -> Int {
+    return 32
+}
+
+fn pattern_node_limit() -> Int {
+    return 256
+}
+
+fn pattern_line_field(value: Text, line_start: Int, wanted: Int) -> Text {
+    let symbols = chars(value)
+    let mut cursor = line_start
+    let mut field = 0
+    let mut field_start = line_start
+    while cursor < len(symbols) && symbols[cursor] != "\n" {
+        if symbols[cursor] == "|" {
+            if field == wanted {
+                return text_slice(value, field_start, cursor)
+            }
+            field = field + 1
+            field_start = cursor + 1
+        }
+        cursor = cursor + 1
+    }
+    if field == wanted {
+        return text_slice(value, field_start, cursor)
+    }
+    return ""
+}
+
+fn pattern_result_field(result: Text, wanted: Int) -> Text {
+    return pattern_line_field(result, 0, wanted)
+}
+
+fn pattern_result_records(result: Text) -> Text {
+    let symbols = chars(result)
+    let mut cursor = 0
+    while cursor < len(symbols) && symbols[cursor] != "\n" {
+        cursor = cursor + 1
+    }
+    if cursor >= len(symbols) {
+        return ""
+    }
+    return text_slice(result, cursor + 1, len(result))
+}
+
+fn pattern_result(
+    end: Int,
+    root: Int,
+    next_id: Int,
+    nodes: Int,
+    errors: Int,
+    fatal: Bool,
+    kind: Text,
+    limit_id: Int,
+    records: Text
+) -> Text {
+    let mut fatal_text = "0"
+    if fatal {
+        fatal_text = "1"
+    }
+    return to_text(end) + "|" + to_text(root) + "|" +
+    to_text(next_id) + "|" + to_text(nodes) + "|" +
+    to_text(errors) + "|" + fatal_text + "|" + kind + "|" +
+    to_text(limit_id) + "\n" + records
+}
+
+fn pattern_result_int(result: Text, field: Int) -> Int {
+    return decimal_value(pattern_result_field(result, field))
+}
+
+fn pattern_error_result(
+    start: Int,
+    end: Int,
+    reason: Text,
+    next_id: Int,
+    nodes: Int,
+    errors: Int,
+    limit_id: Int,
+    fatal: Bool
+) -> Text {
+    if nodes >= pattern_node_limit() {
+        return pattern_result(
+            end, -1, next_id, nodes, errors, true, "ErrorPattern",
+            limit_id, ""
+        )
+    }
+    let id = next_id
+    let records = "node|" + to_text(id) + "|ErrorPattern|" +
+    to_text(start) + "|" + to_text(end) + "|" + reason + "\n" +
+    "pattern-diagnostic|E2S58|" + reason + "|" +
+    to_text(start) + "|" + to_text(end) + "\n"
+    return pattern_result(
+        end, id, next_id + 1, nodes + 1, errors + 1, fatal,
+        "ErrorPattern", limit_id, records
+    )
+}
+
+fn pattern_limit_result(
+    source: Text,
+    start: Int,
+    next_id: Int,
+    nodes: Int,
+    errors: Int,
+    limit_id: Int
+) -> Text {
+    let end = token_end(source, start)
+    if limit_id >= 0 {
+        return pattern_result(
+            end, limit_id, next_id, nodes, errors, true,
+            "ErrorPattern", limit_id, ""
+        )
+    }
+    let id = next_id
+    let records = "node|" + to_text(id) + "|ErrorPattern|" +
+    to_text(start) + "|" + to_text(end) + "|node-limit\n" +
+    "pattern-diagnostic|E2S58|node-limit|" + to_text(start) +
+    "|" + to_text(end) + "\n"
+    return pattern_result(
+        end, id, next_id + 1, nodes, errors + 1, true,
+        "ErrorPattern", id, records
+    )
+}
+
+fn pattern_stop_token(source: Text, start: Int) -> Bool {
+    let token = token_text(source, start)
+    return start >= len(source) || token == "=>" || token == "," ||
+    token == ")" || token == "}" || token == "if"
+}
+
+fn pattern_recovery_end(source: Text, start: Int) -> Int {
+    let mut cursor = skip_trivia(source, start)
+    let mut parens = 0
+    let mut brackets = 0
+    while cursor < len(source) {
+        let token = token_text(source, cursor)
+        if token == "=>" {
+            return cursor
+        }
+        if token == "{" && parens == 0 && brackets == 0 {
+            return cursor
+        }
+        if token == "}" && parens == 0 && brackets == 0 {
+            return cursor
+        }
+        if token == "," && parens == 0 && brackets == 0 {
+            return cursor
+        }
+        if token == "(" {
+            parens = parens + 1
+        } else if token == ")" {
+            if parens == 0 {
+                return cursor
+            }
+            parens = parens - 1
+        } else if token == "[" {
+            brackets = brackets + 1
+        } else if token == "]" {
+            if brackets == 0 {
+                return cursor
+            }
+            brackets = brackets - 1
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return cursor
+}
+
+fn parse_pattern_or_result(
+    source: Text,
+    start: Int,
+    depth: Int,
+    next_id: Int,
+    nodes: Int,
+    errors: Int,
+    limit_id: Int
+) -> Text {
+    let cursor = skip_trivia(source, start)
+    let token = token_text(source, cursor)
+    if token == "|" || token == "||" {
+        let mut reason = "leading-or"
+        if token == "||" {
+            reason = "doubled-or"
+        }
+        return pattern_error_result(
+            cursor, token_end(source, cursor), reason, next_id, nodes,
+            errors, limit_id, false
+        )
+    }
+
+    let first = parse_pattern_atomic_result(
+        source, cursor, depth, next_id, nodes, errors, limit_id
+    )
+    if pattern_result_field(first, 5) == "1" {
+        return first
+    }
+    let mut separator = skip_trivia(
+        source,
+        pattern_result_int(first, 0)
+    )
+    if token_text(source, separator) == "||" {
+        return pattern_error_result(
+            cursor, token_end(source, separator), "doubled-or",
+            next_id, nodes, errors, limit_id, false
+        )
+    }
+    if token_text(source, separator) != "|" {
+        if token_text(source, separator) == ".." {
+            let recovered = pattern_recovery_end(
+                source,
+                token_end(source, separator)
+            )
+            return pattern_error_result(
+                cursor, recovered, "unsupported-range-pattern",
+                next_id, nodes, errors, limit_id, false
+            )
+        }
+        return first
+    }
+
+    let mut records = pattern_result_records(first)
+    let mut children = pattern_result_field(first, 1)
+    let mut current_next = pattern_result_int(first, 2)
+    let mut current_nodes = pattern_result_int(first, 3)
+    let mut current_errors = pattern_result_int(first, 4)
+    let mut current_limit = pattern_result_int(first, 7)
+    let mut alternatives = 1
+    let mut end = pattern_result_int(first, 0)
+    while separator < len(source) && token_text(source, separator) == "|" {
+        records = records + "separator|OrPattern|" + to_text(cursor) +
+        "|" + to_text(alternatives - 1) + "|" + to_text(separator) +
+        "|" + to_text(token_end(source, separator)) + "\n"
+        let next = skip_trivia(source, token_end(source, separator))
+        if token_text(source, next) == "|" ||
+           token_text(source, next) == "||" {
+            return pattern_error_result(
+                cursor, token_end(source, next), "doubled-or",
+                next_id, nodes, errors, limit_id, false
+            )
+        }
+        if pattern_stop_token(source, next) {
+            return pattern_error_result(
+                cursor, token_end(source, separator), "trailing-or",
+                next_id, nodes, errors, limit_id, false
+            )
+        }
+        let alternative = parse_pattern_atomic_result(
+            source, next, depth, current_next, current_nodes,
+            current_errors, current_limit
+        )
+        if pattern_result_field(alternative, 5) == "1" {
+            return alternative
+        }
+        records = records + pattern_result_records(alternative)
+        children = children + "," + pattern_result_field(alternative, 1)
+        current_next = pattern_result_int(alternative, 2)
+        current_nodes = pattern_result_int(alternative, 3)
+        current_errors = pattern_result_int(alternative, 4)
+        current_limit = pattern_result_int(alternative, 7)
+        alternatives = alternatives + 1
+        end = pattern_result_int(alternative, 0)
+        separator = skip_trivia(source, end)
+    }
+    if token_text(source, separator) == "||" {
+        return pattern_error_result(
+            cursor, token_end(source, separator), "doubled-or",
+            next_id, nodes, errors, limit_id, false
+        )
+    }
+    if token_text(source, separator) == ".." {
+        let recovered = pattern_recovery_end(
+            source,
+            token_end(source, separator)
+        )
+        return pattern_error_result(
+            cursor, recovered, "unsupported-range-pattern",
+            next_id, nodes, errors, limit_id, false
+        )
+    }
+    if current_nodes >= pattern_node_limit() {
+        return pattern_limit_result(
+            source, cursor, current_next, current_nodes,
+            current_errors, current_limit
+        )
+    }
+    let id = current_next
+    records = records + "node|" + to_text(id) + "|OrPattern|" +
+    to_text(cursor) + "|" + to_text(end) + "|" +
+    to_text(alternatives) + "|" + children + "\n"
+    return pattern_result(
+        end, id, current_next + 1, current_nodes + 1,
+        current_errors, false, "OrPattern", current_limit, records
+    )
+}
+
+fn parse_pattern_atomic_result(
+    source: Text,
+    start: Int,
+    depth: Int,
+    next_id: Int,
+    nodes: Int,
+    errors: Int,
+    limit_id: Int
+) -> Text {
+    let cursor = skip_trivia(source, start)
+    if nodes >= pattern_node_limit() {
+        return pattern_limit_result(
+            source, cursor, next_id, nodes, errors, limit_id
+        )
+    }
+    if depth > pattern_depth_limit() {
+        return pattern_error_result(
+            cursor, pattern_recovery_end(source, cursor), "depth-limit",
+            next_id, nodes, errors, limit_id, false
+        )
+    }
+    let token = token_text(source, cursor)
+    if cursor >= len(source) || pattern_stop_token(source, cursor) ||
+       token == "|" {
+        return pattern_error_result(
+            cursor, token_end(source, cursor), "missing-pattern",
+            next_id, nodes, errors, limit_id, false
+        )
+    }
+    let token_finish = token_end(source, cursor)
+    if token == "{" {
+        let close = balanced_end(source, cursor, "{", "}")
+        let mut end = close
+        if close < 0 {
+            end = pattern_recovery_end(source, cursor)
+        }
+        return pattern_error_result(
+            cursor, end, "unsupported-record-pattern", next_id, nodes,
+            errors, limit_id, false
+        )
+    }
+    if token == "[" || token == ".." {
+        let mut reason = "unsupported-pattern-token"
+        if token == ".." {
+            reason = "unsupported-rest-pattern"
+        }
+        return pattern_error_result(
+            cursor, pattern_recovery_end(source, token_finish), reason,
+            next_id, nodes, errors, limit_id, false
+        )
+    }
+
+    if token == "(" {
+        let inner = parse_pattern_or_result(
+            source, skip_trivia(source, token_finish), depth + 1,
+            next_id, nodes, errors, limit_id
+        )
+        if pattern_result_field(inner, 5) == "1" {
+            return inner
+        }
+        let close = skip_trivia(source, pattern_result_int(inner, 0))
+        if token_text(source, close) != ")" {
+            return pattern_error_result(
+                cursor, pattern_recovery_end(source, close),
+                "missing-closing-parenthesis", next_id, nodes,
+                errors, limit_id, false
+            )
+        }
+        let current_nodes = pattern_result_int(inner, 3)
+        let current_next = pattern_result_int(inner, 2)
+        let current_errors = pattern_result_int(inner, 4)
+        let current_limit = pattern_result_int(inner, 7)
+        if current_nodes >= pattern_node_limit() {
+            return pattern_limit_result(
+                source, cursor, current_next, current_nodes,
+                current_errors, current_limit
+            )
+        }
+        let end = token_end(source, close)
+        let id = current_next
+        let records = pattern_result_records(inner) + "node|" +
+        to_text(id) + "|ParenthesizedPattern|" + to_text(cursor) +
+        "|" + to_text(end) + "|" + to_text(cursor) + "|" +
+        to_text(token_finish) + "|" + to_text(close) + "|" +
+        to_text(end) + "|" + pattern_result_field(inner, 1) + "\n"
+        return pattern_result(
+            end, id, current_next + 1, current_nodes + 1,
+            current_errors, false, "ParenthesizedPattern",
+            current_limit, records
+        )
+    }
+
+    if token == "_" {
+        let records = "node|" + to_text(next_id) +
+        "|WildcardPattern|" + to_text(cursor) + "|" +
+        to_text(token_finish) + "\n"
+        return pattern_result(
+            token_finish, next_id, next_id + 1, nodes + 1, errors,
+            false, "WildcardPattern", limit_id, records
+        )
+    }
+    if token == "true" || token == "false" || token == "null" ||
+       token_kind(source, cursor) == "integer" {
+        let mut literal_kind = "Bool"
+        if token == "null" {
+            literal_kind = "Null"
+        } else if token_kind(source, cursor) == "integer" {
+            literal_kind = "Int"
+        }
+        let records = "node|" + to_text(next_id) +
+        "|LiteralPattern|" + to_text(cursor) + "|" +
+        to_text(token_finish) + "|" + literal_kind + "|" + token + "|" +
+        to_text(cursor) + "|" + to_text(token_finish) + "\n"
+        return pattern_result(
+            token_finish, next_id, next_id + 1, nodes + 1, errors,
+            false, "LiteralPattern", limit_id, records
+        )
+    }
+    if token_kind(source, cursor) != "identifier" {
+        return pattern_error_result(
+            cursor, pattern_recovery_end(source, token_finish),
+            "unsupported-pattern-token", next_id, nodes, errors,
+            limit_id, false
+        )
+    }
+
+    let after_name = skip_trivia(source, token_finish)
+    if token_text(source, after_name) == "{" {
+        let close = balanced_end(source, after_name, "{", "}")
+        let mut end = close
+        if close < 0 {
+            end = pattern_recovery_end(source, after_name)
+        }
+        return pattern_error_result(
+            cursor, end, "unsupported-record-pattern", next_id, nodes,
+            errors, limit_id, false
+        )
+    }
+    if token_text(source, after_name) != "(" {
+        let records = "node|" + to_text(next_id) + "|NamePattern|" +
+        to_text(cursor) + "|" + to_text(token_finish) + "|" + token +
+        "|" + to_text(cursor) + "|" + to_text(token_finish) + "\n"
+        return pattern_result(
+            token_finish, next_id, next_id + 1, nodes + 1, errors,
+            false, "NamePattern", limit_id, records
+        )
+    }
+
+    let open = after_name
+    let mut payload = skip_trivia(source, token_end(source, open))
+    if token_text(source, payload) == ")" {
+        return pattern_error_result(
+            cursor, token_end(source, payload), "empty-constructor-payload",
+            next_id, nodes, errors, limit_id, false
+        )
+    }
+    let mut records = ""
+    let mut children = ""
+    let mut payload_count = 0
+    let mut close = -1
+    let mut current_next = next_id
+    let mut current_nodes = nodes
+    let mut current_errors = errors
+    let mut current_limit = limit_id
+    while payload < len(source) && close < 0 {
+        let child = parse_pattern_or_result(
+            source, payload, depth + 1, current_next, current_nodes,
+            current_errors, current_limit
+        )
+        if pattern_result_field(child, 5) == "1" {
+            return child
+        }
+        records = records + pattern_result_records(child)
+        if payload_count > 0 {
+            children = children + ","
+        }
+        children = children + pattern_result_field(child, 1)
+        current_next = pattern_result_int(child, 2)
+        current_nodes = pattern_result_int(child, 3)
+        current_errors = pattern_result_int(child, 4)
+        current_limit = pattern_result_int(child, 7)
+        payload_count = payload_count + 1
+        let separator = skip_trivia(
+            source,
+            pattern_result_int(child, 0)
+        )
+        if token_text(source, separator) == "," {
+            records = records + "delimiter|ConstructorPattern|" +
+            to_text(cursor) + "|payload-comma|" +
+            to_text(payload_count - 1) + "|" + to_text(separator) +
+            "|" + to_text(token_end(source, separator)) + "\n"
+            payload = skip_trivia(source, token_end(source, separator))
+            if token_text(source, payload) == ")" {
+                close = payload
+            }
+        } else if token_text(source, separator) == ")" {
+            close = separator
+        } else {
+            let mut recovered = pattern_recovery_end(source, separator)
+            if token_text(source, recovered) == ")" {
+                recovered = token_end(source, recovered)
+            }
+            let mut reason = "missing-comma"
+            if pattern_stop_token(source, separator) {
+                reason = "missing-closing-parenthesis"
+            }
+            return pattern_error_result(
+                cursor, recovered, reason, next_id, nodes,
+                errors, limit_id, false
+            )
+        }
+    }
+    if close < 0 {
+        return pattern_error_result(
+            cursor, pattern_recovery_end(source, payload),
+            "missing-closing-parenthesis", next_id, nodes, errors,
+            limit_id, false
+        )
+    }
+    if current_nodes >= pattern_node_limit() {
+        return pattern_limit_result(
+            source, cursor, current_next, current_nodes,
+            current_errors, current_limit
+        )
+    }
+    let end = token_end(source, close)
+    let id = current_next
+    records = records + "node|" + to_text(id) +
+    "|ConstructorPattern|" + to_text(cursor) + "|" + to_text(end) +
+    "|" + token + "|" + to_text(cursor) + "|" +
+    to_text(token_finish) + "|" + to_text(open) + "|" +
+    to_text(token_end(source, open)) + "|" + to_text(close) + "|" +
+    to_text(end) + "|" + to_text(payload_count) + "|" + children + "\n"
+    return pattern_result(
+        end, id, current_next + 1, current_nodes + 1,
+        current_errors, false, "ConstructorPattern", current_limit,
+        records
+    )
+}
+
+fn pattern_match_open(source: Text, match_start: Int) -> Int {
+    let mut cursor = skip_trivia(source, token_end(source, match_start))
+    let mut parens = 0
+    let mut brackets = 0
+    while cursor < len(source) {
+        let token = token_text(source, cursor)
+        if token == "(" {
+            parens = parens + 1
+        } else if token == ")" {
+            if parens > 0 {
+                parens = parens - 1
+            }
+        } else if token == "[" {
+            brackets = brackets + 1
+        } else if token == "]" {
+            if brackets > 0 {
+                brackets = brackets - 1
+            }
+        } else if token == "{" && parens == 0 && brackets == 0 {
+            return cursor
+        } else if token == "}" && parens == 0 && brackets == 0 {
+            return -1
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return -1
+}
+
+fn pattern_arm_arrow(source: Text, start: Int, match_close: Int) -> Int {
+    let mut cursor = skip_trivia(source, start)
+    let mut parens = 0
+    let mut brackets = 0
+    while cursor < match_close {
+        let token = token_text(source, cursor)
+        if token == "=>" {
+            return cursor
+        }
+        if token == "," && parens == 0 && brackets == 0 {
+            return -1
+        }
+        if token == "(" {
+            parens = parens + 1
+        } else if token == ")" {
+            if parens > 0 {
+                parens = parens - 1
+            }
+        } else if token == "[" {
+            brackets = brackets + 1
+        } else if token == "]" {
+            if brackets > 0 {
+                brackets = brackets - 1
+            }
+        } else if token == "{" && parens == 0 && brackets == 0 {
+            return -1
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return -1
+}
+
+fn parse_pattern_trees(source: Text) -> Text {
+    let mut tree = "kofun-pattern-tree/v1\n" +
+    "limits|depth|32|nodes-per-compilation|256\n"
+    let mut cursor = skip_trivia(source, 0)
+    let mut match_id = 0
+    let mut next_id = 0
+    let mut nodes = 0
+    let mut errors = 0
+    let mut limit_id = -1
+    let mut budget_exhausted = false
+    while cursor < len(source) && !budget_exhausted {
+        if token_text(source, cursor) == "match" {
+            let open = pattern_match_open(source, cursor)
+            let mut match_end = -1
+            if open >= 0 {
+                match_end = balanced_end(source, open, "{", "}")
+            }
+            if open >= 0 && match_end >= 0 {
+                let close = match_end - 1
+                let mut arms = ""
+                let mut arm_cursor = skip_trivia(
+                    source,
+                    token_end(source, open)
+                )
+                let mut arm_id = 0
+                while arm_cursor < close &&
+                      token_text(source, arm_cursor) != "}" {
+                    let checkpoint_next = next_id
+                    let checkpoint_nodes = nodes
+                    let checkpoint_errors = errors
+                    let checkpoint_limit = limit_id
+                    let mut pattern = parse_pattern_or_result(
+                        source, arm_cursor, 1, next_id, nodes,
+                        errors, limit_id
+                    )
+                    let after_pattern = skip_trivia(
+                        source,
+                        pattern_result_int(pattern, 0)
+                    )
+                    if pattern_result_field(pattern, 5) != "1" &&
+                       pattern_result_field(pattern, 6) != "ErrorPattern" &&
+                       token_text(source, after_pattern) != "=>" &&
+                       token_text(source, after_pattern) != "if" {
+                        let recovered = pattern_recovery_end(
+                            source,
+                            after_pattern
+                        )
+                        pattern = pattern_error_result(
+                            arm_cursor,
+                            recovered,
+                            "unexpected-token-after-pattern",
+                            checkpoint_next,
+                            checkpoint_nodes,
+                            checkpoint_errors,
+                            checkpoint_limit,
+                            false
+                        )
+                    }
+                    next_id = pattern_result_int(pattern, 2)
+                    nodes = pattern_result_int(pattern, 3)
+                    errors = pattern_result_int(pattern, 4)
+                    limit_id = pattern_result_int(pattern, 7)
+                    arms = arms + pattern_result_records(pattern)
+                    let arrow = pattern_arm_arrow(
+                        source,
+                        pattern_result_int(pattern, 0),
+                        close
+                    )
+                    let mut arrow_end = -1
+                    if arrow >= 0 {
+                        arrow_end = token_end(source, arrow)
+                    }
+                    arms = arms + "arm|" + to_text(match_id) + "|" +
+                    to_text(arm_id) + "|" + pattern_result_field(pattern, 1) +
+                    "|" + to_text(arm_cursor) + "|" +
+                    pattern_result_field(pattern, 0) + "|" +
+                    to_text(arrow) + "|" + to_text(arrow_end) + "\n"
+                    arm_id = arm_id + 1
+                    if pattern_result_field(pattern, 5) == "1" &&
+                       pattern_result_int(pattern, 7) >= 0 {
+                        budget_exhausted = true
+                        arm_cursor = close
+                    } else if arrow < 0 {
+                        let recovery = skip_trivia(
+                            source,
+                            pattern_result_int(pattern, 0)
+                        )
+                        if recovery < close &&
+                           token_text(source, recovery) == "," {
+                            arm_cursor = skip_trivia(
+                                source,
+                                token_end(source, recovery)
+                            )
+                        } else {
+                            arm_cursor = close
+                        }
+                    } else {
+                        let body = skip_trivia(
+                            source,
+                            token_end(source, arrow)
+                        )
+                        if body >= close || token_text(source, body) != "{" {
+                            arm_cursor = pattern_recovery_end(source, body)
+                        } else {
+                            let body_end = balanced_end(
+                                source,
+                                body,
+                                "{",
+                                "}"
+                            )
+                            if body_end < 0 {
+                                arm_cursor = close
+                            } else {
+                                arm_cursor = skip_trivia(source, body_end)
+                            }
+                        }
+                        if arm_cursor < close &&
+                           token_text(source, arm_cursor) == "," {
+                            arm_cursor = skip_trivia(
+                                source,
+                                token_end(source, arm_cursor)
+                            )
+                        }
+                    }
+                }
+                tree = tree + "match|" + to_text(match_id) + "|" +
+                to_text(cursor) + "|" + to_text(open) + "|" +
+                to_text(token_end(source, open)) + "|" + to_text(close) +
+                "|" + to_text(token_end(source, close)) + "|" +
+                to_text(arm_id) + "\n" + arms
+                match_id = match_id + 1
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return tree + "match-count|" + to_text(match_id) + "\n"
+}
+
+fn pattern_find_from(value: Text, wanted: Text, start: Int) -> Int {
+    if len(wanted) == 0 {
+        return start
+    }
+    let mut cursor = start
+    while cursor + len(wanted) <= len(value) {
+        if text_slice(value, cursor, cursor + len(wanted)) == wanted {
+            return cursor
+        }
+        cursor = cursor + 1
+    }
+    return -1
+}
+
+fn pattern_first_error(tree: Text) -> Text {
+    let mut search = 0
+    let mut best_record = -1
+    let mut best_start = -1
+    while search < len(tree) {
+        let record = pattern_find_from(
+            tree,
+            "pattern-diagnostic|",
+            search
+        )
+        if record < 0 {
+            search = len(tree)
+        } else {
+            let start = decimal_value(pattern_line_field(tree, record, 3))
+            if best_start < 0 || start < best_start {
+                best_record = record
+                best_start = start
+            }
+            search = record + 1
+        }
+    }
+    if best_record < 0 {
+        return ""
+    }
+    return "error[E2S58]: invalid pattern (" +
+    pattern_line_field(tree, best_record, 2) +
+    ") at bytes " + pattern_line_field(tree, best_record, 3) + ".." +
+    pattern_line_field(tree, best_record, 4)
+}
+
+fn pattern_summary(source: Text, start: Int) -> Text {
+    let parsed = parse_pattern_or_result(source, start, 1, 0, 0, 0, -1)
+    return pattern_result_field(parsed, 6) + "|" +
+    pattern_result_field(parsed, 0)
+}
+
+fn pattern_summary_kind(summary: Text) -> Text {
+    return pattern_line_field(summary, 0, 0)
+}
+
+fn pattern_summary_end(summary: Text) -> Int {
+    return decimal_value(pattern_line_field(summary, 0, 1))
+}
+
+fn validate_executable_patterns(source: Text) -> Text {
+    let mut cursor = skip_trivia(source, 0)
+    while cursor < len(source) {
+        if token_text(source, cursor) == "match" {
+            let open = pattern_match_open(source, cursor)
+            let mut match_end = -1
+            if open >= 0 {
+                match_end = balanced_end(source, open, "{", "}")
+            }
+            if open >= 0 && match_end >= 0 {
+                let close = match_end - 1
+                let mut arm = skip_trivia(source, token_end(source, open))
+                while arm < close && token_text(source, arm) != "}" {
+                    let summary = pattern_summary(source, arm)
+                    let kind = pattern_summary_kind(summary)
+                    let executable = kind == "WildcardPattern" ||
+                    kind == "NamePattern" ||
+                    (kind == "LiteralPattern" &&
+                     (token_text(source, arm) == "true" ||
+                      token_text(source, arm) == "false"))
+                    if !executable {
+                        return "error[E2S24]: general pattern syntax is parsed " +
+                        "but not executable in Stage 2 Core at byte " +
+                        to_text(arm)
+                    }
+                    let arrow = pattern_arm_arrow(
+                        source,
+                        pattern_summary_end(summary),
+                        close
+                    )
+                    if arrow < 0 {
+                        arm = close
+                    } else {
+                        let body = skip_trivia(
+                            source,
+                            token_end(source, arrow)
+                        )
+                        if body >= close || token_text(source, body) != "{" {
+                            arm = close
+                        } else {
+                            let body_end = balanced_end(
+                                source,
+                                body,
+                                "{",
+                                "}"
+                            )
+                            if body_end < 0 {
+                                arm = close
+                            } else {
+                                arm = skip_trivia(source, body_end)
+                                if arm < close &&
+                                   token_text(source, arm) == "," {
+                                    arm = skip_trivia(
+                                        source,
+                                        token_end(source, arm)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return "ok"
+}
+
 fn balanced_end(source: Text, start: Int, open: Text, close: Text) -> Int {
     let mut cursor = start
     let mut depth = 0
@@ -807,7 +1669,13 @@ fn parse_program(source: Text) -> Text {
     if functions == 0 {
         return "error[E2S04]: compilation unit has no functions"
     }
-    return ir + "function-count|" + to_text(functions) + "\n"
+    ir = ir + "function-count|" + to_text(functions) + "\n"
+    let patterns = parse_pattern_trees(source)
+    let pattern_error = pattern_first_error(patterns)
+    if len(pattern_error) > 0 {
+        return pattern_error
+    }
+    return ir + patterns
 }
 
 fn copy_type(type_name: Text) -> Bool {
@@ -1522,30 +2390,37 @@ fn validate_value_match(source: Text, start: Int) -> Text {
     let mut seen_catchall = false
     while arm_cursor < len(source) && token_text(source, arm_cursor) != "}" {
         let pattern_start = arm_cursor
+        let pattern_info = pattern_summary(source, pattern_start)
+        let pattern_kind = pattern_summary_kind(pattern_info)
         let pattern = token_text(source, pattern_start)
+        let pattern_true = pattern_kind == "LiteralPattern" &&
+        pattern == "true"
+        let pattern_false = pattern_kind == "LiteralPattern" &&
+        pattern == "false"
+        let pattern_catchall = pattern_kind == "WildcardPattern"
         if seen_catchall {
             return "error[E2S26]: pattern after catch-all is unreachable at byte " +
             to_text(pattern_start)
         }
-        if pattern == "true" && covered_true {
+        if pattern_true && covered_true {
             return "error[E2S26]: duplicate `true` pattern is unreachable at byte " +
             to_text(pattern_start)
         }
-        if pattern == "false" && covered_false {
+        if pattern_false && covered_false {
             return "error[E2S26]: duplicate `false` pattern is unreachable at byte " +
             to_text(pattern_start)
         }
-        if pattern == "_" && covered_true && covered_false {
+        if pattern_catchall && covered_true && covered_false {
             return "error[E2S26]: catch-all pattern is unreachable at byte " +
             to_text(pattern_start)
         }
-        if pattern != "true" && pattern != "false" && pattern != "_" {
+        if !pattern_true && !pattern_false && !pattern_catchall {
             return "error[E2S24]: bounded Bool pattern must be `true`, `false`, or `_` at byte " +
             to_text(pattern_start)
         }
         let after_pattern = skip_trivia(
             source,
-            token_end(source, pattern_start)
+            pattern_summary_end(pattern_info)
         )
         let mut guarded = false
         let mut arrow = after_pattern
@@ -1599,9 +2474,9 @@ fn validate_value_match(source: Text, start: Int) -> Text {
             to_text(arm_close)
         }
         if !guarded {
-            if pattern == "true" {
+            if pattern_true {
                 covered_true = true
-            } else if pattern == "false" {
+            } else if pattern_false {
                 covered_false = true
             } else {
                 covered_true = true
@@ -1730,8 +2605,17 @@ fn emit_value_match_into(
     let mut arm_cursor = skip_trivia(source, token_end(source, arms_open))
     let mut dispatch = ""
     while arm_cursor < end && token_text(source, arm_cursor) != "}" {
+        let pattern_info = pattern_summary(source, arm_cursor)
+        let pattern_kind = pattern_summary_kind(pattern_info)
         let pattern = token_text(source, arm_cursor)
-        let mut arrow = skip_trivia(source, token_end(source, arm_cursor))
+        let pattern_true = pattern_kind == "LiteralPattern" &&
+        pattern == "true"
+        let pattern_false = pattern_kind == "LiteralPattern" &&
+        pattern == "false"
+        let mut arrow = skip_trivia(
+            source,
+            pattern_summary_end(pattern_info)
+        )
         let mut guarded = false
         let mut guard_start = -1
         let mut guard_end = -1
@@ -1746,9 +2630,9 @@ fn emit_value_match_into(
         let arm_end = value_end(source, arm_start)
         let arm_close = skip_trivia(source, arm_end)
         let mut pattern_condition = "true"
-        if pattern == "true" {
+        if pattern_true {
             pattern_condition = "kofun_match_value"
-        } else if pattern == "false" {
+        } else if pattern_false {
             pattern_condition = "!kofun_match_value"
         }
         let arm_body = emit_value_into(
@@ -2729,8 +3613,10 @@ fn lower_enum_match(
     }
     while arm_cursor < len(source) && token_text(source, arm_cursor) != "}" {
         let pattern_start = arm_cursor
+        let pattern_info = pattern_summary(source, pattern_start)
+        let pattern_kind = pattern_summary_kind(pattern_info)
         let pattern = token_text(source, pattern_start)
-        let catchall = pattern == "_"
+        let catchall = pattern_kind == "WildcardPattern"
         if seen_catchall {
             return "error[E2S26]: pattern after catch-all is unreachable at byte " +
             to_text(pattern_start)
@@ -2742,7 +3628,7 @@ fn lower_enum_match(
                 to_text(pattern_start)
             }
         } else {
-            if token_kind(source, pattern_start) != "identifier" {
+            if pattern_kind != "NamePattern" {
                 return "error[E2S32]: enum pattern must name a constructor or `_` at byte " +
                 to_text(pattern_start)
             }
@@ -2760,7 +3646,7 @@ fn lower_enum_match(
         }
         let after_pattern = skip_trivia(
             source,
-            token_end(source, pattern_start)
+            pattern_summary_end(pattern_info)
         )
         let mut guarded = false
         let mut guard_start = -1
@@ -3166,31 +4052,37 @@ fn lower_body(
             while arm_cursor < len(source) &&
                   token_text(source, arm_cursor) != "}" {
                 let pattern_start = arm_cursor
+                let pattern_info = pattern_summary(source, pattern_start)
+                let pattern_kind = pattern_summary_kind(pattern_info)
                 let pattern = token_text(source, pattern_start)
+                let pattern_true = pattern_kind == "LiteralPattern" &&
+                pattern == "true"
+                let pattern_false = pattern_kind == "LiteralPattern" &&
+                pattern == "false"
+                let pattern_catchall = pattern_kind == "WildcardPattern"
                 if seen_catchall {
                     return "error[E2S26]: pattern after catch-all is unreachable at byte " +
                     to_text(pattern_start)
                 }
-                if pattern == "true" && covered_true {
+                if pattern_true && covered_true {
                     return "error[E2S26]: duplicate `true` pattern is unreachable at byte " +
                     to_text(pattern_start)
                 }
-                if pattern == "false" && covered_false {
+                if pattern_false && covered_false {
                     return "error[E2S26]: duplicate `false` pattern is unreachable at byte " +
                     to_text(pattern_start)
                 }
-                if pattern == "_" && covered_true && covered_false {
+                if pattern_catchall && covered_true && covered_false {
                     return "error[E2S26]: catch-all pattern is unreachable at byte " +
                     to_text(pattern_start)
                 }
-                if pattern != "true" && pattern != "false" &&
-                   pattern != "_" {
+                if !pattern_true && !pattern_false && !pattern_catchall {
                     return "error[E2S24]: bounded Bool pattern must be `true`, `false`, or `_` at byte " +
                     to_text(pattern_start)
                 }
                 let after_pattern = skip_trivia(
                     source,
-                    token_end(source, pattern_start)
+                    pattern_summary_end(pattern_info)
                 )
                 let mut guarded = false
                 let mut guard_start = -1
@@ -3242,9 +4134,9 @@ fn lower_body(
                 }
 
                 let mut pattern_condition = "true"
-                if pattern == "true" {
+                if pattern_true {
                     pattern_condition = "kofun_match_value"
-                } else if pattern == "false" {
+                } else if pattern_false {
                     pattern_condition = "!kofun_match_value"
                 }
                 if guarded {
@@ -3272,9 +4164,9 @@ fn lower_body(
                     arm_body +
                     "            kofun_match_selected = true;\n" +
                     "        }\n"
-                    if pattern == "true" {
+                    if pattern_true {
                         covered_true = true
-                    } else if pattern == "false" {
+                    } else if pattern_false {
                         covered_false = true
                     } else {
                         covered_true = true
@@ -3609,6 +4501,11 @@ fn compile_file(
     write_text(tokens_path, tokens)
     write_text(ir_path, ir)
     if ends_with(output_path, ".c") {
+        let pattern_check = validate_executable_patterns(source)
+        if starts_with(pattern_check, "error[") {
+            print(pattern_check)
+            return false
+        }
         let hir = build_scope_hir(source)
         if starts_with(hir, "error[") {
             print(hir)
@@ -3625,6 +4522,23 @@ fn compile_file(
         write_text(output_path, emit_kofun(source, ir))
     }
     print(output_path)
+    return true
+}
+
+fn parse_patterns_file(input_path: Text, output_path: Text) -> Bool {
+    let source = read_text(input_path)
+    let tokens = lex(source)
+    if starts_with(tokens, "error[") {
+        print(tokens)
+        return false
+    }
+    let tree = parse_pattern_trees(source)
+    write_text(output_path, tree)
+    let pattern_error = pattern_first_error(tree)
+    if len(pattern_error) > 0 {
+        print(pattern_error)
+        return false
+    }
     return true
 }
 
@@ -3656,10 +4570,17 @@ fn main() -> Int {
         }
         return 0
     }
+    if len(arguments) == 3 && arguments[0] == "--parse-patterns" {
+        if !parse_patterns_file(arguments[1], arguments[2]) {
+            return 1
+        }
+        return 0
+    }
     if len(arguments) != 4 {
         print(
             "usage: kofun-stage2 INPUT.kofun OUTPUT.kofun OUTPUT.ir OUTPUT.tokens\n" +
-            "       kofun-stage2 --check-ownership INPUT.kofun"
+            "       kofun-stage2 --check-ownership INPUT.kofun\n" +
+            "       kofun-stage2 --parse-patterns INPUT.kofun OUTPUT.patterns"
         )
         return 2
     }

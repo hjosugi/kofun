@@ -1,0 +1,9 @@
+fn recover(value: Tree) {
+    match value {
+        -42 => { print(1) },
+        Later => { print(2) },
+    }
+}
+
+fn main() {
+}

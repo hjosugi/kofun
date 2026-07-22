@@ -1,0 +1,9 @@
+kofun-pattern-tree/v1
+limits|depth|32|nodes-per-compilation|256
+match|0|30|42|43|123|124|2
+node|0|ErrorPattern|52|71|unexpected-token-after-pattern
+pattern-diagnostic|E2S58|unexpected-token-after-pattern|52|71
+arm|0|0|0|52|71|71|73
+node|1|NamePattern|96|101|Later|96|101
+arm|0|1|1|96|101|102|104
+match-count|1

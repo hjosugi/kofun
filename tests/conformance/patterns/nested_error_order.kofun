@@ -1,0 +1,14 @@
+fn recover(value: Tree) {
+    match value {
+        Outer => {
+            match value {
+                Inner || Other => { print(1) },
+                NestedLater => { print(2) },
+            }
+        },
+        | OuterLater => { print(3) },
+    }
+}
+
+fn main() {
+}

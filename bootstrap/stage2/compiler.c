@@ -276,6 +276,1021 @@ static int64_t balanced_end(
     int64_t start,
     const char *open,
     const char *close
+);
+static char *owned_text(const char *text);
+
+/*
+ * General patterns are a syntax-only boundary.  The executable Core below
+ * still implements only Bool and payload-free enum matching, but both paths
+ * classify their arm heads through this parser instead of interpreting the
+ * first token themselves.
+ *
+ * Node records are post-order: child ids are known before their owning node is
+ * written.  Delimiter records use the owner's source start, which is unique
+ * inside a match, so comma and `|` spans remain available even before the
+ * owner id is allocated.
+ */
+#define PATTERN_DEPTH_LIMIT 32
+#define PATTERN_NODE_LIMIT 256
+
+typedef enum {
+    PATTERN_WILDCARD,
+    PATTERN_LITERAL,
+    PATTERN_NAME,
+    PATTERN_CONSTRUCTOR,
+    PATTERN_OR,
+    PATTERN_PARENTHESIZED,
+    PATTERN_ERROR
+} PatternKind;
+
+typedef struct {
+    const char *source;
+    int64_t next_node_id;
+    int64_t nodes;
+    int64_t errors;
+    int64_t limit_error_id;
+} PatternParser;
+
+typedef struct {
+    int64_t end;
+    int64_t root;
+    PatternKind kind;
+    bool fatal;
+    Buffer records;
+} ParsedPattern;
+
+typedef struct {
+    int64_t end;
+    PatternKind kind;
+} PatternSummary;
+
+static ParsedPattern parse_pattern_or(
+    PatternParser *parser,
+    int64_t start,
+    int64_t depth
+);
+static PatternSummary pattern_summary(const char *source, int64_t start);
+
+static ParsedPattern parsed_pattern_init(int64_t start) {
+    ParsedPattern result;
+    result.end = start;
+    result.root = -1;
+    result.kind = PATTERN_ERROR;
+    result.fatal = false;
+    buffer_init(&result.records);
+    return result;
+}
+
+static int64_t pattern_recovery_end(const char *source, int64_t start) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, start);
+    int64_t paren_depth = 0;
+    int64_t bracket_depth = 0;
+    while (cursor < length) {
+        if (token_equal(source, cursor, "=>")) return cursor;
+        if (token_equal(source, cursor, "{") && paren_depth == 0 &&
+            bracket_depth == 0) {
+            return cursor;
+        }
+        if (token_equal(source, cursor, "}") && paren_depth == 0 &&
+            bracket_depth == 0) {
+            return cursor;
+        }
+        if (token_equal(source, cursor, ",") && paren_depth == 0 &&
+            bracket_depth == 0) {
+            return cursor;
+        }
+        if (token_equal(source, cursor, "(")) {
+            ++paren_depth;
+        } else if (token_equal(source, cursor, ")")) {
+            if (paren_depth == 0) return cursor;
+            --paren_depth;
+        } else if (token_equal(source, cursor, "[")) {
+            ++bracket_depth;
+        } else if (token_equal(source, cursor, "]")) {
+            if (bracket_depth == 0) return cursor;
+            --bracket_depth;
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return cursor;
+}
+
+static ParsedPattern pattern_error(
+    PatternParser *parser,
+    int64_t start,
+    int64_t end,
+    const char *reason,
+    bool fatal
+) {
+    ParsedPattern result = parsed_pattern_init(end);
+    if (end < start) end = start;
+    if (parser->nodes >= PATTERN_NODE_LIMIT) {
+        result.fatal = true;
+        return result;
+    }
+    int64_t id = parser->next_node_id++;
+    ++parser->nodes;
+    ++parser->errors;
+    result.root = id;
+    result.kind = PATTERN_ERROR;
+    result.fatal = fatal;
+    buffer_format(
+        &result.records,
+        "node|%" PRId64 "|ErrorPattern|%" PRId64 "|%" PRId64
+        "|%s\n"
+        "pattern-diagnostic|E2S58|%s|%" PRId64 "|%" PRId64 "\n",
+        id,
+        start,
+        end,
+        reason,
+        reason,
+        start,
+        end
+    );
+    return result;
+}
+
+static ParsedPattern pattern_limit_error(
+    PatternParser *parser,
+    int64_t start
+) {
+    int64_t end = token_end(parser->source, start);
+    if (end < start) end = start;
+    ParsedPattern result = parsed_pattern_init(end);
+    result.fatal = true;
+    if (parser->limit_error_id >= 0) {
+        result.root = parser->limit_error_id;
+        return result;
+    }
+    int64_t id = parser->next_node_id++;
+    parser->limit_error_id = id;
+    ++parser->errors;
+    result.root = id;
+    buffer_format(
+        &result.records,
+        "node|%" PRId64 "|ErrorPattern|%" PRId64 "|%" PRId64
+        "|node-limit\n"
+        "pattern-diagnostic|E2S58|node-limit|%" PRId64 "|%" PRId64
+        "\n",
+        id,
+        start,
+        end,
+        start,
+        end
+    );
+    return result;
+}
+
+static bool pattern_node_available(const PatternParser *parser) {
+    return parser->nodes < PATTERN_NODE_LIMIT;
+}
+
+static void pattern_append_child(Buffer *children, int64_t child) {
+    if (children->length > 0) buffer_append(children, ",");
+    buffer_format(children, "%" PRId64, child);
+}
+
+static bool pattern_stop_token(const char *source, int64_t start) {
+    int64_t length = (int64_t)strlen(source);
+    return start >= length || token_equal(source, start, "=>") ||
+           token_equal(source, start, ",") ||
+           token_equal(source, start, ")") ||
+           token_equal(source, start, "}") ||
+           token_equal(source, start, "if");
+}
+
+static ParsedPattern parse_pattern_atomic(
+    PatternParser *parser,
+    int64_t start,
+    int64_t depth
+) {
+    const char *source = parser->source;
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, start);
+    int64_t checkpoint_node_id = parser->next_node_id;
+    int64_t checkpoint_nodes = parser->nodes;
+    int64_t checkpoint_errors = parser->errors;
+    int64_t checkpoint_limit_error_id = parser->limit_error_id;
+    if (!pattern_node_available(parser)) {
+        return pattern_limit_error(parser, cursor);
+    }
+    if (depth > PATTERN_DEPTH_LIMIT) {
+        int64_t recovered = pattern_recovery_end(source, cursor);
+        return pattern_error(
+            parser,
+            cursor,
+            recovered,
+            "depth-limit",
+            false
+        );
+    }
+    if (cursor >= length || pattern_stop_token(source, cursor) ||
+        token_equal(source, cursor, "|")) {
+        int64_t end = cursor < length ? token_end(source, cursor) : cursor;
+        return pattern_error(
+            parser,
+            cursor,
+            end,
+            "missing-pattern",
+            false
+        );
+    }
+
+    int64_t token_finish = token_end(source, cursor);
+    if (token_equal(source, cursor, "{")) {
+        int64_t close = balanced_end(source, cursor, "{", "}");
+        int64_t end = close < 0 ? pattern_recovery_end(source, cursor) : close;
+        return pattern_error(
+            parser,
+            cursor,
+            end,
+            "unsupported-record-pattern",
+            false
+        );
+    }
+    if (token_equal(source, cursor, "[") ||
+        token_equal(source, cursor, "..")) {
+        int64_t end = pattern_recovery_end(source, token_finish);
+        if (end == token_finish) end = token_finish;
+        return pattern_error(
+            parser,
+            cursor,
+            end,
+            token_equal(source, cursor, "..") ?
+                "unsupported-rest-pattern" : "unsupported-pattern-token",
+            false
+        );
+    }
+
+    if (token_equal(source, cursor, "(")) {
+        int64_t inner_start = skip_trivia(source, token_finish);
+        ParsedPattern inner = parse_pattern_or(
+            parser,
+            inner_start,
+            depth + 1
+        );
+        if (inner.fatal) return inner;
+        int64_t close = skip_trivia(source, inner.end);
+        if (close >= length || !token_equal(source, close, ")")) {
+            int64_t recovered = pattern_recovery_end(source, close);
+            free(inner.records.data);
+            parser->next_node_id = checkpoint_node_id;
+            parser->nodes = checkpoint_nodes;
+            parser->errors = checkpoint_errors;
+            parser->limit_error_id = checkpoint_limit_error_id;
+            return pattern_error(
+                parser,
+                cursor,
+                recovered,
+                "missing-closing-parenthesis",
+                false
+            );
+        }
+        if (!pattern_node_available(parser)) {
+            free(inner.records.data);
+            return pattern_limit_error(parser, cursor);
+        }
+        ParsedPattern result = parsed_pattern_init(token_end(source, close));
+        buffer_append(&result.records, inner.records.data);
+        free(inner.records.data);
+        int64_t id = parser->next_node_id++;
+        ++parser->nodes;
+        result.root = id;
+        result.kind = PATTERN_PARENTHESIZED;
+        buffer_format(
+            &result.records,
+            "node|%" PRId64 "|ParenthesizedPattern|%" PRId64
+            "|%" PRId64 "|%" PRId64 "|%" PRId64 "|%" PRId64
+            "|%" PRId64 "|%" PRId64 "\n",
+            id,
+            cursor,
+            result.end,
+            cursor,
+            token_finish,
+            close,
+            token_end(source, close),
+            inner.root
+        );
+        return result;
+    }
+
+    const char *kind = token_kind(source, cursor);
+    bool literal = token_equal(source, cursor, "true") ||
+                   token_equal(source, cursor, "false") ||
+                   token_equal(source, cursor, "null") ||
+                   strcmp(kind, "integer") == 0;
+    if (token_equal(source, cursor, "_")) {
+        ParsedPattern result = parsed_pattern_init(token_finish);
+        int64_t id = parser->next_node_id++;
+        ++parser->nodes;
+        result.root = id;
+        result.kind = PATTERN_WILDCARD;
+        buffer_format(
+            &result.records,
+            "node|%" PRId64 "|WildcardPattern|%" PRId64 "|%" PRId64
+            "\n",
+            id,
+            cursor,
+            token_finish
+        );
+        return result;
+    }
+    if (literal) {
+        ParsedPattern result = parsed_pattern_init(token_finish);
+        int64_t id = parser->next_node_id++;
+        ++parser->nodes;
+        result.root = id;
+        result.kind = PATTERN_LITERAL;
+        const char *literal_kind = strcmp(kind, "integer") == 0 ?
+            "Int" : (token_equal(source, cursor, "null") ? "Null" : "Bool");
+        char *literal_token = token_copy(source, cursor);
+        buffer_format(
+            &result.records,
+            "node|%" PRId64 "|LiteralPattern|%" PRId64 "|%" PRId64
+            "|%s|%s|%" PRId64 "|%" PRId64 "\n",
+            id,
+            cursor,
+            token_finish,
+            literal_kind,
+            literal_token,
+            cursor,
+            token_finish
+        );
+        free(literal_token);
+        return result;
+    }
+    if (strcmp(kind, "identifier") != 0) {
+        int64_t recovered = pattern_recovery_end(source, token_finish);
+        if (recovered == token_finish) recovered = token_finish;
+        return pattern_error(
+            parser,
+            cursor,
+            recovered,
+            "unsupported-pattern-token",
+            false
+        );
+    }
+
+    int64_t after_name = skip_trivia(source, token_finish);
+    if (after_name < length && token_equal(source, after_name, "{")) {
+        int64_t close = balanced_end(source, after_name, "{", "}");
+        int64_t end = close < 0 ? pattern_recovery_end(source, after_name) : close;
+        return pattern_error(
+            parser,
+            cursor,
+            end,
+            "unsupported-record-pattern",
+            false
+        );
+    }
+    if (after_name >= length || !token_equal(source, after_name, "(")) {
+        ParsedPattern result = parsed_pattern_init(token_finish);
+        int64_t id = parser->next_node_id++;
+        ++parser->nodes;
+        result.root = id;
+        result.kind = PATTERN_NAME;
+        char *name = token_copy(source, cursor);
+        buffer_format(
+            &result.records,
+            "node|%" PRId64 "|NamePattern|%" PRId64 "|%" PRId64
+            "|%s|%" PRId64 "|%" PRId64 "\n",
+            id,
+            cursor,
+            token_finish,
+            name,
+            cursor,
+            token_finish
+        );
+        free(name);
+        return result;
+    }
+
+    Buffer records;
+    Buffer children;
+    buffer_init(&records);
+    buffer_init(&children);
+    int64_t open = after_name;
+    int64_t payload = skip_trivia(source, token_end(source, open));
+    int64_t payload_count = 0;
+    int64_t close = -1;
+    if (payload < length && token_equal(source, payload, ")")) {
+        free(records.data);
+        free(children.data);
+        return pattern_error(
+            parser,
+            cursor,
+            token_end(source, payload),
+            "empty-constructor-payload",
+            false
+        );
+    } else {
+        while (payload < length) {
+            ParsedPattern child = parse_pattern_or(
+                parser,
+                payload,
+                depth + 1
+            );
+            if (child.fatal) {
+                free(records.data);
+                free(children.data);
+                return child;
+            }
+            buffer_append(&records, child.records.data);
+            free(child.records.data);
+            pattern_append_child(&children, child.root);
+            ++payload_count;
+            int64_t separator = skip_trivia(source, child.end);
+            if (separator < length && token_equal(source, separator, ",")) {
+                buffer_format(
+                    &records,
+                    "delimiter|ConstructorPattern|%" PRId64
+                    "|payload-comma|%" PRId64 "|%" PRId64
+                    "|%" PRId64 "\n",
+                    cursor,
+                    payload_count - 1,
+                    separator,
+                    token_end(source, separator)
+                );
+                payload = skip_trivia(source, token_end(source, separator));
+                if (payload < length && token_equal(source, payload, ")")) {
+                    close = payload;
+                    break;
+                }
+                continue;
+            }
+            if (separator < length && token_equal(source, separator, ")")) {
+                close = separator;
+                break;
+            }
+            int64_t recovered = pattern_recovery_end(source, separator);
+            if (recovered < length && token_equal(source, recovered, ")")) {
+                recovered = token_end(source, recovered);
+            }
+            free(records.data);
+            free(children.data);
+            parser->next_node_id = checkpoint_node_id;
+            parser->nodes = checkpoint_nodes;
+            parser->errors = checkpoint_errors;
+            parser->limit_error_id = checkpoint_limit_error_id;
+            return pattern_error(
+                parser,
+                cursor,
+                recovered,
+                pattern_stop_token(source, separator) ?
+                    "missing-closing-parenthesis" : "missing-comma",
+                false
+            );
+        }
+    }
+    if (close < 0) {
+        int64_t recovered = pattern_recovery_end(source, payload);
+        free(records.data);
+        free(children.data);
+        parser->next_node_id = checkpoint_node_id;
+        parser->nodes = checkpoint_nodes;
+        parser->errors = checkpoint_errors;
+        parser->limit_error_id = checkpoint_limit_error_id;
+        return pattern_error(
+            parser,
+            cursor,
+            recovered,
+            "missing-closing-parenthesis",
+            false
+        );
+    }
+    if (!pattern_node_available(parser)) {
+        free(records.data);
+        free(children.data);
+        return pattern_limit_error(parser, cursor);
+    }
+    ParsedPattern result = parsed_pattern_init(token_end(source, close));
+    free(result.records.data);
+    result.records = records;
+    int64_t id = parser->next_node_id++;
+    ++parser->nodes;
+    result.root = id;
+    result.kind = PATTERN_CONSTRUCTOR;
+    char *name = token_copy(source, cursor);
+    buffer_format(
+        &result.records,
+        "node|%" PRId64 "|ConstructorPattern|%" PRId64 "|%" PRId64
+        "|%s|%" PRId64 "|%" PRId64 "|%" PRId64 "|%" PRId64
+        "|%" PRId64 "|%" PRId64 "|%" PRId64 "|%s\n",
+        id,
+        cursor,
+        result.end,
+        name,
+        cursor,
+        token_finish,
+        open,
+        token_end(source, open),
+        close,
+        token_end(source, close),
+        payload_count,
+        children.data
+    );
+    free(name);
+    free(children.data);
+    return result;
+}
+
+static ParsedPattern parse_pattern_or(
+    PatternParser *parser,
+    int64_t start,
+    int64_t depth
+) {
+    const char *source = parser->source;
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, start);
+    int64_t checkpoint_node_id = parser->next_node_id;
+    int64_t checkpoint_nodes = parser->nodes;
+    int64_t checkpoint_errors = parser->errors;
+    int64_t checkpoint_limit_error_id = parser->limit_error_id;
+    if (cursor < length &&
+        (token_equal(source, cursor, "|") ||
+         token_equal(source, cursor, "||"))) {
+        return pattern_error(
+            parser,
+            cursor,
+            token_end(source, cursor),
+            token_equal(source, cursor, "||") ? "doubled-or" : "leading-or",
+            false
+        );
+    }
+
+    ParsedPattern first = parse_pattern_atomic(parser, cursor, depth);
+    if (first.fatal) return first;
+    int64_t separator = skip_trivia(source, first.end);
+    if (separator < length && token_equal(source, separator, "||")) {
+        free(first.records.data);
+        parser->next_node_id = checkpoint_node_id;
+        parser->nodes = checkpoint_nodes;
+        parser->errors = checkpoint_errors;
+        parser->limit_error_id = checkpoint_limit_error_id;
+        return pattern_error(
+            parser,
+            cursor,
+            token_end(source, separator),
+            "doubled-or",
+            false
+        );
+    }
+    if (separator >= length || !token_equal(source, separator, "|")) {
+        if (separator < length && token_equal(source, separator, "..")) {
+            int64_t recovered = pattern_recovery_end(
+                source,
+                token_end(source, separator)
+            );
+            free(first.records.data);
+            parser->next_node_id = checkpoint_node_id;
+            parser->nodes = checkpoint_nodes;
+            parser->errors = checkpoint_errors;
+            parser->limit_error_id = checkpoint_limit_error_id;
+            return pattern_error(
+                parser,
+                cursor,
+                recovered,
+                "unsupported-range-pattern",
+                false
+            );
+        }
+        return first;
+    }
+
+    Buffer records;
+    Buffer children;
+    buffer_init(&records);
+    buffer_init(&children);
+    buffer_append(&records, first.records.data);
+    free(first.records.data);
+    pattern_append_child(&children, first.root);
+    int64_t alternatives = 1;
+    int64_t end = first.end;
+    while (separator < length && token_equal(source, separator, "|")) {
+        buffer_format(
+            &records,
+            "separator|OrPattern|%" PRId64 "|%" PRId64 "|%" PRId64
+            "|%" PRId64 "\n",
+            cursor,
+            alternatives - 1,
+            separator,
+            token_end(source, separator)
+        );
+        int64_t next = skip_trivia(source, token_end(source, separator));
+        if (next < length &&
+            (token_equal(source, next, "|") ||
+             token_equal(source, next, "||"))) {
+            free(records.data);
+            free(children.data);
+            parser->next_node_id = checkpoint_node_id;
+            parser->nodes = checkpoint_nodes;
+            parser->errors = checkpoint_errors;
+            parser->limit_error_id = checkpoint_limit_error_id;
+            return pattern_error(
+                parser,
+                cursor,
+                token_end(source, next),
+                "doubled-or",
+                false
+            );
+        }
+        if (pattern_stop_token(source, next)) {
+            free(records.data);
+            free(children.data);
+            parser->next_node_id = checkpoint_node_id;
+            parser->nodes = checkpoint_nodes;
+            parser->errors = checkpoint_errors;
+            parser->limit_error_id = checkpoint_limit_error_id;
+            return pattern_error(
+                parser,
+                cursor,
+                token_end(source, separator),
+                "trailing-or",
+                false
+            );
+        }
+        ParsedPattern alternative = parse_pattern_atomic(
+            parser,
+            next,
+            depth
+        );
+        if (alternative.fatal) {
+            free(records.data);
+            free(children.data);
+            return alternative;
+        }
+        buffer_append(&records, alternative.records.data);
+        free(alternative.records.data);
+        pattern_append_child(&children, alternative.root);
+        ++alternatives;
+        end = alternative.end;
+        separator = skip_trivia(source, alternative.end);
+    }
+    if (separator < length &&
+        (token_equal(source, separator, "||") ||
+         token_equal(source, separator, ".."))) {
+        bool doubled = token_equal(source, separator, "||");
+        int64_t recovered = doubled ? token_end(source, separator) :
+            pattern_recovery_end(source, token_end(source, separator));
+        free(records.data);
+        free(children.data);
+        parser->next_node_id = checkpoint_node_id;
+        parser->nodes = checkpoint_nodes;
+        parser->errors = checkpoint_errors;
+        parser->limit_error_id = checkpoint_limit_error_id;
+        return pattern_error(
+            parser,
+            cursor,
+            recovered,
+            doubled ? "doubled-or" : "unsupported-range-pattern",
+            false
+        );
+    }
+    if (!pattern_node_available(parser)) {
+        free(records.data);
+        free(children.data);
+        return pattern_limit_error(parser, cursor);
+    }
+    ParsedPattern result = parsed_pattern_init(end);
+    free(result.records.data);
+    result.records = records;
+    int64_t id = parser->next_node_id++;
+    ++parser->nodes;
+    result.root = id;
+    result.kind = PATTERN_OR;
+    buffer_format(
+        &result.records,
+        "node|%" PRId64 "|OrPattern|%" PRId64 "|%" PRId64
+        "|%" PRId64 "|%s\n",
+        id,
+        cursor,
+        end,
+        alternatives,
+        children.data
+    );
+    free(children.data);
+    return result;
+}
+
+static int64_t pattern_match_open(const char *source, int64_t match_start) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, token_end(source, match_start));
+    int64_t parens = 0;
+    int64_t brackets = 0;
+    while (cursor < length) {
+        if (token_equal(source, cursor, "(") ) {
+            ++parens;
+        } else if (token_equal(source, cursor, ")")) {
+            if (parens > 0) --parens;
+        } else if (token_equal(source, cursor, "[")) {
+            ++brackets;
+        } else if (token_equal(source, cursor, "]")) {
+            if (brackets > 0) --brackets;
+        } else if (token_equal(source, cursor, "{") && parens == 0 &&
+                   brackets == 0) {
+            return cursor;
+        } else if (token_equal(source, cursor, "}") && parens == 0 &&
+                   brackets == 0) {
+            return -1;
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return -1;
+}
+
+static int64_t pattern_arm_arrow(
+    const char *source,
+    int64_t start,
+    int64_t match_close
+) {
+    int64_t cursor = skip_trivia(source, start);
+    int64_t parens = 0;
+    int64_t brackets = 0;
+    while (cursor < match_close) {
+        if (token_equal(source, cursor, "=>")) return cursor;
+        if (token_equal(source, cursor, ",") && parens == 0 &&
+            brackets == 0) {
+            return -1;
+        }
+        if (token_equal(source, cursor, "(") ) {
+            ++parens;
+        } else if (token_equal(source, cursor, ")")) {
+            if (parens > 0) --parens;
+        } else if (token_equal(source, cursor, "[")) {
+            ++brackets;
+        } else if (token_equal(source, cursor, "]")) {
+            if (brackets > 0) --brackets;
+        } else if (token_equal(source, cursor, "{") && parens == 0 &&
+                   brackets == 0) {
+            return -1;
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return -1;
+}
+
+static char *parse_pattern_trees(const char *source) {
+    int64_t length = (int64_t)strlen(source);
+    Buffer tree;
+    buffer_init(&tree);
+    buffer_append(
+        &tree,
+        "kofun-pattern-tree/v1\n"
+        "limits|depth|32|nodes-per-compilation|256\n"
+    );
+    int64_t cursor = skip_trivia(source, 0);
+    int64_t match_id = 0;
+    PatternParser parser;
+    parser.source = source;
+    parser.next_node_id = 0;
+    parser.nodes = 0;
+    parser.errors = 0;
+    parser.limit_error_id = -1;
+    bool budget_exhausted = false;
+    while (cursor < length && !budget_exhausted) {
+        if (token_equal(source, cursor, "match")) {
+            int64_t open = pattern_match_open(source, cursor);
+            int64_t match_end = open < 0 ? -1 :
+                balanced_end(source, open, "{", "}");
+            if (open >= 0 && match_end >= 0) {
+                int64_t close = match_end - 1;
+                Buffer arms;
+                buffer_init(&arms);
+                int64_t arm_cursor = skip_trivia(
+                    source,
+                    token_end(source, open)
+                );
+                int64_t arm_id = 0;
+                while (arm_cursor < close &&
+                       !token_equal(source, arm_cursor, "}")) {
+                    int64_t checkpoint_node_id = parser.next_node_id;
+                    int64_t checkpoint_nodes = parser.nodes;
+                    int64_t checkpoint_errors = parser.errors;
+                    int64_t checkpoint_limit_error_id =
+                        parser.limit_error_id;
+                    ParsedPattern pattern = parse_pattern_or(
+                        &parser,
+                        arm_cursor,
+                        1
+                    );
+                    int64_t after_pattern = skip_trivia(source, pattern.end);
+                    if (!pattern.fatal && pattern.kind != PATTERN_ERROR &&
+                        !token_equal(source, after_pattern, "=>") &&
+                        !token_equal(source, after_pattern, "if")) {
+                        int64_t recovered = pattern_recovery_end(
+                            source,
+                            after_pattern
+                        );
+                        free(pattern.records.data);
+                        parser.next_node_id = checkpoint_node_id;
+                        parser.nodes = checkpoint_nodes;
+                        parser.errors = checkpoint_errors;
+                        parser.limit_error_id = checkpoint_limit_error_id;
+                        pattern = pattern_error(
+                            &parser,
+                            arm_cursor,
+                            recovered,
+                            "unexpected-token-after-pattern",
+                            false
+                        );
+                    }
+                    buffer_append(&arms, pattern.records.data);
+                    free(pattern.records.data);
+                    int64_t arrow = pattern_arm_arrow(
+                        source,
+                        pattern.end,
+                        close
+                    );
+                    buffer_format(
+                        &arms,
+                        "arm|%" PRId64 "|%" PRId64 "|%" PRId64
+                        "|%" PRId64 "|%" PRId64 "|%" PRId64
+                        "|%" PRId64 "\n",
+                        match_id,
+                        arm_id,
+                        pattern.root,
+                        arm_cursor,
+                        pattern.end,
+                        arrow,
+                        arrow < 0 ? -1 : token_end(source, arrow)
+                    );
+                    ++arm_id;
+                    if (pattern.fatal && parser.limit_error_id >= 0) {
+                        budget_exhausted = true;
+                        break;
+                    }
+                    if (arrow < 0) {
+                        int64_t recovery = skip_trivia(source, pattern.end);
+                        if (recovery < close &&
+                            token_equal(source, recovery, ",")) {
+                            arm_cursor = skip_trivia(
+                                source,
+                                token_end(source, recovery)
+                            );
+                            continue;
+                        }
+                        break;
+                    }
+                    int64_t body = skip_trivia(
+                        source,
+                        token_end(source, arrow)
+                    );
+                    if (body >= close || !token_equal(source, body, "{")) {
+                        arm_cursor = pattern_recovery_end(source, body);
+                    } else {
+                        int64_t body_end = balanced_end(source, body, "{", "}");
+                        if (body_end < 0) break;
+                        arm_cursor = skip_trivia(source, body_end);
+                    }
+                    if (arm_cursor < close &&
+                        token_equal(source, arm_cursor, ",")) {
+                        arm_cursor = skip_trivia(
+                            source,
+                            token_end(source, arm_cursor)
+                        );
+                    }
+                }
+                buffer_format(
+                    &tree,
+                    "match|%" PRId64 "|%" PRId64 "|%" PRId64
+                    "|%" PRId64 "|%" PRId64 "|%" PRId64
+                    "|%" PRId64 "\n",
+                    match_id,
+                    cursor,
+                    open,
+                    token_end(source, open),
+                    close,
+                    token_end(source, close),
+                    arm_id
+                );
+                buffer_append(&tree, arms.data);
+                free(arms.data);
+                ++match_id;
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    buffer_format(&tree, "match-count|%" PRId64 "\n", match_id);
+    return tree.data;
+}
+
+static char *validate_executable_patterns(const char *source) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < length) {
+        if (token_equal(source, cursor, "match")) {
+            int64_t open = pattern_match_open(source, cursor);
+            int64_t match_end = open < 0 ? -1 :
+                balanced_end(source, open, "{", "}");
+            if (open >= 0 && match_end >= 0) {
+                int64_t close = match_end - 1;
+                int64_t arm = skip_trivia(source, token_end(source, open));
+                while (arm < close && !token_equal(source, arm, "}")) {
+                    PatternSummary summary = pattern_summary(source, arm);
+                    bool executable = summary.kind == PATTERN_WILDCARD ||
+                        summary.kind == PATTERN_NAME ||
+                        (summary.kind == PATTERN_LITERAL &&
+                         (token_equal(source, arm, "true") ||
+                          token_equal(source, arm, "false")));
+                    if (!executable) {
+                        Buffer error;
+                        buffer_init(&error);
+                        buffer_format(
+                            &error,
+                            "error[E2S24]: general pattern syntax is parsed "
+                            "but not executable in Stage 2 Core at byte %"
+                            PRId64,
+                            arm
+                        );
+                        return error.data;
+                    }
+                    int64_t arrow = pattern_arm_arrow(
+                        source,
+                        summary.end,
+                        close
+                    );
+                    if (arrow < 0) break;
+                    int64_t body = skip_trivia(
+                        source,
+                        token_end(source, arrow)
+                    );
+                    if (body >= close || !token_equal(source, body, "{")) {
+                        break;
+                    }
+                    int64_t body_end = balanced_end(source, body, "{", "}");
+                    if (body_end < 0) break;
+                    arm = skip_trivia(source, body_end);
+                    if (arm < close && token_equal(source, arm, ",")) {
+                        arm = skip_trivia(source, token_end(source, arm));
+                    }
+                }
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return owned_text("ok");
+}
+
+static PatternSummary pattern_summary(const char *source, int64_t start) {
+    PatternParser parser;
+    parser.source = source;
+    parser.next_node_id = 0;
+    parser.nodes = 0;
+    parser.errors = 0;
+    parser.limit_error_id = -1;
+    ParsedPattern parsed = parse_pattern_or(&parser, start, 1);
+    PatternSummary summary;
+    summary.end = parsed.end;
+    summary.kind = parsed.kind;
+    free(parsed.records.data);
+    return summary;
+}
+
+static char *pattern_first_error(const char *ir) {
+    const char *record = ir;
+    char best_reason[64] = "";
+    int64_t best_start = -1;
+    int64_t best_end = -1;
+    while ((record = strstr(record, "pattern-diagnostic|")) != NULL) {
+        char code[16];
+        char reason[64];
+        int64_t start = -1;
+        int64_t end = -1;
+        if (sscanf(
+                record,
+                "pattern-diagnostic|%15[^|]|%63[^|]|%" SCNd64
+                "|%" SCNd64,
+                code,
+                reason,
+                &start,
+                &end
+            ) == 4 && (best_start < 0 || start < best_start)) {
+            (void)snprintf(best_reason, sizeof(best_reason), "%s", reason);
+            best_start = start;
+            best_end = end;
+        }
+        ++record;
+    }
+    if (best_start < 0) return owned_text("");
+    Buffer error;
+    buffer_init(&error);
+    buffer_format(
+        &error,
+        "error[E2S58]: invalid pattern (%s) at bytes %" PRId64
+        "..%" PRId64,
+        best_reason,
+        best_start,
+        best_end
+    );
+    return error.data;
+}
+
+static int64_t balanced_end(
+    const char *source,
+    int64_t start,
+    const char *open,
+    const char *close
 ) {
     int64_t length = (int64_t)strlen(source);
     int64_t cursor = start;
@@ -1088,6 +2103,16 @@ static char *parse_program(const char *source) {
         return ir.data;
     }
     buffer_format(&ir, "function-count|%" PRId64 "\n", functions);
+    char *patterns = parse_pattern_trees(source);
+    char *pattern_error = pattern_first_error(patterns);
+    if (pattern_error[0] != '\0') {
+        free(patterns);
+        free(ir.data);
+        return pattern_error;
+    }
+    free(pattern_error);
+    buffer_append(&ir, patterns);
+    free(patterns);
     return ir.data;
 }
 
@@ -2183,9 +3208,12 @@ static char *parse_value_match(
         !token_equal(source, arm_cursor, "}")
     ) {
         int64_t pattern_start = arm_cursor;
-        bool pattern_true = token_equal(source, pattern_start, "true");
-        bool pattern_false = token_equal(source, pattern_start, "false");
-        bool pattern_catchall = token_equal(source, pattern_start, "_");
+        PatternSummary pattern = pattern_summary(source, pattern_start);
+        bool pattern_true = pattern.kind == PATTERN_LITERAL &&
+                            token_equal(source, pattern_start, "true");
+        bool pattern_false = pattern.kind == PATTERN_LITERAL &&
+                             token_equal(source, pattern_start, "false");
+        bool pattern_catchall = pattern.kind == PATTERN_WILDCARD;
         if (seen_catchall) {
             return lower_error(
                 "E2S26",
@@ -2224,7 +3252,7 @@ static char *parse_value_match(
 
         int64_t after_pattern = skip_trivia(
             source,
-            token_end(source, pattern_start)
+            pattern.end
         );
         bool guarded = false;
         int64_t arrow = after_pattern;
@@ -2519,11 +3547,14 @@ static char *emit_value_match_into(
         token_end(source, parts.arms_open)
     );
     while (arm_cursor < end && !token_equal(source, arm_cursor, "}")) {
-        bool pattern_true = token_equal(source, arm_cursor, "true");
-        bool pattern_false = token_equal(source, arm_cursor, "false");
+        PatternSummary pattern = pattern_summary(source, arm_cursor);
+        bool pattern_true = pattern.kind == PATTERN_LITERAL &&
+                            token_equal(source, arm_cursor, "true");
+        bool pattern_false = pattern.kind == PATTERN_LITERAL &&
+                             token_equal(source, arm_cursor, "false");
         int64_t arrow = skip_trivia(
             source,
-            token_end(source, arm_cursor)
+            pattern.end
         );
         bool guarded = false;
         int64_t guard_start = -1;
@@ -3991,8 +5022,12 @@ static char *lower_enum_match(
     const char *failure_result = is_main ? "1" : "0";
     while (arm_cursor < length && !token_equal(source, arm_cursor, "}")) {
         int64_t pattern_start = arm_cursor;
+        PatternSummary pattern_summary_value = pattern_summary(
+            source,
+            pattern_start
+        );
         char *pattern = token_copy(source, pattern_start);
-        bool catchall = strcmp(pattern, "_") == 0;
+        bool catchall = pattern_summary_value.kind == PATTERN_WILDCARD;
         if (seen_catchall) {
             free(pattern);
             return lower_enum_match_error(
@@ -4016,7 +5051,7 @@ static char *lower_enum_match(
                 );
             }
         } else {
-            if (strcmp(token_kind(source, pattern_start), "identifier") != 0) {
+            if (pattern_summary_value.kind != PATTERN_NAME) {
                 free(pattern);
                 return lower_enum_match_error(
                     &covered,
@@ -4070,7 +5105,7 @@ static char *lower_enum_match(
 
         int64_t arrow = skip_trivia(
             source,
-            token_end(source, pattern_start)
+            pattern_summary_value.end
         );
         bool guarded = false;
         int64_t guard_start = -1;
@@ -4830,21 +5865,24 @@ static char *lower_body(
                 !token_equal(source, arm_cursor, "}")
             ) {
                 int64_t pattern_start = arm_cursor;
-                bool pattern_true = token_equal(
+                PatternSummary pattern = pattern_summary(
                     source,
-                    pattern_start,
-                    "true"
+                    pattern_start
                 );
-                bool pattern_false = token_equal(
-                    source,
-                    pattern_start,
-                    "false"
-                );
-                bool pattern_catchall = token_equal(
-                    source,
-                    pattern_start,
-                    "_"
-                );
+                bool pattern_true = pattern.kind == PATTERN_LITERAL &&
+                                    token_equal(
+                                        source,
+                                        pattern_start,
+                                        "true"
+                                    );
+                bool pattern_false = pattern.kind == PATTERN_LITERAL &&
+                                     token_equal(
+                                         source,
+                                         pattern_start,
+                                         "false"
+                                     );
+                bool pattern_catchall =
+                    pattern.kind == PATTERN_WILDCARD;
                 if (seen_catchall) {
                     return lower_match_error(
                         &emitted,
@@ -4900,7 +5938,7 @@ static char *lower_body(
                 }
                 int64_t after_pattern = skip_trivia(
                     source,
-                    token_end(source, pattern_start)
+                    pattern.end
                 );
                 bool guarded = false;
                 int64_t guard_start = -1;
@@ -5608,14 +6646,39 @@ static int check_ownership_file(const char *path) {
     return ok ? 0 : 1;
 }
 
+static int parse_patterns_file(const char *input, const char *output) {
+    char *source = read_file(input);
+    char *tokens = lex_source(source);
+    if (strncmp(tokens, "error[", 6) == 0) {
+        puts(tokens);
+        free(tokens);
+        free(source);
+        return 1;
+    }
+    free(tokens);
+    char *tree = parse_pattern_trees(source);
+    write_file(output, tree);
+    char *error = pattern_first_error(tree);
+    bool ok = error[0] == '\0';
+    if (!ok) puts(error);
+    free(error);
+    free(tree);
+    free(source);
+    return ok ? 0 : 1;
+}
+
 int main(int argc, char **argv) {
     if (argc == 3 && strcmp(argv[1], "--check-ownership") == 0) {
         return check_ownership_file(argv[2]);
     }
+    if (argc == 4 && strcmp(argv[1], "--parse-patterns") == 0) {
+        return parse_patterns_file(argv[2], argv[3]);
+    }
     if (argc != 5) {
         fputs(
             "usage: kofun-stage2 INPUT.kofun OUTPUT.kofun OUTPUT.ir OUTPUT.tokens\n"
-            "       kofun-stage2 --check-ownership INPUT.kofun\n",
+            "       kofun-stage2 --check-ownership INPUT.kofun\n"
+            "       kofun-stage2 --parse-patterns INPUT.kofun OUTPUT.patterns\n",
             stdout
         );
         return 2;
@@ -5640,6 +6703,16 @@ int main(int argc, char **argv) {
     write_file(argv[3], ir);
     write_file(argv[4], tokens);
     if (ends_with(argv[2], ".c")) {
+        char *pattern_check = validate_executable_patterns(source);
+        if (strncmp(pattern_check, "error[", 6) == 0) {
+            puts(pattern_check);
+            free(pattern_check);
+            free(ir);
+            free(tokens);
+            free(source);
+            return 1;
+        }
+        free(pattern_check);
         char *hir = build_scope_hir(source);
         if (strncmp(hir, "error[", 6) == 0) {
             puts(hir);

@@ -1,0 +1,29 @@
+fn statement_patterns(value: Tree) {
+    match value {
+        _ => { print(0) },
+        true => { print(1) },
+        false => { print(2) },
+        null => { print(3) },
+        0 => { print(4) },
+        42 => { print(5) },
+        4_2 => { print(6) },
+        unresolved => { print(7) },
+        Present(item) => { print(8) },
+        Node(value, Node(_, left, right), Empty) => { print(9) },
+        Missing | Present(_) => { print(10) },
+        (Missing | Present(_)) => { print(11) },
+        Present(value,) => { print(12) },
+    }
+}
+
+fn value_patterns(value: Tree) -> Int {
+    let selected: Int = match value {
+        Node(value, Node(_, left, right), Empty) => { 11 },
+        Present((Missing | Present(_)),) => { 12 },
+        _ => { 13 },
+    }
+    return selected
+}
+
+fn main() {
+}

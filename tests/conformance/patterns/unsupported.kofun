@@ -1,0 +1,17 @@
+fn recover(value: Tree) {
+    match value {
+        Point { x } => { print(1) },
+        Later => { print(2) },
+    }
+    match value {
+        head .. tail => { print(3) },
+        Final => { print(4) },
+    }
+    match value {
+        ..rest => { print(5) },
+        End => { print(6) },
+    }
+}
+
+fn main() {
+}

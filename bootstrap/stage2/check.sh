@@ -109,6 +109,8 @@ grep '^function-count|11$' "$temporary/stage1.ir" >/dev/null
 round_trip stage2 "$stage2/compiler.kofun"
 grep '^function|lex|1|' "$temporary/stage2.ir" >/dev/null
 grep '^function|parse_program|1|' "$temporary/stage2.ir" >/dev/null
+grep '^function|parse_pattern_trees|1|' "$temporary/stage2.ir" >/dev/null
+grep '^function|parse_patterns_file|2|' "$temporary/stage2.ir" >/dev/null
 grep '^function|borrowed_collection_check|1|' "$temporary/stage2.ir" >/dev/null
 grep '^function|lower_c|2|' "$temporary/stage2.ir" >/dev/null
 grep '^function|emit_kofun|2|' "$temporary/stage2.ir" >/dev/null
@@ -284,6 +286,8 @@ KOFUN_STAGE2_COMPILER="$temporary/kofun-stage2" \
     sh "$root/tests/conformance/modules/lexical-scopes/run.sh"
 KOFUN_STAGE2_COMPILER="$temporary/kofun-stage2" \
     sh "$root/tests/conformance/modules/shadowing/run.sh"
+KOFUN_STAGE2_COMPILER="$temporary/kofun-stage2" \
+    sh "$root/tests/conformance/patterns/run.sh"
 
 echo "PASS: Stage 2 statically compiled Copy Int borrowed-return slice"
 echo "PASS: Stage 2 and kofun check rejected non-Copy Text move with E007"
