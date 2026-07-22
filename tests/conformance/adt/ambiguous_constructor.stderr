@@ -1,0 +1,1 @@
+error[E2S38]: ambiguous constructor `Shared` across `First` and `Second`; first declared at bytes 19..25 at bytes 63..69

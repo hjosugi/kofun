@@ -1,0 +1,1 @@
+error[E2S45]: generic ADTs are unsupported in this frontend slice at bytes 8..9

@@ -1,0 +1,10 @@
+kofun-adt-ir/v1
+adt|adt-id=adt:MaybeInt|name=MaybeInt|span=128..183|constructors=2
+constructor|constructor-id=constructor:adt:MaybeInt:0|adt-id=adt:MaybeInt|name=Missing|index=0|arity=0|payload=none|field=-|span=150..157
+constructor|constructor-id=constructor:adt:MaybeInt:1|adt-id=adt:MaybeInt|name=Present|index=1|arity=1|payload=Int|field=value|span=164..183
+function|name=present|return-adt=adt:MaybeInt|span=75..126
+construct|function=present|constructor-id=constructor:adt:MaybeInt:1|use-span=113..124|payload=Int
+function|name=missing|return-adt=adt:MaybeInt|span=185..232
+construct|function=missing|constructor-id=constructor:adt:MaybeInt:0|use-span=223..230|payload=none
+function|name=negative|return-adt=adt:MaybeInt|span=234..286
+construct|function=negative|constructor-id=constructor:adt:MaybeInt:1|use-span=273..284|payload=Int
