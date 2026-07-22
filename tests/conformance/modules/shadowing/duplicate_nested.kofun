@@ -1,0 +1,7 @@
+fn main() {
+    if true {
+        let nested = 1
+        let nested = 2
+        print(nested)
+    }
+}

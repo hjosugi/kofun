@@ -37,3 +37,7 @@ Lexical resolution uses `E2S35` for unknown, uninitialized, and escaped local
 bindings as well as deterministic scope/binding/use budget failures. Where a
 declaration exists, the diagnostic reports both the use and declaration byte
 positions.
+
+Same-scope redeclarations use `E2S47`. The second declaration is the primary
+span, and the diagnostic records the first declaration byte position. An
+ancestor declaration does not conflict with a child-scope declaration.

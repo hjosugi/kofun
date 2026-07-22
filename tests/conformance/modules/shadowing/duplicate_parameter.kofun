@@ -1,0 +1,7 @@
+fn choose(value: Int, value: Int) -> Int {
+    return value
+}
+
+fn main() {
+    print(choose(1, 2))
+}

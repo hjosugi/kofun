@@ -3022,6 +3022,26 @@ static char *hir_field(
     return owned_text("");
 }
 
+static char *hir_same_scope_declaration(
+    const char *hir,
+    const char *scope_id,
+    const char *name
+) {
+    int64_t line = hir_record_start(hir, "binding", 0);
+    while (line >= 0) {
+        char *binding_scope = hir_field(hir, line, 2);
+        char *binding_name = hir_field(hir, line, 3);
+        bool found =
+            strcmp(binding_scope, scope_id) == 0 &&
+            strcmp(binding_name, name) == 0;
+        free(binding_scope);
+        free(binding_name);
+        if (found) return hir_field(hir, line, 8);
+        line = hir_record_start(hir, "binding", line + 1);
+    }
+    return owned_text("");
+}
+
 static char *hir_scope_id_for_open(const char *hir, int64_t open) {
     int64_t line = hir_record_start(hir, "scope", 0);
     while (line >= 0) {
@@ -3363,15 +3383,46 @@ static char *build_scope_hir(const char *source) {
                 source,
                 token_end(source, colon)
             );
+            char *name_text = token_copy(source, name);
+            char parameter_scope_text[32];
+            snprintf(
+                parameter_scope_text,
+                sizeof(parameter_scope_text),
+                "%" PRId64,
+                parameter_scope
+            );
+            char *first_declaration = hir_same_scope_declaration(
+                hir.data,
+                parameter_scope_text,
+                name_text
+            );
+            if (first_declaration[0] != '\0') {
+                Buffer error;
+                buffer_init(&error);
+                buffer_format(
+                    &error,
+                    "error[E2S47]: duplicate binding `%s` in lexical "
+                    "scope at byte %" PRId64
+                    "; first declaration at byte %s",
+                    name_text,
+                    name,
+                    first_declaration
+                );
+                free(name_text);
+                free(first_declaration);
+                free(hir.data);
+                return error.data;
+            }
+            free(first_declaration);
             ++binding_count;
             if (binding_count > 256) {
+                free(name_text);
                 return scope_hir_error(
                     &hir,
                     "lexical binding limit is 256 per function",
                     name
                 );
             }
-            char *name_text = token_copy(source, name);
             char *type_text = token_copy(source, type_cursor);
             buffer_format(
                 &hir,
@@ -3457,8 +3508,35 @@ static char *build_scope_hir(const char *source) {
                     name
                 );
                 char *scope_id = hir_scope_id_for_open(hir.data, scope_open);
+                char *name_text = token_copy(source, name);
+                char *first_declaration = hir_same_scope_declaration(
+                    hir.data,
+                    scope_id,
+                    name_text
+                );
+                if (first_declaration[0] != '\0') {
+                    Buffer error;
+                    buffer_init(&error);
+                    buffer_format(
+                        &error,
+                        "error[E2S47]: duplicate binding `%s` in lexical "
+                        "scope at byte %" PRId64
+                        "; first declaration at byte %s",
+                        name_text,
+                        name,
+                        first_declaration
+                    );
+                    free(name_text);
+                    free(first_declaration);
+                    free(binding_type);
+                    free(scope_id);
+                    free(hir.data);
+                    return error.data;
+                }
+                free(first_declaration);
                 ++binding_count;
                 if (binding_count > 256) {
+                    free(name_text);
                     free(binding_type);
                     free(scope_id);
                     return scope_hir_error(
@@ -3470,7 +3548,6 @@ static char *build_scope_hir(const char *source) {
                 const char *ownership =
                     strcmp(binding_type, "Text") == 0 ||
                     strcmp(binding_type, "List") == 0 ? "gc" : "copy";
-                char *name_text = token_copy(source, name);
                 buffer_format(
                     &hir,
                     "binding|%" PRId64 "|%s|%s|%s|%s|%s|initialized|"
