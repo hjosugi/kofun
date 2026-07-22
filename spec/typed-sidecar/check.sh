@@ -74,13 +74,18 @@ expect_invalid() {
 
 expect_invalid duplicate-key "$ROOT/spec/typed-sidecar/invalid/duplicate-key.json"
 
-for case in authoritative bad-pair absolute-path span-overflow non-validated-complete noncanonical; do
+for case in authoritative wrong-schema invalid-id count-overflow bad-pair absolute-path span-overflow non-validated-complete noncanonical; do
     node "$GENERATOR" "$case" "$EXAMPLES/complete.json" "$TMP_DIR/$case.json"
     expect_invalid "$case" "$TMP_DIR/$case.json"
 done
 
-for case in duplicate-id dangling-diagnostic validated-dependency hidden-leak node-order; do
+for case in duplicate-id dangling-diagnostic validated-dependency hidden-leak node-order text-overflow; do
     node "$GENERATOR" "$case" "$EXAMPLES/partial.json" "$TMP_DIR/$case.json"
+    expect_invalid "$case" "$TMP_DIR/$case.json"
+done
+
+for case in bom invalid-utf8 prototype-key depth-overflow; do
+    node "$GENERATOR" "$case" "$EXAMPLES/complete.json" "$TMP_DIR/$case.json"
     expect_invalid "$case" "$TMP_DIR/$case.json"
 done
 

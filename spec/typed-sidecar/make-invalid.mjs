@@ -15,11 +15,35 @@ if (!kind || !input || !output) throw new Error("usage: make-invalid.mjs CASE IN
 const document = JSON.parse(fs.readFileSync(input, "utf8"));
 
 switch (kind) {
+  case "bom":
+    fs.writeFileSync(output, Buffer.concat([
+      Buffer.from([0xef, 0xbb, 0xbf]),
+      fs.readFileSync(input),
+    ]));
+    process.exit(0);
+  case "invalid-utf8":
+    fs.writeFileSync(output, Buffer.from([0xc3, 0x28]));
+    process.exit(0);
+  case "prototype-key":
+    fs.writeFileSync(output, '{"__proto__":{"authoritative":false}}\n');
+    process.exit(0);
+  case "depth-overflow":
+    fs.writeFileSync(output, `${"[".repeat(129)}0${"]".repeat(129)}\n`);
+    process.exit(0);
   case "remapped":
     document.file.path_remap_root_id = "0000000000000000000000000000000000000000000000000000000000000000";
     break;
   case "authoritative":
     document.authoritative = true;
+    break;
+  case "wrong-schema":
+    document.schema = "kofun.typed-sidecar/v2";
+    break;
+  case "invalid-id":
+    document.file.file_id = "NOT-A-LOWERCASE-HEX-ID";
+    break;
+  case "count-overflow":
+    document.nodes = Array(65_537).fill(null);
     break;
   case "bad-pair":
     document.completeness = "partial";
@@ -54,6 +78,9 @@ switch (kind) {
     break;
   case "node-order":
     document.nodes.reverse();
+    break;
+  case "text-overflow":
+    document.diagnostics[0].fallback_text = "x".repeat(65_537);
     break;
   case "noncanonical":
     fs.writeFileSync(output, `${JSON.stringify(document)}\n`);
