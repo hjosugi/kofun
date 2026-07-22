@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 typedef struct {
     char *data;
@@ -101,6 +102,54 @@ static void write_file(const char *path, const char *value) {
         fail("stage2 seed: cannot write output");
     }
     if (fclose(file) != 0) fail("stage2 seed: cannot close output");
+}
+
+static bool same_file(const char *left, const char *right) {
+    struct stat left_status;
+    struct stat right_status;
+    if (strcmp(left, right) == 0) return true;
+    if (stat(left, &left_status) != 0 || stat(right, &right_status) != 0) {
+        return false;
+    }
+    return left_status.st_dev == right_status.st_dev &&
+           left_status.st_ino == right_status.st_ino;
+}
+
+static bool write_file_transactional(const char *path, const char *value) {
+    size_t path_length = strlen(path);
+    char *temporary = allocate(path_length + 40u);
+    FILE *file = NULL;
+    unsigned attempt;
+    for (attempt = 0u; attempt < 100u; attempt += 1u) {
+        (void)snprintf(
+            temporary,
+            path_length + 40u,
+            "%s.kofun-tmp-%u",
+            path,
+            attempt
+        );
+        file = fopen(temporary, "wbx");
+        if (file != NULL) break;
+    }
+    if (file == NULL) {
+        free(temporary);
+        return false;
+    }
+    size_t length = strlen(value);
+    bool write_ok = fwrite(value, 1, length, file) == length;
+    bool close_ok = fclose(file) == 0;
+    if (!write_ok || !close_ok) {
+        (void)remove(temporary);
+        free(temporary);
+        return false;
+    }
+    if (rename(temporary, path) != 0) {
+        (void)remove(temporary);
+        free(temporary);
+        return false;
+    }
+    free(temporary);
+    return true;
 }
 
 static bool identifier_start(char symbol) {
@@ -1623,6 +1672,12 @@ static int64_t type_declaration_end(const char *source, int64_t start) {
         if (constructors > 64) return -2;
         last_end = token_end(source, constructor);
         pipe = skip_trivia(source, last_end);
+        if (pipe < length && token_equal(source, pipe, "(")) {
+            int64_t payload_end = balanced_end(source, pipe, "(", ")");
+            if (payload_end < 0) return -1;
+            last_end = payload_end;
+            pipe = skip_trivia(source, payload_end);
+        }
     }
     if (constructors == 0) return -1;
     if (
@@ -1645,9 +1700,22 @@ static int64_t top_level_end(const char *source, int64_t start) {
     return function_end(source, function_start);
 }
 
-static int64_t next_function_start(const char *source, int64_t start) {
+static int64_t after_optional_module_header(const char *source, int64_t start) {
     int64_t length = (int64_t)strlen(source);
     int64_t cursor = skip_trivia(source, start);
+    if (!token_equal(source, cursor, "module")) return cursor;
+    cursor = skip_trivia(source, token_end(source, cursor));
+    while (cursor < length && !token_equal(source, cursor, "type") &&
+           !token_equal(source, cursor, "fn") &&
+           !visibility_prefix_candidate(source, cursor)) {
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return cursor;
+}
+
+static int64_t next_function_start(const char *source, int64_t start) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = after_optional_module_header(source, start);
     while (cursor < length && token_equal(source, cursor, "type")) {
         int64_t end = type_declaration_end(source, cursor);
         if (end <= cursor) return length;
@@ -1662,7 +1730,7 @@ static int64_t enum_declaration_start(
     const char *wanted
 ) {
     int64_t length = (int64_t)strlen(source);
-    int64_t cursor = skip_trivia(source, 0);
+    int64_t cursor = after_optional_module_header(source, 0);
     while (cursor < length) {
         if (token_equal(source, cursor, "type")) {
             char *name = type_name(source, cursor);
@@ -3873,60 +3941,42 @@ static bool enum_match_pattern_token(
     int64_t cursor = skip_trivia(source, token_end(source, function_open));
     while (cursor < target) {
         if (token_equal(source, cursor, "match")) {
-            int64_t value_start = skip_trivia(
-                source,
-                token_end(source, cursor)
-            );
-            int64_t direct_end = skip_trivia(
-                source,
-                token_end(source, value_start)
-            );
-            int64_t arms_open = -1;
-            if (
-                strcmp(token_kind(source, value_start), "identifier") == 0 &&
-                token_equal(source, direct_end, "{")
-            ) {
-                arms_open = direct_end;
-            } else {
-                int64_t value_close = condition_end(source, value_start);
-                if (value_close >= 0) {
-                    arms_open = skip_trivia(source, value_close);
-                }
-            }
+            int64_t arms_open = pattern_match_open(source, cursor);
             if (
                 arms_open >= 0 && arms_open < target &&
                 token_equal(source, arms_open, "{")
             ) {
+                int64_t match_end = balanced_end(
+                    source,
+                    arms_open,
+                    "{",
+                    "}"
+                );
+                int64_t match_close = match_end < 0 ? -1 : match_end - 1;
                 int64_t arm_cursor = skip_trivia(
                     source,
                     token_end(source, arms_open)
                 );
                 while (
-                    arm_cursor <= target &&
+                    match_close >= 0 && arm_cursor <= target &&
+                    arm_cursor < match_close &&
                     !token_equal(source, arm_cursor, "}")
                 ) {
-                    if (arm_cursor == target) return true;
-                    int64_t arrow = skip_trivia(
+                    PatternSummary pattern = pattern_summary(
                         source,
-                        token_end(source, arm_cursor)
+                        arm_cursor
                     );
-                    if (token_equal(source, arrow, "if")) {
-                        int64_t guard_start = skip_trivia(
-                            source,
-                            token_end(source, arrow)
-                        );
-                        int64_t guard_end = condition_end(
-                            source,
-                            guard_start
-                        );
-                        if (guard_end < 0) {
-                            arm_cursor = target + 1;
-                        } else {
-                            arrow = skip_trivia(source, guard_end);
-                        }
+                    if (target >= arm_cursor && target < pattern.end) {
+                        return true;
                     }
+                    int64_t arrow = pattern_arm_arrow(
+                        source,
+                        pattern.end,
+                        match_close
+                    );
                     if (
                         arm_cursor <= target &&
+                        arrow >= 0 &&
                         token_equal(source, arrow, "=>")
                     ) {
                         int64_t arm_open = skip_trivia(
@@ -4293,7 +4343,10 @@ static char *scope_hir_error(
     return lower_error("E2S35", message, cursor);
 }
 
-static char *build_scope_hir(const char *source) {
+static char *build_scope_hir_mode(
+    const char *source,
+    bool preserve_pattern_candidates
+) {
     int64_t length = (int64_t)strlen(source);
     Buffer hir;
     buffer_init(&hir);
@@ -4690,6 +4743,31 @@ static char *build_scope_hir(const char *source) {
                         );
                         unresolved_assignment = true;
                     } else if (
+                        preserve_pattern_candidates &&
+                        !token_equal(source, after, "(")
+                    ) {
+                        ++use_count;
+                        if (use_count > 256) {
+                            free(name);
+                            free(scope_id);
+                            free(binding_id);
+                            return scope_hir_error(
+                                &hir,
+                                "lexical use limit is 256 per function",
+                                cursor
+                            );
+                        }
+                        buffer_format(
+                            &hir,
+                            "candidate-use|%" PRId64 "|%" PRId64
+                            "|%s|%s|%s\n",
+                            cursor,
+                            token_end(source, cursor),
+                            scope_id,
+                            name,
+                            role
+                        );
+                    } else if (
                         !token_equal(source, after, "(") &&
                         !unresolved_assignment
                     ) {
@@ -4777,6 +4855,10 @@ static char *build_scope_hir(const char *source) {
         function_start = next_function_start(source, function_close);
     }
     return hir.data;
+}
+
+static char *build_scope_hir(const char *source) {
+    return build_scope_hir_mode(source, false);
 }
 
 static char *validate_enum_uses(const char *source, const char *hir) {
@@ -6667,6 +6749,50 @@ static int parse_patterns_file(const char *input, const char *output) {
     return ok ? 0 : 1;
 }
 
+static int emit_scope_hir_file(const char *input, const char *output) {
+    if (same_file(input, output)) {
+        puts(
+            "error[E2S35]: scope-HIR input and output must be distinct"
+        );
+        return 1;
+    }
+    char *source = read_file(input);
+    char *tokens = lex_source(source);
+    if (strncmp(tokens, "error[", 6) == 0) {
+        puts(tokens);
+        free(tokens);
+        free(source);
+        return 1;
+    }
+    free(tokens);
+    char *tree = parse_pattern_trees(source);
+    char *pattern_error = pattern_first_error(tree);
+    free(tree);
+    if (pattern_error[0] != '\0') {
+        puts(pattern_error);
+        free(pattern_error);
+        free(source);
+        return 1;
+    }
+    free(pattern_error);
+    char *hir = build_scope_hir_mode(source, true);
+    if (strncmp(hir, "error[", 6) == 0) {
+        puts(hir);
+        free(hir);
+        free(source);
+        return 1;
+    }
+    if (!write_file_transactional(output, hir)) {
+        puts("error[E2S35]: cannot commit scope-HIR output");
+        free(hir);
+        free(source);
+        return 1;
+    }
+    free(hir);
+    free(source);
+    return 0;
+}
+
 int main(int argc, char **argv) {
     if (argc == 3 && strcmp(argv[1], "--check-ownership") == 0) {
         return check_ownership_file(argv[2]);
@@ -6674,11 +6800,15 @@ int main(int argc, char **argv) {
     if (argc == 4 && strcmp(argv[1], "--parse-patterns") == 0) {
         return parse_patterns_file(argv[2], argv[3]);
     }
+    if (argc == 4 && strcmp(argv[1], "--emit-scope-hir") == 0) {
+        return emit_scope_hir_file(argv[2], argv[3]);
+    }
     if (argc != 5) {
         fputs(
             "usage: kofun-stage2 INPUT.kofun OUTPUT.kofun OUTPUT.ir OUTPUT.tokens\n"
             "       kofun-stage2 --check-ownership INPUT.kofun\n"
-            "       kofun-stage2 --parse-patterns INPUT.kofun OUTPUT.patterns\n",
+            "       kofun-stage2 --parse-patterns INPUT.kofun OUTPUT.patterns\n"
+            "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir\n",
             stdout
         );
         return 2;

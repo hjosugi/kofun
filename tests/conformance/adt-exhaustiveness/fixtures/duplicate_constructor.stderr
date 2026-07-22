@@ -1,0 +1,1 @@
+error[E2S26]: redundant ADT match arm at bytes 173..181: constructor `Ok` is already covered by the arm at bytes 149..154; hint: remove or reorder the redundant arm

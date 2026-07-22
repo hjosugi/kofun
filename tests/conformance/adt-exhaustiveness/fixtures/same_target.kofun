@@ -1,0 +1,13 @@
+module target.main
+
+type Target =
+    | Same
+    | TargetOther
+
+fn inspect(value: Target) -> Int {
+    let selected: Int = match value {
+        Same => { 1 },
+        TargetOther => { 0 }
+    }
+    return selected
+}

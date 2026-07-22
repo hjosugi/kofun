@@ -1,0 +1,14 @@
+module demo.matching
+
+type Result =
+    | Ok(value: Int)
+    | Err
+
+fn inspect(value: Result) -> Int {
+    let selected: Int = match value {
+        Ok(_) => { 1 },
+        Ok(item) => { item },
+        Err => { 0 }
+    }
+    return selected
+}

@@ -1,0 +1,21 @@
+module demo.matching
+
+type Many =
+    | A
+    | B
+    | C
+    | D
+    | E
+    | F
+    | G
+    | H
+    | I
+    | J
+    | K
+
+fn inspect(value: Many) -> Int {
+    let selected: Int = match value {
+        A => { 0 }
+    }
+    return selected
+}
