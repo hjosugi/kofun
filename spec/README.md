@@ -21,6 +21,8 @@ Python-free bootstrap implementation.
   single-file package roots and the versioned `PackageIdPayload` contract.
 - `modules/source-file-mapping.md` selects explicit manifest-source module
   headers and defines versioned `FileId`/`ModuleId` identity inputs.
+- `modules/namespaces.md` assigns declarations to the stable value, type,
+  module, and meta namespaces and fixes deterministic lookup and collisions.
 - `modules/visibility.md` defines default-private declarations, package-scoped
   `internal`, intentional `pub`, and restricted ancestor visibility.
 - `law-evidence.schema.json` defines the machine-readable

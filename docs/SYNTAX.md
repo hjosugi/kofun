@@ -323,6 +323,27 @@ module names. Anonymous single-file builds instead use one synthetic root and
 do not accept a module header in v1. This is an accepted design contract; the
 active compiler does not yet parse a general multi-file module graph.
 
+### Semantic namespaces
+
+The normative
+[`spec/modules/namespaces.md`](../spec/modules/namespaces.md) contract assigns
+every named declaration to exactly one of four namespaces:
+
+| Namespace | Examples |
+| --- | --- |
+| value | functions, constants, locals, constructors, methods |
+| type | nominal types, aliases, type parameters, traits |
+| module | declared modules and imported module qualifiers |
+| meta | macros, meta functions, and named laws |
+
+The same spelling may coexist across different namespaces but is rejected
+twice in the same namespace and scope. The syntactic use site chooses one
+namespace, so lookup never retries another namespace after failing. A
+selective import may bind all exported meanings of one spelling, one per
+namespace. Capitalization has no effect on namespace assignment. This is an
+accepted design contract; the active compiler does not yet implement the
+general resolver.
+
 ## Imports
 
 planned:
