@@ -15,6 +15,15 @@ directory layout is never a fallback. The current Frost adapter still forwards
 independent target sources and does not yet implement that language-level
 multi-file graph.
 
+The normative production ID, compiled-interface encoding, and invalidation
+contract is in
+[`spec/modules/module-identity.md`](../spec/modules/module-identity.md).
+It keeps public semantic, package-internal semantic, and target ABI digests
+separate. Private body/path changes therefore cannot invalidate dependents,
+while target layout changes cannot rename target-neutral source identities.
+The current compiler and Frost adapter do not yet exchange these language-
+level interfaces; `spec/module-identity/check.sh` is executable design evidence.
+
 ## Single-file fast path
 
 ```sh
