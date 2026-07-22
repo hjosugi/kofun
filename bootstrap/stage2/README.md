@@ -124,6 +124,64 @@ symbol identity. The adapter inventory used by its test is not manifest
 syntax. Imports, partial modules, KIF emission, layout, and backend lowering
 remain outside this helper.
 
+`bootstrap/stage2/imports_qualified.c` is the focused same-package qualified
+import checkpoint. Its validated adapter inventory has six pipe-delimited
+fields:
+
+```text
+PackageId|ModuleId|FileId|declared-module-path|logical-path|host-source
+```
+
+The declared path is semantic inventory data, not a path inferred from the
+filesystem. An optional source `module` header must match it. A leading
+`import a.b` resolves exactly one inventoried `ModuleId` in the current
+`PackageId` and introduces only the final-component qualifier `b`; it never
+introduces an unqualified member, transitive binding, export, or re-export.
+In particular, an ordinary import is a private local binding under the
+explicit non-widening re-export contract. `pub import` and `pub from` are
+reserved re-export forms and are rejected by this ordinary-import checkpoint
+rather than being silently treated as private imports.
+All declarations and import edges are collected before function bodies.
+Import cycles are reported canonically by shortest edge count, rotation to the
+smallest raw `ModuleId`, and then lexicographic raw-`ModuleId` sequence. The
+bounded dynamic diagnostic retains every edge span and the closing node; it
+never truncates a valid package cycle to the fixed base diagnostic buffer.
+
+The helper emits `kofun-imports-qualified/v1`. Import bindings use the
+production `kofun.id.import-binding/v1` framed SHA-256 domain over importer
+`ModuleId`/`FileId`, the module `NamespaceId`, local qualifier, target
+`ModuleId`, and stable numeric tag 1 for the `qualified-module-v1` form.
+Qualified-call HIR retains the
+binding, target `ModuleId`, target `SymbolId`, component/use spans, validated
+signature, and the identity-only access result/proof from
+`visibility_access.c`. Private declarations in another file are denied;
+`internal` and `pub` declarations are usable inside the package.
+The executable qualified-call checkpoint accepts only `Int` parameter and
+return types. It validates those tokens before projecting an `Int` signature
+or lowering C, so another identifier type fails transactionally with `E2S65`.
+This line-oriented artifact is a non-authoritative structural test projection,
+not KIF and not the canonical `kofun.typed-sidecar/v1` tooling document. It is
+never accepted as compiler input and this transactional helper emits no
+partial projection after failure; a future typed-sidecar producer must use the
+separate #603 status, disclosure, canonical JSON, and trust boundary.
+
+An optional third output operand emits a bounded reference C lowering for
+single-return Int functions. Its linker names are derived from the resolved
+target `SymbolId`; the conformance gate compiles and executes the lowering.
+This helper and its six-field inventory are not yet routed through `bin/kofun`
+or manifest loading. The include boundary around `module_symbols.c` is a
+temporary way to reuse production declaration identities; it is deliberately
+guarded so the existing standalone collector remains independently buildable.
+A later compiler-library extraction can replace that adapter without changing
+the HIR schema or identities.
+
+Focused diagnostics are `E2S59` malformed/order/path, `E2S60` missing module,
+`E2S61` self import, `E2S62` duplicate import, `E2S63` qualifier collision,
+`E2S64` canonical cycle, `E2S65` qualified lookup/signature/arity/lowering,
+`E2S66` access denial, `E2S67` bounded-resource exhaustion, and `E2S68`
+allocation/invariant/output failure. Semantic failure removes both requested
+artifacts.
+
 ## Verification
 
 Run:
@@ -171,13 +229,20 @@ recovery synchronization, normal-compile transactionality, exact `E2S58`,
 and the depth/node boundary plus one-over cases. General Pattern syntax is not
 evidence of executable destructuring.
 
+`tests/conformance/modules/imports-qualified/run.sh` covers two-module
+qualified resolution, production binding/target identities, absolute source
+remapping, no unqualified leakage, missing/self/duplicate/colliding imports,
+canonical cycles, visibility enforcement, resource rejection, transaction
+failure, and reference-backend execution through the resolved `SymbolId`.
+
 `bootstrap/stage2/visibility_access.c` is the pure access primitive for the
 next resolver slice. It compares only schema-tagged 32-byte package, module,
 file, and optional type-owner identities; it has no filesystem, name, import,
 target, linker, or runtime input. The table-driven
 `tests/conformance/modules/visibility-access/run.sh` gate verifies exact
-allowed, denied, and unsupported results. General module resolution does not
-call it yet.
+allowed, denied, and unsupported results. The focused qualified-import
+resolver calls it for each cross-file target; the main CLI is not routed
+through that resolver yet.
 
 `compiler.c` is an audited executable transliteration of the Kofun source so
 this checkpoint can run before Stage 1 accepts all of Stage 2. It is part of the

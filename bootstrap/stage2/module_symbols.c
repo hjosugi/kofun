@@ -1259,6 +1259,7 @@ static void destroy_program(Program *program) {
     free(program->calls);
 }
 
+#ifndef KOFUN_MODULE_SYMBOLS_NO_MAIN
 int main(int argc, char **argv) {
     Program program;
     size_t index;
@@ -1283,3 +1284,4 @@ done:
     destroy_program(&program);
     return status;
 }
+#endif

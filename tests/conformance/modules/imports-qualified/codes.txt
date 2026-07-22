@@ -1,0 +1,10 @@
+E2S59 malformed/unsupported import, declared module path, header, or source order
+E2S60 imported module is absent from the current package inventory
+E2S61 a module imports itself
+E2S62 identical qualified import appears more than once
+E2S63 two imports introduce the same final-component qualifier
+E2S64 canonical same-package import cycle
+E2S65 qualified lookup, Int-signature, arity, leakage, or reference-lowering failure
+E2S66 qualified target is inaccessible at the use site
+E2S67 qualified-import graph or use resource limit exceeded
+E2S68 qualified-import allocation, invariant, or output transaction failure

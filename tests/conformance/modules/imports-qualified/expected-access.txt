@@ -1,0 +1,1 @@
+error[E2S66]: qualified use in `app/main.kofun` at bytes 63..80 is inaccessible: PrivateFileBoundary; hint: expose an internal or public target, or keep the call in the defining file

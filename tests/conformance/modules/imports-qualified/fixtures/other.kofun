@@ -1,0 +1,6 @@
+module app.other
+import lib.math
+
+internal fn other_answer() -> Int {
+    return math.identity(7)
+}

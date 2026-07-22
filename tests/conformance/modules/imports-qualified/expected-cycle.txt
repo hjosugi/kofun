@@ -1,0 +1,1 @@
+error[E2S64]: canonical import cycle: app.main --app/main.kofun:16..31--> lib.math --lib/math.kofun:16..31--> app.main; hint: remove one import edge from this cycle
