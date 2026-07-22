@@ -261,6 +261,17 @@ remapping, no unqualified leakage, missing/self/duplicate/colliding imports,
 canonical cycles, visibility enforcement, resource rejection, transaction
 failure, and reference-backend execution through the resolved `SymbolId`.
 
+`kif_v1.c` and `kif_v1.h` implement the compiler-authoritative KIF v1 binary
+writer/reader for bounded function and flat-ADT facts. Records use explicit
+schema tags and big-endian widths, canonical identity ordering, distinct
+public and package-internal semantic views, defensive limits, full self-read,
+and atomic replacement. `kif_v1_tool.c` projects the committed declaration
+table, emits non-authoritative JSON only after validation, and resolves the
+qualified-import slice from a validated KIF while the dependency source is
+absent. `tests/conformance/modules/kif-v1/run.sh` covers deterministic bytes,
+visibility, digests, source-free consumption, corruption mutations, exact
+limits, failed publication, C11 warnings, sanitizers, and static analysis.
+
 `bootstrap/stage2/visibility_access.c` is the pure access primitive for the
 next resolver slice. It compares only schema-tagged 32-byte package, module,
 file, and optional type-owner identities; it has no filesystem, name, import,

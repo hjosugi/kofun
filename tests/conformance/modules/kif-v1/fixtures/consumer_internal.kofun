@@ -1,0 +1,6 @@
+module demo.consumer
+import demo.api
+
+fn main() -> Int {
+    return api.sibling(42)
+}
