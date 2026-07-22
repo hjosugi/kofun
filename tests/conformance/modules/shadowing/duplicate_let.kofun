@@ -1,0 +1,5 @@
+fn main() {
+    let value = 1
+    let mut value = value + 1
+    print(value)
+}

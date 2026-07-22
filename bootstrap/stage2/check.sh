@@ -282,6 +282,8 @@ fi
 
 KOFUN_STAGE2_COMPILER="$temporary/kofun-stage2" \
     sh "$root/tests/conformance/modules/lexical-scopes/run.sh"
+KOFUN_STAGE2_COMPILER="$temporary/kofun-stage2" \
+    sh "$root/tests/conformance/modules/shadowing/run.sh"
 
 echo "PASS: Stage 2 statically compiled Copy Int borrowed-return slice"
 echo "PASS: Stage 2 and kofun check rejected non-Copy Text move with E007"

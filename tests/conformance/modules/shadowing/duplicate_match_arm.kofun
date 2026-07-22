@@ -1,0 +1,13 @@
+type Signal = | Red | Green
+
+fn main() {
+    let signal: Signal = Red
+    match signal {
+        Red => {
+            let arm_value = 1
+            let arm_value = 2
+            print(arm_value)
+        },
+        Green => { print(0) },
+    }
+}

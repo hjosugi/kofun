@@ -2161,6 +2161,22 @@ fn hir_binding_field(hir: Text, binding_id: Text, field: Int) -> Text {
     return ""
 }
 
+fn hir_same_scope_declaration(
+    hir: Text,
+    scope_id: Text,
+    name: Text
+) -> Text {
+    let mut line = hir_record_start(hir, "binding", 0)
+    while line >= 0 {
+        if hir_field(hir, line, 2) == scope_id &&
+           hir_field(hir, line, 3) == name {
+            return hir_field(hir, line, 8)
+        }
+        line = hir_record_start(hir, "binding", line + 1)
+    }
+    return ""
+}
+
 fn hir_definition_id_at(hir: Text, declaration_start: Int) -> Text {
     let mut line = hir_record_start(hir, "binding", 0)
     while line >= 0 {
@@ -2366,6 +2382,17 @@ fn build_scope_hir(source: Text) -> Text {
             let name = parameter_cursor
             let colon = skip_trivia(source, token_end(source, name))
             let type_cursor = skip_trivia(source, token_end(source, colon))
+            let first_declaration = hir_same_scope_declaration(
+                hir,
+                to_text(parameter_scope),
+                token_text(source, name)
+            )
+            if len(first_declaration) > 0 {
+                return "error[E2S47]: duplicate binding `" +
+                token_text(source, name) +
+                "` in lexical scope at byte " + to_text(name) +
+                "; first declaration at byte " + first_declaration
+            }
             binding_count = binding_count + 1
             if binding_count > 256 {
                 return "error[E2S35]: lexical binding limit is 256 per function at byte " +
@@ -2432,6 +2459,17 @@ fn build_scope_hir(source: Text) -> Text {
                     name
                 )
                 let scope_id = hir_scope_id_for_open(hir, scope_open)
+                let first_declaration = hir_same_scope_declaration(
+                    hir,
+                    scope_id,
+                    token_text(source, name)
+                )
+                if len(first_declaration) > 0 {
+                    return "error[E2S47]: duplicate binding `" +
+                    token_text(source, name) +
+                    "` in lexical scope at byte " + to_text(name) +
+                    "; first declaration at byte " + first_declaration
+                }
                 binding_count = binding_count + 1
                 if binding_count > 256 {
                     return "error[E2S35]: lexical binding limit is 256 per function at byte " +

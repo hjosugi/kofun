@@ -1,0 +1,1 @@
+error[E2S47]: duplicate binding `arm_value` in lexical scope at byte 152; first declaration at byte 122

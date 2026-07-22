@@ -1,0 +1,8 @@
+fn main() {
+    let mut value = 1
+    if true {
+        let value = 2
+        value = 3
+    }
+    print(value)
+}

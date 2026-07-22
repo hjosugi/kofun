@@ -1,0 +1,67 @@
+type Signal = | Red | Green | Blue
+
+fn exercise(root: Int) -> Int {
+    let root = root + 10
+    print(root)
+    let mut value = root
+    let signal: Signal = Green
+    if true {
+        let mut value = root + 1
+        value = value + 1
+        print(value)
+        let signal = 7
+        print(signal)
+    } else {
+        let value = 99
+        print(value)
+    }
+    print(value)
+    match signal {
+        Red => {
+            let arm_value = 10
+            print(arm_value)
+        },
+        Green => {
+            let arm_value = 20
+            print(arm_value)
+        },
+        Blue => {
+            let arm_value = 30
+            print(arm_value)
+        },
+    }
+    match true {
+        true => {
+            let arm_value = 40
+            print(arm_value)
+        },
+        false => {
+            let arm_value = 50
+            print(arm_value)
+        },
+    }
+    if true {
+        let reused = 30
+        print(reused)
+    } else {
+        let reused = 40
+        print(reused)
+    }
+    let level = 1
+    if true {
+        let level = 2
+        if true {
+            let level = 3
+            print(level)
+        }
+        print(level)
+    }
+    print(level)
+    return value
+}
+
+fn main() {
+    let value = 6
+    print(value)
+    print(exercise(5))
+}

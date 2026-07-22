@@ -1,0 +1,8 @@
+# diagnostic-mode: compile
+# expect-code: E2S47
+# expect-span: byte 127
+fn main() {
+    let value = 1
+    print(value)
+    let value = 2
+}
