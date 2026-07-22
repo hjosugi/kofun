@@ -222,10 +222,12 @@ ABI digests.
 
 `spec/source-file-mapping/check.sh` executes canonical identity-input,
 path-remap, move/rename, uniqueness, header-shape, generated/authored, and
-ordering examples. The active compiler still consumes one explicit source and
-does not parse a general manifest module graph. Passing the reference gate is a
-design decision and serialization check, not a claim that imports or
-multi-file resolution are implemented.
+ordering examples. The focused `module_symbols.c` checkpoint can consume
+already-validated IDs for several distinct one-file modules and re-enforces
+the V1 duplicate-`ModuleId` boundary; it does not discover or validate a
+manifest graph itself. The active compiler still consumes one explicit source.
+Passing either gate is not a claim that imports or cross-module resolution are
+implemented.
 
 This contract does not define imports, re-exports, package dependencies,
 workspaces, source fetching, wildcard discovery, partial modules, module

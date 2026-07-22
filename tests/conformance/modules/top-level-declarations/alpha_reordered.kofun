@@ -1,0 +1,33 @@
+module demo.alpha
+
+type Maybe =
+    | Missing
+    | Present(value: Int)
+
+fn construct() -> Maybe {
+    return Present(1)
+}
+
+fn Maybe() -> Int {
+    return 0
+}
+
+fn right() -> Int {
+    return left()
+}
+
+fn left() -> Int {
+    return right()
+}
+
+private fn recursive() -> Int {
+    return recursive()
+}
+
+internal fn second() -> Int {
+    return 42
+}
+
+pub fn start() -> Int {
+    return second()
+}

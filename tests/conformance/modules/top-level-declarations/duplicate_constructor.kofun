@@ -1,0 +1,3 @@
+module bad.duplicate_constructor
+type First = | Empty | Full(value: Int)
+type Second = | Empty | Other(value: Int)

@@ -1,0 +1,1 @@
+error[E2S54]: imports are deferred to #113 in `import_deferred.kofun` at bytes 27..33

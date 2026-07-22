@@ -1,0 +1,1 @@
+error[E2S50]: body-local function is not a top-level declaration in `body_local_function.kofun` at bytes 55..57

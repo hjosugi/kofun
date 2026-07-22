@@ -9,6 +9,11 @@ visibility contracts from #284, #300, #290, and #285 respectively.
 
 The words **must**, **must not**, **should**, and **may** are normative.
 
+The focused Stage 2 declaration collector now executes the production
+`NamespaceId` and `SymbolId` framing for bounded functions, ADTs, and
+constructors. KIF interface emission and the three semantic/ABI digest views
+remain specification-only at this checkpoint.
+
 ## Decisions
 
 Kofun makes the following v1 choices:

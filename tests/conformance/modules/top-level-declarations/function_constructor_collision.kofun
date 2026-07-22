@@ -1,0 +1,5 @@
+module bad.function_constructor_collision
+fn Present() -> Int { return 0 }
+type Maybe =
+    | Missing
+    | Present(value: Int)

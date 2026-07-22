@@ -1,0 +1,2 @@
+module bad.cross_alpha
+fn outer() -> Int { return helper() }

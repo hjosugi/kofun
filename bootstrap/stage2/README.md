@@ -96,6 +96,17 @@ IR artifacts with nominal IDs and byte spans. It deliberately emits no C,
 native, Wasm, layout, allocation, match, or runtime representation. The main
 CLI does not route ordinary builds through this helper yet.
 
+`bootstrap/stage2/module_symbols.c` is the next resolver-side checkpoint. It
+consumes a validated inventory of raw `PackageId`, `ModuleId`, and `FileId`
+values with exactly one source per module, collects supported function and
+flat-ADT headers before inspecting bodies, and emits
+`kofun-module-symbols/v1`. Its `NamespaceId` and `SymbolId` values use the
+production framed SHA-256/KIF inputs from the accepted module specifications;
+file paths, spans, visibility, bodies, and declaration order are excluded from
+symbol identity. The adapter inventory used by its test is not manifest
+syntax. Imports, partial modules, KIF emission, layout, and backend lowering
+remain outside this helper.
+
 ## Verification
 
 Run:
@@ -129,6 +140,13 @@ byte-identical repeated output.
 constructor-before-declaration resolution, deterministic IR/token artifacts,
 zero/one-payload typing, and exact E2S36–E2S46 diagnostics for invalid or
 explicitly deferred ADT forms.
+
+`tests/conformance/modules/top-level-declarations/run.sh` covers production
+identity framing, same-module forward/recursive/mutual references, value/type
+namespace separation, canonical multi-module inventory order, path and source
+order invariance, transaction failure, fixed resource limits, and exact
+E2S48–E2S56 inventory. It also runs the collector with C11 warnings as errors,
+GCC analyzer when available, AddressSanitizer, and UndefinedBehaviorSanitizer.
 
 `bootstrap/stage2/visibility_access.c` is the pure access primitive for the
 next resolver slice. It compares only schema-tagged 32-byte package, module,

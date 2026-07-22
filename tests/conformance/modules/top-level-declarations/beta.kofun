@@ -1,0 +1,9 @@
+module demo.beta
+
+fn helper() -> Int {
+    return helper()
+}
+
+type Maybe =
+    | None
+    | Some(value: Int)

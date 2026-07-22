@@ -1,0 +1,2 @@
+module bad.malformed_adt
+type Broken = Missing | Present(value: Int)

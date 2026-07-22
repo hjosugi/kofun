@@ -1,0 +1,2 @@
+module bad.cross_beta
+fn helper() -> Int { return 1 }

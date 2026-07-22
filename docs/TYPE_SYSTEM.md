@@ -156,6 +156,12 @@ nominal ADT/constructor identities plus declaration and use spans. The
 checkpoint emits no runtime layout or backend code and does not add payload
 patterns or exhaustiveness; see `tests/conformance/adt/README.md`.
 
+The separate top-level declaration-table checkpoint assigns these bounded ADT
+types and constructors production module-scoped `SymbolId` values alongside
+functions. It proves namespace separation and declaration-order independence,
+but still performs only same-module lookup; imports and cross-module calls are
+the next module-resolution slice.
+
 ## Records
 
 Nominal record:

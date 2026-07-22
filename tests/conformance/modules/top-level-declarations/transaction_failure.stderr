@@ -1,0 +1,1 @@
+error[E2S52]: function signature in `src/bad.kofun` is missing `->` at bytes 33..39
