@@ -1,4 +1,4 @@
-.PHONY: help compiler test diagnostics fuzz check bootstrap stage2 patterns adt adt-exhaustiveness module-symbols imports-qualified imports-selective native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp roadmap syntax repository-check verify clean
+.PHONY: help compiler test diagnostics fuzz check bootstrap stage2 patterns adt adt-exhaustiveness module-symbols imports-qualified imports-selective kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp roadmap syntax repository-check verify clean
 
 KOFUN := ./bin/kofun
 
@@ -17,6 +17,7 @@ help:
 	  'make module-symbols   Verify stable top-level declaration collection' \
 	  'make imports-qualified Verify qualified same-package module imports' \
 	  'make imports-selective Verify selective same-package name imports' \
+	  'make kif-v1           Verify authoritative compiled interfaces' \
 	  'make native           Build and execute the Kofun-emitted ELF64 fixture' \
 	  'make wasm             Build and execute the wasm32 arithmetic Core' \
 	  'make tour             Verify the no-install browser learning tour' \
@@ -94,6 +95,9 @@ imports-qualified:
 
 imports-selective:
 	sh tests/conformance/modules/imports-selective/run.sh
+
+kif-v1:
+	sh tests/conformance/modules/kif-v1/run.sh
 
 native:
 	sh bootstrap/native/check.sh
@@ -179,7 +183,7 @@ repository-check:
 	@grep -q '"extensions": \[".kofun"\]' editor/vscode/package.json
 	@printf '%s\n' 'PASS: .kofun sources only; no Python implementation'
 
-verify: test diagnostics fuzz check bootstrap stage2 patterns adt adt-exhaustiveness module-symbols imports-qualified imports-selective native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp roadmap syntax repository-check
+verify: test diagnostics fuzz check bootstrap stage2 patterns adt adt-exhaustiveness module-symbols imports-qualified imports-selective kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp roadmap syntax repository-check
 	@sh -n bin/kofun bootstrap/stage1/check.sh bootstrap/stage2/check.sh \
 	  bootstrap/native/check.sh bootstrap/native/emit-fixture.sh \
 	  bootstrap/wasm/check.sh \
@@ -218,6 +222,7 @@ verify: test diagnostics fuzz check bootstrap stage2 patterns adt adt-exhaustive
 	  tests/conformance/patterns/run.sh \
 	  tests/conformance/modules/imports-qualified/run.sh \
 	  tests/conformance/modules/imports-selective/run.sh \
+	  tests/conformance/modules/kif-v1/run.sh \
 	  tests/lsp/check.sh tooling/lsp/kofun-lsp \
 	  editor/vscode/server/kofun-lsp \
 	  tests/conformance/run.sh tests/conformance/backends/c11-stage1.sh \
