@@ -1,0 +1,19 @@
+module app.main
+import lib.math
+from lib.math import Value, identity, answer,
+
+internal fn value_identity(value: Value) -> Value {
+    return value
+}
+
+internal fn call_identity() -> Int {
+    return identity(42)
+}
+
+internal fn call_qualified() -> Int {
+    return math.answer()
+}
+
+internal fn call_same_spelling() -> Int {
+    return Value()
+}

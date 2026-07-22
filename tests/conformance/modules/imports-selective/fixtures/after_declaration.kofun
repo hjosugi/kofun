@@ -1,0 +1,7 @@
+module app.main
+
+fn first() -> Int {
+    return 1
+}
+
+from lib.math import identity

@@ -1,0 +1,6 @@
+module app.main
+from lib.math import hidden
+
+fn main() -> Int {
+    return hidden()
+}
