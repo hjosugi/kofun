@@ -28,6 +28,8 @@ Python-free bootstrap implementation.
 - `modules/visibility.md` defines default-private declarations, package-scoped
   `internal`, intentional `pub`, restricted ancestor visibility, and the
   identity-only access decision implemented by the focused conformance gate.
+- `modules/re-exports.md` selects explicit `pub import`/`pub from` forwarding,
+  preserves target identities, and rejects every visibility-widening edge.
 - `law-evidence.schema.json` defines the machine-readable
   `kofun.law-evidence/v1` artifact.
 

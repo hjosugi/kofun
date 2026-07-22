@@ -90,7 +90,9 @@ reachable. The compiler must not silently promote an enclosing boundary.
 An import never changes target visibility. A re-export may preserve or narrow
 visibility, but it may not widen it. If source requests a wider re-export than
 the target's effective visibility, compilation fails instead of silently
-reducing the advertised API. #287 defines forwarding syntax and provenance.
+reducing the advertised API. The accepted forwarding syntax, identity,
+provenance, cycle, and compiled-interface rules are defined by
+[`re-exports.md`](re-exports.md).
 
 ## Restricted public
 

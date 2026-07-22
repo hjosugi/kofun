@@ -96,7 +96,12 @@ The remaining identity payloads are canonical KIF records:
   never a replacement for the target `SymbolId`.
 - `ExportBindingId` contains exporting `ModuleId`, exported namespace/name,
   target `SymbolId`, and effective visibility. A re-export therefore changes
-  the exporting interface without changing the target.
+  the exporting interface without changing the target. A module-namespace
+  target uses the canonical module self-symbol defined by
+  [`re-exports.md`](re-exports.md): the target `ModuleId`, module
+  `NamespaceId`, stable `module` kind, and full declared module path. Resolver
+  graph edges retain the raw target `ModuleId`; the self-symbol keeps the
+  namespace-generic export identity schema uniform.
 - `ImplementationId` contains the implementing `PackageId`, trait `SymbolId`
   or intrinsic-trait tag, canonical self `TypeRef`, ordered generic binder
   identities, canonical constraints, and coherence-mode tag. Source location
