@@ -1324,6 +1324,14 @@ fn type_declaration_end(source: Text, start: Int) -> Int {
         }
         last_end = token_end(source, constructor)
         pipe = skip_trivia(source, last_end)
+        if pipe < len(source) && token_text(source, pipe) == "(" {
+            let payload_end = balanced_end(source, pipe, "(", ")")
+            if payload_end < 0 {
+                return -1
+            }
+            last_end = payload_end
+            pipe = skip_trivia(source, payload_end)
+        }
     }
     if constructors == 0 {
         return -1
@@ -1347,8 +1355,22 @@ fn top_level_end(source: Text, start: Int) -> Int {
     return function_end(source, function_start)
 }
 
-fn next_function_start(source: Text, start: Int) -> Int {
+fn after_optional_module_header(source: Text, start: Int) -> Int {
     let mut cursor = skip_trivia(source, start)
+    if token_text(source, cursor) != "module" {
+        return cursor
+    }
+    cursor = skip_trivia(source, token_end(source, cursor))
+    while cursor < len(source) && token_text(source, cursor) != "type" &&
+          token_text(source, cursor) != "fn" &&
+          !visibility_prefix_candidate(source, cursor) {
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return cursor
+}
+
+fn next_function_start(source: Text, start: Int) -> Int {
+    let mut cursor = after_optional_module_header(source, start)
     while cursor < len(source) && token_text(source, cursor) == "type" {
         let end = type_declaration_end(source, cursor)
         if end <= cursor {
@@ -1364,7 +1386,7 @@ fn next_function_start(source: Text, start: Int) -> Int {
 }
 
 fn enum_declaration_start(source: Text, wanted: Text) -> Int {
-    let mut cursor = skip_trivia(source, 0)
+    let mut cursor = after_optional_module_header(source, 0)
     while cursor < len(source) {
         if token_text(source, cursor) == "type" &&
            type_name(source, cursor) == wanted {
@@ -2864,49 +2886,30 @@ fn enum_match_pattern_token(
     let mut cursor = skip_trivia(source, token_end(source, function_open))
     while cursor < target {
         if token_text(source, cursor) == "match" {
-            let value_start = skip_trivia(source, token_end(source, cursor))
-            let direct_end = skip_trivia(
-                source,
-                token_end(source, value_start)
-            )
-            let mut arms_open = -1
-            if token_kind(source, value_start) == "identifier" &&
-               token_text(source, direct_end) == "{" {
-                arms_open = direct_end
-            } else {
-                let value_close = condition_end(source, value_start)
-                if value_close >= 0 {
-                    arms_open = skip_trivia(source, value_close)
-                }
-            }
+            let arms_open = pattern_match_open(source, cursor)
             if arms_open >= 0 && arms_open < target &&
                token_text(source, arms_open) == "{" {
+                let match_end = balanced_end(source, arms_open, "{", "}")
+                let match_close = match_end - 1
                 let mut arm_cursor = skip_trivia(
                     source,
                     token_end(source, arms_open)
                 )
-                while arm_cursor <= target &&
+                while match_end >= 0 && arm_cursor <= target &&
+                      arm_cursor < match_close &&
                       token_text(source, arm_cursor) != "}" {
-                    if arm_cursor == target {
+                    let pattern = pattern_summary(source, arm_cursor)
+                    let pattern_end = pattern_summary_end(pattern)
+                    if target >= arm_cursor && target < pattern_end {
                         return true
                     }
-                    let mut arrow = skip_trivia(
+                    let arrow = pattern_arm_arrow(
                         source,
-                        token_end(source, arm_cursor)
+                        pattern_end,
+                        match_close
                     )
-                    if token_text(source, arrow) == "if" {
-                        let guard_start = skip_trivia(
-                            source,
-                            token_end(source, arrow)
-                        )
-                        let guard_end = condition_end(source, guard_start)
-                        if guard_end < 0 {
-                            arm_cursor = target + 1
-                        } else {
-                            arrow = skip_trivia(source, guard_end)
-                        }
-                    }
                     if arm_cursor <= target &&
+                       arrow >= 0 &&
                        token_text(source, arrow) == "=>" {
                         let arm_open = skip_trivia(
                             source,
@@ -3185,7 +3188,10 @@ fn scope_depth_for_open(
     return -1
 }
 
-fn build_scope_hir(source: Text) -> Text {
+fn build_scope_hir_mode(
+    source: Text,
+    preserve_pattern_candidates: Bool
+) -> Text {
     let mut hir = "kofun-scope-hir/v1\n"
     let mut next_scope_id = 0
     let mut next_binding_id = 0
@@ -3436,6 +3442,16 @@ fn build_scope_hir(source: Text) -> Text {
                         to_text(token_end(source, cursor)) + "|" +
                         scope_id + "|-1|assign\n"
                         unresolved_assignment = true
+                    } else if preserve_pattern_candidates &&
+                              token_text(source, after) != "(" {
+                        use_count = use_count + 1
+                        if use_count > 256 {
+                            return "error[E2S35]: lexical use limit is 256 per function at byte " +
+                            to_text(cursor)
+                        }
+                        hir = hir + "candidate-use|" + to_text(cursor) + "|" +
+                        to_text(token_end(source, cursor)) + "|" +
+                        scope_id + "|" + name + "|" + role + "\n"
                     } else if token_text(source, after) != "(" &&
                               !unresolved_assignment {
                         let pending = hir_pending_declaration(
@@ -3472,6 +3488,10 @@ fn build_scope_hir(source: Text) -> Text {
         function_start = next_function_start(source, function_close)
     }
     return hir
+}
+
+fn build_scope_hir(source: Text) -> Text {
+    return build_scope_hir_mode(source, false)
 }
 
 fn validate_enum_uses(source: Text, hir: Text) -> Text {
@@ -4542,6 +4562,32 @@ fn parse_patterns_file(input_path: Text, output_path: Text) -> Bool {
     return true
 }
 
+fn emit_scope_hir_file(input_path: Text, output_path: Text) -> Bool {
+    if input_path == output_path {
+        print("error[E2S35]: scope-HIR input and output must be distinct")
+        return false
+    }
+    let source = read_text(input_path)
+    let tokens = lex(source)
+    if starts_with(tokens, "error[") {
+        print(tokens)
+        return false
+    }
+    let tree = parse_pattern_trees(source)
+    let pattern_error = pattern_first_error(tree)
+    if len(pattern_error) > 0 {
+        print(pattern_error)
+        return false
+    }
+    let hir = build_scope_hir_mode(source, true)
+    if starts_with(hir, "error[") {
+        print(hir)
+        return false
+    }
+    write_text(output_path, hir)
+    return true
+}
+
 fn check_ownership_file(input_path: Text) -> Bool {
     let source = read_text(input_path)
     let tokens = lex(source)
@@ -4576,11 +4622,18 @@ fn main() -> Int {
         }
         return 0
     }
+    if len(arguments) == 3 && arguments[0] == "--emit-scope-hir" {
+        if !emit_scope_hir_file(arguments[1], arguments[2]) {
+            return 1
+        }
+        return 0
+    }
     if len(arguments) != 4 {
         print(
             "usage: kofun-stage2 INPUT.kofun OUTPUT.kofun OUTPUT.ir OUTPUT.tokens\n" +
             "       kofun-stage2 --check-ownership INPUT.kofun\n" +
-            "       kofun-stage2 --parse-patterns INPUT.kofun OUTPUT.patterns"
+            "       kofun-stage2 --parse-patterns INPUT.kofun OUTPUT.patterns\n" +
+            "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir"
         )
         return 2
     }

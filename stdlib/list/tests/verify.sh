@@ -70,7 +70,7 @@ canonical_status=$?
 set -e
 [ "$canonical_status" -ne 0 ] ||
     fail 'canonical ADT source unexpectedly claimed executable codegen'
-grep -Fq 'error[E2S31]: malformed concrete enum declaration' \
+grep -Fq 'error[E2S21]: ownership slice supports one borrowed List parameter per function' \
     "$work/canonical.check.stderr" ||
     fail 'canonical API did not expose the documented compiler boundary'
 

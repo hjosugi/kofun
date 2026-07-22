@@ -1,0 +1,5 @@
+module other.main
+
+type Foreign =
+    | Same
+    | ForeignOther

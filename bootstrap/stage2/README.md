@@ -113,6 +113,19 @@ IR artifacts with nominal IDs and byte spans. It deliberately emits no C,
 native, Wasm, layout, allocation, match, or runtime representation. The main
 CLI does not route ordinary builds through this helper yet.
 
+`bootstrap/stage2/adt_exhaustiveness.c` is the resolved flat-ADT match
+checkpoint. It defensively joins the declaration table, lossless Pattern tree,
+and lexical ScopeId/BindingId artifact for one source module, then publishes a
+typed match projection only after all identities and spans agree. Constructor
+coverage is keyed by the resolved owner `SymbolId`; same-spelled constructors
+in another module cannot affect the result. Unguarded whole-constructor arms
+remove one constructor, unguarded wildcard or binding arms remove the remaining
+set, and guarded arms remove nothing. `E2S25` lists missing witnesses in
+declaration order and `E2S26` points to a redundant pattern and its earlier
+cover. One-`Int` payload constructors accept `_` or one binding; nested payload
+usefulness and or-pattern expansion remain outside this bounded slice. Run the
+transactional, sanitizer-backed gate with `make adt-exhaustiveness`.
+
 `bootstrap/stage2/module_symbols.c` is the next resolver-side checkpoint. It
 consumes a validated inventory of raw `PackageId`, `ModuleId`, and `FileId`
 values with exactly one source per module, collects supported function and
