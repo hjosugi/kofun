@@ -1,4 +1,4 @@
-.PHONY: help compiler test diagnostics fuzz check bootstrap stage2 adt module-symbols native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec lsp roadmap syntax repository-check verify clean
+.PHONY: help compiler test diagnostics fuzz check bootstrap stage2 adt module-symbols native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp roadmap syntax repository-check verify clean
 
 KOFUN := ./bin/kofun
 
@@ -33,6 +33,7 @@ help:
 	  'make visibility-access Verify identity-only visibility enforcement' \
 	  'make re-exports-spec  Verify explicit non-widening re-export design' \
 	  'make typed-sidecar-spec Verify bounded complete/partial tooling artifacts' \
+	  'make typed-sidecar-codec Verify production reader/writer and atomic replacement' \
 	  'make lsp              Verify the stdio language server and editor client' \
 	  'make roadmap          Verify the executable issues 31-34 roadmap' \
 	  'make syntax           Verify syntax contracts for issues 35-60' \
@@ -138,6 +139,11 @@ re-exports-spec:
 typed-sidecar-spec:
 	sh spec/typed-sidecar/check.sh
 
+typed-sidecar-codec:
+	sh tests/typed-sidecar/codec.sh
+	sh tests/typed-sidecar/atomic-write.sh
+	sh tests/typed-sidecar/authority-boundary.sh
+
 lsp:
 	sh tests/lsp/check.sh
 
@@ -157,7 +163,7 @@ repository-check:
 	@grep -q '"extensions": \[".kofun"\]' editor/vscode/package.json
 	@printf '%s\n' 'PASS: .kofun sources only; no Python implementation'
 
-verify: test diagnostics fuzz check bootstrap stage2 adt module-symbols native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec lsp roadmap syntax repository-check
+verify: test diagnostics fuzz check bootstrap stage2 adt module-symbols native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp roadmap syntax repository-check
 	@sh -n bin/kofun bootstrap/stage1/check.sh bootstrap/stage2/check.sh \
 	  bootstrap/native/check.sh bootstrap/native/emit-fixture.sh \
 	  bootstrap/wasm/check.sh \
@@ -185,6 +191,9 @@ verify: test diagnostics fuzz check bootstrap stage2 adt module-symbols native w
 	  spec/visibility/check.sh \
 	  spec/re-exports/check.sh \
 	  spec/typed-sidecar/check.sh \
+	  tests/typed-sidecar/codec.sh \
+	  tests/typed-sidecar/atomic-write.sh \
+	  tests/typed-sidecar/authority-boundary.sh \
 	  tests/conformance/modules/visibility-syntax/run.sh \
 	  tests/conformance/modules/visibility-access/run.sh \
 	  tests/conformance/adt/run.sh \

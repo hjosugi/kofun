@@ -34,6 +34,8 @@ Python-free bootstrap implementation.
   artifact for complete and explicitly status-marked partial semantic facts.
 - `typed-sidecar/` contains its JSON Schema, canonical examples, semantic
   validator, negative corpus, replacement model, and executable gate.
+- `../tooling/typed-sidecar/` implements the bounded, recursively immutable
+  tooling codec and stale-safe atomic replacement without granting authority.
 - `law-evidence.schema.json` defines the machine-readable
   `kofun.law-evidence/v1` artifact.
 

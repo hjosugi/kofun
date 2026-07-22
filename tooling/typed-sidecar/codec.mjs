@@ -1,10 +1,6 @@
-#!/usr/bin/env node
-
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
 const HEX = /^[0-9a-f]{64}$/;
 const NAME = /^[A-Za-z][A-Za-z0-9._-]*$/;
 const STATUSES = new Set(["error", "provisional", "unavailable", "validated"]);
@@ -13,7 +9,7 @@ const IDENTITY_KINDS = new Set([
   "ImportBindingId", "LawEvidenceId", "ModuleId", "NamespaceId",
   "PackageId", "ScopeId", "SymbolId", "TypeId",
 ]);
-const LIMITS = Object.freeze({
+export const TYPED_SIDECAR_LIMITS = Object.freeze({
   documentBytes: 16 * 1024 * 1024,
   maxDepth: 128,
   nodes: 65_536,
@@ -25,9 +21,21 @@ const LIMITS = Object.freeze({
   edits: 4096,
   replacementTextBytes: 1024 * 1024,
 });
+const LIMITS = TYPED_SIDECAR_LIMITS;
+const writeQueues = new Map();
+let temporaryCounter = 0;
 
-function fail(message) {
-  throw new Error(message);
+class CodecFailure extends Error {
+  constructor(code, message, details = {}) {
+    super(message);
+    this.name = "CodecFailure";
+    this.code = code;
+    this.details = details;
+  }
+}
+
+function fail(message, code = "TS003", details = {}) {
+  throw new CodecFailure(code, message, details);
 }
 
 class JsonParser {
@@ -38,9 +46,9 @@ class JsonParser {
 
   parse() {
     this.skipSpace();
-    const value = this.value("$");
+    const value = this.value("$", 1);
     this.skipSpace();
-    if (this.index !== this.text.length) fail(`trailing JSON data at byte ${this.index}`);
+    if (this.index !== this.text.length) fail(`trailing JSON data at byte ${this.index}`, "TS001", { offset: this.index });
     return value;
   }
 
@@ -49,17 +57,18 @@ class JsonParser {
            " \t\r\n".includes(this.text[this.index])) this.index += 1;
   }
 
-  value(where) {
+  value(where, depth) {
+    if (depth > LIMITS.maxDepth) fail("document exceeds default-v1 structural depth", "TS004", { path: where });
     this.skipSpace();
     const ch = this.text[this.index];
-    if (ch === "{") return this.object(where);
-    if (ch === "[") return this.array(where);
+    if (ch === "{") return this.object(where, depth);
+    if (ch === "[") return this.array(where, depth);
     if (ch === '"') return this.string();
     if (ch === "t" && this.take("true")) return true;
     if (ch === "f" && this.take("false")) return false;
     if (ch === "n" && this.take("null")) return null;
     if (ch === "-" || /[0-9]/.test(ch ?? "")) return this.number();
-    fail(`invalid JSON value at byte ${this.index}`);
+    fail(`invalid JSON value at byte ${this.index}`, "TS001", { offset: this.index });
   }
 
   take(token) {
@@ -79,23 +88,23 @@ class JsonParser {
         try {
           return JSON.parse(raw);
         } catch {
-          fail(`invalid JSON string at byte ${start}`);
+          fail(`invalid JSON string at byte ${start}`, "TS001", { offset: start });
         }
       }
       if (!escaped && ch === "\\") escaped = true;
       else escaped = false;
     }
-    fail(`unterminated JSON string at byte ${start}`);
+    fail(`unterminated JSON string at byte ${start}`, "TS001", { offset: start });
   }
 
   number() {
     const match = this.text.slice(this.index).match(/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/);
-    if (!match) fail(`invalid JSON number at byte ${this.index}`);
+    if (!match) fail(`invalid JSON number at byte ${this.index}`, "TS001", { offset: this.index });
     this.index += match[0].length;
     return Number(match[0]);
   }
 
-  object(where) {
+  object(where, depth) {
     this.index += 1;
     const result = Object.create(null);
     const keys = new Set();
@@ -106,21 +115,21 @@ class JsonParser {
     }
     while (true) {
       this.skipSpace();
-      if (this.text[this.index] !== '"') fail(`object key expected at byte ${this.index}`);
+      if (this.text[this.index] !== '"') fail(`object key expected at byte ${this.index}`, "TS001", { offset: this.index });
       const key = this.string();
-      if (keys.has(key)) fail(`${where}: duplicate object key ${JSON.stringify(key)}`);
+      if (keys.has(key)) fail(`${where}: duplicate object key ${JSON.stringify(key)}`, "TS001", { path: where });
       keys.add(key);
       this.skipSpace();
-      if (this.text[this.index++] !== ":") fail(`':' expected after ${where}.${key}`);
-      result[key] = this.value(`${where}.${key}`);
+      if (this.text[this.index++] !== ":") fail(`':' expected after ${where}.${key}`, "TS001", { path: `${where}.${key}` });
+      result[key] = this.value(`${where}.${key}`, depth + 1);
       this.skipSpace();
       const separator = this.text[this.index++];
       if (separator === "}") return result;
-      if (separator !== ",") fail(`',' or '}' expected at byte ${this.index - 1}`);
+      if (separator !== ",") fail(`',' or '}' expected at byte ${this.index - 1}`, "TS001", { offset: this.index - 1 });
     }
   }
 
-  array(where) {
+  array(where, depth) {
     this.index += 1;
     const result = [];
     this.skipSpace();
@@ -129,11 +138,11 @@ class JsonParser {
       return result;
     }
     while (true) {
-      result.push(this.value(`${where}[${result.length}]`));
+      result.push(this.value(`${where}[${result.length}]`, depth + 1));
       this.skipSpace();
       const separator = this.text[this.index++];
       if (separator === "]") return result;
-      if (separator !== ",") fail(`',' or ']' expected at byte ${this.index - 1}`);
+      if (separator !== ",") fail(`',' or ']' expected at byte ${this.index - 1}`, "TS001", { offset: this.index - 1 });
     }
   }
 }
@@ -148,51 +157,58 @@ function sortedValue(value) {
   return value;
 }
 
-function canonicalBytes(value) {
+export function canonicalTypedSidecarBytes(value) {
   return `${JSON.stringify(sortedValue(value), null, 2)}\n`;
 }
 
 function ensureDocumentBytes(length) {
-  if (length > LIMITS.documentBytes) fail("document exceeds default-v1 byte limit");
+  if (length > LIMITS.documentBytes) fail("document exceeds default-v1 byte limit", "TS004");
 }
 
-function loadDocument(filename, { canonical = true } = {}) {
-  const bytes = fs.readFileSync(filename);
+function asBuffer(bytes) {
+  if (Buffer.isBuffer(bytes)) return Buffer.from(bytes);
+  if (bytes instanceof Uint8Array) return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (bytes instanceof ArrayBuffer) return Buffer.from(bytes);
+  throw new TypeError("typed-sidecar bytes must be Buffer, Uint8Array, or ArrayBuffer");
+}
+
+function decodeDocument(input, { canonical = true } = {}) {
+  const bytes = asBuffer(input);
   ensureDocumentBytes(bytes.length);
   if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
-    fail("UTF-8 BOM is forbidden");
+    fail("UTF-8 BOM is forbidden", "TS001");
   }
   let text;
   try {
     text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
-    fail("document is not valid UTF-8");
+    fail("document is not valid UTF-8", "TS001");
   }
   const value = new JsonParser(text).parse();
-  if (canonical && canonicalBytes(value) !== text) fail("document is not canonical JSON");
+  if (canonical && canonicalTypedSidecarBytes(value) !== text) fail("document is not canonical JSON", "TS002");
   return value;
 }
 
 function object(value, where, required, optional = []) {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) fail(`${where}: object required`);
+  if (value === null || typeof value !== "object" || Array.isArray(value)) fail(`${where}: object required`, "TS002", { path: where });
   const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) fail(`${where}: plain data object required`);
+  if (prototype !== Object.prototype && prototype !== null) fail(`${where}: plain data object required`, "TS002", { path: where });
   const allowed = new Set([...required, ...optional]);
-  for (const key of required) if (!Object.hasOwn(value, key)) fail(`${where}: missing ${key}`);
-  for (const key of Object.keys(value)) if (!allowed.has(key)) fail(`${where}: unknown field ${key}`);
+  for (const key of required) if (!Object.hasOwn(value, key)) fail(`${where}: missing ${key}`, "TS002", { path: where });
+  for (const key of Object.keys(value)) if (!allowed.has(key)) fail(`${where}: unknown field ${key}`, "TS002", { path: `${where}.${key}` });
   return value;
 }
 
 function array(value, where, maximum) {
-  if (!Array.isArray(value)) fail(`${where}: array required`);
-  if (value.length > maximum) fail(`${where}: item limit exceeded`);
+  if (!Array.isArray(value)) fail(`${where}: array required`, "TS002", { path: where });
+  if (value.length > maximum) fail(`${where}: item limit exceeded`, "TS004", { path: where });
   return value;
 }
 
 function string(value, where, maximum = Infinity) {
-  if (typeof value !== "string") fail(`${where}: string required`);
-  if (value.length > maximum) fail(`${where}: string limit exceeded`);
-  if (value.normalize("NFC") !== value) fail(`${where}: string must be NFC`);
+  if (typeof value !== "string") fail(`${where}: string required`, "TS002", { path: where });
+  if (value.length > maximum) fail(`${where}: string limit exceeded`, "TS004", { path: where });
+  if (value.normalize("NFC") !== value) fail(`${where}: string must be NFC`, "TS002", { path: where });
   return value;
 }
 
@@ -300,27 +316,17 @@ function validateRemedy(value, where, byteLength, counters) {
   }
 }
 
-function validateSchemaFile() {
-  const schemaPath = path.join(HERE, "kofun.typed-sidecar.v1.schema.json");
-  const schema = loadDocument(schemaPath);
-  if (schema.$schema !== "https://json-schema.org/draft/2020-12/schema" ||
-      schema.properties?.authoritative?.const !== false ||
-      schema.properties?.schema?.const !== "kofun.typed-sidecar/v1" ||
-      schema.properties?.limits?.properties?.document_bytes?.const !== LIMITS.documentBytes ||
-      schema.properties?.limits?.properties?.max_depth?.const !== LIMITS.maxDepth ||
-      schema.properties?.nodes?.maxItems !== LIMITS.nodes ||
-      schema.properties?.references?.maxItems !== LIMITS.references ||
-      schema.properties?.diagnostics?.maxItems !== LIMITS.diagnostics) {
-    fail("checked-in JSON Schema does not encode the default-v1 trust and limit constants");
-  }
-}
-
-function structuralDepth(value, depth = 1) {
+function structuralDepth(value, depth = 1, ancestors = new WeakSet()) {
+  if (depth > LIMITS.maxDepth) return depth;
   if (value === null || typeof value !== "object") return depth;
+  if (ancestors.has(value)) fail("document contains a cyclic object graph", "TS002");
+  ancestors.add(value);
   let maximum = depth;
   for (const child of Array.isArray(value) ? value : Object.values(value)) {
-    maximum = Math.max(maximum, structuralDepth(child, depth + 1));
+    maximum = Math.max(maximum, structuralDepth(child, depth + 1, ancestors));
+    if (maximum > LIMITS.maxDepth) break;
   }
+  ancestors.delete(value);
   return maximum;
 }
 
@@ -331,7 +337,7 @@ function validateDocument(doc) {
   ]);
   if (doc.authoritative !== false) fail("$.authoritative: must be false");
   if (doc.schema !== "kofun.typed-sidecar/v1") fail("$.schema: unsupported schema");
-  if (structuralDepth(doc) > LIMITS.maxDepth) fail("document exceeds default-v1 structural depth");
+  if (structuralDepth(doc) > LIMITS.maxDepth) fail("document exceeds default-v1 structural depth", "TS004");
 
   object(doc.compiler, "$.compiler", ["edition", "semantic_compatibility"]);
   name(doc.compiler.edition, "$.compiler.edition");
@@ -517,65 +523,257 @@ function validateDocument(doc) {
     }
   }
   if (doc.source_status === "failed" && !diagnostics.some((item) => item.severity === "error")) fail("failed document requires an error diagnostic");
-  if (counters.identities > LIMITS.identities) fail("stable identity record limit exceeded");
-  if (counters.edges > LIMITS.edges) fail("dependency/affected edge limit exceeded");
-  if (counters.attachedTextBytes > LIMITS.attachedTextBytes) fail("attached fallback text byte limit exceeded");
-  if (counters.edits > LIMITS.edits) fail("edit limit exceeded");
-  if (counters.replacementTextBytes > LIMITS.replacementTextBytes) fail("replacement text byte limit exceeded");
+  if (counters.identities > LIMITS.identities) fail("stable identity record limit exceeded", "TS004");
+  if (counters.edges > LIMITS.edges) fail("dependency/affected edge limit exceeded", "TS004");
+  if (counters.attachedTextBytes > LIMITS.attachedTextBytes) fail("attached fallback text byte limit exceeded", "TS004");
+  if (counters.edits > LIMITS.edits) fail("edit limit exceeded", "TS004");
+  if (counters.replacementTextBytes > LIMITS.replacementTextBytes) fail("replacement text byte limit exceeded", "TS004");
   return doc;
 }
 
-function readAndValidate(filename) {
-  return validateDocument(loadDocument(filename));
+function publicError(error, fallbackCode = "TS003") {
+  const code = error instanceof CodecFailure ? error.code :
+    error instanceof RangeError ? "TS004" : fallbackCode;
+  const rawMessage = error instanceof CodecFailure ? error.message :
+    code === "TS004" ? "typed-sidecar structural limit exceeded" :
+      "typed-sidecar validation failed";
+  const details = error instanceof CodecFailure ? error.details : {};
+  const bounded = (value, maximum) => value.length <= maximum ? value : `${value.slice(0, maximum - 3)}...`;
+  const result = { code, message: bounded(rawMessage, 512) };
+  if (typeof details.path === "string") result.path = bounded(details.path, 512);
+  if (Number.isSafeInteger(details.offset) && details.offset >= 0) result.offset = details.offset;
+  if (typeof details.reason === "string") result.reason = bounded(details.reason, 64);
+  if (typeof details.errno === "string") result.errno = bounded(details.errno, 32);
+  return Object.freeze(result);
 }
 
-function canReplace(oldDoc, newDoc, currentDigest) {
-  return oldDoc.file.file_id === newDoc.file.file_id &&
-    newDoc.generation.sequence > oldDoc.generation.sequence &&
-    newDoc.file.content_sha256 === currentDigest;
+function errorResult(error, fallbackCode) {
+  return Object.freeze({ ok: false, error: publicError(error, fallbackCode) });
 }
 
-function selfTestLimits() {
-  ensureDocumentBytes(LIMITS.documentBytes);
-  let rejected = false;
-  try { ensureDocumentBytes(LIMITS.documentBytes + 1); } catch { rejected = true; }
-  if (!rejected) fail("document byte one-over self-test failed");
-  if (LIMITS.nodes !== 65_536 || LIMITS.references !== 131_072 ||
-      LIMITS.identities !== 262_144 || LIMITS.edges !== 262_144 ||
-      LIMITS.edits !== 4096) fail("default-v1 exact-boundary self-test failed");
-}
-
-function usage() {
-  fail("usage: validate.mjs validate FILE | canonicalize FILE | project FILE | replace OLD NEW CURRENT_SHA256 | schema | self-test-limits");
-}
-
-try {
-  const [command, ...args] = process.argv.slice(2);
-  if (command === "validate" && args.length === 1) {
-    readAndValidate(args[0]);
-    console.log(`PASS: ${args[0]}`);
-  } else if (command === "canonicalize" && args.length === 1) {
-    process.stdout.write(canonicalBytes(loadDocument(args[0], { canonical: false })));
-  } else if (command === "project" && args.length === 1) {
-    const doc = structuredClone(readAndValidate(args[0]));
-    delete doc.file.path_remap_root_id;
-    process.stdout.write(canonicalBytes(doc));
-  } else if (command === "replace" && args.length === 3) {
-    hex(args[2], "current source digest");
-    const oldDoc = readAndValidate(args[0]);
-    const newDoc = readAndValidate(args[1]);
-    if (!canReplace(oldDoc, newDoc, args[2])) fail("replacement denied");
-    console.log("ALLOW: sidecar replacement");
-  } else if (command === "schema" && args.length === 0) {
-    validateSchemaFile();
-    console.log("PASS: typed-sidecar JSON Schema");
-  } else if (command === "self-test-limits" && args.length === 0) {
-    selfTestLimits();
-    console.log("PASS: default-v1 exact/one-over limit model");
-  } else {
-    usage();
+function deepFreeze(root) {
+  const pending = [root];
+  const seen = new WeakSet();
+  while (pending.length > 0) {
+    const value = pending.pop();
+    if (value === null || typeof value !== "object" || seen.has(value)) continue;
+    seen.add(value);
+    for (const child of Array.isArray(value) ? value : Object.values(value)) pending.push(child);
+    Object.freeze(value);
   }
-} catch (error) {
-  console.error(`typed-sidecar: ${error.message}`);
-  process.exitCode = 1;
+  return root;
+}
+
+function validatedClone(document) {
+  let clone;
+  try {
+    clone = structuredClone(document);
+  } catch {
+    fail("document is not a cloneable data record", "TS002");
+  }
+  return validateDocument(clone);
+}
+
+export function readTypedSidecar(bytes) {
+  try {
+    const document = validateDocument(decodeDocument(bytes));
+    return Object.freeze({ ok: true, document: deepFreeze(document) });
+  } catch (error) {
+    if (error instanceof TypeError) throw error;
+    return errorResult(error);
+  }
+}
+
+export function encodeTypedSidecar(document) {
+  try {
+    const validated = validatedClone(document);
+    const encoded = Buffer.from(canonicalTypedSidecarBytes(validated), "utf8");
+    ensureDocumentBytes(encoded.length);
+    return Object.freeze({ ok: true, bytes: new Uint8Array(encoded) });
+  } catch (error) {
+    return errorResult(error, "TS002");
+  }
+}
+
+function decision(allow, reason) {
+  return Object.freeze({ allow, reason });
+}
+
+export function canReplaceTypedSidecar(oldDocument, newDocument, currentSourceDigest) {
+  let oldValidated;
+  let newValidated;
+  try {
+    oldValidated = validatedClone(oldDocument);
+  } catch {
+    return decision(false, "invalid-old");
+  }
+  try {
+    newValidated = validatedClone(newDocument);
+  } catch {
+    return decision(false, "invalid-new");
+  }
+  if (typeof currentSourceDigest !== "string" || !HEX.test(currentSourceDigest) ||
+      newValidated.file.content_sha256 !== currentSourceDigest) {
+    return decision(false, "source-mismatch");
+  }
+  if (oldValidated.file.file_id !== newValidated.file.file_id) return decision(false, "wrong-file");
+  if (newValidated.generation.sequence <= oldValidated.generation.sequence) return decision(false, "stale-sequence");
+  return decision(true, "allow");
+}
+
+function ioFailure(reason, errno) {
+  return new CodecFailure("TS006", reason, errno ? { errno } : {});
+}
+
+function assertNotCancelled(signal) {
+  if (signal?.aborted) throw ioFailure("typed-sidecar write cancelled");
+}
+
+async function serializeDestination(key, operation) {
+  const previous = writeQueues.get(key) ?? Promise.resolve();
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const tail = previous.catch(() => {}).then(() => gate);
+  writeQueues.set(key, tail);
+  await previous.catch(() => {});
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (writeQueues.get(key) === tail) writeQueues.delete(key);
+  }
+}
+
+async function openExclusive(filename) {
+  const flags = fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL |
+    (fs.constants.O_NOFOLLOW ?? 0);
+  return fs.promises.open(filename, flags, 0o600);
+}
+
+async function readDestination(filename) {
+  const flags = fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0);
+  let handle;
+  try {
+    handle = await fs.promises.open(filename, flags);
+  } catch (error) {
+    if (error.code === "ENOENT") return Object.freeze({ exists: false });
+    if (error.code === "ELOOP") throw ioFailure("typed-sidecar destination must not be a symlink", error.code);
+    throw ioFailure("cannot open typed-sidecar destination safely", error.code);
+  }
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile()) throw ioFailure("typed-sidecar destination must be a regular file");
+    const bytes = await handle.readFile();
+    ensureDocumentBytes(bytes.length);
+    return { exists: true, bytes };
+  } catch (error) {
+    if (error instanceof CodecFailure) throw error;
+    throw ioFailure("cannot read typed-sidecar destination", error.code);
+  } finally {
+    await handle.close().catch(() => {});
+  }
+}
+
+function replacementAgainst(destination, newDocument, currentSourceDigest) {
+  if (!destination.exists) {
+    return newDocument.file.content_sha256 === currentSourceDigest ?
+      decision(true, "allow") : decision(false, "source-mismatch");
+  }
+  const oldResult = readTypedSidecar(destination.bytes);
+  if (!oldResult.ok) return decision(false, "invalid-old");
+  return canReplaceTypedSidecar(oldResult.document, newDocument, currentSourceDigest);
+}
+
+async function safeUnlinkOwned(filename, ownedStat) {
+  if (!ownedStat) return;
+  try {
+    const current = await fs.promises.lstat(filename);
+    if (current.dev === ownedStat.dev && current.ino === ownedStat.ino) await fs.promises.unlink(filename);
+  } catch (error) {
+    if (error.code !== "ENOENT") return;
+  }
+}
+
+async function atomicWrite(destination, document, encodedBytes, context) {
+  const directory = path.dirname(destination);
+  const basename = path.basename(destination);
+  const lockPath = path.join(directory, `.${basename}.typed-sidecar.lock`);
+  let lockHandle;
+  let lockStat;
+  let temporaryPath;
+  let temporaryStat;
+  let temporaryHandle;
+  let renamed = false;
+  try {
+    assertNotCancelled(context.signal);
+    try {
+      lockHandle = await openExclusive(lockPath);
+      lockStat = await lockHandle.stat();
+    } catch (error) {
+      if (error instanceof CodecFailure) throw error;
+      if (error.code === "EEXIST") throw ioFailure("typed-sidecar destination is busy", error.code);
+      throw ioFailure("cannot acquire typed-sidecar destination lock", error.code);
+    }
+
+    const initial = await readDestination(destination);
+    let replacement = replacementAgainst(initial, document, context.currentSourceDigest);
+    if (!replacement.allow) fail(`replacement denied: ${replacement.reason}`, "TS005", { reason: replacement.reason });
+
+    temporaryCounter += 1;
+    temporaryPath = path.join(directory, `.${basename}.tmp-${process.pid}-${temporaryCounter}`);
+    try {
+      temporaryHandle = await openExclusive(temporaryPath);
+      temporaryStat = await temporaryHandle.stat();
+      await temporaryHandle.writeFile(Buffer.from(encodedBytes));
+      await temporaryHandle.sync();
+      await temporaryHandle.close();
+      temporaryHandle = undefined;
+    } catch (error) {
+      if (error instanceof CodecFailure) throw error;
+      throw ioFailure("cannot write typed-sidecar temporary file", error.code);
+    }
+
+    assertNotCancelled(context.signal);
+    const current = await readDestination(destination);
+    replacement = replacementAgainst(current, document, context.currentSourceDigest);
+    if (!replacement.allow) fail(`replacement denied: ${replacement.reason}`, "TS005", { reason: replacement.reason });
+    const currentTemporary = await fs.promises.lstat(temporaryPath);
+    if (currentTemporary.dev !== temporaryStat.dev || currentTemporary.ino !== temporaryStat.ino ||
+        !currentTemporary.isFile()) throw ioFailure("typed-sidecar temporary file identity changed");
+    assertNotCancelled(context.signal);
+    try {
+      await fs.promises.rename(temporaryPath, destination);
+      renamed = true;
+    } catch (error) {
+      throw ioFailure("cannot atomically replace typed-sidecar destination", error.code);
+    }
+    return Object.freeze({ ok: true, bytes: encodedBytes.byteLength, sequence: document.generation.sequence });
+  } finally {
+    if (temporaryHandle) await temporaryHandle.close().catch(() => {});
+    if (!renamed) await safeUnlinkOwned(temporaryPath, temporaryStat);
+    if (lockHandle) await lockHandle.close().catch(() => {});
+    await safeUnlinkOwned(lockPath, lockStat);
+  }
+}
+
+export async function writeTypedSidecarAtomic(destination, document, replacementContext) {
+  if (typeof destination !== "string" || destination.length === 0) {
+    throw new TypeError("typed-sidecar destination must be a non-empty path string");
+  }
+  if (replacementContext === null || typeof replacementContext !== "object" ||
+      typeof replacementContext.currentSourceDigest !== "string") {
+    throw new TypeError("typed-sidecar replacement context needs currentSourceDigest");
+  }
+  const encoded = encodeTypedSidecar(document);
+  if (!encoded.ok) return encoded;
+  const stableDocument = readTypedSidecar(encoded.bytes);
+  if (!stableDocument.ok) return stableDocument;
+  const resolved = path.resolve(destination);
+  return serializeDestination(resolved, async () => {
+    try {
+      return await atomicWrite(resolved, stableDocument.document, encoded.bytes, replacementContext);
+    } catch (error) {
+      return errorResult(error, "TS006");
+    }
+  });
 }

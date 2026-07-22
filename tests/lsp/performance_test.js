@@ -54,7 +54,9 @@ async function main() {
   const source = generateSource(10000);
   const lines = source.split('\n');
   let id = 1;
+  let stopped = false;
 
+  try {
   client.send({ jsonrpc: '2.0', id, method: 'initialize', params: {
     rootUri: 'file:///workspace',
     capabilities: { general: { positionEncodings: ['utf-16'] } }
@@ -209,6 +211,7 @@ async function main() {
   fs.mkdirSync(path.dirname(output), { recursive: true });
   fs.writeFileSync(output, `${JSON.stringify(metrics, null, 2)}\n`);
   await client.stop(id);
+  stopped = true;
   process.stdout.write(
     `PASS: 10k declarations, diagnostics p95=${metrics.summary.diagnosticP95Ms.toFixed(2)}ms ` +
     `max=${metrics.summary.diagnosticMaxMs.toFixed(2)}ms, ` +
@@ -218,6 +221,9 @@ async function main() {
       `${(metrics.summary.residentGrowthRatio * 100).toFixed(2)}%`}\n`
   );
   process.stdout.write(`raw measurements: ${output}\n`);
+  } finally {
+    if (!stopped && client.child.exitCode === null) client.child.kill('SIGTERM');
+  }
 }
 
 main().catch((caught) => {
