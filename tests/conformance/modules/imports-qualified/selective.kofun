@@ -1,0 +1,4 @@
+module bad.selective
+from user.math import add
+
+fn main() -> Int { return 0 }

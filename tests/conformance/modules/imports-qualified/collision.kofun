@@ -1,0 +1,5 @@
+module bad.collision
+import user.math
+import utility.math
+
+fn main() -> Int { return 0 }

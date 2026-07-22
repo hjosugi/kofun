@@ -33,6 +33,7 @@ export TMPDIR="$WORK/tmp"
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
     -I"$ROOT/bootstrap/stage2" \
     "$ROOT/bootstrap/stage2/sha256.c" \
+    "$ROOT/bootstrap/stage2/visibility_access.c" \
     "$ROOT/bootstrap/stage2/module_symbols.c" \
     -o "$WORK/kofun-module-symbols"
 
@@ -219,8 +220,8 @@ expect_failure malformed_function E2S52
 expect_failure malformed_adt E2S50
 expect_failure body_local_function E2S50
 expect_failure unknown_call E2S53
-expect_failure import_deferred E2S54
-expect_failure cross_module E2S54
+expect_failure import_deferred E2S59
+expect_failure cross_module E2S62
 expect_failure transaction_failure E2S52
 
 dd if=/dev/zero bs=1048576 count=1 2>/dev/null | tr '\000' '#' \
@@ -397,6 +398,7 @@ grep -F 'error[E2S55]:' "$WORK/depth_over.actual" >/dev/null ||
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I"$ROOT/bootstrap/stage2" \
     "$ROOT/bootstrap/stage2/sha256.c" \
+    "$ROOT/bootstrap/stage2/visibility_access.c" \
     "$ROOT/bootstrap/stage2/module_symbols.c" \
     -o "$WORK/kofun-module-symbols-sanitized"
 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
@@ -409,6 +411,7 @@ cmp "$WORK/positive.out" "$WORK/sanitized.out" ||
 if "$CC" -std=c11 -O0 -Wall -Wextra -Werror -pedantic -fanalyzer \
     -I"$ROOT/bootstrap/stage2" \
     "$ROOT/bootstrap/stage2/sha256.c" \
+    "$ROOT/bootstrap/stage2/visibility_access.c" \
     "$ROOT/bootstrap/stage2/module_symbols.c" \
     -o "$WORK/kofun-module-symbols-analyzed" >/dev/null 2>&1
 then
@@ -419,4 +422,4 @@ printf '%s\n' \
     'PASS: all supported headers are collected before body resolution' \
     'PASS: production NamespaceId/SymbolId framing matches the reference' \
     'PASS: inventory order, declaration order, and path remaps preserve semantic IDs' \
-    'PASS: duplicates, unsupported imports, transaction failure, and limits are bounded'
+    'PASS: duplicates, import handoff failures, transaction failure, and limits are bounded'

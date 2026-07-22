@@ -1,0 +1,4 @@
+module bad.after
+
+fn first() -> Int { return 1 }
+import user.math

@@ -96,16 +96,22 @@ IR artifacts with nominal IDs and byte spans. It deliberately emits no C,
 native, Wasm, layout, allocation, match, or runtime representation. The main
 CLI does not route ordinary builds through this helper yet.
 
-`bootstrap/stage2/module_symbols.c` is the next resolver-side checkpoint. It
+`bootstrap/stage2/module_symbols.c` is the resolver-side checkpoint. It
 consumes a validated inventory of raw `PackageId`, `ModuleId`, and `FileId`
 values with exactly one source per module, collects supported function and
-flat-ADT headers before inspecting bodies, and emits
-`kofun-module-symbols/v1`. Its `NamespaceId` and `SymbolId` values use the
+flat-ADT headers before inspecting bodies, and emits either the compatible
+`kofun-module-symbols/v1` declaration view or `kofun-imports-qualified/v1`
+when `import a.b` bindings are present. Its `NamespaceId`, `SymbolId`, and
+`ImportBindingId` values use the
 production framed SHA-256/KIF inputs from the accepted module specifications;
-file paths, spans, visibility, bodies, and declaration order are excluded from
-symbol identity. The adapter inventory used by its test is not manifest
-syntax. Imports, partial modules, KIF emission, layout, and backend lowering
-remain outside this helper.
+file paths, spans, visibility, bodies, and declaration order remain outside
+semantic identity. Qualified lookup calls the identity-only access primitive
+before committing HIR and retains the target `SymbolId`; it never imports an
+unqualified or transitive name. The adapter inventory used by its tests is not
+manifest syntax. Selective imports, aliases, wildcard/external imports,
+re-exports, partial modules, KIF emission, layout, and initialization remain
+outside this helper. An optional C11 output proves the bounded Int
+return-expression corpus with SymbolId-derived linker names.
 
 ## Verification
 
@@ -148,13 +154,19 @@ order invariance, transaction failure, fixed resource limits, and exact
 E2S48–E2S56 inventory. It also runs the collector with C11 warnings as errors,
 GCC analyzer when available, AddressSanitizer, and UndefinedBehaviorSanitizer.
 
+`tests/conformance/modules/imports-qualified/run.sh` covers local-package
+qualified imports, final-component qualifier binding, no transitive leakage,
+visibility-filtered calls, import identity framing, canonical shortest cycles,
+path/source permutation invariance, exact negative diagnostics, resource
+limits, sanitizer/analyzer checks, and bounded C11 execution.
+
 `bootstrap/stage2/visibility_access.c` is the pure access primitive for the
 next resolver slice. It compares only schema-tagged 32-byte package, module,
 file, and optional type-owner identities; it has no filesystem, name, import,
 target, linker, or runtime input. The table-driven
 `tests/conformance/modules/visibility-access/run.sh` gate verifies exact
-allowed, denied, and unsupported results. General module resolution does not
-call it yet.
+allowed, denied, and unsupported results. The qualified import resolver calls
+it directly before a target becomes a usable HIR reference.
 
 `compiler.c` is an audited executable transliteration of the Kofun source so
 this checkpoint can run before Stage 1 accepts all of Stage 2. It is part of the

@@ -1,0 +1,5 @@
+module bad.duplicate
+import user.math
+import user.math
+
+fn main() -> Int { return 0 }

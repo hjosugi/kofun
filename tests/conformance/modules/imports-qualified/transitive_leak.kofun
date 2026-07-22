@@ -1,0 +1,4 @@
+module bad.transitive_leak
+import library.bridge
+
+fn main() -> Int { return math.add(40, 2) }

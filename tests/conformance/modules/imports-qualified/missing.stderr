@@ -1,0 +1,1 @@
+error[E2S59]: local module `absent.module` imported by `src/bad/missing.kofun` does not exist at bytes 19..39; add it to this PackageModuleIndex

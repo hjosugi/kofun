@@ -1,0 +1,1 @@
+error[E2S55]: qualified import in `src/limits/path4097.kofun` exceeds 4096 bytes at bytes 30..4127

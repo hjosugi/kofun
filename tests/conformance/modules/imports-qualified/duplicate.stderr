@@ -1,0 +1,1 @@
+error[E2S60]: duplicate import `user.math` in `src/bad/duplicate.kofun` at bytes 38..54; first import is bytes 21..37

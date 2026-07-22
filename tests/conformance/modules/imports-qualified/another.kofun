@@ -1,0 +1,6 @@
+module client.another
+import user.math
+
+fn answer() -> Int {
+    return math.internal_answer()
+}

@@ -1,0 +1,1 @@
+error[E2S57]: malformed qualified import in `src/bad/invalid_path.kofun` at bytes 36..37; expected an identifier component

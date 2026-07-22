@@ -1,0 +1,4 @@
+module cycle.two.b
+import cycle.two.a
+
+fn b() -> Int { return 2 }

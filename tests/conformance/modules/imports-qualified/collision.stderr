@@ -1,0 +1,1 @@
+error[E2S60]: module qualifier `math` in `src/bad/collision.kofun` is ambiguous between `user.math` at bytes 21..37 and `utility.math` at bytes 38..57; aliases are tracked by #283

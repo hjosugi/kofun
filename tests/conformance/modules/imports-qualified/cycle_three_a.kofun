@@ -1,0 +1,4 @@
+module cycle.three.a
+import cycle.three.b
+
+fn a() -> Int { return 1 }

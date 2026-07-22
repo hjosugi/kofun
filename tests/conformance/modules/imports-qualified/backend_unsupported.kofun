@@ -1,0 +1,4 @@
+module bad.backend_unsupported
+import user.math
+
+fn main() -> Text { return "no" }

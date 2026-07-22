@@ -10,6 +10,8 @@ The pipe-delimited test inventory is an adapter protocol, not Kofun manifest
 syntax. Its fields are `PackageId|ModuleId|FileId|logical-path|source-operand`.
 The source operand is never serialized; logical provenance is.
 
-The gate intentionally does not implement imports, partial modules, KIF,
-layout, or backend emission. Cross-module lookup remains issue #113, while KIF
-emission remains issue #575.
+This gate exercises the import-free compatibility mode. The same resolver's
+qualified-import mode is covered separately by
+`../imports-qualified/run.sh`; partial modules, KIF, layout, and general
+backend emission remain outside both focused gates. KIF emission remains
+tracked by issue #575.

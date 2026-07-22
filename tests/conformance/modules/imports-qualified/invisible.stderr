@@ -1,0 +1,1 @@
+error[E2S63]: call through `math` in `src/bad/invisible.kofun` cannot access `hidden` at bytes 65..78: PrivateFileBoundary; change target visibility to `internal` or `pub`

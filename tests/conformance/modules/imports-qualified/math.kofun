@@ -1,0 +1,13 @@
+module user.math
+
+private fn hidden() -> Int {
+    return 1
+}
+
+internal fn internal_answer() -> Int {
+    return hidden() + 41
+}
+
+pub fn add(left: Int, right: Int) -> Int {
+    return left + right
+}

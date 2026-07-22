@@ -1,0 +1,1 @@
+error[E2S62]: unknown module qualifier `math` in `src/bad/transitive_leak.kofun` at bytes 76..80; add an explicit `import a.math`

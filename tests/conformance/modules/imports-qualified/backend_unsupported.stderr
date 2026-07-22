@@ -1,0 +1,1 @@
+error[E2S65]: reference backend requires Int parameters/results for `main` in `src/bad/backend_unsupported.kofun`

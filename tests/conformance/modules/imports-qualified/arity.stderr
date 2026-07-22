@@ -1,0 +1,1 @@
+error[E2S64]: call to `add` in `src/bad/arity.kofun` has 1 arguments but requires 2 at bytes 61..73

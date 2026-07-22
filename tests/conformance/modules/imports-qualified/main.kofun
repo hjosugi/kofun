@@ -1,0 +1,6 @@
+module app.main
+import user.math
+
+fn main() -> Int {
+    return math.add(40, 2)
+}

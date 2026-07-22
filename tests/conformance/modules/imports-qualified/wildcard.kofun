@@ -1,0 +1,4 @@
+module bad.wildcard
+import user.*
+
+fn main() -> Int { return 0 }

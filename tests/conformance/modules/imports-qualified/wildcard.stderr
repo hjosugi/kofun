@@ -1,0 +1,1 @@
+error[E2S57]: malformed qualified import in `src/bad/wildcard.kofun` at bytes 32..33; expected an identifier component

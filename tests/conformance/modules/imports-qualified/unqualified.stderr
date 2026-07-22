@@ -1,0 +1,1 @@
+error[E2S62]: unqualified value `add` in `src/bad/unqualified.kofun` does not import names at bytes 67..70; use an explicit module qualifier

@@ -1,0 +1,1 @@
+error[E2S55]: qualified import in `src/limits/path65.kofun` exceeds 64 components at bytes 28..278

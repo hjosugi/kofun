@@ -1,0 +1,4 @@
+module bad.arity
+import user.math
+
+fn main() -> Int { return math.add(40) }

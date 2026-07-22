@@ -1,0 +1,6 @@
+module client.transitive
+import library.bridge
+
+fn answer_through_bridge() -> Int {
+    return bridge.forward()
+}

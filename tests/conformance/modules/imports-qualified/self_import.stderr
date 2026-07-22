@@ -1,0 +1,1 @@
+error[E2S59]: module `bad.self_import` imports itself at bytes 23..45; remove the self import

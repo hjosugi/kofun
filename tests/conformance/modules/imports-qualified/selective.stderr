@@ -1,0 +1,1 @@
+error[E2S57]: unsupported import form in `src/bad/selective.kofun` at bytes 21..25; #113 accepts only `import a.b`

@@ -1,0 +1,4 @@
+module bad.invisible
+import user.math
+
+fn main() -> Int { return math.hidden() }

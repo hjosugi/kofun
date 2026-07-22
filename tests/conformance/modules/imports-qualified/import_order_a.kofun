@@ -1,0 +1,7 @@
+module order.consumer
+import user.math
+import library.bridge
+
+fn main() -> Int {
+    return math.add(20, 20) + bridge.forward()
+}

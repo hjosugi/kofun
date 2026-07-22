@@ -1,0 +1,6 @@
+module library.bridge
+import user.math
+
+pub fn forward() -> Int {
+    return math.add(20, 22)
+}

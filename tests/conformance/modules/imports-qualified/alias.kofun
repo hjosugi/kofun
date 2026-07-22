@@ -1,0 +1,4 @@
+module bad.alias
+import user.math as numbers
+
+fn main() -> Int { return 0 }

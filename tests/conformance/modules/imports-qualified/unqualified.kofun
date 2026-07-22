@@ -1,0 +1,4 @@
+module bad.unqualified
+import user.math
+
+fn main() -> Int { return add(40, 2) }

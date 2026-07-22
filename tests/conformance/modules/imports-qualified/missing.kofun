@@ -1,0 +1,4 @@
+module bad.missing
+import absent.module
+
+fn main() -> Int { return 0 }

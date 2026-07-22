@@ -1,1 +1,1 @@
-error[E2S54]: imports are deferred to #113 in `import_deferred.kofun` at bytes 27..33
+error[E2S59]: local module `demo.alpha.start` imported by `import_deferred.kofun` does not exist at bytes 27..50; add it to this PackageModuleIndex

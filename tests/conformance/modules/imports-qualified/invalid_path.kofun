@@ -1,0 +1,4 @@
+module bad.invalid_path
+import user..math
+
+fn main() -> Int { return 0 }

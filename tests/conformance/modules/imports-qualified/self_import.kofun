@@ -1,0 +1,4 @@
+module bad.self_import
+import bad.self_import
+
+fn main() -> Int { return 0 }

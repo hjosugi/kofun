@@ -226,8 +226,10 @@ ordering examples. The focused `module_symbols.c` checkpoint can consume
 already-validated IDs for several distinct one-file modules and re-enforces
 the V1 duplicate-`ModuleId` boundary; it does not discover or validate a
 manifest graph itself. The active compiler still consumes one explicit source.
-Passing either gate is not a claim that imports or cross-module resolution are
-implemented.
+`tests/conformance/modules/imports-qualified/run.sh` now feeds this validated
+inventory boundary into the first local-package qualified resolver. Neither
+gate discovers files or constructs the inventory from a manifest, and the
+active single-source CLI remains separate from this focused adapter.
 
 This contract does not define imports, re-exports, package dependencies,
 workspaces, source fetching, wildcard discovery, partial modules, module
