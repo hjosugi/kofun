@@ -301,13 +301,14 @@ not a directory or textual module. `pub(to ancestor.path)` is specified for
 restricted module access but is deferred beyond the first executable slice.
 There is no `protected` modifier, and capitalization does not affect access.
 
-The executable slice records visibility, implicit versus explicit origin,
-modifier/declaration spans, and stable single-file symbol identities. It does
-not yet resolve files, modules, packages, imports, or public signatures. A
-separate identity-only access engine now enforces private, internal, public,
-and enclosing boundaries for already-resolved canonical IDs; the future module
-resolver will call that engine. `pub`, `internal`, and `private` remain ordinary
-identifier tokens outside a supported declaration-prefix position.
+The executable syntax slice records visibility, implicit versus explicit
+origin, and modifier/declaration spans. A separate top-level declaration gate
+now assigns production module-scoped `SymbolId` values to bounded functions,
+ADTs, and constructors, while the identity-only access engine enforces
+private, internal, public, and enclosing boundaries for already-resolved IDs.
+General imports and public-signature checking are still not routed through the
+active compiler. `pub`, `internal`, and `private` remain ordinary identifier
+tokens outside a supported declaration-prefix position.
 
 ## Modules
 
@@ -346,15 +347,30 @@ namespace. Capitalization has no effect on namespace assignment. This is an
 accepted design contract; the active compiler does not yet implement the
 general resolver.
 
-## Imports
+## Imports and re-exports
 
-planned:
+The ordinary qualified/selective forms are accepted design targets; their
+general resolver remains planned:
 
 ```kofun
 import science
 import data.csv as csv
 from collections import Map, Set
 ```
+
+Public forwarding uses the normative
+[`spec/modules/re-exports.md`](../spec/modules/re-exports.md) forms:
+
+```kofun
+pub import collections
+pub from collections import Map, Set
+```
+
+An ordinary import never becomes public implicitly. A re-export preserves the
+original target identity, creates a distinct `ExportBindingId`, and fails if
+any target/enclosing/signature boundary is less than public. Aliases,
+wildcards, internal forwarding, and an `export` keyword are not part of the
+first slice.
 
 ## Semicolons
 
