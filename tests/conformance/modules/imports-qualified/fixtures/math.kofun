@@ -1,0 +1,5 @@
+module lib.math
+
+internal fn identity(value: Int) -> Int {
+    return value
+}

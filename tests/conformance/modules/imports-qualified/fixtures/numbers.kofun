@@ -1,0 +1,5 @@
+module core.numbers
+
+pub fn answer() -> Int {
+    return 42
+}

@@ -1,0 +1,6 @@
+module app.main
+import lib.math
+
+fn main() -> Int {
+    return math.identity(42)
+}

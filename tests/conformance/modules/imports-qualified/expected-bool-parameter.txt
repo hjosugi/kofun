@@ -1,0 +1,1 @@
+error[E2S65]: function `identity` in `lib/math.kofun` has unsupported parameter type `Bool` at bytes 45..49; hint: use `Int` parameters and return type in the qualified-call slice
