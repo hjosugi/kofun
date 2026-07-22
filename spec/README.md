@@ -26,7 +26,8 @@ Python-free bootstrap implementation.
 - `modules/module-identity.md` fixes production IDs, canonical compiled-
   interface bytes, and separate public, internal, and target ABI digests.
 - `modules/visibility.md` defines default-private declarations, package-scoped
-  `internal`, intentional `pub`, and restricted ancestor visibility.
+  `internal`, intentional `pub`, restricted ancestor visibility, and the
+  identity-only access decision implemented by the focused conformance gate.
 - `law-evidence.schema.json` defines the machine-readable
   `kofun.law-evidence/v1` artifact.
 

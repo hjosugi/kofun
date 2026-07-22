@@ -303,9 +303,11 @@ There is no `protected` modifier, and capitalization does not affect access.
 
 The executable slice records visibility, implicit versus explicit origin,
 modifier/declaration spans, and stable single-file symbol identities. It does
-not yet enforce access across files, modules, packages, imports, or public
-signatures. `pub`, `internal`, and `private` remain ordinary identifier tokens
-outside a supported declaration-prefix position.
+not yet resolve files, modules, packages, imports, or public signatures. A
+separate identity-only access engine now enforces private, internal, public,
+and enclosing boundaries for already-resolved canonical IDs; the future module
+resolver will call that engine. `pub`, `internal`, and `private` remain ordinary
+identifier tokens outside a supported declaration-prefix position.
 
 ## Modules
 

@@ -118,6 +118,14 @@ basic visibility forms, same-file forward calls and execution, contextual
 identifier uses, exact modifier diagnostics, artifact absence, and
 byte-identical repeated output.
 
+`bootstrap/stage2/visibility_access.c` is the pure access primitive for the
+next resolver slice. It compares only schema-tagged 32-byte package, module,
+file, and optional type-owner identities; it has no filesystem, name, import,
+target, linker, or runtime input. The table-driven
+`tests/conformance/modules/visibility-access/run.sh` gate verifies exact
+allowed, denied, and unsupported results. General module resolution does not
+call it yet.
+
 `compiler.c` is an audited executable transliteration of the Kofun source so
 this checkpoint can run before Stage 1 accepts all of Stage 2. It is part of the
 temporary trusted seed, not evidence that Kofun has completed self-hosting. The
