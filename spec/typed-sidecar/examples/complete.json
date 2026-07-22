@@ -1,0 +1,259 @@
+{
+  "authoritative": false,
+  "compiler": {
+    "edition": "kofun-2026",
+    "semantic_compatibility": "bootstrap-0.3"
+  },
+  "completeness": "complete",
+  "diagnostics": [],
+  "file": {
+    "byte_length": 80,
+    "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "file_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "logical_path": "src/main.kofun",
+    "module_id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "package_id": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "path_remap_root_id": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+  },
+  "generation": {
+    "sequence": 7
+  },
+  "limits": {
+    "document_bytes": 16777216,
+    "max_depth": 128,
+    "profile": "default-v1"
+  },
+  "nodes": [
+    {
+      "depends_on": [],
+      "diagnostic_ids": [],
+      "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "identities": [
+        {
+          "kind": "SymbolId",
+          "value": "1111111111111111111111111111111111111111111111111111111111111111"
+        }
+      ],
+      "kind": "function.declaration",
+      "span": {
+        "end": 24,
+        "start": 0
+      },
+      "status": "validated",
+      "type": {
+        "display": "fn.Unit",
+        "status": "validated"
+      }
+    },
+    {
+      "depends_on": [],
+      "diagnostic_ids": [],
+      "id": "2222222222222222222222222222222222222222222222222222222222222222",
+      "identities": [
+        {
+          "kind": "BindingId",
+          "value": "2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        {
+          "kind": "TypeId",
+          "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "kind": "parameter.binding",
+      "ownership": {
+        "display": "copy",
+        "status": "validated"
+      },
+      "span": {
+        "end": 4,
+        "start": 3
+      },
+      "status": "validated",
+      "type": {
+        "display": "Int",
+        "status": "validated"
+      }
+    },
+    {
+      "depends_on": [
+        "2222222222222222222222222222222222222222222222222222222222222222"
+      ],
+      "diagnostic_ids": [],
+      "id": "3333333333333333333333333333333333333333333333333333333333333333",
+      "identities": [
+        {
+          "kind": "BindingId",
+          "value": "3333333333333333333333333333333333333333333333333333333333333333"
+        },
+        {
+          "kind": "TypeId",
+          "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "kind": "local.binding",
+      "origin": {
+        "display": "local",
+        "status": "validated"
+      },
+      "ownership": {
+        "display": "owned",
+        "status": "validated"
+      },
+      "span": {
+        "end": 14,
+        "start": 10
+      },
+      "status": "validated",
+      "type": {
+        "display": "Int",
+        "status": "validated"
+      }
+    },
+    {
+      "depends_on": [],
+      "diagnostic_ids": [],
+      "id": "4444444444444444444444444444444444444444444444444444444444444444",
+      "identities": [
+        {
+          "kind": "SymbolId",
+          "value": "4444444444444444444444444444444444444444444444444444444444444444"
+        },
+        {
+          "kind": "TypeId",
+          "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "kind": "adt.declaration",
+      "span": {
+        "end": 40,
+        "start": 25
+      },
+      "status": "validated",
+      "type": {
+        "display": "MaybeInt",
+        "status": "validated"
+      }
+    },
+    {
+      "depends_on": [
+        "4444444444444444444444444444444444444444444444444444444444444444"
+      ],
+      "diagnostic_ids": [],
+      "id": "5555555555555555555555555555555555555555555555555555555555555555",
+      "identities": [
+        {
+          "kind": "SymbolId",
+          "value": "5555555555555555555555555555555555555555555555555555555555555555"
+        }
+      ],
+      "kind": "constructor.declaration",
+      "span": {
+        "end": 35,
+        "start": 30
+      },
+      "status": "validated",
+      "type": {
+        "display": "fn.Int.MaybeInt",
+        "status": "validated"
+      }
+    },
+    {
+      "depends_on": [],
+      "diagnostic_ids": [],
+      "id": "6666666666666666666666666666666666666666666666666666666666666666",
+      "identities": [
+        {
+          "kind": "ImportBindingId",
+          "value": "6666666666666666666666666666666666666666666666666666666666666666"
+        },
+        {
+          "kind": "SymbolId",
+          "value": "5555555555555555555555555555555555555555555555555555555555555555"
+        }
+      ],
+      "kind": "import.binding",
+      "origin": {
+        "display": "imported",
+        "status": "validated"
+      },
+      "span": {
+        "end": 50,
+        "start": 41
+      },
+      "status": "validated"
+    },
+    {
+      "depends_on": [
+        "6666666666666666666666666666666666666666666666666666666666666666"
+      ],
+      "diagnostic_ids": [],
+      "id": "7777777777777777777777777777777777777777777777777777777777777777",
+      "identities": [
+        {
+          "kind": "ExportBindingId",
+          "value": "7777777777777777777777777777777777777777777777777777777777777777"
+        },
+        {
+          "kind": "SymbolId",
+          "value": "5555555555555555555555555555555555555555555555555555555555555555"
+        }
+      ],
+      "kind": "export.binding",
+      "origin": {
+        "display": "re-exported",
+        "status": "validated"
+      },
+      "span": {
+        "end": 60,
+        "start": 51
+      },
+      "status": "validated"
+    },
+    {
+      "depends_on": [
+        "5555555555555555555555555555555555555555555555555555555555555555"
+      ],
+      "diagnostic_ids": [],
+      "id": "8888888888888888888888888888888888888888888888888888888888888888",
+      "identities": [
+        {
+          "kind": "TypeId",
+          "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "kind": "constructor.use",
+      "span": {
+        "end": 70,
+        "start": 61
+      },
+      "status": "validated",
+      "type": {
+        "display": "MaybeInt",
+        "status": "validated"
+      }
+    }
+  ],
+  "references": [
+    {
+      "diagnostic_ids": [],
+      "from_node": "8888888888888888888888888888888888888888888888888888888888888888",
+      "id": "9999999999999999999999999999999999999999999999999999999999999999",
+      "namespace": "value",
+      "span": {
+        "end": 66,
+        "start": 61
+      },
+      "status": "validated",
+      "target": {
+        "declaration_node": "5555555555555555555555555555555555555555555555555555555555555555",
+        "disclosure": "resolved",
+        "identity": {
+          "kind": "SymbolId",
+          "value": "5555555555555555555555555555555555555555555555555555555555555555"
+        }
+      }
+    }
+  ],
+  "schema": "kofun.typed-sidecar/v1",
+  "source_status": "checked"
+}

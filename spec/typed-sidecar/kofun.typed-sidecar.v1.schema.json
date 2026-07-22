@@ -1,0 +1,513 @@
+{
+  "$defs": {
+    "diagnostic": {
+      "additionalProperties": false,
+      "properties": {
+        "affected_ids": {
+          "items": {
+            "$ref": "#/$defs/hexId"
+          },
+          "maxItems": 262144,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "category": {
+          "$ref": "#/$defs/name"
+        },
+        "code": {
+          "pattern": "^[A-Z][A-Z0-9]{0,15}$",
+          "type": "string"
+        },
+        "fallback_text": {
+          "maxLength": 65536,
+          "type": "string"
+        },
+        "id": {
+          "$ref": "#/$defs/hexId"
+        },
+        "primary": {
+          "$ref": "#/$defs/location"
+        },
+        "related": {
+          "items": {
+            "$ref": "#/$defs/related"
+          },
+          "maxItems": 256,
+          "type": "array"
+        },
+        "remedies": {
+          "items": {
+            "$ref": "#/$defs/remedy"
+          },
+          "maxItems": 256,
+          "type": "array"
+        },
+        "severity": {
+          "enum": [
+            "error",
+            "warning",
+            "information",
+            "hint"
+          ]
+        },
+        "template_id": {
+          "$ref": "#/$defs/name"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "affected_ids",
+        "category",
+        "code",
+        "fallback_text",
+        "id",
+        "primary",
+        "related",
+        "remedies",
+        "severity",
+        "template_id",
+        "truncated"
+      ],
+      "type": "object"
+    },
+    "fact": {
+      "additionalProperties": false,
+      "properties": {
+        "display": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "reason": {
+          "$ref": "#/$defs/name"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "type": "object"
+    },
+    "hexId": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "identity": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "BindingId",
+            "ExportBindingId",
+            "FileId",
+            "ImplementationId",
+            "ImportBindingId",
+            "LawEvidenceId",
+            "ModuleId",
+            "NamespaceId",
+            "PackageId",
+            "ScopeId",
+            "SymbolId",
+            "TypeId"
+          ]
+        },
+        "value": {
+          "$ref": "#/$defs/hexId"
+        }
+      },
+      "required": [
+        "kind",
+        "value"
+      ],
+      "type": "object"
+    },
+    "location": {
+      "additionalProperties": false,
+      "properties": {
+        "file_id": {
+          "$ref": "#/$defs/hexId"
+        },
+        "span": {
+          "$ref": "#/$defs/span"
+        }
+      },
+      "required": [
+        "file_id",
+        "span"
+      ],
+      "type": "object"
+    },
+    "name": {
+      "maxLength": 256,
+      "pattern": "^[A-Za-z][A-Za-z0-9._-]*$",
+      "type": "string"
+    },
+    "node": {
+      "additionalProperties": false,
+      "properties": {
+        "depends_on": {
+          "items": {
+            "$ref": "#/$defs/hexId"
+          },
+          "maxItems": 65536,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "diagnostic_ids": {
+          "items": {
+            "$ref": "#/$defs/hexId"
+          },
+          "maxItems": 256,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "effect": {
+          "$ref": "#/$defs/fact"
+        },
+        "id": {
+          "$ref": "#/$defs/hexId"
+        },
+        "identities": {
+          "items": {
+            "$ref": "#/$defs/identity"
+          },
+          "maxItems": 64,
+          "type": "array"
+        },
+        "kind": {
+          "$ref": "#/$defs/name"
+        },
+        "origin": {
+          "$ref": "#/$defs/fact"
+        },
+        "ownership": {
+          "$ref": "#/$defs/fact"
+        },
+        "span": {
+          "$ref": "#/$defs/span"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "type": {
+          "$ref": "#/$defs/fact"
+        }
+      },
+      "required": [
+        "depends_on",
+        "diagnostic_ids",
+        "id",
+        "identities",
+        "kind",
+        "span",
+        "status"
+      ],
+      "type": "object"
+    },
+    "reference": {
+      "additionalProperties": false,
+      "properties": {
+        "diagnostic_ids": {
+          "items": {
+            "$ref": "#/$defs/hexId"
+          },
+          "maxItems": 256,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "from_node": {
+          "$ref": "#/$defs/hexId"
+        },
+        "id": {
+          "$ref": "#/$defs/hexId"
+        },
+        "namespace": {
+          "enum": [
+            "meta",
+            "module",
+            "type",
+            "value"
+          ]
+        },
+        "span": {
+          "$ref": "#/$defs/span"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "target": {
+          "$ref": "#/$defs/target"
+        }
+      },
+      "required": [
+        "diagnostic_ids",
+        "from_node",
+        "id",
+        "namespace",
+        "span",
+        "status",
+        "target"
+      ],
+      "type": "object"
+    },
+    "related": {
+      "additionalProperties": false,
+      "properties": {
+        "identity": {
+          "$ref": "#/$defs/identity"
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        },
+        "relation": {
+          "$ref": "#/$defs/name"
+        }
+      },
+      "required": [
+        "relation"
+      ],
+      "type": "object"
+    },
+    "remedy": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/name"
+        },
+        "replacement": {
+          "maxLength": 65536,
+          "type": "string"
+        },
+        "span": {
+          "$ref": "#/$defs/span"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "span": {
+      "additionalProperties": false,
+      "properties": {
+        "end": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "start": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "end",
+        "start"
+      ],
+      "type": "object"
+    },
+    "status": {
+      "enum": [
+        "error",
+        "provisional",
+        "unavailable",
+        "validated"
+      ]
+    },
+    "target": {
+      "additionalProperties": false,
+      "properties": {
+        "declaration_node": {
+          "$ref": "#/$defs/hexId"
+        },
+        "disclosure": {
+          "enum": [
+            "hidden",
+            "provisional",
+            "resolved",
+            "unavailable"
+          ]
+        },
+        "identity": {
+          "$ref": "#/$defs/identity"
+        },
+        "identity_kind": {
+          "enum": [
+            "BindingId",
+            "ExportBindingId",
+            "FileId",
+            "ImplementationId",
+            "ImportBindingId",
+            "LawEvidenceId",
+            "ModuleId",
+            "NamespaceId",
+            "PackageId",
+            "ScopeId",
+            "SymbolId",
+            "TypeId"
+          ]
+        },
+        "reason": {
+          "$ref": "#/$defs/name"
+        }
+      },
+      "required": [
+        "disclosure"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://kofun.dev/schema/kofun.typed-sidecar.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "authoritative": {
+      "const": false
+    },
+    "compiler": {
+      "additionalProperties": false,
+      "properties": {
+        "edition": {
+          "$ref": "#/$defs/name"
+        },
+        "semantic_compatibility": {
+          "$ref": "#/$defs/name"
+        }
+      },
+      "required": [
+        "edition",
+        "semantic_compatibility"
+      ],
+      "type": "object"
+    },
+    "completeness": {
+      "enum": [
+        "complete",
+        "partial"
+      ]
+    },
+    "diagnostics": {
+      "items": {
+        "$ref": "#/$defs/diagnostic"
+      },
+      "maxItems": 65536,
+      "type": "array"
+    },
+    "file": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_length": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "content_sha256": {
+          "$ref": "#/$defs/hexId"
+        },
+        "file_id": {
+          "$ref": "#/$defs/hexId"
+        },
+        "logical_path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string"
+        },
+        "module_id": {
+          "$ref": "#/$defs/hexId"
+        },
+        "package_id": {
+          "$ref": "#/$defs/hexId"
+        },
+        "path_remap_root_id": {
+          "$ref": "#/$defs/hexId"
+        }
+      },
+      "required": [
+        "byte_length",
+        "content_sha256",
+        "file_id",
+        "logical_path",
+        "module_id",
+        "package_id"
+      ],
+      "type": "object"
+    },
+    "generation": {
+      "additionalProperties": false,
+      "properties": {
+        "sequence": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sequence"
+      ],
+      "type": "object"
+    },
+    "limits": {
+      "additionalProperties": false,
+      "properties": {
+        "document_bytes": {
+          "const": 16777216
+        },
+        "max_depth": {
+          "const": 128
+        },
+        "profile": {
+          "const": "default-v1"
+        }
+      },
+      "required": [
+        "document_bytes",
+        "max_depth",
+        "profile"
+      ],
+      "type": "object"
+    },
+    "nodes": {
+      "items": {
+        "$ref": "#/$defs/node"
+      },
+      "maxItems": 65536,
+      "type": "array"
+    },
+    "references": {
+      "items": {
+        "$ref": "#/$defs/reference"
+      },
+      "maxItems": 131072,
+      "type": "array"
+    },
+    "schema": {
+      "const": "kofun.typed-sidecar/v1"
+    },
+    "source_status": {
+      "enum": [
+        "cancelled",
+        "checked",
+        "failed"
+      ]
+    }
+  },
+  "required": [
+    "authoritative",
+    "compiler",
+    "completeness",
+    "diagnostics",
+    "file",
+    "generation",
+    "limits",
+    "nodes",
+    "references",
+    "schema",
+    "source_status"
+  ],
+  "title": "Kofun typed semantic sidecar v1",
+  "type": "object"
+}

@@ -1,0 +1,47 @@
+{
+  "authoritative": false,
+  "compiler": {
+    "edition": "kofun-2026",
+    "semantic_compatibility": "bootstrap-0.3"
+  },
+  "completeness": "partial",
+  "diagnostics": [],
+  "file": {
+    "byte_length": 20,
+    "content_sha256": "7777777777777777777777777777777777777777777777777777777777777777",
+    "file_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "logical_path": "src/main.kofun",
+    "module_id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "package_id": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "path_remap_root_id": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+  },
+  "generation": {
+    "sequence": 9
+  },
+  "limits": {
+    "document_bytes": 16777216,
+    "max_depth": 128,
+    "profile": "default-v1"
+  },
+  "nodes": [
+    {
+      "depends_on": [],
+      "diagnostic_ids": [],
+      "id": "4444444444444444444444444444444444444444444444444444444444444444",
+      "identities": [],
+      "kind": "name.reference",
+      "span": {
+        "end": 9,
+        "start": 5
+      },
+      "status": "unavailable",
+      "type": {
+        "reason": "cancelled",
+        "status": "unavailable"
+      }
+    }
+  ],
+  "references": [],
+  "schema": "kofun.typed-sidecar/v1",
+  "source_status": "cancelled"
+}
