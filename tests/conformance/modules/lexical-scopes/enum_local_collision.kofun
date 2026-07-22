@@ -1,0 +1,6 @@
+type Signal = | Red | Green
+
+fn main() {
+    let Red: Int = 41
+    print(Red)
+}

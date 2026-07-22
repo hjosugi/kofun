@@ -3,5 +3,6 @@ fn main() -> Int {
     if true {
         score = 2
     }
+    print(score)
     return 0
 }

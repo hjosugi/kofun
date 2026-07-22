@@ -1084,7 +1084,7 @@ fn expression_end(source: Text, start: Int) -> Int {
     return cursor
 }
 
-fn emit_primary(source: Text, start: Int, end: Int) -> Text {
+fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
     let cursor = skip_trivia(source, start)
     let kind = token_kind(source, cursor)
     if kind == "integer" {
@@ -1095,7 +1095,7 @@ fn emit_primary(source: Text, start: Int, end: Int) -> Text {
         let name = token_text(source, cursor)
         let open = skip_trivia(source, token_end(source, cursor))
         if open >= end || token_text(source, open) != "(" {
-            return "k_" + name
+            return "k_b" + hir_use_binding_id(hir, cursor)
         }
         let mut emitted = "kofun_fn_" + name + "("
         let mut argument = skip_trivia(source, token_end(source, open))
@@ -1106,7 +1106,7 @@ fn emit_primary(source: Text, start: Int, end: Int) -> Text {
                 emitted = emitted + ", "
             }
             emitted = emitted +
-            emit_expression(source, argument, argument_end)
+            emit_expression(source, hir, argument, argument_end)
             arguments = arguments + 1
             let separator = skip_trivia(source, argument_end)
             if separator < end && token_text(source, separator) == "," {
@@ -1120,28 +1120,28 @@ fn emit_primary(source: Text, start: Int, end: Int) -> Text {
     if token_text(source, cursor) == "(" {
         let value_start = skip_trivia(source, token_end(source, cursor))
         let close = skip_trivia(source, expression_end(source, value_start))
-        return "(" + emit_expression(source, value_start, close) + ")"
+        return "(" + emit_expression(source, hir, value_start, close) + ")"
     }
     return ""
 }
 
-fn emit_unary(source: Text, start: Int, end: Int) -> Text {
+fn emit_unary(source: Text, hir: Text, start: Int, end: Int) -> Text {
     let cursor = skip_trivia(source, start)
     let token = token_text(source, cursor)
     if token == "+" {
         let value_start = skip_trivia(source, token_end(source, cursor))
-        return emit_unary(source, value_start, end)
+        return emit_unary(source, hir, value_start, end)
     }
     if token == "-" {
         let value_start = skip_trivia(source, token_end(source, cursor))
-        return "kofun_neg(" + emit_unary(source, value_start, end) + ")"
+        return "kofun_neg(" + emit_unary(source, hir, value_start, end) + ")"
     }
-    return emit_primary(source, cursor, end)
+    return emit_primary(source, hir, cursor, end)
 }
 
-fn emit_product(source: Text, start: Int, end: Int) -> Text {
+fn emit_product(source: Text, hir: Text, start: Int, end: Int) -> Text {
     let mut cursor = unary_end(source, start)
-    let mut emitted = emit_unary(source, start, cursor)
+    let mut emitted = emit_unary(source, hir, start, cursor)
     let mut operator_start = skip_trivia(source, cursor)
     while operator_start < end {
         let operator = token_text(source, operator_start)
@@ -1150,7 +1150,7 @@ fn emit_product(source: Text, start: Int, end: Int) -> Text {
             token_end(source, operator_start)
         )
         let right_end = unary_end(source, right_start)
-        let right = emit_unary(source, right_start, right_end)
+        let right = emit_unary(source, hir, right_start, right_end)
         if operator == "*" {
             emitted = "kofun_mul(" + emitted + ", " + right + ")"
         } else if operator == "//" {
@@ -1164,9 +1164,9 @@ fn emit_product(source: Text, start: Int, end: Int) -> Text {
     return emitted
 }
 
-fn emit_expression(source: Text, start: Int, end: Int) -> Text {
+fn emit_expression(source: Text, hir: Text, start: Int, end: Int) -> Text {
     let mut cursor = product_end(source, start)
-    let mut emitted = emit_product(source, start, cursor)
+    let mut emitted = emit_product(source, hir, start, cursor)
     let mut operator_start = skip_trivia(source, cursor)
     while operator_start < end {
         let operator = token_text(source, operator_start)
@@ -1175,7 +1175,7 @@ fn emit_expression(source: Text, start: Int, end: Int) -> Text {
             token_end(source, operator_start)
         )
         let right_end = product_end(source, right_start)
-        let right = emit_product(source, right_start, right_end)
+        let right = emit_product(source, hir, right_start, right_end)
         if operator == "+" {
             emitted = "kofun_add(" + emitted + ", " + right + ")"
         } else if operator == "-" {
@@ -1258,7 +1258,11 @@ fn validate_core_calls(source: Text) -> Text {
     return "ok"
 }
 
-fn core_parameters(source: Text, function_start: Int) -> Text {
+fn core_parameters(
+    source: Text,
+    hir: Text,
+    function_start: Int
+) -> Text {
     let parameters = parameter_open(source, function_start)
     if parameters < 0 {
         return "error[E2S15]: malformed Core parameter list"
@@ -1287,7 +1291,8 @@ fn core_parameters(source: Text, function_start: Int) -> Text {
         if count > 0 {
             emitted = emitted + ", "
         }
-        emitted = emitted + "int64_t k_" + name
+        emitted = emitted + "int64_t k_b" +
+        hir_definition_id_at(hir, cursor)
         count = count + 1
         let separator = skip_trivia(source, token_end(source, type_cursor))
         if separator < parameters_end &&
@@ -1329,6 +1334,7 @@ fn condition_end(source: Text, start: Int) -> Int {
 
 fn emit_condition_into(
     source: Text,
+    hir: Text,
     start: Int,
     end: Int,
     target: Text,
@@ -1347,10 +1353,10 @@ fn emit_condition_into(
         token_end(source, operator_start)
     )
     return indent + "int64_t kofun_condition_left = " +
-    emit_expression(source, cursor, left_end) + ";\n" +
+    emit_expression(source, hir, cursor, left_end) + ";\n" +
     indent + "if (kofun_failed) return " + failure_result + ";\n" +
     indent + "int64_t kofun_condition_right = " +
-    emit_expression(source, right_start, end) + ";\n" +
+    emit_expression(source, hir, right_start, end) + ";\n" +
     indent + "if (kofun_failed) return " + failure_result + ";\n" +
     indent + "bool " + target + " = kofun_condition_left " +
     token_text(source, operator_start) +
@@ -1645,6 +1651,7 @@ fn validate_value_control(source: Text, start: Int) -> Text {
 
 fn emit_value_into(
     source: Text,
+    hir: Text,
     start: Int,
     end: Int,
     target: Text,
@@ -1654,6 +1661,7 @@ fn emit_value_into(
     if token_text(source, cursor) == "match" {
         return emit_value_match_into(
             source,
+            hir,
             cursor,
             end,
             target,
@@ -1662,7 +1670,7 @@ fn emit_value_into(
     }
     if token_text(source, cursor) != "if" {
         return "    " + target + " = " +
-        emit_expression(source, cursor, end) + ";\n" +
+        emit_expression(source, hir, cursor, end) + ";\n" +
         "    if (kofun_failed) return " + failure_result + ";\n"
     }
     let condition_start = skip_trivia(source, token_end(source, cursor))
@@ -1678,6 +1686,7 @@ fn emit_value_into(
     return "    {\n" +
     emit_condition_into(
         source,
+        hir,
         condition_start,
         condition_close,
         "kofun_value_condition",
@@ -1687,6 +1696,7 @@ fn emit_value_into(
     "        if (kofun_value_condition) {\n" +
     emit_value_into(
         source,
+        hir,
         then_start,
         then_end,
         target,
@@ -1695,6 +1705,7 @@ fn emit_value_into(
     "        } else {\n" +
     emit_value_into(
         source,
+        hir,
         else_start,
         else_end,
         target,
@@ -1706,6 +1717,7 @@ fn emit_value_into(
 
 fn emit_value_match_into(
     source: Text,
+    hir: Text,
     start: Int,
     end: Int,
     target: Text,
@@ -1741,6 +1753,7 @@ fn emit_value_match_into(
         }
         let arm_body = emit_value_into(
             source,
+            hir,
             arm_start,
             arm_end,
             target,
@@ -1752,6 +1765,7 @@ fn emit_value_match_into(
             pattern_condition + ") {\n" +
             emit_condition_into(
                 source,
+                hir,
                 guard_start,
                 guard_end,
                 "kofun_match_guard",
@@ -1779,6 +1793,7 @@ fn emit_value_match_into(
     return "    {\n" +
     emit_condition_into(
         source,
+        hir,
         value_start,
         value_close,
         "kofun_match_value",
@@ -1793,6 +1808,7 @@ fn emit_value_match_into(
 
 fn core_body_open(
     source: Text,
+    hir: Text,
     function_start: Int,
     is_main: Bool
 ) -> Int {
@@ -1802,7 +1818,7 @@ fn core_body_open(
     }
     let parameters_end = balanced_end(source, parameters, "(", ")")
     if parameters_end < 0 ||
-       starts_with(core_parameters(source, function_start), "error[") {
+       starts_with(core_parameters(source, hir, function_start), "error[") {
         return -1
     }
     let mut cursor = skip_trivia(source, parameters_end)
@@ -1819,102 +1835,6 @@ fn core_body_open(
         return -1
     }
     return cursor
-}
-
-fn binding_mutability_before(
-    source: Text,
-    body_open: Int,
-    assignment_start: Int,
-    binding_name: Text
-) -> Int {
-    let mut cursor = skip_trivia(source, token_end(source, body_open))
-    let mut result = -1
-    let mut depth = 0
-    while cursor < assignment_start {
-        let token = token_text(source, cursor)
-        if token == "{" {
-            depth = depth + 1
-        } else if token == "}" {
-            depth = depth - 1
-        } else if depth == 0 && token == "let" {
-            let mut name_cursor = skip_trivia(
-                source,
-                token_end(source, cursor)
-            )
-            let mut mutable = false
-            if name_cursor < assignment_start &&
-               token_text(source, name_cursor) == "mut" {
-                mutable = true
-                name_cursor = skip_trivia(
-                    source,
-                    token_end(source, name_cursor)
-                )
-            }
-            if name_cursor < assignment_start &&
-               token_kind(source, name_cursor) == "identifier" &&
-               token_text(source, name_cursor) == binding_name {
-                if mutable {
-                    result = 1
-                } else {
-                    result = 0
-                }
-            }
-        }
-        cursor = skip_trivia(source, token_end(source, cursor))
-    }
-    return result
-}
-
-fn binding_type_before(
-    source: Text,
-    body_open: Int,
-    use_start: Int,
-    binding_name: Text
-) -> Text {
-    let mut cursor = skip_trivia(source, token_end(source, body_open))
-    let mut result = ""
-    let mut depth = 0
-    while cursor < use_start {
-        let token = token_text(source, cursor)
-        if token == "{" {
-            depth = depth + 1
-        } else if token == "}" {
-            depth = depth - 1
-        } else if depth == 0 && token == "let" {
-            let mut name_cursor = skip_trivia(
-                source,
-                token_end(source, cursor)
-            )
-            if name_cursor < use_start &&
-               token_text(source, name_cursor) == "mut" {
-                name_cursor = skip_trivia(
-                    source,
-                    token_end(source, name_cursor)
-                )
-            }
-            if name_cursor < use_start &&
-               token_kind(source, name_cursor) == "identifier" &&
-               token_text(source, name_cursor) == binding_name {
-                result = "Int"
-                let colon = skip_trivia(
-                    source,
-                    token_end(source, name_cursor)
-                )
-                if colon < use_start && token_text(source, colon) == ":" {
-                    let type_cursor = skip_trivia(
-                        source,
-                        token_end(source, colon)
-                    )
-                    if type_cursor < use_start &&
-                       token_kind(source, type_cursor) == "identifier" {
-                        result = token_text(source, type_cursor)
-                    }
-                }
-            }
-        }
-        cursor = skip_trivia(source, token_end(source, cursor))
-    }
-    return result
 }
 
 fn parent_block_open(
@@ -1936,112 +1856,35 @@ fn parent_block_open(
     return parent
 }
 
-fn visible_binding_type(
-    source: Text,
-    current_open: Int,
-    function_open: Int,
-    use_start: Int,
-    binding_name: Text
-) -> Text {
-    let mut block_open = current_open
-    let mut block_limit = use_start
-    while block_open >= function_open {
-        let result = binding_type_before(
-            source,
-            block_open,
-            block_limit,
-            binding_name
-        )
-        if len(result) > 0 {
-            return result
-        }
-        if block_open == function_open {
-            return ""
-        }
-        let parent = parent_block_open(
-            source,
-            function_open,
-            block_open
-        )
-        if parent < 0 || parent == block_open {
-            return ""
-        }
-        block_limit = block_open
-        block_open = parent
-    }
-    return ""
-}
-
-fn int_parameter_named(
-    source: Text,
-    function_start: Int,
-    wanted: Text
-) -> Bool {
-    let parameters = parameter_open(source, function_start)
-    if parameters < 0 {
-        return false
-    }
-    let parameters_end = balanced_end(source, parameters, "(", ")")
-    if parameters_end < 0 {
-        return false
-    }
-    let mut cursor = skip_trivia(source, token_end(source, parameters))
-    while cursor < parameters_end && token_text(source, cursor) != ")" {
-        let name = cursor
-        let colon = skip_trivia(source, token_end(source, name))
-        let type_cursor = skip_trivia(source, token_end(source, colon))
-        if token_kind(source, name) == "identifier" &&
-           token_text(source, name) == wanted &&
-           token_text(source, colon) == ":" &&
-           token_text(source, type_cursor) == "Int" {
-            return true
-        }
-        let separator = skip_trivia(
-            source,
-            token_end(source, type_cursor)
-        )
-        if separator < parameters_end &&
-           token_text(source, separator) == "," {
-            cursor = skip_trivia(source, token_end(source, separator))
-        } else {
-            cursor = separator
-        }
-    }
-    return false
-}
-
-fn function_enum_binding_names(
+fn scope_kind_for_open(
     source: Text,
     function_open: Int,
-    function_close: Int,
-    enum_types: Text
+    wanted_open: Int
 ) -> Text {
-    let mut names = "|"
-    let mut cursor = skip_trivia(source, token_end(source, function_open))
-    while cursor < function_close {
-        if token_text(source, cursor) == "let" {
-            let mut name = skip_trivia(source, token_end(source, cursor))
-            if token_text(source, name) == "mut" {
-                name = skip_trivia(source, token_end(source, name))
-            }
-            let colon = skip_trivia(source, token_end(source, name))
-            if token_text(source, colon) == ":" {
-                let type_cursor = skip_trivia(
-                    source,
-                    token_end(source, colon)
-                )
-                let enum_type_name = token_text(source, type_cursor)
-                if contains(enum_types, "|" + enum_type_name + "|") {
-                    let binding_name = token_text(source, name)
-                    if !contains(names, "|" + binding_name + "|") {
-                        names = names + binding_name + "|"
-                    }
-                }
+    let mut cursor = function_open
+    let mut previous = ""
+    while cursor < wanted_open {
+        if token_text(source, cursor) == "if" {
+            let condition_start = skip_trivia(
+                source,
+                token_end(source, cursor)
+            )
+            let condition_close = condition_end(source, condition_start)
+            if condition_close >= 0 &&
+               skip_trivia(source, condition_close) == wanted_open {
+                return "if-then"
             }
         }
+        previous = token_text(source, cursor)
         cursor = skip_trivia(source, token_end(source, cursor))
     }
-    return names
+    if previous == "else" {
+        return "if-else"
+    }
+    if previous == "=>" {
+        return "match-arm"
+    }
+    return "block"
 }
 
 fn enum_declaration_syntax_token(
@@ -2079,12 +1922,7 @@ fn enum_declaration_syntax_token(
                 if initializer == target &&
                    token_text(source, equals) == "=" {
                     let enum_type = token_text(source, type_cursor)
-                    let constructor = token_text(source, initializer)
-                    if enum_constructor_index(
-                        source,
-                        enum_type,
-                        constructor
-                    ) >= 0 {
+                    if enum_constructor_count(source, enum_type) >= 0 {
                         return true
                     }
                 }
@@ -2220,12 +2058,237 @@ fn enum_match_pattern_token(
     return false
 }
 
-fn validate_enum_uses(source: Text) -> Text {
-    let enum_types = enum_declaration_names(source, false)
-    if len(enum_types) <= 1 {
-        return "ok"
+fn text_find_from(value: Text, wanted: Text, start: Int) -> Int {
+    if len(wanted) == 0 {
+        return start
     }
-    let constructor_names = enum_declaration_names(source, true)
+    let mut cursor = start
+    while cursor + len(wanted) <= len(value) {
+        if text_slice(value, cursor, cursor + len(wanted)) == wanted {
+            return cursor
+        }
+        cursor = cursor + 1
+    }
+    return -1
+}
+
+fn decimal_value(value: Text) -> Int {
+    let symbols = chars(value)
+    let mut cursor = 0
+    let mut sign = 1
+    if len(symbols) > 0 && symbols[0] == "-" {
+        sign = -1
+        cursor = 1
+    }
+    let mut result = 0
+    while cursor < len(symbols) {
+        if !is_digit(symbols[cursor]) {
+            return -1
+        }
+        result = result * 10 +
+        text_find_from("0123456789", symbols[cursor], 0)
+        cursor = cursor + 1
+    }
+    return result * sign
+}
+
+fn hir_record_start(
+    hir: Text,
+    kind: Text,
+    start: Int
+) -> Int {
+    let found = text_find_from(hir, "\n" + kind + "|", start)
+    if found < 0 {
+        return -1
+    }
+    return found + 1
+}
+
+fn hir_field(hir: Text, line_start: Int, wanted: Int) -> Text {
+    let symbols = chars(hir)
+    let mut cursor = line_start
+    let mut field = 0
+    let mut field_start = line_start
+    while cursor < len(symbols) {
+        if symbols[cursor] == "|" || symbols[cursor] == "\n" {
+            if field == wanted {
+                return text_slice(hir, field_start, cursor)
+            }
+            if symbols[cursor] == "\n" {
+                return ""
+            }
+            field = field + 1
+            field_start = cursor + 1
+        }
+        cursor = cursor + 1
+    }
+    if field == wanted {
+        return text_slice(hir, field_start, cursor)
+    }
+    return ""
+}
+
+fn hir_scope_id_for_open(hir: Text, open: Int) -> Text {
+    let mut line = hir_record_start(hir, "scope", 0)
+    while line >= 0 {
+        if decimal_value(hir_field(hir, line, 4)) == open {
+            return hir_field(hir, line, 1)
+        }
+        line = hir_record_start(hir, "scope", line + 1)
+    }
+    return ""
+}
+
+fn hir_scope_field(hir: Text, scope_id: Text, field: Int) -> Text {
+    let mut line = hir_record_start(hir, "scope", 0)
+    while line >= 0 {
+        if hir_field(hir, line, 1) == scope_id {
+            return hir_field(hir, line, field)
+        }
+        line = hir_record_start(hir, "scope", line + 1)
+    }
+    return ""
+}
+
+fn hir_binding_field(hir: Text, binding_id: Text, field: Int) -> Text {
+    let mut line = hir_record_start(hir, "binding", 0)
+    while line >= 0 {
+        if hir_field(hir, line, 1) == binding_id {
+            return hir_field(hir, line, field)
+        }
+        line = hir_record_start(hir, "binding", line + 1)
+    }
+    return ""
+}
+
+fn hir_definition_id_at(hir: Text, declaration_start: Int) -> Text {
+    let mut line = hir_record_start(hir, "binding", 0)
+    while line >= 0 {
+        if decimal_value(hir_field(hir, line, 8)) == declaration_start {
+            return hir_field(hir, line, 1)
+        }
+        line = hir_record_start(hir, "binding", line + 1)
+    }
+    return ""
+}
+
+fn hir_use_binding_id(hir: Text, use_start: Int) -> Text {
+    let mut line = hir_record_start(hir, "use", 0)
+    while line >= 0 {
+        if decimal_value(hir_field(hir, line, 1)) == use_start {
+            return hir_field(hir, line, 4)
+        }
+        line = hir_record_start(hir, "use", line + 1)
+    }
+    return ""
+}
+
+fn hir_resolve_binding(
+    hir: Text,
+    current_scope: Text,
+    use_start: Int,
+    name: Text
+) -> Text {
+    let mut scope_id = current_scope
+    while len(scope_id) > 0 && scope_id != "-1" {
+        let mut resolved = ""
+        let mut line = hir_record_start(hir, "binding", 0)
+        while line >= 0 {
+            if hir_field(hir, line, 2) == scope_id &&
+               hir_field(hir, line, 3) == name &&
+               decimal_value(hir_field(hir, line, 10)) <= use_start {
+                resolved = hir_field(hir, line, 1)
+            }
+            line = hir_record_start(hir, "binding", line + 1)
+        }
+        if len(resolved) > 0 {
+            return resolved
+        }
+        scope_id = hir_scope_field(hir, scope_id, 2)
+    }
+    return ""
+}
+
+fn hir_pending_declaration(
+    hir: Text,
+    current_scope: Text,
+    use_start: Int,
+    name: Text
+) -> Text {
+    let mut scope_id = current_scope
+    while len(scope_id) > 0 && scope_id != "-1" {
+        let mut line = hir_record_start(hir, "binding", 0)
+        while line >= 0 {
+            let declaration = decimal_value(hir_field(hir, line, 8))
+            let visible = decimal_value(hir_field(hir, line, 10))
+            if hir_field(hir, line, 2) == scope_id &&
+               hir_field(hir, line, 3) == name &&
+               declaration < use_start && use_start < visible {
+                return to_text(declaration)
+            }
+            line = hir_record_start(hir, "binding", line + 1)
+        }
+        scope_id = hir_scope_field(hir, scope_id, 2)
+    }
+    return ""
+}
+
+fn hir_scope_root(hir: Text, start_scope: Text) -> Text {
+    let mut scope_id = start_scope
+    let mut parent = hir_scope_field(hir, scope_id, 2)
+    while len(parent) > 0 && parent != "-1" {
+        scope_id = parent
+        parent = hir_scope_field(hir, scope_id, 2)
+    }
+    return scope_id
+}
+
+fn hir_any_declaration(
+    hir: Text,
+    current_scope: Text,
+    use_start: Int,
+    name: Text
+) -> Text {
+    let current_root = hir_scope_root(hir, current_scope)
+    let mut line = hir_record_start(hir, "binding", 0)
+    while line >= 0 {
+        let binding_scope = hir_field(hir, line, 2)
+        let declaration = decimal_value(hir_field(hir, line, 8))
+        if hir_field(hir, line, 3) == name &&
+           declaration < use_start &&
+           hir_scope_root(hir, binding_scope) == current_root {
+            return to_text(declaration)
+        }
+        line = hir_record_start(hir, "binding", line + 1)
+    }
+    return ""
+}
+
+fn scope_depth_for_open(
+    source: Text,
+    function_open: Int,
+    wanted_open: Int
+) -> Int {
+    let mut cursor = function_open
+    let mut depth = 0
+    while cursor <= wanted_open {
+        if token_text(source, cursor) == "{" {
+            depth = depth + 1
+            if cursor == wanted_open {
+                return depth
+            }
+        } else if token_text(source, cursor) == "}" {
+            depth = depth - 1
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return -1
+}
+
+fn build_scope_hir(source: Text) -> Text {
+    let mut hir = "kofun-scope-hir/v1\n"
+    let mut next_scope_id = 0
+    let mut next_binding_id = 0
     let mut function_start = next_function_start(source, 0)
     while function_start < len(source) {
         let function_close = function_end(source, function_start)
@@ -2239,83 +2302,330 @@ fn validate_enum_uses(source: Text) -> Text {
                 token_end(source, function_open)
             )
         }
-        let enum_binding_names = function_enum_binding_names(
+        let parameter_scope = next_scope_id
+        next_scope_id = next_scope_id + 1
+        let body_scope = next_scope_id
+        next_scope_id = next_scope_id + 1
+        let mut scope_count = 2
+        hir = hir + "hir-function|" + to_text(function_start) + "|" +
+        to_text(parameter_scope) + "|" + to_text(body_scope) + "\n" +
+        "scope|" + to_text(parameter_scope) + "|-1|parameters|" +
+        to_text(parameters) + "|" + to_text(parameters_close) + "|0\n" +
+        "scope|" + to_text(body_scope) + "|" +
+        to_text(parameter_scope) + "|function-body|" +
+        to_text(function_open) + "|" + to_text(function_close) + "|1\n"
+
+        let mut cursor = skip_trivia(
             source,
-            function_open,
-            function_close,
-            enum_types
+            token_end(source, function_open)
         )
+        while cursor < function_close {
+            if token_text(source, cursor) == "{" {
+                let depth = scope_depth_for_open(
+                    source,
+                    function_open,
+                    cursor
+                )
+                if depth > 32 {
+                    return "error[E2S35]: lexical scope depth limit is 32 at byte " +
+                    to_text(cursor)
+                }
+                scope_count = scope_count + 1
+                if scope_count > 256 {
+                    return "error[E2S35]: lexical scope limit is 256 per function at byte " +
+                    to_text(cursor)
+                }
+                let parent_open = parent_block_open(
+                    source,
+                    function_open,
+                    cursor
+                )
+                let parent_scope = hir_scope_id_for_open(hir, parent_open)
+                let close = balanced_end(source, cursor, "{", "}")
+                let scope_kind = scope_kind_for_open(
+                    source,
+                    function_open,
+                    cursor
+                )
+                hir = hir + "scope|" + to_text(next_scope_id) + "|" +
+                parent_scope + "|" + scope_kind + "|" +
+                to_text(cursor) + "|" +
+                to_text(close) + "|" + to_text(depth) + "\n"
+                next_scope_id = next_scope_id + 1
+            }
+            cursor = skip_trivia(source, token_end(source, cursor))
+        }
+
+        let mut binding_count = 0
+        let mut parameter_cursor = skip_trivia(
+            source,
+            token_end(source, parameters)
+        )
+        while parameter_cursor < parameters_close &&
+              token_text(source, parameter_cursor) != ")" {
+            let name = parameter_cursor
+            let colon = skip_trivia(source, token_end(source, name))
+            let type_cursor = skip_trivia(source, token_end(source, colon))
+            binding_count = binding_count + 1
+            if binding_count > 256 {
+                return "error[E2S35]: lexical binding limit is 256 per function at byte " +
+                to_text(name)
+            }
+            hir = hir + "binding|" + to_text(next_binding_id) + "|" +
+            to_text(parameter_scope) + "|" + token_text(source, name) +
+            "|immutable|" + token_text(source, type_cursor) +
+            "|copy|initialized|" + to_text(name) + "|" +
+            to_text(token_end(source, name)) + "|" +
+            to_text(token_end(source, name)) + "\n"
+            next_binding_id = next_binding_id + 1
+            let separator = skip_trivia(
+                source,
+                token_end(source, type_cursor)
+            )
+            if separator < parameters_close &&
+               token_text(source, separator) == "," {
+                parameter_cursor = skip_trivia(
+                    source,
+                    token_end(source, separator)
+                )
+            } else {
+                parameter_cursor = separator
+            }
+        }
+
+        cursor = skip_trivia(source, token_end(source, function_open))
+        while cursor < function_close {
+            if token_text(source, cursor) == "let" {
+                let mut name = skip_trivia(source, token_end(source, cursor))
+                let mut mutability = "immutable"
+                if token_text(source, name) == "mut" {
+                    mutability = "mutable"
+                    name = skip_trivia(source, token_end(source, name))
+                }
+                let mut after_name = skip_trivia(
+                    source,
+                    token_end(source, name)
+                )
+                let mut binding_type = "Int"
+                if token_text(source, after_name) == ":" {
+                    let type_cursor = skip_trivia(
+                        source,
+                        token_end(source, after_name)
+                    )
+                    binding_type = token_text(source, type_cursor)
+                    after_name = skip_trivia(
+                        source,
+                        token_end(source, type_cursor)
+                    )
+                }
+                let initializer = skip_trivia(
+                    source,
+                    token_end(source, after_name)
+                )
+                let mut visible_start = value_end(source, initializer)
+                if visible_start < 0 {
+                    visible_start = token_end(source, initializer)
+                }
+                let scope_open = parent_block_open(
+                    source,
+                    function_open,
+                    name
+                )
+                let scope_id = hir_scope_id_for_open(hir, scope_open)
+                binding_count = binding_count + 1
+                if binding_count > 256 {
+                    return "error[E2S35]: lexical binding limit is 256 per function at byte " +
+                    to_text(name)
+                }
+                let mut ownership = "copy"
+                if binding_type == "Text" || binding_type == "List" {
+                    ownership = "gc"
+                }
+                hir = hir + "binding|" + to_text(next_binding_id) + "|" +
+                scope_id + "|" + token_text(source, name) + "|" +
+                mutability + "|" + binding_type + "|" + ownership +
+                "|initialized|" + to_text(name) + "|" +
+                to_text(token_end(source, name)) + "|" +
+                to_text(visible_start) + "\n"
+                next_binding_id = next_binding_id + 1
+            }
+            cursor = skip_trivia(source, token_end(source, cursor))
+        }
+
+        let mut use_count = 0
+        let mut unresolved_assignment = false
+        cursor = skip_trivia(source, token_end(source, function_open))
+        while cursor < function_close {
+            if token_kind(source, cursor) == "identifier" {
+                let name = token_text(source, cursor)
+                let declaration_token = enum_declaration_syntax_token(
+                    source,
+                    function_open,
+                    cursor
+                )
+                let initializer_token = enum_initializer_constructor_token(
+                    source,
+                    function_open,
+                    cursor
+                )
+                let pattern_token = enum_match_pattern_token(
+                    source,
+                    function_open,
+                    cursor
+                )
+                if !declaration_token && !initializer_token &&
+                   !pattern_token && name != "print" && name != "_" {
+                    let scope_open = parent_block_open(
+                        source,
+                        function_open,
+                        cursor
+                    )
+                    let scope_id = hir_scope_id_for_open(hir, scope_open)
+                    let binding_id = hir_resolve_binding(
+                        hir,
+                        scope_id,
+                        cursor,
+                        name
+                    )
+                    let after = skip_trivia(
+                        source,
+                        token_end(source, cursor)
+                    )
+                    let mut role = "read"
+                    if token_text(source, after) == "=" {
+                        role = "assign"
+                    }
+                    if len(binding_id) > 0 {
+                        use_count = use_count + 1
+                        if use_count > 256 {
+                            return "error[E2S35]: lexical use limit is 256 per function at byte " +
+                            to_text(cursor)
+                        }
+                        hir = hir + "use|" + to_text(cursor) + "|" +
+                        to_text(token_end(source, cursor)) + "|" +
+                        scope_id + "|" + binding_id + "|" + role + "\n"
+                    } else if role == "assign" {
+                        use_count = use_count + 1
+                        if use_count > 256 {
+                            return "error[E2S35]: lexical use limit is 256 per function at byte " +
+                            to_text(cursor)
+                        }
+                        hir = hir + "use|" + to_text(cursor) + "|" +
+                        to_text(token_end(source, cursor)) + "|" +
+                        scope_id + "|-1|assign\n"
+                        unresolved_assignment = true
+                    } else if token_text(source, after) != "(" &&
+                              !unresolved_assignment {
+                        let pending = hir_pending_declaration(
+                            hir,
+                            scope_id,
+                            cursor,
+                            name
+                        )
+                        if len(pending) > 0 {
+                            return "error[E2S35]: binding `" + name +
+                            "` is not initialized at byte " + to_text(cursor) +
+                            "; declaration at byte " + pending
+                        }
+                        let escaped = hir_any_declaration(
+                            hir,
+                            scope_id,
+                            cursor,
+                            name
+                        )
+                        if len(escaped) > 0 {
+                            return "error[E2S35]: binding `" + name +
+                            "` is outside its lexical scope at byte " +
+                            to_text(cursor) + "; declaration at byte " + escaped
+                        }
+                        if len(enum_constructor_owner(source, name)) == 0 {
+                            return "error[E2S35]: unknown lexical binding `" +
+                            name + "` at byte " + to_text(cursor)
+                        }
+                    }
+                }
+            }
+            cursor = skip_trivia(source, token_end(source, cursor))
+        }
+        function_start = next_function_start(source, function_close)
+    }
+    return hir
+}
+
+fn validate_enum_uses(source: Text, hir: Text) -> Text {
+    let constructor_names = enum_declaration_names(source, true)
+    if len(constructor_names) <= 1 {
+        return "ok"
+    }
+    let mut function_start = next_function_start(source, 0)
+    while function_start < len(source) {
+        let function_close = function_end(source, function_start)
+        let parameters = parameter_open(source, function_start)
+        let parameters_close = balanced_end(source, parameters, "(", ")")
+        let mut function_open = skip_trivia(source, parameters_close)
+        while function_open < function_close &&
+              token_text(source, function_open) != "{" {
+            function_open = skip_trivia(
+                source,
+                token_end(source, function_open)
+            )
+        }
         let mut related_identifiers = 0
         let mut cursor = skip_trivia(source, token_end(source, function_open))
         let mut previous = ""
         while cursor < function_close {
             if token_kind(source, cursor) == "identifier" {
                 let name = token_text(source, cursor)
-                let related = contains(
+                let pattern_token = enum_match_pattern_token(
+                    source,
+                    function_open,
+                    cursor
+                )
+                let initializer_token = enum_initializer_constructor_token(
+                    source,
+                    function_open,
+                    cursor
+                )
+                let declaration_token = enum_declaration_syntax_token(
+                    source,
+                    function_open,
+                    cursor
+                )
+                let binding_id = hir_use_binding_id(hir, cursor)
+                let binding_type = hir_binding_field(hir, binding_id, 5)
+                let binding_enum = len(binding_type) > 0 &&
+                enum_constructor_count(source, binding_type) >= 0
+                let constructor_named = contains(
                     constructor_names,
                     "|" + name + "|"
-                ) || contains(
-                    enum_binding_names,
-                    "|" + name + "|"
                 )
+                let related = pattern_token || initializer_token ||
+                binding_enum ||
+                (constructor_named && len(binding_id) == 0 &&
+                 !declaration_token)
                 if related {
                     related_identifiers = related_identifiers + 1
                     if related_identifiers > 256 {
                         return "error[E2S32]: enum-related identifier use limit is 256 per function at byte " +
                         to_text(cursor)
                     }
-                    let pattern_token = enum_match_pattern_token(
-                        source,
-                        function_open,
-                        cursor
-                    )
-                    let initializer_token = enum_initializer_constructor_token(
-                        source,
-                        function_open,
-                        cursor
-                    )
-                    let declaration_token = enum_declaration_syntax_token(
-                        source,
-                        function_open,
-                        cursor
-                    )
                     if !pattern_token && !initializer_token &&
                        !declaration_token {
-                        let mut current_open = parent_block_open(
-                            source,
-                            function_open,
-                            cursor
-                        )
-                        if current_open < 0 {
-                            current_open = function_open
-                        }
-                        let binding_type = visible_binding_type(
-                            source,
-                            current_open,
-                            function_open,
-                            cursor,
-                            name
-                        )
-                        if len(binding_type) > 0 {
-                            if enum_constructor_count(source, binding_type) >= 0 {
-                                let after = skip_trivia(
-                                    source,
-                                    token_end(source, cursor)
-                                )
-                                let match_scrutinee = previous == "match" &&
-                                token_text(source, after) == "{"
-                                if !match_scrutinee {
-                                    return "error[E2S32]: concrete enum binding `" +
-                                    name +
-                                    "` is match-only in this Core slice at byte " +
-                                    to_text(cursor)
-                                }
+                        if binding_enum {
+                            let after = skip_trivia(
+                                source,
+                                token_end(source, cursor)
+                            )
+                            let match_scrutinee = previous == "match" &&
+                            token_text(source, after) == "{"
+                            if !match_scrutinee {
+                                return "error[E2S32]: concrete enum binding `" +
+                                name +
+                                "` is match-only in this Core slice at byte " +
+                                to_text(cursor)
                             }
-                        } else if !int_parameter_named(
-                            source,
-                            function_start,
-                            name
-                        ) {
+                        } else if constructor_named &&
+                                  len(binding_id) == 0 {
                             let after = skip_trivia(
                                 source,
                                 token_end(source, cursor)
@@ -2358,6 +2668,7 @@ fn enum_match_end(source: Text, start: Int) -> Int {
 
 fn lower_enum_match(
     source: Text,
+    hir: Text,
     match_start: Int,
     enum_type: Text,
     is_main: Bool,
@@ -2443,6 +2754,7 @@ fn lower_enum_match(
         }
         let arm_body = lower_body(
             source,
+            hir,
             arm_open,
             is_main,
             false,
@@ -2462,6 +2774,7 @@ fn lower_enum_match(
             pattern_condition + ") {\n" +
             emit_condition_into(
                 source,
+                hir,
                 guard_start,
                 guard_end,
                 "kofun_match_guard",
@@ -2507,7 +2820,8 @@ fn lower_enum_match(
         " at byte " + to_text(match_start)
     }
     return "    {\n" +
-    "        int64_t kofun_match_value = k_" + value_name + ";\n" +
+    "        int64_t kofun_match_value = k_b" +
+    hir_use_binding_id(hir, value_start) + ";\n" +
     "        (void)kofun_match_value;\n" +
     "        bool kofun_match_selected = false;\n" +
     dispatch +
@@ -2516,6 +2830,7 @@ fn lower_enum_match(
 
 fn lower_body(
     source: Text,
+    hir: Text,
     open: Int,
     is_main: Bool,
     append_default: Bool,
@@ -2547,6 +2862,8 @@ fn lower_body(
                 to_text(cursor)
             }
             let name = token_text(source, cursor)
+            let binding_id = hir_definition_id_at(hir, cursor)
+            let storage = "k_b" + binding_id
             cursor = skip_trivia(source, token_end(source, cursor))
             let mut binding_type = "Int"
             if cursor < len(source) && token_text(source, cursor) == ":" {
@@ -2588,7 +2905,7 @@ fn lower_body(
                     "` does not belong to enum `" + binding_type +
                     "` at byte " + to_text(value_start)
                 }
-                emitted = emitted + "    int64_t k_" + name +
+                emitted = emitted + "    int64_t " + storage +
                 " = INT64_C(" + to_text(tag) + ");\n"
                 cursor = skip_trivia(source, token_end(source, value_start))
             } else if value_control(token_text(source, value_start)) {
@@ -2597,13 +2914,14 @@ fn lower_body(
                     return value_check
                 }
                 let value_end = value_end(source, value_start)
-                emitted = emitted + "    int64_t k_" + name +
+                emitted = emitted + "    int64_t " + storage +
                 " = INT64_C(0);\n" +
                 emit_value_into(
                     source,
+                    hir,
                     value_start,
                     value_end,
-                    "k_" + name,
+                    storage,
                     failure_result
                 )
                 cursor = skip_trivia(source, value_end)
@@ -2613,8 +2931,8 @@ fn lower_body(
                     return "error[E2S12]: invalid Int expression at byte " +
                     to_text(value_start)
                 }
-                emitted = emitted + "    int64_t k_" + name + " = " +
-                emit_expression(source, value_start, value_end) + ";\n" +
+                emitted = emitted + "    int64_t " + storage + " = " +
+                emit_expression(source, hir, value_start, value_end) + ";\n" +
                 "    if (kofun_failed) return " + failure_result + ";\n"
                 cursor = skip_trivia(source, value_end)
             }
@@ -2643,6 +2961,7 @@ fn lower_body(
                 "        int64_t kofun_value = INT64_C(0);\n" +
                 emit_value_into(
                     source,
+                    hir,
                     value_start,
                     value_end,
                     "kofun_value",
@@ -2666,7 +2985,7 @@ fn lower_body(
                 emitted = emitted +
                 "    {\n" +
                 "        int64_t kofun_value = " +
-                emit_expression(source, value_start, value_end) + ";\n" +
+                emit_expression(source, hir, value_start, value_end) + ";\n" +
                 "        if (kofun_failed) return " + failure_result + ";\n" +
                 "        printf(\"%\" PRId64 \"\\n\", kofun_value);\n" +
                 "    }\n"
@@ -2695,6 +3014,7 @@ fn lower_body(
             }
             let branch_body = lower_body(
                 source,
+                hir,
                 branch_open,
                 is_main,
                 false,
@@ -2707,6 +3027,7 @@ fn lower_body(
             "    {\n" +
             emit_condition_into(
                 source,
+                hir,
                 condition_start,
                 condition_close,
                 "kofun_condition",
@@ -2734,6 +3055,7 @@ fn lower_body(
                 }
                 let else_body = lower_body(
                     source,
+                    hir,
                     else_open,
                     is_main,
                     false,
@@ -2760,13 +3082,8 @@ fn lower_body(
                direct_end < len(source) &&
                token_text(source, direct_end) == "{" {
                 let value_name = token_text(source, value_start)
-                let enum_type = visible_binding_type(
-                    source,
-                    open,
-                    function_open,
-                    match_start,
-                    value_name
-                )
+                let enum_binding = hir_use_binding_id(hir, value_start)
+                let enum_type = hir_binding_field(hir, enum_binding, 5)
                 if len(enum_type) == 0 || enum_type == "Int" ||
                    enum_constructor_count(source, enum_type) < 0 {
                     return "error[E2S32]: enum match scrutinee `" +
@@ -2776,6 +3093,7 @@ fn lower_body(
                 }
                 let match_body = lower_enum_match(
                     source,
+                    hir,
                     match_start,
                     enum_type,
                     is_main,
@@ -2875,6 +3193,7 @@ fn lower_body(
                 }
                 let arm_body = lower_body(
                     source,
+                    hir,
                     arm_open,
                     is_main,
                     false,
@@ -2896,6 +3215,7 @@ fn lower_body(
                     pattern_condition + ") {\n" +
                     emit_condition_into(
                         source,
+                        hir,
                         guard_start,
                         guard_end,
                         "kofun_match_guard",
@@ -2958,6 +3278,7 @@ fn lower_body(
             "    {\n" +
             emit_condition_into(
                 source,
+                hir,
                 value_start,
                 value_end,
                 "kofun_match_value",
@@ -2987,6 +3308,7 @@ fn lower_body(
                 "        int64_t kofun_result = INT64_C(0);\n" +
                 emit_value_into(
                     source,
+                    hir,
                     value_start,
                     value_end,
                     "kofun_result",
@@ -3009,7 +3331,7 @@ fn lower_body(
                 emitted = emitted +
                 "    {\n" +
                 "        int64_t kofun_result = " +
-                emit_expression(source, value_start, value_end) + ";\n" +
+                emit_expression(source, hir, value_start, value_end) + ";\n" +
                 "        if (kofun_failed) return " + failure_result + ";\n"
                 if is_main {
                     emitted = emitted +
@@ -3027,29 +3349,14 @@ fn lower_body(
             let name = token_text(source, cursor)
             let equals = skip_trivia(source, token_end(source, cursor))
             if equals < len(source) && token_text(source, equals) == "=" {
-                let mutability = binding_mutability_before(
-                    source,
-                    open,
-                    assignment_start,
-                    name
-                )
-                if mutability < 0 {
-                    if open != function_open &&
-                       binding_mutability_before(
-                           source,
-                           function_open,
-                           open,
-                           name
-                       ) >= 0 {
-                        return "error[E2S22]: cannot assign to outer binding `" +
-                        name + "` at byte " + to_text(assignment_start) +
-                        "; assign after the branch"
-                    }
+                let binding_id = hir_use_binding_id(hir, assignment_start)
+                if binding_id == "-1" || len(binding_id) == 0 {
                     return "error[E2S22]: unknown assignment target `" + name +
                     "` at byte " + to_text(assignment_start) +
                     "; declare it before assignment"
                 }
-                if mutability == 0 {
+                let mutability = hir_binding_field(hir, binding_id, 4)
+                if mutability != "mutable" {
                     return "error[E2S22]: cannot assign to immutable binding `" +
                     name + "` at byte " + to_text(assignment_start) +
                     "; declare it with `let mut`"
@@ -3066,12 +3373,13 @@ fn lower_body(
                     "        int64_t kofun_replacement = INT64_C(0);\n" +
                     emit_value_into(
                         source,
+                        hir,
                         value_start,
                         value_end,
                         "kofun_replacement",
                         failure_result
                     ) +
-                    "        k_" + name + " = kofun_replacement;\n" +
+                    "        k_b" + binding_id + " = kofun_replacement;\n" +
                     "    }\n"
                     cursor = skip_trivia(source, value_end)
                 } else {
@@ -3083,9 +3391,9 @@ fn lower_body(
                     emitted = emitted +
                     "    {\n" +
                     "        int64_t kofun_replacement = " +
-                    emit_expression(source, value_start, value_end) + ";\n" +
+                    emit_expression(source, hir, value_start, value_end) + ";\n" +
                     "        if (kofun_failed) return " + failure_result + ";\n" +
-                    "        k_" + name + " = kofun_replacement;\n" +
+                    "        k_b" + binding_id + " = kofun_replacement;\n" +
                     "    }\n"
                     cursor = skip_trivia(source, value_end)
                 }
@@ -3096,7 +3404,7 @@ fn lower_body(
                     to_text(cursor)
                 }
                 emitted = emitted + "    (void)" +
-                emit_expression(source, cursor, value_end) + ";\n" +
+                emit_expression(source, hir, cursor, value_end) + ";\n" +
                 "    if (kofun_failed) return " + failure_result + ";\n"
                 cursor = skip_trivia(source, value_end)
             }
@@ -3118,8 +3426,8 @@ fn lower_body(
     return emitted
 }
 
-fn lower_c(source: Text) -> Text {
-    let enum_use_check = validate_enum_uses(source)
+fn lower_c(source: Text, hir: Text) -> Text {
+    let enum_use_check = validate_enum_uses(source, hir)
     if starts_with(enum_use_check, "error[") {
         return enum_use_check
     }
@@ -3139,7 +3447,7 @@ fn lower_c(source: Text) -> Text {
         }
         let is_main = name == "main"
         let arity = parameter_count(source, cursor)
-        let parameters = core_parameters(source, cursor)
+        let parameters = core_parameters(source, hir, cursor)
         if starts_with(parameters, "error[") {
             return parameters
         }
@@ -3156,12 +3464,12 @@ fn lower_c(source: Text) -> Text {
             prototypes = prototypes + "static int64_t kofun_fn_" + name +
             "(" + c_parameters + ");\n"
         }
-        let open = core_body_open(source, cursor, is_main)
+        let open = core_body_open(source, hir, cursor, is_main)
         if open < 0 {
             return "error[E2S15]: Core function `" + name +
             "` requires Int parameters and an Int return"
         }
-        let body = lower_body(source, open, is_main, true, open)
+        let body = lower_body(source, hir, open, is_main, true, open)
         if starts_with(body, "error[") {
             return body
         }
@@ -3263,11 +3571,17 @@ fn compile_file(
     write_text(tokens_path, tokens)
     write_text(ir_path, ir)
     if ends_with(output_path, ".c") {
-        let c_source = lower_c(source)
+        let hir = build_scope_hir(source)
+        if starts_with(hir, "error[") {
+            print(hir)
+            return false
+        }
+        let c_source = lower_c(source, hir)
         if starts_with(c_source, "error[") {
             print(c_source)
             return false
         }
+        write_text(ir_path, ir + hir)
         write_text(output_path, c_source)
     } else {
         write_text(output_path, emit_kofun(source, ir))

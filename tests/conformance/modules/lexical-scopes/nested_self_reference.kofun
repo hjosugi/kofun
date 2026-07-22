@@ -1,0 +1,8 @@
+fn main() {
+    let value = if true {
+        value
+    } else {
+        0
+    }
+    print(value)
+}

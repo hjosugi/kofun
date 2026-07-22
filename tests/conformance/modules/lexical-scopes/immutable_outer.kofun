@@ -1,0 +1,7 @@
+fn main() {
+    let answer = 41
+    if true {
+        answer = answer + 1
+    }
+    print(answer)
+}

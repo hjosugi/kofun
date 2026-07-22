@@ -1,0 +1,1 @@
+error[E2S35]: binding `Red` is outside its lexical scope at byte 116; declaration at byte 67
