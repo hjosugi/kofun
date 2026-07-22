@@ -23,6 +23,8 @@ Python-free bootstrap implementation.
   headers and defines versioned `FileId`/`ModuleId` identity inputs.
 - `modules/namespaces.md` assigns declarations to the stable value, type,
   module, and meta namespaces and fixes deterministic lookup and collisions.
+- `modules/module-identity.md` fixes production IDs, canonical compiled-
+  interface bytes, and separate public, internal, and target ABI digests.
 - `modules/visibility.md` defines default-private declarations, package-scoped
   `internal`, intentional `pub`, and restricted ancestor visibility.
 - `law-evidence.schema.json` defines the machine-readable

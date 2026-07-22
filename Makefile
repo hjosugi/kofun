@@ -1,4 +1,4 @@
-.PHONY: help compiler test diagnostics fuzz check bootstrap stage2 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces visibility-spec visibility-syntax lsp roadmap syntax repository-check verify clean
+.PHONY: help compiler test diagnostics fuzz check bootstrap stage2 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax lsp roadmap syntax repository-check verify clean
 
 KOFUN := ./bin/kofun
 
@@ -25,6 +25,7 @@ help:
 	  'make package-roots    Verify package-root specification examples' \
 	  'make source-file-mapping Verify source/module identity examples' \
 	  'make namespaces       Verify semantic namespace and lookup examples' \
+	  'make module-identity  Verify stable IDs and interface digest examples' \
 	  'make visibility-spec  Verify declaration-visibility specification examples' \
 	  'make visibility-syntax Verify executable function visibility syntax' \
 	  'make lsp              Verify the stdio language server and editor client' \
@@ -106,6 +107,9 @@ source-file-mapping:
 namespaces:
 	sh spec/namespaces/check.sh
 
+module-identity:
+	sh spec/module-identity/check.sh
+
 visibility-spec:
 	sh spec/visibility/check.sh
 
@@ -131,7 +135,7 @@ repository-check:
 	@grep -q '"extensions": \[".kofun"\]' editor/vscode/package.json
 	@printf '%s\n' 'PASS: .kofun sources only; no Python implementation'
 
-verify: test diagnostics fuzz check bootstrap stage2 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces visibility-spec visibility-syntax lsp roadmap syntax repository-check
+verify: test diagnostics fuzz check bootstrap stage2 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax lsp roadmap syntax repository-check
 	@sh -n bin/kofun bootstrap/stage1/check.sh bootstrap/stage2/check.sh \
 	  bootstrap/native/check.sh bootstrap/native/emit-fixture.sh \
 	  bootstrap/wasm/check.sh \
@@ -155,6 +159,7 @@ verify: test diagnostics fuzz check bootstrap stage2 native wasm tour c-abi rust
 	  spec/package-roots/check.sh \
 	  spec/source-file-mapping/check.sh \
 	  spec/namespaces/check.sh \
+	  spec/module-identity/check.sh \
 	  spec/visibility/check.sh \
 	  tests/conformance/modules/visibility-syntax/run.sh \
 	  tests/lsp/check.sh tooling/lsp/kofun-lsp \
