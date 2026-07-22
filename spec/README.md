@@ -30,6 +30,10 @@ Python-free bootstrap implementation.
   identity-only access decision implemented by the focused conformance gate.
 - `modules/re-exports.md` selects explicit `pub import`/`pub from` forwarding,
   preserves target identities, and rejects every visibility-widening edge.
+- `tooling/typed-sidecar.md` defines the non-authoritative canonical JSON
+  artifact for complete and explicitly status-marked partial semantic facts.
+- `typed-sidecar/` contains its JSON Schema, canonical examples, semantic
+  validator, negative corpus, replacement model, and executable gate.
 - `law-evidence.schema.json` defines the machine-readable
   `kofun.law-evidence/v1` artifact.
 

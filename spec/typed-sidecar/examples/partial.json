@@ -1,0 +1,162 @@
+{
+  "authoritative": false,
+  "compiler": {
+    "edition": "kofun-2026",
+    "semantic_compatibility": "bootstrap-0.3"
+  },
+  "completeness": "partial",
+  "diagnostics": [
+    {
+      "affected_ids": [
+        "2222222222222222222222222222222222222222222222222222222222222222",
+        "3333333333333333333333333333333333333333333333333333333333333333"
+      ],
+      "category": "name-resolution",
+      "code": "E2S57",
+      "fallback_text": "name cannot be resolved",
+      "id": "9999999999999999999999999999999999999999999999999999999999999999",
+      "primary": {
+        "file_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "span": {
+          "end": 9,
+          "start": 5
+        }
+      },
+      "related": [],
+      "remedies": [
+        {
+          "id": "remove-reference",
+          "replacement": "",
+          "span": {
+            "end": 9,
+            "start": 5
+          }
+        }
+      ],
+      "severity": "error",
+      "template_id": "unresolved-name",
+      "truncated": false
+    }
+  ],
+  "file": {
+    "byte_length": 20,
+    "content_sha256": "6666666666666666666666666666666666666666666666666666666666666666",
+    "file_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "logical_path": "src/main.kofun",
+    "module_id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "package_id": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "path_remap_root_id": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+  },
+  "generation": {
+    "sequence": 8
+  },
+  "limits": {
+    "document_bytes": 16777216,
+    "max_depth": 128,
+    "profile": "default-v1"
+  },
+  "nodes": [
+    {
+      "depends_on": [],
+      "diagnostic_ids": [],
+      "id": "1111111111111111111111111111111111111111111111111111111111111111",
+      "identities": [],
+      "kind": "module.header",
+      "span": {
+        "end": 4,
+        "start": 0
+      },
+      "status": "validated"
+    },
+    {
+      "depends_on": [],
+      "diagnostic_ids": [
+        "9999999999999999999999999999999999999999999999999999999999999999"
+      ],
+      "id": "2222222222222222222222222222222222222222222222222222222222222222",
+      "identities": [],
+      "kind": "name.reference",
+      "span": {
+        "end": 9,
+        "start": 5
+      },
+      "status": "error",
+      "type": {
+        "display": "type.error",
+        "status": "error"
+      }
+    },
+    {
+      "depends_on": [
+        "2222222222222222222222222222222222222222222222222222222222222222"
+      ],
+      "diagnostic_ids": [],
+      "id": "4444444444444444444444444444444444444444444444444444444444444444",
+      "identities": [],
+      "kind": "call.expression",
+      "span": {
+        "end": 15,
+        "start": 10
+      },
+      "status": "provisional",
+      "type": {
+        "display": "type.provisional",
+        "reason": "dependency-error",
+        "status": "provisional"
+      }
+    },
+    {
+      "depends_on": [],
+      "diagnostic_ids": [],
+      "id": "6666666666666666666666666666666666666666666666666666666666666666",
+      "identities": [],
+      "kind": "parser.error-pattern",
+      "span": {
+        "end": 20,
+        "start": 16
+      },
+      "status": "unavailable",
+      "type": {
+        "reason": "budget-exhausted",
+        "status": "unavailable"
+      }
+    }
+  ],
+  "references": [
+    {
+      "diagnostic_ids": [
+        "9999999999999999999999999999999999999999999999999999999999999999"
+      ],
+      "from_node": "2222222222222222222222222222222222222222222222222222222222222222",
+      "id": "3333333333333333333333333333333333333333333333333333333333333333",
+      "namespace": "value",
+      "span": {
+        "end": 9,
+        "start": 5
+      },
+      "status": "error",
+      "target": {
+        "disclosure": "unavailable",
+        "reason": "resolution-failed"
+      }
+    },
+    {
+      "diagnostic_ids": [],
+      "from_node": "4444444444444444444444444444444444444444444444444444444444444444",
+      "id": "5555555555555555555555555555555555555555555555555555555555555555",
+      "namespace": "value",
+      "span": {
+        "end": 15,
+        "start": 10
+      },
+      "status": "unavailable",
+      "target": {
+        "disclosure": "hidden",
+        "identity_kind": "SymbolId",
+        "reason": "inaccessible"
+      }
+    }
+  ],
+  "schema": "kofun.typed-sidecar/v1",
+  "source_status": "failed"
+}
