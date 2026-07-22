@@ -1,0 +1,1 @@
+error[E2S51]: duplicate value name `Empty`: constructor `duplicate_constructor.kofun` bytes 48..53 symbol 609e4323e2511fd5cd104b7f93572f8581c83e34474d27bdc9f96845ee454be4; constructor `duplicate_constructor.kofun` bytes 89..94 symbol 609e4323e2511fd5cd104b7f93572f8581c83e34474d27bdc9f96845ee454be4

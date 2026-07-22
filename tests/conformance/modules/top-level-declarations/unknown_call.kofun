@@ -1,0 +1,2 @@
+module bad.unknown_call
+fn outer() -> Int { return missing() }

@@ -1,0 +1,1 @@
+error[E2S50]: type declaration in `malformed_adt.kofun` requires a leading `|` at bytes 30..36

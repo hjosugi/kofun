@@ -1,0 +1,3 @@
+module bad.import_deferred
+import demo.alpha.start
+fn outer() -> Int { return start() }

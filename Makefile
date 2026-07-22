@@ -1,4 +1,4 @@
-.PHONY: help compiler test diagnostics fuzz check bootstrap stage2 adt native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access lsp roadmap syntax repository-check verify clean
+.PHONY: help compiler test diagnostics fuzz check bootstrap stage2 adt module-symbols native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access lsp roadmap syntax repository-check verify clean
 
 KOFUN := ./bin/kofun
 
@@ -12,6 +12,7 @@ help:
 	  'make bootstrap        Verify the Stage 1 seed path' \
 	  'make stage2           Verify the Stage 2 semantic frontend checkpoint' \
 	  'make adt              Verify bounded nominal ADT typed frontend' \
+	  'make module-symbols   Verify stable top-level declaration collection' \
 	  'make native           Build and execute the Kofun-emitted ELF64 fixture' \
 	  'make wasm             Build and execute the wasm32 arithmetic Core' \
 	  'make tour             Verify the no-install browser learning tour' \
@@ -71,6 +72,9 @@ stage2:
 
 adt:
 	sh tests/conformance/adt/run.sh
+
+module-symbols:
+	sh tests/conformance/modules/top-level-declarations/run.sh
 
 native:
 	sh bootstrap/native/check.sh
@@ -145,7 +149,7 @@ repository-check:
 	@grep -q '"extensions": \[".kofun"\]' editor/vscode/package.json
 	@printf '%s\n' 'PASS: .kofun sources only; no Python implementation'
 
-verify: test diagnostics fuzz check bootstrap stage2 adt native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access lsp roadmap syntax repository-check
+verify: test diagnostics fuzz check bootstrap stage2 adt module-symbols native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access lsp roadmap syntax repository-check
 	@sh -n bin/kofun bootstrap/stage1/check.sh bootstrap/stage2/check.sh \
 	  bootstrap/native/check.sh bootstrap/native/emit-fixture.sh \
 	  bootstrap/wasm/check.sh \
@@ -174,6 +178,7 @@ verify: test diagnostics fuzz check bootstrap stage2 adt native wasm tour c-abi 
 	  tests/conformance/modules/visibility-syntax/run.sh \
 	  tests/conformance/modules/visibility-access/run.sh \
 	  tests/conformance/adt/run.sh \
+	  tests/conformance/modules/top-level-declarations/run.sh \
 	  tests/lsp/check.sh tooling/lsp/kofun-lsp \
 	  editor/vscode/server/kofun-lsp \
 	  tests/conformance/run.sh tests/conformance/backends/c11-stage1.sh \

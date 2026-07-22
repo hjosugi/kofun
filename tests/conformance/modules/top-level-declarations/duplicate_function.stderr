@@ -1,0 +1,1 @@
+error[E2S51]: duplicate value name `same`: function `duplicate_function.kofun` bytes 33..37 symbol 05b53e94a4ec117c82085aa11b969bb00cb8adeac8c334934f79d4add959bf03; function `duplicate_function.kofun` bytes 63..67 symbol 05b53e94a4ec117c82085aa11b969bb00cb8adeac8c334934f79d4add959bf03

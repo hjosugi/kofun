@@ -1,0 +1,1 @@
+error[E2S51]: duplicate value name `Present`: function `function_constructor_collision.kofun` bytes 45..52 symbol 0a279738d6ca04ed52c2a4d45ff1257b0d06d12d11d5bfd951f84dce9dff458d; constructor `function_constructor_collision.kofun` bytes 108..115 symbol 1710985871c0d428b4178a7d91811dbbf844b7b1150c60629d4f34a2201c50d3

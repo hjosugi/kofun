@@ -1,0 +1,3 @@
+module bad.duplicate_function
+fn same() -> Int { return 1 }
+fn same() -> Int { return 2 }

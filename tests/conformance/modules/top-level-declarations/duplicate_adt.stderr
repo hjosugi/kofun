@@ -1,0 +1,1 @@
+error[E2S51]: duplicate type name `Maybe`: adt `duplicate_adt.kofun` bytes 30..35 symbol 4d68f94d0ad792c5a46e42b581f666f7885e479e0029b5b6404c5c302a715512; adt `duplicate_adt.kofun` bytes 75..80 symbol 4d68f94d0ad792c5a46e42b581f666f7885e479e0029b5b6404c5c302a715512

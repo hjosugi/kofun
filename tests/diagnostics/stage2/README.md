@@ -41,3 +41,11 @@ positions.
 Same-scope redeclarations use `E2S47`. The second declaration is the primary
 span, and the diagnostic records the first declaration byte position. An
 ancestor declaration does not conflict with a child-scope declaration.
+
+Two additive focused frontends keep their own executable inventories until
+they are routed through the canonical compiler: the typed-only ADT gate owns
+E2S36–E2S46, and the module declaration collector owns E2S48–E2S56. Their
+respective runners compare exact goldens, require transaction failure, and
+verify that their source inventories contain no unregistered code. They are
+not added to this file's `codes.txt`, because `compiler.kofun` does not yet
+emit them.

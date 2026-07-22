@@ -1,0 +1,5 @@
+module bad.body_local_function
+fn outer() -> Int {
+    fn hidden() -> Int { return 1 }
+    return hidden()
+}

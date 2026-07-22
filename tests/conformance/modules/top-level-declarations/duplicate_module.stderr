@@ -1,0 +1,1 @@
+error[E2S49]: duplicate ModuleId dda42ce15bea1ac71103b0c0f0a5a55dd9897619c7f48d7ac2f1275a844593b1 for `src/a.kofun` and `src/b.kofun`; V1 permits exactly one source per module

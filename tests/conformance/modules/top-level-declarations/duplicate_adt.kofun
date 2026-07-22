@@ -1,0 +1,3 @@
+module bad.duplicate_adt
+type Maybe = | Missing | Present(value: Int)
+type Maybe = | Empty | Full(value: Int)
