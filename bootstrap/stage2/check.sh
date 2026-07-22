@@ -110,7 +110,7 @@ round_trip stage2 "$stage2/compiler.kofun"
 grep '^function|lex|1|' "$temporary/stage2.ir" >/dev/null
 grep '^function|parse_program|1|' "$temporary/stage2.ir" >/dev/null
 grep '^function|borrowed_collection_check|1|' "$temporary/stage2.ir" >/dev/null
-grep '^function|lower_c|1|' "$temporary/stage2.ir" >/dev/null
+grep '^function|lower_c|2|' "$temporary/stage2.ir" >/dev/null
 grep '^function|emit_kofun|2|' "$temporary/stage2.ir" >/dev/null
 grep '^function|compile_file|4|' "$temporary/stage2.ir" >/dev/null
 grep '^function|check_ownership_file|1|' "$temporary/stage2.ir" >/dev/null
@@ -144,7 +144,7 @@ grep 'kofun_floor_mod' "$temporary/core.c" >/dev/null
 awk '
     /int64_t kofun_replacement =/ { state = 1; next }
     state == 1 && /if \(kofun_failed\) return 1;/ { state = 2; next }
-    state == 2 && /k_answer = kofun_replacement;/ { found = 1 }
+    state == 2 && /k_b[0-9][0-9]* = kofun_replacement;/ { found = 1 }
     END { if (!found) exit 1 }
 ' "$temporary/core.c"
 "$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
@@ -279,6 +279,9 @@ then
     echo "stage2 check: Python or .kf file found" >&2
     exit 1
 fi
+
+KOFUN_STAGE2_COMPILER="$temporary/kofun-stage2" \
+    sh "$root/tests/conformance/modules/lexical-scopes/run.sh"
 
 echo "PASS: Stage 2 statically compiled Copy Int borrowed-return slice"
 echo "PASS: Stage 2 and kofun check rejected non-Copy Text move with E007"

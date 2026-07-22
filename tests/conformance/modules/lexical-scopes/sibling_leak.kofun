@@ -1,0 +1,9 @@
+fn main() {
+    if true {
+        let branch = 41
+        print(branch)
+    } else {
+        print(0)
+    }
+    print(branch)
+}

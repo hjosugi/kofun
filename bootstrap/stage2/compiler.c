@@ -1396,7 +1396,22 @@ static char *borrowed_collection_check(const char *source) {
 }
 
 static int64_t expression_end(const char *source, int64_t start);
-static char *emit_expression(const char *source, int64_t start, int64_t end);
+static char *emit_expression(
+    const char *source,
+    const char *hir,
+    int64_t start,
+    int64_t end
+);
+static char *hir_use_binding_id(const char *hir, int64_t use_start);
+static char *hir_definition_id_at(
+    const char *hir,
+    int64_t declaration_start
+);
+static char *hir_binding_field(
+    const char *hir,
+    const char *binding_id,
+    int field
+);
 
 static int64_t primary_end(const char *source, int64_t start) {
     int64_t length = (int64_t)strlen(source);
@@ -1507,7 +1522,12 @@ static char *format_two(const char *name, const char *left, const char *right) {
     return output.data;
 }
 
-static char *emit_primary(const char *source, int64_t start, int64_t end) {
+static char *emit_primary(
+    const char *source,
+    const char *hir,
+    int64_t start,
+    int64_t end
+) {
     int64_t cursor = skip_trivia(source, start);
     const char *kind = token_kind(source, cursor);
     if (strcmp(kind, "integer") == 0) {
@@ -1531,7 +1551,9 @@ static char *emit_primary(const char *source, int64_t start, int64_t end) {
         Buffer output;
         buffer_init(&output);
         if (open >= end || !token_equal(source, open, "(")) {
-            buffer_format(&output, "k_%s", name);
+            char *binding_id = hir_use_binding_id(hir, cursor);
+            buffer_format(&output, "k_b%s", binding_id);
+            free(binding_id);
             free(name);
             return output.data;
         }
@@ -1540,7 +1562,12 @@ static char *emit_primary(const char *source, int64_t start, int64_t end) {
         int64_t arguments = 0;
         while (argument < end && !token_equal(source, argument, ")")) {
             int64_t argument_end = expression_end(source, argument);
-            char *value = emit_expression(source, argument, argument_end);
+            char *value = emit_expression(
+                source,
+                hir,
+                argument,
+                argument_end
+            );
             if (arguments > 0) buffer_append(&output, ", ");
             buffer_append(&output, value);
             free(value);
@@ -1559,7 +1586,7 @@ static char *emit_primary(const char *source, int64_t start, int64_t end) {
     if (token_equal(source, cursor, "(")) {
         int64_t value_start = skip_trivia(source, token_end(source, cursor));
         int64_t close = skip_trivia(source, expression_end(source, value_start));
-        char *value = emit_expression(source, value_start, close);
+        char *value = emit_expression(source, hir, value_start, close);
         Buffer output;
         buffer_init(&output);
         buffer_format(&output, "(%s)", value);
@@ -1571,27 +1598,37 @@ static char *emit_primary(const char *source, int64_t start, int64_t end) {
     return empty;
 }
 
-static char *emit_unary(const char *source, int64_t start, int64_t end) {
+static char *emit_unary(
+    const char *source,
+    const char *hir,
+    int64_t start,
+    int64_t end
+) {
     int64_t cursor = skip_trivia(source, start);
     if (token_equal(source, cursor, "+")) {
         int64_t value_start = skip_trivia(source, token_end(source, cursor));
-        return emit_unary(source, value_start, end);
+        return emit_unary(source, hir, value_start, end);
     }
     if (token_equal(source, cursor, "-")) {
         int64_t value_start = skip_trivia(source, token_end(source, cursor));
-        char *value = emit_unary(source, value_start, end);
+        char *value = emit_unary(source, hir, value_start, end);
         Buffer output;
         buffer_init(&output);
         buffer_format(&output, "kofun_neg(%s)", value);
         free(value);
         return output.data;
     }
-    return emit_primary(source, cursor, end);
+    return emit_primary(source, hir, cursor, end);
 }
 
-static char *emit_product(const char *source, int64_t start, int64_t end) {
+static char *emit_product(
+    const char *source,
+    const char *hir,
+    int64_t start,
+    int64_t end
+) {
     int64_t cursor = unary_end(source, start);
-    char *emitted = emit_unary(source, start, cursor);
+    char *emitted = emit_unary(source, hir, start, cursor);
     int64_t operator_start = skip_trivia(source, cursor);
     while (operator_start < end) {
         char *operator_text = token_copy(source, operator_start);
@@ -1600,7 +1637,7 @@ static char *emit_product(const char *source, int64_t start, int64_t end) {
             token_end(source, operator_start)
         );
         int64_t right_end = unary_end(source, right_start);
-        char *right = emit_unary(source, right_start, right_end);
+        char *right = emit_unary(source, hir, right_start, right_end);
         char *combined = emitted;
         if (strcmp(operator_text, "*") == 0) {
             combined = format_two("kofun_mul", emitted, right);
@@ -1619,9 +1656,14 @@ static char *emit_product(const char *source, int64_t start, int64_t end) {
     return emitted;
 }
 
-static char *emit_expression(const char *source, int64_t start, int64_t end) {
+static char *emit_expression(
+    const char *source,
+    const char *hir,
+    int64_t start,
+    int64_t end
+) {
     int64_t cursor = product_end(source, start);
-    char *emitted = emit_product(source, start, cursor);
+    char *emitted = emit_product(source, hir, start, cursor);
     int64_t operator_start = skip_trivia(source, cursor);
     while (operator_start < end) {
         char *operator_text = token_copy(source, operator_start);
@@ -1630,7 +1672,7 @@ static char *emit_expression(const char *source, int64_t start, int64_t end) {
             token_end(source, operator_start)
         );
         int64_t right_end = product_end(source, right_start);
-        char *right = emit_product(source, right_start, right_end);
+        char *right = emit_product(source, hir, right_start, right_end);
         char *combined = emitted;
         if (strcmp(operator_text, "+") == 0) {
             combined = format_two("kofun_add", emitted, right);
@@ -1764,7 +1806,11 @@ static char *validate_core_calls(const char *source) {
     return owned_text("ok");
 }
 
-static char *core_parameters(const char *source, int64_t function_start) {
+static char *core_parameters(
+    const char *source,
+    const char *hir,
+    int64_t function_start
+) {
     int64_t parameters = parameter_open(source, function_start);
     if (parameters < 0) {
         return owned_text("error[E2S15]: malformed Core parameter list");
@@ -1804,7 +1850,9 @@ static char *core_parameters(const char *source, int64_t function_start) {
             );
         }
         if (count > 0) buffer_append(&emitted, ", ");
-        buffer_format(&emitted, "int64_t k_%s", name);
+        char *binding_id = hir_definition_id_at(hir, cursor);
+        buffer_format(&emitted, "int64_t k_b%s", binding_id);
+        free(binding_id);
         free(name);
         ++count;
         int64_t separator = skip_trivia(source, token_end(source, type_cursor));
@@ -1853,6 +1901,7 @@ static int64_t condition_end(const char *source, int64_t start) {
 
 static char *emit_condition_into(
     const char *source,
+    const char *hir,
     int64_t start,
     int64_t end,
     const char *target,
@@ -1883,9 +1932,9 @@ static char *emit_condition_into(
         source,
         token_end(source, operator_start)
     );
-    char *left = emit_expression(source, cursor, left_end);
+    char *left = emit_expression(source, hir, cursor, left_end);
     char *operator_text = token_copy(source, operator_start);
-    char *right = emit_expression(source, right_start, end);
+    char *right = emit_expression(source, hir, right_start, end);
     Buffer output;
     buffer_init(&output);
     buffer_format(
@@ -2348,6 +2397,7 @@ static char *parse_value_control(
 
 static char *emit_value_match_into(
     const char *source,
+    const char *hir,
     int64_t start,
     int64_t end,
     const char *target,
@@ -2356,6 +2406,7 @@ static char *emit_value_match_into(
 
 static char *emit_value_into(
     const char *source,
+    const char *hir,
     int64_t start,
     int64_t end,
     const char *target,
@@ -2365,6 +2416,7 @@ static char *emit_value_into(
     if (token_equal(source, cursor, "match")) {
         return emit_value_match_into(
             source,
+            hir,
             cursor,
             end,
             target,
@@ -2372,7 +2424,7 @@ static char *emit_value_into(
         );
     }
     if (!token_equal(source, cursor, "if")) {
-        char *value = emit_expression(source, cursor, end);
+        char *value = emit_expression(source, hir, cursor, end);
         Buffer emitted;
         buffer_init(&emitted);
         buffer_format(
@@ -2393,6 +2445,7 @@ static char *emit_value_into(
     free(result);
     char *condition = emit_condition_into(
         source,
+        hir,
         parts.condition_start,
         parts.condition_end,
         "kofun_value_condition",
@@ -2401,6 +2454,7 @@ static char *emit_value_into(
     );
     char *then_body = emit_value_into(
         source,
+        hir,
         parts.then_start,
         parts.then_end,
         target,
@@ -2412,6 +2466,7 @@ static char *emit_value_into(
     }
     char *else_body = emit_value_into(
         source,
+        hir,
         parts.else_start,
         parts.else_end,
         target,
@@ -2446,6 +2501,7 @@ static char *emit_value_into(
 
 static char *emit_value_match_into(
     const char *source,
+    const char *hir,
     int64_t start,
     int64_t end,
     const char *target,
@@ -2502,6 +2558,7 @@ static char *emit_value_match_into(
 
         char *arm_body = emit_value_into(
             source,
+            hir,
             arm_start,
             arm_end,
             target,
@@ -2521,6 +2578,7 @@ static char *emit_value_match_into(
         if (guarded) {
             char *guard = emit_condition_into(
                 source,
+                hir,
                 guard_start,
                 guard_end,
                 "kofun_match_guard",
@@ -2566,6 +2624,7 @@ static char *emit_value_match_into(
 
     char *match_value = emit_condition_into(
         source,
+        hir,
         parts.value_start,
         parts.value_end,
         "kofun_match_value",
@@ -2592,6 +2651,7 @@ static char *emit_value_match_into(
 
 static int64_t core_body_open(
     const char *source,
+    const char *hir,
     int64_t function_start,
     bool is_main
 ) {
@@ -2600,7 +2660,7 @@ static int64_t core_body_open(
     if (parameters < 0) return -1;
     int64_t parameters_end = balanced_end(source, parameters, "(", ")");
     if (parameters_end < 0) return -1;
-    char *parameter_text = core_parameters(source, function_start);
+    char *parameter_text = core_parameters(source, hir, function_start);
     bool parameters_valid = strncmp(parameter_text, "error[", 6) != 0;
     free(parameter_text);
     if (!parameters_valid) return -1;
@@ -2627,111 +2687,6 @@ static char *lower_error(const char *code, const char *message, int64_t cursor) 
     return error.data;
 }
 
-static int binding_mutability_before(
-    const char *source,
-    int64_t body_open,
-    int64_t assignment_start,
-    const char *binding_name
-) {
-    int64_t cursor = skip_trivia(source, token_end(source, body_open));
-    int result = -1;
-    int depth = 0;
-    while (cursor < assignment_start) {
-        if (token_equal(source, cursor, "{")) {
-            ++depth;
-        } else if (token_equal(source, cursor, "}")) {
-            --depth;
-        } else if (depth == 0 && token_equal(source, cursor, "let")) {
-            int64_t name_cursor = skip_trivia(
-                source,
-                token_end(source, cursor)
-            );
-            bool mutable = false;
-            if (
-                name_cursor < assignment_start &&
-                token_equal(source, name_cursor, "mut")
-            ) {
-                mutable = true;
-                name_cursor = skip_trivia(
-                    source,
-                    token_end(source, name_cursor)
-                );
-            }
-            if (
-                name_cursor < assignment_start &&
-                strcmp(token_kind(source, name_cursor), "identifier") == 0 &&
-                token_equal(source, name_cursor, binding_name)
-            ) {
-                result = mutable ? 1 : 0;
-            }
-        }
-        cursor = skip_trivia(source, token_end(source, cursor));
-    }
-    return result;
-}
-
-static char *binding_type_before(
-    const char *source,
-    int64_t body_open,
-    int64_t use_start,
-    const char *binding_name
-) {
-    int64_t cursor = skip_trivia(source, token_end(source, body_open));
-    char *result = owned_text("");
-    int depth = 0;
-    while (cursor < use_start) {
-        if (token_equal(source, cursor, "{")) {
-            ++depth;
-        } else if (token_equal(source, cursor, "}")) {
-            --depth;
-        } else if (depth == 0 && token_equal(source, cursor, "let")) {
-            int64_t name_cursor = skip_trivia(
-                source,
-                token_end(source, cursor)
-            );
-            if (
-                name_cursor < use_start &&
-                token_equal(source, name_cursor, "mut")
-            ) {
-                name_cursor = skip_trivia(
-                    source,
-                    token_end(source, name_cursor)
-                );
-            }
-            if (
-                name_cursor < use_start &&
-                strcmp(token_kind(source, name_cursor), "identifier") == 0 &&
-                token_equal(source, name_cursor, binding_name)
-            ) {
-                free(result);
-                result = owned_text("Int");
-                int64_t colon = skip_trivia(
-                    source,
-                    token_end(source, name_cursor)
-                );
-                if (
-                    colon < use_start &&
-                    token_equal(source, colon, ":")
-                ) {
-                    int64_t type_cursor = skip_trivia(
-                        source,
-                        token_end(source, colon)
-                    );
-                    if (
-                        type_cursor < use_start &&
-                        strcmp(token_kind(source, type_cursor), "identifier") == 0
-                    ) {
-                        free(result);
-                        result = token_copy(source, type_cursor);
-                    }
-                }
-            }
-        }
-        cursor = skip_trivia(source, token_end(source, cursor));
-    }
-    return result;
-}
-
 static int64_t parent_block_open(
     const char *source,
     int64_t function_open,
@@ -2749,112 +2704,42 @@ static int64_t parent_block_open(
     return parent;
 }
 
-static char *visible_binding_type(
+static const char *scope_kind_for_open(
     const char *source,
-    int64_t current_open,
     int64_t function_open,
-    int64_t use_start,
-    const char *binding_name
+    int64_t wanted_open
 ) {
-    int64_t block_open = current_open;
-    int64_t block_limit = use_start;
-    while (block_open >= function_open) {
-        char *result = binding_type_before(
-            source,
-            block_open,
-            block_limit,
-            binding_name
-        );
-        if (result[0] != '\0') return result;
-        free(result);
-        if (block_open == function_open) return owned_text("");
-        int64_t parent = parent_block_open(
-            source,
-            function_open,
-            block_open
-        );
-        if (parent < 0 || parent == block_open) return owned_text("");
-        block_limit = block_open;
-        block_open = parent;
-    }
-    return owned_text("");
-}
-
-static bool int_parameter_named(
-    const char *source,
-    int64_t function_start,
-    const char *wanted
-) {
-    int64_t parameters = parameter_open(source, function_start);
-    if (parameters < 0) return false;
-    int64_t parameters_end = balanced_end(source, parameters, "(", ")");
-    if (parameters_end < 0) return false;
-    int64_t cursor = skip_trivia(source, token_end(source, parameters));
-    while (cursor < parameters_end && !token_equal(source, cursor, ")")) {
-        int64_t name = cursor;
-        int64_t colon = skip_trivia(source, token_end(source, name));
-        int64_t type_cursor = skip_trivia(source, token_end(source, colon));
-        if (
-            strcmp(token_kind(source, name), "identifier") == 0 &&
-            token_equal(source, name, wanted) &&
-            token_equal(source, colon, ":") &&
-            token_equal(source, type_cursor, "Int")
-        ) {
-            return true;
+    int64_t cursor = function_open;
+    const char *previous = "";
+    while (cursor < wanted_open) {
+        if (token_equal(source, cursor, "if")) {
+            int64_t condition_start = skip_trivia(
+                source,
+                token_end(source, cursor)
+            );
+            int64_t condition_close = condition_end(
+                source,
+                condition_start
+            );
+            if (
+                condition_close >= 0 &&
+                skip_trivia(source, condition_close) == wanted_open
+            ) {
+                return "if-then";
+            }
         }
-        int64_t separator = skip_trivia(
-            source,
-            token_end(source, type_cursor)
-        );
-        if (
-            separator < parameters_end &&
-            token_equal(source, separator, ",")
-        ) {
-            cursor = skip_trivia(source, token_end(source, separator));
+        if (token_equal(source, cursor, "else")) {
+            previous = "else";
+        } else if (token_equal(source, cursor, "=>")) {
+            previous = "=>";
         } else {
-            cursor = separator;
-        }
-    }
-    return false;
-}
-
-static char *function_enum_binding_names(
-    const char *source,
-    int64_t function_open,
-    int64_t function_close,
-    const char *enum_types
-) {
-    Buffer names;
-    buffer_init(&names);
-    buffer_append(&names, "|");
-    int64_t cursor = skip_trivia(source, token_end(source, function_open));
-    while (cursor < function_close) {
-        if (token_equal(source, cursor, "let")) {
-            int64_t name = skip_trivia(source, token_end(source, cursor));
-            if (token_equal(source, name, "mut")) {
-                name = skip_trivia(source, token_end(source, name));
-            }
-            int64_t colon = skip_trivia(source, token_end(source, name));
-            if (token_equal(source, colon, ":")) {
-                int64_t type_cursor = skip_trivia(
-                    source,
-                    token_end(source, colon)
-                );
-                char *enum_type_name = token_copy(source, type_cursor);
-                if (enum_name_covered(enum_types, enum_type_name)) {
-                    char *binding_name = token_copy(source, name);
-                    if (!enum_name_covered(names.data, binding_name)) {
-                        buffer_append(&names, binding_name);
-                        buffer_append(&names, "|");
-                    }
-                    free(binding_name);
-                }
-                free(enum_type_name);
-            }
+            previous = "";
         }
         cursor = skip_trivia(source, token_end(source, cursor));
     }
-    return names.data;
+    if (strcmp(previous, "else") == 0) return "if-else";
+    if (strcmp(previous, "=>") == 0) return "match-arm";
+    return "block";
 }
 
 static bool enum_declaration_syntax_token(
@@ -2890,14 +2775,8 @@ static bool enum_declaration_syntax_token(
                     token_equal(source, equals, "=")
                 ) {
                     char *enum_type = token_copy(source, type_cursor);
-                    char *constructor = token_copy(source, initializer);
-                    bool valid = enum_constructor_index(
-                        source,
-                        enum_type,
-                        constructor
-                    ) >= 0;
+                    bool valid = enum_constructor_count(source, enum_type) >= 0;
                     free(enum_type);
-                    free(constructor);
                     if (valid) return true;
                 }
             }
@@ -3053,14 +2932,323 @@ static bool enum_match_pattern_token(
     return false;
 }
 
-static char *validate_enum_uses(const char *source) {
-    int64_t length = (int64_t)strlen(source);
-    char *enum_types = enum_declaration_names(source, false);
-    if (strcmp(enum_types, "|") == 0) {
-        free(enum_types);
-        return owned_text("ok");
+static int64_t text_find_from(
+    const char *value,
+    const char *wanted,
+    int64_t start
+) {
+    int64_t value_length = (int64_t)strlen(value);
+    int64_t wanted_length = (int64_t)strlen(wanted);
+    if (wanted_length == 0) return start;
+    for (
+        int64_t cursor = start;
+        cursor + wanted_length <= value_length;
+        ++cursor
+    ) {
+        if (
+            strncmp(
+                value + cursor,
+                wanted,
+                (size_t)wanted_length
+            ) == 0
+        ) {
+            return cursor;
+        }
     }
-    char *constructor_names = enum_declaration_names(source, true);
+    return -1;
+}
+
+static int64_t decimal_value(const char *value) {
+    int64_t cursor = 0;
+    int64_t sign = 1;
+    int64_t length = (int64_t)strlen(value);
+    if (length > 0 && value[0] == '-') {
+        sign = -1;
+        cursor = 1;
+    }
+    int64_t result = 0;
+    while (cursor < length) {
+        if (value[cursor] < '0' || value[cursor] > '9') return -1;
+        result = result * 10 + (value[cursor] - '0');
+        ++cursor;
+    }
+    return result * sign;
+}
+
+static int64_t hir_record_start(
+    const char *hir,
+    const char *kind,
+    int64_t start
+) {
+    Buffer needle;
+    buffer_init(&needle);
+    buffer_format(&needle, "\n%s|", kind);
+    int64_t found = text_find_from(hir, needle.data, start);
+    free(needle.data);
+    return found < 0 ? -1 : found + 1;
+}
+
+static char *hir_field(
+    const char *hir,
+    int64_t line_start,
+    int wanted
+) {
+    int64_t length = (int64_t)strlen(hir);
+    int64_t cursor = line_start;
+    int field = 0;
+    int64_t field_start = line_start;
+    while (cursor < length) {
+        if (hir[cursor] == '|' || hir[cursor] == '\n') {
+            if (field == wanted) {
+                size_t field_length = (size_t)(cursor - field_start);
+                char *result = allocate(field_length + 1);
+                memcpy(result, hir + field_start, field_length);
+                result[field_length] = '\0';
+                return result;
+            }
+            if (hir[cursor] == '\n') return owned_text("");
+            ++field;
+            field_start = cursor + 1;
+        }
+        ++cursor;
+    }
+    if (field == wanted) {
+        size_t field_length = (size_t)(cursor - field_start);
+        char *result = allocate(field_length + 1);
+        memcpy(result, hir + field_start, field_length);
+        result[field_length] = '\0';
+        return result;
+    }
+    return owned_text("");
+}
+
+static char *hir_scope_id_for_open(const char *hir, int64_t open) {
+    int64_t line = hir_record_start(hir, "scope", 0);
+    while (line >= 0) {
+        char *open_text = hir_field(hir, line, 4);
+        bool found = decimal_value(open_text) == open;
+        free(open_text);
+        if (found) return hir_field(hir, line, 1);
+        line = hir_record_start(hir, "scope", line + 1);
+    }
+    return owned_text("");
+}
+
+static char *hir_scope_field(
+    const char *hir,
+    const char *scope_id,
+    int field
+) {
+    int64_t line = hir_record_start(hir, "scope", 0);
+    while (line >= 0) {
+        char *candidate = hir_field(hir, line, 1);
+        bool found = strcmp(candidate, scope_id) == 0;
+        free(candidate);
+        if (found) return hir_field(hir, line, field);
+        line = hir_record_start(hir, "scope", line + 1);
+    }
+    return owned_text("");
+}
+
+static char *hir_binding_field(
+    const char *hir,
+    const char *binding_id,
+    int field
+) {
+    int64_t line = hir_record_start(hir, "binding", 0);
+    while (line >= 0) {
+        char *candidate = hir_field(hir, line, 1);
+        bool found = strcmp(candidate, binding_id) == 0;
+        free(candidate);
+        if (found) return hir_field(hir, line, field);
+        line = hir_record_start(hir, "binding", line + 1);
+    }
+    return owned_text("");
+}
+
+static char *hir_definition_id_at(
+    const char *hir,
+    int64_t declaration_start
+) {
+    int64_t line = hir_record_start(hir, "binding", 0);
+    while (line >= 0) {
+        char *start_text = hir_field(hir, line, 8);
+        bool found = decimal_value(start_text) == declaration_start;
+        free(start_text);
+        if (found) return hir_field(hir, line, 1);
+        line = hir_record_start(hir, "binding", line + 1);
+    }
+    return owned_text("");
+}
+
+static char *hir_use_binding_id(const char *hir, int64_t use_start) {
+    int64_t line = hir_record_start(hir, "use", 0);
+    while (line >= 0) {
+        char *start_text = hir_field(hir, line, 1);
+        bool found = decimal_value(start_text) == use_start;
+        free(start_text);
+        if (found) return hir_field(hir, line, 4);
+        line = hir_record_start(hir, "use", line + 1);
+    }
+    return owned_text("");
+}
+
+static char *hir_resolve_binding(
+    const char *hir,
+    const char *current_scope,
+    int64_t use_start,
+    const char *name
+) {
+    char *scope_id = owned_text(current_scope);
+    while (scope_id[0] != '\0' && strcmp(scope_id, "-1") != 0) {
+        char *resolved = owned_text("");
+        int64_t line = hir_record_start(hir, "binding", 0);
+        while (line >= 0) {
+            char *binding_scope = hir_field(hir, line, 2);
+            char *binding_name = hir_field(hir, line, 3);
+            char *visible_text = hir_field(hir, line, 10);
+            bool matches =
+                strcmp(binding_scope, scope_id) == 0 &&
+                strcmp(binding_name, name) == 0 &&
+                decimal_value(visible_text) <= use_start;
+            free(binding_scope);
+            free(binding_name);
+            free(visible_text);
+            if (matches) {
+                free(resolved);
+                resolved = hir_field(hir, line, 1);
+            }
+            line = hir_record_start(hir, "binding", line + 1);
+        }
+        if (resolved[0] != '\0') {
+            free(scope_id);
+            return resolved;
+        }
+        free(resolved);
+        char *parent = hir_scope_field(hir, scope_id, 2);
+        free(scope_id);
+        scope_id = parent;
+    }
+    free(scope_id);
+    return owned_text("");
+}
+
+static char *hir_pending_declaration(
+    const char *hir,
+    const char *current_scope,
+    int64_t use_start,
+    const char *name
+) {
+    char *scope_id = owned_text(current_scope);
+    while (scope_id[0] != '\0' && strcmp(scope_id, "-1") != 0) {
+        int64_t line = hir_record_start(hir, "binding", 0);
+        while (line >= 0) {
+            char *scope = hir_field(hir, line, 2);
+            char *binding_name = hir_field(hir, line, 3);
+            char *declaration_text = hir_field(hir, line, 8);
+            char *visible_text = hir_field(hir, line, 10);
+            int64_t declaration = decimal_value(declaration_text);
+            int64_t visible = decimal_value(visible_text);
+            bool found =
+                strcmp(scope, scope_id) == 0 &&
+                strcmp(binding_name, name) == 0 &&
+                declaration < use_start && use_start < visible;
+            free(scope);
+            free(binding_name);
+            free(visible_text);
+            if (found) {
+                free(scope_id);
+                return declaration_text;
+            }
+            free(declaration_text);
+            line = hir_record_start(hir, "binding", line + 1);
+        }
+        char *parent = hir_scope_field(hir, scope_id, 2);
+        free(scope_id);
+        scope_id = parent;
+    }
+    free(scope_id);
+    return owned_text("");
+}
+
+static char *hir_scope_root(const char *hir, const char *start_scope) {
+    char *scope_id = owned_text(start_scope);
+    char *parent = hir_scope_field(hir, scope_id, 2);
+    while (parent[0] != '\0' && strcmp(parent, "-1") != 0) {
+        free(scope_id);
+        scope_id = parent;
+        parent = hir_scope_field(hir, scope_id, 2);
+    }
+    free(parent);
+    return scope_id;
+}
+
+static char *hir_any_declaration(
+    const char *hir,
+    const char *current_scope,
+    int64_t use_start,
+    const char *name
+) {
+    char *current_root = hir_scope_root(hir, current_scope);
+    int64_t line = hir_record_start(hir, "binding", 0);
+    while (line >= 0) {
+        char *binding_name = hir_field(hir, line, 3);
+        char *binding_scope = hir_field(hir, line, 2);
+        char *declaration_text = hir_field(hir, line, 8);
+        char *binding_root = hir_scope_root(hir, binding_scope);
+        bool found =
+            strcmp(binding_name, name) == 0 &&
+            decimal_value(declaration_text) < use_start &&
+            strcmp(binding_root, current_root) == 0;
+        free(binding_name);
+        free(binding_scope);
+        free(binding_root);
+        if (found) {
+            free(current_root);
+            return declaration_text;
+        }
+        free(declaration_text);
+        line = hir_record_start(hir, "binding", line + 1);
+    }
+    free(current_root);
+    return owned_text("");
+}
+
+static int64_t scope_depth_for_open(
+    const char *source,
+    int64_t function_open,
+    int64_t wanted_open
+) {
+    int64_t cursor = function_open;
+    int64_t depth = 0;
+    while (cursor <= wanted_open) {
+        if (token_equal(source, cursor, "{")) {
+            ++depth;
+            if (cursor == wanted_open) return depth;
+        } else if (token_equal(source, cursor, "}")) {
+            --depth;
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return -1;
+}
+
+static char *scope_hir_error(
+    Buffer *hir,
+    const char *message,
+    int64_t cursor
+) {
+    free(hir->data);
+    return lower_error("E2S35", message, cursor);
+}
+
+static char *build_scope_hir(const char *source) {
+    int64_t length = (int64_t)strlen(source);
+    Buffer hir;
+    buffer_init(&hir);
+    buffer_append(&hir, "kofun-scope-hir/v1\n");
+    int64_t next_scope_id = 0;
+    int64_t next_binding_id = 0;
     int64_t function_start = next_function_start(source, 0);
     while (function_start < length) {
         int64_t function_close = function_end(source, function_start);
@@ -3081,12 +3269,435 @@ static char *validate_enum_uses(const char *source) {
                 token_end(source, function_open)
             );
         }
-        char *enum_binding_names = function_enum_binding_names(
-            source,
+        int64_t parameter_scope = next_scope_id++;
+        int64_t body_scope = next_scope_id++;
+        int64_t scope_count = 2;
+        buffer_format(
+            &hir,
+            "hir-function|%" PRId64 "|%" PRId64 "|%" PRId64 "\n"
+            "scope|%" PRId64 "|-1|parameters|%" PRId64 "|%" PRId64
+            "|0\n"
+            "scope|%" PRId64 "|%" PRId64 "|function-body|%" PRId64
+            "|%" PRId64 "|1\n",
+            function_start,
+            parameter_scope,
+            body_scope,
+            parameter_scope,
+            parameters,
+            parameters_close,
+            body_scope,
+            parameter_scope,
             function_open,
-            function_close,
-            enum_types
+            function_close
         );
+
+        int64_t cursor = skip_trivia(
+            source,
+            token_end(source, function_open)
+        );
+        while (cursor < function_close) {
+            if (token_equal(source, cursor, "{")) {
+                int64_t depth = scope_depth_for_open(
+                    source,
+                    function_open,
+                    cursor
+                );
+                if (depth > 32) {
+                    return scope_hir_error(
+                        &hir,
+                        "lexical scope depth limit is 32",
+                        cursor
+                    );
+                }
+                ++scope_count;
+                if (scope_count > 256) {
+                    return scope_hir_error(
+                        &hir,
+                        "lexical scope limit is 256 per function",
+                        cursor
+                    );
+                }
+                int64_t parent_open = parent_block_open(
+                    source,
+                    function_open,
+                    cursor
+                );
+                char *parent_scope = hir_scope_id_for_open(
+                    hir.data,
+                    parent_open
+                );
+                int64_t close = balanced_end(source, cursor, "{", "}");
+                const char *scope_kind = scope_kind_for_open(
+                    source,
+                    function_open,
+                    cursor
+                );
+                buffer_format(
+                    &hir,
+                    "scope|%" PRId64 "|%s|%s|%" PRId64 "|%" PRId64
+                    "|%" PRId64 "\n",
+                    next_scope_id++,
+                    parent_scope,
+                    scope_kind,
+                    cursor,
+                    close,
+                    depth
+                );
+                free(parent_scope);
+            }
+            cursor = skip_trivia(source, token_end(source, cursor));
+        }
+
+        int64_t binding_count = 0;
+        int64_t parameter_cursor = skip_trivia(
+            source,
+            token_end(source, parameters)
+        );
+        while (
+            parameter_cursor < parameters_close &&
+            !token_equal(source, parameter_cursor, ")")
+        ) {
+            int64_t name = parameter_cursor;
+            int64_t colon = skip_trivia(source, token_end(source, name));
+            int64_t type_cursor = skip_trivia(
+                source,
+                token_end(source, colon)
+            );
+            ++binding_count;
+            if (binding_count > 256) {
+                return scope_hir_error(
+                    &hir,
+                    "lexical binding limit is 256 per function",
+                    name
+                );
+            }
+            char *name_text = token_copy(source, name);
+            char *type_text = token_copy(source, type_cursor);
+            buffer_format(
+                &hir,
+                "binding|%" PRId64 "|%" PRId64 "|%s|immutable|%s|copy|"
+                "initialized|%" PRId64 "|%" PRId64 "|%" PRId64 "\n",
+                next_binding_id++,
+                parameter_scope,
+                name_text,
+                type_text,
+                name,
+                token_end(source, name),
+                token_end(source, name)
+            );
+            free(name_text);
+            free(type_text);
+            int64_t separator = skip_trivia(
+                source,
+                token_end(source, type_cursor)
+            );
+            if (
+                separator < parameters_close &&
+                token_equal(source, separator, ",")
+            ) {
+                parameter_cursor = skip_trivia(
+                    source,
+                    token_end(source, separator)
+                );
+            } else {
+                parameter_cursor = separator;
+            }
+        }
+
+        cursor = skip_trivia(source, token_end(source, function_open));
+        while (cursor < function_close) {
+            if (token_equal(source, cursor, "let")) {
+                int64_t name = skip_trivia(
+                    source,
+                    token_end(source, cursor)
+                );
+                const char *mutability = "immutable";
+                if (token_equal(source, name, "mut")) {
+                    mutability = "mutable";
+                    name = skip_trivia(source, token_end(source, name));
+                }
+                int64_t after_name = skip_trivia(
+                    source,
+                    token_end(source, name)
+                );
+                char *binding_type = owned_text("Int");
+                if (token_equal(source, after_name, ":")) {
+                    int64_t type_cursor = skip_trivia(
+                        source,
+                        token_end(source, after_name)
+                    );
+                    free(binding_type);
+                    binding_type = token_copy(source, type_cursor);
+                    after_name = skip_trivia(
+                        source,
+                        token_end(source, type_cursor)
+                    );
+                }
+                int64_t initializer = skip_trivia(
+                    source,
+                    token_end(source, after_name)
+                );
+                int64_t visible_start = -1;
+                if (value_control(source, initializer)) {
+                    char *value_result = parse_value_control(
+                        source,
+                        initializer,
+                        &visible_start
+                    );
+                    free(value_result);
+                } else {
+                    visible_start = expression_end(source, initializer);
+                }
+                if (visible_start < 0) {
+                    visible_start = token_end(source, initializer);
+                }
+                int64_t scope_open = parent_block_open(
+                    source,
+                    function_open,
+                    name
+                );
+                char *scope_id = hir_scope_id_for_open(hir.data, scope_open);
+                ++binding_count;
+                if (binding_count > 256) {
+                    free(binding_type);
+                    free(scope_id);
+                    return scope_hir_error(
+                        &hir,
+                        "lexical binding limit is 256 per function",
+                        name
+                    );
+                }
+                const char *ownership =
+                    strcmp(binding_type, "Text") == 0 ||
+                    strcmp(binding_type, "List") == 0 ? "gc" : "copy";
+                char *name_text = token_copy(source, name);
+                buffer_format(
+                    &hir,
+                    "binding|%" PRId64 "|%s|%s|%s|%s|%s|initialized|"
+                    "%" PRId64 "|%" PRId64 "|%" PRId64 "\n",
+                    next_binding_id++,
+                    scope_id,
+                    name_text,
+                    mutability,
+                    binding_type,
+                    ownership,
+                    name,
+                    token_end(source, name),
+                    visible_start
+                );
+                free(name_text);
+                free(binding_type);
+                free(scope_id);
+            }
+            cursor = skip_trivia(source, token_end(source, cursor));
+        }
+
+        int64_t use_count = 0;
+        bool unresolved_assignment = false;
+        cursor = skip_trivia(source, token_end(source, function_open));
+        while (cursor < function_close) {
+            if (strcmp(token_kind(source, cursor), "identifier") == 0) {
+                char *name = token_copy(source, cursor);
+                bool declaration_token = enum_declaration_syntax_token(
+                    source,
+                    function_open,
+                    cursor
+                );
+                bool initializer_token = enum_initializer_constructor_token(
+                    source,
+                    function_open,
+                    cursor
+                );
+                bool pattern_token = enum_match_pattern_token(
+                    source,
+                    function_open,
+                    cursor
+                );
+                if (
+                    !declaration_token && !initializer_token &&
+                    !pattern_token && !token_equal(source, cursor, "print") &&
+                    !token_equal(source, cursor, "_")
+                ) {
+                    int64_t scope_open = parent_block_open(
+                        source,
+                        function_open,
+                        cursor
+                    );
+                    char *scope_id = hir_scope_id_for_open(
+                        hir.data,
+                        scope_open
+                    );
+                    char *binding_id = hir_resolve_binding(
+                        hir.data,
+                        scope_id,
+                        cursor,
+                        name
+                    );
+                    int64_t after = skip_trivia(
+                        source,
+                        token_end(source, cursor)
+                    );
+                    const char *role = token_equal(source, after, "=") ?
+                        "assign" : "read";
+                    if (binding_id[0] != '\0') {
+                        ++use_count;
+                        if (use_count > 256) {
+                            free(name);
+                            free(scope_id);
+                            free(binding_id);
+                            return scope_hir_error(
+                                &hir,
+                                "lexical use limit is 256 per function",
+                                cursor
+                            );
+                        }
+                        buffer_format(
+                            &hir,
+                            "use|%" PRId64 "|%" PRId64 "|%s|%s|%s\n",
+                            cursor,
+                            token_end(source, cursor),
+                            scope_id,
+                            binding_id,
+                            role
+                        );
+                    } else if (strcmp(role, "assign") == 0) {
+                        ++use_count;
+                        if (use_count > 256) {
+                            free(name);
+                            free(scope_id);
+                            free(binding_id);
+                            free(hir.data);
+                            return lower_error(
+                                "E2S35",
+                                "lexical use limit is 256 per function",
+                                cursor
+                            );
+                        }
+                        buffer_format(
+                            &hir,
+                            "use|%" PRId64 "|%" PRId64 "|%s|-1|assign\n",
+                            cursor,
+                            token_end(source, cursor),
+                            scope_id
+                        );
+                        unresolved_assignment = true;
+                    } else if (
+                        !token_equal(source, after, "(") &&
+                        !unresolved_assignment
+                    ) {
+                        char *owner = enum_constructor_owner(source, name);
+                        char *pending = hir_pending_declaration(
+                            hir.data,
+                            scope_id,
+                            cursor,
+                            name
+                        );
+                            if (pending[0] != '\0') {
+                                Buffer message;
+                                buffer_init(&message);
+                                buffer_format(
+                                    &message,
+                                    "error[E2S35]: binding `%s` is not "
+                                    "initialized at byte "
+                                    "%" PRId64 "; declaration at byte %s",
+                                    name,
+                                    cursor,
+                                    pending
+                                );
+                                free(name);
+                                free(scope_id);
+                                free(binding_id);
+                                free(owner);
+                                free(pending);
+                                free(hir.data);
+                                return message.data;
+                            }
+                            free(pending);
+                            char *escaped = hir_any_declaration(
+                                hir.data,
+                                scope_id,
+                                cursor,
+                                name
+                            );
+                            if (escaped[0] != '\0') {
+                                Buffer message;
+                                buffer_init(&message);
+                                buffer_format(
+                                    &message,
+                                    "error[E2S35]: binding `%s` is outside its "
+                                    "lexical scope at byte %" PRId64
+                                    "; declaration at byte %s",
+                                    name,
+                                    cursor,
+                                    escaped
+                                );
+                                free(name);
+                                free(scope_id);
+                                free(binding_id);
+                                free(owner);
+                                free(escaped);
+                                free(hir.data);
+                                return message.data;
+                            }
+                            free(escaped);
+                        if (owner[0] == '\0') {
+                            Buffer message;
+                            buffer_init(&message);
+                            buffer_format(
+                                &message,
+                                "error[E2S35]: unknown lexical binding `%s` "
+                                "at byte %" PRId64,
+                                name,
+                                cursor
+                            );
+                            free(name);
+                            free(scope_id);
+                            free(binding_id);
+                            free(owner);
+                            free(hir.data);
+                            return message.data;
+                        }
+                        free(owner);
+                    }
+                    free(scope_id);
+                    free(binding_id);
+                }
+                free(name);
+            }
+            cursor = skip_trivia(source, token_end(source, cursor));
+        }
+        function_start = next_function_start(source, function_close);
+    }
+    return hir.data;
+}
+
+static char *validate_enum_uses(const char *source, const char *hir) {
+    int64_t length = (int64_t)strlen(source);
+    char *constructor_names = enum_declaration_names(source, true);
+    if (strcmp(constructor_names, "|") == 0) {
+        free(constructor_names);
+        return owned_text("ok");
+    }
+    int64_t function_start = next_function_start(source, 0);
+    while (function_start < length) {
+        int64_t function_close = function_end(source, function_start);
+        int64_t parameters = parameter_open(source, function_start);
+        int64_t parameters_close = balanced_end(
+            source,
+            parameters,
+            "(",
+            ")"
+        );
+        int64_t function_open = skip_trivia(source, parameters_close);
+        while (
+            function_open < function_close &&
+            !token_equal(source, function_open, "{")
+        ) {
+            function_open = skip_trivia(
+                source,
+                token_end(source, function_open)
+            );
+        }
         int64_t related_identifiers = 0;
         int64_t cursor = skip_trivia(
             source,
@@ -3096,9 +3707,41 @@ static char *validate_enum_uses(const char *source) {
         while (cursor < function_close) {
             if (strcmp(token_kind(source, cursor), "identifier") == 0) {
                 char *name = token_copy(source, cursor);
+                bool pattern_token = enum_match_pattern_token(
+                    source,
+                    function_open,
+                    cursor
+                );
+                bool initializer_token =
+                    enum_initializer_constructor_token(
+                        source,
+                        function_open,
+                        cursor
+                    );
+                bool declaration_token = enum_declaration_syntax_token(
+                    source,
+                    function_open,
+                    cursor
+                );
+                char *binding_id = hir_use_binding_id(hir, cursor);
+                char *binding_type = hir_binding_field(
+                    hir,
+                    binding_id,
+                    5
+                );
+                bool binding_enum =
+                    binding_type[0] != '\0' &&
+                    enum_constructor_count(source, binding_type) >= 0;
+                bool constructor_named = enum_name_covered(
+                    constructor_names,
+                    name
+                );
                 bool related =
-                    enum_name_covered(constructor_names, name) ||
-                    enum_name_covered(enum_binding_names, name);
+                    pattern_token || initializer_token || binding_enum ||
+                    (
+                        constructor_named && binding_id[0] == '\0' &&
+                        !declaration_token
+                    );
                 if (related) {
                     ++related_identifiers;
                     if (related_identifiers > 256) {
@@ -3111,84 +3754,45 @@ static char *validate_enum_uses(const char *source) {
                             cursor
                         );
                         free(name);
+                        free(binding_id);
+                        free(binding_type);
                         free(previous);
-                        free(enum_binding_names);
-                        free(enum_types);
                         free(constructor_names);
                         return error.data;
                     }
-                    bool pattern_token = enum_match_pattern_token(
-                        source,
-                        function_open,
-                        cursor
-                    );
-                    bool initializer_token =
-                        enum_initializer_constructor_token(
-                            source,
-                            function_open,
-                            cursor
-                        );
-                    bool declaration_token = enum_declaration_syntax_token(
-                        source,
-                        function_open,
-                        cursor
-                    );
                     if (
                         !pattern_token && !initializer_token &&
                         !declaration_token
                     ) {
-                        int64_t current_open = parent_block_open(
-                            source,
-                            function_open,
-                            cursor
-                        );
-                        if (current_open < 0) current_open = function_open;
-                        char *binding_type = visible_binding_type(
-                            source,
-                            current_open,
-                            function_open,
-                            cursor,
-                            name
-                        );
-                        if (binding_type[0] != '\0') {
-                            if (
-                                enum_constructor_count(
-                                    source,
-                                    binding_type
-                                ) >= 0
-                            ) {
-                                int64_t after = skip_trivia(
-                                    source,
-                                    token_end(source, cursor)
+                        if (binding_enum) {
+                            int64_t after = skip_trivia(
+                                source,
+                                token_end(source, cursor)
+                            );
+                            bool match_scrutinee =
+                                strcmp(previous, "match") == 0 &&
+                                token_equal(source, after, "{");
+                            if (!match_scrutinee) {
+                                Buffer error;
+                                buffer_init(&error);
+                                buffer_format(
+                                    &error,
+                                    "error[E2S32]: concrete enum binding "
+                                    "`%s` is match-only in this Core "
+                                    "slice at byte %" PRId64,
+                                    name,
+                                    cursor
                                 );
-                                bool match_scrutinee =
-                                    strcmp(previous, "match") == 0 &&
-                                    token_equal(source, after, "{");
-                                if (!match_scrutinee) {
-                                    Buffer error;
-                                    buffer_init(&error);
-                                    buffer_format(
-                                        &error,
-                                        "error[E2S32]: concrete enum binding "
-                                        "`%s` is match-only in this Core "
-                                        "slice at byte %" PRId64,
-                                        name,
-                                        cursor
-                                    );
-                                    free(name);
-                                    free(binding_type);
-                                    free(previous);
-                                    free(enum_binding_names);
-                                    free(enum_types);
-                                    free(constructor_names);
-                                    return error.data;
-                                }
+                                free(name);
+                                free(binding_id);
+                                free(binding_type);
+                                free(previous);
+                                free(constructor_names);
+                                return error.data;
                             }
-                        } else if (!int_parameter_named(
-                            source,
-                            function_start,
-                            name
-                        )) {
+                        } else if (
+                            constructor_named && binding_id[0] == '\0'
+                        ) {
                             int64_t after = skip_trivia(
                                 source,
                                 token_end(source, cursor)
@@ -3215,20 +3819,20 @@ static char *validate_enum_uses(const char *source) {
                                         cursor
                                     );
                                     free(name);
+                                    free(binding_id);
                                     free(binding_type);
                                     free(constructor_owner);
                                     free(previous);
-                                    free(enum_binding_names);
-                                    free(enum_types);
                                     free(constructor_names);
                                     return error.data;
                                 }
                                 free(constructor_owner);
                             }
                         }
-                        free(binding_type);
                     }
                 }
+                free(binding_id);
+                free(binding_type);
                 free(name);
             }
             free(previous);
@@ -3236,10 +3840,8 @@ static char *validate_enum_uses(const char *source) {
             cursor = skip_trivia(source, token_end(source, cursor));
         }
         free(previous);
-        free(enum_binding_names);
         function_start = next_function_start(source, function_close);
     }
-    free(enum_types);
     free(constructor_names);
     return owned_text("ok");
 }
@@ -3256,6 +3858,7 @@ static int64_t enum_match_end(const char *source, int64_t start) {
 
 static char *lower_body(
     const char *source,
+    const char *hir,
     int64_t open,
     bool is_main,
     bool append_default,
@@ -3276,6 +3879,7 @@ static char *lower_enum_match_error(
 
 static char *lower_enum_match(
     const char *source,
+    const char *hir,
     int64_t match_start,
     const char *enum_type,
     bool is_main,
@@ -3444,6 +4048,7 @@ static char *lower_enum_match(
         }
         char *arm_body = lower_body(
             source,
+            hir,
             arm_open,
             is_main,
             false,
@@ -3470,6 +4075,7 @@ static char *lower_enum_match(
         if (guarded) {
             char *guard = emit_condition_into(
                 source,
+                hir,
                 guard_start,
                 guard_end,
                 "kofun_match_guard",
@@ -3568,21 +4174,21 @@ static char *lower_enum_match(
         return error;
     }
 
-    char *value_name = token_copy(source, value_start);
+    char *binding_id = hir_use_binding_id(hir, value_start);
     Buffer emitted;
     buffer_init(&emitted);
     buffer_format(
         &emitted,
         "    {\n"
-        "        int64_t kofun_match_value = k_%s;\n"
+        "        int64_t kofun_match_value = k_b%s;\n"
         "        (void)kofun_match_value;\n"
         "        bool kofun_match_selected = false;\n"
         "%s"
         "    }\n",
-        value_name,
+        binding_id,
         dispatch.data
     );
-    free(value_name);
+    free(binding_id);
     free(covered.data);
     free(dispatch.data);
     return emitted.data;
@@ -3621,6 +4227,7 @@ static char *lower_match_error(
 
 static char *lower_body(
     const char *source,
+    const char *hir,
     int64_t open,
     bool is_main,
     bool append_default,
@@ -3652,6 +4259,7 @@ static char *lower_body(
                 return lower_error("E2S11", "expected binding name", cursor);
             }
             char *name = token_copy(source, cursor);
+            char *binding_id = hir_definition_id_at(hir, cursor);
             char *enum_type = NULL;
             cursor = skip_trivia(source, token_end(source, cursor));
             if (cursor < length && token_equal(source, cursor, ":")) {
@@ -3660,6 +4268,7 @@ static char *lower_body(
                     cursor >= length ||
                     strcmp(token_kind(source, cursor), "identifier") != 0
                 ) {
+                    free(binding_id);
                     free(name);
                     free(emitted.data);
                     return lower_error(
@@ -3679,6 +4288,7 @@ static char *lower_body(
                             declared_type
                         );
                         free(declared_type);
+                        free(binding_id);
                         free(name);
                         free(emitted.data);
                         char *error = lower_error(
@@ -3697,6 +4307,7 @@ static char *lower_body(
             }
             if (cursor >= length || !token_equal(source, cursor, "=")) {
                 free(enum_type);
+                free(binding_id);
                 free(name);
                 free(emitted.data);
                 return lower_error("E2S11", "expected `=`", cursor);
@@ -3705,6 +4316,7 @@ static char *lower_body(
             if (enum_type != NULL) {
                 if (mutable) {
                     free(enum_type);
+                    free(binding_id);
                     free(name);
                     free(emitted.data);
                     return lower_error(
@@ -3718,6 +4330,7 @@ static char *lower_body(
                     strcmp(token_kind(source, value_start), "identifier") != 0
                 ) {
                     free(enum_type);
+                    free(binding_id);
                     free(name);
                     free(emitted.data);
                     return lower_error(
@@ -3743,6 +4356,7 @@ static char *lower_body(
                     );
                     free(constructor);
                     free(enum_type);
+                    free(binding_id);
                     free(name);
                     free(emitted.data);
                     char *error = lower_error(
@@ -3755,13 +4369,14 @@ static char *lower_body(
                 }
                 buffer_format(
                     &emitted,
-                    "    int64_t k_%s = INT64_C(%" PRId64 ");\n",
-                    name,
+                    "    int64_t k_b%s = INT64_C(%" PRId64 ");\n",
+                    binding_id,
                     tag
                 );
                 free(constructor);
                 free(enum_type);
                 free(name);
+                free(binding_id);
                 cursor = skip_trivia(source, token_end(source, value_start));
                 continue;
             }
@@ -3773,6 +4388,7 @@ static char *lower_body(
                     &value_end
                 );
                 if (strncmp(result, "error[", 6) == 0) {
+                    free(binding_id);
                     free(name);
                     free(emitted.data);
                     return result;
@@ -3780,9 +4396,10 @@ static char *lower_body(
                 free(result);
                 Buffer target;
                 buffer_init(&target);
-                buffer_format(&target, "k_%s", name);
+                buffer_format(&target, "k_b%s", binding_id);
                 char *value_body = emit_value_into(
                     source,
+                    hir,
                     value_start,
                     value_end,
                     target.data,
@@ -3790,40 +4407,44 @@ static char *lower_body(
                 );
                 if (strncmp(value_body, "error[", 6) == 0) {
                     free(target.data);
+                    free(binding_id);
                     free(name);
                     free(emitted.data);
                     return value_body;
                 }
                 buffer_format(
                     &emitted,
-                    "    int64_t k_%s = INT64_C(0);\n"
+                    "    int64_t k_b%s = INT64_C(0);\n"
                     "%s",
-                    name,
+                    binding_id,
                     value_body
                 );
                 free(value_body);
                 free(target.data);
                 free(name);
+                free(binding_id);
                 cursor = skip_trivia(source, value_end);
                 continue;
             }
             int64_t value_end = expression_end(source, value_start);
             if (value_end < 0) {
+                free(binding_id);
                 free(name);
                 free(emitted.data);
                 return lower_error("E2S12", "invalid Int expression", value_start);
             }
-            char *value = emit_expression(source, value_start, value_end);
+            char *value = emit_expression(source, hir, value_start, value_end);
             buffer_format(
                 &emitted,
-                "    int64_t k_%s = %s;\n"
+                "    int64_t k_b%s = %s;\n"
                 "    if (kofun_failed) return %s;\n",
-                name,
+                binding_id,
                 value,
                 failure_result
             );
             free(value);
             free(name);
+            free(binding_id);
             cursor = skip_trivia(source, value_end);
         } else if (token_equal(source, cursor, "print")) {
             int64_t call_open = skip_trivia(source, token_end(source, cursor));
@@ -3858,6 +4479,7 @@ static char *lower_body(
                 }
                 char *value_body = emit_value_into(
                     source,
+                    hir,
                     value_start,
                     value_end,
                     "kofun_value",
@@ -3893,7 +4515,7 @@ static char *lower_body(
                 free(emitted.data);
                 return lower_error("E2S13", "expected `)`", call_close);
             }
-            char *value = emit_expression(source, value_start, value_end);
+            char *value = emit_expression(source, hir, value_start, value_end);
             buffer_format(
                 &emitted,
                 "    {\n"
@@ -3948,6 +4570,7 @@ static char *lower_body(
             }
             char *branch_body = lower_body(
                 source,
+                hir,
                 branch_open,
                 is_main,
                 false,
@@ -3959,6 +4582,7 @@ static char *lower_body(
             }
             char *condition = emit_condition_into(
                 source,
+                hir,
                 condition_start,
                 condition_close,
                 "kofun_condition",
@@ -4010,6 +4634,7 @@ static char *lower_body(
                 }
                 char *else_body = lower_body(
                     source,
+                    hir,
                     else_open,
                     is_main,
                     false,
@@ -4040,12 +4665,11 @@ static char *lower_body(
                 token_equal(source, direct_end, "{")
             ) {
                 char *value_name = token_copy(source, value_start);
-                char *enum_type = visible_binding_type(
-                    source,
-                    open,
-                    function_open,
-                    match_start,
-                    value_name
+                char *enum_binding = hir_use_binding_id(hir, value_start);
+                char *enum_type = hir_binding_field(
+                    hir,
+                    enum_binding,
+                    5
                 );
                 if (
                     enum_type[0] == '\0' ||
@@ -4061,6 +4685,7 @@ static char *lower_body(
                         value_name
                     );
                     free(enum_type);
+                    free(enum_binding);
                     free(value_name);
                     free(emitted.data);
                     char *error = lower_error(
@@ -4073,12 +4698,14 @@ static char *lower_body(
                 }
                 char *match_body = lower_enum_match(
                     source,
+                    hir,
                     match_start,
                     enum_type,
                     is_main,
                     function_open
                 );
                 free(enum_type);
+                free(enum_binding);
                 free(value_name);
                 if (strncmp(match_body, "error[", 6) == 0) {
                     free(emitted.data);
@@ -4270,6 +4897,7 @@ static char *lower_body(
                 }
                 char *arm_body = lower_body(
                     source,
+                    hir,
                     arm_open,
                     is_main,
                     false,
@@ -4290,6 +4918,7 @@ static char *lower_body(
                 if (guarded) {
                     char *guard = emit_condition_into(
                         source,
+                        hir,
                         guard_start,
                         guard_end,
                         "kofun_match_guard",
@@ -4394,6 +5023,7 @@ static char *lower_body(
             }
             char *match_value = emit_condition_into(
                 source,
+                hir,
                 value_start,
                 value_end,
                 "kofun_match_value",
@@ -4434,6 +5064,7 @@ static char *lower_body(
                 free(result);
                 char *value_body = emit_value_into(
                     source,
+                    hir,
                     value_start,
                     value_end,
                     "kofun_result",
@@ -4473,7 +5104,12 @@ static char *lower_body(
                         value_start
                     );
                 }
-                char *value = emit_expression(source, value_start, value_end);
+                char *value = emit_expression(
+                    source,
+                    hir,
+                    value_start,
+                    value_end
+                );
                 buffer_format(
                     &emitted,
                     "    {\n"
@@ -4505,49 +5141,35 @@ static char *lower_body(
             char *name = token_copy(source, cursor);
             int64_t equals = skip_trivia(source, token_end(source, cursor));
             if (equals < length && token_equal(source, equals, "=")) {
-                int mutability = binding_mutability_before(
-                    source,
-                    open,
-                    assignment_start,
-                    name
+                char *binding_id = hir_use_binding_id(
+                    hir,
+                    assignment_start
                 );
-                if (mutability < 0) {
-                    if (
-                        open != function_open &&
-                        binding_mutability_before(
-                            source,
-                            function_open,
-                            open,
-                            name
-                        ) >= 0
-                    ) {
-                        char *error = assignment_error(
-                            "cannot assign to outer binding",
-                            name,
-                            assignment_start,
-                            "assign after the branch"
-                        );
-                        free(name);
-                        free(emitted.data);
-                        return error;
-                    }
+                if (
+                    binding_id[0] == '\0' ||
+                    strcmp(binding_id, "-1") == 0
+                ) {
                     char *error = assignment_error(
                         "unknown assignment target",
                         name,
                         assignment_start,
                         "declare it before assignment"
                     );
+                    free(binding_id);
                     free(name);
                     free(emitted.data);
                     return error;
                 }
-                if (mutability == 0) {
+                char *mutability = hir_binding_field(hir, binding_id, 4);
+                if (strcmp(mutability, "mutable") != 0) {
                     char *error = assignment_error(
                         "cannot assign to immutable binding",
                         name,
                         assignment_start,
                         "declare it with `let mut`"
                     );
+                    free(mutability);
+                    free(binding_id);
                     free(name);
                     free(emitted.data);
                     return error;
@@ -4564,6 +5186,8 @@ static char *lower_body(
                         &value_end
                     );
                     if (strncmp(result, "error[", 6) == 0) {
+                        free(mutability);
+                        free(binding_id);
                         free(name);
                         free(emitted.data);
                         return result;
@@ -4571,12 +5195,15 @@ static char *lower_body(
                     free(result);
                     char *value_body = emit_value_into(
                         source,
+                        hir,
                         value_start,
                         value_end,
                         "kofun_replacement",
                         failure_result
                     );
                     if (strncmp(value_body, "error[", 6) == 0) {
+                        free(mutability);
+                        free(binding_id);
                         free(name);
                         free(emitted.data);
                         return value_body;
@@ -4589,17 +5216,21 @@ static char *lower_body(
                     buffer_append(&emitted, value_body);
                     buffer_format(
                         &emitted,
-                        "        k_%s = kofun_replacement;\n"
+                        "        k_b%s = kofun_replacement;\n"
                         "    }\n",
-                        name
+                        binding_id
                     );
                     free(value_body);
+                    free(mutability);
+                    free(binding_id);
                     free(name);
                     cursor = skip_trivia(source, value_end);
                     continue;
                 }
                 int64_t value_end = expression_end(source, value_start);
                 if (value_end < 0) {
+                    free(mutability);
+                    free(binding_id);
                     free(name);
                     free(emitted.data);
                     return lower_error(
@@ -4608,19 +5239,26 @@ static char *lower_body(
                         value_start
                     );
                 }
-                char *value = emit_expression(source, value_start, value_end);
+                char *value = emit_expression(
+                    source,
+                    hir,
+                    value_start,
+                    value_end
+                );
                 buffer_format(
                     &emitted,
                     "    {\n"
                     "        int64_t kofun_replacement = %s;\n"
                     "        if (kofun_failed) return %s;\n"
-                    "        k_%s = kofun_replacement;\n"
+                    "        k_b%s = kofun_replacement;\n"
                     "    }\n",
                     value,
                     failure_result,
-                    name
+                    binding_id
                 );
                 free(value);
+                free(mutability);
+                free(binding_id);
                 cursor = skip_trivia(source, value_end);
             } else {
                 int64_t value_end = expression_end(source, cursor);
@@ -4633,7 +5271,7 @@ static char *lower_body(
                         cursor
                     );
                 }
-                char *value = emit_expression(source, cursor, value_end);
+                char *value = emit_expression(source, hir, cursor, value_end);
                 buffer_format(
                     &emitted,
                     "    (void)%s;\n"
@@ -4668,9 +5306,9 @@ static char *lower_body(
     return emitted.data;
 }
 
-static char *lower_c(const char *source) {
+static char *lower_c(const char *source, const char *hir) {
     int64_t length = (int64_t)strlen(source);
-    char *enum_use_check = validate_enum_uses(source);
+    char *enum_use_check = validate_enum_uses(source, hir);
     if (strncmp(enum_use_check, "error[", 6) == 0) {
         return enum_use_check;
     }
@@ -4704,7 +5342,7 @@ static char *lower_c(const char *source) {
         }
         bool is_main = strcmp(name, "main") == 0;
         int64_t arity = parameter_count(source, cursor);
-        char *parameters = core_parameters(source, cursor);
+        char *parameters = core_parameters(source, hir, cursor);
         if (strncmp(parameters, "error[", 6) == 0) {
             free(name);
             free(prototypes.data);
@@ -4734,7 +5372,7 @@ static char *lower_c(const char *source) {
                 c_parameters
             );
         }
-        int64_t open = core_body_open(source, cursor, is_main);
+        int64_t open = core_body_open(source, hir, cursor, is_main);
         if (open < 0) {
             Buffer error;
             buffer_init(&error);
@@ -4750,7 +5388,7 @@ static char *lower_c(const char *source) {
             free(bodies.data);
             return error.data;
         }
-        char *body = lower_body(source, open, is_main, true, open);
+        char *body = lower_body(source, hir, open, is_main, true, open);
         if (strncmp(body, "error[", 6) == 0) {
             free(parameters);
             free(name);
@@ -4925,17 +5563,34 @@ int main(int argc, char **argv) {
     write_file(argv[3], ir);
     write_file(argv[4], tokens);
     if (ends_with(argv[2], ".c")) {
-        char *c_source = lower_c(source);
-        if (strncmp(c_source, "error[", 6) == 0) {
-            puts(c_source);
-            free(c_source);
+        char *hir = build_scope_hir(source);
+        if (strncmp(hir, "error[", 6) == 0) {
+            puts(hir);
+            free(hir);
             free(ir);
             free(tokens);
             free(source);
             return 1;
         }
+        char *c_source = lower_c(source, hir);
+        if (strncmp(c_source, "error[", 6) == 0) {
+            puts(c_source);
+            free(c_source);
+            free(hir);
+            free(ir);
+            free(tokens);
+            free(source);
+            return 1;
+        }
+        Buffer combined_ir;
+        buffer_init(&combined_ir);
+        buffer_append(&combined_ir, ir);
+        buffer_append(&combined_ir, hir);
+        write_file(argv[3], combined_ir.data);
         write_file(argv[2], c_source);
+        free(combined_ir.data);
         free(c_source);
+        free(hir);
     } else {
         write_file(argv[2], source);
     }

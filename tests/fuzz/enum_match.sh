@@ -281,11 +281,13 @@ while test "$case_index" -lt "$CASES"; do
                 printf '%s\n' ''
                 printf '%s\n' 'fn main() {'
                 printf '%s\n' '    let signal: Signal = Red'
+                printf '%s\n' '    let other: Signal = Green'
                 match_index=0
-                while test "$match_index" -lt 254; do
+                while test "$match_index" -lt 126; do
                     printf '%s\n' '    match signal { _ => { } }'
                     match_index=$((match_index + 1))
                 done
+                printf '%s\n' '    match other { _ => { } }'
                 printf '    print(%s)\n' "$result"
                 printf '%s\n' '}'
             } >"$source"
@@ -512,8 +514,10 @@ while test "$case_index" -lt "$CASES"; do
                 printf '%s\n' 'type Signal = | Red | Green | Blue'
                 printf '%s\n' 'fn main() {'
                 printf '%s\n' '    let signal: Signal = Red'
+                printf '%s\n' '    let other: Signal = Green'
+                printf '%s\n' '    let overflow: Signal = Blue'
                 match_index=0
-                while test "$match_index" -lt 255; do
+                while test "$match_index" -lt 127; do
                     printf '%s\n' '    match signal { _ => { } }'
                     match_index=$((match_index + 1))
                 done

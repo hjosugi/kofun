@@ -32,3 +32,8 @@ Visibility syntax uses `E2S33` for malformed/conflicting basic modifiers and
 `E2S34` for unsupported aliases or deferred restricted forms. Both diagnostics
 report the rejected modifier/form byte range and are emitted before output
 artifacts are written.
+
+Lexical resolution uses `E2S35` for unknown, uninitialized, and escaped local
+bindings as well as deterministic scope/binding/use budget failures. Where a
+declaration exists, the diagnostic reports both the use and declaration byte
+positions.

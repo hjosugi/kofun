@@ -1,0 +1,49 @@
+type Signal = | Red | Green | Blue
+
+fn exercise(seed: Int) -> Int {
+    let mut total = seed
+    let value = 1
+    if seed > 0 {
+        let value = 2
+        print(value)
+        total = total + value
+        if total > 0 {
+            let value = 3
+            print(value)
+            print(total)
+        }
+    } else {
+        let value = 4
+        print(value)
+        total = total - value
+    }
+    print(value)
+    match true {
+        true if total > 0 => {
+            let value = 5
+            print(value)
+            total = total + value
+        },
+        true => { total = 0 },
+        false => { total = 0 },
+    }
+    let signal: Signal = Green
+    match signal {
+        Red => {
+            let value = 6
+            print(value)
+        },
+        Green => {
+            let value = 7
+            print(value)
+            total = total + value
+        },
+        Blue => { total = 0 },
+    }
+    return total
+}
+
+fn main() {
+    print(exercise(4))
+    print(exercise(-2))
+}

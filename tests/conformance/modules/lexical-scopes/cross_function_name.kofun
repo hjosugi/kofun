@@ -1,0 +1,8 @@
+fn first() -> Int {
+    let hidden = 1
+    return hidden
+}
+
+fn main() {
+    print(hidden)
+}

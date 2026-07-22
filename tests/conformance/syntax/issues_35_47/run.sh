@@ -137,9 +137,22 @@ test ! -s "$WORK/if-statement.stderr" ||
     fail "Stage 2 assignment/if wrote unexpected stderr"
 printf '%s\n' "PASS executable Stage 2 assignment followed by if"
 
-expect_stage2_diagnostic \
+"$WORK/kofun-stage2" \
     "$CASES/if_outer_assignment.kofun" \
-    "$CASES/if_outer_assignment.stdout"
+    "$WORK/if-outer-assignment.c" \
+    "$WORK/if-outer-assignment.ir" \
+    "$WORK/if-outer-assignment.tokens" >/dev/null
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$WORK/if-outer-assignment.c" -o "$WORK/if-outer-assignment"
+"$WORK/if-outer-assignment" \
+    >"$WORK/if-outer-assignment.stdout" \
+    2>"$WORK/if-outer-assignment.stderr"
+cmp "$CASES/if_outer_assignment.stdout" \
+    "$WORK/if-outer-assignment.stdout" ||
+    fail "Stage 2 outer mutable assignment output differs"
+test ! -s "$WORK/if-outer-assignment.stderr" ||
+    fail "Stage 2 outer mutable assignment wrote unexpected stderr"
+printf '%s\n' "PASS executable Stage 2 outer mutable assignment"
 
 "$WORK/kofun-stage2" \
     "$CASES/if_value.kofun" \

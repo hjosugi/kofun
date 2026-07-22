@@ -40,6 +40,7 @@ compiler:
 
 test: compiler
 	sh tests/cli.sh
+	sh tests/conformance/modules/lexical-scopes/run.sh
 	$(KOFUN) test tests/conformance/numeric
 	$(KOFUN) test tests/conformance/functions
 	$(KOFUN) test tests/conformance/list
@@ -171,6 +172,7 @@ verify: test diagnostics fuzz check bootstrap stage2 native wasm tour c-abi rust
 	  editor/vscode/server/kofun-lsp \
 	  tests/conformance/run.sh tests/conformance/backends/c11-stage1.sh \
 	  tests/conformance/backends/native-x86_64.sh \
+	  tests/conformance/modules/lexical-scopes/run.sh \
 	  tests/diagnostics/stage2/run.sh \
 	  tests/diagnostics/stage2/bless.sh \
 	  tests/fuzz/grammar.sh tests/fuzz/semantic_differential.sh \
