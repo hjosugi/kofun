@@ -1,0 +1,7 @@
+type First =
+    | Shared
+    | FirstOnly
+
+type Second =
+    | Shared
+    | SecondOnly

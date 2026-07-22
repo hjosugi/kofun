@@ -1,0 +1,11 @@
+type MaybeInt =
+    | Missing
+    | Present(value: Int)
+
+fn present() -> MaybeInt {
+    return Present(42)
+}
+
+fn missing() -> MaybeInt {
+    return Missing
+}

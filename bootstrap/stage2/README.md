@@ -89,6 +89,13 @@ The main CLI tries this Stage 2 C11 Core first and uses the Stage 1 seed as a
 compatibility fallback for inputs outside this slice. Direct-native
 user-function lowering is not implemented yet.
 
+`bootstrap/stage2/adt_frontend.c` is a separate typed-only checkpoint for flat
+nominal ADTs. It collects non-generic zero/one-`Int`-payload constructors before
+resolving bounded constructor-returning functions, then emits token and typed
+IR artifacts with nominal IDs and byte spans. It deliberately emits no C,
+native, Wasm, layout, allocation, match, or runtime representation. The main
+CLI does not route ordinary builds through this helper yet.
+
 ## Verification
 
 Run:
@@ -117,6 +124,11 @@ C11 compiler, `sha256sum`, and standard comparison/search tools.
 basic visibility forms, same-file forward calls and execution, contextual
 identifier uses, exact modifier diagnostics, artifact absence, and
 byte-identical repeated output.
+
+`tests/conformance/adt/run.sh` covers the typed-only MaybeInt checkpoint,
+constructor-before-declaration resolution, deterministic IR/token artifacts,
+zero/one-payload typing, and exact E2S36–E2S46 diagnostics for invalid or
+explicitly deferred ADT forms.
 
 `bootstrap/stage2/visibility_access.c` is the pure access primitive for the
 next resolver slice. It compares only schema-tagged 32-byte package, module,

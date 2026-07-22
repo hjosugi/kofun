@@ -1,0 +1,16 @@
+# A body may use a constructor before its type declaration is encountered.
+fn present() -> MaybeInt {
+    return Present(42)
+}
+
+type MaybeInt =
+    | Missing
+    | Present(value: Int)
+
+fn missing() -> MaybeInt {
+    return Missing
+}
+
+fn negative() -> MaybeInt {
+    return Present(-7)
+}

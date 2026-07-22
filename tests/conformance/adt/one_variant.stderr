@@ -1,0 +1,1 @@
+error[E2S39]: type `One` must declare at least two variants at bytes 5..21

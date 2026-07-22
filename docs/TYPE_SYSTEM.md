@@ -136,6 +136,26 @@ bindings, and exhaustive statement-position enum matches. See
 nested patterns, ownership-aware destructuring, and general arm-type
 unification remain planned.
 
+A separate typed-only Stage 2 checkpoint now accepts one bounded payload
+surface before layout and matching are implemented:
+
+```kofun
+type MaybeInt =
+    | Missing
+    | Present(value: Int)
+
+fn present() -> MaybeInt {
+    return Present(42)
+}
+```
+
+It supports non-generic top-level ADTs with at least two constructors, where a
+constructor has zero fields or exactly one named `Int` field. All constructors
+are collected before function bodies are resolved, and typed IR records
+nominal ADT/constructor identities plus declaration and use spans. The
+checkpoint emits no runtime layout or backend code and does not add payload
+patterns or exhaustiveness; see `tests/conformance/adt/README.md`.
+
 ## Records
 
 Nominal record:

@@ -1,0 +1,1 @@
+error[E2S46]: the first ADT variant must start with `|` at bytes 20..27

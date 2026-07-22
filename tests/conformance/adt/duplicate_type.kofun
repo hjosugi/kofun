@@ -1,0 +1,7 @@
+type Flag =
+    | Off
+    | On
+
+type Flag =
+    | Disabled
+    | Enabled
