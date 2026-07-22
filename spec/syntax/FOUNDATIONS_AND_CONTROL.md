@@ -710,9 +710,30 @@ let text = match flag {
 }
 ```
 
-**Implementation status:** Stage 2 classifies `match` as a keyword and lowers a
-bounded statement- and Int-value-position Bool slice. Bool literals and integer
-comparisons may be matched by `true`, `false`, and `_` block arms. The compiler evaluates
+**Implementation status:** Stage 2 classifies `match` as a keyword and its
+canonical parser preserves a lossless, unresolved Pattern tree for wildcard,
+Bool/null/Int literal, name, constructor, nested, or-pattern, and parenthesized
+forms. Every node and required delimiter/separator retains its byte span.
+`LiteralPattern` retains both `literal_kind` and its exact token spelling, so
+Bool values and distinct Int spellings remain distinguishable without reading
+the source again. `-42` remains unary minus plus an Int token, not one literal
+pattern token, and is rejected by this syntax slice.
+Parsing is bounded to depth 32 and 256 nodes; `E2S58` recovery synchronizes at
+the arm arrow and structural delimiters without fabricating a valid node.
+Node-budget exhaustion emits one fatal `ErrorPattern` occurrence for the
+failing arm and stops the remaining Pattern scan; later arms or matches are not
+emitted with a reused root ID. Other syntax errors remain recoverable.
+Only `if` or `=>` may follow a completed Pattern in an arm. Any other token
+rolls the arm back to one `E2S58` `ErrorPattern`; the compiler selects the
+diagnostic with the smallest source start byte across nested matches, using
+stable traversal order only to break equal-span ties.
+Arrow recovery does not cross a top-level arm comma: the malformed arm retains
+`arrow=-1`, the comma is consumed as a synchronization delimiter, and parsing
+resumes at the next independent arm.
+
+The executable lowerer remains a bounded statement- and Int-value-position
+Bool slice. Bool literals and integer comparisons may be matched by `true`,
+`false`, and `_` block arms. The compiler evaluates
 the scrutinee once and checks arms in source order. Optional Bool guards run
 only after their pattern matches; false continues to the next arm, and no
 later guard runs after selection. Guarded arms do not provide static coverage,
@@ -734,9 +755,10 @@ unreachable-arm checks use the same finite-set rules as Bool. The exact type
 and constructor limits, structural IR, and diagnostics are specified in
 `spec/enum-match-exhaustiveness.md`.
 
-General arm type unification, payload and generic ADTs, pattern bindings,
-nested patterns, or-patterns, value-producing enum matches, and ownership-aware
-destructuring remain open.
+General arm type unification, payload and generic ADT execution, pattern
+resolution/bindings, value-producing enum matches, and ownership-aware
+destructuring remain open. The syntax tree deliberately does not claim those
+semantic or backend capabilities.
 
 ## #47 — While loops
 

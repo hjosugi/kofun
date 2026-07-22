@@ -60,7 +60,16 @@ token_for() {
         27) printf '%s' 'false' ;;
         28) printf '%s' '<' ;;
         29) printf '%s' '==' ;;
-        *) printf '%s' 'unexpected-token' ;;
+        30) printf '%s' 'unexpected-token' ;;
+        31) printf '%s' 'match' ;;
+        32) printf '%s' '=>' ;;
+        33) printf '%s' '_' ;;
+        34) printf '%s' '|' ;;
+        35) printf '%s' 'Present' ;;
+        36) printf '%s' 'null' ;;
+        37) printf '%s' '..' ;;
+        38) printf '%s' '[' ;;
+        *) printf '%s' ']' ;;
     esac
 }
 
@@ -73,7 +82,7 @@ while test "$case_index" -lt "$CASES"; do
     : >"$source"
     while test "$token_index" -lt "$token_count"; do
         next_random
-        token=$(token_for $((seed % 31)))
+        token=$(token_for $((seed % 40)))
         printf '%s ' "$token" >>"$source"
         token_index=$((token_index + 1))
     done

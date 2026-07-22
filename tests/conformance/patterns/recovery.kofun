@@ -1,0 +1,13 @@
+fn recover(value: Tree) {
+    match value {
+        Broken(value => { print(1) },
+        Later => { print(2) },
+    }
+    match value {
+        Node(left right) => { print(3) },
+        Final => { print(4) },
+    }
+}
+
+fn main() {
+}

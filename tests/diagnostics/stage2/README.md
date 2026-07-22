@@ -42,6 +42,11 @@ Same-scope redeclarations use `E2S47`. The second declaration is the primary
 span, and the diagnostic records the first declaration byte position. An
 ancestor declaration does not conflict with a child-scope declaration.
 
+General Pattern syntax uses `E2S58` for malformed alternatives, delimiters,
+unsupported record/rest/range families, and the explicit depth/node budgets.
+Normal compilation is transactional; focused `--parse-patterns` mode is the
+recovery surface that retains `ErrorPattern` and later independent arms.
+
 Two additive focused frontends keep their own executable inventories until
 they are routed through the canonical compiler: the typed-only ADT gate owns
 E2S36–E2S46, and the module declaration collector owns E2S48–E2S56. Their

@@ -64,10 +64,27 @@ coverage rules to their declared constructor set; `E2S31` rejects malformed or
 colliding bounded declarations and `E2S32` rejects unresolved or mismatched
 enum uses. Enum bindings remain match-only, including through lexically nested
 blocks, so their internal tags cannot escape into Int expressions. Generic or
-payload constructors, pattern bindings, nested patterns, and value-producing
-enum matches remain outside this slice. The bounded validator permits 256
+payload constructors, pattern bindings, and value-producing enum matches
+remain outside this executable slice. Independently, the canonical frontend
+appends a versioned `kofun-pattern-tree/v1` syntax section for wildcard,
+Bool/null/Int literal, unresolved name, constructor, nested, or-pattern, and
+parenthesized forms. Literal records retain `literal_kind`, exact token
+spelling, and token span; all other nodes likewise retain their required byte
+spans and delimiter/separator spans. Because unary minus is a separate token,
+`-42` is not accepted as an Int literal pattern. The tree does no resolution,
+typing, arity, exhaustiveness, binding, or lowering.
+`E2S58` covers malformed/deferred families and 32-depth/256-node budgets; the
+focused `--parse-patterns` mode preserves recovered `ErrorPattern` nodes while
+normal compilation remains transactional. Exhausting the node budget emits
+one fatal `ErrorPattern` for the failing arm and stops the remaining Pattern
+scan, so no later occurrence can reuse its ID or span. After a Pattern, only
+`if` or `=>` may continue the arm; other tokens produce `E2S58` without leaking
+to name resolution. The first reported Pattern diagnostic is selected by the
+smallest source start byte, including across nested matches. The bounded validator permits 256
 enum-related identifier occurrences per function and keeps unrelated Int code
 on a pre-indexed fast path.
+Arm-arrow recovery never crosses a top-level comma; it records the malformed
+arm without an arrow and resumes at the following independent arm.
 Assignment is currently block-local: changing an outer binding from inside an
 `if` or `match` branch is rejected with `E2S22` rather than being silently
 miscompiled.
@@ -147,6 +164,12 @@ namespace separation, canonical multi-module inventory order, path and source
 order invariance, transaction failure, fixed resource limits, and exact
 E2S48–E2S56 inventory. It also runs the collector with C11 warnings as errors,
 GCC analyzer when available, AddressSanitizer, and UndefinedBehaviorSanitizer.
+
+`tests/conformance/patterns/run.sh` covers the canonical lossless Pattern tree,
+path-independent deterministic goldens, statement/value arm nesting, hard
+recovery synchronization, normal-compile transactionality, exact `E2S58`,
+and the depth/node boundary plus one-over cases. General Pattern syntax is not
+evidence of executable destructuring.
 
 `bootstrap/stage2/visibility_access.c` is the pure access primitive for the
 next resolver slice. It compares only schema-tagged 32-byte package, module,
