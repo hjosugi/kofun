@@ -260,8 +260,13 @@ examples. The executable
 `tests/conformance/modules/visibility-syntax/run.sh` gate verifies the bounded
 top-level function parser/IR slice, contextual identifier behavior, exact
 diagnostics, artifact absence, deterministic output, and unchanged runtime
-semantics. Neither gate claims resolver enforcement; compilers must continue
-to reject unsupported visibility syntax explicitly.
+semantics. The executable identity-only
+`tests/conformance/modules/visibility-access/run.sh` gate enforces private,
+internal, public, and enclosing boundaries from resolved PackageId, ModuleId,
+FileId, and TypeId values. It also fixes structured denial reasons, safe
+disclosure, remedies, schema failures, and the 64-boundary limit. The engine is
+not yet wired to general declaration/import resolution, and compilers must
+continue to reject unsupported visibility syntax explicitly.
 
 ## Non-goals
 
