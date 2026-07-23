@@ -813,9 +813,10 @@ else
         "SKIP: AArch64 List execution (qemu-aarch64 unavailable)"
 fi
 
-# Text uses `[byte length: i64][UTF-8 bytes]`. Each generated static ELF is
-# compared with an independent C11 codepoint scanner, including multi-byte
-# Japanese, accented Latin, and emoji input.
+# Text uses `[byte length: i64][UTF-8 bytes]` on both native targets. Each
+# generated static ELF is compared with an independent C11 codepoint scanner,
+# including multi-byte Japanese, accented Latin, and emoji input. AArch64
+# images are always built twice and audited; qemu adds exact execution parity.
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
     "$NATIVE/fixtures/text_reference.c" \
     -o "$WORK/core-text-reference"
@@ -827,6 +828,19 @@ run_native_text_differential() {
     "$KOFUN" build "$source" \
         --target x86_64-linux \
         -o "$WORK/$stem.elf" >/dev/null
+    "$KOFUN" build "$source" \
+        --target aarch64-linux \
+        -o "$WORK/$stem-aarch64.elf" >/dev/null
+    "$KOFUN" build "$source" \
+        --target aarch64-linux \
+        -o "$WORK/$stem-aarch64.second.elf" >/dev/null
+    cmp \
+        "$WORK/$stem-aarch64.elf" \
+        "$WORK/$stem-aarch64.second.elf"
+    readelf -h "$WORK/$stem-aarch64.elf" \
+        >"$WORK/$stem-aarch64.header"
+    grep -Eq 'Machine:[[:space:]]+AArch64' \
+        "$WORK/$stem-aarch64.header"
     "$WORK/core-text-reference" "$mode" \
         >"$WORK/$stem.reference"
     "$WORK/$stem.elf" \
@@ -834,6 +848,13 @@ run_native_text_differential() {
         2>"$WORK/$stem.stderr"
     cmp "$WORK/$stem.reference" "$WORK/$stem.stdout"
     test ! -s "$WORK/$stem.stderr"
+    if test -n "$AARCH64_RUNNER"; then
+        "$AARCH64_RUNNER" "$WORK/$stem-aarch64.elf" \
+            >"$WORK/$stem-aarch64.stdout" \
+            2>"$WORK/$stem-aarch64.stderr"
+        cmp "$WORK/$stem.reference" "$WORK/$stem-aarch64.stdout"
+        test ! -s "$WORK/$stem-aarch64.stderr"
+    fi
 }
 
 run_native_text_differential \
@@ -872,6 +893,19 @@ run_native_text_differential \
 "$KOFUN" build "$NATIVE/fixtures/core_text_oob.kofun" \
     --target x86_64-linux \
     -o "$WORK/core-text-oob.elf" >/dev/null
+"$KOFUN" build "$NATIVE/fixtures/core_text_oob.kofun" \
+    --target aarch64-linux \
+    -o "$WORK/core-text-oob-aarch64.elf" >/dev/null
+"$KOFUN" build "$NATIVE/fixtures/core_text_oob.kofun" \
+    --target aarch64-linux \
+    -o "$WORK/core-text-oob-aarch64.second.elf" >/dev/null
+cmp \
+    "$WORK/core-text-oob-aarch64.elf" \
+    "$WORK/core-text-oob-aarch64.second.elf"
+readelf -h "$WORK/core-text-oob-aarch64.elf" \
+    >"$WORK/core-text-oob-aarch64.header"
+grep -Eq 'Machine:[[:space:]]+AArch64' \
+    "$WORK/core-text-oob-aarch64.header"
 {
     printf 'fn main() {\n    print("'
     printf '\300\257'
@@ -893,12 +927,12 @@ text_invalid_utf8_status=$?
     exec "$WORK/core-text-concat.elf"
 ) >"$WORK/core-text-oom.stdout" 2>"$WORK/core-text-oom.stderr"
 text_oom_status=$?
-"$KOFUN" build "$NATIVE/fixtures/core_text_concat.kofun" \
-    --target aarch64-linux \
-    -o "$WORK/core-text-aarch64.elf" \
-    >"$WORK/core-text-aarch64.stdout" \
-    2>"$WORK/core-text-aarch64.stderr"
-text_aarch64_status=$?
+if test -n "$AARCH64_RUNNER"; then
+    "$AARCH64_RUNNER" "$WORK/core-text-oob-aarch64.elf" \
+        >"$WORK/core-text-oob-aarch64.stdout" \
+        2>"$WORK/core-text-oob-aarch64.stderr"
+    text_oob_aarch64_status=$?
+fi
 set -e
 
 test "$text_oob_status" -eq 1
@@ -914,10 +948,18 @@ test "$text_oom_status" -eq 70
 test ! -s "$WORK/core-text-oom.stdout"
 printf 'kofun: out of memory\n' >"$WORK/core-text-oom.expected"
 cmp "$WORK/core-text-oom.expected" "$WORK/core-text-oom.stderr"
-test "$text_aarch64_status" -eq 1
-test ! -e "$WORK/core-text-aarch64.elf"
-grep 'AArch64 native Core does not support Text yet' \
-    "$WORK/core-text-aarch64.stderr" >/dev/null
+if test -n "$AARCH64_RUNNER"; then
+    test "$text_oob_aarch64_status" -eq 1
+    test ! -s "$WORK/core-text-oob-aarch64.stdout"
+    cmp \
+        "$WORK/core-text-oob.expected" \
+        "$WORK/core-text-oob-aarch64.stderr"
+    printf '%s\n' \
+        "PASS: AArch64 Text differential under $AARCH64_RUNNER"
+else
+    printf '%s\n' \
+        "SKIP: AArch64 Text execution (qemu-aarch64 unavailable)"
+fi
 
 if cmp -s \
     "$WORK/core_return_42-aarch64.elf" \
@@ -967,6 +1009,12 @@ test "$unsupported_status" -eq 1
 test ! -e "$unsupported"
 grep 'unsupported Core' "$WORK/unsupported-native-core.stderr" >/dev/null
 
+if test -n "$AARCH64_RUNNER"; then
+    text_summary="PASS: x86-64/AArch64 Text matched C11 UTF-8 semantics"
+else
+    text_summary="PASS: AArch64 Text built/audited; execution explicitly skipped"
+fi
+
 printf '%s\n' \
     "PASS: Kofun emitted deterministic 188-, 231-, and 4099-byte ELF64 images" \
     "PASS: native image exited through Linux x86-64 syscall with status 42" \
@@ -978,6 +1026,6 @@ printf '%s\n' \
     "PASS: general Native Core release stayed byte-identical and 4099 bytes" \
     "PASS: --target aarch64-linux emitted deterministic static EM_AARCH64 ELF" \
     "PASS: x86-64 and AArch64 consume one target-independent parsed Core" \
-    "PASS: x86-64/AArch64 List Core built with shared ABI and diagnostics" \
+    "PASS: x86-64/AArch64 List/Text Cores use shared ABIs and diagnostics" \
     "PASS: x86-64 List execution matched C11 with OOB/OOM contracts" \
-    "PASS: x86-64 Text matched grapheme and failure semantics"
+    "$text_summary"

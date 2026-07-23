@@ -6,9 +6,9 @@ segments, immediate moves, Linux syscalls, and generic DWARF v4 metadata.
 The Python-free CLI exposes the supported arithmetic Core for x86-64 and
 AArch64 Linux. Both targets lower local `Int` and `List[Int]` bindings; List
 literals, length, indexing, and generated `map`/`filter`/`fold` loops with typed
-inline lambdas. The x86-64 profile additionally lowers UTF-8 Text
-concatenation, equality, grapheme-cluster length, `chars`, grapheme indexing,
-and explicit `bytes` / `codepoints` views. A separate bounded Int profile
+inline lambdas. Both also lower UTF-8 Text concatenation, equality,
+grapheme-cluster length, `chars`, grapheme indexing, and explicit `bytes` /
+`codepoints` views. A separate bounded Int profile
 lowers up to six function arguments,
 returns, forward and mutual recursion, comparison-guarded early returns,
 checked arithmetic, and signed Int64 output directly. That function profile is
@@ -44,7 +44,6 @@ The remaining native backend work includes:
 - local bindings and general control flow inside user-defined functions;
 - allocator reuse/reclamation and general raw syscall intrinsic lowering;
 - canonical runtime diagnostic codes shared with the C11 backend;
-- AArch64 UTF-8 Text/`chars` lowering (#630);
 - AArch64 debug information and variable-location DIEs;
 - unifying the currently separate function, List, and Text profiles.
 

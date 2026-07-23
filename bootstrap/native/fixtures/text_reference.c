@@ -83,7 +83,7 @@ int main(int argc, char **argv) {
         return print_codepoint("古墳", -1);
     }
     if (strcmp(argv[1], "chars-index") == 0) {
-        return print_codepoint("古墳", -2);
+        return print_codepoint("aé古🌍", -2);
     }
     if (strcmp(argv[1], "empty-chars-len") == 0) {
         return printf("%zu\n", codepoint_count("") + 42) < 0;

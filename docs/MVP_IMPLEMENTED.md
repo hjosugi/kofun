@@ -22,7 +22,7 @@
 | ELF64/x86-64 native image writer | checkpoint implemented | `bootstrap/native/check.sh` |
 | wasm32 Int64 arithmetic Core + lazy browser host | executable checkpoint | `bootstrap/wasm/check.sh`, `tests/conformance/numeric`, `examples/wasm-browser` |
 | x86-64/AArch64 List[Int] Core | checkpoint implemented; AArch64 executes under qemu | `bootstrap/native/check.sh`, `tests/conformance/list` |
-| x86-64 UTF-8 Text Core | checkpoint implemented; AArch64 tracked by #630 | `bootstrap/native/check.sh`, `tests/conformance/text` |
+| x86-64/AArch64 UTF-8 Text Core | checkpoint implemented; AArch64 executes under qemu | `bootstrap/native/check.sh`, `tests/conformance/text` |
 | general native lowering | open | unified types/control flow and additional target profiles |
 | C ABI `extern` / `repr(C)` profile | bounded host-C implementation | `bootstrap/c_abi/check.sh` |
 | vendored Rust crate through C ABI shim | implemented example | `examples/rust-shim/check.sh` |
