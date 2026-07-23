@@ -1,0 +1,205 @@
+==================
+Precedence and postfix expressions
+==================
+
+fn main() {
+  let answer = values[index].field ?? 1 + 2 * 3 ** 4
+  print(answer)
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (declaration_in_block
+        (let_statement
+          (identifier)
+          (binary_expression
+            (member_expression
+              (index_expression
+                (identifier)
+                (identifier))
+              (identifier))
+            (binary_expression
+              (integer_literal)
+              (binary_expression
+                (integer_literal)
+                (binary_expression
+                  (integer_literal)
+                  (integer_literal)))))))
+      (declaration_in_block
+        (expression_statement
+          (call_expression
+            (identifier)
+            (argument_list
+              (identifier))))))))
+
+==================
+Delimited newlines and leading pipeline
+==================
+
+fn main() {
+  let answer = (
+    1
+    +
+    2
+  )
+  let values = [
+    answer,
+    4,
+  ]
+  let total = values
+  |> map(fn(value: Int) => value * 2)
+  |> sum()
+  print(total)
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (declaration_in_block
+        (let_statement
+          (identifier)
+          (parenthesized_expression
+            (binary_expression
+              (integer_literal)
+              (integer_literal)))))
+      (declaration_in_block
+        (let_statement
+          (identifier)
+          (list_expression
+            (identifier)
+            (integer_literal))))
+      (declaration_in_block
+        (let_statement
+          (identifier)
+          (binary_expression
+            (binary_expression
+              (identifier)
+              (call_expression
+                (identifier)
+                (argument_list
+                  (lambda_expression
+                    (parameter_list
+                      (parameter
+                        (identifier)
+                        (type_reference
+                          (identifier))))
+                    (binary_expression
+                      (identifier)
+                      (integer_literal))))))
+            (call_expression
+              (identifier)
+              (argument_list)))))
+      (declaration_in_block
+        (expression_statement
+          (call_expression
+            (identifier)
+            (argument_list
+              (identifier))))))))
+
+==================
+Conditionals and loops
+==================
+
+fn classify(value: Int) -> Text {
+  return if value < 0 {
+    "negative"
+  } else if value == 0 {
+    "zero"
+  } else {
+    "positive"
+  }
+}
+
+fn main() {
+  let mut value = 0
+  while value < 10 {
+    value = value + 1
+  }
+  for item in 0 .. value {
+    if item == 4 {
+      continue
+    }
+  }
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (type_reference
+          (identifier))))
+    (return_type
+      (type_reference
+        (identifier)))
+    (block
+      (declaration_in_block
+        (return_statement
+          (if_expression
+            (binary_expression
+              (identifier)
+              (integer_literal))
+            (block
+              (declaration_in_block
+                (expression_statement
+                  (string_literal))))
+            (if_expression
+              (binary_expression
+                (identifier)
+                (integer_literal))
+              (block
+                (declaration_in_block
+                  (expression_statement
+                    (string_literal))))
+              (block
+                (declaration_in_block
+                  (expression_statement
+                    (string_literal))))))))))
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (declaration_in_block
+        (let_statement
+          (identifier)
+          (integer_literal)))
+      (declaration_in_block
+        (while_statement
+          (binary_expression
+            (identifier)
+            (integer_literal))
+          (block
+            (declaration_in_block
+              (assignment_statement
+                (identifier)
+                (binary_expression
+                  (identifier)
+                  (integer_literal)))))))
+      (declaration_in_block
+        (for_statement
+          (identifier)
+          (binary_expression
+            (integer_literal)
+            (identifier))
+          (block
+            (declaration_in_block
+              (expression_statement
+                (if_expression
+                  (binary_expression
+                    (identifier)
+                    (integer_literal))
+                  (block
+                    (declaration_in_block
+                      (continue_statement))))))))))))

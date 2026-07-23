@@ -1,0 +1,90 @@
+================================
+Truncated function declaration
+================================
+
+fn unfinished(value: Int
+
+---
+
+(source_file
+  (ERROR
+    (identifier)
+    (parameter
+      (identifier)
+      (type_reference
+        (identifier)))))
+
+=====================
+Truncated expression
+=====================
+
+fn main() {
+  let answer = 1 +
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (declaration_in_block
+        (let_statement
+          (identifier)
+          (integer_literal)))
+      (ERROR))))
+
+=====================
+Truncated delimiters
+=====================
+
+fn main() {
+  print([1, 2
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (declaration_in_block
+        (expression_statement
+          (identifier)))
+      (ERROR
+        (integer_literal)
+        (integer_literal)))))
+
+==========================================
+Significant newline starts a new statement
+==========================================
+
+fn main() {
+  let answer = 1
+  + 2
+  print(answer)
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (declaration_in_block
+        (let_statement
+          (identifier)
+          (integer_literal)))
+      (declaration_in_block
+        (expression_statement
+          (unary_expression
+            (integer_literal))))
+      (declaration_in_block
+        (expression_statement
+          (call_expression
+            (identifier)
+            (argument_list
+              (identifier))))))))

@@ -1,0 +1,158 @@
+==================
+Functions and types
+==================
+
+pub fn map(read values: List[Int], take f: Fn[Int, Int]) -> List[Int] {
+  return values
+}
+
+meta fn identity(value: Int) = value
+
+---
+
+(source_file
+  (function_declaration
+    (visibility_modifier)
+    (identifier)
+    (parameter_list
+      (parameter
+        (ownership_mode)
+        (identifier)
+        (type_reference
+          (identifier)
+          (type_reference
+            (identifier))))
+      (parameter
+        (ownership_mode)
+        (identifier)
+        (type_reference
+          (identifier)
+          (type_reference
+            (identifier))
+          (type_reference
+            (identifier)))))
+    (return_type
+      (type_reference
+        (identifier)
+        (type_reference
+          (identifier))))
+    (block
+      (declaration_in_block
+        (return_statement
+          (identifier)))))
+  (meta_function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (type_reference
+          (identifier))))
+    (identifier)))
+
+==================
+Law declaration
+==================
+
+law monad OptionalMonad {
+  pure = optional_pure
+  bind = optional_bind
+  values = [false, true]
+}
+
+---
+
+(source_file
+  (law_declaration
+    (identifier)
+    (law_entry
+      (identifier)
+      (identifier))
+    (law_entry
+      (identifier)
+      (identifier))
+    (law_entry
+      (identifier)
+      (list_expression
+        (boolean_literal)
+        (boolean_literal)))))
+
+==================
+Imports and foreign declarations
+==================
+
+import framework.http
+from collections import Map, Set
+
+repr(C) struct Pair {
+  left: CLong,
+  right: CLong,
+}
+
+extern "C" fn pair_sum(value: Pair) -> CLong
+
+---
+
+(source_file
+  (import_declaration
+    (module_path
+      (identifier)
+      (identifier)))
+  (import_declaration
+    (module_path
+      (identifier))
+    (identifier)
+    (identifier))
+  (foreign_struct_declaration
+    (identifier)
+    (identifier)
+    (field_declaration
+      (identifier)
+      (type_reference
+        (identifier)))
+    (field_declaration
+      (identifier)
+      (type_reference
+        (identifier))))
+  (extern_function_declaration
+    (string_literal)
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (type_reference
+          (identifier))))
+    (return_type
+      (type_reference
+        (identifier)))))
+
+==============================
+Unicode XID function bindings
+==============================
+
+fn 面積(幅: Int, 높이: Int) -> Int {
+  return 幅 * 높이
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (type_reference
+          (identifier)))
+      (parameter
+        (identifier)
+        (type_reference
+          (identifier))))
+    (return_type
+      (type_reference
+        (identifier)))
+    (block
+      (declaration_in_block
+        (return_statement
+          (binary_expression
+            (identifier)
+            (identifier)))))))

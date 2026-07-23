@@ -2,6 +2,7 @@
 build/
 .tmp-*
 .kofun/
+/editor/tree-sitter-kofun/node_modules/
 
 # Editors
 .vscode/

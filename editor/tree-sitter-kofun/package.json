@@ -1,0 +1,35 @@
+{
+  "name": "tree-sitter-kofun",
+  "version": "0.1.0",
+  "description": "Kofun grammar for Tree-sitter",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hjosugi/kofun.git",
+    "directory": "editor/tree-sitter-kofun"
+  },
+  "license": "MIT OR Apache-2.0",
+  "keywords": [
+    "incremental",
+    "kofun",
+    "parsing",
+    "tree-sitter"
+  ],
+  "files": [
+    "grammar.js",
+    "tree-sitter.json",
+    "queries/*",
+    "src/**"
+  ],
+  "scripts": {
+    "generate": "tree-sitter generate",
+    "test": "tree-sitter generate && tree-sitter test",
+    "test:queries": "tree-sitter generate && node scripts/test-queries.mjs",
+    "test:repository-corpus": "tree-sitter generate && node scripts/test-repository-corpus.mjs"
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "0.26.11"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

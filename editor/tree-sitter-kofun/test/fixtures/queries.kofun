@@ -1,0 +1,11 @@
+import framework.http
+
+fn greeting(read name: Text) -> Text {
+    let prefix = "Hello"
+    return prefix + name
+}
+
+fn main() {
+    let result = greeting("Kofun")
+    print(result)
+}

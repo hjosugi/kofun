@@ -1,0 +1,26 @@
+name: Tree-sitter
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: Grammar, repository corpus, and editor queries
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editor/tree-sitter-kofun
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: editor/tree-sitter-kofun/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run test:repository-corpus
+      - run: npm run test:queries
