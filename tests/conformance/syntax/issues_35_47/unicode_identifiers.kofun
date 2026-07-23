@@ -1,0 +1,5 @@
+fn main() {
+    let 答え = 40
+    let 보정 = 2
+    print(答え + 보정)
+}

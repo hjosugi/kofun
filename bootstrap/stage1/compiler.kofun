@@ -6,7 +6,7 @@
 # the audited bootstrap artifact generated from it.
 
 fn identifier_char(char: Text) -> Bool {
-    return is_digit(char) ||
+    return is_xid_continue(char) ||
     contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_", char)
 }
 
@@ -374,12 +374,30 @@ fn emit_c(source: Text) -> Text {
 }
 
 fn compile_file(input_path: Text, output_path: Text) -> Bool {
-    let source = read_text(input_path) + "\n"
+    let input = read_text(input_path)
+    let unicode_error = validate_unicode_source(input)
+    if len(unicode_error) > 0 {
+        print(unicode_error)
+        return false
+    }
+    let source = input + "\n"
     if !valid_source(source) {
         print("compile error: unsupported Kofun integer Core source")
         return false
     }
-    write_text(output_path, emit_c(source))
+    let mut emitted = replace(
+        emit_c(source),
+        "if (isalpha((unsigned char)*cursor) || *cursor == '_')",
+        "if (isalpha((unsigned char)*cursor) || *cursor == '_' || " +
+        "(unsigned char)*cursor >= 0x80)"
+    )
+    emitted = replace(
+        emitted,
+        "while (isalnum((unsigned char)*cursor) || *cursor == '_') ++cursor;",
+        "while (isalnum((unsigned char)*cursor) || *cursor == '_' || " +
+        "(unsigned char)*cursor >= 0x80) ++cursor;"
+    )
+    write_text(output_path, emitted)
     print(output_path)
     return true
 }

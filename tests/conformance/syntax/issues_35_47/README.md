@@ -11,8 +11,8 @@ sh tests/conformance/syntax/issues_35_47/run.sh
 The runner uses only POSIX shell, the checked-in Stage 1/Stage 2 C seeds, and a
 C11 compiler. It proves:
 
-- Stage 1 executes an ASCII `fn main()` with newline-terminated immutable
-  bindings;
+- Stage 1 executes `fn main()` with newline-terminated immutable bindings,
+  including Japanese and Hangul names;
 - Stage 2 executes `let mut` declarations, rebinding, statement-position
   `if`, Int-valued `if`, and exhaustive statement- and Int-value-position Bool
   `match` with ordered guards;
@@ -26,7 +26,7 @@ C11 compiler. It proves:
 - malformed or duplicate enum declarations use `E2S31`, while unresolved or
   mismatched enum types/constructors use `E2S32`;
 - Stage 2 structural IR preserves names, arities, spans, and balanced bodies;
-- the current frontends reject Unicode names; and
+- both frontends enforce the Unicode 17 XID/NFC/security profile; and
 - Stage 2 C lowering explicitly rejects lambda, owned-binding, `else if`,
   `for`, and `while` fixtures rather than treating them as supported.
 

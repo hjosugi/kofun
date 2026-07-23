@@ -105,25 +105,23 @@ List. x86-64 and AArch64 consume the same parsed expression tree and preserve
 the same frame-slot, value-layout, bounds, allocation, and output contracts.
 
 The x86-64 target also implements immutable UTF-8 `Text` values with the
-historical native ABI `[byte length: i64][UTF-8 bytes]`. Literals live in the
-read-only image, while concatenation and one-codepoint indexing allocate the
-same layout through the mmap runtime. `+`, `==`, `!=`, direct Text printing,
-codepoint `len`, and positive or negative codepoint indexing execute in the
-generated ELF. Consequently, `len("aé古🌍")` is 4 rather than its UTF-8 byte
-length.
+historical native ABI `[byte length: i64][UTF-8 bytes]`. The closed native Core
+contains constant Text expressions, so its frontend applies the pinned Unicode
+17 database and emits the resulting literal or scalar directly. `+`, `==`,
+`!=`, direct Text printing, grapheme-cluster `len`, `chars`, and positive or
+negative grapheme indexing execute in the generated ELF. Concatenation is
+re-segmented across the join.
 
-`chars` scans its runtime Text value into the existing list ABI with Text
-pointers as its elements. Each one-codepoint Text and the List[Text] storage
-are allocated by the generated ELF. The closed Core frontend also retains
-codepoint metadata for static typing and result validation. A Text index
-outside the codepoint range
+`chars` exposes extended grapheme clusters. `bytes` exposes UTF-8 byte values,
+and `codepoints` exposes Unicode scalars, both through the existing list ABI.
+A Text index outside the grapheme range
 writes `kofun: text index out of range` to stderr and exits 1. The gate compares
-Japanese, accented Latin, and emoji cases with an independent C11 UTF-8
-reference and executes the Text OOM and index-failure paths.
+Arabic, Hebrew, Hindi, Thai, Japanese, Hangul/Jamo, accented Latin, and complex
+emoji cases and executes the Text OOM and index-failure paths.
 
 The obsolete `tests/kofun/*.kf` acceptance path no longer exists. The active
 Python-free `tests/conformance/list` and `tests/conformance/text` corpora are
-registered with the native x86-64 adapter and execute all 22 cases. The List
+registered with the native x86-64 adapter and execute all 34 cases. The List
 corpus is also registered with the AArch64 adapter and executes all 13 cases
 under qemu. General Text bindings, calls, and the Stage 1 compiler port are
 tracked separately by issue #33. AArch64 Text remains an explicit target
@@ -337,10 +335,10 @@ Implemented here:
   both Linux targets;
 - raw target-specific Linux `mmap` list allocation with identical OOM and
   bounds diagnostics;
-- x86-64 UTF-8 Text literals, concatenation, equality, codepoint `len`, and
-  positive/negative codepoint indexing;
-- runtime `chars` lowering to allocated List[Text] and Text/Bool printing;
-- registered Python-free Text conformance coverage with 9/9 cases executed by
+- x86-64 UTF-8 Text literals, concatenation, equality, grapheme `len`, and
+  positive/negative grapheme indexing;
+- `chars`, explicit byte/codepoint views, and Text/Bool printing;
+- registered Python-free Text conformance coverage with 21/21 cases executed by
   the native x86-64 adapter;
 - registered Python-free List conformance coverage with 13/13 cases executed by
   the native x86-64 and, under qemu, AArch64 adapters;

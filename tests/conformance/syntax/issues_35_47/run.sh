@@ -91,12 +91,12 @@ test "$stage1_output" = 42 ||
     fail "Stage 1 foundations fixture did not print 42"
 printf '%s\n' "PASS executable Stage 1 foundations"
 
-if "$ROOT/bin/kofun" check "$CASES/unsupported_unicode_identifier.kofun" \
-    >"$WORK/unicode-stage1.stdout" 2>"$WORK/unicode-stage1.stderr"
-then
-    fail "Stage 1 unexpectedly accepted a Unicode identifier"
-fi
-printf '%s\n' "PASS unsupported: Unicode identifiers in Stage 1"
+unicode_stage1_output=$(
+    "$ROOT/bin/kofun" run "$CASES/unicode_identifiers.kofun"
+)
+test "$unicode_stage1_output" = 42 ||
+    fail "Stage 1 Japanese/Hangul identifiers did not print 42"
+printf '%s\n' "PASS executable: Unicode identifiers in Stage 1"
 
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
     "$ROOT/bootstrap/stage2/compiler.c" -o "$WORK/kofun-stage2"
@@ -441,24 +441,19 @@ grep '^function-count|2$' "$WORK/structural.ir" >/dev/null ||
     fail "Stage 2 IR function count differs"
 printf '%s\n' "PASS structural-only Stage 2 surface projection"
 
-set +e
 "$WORK/kofun-stage2" \
-    "$CASES/unsupported_unicode_identifier.kofun" \
+    "$CASES/unicode_identifiers.kofun" \
     "$WORK/unicode.c" \
     "$WORK/unicode.ir" \
-    "$WORK/unicode.tokens" \
-    >"$WORK/unicode-stage2.stdout" 2>"$WORK/unicode-stage2.stderr"
-unicode_status=$?
-set -e
-test "$unicode_status" -eq 1 ||
-    fail "Stage 2 unexpectedly accepted a Unicode identifier"
-test ! -e "$WORK/unicode.c" ||
-    fail "Stage 2 emitted C for a Unicode identifier"
-test ! -s "$WORK/unicode-stage2.stderr" ||
-    fail "Stage 2 Unicode rejection wrote unexpected stderr"
-grep '^error\[E2S11\]' "$WORK/unicode-stage2.stdout" >/dev/null ||
-    fail "Stage 2 Unicode rejection was not an explicit Core diagnostic"
-printf '%s\n' "PASS unsupported: Unicode identifiers in Stage 2"
+    "$WORK/unicode.tokens" >/dev/null
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$WORK/unicode.c" -o "$WORK/unicode"
+unicode_stage2_output=$("$WORK/unicode")
+test "$unicode_stage2_output" = 42 ||
+    fail "Stage 2 Japanese/Hangul identifiers did not print 42"
+grep '^function|main|0|' "$WORK/unicode.ir" >/dev/null ||
+    fail "Stage 2 Unicode IR did not record fn main"
+printf '%s\n' "PASS executable: Unicode identifiers in Stage 2"
 
 expect_stage2_unsupported "$CASES/unsupported_lambda.kofun"
 expect_stage2_unsupported "$CASES/unsupported_owned_binding.kofun"
@@ -488,4 +483,4 @@ printf '%s\n' "PASS diagnostic: invalid if condition"
 
 printf '%s\n' \
     "PASS: syntax issues #35-#47 bootstrap capability checkpoint" \
-    "coverage: 13 subjects; 5 partial; 2 Core-implemented; 6 unsupported via 6 fixtures"
+    "coverage: 13 subjects; 5 partial; 3 Core-implemented; 5 unsupported via 5 fixtures"

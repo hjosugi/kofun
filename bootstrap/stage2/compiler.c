@@ -15,6 +15,8 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#include "../../unicode/kofun_unicode.c"
+
 typedef struct {
     char *data;
     size_t length;
@@ -152,14 +154,46 @@ static bool write_file_transactional(const char *path, const char *value) {
     return true;
 }
 
-static bool identifier_start(char symbol) {
-    return symbol == '_' ||
-           (symbol >= 'a' && symbol <= 'z') ||
-           (symbol >= 'A' && symbol <= 'Z');
+static bool identifier_start_at(
+    const char *source,
+    size_t length,
+    int64_t offset,
+    size_t *width
+) {
+    if (offset < 0 || (uint64_t)offset >= length) return false;
+    uint32_t codepoint = 0;
+    size_t scalar_width = 0;
+    if (!kofun_unicode_decode(
+            (const uint8_t *)source,
+            length,
+            (size_t)offset,
+            &codepoint,
+            &scalar_width)) {
+        return false;
+    }
+    if (width != NULL) *width = scalar_width;
+    return codepoint == '_' || kofun_unicode_is_xid_start(codepoint);
 }
 
-static bool identifier_continue(char symbol) {
-    return identifier_start(symbol) || (symbol >= '0' && symbol <= '9');
+static bool identifier_continue_at(
+    const char *source,
+    size_t length,
+    int64_t offset,
+    size_t *width
+) {
+    if (offset < 0 || (uint64_t)offset >= length) return false;
+    uint32_t codepoint = 0;
+    size_t scalar_width = 0;
+    if (!kofun_unicode_decode(
+            (const uint8_t *)source,
+            length,
+            (size_t)offset,
+            &codepoint,
+            &scalar_width)) {
+        return false;
+    }
+    if (width != NULL) *width = scalar_width;
+    return codepoint == '_' || kofun_unicode_is_xid_continue(codepoint);
 }
 
 static int64_t skip_trivia(const char *source, int64_t start) {
@@ -216,11 +250,27 @@ static int64_t token_end(const char *source, int64_t start) {
     if (start >= length) return start;
     char first = source[start];
     if (first == '"') return string_end(source, start);
-    int64_t cursor = start + 1;
-    if (identifier_start(first)) {
-        while (cursor < length && identifier_continue(source[cursor])) ++cursor;
+    size_t first_width = 0;
+    if (identifier_start_at(
+            source,
+            (size_t)length,
+            start,
+            &first_width)) {
+        int64_t cursor = start + (int64_t)first_width;
+        while (cursor < length) {
+            size_t width = 0;
+            if (!identifier_continue_at(
+                    source,
+                    (size_t)length,
+                    cursor,
+                    &width)) {
+                break;
+            }
+            cursor += (int64_t)width;
+        }
         return cursor;
     }
+    int64_t cursor = start + 1;
     if (first >= '0' && first <= '9') {
         while (
             cursor < length &&
@@ -274,7 +324,11 @@ static const char *token_kind(const char *source, int64_t start) {
     if (end <= start) return "invalid";
     char first = source[start];
     if (first == '"') return "string";
-    if (identifier_start(first)) {
+    if (identifier_start_at(
+            source,
+            strlen(source),
+            start,
+            NULL)) {
         return keyword_token(source, start) ? "keyword" : "identifier";
     }
     if (first >= '0' && first <= '9') return "integer";
@@ -292,6 +346,21 @@ static int64_t line_at(const char *source, int64_t target) {
 static char *lex_source(const char *source) {
     Buffer tape;
     buffer_init(&tape);
+    KofunUnicodeError unicode_error;
+    if (!kofun_unicode_validate_source(
+            (const uint8_t *)source,
+            strlen(source),
+            &unicode_error)) {
+        char message[1024];
+        kofun_unicode_format_error(
+            &unicode_error,
+            getenv("KOFUN_DIAGNOSTIC_LOCALE"),
+            message,
+            sizeof(message)
+        );
+        buffer_append(&tape, message);
+        return tape.data;
+    }
     buffer_append(&tape, "kofun-token-tape/v1\n");
     int64_t length = (int64_t)strlen(source);
     int64_t cursor = skip_trivia(source, 0);
@@ -2608,6 +2677,39 @@ static char *source_slice(const char *source, int64_t start, int64_t end) {
     return value;
 }
 
+static char *c_identifier_name(const char *identifier) {
+    bool ascii = true;
+    for (size_t index = 0; identifier[index] != '\0'; ++index) {
+        if ((unsigned char)identifier[index] >= UINT8_C(0x80)) {
+            ascii = false;
+            break;
+        }
+    }
+    if (ascii) return owned_text(identifier);
+
+    Buffer output;
+    buffer_init(&output);
+    buffer_append(&output, "k");
+    size_t length = strlen(identifier);
+    size_t cursor = 0;
+    while (cursor < length) {
+        uint32_t codepoint = 0;
+        size_t width = 0;
+        if (!kofun_unicode_decode(
+                (const uint8_t *)identifier,
+                length,
+                cursor,
+                &codepoint,
+                &width)) {
+            free(output.data);
+            return owned_text("k_invalid");
+        }
+        buffer_format(&output, "_u%06" PRIX32, codepoint);
+        cursor += width;
+    }
+    return output.data;
+}
+
 static char *format_two(const char *name, const char *left, const char *right) {
     Buffer output;
     buffer_init(&output);
@@ -2650,7 +2752,9 @@ static char *emit_primary(
             free(name);
             return output.data;
         }
-        buffer_format(&output, "kofun_fn_%s(", name);
+        char *c_name = c_identifier_name(name);
+        buffer_format(&output, "kofun_fn_%s(", c_name);
+        free(c_name);
         int64_t argument = skip_trivia(source, token_end(source, open));
         int64_t arguments = 0;
         while (argument < end && !token_equal(source, argument, ")")) {
@@ -6522,6 +6626,7 @@ static char *lower_c(const char *source, const char *hir) {
     int64_t main_count = 0;
     while (cursor < length) {
         char *name = function_name(source, cursor);
+        char *c_name = c_identifier_name(name);
         if (function_arity(source, name) == -2) {
             Buffer error;
             buffer_init(&error);
@@ -6533,6 +6638,7 @@ static char *lower_c(const char *source, const char *hir) {
                 cursor
             );
             free(name);
+            free(c_name);
             free(prototypes.data);
             free(bodies.data);
             return error.data;
@@ -6542,6 +6648,7 @@ static char *lower_c(const char *source, const char *hir) {
         char *parameters = core_parameters(source, hir, cursor);
         if (strncmp(parameters, "error[", 6) == 0) {
             free(name);
+            free(c_name);
             free(prototypes.data);
             free(bodies.data);
             return parameters;
@@ -6553,6 +6660,7 @@ static char *lower_c(const char *source, const char *hir) {
             if (arity != 0) {
                 free(parameters);
                 free(name);
+                free(c_name);
                 free(prototypes.data);
                 free(bodies.data);
                 return lower_error(
@@ -6565,7 +6673,7 @@ static char *lower_c(const char *source, const char *hir) {
             buffer_format(
                 &prototypes,
                 "static int64_t kofun_fn_%s(%s);\n",
-                name,
+                c_name,
                 c_parameters
             );
         }
@@ -6581,6 +6689,7 @@ static char *lower_c(const char *source, const char *hir) {
             );
             free(parameters);
             free(name);
+            free(c_name);
             free(prototypes.data);
             free(bodies.data);
             return error.data;
@@ -6589,6 +6698,7 @@ static char *lower_c(const char *source, const char *hir) {
         if (strncmp(body, "error[", 6) == 0) {
             free(parameters);
             free(name);
+            free(c_name);
             free(prototypes.data);
             free(bodies.data);
             return body;
@@ -6611,7 +6721,7 @@ static char *lower_c(const char *source, const char *hir) {
             buffer_format(
                 &bodies,
                 "static int64_t kofun_fn_%s(%s) {\n",
-                name,
+                c_name,
                 c_parameters
             );
             buffer_append(&bodies, body);
@@ -6620,6 +6730,7 @@ static char *lower_c(const char *source, const char *hir) {
         free(body);
         free(parameters);
         free(name);
+        free(c_name);
         cursor = next_function_start(source, function_end(source, cursor));
     }
     if (main_count != 1) {

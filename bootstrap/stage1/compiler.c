@@ -10,6 +10,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "../../unicode/kofun_unicode.c"
+
 typedef struct {
     int64_t len;
     const char **items;
@@ -251,7 +253,13 @@ static bool kofun_fn_compile_file(const char * input_path, const char * output_p
 static void kofun_fn_main(void);
 
 static bool kofun_fn_identifier_char(const char * fr_char) {
-    return ((kofun_rt_is_digit(fr_char)) || (kofun_rt_text_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_", fr_char)));
+    unsigned char first = (unsigned char)fr_char[0];
+    return first >= UINT8_C(0x80) ||
+        kofun_rt_is_digit(fr_char) ||
+        kofun_rt_text_contains(
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_",
+            fr_char
+        );
 }
 
 static bool kofun_fn_valid_name(const char * name) {
@@ -408,12 +416,41 @@ static const char * kofun_fn_emit_c(const char * source) {
 }
 
 static bool kofun_fn_compile_file(const char * input_path, const char * output_path) {
-    const char * source = kofun_rt_text_concat(kofun_rt_read_text(input_path), "\n");
+    const char * input = kofun_rt_read_text(input_path);
+    KofunUnicodeError unicode_error;
+    if (!kofun_unicode_validate_source(
+            (const uint8_t *)input,
+            strlen(input),
+            &unicode_error)) {
+        char message[1024];
+        kofun_unicode_format_error(
+            &unicode_error,
+            getenv("KOFUN_DIAGNOSTIC_LOCALE"),
+            message,
+            sizeof(message)
+        );
+        fprintf(stderr, "%s\n", message);
+        return false;
+    }
+    const char * source = kofun_rt_text_concat(input, "\n");
     if ((!kofun_fn_valid_source(source))) {
         printf("%s\n", "compile error: unsupported Kofun integer Core source");
         return false;
     }
-    (void)(kofun_rt_write_text(output_path, kofun_fn_emit_c(source)));
+    const char * emitted = kofun_fn_emit_c(source);
+    emitted = kofun_rt_replace(
+        emitted,
+        "if (isalpha((unsigned char)*cursor) || *cursor == '_')",
+        "if (isalpha((unsigned char)*cursor) || *cursor == '_' || "
+        "(unsigned char)*cursor >= 0x80)"
+    );
+    emitted = kofun_rt_replace(
+        emitted,
+        "while (isalnum((unsigned char)*cursor) || *cursor == '_') ++cursor;",
+        "while (isalnum((unsigned char)*cursor) || *cursor == '_' || "
+        "(unsigned char)*cursor >= 0x80) ++cursor;"
+    );
+    (void)(kofun_rt_write_text(output_path, emitted));
     printf("%s\n", output_path);
     return true;
 }

@@ -250,6 +250,7 @@ Run the compiler-quality gates independently:
 ```sh
 make diagnostics
 make fuzz
+make unicode
 ```
 
 The Stage 2 must-fail corpus pins each active diagnostic code, exact message,
@@ -286,16 +287,18 @@ kofun emit-c INPUT.kofun OUTPUT.c
 
 `tests/conformance/numeric/` defines the Stage 1 contract for floor division,
 division by zero, Int64 boundaries, and overflow. `tests/conformance/text/`
-defines the direct x86-64 contract for UTF-8 concatenation, equality,
-codepoint length, `chars`, and indexing. Each active corpus executes 9/9 cases
-through its registered backend; the runner compares stdout, stderr, and exit
-status and reports backend coverage.
+defines the direct x86-64 contract for UTF-8 concatenation, equality, extended
+grapheme-cluster length, `chars`, indexing, and explicit byte/codepoint views.
+It covers Arabic, Hebrew, Hindi, Thai, Japanese, Hangul/Jamo, and complex emoji.
+The runner compares stdout, stderr, and exit status and reports backend
+coverage.
 
-`tests/diagnostics/stage2/` is the first-class must-fail corpus. It currently
-covers all 26 diagnostic codes emitted by the active Stage 2 checkpoint:
-23 cases assert precise source locations and 3 explicitly track missing spans
-as debt. Runtime, C ABI, native-backend, and host-I/O diagnostics remain
-separate coverage work.
+`tests/diagnostics/stage2/` is the first-class parser/lowerer/ownership
+must-fail corpus. It covers all 33 codes in that Stage 2 inventory:
+30 cases assert precise source locations and 3 explicitly track missing spans
+as debt. The localized `EUNICODE` source-validation diagnostics have their own
+coverage in `tests/unicode/`. Runtime, C ABI, native-backend, and host-I/O
+diagnostics remain separate coverage work.
 
 ## Source extension
 

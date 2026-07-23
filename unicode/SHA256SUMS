@@ -1,0 +1,5 @@
+af63aed46962d46368520ac39fb59057f025810e9cd2fe5e0bdb09f0563f5bac  kofun_unicode_tables.inc
+edf80118fd34796bcabef4567cc684adebc7058f2afe8cfdc11b7a78e383ed84  ../vendor/utf8proc/utf8proc.c
+a4e498b7392c383cf3b22e662da21e0b48f1264806235d87b5d8bd166232f658  ../vendor/utf8proc/utf8proc.h
+950e549dbfc853c4304425f3af1875e72fa9fc9697c273c763400c2da4e380a7  ../vendor/utf8proc/utf8proc_data.c
+3b510150d34f248a221bb88e1d811238d6c6c18b51231822c42974c39bb07256  ../vendor/utf8proc/LICENSE.md

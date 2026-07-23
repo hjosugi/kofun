@@ -1,4 +1,0 @@
-fn main() {
-    let 答え = 42
-    print(答え)
-}

@@ -12,12 +12,11 @@
 # projection differ.
 
 fn identifier_start(symbol: Text) -> Bool {
-    return symbol == "_" ||
-    contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", symbol)
+    return symbol == "_" || is_xid_start(symbol)
 }
 
 fn identifier_continue(symbol: Text) -> Bool {
-    return identifier_start(symbol) || is_digit(symbol)
+    return symbol == "_" || is_xid_continue(symbol)
 }
 
 fn skip_trivia(source: Text, start: Int) -> Int {
@@ -152,6 +151,10 @@ fn line_at(source: Text, target: Int) -> Int {
 }
 
 fn lex(source: Text) -> Text {
+    let unicode_error = validate_unicode_source(source)
+    if len(unicode_error) > 0 {
+        return unicode_error
+    }
     let mut tape = "kofun-token-tape/v1\n"
     let mut cursor = skip_trivia(source, 0)
     while cursor < len(source) {
