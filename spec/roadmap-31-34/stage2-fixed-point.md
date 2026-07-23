@@ -20,23 +20,31 @@ The fixed-point gate uses these names conceptually:
 
 ```text
 S   canonical compiler source
-A1  executable compiler produced from the audited trusted seed and S
-A2  executable compiler produced by running A1 on S
-A3  executable compiler produced by running A2 on S
+C1  deterministic C11 compiler source produced from the audited seed and S
+A1  executable compiler produced by the declared normalized host cc from C1
+C2  deterministic C11 compiler source produced by running A1 on S
+A2  executable compiler produced by the same host cc from C2
+C3  deterministic C11 compiler source produced by running A2 on S
+A3  executable compiler produced by the same host cc from C3
 ```
 
-All build inputs, target triples, layout rules, and reproducibility settings
-must be identical. Success requires:
+Generated C11 is explicitly allowed for this first fixed point. All build
+inputs, host-compiler identities and flags, target triples, layout rules, and
+reproducibility settings must be declared and identical. Success requires:
 
 ```text
+sha256(C1) == sha256(C2) == sha256(C3)
+cmp C1 C2
+cmp C2 C3
 sha256(A1) == sha256(A2) == sha256(A3)
 cmp A1 A2
 cmp A2 A3
 ```
 
-Equality of generated C text, token tapes, structural IR, stdout, or behavior
-alone is useful differential evidence but cannot replace executable byte
-equality for this issue.
+Direct-native compiler reproduction is not a prerequisite for this B4/B5
+gate. It remains a separate strengthening track. Equality of token tapes,
+structural IR, stdout, or behavior alone is useful differential evidence but
+cannot replace both C-source and executable byte equality for this issue.
 
 The manifest entry that closes the gate must record at least:
 
@@ -44,7 +52,9 @@ The manifest entry that closes the gate must record at least:
 - trusted seed path and SHA-256;
 - target triple and artifact format;
 - exact reproduction command;
+- SHA-256 for `C1`, `C2`, and `C3`;
 - SHA-256 for `A1`, `A2`, and `A3`;
+- host C compiler identity, binary digest, flags, and normalized environment;
 - compiler version and source revision; and
 - successful semantic conformance corpus digest.
 
@@ -57,11 +67,10 @@ undeclared environment-dependent difference.
    typed IR.
 2. Lower `Text`, `List[Text]`, calls, returns, branches, loops, mutation, and
    bootstrap file operations.
-3. Compile the compiler source and run the resulting artifact on the existing
-   arithmetic and error corpus.
-4. Produce `A2` and `A3` through the artifact chain above.
-5. Compare exact bytes and update the manifest only in the same verified
-   change.
+3. Produce `C1/A1` and run `A1` on the existing arithmetic and error corpus.
+4. Produce `C2/A2` and `C3/A3` through the artifact chain above.
+5. Compare exact C-source and executable bytes and update the manifest only in
+   the same verified change.
 
 Each language expansion must add a focused positive fixture, at least one
 compile-fail fixture, and a differential execution case before it is used by
@@ -70,11 +79,14 @@ the compiler source.
 ## Executable close checklist
 
 - [x] Canonical Stage 1 and Stage 2 source and audited seed hashes are checked.
+- [x] The smallest canonical compiler `S` has a hash-pinned, executable feature
+      inventory in `bootstrap/selfhost/`.
 - [x] Stage 2 source/token/IR projection is deterministic.
 - [x] A deliberately small integer Core lowers and executes deterministically.
 - [ ] Stage 1 accepts every construct in its canonical source.
-- [ ] `A1` successfully compiles canonical compiler source.
-- [ ] `A2` successfully compiles canonical compiler source.
+- [ ] The trusted seed produces `C1/A1`, and `A1` successfully compiles `S`.
+- [ ] `A1` and `A2` produce `C2/A2` and `C3/A3`.
+- [ ] `C1`, `C2`, and `C3` are byte-identical.
 - [ ] `A1`, `A2`, and `A3` are byte-identical executables.
 - [ ] The bootstrap corpus has identical values, statuses, and diagnostics.
 - [ ] `bootstrap/manifest.json` closes both self-recompile gates and records

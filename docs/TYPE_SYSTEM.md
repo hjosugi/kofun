@@ -298,7 +298,7 @@ Constraints:
 - good diagnostics
 - cacheable
 
-## Stage 0 implementation
+## Current implementation
 
 Implemented:
 
@@ -311,11 +311,11 @@ Implemented:
 - branch/list joins
 - part of the built-in polymorphic behavior
 - `read` / `edit` / `take` parameter metadata
-- typed `law monad` declarations and compiler-integrated law checking
-- evidence distinction between `bounded-exhaustive` and `proven-finite`
 
 Not implemented:
 
+- typed `law monad` declarations and compiler-integrated law checking
+- active assurance checking for `bounded-exhaustive` or `proven-finite`
 - user-defined generics
 - ADTs, match
 - traits
@@ -327,3 +327,8 @@ Not implemented:
 - principal-type guarantee
 - higher-kinded types and lawful traits
 - generic proof terms and trusted proof kernel
+
+Historical Monad examples and JSON artifacts document an earlier bounded
+prototype, but the active CLI rejects the law syntax. Issue
+[#551](https://github.com/hjosugi/kofun/issues/551) tracks a concrete-first
+replacement without making a higher-kinded type system a prerequisite.

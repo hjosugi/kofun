@@ -10,10 +10,10 @@ checkpoint is executable.
 | #31 | Generic functions and types with trait bounds type-check | Syntax and type-system design documents only | open |
 | #31 | Strategy selected with measured justification | A baseline and measurement protocol are specified in `generics-and-traits.md`; no compiler measurements exist | open |
 | #31 | Laws can be stated over generic types | Proposed syntax exists, but no generic proof kernel exists | open |
-| #32 | Stage 1 compiles its own source | Stage 1 accepts only the arithmetic Core | open |
-| #32 | Stage 2 is byte-identical to Stage 1 | Source/token/IR projection is deterministic, but no self-produced compiler exists | open |
+| #32 | Stage 1 compiles its own source | The smallest canonical `S` is hash-pinned with 43 explicit coverage rows; typed/lowered coverage remains open | open |
+| #32 | Three generated C sources and executables are byte-identical | Source/token/IR projection is deterministic, but no self-produced compiler exists | open |
 | #32 | Manifest closes the gate and records hashes | The manifest truthfully records both self-recompile gates as open | open |
-| #33 | Stage 1 builds through the native backend | Three Kofun-authored ELF fixtures execute; Stage 1 still builds through C11 | open |
+| #33 | Stage 1 builds through the native backend | Bounded Kofun-authored x86-64 and AArch64 ELF fixtures execute or are audited; Stage 1 still builds through C11 | open |
 | #33 | Interpreted and native Stage 1 outputs match | The Kofun checker exists, but no native Stage 1 artifact exists to supply its second input | open |
 | #33 | Bootstrap gate verifies the native path | Native fixtures and Stage 1 are separate gates | open |
 | #34 | Inline diagnostics | Versioned diagnostics update and clear through the packaged stdio server | implemented |

@@ -1,5 +1,18 @@
 # Law system
 
+## Current executable status
+
+The active compiler does **not** implement the law syntax described below.
+`./bin/kofun check` currently rejects each checked-in `law monad` example with
+the parser diagnostic `E2S02`. The examples, finite-model outputs, JSON schema,
+and evidence files are retained as historical prototype and target-design
+material; they are not an active compiler or release gate.
+
+Issue [#551](https://github.com/hjosugi/kofun/issues/551) tracks restoring an
+executable, concrete-first law library without making higher-kinded types a
+prerequisite. Until that issue supplies a CLI gate, command lines and outputs
+below describe the historical/target contract only.
+
 ## Purpose
 
 In Kofun, abstractions like `Monad`, `Functor`, and `Monoid` are not considered
@@ -15,9 +28,9 @@ to provide the following.
   level is met
 - eventually check generic proof terms with a small proof kernel
 
-Stage 0 implements the 3 monad laws.
+The historical Stage 0 prototype modeled the 3 monad laws.
 
-## Implemented syntax
+## Historical prototype syntax
 
 ```kofun
 fn list_pure(value: Int) -> List[Int] {
@@ -50,7 +63,7 @@ law monad ListMonad {
 }
 ```
 
-To check:
+Historical command shape:
 
 ```bash
 ./bin/kofun laws examples/lawful_list_monad.kofun
@@ -62,10 +75,11 @@ Example output:
 law ListMonad: passed monad; assurance=bounded-exhaustive; cases=105/105; model=...
 ```
 
-`kofun check`, `kofun run`, and `kofun build` also run law checking. A program
-with a law violation does not pass the normal compile path.
+The target integration makes `kofun check`, `kofun run`, and `kofun build`
+invoke law checking so a violation cannot pass the normal compile path. The
+active commands do not yet provide that integration.
 
-## The monad laws the compiler checks
+## The monad laws the checker must check
 
 Read `pure` as `return` and `bind(m, f)` as `m >>= f`.
 
@@ -89,7 +103,7 @@ bind(bind(m, f), g)
 bind(m, fn(x) => bind(f(x), g))
 ```
 
-Stage 0 walks all of the following combinations.
+The historical bounded evaluator walked all of the following combinations.
 
 ```text
 left identity:  values × functions
@@ -105,17 +119,19 @@ The total case count is:
 + |monads| × |functions|²
 ```
 
-If it exceeds `limit`, the compiler stops with `L004`. The default is
-100,000 cases, to avoid compiler resource exhaustion.
+The restored checker must stop with `L004` if the count exceeds `limit`. The
+proposed default is 100,000 cases, to avoid compiler resource exhaustion.
 
 ## Assurance levels
 
 ### `bounded-exhaustive`
 
-All combinations of the declared finite sample have been checked.
+In the historical artifact, all combinations of the declared finite sample
+were checked.
 
 This is stronger than random property testing, but it is not a universal proof
-covering anything outside the sample. The compiler does not report `proven`.
+covering anything outside the sample. A restored checker must not report
+`proven` for this evidence.
 
 Example:
 
@@ -125,16 +141,15 @@ monads = [[], [0], [1], [-1, 2]]
 functions = [keep, increment, duplicate, discard]
 ```
 
-Every case inside the model above is checked, but that does not amount to a
+The historical model covers every listed case, but that does not amount to a
 proof about all `List[Int]` of arbitrary length.
 
 ### `proven-finite`
 
-For finite types where the compiler can confirm the completeness of the carrier
-and the full function space, the result is treated as a universal proof over
-that finite carrier.
+The target checker may treat a result as universal over a finite carrier only
+when it confirms both carrier completeness and the full function space.
 
-Stage 0 recognizes the following.
+The historical prototype recognized the following.
 
 - value carrier: complete `Bool` = `[false, true]`
 - monadic carrier: complete `Bool` or complete `Optional[Bool]`
@@ -164,7 +179,7 @@ law monad OptionalBoolMonad {
 ```
 
 There are `3² = 9` total functions of type `Bool -> Optional[Bool]`. The
-compiler generates those 9 functions and checks the following 264 cases.
+historical evaluator generated those 9 functions and recorded 264 cases.
 
 ```text
 2 × 9 + 3 + 3 × 9² = 264
@@ -178,17 +193,17 @@ compiler generates those 9 functions and checks the following 264 cases.
 law OptionalBoolMonad: passed monad; assurance=proven-finite; cases=264/264; model=...
 ```
 
-`complete = true` is not trusted as a user assertion. If the carrier is
-missing entries, contains duplicates, or `functions` does not come from
-`finite_functions`, the compiler rejects with `L008`.
+In the target contract, `complete = true` is not trusted as a user assertion.
+Missing entries, duplicates, or a non-enumerated function set must be rejected
+with `L008`.
 
-This proof is universal for the finite instance `Optional[Bool]`. It is not a
-proof about generic `Optional[A]` as a whole.
+The retained evidence claims universality only for the finite instance
+`Optional[Bool]`, not for generic `Optional[A]`.
 
-## Evidence artifacts and the compiler gate
+## Historical evidence artifacts and target compiler gate
 
-The law checker's results can be emitted not only as human-readable text but
-also as versioned JSON that CI, a package registry, or the optimizer can read.
+The retained prototype artifacts use versioned JSON intended for CI, a package
+registry, or the optimizer. The active CLI does not currently emit them.
 
 ```bash
 ./bin/kofun laws examples/proven_optional_bool_monad.kofun \
@@ -220,22 +235,22 @@ model digest
 counterexamples
 ```
 
-Compile gate:
+Target compile gate:
 
 ```bash
 ./bin/kofun check module.kofun --require-law-assurance proven-finite
 ./bin/kofun build module.kofun --require-law-assurance proven-finite
 ```
 
-If a declared law's assurance is weaker than the required level, the compiler
-rejects with `L200`. This avoids the situation where "law tests exist, but the
-release build never confirmed them."
+When reintroduced, an assurance weaker than the required level must be rejected
+with `L200`. This avoids the situation where law tests exist but the release
+build never confirmed them.
 
 Kofun's aim in going beyond Haskell-style abstractions is to connect law
 evidence to compiler artifacts, build policy, and optimizer preconditions,
-rather than just the method shape of a type class. That said, the only things
-universally proven in Stage 0 are compiler-known finite carriers, and the
-generic proof kernel is not implemented.
+rather than just the method shape of a type class. The retained Stage 0
+artifact only claimed finite-carrier evidence; it did not implement a generic
+proof kernel.
 
 ### Future `proven`
 
@@ -293,14 +308,14 @@ fn broken_pure(value: Int) -> List[Int] {
 }
 ```
 
-Compile error:
+Target diagnostic:
 
 ```text
 error[L101]: monad law `BrokenListMonad` failed left identity
 for a=0, f=keep: left=[0, 0], right=[0]
 ```
 
-Codes:
+Historical/proposed codes:
 
 | Code | Meaning |
 |---|---|
@@ -313,14 +328,14 @@ Codes:
 | `L102` | right identity failure |
 | `L103` | associativity failure |
 
-Counterexamples are tried from the smallest case by structural size, rendered
-length, and lexical order. Stage 0's shrinking is a simple version; it will be
-replaced with type-directed shrinking later.
+The target order tries counterexamples from the smallest case by structural
+size, rendered length, and lexical order. Type-directed shrinking is later
+work.
 
-## Deterministic sandbox
+## Target deterministic sandbox
 
-Law checking is compile-time execution. For that reason the Stage 0 law
-evaluator disables the following.
+Law checking is compile-time execution. A restored evaluator must disable the
+following.
 
 - `print`
 - `debug`
@@ -329,13 +344,14 @@ evaluator disables the following.
 - `read_text`
 - `write_text`
 
-If a law implementation calls an effect, it is a compile error. A bytecode
-verifier, instruction budget, allocation budget, and capability-based macro
-sandbox will be added later.
+An effectful law implementation must be a compile error. A bytecode verifier,
+instruction budget, allocation budget, and capability-based macro sandbox are
+later work.
 
 ## Law-aware optimization policy
 
-Rewrites that use a law carry a required evidence level.
+Under the target policy, rewrites that use a law carry a required evidence
+level.
 
 | Rewrite scope | Required evidence |
 |---|---|
@@ -347,9 +363,9 @@ Rewrites that use a law carry a required evidence level.
 For example, a generic `bind(pure(x), f) -> f(x)` must not be applied as an
 optimization on the basis of a bounded sample alone.
 
-## Stage 0 limitations
+## Planned checker scope and limitations
 
-- the only law family is `Monad`
+- the first restored law family is `Monad`
 - higher-kinded types and lawful traits are not implemented
 - `proven-finite` carriers are Bool-based only
 - the generic proof term kernel is not implemented
