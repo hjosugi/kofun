@@ -28,6 +28,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "../../unicode/kofun_unicode.c"
+
 enum {
     ELF_HEADER_SIZE = 64,
     PROGRAM_HEADER_SIZE = 56,
@@ -185,6 +187,8 @@ typedef enum {
     NODE_LET,
     NODE_LIST,
     NODE_CHARS,
+    NODE_CODEPOINTS,
+    NODE_BYTES,
     NODE_INDEX,
     NODE_LENGTH,
     NODE_MAP,
@@ -209,6 +213,7 @@ struct Node {
     uint8_t *text_value;
     size_t text_length;
     size_t text_codepoints;
+    size_t text_graphemes;
     ValueKind element_kind;
     size_t source_line;
     Node *left;
@@ -229,6 +234,8 @@ typedef struct {
     ValueKind value_kind;
     ValueKind element_kind;
     size_t item_count;
+    int64_t value;
+    bool value_known;
     size_t slot;
     bool parameter;
 } Binding;
@@ -349,15 +356,57 @@ static void skip_trivia(Parser *parser) {
     }
 }
 
-static bool word_continue(char value) {
-    return isalnum((unsigned char)value) || value == '_';
+static bool identifier_start_at(
+    const char *source,
+    size_t length,
+    size_t offset,
+    size_t *width
+) {
+    if (offset >= length) return false;
+    uint32_t codepoint = 0;
+    size_t scalar_width = 0;
+    if (!kofun_unicode_decode(
+            (const uint8_t *)source,
+            length,
+            offset,
+            &codepoint,
+            &scalar_width)) {
+        return false;
+    }
+    if (width != NULL) *width = scalar_width;
+    return codepoint == '_' || kofun_unicode_is_xid_start(codepoint);
+}
+
+static bool identifier_continue_at(
+    const char *source,
+    size_t length,
+    size_t offset,
+    size_t *width
+) {
+    if (offset >= length) return false;
+    uint32_t codepoint = 0;
+    size_t scalar_width = 0;
+    if (!kofun_unicode_decode(
+            (const uint8_t *)source,
+            length,
+            offset,
+            &codepoint,
+            &scalar_width)) {
+        return false;
+    }
+    if (width != NULL) *width = scalar_width;
+    return codepoint == '_' || kofun_unicode_is_xid_continue(codepoint);
 }
 
 static bool consume_word(Parser *parser, const char *word) {
     skip_trivia(parser);
     size_t length = strlen(word);
     if (strncmp(parser->source + parser->cursor, word, length) != 0 ||
-        word_continue(parser->source[parser->cursor + length])) {
+        identifier_continue_at(
+            parser->source,
+            strlen(parser->source),
+            parser->cursor + length,
+            NULL)) {
         return false;
     }
     parser->cursor += length;
@@ -392,6 +441,7 @@ static Node *node(
     result->text_value = NULL;
     result->text_length = 0;
     result->text_codepoints = 0;
+    result->text_graphemes = 0;
     result->element_kind = VALUE_INT;
     result->source_line = line;
     result->left = left;
@@ -406,58 +456,6 @@ static Node *node(
 static Node *parse_expression(Parser *parser);
 static void free_node(Node *expression);
 
-static size_t utf8_width(const uint8_t *bytes, size_t remaining) {
-    if (remaining == 0) return 0;
-    uint8_t first = bytes[0];
-    if (first < UINT8_C(0x80)) return 1;
-    if (first >= UINT8_C(0xc2) && first <= UINT8_C(0xdf)) {
-        if (remaining < 2 ||
-            (bytes[1] & UINT8_C(0xc0)) != UINT8_C(0x80)) {
-            return 0;
-        }
-        return 2;
-    }
-    if (first >= UINT8_C(0xe0) && first <= UINT8_C(0xef)) {
-        if (remaining < 3 ||
-            (bytes[1] & UINT8_C(0xc0)) != UINT8_C(0x80) ||
-            (bytes[2] & UINT8_C(0xc0)) != UINT8_C(0x80) ||
-            (first == UINT8_C(0xe0) && bytes[1] < UINT8_C(0xa0)) ||
-            (first == UINT8_C(0xed) && bytes[1] >= UINT8_C(0xa0))) {
-            return 0;
-        }
-        return 3;
-    }
-    if (first >= UINT8_C(0xf0) && first <= UINT8_C(0xf4)) {
-        if (remaining < 4 ||
-            (bytes[1] & UINT8_C(0xc0)) != UINT8_C(0x80) ||
-            (bytes[2] & UINT8_C(0xc0)) != UINT8_C(0x80) ||
-            (bytes[3] & UINT8_C(0xc0)) != UINT8_C(0x80) ||
-            (first == UINT8_C(0xf0) && bytes[1] < UINT8_C(0x90)) ||
-            (first == UINT8_C(0xf4) && bytes[1] >= UINT8_C(0x90))) {
-            return 0;
-        }
-        return 4;
-    }
-    return 0;
-}
-
-static bool utf8_count(
-    const uint8_t *bytes,
-    size_t length,
-    size_t *codepoints
-) {
-    size_t cursor = 0;
-    size_t count = 0;
-    while (cursor < length) {
-        size_t width = utf8_width(bytes + cursor, length - cursor);
-        if (width == 0) return false;
-        cursor += width;
-        ++count;
-    }
-    *codepoints = count;
-    return true;
-}
-
 static uint8_t *copy_bytes(const uint8_t *bytes, size_t length) {
     uint8_t *copy = allocate(length);
     if (length > 0) memcpy(copy, bytes, length);
@@ -469,6 +467,7 @@ static Node *text_node(
     const uint8_t *bytes,
     size_t length,
     size_t codepoints,
+    size_t graphemes,
     size_t line,
     Node *left,
     Node *right
@@ -485,6 +484,7 @@ static Node *text_node(
     result->text_value = copy_bytes(bytes, length);
     result->text_length = length;
     result->text_codepoints = codepoints;
+    result->text_graphemes = graphemes;
     return result;
 }
 
@@ -517,7 +517,11 @@ static Node *parse_text_literal(Parser *parser, size_t literal_at) {
     }
     ++parser->cursor;
     size_t codepoints = 0;
-    if (!utf8_count(bytes.data, bytes.length, &codepoints)) {
+    size_t graphemes = 0;
+    if (!kofun_unicode_codepoint_count(
+            bytes.data, bytes.length, &codepoints) ||
+        !kofun_unicode_grapheme_count(
+            bytes.data, bytes.length, &graphemes)) {
         parse_error(parser, "Text literal is not valid UTF-8");
         free(bytes.data);
         return NULL;
@@ -527,6 +531,7 @@ static Node *parse_text_literal(Parser *parser, size_t literal_at) {
         bytes.data,
         bytes.length,
         codepoints,
+        graphemes,
         source_line(parser->source, literal_at),
         NULL,
         NULL
@@ -535,27 +540,36 @@ static Node *parse_text_literal(Parser *parser, size_t literal_at) {
     return result;
 }
 
-static bool identifier_start(char value) {
-    return isalpha((unsigned char)value) || value == '_';
-}
-
 static bool parse_identifier(
     Parser *parser,
     char name[MAX_CORE_NAME]
 ) {
     skip_trivia(parser);
-    if (!identifier_start(parser->source[parser->cursor])) return false;
-    size_t start = parser->cursor++;
-    while (word_continue(parser->source[parser->cursor])) {
-        ++parser->cursor;
+    size_t length = strlen(parser->source);
+    size_t first_width = 0;
+    if (!identifier_start_at(
+            parser->source,
+            length,
+            parser->cursor,
+            &first_width)) {
+        return false;
     }
-    size_t length = parser->cursor - start;
-    if (length >= MAX_CORE_NAME) {
+    size_t start = parser->cursor;
+    parser->cursor += first_width;
+    while (identifier_continue_at(
+            parser->source,
+            length,
+            parser->cursor,
+            &first_width)) {
+        parser->cursor += first_width;
+    }
+    size_t name_length = parser->cursor - start;
+    if (name_length >= MAX_CORE_NAME) {
         parse_error(parser, "native Core identifier is too long");
         return false;
     }
-    memcpy(name, parser->source + start, length);
-    name[length] = '\0';
+    memcpy(name, parser->source + start, name_length);
+    name[name_length] = '\0';
     return true;
 }
 
@@ -576,6 +590,8 @@ static bool add_binding(
     ValueKind value_kind,
     ValueKind element_kind,
     size_t item_count,
+    int64_t value,
+    bool value_known,
     size_t slot,
     bool parameter
 ) {
@@ -588,6 +604,8 @@ static bool add_binding(
     binding->value_kind = value_kind;
     binding->element_kind = element_kind;
     binding->item_count = item_count;
+    binding->value = value;
+    binding->value_known = value_known;
     binding->slot = slot;
     binding->parameter = parameter;
     return true;
@@ -637,6 +655,8 @@ static Node *parse_lambda(Parser *parser, size_t parameter_count) {
                 VALUE_INT,
                 VALUE_INT,
                 0,
+                0,
+                false,
                 parser->local_count + index,
                 true)) {
             parser->binding_count = outer_count;
@@ -746,6 +766,104 @@ static Node *parse_higher_order(
     return result;
 }
 
+static Node *parse_text_view(
+    Parser *parser,
+    NodeKind kind,
+    size_t call_at
+) {
+    if (!consume_char(parser, '(')) {
+        parse_error(parser, "expected `(` after Text view");
+        return NULL;
+    }
+    Node *value = parse_expression(parser);
+    if (!consume_char(parser, ')')) {
+        parse_error(parser, "expected `)` after Text view argument");
+    }
+    if (value == NULL || value->value_kind != VALUE_TEXT) {
+        parse_error(parser, "Text view argument must be Text");
+        return value;
+    }
+
+    Node *list = node(
+        kind,
+        VALUE_LIST,
+        0,
+        value->value_known,
+        source_line(parser->source, call_at),
+        value,
+        NULL
+    );
+    list->element_kind =
+        kind == NODE_BYTES ? VALUE_INT : VALUE_TEXT;
+    if (kind == NODE_BYTES) {
+        list->item_count = value->text_length;
+    } else if (kind == NODE_CODEPOINTS) {
+        list->item_count = value->text_codepoints;
+    } else {
+        list->item_count = value->text_graphemes;
+    }
+    list->items = allocate(
+        list->item_count * sizeof(*list->items)
+    );
+
+    for (size_t index = 0; index < list->item_count; ++index) {
+        if (kind == NODE_BYTES) {
+            list->items[index] = node(
+                NODE_LITERAL,
+                VALUE_INT,
+                value->text_value[index],
+                true,
+                source_line(parser->source, call_at),
+                NULL,
+                NULL
+            );
+            continue;
+        }
+
+        size_t byte_at = 0;
+        size_t width = 0;
+        bool found = kind == NODE_CODEPOINTS
+            ? kofun_unicode_codepoint_at(
+                value->text_value,
+                value->text_length,
+                index,
+                &byte_at,
+                &width
+            )
+            : kofun_unicode_grapheme_at(
+                value->text_value,
+                value->text_length,
+                index,
+                &byte_at,
+                &width
+            );
+        if (!found) fatal("validated Text view became invalid");
+        size_t codepoints = 0;
+        size_t graphemes = 0;
+        if (!kofun_unicode_codepoint_count(
+                value->text_value + byte_at,
+                width,
+                &codepoints) ||
+            !kofun_unicode_grapheme_count(
+                value->text_value + byte_at,
+                width,
+                &graphemes)) {
+            fatal("validated Text view became invalid");
+        }
+        list->items[index] = text_node(
+            NODE_TEXT_LITERAL,
+            value->text_value + byte_at,
+            width,
+            codepoints,
+            graphemes,
+            source_line(parser->source, call_at),
+            NULL,
+            NULL
+        );
+    }
+    return list;
+}
+
 static Node *parse_atom(Parser *parser) {
     skip_trivia(parser);
     if (consume_char(parser, '(')) {
@@ -849,51 +967,29 @@ static Node *parse_atom(Parser *parser) {
 
     skip_trivia(parser);
     if (consume_word(parser, "chars")) {
-        if (!consume_char(parser, '(')) {
-            parse_error(parser, "expected `(` after `chars`");
-            return NULL;
-        }
-        Node *value = parse_expression(parser);
-        if (!consume_char(parser, ')')) {
-            parse_error(parser, "expected `)` after `chars` argument");
-        }
-        if (value == NULL || value->value_kind != VALUE_TEXT) {
-            parse_error(parser, "`chars` native Core argument must be Text");
-            return value;
-        }
-        Node *list = node(
+        return parse_text_view(
+            parser,
             NODE_CHARS,
-            VALUE_LIST,
-            0,
-            true,
-            source_line(parser->source, literal_at),
-            value,
-            NULL
+            literal_at
         );
-        list->element_kind = VALUE_TEXT;
-        list->item_count = value->text_codepoints;
-        list->items = allocate(
-            list->item_count * sizeof(*list->items)
+    }
+
+    skip_trivia(parser);
+    if (consume_word(parser, "codepoints")) {
+        return parse_text_view(
+            parser,
+            NODE_CODEPOINTS,
+            literal_at
         );
-        size_t byte_at = 0;
-        for (size_t index = 0; index < list->item_count; ++index) {
-            size_t width = utf8_width(
-                value->text_value + byte_at,
-                value->text_length - byte_at
-            );
-            if (width == 0) fatal("validated Text became invalid UTF-8");
-            list->items[index] = text_node(
-                NODE_TEXT_LITERAL,
-                value->text_value + byte_at,
-                width,
-                1,
-                source_line(parser->source, literal_at),
-                NULL,
-                NULL
-            );
-            byte_at += width;
-        }
-        return list;
+    }
+
+    skip_trivia(parser);
+    if (consume_word(parser, "bytes")) {
+        return parse_text_view(
+            parser,
+            NODE_BYTES,
+            literal_at
+        );
     }
 
     skip_trivia(parser);
@@ -921,7 +1017,7 @@ static Node *parse_atom(Parser *parser) {
                 ? 0
                 : (int64_t)(
                     value->value_kind == VALUE_TEXT
-                        ? value->text_codepoints
+                        ? value->text_graphemes
                         : value->item_count
                 ),
             value != NULL && value->value_known,
@@ -932,7 +1028,11 @@ static Node *parse_atom(Parser *parser) {
     }
 
     skip_trivia(parser);
-    if (identifier_start(parser->source[parser->cursor])) {
+    if (identifier_start_at(
+            parser->source,
+            strlen(parser->source),
+            parser->cursor,
+            NULL)) {
         char name[MAX_CORE_NAME];
         if (!parse_identifier(parser, name)) return NULL;
         const Binding *binding = find_binding(parser, name);
@@ -943,8 +1043,8 @@ static Node *parse_atom(Parser *parser) {
         Node *variable = node(
             binding->parameter ? NODE_PARAMETER : NODE_VARIABLE,
             binding->value_kind,
-            0,
-            false,
+            binding->value,
+            binding->value_known,
             source_line(parser->source, literal_at),
             NULL,
             NULL
@@ -1009,7 +1109,7 @@ static Node *parse_primary(Parser *parser) {
         size_t resolved_text_length = 0;
         size_t target_length =
             value->value_kind == VALUE_TEXT
-                ? value->text_codepoints
+                ? value->text_graphemes
                 : value->item_count;
         ValueKind result_kind =
             value->value_kind == VALUE_TEXT
@@ -1023,16 +1123,14 @@ static Node *parse_primary(Parser *parser) {
                 known = false;
             } else if (value->value_kind == VALUE_TEXT) {
                 size_t byte_at = 0;
-                for (int64_t current = 0; current < wanted; ++current) {
-                    byte_at += utf8_width(
-                        value->text_value + byte_at,
-                        value->text_length - byte_at
-                    );
+                if (!kofun_unicode_grapheme_at(
+                        value->text_value,
+                        value->text_length,
+                        (size_t)wanted,
+                        &byte_at,
+                        &resolved_text_length)) {
+                    fatal("validated Text became invalid");
                 }
-                resolved_text_length = utf8_width(
-                    value->text_value + byte_at,
-                    value->text_length - byte_at
-                );
                 resolved_text = copy_bytes(
                     value->text_value + byte_at,
                     resolved_text_length
@@ -1063,7 +1161,16 @@ static Node *parse_primary(Parser *parser) {
         if (known && result_kind == VALUE_TEXT) {
             indexed->text_value = resolved_text;
             indexed->text_length = resolved_text_length;
-            indexed->text_codepoints = 1;
+            if (!kofun_unicode_codepoint_count(
+                    resolved_text,
+                    resolved_text_length,
+                    &indexed->text_codepoints) ||
+                !kofun_unicode_grapheme_count(
+                    resolved_text,
+                    resolved_text_length,
+                    &indexed->text_graphemes)) {
+                fatal("validated indexed Text became invalid");
+            }
         } else {
             free(resolved_text);
         }
@@ -1185,12 +1292,19 @@ static Node *parse_sum(Parser *parser) {
                 joined,
                 length,
                 left->text_codepoints + right->text_codepoints,
+                0,
                 source_line(parser->source, operator_at),
                 left,
                 right
             );
             combined->value_known =
                 left->value_known && right->value_known;
+            if (!kofun_unicode_grapheme_count(
+                    joined,
+                    length,
+                    &combined->text_graphemes)) {
+                fatal("validated concatenated Text became invalid");
+            }
             free(joined);
             left = combined;
             continue;
@@ -1348,6 +1462,9 @@ static Node *parse_program(Parser *parser) {
                 initializer->value_kind,
                 initializer->element_kind,
                 initializer->item_count,
+                initializer->value,
+                initializer->value_kind == VALUE_INT &&
+                    initializer->value_known,
                 slot,
                 false)) {
             return initializer;
@@ -1458,7 +1575,11 @@ static bool function_consume_word(
         parser->limit - parser->cursor < length ||
         strncmp(parser->source + parser->cursor, word, length) != 0 ||
         (parser->cursor + length < parser->limit &&
-         word_continue(parser->source[parser->cursor + length]))) {
+         identifier_continue_at(
+             parser->source,
+             parser->limit,
+             parser->cursor + length,
+             NULL))) {
         return false;
     }
     parser->cursor += length;
@@ -1498,14 +1619,22 @@ static bool function_identifier(
     char name[MAX_CORE_NAME]
 ) {
     function_skip_trivia(parser);
-    if (parser->cursor >= parser->limit ||
-        !identifier_start(parser->source[parser->cursor])) {
+    size_t width = 0;
+    if (!identifier_start_at(
+            parser->source,
+            parser->limit,
+            parser->cursor,
+            &width)) {
         return false;
     }
-    size_t start = parser->cursor++;
-    while (parser->cursor < parser->limit &&
-           word_continue(parser->source[parser->cursor])) {
-        ++parser->cursor;
+    size_t start = parser->cursor;
+    parser->cursor += width;
+    while (identifier_continue_at(
+            parser->source,
+            parser->limit,
+            parser->cursor,
+            &width)) {
+        parser->cursor += width;
     }
     size_t length = parser->cursor - start;
     if (length >= MAX_CORE_NAME) {
@@ -2221,9 +2350,13 @@ static size_t register_depth(const Node *expression) {
         return register_depth(expression->left);
     }
     if (expression->kind == NODE_LIST ||
-        expression->kind == NODE_CHARS) {
+        expression->kind == NODE_CHARS ||
+        expression->kind == NODE_CODEPOINTS ||
+        expression->kind == NODE_BYTES) {
         size_t depth = 1;
-        if (expression->kind == NODE_CHARS) {
+        if (expression->kind == NODE_CHARS ||
+            expression->kind == NODE_CODEPOINTS ||
+            expression->kind == NODE_BYTES) {
             depth = register_depth(expression->left);
         }
         for (size_t index = 0; index < expression->item_count; ++index) {
@@ -2257,6 +2390,8 @@ static bool uses_list(const Node *expression) {
     if (expression == NULL) return false;
     if (expression->kind == NODE_LIST ||
         expression->kind == NODE_CHARS ||
+        expression->kind == NODE_CODEPOINTS ||
+        expression->kind == NODE_BYTES ||
         expression->kind == NODE_MAP ||
         expression->kind == NODE_FILTER ||
         expression->kind == NODE_FOLD ||
@@ -2503,6 +2638,32 @@ static void x64_expression(
     LineRows *rows,
     X64Runtime *runtime
 ) {
+    if (expression->kind == NODE_LENGTH &&
+        expression->value_known) {
+        line_row(rows, text->length, expression->source_line);
+        x64_mov_eax_imm32(text, (uint32_t)expression->value);
+        byte(text, UINT8_C(0x50)); /* push compile-time length */
+        return;
+    }
+
+    if (expression->value_kind == VALUE_TEXT &&
+        expression->value_known &&
+        expression->text_value != NULL &&
+        expression->kind != NODE_TEXT_LITERAL &&
+        expression->kind != NODE_TEXT_CONCAT) {
+        runtime->used = true;
+        line_row(rows, text->length, expression->source_line);
+        byte(text, UINT8_C(0xb8)); /* mov eax, Text address */
+        text_fixups_add(
+            &runtime->text_literals,
+            text->length,
+            expression
+        );
+        u32_le(text, 0);
+        byte(text, UINT8_C(0x50)); /* push folded Text */
+        return;
+    }
+
     if (expression->kind == NODE_LITERAL) {
         line_row(rows, text->length, expression->source_line);
         x64_mov_eax_imm32(text, (uint32_t)expression->value);
@@ -6171,6 +6332,22 @@ int main(int argc, char **argv) {
 
     char *source = read_source(argv[1]);
     if (source == NULL) return 1;
+    KofunUnicodeError unicode_error;
+    if (!kofun_unicode_validate_source(
+            (const uint8_t *)source,
+            strlen(source),
+            &unicode_error)) {
+        char message[1024];
+        kofun_unicode_format_error(
+            &unicode_error,
+            getenv("KOFUN_DIAGNOSTIC_LOCALE"),
+            message,
+            sizeof(message)
+        );
+        fprintf(stderr, "kofun native: %s\n", message);
+        free(source);
+        return 1;
+    }
 
     FunctionProgram function_program;
     char function_error_text[256] = {0};

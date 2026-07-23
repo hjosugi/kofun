@@ -21,7 +21,7 @@ compiler cannot yet produce the final diagnostic.
 | Issue | Subject | Current executable evidence | Status |
 | --- | --- | --- | --- |
 | #35 | keyword minimalism | Stage 2 recognizes the Core keywords used by the executable fixture | partial |
-| #36 | Unicode identifiers | Stage 1 and Stage 2 deliberately accept ASCII identifiers only | unsupported |
+| #36 | Unicode identifiers | Stage 1, Stage 2, and native Core share pinned XID/NFC/confusable/bidi validation; Japanese and Hangul execute | implemented for Core |
 | #37 | function declarations | Stage 2 records top-level function names, arities, and spans; C lowering accepts only `fn main()` | partial |
 | #38 | automatic statement termination | newline-separated Core statements compile and execute | partial |
 | #39 | mutable bindings | Stage 2 Core executes mutable `Int` rebinding and rejects immutable or undeclared targets | implemented for Core |
@@ -143,7 +143,7 @@ Kofun uses literal, normalized Unicode with no identifier escapes.
 
 ### Normative contract
 
-This draft uses the Unicode 15.1.0 `XID_Start` and `XID_Continue` derived
+This draft uses the Unicode 17.0.0 `XID_Start` and `XID_Continue` derived
 properties. An identifier must:
 
 1. be valid UTF-8 and already be in NFC;
@@ -154,9 +154,10 @@ properties. An identifier must:
 
 Name equality is scalar-for-scalar equality of the required NFC spelling. The
 compiler must reject non-NFC source rather than silently rewrite it, and the
-diagnostic should show the NFC replacement. Formatters must preserve accepted
-identifier spelling. Confusable detection may warn, but must not change name
-resolution.
+diagnostic must show the NFC replacement. Formatters must preserve accepted
+identifier spelling. Two distinct identifier spellings with the same UTS #39
+confusable skeleton in one compilation unit are a hard error; confusable
+detection never changes name resolution.
 
 ```kofun
 # valid
@@ -170,10 +171,12 @@ fn 面積(幅: Int, 高さ: Int) -> Int {
 let 🚀 = 1
 ```
 
-**Implementation status:** both executable bootstrap frontends are ASCII-only.
-The Unicode example is a design target and is explicitly rejected by the
-current conformance runner. Unicode tables, normalization, confusable
-diagnostics, and cross-module resolution tests remain open.
+**Implementation status:** Stage 1, Stage 2, and the native Core use the common
+locale-independent Unicode 17 runtime. The executable corpus accepts Japanese,
+Hangul, Arabic, Hebrew, Hindi, and Thai XID names; rejects non-NFC spelling,
+UTS #39 skeleton collisions, invalid UTF-8, and bidi source controls; and
+mangles Stage 2 C output to ASCII-only symbols. Cross-module confusable
+collision detection remains tied to the future module resolver.
 
 ## #37 — Function declarations
 

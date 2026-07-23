@@ -20,7 +20,8 @@ sh tests/diagnostics/stage2/bless.sh
 
 `codes.txt` is the executable inventory for the active Stage 2 frontend,
 lowerer, and ownership-slice diagnostic codes. The runner fails if the
-inventory and cases diverge.
+inventory and cases diverge. Localized `EUNICODE` source-validation
+diagnostics are covered separately by `tests/unicode/run.sh`.
 
 The current suite records three existing diagnostics without precise positions
 as `expect-span: none`: `E2S04`, `E2S20`, and `E2S21`. They are visible span

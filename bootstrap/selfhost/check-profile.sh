@@ -143,7 +143,7 @@ has '\[[^]]+\]' &&
     printf '%s\n' 'expression|indexing' >> "$tmp_dir/actual-inventory"
 has '=[^"]*[[:space:]][+-][[:space:]][A-Za-z0-9_(]' &&
     printf '%s\n' 'expression|integer-arithmetic' >> "$tmp_dir/actual-inventory"
-has 'read_text\([^)]*\)[[:space:]]*\+[[:space:]]*"' &&
+has 'read_text\([^)]*\)[[:space:]]*\+[[:space:]]*"|=[^"]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\+[[:space:]]*"' &&
     printf '%s\n' 'expression|text-concatenation' >> "$tmp_dir/actual-inventory"
 
 grep -qx 'args' "$tmp_dir/calls" &&

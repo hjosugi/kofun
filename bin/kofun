@@ -23,6 +23,12 @@ CLI_TEMPLATE="$ROOT/framework/cli/runtime_template.inc"
 CLI_COMPILER="$CLI_BUILD_DIR/kofun-cli-compiler"
 PACKAGE_MANAGER="$ROOT/package/manager.sh"
 CC=${CC:-cc}
+UNICODE_C="$ROOT/unicode/kofun_unicode.c"
+UNICODE_H="$ROOT/unicode/kofun_unicode.h"
+UNICODE_TABLES="$ROOT/unicode/kofun_unicode_tables.inc"
+UTF8PROC_C="$ROOT/vendor/utf8proc/utf8proc.c"
+UTF8PROC_H="$ROOT/vendor/utf8proc/utf8proc.h"
+UTF8PROC_DATA="$ROOT/vendor/utf8proc/utf8proc_data.c"
 
 usage() {
     cat <<'EOF'
@@ -47,7 +53,15 @@ EOF
 
 ensure_compiler() {
     mkdir -p "$BUILD_DIR"
-    if [ ! -x "$COMPILER" ] || [ "$SEED_C" -nt "$COMPILER" ]; then
+    if [ ! -x "$COMPILER" ] ||
+       [ "$SEED_C" -nt "$COMPILER" ] ||
+       [ "$UNICODE_C" -nt "$COMPILER" ] ||
+       [ "$UNICODE_H" -nt "$COMPILER" ] ||
+       [ "$UNICODE_TABLES" -nt "$COMPILER" ] ||
+       [ "$UTF8PROC_C" -nt "$COMPILER" ] ||
+       [ "$UTF8PROC_H" -nt "$COMPILER" ] ||
+       [ "$UTF8PROC_DATA" -nt "$COMPILER" ]
+    then
         "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
             "$SEED_C" -lm -o "$COMPILER"
     fi
@@ -56,7 +70,13 @@ ensure_compiler() {
 ensure_native_compiler() {
     mkdir -p "$NATIVE_BUILD_DIR"
     if [ ! -x "$NATIVE_COMPILER" ] ||
-       [ "$NATIVE_SEED_C" -nt "$NATIVE_COMPILER" ]
+       [ "$NATIVE_SEED_C" -nt "$NATIVE_COMPILER" ] ||
+       [ "$UNICODE_C" -nt "$NATIVE_COMPILER" ] ||
+       [ "$UNICODE_H" -nt "$NATIVE_COMPILER" ] ||
+       [ "$UNICODE_TABLES" -nt "$NATIVE_COMPILER" ] ||
+       [ "$UTF8PROC_C" -nt "$NATIVE_COMPILER" ] ||
+       [ "$UTF8PROC_H" -nt "$NATIVE_COMPILER" ] ||
+       [ "$UTF8PROC_DATA" -nt "$NATIVE_COMPILER" ]
     then
         "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
             "$NATIVE_SEED_C" -o "$NATIVE_COMPILER"
@@ -76,7 +96,13 @@ ensure_wasm_compiler() {
 ensure_stage2_compiler() {
     mkdir -p "$STAGE2_BUILD_DIR"
     if [ ! -x "$STAGE2_COMPILER" ] ||
-       [ "$STAGE2_SEED_C" -nt "$STAGE2_COMPILER" ]
+       [ "$STAGE2_SEED_C" -nt "$STAGE2_COMPILER" ] ||
+       [ "$UNICODE_C" -nt "$STAGE2_COMPILER" ] ||
+       [ "$UNICODE_H" -nt "$STAGE2_COMPILER" ] ||
+       [ "$UNICODE_TABLES" -nt "$STAGE2_COMPILER" ] ||
+       [ "$UTF8PROC_C" -nt "$STAGE2_COMPILER" ] ||
+       [ "$UTF8PROC_H" -nt "$STAGE2_COMPILER" ] ||
+       [ "$UTF8PROC_DATA" -nt "$STAGE2_COMPILER" ]
     then
         "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
             "$STAGE2_SEED_C" -o "$STAGE2_COMPILER"
@@ -440,7 +466,7 @@ EOF
 
 case ${1-} in
     --version|-V|version)
-        printf '%s\n' "Kofun Stage 1 0.3.1-seed"
+        printf '%s\n' "Kofun Stage 1 0.3.2-seed"
         ;;
     bootstrap)
         test "$#" -eq 1 || { usage >&2; exit 2; }

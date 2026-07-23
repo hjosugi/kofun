@@ -1,0 +1,4 @@
+fn main() {
+    let paypal = 21
+    let pаypal = 21
+}

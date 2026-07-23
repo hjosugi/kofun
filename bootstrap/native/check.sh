@@ -908,7 +908,7 @@ printf 'kofun: text index out of range\n' \
 cmp "$WORK/core-text-oob.expected" "$WORK/core-text-oob.stderr"
 test "$text_invalid_utf8_status" -eq 1
 test ! -e "$WORK/core-text-invalid-utf8.elf"
-grep 'Text literal is not valid UTF-8' \
+grep 'error\[EUNICODE001\]' \
     "$WORK/core-text-invalid-utf8.stderr" >/dev/null
 test "$text_oom_status" -eq 70
 test ! -s "$WORK/core-text-oom.stdout"
@@ -980,4 +980,4 @@ printf '%s\n' \
     "PASS: x86-64 and AArch64 consume one target-independent parsed Core" \
     "PASS: x86-64/AArch64 List Core built with shared ABI and diagnostics" \
     "PASS: x86-64 List execution matched C11 with OOB/OOM contracts" \
-    "PASS: x86-64 Text matched C11 UTF-8 codepoint and failure semantics"
+    "PASS: x86-64 Text matched grapheme and failure semantics"

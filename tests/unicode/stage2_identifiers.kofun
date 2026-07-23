@@ -1,0 +1,8 @@
+# expect: 42
+fn 合計(幅: Int, 높이: Int) -> Int {
+    return 幅 + 높이
+}
+
+fn main() -> Int {
+    print(合計(40, 2))
+}

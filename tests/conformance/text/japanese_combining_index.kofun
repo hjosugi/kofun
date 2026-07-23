@@ -1,0 +1,4 @@
+# expect: ば
+fn main() {
+    print("ばぴ"[0])
+}

@@ -157,7 +157,7 @@ require_text "$SPEC" 'kofun.file-id-input/v1'
 require_text "$SPEC" 'kofun.module-id-input/v1'
 require_text "$SPEC" 'V1 requires exactly one source file per `ModuleId`'
 require_text "$PACKAGE_SPEC" 'Source-file and'
-require_text "$SYNTAX_SPEC" 'Unicode 15.1.0 `XID_Start`'
+require_text "$SYNTAX_SPEC" 'Unicode 17.0.0 `XID_Start`'
 require_text "$BUILD_DOC" 'spec/modules/source-file-mapping.md'
 
 case $WORK in

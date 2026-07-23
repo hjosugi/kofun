@@ -1,0 +1,6 @@
+# expect: 42
+fn main() {
+    let 幅 = 40
+    let 높이 = 2
+    print(幅 + 높이)
+}

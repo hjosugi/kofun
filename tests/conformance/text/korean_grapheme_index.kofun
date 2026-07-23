@@ -1,0 +1,4 @@
+# expect: 한
+fn main() {
+    print("한글"[0])
+}

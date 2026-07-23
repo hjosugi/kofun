@@ -5,12 +5,15 @@ builtin|contains|bootstrap/stage1/compiler.kofun|planned:#619|planned:#620|plann
 builtin|find|bootstrap/stage1/compiler.kofun|planned:#619|planned:#620|planned:#622|planned:#620|planned:#620|planned:#620|partial
 builtin|is_digit|bootstrap/stage1/compiler.kofun|planned:#619|planned:#620|planned:#622|planned:#620|planned:#620|planned:#620|partial
 builtin|is_space|bootstrap/stage1/compiler.kofun|planned:#619|planned:#620|planned:#622|planned:#620|planned:#620|planned:#620|partial
+builtin|is_xid_continue|bootstrap/stage1/compiler.kofun|planned:#619|planned:#620|planned:#622|planned:#620|planned:#620|planned:#620|partial
 builtin|len|bootstrap/stage1/compiler.kofun|planned:#619|planned:#620|planned:#622|planned:#620|planned:#620|planned:#620|partial
 builtin|print|bootstrap/stage1/compiler.kofun|planned:#619|planned:#622|planned:#622|planned:#622|planned:#622|planned:#622|partial
 builtin|read_text|bootstrap/stage1/compiler.kofun|planned:#619|planned:#622|planned:#622|planned:#622|planned:#622|planned:#622|partial
+builtin|replace|bootstrap/stage1/compiler.kofun|planned:#619|planned:#620|planned:#622|planned:#620|planned:#620|planned:#620|partial
 builtin|starts_with|bootstrap/stage1/compiler.kofun|planned:#619|planned:#620|planned:#622|planned:#620|planned:#620|planned:#620|partial
 builtin|text_slice|bootstrap/stage1/compiler.kofun|planned:#619|planned:#620|planned:#622|planned:#620|planned:#620|planned:#620|partial
 builtin|trim|bootstrap/stage1/compiler.kofun|planned:#619|planned:#620|planned:#622|planned:#620|planned:#620|planned:#620|partial
+builtin|validate_unicode_source|bootstrap/stage1/compiler.kofun|planned:#619|planned:#620|planned:#622|planned:#620|planned:#620|planned:#620|partial
 builtin|write_text|bootstrap/stage1/compiler.kofun|planned:#619|planned:#622|planned:#622|planned:#622|planned:#622|planned:#622|partial
 control|else-if|bootstrap/stage1/compiler.kofun|planned:#619|planned:#620|planned:#622|planned:#620|planned:#620|planned:#620|partial
 control|for-range|bootstrap/stage1/compiler.kofun|planned:#619|planned:#621|planned:#622|planned:#621|planned:#621|planned:#621|partial

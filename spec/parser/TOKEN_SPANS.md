@@ -4,8 +4,8 @@ Status: normative contract for the narrow Stage 2 token-span prototype.
 
 This contract documents what the executable frontend does today and separates
 that checkpoint from the planned lossless parser and tooling model. It does
-not claim error recovery, incremental lexing, Unicode identifiers, retained
-trivia, source maps for generated code, or a stable external tooling API.
+not claim error recovery, incremental lexing, retained trivia, source maps for
+generated code, or a stable external tooling API.
 
 ## Stage boundary
 
@@ -76,20 +76,20 @@ identifier until the implementation is extended.
 
 The current executable scanner recognizes:
 
-- ASCII identifiers starting with `_`, `a` through `z`, or `A` through `Z`,
-  followed by those characters or decimal digits;
+- Unicode 17 `XID_Start` / `XID_Continue` identifiers plus `_`, with NFC,
+  confusable-collision, invalid UTF-8, and bidi-control validation performed
+  before tokenization;
 - a fixed keyword list used by the bootstrap subset;
 - digit/underscore runs classified as integer tokens;
 - double-quoted, single-line strings with backslash escaping;
 - the paired tokens `->`, `==`, `!=`, `<=`, `>=`, `&&`, `||`, `//`, `..`,
   `**`, `??`, and `|>`;
-- every other non-trivia byte as one punctuation token;
+- every other ASCII non-trivia byte as one punctuation token;
 - ASCII/host-C whitespace and `#` line comments as skipped trivia.
 
 This is a feasibility subset, not the full lexical language contract. For
 example, it does not validate numeric underscore placement, recognize Float
-tokens, classify `null` and `set` as keywords, retain comments, or implement
-the planned Unicode identifier policy.
+tokens, classify `null` and `set` as keywords, or retain comments.
 
 ## Failure behavior
 
@@ -99,6 +99,11 @@ scanning fail with:
 ```text
 error[E2S01]: unterminated string at byte START
 ```
+
+Unicode source validation uses `EUNICODE001` through `EUNICODE007`.
+Diagnostics report the byte offset together with one-based line and extended
+grapheme-cluster column. `KOFUN_DIAGNOSTIC_LOCALE=ja` selects the Japanese
+catalog; unsupported locales fall back to English.
 
 The Stage 2 driver reports diagnostics on standard output and exits nonzero.
 Structural parsing may subsequently fail with another Stage 2 diagnostic.

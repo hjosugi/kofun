@@ -38,6 +38,24 @@ The executable boundary cases and failure observations are defined by
 `tests/conformance/numeric/` under the
 `kofun.backend-differential/v1` contract.
 
+## Text
+
+`Text` stores valid UTF-8. Its default sequence unit is the Unicode 17 extended
+grapheme cluster:
+
+- `len(text)` counts grapheme clusters;
+- `text[index]` returns one complete grapheme cluster;
+- negative indexes count grapheme clusters from the end; and
+- `chars(text)` returns `List[Text]` of grapheme clusters.
+
+Concatenation re-segments the joined bytes because a cluster can cross the
+join. The lower-level views are explicit: `bytes(text)` exposes a `List[Int]`
+of UTF-8 bytes, while `codepoints(text)` exposes a `List[Text]` of Unicode
+scalars. Neither view changes default `Text` indexing.
+
+Text literals may contain canonically decomposed content and preserve their
+original UTF-8 bytes. Identifiers are stricter: they must already be NFC.
+
 ## Control flow
 
 `if` is an expression when both branches produce values. In statement position it produces `Void`. `for` iterates a `List`; `start .. end` is an end-exclusive integer range.

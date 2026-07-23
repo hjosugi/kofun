@@ -1,4 +1,4 @@
-.PHONY: help compiler test diagnostics fuzz check bootstrap selfhost-profile stage2 patterns adt adt-exhaustiveness module-symbols imports-qualified imports-selective kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp roadmap syntax repository-check verify clean
+.PHONY: help compiler test diagnostics fuzz unicode check bootstrap selfhost-profile stage2 patterns adt adt-exhaustiveness module-symbols imports-qualified imports-selective kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp roadmap syntax repository-check verify clean
 
 KOFUN := ./bin/kofun
 
@@ -8,6 +8,7 @@ help:
 	  'make test             Exercise build/run/check/test' \
 	  'make diagnostics      Verify must-fail diagnostic goldens' \
 	  'make fuzz             Run deterministic grammar and semantic fuzz smoke tests' \
+	  'make unicode          Verify Unicode identifiers, security, text, and width' \
 	  'make check            Check canonical bootstrap sources' \
 	  'make bootstrap        Verify the Stage 1 seed path' \
 	  'make selfhost-profile Verify the frozen first self-host source profile' \
@@ -70,6 +71,9 @@ fuzz:
 	sh tests/fuzz/match_value.sh
 	sh tests/fuzz/match_value_invalid.sh
 	sh tests/fuzz/enum_match.sh
+
+unicode:
+	sh tests/unicode/run.sh
 
 check: compiler
 	$(KOFUN) check bootstrap/fixtures/answer.kofun
@@ -188,7 +192,7 @@ repository-check:
 	@grep -q '"extensions": \[".kofun"\]' editor/vscode/package.json
 	@printf '%s\n' 'PASS: .kofun sources only; no Python implementation'
 
-verify: test diagnostics fuzz check bootstrap selfhost-profile stage2 patterns adt adt-exhaustiveness module-symbols imports-qualified imports-selective kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp roadmap syntax repository-check
+verify: test diagnostics fuzz unicode check bootstrap selfhost-profile stage2 patterns adt adt-exhaustiveness module-symbols imports-qualified imports-selective kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp roadmap syntax repository-check
 	@sh -n bin/kofun bootstrap/stage1/check.sh bootstrap/stage2/check.sh \
 	  bootstrap/selfhost/check-profile.sh \
 	  bootstrap/native/check.sh bootstrap/native/emit-fixture.sh \
@@ -241,6 +245,7 @@ verify: test diagnostics fuzz check bootstrap selfhost-profile stage2 patterns a
 	  tests/fuzz/value_if.sh tests/fuzz/match_guard.sh \
 	  tests/fuzz/match_value.sh tests/fuzz/match_value_invalid.sh \
 	  tests/fuzz/enum_match.sh \
+	  tests/unicode/run.sh unicode/generate_tables.sh \
 	  tests/conformance/backends/wasm32-node.sh \
 	  spec/roadmap-31-34/verify-current-gates.sh \
 	  tests/conformance/syntax/issues_35_47/run.sh \

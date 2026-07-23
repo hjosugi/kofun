@@ -7,8 +7,9 @@ The Python-free CLI exposes the supported arithmetic Core for x86-64 and
 AArch64 Linux. Both targets lower local `Int` and `List[Int]` bindings; List
 literals, length, indexing, and generated `map`/`filter`/`fold` loops with typed
 inline lambdas. The x86-64 profile additionally lowers UTF-8 Text
-concatenation, equality, codepoint length, runtime `chars`, and codepoint
-indexing. A separate bounded Int profile lowers up to six function arguments,
+concatenation, equality, grapheme-cluster length, `chars`, grapheme indexing,
+and explicit `bytes` / `codepoints` views. A separate bounded Int profile
+lowers up to six function arguments,
 returns, forward and mutual recursion, comparison-guarded early returns,
 checked arithmetic, and signed Int64 output directly. That function profile is
 shared by both backends: the same target-independent parsed program is lowered
