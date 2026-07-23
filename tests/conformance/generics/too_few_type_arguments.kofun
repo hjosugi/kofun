@@ -1,0 +1,8 @@
+fn first[A, B](left: A, right: B) -> A {
+    return left
+}
+
+fn main() {
+    let answer: Int = first[Int](42, true)
+    print(answer)
+}

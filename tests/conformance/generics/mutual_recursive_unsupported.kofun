@@ -1,0 +1,12 @@
+fn left[T](value: T) -> T {
+    return right[T](value)
+}
+
+fn right[T](value: T) -> T {
+    return left[T](value)
+}
+
+fn main() {
+    let answer: Int = left[Int](42)
+    print(answer)
+}

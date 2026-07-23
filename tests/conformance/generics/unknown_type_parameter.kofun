@@ -1,0 +1,3 @@
+fn unknown[T](value: Missing) -> T {
+    return value
+}

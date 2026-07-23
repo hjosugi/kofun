@@ -118,6 +118,19 @@ IR artifacts with nominal IDs and byte spans. It deliberately emits no C,
 native, Wasm, layout, allocation, match, or runtime representation. The main
 CLI does not route ordinary builds through this helper yet.
 
+`bootstrap/stage2/generics_frontend.c` is the separate typed-only checkpoint
+for explicitly instantiated, unbounded generic functions. It collects every
+function signature before bodies, assigns declaration-scoped
+`TypeParameterId` values, resolves forward direct calls, checks explicit type
+arity before value arguments, and records normalized substitutions and exact
+declaration/use spans in `kofun-generics-ir/v1`. `E2S80`–`E2S84` freeze the
+bounded declaration, application, substitution, unsupported-feature, and
+resource diagnostics. This helper performs no type-argument inference,
+generic nominal typing, bounds, traits, recursive generic calls,
+monomorphization, dictionary selection, layout, or backend emission. The main
+CLI does not route ordinary builds through it. Run its analyzer- and
+sanitizer-backed gate with `make generics`.
+
 `bootstrap/stage2/adt_exhaustiveness.c` is the resolved flat-ADT match
 checkpoint. It defensively joins the declaration table, lossless Pattern tree,
 and lexical ScopeId/BindingId artifact for one source module, then publishes a

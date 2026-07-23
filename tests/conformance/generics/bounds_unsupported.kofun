@@ -1,0 +1,3 @@
+fn bounded[T: Comparable](value: T) -> T {
+    return value
+}

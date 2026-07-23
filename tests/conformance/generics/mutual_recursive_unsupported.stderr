@@ -1,0 +1,1 @@
+error[E2S83]: recursive generic call cycle reaches `left` through `right` -> `left`; recursive generic calls are unsupported in this frontend slice at bytes 98..112

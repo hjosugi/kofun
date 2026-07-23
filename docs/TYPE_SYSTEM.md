@@ -105,6 +105,15 @@ Reasons:
 - `List[Int]` is readable to Python and TypeScript users as well
 - type application and indexing can be distinguished by parser context
 
+Executable checkpoint: the separate Stage 2 generic-function frontend
+type-checks explicitly instantiated, unbounded direct calls such as
+`identity[Int](42)`. It assigns each declaration-scoped type parameter a
+stable identity, substitutes explicit type arguments before checking value
+arguments, and preserves the original declaration identity and source spans
+in typed IR. The checkpoint does not infer omitted arguments, accept generic
+nominal types or bounds, select trait dictionaries, monomorphize, or emit
+backend code; see `tests/conformance/generics/README.md`.
+
 ## Algebraic data types
 
 ```kofun
