@@ -6701,6 +6701,97 @@ static bool ends_with(const char *value, const char *suffix) {
            strcmp(value + value_length - suffix_length, suffix) == 0;
 }
 
+static bool unsupported_lowering_error(const char *diagnostic) {
+    return strncmp(
+               diagnostic,
+               "error[E2S10]: unsupported Core statement",
+               strlen("error[E2S10]: unsupported Core statement")
+           ) == 0 ||
+           strncmp(
+               diagnostic,
+               "error[E2S24]: general pattern syntax is parsed ",
+               strlen("error[E2S24]: general pattern syntax is parsed ")
+           ) == 0;
+}
+
+static int compile_file(
+    const char *input,
+    const char *output,
+    const char *ir_output,
+    const char *tokens_output
+) {
+    char *source = read_file(input);
+    char *tokens = lex_source(source);
+    if (strncmp(tokens, "error[", 6) == 0) {
+        puts(tokens);
+        free(tokens);
+        free(source);
+        return 1;
+    }
+    char *ir = parse_program(source);
+    if (strncmp(ir, "error[", 6) == 0) {
+        puts(ir);
+        free(ir);
+        free(tokens);
+        free(source);
+        return 1;
+    }
+    write_file(ir_output, ir);
+    write_file(tokens_output, tokens);
+    if (ends_with(output, ".c")) {
+        char *pattern_check = validate_executable_patterns(source);
+        if (strncmp(pattern_check, "error[", 6) == 0) {
+            int status = unsupported_lowering_error(pattern_check) ? 3 : 1;
+            puts(pattern_check);
+            free(pattern_check);
+            free(ir);
+            free(tokens);
+            free(source);
+            return status;
+        }
+        free(pattern_check);
+        char *hir = build_scope_hir(source);
+        if (strncmp(hir, "error[", 6) == 0) {
+            char *ownership = borrowed_collection_check(source);
+            int status = strcmp(ownership, "ok") == 0 ? 3 : 1;
+            puts(hir);
+            free(ownership);
+            free(hir);
+            free(ir);
+            free(tokens);
+            free(source);
+            return status;
+        }
+        char *c_source = lower_c(source, hir);
+        if (strncmp(c_source, "error[", 6) == 0) {
+            int status = unsupported_lowering_error(c_source) ? 3 : 1;
+            puts(c_source);
+            free(c_source);
+            free(hir);
+            free(ir);
+            free(tokens);
+            free(source);
+            return status;
+        }
+        Buffer combined_ir;
+        buffer_init(&combined_ir);
+        buffer_append(&combined_ir, ir);
+        buffer_append(&combined_ir, hir);
+        write_file(ir_output, combined_ir.data);
+        write_file(output, c_source);
+        free(combined_ir.data);
+        free(c_source);
+        free(hir);
+    } else {
+        write_file(output, source);
+    }
+    puts(output);
+    free(ir);
+    free(tokens);
+    free(source);
+    return 0;
+}
+
 static int check_ownership_file(const char *path) {
     char *source = read_file(path);
     char *tokens = lex_source(source);
@@ -6794,6 +6885,9 @@ static int emit_scope_hir_file(const char *input, const char *output) {
 }
 
 int main(int argc, char **argv) {
+    if (argc == 6 && strcmp(argv[1], "--compile-outcome") == 0) {
+        return compile_file(argv[2], argv[3], argv[4], argv[5]);
+    }
     if (argc == 3 && strcmp(argv[1], "--check-ownership") == 0) {
         return check_ownership_file(argv[2]);
     }
@@ -6806,6 +6900,7 @@ int main(int argc, char **argv) {
     if (argc != 5) {
         fputs(
             "usage: kofun-stage2 INPUT.kofun OUTPUT.kofun OUTPUT.ir OUTPUT.tokens\n"
+            "       kofun-stage2 --compile-outcome INPUT.kofun OUTPUT.c OUTPUT.ir OUTPUT.tokens\n"
             "       kofun-stage2 --check-ownership INPUT.kofun\n"
             "       kofun-stage2 --parse-patterns INPUT.kofun OUTPUT.patterns\n"
             "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir\n",
@@ -6813,70 +6908,5 @@ int main(int argc, char **argv) {
         );
         return 2;
     }
-
-    char *source = read_file(argv[1]);
-    char *tokens = lex_source(source);
-    if (strncmp(tokens, "error[", 6) == 0) {
-        puts(tokens);
-        free(tokens);
-        free(source);
-        return 1;
-    }
-    char *ir = parse_program(source);
-    if (strncmp(ir, "error[", 6) == 0) {
-        puts(ir);
-        free(ir);
-        free(tokens);
-        free(source);
-        return 1;
-    }
-    write_file(argv[3], ir);
-    write_file(argv[4], tokens);
-    if (ends_with(argv[2], ".c")) {
-        char *pattern_check = validate_executable_patterns(source);
-        if (strncmp(pattern_check, "error[", 6) == 0) {
-            puts(pattern_check);
-            free(pattern_check);
-            free(ir);
-            free(tokens);
-            free(source);
-            return 1;
-        }
-        free(pattern_check);
-        char *hir = build_scope_hir(source);
-        if (strncmp(hir, "error[", 6) == 0) {
-            puts(hir);
-            free(hir);
-            free(ir);
-            free(tokens);
-            free(source);
-            return 1;
-        }
-        char *c_source = lower_c(source, hir);
-        if (strncmp(c_source, "error[", 6) == 0) {
-            puts(c_source);
-            free(c_source);
-            free(hir);
-            free(ir);
-            free(tokens);
-            free(source);
-            return 1;
-        }
-        Buffer combined_ir;
-        buffer_init(&combined_ir);
-        buffer_append(&combined_ir, ir);
-        buffer_append(&combined_ir, hir);
-        write_file(argv[3], combined_ir.data);
-        write_file(argv[2], c_source);
-        free(combined_ir.data);
-        free(c_source);
-        free(hir);
-    } else {
-        write_file(argv[2], source);
-    }
-    puts(argv[2]);
-    free(ir);
-    free(tokens);
-    free(source);
-    return 0;
+    return compile_file(argv[1], argv[2], argv[3], argv[4]) == 0 ? 0 : 1;
 }

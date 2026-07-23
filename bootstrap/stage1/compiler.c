@@ -340,24 +340,46 @@ static bool kofun_fn_valid_source(const char * source) {
     kofun_text_list symbols = kofun_rt_chars(source);
     int64_t line_start = INT64_C(0);
     int64_t prints = INT64_C(0);
+    int64_t main_headers = INT64_C(0);
+    int64_t body_depth = INT64_C(0);
     for (int64_t index = INT64_C(0); index < kofun_rt_text_list_len(symbols); ++index) {
         if (kofun_rt_text_equal(kofun_rt_text_list_get(symbols, index), "\n")) {
             const char * line = kofun_rt_trim(kofun_rt_text_slice(source, line_start, index));
-            if (kofun_rt_starts_with(line, "let ")) {
+            if (((kofun_rt_text_len(line) == INT64_C(0)) || kofun_rt_starts_with(line, "#"))) {
+            } else if (kofun_rt_text_equal(line, "fn main() {")) {
+                if ((((main_headers) != (INT64_C(0))) || ((body_depth) != (INT64_C(0))))) {
+                    return false;
+                }
+                main_headers = ((main_headers) + (INT64_C(1)));
+                body_depth = INT64_C(1);
+            } else if (kofun_rt_text_equal(line, "}")) {
+                if (((body_depth) != (INT64_C(1)))) {
+                    return false;
+                }
+                body_depth = INT64_C(0);
+            } else if (kofun_rt_starts_with(line, "let ")) {
+                if (((body_depth) != (INT64_C(1)))) {
+                    return false;
+                }
                 if ((((!kofun_fn_valid_name(kofun_fn_binding_name(line)))) || ((!kofun_fn_valid_expression(kofun_fn_binding_expression(line)))))) {
                     return false;
                 }
             } else if (kofun_rt_starts_with(line, "print(")) {
+                if (((body_depth) != (INT64_C(1)))) {
+                    return false;
+                }
                 const char * expression = kofun_fn_print_expression(line);
                 if ((!kofun_fn_valid_expression(expression))) {
                     return false;
                 }
                 prints = ((prints) + (INT64_C(1)));
+            } else {
+                return false;
             }
             line_start = ((index) + (INT64_C(1)));
         }
     }
-    return ((prints) > (INT64_C(0)));
+    return (((((main_headers) == (INT64_C(1))) && ((body_depth) == (INT64_C(0))))) && ((prints) > (INT64_C(0))));
 }
 
 static const char * kofun_fn_emit_statements(const char * source) {

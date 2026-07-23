@@ -4501,22 +4501,32 @@ fn emit_kofun(source: Text, ir: Text) -> Text {
     return source
 }
 
+fn unsupported_lowering_error(diagnostic: Text) -> Bool {
+    return starts_with(
+        diagnostic,
+        "error[E2S10]: unsupported Core statement"
+    ) || starts_with(
+        diagnostic,
+        "error[E2S24]: general pattern syntax is parsed "
+    )
+}
+
 fn compile_file(
     input_path: Text,
     output_path: Text,
     ir_path: Text,
     tokens_path: Text
-) -> Bool {
+) -> Int {
     let source = read_text(input_path)
     let tokens = lex(source)
     if starts_with(tokens, "error[") {
         print(tokens)
-        return false
+        return 1
     }
     let ir = parse_program(source)
     if starts_with(ir, "error[") {
         print(ir)
-        return false
+        return 1
     }
     write_text(tokens_path, tokens)
     write_text(ir_path, ir)
@@ -4524,17 +4534,27 @@ fn compile_file(
         let pattern_check = validate_executable_patterns(source)
         if starts_with(pattern_check, "error[") {
             print(pattern_check)
-            return false
+            if unsupported_lowering_error(pattern_check) {
+                return 3
+            }
+            return 1
         }
         let hir = build_scope_hir(source)
         if starts_with(hir, "error[") {
             print(hir)
-            return false
+            let ownership = borrowed_collection_check(source)
+            if ownership == "ok" {
+                return 3
+            }
+            return 1
         }
         let c_source = lower_c(source, hir)
         if starts_with(c_source, "error[") {
             print(c_source)
-            return false
+            if unsupported_lowering_error(c_source) {
+                return 3
+            }
+            return 1
         }
         write_text(ir_path, ir + hir)
         write_text(output_path, c_source)
@@ -4542,7 +4562,7 @@ fn compile_file(
         write_text(output_path, emit_kofun(source, ir))
     }
     print(output_path)
-    return true
+    return 0
 }
 
 fn parse_patterns_file(input_path: Text, output_path: Text) -> Bool {
@@ -4610,6 +4630,14 @@ fn check_ownership_file(input_path: Text) -> Bool {
 
 fn main() -> Int {
     let arguments = args()
+    if len(arguments) == 5 && arguments[0] == "--compile-outcome" {
+        return compile_file(
+            arguments[1],
+            arguments[2],
+            arguments[3],
+            arguments[4]
+        )
+    }
     if len(arguments) == 2 && arguments[0] == "--check-ownership" {
         if !check_ownership_file(arguments[1]) {
             return 1
@@ -4631,13 +4659,19 @@ fn main() -> Int {
     if len(arguments) != 4 {
         print(
             "usage: kofun-stage2 INPUT.kofun OUTPUT.kofun OUTPUT.ir OUTPUT.tokens\n" +
+            "       kofun-stage2 --compile-outcome INPUT.kofun OUTPUT.c OUTPUT.ir OUTPUT.tokens\n" +
             "       kofun-stage2 --check-ownership INPUT.kofun\n" +
             "       kofun-stage2 --parse-patterns INPUT.kofun OUTPUT.patterns\n" +
             "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir"
         )
         return 2
     }
-    if !compile_file(arguments[0], arguments[1], arguments[2], arguments[3]) {
+    if compile_file(
+        arguments[0],
+        arguments[1],
+        arguments[2],
+        arguments[3]
+    ) != 0 {
         return 1
     }
     return 0

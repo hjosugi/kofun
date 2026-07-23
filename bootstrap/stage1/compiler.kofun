@@ -100,25 +100,48 @@ fn valid_source(source: Text) -> Bool {
     let symbols = chars(source)
     let mut line_start = 0
     let mut prints = 0
+    let mut main_headers = 0
+    let mut body_depth = 0
     for index in 0 .. len(symbols) {
         if symbols[index] == "\n" {
             let line = trim(text_slice(source, line_start, index))
-            if starts_with(line, "let ") {
+            if len(line) == 0 || starts_with(line, "#") {
+                # Comments and blank lines do not change the structural state.
+            } else if line == "fn main() {" {
+                if main_headers != 0 || body_depth != 0 {
+                    return false
+                }
+                main_headers = main_headers + 1
+                body_depth = 1
+            } else if line == "}" {
+                if body_depth != 1 {
+                    return false
+                }
+                body_depth = 0
+            } else if starts_with(line, "let ") {
+                if body_depth != 1 {
+                    return false
+                }
                 if !valid_name(binding_name(line)) ||
                    !valid_expression(binding_expression(line)) {
                     return false
                 }
             } else if starts_with(line, "print(") {
+                if body_depth != 1 {
+                    return false
+                }
                 let expression = print_expression(line)
                 if !valid_expression(expression) {
                     return false
                 }
                 prints = prints + 1
+            } else {
+                return false
             }
             line_start = index + 1
         }
     }
-    return prints > 0
+    return main_headers == 1 && body_depth == 0 && prints > 0
 }
 
 fn emit_statements(source: Text) -> Text {

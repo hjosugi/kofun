@@ -102,8 +102,13 @@ rejects malformed, duplicate, conflicting, or misplaced basic modifiers;
 does not enforce access across files, modules, packages, imports, signatures,
 tooling, FFI, or linker symbols.
 
-The main CLI tries this Stage 2 C11 Core first and uses the Stage 1 seed as a
-compatibility fallback for inputs outside this slice. Direct-native
+The main CLI tries this Stage 2 C11 Core first. Its internal
+`--compile-outcome` mode reports `0` for successful C emission, `1` for invalid
+source, `2` for usage/infrastructure failure, and `3` for validated source
+whose lowering is unsupported. Only status `3` may enter the explicit Stage 1
+compatibility path; a language diagnostic is never retried by another
+frontend. The Stage 1 seed independently requires its exact line-oriented
+`fn main()`/`let`/`print` Core before it can commit C output. Direct-native
 user-function lowering is not implemented yet.
 
 `bootstrap/stage2/adt_frontend.c` is a separate typed-only checkpoint for flat
