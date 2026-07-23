@@ -51,6 +51,7 @@ compiler:
 
 test: compiler
 	sh tests/cli.sh
+	sh tests/cli_stage2_outcomes.sh
 	sh tests/conformance/modules/lexical-scopes/run.sh
 	sh tests/conformance/modules/shadowing/run.sh
 	$(KOFUN) test tests/conformance/numeric
@@ -207,7 +208,7 @@ verify: test diagnostics fuzz check bootstrap selfhost-profile stage2 patterns a
 	  stdlib/tuple/tests/verify.sh stdlib/set/tests/verify.sh \
 	  stdlib/map/tests/verify.sh stdlib/binary_heap/tests/verify.sh \
 	  stdlib/json/tests/verify.sh \
-	  tests/cli.sh tests/build_system.sh \
+	  tests/cli.sh tests/cli_stage2_outcomes.sh tests/build_system.sh \
 	  package/manager.sh tests/package_manager.sh \
 	  spec/package-roots/check.sh \
 	  spec/source-file-mapping/check.sh \

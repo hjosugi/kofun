@@ -233,23 +233,29 @@ emit_c() (
     ensure_stage2_compiler
     set +e
     "$STAGE2_COMPILER" \
+        --compile-outcome \
         "$1" "$temporary" "$stage2_ir" "$stage2_tokens" \
         >"$stage2_stdout" 2>"$stage2_stderr"
     stage2_status=$?
     set -e
     if test "$stage2_status" -ne 0; then
         rm -f "$temporary"
-        ensure_compiler
-        set +e
-        "$COMPILER" "$1" "$temporary" \
-            >"$stage1_stdout" 2>"$stage1_stderr"
-        stage1_status=$?
-        set -e
-        if test "$stage1_status" -ne 0; then
-            test ! -s "$stage2_stderr" || cat "$stage2_stderr" >&2
-            test ! -s "$stage2_stdout" || cat "$stage2_stdout" >&2
-            exit "$stage2_status"
+        if test "$stage2_status" -eq 3; then
+            ensure_compiler
+            set +e
+            "$COMPILER" "$1" "$temporary" \
+                >"$stage1_stdout" 2>"$stage1_stderr"
+            stage1_status=$?
+            set -e
+            if test "$stage1_status" -eq 0 && test -s "$temporary"; then
+                mv "$temporary" "$2"
+                printf '%s\n' "$2"
+                exit 0
+            fi
         fi
+        test ! -s "$stage2_stderr" || cat "$stage2_stderr" >&2
+        test ! -s "$stage2_stdout" || cat "$stage2_stdout" >&2
+        exit "$stage2_status"
     fi
     test -s "$temporary" || exit 1
     mv "$temporary" "$2"
@@ -464,35 +470,44 @@ case ${1-} in
         trap 'rm -rf "$work"' 0 1 2 15
         set +e
         emit_c "$2" "$work/output.c" \
-            >"$work/stage1.stdout" 2>"$work/stage1.stderr"
-        stage1_status=$?
+            >"$work/compile.stdout" 2>"$work/compile.stderr"
+        compile_status=$?
         set -e
-        if test "$stage1_status" -eq 0; then
+        if test "$compile_status" -eq 0; then
             printf '%s\n' "ok: $2"
             exit 0
         fi
-        ensure_stage2_compiler
-        set +e
-        "$STAGE2_COMPILER" --check-ownership "$2" \
-            >"$work/stage2.stdout" 2>"$work/stage2.stderr"
-        stage2_status=$?
-        set -e
-        if test "$stage2_status" -ne 0; then
-            if grep -q 'error\[E2S20\]' "$work/stage2.stdout"; then
-                test ! -s "$work/stage1.stderr" ||
-                    cat "$work/stage1.stderr" >&2
-                test ! -s "$work/stage1.stdout" ||
-                    cat "$work/stage1.stdout"
-                exit "$stage1_status"
+        if test "$compile_status" -eq 1 ||
+           test "$compile_status" -eq 3
+        then
+            ensure_stage2_compiler
+            set +e
+            "$STAGE2_COMPILER" --check-ownership "$2" \
+                >"$work/ownership.stdout" 2>"$work/ownership.stderr"
+            ownership_status=$?
+            set -e
+            if test "$ownership_status" -ne 0 &&
+               grep -Eq 'error\[(E007|E2S21)\]' "$work/ownership.stdout"
+            then
+                test ! -s "$work/ownership.stderr" ||
+                    cat "$work/ownership.stderr" >&2
+                test ! -s "$work/ownership.stdout" ||
+                    cat "$work/ownership.stdout" >&2
+                exit "$ownership_status"
             fi
-            test ! -s "$work/stage2.stderr" ||
-                cat "$work/stage2.stderr" >&2
-            test ! -s "$work/stage2.stdout" ||
-                cat "$work/stage2.stdout" >&2
-            exit "$stage2_status"
+            if test "$compile_status" -eq 3 &&
+               test "$ownership_status" -eq 0
+            then
+                printf '%s\n' \
+                    "ok: $2 (Stage 2 Copy/borrow ownership slice; codegen unavailable)"
+                exit 0
+            fi
         fi
-        printf '%s\n' \
-            "ok: $2 (Stage 2 Copy/borrow ownership slice; codegen unavailable)"
+        test ! -s "$work/compile.stderr" ||
+            cat "$work/compile.stderr" >&2
+        test ! -s "$work/compile.stdout" ||
+            cat "$work/compile.stdout" >&2
+        exit "$compile_status"
         ;;
     build)
         shift

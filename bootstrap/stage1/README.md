@@ -14,5 +14,10 @@ Stage 1 accepts the documented arithmetic Core:
 kofun-stage1 INPUT.kofun OUTPUT.c
 ```
 
+The compatibility parser requires one explicit line-oriented `fn main() {`
+body containing only `let` and `print(...)` statements, plus blank lines and
+comments. Unknown structural lines are rejected; they are never ignored while
+extracting an otherwise valid `print`.
+
 It does not yet semantically compile its complete own source, so the Stage 2
 fixed-point gate remains open.

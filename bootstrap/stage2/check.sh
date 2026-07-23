@@ -251,6 +251,30 @@ malformed_status=$?
     "$temporary/unsupported.tokens" \
     >"$temporary/unsupported.stdout" 2>"$temporary/unsupported.stderr"
 unsupported_status=$?
+"$temporary/kofun-stage2" --compile-outcome \
+    "$stage2/malformed.kofun" \
+    "$temporary/outcome-malformed.c" \
+    "$temporary/outcome-malformed.ir" \
+    "$temporary/outcome-malformed.tokens" \
+    >"$temporary/outcome-malformed.stdout" \
+    2>"$temporary/outcome-malformed.stderr"
+outcome_malformed_status=$?
+"$temporary/kofun-stage2" --compile-outcome \
+    "$stage2/unsupported_core.kofun" \
+    "$temporary/outcome-unsupported.c" \
+    "$temporary/outcome-unsupported.ir" \
+    "$temporary/outcome-unsupported.tokens" \
+    >"$temporary/outcome-unsupported.stdout" \
+    2>"$temporary/outcome-unsupported.stderr"
+outcome_unsupported_status=$?
+"$temporary/kofun-stage2" --compile-outcome \
+    "$copy_fixture" \
+    "$temporary/outcome-ownership.c" \
+    "$temporary/outcome-ownership.ir" \
+    "$temporary/outcome-ownership.tokens" \
+    >"$temporary/outcome-ownership.stdout" \
+    2>"$temporary/outcome-ownership.stderr"
+outcome_ownership_status=$?
 set -e
 
 if test "$usage_status" -ne 2 ||
@@ -273,6 +297,19 @@ if test "$unsupported_status" -ne 1 ||
    test -e "$temporary/unsupported.c"
 then
     echo "stage2 check: unsupported Core lowering contract changed" >&2
+    exit 1
+fi
+if test "$outcome_malformed_status" -ne 1 ||
+   test "$outcome_unsupported_status" -ne 3 ||
+   test "$outcome_ownership_status" -ne 3 ||
+   test -e "$temporary/outcome-malformed.c" ||
+   test -e "$temporary/outcome-unsupported.c" ||
+   test -e "$temporary/outcome-ownership.c" ||
+   test -s "$temporary/outcome-malformed.stderr" ||
+   test -s "$temporary/outcome-unsupported.stderr" ||
+   test -s "$temporary/outcome-ownership.stderr"
+then
+    echo "stage2 check: compile-outcome contract changed" >&2
     exit 1
 fi
 
