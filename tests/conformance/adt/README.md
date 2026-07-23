@@ -4,6 +4,14 @@ This issue #328 gate parses and type-checks one deliberately small Stage 2
 surface: non-generic top-level sum types with at least two flat constructors.
 A constructor has either no payload or one named `Int` payload. Functions in
 the gate return one constructor expression and produce typed textual IR only.
+Payload expressions accept the bounded Stage 2 Int Core:
+
+```text
+int-expression := product (("+" | "-") product)*
+product        := unary (("*" | "//" | "%") unary)*
+unary          := ("+" | "-") unary | primary
+primary        := integer | "(" int-expression ")"
+```
 
 The frontend is two phase. It first collects all ADT and constructor
 declarations, then resolves function bodies, so `present` in
@@ -14,9 +22,10 @@ IDs are replaced by production ModuleId/NamespaceId/SymbolId values when #111
 integrates the table into the general resolver.
 
 There is intentionally no value layout, allocation, matching, interpreter,
-C/native/Wasm lowering, or runtime representation. #120 owns layout, while
-#73/#93/#118 consume the typed constructor table for patterns,
-exhaustiveness, and lowering.
+C/native/Wasm lowering, payload evaluation, or runtime representation. The
+typed IR records the resolved constructor identity and `Int` payload type, not
+an evaluated payload value. #120 owns layout, while #73/#93/#118 consume the
+typed constructor table for patterns, exhaustiveness, and lowering.
 
 Run:
 

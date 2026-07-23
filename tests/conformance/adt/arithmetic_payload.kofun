@@ -1,0 +1,7 @@
+type MaybeInt =
+    | Missing
+    | Present(value: Int)
+
+fn arithmetic() -> MaybeInt {
+    return Present((40 + 2) * +3 // 3 % 100)
+}
