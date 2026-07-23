@@ -28,7 +28,9 @@ The shortest honest route to the first self-hosted fixed point is:
 This B4/B5 gate may use one declared, normalized host C11 compiler. Removing
 that dependency with direct-native compiler reproduction is a separate track:
 [#33](https://github.com/hjosugi/kofun/issues/33),
-[#615](https://github.com/hjosugi/kofun/issues/615), and
+[#615](https://github.com/hjosugi/kofun/issues/615), including List parity in
+[#629](https://github.com/hjosugi/kofun/issues/629) and UTF-8 Text parity in
+[#630](https://github.com/hjosugi/kofun/issues/630), and
 [#623](https://github.com/hjosugi/kofun/issues/623). AArch64 stays early on
 that track, rather than waiting until after x86-64 compiler reproduction.
 

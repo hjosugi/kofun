@@ -7,6 +7,19 @@ KOFUN="$ROOT/bin/kofun"
 WORK=${KOFUN_NATIVE_CHECK_WORK:-"$ROOT/build/native-check"}
 CC=${CC:-cc}
 
+AARCH64_RUNNER=${QEMU_AARCH64-}
+if test -n "$AARCH64_RUNNER" &&
+   command -v "$AARCH64_RUNNER" >/dev/null 2>&1
+then
+    :
+elif command -v qemu-aarch64 >/dev/null 2>&1; then
+    AARCH64_RUNNER=$(command -v qemu-aarch64)
+elif command -v qemu-aarch64-static >/dev/null 2>&1; then
+    AARCH64_RUNNER=$(command -v qemu-aarch64-static)
+else
+    AARCH64_RUNNER=
+fi
+
 rm -rf "$WORK"
 mkdir -p "$WORK"
 
@@ -505,8 +518,8 @@ run_native_core_differential() (
     cmp "$WORK/$name-reference.stdout" "$WORK/$name-x86_64.stdout"
     cmp "$WORK/$name-reference.stderr" "$WORK/$name-x86_64.stderr"
 
-    if command -v qemu-aarch64 >/dev/null 2>&1; then
-        qemu-aarch64 "$WORK/$name-aarch64.elf" \
+    if test -n "$AARCH64_RUNNER"; then
+        "$AARCH64_RUNNER" "$WORK/$name-aarch64.elf" \
             >"$WORK/$name-aarch64.stdout" \
             2>"$WORK/$name-aarch64.stderr"
         aarch64_status=$?
@@ -604,8 +617,8 @@ grep 'unknown native Core function `missing`' \
 # AArch64 user-defined functions now execute. Under qemu the fibonacci example
 # and the checked-overflow fixture must match the x86-64 observations exactly:
 # identical stdout, identical diagnostic text, and identical exit status.
-if command -v qemu-aarch64 >/dev/null 2>&1; then
-    qemu-aarch64 "$WORK/fibonacci-native-aarch64.elf" \
+if test -n "$AARCH64_RUNNER"; then
+    "$AARCH64_RUNNER" "$WORK/fibonacci-native-aarch64.elf" \
         >"$WORK/fibonacci-native-aarch64.stdout" \
         2>"$WORK/fibonacci-native-aarch64.stderr"
     cmp "$WORK/fibonacci-native.expected" \
@@ -613,7 +626,7 @@ if command -v qemu-aarch64 >/dev/null 2>&1; then
     test ! -s "$WORK/fibonacci-native-aarch64.stderr"
 
     set +e
-    qemu-aarch64 "$WORK/function-overflow-aarch64.elf" \
+    "$AARCH64_RUNNER" "$WORK/function-overflow-aarch64.elf" \
         >"$WORK/function-overflow-aarch64.stdout" \
         2>"$WORK/function-overflow-aarch64.stderr"
     function_overflow_aarch64_status=$?
@@ -629,10 +642,10 @@ else
         "SKIP: AArch64 function execution (qemu-aarch64 unavailable)"
 fi
 
-# List[Int] is currently an x86-64 Native Core extension. An independent C11
-# executable is the normative Python-free differential reference for
-# bindings, indexing, map, filter, fold, and their edge cases. Every Kofun case
-# below is compiled to and executed as a static ELF.
+# List[Int] uses the same Core AST and value ABI on x86-64 and AArch64. An
+# independent C11 executable is the normative Python-free differential
+# reference for bindings, indexing, map, filter, fold, and their edge cases.
+# Every AArch64 case is built twice and audited even without qemu.
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
     "$NATIVE/fixtures/list_int_reference.c" \
     -o "$WORK/core-list-reference"
@@ -645,6 +658,19 @@ run_native_list_differential() {
     "$KOFUN" build "$source" \
         --target x86_64-linux \
         -o "$WORK/$stem-x86_64.elf" >/dev/null
+    "$KOFUN" build "$source" \
+        --target aarch64-linux \
+        -o "$WORK/$stem-aarch64.elf" >/dev/null
+    "$KOFUN" build "$source" \
+        --target aarch64-linux \
+        -o "$WORK/$stem-aarch64.second.elf" >/dev/null
+    cmp \
+        "$WORK/$stem-aarch64.elf" \
+        "$WORK/$stem-aarch64.second.elf"
+    readelf -h "$WORK/$stem-aarch64.elf" \
+        >"$WORK/$stem-aarch64.header"
+    grep -Eq 'Machine:[[:space:]]+AArch64' \
+        "$WORK/$stem-aarch64.header"
     "$WORK/core-list-reference" "$mode" \
         >"$WORK/$stem-reference.stdout"
     "$WORK/$stem-x86_64.elf" \
@@ -652,18 +678,28 @@ run_native_list_differential() {
         2>"$WORK/$stem.stderr"
     cmp "$WORK/$stem-reference.stdout" "$WORK/$stem.stdout"
     test ! -s "$WORK/$stem.stderr"
+
+    if test -n "$AARCH64_RUNNER"; then
+        "$AARCH64_RUNNER" "$WORK/$stem-aarch64.elf" \
+            >"$WORK/$stem-aarch64.stdout" \
+            2>"$WORK/$stem-aarch64.stderr"
+        cmp \
+            "$WORK/$stem-reference.stdout" \
+            "$WORK/$stem-aarch64.stdout"
+        test ! -s "$WORK/$stem-aarch64.stderr"
+    fi
 }
 
 run_native_list_differential \
-    "$NATIVE/fixtures/core_list_index_42.kofun" \
+    "$LIST_CORPUS/negative_index.kofun" \
     core-list-index \
     index-negative
 run_native_list_differential \
-    "$NATIVE/fixtures/core_list_positive_42.kofun" \
+    "$LIST_CORPUS/binding_index.kofun" \
     core-list-positive \
     binding
 run_native_list_differential \
-    "$NATIVE/fixtures/core_list_len_42.kofun" \
+    "$LIST_CORPUS/length.kofun" \
     core-list-len \
     length
 run_native_list_differential \
@@ -709,6 +745,19 @@ run_native_list_differential \
 "$KOFUN" build "$LIST_CORPUS/index_out_of_range.kofun" \
     --target x86_64-linux \
     -o "$WORK/core-list-variable-oob-x86_64.elf" >/dev/null
+"$KOFUN" build "$LIST_CORPUS/index_out_of_range.kofun" \
+    --target aarch64-linux \
+    -o "$WORK/core-list-variable-oob-aarch64.elf" >/dev/null
+"$KOFUN" build "$LIST_CORPUS/index_out_of_range.kofun" \
+    --target aarch64-linux \
+    -o "$WORK/core-list-variable-oob-aarch64.second.elf" >/dev/null
+cmp \
+    "$WORK/core-list-variable-oob-aarch64.elf" \
+    "$WORK/core-list-variable-oob-aarch64.second.elf"
+readelf -h "$WORK/core-list-variable-oob-aarch64.elf" \
+    >"$WORK/core-list-variable-oob-aarch64.header"
+grep -Eq 'Machine:[[:space:]]+AArch64' \
+    "$WORK/core-list-variable-oob-aarch64.header"
 
 # At 2560 KiB the source and map output allocations both succeed. The chained
 # filter/map/fold case needs a third 1 MiB mmap and must take the exact OOM
@@ -734,12 +783,12 @@ list_oob_status=$?
     exec "$WORK/core-list-pipeline-x86_64.elf"
 ) >"$WORK/core-list-oom.stdout" 2>"$WORK/core-list-oom.stderr"
 list_oom_status=$?
-"$KOFUN" build "$LIST_CORPUS/binding_index.kofun" \
-    --target aarch64-linux \
-    -o "$WORK/core-list-binding-aarch64.elf" \
-    >"$WORK/core-list-binding-aarch64.stdout" \
-    2>"$WORK/core-list-binding-aarch64.stderr"
-list_aarch64_status=$?
+if test -n "$AARCH64_RUNNER"; then
+    "$AARCH64_RUNNER" "$WORK/core-list-variable-oob-aarch64.elf" \
+        >"$WORK/core-list-oob-aarch64.stdout" \
+        2>"$WORK/core-list-oob-aarch64.stderr"
+    list_oob_aarch64_status=$?
+fi
 set -e
 
 test "$list_oob_status" -eq 1
@@ -751,10 +800,18 @@ test "$list_oom_status" -eq 70
 test ! -s "$WORK/core-list-oom.stdout"
 printf 'kofun: out of memory\n' >"$WORK/core-list-oom.expected"
 cmp "$WORK/core-list-oom.expected" "$WORK/core-list-oom.stderr"
-test "$list_aarch64_status" -eq 1
-test ! -e "$WORK/core-list-binding-aarch64.elf"
-grep 'AArch64 native Core does not support List\[Int\] yet' \
-    "$WORK/core-list-binding-aarch64.stderr" >/dev/null
+if test -n "$AARCH64_RUNNER"; then
+    test "$list_oob_aarch64_status" -eq 1
+    test ! -s "$WORK/core-list-oob-aarch64.stdout"
+    cmp \
+        "$WORK/core-list-oob.expected" \
+        "$WORK/core-list-oob-aarch64.stderr"
+    printf '%s\n' \
+        "PASS: AArch64 List differential under $AARCH64_RUNNER"
+else
+    printf '%s\n' \
+        "SKIP: AArch64 List execution (qemu-aarch64 unavailable)"
+fi
 
 # Text uses `[byte length: i64][UTF-8 bytes]`. Each generated static ELF is
 # compared with an independent C11 codepoint scanner, including multi-byte
@@ -921,5 +978,6 @@ printf '%s\n' \
     "PASS: general Native Core release stayed byte-identical and 4099 bytes" \
     "PASS: --target aarch64-linux emitted deterministic static EM_AARCH64 ELF" \
     "PASS: x86-64 and AArch64 consume one target-independent parsed Core" \
-    "PASS: x86-64 List bindings/map/filter/fold matched C11 with OOB/OOM contracts" \
+    "PASS: x86-64/AArch64 List Core built with shared ABI and diagnostics" \
+    "PASS: x86-64 List execution matched C11 with OOB/OOM contracts" \
     "PASS: x86-64 Text matched C11 UTF-8 codepoint and failure semantics"

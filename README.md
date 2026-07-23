@@ -41,9 +41,9 @@ Eight Python-free checkpoints now exercise the path beyond that Core:
 - `bootstrap/stage2/` lexes and structurally parses Kofun, emits a deterministic
   function IR, and reaches a byte-stable source/token/IR round trip;
 - `bootstrap/native/` uses Kofun-authored bytes to build and execute a static
-  Linux x86-64 ELF64 image without an assembler or linker; its active x86-64
-  Core includes recursive user functions, local List bindings,
-  `map`/`filter`/`fold`, and UTF-8 Text operations;
+  Linux ELF64 image without an assembler or linker; its active x86-64 and
+  AArch64 Cores include recursive user functions, local List bindings, and
+  `map`/`filter`/`fold`; UTF-8 Text operations are currently x86-64-only;
 - `bootstrap/wasm/` directly emits a standard wasm32 module for the checked
   Int64 arithmetic Core and differentially executes it in a WebAssembly
   engine;
@@ -75,8 +75,8 @@ never enough to move a row to `Active`.
 | Algebraic-law counterexamples | **Design / historical evidence** | The active CLI rejects `law monad`; [`docs/LAW_SYSTEM.md`](docs/LAW_SYSTEM.md) preserves the bounded model and [#551](https://github.com/hjosugi/kofun/issues/551) tracks a concrete-first executable replacement |
 | Memory safety without GC | **Design only** | [`docs/MEMORY_MODEL.md`](docs/MEMORY_MODEL.md) is target design; the complete checker and reclamation path are not implemented |
 | Runtime performance parity | **Not established** | [`benchmarks/README.md`](benchmarks/README.md) limits current results to smoke and bounded HTTP measurements |
-| Heap allocation | **Active, narrow; no reclamation** | [`bootstrap/native/README.md`](bootstrap/native/README.md) documents the x86-64 `mmap` runtime used by List and Text |
-| Text and homogeneous List values | **Active, bounded x86-64 Core** | [`tests/conformance/`](tests/conformance/) runs the registered Text and List corpora |
+| Heap allocation | **Active, narrow; no reclamation** | [`bootstrap/native/README.md`](bootstrap/native/README.md) documents the x86-64/AArch64 `mmap` runtimes used by List and the x86-64 Text runtime |
+| Text and homogeneous List values | **Active, bounded target profiles** | [`tests/conformance/`](tests/conformance/) runs List on x86-64/AArch64 and Text on x86-64 |
 | Heterogeneous records | **Missing** | [#546](https://github.com/hjosugi/kofun/issues/546) tracks structured compiler/application data, but does not block the first string-scanning C11 fixed point |
 | User-defined function calls | **Active, bounded Int Core** | [`tests/conformance/functions`](tests/conformance/functions) executes arguments, results, forward/mutual recursion, and six-argument calls under both C11 and direct x86-64; the [native gate](bootstrap/native/check.sh) also runs the function Core on AArch64 under `qemu-aarch64` |
 | C ABI interop | **Active, bounded host-C profile** | [`bootstrap/c_abi/check.sh`](bootstrap/c_abi/check.sh) verifies calls and `repr(C)` layout; it is separate from direct native code |

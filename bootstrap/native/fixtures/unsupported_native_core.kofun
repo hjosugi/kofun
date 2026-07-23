@@ -1,6 +1,5 @@
-# AArch64 local bindings must fail before an ELF is written.
+# Division is outside the deliberately bounded direct Native Core.
 
 fn main() {
-    let answer = 42
-    print(answer)
+    print(84 / 2)
 }

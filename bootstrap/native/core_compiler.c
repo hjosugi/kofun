@@ -4941,6 +4941,683 @@ static void a64_function_program(
     function_emitter_free(&emitter);
 }
 
+/*
+ * AArch64 local/List Core.
+ *
+ * Values use the same stack-machine discipline and List ABI as x86-64:
+ * `[length: i64][element: i64] * length`. x19..x23 hold loop state across the
+ * leaf mmap helper; expression temporaries use x0/x1/x9 and 16-byte stack
+ * cells. Every fixed word was checked with
+ * `llvm-mc --triple=aarch64 --show-encoding`.
+ */
+
+typedef struct {
+    bool used;
+    Offsets allocate_calls;
+    Offsets oom_jumps;
+    Offsets list_index_jumps;
+} A64CoreRuntime;
+
+static void a64_core_runtime_free(A64CoreRuntime *runtime) {
+    free(runtime->allocate_calls.fields);
+    free(runtime->oom_jumps.fields);
+    free(runtime->list_index_jumps.fields);
+}
+
+static void a64_move_register(
+    Bytes *text,
+    unsigned destination,
+    unsigned source
+) {
+    a64_word(
+        text,
+        UINT32_C(0xaa0003e0) |
+            ((uint32_t)source << 16) |
+            (uint32_t)destination
+    );
+}
+
+static void a64_subtract(
+    Bytes *text,
+    unsigned destination,
+    unsigned left,
+    unsigned right
+) {
+    a64_word(
+        text,
+        UINT32_C(0xcb000000) |
+            ((uint32_t)right << 16) |
+            ((uint32_t)left << 5) |
+            (uint32_t)destination
+    );
+}
+
+static void a64_compare(
+    Bytes *text,
+    unsigned left,
+    unsigned right
+) {
+    a64_word(
+        text,
+        UINT32_C(0xeb00001f) |
+            ((uint32_t)right << 16) |
+            ((uint32_t)left << 5)
+    );
+}
+
+static void a64_compare_zero(Bytes *text, unsigned source) {
+    a64_word(
+        text,
+        UINT32_C(0xf100001f) | ((uint32_t)source << 5)
+    );
+}
+
+static void a64_load_u64(
+    Bytes *text,
+    unsigned destination,
+    unsigned address,
+    unsigned offset
+) {
+    if (offset % sizeof(uint64_t) != 0 ||
+        offset / sizeof(uint64_t) > UINT32_C(0xfff)) {
+        fatal("aarch64 Core load offset is out of range");
+    }
+    a64_word(
+        text,
+        UINT32_C(0xf9400000) |
+            ((uint32_t)(offset / sizeof(uint64_t)) << 10) |
+            ((uint32_t)address << 5) |
+            (uint32_t)destination
+    );
+}
+
+static void a64_store_u64(
+    Bytes *text,
+    unsigned source,
+    unsigned address,
+    unsigned offset
+) {
+    if (offset % sizeof(uint64_t) != 0 ||
+        offset / sizeof(uint64_t) > UINT32_C(0xfff)) {
+        fatal("aarch64 Core store offset is out of range");
+    }
+    a64_word(
+        text,
+        UINT32_C(0xf9000000) |
+            ((uint32_t)(offset / sizeof(uint64_t)) << 10) |
+            ((uint32_t)address << 5) |
+            (uint32_t)source
+    );
+}
+
+static void a64_load_indexed(
+    Bytes *text,
+    unsigned destination,
+    unsigned address,
+    unsigned index
+) {
+    a64_word(
+        text,
+        UINT32_C(0xf8607800) |
+            ((uint32_t)index << 16) |
+            ((uint32_t)address << 5) |
+            (uint32_t)destination
+    );
+}
+
+static void a64_store_indexed(
+    Bytes *text,
+    unsigned source,
+    unsigned address,
+    unsigned index
+) {
+    a64_word(
+        text,
+        UINT32_C(0xf8207800) |
+            ((uint32_t)index << 16) |
+            ((uint32_t)address << 5) |
+            (uint32_t)source
+    );
+}
+
+static void a64_shift_left_three(
+    Bytes *text,
+    unsigned destination,
+    unsigned source
+) {
+    a64_word(
+        text,
+        UINT32_C(0xd37df000) |
+            ((uint32_t)source << 5) |
+            (uint32_t)destination
+    );
+}
+
+static void a64_sub_immediate(
+    Bytes *text,
+    unsigned destination,
+    unsigned source,
+    unsigned value
+) {
+    if (value > UINT32_C(0xfff)) {
+        fatal("aarch64 Core immediate subtraction is out of range");
+    }
+    a64_word(
+        text,
+        UINT32_C(0xd1000000) |
+            ((uint32_t)value << 10) |
+            ((uint32_t)source << 5) |
+            (uint32_t)destination
+    );
+}
+
+static void a64_load_address(
+    Bytes *text,
+    unsigned destination,
+    uint64_t address
+) {
+    if (address > UINT32_MAX) {
+        fatal("aarch64 Core address exceeds the small static image");
+    }
+    a64_movz(text, destination, (unsigned)(address & UINT64_C(0xffff)));
+    a64_movk_lsl16(
+        text,
+        destination,
+        (unsigned)((address >> 16) & UINT64_C(0xffff))
+    );
+}
+
+static void a64_load_core_local(
+    Bytes *text,
+    unsigned destination,
+    size_t slot
+) {
+    if (slot > (UINT32_C(0xfff) / sizeof(uint64_t)) - 1) {
+        fatal("aarch64 Core local frame is too large");
+    }
+    unsigned offset = (unsigned)((slot + 1) * sizeof(uint64_t));
+    a64_sub_immediate(text, 9, 29, offset);
+    a64_load_u64(text, destination, 9, 0);
+}
+
+static void a64_store_core_local(
+    Bytes *text,
+    unsigned source,
+    size_t slot
+) {
+    if (slot > (UINT32_C(0xfff) / sizeof(uint64_t)) - 1) {
+        fatal("aarch64 Core local frame is too large");
+    }
+    unsigned offset = (unsigned)((slot + 1) * sizeof(uint64_t));
+    a64_sub_immediate(text, 9, 29, offset);
+    a64_store_u64(text, source, 9, 0);
+}
+
+static size_t a64_core_conditional(
+    Bytes *text,
+    uint32_t instruction
+) {
+    size_t field = text->length;
+    a64_word(text, instruction);
+    return field;
+}
+
+static size_t a64_core_branch(Bytes *text) {
+    size_t field = text->length;
+    a64_word(text, UINT32_C(0x14000000));
+    return field;
+}
+
+static void a64_core_call_allocate(
+    Bytes *text,
+    A64CoreRuntime *runtime
+) {
+    runtime->used = true;
+    offsets_add(&runtime->allocate_calls, text->length);
+    a64_word(text, UINT32_C(0x94000000)); /* bl allocate */
+}
+
+static void a64_core_expression(
+    Bytes *text,
+    const Node *expression,
+    A64CoreRuntime *runtime
+) {
+    if (expression->kind == NODE_LITERAL) {
+        a64_load_immediate(text, 0, expression->value);
+        a64_push(text, 0);
+        return;
+    }
+
+    if (expression->kind == NODE_VARIABLE ||
+        expression->kind == NODE_PARAMETER) {
+        a64_load_core_local(text, 0, expression->slot);
+        a64_push(text, 0);
+        return;
+    }
+
+    if (expression->kind == NODE_LET) {
+        a64_core_expression(text, expression->left, runtime);
+        a64_pop(text, 0);
+        a64_store_core_local(text, 0, expression->slot);
+        a64_core_expression(text, expression->right, runtime);
+        return;
+    }
+
+    if (expression->kind == NODE_NEGATE) {
+        a64_core_expression(text, expression->left, runtime);
+        a64_pop(text, 0);
+        a64_subtract(text, 0, 31, 0); /* neg x0, x0 */
+        a64_push(text, 0);
+        return;
+    }
+
+    if (expression->kind == NODE_LIST) {
+        if (expression->item_count >
+            (UINT32_MAX - sizeof(uint64_t)) / sizeof(uint64_t)) {
+            fatal("native Core list is too large");
+        }
+        uint32_t bytes = (uint32_t)(
+            sizeof(uint64_t) +
+            expression->item_count * sizeof(uint64_t)
+        );
+        a64_load_immediate(text, 0, bytes);
+        a64_core_call_allocate(text, runtime);
+        a64_load_immediate(text, 1, (int64_t)expression->item_count);
+        a64_store_u64(text, 1, 0, 0);
+        a64_push(text, 0); /* keep the list pointer below each item */
+
+        for (size_t index = 0; index < expression->item_count; ++index) {
+            a64_core_expression(text, expression->items[index], runtime);
+            a64_pop(text, 1); /* item */
+            a64_pop(text, 0); /* list */
+            a64_load_immediate(text, 2, (int64_t)index);
+            a64_add_immediate(text, 9, 0, 8);
+            a64_store_indexed(text, 1, 9, 2);
+            a64_push(text, 0);
+        }
+        return;
+    }
+
+    if (expression->kind == NODE_MAP) {
+        a64_core_expression(text, expression->left, runtime);
+        a64_pop(text, 19);                 /* source */
+        a64_load_u64(text, 22, 19, 0);     /* length */
+        a64_shift_left_three(text, 0, 22);
+        a64_add_immediate(text, 0, 0, 8);
+        a64_core_call_allocate(text, runtime);
+        a64_move_register(text, 20, 0);    /* output */
+        a64_store_u64(text, 22, 20, 0);
+        a64_movz(text, 21, 0);             /* index */
+
+        size_t loop = text->length;
+        a64_compare(text, 21, 22);
+        size_t done =
+            a64_core_conditional(text, UINT32_C(0x5400000a)); /* b.ge */
+        a64_add_immediate(text, 9, 19, 8);
+        a64_load_indexed(text, 0, 9, 21);
+        a64_store_core_local(text, 0, expression->slot);
+        a64_core_expression(text, expression->right, runtime);
+        a64_pop(text, 0);
+        a64_add_immediate(text, 9, 20, 8);
+        a64_store_indexed(text, 0, 9, 21);
+        a64_add_immediate(text, 21, 21, 1);
+        size_t back = a64_core_branch(text);
+        size_t done_at = text->length;
+        a64_patch_imm19(text, done, done_at);
+        a64_patch_imm26(text, back, loop);
+        a64_push(text, 20);
+        return;
+    }
+
+    if (expression->kind == NODE_FILTER) {
+        a64_core_expression(text, expression->left, runtime);
+        a64_pop(text, 19);                 /* source */
+        a64_load_u64(text, 23, 19, 0);     /* source length */
+        a64_shift_left_three(text, 0, 23);
+        a64_add_immediate(text, 0, 0, 8);
+        a64_core_call_allocate(text, runtime);
+        a64_move_register(text, 20, 0);    /* output */
+        a64_movz(text, 21, 0);             /* source index */
+        a64_movz(text, 22, 0);             /* output count */
+
+        size_t loop = text->length;
+        a64_compare(text, 21, 23);
+        size_t done =
+            a64_core_conditional(text, UINT32_C(0x5400000a)); /* b.ge */
+        a64_add_immediate(text, 9, 19, 8);
+        a64_load_indexed(text, 0, 9, 21);
+        a64_store_core_local(text, 0, expression->slot);
+        a64_core_expression(text, expression->right, runtime);
+        a64_pop(text, 0);
+        size_t skip =
+            a64_core_conditional(text, UINT32_C(0xb4000000)); /* cbz x0 */
+        a64_load_core_local(text, 0, expression->slot);
+        a64_add_immediate(text, 9, 20, 8);
+        a64_store_indexed(text, 0, 9, 22);
+        a64_add_immediate(text, 22, 22, 1);
+        size_t skip_at = text->length;
+        a64_add_immediate(text, 21, 21, 1);
+        size_t back = a64_core_branch(text);
+        size_t done_at = text->length;
+        a64_store_u64(text, 22, 20, 0);
+        a64_patch_imm19(text, done, done_at);
+        a64_patch_imm19(text, skip, skip_at);
+        a64_patch_imm26(text, back, loop);
+        a64_push(text, 20);
+        return;
+    }
+
+    if (expression->kind == NODE_FOLD) {
+        a64_core_expression(text, expression->left, runtime);
+        a64_core_expression(text, expression->right, runtime);
+        a64_pop(text, 22);                 /* accumulator */
+        a64_pop(text, 19);                 /* source */
+        a64_load_u64(text, 23, 19, 0);     /* length */
+        a64_movz(text, 21, 0);             /* index */
+
+        size_t loop = text->length;
+        a64_compare(text, 21, 23);
+        size_t done =
+            a64_core_conditional(text, UINT32_C(0x5400000a)); /* b.ge */
+        a64_store_core_local(text, 22, expression->slot);
+        a64_add_immediate(text, 9, 19, 8);
+        a64_load_indexed(text, 0, 9, 21);
+        a64_store_core_local(text, 0, expression->slot + 1);
+        a64_core_expression(text, expression->third, runtime);
+        a64_pop(text, 22);
+        a64_add_immediate(text, 21, 21, 1);
+        size_t back = a64_core_branch(text);
+        size_t done_at = text->length;
+        a64_patch_imm19(text, done, done_at);
+        a64_patch_imm26(text, back, loop);
+        a64_push(text, 22);
+        return;
+    }
+
+    if (expression->kind == NODE_LENGTH) {
+        a64_core_expression(text, expression->left, runtime);
+        a64_pop(text, 0);
+        a64_load_u64(text, 0, 0, 0);
+        a64_push(text, 0);
+        return;
+    }
+
+    if (expression->kind == NODE_INDEX) {
+        runtime->used = true;
+        a64_core_expression(text, expression->left, runtime);
+        a64_core_expression(text, expression->right, runtime);
+        a64_pop(text, 1);                  /* index */
+        a64_pop(text, 2);                  /* list */
+        a64_load_u64(text, 3, 2, 0);       /* length */
+        a64_compare_zero(text, 1);
+        size_t nonnegative =
+            a64_core_conditional(text, UINT32_C(0x5400000a)); /* b.ge */
+        a64_add(text, 1, 1, 3);
+        size_t nonnegative_at = text->length;
+        a64_patch_imm19(text, nonnegative, nonnegative_at);
+
+        a64_compare_zero(text, 1);
+        offsets_add(&runtime->list_index_jumps, text->length);
+        a64_word(text, UINT32_C(0x5400000b)); /* b.lt list error */
+        a64_compare(text, 1, 3);
+        offsets_add(&runtime->list_index_jumps, text->length);
+        a64_word(text, UINT32_C(0x5400000a)); /* b.ge list error */
+        a64_add_immediate(text, 9, 2, 8);
+        a64_load_indexed(text, 0, 9, 1);
+        a64_push(text, 0);
+        return;
+    }
+
+    if (expression->kind == NODE_INT_EQUAL ||
+        expression->kind == NODE_INT_NOT_EQUAL ||
+        expression->kind == NODE_INT_LESS ||
+        expression->kind == NODE_INT_LESS_EQUAL ||
+        expression->kind == NODE_INT_GREATER ||
+        expression->kind == NODE_INT_GREATER_EQUAL) {
+        a64_core_expression(text, expression->left, runtime);
+        a64_core_expression(text, expression->right, runtime);
+        a64_pop(text, 1);
+        a64_pop(text, 0);
+        a64_compare(text, 0, 1);
+        uint32_t instruction = UINT32_C(0x9a9f17e0); /* cset eq */
+        if (expression->kind == NODE_INT_NOT_EQUAL) {
+            instruction = UINT32_C(0x9a9f07e0);
+        } else if (expression->kind == NODE_INT_LESS) {
+            instruction = UINT32_C(0x9a9fa7e0);
+        } else if (expression->kind == NODE_INT_LESS_EQUAL) {
+            instruction = UINT32_C(0x9a9fc7e0);
+        } else if (expression->kind == NODE_INT_GREATER) {
+            instruction = UINT32_C(0x9a9fd7e0);
+        } else if (expression->kind == NODE_INT_GREATER_EQUAL) {
+            instruction = UINT32_C(0x9a9fb7e0);
+        }
+        a64_word(text, instruction);
+        a64_push(text, 0);
+        return;
+    }
+
+    if (expression->kind == NODE_ADD ||
+        expression->kind == NODE_MULTIPLY) {
+        a64_core_expression(text, expression->left, runtime);
+        a64_core_expression(text, expression->right, runtime);
+        a64_pop(text, 1);
+        a64_pop(text, 0);
+        if (expression->kind == NODE_ADD) {
+            a64_add(text, 0, 0, 1);
+        } else {
+            a64_multiply(text, 0, 0, 1);
+        }
+        a64_push(text, 0);
+        return;
+    }
+
+    fatal("unsupported expression reached AArch64 List lowering");
+}
+
+static void a64_core_diagnostic(
+    Bytes *text,
+    uint32_t length,
+    uint32_t status,
+    size_t *low_field,
+    size_t *high_field
+) {
+    *low_field = text->length;
+    a64_movz(text, 1, 0);                  /* message low, patched */
+    *high_field = text->length;
+    a64_movk_lsl16(text, 1, 0);            /* message high, patched */
+    a64_movz(text, 0, 2);                  /* stderr */
+    a64_movz(text, 2, length);
+    a64_movz(text, 8, 64);                 /* write */
+    a64_svc(text);
+    a64_movz(text, 0, status);
+    a64_movz(text, 8, 93);                 /* exit */
+    a64_svc(text);
+    a64_word(text, UINT32_C(0xd4200000));  /* brk #0 */
+}
+
+static void a64_core_runtime(
+    Bytes *text,
+    A64CoreRuntime *runtime
+) {
+    if (!runtime->used) return;
+
+    size_t allocate_at = text->length;
+    a64_word(text, UINT32_C(0xf144001f)); /* cmp x0, #256, lsl #12 */
+    offsets_add(&runtime->oom_jumps, text->length);
+    a64_word(text, UINT32_C(0x54000008)); /* b.hi oom */
+    a64_movz(text, 0, 0);                 /* address */
+    a64_movz(text, 1, 0);
+    a64_movk_lsl16(text, 1, 16);          /* length = 1 MiB */
+    a64_movz(text, 2, 3);                 /* PROT_READ | PROT_WRITE */
+    a64_movz(text, 3, 0x22);              /* PRIVATE | ANONYMOUS */
+    a64_word(text, UINT32_C(0x92800004)); /* mov x4, #-1 */
+    a64_movz(text, 5, 0);                 /* offset */
+    a64_movz(text, 8, 222);               /* mmap */
+    a64_svc(text);
+    a64_word(text, UINT32_C(0xb13ffc1f)); /* cmn x0, #4095 */
+    offsets_add(&runtime->oom_jumps, text->length);
+    a64_word(text, UINT32_C(0x54000002)); /* b.hs oom */
+    a64_word(text, UINT32_C(0xd65f03c0)); /* ret */
+
+    size_t oom_at = text->length;
+    static const char oom_message[] = "kofun: out of memory\n";
+    size_t oom_low = 0;
+    size_t oom_high = 0;
+    a64_core_diagnostic(
+        text,
+        (uint32_t)(sizeof(oom_message) - 1),
+        70,
+        &oom_low,
+        &oom_high
+    );
+
+    size_t list_index_at = text->length;
+    static const char list_index_message[] =
+        "kofun: list index out of range\n";
+    size_t list_low = 0;
+    size_t list_high = 0;
+    a64_core_diagnostic(
+        text,
+        (uint32_t)(sizeof(list_index_message) - 1),
+        1,
+        &list_low,
+        &list_high
+    );
+
+    size_t oom_message_at = text->length;
+    for (size_t index = 0; index < sizeof(oom_message) - 1; ++index) {
+        byte(text, (uint8_t)oom_message[index]);
+    }
+    size_t list_message_at = text->length;
+    for (
+        size_t index = 0;
+        index < sizeof(list_index_message) - 1;
+        ++index
+    ) {
+        byte(text, (uint8_t)list_index_message[index]);
+    }
+
+    uint64_t oom_address =
+        IMAGE_BASE + (uint64_t)TEXT_OFFSET + (uint64_t)oom_message_at;
+    uint64_t list_address =
+        IMAGE_BASE + (uint64_t)TEXT_OFFSET + (uint64_t)list_message_at;
+    a64_patch_mov_imm16(
+        text,
+        oom_low,
+        (uint32_t)(oom_address & UINT64_C(0xffff))
+    );
+    a64_patch_mov_imm16(
+        text,
+        oom_high,
+        (uint32_t)((oom_address >> 16) & UINT64_C(0xffff))
+    );
+    a64_patch_mov_imm16(
+        text,
+        list_low,
+        (uint32_t)(list_address & UINT64_C(0xffff))
+    );
+    a64_patch_mov_imm16(
+        text,
+        list_high,
+        (uint32_t)((list_address >> 16) & UINT64_C(0xffff))
+    );
+
+    for (size_t index = 0; index < runtime->allocate_calls.length; ++index) {
+        a64_patch_imm26(
+            text,
+            runtime->allocate_calls.fields[index],
+            allocate_at
+        );
+    }
+    for (size_t index = 0; index < runtime->oom_jumps.length; ++index) {
+        a64_patch_imm19(text, runtime->oom_jumps.fields[index], oom_at);
+    }
+    for (
+        size_t index = 0;
+        index < runtime->list_index_jumps.length;
+        ++index
+    ) {
+        a64_patch_imm19(
+            text,
+            runtime->list_index_jumps.fields[index],
+            list_index_at
+        );
+    }
+}
+
+static void a64_core_bool_output(Bytes *text) {
+    a64_load_address(text, 1, DATA_ADDRESS);
+    size_t false_jump =
+        a64_core_conditional(text, UINT32_C(0xb4000000)); /* cbz x0 */
+    static const char true_text[] = "true\n";
+    for (size_t index = 0; index < sizeof(true_text) - 1; ++index) {
+        a64_movz(text, 3, (unsigned)(uint8_t)true_text[index]);
+        a64_strb(text, 3, 1, (unsigned)index);
+    }
+    a64_movz(text, 2, (unsigned)(sizeof(true_text) - 1));
+    size_t done = a64_core_branch(text);
+    size_t false_at = text->length;
+    static const char false_text[] = "false\n";
+    for (size_t index = 0; index < sizeof(false_text) - 1; ++index) {
+        a64_movz(text, 3, (unsigned)(uint8_t)false_text[index]);
+        a64_strb(text, 3, 1, (unsigned)index);
+    }
+    a64_movz(text, 2, (unsigned)(sizeof(false_text) - 1));
+    size_t done_at = text->length;
+    a64_patch_imm19(text, false_jump, false_at);
+    a64_patch_imm26(text, done, done_at);
+    a64_movz(text, 0, 1);                  /* stdout */
+    a64_movz(text, 8, 64);                 /* write */
+    a64_svc(text);
+}
+
+static void a64_list_text(
+    Bytes *text,
+    const Node *expression,
+    size_t local_count
+) {
+    A64CoreRuntime runtime = {0};
+    if (local_count > 0) {
+        if (local_count > UINT32_C(0xfff) / sizeof(uint64_t)) {
+            fatal("aarch64 Core local frame is too large");
+        }
+        a64_word(text, UINT32_C(0xa9bf7bfd)); /* save fp/lr */
+        a64_word(text, UINT32_C(0x910003fd)); /* mov x29, sp */
+        uint32_t frame = (uint32_t)(
+            ((local_count * sizeof(uint64_t)) + 15) / 16 * 16
+        );
+        a64_sub_sp(text, frame);
+    }
+
+    a64_core_expression(text, expression, &runtime);
+    a64_pop(text, 0);
+    if (expression->value_kind == VALUE_INT) {
+        a64_movz(text, 3, 10);
+        a64_udiv(text, 4, 0, 3);
+        a64_msub(text, 5, 4, 3, 0);
+        a64_add_immediate(text, 4, 4, 48);
+        a64_add_immediate(text, 5, 5, 48);
+        a64_load_address(text, 1, DATA_ADDRESS);
+        a64_strb(text, 4, 1, 0);
+        a64_strb(text, 5, 1, 1);
+        a64_movz(text, 0, 1);              /* stdout */
+        a64_movz(text, 2, 3);              /* includes existing newline */
+        a64_movz(text, 8, 64);             /* write */
+        a64_svc(text);
+    } else if (expression->value_kind == VALUE_BOOL) {
+        a64_core_bool_output(text);
+    } else {
+        fatal("AArch64 List Core print result must be Int or Bool");
+    }
+    a64_movz(text, 0, 0);
+    a64_movz(text, 8, 93);                 /* exit */
+    a64_svc(text);
+    a64_word(text, UINT32_C(0xd4200000));  /* brk #0 */
+
+    a64_core_runtime(text, &runtime);
+    a64_core_runtime_free(&runtime);
+}
+
 static void elf_ident(Bytes *image) {
     byte(image, UINT8_C(0x7f));
     byte(image, UINT8_C('E'));
@@ -4993,6 +5670,9 @@ static void elf_image(
     uint16_t machine,
     const Bytes *text
 ) {
+    if (text->length > PAGE_SIZE - TEXT_OFFSET) {
+        fatal("native Core text exceeds the bounded static RX page");
+    }
     uint64_t rx_size = (uint64_t)TEXT_OFFSET + (uint64_t)text->length;
     elf_header(image, machine);
     load_segment(image, 5, 0, IMAGE_BASE, rx_size, rx_size);
@@ -5574,25 +6254,11 @@ int main(int argc, char **argv) {
         free(source);
         return 1;
     }
-    if (aarch64 && uses_list(expression)) {
-        fputs(
-            "kofun native: AArch64 native Core does not support List[Int] yet\n",
-            stderr
-        );
-        free_node(expression);
-        free(source);
-        return 1;
-    }
-    if (aarch64 && uses_local_bindings(expression)) {
-        fputs(
-            "kofun native: AArch64 unsupported Core local bindings\n",
-            stderr
-        );
-        free_node(expression);
-        free(source);
-        return 1;
-    }
-    if (aarch64 && register_depth(expression) > 16) {
+    bool aarch64_list_core =
+        aarch64 &&
+        (uses_list(expression) || uses_local_bindings(expression));
+    if (aarch64 && !aarch64_list_core &&
+        register_depth(expression) > 16) {
         fprintf(stderr, "kofun native: AArch64 Core needs over 16 registers\n");
         free_node(expression);
         free(source);
@@ -5604,7 +6270,15 @@ int main(int argc, char **argv) {
     LineRows rows;
     line_rows_init(&rows);
     if (aarch64) {
-        a64_text(&text, expression);
+        if (aarch64_list_core) {
+            a64_list_text(
+                &text,
+                expression,
+                parser.local_count + parser.max_lambda_parameters
+            );
+        } else {
+            a64_text(&text, expression);
+        }
     } else {
         x64_text(
             &text,
