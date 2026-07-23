@@ -1672,6 +1672,64 @@ static bool type_bodies(Frontend *frontend) {
     return true;
 }
 
+static bool check_calls_returning_to_generic_origin(
+    Frontend *frontend,
+    size_t origin,
+    size_t current,
+    bool visited[FUNCTION_LIMIT]
+) {
+    size_t index;
+    for (index = 0; index < frontend->call_count; index += 1) {
+        const Call *call = &frontend->calls[index];
+        const Function *caller;
+        const Function *callee;
+        if (call->caller != current) continue;
+        caller = &frontend->functions[call->caller];
+        callee = &frontend->functions[call->callee];
+        if (call->callee == origin) {
+            set_error(
+                frontend,
+                "E2S83",
+                call->start,
+                call->end,
+                "recursive generic call cycle reaches `%s` through `%s` -> "
+                "`%s`; recursive generic calls are unsupported in this "
+                "frontend slice",
+                frontend->functions[origin].name,
+                caller->name,
+                callee->name
+            );
+            return false;
+        }
+        if (!visited[call->callee]) {
+            visited[call->callee] = true;
+            if (!check_calls_returning_to_generic_origin(
+                    frontend,
+                    origin,
+                    call->callee,
+                    visited
+                )) return false;
+        }
+    }
+    return true;
+}
+
+static bool reject_generic_call_cycles(Frontend *frontend) {
+    size_t origin;
+    for (origin = 0; origin < frontend->function_count; origin += 1) {
+        bool visited[FUNCTION_LIMIT] = {false};
+        if (frontend->functions[origin].type_parameter_count == 0) continue;
+        visited[origin] = true;
+        if (!check_calls_returning_to_generic_origin(
+                frontend,
+                origin,
+                origin,
+                visited
+            )) return false;
+    }
+    return true;
+}
+
 static char *read_source(const char *path, size_t *length_output) {
     FILE *input = fopen(path, "rb");
     long length;
@@ -1911,7 +1969,8 @@ int main(int argc, char **argv) {
     }
     if (!tokenize(&frontend, source, length) ||
         !collect_headers(&frontend) ||
-        !type_bodies(&frontend)) {
+        !type_bodies(&frontend) ||
+        !reject_generic_call_cycles(&frontend)) {
         printf("%s\n", frontend.error);
         free(source);
         return 1;

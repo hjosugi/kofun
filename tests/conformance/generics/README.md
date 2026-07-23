@@ -10,8 +10,8 @@ The positive fixture covers `Int`, `Bool`, and `Text` instantiations, two
 type parameters, two declarations that independently name `T`, two
 instantiations of one declaration, and a forward generic call. The negative
 fixtures freeze duplicate, unknown, runtime-value, missing/incorrect arity,
-substitution mismatch, annotation mismatch, bounds, recursion, unconstrained,
-and one-over-limit diagnostics.
+substitution mismatch, annotation mismatch, bounds, direct and mutual
+recursion, unconstrained, and one-over-limit diagnostics.
 
 This is typed-only evidence. It performs no inference, monomorphization,
 dictionary selection, C/native/Wasm lowering, layout, or execution.

@@ -87,6 +87,7 @@ annotated_result_mismatch:E2S82
 bounds_unsupported:E2S83
 duplicate_type_parameter:E2S80
 missing_type_arguments:E2S81
+mutual_recursive_unsupported:E2S83
 recursive_unsupported:E2S83
 substituted_argument_mismatch:E2S82
 too_few_type_arguments:E2S81
