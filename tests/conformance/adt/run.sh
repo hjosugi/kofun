@@ -54,6 +54,18 @@ grep -F 'construct|function=present|constructor-id=constructor:adt:MaybeInt:1' \
 grep -F 'identifier|Present|113|120' "$WORK/maybe_int.tokens" \
     >/dev/null || fail 'constructor use span is missing from token tape'
 
+"$WORK/kofun-adt-frontend" "$CASES/arithmetic_payload.kofun" \
+    "$WORK/arithmetic_payload.ir" "$WORK/arithmetic_payload.tokens"
+grep -F \
+    'construct|function=arithmetic|constructor-id=constructor:adt:MaybeInt:1' \
+    "$WORK/arithmetic_payload.ir" |
+    grep -F '|payload=Int' >/dev/null ||
+    fail 'arithmetic constructor payload did not type as Int'
+for operator in + '*' // %; do
+    grep -F "punctuation|$operator|" "$WORK/arithmetic_payload.tokens" \
+        >/dev/null || fail "arithmetic payload token $operator is missing"
+done
+
 expect_failure() {
     stem=$1
     code=$2
@@ -95,5 +107,6 @@ test -z "$(find "$WORK" -type f \
 printf '%s\n' \
     'PASS: MaybeInt declarations and uses carry deterministic nominal IDs' \
     'PASS: declarations are collected before constructor body resolution' \
+    'PASS: bounded parenthesized Int arithmetic payloads type without evaluation' \
     'PASS: zero/one-Int arity and payload typing diagnostics are exact' \
     'PASS: generic, recursive, multi-field, and malformed forms are explicit'

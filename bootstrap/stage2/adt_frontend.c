@@ -13,6 +13,7 @@
 #define ADT_LIMIT 64u
 #define CONSTRUCTOR_LIMIT 256u
 #define FUNCTION_LIMIT 256u
+#define EXPRESSION_DEPTH_LIMIT 128u
 
 typedef enum {
     TOKEN_IDENTIFIER,
@@ -258,7 +259,19 @@ static bool tokenize(Frontend *frontend, const char *source, size_t length) {
             }
             continue;
         }
-        if (strchr("=|():,{}[];-", source[cursor]) != NULL) {
+        if (source[cursor] == '/' && cursor + 1 < length &&
+            source[cursor + 1] == '/') {
+            cursor += 2;
+            if (!add_token(
+                    frontend,
+                    TOKEN_PUNCTUATION,
+                    source,
+                    start,
+                    cursor
+                )) return false;
+            continue;
+        }
+        if (strchr("=|():,{}[];+-*%", source[cursor]) != NULL) {
             cursor += 1;
             if (!add_token(
                     frontend,
@@ -744,6 +757,152 @@ static bool collect_declarations(Frontend *frontend) {
     return true;
 }
 
+static bool parse_int_expression(
+    Frontend *frontend,
+    size_t *cursor,
+    unsigned depth
+);
+
+static bool parse_int_primary(
+    Frontend *frontend,
+    size_t *cursor,
+    unsigned depth
+) {
+    size_t index = *cursor;
+
+    if (depth > EXPRESSION_DEPTH_LIMIT) {
+        size_t start = index < frontend->token_count
+            ? frontend->tokens[index].start
+            : frontend->tokens[frontend->token_count - 1].end;
+        size_t end = index < frontend->token_count
+            ? frontend->tokens[index].end
+            : start;
+        set_error(
+            frontend,
+            "E2S46",
+            start,
+            end,
+            "constructor payload expression nesting exceeds %u",
+            EXPRESSION_DEPTH_LIMIT
+        );
+        *cursor = index;
+        return false;
+    }
+    if (token_has_kind(frontend, index, TOKEN_INTEGER)) {
+        *cursor = index + 1;
+        return true;
+    }
+    if (token_is(frontend, index, "(")) {
+        size_t open = index;
+        index += 1;
+        if (!parse_int_expression(frontend, &index, depth + 1)) {
+            *cursor = index;
+            return false;
+        }
+        if (!token_is(frontend, index, ")")) {
+            size_t start = index < frontend->token_count
+                ? frontend->tokens[index].start
+                : frontend->tokens[open].end;
+            size_t end = index < frontend->token_count
+                ? frontend->tokens[index].end
+                : start;
+            set_error(
+                frontend,
+                "E2S46",
+                start,
+                end,
+                "expected `)` after parenthesized Int payload expression"
+            );
+            return false;
+        }
+        *cursor = index + 1;
+        return true;
+    }
+    return false;
+}
+
+static bool parse_int_unary(
+    Frontend *frontend,
+    size_t *cursor,
+    unsigned depth
+) {
+    size_t index = *cursor;
+    if (depth > EXPRESSION_DEPTH_LIMIT) {
+        size_t start = index < frontend->token_count
+            ? frontend->tokens[index].start
+            : frontend->tokens[frontend->token_count - 1].end;
+        size_t end = index < frontend->token_count
+            ? frontend->tokens[index].end
+            : start;
+        set_error(
+            frontend,
+            "E2S46",
+            start,
+            end,
+            "constructor payload expression nesting exceeds %u",
+            EXPRESSION_DEPTH_LIMIT
+        );
+        *cursor = index;
+        return false;
+    }
+    if (token_is(frontend, index, "+") ||
+        token_is(frontend, index, "-")) {
+        index += 1;
+        if (!parse_int_unary(frontend, &index, depth + 1)) {
+            *cursor = index;
+            return false;
+        }
+        *cursor = index;
+        return true;
+    }
+    return parse_int_primary(frontend, cursor, depth);
+}
+
+static bool parse_int_product(
+    Frontend *frontend,
+    size_t *cursor,
+    unsigned depth
+) {
+    size_t index = *cursor;
+    if (!parse_int_unary(frontend, &index, depth)) {
+        *cursor = index;
+        return false;
+    }
+    while (token_is(frontend, index, "*") ||
+           token_is(frontend, index, "//") ||
+           token_is(frontend, index, "%")) {
+        index += 1;
+        if (!parse_int_unary(frontend, &index, depth)) {
+            *cursor = index;
+            return false;
+        }
+    }
+    *cursor = index;
+    return true;
+}
+
+static bool parse_int_expression(
+    Frontend *frontend,
+    size_t *cursor,
+    unsigned depth
+) {
+    size_t index = *cursor;
+    if (!parse_int_product(frontend, &index, depth)) {
+        *cursor = index;
+        return false;
+    }
+    while (token_is(frontend, index, "+") ||
+           token_is(frontend, index, "-")) {
+        index += 1;
+        if (!parse_int_product(frontend, &index, depth)) {
+            *cursor = index;
+            return false;
+        }
+    }
+    *cursor = index;
+    return true;
+}
+
 static bool parse_function(Frontend *frontend, const FunctionStub *stub) {
     size_t index = stub->token_start;
     Token *function_name;
@@ -873,24 +1032,24 @@ static bool parse_function(Frontend *frontend, const FunctionStub *stub) {
         argument_start = index < frontend->token_count
             ? frontend->tokens[index].start
             : constructor_name->end;
-        if (token_is(frontend, index, "-")) index += 1;
-        if (!token_has_kind(frontend, index, TOKEN_INTEGER)) {
+        if (!parse_int_expression(frontend, &index, 0u)) {
             argument_end = index < frontend->token_count
                 ? frontend->tokens[index].end
                 : argument_start;
-            set_error(
-                frontend,
-                "E2S43",
-                argument_start,
-                argument_end,
-                "constructor `%s` payload must be `Int`; declared at bytes %zu..%zu",
-                constructor->name,
-                constructor->start,
-                constructor->end
-            );
+            if (!frontend->failed) {
+                set_error(
+                    frontend,
+                    "E2S43",
+                    argument_start,
+                    argument_end,
+                    "constructor `%s` payload must be `Int`; declared at bytes %zu..%zu",
+                    constructor->name,
+                    constructor->start,
+                    constructor->end
+                );
+            }
             return false;
         }
-        index += 1;
         if (token_is(frontend, index, ",")) {
             set_error(
                 frontend,
