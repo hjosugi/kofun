@@ -9,7 +9,7 @@ WORK="${KOFUN_CLI_TEST_WORK:-$ROOT/build/cli-test}"
 rm -rf "$WORK"
 mkdir -p "$WORK"
 
-test "$("$KOFUN" --version)" = "Kofun Stage 1 0.3.2-seed"
+test "$("$KOFUN" --version)" = "Kofun Stage 1 0.3.3-seed"
 "$KOFUN" check "$FIXTURE" >/dev/null
 test "$("$KOFUN" run "$FIXTURE")" = "42"
 
