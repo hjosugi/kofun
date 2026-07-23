@@ -527,10 +527,11 @@ run_native_core_differential \
     "$NATIVE/fixtures/core_precedence_42.kofun" \
     core_precedence_42
 
-# The multi-function Int Core is lowered directly to x86-64 calls. This runs
-# the public example rather than a reduced surrogate, so arbitrary-width
-# integer printing, recursion, parameters, returns, and call fixups are all
-# observable in one static ELF.
+# The multi-function Int Core is lowered directly to native calls for both
+# x86-64 and AArch64. This runs the public example rather than a reduced
+# surrogate, so arbitrary-width integer printing, recursion, parameters,
+# returns, and call fixups are all observable in one static ELF. x86-64
+# executes directly; AArch64 executes under qemu when the emulator is present.
 "$KOFUN" build "$ROOT/examples/fibonacci_native.kofun" \
     --target x86_64-linux \
     -o "$WORK/fibonacci-native.elf" >/dev/null
@@ -541,9 +542,20 @@ printf '6765\n' >"$WORK/fibonacci-native.expected"
 cmp "$WORK/fibonacci-native.expected" "$WORK/fibonacci-native.stdout"
 test ! -s "$WORK/fibonacci-native.stderr"
 
+"$KOFUN" build "$ROOT/examples/fibonacci_native.kofun" \
+    --target aarch64-linux \
+    -o "$WORK/fibonacci-native-aarch64.elf" >/dev/null
+readelf -h "$WORK/fibonacci-native-aarch64.elf" \
+    >"$WORK/fibonacci-native-aarch64.elf-header.txt"
+grep -Eq 'Machine:[[:space:]]+AArch64' \
+    "$WORK/fibonacci-native-aarch64.elf-header.txt"
+
 "$KOFUN" build "$NATIVE/fixtures/function_overflow.kofun" \
     --target x86_64-linux \
     -o "$WORK/function-overflow.elf" >/dev/null
+"$KOFUN" build "$NATIVE/fixtures/function_overflow.kofun" \
+    --target aarch64-linux \
+    -o "$WORK/function-overflow-aarch64.elf" >/dev/null
 set +e
 "$WORK/function-overflow.elf" \
     >"$WORK/function-overflow.stdout" \
@@ -561,12 +573,14 @@ function_unknown_status=$?
     >"$WORK/function-arity.stdout" \
     2>"$WORK/function-arity.stderr"
 function_arity_status=$?
-"$KOFUN" build "$ROOT/examples/fibonacci_native.kofun" \
+# The unknown-symbol and arity diagnostics are selected before instruction
+# selection, so AArch64 rejects the same programs with the same messages.
+"$KOFUN" build "$NATIVE/fixtures/function_unknown.kofun" \
     --target aarch64-linux \
-    -o "$WORK/fibonacci-native-aarch64.elf" \
-    >"$WORK/fibonacci-native-aarch64.stdout" \
-    2>"$WORK/fibonacci-native-aarch64.stderr"
-function_aarch64_status=$?
+    -o "$WORK/function-unknown-aarch64.elf" \
+    >"$WORK/function-unknown-aarch64.stdout" \
+    2>"$WORK/function-unknown-aarch64.stderr"
+function_unknown_aarch64_status=$?
 set -e
 test "$function_overflow_status" -eq 1
 test ! -s "$WORK/function-overflow.stdout"
@@ -582,10 +596,38 @@ test "$function_arity_status" -eq 1
 test ! -e "$WORK/function-arity.elf"
 grep 'native Core function `add` expects 2 arguments, got 1' \
     "$WORK/function-arity.stderr" >/dev/null
-test "$function_aarch64_status" -eq 1
-test ! -e "$WORK/fibonacci-native-aarch64.elf"
-grep 'AArch64 user-defined functions are not implemented yet' \
-    "$WORK/fibonacci-native-aarch64.stderr" >/dev/null
+test "$function_unknown_aarch64_status" -eq 1
+test ! -e "$WORK/function-unknown-aarch64.elf"
+grep 'unknown native Core function `missing`' \
+    "$WORK/function-unknown-aarch64.stderr" >/dev/null
+
+# AArch64 user-defined functions now execute. Under qemu the fibonacci example
+# and the checked-overflow fixture must match the x86-64 observations exactly:
+# identical stdout, identical diagnostic text, and identical exit status.
+if command -v qemu-aarch64 >/dev/null 2>&1; then
+    qemu-aarch64 "$WORK/fibonacci-native-aarch64.elf" \
+        >"$WORK/fibonacci-native-aarch64.stdout" \
+        2>"$WORK/fibonacci-native-aarch64.stderr"
+    cmp "$WORK/fibonacci-native.expected" \
+        "$WORK/fibonacci-native-aarch64.stdout"
+    test ! -s "$WORK/fibonacci-native-aarch64.stderr"
+
+    set +e
+    qemu-aarch64 "$WORK/function-overflow-aarch64.elf" \
+        >"$WORK/function-overflow-aarch64.stdout" \
+        2>"$WORK/function-overflow-aarch64.stderr"
+    function_overflow_aarch64_status=$?
+    set -e
+    test "$function_overflow_aarch64_status" -eq 1
+    test ! -s "$WORK/function-overflow-aarch64.stdout"
+    cmp "$WORK/function-overflow.expected" \
+        "$WORK/function-overflow-aarch64.stderr"
+    printf '%s\n' \
+        "PASS: fibonacci and overflow differential under qemu-aarch64"
+else
+    printf '%s\n' \
+        "SKIP: AArch64 function execution (qemu-aarch64 unavailable)"
+fi
 
 # List[Int] is currently an x86-64 Native Core extension. An independent C11
 # executable is the normative Python-free differential reference for

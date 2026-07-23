@@ -37,10 +37,11 @@ bootstrap/wasm/compiler.c
 The Stage 2 checkpoint lowers a bounded `Int` Core with parameters, results,
 recursion, and forward references. It does not lower its own Text/List/file-I/O
 implementation. The native checkpoint is registered for explicit Linux
-targets. Its x86-64 Int profile executes parameters, results, forward and mutual
-recursion, guarded returns, and checked arithmetic directly; the shared
-x86-64/AArch64 scalar profile and the x86-64 List/Text profiles remain separate
-bounded frontends. wasm32 supports a separately registered Int64 arithmetic
+targets. Its Int function profile executes parameters, results, forward and
+mutual recursion, guarded returns, and checked arithmetic directly on both
+x86-64 and AArch64 from one shared parsed program; the shared x86-64/AArch64
+scalar profile and the x86-64 List/Text profiles remain separate bounded
+frontends. wasm32 supports a separately registered Int64 arithmetic
 Core profile; it does not yet share a general typed IR with the native targets.
 
 ## Target pipeline

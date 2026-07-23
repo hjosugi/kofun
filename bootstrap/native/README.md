@@ -30,9 +30,9 @@ constant analysis must prove every known intermediate value fits that range
 and a statically known final integer is two digits. Unsupported input fails
 before an output file is written.
 
-## x86-64 user-defined Int functions
+## Native user-defined Int functions
 
-The direct x86-64 backend also accepts a bounded multi-function Int Core:
+Both native backends accept a bounded multi-function Int Core:
 
 ```kofun
 fn fib(n: Int) -> Int {
@@ -48,23 +48,31 @@ fn main() {
 ```
 
 Top-level declarations are collected before bodies are parsed, so forward and
-mutual recursion do not depend on source order. Calls support up to the six
-SysV integer argument registers. Parameters are stored in frame slots, returns
-use `rax`, and every call is resolved as a checked `rel32` fixup. The profile
-supports Int literals, parameters, direct calls, unary `-`, `+`, `-`, `*`,
-integer comparisons, `if { return ... }` guards, expression statements,
-multiple `print(Int)` statements in `main`, and explicit or implicit main
-returns.
+mutual recursion do not depend on source order. Calls support up to six integer
+argument registers (`rdi..r9` on x86-64, `x0..x5` on AArch64). Parameters are
+stored in frame slots, returns come back in the first result register (`rax` /
+`x0`), and every call is resolved as a checked fixup (`rel32` on x86-64, a
+26-bit `bl` immediate on AArch64). Both backends lower the same
+target-independent parsed program, so the profile supports Int literals,
+parameters, direct calls, unary `-`, `+`, `-`, `*`, integer comparisons,
+`if { return ... }` guards, expression statements, multiple `print(Int)`
+statements in `main`, and explicit or implicit main returns identically.
 
 Runtime Int output covers zero, negative values, and the complete signed
 64-bit decimal width. Arithmetic branches to a deterministic overflow
-diagnostic. Unknown functions, duplicate declarations or parameters, wrong
-arity, more than six arguments, non-Int signatures, missing helper returns,
-AArch64 output, and `-g` are rejected before an artifact is written.
+diagnostic — the same `kofun: integer overflow` message and exit status on both
+targets; AArch64 detects multiply overflow with a `smulh`/sign-bit comparison
+and add/sub/negate overflow through the `V` flag. Unknown functions, duplicate
+declarations or parameters, wrong arity, more than six arguments, non-Int
+signatures, missing helper returns, and `-g` are rejected before an artifact is
+written. `-g` debug information remains x86-64-only.
 
 `tests/conformance/functions` runs the same five programs under the C11 and
-direct x86-64 adapters. It covers ordinary/forward calls, recursion, mutual
-recursion, signed/zero output, and the six-argument boundary.
+direct x86-64 adapters, covering ordinary/forward calls, recursion, mutual
+recursion, signed/zero output, and the six-argument boundary. The native gate
+additionally rebuilds the `fibonacci` example and the checked-overflow fixture
+for AArch64 and, when `qemu-aarch64` is installed, executes them and asserts the
+output, diagnostic, and exit status match the x86-64 observations byte for byte.
 
 The x86-64 target also accepts local `Int`/`List[Int]` bindings and a
 deliberately narrow collection Core:
@@ -131,7 +139,11 @@ The AArch64 encoder writes 64-bit `MOVZ`, register `ADD`/`MUL`, `UDIV`, `MSUB`,
 computes the expression, converts the result to ASCII in the RW segment, calls
 Linux AArch64 `write` (64), and calls `exit` (93). The ELF header uses
 `EM_AARCH64` (`e_machine = 183`), entry `0x4000b0`, and no interpreter or
-dynamic section.
+dynamic section. The function profile adds a stack-machine lowering that also
+emits `STP`/`LDP` frames, `BL`/`RET` calls, `STUR`/`LDUR` parameter slots,
+`CBZ` guards, flag-setting `ADDS`/`SUBS`/`SUBS(neg)` with `B.VS`, and a
+`SMULH`/`ASR`/`B.NE` multiply-overflow check; every fixed instruction word was
+cross-checked against `llvm-mc --triple=aarch64`.
 
 `core_compiler.c` is the audited C11 bootstrap driver used until the Kofun
 compiler can self-compile the complete `List[Int]` encoder. It shares one
@@ -302,12 +314,16 @@ Implemented here:
 - direct AArch64 instruction encoding and static `EM_AARCH64` ELF output;
 - the public `build --target aarch64-linux` CLI path;
 - native lowering of the fixture expressions `40 + 2` and `(6 + 1) * 6`;
-- direct x86-64 Int function calls with up to six arguments, results, forward
-  references, recursion, mutual recursion, and comparison-guarded returns;
-- checked `+`, `-`, `*`, and unary negation in the function profile;
+- direct x86-64 and AArch64 Int function calls with up to six arguments,
+  results, forward references, recursion, mutual recursion, and
+  comparison-guarded returns from one shared parsed program;
+- checked `+`, `-`, `*`, and unary negation in the function profile, with an
+  identical overflow trap on both targets;
 - general signed Int64 decimal output for function-profile `print`;
 - registered function conformance coverage with 5/5 cases executed by both
-  the C11 and native x86-64 adapters;
+  the C11 and native x86-64 adapters, plus the `fibonacci` and checked-overflow
+  fixtures executed on AArch64 under `qemu-aarch64` and matched against the
+  x86-64 output;
 - x86-64 `List[Int]` literal, `len`, and positive/negative indexing lowering;
 - x86-64 local `Int`/`List[Int]` bindings with frame-backed variable loads;
 - generated `map`, `filter`, and `fold` loops with typed inline Int lambdas;
@@ -336,6 +352,5 @@ Still open:
 - first-class/nested collection lambdas, general collection types, and
   AArch64 lists;
 - general Text bindings/calls and the Stage 1 compiler port tracked by #33;
-- adding AArch64 user functions, List, and Text to the registered native
-  adapter;
+- adding AArch64 List and Text lowering to the registered native adapter;
 - AArch64 debug information and variable/location DIEs.

@@ -4513,6 +4513,434 @@ static void a64_text(Bytes *text, const Node *expression) {
     a64_svc(text);
 }
 
+/*
+ * AArch64 user-defined Int function Core.
+ *
+ * This mirrors the x86-64 function profile (x64_function_program) instruction
+ * for instruction, using the same target-independent parsed FunctionProgram.
+ * It is a straightforward stack machine: every intermediate value lives on the
+ * native stack, so no register allocator is required. The stack pointer is
+ * kept 16-byte aligned at all times (each push/pop moves it by 16 bytes and
+ * every frame is a 16-byte multiple), which Linux requires for `sp`.
+ *
+ * Every fixed-register instruction word below was cross-checked against
+ * `llvm-mc --triple=aarch64 --show-encoding`.
+ */
+
+static uint32_t a64_read_word(const Bytes *text, size_t field) {
+    if (field > text->length || text->length - field < 4) {
+        fatal("aarch64 instruction field is outside text");
+    }
+    return (uint32_t)text->data[field] |
+        ((uint32_t)text->data[field + 1] << 8) |
+        ((uint32_t)text->data[field + 2] << 16) |
+        ((uint32_t)text->data[field + 3] << 24);
+}
+
+static void a64_write_word(Bytes *text, size_t field, uint32_t word) {
+    if (field > text->length || text->length - field < 4) {
+        fatal("aarch64 instruction field is outside text");
+    }
+    for (unsigned index = 0; index < 4; ++index) {
+        text->data[field + index] = (uint8_t)(word >> (index * 8));
+    }
+}
+
+/* Patch a 26-bit branch immediate (B/BL), scaled by 4, PC-relative. */
+static void a64_patch_imm26(Bytes *text, size_t field, size_t target) {
+    int64_t displacement = (int64_t)target - (int64_t)field;
+    if (displacement % 4 != 0) {
+        fatal("aarch64 branch target is not 4-byte aligned");
+    }
+    int64_t immediate = displacement / 4;
+    if (immediate < -(INT64_C(1) << 25) ||
+        immediate >= (INT64_C(1) << 25)) {
+        fatal("aarch64 imm26 branch is out of range");
+    }
+    uint32_t word = a64_read_word(text, field);
+    word = (word & ~UINT32_C(0x03ffffff)) |
+        ((uint32_t)immediate & UINT32_C(0x03ffffff));
+    a64_write_word(text, field, word);
+}
+
+/* Patch a 19-bit branch immediate (B.cond/CBZ/CBNZ) at bits [23:5]. */
+static void a64_patch_imm19(Bytes *text, size_t field, size_t target) {
+    int64_t displacement = (int64_t)target - (int64_t)field;
+    if (displacement % 4 != 0) {
+        fatal("aarch64 conditional target is not 4-byte aligned");
+    }
+    int64_t immediate = displacement / 4;
+    if (immediate < -(INT64_C(1) << 18) ||
+        immediate >= (INT64_C(1) << 18)) {
+        fatal("aarch64 imm19 branch is out of range");
+    }
+    uint32_t word = a64_read_word(text, field);
+    word = (word & ~(UINT32_C(0x7ffff) << 5)) |
+        (((uint32_t)immediate & UINT32_C(0x7ffff)) << 5);
+    a64_write_word(text, field, word);
+}
+
+/* Patch a 16-bit MOVZ/MOVK immediate at bits [20:5]. */
+static void a64_patch_mov_imm16(Bytes *text, size_t field, uint32_t value) {
+    uint32_t word = a64_read_word(text, field);
+    word = (word & ~(UINT32_C(0xffff) << 5)) |
+        ((value & UINT32_C(0xffff)) << 5);
+    a64_write_word(text, field, word);
+}
+
+/* push xN : str xN, [sp, #-16]! */
+static void a64_push(Bytes *text, unsigned reg) {
+    a64_word(text, UINT32_C(0xf81f0fe0) | (reg & UINT32_C(0x1f)));
+}
+
+/* pop xN : ldr xN, [sp], #16 */
+static void a64_pop(Bytes *text, unsigned reg) {
+    a64_word(text, UINT32_C(0xf84107e0) | (reg & UINT32_C(0x1f)));
+}
+
+/* sub sp, sp, #frame (frame is a 16-byte multiple) */
+static void a64_sub_sp(Bytes *text, uint32_t frame) {
+    if (frame > 0xfff) fatal("aarch64 Core frame is too large");
+    a64_word(text, UINT32_C(0xd10003ff) | ((frame & UINT32_C(0xfff)) << 10));
+}
+
+static uint32_t a64_local_imm9(size_t slot) {
+    if (slot >= (size_t)0x1f) {
+        fatal("aarch64 Core local frame is too large");
+    }
+    int32_t offset = -(int32_t)((slot + 1) * sizeof(uint64_t));
+    return (uint32_t)offset & UINT32_C(0x1ff);
+}
+
+/* stur xreg, [x29, #-(slot+1)*8] */
+static void a64_store_param(Bytes *text, unsigned reg, size_t slot) {
+    a64_word(
+        text,
+        UINT32_C(0xf8000000) |
+            (a64_local_imm9(slot) << 12) |
+            (UINT32_C(29) << 5) |
+            (reg & UINT32_C(0x1f))
+    );
+}
+
+/* ldur xreg, [x29, #-(slot+1)*8] */
+static void a64_load_param(Bytes *text, unsigned reg, size_t slot) {
+    a64_word(
+        text,
+        UINT32_C(0xf8400000) |
+            (a64_local_imm9(slot) << 12) |
+            (UINT32_C(29) << 5) |
+            (reg & UINT32_C(0x1f))
+    );
+}
+
+/* Load a 32-bit zero-extended immediate, matching the x86-64 mov eax path. */
+static void a64_load_immediate(Bytes *text, unsigned reg, int64_t value) {
+    uint32_t bits = (uint32_t)value;
+    a64_movz(text, reg, bits & UINT32_C(0xffff));
+    if ((bits >> 16) != 0) {
+        a64_movk_lsl16(text, reg, (bits >> 16) & UINT32_C(0xffff));
+    }
+}
+
+static void a64_function_epilogue(Bytes *text) {
+    a64_word(text, UINT32_C(0x910003bf)); /* mov sp, x29 */
+    a64_word(text, UINT32_C(0xa8c17bfd)); /* ldp x29, x30, [sp], #16 */
+    a64_word(text, UINT32_C(0xd65f03c0)); /* ret */
+}
+
+static void a64_overflow_jump(
+    Bytes *text,
+    FunctionEmitter *emitter,
+    uint32_t conditional
+) {
+    offsets_add(&emitter->overflow_jumps, text->length);
+    a64_word(text, conditional);
+}
+
+static void a64_function_call(
+    Bytes *text,
+    FunctionEmitter *emitter,
+    size_t function_index
+) {
+    function_call_fixup_add(&emitter->calls, text->length, function_index);
+    a64_word(text, UINT32_C(0x94000000)); /* bl (patched) */
+}
+
+static void a64_function_expression(
+    Bytes *text,
+    const FunctionExpression *expression,
+    FunctionEmitter *emitter
+) {
+    if (expression->kind == FUNCTION_LITERAL) {
+        a64_load_immediate(text, 0, expression->value);
+        a64_push(text, 0);
+        return;
+    }
+    if (expression->kind == FUNCTION_PARAMETER) {
+        a64_load_param(text, 0, expression->slot);
+        a64_push(text, 0);
+        return;
+    }
+    if (expression->kind == FUNCTION_CALL) {
+        for (size_t index = 0; index < expression->argument_count; ++index) {
+            a64_function_expression(
+                text,
+                expression->arguments[index],
+                emitter
+            );
+        }
+        for (size_t index = expression->argument_count; index > 0; --index) {
+            if (index - 1 >= MAX_CORE_PARAMETERS) {
+                fatal("native Core call has too many arguments");
+            }
+            a64_pop(text, (unsigned)(index - 1));
+        }
+        a64_function_call(text, emitter, expression->function_index);
+        a64_push(text, 0); /* push return value */
+        return;
+    }
+    if (expression->kind == FUNCTION_NEGATE) {
+        a64_function_expression(text, expression->left, emitter);
+        a64_pop(text, 0);
+        a64_word(text, UINT32_C(0xeb0003e0)); /* negs x0, x0 */
+        a64_overflow_jump(text, emitter, UINT32_C(0x54000006)); /* b.vs */
+        a64_push(text, 0);
+        return;
+    }
+
+    a64_function_expression(text, expression->left, emitter);
+    a64_function_expression(text, expression->right, emitter);
+    a64_pop(text, 1); /* right -> x1 */
+    a64_pop(text, 0); /* left  -> x0 */
+    if (expression->kind == FUNCTION_ADD) {
+        a64_word(text, UINT32_C(0xab010000)); /* adds x0, x0, x1 */
+        a64_overflow_jump(text, emitter, UINT32_C(0x54000006)); /* b.vs */
+    } else if (expression->kind == FUNCTION_SUBTRACT) {
+        a64_word(text, UINT32_C(0xeb010000)); /* subs x0, x0, x1 */
+        a64_overflow_jump(text, emitter, UINT32_C(0x54000006)); /* b.vs */
+    } else if (expression->kind == FUNCTION_MULTIPLY) {
+        a64_word(text, UINT32_C(0x9b017c09)); /* mul   x9, x0, x1 */
+        a64_word(text, UINT32_C(0x9b417c0a)); /* smulh x10, x0, x1 */
+        a64_word(text, UINT32_C(0x937ffd2b)); /* asr   x11, x9, #63 */
+        a64_word(text, UINT32_C(0xeb0b015f)); /* cmp   x10, x11 */
+        a64_overflow_jump(text, emitter, UINT32_C(0x54000001)); /* b.ne */
+        a64_word(text, UINT32_C(0xaa0903e0)); /* mov   x0, x9 */
+    } else {
+        a64_word(text, UINT32_C(0xeb01001f)); /* cmp x0, x1 */
+        uint32_t set = UINT32_C(0x9a9f17e0); /* cset x0, eq */
+        if (expression->kind == FUNCTION_NOT_EQUAL) {
+            set = UINT32_C(0x9a9f07e0); /* cset x0, ne */
+        } else if (expression->kind == FUNCTION_LESS) {
+            set = UINT32_C(0x9a9fa7e0); /* cset x0, lt */
+        } else if (expression->kind == FUNCTION_LESS_EQUAL) {
+            set = UINT32_C(0x9a9fc7e0); /* cset x0, le */
+        } else if (expression->kind == FUNCTION_GREATER) {
+            set = UINT32_C(0x9a9fd7e0); /* cset x0, gt */
+        } else if (expression->kind == FUNCTION_GREATER_EQUAL) {
+            set = UINT32_C(0x9a9fb7e0); /* cset x0, ge */
+        }
+        a64_word(text, set);
+    }
+    a64_push(text, 0);
+}
+
+static void a64_function_declaration(
+    Bytes *text,
+    const FunctionDeclaration *function,
+    FunctionEmitter *emitter
+) {
+    a64_word(text, UINT32_C(0xa9bf7bfd)); /* stp x29, x30, [sp, #-16]! */
+    a64_word(text, UINT32_C(0x910003fd)); /* mov x29, sp */
+    if (function->parameter_count > 0) {
+        uint32_t frame = (uint32_t)(
+            ((function->parameter_count * sizeof(uint64_t)) + 15) /
+                16 * 16
+        );
+        a64_sub_sp(text, frame);
+        for (size_t index = 0;
+             index < function->parameter_count;
+             ++index) {
+            a64_store_param(text, (unsigned)index, index);
+        }
+    }
+
+    bool returned = false;
+    for (size_t index = 0; index < function->statement_count; ++index) {
+        const FunctionStatement *statement = &function->statements[index];
+        if (statement->kind == FUNCTION_STATEMENT_IF_RETURN) {
+            a64_function_expression(text, statement->condition, emitter);
+            a64_pop(text, 0);
+            size_t skip = text->length;
+            a64_word(text, UINT32_C(0xb4000000)); /* cbz x0, skip */
+            a64_function_expression(text, statement->value, emitter);
+            a64_pop(text, 0);
+            a64_function_epilogue(text);
+            a64_patch_imm19(text, skip, text->length);
+        } else if (statement->kind == FUNCTION_STATEMENT_RETURN) {
+            a64_function_expression(text, statement->value, emitter);
+            a64_pop(text, 0);
+            a64_function_epilogue(text);
+            returned = true;
+        } else if (statement->kind == FUNCTION_STATEMENT_PRINT) {
+            a64_function_expression(text, statement->value, emitter);
+            a64_pop(text, 0); /* print argument -> x0 */
+            offsets_add(&emitter->print_calls, text->length);
+            a64_word(text, UINT32_C(0x94000000)); /* bl print (patched) */
+        } else {
+            a64_function_expression(text, statement->value, emitter);
+            a64_pop(text, 0); /* discard expression result */
+        }
+    }
+    if (!returned) {
+        a64_movz(text, 0, 0); /* implicit main return 0 */
+        a64_function_epilogue(text);
+    }
+}
+
+/*
+ * Print a signed 64-bit integer in decimal followed by a newline, matching
+ * x64_function_print_runtime. The value arrives in x0; digits are written into
+ * a stack buffer from the right and the whole run is emitted with one write(2).
+ */
+static size_t a64_function_print_runtime(Bytes *text) {
+    size_t runtime_at = text->length;
+    a64_word(text, UINT32_C(0xa9bf7bfd)); /* stp x29, x30, [sp, #-16]! */
+    a64_word(text, UINT32_C(0x910003fd)); /* mov x29, sp */
+    a64_sub_sp(text, 32);                 /* sub sp, sp, #32 (buffer) */
+    a64_word(text, UINT32_C(0xaa0003eb)); /* mov  x11, x0 (value) */
+    a64_movz(text, 10, 0);                /* mov  x10, #0 (sign flag) */
+    a64_movz(text, 14, 10);               /* mov  x14, #10 ('\n') */
+    a64_word(text, UINT32_C(0xd10007a9)); /* sub  x9, x29, #1 */
+    a64_word(text, UINT32_C(0x3900012e)); /* strb w14, [x9] */
+    a64_word(text, UINT32_C(0xf100017f)); /* cmp  x11, #0 */
+    size_t nonnegative = text->length;
+    a64_word(text, UINT32_C(0x5400000a)); /* b.ge magnitude */
+    a64_word(text, UINT32_C(0xcb0b03eb)); /* neg  x11, x11 */
+    a64_movz(text, 10, 1);                /* mov  x10, #1 (negative) */
+    size_t magnitude = text->length;
+    a64_patch_imm19(text, nonnegative, magnitude);
+    size_t to_digits = text->length;
+    a64_word(text, UINT32_C(0xb500000b)); /* cbnz x11, digits */
+    a64_word(text, UINT32_C(0xd1000529)); /* sub  x9, x9, #1 */
+    a64_movz(text, 14, 48);               /* mov  x14, #'0' */
+    a64_word(text, UINT32_C(0x3900012e)); /* strb w14, [x9] */
+    size_t to_sign = text->length;
+    a64_word(text, UINT32_C(0x14000000)); /* b sign */
+    size_t digits = text->length;
+    a64_patch_imm19(text, to_digits, digits);
+    a64_movz(text, 13, 10);               /* mov  x13, #10 */
+    size_t digit_loop = text->length;
+    a64_word(text, UINT32_C(0x9acd096c)); /* udiv x12, x11, x13 */
+    a64_word(text, UINT32_C(0x9b0dad8e)); /* msub x14, x12, x13, x11 */
+    a64_word(text, UINT32_C(0x9100c1ce)); /* add  x14, x14, #48 */
+    a64_word(text, UINT32_C(0xd1000529)); /* sub  x9, x9, #1 */
+    a64_word(text, UINT32_C(0x3900012e)); /* strb w14, [x9] */
+    a64_word(text, UINT32_C(0xaa0c03eb)); /* mov  x11, x12 */
+    size_t digit_back = text->length;
+    a64_word(text, UINT32_C(0xb500000b)); /* cbnz x11, digit_loop */
+    a64_patch_imm19(text, digit_back, digit_loop);
+    size_t sign = text->length;
+    a64_patch_imm26(text, to_sign, sign);
+    size_t to_write = text->length;
+    a64_word(text, UINT32_C(0xb400000a)); /* cbz x10, write */
+    a64_word(text, UINT32_C(0xd1000529)); /* sub  x9, x9, #1 */
+    a64_movz(text, 14, 45);               /* mov  x14, #'-' */
+    a64_word(text, UINT32_C(0x3900012e)); /* strb w14, [x9] */
+    size_t write = text->length;
+    a64_patch_imm19(text, to_write, write);
+    a64_word(text, UINT32_C(0xcb0903a2)); /* sub  x2, x29, x9 (length) */
+    a64_word(text, UINT32_C(0xaa0903e1)); /* mov  x1, x9 (buffer) */
+    a64_movz(text, 0, 1);                 /* mov  x0, #1 (stdout) */
+    a64_movz(text, 8, 64);                /* mov  x8, #64 (write) */
+    a64_svc(text);
+    a64_function_epilogue(text);
+    return runtime_at;
+}
+
+static void a64_function_program(
+    Bytes *text,
+    const FunctionProgram *program
+) {
+    FunctionEmitter emitter = {0};
+    size_t function_addresses[MAX_CORE_FUNCTIONS] = {0};
+
+    size_t entry_call = text->length;
+    a64_word(text, UINT32_C(0x94000000)); /* bl main (patched) */
+    a64_movz(text, 8, 93);                /* mov x8, #93 (exit) */
+    a64_svc(text);
+    a64_word(text, UINT32_C(0xd4200000)); /* brk #0 after exit */
+
+    for (size_t index = 0; index < program->function_count; ++index) {
+        function_addresses[index] = text->length;
+        a64_function_declaration(
+            text,
+            &program->functions[index],
+            &emitter
+        );
+    }
+
+    size_t print_at = a64_function_print_runtime(text);
+
+    size_t overflow_at = text->length;
+    static const char overflow_message[] = "kofun: integer overflow\n";
+    size_t overflow_length = sizeof(overflow_message) - 1;
+    size_t message_low_field = text->length;
+    a64_movz(text, 1, 0);                 /* mov x1, #0 (message low, patched) */
+    size_t message_high_field = text->length;
+    a64_movk_lsl16(text, 1, 0);           /* movk x1, #0, lsl 16 (patched) */
+    a64_movz(text, 0, 2);                 /* mov x0, #2 (stderr) */
+    a64_movz(text, 2, (unsigned)overflow_length); /* mov x2, #length */
+    a64_movz(text, 8, 64);                /* mov x8, #64 (write) */
+    a64_svc(text);
+    a64_movz(text, 0, 1);                 /* mov x0, #1 (exit code) */
+    a64_movz(text, 8, 93);                /* mov x8, #93 (exit) */
+    a64_svc(text);
+    a64_word(text, UINT32_C(0xd4200000)); /* brk #0 */
+    size_t message_at = text->length;
+    for (size_t index = 0; index < overflow_length; ++index) {
+        byte(text, (uint8_t)overflow_message[index]);
+    }
+
+    uint64_t message_address =
+        IMAGE_BASE + (uint64_t)TEXT_OFFSET + (uint64_t)message_at;
+    a64_patch_mov_imm16(
+        text,
+        message_low_field,
+        (uint32_t)(message_address & UINT64_C(0xffff))
+    );
+    a64_patch_mov_imm16(
+        text,
+        message_high_field,
+        (uint32_t)((message_address >> 16) & UINT64_C(0xffff))
+    );
+
+    a64_patch_imm26(
+        text,
+        entry_call,
+        function_addresses[program->main_index]
+    );
+    for (size_t index = 0; index < emitter.calls.length; ++index) {
+        FunctionCallFixup fixup = emitter.calls.items[index];
+        a64_patch_imm26(
+            text,
+            fixup.field,
+            function_addresses[fixup.function_index]
+        );
+    }
+    for (size_t index = 0; index < emitter.print_calls.length; ++index) {
+        a64_patch_imm26(text, emitter.print_calls.fields[index], print_at);
+    }
+    for (size_t index = 0; index < emitter.overflow_jumps.length; ++index) {
+        a64_patch_imm19(
+            text,
+            emitter.overflow_jumps.fields[index],
+            overflow_at
+        );
+    }
+    function_emitter_free(&emitter);
+}
+
 static void elf_ident(Bytes *image) {
     byte(image, UINT8_C(0x7f));
     byte(image, UINT8_C('E'));
@@ -5076,16 +5504,6 @@ int main(int argc, char **argv) {
     bool use_function_core =
         function_headers_ok && function_program.function_count > 1;
     if (use_function_core) {
-        if (aarch64) {
-            fputs(
-                "kofun native: AArch64 user-defined functions are not "
-                "implemented yet\n",
-                stderr
-            );
-            function_program_free(&function_program);
-            free(source);
-            return 1;
-        }
         if (debug) {
             fputs(
                 "kofun native: -g for user-defined functions is not "
@@ -5113,7 +5531,11 @@ int main(int argc, char **argv) {
 
         Bytes text;
         bytes_init(&text);
-        x64_function_program(&text, &function_program);
+        if (aarch64) {
+            a64_function_program(&text, &function_program);
+        } else {
+            x64_function_program(&text, &function_program);
+        }
         Bytes image;
         bytes_init(&image);
         elf_image(&image, machine, &text);
