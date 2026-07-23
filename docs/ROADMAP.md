@@ -15,8 +15,8 @@ Kofun advances milestones by correctness gate, not by feature count.
 The roadmap does not schedule frontier features ahead of the two P0 language
 blockers:
 
-1. keep the bounded C11/direct-x86-64 user-function gate green while widening
-   its type and control-flow coverage
+1. keep the bounded C11/direct-x86-64/AArch64 user-function gate green while
+   widening its type and control-flow coverage
    ([#549](https://github.com/hjosugi/kofun/issues/549); first executable slice
    complete)
 2. add a heterogeneous product type suitable for tokens and AST nodes

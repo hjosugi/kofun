@@ -12,6 +12,7 @@
 | Stage 2 lexer, parser, and integer Core lowering | checkpoint implemented | `bootstrap/stage2/check.sh` |
 | C11 user-function calls | bounded Int Core: recursion and forward calls | `bootstrap/stage2/check.sh` |
 | x86-64 native user-function calls | bounded Int Core: six arguments, guarded returns, recursion | `tests/conformance/functions` |
+| AArch64 native user-function calls | same bounded Int Core lowered to AArch64; executed under `qemu-aarch64` | `tests/conformance/functions`, `bootstrap/native/check.sh` |
 | Stage 2 must-fail diagnostic corpus | 28/28 active codes; 3 span debts | `tests/diagnostics/stage2/run.sh` |
 | deterministic compiler fuzz smoke tests | 128 grammar + 48 arithmetic differential + 32 value-if + 32 match-guard + 32 valid/32 invalid match-value + 32 valid/32 invalid enum-match cases | `tests/fuzz/` |
 | payload-free concrete enum matching | bounded Stage 2 C11 slice with constructor-set exhaustiveness | `tests/conformance/syntax/issues_35_47/run.sh`, `tests/fuzz/enum_match.sh` |

@@ -68,7 +68,7 @@ never enough to move a row to `Active`.
 
 | Requirement | Status | Evidence or blocker |
 |---|---|---|
-| Direct native machine code | **Active, bounded Core** | [`bootstrap/native/check.sh`](bootstrap/native/check.sh) builds and executes direct x86-64 ELF and audits AArch64 output |
+| Direct native machine code | **Active, bounded Core** | [`bootstrap/native/check.sh`](bootstrap/native/check.sh) builds and executes direct x86-64 and AArch64 ELF (AArch64 under `qemu-aarch64`) |
 | Static, dependency-free binaries | **Active, bounded Core** | The [native gate](bootstrap/native/check.sh) rejects an interpreter, dynamic section, and dynamic dependencies |
 | Algebraic-law counterexamples | **Active, Monad only** | [`docs/LAW_SYSTEM.md`](docs/LAW_SYSTEM.md) records the executable bounded and finite-model gates; general declarations remain [#551](https://github.com/hjosugi/kofun/issues/551) |
 | Memory safety without GC | **Design only** | [`docs/MEMORY_MODEL.md`](docs/MEMORY_MODEL.md) is target design; the complete checker and reclamation path are not implemented |
@@ -76,7 +76,7 @@ never enough to move a row to `Active`.
 | Heap allocation | **Active, narrow; no reclamation** | [`bootstrap/native/README.md`](bootstrap/native/README.md) documents the x86-64 `mmap` runtime used by List and Text |
 | Text and homogeneous List values | **Active, bounded x86-64 Core** | [`tests/conformance/`](tests/conformance/) runs the registered Text and List corpora |
 | Heterogeneous records | **Missing** | [#546](https://github.com/hjosugi/kofun/issues/546) blocks a useful token and AST representation |
-| User-defined function calls | **Active, bounded Int Core** | [`tests/conformance/functions`](tests/conformance/functions) executes arguments, results, forward/mutual recursion, and six-argument calls under both C11 and direct x86-64 |
+| User-defined function calls | **Active, bounded Int Core** | [`tests/conformance/functions`](tests/conformance/functions) executes arguments, results, forward/mutual recursion, and six-argument calls under both C11 and direct x86-64; the [native gate](bootstrap/native/check.sh) also runs the function Core on AArch64 under `qemu-aarch64` |
 | C ABI interop | **Active, bounded host-C profile** | [`bootstrap/c_abi/check.sh`](bootstrap/c_abi/check.sh) verifies calls and `repr(C)` layout; it is separate from direct native code |
 | Embedded / freestanding profile | **Missing** | The current direct backend targets Linux syscalls |
 | Semantic self-hosting fixed point | **Missing** | [`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md) and the bootstrap gates keep seed, checkpoint, and fixed-point claims distinct |
@@ -104,6 +104,9 @@ The research decisions supporting that order are:
 - C11 compiler (`cc`, or set `CC=clang`)
 - `sha256sum`
 - Linux x86-64 for the native executable gate
+- optional `qemu-aarch64` to execute the AArch64 native gate; without it the
+  AArch64 images are still built and audited, and execution is explicitly
+  skipped
 - `rustc` for the required Rust `cdylib` C ABI acceptance gate
 - `cargo` for the required offline vendored-crate shim gate
 - `ar` for the required HTTP framework static-library gate

@@ -10,7 +10,10 @@ AArch64 Linux. The x86-64 profile additionally lowers local `Int` and
 concatenation, equality, codepoint length, runtime `chars`, and codepoint
 indexing. A separate bounded Int profile lowers up to six function arguments,
 returns, forward and mutual recursion, comparison-guarded early returns,
-checked arithmetic, and signed Int64 output directly:
+checked arithmetic, and signed Int64 output directly. That function profile is
+shared by both backends: the same target-independent parsed program is lowered
+to x86-64 and to AArch64, and both emit a checked-overflow trap with the same
+`kofun: integer overflow` diagnostic and exit status:
 
 ```sh
 ./bin/kofun build source.kofun \
@@ -40,7 +43,6 @@ The remaining native backend work includes:
 - local bindings and general control flow inside user-defined functions;
 - allocator reuse/reclamation and general raw syscall intrinsic lowering;
 - canonical runtime diagnostic codes shared with the C11 backend;
-- AArch64 user-defined functions;
 - AArch64 List/Text lowering;
 - AArch64 debug information and variable-location DIEs;
 - unifying the currently separate function, List, and Text profiles.
