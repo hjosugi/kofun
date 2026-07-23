@@ -12,21 +12,36 @@ Kofun advances milestones by correctness gate, not by feature count.
 
 ## Current critical-path order
 
-The roadmap does not schedule frontier features ahead of the two P0 language
-blockers:
+The shortest honest route to the first self-hosted fixed point is:
 
-1. keep the bounded C11/direct-x86-64/AArch64 user-function gate green while
-   widening its type and control-flow coverage
-   ([#549](https://github.com/hjosugi/kofun/issues/549); first executable slice
-   complete)
-2. add a heterogeneous product type suitable for tokens and AST nodes
-   ([#546](https://github.com/hjosugi/kofun/issues/546))
-3. generalize the existing Monad-specific checker into declared algebraic laws
-   ([#551](https://github.com/hjosugi/kofun/issues/551))
+1. freeze the smallest canonical compiler source `S` and mechanically account
+   for every construct it uses
+   ([#618](https://github.com/hjosugi/kofun/issues/618));
+2. type that exact surface and lower it to deterministic C11
+   ([#619](https://github.com/hjosugi/kofun/issues/619) through
+   [#622](https://github.com/hjosugi/kofun/issues/622));
+3. produce `C1/A1`, then let the generated compilers produce `C2/A2` and
+   `C3/A3` ([#271](https://github.com/hjosugi/kofun/issues/271)); and
+4. require byte-identical C sources and executables across all three
+   generations ([#272](https://github.com/hjosugi/kofun/issues/272)).
 
-Advanced effects, dependent or refinement types, concurrency, and an optional
-second backend remain after this sequence. The evidence and keep/defer/reject
-decisions are indexed in the
+This B4/B5 gate may use one declared, normalized host C11 compiler. Removing
+that dependency with direct-native compiler reproduction is a separate track:
+[#33](https://github.com/hjosugi/kofun/issues/33),
+[#615](https://github.com/hjosugi/kofun/issues/615), and
+[#623](https://github.com/hjosugi/kofun/issues/623). AArch64 stays early on
+that track, rather than waiting until after x86-64 compiler reproduction.
+
+Heterogeneous records ([#546](https://github.com/hjosugi/kofun/issues/546)),
+the concrete-first law system
+([#551](https://github.com/hjosugi/kofun/issues/551)), syntax decisions in
+[#624](https://github.com/hjosugi/kofun/issues/624) through
+[#626](https://github.com/hjosugi/kofun/issues/626), and the small-core
+reactive protocol in [#627](https://github.com/hjosugi/kofun/issues/627)
+remain important P1 work. None expands the frozen string-scanning profile
+before B4/B5. Advanced effects, dependent or refinement types, concurrency
+runtime implementation, and an optional second backend remain later. The
+evidence and keep/defer/reject decisions are indexed in the
 [README project-status section](../README.md#measured-project-status).
 
 ## M0 — Specification and UX validation
@@ -41,7 +56,7 @@ Deliverables:
 - error code policy
 - executable reference semantics corpus
 - one-day tutorial user tests
-- compiler-integrated finite Monad law checker prototype
+- concrete-first finite-law checker design and executable status audit
 - bootstrap stage manifest
 
 Exit criteria:
@@ -57,9 +72,9 @@ Current Stage 0 achievements:
 
 - Kofun-written Python-free arithmetic Core compiler seed
 - affine ownership prototype
-- `law monad` bounded exhaustive checker
-- complete Bool/Optional[Bool] function-space enumeration
-- versioned JSON law evidence and assurance gates
+- historical bounded-Monad examples, finite-model artifacts, and JSON schema;
+  active compiler integration remains open in
+  [#551](https://github.com/hjosugi/kofun/issues/551)
 - Kofun-written Stage 1 arithmetic compiler seed built as native code by Stage 0
 - interpreted/native Stage 1 fixture-output equivalence
 - 13,500 generated implementation issues
@@ -235,14 +250,17 @@ B6  independent reproducible bootstrap
 B7  diverse double compilation
 ```
 
-Current status: `B1` plus a Stage 0-to-native-Stage 1 differential gate. `B4` and `B5` are open.
+Current status: `B1` plus a Stage 0-to-native-Stage 1 differential gate. The
+canonical source used for B4/B5 is frozen and audited by
+`bootstrap/selfhost/`; typed/lowered profile coverage and all self-produced
+compiler generations remain open.
 
 ## Law verification milestones
 
 ```text
-L0  bounded exhaustive Monad checking                  implemented
-L1  complete finite Bool/Optional[Bool] proof          implemented
-L1.5 versioned JSON evidence and assurance build gate  implemented
+L0  bounded exhaustive Monad model                     historical evidence; active gate open
+L1  complete finite Bool/Optional[Bool] model           historical evidence; active gate open
+L1.5 versioned JSON evidence and assurance build gate  schema/artifacts only; active gate open
 L2  user-defined finite ADT enumeration                planned
 L3  Functor/Applicative/Monoid families                planned
 L4  typed proposition IR                               planned

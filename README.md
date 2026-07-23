@@ -3,15 +3,17 @@
 Kofun is an experimental programming language. Source files use `.kofun`.
 
 Kofun's product position is: **the language where you state an algebraic law
-and the compiler hands you a counterexample.** The current implementation only
-supports a bounded Monad-law checkpoint; this sentence is the direction used to
-prioritize future work, not a claim that the general law system is complete.
+and the compiler hands you a counterexample.** This is product direction, not
+current compiler behavior. The active CLI does not yet accept `law monad`;
+bounded Monad examples and evidence in the repository are retained
+historical/design artifacts for [#551](https://github.com/hjosugi/kofun/issues/551).
 
 The active compiler seed is written in Kofun itself:
 
 - canonical source: `bootstrap/stage1/compiler.kofun`
 - audited bootstrap artifact: `bootstrap/stage1/compiler.c`
 - Python-free verification: `bootstrap/stage1/check.sh`
+- frozen first self-host profile: `bootstrap/selfhost/profile.tsv`
 
 The repository contains no Python implementation or Python build dependency.
 
@@ -70,12 +72,12 @@ never enough to move a row to `Active`.
 |---|---|---|
 | Direct native machine code | **Active, bounded Core** | [`bootstrap/native/check.sh`](bootstrap/native/check.sh) builds and executes direct x86-64 and AArch64 ELF (AArch64 under `qemu-aarch64`) |
 | Static, dependency-free binaries | **Active, bounded Core** | The [native gate](bootstrap/native/check.sh) rejects an interpreter, dynamic section, and dynamic dependencies |
-| Algebraic-law counterexamples | **Active, Monad only** | [`docs/LAW_SYSTEM.md`](docs/LAW_SYSTEM.md) records the executable bounded and finite-model gates; general declarations remain [#551](https://github.com/hjosugi/kofun/issues/551) |
+| Algebraic-law counterexamples | **Design / historical evidence** | The active CLI rejects `law monad`; [`docs/LAW_SYSTEM.md`](docs/LAW_SYSTEM.md) preserves the bounded model and [#551](https://github.com/hjosugi/kofun/issues/551) tracks a concrete-first executable replacement |
 | Memory safety without GC | **Design only** | [`docs/MEMORY_MODEL.md`](docs/MEMORY_MODEL.md) is target design; the complete checker and reclamation path are not implemented |
 | Runtime performance parity | **Not established** | [`benchmarks/README.md`](benchmarks/README.md) limits current results to smoke and bounded HTTP measurements |
 | Heap allocation | **Active, narrow; no reclamation** | [`bootstrap/native/README.md`](bootstrap/native/README.md) documents the x86-64 `mmap` runtime used by List and Text |
 | Text and homogeneous List values | **Active, bounded x86-64 Core** | [`tests/conformance/`](tests/conformance/) runs the registered Text and List corpora |
-| Heterogeneous records | **Missing** | [#546](https://github.com/hjosugi/kofun/issues/546) blocks a useful token and AST representation |
+| Heterogeneous records | **Missing** | [#546](https://github.com/hjosugi/kofun/issues/546) tracks structured compiler/application data, but does not block the first string-scanning C11 fixed point |
 | User-defined function calls | **Active, bounded Int Core** | [`tests/conformance/functions`](tests/conformance/functions) executes arguments, results, forward/mutual recursion, and six-argument calls under both C11 and direct x86-64; the [native gate](bootstrap/native/check.sh) also runs the function Core on AArch64 under `qemu-aarch64` |
 | C ABI interop | **Active, bounded host-C profile** | [`bootstrap/c_abi/check.sh`](bootstrap/c_abi/check.sh) verifies calls and `repr(C)` layout; it is separate from direct native code |
 | Embedded / freestanding profile | **Missing** | The current direct backend targets Linux syscalls |
@@ -83,10 +85,13 @@ never enough to move a row to `Active`.
 | Stable language specification | **Missing** | [`spec/README.md`](spec/README.md) distinguishes normative contracts from roadmap material |
 | Package ecosystem | **Missing** | Package and registry work remains a later roadmap milestone |
 
-The first P0 execution blocker now has a bounded C11/direct-x86-64 gate
-([#549](https://github.com/hjosugi/kofun/issues/549)). Heterogeneous records
-([#546](https://github.com/hjosugi/kofun/issues/546)) are the next critical
-path before frontier type, effect, concurrency, or backend work.
+The P0 path now freezes the smallest compiler source profile
+([#618](https://github.com/hjosugi/kofun/issues/618)), fills its frontend and
+C11 coverage in [#619](https://github.com/hjosugi/kofun/issues/619) through
+[#622](https://github.com/hjosugi/kofun/issues/622), then produces and compares
+three compiler generations in [#271](https://github.com/hjosugi/kofun/issues/271)
+and [#272](https://github.com/hjosugi/kofun/issues/272). Direct-native and
+AArch64 parity continue in parallel without blocking that first fixed point.
 
 The research decisions supporting that order are:
 

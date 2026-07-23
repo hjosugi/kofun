@@ -50,9 +50,16 @@ current decisions are:
 
 These decisions are subordinate to the current compiler path. The bounded
 user-defined call slice now runs under C11 and direct x86-64
-([#549](https://github.com/hjosugi/kofun/issues/549)); heterogeneous records
-remain the next blocker
-([#546](https://github.com/hjosugi/kofun/issues/546)).
+([#549](https://github.com/hjosugi/kofun/issues/549)). The first self-hosting
+profile deliberately keeps its current string-scanning representation, so
+heterogeneous records ([#546](https://github.com/hjosugi/kofun/issues/546))
+remain important but do not block the C11 fixed point. Syntax usability and
+lawful composition are reviewed in
+[#624](https://github.com/hjosugi/kofun/issues/624) through
+[#626](https://github.com/hjosugi/kofun/issues/626). Reactive programming stays
+a small typed `Stream`/`Signal` library protocol with explicit demand and
+ownership ([#627](https://github.com/hjosugi/kofun/issues/627)), not a new
+syntax family. None of this expands the P0 compiler profile.
 
 ## Product principles
 
