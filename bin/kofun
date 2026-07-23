@@ -466,7 +466,7 @@ EOF
 
 case ${1-} in
     --version|-V|version)
-        printf '%s\n' "Kofun Stage 1 0.3.2-seed"
+        printf '%s\n' "Kofun Stage 1 0.3.3-seed"
         ;;
     bootstrap)
         test "$#" -eq 1 || { usage >&2; exit 2; }
