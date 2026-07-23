@@ -12,6 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install AArch64 user-mode emulator
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends qemu-user
       - run: make verify
       - name: Build and run Kofun Core
         run: |

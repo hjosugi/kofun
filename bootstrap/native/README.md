@@ -74,7 +74,7 @@ additionally rebuilds the `fibonacci` example and the checked-overflow fixture
 for AArch64 and, when `qemu-aarch64` is installed, executes them and asserts the
 output, diagnostic, and exit status match the x86-64 observations byte for byte.
 
-The x86-64 target also accepts local `Int`/`List[Int]` bindings and a
+Both Linux targets also accept local `Int`/`List[Int]` bindings and a
 deliberately narrow collection Core:
 
 ```kofun
@@ -101,8 +101,8 @@ independent C11 implementation.
 This remains a closed collection Core rather than general collection
 lowering: lambdas are inline and non-escaping, nested higher-order operations
 inside a lambda body are rejected, and allocation uses one mmap chunk per
-List. AArch64 rejects `List[Int]` and local bindings with explicit diagnostics
-instead of emitting scalar code with different semantics.
+List. x86-64 and AArch64 consume the same parsed expression tree and preserve
+the same frame-slot, value-layout, bounds, allocation, and output contracts.
 
 The x86-64 target also implements immutable UTF-8 `Text` values with the
 historical native ABI `[byte length: i64][UTF-8 bytes]`. Literals live in the
@@ -123,10 +123,11 @@ reference and executes the Text OOM and index-failure paths.
 
 The obsolete `tests/kofun/*.kf` acceptance path no longer exists. The active
 Python-free `tests/conformance/list` and `tests/conformance/text` corpora are
-registered with the native x86-64 adapter and execute all 22 cases. General
-Text bindings, calls, and the Stage 1 compiler port are tracked separately by
-issue #33. AArch64 List and Text support is a follow-up target boundary and
-rejects with an explicit diagnostic today.
+registered with the native x86-64 adapter and execute all 22 cases. The List
+corpus is also registered with the AArch64 adapter and executes all 13 cases
+under qemu. General Text bindings, calls, and the Stage 1 compiler port are
+tracked separately by issue #33. AArch64 Text remains an explicit target
+boundary and rejects before artifact creation.
 
 The frontend creates one AST; both instruction selectors consume it. The
 equivalent canonical Kofun representation is a postfix stream of
@@ -144,6 +145,9 @@ emits `STP`/`LDP` frames, `BL`/`RET` calls, `STUR`/`LDUR` parameter slots,
 `CBZ` guards, flag-setting `ADDS`/`SUBS`/`SUBS(neg)` with `B.VS`, and a
 `SMULH`/`ASR`/`B.NE` multiply-overflow check; every fixed instruction word was
 cross-checked against `llvm-mc --triple=aarch64`.
+The List profile additionally emits frame-backed locals, stack temporaries,
+indexed 64-bit loads/stores, generated loop branches, and a leaf Linux AArch64
+`mmap` helper. Its failure fixups target exact OOM and list-index diagnostics.
 
 `core_compiler.c` is the audited C11 bootstrap driver used until the Kofun
 compiler can self-compile the complete `List[Int]` encoder. It shares one
@@ -292,11 +296,12 @@ host-compatible result:
 sh bootstrap/native/check.sh
 ```
 
-When `qemu-aarch64` is installed, the gate executes both AArch64 differential
-fixtures and compares exact status, stdout, and stderr with the Stage 1 C11
-reference. Without qemu it reports an explicit execution skip while still
-validating deterministic hashes, ELF metadata, encoded instruction bytes, and
-x86-64/reference parity.
+When `qemu-aarch64` (or `qemu-aarch64-static`) is installed, the gate executes
+the AArch64 scalar, function, and List differentials and compares exact status,
+stdout, and stderr with the C11/x86-64 observations. Without qemu it reports an
+explicit execution skip while still building List success/failure images
+twice and validating deterministic bytes, ELF metadata, encoded instructions,
+and x86-64/reference parity.
 
 The shell does not choose headers or instructions. Those values are authored
 in Kofun and mirrored by the audited bootstrap seed. No Python, assembly, or
@@ -324,17 +329,21 @@ Implemented here:
   the C11 and native x86-64 adapters, plus the `fibonacci` and checked-overflow
   fixtures executed on AArch64 under `qemu-aarch64` and matched against the
   x86-64 output;
-- x86-64 `List[Int]` literal, `len`, and positive/negative indexing lowering;
-- x86-64 local `Int`/`List[Int]` bindings with frame-backed variable loads;
-- generated `map`, `filter`, and `fold` loops with typed inline Int lambdas;
-- raw `mmap` list allocation with defined OOM and bounds diagnostics;
+- x86-64 and AArch64 `List[Int]` literal, `len`, and positive/negative indexing
+  lowering;
+- x86-64 and AArch64 local `Int`/`List[Int]` bindings with frame-backed
+  variable loads;
+- generated `map`, `filter`, and `fold` loops with typed inline Int lambdas on
+  both Linux targets;
+- raw target-specific Linux `mmap` list allocation with identical OOM and
+  bounds diagnostics;
 - x86-64 UTF-8 Text literals, concatenation, equality, codepoint `len`, and
   positive/negative codepoint indexing;
 - runtime `chars` lowering to allocated List[Text] and Text/Bool printing;
 - registered Python-free Text conformance coverage with 9/9 cases executed by
   the native x86-64 adapter;
 - registered Python-free List conformance coverage with 13/13 cases executed by
-  the native x86-64 adapter;
+  the native x86-64 and, under qemu, AArch64 adapters;
 - two-digit integer-to-ASCII conversion for the shared scalar fixture;
 - distinct RX and RW mappings;
 - three end-to-end Linux x86-64 executable artifact gates;
@@ -349,8 +358,7 @@ Still open:
   user-defined functions;
 - native stdout/stderr formatting and canonical `R010` diagnostics;
 - conditional branches, allocator reuse/reclamation, Mach-O, and additional targets;
-- first-class/nested collection lambdas, general collection types, and
-  AArch64 lists;
+- first-class/nested collection lambdas and general collection types;
 - general Text bindings/calls and the Stage 1 compiler port tracked by #33;
-- adding AArch64 List and Text lowering to the registered native adapter;
+- AArch64 UTF-8 Text and `chars` lowering tracked by #630;
 - AArch64 debug information and variable/location DIEs.
