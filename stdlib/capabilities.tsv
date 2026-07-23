@@ -9,7 +9,7 @@ cli_framework	official	implemented	framework/cli/check.sh	#25	bounded Linux x86-
 clock	platform	implemented	stdlib/clock/tests/verify.sh	#496,#647	bounded explicit clock values, manual clock, and Linux adapter checkpoint
 crypto_tls	official	deferred	-	#636	requires dedicated security ownership and update channel
 csv	portable	implemented	stdlib/csv/tests/verify.sh	#500	bounded deterministic text codec checkpoint
-decimal	portable	implemented	stdlib/decimal/tests/verify.sh	#636	bounded exact base-10 arithmetic checkpoint
+decimal	portable	implemented	stdlib/decimal/tests/verify.sh	#545	bounded exact base-10 arithmetic checkpoint
 environment_process	platform	specified	stdlib/linux_x86_64/process.kofun	#494,#495	target adapter source contract
 filesystem	platform	specified	stdlib/CONTRACT.md	#491,#492,#493	executable bounded raw file round-trip
 hash_checksums	portable	deferred	-	#636	inventory and API split remain
