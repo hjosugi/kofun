@@ -32,15 +32,17 @@ private suite.
 
 The numeric Core corpus is `tests/conformance/numeric/`. Its Kofun manifest,
 `expectations.kofun`, exposes the same observations to future Kofun-native
-tooling. The active numeric adapters are `c11-stage1` and `wasm32-node`.
-Future native adapters must consume the same `.kofun` programs.
+tooling. The active numeric adapters are `c11-stage1`, direct-static
+`native-x86_64`, and `wasm32-node`. They consume the same `.kofun` programs.
 
 ## Unsupported cases and coverage
 
-A backend may mark a case `unsupported` only after compilation returns an
-explicit unsupported-feature diagnostic. Unsupported cases are skips, not
-passes. A missing observation, crash, signal termination, timeout, or empty
-adapter result is a failure.
+A backend omits a corpus from `BACKEND_CORPORA` when the complete corpus is not
+supported. Once an adapter declares a corpus, every case is required.
+Compilation may still mark a case `unsupported` only after an explicit
+unsupported-feature diagnostic; the runner reports that case as a skip for
+diagnostic clarity and fails the backend run. A missing observation, crash,
+signal termination, timeout, or empty adapter result is also a failure.
 
 Every run prints:
 
@@ -50,8 +52,8 @@ coverage: EXECUTED/TOTAL cases executed by BACKEND
 ```
 
 The detailed report lists every skipped case and its compile diagnostic.
-This makes lost coverage visible when an existing backend regresses or a new
-backend is registered.
+Any skipped case in a declared corpus makes the run fail, so supported coverage
+cannot silently regress.
 
 The common runner treats missing executables, crashes, signals, and timeouts as
 failures. It compares output files with `cmp` so trailing newlines and empty

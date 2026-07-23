@@ -31,6 +31,13 @@ loaded code/data. The executable gate validates the structures with `readelf`
 and, when installed, proves source stepping and a named `main` backtrace with
 GDB.
 
+The x86-64 function path additionally accepts frame-backed local `Int`
+bindings, multiple `print` statements, full positive Int64 literals, floor
+division, and floor modulo. It executes the complete shared numeric corpus and
+emits the canonical operator-specific `R010` diagnostics for overflow and
+division by zero. These extensions remain explicitly unsupported by the
+AArch64 function path.
+
 Run:
 
 ```sh
@@ -41,9 +48,9 @@ The remaining native backend work includes:
 
 - general AST/IR lowering and register allocation;
 - connecting general Text/List calls and types to Stage 2 (#33);
-- local bindings and general control flow inside user-defined functions;
+- general control flow inside user-defined functions and AArch64 local parity;
 - allocator reuse/reclamation and general raw syscall intrinsic lowering;
-- canonical runtime diagnostic codes shared with the C11 backend;
+- canonical diagnostic codes outside the x86-64 numeric profile;
 - AArch64 debug information and variable-location DIEs;
 - unifying the currently separate function, List, and Text profiles.
 

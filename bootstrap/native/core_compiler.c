@@ -270,6 +270,8 @@ typedef enum {
     FUNCTION_ADD,
     FUNCTION_SUBTRACT,
     FUNCTION_MULTIPLY,
+    FUNCTION_FLOOR_DIVIDE,
+    FUNCTION_FLOOR_MODULO,
     FUNCTION_NEGATE,
     FUNCTION_EQUAL,
     FUNCTION_NOT_EQUAL,
@@ -298,6 +300,7 @@ typedef enum {
     FUNCTION_STATEMENT_IF_RETURN,
     FUNCTION_STATEMENT_RETURN,
     FUNCTION_STATEMENT_PRINT,
+    FUNCTION_STATEMENT_LET,
     FUNCTION_STATEMENT_EXPRESSION,
 } FunctionStatementKind;
 
@@ -306,12 +309,15 @@ typedef struct {
     FunctionExpression *condition;
     FunctionExpression *value;
     size_t source_line;
+    size_t slot;
 } FunctionStatement;
 
 typedef struct {
     char name[MAX_CORE_NAME];
     char parameters[MAX_CORE_PARAMETERS][MAX_CORE_NAME];
     size_t parameter_count;
+    char locals[MAX_CORE_BINDINGS][MAX_CORE_NAME];
+    size_t local_count;
     size_t declaration_line;
     size_t body_start;
     size_t body_end;
@@ -324,6 +330,9 @@ typedef struct {
     FunctionDeclaration functions[MAX_CORE_FUNCTIONS];
     size_t function_count;
     size_t main_index;
+    bool extended_numeric;
+    bool requires_extended_numeric_lowering;
+    bool canonical_runtime_errors;
 } FunctionProgram;
 
 typedef struct {
@@ -331,8 +340,8 @@ typedef struct {
     size_t cursor;
     size_t limit;
     char error[256];
-    const FunctionProgram *program;
-    const FunctionDeclaration *function;
+    FunctionProgram *program;
+    FunctionDeclaration *function;
 } FunctionParser;
 
 static size_t source_line(const char *source, size_t offset) {
@@ -1670,6 +1679,29 @@ static size_t function_parameter_find(
     return SIZE_MAX;
 }
 
+static size_t function_local_find(
+    const FunctionDeclaration *function,
+    const char *name
+) {
+    for (size_t index = 0; index < function->local_count; ++index) {
+        if (strcmp(function->locals[index], name) == 0) {
+            return index;
+        }
+    }
+    return SIZE_MAX;
+}
+
+static size_t function_binding_find(
+    const FunctionDeclaration *function,
+    const char *name
+) {
+    size_t parameter = function_parameter_find(function, name);
+    if (parameter != SIZE_MAX) return parameter;
+    size_t local = function_local_find(function, name);
+    if (local == SIZE_MAX) return SIZE_MAX;
+    return function->parameter_count + local;
+}
+
 static bool function_body_end(
     FunctionParser *parser,
     size_t *body_end
@@ -1939,18 +1971,23 @@ static FunctionExpression *function_parse_atom(FunctionParser *parser) {
     if (parser->cursor < parser->limit &&
         isdigit((unsigned char)parser->source[parser->cursor])) {
         uint64_t value = 0;
+        const uint64_t limit = (uint64_t)INT64_MAX;
         while (parser->cursor < parser->limit &&
                isdigit((unsigned char)parser->source[parser->cursor])) {
             unsigned digit =
                 (unsigned)(parser->source[parser->cursor++] - '0');
-            if (value > (UINT64_C(65535) - digit) / 10) {
+            if (value > (limit - digit) / 10) {
                 function_error(
                     parser,
-                    "native Core integer literal exceeds 65535"
+                    "native Core integer literal exceeds Int64"
                 );
                 return NULL;
             }
             value = value * 10 + digit;
+        }
+        if (value > UINT64_C(65535)) {
+            parser->program->extended_numeric = true;
+            parser->program->requires_extended_numeric_lowering = true;
         }
         FunctionExpression *literal = function_expression(
             FUNCTION_LITERAL,
@@ -2045,8 +2082,8 @@ static FunctionExpression *function_parse_atom(FunctionParser *parser) {
         return call;
     }
 
-    size_t parameter = function_parameter_find(parser->function, name);
-    if (parameter == SIZE_MAX) {
+    size_t binding_slot = function_binding_find(parser->function, name);
+    if (binding_slot == SIZE_MAX) {
         function_error(parser, "unknown native Core binding `%s`", name);
         return NULL;
     }
@@ -2057,7 +2094,7 @@ static FunctionExpression *function_parse_atom(FunctionParser *parser) {
         NULL,
         NULL
     );
-    binding->slot = parameter;
+    binding->slot = binding_slot;
     return binding;
 }
 
@@ -2065,6 +2102,7 @@ static FunctionExpression *function_parse_unary(FunctionParser *parser) {
     function_skip_trivia(parser);
     size_t operator_at = parser->cursor;
     if (function_consume_char(parser, '-')) {
+        parser->program->extended_numeric = true;
         FunctionExpression *value = function_parse_unary(parser);
         if (value != NULL &&
             value->value_kind != FUNCTION_VALUE_INT) {
@@ -2088,23 +2126,39 @@ static FunctionExpression *function_parse_product(FunctionParser *parser) {
     FunctionExpression *left = function_parse_unary(parser);
     while (parser->error[0] == '\0') {
         function_skip_trivia(parser);
-        if (parser->cursor >= parser->limit ||
-            parser->source[parser->cursor] != '*') {
+        if (parser->cursor >= parser->limit) break;
+        FunctionExpressionKind kind;
+        size_t operator_at = parser->cursor;
+        if (parser->source[parser->cursor] == '*') {
+            kind = FUNCTION_MULTIPLY;
+            ++parser->cursor;
+        } else if (parser->source[parser->cursor] == '%') {
+            kind = FUNCTION_FLOOR_MODULO;
+            ++parser->cursor;
+            parser->program->extended_numeric = true;
+            parser->program->requires_extended_numeric_lowering = true;
+        } else if (parser->cursor + 1 < parser->limit &&
+                   parser->source[parser->cursor] == '/' &&
+                   parser->source[parser->cursor + 1] == '/') {
+            kind = FUNCTION_FLOOR_DIVIDE;
+            parser->cursor += 2;
+            parser->program->extended_numeric = true;
+            parser->program->requires_extended_numeric_lowering = true;
+        } else {
             break;
         }
-        size_t operator_at = parser->cursor++;
         FunctionExpression *right = function_parse_unary(parser);
         if (left == NULL || right == NULL) return left;
         if (left->value_kind != FUNCTION_VALUE_INT ||
             right->value_kind != FUNCTION_VALUE_INT) {
             function_error(
                 parser,
-                "native Core `*` requires Int operands"
+                "native Core product operator requires Int operands"
             );
             return left;
         }
         left = function_expression(
-            FUNCTION_MULTIPLY,
+            kind,
             FUNCTION_VALUE_INT,
             source_line(parser->source, operator_at),
             left,
@@ -2125,6 +2179,7 @@ static FunctionExpression *function_parse_sum(FunctionParser *parser) {
         }
         char operator = parser->source[parser->cursor];
         size_t operator_at = parser->cursor++;
+        if (operator == '-') parser->program->extended_numeric = true;
         FunctionExpression *right = function_parse_product(parser);
         if (left == NULL || right == NULL) return left;
         if (left->value_kind != FUNCTION_VALUE_INT ||
@@ -2233,7 +2288,59 @@ static bool function_bodies(
             FunctionStatement statement = {
                 .source_line = source_line(program->source, statement_at),
             };
-            if (function_consume_word(&parser, "if")) {
+            if (function_consume_word(&parser, "let")) {
+                statement.kind = FUNCTION_STATEMENT_LET;
+                if (function->local_count >= MAX_CORE_BINDINGS) {
+                    function_error(
+                        &parser,
+                        "native Core function has too many local bindings"
+                    );
+                } else {
+                    char name[MAX_CORE_NAME];
+                    if (!function_identifier(&parser, name)) {
+                        function_error(
+                            &parser,
+                            "expected native Core local binding name"
+                        );
+                    } else if (
+                        function_binding_find(function, name) != SIZE_MAX) {
+                        function_error(
+                            &parser,
+                            "duplicate native Core binding `%s`",
+                            name
+                        );
+                    } else if (!function_consume_char(&parser, '=')) {
+                        function_error(
+                            &parser,
+                            "expected `=` after native Core local binding"
+                        );
+                    } else {
+                        statement.value =
+                            function_parse_expression(&parser);
+                        if (statement.value == NULL ||
+                            statement.value->value_kind !=
+                                FUNCTION_VALUE_INT) {
+                            function_error(
+                                &parser,
+                                "native Core local binding must be Int"
+                            );
+                        } else {
+                            statement.slot =
+                                function->parameter_count +
+                                function->local_count;
+                            memcpy(
+                                function->locals[function->local_count],
+                                name,
+                                sizeof(name)
+                            );
+                            ++function->local_count;
+                            program->extended_numeric = true;
+                            program->requires_extended_numeric_lowering =
+                                true;
+                        }
+                    }
+                }
+            } else if (function_consume_word(&parser, "if")) {
                 statement.kind = FUNCTION_STATEMENT_IF_RETURN;
                 statement.condition = function_parse_expression(&parser);
                 if (statement.condition == NULL ||
@@ -2274,6 +2381,15 @@ static bool function_bodies(
                 }
             } else if (function_consume_word(&parser, "print")) {
                 statement.kind = FUNCTION_STATEMENT_PRINT;
+                for (size_t previous = 0;
+                     previous < function->statement_count;
+                     ++previous) {
+                    if (function->statements[previous].kind ==
+                        FUNCTION_STATEMENT_PRINT) {
+                        program->extended_numeric = true;
+                        break;
+                    }
+                }
                 if (!is_main) {
                     function_error(
                         &parser,
@@ -4112,6 +4228,14 @@ typedef struct {
     FunctionCallFixups calls;
     Offsets print_calls;
     Offsets overflow_jumps;
+    Offsets add_overflow_jumps;
+    Offsets subtract_overflow_jumps;
+    Offsets multiply_overflow_jumps;
+    Offsets negate_overflow_jumps;
+    Offsets divide_zero_jumps;
+    Offsets divide_overflow_jumps;
+    Offsets modulo_zero_jumps;
+    bool canonical_errors;
 } FunctionEmitter;
 
 static void function_call_fixup_add(
@@ -4140,6 +4264,13 @@ static void function_emitter_free(FunctionEmitter *emitter) {
     free(emitter->calls.items);
     free(emitter->print_calls.fields);
     free(emitter->overflow_jumps.fields);
+    free(emitter->add_overflow_jumps.fields);
+    free(emitter->subtract_overflow_jumps.fields);
+    free(emitter->multiply_overflow_jumps.fields);
+    free(emitter->negate_overflow_jumps.fields);
+    free(emitter->divide_zero_jumps.fields);
+    free(emitter->divide_overflow_jumps.fields);
+    free(emitter->modulo_zero_jumps.fields);
 }
 
 static void x64_function_call(
@@ -4158,13 +4289,26 @@ static void x64_function_call(
 
 static void x64_function_overflow_jump(
     Bytes *text,
-    FunctionEmitter *emitter
+    FunctionEmitter *emitter,
+    FunctionExpressionKind kind
 ) {
+    Offsets *jumps = &emitter->overflow_jumps;
+    if (emitter->canonical_errors) {
+        if (kind == FUNCTION_ADD) {
+            jumps = &emitter->add_overflow_jumps;
+        } else if (kind == FUNCTION_SUBTRACT) {
+            jumps = &emitter->subtract_overflow_jumps;
+        } else if (kind == FUNCTION_MULTIPLY) {
+            jumps = &emitter->multiply_overflow_jumps;
+        } else if (kind == FUNCTION_NEGATE) {
+            jumps = &emitter->negate_overflow_jumps;
+        }
+    }
     x64_rel32_placeholder(
         text,
         UINT8_C(0x0f),
         UINT8_C(0x80),
-        &emitter->overflow_jumps
+        jumps
     );
 }
 
@@ -4174,8 +4318,14 @@ static void x64_function_expression(
     FunctionEmitter *emitter
 ) {
     if (expression->kind == FUNCTION_LITERAL) {
-        byte(text, UINT8_C(0xb8)); /* mov eax, immediate */
-        u32_le(text, (uint32_t)expression->value);
+        if ((uint64_t)expression->value <= UINT32_MAX) {
+            byte(text, UINT8_C(0xb8)); /* mov eax, immediate */
+            u32_le(text, (uint32_t)expression->value);
+        } else {
+            byte(text, UINT8_C(0x48));
+            byte(text, UINT8_C(0xb8)); /* mov rax, immediate */
+            u64_le(text, (uint64_t)expression->value);
+        }
         byte(text, UINT8_C(0x50)); /* push rax */
         return;
     }
@@ -4228,7 +4378,11 @@ static void x64_function_expression(
         byte(text, UINT8_C(0x48));
         byte(text, UINT8_C(0xf7));
         byte(text, UINT8_C(0xd8)); /* neg rax */
-        x64_function_overflow_jump(text, emitter);
+        x64_function_overflow_jump(
+            text,
+            emitter,
+            FUNCTION_NEGATE
+        );
         byte(text, UINT8_C(0x50));
         return;
     }
@@ -4241,18 +4395,128 @@ static void x64_function_expression(
         byte(text, UINT8_C(0x48));
         byte(text, UINT8_C(0x01));
         byte(text, UINT8_C(0xc8)); /* add rax, rcx */
-        x64_function_overflow_jump(text, emitter);
+        x64_function_overflow_jump(text, emitter, FUNCTION_ADD);
     } else if (expression->kind == FUNCTION_SUBTRACT) {
         byte(text, UINT8_C(0x48));
         byte(text, UINT8_C(0x29));
         byte(text, UINT8_C(0xc8)); /* sub rax, rcx */
-        x64_function_overflow_jump(text, emitter);
+        x64_function_overflow_jump(text, emitter, FUNCTION_SUBTRACT);
     } else if (expression->kind == FUNCTION_MULTIPLY) {
         byte(text, UINT8_C(0x48));
         byte(text, UINT8_C(0x0f));
         byte(text, UINT8_C(0xaf));
         byte(text, UINT8_C(0xc1)); /* imul rax, rcx */
-        x64_function_overflow_jump(text, emitter);
+        x64_function_overflow_jump(text, emitter, FUNCTION_MULTIPLY);
+    } else if (expression->kind == FUNCTION_FLOOR_DIVIDE ||
+               expression->kind == FUNCTION_FLOOR_MODULO) {
+        byte(text, UINT8_C(0x48));
+        byte(text, UINT8_C(0x85));
+        byte(text, UINT8_C(0xc9)); /* test rcx, rcx */
+        x64_rel32_placeholder(
+            text,
+            UINT8_C(0x0f),
+            UINT8_C(0x84),
+            expression->kind == FUNCTION_FLOOR_DIVIDE
+                ? &emitter->divide_zero_jumps
+                : &emitter->modulo_zero_jumps
+        );
+
+        byte(text, UINT8_C(0x48));
+        byte(text, UINT8_C(0x83));
+        byte(text, UINT8_C(0xf9));
+        byte(text, UINT8_C(0xff)); /* cmp rcx, -1 */
+        size_t not_minus_one =
+            x64_local_jcc(text, UINT8_C(0x85)); /* jne divide */
+        byte(text, UINT8_C(0x49));
+        byte(text, UINT8_C(0xb8)); /* mov r8, INT64_MIN */
+        u64_le(text, UINT64_C(0x8000000000000000));
+        byte(text, UINT8_C(0x4c));
+        byte(text, UINT8_C(0x39));
+        byte(text, UINT8_C(0xc0)); /* cmp rax, r8 */
+        if (expression->kind == FUNCTION_FLOOR_DIVIDE) {
+            x64_rel32_placeholder(
+                text,
+                UINT8_C(0x0f),
+                UINT8_C(0x84),
+                &emitter->divide_overflow_jumps
+            );
+        } else {
+            size_t not_overflow =
+                x64_local_jcc(text, UINT8_C(0x85)); /* jne divide */
+            byte(text, UINT8_C(0x31));
+            byte(text, UINT8_C(0xc0)); /* xor eax, eax */
+            size_t modulo_done = x64_local_jmp(text);
+            size_t divide_at = text->length;
+            x64_patch_rel32(text, not_minus_one, divide_at);
+            x64_patch_rel32(text, not_overflow, divide_at);
+            byte(text, UINT8_C(0x48));
+            byte(text, UINT8_C(0x99)); /* cqo */
+            byte(text, UINT8_C(0x48));
+            byte(text, UINT8_C(0xf7));
+            byte(text, UINT8_C(0xf9)); /* idiv rcx */
+            byte(text, UINT8_C(0x48));
+            byte(text, UINT8_C(0x85));
+            byte(text, UINT8_C(0xd2)); /* test rdx, rdx */
+            size_t remainder_done =
+                x64_local_jcc(text, UINT8_C(0x84)); /* je result */
+            byte(text, UINT8_C(0x49));
+            byte(text, UINT8_C(0x89));
+            byte(text, UINT8_C(0xd0)); /* mov r8, rdx */
+            byte(text, UINT8_C(0x49));
+            byte(text, UINT8_C(0x31));
+            byte(text, UINT8_C(0xc8)); /* xor r8, rcx */
+            byte(text, UINT8_C(0x4d));
+            byte(text, UINT8_C(0x85));
+            byte(text, UINT8_C(0xc0)); /* test r8, r8 */
+            size_t same_sign =
+                x64_local_jcc(text, UINT8_C(0x89)); /* jns result */
+            byte(text, UINT8_C(0x48));
+            byte(text, UINT8_C(0x01));
+            byte(text, UINT8_C(0xca)); /* add rdx, rcx */
+            size_t result_at = text->length;
+            byte(text, UINT8_C(0x48));
+            byte(text, UINT8_C(0x89));
+            byte(text, UINT8_C(0xd0)); /* mov rax, rdx */
+            size_t done_at = text->length;
+            x64_patch_rel32(text, modulo_done, done_at);
+            x64_patch_rel32(text, remainder_done, result_at);
+            x64_patch_rel32(text, same_sign, result_at);
+            byte(text, UINT8_C(0x50));
+            return;
+        }
+        size_t divide_at = text->length;
+        x64_patch_rel32(text, not_minus_one, divide_at);
+        byte(text, UINT8_C(0x48));
+        byte(text, UINT8_C(0x99)); /* cqo */
+        byte(text, UINT8_C(0x48));
+        byte(text, UINT8_C(0xf7));
+        byte(text, UINT8_C(0xf9)); /* idiv rcx */
+        byte(text, UINT8_C(0x48));
+        byte(text, UINT8_C(0x85));
+        byte(text, UINT8_C(0xd2)); /* test remainder */
+        size_t division_done =
+            x64_local_jcc(text, UINT8_C(0x84)); /* je done */
+        byte(text, UINT8_C(0x49));
+        byte(text, UINT8_C(0x89));
+        byte(text, UINT8_C(0xd0)); /* mov r8, rdx */
+        byte(text, UINT8_C(0x49));
+        byte(text, UINT8_C(0x31));
+        byte(text, UINT8_C(0xc8)); /* xor r8, rcx */
+        byte(text, UINT8_C(0x4d));
+        byte(text, UINT8_C(0x85));
+        byte(text, UINT8_C(0xc0)); /* test r8, r8 */
+        size_t division_same_sign =
+            x64_local_jcc(text, UINT8_C(0x89)); /* jns done */
+        byte(text, UINT8_C(0x48));
+        byte(text, UINT8_C(0xff));
+        byte(text, UINT8_C(0xc8)); /* dec rax */
+        size_t division_done_at = text->length;
+        x64_patch_rel32(text, division_done, division_done_at);
+        x64_patch_rel32(
+            text,
+            division_same_sign,
+            division_done_at
+        );
     } else {
         byte(text, UINT8_C(0x48));
         byte(text, UINT8_C(0x39));
@@ -4313,14 +4577,16 @@ static void x64_function_declaration(
         UINT8_C(0x48), UINT8_C(0x89), UINT8_C(0xe5),
     };
     x64_emit(text, frame_open, sizeof(frame_open));
-    if (function->parameter_count > 0) {
+    size_t local_slots =
+        function->parameter_count + function->local_count;
+    if (local_slots > 0) {
         byte(text, UINT8_C(0x48));
         byte(text, UINT8_C(0x81));
         byte(text, UINT8_C(0xec)); /* sub rsp, frame bytes */
         u32_le(
             text,
             (uint32_t)(
-                function->parameter_count * sizeof(uint64_t)
+                local_slots * sizeof(uint64_t)
             )
         );
         for (size_t index = 0;
@@ -4362,6 +4628,10 @@ static void x64_function_declaration(
             byte(text, UINT8_C(0xe8));
             offsets_add(&emitter->print_calls, text->length);
             u32_le(text, 0);
+        } else if (statement->kind == FUNCTION_STATEMENT_LET) {
+            x64_function_expression(text, statement->value, emitter);
+            byte(text, UINT8_C(0x58)); /* pop initializer */
+            x64_store_local(text, statement->slot);
         } else {
             x64_function_expression(text, statement->value, emitter);
             byte(text, UINT8_C(0x58)); /* discard expression result */
@@ -4453,11 +4723,42 @@ static size_t x64_function_print_runtime(Bytes *text) {
     return runtime_at;
 }
 
+static size_t x64_function_diagnostic(
+    Bytes *text,
+    const char *message
+) {
+    size_t diagnostic_at = text->length;
+    size_t length = strlen(message);
+    if (length > UINT32_MAX) fatal("native diagnostic is too large");
+    size_t address_field =
+        x64_diagnostic(text, (uint32_t)length, 1);
+    size_t message_at = text->length;
+    x64_emit(text, (const uint8_t *)message, length);
+    x64_patch_u32(
+        text,
+        address_field,
+        (uint32_t)(IMAGE_BASE + TEXT_OFFSET + message_at)
+    );
+    return diagnostic_at;
+}
+
+static void x64_patch_function_jumps(
+    Bytes *text,
+    const Offsets *jumps,
+    size_t target
+) {
+    for (size_t index = 0; index < jumps->length; ++index) {
+        x64_patch_rel32(text, jumps->fields[index], target);
+    }
+}
+
 static void x64_function_program(
     Bytes *text,
     const FunctionProgram *program
 ) {
-    FunctionEmitter emitter = {0};
+    FunctionEmitter emitter = {
+        .canonical_errors = program->canonical_runtime_errors,
+    };
     size_t function_addresses[MAX_CORE_FUNCTIONS] = {0};
 
     x64_function_call(text, &emitter, program->main_index);
@@ -4478,20 +4779,47 @@ static void x64_function_program(
     }
 
     size_t print_at = x64_function_print_runtime(text);
-    size_t overflow_at = text->length;
-    const char overflow_message[] =
-        "kofun: integer overflow\n";
-    size_t overflow_address = x64_diagnostic(
+    size_t overflow_at = x64_function_diagnostic(
         text,
-        (uint32_t)(sizeof(overflow_message) - 1),
-        1
+        "kofun: integer overflow\n"
     );
-    size_t overflow_message_at = text->length;
-    x64_emit(
-        text,
-        (const uint8_t *)overflow_message,
-        sizeof(overflow_message) - 1
-    );
+    size_t add_overflow_at = overflow_at;
+    size_t subtract_overflow_at = overflow_at;
+    size_t multiply_overflow_at = overflow_at;
+    size_t negate_overflow_at = overflow_at;
+    size_t divide_zero_at = overflow_at;
+    size_t divide_overflow_at = overflow_at;
+    size_t modulo_zero_at = overflow_at;
+    if (emitter.canonical_errors) {
+        add_overflow_at = x64_function_diagnostic(
+            text,
+            "error[R010]: integer overflow in operator `+`\n"
+        );
+        subtract_overflow_at = x64_function_diagnostic(
+            text,
+            "error[R010]: integer overflow in operator `-`\n"
+        );
+        multiply_overflow_at = x64_function_diagnostic(
+            text,
+            "error[R010]: integer overflow in operator `*`\n"
+        );
+        negate_overflow_at = x64_function_diagnostic(
+            text,
+            "error[R010]: integer overflow in unary operator `-`\n"
+        );
+        divide_zero_at = x64_function_diagnostic(
+            text,
+            "error[R010]: operator `//` failed: division by zero\n"
+        );
+        divide_overflow_at = x64_function_diagnostic(
+            text,
+            "error[R010]: integer overflow in operator `//`\n"
+        );
+        modulo_zero_at = x64_function_diagnostic(
+            text,
+            "error[R010]: operator `%` failed: division by zero\n"
+        );
+    }
 
     for (size_t index = 0; index < emitter.calls.length; ++index) {
         FunctionCallFixup fixup = emitter.calls.items[index];
@@ -4508,22 +4836,28 @@ static void x64_function_program(
             print_at
         );
     }
-    for (size_t index = 0;
-         index < emitter.overflow_jumps.length;
-         ++index) {
-        x64_patch_rel32(
-            text,
-            emitter.overflow_jumps.fields[index],
-            overflow_at
-        );
-    }
-    x64_patch_u32(
+    x64_patch_function_jumps(
+        text, &emitter.overflow_jumps, overflow_at);
+    x64_patch_function_jumps(
+        text, &emitter.add_overflow_jumps, add_overflow_at);
+    x64_patch_function_jumps(
         text,
-        overflow_address,
-        (uint32_t)(
-            IMAGE_BASE + TEXT_OFFSET + overflow_message_at
-        )
+        &emitter.subtract_overflow_jumps,
+        subtract_overflow_at
     );
+    x64_patch_function_jumps(
+        text,
+        &emitter.multiply_overflow_jumps,
+        multiply_overflow_at
+    );
+    x64_patch_function_jumps(
+        text, &emitter.negate_overflow_jumps, negate_overflow_at);
+    x64_patch_function_jumps(
+        text, &emitter.divide_zero_jumps, divide_zero_at);
+    x64_patch_function_jumps(
+        text, &emitter.divide_overflow_jumps, divide_overflow_at);
+    x64_patch_function_jumps(
+        text, &emitter.modulo_zero_jumps, modulo_zero_at);
     function_emitter_free(&emitter);
 }
 
@@ -7076,12 +7410,38 @@ int main(int argc, char **argv) {
         function_error_text,
         &function_error_at
     );
+    bool function_bodies_ok = false;
+    bool tried_function_bodies =
+        function_headers_ok &&
+        (function_program.function_count > 1 || !aarch64);
+    if (tried_function_bodies) {
+        function_bodies_ok = function_bodies(
+            &function_program,
+            function_error_text,
+            &function_error_at
+        );
+    }
     bool use_function_core =
-        function_headers_ok && function_program.function_count > 1;
+        function_bodies_ok &&
+        (function_program.function_count > 1 ||
+         function_program.extended_numeric);
+    if (function_headers_ok &&
+        function_program.function_count > 1 &&
+        !function_bodies_ok) {
+        fprintf(
+            stderr,
+            "kofun native: unsupported function Core at byte %zu: %s\n",
+            function_error_at,
+            function_error_text
+        );
+        function_program_free(&function_program);
+        free(source);
+        return 1;
+    }
     if (use_function_core) {
         if (debug) {
             fputs(
-                "kofun native: -g for user-defined functions is not "
+                "kofun native: -g for function Core is not "
                 "implemented yet\n",
                 stderr
             );
@@ -7089,20 +7449,19 @@ int main(int argc, char **argv) {
             free(source);
             return 1;
         }
-        if (!function_bodies(
-                &function_program,
-                function_error_text,
-                &function_error_at)) {
-            fprintf(
-                stderr,
-                "kofun native: unsupported function Core at byte %zu: %s\n",
-                function_error_at,
-                function_error_text
+        if (aarch64 &&
+            function_program.requires_extended_numeric_lowering) {
+            fputs(
+                "kofun native: AArch64 extended numeric function Core "
+                "is not implemented yet\n",
+                stderr
             );
             function_program_free(&function_program);
             free(source);
             return 1;
         }
+        function_program.canonical_runtime_errors =
+            function_program.function_count == 1;
 
         Bytes text;
         bytes_init(&text);

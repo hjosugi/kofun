@@ -325,6 +325,10 @@ Implemented here:
   the C11 and native x86-64 adapters, plus the `fibonacci` and checked-overflow
   fixtures executed on AArch64 under `qemu-aarch64` and matched against the
   x86-64 output;
+- x86-64 frame-backed local `Int` bindings, multiple prints, full positive
+  Int64 literals, floor division/modulo, and exact operator-specific `R010`
+  failures, with 9/9 shared numeric cases matching C11 and wasm32 byte for
+  byte;
 - x86-64 and AArch64 `List[Int]` literal, `len`, and positive/negative indexing
   lowering;
 - x86-64 and AArch64 local `Int`/`List[Int]` bindings with frame-backed
@@ -351,9 +355,9 @@ Still open:
 
 - replacing the audited C11 Native Core driver after lists and calls
   self-compile;
-- local bindings and general statement/control-flow lowering inside
-  user-defined functions;
-- native stdout/stderr formatting and canonical `R010` diagnostics;
+- general statement/control-flow lowering inside user-defined functions and
+  AArch64 parity for the extended numeric profile;
+- canonical `R010` diagnostics outside the x86-64 numeric profile;
 - conditional branches, allocator reuse/reclamation, Mach-O, and additional targets;
 - first-class/nested collection lambdas and general collection types;
 - general Text bindings/calls and the Stage 1 compiler port tracked by #33;

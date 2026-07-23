@@ -151,7 +151,8 @@ run_backend() (
         "coverage: $executed/$total cases executed by $BACKEND_NAME"
     if test "$total" -eq 0 ||
        test "$executed" -eq 0 ||
-       test "$failed" -ne 0
+       test "$failed" -ne 0 ||
+       test "$skipped" -ne 0
     then
         exit 1
     fi
