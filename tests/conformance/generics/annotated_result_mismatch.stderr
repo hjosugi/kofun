@@ -1,0 +1,1 @@
+error[E2S82]: annotated local result has type `Int`; expected `Bool` after explicit generic substitution; change the annotation or explicit type argument at bytes 72..104

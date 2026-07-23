@@ -1,0 +1,22 @@
+fn identity[T](value: T) -> T {
+    return value
+}
+
+fn first[A, B](left: A, right: B) -> A {
+    return left
+}
+
+fn main() {
+    let answer: Int = identity[Int](42)
+    let selected: Bool = identity[Bool](true)
+    let label: Text = later[Text]("ready")
+    let combined: Int = first[Int, Bool](7, false)
+    print(answer)
+    print(selected)
+    print(label)
+    print(combined)
+}
+
+fn later[T](value: T) -> T {
+    return value
+}

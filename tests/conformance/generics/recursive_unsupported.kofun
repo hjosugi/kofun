@@ -1,0 +1,3 @@
+fn recurse[T](value: T) -> T {
+    return recurse[T](value)
+}

@@ -2,12 +2,16 @@
 
 ## Verified starting point
 
-Square-bracket type application is a documented design choice, and the grammar
-can represent applied type references such as `List[Int]`. The active Stage 1
-compiler does not parse or type-check user-defined generic declarations,
-traits, implementations, bounds, associated types, or generic law
-propositions. Design-era examples in `docs/TYPE_SYSTEM.md` and
-`docs/LAW_SYSTEM.md` are not implementation evidence.
+Square-bracket type application is a documented design choice, and the
+typed-only Stage 2 checkpoint now parses and type-checks explicitly
+instantiated, unbounded generic functions. Its executable evidence is limited
+to direct calls, declaration-scoped type-parameter identities, and explicit
+substitution over `Int`, `Bool`, and `Text`. The active Stage 1 compiler still
+does not lower generic declarations, and generic nominal types, traits,
+implementations, bounds, associated types, inference, and generic law
+propositions remain open. Design-era examples beyond the focused checkpoint
+in `docs/TYPE_SYSTEM.md` and `docs/LAW_SYSTEM.md` are not implementation
+evidence.
 
 ## Lowering decision
 

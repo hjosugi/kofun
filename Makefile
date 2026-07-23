@@ -1,4 +1,4 @@
-.PHONY: help compiler test diagnostics fuzz unicode check bootstrap selfhost-profile stage2 patterns adt adt-exhaustiveness module-symbols imports-qualified imports-selective kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp roadmap syntax repository-check verify clean
+.PHONY: help compiler test diagnostics fuzz unicode check bootstrap selfhost-profile stage2 patterns adt generics adt-exhaustiveness module-symbols imports-qualified imports-selective kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp roadmap syntax repository-check verify clean
 
 KOFUN := ./bin/kofun
 
@@ -15,6 +15,7 @@ help:
 	  'make stage2           Verify the Stage 2 semantic frontend checkpoint' \
 	  'make patterns         Verify lossless general Pattern syntax trees' \
 	  'make adt              Verify bounded nominal ADT typed frontend' \
+	  'make generics         Verify explicit generic function typing' \
 	  'make adt-exhaustiveness Verify resolved flat-ADT match diagnostics' \
 	  'make module-symbols   Verify stable top-level declaration collection' \
 	  'make imports-qualified Verify qualified same-package module imports' \
@@ -92,6 +93,9 @@ patterns:
 
 adt:
 	sh tests/conformance/adt/run.sh
+
+generics:
+	sh tests/conformance/generics/run.sh
 
 adt-exhaustiveness:
 	sh tests/conformance/adt-exhaustiveness/run.sh
@@ -192,7 +196,7 @@ repository-check:
 	@grep -q '"extensions": \[".kofun"\]' editor/vscode/package.json
 	@printf '%s\n' 'PASS: .kofun sources only; no Python implementation'
 
-verify: test diagnostics fuzz unicode check bootstrap selfhost-profile stage2 patterns adt adt-exhaustiveness module-symbols imports-qualified imports-selective kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp roadmap syntax repository-check
+verify: test diagnostics fuzz unicode check bootstrap selfhost-profile stage2 patterns adt generics adt-exhaustiveness module-symbols imports-qualified imports-selective kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp roadmap syntax repository-check
 	@sh -n bin/kofun bootstrap/stage1/check.sh bootstrap/stage2/check.sh \
 	  bootstrap/selfhost/check-profile.sh \
 	  bootstrap/native/check.sh bootstrap/native/emit-fixture.sh \
@@ -227,6 +231,7 @@ verify: test diagnostics fuzz unicode check bootstrap selfhost-profile stage2 pa
 	  tests/conformance/modules/visibility-syntax/run.sh \
 	  tests/conformance/modules/visibility-access/run.sh \
 	  tests/conformance/adt/run.sh \
+	  tests/conformance/generics/run.sh \
 	  tests/conformance/adt-exhaustiveness/run.sh \
 	  tests/conformance/modules/top-level-declarations/run.sh \
 	  tests/conformance/patterns/run.sh \

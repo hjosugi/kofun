@@ -7,7 +7,7 @@ checkpoint is executable.
 
 | Issue | Acceptance item | Current evidence | Status |
 |---|---|---|---|
-| #31 | Generic functions and types with trait bounds type-check | Syntax and type-system design documents only | open |
+| #31 | Generic functions and types with trait bounds type-check | A focused typed-only frontend checks explicit unbounded generic function calls; generic types, bounds, traits, and lowering remain open | open |
 | #31 | Strategy selected with measured justification | A baseline and measurement protocol are specified in `generics-and-traits.md`; no compiler measurements exist | open |
 | #31 | Laws can be stated over generic types | Proposed syntax exists, but no generic proof kernel exists | open |
 | #32 | Stage 1 compiles its own source | The smallest canonical `S` is hash-pinned with 43 explicit coverage rows; typed/lowered coverage remains open | open |
@@ -42,8 +42,10 @@ sh spec/roadmap-31-34/verify-current-gates.sh --full
 ```
 
 The probe demonstrates real integer Core lowering and the scoped bootstrap LSP.
-It does not demonstrate generic type checking, compiler self-reproduction,
-native Stage 1, project-wide editor indexing, or full compiler type inference.
+The separate `make generics` gate demonstrates only explicit unbounded generic
+function type checking. Neither gate demonstrates generic nominal types,
+traits/bounds, generic lowering, compiler self-reproduction, native Stage 1,
+project-wide editor indexing, or full compiler type inference.
 
 ## Close policy
 
