@@ -1,4 +1,4 @@
-# expect: 42
+# expect: true
 fn main() {
-    print(len(codepoints("नमस्ते")) + 36)
+    print(codepoints("é")[1] == "́")
 }

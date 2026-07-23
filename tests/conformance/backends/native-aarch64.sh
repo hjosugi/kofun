@@ -2,9 +2,8 @@
 #
 # AArch64 images execute under qemu-aarch64. When the emulator is absent the
 # adapter claims a sentinel corpus so the conformance runner records an explicit
-# UNSUPPORTED skip for every real corpus instead of failing. AArch64 currently
-# lowers the multi-function Int Core and the closed List[Int] Core. Text remains
-# x86-64-only and the build rejects it with an explicit diagnostic.
+# UNSUPPORTED skip for every real corpus instead of failing. AArch64 lowers the
+# multi-function Int Core plus the closed List[Int] and UTF-8 Text Cores.
 
 BACKEND_NAME=native-aarch64
 if test -n "${QEMU_AARCH64-}" &&
@@ -21,7 +20,7 @@ fi
 export QEMU_AARCH64
 
 if test -n "$QEMU_AARCH64"; then
-    BACKEND_CORPORA='functions list'
+    BACKEND_CORPORA='functions list text'
 else
     BACKEND_CORPORA=requires-qemu-aarch64
 fi

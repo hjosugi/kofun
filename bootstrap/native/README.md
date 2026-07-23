@@ -121,11 +121,9 @@ emoji cases and executes the Text OOM and index-failure paths.
 
 The obsolete `tests/kofun/*.kf` acceptance path no longer exists. The active
 Python-free `tests/conformance/list` and `tests/conformance/text` corpora are
-registered with the native x86-64 adapter and execute all 34 cases. The List
-corpus is also registered with the AArch64 adapter and executes all 13 cases
-under qemu. General Text bindings, calls, and the Stage 1 compiler port are
-tracked separately by issue #33. AArch64 Text remains an explicit target
-boundary and rejects before artifact creation.
+registered with both native adapters and execute all 34 cases on x86-64 and,
+under qemu, AArch64. General Text bindings, calls, and the Stage 1 compiler port
+are tracked separately by issue #33.
 
 The frontend creates one AST; both instruction selectors consume it. The
 equivalent canonical Kofun representation is a postfix stream of
@@ -295,11 +293,11 @@ sh bootstrap/native/check.sh
 ```
 
 When `qemu-aarch64` (or `qemu-aarch64-static`) is installed, the gate executes
-the AArch64 scalar, function, and List differentials and compares exact status,
-stdout, and stderr with the C11/x86-64 observations. Without qemu it reports an
-explicit execution skip while still building List success/failure images
-twice and validating deterministic bytes, ELF metadata, encoded instructions,
-and x86-64/reference parity.
+the AArch64 scalar, function, List, and Text differentials and compares exact
+status, stdout, and stderr with the C11/x86-64 observations. Without qemu it
+reports an explicit execution skip while still building List and Text
+success/failure images twice and validating deterministic bytes, ELF metadata,
+encoded instructions, and x86-64/reference parity.
 
 The shell does not choose headers or instructions. Those values are authored
 in Kofun and mirrored by the audited bootstrap seed. No Python, assembly, or
@@ -333,13 +331,14 @@ Implemented here:
   variable loads;
 - generated `map`, `filter`, and `fold` loops with typed inline Int lambdas on
   both Linux targets;
-- raw target-specific Linux `mmap` list allocation with identical OOM and
+- raw target-specific Linux `mmap` aggregate allocation with identical OOM and
   bounds diagnostics;
-- x86-64 UTF-8 Text literals, concatenation, equality, grapheme `len`, and
-  positive/negative grapheme indexing;
-- `chars`, explicit byte/codepoint views, and Text/Bool printing;
+- x86-64 and AArch64 UTF-8 Text literals, concatenation, equality, grapheme
+  `len`, and positive/negative grapheme indexing;
+- `chars`, explicit byte/codepoint views, and Text/Bool printing through the
+  shared aggregate ABI on both targets;
 - registered Python-free Text conformance coverage with 21/21 cases executed by
-  the native x86-64 adapter;
+  the native x86-64 and, under qemu, AArch64 adapters;
 - registered Python-free List conformance coverage with 13/13 cases executed by
   the native x86-64 and, under qemu, AArch64 adapters;
 - two-digit integer-to-ASCII conversion for the shared scalar fixture;
@@ -358,5 +357,4 @@ Still open:
 - conditional branches, allocator reuse/reclamation, Mach-O, and additional targets;
 - first-class/nested collection lambdas and general collection types;
 - general Text bindings/calls and the Stage 1 compiler port tracked by #33;
-- AArch64 UTF-8 Text and `chars` lowering tracked by #630;
 - AArch64 debug information and variable/location DIEs.
