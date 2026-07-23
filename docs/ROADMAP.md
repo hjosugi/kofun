@@ -54,7 +54,7 @@ Deliverables:
 - syntax RFC set
 - memory model RFC
 - type/effect/law model RFC
-- standard library naming guide
+- [standard library naming, tier, and compatibility guide](STANDARD_LIBRARY_CHARTER.md)
 - error code policy
 - executable reference semantics corpus
 - one-day tutorial user tests

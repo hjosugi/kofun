@@ -1,0 +1,37 @@
+capability	tier	state	evidence	issue	note
+archive_compression	official	deferred	-	#636	formats and resource limits require scoped children
+array	portable	implemented	stdlib/array/tests/verify.sh	#506	bounded IntArray1 checkpoint with deterministic cross-backend projection
+benchmark_harness	portable	specified	docs/stdlib/benchmark.md	#640,#646	public contract accepted; raw-report implementation starts in #646
+binary_heap	portable	implemented	stdlib/binary_heap/tests/verify.sh	#515	bounded Int min-heap checkpoint with deterministic projection
+buffered_io	portable	planned	stdlib/linux_x86_64/io.kofun	#636	seed is platform-specific and not a general buffered interface
+calendar_dates	portable	specified	docs/stdlib/date-time.md	#639,#645,#647,#648	pure/calendar, clock, and versioned-zone slices are tracked separately
+cli_framework	official	implemented	framework/cli/check.sh	#25	bounded Linux x86-64 application profile
+clock	platform	implemented	stdlib/clock/tests/verify.sh	#496,#647	bounded explicit clock values, manual clock, and Linux adapter checkpoint
+crypto_tls	official	deferred	-	#636	requires dedicated security ownership and update channel
+csv	portable	implemented	stdlib/csv/tests/verify.sh	#500	bounded deterministic text codec checkpoint
+decimal	portable	implemented	stdlib/decimal/tests/verify.sh	#636	bounded exact base-10 arithmetic checkpoint
+environment_process	platform	specified	stdlib/linux_x86_64/process.kofun	#494,#495	target adapter source contract
+filesystem	platform	specified	stdlib/CONTRACT.md	#491,#492,#493	executable bounded raw file round-trip
+hash_checksums	portable	deferred	-	#636	inventory and API split remain
+http_client	official	specified	docs/stdlib/http-client.md	#638,#644	HTTP/1.1 injected-transport contract accepted; core implementation is tracked in #644
+http_server	official	implemented	tests/http/check.sh	#24	bounded host-C HTTP/1.1 framework
+json	portable	implemented	stdlib/json/tests/verify.sh	#499	bounded value codec checkpoint with deterministic vectors
+list	portable	implemented	stdlib/list/tests/verify.sh	#504	bounded eager Int list checkpoint
+logging	portable	implemented	stdlib/logging/tests/verify.sh	#502	bounded pure structured-record and renderer checkpoint
+map	portable	implemented	stdlib/map/tests/verify.sh	#509	bounded deterministic Int map checkpoint
+mime	portable	deferred	-	#636	follows HTTP and mail use cases
+profiling	official	planned	benchmarks/	#398,#476	measurement artifacts exist but no user-facing profiler bridge
+pseudorandom	portable	implemented	stdlib/random/tests/verify.sh	#497	bounded deterministic seeded generator checkpoint
+raw_threads	platform	non-goal	-	#636	raw OS-thread API is not a Tier 1 promise; scoped concurrency is the public path
+regex	portable	implemented	stdlib/regex/tests/verify.sh	#498	bounded Regex v1 checkpoint with explicit backtracking costs
+scoped_concurrency	portable	planned	-	#555	design evidence only; runtime contract remains
+secure_random	platform	specified	stdlib/linux_x86_64/abi.kofun	#234	getrandom source contract; public split from pseudorandom required
+set	portable	implemented	stdlib/set/tests/verify.sh	#510	bounded deterministic Int set checkpoint
+temporary_files	platform	planned	-	#492	secure creation and cleanup contract missing
+testing	portable	implemented	stdlib/testing/tests/verify.sh	#503	bounded pure assertion and summary checkpoint
+text_bytes	portable	implemented	tests/conformance/text/README.md	#484,#485	bounded conformance corpus; backend coverage is explicit
+toml	portable	implemented	stdlib/toml/tests/verify.sh	#501	bounded flat-document TOML 1.0 checkpoint
+tuple	portable	implemented	stdlib/tuple/tests/verify.sh	#508	bounded two-Int tuple checkpoint
+url	portable	specified	docs/stdlib/http-client.md	#638	RFC 3986 v1 profile specified; implementation missing
+vector	portable	implemented	stdlib/vector/tests/verify.sh	#505	bounded immutable IntVector checkpoint
+yaml	official	deferred	-	#636	independently versioned parser and schema decision

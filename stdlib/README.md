@@ -85,9 +85,15 @@ value codec with lossless number lexemes, ordered unique object members, typed
 failures, and bounded nesting. Its recursive ADT surface is gated by a
 deterministic Int-Core projection and explicitly does not yet decode `\uXXXX`.
 
+The library-wide tier, naming, compatibility, dependency, and update policy is
+defined in [`../docs/STANDARD_LIBRARY_CHARTER.md`](../docs/STANDARD_LIBRARY_CHARTER.md).
+The mechanically checked current coverage/evidence inventory is
+[`capabilities.tsv`](capabilities.tsv).
+
 Run the repository-local, Python-free contract checks with:
 
 ```sh
+sh stdlib/check-capabilities.sh
 sh stdlib/tests/verify.sh
 ```
 

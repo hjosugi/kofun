@@ -5,6 +5,8 @@ stdlib_dir=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 repo_dir=$(CDPATH= cd -- "$stdlib_dir/.." && pwd)
 abi="$stdlib_dir/linux_x86_64/abi.kofun"
 
+sh "$stdlib_dir/check-capabilities.sh"
+
 fail() {
     printf 'stdlib contract: FAIL: %s\n' "$*" >&2
     exit 1

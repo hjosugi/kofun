@@ -112,6 +112,11 @@ Information exposed:
 
 Private bodies and arbitrary compiler internals are not part of the stable API.
 
+Interactive type and operation discovery is compiler-backed and specified
+separately in [`DEVELOPER_DISCOVERY.md`](DEVELOPER_DISCOVERY.md). Normal release
+artifacts do not retain metadata for that tooling feature. Any future runtime
+`TypeInfo` profile must reuse its stable identities and disclosure rules.
+
 ## Expansion inspection
 
 ```bash
