@@ -35,7 +35,8 @@ mkdir -p "$temporary"
 accepted=0
 for fixture in \
     bootstrap/selfhost/c11/accept_*.kofun \
-    bootstrap/selfhost/c11/trap_division.kofun; do
+    bootstrap/selfhost/c11/trap_division.kofun \
+    bootstrap/selfhost/c11/trap_list_index.kofun; do
     stem=$(basename "$fixture" .kofun)
     digest=$(sha256sum "$fixture" | awk '{ print $1 }')
     "$temporary/kofun-stage2" --emit-selfhost-hir \
@@ -104,16 +105,34 @@ cmp bootstrap/selfhost/c11/reject_missing_return.hir \
 expect 1 \
     'error\[E2S19\]: selfhost-C11 function may complete without returning' \
     bootstrap/selfhost/c11/reject_missing_return.hir
-expect 3 'error\[E2S10\]: unsupported selfhost-C11 statement `let-mut`' \
-    bootstrap/selfhost/frontend/differential_core.hir
-expect 3 'error\[E2S10\]: unsupported selfhost-C11 statement `let-mut`' \
+expect 3 'error\[E2S10\]: unsupported selfhost-C11 builtin call `print`' \
     bootstrap/selfhost/frontend/accept_statements.hir
 expect 3 'error\[E2S10\]: unsupported selfhost-C11 builtin call `args`' \
     bootstrap/selfhost/frontend/accept_expressions.hir
+expect 3 'error\[E2S10\]: unsupported selfhost-C11 builtin call `print`' \
+    bootstrap/selfhost/frontend/accept_syntax.hir
 expect 1 'error\[E2S35\]: selfhost-C11 input must be a complete typed' \
     bootstrap/selfhost/frontend/reject_if_condition.hir
 test ! -e "$temporary/negative.c" ||
     fail "a refused document must not leave partial C"
+
+# The execution differential now closes over three independent paths:
+# the frontend gate evaluates differential_core's typed node records, the
+# Int-core --compile-outcome lowering executes the same source, and this
+# document-driven lowering must reproduce the same pinned exit status.
+"$temporary/kofun-stage2" --lower-selfhost-c11 \
+    bootstrap/selfhost/frontend/differential_core.hir \
+    "$temporary/differential_core.c" >/dev/null
+"$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
+    -I unicode "$temporary/differential_core.c" \
+    -o "$temporary/differential_core"
+set +e
+"$temporary/differential_core"
+differential_status=$?
+set -e
+test "$differential_status" = \
+    "$(cat bootstrap/selfhost/frontend/differential_core.status)" ||
+    fail "document-driven lowering diverges from the pinned differential"
 
 printf '%s\n' \
     "PASS: $accepted C11 slice fixtures lower, compile, and run to their pinned observations" \

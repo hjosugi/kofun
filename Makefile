@@ -1,4 +1,4 @@
-.PHONY: help compiler test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 stage2 patterns adt generics adt-exhaustiveness module-symbols imports-qualified imports-selective kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp roadmap syntax repository-check verify clean
+.PHONY: help compiler test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control stage2 patterns adt generics adt-exhaustiveness module-symbols imports-qualified imports-selective kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp roadmap syntax repository-check verify clean
 
 KOFUN := ./bin/kofun
 
@@ -13,7 +13,8 @@ help:
 	  'make bootstrap        Verify the Stage 1 seed path' \
 	  'make selfhost-profile Verify the frozen first self-host source profile' \
 	  'make selfhost-frontend Gate #619 typed-frontend evidence (all 46 cells)' \
-	  'make selfhost-c11     Gate #620 Text-slice C11 evidence (31 cells)' \
+	  'make selfhost-c11     Gate #620 Text-slice C11 evidence' \
+	  'make selfhost-c11-control Gate #621 control/List C11 evidence' \
 	  'make stage2           Verify the Stage 2 semantic frontend checkpoint' \
 	  'make patterns         Verify lossless general Pattern syntax trees' \
 	  'make adt              Verify bounded nominal ADT typed frontend' \
@@ -94,6 +95,9 @@ selfhost-frontend:
 
 selfhost-c11:
 	sh bootstrap/selfhost/check-profile.sh --phase c11-text
+
+selfhost-c11-control:
+	sh bootstrap/selfhost/check-profile.sh --phase c11-control
 
 stage2:
 	sh bootstrap/stage2/check.sh
@@ -206,7 +210,7 @@ repository-check:
 	@grep -q '"extensions": \[".kofun"\]' editor/vscode/package.json
 	@printf '%s\n' 'PASS: .kofun sources only; no Python implementation'
 
-verify: test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 stage2 patterns adt generics adt-exhaustiveness module-symbols imports-qualified imports-selective kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp roadmap syntax repository-check
+verify: test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control stage2 patterns adt generics adt-exhaustiveness module-symbols imports-qualified imports-selective kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp roadmap syntax repository-check
 	@sh -n bin/kofun bootstrap/stage1/check.sh bootstrap/stage2/check.sh \
 	  bootstrap/selfhost/check-profile.sh \
 	  bootstrap/selfhost/frontend/check-frontend.sh \

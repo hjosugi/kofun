@@ -1,0 +1,16 @@
+fn main() -> Int {
+    let word = "k字n"
+    let symbols = chars(word)
+    let mut wide = 0
+    for index in 0 .. len(symbols) {
+        if !is_digit(symbols[index]) && !is_xid_continue(symbols[index]) {
+            wide = wide + 1
+        }
+    }
+    let first = symbols[0]
+    let last = symbols[len(symbols) - 1]
+    if first == "k" && last == "n" && len(symbols) == 5 {
+        return wide
+    }
+    return 90
+}

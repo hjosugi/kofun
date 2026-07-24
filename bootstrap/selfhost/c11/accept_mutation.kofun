@@ -1,0 +1,15 @@
+fn main() -> Int {
+    let mut count = 1
+    let mut label = "go"
+    let mut ready = false
+    count = count + 41
+    label = label + "!"
+    ready = count == 42 && label == "go!"
+    let mut fallback = count
+    if ready {
+        fallback = 0
+    } else {
+        fallback = 9
+    }
+    return fallback
+}

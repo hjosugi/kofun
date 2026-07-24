@@ -1,0 +1,30 @@
+fn triangle(limit: Int) -> Int {
+    let mut total = 0
+    let mut cursor = 0
+    while cursor < limit {
+        cursor = cursor + 1
+        total = total + cursor
+    }
+    return total
+}
+
+fn main() -> Int {
+    let mut sum = triangle(4)
+    for step in 3 .. 3 {
+        sum = sum + 1000
+    }
+    for step in 3 .. 4 {
+        sum = sum + step
+    }
+    for step in 0 .. 3 {
+        if step == 1 {
+            sum = sum + 10
+        } else if step == 2 {
+            sum = sum + 20
+        }
+    }
+    while sum > 40 {
+        sum = sum - 40
+    }
+    return sum
+}
