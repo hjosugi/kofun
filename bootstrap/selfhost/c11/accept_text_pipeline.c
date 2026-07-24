@@ -11,6 +11,11 @@
 
 #include "kofun_unicode.c"
 
+typedef struct {
+    int64_t len;
+    const char **items;
+} kofun_text_list;
+
 static bool kofun_failed;
 
 static void kofun_error(const char *message) {
@@ -131,6 +136,31 @@ bool kofun_rt_text_equal(const char *left, const char *right) {
 
 int64_t kofun_rt_text_len(const char *value) {
     return (int64_t)strlen(value);
+}
+
+int64_t kofun_rt_text_list_len(kofun_text_list values) {
+    return values.len;
+}
+
+kofun_text_list kofun_rt_chars(const char *value) {
+    size_t length = strlen(value);
+    const char **items = (const char **)kofun_rt_alloc(
+        sizeof(char *) * (length == 0 ? 1 : length)
+    );
+    for (size_t index = 0; index < length; ++index) {
+        items[index] = kofun_rt_copy_n(value + index, 1);
+    }
+    kofun_text_list result;
+    result.len = (int64_t)length;
+    result.items = items;
+    return result;
+}
+
+const char *kofun_rt_text_list_get(kofun_text_list values, int64_t index) {
+    if (index < 0 || index >= values.len) {
+        kofun_rt_panic("List[Text] index out of bounds");
+    }
+    return values.items[index];
 }
 
 bool kofun_rt_text_contains(const char *value, const char *needle) {

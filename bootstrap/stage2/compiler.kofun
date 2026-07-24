@@ -7481,6 +7481,9 @@ fn selfhost_c11_c_type(key: Text) -> Text {
     if key == "text" {
         return "const char *"
     }
+    if key == "list-text" {
+        return "kofun_text_list"
+    }
     return ""
 }
 
@@ -7567,6 +7570,9 @@ fn selfhost_c11_list_parameter(document: Text, symbol_id: Int) -> Bool {
 # Map a slice builtin to its runtime helper; empty when the builtin is
 # outside the non-looping Text slice.
 fn selfhost_c11_builtin_helper(name: Text) -> Text {
+    if name == "chars" {
+        return "kofun_rt_chars"
+    }
     if name == "contains" {
         return "kofun_rt_text_contains"
     }
@@ -7693,6 +7699,11 @@ fn selfhost_c11_prelude() -> Text {
     "\n" +
     "#include \"kofun_unicode.c\"\n" +
     "\n" +
+    "typedef struct {\n" +
+    "    int64_t len;\n" +
+    "    const char **items;\n" +
+    "} kofun_text_list;\n" +
+    "\n" +
     "static bool kofun_failed;\n" +
     "\n" +
     "static void kofun_error(const char *message) {\n" +
@@ -7813,6 +7824,31 @@ fn selfhost_c11_prelude() -> Text {
     "\n" +
     "int64_t kofun_rt_text_len(const char *value) {\n" +
     "    return (int64_t)strlen(value);\n" +
+    "}\n" +
+    "\n" +
+    "int64_t kofun_rt_text_list_len(kofun_text_list values) {\n" +
+    "    return values.len;\n" +
+    "}\n" +
+    "\n" +
+    "kofun_text_list kofun_rt_chars(const char *value) {\n" +
+    "    size_t length = strlen(value);\n" +
+    "    const char **items = (const char **)kofun_rt_alloc(\n" +
+    "        sizeof(char *) * (length == 0 ? 1 : length)\n" +
+    "    );\n" +
+    "    for (size_t index = 0; index < length; ++index) {\n" +
+    "        items[index] = kofun_rt_copy_n(value + index, 1);\n" +
+    "    }\n" +
+    "    kofun_text_list result;\n" +
+    "    result.len = (int64_t)length;\n" +
+    "    result.items = items;\n" +
+    "    return result;\n" +
+    "}\n" +
+    "\n" +
+    "const char *kofun_rt_text_list_get(kofun_text_list values, int64_t index) {\n" +
+    "    if (index < 0 || index >= values.len) {\n" +
+    "        kofun_rt_panic(\"List[Text] index out of bounds\");\n" +
+    "    }\n" +
+    "    return values.items[index];\n" +
     "}\n" +
     "\n" +
     "bool kofun_rt_text_contains(const char *value, const char *needle) {\n" +
@@ -8022,8 +8058,11 @@ fn selfhost_c11_expression(
         let mut helper = ""
         if builtin {
             helper = selfhost_c11_builtin_helper(name)
-            if len(helper) == 0 ||
+            if name == "len" &&
                selfhost_c11_list_parameter(document, symbol_id) {
+                helper = "kofun_rt_text_list_len"
+            }
+            if len(helper) == 0 {
                 return selfhost_c11_error(
                     3,
                     "error[E2S10]: unsupported selfhost-C11 builtin call `" +
@@ -8191,6 +8230,27 @@ fn selfhost_c11_expression(
         to_text(right) + ");\n" +
         selfhost_c11_failed_check(fail_return, level)
     }
+    if kind == "index" {
+        let base = decimal_value(pattern_line_field(document, line, 7))
+        let position = decimal_value(pattern_line_field(document, line, 8))
+        let first = selfhost_c11_expression(document, context, base, level)
+        if selfhost_c11_failed(first) {
+            return first
+        }
+        let second = selfhost_c11_expression(
+            document,
+            context,
+            position,
+            level
+        )
+        if selfhost_c11_failed(second) {
+            return second
+        }
+        return "ok\n" + selfhost_records(first) +
+        selfhost_records(second) + pad + "const char *k_n" +
+        to_text(node_id) + " = kofun_rt_text_list_get(k_n" +
+        to_text(base) + ", k_n" + to_text(position) + ");\n"
+    }
     return selfhost_c11_error(
         3,
         "error[E2S10]: unsupported selfhost-C11 expression `" + kind + "`"
@@ -8208,7 +8268,7 @@ fn selfhost_c11_statement(
     let node_end = selfhost_c11_line_end(document, line) + 1
     let pad = selfhost_c11_indent(level)
     let is_main = pattern_line_field(context, 0, 2) == "1"
-    if kind == "let" {
+    if kind == "let" || kind == "let-mut" {
         let binding = pattern_line_field(document, line, 7)
         let value = decimal_value(pattern_line_field(document, line, 8))
         let emitted = selfhost_c11_expression(document, context, value, level)
@@ -8328,6 +8388,82 @@ fn selfhost_c11_statement(
         return to_text(walk) + "|" + flag + "\n" + branch +
         selfhost_records(alternative) + pad + "}\n"
     }
+    if kind == "assign" {
+        let value = decimal_value(pattern_line_field(document, line, 8))
+        let emitted = selfhost_c11_expression(document, context, value, level)
+        if selfhost_c11_failed(emitted) {
+            return emitted
+        }
+        return to_text(selfhost_c11_consume(document, node_end)) + "|0\n" +
+        selfhost_records(emitted) + pad + "k_b" +
+        pattern_line_field(document, line, 7) + " = k_n" + to_text(value) +
+        ";\n"
+    }
+    if kind == "while" {
+        let condition = decimal_value(pattern_line_field(document, line, 7))
+        let emitted = selfhost_c11_expression(
+            document,
+            context,
+            condition,
+            level + 1
+        )
+        if selfhost_c11_failed(emitted) {
+            return emitted
+        }
+        let body = selfhost_c11_block(
+            document,
+            context,
+            selfhost_c11_consume(document, node_end),
+            decimal_value(pattern_line_field(document, line, 8)),
+            level + 1
+        )
+        if selfhost_c11_failed(body) {
+            return body
+        }
+        return pattern_line_field(body, 0, 0) + "|0\n" + pad +
+        "for (;;) {\n" + selfhost_records(emitted) +
+        selfhost_c11_indent(level + 1) + "if (!k_n" + to_text(condition) +
+        ") break;\n" + selfhost_records(body) + pad + "}\n"
+    }
+    if kind == "for-range" {
+        let range_line = selfhost_c11_node_line(
+            document,
+            context,
+            decimal_value(pattern_line_field(document, line, 8))
+        )
+        if range_line < 0 {
+            return selfhost_c11_error(
+                1,
+                "error[E2S35]: selfhost-C11 node reference is out of range"
+            )
+        }
+        let low = decimal_value(pattern_line_field(document, range_line, 7))
+        let high = decimal_value(pattern_line_field(document, range_line, 8))
+        let first = selfhost_c11_expression(document, context, low, level)
+        if selfhost_c11_failed(first) {
+            return first
+        }
+        let second = selfhost_c11_expression(document, context, high, level)
+        if selfhost_c11_failed(second) {
+            return second
+        }
+        let body = selfhost_c11_block(
+            document,
+            context,
+            selfhost_c11_consume(document, node_end),
+            decimal_value(pattern_line_field(document, line, 9)),
+            level + 1
+        )
+        if selfhost_c11_failed(body) {
+            return body
+        }
+        let binding = pattern_line_field(document, line, 7)
+        return pattern_line_field(body, 0, 0) + "|0\n" +
+        selfhost_records(first) + selfhost_records(second) + pad +
+        "for (int64_t k_b" + binding + " = k_n" + to_text(low) +
+        "; k_b" + binding + " < k_n" + to_text(high) + "; ++k_b" +
+        binding + ") {\n" + selfhost_records(body) + pad + "}\n"
+    }
     return selfhost_c11_error(
         3,
         "error[E2S10]: unsupported selfhost-C11 statement `" + kind + "`"
@@ -8417,6 +8553,8 @@ fn selfhost_c11_signature(document: Text, function_scope: Int) -> Text {
                     spelled = "const char *"
                 } else if key == "int" {
                     spelled = "int64_t "
+                } else if key == "list-text" {
+                    spelled = "kofun_text_list "
                 }
                 parameters = parameters + spelled + "k_b" +
                 pattern_line_field(document, line, 1)

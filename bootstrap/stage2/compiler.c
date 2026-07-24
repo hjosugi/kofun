@@ -9625,6 +9625,7 @@ static const char *sl_c_type(const char *key) {
     if (strcmp(key, "int") == 0) return "int64_t";
     if (strcmp(key, "bool") == 0) return "bool";
     if (strcmp(key, "text") == 0) return "const char *";
+    if (strcmp(key, "list-text") == 0) return "kofun_text_list";
     return "";
 }
 
@@ -9704,6 +9705,11 @@ static const char *sl_prelude =
     "#include <string.h>\n"
     "\n"
     "#include \"kofun_unicode.c\"\n"
+    "\n"
+    "typedef struct {\n"
+    "    int64_t len;\n"
+    "    const char **items;\n"
+    "} kofun_text_list;\n"
     "\n"
     "static bool kofun_failed;\n"
     "\n"
@@ -9828,6 +9834,31 @@ static const char *sl_prelude_text =
     "\n"
     "int64_t kofun_rt_text_len(const char *value) {\n"
     "    return (int64_t)strlen(value);\n"
+    "}\n"
+    "\n"
+    "int64_t kofun_rt_text_list_len(kofun_text_list values) {\n"
+    "    return values.len;\n"
+    "}\n"
+    "\n"
+    "kofun_text_list kofun_rt_chars(const char *value) {\n"
+    "    size_t length = strlen(value);\n"
+    "    const char **items = (const char **)kofun_rt_alloc(\n"
+    "        sizeof(char *) * (length == 0 ? 1 : length)\n"
+    "    );\n"
+    "    for (size_t index = 0; index < length; ++index) {\n"
+    "        items[index] = kofun_rt_copy_n(value + index, 1);\n"
+    "    }\n"
+    "    kofun_text_list result;\n"
+    "    result.len = (int64_t)length;\n"
+    "    result.items = items;\n"
+    "    return result;\n"
+    "}\n"
+    "\n"
+    "const char *kofun_rt_text_list_get(kofun_text_list values, int64_t index) {\n"
+    "    if (index < 0 || index >= values.len) {\n"
+    "        kofun_rt_panic(\"List[Text] index out of bounds\");\n"
+    "    }\n"
+    "    return values.items[index];\n"
     "}\n"
     "\n"
     "bool kofun_rt_text_contains(const char *value, const char *needle) {\n"
@@ -10039,6 +10070,7 @@ static int64_t sl_consume_expr(SlFn *fn, int64_t index) {
 /* Map a slice builtin to its runtime helper; NULL when the builtin is
  * outside the non-looping Text slice. */
 static const char *sl_builtin_helper(const char *name) {
+    if (strcmp(name, "chars") == 0) return "kofun_rt_chars";
     if (strcmp(name, "contains") == 0) return "kofun_rt_text_contains";
     if (strcmp(name, "find") == 0) return "kofun_rt_find";
     if (strcmp(name, "is_digit") == 0) return "kofun_rt_is_digit";
@@ -10116,7 +10148,11 @@ static void sl_emit_expr(SlFn *fn, SlDoc *doc, int64_t node_id, Buffer *out) {
         const char *helper = NULL;
         if (builtin) {
             helper = sl_builtin_helper(name);
-            if (helper == NULL || sl_list_parameter(doc, symbol)) {
+            if (strcmp(name, "len") == 0 &&
+                sl_list_parameter(doc, symbol)) {
+                helper = "kofun_rt_text_list_len";
+            }
+            if (helper == NULL) {
                 sl_fail_name(doc, 3,
                              "error[E2S10]: unsupported selfhost-C11 "
                              "builtin call ",
@@ -10265,6 +10301,21 @@ static void sl_emit_expr(SlFn *fn, SlDoc *doc, int64_t node_id, Buffer *out) {
         sl_failed_check(fn, out);
         return;
     }
+    if (strcmp(kind, "index") == 0) {
+        int64_t base = sl_int(node, 7);
+        int64_t position = sl_int(node, 8);
+        sl_emit_expr(fn, doc, base, out);
+        if (doc->error != NULL) return;
+        sl_emit_expr(fn, doc, position, out);
+        if (doc->error != NULL) return;
+        sl_indent(fn, out);
+        buffer_format(out,
+                      "const char *k_n%" PRId64
+                      " = kofun_rt_text_list_get(k_n%" PRId64
+                      ", k_n%" PRId64 ");\n",
+                      node_id, base, position);
+        return;
+    }
     sl_fail_name(doc, 3,
                  "error[E2S10]: unsupported selfhost-C11 expression ",
                  kind);
@@ -10319,7 +10370,7 @@ static int64_t sl_emit_statement(
     const char *kind = sl_field(node, 2);
     *terminal = false;
     if (doc->error != NULL) return fn->last_node;
-    if (strcmp(kind, "let") == 0) {
+    if (strcmp(kind, "let") == 0 || strcmp(kind, "let-mut") == 0) {
         int64_t value = sl_int(node, 8);
         sl_emit_expr(fn, doc, value, out);
         if (doc->error != NULL) return fn->last_node;
@@ -10406,6 +10457,64 @@ static int64_t sl_emit_statement(
         *terminal = then_terminal && else_terminal;
         return walk;
     }
+    if (strcmp(kind, "assign") == 0) {
+        int64_t value = sl_int(node, 8);
+        sl_emit_expr(fn, doc, value, out);
+        if (doc->error != NULL) return fn->last_node;
+        sl_indent(fn, out);
+        buffer_format(out, "k_b%s = k_n%" PRId64 ";\n",
+                      sl_field(node, 7), value);
+        return sl_consume_expr(fn, index + 1);
+    }
+    if (strcmp(kind, "while") == 0) {
+        int64_t condition = sl_int(node, 7);
+        sl_indent(fn, out);
+        buffer_append(out, "for (;;) {\n");
+        fn->indent += 1;
+        sl_emit_expr(fn, doc, condition, out);
+        if (doc->error != NULL) return fn->last_node;
+        sl_indent(fn, out);
+        buffer_format(out, "if (!k_n%" PRId64 ") break;\n", condition);
+        bool body_terminal = false;
+        int64_t walk = sl_consume_expr(fn, index + 1);
+        walk = sl_emit_block(fn, doc, walk, sl_int(node, 8), out,
+                             &body_terminal);
+        fn->indent -= 1;
+        if (doc->error != NULL) return fn->last_node;
+        sl_indent(fn, out);
+        buffer_append(out, "}\n");
+        return walk;
+    }
+    if (strcmp(kind, "for-range") == 0) {
+        const SlRecord *range = sl_node(fn, sl_int(node, 8));
+        if (range == NULL) {
+            sl_fail(doc, 1, "error[E2S35]: selfhost-C11 node reference is "
+                            "out of range");
+            return fn->last_node;
+        }
+        int64_t low = sl_int(range, 7);
+        int64_t high = sl_int(range, 8);
+        sl_emit_expr(fn, doc, low, out);
+        if (doc->error != NULL) return fn->last_node;
+        sl_emit_expr(fn, doc, high, out);
+        if (doc->error != NULL) return fn->last_node;
+        sl_indent(fn, out);
+        buffer_format(out,
+                      "for (int64_t k_b%s = k_n%" PRId64 "; k_b%s < k_n%"
+                      PRId64 "; ++k_b%s) {\n",
+                      sl_field(node, 7), low, sl_field(node, 7), high,
+                      sl_field(node, 7));
+        fn->indent += 1;
+        bool body_terminal = false;
+        int64_t walk = sl_consume_expr(fn, index + 1);
+        walk = sl_emit_block(fn, doc, walk, sl_int(node, 9), out,
+                             &body_terminal);
+        fn->indent -= 1;
+        if (doc->error != NULL) return fn->last_node;
+        sl_indent(fn, out);
+        buffer_append(out, "}\n");
+        return walk;
+    }
     sl_fail_name(doc, 3,
                  "error[E2S10]: unsupported selfhost-C11 statement ", kind);
     return fn->last_node;
@@ -10435,11 +10544,15 @@ static void sl_parameters(
             return;
         }
         if (*arity > 0) buffer_append(out, ", ");
-        buffer_format(out, "%sk_b%s",
-                      strcmp(key, "text") == 0 ?
-                          "const char *" : (
-                          strcmp(key, "int") == 0 ? "int64_t " : "bool "),
-                      sl_field(binding, 1));
+        const char *spelled = "bool ";
+        if (strcmp(key, "text") == 0) {
+            spelled = "const char *";
+        } else if (strcmp(key, "int") == 0) {
+            spelled = "int64_t ";
+        } else if (strcmp(key, "list-text") == 0) {
+            spelled = "kofun_text_list ";
+        }
+        buffer_format(out, "%sk_b%s", spelled, sl_field(binding, 1));
         *arity += 1;
     }
 }
@@ -10613,6 +10726,17 @@ static char *sl_lower_document(SlDoc *doc, const char *text) {
     return output.data;
 }
 
+static void sl_free(SlDoc *doc) {
+    for (int64_t index = 0; index < doc->type_count; ++index) {
+        free(doc->type_keys[index]);
+    }
+    free(doc->document);
+    free(doc->source_path);
+    free(doc->source_digest);
+    free(doc->error);
+    free(doc);
+}
+
 static int lower_selfhost_c11_file(const char *input, const char *output) {
     if (same_file(input, output)) {
         puts("error[E2S35]: selfhost-C11 input and output must be distinct");
@@ -10625,12 +10749,13 @@ static int lower_selfhost_c11_file(const char *input, const char *output) {
     if (lowered == NULL) {
         puts(doc->error);
         int exit_code = doc->error_exit;
-        free(doc->error);
+        sl_free(doc);
         free(text);
         return exit_code;
     }
     write_file(output, lowered);
     free(lowered);
+    sl_free(doc);
     free(text);
     return 0;
 }

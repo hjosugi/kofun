@@ -34,8 +34,8 @@ while test "$#" -gt 0; do
     esac
 done
 case $phase in
-    ''|frontend|c11-text) ;;
-    *) fail "unknown phase: $phase (supported: frontend, c11-text)" ;;
+    ''|frontend|c11-text|c11-control) ;;
+    *) fail "unknown phase: $phase (supported: frontend, c11-text, c11-control)" ;;
 esac
 
 meta_value() {
@@ -245,26 +245,33 @@ if test "$phase" = frontend; then
         "PASS: all $total_count frontend cells carry checked-in typed-HIR evidence"
 fi
 
-# The c11-text gate is the #620 completion check: every c11 cell owned by
-# the non-looping Text/function slice carries checked-in evidence; cells
-# owned by #621/#622 stay planned until their own phases.
-if test "$phase" = c11-text; then
-    awk -F '|' '
+# The c11 phase gates are per-issue completion checks: each fails while
+# any c11 cell owned by its issue is still planned, and reports how many
+# c11 cells carry checked-in evidence overall. Cells owned by later
+# phases stay planned until their own gates.
+c11_phase_gate() {
+    owner=$1
+    awk -F '|' -v owner="planned:$owner" '
         NR == 1 { next }
-        $5 == "planned:#620" {
+        $5 == owner {
             printf "PENDING: %s|%s c11 %s\n", $1, $2, $5
         }
     ' "$profile" > "$tmp_dir/c11-pending"
     pending_count=$(wc -l < "$tmp_dir/c11-pending" | tr -d ' ')
-    owned_count=$(awk -F '|' '
-        NR > 1 && ($5 == "planned:#620" ||
-                   $5 ~ /^bootstrap\/selfhost\/c11\//) { count += 1 }
+    evidence_count=$(awk -F '|' '
+        NR > 1 && $5 !~ /^planned:/ { count += 1 }
         END { print count + 0 }
     ' "$profile")
     if test "$pending_count" -gt 0; then
         cat "$tmp_dir/c11-pending"
-        fail "$pending_count of $owned_count Text-slice c11 cells still await #620 evidence"
+        fail "$pending_count c11 cells still await $owner evidence"
     fi
     printf '%s\n' \
-        "PASS: all $owned_count Text-slice c11 cells carry checked-in C11 evidence"
+        "PASS: no c11 cells await $owner evidence ($evidence_count carry checked-in paths)"
+}
+if test "$phase" = c11-text; then
+    c11_phase_gate '#620'
+fi
+if test "$phase" = c11-control; then
+    c11_phase_gate '#621'
 fi

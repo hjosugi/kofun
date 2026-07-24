@@ -1,0 +1,8 @@
+fn main() -> Int {
+    let symbols = chars("ab")
+    let ghost = symbols[len(symbols)]
+    if ghost == "" {
+        return 1
+    }
+    return 2
+}
