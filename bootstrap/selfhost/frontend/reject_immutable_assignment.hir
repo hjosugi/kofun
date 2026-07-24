@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_immutable_assignment.kofun|934b27a3c45c01de8b1f2ffe3c450817999646369789e7f5889ba31d14db141b
+status|rejected
+diagnostic|E2S22|36|41|assignment target is immutable

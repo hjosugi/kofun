@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_unknown_binding.kofun|0f133dcbcfe5c5594d723356a70143658afe465c7384082a5a4a3c1c0c2162b9
+status|rejected
+diagnostic|E2S35|22|34|unknown lexical binding

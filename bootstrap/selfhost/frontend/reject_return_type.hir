@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_return_type.kofun|7121fe98fbd577f8bc320493b5e61be3fa058dccd0090ece20aa1f640b6d223b
+status|rejected
+diagnostic|E2S15|32|33|return type mismatch

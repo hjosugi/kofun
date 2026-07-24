@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_if_condition.kofun|9579527be50cdb090b6bcad5a0f5776a8a80fd31dc13665cdd6b4aed9240e1f1
+status|rejected
+diagnostic|E2S23|19|20|if condition must be Bool or an Int comparison

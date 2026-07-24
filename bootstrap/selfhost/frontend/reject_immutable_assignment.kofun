@@ -1,0 +1,5 @@
+fn main() {
+    let fixed = "a"
+    fixed = "b"
+    print(fixed)
+}

@@ -7642,6 +7642,1781 @@ static int parse_patterns_file(const char *input, const char *output) {
     return ok ? 0 : 1;
 }
 
+/*
+ * kofun.selfhost-hir/v1 emitter (bootstrap/selfhost/hir-v1.md).
+ *
+ * One typed pre-order walk over the frozen profile surface produces the
+ * complete document: deduplicated type table, scope tree, symbols,
+ * bindings, and per-function node records. Any construct outside the
+ * profile rejects the whole document with diagnostics plus explicit
+ * `unsupported` records; a partial typed document is never written.
+ */
+
+enum {
+    SH_MAX_TYPES = 64,
+    SH_MAX_ENV = 512,
+    SH_MAX_DEPTH = 32,
+};
+
+typedef struct {
+    const char *source;
+    int64_t length;
+    Buffer types;
+    Buffer scopes;
+    Buffer symbols;
+    Buffer bindings;
+    Buffer nodes;
+    Buffer diagnostics;
+    char type_keys[SH_MAX_TYPES][80];
+    int64_t type_count;
+    int64_t next_scope;
+    int64_t next_symbol;
+    int64_t next_binding;
+    int64_t next_node;
+    struct {
+        char name[64];
+        char type[16];
+        int64_t binding_id;
+        bool is_mutable;
+    } env[SH_MAX_ENV];
+    int64_t env_count;
+    int64_t scope_stack[SH_MAX_DEPTH];
+    int64_t scope_depth;
+    struct {
+        char name[64];
+        char result[16];
+        int64_t symbol_id;
+        int64_t arity;
+        char parameters[8][16];
+    } functions[64];
+    int64_t function_count;
+    int64_t builtin_symbols[16];
+    int64_t len_list_symbol;
+    char *error;
+    char error_code[8];
+    char error_message[128];
+    int64_t error_at;
+} Sh;
+
+static void sh_fail(Sh *sh, const char *code, const char *message, int64_t at) {
+    if (sh->error != NULL) return;
+    Buffer error;
+    buffer_init(&error);
+    if (at >= 0) {
+        buffer_format(
+            &error,
+            "error[%s]: %s at byte %" PRId64,
+            code,
+            message,
+            at
+        );
+    } else {
+        buffer_format(&error, "error[%s]: %s", code, message);
+    }
+    sh->error = error.data;
+    snprintf(sh->error_code, sizeof(sh->error_code), "%s", code);
+    snprintf(sh->error_message, sizeof(sh->error_message), "%s", message);
+    sh->error_at = at;
+}
+
+/* hir-v1 record escaping: `\` -> `\\`, `|` -> `\p`, newline -> `\n`. */
+static void sh_escaped(Buffer *out, const char *text) {
+    for (size_t index = 0; text[index] != '\0'; ++index) {
+        char symbol = text[index];
+        if (symbol == '\\') {
+            buffer_append(out, "\\\\");
+        } else if (symbol == '|') {
+            buffer_append(out, "\\p");
+        } else if (symbol == '\n') {
+            buffer_append(out, "\\n");
+        } else {
+            char one[2] = {symbol, '\0'};
+            buffer_append(out, one);
+        }
+    }
+}
+
+static int64_t sh_type_id_key(Sh *sh, const char *key) {
+    for (int64_t index = 0; index < sh->type_count; ++index) {
+        if (strcmp(sh->type_keys[index], key) == 0) return index;
+    }
+    if (sh->type_count >= SH_MAX_TYPES) {
+        sh_fail(sh, "E2S35", "selfhost-HIR type limit is 64", -1);
+        return 0;
+    }
+    snprintf(
+        sh->type_keys[sh->type_count],
+        sizeof(sh->type_keys[0]),
+        "%s",
+        key
+    );
+    buffer_format(&sh->types, "type|%" PRId64 "|%s\n", sh->type_count, key);
+    return sh->type_count++;
+}
+
+/* Surface names Int/Bool/Text/Void/List map onto the closed universe. */
+static int64_t sh_scalar_type_id(Sh *sh, const char *surface) {
+    if (strcmp(surface, "Int") == 0) return sh_type_id_key(sh, "int");
+    if (strcmp(surface, "Bool") == 0) return sh_type_id_key(sh, "bool");
+    if (strcmp(surface, "Text") == 0) return sh_type_id_key(sh, "text");
+    if (strcmp(surface, "Void") == 0) return sh_type_id_key(sh, "void");
+    if (strcmp(surface, "List") == 0) {
+        return sh_type_id_key(sh, "list-text");
+    }
+    sh_fail(sh, "E2S15", "type is outside the frozen profile", -1);
+    return 0;
+}
+
+static int64_t sh_fn_type_id(
+    Sh *sh,
+    const char *result,
+    char parameters[][16],
+    int64_t arity
+) {
+    char key[80];
+    int64_t written = snprintf(
+        key,
+        sizeof(key),
+        "fn|%" PRId64,
+        sh_scalar_type_id(sh, result)
+    );
+    for (int64_t index = 0; index < arity; ++index) {
+        written += snprintf(
+            key + written,
+            sizeof(key) - (size_t)written,
+            "|%" PRId64,
+            sh_scalar_type_id(sh, parameters[index])
+        );
+    }
+    return sh_type_id_key(sh, key);
+}
+
+static void sh_scope_open(
+    Sh *sh,
+    const char *kind,
+    int64_t start,
+    int64_t end
+) {
+    int64_t parent = sh->scope_depth > 0 ?
+        sh->scope_stack[sh->scope_depth - 1] : sh->next_scope;
+    if (sh->scope_depth >= SH_MAX_DEPTH) {
+        sh_fail(sh, "E2S35", "lexical scope depth limit is 32", start);
+        return;
+    }
+    buffer_format(
+        &sh->scopes,
+        "scope|%" PRId64 "|%" PRId64 "|%s|%" PRId64 "|%" PRId64 "\n",
+        sh->next_scope,
+        parent,
+        kind,
+        start,
+        end
+    );
+    sh->scope_stack[sh->scope_depth++] = sh->next_scope++;
+}
+
+static void sh_scope_close(Sh *sh, int64_t saved_env) {
+    if (sh->scope_depth > 0) --sh->scope_depth;
+    sh->env_count = saved_env;
+}
+
+static int64_t sh_bind(
+    Sh *sh,
+    const char *name,
+    const char *type,
+    bool is_mutable,
+    const char *symbol_kind,
+    int64_t name_start,
+    int64_t name_end
+) {
+    if (sh->env_count >= SH_MAX_ENV) {
+        sh_fail(sh, "E2S35", "lexical binding limit is 512", name_start);
+        return -1;
+    }
+    int64_t scope = sh->scope_stack[sh->scope_depth - 1];
+    int64_t symbol_id = sh->next_symbol++;
+    buffer_format(
+        &sh->symbols,
+        "symbol|%" PRId64 "|%s|%s|%" PRId64 "|%" PRId64 "|%" PRId64 "\n",
+        symbol_id,
+        symbol_kind,
+        name,
+        sh_scalar_type_id(sh, type),
+        name_start,
+        name_end
+    );
+    int64_t binding_id = sh->next_binding++;
+    buffer_format(
+        &sh->bindings,
+        "binding|%" PRId64 "|%" PRId64 "|%" PRId64 "|%s|%s|%" PRId64
+        "|%" PRId64 "\n",
+        binding_id,
+        scope,
+        symbol_id,
+        name,
+        is_mutable ? "mut" : "imm",
+        name_start,
+        name_end
+    );
+    snprintf(
+        sh->env[sh->env_count].name,
+        sizeof(sh->env[0].name),
+        "%s",
+        name
+    );
+    snprintf(
+        sh->env[sh->env_count].type,
+        sizeof(sh->env[0].type),
+        "%s",
+        type
+    );
+    sh->env[sh->env_count].binding_id = binding_id;
+    sh->env[sh->env_count].is_mutable = is_mutable;
+    ++sh->env_count;
+    return binding_id;
+}
+
+static int64_t sh_resolve(Sh *sh, const char *name) {
+    for (int64_t index = sh->env_count - 1; index >= 0; --index) {
+        if (strcmp(sh->env[index].name, name) == 0) return index;
+    }
+    return -1;
+}
+
+static const char *sh_ownership(const char *type, bool edit) {
+    if (edit) return "edit";
+    if (strcmp(type, "Text") == 0 || strcmp(type, "List") == 0) {
+        return "read";
+    }
+    return "copy";
+}
+
+
+typedef struct ShExpr ShExpr;
+struct ShExpr {
+    char kind[16];
+    int64_t start;
+    int64_t end;
+    char type[16];
+    char op[4];
+    char *text;
+    int64_t symbol_id;
+    int64_t binding_id;
+    ShExpr *left;
+    ShExpr *right;
+    ShExpr *arguments[8];
+    int64_t argument_count;
+};
+
+typedef struct ShStmt ShStmt;
+typedef struct ShBlock ShBlock;
+struct ShBlock {
+    int64_t scope_id;
+    ShStmt *statements[64];
+    int64_t count;
+};
+struct ShStmt {
+    char kind[12];
+    int64_t start;
+    int64_t end;
+    ShExpr *value;
+    int64_t binding_id;
+    ShBlock *body;
+    char else_kind[8];
+    ShStmt *else_if;
+    ShBlock *else_block;
+};
+
+static void sh_free_expr(ShExpr *expr) {
+    if (expr == NULL) return;
+    free(expr->text);
+    sh_free_expr(expr->left);
+    sh_free_expr(expr->right);
+    for (int64_t index = 0; index < expr->argument_count; ++index) {
+        sh_free_expr(expr->arguments[index]);
+    }
+    free(expr);
+}
+
+static void sh_free_stmt(ShStmt *statement);
+
+static void sh_free_block(ShBlock *block) {
+    if (block == NULL) return;
+    for (int64_t index = 0; index < block->count; ++index) {
+        sh_free_stmt(block->statements[index]);
+    }
+    free(block);
+}
+
+static void sh_free_stmt(ShStmt *statement) {
+    if (statement == NULL) return;
+    sh_free_expr(statement->value);
+    sh_free_block(statement->body);
+    sh_free_stmt(statement->else_if);
+    sh_free_block(statement->else_block);
+    free(statement);
+}
+
+static ShExpr *sh_expr_new(const char *kind, int64_t start, int64_t end) {
+    ShExpr *expr = allocate(sizeof(*expr));
+    memset(expr, 0, sizeof(*expr));
+    snprintf(expr->kind, sizeof(expr->kind), "%s", kind);
+    expr->start = start;
+    expr->end = end;
+    return expr;
+}
+
+static ShExpr *sh_parse_expr(Sh *sh, int64_t *cursor);
+
+static int64_t sh_function_index(Sh *sh, const char *name) {
+    for (int64_t index = 0; index < sh->function_count; ++index) {
+        if (strcmp(sh->functions[index].name, name) == 0) return index;
+    }
+    return -1;
+}
+
+static ShExpr *sh_parse_primary(Sh *sh, int64_t *cursor) {
+    int64_t at = *cursor;
+    if (at >= sh->length) {
+        sh_fail(sh, "E2S12", "expected expression", at);
+        return NULL;
+    }
+    const char *kind = token_kind(sh->source, at);
+    int64_t end = token_end(sh->source, at);
+    if (strcmp(kind, "integer") == 0) {
+        ShExpr *expr = sh_expr_new("literal-int", at, end);
+        snprintf(expr->type, sizeof(expr->type), "Int");
+        expr->text = token_copy(sh->source, at);
+        *cursor = skip_trivia(sh->source, end);
+        return expr;
+    }
+    if (strcmp(kind, "string") == 0) {
+        ShExpr *expr = sh_expr_new("literal-text", at, end);
+        snprintf(expr->type, sizeof(expr->type), "Text");
+        expr->text = token_copy(sh->source, at);
+        *cursor = skip_trivia(sh->source, end);
+        return expr;
+    }
+    if (
+        token_equal(sh->source, at, "true") ||
+        token_equal(sh->source, at, "false")
+    ) {
+        ShExpr *expr = sh_expr_new("literal-bool", at, end);
+        snprintf(expr->type, sizeof(expr->type), "Bool");
+        expr->text = token_copy(sh->source, at);
+        *cursor = skip_trivia(sh->source, end);
+        return expr;
+    }
+    if (token_equal(sh->source, at, "(")) {
+        *cursor = skip_trivia(sh->source, end);
+        ShExpr *inner = sh_parse_expr(sh, cursor);
+        if (inner == NULL) return NULL;
+        if (
+            *cursor >= sh->length ||
+            !token_equal(sh->source, *cursor, ")")
+        ) {
+            sh_fail(sh, "E2S12", "expected `)`", *cursor);
+            sh_free_expr(inner);
+            return NULL;
+        }
+        *cursor = skip_trivia(sh->source, token_end(sh->source, *cursor));
+        return inner;
+    }
+    if (strcmp(kind, "identifier") == 0) {
+        char *name = token_copy(sh->source, at);
+        int64_t after = skip_trivia(sh->source, end);
+        if (after < sh->length && token_equal(sh->source, after, "(")) {
+            ShExpr *call = sh_expr_new("call", at, end);
+            call->text = name;
+            *cursor = skip_trivia(sh->source, token_end(sh->source, after));
+            while (
+                *cursor < sh->length &&
+                !token_equal(sh->source, *cursor, ")")
+            ) {
+                if (call->argument_count >= 8) {
+                    sh_fail(sh, "E2S17", "call has too many arguments", at);
+                    sh_free_expr(call);
+                    return NULL;
+                }
+                ShExpr *argument = sh_parse_expr(sh, cursor);
+                if (argument == NULL) {
+                    sh_free_expr(call);
+                    return NULL;
+                }
+                call->arguments[call->argument_count++] = argument;
+                if (
+                    *cursor < sh->length &&
+                    token_equal(sh->source, *cursor, ",")
+                ) {
+                    *cursor = skip_trivia(
+                        sh->source,
+                        token_end(sh->source, *cursor)
+                    );
+                }
+            }
+            if (*cursor >= sh->length) {
+                sh_fail(sh, "E2S12", "expected `)`", at);
+                sh_free_expr(call);
+                return NULL;
+            }
+            call->end = token_end(sh->source, *cursor);
+            *cursor = skip_trivia(
+                sh->source,
+                token_end(sh->source, *cursor)
+            );
+            /* Resolve to a declared function or profile builtin and type
+             * the call; `len` picks its overload from the argument. */
+            int64_t declared = sh_function_index(sh, call->text);
+            if (declared >= 0) {
+                if (
+                    call->argument_count !=
+                    sh->functions[declared].arity
+                ) {
+                    sh_fail(sh, "E2S17", "wrong call arity", at);
+                    sh_free_expr(call);
+                    return NULL;
+                }
+                for (
+                    int64_t index = 0;
+                    index < call->argument_count;
+                    ++index
+                ) {
+                    if (
+                        strcmp(
+                            call->arguments[index]->type,
+                            sh->functions[declared].parameters[index]
+                        ) != 0
+                    ) {
+                        sh_fail(
+                            sh,
+                            "E2S15",
+                            "call argument type mismatch",
+                            call->arguments[index]->start
+                        );
+                        sh_free_expr(call);
+                        return NULL;
+                    }
+                }
+                call->symbol_id = sh->functions[declared].symbol_id;
+                snprintf(
+                    call->type,
+                    sizeof(call->type),
+                    "%s",
+                    sh->functions[declared].result
+                );
+                return call;
+            }
+            int64_t arity = builtin_arity(call->text);
+            if (strcmp(call->text, "print") == 0) arity = 1;
+            if (arity < 0) {
+                sh_fail(sh, "E2S16", "unknown function", at);
+                sh_free_expr(call);
+                return NULL;
+            }
+            if (call->argument_count != arity) {
+                sh_fail(sh, "E2S17", "wrong builtin arity", at);
+                sh_free_expr(call);
+                return NULL;
+            }
+            const char *result = "Void";
+            if (strcmp(call->text, "print") != 0) {
+                result = builtin_return_type(call->text);
+            }
+            if (strcmp(call->text, "len") == 0) {
+                const char *argument_type = call->arguments[0]->type;
+                if (
+                    strcmp(argument_type, "Text") != 0 &&
+                    strcmp(argument_type, "List") != 0
+                ) {
+                    sh_fail(
+                        sh,
+                        "E2S15",
+                        "len expects Text or List[Text]",
+                        call->arguments[0]->start
+                    );
+                    sh_free_expr(call);
+                    return NULL;
+                }
+                call->symbol_id =
+                    strcmp(argument_type, "List") == 0 ?
+                        sh->len_list_symbol :
+                        sh->builtin_symbols[7];
+            } else if (strcmp(call->text, "print") == 0) {
+                if (strcmp(call->arguments[0]->type, "Text") != 0) {
+                    sh_fail(
+                        sh,
+                        "E2S15",
+                        "print expects Text in the profile",
+                        call->arguments[0]->start
+                    );
+                    sh_free_expr(call);
+                    return NULL;
+                }
+                call->symbol_id = sh->builtin_symbols[8];
+            } else {
+                const char *parameters =
+                    builtin_parameter_types(call->text);
+                const char *expected = parameters;
+                for (
+                    int64_t index = 0;
+                    index < call->argument_count;
+                    ++index
+                ) {
+                    size_t expected_length = strcspn(expected, "|");
+                    bool matches =
+                        strlen(call->arguments[index]->type) ==
+                            expected_length &&
+                        strncmp(
+                            call->arguments[index]->type,
+                            expected,
+                            expected_length
+                        ) == 0;
+                    if (!matches) {
+                        sh_fail(
+                            sh,
+                            "E2S15",
+                            "builtin argument type mismatch",
+                            call->arguments[index]->start
+                        );
+                        sh_free_expr(call);
+                        return NULL;
+                    }
+                    expected += expected_length;
+                    if (expected[0] == '|') ++expected;
+                }
+                int64_t slot = -1;
+                static const char *ordered[] = {
+                    "args", "chars", "contains", "find", "is_digit",
+                    "is_space", "is_xid_continue", "len", "print",
+                    "read_text", "replace", "starts_with", "text_slice",
+                    "trim", "validate_unicode_source", "write_text",
+                };
+                for (int64_t index = 0; index < 16; ++index) {
+                    if (strcmp(ordered[index], call->text) == 0) {
+                        slot = index;
+                        break;
+                    }
+                }
+                call->symbol_id = sh->builtin_symbols[slot];
+            }
+            snprintf(call->type, sizeof(call->type), "%s", result);
+            return call;
+        }
+        int64_t resolved = sh_resolve(sh, name);
+        if (resolved < 0) {
+            sh_fail(sh, "E2S35", "unknown lexical binding", at);
+            free(name);
+            return NULL;
+        }
+        ShExpr *reference = sh_expr_new("name", at, end);
+        reference->text = name;
+        reference->binding_id = sh->env[resolved].binding_id;
+        snprintf(
+            reference->type,
+            sizeof(reference->type),
+            "%s",
+            sh->env[resolved].type
+        );
+        *cursor = after;
+        return reference;
+    }
+    sh_fail(sh, "E2S12", "expected expression", at);
+    return NULL;
+}
+
+static ShExpr *sh_parse_postfix(Sh *sh, int64_t *cursor) {
+    ShExpr *base = sh_parse_primary(sh, cursor);
+    if (base == NULL) return NULL;
+    while (
+        *cursor < sh->length &&
+        token_equal(sh->source, *cursor, "[")
+    ) {
+        if (strcmp(base->type, "List") != 0) {
+            sh_fail(sh, "E2S15", "only List[Text] can be indexed", *cursor);
+            sh_free_expr(base);
+            return NULL;
+        }
+        *cursor = skip_trivia(sh->source, token_end(sh->source, *cursor));
+        ShExpr *index_expr = sh_parse_expr(sh, cursor);
+        if (index_expr == NULL) {
+            sh_free_expr(base);
+            return NULL;
+        }
+        if (strcmp(index_expr->type, "Int") != 0) {
+            sh_fail(sh, "E2S15", "index must be Int", index_expr->start);
+            sh_free_expr(base);
+            sh_free_expr(index_expr);
+            return NULL;
+        }
+        if (
+            *cursor >= sh->length ||
+            !token_equal(sh->source, *cursor, "]")
+        ) {
+            sh_fail(sh, "E2S12", "expected `]`", *cursor);
+            sh_free_expr(base);
+            sh_free_expr(index_expr);
+            return NULL;
+        }
+        int64_t close = token_end(sh->source, *cursor);
+        *cursor = skip_trivia(sh->source, close);
+        ShExpr *indexed = sh_expr_new("index", base->start, close);
+        snprintf(indexed->type, sizeof(indexed->type), "Text");
+        indexed->left = base;
+        indexed->right = index_expr;
+        base = indexed;
+    }
+    return base;
+}
+
+static ShExpr *sh_parse_unary(Sh *sh, int64_t *cursor) {
+    int64_t at = *cursor;
+    if (at < sh->length && token_equal(sh->source, at, "!")) {
+        *cursor = skip_trivia(sh->source, token_end(sh->source, at));
+        ShExpr *operand = sh_parse_unary(sh, cursor);
+        if (operand == NULL) return NULL;
+        if (strcmp(operand->type, "Bool") != 0) {
+            sh_fail(sh, "E2S15", "`!` expects Bool", operand->start);
+            sh_free_expr(operand);
+            return NULL;
+        }
+        ShExpr *expr = sh_expr_new("unary", at, operand->end);
+        snprintf(expr->type, sizeof(expr->type), "Bool");
+        snprintf(expr->op, sizeof(expr->op), "!");
+        expr->left = operand;
+        return expr;
+    }
+    if (at < sh->length && token_equal(sh->source, at, "-")) {
+        *cursor = skip_trivia(sh->source, token_end(sh->source, at));
+        ShExpr *operand = sh_parse_unary(sh, cursor);
+        if (operand == NULL) return NULL;
+        if (strcmp(operand->type, "Int") != 0) {
+            sh_fail(sh, "E2S15", "unary `-` expects Int", operand->start);
+            sh_free_expr(operand);
+            return NULL;
+        }
+        ShExpr *expr = sh_expr_new("unary", at, operand->end);
+        snprintf(expr->type, sizeof(expr->type), "Int");
+        snprintf(expr->op, sizeof(expr->op), "-");
+        expr->left = operand;
+        return expr;
+    }
+    return sh_parse_postfix(sh, cursor);
+}
+
+static bool sh_operator_at(
+    Sh *sh,
+    int64_t cursor,
+    const char *const *operators,
+    int64_t count,
+    const char **matched
+) {
+    if (cursor >= sh->length) return false;
+    for (int64_t index = 0; index < count; ++index) {
+        if (token_equal(sh->source, cursor, operators[index])) {
+            *matched = operators[index];
+            return true;
+        }
+    }
+    return false;
+}
+
+static ShExpr *sh_parse_binary_level(
+    Sh *sh,
+    int64_t *cursor,
+    int64_t level
+);
+
+/* Levels: 0 `||`; 1 `&&`; 2 comparisons; 3 `+ -`; 4 `* / // %`. */
+static ShExpr *sh_parse_binary_level(
+    Sh *sh,
+    int64_t *cursor,
+    int64_t level
+) {
+    static const char *const level0[] = {"||"};
+    static const char *const level1[] = {"&&"};
+    static const char *const level2[] =
+        {"==", "!=", "<=", ">=", "<", ">"};
+    static const char *const level3[] = {"+", "-"};
+    static const char *const level4[] = {"*", "//", "/", "%"};
+    static const struct {
+        const char *const *operators;
+        int64_t count;
+    } levels[] = {
+        {level0, 1}, {level1, 1}, {level2, 6}, {level3, 2}, {level4, 4},
+    };
+    if (level > 4) return sh_parse_unary(sh, cursor);
+    ShExpr *left = sh_parse_binary_level(sh, cursor, level + 1);
+    if (left == NULL) return NULL;
+    const char *matched = NULL;
+    while (
+        sh_operator_at(
+            sh,
+            *cursor,
+            levels[level].operators,
+            levels[level].count,
+            &matched
+        )
+    ) {
+        int64_t operator_at = *cursor;
+        *cursor = skip_trivia(
+            sh->source,
+            token_end(sh->source, operator_at)
+        );
+        ShExpr *right = sh_parse_binary_level(sh, cursor, level + 1);
+        if (right == NULL) {
+            sh_free_expr(left);
+            return NULL;
+        }
+        const char *result = NULL;
+        if (level <= 1) {
+            if (
+                strcmp(left->type, "Bool") != 0 ||
+                strcmp(right->type, "Bool") != 0
+            ) {
+                sh_fail(sh, "E2S15", "logical operands must be Bool",
+                        operator_at);
+            }
+            result = "Bool";
+        } else if (level == 2) {
+            if (
+                strcmp(left->type, right->type) != 0 ||
+                strcmp(left->type, "List") == 0 ||
+                strcmp(left->type, "Void") == 0
+            ) {
+                sh_fail(sh, "E2S15",
+                        "comparison operands must share a scalar type",
+                        operator_at);
+            }
+            result = "Bool";
+        } else if (level == 3 && strcmp(matched, "+") == 0 &&
+                   strcmp(left->type, "Text") == 0) {
+            if (strcmp(right->type, "Text") != 0) {
+                sh_fail(sh, "E2S15", "Text `+` expects Text", operator_at);
+            }
+            result = "Text";
+        } else {
+            if (
+                strcmp(left->type, "Int") != 0 ||
+                strcmp(right->type, "Int") != 0
+            ) {
+                sh_fail(sh, "E2S15", "arithmetic operands must be Int",
+                        operator_at);
+            }
+            result = "Int";
+        }
+        if (sh->error != NULL) {
+            sh_free_expr(left);
+            sh_free_expr(right);
+            return NULL;
+        }
+        ShExpr *parent = sh_expr_new("binary", left->start, right->end);
+        snprintf(parent->type, sizeof(parent->type), "%s", result);
+        snprintf(parent->op, sizeof(parent->op), "%s", matched);
+        parent->left = left;
+        parent->right = right;
+        left = parent;
+    }
+    return left;
+}
+
+static ShExpr *sh_parse_expr(Sh *sh, int64_t *cursor) {
+    return sh_parse_binary_level(sh, cursor, 0);
+}
+
+static ShBlock *sh_parse_block(
+    Sh *sh,
+    int64_t *cursor,
+    const char *declared,
+    const char *loop_name,
+    int64_t loop_name_start,
+    int64_t *loop_binding_out
+);
+
+static ShStmt *sh_stmt_new(const char *kind, int64_t start) {
+    ShStmt *statement = allocate(sizeof(*statement));
+    memset(statement, 0, sizeof(*statement));
+    snprintf(statement->kind, sizeof(statement->kind), "%s", kind);
+    statement->start = start;
+    return statement;
+}
+
+static ShStmt *sh_parse_stmt(
+    Sh *sh,
+    int64_t *cursor,
+    const char *declared
+) {
+    int64_t at = *cursor;
+    if (token_equal(sh->source, at, "let")) {
+        int64_t name = skip_trivia(sh->source, token_end(sh->source, at));
+        bool is_mutable = false;
+        if (name < sh->length && token_equal(sh->source, name, "mut")) {
+            is_mutable = true;
+            name = skip_trivia(sh->source, token_end(sh->source, name));
+        }
+        if (
+            name >= sh->length ||
+            strcmp(token_kind(sh->source, name), "identifier") != 0
+        ) {
+            sh_fail(sh, "E2S12", "expected binding name", name);
+            return NULL;
+        }
+        int64_t name_end = token_end(sh->source, name);
+        int64_t after = skip_trivia(sh->source, name_end);
+        char annotation[16] = "";
+        if (after < sh->length && token_equal(sh->source, after, ":")) {
+            int64_t type_at = skip_trivia(
+                sh->source,
+                token_end(sh->source, after)
+            );
+            char *type_text = token_copy(sh->source, type_at);
+            snprintf(annotation, sizeof(annotation), "%s", type_text);
+            free(type_text);
+            after = skip_trivia(sh->source, token_end(sh->source, type_at));
+            if (strcmp(annotation, "List") == 0) {
+                /* List [ Text ] */
+                after = skip_trivia(sh->source, token_end(sh->source, after));
+                after = skip_trivia(sh->source, token_end(sh->source, after));
+            }
+        }
+        if (after >= sh->length || !token_equal(sh->source, after, "=")) {
+            sh_fail(sh, "E2S12", "expected `=`", after);
+            return NULL;
+        }
+        *cursor = skip_trivia(sh->source, token_end(sh->source, after));
+        ShExpr *value = sh_parse_expr(sh, cursor);
+        if (value == NULL) return NULL;
+        if (annotation[0] != '\0' &&
+            strcmp(annotation, value->type) != 0) {
+            sh_fail(sh, "E2S15", "initializer type mismatch", value->start);
+            sh_free_expr(value);
+            return NULL;
+        }
+        char *name_text = token_copy(sh->source, name);
+        int64_t binding = sh_bind(
+            sh,
+            name_text,
+            value->type,
+            is_mutable,
+            "local",
+            name,
+            name_end
+        );
+        free(name_text);
+        if (binding < 0) {
+            sh_free_expr(value);
+            return NULL;
+        }
+        ShStmt *statement = sh_stmt_new(
+            is_mutable ? "let-mut" : "let",
+            at
+        );
+        statement->end = value->end;
+        statement->value = value;
+        statement->binding_id = binding;
+        return statement;
+    }
+    if (token_equal(sh->source, at, "if") ||
+        token_equal(sh->source, at, "while")) {
+        bool is_if = token_equal(sh->source, at, "if");
+        *cursor = skip_trivia(sh->source, token_end(sh->source, at));
+        ShExpr *condition = sh_parse_expr(sh, cursor);
+        if (condition == NULL) return NULL;
+        if (strcmp(condition->type, "Bool") != 0) {
+            sh_fail(
+                sh,
+                "E2S23",
+                is_if ?
+                    "if condition must be Bool or an Int comparison" :
+                    "while condition must be Bool",
+                condition->start
+            );
+            sh_free_expr(condition);
+            return NULL;
+        }
+        ShBlock *body = sh_parse_block(sh, cursor, declared, NULL, -1, NULL);
+        if (body == NULL) {
+            sh_free_expr(condition);
+            return NULL;
+        }
+        ShStmt *statement = sh_stmt_new(is_if ? "if" : "while", at);
+        statement->value = condition;
+        statement->body = body;
+        snprintf(statement->else_kind, sizeof(statement->else_kind), "none");
+        if (
+            is_if &&
+            *cursor < sh->length &&
+            token_equal(sh->source, *cursor, "else")
+        ) {
+            int64_t next = skip_trivia(
+                sh->source,
+                token_end(sh->source, *cursor)
+            );
+            if (next < sh->length && token_equal(sh->source, next, "if")) {
+                *cursor = next;
+                ShStmt *chained = sh_parse_stmt(sh, cursor, declared);
+                if (chained == NULL) {
+                    sh_free_stmt(statement);
+                    return NULL;
+                }
+                snprintf(
+                    statement->else_kind,
+                    sizeof(statement->else_kind),
+                    "if"
+                );
+                statement->else_if = chained;
+            } else {
+                *cursor = next;
+                ShBlock *alternative = sh_parse_block(
+                    sh,
+                    cursor,
+                    declared,
+                    NULL,
+                    -1,
+                    NULL
+                );
+                if (alternative == NULL) {
+                    sh_free_stmt(statement);
+                    return NULL;
+                }
+                snprintf(
+                    statement->else_kind,
+                    sizeof(statement->else_kind),
+                    "block"
+                );
+                statement->else_block = alternative;
+            }
+        }
+        statement->end = *cursor;
+        return statement;
+    }
+    if (token_equal(sh->source, at, "for")) {
+        int64_t name = skip_trivia(sh->source, token_end(sh->source, at));
+        if (
+            name >= sh->length ||
+            strcmp(token_kind(sh->source, name), "identifier") != 0
+        ) {
+            sh_fail(sh, "E2S12", "expected loop variable", name);
+            return NULL;
+        }
+        int64_t in_at = skip_trivia(
+            sh->source,
+            token_end(sh->source, name)
+        );
+        if (in_at >= sh->length || !token_equal(sh->source, in_at, "in")) {
+            sh_fail(sh, "E2S12", "expected `in`", in_at);
+            return NULL;
+        }
+        *cursor = skip_trivia(sh->source, token_end(sh->source, in_at));
+        ShExpr *low = sh_parse_expr(sh, cursor);
+        if (low == NULL) return NULL;
+        if (
+            *cursor >= sh->length ||
+            !token_equal(sh->source, *cursor, "..")
+        ) {
+            sh_fail(sh, "E2S12", "expected `..`", *cursor);
+            sh_free_expr(low);
+            return NULL;
+        }
+        *cursor = skip_trivia(sh->source, token_end(sh->source, *cursor));
+        ShExpr *high = sh_parse_expr(sh, cursor);
+        if (high == NULL) {
+            sh_free_expr(low);
+            return NULL;
+        }
+        if (
+            strcmp(low->type, "Int") != 0 ||
+            strcmp(high->type, "Int") != 0
+        ) {
+            sh_fail(sh, "E2S15", "range bounds must be Int", low->start);
+            sh_free_expr(low);
+            sh_free_expr(high);
+            return NULL;
+        }
+        ShExpr *range = sh_expr_new("range", low->start, high->end);
+        snprintf(range->type, sizeof(range->type), "Int");
+        range->left = low;
+        range->right = high;
+        char *loop_name = token_copy(sh->source, name);
+        int64_t loop_binding = -1;
+        ShBlock *body = sh_parse_block(
+            sh,
+            cursor,
+            declared,
+            loop_name,
+            name,
+            &loop_binding
+        );
+        free(loop_name);
+        if (body == NULL) {
+            sh_free_expr(range);
+            return NULL;
+        }
+        ShStmt *statement = sh_stmt_new("for-range", at);
+        statement->value = range;
+        statement->body = body;
+        statement->binding_id = loop_binding;
+        statement->end = *cursor;
+        return statement;
+    }
+    if (token_equal(sh->source, at, "return")) {
+        int64_t value_at = skip_trivia(
+            sh->source,
+            token_end(sh->source, at)
+        );
+        bool bare =
+            value_at >= sh->length ||
+            token_equal(sh->source, value_at, "}") ||
+            newline_between(
+                sh->source,
+                token_end(sh->source, at),
+                value_at
+            );
+        ShStmt *statement = sh_stmt_new("return", at);
+        if (bare) {
+            if (strcmp(declared, "Void") != 0) {
+                sh_fail(sh, "E2S19", "missing return value", at);
+                sh_free_stmt(statement);
+                return NULL;
+            }
+            statement->end = token_end(sh->source, at);
+            *cursor = value_at;
+            return statement;
+        }
+        *cursor = value_at;
+        ShExpr *value = sh_parse_expr(sh, cursor);
+        if (value == NULL) {
+            sh_free_stmt(statement);
+            return NULL;
+        }
+        if (strcmp(value->type, declared) != 0) {
+            sh_fail(sh, "E2S15", "return type mismatch", value->start);
+            sh_free_expr(value);
+            sh_free_stmt(statement);
+            return NULL;
+        }
+        statement->value = value;
+        statement->end = value->end;
+        return statement;
+    }
+    if (strcmp(token_kind(sh->source, at), "identifier") == 0) {
+        int64_t after = skip_trivia(sh->source, token_end(sh->source, at));
+        if (after < sh->length && token_equal(sh->source, after, "=") &&
+            !token_equal(sh->source, after, "==")) {
+            int64_t resolved;
+            char *name_text = token_copy(sh->source, at);
+            resolved = sh_resolve(sh, name_text);
+            if (resolved < 0) {
+                sh_fail(sh, "E2S35", "unknown lexical binding", at);
+                free(name_text);
+                return NULL;
+            }
+            if (!sh->env[resolved].is_mutable) {
+                sh_fail(sh, "E2S22", "assignment target is immutable", at);
+                free(name_text);
+                return NULL;
+            }
+            free(name_text);
+            *cursor = skip_trivia(
+                sh->source,
+                token_end(sh->source, after)
+            );
+            ShExpr *value = sh_parse_expr(sh, cursor);
+            if (value == NULL) return NULL;
+            if (strcmp(value->type, sh->env[resolved].type) != 0) {
+                sh_fail(sh, "E2S15", "assignment type mismatch",
+                        value->start);
+                sh_free_expr(value);
+                return NULL;
+            }
+            ShStmt *statement = sh_stmt_new("assign", at);
+            statement->value = value;
+            statement->binding_id = sh->env[resolved].binding_id;
+            statement->end = value->end;
+            return statement;
+        }
+        ShExpr *value = sh_parse_expr(sh, cursor);
+        if (value == NULL) return NULL;
+        ShStmt *statement = sh_stmt_new("expr-stmt", at);
+        statement->value = value;
+        statement->end = value->end;
+        return statement;
+    }
+    sh_fail(sh, "E2S10", "unsupported Core statement", at);
+    return NULL;
+}
+
+static ShBlock *sh_parse_block(
+    Sh *sh,
+    int64_t *cursor,
+    const char *declared,
+    const char *loop_name,
+    int64_t loop_name_start,
+    int64_t *loop_binding_out
+) {
+    if (*cursor >= sh->length || !token_equal(sh->source, *cursor, "{")) {
+        sh_fail(sh, "E2S18", "expected `{`", *cursor);
+        return NULL;
+    }
+    int64_t open = *cursor;
+    int64_t close = balanced_end(sh->source, open, "{", "}");
+    if (close < 0) {
+        sh_fail(sh, "E2S18", "unbalanced `{`", open);
+        return NULL;
+    }
+    int64_t saved_env = sh->env_count;
+    sh_scope_open(sh, "block", open, close);
+    if (sh->error != NULL) return NULL;
+    ShBlock *block = allocate(sizeof(*block));
+    memset(block, 0, sizeof(*block));
+    block->scope_id = sh->scope_stack[sh->scope_depth - 1];
+    if (loop_name != NULL) {
+        int64_t loop_binding = sh_bind(
+            sh,
+            loop_name,
+            "Int",
+            false,
+            "local",
+            loop_name_start,
+            token_end(sh->source, loop_name_start)
+        );
+        if (loop_binding_out != NULL) *loop_binding_out = loop_binding;
+    }
+    *cursor = skip_trivia(sh->source, token_end(sh->source, open));
+    while (
+        sh->error == NULL &&
+        *cursor < sh->length &&
+        !token_equal(sh->source, *cursor, "}")
+    ) {
+        if (block->count >= 64) {
+            sh_fail(sh, "E2S35", "block statement limit is 64", *cursor);
+            break;
+        }
+        ShStmt *statement = sh_parse_stmt(sh, cursor, declared);
+        if (statement == NULL) break;
+        block->statements[block->count++] = statement;
+    }
+    if (sh->error == NULL &&
+        (*cursor >= sh->length ||
+         !token_equal(sh->source, *cursor, "}"))) {
+        sh_fail(sh, "E2S18", "expected `}`", *cursor);
+    }
+    if (sh->error != NULL) {
+        sh_scope_close(sh, saved_env);
+        sh_free_block(block);
+        return NULL;
+    }
+    *cursor = skip_trivia(sh->source, token_end(sh->source, *cursor));
+    sh_scope_close(sh, saved_env);
+    return block;
+}
+
+/* Decode source string escapes, then re-escape for the record format. */
+static void sh_text_literal_field(Buffer *out, const char *token) {
+    Buffer decoded;
+    buffer_init(&decoded);
+    size_t length = strlen(token);
+    for (size_t index = 1; index + 1 < length; ++index) {
+        char symbol = token[index];
+        if (symbol == '\\' && index + 2 < length + 1) {
+            char next = token[index + 1];
+            char one[2] = {next, '\0'};
+            if (next == 'n') one[0] = '\n';
+            buffer_append(&decoded, one);
+            ++index;
+        } else {
+            char one[2] = {symbol, '\0'};
+            buffer_append(&decoded, one);
+        }
+    }
+    sh_escaped(out, decoded.data);
+    free(decoded.data);
+}
+
+static int64_t sh_emit_expr(Sh *sh, Buffer *out, ShExpr *expr) {
+    int64_t id = sh->next_node++;
+    int64_t type_id = sh_scalar_type_id(sh, expr->type);
+    const char *ownership = sh_ownership(expr->type, false);
+    Buffer children;
+    buffer_init(&children);
+    Buffer fields;
+    buffer_init(&fields);
+    if (strcmp(expr->kind, "literal-int") == 0 ||
+        strcmp(expr->kind, "literal-bool") == 0) {
+        buffer_append(&fields, expr->text);
+    } else if (strcmp(expr->kind, "literal-text") == 0) {
+        sh_text_literal_field(&fields, expr->text);
+    } else if (strcmp(expr->kind, "name") == 0) {
+        buffer_format(&fields, "%" PRId64, expr->binding_id);
+    } else if (strcmp(expr->kind, "call") == 0) {
+        buffer_format(&fields, "%" PRId64, expr->symbol_id);
+        for (int64_t index = 0; index < expr->argument_count; ++index) {
+            int64_t argument = sh_emit_expr(
+                sh,
+                &children,
+                expr->arguments[index]
+            );
+            buffer_format(&fields, "|%" PRId64, argument);
+        }
+    } else if (strcmp(expr->kind, "unary") == 0) {
+        int64_t operand = sh_emit_expr(sh, &children, expr->left);
+        sh_escaped(&fields, expr->op);
+        buffer_format(&fields, "|%" PRId64, operand);
+    } else if (strcmp(expr->kind, "binary") == 0) {
+        int64_t left = sh_emit_expr(sh, &children, expr->left);
+        int64_t right = sh_emit_expr(sh, &children, expr->right);
+        sh_escaped(&fields, expr->op);
+        buffer_format(&fields, "|%" PRId64 "|%" PRId64, left, right);
+    } else if (strcmp(expr->kind, "index") == 0 ||
+               strcmp(expr->kind, "range") == 0) {
+        int64_t left = sh_emit_expr(sh, &children, expr->left);
+        int64_t right = sh_emit_expr(sh, &children, expr->right);
+        buffer_format(&fields, "%" PRId64 "|%" PRId64, left, right);
+    }
+    buffer_format(
+        out,
+        "node|%" PRId64 "|%s|%" PRId64 "|%" PRId64 "|%" PRId64 "|%s|%s\n",
+        id,
+        expr->kind,
+        expr->start,
+        expr->end,
+        type_id,
+        ownership,
+        fields.data
+    );
+    buffer_append(out, children.data);
+    free(children.data);
+    free(fields.data);
+    return id;
+}
+
+static void sh_emit_block(Sh *sh, Buffer *out, ShBlock *block);
+
+static int64_t sh_emit_stmt(Sh *sh, Buffer *out, ShStmt *statement) {
+    int64_t id = sh->next_node++;
+    int64_t void_id = sh_scalar_type_id(sh, "Void");
+    Buffer children;
+    buffer_init(&children);
+    Buffer fields;
+    buffer_init(&fields);
+    const char *ownership = "copy";
+    if (strcmp(statement->kind, "let") == 0 ||
+        strcmp(statement->kind, "let-mut") == 0) {
+        int64_t value = sh_emit_expr(sh, &children, statement->value);
+        buffer_format(
+            &fields,
+            "%" PRId64 "|%" PRId64,
+            statement->binding_id,
+            value
+        );
+    } else if (strcmp(statement->kind, "assign") == 0) {
+        ownership = "edit";
+        int64_t value = sh_emit_expr(sh, &children, statement->value);
+        buffer_format(
+            &fields,
+            "%" PRId64 "|%" PRId64,
+            statement->binding_id,
+            value
+        );
+    } else if (strcmp(statement->kind, "if") == 0) {
+        int64_t condition = sh_emit_expr(sh, &children, statement->value);
+        sh_emit_block(sh, &children, statement->body);
+        int64_t else_reference = -1;
+        if (strcmp(statement->else_kind, "if") == 0) {
+            else_reference = sh_emit_stmt(
+                sh,
+                &children,
+                statement->else_if
+            );
+        } else if (strcmp(statement->else_kind, "block") == 0) {
+            else_reference = statement->else_block->scope_id;
+            sh_emit_block(sh, &children, statement->else_block);
+        }
+        buffer_format(
+            &fields,
+            "%" PRId64 "|%" PRId64 "|%s|%" PRId64,
+            condition,
+            statement->body->scope_id,
+            statement->else_kind,
+            else_reference
+        );
+    } else if (strcmp(statement->kind, "while") == 0) {
+        int64_t condition = sh_emit_expr(sh, &children, statement->value);
+        sh_emit_block(sh, &children, statement->body);
+        buffer_format(
+            &fields,
+            "%" PRId64 "|%" PRId64,
+            condition,
+            statement->body->scope_id
+        );
+    } else if (strcmp(statement->kind, "for-range") == 0) {
+        int64_t range = sh_emit_expr(sh, &children, statement->value);
+        sh_emit_block(sh, &children, statement->body);
+        buffer_format(
+            &fields,
+            "%" PRId64 "|%" PRId64 "|%" PRId64,
+            statement->binding_id,
+            range,
+            statement->body->scope_id
+        );
+    } else if (strcmp(statement->kind, "return") == 0) {
+        if (statement->value != NULL) {
+            int64_t value = sh_emit_expr(sh, &children, statement->value);
+            buffer_format(&fields, "%" PRId64, value);
+        } else {
+            buffer_append(&fields, "none");
+        }
+    } else if (strcmp(statement->kind, "expr-stmt") == 0) {
+        int64_t value = sh_emit_expr(sh, &children, statement->value);
+        buffer_format(&fields, "%" PRId64, value);
+    }
+    buffer_format(
+        out,
+        "node|%" PRId64 "|%s|%" PRId64 "|%" PRId64 "|%" PRId64 "|%s|%s\n",
+        id,
+        statement->kind,
+        statement->start,
+        statement->end,
+        void_id,
+        ownership,
+        fields.data
+    );
+    buffer_append(out, children.data);
+    free(children.data);
+    free(fields.data);
+    return id;
+}
+
+static void sh_emit_block(Sh *sh, Buffer *out, ShBlock *block) {
+    for (int64_t index = 0; index < block->count; ++index) {
+        sh_emit_stmt(sh, out, block->statements[index]);
+    }
+}
+
+static bool sh_parse_signature(Sh *sh, int64_t function_start) {
+    if (sh->function_count >= 64) {
+        sh_fail(sh, "E2S16", "function limit is 64", function_start);
+        return false;
+    }
+    char *name = function_name(sh->source, function_start);
+    if (sh_function_index(sh, name) >= 0) {
+        sh_fail(sh, "E2S16", "duplicate Core function", function_start);
+        free(name);
+        return false;
+    }
+    int64_t slot = sh->function_count;
+    snprintf(
+        sh->functions[slot].name,
+        sizeof(sh->functions[0].name),
+        "%s",
+        name
+    );
+    free(name);
+    int64_t parameters = parameter_open(sh->source, function_start);
+    int64_t parameters_close = parameters >= 0 ?
+        balanced_end(sh->source, parameters, "(", ")") : -1;
+    if (parameters < 0 || parameters_close < 0) {
+        sh_fail(sh, "E2S15", "malformed parameter list", function_start);
+        return false;
+    }
+    int64_t arity = 0;
+    int64_t cursor = skip_trivia(
+        sh->source,
+        token_end(sh->source, parameters)
+    );
+    while (
+        cursor < parameters_close &&
+        !token_equal(sh->source, cursor, ")")
+    ) {
+        if (arity >= 8) {
+            sh_fail(sh, "E2S17", "parameter limit is 8", cursor);
+            return false;
+        }
+        int64_t colon = skip_trivia(
+            sh->source,
+            token_end(sh->source, cursor)
+        );
+        int64_t type_at = skip_trivia(
+            sh->source,
+            token_end(sh->source, colon)
+        );
+        if (
+            colon >= parameters_close ||
+            !token_equal(sh->source, colon, ":")
+        ) {
+            sh_fail(sh, "E2S15", "parameter needs `: TYPE`", cursor);
+            return false;
+        }
+        char *type_text = token_copy(sh->source, type_at);
+        snprintf(
+            sh->functions[slot].parameters[arity],
+            sizeof(sh->functions[0].parameters[0]),
+            "%s",
+            type_text
+        );
+        free(type_text);
+        cursor = skip_trivia(sh->source, token_end(sh->source, type_at));
+        if (strcmp(sh->functions[slot].parameters[arity], "List") == 0) {
+            /* consume `[ Text ]` */
+            cursor = skip_trivia(sh->source, token_end(sh->source, cursor));
+            cursor = skip_trivia(sh->source, token_end(sh->source, cursor));
+        }
+        ++arity;
+        if (
+            cursor < parameters_close &&
+            token_equal(sh->source, cursor, ",")
+        ) {
+            cursor = skip_trivia(sh->source, token_end(sh->source, cursor));
+        }
+    }
+    sh->functions[slot].arity = arity;
+    int64_t after = skip_trivia(sh->source, parameters_close);
+    if (after < sh->length && token_equal(sh->source, after, "->")) {
+        int64_t result_at = skip_trivia(
+            sh->source,
+            token_end(sh->source, after)
+        );
+        char *result_text = token_copy(sh->source, result_at);
+        snprintf(
+            sh->functions[slot].result,
+            sizeof(sh->functions[0].result),
+            "%s",
+            result_text
+        );
+        free(result_text);
+    } else {
+        snprintf(
+            sh->functions[slot].result,
+            sizeof(sh->functions[0].result),
+            "Void"
+        );
+    }
+    ++sh->function_count;
+    return true;
+}
+
+static char *emit_selfhost_hir_document(
+    const char *source,
+    const char *path,
+    const char *digest,
+    bool *complete_out
+) {
+    Sh sh;
+    memset(&sh, 0, sizeof(sh));
+    sh.source = source;
+    sh.length = (int64_t)strlen(source);
+    buffer_init(&sh.types);
+    buffer_init(&sh.scopes);
+    buffer_init(&sh.symbols);
+    buffer_init(&sh.bindings);
+    buffer_init(&sh.nodes);
+    buffer_init(&sh.diagnostics);
+    sh_scope_open(&sh, "module", 0, sh.length);
+
+    int64_t function_start = next_function_start(source, 0);
+    if (function_start >= sh.length) {
+        sh_fail(&sh, "E2S04", "source declares no functions", 0);
+    }
+    while (sh.error == NULL && function_start < sh.length) {
+        if (!sh_parse_signature(&sh, function_start)) break;
+        function_start = next_function_start(
+            source,
+            function_end(source, function_start)
+        );
+    }
+
+    /* Function symbols and module bindings, in source order. */
+    function_start = next_function_start(source, 0);
+    for (
+        int64_t index = 0;
+        sh.error == NULL && index < sh.function_count;
+        ++index
+    ) {
+        int64_t name_at = skip_trivia(
+            source,
+            token_end(source, function_start)
+        );
+        int64_t name_end = token_end(source, name_at);
+        int64_t fn_type = sh_fn_type_id(
+            &sh,
+            sh.functions[index].result,
+            sh.functions[index].parameters,
+            sh.functions[index].arity
+        );
+        int64_t symbol_id = sh.next_symbol++;
+        sh.functions[index].symbol_id = symbol_id;
+        buffer_format(
+            &sh.symbols,
+            "symbol|%" PRId64 "|function|%s|%" PRId64 "|%" PRId64
+            "|%" PRId64 "\n",
+            symbol_id,
+            sh.functions[index].name,
+            fn_type,
+            name_at,
+            name_end
+        );
+        buffer_format(
+            &sh.bindings,
+            "binding|%" PRId64 "|0|%" PRId64 "|%s|imm|%" PRId64
+            "|%" PRId64 "\n",
+            sh.next_binding++,
+            symbol_id,
+            sh.functions[index].name,
+            name_at,
+            name_end
+        );
+        function_start = next_function_start(
+            source,
+            function_end(source, function_start)
+        );
+    }
+
+    /* The 16 builtin symbols plus the len List[Text] overload. */
+    {
+        static const struct {
+            const char *name;
+            const char *result;
+            const char *parameters[3];
+            int64_t arity;
+        } builtins[] = {
+            {"args", "List", {NULL}, 0},
+            {"chars", "List", {"Text"}, 1},
+            {"contains", "Bool", {"Text", "Text"}, 2},
+            {"find", "Int", {"Text", "Text"}, 2},
+            {"is_digit", "Bool", {"Text"}, 1},
+            {"is_space", "Bool", {"Text"}, 1},
+            {"is_xid_continue", "Bool", {"Text"}, 1},
+            {"len", "Int", {"Text"}, 1},
+            {"print", "Void", {"Text"}, 1},
+            {"read_text", "Text", {"Text"}, 1},
+            {"replace", "Text", {"Text", "Text", "Text"}, 3},
+            {"starts_with", "Bool", {"Text", "Text"}, 2},
+            {"text_slice", "Text", {"Text", "Int", "Int"}, 3},
+            {"trim", "Text", {"Text"}, 1},
+            {"validate_unicode_source", "Text", {"Text"}, 1},
+            {"write_text", "Void", {"Text", "Text"}, 2},
+        };
+        for (int64_t index = 0; sh.error == NULL && index < 16; ++index) {
+            char parameters[8][16];
+            for (int64_t p = 0; p < builtins[index].arity; ++p) {
+                snprintf(
+                    parameters[p],
+                    sizeof(parameters[0]),
+                    "%s",
+                    builtins[index].parameters[p]
+                );
+            }
+            int64_t fn_type = sh_fn_type_id(
+                &sh,
+                builtins[index].result,
+                parameters,
+                builtins[index].arity
+            );
+            sh.builtin_symbols[index] = sh.next_symbol++;
+            buffer_format(
+                &sh.symbols,
+                "symbol|%" PRId64 "|builtin|%s|%" PRId64 "|0|0\n",
+                sh.builtin_symbols[index],
+                builtins[index].name,
+                fn_type
+            );
+        }
+        if (sh.error == NULL) {
+            char list_parameter[8][16];
+            snprintf(list_parameter[0], sizeof(list_parameter[0]), "List");
+            int64_t fn_type = sh_fn_type_id(&sh, "Int", list_parameter, 1);
+            sh.len_list_symbol = sh.next_symbol++;
+            buffer_format(
+                &sh.symbols,
+                "symbol|%" PRId64 "|builtin|len|%" PRId64 "|0|0\n",
+                sh.len_list_symbol,
+                fn_type
+            );
+        }
+    }
+
+    /* Function scopes, parameter bindings, and typed bodies. */
+    function_start = next_function_start(source, 0);
+    for (
+        int64_t index = 0;
+        sh.error == NULL && index < sh.function_count;
+        ++index
+    ) {
+        int64_t function_close = function_end(source, function_start);
+        int64_t parameters = parameter_open(source, function_start);
+        int64_t parameters_close = balanced_end(
+            source,
+            parameters,
+            "(",
+            ")"
+        );
+        int64_t saved_env = sh.env_count;
+        sh_scope_open(&sh, "function", parameters, function_close);
+        int64_t cursor = skip_trivia(
+            source,
+            token_end(source, parameters)
+        );
+        int64_t parameter_index = 0;
+        while (
+            sh.error == NULL &&
+            cursor < parameters_close &&
+            !token_equal(source, cursor, ")")
+        ) {
+            char *name_text = token_copy(source, cursor);
+            sh_bind(
+                &sh,
+                name_text,
+                sh.functions[index].parameters[parameter_index],
+                false,
+                "parameter",
+                cursor,
+                token_end(source, cursor)
+            );
+            free(name_text);
+            int64_t colon = skip_trivia(
+                source,
+                token_end(source, cursor)
+            );
+            int64_t type_at = skip_trivia(
+                source,
+                token_end(source, colon)
+            );
+            cursor = skip_trivia(source, token_end(source, type_at));
+            if (
+                strcmp(
+                    sh.functions[index].parameters[parameter_index],
+                    "List"
+                ) == 0
+            ) {
+                cursor = skip_trivia(source, token_end(source, cursor));
+                cursor = skip_trivia(source, token_end(source, cursor));
+            }
+            ++parameter_index;
+            if (
+                cursor < parameters_close &&
+                token_equal(source, cursor, ",")
+            ) {
+                cursor = skip_trivia(source, token_end(source, cursor));
+            }
+        }
+        int64_t function_scope = sh.scope_stack[sh.scope_depth - 1];
+        int64_t body_at = skip_trivia(source, parameters_close);
+        while (
+            body_at < function_close &&
+            !token_equal(source, body_at, "{")
+        ) {
+            body_at = skip_trivia(source, token_end(source, body_at));
+        }
+        int64_t body_cursor = body_at;
+        ShBlock *body = sh.error == NULL ?
+            sh_parse_block(
+                &sh,
+                &body_cursor,
+                sh.functions[index].result,
+                NULL,
+                -1,
+                NULL
+            ) : NULL;
+        if (body != NULL) {
+            int64_t function_node = sh.next_node++;
+            buffer_format(
+                &sh.nodes,
+                "function|%" PRId64 "|%" PRId64 "|%" PRId64 "|%" PRId64
+                "|%" PRId64 "\n",
+                function_node,
+                sh.functions[index].symbol_id,
+                function_scope,
+                function_start,
+                function_close
+            );
+            sh_emit_block(&sh, &sh.nodes, body);
+            sh_free_block(body);
+        }
+        sh_scope_close(&sh, saved_env);
+        function_start = next_function_start(source, function_close);
+    }
+
+    Buffer document;
+    buffer_init(&document);
+    buffer_append(&document, "schema|kofun.selfhost-hir/v1\n");
+    buffer_format(&document, "source|%s|%s\n", path, digest);
+    if (sh.error == NULL) {
+        buffer_append(&document, "status|complete\n");
+        buffer_append(&document, sh.types.data);
+        buffer_append(&document, sh.scopes.data);
+        buffer_append(&document, sh.symbols.data);
+        buffer_append(&document, sh.bindings.data);
+        buffer_append(&document, sh.nodes.data);
+        *complete_out = true;
+    } else {
+        buffer_append(&document, "status|rejected\n");
+        int64_t at = sh.error_at >= 0 ? sh.error_at : 0;
+        int64_t end = at;
+        if (at < sh.length) end = token_end(source, at);
+        buffer_format(
+            &document,
+            "diagnostic|%s|%" PRId64 "|%" PRId64 "|",
+            sh.error_code,
+            at,
+            end
+        );
+        sh_escaped(&document, sh.error_message);
+        buffer_append(&document, "\n");
+        if (strcmp(sh.error_code, "E2S10") == 0) {
+            buffer_format(
+                &document,
+                "unsupported|%" PRId64 "|%" PRId64 "|statement\n",
+                at,
+                end
+            );
+        }
+        puts(sh.error);
+        *complete_out = false;
+    }
+    free(sh.error);
+    free(sh.types.data);
+    free(sh.scopes.data);
+    free(sh.symbols.data);
+    free(sh.bindings.data);
+    free(sh.nodes.data);
+    free(sh.diagnostics.data);
+    return document.data;
+}
+
+static int emit_selfhost_hir_file(
+    const char *input,
+    const char *output,
+    const char *digest
+) {
+    if (same_file(input, output)) {
+        puts("error[E2S35]: selfhost-HIR input and output must be distinct");
+        return 2;
+    }
+    if (strlen(digest) != 64 || strspn(digest, "0123456789abcdef") != 64) {
+        puts("error[E2S35]: selfhost-HIR digest must be 64 lowercase hex");
+        return 2;
+    }
+    char *source = read_file(input);
+    char *tokens = lex_source(source);
+    if (strncmp(tokens, "error[", 6) == 0) {
+        puts(tokens);
+        free(tokens);
+        free(source);
+        return 1;
+    }
+    free(tokens);
+    bool complete = false;
+    char *document = emit_selfhost_hir_document(
+        source,
+        input,
+        digest,
+        &complete
+    );
+    write_file(output, document);
+    free(document);
+    free(source);
+    return complete ? 0 : 1;
+}
+
 static int emit_scope_hir_file(const char *input, const char *output) {
     if (same_file(input, output)) {
         puts(
@@ -7699,13 +9474,17 @@ int main(int argc, char **argv) {
     if (argc == 4 && strcmp(argv[1], "--emit-scope-hir") == 0) {
         return emit_scope_hir_file(argv[2], argv[3]);
     }
+    if (argc == 5 && strcmp(argv[1], "--emit-selfhost-hir") == 0) {
+        return emit_selfhost_hir_file(argv[2], argv[3], argv[4]);
+    }
     if (argc != 5) {
         fputs(
             "usage: kofun-stage2 INPUT.kofun OUTPUT.kofun OUTPUT.ir OUTPUT.tokens\n"
             "       kofun-stage2 --compile-outcome INPUT.kofun OUTPUT.c OUTPUT.ir OUTPUT.tokens\n"
             "       kofun-stage2 --check-ownership INPUT.kofun\n"
             "       kofun-stage2 --parse-patterns INPUT.kofun OUTPUT.patterns\n"
-            "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir\n",
+            "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir\n"
+            "       kofun-stage2 --emit-selfhost-hir INPUT.kofun OUTPUT.hir SOURCE-SHA256\n",
             stdout
         );
         return 2;

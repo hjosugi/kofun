@@ -1,0 +1,6 @@
+fn main() {
+    let t = "abc"
+    while t {
+        print(t)
+    }
+}
