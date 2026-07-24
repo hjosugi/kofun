@@ -4,9 +4,9 @@ Status: generated read-only snapshot for documentation synchronization.
 
 Repository: [`hjosugi/kofun`](https://github.com/hjosugi/kofun)
 
-Observed main commit: [`57d0c38`](https://github.com/hjosugi/kofun/commit/57d0c38db01303f7c62f527304ed1bad029fbaf8)
+Observed main commit: [`0102be3`](https://github.com/hjosugi/kofun/commit/0102be3e2ba7c0935ae1a266bb5f22fa77b05a84)
 
-Reviewed at: `2026-07-24T13:09:18.266Z`
+Reviewed at: `2026-07-24T13:13:28.000Z`
 
 | Issue | Workflow | State | Last tracker update | Title |
 |---|---|---|---|---|
