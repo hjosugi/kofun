@@ -1628,7 +1628,7 @@ footer {
 .issue-track-grid {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
 }
 
 .issue-track-grid a {

@@ -2,23 +2,12 @@ import Link from "next/link";
 import DocsNav from "./docs-nav";
 import { docs, snapshot } from "./docs-manifest";
 
-const activeTracks = [
-  {
-    issue: 666,
-    title: "Backend capability manifest",
-    body: "Make supported and unsupported conformance coverage explicit, then execute the numeric corpus on direct x86-64.",
-  },
-  {
-    issue: 667,
-    title: "Compiler-wide diagnostic registry",
-    body: "Connect every stable active diagnostic code to executable evidence and deterministic policy.",
-  },
-  {
-    issue: 668,
-    title: "Semantic fuzz oracle protocol",
-    body: "Compare declared backends through normalized observations and an independent family oracle.",
-  },
-];
+const trackDescriptions: Record<number, string> = {
+  650: "Publish an honest, navigable documentation surface from repository sources.",
+  666: "Make backend conformance coverage explicit and execute numeric cases on direct x86-64.",
+  667: "Connect every stable active diagnostic code to executable evidence and deterministic policy.",
+  668: "Compare declared backends through normalized observations and an independent family oracle.",
+};
 
 export default function DocsHome() {
   return (
@@ -98,14 +87,16 @@ export default function DocsHome() {
               </div>
             </div>
             <div className="issue-track-grid">
-              {activeTracks.map((track) => (
+              {snapshot.issues.map((issue) => (
                 <a
-                  href={`https://github.com/hjosugi/kofun/issues/${track.issue}`}
-                  key={track.issue}
+                  href={issue.url}
+                  key={issue.number}
                 >
-                  <span>Issue #{track.issue} · ready</span>
-                  <h3>{track.title}</h3>
-                  <p>{track.body}</p>
+                  <span>
+                    Issue #{issue.number} · {issue.workflow}
+                  </span>
+                  <h3>{issue.title}</h3>
+                  <p>{trackDescriptions[issue.number]}</p>
                 </a>
               ))}
             </div>

@@ -1,0 +1,40 @@
+{
+  "schema": "kofun.docs-status/v1",
+  "repository": "hjosugi/kofun",
+  "source_commit": "25a97098f3f06b6132ab61544261209ad84d42eb",
+  "reviewed_at": "2026-07-24T12:46:58.000Z",
+  "issues": [
+    {
+      "number": 650,
+      "title": "GitHub Pages documentation site: publish a curated, honest docs site from docs/",
+      "state": "open",
+      "workflow": "needs-detail",
+      "updated_at": "2026-07-24T12:30:36Z",
+      "url": "https://github.com/hjosugi/kofun/issues/650"
+    },
+    {
+      "number": 666,
+      "title": "Conformance: declare backend capabilities and execute numeric corpus on x86-64",
+      "state": "open",
+      "workflow": "ready",
+      "updated_at": "2026-07-24T12:25:34Z",
+      "url": "https://github.com/hjosugi/kofun/issues/666"
+    },
+    {
+      "number": 667,
+      "title": "Diagnostics: add a compiler-wide registry and executable coverage gate",
+      "state": "open",
+      "workflow": "ready",
+      "updated_at": "2026-07-24T12:26:10Z",
+      "url": "https://github.com/hjosugi/kofun/issues/667"
+    },
+    {
+      "number": 668,
+      "title": "Semantic fuzzing: define an oracle protocol and compare every declared backend",
+      "state": "open",
+      "workflow": "ready",
+      "updated_at": "2026-07-24T12:26:54Z",
+      "url": "https://github.com/hjosugi/kofun/issues/668"
+    }
+  ]
+}

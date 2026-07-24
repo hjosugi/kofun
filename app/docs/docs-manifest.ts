@@ -1,3 +1,5 @@
+import statusSnapshot from "./status-snapshot.json" with { type: "json" };
+
 export type DocEntry = {
   slug: string;
   title: string;
@@ -7,9 +9,10 @@ export type DocEntry = {
 };
 
 export const snapshot = {
-  commit: "25a97098f3f06b6132ab61544261209ad84d42eb",
-  shortCommit: "25a9709",
-  reviewed: "2026-07-24",
+  commit: statusSnapshot.source_commit,
+  shortCommit: statusSnapshot.source_commit.slice(0, 7),
+  reviewed: statusSnapshot.reviewed_at.slice(0, 10),
+  issues: statusSnapshot.issues,
 };
 
 export const docs: DocEntry[] = [
@@ -95,6 +98,13 @@ export const docs: DocEntry[] = [
     title: "Security",
     summary: "Threat boundaries, unsupported production claims, and hardening work.",
     source: "docs/SECURITY.md",
+    section: "Project",
+  },
+  {
+    slug: "issue-progress",
+    title: "Issue progress",
+    summary: "A generated snapshot of selected documentation and executable-evidence tracks.",
+    source: "docs/ISSUE_PROGRESS.md",
     section: "Project",
   },
 ];

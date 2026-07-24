@@ -23,6 +23,7 @@ Run the site locally:
 npm install
 npm run verify:site
 npm run build:sites
+npm run check:status
 npm run dev
 ```
 
@@ -32,3 +33,10 @@ production build. Run `npm audit --audit-level=high` before publishing a saved
 site version. `npm run build:sites` produces the checked `.open-next/worker.js`
 entrypoint and static assets consumed by Sites; the adapter and compatibility
 date are pinned in `package.json`, `open-next.config.ts`, and `wrangler.jsonc`.
+
+`npm run check:status` performs a read-only GitHub check of `main` and the
+selected documentation/evidence issues. It exits cleanly without rewriting
+files when nothing changed. When it reports a stale snapshot, run
+`npm run sync:status`, review `app/docs/status-snapshot.json` and
+`docs/ISSUE_PROGRESS.md`, then validate the implementation claims separately
+before updating capability documents.
