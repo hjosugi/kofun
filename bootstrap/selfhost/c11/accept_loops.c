@@ -16,6 +16,9 @@ typedef struct {
     const char **items;
 } kofun_text_list;
 
+int kofun_runtime_argc = 0;
+char **kofun_runtime_argv = NULL;
+
 static bool kofun_failed;
 
 static void kofun_error(const char *message) {
@@ -140,6 +143,13 @@ int64_t kofun_rt_text_len(const char *value) {
 
 int64_t kofun_rt_text_list_len(kofun_text_list values) {
     return values.len;
+}
+
+kofun_text_list kofun_rt_args(void) {
+    kofun_text_list result;
+    result.len = (int64_t)kofun_runtime_argc;
+    result.items = (const char **)kofun_runtime_argv;
+    return result;
 }
 
 kofun_text_list kofun_rt_chars(const char *value) {
@@ -281,6 +291,47 @@ const char *kofun_rt_validate_unicode_source(const char *value) {
     return kofun_rt_copy_n(message, strlen(message));
 }
 
+char *kofun_rt_read_text(const char *path) {
+    FILE *file = fopen(path, "rb");
+    if (file == NULL) {
+        kofun_rt_panic("cannot open input file");
+    }
+    if (fseek(file, 0, SEEK_END) != 0) {
+        fclose(file);
+        kofun_rt_panic("cannot seek input file");
+    }
+    long size = ftell(file);
+    if (size < 0) {
+        fclose(file);
+        kofun_rt_panic("cannot measure input file");
+    }
+    rewind(file);
+    char *result = (char *)kofun_rt_alloc((size_t)size + 1);
+    size_t read = fread(result, 1, (size_t)size, file);
+    if (read != (size_t)size && ferror(file)) {
+        fclose(file);
+        kofun_rt_panic("cannot read input file");
+    }
+    result[read] = '\0';
+    fclose(file);
+    return result;
+}
+
+void kofun_rt_write_text(const char *path, const char *value) {
+    FILE *file = fopen(path, "wb");
+    if (file == NULL) {
+        kofun_rt_panic("cannot open output file");
+    }
+    size_t length = strlen(value);
+    if (fwrite(value, 1, length, file) != length) {
+        fclose(file);
+        kofun_rt_panic("cannot write output file");
+    }
+    if (fclose(file) != 0) {
+        kofun_rt_panic("cannot close output file");
+    }
+}
+
 static int64_t kofun_fn_triangle(int64_t k_b2);
 
 static int64_t kofun_fn_triangle(int64_t k_b2) {
@@ -308,7 +359,9 @@ static int64_t kofun_fn_triangle(int64_t k_b2) {
     return k_n18;
 }
 
-int main(void) {
+int main(int argc, char **argv) {
+    kofun_runtime_argc = argc > 0 ? argc - 1 : 0;
+    kofun_runtime_argv = argc > 0 ? argv + 1 : argv;
     (void)kofun_failed;
     (void)kofun_error;
     (void)kofun_add;
