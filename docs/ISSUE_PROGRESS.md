@@ -6,7 +6,9 @@ Repository: [`hjosugi/kofun`](https://github.com/hjosugi/kofun)
 
 Observed main commit: [`d8ddf44`](https://github.com/hjosugi/kofun/commit/d8ddf443a2581b27c6265da5e08922a61e2f3d90)
 
-Reviewed at: `2026-07-24T13:35:55.373Z`
+Implementation verification: [`CI`](https://github.com/hjosugi/kofun/actions/runs/30097493076) is `success`, completed at `2026-07-24T13:39:46Z`.
+
+Reviewed at: `2026-07-24T13:42:52.812Z`
 
 | Issue | Workflow | State | Last tracker update | Title |
 |---|---|---|---|---|

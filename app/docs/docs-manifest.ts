@@ -12,6 +12,7 @@ export const snapshot = {
   commit: statusSnapshot.source_commit,
   shortCommit: statusSnapshot.source_commit.slice(0, 7),
   reviewed: statusSnapshot.reviewed_at.slice(0, 10),
+  verification: statusSnapshot.verification,
   issues: statusSnapshot.issues,
 };
 

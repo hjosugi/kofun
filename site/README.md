@@ -38,12 +38,13 @@ date are pinned in `package.json`, `open-next.config.ts`, and `wrangler.jsonc`.
 `npm run verify:pages` copies the checked `docs/tour/` browser application,
 builds a static export under `out/` with the `/kofun` project base path, writes
 the required `.nojekyll` marker, and checks the exported routes and
-root-relative URLs. `.github/workflows/pages.yml` repeats that gate from a
-clean checkout before a GitHub Pages deployment.
+root-relative URLs. `.github/workflows/docs-hourly.yml` repeats that gate from
+a clean checkout, synchronizes selected issue and exact-commit CI evidence, and
+publishes changed output through the configured `gh-pages` branch.
 
-`npm run check:status` performs a read-only GitHub check of `main` and the
-selected documentation/evidence issues. It exits cleanly without rewriting
-files when nothing changed. When it reports a stale snapshot, run
-`npm run sync:status`, review `app/docs/status-snapshot.json` and
-`docs/ISSUE_PROGRESS.md`, then validate the implementation claims separately
-before updating capability documents.
+`npm run check:status` performs a read-only GitHub check of `main`, the full CI
+run for that exact implementation commit, and the selected
+documentation/evidence issues. It exits cleanly without rewriting files when
+nothing changed. When it reports a stale snapshot, run `npm run sync:status`,
+review `app/docs/status-snapshot.json` and `docs/ISSUE_PROGRESS.md`, then
+validate any changed capability claims against the named executable gates.

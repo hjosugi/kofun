@@ -4,6 +4,8 @@ import process from "node:process";
 const repository = "hjosugi/kofun";
 const trackedIssues = [650, 666, 667, 668];
 const snapshotCommitSubject = "Update issue progress snapshot";
+const verificationWorkflow = "ci.yml";
+const verificationWorkflowName = "CI";
 const workflowLabels = new Set([
   "needs-triage",
   "needs-detail",
@@ -44,12 +46,18 @@ function semanticSnapshot(snapshot) {
     schema: snapshot.schema,
     repository: snapshot.repository,
     source_commit: snapshot.source_commit,
+    verification: snapshot.verification,
     issues: snapshot.issues,
   };
 }
 
 function markdown(snapshot) {
   const shortCommit = snapshot.source_commit.slice(0, 7);
+  const verificationResult =
+    snapshot.verification.conclusion ?? snapshot.verification.status;
+  const verificationTime = snapshot.verification.completed_at
+    ? `, completed at \`${snapshot.verification.completed_at}\``
+    : "";
   const rows = snapshot.issues
     .map(
       (issue) =>
@@ -66,6 +74,8 @@ Status: generated read-only snapshot for documentation synchronization.
 Repository: [\`${snapshot.repository}\`](https://github.com/${snapshot.repository})
 
 Observed main commit: [\`${shortCommit}\`](https://github.com/${snapshot.repository}/commit/${snapshot.source_commit})
+
+Implementation verification: [\`${snapshot.verification.workflow}\`](${snapshot.verification.url}) is \`${verificationResult}\`${verificationTime}.
 
 Reviewed at: \`${snapshot.reviewed_at}\`
 
@@ -96,11 +106,39 @@ if (!sourceCommit) {
     `No non-snapshot commit found in the latest ${commits.length} commits`,
   );
 }
+const workflowRuns = await github(
+  `/repos/${repository}/actions/workflows/${verificationWorkflow}/runs?` +
+    "branch=main&event=push&per_page=100",
+);
+const verificationRun = workflowRuns.workflow_runs.find(
+  (run) => run.head_sha === sourceCommit.sha,
+);
+const verification = verificationRun
+  ? {
+      workflow: verificationWorkflowName,
+      status: verificationRun.status,
+      conclusion: verificationRun.conclusion,
+      completed_at:
+        verificationRun.status === "completed"
+          ? verificationRun.updated_at
+          : null,
+      url: verificationRun.html_url,
+    }
+  : {
+      workflow: verificationWorkflowName,
+      status: "missing",
+      conclusion: null,
+      completed_at: null,
+      url:
+        `https://github.com/${repository}/actions/workflows/` +
+        `${verificationWorkflow}?query=branch%3Amain`,
+    };
 
 const nextSemantic = {
   schema: "kofun.docs-status/v1",
   repository,
   source_commit: sourceCommit.sha,
+  verification,
   issues: issues.map((issue) => {
     const labels = issue.labels.map((label) =>
       typeof label === "string" ? label : label.name,

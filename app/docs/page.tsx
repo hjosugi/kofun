@@ -33,9 +33,17 @@ export default function DocsHome() {
               >
                 {snapshot.shortCommit}
               </a>
-              . Capability documents are validated separately: “Active” means
-              an executable gate exists. Design documents and open issues never
-              become implementation claims by implication.
+              . Its full{" "}
+              <a href={snapshot.verification.url}>
+                {snapshot.verification.workflow} verification
+              </a>{" "}
+              is{" "}
+              <strong>
+                {snapshot.verification.conclusion ??
+                  snapshot.verification.status}
+              </strong>
+              . “Active” means an executable gate exists; design documents and
+              open issues never become implementation claims by implication.
             </p>
           </div>
 
