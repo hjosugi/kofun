@@ -1,0 +1,5 @@
+# Native Core example: the direct backend writes a static ELF64 executable.
+
+fn main() {
+    print((6 + 1) * 6)
+}
