@@ -22,10 +22,13 @@ Run the site locally:
 ```sh
 npm install
 npm run verify:site
+npm run build:sites
 npm run dev
 ```
 
 `npm run verify:site` executes the playground examples and negative diagnostics
 and checks every rendered Markdown source and local link before creating a
 production build. Run `npm audit --audit-level=high` before publishing a saved
-site version.
+site version. `npm run build:sites` produces the checked `.open-next/worker.js`
+entrypoint and static assets consumed by Sites; the adapter and compatibility
+date are pinned in `package.json`, `open-next.config.ts`, and `wrangler.jsonc`.
