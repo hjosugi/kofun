@@ -2837,6 +2837,12 @@ fn enum_declaration_syntax_token(
                 }
             }
         }
+        if token_text(source, cursor) == "for" {
+            let name = skip_trivia(source, token_end(source, cursor))
+            if name == target {
+                return true
+            }
+        }
         cursor = skip_trivia(source, token_end(source, cursor))
     }
     return false
@@ -3379,6 +3385,44 @@ fn build_scope_hir_mode(
                 to_text(token_end(source, name)) + "|" +
                 to_text(visible_start) + "\n"
                 next_binding_id = next_binding_id + 1
+            }
+            if token_text(source, cursor) == "for" {
+                let name = skip_trivia(source, token_end(source, cursor))
+                let mut body_open = name
+                while body_open < function_close &&
+                      token_text(source, body_open) != "{" {
+                    body_open = skip_trivia(
+                        source,
+                        token_end(source, body_open)
+                    )
+                }
+                if name < function_close &&
+                   body_open < function_close &&
+                   token_kind(source, name) == "identifier" {
+                    let scope_id = hir_scope_id_for_open(hir, body_open)
+                    let first_declaration = hir_same_scope_declaration(
+                        hir,
+                        scope_id,
+                        token_text(source, name)
+                    )
+                    if len(first_declaration) > 0 {
+                        return "error[E2S47]: duplicate binding `" +
+                        token_text(source, name) +
+                        "` in lexical scope at byte " + to_text(name) +
+                        "; first declaration at byte " + first_declaration
+                    }
+                    binding_count = binding_count + 1
+                    if binding_count > 256 {
+                        return "error[E2S35]: lexical binding limit is 256 per function at byte " +
+                        to_text(name)
+                    }
+                    hir = hir + "binding|" + to_text(next_binding_id) + "|" +
+                    scope_id + "|" + token_text(source, name) +
+                    "|immutable|Int|copy|initialized|" + to_text(name) + "|" +
+                    to_text(token_end(source, name)) + "|" +
+                    to_text(token_end(source, name)) + "\n"
+                    next_binding_id = next_binding_id + 1
+                }
             }
             cursor = skip_trivia(source, token_end(source, cursor))
         }

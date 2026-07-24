@@ -93,6 +93,17 @@ declaration order irrelevant. The lowerer rejects unknown calls, duplicate
 function names, wrong arity, non-`Int` parameters, and non-`Int` helper return
 types before invoking the host compiler.
 
+The lexical scope layer records every block as a `ScopeId` and every parameter
+and `let` as a `BindingId`. A `for` range header declares its loop variable as
+an immutable binding owned by the loop body scope: the header name is a
+declaration rather than a use, body uses resolve to the loop binding through
+nested scopes, and sibling loops may reuse a name without a false `E2S47`.
+Valid `for` sources therefore reach their true lowering boundary (`E2S10`
+unsupported statement) instead of a false-invalid `E2S35`, and the frozen
+self-host source `S` (`bootstrap/stage1/compiler.kofun`) clears the complete
+lexical binding layer; its current frontier is the unregistered Unicode
+builtin signatures (`E2S16`), owned by the #653 slice of #619.
+
 Top-level functions accept an omitted modifier, `private`, `internal`, or
 `pub`. Structural IR preserves semantic visibility, implicit versus explicit
 origin, the modifier/declaration spans, `file:0`, and a declaration-order
