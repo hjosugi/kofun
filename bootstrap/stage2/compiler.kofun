@@ -2279,6 +2279,110 @@ fn builtin_argument_check(
     return ""
 }
 
+fn newline_between(source: Text, start: Int, finish: Int) -> Bool {
+    return contains(text_slice(source, start, finish), "\n")
+}
+
+# Bounded condition and return typing for the whole profile surface,
+# ordered before the unsupported-lowering classification so the frozen
+# self-host source is fully checked. Statement `if`/`while` conditions
+# must not be confidently non-Bool (the E2S23 message shape is reused
+# byte for byte for `if`); value returns must not confidently mismatch
+# the declared result type. Match guards, value-position `if`, and
+# value-control operands are skipped rather than guessed.
+fn validate_core_types(source: Text, hir: Text) -> Text {
+    let mut function_start = next_function_start(source, 0)
+    while function_start < len(source) {
+        let function_close = function_end(source, function_start)
+        let name = function_name(source, function_start)
+        let declared = function_return_type(source, name)
+        let mut probe = function_start
+        if function_start < function_close {
+            probe = function_close - 1
+        }
+        let function_open = enclosing_function_open(source, probe)
+        if function_open >= 0 {
+            let mut previous_start = function_open
+            let mut cursor = skip_trivia(
+                source,
+                token_end(source, function_open)
+            )
+            while cursor < function_close {
+                let statement_context =
+                    token_text(source, previous_start) == "{" ||
+                    token_text(source, previous_start) == "}" ||
+                    token_text(source, previous_start) == "else" ||
+                    newline_between(
+                        source,
+                        token_end(source, previous_start),
+                        cursor
+                    )
+                let keyword = token_text(source, cursor)
+                if (keyword == "if" || keyword == "while") &&
+                   statement_context {
+                    let condition = skip_trivia(
+                        source,
+                        token_end(source, cursor)
+                    )
+                    if condition < function_close {
+                        let condition_type = initializer_type(
+                            source,
+                            hir,
+                            function_open,
+                            condition
+                        )
+                        if condition_type == "Int" ||
+                           condition_type == "Text" ||
+                           condition_type == "List" {
+                            if keyword == "if" {
+                                return "error[E2S23]: if condition must be Bool or an Int comparison at byte " +
+                                to_text(condition)
+                            }
+                            return "error[E2S23]: while condition must be Bool at byte " +
+                            to_text(condition)
+                        }
+                    }
+                }
+                if keyword == "return" && statement_context &&
+                   len(declared) > 0 && declared != "Void" {
+                    let value = skip_trivia(
+                        source,
+                        token_end(source, cursor)
+                    )
+                    let bare =
+                        value >= function_close ||
+                        token_text(source, value) == "}" ||
+                        newline_between(
+                            source,
+                            token_end(source, cursor),
+                            value
+                        )
+                    if !bare && !value_control(token_text(source, value)) {
+                        let value_type = initializer_type(
+                            source,
+                            hir,
+                            function_open,
+                            value
+                        )
+                        let known =
+                            value_type == "Int" || value_type == "Bool" ||
+                            value_type == "Text" || value_type == "List"
+                        if known && value_type != declared {
+                            return "error[E2S15]: Core function `" + name +
+                            "` returns " + value_type + ", expected " +
+                            declared + " at byte " + to_text(value)
+                        }
+                    }
+                }
+                previous_start = cursor
+                cursor = skip_trivia(source, token_end(source, cursor))
+            }
+        }
+        function_start = next_function_start(source, function_close)
+    }
+    return "ok"
+}
+
 fn validate_core_calls(source: Text, hir: Text) -> Text {
     let mut cursor = next_function_start(source, 0)
     let mut previous = ""
@@ -4790,6 +4894,10 @@ fn lower_c(source: Text, hir: Text) -> Text {
     let enum_use_check = validate_enum_uses(source, hir)
     if starts_with(enum_use_check, "error[") {
         return enum_use_check
+    }
+    let type_check = validate_core_types(source, hir)
+    if starts_with(type_check, "error[") {
+        return type_check
     }
     let call_check = validate_core_calls(source, hir)
     if starts_with(call_check, "error[") {

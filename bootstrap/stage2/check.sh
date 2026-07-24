@@ -502,5 +502,40 @@ echo "PASS: for-range loop variables bind in the loop body lexical scope"
 echo "PASS: profile builtins are known, arity-checked, unsupported-to-lower names"
 echo "PASS: the frozen self-host S is valid source outside the bounded slice"
 echo "PASS: unannotated let bindings carry inferred scope-HIR types"
+# Statement conditions and value returns are typed across the whole
+# profile surface, before the unsupported classification: a confidently
+# non-Bool while/if condition and a confidently mismatched return are
+# invalid source; the frozen S passes both checks completely and keeps
+# its builtin frontier.
+printf 'fn main() {\n    let t = "abc"\n    while t {\n        print(0)\n    }\n}\n' \
+    >"$temporary/while-text.kofun"
+printf 'fn wrong() -> Text {\n    return 1\n}\n\nfn main() {\n    print(0)\n}\n' \
+    >"$temporary/return-mismatch.kofun"
+set +e
+"$temporary/kofun-stage2" --compile-outcome \
+    "$temporary/while-text.kofun" \
+    "$temporary/while-text.c" \
+    "$temporary/while-text.ir" \
+    "$temporary/while-text.tokens" \
+    >"$temporary/while-text.stdout" 2>/dev/null
+while_text_status=$?
+"$temporary/kofun-stage2" --compile-outcome \
+    "$temporary/return-mismatch.kofun" \
+    "$temporary/return-mismatch.c" \
+    "$temporary/return-mismatch.ir" \
+    "$temporary/return-mismatch.tokens" \
+    >"$temporary/return-mismatch.stdout" 2>/dev/null
+return_mismatch_status=$?
+set -e
+test "$while_text_status" -eq 1
+grep 'error\[E2S23\]: while condition must be Bool' \
+    "$temporary/while-text.stdout" >/dev/null
+test "$return_mismatch_status" -eq 1
+grep 'error\[E2S15\]: Core function `wrong` returns Int, expected Text' \
+    "$temporary/return-mismatch.stdout" >/dev/null
+test ! -e "$temporary/while-text.c"
+test ! -e "$temporary/return-mismatch.c"
+
 echo "PASS: builtin calls check their frozen parameter types"
+echo "PASS: statement conditions and value returns are typed profile-wide"
 echo "stage2 semantic frontend check passed"
