@@ -5,6 +5,9 @@ ELF64 x86-64/AArch64 native checkpoints, low-sigil ownership
 (`read`/`edit`/`take`), and compiler-integrated algebraic law checking as its
 product direction. Source files use `.kofun`.
 
+Website and interactive documentation:
+[hjosugi.github.io/kofun](https://hjosugi.github.io/kofun/)
+
 Kofun's product position is: **the language where you state an algebraic law
 and the compiler hands you a counterexample.** This is product direction, not
 current compiler behavior. The active CLI does not yet accept `law monad`;

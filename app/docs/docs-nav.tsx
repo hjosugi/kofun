@@ -37,13 +37,13 @@ export default function DocsNav({ active }: { active?: string }) {
       </nav>
 
       <div className="docs-snapshot">
-        <span>Verified source</span>
+        <span>Observed main</span>
         <a
           href={`https://github.com/hjosugi/kofun/commit/${snapshot.commit}`}
         >
           {snapshot.shortCommit}
         </a>
-        <small>Reviewed {snapshot.reviewed}</small>
+        <small>Snapshot {snapshot.reviewed}</small>
       </div>
     </aside>
   );

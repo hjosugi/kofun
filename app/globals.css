@@ -536,6 +536,18 @@ svg {
   color: rgba(245, 244, 233, 0.62);
 }
 
+.tour-link {
+  color: var(--acid);
+  display: inline-block;
+  font-weight: 680;
+  margin-top: 12px;
+}
+
+.tour-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
 .playground-shell {
   background: #151814;
   border: 1px solid rgba(255, 255, 255, 0.13);

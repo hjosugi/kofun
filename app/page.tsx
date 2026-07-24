@@ -1,6 +1,8 @@
+import Link from "next/link";
 import Playground from "./playground";
 
 const githubUrl = "https://github.com/hjosugi/kofun";
+const siteBasePath = process.env.KOFUN_BASE_PATH ?? "";
 
 function ArrowIcon() {
   return (
@@ -80,7 +82,7 @@ export default function Home() {
           <a href="#language">Language</a>
           <a href="#playground">Playground</a>
           <a href="#status">Status</a>
-          <a href="/docs">Docs</a>
+          <Link href="/docs">Docs</Link>
           <a className="nav-github" href={githubUrl}>
             <GithubIcon />
             GitHub
@@ -105,9 +107,9 @@ export default function Home() {
             compiler claim tied to executable evidence.
           </p>
           <div className="hero-actions">
-            <a className="primary-button" href="/docs">
+            <Link className="primary-button" href="/docs">
               Browse documentation <ArrowIcon />
-            </a>
+            </Link>
             <a className="text-button" href="#playground">
               Try the playground
             </a>
@@ -184,7 +186,10 @@ export default function Home() {
           <p>
             Edit a program and press Run. The safe browser evaluator covers the
             learning subset shown here; native builds and ownership checks live
-            in the repository CLI.
+            in the repository CLI.{" "}
+            <a className="tour-link" href={`${siteBasePath}/tour/`}>
+              Open the audited wasm32 tour →
+            </a>
           </p>
         </div>
         <Playground />
@@ -295,7 +300,7 @@ export default function Home() {
         </div>
         <div className="footer-links">
           <a href={githubUrl}>Repository</a>
-          <a href="/docs">Documentation</a>
+          <Link href="/docs">Documentation</Link>
           <a href={`${githubUrl}/issues`}>Issues</a>
           <a href={`${githubUrl}/blob/main/LICENSE-MIT`}>License</a>
         </div>

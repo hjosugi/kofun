@@ -27,14 +27,15 @@ export default function DocsHome() {
             <span className="section-kicker">Kofun docs</span>
             <h1>Evidence first.<br />Ambition intact.</h1>
             <p>
-              These pages are rendered from the repository at verified commit{" "}
+              The tracker snapshot observes main commit{" "}
               <a
                 href={`https://github.com/hjosugi/kofun/commit/${snapshot.commit}`}
               >
                 {snapshot.shortCommit}
               </a>
-              . “Active” means an executable gate exists. Design documents and
-              open issues never become implementation claims by implication.
+              . Capability documents are validated separately: “Active” means
+              an executable gate exists. Design documents and open issues never
+              become implementation claims by implication.
             </p>
           </div>
 

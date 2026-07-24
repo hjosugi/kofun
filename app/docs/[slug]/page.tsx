@@ -10,6 +10,7 @@ import DocsNav from "../docs-nav";
 import { docBySlug, docBySource, docs } from "../docs-manifest";
 
 const githubBlob = "https://github.com/hjosugi/kofun/blob/main";
+const siteBasePath = process.env.KOFUN_BASE_PATH ?? "";
 
 export const dynamicParams = false;
 
@@ -27,7 +28,9 @@ function rewriteHref(href: string | undefined, source: string) {
   const localDoc = docBySource.get(resolved);
   const suffix = fragment ? `#${fragment}` : "";
 
-  if (localDoc) return `/docs/${localDoc.slug}${suffix}`;
+  if (localDoc) {
+    return `${siteBasePath}/docs/${localDoc.slug}/${suffix}`;
+  }
   return `${githubBlob}/${resolved}${suffix}`;
 }
 

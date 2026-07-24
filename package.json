@@ -5,14 +5,19 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "prepare:tour": "node site/prepare-tour.mjs",
+    "build": "npm run prepare:tour && next build",
+    "build:pages": "npm run prepare:tour && node site/build-pages.mjs",
     "build:sites": "opennextjs-cloudflare build",
     "start": "next start",
     "check:status": "node site/sync-status.mjs --check",
     "sync:status": "node site/sync-status.mjs",
     "test:docs": "node --experimental-strip-types site/docs-links.test.mjs",
+    "test:pages": "node site/pages-export.test.mjs",
     "test:playground": "node --experimental-strip-types site/playground.test.mjs",
-    "verify:site": "npm run test:playground && npm run test:docs && npm run build"
+    "test:tour": "sh docs/tour/check.sh",
+    "verify:pages": "npm run test:playground && npm run test:tour && npm run test:docs && npm run build:pages && npm run test:pages",
+    "verify:site": "npm run test:playground && npm run test:tour && npm run test:docs && npm run build"
   },
   "dependencies": {
     "next": "^16.2.11",

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
+const siteBasePath = process.env.KOFUN_BASE_PATH ?? "";
+
 export const metadata: Metadata = {
   title: {
     default: "Kofun — Clear code, native ground",
@@ -17,7 +19,7 @@ export const metadata: Metadata = {
     "x86-64",
   ],
   icons: {
-    icon: "/kofun-mark.svg",
+    icon: `${siteBasePath}/kofun-mark.svg`,
   },
   openGraph: {
     title: "Kofun — Clear code, native ground",

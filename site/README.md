@@ -23,6 +23,7 @@ Run the site locally:
 npm install
 npm run verify:site
 npm run build:sites
+npm run verify:pages
 npm run check:status
 npm run dev
 ```
@@ -33,6 +34,12 @@ production build. Run `npm audit --audit-level=high` before publishing a saved
 site version. `npm run build:sites` produces the checked `.open-next/worker.js`
 entrypoint and static assets consumed by Sites; the adapter and compatibility
 date are pinned in `package.json`, `open-next.config.ts`, and `wrangler.jsonc`.
+
+`npm run verify:pages` copies the checked `docs/tour/` browser application,
+builds a static export under `out/` with the `/kofun` project base path, writes
+the required `.nojekyll` marker, and checks the exported routes and
+root-relative URLs. `.github/workflows/pages.yml` repeats that gate from a
+clean checkout before a GitHub Pages deployment.
 
 `npm run check:status` performs a read-only GitHub check of `main` and the
 selected documentation/evidence issues. It exits cleanly without rewriting
