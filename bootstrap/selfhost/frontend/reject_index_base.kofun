@@ -1,0 +1,4 @@
+fn main() {
+    let word = "abc"
+    let bad = word[0]
+}

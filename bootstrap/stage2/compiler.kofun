@@ -5149,6 +5149,2258 @@ fn check_ownership_file(input_path: Text) -> Bool {
     return true
 }
 
+# kofun.selfhost-hir/v1 emitter (bootstrap/selfhost/hir-v1.md).
+#
+# One typed pre-order walk over the frozen profile surface produces the
+# complete document: deduplicated type table, scope tree, symbols,
+# bindings, and per-function node records. Any construct outside the
+# profile rejects the whole document with diagnostics plus explicit
+# `unsupported` records; a partial typed document is never written.
+#
+# The bootstrap subset has no tuples or mutable globals, so every pass
+# returns one Text: a `|`-separated header line followed by record lines.
+# Internal errors are a single `error|CODE|AT|MESSAGE` line; `AT` is -1
+# when the diagnostic carries no byte position. Expressions parse into
+# local `xnode` records first, then a second walk renumbers them into the
+# document's pre-order node ids, exactly like the audited seed's
+# parse-then-emit split.
+
+fn selfhost_field(result: Text, wanted: Int) -> Text {
+    return pattern_line_field(result, 0, wanted)
+}
+
+fn selfhost_field_int(result: Text, wanted: Int) -> Int {
+    return decimal_value(selfhost_field(result, wanted))
+}
+
+fn selfhost_records(result: Text) -> Text {
+    return pattern_result_records(result)
+}
+
+fn selfhost_error(code: Text, at: Int, message: Text) -> Text {
+    return "error|" + code + "|" + to_text(at) + "|" + message
+}
+
+fn selfhost_failed(result: Text) -> Bool {
+    return starts_with(result, "error|")
+}
+
+# hir-v1 record escaping: `\` -> `\\`, `|` -> `\p`, newline -> `\n`.
+fn selfhost_escape(value: Text) -> Text {
+    let symbols = chars(value)
+    let mut escaped = ""
+    let mut cursor = 0
+    while cursor < len(symbols) {
+        let symbol = symbols[cursor]
+        if symbol == "\\" {
+            escaped = escaped + "\\\\"
+        } else if symbol == "|" {
+            escaped = escaped + "\\p"
+        } else if symbol == "\n" {
+            escaped = escaped + "\\n"
+        } else {
+            escaped = escaped + symbol
+        }
+        cursor = cursor + 1
+    }
+    return escaped
+}
+
+# Surface names Int/Bool/Text/Void/List map onto the closed universe.
+fn selfhost_scalar_key(surface: Text) -> Text {
+    if surface == "Int" {
+        return "int"
+    }
+    if surface == "Bool" {
+        return "bool"
+    }
+    if surface == "Text" {
+        return "text"
+    }
+    if surface == "Void" {
+        return "void"
+    }
+    if surface == "List" {
+        return "list-text"
+    }
+    return ""
+}
+
+fn selfhost_line_count(records: Text) -> Int {
+    let symbols = chars(records)
+    let mut cursor = 0
+    let mut count = 0
+    while cursor < len(symbols) {
+        if symbols[cursor] == "\n" {
+            count = count + 1
+        }
+        cursor = cursor + 1
+    }
+    return count
+}
+
+# The deduplicated type table is kept as its emitted `type|ID|KEY` record
+# lines. Keys of function types contain `|`, so the key of a line is the
+# remainder after its second separator.
+fn selfhost_type_lookup(types: Text, key: Text) -> Int {
+    let symbols = chars(types)
+    let mut line = 0
+    while line < len(symbols) {
+        let mut cursor = line
+        let mut bars = 0
+        while cursor < len(symbols) && symbols[cursor] != "\n" && bars < 2 {
+            if symbols[cursor] == "|" {
+                bars = bars + 1
+            }
+            cursor = cursor + 1
+        }
+        let mut line_end = cursor
+        while line_end < len(symbols) && symbols[line_end] != "\n" {
+            line_end = line_end + 1
+        }
+        if bars == 2 && text_slice(types, cursor, line_end) == key {
+            return decimal_value(pattern_line_field(types, line, 1))
+        }
+        line = line_end + 1
+    }
+    return -1
+}
+
+# Intern one type key, appending a new `type` record on first use. The
+# result is the updated table or an internal error line; the id of the
+# interned key is recovered with selfhost_type_lookup.
+fn selfhost_type_require(types: Text, key: Text) -> Text {
+    if selfhost_type_lookup(types, key) >= 0 {
+        return types
+    }
+    let count = selfhost_line_count(types)
+    if count >= 64 {
+        return selfhost_error("E2S35", -1, "selfhost-HIR type limit is 64")
+    }
+    return types + "type|" + to_text(count) + "|" + key + "\n"
+}
+
+# Intern the scalar type named by a profile surface spelling.
+fn selfhost_scalar_require(types: Text, surface: Text) -> Text {
+    let key = selfhost_scalar_key(surface)
+    if len(key) == 0 {
+        return selfhost_error(
+            "E2S15",
+            -1,
+            "type is outside the frozen profile"
+        )
+    }
+    return selfhost_type_require(types, key)
+}
+
+fn selfhost_scalar_id(types: Text, surface: Text) -> Int {
+    return selfhost_type_lookup(types, selfhost_scalar_key(surface))
+}
+
+# Intern a function type `fn|RESULT|PARAM*` from surface spellings; the
+# parameters arrive `|`-separated as in the signature table. The result
+# packs `TYPES` after a first `TYPEID` header line.
+fn selfhost_fn_type_require(
+    types: Text,
+    result_surface: Text,
+    parameters: Text
+) -> Text {
+    let mut table = selfhost_scalar_require(types, result_surface)
+    if selfhost_failed(table) {
+        return table
+    }
+    let mut key = "fn|" + to_text(selfhost_scalar_id(table, result_surface))
+    let mut remaining = parameters
+    while len(remaining) > 0 {
+        let surface = expected_parameter_head(remaining)
+        table = selfhost_scalar_require(table, surface)
+        if selfhost_failed(table) {
+            return table
+        }
+        key = key + "|" + to_text(selfhost_scalar_id(table, surface))
+        remaining = expected_parameter_tail(remaining)
+    }
+    table = selfhost_type_require(table, key)
+    if selfhost_failed(table) {
+        return table
+    }
+    return to_text(selfhost_type_lookup(table, key)) + "\n" + table
+}
+
+# The declared-function signature table is one `fun|NAME|RESULT|ARITY|P*`
+# line per function in source order; a function's symbol id is its index.
+
+fn selfhost_function_count(functions: Text) -> Int {
+    return selfhost_line_count(functions)
+}
+
+fn selfhost_function_line_at(functions: Text, index: Int) -> Int {
+    let symbols = chars(functions)
+    let mut line = 0
+    let mut remaining = index
+    while line < len(symbols) {
+        if remaining == 0 {
+            return line
+        }
+        while line < len(symbols) && symbols[line] != "\n" {
+            line = line + 1
+        }
+        line = line + 1
+        remaining = remaining - 1
+    }
+    return -1
+}
+
+fn selfhost_function_index(functions: Text, name: Text) -> Int {
+    let count = selfhost_function_count(functions)
+    let mut index = 0
+    while index < count {
+        let line = selfhost_function_line_at(functions, index)
+        if pattern_line_field(functions, line, 1) == name {
+            return index
+        }
+        index = index + 1
+    }
+    return -1
+}
+
+# The `|`-separated parameter tail of one signature line: the text after
+# its fourth separator, empty for a zero-arity function.
+fn selfhost_function_parameters(functions: Text, line: Int) -> Text {
+    let symbols = chars(functions)
+    let mut cursor = line
+    let mut bars = 0
+    while cursor < len(symbols) && symbols[cursor] != "\n" && bars < 4 {
+        if symbols[cursor] == "|" {
+            bars = bars + 1
+        }
+        cursor = cursor + 1
+    }
+    if bars < 4 {
+        return ""
+    }
+    let mut line_end = cursor
+    while line_end < len(symbols) && symbols[line_end] != "\n" {
+        line_end = line_end + 1
+    }
+    return text_slice(functions, cursor, line_end)
+}
+
+# Parse one declaration's signature into a table line (no newline), or an
+# internal error. Mirrors the audited seed byte for byte, including the
+# `List` annotation walk that stays inside the parameter list.
+fn selfhost_signature(source: Text, functions: Text, start: Int) -> Text {
+    if selfhost_function_count(functions) >= 64 {
+        return selfhost_error("E2S16", start, "function limit is 64")
+    }
+    let name = function_name(source, start)
+    if selfhost_function_index(functions, name) >= 0 {
+        return selfhost_error("E2S16", start, "duplicate Core function")
+    }
+    let parameters = parameter_open(source, start)
+    let mut parameters_close = -1
+    if parameters >= 0 {
+        parameters_close = balanced_end(source, parameters, "(", ")")
+    }
+    if parameters < 0 || parameters_close < 0 {
+        return selfhost_error("E2S15", start, "malformed parameter list")
+    }
+    let mut arity = 0
+    let mut parameter_types = ""
+    let mut cursor = skip_trivia(source, token_end(source, parameters))
+    while cursor < parameters_close && token_text(source, cursor) != ")" {
+        if arity >= 8 {
+            return selfhost_error("E2S17", cursor, "parameter limit is 8")
+        }
+        let colon = skip_trivia(source, token_end(source, cursor))
+        let type_at = skip_trivia(source, token_end(source, colon))
+        if colon >= parameters_close || token_text(source, colon) != ":" {
+            return selfhost_error(
+                "E2S15",
+                cursor,
+                "parameter needs `: TYPE`"
+            )
+        }
+        let parameter_type = token_text(source, type_at)
+        parameter_types = parameter_types + "|" + parameter_type
+        cursor = skip_trivia(source, token_end(source, type_at))
+        if parameter_type == "List" {
+            cursor = skip_trivia(source, token_end(source, cursor))
+            cursor = skip_trivia(source, token_end(source, cursor))
+        }
+        arity = arity + 1
+        if cursor < parameters_close && token_text(source, cursor) == "," {
+            cursor = skip_trivia(source, token_end(source, cursor))
+        }
+    }
+    let mut result = "Void"
+    let after = skip_trivia(source, parameters_close)
+    if after < len(source) && token_text(source, after) == "->" {
+        let result_at = skip_trivia(source, token_end(source, after))
+        result = token_text(source, result_at)
+    }
+    return "fun|" + name + "|" + result + "|" + to_text(arity) +
+    parameter_types
+}
+
+# Collect every declared signature in source order. The walk stops at a
+# declaration whose body never closes; its body parse reports the exact
+# brace diagnostic later.
+fn selfhost_signatures(source: Text) -> Text {
+    let mut functions = ""
+    let mut function_start = next_function_start(source, 0)
+    let mut scanning = function_start < len(source)
+    while scanning {
+        let line = selfhost_signature(source, functions, function_start)
+        if selfhost_failed(line) {
+            return line
+        }
+        functions = functions + line + "\n"
+        let close = function_end(source, function_start)
+        if close < 0 {
+            scanning = false
+        } else {
+            function_start = next_function_start(source, close)
+            scanning = function_start < len(source)
+        }
+    }
+    return "ok\n" + functions
+}
+
+# The 16 builtin signatures in their frozen slot order, `NAME|RESULT|P*`.
+fn selfhost_builtin_signature(slot: Int) -> Text {
+    if slot == 0 {
+        return "args|List"
+    }
+    if slot == 1 {
+        return "chars|List|Text"
+    }
+    if slot == 2 {
+        return "contains|Bool|Text|Text"
+    }
+    if slot == 3 {
+        return "find|Int|Text|Text"
+    }
+    if slot == 4 {
+        return "is_digit|Bool|Text"
+    }
+    if slot == 5 {
+        return "is_space|Bool|Text"
+    }
+    if slot == 6 {
+        return "is_xid_continue|Bool|Text"
+    }
+    if slot == 7 {
+        return "len|Int|Text"
+    }
+    if slot == 8 {
+        return "print|Void|Text"
+    }
+    if slot == 9 {
+        return "read_text|Text|Text"
+    }
+    if slot == 10 {
+        return "replace|Text|Text|Text|Text"
+    }
+    if slot == 11 {
+        return "starts_with|Bool|Text|Text"
+    }
+    if slot == 12 {
+        return "text_slice|Text|Text|Int|Int"
+    }
+    if slot == 13 {
+        return "trim|Text|Text"
+    }
+    if slot == 14 {
+        return "validate_unicode_source|Text|Text"
+    }
+    if slot == 15 {
+        return "write_text|Void|Text|Text"
+    }
+    return ""
+}
+
+fn selfhost_builtin_slot(name: Text) -> Int {
+    let mut slot = 0
+    while slot < 16 {
+        let signature = selfhost_builtin_signature(slot)
+        if pattern_line_field(signature, 0, 0) == name {
+            return slot
+        }
+        slot = slot + 1
+    }
+    return -1
+}
+
+# The tail after `NAME|` of one builtin signature: `RESULT|P*`.
+fn selfhost_builtin_tail(slot: Int) -> Text {
+    return expected_parameter_tail(selfhost_builtin_signature(slot))
+}
+
+# Register the type table plus the symbol and module-binding records for
+# declared functions, the 16 builtins, and the `len` List[Text] overload,
+# in the exact seed order. Packs `ok` and then type, symbol, and binding
+# record lines; the caller separates them by tag.
+fn selfhost_register(source: Text, functions: Text) -> Text {
+    let mut types = ""
+    let mut symbols = ""
+    let mut bindings = ""
+    let count = selfhost_function_count(functions)
+    let mut function_start = next_function_start(source, 0)
+    let mut index = 0
+    while index < count {
+        let name_at = skip_trivia(
+            source,
+            token_end(source, function_start)
+        )
+        let name_end = token_end(source, name_at)
+        let line = selfhost_function_line_at(functions, index)
+        let required = selfhost_fn_type_require(
+            types,
+            pattern_line_field(functions, line, 2),
+            selfhost_function_parameters(functions, line)
+        )
+        if selfhost_failed(required) {
+            return required
+        }
+        let fn_type = selfhost_field_int(required, 0)
+        types = selfhost_records(required)
+        let name = pattern_line_field(functions, line, 1)
+        symbols = symbols + "symbol|" + to_text(index) + "|function|" +
+        name + "|" + to_text(fn_type) + "|" + to_text(name_at) + "|" +
+        to_text(name_end) + "\n"
+        bindings = bindings + "binding|" + to_text(index) + "|0|" +
+        to_text(index) + "|" + name + "|imm|" + to_text(name_at) + "|" +
+        to_text(name_end) + "\n"
+        let close = function_end(source, function_start)
+        if close >= 0 {
+            function_start = next_function_start(source, close)
+        } else {
+            index = count
+        }
+        index = index + 1
+    }
+    let mut slot = 0
+    while slot < 16 {
+        let tail = selfhost_builtin_tail(slot)
+        let required = selfhost_fn_type_require(
+            types,
+            expected_parameter_head(tail),
+            expected_parameter_tail(tail)
+        )
+        if selfhost_failed(required) {
+            return required
+        }
+        types = selfhost_records(required)
+        symbols = symbols + "symbol|" + to_text(count + slot) +
+        "|builtin|" +
+        pattern_line_field(selfhost_builtin_signature(slot), 0, 0) + "|" +
+        selfhost_field(required, 0) + "|0|0\n"
+        slot = slot + 1
+    }
+    let required = selfhost_fn_type_require(types, "Int", "List")
+    if selfhost_failed(required) {
+        return required
+    }
+    types = selfhost_records(required)
+    symbols = symbols + "symbol|" + to_text(count + 16) + "|builtin|len|" +
+    selfhost_field(required, 0) + "|0|0\n"
+    return "ok\n" + types + symbols + bindings
+}
+
+# The lexical environment is one `env|NAME|TYPE|BINDINGID|MUT` line per
+# live binding; resolution picks the innermost (last) declaration.
+
+fn selfhost_resolve(env: Text, name: Text) -> Int {
+    let symbols = chars(env)
+    let mut line = 0
+    let mut resolved = -1
+    while line < len(symbols) {
+        if pattern_line_field(env, line, 1) == name {
+            resolved = line
+        }
+        while line < len(symbols) && symbols[line] != "\n" {
+            line = line + 1
+        }
+        line = line + 1
+    }
+    return resolved
+}
+
+fn selfhost_env_count(env: Text) -> Int {
+    return selfhost_line_count(env)
+}
+
+# Parsed expressions are `xnode|ID|KIND|START|END|TYPE|...` lines with
+# document-local ids; the second walk renumbers them in pre-order.
+
+fn selfhost_tree_line(tree: Text, id: Int) -> Int {
+    let symbols = chars(tree)
+    let wanted = to_text(id)
+    let mut line = 0
+    while line < len(symbols) {
+        if pattern_line_field(tree, line, 1) == wanted {
+            return line
+        }
+        while line < len(symbols) && symbols[line] != "\n" {
+            line = line + 1
+        }
+        line = line + 1
+    }
+    return -1
+}
+
+fn selfhost_tree_field(tree: Text, id: Int, field: Int) -> Text {
+    let line = selfhost_tree_line(tree, id)
+    if line < 0 {
+        return ""
+    }
+    return pattern_line_field(tree, line, field)
+}
+
+fn selfhost_tree_int(tree: Text, id: Int, field: Int) -> Int {
+    return decimal_value(selfhost_tree_field(tree, id, field))
+}
+
+# Expression results pack `END|ROOT|NEXT|TYPE` over the xnode records.
+fn selfhost_expression_result(
+    end: Int,
+    root: Int,
+    next: Int,
+    value_type: Text,
+    records: Text
+) -> Text {
+    return to_text(end) + "|" + to_text(root) + "|" + to_text(next) +
+    "|" + value_type + "\n" + records
+}
+
+fn selfhost_operator_level(level: Int, token: Text) -> Bool {
+    if level == 0 {
+        return token == "||"
+    }
+    if level == 1 {
+        return token == "&&"
+    }
+    if level == 2 {
+        return token == "==" || token == "!=" || token == "<=" ||
+        token == ">=" || token == "<" || token == ">"
+    }
+    if level == 3 {
+        return token == "+" || token == "-"
+    }
+    return token == "*" || token == "//" || token == "/" || token == "%"
+}
+
+# Resolve and type one call expression; `at` is the callee name token.
+# Declared functions win over builtins; `len` picks its overload from the
+# first argument; every arity and argument type is checked here so a
+# rejected document never carries typed nodes.
+fn selfhost_parse_call(
+    source: Text,
+    functions: Text,
+    env: Text,
+    at: Int,
+    next: Int
+) -> Text {
+    let name = token_text(source, at)
+    let open = skip_trivia(source, token_end(source, at))
+    let mut cursor = skip_trivia(source, token_end(source, open))
+    let mut argument_count = 0
+    let mut argument_ids = ""
+    let mut argument_starts = ""
+    let mut argument_types = ""
+    let mut records = ""
+    let mut local_next = next
+    while cursor < len(source) && token_text(source, cursor) != ")" {
+        if argument_count >= 8 {
+            return selfhost_error(
+                "E2S17",
+                at,
+                "call has too many arguments"
+            )
+        }
+        let argument = selfhost_parse_expression(
+            source,
+            functions,
+            env,
+            cursor,
+            local_next
+        )
+        if selfhost_failed(argument) {
+            return argument
+        }
+        cursor = selfhost_field_int(argument, 0)
+        let root = selfhost_field_int(argument, 1)
+        local_next = selfhost_field_int(argument, 2)
+        records = records + selfhost_records(argument)
+        argument_ids = argument_ids + "|" + to_text(root)
+        argument_starts = argument_starts + "|" +
+        selfhost_tree_field(records, root, 3)
+        if argument_count > 0 {
+            argument_types = argument_types + "|"
+        }
+        argument_types = argument_types + selfhost_field(argument, 3)
+        argument_count = argument_count + 1
+        if cursor < len(source) && token_text(source, cursor) == "," {
+            cursor = skip_trivia(source, token_end(source, cursor))
+        }
+    }
+    if cursor >= len(source) {
+        return selfhost_error("E2S12", at, "expected `)`")
+    }
+    let call_end = token_end(source, cursor)
+    let after = skip_trivia(source, call_end)
+    let mut symbol = -1
+    let mut result_type = ""
+    let declared = selfhost_function_index(functions, name)
+    if declared >= 0 {
+        let line = selfhost_function_line_at(functions, declared)
+        if argument_count !=
+           decimal_value(pattern_line_field(functions, line, 3)) {
+            return selfhost_error("E2S17", at, "wrong call arity")
+        }
+        let mut expected = selfhost_function_parameters(functions, line)
+        let mut index = 0
+        while index < argument_count {
+            if pattern_line_field(argument_types, 0, index) !=
+               expected_parameter_head(expected) {
+                return selfhost_error(
+                    "E2S15",
+                    decimal_value(
+                        pattern_line_field("x" + argument_starts, 0, index + 1)
+                    ),
+                    "call argument type mismatch"
+                )
+            }
+            expected = expected_parameter_tail(expected)
+            index = index + 1
+        }
+        symbol = declared
+        result_type = pattern_line_field(functions, line, 2)
+    } else {
+        let mut arity = builtin_arity(name)
+        if name == "print" {
+            arity = 1
+        }
+        if arity < 0 {
+            return selfhost_error("E2S16", at, "unknown function")
+        }
+        if argument_count != arity {
+            return selfhost_error("E2S17", at, "wrong builtin arity")
+        }
+        result_type = "Void"
+        if name != "print" {
+            result_type = builtin_return_type(name)
+        }
+        let count = selfhost_function_count(functions)
+        if name == "len" {
+            let argument_type = pattern_line_field(argument_types, 0, 0)
+            if argument_type != "Text" && argument_type != "List" {
+                return selfhost_error(
+                    "E2S15",
+                    decimal_value(
+                        pattern_line_field("x" + argument_starts, 0, 1)
+                    ),
+                    "len expects Text or List[Text]"
+                )
+            }
+            symbol = count + 7
+            if argument_type == "List" {
+                symbol = count + 16
+            }
+        } else if name == "print" {
+            if pattern_line_field(argument_types, 0, 0) != "Text" {
+                return selfhost_error(
+                    "E2S15",
+                    decimal_value(
+                        pattern_line_field("x" + argument_starts, 0, 1)
+                    ),
+                    "print expects Text in the profile"
+                )
+            }
+            symbol = count + 8
+        } else {
+            let mut expected = builtin_parameter_types(name)
+            let mut index = 0
+            while index < argument_count {
+                if pattern_line_field(argument_types, 0, index) !=
+                   expected_parameter_head(expected) {
+                    return selfhost_error(
+                        "E2S15",
+                        decimal_value(
+                            pattern_line_field(
+                                "x" + argument_starts,
+                                0,
+                                index + 1
+                            )
+                        ),
+                        "builtin argument type mismatch"
+                    )
+                }
+                expected = expected_parameter_tail(expected)
+                index = index + 1
+            }
+            symbol = count + selfhost_builtin_slot(name)
+        }
+    }
+    let call_record = "xnode|" + to_text(local_next) + "|call|" +
+    to_text(at) + "|" + to_text(call_end) + "|" + result_type + "|" +
+    to_text(symbol) + argument_ids + "\n"
+    return selfhost_expression_result(
+        after,
+        local_next,
+        local_next + 1,
+        result_type,
+        records + call_record
+    )
+}
+
+fn selfhost_parse_primary(
+    source: Text,
+    functions: Text,
+    env: Text,
+    cursor: Int,
+    next: Int
+) -> Text {
+    let at = cursor
+    if at >= len(source) {
+        return selfhost_error("E2S12", at, "expected expression")
+    }
+    let kind = token_kind(source, at)
+    let end = token_end(source, at)
+    if kind == "integer" {
+        return selfhost_expression_result(
+            skip_trivia(source, end),
+            next,
+            next + 1,
+            "Int",
+            "xnode|" + to_text(next) + "|literal-int|" + to_text(at) +
+            "|" + to_text(end) + "|Int\n"
+        )
+    }
+    if kind == "string" {
+        return selfhost_expression_result(
+            skip_trivia(source, end),
+            next,
+            next + 1,
+            "Text",
+            "xnode|" + to_text(next) + "|literal-text|" + to_text(at) +
+            "|" + to_text(end) + "|Text\n"
+        )
+    }
+    let token = token_text(source, at)
+    if token == "true" || token == "false" {
+        return selfhost_expression_result(
+            skip_trivia(source, end),
+            next,
+            next + 1,
+            "Bool",
+            "xnode|" + to_text(next) + "|literal-bool|" + to_text(at) +
+            "|" + to_text(end) + "|Bool\n"
+        )
+    }
+    if token == "(" {
+        let inner = selfhost_parse_expression(
+            source,
+            functions,
+            env,
+            skip_trivia(source, end),
+            next
+        )
+        if selfhost_failed(inner) {
+            return inner
+        }
+        let close = selfhost_field_int(inner, 0)
+        if close >= len(source) || token_text(source, close) != ")" {
+            return selfhost_error("E2S12", close, "expected `)`")
+        }
+        return selfhost_expression_result(
+            skip_trivia(source, token_end(source, close)),
+            selfhost_field_int(inner, 1),
+            selfhost_field_int(inner, 2),
+            selfhost_field(inner, 3),
+            selfhost_records(inner)
+        )
+    }
+    if kind == "identifier" {
+        let after = skip_trivia(source, end)
+        if after < len(source) && token_text(source, after) == "(" {
+            return selfhost_parse_call(source, functions, env, at, next)
+        }
+        let resolved = selfhost_resolve(env, token)
+        if resolved < 0 {
+            return selfhost_error("E2S35", at, "unknown lexical binding")
+        }
+        return selfhost_expression_result(
+            after,
+            next,
+            next + 1,
+            pattern_line_field(env, resolved, 2),
+            "xnode|" + to_text(next) + "|name|" + to_text(at) + "|" +
+            to_text(end) + "|" + pattern_line_field(env, resolved, 2) +
+            "|" + pattern_line_field(env, resolved, 3) + "\n"
+        )
+    }
+    return selfhost_error("E2S12", at, "expected expression")
+}
+
+fn selfhost_parse_postfix(
+    source: Text,
+    functions: Text,
+    env: Text,
+    cursor: Int,
+    next: Int
+) -> Text {
+    let mut result = selfhost_parse_primary(
+        source,
+        functions,
+        env,
+        cursor,
+        next
+    )
+    if selfhost_failed(result) {
+        return result
+    }
+    let mut walk = selfhost_field_int(result, 0)
+    while walk < len(source) && token_text(source, walk) == "[" {
+        if selfhost_field(result, 3) != "List" {
+            return selfhost_error(
+                "E2S15",
+                walk,
+                "only List[Text] can be indexed"
+            )
+        }
+        let index = selfhost_parse_expression(
+            source,
+            functions,
+            env,
+            skip_trivia(source, token_end(source, walk)),
+            selfhost_field_int(result, 2)
+        )
+        if selfhost_failed(index) {
+            return index
+        }
+        let index_root = selfhost_field_int(index, 1)
+        if selfhost_field(index, 3) != "Int" {
+            return selfhost_error(
+                "E2S15",
+                selfhost_tree_int(selfhost_records(index), index_root, 3),
+                "index must be Int"
+            )
+        }
+        let close_at = selfhost_field_int(index, 0)
+        if close_at >= len(source) || token_text(source, close_at) != "]" {
+            return selfhost_error("E2S12", close_at, "expected `]`")
+        }
+        let close = token_end(source, close_at)
+        let records = selfhost_records(result) + selfhost_records(index)
+        let base_root = selfhost_field_int(result, 1)
+        let id = selfhost_field_int(index, 2)
+        result = selfhost_expression_result(
+            skip_trivia(source, close),
+            id,
+            id + 1,
+            "Text",
+            records + "xnode|" + to_text(id) + "|index|" +
+            selfhost_tree_field(records, base_root, 3) + "|" +
+            to_text(close) + "|Text|" + to_text(base_root) + "|" +
+            to_text(index_root) + "\n"
+        )
+        walk = selfhost_field_int(result, 0)
+    }
+    return result
+}
+
+fn selfhost_parse_unary(
+    source: Text,
+    functions: Text,
+    env: Text,
+    cursor: Int,
+    next: Int
+) -> Text {
+    let at = cursor
+    if at < len(source) &&
+       (token_text(source, at) == "!" || token_text(source, at) == "-") {
+        let negation = token_text(source, at) == "!"
+        let operand = selfhost_parse_unary(
+            source,
+            functions,
+            env,
+            skip_trivia(source, token_end(source, at)),
+            next
+        )
+        if selfhost_failed(operand) {
+            return operand
+        }
+        let root = selfhost_field_int(operand, 1)
+        let records = selfhost_records(operand)
+        if negation && selfhost_field(operand, 3) != "Bool" {
+            return selfhost_error(
+                "E2S15",
+                selfhost_tree_int(records, root, 3),
+                "`!` expects Bool"
+            )
+        }
+        if !negation && selfhost_field(operand, 3) != "Int" {
+            return selfhost_error(
+                "E2S15",
+                selfhost_tree_int(records, root, 3),
+                "unary `-` expects Int"
+            )
+        }
+        let mut result_type = "Int"
+        let mut operator = "-"
+        if negation {
+            result_type = "Bool"
+            operator = "!"
+        }
+        let id = selfhost_field_int(operand, 2)
+        return selfhost_expression_result(
+            selfhost_field_int(operand, 0),
+            id,
+            id + 1,
+            result_type,
+            records + "xnode|" + to_text(id) + "|unary|" + to_text(at) +
+            "|" + selfhost_tree_field(records, root, 4) + "|" +
+            result_type + "|" + operator + "|" + to_text(root) + "\n"
+        )
+    }
+    return selfhost_parse_postfix(source, functions, env, cursor, next)
+}
+
+# Levels: 0 `||`; 1 `&&`; 2 comparisons; 3 `+ -`; 4 `* / // %`.
+fn selfhost_parse_binary(
+    source: Text,
+    functions: Text,
+    env: Text,
+    cursor: Int,
+    next: Int,
+    level: Int
+) -> Text {
+    if level > 4 {
+        return selfhost_parse_unary(source, functions, env, cursor, next)
+    }
+    let mut result = selfhost_parse_binary(
+        source,
+        functions,
+        env,
+        cursor,
+        next,
+        level + 1
+    )
+    if selfhost_failed(result) {
+        return result
+    }
+    let mut walk = selfhost_field_int(result, 0)
+    while walk < len(source) &&
+          selfhost_operator_level(level, token_text(source, walk)) {
+        let operator_at = walk
+        let operator = token_text(source, walk)
+        let right = selfhost_parse_binary(
+            source,
+            functions,
+            env,
+            skip_trivia(source, token_end(source, walk)),
+            selfhost_field_int(result, 2),
+            level + 1
+        )
+        if selfhost_failed(right) {
+            return right
+        }
+        let left_type = selfhost_field(result, 3)
+        let right_type = selfhost_field(right, 3)
+        let mut result_type = ""
+        if level <= 1 {
+            if left_type != "Bool" || right_type != "Bool" {
+                return selfhost_error(
+                    "E2S15",
+                    operator_at,
+                    "logical operands must be Bool"
+                )
+            }
+            result_type = "Bool"
+        } else if level == 2 {
+            if left_type != right_type || left_type == "List" ||
+               left_type == "Void" {
+                return selfhost_error(
+                    "E2S15",
+                    operator_at,
+                    "comparison operands must share a scalar type"
+                )
+            }
+            result_type = "Bool"
+        } else if level == 3 && operator == "+" && left_type == "Text" {
+            if right_type != "Text" {
+                return selfhost_error(
+                    "E2S15",
+                    operator_at,
+                    "Text `+` expects Text"
+                )
+            }
+            result_type = "Text"
+        } else {
+            if left_type != "Int" || right_type != "Int" {
+                return selfhost_error(
+                    "E2S15",
+                    operator_at,
+                    "arithmetic operands must be Int"
+                )
+            }
+            result_type = "Int"
+        }
+        let records = selfhost_records(result) + selfhost_records(right)
+        let left_root = selfhost_field_int(result, 1)
+        let right_root = selfhost_field_int(right, 1)
+        let id = selfhost_field_int(right, 2)
+        result = selfhost_expression_result(
+            selfhost_field_int(right, 0),
+            id,
+            id + 1,
+            result_type,
+            records + "xnode|" + to_text(id) + "|binary|" +
+            selfhost_tree_field(records, left_root, 3) + "|" +
+            selfhost_tree_field(records, right_root, 4) + "|" +
+            result_type + "|" + selfhost_escape(operator) + "|" +
+            to_text(left_root) + "|" + to_text(right_root) + "\n"
+        )
+        walk = selfhost_field_int(result, 0)
+    }
+    return result
+}
+
+fn selfhost_parse_expression(
+    source: Text,
+    functions: Text,
+    env: Text,
+    cursor: Int,
+    next: Int
+) -> Text {
+    return selfhost_parse_binary(source, functions, env, cursor, next, 0)
+}
+
+# The second expression walk: renumber one parsed tree into pre-order
+# document node records, parent before children.
+
+fn selfhost_ownership(value_type: Text) -> Text {
+    if value_type == "Text" || value_type == "List" {
+        return "read"
+    }
+    return "copy"
+}
+
+# Decode source string escapes, then re-escape for the record format.
+fn selfhost_text_literal_field(source: Text, start: Int, end: Int) -> Text {
+    let symbols = chars(source)
+    let mut decoded = ""
+    let mut cursor = start + 1
+    while cursor + 1 < end {
+        let symbol = symbols[cursor]
+        if symbol == "\\" {
+            let following = symbols[cursor + 1]
+            if following == "n" {
+                decoded = decoded + "\n"
+            } else {
+                decoded = decoded + following
+            }
+            cursor = cursor + 2
+        } else {
+            decoded = decoded + symbol
+            cursor = cursor + 1
+        }
+    }
+    return selfhost_escape(decoded)
+}
+
+# Emit the xnode `id` as document node `node`; returns `NEXT` over the
+# emitted records. Child ids follow their parent, in field order.
+fn selfhost_emit_expression(
+    source: Text,
+    types: Text,
+    tree: Text,
+    id: Int,
+    node: Int
+) -> Text {
+    let line = selfhost_tree_line(tree, id)
+    let kind = pattern_line_field(tree, line, 2)
+    let start = pattern_line_field(tree, line, 3)
+    let end = pattern_line_field(tree, line, 4)
+    let value_type = pattern_line_field(tree, line, 5)
+    let type_id = selfhost_scalar_id(types, value_type)
+    let mut fields = ""
+    let mut children = ""
+    let mut next = node + 1
+    if kind == "literal-int" || kind == "literal-bool" {
+        fields = text_slice(
+            source,
+            decimal_value(start),
+            decimal_value(end)
+        )
+    } else if kind == "literal-text" {
+        fields = selfhost_text_literal_field(
+            source,
+            decimal_value(start),
+            decimal_value(end)
+        )
+    } else if kind == "name" {
+        fields = pattern_line_field(tree, line, 6)
+    } else if kind == "call" {
+        fields = pattern_line_field(tree, line, 6)
+        let mut argument_field = 7
+        while len(pattern_line_field(tree, line, argument_field)) > 0 {
+            let argument = decimal_value(
+                pattern_line_field(tree, line, argument_field)
+            )
+            fields = fields + "|" + to_text(next)
+            let emitted = selfhost_emit_expression(
+                source,
+                types,
+                tree,
+                argument,
+                next
+            )
+            next = selfhost_field_int(emitted, 0)
+            children = children + selfhost_records(emitted)
+            argument_field = argument_field + 1
+        }
+    } else if kind == "unary" {
+        let operand = decimal_value(pattern_line_field(tree, line, 7))
+        fields = pattern_line_field(tree, line, 6) + "|" + to_text(next)
+        let emitted = selfhost_emit_expression(
+            source,
+            types,
+            tree,
+            operand,
+            next
+        )
+        next = selfhost_field_int(emitted, 0)
+        children = selfhost_records(emitted)
+    } else if kind == "binary" {
+        let left = decimal_value(pattern_line_field(tree, line, 7))
+        let right = decimal_value(pattern_line_field(tree, line, 8))
+        let left_id = next
+        let left_emitted = selfhost_emit_expression(
+            source,
+            types,
+            tree,
+            left,
+            next
+        )
+        next = selfhost_field_int(left_emitted, 0)
+        let right_id = next
+        let right_emitted = selfhost_emit_expression(
+            source,
+            types,
+            tree,
+            right,
+            next
+        )
+        next = selfhost_field_int(right_emitted, 0)
+        fields = pattern_line_field(tree, line, 6) + "|" +
+        to_text(left_id) + "|" + to_text(right_id)
+        children = selfhost_records(left_emitted) +
+        selfhost_records(right_emitted)
+    } else {
+        let left = decimal_value(pattern_line_field(tree, line, 6))
+        let right = decimal_value(pattern_line_field(tree, line, 7))
+        let left_id = next
+        let left_emitted = selfhost_emit_expression(
+            source,
+            types,
+            tree,
+            left,
+            next
+        )
+        next = selfhost_field_int(left_emitted, 0)
+        let right_id = next
+        let right_emitted = selfhost_emit_expression(
+            source,
+            types,
+            tree,
+            right,
+            next
+        )
+        next = selfhost_field_int(right_emitted, 0)
+        fields = to_text(left_id) + "|" + to_text(right_id)
+        children = selfhost_records(left_emitted) +
+        selfhost_records(right_emitted)
+    }
+    return to_text(next) + "\n" + "node|" + to_text(node) + "|" + kind +
+    "|" + start + "|" + end + "|" + to_text(type_id) + "|" +
+    selfhost_ownership(value_type) + "|" + fields + "\n" + children
+}
+
+# Statement results pack `END|NODE|SCOPE|SYMBOL|BINDING|STMTID` and then
+# `ENVNAME|ENVTYPE|ENVBINDING|ENVMUT` when the statement declared a local,
+# over the statement's scope, symbol, binding, and node records.
+
+fn selfhost_counters(
+    node: Int,
+    scope: Int,
+    symbol: Int,
+    binding: Int
+) -> Text {
+    return to_text(node) + "|" + to_text(scope) + "|" + to_text(symbol) +
+    "|" + to_text(binding)
+}
+
+fn selfhost_counter(counters: Text, wanted: Int) -> Int {
+    return decimal_value(pattern_line_field(counters, 0, wanted))
+}
+
+fn selfhost_statement_result(
+    end: Int,
+    counters: Text,
+    statement: Int,
+    declared_env: Text,
+    records: Text
+) -> Text {
+    let mut env_fields = "|||"
+    if len(declared_env) > 0 {
+        env_fields = declared_env
+    }
+    return to_text(end) + "|" + counters + "|" + to_text(statement) +
+    "|" + env_fields + "\n" + records
+}
+
+# One symbol plus binding record pair; `ids` packs `SYMBOL|BINDING` and
+# `span` packs `START|END` of the declared name.
+fn selfhost_bind_records(
+    types: Text,
+    ids: Text,
+    scope: Int,
+    name: Text,
+    surface: Text,
+    mutability: Text,
+    kind: Text,
+    span: Text
+) -> Text {
+    return "symbol|" + pattern_line_field(ids, 0, 0) + "|" + kind + "|" +
+    name + "|" + to_text(selfhost_scalar_id(types, surface)) + "|" +
+    span + "\n" + "binding|" + pattern_line_field(ids, 0, 1) + "|" +
+    to_text(scope) + "|" + pattern_line_field(ids, 0, 0) + "|" + name +
+    "|" + mutability + "|" + span + "\n"
+}
+
+fn selfhost_let_statement(
+    source: Text,
+    functions: Text,
+    types: Text,
+    env: Text,
+    cursor: Int,
+    counters: Text,
+    scope_context: Text
+) -> Text {
+    let at = cursor
+    let mut name = skip_trivia(source, token_end(source, at))
+    let mut mutability = "imm"
+    if name < len(source) && token_text(source, name) == "mut" {
+        mutability = "mut"
+        name = skip_trivia(source, token_end(source, name))
+    }
+    if name >= len(source) || token_kind(source, name) != "identifier" {
+        return selfhost_error("E2S12", name, "expected binding name")
+    }
+    let name_end = token_end(source, name)
+    let mut after = skip_trivia(source, name_end)
+    let mut annotation = ""
+    if after < len(source) && token_text(source, after) == ":" {
+        let type_at = skip_trivia(source, token_end(source, after))
+        annotation = token_text(source, type_at)
+        after = skip_trivia(source, token_end(source, type_at))
+        if annotation == "List" {
+            after = skip_trivia(source, token_end(source, after))
+            after = skip_trivia(source, token_end(source, after))
+        }
+    }
+    if after >= len(source) || token_text(source, after) != "=" {
+        return selfhost_error("E2S12", after, "expected `=`")
+    }
+    let statement = selfhost_counter(counters, 0)
+    let value = selfhost_parse_expression(
+        source,
+        functions,
+        env,
+        skip_trivia(source, token_end(source, after)),
+        0
+    )
+    if selfhost_failed(value) {
+        return value
+    }
+    let tree = selfhost_records(value)
+    let root = selfhost_field_int(value, 1)
+    if len(annotation) > 0 && annotation != selfhost_field(value, 3) {
+        return selfhost_error(
+            "E2S15",
+            selfhost_tree_int(tree, root, 3),
+            "initializer type mismatch"
+        )
+    }
+    if selfhost_env_count(env) >= 512 {
+        return selfhost_error(
+            "E2S35",
+            name,
+            "lexical binding limit is 512"
+        )
+    }
+    let emitted = selfhost_emit_expression(
+        source,
+        types,
+        tree,
+        root,
+        statement + 1
+    )
+    let symbol = selfhost_counter(counters, 2)
+    let binding = selfhost_counter(counters, 3)
+    let scope = decimal_value(pattern_line_field(scope_context, 0, 0))
+    let name_text = token_text(source, name)
+    let value_type = selfhost_field(value, 3)
+    let mut kind = "let"
+    if mutability == "mut" {
+        kind = "let-mut"
+    }
+    return selfhost_statement_result(
+        selfhost_field_int(value, 0),
+        selfhost_counters(
+            selfhost_field_int(emitted, 0),
+            selfhost_counter(counters, 1),
+            symbol + 1,
+            binding + 1
+        ),
+        statement,
+        name_text + "|" + value_type + "|" + to_text(binding) + "|" +
+        mutability,
+        selfhost_bind_records(
+            types,
+            to_text(symbol) + "|" + to_text(binding),
+            scope,
+            name_text,
+            value_type,
+            mutability,
+            "local",
+            to_text(name) + "|" + to_text(name_end)
+        ) + "node|" + to_text(statement) + "|" + kind + "|" +
+        to_text(at) + "|" + selfhost_tree_field(tree, root, 4) + "|" +
+        to_text(selfhost_scalar_id(types, "Void")) + "|copy|" +
+        to_text(binding) + "|" + to_text(statement + 1) + "\n" +
+        selfhost_records(emitted)
+    )
+}
+
+fn selfhost_branch_statement(
+    source: Text,
+    functions: Text,
+    types: Text,
+    env: Text,
+    declared: Text,
+    cursor: Int,
+    counters: Text,
+    scope_context: Text
+) -> Text {
+    let at = cursor
+    let condition_if = token_text(source, at) == "if"
+    let statement = selfhost_counter(counters, 0)
+    let condition = selfhost_parse_expression(
+        source,
+        functions,
+        env,
+        skip_trivia(source, token_end(source, at)),
+        0
+    )
+    if selfhost_failed(condition) {
+        return condition
+    }
+    let tree = selfhost_records(condition)
+    let root = selfhost_field_int(condition, 1)
+    if selfhost_field(condition, 3) != "Bool" {
+        let mut message = "while condition must be Bool"
+        if condition_if {
+            message = "if condition must be Bool or an Int comparison"
+        }
+        return selfhost_error(
+            "E2S23",
+            selfhost_tree_int(tree, root, 3),
+            message
+        )
+    }
+    let emitted = selfhost_emit_expression(
+        source,
+        types,
+        tree,
+        root,
+        statement + 1
+    )
+    let body = selfhost_block(
+        source,
+        functions,
+        types,
+        env,
+        declared,
+        selfhost_field_int(condition, 0),
+        selfhost_counters(
+            selfhost_field_int(emitted, 0),
+            selfhost_counter(counters, 1),
+            selfhost_counter(counters, 2),
+            selfhost_counter(counters, 3)
+        ),
+        scope_context,
+        -1
+    )
+    if selfhost_failed(body) {
+        return body
+    }
+    let body_scope = selfhost_field_int(body, 5)
+    let mut walk = selfhost_field_int(body, 0)
+    let mut branch_counters = selfhost_counters(
+        selfhost_field_int(body, 1),
+        selfhost_field_int(body, 2),
+        selfhost_field_int(body, 3),
+        selfhost_field_int(body, 4)
+    )
+    let mut records = selfhost_records(emitted) + selfhost_records(body)
+    let mut else_kind = "none"
+    let mut else_reference = -1
+    if condition_if && walk < len(source) &&
+       token_text(source, walk) == "else" {
+        let next_at = skip_trivia(source, token_end(source, walk))
+        if next_at < len(source) && token_text(source, next_at) == "if" {
+            let chained = selfhost_statement(
+                source,
+                functions,
+                types,
+                env,
+                declared,
+                next_at,
+                branch_counters,
+                scope_context
+            )
+            if selfhost_failed(chained) {
+                return chained
+            }
+            else_kind = "if"
+            else_reference = selfhost_field_int(chained, 5)
+            walk = selfhost_field_int(chained, 0)
+            branch_counters = selfhost_counters(
+                selfhost_field_int(chained, 1),
+                selfhost_field_int(chained, 2),
+                selfhost_field_int(chained, 3),
+                selfhost_field_int(chained, 4)
+            )
+            records = records + selfhost_records(chained)
+        } else {
+            let alternative = selfhost_block(
+                source,
+                functions,
+                types,
+                env,
+                declared,
+                next_at,
+                branch_counters,
+                scope_context,
+                -1
+            )
+            if selfhost_failed(alternative) {
+                return alternative
+            }
+            else_kind = "block"
+            else_reference = selfhost_field_int(alternative, 5)
+            walk = selfhost_field_int(alternative, 0)
+            branch_counters = selfhost_counters(
+                selfhost_field_int(alternative, 1),
+                selfhost_field_int(alternative, 2),
+                selfhost_field_int(alternative, 3),
+                selfhost_field_int(alternative, 4)
+            )
+            records = records + selfhost_records(alternative)
+        }
+    }
+    let mut kind = "while"
+    let mut fields = to_text(statement + 1) + "|" + to_text(body_scope)
+    if condition_if {
+        kind = "if"
+        fields = fields + "|" + else_kind + "|" + to_text(else_reference)
+    }
+    return selfhost_statement_result(
+        walk,
+        branch_counters,
+        statement,
+        "",
+        "node|" + to_text(statement) + "|" + kind + "|" + to_text(at) +
+        "|" + to_text(walk) + "|" +
+        to_text(selfhost_scalar_id(types, "Void")) + "|copy|" + fields +
+        "\n" + records
+    )
+}
+
+fn selfhost_for_statement(
+    source: Text,
+    functions: Text,
+    types: Text,
+    env: Text,
+    declared: Text,
+    cursor: Int,
+    counters: Text,
+    scope_context: Text
+) -> Text {
+    let at = cursor
+    let name = skip_trivia(source, token_end(source, at))
+    if name >= len(source) || token_kind(source, name) != "identifier" {
+        return selfhost_error("E2S12", name, "expected loop variable")
+    }
+    let in_at = skip_trivia(source, token_end(source, name))
+    if in_at >= len(source) || token_text(source, in_at) != "in" {
+        return selfhost_error("E2S12", in_at, "expected `in`")
+    }
+    let low = selfhost_parse_expression(
+        source,
+        functions,
+        env,
+        skip_trivia(source, token_end(source, in_at)),
+        0
+    )
+    if selfhost_failed(low) {
+        return low
+    }
+    let dots = selfhost_field_int(low, 0)
+    if dots >= len(source) || token_text(source, dots) != ".." {
+        return selfhost_error("E2S12", dots, "expected `..`")
+    }
+    let high = selfhost_parse_expression(
+        source,
+        functions,
+        env,
+        skip_trivia(source, token_end(source, dots)),
+        selfhost_field_int(low, 2)
+    )
+    if selfhost_failed(high) {
+        return high
+    }
+    let low_root = selfhost_field_int(low, 1)
+    let high_root = selfhost_field_int(high, 1)
+    let mut tree = selfhost_records(low) + selfhost_records(high)
+    if selfhost_field(low, 3) != "Int" || selfhost_field(high, 3) != "Int" {
+        return selfhost_error(
+            "E2S15",
+            selfhost_tree_int(tree, low_root, 3),
+            "range bounds must be Int"
+        )
+    }
+    let range = selfhost_field_int(high, 2)
+    tree = tree + "xnode|" + to_text(range) + "|range|" +
+    selfhost_tree_field(tree, low_root, 3) + "|" +
+    selfhost_tree_field(tree, high_root, 4) + "|Int|" +
+    to_text(low_root) + "|" + to_text(high_root) + "\n"
+    let statement = selfhost_counter(counters, 0)
+    let emitted = selfhost_emit_expression(
+        source,
+        types,
+        tree,
+        range,
+        statement + 1
+    )
+    let loop_binding = selfhost_counter(counters, 3)
+    let body = selfhost_block(
+        source,
+        functions,
+        types,
+        env,
+        declared,
+        selfhost_field_int(high, 0),
+        selfhost_counters(
+            selfhost_field_int(emitted, 0),
+            selfhost_counter(counters, 1),
+            selfhost_counter(counters, 2),
+            selfhost_counter(counters, 3)
+        ),
+        scope_context,
+        name
+    )
+    if selfhost_failed(body) {
+        return body
+    }
+    let walk = selfhost_field_int(body, 0)
+    return selfhost_statement_result(
+        walk,
+        selfhost_counters(
+            selfhost_field_int(body, 1),
+            selfhost_field_int(body, 2),
+            selfhost_field_int(body, 3),
+            selfhost_field_int(body, 4)
+        ),
+        statement,
+        "",
+        "node|" + to_text(statement) + "|for-range|" + to_text(at) + "|" +
+        to_text(walk) + "|" + to_text(selfhost_scalar_id(types, "Void")) +
+        "|copy|" + to_text(loop_binding) + "|" + to_text(statement + 1) +
+        "|" + to_text(selfhost_field_int(body, 5)) + "\n" +
+        selfhost_records(emitted) + selfhost_records(body)
+    )
+}
+
+fn selfhost_return_statement(
+    source: Text,
+    functions: Text,
+    types: Text,
+    env: Text,
+    declared: Text,
+    cursor: Int,
+    counters: Text
+) -> Text {
+    let at = cursor
+    let keyword_end = token_end(source, at)
+    let value_at = skip_trivia(source, keyword_end)
+    let statement = selfhost_counter(counters, 0)
+    let void_id = to_text(selfhost_scalar_id(types, "Void"))
+    if value_at >= len(source) || token_text(source, value_at) == "}" ||
+       newline_between(source, keyword_end, value_at) {
+        if declared != "Void" {
+            return selfhost_error("E2S19", at, "missing return value")
+        }
+        return selfhost_statement_result(
+            value_at,
+            selfhost_counters(
+                statement + 1,
+                selfhost_counter(counters, 1),
+                selfhost_counter(counters, 2),
+                selfhost_counter(counters, 3)
+            ),
+            statement,
+            "",
+            "node|" + to_text(statement) + "|return|" + to_text(at) +
+            "|" + to_text(keyword_end) + "|" + void_id + "|copy|none\n"
+        )
+    }
+    let value = selfhost_parse_expression(
+        source,
+        functions,
+        env,
+        value_at,
+        0
+    )
+    if selfhost_failed(value) {
+        return value
+    }
+    let tree = selfhost_records(value)
+    let root = selfhost_field_int(value, 1)
+    if selfhost_field(value, 3) != declared {
+        return selfhost_error(
+            "E2S15",
+            selfhost_tree_int(tree, root, 3),
+            "return type mismatch"
+        )
+    }
+    let emitted = selfhost_emit_expression(
+        source,
+        types,
+        tree,
+        root,
+        statement + 1
+    )
+    return selfhost_statement_result(
+        selfhost_field_int(value, 0),
+        selfhost_counters(
+            selfhost_field_int(emitted, 0),
+            selfhost_counter(counters, 1),
+            selfhost_counter(counters, 2),
+            selfhost_counter(counters, 3)
+        ),
+        statement,
+        "",
+        "node|" + to_text(statement) + "|return|" + to_text(at) + "|" +
+        selfhost_tree_field(tree, root, 4) + "|" + void_id + "|copy|" +
+        to_text(statement + 1) + "\n" + selfhost_records(emitted)
+    )
+}
+
+fn selfhost_leading_statement(
+    source: Text,
+    functions: Text,
+    types: Text,
+    env: Text,
+    cursor: Int,
+    counters: Text
+) -> Text {
+    let at = cursor
+    let after = skip_trivia(source, token_end(source, at))
+    let statement = selfhost_counter(counters, 0)
+    let void_id = to_text(selfhost_scalar_id(types, "Void"))
+    if after < len(source) && token_text(source, after) == "=" {
+        let resolved = selfhost_resolve(env, token_text(source, at))
+        if resolved < 0 {
+            return selfhost_error("E2S35", at, "unknown lexical binding")
+        }
+        if pattern_line_field(env, resolved, 4) != "mut" {
+            return selfhost_error(
+                "E2S22",
+                at,
+                "assignment target is immutable"
+            )
+        }
+        let value = selfhost_parse_expression(
+            source,
+            functions,
+            env,
+            skip_trivia(source, token_end(source, after)),
+            0
+        )
+        if selfhost_failed(value) {
+            return value
+        }
+        let tree = selfhost_records(value)
+        let root = selfhost_field_int(value, 1)
+        if selfhost_field(value, 3) != pattern_line_field(env, resolved, 2) {
+            return selfhost_error(
+                "E2S15",
+                selfhost_tree_int(tree, root, 3),
+                "assignment type mismatch"
+            )
+        }
+        let emitted = selfhost_emit_expression(
+            source,
+            types,
+            tree,
+            root,
+            statement + 1
+        )
+        return selfhost_statement_result(
+            selfhost_field_int(value, 0),
+            selfhost_counters(
+                selfhost_field_int(emitted, 0),
+                selfhost_counter(counters, 1),
+                selfhost_counter(counters, 2),
+                selfhost_counter(counters, 3)
+            ),
+            statement,
+            "",
+            "node|" + to_text(statement) + "|assign|" + to_text(at) +
+            "|" + selfhost_tree_field(tree, root, 4) + "|" + void_id +
+            "|edit|" + pattern_line_field(env, resolved, 3) + "|" +
+            to_text(statement + 1) + "\n" + selfhost_records(emitted)
+        )
+    }
+    let value = selfhost_parse_expression(source, functions, env, at, 0)
+    if selfhost_failed(value) {
+        return value
+    }
+    let tree = selfhost_records(value)
+    let root = selfhost_field_int(value, 1)
+    let emitted = selfhost_emit_expression(
+        source,
+        types,
+        tree,
+        root,
+        statement + 1
+    )
+    return selfhost_statement_result(
+        selfhost_field_int(value, 0),
+        selfhost_counters(
+            selfhost_field_int(emitted, 0),
+            selfhost_counter(counters, 1),
+            selfhost_counter(counters, 2),
+            selfhost_counter(counters, 3)
+        ),
+        statement,
+        "",
+        "node|" + to_text(statement) + "|expr-stmt|" + to_text(at) + "|" +
+        selfhost_tree_field(tree, root, 4) + "|" + void_id + "|copy|" +
+        to_text(statement + 1) + "\n" + selfhost_records(emitted)
+    )
+}
+
+fn selfhost_statement(
+    source: Text,
+    functions: Text,
+    types: Text,
+    env: Text,
+    declared: Text,
+    cursor: Int,
+    counters: Text,
+    scope_context: Text
+) -> Text {
+    let token = token_text(source, cursor)
+    if token == "let" {
+        return selfhost_let_statement(
+            source,
+            functions,
+            types,
+            env,
+            cursor,
+            counters,
+            scope_context
+        )
+    }
+    if token == "if" || token == "while" {
+        return selfhost_branch_statement(
+            source,
+            functions,
+            types,
+            env,
+            declared,
+            cursor,
+            counters,
+            scope_context
+        )
+    }
+    if token == "for" {
+        return selfhost_for_statement(
+            source,
+            functions,
+            types,
+            env,
+            declared,
+            cursor,
+            counters,
+            scope_context
+        )
+    }
+    if token == "return" {
+        return selfhost_return_statement(
+            source,
+            functions,
+            types,
+            env,
+            declared,
+            cursor,
+            counters
+        )
+    }
+    if token_kind(source, cursor) == "identifier" {
+        return selfhost_leading_statement(
+            source,
+            functions,
+            types,
+            env,
+            cursor,
+            counters
+        )
+    }
+    return selfhost_error("E2S10", cursor, "unsupported Core statement")
+}
+
+fn selfhost_block(
+    source: Text,
+    functions: Text,
+    types: Text,
+    env: Text,
+    declared: Text,
+    cursor: Int,
+    counters: Text,
+    scope_context: Text,
+    loop_name: Int
+) -> Text {
+    if cursor >= len(source) || token_text(source, cursor) != "{" {
+        return selfhost_error("E2S18", cursor, "expected `{`")
+    }
+    let open = cursor
+    let close = balanced_end(source, open, "{", "}")
+    if close < 0 {
+        return selfhost_error("E2S18", open, "unbalanced `{`")
+    }
+    let depth = decimal_value(pattern_line_field(scope_context, 0, 1))
+    if depth >= 32 {
+        return selfhost_error(
+            "E2S35",
+            open,
+            "lexical scope depth limit is 32"
+        )
+    }
+    let scope = selfhost_counter(counters, 1)
+    let mut records = "scope|" + to_text(scope) + "|" +
+    pattern_line_field(scope_context, 0, 0) + "|block|" + to_text(open) +
+    "|" + to_text(close) + "\n"
+    let mut block_counters = selfhost_counters(
+        selfhost_counter(counters, 0),
+        scope + 1,
+        selfhost_counter(counters, 2),
+        selfhost_counter(counters, 3)
+    )
+    let mut block_env = env
+    if loop_name >= 0 {
+        if selfhost_env_count(block_env) >= 512 {
+            return selfhost_error(
+                "E2S35",
+                loop_name,
+                "lexical binding limit is 512"
+            )
+        }
+        let symbol = selfhost_counter(block_counters, 2)
+        let binding = selfhost_counter(block_counters, 3)
+        let name_text = token_text(source, loop_name)
+        records = records + selfhost_bind_records(
+            types,
+            to_text(symbol) + "|" + to_text(binding),
+            scope,
+            name_text,
+            "Int",
+            "imm",
+            "local",
+            to_text(loop_name) + "|" +
+            to_text(token_end(source, loop_name))
+        )
+        block_env = block_env + "env|" + name_text + "|Int|" +
+        to_text(binding) + "|imm\n"
+        block_counters = selfhost_counters(
+            selfhost_counter(block_counters, 0),
+            selfhost_counter(block_counters, 1),
+            symbol + 1,
+            binding + 1
+        )
+    }
+    let inner_context = to_text(scope) + "|" + to_text(depth + 1)
+    let mut walk = skip_trivia(source, token_end(source, open))
+    let mut statement_count = 0
+    while walk < len(source) && token_text(source, walk) != "}" {
+        if statement_count >= 64 {
+            return selfhost_error(
+                "E2S35",
+                walk,
+                "block statement limit is 64"
+            )
+        }
+        let statement = selfhost_statement(
+            source,
+            functions,
+            types,
+            block_env,
+            declared,
+            walk,
+            block_counters,
+            inner_context
+        )
+        if selfhost_failed(statement) {
+            return statement
+        }
+        walk = selfhost_field_int(statement, 0)
+        block_counters = selfhost_counters(
+            selfhost_field_int(statement, 1),
+            selfhost_field_int(statement, 2),
+            selfhost_field_int(statement, 3),
+            selfhost_field_int(statement, 4)
+        )
+        if len(selfhost_field(statement, 6)) > 0 {
+            block_env = block_env + "env|" + selfhost_field(statement, 6) +
+            "|" + selfhost_field(statement, 7) + "|" +
+            selfhost_field(statement, 8) + "|" +
+            selfhost_field(statement, 9) + "\n"
+        }
+        records = records + selfhost_records(statement)
+        statement_count = statement_count + 1
+    }
+    if walk >= len(source) || token_text(source, walk) != "}" {
+        return selfhost_error("E2S18", walk, "expected `}`")
+    }
+    return to_text(skip_trivia(source, token_end(source, walk))) + "|" +
+    block_counters + "|" + to_text(scope) + "\n" + records
+}
+
+fn selfhost_first_line(value: Text) -> Text {
+    let symbols = chars(value)
+    let mut cursor = 0
+    while cursor < len(symbols) && symbols[cursor] != "\n" {
+        cursor = cursor + 1
+    }
+    return text_slice(value, 0, cursor)
+}
+
+# Collect the record lines carrying one tag, in generation order.
+fn selfhost_lines(records: Text, tag: Text) -> Text {
+    let symbols = chars(records)
+    let mut collected = ""
+    let mut line = 0
+    while line < len(symbols) {
+        let mut line_end = line
+        while line_end < len(symbols) && symbols[line_end] != "\n" {
+            line_end = line_end + 1
+        }
+        if line + len(tag) <= line_end &&
+           text_slice(records, line, line + len(tag)) == tag {
+            collected = collected + text_slice(records, line, line_end) +
+            "\n"
+        }
+        line = line_end + 1
+    }
+    return collected
+}
+
+fn selfhost_node_lines(records: Text) -> Text {
+    let symbols = chars(records)
+    let mut collected = ""
+    let mut line = 0
+    while line < len(symbols) {
+        let mut line_end = line
+        while line_end < len(symbols) && symbols[line_end] != "\n" {
+            line_end = line_end + 1
+        }
+        let mut keep = line + 5 <= line_end &&
+        text_slice(records, line, line + 5) == "node|"
+        if line + 9 <= line_end &&
+           text_slice(records, line, line + 9) == "function|" {
+            keep = true
+        }
+        if keep {
+            collected = collected + text_slice(records, line, line_end) +
+            "\n"
+        }
+        line = line_end + 1
+    }
+    return collected
+}
+
+# One function's scope, parameter bindings, and typed body: the function
+# scope record, `parameter` symbol/binding pairs, the `function` node
+# record, and the body's records. Packs the advanced counters.
+fn selfhost_function_hir(
+    source: Text,
+    functions: Text,
+    types: Text,
+    index: Int,
+    function_start: Int,
+    counters: Text
+) -> Text {
+    let function_close = function_end(source, function_start)
+    let parameters = parameter_open(source, function_start)
+    let parameters_close = balanced_end(source, parameters, "(", ")")
+    let function_scope = selfhost_counter(counters, 1)
+    let mut records = "scope|" + to_text(function_scope) +
+    "|0|function|" + to_text(parameters) + "|" +
+    to_text(function_close) + "\n"
+    let line = selfhost_function_line_at(functions, index)
+    let mut symbol = selfhost_counter(counters, 2)
+    let mut binding = selfhost_counter(counters, 3)
+    let mut env = ""
+    let mut cursor = skip_trivia(source, token_end(source, parameters))
+    let mut parameter_index = 0
+    while cursor < parameters_close && token_text(source, cursor) != ")" {
+        if selfhost_env_count(env) >= 512 {
+            return selfhost_error(
+                "E2S35",
+                cursor,
+                "lexical binding limit is 512"
+            )
+        }
+        let surface = pattern_line_field(
+            functions,
+            line,
+            4 + parameter_index
+        )
+        let name_text = token_text(source, cursor)
+        records = records + selfhost_bind_records(
+            types,
+            to_text(symbol) + "|" + to_text(binding),
+            function_scope,
+            name_text,
+            surface,
+            "imm",
+            "parameter",
+            to_text(cursor) + "|" + to_text(token_end(source, cursor))
+        )
+        env = env + "env|" + name_text + "|" + surface + "|" +
+        to_text(binding) + "|imm\n"
+        symbol = symbol + 1
+        binding = binding + 1
+        let colon = skip_trivia(source, token_end(source, cursor))
+        let type_at = skip_trivia(source, token_end(source, colon))
+        cursor = skip_trivia(source, token_end(source, type_at))
+        if surface == "List" {
+            cursor = skip_trivia(source, token_end(source, cursor))
+            cursor = skip_trivia(source, token_end(source, cursor))
+        }
+        parameter_index = parameter_index + 1
+        if cursor < parameters_close && token_text(source, cursor) == "," {
+            cursor = skip_trivia(source, token_end(source, cursor))
+        }
+    }
+    let mut body_at = skip_trivia(source, parameters_close)
+    while body_at < function_close && token_text(source, body_at) != "{" {
+        body_at = skip_trivia(source, token_end(source, body_at))
+    }
+    let function_node = selfhost_counter(counters, 0)
+    let body = selfhost_block(
+        source,
+        functions,
+        types,
+        env,
+        pattern_line_field(functions, line, 2),
+        body_at,
+        selfhost_counters(
+            function_node + 1,
+            function_scope + 1,
+            symbol,
+            binding
+        ),
+        to_text(function_scope) + "|2",
+        -1
+    )
+    if selfhost_failed(body) {
+        return body
+    }
+    return selfhost_counters(
+        selfhost_field_int(body, 1),
+        selfhost_field_int(body, 2),
+        selfhost_field_int(body, 3),
+        selfhost_field_int(body, 4)
+    ) + "\n" + records + "function|" + to_text(function_node) + "|" +
+    to_text(index) + "|" + to_text(function_scope) + "|" +
+    to_text(function_start) + "|" + to_text(function_close) + "\n" +
+    selfhost_records(body)
+}
+
+# Walk every declared function in source order, threading the document
+# counters: nodes from 0, scopes after the module scope, symbols and
+# bindings after the registered functions and builtins.
+fn selfhost_functions_hir(
+    source: Text,
+    functions: Text,
+    types: Text
+) -> Text {
+    let count = selfhost_function_count(functions)
+    let mut counters = selfhost_counters(0, 1, count + 17, count)
+    let mut records = ""
+    let mut function_start = next_function_start(source, 0)
+    let mut index = 0
+    while index < count {
+        let one = selfhost_function_hir(
+            source,
+            functions,
+            types,
+            index,
+            function_start,
+            counters
+        )
+        if selfhost_failed(one) {
+            return one
+        }
+        counters = selfhost_first_line(one)
+        records = records + selfhost_records(one)
+        let function_close = function_end(source, function_start)
+        if function_close >= 0 {
+            function_start = next_function_start(source, function_close)
+        } else {
+            index = count
+        }
+        index = index + 1
+    }
+    return "ok\n" + records
+}
+
+# Produce the whole kofun.selfhost-hir/v1 document. The first line of the
+# result is `complete` or `rejected`; a rejected result carries the
+# diagnostic line to print before the document itself.
+fn selfhost_document(source: Text, path: Text, digest: Text) -> Text {
+    let header = "schema|kofun.selfhost-hir/v1\n" + "source|" + path +
+    "|" + digest + "\n"
+    let mut failure = ""
+    let mut functions = ""
+    let mut registered = ""
+    let mut types = ""
+    let mut hir = ""
+    if next_function_start(source, 0) >= len(source) {
+        failure = selfhost_error("E2S04", 0, "source declares no functions")
+    }
+    if len(failure) == 0 {
+        let signatures = selfhost_signatures(source)
+        if selfhost_failed(signatures) {
+            failure = signatures
+        } else {
+            functions = selfhost_records(signatures)
+        }
+    }
+    if len(failure) == 0 {
+        let registration = selfhost_register(source, functions)
+        if selfhost_failed(registration) {
+            failure = registration
+        } else {
+            registered = selfhost_records(registration)
+        }
+    }
+    if len(failure) == 0 {
+        types = selfhost_lines(registered, "type|")
+        let walked = selfhost_functions_hir(source, functions, types)
+        if selfhost_failed(walked) {
+            failure = walked
+        } else {
+            hir = selfhost_records(walked)
+        }
+    }
+    if len(failure) == 0 {
+        return "complete\n" + header + "status|complete\n" + types +
+        "scope|0|0|module|0|" + to_text(len(source)) + "\n" +
+        selfhost_lines(hir, "scope|") +
+        selfhost_lines(registered, "symbol|") +
+        selfhost_lines(hir, "symbol|") +
+        selfhost_lines(registered, "binding|") +
+        selfhost_lines(hir, "binding|") +
+        selfhost_node_lines(hir)
+    }
+    let code = pattern_line_field(failure, 0, 1)
+    let at = decimal_value(pattern_line_field(failure, 0, 2))
+    let message = pattern_line_field(failure, 0, 3)
+    let mut printed = "error[" + code + "]: " + message
+    if at >= 0 {
+        printed = printed + " at byte " + to_text(at)
+    }
+    let mut clamped = at
+    if clamped < 0 {
+        clamped = 0
+    }
+    let mut span_end = clamped
+    if clamped < len(source) {
+        span_end = token_end(source, clamped)
+    }
+    let mut document = header + "status|rejected\n" + "diagnostic|" +
+    code + "|" + to_text(clamped) + "|" + to_text(span_end) + "|" +
+    selfhost_escape(message) + "\n"
+    if code == "E2S10" {
+        document = document + "unsupported|" + to_text(clamped) + "|" +
+        to_text(span_end) + "|statement\n"
+    }
+    return "rejected\n" + printed + "\n" + document
+}
+
+fn selfhost_valid_digest(digest: Text) -> Bool {
+    let symbols = chars(digest)
+    if len(symbols) != 64 {
+        return false
+    }
+    let mut cursor = 0
+    while cursor < 64 {
+        if !contains("0123456789abcdef", symbols[cursor]) {
+            return false
+        }
+        cursor = cursor + 1
+    }
+    return true
+}
+
+fn emit_selfhost_hir_file(
+    input_path: Text,
+    output_path: Text,
+    digest: Text
+) -> Int {
+    if input_path == output_path {
+        print("error[E2S35]: selfhost-HIR input and output must be distinct")
+        return 2
+    }
+    if !selfhost_valid_digest(digest) {
+        print("error[E2S35]: selfhost-HIR digest must be 64 lowercase hex")
+        return 2
+    }
+    let source = read_text(input_path)
+    let tokens = lex(source)
+    if starts_with(tokens, "error[") {
+        print(tokens)
+        return 1
+    }
+    let result = selfhost_document(source, input_path, digest)
+    if starts_with(result, "complete\n") {
+        write_text(output_path, selfhost_records(result))
+        return 0
+    }
+    let rejected = selfhost_records(result)
+    print(selfhost_first_line(rejected))
+    write_text(output_path, pattern_result_records(rejected))
+    return 1
+}
+
 fn main() -> Int {
     let arguments = args()
     if len(arguments) == 5 && arguments[0] == "--compile-outcome" {
@@ -5177,13 +7429,21 @@ fn main() -> Int {
         }
         return 0
     }
+    if len(arguments) == 4 && arguments[0] == "--emit-selfhost-hir" {
+        return emit_selfhost_hir_file(
+            arguments[1],
+            arguments[2],
+            arguments[3]
+        )
+    }
     if len(arguments) != 4 {
         print(
             "usage: kofun-stage2 INPUT.kofun OUTPUT.kofun OUTPUT.ir OUTPUT.tokens\n" +
             "       kofun-stage2 --compile-outcome INPUT.kofun OUTPUT.c OUTPUT.ir OUTPUT.tokens\n" +
             "       kofun-stage2 --check-ownership INPUT.kofun\n" +
             "       kofun-stage2 --parse-patterns INPUT.kofun OUTPUT.patterns\n" +
-            "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir"
+            "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir\n" +
+            "       kofun-stage2 --emit-selfhost-hir INPUT.kofun OUTPUT.hir SOURCE-SHA256"
         )
         return 2
     }

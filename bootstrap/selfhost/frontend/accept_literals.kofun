@@ -1,0 +1,13 @@
+fn main() {
+    let count = 42
+    let flag = true
+    let off = false
+    let title = "profile"
+    let escaped = "line\nbreak\\and|pipe"
+    if flag && count > 0 {
+        print(title)
+    }
+    if !off {
+        print(escaped)
+    }
+}

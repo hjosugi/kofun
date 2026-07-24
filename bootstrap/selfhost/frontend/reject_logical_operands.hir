@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_logical_operands.kofun|85ef58e0e26ce23da9989a89c7f26271153ded832e3e9a8b3fc50d939b9bd4d6
+status|rejected
+diagnostic|E2S15|28|30|logical operands must be Bool

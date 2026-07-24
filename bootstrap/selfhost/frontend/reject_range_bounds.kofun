@@ -1,0 +1,5 @@
+fn main() {
+    for step in "a" .. "z" {
+        print(step)
+    }
+}

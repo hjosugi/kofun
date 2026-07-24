@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_arithmetic_operands.kofun|d3b91ccbb8f8b0854fbe46783b068836753f5881cdb49621e30a4218cf10b35d
+status|rejected
+diagnostic|E2S15|30|31|arithmetic operands must be Int

@@ -30,10 +30,11 @@ one implementation step:
 sh bootstrap/selfhost/check-profile.sh --phase frontend
 ```
 
-The frontend phase gate is red by design until every profile row's frontend
-cell carries checked-in evidence; it lists each pending cell explicitly and
-becomes the #619 acceptance check. The default invocation (used by
-`make verify`) stays green while evidence is still planned.
+The frontend phase gate fails whenever any profile row's frontend cell
+lacks checked-in evidence, listing each pending cell explicitly; it is the
+#619 acceptance check. Since #654 landed the canonical-source port of the
+typed-HIR emitter and per-family fixtures, all 46 frontend cells carry
+evidence in `frontend/` and the gate runs green inside `make verify`.
 
 ## What the status columns mean
 

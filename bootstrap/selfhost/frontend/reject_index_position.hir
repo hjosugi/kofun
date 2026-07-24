@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_index_position.kofun|5b3af3557b7cb3201dc7519bcc5d4c2bc1082fbb505b0362cb8a68a58f6dbd83
+status|rejected
+diagnostic|E2S15|33|37|index must be Int

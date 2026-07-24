@@ -1,0 +1,4 @@
+fn main() {
+    let mut value = 1
+    value = "one"
+}

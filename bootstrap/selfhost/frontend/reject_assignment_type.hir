@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_assignment_type.kofun|8e3ec5d3ec8538bbe27250d2513f585e70fa5306f9a1d88af838d48700fb90ff
+status|rejected
+diagnostic|E2S15|46|51|assignment type mismatch

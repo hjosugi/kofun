@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_call_argument.kofun|6e7eceb77e0dab45d4ef70343430ce59695977a0493679430324a39617e582bc
+status|rejected
+diagnostic|E2S15|92|97|call argument type mismatch

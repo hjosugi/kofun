@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_concatenation.kofun|3a4ced7b298b0fa4c0bb3c67a36fa0987cdfd0c65b81ee6c23251bd5e1d1775a
+status|rejected
+diagnostic|E2S15|30|31|Text `+` expects Text

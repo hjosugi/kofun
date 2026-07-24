@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_range_bounds.kofun|47e699bb57c593fe710824fe645d4000ae46ceebef6b326dff304c1e23082f3d
+status|rejected
+diagnostic|E2S15|28|31|range bounds must be Int

@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_unbalanced_body.kofun|3c72664310c9cc018d38e9af74ceaad4572dbd6d9dabde0d12984e0f1cba17fb
+status|rejected
+diagnostic|E2S18|10|11|unbalanced `{`

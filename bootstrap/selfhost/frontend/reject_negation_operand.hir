@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_negation_operand.kofun|5ffda267d273a6e492e5a261099b290804658c9e75ea93e8956b50014fa5af32
+status|rejected
+diagnostic|E2S15|27|28|`!` expects Bool

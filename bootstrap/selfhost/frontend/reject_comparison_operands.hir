@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_comparison_operands.kofun|fc99590a49ef39b08593a65dad3d07b70cb0042298e54935252a1b02ede8afdc
+status|rejected
+diagnostic|E2S15|28|30|comparison operands must share a scalar type

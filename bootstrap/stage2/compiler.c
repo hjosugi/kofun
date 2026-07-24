@@ -9118,10 +9118,11 @@ static char *emit_selfhost_hir_document(
     }
     while (sh.error == NULL && function_start < sh.length) {
         if (!sh_parse_signature(&sh, function_start)) break;
-        function_start = next_function_start(
-            source,
-            function_end(source, function_start)
-        );
+        /* A declaration whose body never closes ends the walk; its body
+         * parse reports the exact brace diagnostic later. */
+        int64_t signature_close = function_end(source, function_start);
+        if (signature_close < 0) break;
+        function_start = next_function_start(source, signature_close);
     }
 
     /* Function symbols and module bindings, in source order. */
@@ -9164,10 +9165,9 @@ static char *emit_selfhost_hir_document(
             name_at,
             name_end
         );
-        function_start = next_function_start(
-            source,
-            function_end(source, function_start)
-        );
+        int64_t symbol_close = function_end(source, function_start);
+        if (symbol_close < 0) break;
+        function_start = next_function_start(source, symbol_close);
     }
 
     /* The 16 builtin symbols plus the len List[Text] overload. */
@@ -9332,6 +9332,7 @@ static char *emit_selfhost_hir_document(
             sh_free_block(body);
         }
         sh_scope_close(&sh, saved_env);
+        if (function_close < 0) break;
         function_start = next_function_start(source, function_close);
     }
 

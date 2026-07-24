@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_out_of_scope.kofun|a63f326e8915af4a1322dffe38f982342136dbc5e4422ccea9cd804c583d83ef
+status|rejected
+diagnostic|E2S35|93|99|unknown lexical binding

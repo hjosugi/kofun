@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_index_base.kofun|87684a0ca3f7b687885c11c45092a6bceb5f93735a87d4d7b3eed06f294831be
+status|rejected
+diagnostic|E2S15|51|52|only List[Text] can be indexed

@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_builtin_arity.kofun|e317f39592d15ed679d51f5dada887548886a8f434a3d4ac19f0527c7e57dd71
+status|rejected
+diagnostic|E2S17|26|30|wrong builtin arity

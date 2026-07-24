@@ -1,0 +1,11 @@
+fn main() -> Int {
+    let arguments = args()
+    let mut input_path = "input.txt"
+    if len(arguments) > 1 {
+        input_path = arguments[1]
+    }
+    let payload = read_text(input_path)
+    write_text("copy.txt", payload)
+    print(payload)
+    return 0
+}

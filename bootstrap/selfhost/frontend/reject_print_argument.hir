@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_print_argument.kofun|b4e87c934d8d72daa7d2973bff424c2708766b89e68d7162a541c0dafa13e199
+status|rejected
+diagnostic|E2S15|22|23|print expects Text in the profile
