@@ -1,15 +1,14 @@
 {
   "schema": "kofun.docs-status/v1",
   "repository": "hjosugi/kofun",
-  "source_commit": "25a97098f3f06b6132ab61544261209ad84d42eb",
-  "reviewed_at": "2026-07-24T12:46:58.000Z",
+  "source_commit": "57d0c38db01303f7c62f527304ed1bad029fbaf8",
   "issues": [
     {
       "number": 650,
       "title": "GitHub Pages documentation site: publish a curated, honest docs site from docs/",
       "state": "open",
-      "workflow": "needs-detail",
-      "updated_at": "2026-07-24T12:30:36Z",
+      "workflow": "in-progress",
+      "updated_at": "2026-07-24T13:07:59Z",
       "url": "https://github.com/hjosugi/kofun/issues/650"
     },
     {
@@ -36,5 +35,6 @@
       "updated_at": "2026-07-24T12:26:54Z",
       "url": "https://github.com/hjosugi/kofun/issues/668"
     }
-  ]
+  ],
+  "reviewed_at": "2026-07-24T13:09:18.266Z"
 }
