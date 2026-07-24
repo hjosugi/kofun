@@ -776,13 +776,59 @@ expect_function_text_rejection \
     function_text_file_operation \
     'unknown native Core function `read_text`'
 
-set +e
+# AArch64 parity (issue #623): the same Text helper now lowers to a direct
+# AArch64 ELF with the shared Text ABI. Build twice for determinism, audit the
+# static image, and run the qemu differential against the pinned observation
+# when the emulator is available; otherwise skip execution but still audit.
 "$KOFUN" build "$FUNCTION_TEXT_SOURCE" \
     --target aarch64-linux \
-    -o "$WORK/function-text-aarch64.elf" \
-    >"$WORK/function-text-aarch64.stdout" \
-    2>"$WORK/function-text-aarch64.stderr"
-function_text_aarch64_status=$?
+    -o "$WORK/function-text-aarch64.elf" >/dev/null
+"$KOFUN" build "$FUNCTION_TEXT_SOURCE" \
+    --target aarch64-linux \
+    -o "$WORK/function-text-aarch64.second.elf" >/dev/null
+cmp \
+    "$WORK/function-text-aarch64.elf" \
+    "$WORK/function-text-aarch64.second.elf"
+"$KOFUN" build "$FUNCTION_TEXT_UTF8_SOURCE" \
+    --target aarch64-linux \
+    -o "$WORK/function-text-utf8-aarch64.elf" >/dev/null
+
+readelf -h "$WORK/function-text-aarch64.elf" \
+    >"$WORK/function-text-aarch64.header"
+readelf -l "$WORK/function-text-aarch64.elf" \
+    >"$WORK/function-text-aarch64.program-headers"
+grep -Eq 'Machine:[[:space:]]+AArch64' \
+    "$WORK/function-text-aarch64.header"
+test "$(grep -c 'LOAD' \
+    "$WORK/function-text-aarch64.program-headers")" -eq 2
+! grep -Eq 'INTERP|DYNAMIC' \
+    "$WORK/function-text-aarch64.program-headers"
+
+if test -n "$AARCH64_RUNNER"; then
+    chmod +x "$WORK/function-text-aarch64.elf" \
+        "$WORK/function-text-utf8-aarch64.elf"
+    "$AARCH64_RUNNER" "$WORK/function-text-aarch64.elf" \
+        >"$WORK/function-text-aarch64.stdout" \
+        2>"$WORK/function-text-aarch64.stderr"
+    cmp \
+        "$NATIVE/fixtures/function_text_helper.stdout" \
+        "$WORK/function-text-aarch64.stdout"
+    test ! -s "$WORK/function-text-aarch64.stderr"
+    "$AARCH64_RUNNER" "$WORK/function-text-utf8-aarch64.elf" \
+        >"$WORK/function-text-utf8-aarch64.stdout" \
+        2>"$WORK/function-text-utf8-aarch64.stderr"
+    cmp \
+        "$NATIVE/fixtures/function_text_helper_utf8.stdout" \
+        "$WORK/function-text-utf8-aarch64.stdout"
+    test ! -s "$WORK/function-text-utf8-aarch64.stderr"
+    printf '%s\n' \
+        "PASS: function Text AArch64 differential under qemu-aarch64"
+else
+    printf '%s\n' \
+        "SKIP: function Text AArch64 execution (qemu-aarch64 unavailable)"
+fi
+
+set +e
 (
     ulimit -v 512
     exec "$WORK/function-text-direct.elf"
@@ -790,11 +836,6 @@ function_text_aarch64_status=$?
     2>"$WORK/function-text-oom.stderr"
 function_text_oom_status=$?
 set -e
-test "$function_text_aarch64_status" -eq 1
-test ! -e "$WORK/function-text-aarch64.elf"
-grep -F \
-    'AArch64 function Core does not support Text parameters or results yet' \
-    "$WORK/function-text-aarch64.stderr" >/dev/null
 test "$function_text_oom_status" -eq 70
 test ! -s "$WORK/function-text-oom.stdout"
 printf 'kofun: out of memory\n' >"$WORK/function-text-oom.expected"
