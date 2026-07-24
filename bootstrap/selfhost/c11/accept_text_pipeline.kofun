@@ -1,0 +1,40 @@
+fn shout(line: Text, excited: Bool) -> Text {
+    if excited {
+        return line + "!"
+    }
+    return line
+}
+
+fn classify(value: Int) -> Text {
+    if value < 0 {
+        return "negative"
+    } else if value == 0 {
+        return "zero"
+    } else {
+        return "positive"
+    }
+    return "unreachable"
+}
+
+fn note(flag: Bool) {
+    if flag {
+        return
+    }
+    return
+}
+
+fn main() -> Int {
+    note(is_space(" "))
+    let banner = shout(trim("  kofun  "), true)
+    let sliced = text_slice(banner, 0, len(banner) - 1)
+    let swapped = replace("a|b\nc", "|", "-")
+    if contains(banner, "kofun") && starts_with(banner, "ko") ||
+       !is_digit("x") {
+        let report = classify(find(banner, "fun") - 2)
+        let checked = validate_unicode_source(swapped)
+        if checked == "" && is_xid_continue("k") {
+            return len(report + sliced) - len(banner) - 4
+        }
+    }
+    return 9
+}

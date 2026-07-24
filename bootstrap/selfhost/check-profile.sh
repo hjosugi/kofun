@@ -34,8 +34,8 @@ while test "$#" -gt 0; do
     esac
 done
 case $phase in
-    ''|frontend) ;;
-    *) fail "unknown phase: $phase (supported: frontend)" ;;
+    ''|frontend|c11-text) ;;
+    *) fail "unknown phase: $phase (supported: frontend, c11-text)" ;;
 esac
 
 meta_value() {
@@ -243,4 +243,28 @@ if test "$phase" = frontend; then
     fi
     printf '%s\n' \
         "PASS: all $total_count frontend cells carry checked-in typed-HIR evidence"
+fi
+
+# The c11-text gate is the #620 completion check: every c11 cell owned by
+# the non-looping Text/function slice carries checked-in evidence; cells
+# owned by #621/#622 stay planned until their own phases.
+if test "$phase" = c11-text; then
+    awk -F '|' '
+        NR == 1 { next }
+        $5 == "planned:#620" {
+            printf "PENDING: %s|%s c11 %s\n", $1, $2, $5
+        }
+    ' "$profile" > "$tmp_dir/c11-pending"
+    pending_count=$(wc -l < "$tmp_dir/c11-pending" | tr -d ' ')
+    owned_count=$(awk -F '|' '
+        NR > 1 && ($5 == "planned:#620" ||
+                   $5 ~ /^bootstrap\/selfhost\/c11\//) { count += 1 }
+        END { print count + 0 }
+    ' "$profile")
+    if test "$pending_count" -gt 0; then
+        cat "$tmp_dir/c11-pending"
+        fail "$pending_count of $owned_count Text-slice c11 cells still await #620 evidence"
+    fi
+    printf '%s\n' \
+        "PASS: all $owned_count Text-slice c11 cells carry checked-in C11 evidence"
 fi

@@ -28,6 +28,7 @@ one implementation step:
 
 ```sh
 sh bootstrap/selfhost/check-profile.sh --phase frontend
+sh bootstrap/selfhost/check-profile.sh --phase c11-text
 ```
 
 The frontend phase gate fails whenever any profile row's frontend cell
@@ -35,6 +36,9 @@ lacks checked-in evidence, listing each pending cell explicitly; it is the
 #619 acceptance check. Since #654 landed the canonical-source port of the
 typed-HIR emitter and per-family fixtures, all 46 frontend cells carry
 evidence in `frontend/` and the gate runs green inside `make verify`.
+The c11-text gate is the matching #620 completion check: the 31 c11
+cells owned by the non-looping Text/function slice carry evidence in
+`c11/`, while cells owned by #621/#622 stay planned until their phases.
 
 ## What the status columns mean
 

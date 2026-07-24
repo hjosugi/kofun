@@ -1,0 +1,9 @@
+fn broken(flag: Bool) -> Int {
+    if flag {
+        return 1
+    }
+}
+
+fn main() -> Int {
+    return broken(true)
+}

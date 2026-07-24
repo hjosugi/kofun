@@ -1,0 +1,15 @@
+fn main() -> Int {
+    let word = "kofun"
+    let clamped = text_slice(word, 0 - 3, 99)
+    let empty = text_slice(word, 4, 1)
+    let same = replace(word, "", "xx")
+    let missing = find(word, "zzz")
+    let wide = is_digit("12")
+    let spaced = trim("   ")
+    if len(clamped) == 5 && len(empty) == 0 && same == word &&
+       missing == 0 - 1 && !wide && spaced == "" &&
+       is_space("\n") && !is_space("ab") {
+        return 0
+    }
+    return 7
+}

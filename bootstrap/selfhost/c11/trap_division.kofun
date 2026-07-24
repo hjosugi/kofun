@@ -1,0 +1,8 @@
+fn halve(top: Int, bottom: Int) -> Int {
+    return top // bottom
+}
+
+fn main() -> Int {
+    let poison = len("")
+    return halve(9, poison)
+}
