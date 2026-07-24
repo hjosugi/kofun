@@ -1,0 +1,96 @@
+name: Hourly docs monitor
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: hourly-docs-monitor
+  cancel-in-progress: false
+
+jobs:
+  synchronize:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.sync.outputs.changed }}
+    steps:
+      - name: Check out documentation source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: agent/docs-site
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Synchronize tracker snapshot
+        id: sync
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          npm run sync:status
+          if git diff --quiet -- \
+            app/docs/status-snapshot.json \
+            docs/ISSUE_PROGRESS.md
+          then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No tracker or main-commit changes." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Tracker snapshot changed; validating and publishing." \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Set up Pages
+        if: steps.sync.outputs.changed == 'true'
+        id: pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - name: Verify changed documentation and Pages export
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          KOFUN_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+        run: npm run verify:pages
+      - name: Commit synchronized documentation
+        if: steps.sync.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            app/docs/status-snapshot.json \
+            docs/ISSUE_PROGRESS.md
+          git commit -m "Update issue progress snapshot"
+          git push origin HEAD:agent/docs-site
+      - name: Upload changed Pages artifact
+        if: steps.sync.outputs.changed == 'true'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: out
+      - name: Check production site
+        run: |
+          curl --fail --retry 3 --silent --show-error \
+            --output /dev/null https://hjosugi.github.io/kofun/
+          curl --fail --retry 3 --silent --show-error \
+            --output /dev/null https://hjosugi.github.io/kofun/docs/
+          curl --fail --retry 3 --silent --show-error \
+            --output /dev/null https://hjosugi.github.io/kofun/tour/
+
+  deploy:
+    if: needs.synchronize.outputs.changed == 'true'
+    needs: synchronize
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy changed documentation
+        id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
