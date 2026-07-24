@@ -124,6 +124,14 @@ behavior, and the conservative fallback remains `Int`, never a new error.
 Every one of the 49 bindings in the frozen `S` now records its true type,
 pinned in the gate.
 
+Builtin calls are additionally checked against their frozen parameter
+types (`chars(Text)`, `contains(Text, Text)`, `text_slice(Text, Int,
+Int)`, …, with `len` accepting its Text/List overload): a mismatched
+argument is a real `E2S15` naming the builtin, expected type, argument
+index, and byte, while well-typed builtin calls continue to classify as
+unsupported lowering. Text-literal arguments count correctly toward call
+arity. Value-control arguments are skipped rather than rejected.
+
 Top-level functions accept an omitted modifier, `private`, `internal`, or
 `pub`. Structural IR preserves semantic visibility, implicit versus explicit
 origin, the modifier/declaration spans, `file:0`, and a declaration-order

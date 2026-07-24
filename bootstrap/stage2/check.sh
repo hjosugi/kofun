@@ -368,7 +368,7 @@ test ! -e "$temporary/for-range-int.c"
 # 3), and only genuinely undeclared names remain invalid E2S16.
 printf 'fn main() {\n    print(len(1, 2))\n}\n' \
     >"$temporary/builtin-arity.kofun"
-printf 'fn main() {\n    print(len(1))\n}\n' \
+printf 'fn main() {\n    print(len("x"))\n}\n' \
     >"$temporary/builtin-call.kofun"
 set +e
 "$temporary/kofun-stage2" --compile-outcome \
@@ -449,6 +449,52 @@ printf '%s\n' \
     "$temporary/bool-infer.scopes"
 grep '|ok|immutable|Bool|copy|' "$temporary/bool-infer.scopes" >/dev/null
 
+# Builtin calls are checked against their frozen parameter types: a
+# mismatched argument is a real E2S15 frontend fact naming the builtin,
+# expected type, argument index, and byte; `len` accepts its Text/List
+# overload; Text-literal arguments count correctly toward arity.
+printf 'fn main() {\n    print(0)\n    chars(1)\n}\n' \
+    >"$temporary/builtin-argument.kofun"
+printf 'fn main() {\n    print(0)\n    find("a", 1)\n}\n' \
+    >"$temporary/builtin-argument-two.kofun"
+printf 'fn main() {\n    print(0)\n    contains("abc", "a")\n}\n' \
+    >"$temporary/builtin-text-args.kofun"
+set +e
+"$temporary/kofun-stage2" --compile-outcome \
+    "$temporary/builtin-argument.kofun" \
+    "$temporary/builtin-argument.c" \
+    "$temporary/builtin-argument.ir" \
+    "$temporary/builtin-argument.tokens" \
+    >"$temporary/builtin-argument.stdout" 2>/dev/null
+builtin_argument_status=$?
+"$temporary/kofun-stage2" --compile-outcome \
+    "$temporary/builtin-argument-two.kofun" \
+    "$temporary/builtin-argument-two.c" \
+    "$temporary/builtin-argument-two.ir" \
+    "$temporary/builtin-argument-two.tokens" \
+    >"$temporary/builtin-argument-two.stdout" 2>/dev/null
+builtin_argument_two_status=$?
+"$temporary/kofun-stage2" --compile-outcome \
+    "$temporary/builtin-text-args.kofun" \
+    "$temporary/builtin-text-args.c" \
+    "$temporary/builtin-text-args.ir" \
+    "$temporary/builtin-text-args.tokens" \
+    >"$temporary/builtin-text-args.stdout" 2>/dev/null
+builtin_text_args_status=$?
+set -e
+test "$builtin_argument_status" -eq 1
+grep 'error\[E2S15\]: builtin `chars` expects Text for argument 1, got Int' \
+    "$temporary/builtin-argument.stdout" >/dev/null
+test "$builtin_argument_two_status" -eq 1
+grep 'error\[E2S15\]: builtin `find` expects Text for argument 2, got Int' \
+    "$temporary/builtin-argument-two.stdout" >/dev/null
+test "$builtin_text_args_status" -eq 3
+grep 'error\[E2S10\]: unsupported Core builtin call `contains`' \
+    "$temporary/builtin-text-args.stdout" >/dev/null
+test ! -e "$temporary/builtin-argument.c"
+test ! -e "$temporary/builtin-argument-two.c"
+test ! -e "$temporary/builtin-text-args.c"
+
 echo "PASS: Stage 2 statically compiled Copy Int borrowed-return slice"
 echo "PASS: Stage 2 and kofun check rejected non-Copy Text move with E007"
 echo "PASS: Stage 2 C11 calls support recursion, arity checks, and forward references"
@@ -456,4 +502,5 @@ echo "PASS: for-range loop variables bind in the loop body lexical scope"
 echo "PASS: profile builtins are known, arity-checked, unsupported-to-lower names"
 echo "PASS: the frozen self-host S is valid source outside the bounded slice"
 echo "PASS: unannotated let bindings carry inferred scope-HIR types"
+echo "PASS: builtin calls check their frozen parameter types"
 echo "stage2 semantic frontend check passed"

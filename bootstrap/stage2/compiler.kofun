@@ -2102,9 +2102,11 @@ fn call_arity(source: Text, open: Int) -> Int {
     }
     let mut arity = 0
     while cursor < len(source) {
-        let argument_end = expression_end(source, cursor)
+        let mut argument_end = expression_end(source, cursor)
         if argument_end < 0 {
-            return -1
+            # Text-literal arguments are single tokens outside the bounded
+            # arithmetic expression grammar.
+            argument_end = token_end(source, cursor)
         }
         arity = arity + 1
         let separator = skip_trivia(source, argument_end)
@@ -2144,7 +2146,140 @@ fn builtin_arity(name: Text) -> Int {
     return 0 - 1
 }
 
-fn validate_core_calls(source: Text) -> Text {
+# Parameter types of the profile builtins, `|`-separated in order.
+# `len` accepts either Text or List (its only overload); every other
+# signature is exact.
+fn builtin_parameter_types(name: Text) -> Text {
+    if name == "args" {
+        return ""
+    }
+    if name == "chars" || name == "is_digit" || name == "is_space" ||
+       name == "is_xid_continue" || name == "read_text" || name == "trim" ||
+       name == "validate_unicode_source" {
+        return "Text"
+    }
+    if name == "len" {
+        return "TextOrList"
+    }
+    if name == "contains" || name == "find" || name == "starts_with" ||
+       name == "write_text" {
+        return "Text|Text"
+    }
+    if name == "replace" {
+        return "Text|Text|Text"
+    }
+    if name == "text_slice" {
+        return "Text|Int|Int"
+    }
+    return "none"
+}
+
+# Body `{` of the function declaration that contains `position`.
+fn enclosing_function_open(source: Text, position: Int) -> Int {
+    let mut cursor = next_function_start(source, 0)
+    while cursor < len(source) {
+        let close = function_end(source, cursor)
+        if cursor <= position && position < close {
+            let parameters = parameter_open(source, cursor)
+            if parameters < 0 {
+                return 0 - 1
+            }
+            let parameters_close = balanced_end(source, parameters, "(", ")")
+            if parameters_close < 0 {
+                return 0 - 1
+            }
+            let mut open = skip_trivia(source, parameters_close)
+            while open < close && token_text(source, open) != "{" {
+                open = skip_trivia(source, token_end(source, open))
+            }
+            if open < close {
+                return open
+            }
+            return 0 - 1
+        }
+        cursor = next_function_start(source, close)
+    }
+    return 0 - 1
+}
+
+fn expected_parameter_head(parameters: Text) -> Text {
+    let separator = find(parameters, "|")
+    if separator < 0 {
+        return parameters
+    }
+    return text_slice(parameters, 0, separator)
+}
+
+fn expected_parameter_tail(parameters: Text) -> Text {
+    let separator = find(parameters, "|")
+    if separator < 0 {
+        return ""
+    }
+    return text_slice(parameters, separator + 1, len(parameters))
+}
+
+# Check one builtin call's argument types against its frozen signature.
+# Arguments whose bounded type cannot be established (value-control
+# initializers) are skipped rather than rejected. Returns an error string
+# or empty text.
+fn builtin_argument_check(
+    source: Text,
+    hir: Text,
+    name: Text,
+    call_name: Int,
+    open: Int
+) -> Text {
+    let mut parameters = builtin_parameter_types(name)
+    if parameters == "none" {
+        return ""
+    }
+    let function_open = enclosing_function_open(source, call_name)
+    if function_open < 0 {
+        return ""
+    }
+    let mut argument = skip_trivia(source, token_end(source, open))
+    let mut index = 1
+    let mut checking = true
+    while checking && argument < len(source) &&
+          token_text(source, argument) != ")" && len(parameters) > 0 {
+        let expected = expected_parameter_head(parameters)
+        if !value_control(token_text(source, argument)) {
+            let actual = initializer_type(
+                source,
+                hir,
+                function_open,
+                argument
+            )
+            let mut matches = actual == expected
+            if expected == "TextOrList" {
+                matches = actual == "Text" || actual == "List"
+            }
+            if !matches {
+                return "error[E2S15]: builtin `" + name + "` expects " +
+                expected + " for argument " + to_text(index) + ", got " +
+                actual + " at byte " + to_text(argument)
+            }
+        }
+        let mut argument_end = expression_end(source, argument)
+        if argument_end < 0 {
+            # Text-literal arguments are single tokens outside the bounded
+            # arithmetic expression grammar.
+            argument_end = token_end(source, argument)
+        }
+        let separator = skip_trivia(source, argument_end)
+        if separator >= len(source) ||
+           token_text(source, separator) != "," {
+            checking = false
+        } else {
+            argument = skip_trivia(source, token_end(source, separator))
+            parameters = expected_parameter_tail(parameters)
+            index = index + 1
+        }
+    }
+    return ""
+}
+
+fn validate_core_calls(source: Text, hir: Text) -> Text {
     let mut cursor = next_function_start(source, 0)
     let mut previous = ""
     while cursor < len(source) {
@@ -2170,6 +2305,16 @@ fn validate_core_calls(source: Text) -> Text {
                         "` expects " + to_text(builtin_expected) +
                         " arguments, got " + to_text(builtin_actual) +
                         " at byte " + to_text(cursor)
+                    }
+                    let argument_error = builtin_argument_check(
+                        source,
+                        hir,
+                        name,
+                        cursor,
+                        open
+                    )
+                    if len(argument_error) > 0 {
+                        return argument_error
                     }
                     return "error[E2S10]: unsupported Core builtin call `" +
                     name + "` at byte " + to_text(cursor)
@@ -4646,7 +4791,7 @@ fn lower_c(source: Text, hir: Text) -> Text {
     if starts_with(enum_use_check, "error[") {
         return enum_use_check
     }
-    let call_check = validate_core_calls(source)
+    let call_check = validate_core_calls(source, hir)
     if starts_with(call_check, "error[") {
         return call_check
     }
