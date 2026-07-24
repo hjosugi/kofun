@@ -1,0 +1,7 @@
+fn wrong() -> Text {
+    return 1
+}
+
+fn main() {
+    print(wrong())
+}

@@ -1,0 +1,1119 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/stage1/compiler.kofun|40e00b91afc5303ed24e1bea74baeca4ed4a346f5022526a67233d984761c5ee
+status|complete
+type|0|bool
+type|1|text
+type|2|fn|0|1
+type|3|fn|1|1
+type|4|fn|0|1|1
+type|5|void
+type|6|fn|5
+type|7|list-text
+type|8|fn|7
+type|9|fn|7|1
+type|10|int
+type|11|fn|10|1|1
+type|12|fn|10|1
+type|13|fn|5|1
+type|14|fn|1|1|1|1
+type|15|fn|1|1|10|10
+type|16|fn|5|1|1
+type|17|fn|10|7
+scope|0|0|module|0|14615
+scope|1|0|function|337|473
+scope|2|1|block|358|473
+scope|3|0|function|488|760
+scope|4|3|block|509|760
+scope|5|4|block|590|618
+scope|6|4|block|654|742
+scope|7|6|block|700|736
+scope|8|0|function|781|1378
+scope|9|8|block|808|1378
+scope|10|9|block|871|899
+scope|11|9|block|958|1354
+scope|12|11|block|1111|1147
+scope|13|11|block|1173|1214
+scope|14|11|block|1237|1348
+scope|15|14|block|1294|1338
+scope|16|0|function|1399|2023
+scope|17|16|block|1420|2023
+scope|18|17|block|1500|1525
+scope|19|17|block|1694|2007
+scope|20|19|block|1757|1798
+scope|21|19|block|1821|1975
+scope|22|21|block|1879|1965
+scope|23|0|function|2040|2312
+scope|24|23|block|2061|2312
+scope|25|24|block|2114|2139
+scope|26|24|block|2239|2294
+scope|27|0|function|2335|2493
+scope|28|27|block|2356|2493
+scope|29|28|block|2409|2434
+scope|30|0|function|2510|4159
+scope|31|30|block|2533|4159
+scope|32|31|block|2708|4095
+scope|33|32|block|2744|4089
+scope|34|33|block|2869|2963
+scope|35|33|block|2994|3197
+scope|36|35|block|3052|3104
+scope|37|33|block|3218|3352
+scope|38|37|block|3255|3307
+scope|39|33|block|3387|3660
+scope|40|39|block|3424|3476
+scope|41|39|block|3594|3646
+scope|42|33|block|3697|3994
+scope|43|42|block|3734|3786
+scope|44|42|block|3892|3944
+scope|45|33|block|4000|4044
+scope|46|0|function|4179|5247
+scope|47|46|block|4202|5247
+scope|48|47|block|4323|5226
+scope|49|48|block|4359|5220
+scope|50|49|block|4469|4778
+scope|51|49|block|4815|5175
+scope|52|0|function|5258|13449
+scope|53|52|block|5281|13449
+scope|54|0|function|13466|14419
+scope|55|54|block|13512|14419
+scope|56|55|block|13637|13694
+scope|57|55|block|13754|13852
+scope|58|0|function|14428|14614
+scope|59|58|block|14431|14614
+scope|60|59|block|14487|14567
+symbol|0|function|identifier_char|2|322|337
+symbol|1|function|valid_name|2|478|488
+symbol|2|function|valid_expression|2|765|781
+symbol|3|function|print_expression|3|1383|1399
+symbol|4|function|binding_name|3|2028|2040
+symbol|5|function|binding_expression|3|2317|2335
+symbol|6|function|valid_source|2|2498|2510
+symbol|7|function|emit_statements|3|4164|4179
+symbol|8|function|emit_c|3|5252|5258
+symbol|9|function|compile_file|4|13454|13466
+symbol|10|function|main|6|14424|14428
+symbol|11|builtin|args|8|0|0
+symbol|12|builtin|chars|9|0|0
+symbol|13|builtin|contains|4|0|0
+symbol|14|builtin|find|11|0|0
+symbol|15|builtin|is_digit|2|0|0
+symbol|16|builtin|is_space|2|0|0
+symbol|17|builtin|is_xid_continue|2|0|0
+symbol|18|builtin|len|12|0|0
+symbol|19|builtin|print|13|0|0
+symbol|20|builtin|read_text|3|0|0
+symbol|21|builtin|replace|14|0|0
+symbol|22|builtin|starts_with|4|0|0
+symbol|23|builtin|text_slice|15|0|0
+symbol|24|builtin|trim|3|0|0
+symbol|25|builtin|validate_unicode_source|3|0|0
+symbol|26|builtin|write_text|16|0|0
+symbol|27|builtin|len|17|0|0
+symbol|28|parameter|char|1|338|342
+symbol|29|parameter|name|1|489|493
+symbol|30|local|symbols|7|519|526
+symbol|31|local|index|10|627|632
+symbol|32|parameter|expression|1|782|792
+symbol|33|local|symbols|7|818|825
+symbol|34|local|depth|10|913|918
+symbol|35|local|index|10|931|936
+symbol|36|local|symbol|1|972|978
+symbol|37|parameter|line|1|1400|1404
+symbol|38|local|marker|1|1430|1436
+symbol|39|local|start|10|1456|1461
+symbol|40|local|expression_start|10|1535|1551
+symbol|41|local|symbols|7|1582|1589
+symbol|42|local|depth|10|1616|1621
+symbol|43|local|index|10|1638|1643
+symbol|44|local|symbol|1|1708|1714
+symbol|45|parameter|line|1|2041|2045
+symbol|46|local|equals|10|2071|2077
+symbol|47|local|name|1|2148|2152
+symbol|48|local|colon|10|2197|2202
+symbol|49|parameter|line|1|2336|2340
+symbol|50|local|equals|10|2366|2372
+symbol|51|parameter|source|1|2511|2517
+symbol|52|local|symbols|7|2543|2550
+symbol|53|local|line_start|10|2579|2589
+symbol|54|local|prints|10|2606|2612
+symbol|55|local|main_headers|10|2629|2641
+symbol|56|local|body_depth|10|2658|2668
+symbol|57|local|index|10|2681|2686
+symbol|58|local|line|1|2762|2766
+symbol|59|local|expression|1|3807|3817
+symbol|60|parameter|source|1|4180|4186
+symbol|61|local|symbols|7|4212|4219
+symbol|62|local|line_start|10|4248|4258
+symbol|63|local|emitted|1|4275|4282
+symbol|64|local|index|10|4296|4301
+symbol|65|local|line|1|4377|4381
+symbol|66|local|name|1|4491|4495
+symbol|67|local|expression|1|4537|4547
+symbol|68|local|expression|1|4837|4847
+symbol|69|parameter|source|1|5259|5265
+symbol|70|parameter|input_path|1|13467|13477
+symbol|71|parameter|output_path|1|13485|13496
+symbol|72|local|input|1|13522|13527
+symbol|73|local|unicode_error|1|13560|13573
+symbol|74|local|source|1|13703|13709
+symbol|75|local|emitted|1|13865|13872
+symbol|76|local|arguments|7|14441|14450
+binding|0|0|0|identifier_char|imm|322|337
+binding|1|0|1|valid_name|imm|478|488
+binding|2|0|2|valid_expression|imm|765|781
+binding|3|0|3|print_expression|imm|1383|1399
+binding|4|0|4|binding_name|imm|2028|2040
+binding|5|0|5|binding_expression|imm|2317|2335
+binding|6|0|6|valid_source|imm|2498|2510
+binding|7|0|7|emit_statements|imm|4164|4179
+binding|8|0|8|emit_c|imm|5252|5258
+binding|9|0|9|compile_file|imm|13454|13466
+binding|10|0|10|main|imm|14424|14428
+binding|11|1|28|char|imm|338|342
+binding|12|3|29|name|imm|489|493
+binding|13|4|30|symbols|imm|519|526
+binding|14|6|31|index|imm|627|632
+binding|15|8|32|expression|imm|782|792
+binding|16|9|33|symbols|imm|818|825
+binding|17|9|34|depth|mut|913|918
+binding|18|11|35|index|imm|931|936
+binding|19|11|36|symbol|imm|972|978
+binding|20|16|37|line|imm|1400|1404
+binding|21|17|38|marker|imm|1430|1436
+binding|22|17|39|start|imm|1456|1461
+binding|23|17|40|expression_start|imm|1535|1551
+binding|24|17|41|symbols|imm|1582|1589
+binding|25|17|42|depth|mut|1616|1621
+binding|26|17|43|index|mut|1638|1643
+binding|27|19|44|symbol|imm|1708|1714
+binding|28|23|45|line|imm|2041|2045
+binding|29|24|46|equals|imm|2071|2077
+binding|30|24|47|name|imm|2148|2152
+binding|31|24|48|colon|imm|2197|2202
+binding|32|27|49|line|imm|2336|2340
+binding|33|28|50|equals|imm|2366|2372
+binding|34|30|51|source|imm|2511|2517
+binding|35|31|52|symbols|imm|2543|2550
+binding|36|31|53|line_start|mut|2579|2589
+binding|37|31|54|prints|mut|2606|2612
+binding|38|31|55|main_headers|mut|2629|2641
+binding|39|31|56|body_depth|mut|2658|2668
+binding|40|32|57|index|imm|2681|2686
+binding|41|33|58|line|imm|2762|2766
+binding|42|42|59|expression|imm|3807|3817
+binding|43|46|60|source|imm|4180|4186
+binding|44|47|61|symbols|imm|4212|4219
+binding|45|47|62|line_start|mut|4248|4258
+binding|46|47|63|emitted|mut|4275|4282
+binding|47|48|64|index|imm|4296|4301
+binding|48|49|65|line|imm|4377|4381
+binding|49|50|66|name|imm|4491|4495
+binding|50|50|67|expression|imm|4537|4547
+binding|51|51|68|expression|imm|4837|4847
+binding|52|52|69|source|imm|5259|5265
+binding|53|54|70|input_path|imm|13467|13477
+binding|54|54|71|output_path|imm|13485|13496
+binding|55|55|72|input|imm|13522|13527
+binding|56|55|73|unicode_error|imm|13560|13573
+binding|57|55|74|source|imm|13703|13709
+binding|58|55|75|emitted|mut|13865|13872
+binding|59|59|76|arguments|imm|14441|14450
+function|0|0|1|319|473
+node|1|return|364|471|5|copy|2
+node|2|binary|371|471|0|copy|\p\p|3|5
+node|3|call|371|392|0|copy|17|4
+node|4|name|387|391|1|read|11
+node|5|call|400|471|0|copy|13|6|7
+node|6|literal-text|409|464|1|read|abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_
+node|7|name|466|470|1|read|11
+function|8|1|3|475|760
+node|9|let|515|540|5|copy|13|10
+node|10|call|529|540|7|read|12|11
+node|11|name|535|539|1|read|12
+node|12|if|545|623|5|copy|13|5|none|-1
+node|13|binary|548|589|0|copy|\p\p|14|18
+node|14|binary|548|565|0|copy|==|15|17
+node|15|call|548|560|10|copy|27|16
+node|16|name|552|559|7|read|13
+node|17|literal-int|564|565|10|copy|0
+node|18|call|569|589|0|copy|15|19
+node|19|index|578|588|1|read|20|21
+node|20|name|578|585|7|read|13
+node|21|literal-int|586|587|10|copy|0
+node|22|return|600|612|5|copy|23
+node|23|literal-bool|607|612|0|copy|false
+node|24|for-range|623|747|5|copy|14|25|6
+node|25|range|636|653|10|copy|26|27
+node|26|literal-int|636|637|10|copy|0
+node|27|call|641|653|10|copy|27|28
+node|28|name|645|652|7|read|13
+node|29|if|664|741|5|copy|30|7|none|-1
+node|30|unary|667|699|0|copy|!|31
+node|31|call|668|699|0|copy|0|32
+node|32|index|684|698|1|read|33|34
+node|33|name|684|691|7|read|13
+node|34|name|692|697|10|copy|14
+node|35|return|714|726|5|copy|36
+node|36|literal-bool|721|726|0|copy|false
+node|37|return|747|758|5|copy|38
+node|38|literal-bool|754|758|0|copy|true
+function|39|2|8|762|1378
+node|40|let|814|845|5|copy|16|41
+node|41|call|828|845|7|read|12|42
+node|42|name|834|844|1|read|15
+node|43|if|850|905|5|copy|44|10|none|-1
+node|44|binary|853|870|0|copy|==|45|47
+node|45|call|853|865|10|copy|27|46
+node|46|name|857|864|7|read|16
+node|47|literal-int|869|870|10|copy|0
+node|48|return|881|893|5|copy|49
+node|49|literal-bool|888|893|0|copy|false
+node|50|let-mut|905|922|5|copy|17|51
+node|51|literal-int|921|922|10|copy|0
+node|52|for-range|927|1359|5|copy|18|53|11
+node|53|range|940|957|10|copy|54|55
+node|54|literal-int|940|941|10|copy|0
+node|55|call|945|957|10|copy|27|56
+node|56|name|949|956|7|read|16
+node|57|let|968|995|5|copy|19|58
+node|58|index|981|995|1|read|59|60
+node|59|name|981|988|7|read|16
+node|60|name|989|994|10|copy|18
+node|61|if|1004|1156|5|copy|62|12|none|-1
+node|62|unary|1007|1109|0|copy|!|63
+node|63|binary|1009|1109|0|copy|\p\p|64|69
+node|64|binary|1009|1065|0|copy|\p\p|65|67
+node|65|call|1009|1032|0|copy|0|66
+node|66|name|1025|1031|1|read|19
+node|67|call|1049|1065|0|copy|16|68
+node|68|name|1058|1064|1|read|19
+node|69|call|1082|1109|0|copy|13|70|71
+node|70|literal-text|1091|1100|1|read|+-*/%()
+node|71|name|1102|1108|1|read|19
+node|72|return|1125|1137|5|copy|73
+node|73|literal-bool|1132|1137|0|copy|false
+node|74|if|1156|1353|5|copy|75|13|if|82
+node|75|binary|1159|1172|0|copy|==|76|77
+node|76|name|1159|1165|1|read|19
+node|77|literal-text|1169|1172|1|read|(
+node|78|assign|1187|1204|5|edit|17|79
+node|79|binary|1195|1204|10|copy|+|80|81
+node|80|name|1195|1200|10|copy|17
+node|81|literal-int|1203|1204|10|copy|1
+node|82|if|1220|1353|5|copy|83|14|none|-1
+node|83|binary|1223|1236|0|copy|==|84|85
+node|84|name|1223|1229|1|read|19
+node|85|literal-text|1233|1236|1|read|)
+node|86|assign|1251|1268|5|edit|17|87
+node|87|binary|1259|1268|10|copy|-|88|89
+node|88|name|1259|1264|10|copy|17
+node|89|literal-int|1267|1268|10|copy|1
+node|90|if|1281|1347|5|copy|91|15|none|-1
+node|91|binary|1284|1293|0|copy|<|92|93
+node|92|name|1284|1289|10|copy|17
+node|93|literal-int|1292|1293|10|copy|0
+node|94|return|1312|1324|5|copy|95
+node|95|literal-bool|1319|1324|0|copy|false
+node|96|return|1359|1376|5|copy|97
+node|97|binary|1366|1376|0|copy|==|98|99
+node|98|name|1366|1371|10|copy|17
+node|99|literal-int|1375|1376|10|copy|0
+function|100|3|16|1380|2023
+node|101|let|1426|1447|5|copy|21|102
+node|102|literal-text|1439|1447|1|read|print(
+node|103|let|1452|1482|5|copy|22|104
+node|104|call|1464|1482|10|copy|14|105|106
+node|105|name|1469|1473|1|read|20
+node|106|name|1475|1481|1|read|21
+node|107|if|1487|1531|5|copy|108|18|none|-1
+node|108|binary|1490|1499|0|copy|<|109|110
+node|109|name|1490|1495|10|copy|22
+node|110|literal-int|1498|1499|10|copy|0
+node|111|return|1510|1519|5|copy|112
+node|112|literal-text|1517|1519|1|read|
+node|113|let|1531|1573|5|copy|23|114
+node|114|binary|1554|1573|10|copy|+|115|116
+node|115|name|1554|1559|10|copy|22
+node|116|call|1562|1573|10|copy|18|117
+node|117|name|1566|1572|1|read|21
+node|118|let|1578|1603|5|copy|24|119
+node|119|call|1592|1603|7|read|12|120
+node|120|name|1598|1602|1|read|20
+node|121|let-mut|1608|1625|5|copy|25|122
+node|122|literal-int|1624|1625|10|copy|1
+node|123|let-mut|1630|1662|5|copy|26|124
+node|124|name|1646|1662|10|copy|23
+node|125|while|1667|2012|5|copy|126|19
+node|126|binary|1673|1693|0|copy|<|127|128
+node|127|name|1673|1678|10|copy|26
+node|128|call|1681|1693|10|copy|27|129
+node|129|name|1685|1692|7|read|24
+node|130|let|1704|1731|5|copy|27|131
+node|131|index|1717|1731|1|read|132|133
+node|132|name|1717|1724|7|read|24
+node|133|name|1725|1730|10|copy|26
+node|134|if|1740|1984|5|copy|135|20|if|142
+node|135|binary|1743|1756|0|copy|==|136|137
+node|136|name|1743|1749|1|read|27
+node|137|literal-text|1753|1756|1|read|(
+node|138|assign|1771|1788|5|edit|25|139
+node|139|binary|1779|1788|10|copy|+|140|141
+node|140|name|1779|1784|10|copy|25
+node|141|literal-int|1787|1788|10|copy|1
+node|142|if|1804|1984|5|copy|143|21|none|-1
+node|143|binary|1807|1820|0|copy|==|144|145
+node|144|name|1807|1813|1|read|27
+node|145|literal-text|1817|1820|1|read|)
+node|146|assign|1835|1852|5|edit|25|147
+node|147|binary|1843|1852|10|copy|-|148|149
+node|148|name|1843|1848|10|copy|25
+node|149|literal-int|1851|1852|10|copy|1
+node|150|if|1865|1974|5|copy|151|22|none|-1
+node|151|binary|1868|1878|0|copy|==|152|153
+node|152|name|1868|1873|10|copy|25
+node|153|literal-int|1877|1878|10|copy|0
+node|154|return|1897|1951|5|copy|155
+node|155|call|1904|1951|1|read|24|156
+node|156|call|1909|1950|1|read|23|157|158|159
+node|157|name|1920|1924|1|read|20
+node|158|name|1926|1942|10|copy|23
+node|159|name|1944|1949|10|copy|26
+node|160|assign|1984|2001|5|edit|26|161
+node|161|binary|1992|2001|10|copy|+|162|163
+node|162|name|1992|1997|10|copy|26
+node|163|literal-int|2000|2001|10|copy|1
+node|164|return|2012|2021|5|copy|165
+node|165|literal-text|2019|2021|1|read|
+function|166|4|23|2025|2312
+node|167|let|2067|2095|5|copy|29|168
+node|168|call|2080|2095|10|copy|14|169|170
+node|169|name|2085|2089|1|read|28
+node|170|literal-text|2091|2094|1|read|=
+node|171|if|2100|2144|5|copy|172|25|none|-1
+node|172|binary|2103|2113|0|copy|<|173|174
+node|173|name|2103|2109|10|copy|29
+node|174|literal-int|2112|2113|10|copy|0
+node|175|return|2124|2133|5|copy|176
+node|176|literal-text|2131|2133|1|read|
+node|177|let|2144|2188|5|copy|30|178
+node|178|call|2155|2188|1|read|24|179
+node|179|call|2160|2187|1|read|23|180|181|182
+node|180|name|2171|2175|1|read|28
+node|181|literal-int|2177|2178|10|copy|4
+node|182|name|2180|2186|10|copy|29
+node|183|let|2193|2220|5|copy|31|184
+node|184|call|2205|2220|10|copy|14|185|186
+node|185|name|2210|2214|1|read|30
+node|186|literal-text|2216|2219|1|read|:
+node|187|if|2225|2299|5|copy|188|26|none|-1
+node|188|binary|2228|2238|0|copy|>=|189|190
+node|189|name|2228|2233|10|copy|31
+node|190|literal-int|2237|2238|10|copy|0
+node|191|return|2249|2288|5|copy|192
+node|192|call|2256|2288|1|read|24|193
+node|193|call|2261|2287|1|read|23|194|195|196
+node|194|name|2272|2276|1|read|30
+node|195|literal-int|2278|2279|10|copy|0
+node|196|name|2281|2286|10|copy|31
+node|197|return|2299|2310|5|copy|198
+node|198|name|2306|2310|1|read|30
+function|199|5|27|2314|2493
+node|200|let|2362|2390|5|copy|33|201
+node|201|call|2375|2390|10|copy|14|202|203
+node|202|name|2380|2384|1|read|32
+node|203|literal-text|2386|2389|1|read|=
+node|204|if|2395|2439|5|copy|205|29|none|-1
+node|205|binary|2398|2408|0|copy|<|206|207
+node|206|name|2398|2404|10|copy|33
+node|207|literal-int|2407|2408|10|copy|0
+node|208|return|2419|2428|5|copy|209
+node|209|literal-text|2426|2428|1|read|
+node|210|return|2439|2491|5|copy|211
+node|211|call|2446|2491|1|read|24|212
+node|212|call|2451|2490|1|read|23|213|214|217
+node|213|name|2462|2466|1|read|32
+node|214|binary|2468|2478|10|copy|+|215|216
+node|215|name|2468|2474|10|copy|33
+node|216|literal-int|2477|2478|10|copy|1
+node|217|call|2480|2489|10|copy|18|218
+node|218|name|2484|2488|1|read|32
+function|219|6|30|2495|4159
+node|220|let|2539|2566|5|copy|35|221
+node|221|call|2553|2566|7|read|12|222
+node|222|name|2559|2565|1|read|34
+node|223|let-mut|2571|2593|5|copy|36|224
+node|224|literal-int|2592|2593|10|copy|0
+node|225|let-mut|2598|2616|5|copy|37|226
+node|226|literal-int|2615|2616|10|copy|0
+node|227|let-mut|2621|2645|5|copy|38|228
+node|228|literal-int|2644|2645|10|copy|0
+node|229|let-mut|2650|2672|5|copy|39|230
+node|230|literal-int|2671|2672|10|copy|0
+node|231|for-range|2677|4100|5|copy|40|232|32
+node|232|range|2690|2707|10|copy|233|234
+node|233|literal-int|2690|2691|10|copy|0
+node|234|call|2695|2707|10|copy|27|235
+node|235|name|2699|2706|7|read|35
+node|236|if|2718|4094|5|copy|237|33|none|-1
+node|237|binary|2721|2743|0|copy|==|238|241
+node|238|index|2721|2735|1|read|239|240
+node|239|name|2721|2728|7|read|35
+node|240|name|2729|2734|10|copy|40
+node|241|literal-text|2739|2743|1|read|\n
+node|242|let|2758|2812|5|copy|41|243
+node|243|call|2769|2812|1|read|24|244
+node|244|call|2774|2811|1|read|23|245|246|247
+node|245|name|2785|2791|1|read|34
+node|246|name|2793|2803|10|copy|36
+node|247|name|2805|2810|10|copy|40
+node|248|if|2825|4057|5|copy|249|34|if|257
+node|249|binary|2828|2868|0|copy|\p\p|250|254
+node|250|binary|2828|2842|0|copy|==|251|253
+node|251|call|2828|2837|10|copy|18|252
+node|252|name|2832|2836|1|read|41
+node|253|literal-int|2841|2842|10|copy|0
+node|254|call|2846|2868|0|copy|22|255|256
+node|255|name|2858|2862|1|read|41
+node|256|literal-text|2864|2867|1|read|#
+node|257|if|2969|4057|5|copy|258|35|if|277
+node|258|binary|2972|2993|0|copy|==|259|260
+node|259|name|2972|2976|1|read|41
+node|260|literal-text|2980|2993|1|read|fn main() {
+node|261|if|3012|3121|5|copy|262|36|none|-1
+node|262|binary|3015|3051|0|copy|\p\p|263|266
+node|263|binary|3015|3032|0|copy|!=|264|265
+node|264|name|3015|3027|10|copy|38
+node|265|literal-int|3031|3032|10|copy|0
+node|266|binary|3036|3051|0|copy|!=|267|268
+node|267|name|3036|3046|10|copy|39
+node|268|literal-int|3050|3051|10|copy|0
+node|269|return|3074|3086|5|copy|270
+node|270|literal-bool|3081|3086|0|copy|false
+node|271|assign|3121|3152|5|edit|38|272
+node|272|binary|3136|3152|10|copy|+|273|274
+node|273|name|3136|3148|10|copy|38
+node|274|literal-int|3151|3152|10|copy|1
+node|275|assign|3169|3183|5|edit|39|276
+node|276|literal-int|3182|3183|10|copy|1
+node|277|if|3203|4057|5|copy|278|37|if|289
+node|278|binary|3206|3217|0|copy|==|279|280
+node|279|name|3206|3210|1|read|41
+node|280|literal-text|3214|3217|1|read|}
+node|281|if|3236|3324|5|copy|282|38|none|-1
+node|282|binary|3239|3254|0|copy|!=|283|284
+node|283|name|3239|3249|10|copy|39
+node|284|literal-int|3253|3254|10|copy|1
+node|285|return|3277|3289|5|copy|286
+node|286|literal-bool|3284|3289|0|copy|false
+node|287|assign|3324|3338|5|edit|39|288
+node|288|literal-int|3337|3338|10|copy|0
+node|289|if|3358|4057|5|copy|290|39|if|311
+node|290|call|3361|3386|0|copy|22|291|292
+node|291|name|3373|3377|1|read|41
+node|292|literal-text|3379|3385|1|read|let 
+node|293|if|3405|3493|5|copy|294|40|none|-1
+node|294|binary|3408|3423|0|copy|!=|295|296
+node|295|name|3408|3418|10|copy|39
+node|296|literal-int|3422|3423|10|copy|1
+node|297|return|3446|3458|5|copy|298
+node|298|literal-bool|3453|3458|0|copy|false
+node|299|if|3493|3659|5|copy|300|41|none|-1
+node|300|binary|3496|3593|0|copy|\p\p|301|305
+node|301|unary|3496|3527|0|copy|!|302
+node|302|call|3497|3527|0|copy|1|303
+node|303|call|3508|3526|1|read|4|304
+node|304|name|3521|3525|1|read|41
+node|305|unary|3550|3593|0|copy|!|306
+node|306|call|3551|3593|0|copy|2|307
+node|307|call|3568|3592|1|read|5|308
+node|308|name|3587|3591|1|read|41
+node|309|return|3616|3628|5|copy|310
+node|310|literal-bool|3623|3628|0|copy|false
+node|311|if|3666|4057|5|copy|312|42|block|45
+node|312|call|3669|3696|0|copy|22|313|314
+node|313|name|3681|3685|1|read|41
+node|314|literal-text|3687|3695|1|read|print(
+node|315|if|3715|3803|5|copy|316|43|none|-1
+node|316|binary|3718|3733|0|copy|!=|317|318
+node|317|name|3718|3728|10|copy|39
+node|318|literal-int|3732|3733|10|copy|1
+node|319|return|3756|3768|5|copy|320
+node|320|literal-bool|3763|3768|0|copy|false
+node|321|let|3803|3842|5|copy|42|322
+node|322|call|3820|3842|1|read|3|323
+node|323|name|3837|3841|1|read|41
+node|324|if|3859|3961|5|copy|325|44|none|-1
+node|325|unary|3862|3891|0|copy|!|326
+node|326|call|3863|3891|0|copy|2|327
+node|327|name|3880|3890|1|read|42
+node|328|return|3914|3926|5|copy|329
+node|329|literal-bool|3921|3926|0|copy|false
+node|330|assign|3961|3980|5|edit|37|331
+node|331|binary|3970|3980|10|copy|+|332|333
+node|332|name|3970|3976|10|copy|37
+node|333|literal-int|3979|3980|10|copy|1
+node|334|return|4018|4030|5|copy|335
+node|335|literal-bool|4025|4030|0|copy|false
+node|336|assign|4057|4079|5|edit|36|337
+node|337|binary|4070|4079|10|copy|+|338|339
+node|338|name|4070|4075|10|copy|40
+node|339|literal-int|4078|4079|10|copy|1
+node|340|return|4100|4157|5|copy|341
+node|341|binary|4107|4157|0|copy|&&|342|349
+node|342|binary|4107|4143|0|copy|&&|343|346
+node|343|binary|4107|4124|0|copy|==|344|345
+node|344|name|4107|4119|10|copy|38
+node|345|literal-int|4123|4124|10|copy|1
+node|346|binary|4128|4143|0|copy|==|347|348
+node|347|name|4128|4138|10|copy|39
+node|348|literal-int|4142|4143|10|copy|0
+node|349|binary|4147|4157|0|copy|>|350|351
+node|350|name|4147|4153|10|copy|37
+node|351|literal-int|4156|4157|10|copy|0
+function|352|7|46|4161|5247
+node|353|let|4208|4235|5|copy|44|354
+node|354|call|4222|4235|7|read|12|355
+node|355|name|4228|4234|1|read|43
+node|356|let-mut|4240|4262|5|copy|45|357
+node|357|literal-int|4261|4262|10|copy|0
+node|358|let-mut|4267|4287|5|copy|46|359
+node|359|literal-text|4285|4287|1|read|
+node|360|for-range|4292|5231|5|copy|47|361|48
+node|361|range|4305|4322|10|copy|362|363
+node|362|literal-int|4305|4306|10|copy|0
+node|363|call|4310|4322|10|copy|27|364
+node|364|name|4314|4321|7|read|44
+node|365|if|4333|5225|5|copy|366|49|none|-1
+node|366|binary|4336|4358|0|copy|==|367|370
+node|367|index|4336|4350|1|read|368|369
+node|368|name|4336|4343|7|read|44
+node|369|name|4344|4349|10|copy|47
+node|370|literal-text|4354|4358|1|read|\n
+node|371|let|4373|4427|5|copy|48|372
+node|372|call|4384|4427|1|read|24|373
+node|373|call|4389|4426|1|read|23|374|375|376
+node|374|name|4400|4406|1|read|43
+node|375|name|4408|4418|10|copy|45
+node|376|name|4420|4425|10|copy|47
+node|377|if|4440|5188|5|copy|378|50|if|401
+node|378|call|4443|4468|0|copy|22|379|380
+node|379|name|4455|4459|1|read|48
+node|380|literal-text|4461|4467|1|read|let 
+node|381|let|4487|4516|5|copy|49|382
+node|382|call|4498|4516|1|read|4|383
+node|383|name|4511|4515|1|read|48
+node|384|let|4533|4574|5|copy|50|385
+node|385|call|4550|4574|1|read|5|386
+node|386|name|4569|4573|1|read|48
+node|387|assign|4591|4764|5|edit|46|388
+node|388|binary|4601|4764|1|read|+|389|400
+node|389|binary|4601|4716|1|read|+|390|399
+node|390|binary|4601|4704|1|read|+|391|398
+node|391|binary|4601|4675|1|read|+|392|397
+node|392|binary|4601|4655|1|read|+|393|396
+node|393|binary|4601|4648|1|read|+|394|395
+node|394|name|4601|4608|1|read|46
+node|395|literal-text|4627|4648|1|read|    set_variable("
+node|396|name|4651|4655|1|read|49
+node|397|literal-text|4658|4675|1|read|", evaluate("
+node|398|name|4694|4704|1|read|50
+node|399|literal-text|4707|4716|1|read|"));\n
+node|400|literal-text|4735|4764|1|read|    if (failed) return 1;\n
+node|401|if|4784|5188|5|copy|402|51|none|-1
+node|402|call|4787|4814|0|copy|22|403|404
+node|403|name|4799|4803|1|read|48
+node|404|literal-text|4805|4813|1|read|print(
+node|405|let|4833|4872|5|copy|51|406
+node|406|call|4850|4872|1|read|3|407
+node|407|name|4867|4871|1|read|48
+node|408|assign|4889|5161|5|edit|46|409
+node|409|binary|4899|5161|1|read|+|410|423
+node|410|binary|4899|5133|1|read|+|411|422
+node|411|binary|4899|5066|1|read|+|412|421
+node|412|binary|4899|5014|1|read|+|413|420
+node|413|binary|4899|5003|1|read|+|414|419
+node|414|binary|4899|4990|1|read|+|415|418
+node|415|binary|4899|4934|1|read|+|416|417
+node|416|name|4899|4906|1|read|46
+node|417|literal-text|4925|4934|1|read|    {\n
+node|418|literal-text|4953|4990|1|read|        int64_t value = evaluate("
+node|419|name|4993|5003|1|read|51
+node|420|literal-text|5006|5014|1|read|");\n
+node|421|literal-text|5033|5066|1|read|        if (failed) return 1;\n
+node|422|literal-text|5085|5133|1|read|        printf("%" PRId64 "\\n", value);\n
+node|423|literal-text|5152|5161|1|read|    }\n
+node|424|assign|5188|5210|5|edit|45|425
+node|425|binary|5201|5210|10|copy|+|426|427
+node|426|name|5201|5206|10|copy|47
+node|427|literal-int|5209|5210|10|copy|1
+node|428|return|5231|5245|5|copy|429
+node|429|name|5238|5245|1|read|46
+function|430|8|52|5249|13449
+node|431|return|5287|13447|5|copy|432
+node|432|binary|5294|13447|1|read|+|433|825
+node|433|binary|5294|13435|1|read|+|434|824
+node|434|binary|5294|13411|1|read|+|435|822
+node|435|binary|5294|13381|1|read|+|436|821
+node|436|binary|5294|13347|1|read|+|437|820
+node|437|binary|5294|13320|1|read|+|438|819
+node|438|binary|5294|13306|1|read|+|439|818
+node|439|binary|5294|13278|1|read|+|440|817
+node|440|binary|5294|13194|1|read|+|441|816
+node|441|binary|5294|13166|1|read|+|442|815
+node|442|binary|5294|13122|1|read|+|443|814
+node|443|binary|5294|13091|1|read|+|444|813
+node|444|binary|5294|13035|1|read|+|445|812
+node|445|binary|5294|13021|1|read|+|446|811
+node|446|binary|5294|13005|1|read|+|447|810
+node|447|binary|5294|12985|1|read|+|448|809
+node|448|binary|5294|12949|1|read|+|449|808
+node|449|binary|5294|12922|1|read|+|450|807
+node|450|binary|5294|12864|1|read|+|451|806
+node|451|binary|5294|12832|1|read|+|452|805
+node|452|binary|5294|12785|1|read|+|453|804
+node|453|binary|5294|12727|1|read|+|454|803
+node|454|binary|5294|12695|1|read|+|455|802
+node|455|binary|5294|12655|1|read|+|456|801
+node|456|binary|5294|12623|1|read|+|457|800
+node|457|binary|5294|12598|1|read|+|458|799
+node|458|binary|5294|12560|1|read|+|459|798
+node|459|binary|5294|12516|1|read|+|460|797
+node|460|binary|5294|12502|1|read|+|461|796
+node|461|binary|5294|12486|1|read|+|462|795
+node|462|binary|5294|12466|1|read|+|463|794
+node|463|binary|5294|12430|1|read|+|464|793
+node|464|binary|5294|12403|1|read|+|465|792
+node|465|binary|5294|12360|1|read|+|466|791
+node|466|binary|5294|12228|1|read|+|467|790
+node|467|binary|5294|12119|1|read|+|468|789
+node|468|binary|5294|12072|1|read|+|469|788
+node|469|binary|5294|12040|1|read|+|470|787
+node|470|binary|5294|11993|1|read|+|471|786
+node|471|binary|5294|11936|1|read|+|472|785
+node|472|binary|5294|11904|1|read|+|473|784
+node|473|binary|5294|11857|1|read|+|474|783
+node|474|binary|5294|11800|1|read|+|475|782
+node|475|binary|5294|11765|1|read|+|476|781
+node|476|binary|5294|11696|1|read|+|477|780
+node|477|binary|5294|11637|1|read|+|478|779
+node|478|binary|5294|11605|1|read|+|479|778
+node|479|binary|5294|11565|1|read|+|480|777
+node|480|binary|5294|11533|1|read|+|481|776
+node|481|binary|5294|11508|1|read|+|482|775
+node|482|binary|5294|11469|1|read|+|483|774
+node|483|binary|5294|11431|1|read|+|484|773
+node|484|binary|5294|11417|1|read|+|485|772
+node|485|binary|5294|11385|1|read|+|486|771
+node|486|binary|5294|11295|1|read|+|487|770
+node|487|binary|5294|11247|1|read|+|488|769
+node|488|binary|5294|11185|1|read|+|489|768
+node|489|binary|5294|11169|1|read|+|490|767
+node|490|binary|5294|11141|1|read|+|491|766
+node|491|binary|5294|11052|1|read|+|492|765
+node|492|binary|5294|11020|1|read|+|493|764
+node|493|binary|5294|10954|1|read|+|494|763
+node|494|binary|5294|10940|1|read|+|495|762
+node|495|binary|5294|10909|1|read|+|496|761
+node|496|binary|5294|10827|1|read|+|497|760
+node|497|binary|5294|10779|1|read|+|498|759
+node|498|binary|5294|10732|1|read|+|499|758
+node|499|binary|5294|10716|1|read|+|500|757
+node|500|binary|5294|10688|1|read|+|501|756
+node|501|binary|5294|10603|1|read|+|502|755
+node|502|binary|5294|10549|1|read|+|503|754
+node|503|binary|5294|10533|1|read|+|504|753
+node|504|binary|5294|10505|1|read|+|505|752
+node|505|binary|5294|10415|1|read|+|506|751
+node|506|binary|5294|10383|1|read|+|507|750
+node|507|binary|5294|10317|1|read|+|508|749
+node|508|binary|5294|10303|1|read|+|509|748
+node|509|binary|5294|10274|1|read|+|510|747
+node|510|binary|5294|10258|1|read|+|511|746
+node|511|binary|5294|10230|1|read|+|512|745
+node|512|binary|5294|10146|1|read|+|513|744
+node|513|binary|5294|10080|1|read|+|514|743
+node|514|binary|5294|10050|1|read|+|515|742
+node|515|binary|5294|9982|1|read|+|516|741
+node|516|binary|5294|9968|1|read|+|517|740
+node|517|binary|5294|9939|1|read|+|518|739
+node|518|binary|5294|9923|1|read|+|519|738
+node|519|binary|5294|9895|1|read|+|520|737
+node|520|binary|5294|9811|1|read|+|521|736
+node|521|binary|5294|9745|1|read|+|522|735
+node|522|binary|5294|9715|1|read|+|523|734
+node|523|binary|5294|9647|1|read|+|524|733
+node|524|binary|5294|9633|1|read|+|525|732
+node|525|binary|5294|9604|1|read|+|526|731
+node|526|binary|5294|9588|1|read|+|527|730
+node|527|binary|5294|9560|1|read|+|528|729
+node|528|binary|5294|9476|1|read|+|529|728
+node|529|binary|5294|9410|1|read|+|530|727
+node|530|binary|5294|9380|1|read|+|531|726
+node|531|binary|5294|9312|1|read|+|532|725
+node|532|binary|5294|9298|1|read|+|533|724
+node|533|binary|5294|9266|1|read|+|534|723
+node|534|binary|5294|9250|1|read|+|535|722
+node|535|binary|5294|9217|1|read|+|536|721
+node|536|binary|5294|9197|1|read|+|537|720
+node|537|binary|5294|9165|1|read|+|538|719
+node|538|binary|5294|9071|1|read|+|539|718
+node|539|binary|5294|9016|1|read|+|540|717
+node|540|binary|5294|8973|1|read|+|541|716
+node|541|binary|5294|8953|1|read|+|542|715
+node|542|binary|5294|8907|1|read|+|543|714
+node|543|binary|5294|8829|1|read|+|544|713
+node|544|binary|5294|8754|1|read|+|545|712
+node|545|binary|5294|8697|1|read|+|546|711
+node|546|binary|5294|8665|1|read|+|547|710
+node|547|binary|5294|8637|1|read|+|548|709
+node|548|binary|5294|8601|1|read|+|549|708
+node|549|binary|5294|8585|1|read|+|550|707
+node|550|binary|5294|8551|1|read|+|551|706
+node|551|binary|5294|8523|1|read|+|552|705
+node|552|binary|5294|8487|1|read|+|553|704
+node|553|binary|5294|8459|1|read|+|554|703
+node|554|binary|5294|8420|1|read|+|555|702
+node|555|binary|5294|8406|1|read|+|556|701
+node|556|binary|5294|8354|1|read|+|557|700
+node|557|binary|5294|8338|1|read|+|558|699
+node|558|binary|5294|8270|1|read|+|559|698
+node|559|binary|5294|8184|1|read|+|560|697
+node|560|binary|5294|8136|1|read|+|561|696
+node|561|binary|5294|8065|1|read|+|562|695
+node|562|binary|5294|8049|1|read|+|563|694
+node|563|binary|5294|8017|1|read|+|564|693
+node|564|binary|5294|7984|1|read|+|565|692
+node|565|binary|5294|7900|1|read|+|566|691
+node|566|binary|5294|7868|1|read|+|567|690
+node|567|binary|5294|7820|1|read|+|568|689
+node|568|binary|5294|7792|1|read|+|569|688
+node|569|binary|5294|7756|1|read|+|570|687
+node|570|binary|5294|7728|1|read|+|571|686
+node|571|binary|5294|7687|1|read|+|572|685
+node|572|binary|5294|7642|1|read|+|573|684
+node|573|binary|5294|7628|1|read|+|574|683
+node|574|binary|5294|7600|1|read|+|575|682
+node|575|binary|5294|7515|1|read|+|576|681
+node|576|binary|5294|7499|1|read|+|577|680
+node|577|binary|5294|7453|1|read|+|578|679
+node|578|binary|5294|7433|1|read|+|579|678
+node|579|binary|5294|7401|1|read|+|580|677
+node|580|binary|5294|7318|1|read|+|581|676
+node|581|binary|5294|7264|1|read|+|582|675
+node|582|binary|5294|7234|1|read|+|583|674
+node|583|binary|5294|7170|1|read|+|584|673
+node|584|binary|5294|7114|1|read|+|585|672
+node|585|binary|5294|7082|1|read|+|586|671
+node|586|binary|5294|7048|1|read|+|587|670
+node|587|binary|5294|6994|1|read|+|588|669
+node|588|binary|5294|6980|1|read|+|589|668
+node|589|binary|5294|6956|1|read|+|590|667
+node|590|binary|5294|6888|1|read|+|591|666
+node|591|binary|5294|6872|1|read|+|592|665
+node|592|binary|5294|6852|1|read|+|593|664
+node|593|binary|5294|6795|1|read|+|594|663
+node|594|binary|5294|6710|1|read|+|595|662
+node|595|binary|5294|6646|1|read|+|596|661
+node|596|binary|5294|6574|1|read|+|597|660
+node|597|binary|5294|6504|1|read|+|598|659
+node|598|binary|5294|6490|1|read|+|599|658
+node|599|binary|5294|6458|1|read|+|600|657
+node|600|binary|5294|6403|1|read|+|601|656
+node|601|binary|5294|6350|1|read|+|602|655
+node|602|binary|5294|6334|1|read|+|603|654
+node|603|binary|5294|6308|1|read|+|604|653
+node|604|binary|5294|6234|1|read|+|605|652
+node|605|binary|5294|6192|1|read|+|606|651
+node|606|binary|5294|6122|1|read|+|607|650
+node|607|binary|5294|6108|1|read|+|608|649
+node|608|binary|5294|6044|1|read|+|609|648
+node|609|binary|5294|6003|1|read|+|610|647
+node|610|binary|5294|5989|1|read|+|611|646
+node|611|binary|5294|5960|1|read|+|612|645
+node|612|binary|5294|5944|1|read|+|613|644
+node|613|binary|5294|5904|1|read|+|614|643
+node|614|binary|5294|5862|1|read|+|615|642
+node|615|binary|5294|5833|1|read|+|616|641
+node|616|binary|5294|5774|1|read|+|617|640
+node|617|binary|5294|5732|1|read|+|618|639
+node|618|binary|5294|5686|1|read|+|619|638
+node|619|binary|5294|5637|1|read|+|620|637
+node|620|binary|5294|5607|1|read|+|621|636
+node|621|binary|5294|5570|1|read|+|622|635
+node|622|binary|5294|5538|1|read|+|623|634
+node|623|binary|5294|5509|1|read|+|624|633
+node|624|binary|5294|5479|1|read|+|625|632
+node|625|binary|5294|5449|1|read|+|626|631
+node|626|binary|5294|5418|1|read|+|627|630
+node|627|binary|5294|5386|1|read|+|628|629
+node|628|literal-text|5294|5357|1|read|/* Generated by the Kofun-written Stage 1 seed compiler. */\n
+node|629|literal-text|5364|5386|1|read|#include <ctype.h>\n
+node|630|literal-text|5393|5418|1|read|#include <inttypes.h>\n
+node|631|literal-text|5425|5449|1|read|#include <stdbool.h>\n
+node|632|literal-text|5456|5479|1|read|#include <stddef.h>\n
+node|633|literal-text|5486|5509|1|read|#include <stdint.h>\n
+node|634|literal-text|5516|5538|1|read|#include <stdio.h>\n
+node|635|literal-text|5545|5570|1|read|#include <string.h>\n\n
+node|636|literal-text|5577|5607|1|read|static const char *cursor;\n
+node|637|literal-text|5614|5637|1|read|static bool failed;\n
+node|638|literal-text|5644|5686|1|read|static const char *variable_names[64];\n
+node|639|literal-text|5693|5732|1|read|static int64_t variable_values[64];\n
+node|640|literal-text|5739|5774|1|read|static size_t variable_count;\n\n
+node|641|literal-text|5781|5833|1|read|static void runtime_error(const char *message) {\n
+node|642|literal-text|5840|5862|1|read|    if (!failed) {\n
+node|643|literal-text|5869|5904|1|read|        fputs(message, stderr);\n
+node|644|literal-text|5911|5944|1|read|        fputc('\\n', stderr);\n
+node|645|literal-text|5951|5960|1|read|    }\n
+node|646|literal-text|5967|5989|1|read|    failed = true;\n
+node|647|literal-text|5996|6003|1|read|}\n\n
+node|648|literal-text|6010|6044|1|read|static void skip_space(void) {\n
+node|649|literal-text|6051|6108|1|read|    while (isspace((unsigned char)*cursor)) ++cursor;\n
+node|650|literal-text|6115|6122|1|read|}\n\n
+node|651|literal-text|6129|6192|1|read|static void set_variable(const char *name, int64_t value) {\n
+node|652|literal-text|6199|6234|1|read|    if (variable_count >= 64) {\n
+node|653|literal-text|6241|6308|1|read|        runtime_error("error[R011]: too many Core bindings");\n
+node|654|literal-text|6315|6334|1|read|        return;\n
+node|655|literal-text|6341|6350|1|read|    }\n
+node|656|literal-text|6357|6403|1|read|    variable_names[variable_count] = name;\n
+node|657|literal-text|6410|6458|1|read|    variable_values[variable_count] = value;\n
+node|658|literal-text|6465|6490|1|read|    ++variable_count;\n
+node|659|literal-text|6497|6504|1|read|}\n\n
+node|660|literal-text|6511|6574|1|read|static int64_t variable(const char *start, size_t length) {\n
+node|661|literal-text|6581|6646|1|read|    for (size_t index = variable_count; index > 0; --index) {\n
+node|662|literal-text|6653|6710|1|read|        const char *name = variable_names[index - 1];\n
+node|663|literal-text|6717|6795|1|read|        if (strlen(name) == length && strncmp(name, start, length) == 0) {\n
+node|664|literal-text|6802|6852|1|read|            return variable_values[index - 1];\n
+node|665|literal-text|6859|6872|1|read|        }\n
+node|666|literal-text|6879|6888|1|read|    }\n
+node|667|literal-text|6895|6956|1|read|    runtime_error("error[R011]: unknown Core binding");\n
+node|668|literal-text|6963|6980|1|read|    return 0;\n
+node|669|literal-text|6987|6994|1|read|}\n\n
+node|670|literal-text|7001|7048|1|read|static uint64_t magnitude(uint64_t limit) {\n
+node|671|literal-text|7055|7082|1|read|    uint64_t value = 0;\n
+node|672|literal-text|7089|7114|1|read|    bool any = false;\n
+node|673|literal-text|7121|7170|1|read|    while (isdigit((unsigned char)*cursor)) {\n
+node|674|literal-text|7177|7234|1|read|        uint64_t digit = (uint64_t)(*cursor++ - '0');\n
+node|675|literal-text|7241|7264|1|read|        any = true;\n
+node|676|literal-text|7271|7318|1|read|        if (value > (limit - digit) / 10) {\n
+node|677|literal-text|7325|7401|1|read|            runtime_error("error[R010]: integer overflow in literal");\n
+node|678|literal-text|7408|7433|1|read|            return 0;\n
+node|679|literal-text|7440|7453|1|read|        }\n
+node|680|literal-text|7460|7499|1|read|        value = value * 10 + digit;\n
+node|681|literal-text|7506|7515|1|read|    }\n
+node|682|literal-text|7522|7600|1|read|    if (!any) runtime_error("error[R011]: expected integer expression");\n
+node|683|literal-text|7607|7628|1|read|    return value;\n
+node|684|literal-text|7635|7642|1|read|}\n\n
+node|685|literal-text|7649|7687|1|read|static int64_t expression(void);\n\n
+node|686|literal-text|7694|7728|1|read|static int64_t primary(void) {\n
+node|687|literal-text|7735|7756|1|read|    skip_space();\n
+node|688|literal-text|7763|7792|1|read|    if (*cursor == '(') {\n
+node|689|literal-text|7799|7820|1|read|        ++cursor;\n
+node|690|literal-text|7827|7868|1|read|        int64_t value = expression();\n
+node|691|literal-text|7875|7900|1|read|        skip_space();\n
+node|692|literal-text|7907|7984|1|read|        if (*cursor != ')') runtime_error("error[R011]: expected `)`");\n
+node|693|literal-text|7991|8017|1|read|        else ++cursor;\n
+node|694|literal-text|8024|8049|1|read|        return value;\n
+node|695|literal-text|8056|8065|1|read|    }\n
+node|696|literal-text|8072|8136|1|read|    if (isalpha((unsigned char)*cursor) \p\p *cursor == '_') {\n
+node|697|literal-text|8143|8184|1|read|        const char *start = cursor++;\n
+node|698|literal-text|8191|8270|1|read|        while (isalnum((unsigned char)*cursor) \p\p *cursor == '_') ++cursor;\n
+node|699|literal-text|8277|8338|1|read|        return variable(start, (size_t)(cursor - start));\n
+node|700|literal-text|8345|8354|1|read|    }\n
+node|701|literal-text|8361|8406|1|read|    return (int64_t)magnitude(INT64_MAX);\n
+node|702|literal-text|8413|8420|1|read|}\n\n
+node|703|literal-text|8427|8459|1|read|static int64_t unary(void) {\n
+node|704|literal-text|8466|8487|1|read|    skip_space();\n
+node|705|literal-text|8494|8523|1|read|    if (*cursor == '+') {\n
+node|706|literal-text|8530|8551|1|read|        ++cursor;\n
+node|707|literal-text|8558|8585|1|read|        return unary();\n
+node|708|literal-text|8592|8601|1|read|    }\n
+node|709|literal-text|8608|8637|1|read|    if (*cursor == '-') {\n
+node|710|literal-text|8644|8665|1|read|        ++cursor;\n
+node|711|literal-text|8672|8697|1|read|        skip_space();\n
+node|712|literal-text|8704|8754|1|read|        if (isdigit((unsigned char)*cursor)) {\n
+node|713|literal-text|8761|8829|1|read|            uint64_t value = magnitude((uint64_t)INT64_MAX + 1);\n
+node|714|literal-text|8836|8907|1|read|            if (value == (uint64_t)INT64_MAX + 1) return INT64_MIN;\n
+node|715|literal-text|8914|8953|1|read|            return -(int64_t)value;\n
+node|716|literal-text|8960|8973|1|read|        }\n
+node|717|literal-text|8980|9016|1|read|        int64_t value = unary();\n
+node|718|literal-text|9023|9071|1|read|        if (!failed && value == INT64_MIN) {\n
+node|719|literal-text|9078|9165|1|read|            runtime_error("error[R010]: integer overflow in unary operator `-`");\n
+node|720|literal-text|9172|9197|1|read|            return 0;\n
+node|721|literal-text|9204|9217|1|read|        }\n
+node|722|literal-text|9224|9250|1|read|        return -value;\n
+node|723|literal-text|9257|9266|1|read|    }\n
+node|724|literal-text|9273|9298|1|read|    return primary();\n
+node|725|literal-text|9305|9312|1|read|}\n\n
+node|726|literal-text|9319|9380|1|read|static int64_t checked_add(int64_t left, int64_t right) {\n
+node|727|literal-text|9387|9410|1|read|    int64_t result;\n
+node|728|literal-text|9417|9476|1|read|    if (__builtin_add_overflow(left, right, &result)) {\n
+node|729|literal-text|9483|9560|1|read|        runtime_error("error[R010]: integer overflow in operator `+`");\n
+node|730|literal-text|9567|9588|1|read|        return 0;\n
+node|731|literal-text|9595|9604|1|read|    }\n
+node|732|literal-text|9611|9633|1|read|    return result;\n
+node|733|literal-text|9640|9647|1|read|}\n\n
+node|734|literal-text|9654|9715|1|read|static int64_t checked_sub(int64_t left, int64_t right) {\n
+node|735|literal-text|9722|9745|1|read|    int64_t result;\n
+node|736|literal-text|9752|9811|1|read|    if (__builtin_sub_overflow(left, right, &result)) {\n
+node|737|literal-text|9818|9895|1|read|        runtime_error("error[R010]: integer overflow in operator `-`");\n
+node|738|literal-text|9902|9923|1|read|        return 0;\n
+node|739|literal-text|9930|9939|1|read|    }\n
+node|740|literal-text|9946|9968|1|read|    return result;\n
+node|741|literal-text|9975|9982|1|read|}\n\n
+node|742|literal-text|9989|10050|1|read|static int64_t checked_mul(int64_t left, int64_t right) {\n
+node|743|literal-text|10057|10080|1|read|    int64_t result;\n
+node|744|literal-text|10087|10146|1|read|    if (__builtin_mul_overflow(left, right, &result)) {\n
+node|745|literal-text|10153|10230|1|read|        runtime_error("error[R010]: integer overflow in operator `*`");\n
+node|746|literal-text|10237|10258|1|read|        return 0;\n
+node|747|literal-text|10265|10274|1|read|    }\n
+node|748|literal-text|10281|10303|1|read|    return result;\n
+node|749|literal-text|10310|10317|1|read|}\n\n
+node|750|literal-text|10324|10383|1|read|static int64_t floor_div(int64_t left, int64_t right) {\n
+node|751|literal-text|10390|10415|1|read|    if (right == 0) {\n
+node|752|literal-text|10422|10505|1|read|        runtime_error("error[R010]: operator `//` failed: division by zero");\n
+node|753|literal-text|10512|10533|1|read|        return 0;\n
+node|754|literal-text|10540|10549|1|read|    }\n
+node|755|literal-text|10556|10603|1|read|    if (left == INT64_MIN && right == -1) {\n
+node|756|literal-text|10610|10688|1|read|        runtime_error("error[R010]: integer overflow in operator `//`");\n
+node|757|literal-text|10695|10716|1|read|        return 0;\n
+node|758|literal-text|10723|10732|1|read|    }\n
+node|759|literal-text|10739|10779|1|read|    int64_t quotient = left / right;\n
+node|760|literal-text|10786|10827|1|read|    int64_t remainder = left % right;\n
+node|761|literal-text|10834|10909|1|read|    if (remainder != 0 && ((remainder < 0) != (right < 0))) --quotient;\n
+node|762|literal-text|10916|10940|1|read|    return quotient;\n
+node|763|literal-text|10947|10954|1|read|}\n\n
+node|764|literal-text|10961|11020|1|read|static int64_t floor_mod(int64_t left, int64_t right) {\n
+node|765|literal-text|11027|11052|1|read|    if (right == 0) {\n
+node|766|literal-text|11059|11141|1|read|        runtime_error("error[R010]: operator `%` failed: division by zero");\n
+node|767|literal-text|11148|11169|1|read|        return 0;\n
+node|768|literal-text|11176|11185|1|read|    }\n
+node|769|literal-text|11192|11247|1|read|    if (left == INT64_MIN && right == -1) return 0;\n
+node|770|literal-text|11254|11295|1|read|    int64_t remainder = left % right;\n
+node|771|literal-text|11302|11385|1|read|    if (remainder != 0 && ((remainder < 0) != (right < 0))) remainder += right;\n
+node|772|literal-text|11392|11417|1|read|    return remainder;\n
+node|773|literal-text|11424|11431|1|read|}\n\n
+node|774|literal-text|11438|11469|1|read|static int64_t term(void) {\n
+node|775|literal-text|11476|11508|1|read|    int64_t value = unary();\n
+node|776|literal-text|11515|11533|1|read|    for (;;) {\n
+node|777|literal-text|11540|11565|1|read|        skip_space();\n
+node|778|literal-text|11572|11605|1|read|        if (*cursor == '*') {\n
+node|779|literal-text|11612|11637|1|read|            ++cursor;\n
+node|780|literal-text|11644|11696|1|read|            value = checked_mul(value, unary());\n
+node|781|literal-text|11703|11765|1|read|        } else if (cursor[0] == '/' && cursor[1] == '/') {\n
+node|782|literal-text|11772|11800|1|read|            cursor += 2;\n
+node|783|literal-text|11807|11857|1|read|            value = floor_div(value, unary());\n
+node|784|literal-text|11864|11904|1|read|        } else if (*cursor == '%') {\n
+node|785|literal-text|11911|11936|1|read|            ++cursor;\n
+node|786|literal-text|11943|11993|1|read|            value = floor_mod(value, unary());\n
+node|787|literal-text|12000|12040|1|read|        } else if (*cursor == '/') {\n
+node|788|literal-text|12047|12072|1|read|            ++cursor;\n
+node|789|literal-text|12079|12119|1|read|            int64_t right = unary();\n
+node|790|literal-text|12126|12228|1|read|            if (right == 0) runtime_error("error[R010]: operator `/` failed: division by zero");\n
+node|791|literal-text|12235|12360|1|read|            else if (value == INT64_MIN && right == -1) runtime_error("error[R010]: integer overflow in operator `/`");\n
+node|792|literal-text|12367|12403|1|read|            else value /= right;\n
+node|793|literal-text|12410|12430|1|read|        } else {\n
+node|794|literal-text|12437|12466|1|read|            return value;\n
+node|795|literal-text|12473|12486|1|read|        }\n
+node|796|literal-text|12493|12502|1|read|    }\n
+node|797|literal-text|12509|12516|1|read|}\n\n
+node|798|literal-text|12523|12560|1|read|static int64_t expression(void) {\n
+node|799|literal-text|12567|12598|1|read|    int64_t value = term();\n
+node|800|literal-text|12605|12623|1|read|    for (;;) {\n
+node|801|literal-text|12630|12655|1|read|        skip_space();\n
+node|802|literal-text|12662|12695|1|read|        if (*cursor == '+') {\n
+node|803|literal-text|12702|12727|1|read|            ++cursor;\n
+node|804|literal-text|12734|12785|1|read|            value = checked_add(value, term());\n
+node|805|literal-text|12792|12832|1|read|        } else if (*cursor == '-') {\n
+node|806|literal-text|12839|12864|1|read|            ++cursor;\n
+node|807|literal-text|12871|12922|1|read|            value = checked_sub(value, term());\n
+node|808|literal-text|12929|12949|1|read|        } else {\n
+node|809|literal-text|12956|12985|1|read|            return value;\n
+node|810|literal-text|12992|13005|1|read|        }\n
+node|811|literal-text|13012|13021|1|read|    }\n
+node|812|literal-text|13028|13035|1|read|}\n\n
+node|813|literal-text|13042|13091|1|read|static int64_t evaluate(const char *source) {\n
+node|814|literal-text|13098|13122|1|read|    cursor = source;\n
+node|815|literal-text|13129|13166|1|read|    int64_t value = expression();\n
+node|816|literal-text|13173|13194|1|read|    skip_space();\n
+node|817|literal-text|13201|13278|1|read|    if (*cursor != '\\0') runtime_error("error[R011]: trailing input");\n
+node|818|literal-text|13285|13306|1|read|    return value;\n
+node|819|literal-text|13313|13320|1|read|}\n\n
+node|820|literal-text|13327|13347|1|read|int main(void) {\n
+node|821|literal-text|13354|13381|1|read|    (void)set_variable;\n
+node|822|call|13388|13411|1|read|7|823
+node|823|name|13404|13410|1|read|52
+node|824|literal-text|13418|13435|1|read|    return 0;\n
+node|825|literal-text|13442|13447|1|read|}\n
+function|826|9|54|13451|14419
+node|827|let|13518|13551|5|copy|55|828
+node|828|call|13530|13551|1|read|20|829
+node|829|name|13540|13550|1|read|53
+node|830|let|13556|13606|5|copy|56|831
+node|831|call|13576|13606|1|read|25|832
+node|832|name|13600|13605|1|read|55
+node|833|if|13611|13699|5|copy|834|56|none|-1
+node|834|binary|13614|13636|0|copy|>|835|837
+node|835|call|13614|13632|10|copy|18|836
+node|836|name|13618|13631|1|read|56
+node|837|literal-int|13635|13636|10|copy|0
+node|838|expr-stmt|13647|13667|5|copy|839
+node|839|call|13647|13667|5|copy|19|840
+node|840|name|13653|13666|1|read|56
+node|841|return|13676|13688|5|copy|842
+node|842|literal-bool|13683|13688|0|copy|false
+node|843|let|13699|13724|5|copy|57|844
+node|844|binary|13712|13724|1|read|+|845|846
+node|845|name|13712|13717|1|read|55
+node|846|literal-text|13720|13724|1|read|\n
+node|847|if|13729|13857|5|copy|848|57|none|-1
+node|848|unary|13732|13753|0|copy|!|849
+node|849|call|13733|13753|0|copy|6|850
+node|850|name|13746|13752|1|read|57
+node|851|expr-stmt|13764|13825|5|copy|852
+node|852|call|13764|13825|5|copy|19|853
+node|853|literal-text|13770|13824|1|read|compile error: unsupported Kofun integer Core source
+node|854|return|13834|13846|5|copy|855
+node|855|literal-bool|13841|13846|0|copy|false
+node|856|let-mut|13857|14091|5|copy|58|857
+node|857|call|13875|14091|1|read|21|858|860|861
+node|858|call|13892|13906|1|read|8|859
+node|859|name|13899|13905|1|read|57
+node|860|literal-text|13916|13972|1|read|if (isalpha((unsigned char)*cursor) \p\p *cursor == '_')
+node|861|binary|13982|14085|1|read|+|862|863
+node|862|literal-text|13982|14041|1|read|if (isalpha((unsigned char)*cursor) \p\p *cursor == '_' \p\p 
+node|863|literal-text|14052|14085|1|read|(unsigned char)*cursor >= 0x80)
+node|864|assign|14096|14341|5|edit|58|865
+node|865|call|14106|14341|1|read|21|866|867|868
+node|866|name|14123|14130|1|read|58
+node|867|literal-text|14140|14209|1|read|while (isalnum((unsigned char)*cursor) \p\p *cursor == '_') ++cursor;
+node|868|binary|14219|14335|1|read|+|869|870
+node|869|literal-text|14219|14281|1|read|while (isalnum((unsigned char)*cursor) \p\p *cursor == '_' \p\p 
+node|870|literal-text|14292|14335|1|read|(unsigned char)*cursor >= 0x80) ++cursor;
+node|871|expr-stmt|14346|14378|5|copy|872
+node|872|call|14346|14378|5|copy|26|873|874
+node|873|name|14357|14368|1|read|54
+node|874|name|14370|14377|1|read|58
+node|875|expr-stmt|14383|14401|5|copy|876
+node|876|call|14383|14401|5|copy|19|877
+node|877|name|14389|14400|1|read|54
+node|878|return|14406|14417|5|copy|879
+node|879|literal-bool|14413|14417|0|copy|true
+function|880|10|58|14421|14614
+node|881|let|14437|14459|5|copy|59|882
+node|882|call|14453|14459|7|read|11
+node|883|if|14464|14572|5|copy|884|60|none|-1
+node|884|binary|14467|14486|0|copy|!=|885|887
+node|885|call|14467|14481|10|copy|27|886
+node|886|name|14471|14480|7|read|59
+node|887|literal-int|14485|14486|10|copy|2
+node|888|expr-stmt|14497|14546|5|copy|889
+node|889|call|14497|14546|5|copy|19|890
+node|890|literal-text|14503|14545|1|read|usage: kofun-stage1 INPUT.kofun OUTPUT.c
+node|891|return|14555|14561|5|copy|none
+node|892|expr-stmt|14572|14612|5|copy|893
+node|893|call|14572|14612|0|copy|9|894|897
+node|894|index|14585|14597|1|read|895|896
+node|895|name|14585|14594|7|read|59
+node|896|literal-int|14595|14596|10|copy|0
+node|897|index|14599|14611|1|read|898|899
+node|898|name|14599|14608|7|read|59
+node|899|literal-int|14609|14610|10|copy|1

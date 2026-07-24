@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_unknown_function.kofun|ae69cd216b1617e4751eebb0b89ed8187636a1e5e5d190cfb5884441c0d50ff6
+status|rejected
+diagnostic|E2S16|22|29|unknown function

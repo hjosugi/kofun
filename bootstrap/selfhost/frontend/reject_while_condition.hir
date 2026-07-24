@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_while_condition.kofun|ce7a29c7d81de6d43efc5c84099e78c0d0caa408e5614be36dbff1ad5362bb24
+status|rejected
+diagnostic|E2S23|40|41|while condition must be Bool
