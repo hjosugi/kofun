@@ -362,10 +362,47 @@ grep 'error\[E2S10\]' "$temporary/for-range-int.stdout" >/dev/null
 test ! -s "$temporary/for-range-int.stderr"
 test ! -e "$temporary/for-range-int.c"
 
-# The frozen self-host source S (bootstrap/stage1/compiler.kofun) now clears
-# the complete lexical binding layer, including every `for index` loop. Its
-# current frontier is the unregistered Unicode builtin from the 46-row
-# profile; #653 moves this boundary, not the binding layer.
+# The 16 profile builtins are known, arity-checked names. A builtin call with
+# wrong arity is a real E2S17 frontend fact; a well-formed builtin call is
+# valid source outside the bounded Int C11 slice (unsupported lowering, exit
+# 3), and only genuinely undeclared names remain invalid E2S16.
+printf 'fn main() {\n    print(len(1, 2))\n}\n' \
+    >"$temporary/builtin-arity.kofun"
+printf 'fn main() {\n    print(len(1))\n}\n' \
+    >"$temporary/builtin-call.kofun"
+set +e
+"$temporary/kofun-stage2" --compile-outcome \
+    "$temporary/builtin-arity.kofun" \
+    "$temporary/builtin-arity.c" \
+    "$temporary/builtin-arity.ir" \
+    "$temporary/builtin-arity.tokens" \
+    >"$temporary/builtin-arity.stdout" \
+    2>"$temporary/builtin-arity.stderr"
+builtin_arity_status=$?
+"$temporary/kofun-stage2" --compile-outcome \
+    "$temporary/builtin-call.kofun" \
+    "$temporary/builtin-call.c" \
+    "$temporary/builtin-call.ir" \
+    "$temporary/builtin-call.tokens" \
+    >"$temporary/builtin-call.stdout" \
+    2>"$temporary/builtin-call.stderr"
+builtin_call_status=$?
+set -e
+test "$builtin_arity_status" -eq 1
+grep 'error\[E2S17\]: Core function `len` expects 1 arguments, got 2' \
+    "$temporary/builtin-arity.stdout" >/dev/null
+test "$builtin_call_status" -eq 3
+grep 'error\[E2S10\]: unsupported Core builtin call `len`' \
+    "$temporary/builtin-call.stdout" >/dev/null
+test ! -e "$temporary/builtin-arity.c"
+test ! -e "$temporary/builtin-call.c"
+
+# The frozen self-host source S (bootstrap/stage1/compiler.kofun) clears the
+# complete lexical binding layer, including every `for index` loop, and every
+# call resolves to a declared function or profile builtin. S is therefore
+# valid source outside the bounded lowering slice: compile-outcome reports
+# unsupported (3), never an invalid-source classification. Typed lowering of
+# the builtins is the remaining #653/#620 work.
 set +e
 "$temporary/kofun-stage2" --compile-outcome \
     "$root/bootstrap/stage1/compiler.kofun" \
@@ -376,9 +413,10 @@ set +e
     2>"$temporary/selfhost-S.stderr"
 selfhost_frontier_status=$?
 set -e
-test "$selfhost_frontier_status" -eq 1
+test "$selfhost_frontier_status" -eq 3
 ! grep 'E2S35' "$temporary/selfhost-S.stdout" >/dev/null
-grep 'error\[E2S16\]: unknown Core function `is_xid_continue`' \
+! grep 'E2S16' "$temporary/selfhost-S.stdout" >/dev/null
+grep 'error\[E2S10\]: unsupported Core builtin call `is_xid_continue`' \
     "$temporary/selfhost-S.stdout" >/dev/null
 test ! -e "$temporary/selfhost-S.c"
 
@@ -386,5 +424,6 @@ echo "PASS: Stage 2 statically compiled Copy Int borrowed-return slice"
 echo "PASS: Stage 2 and kofun check rejected non-Copy Text move with E007"
 echo "PASS: Stage 2 C11 calls support recursion, arity checks, and forward references"
 echo "PASS: for-range loop variables bind in the loop body lexical scope"
-echo "PASS: the frozen self-host S clears lexical binding; frontier is E2S16 builtins"
+echo "PASS: profile builtins are known, arity-checked, unsupported-to-lower names"
+echo "PASS: the frozen self-host S is valid source outside the bounded slice"
 echo "stage2 semantic frontend check passed"

@@ -99,10 +99,19 @@ an immutable binding owned by the loop body scope: the header name is a
 declaration rather than a use, body uses resolve to the loop binding through
 nested scopes, and sibling loops may reuse a name without a false `E2S47`.
 Valid `for` sources therefore reach their true lowering boundary (`E2S10`
-unsupported statement) instead of a false-invalid `E2S35`, and the frozen
-self-host source `S` (`bootstrap/stage1/compiler.kofun`) clears the complete
-lexical binding layer; its current frontier is the unregistered Unicode
-builtin signatures (`E2S16`), owned by the #653 slice of #619.
+unsupported statement) instead of a false-invalid `E2S35`.
+
+The 16 builtins of the frozen self-host profile (`args`, `chars`, `contains`,
+`find`, `is_digit`, `is_space`, `is_xid_continue`, `len`, `print`,
+`read_text`, `replace`, `starts_with`, `text_slice`, `trim`,
+`validate_unicode_source`, `write_text`) are known, arity-checked names.
+A builtin call with wrong arity is a real `E2S17`; a well-formed builtin call
+is valid source outside the bounded Int C11 slice and classifies as
+unsupported lowering (`E2S10`, compile-outcome exit 3), never as `E2S16`.
+Consequently the frozen self-host source `S`
+(`bootstrap/stage1/compiler.kofun`) clears the complete lexical binding layer
+and call resolution: `S` is valid source whose remaining boundary is typed
+builtin lowering, owned by the #653/#620 slices of #619.
 
 Top-level functions accept an omitted modifier, `private`, `internal`, or
 `pub`. Structural IR preserves semantic visibility, implicit versus explicit

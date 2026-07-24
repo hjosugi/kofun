@@ -2932,6 +2932,44 @@ static int64_t call_arity(const char *source, int64_t open) {
     return -1;
 }
 
+/*
+ * The 16 host builtins of the frozen self-host profile (#618/#619), keyed by
+ * arity. `print` stays a statement-level special case. `len` is one name here;
+ * its Text/List[Text] overload is resolved by type, not arity. Builtin calls
+ * are known and arity-checked, but the bounded Int C11 slice cannot lower
+ * them yet, so accepted uses classify as unsupported lowering, never as an
+ * unknown-function source error.
+ */
+static int64_t builtin_arity(const char *name) {
+    static const struct {
+        const char *name;
+        int64_t arity;
+    } builtins[] = {
+        {"args", 0},
+        {"chars", 1},
+        {"contains", 2},
+        {"find", 2},
+        {"is_digit", 1},
+        {"is_space", 1},
+        {"is_xid_continue", 1},
+        {"len", 1},
+        {"read_text", 1},
+        {"replace", 3},
+        {"starts_with", 2},
+        {"text_slice", 3},
+        {"trim", 1},
+        {"validate_unicode_source", 1},
+        {"write_text", 2},
+    };
+    size_t count = sizeof(builtins) / sizeof(builtins[0]);
+    for (size_t index = 0; index < count; ++index) {
+        if (strcmp(name, builtins[index].name) == 0) {
+            return builtins[index].arity;
+        }
+    }
+    return -1;
+}
+
 static char *validate_core_calls(const char *source) {
     int64_t length = (int64_t)strlen(source);
     int64_t cursor = next_function_start(source, 0);
@@ -2962,11 +3000,43 @@ static char *validate_core_calls(const char *source) {
                     return error.data;
                 }
                 if (expected < 0) {
+                    int64_t builtin_expected = builtin_arity(name);
+                    if (builtin_expected < 0) {
+                        Buffer error;
+                        buffer_init(&error);
+                        buffer_format(
+                            &error,
+                            "error[E2S16]: unknown Core function `%s` "
+                            "at byte %" PRId64,
+                            name,
+                            cursor
+                        );
+                        free(name);
+                        free(previous);
+                        return error.data;
+                    }
+                    int64_t builtin_actual = call_arity(source, open);
+                    if (builtin_actual != builtin_expected) {
+                        Buffer error;
+                        buffer_init(&error);
+                        buffer_format(
+                            &error,
+                            "error[E2S17]: Core function `%s` expects %" PRId64
+                            " arguments, got %" PRId64 " at byte %" PRId64,
+                            name,
+                            builtin_expected,
+                            builtin_actual,
+                            cursor
+                        );
+                        free(name);
+                        free(previous);
+                        return error.data;
+                    }
                     Buffer error;
                     buffer_init(&error);
                     buffer_format(
                         &error,
-                        "error[E2S16]: unknown Core function `%s` "
+                        "error[E2S10]: unsupported Core builtin call `%s` "
                         "at byte %" PRId64,
                         name,
                         cursor
@@ -6895,6 +6965,11 @@ static bool unsupported_lowering_error(const char *diagnostic) {
                diagnostic,
                "error[E2S10]: unsupported Core statement",
                strlen("error[E2S10]: unsupported Core statement")
+           ) == 0 ||
+           strncmp(
+               diagnostic,
+               "error[E2S10]: unsupported Core builtin call ",
+               strlen("error[E2S10]: unsupported Core builtin call ")
            ) == 0 ||
            strncmp(
                diagnostic,

@@ -2119,6 +2119,31 @@ fn call_arity(source: Text, open: Int) -> Int {
     return -1
 }
 
+# The 16 host builtins of the frozen self-host profile (#618/#619), keyed by
+# arity. `print` stays a statement-level special case. `len` is one name here;
+# its Text/List[Text] overload is resolved by type, not arity. Builtin calls
+# are known and arity-checked, but the bounded Int C11 slice cannot lower
+# them yet, so accepted uses classify as unsupported lowering, never as an
+# unknown-function source error.
+fn builtin_arity(name: Text) -> Int {
+    if name == "args" {
+        return 0
+    }
+    if name == "chars" || name == "is_digit" || name == "is_space" ||
+       name == "is_xid_continue" || name == "len" || name == "read_text" ||
+       name == "trim" || name == "validate_unicode_source" {
+        return 1
+    }
+    if name == "contains" || name == "find" || name == "starts_with" ||
+       name == "write_text" {
+        return 2
+    }
+    if name == "replace" || name == "text_slice" {
+        return 3
+    }
+    return 0 - 1
+}
+
 fn validate_core_calls(source: Text) -> Text {
     let mut cursor = next_function_start(source, 0)
     let mut previous = ""
@@ -2134,8 +2159,20 @@ fn validate_core_calls(source: Text) -> Text {
                     "` at byte " + to_text(cursor)
                 }
                 if expected < 0 {
-                    return "error[E2S16]: unknown Core function `" + name +
-                    "` at byte " + to_text(cursor)
+                    let builtin_expected = builtin_arity(name)
+                    if builtin_expected < 0 {
+                        return "error[E2S16]: unknown Core function `" +
+                        name + "` at byte " + to_text(cursor)
+                    }
+                    let builtin_actual = call_arity(source, open)
+                    if builtin_actual != builtin_expected {
+                        return "error[E2S17]: Core function `" + name +
+                        "` expects " + to_text(builtin_expected) +
+                        " arguments, got " + to_text(builtin_actual) +
+                        " at byte " + to_text(cursor)
+                    }
+                    return "error[E2S10]: unsupported Core builtin call `" +
+                    name + "` at byte " + to_text(cursor)
                 }
                 let actual = call_arity(source, open)
                 if actual != expected {
@@ -4552,6 +4589,9 @@ fn unsupported_lowering_error(diagnostic: Text) -> Bool {
     return starts_with(
         diagnostic,
         "error[E2S10]: unsupported Core statement"
+    ) || starts_with(
+        diagnostic,
+        "error[E2S10]: unsupported Core builtin call "
     ) || starts_with(
         diagnostic,
         "error[E2S24]: general pattern syntax is parsed "
