@@ -9418,6 +9418,1223 @@ static int emit_selfhost_hir_file(
     return complete ? 0 : 1;
 }
 
+/*
+ * selfhost-C11 lowering (#620): kofun.selfhost-hir/v1 -> deterministic
+ * standalone C11 for the non-looping Text/function profile slice.
+ *
+ * The document is the only input: node, symbol, binding, scope, and type
+ * records drive the lowering; source text is never reparsed. Every
+ * expression node lowers post-order to one temporary named after its
+ * node id, so argument evaluation is exactly-once and left-to-right, and
+ * `&&`/`||` keep short-circuit evaluation through guarded blocks.
+ * Constructs outside the slice (mutation, loops, indexing, ranges, and
+ * the List/host builtins) classify as unsupported, never as invalid.
+ */
+
+enum {
+    SL_MAX_RECORDS = 4096,
+    SL_MAX_TYPES = 64,
+};
+
+typedef struct {
+    char *line;
+    char *fields[16];
+    int64_t field_count;
+} SlRecord;
+
+typedef struct {
+    char *document;
+    SlRecord types[SL_MAX_TYPES];
+    char *type_keys[SL_MAX_TYPES];
+    int64_t type_count;
+    SlRecord scopes[SL_MAX_RECORDS];
+    int64_t scope_count;
+    SlRecord symbols[SL_MAX_RECORDS];
+    int64_t symbol_count;
+    SlRecord bindings[SL_MAX_RECORDS];
+    int64_t binding_count;
+    SlRecord nodes[SL_MAX_RECORDS];
+    int64_t node_count;
+    char *source_path;
+    char *source_digest;
+    bool complete;
+    char *error;
+    int error_exit;
+} SlDoc;
+
+static void sl_fail(SlDoc *doc, int exit_code, const char *message) {
+    if (doc->error != NULL) return;
+    Buffer copy;
+    buffer_init(&copy);
+    buffer_append(&copy, message);
+    doc->error = copy.data;
+    doc->error_exit = exit_code;
+}
+
+static void sl_fail_name(
+    SlDoc *doc,
+    int exit_code,
+    const char *prefix,
+    const char *name
+) {
+    if (doc->error != NULL) return;
+    Buffer copy;
+    buffer_init(&copy);
+    buffer_format(&copy, "%s`%s`", prefix, name);
+    doc->error = copy.data;
+    doc->error_exit = exit_code;
+}
+
+/* Split one record line in place; fields beyond 16 are an invalid
+ * document. Returns false on overflow. */
+static bool sl_split(SlRecord *record, char *line) {
+    record->line = line;
+    record->field_count = 0;
+    char *cursor = line;
+    while (record->field_count < 16) {
+        record->fields[record->field_count++] = cursor;
+        char *bar = strchr(cursor, '|');
+        if (bar == NULL) return true;
+        *bar = '\0';
+        cursor = bar + 1;
+    }
+    return strchr(cursor, '|') == NULL;
+}
+
+static const char *sl_field(const SlRecord *record, int64_t index) {
+    if (index < 0 || index >= record->field_count) return "";
+    return record->fields[index];
+}
+
+static int64_t sl_int(const SlRecord *record, int64_t index) {
+    return strtoll(sl_field(record, index), NULL, 10);
+}
+
+static bool sl_load(SlDoc *doc, const char *text) {
+    doc->document = allocate(strlen(text) + 1);
+    memcpy(doc->document, text, strlen(text) + 1);
+    char *cursor = doc->document;
+    int64_t line_index = 0;
+    bool schema_seen = false;
+    while (*cursor != '\0') {
+        char *line = cursor;
+        char *newline = strchr(cursor, '\n');
+        if (newline == NULL) {
+            cursor = line + strlen(line);
+        } else {
+            *newline = '\0';
+            cursor = newline + 1;
+        }
+        if (line_index == 0) {
+            schema_seen = strcmp(line, "schema|kofun.selfhost-hir/v1") == 0;
+            if (!schema_seen) {
+                sl_fail(doc, 1,
+                        "error[E2S35]: selfhost-C11 input is not a "
+                        "kofun.selfhost-hir/v1 document");
+                return false;
+            }
+            ++line_index;
+            continue;
+        }
+        (void)schema_seen;
+        SlRecord parsed;
+        if (!sl_split(&parsed, line)) {
+            sl_fail(doc, 1,
+                    "error[E2S35]: selfhost-C11 record has too many fields");
+            return false;
+        }
+        const char *tag = sl_field(&parsed, 0);
+        SlRecord *slot = NULL;
+        if (strcmp(tag, "source") == 0) {
+            doc->source_path = allocate(strlen(sl_field(&parsed, 1)) + 1);
+            strcpy(doc->source_path, sl_field(&parsed, 1));
+            doc->source_digest = allocate(strlen(sl_field(&parsed, 2)) + 1);
+            strcpy(doc->source_digest, sl_field(&parsed, 2));
+        } else if (strcmp(tag, "status") == 0) {
+            doc->complete = strcmp(sl_field(&parsed, 1), "complete") == 0;
+        } else if (strcmp(tag, "type") == 0) {
+            if (doc->type_count >= SL_MAX_TYPES) {
+                sl_fail(doc, 1, "error[E2S35]: selfhost-C11 type limit is 64");
+                return false;
+            }
+            slot = &doc->types[doc->type_count];
+            Buffer joined;
+            buffer_init(&joined);
+            for (int64_t field = 2; field < parsed.field_count; ++field) {
+                if (field > 2) buffer_append(&joined, "|");
+                buffer_append(&joined, sl_field(&parsed, field));
+            }
+            doc->type_keys[doc->type_count++] = joined.data;
+        } else if (strcmp(tag, "scope") == 0) {
+            if (doc->scope_count >= SL_MAX_RECORDS) {
+                sl_fail(doc, 1, "error[E2S35]: selfhost-C11 record limit");
+                return false;
+            }
+            slot = &doc->scopes[doc->scope_count++];
+        } else if (strcmp(tag, "symbol") == 0) {
+            if (doc->symbol_count >= SL_MAX_RECORDS) {
+                sl_fail(doc, 1, "error[E2S35]: selfhost-C11 record limit");
+                return false;
+            }
+            slot = &doc->symbols[doc->symbol_count++];
+        } else if (strcmp(tag, "binding") == 0) {
+            if (doc->binding_count >= SL_MAX_RECORDS) {
+                sl_fail(doc, 1, "error[E2S35]: selfhost-C11 record limit");
+                return false;
+            }
+            slot = &doc->bindings[doc->binding_count++];
+        } else if (strcmp(tag, "function") == 0 ||
+                   strcmp(tag, "node") == 0) {
+            if (doc->node_count >= SL_MAX_RECORDS) {
+                sl_fail(doc, 1, "error[E2S35]: selfhost-C11 record limit");
+                return false;
+            }
+            slot = &doc->nodes[doc->node_count++];
+        }
+        if (slot != NULL) {
+            *slot = parsed;
+        }
+        ++line_index;
+    }
+    if (doc->source_path == NULL) {
+        sl_fail(doc, 1,
+                "error[E2S35]: selfhost-C11 document has no source record");
+        return false;
+    }
+    if (!doc->complete) {
+        sl_fail(doc, 1,
+                "error[E2S35]: selfhost-C11 input must be a complete typed "
+                "document");
+        return false;
+    }
+    return true;
+}
+
+/* The closed type table: id -> key ("int", "bool", "text", "void",
+ * "list-text", or "fn|..."). */
+static const char *sl_type_key(const SlDoc *doc, int64_t type_id) {
+    for (int64_t index = 0; index < doc->type_count; ++index) {
+        if (sl_int(&doc->types[index], 1) == type_id) {
+            return doc->type_keys[index];
+        }
+    }
+    return "";
+}
+
+static const char *sl_c_type(const char *key) {
+    if (strcmp(key, "int") == 0) return "int64_t";
+    if (strcmp(key, "bool") == 0) return "bool";
+    if (strcmp(key, "text") == 0) return "const char *";
+    return "";
+}
+
+static const SlRecord *sl_symbol(const SlDoc *doc, int64_t symbol_id) {
+    for (int64_t index = 0; index < doc->symbol_count; ++index) {
+        if (sl_int(&doc->symbols[index], 1) == symbol_id) {
+            return &doc->symbols[index];
+        }
+    }
+    return NULL;
+}
+
+static const SlRecord *sl_binding(const SlDoc *doc, int64_t binding_id) {
+    for (int64_t index = 0; index < doc->binding_count; ++index) {
+        if (sl_int(&doc->bindings[index], 1) == binding_id) {
+            return &doc->bindings[index];
+        }
+    }
+    return NULL;
+}
+
+static const SlRecord *sl_scope(const SlDoc *doc, int64_t scope_id) {
+    for (int64_t index = 0; index < doc->scope_count; ++index) {
+        if (sl_int(&doc->scopes[index], 1) == scope_id) {
+            return &doc->scopes[index];
+        }
+    }
+    return NULL;
+}
+
+/* The value type key of a binding: its symbol's recorded type. */
+static const char *sl_binding_type(const SlDoc *doc, int64_t binding_id) {
+    const SlRecord *binding = sl_binding(doc, binding_id);
+    if (binding == NULL) return "";
+    const SlRecord *symbol = sl_symbol(doc, sl_int(binding, 3));
+    if (symbol == NULL) return "";
+    return sl_type_key(doc, sl_int(symbol, 4));
+}
+
+/* Result type key of a function-typed symbol: field 1 of its fn key. */
+static const char *sl_result_key(const SlDoc *doc, const SlRecord *symbol) {
+    const char *key = sl_type_key(doc, sl_int(symbol, 4));
+    if (strncmp(key, "fn|", 3) != 0) return "";
+    return sl_type_key(doc, strtoll(key + 3, NULL, 10));
+}
+
+/* Whether a builtin symbol's single parameter is List[Text] (the len
+ * overload outside this slice). */
+static bool sl_list_parameter(const SlDoc *doc, const SlRecord *symbol) {
+    const char *key = sl_type_key(doc, sl_int(symbol, 4));
+    const char *bar = key;
+    int64_t seen = 0;
+    while (seen < 2 && bar != NULL) {
+        bar = strchr(bar, '|');
+        if (bar != NULL) ++bar;
+        ++seen;
+    }
+    if (bar == NULL) return false;
+    return strcmp(sl_type_key(doc, strtoll(bar, NULL, 10)), "list-text") == 0;
+}
+
+/* The audited C runtime shim emitted into every generated program. Text
+ * helpers keep the trusted stage-1 seed's observable semantics byte for
+ * byte (byte-counted len, byte-offset slicing with clamping, ASCII trim,
+ * literal non-overlapping replace); the Unicode builtins consult the same
+ * Unicode 17 tables as the Stage 2 lexer via kofun_unicode.c, compiled
+ * with the repository's unicode include directory. Allocations use one
+ * documented process-lifetime rule: nothing is freed, and allocation
+ * failure panics explicitly. */
+static const char *sl_prelude =
+    "#include <ctype.h>\n"
+    "#include <inttypes.h>\n"
+    "#include <stdbool.h>\n"
+    "#include <stdint.h>\n"
+    "#include <stdio.h>\n"
+    "#include <stdlib.h>\n"
+    "#include <string.h>\n"
+    "\n"
+    "#include \"kofun_unicode.c\"\n"
+    "\n"
+    "static bool kofun_failed;\n"
+    "\n"
+    "static void kofun_error(const char *message) {\n"
+    "    if (!kofun_failed) {\n"
+    "        fputs(message, stderr);\n"
+    "        fputc('\\n', stderr);\n"
+    "    }\n"
+    "    kofun_failed = true;\n"
+    "}\n"
+    "\n"
+    "static int64_t kofun_add(int64_t left, int64_t right) {\n"
+    "    int64_t result;\n"
+    "    if (__builtin_add_overflow(left, right, &result)) {\n"
+    "        kofun_error(\"error[R010]: integer overflow in operator `+`\");\n"
+    "        return 0;\n"
+    "    }\n"
+    "    return result;\n"
+    "}\n"
+    "\n"
+    "static int64_t kofun_sub(int64_t left, int64_t right) {\n"
+    "    int64_t result;\n"
+    "    if (__builtin_sub_overflow(left, right, &result)) {\n"
+    "        kofun_error(\"error[R010]: integer overflow in operator `-`\");\n"
+    "        return 0;\n"
+    "    }\n"
+    "    return result;\n"
+    "}\n"
+    "\n"
+    "static int64_t kofun_mul(int64_t left, int64_t right) {\n"
+    "    int64_t result;\n"
+    "    if (__builtin_mul_overflow(left, right, &result)) {\n"
+    "        kofun_error(\"error[R010]: integer overflow in operator `*`\");\n"
+    "        return 0;\n"
+    "    }\n"
+    "    return result;\n"
+    "}\n"
+    "\n"
+    "static int64_t kofun_neg(int64_t value) {\n"
+    "    if (value == INT64_MIN) {\n"
+    "        kofun_error(\n"
+    "            \"error[R010]: integer overflow in unary operator `-`\"\n"
+    "        );\n"
+    "        return 0;\n"
+    "    }\n"
+    "    return -value;\n"
+    "}\n"
+    "\n"
+    "static int64_t kofun_floor_div(int64_t left, int64_t right) {\n"
+    "    if (right == 0) {\n"
+    "        kofun_error(\n"
+    "            \"error[R010]: operator `//` failed: division by zero\"\n"
+    "        );\n"
+    "        return 0;\n"
+    "    }\n"
+    "    if (left == INT64_MIN && right == -1) {\n"
+    "        kofun_error(\"error[R010]: integer overflow in operator `//`\");\n"
+    "        return 0;\n"
+    "    }\n"
+    "    int64_t quotient = left / right;\n"
+    "    int64_t remainder = left % right;\n"
+    "    if (remainder != 0 && ((remainder < 0) != (right < 0))) {\n"
+    "        --quotient;\n"
+    "    }\n"
+    "    return quotient;\n"
+    "}\n"
+    "\n"
+    "static int64_t kofun_floor_mod(int64_t left, int64_t right) {\n"
+    "    if (right == 0) {\n"
+    "        kofun_error(\n"
+    "            \"error[R010]: operator `%` failed: division by zero\"\n"
+    "        );\n"
+    "        return 0;\n"
+    "    }\n"
+    "    if (left == INT64_MIN && right == -1) {\n"
+    "        return 0;\n"
+    "    }\n"
+    "    int64_t remainder = left % right;\n"
+    "    if (remainder != 0 && ((remainder < 0) != (right < 0))) {\n"
+    "        remainder += right;\n"
+    "    }\n"
+    "    return remainder;\n"
+    "}\n"
+    "\n"
+    "";
+
+static const char *sl_prelude_text =
+    "void kofun_rt_panic(const char *message) {\n"
+    "    fprintf(stderr, \"Kofun runtime error: %s\\n\", message);\n"
+    "    exit(1);\n"
+    "}\n"
+    "\n"
+    "void *kofun_rt_alloc(size_t size) {\n"
+    "    void *value = malloc(size == 0 ? 1 : size);\n"
+    "    if (value == NULL) {\n"
+    "        kofun_rt_panic(\"out of memory\");\n"
+    "    }\n"
+    "    return value;\n"
+    "}\n"
+    "\n"
+    "char *kofun_rt_copy_n(const char *value, size_t length) {\n"
+    "    char *result = (char *)kofun_rt_alloc(length + 1);\n"
+    "    if (length > 0) {\n"
+    "        memcpy(result, value, length);\n"
+    "    }\n"
+    "    result[length] = '\\0';\n"
+    "    return result;\n"
+    "}\n"
+    "\n"
+    "char *kofun_rt_text_concat(const char *left, const char *right) {\n"
+    "    size_t left_len = strlen(left);\n"
+    "    size_t right_len = strlen(right);\n"
+    "    char *result = (char *)kofun_rt_alloc(left_len + right_len + 1);\n"
+    "    memcpy(result, left, left_len);\n"
+    "    memcpy(result + left_len, right, right_len + 1);\n"
+    "    return result;\n"
+    "}\n"
+    "\n"
+    "bool kofun_rt_text_equal(const char *left, const char *right) {\n"
+    "    return strcmp(left, right) == 0;\n"
+    "}\n"
+    "\n"
+    "int64_t kofun_rt_text_len(const char *value) {\n"
+    "    return (int64_t)strlen(value);\n"
+    "}\n"
+    "\n"
+    "bool kofun_rt_text_contains(const char *value, const char *needle) {\n"
+    "    return strstr(value, needle) != NULL;\n"
+    "}\n"
+    "\n"
+    "int64_t kofun_rt_find(const char *value, const char *needle) {\n"
+    "    const char *found = strstr(value, needle);\n"
+    "    return found == NULL ? INT64_C(-1) : (int64_t)(found - value);\n"
+    "}\n"
+    "\n"
+    "char *kofun_rt_text_slice(const char *value, int64_t start, int64_t end) {\n"
+    "    int64_t length = (int64_t)strlen(value);\n"
+    "    if (start < 0) start = 0;\n"
+    "    if (end < start) end = start;\n"
+    "    if (start > length) start = length;\n"
+    "    if (end > length) end = length;\n"
+    "    return kofun_rt_copy_n(value + start, (size_t)(end - start));\n"
+    "}\n"
+    "\n"
+    "char *kofun_rt_trim(const char *value) {\n"
+    "    const unsigned char *start = (const unsigned char *)value;\n"
+    "    while (*start != '\\0' && isspace(*start)) {\n"
+    "        ++start;\n"
+    "    }\n"
+    "    const unsigned char *end =\n"
+    "        (const unsigned char *)value + strlen(value);\n"
+    "    while (end > start && isspace(end[-1])) {\n"
+    "        --end;\n"
+    "    }\n"
+    "    return kofun_rt_copy_n((const char *)start, (size_t)(end - start));\n"
+    "}\n"
+    "\n"
+    "";
+
+static const char *sl_prelude_unicode =
+    "char *kofun_rt_replace(\n"
+    "    const char *value,\n"
+    "    const char *old,\n"
+    "    const char *replacement\n"
+    ") {\n"
+    "    size_t old_len = strlen(old);\n"
+    "    if (old_len == 0) {\n"
+    "        return kofun_rt_copy_n(value, strlen(value));\n"
+    "    }\n"
+    "    size_t replacement_len = strlen(replacement);\n"
+    "    size_t count = 0;\n"
+    "    const char *cursor = value;\n"
+    "    while ((cursor = strstr(cursor, old)) != NULL) {\n"
+    "        ++count;\n"
+    "        cursor += old_len;\n"
+    "    }\n"
+    "    size_t value_len = strlen(value);\n"
+    "    size_t result_len;\n"
+    "    if (replacement_len >= old_len) {\n"
+    "        result_len = value_len + count * (replacement_len - old_len);\n"
+    "    } else {\n"
+    "        result_len = value_len - count * (old_len - replacement_len);\n"
+    "    }\n"
+    "    char *result = (char *)kofun_rt_alloc(result_len + 1);\n"
+    "    char *out = result;\n"
+    "    cursor = value;\n"
+    "    const char *match;\n"
+    "    while ((match = strstr(cursor, old)) != NULL) {\n"
+    "        size_t prefix = (size_t)(match - cursor);\n"
+    "        memcpy(out, cursor, prefix);\n"
+    "        out += prefix;\n"
+    "        memcpy(out, replacement, replacement_len);\n"
+    "        out += replacement_len;\n"
+    "        cursor = match + old_len;\n"
+    "    }\n"
+    "    strcpy(out, cursor);\n"
+    "    return result;\n"
+    "}\n"
+    "\n"
+    "bool kofun_rt_starts_with(const char *value, const char *prefix) {\n"
+    "    size_t prefix_len = strlen(prefix);\n"
+    "    return strncmp(value, prefix, prefix_len) == 0;\n"
+    "}\n"
+    "\n"
+    "bool kofun_rt_is_digit(const char *value) {\n"
+    "    return value[0] != '\\0' && value[1] == '\\0' &&\n"
+    "        isdigit((unsigned char)value[0]) != 0;\n"
+    "}\n"
+    "\n"
+    "bool kofun_rt_is_space(const char *value) {\n"
+    "    return value[0] != '\\0' && value[1] == '\\0' &&\n"
+    "        isspace((unsigned char)value[0]) != 0;\n"
+    "}\n"
+    "\n"
+    "bool kofun_rt_is_xid_continue(const char *value) {\n"
+    "    uint32_t codepoint = 0;\n"
+    "    size_t width = 0;\n"
+    "    size_t length = strlen(value);\n"
+    "    if (!kofun_unicode_decode(\n"
+    "            (const uint8_t *)value,\n"
+    "            length,\n"
+    "            0,\n"
+    "            &codepoint,\n"
+    "            &width)) {\n"
+    "        return false;\n"
+    "    }\n"
+    "    return kofun_unicode_is_xid_continue(codepoint);\n"
+    "}\n"
+    "\n"
+    "const char *kofun_rt_validate_unicode_source(const char *value) {\n"
+    "    KofunUnicodeError unicode_error;\n"
+    "    if (kofun_unicode_validate_source(\n"
+    "            (const uint8_t *)value,\n"
+    "            strlen(value),\n"
+    "            &unicode_error)) {\n"
+    "        return \"\";\n"
+    "    }\n"
+    "    char message[1024];\n"
+    "    kofun_unicode_format_error(\n"
+    "        &unicode_error,\n"
+    "        getenv(\"KOFUN_DIAGNOSTIC_LOCALE\"),\n"
+    "        message,\n"
+    "        sizeof(message)\n"
+    "    );\n"
+    "    return kofun_rt_copy_n(message, strlen(message));\n"
+    "}\n"
+    "\n";
+
+typedef struct {
+    const SlDoc *doc;
+    int64_t first_node;
+    int64_t last_node;
+    const char *fail_return;
+    const char *function_name;
+    int64_t indent;
+} SlFn;
+
+static const SlRecord *sl_node(const SlFn *fn, int64_t node_id) {
+    for (int64_t index = fn->first_node; index < fn->last_node; ++index) {
+        if (sl_int(&fn->doc->nodes[index], 1) == node_id) {
+            return &fn->doc->nodes[index];
+        }
+    }
+    return NULL;
+}
+
+static void sl_indent(const SlFn *fn, Buffer *out) {
+    for (int64_t level = 0; level < fn->indent; ++level) {
+        buffer_append(out, "    ");
+    }
+}
+
+/* Emit the failure check after a temporary that can set kofun_failed. */
+static void sl_failed_check(const SlFn *fn, Buffer *out) {
+    sl_indent(fn, out);
+    if (fn->fail_return[0] == '\0') {
+        buffer_append(out, "if (kofun_failed) return;\n");
+    } else {
+        buffer_format(out, "if (kofun_failed) return %s;\n",
+                      fn->fail_return);
+    }
+}
+
+/* Decode the record escaping of a literal-text field, then re-escape the
+ * bytes as one C string literal. */
+static void sl_c_string(Buffer *out, const char *field) {
+    buffer_append(out, "\"");
+    for (size_t index = 0; field[index] != '\0'; ++index) {
+        char symbol = field[index];
+        if (symbol == '\\' && field[index + 1] != '\0') {
+            char next = field[index + 1];
+            if (next == '\\') symbol = '\\';
+            else if (next == 'p') symbol = '|';
+            else if (next == 'n') symbol = '\n';
+            ++index;
+        }
+        if (symbol == '\\') buffer_append(out, "\\\\");
+        else if (symbol == '"') buffer_append(out, "\\\"");
+        else if (symbol == '\n') buffer_append(out, "\\n");
+        else {
+            char one[2] = {symbol, '\0'};
+            buffer_append(out, one);
+        }
+    }
+    buffer_append(out, "\"");
+}
+
+static void sl_emit_expr(SlFn *fn, SlDoc *doc, int64_t node_id, Buffer *out);
+
+/* Positional pre-order size of the expression subtree rooted at `index`;
+ * used to find where a statement's trailing records begin. */
+static int64_t sl_consume_expr(SlFn *fn, int64_t index) {
+    const SlRecord *node = &fn->doc->nodes[index];
+    const char *kind = sl_field(node, 2);
+    int64_t next = index + 1;
+    if (strcmp(kind, "call") == 0) {
+        for (int64_t field = 8; field < node->field_count; ++field) {
+            next = sl_consume_expr(fn, next);
+        }
+        return next;
+    }
+    if (strcmp(kind, "unary") == 0) {
+        return sl_consume_expr(fn, next);
+    }
+    if (strcmp(kind, "binary") == 0 || strcmp(kind, "index") == 0 ||
+        strcmp(kind, "range") == 0) {
+        next = sl_consume_expr(fn, next);
+        return sl_consume_expr(fn, next);
+    }
+    return next;
+}
+
+/* Map a slice builtin to its runtime helper; NULL when the builtin is
+ * outside the non-looping Text slice. */
+static const char *sl_builtin_helper(const char *name) {
+    if (strcmp(name, "contains") == 0) return "kofun_rt_text_contains";
+    if (strcmp(name, "find") == 0) return "kofun_rt_find";
+    if (strcmp(name, "is_digit") == 0) return "kofun_rt_is_digit";
+    if (strcmp(name, "is_space") == 0) return "kofun_rt_is_space";
+    if (strcmp(name, "is_xid_continue") == 0) {
+        return "kofun_rt_is_xid_continue";
+    }
+    if (strcmp(name, "len") == 0) return "kofun_rt_text_len";
+    if (strcmp(name, "replace") == 0) return "kofun_rt_replace";
+    if (strcmp(name, "starts_with") == 0) return "kofun_rt_starts_with";
+    if (strcmp(name, "text_slice") == 0) return "kofun_rt_text_slice";
+    if (strcmp(name, "trim") == 0) return "kofun_rt_trim";
+    if (strcmp(name, "validate_unicode_source") == 0) {
+        return "kofun_rt_validate_unicode_source";
+    }
+    return NULL;
+}
+
+static void sl_emit_expr(SlFn *fn, SlDoc *doc, int64_t node_id, Buffer *out) {
+    if (doc->error != NULL) return;
+    const SlRecord *node = sl_node(fn, node_id);
+    if (node == NULL) {
+        sl_fail(doc, 1, "error[E2S35]: selfhost-C11 node reference is out "
+                        "of range");
+        return;
+    }
+    const char *kind = sl_field(node, 2);
+    const char *type_key = sl_type_key(doc, sl_int(node, 5));
+    if (strcmp(kind, "literal-int") == 0) {
+        sl_indent(fn, out);
+        buffer_format(out, "int64_t k_n%" PRId64 " = INT64_C(", node_id);
+        const char *digits = sl_field(node, 7);
+        for (size_t at = 0; digits[at] != '\0'; ++at) {
+            if (digits[at] != '_') {
+                char one[2] = {digits[at], '\0'};
+                buffer_append(out, one);
+            }
+        }
+        buffer_append(out, ");\n");
+        return;
+    }
+    if (strcmp(kind, "literal-bool") == 0) {
+        sl_indent(fn, out);
+        buffer_format(out, "bool k_n%" PRId64 " = %s;\n", node_id,
+                      sl_field(node, 7));
+        return;
+    }
+    if (strcmp(kind, "literal-text") == 0) {
+        sl_indent(fn, out);
+        buffer_format(out, "const char *k_n%" PRId64 " = ", node_id);
+        sl_c_string(out, sl_field(node, 7));
+        buffer_append(out, ";\n");
+        return;
+    }
+    if (strcmp(kind, "name") == 0) {
+        if (sl_c_type(type_key)[0] == '\0') {
+            sl_fail_name(doc, 3,
+                         "error[E2S10]: unsupported selfhost-C11 type ",
+                         type_key);
+            return;
+        }
+        sl_indent(fn, out);
+        buffer_format(out, "%s k_n%" PRId64 " = k_b%s;\n",
+                      sl_c_type(type_key), node_id, sl_field(node, 7));
+        return;
+    }
+    if (strcmp(kind, "call") == 0) {
+        const SlRecord *symbol = sl_symbol(doc, sl_int(node, 7));
+        if (symbol == NULL) {
+            sl_fail(doc, 1, "error[E2S35]: selfhost-C11 call has no symbol");
+            return;
+        }
+        const char *name = sl_field(symbol, 3);
+        bool builtin = strcmp(sl_field(symbol, 2), "builtin") == 0;
+        const char *helper = NULL;
+        if (builtin) {
+            helper = sl_builtin_helper(name);
+            if (helper == NULL || sl_list_parameter(doc, symbol)) {
+                sl_fail_name(doc, 3,
+                             "error[E2S10]: unsupported selfhost-C11 "
+                             "builtin call ",
+                             name);
+                return;
+            }
+        }
+        for (int64_t field = 8; field < node->field_count; ++field) {
+            sl_emit_expr(fn, doc, sl_int(node, field), out);
+            if (doc->error != NULL) return;
+        }
+        sl_indent(fn, out);
+        if (strcmp(type_key, "void") == 0) {
+            buffer_format(out, "kofun_fn_%s(", name);
+        } else if (builtin) {
+            buffer_format(out, "%s k_n%" PRId64 " = %s(",
+                          sl_c_type(type_key), node_id, helper);
+        } else {
+            buffer_format(out, "%s k_n%" PRId64 " = kofun_fn_%s(",
+                          sl_c_type(type_key), node_id, name);
+        }
+        for (int64_t field = 8; field < node->field_count; ++field) {
+            if (field > 8) buffer_append(out, ", ");
+            buffer_format(out, "k_n%s", sl_field(node, field));
+        }
+        buffer_append(out, ");\n");
+        if (!builtin) {
+            sl_failed_check(fn, out);
+        }
+        return;
+    }
+    if (strcmp(kind, "unary") == 0) {
+        const char *op = sl_field(node, 7);
+        int64_t operand = sl_int(node, 8);
+        sl_emit_expr(fn, doc, operand, out);
+        if (doc->error != NULL) return;
+        sl_indent(fn, out);
+        if (strcmp(op, "!") == 0) {
+            buffer_format(out, "bool k_n%" PRId64 " = !k_n%" PRId64 ";\n",
+                          node_id, operand);
+        } else {
+            buffer_format(out,
+                          "int64_t k_n%" PRId64 " = kofun_neg(k_n%" PRId64
+                          ");\n",
+                          node_id, operand);
+            sl_failed_check(fn, out);
+        }
+        return;
+    }
+    if (strcmp(kind, "binary") == 0) {
+        const char *op = sl_field(node, 7);
+        int64_t left = sl_int(node, 8);
+        int64_t right = sl_int(node, 9);
+        const SlRecord *left_node = sl_node(fn, left);
+        const char *left_key = left_node == NULL ?
+            "" : sl_type_key(doc, sl_int(left_node, 5));
+        bool logical = strcmp(op, "&&") == 0 || strcmp(op, "\\p\\p") == 0;
+        bool logical_or = strcmp(op, "\\p\\p") == 0;
+        if (logical) {
+            sl_emit_expr(fn, doc, left, out);
+            if (doc->error != NULL) return;
+            sl_indent(fn, out);
+            buffer_format(out, "bool k_n%" PRId64 " = k_n%" PRId64 ";\n",
+                          node_id, left);
+            sl_indent(fn, out);
+            if (logical_or) {
+                buffer_format(out, "if (!k_n%" PRId64 ") {\n", node_id);
+            } else {
+                buffer_format(out, "if (k_n%" PRId64 ") {\n", node_id);
+            }
+            fn->indent += 1;
+            sl_emit_expr(fn, doc, right, out);
+            if (doc->error != NULL) return;
+            sl_indent(fn, out);
+            buffer_format(out, "k_n%" PRId64 " = k_n%" PRId64 ";\n",
+                          node_id, right);
+            fn->indent -= 1;
+            sl_indent(fn, out);
+            buffer_append(out, "}\n");
+            return;
+        }
+        sl_emit_expr(fn, doc, left, out);
+        if (doc->error != NULL) return;
+        sl_emit_expr(fn, doc, right, out);
+        if (doc->error != NULL) return;
+        if (strcmp(op, "+") == 0 && strcmp(left_key, "text") == 0) {
+            sl_indent(fn, out);
+            buffer_format(out,
+                          "const char *k_n%" PRId64
+                          " = kofun_rt_text_concat(k_n%" PRId64
+                          ", k_n%" PRId64 ");\n",
+                          node_id, left, right);
+            return;
+        }
+        if (strcmp(op, "==") == 0 || strcmp(op, "!=") == 0) {
+            sl_indent(fn, out);
+            if (strcmp(left_key, "text") == 0) {
+                buffer_format(out,
+                              "bool k_n%" PRId64
+                              " = %skofun_rt_text_equal(k_n%" PRId64
+                              ", k_n%" PRId64 ");\n",
+                              node_id,
+                              op[0] == '!' ? "!" : "",
+                              left, right);
+            } else {
+                buffer_format(out,
+                              "bool k_n%" PRId64 " = k_n%" PRId64
+                              " %s k_n%" PRId64 ";\n",
+                              node_id, left, op, right);
+            }
+            return;
+        }
+        if (strcmp(op, "<") == 0 || strcmp(op, "<=") == 0 ||
+            strcmp(op, ">") == 0 || strcmp(op, ">=") == 0) {
+            if (strcmp(left_key, "text") == 0) {
+                sl_fail_name(doc, 3,
+                             "error[E2S10]: unsupported selfhost-C11 "
+                             "operator ",
+                             op);
+                return;
+            }
+            sl_indent(fn, out);
+            buffer_format(out,
+                          "bool k_n%" PRId64 " = k_n%" PRId64 " %s k_n%"
+                          PRId64 ";\n",
+                          node_id, left, op, right);
+            return;
+        }
+        const char *arithmetic = NULL;
+        if (strcmp(op, "+") == 0) arithmetic = "kofun_add";
+        if (strcmp(op, "-") == 0) arithmetic = "kofun_sub";
+        if (strcmp(op, "*") == 0) arithmetic = "kofun_mul";
+        if (strcmp(op, "//") == 0) arithmetic = "kofun_floor_div";
+        if (strcmp(op, "%") == 0) arithmetic = "kofun_floor_mod";
+        if (arithmetic == NULL) {
+            sl_fail_name(doc, 3,
+                         "error[E2S10]: unsupported selfhost-C11 operator ",
+                         op);
+            return;
+        }
+        sl_indent(fn, out);
+        buffer_format(out,
+                      "int64_t k_n%" PRId64 " = %s(k_n%" PRId64
+                      ", k_n%" PRId64 ");\n",
+                      node_id, arithmetic, left, right);
+        sl_failed_check(fn, out);
+        return;
+    }
+    sl_fail_name(doc, 3,
+                 "error[E2S10]: unsupported selfhost-C11 expression ",
+                 kind);
+}
+
+/* Emit the statement record at `index`; returns the next record index
+ * and reports through `terminal` whether the statement always returns. */
+static int64_t sl_emit_statement(
+    SlFn *fn,
+    SlDoc *doc,
+    int64_t index,
+    Buffer *out,
+    bool *terminal
+);
+
+/* Emit the statements whose spans lie inside one block scope. */
+static int64_t sl_emit_block(
+    SlFn *fn,
+    SlDoc *doc,
+    int64_t index,
+    int64_t scope_id,
+    Buffer *out,
+    bool *terminal
+) {
+    const SlRecord *scope = sl_scope(doc, scope_id);
+    if (scope == NULL) {
+        sl_fail(doc, 1, "error[E2S35]: selfhost-C11 scope reference is out "
+                        "of range");
+        return index;
+    }
+    int64_t scope_start = sl_int(scope, 4);
+    int64_t scope_end = sl_int(scope, 5);
+    *terminal = false;
+    while (doc->error == NULL && index < fn->last_node) {
+        const SlRecord *node = &fn->doc->nodes[index];
+        if (strcmp(sl_field(node, 0), "node") != 0) break;
+        int64_t start = sl_int(node, 3);
+        if (start < scope_start || start >= scope_end) break;
+        index = sl_emit_statement(fn, doc, index, out, terminal);
+    }
+    return index;
+}
+
+static int64_t sl_emit_statement(
+    SlFn *fn,
+    SlDoc *doc,
+    int64_t index,
+    Buffer *out,
+    bool *terminal
+) {
+    const SlRecord *node = &fn->doc->nodes[index];
+    const char *kind = sl_field(node, 2);
+    *terminal = false;
+    if (doc->error != NULL) return fn->last_node;
+    if (strcmp(kind, "let") == 0) {
+        int64_t value = sl_int(node, 8);
+        sl_emit_expr(fn, doc, value, out);
+        if (doc->error != NULL) return fn->last_node;
+        const char *binding_key = sl_binding_type(doc, sl_int(node, 7));
+        if (sl_c_type(binding_key)[0] == '\0') {
+            sl_fail_name(doc, 3,
+                         "error[E2S10]: unsupported selfhost-C11 type ",
+                         binding_key);
+            return fn->last_node;
+        }
+        sl_indent(fn, out);
+        buffer_format(out, "%s k_b%s = k_n%" PRId64 ";\n",
+                      sl_c_type(binding_key), sl_field(node, 7), value);
+        return sl_consume_expr(fn, index + 1);
+    }
+    if (strcmp(kind, "return") == 0) {
+        *terminal = true;
+        if (strcmp(sl_field(node, 7), "none") == 0) {
+            sl_indent(fn, out);
+            if (strcmp(fn->function_name, "main") == 0) {
+                buffer_append(out, "return 0;\n");
+            } else {
+                buffer_append(out, "return;\n");
+            }
+            return index + 1;
+        }
+        int64_t value = sl_int(node, 7);
+        sl_emit_expr(fn, doc, value, out);
+        if (doc->error != NULL) return fn->last_node;
+        sl_indent(fn, out);
+        if (strcmp(fn->function_name, "main") == 0) {
+            buffer_format(out, "return (int)k_n%" PRId64 ";\n", value);
+        } else {
+            buffer_format(out, "return k_n%" PRId64 ";\n", value);
+        }
+        return sl_consume_expr(fn, index + 1);
+    }
+    if (strcmp(kind, "expr-stmt") == 0) {
+        int64_t value = sl_int(node, 7);
+        sl_emit_expr(fn, doc, value, out);
+        if (doc->error != NULL) return fn->last_node;
+        const SlRecord *value_node = sl_node(fn, value);
+        if (value_node != NULL &&
+            strcmp(sl_type_key(doc, sl_int(value_node, 5)), "void") != 0) {
+            sl_indent(fn, out);
+            buffer_format(out, "(void)k_n%" PRId64 ";\n", value);
+        }
+        return sl_consume_expr(fn, index + 1);
+    }
+    if (strcmp(kind, "if") == 0) {
+        int64_t condition = sl_int(node, 7);
+        int64_t then_scope = sl_int(node, 8);
+        const char *else_kind = sl_field(node, 9);
+        sl_emit_expr(fn, doc, condition, out);
+        if (doc->error != NULL) return fn->last_node;
+        sl_indent(fn, out);
+        buffer_format(out, "if (k_n%" PRId64 ") {\n", condition);
+        fn->indent += 1;
+        bool then_terminal = false;
+        int64_t walk = sl_consume_expr(fn, index + 1);
+        walk = sl_emit_block(fn, doc, walk, then_scope, out,
+                             &then_terminal);
+        fn->indent -= 1;
+        if (doc->error != NULL) return fn->last_node;
+        if (strcmp(else_kind, "none") == 0) {
+            sl_indent(fn, out);
+            buffer_append(out, "}\n");
+            return walk;
+        }
+        sl_indent(fn, out);
+        buffer_append(out, "} else {\n");
+        fn->indent += 1;
+        bool else_terminal = false;
+        if (strcmp(else_kind, "block") == 0) {
+            walk = sl_emit_block(fn, doc, walk, sl_int(node, 10), out,
+                                 &else_terminal);
+        } else {
+            walk = sl_emit_statement(fn, doc, walk, out, &else_terminal);
+        }
+        fn->indent -= 1;
+        if (doc->error != NULL) return fn->last_node;
+        sl_indent(fn, out);
+        buffer_append(out, "}\n");
+        *terminal = then_terminal && else_terminal;
+        return walk;
+    }
+    sl_fail_name(doc, 3,
+                 "error[E2S10]: unsupported selfhost-C11 statement ", kind);
+    return fn->last_node;
+}
+
+/* Parameter bindings of one function scope, in binding order. */
+static void sl_parameters(
+    SlDoc *doc,
+    int64_t function_scope,
+    Buffer *out,
+    int64_t *arity
+) {
+    *arity = 0;
+    for (int64_t index = 0; index < doc->binding_count; ++index) {
+        const SlRecord *binding = &doc->bindings[index];
+        if (sl_int(binding, 2) != function_scope) continue;
+        const SlRecord *symbol = sl_symbol(doc, sl_int(binding, 3));
+        if (symbol == NULL ||
+            strcmp(sl_field(symbol, 2), "parameter") != 0) {
+            continue;
+        }
+        const char *key = sl_type_key(doc, sl_int(symbol, 4));
+        if (sl_c_type(key)[0] == '\0') {
+            sl_fail_name(doc, 3,
+                         "error[E2S10]: unsupported selfhost-C11 type ",
+                         key);
+            return;
+        }
+        if (*arity > 0) buffer_append(out, ", ");
+        buffer_format(out, "%sk_b%s",
+                      strcmp(key, "text") == 0 ?
+                          "const char *" : (
+                          strcmp(key, "int") == 0 ? "int64_t " : "bool "),
+                      sl_field(binding, 1));
+        *arity += 1;
+    }
+}
+
+static void sl_emit_function(
+    SlDoc *doc,
+    int64_t record,
+    int64_t first_node,
+    int64_t last_node,
+    Buffer *prototypes,
+    Buffer *bodies,
+    Buffer *casts
+) {
+    const SlRecord *function = &doc->nodes[record];
+    const SlRecord *symbol = sl_symbol(doc, sl_int(function, 2));
+    if (symbol == NULL) {
+        sl_fail(doc, 1,
+                "error[E2S35]: selfhost-C11 function has no symbol");
+        return;
+    }
+    const char *name = sl_field(symbol, 3);
+    const char *result_key = sl_result_key(doc, symbol);
+    bool is_main = strcmp(name, "main") == 0;
+    Buffer parameters;
+    buffer_init(&parameters);
+    int64_t arity = 0;
+    sl_parameters(doc, sl_int(function, 3), &parameters, &arity);
+    if (doc->error != NULL) {
+        free(parameters.data);
+        return;
+    }
+    SlFn fn;
+    memset(&fn, 0, sizeof(fn));
+    fn.doc = doc;
+    fn.first_node = first_node;
+    fn.last_node = last_node;
+    fn.function_name = name;
+    fn.indent = 1;
+    if (is_main) {
+        fn.fail_return = "1";
+    } else if (strcmp(result_key, "int") == 0) {
+        fn.fail_return = "INT64_C(0)";
+    } else if (strcmp(result_key, "bool") == 0) {
+        fn.fail_return = "false";
+    } else if (strcmp(result_key, "text") == 0) {
+        fn.fail_return = "\"\"";
+    } else if (strcmp(result_key, "void") == 0) {
+        fn.fail_return = "";
+    } else {
+        sl_fail_name(doc, 3,
+                     "error[E2S10]: unsupported selfhost-C11 type ",
+                     result_key);
+        free(parameters.data);
+        return;
+    }
+    if (is_main) {
+        if (arity != 0) {
+            sl_fail(doc, 1,
+                    "error[E2S15]: selfhost-C11 `main` takes no parameters");
+            free(parameters.data);
+            return;
+        }
+        buffer_append(bodies, "int main(void) {\n");
+        buffer_append(bodies, casts->data == NULL ? "" : casts->data);
+    } else {
+        const char *c_result = strcmp(result_key, "void") == 0 ?
+            "void" : sl_c_type(result_key);
+        buffer_format(prototypes, "static %s%skofun_fn_%s(%s);\n",
+                      c_result,
+                      strcmp(result_key, "text") == 0 ? "" : " ",
+                      name,
+                      arity == 0 ? "void" : parameters.data);
+        buffer_format(bodies, "static %s%skofun_fn_%s(%s) {\n",
+                      c_result,
+                      strcmp(result_key, "text") == 0 ? "" : " ",
+                      name,
+                      arity == 0 ? "void" : parameters.data);
+    }
+    bool terminal = false;
+    int64_t walk = record + 1;
+    while (doc->error == NULL && walk < last_node) {
+        walk = sl_emit_statement(&fn, doc, walk, bodies, &terminal);
+    }
+    free(parameters.data);
+    if (doc->error != NULL) return;
+    if (!terminal && strcmp(result_key, "void") != 0 && !is_main) {
+        sl_fail_name(doc, 1,
+                     "error[E2S19]: selfhost-C11 function may complete "
+                     "without returning a value: ",
+                     name);
+        return;
+    }
+    if (is_main && !terminal) {
+        buffer_append(bodies, "    return 0;\n");
+    }
+    buffer_append(bodies, "}\n\n");
+}
+
+static char *sl_lower_document(SlDoc *doc, const char *text) {
+    if (!sl_load(doc, text)) return NULL;
+    Buffer prototypes;
+    buffer_init(&prototypes);
+    Buffer bodies;
+    buffer_init(&bodies);
+    Buffer casts;
+    buffer_init(&casts);
+    buffer_append(&casts,
+                  "    (void)kofun_failed;\n"
+                  "    (void)kofun_error;\n"
+                  "    (void)kofun_add;\n"
+                  "    (void)kofun_sub;\n"
+                  "    (void)kofun_mul;\n"
+                  "    (void)kofun_neg;\n"
+                  "    (void)kofun_floor_div;\n"
+                  "    (void)kofun_floor_mod;\n");
+    int64_t main_count = 0;
+    for (int64_t index = 0; index < doc->node_count; ++index) {
+        const SlRecord *node = &doc->nodes[index];
+        if (strcmp(sl_field(node, 0), "function") != 0) continue;
+        const SlRecord *symbol = sl_symbol(doc, sl_int(node, 2));
+        if (symbol == NULL) continue;
+        if (strcmp(sl_field(symbol, 3), "main") == 0) {
+            ++main_count;
+        } else {
+            buffer_format(&casts, "    (void)kofun_fn_%s;\n",
+                          sl_field(symbol, 3));
+        }
+    }
+    if (main_count != 1) {
+        sl_fail(doc, 1,
+                "error[E2S16]: selfhost-C11 program needs exactly one "
+                "`main`");
+    }
+    for (int64_t index = 0;
+         doc->error == NULL && index < doc->node_count;
+         ++index) {
+        if (strcmp(sl_field(&doc->nodes[index], 0), "function") != 0) {
+            continue;
+        }
+        int64_t last = index + 1;
+        while (last < doc->node_count &&
+               strcmp(sl_field(&doc->nodes[last], 0), "function") != 0) {
+            ++last;
+        }
+        sl_emit_function(doc, index, index + 1, last, &prototypes,
+                         &bodies, &casts);
+    }
+    if (doc->error != NULL) {
+        free(prototypes.data);
+        free(bodies.data);
+        free(casts.data);
+        return NULL;
+    }
+    Buffer output;
+    buffer_init(&output);
+    buffer_append(&output,
+                  "/* Generated by kofun-stage2 --lower-selfhost-c11. */\n");
+    buffer_format(&output, "/* Source: %s %s */\n\n",
+                  doc->source_path, doc->source_digest);
+    buffer_append(&output, sl_prelude);
+    buffer_append(&output, sl_prelude_text);
+    buffer_append(&output, sl_prelude_unicode);
+    if (prototypes.data != NULL && prototypes.data[0] != '\0') {
+        buffer_append(&output, prototypes.data);
+        buffer_append(&output, "\n");
+    }
+    buffer_append(&output, bodies.data == NULL ? "" : bodies.data);
+    free(prototypes.data);
+    free(bodies.data);
+    free(casts.data);
+    return output.data;
+}
+
+static int lower_selfhost_c11_file(const char *input, const char *output) {
+    if (same_file(input, output)) {
+        puts("error[E2S35]: selfhost-C11 input and output must be distinct");
+        return 2;
+    }
+    char *text = read_file(input);
+    SlDoc *doc = allocate(sizeof(*doc));
+    memset(doc, 0, sizeof(*doc));
+    char *lowered = sl_lower_document(doc, text);
+    if (lowered == NULL) {
+        puts(doc->error);
+        int exit_code = doc->error_exit;
+        free(doc->error);
+        free(text);
+        return exit_code;
+    }
+    write_file(output, lowered);
+    free(lowered);
+    free(text);
+    return 0;
+}
+
 static int emit_scope_hir_file(const char *input, const char *output) {
     if (same_file(input, output)) {
         puts(
@@ -9478,6 +10695,9 @@ int main(int argc, char **argv) {
     if (argc == 5 && strcmp(argv[1], "--emit-selfhost-hir") == 0) {
         return emit_selfhost_hir_file(argv[2], argv[3], argv[4]);
     }
+    if (argc == 4 && strcmp(argv[1], "--lower-selfhost-c11") == 0) {
+        return lower_selfhost_c11_file(argv[2], argv[3]);
+    }
     if (argc != 5) {
         fputs(
             "usage: kofun-stage2 INPUT.kofun OUTPUT.kofun OUTPUT.ir OUTPUT.tokens\n"
@@ -9485,7 +10705,8 @@ int main(int argc, char **argv) {
             "       kofun-stage2 --check-ownership INPUT.kofun\n"
             "       kofun-stage2 --parse-patterns INPUT.kofun OUTPUT.patterns\n"
             "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir\n"
-            "       kofun-stage2 --emit-selfhost-hir INPUT.kofun OUTPUT.hir SOURCE-SHA256\n",
+            "       kofun-stage2 --emit-selfhost-hir INPUT.kofun OUTPUT.hir SOURCE-SHA256\n"
+            "       kofun-stage2 --lower-selfhost-c11 INPUT.hir OUTPUT.c\n",
             stdout
         );
         return 2;

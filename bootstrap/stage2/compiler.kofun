@@ -7401,6 +7401,1281 @@ fn emit_selfhost_hir_file(
     return 1
 }
 
+# selfhost-C11 lowering (#620): kofun.selfhost-hir/v1 -> deterministic
+# standalone C11 for the non-looping Text/function profile slice.
+#
+# The document is the only input: node, symbol, binding, scope, and type
+# records drive the lowering; source text is never reparsed. Every
+# expression node lowers post-order to one temporary named after its
+# node id, so argument evaluation is exactly-once and left-to-right, and
+# `&&`/`||` keep short-circuit evaluation through guarded blocks.
+# Constructs outside the slice classify as unsupported, never as invalid.
+# Results pack C text after an `ok` header line; failures are one
+# `error|EXIT|MESSAGE` line.
+
+fn selfhost_c11_error(exit_code: Int, message: Text) -> Text {
+    return "error|" + to_text(exit_code) + "|" + message
+}
+
+fn selfhost_c11_failed(result: Text) -> Bool {
+    return starts_with(result, "error|")
+}
+
+fn selfhost_c11_line_end(document: Text, line: Int) -> Int {
+    let symbols = chars(document)
+    let mut cursor = line
+    while cursor < len(symbols) && symbols[cursor] != "\n" {
+        cursor = cursor + 1
+    }
+    return cursor
+}
+
+# Line offset of the record `TAG|ID|...`, or -1.
+fn selfhost_c11_record(document: Text, tag: Text, id: Int) -> Int {
+    let wanted = tag + "|" + to_text(id) + "|"
+    let mut line = 0
+    let size = len(document)
+    while line < size {
+        if starts_with(text_slice(document, line, size), wanted) {
+            return line
+        }
+        line = selfhost_c11_line_end(document, line) + 1
+    }
+    return -1
+}
+
+fn selfhost_c11_field_count(document: Text, line: Int) -> Int {
+    let symbols = chars(document)
+    let mut cursor = line
+    let mut count = 1
+    while cursor < len(symbols) && symbols[cursor] != "\n" {
+        if symbols[cursor] == "|" {
+            count = count + 1
+        }
+        cursor = cursor + 1
+    }
+    return count
+}
+
+# The full key of one type record: the remainder after its second bar.
+fn selfhost_c11_type_key(document: Text, type_id: Int) -> Text {
+    let line = selfhost_c11_record(document, "type", type_id)
+    if line < 0 {
+        return ""
+    }
+    let head = len("type|" + to_text(type_id) + "|")
+    return text_slice(
+        document,
+        line + head,
+        selfhost_c11_line_end(document, line)
+    )
+}
+
+fn selfhost_c11_c_type(key: Text) -> Text {
+    if key == "int" {
+        return "int64_t"
+    }
+    if key == "bool" {
+        return "bool"
+    }
+    if key == "text" {
+        return "const char *"
+    }
+    return ""
+}
+
+fn selfhost_c11_symbol_field(
+    document: Text,
+    symbol_id: Int,
+    field: Int
+) -> Text {
+    let line = selfhost_c11_record(document, "symbol", symbol_id)
+    if line < 0 {
+        return ""
+    }
+    return pattern_line_field(document, line, field)
+}
+
+fn selfhost_c11_binding_field(
+    document: Text,
+    binding_id: Int,
+    field: Int
+) -> Text {
+    let line = selfhost_c11_record(document, "binding", binding_id)
+    if line < 0 {
+        return ""
+    }
+    return pattern_line_field(document, line, field)
+}
+
+fn selfhost_c11_scope_field(
+    document: Text,
+    scope_id: Int,
+    field: Int
+) -> Text {
+    let line = selfhost_c11_record(document, "scope", scope_id)
+    if line < 0 {
+        return ""
+    }
+    return pattern_line_field(document, line, field)
+}
+
+# The value type key of a binding: its symbol's recorded type.
+fn selfhost_c11_binding_type(document: Text, binding_id: Int) -> Text {
+    let symbol = selfhost_c11_binding_field(document, binding_id, 3)
+    if len(symbol) == 0 {
+        return ""
+    }
+    return selfhost_c11_type_key(
+        document,
+        decimal_value(
+            selfhost_c11_symbol_field(document, decimal_value(symbol), 4)
+        )
+    )
+}
+
+# Result type key of a function-typed symbol: field 1 of its fn key.
+fn selfhost_c11_result_key(document: Text, symbol_id: Int) -> Text {
+    let key = selfhost_c11_type_key(
+        document,
+        decimal_value(selfhost_c11_symbol_field(document, symbol_id, 4))
+    )
+    if !starts_with(key, "fn|") {
+        return ""
+    }
+    return selfhost_c11_type_key(
+        document,
+        decimal_value(pattern_line_field(key, 0, 1))
+    )
+}
+
+# Whether a builtin symbol's single parameter is List[Text] (the len
+# overload outside this slice).
+fn selfhost_c11_list_parameter(document: Text, symbol_id: Int) -> Bool {
+    let key = selfhost_c11_type_key(
+        document,
+        decimal_value(selfhost_c11_symbol_field(document, symbol_id, 4))
+    )
+    let parameter = pattern_line_field(key, 0, 2)
+    if len(parameter) == 0 {
+        return false
+    }
+    return selfhost_c11_type_key(document, decimal_value(parameter)) ==
+    "list-text"
+}
+
+# Map a slice builtin to its runtime helper; empty when the builtin is
+# outside the non-looping Text slice.
+fn selfhost_c11_builtin_helper(name: Text) -> Text {
+    if name == "contains" {
+        return "kofun_rt_text_contains"
+    }
+    if name == "find" {
+        return "kofun_rt_find"
+    }
+    if name == "is_digit" {
+        return "kofun_rt_is_digit"
+    }
+    if name == "is_space" {
+        return "kofun_rt_is_space"
+    }
+    if name == "is_xid_continue" {
+        return "kofun_rt_is_xid_continue"
+    }
+    if name == "len" {
+        return "kofun_rt_text_len"
+    }
+    if name == "replace" {
+        return "kofun_rt_replace"
+    }
+    if name == "starts_with" {
+        return "kofun_rt_starts_with"
+    }
+    if name == "text_slice" {
+        return "kofun_rt_text_slice"
+    }
+    if name == "trim" {
+        return "kofun_rt_trim"
+    }
+    if name == "validate_unicode_source" {
+        return "kofun_rt_validate_unicode_source"
+    }
+    return ""
+}
+
+fn selfhost_c11_indent(level: Int) -> Text {
+    let mut spaces = ""
+    let mut remaining = level
+    while remaining > 0 {
+        spaces = spaces + "    "
+        remaining = remaining - 1
+    }
+    return spaces
+}
+
+fn selfhost_c11_failed_check(fail_return: Text, level: Int) -> Text {
+    if len(fail_return) == 0 {
+        return selfhost_c11_indent(level) + "if (kofun_failed) return;\n"
+    }
+    return selfhost_c11_indent(level) + "if (kofun_failed) return " +
+    fail_return + ";\n"
+}
+
+# Decode the record escaping of a literal-text field, then re-escape the
+# bytes as one C string literal.
+fn selfhost_c11_string(field: Text) -> Text {
+    let symbols = chars(field)
+    let mut emitted = "\""
+    let mut cursor = 0
+    while cursor < len(symbols) {
+        let mut symbol = symbols[cursor]
+        if symbol == "\\" && cursor + 1 < len(symbols) {
+            let following = symbols[cursor + 1]
+            if following == "\\" {
+                symbol = "\\"
+            } else if following == "p" {
+                symbol = "|"
+            } else if following == "n" {
+                symbol = "\n"
+            }
+            cursor = cursor + 1
+        }
+        if symbol == "\\" {
+            emitted = emitted + "\\\\"
+        } else if symbol == "\"" {
+            emitted = emitted + "\\\""
+        } else if symbol == "\n" {
+            emitted = emitted + "\\n"
+        } else {
+            emitted = emitted + symbol
+        }
+        cursor = cursor + 1
+    }
+    return emitted + "\""
+}
+
+# Line offset just past the pre-order expression subtree at `line`.
+fn selfhost_c11_consume(document: Text, line: Int) -> Int {
+    let kind = pattern_line_field(document, line, 2)
+    let mut next = selfhost_c11_line_end(document, line) + 1
+    if kind == "call" {
+        let mut field = 8
+        let count = selfhost_c11_field_count(document, line)
+        while field < count {
+            next = selfhost_c11_consume(document, next)
+            field = field + 1
+        }
+        return next
+    }
+    if kind == "unary" {
+        return selfhost_c11_consume(document, next)
+    }
+    if kind == "binary" || kind == "index" || kind == "range" {
+        next = selfhost_c11_consume(document, next)
+        return selfhost_c11_consume(document, next)
+    }
+    return next
+}
+
+# The audited C runtime shim emitted into every generated program;
+# byte-identical to the seed. Text helpers keep the trusted stage-1
+# semantics; the Unicode builtins consult the Unicode 17 tables via
+# kofun_unicode.c; allocations are process-lifetime with an explicit
+# panic on exhaustion.
+fn selfhost_c11_prelude() -> Text {
+    return "#include <ctype.h>\n" +
+    "#include <inttypes.h>\n" +
+    "#include <stdbool.h>\n" +
+    "#include <stdint.h>\n" +
+    "#include <stdio.h>\n" +
+    "#include <stdlib.h>\n" +
+    "#include <string.h>\n" +
+    "\n" +
+    "#include \"kofun_unicode.c\"\n" +
+    "\n" +
+    "static bool kofun_failed;\n" +
+    "\n" +
+    "static void kofun_error(const char *message) {\n" +
+    "    if (!kofun_failed) {\n" +
+    "        fputs(message, stderr);\n" +
+    "        fputc('\\n', stderr);\n" +
+    "    }\n" +
+    "    kofun_failed = true;\n" +
+    "}\n" +
+    "\n" +
+    "static int64_t kofun_add(int64_t left, int64_t right) {\n" +
+    "    int64_t result;\n" +
+    "    if (__builtin_add_overflow(left, right, &result)) {\n" +
+    "        kofun_error(\"error[R010]: integer overflow in operator `+`\");\n" +
+    "        return 0;\n" +
+    "    }\n" +
+    "    return result;\n" +
+    "}\n" +
+    "\n" +
+    "static int64_t kofun_sub(int64_t left, int64_t right) {\n" +
+    "    int64_t result;\n" +
+    "    if (__builtin_sub_overflow(left, right, &result)) {\n" +
+    "        kofun_error(\"error[R010]: integer overflow in operator `-`\");\n" +
+    "        return 0;\n" +
+    "    }\n" +
+    "    return result;\n" +
+    "}\n" +
+    "\n" +
+    "static int64_t kofun_mul(int64_t left, int64_t right) {\n" +
+    "    int64_t result;\n" +
+    "    if (__builtin_mul_overflow(left, right, &result)) {\n" +
+    "        kofun_error(\"error[R010]: integer overflow in operator `*`\");\n" +
+    "        return 0;\n" +
+    "    }\n" +
+    "    return result;\n" +
+    "}\n" +
+    "\n" +
+    "static int64_t kofun_neg(int64_t value) {\n" +
+    "    if (value == INT64_MIN) {\n" +
+    "        kofun_error(\n" +
+    "            \"error[R010]: integer overflow in unary operator `-`\"\n" +
+    "        );\n" +
+    "        return 0;\n" +
+    "    }\n" +
+    "    return -value;\n" +
+    "}\n" +
+    "\n" +
+    "static int64_t kofun_floor_div(int64_t left, int64_t right) {\n" +
+    "    if (right == 0) {\n" +
+    "        kofun_error(\n" +
+    "            \"error[R010]: operator `//` failed: division by zero\"\n" +
+    "        );\n" +
+    "        return 0;\n" +
+    "    }\n" +
+    "    if (left == INT64_MIN && right == -1) {\n" +
+    "        kofun_error(\"error[R010]: integer overflow in operator `//`\");\n" +
+    "        return 0;\n" +
+    "    }\n" +
+    "    int64_t quotient = left / right;\n" +
+    "    int64_t remainder = left % right;\n" +
+    "    if (remainder != 0 && ((remainder < 0) != (right < 0))) {\n" +
+    "        --quotient;\n" +
+    "    }\n" +
+    "    return quotient;\n" +
+    "}\n" +
+    "\n" +
+    "static int64_t kofun_floor_mod(int64_t left, int64_t right) {\n" +
+    "    if (right == 0) {\n" +
+    "        kofun_error(\n" +
+    "            \"error[R010]: operator `%` failed: division by zero\"\n" +
+    "        );\n" +
+    "        return 0;\n" +
+    "    }\n" +
+    "    if (left == INT64_MIN && right == -1) {\n" +
+    "        return 0;\n" +
+    "    }\n" +
+    "    int64_t remainder = left % right;\n" +
+    "    if (remainder != 0 && ((remainder < 0) != (right < 0))) {\n" +
+    "        remainder += right;\n" +
+    "    }\n" +
+    "    return remainder;\n" +
+    "}\n" +
+    "\n" +
+    "void kofun_rt_panic(const char *message) {\n" +
+    "    fprintf(stderr, \"Kofun runtime error: %s\\n\", message);\n" +
+    "    exit(1);\n" +
+    "}\n" +
+    "\n" +
+    "void *kofun_rt_alloc(size_t size) {\n" +
+    "    void *value = malloc(size == 0 ? 1 : size);\n" +
+    "    if (value == NULL) {\n" +
+    "        kofun_rt_panic(\"out of memory\");\n" +
+    "    }\n" +
+    "    return value;\n" +
+    "}\n" +
+    "\n" +
+    "char *kofun_rt_copy_n(const char *value, size_t length) {\n" +
+    "    char *result = (char *)kofun_rt_alloc(length + 1);\n" +
+    "    if (length > 0) {\n" +
+    "        memcpy(result, value, length);\n" +
+    "    }\n" +
+    "    result[length] = '\\0';\n" +
+    "    return result;\n" +
+    "}\n" +
+    "\n" +
+    "char *kofun_rt_text_concat(const char *left, const char *right) {\n" +
+    "    size_t left_len = strlen(left);\n" +
+    "    size_t right_len = strlen(right);\n" +
+    "    char *result = (char *)kofun_rt_alloc(left_len + right_len + 1);\n" +
+    "    memcpy(result, left, left_len);\n" +
+    "    memcpy(result + left_len, right, right_len + 1);\n" +
+    "    return result;\n" +
+    "}\n" +
+    "\n" +
+    "bool kofun_rt_text_equal(const char *left, const char *right) {\n" +
+    "    return strcmp(left, right) == 0;\n" +
+    "}\n" +
+    "\n" +
+    "int64_t kofun_rt_text_len(const char *value) {\n" +
+    "    return (int64_t)strlen(value);\n" +
+    "}\n" +
+    "\n" +
+    "bool kofun_rt_text_contains(const char *value, const char *needle) {\n" +
+    "    return strstr(value, needle) != NULL;\n" +
+    "}\n" +
+    "\n" +
+    "int64_t kofun_rt_find(const char *value, const char *needle) {\n" +
+    "    const char *found = strstr(value, needle);\n" +
+    "    return found == NULL ? INT64_C(-1) : (int64_t)(found - value);\n" +
+    "}\n" +
+    "\n" +
+    "char *kofun_rt_text_slice(const char *value, int64_t start, int64_t end) {\n" +
+    "    int64_t length = (int64_t)strlen(value);\n" +
+    "    if (start < 0) start = 0;\n" +
+    "    if (end < start) end = start;\n" +
+    "    if (start > length) start = length;\n" +
+    "    if (end > length) end = length;\n" +
+    "    return kofun_rt_copy_n(value + start, (size_t)(end - start));\n" +
+    "}\n" +
+    "\n" +
+    "char *kofun_rt_trim(const char *value) {\n" +
+    "    const unsigned char *start = (const unsigned char *)value;\n" +
+    "    while (*start != '\\0' && isspace(*start)) {\n" +
+    "        ++start;\n" +
+    "    }\n" +
+    "    const unsigned char *end =\n" +
+    "        (const unsigned char *)value + strlen(value);\n" +
+    "    while (end > start && isspace(end[-1])) {\n" +
+    "        --end;\n" +
+    "    }\n" +
+    "    return kofun_rt_copy_n((const char *)start, (size_t)(end - start));\n" +
+    "}\n" +
+    "\n" +
+    "char *kofun_rt_replace(\n" +
+    "    const char *value,\n" +
+    "    const char *old,\n" +
+    "    const char *replacement\n" +
+    ") {\n" +
+    "    size_t old_len = strlen(old);\n" +
+    "    if (old_len == 0) {\n" +
+    "        return kofun_rt_copy_n(value, strlen(value));\n" +
+    "    }\n" +
+    "    size_t replacement_len = strlen(replacement);\n" +
+    "    size_t count = 0;\n" +
+    "    const char *cursor = value;\n" +
+    "    while ((cursor = strstr(cursor, old)) != NULL) {\n" +
+    "        ++count;\n" +
+    "        cursor += old_len;\n" +
+    "    }\n" +
+    "    size_t value_len = strlen(value);\n" +
+    "    size_t result_len;\n" +
+    "    if (replacement_len >= old_len) {\n" +
+    "        result_len = value_len + count * (replacement_len - old_len);\n" +
+    "    } else {\n" +
+    "        result_len = value_len - count * (old_len - replacement_len);\n" +
+    "    }\n" +
+    "    char *result = (char *)kofun_rt_alloc(result_len + 1);\n" +
+    "    char *out = result;\n" +
+    "    cursor = value;\n" +
+    "    const char *match;\n" +
+    "    while ((match = strstr(cursor, old)) != NULL) {\n" +
+    "        size_t prefix = (size_t)(match - cursor);\n" +
+    "        memcpy(out, cursor, prefix);\n" +
+    "        out += prefix;\n" +
+    "        memcpy(out, replacement, replacement_len);\n" +
+    "        out += replacement_len;\n" +
+    "        cursor = match + old_len;\n" +
+    "    }\n" +
+    "    strcpy(out, cursor);\n" +
+    "    return result;\n" +
+    "}\n" +
+    "\n" +
+    "bool kofun_rt_starts_with(const char *value, const char *prefix) {\n" +
+    "    size_t prefix_len = strlen(prefix);\n" +
+    "    return strncmp(value, prefix, prefix_len) == 0;\n" +
+    "}\n" +
+    "\n" +
+    "bool kofun_rt_is_digit(const char *value) {\n" +
+    "    return value[0] != '\\0' && value[1] == '\\0' &&\n" +
+    "        isdigit((unsigned char)value[0]) != 0;\n" +
+    "}\n" +
+    "\n" +
+    "bool kofun_rt_is_space(const char *value) {\n" +
+    "    return value[0] != '\\0' && value[1] == '\\0' &&\n" +
+    "        isspace((unsigned char)value[0]) != 0;\n" +
+    "}\n" +
+    "\n" +
+    "bool kofun_rt_is_xid_continue(const char *value) {\n" +
+    "    uint32_t codepoint = 0;\n" +
+    "    size_t width = 0;\n" +
+    "    size_t length = strlen(value);\n" +
+    "    if (!kofun_unicode_decode(\n" +
+    "            (const uint8_t *)value,\n" +
+    "            length,\n" +
+    "            0,\n" +
+    "            &codepoint,\n" +
+    "            &width)) {\n" +
+    "        return false;\n" +
+    "    }\n" +
+    "    return kofun_unicode_is_xid_continue(codepoint);\n" +
+    "}\n" +
+    "\n" +
+    "const char *kofun_rt_validate_unicode_source(const char *value) {\n" +
+    "    KofunUnicodeError unicode_error;\n" +
+    "    if (kofun_unicode_validate_source(\n" +
+    "            (const uint8_t *)value,\n" +
+    "            strlen(value),\n" +
+    "            &unicode_error)) {\n" +
+    "        return \"\";\n" +
+    "    }\n" +
+    "    char message[1024];\n" +
+    "    kofun_unicode_format_error(\n" +
+    "        &unicode_error,\n" +
+    "        getenv(\"KOFUN_DIAGNOSTIC_LOCALE\"),\n" +
+    "        message,\n" +
+    "        sizeof(message)\n" +
+    "    );\n" +
+    "    return kofun_rt_copy_n(message, strlen(message));\n" +
+    "}\n" +
+    "\n"
+}
+
+# Emission context: `RANGE_START|RANGE_END|IS_MAIN|FAIL_RETURN` — the
+# function's node-record byte range in the document, whether it is
+# `main`, and the value returned when kofun_failed is observed.
+
+fn selfhost_c11_node_line(document: Text, context: Text, node_id: Int) -> Int {
+    let range_end = decimal_value(pattern_line_field(context, 0, 1))
+    let wanted = "node|" + to_text(node_id) + "|"
+    let mut line = decimal_value(pattern_line_field(context, 0, 0))
+    while line < range_end {
+        if starts_with(text_slice(document, line, range_end), wanted) {
+            return line
+        }
+        line = selfhost_c11_line_end(document, line) + 1
+    }
+    return -1
+}
+
+fn selfhost_c11_expression(
+    document: Text,
+    context: Text,
+    node_id: Int,
+    level: Int
+) -> Text {
+    let line = selfhost_c11_node_line(document, context, node_id)
+    if line < 0 {
+        return selfhost_c11_error(
+            1,
+            "error[E2S35]: selfhost-C11 node reference is out of range"
+        )
+    }
+    let kind = pattern_line_field(document, line, 2)
+    let type_key = selfhost_c11_type_key(
+        document,
+        decimal_value(pattern_line_field(document, line, 5))
+    )
+    let pad = selfhost_c11_indent(level)
+    let fail_return = pattern_line_field(context, 0, 3)
+    if kind == "literal-int" {
+        let digits = pattern_line_field(document, line, 7)
+        let symbols = chars(digits)
+        let mut cleaned = ""
+        let mut cursor = 0
+        while cursor < len(symbols) {
+            if symbols[cursor] != "_" {
+                cleaned = cleaned + symbols[cursor]
+            }
+            cursor = cursor + 1
+        }
+        return "ok\n" + pad + "int64_t k_n" + to_text(node_id) +
+        " = INT64_C(" + cleaned + ");\n"
+    }
+    if kind == "literal-bool" {
+        return "ok\n" + pad + "bool k_n" + to_text(node_id) + " = " +
+        pattern_line_field(document, line, 7) + ";\n"
+    }
+    if kind == "literal-text" {
+        return "ok\n" + pad + "const char *k_n" + to_text(node_id) +
+        " = " + selfhost_c11_string(pattern_line_field(document, line, 7)) +
+        ";\n"
+    }
+    if kind == "name" {
+        if len(selfhost_c11_c_type(type_key)) == 0 {
+            return selfhost_c11_error(
+                3,
+                "error[E2S10]: unsupported selfhost-C11 type `" +
+                type_key + "`"
+            )
+        }
+        return "ok\n" + pad + selfhost_c11_c_type(type_key) + " k_n" +
+        to_text(node_id) + " = k_b" +
+        pattern_line_field(document, line, 7) + ";\n"
+    }
+    if kind == "call" {
+        let symbol_id = decimal_value(pattern_line_field(document, line, 7))
+        let symbol_line = selfhost_c11_record(document, "symbol", symbol_id)
+        if symbol_line < 0 {
+            return selfhost_c11_error(
+                1,
+                "error[E2S35]: selfhost-C11 call has no symbol"
+            )
+        }
+        let name = selfhost_c11_symbol_field(document, symbol_id, 3)
+        let builtin =
+            selfhost_c11_symbol_field(document, symbol_id, 2) == "builtin"
+        let mut helper = ""
+        if builtin {
+            helper = selfhost_c11_builtin_helper(name)
+            if len(helper) == 0 ||
+               selfhost_c11_list_parameter(document, symbol_id) {
+                return selfhost_c11_error(
+                    3,
+                    "error[E2S10]: unsupported selfhost-C11 builtin call `" +
+                    name + "`"
+                )
+            }
+        }
+        let count = selfhost_c11_field_count(document, line)
+        let mut emitted = ""
+        let mut field = 8
+        while field < count {
+            let argument = selfhost_c11_expression(
+                document,
+                context,
+                decimal_value(pattern_line_field(document, line, field)),
+                level
+            )
+            if selfhost_c11_failed(argument) {
+                return argument
+            }
+            emitted = emitted + selfhost_records(argument)
+            field = field + 1
+        }
+        let mut open = "kofun_fn_" + name + "("
+        if type_key != "void" {
+            if builtin {
+                open = selfhost_c11_c_type(type_key) + " k_n" +
+                to_text(node_id) + " = " + helper + "("
+            } else {
+                open = selfhost_c11_c_type(type_key) + " k_n" +
+                to_text(node_id) + " = kofun_fn_" + name + "("
+            }
+        }
+        let mut arguments = ""
+        field = 8
+        while field < count {
+            if field > 8 {
+                arguments = arguments + ", "
+            }
+            arguments = arguments + "k_n" +
+            pattern_line_field(document, line, field)
+            field = field + 1
+        }
+        emitted = emitted + pad + open + arguments + ");\n"
+        if !builtin {
+            emitted = emitted + selfhost_c11_failed_check(fail_return, level)
+        }
+        return "ok\n" + emitted
+    }
+    if kind == "unary" {
+        let operator = pattern_line_field(document, line, 7)
+        let operand = decimal_value(pattern_line_field(document, line, 8))
+        let inner = selfhost_c11_expression(document, context, operand, level)
+        if selfhost_c11_failed(inner) {
+            return inner
+        }
+        if operator == "!" {
+            return "ok\n" + selfhost_records(inner) + pad + "bool k_n" +
+            to_text(node_id) + " = !k_n" + to_text(operand) + ";\n"
+        }
+        return "ok\n" + selfhost_records(inner) + pad + "int64_t k_n" +
+        to_text(node_id) + " = kofun_neg(k_n" + to_text(operand) +
+        ");\n" + selfhost_c11_failed_check(fail_return, level)
+    }
+    if kind == "binary" {
+        let operator = pattern_line_field(document, line, 7)
+        let left = decimal_value(pattern_line_field(document, line, 8))
+        let right = decimal_value(pattern_line_field(document, line, 9))
+        let left_line = selfhost_c11_node_line(document, context, left)
+        let mut left_key = ""
+        if left_line >= 0 {
+            left_key = selfhost_c11_type_key(
+                document,
+                decimal_value(pattern_line_field(document, left_line, 5))
+            )
+        }
+        if operator == "&&" || operator == "\\p\\p" {
+            let first = selfhost_c11_expression(document, context, left, level)
+            if selfhost_c11_failed(first) {
+                return first
+            }
+            let second = selfhost_c11_expression(
+                document,
+                context,
+                right,
+                level + 1
+            )
+            if selfhost_c11_failed(second) {
+                return second
+            }
+            let mut guard = "if (k_n"
+            if operator != "&&" {
+                guard = "if (!k_n"
+            }
+            return "ok\n" + selfhost_records(first) + pad + "bool k_n" +
+            to_text(node_id) + " = k_n" + to_text(left) + ";\n" + pad +
+            guard + to_text(node_id) + ") {\n" +
+            selfhost_records(second) + selfhost_c11_indent(level + 1) +
+            "k_n" + to_text(node_id) + " = k_n" + to_text(right) + ";\n" +
+            pad + "}\n"
+        }
+        let first = selfhost_c11_expression(document, context, left, level)
+        if selfhost_c11_failed(first) {
+            return first
+        }
+        let second = selfhost_c11_expression(document, context, right, level)
+        if selfhost_c11_failed(second) {
+            return second
+        }
+        let emitted = selfhost_records(first) + selfhost_records(second)
+        if operator == "+" && left_key == "text" {
+            return "ok\n" + emitted + pad + "const char *k_n" +
+            to_text(node_id) + " = kofun_rt_text_concat(k_n" +
+            to_text(left) + ", k_n" + to_text(right) + ");\n"
+        }
+        if operator == "==" || operator == "!=" {
+            if left_key == "text" {
+                let mut negate = ""
+                if operator == "!=" {
+                    negate = "!"
+                }
+                return "ok\n" + emitted + pad + "bool k_n" +
+                to_text(node_id) + " = " + negate +
+                "kofun_rt_text_equal(k_n" + to_text(left) + ", k_n" +
+                to_text(right) + ");\n"
+            }
+            return "ok\n" + emitted + pad + "bool k_n" + to_text(node_id) +
+            " = k_n" + to_text(left) + " " + operator + " k_n" +
+            to_text(right) + ";\n"
+        }
+        if operator == "<" || operator == "<=" || operator == ">" ||
+           operator == ">=" {
+            if left_key == "text" {
+                return selfhost_c11_error(
+                    3,
+                    "error[E2S10]: unsupported selfhost-C11 operator `" +
+                    operator + "`"
+                )
+            }
+            return "ok\n" + emitted + pad + "bool k_n" + to_text(node_id) +
+            " = k_n" + to_text(left) + " " + operator + " k_n" +
+            to_text(right) + ";\n"
+        }
+        let mut arithmetic = ""
+        if operator == "+" {
+            arithmetic = "kofun_add"
+        } else if operator == "-" {
+            arithmetic = "kofun_sub"
+        } else if operator == "*" {
+            arithmetic = "kofun_mul"
+        } else if operator == "//" {
+            arithmetic = "kofun_floor_div"
+        } else if operator == "%" {
+            arithmetic = "kofun_floor_mod"
+        }
+        if len(arithmetic) == 0 {
+            return selfhost_c11_error(
+                3,
+                "error[E2S10]: unsupported selfhost-C11 operator `" +
+                operator + "`"
+            )
+        }
+        return "ok\n" + emitted + pad + "int64_t k_n" + to_text(node_id) +
+        " = " + arithmetic + "(k_n" + to_text(left) + ", k_n" +
+        to_text(right) + ");\n" +
+        selfhost_c11_failed_check(fail_return, level)
+    }
+    return selfhost_c11_error(
+        3,
+        "error[E2S10]: unsupported selfhost-C11 expression `" + kind + "`"
+    )
+}
+
+# Statement results pack `NEXT|TERMINAL` over the emitted C lines.
+fn selfhost_c11_statement(
+    document: Text,
+    context: Text,
+    line: Int,
+    level: Int
+) -> Text {
+    let kind = pattern_line_field(document, line, 2)
+    let node_end = selfhost_c11_line_end(document, line) + 1
+    let pad = selfhost_c11_indent(level)
+    let is_main = pattern_line_field(context, 0, 2) == "1"
+    if kind == "let" {
+        let binding = pattern_line_field(document, line, 7)
+        let value = decimal_value(pattern_line_field(document, line, 8))
+        let emitted = selfhost_c11_expression(document, context, value, level)
+        if selfhost_c11_failed(emitted) {
+            return emitted
+        }
+        let binding_key = selfhost_c11_binding_type(
+            document,
+            decimal_value(binding)
+        )
+        if len(selfhost_c11_c_type(binding_key)) == 0 {
+            return selfhost_c11_error(
+                3,
+                "error[E2S10]: unsupported selfhost-C11 type `" +
+                binding_key + "`"
+            )
+        }
+        return to_text(selfhost_c11_consume(document, node_end)) + "|0\n" +
+        selfhost_records(emitted) + pad + selfhost_c11_c_type(binding_key) +
+        " k_b" + binding + " = k_n" + to_text(value) + ";\n"
+    }
+    if kind == "return" {
+        if pattern_line_field(document, line, 7) == "none" {
+            let mut bare = pad + "return;\n"
+            if is_main {
+                bare = pad + "return 0;\n"
+            }
+            return to_text(node_end) + "|1\n" + bare
+        }
+        let value = decimal_value(pattern_line_field(document, line, 7))
+        let emitted = selfhost_c11_expression(document, context, value, level)
+        if selfhost_c11_failed(emitted) {
+            return emitted
+        }
+        let mut returned = pad + "return k_n" + to_text(value) + ";\n"
+        if is_main {
+            returned = pad + "return (int)k_n" + to_text(value) + ";\n"
+        }
+        return to_text(selfhost_c11_consume(document, node_end)) + "|1\n" +
+        selfhost_records(emitted) + returned
+    }
+    if kind == "expr-stmt" {
+        let value = decimal_value(pattern_line_field(document, line, 7))
+        let emitted = selfhost_c11_expression(document, context, value, level)
+        if selfhost_c11_failed(emitted) {
+            return emitted
+        }
+        let value_line = selfhost_c11_node_line(document, context, value)
+        let mut discard = ""
+        if selfhost_c11_type_key(
+               document,
+               decimal_value(pattern_line_field(document, value_line, 5))
+           ) != "void" {
+            discard = pad + "(void)k_n" + to_text(value) + ";\n"
+        }
+        return to_text(selfhost_c11_consume(document, node_end)) + "|0\n" +
+        selfhost_records(emitted) + discard
+    }
+    if kind == "if" {
+        let condition = decimal_value(pattern_line_field(document, line, 7))
+        let then_scope = decimal_value(pattern_line_field(document, line, 8))
+        let else_kind = pattern_line_field(document, line, 9)
+        let emitted = selfhost_c11_expression(
+            document,
+            context,
+            condition,
+            level
+        )
+        if selfhost_c11_failed(emitted) {
+            return emitted
+        }
+        let body = selfhost_c11_block(
+            document,
+            context,
+            selfhost_c11_consume(document, node_end),
+            then_scope,
+            level + 1
+        )
+        if selfhost_c11_failed(body) {
+            return body
+        }
+        let mut walk = decimal_value(pattern_line_field(body, 0, 0))
+        let mut branch = selfhost_records(emitted) + pad + "if (k_n" +
+        to_text(condition) + ") {\n" + selfhost_records(body)
+        if else_kind == "none" {
+            return to_text(walk) + "|0\n" + branch + pad + "}\n"
+        }
+        branch = branch + pad + "} else {\n"
+        let mut alternative = ""
+        if else_kind == "block" {
+            alternative = selfhost_c11_block(
+                document,
+                context,
+                walk,
+                decimal_value(pattern_line_field(document, line, 10)),
+                level + 1
+            )
+        } else {
+            alternative = selfhost_c11_statement(
+                document,
+                context,
+                walk,
+                level + 1
+            )
+        }
+        if selfhost_c11_failed(alternative) {
+            return alternative
+        }
+        walk = decimal_value(pattern_line_field(alternative, 0, 0))
+        let terminal =
+            pattern_line_field(body, 0, 1) == "1" &&
+            pattern_line_field(alternative, 0, 1) == "1"
+        let mut flag = "0"
+        if terminal {
+            flag = "1"
+        }
+        return to_text(walk) + "|" + flag + "\n" + branch +
+        selfhost_records(alternative) + pad + "}\n"
+    }
+    return selfhost_c11_error(
+        3,
+        "error[E2S10]: unsupported selfhost-C11 statement `" + kind + "`"
+    )
+}
+
+# Emit the statements whose spans lie inside one block scope.
+fn selfhost_c11_block(
+    document: Text,
+    context: Text,
+    line: Int,
+    scope_id: Int,
+    level: Int
+) -> Text {
+    let scope_start = selfhost_c11_scope_field(document, scope_id, 4)
+    let scope_end = selfhost_c11_scope_field(document, scope_id, 5)
+    if len(scope_start) == 0 {
+        return selfhost_c11_error(
+            1,
+            "error[E2S35]: selfhost-C11 scope reference is out of range"
+        )
+    }
+    let range_end = decimal_value(pattern_line_field(context, 0, 1))
+    let mut walk = line
+    let mut emitted = ""
+    let mut terminal = "0"
+    let mut walking = true
+    while walking && walk < range_end {
+        if !starts_with(text_slice(document, walk, range_end), "node|") {
+            walking = false
+        } else {
+            let start = decimal_value(pattern_line_field(document, walk, 3))
+            if start < decimal_value(scope_start) ||
+               start >= decimal_value(scope_end) {
+                walking = false
+            } else {
+                let statement = selfhost_c11_statement(
+                    document,
+                    context,
+                    walk,
+                    level
+                )
+                if selfhost_c11_failed(statement) {
+                    return statement
+                }
+                walk = decimal_value(pattern_line_field(statement, 0, 0))
+                terminal = pattern_line_field(statement, 0, 1)
+                emitted = emitted + selfhost_records(statement)
+            }
+        }
+    }
+    return to_text(walk) + "|" + terminal + "\n" + emitted
+}
+
+# Typed parameter list of one function scope: packs `ARITY` over the
+# comma-joined C parameters, or an internal error.
+fn selfhost_c11_signature(document: Text, function_scope: Int) -> Text {
+    let size = len(document)
+    let mut line = 0
+    let mut arity = 0
+    let mut parameters = ""
+    while line < size {
+        if starts_with(text_slice(document, line, size), "binding|") &&
+           decimal_value(pattern_line_field(document, line, 2)) ==
+           function_scope {
+            let symbol = decimal_value(pattern_line_field(document, line, 3))
+            if selfhost_c11_symbol_field(document, symbol, 2) ==
+               "parameter" {
+                let key = selfhost_c11_type_key(
+                    document,
+                    decimal_value(
+                        selfhost_c11_symbol_field(document, symbol, 4)
+                    )
+                )
+                if len(selfhost_c11_c_type(key)) == 0 {
+                    return selfhost_c11_error(
+                        3,
+                        "error[E2S10]: unsupported selfhost-C11 type `" +
+                        key + "`"
+                    )
+                }
+                if arity > 0 {
+                    parameters = parameters + ", "
+                }
+                let mut spelled = "bool "
+                if key == "text" {
+                    spelled = "const char *"
+                } else if key == "int" {
+                    spelled = "int64_t "
+                }
+                parameters = parameters + spelled + "k_b" +
+                pattern_line_field(document, line, 1)
+                arity = arity + 1
+            }
+        }
+        line = selfhost_c11_line_end(document, line) + 1
+    }
+    return to_text(arity) + "\n" + parameters
+}
+
+# One function record: packs the next record offset over the emitted C
+# body (the driver assembles prototypes from the same signature).
+fn selfhost_c11_function(
+    document: Text,
+    record: Int,
+    range_end: Int,
+    casts: Text
+) -> Text {
+    let symbol_id = decimal_value(pattern_line_field(document, record, 2))
+    let symbol_line = selfhost_c11_record(document, "symbol", symbol_id)
+    if symbol_line < 0 {
+        return selfhost_c11_error(
+            1,
+            "error[E2S35]: selfhost-C11 function has no symbol"
+        )
+    }
+    let name = selfhost_c11_symbol_field(document, symbol_id, 3)
+    let result_key = selfhost_c11_result_key(document, symbol_id)
+    let signature = selfhost_c11_signature(
+        document,
+        decimal_value(pattern_line_field(document, record, 3))
+    )
+    if selfhost_c11_failed(signature) {
+        return signature
+    }
+    let arity = decimal_value(pattern_line_field(signature, 0, 0))
+    let mut fail_return = ""
+    if name == "main" {
+        fail_return = "1"
+    } else if result_key == "int" {
+        fail_return = "INT64_C(0)"
+    } else if result_key == "bool" {
+        fail_return = "false"
+    } else if result_key == "text" {
+        fail_return = "\"\""
+    } else if result_key != "void" {
+        return selfhost_c11_error(
+            3,
+            "error[E2S10]: unsupported selfhost-C11 type `" + result_key +
+            "`"
+        )
+    }
+    let mut opened = ""
+    if name == "main" {
+        if arity != 0 {
+            return selfhost_c11_error(
+                1,
+                "error[E2S15]: selfhost-C11 `main` takes no parameters"
+            )
+        }
+        opened = "int main(void) {\n" + casts
+    } else {
+        let mut result_type = "void "
+        if result_key == "text" {
+            result_type = "const char *"
+        } else if result_key == "int" {
+            result_type = "int64_t "
+        } else if result_key == "bool" {
+            result_type = "bool "
+        }
+        let mut parameters = selfhost_records(signature)
+        if arity == 0 {
+            parameters = "void"
+        }
+        opened = "static " + result_type + "kofun_fn_" + name + "(" +
+        parameters + ") {\n"
+    }
+    let mut is_main = "0"
+    if name == "main" {
+        is_main = "1"
+    }
+    let context = to_text(selfhost_c11_line_end(document, record) + 1) +
+    "|" + to_text(range_end) + "|" + is_main + "|" + fail_return
+    let mut walk = selfhost_c11_line_end(document, record) + 1
+    let mut body = ""
+    let mut terminal = "0"
+    while walk < range_end {
+        let statement = selfhost_c11_statement(document, context, walk, 1)
+        if selfhost_c11_failed(statement) {
+            return statement
+        }
+        walk = decimal_value(pattern_line_field(statement, 0, 0))
+        terminal = pattern_line_field(statement, 0, 1)
+        body = body + selfhost_records(statement)
+    }
+    if terminal != "1" && result_key != "void" && name != "main" {
+        return selfhost_c11_error(
+            1,
+            "error[E2S19]: selfhost-C11 function may complete without " +
+            "returning a value: `" + name + "`"
+        )
+    }
+    if name == "main" && terminal != "1" {
+        body = body + "    return 0;\n"
+    }
+    return to_text(range_end) + "\n" + opened + body + "}\n\n"
+}
+
+# Prototype line for one non-main function.
+fn selfhost_c11_prototype(document: Text, record: Int) -> Text {
+    let symbol_id = decimal_value(pattern_line_field(document, record, 2))
+    let name = selfhost_c11_symbol_field(document, symbol_id, 3)
+    let result_key = selfhost_c11_result_key(document, symbol_id)
+    let signature = selfhost_c11_signature(
+        document,
+        decimal_value(pattern_line_field(document, record, 3))
+    )
+    if selfhost_c11_failed(signature) {
+        return signature
+    }
+    let mut result_type = "void "
+    if result_key == "text" {
+        result_type = "const char *"
+    } else if result_key == "int" {
+        result_type = "int64_t "
+    } else if result_key == "bool" {
+        result_type = "bool "
+    }
+    let mut parameters = selfhost_records(signature)
+    if decimal_value(pattern_line_field(signature, 0, 0)) == 0 {
+        parameters = "void"
+    }
+    return "static " + result_type + "kofun_fn_" + name + "(" +
+    parameters + ");\n"
+}
+
+# Produce the whole generated C translation unit, or `error|EXIT|MESSAGE`.
+fn selfhost_c11_document(document: Text) -> Text {
+    if !starts_with(document, "schema|kofun.selfhost-hir/v1\n") {
+        return selfhost_c11_error(
+            1,
+            "error[E2S35]: selfhost-C11 input is not a " +
+            "kofun.selfhost-hir/v1 document"
+        )
+    }
+    let source_line = text_find_from(document, "\nsource|", 0)
+    if source_line < 0 {
+        return selfhost_c11_error(
+            1,
+            "error[E2S35]: selfhost-C11 document has no source record"
+        )
+    }
+    if !contains(document, "\nstatus|complete\n") {
+        return selfhost_c11_error(
+            1,
+            "error[E2S35]: selfhost-C11 input must be a complete typed " +
+            "document"
+        )
+    }
+    let size = len(document)
+    let mut casts = "    (void)kofun_failed;\n" +
+    "    (void)kofun_error;\n" +
+    "    (void)kofun_add;\n" +
+    "    (void)kofun_sub;\n" +
+    "    (void)kofun_mul;\n" +
+    "    (void)kofun_neg;\n" +
+    "    (void)kofun_floor_div;\n" +
+    "    (void)kofun_floor_mod;\n"
+    let mut main_count = 0
+    let mut line = 0
+    while line < size {
+        if starts_with(text_slice(document, line, size), "function|") {
+            let symbol =
+                decimal_value(pattern_line_field(document, line, 2))
+            if selfhost_c11_symbol_field(document, symbol, 3) == "main" {
+                main_count = main_count + 1
+            } else {
+                casts = casts + "    (void)kofun_fn_" +
+                selfhost_c11_symbol_field(document, symbol, 3) + ";\n"
+            }
+        }
+        line = selfhost_c11_line_end(document, line) + 1
+    }
+    if main_count != 1 {
+        return selfhost_c11_error(
+            1,
+            "error[E2S16]: selfhost-C11 program needs exactly one `main`"
+        )
+    }
+    let mut prototypes = ""
+    let mut bodies = ""
+    line = 0
+    while line < size {
+        if starts_with(text_slice(document, line, size), "function|") {
+            let mut range_end =
+                selfhost_c11_line_end(document, line) + 1
+            let mut scanning = true
+            while scanning && range_end < size {
+                if starts_with(
+                       text_slice(document, range_end, size),
+                       "function|"
+                   ) {
+                    scanning = false
+                } else {
+                    range_end =
+                        selfhost_c11_line_end(document, range_end) + 1
+                }
+            }
+            let symbol =
+                decimal_value(pattern_line_field(document, line, 2))
+            if selfhost_c11_symbol_field(document, symbol, 3) != "main" {
+                let prototype = selfhost_c11_prototype(document, line)
+                if selfhost_c11_failed(prototype) {
+                    return prototype
+                }
+                prototypes = prototypes + prototype
+            }
+            let emitted = selfhost_c11_function(
+                document,
+                line,
+                range_end,
+                casts
+            )
+            if selfhost_c11_failed(emitted) {
+                return emitted
+            }
+            bodies = bodies + selfhost_records(emitted)
+            line = range_end
+        } else {
+            line = selfhost_c11_line_end(document, line) + 1
+        }
+    }
+    let mut emitted =
+    "/* Generated by kofun-stage2 --lower-selfhost-c11. */\n" +
+    "/* Source: " + pattern_line_field(document, source_line + 1, 1) +
+    " " + pattern_line_field(document, source_line + 1, 2) + " */\n\n" +
+    selfhost_c11_prelude()
+    if len(prototypes) > 0 {
+        emitted = emitted + prototypes + "\n"
+    }
+    return "ok\n" + emitted + bodies
+}
+
+fn lower_selfhost_c11_file(input_path: Text, output_path: Text) -> Int {
+    if input_path == output_path {
+        print("error[E2S35]: selfhost-C11 input and output must be distinct")
+        return 2
+    }
+    let document = read_text(input_path)
+    let lowered = selfhost_c11_document(document)
+    if selfhost_c11_failed(lowered) {
+        print(pattern_line_field(lowered, 0, 2))
+        return decimal_value(pattern_line_field(lowered, 0, 1))
+    }
+    write_text(output_path, selfhost_records(lowered))
+    return 0
+}
+
 fn main() -> Int {
     let arguments = args()
     if len(arguments) == 5 && arguments[0] == "--compile-outcome" {
@@ -7436,6 +8711,9 @@ fn main() -> Int {
             arguments[3]
         )
     }
+    if len(arguments) == 3 && arguments[0] == "--lower-selfhost-c11" {
+        return lower_selfhost_c11_file(arguments[1], arguments[2])
+    }
     if len(arguments) != 4 {
         print(
             "usage: kofun-stage2 INPUT.kofun OUTPUT.kofun OUTPUT.ir OUTPUT.tokens\n" +
@@ -7443,7 +8721,8 @@ fn main() -> Int {
             "       kofun-stage2 --check-ownership INPUT.kofun\n" +
             "       kofun-stage2 --parse-patterns INPUT.kofun OUTPUT.patterns\n" +
             "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir\n" +
-            "       kofun-stage2 --emit-selfhost-hir INPUT.kofun OUTPUT.hir SOURCE-SHA256"
+            "       kofun-stage2 --emit-selfhost-hir INPUT.kofun OUTPUT.hir SOURCE-SHA256\n" +
+            "       kofun-stage2 --lower-selfhost-c11 INPUT.hir OUTPUT.c"
         )
         return 2
     }
