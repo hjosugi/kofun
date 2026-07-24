@@ -1,0 +1,9 @@
+# expect-stdout: こんにちは、古墳
+fn main() {
+    let message: Text = greeting("こんにちは", "古墳")
+    print(message)
+}
+
+fn greeting(prefix: Text, name: Text) -> Text {
+    return prefix + "、" + name
+}

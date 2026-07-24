@@ -1,0 +1,9 @@
+fn label(kind: Text) -> Text {
+    return kind
+}
+
+fn main() {
+    let first: Text = label("fn")
+    let second: Text = label("main")
+    print(first + second)
+}

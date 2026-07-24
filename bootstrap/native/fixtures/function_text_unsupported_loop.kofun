@@ -1,0 +1,10 @@
+fn label(kind: Text) -> Text {
+    while kind == "fn" {
+        return kind
+    }
+    return kind
+}
+
+fn main() {
+    print(label("fn"))
+}

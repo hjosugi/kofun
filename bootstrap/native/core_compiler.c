@@ -261,13 +261,16 @@ enum {
 typedef enum {
     FUNCTION_VALUE_INT,
     FUNCTION_VALUE_BOOL,
+    FUNCTION_VALUE_TEXT,
 } FunctionValueKind;
 
 typedef enum {
     FUNCTION_LITERAL,
+    FUNCTION_TEXT_LITERAL,
     FUNCTION_PARAMETER,
     FUNCTION_CALL,
     FUNCTION_ADD,
+    FUNCTION_TEXT_CONCAT,
     FUNCTION_SUBTRACT,
     FUNCTION_MULTIPLY,
     FUNCTION_NEGATE,
@@ -285,6 +288,8 @@ struct FunctionExpression {
     FunctionExpressionKind kind;
     FunctionValueKind value_kind;
     int64_t value;
+    uint8_t *text_value;
+    size_t text_length;
     size_t source_line;
     size_t slot;
     size_t function_index;
@@ -298,6 +303,7 @@ typedef enum {
     FUNCTION_STATEMENT_IF_RETURN,
     FUNCTION_STATEMENT_RETURN,
     FUNCTION_STATEMENT_PRINT,
+    FUNCTION_STATEMENT_LET,
     FUNCTION_STATEMENT_EXPRESSION,
 } FunctionStatementKind;
 
@@ -305,13 +311,20 @@ typedef struct {
     FunctionStatementKind kind;
     FunctionExpression *condition;
     FunctionExpression *value;
+    size_t slot;
     size_t source_line;
 } FunctionStatement;
 
 typedef struct {
     char name[MAX_CORE_NAME];
     char parameters[MAX_CORE_PARAMETERS][MAX_CORE_NAME];
+    FunctionValueKind parameter_types[MAX_CORE_PARAMETERS];
     size_t parameter_count;
+    char locals[MAX_CORE_STATEMENTS][MAX_CORE_NAME];
+    FunctionValueKind local_types[MAX_CORE_STATEMENTS];
+    size_t local_count;
+    FunctionValueKind result_kind;
+    bool has_result;
     size_t declaration_line;
     size_t body_start;
     size_t body_end;
@@ -1670,6 +1683,65 @@ static size_t function_parameter_find(
     return SIZE_MAX;
 }
 
+static size_t function_local_find(
+    const FunctionDeclaration *function,
+    const char *name
+) {
+    for (size_t index = function->local_count; index > 0; --index) {
+        if (strcmp(function->locals[index - 1], name) == 0) {
+            return index - 1;
+        }
+    }
+    return SIZE_MAX;
+}
+
+static bool function_binding_find(
+    const FunctionDeclaration *function,
+    const char *name,
+    size_t *slot,
+    FunctionValueKind *value_kind
+) {
+    size_t local = function_local_find(function, name);
+    if (local != SIZE_MAX) {
+        *slot = function->parameter_count + local;
+        *value_kind = function->local_types[local];
+        return true;
+    }
+    size_t parameter = function_parameter_find(function, name);
+    if (parameter == SIZE_MAX) return false;
+    *slot = parameter;
+    *value_kind = function->parameter_types[parameter];
+    return true;
+}
+
+static const char *function_type_name(FunctionValueKind kind) {
+    if (kind == FUNCTION_VALUE_TEXT) return "Text";
+    if (kind == FUNCTION_VALUE_BOOL) return "Bool";
+    return "Int";
+}
+
+static bool function_parse_type(
+    FunctionParser *parser,
+    FunctionValueKind *kind
+) {
+    if (function_consume_word(parser, "Int")) {
+        *kind = FUNCTION_VALUE_INT;
+        return true;
+    }
+    if (function_consume_word(parser, "Text")) {
+        *kind = FUNCTION_VALUE_TEXT;
+        return true;
+    }
+    if (function_consume_word(parser, "List")) {
+        function_error(
+            parser,
+            "native Core function List parameter/result types are unsupported"
+        );
+        return false;
+    }
+    return false;
+}
+
 static bool function_body_end(
     FunctionParser *parser,
     size_t *body_end
@@ -1722,6 +1794,7 @@ static void function_expression_free(FunctionExpression *expression) {
         function_expression_free(expression->arguments[index]);
     }
     free(expression->arguments);
+    free(expression->text_value);
     free(expression);
 }
 
@@ -1828,14 +1901,26 @@ static bool function_headers(
                     );
                     break;
                 }
-                if (!function_consume_char(&parser, ':') ||
-                    !function_consume_word(&parser, "Int")) {
+                if (!function_consume_char(&parser, ':')) {
                     function_error(
                         &parser,
-                        "native Core function parameters must have type Int"
+                        "native Core function parameter requires a type"
                     );
                     break;
                 }
+                FunctionValueKind parameter_type;
+                if (!function_parse_type(&parser, &parameter_type)) {
+                    if (parser.error[0] == '\0') {
+                        function_error(
+                            &parser,
+                            "native Core function parameters require Int or Text"
+                        );
+                    }
+                    break;
+                }
+                function->parameter_types[
+                    function->parameter_count
+                ] = parameter_type;
                 ++function->parameter_count;
                 if (function_consume_char(&parser, ')')) break;
                 if (!function_consume_char(&parser, ',')) {
@@ -1851,19 +1936,65 @@ static bool function_headers(
 
         bool is_main = strcmp(function->name, "main") == 0;
         if (function_consume_pair(&parser, '-', '>')) {
-            if (!function_consume_word(&parser, "Int")) {
+            if (!function_parse_type(
+                    &parser,
+                    &function->result_kind)) {
+                if (parser.error[0] != '\0') break;
                 function_error(
                     &parser,
-                    "native Core functions must return Int"
+                    "native Core functions must return Int or Text"
                 );
                 break;
             }
+            function->has_result = true;
         } else if (!is_main) {
             function_error(
                 &parser,
-                "native Core helper functions require `-> Int`"
+                "native Core helper functions require `-> Int` or `-> Text`"
             );
             break;
+        }
+        if (!is_main) {
+            bool text_profile =
+                function->result_kind == FUNCTION_VALUE_TEXT;
+            for (size_t index = 0;
+                 index < function->parameter_count;
+                 ++index) {
+                if (function->parameter_types[index] ==
+                    FUNCTION_VALUE_TEXT) {
+                    text_profile = true;
+                }
+            }
+            if (text_profile) {
+                if (!function->has_result ||
+                    function->result_kind != FUNCTION_VALUE_TEXT) {
+                    function_error(
+                        &parser,
+                        "native Core Text helpers must return Text"
+                    );
+                    break;
+                }
+                if (function->parameter_count > 2) {
+                    function_error(
+                        &parser,
+                        "native Core Text helpers support at most two arguments"
+                    );
+                    break;
+                }
+                for (size_t index = 0;
+                     index < function->parameter_count;
+                     ++index) {
+                    if (function->parameter_types[index] !=
+                        FUNCTION_VALUE_TEXT) {
+                        function_error(
+                            &parser,
+                            "native Core Text helper parameters must have type Text"
+                        );
+                        break;
+                    }
+                }
+                if (parser.error[0] != '\0') break;
+            }
         }
         if (is_main && function->parameter_count != 0) {
             function_error(
@@ -1907,6 +2038,8 @@ static FunctionExpression *function_expression(
     expression->kind = kind;
     expression->value_kind = value_kind;
     expression->value = 0;
+    expression->text_value = NULL;
+    expression->text_length = 0;
     expression->source_line = line;
     expression->slot = 0;
     expression->function_index = 0;
@@ -1920,6 +2053,69 @@ static FunctionExpression *function_expression(
 static FunctionExpression *function_parse_expression(
     FunctionParser *parser
 );
+
+static FunctionExpression *function_parse_text_literal(
+    FunctionParser *parser,
+    size_t literal_at
+) {
+    function_skip_trivia(parser);
+    if (parser->cursor >= parser->limit ||
+        parser->source[parser->cursor] != '"') {
+        return NULL;
+    }
+    ++parser->cursor;
+    Bytes value;
+    bytes_init(&value);
+    bool closed = false;
+    while (parser->cursor < parser->limit) {
+        unsigned char current =
+            (unsigned char)parser->source[parser->cursor++];
+        if (current == '"') {
+            closed = true;
+            break;
+        }
+        if (current == '\\') {
+            if (parser->cursor >= parser->limit) break;
+            char escaped = parser->source[parser->cursor++];
+            if (escaped == 'n') {
+                current = '\n';
+            } else if (escaped == 'r') {
+                current = '\r';
+            } else if (escaped == 't') {
+                current = '\t';
+            } else if (escaped == '"' || escaped == '\\') {
+                current = (unsigned char)escaped;
+            } else {
+                function_error(
+                    parser,
+                    "unsupported Text escape in native Core function"
+                );
+                break;
+            }
+        }
+        byte(&value, current);
+    }
+    if (!closed && parser->error[0] == '\0') {
+        function_error(
+            parser,
+            "unterminated Text literal in native Core function"
+        );
+    }
+    if (parser->error[0] != '\0') {
+        free(value.data);
+        return NULL;
+    }
+    FunctionExpression *literal = function_expression(
+        FUNCTION_TEXT_LITERAL,
+        FUNCTION_VALUE_TEXT,
+        source_line(parser->source, literal_at),
+        NULL,
+        NULL
+    );
+    literal->text_value = value.data;
+    literal->text_length = value.length;
+    return literal;
+}
 
 static FunctionExpression *function_parse_atom(FunctionParser *parser) {
     function_skip_trivia(parser);
@@ -1936,6 +2132,10 @@ static FunctionExpression *function_parse_atom(FunctionParser *parser) {
     }
 
     function_skip_trivia(parser);
+    if (parser->cursor < parser->limit &&
+        parser->source[parser->cursor] == '"') {
+        return function_parse_text_literal(parser, atom_at);
+    }
     if (parser->cursor < parser->limit &&
         isdigit((unsigned char)parser->source[parser->cursor])) {
         uint64_t value = 0;
@@ -1987,11 +2187,19 @@ static FunctionExpression *function_parse_atom(FunctionParser *parser) {
         }
         FunctionExpression *call = function_expression(
             FUNCTION_CALL,
-            FUNCTION_VALUE_INT,
+            parser->program->functions[target].result_kind,
             source_line(parser->source, atom_at),
             NULL,
             NULL
         );
+        if (!parser->program->functions[target].has_result) {
+            function_error(
+                parser,
+                "native Core function `%s` has no result",
+                name
+            );
+            return call;
+        }
         call->function_index = target;
         size_t expected =
             parser->program->functions[target].parameter_count;
@@ -2015,10 +2223,17 @@ static FunctionExpression *function_parse_atom(FunctionParser *parser) {
                 FunctionExpression *argument =
                     function_parse_expression(parser);
                 if (argument == NULL) return call;
-                if (argument->value_kind != FUNCTION_VALUE_INT) {
+                FunctionValueKind wanted =
+                    parser->program->functions[target].parameter_types[
+                        call->argument_count
+                    ];
+                if (argument->value_kind != wanted) {
                     function_error(
                         parser,
-                        "native Core function arguments must have type Int"
+                        "native Core function `%s` argument %zu requires %s",
+                        name,
+                        call->argument_count + 1,
+                        function_type_name(wanted)
                     );
                     return call;
                 }
@@ -2045,19 +2260,24 @@ static FunctionExpression *function_parse_atom(FunctionParser *parser) {
         return call;
     }
 
-    size_t parameter = function_parameter_find(parser->function, name);
-    if (parameter == SIZE_MAX) {
+    size_t slot = 0;
+    FunctionValueKind value_kind = FUNCTION_VALUE_INT;
+    if (!function_binding_find(
+            parser->function,
+            name,
+            &slot,
+            &value_kind)) {
         function_error(parser, "unknown native Core binding `%s`", name);
         return NULL;
     }
     FunctionExpression *binding = function_expression(
         FUNCTION_PARAMETER,
-        FUNCTION_VALUE_INT,
+        value_kind,
         source_line(parser->source, atom_at),
         NULL,
         NULL
     );
-    binding->slot = parameter;
+    binding->slot = slot;
     return binding;
 }
 
@@ -2127,11 +2347,24 @@ static FunctionExpression *function_parse_sum(FunctionParser *parser) {
         size_t operator_at = parser->cursor++;
         FunctionExpression *right = function_parse_product(parser);
         if (left == NULL || right == NULL) return left;
+        if (operator == '+' &&
+            left->value_kind == FUNCTION_VALUE_TEXT &&
+            right->value_kind == FUNCTION_VALUE_TEXT) {
+            left = function_expression(
+                FUNCTION_TEXT_CONCAT,
+                FUNCTION_VALUE_TEXT,
+                source_line(parser->source, operator_at),
+                left,
+                right
+            );
+            continue;
+        }
         if (left->value_kind != FUNCTION_VALUE_INT ||
             right->value_kind != FUNCTION_VALUE_INT) {
             function_error(
                 parser,
-                "native Core arithmetic requires Int operands"
+                "native Core `+` requires two Int or two Text operands; "
+                "`-` requires Int operands"
             );
             return left;
         }
@@ -2254,22 +2487,25 @@ static bool function_bodies(
                         function_parse_expression(&parser);
                     if (statement.value == NULL ||
                         statement.value->value_kind !=
-                            FUNCTION_VALUE_INT ||
+                            function->result_kind ||
                         !function_consume_char(&parser, '}')) {
                         function_error(
                             &parser,
-                            "native Core if body must return Int"
+                            "native Core if body must return %s",
+                            function_type_name(function->result_kind)
                         );
                     }
                 }
             } else if (function_consume_word(&parser, "return")) {
                 statement.kind = FUNCTION_STATEMENT_RETURN;
                 statement.value = function_parse_expression(&parser);
-                if (statement.value == NULL ||
-                    statement.value->value_kind != FUNCTION_VALUE_INT) {
+                if (!function->has_result ||
+                    statement.value == NULL ||
+                    statement.value->value_kind != function->result_kind) {
                     function_error(
                         &parser,
-                        "native Core function must return Int"
+                        "native Core function must return %s",
+                        function_type_name(function->result_kind)
                     );
                 }
             } else if (function_consume_word(&parser, "print")) {
@@ -2288,23 +2524,101 @@ static bool function_bodies(
                     statement.value =
                         function_parse_expression(&parser);
                     if (statement.value == NULL ||
-                        statement.value->value_kind !=
-                            FUNCTION_VALUE_INT ||
+                        (statement.value->value_kind !=
+                            FUNCTION_VALUE_INT &&
+                         statement.value->value_kind !=
+                            FUNCTION_VALUE_TEXT) ||
                         !function_consume_char(&parser, ')')) {
                         function_error(
                             &parser,
-                            "native Core print requires one Int"
+                            "native Core print requires one Int or Text"
                         );
+                    }
+                }
+            } else if (function_consume_word(&parser, "let")) {
+                statement.kind = FUNCTION_STATEMENT_LET;
+                if (function_consume_word(&parser, "mut")) {
+                    function_error(
+                        &parser,
+                        "native Core mutable function locals are unsupported"
+                    );
+                } else if (function->local_count >= 1) {
+                    function_error(
+                        &parser,
+                        "native Core Text bridge supports one local per function"
+                    );
+                } else {
+                    char name[MAX_CORE_NAME];
+                    if (!function_identifier(&parser, name)) {
+                        function_error(
+                            &parser,
+                            "expected native Core local name"
+                        );
+                    } else if (function_parameter_find(function, name) !=
+                                   SIZE_MAX ||
+                               function_local_find(function, name) !=
+                                   SIZE_MAX) {
+                        function_error(
+                            &parser,
+                            "duplicate native Core binding `%s`",
+                            name
+                        );
+                    } else if (!function_consume_char(&parser, ':')) {
+                        function_error(
+                            &parser,
+                            "native Core local requires an explicit type"
+                        );
+                    } else {
+                        FunctionValueKind local_type;
+                        if (!function_parse_type(&parser, &local_type)) {
+                            if (parser.error[0] == '\0') {
+                                function_error(
+                                    &parser,
+                                    "native Core local type must be Text"
+                                );
+                            }
+                        } else if (local_type != FUNCTION_VALUE_TEXT) {
+                            function_error(
+                                &parser,
+                                "native Core function locals must have type Text"
+                            );
+                        } else if (!function_consume_char(&parser, '=')) {
+                            function_error(
+                                &parser,
+                                "expected `=` in native Core local"
+                            );
+                        } else {
+                            statement.value =
+                                function_parse_expression(&parser);
+                            if (statement.value == NULL ||
+                                statement.value->value_kind != local_type) {
+                                function_error(
+                                    &parser,
+                                    "native Core local `%s` requires Text",
+                                    name
+                                );
+                            } else {
+                                size_t local = function->local_count;
+                                memcpy(
+                                    function->locals[local],
+                                    name,
+                                    strlen(name) + 1
+                                );
+                                function->local_types[local] = local_type;
+                                statement.slot =
+                                    function->parameter_count + local;
+                                ++function->local_count;
+                            }
+                        }
                     }
                 }
             } else {
                 statement.kind = FUNCTION_STATEMENT_EXPRESSION;
                 statement.value = function_parse_expression(&parser);
-                if (statement.value == NULL ||
-                    statement.value->value_kind != FUNCTION_VALUE_INT) {
+                if (statement.value == NULL) {
                     function_error(
                         &parser,
-                        "native Core expression statement must produce Int"
+                        "native Core expression statement requires a value"
                     );
                 }
             }
@@ -2313,14 +2627,15 @@ static bool function_bodies(
                 break;
             }
         }
-        if (parser.error[0] == '\0' && !is_main) {
+        if (parser.error[0] == '\0' && function->has_result) {
             if (function->statement_count == 0 ||
                 function->statements[
                     function->statement_count - 1
                 ].kind != FUNCTION_STATEMENT_RETURN) {
                 function_error(
                     &parser,
-                    "native Core helper function must end with return"
+                    "native Core %s function must end with return",
+                    function_type_name(function->result_kind)
                 );
             }
         }
@@ -2331,6 +2646,43 @@ static bool function_bodies(
         }
     }
     return true;
+}
+
+static bool function_program_uses_text(const FunctionProgram *program) {
+    for (size_t function_index = 0;
+         function_index < program->function_count;
+         ++function_index) {
+        const FunctionDeclaration *function =
+            &program->functions[function_index];
+        if (function->has_result &&
+            function->result_kind == FUNCTION_VALUE_TEXT) {
+            return true;
+        }
+        for (size_t index = 0;
+             index < function->parameter_count;
+             ++index) {
+            if (function->parameter_types[index] ==
+                FUNCTION_VALUE_TEXT) {
+                return true;
+            }
+        }
+        if (function->local_count > 0) return true;
+        for (size_t index = 0;
+             index < function->statement_count;
+             ++index) {
+            const FunctionStatement *statement =
+                &function->statements[index];
+            if ((statement->condition != NULL &&
+                 statement->condition->value_kind ==
+                    FUNCTION_VALUE_TEXT) ||
+                (statement->value != NULL &&
+                 statement->value->value_kind ==
+                    FUNCTION_VALUE_TEXT)) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 static size_t register_depth(const Node *expression) {
@@ -2470,7 +2822,8 @@ typedef struct {
 
 typedef struct {
     size_t field;
-    const Node *literal;
+    const uint8_t *value;
+    size_t length;
 } TextFixup;
 
 typedef struct {
@@ -2514,7 +2867,8 @@ static void offsets_add(Offsets *offsets, size_t field) {
 static void text_fixups_add(
     TextFixups *fixups,
     size_t field,
-    const Node *literal
+    const uint8_t *value,
+    size_t length
 ) {
     if (fixups->length == fixups->capacity) {
         size_t capacity =
@@ -2529,7 +2883,8 @@ static void text_fixups_add(
     }
     fixups->items[fixups->length++] = (TextFixup){
         .field = field,
-        .literal = literal,
+        .value = value,
+        .length = length,
     };
 }
 
@@ -2671,7 +3026,8 @@ static void x64_expression(
         text_fixups_add(
             &runtime->text_literals,
             text->length,
-            expression
+            expression->text_value,
+            expression->text_length
         );
         u32_le(text, 0);
         byte(text, UINT8_C(0x50)); /* push folded Text */
@@ -2709,7 +3065,8 @@ static void x64_expression(
         text_fixups_add(
             &runtime->text_literals,
             text->length,
-            expression
+            expression->text_value,
+            expression->text_length
         );
         u32_le(text, 0);
         byte(text, UINT8_C(0x50)); /* push Text */
@@ -3326,9 +3683,28 @@ static void x64_runtime(Bytes *text, X64Runtime *runtime) {
         UINT8_C(0x4d), UINT8_C(0x8b), UINT8_C(0x34), UINT8_C(0x24),
         UINT8_C(0x4c), UINT8_C(0x89), UINT8_C(0xef), /* rdi = r13 */
         UINT8_C(0x4c), UINT8_C(0x01), UINT8_C(0xf7), /* rdi += r14 */
-        UINT8_C(0x48), UINT8_C(0x83), UINT8_C(0xc7), UINT8_C(0x08),
     };
     x64_emit(text, text_concat_open, sizeof(text_concat_open));
+    x64_rel32_placeholder(
+        text,
+        UINT8_C(0x0f),
+        UINT8_C(0x82),
+        &runtime->oom_jumps
+    ); /* jc oom on byte-length overflow */
+    const uint8_t text_concat_header_size[] = {
+        UINT8_C(0x48), UINT8_C(0x83), UINT8_C(0xc7), UINT8_C(0x08),
+    };
+    x64_emit(
+        text,
+        text_concat_header_size,
+        sizeof(text_concat_header_size)
+    );
+    x64_rel32_placeholder(
+        text,
+        UINT8_C(0x0f),
+        UINT8_C(0x82),
+        &runtime->oom_jumps
+    ); /* jc oom on object-header overflow */
     x64_call_alloc(text, runtime);
     const uint8_t text_concat_header[] = {
         UINT8_C(0x49), UINT8_C(0x89), UINT8_C(0xc7), /* r15 = rax */
@@ -3977,9 +4353,9 @@ static void x64_runtime(Bytes *text, X64Runtime *runtime) {
     ) {
         while (text->length % sizeof(uint64_t) != 0) byte(text, 0);
         size_t literal_at = text->length;
-        const Node *literal = runtime->text_literals.items[index].literal;
-        u64_le(text, (uint64_t)literal->text_length);
-        x64_emit(text, literal->text_value, literal->text_length);
+        TextFixup literal = runtime->text_literals.items[index];
+        u64_le(text, (uint64_t)literal.length);
+        x64_emit(text, literal.value, literal.length);
         x64_patch_u32(
             text,
             runtime->text_literals.items[index].field,
@@ -4110,8 +4486,10 @@ typedef struct {
 
 typedef struct {
     FunctionCallFixups calls;
-    Offsets print_calls;
+    Offsets print_int_calls;
+    Offsets print_text_calls;
     Offsets overflow_jumps;
+    X64Runtime runtime;
 } FunctionEmitter;
 
 static void function_call_fixup_add(
@@ -4138,8 +4516,10 @@ static void function_call_fixup_add(
 
 static void function_emitter_free(FunctionEmitter *emitter) {
     free(emitter->calls.items);
-    free(emitter->print_calls.fields);
+    free(emitter->print_int_calls.fields);
+    free(emitter->print_text_calls.fields);
     free(emitter->overflow_jumps.fields);
+    x64_runtime_free(&emitter->runtime);
 }
 
 static void x64_function_call(
@@ -4177,6 +4557,19 @@ static void x64_function_expression(
         byte(text, UINT8_C(0xb8)); /* mov eax, immediate */
         u32_le(text, (uint32_t)expression->value);
         byte(text, UINT8_C(0x50)); /* push rax */
+        return;
+    }
+    if (expression->kind == FUNCTION_TEXT_LITERAL) {
+        emitter->runtime.used = true;
+        byte(text, UINT8_C(0xb8)); /* mov eax, Text address */
+        text_fixups_add(
+            &emitter->runtime.text_literals,
+            text->length,
+            expression->text_value,
+            expression->text_length
+        );
+        u32_le(text, 0);
+        byte(text, UINT8_C(0x50)); /* push Text */
         return;
     }
     if (expression->kind == FUNCTION_PARAMETER) {
@@ -4230,6 +4623,19 @@ static void x64_function_expression(
         byte(text, UINT8_C(0xd8)); /* neg rax */
         x64_function_overflow_jump(text, emitter);
         byte(text, UINT8_C(0x50));
+        return;
+    }
+    if (expression->kind == FUNCTION_TEXT_CONCAT) {
+        x64_function_expression(text, expression->left, emitter);
+        x64_function_expression(text, expression->right, emitter);
+        byte(text, UINT8_C(0x5e)); /* pop rsi: right Text */
+        byte(text, UINT8_C(0x5f)); /* pop rdi: left Text */
+        x64_call_runtime(
+            text,
+            &emitter->runtime,
+            &emitter->runtime.text_concat_calls
+        );
+        byte(text, UINT8_C(0x50)); /* push concatenated Text */
         return;
     }
 
@@ -4313,16 +4719,15 @@ static void x64_function_declaration(
         UINT8_C(0x48), UINT8_C(0x89), UINT8_C(0xe5),
     };
     x64_emit(text, frame_open, sizeof(frame_open));
-    if (function->parameter_count > 0) {
+    size_t frame_slots =
+        function->parameter_count + function->local_count;
+    if (frame_slots > 0) {
+        size_t frame_bytes = frame_slots * sizeof(uint64_t);
+        frame_bytes = (frame_bytes + 15) & ~(size_t)15;
         byte(text, UINT8_C(0x48));
         byte(text, UINT8_C(0x81));
         byte(text, UINT8_C(0xec)); /* sub rsp, frame bytes */
-        u32_le(
-            text,
-            (uint32_t)(
-                function->parameter_count * sizeof(uint64_t)
-            )
-        );
+        u32_le(text, (uint32_t)frame_bytes);
         for (size_t index = 0;
              index < function->parameter_count;
              ++index) {
@@ -4360,8 +4765,16 @@ static void x64_function_declaration(
             x64_function_expression(text, statement->value, emitter);
             byte(text, UINT8_C(0x5f)); /* pop print argument into rdi */
             byte(text, UINT8_C(0xe8));
-            offsets_add(&emitter->print_calls, text->length);
+            Offsets *calls =
+                statement->value->value_kind == FUNCTION_VALUE_TEXT
+                    ? &emitter->print_text_calls
+                    : &emitter->print_int_calls;
+            offsets_add(calls, text->length);
             u32_le(text, 0);
+        } else if (statement->kind == FUNCTION_STATEMENT_LET) {
+            x64_function_expression(text, statement->value, emitter);
+            byte(text, UINT8_C(0x58)); /* pop initializer */
+            x64_store_local(text, statement->slot);
         } else {
             x64_function_expression(text, statement->value, emitter);
             byte(text, UINT8_C(0x58)); /* discard expression result */
@@ -4453,6 +4866,31 @@ static size_t x64_function_print_runtime(Bytes *text) {
     return runtime_at;
 }
 
+static size_t x64_function_print_text_runtime(
+    Bytes *text,
+    X64Runtime *runtime
+) {
+    runtime->used = true;
+    size_t runtime_at = text->length;
+    const uint8_t output[] = {
+        UINT8_C(0x48), UINT8_C(0x8b), UINT8_C(0x17),
+        UINT8_C(0x48), UINT8_C(0x8d), UINT8_C(0x77), UINT8_C(0x08),
+    };
+    x64_emit(text, output, sizeof(output)); /* len and bytes from Text */
+    x64_mov_r32_imm32(text, UINT8_C(0xb8), 1); /* write */
+    x64_mov_r32_imm32(text, UINT8_C(0xbf), 1); /* stdout */
+    x64_syscall(text);
+    x64_mov_r32_imm32(text, UINT8_C(0xb8), 1);
+    x64_mov_r32_imm32(text, UINT8_C(0xbf), 1);
+    byte(text, UINT8_C(0xbe)); /* mov esi, newline */
+    offsets_add(&runtime->newline_addresses, text->length);
+    u32_le(text, 0);
+    x64_mov_r32_imm32(text, UINT8_C(0xba), 1);
+    x64_syscall(text);
+    byte(text, UINT8_C(0xc3)); /* ret */
+    return runtime_at;
+}
+
 static void x64_function_program(
     Bytes *text,
     const FunctionProgram *program
@@ -4477,7 +4915,12 @@ static void x64_function_program(
         );
     }
 
-    size_t print_at = x64_function_print_runtime(text);
+    size_t print_int_at = x64_function_print_runtime(text);
+    size_t print_text_at = 0;
+    if (emitter.print_text_calls.length > 0) {
+        print_text_at =
+            x64_function_print_text_runtime(text, &emitter.runtime);
+    }
     size_t overflow_at = text->length;
     const char overflow_message[] =
         "kofun: integer overflow\n";
@@ -4501,11 +4944,26 @@ static void x64_function_program(
             function_addresses[fixup.function_index]
         );
     }
-    for (size_t index = 0; index < emitter.print_calls.length; ++index) {
+    for (
+        size_t index = 0;
+        index < emitter.print_int_calls.length;
+        ++index
+    ) {
         x64_patch_rel32(
             text,
-            emitter.print_calls.fields[index],
-            print_at
+            emitter.print_int_calls.fields[index],
+            print_int_at
+        );
+    }
+    for (
+        size_t index = 0;
+        index < emitter.print_text_calls.length;
+        ++index
+    ) {
+        x64_patch_rel32(
+            text,
+            emitter.print_text_calls.fields[index],
+            print_text_at
         );
     }
     for (size_t index = 0;
@@ -4524,6 +4982,7 @@ static void x64_function_program(
             IMAGE_BASE + TEXT_OFFSET + overflow_message_at
         )
     );
+    x64_runtime(text, &emitter.runtime);
     function_emitter_free(&emitter);
 }
 
@@ -4964,7 +5423,7 @@ static void a64_function_declaration(
         } else if (statement->kind == FUNCTION_STATEMENT_PRINT) {
             a64_function_expression(text, statement->value, emitter);
             a64_pop(text, 0); /* print argument -> x0 */
-            offsets_add(&emitter->print_calls, text->length);
+            offsets_add(&emitter->print_int_calls, text->length);
             a64_word(text, UINT32_C(0x94000000)); /* bl print (patched) */
         } else {
             a64_function_expression(text, statement->value, emitter);
@@ -5107,8 +5566,16 @@ static void a64_function_program(
             function_addresses[fixup.function_index]
         );
     }
-    for (size_t index = 0; index < emitter.print_calls.length; ++index) {
-        a64_patch_imm26(text, emitter.print_calls.fields[index], print_at);
+    for (
+        size_t index = 0;
+        index < emitter.print_int_calls.length;
+        ++index
+    ) {
+        a64_patch_imm26(
+            text,
+            emitter.print_int_calls.fields[index],
+            print_at
+        );
     }
     for (size_t index = 0; index < emitter.overflow_jumps.length; ++index) {
         a64_patch_imm19(
@@ -7076,6 +7543,17 @@ int main(int argc, char **argv) {
         function_error_text,
         &function_error_at
     );
+    if (!function_headers_ok && strstr(source, "->") != NULL) {
+        fprintf(
+            stderr,
+            "kofun native: unsupported function Core at byte %zu: %s\n",
+            function_error_at,
+            function_error_text
+        );
+        function_program_free(&function_program);
+        free(source);
+        return 1;
+    }
     bool use_function_core =
         function_headers_ok && function_program.function_count > 1;
     if (use_function_core) {
@@ -7098,6 +7576,16 @@ int main(int argc, char **argv) {
                 "kofun native: unsupported function Core at byte %zu: %s\n",
                 function_error_at,
                 function_error_text
+            );
+            function_program_free(&function_program);
+            free(source);
+            return 1;
+        }
+        if (aarch64 && function_program_uses_text(&function_program)) {
+            fputs(
+                "kofun native: AArch64 function Core does not support "
+                "Text parameters or results yet\n",
+                stderr
             );
             function_program_free(&function_program);
             free(source);

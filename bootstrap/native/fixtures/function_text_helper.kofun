@@ -1,0 +1,9 @@
+# expect-stdout: fn main
+fn declaration_label(kind: Text, name: Text) -> Text {
+    return kind + " " + name
+}
+
+fn main() {
+    let label: Text = declaration_label("fn", "main")
+    print(label)
+}

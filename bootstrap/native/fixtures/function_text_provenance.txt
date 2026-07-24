@@ -1,0 +1,9 @@
+#|kind|repository-relative path or target|sha256
+producer|bootstrap/native/core_compiler.c|21feab023d20bd6443c2250223898374b07509ea3172769223b5ea994379515c
+source|bootstrap/native/fixtures/function_text_helper.kofun|a75c02c68283585bef674080b0497dc76eef1e5e8d8fa3c93022e74bfd215a23
+source|bootstrap/native/fixtures/function_text_helper_utf8.kofun|f314c383d2fdaa15afa0bdcd2fde26ecb9724f005fa57a80fed7e3419653f9d4
+reference|bootstrap/native/fixtures/function_text_reference.c|1168ae0768ecadf89885cbfe4a213143c897d2a138615f244e3022efafcf3adf
+expected|bootstrap/native/fixtures/function_text_helper.stdout|2179c995fbf91c6bbf02a232e82bfdb3828483cb3dd6e6206271163d7bce4f46
+expected|bootstrap/native/fixtures/function_text_helper_utf8.stdout|56756d192a49b7567e5b13fbe72b95a5fe42f92ad28f55c54126baf7e9f1c33d
+output|x86_64-linux:function_text_helper.elf|a95a572da338cfb62202ef4c611dd5d1df363b9cb1ccfbb3caa2f7e1ee60d92d
+reproduce|cc -std=c11 -O2 -Wall -Wextra -Werror bootstrap/native/core_compiler.c -o build/function-text/kofun-native-core && build/function-text/kofun-native-core bootstrap/native/fixtures/function_text_helper.kofun x86_64-linux build/function-text/function_text_helper.elf

@@ -25,6 +25,14 @@ to x86-64 and to AArch64, and both emit a checked-overflow trap with the same
   --target aarch64-linux -o build/program-aarch64
 ```
 
+The x86-64 selector additionally implements a bounded compiler-shaped Text
+function bridge: two Text parameters/results through the existing pointer ABI,
+direct/forward calls, concatenation, one immutable frame local, and
+`print(Text)`. Direct and CLI-produced static ELF artifacts are byte-identical
+and compared with an independent C11 reference. AArch64 rejects this
+function-Text profile explicitly while retaining its existing Int function and
+closed Text-expression support.
+
 `-g` is currently x86-64-only. It adds source-specific `.debug_line`,
 `.debug_info`, symbols, and section headers without changing release output or
 loaded code/data. The executable gate validates the structures with `readelf`
@@ -40,7 +48,7 @@ sh bootstrap/native/check.sh
 The remaining native backend work includes:
 
 - general AST/IR lowering and register allocation;
-- connecting general Text/List calls and types to Stage 2 (#33);
+- broader Text/List calls and types beyond the bounded x86-64 bridge;
 - local bindings and general control flow inside user-defined functions;
 - allocator reuse/reclamation and general raw syscall intrinsic lowering;
 - canonical runtime diagnostic codes shared with the C11 backend;

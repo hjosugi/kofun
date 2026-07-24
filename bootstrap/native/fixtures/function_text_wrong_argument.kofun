@@ -1,0 +1,7 @@
+fn label(kind: Text) -> Text {
+    return kind
+}
+
+fn main() {
+    print(label(42))
+}

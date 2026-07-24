@@ -1,0 +1,7 @@
+fn label(parts: List[Text]) -> Text {
+    return "fn"
+}
+
+fn main() {
+    print("main")
+}
