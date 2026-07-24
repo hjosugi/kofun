@@ -2918,7 +2918,9 @@ static int64_t call_arity(const char *source, int64_t open) {
     int64_t arity = 0;
     while (cursor < length) {
         int64_t argument_end = expression_end(source, cursor);
-        if (argument_end < 0) return -1;
+        /* Text-literal arguments are single tokens outside the bounded
+         * arithmetic expression grammar. */
+        if (argument_end < 0) argument_end = token_end(source, cursor);
         ++arity;
         int64_t separator = skip_trivia(source, argument_end);
         if (separator < length && token_equal(source, separator, ")")) {
@@ -2970,7 +2972,158 @@ static int64_t builtin_arity(const char *name) {
     return -1;
 }
 
-static char *validate_core_calls(const char *source) {
+static char *initializer_type(
+    const char *source,
+    const char *hir,
+    int64_t function_open,
+    int64_t initializer
+);
+static bool value_control(const char *source, int64_t cursor);
+
+/*
+ * Parameter types of the profile builtins, `|`-separated in order.
+ * `len` accepts either Text or List (its only overload); every other
+ * signature is exact.
+ */
+static const char *builtin_parameter_types(const char *name) {
+    static const struct {
+        const char *name;
+        const char *parameters;
+    } builtins[] = {
+        {"args", ""},
+        {"chars", "Text"},
+        {"contains", "Text|Text"},
+        {"find", "Text|Text"},
+        {"is_digit", "Text"},
+        {"is_space", "Text"},
+        {"is_xid_continue", "Text"},
+        {"len", "TextOrList"},
+        {"read_text", "Text"},
+        {"replace", "Text|Text|Text"},
+        {"starts_with", "Text|Text"},
+        {"text_slice", "Text|Int|Int"},
+        {"trim", "Text"},
+        {"validate_unicode_source", "Text"},
+        {"write_text", "Text|Text"},
+    };
+    size_t count = sizeof(builtins) / sizeof(builtins[0]);
+    for (size_t index = 0; index < count; ++index) {
+        if (strcmp(name, builtins[index].name) == 0) {
+            return builtins[index].parameters;
+        }
+    }
+    return NULL;
+}
+
+/* Body `{` of the function declaration that contains `position`. */
+static int64_t enclosing_function_open(
+    const char *source,
+    int64_t position
+) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = next_function_start(source, 0);
+    while (cursor < length) {
+        int64_t close = function_end(source, cursor);
+        if (cursor <= position && position < close) {
+            int64_t parameters = parameter_open(source, cursor);
+            if (parameters < 0) return -1;
+            int64_t parameters_close = balanced_end(
+                source,
+                parameters,
+                "(",
+                ")"
+            );
+            if (parameters_close < 0) return -1;
+            int64_t open = skip_trivia(source, parameters_close);
+            while (open < close && !token_equal(source, open, "{")) {
+                open = skip_trivia(source, token_end(source, open));
+            }
+            return open < close ? open : -1;
+        }
+        cursor = next_function_start(source, close);
+    }
+    return -1;
+}
+
+/*
+ * Check one builtin call's argument types against its frozen signature.
+ * Arguments whose bounded type cannot be established (value-control
+ * initializers) are skipped rather than rejected. Returns an owned
+ * error string or empty text.
+ */
+static char *builtin_argument_check(
+    const char *source,
+    const char *hir,
+    const char *name,
+    int64_t call_name,
+    int64_t open
+) {
+    const char *parameters = builtin_parameter_types(name);
+    if (parameters == NULL) return owned_text("");
+    int64_t function_open = enclosing_function_open(source, call_name);
+    if (function_open < 0) return owned_text("");
+    int64_t length = (int64_t)strlen(source);
+    int64_t argument = skip_trivia(source, token_end(source, open));
+    const char *expected = parameters;
+    int64_t index = 1;
+    while (
+        argument < length &&
+        !token_equal(source, argument, ")") &&
+        expected[0] != '\0'
+    ) {
+        size_t expected_length = strcspn(expected, "|");
+        if (!value_control(source, argument)) {
+            char *actual = initializer_type(
+                source,
+                hir,
+                function_open,
+                argument
+            );
+            bool matches;
+            if (strncmp(expected, "TextOrList", expected_length) == 0) {
+                matches = strcmp(actual, "Text") == 0 ||
+                    strcmp(actual, "List") == 0;
+            } else {
+                matches =
+                    strlen(actual) == expected_length &&
+                    strncmp(actual, expected, expected_length) == 0;
+            }
+            if (!matches) {
+                Buffer error;
+                buffer_init(&error);
+                buffer_format(
+                    &error,
+                    "error[E2S15]: builtin `%s` expects %.*s for "
+                    "argument %" PRId64 ", got %s at byte %" PRId64,
+                    name,
+                    (int)expected_length,
+                    expected,
+                    index,
+                    actual,
+                    argument
+                );
+                free(actual);
+                return error.data;
+            }
+            free(actual);
+        }
+        int64_t argument_end = expression_end(source, argument);
+        /* Text-literal arguments are single tokens outside the bounded
+         * arithmetic expression grammar. */
+        if (argument_end < 0) argument_end = token_end(source, argument);
+        int64_t separator = skip_trivia(source, argument_end);
+        if (separator >= length || !token_equal(source, separator, ",")) {
+            break;
+        }
+        argument = skip_trivia(source, token_end(source, separator));
+        expected += expected_length;
+        if (expected[0] == '|') ++expected;
+        ++index;
+    }
+    return owned_text("");
+}
+
+static char *validate_core_calls(const char *source, const char *hir) {
     int64_t length = (int64_t)strlen(source);
     int64_t cursor = next_function_start(source, 0);
     char *previous = owned_text("");
@@ -3032,6 +3185,19 @@ static char *validate_core_calls(const char *source) {
                         free(previous);
                         return error.data;
                     }
+                    char *argument_error = builtin_argument_check(
+                        source,
+                        hir,
+                        name,
+                        cursor,
+                        open
+                    );
+                    if (argument_error[0] != '\0') {
+                        free(name);
+                        free(previous);
+                        return argument_error;
+                    }
+                    free(argument_error);
                     Buffer error;
                     buffer_init(&error);
                     buffer_format(
@@ -4512,6 +4678,206 @@ static int64_t scope_depth_for_open(
     return -1;
 }
 
+/*
+ * Result types of the 16 profile builtins for `let` initializer typing.
+ * The scope-HIR type vocabulary stays the existing single tokens
+ * (Int/Bool/Text/List/Void); List[Text] element typing belongs to the
+ * selfhost-HIR emitter. Returns NULL for a non-builtin name.
+ */
+static const char *builtin_return_type(const char *name) {
+    static const struct {
+        const char *name;
+        const char *result;
+    } builtins[] = {
+        {"args", "List"},
+        {"chars", "List"},
+        {"contains", "Bool"},
+        {"find", "Int"},
+        {"is_digit", "Bool"},
+        {"is_space", "Bool"},
+        {"is_xid_continue", "Bool"},
+        {"len", "Int"},
+        {"read_text", "Text"},
+        {"replace", "Text"},
+        {"starts_with", "Bool"},
+        {"text_slice", "Text"},
+        {"trim", "Text"},
+        {"validate_unicode_source", "Text"},
+        {"write_text", "Void"},
+    };
+    size_t count = sizeof(builtins) / sizeof(builtins[0]);
+    for (size_t index = 0; index < count; ++index) {
+        if (strcmp(name, builtins[index].name) == 0) {
+            return builtins[index].result;
+        }
+    }
+    return NULL;
+}
+
+/* Declared result type of a user function: the token after `->`, `Void`
+ * when there is no arrow, empty when the function is not declared. */
+static char *function_return_type(const char *source, const char *wanted) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = next_function_start(source, 0);
+    while (cursor < length) {
+        char *name = function_name(source, cursor);
+        bool match = strcmp(name, wanted) == 0;
+        free(name);
+        if (match) {
+            int64_t parameters = parameter_open(source, cursor);
+            if (parameters < 0) return owned_text("");
+            int64_t parameters_end = balanced_end(
+                source,
+                parameters,
+                "(",
+                ")"
+            );
+            if (parameters_end < 0) return owned_text("");
+            int64_t after = skip_trivia(source, parameters_end);
+            if (after < length && token_equal(source, after, "->")) {
+                int64_t type_cursor = skip_trivia(
+                    source,
+                    token_end(source, after)
+                );
+                if (type_cursor < length) {
+                    return token_copy(source, type_cursor);
+                }
+                return owned_text("");
+            }
+            return owned_text("Void");
+        }
+        cursor = next_function_start(source, function_end(source, cursor));
+    }
+    return owned_text("");
+}
+
+/*
+ * Bounded initializer typing for unannotated `let` bindings. Top-level
+ * comparison and boolean operators make the value Bool; otherwise the
+ * profile's operands are homogeneous, so the first primary decides:
+ * literals by token kind, calls by declared or builtin result type, names
+ * by their resolved binding, bare enum constructors by their owner. The
+ * conservative fallback is the historical Int default, never an error.
+ */
+static char *initializer_type(
+    const char *source,
+    const char *hir,
+    int64_t function_open,
+    int64_t initializer
+) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t end = expression_end(source, initializer);
+    if (end < 0) end = token_end(source, initializer);
+    /* The operator scan covers the whole initializer line: it ends at the
+     * first newline outside parentheses, not at the bounded arithmetic
+     * expression end, so `1 < 2` and multi-line parenthesized calls are
+     * both seen completely. */
+    int64_t depth = 0;
+    int64_t walk = initializer;
+    int64_t previous_end = initializer;
+    while (walk < length) {
+        bool newline = false;
+        for (int64_t at = previous_end; at < walk; ++at) {
+            if (source[at] == '\n') {
+                newline = true;
+                break;
+            }
+        }
+        if (depth == 0 && newline) break;
+        if (token_equal(source, walk, "{")) break;
+        if (token_equal(source, walk, "(")) {
+            ++depth;
+        } else if (token_equal(source, walk, ")")) {
+            --depth;
+        } else if (
+            depth == 0 &&
+            (token_equal(source, walk, "==") ||
+             token_equal(source, walk, "!=") ||
+             token_equal(source, walk, "<") ||
+             token_equal(source, walk, "<=") ||
+             token_equal(source, walk, ">") ||
+             token_equal(source, walk, ">=") ||
+             token_equal(source, walk, "&&") ||
+             token_equal(source, walk, "||") ||
+             token_equal(source, walk, "!"))
+        ) {
+            return owned_text("Bool");
+        }
+        previous_end = token_end(source, walk);
+        walk = skip_trivia(source, previous_end);
+    }
+    int64_t cursor = skip_trivia(source, initializer);
+    while (
+        cursor < end &&
+        (token_equal(source, cursor, "(") ||
+         token_equal(source, cursor, "-") ||
+         token_equal(source, cursor, "+"))
+    ) {
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    if (cursor >= end) return owned_text("Int");
+    const char *kind = token_kind(source, cursor);
+    if (strcmp(kind, "integer") == 0) return owned_text("Int");
+    if (strcmp(kind, "string") == 0) return owned_text("Text");
+    if (
+        token_equal(source, cursor, "true") ||
+        token_equal(source, cursor, "false")
+    ) {
+        return owned_text("Bool");
+    }
+    if (strcmp(kind, "identifier") == 0) {
+        char *name = token_copy(source, cursor);
+        /* Call and index detection must not stop at the bounded
+         * expression end: profile initializers may continue across
+         * lines, and `[` follows the resolved primary directly. */
+        int64_t open = skip_trivia(source, token_end(source, cursor));
+        if (open < length && token_equal(source, open, "(")) {
+            char *declared = function_return_type(source, name);
+            if (declared[0] != '\0') {
+                free(name);
+                return declared;
+            }
+            free(declared);
+            const char *builtin = builtin_return_type(name);
+            free(name);
+            if (builtin != NULL) return owned_text(builtin);
+            return owned_text("Int");
+        }
+        int64_t scope_open = parent_block_open(
+            source,
+            function_open,
+            cursor
+        );
+        char *scope_id = hir_scope_id_for_open(hir, scope_open);
+        char *binding_id = hir_resolve_binding(hir, scope_id, cursor, name);
+        free(scope_id);
+        if (binding_id[0] != '\0') {
+            char *type = hir_binding_field(hir, binding_id, 5);
+            free(binding_id);
+            free(name);
+            if (type[0] != '\0') {
+                /* Indexing the profile's List[Text] yields its Text
+                 * element. */
+                bool indexed =
+                    open < length && token_equal(source, open, "[");
+                if (indexed && strcmp(type, "List") == 0) {
+                    free(type);
+                    return owned_text("Text");
+                }
+                return type;
+            }
+            free(type);
+            return owned_text("Int");
+        }
+        free(binding_id);
+        char *owner = enum_constructor_owner(source, name);
+        free(name);
+        if (owner[0] != '\0') return owner;
+        free(owner);
+    }
+    return owned_text("Int");
+}
+
 static char *scope_hir_error(
     Buffer *hir,
     const char *message,
@@ -4734,7 +5100,9 @@ static char *build_scope_hir_mode(
                     token_end(source, name)
                 );
                 char *binding_type = owned_text("Int");
+                bool annotated = false;
                 if (token_equal(source, after_name, ":")) {
+                    annotated = true;
                     int64_t type_cursor = skip_trivia(
                         source,
                         token_end(source, after_name)
@@ -4760,6 +5128,15 @@ static char *build_scope_hir_mode(
                     free(value_result);
                 } else {
                     visible_start = expression_end(source, initializer);
+                    if (!annotated) {
+                        free(binding_type);
+                        binding_type = initializer_type(
+                            source,
+                            hir.data,
+                            function_open,
+                            initializer
+                        );
+                    }
                 }
                 if (visible_start < 0) {
                     visible_start = token_end(source, initializer);
@@ -6762,7 +7139,7 @@ static char *lower_c(const char *source, const char *hir) {
         return enum_use_check;
     }
     free(enum_use_check);
-    char *call_check = validate_core_calls(source);
+    char *call_check = validate_core_calls(source, hir);
     if (strncmp(call_check, "error[", 6) == 0) return call_check;
     free(call_check);
 
