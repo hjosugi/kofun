@@ -3984,6 +3984,10 @@ static bool enum_declaration_syntax_token(
                 }
             }
         }
+        if (token_equal(source, cursor, "for")) {
+            int64_t name = skip_trivia(source, token_end(source, cursor));
+            if (name == target) return true;
+        }
         cursor = skip_trivia(source, token_end(source, cursor));
     }
     return false;
@@ -4753,6 +4757,80 @@ static char *build_scope_hir_mode(
                 free(name_text);
                 free(binding_type);
                 free(scope_id);
+            }
+            if (token_equal(source, cursor, "for")) {
+                int64_t name = skip_trivia(
+                    source,
+                    token_end(source, cursor)
+                );
+                int64_t body_open = name;
+                while (
+                    body_open < function_close &&
+                    !token_equal(source, body_open, "{")
+                ) {
+                    body_open = skip_trivia(
+                        source,
+                        token_end(source, body_open)
+                    );
+                }
+                if (
+                    name < function_close &&
+                    body_open < function_close &&
+                    strcmp(token_kind(source, name), "identifier") == 0
+                ) {
+                    char *scope_id = hir_scope_id_for_open(
+                        hir.data,
+                        body_open
+                    );
+                    char *name_text = token_copy(source, name);
+                    char *first_declaration = hir_same_scope_declaration(
+                        hir.data,
+                        scope_id,
+                        name_text
+                    );
+                    if (first_declaration[0] != '\0') {
+                        Buffer error;
+                        buffer_init(&error);
+                        buffer_format(
+                            &error,
+                            "error[E2S47]: duplicate binding `%s` in lexical "
+                            "scope at byte %" PRId64
+                            "; first declaration at byte %s",
+                            name_text,
+                            name,
+                            first_declaration
+                        );
+                        free(name_text);
+                        free(first_declaration);
+                        free(scope_id);
+                        free(hir.data);
+                        return error.data;
+                    }
+                    free(first_declaration);
+                    ++binding_count;
+                    if (binding_count > 256) {
+                        free(name_text);
+                        free(scope_id);
+                        return scope_hir_error(
+                            &hir,
+                            "lexical binding limit is 256 per function",
+                            name
+                        );
+                    }
+                    buffer_format(
+                        &hir,
+                        "binding|%" PRId64 "|%s|%s|immutable|Int|copy|"
+                        "initialized|%" PRId64 "|%" PRId64 "|%" PRId64 "\n",
+                        next_binding_id++,
+                        scope_id,
+                        name_text,
+                        name,
+                        token_end(source, name),
+                        token_end(source, name)
+                    );
+                    free(name_text);
+                    free(scope_id);
+                }
             }
             cursor = skip_trivia(source, token_end(source, cursor));
         }

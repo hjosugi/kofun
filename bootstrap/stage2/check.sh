@@ -326,7 +326,65 @@ KOFUN_STAGE2_COMPILER="$temporary/kofun-stage2" \
 KOFUN_STAGE2_COMPILER="$temporary/kofun-stage2" \
     sh "$root/tests/conformance/patterns/run.sh"
 
+# For-range loop variables are lexical bindings owned by the loop body scope:
+# the header name is a declaration rather than a use, and body uses resolve to
+# the loop binding. Valid `for` sources must not be misclassified as invalid
+# E2S35; they reach their true lowering boundary instead (#619/#652).
+"$temporary/kofun-stage2" --emit-scope-hir \
+    "$stage2/fixture.kofun" \
+    "$temporary/fixture.scopes"
+grep '^binding|2|6|value|immutable|Int|copy|initialized|283|288|288$' \
+    "$temporary/fixture.scopes" >/dev/null
+grep '^use|325|330|6|2|read$' "$temporary/fixture.scopes" >/dev/null
+! grep '^candidate-use|283|' "$temporary/fixture.scopes" >/dev/null
+
+printf '%s\n' \
+    'fn main() {' \
+    '    let mut total = 0' \
+    '    for value in 0 .. 4 {' \
+    '        total = total + value' \
+    '    }' \
+    '    print(total)' \
+    '}' >"$temporary/for-range-int.kofun"
+set +e
+"$temporary/kofun-stage2" --compile-outcome \
+    "$temporary/for-range-int.kofun" \
+    "$temporary/for-range-int.c" \
+    "$temporary/for-range-int.ir" \
+    "$temporary/for-range-int.tokens" \
+    >"$temporary/for-range-int.stdout" \
+    2>"$temporary/for-range-int.stderr"
+for_range_status=$?
+set -e
+test "$for_range_status" -eq 3
+grep 'error\[E2S10\]' "$temporary/for-range-int.stdout" >/dev/null
+! grep 'E2S35' "$temporary/for-range-int.stdout" >/dev/null
+test ! -s "$temporary/for-range-int.stderr"
+test ! -e "$temporary/for-range-int.c"
+
+# The frozen self-host source S (bootstrap/stage1/compiler.kofun) now clears
+# the complete lexical binding layer, including every `for index` loop. Its
+# current frontier is the unregistered Unicode builtin from the 46-row
+# profile; #653 moves this boundary, not the binding layer.
+set +e
+"$temporary/kofun-stage2" --compile-outcome \
+    "$root/bootstrap/stage1/compiler.kofun" \
+    "$temporary/selfhost-S.c" \
+    "$temporary/selfhost-S.ir" \
+    "$temporary/selfhost-S.tokens" \
+    >"$temporary/selfhost-S.stdout" \
+    2>"$temporary/selfhost-S.stderr"
+selfhost_frontier_status=$?
+set -e
+test "$selfhost_frontier_status" -eq 1
+! grep 'E2S35' "$temporary/selfhost-S.stdout" >/dev/null
+grep 'error\[E2S16\]: unknown Core function `is_xid_continue`' \
+    "$temporary/selfhost-S.stdout" >/dev/null
+test ! -e "$temporary/selfhost-S.c"
+
 echo "PASS: Stage 2 statically compiled Copy Int borrowed-return slice"
 echo "PASS: Stage 2 and kofun check rejected non-Copy Text move with E007"
 echo "PASS: Stage 2 C11 calls support recursion, arity checks, and forward references"
+echo "PASS: for-range loop variables bind in the loop body lexical scope"
+echo "PASS: the frozen self-host S clears lexical binding; frontier is E2S16 builtins"
 echo "stage2 semantic frontend check passed"
