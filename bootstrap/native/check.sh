@@ -642,6 +642,193 @@ else
         "SKIP: AArch64 function execution (qemu-aarch64 unavailable)"
 fi
 
+# The bounded x86-64 compiler-shaped Text bridge uses the existing
+# `[byte_length:i64][UTF-8 bytes]` ABI for two Text arguments, a returned
+# Text pointer, one immutable frame local, concatenation, and print(Text).
+# Build the producer directly as well as through the public CLI and require
+# byte-identical static ELF output. An independent C program supplies the
+# observation oracle; it is not part of Kofun artifact production.
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$NATIVE/core_compiler.c" \
+    -o "$WORK/kofun-native-function-text"
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$NATIVE/fixtures/function_text_reference.c" \
+    -o "$WORK/function-text-reference"
+
+FUNCTION_TEXT_SOURCE="$NATIVE/fixtures/function_text_helper.kofun"
+FUNCTION_TEXT_UTF8_SOURCE="$NATIVE/fixtures/function_text_helper_utf8.kofun"
+"$WORK/kofun-native-function-text" \
+    "$FUNCTION_TEXT_SOURCE" x86_64-linux \
+    "$WORK/function-text-direct.elf"
+"$WORK/kofun-native-function-text" \
+    "$FUNCTION_TEXT_SOURCE" x86_64-linux \
+    "$WORK/function-text-direct.second.elf"
+"$KOFUN" build "$FUNCTION_TEXT_SOURCE" \
+    --target x86_64-linux \
+    -o "$WORK/function-text-cli.elf" >/dev/null
+"$KOFUN" build "$FUNCTION_TEXT_SOURCE" \
+    --target x86_64-linux \
+    -o "$WORK/function-text-cli.second.elf" >/dev/null
+cmp \
+    "$WORK/function-text-direct.elf" \
+    "$WORK/function-text-direct.second.elf"
+cmp \
+    "$WORK/function-text-direct.elf" \
+    "$WORK/function-text-cli.elf"
+cmp \
+    "$WORK/function-text-cli.elf" \
+    "$WORK/function-text-cli.second.elf"
+chmod +x "$WORK/function-text-direct.elf"
+
+"$WORK/function-text-reference" \
+    >"$WORK/function-text-reference.stdout" \
+    2>"$WORK/function-text-reference.stderr"
+"$WORK/function-text-direct.elf" \
+    >"$WORK/function-text.stdout" \
+    2>"$WORK/function-text.stderr"
+cmp \
+    "$NATIVE/fixtures/function_text_helper.stdout" \
+    "$WORK/function-text-reference.stdout"
+cmp \
+    "$WORK/function-text-reference.stdout" \
+    "$WORK/function-text.stdout"
+test ! -s "$WORK/function-text-reference.stderr"
+test ! -s "$WORK/function-text.stderr"
+
+"$WORK/kofun-native-function-text" \
+    "$FUNCTION_TEXT_UTF8_SOURCE" x86_64-linux \
+    "$WORK/function-text-utf8.elf"
+"$KOFUN" build "$FUNCTION_TEXT_UTF8_SOURCE" \
+    --target x86_64-linux \
+    -o "$WORK/function-text-utf8-cli.elf" >/dev/null
+cmp \
+    "$WORK/function-text-utf8.elf" \
+    "$WORK/function-text-utf8-cli.elf"
+chmod +x "$WORK/function-text-utf8.elf"
+"$WORK/function-text-reference" utf8 \
+    >"$WORK/function-text-utf8-reference.stdout" \
+    2>"$WORK/function-text-utf8-reference.stderr"
+"$WORK/function-text-utf8.elf" \
+    >"$WORK/function-text-utf8.stdout" \
+    2>"$WORK/function-text-utf8.stderr"
+cmp \
+    "$NATIVE/fixtures/function_text_helper_utf8.stdout" \
+    "$WORK/function-text-utf8-reference.stdout"
+cmp \
+    "$WORK/function-text-utf8-reference.stdout" \
+    "$WORK/function-text-utf8.stdout"
+test ! -s "$WORK/function-text-utf8-reference.stderr"
+test ! -s "$WORK/function-text-utf8.stderr"
+
+readelf -h "$WORK/function-text-direct.elf" \
+    >"$WORK/function-text.header"
+readelf -l "$WORK/function-text-direct.elf" \
+    >"$WORK/function-text.program-headers"
+grep -Eq 'Machine:[[:space:]]+Advanced Micro Devices X86-64' \
+    "$WORK/function-text.header"
+test "$(grep -c 'LOAD' "$WORK/function-text.program-headers")" -eq 2
+! grep -Eq 'INTERP|DYNAMIC' "$WORK/function-text.program-headers"
+
+# Every unsupported signature/body is diagnosed before artifact commit.
+expect_function_text_rejection() {
+    stem=$1
+    message=$2
+    set +e
+    "$KOFUN" build "$NATIVE/fixtures/$stem.kofun" \
+        --target x86_64-linux \
+        -o "$WORK/$stem.elf" \
+        >"$WORK/$stem.stdout" 2>"$WORK/$stem.stderr"
+    rejection_status=$?
+    set -e
+    test "$rejection_status" -eq 1
+    test ! -e "$WORK/$stem.elf"
+    grep -F "$message" "$WORK/$stem.stderr" >/dev/null
+}
+
+expect_function_text_rejection \
+    function_text_wrong_arity \
+    'native Core function `label` expects 2 arguments, got 1'
+expect_function_text_rejection \
+    function_text_wrong_argument \
+    'native Core function `label` argument 1 requires Text'
+expect_function_text_rejection \
+    function_text_too_many_arguments \
+    'native Core Text helpers support at most two arguments'
+expect_function_text_rejection \
+    function_text_result_mismatch \
+    'native Core function must return Text'
+expect_function_text_rejection \
+    function_text_missing_return \
+    'native Core Text function must end with return'
+expect_function_text_rejection \
+    function_text_mutable_local \
+    'native Core mutable function locals are unsupported'
+expect_function_text_rejection \
+    function_text_two_locals \
+    'native Core Text bridge supports one local per function'
+expect_function_text_rejection \
+    function_text_list_signature \
+    'native Core function List parameter/result types are unsupported'
+expect_function_text_rejection \
+    function_text_unsupported_loop \
+    'unknown native Core binding `while`'
+expect_function_text_rejection \
+    function_text_file_operation \
+    'unknown native Core function `read_text`'
+
+set +e
+"$KOFUN" build "$FUNCTION_TEXT_SOURCE" \
+    --target aarch64-linux \
+    -o "$WORK/function-text-aarch64.elf" \
+    >"$WORK/function-text-aarch64.stdout" \
+    2>"$WORK/function-text-aarch64.stderr"
+function_text_aarch64_status=$?
+(
+    ulimit -v 512
+    exec "$WORK/function-text-direct.elf"
+) >"$WORK/function-text-oom.stdout" \
+    2>"$WORK/function-text-oom.stderr"
+function_text_oom_status=$?
+set -e
+test "$function_text_aarch64_status" -eq 1
+test ! -e "$WORK/function-text-aarch64.elf"
+grep -F \
+    'AArch64 function Core does not support Text parameters or results yet' \
+    "$WORK/function-text-aarch64.stderr" >/dev/null
+test "$function_text_oom_status" -eq 70
+test ! -s "$WORK/function-text-oom.stdout"
+printf 'kofun: out of memory\n' >"$WORK/function-text-oom.expected"
+cmp \
+    "$WORK/function-text-oom.expected" \
+    "$WORK/function-text-oom.stderr"
+
+# The checked provenance pins every producer/reference input and the canonical
+# direct ELF. It contains repository-relative paths and a literal reproduction
+# command, never a work-directory path.
+provenance="$NATIVE/fixtures/function_text_provenance.txt"
+while IFS='|' read -r kind path expected_digest; do
+    case $kind in
+        producer|source|reference|expected)
+            actual_digest=$(sha256sum "$ROOT/$path" | awk '{ print $1 }')
+            test "$actual_digest" = "$expected_digest"
+            ;;
+        output)
+            actual_digest=$(
+                sha256sum "$WORK/function-text-direct.elf" |
+                    awk '{ print $1 }'
+            )
+            test "$actual_digest" = "$expected_digest"
+            ;;
+        reproduce|'#'|'') ;;
+        *)
+            printf '%s\n' \
+                "native-check: invalid function Text provenance row: $kind" >&2
+            exit 1
+            ;;
+    esac
+done <"$provenance"
+! grep -F "$WORK" "$provenance" >/dev/null
+
 # List[Int] uses the same Core AST and value ABI on x86-64 and AArch64. An
 # independent C11 executable is the normative Python-free differential
 # reference for bindings, indexing, map, filter, fold, and their edge cases.
@@ -1026,6 +1213,8 @@ printf '%s\n' \
     "PASS: general Native Core release stayed byte-identical and 4099 bytes" \
     "PASS: --target aarch64-linux emitted deterministic static EM_AARCH64 ELF" \
     "PASS: x86-64 and AArch64 consume one target-independent parsed Core" \
+    "PASS: x86-64 Text-returning functions match the audited C reference" \
+    "PASS: function Text determinism, OOM, provenance, and rejection gates pass" \
     "PASS: x86-64/AArch64 List/Text Cores use shared ABIs and diagnostics" \
     "PASS: x86-64 List execution matched C11 with OOB/OOM contracts" \
     "$text_summary"

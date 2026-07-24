@@ -1,0 +1,7 @@
+fn load(path: Text) -> Text {
+    return read_text(path)
+}
+
+fn main() {
+    print(load("input.txt"))
+}

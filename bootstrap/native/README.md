@@ -63,9 +63,9 @@ Runtime Int output covers zero, negative values, and the complete signed
 diagnostic — the same `kofun: integer overflow` message and exit status on both
 targets; AArch64 detects multiply overflow with a `smulh`/sign-bit comparison
 and add/sub/negate overflow through the `V` flag. Unknown functions, duplicate
-declarations or parameters, wrong arity, more than six arguments, non-Int
-signatures, missing helper returns, and `-g` are rejected before an artifact is
-written. `-g` debug information remains x86-64-only.
+declarations or parameters, wrong arity, more than six arguments, non-Int or
+non-Text signatures, missing helper returns, and `-g` are rejected before an
+artifact is written. `-g` debug information remains x86-64-only.
 
 `tests/conformance/functions` runs the same five programs under the C11 and
 direct x86-64 adapters, covering ordinary/forward calls, recursion, mutual
@@ -73,6 +73,41 @@ recursion, signed/zero output, and the six-argument boundary. The native gate
 additionally rebuilds the `fibonacci` example and the checked-overflow fixture
 for AArch64 and, when `qemu-aarch64` is installed, executes them and asserts the
 output, diagnostic, and exit status match the x86-64 observations byte for byte.
+
+## x86-64 compiler-shaped Text function bridge
+
+The x86-64 function profile additionally lowers one bounded Text path: up to
+two `Text` parameters in ordinary SysV integer registers, a `Text` result in
+`rax`, direct and forward calls, concatenation, one immutable frame-backed
+`Text` local, and `print(Text)` in `main`.
+
+```kofun
+fn declaration_label(kind: Text, name: Text) -> Text {
+    return kind + " " + name
+}
+
+fn main() {
+    let label: Text = declaration_label("fn", "main")
+    print(label)
+}
+```
+
+The value ABI remains `[byte length: i64][UTF-8 bytes]`. Parameters are
+immutable process-lifetime views. A result is either an input/literal pointer
+or a newly `mmap`-allocated exact Text object; this slice deliberately provides
+no reclamation. Arguments evaluate left to right once, frame size is rounded
+to preserve 16-byte SysV call alignment, and every call uses a checked `rel32`
+fixup. Concatenation checks object-size overflow and reports
+`kofun: out of memory` with status 70 through the existing bounded allocator.
+
+`check.sh` compares ASCII and multibyte UTF-8 fixtures with an independent C11
+reference, compares direct and public-CLI artifacts byte for byte across clean
+builds, verifies the static ELF shape, and pins producer/source/reference/output
+hashes in `fixtures/function_text_provenance.txt`. Wrong arity/type/result,
+missing return, mutable local, `List[Text]`, loop/file operation, forced OOM,
+and AArch64 attempts are explicit negative gates that leave no output artifact.
+AArch64 function-Text lowering remains a separate parity slice and does not
+affect the existing AArch64 Int or closed Text-expression profiles.
 
 Both Linux targets also accept local `Int`/`List[Int]` bindings and a
 deliberately narrow collection Core:
@@ -122,8 +157,8 @@ emoji cases and executes the Text OOM and index-failure paths.
 The obsolete `tests/kofun/*.kf` acceptance path no longer exists. The active
 Python-free `tests/conformance/list` and `tests/conformance/text` corpora are
 registered with both native adapters and execute all 34 cases on x86-64 and,
-under qemu, AArch64. General Text bindings, calls, and the Stage 1 compiler port
-are tracked separately by issue #33.
+under qemu, AArch64. General Text bindings/calls beyond the two-argument
+compiler-shaped bridge and the Stage 1 compiler port remain open.
 
 The frontend creates one AST; both instruction selectors consume it. The
 equivalent canonical Kofun representation is a postfix stream of
@@ -321,6 +356,9 @@ Implemented here:
 - checked `+`, `-`, `*`, and unary negation in the function profile, with an
   identical overflow trap on both targets;
 - general signed Int64 decimal output for function-profile `print`;
+- bounded x86-64 Text function parameters/results, direct/forward calls,
+  concatenation, one immutable local, and `print(Text)`, with deterministic
+  provenance and independent C11 differential evidence;
 - registered function conformance coverage with 5/5 cases executed by both
   the C11 and native x86-64 adapters, plus the `fibonacci` and checked-overflow
   fixtures executed on AArch64 under `qemu-aarch64` and matched against the
@@ -351,10 +389,11 @@ Still open:
 
 - replacing the audited C11 Native Core driver after lists and calls
   self-compile;
-- local bindings and general statement/control-flow lowering inside
+- general local bindings and statement/control-flow lowering inside
   user-defined functions;
 - native stdout/stderr formatting and canonical `R010` diagnostics;
 - conditional branches, allocator reuse/reclamation, Mach-O, and additional targets;
 - first-class/nested collection lambdas and general collection types;
-- general Text bindings/calls and the Stage 1 compiler port tracked by #33;
+- broader Text bindings/calls, AArch64 function-Text parity, and the Stage 1
+  compiler port;
 - AArch64 debug information and variable/location DIEs.

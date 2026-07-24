@@ -1,0 +1,7 @@
+fn label(first: Text, second: Text, third: Text) -> Text {
+    return first + second + third
+}
+
+fn main() {
+    print(label("f", "n", " main"))
+}

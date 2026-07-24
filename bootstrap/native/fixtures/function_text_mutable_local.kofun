@@ -1,0 +1,8 @@
+fn label(kind: Text) -> Text {
+    return kind
+}
+
+fn main() {
+    let mut value: Text = label("fn")
+    print(value)
+}
