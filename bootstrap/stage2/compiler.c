@@ -2979,6 +2979,18 @@ static char *initializer_type(
     int64_t initializer
 );
 static bool value_control(const char *source, int64_t cursor);
+static char *function_return_type(const char *source, const char *wanted);
+
+static bool newline_between(
+    const char *source,
+    int64_t start,
+    int64_t end
+) {
+    for (int64_t at = start; at < end; ++at) {
+        if (source[at] == '\n') return true;
+    }
+    return false;
+}
 
 /*
  * Parameter types of the profile builtins, `|`-separated in order.
@@ -3121,6 +3133,152 @@ static char *builtin_argument_check(
         ++index;
     }
     return owned_text("");
+}
+
+/*
+ * Bounded condition and return typing for the whole profile surface,
+ * ordered before the unsupported-lowering classification so the frozen
+ * self-host source is fully checked. Statement `if`/`while` conditions
+ * must not be confidently non-Bool (the E2S23 message shape is reused
+ * byte for byte for `if`); value returns must not confidently mismatch
+ * the declared result type. Match guards, value-position `if`, and
+ * value-control operands are skipped rather than guessed.
+ */
+static char *validate_core_types(const char *source, const char *hir) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t function_start = next_function_start(source, 0);
+    while (function_start < length) {
+        int64_t function_close = function_end(source, function_start);
+        char *name = function_name(source, function_start);
+        char *declared = function_return_type(source, name);
+        int64_t function_open = enclosing_function_open(
+            source,
+            function_start < function_close ?
+                function_close - 1 : function_start
+        );
+        if (function_open < 0) {
+            free(name);
+            free(declared);
+            function_start = next_function_start(source, function_close);
+            continue;
+        }
+        int64_t previous_start = function_open;
+        int64_t cursor = skip_trivia(
+            source,
+            token_end(source, function_open)
+        );
+        while (cursor < function_close) {
+            bool statement_context =
+                token_equal(source, previous_start, "{") ||
+                token_equal(source, previous_start, "}") ||
+                token_equal(source, previous_start, "else") ||
+                newline_between(
+                    source,
+                    token_end(source, previous_start),
+                    cursor
+                );
+            if (
+                (token_equal(source, cursor, "if") && statement_context) ||
+                (token_equal(source, cursor, "while") && statement_context)
+            ) {
+                int64_t condition = skip_trivia(
+                    source,
+                    token_end(source, cursor)
+                );
+                if (condition < function_close) {
+                    char *condition_type = initializer_type(
+                        source,
+                        hir,
+                        function_open,
+                        condition
+                    );
+                    bool wrong =
+                        strcmp(condition_type, "Int") == 0 ||
+                        strcmp(condition_type, "Text") == 0 ||
+                        strcmp(condition_type, "List") == 0;
+                    free(condition_type);
+                    if (wrong) {
+                        Buffer error;
+                        buffer_init(&error);
+                        if (token_equal(source, cursor, "if")) {
+                            buffer_format(
+                                &error,
+                                "error[E2S23]: if condition must be Bool "
+                                "or an Int comparison at byte %" PRId64,
+                                condition
+                            );
+                        } else {
+                            buffer_format(
+                                &error,
+                                "error[E2S23]: while condition must be "
+                                "Bool at byte %" PRId64,
+                                condition
+                            );
+                        }
+                        free(name);
+                        free(declared);
+                        return error.data;
+                    }
+                }
+            }
+            if (
+                token_equal(source, cursor, "return") &&
+                statement_context &&
+                declared[0] != '\0' &&
+                strcmp(declared, "Void") != 0
+            ) {
+                int64_t value = skip_trivia(
+                    source,
+                    token_end(source, cursor)
+                );
+                bool bare =
+                    value >= function_close ||
+                    token_equal(source, value, "}") ||
+                    newline_between(
+                        source,
+                        token_end(source, cursor),
+                        value
+                    );
+                if (!bare && !value_control(source, value)) {
+                    char *value_type = initializer_type(
+                        source,
+                        hir,
+                        function_open,
+                        value
+                    );
+                    bool known =
+                        strcmp(value_type, "Int") == 0 ||
+                        strcmp(value_type, "Bool") == 0 ||
+                        strcmp(value_type, "Text") == 0 ||
+                        strcmp(value_type, "List") == 0;
+                    if (known && strcmp(value_type, declared) != 0) {
+                        Buffer error;
+                        buffer_init(&error);
+                        buffer_format(
+                            &error,
+                            "error[E2S15]: Core function `%s` returns %s, "
+                            "expected %s at byte %" PRId64,
+                            name,
+                            value_type,
+                            declared,
+                            value
+                        );
+                        free(value_type);
+                        free(name);
+                        free(declared);
+                        return error.data;
+                    }
+                    free(value_type);
+                }
+            }
+            previous_start = cursor;
+            cursor = skip_trivia(source, token_end(source, cursor));
+        }
+        free(name);
+        free(declared);
+        function_start = next_function_start(source, function_close);
+    }
+    return owned_text("ok");
 }
 
 static char *validate_core_calls(const char *source, const char *hir) {
@@ -7139,6 +7297,9 @@ static char *lower_c(const char *source, const char *hir) {
         return enum_use_check;
     }
     free(enum_use_check);
+    char *type_check = validate_core_types(source, hir);
+    if (strncmp(type_check, "error[", 6) == 0) return type_check;
+    free(type_check);
     char *call_check = validate_core_calls(source, hir);
     if (strncmp(call_check, "error[", 6) == 0) return call_check;
     free(call_check);

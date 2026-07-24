@@ -132,6 +132,16 @@ index, and byte, while well-typed builtin calls continue to classify as
 unsupported lowering. Text-literal arguments count correctly toward call
 arity. Value-control arguments are skipped rather than rejected.
 
+Statement `if`/`while` conditions and value returns are typed across the
+whole profile surface, ordered before the unsupported classification: a
+confidently non-Bool condition is `E2S23` (the historical `if` message is
+reused byte for byte, `while` gains its own form), and a confidently
+mismatched `return` against the declared result type is `E2S15`. Match
+guards, value-position `if`, and value-control operands are skipped rather
+than guessed, and the conservative unknown falls through to the later
+bounded-slice checks. The frozen `S` passes condition and return typing
+completely; its frontier remains typed builtin lowering.
+
 Top-level functions accept an omitted modifier, `private`, `internal`, or
 `pub`. Structural IR preserves semantic visibility, implicit versus explicit
 origin, the modifier/declaration spans, `file:0`, and a declaration-order
