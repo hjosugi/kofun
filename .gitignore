@@ -2,6 +2,9 @@
 build/
 .tmp-*
 .kofun/
+node_modules/
+.next/
+.open-next/
 
 # Editors
 .vscode/

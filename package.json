@@ -1,0 +1,33 @@
+{
+  "name": "kofun-language-site",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test:docs": "node --experimental-strip-types site/docs-links.test.mjs",
+    "test:playground": "node --experimental-strip-types site/playground.test.mjs",
+    "verify:site": "npm run test:playground && npm run test:docs && npm run build"
+  },
+  "dependencies": {
+    "next": "^16.2.11",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "react-markdown": "^10.1.0",
+    "rehype-autolink-headings": "^7.1.0",
+    "rehype-slug": "^6.0.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "typescript": "5.9.3"
+  },
+  "overrides": {
+    "postcss": "8.5.22",
+    "sharp": "0.35.3"
+  }
+}

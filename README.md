@@ -47,8 +47,8 @@ Eight Python-free checkpoints now exercise the path beyond that Core:
   function IR, and reaches a byte-stable source/token/IR round trip;
 - `bootstrap/native/` uses Kofun-authored bytes to build and execute a static
   Linux ELF64 image without an assembler or linker; its active x86-64 and
-  AArch64 Cores include recursive user functions, local List bindings, and
-  `map`/`filter`/`fold`; UTF-8 Text operations are currently x86-64-only;
+  AArch64 Cores include recursive user functions, local List bindings,
+  `map`/`filter`/`fold`, and Unicode 17 UTF-8 Text operations;
 - `bootstrap/wasm/` directly emits a standard wasm32 module for the checked
   Int64 arithmetic Core and differentially executes it in a WebAssembly
   engine;
@@ -90,13 +90,15 @@ never enough to move a row to `Active`.
 | Stable language specification | **Missing** | [`spec/README.md`](spec/README.md) distinguishes normative contracts from roadmap material |
 | Package ecosystem | **Missing** | Package and registry work remains a later roadmap milestone |
 
-The P0 path now freezes the smallest compiler source profile
-([#618](https://github.com/hjosugi/kofun/issues/618)), fills its frontend and
-C11 coverage in [#619](https://github.com/hjosugi/kofun/issues/619) through
-[#622](https://github.com/hjosugi/kofun/issues/622), then produces and compares
-three compiler generations in [#271](https://github.com/hjosugi/kofun/issues/271)
-and [#272](https://github.com/hjosugi/kofun/issues/272). Direct-native and
-AArch64 parity continue in parallel without blocking that first fixed point.
+The P0 path has frozen the smallest compiler source profile
+([#618](https://github.com/hjosugi/kofun/issues/618)) and completed its typed
+frontend, C11 lowering, and runnable compiler-production path in
+[#619](https://github.com/hjosugi/kofun/issues/619) through
+[#622](https://github.com/hjosugi/kofun/issues/622). The remaining fixed-point
+work produces and compares three compiler generations in
+[#271](https://github.com/hjosugi/kofun/issues/271) and
+[#272](https://github.com/hjosugi/kofun/issues/272). Direct-native and AArch64
+parity continue in parallel without blocking that first fixed point.
 
 The research decisions supporting that order are:
 
