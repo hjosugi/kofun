@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      name="description"
+      content="Learn Kofun by editing, compiling, running, and sharing small WebAssembly programs in your browser."
+    >
+    <title>Kofun Tour — run your first program</title>
+    <link rel="stylesheet" href="./styles.css">
+    <script type="module" src="./app.mjs"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#lesson">Skip to the current lesson</a>
+    <header class="site-header">
+      <a class="brand" href="./" aria-label="Kofun Tour home">
+        <span class="brand-mark" aria-hidden="true">⌁</span>
+        <span>Kofun Tour</span>
+      </a>
+      <label class="direction-control">
+        Page direction
+        <select data-direction>
+          <option value="ltr">Left to right</option>
+          <option value="rtl">Right to left</option>
+        </select>
+      </label>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="hero-title">
+        <div>
+          <p class="eyebrow">No account · no install · no server</p>
+          <h1 id="hero-title">Make a program move in five minutes.</h1>
+          <p class="hero-copy">
+            Edit real Kofun. This page compiles it to WebAssembly and runs it
+            locally. A share link keeps the snippet in its URL—not in a backend.
+          </p>
+        </div>
+        <div class="mascot-card">
+          <div class="mascot" aria-hidden="true"><span></span></div>
+          <p><strong>Kofun-kun</strong> will turn your first two numbers into colour and motion.</p>
+        </div>
+      </section>
+
+      <section class="tour-shell" aria-label="Interactive Kofun tour">
+        <nav class="step-nav" aria-label="Tour steps">
+          <p class="nav-title">Four small steps</p>
+          <ol data-step-list></ol>
+        </nav>
+
+        <article class="lesson" id="lesson">
+          <header class="lesson-heading">
+            <p class="eyebrow" data-eyebrow></p>
+            <h2 data-step-title></h2>
+            <p data-intro></p>
+          </header>
+
+          <div class="workspace">
+            <section class="editor-panel" aria-labelledby="editor-title">
+              <div class="panel-heading">
+                <h3 id="editor-title">Your Kofun program</h3>
+                <span>Ctrl/⌘ + Enter to run</span>
+              </div>
+              <textarea
+                data-editor
+                aria-label="Editable Kofun source"
+                spellcheck="false"
+                autocomplete="off"
+              ></textarea>
+              <div class="actions">
+                <button class="primary" type="button" data-run>Run</button>
+                <button type="button" data-reset>Reset</button>
+                <button type="button" data-share>Share this code</button>
+              </div>
+              <p class="status" data-status role="status" aria-live="polite"></p>
+            </section>
+
+            <section class="result-panel" aria-labelledby="result-title">
+              <div class="panel-heading">
+                <h3 id="result-title">Visible result</h3>
+                <span>browser WebAssembly</span>
+              </div>
+              <div class="stage" data-stage>
+                <div class="finish" data-finish aria-hidden="true"></div>
+                <div class="runner" data-character aria-hidden="true">
+                  <div class="mascot mini"><span></span></div>
+                </div>
+              </div>
+              <h4>Printed output</h4>
+              <pre class="output" data-output aria-live="polite"></pre>
+            </section>
+          </div>
+
+          <aside class="exercise">
+            <h3>Try it yourself</h3>
+            <p data-exercise></p>
+          </aside>
+          <section class="ownership" data-ownership hidden></section>
+        </article>
+      </section>
+
+      <section class="guides" aria-labelledby="guides-title">
+        <p class="eyebrow">Bring what you know</p>
+        <h2 id="guides-title">Honest coming-from guides</h2>
+        <p>Each comparison says what transfers, what surprises, and where Kofun is worse today.</p>
+        <div class="guide-list" data-guide-list></div>
+      </section>
+
+      <section class="limits" aria-labelledby="limits-title">
+        <p class="eyebrow">Current, executable boundary</p>
+        <h2 id="limits-title">This is a real compiler—and a deliberately small one.</h2>
+        <p>
+          The browser compiler accepts one <code>fn main()</code>, immutable Int
+          bindings, print, parentheses, and checked Int64 arithmetic with
+          <code>+ - * / // %</code>. It has no Text, List, records, functions,
+          DOM API, ownership checker, linear memory objects, WASI, packages, or optimizer yet.
+        </p>
+        <p>
+          Kofun-kun currently lives in this tour only; the proposed kofun-hub
+          integration cannot exist until that separate project is created.
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      <p>Static files only. Source and execution stay in your browser.</p>
+    </footer>
+  </body>
+</html>

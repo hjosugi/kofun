@@ -1,0 +1,585 @@
+:root {
+  color-scheme: light;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  background: #f5f1e8;
+  color: #1d2430;
+  --ink: #1d2430;
+  --paper: #fffdf8;
+  --plum: #5b2a86;
+  --plum-dark: #32134f;
+  --mint: #9ee7c5;
+  --orange: #ff9c5b;
+  --line: #d8d0c1;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-block-size: 100vh;
+  margin: 0;
+  line-height: 1.55;
+}
+
+button,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+select {
+  min-block-size: 2.75rem;
+  border: 1px solid var(--ink);
+  border-radius: 0.6rem;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+button {
+  padding-block: 0.55rem;
+  padding-inline: 0.9rem;
+  cursor: pointer;
+}
+
+button:hover,
+button:focus-visible {
+  box-shadow: 0 0 0 3px var(--mint);
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.primary {
+  border-color: var(--plum-dark);
+  background: var(--plum);
+  color: white;
+  font-weight: 750;
+}
+
+.skip-link {
+  position: fixed;
+  inset-block-start: 0.5rem;
+  inset-inline-start: 0.5rem;
+  z-index: 10;
+  translate: 0 -160%;
+  padding: 0.6rem 0.8rem;
+  border-radius: 0.4rem;
+  background: var(--paper);
+  color: var(--plum-dark);
+}
+
+.skip-link:focus {
+  translate: 0;
+}
+
+.site-header,
+main,
+footer {
+  inline-size: min(92rem, calc(100% - 2rem));
+  margin-inline: auto;
+}
+
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-block-size: 5rem;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--ink);
+  font-size: 1.1rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.brand-mark {
+  display: grid;
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  place-items: center;
+  border-radius: 40% 40% 52% 52%;
+  background: var(--plum);
+  color: white;
+}
+
+.direction-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.direction-control select {
+  padding-inline: 0.5rem;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(16rem, 0.7fr);
+  gap: clamp(2rem, 7vw, 7rem);
+  align-items: center;
+  padding-block: clamp(3rem, 9vw, 8rem);
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin-block-start: 0;
+}
+
+h1 {
+  max-inline-size: 13ch;
+  margin-block-end: 1.25rem;
+  font-size: clamp(2.7rem, 7vw, 6.4rem);
+  line-height: 0.96;
+  letter-spacing: -0.055em;
+}
+
+h2 {
+  font-size: clamp(2rem, 4vw, 3.6rem);
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+}
+
+.hero-copy {
+  max-inline-size: 58ch;
+  font-size: clamp(1.05rem, 2vw, 1.35rem);
+}
+
+.eyebrow,
+.nav-title {
+  margin-block-end: 0.6rem;
+  color: var(--plum);
+  font-size: 0.78rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.mascot-card {
+  padding: 1.4rem;
+  border: 1px solid var(--line);
+  border-radius: 1.25rem;
+  background: var(--paper);
+  box-shadow: 0.8rem 0.8rem 0 var(--mint);
+}
+
+.mascot {
+  position: relative;
+  inline-size: 8rem;
+  block-size: 5.6rem;
+  margin-inline: auto;
+  border: 0.4rem solid var(--ink);
+  border-radius: 48% 48% 34% 34%;
+  background: var(--orange);
+}
+
+.mascot::before,
+.mascot::after {
+  position: absolute;
+  inset-block-start: 1.6rem;
+  inline-size: 0.7rem;
+  block-size: 0.85rem;
+  border-radius: 50%;
+  background: var(--ink);
+  content: "";
+}
+
+.mascot::before {
+  inset-inline-start: 2rem;
+}
+
+.mascot::after {
+  inset-inline-end: 2rem;
+}
+
+.mascot > span {
+  position: absolute;
+  inset-block-start: 3.25rem;
+  inset-inline-start: 50%;
+  inline-size: 1.65rem;
+  block-size: 0.65rem;
+  border-block-end: 0.25rem solid var(--ink);
+  border-radius: 50%;
+  translate: -50% 0;
+}
+
+[dir="rtl"] .mascot > span {
+  translate: 50% 0;
+}
+
+.tour-shell {
+  display: grid;
+  grid-template-columns: minmax(13rem, 0.3fr) minmax(0, 1fr);
+  overflow: clip;
+  border: 1px solid var(--plum-dark);
+  border-radius: 1.25rem;
+  background: var(--paper);
+  box-shadow: 0 1.5rem 5rem #32134f1f;
+}
+
+.step-nav {
+  padding: 1.25rem;
+  background: var(--plum-dark);
+  color: white;
+}
+
+.step-nav .nav-title {
+  color: var(--mint);
+}
+
+.step-nav ol {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step-nav button {
+  inline-size: 100%;
+  border-color: transparent;
+  background: transparent;
+  color: white;
+  text-align: start;
+}
+
+.step-nav button[aria-current="step"] {
+  border-color: var(--mint);
+  background: #ffffff14;
+  color: var(--mint);
+}
+
+.lesson {
+  min-inline-size: 0;
+  padding: clamp(1rem, 3vw, 2.5rem);
+}
+
+.lesson-heading {
+  max-inline-size: 66ch;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(18rem, 0.8fr);
+  gap: 1rem;
+  margin-block: 2rem 1rem;
+}
+
+.editor-panel,
+.result-panel {
+  min-inline-size: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  background: white;
+}
+
+.panel-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block: 0.7rem;
+  padding-inline: 1rem;
+  border-block-end: 1px solid var(--line);
+  background: #f7f4ed;
+}
+
+.panel-heading h3 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.panel-heading span {
+  color: #5e6672;
+  font-size: 0.72rem;
+}
+
+textarea,
+pre,
+code {
+  font-family: "SFMono-Regular", Consolas, ui-monospace, monospace;
+}
+
+textarea {
+  display: block;
+  inline-size: 100%;
+  min-block-size: 20rem;
+  resize: block;
+  padding: 1rem;
+  border: 0;
+  outline-offset: -3px;
+  background: #151822;
+  color: #f5f7ff;
+  direction: ltr;
+  line-height: 1.55;
+  tab-size: 4;
+  text-align: start;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  padding: 0.8rem;
+  border-block-start: 1px solid var(--line);
+}
+
+.status {
+  min-block-size: 2.5rem;
+  margin: 0;
+  padding-block: 0.2rem 0.8rem;
+  padding-inline: 0.9rem;
+  color: #5e6672;
+  font-size: 0.82rem;
+}
+
+.status[data-state="success"] {
+  color: #17603f;
+}
+
+.status[data-state="error"] {
+  color: #9a2c27;
+}
+
+.result-panel h4 {
+  margin-block: 1rem 0.35rem;
+  padding-inline: 1rem;
+}
+
+.stage {
+  --result-hue: 210;
+  --result-distance: 50%;
+  position: relative;
+  block-size: 12rem;
+  overflow: hidden;
+  border-block-end: 1px solid var(--line);
+  background:
+    radial-gradient(circle at 15% 25%, white 0 4%, transparent 4.5%),
+    linear-gradient(hsl(var(--result-hue) 75% 78%), #fff 64%, #d8f0cd 65%);
+}
+
+.stage::after {
+  position: absolute;
+  inset-block-end: 1.3rem;
+  inset-inline: 0;
+  block-size: 0.3rem;
+  background: #504235;
+  content: "";
+}
+
+.finish {
+  position: absolute;
+  inset-block: 2rem 1.3rem;
+  inset-inline-start: var(--finish-position, 50%);
+  inline-size: 0.3rem;
+  background: repeating-linear-gradient(white 0 0.45rem, var(--ink) 0.45rem 0.9rem);
+}
+
+.runner {
+  position: absolute;
+  inset-block-end: 1.55rem;
+  inset-inline-start: 4%;
+  z-index: 1;
+}
+
+.runner.is-running {
+  animation: run-result 900ms cubic-bezier(0.22, 0.8, 0.25, 1) forwards;
+}
+
+.mascot.mini {
+  inline-size: 3.7rem;
+  block-size: 2.7rem;
+  border-width: 0.22rem;
+  background: hsl(var(--result-hue) 80% 62%);
+}
+
+.mascot.mini::before,
+.mascot.mini::after {
+  inset-block-start: 0.75rem;
+  inline-size: 0.32rem;
+  block-size: 0.42rem;
+}
+
+.mascot.mini::before {
+  inset-inline-start: 0.9rem;
+}
+
+.mascot.mini::after {
+  inset-inline-end: 0.9rem;
+}
+
+.mascot.mini > span {
+  inset-block-start: 1.55rem;
+  inline-size: 0.75rem;
+  block-size: 0.35rem;
+  border-block-end-width: 0.12rem;
+}
+
+@keyframes run-result {
+  to {
+    inset-inline-start: calc(var(--result-distance) - 3.5rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .runner.is-running {
+    animation-duration: 1ms;
+  }
+}
+
+.output {
+  min-block-size: 4.5rem;
+  max-block-size: 10rem;
+  margin: 0;
+  overflow: auto;
+  padding-block: 0.4rem 1rem;
+  padding-inline: 1rem;
+  color: #17603f;
+  direction: ltr;
+  white-space: pre-wrap;
+}
+
+.exercise,
+.ownership,
+.limits {
+  margin-block-start: 1rem;
+  padding: 1.2rem;
+  border-radius: 0.8rem;
+  background: #eefaf4;
+}
+
+.exercise h3,
+.ownership h3 {
+  margin-block-end: 0.35rem;
+}
+
+.exercise p,
+.ownership p:last-child,
+.limits p:last-child {
+  margin-block-end: 0;
+}
+
+.ownership {
+  background: #fff2e8;
+}
+
+.bug-callout {
+  font-weight: 750;
+}
+
+.boundary-note,
+.worse-note {
+  padding-inline-start: 0.75rem;
+  border-inline-start: 0.25rem solid var(--orange);
+}
+
+.guides,
+.limits {
+  margin-block-start: clamp(4rem, 10vw, 8rem);
+}
+
+.guide-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-block-start: 2rem;
+}
+
+.guide-card {
+  min-inline-size: 0;
+  padding: clamp(1rem, 3vw, 1.7rem);
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  background: var(--paper);
+}
+
+.comparison {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.comparison h4 {
+  margin-block-end: 0.25rem;
+}
+
+.comparison pre {
+  min-block-size: 5rem;
+  margin: 0;
+  overflow: auto;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  background: #151822;
+  color: #f5f7ff;
+  direction: ltr;
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+}
+
+.limits {
+  max-inline-size: 68rem;
+  margin-inline: auto;
+  background: #fff2e8;
+}
+
+footer {
+  padding-block: 5rem 2rem;
+  color: #5e6672;
+  text-align: center;
+}
+
+@media (max-width: 64rem) {
+  .tour-shell,
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .step-nav ol {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 46rem) {
+  .site-header,
+  .direction-control {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .site-header {
+    justify-content: center;
+    padding-block: 1rem;
+  }
+
+  .hero,
+  .guide-list,
+  .comparison,
+  .step-nav ol {
+    grid-template-columns: 1fr;
+  }
+
+  .hero {
+    padding-block-start: 2rem;
+  }
+
+  .workspace {
+    margin-block-start: 1rem;
+  }
+
+  textarea {
+    min-block-size: 18rem;
+  }
+}
