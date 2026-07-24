@@ -1,0 +1,15 @@
+fn greet(name: Text, excited: Bool) -> Text {
+    if excited {
+        return name + "!"
+    }
+    return name
+}
+
+fn farewell(name: Text) {
+    print("bye " + name)
+}
+
+fn main() {
+    print(greet("kofun", true))
+    farewell("kofun")
+}

@@ -1,0 +1,7 @@
+fn oops(value: Float) -> Int {
+    return 1
+}
+
+fn main() {
+    let bad = oops(1)
+}

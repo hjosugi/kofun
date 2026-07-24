@@ -1,0 +1,16 @@
+fn add(left: Int, right: Int) -> Int {
+    return left + right
+}
+
+fn main() {
+    let arguments = args()
+    let total = add(2, 3) * 4 - 9 // 2 % 3
+    let compared = total >= 10 && total != 0 || !(total < 0)
+    let banner = "kofun" + "-" + "profile"
+    if compared {
+        print(banner)
+    }
+    if len(arguments) > 0 {
+        print(arguments[0])
+    }
+}

@@ -1,0 +1,24 @@
+fn main() {
+    let arguments = args()
+    let source = read_text("input.txt")
+    let symbols = chars(source)
+    let text_length = len(source)
+    let list_length = len(symbols)
+    let head = text_slice(source, 0, 1)
+    let cleaned = trim(source)
+    let swapped = replace(source, "a", "b")
+    let checked = validate_unicode_source(source)
+    if contains(source, "fn") && starts_with(source, "#") {
+        print(head)
+    }
+    if find(source, "fn") >= 0 {
+        print(cleaned)
+    }
+    if is_digit(head) || is_space(head) || is_xid_continue(head) {
+        print(swapped)
+    }
+    if len(arguments) + text_length + list_length > 0 {
+        print(checked)
+    }
+    write_text("out.txt", source)
+}

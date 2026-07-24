@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_bare_return.kofun|55e1a75da369a2a82b3091561e7116e07413fce89b288285fce5dac3c6b64096
+status|rejected
+diagnostic|E2S19|25|31|missing return value

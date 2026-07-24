@@ -1,0 +1,28 @@
+fn describe(value: Int) -> Text {
+    if value < 0 {
+        return "negative"
+    } else if value == 0 {
+        return "zero"
+    } else {
+        return "positive"
+    }
+    return "unreachable"
+}
+
+fn wait(limit: Int) {
+    let mut cursor = 0
+    while cursor < limit {
+        cursor = cursor + 1
+    }
+    for step in 0 .. limit {
+        if step == cursor {
+            return
+        }
+    }
+    return
+}
+
+fn main() {
+    print(describe(7))
+    wait(3)
+}

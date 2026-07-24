@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_no_functions.kofun|13b714d64fc70e287711dcf30172ffa784718b642496f00cf10728ecb8318120
+status|rejected
+diagnostic|E2S04|0|1|source declares no functions

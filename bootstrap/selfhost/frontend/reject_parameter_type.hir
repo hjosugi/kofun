@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_parameter_type.kofun|1a6982b4ea82f6bd2593fbf0f81e74c509c045e1b730f988c222ba2d6207895b
+status|rejected
+diagnostic|E2S15|0|2|type is outside the frozen profile

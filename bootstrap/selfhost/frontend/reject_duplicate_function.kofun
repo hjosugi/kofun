@@ -1,0 +1,7 @@
+fn twice() -> Int {
+    return 2
+}
+
+fn twice() -> Int {
+    return 2
+}

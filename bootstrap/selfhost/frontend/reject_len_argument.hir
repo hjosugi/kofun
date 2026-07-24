@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_len_argument.kofun|07ecb8edaebcb87f1e427dcb69cbe9c9da347451e0bfe1d79cf42610499c8de2
+status|rejected
+diagnostic|E2S15|30|31|len expects Text or List[Text]

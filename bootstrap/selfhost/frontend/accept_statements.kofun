@@ -1,0 +1,12 @@
+fn main() {
+    let base = 5
+    let mut cursor = base
+    cursor = cursor + 1
+    let mut label = "step"
+    label = label + "!"
+    let mut ready = false
+    ready = cursor > base
+    if ready {
+        print(label)
+    }
+}

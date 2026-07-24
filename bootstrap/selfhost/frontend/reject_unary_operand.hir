@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_unary_operand.kofun|23f7a282c6c74f67701a1e15e88d664a49d53f43a6b9fa408dc7041c178335af
+status|rejected
+diagnostic|E2S15|27|30|unary `-` expects Int

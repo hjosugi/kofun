@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_duplicate_function.kofun|ee8ab3658348982c7f34872c785de594b655f03bff3cb9677bfe950df49efa18
+status|rejected
+diagnostic|E2S16|36|38|duplicate Core function

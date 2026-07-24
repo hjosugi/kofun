@@ -1,0 +1,5 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_unsupported_break.kofun|720503198141082fb002a836feb773fddcaff8fa224bda61327b850bb0e1e8f7
+status|rejected
+diagnostic|E2S10|37|42|unsupported Core statement
+unsupported|37|42|statement

@@ -1,0 +1,7 @@
+fn main() {
+    if true {
+        let hidden = 1
+        print("scoped")
+    }
+    let bad = hidden + 1
+}
