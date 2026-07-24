@@ -15,6 +15,29 @@ fail() {
     exit 1
 }
 
+# Optional phase completion gates. The default invocation validates the
+# manifest itself and stays green while evidence is still planned; a phase
+# gate fails until every cell owned by that phase carries checked-in
+# evidence. `--phase frontend` is the #619 completion gate for the typed
+# HIR contract in bootstrap/selfhost/hir-v1.md.
+phase=
+while test "$#" -gt 0; do
+    case $1 in
+        --phase)
+            test "$#" -ge 2 || fail "--phase requires a phase name"
+            phase=$2
+            shift 2
+            ;;
+        *)
+            fail "unknown option: $1"
+            ;;
+    esac
+done
+case $phase in
+    ''|frontend) ;;
+    *) fail "unknown phase: $phase (supported: frontend)" ;;
+esac
+
 meta_value() {
     key=$1
     awk -F '|' -v key="$key" '
@@ -204,3 +227,20 @@ fi
 printf '%s\n' \
     "PASS: first self-host profile pins $source_path ($actual_sha)" \
     "PASS: $(wc -l < "$tmp_dir/actual-inventory") source features have explicit coverage rows"
+
+if test "$phase" = frontend; then
+    awk -F '|' '
+        NR == 1 { next }
+        $4 ~ /^planned:/ {
+            printf "PENDING: %s|%s frontend %s\n", $1, $2, $4
+        }
+    ' "$profile" > "$tmp_dir/frontend-pending"
+    pending_count=$(wc -l < "$tmp_dir/frontend-pending" | tr -d ' ')
+    total_count=$(($(wc -l < "$profile" | tr -d ' ') - 1))
+    if test "$pending_count" -gt 0; then
+        cat "$tmp_dir/frontend-pending"
+        fail "$pending_count of $total_count frontend cells still await #619 evidence"
+    fi
+    printf '%s\n' \
+        "PASS: all $total_count frontend cells carry checked-in typed-HIR evidence"
+fi
