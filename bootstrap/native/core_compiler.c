@@ -2648,42 +2648,11 @@ static bool function_bodies(
     return true;
 }
 
-static bool function_program_uses_text(const FunctionProgram *program) {
-    for (size_t function_index = 0;
-         function_index < program->function_count;
-         ++function_index) {
-        const FunctionDeclaration *function =
-            &program->functions[function_index];
-        if (function->has_result &&
-            function->result_kind == FUNCTION_VALUE_TEXT) {
-            return true;
-        }
-        for (size_t index = 0;
-             index < function->parameter_count;
-             ++index) {
-            if (function->parameter_types[index] ==
-                FUNCTION_VALUE_TEXT) {
-                return true;
-            }
-        }
-        if (function->local_count > 0) return true;
-        for (size_t index = 0;
-             index < function->statement_count;
-             ++index) {
-            const FunctionStatement *statement =
-                &function->statements[index];
-            if ((statement->condition != NULL &&
-                 statement->condition->value_kind ==
-                    FUNCTION_VALUE_TEXT) ||
-                (statement->value != NULL &&
-                 statement->value->value_kind ==
-                    FUNCTION_VALUE_TEXT)) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
+/*
+ * The AArch64 function backend now lowers Text parameters, results, immutable
+ * locals, concatenation, literals, and print(Text) directly (issue #623), so
+ * there is no longer an AArch64-specific Text refusal before lowering.
+ */
 
 static size_t register_depth(const Node *expression) {
     if (expression->kind == NODE_LITERAL ||
@@ -4485,11 +4454,70 @@ typedef struct {
 } FunctionCallFixups;
 
 typedef struct {
+    size_t low_field;
+    size_t high_field;
+    const uint8_t *value;
+    size_t length;
+} A64TextFixup;
+
+typedef struct {
+    A64TextFixup *items;
+    size_t length;
+    size_t capacity;
+} A64TextFixups;
+
+typedef struct {
+    bool used;
+    Offsets allocate_calls;
+    Offsets oom_jumps;
+    Offsets list_index_jumps;
+    Offsets text_index_jumps;
+    Offsets text_concat_calls;
+    Offsets text_equal_calls;
+    Offsets text_length_calls;
+    Offsets text_index_calls;
+    Offsets text_chars_calls;
+    A64TextFixups text_literals;
+} A64CoreRuntime;
+
+/*
+ * The AArch64 Text runtime and its helpers are defined below, alongside the
+ * aggregate Core lowerer. The shared function emitter and the AArch64 function
+ * lowerer above them reuse that runtime, so forward-declare what they call.
+ */
+static void a64_text_fixups_add(
+    A64TextFixups *fixups,
+    size_t low_field,
+    size_t high_field,
+    const uint8_t *value,
+    size_t length
+);
+static void a64_core_call_runtime(
+    Bytes *text,
+    A64CoreRuntime *runtime,
+    Offsets *calls
+);
+static void a64_core_runtime(Bytes *text, A64CoreRuntime *runtime);
+static void a64_core_runtime_free(A64CoreRuntime *runtime);
+static void a64_load_u64(
+    Bytes *text,
+    unsigned destination,
+    unsigned address,
+    unsigned offset
+);
+static void a64_load_address(
+    Bytes *text,
+    unsigned destination,
+    uint64_t address
+);
+
+typedef struct {
     FunctionCallFixups calls;
     Offsets print_int_calls;
     Offsets print_text_calls;
     Offsets overflow_jumps;
     X64Runtime runtime;
+    A64CoreRuntime a64_runtime;
 } FunctionEmitter;
 
 static void function_call_fixup_add(
@@ -4520,6 +4548,7 @@ static void function_emitter_free(FunctionEmitter *emitter) {
     free(emitter->print_text_calls.fields);
     free(emitter->overflow_jumps.fields);
     x64_runtime_free(&emitter->runtime);
+    a64_core_runtime_free(&emitter->a64_runtime);
 }
 
 static void x64_function_call(
@@ -5320,6 +5349,35 @@ static void a64_function_expression(
         a64_push(text, 0);
         return;
     }
+    if (expression->kind == FUNCTION_TEXT_LITERAL) {
+        emitter->a64_runtime.used = true;
+        size_t low_field = text->length;
+        a64_movz(text, 0, 0);              /* Text address low, patched */
+        size_t high_field = text->length;
+        a64_movk_lsl16(text, 0, 0);        /* Text address high, patched */
+        a64_text_fixups_add(
+            &emitter->a64_runtime.text_literals,
+            low_field,
+            high_field,
+            expression->text_value,
+            expression->text_length
+        );
+        a64_push(text, 0);
+        return;
+    }
+    if (expression->kind == FUNCTION_TEXT_CONCAT) {
+        a64_function_expression(text, expression->left, emitter);
+        a64_function_expression(text, expression->right, emitter);
+        a64_pop(text, 1);                  /* right Text -> x1 */
+        a64_pop(text, 0);                  /* left Text  -> x0 */
+        a64_core_call_runtime(
+            text,
+            &emitter->a64_runtime,
+            &emitter->a64_runtime.text_concat_calls
+        );
+        a64_push(text, 0);
+        return;
+    }
     if (expression->kind == FUNCTION_CALL) {
         for (size_t index = 0; index < expression->argument_count; ++index) {
             a64_function_expression(
@@ -5390,10 +5448,11 @@ static void a64_function_declaration(
 ) {
     a64_word(text, UINT32_C(0xa9bf7bfd)); /* stp x29, x30, [sp, #-16]! */
     a64_word(text, UINT32_C(0x910003fd)); /* mov x29, sp */
-    if (function->parameter_count > 0) {
+    size_t frame_slots =
+        function->parameter_count + function->local_count;
+    if (frame_slots > 0) {
         uint32_t frame = (uint32_t)(
-            ((function->parameter_count * sizeof(uint64_t)) + 15) /
-                16 * 16
+            ((frame_slots * sizeof(uint64_t)) + 15) / 16 * 16
         );
         a64_sub_sp(text, frame);
         for (size_t index = 0;
@@ -5423,8 +5482,16 @@ static void a64_function_declaration(
         } else if (statement->kind == FUNCTION_STATEMENT_PRINT) {
             a64_function_expression(text, statement->value, emitter);
             a64_pop(text, 0); /* print argument -> x0 */
-            offsets_add(&emitter->print_int_calls, text->length);
+            if (statement->value->value_kind == FUNCTION_VALUE_TEXT) {
+                offsets_add(&emitter->print_text_calls, text->length);
+            } else {
+                offsets_add(&emitter->print_int_calls, text->length);
+            }
             a64_word(text, UINT32_C(0x94000000)); /* bl print (patched) */
+        } else if (statement->kind == FUNCTION_STATEMENT_LET) {
+            a64_function_expression(text, statement->value, emitter);
+            a64_pop(text, 0); /* let value -> x0 */
+            a64_store_param(text, 0, statement->slot);
         } else {
             a64_function_expression(text, statement->value, emitter);
             a64_pop(text, 0); /* discard expression result */
@@ -5496,6 +5563,29 @@ static size_t a64_function_print_runtime(Bytes *text) {
     return runtime_at;
 }
 
+/*
+ * Print a Text value followed by a newline. The Text pointer (to
+ * [i64 byte-length][UTF-8 bytes]) arrives in x0, mirroring
+ * x64_function_print_text_runtime and the aggregate print(Text) path. The fixed
+ * DATA_ADDRESS+2 byte supplies the newline, so no fixup is needed. This is a
+ * leaf routine: it preserves x30 and returns with ret.
+ */
+static size_t a64_function_print_text_runtime(Bytes *text) {
+    size_t runtime_at = text->length;
+    a64_load_u64(text, 2, 0, 0);       /* x2 = UTF-8 byte length from [x0] */
+    a64_add_immediate(text, 1, 0, 8);  /* x1 = x0 + 8 (UTF-8 bytes) */
+    a64_movz(text, 0, 1);              /* x0 = 1 (stdout) */
+    a64_movz(text, 8, 64);             /* x8 = 64 (write) */
+    a64_svc(text);
+    a64_load_address(text, 1, DATA_ADDRESS + 2); /* newline byte */
+    a64_movz(text, 0, 1);              /* stdout */
+    a64_movz(text, 2, 1);              /* length 1 */
+    a64_movz(text, 8, 64);             /* write */
+    a64_svc(text);
+    a64_word(text, UINT32_C(0xd65f03c0)); /* ret */
+    return runtime_at;
+}
+
 static void a64_function_program(
     Bytes *text,
     const FunctionProgram *program
@@ -5519,6 +5609,10 @@ static void a64_function_program(
     }
 
     size_t print_at = a64_function_print_runtime(text);
+    size_t print_text_at = 0;
+    if (emitter.print_text_calls.length > 0) {
+        print_text_at = a64_function_print_text_runtime(text);
+    }
 
     size_t overflow_at = text->length;
     static const char overflow_message[] = "kofun: integer overflow\n";
@@ -5577,6 +5671,17 @@ static void a64_function_program(
             print_at
         );
     }
+    for (
+        size_t index = 0;
+        index < emitter.print_text_calls.length;
+        ++index
+    ) {
+        a64_patch_imm26(
+            text,
+            emitter.print_text_calls.fields[index],
+            print_text_at
+        );
+    }
     for (size_t index = 0; index < emitter.overflow_jumps.length; ++index) {
         a64_patch_imm19(
             text,
@@ -5584,6 +5689,7 @@ static void a64_function_program(
             overflow_at
         );
     }
+    a64_core_runtime(text, &emitter.a64_runtime);
     function_emitter_free(&emitter);
 }
 
@@ -5598,37 +5704,19 @@ static void a64_function_program(
  * `llvm-mc --triple=aarch64 --show-encoding`.
  */
 
-typedef struct {
-    size_t low_field;
-    size_t high_field;
-    const Node *literal;
-} A64TextFixup;
-
-typedef struct {
-    A64TextFixup *items;
-    size_t length;
-    size_t capacity;
-} A64TextFixups;
-
-typedef struct {
-    bool used;
-    Offsets allocate_calls;
-    Offsets oom_jumps;
-    Offsets list_index_jumps;
-    Offsets text_index_jumps;
-    Offsets text_concat_calls;
-    Offsets text_equal_calls;
-    Offsets text_length_calls;
-    Offsets text_index_calls;
-    Offsets text_chars_calls;
-    A64TextFixups text_literals;
-} A64CoreRuntime;
+/*
+ * A64TextFixup / A64TextFixups / A64CoreRuntime are defined earlier, before
+ * FunctionEmitter, so the shared function emitter can embed the AArch64 Text
+ * runtime and reuse it for Text parameters, results, concatenation, literals,
+ * and print(Text).
+ */
 
 static void a64_text_fixups_add(
     A64TextFixups *fixups,
     size_t low_field,
     size_t high_field,
-    const Node *literal
+    const uint8_t *value,
+    size_t length
 ) {
     if (fixups->length == fixups->capacity) {
         size_t capacity =
@@ -5644,7 +5732,8 @@ static void a64_text_fixups_add(
     fixups->items[fixups->length++] = (A64TextFixup){
         .low_field = low_field,
         .high_field = high_field,
-        .literal = literal,
+        .value = value,
+        .length = length,
     };
 }
 
@@ -5982,7 +6071,8 @@ static void a64_core_expression(
             &runtime->text_literals,
             low_field,
             high_field,
-            expression
+            expression->text_value,
+            expression->text_length
         );
         a64_push(text, 0);
         return;
@@ -6019,7 +6109,8 @@ static void a64_core_expression(
             &runtime->text_literals,
             low_field,
             high_field,
-            expression
+            expression->text_value,
+            expression->text_length
         );
         a64_push(text, 0);
         return;
@@ -6857,12 +6948,15 @@ static void a64_core_runtime(
     ) {
         while (text->length % sizeof(uint64_t) != 0) byte(text, 0);
         size_t literal_at = text->length;
-        const Node *literal = runtime->text_literals.items[index].literal;
-        u64_le(text, (uint64_t)literal->text_length);
+        const uint8_t *literal_value =
+            runtime->text_literals.items[index].value;
+        size_t literal_length =
+            runtime->text_literals.items[index].length;
+        u64_le(text, (uint64_t)literal_length);
         for (size_t byte_index = 0;
-             byte_index < literal->text_length;
+             byte_index < literal_length;
              ++byte_index) {
-            byte(text, literal->text_value[byte_index]);
+            byte(text, literal_value[byte_index]);
         }
         uint64_t literal_address =
             IMAGE_BASE + (uint64_t)TEXT_OFFSET + (uint64_t)literal_at;
@@ -7581,17 +7675,6 @@ int main(int argc, char **argv) {
             free(source);
             return 1;
         }
-        if (aarch64 && function_program_uses_text(&function_program)) {
-            fputs(
-                "kofun native: AArch64 function Core does not support "
-                "Text parameters or results yet\n",
-                stderr
-            );
-            function_program_free(&function_program);
-            free(source);
-            return 1;
-        }
-
         Bytes text;
         bytes_init(&text);
         if (aarch64) {
