@@ -420,10 +420,40 @@ grep 'error\[E2S10\]: unsupported Core builtin call `is_xid_continue`' \
     "$temporary/selfhost-S.stdout" >/dev/null
 test ! -e "$temporary/selfhost-S.c"
 
+# Unannotated `let` bindings carry inferred types in the scope-HIR:
+# literal kinds, builtin and user-function result types, List indexing to
+# its Text element, and top-level comparisons to Bool. The frozen S is the
+# exact evidence corpus; annotation and value-control defaults are
+# unchanged.
+"$temporary/kofun-stage2" --emit-scope-hir \
+    "$root/bootstrap/stage1/compiler.kofun" \
+    "$temporary/selfhost-S.scopes"
+grep '^binding|2|3|symbols|immutable|List|gc|initialized|519|526|540$' \
+    "$temporary/selfhost-S.scopes" >/dev/null
+grep '^binding|8|10|symbol|immutable|Text|gc|initialized|972|978|988$' \
+    "$temporary/selfhost-S.scopes" >/dev/null
+grep '^binding|10|16|marker|immutable|Text|gc|initialized|1430|1436|1447$' \
+    "$temporary/selfhost-S.scopes" >/dev/null
+grep '^binding|11|16|start|immutable|Int|copy|initialized|1456|1461|1482$' \
+    "$temporary/selfhost-S.scopes" >/dev/null
+grep '^binding|47|54|emitted|mutable|Text|gc|initialized|13865|13872|13882$' \
+    "$temporary/selfhost-S.scopes" >/dev/null
+
+printf '%s\n' \
+    'fn main() {' \
+    '    let ok = 1 < 2' \
+    '    print(0)' \
+    '}' >"$temporary/bool-infer.kofun"
+"$temporary/kofun-stage2" --emit-scope-hir \
+    "$temporary/bool-infer.kofun" \
+    "$temporary/bool-infer.scopes"
+grep '|ok|immutable|Bool|copy|' "$temporary/bool-infer.scopes" >/dev/null
+
 echo "PASS: Stage 2 statically compiled Copy Int borrowed-return slice"
 echo "PASS: Stage 2 and kofun check rejected non-Copy Text move with E007"
 echo "PASS: Stage 2 C11 calls support recursion, arity checks, and forward references"
 echo "PASS: for-range loop variables bind in the loop body lexical scope"
 echo "PASS: profile builtins are known, arity-checked, unsupported-to-lower names"
 echo "PASS: the frozen self-host S is valid source outside the bounded slice"
+echo "PASS: unannotated let bindings carry inferred scope-HIR types"
 echo "stage2 semantic frontend check passed"
