@@ -30,7 +30,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          ref: agent/docs-site
+          ref: main
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -99,7 +99,7 @@ jobs:
             app/docs/status-snapshot.json \
             docs/ISSUE_PROGRESS.md
           git commit -m "Update issue progress snapshot"
-          git push origin HEAD:agent/docs-site
+          git push origin HEAD:main
       - name: Publish changed Pages tree
         if: steps.sync.outputs.publish == 'true'
         id: publish

@@ -4,13 +4,13 @@ Status: generated read-only snapshot for documentation synchronization.
 
 Repository: [`hjosugi/kofun`](https://github.com/hjosugi/kofun)
 
-Observed main commit: [`0102be3`](https://github.com/hjosugi/kofun/commit/0102be3e2ba7c0935ae1a266bb5f22fa77b05a84)
+Observed main commit: [`ad6ef57`](https://github.com/hjosugi/kofun/commit/ad6ef57179f6bfaf604d6d91625acac522f8b31a)
 
-Reviewed at: `2026-07-24T13:13:28.000Z`
+Reviewed at: `2026-07-24T13:32:11.067Z`
 
 | Issue | Workflow | State | Last tracker update | Title |
 |---|---|---|---|---|
-| [#650](https://github.com/hjosugi/kofun/issues/650) | `in-progress` | `open` | `2026-07-24T13:07:59Z` | GitHub Pages documentation site: publish a curated, honest docs site from docs/ |
+| [#650](https://github.com/hjosugi/kofun/issues/650) | `closed` | `closed` | `2026-07-24T13:27:02Z` | GitHub Pages documentation site: publish a curated, honest docs site from docs/ |
 | [#666](https://github.com/hjosugi/kofun/issues/666) | `ready` | `open` | `2026-07-24T12:25:34Z` | Conformance: declare backend capabilities and execute numeric corpus on x86-64 |
 | [#667](https://github.com/hjosugi/kofun/issues/667) | `ready` | `open` | `2026-07-24T12:26:10Z` | Diagnostics: add a compiler-wide registry and executable coverage gate |
 | [#668](https://github.com/hjosugi/kofun/issues/668) | `ready` | `open` | `2026-07-24T12:26:54Z` | Semantic fuzzing: define an oracle protocol and compare every declared backend |

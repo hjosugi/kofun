@@ -3,6 +3,7 @@ import process from "node:process";
 
 const repository = "hjosugi/kofun";
 const trackedIssues = [650, 666, 667, 668];
+const snapshotCommitSubject = "Update issue progress snapshot";
 const workflowLabels = new Set([
   "needs-triage",
   "needs-detail",
@@ -80,17 +81,26 @@ commit.
 }
 
 const previous = JSON.parse(await readFile(snapshotPath, "utf8"));
-const [commit, ...issues] = await Promise.all([
-  github(`/repos/${repository}/commits/main`),
+const [commits, ...issues] = await Promise.all([
+  github(`/repos/${repository}/commits?sha=main&per_page=20`),
   ...trackedIssues.map((number) =>
     github(`/repos/${repository}/issues/${number}`),
   ),
 ]);
+const sourceCommit = commits.find(
+  (commit) =>
+    commit.commit.message.split(/\r?\n/, 1)[0] !== snapshotCommitSubject,
+);
+if (!sourceCommit) {
+  throw new Error(
+    `No non-snapshot commit found in the latest ${commits.length} commits`,
+  );
+}
 
 const nextSemantic = {
   schema: "kofun.docs-status/v1",
   repository,
-  source_commit: commit.sha,
+  source_commit: sourceCommit.sha,
   issues: issues.map((issue) => {
     const labels = issue.labels.map((label) =>
       typeof label === "string" ? label : label.name,
@@ -100,8 +110,10 @@ const nextSemantic = {
       title: issue.title,
       state: issue.state,
       workflow:
-        labels.find((label) => workflowLabels.has(label)) ??
-        (issue.state === "closed" ? "closed" : "unclassified"),
+        issue.state === "closed"
+          ? "closed"
+          : (labels.find((label) => workflowLabels.has(label)) ??
+            "unclassified"),
       updated_at: issue.updated_at,
       url: issue.html_url,
     };
