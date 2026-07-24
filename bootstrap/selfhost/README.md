@@ -19,6 +19,22 @@ Run the gate with:
 make selfhost-profile
 ```
 
+## Typed HIR contract and phase gates
+
+`hir-v1.md` freezes the versioned `kofun.selfhost-hir/v1` schema: the typed
+HIR that the #619 frontend must produce and that #620–#622 consume without
+reparsing source text. Phase completion gates check evidence cells owned by
+one implementation step:
+
+```sh
+sh bootstrap/selfhost/check-profile.sh --phase frontend
+```
+
+The frontend phase gate is red by design until every profile row's frontend
+cell carries checked-in evidence; it lists each pending cell explicitly and
+becomes the #619 acceptance check. The default invocation (used by
+`make verify`) stays green while evidence is still planned.
+
 ## What the status columns mean
 
 Each profile row has evidence slots for the canonical source, typed frontend,

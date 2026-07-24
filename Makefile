@@ -1,4 +1,4 @@
-.PHONY: help compiler test diagnostics fuzz unicode check bootstrap selfhost-profile stage2 patterns adt generics adt-exhaustiveness module-symbols imports-qualified imports-selective kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp roadmap syntax repository-check verify clean
+.PHONY: help compiler test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend stage2 patterns adt generics adt-exhaustiveness module-symbols imports-qualified imports-selective kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp roadmap syntax repository-check verify clean
 
 KOFUN := ./bin/kofun
 
@@ -12,6 +12,7 @@ help:
 	  'make check            Check canonical bootstrap sources' \
 	  'make bootstrap        Verify the Stage 1 seed path' \
 	  'make selfhost-profile Verify the frozen first self-host source profile' \
+	  'make selfhost-frontend Gate #619 typed-frontend evidence (red until complete)' \
 	  'make stage2           Verify the Stage 2 semantic frontend checkpoint' \
 	  'make patterns         Verify lossless general Pattern syntax trees' \
 	  'make adt              Verify bounded nominal ADT typed frontend' \
@@ -84,6 +85,9 @@ bootstrap:
 
 selfhost-profile:
 	sh bootstrap/selfhost/check-profile.sh
+
+selfhost-frontend:
+	sh bootstrap/selfhost/check-profile.sh --phase frontend
 
 stage2:
 	sh bootstrap/stage2/check.sh

@@ -1,6 +1,9 @@
 # Kofun
 
-Kofun is an experimental programming language. Source files use `.kofun`.
+Kofun is an experimental language with a Kofun-written bootstrap, direct
+ELF64 x86-64/AArch64 native checkpoints, low-sigil ownership
+(`read`/`edit`/`take`), and compiler-integrated algebraic law checking as its
+product direction. Source files use `.kofun`.
 
 Kofun's product position is: **the language where you state an algebraic law
 and the compiler hands you a counterexample.** This is product direction, not
@@ -14,6 +17,8 @@ The active compiler seed is written in Kofun itself:
 - audited bootstrap artifact: `bootstrap/stage1/compiler.c`
 - Python-free verification: `bootstrap/stage1/check.sh`
 - frozen first self-host profile: `bootstrap/selfhost/profile.tsv`
+- frozen typed-HIR contract for the self-host frontend:
+  `bootstrap/selfhost/hir-v1.md`
 
 The repository contains no Python implementation or Python build dependency.
 
