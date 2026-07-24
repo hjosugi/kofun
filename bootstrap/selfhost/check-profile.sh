@@ -136,7 +136,7 @@ awk '!/^[[:space:]]*fn[[:space:]]/' "$tmp_dir/outer-source" |
     sed 's/[[:space:]]*(//' |
     LC_ALL=C sort -u > "$tmp_dir/calls"
 
-comm -23 "$tmp_dir/calls" "$tmp_dir/functions" |
+LC_ALL=C comm -23 "$tmp_dir/calls" "$tmp_dir/functions" |
     sed 's/^/builtin|/' > "$tmp_dir/actual-inventory"
 
 has() {
@@ -160,7 +160,7 @@ has '\|\||&&|![^=]' &&
     printf '%s\n' 'expression|boolean-operators' >> "$tmp_dir/actual-inventory"
 has '==|!=|<=|>=|[[:space:]][<>][[:space:]]' &&
     printf '%s\n' 'expression|comparison' >> "$tmp_dir/actual-inventory"
-comm -12 "$tmp_dir/calls" "$tmp_dir/functions" | grep -q . &&
+LC_ALL=C comm -12 "$tmp_dir/calls" "$tmp_dir/functions" | grep -q . &&
     printf '%s\n' 'expression|direct-call' >> "$tmp_dir/actual-inventory"
 has '\[[^]]+\]' &&
     printf '%s\n' 'expression|indexing' >> "$tmp_dir/actual-inventory"
