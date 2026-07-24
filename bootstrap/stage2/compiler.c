@@ -9711,6 +9711,9 @@ static const char *sl_prelude =
     "    const char **items;\n"
     "} kofun_text_list;\n"
     "\n"
+    "int kofun_runtime_argc = 0;\n"
+    "char **kofun_runtime_argv = NULL;\n"
+    "\n"
     "static bool kofun_failed;\n"
     "\n"
     "static void kofun_error(const char *message) {\n"
@@ -9838,6 +9841,13 @@ static const char *sl_prelude_text =
     "\n"
     "int64_t kofun_rt_text_list_len(kofun_text_list values) {\n"
     "    return values.len;\n"
+    "}\n"
+    "\n"
+    "kofun_text_list kofun_rt_args(void) {\n"
+    "    kofun_text_list result;\n"
+    "    result.len = (int64_t)kofun_runtime_argc;\n"
+    "    result.items = (const char **)kofun_runtime_argv;\n"
+    "    return result;\n"
     "}\n"
     "\n"
     "kofun_text_list kofun_rt_chars(const char *value) {\n"
@@ -9981,6 +9991,47 @@ static const char *sl_prelude_unicode =
     "    );\n"
     "    return kofun_rt_copy_n(message, strlen(message));\n"
     "}\n"
+    "\n"
+    "char *kofun_rt_read_text(const char *path) {\n"
+    "    FILE *file = fopen(path, \"rb\");\n"
+    "    if (file == NULL) {\n"
+    "        kofun_rt_panic(\"cannot open input file\");\n"
+    "    }\n"
+    "    if (fseek(file, 0, SEEK_END) != 0) {\n"
+    "        fclose(file);\n"
+    "        kofun_rt_panic(\"cannot seek input file\");\n"
+    "    }\n"
+    "    long size = ftell(file);\n"
+    "    if (size < 0) {\n"
+    "        fclose(file);\n"
+    "        kofun_rt_panic(\"cannot measure input file\");\n"
+    "    }\n"
+    "    rewind(file);\n"
+    "    char *result = (char *)kofun_rt_alloc((size_t)size + 1);\n"
+    "    size_t read = fread(result, 1, (size_t)size, file);\n"
+    "    if (read != (size_t)size && ferror(file)) {\n"
+    "        fclose(file);\n"
+    "        kofun_rt_panic(\"cannot read input file\");\n"
+    "    }\n"
+    "    result[read] = '\\0';\n"
+    "    fclose(file);\n"
+    "    return result;\n"
+    "}\n"
+    "\n"
+    "void kofun_rt_write_text(const char *path, const char *value) {\n"
+    "    FILE *file = fopen(path, \"wb\");\n"
+    "    if (file == NULL) {\n"
+    "        kofun_rt_panic(\"cannot open output file\");\n"
+    "    }\n"
+    "    size_t length = strlen(value);\n"
+    "    if (fwrite(value, 1, length, file) != length) {\n"
+    "        fclose(file);\n"
+    "        kofun_rt_panic(\"cannot write output file\");\n"
+    "    }\n"
+    "    if (fclose(file) != 0) {\n"
+    "        kofun_rt_panic(\"cannot close output file\");\n"
+    "    }\n"
+    "}\n"
     "\n";
 
 typedef struct {
@@ -10070,6 +10121,7 @@ static int64_t sl_consume_expr(SlFn *fn, int64_t index) {
 /* Map a slice builtin to its runtime helper; NULL when the builtin is
  * outside the non-looping Text slice. */
 static const char *sl_builtin_helper(const char *name) {
+    if (strcmp(name, "args") == 0) return "kofun_rt_args";
     if (strcmp(name, "chars") == 0) return "kofun_rt_chars";
     if (strcmp(name, "contains") == 0) return "kofun_rt_text_contains";
     if (strcmp(name, "find") == 0) return "kofun_rt_find";
@@ -10079,13 +10131,16 @@ static const char *sl_builtin_helper(const char *name) {
         return "kofun_rt_is_xid_continue";
     }
     if (strcmp(name, "len") == 0) return "kofun_rt_text_len";
+    if (strcmp(name, "print") == 0) return "printf";
     if (strcmp(name, "replace") == 0) return "kofun_rt_replace";
     if (strcmp(name, "starts_with") == 0) return "kofun_rt_starts_with";
     if (strcmp(name, "text_slice") == 0) return "kofun_rt_text_slice";
+    if (strcmp(name, "read_text") == 0) return "kofun_rt_read_text";
     if (strcmp(name, "trim") == 0) return "kofun_rt_trim";
     if (strcmp(name, "validate_unicode_source") == 0) {
         return "kofun_rt_validate_unicode_source";
     }
+    if (strcmp(name, "write_text") == 0) return "kofun_rt_write_text";
     return NULL;
 }
 
@@ -10165,7 +10220,14 @@ static void sl_emit_expr(SlFn *fn, SlDoc *doc, int64_t node_id, Buffer *out) {
             if (doc->error != NULL) return;
         }
         sl_indent(fn, out);
-        if (strcmp(type_key, "void") == 0) {
+        if (builtin && strcmp(name, "print") == 0) {
+            buffer_format(out, "printf(\"%%s\\n\", k_n%s);\n",
+                          sl_field(node, 8));
+            return;
+        }
+        if (strcmp(type_key, "void") == 0 && builtin) {
+            buffer_format(out, "%s(", helper);
+        } else if (strcmp(type_key, "void") == 0) {
             buffer_format(out, "kofun_fn_%s(", name);
         } else if (builtin) {
             buffer_format(out, "%s k_n%" PRId64 " = %s(",
@@ -10615,7 +10677,10 @@ static void sl_emit_function(
             free(parameters.data);
             return;
         }
-        buffer_append(bodies, "int main(void) {\n");
+        buffer_append(bodies, "int main(int argc, char **argv) {\n");
+        buffer_append(bodies,
+                      "    kofun_runtime_argc = argc > 0 ? argc - 1 : 0;\n"
+                      "    kofun_runtime_argv = argc > 0 ? argv + 1 : argv;\n");
         buffer_append(bodies, casts->data == NULL ? "" : casts->data);
     } else {
         const char *c_result = strcmp(result_key, "void") == 0 ?
@@ -10760,6 +10825,62 @@ static int lower_selfhost_c11_file(const char *input, const char *output) {
     return 0;
 }
 
+/* The self-host compiler driver: one source-to-C command with no hidden
+ * Stage 1/2 fallback. The typed document is produced and lowered in
+ * memory; a rejected source prints its stable diagnostic and writes
+ * nothing. */
+static int selfhost_compile_file(
+    const char *input,
+    const char *output,
+    const char *digest
+) {
+    if (same_file(input, output)) {
+        puts("error[E2S35]: selfhost-compile input and output must be "
+             "distinct");
+        return 2;
+    }
+    if (strlen(digest) != 64 || strspn(digest, "0123456789abcdef") != 64) {
+        puts("error[E2S35]: selfhost-compile digest must be 64 lowercase "
+             "hex");
+        return 2;
+    }
+    char *source = read_file(input);
+    char *tokens = lex_source(source);
+    if (strncmp(tokens, "error[", 6) == 0) {
+        puts(tokens);
+        free(tokens);
+        free(source);
+        return 1;
+    }
+    free(tokens);
+    bool complete = false;
+    char *document = emit_selfhost_hir_document(
+        source,
+        input,
+        digest,
+        &complete
+    );
+    free(source);
+    if (!complete) {
+        free(document);
+        return 1;
+    }
+    SlDoc *doc = allocate(sizeof(*doc));
+    memset(doc, 0, sizeof(*doc));
+    char *lowered = sl_lower_document(doc, document);
+    free(document);
+    if (lowered == NULL) {
+        puts(doc->error);
+        int exit_code = doc->error_exit;
+        sl_free(doc);
+        return exit_code;
+    }
+    write_file(output, lowered);
+    free(lowered);
+    sl_free(doc);
+    return 0;
+}
+
 static int emit_scope_hir_file(const char *input, const char *output) {
     if (same_file(input, output)) {
         puts(
@@ -10823,6 +10944,9 @@ int main(int argc, char **argv) {
     if (argc == 4 && strcmp(argv[1], "--lower-selfhost-c11") == 0) {
         return lower_selfhost_c11_file(argv[2], argv[3]);
     }
+    if (argc == 5 && strcmp(argv[1], "--selfhost-compile") == 0) {
+        return selfhost_compile_file(argv[2], argv[3], argv[4]);
+    }
     if (argc != 5) {
         fputs(
             "usage: kofun-stage2 INPUT.kofun OUTPUT.kofun OUTPUT.ir OUTPUT.tokens\n"
@@ -10831,7 +10955,8 @@ int main(int argc, char **argv) {
             "       kofun-stage2 --parse-patterns INPUT.kofun OUTPUT.patterns\n"
             "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir\n"
             "       kofun-stage2 --emit-selfhost-hir INPUT.kofun OUTPUT.hir SOURCE-SHA256\n"
-            "       kofun-stage2 --lower-selfhost-c11 INPUT.hir OUTPUT.c\n",
+            "       kofun-stage2 --lower-selfhost-c11 INPUT.hir OUTPUT.c\n"
+            "       kofun-stage2 --selfhost-compile INPUT.kofun OUTPUT.c SOURCE-SHA256\n",
             stdout
         );
         return 2;

@@ -1,0 +1,9 @@
+fn main() {
+    let six = 2 * 3
+    let answer = six * 7
+    print(answer)
+    print(1 + 2 * 3)
+    print(-7 // 2)
+    print(-7 % 2)
+    print((answer - 2) / 8)
+}

@@ -1,0 +1,4 @@
+fn main() -> Int {
+    let half = 9 / 2
+    return half
+}

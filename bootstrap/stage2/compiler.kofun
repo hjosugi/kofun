@@ -7570,6 +7570,9 @@ fn selfhost_c11_list_parameter(document: Text, symbol_id: Int) -> Bool {
 # Map a slice builtin to its runtime helper; empty when the builtin is
 # outside the non-looping Text slice.
 fn selfhost_c11_builtin_helper(name: Text) -> Text {
+    if name == "args" {
+        return "kofun_rt_args"
+    }
     if name == "chars" {
         return "kofun_rt_chars"
     }
@@ -7591,6 +7594,12 @@ fn selfhost_c11_builtin_helper(name: Text) -> Text {
     if name == "len" {
         return "kofun_rt_text_len"
     }
+    if name == "print" {
+        return "printf"
+    }
+    if name == "read_text" {
+        return "kofun_rt_read_text"
+    }
     if name == "replace" {
         return "kofun_rt_replace"
     }
@@ -7605,6 +7614,9 @@ fn selfhost_c11_builtin_helper(name: Text) -> Text {
     }
     if name == "validate_unicode_source" {
         return "kofun_rt_validate_unicode_source"
+    }
+    if name == "write_text" {
+        return "kofun_rt_write_text"
     }
     return ""
 }
@@ -7703,6 +7715,9 @@ fn selfhost_c11_prelude() -> Text {
     "    int64_t len;\n" +
     "    const char **items;\n" +
     "} kofun_text_list;\n" +
+    "\n" +
+    "int kofun_runtime_argc = 0;\n" +
+    "char **kofun_runtime_argv = NULL;\n" +
     "\n" +
     "static bool kofun_failed;\n" +
     "\n" +
@@ -7828,6 +7843,13 @@ fn selfhost_c11_prelude() -> Text {
     "\n" +
     "int64_t kofun_rt_text_list_len(kofun_text_list values) {\n" +
     "    return values.len;\n" +
+    "}\n" +
+    "\n" +
+    "kofun_text_list kofun_rt_args(void) {\n" +
+    "    kofun_text_list result;\n" +
+    "    result.len = (int64_t)kofun_runtime_argc;\n" +
+    "    result.items = (const char **)kofun_runtime_argv;\n" +
+    "    return result;\n" +
     "}\n" +
     "\n" +
     "kofun_text_list kofun_rt_chars(const char *value) {\n" +
@@ -7968,6 +7990,47 @@ fn selfhost_c11_prelude() -> Text {
     "    );\n" +
     "    return kofun_rt_copy_n(message, strlen(message));\n" +
     "}\n" +
+    "\n" +
+    "char *kofun_rt_read_text(const char *path) {\n" +
+    "    FILE *file = fopen(path, \"rb\");\n" +
+    "    if (file == NULL) {\n" +
+    "        kofun_rt_panic(\"cannot open input file\");\n" +
+    "    }\n" +
+    "    if (fseek(file, 0, SEEK_END) != 0) {\n" +
+    "        fclose(file);\n" +
+    "        kofun_rt_panic(\"cannot seek input file\");\n" +
+    "    }\n" +
+    "    long size = ftell(file);\n" +
+    "    if (size < 0) {\n" +
+    "        fclose(file);\n" +
+    "        kofun_rt_panic(\"cannot measure input file\");\n" +
+    "    }\n" +
+    "    rewind(file);\n" +
+    "    char *result = (char *)kofun_rt_alloc((size_t)size + 1);\n" +
+    "    size_t read = fread(result, 1, (size_t)size, file);\n" +
+    "    if (read != (size_t)size && ferror(file)) {\n" +
+    "        fclose(file);\n" +
+    "        kofun_rt_panic(\"cannot read input file\");\n" +
+    "    }\n" +
+    "    result[read] = '\\0';\n" +
+    "    fclose(file);\n" +
+    "    return result;\n" +
+    "}\n" +
+    "\n" +
+    "void kofun_rt_write_text(const char *path, const char *value) {\n" +
+    "    FILE *file = fopen(path, \"wb\");\n" +
+    "    if (file == NULL) {\n" +
+    "        kofun_rt_panic(\"cannot open output file\");\n" +
+    "    }\n" +
+    "    size_t length = strlen(value);\n" +
+    "    if (fwrite(value, 1, length, file) != length) {\n" +
+    "        fclose(file);\n" +
+    "        kofun_rt_panic(\"cannot write output file\");\n" +
+    "    }\n" +
+    "    if (fclose(file) != 0) {\n" +
+    "        kofun_rt_panic(\"cannot close output file\");\n" +
+    "    }\n" +
+    "}\n" +
     "\n"
 }
 
@@ -8086,7 +8149,14 @@ fn selfhost_c11_expression(
             emitted = emitted + selfhost_records(argument)
             field = field + 1
         }
+        if builtin && name == "print" {
+            return "ok\n" + emitted + pad + "printf(\"%s\\n\", k_n" +
+            pattern_line_field(document, line, 8) + ");\n"
+        }
         let mut open = "kofun_fn_" + name + "("
+        if type_key == "void" && builtin {
+            open = helper + "("
+        }
         if type_key != "void" {
             if builtin {
                 open = selfhost_c11_c_type(type_key) + " k_n" +
@@ -8616,7 +8686,9 @@ fn selfhost_c11_function(
                 "error[E2S15]: selfhost-C11 `main` takes no parameters"
             )
         }
-        opened = "int main(void) {\n" + casts
+        opened = "int main(int argc, char **argv) {\n" +
+        "    kofun_runtime_argc = argc > 0 ? argc - 1 : 0;\n" +
+        "    kofun_runtime_argv = argc > 0 ? argv + 1 : argv;\n" + casts
     } else {
         let mut result_type = "void "
         if result_key == "text" {
@@ -8814,6 +8886,43 @@ fn lower_selfhost_c11_file(input_path: Text, output_path: Text) -> Int {
     return 0
 }
 
+# The self-host compiler driver: one source-to-C command with no hidden
+# Stage 1/2 fallback. The typed document is produced and lowered in
+# memory; a rejected source prints its stable diagnostic and writes
+# nothing.
+fn selfhost_compile_file(
+    input_path: Text,
+    output_path: Text,
+    digest: Text
+) -> Int {
+    if input_path == output_path {
+        print("error[E2S35]: selfhost-compile input and output must be distinct")
+        return 2
+    }
+    if !selfhost_valid_digest(digest) {
+        print("error[E2S35]: selfhost-compile digest must be 64 lowercase hex")
+        return 2
+    }
+    let source = read_text(input_path)
+    let tokens = lex(source)
+    if starts_with(tokens, "error[") {
+        print(tokens)
+        return 1
+    }
+    let result = selfhost_document(source, input_path, digest)
+    if !starts_with(result, "complete\n") {
+        print(selfhost_first_line(selfhost_records(result)))
+        return 1
+    }
+    let lowered = selfhost_c11_document(selfhost_records(result))
+    if selfhost_c11_failed(lowered) {
+        print(pattern_line_field(lowered, 0, 2))
+        return decimal_value(pattern_line_field(lowered, 0, 1))
+    }
+    write_text(output_path, selfhost_records(lowered))
+    return 0
+}
+
 fn main() -> Int {
     let arguments = args()
     if len(arguments) == 5 && arguments[0] == "--compile-outcome" {
@@ -8852,6 +8961,13 @@ fn main() -> Int {
     if len(arguments) == 3 && arguments[0] == "--lower-selfhost-c11" {
         return lower_selfhost_c11_file(arguments[1], arguments[2])
     }
+    if len(arguments) == 4 && arguments[0] == "--selfhost-compile" {
+        return selfhost_compile_file(
+            arguments[1],
+            arguments[2],
+            arguments[3]
+        )
+    }
     if len(arguments) != 4 {
         print(
             "usage: kofun-stage2 INPUT.kofun OUTPUT.kofun OUTPUT.ir OUTPUT.tokens\n" +
@@ -8860,7 +8976,8 @@ fn main() -> Int {
             "       kofun-stage2 --parse-patterns INPUT.kofun OUTPUT.patterns\n" +
             "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir\n" +
             "       kofun-stage2 --emit-selfhost-hir INPUT.kofun OUTPUT.hir SOURCE-SHA256\n" +
-            "       kofun-stage2 --lower-selfhost-c11 INPUT.hir OUTPUT.c"
+            "       kofun-stage2 --lower-selfhost-c11 INPUT.hir OUTPUT.c\n" +
+            "       kofun-stage2 --selfhost-compile INPUT.kofun OUTPUT.c SOURCE-SHA256"
         )
         return 2
     }

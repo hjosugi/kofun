@@ -1,0 +1,7 @@
+fn helper() -> Int {
+    return 1
+}
+
+fn main() {
+    print(helper())
+}

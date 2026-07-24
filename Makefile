@@ -89,6 +89,7 @@ selfhost-profile:
 	sh bootstrap/selfhost/check-profile.sh
 	sh bootstrap/selfhost/frontend/check-frontend.sh
 	sh bootstrap/selfhost/c11/check-c11.sh
+	sh bootstrap/selfhost/check-compiler-driver.sh
 
 selfhost-frontend:
 	sh bootstrap/selfhost/check-profile.sh --phase frontend
@@ -215,6 +216,7 @@ verify: test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-
 	  bootstrap/selfhost/check-profile.sh \
 	  bootstrap/selfhost/frontend/check-frontend.sh \
 	  bootstrap/selfhost/c11/check-c11.sh \
+	  bootstrap/selfhost/check-compiler-driver.sh \
 	  bootstrap/native/check.sh bootstrap/native/emit-fixture.sh \
 	  bootstrap/wasm/check.sh \
 	  examples/wasm-browser/build.sh \

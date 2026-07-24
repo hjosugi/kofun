@@ -74,10 +74,11 @@ for fixture in \
 done
 
 # Negative evidence. A structurally valid document whose function can
-# complete without returning is invalid (exit 1); documents carrying
-# constructs owned by #621/#622 classify as unsupported (exit 3, E2S10)
-# without emitting any C; a rejected frontend document is refused as
-# incomplete input (exit 1). Unsupported is never conflated with invalid.
+# complete without returning is invalid (exit 1); frontend-accepted
+# constructs outside the executable slice (`/`, Text ordering) classify
+# as unsupported (exit 3, E2S10) without emitting any C; a rejected
+# frontend document is refused as incomplete input (exit 1). Unsupported
+# is never conflated with invalid.
 expect() {
     wanted_status=$1
     wanted_prefix=$2
@@ -105,12 +106,10 @@ cmp bootstrap/selfhost/c11/reject_missing_return.hir \
 expect 1 \
     'error\[E2S19\]: selfhost-C11 function may complete without returning' \
     bootstrap/selfhost/c11/reject_missing_return.hir
-expect 3 'error\[E2S10\]: unsupported selfhost-C11 builtin call `print`' \
-    bootstrap/selfhost/frontend/accept_statements.hir
-expect 3 'error\[E2S10\]: unsupported selfhost-C11 builtin call `args`' \
-    bootstrap/selfhost/frontend/accept_expressions.hir
-expect 3 'error\[E2S10\]: unsupported selfhost-C11 builtin call `print`' \
-    bootstrap/selfhost/frontend/accept_syntax.hir
+expect 3 'error\[E2S10\]: unsupported selfhost-C11 operator `/`' \
+    bootstrap/selfhost/c11/reject_slash_operator.hir
+expect 3 'error\[E2S10\]: unsupported selfhost-C11 operator `<`' \
+    bootstrap/selfhost/c11/reject_text_ordering.hir
 expect 1 'error\[E2S35\]: selfhost-C11 input must be a complete typed' \
     bootstrap/selfhost/frontend/reject_if_condition.hir
 test ! -e "$temporary/negative.c" ||
@@ -136,4 +135,4 @@ test "$differential_status" = \
 
 printf '%s\n' \
     "PASS: $accepted C11 slice fixtures lower, compile, and run to their pinned observations" \
-    "PASS: unsupported #621/#622 constructs and invalid documents are refused distinctly"
+    "PASS: out-of-slice constructs and invalid documents are refused distinctly"

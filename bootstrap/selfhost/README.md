@@ -38,9 +38,12 @@ lacks checked-in evidence, listing each pending cell explicitly; it is the
 typed-HIR emitter and per-family fixtures, all 46 frontend cells carry
 evidence in `frontend/` and the gate runs green inside `make verify`.
 The c11-text and c11-control gates are the matching #620/#621
-completion checks: the c11 cells owned by the Text/function slice and
-the mutation/loop/List slice carry evidence in `c11/`, while cells
-owned by #622 stay planned until its phase.
+completion checks for the c11 cells owned by the Text/function slice
+and the mutation/loop/List slice. #622 completed the remaining host
+cells and every other evidence column: all 46 rows are `complete`, and
+`check-compiler-driver.sh` proves the trusted seed compiles the frozen
+`S` into a runnable compiler whose Core-corpus behavior matches the
+audited Stage 1 seed byte for byte (`driver/`).
 
 ## What the status columns mean
 
