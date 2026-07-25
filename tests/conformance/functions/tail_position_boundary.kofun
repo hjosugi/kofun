@@ -1,0 +1,28 @@
+# expect-stdout: 21
+# expect-stdout: 90
+fn rotate6(a: Int, b: Int, c: Int, d: Int, e: Int, f: Int) -> Int {
+    if a == 0 {
+        return b + c + d + e + f
+    }
+    return rotate6(a - 1, c, d, e, f, b + a)
+}
+
+fn drive(n: Int) -> Int {
+    return double(triangle(n, 0))
+}
+
+fn triangle(n: Int, total: Int) -> Int {
+    if n == 0 {
+        return total
+    }
+    return triangle(n - 1, total + n)
+}
+
+fn double(n: Int) -> Int {
+    return n * 2
+}
+
+fn main() {
+    print(rotate6(3, 1, 2, 3, 4, 5))
+    print(drive(9))
+}

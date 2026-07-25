@@ -1,0 +1,10 @@
+fn count(n: Int, total: Int) -> Int {
+    if n == 0 {
+        return total
+    }
+    return count(n - 1, total + n)
+}
+
+fn main() {
+    print(count(60000 * 50, 0))
+}

@@ -1,0 +1,16 @@
+# expect-stdout: 3
+# expect-stdout: 12
+fn walk(n: Int, total: Int) -> Int {
+    if n > 100 {
+        return walk(n - 100, total + 1)
+    }
+    if n > 10 {
+        return walk(n - 10, total + 1)
+    }
+    return total + n
+}
+
+fn main() {
+    print(walk(3, 0))
+    print(walk(345, 0))
+}

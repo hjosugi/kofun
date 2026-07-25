@@ -70,11 +70,14 @@ non-Text signatures, missing helper returns, and `-g` are rejected before an
 artifact is written. `-g` debug information covers the single-`main` Core on
 both Linux targets, and the multi-function profile on neither.
 
-`tests/conformance/functions` runs the same eight programs under the C11 and
+`tests/conformance/functions` runs the same eleven programs under the C11 and
 direct x86-64 adapters, covering ordinary/forward calls, recursion, mutual
 recursion, signed/zero output, the six-argument boundary, register pressure
-past the allocatable set, values live across calls, and multiple returning
-branches. The native gate additionally rebuilds the `fibonacci` example and the
+past the allocatable set, values live across calls, multiple returning
+branches, and calls in a returned position — including a six-parameter
+rotation, which only agrees with the other backends if every argument is
+computed before any parameter is overwritten. The native gate additionally
+rebuilds the `fibonacci` example and the
 checked-overflow fixture for AArch64 and, when `qemu-aarch64` is installed,
 executes them and asserts the output, diagnostic, and exit status match the
 x86-64 observations byte for byte.
@@ -129,6 +132,42 @@ three byte signatures the previous load/push/pop lowering emitted
 `pop rcx` + `pop rax`) across the register, fibonacci, Text, and overflow
 images. `benchmarks/native-functions/` records the measured effect; its
 `README.md` documents the method and `results.json` the raw samples.
+
+## Returned calls become branches on both targets
+
+`return f(...)` leaves the frame nothing to do once `f` starts: `f`'s result is
+this function's result, and every location the body owns is dead at that point.
+Both backends therefore hand the frame over rather than stack a second one on
+top of it, so recursion written in a returned position runs in constant stack.
+This is one target-independent decision — a returned statement whose value is a
+direct call — applied by two instruction encoders.
+
+| Callee | x86-64 | AArch64 |
+|---|---|---|
+| the enclosing function | assign the parameter locations, `jmp` to the instruction after the prologue | `stur` the parameter slots, `b` to the instruction after the prologue |
+| any other function | fill the argument registers, reload the claimed callee-saved registers, `leave`, `jmp` | fill `x0`..`x5`, `mov sp, x29`, `ldp x29, x30, [sp], #16`, `b` |
+
+A call to the enclosing function reuses the frame as it stands, so the
+repetition costs neither a frame nor a saved-register round trip. A call to any
+other function restores what the body claimed and drops the frame *before*
+branching, so the callee runs on the frame this function was entered with and
+returns straight to this function's caller — `rsp` at the branch is exactly
+where a `call` would have left it, so the SysV 16-byte discipline is unchanged.
+Mutual recursion written this way is therefore also constant stack.
+
+Every argument is evaluated into its ordinary location before the first
+parameter is overwritten, and no evaluation location is ever a parameter
+location, so reassignment is a parallel assignment:
+`return fib_loop(n - 1, b, a + b)` reads the old `a` and `b`. Nothing else
+changes: a call anywhere but a returned position, and a `return` of anything
+but a direct call, is lowered exactly as before.
+
+`check.sh` runs a direct and a mutual recursion three million steps deep under
+an explicitly lowered 1 MiB stack limit and requires the exact answers, and
+runs a control that recurses just as deep with the call in a non-returned
+position and must still die on the stack under the same limit. It also pins the
+four hand-off byte sequences — the direct and the cross-function form on each
+target — so a regression to `call`/`ret` cannot pass quietly.
 
 ## x86-64 compiler-shaped Text function bridge
 

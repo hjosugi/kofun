@@ -1136,6 +1136,139 @@ do
     ! printf '%s' "$regalloc_hex" | grep -Eq '5958'
 done
 
+# A returned call is lowered as a branch on both targets, so recursion written
+# in a returned position runs in constant stack instead of one frame per step.
+# The two positive fixtures recurse three million deep — direct in
+# function_tail_self, alternating between two functions in function_tail_mutual.
+# Every execution below runs under an explicitly lowered 1 MiB stack limit
+# rather than whatever the host happens to allow, so the result does not depend
+# on the machine: three million frames cannot fit and one frame always does.
+# The control fixture recurses exactly as deep with the call in a non-returned
+# position and must still die on the stack under the same limit, which is what
+# keeps the two positive cases from passing by accident.
+#
+# Each run is wrapped in its own `sh -c` so that the signal the control takes is
+# reported by that shell, into that shell's discarded stderr, instead of by the
+# shell running this gate.
+tail_expected_self=4500001500000
+tail_expected_mutual=0
+tail_stack_kib=1024
+bounded_stack_status() {
+    # usage: bounded_stack_status PROGRAM STDOUT STDERR
+    sh -c '
+        ulimit -c 0
+        ulimit -s '"$tail_stack_kib"'
+        "$0" >"$1" 2>"$2"
+        printf %s "$?"
+    ' "$1" "$2" "$3" 2>/dev/null
+}
+for tail_case in function_tail_self function_tail_mutual; do
+    tail_source="$NATIVE/fixtures/$tail_case.kofun"
+    "$WORK/kofun-native-function-text" \
+        "$tail_source" x86_64-linux "$WORK/$tail_case-direct.elf"
+    "$KOFUN" build "$tail_source" \
+        --target x86_64-linux \
+        -o "$WORK/$tail_case-cli.elf" >/dev/null
+    "$KOFUN" build "$tail_source" \
+        --target x86_64-linux \
+        -o "$WORK/$tail_case-cli.second.elf" >/dev/null
+    cmp "$WORK/$tail_case-direct.elf" "$WORK/$tail_case-cli.elf"
+    cmp "$WORK/$tail_case-cli.elf" "$WORK/$tail_case-cli.second.elf"
+    chmod +x "$WORK/$tail_case-direct.elf"
+    tail_status=$(bounded_stack_status \
+        "$WORK/$tail_case-direct.elf" \
+        "$WORK/$tail_case.stdout" \
+        "$WORK/$tail_case.stderr")
+    test "$tail_status" -eq 0
+    case $tail_case in
+        function_tail_self)
+            printf '%s\n' "$tail_expected_self" \
+                >"$WORK/$tail_case.expected"
+            ;;
+        *)
+            printf '%s\n' "$tail_expected_mutual" \
+                >"$WORK/$tail_case.expected"
+            ;;
+    esac
+    cmp "$WORK/$tail_case.expected" "$WORK/$tail_case.stdout"
+    test ! -s "$WORK/$tail_case.stderr"
+
+    # The AArch64 image for the same source is always built twice and audited;
+    # only its execution depends on the emulator.
+    "$KOFUN" build "$tail_source" \
+        --target aarch64-linux \
+        -o "$WORK/$tail_case-aarch64.elf" >/dev/null
+    "$KOFUN" build "$tail_source" \
+        --target aarch64-linux \
+        -o "$WORK/$tail_case-aarch64.second.elf" >/dev/null
+    cmp \
+        "$WORK/$tail_case-aarch64.elf" \
+        "$WORK/$tail_case-aarch64.second.elf"
+    readelf -h "$WORK/$tail_case-aarch64.elf" \
+        >"$WORK/$tail_case-aarch64.header"
+    grep -Eq 'Machine:[[:space:]]+AArch64' "$WORK/$tail_case-aarch64.header"
+    readelf -l "$WORK/$tail_case-aarch64.elf" \
+        >"$WORK/$tail_case-aarch64.program-headers"
+    ! grep -Eq 'INTERP|DYNAMIC' \
+        "$WORK/$tail_case-aarch64.program-headers"
+done
+
+# The same depth with the call outside the returned position exhausts the
+# stack, so the two cases above cannot pass by accident.
+"$WORK/kofun-native-function-text" \
+    "$NATIVE/fixtures/function_deep_non_tail.kofun" \
+    x86_64-linux "$WORK/function-deep-non-tail.elf"
+chmod +x "$WORK/function-deep-non-tail.elf"
+deep_non_tail_status=$(bounded_stack_status \
+    "$WORK/function-deep-non-tail.elf" \
+    "$WORK/function-deep-non-tail.stdout" \
+    "$WORK/function-deep-non-tail.stderr")
+test "$deep_non_tail_status" -eq 139
+test ! -s "$WORK/function-deep-non-tail.stdout"
+
+# The hand-off itself is pinned, so the constant-stack result above cannot come
+# from anything but the branch. On x86-64 the direct case reassigns both
+# parameters and jumps back to the instruction after the prologue; the mutual
+# case moves the argument to the boundary, restores the one register it
+# claimed, drops the frame with `leave`, and jumps to the callee, which is why
+# it returns straight to this function's caller.
+tail_self_edge=$(od -An -v -tx1 -j 280 -N 11 \
+    "$WORK/function_tail_self-direct.elf" |
+    awk '{$1=$1; printf "%s%s", separator, $0; separator=" "} END{print ""}')
+test "$tail_self_edge" = "4d 8b e2 4d 8b eb e9 b7 ff ff ff"
+tail_mutual_edge=$(od -An -v -tx1 -j 257 -N 13 \
+    "$WORK/function_tail_mutual-direct.elf" |
+    awk '{$1=$1; printf "%s%s", separator, $0; separator=" "} END{print ""}')
+test "$tail_mutual_edge" = "49 8b fa 48 8b 5d f0 c9 e9 06 00 00 00"
+
+# AArch64 makes the same two hand-offs: `stur` both parameters then `b` back
+# past the prologue, and `mov sp, x29` / `ldp x29, x30, [sp], #16` / `b callee`.
+tail_self_edge_aarch64=$(od -An -v -tx1 -j 360 -N 12 \
+    "$WORK/function_tail_self-aarch64.elf" |
+    awk '{$1=$1; printf "%s%s", separator, $0; separator=" "} END{print ""}')
+test "$tail_self_edge_aarch64" = "a0 83 1f f8 a1 03 1f f8 d9 ff ff 17"
+tail_mutual_edge_aarch64=$(od -An -v -tx1 -j 316 -N 12 \
+    "$WORK/function_tail_mutual-aarch64.elf" |
+    awk '{$1=$1; printf "%s%s", separator, $0; separator=" "} END{print ""}')
+test "$tail_mutual_edge_aarch64" = "bf 03 00 91 fd 7b c1 a8 01 00 00 14"
+
+if test -n "$AARCH64_RUNNER"; then
+    for tail_case in function_tail_self function_tail_mutual; do
+        "$AARCH64_RUNNER" "$WORK/$tail_case-aarch64.elf" \
+            >"$WORK/$tail_case-aarch64.stdout" \
+            2>"$WORK/$tail_case-aarch64.stderr"
+        cmp \
+            "$WORK/$tail_case.expected" \
+            "$WORK/$tail_case-aarch64.stdout"
+        test ! -s "$WORK/$tail_case-aarch64.stderr"
+    done
+    tail_summary="PASS: x86-64/AArch64 returned calls branch and ran 3e6 deep"
+else
+    printf '%s\n' \
+        "SKIP: AArch64 tail-call execution (qemu-aarch64 unavailable)"
+    tail_summary="PASS: AArch64 tail-call images built/pinned; execution skipped"
+fi
+
 # List[Int] uses the same Core AST and value ABI on x86-64 and AArch64. An
 # independent C11 executable is the normative Python-free differential
 # reference for bindings, indexing, map, filter, fold, and their edge cases.
@@ -1524,6 +1657,7 @@ printf '%s\n' \
     "PASS: x86-64 Text-returning functions match the audited C reference" \
     "PASS: function Text determinism, OOM, provenance, and rejection gates pass" \
     "PASS: x86-64 function values stay in registers with no operand push/pop" \
+    "$tail_summary" \
     "PASS: x86-64/AArch64 List/Text Cores use shared ABIs and diagnostics" \
     "PASS: x86-64 List execution matched C11 with OOB/OOM contracts" \
     "$text_summary"
