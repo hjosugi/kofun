@@ -1185,6 +1185,65 @@ do
     ! printf '%s' "$regalloc_hex" | grep -Eq '5958'
 done
 
+# AArch64 now decides value placement the same way, from the same
+# target-independent analysis, so the same claim is gated on that target. The
+# leaf below reuses its parameter twice and must read it out of a register both
+# times; the pinned prologue proves the residency without freezing the rest of
+# the body. The three refused byte signatures are exactly what the previous
+# stack-machine lowering emitted for every operand, so a regression to it
+# cannot pass quietly. The images are built twice and compared, because
+# allocation must not depend on anything but the source.
+for regalloc_case in \
+    "function_register_allocation:$NATIVE/fixtures/function_register_allocation.kofun" \
+    "fibonacci:$ROOT/examples/fibonacci_native.kofun" \
+    "function_text_helper:$NATIVE/fixtures/function_text_helper.kofun" \
+    "function_overflow:$NATIVE/fixtures/function_overflow.kofun"
+do
+    regalloc_stem=${regalloc_case%%:*}
+    regalloc_source=${regalloc_case#*:}
+    "$KOFUN" build "$regalloc_source" \
+        --target aarch64-linux \
+        -o "$WORK/$regalloc_stem-regalloc-aarch64.elf" >/dev/null
+    "$KOFUN" build "$regalloc_source" \
+        --target aarch64-linux \
+        -o "$WORK/$regalloc_stem-regalloc-aarch64.second.elf" >/dev/null
+    cmp \
+        "$WORK/$regalloc_stem-regalloc-aarch64.elf" \
+        "$WORK/$regalloc_stem-regalloc-aarch64.second.elf"
+    regalloc_hex=$(od -An -v -tx1 \
+        "$WORK/$regalloc_stem-regalloc-aarch64.elf" | tr -d ' \n')
+    # str x0, [sp, #-16]!: the previous per-operand push
+    ! printf '%s' "$regalloc_hex" | grep -Eq 'e00f1ff8'
+    # ldr x0, [sp], #16: the previous left-operand and result pop
+    ! printf '%s' "$regalloc_hex" | grep -Eq 'e00741f8'
+    # ldr x1, [sp], #16: the previous right-operand pop
+    ! printf '%s' "$regalloc_hex" | grep -Eq 'e10741f8'
+done
+
+# stp x29, x30, [sp, #-16]!; mov x29, sp; sub sp, sp, #0x10; mov x14, x0;
+# mov x12, x14 — the parameter reaches a register and is read from it.
+regalloc_leaf_aarch64=$(od -An -v -tx1 -j 192 -N 20 \
+    "$WORK/function_register_allocation-regalloc-aarch64.elf" |
+    awk '{$1=$1; printf "%s%s", separator, $0; separator=" "} END{print ""}')
+test "$regalloc_leaf_aarch64" = \
+    "fd 7b bf a9 fd 03 00 91 ff 43 00 d1 ee 03 00 aa ec 03 0e aa"
+
+if test -n "$AARCH64_RUNNER"; then
+    "$AARCH64_RUNNER" \
+        "$WORK/function_register_allocation-regalloc-aarch64.elf" \
+        >"$WORK/function-regalloc-aarch64.stdout" \
+        2>"$WORK/function-regalloc-aarch64.stderr"
+    cmp \
+        "$WORK/function-regalloc.expected" \
+        "$WORK/function-regalloc-aarch64.stdout"
+    test ! -s "$WORK/function-regalloc-aarch64.stderr"
+    regalloc_summary="PASS: x86-64/AArch64 allocate values and ran identically"
+else
+    printf '%s\n' \
+        "SKIP: AArch64 register-allocation execution (qemu-aarch64 unavailable)"
+    regalloc_summary="PASS: AArch64 allocation pinned and audited; execution skipped"
+fi
+
 # A returned call is lowered as a branch on both targets, so recursion written
 # in a returned position runs in constant stack instead of one frame per step.
 # The two positive fixtures recurse three million deep — direct in
@@ -1290,16 +1349,20 @@ tail_mutual_edge=$(od -An -v -tx1 -j 257 -N 13 \
     awk '{$1=$1; printf "%s%s", separator, $0; separator=" "} END{print ""}')
 test "$tail_mutual_edge" = "49 8b fa 48 8b 5d f0 c9 e9 06 00 00 00"
 
-# AArch64 makes the same two hand-offs: `stur` both parameters then `b` back
-# past the prologue, and `mov sp, x29` / `ldp x29, x30, [sp], #16` / `b callee`.
-tail_self_edge_aarch64=$(od -An -v -tx1 -j 360 -N 12 \
+# AArch64 makes the same two hand-offs, now in registers rather than through
+# frame slots: the direct case reassigns both parameters with `mov` and
+# branches back past the prologue, and the mutual case moves the argument to
+# the boundary, reloads the one register it claimed, drops the frame with
+# `mov sp, x29` / `ldp x29, x30, [sp], #16`, and branches to the callee.
+tail_self_edge_aarch64=$(od -An -v -tx1 -j 280 -N 12 \
     "$WORK/function_tail_self-aarch64.elf" |
     awk '{$1=$1; printf "%s%s", separator, $0; separator=" "} END{print ""}')
-test "$tail_self_edge_aarch64" = "a0 83 1f f8 a1 03 1f f8 d9 ff ff 17"
-tail_mutual_edge_aarch64=$(od -An -v -tx1 -j 316 -N 12 \
+test "$tail_self_edge_aarch64" = "f3 03 0c aa f4 03 0d aa ef ff ff 17"
+tail_mutual_edge_aarch64=$(od -An -v -tx1 -j 256 -N 20 \
     "$WORK/function_tail_mutual-aarch64.elf" |
     awk '{$1=$1; printf "%s%s", separator, $0; separator=" "} END{print ""}')
-test "$tail_mutual_edge_aarch64" = "bf 03 00 91 fd 7b c1 a8 01 00 00 14"
+test "$tail_mutual_edge_aarch64" = \
+    "e0 03 0c aa f3 07 40 f9 bf 03 00 91 fd 7b c1 a8 05 00 00 14"
 
 if test -n "$AARCH64_RUNNER"; then
     for tail_case in function_tail_self function_tail_mutual; do
@@ -2053,6 +2116,7 @@ printf '%s\n' \
     "PASS: x86-64 Text-returning functions match the audited C reference" \
     "PASS: function Text determinism, OOM, provenance, and rejection gates pass" \
     "PASS: x86-64 function values stay in registers with no operand push/pop" \
+    "$regalloc_summary" \
     "$tail_summary" \
     "$divide_summary" \
     "$int64_summary" \

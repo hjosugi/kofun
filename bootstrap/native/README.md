@@ -49,10 +49,10 @@ fn main() {
 
 Top-level declarations are collected before bodies are parsed, so forward and
 mutual recursion do not depend on source order. Calls support up to six integer
-argument registers (`rdi..r9` on x86-64, `x0..x5` on AArch64). x86-64 assigns
-parameters and intermediate values to registers (see the allocation contract
-below) while AArch64 still stores parameters in frame slots and evaluates on
-the native stack; returns come back in the first result register (`rax` / `x0`),
+argument registers (`rdi..r9` on x86-64, `x0..x5` on AArch64). Both targets
+assign parameters and intermediate values to registers from one shared
+analysis (see the allocation contract below); returns come back in the first
+result register (`rax` / `x0`),
 and every call is resolved as a checked fixup (`rel32` on x86-64, a
 26-bit `bl` immediate on AArch64). Both backends lower the same
 target-independent parsed program, so the profile supports Int literals,
@@ -81,9 +81,9 @@ any parameter is overwritten — and floor division and modulo across every sign
 combination. AArch64 cross-compiles every case on every host and executes all
 twelve under `qemu-aarch64` when it is available.
 
-## x86-64 function register allocation
+## Function register allocation
 
-The x86-64 function profile decides where every value lives before it emits a
+Both function profiles decide where every value lives before they emit a
 byte, instead of pushing and popping the native stack for each operand. The
 decision is made per function body from two facts: how many evaluation depths
 the body uses, and which of those depths can still hold a live value when a
@@ -93,11 +93,24 @@ afterwards, and a call boundary is filled from the argument locations before
 the `call` — so a depth survives a call precisely when one of those later
 sibling subtrees performs one.
 
-| Class | Registers | Holds |
-|---|---|---|
-| Callee-saved | `rbx`, `r12`, `r13`, `r14`, `r15` | values live across a call |
-| Scratch | `r10`, `r11` | values no call can observe |
-| Reserved | `rax`, `rdi`, `rsi`, `rdx`, `rcx`, `r8`, `r9` | scratch and the SysV call boundary; never allocated |
+That analysis is one implementation over the target-independent parsed program
+(`function_expression_calls`, `function_expression_pressure`,
+`function_slot_uses`, `function_body_calls`); only the register classes and the
+frame sequence differ per target.
+
+| Target | Callee-saved | Scratch | Reserved |
+|---|---|---|---|
+| x86-64 | `rbx`, `r12`-`r15` | `r10`, `r11` | `rax` and the six SysV argument registers |
+| AArch64 | `x19`-`x26` | `x12`-`x15` | `x0`-`x8`, `x9`-`x11`, `x16`-`x18`, `x29`, `x30` |
+
+The callee-saved class holds values live across a call; the scratch class holds
+values no call can observe and costs no save at all; the reserved set is never
+allocated, so it is always free as the move scratch and the call boundary.
+AArch64 stops at `x26` rather than `x28` because the shared Text runtime it
+calls preserves `x19`-`x26`, which is the set that is demonstrably preserved
+rather than the set AAPCS64 nominally reserves. `x9`-`x11` stay reserved because
+the checked multiply and the divide sequences need fixed temporaries, and
+`x29`/`x30` are already saved by the existing prologue.
 
 Allocation runs in a fixed order, so two builds of one source always make the
 same decisions:
@@ -116,21 +129,27 @@ same decisions:
    not a fallback to another one: a program the profile accepts stays accepted
    at any pressure.
 
-The frame keeps parameters and locals at their existing displacements, then the
-evaluation spill slots, then the save area for exactly the callee-saved
-registers the body claimed. Every return path restores that same set before
-`leave; ret`, and reloading it never disturbs the result in `rax`. Because no
-evaluation step moves `rsp`, a body keeps the 16-byte alignment it was entered
-with at every SysV call boundary — including nested calls, which the previous
-stack-machine lowering could enter with an operand pushed underneath.
+The frame keeps parameters and locals first, then the evaluation spill slots,
+then the save area for exactly the callee-saved registers the body claimed.
+Every return path restores that same set at one shared epilogue, and reloading
+it never disturbs the result in `rax` / `x0`. Because no evaluation step moves
+the stack pointer, a body keeps the 16-byte alignment it was entered with at
+every SysV or AAPCS64 call boundary — including nested calls, which the previous
+stack-machine lowering could enter with an operand pushed underneath. x86-64
+addresses slots at their existing `rbp`-relative displacements; AArch64
+addresses them as `[sp, #slot * 8]`, whose unsigned scaled offset reaches the
+whole frame rather than the 32 slots the previous signed 9-bit `x29`-relative
+form covered.
 
-`check.sh` pins the prologue of a leaf helper that reuses its parameter, so the
-parameter must arrive in a register and be read back from one, and refuses the
-three byte signatures the previous load/push/pop lowering emitted
-(`mov rax,[rbp+disp32]` + `push rax`, `push rax` + `pop rdi`, and
-`pop rcx` + `pop rax`) across the register, fibonacci, Text, and overflow
-images. `benchmarks/native-functions/` records the measured effect; its
-`README.md` documents the method and `results.json` the raw samples.
+`check.sh` pins the prologue of a leaf helper that reuses its parameter on both
+targets, so the parameter must arrive in a register and be read back from one,
+and refuses the byte signatures the previous lowering emitted for every
+operand — `mov rax,[rbp+disp32]` + `push rax`, `push rax` + `pop rdi` and
+`pop rcx` + `pop rax` on x86-64, and `str x0,[sp,#-16]!`, `ldr x0,[sp],#16`
+and `ldr x1,[sp],#16` on AArch64 — across the register, fibonacci, Text, and
+overflow images of each target. `benchmarks/native-functions/` records the
+measured effect; its `README.md` documents the method and `results.json` the
+raw samples.
 
 ## Returned calls become branches on both targets
 
@@ -143,8 +162,8 @@ direct call — applied by two instruction encoders.
 
 | Callee | x86-64 | AArch64 |
 |---|---|---|
-| the enclosing function | assign the parameter locations, `jmp` to the instruction after the prologue | `stur` the parameter slots, `b` to the instruction after the prologue |
-| any other function | fill the argument registers, reload the claimed callee-saved registers, `leave`, `jmp` | fill `x0`..`x5`, `mov sp, x29`, `ldp x29, x30, [sp], #16`, `b` |
+| the enclosing function | assign the parameter locations, `jmp` to the instruction after the prologue | assign the parameter locations, `b` to the instruction after the prologue |
+| any other function | fill the argument registers, reload the claimed callee-saved registers, `leave`, `jmp` | fill `x0`..`x5`, reload the claimed callee-saved registers, `mov sp, x29`, `ldp x29, x30, [sp], #16`, `b` |
 
 A call to the enclosing function reuses the frame as it stands, so the
 repetition costs neither a frame nor a saved-register round trip. A call to any

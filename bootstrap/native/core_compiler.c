@@ -5066,34 +5066,45 @@ typedef struct {
     size_t saved_count;
 } X64FrameLayout;
 
+/*
+ * The liveness analysis below is shared by both direct backends: it is
+ * expressed over the parsed `FunctionExpression` and never mentions a register
+ * or an encoding. Each target reads only the first `*_ALLOCATABLE_REGISTERS`
+ * entries of the result, so one tracked width covers the larger register file
+ * without changing what the smaller one decides.
+ */
+enum {
+    FUNCTION_MAX_TRACKED_DEPTH = 16,
+};
+
 /* True when evaluating this expression emits a call instruction. */
-static bool x64_expression_calls(const FunctionExpression *expression) {
+static bool function_expression_calls(const FunctionExpression *expression) {
     if (expression == NULL) return false;
     if (expression->kind == FUNCTION_CALL) return true;
     if (expression->kind == FUNCTION_TEXT_CONCAT) return true;
-    if (x64_expression_calls(expression->left)) return true;
-    if (x64_expression_calls(expression->right)) return true;
+    if (function_expression_calls(expression->left)) return true;
+    if (function_expression_calls(expression->right)) return true;
     for (size_t index = 0;
          expression->arguments != NULL &&
              index < expression->argument_count;
          ++index) {
-        if (x64_expression_calls(expression->arguments[index])) return true;
+        if (function_expression_calls(expression->arguments[index])) return true;
     }
     return false;
 }
 
 typedef struct {
     size_t depth;
-    bool across_call[X64_ALLOCATABLE_REGISTERS];
-} X64Pressure;
+    bool across_call[FUNCTION_MAX_TRACKED_DEPTH];
+} FunctionPressure;
 
-static void x64_pressure_mark(
-    X64Pressure *pressure,
+static void function_pressure_mark(
+    FunctionPressure *pressure,
     size_t from,
     size_t to
 ) {
     for (size_t depth = from;
-         depth < to && depth < X64_ALLOCATABLE_REGISTERS;
+         depth < to && depth < FUNCTION_MAX_TRACKED_DEPTH;
          ++depth) {
         pressure->across_call[depth] = true;
     }
@@ -5108,10 +5119,10 @@ static void x64_pressure_mark(
  * across it. A depth therefore survives a call precisely when one of those
  * later sibling subtrees performs one.
  */
-static void x64_expression_pressure(
+static void function_expression_pressure(
     const FunctionExpression *expression,
     size_t depth,
-    X64Pressure *pressure
+    FunctionPressure *pressure
 ) {
     if (expression == NULL) return;
     if (depth + 1 > pressure->depth) pressure->depth = depth + 1;
@@ -5121,17 +5132,17 @@ static void x64_expression_pressure(
         case FUNCTION_PARAMETER:
             return;
         case FUNCTION_NEGATE:
-            x64_expression_pressure(expression->left, depth, pressure);
+            function_expression_pressure(expression->left, depth, pressure);
             return;
         case FUNCTION_CALL:
             for (size_t index = 0;
                  index < expression->argument_count;
                  ++index) {
                 if (index > 0 &&
-                    x64_expression_calls(expression->arguments[index])) {
-                    x64_pressure_mark(pressure, depth, depth + index);
+                    function_expression_calls(expression->arguments[index])) {
+                    function_pressure_mark(pressure, depth, depth + index);
                 }
-                x64_expression_pressure(
+                function_expression_pressure(
                     expression->arguments[index],
                     depth + index,
                     pressure
@@ -5139,11 +5150,11 @@ static void x64_expression_pressure(
             }
             return;
         default:
-            x64_expression_pressure(expression->left, depth, pressure);
-            if (x64_expression_calls(expression->right)) {
-                x64_pressure_mark(pressure, depth, depth + 1);
+            function_expression_pressure(expression->left, depth, pressure);
+            if (function_expression_calls(expression->right)) {
+                function_pressure_mark(pressure, depth, depth + 1);
             }
-            x64_expression_pressure(
+            function_expression_pressure(
                 expression->right,
                 depth + 1,
                 pressure
@@ -5153,7 +5164,7 @@ static void x64_expression_pressure(
 }
 
 /* How many times this expression reads the given parameter or local. */
-static size_t x64_expression_slot_uses(
+static size_t function_expression_slot_uses(
     const FunctionExpression *expression,
     size_t slot
 ) {
@@ -5161,26 +5172,26 @@ static size_t x64_expression_slot_uses(
     if (expression->kind == FUNCTION_PARAMETER) {
         return expression->slot == slot ? 1 : 0;
     }
-    size_t uses = x64_expression_slot_uses(expression->left, slot);
-    uses += x64_expression_slot_uses(expression->right, slot);
+    size_t uses = function_expression_slot_uses(expression->left, slot);
+    uses += function_expression_slot_uses(expression->right, slot);
     for (size_t index = 0;
          expression->arguments != NULL &&
              index < expression->argument_count;
          ++index) {
-        uses += x64_expression_slot_uses(expression->arguments[index], slot);
+        uses += function_expression_slot_uses(expression->arguments[index], slot);
     }
     return uses;
 }
 
-static size_t x64_function_slot_uses(
+static size_t function_slot_uses(
     const FunctionDeclaration *function,
     size_t slot
 ) {
     size_t uses = 0;
     for (size_t index = 0; index < function->statement_count; ++index) {
         const FunctionStatement *statement = &function->statements[index];
-        uses += x64_expression_slot_uses(statement->condition, slot);
-        uses += x64_expression_slot_uses(statement->value, slot);
+        uses += function_expression_slot_uses(statement->condition, slot);
+        uses += function_expression_slot_uses(statement->value, slot);
     }
     return uses;
 }
@@ -5189,12 +5200,12 @@ static size_t x64_function_slot_uses(
  * True when the body reaches any call instruction, including the `print`
  * runtime, which clobbers caller-saved registers like any other callee.
  */
-static bool x64_function_calls(const FunctionDeclaration *function) {
+static bool function_body_calls(const FunctionDeclaration *function) {
     for (size_t index = 0; index < function->statement_count; ++index) {
         const FunctionStatement *statement = &function->statements[index];
         if (statement->kind == FUNCTION_STATEMENT_PRINT) return true;
-        if (x64_expression_calls(statement->condition)) return true;
-        if (x64_expression_calls(statement->value)) return true;
+        if (function_expression_calls(statement->condition)) return true;
+        if (function_expression_calls(statement->value)) return true;
     }
     return false;
 }
@@ -5217,11 +5228,11 @@ static X64FrameLayout x64_function_layout(
         layout.eval_register[depth] = X64_NO_REGISTER;
     }
 
-    X64Pressure pressure = {0};
+    FunctionPressure pressure = {0};
     for (size_t index = 0; index < function->statement_count; ++index) {
         const FunctionStatement *statement = &function->statements[index];
-        x64_expression_pressure(statement->condition, 0, &pressure);
-        x64_expression_pressure(statement->value, 0, &pressure);
+        function_expression_pressure(statement->condition, 0, &pressure);
+        function_expression_pressure(statement->value, 0, &pressure);
     }
     layout.eval_depth = pressure.depth;
 
@@ -5239,12 +5250,12 @@ static X64FrameLayout x64_function_layout(
         if (pressure.across_call[depth]) continue;
         layout.eval_register[depth] = x64_take_eval_register(&file, false);
     }
-    bool calls = x64_function_calls(function);
+    bool calls = function_body_calls(function);
     for (size_t slot = 0; slot < layout.frame_slots; ++slot) {
         layout.slot_register[slot] = x64_take_value_register(
             &file,
             calls,
-            x64_function_slot_uses(function, slot)
+            function_slot_uses(function, slot)
         );
     }
     for (size_t depth = 0; depth < tracked; ++depth) {
@@ -6569,33 +6580,53 @@ static void a64_sub_sp(Bytes *text, uint32_t frame) {
     a64_word(text, UINT32_C(0xd10003ff) | ((frame & UINT32_C(0xfff)) << 10));
 }
 
-static uint32_t a64_local_imm9(size_t slot) {
-    if (slot >= MAX_FUNCTION_FRAME_SLOTS) {
+/*
+ * Frame slots are addressed from `sp` rather than from `x29`. No function body
+ * moves `sp` while a value is live, so the displacement is a constant either
+ * way, and the unsigned scaled form reaches the whole frame instead of the 32
+ * slots the signed 9-bit form covered — which matters now that spill slots and
+ * saved registers share the frame with the parameters and locals.
+ */
+static uint32_t a64_slot_imm12(size_t slot) {
+    if (slot > 0xfff) {
         fatal("aarch64 Core local frame is too large");
     }
-    int32_t offset = -(int32_t)((slot + 1) * sizeof(uint64_t));
-    return (uint32_t)offset & UINT32_C(0x1ff);
+    return (uint32_t)slot;
 }
 
-/* stur xreg, [x29, #-(slot+1)*8] */
-static void a64_store_param(Bytes *text, unsigned reg, size_t slot) {
+/* str xreg, [sp, #slot*8] */
+static void a64_store_slot(Bytes *text, unsigned reg, size_t slot) {
     a64_word(
         text,
-        UINT32_C(0xf8000000) |
-            (a64_local_imm9(slot) << 12) |
-            (UINT32_C(29) << 5) |
+        UINT32_C(0xf9000000) |
+            (a64_slot_imm12(slot) << 10) |
+            (UINT32_C(31) << 5) |
             (reg & UINT32_C(0x1f))
     );
 }
 
-/* ldur xreg, [x29, #-(slot+1)*8] */
-static void a64_load_param(Bytes *text, unsigned reg, size_t slot) {
+/* ldr xreg, [sp, #slot*8] */
+static void a64_load_slot(Bytes *text, unsigned reg, size_t slot) {
     a64_word(
         text,
-        UINT32_C(0xf8400000) |
-            (a64_local_imm9(slot) << 12) |
-            (UINT32_C(29) << 5) |
+        UINT32_C(0xf9400000) |
+            (a64_slot_imm12(slot) << 10) |
+            (UINT32_C(31) << 5) |
             (reg & UINT32_C(0x1f))
+    );
+}
+
+/* mov xd, xn : orr xd, xzr, xn */
+static void a64_move_register(
+    Bytes *text,
+    unsigned destination,
+    unsigned source
+) {
+    a64_word(
+        text,
+        UINT32_C(0xaa0003e0) |
+            ((uint32_t)source << 16) |
+            (uint32_t)destination
     );
 }
 
@@ -6663,10 +6694,349 @@ static void a64_load_immediate(Bytes *text, unsigned reg, int64_t value) {
     }
 }
 
+/*
+ * Register allocation for the bounded AArch64 function profile
+ * ------------------------------------------------------------
+ *
+ * The same contract x86-64 got in the pass above, over the same
+ * target-independent analysis: every value in a function body is given its
+ * location before a byte is emitted, so a body evaluates in registers instead
+ * of pushing and popping the native stack.
+ *
+ * Only the classes differ. AAPCS64 makes `x19`-`x28` callee-saved, but the
+ * shared Text runtime this backend calls preserves `x19`-`x26` and no emitted
+ * code names `x27` or `x28`, so the call-safe class is exactly the set that is
+ * demonstrably preserved. `x12`-`x15` are the caller-saved scratch class:
+ * `x0`-`x7` are the AAPCS64 boundary, `x8` is the indirect-result register,
+ * `x9`-`x11` are the fixed temporaries the checked multiply and the divide
+ * sequences need, `x16`-`x18` are reserved by the platform, and `x29`/`x30`
+ * are the frame pointer and link register the existing prologue already saves.
+ *
+ * `x0` and `x1` are never allocated, so they are always free as the move
+ * scratch, as the divide operand pair, and as the call boundary. Allocation is
+ * driven only by depth and slot index, so repeated builds of one source make
+ * identical decisions, and no evaluation step moves `sp`, so a body keeps the
+ * 16-byte alignment it was entered with at every AAPCS64 call boundary.
+ */
+enum {
+    A64_CALL_SAFE_REGISTERS = 8,  /* x19-x26 */
+    A64_SCRATCH_REGISTERS = 4,    /* x12-x15 */
+    A64_ALLOCATABLE_REGISTERS =
+        A64_CALL_SAFE_REGISTERS + A64_SCRATCH_REGISTERS,
+    A64_MAX_VALUE_SLOTS = MAX_FUNCTION_FRAME_SLOTS,
+    A64_NO_REGISTER = 32,
+    A64_SCRATCH_A = 0, /* x0: the move scratch and the return register */
+    A64_SCRATCH_B = 1, /* x1: the second operand of a spilled pair */
+};
+
+static const unsigned a64_call_safe_registers[A64_CALL_SAFE_REGISTERS] = {
+    19, 20, 21, 22, 23, 24, 25, 26,
+};
+
+static const unsigned a64_scratch_registers[A64_SCRATCH_REGISTERS] = {
+    12, 13, 14, 15,
+};
+
+typedef struct {
+    bool taken[32];
+} A64RegisterFile;
+
+static unsigned a64_take_scratch_register(A64RegisterFile *file) {
+    for (size_t index = 0; index < A64_SCRATCH_REGISTERS; ++index) {
+        unsigned reg = a64_scratch_registers[index];
+        if (file->taken[reg]) continue;
+        file->taken[reg] = true;
+        return reg;
+    }
+    return A64_NO_REGISTER;
+}
+
+static unsigned a64_take_call_safe_register(A64RegisterFile *file) {
+    for (size_t index = 0; index < A64_CALL_SAFE_REGISTERS; ++index) {
+        unsigned reg = a64_call_safe_registers[index];
+        if (file->taken[reg]) continue;
+        file->taken[reg] = true;
+        return reg;
+    }
+    return A64_NO_REGISTER;
+}
+
+/* The AArch64 counterparts of x64_take_eval_register and
+ * x64_take_value_register; the reasoning is documented there. */
+static unsigned a64_take_eval_register(
+    A64RegisterFile *file,
+    bool across_calls
+) {
+    if (!across_calls) {
+        unsigned scratch = a64_take_scratch_register(file);
+        if (scratch != A64_NO_REGISTER) return scratch;
+    }
+    return a64_take_call_safe_register(file);
+}
+
+static unsigned a64_take_value_register(
+    A64RegisterFile *file,
+    bool across_calls,
+    size_t uses
+) {
+    if (uses == 0) return A64_NO_REGISTER;
+    if (!across_calls) {
+        unsigned scratch = a64_take_scratch_register(file);
+        if (scratch != A64_NO_REGISTER) return scratch;
+    }
+    if (uses < 2) return A64_NO_REGISTER;
+    return a64_take_call_safe_register(file);
+}
+
+typedef struct {
+    size_t frame_slots;   /* parameters and locals, at their existing slots */
+    size_t spill_slots;   /* evaluation depths that did not get a register */
+    size_t eval_depth;    /* evaluation depths this body uses */
+    uint32_t frame_bytes; /* the whole frame, rounded to 16 bytes */
+    unsigned eval_register[A64_ALLOCATABLE_REGISTERS];
+    size_t eval_spill[A64_ALLOCATABLE_REGISTERS];
+    size_t deep_spill_base;
+    unsigned slot_register[A64_MAX_VALUE_SLOTS];
+    unsigned saved[A64_CALL_SAFE_REGISTERS];
+    size_t saved_count;
+} A64FrameLayout;
+
+static A64FrameLayout a64_function_layout(
+    const FunctionDeclaration *function
+) {
+    A64FrameLayout layout = {0};
+    layout.frame_slots =
+        function->parameter_count + function->local_count;
+    if (layout.frame_slots > A64_MAX_VALUE_SLOTS) {
+        fatal("aarch64 Core function has too many bindings");
+    }
+    for (size_t slot = 0; slot < A64_MAX_VALUE_SLOTS; ++slot) {
+        layout.slot_register[slot] = A64_NO_REGISTER;
+    }
+    for (size_t depth = 0; depth < A64_ALLOCATABLE_REGISTERS; ++depth) {
+        layout.eval_register[depth] = A64_NO_REGISTER;
+    }
+
+    FunctionPressure pressure = {0};
+    for (size_t index = 0; index < function->statement_count; ++index) {
+        const FunctionStatement *statement = &function->statements[index];
+        function_expression_pressure(statement->condition, 0, &pressure);
+        function_expression_pressure(statement->value, 0, &pressure);
+    }
+    layout.eval_depth = pressure.depth;
+
+    size_t tracked = pressure.depth < A64_ALLOCATABLE_REGISTERS
+        ? pressure.depth
+        : (size_t)A64_ALLOCATABLE_REGISTERS;
+    A64RegisterFile file = {0};
+    for (size_t depth = 0; depth < tracked; ++depth) {
+        if (!pressure.across_call[depth]) continue;
+        layout.eval_register[depth] = a64_take_eval_register(&file, true);
+    }
+    for (size_t depth = 0; depth < tracked; ++depth) {
+        if (pressure.across_call[depth]) continue;
+        layout.eval_register[depth] = a64_take_eval_register(&file, false);
+    }
+    bool calls = function_body_calls(function);
+    for (size_t slot = 0; slot < layout.frame_slots; ++slot) {
+        layout.slot_register[slot] = a64_take_value_register(
+            &file,
+            calls,
+            function_slot_uses(function, slot)
+        );
+    }
+    for (size_t depth = 0; depth < tracked; ++depth) {
+        if (layout.eval_register[depth] != A64_NO_REGISTER) continue;
+        layout.eval_spill[depth] = layout.spill_slots++;
+    }
+    layout.deep_spill_base = layout.spill_slots;
+    if (pressure.depth > A64_ALLOCATABLE_REGISTERS) {
+        layout.spill_slots +=
+            pressure.depth - (size_t)A64_ALLOCATABLE_REGISTERS;
+    }
+    for (size_t index = 0; index < A64_CALL_SAFE_REGISTERS; ++index) {
+        unsigned reg = a64_call_safe_registers[index];
+        if (!file.taken[reg]) continue;
+        layout.saved[layout.saved_count++] = reg;
+    }
+    size_t slots =
+        layout.frame_slots + layout.spill_slots + layout.saved_count;
+    layout.frame_bytes =
+        (uint32_t)(((slots * sizeof(uint64_t)) + 15) / 16 * 16);
+    return layout;
+}
+
+/*
+ * A 64-bit operand that is either a register or the frame slot at
+ * `[sp, #slot * 8]`.
+ */
+typedef struct {
+    bool in_register;
+    unsigned reg;
+    size_t slot;
+} A64Operand;
+
+static A64Operand a64_register_operand(unsigned reg) {
+    A64Operand operand = {.in_register = true, .reg = reg, .slot = 0};
+    return operand;
+}
+
+static A64Operand a64_slot_operand(size_t slot) {
+    A64Operand operand = {.in_register = false, .reg = 0, .slot = slot};
+    return operand;
+}
+
+/* Where the value produced at `depth` lives: a register or a spill slot. */
+static A64Operand a64_eval_operand(
+    const A64FrameLayout *layout,
+    size_t depth
+) {
+    if (depth >= layout->eval_depth) {
+        fatal("aarch64 Core evaluation exceeds its analyzed depth");
+    }
+    if (depth < A64_ALLOCATABLE_REGISTERS &&
+        layout->eval_register[depth] != A64_NO_REGISTER) {
+        return a64_register_operand(layout->eval_register[depth]);
+    }
+    size_t spill = depth < A64_ALLOCATABLE_REGISTERS
+        ? layout->eval_spill[depth]
+        : layout->deep_spill_base +
+            (depth - (size_t)A64_ALLOCATABLE_REGISTERS);
+    return a64_slot_operand(layout->frame_slots + spill);
+}
+
+/* Where a parameter or local lives: a register or its existing frame slot. */
+static A64Operand a64_value_operand(
+    const A64FrameLayout *layout,
+    size_t slot
+) {
+    if (slot >= layout->frame_slots) {
+        fatal("aarch64 Core binding is outside its frame");
+    }
+    if (layout->slot_register[slot] != A64_NO_REGISTER) {
+        return a64_register_operand(layout->slot_register[slot]);
+    }
+    return a64_slot_operand(slot);
+}
+
+static size_t a64_saved_slot(const A64FrameLayout *layout, size_t index) {
+    return layout->frame_slots + layout->spill_slots + index;
+}
+
+/*
+ * Moves one 64-bit value between two locations. `x0` is never allocated, so it
+ * is always available when both locations are frame slots.
+ */
+static void a64_move(Bytes *text, A64Operand into, A64Operand from) {
+    if (into.in_register && from.in_register) {
+        if (into.reg == from.reg) return;
+        a64_move_register(text, into.reg, from.reg);
+        return;
+    }
+    if (into.in_register) {
+        a64_load_slot(text, into.reg, from.slot);
+        return;
+    }
+    if (from.in_register) {
+        a64_store_slot(text, from.reg, into.slot);
+        return;
+    }
+    if (into.slot == from.slot) return;
+    a64_load_slot(text, A64_SCRATCH_A, from.slot);
+    a64_store_slot(text, A64_SCRATCH_A, into.slot);
+}
+
+/* The register holding `operand`, loading a spilled one into `scratch`. */
+static unsigned a64_operand_register(
+    Bytes *text,
+    A64Operand operand,
+    unsigned scratch
+) {
+    if (operand.in_register) return operand.reg;
+    a64_load_slot(text, scratch, operand.slot);
+    return scratch;
+}
+
 static void a64_function_epilogue(Bytes *text) {
     a64_word(text, UINT32_C(0x910003bf)); /* mov sp, x29 */
     a64_word(text, UINT32_C(0xa8c17bfd)); /* ldp x29, x30, [sp], #16 */
     a64_word(text, UINT32_C(0xd65f03c0)); /* ret */
+}
+
+/*
+ * Restores every callee-saved register the body claimed and returns. The saved
+ * slots are read while `sp` still addresses the frame, and `mov sp, x29` then
+ * drops the whole of it. One body emits this once and every earlier return
+ * branches to it, so all return paths restore exactly the same set at exactly
+ * one place.
+ */
+static void a64_function_epilogue_block(
+    Bytes *text,
+    const A64FrameLayout *layout
+) {
+    for (size_t index = layout->saved_count; index > 0; --index) {
+        a64_load_slot(
+            text,
+            layout->saved[index - 1],
+            a64_saved_slot(layout, index - 1)
+        );
+    }
+    a64_function_epilogue(text);
+}
+
+/*
+ * Compares the values at `depth` and `depth + 1`, left minus right, leaving the
+ * answer in the flags. Either side may be spilled; `x0` and `x1` carry those.
+ */
+static void a64_function_compare(
+    Bytes *text,
+    const A64FrameLayout *layout,
+    size_t depth
+) {
+    unsigned left = a64_operand_register(
+        text,
+        a64_eval_operand(layout, depth),
+        A64_SCRATCH_A
+    );
+    unsigned right = a64_operand_register(
+        text,
+        a64_eval_operand(layout, depth + 1),
+        A64_SCRATCH_B
+    );
+    /* cmp left, right : subs xzr, left, right */
+    a64_word(
+        text,
+        UINT32_C(0xeb00001f) |
+            ((uint32_t)right << 16) |
+            ((uint32_t)left << 5)
+    );
+}
+
+/*
+ * The AArch64 counterpart of x64_function_guard_inverse: the branch that skips
+ * a guard body is taken when the comparison is false, so a guard leaves its
+ * answer in the flags instead of materializing a Bool and testing it back.
+ */
+static bool a64_function_guard_inverse(
+    FunctionExpressionKind kind,
+    uint32_t *inverse
+) {
+    if (kind == FUNCTION_EQUAL) {
+        *inverse = UINT32_C(1);  /* b.ne */
+    } else if (kind == FUNCTION_NOT_EQUAL) {
+        *inverse = UINT32_C(0);  /* b.eq */
+    } else if (kind == FUNCTION_LESS) {
+        *inverse = UINT32_C(10); /* b.ge */
+    } else if (kind == FUNCTION_LESS_EQUAL) {
+        *inverse = UINT32_C(12); /* b.gt */
+    } else if (kind == FUNCTION_GREATER) {
+        *inverse = UINT32_C(13); /* b.le */
+    } else if (kind == FUNCTION_GREATER_EQUAL) {
+        *inverse = UINT32_C(11); /* b.lt */
+    } else {
+        return false;
+    }
+    return true;
 }
 
 static void a64_overflow_jump(
@@ -6699,8 +7069,14 @@ static void a64_overflow_jump(
 static void a64_function_divide(
     Bytes *text,
     FunctionExpressionKind kind,
-    FunctionEmitter *emitter
+    FunctionEmitter *emitter,
+    A64Operand result,
+    A64Operand divisor
 ) {
+    /* `x0` and `x1` are never allocated, so the operand pair can always be
+     * materialized there without disturbing anything live. */
+    a64_move(text, a64_register_operand(A64_SCRATCH_A), result);
+    a64_move(text, a64_register_operand(A64_SCRATCH_B), divisor);
     /* cbz x1, division-by-zero trap */
     offsets_add(
         &emitter->trap_jumps[function_divide_zero_trap(kind)],
@@ -6727,6 +7103,7 @@ static void a64_function_divide(
     if (kind == FUNCTION_DIVIDE) {
         a64_word(text, UINT32_C(0x9ac10c00)); /* sdiv x0, x0, x1 */
         a64_patch_imm26(text, done, text->length);
+        a64_move(text, result, a64_register_operand(A64_SCRATCH_A));
         return;
     }
     a64_word(text, UINT32_C(0x9ac10c09)); /* sdiv x9, x0, x1 */
@@ -6753,6 +7130,7 @@ static void a64_function_divide(
     a64_patch_imm19(text, exact, text->length);
     a64_patch_imm14(text, same, text->length);
     a64_patch_imm26(text, done, text->length);
+    a64_move(text, result, a64_register_operand(A64_SCRATCH_A));
 }
 
 static void a64_function_call(
@@ -6767,24 +7145,28 @@ static void a64_function_call(
 static void a64_function_expression(
     Bytes *text,
     const FunctionExpression *expression,
-    FunctionEmitter *emitter
+    FunctionEmitter *emitter,
+    const A64FrameLayout *layout,
+    size_t depth
 ) {
+    A64Operand result = a64_eval_operand(layout, depth);
     if (expression->kind == FUNCTION_LITERAL) {
-        a64_load_immediate(text, 0, expression->value);
-        a64_push(text, 0);
+        unsigned reg = result.in_register ? result.reg : A64_SCRATCH_A;
+        a64_load_immediate(text, reg, expression->value);
+        if (!result.in_register) a64_store_slot(text, reg, result.slot);
         return;
     }
     if (expression->kind == FUNCTION_PARAMETER) {
-        a64_load_param(text, 0, expression->slot);
-        a64_push(text, 0);
+        a64_move(text, result, a64_value_operand(layout, expression->slot));
         return;
     }
     if (expression->kind == FUNCTION_TEXT_LITERAL) {
         emitter->a64_runtime.used = true;
+        unsigned reg = result.in_register ? result.reg : A64_SCRATCH_A;
         size_t low_field = text->length;
-        a64_movz(text, 0, 0);              /* Text address low, patched */
+        a64_movz(text, reg, 0);            /* Text address low, patched */
         size_t high_field = text->length;
-        a64_movk_lsl16(text, 0, 0);        /* Text address high, patched */
+        a64_movk_lsl16(text, reg, 0);      /* Text address high, patched */
         a64_text_fixups_add(
             &emitter->a64_runtime.text_literals,
             low_field,
@@ -6792,20 +7174,38 @@ static void a64_function_expression(
             expression->text_value,
             expression->text_length
         );
-        a64_push(text, 0);
+        if (!result.in_register) a64_store_slot(text, reg, result.slot);
         return;
     }
     if (expression->kind == FUNCTION_TEXT_CONCAT) {
-        a64_function_expression(text, expression->left, emitter);
-        a64_function_expression(text, expression->right, emitter);
-        a64_pop(text, 1);                  /* right Text -> x1 */
-        a64_pop(text, 0);                  /* left Text  -> x0 */
+        a64_function_expression(
+            text,
+            expression->left,
+            emitter,
+            layout,
+            depth
+        );
+        a64_function_expression(
+            text,
+            expression->right,
+            emitter,
+            layout,
+            depth + 1
+        );
+        /* Neither boundary register is ever allocated, so filling them cannot
+         * overwrite the operand that has not been moved yet. */
+        a64_move(text, a64_register_operand(0), result);
+        a64_move(
+            text,
+            a64_register_operand(1),
+            a64_eval_operand(layout, depth + 1)
+        );
         a64_core_call_runtime(
             text,
             &emitter->a64_runtime,
             &emitter->a64_runtime.text_concat_calls
         );
-        a64_push(text, 0);
+        a64_move(text, result, a64_register_operand(0));
         return;
     }
     if (expression->kind == FUNCTION_CALL) {
@@ -6813,46 +7213,78 @@ static void a64_function_expression(
             a64_function_expression(
                 text,
                 expression->arguments[index],
-                emitter
+                emitter,
+                layout,
+                depth + index
             );
         }
-        for (size_t index = expression->argument_count; index > 0; --index) {
-            if (index - 1 >= MAX_CORE_PARAMETERS) {
+        for (size_t index = 0; index < expression->argument_count; ++index) {
+            if (index >= MAX_CORE_PARAMETERS) {
                 fatal("native Core call has too many arguments");
             }
-            a64_pop(text, (unsigned)(index - 1));
+            /* Argument registers are never allocated, so filling the boundary
+             * cannot overwrite an argument that has not been moved yet. */
+            a64_move(
+                text,
+                a64_register_operand((unsigned)index),
+                a64_eval_operand(layout, depth + index)
+            );
         }
         a64_function_call(text, emitter, expression->function_index);
-        a64_push(text, 0); /* push return value */
+        a64_move(text, result, a64_register_operand(0));
         return;
     }
     if (expression->kind == FUNCTION_NEGATE) {
-        a64_function_expression(text, expression->left, emitter);
-        a64_pop(text, 0);
-        a64_word(text, UINT32_C(0xeb0003e0)); /* negs x0, x0 */
+        a64_function_expression(
+            text,
+            expression->left,
+            emitter,
+            layout,
+            depth
+        );
+        unsigned source =
+            a64_operand_register(text, result, A64_SCRATCH_A);
+        unsigned into = result.in_register ? result.reg : A64_SCRATCH_A;
+        /* negs into, xzr, source */
+        a64_word(
+            text,
+            UINT32_C(0xeb0003e0) |
+                ((uint32_t)source << 16) |
+                (uint32_t)into
+        );
         a64_overflow_jump(
             text,
             emitter,
             UINT32_C(0x54000006),
             FUNCTION_TRAP_NEGATE_OVERFLOW
         ); /* b.vs */
-        a64_push(text, 0);
+        if (!result.in_register) a64_store_slot(text, into, result.slot);
         return;
     }
 
-    a64_function_expression(text, expression->left, emitter);
-    a64_function_expression(text, expression->right, emitter);
-    a64_pop(text, 1); /* right -> x1 */
-    a64_pop(text, 0); /* left  -> x0 */
+    a64_function_expression(text, expression->left, emitter, layout, depth);
+    a64_function_expression(
+        text,
+        expression->right,
+        emitter,
+        layout,
+        depth + 1
+    );
+    A64Operand right = a64_eval_operand(layout, depth + 1);
     if (expression->kind == FUNCTION_DIVIDE ||
         expression->kind == FUNCTION_FLOOR_DIVIDE ||
         expression->kind == FUNCTION_FLOOR_MODULO) {
-        a64_function_divide(text, expression->kind, emitter);
-        a64_push(text, 0);
+        a64_function_divide(text, expression->kind, emitter, result, right);
         return;
     }
+    unsigned left_reg = a64_operand_register(text, result, A64_SCRATCH_A);
+    unsigned right_reg = a64_operand_register(text, right, A64_SCRATCH_B);
+    unsigned into = result.in_register ? result.reg : A64_SCRATCH_A;
+    uint32_t operands =
+        ((uint32_t)right_reg << 16) | ((uint32_t)left_reg << 5);
     if (expression->kind == FUNCTION_ADD) {
-        a64_word(text, UINT32_C(0xab010000)); /* adds x0, x0, x1 */
+        /* adds into, left, right */
+        a64_word(text, UINT32_C(0xab000000) | operands | (uint32_t)into);
         a64_overflow_jump(
             text,
             emitter,
@@ -6860,7 +7292,8 @@ static void a64_function_expression(
             FUNCTION_TRAP_ADD_OVERFLOW
         ); /* b.vs */
     } else if (expression->kind == FUNCTION_SUBTRACT) {
-        a64_word(text, UINT32_C(0xeb010000)); /* subs x0, x0, x1 */
+        /* subs into, left, right */
+        a64_word(text, UINT32_C(0xeb000000) | operands | (uint32_t)into);
         a64_overflow_jump(
             text,
             emitter,
@@ -6868,8 +7301,10 @@ static void a64_function_expression(
             FUNCTION_TRAP_SUBTRACT_OVERFLOW
         ); /* b.vs */
     } else if (expression->kind == FUNCTION_MULTIPLY) {
-        a64_word(text, UINT32_C(0x9b017c09)); /* mul   x9, x0, x1 */
-        a64_word(text, UINT32_C(0x9b417c0a)); /* smulh x10, x0, x1 */
+        /* x9, x10 and x11 are never allocated, so the wide product and the
+         * sign it is compared against cannot disturb anything live. */
+        a64_word(text, UINT32_C(0x9b007c09) | operands); /* mul   x9  */
+        a64_word(text, UINT32_C(0x9b407c0a) | operands); /* smulh x10 */
         a64_word(text, UINT32_C(0x937ffd2b)); /* asr   x11, x9, #63 */
         a64_word(text, UINT32_C(0xeb0b015f)); /* cmp   x10, x11 */
         a64_overflow_jump(
@@ -6878,58 +7313,86 @@ static void a64_function_expression(
             UINT32_C(0x54000001),
             FUNCTION_TRAP_MULTIPLY_OVERFLOW
         ); /* b.ne */
-        a64_word(text, UINT32_C(0xaa0903e0)); /* mov   x0, x9 */
+        a64_move_register(text, into, 9);
     } else {
-        a64_word(text, UINT32_C(0xeb01001f)); /* cmp x0, x1 */
-        uint32_t set = UINT32_C(0x9a9f17e0); /* cset x0, eq */
+        /* cmp left, right */
+        a64_word(text, UINT32_C(0xeb00001f) | operands);
+        uint32_t set = UINT32_C(0x9a9f17e0); /* cset eq */
         if (expression->kind == FUNCTION_NOT_EQUAL) {
-            set = UINT32_C(0x9a9f07e0); /* cset x0, ne */
+            set = UINT32_C(0x9a9f07e0); /* cset ne */
         } else if (expression->kind == FUNCTION_LESS) {
-            set = UINT32_C(0x9a9fa7e0); /* cset x0, lt */
+            set = UINT32_C(0x9a9fa7e0); /* cset lt */
         } else if (expression->kind == FUNCTION_LESS_EQUAL) {
-            set = UINT32_C(0x9a9fc7e0); /* cset x0, le */
+            set = UINT32_C(0x9a9fc7e0); /* cset le */
         } else if (expression->kind == FUNCTION_GREATER) {
-            set = UINT32_C(0x9a9fd7e0); /* cset x0, gt */
+            set = UINT32_C(0x9a9fd7e0); /* cset gt */
         } else if (expression->kind == FUNCTION_GREATER_EQUAL) {
-            set = UINT32_C(0x9a9fb7e0); /* cset x0, ge */
+            set = UINT32_C(0x9a9fb7e0); /* cset ge */
         }
-        a64_word(text, set);
+        a64_word(text, set | (uint32_t)into);
     }
-    a64_push(text, 0);
+    if (!result.in_register) a64_store_slot(text, into, result.slot);
 }
 
 /*
- * The AArch64 counterpart of x64_function_tail_call. Arguments reach x0..x5
- * through the same stack-machine discipline an ordinary call uses; only the
- * `bl` at the end is replaced, either by a branch back to the top of this body
- * or by a frame teardown and a branch to the callee.
+ * The AArch64 counterpart of x64_function_tail_call. The arguments are
+ * evaluated into their ordinary depths first, so nothing reads a parameter
+ * after the assignment below has started to overwrite one, and no evaluation
+ * depth shares a location with a parameter. Only the `bl` at the end is
+ * replaced, either by a branch back to the top of this body or by a frame
+ * teardown and a branch to the callee.
  */
 static void a64_function_tail_call(
     Bytes *text,
     const FunctionExpression *call,
     FunctionEmitter *emitter,
+    const A64FrameLayout *layout,
     size_t self_index,
     size_t body_start
 ) {
     for (size_t index = 0; index < call->argument_count; ++index) {
-        a64_function_expression(text, call->arguments[index], emitter);
-    }
-    for (size_t index = call->argument_count; index > 0; --index) {
-        if (index - 1 >= MAX_CORE_PARAMETERS) {
+        if (index >= MAX_CORE_PARAMETERS) {
             fatal("native Core call has too many arguments");
         }
-        a64_pop(text, (unsigned)(index - 1));
+        a64_function_expression(
+            text,
+            call->arguments[index],
+            emitter,
+            layout,
+            index
+        );
     }
     if (call->function_index == self_index) {
-        /* Every argument is already in its own register, so writing the
-         * parameter slots cannot disturb one that has not been written yet. */
         for (size_t index = 0; index < call->argument_count; ++index) {
-            a64_store_param(text, (unsigned)index, index);
+            a64_move(
+                text,
+                a64_value_operand(layout, index),
+                a64_eval_operand(layout, index)
+            );
         }
         size_t back = text->length;
         a64_word(text, UINT32_C(0x14000000)); /* b body_start */
         a64_patch_imm26(text, back, body_start);
         return;
+    }
+    /* Argument registers are never allocated, so filling the boundary cannot
+     * overwrite an argument that has not been moved yet. */
+    for (size_t index = 0; index < call->argument_count; ++index) {
+        a64_move(
+            text,
+            a64_register_operand((unsigned)index),
+            a64_eval_operand(layout, index)
+        );
+    }
+    /* The saved registers still live in frame slots, so they are reloaded
+     * while `sp` addresses the frame and before it is dropped. Neither step
+     * touches an argument register. */
+    for (size_t index = layout->saved_count; index > 0; --index) {
+        a64_load_slot(
+            text,
+            layout->saved[index - 1],
+            a64_saved_slot(layout, index - 1)
+        );
     }
     a64_word(text, UINT32_C(0x910003bf)); /* mov sp, x29 */
     a64_word(text, UINT32_C(0xa8c17bfd)); /* ldp x29, x30, [sp], #16 */
@@ -6947,67 +7410,157 @@ static void a64_function_declaration(
     size_t self_index,
     FunctionEmitter *emitter
 ) {
+    A64FrameLayout layout = a64_function_layout(function);
     a64_word(text, UINT32_C(0xa9bf7bfd)); /* stp x29, x30, [sp, #-16]! */
     a64_word(text, UINT32_C(0x910003fd)); /* mov x29, sp */
-    size_t frame_slots =
-        function->parameter_count + function->local_count;
-    if (frame_slots > 0) {
-        uint32_t frame = (uint32_t)(
-            ((frame_slots * sizeof(uint64_t)) + 15) / 16 * 16
-        );
-        a64_sub_sp(text, frame);
-        for (size_t index = 0;
-             index < function->parameter_count;
-             ++index) {
-            a64_store_param(text, (unsigned)index, index);
-        }
+    if (layout.frame_bytes > 0) {
+        a64_sub_sp(text, layout.frame_bytes);
     }
-    /* The branch target of a returned call to this same function. */
+    for (size_t index = 0; index < layout.saved_count; ++index) {
+        a64_store_slot(
+            text,
+            layout.saved[index],
+            a64_saved_slot(&layout, index)
+        );
+    }
+    for (size_t index = 0; index < function->parameter_count; ++index) {
+        if (index >= MAX_CORE_PARAMETERS) {
+            fatal("native Core parameter register is unavailable");
+        }
+        a64_move(
+            text,
+            a64_value_operand(&layout, index),
+            a64_register_operand((unsigned)index)
+        );
+    }
+    /* A returned call to this same function reassigns the parameters and
+     * branches here, so the frame, the saved registers, and the argument
+     * hand-off are each paid for exactly once. */
     size_t body_start = text->length;
 
+    /* Every return path reaches the one epilogue emitted after the body. */
+    Offsets returns = {0};
     bool returned = false;
     for (size_t index = 0; index < function->statement_count; ++index) {
         const FunctionStatement *statement = &function->statements[index];
+        bool tail = index + 1 == function->statement_count;
         if (statement->kind == FUNCTION_STATEMENT_IF_RETURN) {
-            a64_function_expression(text, statement->condition, emitter);
-            a64_pop(text, 0);
-            size_t skip = text->length;
-            a64_word(text, UINT32_C(0xb4000000)); /* cbz x0, skip */
+            uint32_t inverse = 0;
+            size_t skip;
+            if (a64_function_guard_inverse(
+                    statement->condition->kind,
+                    &inverse)) {
+                /* Both operands evaluate exactly as they would on their own;
+                 * only the Bool between the comparison and the branch is
+                 * gone. */
+                a64_function_expression(
+                    text,
+                    statement->condition->left,
+                    emitter,
+                    &layout,
+                    0
+                );
+                a64_function_expression(
+                    text,
+                    statement->condition->right,
+                    emitter,
+                    &layout,
+                    1
+                );
+                a64_function_compare(text, &layout, 0);
+                skip = text->length;
+                a64_word(text, UINT32_C(0x54000000) | inverse);
+            } else {
+                a64_function_expression(
+                    text,
+                    statement->condition,
+                    emitter,
+                    &layout,
+                    0
+                );
+                unsigned condition = a64_operand_register(
+                    text,
+                    a64_eval_operand(&layout, 0),
+                    A64_SCRATCH_A
+                );
+                skip = text->length;
+                /* cbz condition, skip */
+                a64_word(text, UINT32_C(0xb4000000) | (uint32_t)condition);
+            }
             const FunctionExpression *tail_call = function_tail_call(statement);
             if (tail_call != NULL) {
                 a64_function_tail_call(
                     text,
                     tail_call,
                     emitter,
+                    &layout,
                     self_index,
                     body_start
                 );
             } else {
-                a64_function_expression(text, statement->value, emitter);
-                a64_pop(text, 0);
-                a64_function_epilogue(text);
+                a64_function_expression(
+                    text,
+                    statement->value,
+                    emitter,
+                    &layout,
+                    0
+                );
+                a64_move(
+                    text,
+                    a64_register_operand(0),
+                    a64_eval_operand(&layout, 0)
+                );
+                offsets_add(&returns, text->length);
+                a64_word(text, UINT32_C(0x14000000)); /* b epilogue */
             }
             a64_patch_imm19(text, skip, text->length);
         } else if (statement->kind == FUNCTION_STATEMENT_RETURN) {
             const FunctionExpression *tail_call = function_tail_call(statement);
             if (tail_call != NULL) {
+                /* The branch itself ends this path; nothing falls through to
+                 * the epilogue and nothing jumps to it from here. */
                 a64_function_tail_call(
                     text,
                     tail_call,
                     emitter,
+                    &layout,
                     self_index,
                     body_start
                 );
                 returned = true;
                 continue;
             }
-            a64_function_expression(text, statement->value, emitter);
-            a64_pop(text, 0);
-            a64_function_epilogue(text);
+            a64_function_expression(
+                text,
+                statement->value,
+                emitter,
+                &layout,
+                0
+            );
+            a64_move(
+                text,
+                a64_register_operand(0),
+                a64_eval_operand(&layout, 0)
+            );
+            /* A closing return falls straight into the epilogue. */
+            if (!tail) {
+                offsets_add(&returns, text->length);
+                a64_word(text, UINT32_C(0x14000000)); /* b epilogue */
+            }
             returned = true;
         } else if (statement->kind == FUNCTION_STATEMENT_PRINT) {
-            a64_function_expression(text, statement->value, emitter);
-            a64_pop(text, 0); /* print argument -> x0 */
+            a64_function_expression(
+                text,
+                statement->value,
+                emitter,
+                &layout,
+                0
+            );
+            a64_move(
+                text,
+                a64_register_operand(0),
+                a64_eval_operand(&layout, 0)
+            );
             if (statement->value->value_kind == FUNCTION_VALUE_TEXT) {
                 offsets_add(&emitter->print_text_calls, text->length);
             } else {
@@ -7015,18 +7568,38 @@ static void a64_function_declaration(
             }
             a64_word(text, UINT32_C(0x94000000)); /* bl print (patched) */
         } else if (statement->kind == FUNCTION_STATEMENT_LET) {
-            a64_function_expression(text, statement->value, emitter);
-            a64_pop(text, 0); /* let value -> x0 */
-            a64_store_param(text, 0, statement->slot);
+            a64_function_expression(
+                text,
+                statement->value,
+                emitter,
+                &layout,
+                0
+            );
+            a64_move(
+                text,
+                a64_value_operand(&layout, statement->slot),
+                a64_eval_operand(&layout, 0)
+            );
         } else {
-            a64_function_expression(text, statement->value, emitter);
-            a64_pop(text, 0); /* discard expression result */
+            /* The evaluated result is discarded. */
+            a64_function_expression(
+                text,
+                statement->value,
+                emitter,
+                &layout,
+                0
+            );
         }
     }
     if (!returned) {
         a64_movz(text, 0, 0); /* implicit main return 0 */
-        a64_function_epilogue(text);
     }
+    size_t epilogue = text->length;
+    for (size_t index = 0; index < returns.length; ++index) {
+        a64_patch_imm26(text, returns.fields[index], epilogue);
+    }
+    a64_function_epilogue_block(text, &layout);
+    free(returns.fields);
 }
 
 /*
@@ -7294,19 +7867,6 @@ static void a64_core_runtime_free(A64CoreRuntime *runtime) {
     free(runtime->text_index_calls.fields);
     free(runtime->text_chars_calls.fields);
     free(runtime->text_literals.items);
-}
-
-static void a64_move_register(
-    Bytes *text,
-    unsigned destination,
-    unsigned source
-) {
-    a64_word(
-        text,
-        UINT32_C(0xaa0003e0) |
-            ((uint32_t)source << 16) |
-            (uint32_t)destination
-    );
 }
 
 static void a64_subtract(
