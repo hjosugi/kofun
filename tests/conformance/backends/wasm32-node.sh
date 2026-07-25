@@ -1,7 +1,6 @@
 # Adapter for the direct WebAssembly arithmetic Core.
 
 BACKEND_NAME=wasm32-node
-BACKEND_CORPORA=numeric
 
 backend_compile() {
     source=$1

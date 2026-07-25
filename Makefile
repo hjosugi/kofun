@@ -59,6 +59,7 @@ compiler:
 test: compiler
 	sh tests/cli.sh
 	sh tests/cli_stage2_outcomes.sh
+	sh tests/conformance/capabilities_test.sh
 	sh tests/conformance/modules/lexical-scopes/run.sh
 	sh tests/conformance/modules/shadowing/run.sh
 	$(KOFUN) test tests/conformance/numeric
@@ -276,6 +277,8 @@ verify: test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-
 	  tests/fuzz/adapters/arithmetic-native-x86_64.sh \
 	  tests/fuzz/adapters/arithmetic-wasm32-node.sh \
 	  tests/fuzz/fixtures/protocol-adapter.sh \
+	  tests/conformance/check-capabilities.sh \
+	  tests/conformance/capabilities_test.sh \
 	  tests/conformance/modules/visibility-syntax/run.sh \
 	  tests/conformance/modules/visibility-access/run.sh \
 	  tests/conformance/adt/run.sh \
@@ -289,6 +292,7 @@ verify: test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-
 	  tests/lsp/check.sh tooling/lsp/kofun-lsp \
 	  editor/vscode/server/kofun-lsp \
 	  tests/conformance/run.sh tests/conformance/backends/c11-stage1.sh \
+	  tests/conformance/backends/native-aarch64.sh \
 	  tests/conformance/backends/native-x86_64.sh \
 	  tests/conformance/modules/lexical-scopes/run.sh \
 	  tests/conformance/modules/shadowing/run.sh \

@@ -1,9 +1,8 @@
 # Adapter for the Python-free direct AArch64 static ELF backend.
 #
-# AArch64 images execute under qemu-aarch64. When the emulator is absent the
-# adapter claims a sentinel corpus so the conformance runner records an explicit
-# UNSUPPORTED skip for every real corpus instead of failing. AArch64 lowers the
-# multi-function Int Core plus the closed List[Int] and UTF-8 Text Cores.
+# AArch64 images execute under qemu-aarch64. The canonical capability manifest
+# records target support independently from whether that executor is installed
+# on this host.
 
 BACKEND_NAME=native-aarch64
 if test -n "${QEMU_AARCH64-}" &&
@@ -19,11 +18,12 @@ else
 fi
 export QEMU_AARCH64
 
-if test -n "$QEMU_AARCH64"; then
-    BACKEND_CORPORA='functions list text'
-else
-    BACKEND_CORPORA=requires-qemu-aarch64
-fi
+backend_check_available() {
+    test -n "$QEMU_AARCH64" && return 0
+    printf '%s\n' \
+        "conformance: native-aarch64 requires qemu-aarch64"
+    return 125
+}
 
 backend_compile() {
     source=$1

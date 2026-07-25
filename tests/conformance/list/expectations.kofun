@@ -1,4 +1,8 @@
 # Registry marker for the List corpus.
+fn expected_cases() -> Int {
+    return 13
+}
+
 fn corpus_name() -> Text {
     return "list"
 }

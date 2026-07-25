@@ -4,8 +4,8 @@
 # case. Keeping expectations in Kofun makes the contract independent of a
 # Python test harness.
 
-fn backend_names() -> List[Text] {
-    return ["c11-stage1", "wasm32-node"]
+fn expected_cases() -> Int {
+    return 9
 }
 
 fn case_names() -> List[Text] {
@@ -70,9 +70,6 @@ fn escaped(value: Text) -> Text {
 
 fn main() {
     print("contract:kofun.backend-differential/v1")
-    for backend in backend_names() {
-        print("backend:" + backend)
-    }
     for name in case_names() {
         print("case:" + name)
         print("exit:" + to_text(expected_exit(name)))

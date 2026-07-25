@@ -3,42 +3,67 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 CORPUS=${1-"$ROOT/tests/conformance/numeric"}
-BACKENDS="$ROOT/tests/conformance/backends"
+BACKENDS=${KOFUN_CONFORMANCE_BACKENDS-"$ROOT/tests/conformance/backends"}
+CAPABILITIES=${KOFUN_CONFORMANCE_CAPABILITIES-"$ROOT/tests/conformance/capabilities.tsv"}
+CORPORA=${KOFUN_CONFORMANCE_CORPORA-"$ROOT/tests/conformance"}
 CORPUS_NAME=$(basename "$CORPUS")
 
 test -d "$CORPUS" || {
     printf '%s\n' "conformance: corpus not found: $CORPUS" >&2
     exit 2
 }
+test -f "$CORPUS/expectations.kofun" || {
+    printf '%s\n' \
+        "conformance: corpus has no expectations.kofun: $CORPUS" >&2
+    exit 2
+}
+
+sh "$ROOT/tests/conformance/check-capabilities.sh" \
+    "$CAPABILITIES" "$BACKENDS" "$CORPORA" >/dev/null
+
+manifest_field() {
+    backend=$1
+    corpus=$2
+    field=$3
+    awk -F '	' \
+        -v backend="$backend" \
+        -v corpus="$corpus" \
+        -v field="$field" \
+        '$1 == backend && $2 == corpus { print $field; exit }' \
+        "$CAPABILITIES"
+}
 
 run_backend() (
     adapter=$1
+    adapter_name=$(basename "${adapter%.sh}")
     KOFUN_ROOT=$ROOT
     export KOFUN_ROOT
     # The adapter supplies BACKEND_NAME and backend_compile SOURCE OUTPUT WORK.
-    # Return 125 only for an explicit unsupported-feature diagnostic.
+    # Capability policy comes only from capabilities.tsv. An optional
+    # backend_check_available function reports whether the executor exists on
+    # this host; backend_compile must never turn a supported case into a skip.
     . "$adapter"
     test -n "${BACKEND_NAME-}" || {
         printf '%s\n' "conformance: adapter has no BACKEND_NAME: $adapter" >&2
         exit 2
     }
-    test -n "${BACKEND_CORPORA-}" || {
+    test "$BACKEND_NAME" = "$adapter_name" || {
         printf '%s\n' \
-            "conformance: adapter has no BACKEND_CORPORA: $adapter" >&2
+            "conformance: adapter identity mismatch: $adapter_name declares $BACKEND_NAME" >&2
         exit 2
     }
-    supports_corpus=false
-    for supported in $BACKEND_CORPORA; do
-        if test "$supported" = "$CORPUS_NAME"; then
-            supports_corpus=true
-            break
-        fi
-    done
-    if test "$supports_corpus" != true; then
+    capability_state=$(manifest_field "$BACKEND_NAME" "$CORPUS_NAME" 3)
+    if test "$capability_state" = unsupported; then
+        capability_reason=$(manifest_field "$BACKEND_NAME" "$CORPUS_NAME" 5)
         printf '%s\n' \
-            "UNSUPPORTED [$BACKEND_NAME] corpus $CORPUS_NAME"
+            "UNSUPPORTED [$BACKEND_NAME] corpus $CORPUS_NAME: $capability_reason"
         exit 125
     fi
+    test "$capability_state" = supported || {
+        printf '%s\n' \
+            "conformance: no valid capability for $BACKEND_NAME / $CORPUS_NAME" >&2
+        exit 2
+    }
     command -v backend_compile >/dev/null 2>&1 || {
         printf '%s\n' "conformance: adapter has no backend_compile: $adapter" >&2
         exit 2
@@ -46,6 +71,36 @@ run_backend() (
 
     work=$(mktemp -d "${TMPDIR:-/tmp}/kofun-conformance.XXXXXX")
     trap 'rm -rf "$work"' 0 1 2 15
+
+    if command -v backend_check_available >/dev/null 2>&1; then
+        set +e
+        backend_check_available \
+            >"$work/availability.stdout" 2>"$work/availability.stderr"
+        availability_status=$?
+        set -e
+        if test "$availability_status" -eq 125; then
+            if test ! -s "$work/availability.stdout" &&
+               test ! -s "$work/availability.stderr"
+            then
+                printf '%s\n' \
+                    "FAIL [$BACKEND_NAME] executor unavailable without diagnostic"
+                exit 1
+            fi
+            printf '%s\n' \
+                "UNAVAILABLE [$BACKEND_NAME] executor for corpus $CORPUS_NAME"
+            sed 's/^/  /' \
+                "$work/availability.stdout" "$work/availability.stderr"
+            exit 125
+        fi
+        if test "$availability_status" -ne 0; then
+            printf '%s\n' \
+                "FAIL [$BACKEND_NAME] executor availability check failed"
+            sed 's/^/  /' \
+                "$work/availability.stdout" "$work/availability.stderr"
+            exit 1
+        fi
+    fi
+
     passed=0
     failed=0
     skipped=0
@@ -86,18 +141,11 @@ run_backend() (
         set -e
 
         if test "$compile_status" -eq 125; then
-            if test ! -s "$case_work/compile.stdout" &&
-               test ! -s "$case_work/compile.stderr"
-            then
-                printf '%s\n' \
-                    "FAIL [$BACKEND_NAME] $source (unsupported without diagnostic)"
-                failed=$((failed + 1))
-            else
-                printf '%s\n' "SKIP [$BACKEND_NAME] $source"
-                sed 's/^/  /' \
-                    "$case_work/compile.stdout" "$case_work/compile.stderr"
-                skipped=$((skipped + 1))
-            fi
+            printf '%s\n' \
+                "FAIL [$BACKEND_NAME] $source (supported capability returned status 125)"
+            sed 's/^/  /' \
+                "$case_work/compile.stdout" "$case_work/compile.stderr"
+            failed=$((failed + 1))
             continue
         fi
         if test "$compile_status" -ne 0 || test ! -x "$case_work/program"; then

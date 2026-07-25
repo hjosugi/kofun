@@ -1,4 +1,8 @@
 # Registry marker for the Text corpus.
+fn expected_cases() -> Int {
+    return 21
+}
+
 fn corpus_name() -> Text {
     return "text"
 }

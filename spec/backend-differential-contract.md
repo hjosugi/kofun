@@ -30,28 +30,40 @@ defines its name and compile command; the common runner discovers it
 automatically. A backend must not copy, filter, or replace the corpus with a
 private suite.
 
+`tests/conformance/capabilities.tsv` is the sole backend/corpus capability
+authority. It contains exactly one `supported` or `unsupported` row for every
+discovered adapter and registered corpus. Supported rows name an evidence
+path. Unsupported rows carry a stable reason. The executable validator rejects
+missing, duplicate, unknown, contradictory, and reasonless rows. Adapters and
+corpus expectation files must not carry independent backend lists.
+
 The numeric Core corpus is `tests/conformance/numeric/`. Its Kofun manifest,
 `expectations.kofun`, exposes the same observations to future Kofun-native
-tooling. The active numeric adapters are `c11-stage1` and `wasm32-node`.
-Future native adapters must consume the same `.kofun` programs.
+tooling. Every backend marked supported for numeric consumes the same
+`.kofun` programs.
 
 ## Unsupported cases and coverage
 
-A backend may mark a case `unsupported` only after compilation returns an
-explicit unsupported-feature diagnostic. Unsupported cases are skips, not
-passes. A missing observation, crash, signal termination, timeout, or empty
-adapter result is a failure.
+A backend/corpus pair may be `unsupported` only in the canonical manifest,
+with a stable reason. Unsupported policy is corpus-level and is not counted as
+executed coverage. Once a pair is `supported`, a case-level skip or adapter
+status 125 is a failure, as are a missing observation, zero executed cases,
+crash, signal termination, timeout, or empty adapter result.
+
+Target capability is independent from executor availability. An adapter may
+define an availability check for an external executor such as
+`qemu-aarch64`. The runner reports that host condition as `UNAVAILABLE`
+without rewriting the target's manifest state.
 
 Every run prints:
 
 ```text
-PASSED passed; FAILED failed; SKIPPED explicitly skipped
+PASSED passed; FAILED failed; 0 explicitly skipped
 coverage: EXECUTED/TOTAL cases executed by BACKEND
 ```
 
-The detailed report lists every skipped case and its compile diagnostic.
-This makes lost coverage visible when an existing backend regresses or a new
-backend is registered.
+This makes lost coverage a gate failure when an existing supported backend
+regresses or a new backend is registered.
 
 The common runner treats missing executables, crashes, signals, and timeouts as
 failures. It compares output files with `cmp` so trailing newlines and empty
