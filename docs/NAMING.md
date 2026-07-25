@@ -35,3 +35,60 @@ For the final name, prefer a short coined word that satisfies the following.
 - Package namespace can be secured
 
 This ZIP does not fix the name, and is set up so that namespace changes inside the compiler can be applied in bulk.
+
+## Callable type notation
+
+Callable types use `->` everywhere:
+
+```kofun
+Int -> Text
+(Int, Text) -> Bool
+() -> Int
+```
+
+The notation describes a fixed, exact arity. `(A, B) -> R` takes two
+arguments, while `Tuple[A, B] -> R` takes one tuple argument. `A -> (B -> R)`
+takes one argument and returns another callable; calls are never implicitly
+curried, uncurried, partially applied, or converted to and from tuple
+arguments.
+
+The historical `Fn[...]` spelling is removed, not retained as an alias.
+Migration tooling must give a targeted replacement from `Fn[A, R]` to
+`A -> R` and from a historical multi-argument `Fn[A, B, R]` to
+`(A, B) -> R`. After migration, `Fn` is an ordinary available identifier.
+
+Function declarations keep the same arrow before their result:
+
+```kofun
+fn render(value: Input) -> Text
+```
+
+A Go-style bare result type is not an alternative spelling. Keeping `->` in
+declarations and callable types gives one notation without introducing
+implicit currying.
+
+## Trait terminology
+
+The public abstraction keyword is `trait`, and an implementation is written
+with `impl`. This terminology is fixed independently of the project's working
+name.
+
+`trait` means a statically resolved contract whose implementation is selected
+at compile time and lowered through a dictionary. It does not imply runtime
+interface lookup, dynamic message dispatch, or import-order selection.
+
+The alternatives are rejected for the M2-alpha language:
+
+- `protocol` would rename the existing syntax and documentation without
+  changing the semantics, and can suggest runtime protocol dispatch;
+- `interface` commonly suggests declaration-site conformance or dynamic
+  dispatch, while Kofun deliberately permits coherent retroactive
+  implementations when either the trait or the outer nominal type is local;
+  and
+- unrestricted retroactive conformance is not assigned another keyword. It is
+  rejected by the orphan and overlap rules in
+  [`TYPE_SYSTEM.md`](TYPE_SYSTEM.md).
+
+Changing `trait` or `impl` is an edition-level language migration. A
+documentation, editor, or formatter surface must not use `protocol` or
+`interface` as an alias.

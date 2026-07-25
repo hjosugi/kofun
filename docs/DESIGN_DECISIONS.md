@@ -82,15 +82,44 @@ Do not claim C/Rust parity without workload-specific benchmarks. Build unboxed n
 
 ## DD-016: Algebraic laws are compiler artifacts
 
-Abstractions such as `Monad` are not considered complete from method signatures alone. Source-level `law` declarations are checked after type checking, and a failure is a compile error.
+Keep `law` as the standard term, but recognize it contextually rather than
+reserving it globally. `Monad`, `Monoid`, and other family names are ordinary
+library identifiers and never select compiler family-specific code.
+
+The source model has three distinct structures: a law family containing typed
+operations and equations, a named implementation supplying those operations,
+and a named `check laws` request supplying domains, equality, assurance, and a
+budget. V1 substitutes ground types before evaluation and does not require
+higher-kinded types. A law failure fails the normal check/build path.
 
 ## DD-017: Evidence levels are never conflated
 
-Treat `bounded-exhaustive`, `proven-finite`, and `proven` as separate assurance levels. Sampled checking is never presented as universal proof, and the optimizer and CI state the minimum assurance explicitly.
+Treat `bounded-exhaustive`, `proven-finite`, and `proven` as separate assurance
+levels. A finite sample can yield only `bounded-exhaustive`.
+`proven-finite` requires compiler-certified complete finite carriers, complete
+total-function spaces where used, and certified typed equality. `proven` is
+reserved for a future trusted proof kernel. The engine computes assurance; a
+requested minimum is only a build gate.
+
+Search order and shrinking are deterministic. Equation/parameter/domain order
+defines Cartesian enumeration; a failure is shrunk by structural size,
+canonical encoded length, then canonical bytes. Evaluation and shrinking share
+the same versioned resource budget and require an empty effect set.
 
 ## DD-018: Versioned machine-readable law evidence
 
-A law result can be stored as a `kofun.law-evidence/v1` JSON artifact. It includes the source hash, compiler version, model digest, case count, diagnostics, and counterexamples.
+The accepted target artifact is the deliberately incompatible
+`kofun.law-evidence/v2`. Its purpose-separated evaluation-cache and evidence
+SHA-256 identities bind compiler/evaluator semantics, law and ground types,
+normalized equations, implementation and dependency digests, ordered domains,
+equality, the `kofun.law-eval/standard-v1` budget, enumeration version, cases,
+computed assurance, outcome, and canonical counterexample. Requested assurance,
+display paths, and wall time do not change the reusable result identity.
+
+Failed, stale, weaker, wrong-model, wrong-ground-type, or
+dependency-mismatched evidence cannot authorize an optimization or cache hit.
+The old `kofun.law-evidence/v1` JSON schema remains historical migration
+material and is never silently interpreted as v2.
 
 ## DD-019: Self-hosting means a fixed point
 

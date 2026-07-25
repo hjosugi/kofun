@@ -70,6 +70,56 @@ Inference covers:
 
 For public APIs, annotations are recommended for stability and documentation.
 
+## Callable types
+
+Every callable has a fixed, exact arity. The canonical forms are:
+
+```kofun
+Int -> Text
+(Int, Text) -> Bool
+() -> Int
+Int -> (Text -> Bool)
+Tuple[Int, Text] -> Bool
+```
+
+`A -> R` is unary, `(A, B) -> R` is binary, and `() -> R` is nullary.
+`A -> (B -> R)` is a unary callable whose result is another callable.
+`Tuple[A, B] -> R` is also unary: its one argument is a tuple. These types are
+distinct, and the type checker performs no implicit currying, partial
+application, curry/uncurry conversion, or tuple/parameter-list conversion.
+
+The callable type of a declaration follows its written parameter list
+exactly:
+
+```kofun
+fn add(left: Int, right: Int) -> Int
+# callable type: (Int, Int) -> Int
+```
+
+Calling `add(1)` is therefore an arity error. Partial application is written
+explicitly with a function value.
+
+`->` is the lowest-precedence type operator and associates to the right.
+`A -> B?` parses as `A -> (B?)`, while `(A -> B)?` is an optional callable.
+Writing `A -> (B -> R)` makes the callable-valued result explicit; it is not
+equivalent to `(A, B) -> R`.
+
+Parameter ownership modes participate in callable type identity:
+
+```kofun
+read File -> Metadata
+(edit Buffer, take Request) -> Response
+```
+
+An omitted mode is value mode. Parameter names are documentation at the
+declaration and are excluded from callable type identity in v1.
+
+The historical `Fn[...]` form is removed rather than kept as an alias.
+Migration diagnostics must provide a targeted fix from `Fn[A, R]` to
+`A -> R` and from historical multi-argument forms to `(A, B, ...) -> R`.
+Once migrated, `Fn` is an ordinary identifier. Function declarations retain
+`->` before the result type; a bare Go-style result type is rejected.
+
 ## Numeric conversion
 
 Planned rules:
@@ -233,15 +283,150 @@ trait Iterator[I, Item] {
 }
 ```
 
-Features:
+`trait` is the only public keyword for this abstraction. It describes a
+compile-time contract and statically selected dictionary, not a runtime
+interface or message-dispatch object. `protocol` and `interface` are not
+aliases.
 
-- generic traits
-- associated types
-- default methods
-- auto traits for send/share/copy
-- coherence
-- orphan rule
-- specialization is explicit and limited
+### Coherence and orphan rule
+
+For an implementation of the form:
+
+```kofun
+impl Trait[Arguments] for SelfType {
+    # methods
+}
+```
+
+the implementing package must own either the trait or the outer nominal type
+constructor of `SelfType`.
+
+Ownership is based on stable declaration identity:
+
+- a package owns a trait only when it declares that trait;
+- a package owns a type only when it declares its outer nominal constructor;
+- importing or re-exporting a declaration does not transfer ownership;
+- a type alias does not create ownership;
+- primitive types and imported C or Rust ABI types are foreign; and
+- a locally declared nominal wrapper is local, even when its field or generic
+  argument is foreign.
+
+Generic arguments do not decide ownership. If the current package declares
+`LocalBox[T]`, then `LocalBox[foreign.Handle]` is local because its outer
+nominal constructor is `LocalBox`.
+
+The resulting matrix is:
+
+| Trait | Outer nominal type | Result |
+| --- | --- | --- |
+| local | local | accepted |
+| local | foreign | accepted |
+| foreign | local | accepted |
+| foreign | foreign | rejected; introduce a local nominal wrapper |
+
+A fully resolved trait/self tuple has at most one applicable implementation
+across the complete dependency graph. Duplicate or overlapping candidates are
+compile errors when declarations or dependency interfaces are combined.
+Lexical order, import order, link order, and runtime state never choose a
+winner.
+
+M2-alpha rejects blanket implementations, negative implementations,
+specialization, and ordered fallback. These forms must fail explicitly rather
+than acquire provisional precedence. A later specialization design must be
+versioned, preserve coherent dictionary identity, and leave programs with no
+specialization semantically unchanged.
+
+### Visibility and exported APIs
+
+M2-alpha has no private, package-local, or lexical `impl` candidate. An
+accepted implementation participates in dependency-graph coherence; hiding it
+cannot create local precedence.
+
+An exported signature may mention only public traits and public nominal types
+under the normal visibility rules. A trait bound is part of that signature,
+not an implementation detail. An implementation absent from the
+consumer-visible semantic interface cannot satisfy a consumer's bound or
+change how the consumer type-checks an exported API.
+
+Visibility does not cause runtime implementation lookup. The compiler selects
+one implementation from validated semantic interfaces and passes its
+statically shaped dictionary.
+
+### Worked examples
+
+These examples state the design contract; traits are not yet accepted by the
+active compiler.
+
+```kofun
+# This package owns Printable, so a foreign type may implement it.
+trait Printable[T] {
+    fn print_value(read value: T) -> Text
+}
+
+impl Printable[dependency.Widget] for dependency.Widget {
+    # accepted: local trait
+}
+
+# This package owns LocalWidget, so it may implement a foreign trait.
+type LocalWidget = {
+    value: dependency.Widget,
+}
+
+impl dependency.Hash[LocalWidget] for LocalWidget {
+    # accepted: local outer nominal type
+}
+```
+
+The following direct implementation is rejected because both identities are
+foreign:
+
+```kofun
+impl dependency.Hash[ffi.Handle] for ffi.Handle {
+    # error: foreign trait for foreign type
+}
+```
+
+The remedy is a local nominal wrapper, not an alias:
+
+```kofun
+type LocalHandle = {
+    raw: ffi.Handle,
+}
+
+impl dependency.Hash[LocalHandle] for LocalHandle {
+    # accepted: LocalHandle is local
+}
+```
+
+If the trait-owning package and the type-owning package both publish an
+implementation for the same fully resolved tuple, a consumer that combines
+those interfaces reports overlap. Reordering the imports cannot select either
+candidate.
+
+### Implementation and law evidence identity
+
+The selected dictionary is keyed by a stable `ImplementationId`. Its semantic
+identity covers the implementing package, trait identity and canonical
+arguments, canonical self type including its outer nominal identity and
+arguments, implementation declaration/binders/constraints, and coherence
+mode. The dictionary ABI version is carried with that identity in compiler
+artifacts and cache keys. Source location, source order, import order, and
+discovery order do not participate.
+
+Trait declarations own their laws. Evidence for those laws is stored in a
+separate versioned artifact and names the exact selected
+`ImplementationId`. `LawEvidenceId` also commits to the law declaration,
+evidence contract version, quantified type arguments, and semantic evidence
+digest. Evidence for one implementation cannot be reused for a different
+implementation merely because the surface types or method bodies look equal.
+The assurance levels `bounded-exhaustive`, `proven-finite`, and `proven`
+remain distinct.
+
+Planned trait capabilities include generic traits, associated types, default
+methods, and auto traits for send/share/copy. They do not weaken the coherence
+rules above. The first implementation slice remains the concrete,
+non-overlapping frontend described in
+[`../spec/roadmap-31-34/generics-and-traits.md`](../spec/roadmap-31-34/generics-and-traits.md).
 
 ## Effects
 
@@ -250,9 +435,9 @@ Ordinary function syntax is kept, while the effect row is inferred.
 Conceptual types:
 
 ```text
-fn parse(Text) -> User
-fn load(Path) -> User ! {io, error[FsError]}
-fn fetch(Url) -> User ! {async, io, error[HttpError]}
+Text -> User
+Path -> User ! {io, error[FsError]}
+Url -> User ! {async, io, error[HttpError]}
 ```
 
 Effect annotations do not have to be written every time in source. They can be stated explicitly for public APIs, trait contracts, and no-effect guarantees.
@@ -335,7 +520,8 @@ Implemented:
 
 Not implemented:
 
-- typed `law monad` declarations and compiler-integrated law checking
+- typed law-family, law-implementation, and law-check declarations
+- compiler-integrated finite-model law evaluation and evidence emission
 - active assurance checking for `bounded-exhaustive` or `proven-finite`
 - user-defined generics
 - ADTs, match
@@ -349,7 +535,8 @@ Not implemented:
 - higher-kinded types and lawful traits
 - generic proof terms and trusted proof kernel
 
-Historical Monad examples and JSON artifacts document an earlier bounded
-prototype, but the active CLI rejects the law syntax. Issue
-[#551](https://github.com/hjosugi/kofun/issues/551) tracks a concrete-first
-replacement without making a higher-kinded type system a prerequisite.
+Historical `law monad` examples and v1 JSON artifacts document an earlier
+bounded prototype, but the active CLI rejects that syntax. The accepted
+concrete-first replacement is documented in
+[`LAW_SYSTEM.md`](LAW_SYSTEM.md); its parser, evaluator, and v2 evidence
+emitter remain unimplemented and do not require higher-kinded types.

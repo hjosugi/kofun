@@ -65,8 +65,8 @@ List[Text]
 
 kofun> :operations languages
 std.list.length(read List[T]) -> Int
-std.list.map(read List[T], fn(T) -> U) -> List[U]
-std.list.filter(read List[T], fn(read T) -> Bool) -> List[T]
+std.list.map(read List[T], T -> U) -> List[U]
+std.list.filter(read List[T], read T -> Bool) -> List[T]
 ```
 
 An editor may display the same rows after `languages.`. A CLI may query a file,

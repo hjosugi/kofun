@@ -64,13 +64,29 @@ The v1 domains are:
 | AliasBindingId | `kofun.id.alias-binding/v1` |
 | ExportBindingId | `kofun.id.export-binding/v1` |
 | ImplementationId | `kofun.id.implementation/v1` |
-| LawEvidenceId | `kofun.id.law-evidence/v1` |
+| LawEvidenceId (historical v1) | `kofun.id.law-evidence/v1` |
 | public semantic digest | `kofun.digest.public-semantic/v1` |
 | package-internal semantic digest | `kofun.digest.package-internal/v1` |
 | target ABI digest | `kofun.digest.target-abi/v1` |
 
 Domains are protocol constants. They are not user-provided text and cannot be
 aliased. Changing field meaning or canonical encoding requires a new domain.
+
+The accepted target law-evidence design does not reinterpret that historical
+domain. It adds two purpose-separated v2 domains using the same framed SHA-256
+construction:
+
+| Identity/value | Domain |
+| --- | --- |
+| law evaluation cache key | `kofun.cache.law-evaluation/v2` |
+| LawEvidenceId (target v2) | `kofun.id.law-evidence/v2` |
+
+The cache key binds semantic evaluation inputs. The v2 `LawEvidenceId` binds
+that cache key plus the completed outcome. Neither digest can be substituted
+for the other, and neither may be decoded or accepted as the historical v1
+identity. The exact target fields are defined by
+[`law-evidence-v2.schema.json`](../law-evidence-v2.schema.json). No active
+compiler emits either v2 identity yet.
 
 ## Identity hierarchy
 
@@ -114,10 +130,17 @@ The remaining identity payloads are canonical KIF records:
   or intrinsic-trait tag, canonical self `TypeRef`, ordered generic binder
   identities, canonical constraints, and coherence-mode tag. Source location
   and discovery order are excluded.
-- `LawEvidenceId` contains the law declaration `SymbolId`, subject
+- Historical v1 `LawEvidenceId` contains the law declaration `SymbolId`, subject
   `ImplementationId`, evidence-contract version, canonical quantified type
   arguments, and the semantic evidence digest. Evaluator trace, timing, and
   diagnostic presentation are excluded.
+- Target v2 first computes the law evaluation cache key from compiler/evaluator
+  semantics, package/module/law identity, ground type substitution, normalized
+  typed equations, implementation and transitive dependency digests, ordered
+  domains, typed equality, budget profile, and enumeration algorithm. V2
+  `LawEvidenceId` then binds that cache key plus cases checked, computed
+  assurance, outcome, resource use, and canonical counterexample. Requested
+  assurance, display paths, and wall time are excluded from both identities.
 
 Declaration-kind, import-form, visibility, coherence, type, constraint,
 effect, ownership, and evidence tags are stable unsigned integers owned by

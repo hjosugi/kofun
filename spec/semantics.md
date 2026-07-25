@@ -72,9 +72,59 @@ Top-level function headers are collected before bodies are checked, enabling rec
 
 ## Law declarations
 
-`law monad` is compile-time-only. It cannot execute ordinary I/O. The compiler checks left identity, right identity, and associativity over the declared finite model. `bounded-exhaustive` is not a universal proof. `proven-finite` is emitted only for compiler-certified complete finite carriers and complete total-function spaces.
+This section is a normative target, not an implemented Stage 0 capability. The
+active compiler rejects the retained historical `law monad` syntax with
+`E2S02` and emits no law evidence.
 
-Law evidence may be serialized as `kofun.law-evidence/v1`. The artifact binds results to the source SHA-256 and compiler version. A caller may require a minimum assurance; a declared law below that level is rejected with `L200`.
+`law` contextually introduces a generic law family. A family contains typed
+operation requirements and named equations. `Monad`, `Monoid`, and every other
+family name is an ordinary library identifier; no family selects a
+compiler-specific evaluator branch.
+
+One named `impl Name: Family[GroundTypes]` supplies the operations for a ground
+instantiation. One named `check laws Name` supplies typed finite domains,
+typed observational equality, a required assurance, and an evaluation budget.
+The first executable profile substitutes only ground types. It does not
+quantify over type constructors or require higher-kinded types.
+
+Equation parameters universally quantify over their named domains. Law-family
+equation order, equation parameter order, domain declaration order, and
+canonical value order determine Cartesian case enumeration. The first failing
+case is shrunk deterministically by structural size, canonical encoded length,
+then canonical encoded bytes. Search and shrinking consume the same budget.
+
+An explicit finite list is a sample and yields at most
+`bounded-exhaustive`. `all` is accepted only for a compiler-certified complete
+finite carrier. `all_functions(input, output)` is accepted only for two such
+domains and enumerates every total function. `proven-finite` applies only to
+the exact ground model and also requires certified typed equality. Function
+equality is extensional only over a certified complete input domain.
+`proven` is reserved for a future trusted proof kernel.
+
+Operations, equations, custom equality, enumeration, and shrinking require an
+empty effect set. The versioned `kofun.law-eval/standard-v1` profile limits a
+check to 100,000 planned cases, 10,000,000 evaluator steps, recursion depth
+256, 1,000,000 allocations, 64 MiB live heap, 1 MiB per rendered/serialized
+value, and 64 KiB total diagnostic text. A source budget may only reduce these
+caps. Cancellation is checked at least every 1,024 steps and emits no reusable
+evidence. Wall time may abort compilation but is not a semantic input.
+
+The target artifact is `kofun.law-evidence/v2`. Its evaluation cache key binds
+compiler/evaluator semantics, law and ground type identities, normalized typed
+equations, implementation and transitive dependency digests, ordered domains,
+equality, budget, and enumeration algorithm. Its evidence identity additionally
+binds cases checked, computed assurance, outcome, resource use, and canonical
+counterexample. Requested assurance is a gate rather than an evaluation
+identity input.
+
+Passing evidence requires every planned case to have been checked, a non-null
+computed assurance, and no counterexample. A failed law may record its
+canonical counterexample but has no assurance or reusable authority.
+
+A consumer must reject failed, cancelled, resource-exhausted,
+forbidden-effect, stale, weaker, wrong-model, wrong-ground-type, or
+dependency-mismatched evidence. Historical `kofun.law-evidence/v1` artifacts
+remain identifiable migration material and are never accepted as v2.
 
 ## Backends
 

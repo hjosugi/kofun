@@ -1,0 +1,759 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kofun-lang.invalid/spec/law-evidence-v2.schema.json",
+  "title": "Kofun law evidence v2",
+  "description": "Target schema. No active Kofun compiler emits this artifact yet.",
+  "type": "object",
+  "required": [
+    "schema",
+    "identities",
+    "compiler",
+    "subject",
+    "model",
+    "evaluation",
+    "result"
+  ],
+  "properties": {
+    "schema": {
+      "const": "kofun.law-evidence/v2"
+    },
+    "identities": {
+      "type": "object",
+      "required": [
+        "evaluation_cache_key",
+        "evidence"
+      ],
+      "properties": {
+        "evaluation_cache_key": {
+          "$ref": "#/$defs/evaluationCacheKey"
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidenceIdentity"
+        }
+      },
+      "additionalProperties": false
+    },
+    "compiler": {
+      "type": "object",
+      "required": [
+        "name",
+        "semantic_version",
+        "semantics_sha256",
+        "evaluator_version",
+        "evidence_abi"
+      ],
+      "properties": {
+        "name": {
+          "const": "Kofun"
+        },
+        "semantic_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "semantics_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "evaluator_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "evidence_abi": {
+          "const": "kofun.law-evidence/v2"
+        }
+      },
+      "additionalProperties": false
+    },
+    "subject": {
+      "type": "object",
+      "required": [
+        "package_id",
+        "module_id",
+        "law_declaration_id",
+        "law_name",
+        "ground_types",
+        "normalized_equations_sha256",
+        "implementation"
+      ],
+      "properties": {
+        "package_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "module_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "law_declaration_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "law_name": {
+          "$ref": "#/$defs/name"
+        },
+        "ground_types": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "slot",
+              "type_id",
+              "canonical_type"
+            ],
+            "properties": {
+              "slot": {
+                "$ref": "#/$defs/name"
+              },
+              "type_id": {
+                "$ref": "#/$defs/sha256"
+              },
+              "canonical_type": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              }
+            },
+            "additionalProperties": false
+          },
+          "maxItems": 256
+        },
+        "normalized_equations_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "implementation": {
+          "type": "object",
+          "required": [
+            "implementation_id",
+            "trait_implementation_id",
+            "interface_sha256",
+            "body_sha256",
+            "transitive_dependency_digests"
+          ],
+          "properties": {
+            "implementation_id": {
+              "$ref": "#/$defs/sha256"
+            },
+            "trait_implementation_id": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/sha256"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "interface_sha256": {
+              "$ref": "#/$defs/sha256"
+            },
+            "body_sha256": {
+              "$ref": "#/$defs/sha256"
+            },
+            "transitive_dependency_digests": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/sha256"
+              },
+              "uniqueItems": true,
+              "maxItems": 65536
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "model": {
+      "type": "object",
+      "required": [
+        "domains",
+        "equalities",
+        "budget",
+        "enumeration_algorithm",
+        "shrinking_algorithm"
+      ],
+      "properties": {
+        "domains": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/domain"
+          },
+          "maxItems": 256
+        },
+        "equalities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/equality"
+          },
+          "maxItems": 256
+        },
+        "budget": {
+          "$ref": "#/$defs/budget"
+        },
+        "enumeration_algorithm": {
+          "const": "kofun.law-cartesian/v1"
+        },
+        "shrinking_algorithm": {
+          "const": "kofun.law-structural-shrink/v1"
+        }
+      },
+      "additionalProperties": false
+    },
+    "evaluation": {
+      "type": "object",
+      "required": [
+        "cases_planned",
+        "cases_checked",
+        "evaluator_steps",
+        "max_recursion_depth",
+        "allocations",
+        "peak_live_heap_bytes",
+        "max_value_bytes",
+        "diagnostic_bytes",
+        "cancellation_check_interval_steps"
+      ],
+      "properties": {
+        "cases_planned": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cases_checked": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evaluator_steps": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_recursion_depth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "allocations": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "peak_live_heap_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_value_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "diagnostic_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cancellation_check_interval_steps": {
+          "const": 1024
+        }
+      },
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "status",
+        "assurance",
+        "reusable",
+        "outcome_sha256",
+        "counterexample",
+        "diagnostics"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "resource-exhausted",
+            "forbidden-effect",
+            "cancelled"
+          ]
+        },
+        "assurance": {
+          "oneOf": [
+            {
+              "enum": [
+                "bounded-exhaustive",
+                "proven-finite",
+                "proven"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reusable": {
+          "type": "boolean"
+        },
+        "outcome_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "counterexample": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/counterexample"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/diagnostic"
+          },
+          "maxItems": 4096
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "not": {
+                  "const": "passed"
+                }
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reusable": {
+                "const": false
+              },
+              "assurance": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "passed"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "assurance": {
+                "enum": [
+                  "bounded-exhaustive",
+                  "proven-finite",
+                  "proven"
+                ]
+              },
+              "reusable": {
+                "const": true
+              },
+              "counterexample": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "failed"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "counterexample": {
+                "$ref": "#/$defs/counterexample"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "resource-exhausted",
+                  "forbidden-effect",
+                  "cancelled"
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "counterexample": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "policy": {
+      "description": "Build policy metadata. It is not part of the evaluation cache key.",
+      "type": "object",
+      "required": [
+        "requested_assurance",
+        "requirement_met"
+      ],
+      "properties": {
+        "requested_assurance": {
+          "oneOf": [
+            {
+              "enum": [
+                "bounded-exhaustive",
+                "proven-finite",
+                "proven"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "requirement_met": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "metadata": {
+      "description": "Display-only fields excluded from both semantic digests.",
+      "type": "object",
+      "properties": {
+        "logical_source_path": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "wall_elapsed_ms": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "evaluationCacheKey": {
+      "type": "object",
+      "required": [
+        "domain",
+        "algorithm",
+        "sha256"
+      ],
+      "properties": {
+        "domain": {
+          "const": "kofun.cache.law-evaluation/v2"
+        },
+        "algorithm": {
+          "const": "sha256"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      },
+      "additionalProperties": false
+    },
+    "evidenceIdentity": {
+      "type": "object",
+      "required": [
+        "domain",
+        "algorithm",
+        "sha256"
+      ],
+      "properties": {
+        "domain": {
+          "const": "kofun.id.law-evidence/v2"
+        },
+        "algorithm": {
+          "const": "sha256"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      },
+      "additionalProperties": false
+    },
+    "domain": {
+      "type": "object",
+      "required": [
+        "name",
+        "type_id",
+        "canonical_type",
+        "declaration_order",
+        "origin",
+        "canonical_values_sha256",
+        "input_domain",
+        "output_domain"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "type_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "canonical_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "declaration_order": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "origin": {
+          "enum": [
+            "explicit-sample",
+            "certified-all",
+            "certified-all-functions"
+          ]
+        },
+        "canonical_values_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "input_domain": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 1024
+        },
+        "output_domain": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 1024
+        }
+      },
+      "additionalProperties": false
+    },
+    "equality": {
+      "type": "object",
+      "required": [
+        "type_id",
+        "canonical_type",
+        "kind",
+        "equality_id",
+        "interface_sha256",
+        "body_sha256",
+        "equivalence_certification_sha256"
+      ],
+      "properties": {
+        "type_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "canonical_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "kind": {
+          "enum": [
+            "compiler-structural",
+            "custom"
+          ]
+        },
+        "equality_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "interface_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "body_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "equivalence_certification_sha256": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "budget": {
+      "type": "object",
+      "required": [
+        "profile",
+        "planned_cases",
+        "evaluator_steps",
+        "recursion_depth",
+        "allocations",
+        "live_heap_bytes",
+        "value_bytes",
+        "diagnostic_bytes"
+      ],
+      "properties": {
+        "profile": {
+          "const": "kofun.law-eval/standard-v1"
+        },
+        "planned_cases": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "evaluator_steps": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000000
+        },
+        "recursion_depth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "allocations": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "live_heap_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 67108864
+        },
+        "value_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576
+        },
+        "diagnostic_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        }
+      },
+      "additionalProperties": false
+    },
+    "counterexample": {
+      "type": "object",
+      "required": [
+        "equation_id",
+        "canonical_sha256",
+        "bindings",
+        "left",
+        "right",
+        "shrink_steps"
+      ],
+      "properties": {
+        "equation_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "canonical_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "bindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/boundValue"
+          },
+          "maxItems": 256
+        },
+        "left": {
+          "$ref": "#/$defs/canonicalValue"
+        },
+        "right": {
+          "$ref": "#/$defs/canonicalValue"
+        },
+        "shrink_steps": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "boundValue": {
+      "type": "object",
+      "required": [
+        "name",
+        "type_id",
+        "value"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "type_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "value": {
+          "$ref": "#/$defs/canonicalValue"
+        }
+      },
+      "additionalProperties": false
+    },
+    "canonicalValue": {
+      "type": "object",
+      "required": [
+        "encoding",
+        "sha256",
+        "display"
+      ],
+      "properties": {
+        "encoding": {
+          "const": "kofun.canonical-value/v1"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "display": {
+          "type": "string",
+          "maxLength": 1048576
+        }
+      },
+      "additionalProperties": false
+    },
+    "diagnostic": {
+      "type": "object",
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "pattern": "^L[0-9]{3}$"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 65536
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

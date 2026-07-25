@@ -36,8 +36,15 @@ executable bootstrap implementation.
   validator, negative corpus, replacement model, and executable gate.
 - `../tooling/typed-sidecar/` implements the bounded, recursively immutable
   tooling codec and stale-safe atomic replacement without granting authority.
-- `law-evidence.schema.json` defines the machine-readable
-  `kofun.law-evidence/v1` artifact.
+- `law-evidence-v2.schema.json` defines the accepted target
+  `kofun.law-evidence/v2` artifact, including purpose-separated cache/evidence
+  identities, ground law/implementation/model inputs, standard-v1 resource
+  caps, computed assurance, and canonical counterexamples. No active compiler
+  emits it yet.
+- `law-evidence.schema.json` defines the historical
+  `kofun.law-evidence/v1` prototype artifact. It remains available only for
+  explicit identification and migration; it is not an active compiler,
+  optimizer, cache, or release contract and must never be interpreted as v2.
 
 Design-only material in `docs/` is not normative until it is promoted here
 with conformance evidence. The specification is versioned independently from

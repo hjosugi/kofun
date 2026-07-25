@@ -130,40 +130,55 @@ environment bytes are still untrusted terminal output. See
 
 ## Compile-time law execution
 
-The active compiler does not execute `law monad`; it rejects the syntax with
-`E2S02`. There is therefore no active law-evaluator attack surface or release
-gate. The removed Stage 0 prototype did evaluate user functions during
-compilation, and the controls below record its historical threat model and
-requirements for any future replacement under
-[#551](https://github.com/hjosugi/kofun/issues/551).
+The active compiler does not execute laws. It rejects the retained historical
+`law monad` examples with `E2S02`, so there is currently no active
+law-evaluator attack surface, evidence producer, optimizer input, or release
+gate.
 
-The historical evaluator denied ordinary I/O:
+The accepted replacement treats every operation, equation, custom equality,
+domain enumerator, and shrinker as untrusted compile-time logic. Each must have
+an empty effect set. Print/debug output, clock and time, randomness,
+environment and process arguments, file/network/process access, FFI, async
+work, and global mutation are denied. Possessing a runtime capability does not
+grant an exception.
 
-```text
-print: denied
-debug: denied
-clock: denied
-process args: denied
-file read/write: denied
-network: unavailable
-```
+The versioned `kofun.law-eval/standard-v1` sandbox has these hard caps:
 
-It also enforced a declared case budget with a default limit of 100,000. It did
-not provide a bytecode instruction budget, heap quota, or OS-level sandbox, so
-its untrusted law declarations were never a fully isolated workload. A future
-active evaluator must re-establish and test these limits before accepting
-untrusted law source.
+| Resource | Cap |
+| --- | ---: |
+| planned cases | 100,000 |
+| evaluator steps | 10,000,000 |
+| recursion depth | 256 |
+| allocations | 1,000,000 |
+| live heap | 64 MiB |
+| one rendered or serialized value | 1 MiB |
+| total diagnostic text | 64 KiB |
 
-The retained historical evidence scoped trust by assurance:
+A source-level custom budget may only reduce those caps. Cancellation is
+checked at least every 1,024 evaluator steps and emits no reusable evidence.
+A wall-clock watchdog may abort compilation, but wall time is not a semantic
+budget and cannot turn an incomplete run into evidence. Case, step, recursion,
+allocation/byte, forbidden-effect, cancellation, and insufficient-assurance
+failures have distinct stable diagnostics and fail the normal check/build
+path.
 
-- `bounded-exhaustive` proves only the declared finite model was traversed.
-- `proven-finite` is valid only for a compiler-certified complete finite carrier and complete total-function space.
-- `proven` is reserved for a future trusted proof kernel.
+`bounded-exhaustive` covers only the declared finite sample.
+`proven-finite` additionally requires compiler-certified complete finite
+carriers, complete total-function spaces where used, and certified typed
+equality. `proven` is reserved for a future trusted proof kernel.
 
-The retained JSON evidence includes a source SHA-256 and compiler version, but
-it is not digitally signed and is not emitted by the active compiler. Any
-future package integration must recompute it or verify signed build provenance
-before trusting third-party evidence.
+`kofun.law-evidence/v2` uses purpose-separated SHA-256 cache and evidence
+identities. Consumers must recompute the identities and validate compiler and
+evaluator versions, ground types, normalized equations, implementation and
+dependency digests, ordered domains, equality, budget, enumeration algorithm,
+outcome, assurance, and canonical counterexample. Display paths, wall time, and
+requested assurance are not semantic identity inputs. Failed, cancelled,
+resource-exhausted, forbidden-effect, stale, weaker, or dependency-mismatched
+evidence grants no compiler, optimizer, package, or cache authority.
+
+The retained `kofun.law-evidence/v1` schema is historical and must never be
+silently accepted as v2. Signature or provenance checks may strengthen
+distribution trust, but do not replace recomputation of semantic identity.
 
 ## Bootstrap security
 

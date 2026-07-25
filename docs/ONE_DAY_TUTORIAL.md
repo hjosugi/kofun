@@ -182,7 +182,8 @@ native subset:
 ./build/fibonacci
 ```
 
-Check the monad laws with the compiler:
+Historical prototype only — the following command and its `law monad` input
+are unsupported by the active compiler:
 
 ```bash
 ./bin/kofun laws examples/proven_optional_bool_monad.kofun \
@@ -190,8 +191,11 @@ Check the monad laws with the compiler:
   --output artifacts/optional-bool-monad.evidence.json
 ```
 
-For a broken implementation, counterexamples to left identity, right identity,
-and associativity become compile errors.
+The active compiler instead rejects that source with `E2S02`; it does not
+compute a counterexample or emit evidence. The accepted future design uses a
+contextual `law Family { ... }`, a named implementation, and a separate
+`check laws Name { ... }` request. It is an advanced assurance feature rather
+than first-day executable syntax. See [Law system](LAW_SYSTEM.md).
 
 ## First-day cheat sheet
 
@@ -211,8 +215,10 @@ value ?? fallback
 read T
 edit T
 take T
-law monad Name { ... }
 ```
+
+The historical `law monad Name { ... }` spelling is deliberately absent from
+the cheat sheet: it is unsupported and is not the accepted target syntax.
 
 ## What not to learn on day one
 

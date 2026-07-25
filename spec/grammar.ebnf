@@ -2,16 +2,45 @@
 
 program          = separators, { declaration, separators }, EOF ;
 
-declaration      = law_decl
+declaration      = law_family_decl
+                 | law_impl_decl
+                 | law_check_decl
                  | function_decl
                  | meta_function_decl
                  | statement ;
 
-law_decl         = "law", "monad", identifier, separators,
+(* The quoted words in these three productions are contextual in these
+   positions; Monad and other family names remain ordinary identifiers. *)
+law_family_decl  = "law", identifier, [ type_parameters ], separators,
                    "{", separators,
-                   { law_entry, separators, [ "," ], separators },
+                   { law_family_member, separators },
                    "}" ;
-law_entry        = identifier, "=", expression ;
+type_parameters  = "[", identifier, { ",", identifier }, "]" ;
+law_family_member = law_operation | law_equation ;
+law_operation    = "operation", identifier, "(", parameters, ")",
+                   "->", type_ref ;
+law_equation     = "equation", identifier, "(",
+                   law_quantifiers, ")", "=", expression ;
+law_quantifiers  = [ law_quantifier,
+                   { separators, ",", separators, law_quantifier },
+                   [ separators, "," ] ] ;
+law_quantifier   = identifier, ":", type_ref, "in", identifier ;
+
+law_impl_decl    = "impl", identifier, ":", nominal_type, separators,
+                   "{", separators,
+                   { law_impl_entry, separators, [ "," ], separators },
+                   "}" ;
+law_impl_entry   = identifier, "=", expression ;
+
+law_check_decl   = "check", "laws", identifier, separators,
+                   "{", separators,
+                   { law_check_entry, separators, [ "," ], separators },
+                   "}" ;
+law_check_entry  = "instance", "=", identifier
+                 | "domain", identifier, ":", type_ref, "=", expression
+                 | "equality", type_ref, "=", expression
+                 | "require", "assurance", "=", identifier
+                 | "budget", "=", identifier ;
 
 meta_function_decl = "meta", "fn", function_tail ;
 function_decl    = "fn", function_tail ;
@@ -23,9 +52,19 @@ parameters       = [ parameter, { separators, ",", separators, parameter } ] ;
 parameter        = [ "read" | "edit" | "take" ], identifier,
                    [ ":", type_ref ] ;
 
-type_ref         = identifier,
-                   [ "[", type_ref, { ",", type_ref }, "]" ],
-                   [ "?" ] ;
+type_ref         = function_type ;
+function_type    = optional_type
+                 | callable_domain, "->", function_type ;
+callable_domain  = [ "read" | "edit" | "take" ], optional_type
+                 | "(", ")"
+                 | "(", callable_parameter, ",", callable_parameter,
+                   { ",", callable_parameter }, [ "," ], ")" ;
+callable_parameter = [ "read" | "edit" | "take" ], optional_type ;
+optional_type    = primary_type, [ "?" ] ;
+primary_type     = nominal_type
+                 | "(", type_ref, ")" ;
+nominal_type     = identifier,
+                   [ "[", type_ref, { ",", type_ref }, "]" ] ;
 
 block            = "{", separators, { declaration_in_block, separators }, "}" ;
 declaration_in_block = function_decl | meta_function_decl | statement ;

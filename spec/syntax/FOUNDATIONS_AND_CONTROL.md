@@ -83,11 +83,18 @@ if else for in while break continue match
 true false null
 ```
 
-`law`, `monad`, and `meta` are also hard keywords in the broader language
-grammar. A hard keyword must not be used as an identifier. `else if` is two
-keywords, not a compound `elif` keyword. Built-in type names such as `Int`,
-`Bool`, and `Text`, and callable names such as `print`, are ordinary
-predeclared identifiers. No identifier-escape syntax is defined.
+`meta` is also a hard keyword in the broader language grammar. A hard keyword
+must not be used as an identifier. `else if` is two keywords, not a compound
+`elif` keyword. Built-in type names such as `Int`, `Bool`, and `Text`, and
+callable names such as `print`, are ordinary predeclared identifiers. No
+identifier-escape syntax is defined.
+
+`law` is a contextual top-level construct under the normative law design. It
+is not globally reserved. `monad` is never a keyword: `Monad`, `Monoid`, and
+other law-family names are ordinary library identifiers. `operation`,
+`equation`, the named colon form of `impl`, the two-word `check laws` form,
+`domain`, `equality`, `require assurance`, and `budget` are contextual only in
+their law-declaration positions.
 
 Adding a hard keyword is an edition-level compatibility change. A future
 feature should prefer a contextual word only when its position is already
@@ -208,6 +215,37 @@ ownership-mode := "read" | "edit" | "take"
 return-type    := "->" type
 function-body  := block | "=" expression
 ```
+
+A declaration's parameter list maps exactly to its callable type:
+
+```text
+fn source() -> R                      has type () -> R
+fn transform(value: A) -> R           has type A -> R
+fn combine(left: A, right: B) -> R    has type (A, B) -> R
+```
+
+Callable arity is exact. A call to `combine` with one argument is an arity
+error, not partial application. `(A, B) -> R` is a two-argument callable;
+`Tuple[A, B] -> R` is a one-argument callable whose argument is a tuple.
+Neither form converts to the other. `A -> (B -> R)` is a one-argument
+callable returning another callable and is distinct from both. Kofun performs
+no implicit currying, uncurrying, partial application, or tuple conversion.
+
+`->` has the lowest precedence in the type grammar and associates to the
+right. Thus `A -> B?` means `A -> (B?)`, whereas `(A -> B)?` is an optional
+callable. Zero parameters use `() -> R`; two or more parameters use the
+parenthesized, comma-separated domain.
+
+`read`, `edit`, and `take` are part of a callable parameter's type and appear
+before that parameter type, for example `read File -> Metadata` and
+`(read A, take B) -> R`. Parameter names do not participate in callable type
+identity in v1.
+
+The historical `Fn[...]` spelling is invalid and is not an alias. A diagnostic
+must offer a targeted rewrite from `Fn[A, R]` to `A -> R` and from historical
+multi-argument forms to a parenthesized fixed-arity domain. `Fn` remains
+available as an ordinary identifier. Named function declarations continue to
+spell their result as `-> type`; a bare result type is rejected.
 
 A declaration introduces its name in its enclosing declaration scope.
 Function headers in one scope are collected before bodies are resolved, so

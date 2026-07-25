@@ -225,9 +225,9 @@ implemented.
 Closure capture is classified into 3 kinds.
 
 ```kofun
-fn make_reader(read data: Bytes) -> fn() -> Int
-fn make_editor(edit data: Buffer) -> fn() -> Void
-fn make_owner(take data: Resource) -> fn() -> Void
+fn make_reader(read data: Bytes) -> (() -> Int)
+fn make_editor(edit data: Buffer) -> (() -> Void)
+fn make_owner(take data: Resource) -> (() -> Void)
 ```
 
 v1 rules:

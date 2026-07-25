@@ -58,6 +58,11 @@ fn update(edit file: File) -> Void
 fn consume(take file: File) -> Void
 ```
 
+The parameter list fixes the function's exact arity. A two-parameter
+declaration has callable type `(A, B) -> R`; it does not accept one argument
+and return a partially applied function. Declaration result types continue to
+use `->`.
+
 ## Lambdas
 
 ```kofun
@@ -215,8 +220,35 @@ Int?
 List[Int]
 Map[Text, Int]
 Result[User, Error]
-fn(Int, Int) -> Int
+Int -> Text
+(Int, Text) -> Bool
+() -> Int
+Int -> (Text -> Bool)
+Tuple[Int, Text] -> Bool
+(read File, take Buffer) -> Result[Response, Error]
 ```
+
+`->` has the lowest precedence in a type and associates to the right.
+Consequently `A -> B?` means `A -> (B?)`; an optional callable is written
+`(A -> B)?`.
+
+Callable domains have fixed arity:
+
+- `A -> R` takes one argument;
+- `(A, B) -> R` takes two arguments;
+- `() -> R` takes no arguments;
+- `A -> (B -> R)` takes one argument and returns a callable; and
+- `Tuple[A, B] -> R` takes one tuple argument.
+
+There is no implicit currying, partial application, or conversion between a
+multi-argument callable and a tuple-taking callable. Ownership modes such as
+`read`, `edit`, and `take` are part of each callable parameter type. Parameter
+names are not part of callable type identity in v1.
+
+The former `Fn[...]` notation is not an alias. Migration diagnostics must
+offer a targeted rewrite from `Fn[A, R]` to `A -> R` and from historical
+multi-argument forms to a parenthesized fixed-arity domain. `Fn` is otherwise
+an ordinary identifier.
 
 ## ADT declarations
 
@@ -272,33 +304,57 @@ impl Show[Point] {
 
 ## Compile-time law declarations
 
-The removed Stage 0 prototype accepted top-level `Monad` law declarations in
-the following form. The active compiler does not implement this syntax:
-`./bin/kofun check` rejects `law monad` with `E2S02`. The example is retained
-as historical and target-design material; issue
-[#551](https://github.com/hjosugi/kofun/issues/551) tracks a concrete-first
-executable replacement.
+The accepted target separates a law family, a named implementation, and a
+named check/model request:
 
 ```kofun
-law monad OptionalBoolMonad {
+law Monad[A, MA] {
+    operation pure(value: A) -> MA
+    operation bind(value: MA, next: A -> MA) -> MA
+
+    equation left_identity(
+        value: A in values,
+        next: A -> MA in functions,
+    ) = bind(pure(value), next) == next(value)
+
+    equation right_identity(
+        value: MA in monads,
+    ) = bind(value, pure) == value
+}
+
+impl OptionalBoolMonad: Monad[Bool, Bool?] {
     pure = optional_pure
     bind = optional_bind
-    values = [false, true]
-    monads = [null, false, true]
-    functions = finite_functions([false, true], [null, false, true])
-    complete = true
-    limit = 1000
+}
+
+check laws OptionalBoolMonadEvidence {
+    instance = OptionalBoolMonad
+    domain values: Bool = all
+    domain monads: Bool? = all
+    domain functions: Bool -> Bool? = all_functions(values, monads)
+    equality Bool? = structural
+    require assurance = proven_finite
+    budget = standard
 }
 ```
 
-In that prototype, entries were separated by a newline or comma. The required
-entries were `pure`, `bind`, `values`, `monads`, and `functions`; `equal`,
-`limit`, and `complete` were optional.
+`law` and `check laws` are contextual top-level constructs. `operation`,
+`equation`, the colon form of `impl`, `domain`, `equality`,
+`require assurance`, and `budget` are contextual only inside those constructs.
+`Monad` is an ordinary library identifier; `monad` is not a keyword or a
+compiler-known law family.
 
-The target design treats a `law` declaration as a compile-time check rather
-than a runtime statement. There is no active evaluator or C-backend gate for
-this syntax. See [Law system](LAW_SYSTEM.md) for the historical evidence and
-current boundary.
+The schema parameters are first-order slots. Every first executable check
+substitutes ground types before evaluation; higher-kinded types are not
+required. Equation parameters quantify over named typed domains, and equality
+is selected per operand type. `all` and `all_functions` require
+compiler-certified complete finite carriers.
+
+Law checking is compile-time-only, has an empty effect set, and runs under the
+versioned `kofun.law-eval/standard-v1` budget. The active compiler does not yet
+implement this syntax: it rejects the retained historical `law monad` examples
+with `E2S02`. See [Law system](LAW_SYSTEM.md) for the full normative target,
+assurance levels, evidence identity, and historical migration boundary.
 
 ## Visibility
 
