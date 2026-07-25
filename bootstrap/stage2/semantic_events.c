@@ -546,6 +546,21 @@ static bool buffer_u32(ByteBuffer *buffer, uint32_t value) {
     return buffer_append(buffer, bytes, sizeof(bytes));
 }
 
+static bool preflight_nested_item(
+    size_t *length,
+    size_t fixed_bytes,
+    uint32_t text_bytes
+) {
+    size_t remaining;
+    if (*length > KOFUN_SEMANTIC_MAX_TEXT_BYTES) return false;
+    remaining = KOFUN_SEMANTIC_MAX_TEXT_BYTES - *length;
+    if (fixed_bytes > remaining) return false;
+    remaining -= fixed_bytes;
+    if ((size_t)text_bytes > remaining) return false;
+    *length += fixed_bytes + (size_t)text_bytes;
+    return true;
+}
+
 static bool field_related_list(
     ByteBuffer *payload,
     uint8_t tag,
@@ -553,8 +568,19 @@ static bool field_related_list(
     uint16_t count
 ) {
     ByteBuffer encoded = {0};
+    size_t encoded_length = 2u;
     uint16_t index;
-    bool ok = buffer_u16(&encoded, count);
+    bool ok;
+    for (index = 0u; index < count; index += 1u) {
+        if (!preflight_nested_item(
+                &encoded_length,
+                KOFUN_SEMANTIC_ID_BYTES + 4u + 4u + 2u,
+                related[index].label.length)) {
+            return false;
+        }
+    }
+    if (!buffer_reserve(&encoded, encoded_length)) return false;
+    ok = buffer_u16(&encoded, count);
     for (index = 0u; ok && index < count; index += 1u) {
         ok = buffer_append(
                 &encoded,
@@ -570,7 +596,7 @@ static bool field_related_list(
                 related[index].label.length
             );
     }
-    if (ok && encoded.length <= KOFUN_SEMANTIC_MAX_TEXT_BYTES) {
+    if (ok && encoded.length == encoded_length) {
         ok = append_field(
             payload,
             tag,
@@ -592,8 +618,19 @@ static bool field_edit_list(
     uint16_t count
 ) {
     ByteBuffer encoded = {0};
+    size_t encoded_length = 2u;
     uint16_t index;
-    bool ok = buffer_u16(&encoded, count);
+    bool ok;
+    for (index = 0u; index < count; index += 1u) {
+        if (!preflight_nested_item(
+                &encoded_length,
+                4u + KOFUN_SEMANTIC_ID_BYTES + 4u + 4u + 2u,
+                edits[index].replacement.length)) {
+            return false;
+        }
+    }
+    if (!buffer_reserve(&encoded, encoded_length)) return false;
+    ok = buffer_u16(&encoded, count);
     for (index = 0u; ok && index < count; index += 1u) {
         ok = buffer_u32(&encoded, edits[index].remedy_id) &&
             buffer_append(
@@ -613,7 +650,7 @@ static bool field_edit_list(
                 edits[index].replacement.length
             );
     }
-    if (ok && encoded.length <= KOFUN_SEMANTIC_MAX_TEXT_BYTES) {
+    if (ok && encoded.length == encoded_length) {
         ok = append_field(
             payload,
             tag,
@@ -967,14 +1004,25 @@ static bool stream_identity_callback(
     for (index = 0; index < stream->record_count; index += 1u) {
         const RecordMeta *existing = &stream->records[index];
         if (existing->kind == KSE_EVENT_IDENTITY &&
-            existing->subtype == (uint8_t)identity->kind &&
-            id_equal(&existing->owner, &identity->owner_node_id)) {
-            return set_error(
-                stream,
-                "ETS03",
-                KSE_EVENT_IDENTITY,
-                "duplicate identity kind for node"
-            );
+            existing->subtype == (uint8_t)identity->kind) {
+            if (id_equal(
+                    &existing->owner,
+                    &identity->owner_node_id)) {
+                return set_error(
+                    stream,
+                    "ETS03",
+                    KSE_EVENT_IDENTITY,
+                    "duplicate identity kind for node"
+                );
+            }
+            if (id_equal(&existing->id, &identity->value)) {
+                return set_error(
+                    stream,
+                    "ETS03",
+                    KSE_EVENT_IDENTITY,
+                    "identity kind and value name multiple owners"
+                );
+            }
         }
     }
     memset(&record, 0, sizeof(record));
