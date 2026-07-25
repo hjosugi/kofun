@@ -256,6 +256,12 @@ enum {
     MAX_CORE_FUNCTIONS = 64,
     MAX_CORE_PARAMETERS = 6,
     MAX_CORE_STATEMENTS = 64,
+    /*
+     * AArch64 frame slots use signed unscaled 9-bit offsets, so slots 0..31
+     * cover offsets -8..-256. Keep the accepted program target-independent by
+     * rejecting a 33rd parameter/local before either backend is selected.
+     */
+    MAX_FUNCTION_FRAME_SLOTS = 32,
 };
 
 typedef enum {
@@ -2573,7 +2579,7 @@ static bool function_bodies(
                 } else if (function->local_count >= MAX_CORE_STATEMENTS ||
                            function->parameter_count +
                                    function->local_count + 1 >
-                               MAX_CORE_STATEMENTS) {
+                               MAX_FUNCTION_FRAME_SLOTS) {
                     function_error(
                         &parser,
                         "native Core function has too many locals"
@@ -6428,7 +6434,7 @@ static void a64_sub_sp(Bytes *text, uint32_t frame) {
 }
 
 static uint32_t a64_local_imm9(size_t slot) {
-    if (slot >= (size_t)0x1f) {
+    if (slot >= MAX_FUNCTION_FRAME_SLOTS) {
         fatal("aarch64 Core local frame is too large");
     }
     int32_t offset = -(int32_t)((slot + 1) * sizeof(uint64_t));

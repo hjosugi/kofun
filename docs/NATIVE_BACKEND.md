@@ -17,11 +17,12 @@ to the enclosing function reassigns the parameters and jumps past the prologue,
 and a call to any other function restores the registers the body claimed, drops
 the frame, and jumps, so it returns straight to this function's caller. Direct
 and mutual recursion written that way therefore run in constant stack. It also
-lowers `//`, `/`, and `%` on `Int` with the flooring semantics
-`docs/SEMANTICS.md` defines, guarding a zero divisor and the one
-non-representable quotient before dividing on both targets, and it binds as
-many locals as a body has statements, taking a local's type from its
-initializer when no annotation is written. That function profile is
+lowers `//` and `%` with the floor semantics `docs/SEMANTICS.md` defines, and
+lowers `/` with the truncating behavior of the executable seed while the
+conflicting normative Float claim remains tracked by #687. Both targets guard
+a zero divisor and the one non-representable quotient before dividing, and bind
+as many locals as fit the shared 32-slot parameter/local frame, taking a
+local's type from its initializer when no annotation is written. That function profile is
 shared by both backends: the same target-independent parsed program is lowered
 to x86-64 and to AArch64, and both emit a checked-overflow trap with the same
 `kofun: integer overflow` diagnostic and exit status:
@@ -35,13 +36,12 @@ to x86-64 and to AArch64, and both emit a checked-overflow trap with the same
   --target aarch64-linux -o build/program-aarch64
 ```
 
-The x86-64 selector additionally implements a bounded compiler-shaped Text
-function bridge: two Text parameters/results through the existing pointer ABI,
-direct/forward calls, concatenation, one immutable frame local, and
+Both selectors additionally implement a bounded compiler-shaped Text function
+bridge: two Text parameters/results through the existing pointer ABI,
+direct/forward calls, concatenation, immutable frame locals, and
 `print(Text)`. Direct and CLI-produced static ELF artifacts are byte-identical
-and compared with an independent C11 reference. AArch64 rejects this
-function-Text profile explicitly while retaining its existing Int function and
-closed Text-expression support.
+and compared with an independent C11 reference; AArch64 images are always
+built/audited and execute under `qemu-aarch64` when available.
 
 `-g` covers the single-`main` Core on both Linux targets. It adds
 source-specific `.debug_line`, `.debug_info`, symbols, and section headers
@@ -52,8 +52,9 @@ executable gate validates the structures with `readelf` for both targets and,
 when the tooling is installed, proves source stepping and a named `main`
 backtrace with GDB — natively for x86-64 and through the `qemu-aarch64` gdbstub
 for AArch64. Missing emulator or debugger tooling skips only the stepping
-check. `-g` on the multi-function profile, and on the AArch64 List/Text Core,
-remains an explicit rejection that writes no artifact.
+check. `-g` on the function profile (including a single-main fallback), and on
+the AArch64 List/Text aggregate Core, remains an explicit rejection that
+writes no artifact.
 
 Run:
 

@@ -135,18 +135,25 @@ for case_name in $CASES; do
 done
 
 # Path independence: the same relative source from two directories emits
-# byte-identical images, so no absolute build path leaks into the artifact.
+# byte-identical images on each target, so no absolute build path leaks into
+# either artifact.
 for case_name in $CASES; do
     source=$(case_source "$case_name")
     mkdir -p "$WORK/remap-$case_name-a/nested" "$WORK/remap-$case_name-b"
     cp "$source" "$WORK/remap-$case_name-a/nested/input.kofun"
     cp "$source" "$WORK/remap-$case_name-b/input.kofun"
-    (cd "$WORK/remap-$case_name-a/nested" &&
-        "$KOFUN" build input.kofun --target x86_64-linux -o out >/dev/null)
-    (cd "$WORK/remap-$case_name-b" &&
-        "$KOFUN" build input.kofun --target x86_64-linux -o out >/dev/null)
-    cmp "$WORK/remap-$case_name-a/nested/out" "$WORK/remap-$case_name-b/out" ||
-        fail "$case_name native image depends on the build directory"
+    for target in x86_64-linux aarch64-linux; do
+        (cd "$WORK/remap-$case_name-a/nested" &&
+            "$KOFUN" build input.kofun --target "$target" \
+                -o "out-$target" >/dev/null)
+        (cd "$WORK/remap-$case_name-b" &&
+            "$KOFUN" build input.kofun --target "$target" \
+                -o "out-$target" >/dev/null)
+        cmp \
+            "$WORK/remap-$case_name-a/nested/out-$target" \
+            "$WORK/remap-$case_name-b/out-$target" ||
+            fail "$case_name $target image depends on the build directory"
+    done
 done
 
 # Differential: both independent native binaries print the same pinned golden.

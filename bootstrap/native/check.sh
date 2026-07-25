@@ -983,11 +983,10 @@ expect_function_text_rejection \
     'unknown native Core function `read_text`'
 
 # A function body used to be allowed exactly one local, and that local had to
-# be annotated `Text`. Both limits are gone: a body may bind as many locals as
-# it has statements, an unannotated local takes its initializer's type, and a
-# written annotation is still checked against it. Two Text locals in one body
-# were a refusal until this change, so they are gated positively now rather
-# than merely no longer refused.
+# be annotated `Text`. Both limits are widened: an unannotated local takes its
+# initializer's type, and both targets accept the same 32-slot frame boundary.
+# Two Text locals in one body were a refusal until this change, so they are
+# gated positively rather than merely no longer refused.
 TWO_LOCALS_SOURCE="$NATIVE/fixtures/function_text_two_locals.kofun"
 "$WORK/kofun-native-function-text" \
     "$TWO_LOCALS_SOURCE" x86_64-linux "$WORK/function-text-two-locals.elf"
@@ -1002,6 +1001,38 @@ test ! -s "$WORK/function-text-two-locals.stderr"
 expect_function_text_rejection \
     function_text_local_type_mismatch \
     'native Core local `label` is not Int'
+
+LOCAL_BOUNDARY_SOURCE="$NATIVE/fixtures/function_local_frame_boundary.kofun"
+for target in x86_64-linux aarch64-linux; do
+    "$KOFUN" build "$LOCAL_BOUNDARY_SOURCE" --target "$target" \
+        -o "$WORK/function-local-frame-$target.elf" >/dev/null
+    "$KOFUN" build "$LOCAL_BOUNDARY_SOURCE" --target "$target" \
+        -o "$WORK/function-local-frame-$target.second.elf" >/dev/null
+    cmp \
+        "$WORK/function-local-frame-$target.elf" \
+        "$WORK/function-local-frame-$target.second.elf"
+done
+chmod +x "$WORK/function-local-frame-x86_64-linux.elf"
+"$WORK/function-local-frame-x86_64-linux.elf" \
+    >"$WORK/function-local-frame.stdout" \
+    2>"$WORK/function-local-frame.stderr"
+printf '6\n' >"$WORK/function-local-frame.expected"
+cmp \
+    "$WORK/function-local-frame.expected" \
+    "$WORK/function-local-frame.stdout"
+test ! -s "$WORK/function-local-frame.stderr"
+if test -n "$AARCH64_RUNNER"; then
+    "$AARCH64_RUNNER" "$WORK/function-local-frame-aarch64-linux.elf" \
+        >"$WORK/function-local-frame-aarch64.stdout" \
+        2>"$WORK/function-local-frame-aarch64.stderr"
+    cmp \
+        "$WORK/function-local-frame.expected" \
+        "$WORK/function-local-frame-aarch64.stdout"
+    test ! -s "$WORK/function-local-frame-aarch64.stderr"
+fi
+expect_function_text_rejection \
+    function_too_many_locals \
+    'native Core function has too many locals'
 
 # AArch64 parity (issue #623): the same Text helper now lowers to a direct
 # AArch64 ELF with the shared Text ABI. Build twice for determinism, audit the
@@ -1329,6 +1360,42 @@ do
     cmp "$WORK/divide-zero.expected" "$WORK/$divide_case.stderr"
 done
 
+# The function profile can construct INT64_MIN from accepted small literals,
+# so the non-representable quotient guard is executable evidence rather than
+# an unreachable code-path claim. Both quotient operators must reject
+# INT64_MIN / -1; modulo by -1 remains exactly zero.
+for divide_case in \
+    function_floor_divide_overflow \
+    function_truncating_divide_overflow
+do
+    divide_source="$NATIVE/fixtures/$divide_case.kofun"
+    "$WORK/kofun-native-function-text" \
+        "$divide_source" x86_64-linux "$WORK/$divide_case.elf"
+    chmod +x "$WORK/$divide_case.elf"
+    set +e
+    "$WORK/$divide_case.elf" \
+        >"$WORK/$divide_case.stdout" \
+        2>"$WORK/$divide_case.stderr"
+    divide_status=$?
+    set -e
+    test "$divide_status" -eq 1
+    test ! -s "$WORK/$divide_case.stdout"
+    cmp "$WORK/function-overflow.expected" "$WORK/$divide_case.stderr"
+done
+
+MODULO_MIN_SOURCE="$NATIVE/fixtures/function_floor_modulo_min.kofun"
+"$WORK/kofun-native-function-text" \
+    "$MODULO_MIN_SOURCE" x86_64-linux "$WORK/function-floor-modulo-min.elf"
+chmod +x "$WORK/function-floor-modulo-min.elf"
+"$WORK/function-floor-modulo-min.elf" \
+    >"$WORK/function-floor-modulo-min.stdout" \
+    2>"$WORK/function-floor-modulo-min.stderr"
+printf '0\n' >"$WORK/function-floor-modulo-min.expected"
+cmp \
+    "$WORK/function-floor-modulo-min.expected" \
+    "$WORK/function-floor-modulo-min.stdout"
+test ! -s "$WORK/function-floor-modulo-min.stderr"
+
 # AArch64 divides with `sdiv`, which unlike `idiv` never faults: a zero divisor
 # silently yields zero there. Both guards therefore have to be emitted, and the
 # images are built twice and audited whether or not the emulator is present.
@@ -1336,7 +1403,10 @@ for divide_case in \
     function_truncating_divide \
     function_floor_divide_zero \
     function_floor_modulo_zero \
-    function_truncating_divide_zero
+    function_truncating_divide_zero \
+    function_floor_divide_overflow \
+    function_truncating_divide_overflow \
+    function_floor_modulo_min
 do
     divide_source="$NATIVE/fixtures/$divide_case.kofun"
     "$KOFUN" build "$divide_source" --target aarch64-linux \
@@ -1375,11 +1445,34 @@ if test -n "$AARCH64_RUNNER"; then
         test ! -s "$WORK/$divide_case-aarch64.stdout"
         cmp "$WORK/divide-zero.expected" "$WORK/$divide_case-aarch64.stderr"
     done
-    divide_summary="PASS: x86-64/AArch64 divide, floor, and refuse a zero divisor alike"
+    for divide_case in \
+        function_floor_divide_overflow \
+        function_truncating_divide_overflow
+    do
+        set +e
+        "$AARCH64_RUNNER" "$WORK/$divide_case-aarch64.elf" \
+            >"$WORK/$divide_case-aarch64.stdout" \
+            2>"$WORK/$divide_case-aarch64.stderr"
+        divide_status=$?
+        set -e
+        test "$divide_status" -eq 1
+        test ! -s "$WORK/$divide_case-aarch64.stdout"
+        cmp \
+            "$WORK/function-overflow.expected" \
+            "$WORK/$divide_case-aarch64.stderr"
+    done
+    "$AARCH64_RUNNER" "$WORK/function_floor_modulo_min-aarch64.elf" \
+        >"$WORK/function-floor-modulo-min-aarch64.stdout" \
+        2>"$WORK/function-floor-modulo-min-aarch64.stderr"
+    cmp \
+        "$WORK/function-floor-modulo-min.expected" \
+        "$WORK/function-floor-modulo-min-aarch64.stdout"
+    test ! -s "$WORK/function-floor-modulo-min-aarch64.stderr"
+    divide_summary="PASS: x86-64/AArch64 divide, floor, and reject zero/non-representable quotients alike"
 else
     printf '%s\n' \
         "SKIP: AArch64 division execution (qemu-aarch64 unavailable)"
-    divide_summary="PASS: AArch64 division images built/audited; execution skipped"
+    divide_summary="PASS: AArch64 division/trap images built/audited; execution skipped"
 fi
 
 # The self-host driver's success corpus is out of reach of the single-`main`
@@ -1401,6 +1494,20 @@ cmp \
     "$ROOT/bootstrap/selfhost/driver/corpus_answer.stdout" \
     "$WORK/corpus-answer.stdout"
 test ! -s "$WORK/corpus-answer.stderr"
+
+# Debug information belongs to the aggregate single-main profile. A source that
+# reaches the function profile only through fallback stays an explicit,
+# transactional rejection under `-g`.
+set +e
+"$KOFUN" build "$ANSWER_SOURCE" --target x86_64-linux -g \
+    -o "$WORK/corpus-answer-debug.elf" \
+    >"$WORK/corpus-answer-debug.stdout" \
+    2>"$WORK/corpus-answer-debug.stderr"
+answer_debug_status=$?
+set -e
+test "$answer_debug_status" -eq 1
+test ! -e "$WORK/corpus-answer-debug.elf"
+grep -F 'unsupported Core' "$WORK/corpus-answer-debug.stderr" >/dev/null
 
 # List[Int] uses the same Core AST and value ABI on x86-64 and AArch64. An
 # independent C11 executable is the normative Python-free differential

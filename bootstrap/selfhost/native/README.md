@@ -81,7 +81,9 @@ image.
 
 What the success corpus does **not** demonstrate:
 
-- `INT64_MIN` arithmetic, since the function profile caps literals at 65535;
+- full-width integer literals, since the function profile still caps a literal
+  at 65535 (the native regression gate constructs `INT64_MIN` from small
+  checked factors to exercise the quotient boundary);
 - the canonical `error[R010]` runtime diagnostics — a native zero divisor
   reports `kofun: division by zero`, so the native adapters still do not claim
   the numeric conformance corpus;

@@ -197,7 +197,9 @@ function profile's more specific reason.
 floors toward negative infinity and `%` takes the divisor's sign, matching
 `docs/SEMANTICS.md` and the C11 backend's `kofun_floor_div`/`kofun_floor_mod`;
 `/` truncates toward zero, matching the compiler built from the frozen
-self-host source, the Stage 1 seed, and wasm32.
+self-host source, the Stage 1 seed, and wasm32. The normative spec's conflicting
+Float claim remains explicitly tracked by #687 rather than being settled by
+this bounded backend change.
 
 Both hardware divide instructions need guarding, for opposite reasons. x86-64's
 `idiv` *faults* on a zero divisor and on the one quotient that is not
@@ -213,20 +215,20 @@ overflow flag, and the remainder is always zero — which is why
 corrects: when the remainder is non-zero and its sign differs from the
 divisor's, `//` is one too high and `%` is one divisor short.
 
-Two limits are worth stating plainly. A zero divisor reports
+One remaining limit is worth stating plainly. A zero divisor reports
 `kofun: division by zero` rather than the canonical `error[R010]` line the C11
 backend writes, so the native adapters still do not claim the numeric
-conformance corpus. And `INT64_MIN` is not reachable in this profile at all —
-literals stop at 65535 and every other route overflows first — so the
-non-representable-quotient guard is emitted and reviewed but not executed by
-any fixture. Both belong to the canonical-diagnostics and 64-bit-literal work.
+conformance corpus. Full-width literals also remain separate work, but the gate
+constructs `INT64_MIN` exactly from accepted small factors and executes all
+three `-1` boundaries: `//` and `/` reject the non-representable quotient with
+status 1, while `%` prints `0`.
 
-## x86-64 compiler-shaped Text function bridge
+## Compiler-shaped Text function bridge
 
-The x86-64 function profile additionally lowers one bounded Text path: up to
-two `Text` parameters in ordinary SysV integer registers, a `Text` result in
-`rax`, direct and forward calls, concatenation, one immutable frame-backed
-`Text` local, and `print(Text)` in `main`.
+Both direct backends additionally lower one bounded Text path: up to two
+`Text` parameters in ordinary SysV/AAPCS64 integer registers, a `Text` result
+in `rax`/`x0`, direct and forward calls, concatenation, immutable frame-backed
+locals, and `print(Text)` in `main`.
 
 ```kofun
 fn declaration_label(kind: Text, name: Text) -> Text {
@@ -243,18 +245,19 @@ The value ABI remains `[byte length: i64][UTF-8 bytes]`. Parameters are
 immutable process-lifetime views. A result is either an input/literal pointer
 or a newly `mmap`-allocated exact Text object; this slice deliberately provides
 no reclamation. Arguments evaluate left to right once, frame size is rounded
-to preserve 16-byte SysV call alignment, and every call uses a checked `rel32`
-fixup. Concatenation checks object-size overflow and reports
-`kofun: out of memory` with status 70 through the existing bounded allocator.
+to preserve the target ABI's 16-byte call alignment, and every call uses a
+checked target-relative fixup. Concatenation checks object-size overflow and
+reports `kofun: out of memory` with status 70 through the existing bounded
+allocator.
 
 `check.sh` compares ASCII and multibyte UTF-8 fixtures with an independent C11
 reference, compares direct and public-CLI artifacts byte for byte across clean
-builds, verifies the static ELF shape, and pins producer/source/reference/output
-hashes in `fixtures/function_text_provenance.txt`. Wrong arity/type/result,
-missing return, mutable local, `List[Text]`, loop/file operation, forced OOM,
-and AArch64 attempts are explicit negative gates that leave no output artifact.
-AArch64 function-Text lowering remains a separate parity slice and does not
-affect the existing AArch64 Int or closed Text-expression profiles.
+builds, verifies the static ELF shape on both targets, and pins
+producer/source/reference/output hashes in
+`fixtures/function_text_provenance.txt`. Wrong arity/type/result, missing
+return, mutable local, `List[Text]`, loop/file operation, and forced OOM are
+explicit negative gates that leave no output artifact. AArch64 execution is
+compared with the same observations under `qemu-aarch64` when available.
 
 Both Linux targets also accept local `Int`/`List[Int]` bindings and a
 deliberately narrow collection Core:
