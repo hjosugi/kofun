@@ -308,12 +308,20 @@ through `E2S94`. Semantic failure removes every requested artifact.
 
 `bootstrap/stage2/semantic_events.h` is the compiler-owned, bounded semantic
 sink boundary for tooling. `semantic_producer.c` attaches that sink to the
-audited Stage 2 lexer, parser, scope-HIR builder, and ownership checker and
-derives copied value records from an exact source snapshot. The current
-adapter covers module/function/parameter/local/flat-ADT/call/control/ownership
-facts, including a validated prefix when a later parse, name, type, or
-ownership error occurs. Its internal executable is a process boundary for the
-later projector, not a user-facing `bin/kofun` option.
+audited Stage 2 compiler-owned compile or focused-ownership outcome. It
+projects type, constructor, and function declarations from committed parser
+IR and scopes, bindings, and uses from committed scope HIR; it does not
+reclassify rejected source. Diagnostics are captured as structured records at
+their compiler construction sites before the rendered fallback is returned.
+Parser and scope-HIR commit hooks retain only complete declarations, scopes,
+bindings, and uses that precede a later failure. Lowering hooks similarly
+publish only successfully validated calls, constructors, patterns, and
+control expressions. These nullable hooks are seed-only C instrumentation
+enabled by the internal semantic-event process; ordinary `compiler.c`
+execution leaves them disabled, and they do not add a sink API to canonical
+`compiler.kofun` or change its language semantics. The internal executable is
+a process boundary for the later projector, not a user-facing `bin/kofun`
+option.
 
 The reference sink writes the internal
 `kofun-stage2-semantic-events/v1` KSE framing only after source/span

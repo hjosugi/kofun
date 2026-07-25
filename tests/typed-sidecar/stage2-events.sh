@@ -47,6 +47,14 @@ $ROOT/tests/typed-sidecar/stage2_events_test.c
     "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$WORK/plain/kofun-stage2-semantic-events"
 "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
+    -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
+    -I"$ROOT/bootstrap/stage2" \
+    "$ROOT/bootstrap/stage2/semantic_producer.c" \
+    "$ROOT/bootstrap/stage2/semantic_events.c" \
+    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$ROOT/tests/typed-sidecar/stage2_producer_test.c" \
+    -o "$WORK/plain/stage2-producer-test"
+"$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
     -I"$ROOT/bootstrap/stage2" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     "$ROOT/unicode/kofun_unicode.c" \
@@ -57,6 +65,12 @@ $ROOT/tests/typed-sidecar/stage2_events_test.c
 "$WORK/plain/kofun-stage2-semantic-events" \
     "$FIXTURE" src/main.kofun "$WORK/plain/producer-complete.kse" 42
 "$WORK/plain/validate-events" "$WORK/plain/producer-complete.kse"
+"$WORK/plain/stage2-producer-test" \
+    "$FIXTURE" \
+    "$ROOT/bootstrap/stage2/function_unknown_error.kofun" \
+    "$ROOT/tests/typed-sidecar/fixtures/stage2_parse_prefix_error.kofun" \
+    "$ROOT/tests/typed-sidecar/fixtures/stage2_scope_prefix_error.kofun" \
+    "$ROOT/bootstrap/stage2/fixtures/borrowed_move_text.kofun"
 "$WORK/plain/kofun-stage2-semantic-events" \
     "$FIXTURE" src/main.kofun "$WORK/plain/producer-repeat.kse" 42
 cmp "$WORK/plain/producer-complete.kse" "$WORK/plain/producer-repeat.kse"
@@ -81,6 +95,7 @@ producer_unknown_status=$?
     src/type-error.kofun "$WORK/plain/producer-type-error.kse" 44
 producer_type_status=$?
 "$WORK/plain/kofun-stage2-semantic-events" \
+    --check-ownership \
     "$ROOT/bootstrap/stage2/fixtures/borrowed_move_text.kofun" \
     src/borrowed.kofun "$WORK/plain/producer-ownership.kse" 45
 producer_ownership_status=$?
@@ -115,7 +130,7 @@ do
 done
 grep -a -q 'stage2-semantic-v1' "$WORK/plain/producer-complete.kse"
 grep -a -q 'E2S16' "$WORK/plain/producer-unknown.kse"
-grep -a -q 'E2S15' "$WORK/plain/producer-type-error.kse"
+grep -a -q 'E2S12' "$WORK/plain/producer-type-error.kse"
 grep -a -q 'E007' "$WORK/plain/producer-ownership.kse"
 grep -a -q 'E2S03' "$WORK/plain/producer-recovery.kse"
 
@@ -150,6 +165,7 @@ then
     ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
     UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
         "$WORK/sanitized/kofun-stage2-semantic-events" \
+        --check-ownership \
         "$ROOT/bootstrap/stage2/fixtures/borrowed_move_text.kofun" \
         src/borrowed.kofun \
         "$WORK/sanitized/producer-ownership.kse" 45
@@ -211,6 +227,92 @@ fi
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
     "$ROOT/bootstrap/stage2/compiler.c" \
     -o "$WORK/plain/kofun-stage2"
+
+# Every checked-in Stage 2 must-fail case is compared against the exact
+# compiler authority selected by its diagnostic-mode directive.  This keeps
+# the semantic producer from accepting a rejected program or inventing a
+# replacement code/span/fallback.
+diagnostic_cases=0
+for source in "$ROOT"/tests/diagnostics/stage2/*.kofun
+do
+    diagnostic_cases=$((diagnostic_cases + 1))
+    case_name=$(basename "$source" .kofun)
+    mode=$(sed -n 's/^# diagnostic-mode: //p' "$source")
+    code=$(sed -n 's/^# expect-code: //p' "$source")
+    span=$(sed -n 's/^# expect-span: //p' "$source")
+    test -n "$mode" && test -n "$code" && test -n "$span" ||
+        fail "missing diagnostic metadata: $source"
+    authority_flag=
+    set +e
+    if test "$mode" = ownership; then
+        "$WORK/plain/kofun-stage2" --check-ownership "$source" \
+            >"$WORK/plain/$case_name.authority"
+        authority_status=$?
+        authority_flag=--check-ownership
+    else
+        "$WORK/plain/kofun-stage2" --compile-outcome \
+            "$source" \
+            "$WORK/plain/$case_name.c" \
+            "$WORK/plain/$case_name.ir" \
+            "$WORK/plain/$case_name.tokens" \
+            >"$WORK/plain/$case_name.authority"
+        authority_status=$?
+    fi
+    # shellcheck disable=SC2086
+    "$WORK/plain/kofun-stage2-semantic-events" $authority_flag \
+        "$source" "src/$case_name.kofun" \
+        "$WORK/plain/$case_name.kse" 700 \
+        >"$WORK/plain/$case_name.producer"
+    producer_status=$?
+    set -e
+    test "$authority_status" -ne 0 ||
+        fail "must-fail authority accepted $source"
+    test "$producer_status" -eq "$authority_status" ||
+        fail "$case_name exit: authority=$authority_status producer=$producer_status"
+    cmp "$WORK/plain/$case_name.authority" \
+        "$WORK/plain/$case_name.producer"
+    cmp "${source%.kofun}.stderr" "$WORK/plain/$case_name.producer"
+    grep -q "error\\[$code\\]" "$WORK/plain/$case_name.producer"
+    case $code in
+        E2S01|EUNICODE*)
+            test ! -e "$WORK/plain/$case_name.kse"
+            ;;
+        *)
+            "$WORK/plain/validate-events" "$WORK/plain/$case_name.kse"
+            grep -a -q "$code" "$WORK/plain/$case_name.kse"
+            ;;
+    esac
+done
+test "$diagnostic_cases" -eq 33 ||
+    fail "expected all 33 Stage 2 diagnostic fixtures, saw $diagnostic_cases"
+
+# Project-owned valid Stage 2 profiles cover functions, value control, concrete
+# enums, nested lexical scopes, and shadowing.  Producer and compiler must both
+# classify every one as complete/exit 0.
+valid_index=0
+for source in \
+    "$FIXTURE" \
+    "$ROOT/bootstrap/stage2/functions_fixture.kofun" \
+    "$ROOT/tests/conformance/syntax/issues_35_47/if_value.kofun" \
+    "$ROOT/tests/conformance/syntax/issues_35_47/match_value.kofun" \
+    "$ROOT/tests/conformance/syntax/issues_35_47/enum_match.kofun" \
+    "$ROOT/tests/conformance/modules/shadowing/positive.kofun" \
+    "$ROOT/tests/conformance/modules/lexical-scopes/positive.kofun"
+do
+    valid_index=$((valid_index + 1))
+    "$WORK/plain/kofun-stage2" --compile-outcome \
+        "$source" \
+        "$WORK/plain/valid-$valid_index.c" \
+        "$WORK/plain/valid-$valid_index.ir" \
+        "$WORK/plain/valid-$valid_index.tokens" \
+        >"$WORK/plain/valid-$valid_index.authority"
+    "$WORK/plain/kofun-stage2-semantic-events" \
+        "$source" "src/valid-$valid_index.kofun" \
+        "$WORK/plain/valid-$valid_index.kse" 701
+    "$WORK/plain/validate-events" "$WORK/plain/valid-$valid_index.kse"
+done
+test "$valid_index" -eq 7
+
 set +e
 "$WORK/plain/kofun-stage2" --compile-outcome \
     "$ROOT/bootstrap/stage2/functions_fixture.kofun" \

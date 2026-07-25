@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include "../../bootstrap/stage2/semantic_events.h"
 #include "../../bootstrap/stage2/sha256.h"
 
@@ -8,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #define CHECK(condition) \
     do { \
@@ -130,10 +133,10 @@ static KofunSemanticId node_id(
 
 static void test_node_identity_frame(const Fixture *fixture) {
     static const uint8_t expected[KOFUN_SEMANTIC_ID_BYTES] = {
-        0xb9u, 0x21u, 0xedu, 0xc4u, 0x45u, 0xd9u, 0x96u, 0xb7u,
-        0x10u, 0x5bu, 0x75u, 0xd1u, 0xb5u, 0xabu, 0x62u, 0xbeu,
-        0x36u, 0x4du, 0xc8u, 0x32u, 0x5cu, 0xa0u, 0xedu, 0xb2u,
-        0x19u, 0xdcu, 0xf6u, 0x6fu, 0xf2u, 0xe5u, 0xe4u, 0x71u
+        0x92u, 0xf0u, 0x1fu, 0x7cu, 0xdbu, 0xa8u, 0xa5u, 0x98u,
+        0x0fu, 0x1fu, 0xafu, 0x91u, 0x27u, 0xcfu, 0xd8u, 0x71u,
+        0x54u, 0x90u, 0x94u, 0x1du, 0x00u, 0x15u, 0x51u, 0x75u,
+        0x22u, 0x7bu, 0xfcu, 0x02u, 0xf5u, 0xb1u, 0xf0u, 0x9eu
     };
     KofunSemanticSpan span = {
         0u, (uint32_t)fixture->source_length
@@ -391,6 +394,7 @@ static bool emit_partial_records(
     KofunSemanticSink *sink,
     const Fixture *fixture
 ) {
+    KofunSemanticSource source = fixture->semantic_source;
     KofunSemanticSpan module_span = {
         0u, (uint32_t)fixture->source_length
     };
@@ -416,9 +420,12 @@ static bool emit_partial_records(
     KofunSemanticId diagnostic_id;
     KofunSemanticReference reference;
     KofunSemanticDiagnostic diagnostic;
+    KofunSemanticRelated related;
+    KofunSemanticEdit edit;
     uint32_t remedy = 7u;
+    source.compiler_exit_class = 1u;
     id_from_text("diagnostic:E2S16:unknown-call", &diagnostic_id);
-    if (!kofun_semantic_begin(sink, &fixture->semantic_source) ||
+    if (!kofun_semantic_begin(sink, &source) ||
         !emit_node(
             sink, module, KOFUN_SEMANTIC_NODE_MODULE, module_span,
             KOFUN_SEMANTIC_VALIDATED, NULL, 0u, NULL, 0u) ||
@@ -450,7 +457,9 @@ static bool emit_partial_records(
     reference.status = KOFUN_SEMANTIC_ERROR;
     reference.target_shape = KOFUN_SEMANTIC_TARGET_UNAVAILABLE;
     reference.target_kind = KOFUN_SEMANTIC_ID_SYMBOL;
-    reference.hidden_reason = text("unresolved-current-core-call");
+    reference.hidden_reason = text(
+        KOFUN_SEMANTIC_REASON_UNRESOLVED_STAGE2_REFERENCE
+    );
     reference.diagnostic_ids = &diagnostic_id;
     reference.diagnostic_count = 1u;
     if (!kofun_semantic_reference(sink, &reference) ||
@@ -459,7 +468,8 @@ static bool emit_partial_records(
             KOFUN_SEMANTIC_VALIDATED, "Int -> Int", "", NULL, 0u) ||
         !emit_fact(
             sink, local, KOFUN_SEMANTIC_FACT_OWNERSHIP,
-            KOFUN_SEMANTIC_ERROR, "", "move-after-borrow",
+            KOFUN_SEMANTIC_ERROR, "",
+            KOFUN_SEMANTIC_REASON_MOVE_AFTER_BORROW,
             &diagnostic_id, 1u)) {
         return false;
     }
@@ -476,6 +486,19 @@ static bool emit_partial_records(
     diagnostic.affected_count = 1u;
     diagnostic.remedy_ids = &remedy;
     diagnostic.remedy_count = 1u;
+    memset(&related, 0, sizeof(related));
+    related.file_id = fixture->file_id;
+    related.span = function_span;
+    related.label = text("validated declaration retained before failure");
+    diagnostic.related = &related;
+    diagnostic.related_count = 1u;
+    memset(&edit, 0, sizeof(edit));
+    edit.remedy_id = remedy;
+    edit.file_id = fixture->file_id;
+    edit.span = call_span;
+    edit.replacement = text("later");
+    diagnostic.edits = &edit;
+    diagnostic.edit_count = 1u;
     if (!kofun_semantic_diagnostic(sink, &diagnostic)) return false;
     return kofun_semantic_end(
         sink,
@@ -610,6 +633,361 @@ static void test_sink_rejection(const Fixture *fixture) {
     }
 }
 
+static void test_strict_invariant_rejection(const Fixture *fixture) {
+    KofunSemanticSpan span = {
+        0u, (uint32_t)fixture->source_length
+    };
+    KofunSemanticId module = node_id(
+        fixture, KOFUN_SEMANTIC_NODE_MODULE, span, 0u
+    );
+    KofunSemanticStream *stream;
+    KofunSemanticSink sink;
+
+    {
+        KofunSemanticSource source = fixture->semantic_source;
+        source.compiler_exit_class = 4u;
+        stream = kofun_semantic_stream_create();
+        CHECK(stream != NULL);
+        sink = kofun_semantic_stream_sink(stream);
+        CHECK(!kofun_semantic_begin(&sink, &source));
+        CHECK(strcmp(kofun_semantic_stream_error(stream)->code, "ETS03") == 0);
+        kofun_semantic_stream_destroy(stream);
+    }
+
+    stream = kofun_semantic_stream_create();
+    CHECK(stream != NULL);
+    sink = kofun_semantic_stream_sink(stream);
+    CHECK(kofun_semantic_begin(&sink, &fixture->semantic_source));
+    CHECK(emit_node(
+        &sink, module, KOFUN_SEMANTIC_NODE_MODULE, span,
+        KOFUN_SEMANTIC_VALIDATED, NULL, 0u, NULL, 0u
+    ));
+    CHECK(!kofun_semantic_end(
+        &sink, (KofunSourceStatus)255, KOFUN_SEMANTIC_PARTIAL
+    ));
+    CHECK(strcmp(kofun_semantic_stream_error(stream)->code, "ETS03") == 0);
+    kofun_semantic_stream_destroy(stream);
+
+    stream = kofun_semantic_stream_create();
+    CHECK(stream != NULL);
+    sink = kofun_semantic_stream_sink(stream);
+    CHECK(kofun_semantic_begin(&sink, &fixture->semantic_source));
+    CHECK(emit_node(
+        &sink, module, KOFUN_SEMANTIC_NODE_MODULE, span,
+        KOFUN_SEMANTIC_VALIDATED, NULL, 0u, NULL, 0u
+    ));
+    CHECK(!kofun_semantic_end(
+        &sink, KOFUN_SOURCE_FAILED, (KofunCompleteness)255
+    ));
+    CHECK(strcmp(kofun_semantic_stream_error(stream)->code, "ETS03") == 0);
+    kofun_semantic_stream_destroy(stream);
+
+    {
+        KofunSemanticReference reference;
+        stream = kofun_semantic_stream_create();
+        CHECK(stream != NULL);
+        sink = kofun_semantic_stream_sink(stream);
+        CHECK(kofun_semantic_begin(&sink, &fixture->semantic_source));
+        CHECK(emit_node(
+            &sink, module, KOFUN_SEMANTIC_NODE_MODULE, span,
+            KOFUN_SEMANTIC_VALIDATED, NULL, 0u, NULL, 0u
+        ));
+        memset(&reference, 0, sizeof(reference));
+        id_from_text("reference:invalid-target-kind", &reference.reference_id);
+        reference.source_node_id = module;
+        reference.name_space = KOFUN_SEMANTIC_NAMESPACE_VALUE;
+        reference.span = span;
+        reference.status = KOFUN_SEMANTIC_UNAVAILABLE;
+        reference.target_shape = KOFUN_SEMANTIC_TARGET_UNAVAILABLE;
+        reference.target_kind = (KofunSemanticIdentityKind)255;
+        reference.hidden_reason = text("not-resolved");
+        CHECK(!kofun_semantic_reference(&sink, &reference));
+        CHECK(strcmp(kofun_semantic_stream_error(stream)->code, "ETS03") == 0);
+        kofun_semantic_stream_destroy(stream);
+    }
+
+    {
+        KofunSemanticReference reference;
+        KofunSemanticId arbitrary_target;
+        stream = kofun_semantic_stream_create();
+        CHECK(stream != NULL);
+        sink = kofun_semantic_stream_sink(stream);
+        CHECK(kofun_semantic_begin(&sink, &fixture->semantic_source));
+        CHECK(emit_node(
+            &sink, module, KOFUN_SEMANTIC_NODE_MODULE, span,
+            KOFUN_SEMANTIC_VALIDATED, NULL, 0u, NULL, 0u
+        ));
+        memset(&reference, 0, sizeof(reference));
+        id_from_text("reference:arbitrary-target", &reference.reference_id);
+        id_from_text("identity:not-emitted", &arbitrary_target);
+        reference.source_node_id = module;
+        reference.name_space = KOFUN_SEMANTIC_NAMESPACE_VALUE;
+        reference.span = span;
+        reference.status = KOFUN_SEMANTIC_VALIDATED;
+        reference.target_shape = KOFUN_SEMANTIC_TARGET_VISIBLE;
+        reference.target_kind = KOFUN_SEMANTIC_ID_SYMBOL;
+        reference.target_value = arbitrary_target;
+        CHECK(!kofun_semantic_reference(&sink, &reference));
+        CHECK(strcmp(kofun_semantic_stream_error(stream)->code, "ETS03") == 0);
+        kofun_semantic_stream_destroy(stream);
+    }
+
+    {
+        KofunSemanticReference reference;
+        KofunSemanticId arbitrary_target;
+        KofunSemanticId diagnostic_id;
+        stream = kofun_semantic_stream_create();
+        CHECK(stream != NULL);
+        sink = kofun_semantic_stream_sink(stream);
+        CHECK(kofun_semantic_begin(&sink, &fixture->semantic_source));
+        CHECK(emit_node(
+            &sink, module, KOFUN_SEMANTIC_NODE_MODULE, span,
+            KOFUN_SEMANTIC_VALIDATED, NULL, 0u, NULL, 0u
+        ));
+        memset(&reference, 0, sizeof(reference));
+        id_from_text(
+            "reference:error-arbitrary-target",
+            &reference.reference_id
+        );
+        id_from_text("identity:not-emitted", &arbitrary_target);
+        id_from_text("diagnostic:future", &diagnostic_id);
+        reference.source_node_id = module;
+        reference.name_space = KOFUN_SEMANTIC_NAMESPACE_VALUE;
+        reference.span = span;
+        reference.status = KOFUN_SEMANTIC_ERROR;
+        reference.target_shape = KOFUN_SEMANTIC_TARGET_VISIBLE;
+        reference.target_kind = KOFUN_SEMANTIC_ID_SYMBOL;
+        reference.target_value = arbitrary_target;
+        reference.diagnostic_ids = &diagnostic_id;
+        reference.diagnostic_count = 1u;
+        CHECK(!kofun_semantic_reference(&sink, &reference));
+        CHECK(strcmp(kofun_semantic_stream_error(stream)->code, "ETS03") == 0);
+        kofun_semantic_stream_destroy(stream);
+    }
+
+    {
+        KofunSemanticIdentity identity;
+        KofunSemanticReference reference;
+        stream = kofun_semantic_stream_create();
+        CHECK(stream != NULL);
+        sink = kofun_semantic_stream_sink(stream);
+        CHECK(kofun_semantic_begin(&sink, &fixture->semantic_source));
+        CHECK(emit_node(
+            &sink, module, KOFUN_SEMANTIC_NODE_MODULE, span,
+            KOFUN_SEMANTIC_VALIDATED, NULL, 0u, NULL, 0u
+        ));
+        memset(&identity, 0, sizeof(identity));
+        identity.owner_node_id = module;
+        identity.kind = KOFUN_SEMANTIC_ID_SYMBOL;
+        identity.status = KOFUN_SEMANTIC_UNAVAILABLE;
+        id_from_text("identity:unavailable", &identity.value);
+        CHECK(kofun_semantic_identity(&sink, &identity));
+        memset(&reference, 0, sizeof(reference));
+        id_from_text(
+            "reference:validated-unavailable-target",
+            &reference.reference_id
+        );
+        reference.source_node_id = module;
+        reference.name_space = KOFUN_SEMANTIC_NAMESPACE_VALUE;
+        reference.span = span;
+        reference.status = KOFUN_SEMANTIC_VALIDATED;
+        reference.target_shape = KOFUN_SEMANTIC_TARGET_VISIBLE;
+        reference.target_kind = KOFUN_SEMANTIC_ID_SYMBOL;
+        reference.target_value = identity.value;
+        CHECK(!kofun_semantic_reference(&sink, &reference));
+        CHECK(strcmp(kofun_semantic_stream_error(stream)->code, "ETS03") == 0);
+        kofun_semantic_stream_destroy(stream);
+    }
+
+    {
+        KofunSemanticReference reference;
+        KofunSemanticId symbol;
+        stream = kofun_semantic_stream_create();
+        CHECK(stream != NULL);
+        sink = kofun_semantic_stream_sink(stream);
+        CHECK(kofun_semantic_begin(&sink, &fixture->semantic_source));
+        CHECK(emit_node(
+            &sink, module, KOFUN_SEMANTIC_NODE_MODULE, span,
+            KOFUN_SEMANTIC_VALIDATED, NULL, 0u, NULL, 0u
+        ));
+        CHECK(emit_identity(
+            &sink, module, KOFUN_SEMANTIC_ID_SYMBOL,
+            "identity:known-symbol", &symbol
+        ));
+        memset(&reference, 0, sizeof(reference));
+        id_from_text("reference:wrong-target-kind", &reference.reference_id);
+        reference.source_node_id = module;
+        reference.name_space = KOFUN_SEMANTIC_NAMESPACE_TYPE;
+        reference.span = span;
+        reference.status = KOFUN_SEMANTIC_VALIDATED;
+        reference.target_shape = KOFUN_SEMANTIC_TARGET_VISIBLE;
+        reference.target_kind = KOFUN_SEMANTIC_ID_TYPE;
+        reference.target_value = symbol;
+        CHECK(!kofun_semantic_reference(&sink, &reference));
+        CHECK(strcmp(kofun_semantic_stream_error(stream)->code, "ETS03") == 0);
+        kofun_semantic_stream_destroy(stream);
+    }
+
+    {
+        KofunSemanticReference reference;
+        stream = kofun_semantic_stream_create();
+        CHECK(stream != NULL);
+        sink = kofun_semantic_stream_sink(stream);
+        CHECK(kofun_semantic_begin(&sink, &fixture->semantic_source));
+        CHECK(emit_node(
+            &sink, module, KOFUN_SEMANTIC_NODE_MODULE, span,
+            KOFUN_SEMANTIC_VALIDATED, NULL, 0u, NULL, 0u
+        ));
+        memset(&reference, 0, sizeof(reference));
+        id_from_text(
+            "reference:validated-non-visible",
+            &reference.reference_id
+        );
+        reference.source_node_id = module;
+        reference.name_space = KOFUN_SEMANTIC_NAMESPACE_VALUE;
+        reference.span = span;
+        reference.status = KOFUN_SEMANTIC_VALIDATED;
+        reference.target_shape = KOFUN_SEMANTIC_TARGET_UNAVAILABLE;
+        reference.target_kind = KOFUN_SEMANTIC_ID_SYMBOL;
+        reference.hidden_reason = text(
+            KOFUN_SEMANTIC_REASON_UNRESOLVED_STAGE2_REFERENCE
+        );
+        CHECK(!kofun_semantic_reference(&sink, &reference));
+        CHECK(strcmp(kofun_semantic_stream_error(stream)->code, "ETS03") == 0);
+        kofun_semantic_stream_destroy(stream);
+    }
+
+    {
+        KofunSemanticReference reference;
+        KofunSemanticId diagnostic_id;
+        const KofunSemanticError *error;
+        const char *private_reason = "secret/path/private-name";
+        stream = kofun_semantic_stream_create();
+        CHECK(stream != NULL);
+        sink = kofun_semantic_stream_sink(stream);
+        CHECK(kofun_semantic_begin(&sink, &fixture->semantic_source));
+        CHECK(emit_node(
+            &sink, module, KOFUN_SEMANTIC_NODE_MODULE, span,
+            KOFUN_SEMANTIC_VALIDATED, NULL, 0u, NULL, 0u
+        ));
+        memset(&reference, 0, sizeof(reference));
+        id_from_text("reference:unsafe-reason", &reference.reference_id);
+        id_from_text("diagnostic:future", &diagnostic_id);
+        reference.source_node_id = module;
+        reference.name_space = KOFUN_SEMANTIC_NAMESPACE_VALUE;
+        reference.span = span;
+        reference.status = KOFUN_SEMANTIC_ERROR;
+        reference.target_shape = KOFUN_SEMANTIC_TARGET_UNAVAILABLE;
+        reference.target_kind = KOFUN_SEMANTIC_ID_SYMBOL;
+        reference.hidden_reason = text(private_reason);
+        reference.diagnostic_ids = &diagnostic_id;
+        reference.diagnostic_count = 1u;
+        CHECK(!kofun_semantic_reference(&sink, &reference));
+        error = kofun_semantic_stream_error(stream);
+        CHECK(error != NULL);
+        CHECK(strcmp(error->code, "ETS03") == 0);
+        CHECK(strstr(error->detail, private_reason) == NULL);
+        kofun_semantic_stream_destroy(stream);
+    }
+
+    {
+        KofunSemanticReference reference;
+        KofunSemanticId diagnostic_id;
+        stream = kofun_semantic_stream_create();
+        CHECK(stream != NULL);
+        sink = kofun_semantic_stream_sink(stream);
+        CHECK(kofun_semantic_begin(&sink, &fixture->semantic_source));
+        CHECK(emit_node(
+            &sink, module, KOFUN_SEMANTIC_NODE_MODULE, span,
+            KOFUN_SEMANTIC_VALIDATED, NULL, 0u, NULL, 0u
+        ));
+        memset(&reference, 0, sizeof(reference));
+        id_from_text("reference:safe-reason", &reference.reference_id);
+        id_from_text("diagnostic:future", &diagnostic_id);
+        reference.source_node_id = module;
+        reference.name_space = KOFUN_SEMANTIC_NAMESPACE_VALUE;
+        reference.span = span;
+        reference.status = KOFUN_SEMANTIC_ERROR;
+        reference.target_shape = KOFUN_SEMANTIC_TARGET_UNAVAILABLE;
+        reference.target_kind = KOFUN_SEMANTIC_ID_SYMBOL;
+        reference.hidden_reason = text(
+            KOFUN_SEMANTIC_REASON_UNRESOLVED_STAGE2_REFERENCE
+        );
+        reference.diagnostic_ids = &diagnostic_id;
+        reference.diagnostic_count = 1u;
+        CHECK(kofun_semantic_reference(&sink, &reference));
+        kofun_semantic_stream_destroy(stream);
+    }
+
+    {
+        KofunSemanticFact fact;
+        stream = kofun_semantic_stream_create();
+        CHECK(stream != NULL);
+        sink = kofun_semantic_stream_sink(stream);
+        CHECK(kofun_semantic_begin(&sink, &fixture->semantic_source));
+        CHECK(emit_node(
+            &sink, module, KOFUN_SEMANTIC_NODE_MODULE, span,
+            KOFUN_SEMANTIC_VALIDATED, NULL, 0u, NULL, 0u
+        ));
+        memset(&fact, 0, sizeof(fact));
+        fact.owner_node_id = module;
+        fact.kind = KOFUN_SEMANTIC_FACT_TYPE;
+        fact.status = KOFUN_SEMANTIC_UNAVAILABLE;
+        fact.display = text("fabricated-type");
+        fact.reason = text("not-proven");
+        CHECK(!kofun_semantic_fact(&sink, &fact));
+        CHECK(strcmp(kofun_semantic_stream_error(stream)->code, "ETS03") == 0);
+        kofun_semantic_stream_destroy(stream);
+    }
+
+    {
+        KofunSemanticFact fact;
+        stream = kofun_semantic_stream_create();
+        CHECK(stream != NULL);
+        sink = kofun_semantic_stream_sink(stream);
+        CHECK(kofun_semantic_begin(&sink, &fixture->semantic_source));
+        CHECK(emit_node(
+            &sink, module, KOFUN_SEMANTIC_NODE_MODULE, span,
+            KOFUN_SEMANTIC_VALIDATED, NULL, 0u, NULL, 0u
+        ));
+        memset(&fact, 0, sizeof(fact));
+        fact.owner_node_id = module;
+        fact.kind = KOFUN_SEMANTIC_FACT_TYPE;
+        fact.status = KOFUN_SEMANTIC_UNAVAILABLE;
+        fact.reason = text(KOFUN_SEMANTIC_REASON_TYPE_UNAVAILABLE);
+        CHECK(kofun_semantic_fact(&sink, &fact));
+        kofun_semantic_stream_destroy(stream);
+    }
+
+    {
+        KofunSemanticDiagnostic diagnostic;
+        KofunSemanticId dangling;
+        stream = kofun_semantic_stream_create();
+        CHECK(stream != NULL);
+        sink = kofun_semantic_stream_sink(stream);
+        CHECK(kofun_semantic_begin(&sink, &fixture->semantic_source));
+        CHECK(emit_node(
+            &sink, module, KOFUN_SEMANTIC_NODE_MODULE, span,
+            KOFUN_SEMANTIC_VALIDATED, NULL, 0u, NULL, 0u
+        ));
+        memset(&diagnostic, 0, sizeof(diagnostic));
+        id_from_text("diagnostic:dangling-affected", &diagnostic.diagnostic_id);
+        id_from_text("node:not-emitted", &dangling);
+        diagnostic.code = text("E2S99");
+        diagnostic.category = text("test");
+        diagnostic.severity = KOFUN_SEMANTIC_DIAGNOSTIC_ERROR;
+        diagnostic.template_id = text("dangling-affected");
+        diagnostic.primary_file_id = fixture->file_id;
+        diagnostic.primary_span = span;
+        diagnostic.fallback_text = text("dangling affected identity");
+        diagnostic.affected_ids = &dangling;
+        diagnostic.affected_count = 1u;
+        CHECK(!kofun_semantic_diagnostic(&sink, &diagnostic));
+        CHECK(strcmp(kofun_semantic_stream_error(stream)->code, "ETS03") == 0);
+        kofun_semantic_stream_destroy(stream);
+    }
+}
+
 static void test_early_and_cancellation(const Fixture *fixture) {
     KofunSemanticStream *stream = kofun_semantic_stream_create();
     KofunSemanticSink sink;
@@ -652,6 +1030,24 @@ static void test_early_and_cancellation(const Fixture *fixture) {
     CHECK(kofun_semantic_stream_bytes(stream, &bytes, &length));
     CHECK(kofun_semantic_validate_stream(bytes, length, NULL));
     kofun_semantic_stream_destroy(stream);
+
+    {
+        KofunSemanticSource nonzero = fixture->semantic_source;
+        nonzero.compiler_exit_class = 1u;
+        stream = kofun_semantic_stream_create();
+        CHECK(stream != NULL);
+        sink = kofun_semantic_stream_sink(stream);
+        CHECK(kofun_semantic_begin(&sink, &nonzero));
+        kofun_semantic_stream_observe_cancellation(stream);
+        CHECK(!kofun_semantic_end(
+            &sink, KOFUN_SOURCE_CANCELLED, KOFUN_SEMANTIC_PARTIAL
+        ));
+        CHECK(strcmp(
+            kofun_semantic_stream_error(stream)->code,
+            "ETS03"
+        ) == 0);
+        kofun_semantic_stream_destroy(stream);
+    }
 }
 
 static void test_relation_limits(const Fixture *fixture) {
@@ -738,12 +1134,20 @@ static void test_relation_limits(const Fixture *fixture) {
 
 static void test_text_limits(const Fixture *fixture) {
     static const char *invalid_paths[] = {
+        "/src/main.kofun",
+        "C:/src/main.kofun",
         "src//main.kofun",
         "src/./main.kofun",
         "src/../main.kofun",
+        "../src/main.kofun",
         "src/main.kofun/",
         "src\\main.kofun",
-        "file://main.kofun"
+        "file://main.kofun",
+        "src/\nmain.kofun"
+    };
+    static const uint8_t decomposed_path[] = {
+        's', 'r', 'c', '/', 'e', 0xcc, 0x81,
+        '.', 'k', 'o', 'f', 'u', 'n'
     };
     KofunSemanticStream *stream;
     KofunSemanticSink sink;
@@ -784,6 +1188,23 @@ static void test_text_limits(const Fixture *fixture) {
             ) == 0);
             kofun_semantic_stream_destroy(stream);
         }
+    }
+    {
+        KofunSemanticBytes invalid;
+        invalid.bytes = decomposed_path;
+        invalid.length = sizeof(decomposed_path);
+        CHECK(!kofun_semantic_validate_text(invalid));
+        CHECK(!kofun_semantic_validate_logical_path(invalid));
+        source.logical_path = invalid;
+        stream = kofun_semantic_stream_create();
+        CHECK(stream != NULL);
+        sink = kofun_semantic_stream_sink(stream);
+        CHECK(!kofun_semantic_begin(&sink, &source));
+        CHECK(strcmp(
+            kofun_semantic_stream_error(stream)->code,
+            "ETS04"
+        ) == 0);
+        kofun_semantic_stream_destroy(stream);
     }
     free(path);
 }
@@ -929,6 +1350,10 @@ static uint32_t test_load_u32be(const uint8_t *bytes) {
         bytes[3];
 }
 
+static uint16_t test_load_u16be(const uint8_t *bytes) {
+    return (uint16_t)(((uint16_t)bytes[0] << 8u) | bytes[1]);
+}
+
 static void test_store_u32be(uint8_t *bytes, uint32_t value) {
     bytes[0] = (uint8_t)(value >> 24u);
     bytes[1] = (uint8_t)(value >> 16u);
@@ -968,6 +1393,61 @@ static size_t find_bytes(
     return 0u;
 }
 
+static size_t field_payload_at(
+    const uint8_t *bytes,
+    size_t length,
+    uint8_t wanted_kind,
+    uint32_t wanted_occurrence,
+    uint8_t wanted_tag,
+    uint32_t *field_length
+) {
+    uint32_t event_count;
+    uint32_t event_index;
+    uint32_t occurrence = 0u;
+    size_t cursor = 16u;
+    size_t payload_end;
+    CHECK(bytes != NULL);
+    CHECK(length >= 48u);
+    event_count = test_load_u32be(bytes + 8u);
+    payload_end = 16u + test_load_u32be(bytes + 12u);
+    CHECK(payload_end + 32u == length);
+    for (event_index = 0u; event_index < event_count; event_index += 1u) {
+        uint8_t kind;
+        uint16_t field_count;
+        uint16_t field_index;
+        size_t frame_end;
+        bool selected;
+        CHECK(payload_end - cursor >= 8u);
+        kind = bytes[cursor];
+        field_count = test_load_u16be(bytes + cursor + 2u);
+        frame_end = cursor + 8u + test_load_u32be(bytes + cursor + 4u);
+        CHECK(frame_end <= payload_end);
+        cursor += 8u;
+        selected = kind == wanted_kind &&
+            occurrence == wanted_occurrence;
+        for (field_index = 0u;
+             field_index < field_count;
+             field_index += 1u) {
+            uint8_t tag;
+            uint32_t current_length;
+            CHECK(frame_end - cursor >= 8u);
+            tag = bytes[cursor];
+            current_length = test_load_u32be(bytes + cursor + 4u);
+            cursor += 8u;
+            CHECK(current_length <= frame_end - cursor);
+            if (selected && tag == wanted_tag) {
+                if (field_length != NULL) *field_length = current_length;
+                return cursor;
+            }
+            cursor += current_length;
+        }
+        CHECK(cursor == frame_end);
+        if (kind == wanted_kind) occurrence += 1u;
+    }
+    CHECK(false);
+    return 0u;
+}
+
 static void expect_invalid(
     uint8_t *bytes,
     size_t length,
@@ -981,12 +1461,27 @@ static void expect_invalid(
 
 static void test_corruption(const Fixture *fixture) {
     KofunSemanticStream *stream = make_clean_stream(fixture);
+    KofunSemanticStream *partial_stream = make_partial_stream(fixture);
     uint8_t *canonical;
+    uint8_t *partial;
     uint8_t *copy;
     size_t length;
+    size_t partial_length;
     size_t path_at;
+    size_t field_at;
+    uint32_t field_length;
+    size_t index;
+    struct FixedU8Case {
+        const uint8_t *bytes;
+        size_t length;
+        uint8_t event_kind;
+        uint8_t field_tag;
+    };
+    struct FixedU8Case fixed_u8_cases[14];
     canonical = copy_stream(stream, &length);
+    partial = copy_stream(partial_stream, &partial_length);
     CHECK(kofun_semantic_validate_stream(canonical, length, NULL));
+    CHECK(kofun_semantic_validate_stream(partial, partial_length, NULL));
 
     copy = fresh_copy(canonical, length);
     copy[20] ^= 1u;
@@ -1039,8 +1534,172 @@ static void test_corruption(const Fixture *fixture) {
     copy = fresh_copy(canonical, length);
     expect_invalid(copy, length - 1u, "ETS04");
 
+    fixed_u8_cases[0] = (struct FixedU8Case){
+        canonical, length, 1u, 10u
+    };
+    fixed_u8_cases[1] = (struct FixedU8Case){
+        canonical, length, 2u, 2u
+    };
+    fixed_u8_cases[2] = (struct FixedU8Case){
+        canonical, length, 2u, 4u
+    };
+    fixed_u8_cases[3] = (struct FixedU8Case){
+        canonical, length, 3u, 2u
+    };
+    fixed_u8_cases[4] = (struct FixedU8Case){
+        canonical, length, 3u, 4u
+    };
+    fixed_u8_cases[5] = (struct FixedU8Case){
+        canonical, length, 4u, 3u
+    };
+    fixed_u8_cases[6] = (struct FixedU8Case){
+        canonical, length, 4u, 5u
+    };
+    fixed_u8_cases[7] = (struct FixedU8Case){
+        canonical, length, 4u, 6u
+    };
+    fixed_u8_cases[8] = (struct FixedU8Case){
+        canonical, length, 4u, 7u
+    };
+    fixed_u8_cases[9] = (struct FixedU8Case){
+        canonical, length, 5u, 2u
+    };
+    fixed_u8_cases[10] = (struct FixedU8Case){
+        canonical, length, 5u, 3u
+    };
+    fixed_u8_cases[11] = (struct FixedU8Case){
+        partial, partial_length, 6u, 4u
+    };
+    fixed_u8_cases[12] = (struct FixedU8Case){
+        partial, partial_length, 6u, 11u
+    };
+    fixed_u8_cases[13] = (struct FixedU8Case){
+        canonical, length, 7u, 1u
+    };
+    for (index = 0u;
+         index < sizeof(fixed_u8_cases) / sizeof(fixed_u8_cases[0]);
+         index += 1u) {
+        const struct FixedU8Case *test = &fixed_u8_cases[index];
+        copy = fresh_copy(test->bytes, test->length);
+        field_at = field_payload_at(
+            copy,
+            test->length,
+            test->event_kind,
+            0u,
+            test->field_tag,
+            &field_length
+        );
+        CHECK(field_length == 1u);
+        copy[field_at] = UINT8_C(255);
+        resign(copy, test->length);
+        expect_invalid(copy, test->length, "ETS03");
+    }
+    copy = fresh_copy(canonical, length);
+    field_at = field_payload_at(copy, length, 7u, 0u, 2u, &field_length);
+    CHECK(field_length == 1u);
+    copy[field_at] = UINT8_C(255);
+    resign(copy, length);
+    expect_invalid(copy, length, "ETS03");
+
+    copy = fresh_copy(canonical, length);
+    field_at = field_payload_at(copy, length, 1u, 0u, 10u, &field_length);
+    CHECK(field_length == 1u);
+    copy[field_at] = 1u;
+    resign(copy, length);
+    expect_invalid(copy, length, "ETS03");
+
+    copy = fresh_copy(partial, partial_length);
+    field_at = field_payload_at(
+        copy, partial_length, 1u, 0u, 10u, &field_length
+    );
+    CHECK(field_length == 1u);
+    copy[field_at] = 0u;
+    resign(copy, partial_length);
+    expect_invalid(copy, partial_length, "ETS03");
+
+    copy = fresh_copy(canonical, length);
+    field_at = field_payload_at(copy, length, 4u, 0u, 8u, &field_length);
+    CHECK(field_length == KOFUN_SEMANTIC_ID_BYTES);
+    copy[field_at] ^= UINT8_C(1);
+    resign(copy, length);
+    expect_invalid(copy, length, "ETS03");
+
+    copy = fresh_copy(canonical, length);
+    field_at = field_payload_at(copy, length, 4u, 0u, 7u, &field_length);
+    CHECK(field_length == 1u);
+    copy[field_at] = (uint8_t)KOFUN_SEMANTIC_ID_TYPE;
+    resign(copy, length);
+    expect_invalid(copy, length, "ETS03");
+
+    copy = fresh_copy(canonical, length);
+    field_at = field_payload_at(copy, length, 3u, 2u, 4u, &field_length);
+    CHECK(field_length == 1u);
+    copy[field_at] = (uint8_t)KOFUN_SEMANTIC_UNAVAILABLE;
+    resign(copy, length);
+    expect_invalid(copy, length, "ETS03");
+
+    copy = fresh_copy(partial, partial_length);
+    field_at = field_payload_at(
+        copy, partial_length, 4u, 0u, 5u, &field_length
+    );
+    CHECK(field_length == 1u);
+    copy[field_at] = (uint8_t)KOFUN_SEMANTIC_VALIDATED;
+    resign(copy, partial_length);
+    expect_invalid(copy, partial_length, "ETS03");
+
+    copy = fresh_copy(partial, partial_length);
+    field_at = field_payload_at(
+        copy, partial_length, 6u, 0u, 12u, &field_length
+    );
+    CHECK(field_length >= 2u);
+    copy[field_at] = 0u;
+    copy[field_at + 1u] = 2u;
+    resign(copy, partial_length);
+    expect_invalid(copy, partial_length, "ETS03");
+
+    copy = fresh_copy(partial, partial_length);
+    field_at = field_payload_at(
+        copy, partial_length, 6u, 0u, 12u, &field_length
+    );
+    CHECK(field_length > 44u);
+    CHECK(test_load_u16be(copy + field_at) == 1u);
+    copy[field_at + 44u] = UINT8_C(0xff);
+    resign(copy, partial_length);
+    expect_invalid(copy, partial_length, "ETS04");
+
+    copy = fresh_copy(partial, partial_length);
+    field_at = field_payload_at(
+        copy, partial_length, 6u, 0u, 13u, &field_length
+    );
+    CHECK(field_length >= 2u);
+    copy[field_at] = 0u;
+    copy[field_at + 1u] = 2u;
+    resign(copy, partial_length);
+    expect_invalid(copy, partial_length, "ETS03");
+
+    copy = fresh_copy(partial, partial_length);
+    field_at = field_payload_at(
+        copy, partial_length, 6u, 0u, 13u, &field_length
+    );
+    CHECK(field_length > 48u);
+    CHECK(test_load_u16be(copy + field_at) == 1u);
+    test_store_u32be(copy + field_at + 2u, 8u);
+    resign(copy, partial_length);
+    expect_invalid(copy, partial_length, "ETS03");
+
+    copy = fresh_copy(partial, partial_length);
+    field_at = field_payload_at(
+        copy, partial_length, 6u, 0u, 13u, &field_length
+    );
+    CHECK(field_length > 48u);
+    copy[field_at + 48u] = UINT8_C(0xff);
+    resign(copy, partial_length);
+    expect_invalid(copy, partial_length, "ETS04");
+
     free(canonical);
+    free(partial);
     kofun_semantic_stream_destroy(stream);
+    kofun_semantic_stream_destroy(partial_stream);
 }
 
 static void test_hidden_disclosure(const Fixture *fixture) {
@@ -1127,13 +1786,95 @@ static void test_atomic_failure_preserves(
     const char *work
 ) {
     KofunSemanticStream *stream = make_clean_stream(fixture);
+    KofunSemanticStream *collision_stream = make_clean_stream(fixture);
+    KofunSemanticStream *replacement_stream = make_clean_stream(fixture);
     char directory[1024];
+    char sentinel[1024];
+    char temporary[1100];
+    static const char sentinel_bytes[] = "prior-sentinel";
     struct stat status;
+    FILE *file;
+    char observed[sizeof(sentinel_bytes)];
+    uint8_t *committed;
+    size_t committed_length;
+    unsigned attempt;
     (void)snprintf(directory, sizeof(directory), "%s/not-a-file", work);
     if (mkdir(directory, 0700) != 0) CHECK(errno == EEXIST);
     CHECK(!kofun_semantic_stream_commit(stream, directory));
     CHECK(stat(directory, &status) == 0);
     CHECK(S_ISDIR(status.st_mode));
+
+    (void)snprintf(sentinel, sizeof(sentinel), "%s/sentinel.kse", work);
+    file = fopen(sentinel, "wb");
+    CHECK(file != NULL);
+    CHECK(fwrite(
+        sentinel_bytes, 1u, sizeof(sentinel_bytes), file
+    ) == sizeof(sentinel_bytes));
+    CHECK(fclose(file) == 0);
+    for (attempt = 0u; attempt < 100u; attempt += 1u) {
+        (void)snprintf(
+            temporary,
+            sizeof(temporary),
+            "%s.kofun-kse-tmp.%ld.%u",
+            sentinel,
+            (long)getpid(),
+            attempt
+        );
+        file = fopen(temporary, "wbx");
+        CHECK(file != NULL);
+        CHECK(fclose(file) == 0);
+    }
+    CHECK(!kofun_semantic_stream_commit(collision_stream, sentinel));
+    file = fopen(sentinel, "rb");
+    CHECK(file != NULL);
+    CHECK(fread(observed, 1u, sizeof(observed), file) == sizeof(observed));
+    CHECK(fclose(file) == 0);
+    CHECK(memcmp(observed, sentinel_bytes, sizeof(observed)) == 0);
+    for (attempt = 0u; attempt < 100u; attempt += 1u) {
+        (void)snprintf(
+            temporary,
+            sizeof(temporary),
+            "%s.kofun-kse-tmp.%ld.%u",
+            sentinel,
+            (long)getpid(),
+            attempt
+        );
+        CHECK(lstat(temporary, &status) == 0);
+        CHECK(S_ISREG(status.st_mode));
+        CHECK(unlink(temporary) == 0);
+    }
+    (void)snprintf(
+        temporary,
+        sizeof(temporary),
+        "%s.kofun-kse-tmp.%ld.%u",
+        sentinel,
+        (long)getpid(),
+        100u
+    );
+    CHECK(lstat(temporary, &status) != 0);
+    CHECK(errno == ENOENT);
+
+    CHECK(kofun_semantic_stream_commit(replacement_stream, sentinel));
+    committed = read_file(sentinel, &committed_length);
+    CHECK(kofun_semantic_validate_stream(
+        committed, committed_length, NULL
+    ));
+    free(committed);
+    for (attempt = 0u; attempt < 100u; attempt += 1u) {
+        (void)snprintf(
+            temporary,
+            sizeof(temporary),
+            "%s.kofun-kse-tmp.%ld.%u",
+            sentinel,
+            (long)getpid(),
+            attempt
+        );
+        CHECK(lstat(temporary, &status) != 0);
+        CHECK(errno == ENOENT);
+    }
+    CHECK(unlink(sentinel) == 0);
+    kofun_semantic_stream_destroy(replacement_stream);
+    kofun_semantic_stream_destroy(collision_stream);
     kofun_semantic_stream_destroy(stream);
 }
 
@@ -1146,6 +1887,7 @@ int main(int argc, char **argv) {
     if (strcmp(argv[1], "events") == 0) {
         test_complete_partial(&fixture, argv[2]);
         test_sink_rejection(&fixture);
+        test_strict_invariant_rejection(&fixture);
         test_early_and_cancellation(&fixture);
         test_hidden_disclosure(&fixture);
         test_nfc_rejection(&fixture);

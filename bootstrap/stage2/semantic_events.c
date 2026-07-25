@@ -63,6 +63,8 @@ struct KofunSemanticStream {
     size_t relation_count;
     size_t relation_capacity;
     uint64_t source_bytes;
+    KofunSemanticId source_file_id;
+    uint8_t compiler_exit_class;
     uint8_t phase;
     uint8_t last_fact_kind;
     bool began;
@@ -169,7 +171,7 @@ static bool id_equal(
     ) == 0;
 }
 
-static bool valid_utf8_nfc(KofunSemanticBytes text) {
+bool kofun_semantic_validate_text(KofunSemanticBytes text) {
     utf8proc_uint8_t *normalized = NULL;
     utf8proc_ssize_t result;
     bool same;
@@ -196,12 +198,70 @@ static bool valid_utf8_nfc(KofunSemanticBytes text) {
     return same;
 }
 
-static bool valid_logical_path(KofunSemanticBytes path) {
+static bool semantic_bytes_equal_cstr(
+    KofunSemanticBytes value,
+    const char *expected
+) {
+    size_t expected_length = strlen(expected);
+    return value.length == expected_length &&
+        (expected_length == 0u ||
+         memcmp(value.bytes, expected, expected_length) == 0);
+}
+
+static bool valid_public_reason(KofunSemanticBytes reason) {
+    return semantic_bytes_equal_cstr(
+            reason,
+            KOFUN_SEMANTIC_REASON_UNRESOLVED_STAGE2_REFERENCE
+        ) ||
+        semantic_bytes_equal_cstr(
+            reason,
+            KOFUN_SEMANTIC_REASON_TYPE_UNAVAILABLE
+        ) ||
+        semantic_bytes_equal_cstr(
+            reason,
+            KOFUN_SEMANTIC_REASON_MOVE_AFTER_BORROW
+        ) ||
+        semantic_bytes_equal_cstr(
+            reason,
+            KOFUN_SEMANTIC_REASON_VISIBILITY_RESTRICTED
+        ) ||
+        semantic_bytes_equal_cstr(
+            reason,
+            KOFUN_SEMANTIC_REASON_UNSUPPORTED_STAGE2_FEATURE
+        ) ||
+        semantic_bytes_equal_cstr(
+            reason,
+            KOFUN_SEMANTIC_REASON_CANCELLED_BEFORE_ANALYSIS
+        );
+}
+
+bool kofun_semantic_validate_logical_path(KofunSemanticBytes path) {
     uint32_t index;
     uint32_t component_start = 0u;
-    if (path.length == 0u || !valid_utf8_nfc(path)) return false;
+    size_t cursor = 0u;
+    if (path.length == 0u || !kofun_semantic_validate_text(path)) {
+        return false;
+    }
     if (path.bytes[0] == '/' || path.bytes[0] == '\\') return false;
     if (path.length >= 2u && path.bytes[1] == ':') return false;
+    while (cursor < path.length) {
+        utf8proc_int32_t codepoint = 0;
+        utf8proc_ssize_t width = utf8proc_iterate(
+            path.bytes + cursor,
+            (utf8proc_ssize_t)(path.length - cursor),
+            &codepoint
+        );
+        utf8proc_category_t category;
+        if (width <= 0) return false;
+        category = utf8proc_category(codepoint);
+        if (category == UTF8PROC_CATEGORY_CC ||
+            category == UTF8PROC_CATEGORY_CF ||
+            category == UTF8PROC_CATEGORY_ZL ||
+            category == UTF8PROC_CATEGORY_ZP) {
+            return false;
+        }
+        cursor += (size_t)width;
+    }
     for (index = 0u; index <= path.length; index += 1u) {
         if (index < path.length && path.bytes[index] == '\\') return false;
         if (index == path.length || path.bytes[index] == '/') {
@@ -474,6 +534,100 @@ static bool field_u32_list(
     );
 }
 
+static bool buffer_u16(ByteBuffer *buffer, uint16_t value) {
+    uint8_t bytes[2];
+    store_u16be(bytes, value);
+    return buffer_append(buffer, bytes, sizeof(bytes));
+}
+
+static bool buffer_u32(ByteBuffer *buffer, uint32_t value) {
+    uint8_t bytes[4];
+    store_u32be(bytes, value);
+    return buffer_append(buffer, bytes, sizeof(bytes));
+}
+
+static bool field_related_list(
+    ByteBuffer *payload,
+    uint8_t tag,
+    const KofunSemanticRelated *related,
+    uint16_t count
+) {
+    ByteBuffer encoded = {0};
+    uint16_t index;
+    bool ok = buffer_u16(&encoded, count);
+    for (index = 0u; ok && index < count; index += 1u) {
+        ok = buffer_append(
+                &encoded,
+                related[index].file_id.bytes,
+                KOFUN_SEMANTIC_ID_BYTES
+            ) &&
+            buffer_u32(&encoded, related[index].span.start) &&
+            buffer_u32(&encoded, related[index].span.end) &&
+            buffer_u16(&encoded, (uint16_t)related[index].label.length) &&
+            buffer_append(
+                &encoded,
+                related[index].label.bytes,
+                related[index].label.length
+            );
+    }
+    if (ok && encoded.length <= KOFUN_SEMANTIC_MAX_TEXT_BYTES) {
+        ok = append_field(
+            payload,
+            tag,
+            KSE_WIRE_BYTES,
+            encoded.bytes,
+            (uint32_t)encoded.length
+        );
+    } else {
+        ok = false;
+    }
+    free(encoded.bytes);
+    return ok;
+}
+
+static bool field_edit_list(
+    ByteBuffer *payload,
+    uint8_t tag,
+    const KofunSemanticEdit *edits,
+    uint16_t count
+) {
+    ByteBuffer encoded = {0};
+    uint16_t index;
+    bool ok = buffer_u16(&encoded, count);
+    for (index = 0u; ok && index < count; index += 1u) {
+        ok = buffer_u32(&encoded, edits[index].remedy_id) &&
+            buffer_append(
+                &encoded,
+                edits[index].file_id.bytes,
+                KOFUN_SEMANTIC_ID_BYTES
+            ) &&
+            buffer_u32(&encoded, edits[index].span.start) &&
+            buffer_u32(&encoded, edits[index].span.end) &&
+            buffer_u16(
+                &encoded,
+                (uint16_t)edits[index].replacement.length
+            ) &&
+            buffer_append(
+                &encoded,
+                edits[index].replacement.bytes,
+                edits[index].replacement.length
+            );
+    }
+    if (ok && encoded.length <= KOFUN_SEMANTIC_MAX_TEXT_BYTES) {
+        ok = append_field(
+            payload,
+            tag,
+            KSE_WIRE_BYTES,
+            encoded.bytes,
+            (uint32_t)encoded.length
+        );
+    } else {
+        ok = false;
+    }
+    free(encoded.bytes);
+    return ok;
+}
+
 static bool finish_event(
     KofunSemanticStream *stream,
     uint8_t kind,
@@ -523,6 +677,23 @@ static const RecordMeta *find_record(
         if (stream->records[index].kind == kind &&
             id_equal(&stream->records[index].id, id)) {
             return &stream->records[index];
+        }
+    }
+    return NULL;
+}
+
+static const RecordMeta *find_identity_record(
+    const KofunSemanticStream *stream,
+    KofunSemanticIdentityKind kind,
+    const KofunSemanticId *value
+) {
+    size_t index;
+    for (index = 0u; index < stream->record_count; index += 1u) {
+        const RecordMeta *record = &stream->records[index];
+        if (record->kind == KSE_EVENT_IDENTITY &&
+            record->subtype == (uint8_t)kind &&
+            id_equal(&record->id, value)) {
+            return record;
         }
     }
     return NULL;
@@ -622,9 +793,9 @@ static bool stream_begin_callback(
             "cancelled before source/token commitment"
         );
     }
-    if (!valid_utf8_nfc(source->logical_path) ||
-        !valid_utf8_nfc(source->edition) ||
-        !valid_utf8_nfc(source->semantic_compatibility)) {
+    if (!kofun_semantic_validate_text(source->logical_path) ||
+        !kofun_semantic_validate_text(source->edition) ||
+        !kofun_semantic_validate_text(source->semantic_compatibility)) {
         return set_error(
             stream,
             "ETS04",
@@ -635,9 +806,10 @@ static bool stream_begin_callback(
     if (id_is_zero(&source->package_id) ||
         id_is_zero(&source->module_id) ||
         id_is_zero(&source->file_id) ||
-        !valid_logical_path(source->logical_path) ||
+        !kofun_semantic_validate_logical_path(source->logical_path) ||
         source->edition.length == 0u ||
-        source->semantic_compatibility.length == 0u) {
+        source->semantic_compatibility.length == 0u ||
+        source->compiler_exit_class > 3u) {
         return set_error(
             stream,
             "ETS03",
@@ -654,6 +826,8 @@ static bool stream_begin_callback(
         );
     }
     stream->source_bytes = source->source_bytes;
+    stream->source_file_id = source->file_id;
+    stream->compiler_exit_class = source->compiler_exit_class;
     stream->phase = 1u;
     stream->began = true;
     memset(&record, 0, sizeof(record));
@@ -671,7 +845,8 @@ static bool stream_begin_callback(
         ) ||
         !field_text(&payload, 7u, source->edition) ||
         !field_text(&payload, 8u, source->semantic_compatibility) ||
-        !field_u64(&payload, 9u, source->caller_generation)) {
+        !field_u64(&payload, 9u, source->caller_generation) ||
+        !field_u8(&payload, 10u, source->compiler_exit_class)) {
         free(payload.bytes);
         return set_error(
             stream,
@@ -680,7 +855,7 @@ static bool stream_begin_callback(
             "source event allocation failed"
         );
     }
-    return finish_event(stream, KSE_EVENT_SOURCE, 9u, &payload);
+    return finish_event(stream, KSE_EVENT_SOURCE, 10u, &payload);
 }
 
 static bool stream_node_callback(
@@ -868,7 +1043,7 @@ static bool stream_reference_callback(
             reference->diagnostic_count)) {
         return false;
     }
-    if (!valid_utf8_nfc(reference->hidden_reason)) {
+    if (!kofun_semantic_validate_text(reference->hidden_reason)) {
         return set_error(
             stream,
             "ETS04",
@@ -877,6 +1052,7 @@ static bool stream_reference_callback(
         );
     }
     if (reference->target_shape == KOFUN_SEMANTIC_TARGET_VISIBLE) {
+        const RecordMeta *target;
         if (reference->target_kind < KOFUN_SEMANTIC_ID_PACKAGE ||
             reference->target_kind > KOFUN_SEMANTIC_ID_CONSTRUCTOR ||
             id_is_zero(&reference->target_value) ||
@@ -888,14 +1064,34 @@ static bool stream_reference_callback(
                 "visible target shape is incomplete"
             );
         }
-    } else {
-        if (id_is_zero(&reference->target_value) == false ||
-            reference->hidden_reason.length == 0u) {
+        target = find_identity_record(
+            stream,
+            reference->target_kind,
+            &reference->target_value
+        );
+        if (target == NULL ||
+            (reference->status == KOFUN_SEMANTIC_VALIDATED &&
+             target->status != KOFUN_SEMANTIC_VALIDATED)) {
             return set_error(
                 stream,
                 "ETS03",
                 KSE_EVENT_REFERENCE,
-                "hidden target disclosed a value or lacks a reason"
+                "visible target identity is absent or has unsafe status"
+            );
+        }
+    } else {
+        if ((reference->target_kind != 0 &&
+             (reference->target_kind < KOFUN_SEMANTIC_ID_PACKAGE ||
+              reference->target_kind > KOFUN_SEMANTIC_ID_CONSTRUCTOR)) ||
+            id_is_zero(&reference->target_value) == false ||
+            reference->hidden_reason.length == 0u ||
+            reference->status == KOFUN_SEMANTIC_VALIDATED ||
+            !valid_public_reason(reference->hidden_reason)) {
+            return set_error(
+                stream,
+                "ETS03",
+                KSE_EVENT_REFERENCE,
+                "non-visible target has unsafe status, value, or reason"
             );
         }
     }
@@ -974,13 +1170,22 @@ static bool stream_fact_callback(
     size_t index;
     if (stream == NULL || fact == NULL) return false;
     if (!ensure_event(stream, KSE_EVENT_FACT, 5u)) return false;
-    if (!valid_utf8_nfc(fact->display) ||
-        !valid_utf8_nfc(fact->reason)) {
+    if (!kofun_semantic_validate_text(fact->display) ||
+        !kofun_semantic_validate_text(fact->reason)) {
         return set_error(
             stream,
             "ETS04",
             KSE_EVENT_FACT,
             "fact text encoding is invalid or over limit"
+        );
+    }
+    if (fact->reason.length != 0u &&
+        !valid_public_reason(fact->reason)) {
+        return set_error(
+            stream,
+            "ETS03",
+            KSE_EVENT_FACT,
+            "fact reason is not a public discriminator"
         );
     }
     if (fact->kind < KOFUN_SEMANTIC_FACT_TYPE ||
@@ -1009,12 +1214,12 @@ static bool stream_fact_callback(
         return false;
     }
     if (fact->status == KOFUN_SEMANTIC_UNAVAILABLE &&
-        fact->reason.length == 0u) {
+        (fact->reason.length == 0u || fact->display.length != 0u)) {
         return set_error(
             stream,
             "ETS03",
             KSE_EVENT_FACT,
-            "unavailable fact has no bounded reason"
+            "unavailable fact has a display or no bounded reason"
         );
     }
     if (fact->status == KOFUN_SEMANTIC_VALIDATED &&
@@ -1088,6 +1293,70 @@ static bool stream_fact_callback(
     return finish_event(stream, KSE_EVENT_FACT, 7u, &payload);
 }
 
+static int compare_semantic_bytes(
+    KofunSemanticBytes left,
+    KofunSemanticBytes right
+) {
+    uint32_t common = left.length < right.length ? left.length : right.length;
+    int order = common == 0u ? 0 : memcmp(left.bytes, right.bytes, common);
+    if (order != 0) return order;
+    if (left.length == right.length) return 0;
+    return left.length < right.length ? -1 : 1;
+}
+
+static int compare_related(
+    const KofunSemanticRelated *left,
+    const KofunSemanticRelated *right
+) {
+    int order = memcmp(
+        left->file_id.bytes,
+        right->file_id.bytes,
+        KOFUN_SEMANTIC_ID_BYTES
+    );
+    if (order != 0) return order;
+    if (left->span.start != right->span.start) {
+        return left->span.start < right->span.start ? -1 : 1;
+    }
+    if (left->span.end != right->span.end) {
+        return left->span.end < right->span.end ? -1 : 1;
+    }
+    return compare_semantic_bytes(left->label, right->label);
+}
+
+static int compare_edits(
+    const KofunSemanticEdit *left,
+    const KofunSemanticEdit *right
+) {
+    int order;
+    if (left->remedy_id != right->remedy_id) {
+        return left->remedy_id < right->remedy_id ? -1 : 1;
+    }
+    order = memcmp(
+        left->file_id.bytes,
+        right->file_id.bytes,
+        KOFUN_SEMANTIC_ID_BYTES
+    );
+    if (order != 0) return order;
+    if (left->span.start != right->span.start) {
+        return left->span.start < right->span.start ? -1 : 1;
+    }
+    if (left->span.end != right->span.end) {
+        return left->span.end < right->span.end ? -1 : 1;
+    }
+    return compare_semantic_bytes(left->replacement, right->replacement);
+}
+
+static bool remedy_exists(
+    const KofunSemanticDiagnostic *diagnostic,
+    uint32_t remedy_id
+) {
+    uint16_t index;
+    for (index = 0u; index < diagnostic->remedy_count; index += 1u) {
+        if (diagnostic->remedy_ids[index] == remedy_id) return true;
+    }
+    return false;
+}
+
 static bool stream_diagnostic_callback(
     void *context,
     const KofunSemanticDiagnostic *diagnostic
@@ -1098,10 +1367,10 @@ static bool stream_diagnostic_callback(
     uint16_t index;
     if (stream == NULL || diagnostic == NULL) return false;
     if (!ensure_event(stream, KSE_EVENT_DIAGNOSTIC, 6u)) return false;
-    if (!valid_utf8_nfc(diagnostic->code) ||
-        !valid_utf8_nfc(diagnostic->category) ||
-        !valid_utf8_nfc(diagnostic->template_id) ||
-        !valid_utf8_nfc(diagnostic->fallback_text)) {
+    if (!kofun_semantic_validate_text(diagnostic->code) ||
+        !kofun_semantic_validate_text(diagnostic->category) ||
+        !kofun_semantic_validate_text(diagnostic->template_id) ||
+        !kofun_semantic_validate_text(diagnostic->fallback_text)) {
         return set_error(
             stream,
             "ETS04",
@@ -1123,10 +1392,19 @@ static bool stream_diagnostic_callback(
         diagnostic->template_id.length == 0u ||
         diagnostic->affected_count > KOFUN_SEMANTIC_MAX_RELATIONS ||
         diagnostic->remedy_count > KOFUN_SEMANTIC_MAX_RELATIONS ||
+        diagnostic->related_count > KOFUN_SEMANTIC_MAX_RELATIONS ||
+        diagnostic->edit_count > KOFUN_SEMANTIC_MAX_RELATIONS ||
         (diagnostic->affected_count != 0u &&
          diagnostic->affected_ids == NULL) ||
         (diagnostic->remedy_count != 0u &&
-         diagnostic->remedy_ids == NULL)) {
+         diagnostic->remedy_ids == NULL) ||
+        (diagnostic->related_count != 0u &&
+         diagnostic->related == NULL) ||
+        (diagnostic->edit_count != 0u &&
+         diagnostic->edits == NULL) ||
+        !id_equal(
+            &diagnostic->primary_file_id,
+            &stream->source_file_id)) {
         return set_error(
             stream,
             "ETS03",
@@ -1135,12 +1413,20 @@ static bool stream_diagnostic_callback(
         );
     }
     for (index = 0; index < diagnostic->affected_count; index += 1u) {
-        if (id_is_zero(&diagnostic->affected_ids[index])) {
+        if (id_is_zero(&diagnostic->affected_ids[index]) ||
+            (find_record(
+                stream,
+                KSE_EVENT_NODE,
+                &diagnostic->affected_ids[index]) == NULL &&
+             find_record(
+                stream,
+                KSE_EVENT_REFERENCE,
+                &diagnostic->affected_ids[index]) == NULL)) {
             return set_error(
                 stream,
                 "ETS03",
                 KSE_EVENT_DIAGNOSTIC,
-                "zero affected identity"
+                "affected identity is zero or dangling"
             );
         }
         if (index != 0u &&
@@ -1164,6 +1450,69 @@ static bool stream_diagnostic_callback(
                 "ETS03",
                 KSE_EVENT_DIAGNOSTIC,
                 "remedy identities are not unique canonical order"
+            );
+        }
+    }
+    for (index = 0u; index < diagnostic->related_count; index += 1u) {
+        const KofunSemanticRelated *related = &diagnostic->related[index];
+        if (!id_equal(&related->file_id, &stream->source_file_id) ||
+            !valid_span(stream, related->span) ||
+            related->label.length == 0u) {
+            return set_error(
+                stream,
+                "ETS03",
+                KSE_EVENT_DIAGNOSTIC,
+                "invalid related diagnostic location"
+            );
+        }
+        if (!kofun_semantic_validate_text(related->label)) {
+            return set_error(
+                stream,
+                "ETS04",
+                KSE_EVENT_DIAGNOSTIC,
+                "related diagnostic text is invalid or over limit"
+            );
+        }
+        if (index != 0u &&
+            compare_related(
+                &diagnostic->related[index - 1u],
+                related
+            ) >= 0) {
+            return set_error(
+                stream,
+                "ETS03",
+                KSE_EVENT_DIAGNOSTIC,
+                "related locations are not unique canonical order"
+            );
+        }
+    }
+    for (index = 0u; index < diagnostic->edit_count; index += 1u) {
+        const KofunSemanticEdit *edit = &diagnostic->edits[index];
+        if (!remedy_exists(diagnostic, edit->remedy_id) ||
+            !id_equal(&edit->file_id, &stream->source_file_id) ||
+            !valid_span(stream, edit->span)) {
+            return set_error(
+                stream,
+                "ETS03",
+                KSE_EVENT_DIAGNOSTIC,
+                "invalid diagnostic edit"
+            );
+        }
+        if (!kofun_semantic_validate_text(edit->replacement)) {
+            return set_error(
+                stream,
+                "ETS04",
+                KSE_EVENT_DIAGNOSTIC,
+                "diagnostic edit text is invalid or over limit"
+            );
+        }
+        if (index != 0u &&
+            compare_edits(&diagnostic->edits[index - 1u], edit) >= 0) {
+            return set_error(
+                stream,
+                "ETS03",
+                KSE_EVENT_DIAGNOSTIC,
+                "diagnostic edits are not unique canonical order"
             );
         }
     }
@@ -1195,7 +1544,17 @@ static bool stream_diagnostic_callback(
             10u,
             diagnostic->remedy_ids,
             diagnostic->remedy_count) ||
-        !field_u8(&payload, 11u, diagnostic->truncated ? 1u : 0u)) {
+        !field_u8(&payload, 11u, diagnostic->truncated ? 1u : 0u) ||
+        !field_related_list(
+            &payload,
+            12u,
+            diagnostic->related,
+            diagnostic->related_count) ||
+        !field_edit_list(
+            &payload,
+            13u,
+            diagnostic->edits,
+            diagnostic->edit_count)) {
         free(payload.bytes);
         return set_error(
             stream,
@@ -1211,7 +1570,7 @@ static bool stream_diagnostic_callback(
     if (diagnostic->severity == KOFUN_SEMANTIC_DIAGNOSTIC_ERROR) {
         stream->has_error_diagnostic = true;
     }
-    return finish_event(stream, KSE_EVENT_DIAGNOSTIC, 11u, &payload);
+    return finish_event(stream, KSE_EVENT_DIAGNOSTIC, 13u, &payload);
 }
 
 static bool validate_closure(KofunSemanticStream *stream) {
@@ -1351,7 +1710,12 @@ static bool stream_end_callback(
     ByteBuffer payload = {0};
     if (stream == NULL) return false;
     if (!ensure_event(stream, KSE_EVENT_END, 7u)) return false;
-    if ((completeness == KOFUN_SEMANTIC_COMPLETE &&
+    if ((source_status != KOFUN_SOURCE_CHECKED &&
+         source_status != KOFUN_SOURCE_FAILED &&
+         source_status != KOFUN_SOURCE_CANCELLED) ||
+        (completeness != KOFUN_SEMANTIC_COMPLETE &&
+         completeness != KOFUN_SEMANTIC_PARTIAL) ||
+        (completeness == KOFUN_SEMANTIC_COMPLETE &&
          source_status != KOFUN_SOURCE_CHECKED) ||
         (completeness == KOFUN_SEMANTIC_PARTIAL &&
          source_status != KOFUN_SOURCE_FAILED &&
@@ -1379,6 +1743,19 @@ static bool stream_end_callback(
             "ETS03",
             KSE_EVENT_END,
             "cancelled source lacks cancellation observation"
+        );
+    }
+    if (((source_status == KOFUN_SOURCE_CHECKED ||
+          source_status == KOFUN_SOURCE_CANCELLED) &&
+         stream->compiler_exit_class != 0u) ||
+        (source_status == KOFUN_SOURCE_FAILED &&
+         (stream->compiler_exit_class == 0u ||
+          stream->compiler_exit_class > 3u))) {
+        return set_error(
+            stream,
+            "ETS03",
+            KSE_EVENT_END,
+            "source status disagrees with compiler exit class"
         );
     }
     if (!validate_closure(stream)) return false;
@@ -1735,7 +2112,7 @@ static uint8_t expected_wire(uint8_t kind, uint8_t tag) {
     static const uint8_t source[] = {
         0u, KSE_WIRE_ID, KSE_WIRE_ID, KSE_WIRE_ID, KSE_WIRE_UTF8,
         KSE_WIRE_U64, KSE_WIRE_ID, KSE_WIRE_UTF8, KSE_WIRE_UTF8,
-        KSE_WIRE_U64
+        KSE_WIRE_U64, KSE_WIRE_U8
     };
     static const uint8_t node[] = {
         0u, KSE_WIRE_ID, KSE_WIRE_U8, KSE_WIRE_SPAN, KSE_WIRE_U8,
@@ -1756,7 +2133,8 @@ static uint8_t expected_wire(uint8_t kind, uint8_t tag) {
     static const uint8_t diagnostic[] = {
         0u, KSE_WIRE_ID, KSE_WIRE_UTF8, KSE_WIRE_UTF8, KSE_WIRE_U8,
         KSE_WIRE_UTF8, KSE_WIRE_ID, KSE_WIRE_SPAN, KSE_WIRE_UTF8,
-        KSE_WIRE_ID_LIST, KSE_WIRE_U32_LIST, KSE_WIRE_U8
+        KSE_WIRE_ID_LIST, KSE_WIRE_U32_LIST, KSE_WIRE_U8,
+        KSE_WIRE_BYTES, KSE_WIRE_BYTES
     };
     static const uint8_t end[] = {
         0u, KSE_WIRE_U8, KSE_WIRE_U8
@@ -1813,12 +2191,12 @@ static bool exact_field_tags(
     uint16_t count
 ) {
     uint16_t index;
-    if ((kind == KSE_EVENT_SOURCE && count != 9u) ||
+    if ((kind == KSE_EVENT_SOURCE && count != 10u) ||
         (kind == KSE_EVENT_NODE && count != 6u) ||
         (kind == KSE_EVENT_IDENTITY && count != 4u) ||
         (kind == KSE_EVENT_REFERENCE && count != 9u) ||
         (kind == KSE_EVENT_FACT && count != 7u) ||
-        (kind == KSE_EVENT_DIAGNOSTIC && count != 11u) ||
+        (kind == KSE_EVENT_DIAGNOSTIC && count != 13u) ||
         (kind == KSE_EVENT_END && count != 2u)) {
         return false;
     }
@@ -1900,6 +2278,84 @@ static uint16_t parsed_u32_list(
     return count;
 }
 
+static bool parsed_related_list(
+    const ParsedField *field,
+    KofunSemanticRelated related[KOFUN_SEMANTIC_MAX_RELATIONS],
+    uint16_t *count
+) {
+    size_t cursor = 2u;
+    uint16_t index;
+    if (field == NULL || field->bytes == NULL || field->length < 2u) {
+        return false;
+    }
+    *count = load_u16be(field->bytes);
+    if (*count > KOFUN_SEMANTIC_MAX_RELATIONS) return false;
+    for (index = 0u; index < *count; index += 1u) {
+        uint16_t label_length;
+        if ((size_t)field->length - cursor <
+            KOFUN_SEMANTIC_ID_BYTES + 8u + 2u) {
+            return false;
+        }
+        memcpy(
+            related[index].file_id.bytes,
+            field->bytes + cursor,
+            KOFUN_SEMANTIC_ID_BYTES
+        );
+        cursor += KOFUN_SEMANTIC_ID_BYTES;
+        related[index].span.start = load_u32be(field->bytes + cursor);
+        related[index].span.end = load_u32be(field->bytes + cursor + 4u);
+        cursor += 8u;
+        label_length = load_u16be(field->bytes + cursor);
+        cursor += 2u;
+        if (label_length > (size_t)field->length - cursor) return false;
+        related[index].label.bytes = field->bytes + cursor;
+        related[index].label.length = label_length;
+        cursor += label_length;
+    }
+    return cursor == field->length;
+}
+
+static bool parsed_edit_list(
+    const ParsedField *field,
+    KofunSemanticEdit edits[KOFUN_SEMANTIC_MAX_RELATIONS],
+    uint16_t *count
+) {
+    size_t cursor = 2u;
+    uint16_t index;
+    if (field == NULL || field->bytes == NULL || field->length < 2u) {
+        return false;
+    }
+    *count = load_u16be(field->bytes);
+    if (*count > KOFUN_SEMANTIC_MAX_RELATIONS) return false;
+    for (index = 0u; index < *count; index += 1u) {
+        uint16_t replacement_length;
+        if ((size_t)field->length - cursor <
+            4u + KOFUN_SEMANTIC_ID_BYTES + 8u + 2u) {
+            return false;
+        }
+        edits[index].remedy_id = load_u32be(field->bytes + cursor);
+        cursor += 4u;
+        memcpy(
+            edits[index].file_id.bytes,
+            field->bytes + cursor,
+            KOFUN_SEMANTIC_ID_BYTES
+        );
+        cursor += KOFUN_SEMANTIC_ID_BYTES;
+        edits[index].span.start = load_u32be(field->bytes + cursor);
+        edits[index].span.end = load_u32be(field->bytes + cursor + 4u);
+        cursor += 8u;
+        replacement_length = load_u16be(field->bytes + cursor);
+        cursor += 2u;
+        if (replacement_length > (size_t)field->length - cursor) {
+            return false;
+        }
+        edits[index].replacement.bytes = field->bytes + cursor;
+        edits[index].replacement.length = replacement_length;
+        cursor += replacement_length;
+    }
+    return cursor == field->length;
+}
+
 static uint8_t parsed_u8(const ParsedField *field) {
     return field == NULL || field->bytes == NULL ? 0u : field->bytes[0];
 }
@@ -1918,9 +2374,13 @@ static bool emit_parsed_event(
     KofunSemanticId first[KOFUN_SEMANTIC_MAX_RELATIONS];
     KofunSemanticId second[KOFUN_SEMANTIC_MAX_RELATIONS];
     uint32_t remedies[KOFUN_SEMANTIC_MAX_RELATIONS];
+    KofunSemanticRelated related[KOFUN_SEMANTIC_MAX_RELATIONS];
+    KofunSemanticEdit edits[KOFUN_SEMANTIC_MAX_RELATIONS];
     memset(first, 0, sizeof(first));
     memset(second, 0, sizeof(second));
     memset(remedies, 0, sizeof(remedies));
+    memset(related, 0, sizeof(related));
+    memset(edits, 0, sizeof(edits));
     if (!exact_field_tags(kind, fields, field_count)) return false;
     {
         uint16_t index;
@@ -1942,6 +2402,7 @@ static bool emit_parsed_event(
         source.edition = parsed_text(&fields[6]);
         source.semantic_compatibility = parsed_text(&fields[7]);
         source.caller_generation = parsed_u64(&fields[8]);
+        source.compiler_exit_class = parsed_u8(&fields[9]);
         return kofun_semantic_begin(sink, &source);
     }
     if (kind == KSE_EVENT_NODE) {
@@ -2021,6 +2482,18 @@ static bool emit_parsed_event(
         diagnostic.remedy_ids = remedies;
         diagnostic.truncated = parsed_u8(&fields[10]) != 0u;
         if (parsed_u8(&fields[10]) > 1u) return false;
+        if (!parsed_related_list(
+                &fields[11],
+                related,
+                &diagnostic.related_count) ||
+            !parsed_edit_list(
+                &fields[12],
+                edits,
+                &diagnostic.edit_count)) {
+            return false;
+        }
+        diagnostic.related = related;
+        diagnostic.edits = edits;
         return kofun_semantic_diagnostic(sink, &diagnostic);
     }
     if (kind == KSE_EVENT_END) {
@@ -2184,7 +2657,7 @@ bool kofun_semantic_validate_stream(
             fields[field_index].bytes = bytes + cursor;
             if (wire == KSE_WIRE_UTF8) {
                 text = parsed_text(&fields[field_index]);
-                if (!valid_utf8_nfc(text)) {
+                if (!kofun_semantic_validate_text(text)) {
                     output_error(
                         error,
                         "ETS04",
@@ -2243,4 +2716,86 @@ bool kofun_semantic_validate_stream(
 fail:
     kofun_semantic_stream_destroy(decoded);
     return false;
+}
+
+bool kofun_semantic_replay_stream(
+    const uint8_t *bytes,
+    size_t length,
+    KofunSemanticSink *sink,
+    KofunSemanticError *error
+) {
+    uint32_t event_count;
+    uint32_t payload_bytes;
+    uint32_t event_index;
+    size_t cursor;
+    size_t payload_end;
+    if (error != NULL) memset(error, 0, sizeof(*error));
+    if (!kofun_semantic_validate_stream(bytes, length, error)) {
+        return false;
+    }
+    if (sink == NULL ||
+        sink->begin == NULL ||
+        sink->node == NULL ||
+        sink->identity == NULL ||
+        sink->reference == NULL ||
+        sink->fact == NULL ||
+        sink->diagnostic == NULL ||
+        sink->end == NULL) {
+        output_error(
+            error,
+            "ETS03",
+            0u,
+            0u,
+            "replay sink is incomplete"
+        );
+        return false;
+    }
+
+    event_count = load_u32be(bytes + 8u);
+    payload_bytes = load_u32be(bytes + 12u);
+    cursor = 16u;
+    payload_end = cursor + payload_bytes;
+    for (event_index = 0u; event_index < event_count; event_index += 1u) {
+        uint8_t kind = bytes[cursor];
+        uint16_t field_count = load_u16be(bytes + cursor + 2u);
+        uint32_t frame_payload = load_u32be(bytes + cursor + 4u);
+        size_t frame_end;
+        ParsedField fields[16];
+        uint16_t field_index;
+        cursor += 8u;
+        frame_end = cursor + frame_payload;
+        memset(fields, 0, sizeof(fields));
+        for (field_index = 0u;
+             field_index < field_count;
+             field_index += 1u) {
+            fields[field_index].tag = bytes[cursor];
+            fields[field_index].wire = bytes[cursor + 1u];
+            fields[field_index].length = load_u32be(bytes + cursor + 4u);
+            cursor += 8u;
+            fields[field_index].bytes = bytes + cursor;
+            cursor += fields[field_index].length;
+        }
+        if (cursor != frame_end ||
+            !emit_parsed_event(sink, kind, fields, field_count)) {
+            output_error(
+                error,
+                "ETS03",
+                event_index,
+                kind,
+                "replay sink rejected validated record"
+            );
+            return false;
+        }
+    }
+    if (cursor != payload_end) {
+        output_error(
+            error,
+            "ETS03",
+            event_count,
+            0u,
+            "validated replay cursor mismatch"
+        );
+        return false;
+    }
+    return true;
 }
