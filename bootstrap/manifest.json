@@ -28,9 +28,9 @@
       "role": "Kofun-authored ELF64 x86-64 and AArch64 gates; a separate strengthening track from the first C11 fixed point"
     },
     "stage2": {
-      "implementation": "stage1 compiles its own source and reproduces an equivalent artifact",
+      "implementation": "generated compiler produces and reproduces equivalent later generations",
       "status": "open",
-      "role": "true self-hosting fixed point"
+      "role": "three-generation semantic self-hosting fixed point; the first compiler-produced compiler is active separately"
     }
   },
   "gates": {
@@ -42,11 +42,11 @@
     "stage2_frontend_round_trip": "working",
     "native_elf64_exit_fixture": "working",
     "syscall_stdlib_source_contract": "working",
-    "syscall_file_round_trip_execution": "open",
+    "syscall_file_round_trip_execution": "working",
     "stage1_self_recompile": "open",
     "generated_c_three_generation_equivalence": "open",
     "stage1_stage2_artifact_equivalence": "open",
     "diverse_double_compilation": "open"
   },
-  "truthful_status": "The repository contains a Python-free Kofun-written compiler seed and a frozen first self-host profile. It is not fully self-hosting because no compiler-produced compiler generation exists yet."
+  "truthful_status": "The repository contains a Python-free Kofun-written compiler seed, a frozen first self-host profile, and a runnable compiler-produced compiler. It is not fully self-hosting because three compiler generations have not yet reached the required equivalent fixed point."
 }

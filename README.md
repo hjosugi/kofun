@@ -43,7 +43,7 @@ fn main() {
 
 Run `./bin/kofun --help` for the current CLI. The
 [getting-started documentation](https://hjosugi.github.io/kofun/docs/getting-started/)
-is rendered from this file.
+contains the complete setup, target, and verification guide.
 
 ## What works now
 

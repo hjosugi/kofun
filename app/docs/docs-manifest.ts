@@ -21,7 +21,7 @@ export const docs: DocEntry[] = [
     slug: "getting-started",
     title: "Getting started",
     summary: "Requirements, the repository launcher, quick start, and active toolchain paths.",
-    source: "README.md",
+    source: "docs/GETTING_STARTED.md",
     section: "Start here",
   },
   {
