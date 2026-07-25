@@ -157,10 +157,6 @@ export default function Home() {
           {principles.map((principle) => (
             <article key={principle.number} className="principle-card">
               <span className="card-number">{principle.number}</span>
-              <div className="mini-mark" aria-hidden="true">
-                <span />
-                <i />
-              </div>
               <h3>{principle.title}</h3>
               <p>{principle.body}</p>
               <code>{principle.code}</code>

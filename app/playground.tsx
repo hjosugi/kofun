@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { tokenizeKofunForHighlight } from "./kofun-highlight";
 import {
   PLAYGROUND_EXAMPLES,
   runKofun,
@@ -33,9 +34,15 @@ export default function Playground() {
   );
   const [running, setRunning] = useState(false);
   const [copied, setCopied] = useState(false);
+  const highlightRef = useRef<HTMLPreElement>(null);
+  const lineNumbersRef = useRef<HTMLDivElement>(null);
 
   const lineCount = useMemo(
     () => Math.max(1, source.split("\n").length),
+    [source],
+  );
+  const highlightedSource = useMemo(
+    () => tokenizeKofunForHighlight(source),
     [source],
   );
 
@@ -109,42 +116,78 @@ export default function Playground() {
             </button>
           </div>
           <div className="editor-wrap">
-            <div className="line-numbers" aria-hidden="true">
+            <div
+              className="line-numbers"
+              aria-hidden="true"
+              ref={lineNumbersRef}
+            >
               {Array.from({ length: lineCount }, (_, index) => (
                 <span key={index}>{index + 1}</span>
               ))}
             </div>
-            <textarea
-              aria-label="Kofun source editor"
-              value={source}
-              onChange={(event) => {
-                setSource(event.target.value);
-                setSelected("");
-              }}
-              onKeyDown={(event) => {
-                if (
-                  event.key === "Enter" &&
-                  (event.metaKey || event.ctrlKey)
-                ) {
-                  event.preventDefault();
-                  execute();
-                }
-                if (event.key === "Tab") {
-                  event.preventDefault();
-                  const target = event.currentTarget;
-                  const start = target.selectionStart;
-                  const end = target.selectionEnd;
-                  const next = `${source.slice(0, start)}    ${source.slice(end)}`;
-                  setSource(next);
-                  window.requestAnimationFrame(() => {
-                    target.selectionStart = target.selectionEnd = start + 4;
-                  });
-                }
-              }}
-              spellCheck={false}
-              autoCapitalize="off"
-              autoComplete="off"
-            />
+            <div className="editor-code">
+              <pre
+                className="syntax-layer"
+                aria-hidden="true"
+                ref={highlightRef}
+              >
+                <code>
+                  {highlightedSource.map((token, index) =>
+                    token.kind === "plain" ? (
+                      token.value
+                    ) : (
+                      <span
+                        className={`syntax-${token.kind}`}
+                        key={`${index}-${token.kind}`}
+                      >
+                        {token.value}
+                      </span>
+                    ),
+                  )}
+                </code>
+              </pre>
+              <textarea
+                aria-label="Kofun source editor"
+                value={source}
+                onChange={(event) => {
+                  setSource(event.target.value);
+                  setSelected("");
+                }}
+                onScroll={(event) => {
+                  const editor = event.currentTarget;
+                  if (highlightRef.current) {
+                    highlightRef.current.scrollTop = editor.scrollTop;
+                    highlightRef.current.scrollLeft = editor.scrollLeft;
+                  }
+                  if (lineNumbersRef.current) {
+                    lineNumbersRef.current.scrollTop = editor.scrollTop;
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (
+                    event.key === "Enter" &&
+                    (event.metaKey || event.ctrlKey)
+                  ) {
+                    event.preventDefault();
+                    execute();
+                  }
+                  if (event.key === "Tab") {
+                    event.preventDefault();
+                    const target = event.currentTarget;
+                    const start = target.selectionStart;
+                    const end = target.selectionEnd;
+                    const next = `${source.slice(0, start)}    ${source.slice(end)}`;
+                    setSource(next);
+                    window.requestAnimationFrame(() => {
+                      target.selectionStart = target.selectionEnd = start + 4;
+                    });
+                  }
+                }}
+                spellCheck={false}
+                autoCapitalize="off"
+                autoComplete="off"
+              />
+            </div>
           </div>
         </div>
 

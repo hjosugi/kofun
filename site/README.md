@@ -12,10 +12,17 @@ separate from design direction and open issues.
 The embedded playground is deliberately honest about its boundary:
 
 - `app/kofun-runtime.ts` is a bounded, browser-only learning evaluator.
+- `app/kofun-highlight.ts` provides lossless, tolerant syntax coloring while
+  the editable `textarea` remains the source of truth.
 - The checked repository CLI remains authoritative for ownership diagnostics,
   law evidence, native backends, and bootstrap gates.
 - The evaluator has step and List-size limits and does not execute arbitrary
   JavaScript or access the network.
+
+The documentation manifest in `app/docs/docs-manifest.ts` is the only list of
+Markdown rendered as first-class site pages. Adding a document there exposes it
+in both the overview and sidebar while preserving the source file as the
+authority.
 
 Run the site locally:
 
