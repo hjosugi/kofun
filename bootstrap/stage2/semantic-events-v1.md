@@ -102,6 +102,16 @@ They contain at most a safe identity kind and a public reason discriminator;
 their target value is required to be zero and is never serialized. Source
 spans are half-open UTF-8 byte offsets bounded by the committed source length.
 
+Reference namespaces close identity kinds as follows. The mapping applies to
+visible targets and to every non-zero safe target kind on a hidden or
+unavailable reference.
+
+| Reference namespace | Permitted identity kind |
+| --- | --- |
+| value | binding or symbol |
+| type | type |
+| constructor | constructor |
+
 Reason fields are not free-form presentation or debug text. Every non-empty
 fact reason and every hidden/unavailable reference reason is exactly one of
 this fixed v1 public allowlist:
@@ -188,11 +198,11 @@ C layout.
 |  |  | 4 | fact status | u8 |
 | reference | 4 | 1 | ReferenceId | id |
 |  |  | 2 | source NodeId | id |
-|  |  | 3 | namespace | u8 |
+|  |  | 3 | namespace (closed against target kind above) | u8 |
 |  |  | 4 | use span | span |
 |  |  | 5 | fact status | u8 |
 |  |  | 6 | target shape | u8 |
-|  |  | 7 | safe target identity kind | u8 |
+|  |  | 7 | safe namespace-compatible target identity kind | u8 |
 |  |  | 8 | visible target identity value | id |
 |  |  | 9 | hidden/unavailable reason | utf8 |
 |  |  | 10 | sorted diagnostic IDs | id-list |
