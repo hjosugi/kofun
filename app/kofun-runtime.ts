@@ -333,6 +333,73 @@ class Parser {
     return parameters;
   }
 
+  /**
+   * Decides whether the `(` the parser just consumed opens an arrow lambda's
+   * parameter list instead of a grouping parenthesis (#547). Scans forward to
+   * the matching `)` and reports whether `=>` follows it, so `(a + b) * 2`
+   * stays arithmetic while `(x, y) => x + y` becomes a lambda.
+   */
+  private parenthesisOpensLambda(): boolean {
+    let depth = 1;
+    let index = this.cursor;
+    while (index < this.tokens.length) {
+      const token = this.tokens[index];
+      if (token.kind === "eof") return false;
+      if (token.kind === "symbol") {
+        if (token.value === "(" || token.value === "[" || token.value === "{") {
+          depth += 1;
+        } else if (
+          token.value === ")" ||
+          token.value === "]" ||
+          token.value === "}"
+        ) {
+          depth -= 1;
+          if (depth === 0) {
+            return (
+              token.value === ")" && this.tokens[index + 1]?.value === "=>"
+            );
+          }
+        }
+      }
+      index += 1;
+    }
+    return false;
+  }
+
+  /**
+   * Recognises `x: Int => …`, the annotated arrow parameter written without
+   * parentheses (#547). The cursor must sit on the `:`. Returns the annotation
+   * source so the diagnostic can spell out the parenthesised fix, or null when
+   * the `:` belongs to something else.
+   */
+  private unparenthesisedParameterAnnotation(): string | null {
+    const parts: string[] = [];
+    let depth = 0;
+    let index = this.cursor + 1;
+    while (index < this.tokens.length) {
+      const token = this.tokens[index];
+      if (token.kind === "eof") return null;
+      if (token.value === "(" || token.value === "[" || token.value === "{") {
+        depth += 1;
+      } else if (
+        token.value === ")" ||
+        token.value === "]" ||
+        token.value === "}"
+      ) {
+        if (depth === 0) return null;
+        depth -= 1;
+      } else if (depth === 0) {
+        if (token.value === "=>") {
+          return parts.length > 0 ? parts.join("") : null;
+        }
+        if (token.value === "," || token.value === "=") return null;
+      }
+      parts.push(token.value);
+      index += 1;
+    }
+    return null;
+  }
+
   private skipType(stops: string[]) {
     let depth = 0;
     while (!this.at("eof")) {
@@ -453,6 +520,9 @@ class Parser {
       };
     }
     if (token.value === "(") {
+      if (this.parenthesisOpensLambda()) {
+        return this.parseArrowLambdaAfterParenthesis(token);
+      }
       const expression = this.parseExpression();
       this.expectValue(")", "Expected ) after expression");
       return expression;
@@ -494,9 +564,52 @@ class Parser {
       };
     }
     if (token.kind === "identifier") {
+      // `x => x * 2`: one token of lookahead separates a lambda from a plain
+      // name. Annotations are deliberately not accepted here (#547).
+      //
+      // In the full language `Trace => 0` is also a match arm, so an
+      // identifier before `=>` is genuinely ambiguous there. This interpreter
+      // has no `match`, `enum`, or pattern syntax, so the two forms cannot
+      // meet: anything reaching here is expression position. If `match` is
+      // ever added to the playground, this branch has to be suppressed while
+      // parsing arm patterns.
+      if (this.matchValue("=>")) {
+        return {
+          kind: "lambda",
+          parameters: [token.value],
+          body: this.parseExpression(),
+          token,
+        };
+      }
+      if (this.atValue(":")) {
+        const annotation = this.unparenthesisedParameterAnnotation();
+        if (annotation !== null) {
+          throw new KofunError(
+            "P002",
+            `A typed lambda parameter needs parentheses: write (${token.value}: ${annotation}) => ... instead of ${token.value}: ${annotation} => ...`,
+            this.peek(),
+          );
+        }
+      }
       return { kind: "variable", name: token.value, token };
     }
     throw new KofunError("P002", "Expected expression", token);
+  }
+
+  /**
+   * Parses `(x, y) => …` and `(x: Int) => …` once the opening `(` has been
+   * consumed and the lookahead has confirmed the trailing `=>` (#547).
+   */
+  private parseArrowLambdaAfterParenthesis(token: Token): Expression {
+    const parameters = this.parseParameters();
+    this.expectValue(")", "Expected ) after lambda parameters");
+    this.expectValue("=>", "Expected => after lambda parameters");
+    return {
+      kind: "lambda",
+      parameters,
+      body: this.parseExpression(),
+      token,
+    };
   }
 
   private parseIfAfterKeyword(token: Token): Expression {

@@ -17,8 +17,11 @@ fn classify(read value: Int) -> Text {
 
 fn main() {
   let values = [1, 2, 3]
+  let combine = (left, right) => left + right
+  let annotated = (item: Int) => item
   let answer = values
   |> map(fn(item: Int) => item * 2)
+  |> map(item => item)
   |> sum()
   print(answer)
 }

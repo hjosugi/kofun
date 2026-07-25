@@ -1,0 +1,1 @@
+error[E2S47]: duplicate binding `value` in lexical scope at byte 116; first declaration at byte 104

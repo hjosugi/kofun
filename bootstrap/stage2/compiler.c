@@ -4885,6 +4885,149 @@ static int64_t parent_block_open(
     return parent;
 }
 
+/*
+ * Brace depth at `target`. `scope_depth_for_open` reports the depth of a `{`
+ * token; a lambda scope opens on `(`, so it needs the running depth instead.
+ */
+static int64_t block_depth_at(
+    const char *source,
+    int64_t function_open,
+    int64_t target
+) {
+    int64_t cursor = function_open;
+    int64_t depth = 0;
+    while (cursor < target) {
+        if (token_equal(source, cursor, "{")) {
+            ++depth;
+        } else if (token_equal(source, cursor, "}")) {
+            --depth;
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return depth;
+}
+
+/*
+ * The byte after an arrow lambda's body, or -1 when `open` is not its parameter
+ * list. A lambda is keyed by the `(`, not by `fn`, which makes `fn(x) => e` and
+ * the parenthesised forms decided in #547 — `(x, y) => e` and `(x: Int) => e` —
+ * one code path.
+ *
+ * Two conditions identify the parameter list, and both are needed:
+ *
+ *   1. its `)` is immediately followed by `=>`, and
+ *   2. its `(` is NOT immediately preceded by an identifier.
+ *
+ * Condition 2 is not decoration. A constructor pattern ends in `)` and is
+ * followed by `=>` — `Ok(value) => value` and `Err(error) => Err(error)` are
+ * all over the shipped stdlib — so condition 1 alone matches every one of them.
+ * What separates them is what comes before the `(`: a constructor pattern is
+ * preceded by its variant name, a lambda's parameter list by `fn`, `=`, `,` or
+ * `(`.
+ *
+ * The bare `x => e` form is deliberately absent. `IDENT => expr` is already
+ * enum match-arm syntax — 176 arms in the shipped stdlib, e.g. `Trace => 0` —
+ * so one token of lookahead cannot separate the two. See #547.
+ *
+ * The body is delimited by the same expression grammar the Core lowers, so a
+ * body this Core cannot parse yields -1 and the lambda contributes no scope —
+ * the identifiers inside it are then reported by whichever pass would have
+ * reported them before.
+ */
+static int64_t lambda_parameters_end(
+    const char *source,
+    int64_t previous,
+    int64_t open
+) {
+    int64_t length = (int64_t)strlen(source);
+    if (!token_equal(source, open, "(")) return -1;
+    if (
+        previous >= 0 &&
+        strcmp(token_kind(source, previous), "identifier") == 0
+    ) {
+        return -1;
+    }
+    int64_t close = balanced_end(source, open, "(", ")");
+    if (close < 0) return -1;
+    int64_t arrow = skip_trivia(source, close);
+    if (arrow >= length || !token_equal(source, arrow, "=>")) return -1;
+    return expression_end(
+        source,
+        skip_trivia(source, token_end(source, arrow))
+    );
+}
+
+/*
+ * The innermost arrow lambda whose parameters are in scope at `target`, keyed
+ * by its `(` so `hir_scope_id_for_open` finds the scope record. -1 when
+ * `target` is not inside one.
+ */
+static int64_t lambda_scope_open(
+    const char *source,
+    int64_t function_open,
+    int64_t target
+) {
+    int64_t cursor = function_open;
+    int64_t previous = -1;
+    int64_t found = -1;
+    while (cursor < target) {
+        if (lambda_parameters_end(source, previous, cursor) > target) {
+            found = cursor;
+        }
+        previous = cursor;
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return found;
+}
+
+/*
+ * `target` is a parameter name or a parameter type inside an arrow lambda's
+ * parameter list. The identifier pass must resolve neither: the name is a
+ * declaration, and the type names no binding.
+ */
+static bool lambda_declaration_syntax_token(
+    const char *source,
+    int64_t function_open,
+    int64_t target
+) {
+    int64_t cursor = function_open;
+    int64_t previous = -1;
+    while (cursor <= target) {
+        if (
+            lambda_parameters_end(source, previous, cursor) >= 0 &&
+            target > cursor &&
+            target < balanced_end(source, cursor, "(", ")")
+        ) {
+            return true;
+        }
+        previous = cursor;
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return false;
+}
+
+/*
+ * `x: Int => e` annotates a lambda parameter without parentheses. #547 rejects
+ * it: `:` is the type-annotation position everywhere else, so the bare form
+ * reads as a binding whose type is `Int => e`, and accepting it would foreclose
+ * writing function types with an arrow before #552 has decided whether to.
+ * Detected forward as IDENT `:` TYPE `=>`; every other annotation position is
+ * followed by `=`, `)` or `{`, never by `=>`.
+ */
+static bool lambda_unparenthesised_annotation(
+    const char *source,
+    int64_t start
+) {
+    int64_t length = (int64_t)strlen(source);
+    if (strcmp(token_kind(source, start), "identifier") != 0) return false;
+    int64_t colon = skip_trivia(source, token_end(source, start));
+    if (colon >= length || !token_equal(source, colon, ":")) return false;
+    int64_t annotation = skip_trivia(source, token_end(source, colon));
+    if (annotation >= length) return false;
+    int64_t arrow = skip_trivia(source, token_end(source, annotation));
+    return arrow < length && token_equal(source, arrow, "=>");
+}
+
 static const char *scope_kind_for_open(
     const char *source,
     int64_t function_open,
@@ -5692,6 +5835,7 @@ static char *build_scope_hir_mode(
             source,
             token_end(source, function_open)
         );
+        int64_t previous = -1;
         while (cursor < function_close) {
             if (token_equal(source, cursor, "{")) {
                 int64_t depth = scope_depth_for_open(
@@ -5742,7 +5886,88 @@ static char *build_scope_hir_mode(
                 );
                 stage2_scope_prefix_observe(&hir);
                 free(parent_scope);
+            } else if (lambda_unparenthesised_annotation(source, cursor)) {
+                int64_t colon = skip_trivia(source, token_end(source, cursor));
+                int64_t annotation = skip_trivia(
+                    source,
+                    token_end(source, colon)
+                );
+                char *parameter_name = token_copy(source, cursor);
+                char *annotation_text = token_copy(source, annotation);
+                Buffer error;
+                buffer_init(&error);
+                buffer_format(
+                    &error,
+                    "error[E2S95]: annotated lambda parameter `%s` needs "
+                    "parentheses at byte %" PRId64 "; write `(%s: %s) =>`",
+                    parameter_name,
+                    cursor,
+                    parameter_name,
+                    annotation_text
+                );
+                stage2_diagnostic_set(
+                    "E2S95",
+                    cursor,
+                    token_end(source, cursor),
+                    true,
+                    error.data
+                );
+                stage2_diagnostic_affected(
+                    STAGE2_DIAGNOSTIC_AFFECTED_BINDING,
+                    cursor,
+                    token_end(source, cursor)
+                );
+                free(parameter_name);
+                free(annotation_text);
+                free(hir.data);
+                return error.data;
+            } else {
+                int64_t lambda_close = lambda_parameters_end(
+                    source,
+                    previous,
+                    cursor
+                );
+                if (lambda_close >= 0) {
+                    int64_t lambda_open = cursor;
+                    int64_t lambda_depth = block_depth_at(
+                        source,
+                        function_open,
+                        cursor
+                    ) + 1;
+                    if (lambda_depth > 32) {
+                        return scope_hir_error(
+                            &hir,
+                            "lexical scope depth limit is 32",
+                            cursor
+                        );
+                    }
+                    ++scope_count;
+                    if (scope_count > 256) {
+                        return scope_hir_error(
+                            &hir,
+                            "lexical scope limit is 256 per function",
+                            cursor
+                        );
+                    }
+                    char *lambda_parent = hir_scope_id_for_open(
+                        hir.data,
+                        parent_block_open(source, function_open, lambda_open)
+                    );
+                    buffer_format(
+                        &hir,
+                        "scope|%" PRId64 "|%s|lambda-parameters|%" PRId64
+                        "|%" PRId64 "|%" PRId64 "\n",
+                        next_scope_id++,
+                        lambda_parent,
+                        lambda_open,
+                        lambda_close,
+                        lambda_depth
+                    );
+                    stage2_scope_prefix_observe(&hir);
+                    free(lambda_parent);
+                }
             }
+            previous = cursor;
             cursor = skip_trivia(source, token_end(source, cursor));
         }
 
@@ -5853,6 +6078,137 @@ static char *build_scope_hir_mode(
             } else {
                 parameter_cursor = separator;
             }
+        }
+
+        cursor = skip_trivia(source, token_end(source, function_open));
+        previous = -1;
+        while (cursor < function_close) {
+            if (lambda_parameters_end(source, previous, cursor) >= 0) {
+                int64_t lambda_open = cursor;
+                int64_t lambda_close = balanced_end(
+                    source,
+                    lambda_open,
+                    "(",
+                    ")"
+                );
+                char *lambda_scope = hir_scope_id_for_open(
+                    hir.data,
+                    lambda_open
+                );
+                int64_t lambda_cursor = skip_trivia(
+                    source,
+                    token_end(source, lambda_open)
+                );
+                while (
+                    lambda_cursor < lambda_close &&
+                    !token_equal(source, lambda_cursor, ")")
+                ) {
+                    int64_t parameter = lambda_cursor;
+                    int64_t after = skip_trivia(
+                        source,
+                        token_end(source, parameter)
+                    );
+                    char *parameter_type = NULL;
+                    if (token_equal(source, after, ":")) {
+                        int64_t annotation = skip_trivia(
+                            source,
+                            token_end(source, after)
+                        );
+                        parameter_type = token_copy(source, annotation);
+                        after = skip_trivia(
+                            source,
+                            token_end(source, annotation)
+                        );
+                    }
+                    char *parameter_name = token_copy(source, parameter);
+                    char *first = hir_same_scope_declaration(
+                        hir.data,
+                        lambda_scope,
+                        parameter_name
+                    );
+                    if (first[0] != '\0') {
+                        Buffer error;
+                        buffer_init(&error);
+                        buffer_format(
+                            &error,
+                            "error[E2S47]: duplicate binding `%s` in lexical "
+                            "scope at byte %" PRId64
+                            "; first declaration at byte %s",
+                            parameter_name,
+                            parameter,
+                            first
+                        );
+                        stage2_diagnostic_set(
+                            "E2S47",
+                            parameter,
+                            token_end(source, parameter),
+                            true,
+                            error.data
+                        );
+                        stage2_diagnostic_affected(
+                            STAGE2_DIAGNOSTIC_AFFECTED_BINDING,
+                            parameter,
+                            token_end(source, parameter)
+                        );
+                        {
+                            int64_t at = decimal_value(first);
+                            stage2_diagnostic_related(
+                                at,
+                                token_end(source, at),
+                                "first declaration"
+                            );
+                        }
+                        stage2_diagnostic_remedy(2u);
+                        free(parameter_name);
+                        free(parameter_type);
+                        free(first);
+                        free(lambda_scope);
+                        free(hir.data);
+                        return error.data;
+                    }
+                    free(first);
+                    ++binding_count;
+                    if (binding_count > 256) {
+                        free(parameter_name);
+                        free(parameter_type);
+                        free(lambda_scope);
+                        return scope_hir_error(
+                            &hir,
+                            "lexical binding limit is 256 per function",
+                            parameter
+                        );
+                    }
+                    buffer_format(
+                        &hir,
+                        "binding|%" PRId64 "|%s|%s|immutable|%s|copy|"
+                        "initialized|%" PRId64 "|%" PRId64 "|%" PRId64 "\n",
+                        next_binding_id++,
+                        lambda_scope,
+                        parameter_name,
+                        parameter_type == NULL ? "Int" : parameter_type,
+                        parameter,
+                        token_end(source, parameter),
+                        token_end(source, parameter)
+                    );
+                    stage2_scope_prefix_observe(&hir);
+                    free(parameter_name);
+                    free(parameter_type);
+                    if (
+                        after < lambda_close &&
+                        token_equal(source, after, ",")
+                    ) {
+                        lambda_cursor = skip_trivia(
+                            source,
+                            token_end(source, after)
+                        );
+                    } else {
+                        lambda_cursor = after;
+                    }
+                }
+                free(lambda_scope);
+            }
+            previous = cursor;
+            cursor = skip_trivia(source, token_end(source, cursor));
         }
 
         cursor = skip_trivia(source, token_end(source, function_open));
@@ -6120,16 +6476,29 @@ static char *build_scope_hir_mode(
                     function_open,
                     cursor
                 );
+                bool lambda_token = lambda_declaration_syntax_token(
+                    source,
+                    function_open,
+                    cursor
+                );
                 if (
                     !declaration_token && !initializer_token &&
-                    !pattern_token && !token_equal(source, cursor, "print") &&
+                    !pattern_token && !lambda_token &&
+                    !token_equal(source, cursor, "print") &&
                     !token_equal(source, cursor, "_")
                 ) {
-                    int64_t scope_open = parent_block_open(
+                    int64_t scope_open = lambda_scope_open(
                         source,
                         function_open,
                         cursor
                     );
+                    if (scope_open < 0) {
+                        scope_open = parent_block_open(
+                            source,
+                            function_open,
+                            cursor
+                        );
+                    }
                     char *scope_id = hir_scope_id_for_open(
                         hir.data,
                         scope_open

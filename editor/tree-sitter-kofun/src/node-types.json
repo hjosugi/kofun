@@ -24,10 +24,6 @@
         "named": true
       },
       {
-        "type": "lambda_expression",
-        "named": true
-      },
-      {
         "type": "list_expression",
         "named": true
       },
@@ -99,6 +95,10 @@
     "type": "expression",
     "named": true,
     "subtypes": [
+      {
+        "type": "lambda_expression",
+        "named": true
+      },
       {
         "type": "pipeline_expression",
         "named": true
@@ -840,9 +840,19 @@
           }
         ]
       },
+      "parameter": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
       "parameters": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "parameters",

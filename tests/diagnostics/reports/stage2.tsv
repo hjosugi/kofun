@@ -32,3 +32,4 @@ E2S34	stage2	stdout	1	required	not-applicable	forbidden
 E2S35	stage2	stdout	1	required	required	forbidden
 E2S47	stage2	stdout	1	required	required	forbidden
 E2S58	stage2	stdout	1	required	not-applicable	forbidden
+E2S95	stage2	stdout	1	required	not-applicable	forbidden
