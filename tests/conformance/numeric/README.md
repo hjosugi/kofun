@@ -1,25 +1,41 @@
 # Numeric backend conformance corpus
 
-This directory is the shared numeric corpus for every Kofun backend. The active
-backend is `c11-stage1`; future native or WebAssembly backends must use these
-same files rather than creating backend-specific copies.
+This directory is the shared numeric corpus for every Kofun backend. Backends
+must use these same files rather than creating backend-specific copies.
 
 Each corpus file carries its expected stdout, stderr, and exit status in
-`# expect-*` headers. `expectations.kofun` exposes the same observations to
-future Kofun-native tooling. `./bin/kofun test tests/conformance/numeric`
-dispatches the common runner across every adapter in
+`# expect-*` headers. `expectations.kofun` lists the exact case filenames and
+pins a path-independent SHA-256 of those byte observations for future
+Kofun-native tooling. The executable validator rejects name, count, or
+observation drift. Backend support is declared only in
+`tests/conformance/capabilities.tsv`; neither an adapter nor an expectations
+file carries a second backend list. `./bin/kofun test
+tests/conformance/numeric` dispatches the common runner across every adapter in
 `tests/conformance/backends/`.
 
-The runner records one of two states for every backend/case pair:
+The capability manifest records one of two states for every backend/corpus
+pair:
 
-- `ran`: compare stdout, stderr, and exit status byte for byte with the
-  manifest;
-- `unsupported`: print the backend's explicit compile diagnostic and count the
-  case as skipped.
+- `supported`: the adapter must execute at least one case, and every case must
+  compare stdout, stderr, and exit status byte for byte;
+- `unsupported`: the manifest carries a stable reason and the adapter is not
+  invoked for that corpus.
 
-Missing results, crashes, signals, and timeouts are failures, never implicit
-skips. The summary reports `ran/total` coverage for each backend. Adding a
-backend therefore requires one adapter file, not a new test suite.
+An executor can be unavailable on the current host without changing target
+capability. In particular, AArch64 support stays fixed while the adapter
+separately reports whether `qemu-aarch64` exists. The runner still
+cross-compiles every case before reporting the executor unavailable. A
+supported adapter returning the conformance skip status is a failure. Missing
+results, zero executed cases on an available executor, crashes, signals, and
+timeouts are also failures. The summary reports `executed/total` coverage for
+each supported backend.
 
-`make verify` runs this corpus. Runtime failures are captured as ordinary
-stdout/stderr/exit observations rather than treated as harness failures.
+`tests/conformance/capabilities_test.sh` rejects incomplete matrices,
+duplicate, unknown, contradictory, or reasonless rows, disappearing adapters,
+attempts to restore an independent adapter or expectations-file policy,
+partially skipped supported corpora, unregistered same-name corpus
+substitution, unavailable-executor compile bypass, unsafe evidence paths, and
+drift between each expectations manifest and the files or observations the
+runner discovers. `make verify` runs that gate and this corpus. Runtime
+failures are captured as ordinary stdout/stderr/exit observations rather than
+treated as harness failures.

@@ -81,12 +81,11 @@ image.
 
 What the success corpus does **not** demonstrate:
 
-- full-width integer literals, since the function profile still caps a literal
-  at 65535 (the native regression gate constructs `INT64_MIN` from small
-  checked factors to exercise the quotient boundary);
-- the canonical `error[R010]` runtime diagnostics — a native zero divisor
-  reports `kofun: division by zero`, so the native adapters still do not claim
-  the numeric conformance corpus;
+- general source-language lowering beyond the bounded function profile, even
+  though that profile now carries literal magnitudes through `INT64_MAX`;
+- semantics beyond the shared numeric corpus; canonical per-operator
+  `error[R010]` observations are covered separately by
+  `tests/conformance/numeric`;
 - anything about `S` compiling `S`, which is unchanged and is not this gate's
   subject.
 

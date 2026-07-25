@@ -1,4 +1,29 @@
 # Machine-readable Kofun manifest for the user-defined function corpus.
+fn corpus_name() -> Text {
+    return "functions"
+}
+
 fn expected_cases() -> Int {
     return 12
+}
+
+fn case_names() -> List[Text] {
+    return [
+        "arguments_and_forward_reference.kofun",
+        "branch_join.kofun",
+        "division_floor_signs.kofun",
+        "mutual_recursion.kofun",
+        "recursion.kofun",
+        "register_pressure.kofun",
+        "signed_and_zero.kofun",
+        "six_arguments.kofun",
+        "tail_position_accumulators.kofun",
+        "tail_position_boundary.kofun",
+        "tail_position_guards.kofun",
+        "values_across_calls.kofun"
+    ]
+}
+
+fn observations_sha256() -> Text {
+    return "fc81f72b20ed2e62381d24ef4c692320eeb6d2fd72c32c08ee63a0424cbf63a8"
 }

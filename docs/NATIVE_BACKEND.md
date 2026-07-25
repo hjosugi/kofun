@@ -24,8 +24,8 @@ a zero divisor and the one non-representable quotient before dividing, and bind
 as many locals as fit the shared 32-slot parameter/local frame, taking a
 local's type from its initializer when no annotation is written. That function profile is
 shared by both backends: the same target-independent parsed program is lowered
-to x86-64 and to AArch64, and both emit a checked-overflow trap with the same
-`kofun: integer overflow` diagnostic and exit status:
+to x86-64 and to AArch64, and both emit the same checked, per-operator
+`error[R010]` diagnostic bytes and exit status:
 
 ```sh
 ./bin/kofun build source.kofun \
@@ -67,12 +67,10 @@ The remaining native backend work includes:
 - general AST/IR lowering, and register allocation for AArch64 functions;
 - accumulator-style loops for recursion that is not already in a returned
   position;
-- broader Text/List calls and types beyond the bounded x86-64 bridge;
+- broader Text/List calls and types beyond the bounded two-target bridge;
 - local bindings and general control flow inside user-defined functions;
 - allocator reuse/reclamation and general raw syscall intrinsic lowering;
-- canonical per-operator `error[R010]` runtime diagnostics shared with the C11
-  backend, which the numeric conformance corpus requires and which the one-page
-  RX segment currently has no room for;
+- diagnostic coverage beyond the checked-Int64 `R010` runtime paths;
 - variable-location DIEs, multi-function debug information, and AArch64
   List/Text debug rows;
 - unifying the currently separate function, List, and Text profiles.

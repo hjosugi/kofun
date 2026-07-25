@@ -1,7 +1,6 @@
-# The function profile carries full signed Int64 literals. INT64_MIN is written
-# the way tests/conformance/numeric/int64_boundaries.kofun writes it, because a
-# literal is unsigned before the unary minus applies and 9223372036854775808
-# does not fit.
+# Exercise every immediate-encoding boundary used by the two native targets.
+# INT64_MIN is written the way the numeric corpus writes it because an atom
+# must fit before unary minus applies.
 
 fn identity(n: Int) -> Int {
     return n
@@ -24,6 +23,13 @@ fn main() {
     print(minimum + 1)
     print(remainder(minimum, -1))
     print(quotient(minimum, 1))
+    print(identity(65535))
+    print(identity(65536))
+    print(identity(2147483647))
+    print(identity(2147483648))
+    print(identity(4294967295))
     print(identity(4294967296))
+    print(identity(-2147483648))
+    print(identity(-2147483649))
     print(identity(-4294967296))
 }

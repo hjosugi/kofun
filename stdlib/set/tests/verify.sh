@@ -103,6 +103,14 @@ cmp "$expected" "$work/projection-c11.stdout" ||
 
 "$repo_dir/bin/kofun" build "$projection" \
     --target x86_64-linux -o "$work/projection-native" >/dev/null
+projection_rx_size=$(
+    LC_ALL=C readelf -lW "$work/projection-native" |
+        awk '$1 == "LOAD" && $7 == "R" && $8 == "E" { print $5 }'
+)
+[ -n "$projection_rx_size" ] ||
+    fail 'direct x86-64 Set projection has no executable LOAD segment'
+[ "$((projection_rx_size))" -le 4096 ] ||
+    fail 'direct x86-64 Set projection exceeds the bounded RX page'
 "$work/projection-native" >"$work/projection-native.stdout"
 cmp "$expected" "$work/projection-native.stdout" ||
     fail 'direct x86-64 Set projection differs'
