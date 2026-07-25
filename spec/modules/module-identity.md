@@ -193,9 +193,13 @@ Its base `symbol_id` field is the `ExportBindingId`, never the target
 `ImportBindingId`, raw target `ModuleId`, raw target `SymbolId`, a
 count-prefixed sequence of at most 64 `ExportBindingId` values, and the
 schema-owned target-kind tag, plus constructor-owner/ordinal facts when the
-target is a constructor. The signature field contains the bounded target
-signature required by a source-free consumer. Existing function/ADT KIF bytes
-are unchanged when no export fact is present.
+target is a constructor. A module-target export additionally requires
+`0x8010`, the canonical dotted target module path (at most 4,096 ASCII bytes);
+the reader recomputes the module self-`SymbolId` from that path, target
+`ModuleId`, and module `NamespaceId`. `0x8010` is absent for function, ADT, and
+constructor targets. The signature field contains the bounded target signature
+required by a source-free consumer. Existing function/ADT KIF bytes are
+unchanged when no export fact is present.
 
 The public vector contains only facts observable by an external package. The
 internal-only vector contains additional `internal` facts required by other

@@ -41,6 +41,7 @@ typedef struct {
     size_t declaration_index;
     size_t selective_name_index;
     uint8_t resolved_namespaces;
+    bool has_forwarded_export;
     bool resolved;
 } ReExportRequest;
 
@@ -1089,6 +1090,7 @@ static bool append_forwarded_exports(
                 target->access_proof, target)) return false;
         request->resolved_namespaces |=
             (uint8_t)(1u << target->namespace_tag);
+        request->has_forwarded_export = true;
     }
     return true;
 }
@@ -1265,6 +1267,7 @@ static bool diagnose_re_export_cycle(ReExportResolver *resolver) {
         ReExportDeclaration *source =
             &resolver->declarations[request->declaration_index];
         if (source->form == RE_EXPORT_QUALIFIED ||
+            request->has_forwarded_export ||
             (!request->resolved && source->form == RE_EXPORT_SELECTIVE)) {
             edges[edge_count++] = request_index;
         }
@@ -1276,8 +1279,11 @@ static bool diagnose_re_export_cycle(ReExportResolver *resolver) {
             &resolver->requests[edges[start_edge]];
         ReExportDeclaration *start_source =
             &resolver->declarations[start_request->declaration_index];
-        const char *cycle_name = start_source->form == RE_EXPORT_SELECTIVE
-            ? request_name(resolver, start_request) : NULL;
+        bool concrete_graph =
+            start_source->form == RE_EXPORT_QUALIFIED ||
+            start_request->has_forwarded_export;
+        const char *cycle_name = concrete_graph
+            ? NULL : request_name(resolver, start_request);
         size_t start = start_source->exporter_index;
         size_t queue[MODULE_LIMIT];
         bool visited[MODULE_LIMIT] = { false };
@@ -1304,8 +1310,11 @@ static bool diagnose_re_export_cycle(ReExportResolver *resolver) {
                     free(edges);
                     return false;
                 }
+                bool request_is_concrete =
+                    source->form == RE_EXPORT_QUALIFIED ||
+                    request->has_forwarded_export;
                 if (source->exporter_index != node ||
-                    source->form != start_source->form ||
+                    request_is_concrete != concrete_graph ||
                     (cycle_name != NULL &&
                      strcmp(request_name(resolver, request),
                         cycle_name) != 0)) {
