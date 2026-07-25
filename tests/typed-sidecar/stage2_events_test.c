@@ -868,6 +868,78 @@ static void test_strict_invariant_rejection(const Fixture *fixture) {
 
     {
         KofunSemanticReference reference;
+        KofunSemanticId symbol;
+        stream = kofun_semantic_stream_create();
+        CHECK(stream != NULL);
+        sink = kofun_semantic_stream_sink(stream);
+        CHECK(kofun_semantic_begin(&sink, &fixture->semantic_source));
+        CHECK(emit_node(
+            &sink, module, KOFUN_SEMANTIC_NODE_MODULE, span,
+            KOFUN_SEMANTIC_VALIDATED, NULL, 0u, NULL, 0u
+        ));
+        CHECK(emit_identity(
+            &sink, module, KOFUN_SEMANTIC_ID_SYMBOL,
+            "identity:known-incompatible-symbol", &symbol
+        ));
+        memset(&reference, 0, sizeof(reference));
+        id_from_text(
+            "reference:incompatible-emitted-target",
+            &reference.reference_id
+        );
+        reference.source_node_id = module;
+        reference.name_space = KOFUN_SEMANTIC_NAMESPACE_TYPE;
+        reference.span = span;
+        reference.status = KOFUN_SEMANTIC_VALIDATED;
+        reference.target_shape = KOFUN_SEMANTIC_TARGET_VISIBLE;
+        reference.target_kind = KOFUN_SEMANTIC_ID_SYMBOL;
+        reference.target_value = symbol;
+        CHECK(!kofun_semantic_reference(&sink, &reference));
+        CHECK(strcmp(
+            kofun_semantic_stream_error(stream)->code,
+            "ETS03"
+        ) == 0);
+        kofun_semantic_stream_destroy(stream);
+    }
+
+    {
+        KofunSemanticReference reference;
+        KofunSemanticId symbol;
+        stream = kofun_semantic_stream_create();
+        CHECK(stream != NULL);
+        sink = kofun_semantic_stream_sink(stream);
+        CHECK(kofun_semantic_begin(&sink, &fixture->semantic_source));
+        CHECK(emit_node(
+            &sink, module, KOFUN_SEMANTIC_NODE_MODULE, span,
+            KOFUN_SEMANTIC_VALIDATED, NULL, 0u, NULL, 0u
+        ));
+        CHECK(emit_identity(
+            &sink, module, KOFUN_SEMANTIC_ID_SYMBOL,
+            "identity:known-incompatible-safe-kind", &symbol
+        ));
+        memset(&reference, 0, sizeof(reference));
+        id_from_text(
+            "reference:incompatible-safe-kind",
+            &reference.reference_id
+        );
+        reference.source_node_id = module;
+        reference.name_space = KOFUN_SEMANTIC_NAMESPACE_TYPE;
+        reference.span = span;
+        reference.status = KOFUN_SEMANTIC_UNAVAILABLE;
+        reference.target_shape = KOFUN_SEMANTIC_TARGET_UNAVAILABLE;
+        reference.target_kind = KOFUN_SEMANTIC_ID_SYMBOL;
+        reference.hidden_reason = text(
+            KOFUN_SEMANTIC_REASON_UNRESOLVED_STAGE2_REFERENCE
+        );
+        CHECK(!kofun_semantic_reference(&sink, &reference));
+        CHECK(strcmp(
+            kofun_semantic_stream_error(stream)->code,
+            "ETS03"
+        ) == 0);
+        kofun_semantic_stream_destroy(stream);
+    }
+
+    {
+        KofunSemanticReference reference;
         stream = kofun_semantic_stream_create();
         CHECK(stream != NULL);
         sink = kofun_semantic_stream_sink(stream);
@@ -1664,6 +1736,45 @@ static void test_corruption(const Fixture *fixture) {
     partial = copy_stream(partial_stream, &partial_length);
     CHECK(kofun_semantic_validate_stream(canonical, length, NULL));
     CHECK(kofun_semantic_validate_stream(partial, partial_length, NULL));
+
+    {
+        RejectingSink capture;
+        KofunSemanticSink replay_sink;
+        KofunSemanticError error;
+        size_t namespace_at;
+        size_t target_kind_at;
+        uint32_t namespace_length;
+        uint32_t target_kind_length;
+        copy = fresh_copy(canonical, length);
+        namespace_at = field_payload_at(
+            copy, length, 4u, 0u, 3u, &namespace_length
+        );
+        target_kind_at = field_payload_at(
+            copy, length, 4u, 0u, 7u, &target_kind_length
+        );
+        CHECK(namespace_length == 1u);
+        CHECK(target_kind_length == 1u);
+        CHECK(copy[namespace_at] == KOFUN_SEMANTIC_NAMESPACE_VALUE);
+        CHECK(copy[target_kind_at] == KOFUN_SEMANTIC_ID_SYMBOL);
+        copy[namespace_at] = KOFUN_SEMANTIC_NAMESPACE_TYPE;
+        resign(copy, length);
+        CHECK(!kofun_semantic_validate_stream(copy, length, &error));
+        CHECK(strcmp(error.code, "ETS03") == 0);
+        CHECK(error.event_kind == 4u);
+        memset(&capture, 0, sizeof(capture));
+        replay_sink = rejecting_sink(&capture);
+        CHECK(!kofun_semantic_replay_stream(
+            copy, length, &replay_sink, &error
+        ));
+        CHECK(strcmp(error.code, "ETS03") == 0);
+        CHECK(error.event_kind == 4u);
+        for (index = 0u;
+             index < sizeof(capture.calls) / sizeof(capture.calls[0]);
+             index += 1u) {
+            CHECK(capture.calls[index] == 0u);
+        }
+        free(copy);
+    }
 
     {
         RejectingSink capture;

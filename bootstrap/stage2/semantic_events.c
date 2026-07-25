@@ -291,6 +291,23 @@ static bool valid_status(KofunSemanticStatus status) {
         status <= KOFUN_SEMANTIC_UNAVAILABLE;
 }
 
+static bool reference_kind_matches_namespace(
+    KofunSemanticNamespace name_space,
+    KofunSemanticIdentityKind target_kind
+) {
+    if (name_space == KOFUN_SEMANTIC_NAMESPACE_VALUE) {
+        return target_kind == KOFUN_SEMANTIC_ID_BINDING ||
+            target_kind == KOFUN_SEMANTIC_ID_SYMBOL;
+    }
+    if (name_space == KOFUN_SEMANTIC_NAMESPACE_TYPE) {
+        return target_kind == KOFUN_SEMANTIC_ID_TYPE;
+    }
+    if (name_space == KOFUN_SEMANTIC_NAMESPACE_CONSTRUCTOR) {
+        return target_kind == KOFUN_SEMANTIC_ID_CONSTRUCTOR;
+    }
+    return false;
+}
+
 static bool valid_span(
     const KofunSemanticStream *stream,
     KofunSemanticSpan span
@@ -1103,6 +1120,9 @@ static bool stream_reference_callback(
         const RecordMeta *target;
         if (reference->target_kind < KOFUN_SEMANTIC_ID_PACKAGE ||
             reference->target_kind > KOFUN_SEMANTIC_ID_CONSTRUCTOR ||
+            !reference_kind_matches_namespace(
+                reference->name_space,
+                reference->target_kind) ||
             id_is_zero(&reference->target_value) ||
             reference->hidden_reason.length != 0u) {
             return set_error(
@@ -1130,7 +1150,10 @@ static bool stream_reference_callback(
     } else {
         if ((reference->target_kind != 0 &&
              (reference->target_kind < KOFUN_SEMANTIC_ID_PACKAGE ||
-              reference->target_kind > KOFUN_SEMANTIC_ID_CONSTRUCTOR)) ||
+              reference->target_kind > KOFUN_SEMANTIC_ID_CONSTRUCTOR ||
+              !reference_kind_matches_namespace(
+                  reference->name_space,
+                  reference->target_kind))) ||
             id_is_zero(&reference->target_value) == false ||
             reference->hidden_reason.length == 0u ||
             reference->status == KOFUN_SEMANTIC_VALIDATED ||
