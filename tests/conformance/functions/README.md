@@ -39,6 +39,15 @@ case. The direct AArch64 static ELF backend also executes every case under
 `UNSUPPORTED` skip instead of failing. Unsupported parameter or result types
 remain explicit compiler errors.
 
+`division_floor_signs` pins `//` and `%` across every sign combination, plus
+the `-1` divisor, which both native backends answer without dividing at all. It
+deliberately leaves out `/`: the C11 Stage 1 emitter does not accept that
+operator, and its meaning on `Int` is not settled — the specification says it
+returns `Float`, while every implementation that has one truncates. The native
+backends implement the truncating form to agree with the compiler built from
+the frozen self-host source, and that agreement is gated in
+`bootstrap/native/check.sh` rather than claimed here.
+
 Constant stack is a stronger claim than identical output, and it is not made
 here: it is specific to the direct native backends and is proved by execution
 in `bootstrap/native/check.sh`.

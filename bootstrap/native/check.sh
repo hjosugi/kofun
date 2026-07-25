@@ -973,9 +973,6 @@ expect_function_text_rejection \
     function_text_mutable_local \
     'native Core mutable function locals are unsupported'
 expect_function_text_rejection \
-    function_text_two_locals \
-    'native Core Text bridge supports one local per function'
-expect_function_text_rejection \
     function_text_list_signature \
     'native Core function List parameter/result types are unsupported'
 expect_function_text_rejection \
@@ -984,6 +981,27 @@ expect_function_text_rejection \
 expect_function_text_rejection \
     function_text_file_operation \
     'unknown native Core function `read_text`'
+
+# A function body used to be allowed exactly one local, and that local had to
+# be annotated `Text`. Both limits are gone: a body may bind as many locals as
+# it has statements, an unannotated local takes its initializer's type, and a
+# written annotation is still checked against it. Two Text locals in one body
+# were a refusal until this change, so they are gated positively now rather
+# than merely no longer refused.
+TWO_LOCALS_SOURCE="$NATIVE/fixtures/function_text_two_locals.kofun"
+"$WORK/kofun-native-function-text" \
+    "$TWO_LOCALS_SOURCE" x86_64-linux "$WORK/function-text-two-locals.elf"
+chmod +x "$WORK/function-text-two-locals.elf"
+"$WORK/function-text-two-locals.elf" \
+    >"$WORK/function-text-two-locals.stdout" \
+    2>"$WORK/function-text-two-locals.stderr"
+cmp \
+    "$NATIVE/fixtures/function_text_two_locals.stdout" \
+    "$WORK/function-text-two-locals.stdout"
+test ! -s "$WORK/function-text-two-locals.stderr"
+expect_function_text_rejection \
+    function_text_local_type_mismatch \
+    'native Core local `label` is not Int'
 
 # AArch64 parity (issue #623): the same Text helper now lowers to a direct
 # AArch64 ELF with the shared Text ABI. Build twice for determinism, audit the
@@ -1268,6 +1286,121 @@ else
         "SKIP: AArch64 tail-call execution (qemu-aarch64 unavailable)"
     tail_summary="PASS: AArch64 tail-call images built/pinned; execution skipped"
 fi
+
+# Integer division. `//` and `%` are compared against the C11 backend by
+# tests/conformance/functions/division_floor_signs.kofun, so what is gated here
+# is what that corpus cannot express: the truncating `/`, which the C11 Stage 1
+# emitter does not accept, and the runtime zero-divisor check, whose diagnostic
+# text still differs between backends. The divisor in every zero fixture is
+# computed rather than written, so a check that only looked at literals would
+# fail these.
+DIVIDE_SOURCE="$NATIVE/fixtures/function_truncating_divide.kofun"
+"$WORK/kofun-native-function-text" \
+    "$DIVIDE_SOURCE" x86_64-linux "$WORK/function-truncating-divide.elf"
+chmod +x "$WORK/function-truncating-divide.elf"
+"$WORK/function-truncating-divide.elf" \
+    >"$WORK/function-truncating-divide.stdout" \
+    2>"$WORK/function-truncating-divide.stderr"
+printf '%s\n' 3 -3 -3 3 5 -9 \
+    >"$WORK/function-truncating-divide.expected"
+cmp \
+    "$WORK/function-truncating-divide.expected" \
+    "$WORK/function-truncating-divide.stdout"
+test ! -s "$WORK/function-truncating-divide.stderr"
+
+printf 'kofun: division by zero\n' >"$WORK/divide-zero.expected"
+for divide_case in \
+    function_floor_divide_zero \
+    function_floor_modulo_zero \
+    function_truncating_divide_zero
+do
+    divide_source="$NATIVE/fixtures/$divide_case.kofun"
+    "$WORK/kofun-native-function-text" \
+        "$divide_source" x86_64-linux "$WORK/$divide_case.elf"
+    chmod +x "$WORK/$divide_case.elf"
+    set +e
+    "$WORK/$divide_case.elf" \
+        >"$WORK/$divide_case.stdout" \
+        2>"$WORK/$divide_case.stderr"
+    divide_status=$?
+    set -e
+    test "$divide_status" -eq 1
+    test ! -s "$WORK/$divide_case.stdout"
+    cmp "$WORK/divide-zero.expected" "$WORK/$divide_case.stderr"
+done
+
+# AArch64 divides with `sdiv`, which unlike `idiv` never faults: a zero divisor
+# silently yields zero there. Both guards therefore have to be emitted, and the
+# images are built twice and audited whether or not the emulator is present.
+for divide_case in \
+    function_truncating_divide \
+    function_floor_divide_zero \
+    function_floor_modulo_zero \
+    function_truncating_divide_zero
+do
+    divide_source="$NATIVE/fixtures/$divide_case.kofun"
+    "$KOFUN" build "$divide_source" --target aarch64-linux \
+        -o "$WORK/$divide_case-aarch64.elf" >/dev/null
+    "$KOFUN" build "$divide_source" --target aarch64-linux \
+        -o "$WORK/$divide_case-aarch64.second.elf" >/dev/null
+    cmp \
+        "$WORK/$divide_case-aarch64.elf" \
+        "$WORK/$divide_case-aarch64.second.elf"
+    readelf -h "$WORK/$divide_case-aarch64.elf" \
+        >"$WORK/$divide_case-aarch64.header"
+    grep -Eq 'Machine:[[:space:]]+AArch64' \
+        "$WORK/$divide_case-aarch64.header"
+done
+
+if test -n "$AARCH64_RUNNER"; then
+    "$AARCH64_RUNNER" "$WORK/function_truncating_divide-aarch64.elf" \
+        >"$WORK/function-truncating-divide-aarch64.stdout" \
+        2>"$WORK/function-truncating-divide-aarch64.stderr"
+    cmp \
+        "$WORK/function-truncating-divide.expected" \
+        "$WORK/function-truncating-divide-aarch64.stdout"
+    test ! -s "$WORK/function-truncating-divide-aarch64.stderr"
+    for divide_case in \
+        function_floor_divide_zero \
+        function_floor_modulo_zero \
+        function_truncating_divide_zero
+    do
+        set +e
+        "$AARCH64_RUNNER" "$WORK/$divide_case-aarch64.elf" \
+            >"$WORK/$divide_case-aarch64.stdout" \
+            2>"$WORK/$divide_case-aarch64.stderr"
+        divide_status=$?
+        set -e
+        test "$divide_status" -eq 1
+        test ! -s "$WORK/$divide_case-aarch64.stdout"
+        cmp "$WORK/divide-zero.expected" "$WORK/$divide_case-aarch64.stderr"
+    done
+    divide_summary="PASS: x86-64/AArch64 divide, floor, and refuse a zero divisor alike"
+else
+    printf '%s\n' \
+        "SKIP: AArch64 division execution (qemu-aarch64 unavailable)"
+    divide_summary="PASS: AArch64 division images built/audited; execution skipped"
+fi
+
+# The self-host driver's success corpus is out of reach of the single-`main`
+# aggregate Core and inside the function profile, so it reaches a native image
+# only through the fallback. `bootstrap/selfhost/native/` runs the full
+# two-path differential; what is gated here is that the fallback itself is
+# deterministic and produces the same image through the CLI and directly.
+ANSWER_SOURCE="$ROOT/bootstrap/selfhost/driver/corpus_answer.kofun"
+"$WORK/kofun-native-function-text" \
+    "$ANSWER_SOURCE" x86_64-linux "$WORK/corpus-answer-direct.elf"
+"$KOFUN" build "$ANSWER_SOURCE" --target x86_64-linux \
+    -o "$WORK/corpus-answer-cli.elf" >/dev/null
+cmp "$WORK/corpus-answer-direct.elf" "$WORK/corpus-answer-cli.elf"
+chmod +x "$WORK/corpus-answer-direct.elf"
+"$WORK/corpus-answer-direct.elf" \
+    >"$WORK/corpus-answer.stdout" \
+    2>"$WORK/corpus-answer.stderr"
+cmp \
+    "$ROOT/bootstrap/selfhost/driver/corpus_answer.stdout" \
+    "$WORK/corpus-answer.stdout"
+test ! -s "$WORK/corpus-answer.stderr"
 
 # List[Int] uses the same Core AST and value ABI on x86-64 and AArch64. An
 # independent C11 executable is the normative Python-free differential
@@ -1658,6 +1791,8 @@ printf '%s\n' \
     "PASS: function Text determinism, OOM, provenance, and rejection gates pass" \
     "PASS: x86-64 function values stay in registers with no operand push/pop" \
     "$tail_summary" \
+    "$divide_summary" \
+    "PASS: the self-host success corpus reaches a deterministic native image" \
     "PASS: x86-64/AArch64 List/Text Cores use shared ABIs and diagnostics" \
     "PASS: x86-64 List execution matched C11 with OOB/OOM contracts" \
     "$text_summary"

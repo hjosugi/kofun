@@ -16,8 +16,12 @@ a direct call is lowered as a branch instead of a call on both targets: a call
 to the enclosing function reassigns the parameters and jumps past the prologue,
 and a call to any other function restores the registers the body claimed, drops
 the frame, and jumps, so it returns straight to this function's caller. Direct
-and mutual recursion written that way therefore run in constant stack. That
-function profile is
+and mutual recursion written that way therefore run in constant stack. It also
+lowers `//`, `/`, and `%` on `Int` with the flooring semantics
+`docs/SEMANTICS.md` defines, guarding a zero divisor and the one
+non-representable quotient before dividing on both targets, and it binds as
+many locals as a body has statements, taking a local's type from its
+initializer when no annotation is written. That function profile is
 shared by both backends: the same target-independent parsed program is lowered
 to x86-64 and to AArch64, and both emit a checked-overflow trap with the same
 `kofun: integer overflow` diagnostic and exit status:
@@ -65,7 +69,10 @@ The remaining native backend work includes:
 - broader Text/List calls and types beyond the bounded x86-64 bridge;
 - local bindings and general control flow inside user-defined functions;
 - allocator reuse/reclamation and general raw syscall intrinsic lowering;
-- canonical runtime diagnostic codes shared with the C11 backend;
+- canonical runtime diagnostic codes shared with the C11 backend, including the
+  `error[R010]` division-by-zero and overflow lines the numeric conformance
+  corpus requires;
+- full signed Int64 literals, which the function profile still caps at 65535;
 - variable-location DIEs, multi-function debug information, and AArch64
   List/Text debug rows;
 - unifying the currently separate function, List, and Text profiles.

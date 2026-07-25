@@ -70,13 +70,14 @@ non-Text signatures, missing helper returns, and `-g` are rejected before an
 artifact is written. `-g` debug information covers the single-`main` Core on
 both Linux targets, and the multi-function profile on neither.
 
-`tests/conformance/functions` runs the same eleven programs under the C11 and
+`tests/conformance/functions` runs the same twelve programs under the C11 and
 direct x86-64 adapters, covering ordinary/forward calls, recursion, mutual
 recursion, signed/zero output, the six-argument boundary, register pressure
 past the allocatable set, values live across calls, multiple returning
-branches, and calls in a returned position — including a six-parameter
-rotation, which only agrees with the other backends if every argument is
-computed before any parameter is overwritten. The native gate additionally
+branches, calls in a returned position — including a six-parameter rotation,
+which only agrees with the other backends if every argument is computed before
+any parameter is overwritten — and floor division and modulo across every sign
+combination. The native gate additionally
 rebuilds the `fibonacci` example and the
 checked-overflow fixture for AArch64 and, when `qemu-aarch64` is installed,
 executes them and asserts the output, diagnostic, and exit status match the
@@ -168,6 +169,57 @@ runs a control that recurses just as deep with the call in a non-returned
 position and must still die on the stack under the same limit. It also pins the
 four hand-off byte sequences — the direct and the cross-function form on each
 target — so a regression to `call`/`ret` cannot pass quietly.
+
+## Two front ends, and which one reads a source
+
+`core_compiler.c` contains two independent front ends. The single-`main`
+aggregate Core lowers `List[Int]`, UTF-8 `Text`, higher-order `map`/`filter`/
+`fold`, and `-g` debug information, but accepts exactly one `print` of a known
+value in `10..99`. The function profile accepts several `print` statements,
+full signed Int64 output, user-defined functions, and inferred `Int` locals,
+but has no `List` and no debug information.
+
+A file that declares more than one function goes to the function profile. A
+file that declares only `main` goes to the aggregate Core first and, only if
+that Core refuses it, falls through to the function profile. The two accepted
+sets are therefore disjoint by construction: nothing that compiles today can
+change, which is checked by rebuilding the whole fixture, conformance, example,
+and benchmark corpus on both targets and comparing every image byte for byte.
+A `-g` build never falls through, because `-g` is the aggregate Core's feature.
+
+When both front ends refuse a single-`main` program the verdict is the Core's,
+so the diagnostic keeps the stable `unsupported Core` wording and carries the
+function profile's more specific reason.
+
+## Integer division
+
+`//`, `/`, and `%` share `*`'s precedence level in the function profile. `//`
+floors toward negative infinity and `%` takes the divisor's sign, matching
+`docs/SEMANTICS.md` and the C11 backend's `kofun_floor_div`/`kofun_floor_mod`;
+`/` truncates toward zero, matching the compiler built from the frozen
+self-host source, the Stage 1 seed, and wasm32.
+
+Both hardware divide instructions need guarding, for opposite reasons. x86-64's
+`idiv` *faults* on a zero divisor and on the one quotient that is not
+representable, and a fault is a signal rather than a diagnostic. AArch64's
+`sdiv` never faults: it silently returns zero for a zero divisor and
+`INT64_MIN` for `INT64_MIN / -1`, so an unguarded divide there is a wrong
+answer instead of a crash. Both backends therefore check before dividing.
+
+A `-1` divisor is the whole of the second case and is answered without
+dividing: the quotient is `-left`, whose overflow `neg`/`negs` reports in the
+overflow flag, and the remainder is always zero — which is why
+`INT64_MIN % -1` is `0` rather than an error. Everything else divides and then
+corrects: when the remainder is non-zero and its sign differs from the
+divisor's, `//` is one too high and `%` is one divisor short.
+
+Two limits are worth stating plainly. A zero divisor reports
+`kofun: division by zero` rather than the canonical `error[R010]` line the C11
+backend writes, so the native adapters still do not claim the numeric
+conformance corpus. And `INT64_MIN` is not reachable in this profile at all —
+literals stop at 65535 and every other route overflows first — so the
+non-representable-quotient guard is emitted and reviewed but not executed by
+any fixture. Both belong to the canonical-diagnostics and 64-bit-literal work.
 
 ## x86-64 compiler-shaped Text function bridge
 
