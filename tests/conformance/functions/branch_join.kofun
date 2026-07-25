@@ -1,0 +1,25 @@
+# expect-stdout: 120
+# expect-stdout: 114
+# expect-stdout: 114
+fn classify(n: Int) -> Int {
+    if n > 100 {
+        return n - 100
+    }
+    if n < 0 {
+        return -n
+    }
+    if n == 0 {
+        return 7
+    }
+    return n * 2
+}
+
+fn total(n: Int) -> Int {
+    return classify(n) + classify(-n) + classify(n + 200)
+}
+
+fn main() {
+    print(total(5))
+    print(total(0))
+    print(total(-7))
+}

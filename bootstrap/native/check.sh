@@ -870,6 +870,63 @@ while IFS='|' read -r kind path expected_digest; do
 done <"$provenance"
 ! grep -F "$WORK" "$provenance" >/dev/null
 
+# Value placement in the bounded x86-64 function profile is decided by a
+# compiled allocation pass instead of a native-stack machine. The leaf helper
+# below reuses its parameter twice and must read it out of a register both
+# times, and no body may move `rsp` while an operand is live, which is what
+# keeps every SysV call boundary 16-byte aligned. The pinned leaf prologue
+# proves the register residency without freezing the rest of the body; the
+# three refused byte signatures are exactly what the previous load/push/pop
+# lowering emitted, so a regression to it cannot pass quietly.
+REGALLOC_SOURCE="$NATIVE/fixtures/function_register_allocation.kofun"
+"$WORK/kofun-native-function-text" \
+    "$REGALLOC_SOURCE" x86_64-linux \
+    "$WORK/function-regalloc-direct.elf"
+"$KOFUN" build "$REGALLOC_SOURCE" \
+    --target x86_64-linux \
+    -o "$WORK/function-regalloc-cli.elf" >/dev/null
+"$KOFUN" build "$REGALLOC_SOURCE" \
+    --target x86_64-linux \
+    -o "$WORK/function-regalloc-cli.second.elf" >/dev/null
+cmp \
+    "$WORK/function-regalloc-direct.elf" \
+    "$WORK/function-regalloc-cli.elf"
+cmp \
+    "$WORK/function-regalloc-cli.elf" \
+    "$WORK/function-regalloc-cli.second.elf"
+chmod +x "$WORK/function-regalloc-direct.elf"
+"$WORK/function-regalloc-direct.elf" \
+    >"$WORK/function-regalloc.stdout" \
+    2>"$WORK/function-regalloc.stderr"
+printf '40\n' >"$WORK/function-regalloc.expected"
+cmp \
+    "$WORK/function-regalloc.expected" \
+    "$WORK/function-regalloc.stdout"
+test ! -s "$WORK/function-regalloc.stderr"
+
+# push rbp; mov rbp, rsp; sub rsp, 0x10; mov [rbp-0x10], rbx; mov rbx, rdi;
+# mov r10, rbx
+regalloc_leaf=$(od -An -v -tx1 -j 192 -N 18 \
+    "$WORK/function-regalloc-direct.elf" |
+    awk '{$1=$1; printf "%s%s", separator, $0; separator=" "} END{print ""}')
+test "$regalloc_leaf" = \
+    "55 48 89 e5 48 83 ec 10 48 89 5d f0 48 8b df 4c 8b d3"
+
+for regalloc_image in \
+    "$WORK/function-regalloc-direct.elf" \
+    "$WORK/fibonacci-native.elf" \
+    "$WORK/function-text-direct.elf" \
+    "$WORK/function-overflow.elf"
+do
+    regalloc_hex=$(od -An -v -tx1 "$regalloc_image" | tr -d ' \n')
+    # mov rax, [rbp + disp32] followed by push rax
+    ! printf '%s' "$regalloc_hex" | grep -Eq '488b85[0-9a-f]{8}50'
+    # push rax; pop rdi: the previous call-argument hand-off
+    ! printf '%s' "$regalloc_hex" | grep -Eq '505f'
+    # pop rcx; pop rax: the previous binary-operator hand-off
+    ! printf '%s' "$regalloc_hex" | grep -Eq '5958'
+done
+
 # List[Int] uses the same Core AST and value ABI on x86-64 and AArch64. An
 # independent C11 executable is the normative Python-free differential
 # reference for bindings, indexing, map, filter, fold, and their edge cases.
@@ -1256,6 +1313,7 @@ printf '%s\n' \
     "PASS: x86-64 and AArch64 consume one target-independent parsed Core" \
     "PASS: x86-64 Text-returning functions match the audited C reference" \
     "PASS: function Text determinism, OOM, provenance, and rejection gates pass" \
+    "PASS: x86-64 function values stay in registers with no operand push/pop" \
     "PASS: x86-64/AArch64 List/Text Cores use shared ABIs and diagnostics" \
     "PASS: x86-64 List execution matched C11 with OOB/OOM contracts" \
     "$text_summary"

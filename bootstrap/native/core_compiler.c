@@ -2919,6 +2919,174 @@ static void x64_call_runtime(
     u32_le(text, 0);
 }
 
+/*
+ * x86-64 register numbers exactly as they are encoded in ModRM and REX. The
+ * numbers above seven need REX.R or REX.B, which the helpers below add.
+ */
+enum {
+    X64_RAX = 0,
+    X64_RCX = 1,
+    X64_RDX = 2,
+    X64_RBX = 3,
+    X64_RSP = 4,
+    X64_RBP = 5,
+    X64_RSI = 6,
+    X64_RDI = 7,
+    X64_R8 = 8,
+    X64_R9 = 9,
+    X64_R10 = 10,
+    X64_R11 = 11,
+    X64_R12 = 12,
+    X64_R13 = 13,
+    X64_R14 = 14,
+    X64_R15 = 15,
+    X64_NO_REGISTER = 16,
+};
+
+/*
+ * A 64-bit operand that is either a register or the frame slot at
+ * `[rbp + displacement]`. Every instruction the function backend emits has at
+ * most one such operand, so one descriptor is enough to encode both forms.
+ */
+typedef struct {
+    bool in_register;
+    unsigned reg;
+    uint32_t displacement;
+} X64Operand;
+
+static X64Operand x64_register_operand(unsigned reg) {
+    X64Operand operand = {
+        .in_register = true,
+        .reg = reg,
+        .displacement = 0,
+    };
+    return operand;
+}
+
+static X64Operand x64_frame_operand(uint32_t displacement) {
+    X64Operand operand = {
+        .in_register = false,
+        .reg = X64_RBP,
+        .displacement = displacement,
+    };
+    return operand;
+}
+
+/* REX.W, plus REX.R for the ModRM `reg` field and REX.B for its r/m field. */
+static void x64_rex_w(Bytes *text, unsigned reg, unsigned rm) {
+    uint8_t rex = UINT8_C(0x48);
+    if (reg >= 8) rex |= UINT8_C(0x04);
+    if (rm >= 8) rex |= UINT8_C(0x01);
+    byte(text, rex);
+}
+
+/*
+ * Emits one 64-bit instruction whose ModRM `reg` field is `reg` and whose r/m
+ * field addresses `operand`. `reg` is a register number for two-operand forms
+ * and the opcode extension for group forms such as `neg`.
+ */
+static void x64_encode(
+    Bytes *text,
+    const uint8_t *opcode,
+    size_t opcode_length,
+    unsigned reg,
+    X64Operand operand
+) {
+    x64_rex_w(text, reg, operand.in_register ? operand.reg : X64_RBP);
+    for (size_t index = 0; index < opcode_length; ++index) {
+        byte(text, opcode[index]);
+    }
+    if (operand.in_register) {
+        byte(
+            text,
+            (uint8_t)(
+                UINT8_C(0xc0) | ((reg & 7) << 3) | (operand.reg & 7)
+            )
+        );
+        return;
+    }
+    /* A frame slot within reach of a signed byte takes the compact form. */
+    int32_t displacement = (int32_t)operand.displacement;
+    if (displacement >= -128 && displacement <= 127) {
+        byte(
+            text,
+            (uint8_t)(UINT8_C(0x40) | ((reg & 7) << 3) | (X64_RBP & 7))
+        );
+        byte(text, (uint8_t)displacement);
+        return;
+    }
+    byte(
+        text,
+        (uint8_t)(UINT8_C(0x80) | ((reg & 7) << 3) | (X64_RBP & 7))
+    );
+    u32_le(text, operand.displacement);
+}
+
+static void x64_encode_op(
+    Bytes *text,
+    uint8_t opcode,
+    unsigned reg,
+    X64Operand operand
+) {
+    x64_encode(text, &opcode, 1, reg, operand);
+}
+
+enum {
+    X64_MOV_REG_RM = 0x8b,
+    X64_MOV_RM_REG = 0x89,
+    X64_ADD_REG_RM = 0x03,
+    X64_ADD_RM_REG = 0x01,
+    X64_SUB_REG_RM = 0x2b,
+    X64_SUB_RM_REG = 0x29,
+    X64_CMP_REG_RM = 0x3b,
+    X64_CMP_RM_REG = 0x39,
+    X64_TEST_RM_REG = 0x85,
+    X64_GROUP3_RM = 0xf7,
+    X64_GROUP3_NEG = 3,
+};
+
+static void x64_mov_register_operand(
+    Bytes *text,
+    unsigned reg,
+    X64Operand from
+) {
+    x64_encode_op(text, X64_MOV_REG_RM, reg, from);
+}
+
+static void x64_mov_operand_register(
+    Bytes *text,
+    X64Operand into,
+    unsigned reg
+) {
+    x64_encode_op(text, X64_MOV_RM_REG, reg, into);
+}
+
+/*
+ * `mov reg32, imm32` zero-extends into the full 64-bit register, which is the
+ * literal and Text-address form the backend has always emitted. The field
+ * offset is returned so callers can register an address fixup.
+ */
+static void x64_mov_register_imm32_opcode(Bytes *text, unsigned reg) {
+    if (reg >= 8) byte(text, UINT8_C(0x41)); /* REX.B */
+    byte(text, (uint8_t)(UINT8_C(0xb8) | (reg & 7)));
+}
+
+static size_t x64_mov_register_imm32_field(Bytes *text, unsigned reg) {
+    x64_mov_register_imm32_opcode(text, reg);
+    size_t field = text->length;
+    u32_le(text, 0);
+    return field;
+}
+
+static void x64_mov_register_imm32(
+    Bytes *text,
+    unsigned reg,
+    uint32_t value
+) {
+    x64_mov_register_imm32_opcode(text, reg);
+    u32_le(text, value);
+}
+
 static uint32_t x64_local_displacement(size_t slot) {
     if (slot >= (size_t)INT32_MAX / sizeof(uint64_t)) {
         fatal("native Core local frame is too large");
@@ -2928,24 +3096,24 @@ static uint32_t x64_local_displacement(size_t slot) {
     return (uint32_t)displacement;
 }
 
+static X64Operand x64_slot_operand(size_t slot) {
+    return x64_frame_operand(x64_local_displacement(slot));
+}
+
 static void x64_load_local(
     Bytes *text,
     size_t slot
 ) {
-    byte(text, UINT8_C(0x48));
-    byte(text, UINT8_C(0x8b));
-    byte(text, UINT8_C(0x85)); /* mov rax, [rbp + disp32] */
-    u32_le(text, x64_local_displacement(slot));
+    /* mov rax, [rbp + disp32] */
+    x64_mov_register_operand(text, X64_RAX, x64_slot_operand(slot));
 }
 
 static void x64_store_local(
     Bytes *text,
     size_t slot
 ) {
-    byte(text, UINT8_C(0x48));
-    byte(text, UINT8_C(0x89));
-    byte(text, UINT8_C(0x85)); /* mov [rbp + disp32], rax */
-    u32_le(text, x64_local_displacement(slot));
+    /* mov [rbp + disp32], rax */
+    x64_mov_operand_register(text, x64_slot_operand(slot), X64_RAX);
 }
 
 static size_t x64_local_jcc(Bytes *text, uint8_t condition);
@@ -4577,33 +4745,469 @@ static void x64_function_overflow_jump(
     );
 }
 
+/*
+ * Register allocation for the bounded function profile
+ * ----------------------------------------------------
+ *
+ * Expression evaluation used to be a native-stack machine: every operand was
+ * pushed and popped, so each intermediate value cost a memory round trip and
+ * every parameter read reloaded its frame slot. Each function body now gets a
+ * location assignment computed once, before any byte is emitted:
+ *
+ *   - an evaluation depth whose value is still live when a call runs takes a
+ *     callee-saved register, so the callee preserves it and no caller-side
+ *     save is needed;
+ *   - a depth no call can observe takes a caller-saved register that is never
+ *     an argument register, which avoids a save/restore pair entirely;
+ *   - parameters and locals take the registers left over. They stay live
+ *     across statements, so a body that calls anything needs the callee-saved
+ *     class for them, and that class only pays for its save and restore once
+ *     a binding is read more than once;
+ *   - whatever does not fit spills to a deterministic frame slot below the
+ *     locals, at the existing local displacements.
+ *
+ * `rax` and the six argument registers are never allocated, so they are always
+ * free as scratch and as the call boundary. Allocation is driven only by depth
+ * and slot index, so repeated builds of one source make identical decisions.
+ * No evaluation step moves `rsp`, so a body keeps the 16-byte alignment it was
+ * entered with at every SysV call boundary.
+ */
+enum {
+    X64_CALL_SAFE_REGISTERS = 5,
+    X64_SCRATCH_REGISTERS = 2,
+    X64_ALLOCATABLE_REGISTERS =
+        X64_CALL_SAFE_REGISTERS + X64_SCRATCH_REGISTERS,
+    X64_MAX_VALUE_SLOTS = MAX_CORE_PARAMETERS + MAX_CORE_STATEMENTS,
+};
+
+static const unsigned x64_call_safe_registers[X64_CALL_SAFE_REGISTERS] = {
+    X64_RBX, X64_R12, X64_R13, X64_R14, X64_R15,
+};
+
+static const unsigned x64_scratch_registers[X64_SCRATCH_REGISTERS] = {
+    X64_R10, X64_R11,
+};
+
+static const unsigned x64_argument_registers[MAX_CORE_PARAMETERS] = {
+    X64_RDI, X64_RSI, X64_RDX, X64_RCX, X64_R8, X64_R9,
+};
+
+typedef struct {
+    bool taken[16];
+} X64RegisterFile;
+
+static unsigned x64_take_scratch_register(X64RegisterFile *file) {
+    for (size_t index = 0; index < X64_SCRATCH_REGISTERS; ++index) {
+        unsigned reg = x64_scratch_registers[index];
+        if (file->taken[reg]) continue;
+        file->taken[reg] = true;
+        return reg;
+    }
+    return X64_NO_REGISTER;
+}
+
+static unsigned x64_take_call_safe_register(X64RegisterFile *file) {
+    for (size_t index = 0; index < X64_CALL_SAFE_REGISTERS; ++index) {
+        unsigned reg = x64_call_safe_registers[index];
+        if (file->taken[reg]) continue;
+        file->taken[reg] = true;
+        return reg;
+    }
+    return X64_NO_REGISTER;
+}
+
+/*
+ * An intermediate value that must survive a call can only live in the
+ * callee-saved class; anything else prefers the scratch class, which needs no
+ * save at all, and falls back to callee-saved rather than to memory.
+ */
+static unsigned x64_take_eval_register(
+    X64RegisterFile *file,
+    bool across_calls
+) {
+    if (!across_calls) {
+        unsigned scratch = x64_take_scratch_register(file);
+        if (scratch != X64_NO_REGISTER) return scratch;
+    }
+    return x64_take_call_safe_register(file);
+}
+
+/*
+ * A parameter or local is different: it is written once at entry and read
+ * wherever it appears. A scratch register replaces that store and every reload
+ * for free, but a callee-saved register also costs one save and one restore per
+ * invocation, which only pays for itself once the binding is read more than
+ * once. A binding that is never read gets nothing.
+ */
+static unsigned x64_take_value_register(
+    X64RegisterFile *file,
+    bool across_calls,
+    size_t uses
+) {
+    if (uses == 0) return X64_NO_REGISTER;
+    if (!across_calls) {
+        unsigned scratch = x64_take_scratch_register(file);
+        if (scratch != X64_NO_REGISTER) return scratch;
+    }
+    if (uses < 2) return X64_NO_REGISTER;
+    return x64_take_call_safe_register(file);
+}
+
+typedef struct {
+    size_t frame_slots;   /* parameters and locals, at their existing slots */
+    size_t spill_slots;   /* evaluation depths that did not get a register */
+    size_t eval_depth;    /* evaluation depths this body uses */
+    unsigned eval_register[X64_ALLOCATABLE_REGISTERS];
+    size_t eval_spill[X64_ALLOCATABLE_REGISTERS];
+    size_t deep_spill_base;
+    unsigned slot_register[X64_MAX_VALUE_SLOTS];
+    unsigned saved[X64_CALL_SAFE_REGISTERS];
+    size_t saved_count;
+} X64FrameLayout;
+
+/* True when evaluating this expression emits a call instruction. */
+static bool x64_expression_calls(const FunctionExpression *expression) {
+    if (expression == NULL) return false;
+    if (expression->kind == FUNCTION_CALL) return true;
+    if (expression->kind == FUNCTION_TEXT_CONCAT) return true;
+    if (x64_expression_calls(expression->left)) return true;
+    if (x64_expression_calls(expression->right)) return true;
+    for (size_t index = 0;
+         expression->arguments != NULL &&
+             index < expression->argument_count;
+         ++index) {
+        if (x64_expression_calls(expression->arguments[index])) return true;
+    }
+    return false;
+}
+
+typedef struct {
+    size_t depth;
+    bool across_call[X64_ALLOCATABLE_REGISTERS];
+} X64Pressure;
+
+static void x64_pressure_mark(
+    X64Pressure *pressure,
+    size_t from,
+    size_t to
+) {
+    for (size_t depth = from;
+         depth < to && depth < X64_ALLOCATABLE_REGISTERS;
+         ++depth) {
+        pressure->across_call[depth] = true;
+    }
+}
+
+/*
+ * Records how many evaluation depths a body needs and which of them can still
+ * hold a live value when a call runs. A depth stays live exactly while the
+ * sibling subtrees at deeper positions are evaluated: an operand is consumed
+ * by its parent immediately afterwards, and a call boundary is filled from the
+ * argument locations before the call, so nothing of a call's own node is live
+ * across it. A depth therefore survives a call precisely when one of those
+ * later sibling subtrees performs one.
+ */
+static void x64_expression_pressure(
+    const FunctionExpression *expression,
+    size_t depth,
+    X64Pressure *pressure
+) {
+    if (expression == NULL) return;
+    if (depth + 1 > pressure->depth) pressure->depth = depth + 1;
+    switch (expression->kind) {
+        case FUNCTION_LITERAL:
+        case FUNCTION_TEXT_LITERAL:
+        case FUNCTION_PARAMETER:
+            return;
+        case FUNCTION_NEGATE:
+            x64_expression_pressure(expression->left, depth, pressure);
+            return;
+        case FUNCTION_CALL:
+            for (size_t index = 0;
+                 index < expression->argument_count;
+                 ++index) {
+                if (index > 0 &&
+                    x64_expression_calls(expression->arguments[index])) {
+                    x64_pressure_mark(pressure, depth, depth + index);
+                }
+                x64_expression_pressure(
+                    expression->arguments[index],
+                    depth + index,
+                    pressure
+                );
+            }
+            return;
+        default:
+            x64_expression_pressure(expression->left, depth, pressure);
+            if (x64_expression_calls(expression->right)) {
+                x64_pressure_mark(pressure, depth, depth + 1);
+            }
+            x64_expression_pressure(
+                expression->right,
+                depth + 1,
+                pressure
+            );
+            return;
+    }
+}
+
+/* How many times this expression reads the given parameter or local. */
+static size_t x64_expression_slot_uses(
+    const FunctionExpression *expression,
+    size_t slot
+) {
+    if (expression == NULL) return 0;
+    if (expression->kind == FUNCTION_PARAMETER) {
+        return expression->slot == slot ? 1 : 0;
+    }
+    size_t uses = x64_expression_slot_uses(expression->left, slot);
+    uses += x64_expression_slot_uses(expression->right, slot);
+    for (size_t index = 0;
+         expression->arguments != NULL &&
+             index < expression->argument_count;
+         ++index) {
+        uses += x64_expression_slot_uses(expression->arguments[index], slot);
+    }
+    return uses;
+}
+
+static size_t x64_function_slot_uses(
+    const FunctionDeclaration *function,
+    size_t slot
+) {
+    size_t uses = 0;
+    for (size_t index = 0; index < function->statement_count; ++index) {
+        const FunctionStatement *statement = &function->statements[index];
+        uses += x64_expression_slot_uses(statement->condition, slot);
+        uses += x64_expression_slot_uses(statement->value, slot);
+    }
+    return uses;
+}
+
+/*
+ * True when the body reaches any call instruction, including the `print`
+ * runtime, which clobbers caller-saved registers like any other callee.
+ */
+static bool x64_function_calls(const FunctionDeclaration *function) {
+    for (size_t index = 0; index < function->statement_count; ++index) {
+        const FunctionStatement *statement = &function->statements[index];
+        if (statement->kind == FUNCTION_STATEMENT_PRINT) return true;
+        if (x64_expression_calls(statement->condition)) return true;
+        if (x64_expression_calls(statement->value)) return true;
+    }
+    return false;
+}
+
+static X64FrameLayout x64_function_layout(
+    const FunctionDeclaration *function
+) {
+    X64FrameLayout layout = {0};
+    layout.frame_slots =
+        function->parameter_count + function->local_count;
+    if (layout.frame_slots > X64_MAX_VALUE_SLOTS) {
+        fatal("native Core function has too many bindings");
+    }
+    for (size_t slot = 0; slot < X64_MAX_VALUE_SLOTS; ++slot) {
+        layout.slot_register[slot] = X64_NO_REGISTER;
+    }
+    for (size_t depth = 0;
+         depth < X64_ALLOCATABLE_REGISTERS;
+         ++depth) {
+        layout.eval_register[depth] = X64_NO_REGISTER;
+    }
+
+    X64Pressure pressure = {0};
+    for (size_t index = 0; index < function->statement_count; ++index) {
+        const FunctionStatement *statement = &function->statements[index];
+        x64_expression_pressure(statement->condition, 0, &pressure);
+        x64_expression_pressure(statement->value, 0, &pressure);
+    }
+    layout.eval_depth = pressure.depth;
+
+    size_t tracked = pressure.depth < X64_ALLOCATABLE_REGISTERS
+        ? pressure.depth
+        : (size_t)X64_ALLOCATABLE_REGISTERS;
+    X64RegisterFile file = {0};
+    /* Call-crossing depths claim the callee-saved class first: no other class
+     * can hold them, while any other depth has an alternative. */
+    for (size_t depth = 0; depth < tracked; ++depth) {
+        if (!pressure.across_call[depth]) continue;
+        layout.eval_register[depth] = x64_take_eval_register(&file, true);
+    }
+    for (size_t depth = 0; depth < tracked; ++depth) {
+        if (pressure.across_call[depth]) continue;
+        layout.eval_register[depth] = x64_take_eval_register(&file, false);
+    }
+    bool calls = x64_function_calls(function);
+    for (size_t slot = 0; slot < layout.frame_slots; ++slot) {
+        layout.slot_register[slot] = x64_take_value_register(
+            &file,
+            calls,
+            x64_function_slot_uses(function, slot)
+        );
+    }
+    for (size_t depth = 0; depth < tracked; ++depth) {
+        if (layout.eval_register[depth] != X64_NO_REGISTER) continue;
+        layout.eval_spill[depth] = layout.spill_slots++;
+    }
+    layout.deep_spill_base = layout.spill_slots;
+    if (pressure.depth > X64_ALLOCATABLE_REGISTERS) {
+        layout.spill_slots +=
+            pressure.depth - (size_t)X64_ALLOCATABLE_REGISTERS;
+    }
+    for (size_t index = 0; index < X64_CALL_SAFE_REGISTERS; ++index) {
+        unsigned reg = x64_call_safe_registers[index];
+        if (!file.taken[reg]) continue;
+        layout.saved[layout.saved_count++] = reg;
+    }
+    return layout;
+}
+
+/* Where the value produced at `depth` lives: a register or a spill slot. */
+static X64Operand x64_eval_operand(
+    const X64FrameLayout *layout,
+    size_t depth
+) {
+    if (depth >= layout->eval_depth) {
+        fatal("native Core evaluation exceeds its analyzed depth");
+    }
+    if (depth < X64_ALLOCATABLE_REGISTERS &&
+        layout->eval_register[depth] != X64_NO_REGISTER) {
+        return x64_register_operand(layout->eval_register[depth]);
+    }
+    size_t spill = depth < X64_ALLOCATABLE_REGISTERS
+        ? layout->eval_spill[depth]
+        : layout->deep_spill_base +
+            (depth - (size_t)X64_ALLOCATABLE_REGISTERS);
+    return x64_slot_operand(layout->frame_slots + spill);
+}
+
+/* Where a parameter or local lives: a register or its existing frame slot. */
+static X64Operand x64_value_operand(
+    const X64FrameLayout *layout,
+    size_t slot
+) {
+    if (slot >= layout->frame_slots) {
+        fatal("native Core binding is outside its frame");
+    }
+    if (layout->slot_register[slot] != X64_NO_REGISTER) {
+        return x64_register_operand(layout->slot_register[slot]);
+    }
+    return x64_slot_operand(slot);
+}
+
+static X64Operand x64_saved_operand(
+    const X64FrameLayout *layout,
+    size_t index
+) {
+    return x64_slot_operand(
+        layout->frame_slots + layout->spill_slots + index
+    );
+}
+
+/*
+ * Moves one 64-bit value between two locations. `rax` is never allocated, so
+ * it is always available when both locations are frame slots.
+ */
+static void x64_move(Bytes *text, X64Operand into, X64Operand from) {
+    if (into.in_register && from.in_register &&
+        into.reg == from.reg) {
+        return;
+    }
+    if (into.in_register) {
+        x64_mov_register_operand(text, into.reg, from);
+        return;
+    }
+    if (from.in_register) {
+        x64_mov_operand_register(text, into, from.reg);
+        return;
+    }
+    x64_mov_register_operand(text, X64_RAX, from);
+    x64_mov_operand_register(text, into, X64_RAX);
+}
+
+/*
+ * Compares the values at `depth` and `depth + 1`, left minus right. One of the
+ * two is normally a register; when both spilled, `rax` carries the right side.
+ */
+static void x64_function_compare(
+    Bytes *text,
+    const X64FrameLayout *layout,
+    size_t depth
+) {
+    X64Operand left = x64_eval_operand(layout, depth);
+    X64Operand right = x64_eval_operand(layout, depth + 1);
+    if (left.in_register) {
+        x64_encode_op(text, X64_CMP_REG_RM, left.reg, right);
+        return;
+    }
+    if (right.in_register) {
+        x64_encode_op(text, X64_CMP_RM_REG, right.reg, left);
+        return;
+    }
+    x64_mov_register_operand(text, X64_RAX, right);
+    x64_encode_op(text, X64_CMP_RM_REG, X64_RAX, left);
+}
+
+/*
+ * The branch that skips a guard body is taken when the comparison is false, so
+ * a guard can leave the answer in the flags instead of materializing a Bool
+ * and testing it back. Returns false for any other condition expression.
+ */
+static bool x64_function_guard_inverse(
+    FunctionExpressionKind kind,
+    uint8_t *inverse
+) {
+    if (kind == FUNCTION_EQUAL) {
+        *inverse = UINT8_C(0x85); /* jne */
+    } else if (kind == FUNCTION_NOT_EQUAL) {
+        *inverse = UINT8_C(0x84); /* je */
+    } else if (kind == FUNCTION_LESS) {
+        *inverse = UINT8_C(0x8d); /* jge */
+    } else if (kind == FUNCTION_LESS_EQUAL) {
+        *inverse = UINT8_C(0x8f); /* jg */
+    } else if (kind == FUNCTION_GREATER) {
+        *inverse = UINT8_C(0x8e); /* jle */
+    } else if (kind == FUNCTION_GREATER_EQUAL) {
+        *inverse = UINT8_C(0x8c); /* jl */
+    } else {
+        return false;
+    }
+    return true;
+}
+
 static void x64_function_expression(
     Bytes *text,
     const FunctionExpression *expression,
-    FunctionEmitter *emitter
+    FunctionEmitter *emitter,
+    const X64FrameLayout *layout,
+    size_t depth
 ) {
+    X64Operand result = x64_eval_operand(layout, depth);
     if (expression->kind == FUNCTION_LITERAL) {
-        byte(text, UINT8_C(0xb8)); /* mov eax, immediate */
-        u32_le(text, (uint32_t)expression->value);
-        byte(text, UINT8_C(0x50)); /* push rax */
+        unsigned reg = result.in_register ? result.reg : X64_RAX;
+        x64_mov_register_imm32(text, reg, (uint32_t)expression->value);
+        if (!result.in_register) {
+            x64_mov_operand_register(text, result, X64_RAX);
+        }
         return;
     }
     if (expression->kind == FUNCTION_TEXT_LITERAL) {
         emitter->runtime.used = true;
-        byte(text, UINT8_C(0xb8)); /* mov eax, Text address */
+        unsigned reg = result.in_register ? result.reg : X64_RAX;
         text_fixups_add(
             &emitter->runtime.text_literals,
-            text->length,
+            x64_mov_register_imm32_field(text, reg),
             expression->text_value,
             expression->text_length
         );
-        u32_le(text, 0);
-        byte(text, UINT8_C(0x50)); /* push Text */
+        if (!result.in_register) {
+            x64_mov_operand_register(text, result, X64_RAX);
+        }
         return;
     }
     if (expression->kind == FUNCTION_PARAMETER) {
-        x64_load_local(text, expression->slot);
-        byte(text, UINT8_C(0x50)); /* push parameter */
+        x64_move(text, result, x64_value_operand(layout, expression->slot));
         return;
     }
     if (expression->kind == FUNCTION_CALL) {
@@ -4611,107 +5215,144 @@ static void x64_function_expression(
             x64_function_expression(
                 text,
                 expression->arguments[index],
-                emitter
+                emitter,
+                layout,
+                depth + index
             );
         }
-        for (size_t index = expression->argument_count; index > 0; --index) {
-            switch (index - 1) {
-                case 0:
-                    byte(text, UINT8_C(0x5f)); /* pop rdi */
-                    break;
-                case 1:
-                    byte(text, UINT8_C(0x5e)); /* pop rsi */
-                    break;
-                case 2:
-                    byte(text, UINT8_C(0x5a)); /* pop rdx */
-                    break;
-                case 3:
-                    byte(text, UINT8_C(0x59)); /* pop rcx */
-                    break;
-                case 4:
-                    byte(text, UINT8_C(0x41));
-                    byte(text, UINT8_C(0x58)); /* pop r8 */
-                    break;
-                case 5:
-                    byte(text, UINT8_C(0x41));
-                    byte(text, UINT8_C(0x59)); /* pop r9 */
-                    break;
-                default:
-                    fatal("native Core call has too many arguments");
+        for (size_t index = 0; index < expression->argument_count; ++index) {
+            if (index >= MAX_CORE_PARAMETERS) {
+                fatal("native Core call has too many arguments");
             }
+            /* Argument registers are never allocated, so filling the boundary
+             * cannot overwrite an argument that has not been moved yet. */
+            x64_mov_register_operand(
+                text,
+                x64_argument_registers[index],
+                x64_eval_operand(layout, depth + index)
+            );
         }
         x64_function_call(text, emitter, expression->function_index);
-        byte(text, UINT8_C(0x50)); /* push return value */
+        x64_mov_operand_register(text, result, X64_RAX);
         return;
     }
     if (expression->kind == FUNCTION_NEGATE) {
-        x64_function_expression(text, expression->left, emitter);
-        byte(text, UINT8_C(0x58)); /* pop rax */
-        byte(text, UINT8_C(0x48));
-        byte(text, UINT8_C(0xf7));
-        byte(text, UINT8_C(0xd8)); /* neg rax */
+        x64_function_expression(
+            text,
+            expression->left,
+            emitter,
+            layout,
+            depth
+        );
+        /* neg result */
+        x64_encode_op(text, X64_GROUP3_RM, X64_GROUP3_NEG, result);
         x64_function_overflow_jump(text, emitter);
-        byte(text, UINT8_C(0x50));
         return;
     }
     if (expression->kind == FUNCTION_TEXT_CONCAT) {
-        x64_function_expression(text, expression->left, emitter);
-        x64_function_expression(text, expression->right, emitter);
-        byte(text, UINT8_C(0x5e)); /* pop rsi: right Text */
-        byte(text, UINT8_C(0x5f)); /* pop rdi: left Text */
+        x64_function_expression(
+            text,
+            expression->left,
+            emitter,
+            layout,
+            depth
+        );
+        x64_function_expression(
+            text,
+            expression->right,
+            emitter,
+            layout,
+            depth + 1
+        );
+        x64_mov_register_operand(text, X64_RDI, result);
+        x64_mov_register_operand(
+            text,
+            X64_RSI,
+            x64_eval_operand(layout, depth + 1)
+        );
         x64_call_runtime(
             text,
             &emitter->runtime,
             &emitter->runtime.text_concat_calls
         );
-        byte(text, UINT8_C(0x50)); /* push concatenated Text */
+        x64_mov_operand_register(text, result, X64_RAX);
         return;
     }
 
-    x64_function_expression(text, expression->left, emitter);
-    x64_function_expression(text, expression->right, emitter);
-    byte(text, UINT8_C(0x59)); /* pop rcx: right */
-    byte(text, UINT8_C(0x58)); /* pop rax: left */
-    if (expression->kind == FUNCTION_ADD) {
-        byte(text, UINT8_C(0x48));
-        byte(text, UINT8_C(0x01));
-        byte(text, UINT8_C(0xc8)); /* add rax, rcx */
-        x64_function_overflow_jump(text, emitter);
-    } else if (expression->kind == FUNCTION_SUBTRACT) {
-        byte(text, UINT8_C(0x48));
-        byte(text, UINT8_C(0x29));
-        byte(text, UINT8_C(0xc8)); /* sub rax, rcx */
-        x64_function_overflow_jump(text, emitter);
-    } else if (expression->kind == FUNCTION_MULTIPLY) {
-        byte(text, UINT8_C(0x48));
-        byte(text, UINT8_C(0x0f));
-        byte(text, UINT8_C(0xaf));
-        byte(text, UINT8_C(0xc1)); /* imul rax, rcx */
-        x64_function_overflow_jump(text, emitter);
-    } else {
-        byte(text, UINT8_C(0x48));
-        byte(text, UINT8_C(0x39));
-        byte(text, UINT8_C(0xc8)); /* cmp rax, rcx */
-        byte(text, UINT8_C(0x0f));
-        uint8_t condition = UINT8_C(0x94);
-        if (expression->kind == FUNCTION_NOT_EQUAL) {
-            condition = UINT8_C(0x95);
-        } else if (expression->kind == FUNCTION_LESS) {
-            condition = UINT8_C(0x9c);
-        } else if (expression->kind == FUNCTION_LESS_EQUAL) {
-            condition = UINT8_C(0x9e);
-        } else if (expression->kind == FUNCTION_GREATER) {
-            condition = UINT8_C(0x9f);
-        } else if (expression->kind == FUNCTION_GREATER_EQUAL) {
-            condition = UINT8_C(0x9d);
+    x64_function_expression(text, expression->left, emitter, layout, depth);
+    x64_function_expression(
+        text,
+        expression->right,
+        emitter,
+        layout,
+        depth + 1
+    );
+    X64Operand right = x64_eval_operand(layout, depth + 1);
+    if (expression->kind == FUNCTION_ADD ||
+        expression->kind == FUNCTION_SUBTRACT) {
+        bool add = expression->kind == FUNCTION_ADD;
+        if (result.in_register) {
+            x64_encode_op(
+                text,
+                add ? X64_ADD_REG_RM : X64_SUB_REG_RM,
+                result.reg,
+                right
+            );
+        } else if (right.in_register) {
+            x64_encode_op(
+                text,
+                add ? X64_ADD_RM_REG : X64_SUB_RM_REG,
+                right.reg,
+                result
+            );
+        } else {
+            x64_mov_register_operand(text, X64_RAX, right);
+            x64_encode_op(
+                text,
+                add ? X64_ADD_RM_REG : X64_SUB_RM_REG,
+                X64_RAX,
+                result
+            );
         }
-        byte(text, condition);
-        byte(text, UINT8_C(0xc0)); /* setcc al */
-        byte(text, UINT8_C(0x0f));
-        byte(text, UINT8_C(0xb6));
-        byte(text, UINT8_C(0xc0)); /* movzx eax, al */
+        x64_function_overflow_jump(text, emitter);
+        return;
     }
-    byte(text, UINT8_C(0x50));
+    if (expression->kind == FUNCTION_MULTIPLY) {
+        static const uint8_t imul[] = {UINT8_C(0x0f), UINT8_C(0xaf)};
+        if (result.in_register) {
+            x64_encode(text, imul, sizeof(imul), result.reg, right);
+            x64_function_overflow_jump(text, emitter);
+            return;
+        }
+        /* `imul` only multiplies into a register. */
+        x64_mov_register_operand(text, X64_RAX, result);
+        x64_encode(text, imul, sizeof(imul), X64_RAX, right);
+        x64_function_overflow_jump(text, emitter);
+        x64_mov_operand_register(text, result, X64_RAX);
+        return;
+    }
+
+    /* cmp left, right, then materialize the 0/1 result. */
+    x64_function_compare(text, layout, depth);
+    byte(text, UINT8_C(0x0f));
+    uint8_t condition = UINT8_C(0x94);
+    if (expression->kind == FUNCTION_NOT_EQUAL) {
+        condition = UINT8_C(0x95);
+    } else if (expression->kind == FUNCTION_LESS) {
+        condition = UINT8_C(0x9c);
+    } else if (expression->kind == FUNCTION_LESS_EQUAL) {
+        condition = UINT8_C(0x9e);
+    } else if (expression->kind == FUNCTION_GREATER) {
+        condition = UINT8_C(0x9f);
+    } else if (expression->kind == FUNCTION_GREATER_EQUAL) {
+        condition = UINT8_C(0x9d);
+    }
+    byte(text, condition);
+    byte(text, UINT8_C(0xc0)); /* setcc al */
+    byte(text, UINT8_C(0x0f));
+    byte(text, UINT8_C(0xb6));
+    byte(text, UINT8_C(0xc0)); /* movzx eax, al */
+    x64_mov_operand_register(text, result, X64_RAX);
 }
 
 static void x64_function_epilogue(Bytes *text) {
@@ -4719,23 +5360,39 @@ static void x64_function_epilogue(Bytes *text) {
     byte(text, UINT8_C(0xc3)); /* ret */
 }
 
+/*
+ * Restores every callee-saved register the body claimed and returns. Reloading
+ * from frame slots leaves the result in `rax` untouched, and `leave` drops the
+ * whole frame. One body emits this once and every earlier return jumps to it,
+ * so all return paths restore exactly the same set at exactly one place.
+ */
+static void x64_function_epilogue_block(
+    Bytes *text,
+    const X64FrameLayout *layout
+) {
+    for (size_t index = layout->saved_count; index > 0; --index) {
+        x64_mov_register_operand(
+            text,
+            layout->saved[index - 1],
+            x64_saved_operand(layout, index - 1)
+        );
+    }
+    x64_function_epilogue(text);
+}
+
 static void x64_function_parameter_store(
     Bytes *text,
+    const X64FrameLayout *layout,
     size_t parameter
 ) {
-    static const uint8_t prefixes[MAX_CORE_PARAMETERS][3] = {
-        {UINT8_C(0x48), UINT8_C(0x89), UINT8_C(0xbd)},
-        {UINT8_C(0x48), UINT8_C(0x89), UINT8_C(0xb5)},
-        {UINT8_C(0x48), UINT8_C(0x89), UINT8_C(0x95)},
-        {UINT8_C(0x48), UINT8_C(0x89), UINT8_C(0x8d)},
-        {UINT8_C(0x4c), UINT8_C(0x89), UINT8_C(0x85)},
-        {UINT8_C(0x4c), UINT8_C(0x89), UINT8_C(0x8d)},
-    };
     if (parameter >= MAX_CORE_PARAMETERS) {
         fatal("native Core parameter register is unavailable");
     }
-    x64_emit(text, prefixes[parameter], sizeof(prefixes[parameter]));
-    u32_le(text, x64_local_displacement(parameter));
+    x64_move(
+        text,
+        x64_value_operand(layout, parameter),
+        x64_register_operand(x64_argument_registers[parameter])
+    );
 }
 
 static void x64_function_declaration(
@@ -4743,56 +5400,142 @@ static void x64_function_declaration(
     const FunctionDeclaration *function,
     FunctionEmitter *emitter
 ) {
+    X64FrameLayout layout = x64_function_layout(function);
     const uint8_t frame_open[] = {
         UINT8_C(0x55),                         /* push rbp */
         UINT8_C(0x48), UINT8_C(0x89), UINT8_C(0xe5),
     };
     x64_emit(text, frame_open, sizeof(frame_open));
     size_t frame_slots =
-        function->parameter_count + function->local_count;
+        layout.frame_slots + layout.spill_slots + layout.saved_count;
     if (frame_slots > 0) {
         size_t frame_bytes = frame_slots * sizeof(uint64_t);
+        /* Rounded so the body keeps 16-byte SysV call alignment. */
         frame_bytes = (frame_bytes + 15) & ~(size_t)15;
         byte(text, UINT8_C(0x48));
-        byte(text, UINT8_C(0x81));
-        byte(text, UINT8_C(0xec)); /* sub rsp, frame bytes */
-        u32_le(text, (uint32_t)frame_bytes);
-        for (size_t index = 0;
-             index < function->parameter_count;
-             ++index) {
-            x64_function_parameter_store(text, index);
+        if (frame_bytes <= 127) {
+            byte(text, UINT8_C(0x83));
+            byte(text, UINT8_C(0xec)); /* sub rsp, frame bytes */
+            byte(text, (uint8_t)frame_bytes);
+        } else {
+            byte(text, UINT8_C(0x81));
+            byte(text, UINT8_C(0xec));
+            u32_le(text, (uint32_t)frame_bytes);
         }
     }
+    for (size_t index = 0; index < layout.saved_count; ++index) {
+        x64_mov_operand_register(
+            text,
+            x64_saved_operand(&layout, index),
+            layout.saved[index]
+        );
+    }
+    for (size_t index = 0; index < function->parameter_count; ++index) {
+        x64_function_parameter_store(text, &layout, index);
+    }
 
+    /* Every return path reaches the one epilogue emitted after the body. */
+    Offsets returns = {0};
     bool returned = false;
     for (size_t index = 0; index < function->statement_count; ++index) {
         const FunctionStatement *statement = &function->statements[index];
+        bool tail = index + 1 == function->statement_count;
         if (statement->kind == FUNCTION_STATEMENT_IF_RETURN) {
+            uint8_t inverse = UINT8_C(0x84); /* je after branch */
+            size_t skip;
+            if (x64_function_guard_inverse(
+                    statement->condition->kind,
+                    &inverse)) {
+                /* Both operands evaluate exactly as they would on their own;
+                 * only the Bool between the comparison and the branch is
+                 * gone. */
+                x64_function_expression(
+                    text,
+                    statement->condition->left,
+                    emitter,
+                    &layout,
+                    0
+                );
+                x64_function_expression(
+                    text,
+                    statement->condition->right,
+                    emitter,
+                    &layout,
+                    1
+                );
+                x64_function_compare(text, &layout, 0);
+                skip = x64_local_jcc(text, inverse);
+            } else {
+                x64_function_expression(
+                    text,
+                    statement->condition,
+                    emitter,
+                    &layout,
+                    0
+                );
+                X64Operand condition = x64_eval_operand(&layout, 0);
+                if (condition.in_register) {
+                    /* test condition, condition */
+                    x64_encode_op(
+                        text,
+                        X64_TEST_RM_REG,
+                        condition.reg,
+                        condition
+                    );
+                } else {
+                    x64_mov_register_operand(text, X64_RAX, condition);
+                    x64_encode_op(
+                        text,
+                        X64_TEST_RM_REG,
+                        X64_RAX,
+                        x64_register_operand(X64_RAX)
+                    );
+                }
+                skip = x64_local_jcc(text, inverse);
+            }
             x64_function_expression(
                 text,
-                statement->condition,
-                emitter
+                statement->value,
+                emitter,
+                &layout,
+                0
             );
-            byte(text, UINT8_C(0x58)); /* pop condition */
-            byte(text, UINT8_C(0x48));
-            byte(text, UINT8_C(0x85));
-            byte(text, UINT8_C(0xc0)); /* test rax, rax */
-            size_t skip = x64_local_jcc(
+            x64_move(
                 text,
-                UINT8_C(0x84)
-            ); /* je after branch */
-            x64_function_expression(text, statement->value, emitter);
-            byte(text, UINT8_C(0x58));
-            x64_function_epilogue(text);
+                x64_register_operand(X64_RAX),
+                x64_eval_operand(&layout, 0)
+            );
+            offsets_add(&returns, x64_local_jmp(text));
             x64_patch_rel32(text, skip, text->length);
         } else if (statement->kind == FUNCTION_STATEMENT_RETURN) {
-            x64_function_expression(text, statement->value, emitter);
-            byte(text, UINT8_C(0x58));
-            x64_function_epilogue(text);
+            x64_function_expression(
+                text,
+                statement->value,
+                emitter,
+                &layout,
+                0
+            );
+            x64_move(
+                text,
+                x64_register_operand(X64_RAX),
+                x64_eval_operand(&layout, 0)
+            );
+            /* A closing return falls straight into the epilogue. */
+            if (!tail) offsets_add(&returns, x64_local_jmp(text));
             returned = true;
         } else if (statement->kind == FUNCTION_STATEMENT_PRINT) {
-            x64_function_expression(text, statement->value, emitter);
-            byte(text, UINT8_C(0x5f)); /* pop print argument into rdi */
+            x64_function_expression(
+                text,
+                statement->value,
+                emitter,
+                &layout,
+                0
+            );
+            x64_move(
+                text,
+                x64_register_operand(X64_RDI),
+                x64_eval_operand(&layout, 0)
+            );
             byte(text, UINT8_C(0xe8));
             Offsets *calls =
                 statement->value->value_kind == FUNCTION_VALUE_TEXT
@@ -4801,19 +5544,39 @@ static void x64_function_declaration(
             offsets_add(calls, text->length);
             u32_le(text, 0);
         } else if (statement->kind == FUNCTION_STATEMENT_LET) {
-            x64_function_expression(text, statement->value, emitter);
-            byte(text, UINT8_C(0x58)); /* pop initializer */
-            x64_store_local(text, statement->slot);
+            x64_function_expression(
+                text,
+                statement->value,
+                emitter,
+                &layout,
+                0
+            );
+            x64_move(
+                text,
+                x64_value_operand(&layout, statement->slot),
+                x64_eval_operand(&layout, 0)
+            );
         } else {
-            x64_function_expression(text, statement->value, emitter);
-            byte(text, UINT8_C(0x58)); /* discard expression result */
+            /* The evaluated result is discarded. */
+            x64_function_expression(
+                text,
+                statement->value,
+                emitter,
+                &layout,
+                0
+            );
         }
     }
     if (!returned) {
         byte(text, UINT8_C(0x31));
         byte(text, UINT8_C(0xc0)); /* implicit main return 0 */
-        x64_function_epilogue(text);
     }
+    size_t epilogue = text->length;
+    for (size_t index = 0; index < returns.length; ++index) {
+        x64_patch_rel32(text, returns.fields[index], epilogue);
+    }
+    x64_function_epilogue_block(text, &layout);
+    free(returns.fields);
 }
 
 static size_t x64_function_print_runtime(Bytes *text) {

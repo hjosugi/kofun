@@ -49,9 +49,11 @@ fn main() {
 
 Top-level declarations are collected before bodies are parsed, so forward and
 mutual recursion do not depend on source order. Calls support up to six integer
-argument registers (`rdi..r9` on x86-64, `x0..x5` on AArch64). Parameters are
-stored in frame slots, returns come back in the first result register (`rax` /
-`x0`), and every call is resolved as a checked fixup (`rel32` on x86-64, a
+argument registers (`rdi..r9` on x86-64, `x0..x5` on AArch64). x86-64 assigns
+parameters and intermediate values to registers (see the allocation contract
+below) while AArch64 still stores parameters in frame slots and evaluates on
+the native stack; returns come back in the first result register (`rax` / `x0`),
+and every call is resolved as a checked fixup (`rel32` on x86-64, a
 26-bit `bl` immediate on AArch64). Both backends lower the same
 target-independent parsed program, so the profile supports Int literals,
 parameters, direct calls, unary `-`, `+`, `-`, `*`, integer comparisons,
@@ -67,12 +69,65 @@ declarations or parameters, wrong arity, more than six arguments, non-Int or
 non-Text signatures, missing helper returns, and `-g` are rejected before an
 artifact is written. `-g` debug information remains x86-64-only.
 
-`tests/conformance/functions` runs the same five programs under the C11 and
+`tests/conformance/functions` runs the same eight programs under the C11 and
 direct x86-64 adapters, covering ordinary/forward calls, recursion, mutual
-recursion, signed/zero output, and the six-argument boundary. The native gate
-additionally rebuilds the `fibonacci` example and the checked-overflow fixture
-for AArch64 and, when `qemu-aarch64` is installed, executes them and asserts the
-output, diagnostic, and exit status match the x86-64 observations byte for byte.
+recursion, signed/zero output, the six-argument boundary, register pressure
+past the allocatable set, values live across calls, and multiple returning
+branches. The native gate additionally rebuilds the `fibonacci` example and the
+checked-overflow fixture for AArch64 and, when `qemu-aarch64` is installed,
+executes them and asserts the output, diagnostic, and exit status match the
+x86-64 observations byte for byte.
+
+## x86-64 function register allocation
+
+The x86-64 function profile decides where every value lives before it emits a
+byte, instead of pushing and popping the native stack for each operand. The
+decision is made per function body from two facts: how many evaluation depths
+the body uses, and which of those depths can still hold a live value when a
+call instruction runs. A depth stays live exactly while the sibling subtrees at
+deeper positions are evaluated — an operand is consumed by its parent right
+afterwards, and a call boundary is filled from the argument locations before
+the `call` — so a depth survives a call precisely when one of those later
+sibling subtrees performs one.
+
+| Class | Registers | Holds |
+|---|---|---|
+| Callee-saved | `rbx`, `r12`, `r13`, `r14`, `r15` | values live across a call |
+| Scratch | `r10`, `r11` | values no call can observe |
+| Reserved | `rax`, `rdi`, `rsi`, `rdx`, `rcx`, `r8`, `r9` | scratch and the SysV call boundary; never allocated |
+
+Allocation runs in a fixed order, so two builds of one source always make the
+same decisions:
+
+1. evaluation depths that cross a call take callee-saved registers, lowest
+   depth first, because no other class can hold them;
+2. the remaining depths take scratch registers first and fall back to
+   callee-saved;
+3. parameters and locals take what is left, lowest slot first. A scratch
+   register replaces a binding's store and every reload for free, so a single
+   read already earns one. A callee-saved register also costs one save and one
+   restore per invocation, so a binding only earns one once it is read more
+   than once, and a binding that is never read stays in its frame slot;
+4. anything still unplaced spills to a frame slot immediately below the
+   locals, in depth order. Spilling is ordinary lowering in the same backend,
+   not a fallback to another one: a program the profile accepts stays accepted
+   at any pressure.
+
+The frame keeps parameters and locals at their existing displacements, then the
+evaluation spill slots, then the save area for exactly the callee-saved
+registers the body claimed. Every return path restores that same set before
+`leave; ret`, and reloading it never disturbs the result in `rax`. Because no
+evaluation step moves `rsp`, a body keeps the 16-byte alignment it was entered
+with at every SysV call boundary — including nested calls, which the previous
+stack-machine lowering could enter with an operand pushed underneath.
+
+`check.sh` pins the prologue of a leaf helper that reuses its parameter, so the
+parameter must arrive in a register and be read back from one, and refuses the
+three byte signatures the previous load/push/pop lowering emitted
+(`mov rax,[rbp+disp32]` + `push rax`, `push rax` + `pop rdi`, and
+`pop rcx` + `pop rax`) across the register, fibonacci, Text, and overflow
+images. `benchmarks/native-functions/` records the measured effect; its
+`README.md` documents the method and `results.json` the raw samples.
 
 ## x86-64 compiler-shaped Text function bridge
 
