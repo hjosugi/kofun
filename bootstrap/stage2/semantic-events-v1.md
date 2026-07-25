@@ -7,6 +7,11 @@ exactly one committed `kofun_semantic_end`. Callbacks receive immutable values;
 a sink must copy every byte view it retains before returning.
 `kofun_semantic_cancellation_observed` freezes the validated prefix before a
 cancelled end; it is an observation marker and emits no KSE record.
+`kofun_semantic_replay_stream` first performs the complete KSE digest, schema,
+semantic-closure, and byte-for-byte canonical validation without calling the
+destination. Only after that succeeds does it decode the immutable logical
+records into an independent sink. Destination rejection returns `ETS03` as a
+tooling failure; it cannot turn into a source-language diagnostic.
 
 The API does not expose parser, HIR, resolver, or ownership-checker pointers.
 It does not emit the public typed-sidecar JSON, and neither the API nor its
@@ -14,11 +19,21 @@ internal stream is accepted by the compiler, KIF, build, linker, package, or
 cache authority paths. Sink rejection is a tooling failure (`ETS03` or
 `ETS04`), not a source-language error.
 
+`kofun_semantic_validate_text` is the shared bounded UTF-8/NFC policy.
+`kofun_semantic_validate_logical_path` additionally rejects absolute, drive,
+URI-like, backslash, empty, `.`/`..`, and Unicode-control path forms. Producers
+must apply this public validator before invoking compiler authority or any sink
+callback; the reference sink applies the same validator again at begin.
+
 `semantic_producer.c` is the production source adapter. It invokes the audited
 Stage 2 lexer, parser, scope-HIR builder, and ownership checker directly in the
 compiler translation unit, buffers only the bounded values defined in
 `semantic_events.h`, and then emits them in phase order. It does not parse
-rendered command output. The adapter covers the current single-file subset:
+rendered command output. Nullable parser, scope-HIR, and lowering observation
+hooks exist only in the audited C seed when the internal adapter is compiled;
+ordinary seed execution leaves them null. They neither alter compiler output
+nor claim a corresponding sink surface in canonical `compiler.kofun`.
+The adapter covers the current single-file subset:
 module root, functions, parameters, lexical scopes, immutable/mutable locals,
 flat ADTs and constructors, function/constructor calls, local references,
 value `if`/`match`, `Int`/`Bool`/`Text` facts, and the current borrowed
@@ -69,10 +84,36 @@ Unavailable facts and targets carry a bounded reason and no fabricated value.
 no new validated record is accepted. Cancellation before source/token
 commitment produces no stream.
 
-Visible references contain exactly one identity kind/value target. Hidden and
-unavailable references contain at most a safe identity kind and reason; their
-target value is required to be zero and is never serialized. Source spans are
-half-open UTF-8 byte offsets bounded by the committed source length.
+The source's exact compiler exit class is closed against the end record:
+`checked/complete` and `cancelled/partial` require exit class `0`;
+`failed/partial` requires one of `1`, `2`, or `3`. Re-signing a KSE with a
+different but individually valid exit/status value therefore still fails
+semantic validation.
+
+Every visible reference contains exactly one identity kind/value target, and
+that exact `(kind, value)` must name an identity record already committed in
+phase 3; an arbitrary or forward target ID is invalid regardless of reference
+status. A validated visible reference additionally requires the target
+identity itself to be validated. Hidden and unavailable references cannot be
+validated.
+They contain at most a safe identity kind and a public reason discriminator;
+their target value is required to be zero and is never serialized. Source
+spans are half-open UTF-8 byte offsets bounded by the committed source length.
+
+Reason fields are not free-form presentation or debug text. Every non-empty
+fact reason and every hidden/unavailable reference reason is exactly one of
+this fixed v1 public allowlist:
+
+- `unresolved-current-stage2-reference`
+- `type-not-available-in-current-subset`
+- `move-after-borrow`
+- `visibility-restricted`
+- `unsupported-current-stage2-feature`
+- `cancelled-before-analysis`
+
+Names, source or checkout paths, inaccessible target values, rendered
+diagnostics, and other private text are therefore mechanically rejected at
+the sink boundary rather than redacted heuristically.
 
 ## Internal KSE frame
 
@@ -106,7 +147,7 @@ Wire types are fixed:
 
 | Value | Wire type | Payload |
 | ---: | --- | --- |
-| 1 | bytes | bounded uninterpreted bytes |
+| 1 | bytes | bounded field-specific canonical bytes |
 | 2 | utf8 | bounded UTF-8 in NFC |
 | 3 | id | exactly 32 raw bytes |
 | 4 | u8 | one byte |
@@ -132,6 +173,7 @@ C layout.
 |  |  | 7 | language edition | utf8 |
 |  |  | 8 | semantic compatibility | utf8 |
 |  |  | 9 | caller generation | u64 |
+|  |  | 10 | exact compiler exit class (`0`, `1`, `2`, or `3`) | u8 |
 | node | 2 | 1 | NodeId | id |
 |  |  | 2 | node kind | u8 |
 |  |  | 3 | half-open source span | span |
@@ -170,24 +212,43 @@ C layout.
 |  |  | 9 | sorted affected IDs | id-list |
 |  |  | 10 | sorted remedy IDs | u32-list |
 |  |  | 11 | truncation bit | u8 |
+|  |  | 12 | sorted related locations | bytes |
+|  |  | 13 | sorted remedy edits | bytes |
 | end | 7 | 1 | source status | u8 |
 |  |  | 2 | completeness | u8 |
 
 Reference tag 8 is present only for a visible target. Tag 9 is present only
 for hidden or unavailable targets. Tag 10 is always present.
 
+Diagnostic tag 12 is exactly
+`count:u16be || repeated(file-id:32 || start:u32be || end:u32be ||
+label-length:u16be || label:label-length)`. Tag 13 is exactly
+`count:u16be || repeated(remedy-id:u32be || file-id:32 || start:u32be ||
+end:u32be || replacement-length:u16be ||
+replacement:replacement-length)`. The nested count and every nested string
+length are part of the bytes payload; no padding, terminator, or trailing byte
+is permitted. Labels and replacements are UTF-8/NFC even though the enclosing
+canonical list uses the `bytes` wire.
+Every edit names one of tag 10's remedy IDs. The current single-file profile
+requires primary, related, and edit FileIds to equal the committed source
+FileId. Related locations and edits are sorted by their complete tuple and
+must be unique.
+
 ## Bounds and atomicity
 
 The checked v1 profile permits 4,096 total events, 4 MiB of framed event
-payload, 4,096 bytes per string, and 64 dependencies, diagnostics, affected
-IDs, or remedies per record. Counts and lengths are checked before allocation
-and writing. IDs and set-valued lists use canonical byte order.
+payload, 4,096 bytes per string or nested diagnostic list, and 64
+dependencies, diagnostics, affected IDs, remedies, related locations, or edits
+per record. Counts and lengths are checked before allocation and writing. IDs
+and set-valued lists use canonical byte order.
 
 The reference sink buffers and validates the complete logical transaction,
-builds the header and digest, validates the resulting bytes with an independent
+builds the header and digest, validates the resulting bytes with its canonical
 decoder, writes an exclusive temporary file, flushes and synchronizes it, and
-renames only the validated file. Every failure removes the temporary file and
-preserves the prior destination.
+renames only the validated file. The public replay API applies that same full
+validation before sending any logical record to a separate destination sink.
+Every commit failure removes the temporary file and preserves the prior
+destination.
 
 `ETS03` reports phase, relation, status, disclosure, or framing invariants.
 `ETS04` reports bounded-resource, UTF-8/NFC encoding, allocation, or I/O

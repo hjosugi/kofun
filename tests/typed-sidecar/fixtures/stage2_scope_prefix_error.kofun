@@ -1,0 +1,5 @@
+fn main() {
+    let kept = 1
+    print(kept)
+    let kept = 2
+}

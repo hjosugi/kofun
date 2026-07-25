@@ -12,6 +12,17 @@
 #define KOFUN_SEMANTIC_MAX_TEXT_BYTES 4096u
 #define KOFUN_SEMANTIC_MAX_RELATIONS 64u
 
+#define KOFUN_SEMANTIC_REASON_UNRESOLVED_STAGE2_REFERENCE \
+    "unresolved-current-stage2-reference"
+#define KOFUN_SEMANTIC_REASON_TYPE_UNAVAILABLE \
+    "type-not-available-in-current-subset"
+#define KOFUN_SEMANTIC_REASON_MOVE_AFTER_BORROW "move-after-borrow"
+#define KOFUN_SEMANTIC_REASON_VISIBILITY_RESTRICTED "visibility-restricted"
+#define KOFUN_SEMANTIC_REASON_UNSUPPORTED_STAGE2_FEATURE \
+    "unsupported-current-stage2-feature"
+#define KOFUN_SEMANTIC_REASON_CANCELLED_BEFORE_ANALYSIS \
+    "cancelled-before-analysis"
+
 typedef struct {
     const uint8_t *bytes;
     uint32_t length;
@@ -106,6 +117,7 @@ typedef struct {
     KofunSemanticBytes edition;
     KofunSemanticBytes semantic_compatibility;
     uint64_t caller_generation;
+    uint8_t compiler_exit_class;
 } KofunSemanticSource;
 
 typedef struct {
@@ -153,6 +165,19 @@ typedef struct {
 } KofunSemanticReference;
 
 typedef struct {
+    KofunSemanticId file_id;
+    KofunSemanticSpan span;
+    KofunSemanticBytes label;
+} KofunSemanticRelated;
+
+typedef struct {
+    uint32_t remedy_id;
+    KofunSemanticId file_id;
+    KofunSemanticSpan span;
+    KofunSemanticBytes replacement;
+} KofunSemanticEdit;
+
+typedef struct {
     KofunSemanticId diagnostic_id;
     KofunSemanticBytes code;
     KofunSemanticBytes category;
@@ -166,6 +191,10 @@ typedef struct {
     const uint32_t *remedy_ids;
     uint16_t remedy_count;
     bool truncated;
+    const KofunSemanticRelated *related;
+    uint16_t related_count;
+    const KofunSemanticEdit *edits;
+    uint16_t edit_count;
 } KofunSemanticDiagnostic;
 
 typedef struct {
@@ -240,6 +269,14 @@ bool kofun_semantic_stream_commit(
 bool kofun_semantic_validate_stream(
     const uint8_t *bytes,
     size_t length,
+    KofunSemanticError *error
+);
+bool kofun_semantic_validate_text(KofunSemanticBytes text);
+bool kofun_semantic_validate_logical_path(KofunSemanticBytes path);
+bool kofun_semantic_replay_stream(
+    const uint8_t *bytes,
+    size_t length,
+    KofunSemanticSink *sink,
     KofunSemanticError *error
 );
 

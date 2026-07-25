@@ -1,0 +1,5 @@
+fn stable(value: Int) -> Int {
+    return value
+}
+
+fn broken(

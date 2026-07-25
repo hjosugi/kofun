@@ -8,7 +8,9 @@
 #include "sha256.h"
 
 #define main kofun_stage2_embedded_seed_main
+#define KOFUN_STAGE2_AUTHORITY_API 1
 #include "compiler.c"
+#undef KOFUN_STAGE2_AUTHORITY_API
 #undef main
 
 #include <errno.h>
@@ -24,8 +26,20 @@ enum {
     PRODUCER_MAX_BINDINGS = 256
 };
 
+enum {
+    PRODUCER_EVENT_NONE = 0,
+    PRODUCER_EVENT_SOURCE = 1,
+    PRODUCER_EVENT_NODE = 2,
+    PRODUCER_EVENT_IDENTITY = 3,
+    PRODUCER_EVENT_REFERENCE = 4,
+    PRODUCER_EVENT_FACT = 5,
+    PRODUCER_EVENT_DIAGNOSTIC = 6,
+    PRODUCER_EVENT_END = 7
+};
+
 typedef struct {
     KofunSemanticNode value;
+    KofunSemanticId dependency;
     KofunSemanticId diagnostic;
     char name[64];
     char type[64];
@@ -45,6 +59,7 @@ typedef struct {
     KofunSemanticFact value;
     char display[160];
     char reason[160];
+    KofunSemanticId dependency;
     KofunSemanticId diagnostic;
 } ProducerFact;
 
@@ -54,12 +69,17 @@ typedef struct {
     char category[32];
     char template_id[64];
     char fallback[160];
-    KofunSemanticId affected;
-    uint32_t remedy;
+    KofunSemanticId affected[4];
+    uint32_t remedies[4];
+    KofunSemanticRelated related[4];
+    char related_labels[4][64];
+    KofunSemanticEdit edits[4];
+    char replacements[4][64];
 } ProducerDiagnostic;
 
 typedef struct {
     char name[64];
+    char return_type[64];
     KofunSemanticId node;
     KofunSemanticId symbol;
     int64_t start;
@@ -69,11 +89,13 @@ typedef struct {
 
 typedef struct {
     char name[64];
+    char result_type[64];
     KofunSemanticId node;
     KofunSemanticId symbol;
 } ProducerConstructor;
 
 typedef struct {
+    char hir_id[24];
     char name[64];
     char type[64];
     char ownership[32];
@@ -87,6 +109,7 @@ typedef struct {
     const KofunStage2SemanticInput *input;
     const char *source;
     const char *scope_hir;
+    const char *semantic_observations;
     KofunSemanticSource source_record;
     KofunSemanticId value_namespace_id;
     KofunSemanticId type_namespace_id;
@@ -108,13 +131,92 @@ typedef struct {
     size_t binding_count;
     bool language_failed;
     bool resource_failed;
+    uint8_t compiler_exit_class;
+    uint32_t reference_limit;
 } Producer;
+
+static void producer_set_tooling_error(
+    KofunStage2SemanticResult *result,
+    const char *code,
+    uint32_t record_index,
+    uint8_t event_kind,
+    const char *detail
+) {
+    if (result == NULL) return;
+    result->tooling_emission_failed = true;
+    memset(&result->tooling_error, 0, sizeof(result->tooling_error));
+    (void)snprintf(
+        result->tooling_error.code,
+        sizeof(result->tooling_error.code),
+        "%s",
+        code
+    );
+    result->tooling_error.record_index = record_index;
+    result->tooling_error.event_kind = event_kind;
+    (void)snprintf(
+        result->tooling_error.detail,
+        sizeof(result->tooling_error.detail),
+        "%s",
+        detail
+    );
+}
 
 static KofunSemanticBytes producer_text(const char *value) {
     KofunSemanticBytes text_value;
     text_value.bytes = (const uint8_t *)value;
     text_value.length = (uint32_t)strlen(value);
     return text_value;
+}
+
+static bool producer_copy_authority_diagnostic(
+    const Stage2AuthorityContext *context,
+    size_t source_length,
+    KofunStage2SemanticResult *result
+) {
+    const Stage2StructuredDiagnostic *diagnostic = &context->diagnostic;
+    if (!diagnostic->present ||
+        diagnostic->code[0] == '\0' ||
+        diagnostic->category[0] == '\0' ||
+        diagnostic->template_id[0] == '\0' ||
+        diagnostic->fallback[0] == '\0' ||
+        (diagnostic->has_byte_span &&
+         (diagnostic->start < 0 ||
+          diagnostic->end < diagnostic->start ||
+          (uint64_t)diagnostic->end > source_length))) {
+        return false;
+    }
+    result->has_source_diagnostic = true;
+    result->diagnostic_has_byte_span = diagnostic->has_byte_span;
+    result->diagnostic_truncated = diagnostic->truncated;
+    (void)snprintf(
+        result->diagnostic_code,
+        sizeof(result->diagnostic_code),
+        "%s",
+        diagnostic->code
+    );
+    (void)snprintf(
+        result->diagnostic_category,
+        sizeof(result->diagnostic_category),
+        "%s",
+        diagnostic->category
+    );
+    (void)snprintf(
+        result->diagnostic_template_id,
+        sizeof(result->diagnostic_template_id),
+        "%s",
+        diagnostic->template_id
+    );
+    (void)snprintf(
+        result->diagnostic_fallback,
+        sizeof(result->diagnostic_fallback),
+        "%s",
+        diagnostic->fallback
+    );
+    result->diagnostic_span.start = diagnostic->has_byte_span ?
+        (uint32_t)diagnostic->start : 0u;
+    result->diagnostic_span.end = diagnostic->has_byte_span ?
+        (uint32_t)diagnostic->end : 0u;
+    return true;
 }
 
 static void producer_hash(
@@ -303,9 +405,19 @@ static ProducerNode *producer_add_node(
     bool declaration
 ) {
     ProducerNode *node;
+    uint32_t occurrence = 0u;
+    size_t index;
     if (producer->node_count >= PRODUCER_MAX_NODES) {
         producer->resource_failed = true;
         return NULL;
+    }
+    for (index = 0u; index < producer->node_count; index += 1u) {
+        const ProducerNode *candidate = &producer->nodes[index];
+        if (candidate->value.kind == kind &&
+            candidate->value.span.start == producer_span(start, end).start &&
+            candidate->value.span.end == producer_span(start, end).end) {
+            occurrence += 1u;
+        }
     }
     node = &producer->nodes[producer->node_count];
     memset(node, 0, sizeof(*node));
@@ -317,7 +429,7 @@ static ProducerNode *producer_add_node(
         &producer->source_record.file_id,
         kind,
         node->value.span,
-        (uint32_t)producer->node_count,
+        occurrence,
         &node->value.node_id
     );
     if (name != NULL) {
@@ -392,6 +504,81 @@ static ProducerFact *producer_add_fact(
     return fact;
 }
 
+static ProducerNode *producer_find_node_by_id(
+    Producer *producer,
+    const KofunSemanticId *node_id
+) {
+    size_t index;
+    for (index = 0u; index < producer->node_count; index += 1u) {
+        if (memcmp(
+                producer->nodes[index].value.node_id.bytes,
+                node_id->bytes,
+                KOFUN_SEMANTIC_ID_BYTES) == 0) {
+            return &producer->nodes[index];
+        }
+    }
+    return NULL;
+}
+
+static ProducerNode *producer_find_containing_node(
+    Producer *producer,
+    KofunSemanticNodeKind kind,
+    int64_t start,
+    int64_t end
+) {
+    ProducerNode *best = NULL;
+    size_t index;
+    for (index = 0u; index < producer->node_count; index += 1u) {
+        ProducerNode *node = &producer->nodes[index];
+        if (node->value.kind == kind &&
+            node->value.span.start <= (uint32_t)start &&
+            node->value.span.end >= (uint32_t)end &&
+            (best == NULL ||
+             node->value.span.end - node->value.span.start <
+                 best->value.span.end - best->value.span.start)) {
+            best = node;
+        }
+    }
+    return best;
+}
+
+static void producer_node_set_dependency(
+    ProducerNode *node,
+    const KofunSemanticId *dependency
+) {
+    node->dependency = *dependency;
+    node->value.dependencies = &node->dependency;
+    node->value.dependency_count = 1u;
+}
+
+static void producer_fact_set_dependency(
+    ProducerFact *fact,
+    const KofunSemanticId *dependency
+) {
+    fact->dependency = *dependency;
+    fact->value.dependencies = &fact->dependency;
+    fact->value.dependency_count = 1u;
+}
+
+static ProducerFact *producer_find_fact(
+    Producer *producer,
+    const KofunSemanticId *owner,
+    KofunSemanticFactKind kind
+) {
+    size_t index;
+    for (index = 0u; index < producer->fact_count; index += 1u) {
+        ProducerFact *fact = &producer->facts[index];
+        if (fact->value.kind == kind &&
+            memcmp(
+                fact->value.owner_node_id.bytes,
+                owner->bytes,
+                KOFUN_SEMANTIC_ID_BYTES) == 0) {
+            return fact;
+        }
+    }
+    return NULL;
+}
+
 static ProducerDiagnostic *producer_add_diagnostic(
     Producer *producer,
     const char *code,
@@ -422,12 +609,14 @@ static ProducerDiagnostic *producer_add_diagnostic(
         "%s",
         template_id
     );
-    (void)snprintf(
+    if (snprintf(
         diagnostic->fallback,
         sizeof(diagnostic->fallback),
         "%s",
         fallback
-    );
+    ) >= (int)sizeof(diagnostic->fallback)) {
+        diagnostic->value.truncated = true;
+    }
     (void)snprintf(
         key,
         sizeof(key),
@@ -449,25 +638,11 @@ static ProducerDiagnostic *producer_add_diagnostic(
     diagnostic->value.primary_file_id = producer->source_record.file_id;
     diagnostic->value.primary_span = span;
     diagnostic->value.fallback_text = producer_text(diagnostic->fallback);
-    diagnostic->affected = affected;
-    diagnostic->value.affected_ids = &diagnostic->affected;
+    diagnostic->affected[0] = affected;
+    diagnostic->value.affected_ids = diagnostic->affected;
     diagnostic->value.affected_count = 1u;
-    diagnostic->remedy = 1u;
-    diagnostic->value.remedy_ids = &diagnostic->remedy;
-    diagnostic->value.remedy_count = 1u;
     producer->language_failed = true;
     return diagnostic;
-}
-
-static void producer_mark_node_error(
-    ProducerNode *node,
-    ProducerDiagnostic *diagnostic
-) {
-    if (node == NULL || diagnostic == NULL) return;
-    node->value.status = KOFUN_SEMANTIC_ERROR;
-    node->diagnostic = diagnostic->value.diagnostic_id;
-    node->value.diagnostic_ids = &node->diagnostic;
-    node->value.diagnostic_count = 1u;
 }
 
 static ProducerFunction *producer_find_function(
@@ -496,58 +671,22 @@ static ProducerConstructor *producer_find_constructor(
     return NULL;
 }
 
-static ProducerBinding *producer_find_binding(
+static ProducerBinding *producer_find_binding_by_hir_id(
     Producer *producer,
-    int64_t function_start,
-    const char *name
+    const char *hir_id
 ) {
     size_t index;
-    for (index = producer->binding_count; index > 0u; index -= 1u) {
-        ProducerBinding *binding = &producer->bindings[index - 1u];
-        if (binding->function_start == function_start &&
-            strcmp(binding->name, name) == 0) {
-            return binding;
-        }
+    for (index = 0u; index < producer->binding_count; index += 1u) {
+        ProducerBinding *binding = &producer->bindings[index];
+        if (strcmp(binding->hir_id, hir_id) == 0) return binding;
     }
     return NULL;
 }
 
-static void producer_copy_type(
-    const char *source,
-    int64_t start,
-    char output[64]
-) {
-    int64_t cursor = start;
-    size_t length = 0u;
-    int depth = 0;
-    output[0] = '\0';
-    while (source[cursor] != '\0') {
-        int64_t end;
-        if ((token_equal(source, cursor, ",") ||
-             token_equal(source, cursor, ")") ||
-             token_equal(source, cursor, "=") ||
-             token_equal(source, cursor, "{")) &&
-            depth == 0) {
-            break;
-        }
-        if (token_equal(source, cursor, "[")) depth += 1;
-        if (token_equal(source, cursor, "]")) depth -= 1;
-        end = token_end(source, cursor);
-        if (end <= cursor) break;
-        if (length + (size_t)(end - cursor) >= 63u) break;
-        memcpy(output + length, source + cursor, (size_t)(end - cursor));
-        length += (size_t)(end - cursor);
-        output[length] = '\0';
-        cursor = skip_trivia(source, end);
-    }
-    if (output[0] == '\0') {
-        (void)snprintf(output, 64u, "%s", "unavailable");
-    }
-}
-
-static ProducerBinding *producer_add_binding(
+static ProducerBinding *producer_add_hir_binding(
     Producer *producer,
     ProducerFunction *function,
+    const char *hir_id,
     const char *name,
     const char *type_name,
     const char *ownership,
@@ -558,7 +697,6 @@ static ProducerBinding *producer_add_binding(
     ProducerBinding *binding;
     ProducerNode *node;
     char key[160];
-    char *hir_binding_id;
     if (producer->binding_count >= PRODUCER_MAX_BINDINGS) {
         producer->resource_failed = true;
         return NULL;
@@ -574,6 +712,12 @@ static ProducerBinding *producer_add_binding(
     if (node == NULL) return NULL;
     binding = &producer->bindings[producer->binding_count++];
     memset(binding, 0, sizeof(*binding));
+    (void)snprintf(
+        binding->hir_id,
+        sizeof(binding->hir_id),
+        "%s",
+        hir_id
+    );
     (void)snprintf(binding->name, sizeof(binding->name), "%s", name);
     (void)snprintf(binding->type, sizeof(binding->type), "%s", type_name);
     (void)snprintf(
@@ -585,43 +729,12 @@ static ProducerBinding *producer_add_binding(
     binding->node = node->value.node_id;
     binding->function_start = function->start;
     binding->declaration_start = start;
-    hir_binding_id = hir_definition_id_at(producer->scope_hir, start);
-    /*
-     * The current scope-HIR keys read/edit/take parameters at the ownership
-     * token while ordinary parameters and locals are keyed at the declared
-     * name. Preserve that executable identity convention at this adapter
-     * boundary rather than minting a second binding number.
-     */
-    if ((hir_binding_id[0] == '\0' ||
-         strcmp(hir_binding_id, "-1") == 0) &&
-        (strcmp(ownership, "read") == 0 ||
-         strcmp(ownership, "edit") == 0 ||
-         strcmp(ownership, "take") == 0)) {
-        int64_t ownership_start = start;
-        free(hir_binding_id);
-        while (ownership_start > function->start &&
-               isspace((unsigned char)producer->source[
-                   ownership_start - 1])) {
-            ownership_start -= 1;
-        }
-        ownership_start -= (int64_t)strlen(ownership);
-        hir_binding_id = hir_definition_id_at(
-            producer->scope_hir,
-            ownership_start
-        );
-    }
-    if (hir_binding_id[0] == '\0' ||
-        strcmp(hir_binding_id, "-1") == 0) {
-        free(hir_binding_id);
-        return NULL;
-    }
     (void)snprintf(
         key,
         sizeof(key),
         "hir-binding:%s",
-        hir_binding_id
+        hir_id
     );
-    free(hir_binding_id);
     if (!producer_add_identity(
             producer,
             binding->node,
@@ -653,203 +766,228 @@ static ProducerBinding *producer_add_binding(
     return binding;
 }
 
-static bool producer_collect_types(Producer *producer) {
-    int64_t cursor = skip_trivia(producer->source, 0);
-    int64_t length = (int64_t)producer->input->source_length;
-    while (cursor < length) {
-        if (token_equal(producer->source, cursor, "type")) {
-            int64_t name_at = skip_trivia(
-                producer->source,
-                token_end(producer->source, cursor)
-            );
-            int64_t declaration_end = type_declaration_end(
-                producer->source,
-                cursor
-            );
-            char name[64];
-            ProducerNode *type_node;
-            KofunSemanticId type_symbol;
-            int64_t walk;
-            copy_token_text(producer->source, name_at, name, sizeof(name));
-            type_node = producer_add_node(
-                producer,
-                KOFUN_SEMANTIC_NODE_ADT,
-                name_at,
-                token_end(producer->source, name_at),
-                name,
-                true
-            );
-            if (type_node == NULL) return false;
-            if (!producer_symbol_id(
-                    producer,
-                    &producer->type_namespace_id,
-                    "adt",
-                    name,
-                    &type_symbol) ||
-                !producer_add_stable_identity(
-                    producer,
-                    type_node->value.node_id,
-                    KOFUN_SEMANTIC_ID_SYMBOL,
-                    &type_symbol)) {
-                return false;
-            }
-            walk = skip_trivia(
-                producer->source,
-                token_end(producer->source, name_at)
-            );
-            while (walk < declaration_end) {
-                if (token_equal(producer->source, walk, "|")) {
-                    int64_t constructor_at = skip_trivia(
-                        producer->source,
-                        token_end(producer->source, walk)
-                    );
-                    char constructor_name[64];
-                    ProducerNode *constructor_node;
-                    ProducerConstructor *constructor;
-                    KofunSemanticId constructor_symbol;
-                    copy_token_text(
-                        producer->source,
-                        constructor_at,
-                        constructor_name,
-                        sizeof(constructor_name)
-                    );
-                    if (producer->constructor_count >=
-                        PRODUCER_MAX_CONSTRUCTORS) {
-                        producer->resource_failed = true;
-                        return false;
-                    }
-                    constructor_node = producer_add_node(
-                        producer,
-                        KOFUN_SEMANTIC_NODE_CONSTRUCTOR,
-                        constructor_at,
-                        token_end(producer->source, constructor_at),
-                        constructor_name,
-                        true
-                    );
-                    if (constructor_node == NULL) return false;
-                    constructor = &producer->constructors[
-                        producer->constructor_count++
-                    ];
-                    memset(constructor, 0, sizeof(*constructor));
-                    (void)snprintf(
-                        constructor->name,
-                        sizeof(constructor->name),
-                        "%s",
-                        constructor_name
-                    );
-                    constructor->node = constructor_node->value.node_id;
-                    if (!producer_symbol_id(
-                            producer,
-                            &producer->value_namespace_id,
-                            "constructor",
-                            constructor_name,
-                            &constructor_symbol) ||
-                        !producer_add_stable_identity(
-                            producer,
-                            constructor->node,
-                            KOFUN_SEMANTIC_ID_SYMBOL,
-                            &constructor_symbol)) {
-                        return false;
-                    }
-                    constructor->symbol = constructor_symbol;
-                    walk = token_end(producer->source, constructor_at);
-                    continue;
-                }
-                walk = skip_trivia(
-                    producer->source,
-                    token_end(producer->source, walk)
-                );
-            }
-            cursor = declaration_end;
-            continue;
+static bool producer_collect_types(
+    Producer *producer,
+    const char *program_ir
+) {
+    int64_t line = hir_record_start(program_ir, "type", 0);
+    int64_t source_length = (int64_t)producer->input->source_length;
+    while (line >= 0) {
+        char *name = hir_field(program_ir, line, 1);
+        char *start_text = hir_field(program_ir, line, 3);
+        char *end_text = hir_field(program_ir, line, 4);
+        int64_t start = decimal_value(start_text);
+        int64_t end = decimal_value(end_text);
+        ProducerNode *type_node;
+        KofunSemanticId type_symbol;
+        bool valid = name[0] != '\0' &&
+            strlen(name) < 64u &&
+            start >= 0 && end > start && end <= source_length;
+        if (!valid) {
+            free(name);
+            free(start_text);
+            free(end_text);
+            return false;
         }
-        cursor = skip_trivia(
-            producer->source,
-            token_end(producer->source, cursor)
+        type_node = producer_add_node(
+            producer,
+            KOFUN_SEMANTIC_NODE_ADT,
+            start,
+            end,
+            name,
+            true
         );
+        if (type_node == NULL ||
+            !producer_symbol_id(
+                producer,
+                &producer->type_namespace_id,
+                "adt",
+                name,
+                &type_symbol) ||
+            !producer_add_stable_identity(
+                producer,
+                type_node->value.node_id,
+                KOFUN_SEMANTIC_ID_TYPE,
+                &type_symbol)) {
+            free(name);
+            free(start_text);
+            free(end_text);
+            return false;
+        }
+        free(name);
+        free(start_text);
+        free(end_text);
+        line = hir_record_start(program_ir, "type", line + 1);
+    }
+
+    line = hir_record_start(program_ir, "constructor", 0);
+    while (line >= 0) {
+        char *name = hir_field(program_ir, line, 1);
+        char *owner = hir_field(program_ir, line, 2);
+        char *start_text = hir_field(program_ir, line, 4);
+        char *end_text = hir_field(program_ir, line, 5);
+        int64_t start = decimal_value(start_text);
+        int64_t end = decimal_value(end_text);
+        ProducerNode *node;
+        ProducerConstructor *constructor;
+        KofunSemanticId symbol;
+        bool valid = name[0] != '\0' && owner[0] != '\0' &&
+            strlen(name) < 64u && strlen(owner) < 64u &&
+            start >= 0 && end > start && end <= source_length &&
+            producer->constructor_count < PRODUCER_MAX_CONSTRUCTORS;
+        if (!valid) {
+            free(name);
+            free(owner);
+            free(start_text);
+            free(end_text);
+            producer->resource_failed =
+                producer->constructor_count >= PRODUCER_MAX_CONSTRUCTORS;
+            return false;
+        }
+        node = producer_add_node(
+            producer,
+            KOFUN_SEMANTIC_NODE_CONSTRUCTOR,
+            start,
+            end,
+            name,
+            true
+        );
+        constructor =
+            &producer->constructors[producer->constructor_count++];
+        memset(constructor, 0, sizeof(*constructor));
+        (void)snprintf(
+            constructor->name,
+            sizeof(constructor->name),
+            "%s",
+            name
+        );
+        (void)snprintf(
+            constructor->result_type,
+            sizeof(constructor->result_type),
+            "%s",
+            owner
+        );
+        if (node == NULL ||
+            !producer_symbol_id(
+                producer,
+                &producer->value_namespace_id,
+                "constructor",
+                name,
+                &symbol) ||
+            !producer_add_stable_identity(
+                producer,
+                node->value.node_id,
+                KOFUN_SEMANTIC_ID_CONSTRUCTOR,
+                &symbol)) {
+            free(name);
+            free(owner);
+            free(start_text);
+            free(end_text);
+            return false;
+        }
+        constructor->node = node->value.node_id;
+        constructor->symbol = symbol;
+        free(name);
+        free(owner);
+        free(start_text);
+        free(end_text);
+        line = hir_record_start(program_ir, "constructor", line + 1);
     }
     return true;
 }
 
-static bool producer_collect_functions(Producer *producer) {
-    int64_t cursor = next_function_start(producer->source, 0);
-    int64_t length = (int64_t)producer->input->source_length;
-    while (cursor < length) {
-        ProducerFunction *function;
-        ProducerNode *function_node;
-        char *allocated_name;
-        int64_t parameters;
-        int64_t parameters_end;
-        int64_t body_open;
-        int64_t end;
-        char return_type[64] = "Void";
-        if (producer->function_count >= PRODUCER_MAX_FUNCTIONS) {
-            producer->resource_failed = true;
-            return false;
+static int64_t producer_hir_function_body_open(
+    const Producer *producer,
+    int64_t function_start
+) {
+    int64_t line;
+    if (producer->scope_hir == NULL) return -1;
+    line = hir_record_start(producer->scope_hir, "hir-function", 0);
+    while (line >= 0) {
+        char *start_text = hir_field(producer->scope_hir, line, 1);
+        bool found = decimal_value(start_text) == function_start;
+        free(start_text);
+        if (found) {
+            char *body_scope = hir_field(producer->scope_hir, line, 3);
+            char *open_text = hir_scope_field(
+                producer->scope_hir,
+                body_scope,
+                4
+            );
+            int64_t open = decimal_value(open_text);
+            free(body_scope);
+            free(open_text);
+            return open;
         }
-        allocated_name = function_name(producer->source, cursor);
-        parameters = parameter_open(producer->source, cursor);
-        parameters_end = balanced_end(
-            producer->source,
-            parameters,
-            "(",
-            ")"
+        line = hir_record_start(
+            producer->scope_hir,
+            "hir-function",
+            line + 1
         );
-        end = function_end(producer->source, cursor);
-        if (parameters < 0 || parameters_end < 0 || end <= cursor) {
-            free(allocated_name);
+    }
+    return -1;
+}
+
+static bool producer_collect_functions(
+    Producer *producer,
+    const char *program_ir
+) {
+    int64_t line = hir_record_start(program_ir, "function", 0);
+    int64_t source_length = (int64_t)producer->input->source_length;
+    while (line >= 0) {
+        char *name = hir_field(program_ir, line, 1);
+        char *start_text = hir_field(program_ir, line, 3);
+        char *end_text = hir_field(program_ir, line, 4);
+        char *return_type = function_return_type(producer->source, name);
+        int64_t start = decimal_value(start_text);
+        int64_t end = decimal_value(end_text);
+        int64_t body_open = producer_hir_function_body_open(producer, start);
+        ProducerNode *node;
+        ProducerFunction *function;
+        bool valid = name[0] != '\0' && return_type[0] != '\0' &&
+            strlen(name) < 64u && strlen(return_type) < 64u &&
+            start >= 0 && end > start && end <= source_length &&
+            (producer->scope_hir == NULL ||
+             (body_open >= start && body_open < end)) &&
+            producer->function_count < PRODUCER_MAX_FUNCTIONS;
+        if (!valid) {
+            free(name);
+            free(start_text);
+            free(end_text);
+            free(return_type);
+            producer->resource_failed =
+                producer->function_count >= PRODUCER_MAX_FUNCTIONS;
             return false;
         }
-        body_open = skip_trivia(producer->source, parameters_end);
-        if (token_equal(producer->source, body_open, "->")) {
-            int64_t type_at = skip_trivia(
-                producer->source,
-                token_end(producer->source, body_open)
-            );
-            producer_copy_type(producer->source, type_at, return_type);
-            body_open = skip_trivia(
-                producer->source,
-                token_end(producer->source, type_at)
-            );
-            while (body_open < end &&
-                   !token_equal(producer->source, body_open, "{")) {
-                body_open = skip_trivia(
-                    producer->source,
-                    token_end(producer->source, body_open)
-                );
-            }
-        }
-        function_node = producer_add_node(
+        node = producer_add_node(
             producer,
             KOFUN_SEMANTIC_NODE_FUNCTION,
-            cursor,
-            token_end(
-                producer->source,
-                skip_trivia(
-                    producer->source,
-                    token_end(producer->source, cursor)
-                )
-            ),
-            allocated_name,
+            start,
+            end,
+            name,
             true
         );
-        if (function_node == NULL) {
-            free(allocated_name);
-            return false;
-        }
         function = &producer->functions[producer->function_count++];
         memset(function, 0, sizeof(*function));
         (void)snprintf(
             function->name,
             sizeof(function->name),
             "%s",
-            allocated_name
+            name
         );
-        function->node = function_node->value.node_id;
-        function->start = cursor;
+        (void)snprintf(
+            function->return_type,
+            sizeof(function->return_type),
+            "%s",
+            return_type
+        );
+        function->node = node == NULL ?
+            (KofunSemanticId){{0}} : node->value.node_id;
+        function->start = start;
         function->body_open = body_open;
         function->end = end;
-        if (!producer_symbol_id(
+        if (node == NULL ||
+            !producer_symbol_id(
                 producer,
                 &producer->value_namespace_id,
                 "function",
@@ -859,452 +997,453 @@ static bool producer_collect_functions(Producer *producer) {
                 producer,
                 function->node,
                 KOFUN_SEMANTIC_ID_SYMBOL,
-                &function->symbol) ||
-            producer_add_fact(
-                producer,
-                function->node,
-                KOFUN_SEMANTIC_FACT_TYPE,
-                KOFUN_SEMANTIC_VALIDATED,
-                return_type,
-                "") == NULL) {
-            free(allocated_name);
+                &function->symbol)) {
+            free(name);
+            free(start_text);
+            free(end_text);
+            free(return_type);
             return false;
         }
-        free(allocated_name);
-        cursor = next_function_start(producer->source, end);
+        free(name);
+        free(start_text);
+        free(end_text);
+        free(return_type);
+        line = hir_record_start(program_ir, "function", line + 1);
     }
     return true;
 }
 
-static ProducerNode *producer_find_node(
+static ProducerReference *producer_add_reference(
     Producer *producer,
-    KofunSemanticId id
+    ProducerNode *source_node,
+    KofunSemanticNamespace name_space,
+    KofunSemanticSpan span,
+    KofunSemanticIdentityKind target_kind,
+    const KofunSemanticId *target
+);
+
+static bool producer_add_failed_reference_prefix(
+    Producer *producer,
+    const KofunStage2SemanticResult *result
+) {
+    char name[64];
+    ProducerNode *call;
+    if (strcmp(result->diagnostic_code, "E2S16") != 0 ||
+        !result->diagnostic_has_byte_span ||
+        result->diagnostic_span.start >= producer->input->source_length) {
+        return true;
+    }
+    copy_token_text(
+        producer->source,
+        (int64_t)result->diagnostic_span.start,
+        name,
+        sizeof(name)
+    );
+    call = producer_add_node(
+        producer,
+        KOFUN_SEMANTIC_NODE_CALL,
+        (int64_t)result->diagnostic_span.start,
+        (int64_t)result->diagnostic_span.end,
+        name,
+        false
+    );
+    return call != NULL &&
+        producer_add_reference(
+            producer,
+            call,
+            KOFUN_SEMANTIC_NAMESPACE_VALUE,
+            call->value.span,
+            KOFUN_SEMANTIC_ID_SYMBOL,
+            NULL
+        ) != NULL;
+}
+
+static bool producer_add_authority_diagnostic(
+    Producer *producer,
+    const KofunStage2SemanticResult *result,
+    const Stage2AuthorityContext *context
+) {
+    ProducerNode *owner = NULL;
+    ProducerDiagnostic *diagnostic;
+    size_t index;
+    const Stage2StructuredDiagnostic *structured =
+        &context->diagnostic;
+    const Stage2DiagnosticAffected *affected =
+        structured->affected_count == 0u ?
+            NULL : &structured->affected[0];
+    KofunSemanticNodeKind selected_kind =
+        KOFUN_SEMANTIC_NODE_ERROR_PATTERN;
+    if (affected != NULL &&
+        affected->kind == STAGE2_DIAGNOSTIC_AFFECTED_MODULE) {
+        selected_kind = KOFUN_SEMANTIC_NODE_MODULE;
+    } else if (affected != NULL &&
+               affected->kind == STAGE2_DIAGNOSTIC_AFFECTED_CALL) {
+        selected_kind = KOFUN_SEMANTIC_NODE_CALL;
+    } else if (affected != NULL &&
+               affected->kind == STAGE2_DIAGNOSTIC_AFFECTED_BINDING) {
+        selected_kind = KOFUN_SEMANTIC_NODE_LOCAL;
+    }
+    if (affected != NULL) {
+        for (index = 0u; index < producer->node_count; index += 1u) {
+            ProducerNode *candidate = &producer->nodes[index];
+            bool binding_kind =
+                selected_kind == KOFUN_SEMANTIC_NODE_LOCAL &&
+                (candidate->value.kind == KOFUN_SEMANTIC_NODE_LOCAL ||
+                 candidate->value.kind == KOFUN_SEMANTIC_NODE_PARAMETER);
+            if ((candidate->value.kind == selected_kind || binding_kind) &&
+                candidate->value.span.start ==
+                    (uint32_t)affected->start &&
+                candidate->value.span.end ==
+                    (uint32_t)affected->end) {
+                owner = candidate;
+                break;
+            }
+        }
+    }
+    if (owner == NULL && affected != NULL &&
+        affected->kind != STAGE2_DIAGNOSTIC_AFFECTED_MODULE) {
+        owner = producer_add_node(
+            producer,
+            selected_kind,
+            affected->start,
+            affected->end,
+            result->diagnostic_code,
+            false
+        );
+    }
+    if (owner == NULL && producer->node_count != 0u) {
+        owner = &producer->nodes[0];
+    }
+    if (owner == NULL || !result->has_source_diagnostic ||
+        result->diagnostic_code[0] == '\0') {
+        return false;
+    }
+    diagnostic = producer_add_diagnostic(
+        producer,
+        result->diagnostic_code,
+        result->diagnostic_category,
+        result->diagnostic_template_id,
+        result->diagnostic_fallback,
+        result->diagnostic_span,
+        owner->value.node_id
+    );
+    if (diagnostic != NULL && result->diagnostic_truncated) {
+        diagnostic->value.truncated = true;
+    }
+    if (diagnostic != NULL) {
+        for (index = 0u;
+             index < structured->related_count &&
+                 index < sizeof(diagnostic->related) /
+                     sizeof(diagnostic->related[0]);
+             index += 1u) {
+            diagnostic->related[index].file_id =
+                producer->source_record.file_id;
+            diagnostic->related[index].span = producer_span(
+                structured->related[index].start,
+                structured->related[index].end
+            );
+            (void)snprintf(
+                diagnostic->related_labels[index],
+                sizeof(diagnostic->related_labels[index]),
+                "%s",
+                structured->related[index].label
+            );
+            diagnostic->related[index].label = producer_text(
+                diagnostic->related_labels[index]
+            );
+        }
+        diagnostic->value.related = diagnostic->related;
+        diagnostic->value.related_count = structured->related_count;
+        for (index = 0u;
+             index < structured->remedy_count &&
+                 index < sizeof(diagnostic->remedies) /
+                     sizeof(diagnostic->remedies[0]);
+             index += 1u) {
+            diagnostic->remedies[index] = structured->remedies[index];
+        }
+        diagnostic->value.remedy_ids = diagnostic->remedies;
+        diagnostic->value.remedy_count = structured->remedy_count;
+        for (index = 0u;
+             index < structured->edit_count &&
+                 index < sizeof(diagnostic->edits) /
+                     sizeof(diagnostic->edits[0]);
+             index += 1u) {
+            diagnostic->edits[index].remedy_id =
+                structured->edits[index].remedy_id;
+            diagnostic->edits[index].file_id =
+                producer->source_record.file_id;
+            diagnostic->edits[index].span = producer_span(
+                structured->edits[index].start,
+                structured->edits[index].end
+            );
+            (void)snprintf(
+                diagnostic->replacements[index],
+                sizeof(diagnostic->replacements[index]),
+                "%s",
+                structured->edits[index].replacement
+            );
+            diagnostic->edits[index].replacement = producer_text(
+                diagnostic->replacements[index]
+            );
+        }
+        diagnostic->value.edits = diagnostic->edits;
+        diagnostic->value.edit_count = structured->edit_count;
+        owner->value.status = KOFUN_SEMANTIC_ERROR;
+        owner->diagnostic = diagnostic->value.diagnostic_id;
+        owner->value.diagnostic_ids = &owner->diagnostic;
+        owner->value.diagnostic_count = 1u;
+        for (index = 0u; index < producer->reference_count; index += 1u) {
+            ProducerReference *reference = &producer->references[index];
+            if (memcmp(
+                    reference->value.source_node_id.bytes,
+                    owner->value.node_id.bytes,
+                    KOFUN_SEMANTIC_ID_BYTES) == 0) {
+                reference->diagnostic = diagnostic->value.diagnostic_id;
+                reference->value.diagnostic_ids = &reference->diagnostic;
+                reference->value.diagnostic_count = 1u;
+            }
+        }
+    }
+    return diagnostic != NULL;
+}
+
+static ProducerFunction *producer_function_for_offset(
+    Producer *producer,
+    int64_t offset
 ) {
     size_t index;
-    for (index = 0u; index < producer->node_count; index += 1u) {
-        if (memcmp(
-                producer->nodes[index].value.node_id.bytes,
-                id.bytes,
-                KOFUN_SEMANTIC_ID_BYTES) == 0) {
-            return &producer->nodes[index];
+    for (index = 0u; index < producer->function_count; index += 1u) {
+        ProducerFunction *function = &producer->functions[index];
+        if (function->start <= offset && offset < function->end) {
+            return function;
         }
     }
     return NULL;
 }
 
-static ProducerFact *producer_find_fact(
-    Producer *producer,
-    KofunSemanticId owner,
-    KofunSemanticFactKind kind
-) {
-    size_t index;
-    for (index = 0u; index < producer->fact_count; index += 1u) {
-        ProducerFact *fact = &producer->facts[index];
-        if (fact->value.kind == kind &&
-            memcmp(
-                fact->value.owner_node_id.bytes,
-                owner.bytes,
-                KOFUN_SEMANTIC_ID_BYTES) == 0) {
-            return fact;
+static bool producer_collect_scopes_and_bindings(Producer *producer) {
+    int64_t line = hir_record_start(producer->scope_hir, "scope", 0);
+    int64_t source_length = (int64_t)producer->input->source_length;
+    while (line >= 0) {
+        char *scope_id = hir_field(producer->scope_hir, line, 1);
+        char *scope_kind = hir_field(producer->scope_hir, line, 3);
+        char *open_text = hir_field(producer->scope_hir, line, 4);
+        char *close_text = hir_field(producer->scope_hir, line, 5);
+        int64_t open = decimal_value(open_text);
+        int64_t close = decimal_value(close_text);
+        ProducerNode *scope_node;
+        char key[96];
+        bool valid = scope_id[0] != '\0' &&
+            scope_kind[0] != '\0' &&
+            open >= 0 && close >= open && close <= source_length &&
+            strlen(scope_id) < 24u &&
+            strlen(scope_kind) < 64u;
+        if (!valid) {
+            free(scope_id);
+            free(scope_kind);
+            free(open_text);
+            free(close_text);
+            return false;
         }
+        scope_node = producer_add_node(
+            producer,
+            KOFUN_SEMANTIC_NODE_SCOPE,
+            open,
+            close,
+            scope_kind,
+            true
+        );
+        (void)snprintf(key, sizeof(key), "hir-scope:%s", scope_id);
+        if (scope_node == NULL ||
+            !producer_add_identity(
+                producer,
+                scope_node->value.node_id,
+                KOFUN_SEMANTIC_ID_SCOPE,
+                "kofun.stage2.scope/v1",
+                key,
+                NULL)) {
+            free(scope_id);
+            free(scope_kind);
+            free(open_text);
+            free(close_text);
+            return false;
+        }
+        free(scope_id);
+        free(scope_kind);
+        free(open_text);
+        free(close_text);
+        line = hir_record_start(producer->scope_hir, "scope", line + 1);
     }
-    return NULL;
+
+    line = hir_record_start(producer->scope_hir, "binding", 0);
+    while (line >= 0) {
+        char *binding_id = hir_field(producer->scope_hir, line, 1);
+        char *scope_id = hir_field(producer->scope_hir, line, 2);
+        char *name = hir_field(producer->scope_hir, line, 3);
+        char *type_name = hir_field(producer->scope_hir, line, 5);
+        char *ownership = hir_field(producer->scope_hir, line, 6);
+        char *start_text = hir_field(producer->scope_hir, line, 8);
+        char *end_text = hir_field(producer->scope_hir, line, 9);
+        char *scope_kind = hir_scope_field(
+            producer->scope_hir,
+            scope_id,
+            3
+        );
+        int64_t start = decimal_value(start_text);
+        int64_t end = decimal_value(end_text);
+        ProducerFunction *function = producer_function_for_offset(
+            producer,
+            start
+        );
+        KofunSemanticNodeKind node_kind =
+            strcmp(scope_kind, "parameters") == 0 ?
+                KOFUN_SEMANTIC_NODE_PARAMETER :
+                KOFUN_SEMANTIC_NODE_LOCAL;
+        bool valid = binding_id[0] != '\0' &&
+            scope_id[0] != '\0' &&
+            name[0] != '\0' &&
+            type_name[0] != '\0' &&
+            ownership[0] != '\0' &&
+            start >= 0 && end >= start && end <= source_length &&
+            function != NULL &&
+            strlen(binding_id) < 24u &&
+            strlen(name) < 64u &&
+            strlen(type_name) < 64u &&
+            strlen(ownership) < 32u;
+        if (!valid ||
+            producer_add_hir_binding(
+                producer,
+                function,
+                binding_id,
+                name,
+                type_name,
+                ownership,
+                start,
+                end,
+                node_kind) == NULL) {
+            free(binding_id);
+            free(scope_id);
+            free(name);
+            free(type_name);
+            free(ownership);
+            free(start_text);
+            free(end_text);
+            free(scope_kind);
+            return false;
+        }
+        free(binding_id);
+        free(scope_id);
+        free(name);
+        free(type_name);
+        free(ownership);
+        free(start_text);
+        free(end_text);
+        free(scope_kind);
+        line = hir_record_start(producer->scope_hir, "binding", line + 1);
+    }
+    return true;
 }
 
-static int64_t producer_type_end(const char *source, int64_t start) {
-    int64_t cursor = start;
-    int depth = 0;
-    while (source[cursor] != '\0') {
-        if ((token_equal(source, cursor, ",") ||
-             token_equal(source, cursor, ")") ||
-             token_equal(source, cursor, "=") ||
-             token_equal(source, cursor, "{")) &&
-            depth == 0) {
-            return cursor;
-        }
-        if (token_equal(source, cursor, "[")) depth += 1;
-        if (token_equal(source, cursor, "]")) depth -= 1;
-        cursor = skip_trivia(source, token_end(source, cursor));
-    }
-    return cursor;
-}
-
-static bool producer_collect_parameters_and_bindings(Producer *producer) {
+static bool producer_finalize_function_types(Producer *producer) {
     size_t function_index;
     for (function_index = 0u;
          function_index < producer->function_count;
          function_index += 1u) {
         ProducerFunction *function = &producer->functions[function_index];
-        int64_t parameters = parameter_open(
-            producer->source,
-            function->start
-        );
-        int64_t parameters_end = balanced_end(
-            producer->source,
-            parameters,
-            "(",
-            ")"
-        );
-        int64_t cursor = skip_trivia(
-            producer->source,
-            token_end(producer->source, parameters)
-        );
-        ProducerNode *scope_node = producer_add_node(
-            producer,
-            KOFUN_SEMANTIC_NODE_SCOPE,
-            function->body_open,
-            function->end,
-            "function-body",
-            true
-        );
-        char scope_key[96];
-        char *hir_scope_id;
-        if (scope_node == NULL) return false;
-        hir_scope_id = hir_scope_id_for_open(
-            producer->scope_hir,
-            function->body_open
-        );
-        if (hir_scope_id[0] == '\0' ||
-            strcmp(hir_scope_id, "-1") == 0) {
-            free(hir_scope_id);
-            return false;
-        }
-        (void)snprintf(
-            scope_key,
-            sizeof(scope_key),
-            "hir-scope:%s",
-            hir_scope_id
-        );
-        free(hir_scope_id);
-        if (!producer_add_identity(
+        const ProducerBinding *parameters[PRODUCER_MAX_BINDINGS];
+        size_t parameter_count = 0u;
+        size_t binding_index;
+        char signature[160];
+        size_t used = 0u;
+        ProducerFact *fact;
+        for (binding_index = 0u;
+             binding_index < producer->binding_count;
+             binding_index += 1u) {
+            const ProducerBinding *binding =
+                &producer->bindings[binding_index];
+            ProducerNode *node = producer_find_node_by_id(
                 producer,
-                scope_node->value.node_id,
-                KOFUN_SEMANTIC_ID_SCOPE,
-                "kofun.stage2.scope/v1",
-                scope_key,
-                NULL)) {
-            return false;
-        }
-        while (cursor < parameters_end &&
-               !token_equal(producer->source, cursor, ")")) {
-            char ownership[32] = "value";
-            char name[64];
-            char type_name[64];
-            int64_t name_at = cursor;
-            int64_t colon;
-            int64_t type_at;
-            int64_t type_end;
-            if (token_equal(producer->source, cursor, "read") ||
-                token_equal(producer->source, cursor, "edit") ||
-                token_equal(producer->source, cursor, "take")) {
-                copy_token_text(
-                    producer->source,
-                    cursor,
-                    ownership,
-                    sizeof(ownership)
-                );
-                name_at = skip_trivia(
-                    producer->source,
-                    token_end(producer->source, cursor)
-                );
+                &binding->node
+            );
+            if (binding->function_start == function->start &&
+                node != NULL &&
+                node->value.kind == KOFUN_SEMANTIC_NODE_PARAMETER) {
+                parameters[parameter_count++] = binding;
             }
-            copy_token_text(
-                producer->source,
-                name_at,
-                name,
-                sizeof(name)
+        }
+        if (parameter_count == 0u) {
+            int written = snprintf(
+                signature,
+                sizeof(signature),
+                "() -> %s",
+                function->return_type
             );
-            colon = skip_trivia(
-                producer->source,
-                token_end(producer->source, name_at)
-            );
-            if (!token_equal(producer->source, colon, ":")) return false;
-            type_at = skip_trivia(
-                producer->source,
-                token_end(producer->source, colon)
-            );
-            producer_copy_type(producer->source, type_at, type_name);
-            type_end = producer_type_end(producer->source, type_at);
-            if (producer_add_binding(
-                    producer,
-                    function,
-                    name,
-                    type_name,
-                    ownership,
-                    name_at,
-                    token_end(producer->source, name_at),
-                    KOFUN_SEMANTIC_NODE_PARAMETER) == NULL) {
+            if (written < 0 || (size_t)written >= sizeof(signature)) {
                 return false;
             }
-            if (token_equal(producer->source, type_end, ",")) {
-                cursor = skip_trivia(
-                    producer->source,
-                    token_end(producer->source, type_end)
-                );
-            } else {
-                cursor = type_end;
+        } else if (parameter_count == 1u) {
+            int written = snprintf(
+                signature,
+                sizeof(signature),
+                "%s -> %s",
+                parameters[0]->type,
+                function->return_type
+            );
+            if (written < 0 || (size_t)written >= sizeof(signature)) {
+                return false;
             }
-        }
-        cursor = skip_trivia(
-            producer->source,
-            token_end(producer->source, function->body_open)
-        );
-        while (cursor < function->end) {
-            if (token_equal(producer->source, cursor, "let")) {
-                int64_t name_at = skip_trivia(
-                    producer->source,
-                    token_end(producer->source, cursor)
+        } else {
+            signature[used++] = '(';
+            signature[used] = '\0';
+            for (binding_index = 0u;
+                 binding_index < parameter_count;
+                 binding_index += 1u) {
+                int written = snprintf(
+                    signature + used,
+                    sizeof(signature) - used,
+                    "%s%s",
+                    binding_index == 0u ? "" : ", ",
+                    parameters[binding_index]->type
                 );
-                char ownership[32] = "immutable-local";
-                char name[64];
-                char type_name[64] = "unavailable";
-                int64_t after_name;
-                int64_t initializer;
-                bool annotated = false;
-                if (token_equal(producer->source, name_at, "mut")) {
-                    (void)snprintf(
-                        ownership,
-                        sizeof(ownership),
-                        "%s",
-                        "mutable-local"
-                    );
-                    name_at = skip_trivia(
-                        producer->source,
-                        token_end(producer->source, name_at)
-                    );
+                if (written < 0 ||
+                    (size_t)written >= sizeof(signature) - used) {
+                    return false;
                 }
-                copy_token_text(
-                    producer->source,
-                    name_at,
-                    name,
-                    sizeof(name)
+                used += (size_t)written;
+            }
+            {
+                int written = snprintf(
+                    signature + used,
+                    sizeof(signature) - used,
+                    ") -> %s",
+                    function->return_type
                 );
-                after_name = skip_trivia(
-                    producer->source,
-                    token_end(producer->source, name_at)
-                );
-                if (token_equal(producer->source, after_name, ":")) {
-                    int64_t type_at = skip_trivia(
-                        producer->source,
-                        token_end(producer->source, after_name)
-                    );
-                    int64_t type_end;
-                    annotated = true;
-                    producer_copy_type(
-                        producer->source,
-                        type_at,
-                        type_name
-                    );
-                    type_end = producer_type_end(producer->source, type_at);
-                    after_name = type_end;
-                }
-                initializer = skip_trivia(
-                    producer->source,
-                    token_end(producer->source, after_name)
-                );
-                if (!annotated) {
-                    const char *kind = token_kind(
-                        producer->source,
-                        initializer
-                    );
-                    if (strcmp(kind, "string") == 0) {
-                        (void)snprintf(type_name, sizeof(type_name), "Text");
-                    } else if (strcmp(kind, "integer") == 0) {
-                        (void)snprintf(type_name, sizeof(type_name), "Int");
-                    } else if (token_equal(
-                            producer->source,
-                            initializer,
-                            "true") ||
-                        token_equal(
-                            producer->source,
-                            initializer,
-                            "false")) {
-                        (void)snprintf(type_name, sizeof(type_name), "Bool");
-                    } else if (strcmp(kind, "identifier") == 0) {
-                        char value_name[64];
-                        ProducerBinding *source_binding;
-                        ProducerFunction *source_function;
-                        ProducerConstructor *constructor;
-                        copy_token_text(
-                            producer->source,
-                            initializer,
-                            value_name,
-                            sizeof(value_name)
-                        );
-                        source_binding = producer_find_binding(
-                            producer,
-                            function->start,
-                            value_name
-                        );
-                        source_function = producer_find_function(
-                            producer,
-                            value_name
-                        );
-                        constructor = producer_find_constructor(
-                            producer,
-                            value_name
-                        );
-                        if (source_binding != NULL) {
-                            (void)snprintf(
-                                type_name,
-                                sizeof(type_name),
-                                "%s",
-                                source_binding->type
-                            );
-                        } else if (source_function != NULL) {
-                            char *return_type = function_return_type(
-                                producer->source,
-                                value_name
-                            );
-                            (void)snprintf(
-                                type_name,
-                                sizeof(type_name),
-                                "%s",
-                                return_type
-                            );
-                            free(return_type);
-                        } else if (constructor != NULL) {
-                            (void)snprintf(
-                                type_name,
-                                sizeof(type_name),
-                                "%s",
-                                "flat-adt"
-                            );
-                        }
-                    }
-                }
-                {
-                    ProducerBinding *binding = producer_add_binding(
-                        producer,
-                        function,
-                        name,
-                        type_name,
-                        ownership,
-                        name_at,
-                        token_end(producer->source, name_at),
-                        KOFUN_SEMANTIC_NODE_LOCAL
-                    );
-                    if (binding == NULL) return false;
-                    if (annotated) {
-                        const char *kind = token_kind(
-                            producer->source,
-                            initializer
-                        );
-                        bool mismatch =
-                            (strcmp(type_name, "Int") == 0 &&
-                             strcmp(kind, "string") == 0) ||
-                            (strcmp(type_name, "Text") == 0 &&
-                             strcmp(kind, "integer") == 0) ||
-                            (strcmp(type_name, "Bool") == 0 &&
-                             strcmp(kind, "integer") == 0);
-                        if (mismatch) {
-                            ProducerNode *node = producer_find_node(
-                                producer,
-                                binding->node
-                            );
-                            ProducerDiagnostic *diagnostic =
-                                producer_add_diagnostic(
-                                    producer,
-                                    "E2S15",
-                                    "type",
-                                    "binding-type-mismatch",
-                                    "binding initializer has the wrong type",
-                                    producer_span(
-                                        initializer,
-                                        token_end(
-                                            producer->source,
-                                            initializer
-                                        )
-                                    ),
-                                    binding->node
-                                );
-                            ProducerFact *fact = producer_find_fact(
-                                producer,
-                                binding->node,
-                                KOFUN_SEMANTIC_FACT_TYPE
-                            );
-                            producer_mark_node_error(node, diagnostic);
-                            if (fact != NULL && diagnostic != NULL) {
-                                fact->value.status = KOFUN_SEMANTIC_ERROR;
-                                fact->display[0] = '\0';
-                                (void)snprintf(
-                                    fact->reason,
-                                    sizeof(fact->reason),
-                                    "%s",
-                                    "binding-type-mismatch"
-                                );
-                                fact->value.display =
-                                    producer_text(fact->display);
-                                fact->value.reason =
-                                    producer_text(fact->reason);
-                                fact->diagnostic =
-                                    diagnostic->value.diagnostic_id;
-                                fact->value.diagnostic_ids =
-                                    &fact->diagnostic;
-                                fact->value.diagnostic_count = 1u;
-                            }
-                        }
-                    }
-                }
-            } else if (token_equal(producer->source, cursor, "for")) {
-                int64_t name_at = skip_trivia(
-                    producer->source,
-                    token_end(producer->source, cursor)
-                );
-                int64_t in_at = skip_trivia(
-                    producer->source,
-                    token_end(producer->source, name_at)
-                );
-                int64_t collection_at = skip_trivia(
-                    producer->source,
-                    token_end(producer->source, in_at)
-                );
-                char name[64];
-                char collection_name[64];
-                const char *element_type = "unavailable";
-                ProducerBinding *collection;
-                copy_token_text(
-                    producer->source,
-                    name_at,
-                    name,
-                    sizeof(name)
-                );
-                copy_token_text(
-                    producer->source,
-                    collection_at,
-                    collection_name,
-                    sizeof(collection_name)
-                );
-                collection = producer_find_binding(
-                    producer,
-                    function->start,
-                    collection_name
-                );
-                if (collection != NULL) {
-                    if (strcmp(collection->type, "List[Text]") == 0) {
-                        element_type = "Text";
-                    } else if (strcmp(
-                            collection->type,
-                            "List[Int]") == 0) {
-                        element_type = "Int";
-                    }
-                }
-                if (producer_add_binding(
-                        producer,
-                        function,
-                        name,
-                        element_type,
-                        "borrowed-element",
-                        name_at,
-                        token_end(producer->source, name_at),
-                        KOFUN_SEMANTIC_NODE_LOCAL) == NULL) {
+                if (written < 0 ||
+                    (size_t)written >= sizeof(signature) - used) {
                     return false;
                 }
             }
-            cursor = skip_trivia(
-                producer->source,
-                token_end(producer->source, cursor)
+        }
+        fact = producer_add_fact(
+            producer,
+            function->node,
+            KOFUN_SEMANTIC_FACT_TYPE,
+            KOFUN_SEMANTIC_VALIDATED,
+            signature,
+            ""
+        );
+        if (fact == NULL) return false;
+        if (parameter_count != 0u) {
+            ProducerNode *function_node = producer_find_node_by_id(
+                producer,
+                &function->node
             );
+            if (function_node == NULL) return false;
+            producer_node_set_dependency(
+                function_node,
+                &parameters[0]->node
+            );
+            producer_fact_set_dependency(fact, &parameters[0]->node);
         }
     }
     return true;
@@ -1358,290 +1497,532 @@ static ProducerReference *producer_add_reference(
     return reference;
 }
 
-static bool producer_builtin_name(const char *name) {
-    return strcmp(name, "print") == 0 ||
-        builtin_arity(name) >= 0;
-}
-
 static bool producer_collect_references(Producer *producer) {
-    size_t function_index;
-    for (function_index = 0u;
-         function_index < producer->function_count;
-         function_index += 1u) {
-        ProducerFunction *function = &producer->functions[function_index];
-        int64_t cursor = skip_trivia(
-            producer->source,
-            token_end(producer->source, function->body_open)
+    int64_t use_line = hir_record_start(producer->scope_hir, "use", 0);
+    int64_t source_length = (int64_t)producer->input->source_length;
+    while (use_line >= 0) {
+        char *start_text = hir_field(producer->scope_hir, use_line, 1);
+        char *end_text = hir_field(producer->scope_hir, use_line, 2);
+        char *binding_id = hir_field(producer->scope_hir, use_line, 4);
+        int64_t start = decimal_value(start_text);
+        int64_t end = decimal_value(end_text);
+        ProducerBinding *binding = producer_find_binding_by_hir_id(
+            producer,
+            binding_id
         );
-        while (cursor < function->end) {
-            if (token_equal(producer->source, cursor, "if")) {
-                if (producer_add_node(
-                        producer,
-                        KOFUN_SEMANTIC_NODE_IF,
-                        cursor,
-                        token_end(producer->source, cursor),
-                        "if",
-                        false) == NULL) {
-                    return false;
-                }
-            } else if (token_equal(producer->source, cursor, "match")) {
-                if (producer_add_node(
-                        producer,
-                        KOFUN_SEMANTIC_NODE_MATCH,
-                        cursor,
-                        token_end(producer->source, cursor),
-                        "match",
-                        false) == NULL) {
-                    return false;
-                }
-            }
-            if (strcmp(token_kind(producer->source, cursor), "identifier") ==
-                0) {
-                char name[64];
-                int64_t after = skip_trivia(
-                    producer->source,
-                    token_end(producer->source, cursor)
-                );
-                ProducerBinding *binding;
-                copy_token_text(
-                    producer->source,
-                    cursor,
-                    name,
-                    sizeof(name)
-                );
-                binding = producer_find_binding(
+        ProducerNode *use;
+        ProducerFact *type_fact;
+        bool valid = binding != NULL &&
+            start >= 0 && end > start && end <= source_length;
+        if (!valid) {
+            free(start_text);
+            free(end_text);
+            free(binding_id);
+            return false;
+        }
+        if ((uint64_t)start >= producer->reference_limit) {
+            free(start_text);
+            free(end_text);
+            free(binding_id);
+            use_line = hir_record_start(
+                producer->scope_hir,
+                "use",
+                use_line + 1
+            );
+            continue;
+        }
+        use = producer_add_node(
+            producer,
+            KOFUN_SEMANTIC_NODE_REFERENCE,
+            start,
+            end,
+            binding->name,
+            false
+        );
+        if (use == NULL ||
+            producer_add_reference(
+                producer,
+                use,
+                KOFUN_SEMANTIC_NAMESPACE_VALUE,
+                use->value.span,
+                KOFUN_SEMANTIC_ID_BINDING,
+                &binding->binding) == NULL) {
+            free(start_text);
+            free(end_text);
+            free(binding_id);
+            return false;
+        }
+        type_fact = producer_add_fact(
+            producer,
+            use->value.node_id,
+            KOFUN_SEMANTIC_FACT_TYPE,
+            KOFUN_SEMANTIC_VALIDATED,
+            binding->type,
+            ""
+        );
+        if (type_fact == NULL) {
+            free(start_text);
+            free(end_text);
+            free(binding_id);
+            return false;
+        }
+        producer_node_set_dependency(use, &binding->node);
+        producer_fact_set_dependency(type_fact, &binding->node);
+        free(start_text);
+        free(end_text);
+        free(binding_id);
+        use_line = hir_record_start(
+            producer->scope_hir,
+            "use",
+            use_line + 1
+        );
+    }
+    {
+        int64_t candidate_line = hir_record_start(
+            producer->scope_hir,
+            "candidate-use",
+            0
+        );
+        while (candidate_line >= 0) {
+            char *start_text = hir_field(
+                producer->scope_hir,
+                candidate_line,
+                1
+            );
+            char *end_text = hir_field(
+                producer->scope_hir,
+                candidate_line,
+                2
+            );
+            char *name = hir_field(
+                producer->scope_hir,
+                candidate_line,
+                4
+            );
+            int64_t start = decimal_value(start_text);
+            int64_t end = decimal_value(end_text);
+            if (start >= 0 && end > start &&
+                end <= source_length &&
+                (uint64_t)start < producer->reference_limit) {
+                ProducerNode *use = producer_add_node(
                     producer,
-                    function->start,
-                    name
+                    KOFUN_SEMANTIC_NODE_REFERENCE,
+                    start,
+                    end,
+                    name,
+                    false
                 );
-                if (token_equal(producer->source, after, "(")) {
-                    ProducerFunction *target_function =
-                        producer_find_function(producer, name);
-                    ProducerConstructor *target_constructor =
-                        producer_find_constructor(producer, name);
-                    if (!producer_builtin_name(name)) {
-                        ProducerNode *call = producer_add_node(
-                            producer,
-                            KOFUN_SEMANTIC_NODE_CALL,
-                            cursor,
-                            token_end(producer->source, cursor),
-                            name,
-                            false
-                        );
-                        const KofunSemanticId *target = NULL;
-                        KofunSemanticIdentityKind target_kind =
-                            KOFUN_SEMANTIC_ID_SYMBOL;
-                        ProducerReference *reference;
-                        if (call == NULL) return false;
-                        if (target_function != NULL) {
-                            target = &target_function->symbol;
-                        } else if (target_constructor != NULL) {
-                            target = &target_constructor->symbol;
-                            target_kind = KOFUN_SEMANTIC_ID_CONSTRUCTOR;
-                        }
-                        reference = producer_add_reference(
-                            producer,
-                            call,
-                            target_constructor == NULL ?
-                                KOFUN_SEMANTIC_NAMESPACE_VALUE :
-                                KOFUN_SEMANTIC_NAMESPACE_CONSTRUCTOR,
-                            call->value.span,
-                            target_kind,
-                            target
-                        );
-                        if (reference == NULL) return false;
-                        if (target == NULL) {
-                            ProducerDiagnostic *diagnostic =
-                                producer_add_diagnostic(
-                                    producer,
-                                    "E2S16",
-                                    "name-resolution",
-                                    "unknown-function",
-                                    "unknown current-Core function",
-                                    call->value.span,
-                                    call->value.node_id
-                                );
-                            producer_mark_node_error(call, diagnostic);
-                            if (diagnostic == NULL) return false;
-                            reference->diagnostic =
-                                diagnostic->value.diagnostic_id;
-                            reference->value.diagnostic_ids =
-                                &reference->diagnostic;
-                            reference->value.diagnostic_count = 1u;
-                        } else {
-                            const char *result_type =
-                                target_constructor == NULL ?
-                                    "Int" : "flat-adt";
-                            if (producer_add_fact(
-                                    producer,
-                                    call->value.node_id,
-                                    KOFUN_SEMANTIC_FACT_TYPE,
-                                    KOFUN_SEMANTIC_VALIDATED,
-                                    result_type,
-                                    "") == NULL) {
-                                return false;
-                            }
-                        }
-                    }
-                } else if (binding != NULL &&
-                           binding->declaration_start != cursor) {
-                    ProducerNode *use = producer_add_node(
+                if (use == NULL ||
+                    producer_add_fact(
                         producer,
-                        KOFUN_SEMANTIC_NODE_REFERENCE,
-                        cursor,
-                        token_end(producer->source, cursor),
-                        name,
-                        false
-                    );
-                    if (use == NULL ||
-                        producer_add_reference(
-                            producer,
-                            use,
-                            KOFUN_SEMANTIC_NAMESPACE_VALUE,
-                            use->value.span,
-                            KOFUN_SEMANTIC_ID_BINDING,
-                            &binding->binding) == NULL) {
-                        return false;
-                    }
-                    if (producer_add_fact(
-                            producer,
-                            use->value.node_id,
-                            KOFUN_SEMANTIC_FACT_TYPE,
-                            KOFUN_SEMANTIC_VALIDATED,
-                            binding->type,
-                            "") == NULL) {
-                        return false;
-                    }
+                        use->value.node_id,
+                        KOFUN_SEMANTIC_FACT_TYPE,
+                        KOFUN_SEMANTIC_UNAVAILABLE,
+                        "",
+                        "type-not-available-in-current-subset"
+                    ) == NULL) {
+                    free(start_text);
+                    free(end_text);
+                    free(name);
+                    return false;
                 }
             }
-            cursor = skip_trivia(
-                producer->source,
-                token_end(producer->source, cursor)
+            free(start_text);
+            free(end_text);
+            free(name);
+            candidate_line = hir_record_start(
+                producer->scope_hir,
+                "candidate-use",
+                candidate_line + 1
+            );
+        }
+    }
+
+    if (producer->semantic_observations == NULL) return true;
+
+    {
+        int64_t line = hir_record_start(
+            producer->semantic_observations,
+            "call",
+            0
+        );
+        while (line >= 0) {
+            char *target_kind = hir_field(
+                producer->semantic_observations,
+                line,
+                1
+            );
+            char *name = hir_field(
+                producer->semantic_observations,
+                line,
+                2
+            );
+            char *start_text = hir_field(
+                producer->semantic_observations,
+                line,
+                3
+            );
+            char *end_text = hir_field(
+                producer->semantic_observations,
+                line,
+                4
+            );
+            char *result_type = hir_field(
+                producer->semantic_observations,
+                line,
+                5
+            );
+            int64_t start = decimal_value(start_text);
+            int64_t end = decimal_value(end_text);
+            ProducerFunction *function =
+                strcmp(target_kind, "function") == 0 ?
+                    producer_find_function(producer, name) : NULL;
+            ProducerConstructor *constructor =
+                strcmp(target_kind, "constructor") == 0 ?
+                    producer_find_constructor(producer, name) : NULL;
+            const KofunSemanticId *target = function != NULL ?
+                &function->symbol :
+                (constructor != NULL ? &constructor->symbol : NULL);
+            const KofunSemanticId *target_node = function != NULL ?
+                &function->node :
+                (constructor != NULL ? &constructor->node : NULL);
+            bool in_prefix = start >= 0 && end > start &&
+                end <= source_length &&
+                (uint64_t)start < producer->reference_limit;
+            if (in_prefix && target != NULL && target_node != NULL) {
+                ProducerNode *call = producer_add_node(
+                    producer,
+                    KOFUN_SEMANTIC_NODE_CALL,
+                    start,
+                    end,
+                    name,
+                    false
+                );
+                ProducerFact *type_fact;
+                if (call == NULL ||
+                    producer_add_reference(
+                        producer,
+                        call,
+                        constructor == NULL ?
+                            KOFUN_SEMANTIC_NAMESPACE_VALUE :
+                            KOFUN_SEMANTIC_NAMESPACE_CONSTRUCTOR,
+                        call->value.span,
+                        constructor == NULL ?
+                            KOFUN_SEMANTIC_ID_SYMBOL :
+                            KOFUN_SEMANTIC_ID_CONSTRUCTOR,
+                        target
+                    ) == NULL) {
+                    free(target_kind);
+                    free(name);
+                    free(start_text);
+                    free(end_text);
+                    free(result_type);
+                    return false;
+                }
+                type_fact = producer_add_fact(
+                    producer,
+                    call->value.node_id,
+                    KOFUN_SEMANTIC_FACT_TYPE,
+                    KOFUN_SEMANTIC_VALIDATED,
+                    result_type,
+                    ""
+                );
+                if (type_fact == NULL) {
+                    free(target_kind);
+                    free(name);
+                    free(start_text);
+                    free(end_text);
+                    free(result_type);
+                    return false;
+                }
+                producer_node_set_dependency(call, target_node);
+                producer_fact_set_dependency(type_fact, target_node);
+            }
+            free(target_kind);
+            free(name);
+            free(start_text);
+            free(end_text);
+            free(result_type);
+            line = hir_record_start(
+                producer->semantic_observations,
+                "call",
+                line + 1
+            );
+        }
+    }
+    {
+        int64_t line = hir_record_start(
+            producer->semantic_observations,
+            "control",
+            0
+        );
+        while (line >= 0) {
+            char *kind = hir_field(
+                producer->semantic_observations,
+                line,
+                1
+            );
+            char *start_text = hir_field(
+                producer->semantic_observations,
+                line,
+                2
+            );
+            char *end_text = hir_field(
+                producer->semantic_observations,
+                line,
+                3
+            );
+            char *result_type = hir_field(
+                producer->semantic_observations,
+                line,
+                4
+            );
+            int64_t start = decimal_value(start_text);
+            int64_t end = decimal_value(end_text);
+            bool in_prefix = start >= 0 && end > start &&
+                end <= source_length &&
+                (uint64_t)start < producer->reference_limit;
+            if (in_prefix) {
+                ProducerNode *control = producer_add_node(
+                    producer,
+                    strcmp(kind, "if") == 0 ?
+                        KOFUN_SEMANTIC_NODE_IF :
+                        KOFUN_SEMANTIC_NODE_MATCH,
+                    start,
+                    end,
+                    kind,
+                    false
+                );
+                if (control == NULL ||
+                    producer_add_fact(
+                        producer,
+                        control->value.node_id,
+                        KOFUN_SEMANTIC_FACT_TYPE,
+                        KOFUN_SEMANTIC_VALIDATED,
+                        result_type,
+                        ""
+                    ) == NULL) {
+                    free(kind);
+                    free(start_text);
+                    free(end_text);
+                    free(result_type);
+                    return false;
+                }
+            }
+            free(kind);
+            free(start_text);
+            free(end_text);
+            free(result_type);
+            line = hir_record_start(
+                producer->semantic_observations,
+                "control",
+                line + 1
+            );
+        }
+    }
+    {
+        int64_t line = hir_record_start(
+            producer->semantic_observations,
+            "pattern",
+            0
+        );
+        while (line >= 0) {
+            char *pattern_kind = hir_field(
+                producer->semantic_observations,
+                line,
+                1
+            );
+            char *name = hir_field(
+                producer->semantic_observations,
+                line,
+                2
+            );
+            char *start_text = hir_field(
+                producer->semantic_observations,
+                line,
+                3
+            );
+            char *end_text = hir_field(
+                producer->semantic_observations,
+                line,
+                4
+            );
+            char *result_type = hir_field(
+                producer->semantic_observations,
+                line,
+                5
+            );
+            int64_t start = decimal_value(start_text);
+            int64_t end = decimal_value(end_text);
+            ProducerConstructor *constructor =
+                strcmp(pattern_kind, "constructor") == 0 ?
+                    producer_find_constructor(producer, name) : NULL;
+            bool in_prefix = start >= 0 && end > start &&
+                end <= source_length &&
+                (uint64_t)start < producer->reference_limit;
+            if (in_prefix && constructor != NULL) {
+                ProducerNode *pattern = producer_add_node(
+                    producer,
+                    KOFUN_SEMANTIC_NODE_REFERENCE,
+                    start,
+                    end,
+                    name,
+                    false
+                );
+                ProducerNode *match = producer_find_containing_node(
+                    producer,
+                    KOFUN_SEMANTIC_NODE_MATCH,
+                    start,
+                    end
+                );
+                ProducerFact *type_fact;
+                if (pattern == NULL ||
+                    producer_add_reference(
+                        producer,
+                        pattern,
+                        KOFUN_SEMANTIC_NAMESPACE_CONSTRUCTOR,
+                        pattern->value.span,
+                        KOFUN_SEMANTIC_ID_CONSTRUCTOR,
+                        &constructor->symbol
+                    ) == NULL) {
+                    free(pattern_kind);
+                    free(name);
+                    free(start_text);
+                    free(end_text);
+                    free(result_type);
+                    return false;
+                }
+                type_fact = producer_add_fact(
+                    producer,
+                    pattern->value.node_id,
+                    KOFUN_SEMANTIC_FACT_TYPE,
+                    KOFUN_SEMANTIC_VALIDATED,
+                    result_type,
+                    ""
+                );
+                if (type_fact == NULL) {
+                    free(pattern_kind);
+                    free(name);
+                    free(start_text);
+                    free(end_text);
+                    free(result_type);
+                    return false;
+                }
+                producer_node_set_dependency(
+                    pattern,
+                    &constructor->node
+                );
+                producer_fact_set_dependency(
+                    type_fact,
+                    &constructor->node
+                );
+                if (match != NULL &&
+                    match->value.dependency_count == 0u) {
+                    producer_node_set_dependency(
+                        match,
+                        &pattern->value.node_id
+                    );
+                }
+            }
+            free(pattern_kind);
+            free(name);
+            free(start_text);
+            free(end_text);
+            free(result_type);
+            line = hir_record_start(
+                producer->semantic_observations,
+                "pattern",
+                line + 1
             );
         }
     }
     return true;
 }
 
-static bool producer_apply_ownership(Producer *producer) {
-    size_t binding_index;
-    for (binding_index = 0u;
-         binding_index < producer->binding_count;
-         binding_index += 1u) {
-        ProducerBinding *binding = &producer->bindings[binding_index];
-        int64_t cursor;
-        ProducerFunction *function = NULL;
-        size_t function_index;
-        if (strcmp(binding->ownership, "borrowed-element") != 0 ||
-            strcmp(binding->type, "Text") != 0) {
+static bool producer_finalize_control_dependencies(Producer *producer) {
+    size_t control_index;
+    for (control_index = 0u;
+         control_index < producer->node_count;
+         control_index += 1u) {
+        ProducerNode *control = &producer->nodes[control_index];
+        size_t candidate_index;
+        if (control->value.kind != KOFUN_SEMANTIC_NODE_IF &&
+            control->value.kind != KOFUN_SEMANTIC_NODE_MATCH) {
             continue;
         }
-        for (function_index = 0u;
-             function_index < producer->function_count;
-             function_index += 1u) {
-            if (producer->functions[function_index].start ==
-                binding->function_start) {
-                function = &producer->functions[function_index];
-                break;
-            }
-        }
-        if (function == NULL) continue;
-        cursor = skip_trivia(
-            producer->source,
-            token_end(producer->source, function->body_open)
-        );
-        while (cursor < function->end) {
-            if (token_equal(producer->source, cursor, "return")) {
-                int64_t value_at = skip_trivia(
-                    producer->source,
-                    token_end(producer->source, cursor)
-                );
-                char name[64];
-                copy_token_text(
-                    producer->source,
-                    value_at,
-                    name,
-                    sizeof(name)
-                );
-                if (strcmp(name, binding->name) == 0) {
-                    ProducerNode *use = NULL;
-                    ProducerReference *reference = NULL;
-                    ProducerDiagnostic *diagnostic;
-                    ProducerFact *fact;
-                    size_t node_index;
-                    size_t reference_index;
-                    for (node_index = 0u;
-                         node_index < producer->node_count;
-                         node_index += 1u) {
-                        if (producer->nodes[node_index].value.span.start ==
-                                (uint32_t)value_at &&
-                            producer->nodes[node_index].value.kind ==
-                                KOFUN_SEMANTIC_NODE_REFERENCE) {
-                            use = &producer->nodes[node_index];
-                            break;
-                        }
-                    }
-                    if (use == NULL) return false;
-                    for (reference_index = 0u;
-                         reference_index < producer->reference_count;
-                         reference_index += 1u) {
-                        if (memcmp(
-                                producer->references[reference_index]
-                                    .value.source_node_id.bytes,
-                                use->value.node_id.bytes,
-                                KOFUN_SEMANTIC_ID_BYTES) == 0) {
-                            reference =
-                                &producer->references[reference_index];
-                            break;
-                        }
-                    }
-                    diagnostic = producer_add_diagnostic(
-                        producer,
-                        "E007",
-                        "ownership",
-                        "borrowed-element-move",
-                        "cannot move non-Copy element out of borrowed collection",
-                        use->value.span,
-                        use->value.node_id
-                    );
-                    if (diagnostic == NULL) return false;
-                    producer_mark_node_error(use, diagnostic);
-                    if (reference != NULL) {
-                        reference->value.status = KOFUN_SEMANTIC_ERROR;
-                        reference->diagnostic =
-                            diagnostic->value.diagnostic_id;
-                        reference->value.diagnostic_ids =
-                            &reference->diagnostic;
-                        reference->value.diagnostic_count = 1u;
-                    }
-                    fact = producer_find_fact(
-                        producer,
-                        binding->node,
-                        KOFUN_SEMANTIC_FACT_OWNERSHIP
-                    );
-                    if (fact != NULL) {
-                        fact->value.status = KOFUN_SEMANTIC_ERROR;
-                        fact->display[0] = '\0';
-                        (void)snprintf(
-                            fact->reason,
-                            sizeof(fact->reason),
-                            "%s",
-                            "move-from-borrowed-collection"
-                        );
-                        fact->value.display = producer_text(fact->display);
-                        fact->value.reason = producer_text(fact->reason);
-                        fact->diagnostic =
-                            diagnostic->value.diagnostic_id;
-                        fact->value.diagnostic_ids = &fact->diagnostic;
-                        fact->value.diagnostic_count = 1u;
-                    }
-                    break;
+        if (control->value.dependency_count == 0u) {
+            ProducerNode *best = NULL;
+            for (candidate_index = 0u;
+                 candidate_index < producer->node_count;
+                 candidate_index += 1u) {
+                ProducerNode *candidate =
+                    &producer->nodes[candidate_index];
+                if ((candidate->value.kind ==
+                        KOFUN_SEMANTIC_NODE_REFERENCE ||
+                     candidate->value.kind ==
+                        KOFUN_SEMANTIC_NODE_CALL) &&
+                    candidate->value.span.start >
+                        control->value.span.start &&
+                    candidate->value.span.end <=
+                        control->value.span.end &&
+                    (best == NULL ||
+                     candidate->value.span.start <
+                        best->value.span.start)) {
+                    best = candidate;
                 }
             }
-            cursor = skip_trivia(
-                producer->source,
-                token_end(producer->source, cursor)
+            if (best != NULL) {
+                producer_node_set_dependency(
+                    control,
+                    &best->value.node_id
+                );
+            }
+        }
+        if (control->value.dependency_count != 0u) {
+            ProducerFact *type_fact = producer_find_fact(
+                producer,
+                &control->value.node_id,
+                KOFUN_SEMANTIC_FACT_TYPE
             );
+            if (type_fact == NULL) return false;
+            producer_fact_set_dependency(
+                type_fact,
+                &control->dependency
+            );
+        }
+    }
+    return true;
+}
+
+static bool producer_add_origin_facts(Producer *producer) {
+    size_t index;
+    size_t node_count = producer->node_count;
+    for (index = 0u; index < node_count; index += 1u) {
+        ProducerNode *node = &producer->nodes[index];
+        ProducerFact *origin;
+        if (producer_find_fact(
+                producer,
+                &node->value.node_id,
+                KOFUN_SEMANTIC_FACT_ORIGIN) != NULL) {
+            continue;
+        }
+        origin = producer_add_fact(
+            producer,
+            node->value.node_id,
+            KOFUN_SEMANTIC_FACT_ORIGIN,
+            node->value.status,
+            "authored-source",
+            node->value.status == KOFUN_SEMANTIC_VALIDATED ?
+                "" : "unsupported-current-stage2-feature"
+        );
+        if (origin == NULL) return false;
+        if (node->value.dependency_count != 0u) {
+            producer_fact_set_dependency(origin, &node->dependency);
+        }
+        if (node->value.diagnostic_count != 0u) {
+            origin->diagnostic = node->diagnostic;
+            origin->value.diagnostic_ids = &origin->diagnostic;
+            origin->value.diagnostic_count = 1u;
         }
     }
     return true;
@@ -1805,6 +2186,8 @@ static bool producer_prepare_source(Producer *producer) {
         producer_text("stage2-semantic-v1");
     producer->source_record.caller_generation =
         producer->input->caller_generation;
+    producer->source_record.compiler_exit_class =
+        producer->compiler_exit_class;
     module = producer_add_node(
         producer,
         KOFUN_SEMANTIC_NODE_MODULE,
@@ -1831,31 +2214,148 @@ static bool producer_prepare_source(Producer *producer) {
             &producer->source_record.module_id);
 }
 
-static bool producer_add_parser_failure(Producer *producer) {
-    int64_t length = (int64_t)producer->input->source_length;
-    int64_t start = length == 0 ? 0 : length - 1;
-    ProducerNode *error_node = producer_add_node(
-        producer,
-        KOFUN_SEMANTIC_NODE_ERROR_PATTERN,
-        start,
-        length,
-        "parser-recovery",
-        false
+static int producer_node_order(const void *left_value, const void *right_value) {
+    const ProducerNode *left = (const ProducerNode *)left_value;
+    const ProducerNode *right = (const ProducerNode *)right_value;
+    if (left->value.kind == KOFUN_SEMANTIC_NODE_MODULE &&
+        right->value.kind != KOFUN_SEMANTIC_NODE_MODULE) {
+        return -1;
+    }
+    if (right->value.kind == KOFUN_SEMANTIC_NODE_MODULE &&
+        left->value.kind != KOFUN_SEMANTIC_NODE_MODULE) {
+        return 1;
+    }
+    if (left->value.span.start != right->value.span.start) {
+        return left->value.span.start < right->value.span.start ? -1 : 1;
+    }
+    if (left->value.span.end != right->value.span.end) {
+        return left->value.span.end < right->value.span.end ? -1 : 1;
+    }
+    if (left->value.kind != right->value.kind) {
+        return left->value.kind < right->value.kind ? -1 : 1;
+    }
+    return memcmp(
+        left->value.node_id.bytes,
+        right->value.node_id.bytes,
+        KOFUN_SEMANTIC_ID_BYTES
     );
-    ProducerDiagnostic *diagnostic;
-    if (error_node == NULL) return false;
-    diagnostic = producer_add_diagnostic(
+}
+
+static KofunSemanticSpan producer_owner_span(
+    Producer *producer,
+    const KofunSemanticId *owner
+) {
+    ProducerNode *node = producer_find_node_by_id(producer, owner);
+    return node == NULL ?
+        (KofunSemanticSpan){UINT32_MAX, UINT32_MAX} :
+        node->value.span;
+}
+
+static bool producer_identity_before(
+    Producer *producer,
+    size_t left_index,
+    size_t right_index
+) {
+    const KofunSemanticIdentity *left =
+        &producer->identities[left_index].value;
+    const KofunSemanticIdentity *right =
+        &producer->identities[right_index].value;
+    KofunSemanticSpan left_span = producer_owner_span(
         producer,
-        "E2S03",
-        "parser",
-        "incomplete-top-level-declaration",
-        "incomplete Stage 2 declaration after committed token spans",
-        error_node->value.span,
-        error_node->value.node_id
+        &left->owner_node_id
     );
-    if (diagnostic == NULL) return false;
-    producer_mark_node_error(error_node, diagnostic);
-    return true;
+    KofunSemanticSpan right_span = producer_owner_span(
+        producer,
+        &right->owner_node_id
+    );
+    if (left_span.start != right_span.start) {
+        return left_span.start < right_span.start;
+    }
+    if (left_span.end != right_span.end) {
+        return left_span.end < right_span.end;
+    }
+    if (left->kind != right->kind) return left->kind < right->kind;
+    return memcmp(
+        left->value.bytes,
+        right->value.bytes,
+        KOFUN_SEMANTIC_ID_BYTES
+    ) < 0;
+}
+
+static bool producer_reference_before(
+    Producer *producer,
+    size_t left_index,
+    size_t right_index
+) {
+    const KofunSemanticReference *left =
+        &producer->references[left_index].value;
+    const KofunSemanticReference *right =
+        &producer->references[right_index].value;
+    (void)producer;
+    if (left->span.start != right->span.start) {
+        return left->span.start < right->span.start;
+    }
+    if (left->span.end != right->span.end) {
+        return left->span.end < right->span.end;
+    }
+    return memcmp(
+        left->reference_id.bytes,
+        right->reference_id.bytes,
+        KOFUN_SEMANTIC_ID_BYTES
+    ) < 0;
+}
+
+static bool producer_fact_before(
+    Producer *producer,
+    size_t left_index,
+    size_t right_index
+) {
+    const KofunSemanticFact *left =
+        &producer->facts[left_index].value;
+    const KofunSemanticFact *right =
+        &producer->facts[right_index].value;
+    KofunSemanticSpan left_span = producer_owner_span(
+        producer,
+        &left->owner_node_id
+    );
+    KofunSemanticSpan right_span = producer_owner_span(
+        producer,
+        &right->owner_node_id
+    );
+    if (left_span.start != right_span.start) {
+        return left_span.start < right_span.start;
+    }
+    if (left_span.end != right_span.end) {
+        return left_span.end < right_span.end;
+    }
+    return memcmp(
+        left->owner_node_id.bytes,
+        right->owner_node_id.bytes,
+        KOFUN_SEMANTIC_ID_BYTES
+    ) < 0;
+}
+
+static bool producer_diagnostic_before(
+    Producer *producer,
+    size_t left_index,
+    size_t right_index
+) {
+    const KofunSemanticDiagnostic *left =
+        &producer->diagnostics[left_index].value;
+    const KofunSemanticDiagnostic *right =
+        &producer->diagnostics[right_index].value;
+    (void)producer;
+    if (left->primary_span.start != right->primary_span.start) {
+        return left->primary_span.start < right->primary_span.start;
+    }
+    if (left->primary_span.end != right->primary_span.end) {
+        return left->primary_span.end < right->primary_span.end;
+    }
+    return memcmp(
+        left->diagnostic_id.bytes,
+        right->diagnostic_id.bytes,
+        KOFUN_SEMANTIC_ID_BYTES
+    ) < 0;
 }
 
 static bool producer_emit(
@@ -1865,55 +2365,176 @@ static bool producer_emit(
     KofunStage2SemanticResult *result
 ) {
     size_t index;
+    size_t emitted;
+    bool identity_emitted[PRODUCER_MAX_IDENTITIES] = {false};
+    bool reference_emitted[PRODUCER_MAX_REFERENCES] = {false};
+    bool fact_emitted[PRODUCER_MAX_FACTS] = {false};
+    bool diagnostic_emitted[PRODUCER_MAX_DIAGNOSTICS] = {false};
     unsigned fact_kind;
+    uint32_t record_index = 0u;
     KofunSourceStatus source_status;
     KofunCompleteness completeness;
+    qsort(
+        producer->nodes,
+        producer->node_count,
+        sizeof(producer->nodes[0]),
+        producer_node_order
+    );
+    for (index = 0u; index < producer->node_count; index += 1u) {
+        if (producer->nodes[index].value.dependency_count != 0u) {
+            producer->nodes[index].value.dependencies =
+                &producer->nodes[index].dependency;
+        }
+        if (producer->nodes[index].value.diagnostic_count != 0u) {
+            producer->nodes[index].value.diagnostic_ids =
+                &producer->nodes[index].diagnostic;
+        }
+    }
     if (!kofun_semantic_begin(sink, &producer->source_record)) {
-        result->tooling_emission_failed = true;
+        producer_set_tooling_error(
+            result, "ETS03", record_index, PRODUCER_EVENT_SOURCE,
+            "semantic sink rejected source"
+        );
         return false;
     }
+    record_index += 1u;
     for (index = 0u; index < producer->node_count; index += 1u) {
         if (!kofun_semantic_node(sink, &producer->nodes[index].value)) {
-            result->tooling_emission_failed = true;
+            producer_set_tooling_error(
+                result, "ETS03", record_index, PRODUCER_EVENT_NODE,
+                "semantic sink rejected node"
+            );
             return false;
         }
+        record_index += 1u;
     }
-    for (index = 0u; index < producer->identity_count; index += 1u) {
+    for (emitted = 0u;
+         emitted < producer->identity_count;
+         emitted += 1u) {
+        size_t best = SIZE_MAX;
+        for (index = 0u; index < producer->identity_count; index += 1u) {
+            if (!identity_emitted[index] &&
+                (best == SIZE_MAX ||
+                 producer_identity_before(producer, index, best))) {
+                best = index;
+            }
+        }
+        if (best == SIZE_MAX) {
+            producer_set_tooling_error(
+                result, "ETS04", record_index, PRODUCER_EVENT_IDENTITY,
+                "semantic producer identity ordering failed"
+            );
+            return false;
+        }
+        identity_emitted[best] = true;
         if (!kofun_semantic_identity(
                 sink,
-                &producer->identities[index].value)) {
-            result->tooling_emission_failed = true;
+                &producer->identities[best].value)) {
+            producer_set_tooling_error(
+                result, "ETS03", record_index, PRODUCER_EVENT_IDENTITY,
+                "semantic sink rejected identity"
+            );
             return false;
         }
+        record_index += 1u;
     }
-    for (index = 0u; index < producer->reference_count; index += 1u) {
+    for (emitted = 0u;
+         emitted < producer->reference_count;
+         emitted += 1u) {
+        size_t best = SIZE_MAX;
+        for (index = 0u; index < producer->reference_count; index += 1u) {
+            if (!reference_emitted[index] &&
+                (best == SIZE_MAX ||
+                 producer_reference_before(producer, index, best))) {
+                best = index;
+            }
+        }
+        if (best == SIZE_MAX) {
+            producer_set_tooling_error(
+                result, "ETS04", record_index, PRODUCER_EVENT_REFERENCE,
+                "semantic producer reference ordering failed"
+            );
+            return false;
+        }
+        reference_emitted[best] = true;
         if (!kofun_semantic_reference(
                 sink,
-                &producer->references[index].value)) {
-            result->tooling_emission_failed = true;
+                &producer->references[best].value)) {
+            producer_set_tooling_error(
+                result, "ETS03", record_index, PRODUCER_EVENT_REFERENCE,
+                "semantic sink rejected reference"
+            );
             return false;
         }
+        record_index += 1u;
     }
     for (fact_kind = KOFUN_SEMANTIC_FACT_TYPE;
          fact_kind <= KOFUN_SEMANTIC_FACT_ORIGIN;
          fact_kind += 1u) {
+        size_t kind_count = 0u;
         for (index = 0u; index < producer->fact_count; index += 1u) {
-            if ((unsigned)producer->facts[index].value.kind != fact_kind) {
-                continue;
+            if ((unsigned)producer->facts[index].value.kind == fact_kind) {
+                kind_count += 1u;
             }
-            if (!kofun_semantic_fact(sink, &producer->facts[index].value)) {
-                result->tooling_emission_failed = true;
+        }
+        for (emitted = 0u; emitted < kind_count; emitted += 1u) {
+            size_t best = SIZE_MAX;
+            for (index = 0u; index < producer->fact_count; index += 1u) {
+                if (!fact_emitted[index] &&
+                    (unsigned)producer->facts[index].value.kind ==
+                        fact_kind &&
+                    (best == SIZE_MAX ||
+                     producer_fact_before(producer, index, best))) {
+                    best = index;
+                }
+            }
+            if (best == SIZE_MAX) {
+                producer_set_tooling_error(
+                    result, "ETS04", record_index, PRODUCER_EVENT_FACT,
+                    "semantic producer fact ordering failed"
+                );
                 return false;
             }
+            fact_emitted[best] = true;
+            if (!kofun_semantic_fact(sink, &producer->facts[best].value)) {
+                producer_set_tooling_error(
+                    result, "ETS03", record_index, PRODUCER_EVENT_FACT,
+                    "semantic sink rejected fact"
+                );
+                return false;
+            }
+            record_index += 1u;
         }
     }
-    for (index = 0u; index < producer->diagnostic_count; index += 1u) {
-        if (!kofun_semantic_diagnostic(
-                sink,
-                &producer->diagnostics[index].value)) {
-            result->tooling_emission_failed = true;
+    for (emitted = 0u;
+         emitted < producer->diagnostic_count;
+         emitted += 1u) {
+        size_t best = SIZE_MAX;
+        for (index = 0u; index < producer->diagnostic_count; index += 1u) {
+            if (!diagnostic_emitted[index] &&
+                (best == SIZE_MAX ||
+                 producer_diagnostic_before(producer, index, best))) {
+                best = index;
+            }
+        }
+        if (best == SIZE_MAX) {
+            producer_set_tooling_error(
+                result, "ETS04", record_index, PRODUCER_EVENT_DIAGNOSTIC,
+                "semantic producer diagnostic ordering failed"
+            );
             return false;
         }
+        diagnostic_emitted[best] = true;
+        if (!kofun_semantic_diagnostic(
+                sink,
+                &producer->diagnostics[best].value)) {
+            producer_set_tooling_error(
+                result, "ETS03", record_index, PRODUCER_EVENT_DIAGNOSTIC,
+                "semantic sink rejected diagnostic"
+            );
+            return false;
+        }
+        record_index += 1u;
     }
     if (cancellation_observed_after_commit && !producer->language_failed) {
         kofun_semantic_cancellation_observed(sink);
@@ -1927,7 +2548,10 @@ static bool producer_emit(
         completeness = KOFUN_SEMANTIC_COMPLETE;
     }
     if (!kofun_semantic_end(sink, source_status, completeness)) {
-        result->tooling_emission_failed = true;
+        producer_set_tooling_error(
+            result, "ETS03", record_index, PRODUCER_EVENT_END,
+            "semantic sink rejected end"
+        );
         return false;
     }
     result->source_status = source_status;
@@ -1942,109 +2566,201 @@ bool kofun_stage2_produce_semantic_events(
     KofunStage2SemanticResult *result
 ) {
     Producer producer;
+    Stage2AuthorityContext authority_context;
+    Stage2AuthorityResult authority;
     char *owned_source;
-    char *tokens;
-    char *program;
-    char *scope_hir;
-    char *ownership;
-    bool parsed;
     if (result == NULL) return false;
     memset(result, 0, sizeof(*result));
     result->source_status = KOFUN_SOURCE_FAILED;
     result->completeness = KOFUN_SEMANTIC_PARTIAL;
     if (input == NULL || sink == NULL ||
         input->source == NULL ||
-        input->source_length > SIZE_MAX - 1u) {
-        result->tooling_emission_failed = true;
+        input->source_length > UINT32_MAX ||
+        input->source_length > KOFUN_SEMANTIC_MAX_EVENT_BYTES ||
+        input->source_length > SIZE_MAX - 1u ||
+        input->logical_path.bytes == NULL ||
+        input->logical_path.length == 0u ||
+        input->logical_path.length > KOFUN_SEMANTIC_MAX_TEXT_BYTES ||
+        !kofun_semantic_validate_logical_path(input->logical_path) ||
+        (input->authority != KOFUN_STAGE2_SEMANTIC_COMPILE &&
+         input->authority != KOFUN_STAGE2_SEMANTIC_OWNERSHIP)) {
+        producer_set_tooling_error(
+            result, "ETS04", 0u, PRODUCER_EVENT_NONE,
+            "semantic producer input is invalid"
+        );
         return false;
     }
     if (memchr(input->source, 0, input->source_length) != NULL) {
+        producer_set_tooling_error(
+            result, "ETS04", 0u, PRODUCER_EVENT_NONE,
+            "semantic producer source encoding is invalid"
+        );
         return false;
     }
     owned_source = (char *)malloc(input->source_length + 1u);
     if (owned_source == NULL) {
-        result->tooling_emission_failed = true;
+        producer_set_tooling_error(
+            result, "ETS04", 0u, PRODUCER_EVENT_NONE,
+            "semantic producer source allocation failed"
+        );
         return false;
     }
     memcpy(owned_source, input->source, input->source_length);
     owned_source[input->source_length] = '\0';
+    if (!(input->authority == KOFUN_STAGE2_SEMANTIC_OWNERSHIP ?
+          stage2_ownership_outcome(
+              owned_source,
+              &authority_context,
+              &authority
+          ) :
+          stage2_compile_outcome(
+              owned_source,
+              &authority_context,
+              &authority
+          ))) {
+        free(owned_source);
+        producer_set_tooling_error(
+            result, "ETS04", 0u, PRODUCER_EVENT_NONE,
+            "semantic compiler authority failed"
+        );
+        return false;
+    }
+    result->compiler_exit_class = authority.exit_class;
+    result->token_span_committed = authority.token_span_committed;
+    if (authority.diagnostic != NULL) {
+        if (!producer_copy_authority_diagnostic(
+                &authority_context,
+                input->source_length,
+                result)) {
+            stage2_authority_result_destroy(&authority);
+            free(owned_source);
+            producer_set_tooling_error(
+                result, "ETS04", 0u, PRODUCER_EVENT_NONE,
+                "semantic diagnostic capture failed"
+            );
+            return false;
+        }
+    }
+    if (!authority.token_span_committed) {
+        stage2_authority_result_destroy(&authority);
+        free(owned_source);
+        return false;
+    }
+
     memset(&producer, 0, sizeof(producer));
     producer.input = input;
     producer.source = owned_source;
-
-    tokens = lex_source(owned_source);
-    if (strncmp(tokens, "kofun-token-tape/v1\n", 20u) != 0) {
-        free(tokens);
-        free(owned_source);
-        return false;
-    }
-    result->token_span_committed = true;
-    free(tokens);
+    producer.scope_hir = authority.scope_hir;
+    producer.semantic_observations = authority.semantic_observations;
+    producer.compiler_exit_class = authority.exit_class;
+    producer.reference_limit = result->diagnostic_has_byte_span ?
+        result->diagnostic_span.start :
+        (uint32_t)input->source_length;
     if (!producer_prepare_source(&producer)) {
+        stage2_authority_result_destroy(&authority);
         free(owned_source);
-        result->tooling_emission_failed = true;
+        producer_set_tooling_error(
+            result, "ETS04", 0u, PRODUCER_EVENT_NONE,
+            "semantic source identity preparation failed"
+        );
         return false;
     }
-    program = parse_program(owned_source);
-    parsed = strncmp(
-        program,
-        "kofun-stage2-ir/v1\n",
-        strlen("kofun-stage2-ir/v1\n")
-    ) == 0;
-    free(program);
-    if (!parsed) {
-        if (!producer_add_parser_failure(&producer)) {
-            free(owned_source);
-            result->tooling_emission_failed = true;
-            return false;
-        }
-    } else {
-        scope_hir = build_scope_hir_mode(owned_source, true);
-        if (strncmp(
-                scope_hir,
-                "kofun-scope-hir/v1\n",
-                strlen("kofun-scope-hir/v1\n")) != 0) {
-            free(scope_hir);
-            if (!producer_add_parser_failure(&producer)) {
-                free(owned_source);
-                result->tooling_emission_failed = true;
-                return false;
-            }
-        } else {
-            producer.scope_hir = scope_hir;
-            if (!producer_collect_types(&producer) ||
-                !producer_collect_functions(&producer) ||
-                !producer_collect_parameters_and_bindings(&producer) ||
-                !producer_collect_references(&producer)) {
-                free(scope_hir);
-                free(owned_source);
-                result->tooling_emission_failed = true;
-                return false;
-            }
-            free(scope_hir);
-            producer.scope_hir = NULL;
-            ownership = borrowed_collection_check(owned_source);
-            free(ownership);
-            if (!producer_apply_ownership(&producer)) {
-                free(owned_source);
-                result->tooling_emission_failed = true;
-                return false;
-            }
-        }
+
+    if (authority.parse_committed &&
+        (!producer_collect_types(&producer, authority.program_ir) ||
+         !producer_collect_functions(&producer, authority.program_ir))) {
+        stage2_authority_result_destroy(&authority);
+        free(owned_source);
+        producer_set_tooling_error(
+            result, "ETS04", 0u, PRODUCER_EVENT_NONE,
+            "semantic declaration projection failed"
+        );
+        return false;
+    }
+    if (authority.scope_committed &&
+        (!producer_collect_scopes_and_bindings(&producer) ||
+         !producer_finalize_function_types(&producer) ||
+         !producer_collect_references(&producer) ||
+         !producer_finalize_control_dependencies(&producer))) {
+        stage2_authority_result_destroy(&authority);
+        free(owned_source);
+        producer_set_tooling_error(
+            result, "ETS04", 0u, PRODUCER_EVENT_NONE,
+            "semantic HIR projection failed"
+        );
+        return false;
+    }
+    if (authority.diagnostic != NULL &&
+        !producer_add_failed_reference_prefix(&producer, result)) {
+        stage2_authority_result_destroy(&authority);
+        free(owned_source);
+        producer_set_tooling_error(
+            result, "ETS04", 0u, PRODUCER_EVENT_NONE,
+            "semantic failed-reference projection failed"
+        );
+        return false;
+    }
+    if (authority.diagnostic != NULL &&
+        !producer_add_authority_diagnostic(
+            &producer,
+            result,
+            &authority_context
+        )) {
+        stage2_authority_result_destroy(&authority);
+        free(owned_source);
+        producer_set_tooling_error(
+            result, "ETS04", 0u, PRODUCER_EVENT_NONE,
+            "semantic diagnostic projection failed"
+        );
+        return false;
+    }
+    if (authority.exit_class != 0u && authority.diagnostic == NULL) {
+        stage2_authority_result_destroy(&authority);
+        free(owned_source);
+        producer_set_tooling_error(
+            result, "ETS04", 0u, PRODUCER_EVENT_NONE,
+            "compiler failure has no source diagnostic"
+        );
+        return false;
+    }
+    if (authority.exit_class == 0u && authority.diagnostic != NULL) {
+        stage2_authority_result_destroy(&authority);
+        free(owned_source);
+        producer_set_tooling_error(
+            result, "ETS04", 0u, PRODUCER_EVENT_NONE,
+            "successful compiler result has a source diagnostic"
+        );
+        return false;
+    }
+    if (!producer_add_origin_facts(&producer)) {
+        stage2_authority_result_destroy(&authority);
+        free(owned_source);
+        producer_set_tooling_error(
+            result, "ETS04", 0u, PRODUCER_EVENT_NONE,
+            "semantic origin projection failed"
+        );
+        return false;
     }
     if (producer.resource_failed) {
+        stage2_authority_result_destroy(&authority);
         free(owned_source);
-        result->tooling_emission_failed = true;
+        producer_set_tooling_error(
+            result, "ETS04", 0u, PRODUCER_EVENT_NONE,
+            "semantic producer resource limit exceeded"
+        );
         return false;
     }
     if (!producer_emit(
             &producer,
             sink,
-            cancellation_observed_after_commit,
+            cancellation_observed_after_commit &&
+                authority.exit_class == 0u,
             result)) {
+        stage2_authority_result_destroy(&authority);
         free(owned_source);
         return false;
     }
+    stage2_authority_result_destroy(&authority);
     free(owned_source);
     return true;
 }
@@ -2085,6 +2801,7 @@ static uint8_t *producer_read_file(const char *path, size_t *length) {
 
 int main(int argc, char **argv) {
     bool cancel = false;
+    bool ownership_only = false;
     int offset = 1;
     uint8_t *source;
     size_t source_length;
@@ -2099,10 +2816,14 @@ int main(int argc, char **argv) {
     if (argc == 6 && strcmp(argv[1], "--cancel-after-commit") == 0) {
         cancel = true;
         offset = 2;
+    } else if (argc == 6 && strcmp(argv[1], "--check-ownership") == 0) {
+        ownership_only = true;
+        offset = 2;
     } else if (argc != 5) {
         fputs(
             "usage: kofun-stage2-semantic-events "
-            "[--cancel-after-commit] INPUT LOGICAL-PATH OUTPUT GENERATION\n",
+            "[--cancel-after-commit|--check-ownership] "
+            "INPUT LOGICAL-PATH OUTPUT GENERATION\n",
             stderr
         );
         return 2;
@@ -2124,6 +2845,9 @@ int main(int argc, char **argv) {
     input.source_length = source_length;
     input.logical_path = producer_text(argv[offset + 1]);
     input.caller_generation = (uint64_t)generation;
+    input.authority = ownership_only ?
+        KOFUN_STAGE2_SEMANTIC_OWNERSHIP :
+        KOFUN_STAGE2_SEMANTIC_COMPILE;
     stream = kofun_semantic_stream_create();
     if (stream == NULL) {
         free(source);
@@ -2135,9 +2859,14 @@ int main(int argc, char **argv) {
             &sink,
             cancel,
             &result)) {
+        if (result.has_source_diagnostic) {
+            puts(result.diagnostic_fallback);
+        }
         free(source);
         kofun_semantic_stream_destroy(stream);
-        return result.tooling_emission_failed ? 3 : 1;
+        if (result.tooling_emission_failed) return 3;
+        return result.compiler_exit_class == 0u ?
+            1 : (int)result.compiler_exit_class;
     }
     if (!kofun_semantic_stream_bytes(stream, &event_bytes, &event_length) ||
         event_length == 0u ||
@@ -2146,8 +2875,12 @@ int main(int argc, char **argv) {
         kofun_semantic_stream_destroy(stream);
         return 3;
     }
+    if (result.has_source_diagnostic) {
+        puts(result.diagnostic_fallback);
+    }
     free(source);
     kofun_semantic_stream_destroy(stream);
-    return result.source_status == KOFUN_SOURCE_CHECKED ? 0 : 1;
+    if (result.source_status == KOFUN_SOURCE_CANCELLED) return 1;
+    return (int)result.compiler_exit_class;
 }
 #endif
