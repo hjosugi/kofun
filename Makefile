@@ -237,7 +237,23 @@ repository-check:
 	@grep -q '"extensions": \[".kofun"\]' editor/vscode/package.json
 	@printf '%s\n' 'PASS: .kofun sources only; no Python implementation'
 
-verify: test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 stage2-events patterns adt generics adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp tree-sitter roadmap syntax repository-check
+VERIFY_TARGETS = test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 stage2-events patterns adt generics adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec tree-sitter syntax repository-check
+
+# Every gate above is independent, so `verify` runs them concurrently rather
+# than asking the caller to remember a `-j`. Override with `make VERIFY_JOBS=1
+# verify` to bisect a failure without interleaved output.
+VERIFY_JOBS ?= $(shell nproc 2>/dev/null || echo 4)
+
+verify:
+	@$(MAKE) -j$(VERIFY_JOBS) $(VERIFY_TARGETS)
+# `tests/lsp/performance_test.js` makes five measurements that a busy machine
+# perturbs: four latency percentiles (diagnostic p95/max, definition p95, hover
+# p95) and the resident-set growth ratio. Run alone under `make -j8` they hold;
+# run beside seven other gates the diagnostic p95 reaches 108ms against a 100ms
+# budget. So they go last and by themselves, and the budgets stay as written.
+# `roadmap` is here for the same reason, not for its own sake:
+# spec/roadmap-31-34/verify-current-gates.sh calls tests/lsp/check.sh.
+	@$(MAKE) lsp roadmap
 	@sh -n bin/kofun bootstrap/stage1/check.sh bootstrap/stage2/check.sh \
 	  bootstrap/selfhost/check-profile.sh \
 	  bootstrap/selfhost/frontend/check-frontend.sh \
