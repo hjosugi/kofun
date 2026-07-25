@@ -1,0 +1,11 @@
+# An annotation is optional, but a written one is still checked: the
+# initializer here is Text and the annotation says Int.
+
+fn helper(kind: Text) -> Text {
+    return kind
+}
+
+fn main() {
+    let label: Int = helper("fn")
+    print(label)
+}

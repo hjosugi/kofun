@@ -1,0 +1,12 @@
+# Unlike the two quotient operators, INT64_MIN % -1 is representable and is
+# exactly zero.
+
+fn apply(a: Int, b: Int) -> Int {
+    return a % b
+}
+
+fn main() {
+    let minimum = -32768 * 32768 * 32768 * 32768 * 8
+    let negative_one = 0 - 1
+    print(apply(minimum, negative_one))
+}

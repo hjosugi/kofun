@@ -1,5 +1,13 @@
-# Division is outside the deliberately bounded direct Native Core.
+# Both native front ends are bounded, and neither one's bound covers this.
+#
+# The single-`main` aggregate Core lowers List[Int] but accepts exactly one
+# `print`. The function profile accepts several `print` statements but has no
+# List at all. A program that needs both is outside the direct Native Core, and
+# must be refused with a diagnostic rather than lowered by whichever front end
+# happens to run last.
 
 fn main() {
-    print(84 / 2)
+    let counts = [1, 2, 3]
+    print(len(counts))
+    print(counts[0])
 }

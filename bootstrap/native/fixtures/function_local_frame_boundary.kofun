@@ -1,0 +1,36 @@
+# Six parameters plus 26 locals exercise slot 31, whose AArch64 offset is the
+# signed-imm9 boundary -256.
+
+fn boundary(a: Int, b: Int, c: Int, d: Int, e: Int, f: Int) -> Int {
+    let local_00 = a
+    let local_01 = b
+    let local_02 = c
+    let local_03 = d
+    let local_04 = e
+    let local_05 = f
+    let local_06 = a
+    let local_07 = b
+    let local_08 = c
+    let local_09 = d
+    let local_10 = e
+    let local_11 = f
+    let local_12 = a
+    let local_13 = b
+    let local_14 = c
+    let local_15 = d
+    let local_16 = e
+    let local_17 = f
+    let local_18 = a
+    let local_19 = b
+    let local_20 = c
+    let local_21 = d
+    let local_22 = e
+    let local_23 = f
+    let local_24 = a
+    let local_25 = f
+    return local_25
+}
+
+fn main() {
+    print(boundary(1, 2, 3, 4, 5, 6))
+}

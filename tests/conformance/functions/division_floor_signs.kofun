@@ -1,0 +1,36 @@
+# expect-stdout: 3
+# expect-stdout: -4
+# expect-stdout: -4
+# expect-stdout: 3
+# expect-stdout: 1
+# expect-stdout: 1
+# expect-stdout: -1
+# expect-stdout: -1
+# expect-stdout: 0
+# expect-stdout: 5
+# expect-stdout: -13
+# expect-stdout: -9
+fn quotient(a: Int, b: Int) -> Int {
+    return a // b
+}
+
+fn remainder(a: Int, b: Int) -> Int {
+    return a % b
+}
+
+fn main() {
+    print(quotient(7, 2))
+    print(quotient(-7, 2))
+    print(quotient(7, -2))
+    print(quotient(-7, -2))
+
+    print(remainder(7, 2))
+    print(remainder(-7, 2))
+    print(remainder(7, -2))
+    print(remainder(-7, -2))
+
+    print(remainder(9, -1))
+    print(quotient(40, 8))
+    print(quotient(-25, 2))
+    print(quotient(9, -1))
+}

@@ -1,0 +1,12 @@
+# INT64_MIN is constructed from accepted small literals. The divisor is also
+# computed, so the quotient guard has to inspect runtime values.
+
+fn apply(a: Int, b: Int) -> Int {
+    return a // b
+}
+
+fn main() {
+    let minimum = -32768 * 32768 * 32768 * 32768 * 8
+    let negative_one = 0 - 1
+    print(apply(minimum, negative_one))
+}

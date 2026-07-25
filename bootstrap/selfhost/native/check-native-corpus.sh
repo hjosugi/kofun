@@ -69,83 +69,137 @@ cmp bootstrap/selfhost/driver/S.c "$WORK/S.c" ||
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
     -I unicode "$WORK/S.c" -o "$WORK/kofun-a1"
 
-cp "$CORE" "$WORK/core.kofun"
-(cd "$WORK" && ./kofun-a1 core.kofun a1.c >/dev/null)
-"$CC" -std=c11 -O2 -Wall -Wextra -Werror "$WORK/a1.c" -o "$WORK/a1-core"
-"$WORK/a1-core" >"$WORK/a1.stdout"
-cmp "$GOLDEN" "$WORK/a1.stdout" ||
-    fail "self-host C11 path output differs from the pinned golden"
+# Two programs go through both paths. The frozen single expression is the
+# original evidence and stays exactly as it was. The self-host driver's success
+# corpus is the program A1 already compiles on the C11 path, and it is the one
+# that makes the claim worth something: five prints, two inferred Int locals,
+# floor division, floor modulo, and truncating division.
+CASES="core answer"
+case_source() {
+    case $1 in
+        core) printf '%s\n' "$CORE" ;;
+        answer) printf '%s\n' "$ROOT/bootstrap/selfhost/driver/corpus_answer.kofun" ;;
+    esac
+}
+case_golden() {
+    case $1 in
+        core) printf '%s\n' "$GOLDEN" ;;
+        answer) printf '%s\n' "$ROOT/bootstrap/selfhost/driver/corpus_answer.stdout" ;;
+    esac
+}
+
+for case_name in $CASES; do
+    source=$(case_source "$case_name")
+    golden=$(case_golden "$case_name")
+    cp "$source" "$WORK/$case_name.kofun"
+    (cd "$WORK" && ./kofun-a1 "$case_name.kofun" "$case_name.a1.c" >/dev/null)
+    test -s "$WORK/$case_name.a1.c" ||
+        fail "$case_name: A1 emitted no C11"
+    "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+        "$WORK/$case_name.a1.c" -o "$WORK/$case_name.a1"
+    "$WORK/$case_name.a1" >"$WORK/$case_name.a1.stdout"
+    cmp "$golden" "$WORK/$case_name.a1.stdout" ||
+        fail "$case_name: self-host C11 path output differs from the golden"
+done
 
 # Path 2: the direct-native backend emits a deterministic static ELF per target.
-for target in x86_64-linux aarch64-linux; do
-    case $target in
-        x86_64-linux)
-            stem=core-x86_64
-            machine='Advanced Micro Devices X86-64'
-            ;;
-        aarch64-linux)
-            stem=core-aarch64
-            machine='AArch64'
-            ;;
-    esac
-    "$KOFUN" build "$CORE" --target "$target" -o "$WORK/$stem.elf" >/dev/null
-    "$KOFUN" build "$CORE" --target "$target" -o "$WORK/$stem.second.elf" >/dev/null
-    cmp "$WORK/$stem.elf" "$WORK/$stem.second.elf" ||
-        fail "$target native image is not deterministic"
-    test -s "$WORK/$stem.elf" || fail "$target native image is empty"
-    readelf -h "$WORK/$stem.elf" >"$WORK/$stem.header.txt"
-    grep -Eq 'Class:[[:space:]]+ELF64' "$WORK/$stem.header.txt" ||
-        fail "$target native image is not ELF64"
-    grep -Eq "Machine:[[:space:]]+$machine" "$WORK/$stem.header.txt" ||
-        fail "$target native image reports the wrong machine"
+for case_name in $CASES; do
+    source=$(case_source "$case_name")
+    for target in x86_64-linux aarch64-linux; do
+        case $target in
+            x86_64-linux)
+                stem="$case_name-x86_64"
+                machine='Advanced Micro Devices X86-64'
+                ;;
+            aarch64-linux)
+                stem="$case_name-aarch64"
+                machine='AArch64'
+                ;;
+        esac
+        "$KOFUN" build "$source" --target "$target" \
+            -o "$WORK/$stem.elf" >/dev/null
+        "$KOFUN" build "$source" --target "$target" \
+            -o "$WORK/$stem.second.elf" >/dev/null
+        cmp "$WORK/$stem.elf" "$WORK/$stem.second.elf" ||
+            fail "$stem native image is not deterministic"
+        test -s "$WORK/$stem.elf" || fail "$stem native image is empty"
+        readelf -h "$WORK/$stem.elf" >"$WORK/$stem.header.txt"
+        grep -Eq 'Class:[[:space:]]+ELF64' "$WORK/$stem.header.txt" ||
+            fail "$stem native image is not ELF64"
+        grep -Eq "Machine:[[:space:]]+$machine" "$WORK/$stem.header.txt" ||
+            fail "$stem native image reports the wrong machine"
+        readelf -l "$WORK/$stem.elf" >"$WORK/$stem.program-headers.txt"
+        ! grep -Eq 'INTERP|DYNAMIC' "$WORK/$stem.program-headers.txt" ||
+            fail "$stem native image is not statically linked"
+    done
 done
 
 # Path independence: the same relative source from two directories emits
-# byte-identical images, so no absolute build path leaks into the artifact.
-mkdir -p "$WORK/remap-a/nested" "$WORK/remap-b"
-cp "$CORE" "$WORK/remap-a/nested/core.kofun"
-cp "$CORE" "$WORK/remap-b/core.kofun"
-(cd "$WORK/remap-a/nested" &&
-    "$KOFUN" build core.kofun --target x86_64-linux -o out >/dev/null)
-(cd "$WORK/remap-b" &&
-    "$KOFUN" build core.kofun --target x86_64-linux -o out >/dev/null)
-cmp "$WORK/remap-a/nested/out" "$WORK/remap-b/out" ||
-    fail "native image depends on the build directory"
+# byte-identical images on each target, so no absolute build path leaks into
+# either artifact.
+for case_name in $CASES; do
+    source=$(case_source "$case_name")
+    mkdir -p "$WORK/remap-$case_name-a/nested" "$WORK/remap-$case_name-b"
+    cp "$source" "$WORK/remap-$case_name-a/nested/input.kofun"
+    cp "$source" "$WORK/remap-$case_name-b/input.kofun"
+    for target in x86_64-linux aarch64-linux; do
+        (cd "$WORK/remap-$case_name-a/nested" &&
+            "$KOFUN" build input.kofun --target "$target" \
+                -o "out-$target" >/dev/null)
+        (cd "$WORK/remap-$case_name-b" &&
+            "$KOFUN" build input.kofun --target "$target" \
+                -o "out-$target" >/dev/null)
+        cmp \
+            "$WORK/remap-$case_name-a/nested/out-$target" \
+            "$WORK/remap-$case_name-b/out-$target" ||
+            fail "$case_name $target image depends on the build directory"
+    done
+done
 
 # Differential: both independent native binaries print the same pinned golden.
-"$WORK/core-x86_64.elf" >"$WORK/native-x86_64.stdout"
-cmp "$GOLDEN" "$WORK/native-x86_64.stdout" ||
-    fail "direct-native x86-64 output differs from the pinned golden"
-cmp "$WORK/a1.stdout" "$WORK/native-x86_64.stdout" ||
-    fail "the self-host C11 and direct-native backends disagree on Core behavior"
+for case_name in $CASES; do
+    golden=$(case_golden "$case_name")
+    "$WORK/$case_name-x86_64.elf" >"$WORK/$case_name.native-x86_64.stdout"
+    cmp "$golden" "$WORK/$case_name.native-x86_64.stdout" ||
+        fail "$case_name: direct-native x86-64 output differs from the golden"
+    cmp "$WORK/$case_name.a1.stdout" \
+        "$WORK/$case_name.native-x86_64.stdout" ||
+        fail "$case_name: the self-host C11 and direct-native backends disagree"
+done
 
 if test -n "$AARCH64_RUNNER"; then
-    "$AARCH64_RUNNER" "$WORK/core-aarch64.elf" >"$WORK/native-aarch64.stdout"
-    cmp "$GOLDEN" "$WORK/native-aarch64.stdout" ||
-        fail "direct-native AArch64 output differs under $AARCH64_RUNNER"
+    for case_name in $CASES; do
+        golden=$(case_golden "$case_name")
+        "$AARCH64_RUNNER" "$WORK/$case_name-aarch64.elf" \
+            >"$WORK/$case_name.native-aarch64.stdout"
+        cmp "$golden" "$WORK/$case_name.native-aarch64.stdout" ||
+            fail "$case_name: direct-native AArch64 output differs under $AARCH64_RUNNER"
+    done
     printf '%s\n' "PASS: AArch64 native parity under $AARCH64_RUNNER"
 else
     printf '%s\n' \
         "SKIP: AArch64 execution (no qemu-aarch64 runner); ELF64 machine verified"
 fi
 
-# Negative: the single-expression native Core is a bounded subset. It refuses
-# the full 5-print self-host success corpus with a stable diagnostic and writes
-# no image, while the C11 self-host path above accepts that same corpus.
+# Negative: the native Core is still bounded, and the boundary is still
+# enforced rather than assumed. This program needs List[Int], which only the
+# single-`main` front end lowers, together with several `print` statements,
+# which only the function profile accepts. Neither can take it, so it is
+# refused with a stable diagnostic and writes no image.
 set +e
-"$KOFUN" build bootstrap/selfhost/driver/corpus_answer.kofun \
+"$KOFUN" build bootstrap/native/fixtures/unsupported_native_core.kofun \
     --target x86_64-linux -o "$WORK/refused.elf" \
     >"$WORK/refused.stdout" 2>"$WORK/refused.stderr"
 refuse_status=$?
 set -e
 test "$refuse_status" -eq 1 ||
-    fail "native backend must refuse the out-of-Core corpus with exit 1"
+    fail "native backend must refuse the out-of-Core program with exit 1"
 test ! -e "$WORK/refused.elf" ||
     fail "a refused native build must not write an image"
 grep -q 'unsupported Core' "$WORK/refused.stderr" ||
     fail "native refusal is missing its bounded diagnostic"
 
 printf '%s\n' \
-    "PASS: the frozen self-host Core lowers to identical native output via A1/C11 and direct-native x86-64" \
-    "PASS: direct-native x86-64/AArch64 images are ELF64, deterministic, and path-independent" \
-    "PASS: the single-expression native Core refuses the out-of-Core corpus and writes nothing"
+    "PASS: the frozen Core and the self-host success corpus both lower to identical native output via A1/C11 and direct-native x86-64" \
+    "PASS: direct-native x86-64/AArch64 images are static ELF64, deterministic, and path-independent" \
+    "PASS: the native Core still refuses a program outside both front ends and writes nothing"

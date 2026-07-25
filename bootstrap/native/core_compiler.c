@@ -256,6 +256,12 @@ enum {
     MAX_CORE_FUNCTIONS = 64,
     MAX_CORE_PARAMETERS = 6,
     MAX_CORE_STATEMENTS = 64,
+    /*
+     * AArch64 frame slots use signed unscaled 9-bit offsets, so slots 0..31
+     * cover offsets -8..-256. Keep the accepted program target-independent by
+     * rejecting a 33rd parameter/local before either backend is selected.
+     */
+    MAX_FUNCTION_FRAME_SLOTS = 32,
 };
 
 typedef enum {
@@ -273,6 +279,9 @@ typedef enum {
     FUNCTION_TEXT_CONCAT,
     FUNCTION_SUBTRACT,
     FUNCTION_MULTIPLY,
+    FUNCTION_DIVIDE,
+    FUNCTION_FLOOR_DIVIDE,
+    FUNCTION_FLOOR_MODULO,
     FUNCTION_NEGATE,
     FUNCTION_EQUAL,
     FUNCTION_NOT_EQUAL,
@@ -2304,27 +2313,52 @@ static FunctionExpression *function_parse_unary(FunctionParser *parser) {
     return function_parse_atom(parser);
 }
 
+/*
+ * `*`, `//`, `/`, and `%` share one precedence level, in that order of
+ * matching: `//` has to be tried before `/` or it lexes as a division followed
+ * by a unary parse failure. Comments are `#` to end of line in both front ends,
+ * so `//` collides with nothing.
+ */
 static FunctionExpression *function_parse_product(FunctionParser *parser) {
     FunctionExpression *left = function_parse_unary(parser);
     while (parser->error[0] == '\0') {
         function_skip_trivia(parser);
-        if (parser->cursor >= parser->limit ||
-            parser->source[parser->cursor] != '*') {
-            break;
+        if (parser->cursor >= parser->limit) break;
+        char head = parser->source[parser->cursor];
+        if (head != '*' && head != '/' && head != '%') break;
+        FunctionExpressionKind kind;
+        const char *name;
+        size_t operator_at = parser->cursor;
+        size_t width = 1;
+        if (head == '*') {
+            kind = FUNCTION_MULTIPLY;
+            name = "*";
+        } else if (head == '%') {
+            kind = FUNCTION_FLOOR_MODULO;
+            name = "%";
+        } else if (parser->cursor + 1 < parser->limit &&
+                   parser->source[parser->cursor + 1] == '/') {
+            kind = FUNCTION_FLOOR_DIVIDE;
+            name = "//";
+            width = 2;
+        } else {
+            kind = FUNCTION_DIVIDE;
+            name = "/";
         }
-        size_t operator_at = parser->cursor++;
+        parser->cursor += width;
         FunctionExpression *right = function_parse_unary(parser);
         if (left == NULL || right == NULL) return left;
         if (left->value_kind != FUNCTION_VALUE_INT ||
             right->value_kind != FUNCTION_VALUE_INT) {
             function_error(
                 parser,
-                "native Core `*` requires Int operands"
+                "native Core `%s` requires Int operands",
+                name
             );
             return left;
         }
         left = function_expression(
-            FUNCTION_MULTIPLY,
+            kind,
             FUNCTION_VALUE_INT,
             source_line(parser->source, operator_at),
             left,
@@ -2542,18 +2576,25 @@ static bool function_bodies(
                         &parser,
                         "native Core mutable function locals are unsupported"
                     );
-                } else if (function->local_count >= 1) {
+                } else if (function->local_count >= MAX_CORE_STATEMENTS ||
+                           function->parameter_count +
+                                   function->local_count + 1 >
+                               MAX_FUNCTION_FRAME_SLOTS) {
                     function_error(
                         &parser,
-                        "native Core Text bridge supports one local per function"
+                        "native Core function has too many locals"
                     );
                 } else {
                     char name[MAX_CORE_NAME];
+                    FunctionValueKind annotation = FUNCTION_VALUE_INT;
+                    bool annotated = false;
+                    bool parsing = true;
                     if (!function_identifier(&parser, name)) {
                         function_error(
                             &parser,
                             "expected native Core local name"
                         );
+                        parsing = false;
                     } else if (function_parameter_find(function, name) !=
                                    SIZE_MAX ||
                                function_local_find(function, name) !=
@@ -2563,52 +2604,70 @@ static bool function_bodies(
                             "duplicate native Core binding `%s`",
                             name
                         );
-                    } else if (!function_consume_char(&parser, ':')) {
-                        function_error(
-                            &parser,
-                            "native Core local requires an explicit type"
-                        );
-                    } else {
-                        FunctionValueKind local_type;
-                        if (!function_parse_type(&parser, &local_type)) {
+                        parsing = false;
+                    }
+                    /*
+                     * The annotation is optional. When it is written the
+                     * initializer must agree with it; when it is not, the
+                     * initializer's own kind is the local's type. Either way
+                     * no binding is introduced whose type nothing decided.
+                     */
+                    if (parsing && function_consume_char(&parser, ':')) {
+                        annotated = true;
+                        if (!function_parse_type(&parser, &annotation)) {
                             if (parser.error[0] == '\0') {
                                 function_error(
                                     &parser,
-                                    "native Core local type must be Text"
+                                    "native Core local type must be Int or Text"
                                 );
                             }
-                        } else if (local_type != FUNCTION_VALUE_TEXT) {
-                            function_error(
-                                &parser,
-                                "native Core function locals must have type Text"
-                            );
-                        } else if (!function_consume_char(&parser, '=')) {
-                            function_error(
-                                &parser,
-                                "expected `=` in native Core local"
-                            );
-                        } else {
-                            statement.value =
-                                function_parse_expression(&parser);
-                            if (statement.value == NULL ||
-                                statement.value->value_kind != local_type) {
+                            parsing = false;
+                        }
+                    }
+                    if (parsing && !function_consume_char(&parser, '=')) {
+                        function_error(
+                            &parser,
+                            "expected `=` in native Core local"
+                        );
+                        parsing = false;
+                    }
+                    if (parsing) {
+                        statement.value =
+                            function_parse_expression(&parser);
+                        if (statement.value == NULL) {
+                            if (parser.error[0] == '\0') {
                                 function_error(
                                     &parser,
-                                    "native Core local `%s` requires Text",
-                                    name
+                                    "expected native Core local value"
                                 );
-                            } else {
-                                size_t local = function->local_count;
-                                memcpy(
-                                    function->locals[local],
-                                    name,
-                                    strlen(name) + 1
-                                );
-                                function->local_types[local] = local_type;
-                                statement.slot =
-                                    function->parameter_count + local;
-                                ++function->local_count;
                             }
+                        } else if (statement.value->value_kind ==
+                                   FUNCTION_VALUE_BOOL) {
+                            function_error(
+                                &parser,
+                                "native Core local `%s` must be Int or Text",
+                                name
+                            );
+                        } else if (annotated &&
+                                   statement.value->value_kind != annotation) {
+                            function_error(
+                                &parser,
+                                "native Core local `%s` is not %s",
+                                name,
+                                function_type_name(annotation)
+                            );
+                        } else {
+                            size_t local = function->local_count;
+                            memcpy(
+                                function->locals[local],
+                                name,
+                                strlen(name) + 1
+                            );
+                            function->local_types[local] =
+                                statement.value->value_kind;
+                            statement.slot =
+                                function->parameter_count + local;
+                            ++function->local_count;
                         }
                     }
                 }
@@ -3043,6 +3102,8 @@ enum {
     X64_TEST_RM_REG = 0x85,
     X64_GROUP3_RM = 0xf7,
     X64_GROUP3_NEG = 3,
+    X64_GROUP3_IDIV = 7,
+    X64_XOR_RM_REG = 0x31,
 };
 
 static void x64_mov_register_operand(
@@ -4684,6 +4745,7 @@ typedef struct {
     Offsets print_int_calls;
     Offsets print_text_calls;
     Offsets overflow_jumps;
+    Offsets divide_zero_jumps;
     X64Runtime runtime;
     A64CoreRuntime a64_runtime;
 } FunctionEmitter;
@@ -4715,6 +4777,7 @@ static void function_emitter_free(FunctionEmitter *emitter) {
     free(emitter->print_int_calls.fields);
     free(emitter->print_text_calls.fields);
     free(emitter->overflow_jumps.fields);
+    free(emitter->divide_zero_jumps.fields);
     x64_runtime_free(&emitter->runtime);
     a64_core_runtime_free(&emitter->a64_runtime);
 }
@@ -4776,6 +4839,18 @@ static void x64_function_overflow_jump(
         UINT8_C(0x0f),
         UINT8_C(0x80),
         &emitter->overflow_jumps
+    );
+}
+
+static void x64_function_divide_zero_jump(
+    Bytes *text,
+    FunctionEmitter *emitter
+) {
+    x64_rel32_placeholder(
+        text,
+        UINT8_C(0x0f),
+        UINT8_C(0x84),
+        &emitter->divide_zero_jumps
     );
 }
 
@@ -5210,6 +5285,118 @@ static bool x64_function_guard_inverse(
     return true;
 }
 
+/*
+ * Integer division on x86-64
+ * --------------------------
+ *
+ * `idiv` divides `rdx:rax` and writes the truncating quotient to `rax` and the
+ * truncating remainder to `rdx`. Kofun's `//` and `%` floor instead, so a
+ * correction step follows: when the remainder is non-zero and its sign differs
+ * from the divisor's, the quotient is one too high and the remainder is one
+ * divisor short. `/` truncates and needs no correction.
+ *
+ * `idiv` faults on a zero divisor and on the one quotient that is not
+ * representable, and a fault is a signal rather than a diagnostic, so both are
+ * checked before it runs. The `-1` divisor is the whole of the second case and
+ * is handled without dividing at all: the quotient is `-left`, whose overflow
+ * `neg` reports in `OF` exactly when `left` is `INT64_MIN`, and the remainder
+ * is zero — which is why `INT64_MIN % -1` is `0` rather than an error.
+ *
+ * `rax`, `rcx`, and `rdx` are never allocated (`rax` is the move scratch and
+ * the other two are argument registers, which only ever hold a value at a call
+ * boundary), so materializing the divisor in `rcx` and clobbering `rdx` cannot
+ * disturb anything live.
+ */
+static void x64_function_divide(
+    Bytes *text,
+    FunctionExpressionKind kind,
+    FunctionEmitter *emitter,
+    X64Operand result,
+    X64Operand divisor
+) {
+    x64_mov_register_operand(text, X64_RCX, divisor);
+    x64_mov_register_operand(text, X64_RAX, result);
+    /* test rcx, rcx */
+    x64_encode_op(
+        text,
+        X64_TEST_RM_REG,
+        X64_RCX,
+        x64_register_operand(X64_RCX)
+    );
+    x64_function_divide_zero_jump(text, emitter);
+    const uint8_t compare_minus_one[] = {
+        UINT8_C(0x48), UINT8_C(0x83), UINT8_C(0xf9), UINT8_C(0xff),
+    };
+    x64_emit(text, compare_minus_one, sizeof(compare_minus_one));
+    size_t general = x64_local_jcc(text, UINT8_C(0x85)); /* jne general */
+    if (kind == FUNCTION_FLOOR_MODULO) {
+        /* Every remainder by -1 is zero, INT64_MIN included. */
+        byte(text, UINT8_C(0x31));
+        byte(text, UINT8_C(0xc0)); /* xor eax, eax */
+    } else {
+        x64_encode_op(
+            text,
+            X64_GROUP3_RM,
+            X64_GROUP3_NEG,
+            x64_register_operand(X64_RAX)
+        );
+        x64_function_overflow_jump(text, emitter);
+    }
+    size_t done = x64_local_jmp(text);
+    x64_patch_rel32(text, general, text->length);
+    byte(text, UINT8_C(0x48));
+    byte(text, UINT8_C(0x99)); /* cqo */
+    x64_encode_op(
+        text,
+        X64_GROUP3_RM,
+        X64_GROUP3_IDIV,
+        x64_register_operand(X64_RCX)
+    );
+    if (kind != FUNCTION_DIVIDE) {
+        if (kind == FUNCTION_FLOOR_MODULO) {
+            x64_mov_register_operand(
+                text,
+                X64_RAX,
+                x64_register_operand(X64_RDX)
+            );
+        }
+        /* test rdx, rdx: a zero remainder is already floored. */
+        x64_encode_op(
+            text,
+            X64_TEST_RM_REG,
+            X64_RDX,
+            x64_register_operand(X64_RDX)
+        );
+        size_t exact = x64_local_jcc(text, UINT8_C(0x84)); /* je done */
+        /* xor rdx, rcx: the sign bit is set exactly when the signs differ. */
+        x64_encode_op(
+            text,
+            X64_XOR_RM_REG,
+            X64_RCX,
+            x64_register_operand(X64_RDX)
+        );
+        size_t same = x64_local_jcc(text, UINT8_C(0x89)); /* jns done */
+        if (kind == FUNCTION_FLOOR_MODULO) {
+            /* add rax, rcx */
+            x64_encode_op(
+                text,
+                X64_ADD_REG_RM,
+                X64_RAX,
+                x64_register_operand(X64_RCX)
+            );
+        } else {
+            /* dec rax */
+            byte(text, UINT8_C(0x48));
+            byte(text, UINT8_C(0xff));
+            byte(text, UINT8_C(0xc8));
+        }
+        x64_patch_rel32(text, exact, text->length);
+        x64_patch_rel32(text, same, text->length);
+    }
+    x64_patch_rel32(text, done, text->length);
+    x64_move(text, result, x64_register_operand(X64_RAX));
+}
+
 static void x64_function_expression(
     Bytes *text,
     const FunctionExpression *expression,
@@ -5349,6 +5536,12 @@ static void x64_function_expression(
             );
         }
         x64_function_overflow_jump(text, emitter);
+        return;
+    }
+    if (expression->kind == FUNCTION_DIVIDE ||
+        expression->kind == FUNCTION_FLOOR_DIVIDE ||
+        expression->kind == FUNCTION_FLOOR_MODULO) {
+        x64_function_divide(text, expression->kind, emitter, result, right);
         return;
     }
     if (expression->kind == FUNCTION_MULTIPLY) {
@@ -5860,6 +6053,24 @@ static void x64_function_program(
         (const uint8_t *)overflow_message,
         sizeof(overflow_message) - 1
     );
+    size_t divide_zero_at = 0;
+    size_t divide_zero_address = 0;
+    size_t divide_zero_message_at = 0;
+    const char divide_zero_message[] = "kofun: division by zero\n";
+    if (emitter.divide_zero_jumps.length > 0) {
+        divide_zero_at = text->length;
+        divide_zero_address = x64_diagnostic(
+            text,
+            (uint32_t)(sizeof(divide_zero_message) - 1),
+            1
+        );
+        divide_zero_message_at = text->length;
+        x64_emit(
+            text,
+            (const uint8_t *)divide_zero_message,
+            sizeof(divide_zero_message) - 1
+        );
+    }
 
     for (size_t index = 0; index < emitter.calls.length; ++index) {
         FunctionCallFixup fixup = emitter.calls.items[index];
@@ -5907,6 +6118,24 @@ static void x64_function_program(
             IMAGE_BASE + TEXT_OFFSET + overflow_message_at
         )
     );
+    for (size_t index = 0;
+         index < emitter.divide_zero_jumps.length;
+         ++index) {
+        x64_patch_rel32(
+            text,
+            emitter.divide_zero_jumps.fields[index],
+            divide_zero_at
+        );
+    }
+    if (emitter.divide_zero_jumps.length > 0) {
+        x64_patch_u32(
+            text,
+            divide_zero_address,
+            (uint32_t)(
+                IMAGE_BASE + TEXT_OFFSET + divide_zero_message_at
+            )
+        );
+    }
     x64_runtime(text, &emitter.runtime);
     function_emitter_free(&emitter);
 }
@@ -6159,6 +6388,27 @@ static void a64_patch_imm19(Bytes *text, size_t field, size_t target) {
     a64_write_word(text, field, word);
 }
 
+/*
+ * Patch a 14-bit test-branch immediate (TBZ/TBNZ) at bits [18:5]. The bit
+ * selector lives at [23:19] and above, so this may not go through
+ * a64_patch_imm19, which would overwrite it.
+ */
+static void a64_patch_imm14(Bytes *text, size_t field, size_t target) {
+    int64_t displacement = (int64_t)target - (int64_t)field;
+    if (displacement % 4 != 0) {
+        fatal("aarch64 test branch target is not 4-byte aligned");
+    }
+    int64_t immediate = displacement / 4;
+    if (immediate < -(INT64_C(1) << 13) ||
+        immediate >= (INT64_C(1) << 13)) {
+        fatal("aarch64 imm14 branch is out of range");
+    }
+    uint32_t word = a64_read_word(text, field);
+    word = (word & ~(UINT32_C(0x3fff) << 5)) |
+        (((uint32_t)immediate & UINT32_C(0x3fff)) << 5);
+    a64_write_word(text, field, word);
+}
+
 /* Patch a 16-bit MOVZ/MOVK immediate at bits [20:5]. */
 static void a64_patch_mov_imm16(Bytes *text, size_t field, uint32_t value) {
     uint32_t word = a64_read_word(text, field);
@@ -6184,7 +6434,7 @@ static void a64_sub_sp(Bytes *text, uint32_t frame) {
 }
 
 static uint32_t a64_local_imm9(size_t slot) {
-    if (slot >= (size_t)0x1f) {
+    if (slot >= MAX_FUNCTION_FRAME_SLOTS) {
         fatal("aarch64 Core local frame is too large");
     }
     int32_t offset = -(int32_t)((slot + 1) * sizeof(uint64_t));
@@ -6235,6 +6485,74 @@ static void a64_overflow_jump(
 ) {
     offsets_add(&emitter->overflow_jumps, text->length);
     a64_word(text, conditional);
+}
+
+/*
+ * Integer division on AArch64
+ * ---------------------------
+ *
+ * `sdiv` is the mirror image of x86-64's `idiv`: it never faults. A zero
+ * divisor silently yields zero and `INT64_MIN / -1` silently yields
+ * `INT64_MIN`, so omitting either guard produces a wrong answer rather than a
+ * crash. Both are therefore checked before the divide, exactly as on x86-64,
+ * and for the same reasons: the `-1` divisor is the whole of the second case,
+ * its quotient is `-left` whose overflow `negs` reports in `V`, and its
+ * remainder is always zero.
+ *
+ * `sdiv` truncates, so `//` and `%` correct toward negative infinity when the
+ * remainder is non-zero and its sign differs from the divisor's. `x9`, `x10`,
+ * and `x11` are the established expression temporaries here — the checked
+ * multiply already uses exactly those three.
+ */
+static void a64_function_divide(
+    Bytes *text,
+    FunctionExpressionKind kind,
+    FunctionEmitter *emitter
+) {
+    /* cbz x1, division-by-zero trap */
+    offsets_add(&emitter->divide_zero_jumps, text->length);
+    a64_word(text, UINT32_C(0xb4000001));
+    a64_word(text, UINT32_C(0xb100043f)); /* cmn x1, #1 */
+    size_t general = text->length;
+    a64_word(text, UINT32_C(0x54000001)); /* b.ne general */
+    if (kind == FUNCTION_FLOOR_MODULO) {
+        a64_word(text, UINT32_C(0xaa1f03e0)); /* mov x0, xzr */
+    } else {
+        a64_word(text, UINT32_C(0xeb0003e0)); /* negs x0, x0 */
+        a64_overflow_jump(text, emitter, UINT32_C(0x54000006)); /* b.vs */
+    }
+    size_t done = text->length;
+    a64_word(text, UINT32_C(0x14000000)); /* b done */
+    a64_patch_imm19(text, general, text->length);
+    if (kind == FUNCTION_DIVIDE) {
+        a64_word(text, UINT32_C(0x9ac10c00)); /* sdiv x0, x0, x1 */
+        a64_patch_imm26(text, done, text->length);
+        return;
+    }
+    a64_word(text, UINT32_C(0x9ac10c09)); /* sdiv x9, x0, x1 */
+    size_t exact;
+    if (kind == FUNCTION_FLOOR_MODULO) {
+        a64_word(text, UINT32_C(0x9b018120)); /* msub x0, x9, x1, x0 */
+        exact = text->length;
+        a64_word(text, UINT32_C(0xb4000000)); /* cbz x0, done */
+        a64_word(text, UINT32_C(0xca01000b)); /* eor x11, x0, x1 */
+    } else {
+        a64_word(text, UINT32_C(0x9b01812a)); /* msub x10, x9, x1, x0 */
+        a64_word(text, UINT32_C(0xaa0903e0)); /* mov x0, x9 */
+        exact = text->length;
+        a64_word(text, UINT32_C(0xb400000a)); /* cbz x10, done */
+        a64_word(text, UINT32_C(0xca01014b)); /* eor x11, x10, x1 */
+    }
+    size_t same = text->length;
+    a64_word(text, UINT32_C(0xb6f8000b)); /* tbz x11, #63, done */
+    if (kind == FUNCTION_FLOOR_MODULO) {
+        a64_word(text, UINT32_C(0x8b010000)); /* add x0, x0, x1 */
+    } else {
+        a64_word(text, UINT32_C(0xd1000400)); /* sub x0, x0, #1 */
+    }
+    a64_patch_imm19(text, exact, text->length);
+    a64_patch_imm14(text, same, text->length);
+    a64_patch_imm26(text, done, text->length);
 }
 
 static void a64_function_call(
@@ -6321,6 +6639,13 @@ static void a64_function_expression(
     a64_function_expression(text, expression->right, emitter);
     a64_pop(text, 1); /* right -> x1 */
     a64_pop(text, 0); /* left  -> x0 */
+    if (expression->kind == FUNCTION_DIVIDE ||
+        expression->kind == FUNCTION_FLOOR_DIVIDE ||
+        expression->kind == FUNCTION_FLOOR_MODULO) {
+        a64_function_divide(text, expression->kind, emitter);
+        a64_push(text, 0);
+        return;
+    }
     if (expression->kind == FUNCTION_ADD) {
         a64_word(text, UINT32_C(0xab010000)); /* adds x0, x0, x1 */
         a64_overflow_jump(text, emitter, UINT32_C(0x54000006)); /* b.vs */
@@ -6616,6 +6941,32 @@ static void a64_function_program(
         byte(text, (uint8_t)overflow_message[index]);
     }
 
+    size_t divide_zero_at = 0;
+    size_t divide_zero_low_field = 0;
+    size_t divide_zero_high_field = 0;
+    size_t divide_zero_message_at = 0;
+    static const char divide_zero_message[] = "kofun: division by zero\n";
+    size_t divide_zero_length = sizeof(divide_zero_message) - 1;
+    if (emitter.divide_zero_jumps.length > 0) {
+        divide_zero_at = text->length;
+        divide_zero_low_field = text->length;
+        a64_movz(text, 1, 0);       /* mov x1, #0 (message low, patched) */
+        divide_zero_high_field = text->length;
+        a64_movk_lsl16(text, 1, 0); /* movk x1, #0, lsl 16 (patched) */
+        a64_movz(text, 0, 2);       /* mov x0, #2 (stderr) */
+        a64_movz(text, 2, (unsigned)divide_zero_length);
+        a64_movz(text, 8, 64);      /* mov x8, #64 (write) */
+        a64_svc(text);
+        a64_movz(text, 0, 1);       /* mov x0, #1 (exit code) */
+        a64_movz(text, 8, 93);      /* mov x8, #93 (exit) */
+        a64_svc(text);
+        a64_word(text, UINT32_C(0xd4200000)); /* brk #0 */
+        divide_zero_message_at = text->length;
+        for (size_t index = 0; index < divide_zero_length; ++index) {
+            byte(text, (uint8_t)divide_zero_message[index]);
+        }
+    }
+
     uint64_t message_address =
         IMAGE_BASE + (uint64_t)TEXT_OFFSET + (uint64_t)message_at;
     a64_patch_mov_imm16(
@@ -6669,6 +7020,29 @@ static void a64_function_program(
             text,
             emitter.overflow_jumps.fields[index],
             overflow_at
+        );
+    }
+    for (size_t index = 0;
+         index < emitter.divide_zero_jumps.length;
+         ++index) {
+        a64_patch_imm19(
+            text,
+            emitter.divide_zero_jumps.fields[index],
+            divide_zero_at
+        );
+    }
+    if (emitter.divide_zero_jumps.length > 0) {
+        uint64_t divide_zero_address = IMAGE_BASE +
+            (uint64_t)TEXT_OFFSET + (uint64_t)divide_zero_message_at;
+        a64_patch_mov_imm16(
+            text,
+            divide_zero_low_field,
+            (uint32_t)(divide_zero_address & UINT64_C(0xffff))
+        );
+        a64_patch_mov_imm16(
+            text,
+            divide_zero_high_field,
+            (uint32_t)((divide_zero_address >> 16) & UINT64_C(0xffff))
         );
     }
     a64_core_runtime(text, &emitter.a64_runtime);
@@ -8625,6 +8999,40 @@ int main(int argc, char **argv) {
     }
     bool use_function_core =
         function_headers_ok && function_program.function_count > 1;
+    /*
+     * Two front ends read this source. The bounded single-`main` Core is tried
+     * first and is never disturbed: it keeps its own parser, its own lowering,
+     * and every byte of every image it already produces. Only when it refuses
+     * does a program that declares exactly `main` fall through to the function
+     * profile, which accepts strictly more statement shapes — several `print`
+     * statements, inferred Int locals, and the division operators. Because the
+     * fallback runs only on rejection, the two accepted sets are disjoint by
+     * construction and nothing that compiles today can change.
+     */
+    Parser parser = {
+        .source = source,
+        .cursor = 0,
+        .error = NULL,
+    };
+    Node *expression = NULL;
+    bool fell_back = false;
+    if (!use_function_core) {
+        expression = parse_program(&parser);
+        /*
+         * `-g` documents the single-`main` aggregate Core, so a debug build
+         * that Core refuses reports that refusal instead of falling through to
+         * a profile whose debug information does not exist.
+         */
+        if ((parser.error != NULL || expression == NULL) &&
+            !debug &&
+            function_headers_ok &&
+            function_program.function_count == 1) {
+            free_node(expression);
+            expression = NULL;
+            use_function_core = true;
+            fell_back = true;
+        }
+    }
     if (use_function_core) {
         if (debug) {
             fputs(
@@ -8640,9 +9048,18 @@ int main(int argc, char **argv) {
                 &function_program,
                 function_error_text,
                 &function_error_at)) {
+            /*
+             * A program that reached here through the fallback was refused by
+             * both front ends, and the verdict on it is the Core's, not one
+             * profile's. Keeping the `unsupported Core` wording carries the
+             * more specific reason without changing what the refusal means to
+             * anything reading it.
+             */
             fprintf(
                 stderr,
-                "kofun native: unsupported function Core at byte %zu: %s\n",
+                fell_back
+                    ? "kofun native: unsupported Core at byte %zu: %s\n"
+                    : "kofun native: unsupported function Core at byte %zu: %s\n",
                 function_error_at,
                 function_error_text
             );
@@ -8669,12 +9086,6 @@ int main(int argc, char **argv) {
     }
     function_program_free(&function_program);
 
-    Parser parser = {
-        .source = source,
-        .cursor = 0,
-        .error = NULL,
-    };
-    Node *expression = parse_program(&parser);
     if (parser.error != NULL || expression == NULL) {
         fprintf(
             stderr,

@@ -1,0 +1,11 @@
+# The divisor is a runtime value, not a literal zero, so the check cannot be
+# folded away.
+
+fn apply(a: Int, b: Int) -> Int {
+    return a // b
+}
+
+fn main() {
+    let zero = 3 - 3
+    print(apply(7, zero))
+}
