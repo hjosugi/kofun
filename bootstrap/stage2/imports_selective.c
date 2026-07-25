@@ -44,6 +44,7 @@ typedef struct {
     SelectiveName *names;
     size_t name_count;
     size_t name_capacity;
+    bool is_re_export;
 } SelectiveDeclaration;
 
 typedef struct {
@@ -686,6 +687,7 @@ static bool resolve_selective_bindings(SelectiveResolver *resolver) {
         SelectiveDeclaration *selective = &resolver->selectives[selective_index];
         ImportBinding *dependency = &resolver->qualified.imports[selective->dependency_index];
         size_t name_index;
+        if (selective->is_re_export) continue;
         for (name_index = 0u; name_index < selective->name_count; name_index += 1u) {
             SelectiveName *name = &selective->names[name_index];
             bool found_candidate = false;
@@ -1631,11 +1633,16 @@ static bool validate_transaction_paths(
     OutputArtifact *artifacts,
     size_t count
 ) {
-    const char *paths[7];
+    const char *paths[10];
     size_t path_count = 1u;
     size_t index;
     size_t other;
     paths[0] = inventory_path;
+    if (count > 3u) {
+        set_error(program, "E2S77",
+            "artifact transaction exceeds three outputs");
+        return false;
+    }
     for (index = 0u; index < count; index += 1u) {
         paths[path_count++] = artifacts[index].final_path;
         paths[path_count++] = artifacts[index].temporary_path;
@@ -1688,6 +1695,7 @@ failed:
     return false;
 }
 
+#ifndef KOFUN_IMPORTS_SELECTIVE_NO_MAIN
 int main(int argc, char **argv) {
     SelectiveResolver resolver;
     ImportResolver *qualified = &resolver.qualified;
@@ -1738,3 +1746,4 @@ done:
     destroy_selective_resolver(&resolver);
     return status;
 }
+#endif

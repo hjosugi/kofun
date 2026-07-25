@@ -19,6 +19,7 @@
 | self-host success corpus as a native binary | the driver's five-`print` corpus reaches a static ELF on both targets and matches the self-host C11 path exactly | `bootstrap/selfhost/native/check-native-corpus.sh` |
 | x86-64/AArch64 constant-stack returned calls | a `return` of a direct call branches instead of calling, so direct and mutual recursion in that position run in constant stack; proved by executing three million steps under a lowered stack limit | `bootstrap/native/check.sh`, `tests/conformance/functions` |
 | stable diagnostics | canonical registry plus executable family owners; Stage 2 retains 33/33 codes and 3 explicit span debts | `tests/diagnostics/`, `make diagnostics` |
+| explicit public re-exports | bounded same-package `pub import` / `pub from`; non-widening `ExportBindingId` edges, 64-edge chains, KIF export facts, and facade/canonical tooling paths | `tests/conformance/modules/re-exports/run.sh`, `make re-exports` |
 | deterministic compiler fuzzing | versioned oracle/backend observations for arithmetic plus focused grammar, value-if, match-guard, match-value, and enum-match families | `tests/fuzz/`, `make fuzz` |
 | payload-free concrete enum matching | bounded Stage 2 C11 slice with constructor-set exhaustiveness | `tests/conformance/syntax/issues_35_47/run.sh`, `tests/fuzz/enum_match.sh` |
 | general parser/type checker | open | no active gate |

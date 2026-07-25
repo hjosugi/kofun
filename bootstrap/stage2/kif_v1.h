@@ -13,6 +13,7 @@
 #define KOFUN_KIF_MAX_FIELD_BYTES (1024u * 1024u)
 #define KOFUN_KIF_MAX_NAME_BYTES 256u
 #define KOFUN_KIF_MAX_EDITION_BYTES 64u
+#define KOFUN_KIF_MAX_EXPORT_CHAIN 64u
 
 typedef enum {
     KOFUN_KIF_OK = 0,
@@ -29,8 +30,16 @@ typedef enum {
 typedef enum {
     KOFUN_KIF_FACT_FUNCTION = 1,
     KOFUN_KIF_FACT_ADT = 2,
-    KOFUN_KIF_FACT_CONSTRUCTOR = 3
+    KOFUN_KIF_FACT_CONSTRUCTOR = 3,
+    KOFUN_KIF_FACT_EXPORT = 4
 } KofunKifFactKind;
+
+typedef enum {
+    KOFUN_KIF_EXPORT_TARGET_FUNCTION = 1,
+    KOFUN_KIF_EXPORT_TARGET_ADT = 2,
+    KOFUN_KIF_EXPORT_TARGET_CONSTRUCTOR = 3,
+    KOFUN_KIF_EXPORT_TARGET_MODULE = 4
+} KofunKifExportTargetKind;
 
 typedef enum {
     KOFUN_KIF_VISIBILITY_INTERNAL = 1,
@@ -57,6 +66,20 @@ typedef struct {
     uint8_t constructor_payload_count;
     uint8_t owner_symbol_id[KOFUN_KIF_ID_BYTES];
     uint32_t constructor_ordinal;
+
+    /*
+     * Public export facts use symbol_id as the ExportBindingId. The target
+     * identity remains separate and canonical; an export never copies a
+     * declaration SymbolId.
+     */
+    uint8_t source_import_binding_id[KOFUN_KIF_ID_BYTES];
+    uint8_t target_module_id[KOFUN_KIF_ID_BYTES];
+    uint8_t target_symbol_id[KOFUN_KIF_ID_BYTES];
+    KofunKifExportTargetKind export_target_kind;
+    uint8_t export_target_owner_symbol_id[KOFUN_KIF_ID_BYTES];
+    uint32_t export_target_constructor_ordinal;
+    uint8_t *export_chain_ids;
+    size_t export_chain_count;
 } KofunKifFact;
 
 typedef struct {

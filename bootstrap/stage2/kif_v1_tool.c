@@ -8,6 +8,7 @@ static const char *kif_fact_kind_name(KofunKifFactKind kind) {
         case KOFUN_KIF_FACT_FUNCTION: return "function";
         case KOFUN_KIF_FACT_ADT: return "adt";
         case KOFUN_KIF_FACT_CONSTRUCTOR: return "constructor";
+        case KOFUN_KIF_FACT_EXPORT: return "export";
     }
     return "invalid";
 }
@@ -300,6 +301,40 @@ static bool emit_dump(const KofunKifInterface *interface, const char *path) {
                 "\"ordinal\": %u",
                 (unsigned)fact->constructor_payload_count, owner_hex,
                 (unsigned)fact->constructor_ordinal);
+        } else if (fact->kind == KOFUN_KIF_FACT_EXPORT) {
+            char source_import_hex[65];
+            char target_module_hex[65];
+            char target_symbol_hex[65];
+            char chain_first_hex[65];
+            bytes_to_hex(fact->source_import_binding_id, 32u, source_import_hex);
+            bytes_to_hex(fact->target_module_id, 32u, target_module_hex);
+            bytes_to_hex(fact->target_symbol_id, 32u, target_symbol_hex);
+            bytes_to_hex(fact->export_chain_ids, 32u, chain_first_hex);
+            fprintf(output,
+                ", \"source_import_binding_id\": \"%s\", "
+                "\"target_module_id\": \"%s\", \"target_symbol_id\": \"%s\", "
+                "\"target_kind\": \"%s\", \"chain_count\": %zu, "
+                "\"chain_first\": \"%s\"",
+                source_import_hex, target_module_hex, target_symbol_hex,
+                fact->export_target_kind == KOFUN_KIF_EXPORT_TARGET_FUNCTION
+                    ? "function"
+                    : fact->export_target_kind == KOFUN_KIF_EXPORT_TARGET_ADT
+                        ? "adt"
+                        : fact->export_target_kind == KOFUN_KIF_EXPORT_TARGET_CONSTRUCTOR
+                            ? "constructor" : "module",
+                fact->export_chain_count, chain_first_hex);
+            if (fact->export_target_kind ==
+                    KOFUN_KIF_EXPORT_TARGET_CONSTRUCTOR) {
+                char owner_hex[65];
+                bytes_to_hex(fact->export_target_owner_symbol_id, 32u,
+                    owner_hex);
+                fprintf(output,
+                    ", \"payload_count\": %u, "
+                    "\"target_owner_symbol_id\": \"%s\", "
+                    "\"target_constructor_ordinal\": %u",
+                    (unsigned)fact->constructor_payload_count, owner_hex,
+                    (unsigned)fact->export_target_constructor_ordinal);
+            }
         }
         fprintf(output, "}%s\n",
             index + 1u == interface->public_fact_count + interface->internal_fact_count ? "" : ",");

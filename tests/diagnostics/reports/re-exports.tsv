@@ -1,0 +1,11 @@
+# code	adapter	channel	exit	primary-span	secondary-span	artifact
+E2S85	re-exports	stdout	1	required	not-applicable	forbidden
+E2S86	re-exports	stdout	1	required	not-applicable	forbidden
+E2S87	re-exports	stdout	1	required	required	forbidden
+E2S88	re-exports	stdout	1	required	required	forbidden
+E2S89	re-exports	stdout	1	required	required	forbidden
+E2S90	re-exports	stdout	1	required	not-applicable	forbidden
+E2S91	re-exports	stdout	1	not-applicable	not-applicable	forbidden
+E2S92	re-exports	stdout	1	not-applicable	not-applicable	forbidden
+E2S93	re-exports	stdout	1	not-applicable	not-applicable	forbidden
+E2S94	re-exports	stdout	1	not-applicable	not-applicable	forbidden
