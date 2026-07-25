@@ -38,9 +38,12 @@ missing, duplicate, unknown, contradictory, and reasonless rows. Adapters and
 corpus expectation files must not carry independent backend lists.
 
 The numeric Core corpus is `tests/conformance/numeric/`. Its Kofun manifest,
-`expectations.kofun`, exposes the same observations to future Kofun-native
-tooling. Every backend marked supported for numeric consumes the same
-`.kofun` programs.
+`expectations.kofun`, lists the canonical case filenames and pins a
+path-independent SHA-256 of the exact fixture observations for future
+Kofun-native tooling. The executable validator compares the name set, count,
+and digest against discovered files and their `# expect-*` headers. Every
+backend marked supported for numeric consumes that physically registered
+directory; a different same-name directory is rejected.
 
 ## Unsupported cases and coverage
 
@@ -53,7 +56,8 @@ crash, signal termination, timeout, or empty adapter result.
 Target capability is independent from executor availability. An adapter may
 define an availability check for an external executor such as
 `qemu-aarch64`. The runner reports that host condition as `UNAVAILABLE`
-without rewriting the target's manifest state.
+without rewriting the target's manifest state, but still cross-compiles every
+supported case before reporting that execution is unavailable.
 
 Every run prints:
 
@@ -67,7 +71,9 @@ regresses or a new backend is registered.
 
 The common runner treats missing executables, crashes, signals, and timeouts as
 failures. It compares output files with `cmp` so trailing newlines and empty
-streams remain observable.
+streams remain observable. Fixture exit statuses are limited to 0 through 127;
+124 is reserved for the timeout harness and cannot be declared as a successful
+fixture observation.
 
 ## Runtime failures
 

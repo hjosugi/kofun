@@ -1,17 +1,28 @@
 #!/usr/bin/env sh
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-CORPUS=${1-"$ROOT/tests/conformance/numeric"}
+ROOT=$(CDPATH= cd -P -- "$(dirname -- "$0")/../.." && pwd)
+CORPUS_INPUT=${1-"$ROOT/tests/conformance/numeric"}
 BACKENDS=${KOFUN_CONFORMANCE_BACKENDS-"$ROOT/tests/conformance/backends"}
 CAPABILITIES=${KOFUN_CONFORMANCE_CAPABILITIES-"$ROOT/tests/conformance/capabilities.tsv"}
 CORPORA=${KOFUN_CONFORMANCE_CORPORA-"$ROOT/tests/conformance"}
-CORPUS_NAME=$(basename "$CORPUS")
 
-test -d "$CORPUS" || {
-    printf '%s\n' "conformance: corpus not found: $CORPUS" >&2
+test -d "$CORPUS_INPUT" || {
+    printf '%s\n' "conformance: corpus not found: $CORPUS_INPUT" >&2
     exit 2
 }
+test -d "$CORPORA" || {
+    printf '%s\n' "conformance: corpus registry not found: $CORPORA" >&2
+    exit 2
+}
+CORPUS=$(CDPATH= cd -P -- "$CORPUS_INPUT" && pwd)
+CORPORA=$(CDPATH= cd -P -- "$CORPORA" && pwd)
+CORPUS_NAME=$(basename "$CORPUS")
+if test "$CORPUS" != "$CORPORA/$CORPUS_NAME"; then
+    printf '%s\n' \
+        "conformance: selected corpus is not the registered $CORPUS_NAME corpus: $CORPUS" >&2
+    exit 2
+fi
 test -f "$CORPUS/expectations.kofun" || {
     printf '%s\n' \
         "conformance: corpus has no expectations.kofun: $CORPUS" >&2
@@ -69,34 +80,33 @@ run_backend() (
         exit 2
     }
 
-    work=$(mktemp -d "${TMPDIR:-/tmp}/kofun-conformance.XXXXXX")
-    trap 'rm -rf "$work"' 0 1 2 15
+    runner_work=$(mktemp -d "${TMPDIR:-/tmp}/kofun-conformance.XXXXXX")
+    trap 'rm -rf "$runner_work"' 0 1 2 15
 
+    executor_available=1
     if command -v backend_check_available >/dev/null 2>&1; then
         set +e
         backend_check_available \
-            >"$work/availability.stdout" 2>"$work/availability.stderr"
+            >"$runner_work/availability.stdout" 2>"$runner_work/availability.stderr"
         availability_status=$?
         set -e
         if test "$availability_status" -eq 125; then
-            if test ! -s "$work/availability.stdout" &&
-               test ! -s "$work/availability.stderr"
+            if test ! -s "$runner_work/availability.stdout" &&
+               test ! -s "$runner_work/availability.stderr"
             then
                 printf '%s\n' \
                     "FAIL [$BACKEND_NAME] executor unavailable without diagnostic"
                 exit 1
             fi
-            printf '%s\n' \
-                "UNAVAILABLE [$BACKEND_NAME] executor for corpus $CORPUS_NAME"
-            sed 's/^/  /' \
-                "$work/availability.stdout" "$work/availability.stderr"
-            exit 125
+            executor_available=0
         fi
-        if test "$availability_status" -ne 0; then
+        if test "$availability_status" -ne 0 &&
+           test "$availability_status" -ne 125
+        then
             printf '%s\n' \
                 "FAIL [$BACKEND_NAME] executor availability check failed"
             sed 's/^/  /' \
-                "$work/availability.stdout" "$work/availability.stderr"
+                "$runner_work/availability.stdout" "$runner_work/availability.stderr"
             exit 1
         fi
     fi
@@ -105,13 +115,14 @@ run_backend() (
     failed=0
     skipped=0
     total=0
+    built=0
 
     for source in "$CORPUS"/*.kofun; do
         test -f "$source" || continue
         test "$(basename "$source")" != "expectations.kofun" || continue
         total=$((total + 1))
         stem=$(basename "${source%.kofun}")
-        case_work="$work/$stem"
+        case_work="$runner_work/$stem"
         mkdir -p "$case_work"
 
         : >"$case_work/expected.stdout"
@@ -132,6 +143,18 @@ run_backend() (
                 continue
                 ;;
         esac
+        if test "$expected_status" -gt 127; then
+            printf '%s\n' \
+                "FAIL [$BACKEND_NAME] $source (expected exit status must be between 0 and 127)"
+            failed=$((failed + 1))
+            continue
+        fi
+        if test "$expected_status" -eq 124; then
+            printf '%s\n' \
+                "FAIL [$BACKEND_NAME] $source (expected exit 124 is reserved for the timeout harness)"
+            failed=$((failed + 1))
+            continue
+        fi
 
         set +e
         backend_compile \
@@ -155,6 +178,12 @@ run_backend() (
             failed=$((failed + 1))
             continue
         fi
+        built=$((built + 1))
+
+        if test "$executor_available" -eq 0; then
+            printf '%s\n' "BUILD PASS [$BACKEND_NAME] $source"
+            continue
+        fi
 
         set +e
         if command -v timeout >/dev/null 2>&1; then
@@ -167,8 +196,14 @@ run_backend() (
         actual_status=$?
         set -e
 
-        if test "$actual_status" -eq 124 || test "$actual_status" -eq 137; then
+        if test "$actual_status" -eq 124; then
             printf '%s\n' "FAIL [$BACKEND_NAME] $source (timed out)"
+            failed=$((failed + 1))
+            continue
+        fi
+        if test "$actual_status" -ge 128; then
+            printf '%s\n' \
+                "FAIL [$BACKEND_NAME] $source (terminated by signal)"
             failed=$((failed + 1))
             continue
         fi
@@ -192,6 +227,22 @@ run_backend() (
         printf '%s\n' "PASS [$BACKEND_NAME] $source"
         passed=$((passed + 1))
     done
+
+    if test "$executor_available" -eq 0; then
+        printf '%s\n' \
+            "$built built; $failed failed; 0 executed by $BACKEND_NAME" \
+            "coverage: 0/$total cases executed by $BACKEND_NAME" \
+            "UNAVAILABLE [$BACKEND_NAME] executor for corpus $CORPUS_NAME"
+        sed 's/^/  /' \
+            "$runner_work/availability.stdout" "$runner_work/availability.stderr"
+        if test "$total" -eq 0 ||
+           test "$built" -eq 0 ||
+           test "$failed" -ne 0
+        then
+            exit 1
+        fi
+        exit 125
+    fi
 
     executed=$((passed + failed))
     printf '%s\n' \

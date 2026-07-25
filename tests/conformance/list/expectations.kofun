@@ -3,6 +3,28 @@ fn expected_cases() -> Int {
     return 13
 }
 
+fn case_names() -> List[Text] {
+    return [
+        "binding_index.kofun",
+        "empty_filter.kofun",
+        "empty_fold.kofun",
+        "empty_map.kofun",
+        "filter_all_false.kofun",
+        "filter_negative_values.kofun",
+        "filter_runtime.kofun",
+        "fold_runtime.kofun",
+        "index_out_of_range.kofun",
+        "length.kofun",
+        "map_runtime.kofun",
+        "negative_index.kofun",
+        "pipeline_runtime.kofun"
+    ]
+}
+
+fn observations_sha256() -> Text {
+    return "8a7d5f190ed9b8c76eb0b9c77988df82307f3cf609096ea01121c2a568d47805"
+}
+
 fn corpus_name() -> Text {
     return "list"
 }

@@ -3,6 +3,36 @@ fn expected_cases() -> Int {
     return 21
 }
 
+fn case_names() -> List[Text] {
+    return [
+        "arabic_graphemes.kofun",
+        "chars_runtime.kofun",
+        "codepoint_index.kofun",
+        "codepoint_len.kofun",
+        "concat_utf8.kofun",
+        "emoji_modifiers_and_flag.kofun",
+        "emoji_zwj_index.kofun",
+        "empty_chars_len.kofun",
+        "equality_utf8.kofun",
+        "explicit_byte_view.kofun",
+        "explicit_codepoint_view.kofun",
+        "hangul_jamo_graphemes.kofun",
+        "hebrew_graphemes.kofun",
+        "hindi_graphemes.kofun",
+        "index_out_of_range.kofun",
+        "inequality_utf8.kofun",
+        "japanese_combining_index.kofun",
+        "joined_concatenation_grapheme.kofun",
+        "korean_grapheme_index.kofun",
+        "negative_codepoint_index.kofun",
+        "thai_graphemes.kofun"
+    ]
+}
+
+fn observations_sha256() -> Text {
+    return "d0cebb4eb34d34cfc6ca6faf3b8027b88a3c680e9537727b5a66c295a1f6b006"
+}
+
 fn corpus_name() -> Text {
     return "text"
 }

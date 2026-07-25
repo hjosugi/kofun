@@ -1,12 +1,14 @@
 #!/usr/bin/env sh
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+ROOT=$(CDPATH= cd -P -- "$(dirname -- "$0")/../.." && pwd)
 CHECK="$ROOT/tests/conformance/check-capabilities.sh"
 RUNNER="$ROOT/tests/conformance/run.sh"
+DIGEST="$ROOT/tests/conformance/observation-digest.sh"
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/kofun-capabilities-test.XXXXXX")
-trap 'rm -rf "$work"' 0 1 2 15
+untracked_evidence="$ROOT/build/capabilities-untracked-evidence.$$"
+trap 'rm -rf "$work"; rm -f "$untracked_evidence"' 0 1 2 15
 backends="$work/backends"
 corpora="$work/corpora"
 manifest="$work/capabilities.tsv"
@@ -31,23 +33,54 @@ write_supported_manifest() {
         >"$manifest"
 }
 
-write_sample_corpus() {
-    expected_count=${1-1}
-    rm -f "$corpora/sample/"*.kofun
+write_sample_expectations() {
+    names="$work/sample-case-names"
+    : >"$names"
+    for source in "$corpora/sample/"*.kofun; do
+        test -f "$source" || continue
+        test "$(basename "$source")" != expectations.kofun || continue
+        basename "$source" >>"$names"
+    done
+    LC_ALL=C sort "$names" >"$names.sorted"
+    expected_count=$(awk 'END { print NR + 0 }' "$names.sorted")
+    expected_digest=$(sh "$DIGEST" "$corpora/sample")
     printf '%s\n' \
-        'fn expected_cases() -> Int {' \
-        "    return $expected_count" \
-        '}' \
         'fn corpus_name() -> Text {' \
         '    return "sample"' \
         '}' \
+        '' \
+        'fn expected_cases() -> Int {' \
+        "    return $expected_count" \
+        '}' \
         >"$corpora/sample/expectations.kofun"
+    printf '%s\n' \
+        '' \
+        'fn case_names() -> List[Text] {' \
+        '    return [' \
+        >>"$corpora/sample/expectations.kofun"
+    while IFS= read -r name; do
+        printf '        "%s",\n' "$name" \
+            >>"$corpora/sample/expectations.kofun"
+    done <"$names.sorted"
+    printf '%s\n' \
+        '    ]' \
+        '}' \
+        '' \
+        'fn observations_sha256() -> Text {' \
+        "    return \"$expected_digest\"" \
+        '}' \
+        >>"$corpora/sample/expectations.kofun"
+}
+
+write_sample_corpus() {
+    rm -f "$corpora/sample/"*.kofun
     printf '%s\n' \
         '# expect: ok' \
         'fn main() {' \
         '    print("ignored by the fixture adapter")' \
         '}' \
         >"$corpora/sample/case.kofun"
+    write_sample_expectations
 }
 
 run_check() {
@@ -59,6 +92,13 @@ run_runner() {
     KOFUN_CONFORMANCE_CAPABILITIES=$manifest \
     KOFUN_CONFORMANCE_CORPORA=$corpora \
         sh "$RUNNER" "$corpora/sample"
+}
+
+run_rogue_runner() {
+    KOFUN_CONFORMANCE_BACKENDS=$backends \
+    KOFUN_CONFORMANCE_CAPABILITIES=$manifest \
+    KOFUN_CONFORMANCE_CORPORA=$corpora \
+        sh "$RUNNER" "$work/rogue/sample"
 }
 
 expect_failure() {
@@ -168,14 +208,83 @@ expect_failure \
     run_check
 
 write_alpha_adapter
+write_sample_corpus
 printf '%s\n' \
     'fn backend_names() -> List[Text] {' \
     '    return ["alpha"]' \
     '}' \
-    >"$corpora/sample/expectations.kofun"
+    >>"$corpora/sample/expectations.kofun"
 expect_failure \
     "expectation capability authority drift" \
     'expectations must not define backend capability authority' \
+    run_check
+
+write_sample_corpus
+sed \
+    's/^fn corpus_name() -> Text {$/fn corpus_name(bogus: Int) -> Bogus {/' \
+    "$corpora/sample/expectations.kofun" >"$output"
+mv "$output" "$corpora/sample/expectations.kofun"
+expect_failure \
+    "malformed corpus_name signature" \
+    'expectations must declare one literal corpus_name' \
+    run_check
+
+write_sample_corpus
+sed \
+    's/^fn expected_cases() -> Int {$/fn expected_cases(bogus: Int) -> Bogus {/' \
+    "$corpora/sample/expectations.kofun" >"$output"
+mv "$output" "$corpora/sample/expectations.kofun"
+expect_failure \
+    "malformed expected_cases signature" \
+    'expectations must declare one literal expected_cases count' \
+    run_check
+
+write_sample_corpus
+sed \
+    's/^fn case_names() -> List\[Text\] {$/fn case_names(bogus: Int) -> Bogus {/' \
+    "$corpora/sample/expectations.kofun" >"$output"
+mv "$output" "$corpora/sample/expectations.kofun"
+expect_failure \
+    "malformed case_names signature" \
+    'expectations must declare one literal case_names list' \
+    run_check
+
+write_sample_corpus
+sed \
+    's/^fn observations_sha256() -> Text {$/fn observations_sha256(bogus: Int) -> Bogus {/' \
+    "$corpora/sample/expectations.kofun" >"$output"
+mv "$output" "$corpora/sample/expectations.kofun"
+expect_failure \
+    "malformed observations_sha256 signature" \
+    'expectations must declare one literal observations_sha256 digest' \
+    run_check
+
+write_sample_corpus
+sed '$d' "$corpora/sample/expectations.kofun" >"$output"
+mv "$output" "$corpora/sample/expectations.kofun"
+expect_failure \
+    "unterminated expectations function" \
+    'expectations must declare one literal observations_sha256 digest' \
+    run_check
+
+write_sample_corpus
+printf '%s\n' \
+    'fn corpus_name(bogus: Int) -> Bogus {' \
+    '    return "sample"' \
+    '}' \
+    >>"$corpora/sample/expectations.kofun"
+expect_failure \
+    "extra malformed reserved declaration" \
+    'expectations must declare one literal corpus_name' \
+    run_check
+
+write_sample_corpus
+sed '$s/^}$/} trailing garbage/' \
+    "$corpora/sample/expectations.kofun" >"$output"
+mv "$output" "$corpora/sample/expectations.kofun"
+expect_failure \
+    "noncanonical closing brace" \
+    'expectations must declare one literal observations_sha256 digest' \
     run_check
 
 write_sample_corpus
@@ -211,13 +320,14 @@ expect_failure \
     run_runner
 
 write_alpha_adapter
-write_sample_corpus 2
+write_sample_corpus
 printf '%s\n' \
     '# expect: ok' \
     'fn main() {' \
     '    print("ignored by the fixture adapter")' \
     '}' \
     >"$corpora/sample/skip.kofun"
+write_sample_expectations
 printf '%s\n' \
     'BACKEND_NAME=alpha' \
     'backend_compile() {' \
@@ -256,6 +366,109 @@ expect_failure \
     run_runner
 
 write_sample_corpus
+mkdir -p "$work/rogue/sample"
+cp "$corpora/sample/expectations.kofun" "$work/rogue/sample/"
+cp "$corpora/sample/case.kofun" "$work/rogue/sample/"
+expect_failure \
+    "same-name unregistered corpus substitution" \
+    'selected corpus is not the registered sample corpus' \
+    run_rogue_runner
+
+write_sample_corpus
+mv "$corpora/sample/case.kofun" "$corpora/sample/replaced.kofun"
+expect_failure \
+    "same-count corpus name replacement" \
+    'case_names does not match its .kofun files' \
+    run_check
+
+write_sample_corpus
+printf '%s\n' \
+    '# expect: changed' \
+    'fn main() {' \
+    '    print("ignored by the fixture adapter")' \
+    '}' \
+    >"$corpora/sample/case.kofun"
+expect_failure \
+    "stale observation digest" \
+    'observation digest does not match its # expect-* headers' \
+    run_check
+
+write_sample_corpus
+printf '%s\n' \
+    'backend	corpus	state	evidence	reason' \
+    'alpha	sample	supported	/	-' \
+    >"$manifest"
+expect_failure \
+    "absolute evidence path" \
+    'evidence path must be a normalized repository-relative file' \
+    run_check
+
+printf '%s\n' \
+    'backend	corpus	state	evidence	reason' \
+    'alpha	sample	supported	tests/conformance	-' \
+    >"$manifest"
+expect_failure \
+    "directory evidence path" \
+    'evidence path not found' \
+    run_check
+
+mkdir -p "$ROOT/build"
+printf '%s\n' "not repository evidence" >"$untracked_evidence"
+untracked_relative=${untracked_evidence#"$ROOT/"}
+printf '%s\n' \
+    'backend	corpus	state	evidence	reason' \
+    "alpha	sample	supported	$untracked_relative	-" \
+    >"$manifest"
+expect_failure \
+    "untracked evidence path" \
+    'evidence path is not tracked' \
+    run_check
+
+write_sample_corpus
+printf '%s\n' \
+    'fn main() {' \
+    '    print("no explicit observation")' \
+    '}' \
+    >"$corpora/sample/case.kofun"
+expect_failure \
+    "case without explicit expectation" \
+    'case has no explicit # expect-* header' \
+    sh "$DIGEST" "$corpora/sample"
+
+printf '%s\n' \
+    '# expect-exit: 124' \
+    'fn main() {' \
+    '    print("reserved status")' \
+    '}' \
+    >"$corpora/sample/case.kofun"
+expect_failure \
+    "reserved timeout exit status" \
+    'expected exit 124 is reserved for the timeout harness' \
+    sh "$DIGEST" "$corpora/sample"
+
+printf '%b\n' \
+    '# expect:\tignored' \
+    'fn main() {' \
+    '    print("mismatched header grammar")' \
+    '}' \
+    >"$corpora/sample/case.kofun"
+expect_failure \
+    "tab-form expectation header" \
+    'case has no explicit # expect-* header' \
+    sh "$DIGEST" "$corpora/sample"
+
+printf '%s\n' \
+    '# expect-exit: 200' \
+    'fn main() {' \
+    '    print("out-of-range status")' \
+    '}' \
+    >"$corpora/sample/case.kofun"
+expect_failure \
+    "out-of-range expected exit status" \
+    'expected exit must be between 0 and 127' \
+    sh "$DIGEST" "$corpora/sample"
+
+write_sample_corpus
 write_alpha_adapter
 printf '%s\n' \
     'BACKEND_NAME=beta' \
@@ -263,7 +476,11 @@ printf '%s\n' \
     '    printf "%s\\n" "fixture executor is unavailable"' \
     '    return 125' \
     '}' \
-    'backend_compile() { return 1; }' \
+    'backend_compile() {' \
+    '    output=$2' \
+    '    printf "%s\\n" "#!/usr/bin/env sh" "printf '\''ok\\n'\''" >"$output"' \
+    '    chmod +x "$output"' \
+    '}' \
     >"$backends/beta.sh"
 printf '%s\n' \
     'backend	corpus	state	evidence	reason' \
@@ -277,6 +494,24 @@ grep -F 'UNAVAILABLE [beta] executor for corpus sample' \
         "FAIL: executor availability was treated as capability policy" >&2
     exit 1
 }
+grep -F 'BUILD PASS [beta]' "$output.stdout" >/dev/null || {
+    printf '%s\n' \
+        "FAIL: unavailable executor bypassed target compilation" >&2
+    exit 1
+}
+
+printf '%s\n' \
+    'BACKEND_NAME=beta' \
+    'backend_check_available() {' \
+    '    printf "%s\\n" "fixture executor is unavailable"' \
+    '    return 125' \
+    '}' \
+    'backend_compile() { return 1; }' \
+    >"$backends/beta.sh"
+expect_failure \
+    "unavailable executor hid compile failure" \
+    'compile failed' \
+    run_runner
 
 sh "$CHECK" >/dev/null
 printf '%s\n' \

@@ -1568,13 +1568,38 @@ for trap_target in x86_64-linux aarch64-linux; do
     "$KOFUN" build "$TRAP_PRESSURE_SOURCE" --target "$trap_target" \
         -o "$trap_image.second" >/dev/null
     cmp "$trap_image" "$trap_image.second"
+    LC_ALL=C readelf -lW "$trap_image" >"$trap_image.program-headers"
+    awk '
+        $1 == "LOAD" {
+            loads += 1
+            if (loads == 1 &&
+                !($2 == "0x000000" &&
+                  $3 == "0x0000000000400000" &&
+                  $4 == "0x0000000000400000" &&
+                  $5 == $6 &&
+                  $7 == "R" &&
+                  $8 == "E" &&
+                  $9 == "0x1000")) invalid = 1
+            if (loads == 2 &&
+                !($2 == "0x001000" &&
+                  $3 == "0x0000000000401000" &&
+                  $4 == "0x0000000000401000" &&
+                  $6 == "0x001000" &&
+                  $7 == "RW" &&
+                  $8 == "0x1000")) invalid = 1
+        }
+        END {
+            if (loads != 2 || invalid) exit 1
+        }
+    ' "$trap_image.program-headers"
     trap_rx_size=$(
-        LC_ALL=C readelf -lW "$trap_image" |
-            awk '$1 == "LOAD" && $7 == "R" && $8 == "E" { print $5 }'
+        awk \
+            '$1 == "LOAD" && $7 == "R" && $8 == "E" { print $5 }' \
+            "$trap_image.program-headers"
     )
     trap_rw_size=$(
-        LC_ALL=C readelf -lW "$trap_image" |
-            awk '$1 == "LOAD" && $7 ~ /W/ { print $5 }'
+        awk '$1 == "LOAD" && $7 == "RW" { print $5 }' \
+            "$trap_image.program-headers"
     )
     test -n "$trap_rx_size"
     test -n "$trap_rw_size"

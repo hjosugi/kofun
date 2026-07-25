@@ -36,8 +36,8 @@ not:
 The C11 backend and the direct x86-64 static ELF backend both execute every
 case. The direct AArch64 static ELF backend also executes every case under
 `qemu-aarch64`; when the emulator is absent that adapter reports an explicit
-`UNSUPPORTED` skip instead of failing. Unsupported parameter or result types
-remain explicit compiler errors.
+`UNAVAILABLE` result after cross-compiling every case. Unsupported parameter or
+result types remain explicit compiler errors.
 
 `division_floor_signs` pins `//` and `%` across every sign combination, plus
 the `-1` divisor, which both native backends answer without dividing at all. It

@@ -14,7 +14,7 @@
 | x86-64 native user-function calls | bounded Int Core: six arguments, guarded returns, recursion | `tests/conformance/functions` |
 | x86-64/AArch64 native Text-returning calls | bounded compiler-shaped profile with parameters, locals, concatenation, forwarding, and direct calls | `bootstrap/native/check.sh` |
 | AArch64 native user-function calls | same bounded Int Core lowered to AArch64; executed under `qemu-aarch64` | `tests/conformance/functions`, `bootstrap/native/check.sh` |
-| x86-64/AArch64 native Int64 values | literal magnitudes through `INT64_MAX`, narrow deterministic encodings, and the complete signed range through checked expressions | `bootstrap/native/check.sh` |
+| x86-64/AArch64 native Int64 values | literal magnitudes through `INT64_MAX`, backward-compatible deterministic encodings, and the complete signed range through checked expressions | `bootstrap/native/check.sh` |
 | x86-64/AArch64 native integer division | `//` and `%` use the specified floor semantics; `/` follows the executable seed's tracked truncating behavior (#687); all guard zero and non-representable quotients with canonical per-operator `R010` diagnostics | `tests/conformance/numeric`, `tests/conformance/functions`, `bootstrap/native/check.sh` |
 | self-host success corpus as a native binary | the driver's five-`print` corpus reaches a static ELF on both targets and matches the self-host C11 path exactly | `bootstrap/selfhost/native/check-native-corpus.sh` |
 | x86-64/AArch64 constant-stack returned calls | a `return` of a direct call branches instead of calling, so direct and mutual recursion in that position run in constant stack; proved by executing three million steps under a lowered stack limit | `bootstrap/native/check.sh`, `tests/conformance/functions` |

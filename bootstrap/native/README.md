@@ -61,27 +61,25 @@ parameters, direct calls, unary `-`, `+`, `-`, `*`, integer comparisons,
 statements in `main`, and explicit or implicit main returns identically.
 
 Runtime Int output covers zero, negative values, and the complete signed
-64-bit decimal width. Arithmetic branches to a deterministic overflow
-diagnostic — the same `kofun: integer overflow` message and exit status on both
-targets; AArch64 detects multiply overflow with a `smulh`/sign-bit comparison
-and add/sub/negate overflow through the `V` flag. Unknown functions, duplicate
+64-bit decimal width. Arithmetic branches to deterministic, per-operator
+`error[R010]` diagnostics with the same bytes and exit status on both targets.
+AArch64 detects multiply overflow with a `smulh`/sign-bit comparison and
+add/sub/negate overflow through the `V` flag. Unknown functions, duplicate
 declarations or parameters, wrong arity, more than six arguments, non-Int or
 non-Text signatures, missing helper returns, and `-g` are rejected before an
 artifact is written. `-g` debug information covers the single-`main` Core on
 both Linux targets, and the multi-function profile on neither.
 
-`tests/conformance/functions` runs the same twelve programs under the C11 and
-direct x86-64 adapters, covering ordinary/forward calls, recursion, mutual
+`tests/conformance/functions` runs the same twelve programs under the C11,
+direct x86-64, and direct AArch64 adapters, covering ordinary/forward calls,
+recursion, mutual
 recursion, signed/zero output, the six-argument boundary, register pressure
 past the allocatable set, values live across calls, multiple returning
 branches, calls in a returned position — including a six-parameter rotation,
 which only agrees with the other backends if every argument is computed before
 any parameter is overwritten — and floor division and modulo across every sign
-combination. The native gate additionally
-rebuilds the `fibonacci` example and the
-checked-overflow fixture for AArch64 and, when `qemu-aarch64` is installed,
-executes them and asserts the output, diagnostic, and exit status match the
-x86-64 observations byte for byte.
+combination. AArch64 cross-compiles every case on every host and executes all
+twelve under `qemu-aarch64` when it is available.
 
 ## x86-64 function register allocation
 
@@ -216,13 +214,15 @@ corrects: when the remainder is non-zero and its sign differs from the
 divisor's, `//` is one too high and `%` is one divisor short.
 
 The function profile accepts non-negative literal magnitudes through
-`INT64_MAX` and encodes each resulting signed Int64 in the narrowest form that
-holds it. A literal that fit the old 65535 range therefore emits exactly the
-bytes it did before and only wider operands grow. `INT64_MIN` is written the
-way the numeric corpus writes it, `-9223372036854775807 - 1`, because an atom
-must fit before unary minus applies. The gate covers the wide encoding
-boundaries on both targets and retains the independently constructed
-`INT64_MIN // -1`, `INT64_MIN / -1`, and `INT64_MIN % -1` checks.
+`INT64_MAX`. x86-64 selects the narrowest supported immediate encoding.
+AArch64 preserves the existing low-halfword-first encoding through 32 bits and
+extends wider values deterministically with `movk` halfwords. A literal that
+fit the old 65535 range therefore emits exactly the bytes it did before.
+`INT64_MIN` is written the way the numeric corpus writes it,
+`-9223372036854775807 - 1`, because an atom must fit before unary minus
+applies. The gate covers the wide encoding boundaries on both targets and
+retains the independently constructed `INT64_MIN // -1`, `INT64_MIN / -1`,
+and `INT64_MIN % -1` checks.
 
 Arithmetic failures use the same exact per-operator `error[R010]` lines as the
 C11 and wasm32 backends. Messages live in the bounded RW data page; only the
@@ -297,7 +297,7 @@ inside a lambda body are rejected, and allocation uses one mmap chunk per
 List. x86-64 and AArch64 consume the same parsed expression tree and preserve
 the same frame-slot, value-layout, bounds, allocation, and output contracts.
 
-The x86-64 target also implements immutable UTF-8 `Text` values with the
+Both direct targets also implement immutable UTF-8 `Text` values with the
 historical native ABI `[byte length: i64][UTF-8 bytes]`. The closed native Core
 contains constant Text expressions, so its frontend applies the pinned Unicode
 17 database and emits the resulting literal or scalar directly. `+`, `==`,
@@ -532,13 +532,11 @@ Implemented here:
 - checked `+`, `-`, `*`, and unary negation in the function profile, with an
   identical overflow trap on both targets;
 - general signed Int64 decimal output for function-profile `print`;
-- bounded x86-64 Text function parameters/results, direct/forward calls,
+- bounded x86-64 and AArch64 Text function parameters/results, direct/forward calls,
   concatenation, one immutable local, and `print(Text)`, with deterministic
   provenance and independent C11 differential evidence;
-- registered function conformance coverage with 5/5 cases executed by both
-  the C11 and native x86-64 adapters, plus the `fibonacci` and checked-overflow
-  fixtures executed on AArch64 under `qemu-aarch64` and matched against the
-  x86-64 output;
+- registered function conformance coverage with 12/12 cases executed by C11
+  and native x86-64, and by native AArch64 under `qemu-aarch64`;
 - x86-64 and AArch64 `List[Int]` literal, `len`, and positive/negative indexing
   lowering;
 - x86-64 and AArch64 local `Int`/`List[Int]` bindings with frame-backed
@@ -567,10 +565,8 @@ Still open:
   self-compile;
 - general local bindings and statement/control-flow lowering inside
   user-defined functions;
-- native stdout/stderr formatting and canonical `R010` diagnostics;
 - conditional branches, allocator reuse/reclamation, Mach-O, and additional targets;
 - first-class/nested collection lambdas and general collection types;
-- broader Text bindings/calls, AArch64 function-Text parity, and the Stage 1
-  compiler port;
+- broader Text bindings/calls and the Stage 1 compiler port;
 - variable/location DIEs, multi-function debug information, and AArch64
   List/Text debug rows.

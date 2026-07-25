@@ -6633,9 +6633,9 @@ static void a64_movk_shifted(
 
 /*
  * A signed 64-bit immediate as one `movz` plus a `movk` per remaining non-zero
- * halfword. Values that fit in 32 bits keep the exact two-instruction sequence
- * this emitted before, so every image whose literals fit the old range stays
- * byte-identical; only wider values grow.
+ * halfword. Values that fit in 32 bits keep the existing one- or two-instruction
+ * low-halfword-first sequence, so every image whose literals fit the old range
+ * stays byte-identical; only wider values grow.
  */
 static void a64_load_immediate(Bytes *text, unsigned reg, int64_t value) {
     uint64_t bits = (uint64_t)value;
