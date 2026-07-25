@@ -1475,6 +1475,77 @@ else
     divide_summary="PASS: AArch64 division/trap images built/audited; execution skipped"
 fi
 
+# Full signed Int64 literals. The function profile used to stop at 65535, which
+# put INT64_MIN out of reach entirely and left the non-representable-quotient
+# guard both backends emit unexecutable by any fixture. It is executable now.
+INT64_SOURCE="$NATIVE/fixtures/function_int64_boundaries.kofun"
+"$WORK/kofun-native-function-text" \
+    "$INT64_SOURCE" x86_64-linux "$WORK/function-int64-direct.elf"
+"$KOFUN" build "$INT64_SOURCE" --target x86_64-linux \
+    -o "$WORK/function-int64-cli.elf" >/dev/null
+cmp "$WORK/function-int64-direct.elf" "$WORK/function-int64-cli.elf"
+chmod +x "$WORK/function-int64-direct.elf"
+"$WORK/function-int64-direct.elf" \
+    >"$WORK/function-int64.stdout" 2>"$WORK/function-int64.stderr"
+printf '%s\n' \
+    9223372036854775807 \
+    -9223372036854775808 \
+    9223372036854775806 \
+    -9223372036854775807 \
+    0 \
+    -9223372036854775808 \
+    4294967296 \
+    -4294967296 \
+    >"$WORK/function-int64.expected"
+cmp "$WORK/function-int64.expected" "$WORK/function-int64.stdout"
+test ! -s "$WORK/function-int64.stderr"
+
+INT64_TRAP_SOURCE="$NATIVE/fixtures/function_int64_min_quotient.kofun"
+"$WORK/kofun-native-function-text" \
+    "$INT64_TRAP_SOURCE" x86_64-linux "$WORK/function-int64-trap.elf"
+chmod +x "$WORK/function-int64-trap.elf"
+set +e
+"$WORK/function-int64-trap.elf" \
+    >"$WORK/function-int64-trap.stdout" 2>"$WORK/function-int64-trap.stderr"
+int64_trap_status=$?
+set -e
+test "$int64_trap_status" -eq 1
+test ! -s "$WORK/function-int64-trap.stdout"
+cmp "$WORK/function-overflow.expected" "$WORK/function-int64-trap.stderr"
+
+for int64_case in function_int64_boundaries function_int64_min_quotient; do
+    "$KOFUN" build "$NATIVE/fixtures/$int64_case.kofun" \
+        --target aarch64-linux -o "$WORK/$int64_case-aarch64.elf" >/dev/null
+    "$KOFUN" build "$NATIVE/fixtures/$int64_case.kofun" \
+        --target aarch64-linux \
+        -o "$WORK/$int64_case-aarch64.second.elf" >/dev/null
+    cmp "$WORK/$int64_case-aarch64.elf" \
+        "$WORK/$int64_case-aarch64.second.elf"
+done
+
+if test -n "$AARCH64_RUNNER"; then
+    "$AARCH64_RUNNER" "$WORK/function_int64_boundaries-aarch64.elf" \
+        >"$WORK/function-int64-aarch64.stdout" \
+        2>"$WORK/function-int64-aarch64.stderr"
+    cmp "$WORK/function-int64.expected" "$WORK/function-int64-aarch64.stdout"
+    test ! -s "$WORK/function-int64-aarch64.stderr"
+    set +e
+    "$AARCH64_RUNNER" "$WORK/function_int64_min_quotient-aarch64.elf" \
+        >"$WORK/function-int64-trap-aarch64.stdout" \
+        2>"$WORK/function-int64-trap-aarch64.stderr"
+    int64_trap_status=$?
+    set -e
+    test "$int64_trap_status" -eq 1
+    test ! -s "$WORK/function-int64-trap-aarch64.stdout"
+    cmp "$WORK/function-overflow.expected" \
+        "$WORK/function-int64-trap-aarch64.stderr"
+    int64_summary="PASS: x86-64/AArch64 carry full Int64 literals and trap INT64_MIN // -1"
+else
+    printf '%s\n' \
+        "SKIP: AArch64 Int64 literal execution (qemu-aarch64 unavailable)"
+    int64_summary="PASS: AArch64 Int64 literal images built/audited; execution skipped"
+fi
+
 # The self-host driver's success corpus is out of reach of the single-`main`
 # aggregate Core and inside the function profile, so it reaches a native image
 # only through the fallback. `bootstrap/selfhost/native/` runs the full
@@ -1899,6 +1970,7 @@ printf '%s\n' \
     "PASS: x86-64 function values stay in registers with no operand push/pop" \
     "$tail_summary" \
     "$divide_summary" \
+    "$int64_summary" \
     "PASS: the self-host success corpus reaches a deterministic native image" \
     "PASS: x86-64/AArch64 List/Text Cores use shared ABIs and diagnostics" \
     "PASS: x86-64 List execution matched C11 with OOB/OOM contracts" \

@@ -1,0 +1,29 @@
+# The function profile carries full signed Int64 literals. INT64_MIN is written
+# the way tests/conformance/numeric/int64_boundaries.kofun writes it, because a
+# literal is unsigned before the unary minus applies and 9223372036854775808
+# does not fit.
+
+fn identity(n: Int) -> Int {
+    return n
+}
+
+fn quotient(a: Int, b: Int) -> Int {
+    return a // b
+}
+
+fn remainder(a: Int, b: Int) -> Int {
+    return a % b
+}
+
+fn main() {
+    let maximum = 9223372036854775807
+    let minimum = -9223372036854775807 - 1
+    print(maximum)
+    print(minimum)
+    print(maximum - 1)
+    print(minimum + 1)
+    print(remainder(minimum, -1))
+    print(quotient(minimum, 1))
+    print(identity(4294967296))
+    print(identity(-4294967296))
+}

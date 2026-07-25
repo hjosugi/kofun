@@ -2152,10 +2152,16 @@ static FunctionExpression *function_parse_atom(FunctionParser *parser) {
                isdigit((unsigned char)parser->source[parser->cursor])) {
             unsigned digit =
                 (unsigned)(parser->source[parser->cursor++] - '0');
-            if (value > (UINT64_C(65535) - digit) / 10) {
+            /*
+             * A literal is unsigned here: `-9223372036854775808` is a negation
+             * applied to `9223372036854775808`, which does not fit, so the
+             * bound is INT64_MAX and INT64_MIN is written the way the numeric
+             * corpus writes it, `-9223372036854775807 - 1`.
+             */
+            if (value > ((uint64_t)INT64_MAX - digit) / 10) {
                 function_error(
                     parser,
-                    "native Core integer literal exceeds 65535"
+                    "native Core integer literal exceeds 9223372036854775807"
                 );
                 return NULL;
             }
@@ -3139,13 +3145,34 @@ static size_t x64_mov_register_imm32_field(Bytes *text, unsigned reg) {
     return field;
 }
 
-static void x64_mov_register_imm32(
+/*
+ * A signed 64-bit literal in the narrowest form that holds it: the existing
+ * zero-extending `mov reg32, imm32` when it is non-negative and fits, the
+ * sign-extending `REX.W C7 /0 imm32` when it fits in a signed 32-bit field,
+ * and `REX.W B8+r imm64` otherwise. Narrower is not only smaller — the bounded
+ * static RX page is one page — it also keeps every image whose literals fit in
+ * the old range byte-identical.
+ */
+static void x64_mov_register_imm64(
     Bytes *text,
     unsigned reg,
-    uint32_t value
+    int64_t value
 ) {
-    x64_mov_register_imm32_opcode(text, reg);
-    u32_le(text, value);
+    if (value >= 0 && value <= (int64_t)UINT32_MAX) {
+        x64_mov_register_imm32_opcode(text, reg);
+        u32_le(text, (uint32_t)value);
+        return;
+    }
+    if (value >= INT32_MIN && value <= INT32_MAX) {
+        byte(text, (uint8_t)(UINT8_C(0x48) | (reg >= 8 ? 1 : 0)));
+        byte(text, UINT8_C(0xc7));
+        byte(text, (uint8_t)(UINT8_C(0xc0) | (reg & 7)));
+        u32_le(text, (uint32_t)(int32_t)value);
+        return;
+    }
+    byte(text, (uint8_t)(UINT8_C(0x48) | (reg >= 8 ? 1 : 0)));
+    byte(text, (uint8_t)(UINT8_C(0xb8) | (reg & 7)));
+    u64_le(text, (uint64_t)value);
 }
 
 static uint32_t x64_local_displacement(size_t slot) {
@@ -5407,7 +5434,7 @@ static void x64_function_expression(
     X64Operand result = x64_eval_operand(layout, depth);
     if (expression->kind == FUNCTION_LITERAL) {
         unsigned reg = result.in_register ? result.reg : X64_RAX;
-        x64_mov_register_imm32(text, reg, (uint32_t)expression->value);
+        x64_mov_register_imm64(text, reg, expression->value);
         if (!result.in_register) {
             x64_mov_operand_register(text, result, X64_RAX);
         }
@@ -6463,12 +6490,67 @@ static void a64_load_param(Bytes *text, unsigned reg, size_t slot) {
     );
 }
 
-/* Load a 32-bit zero-extended immediate, matching the x86-64 mov eax path. */
+/* movz xreg, #imm16, lsl #shift */
+static void a64_movz_shifted(
+    Bytes *text,
+    unsigned reg,
+    uint32_t immediate,
+    unsigned shift
+) {
+    a64_word(
+        text,
+        UINT32_C(0xd2800000) |
+            ((uint32_t)(shift / 16) << 21) |
+            ((immediate & UINT32_C(0xffff)) << 5) |
+            (uint32_t)reg
+    );
+}
+
+/* movk xreg, #imm16, lsl #shift */
+static void a64_movk_shifted(
+    Bytes *text,
+    unsigned reg,
+    uint32_t immediate,
+    unsigned shift
+) {
+    a64_word(
+        text,
+        UINT32_C(0xf2800000) |
+            ((uint32_t)(shift / 16) << 21) |
+            ((immediate & UINT32_C(0xffff)) << 5) |
+            (uint32_t)reg
+    );
+}
+
+/*
+ * A signed 64-bit immediate as one `movz` plus a `movk` per remaining non-zero
+ * halfword. Values that fit in 32 bits keep the exact two-instruction sequence
+ * this emitted before, so every image whose literals fit the old range stays
+ * byte-identical; only wider values grow.
+ */
 static void a64_load_immediate(Bytes *text, unsigned reg, int64_t value) {
-    uint32_t bits = (uint32_t)value;
-    a64_movz(text, reg, bits & UINT32_C(0xffff));
-    if ((bits >> 16) != 0) {
-        a64_movk_lsl16(text, reg, (bits >> 16) & UINT32_C(0xffff));
+    uint64_t bits = (uint64_t)value;
+    if (bits <= UINT32_MAX) {
+        a64_movz(text, reg, (unsigned)(bits & UINT64_C(0xffff)));
+        if ((bits >> 16) != 0) {
+            a64_movk_lsl16(
+                text,
+                reg,
+                (unsigned)((bits >> 16) & UINT64_C(0xffff))
+            );
+        }
+        return;
+    }
+    bool started = false;
+    for (unsigned shift = 0; shift < 64; shift += 16) {
+        uint32_t half = (uint32_t)((bits >> shift) & UINT64_C(0xffff));
+        if (half == 0 && started) continue;
+        if (!started) {
+            a64_movz_shifted(text, reg, half, shift);
+            started = true;
+        } else {
+            a64_movk_shifted(text, reg, half, shift);
+        }
     }
 }
 
