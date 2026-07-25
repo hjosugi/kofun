@@ -1,0 +1,17 @@
+# contract: kofun.backend-differential/v1
+# expect-reject: `/` is not defined on Int; the integer quotient is `//`
+
+# Kofun performs no implicit numeric conversion, so `/` cannot produce a
+# fractional value from two Int operands and has nothing to mean on them. It is
+# left without a meaning rather than given the truncating one, so it can be
+# defined once a fractional type exists without silently changing any program
+# that compiles today. See spec/semantics.md.
+#
+# The operands are bindings rather than literals so a backend cannot pass this
+# case by constant-folding the expression away before it reaches the operator.
+
+fn main() {
+    let left = 7
+    let right = 2
+    print(left / right)
+}

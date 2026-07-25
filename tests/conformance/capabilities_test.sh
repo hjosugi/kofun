@@ -513,6 +513,94 @@ expect_failure \
     'compile failed' \
     run_runner
 
+# Rejection cases. The observation is a refusal rather than a run, so each way
+# a backend could appear to refuse without refusing has to fail on its own.
+rm -f "$backends/beta.sh"
+write_supported_manifest
+
+write_reject_corpus() {
+    rm -f "$corpora/sample/"*.kofun
+    printf '%s\n' \
+        '# expect-reject: the fixture backend must refuse this source' \
+        'fn main() {' \
+        '    print("refused")' \
+        '}' \
+        >"$corpora/sample/reject.kofun"
+    write_sample_expectations
+}
+
+write_reject_corpus
+
+# The adapter that compiles everything must not pass a case whose contract is
+# that nothing compiles.
+write_alpha_adapter
+expect_failure \
+    "backend compiled a refused construct" \
+    'compiled a source the specification refuses' \
+    run_runner
+
+printf '%s\n' \
+    'BACKEND_NAME=alpha' \
+    'backend_compile() { return 1; }' \
+    >"$backends/alpha.sh"
+expect_failure \
+    "silent refusal" \
+    'refused the source without a diagnostic' \
+    run_runner
+
+printf '%s\n' \
+    'BACKEND_NAME=alpha' \
+    'backend_compile() {' \
+    '    output=$2' \
+    '    printf "%s\\n" "#!/usr/bin/env sh" >"$output"' \
+    '    printf "%s\\n" "alpha refuses this source" >&2' \
+    '    return 1' \
+    '}' \
+    >"$backends/alpha.sh"
+expect_failure \
+    "refusal that left an artifact" \
+    'refused the source but left an artifact' \
+    run_runner
+
+# A refusal filed as a capability gap is still a refusal before execution, so
+# status 125 passes here where it would fail an executable case.
+printf '%s\n' \
+    'BACKEND_NAME=alpha' \
+    'backend_compile() {' \
+    '    printf "%s\\n" "alpha does not implement this construct" >&2' \
+    '    return 125' \
+    '}' \
+    >"$backends/alpha.sh"
+run_runner >"$output.stdout" 2>"$output.stderr"
+grep -F 'REJECT PASS [alpha]' "$output.stdout" >/dev/null || {
+    printf '%s\n' \
+        "FAIL: a refusal reported as status 125 was not accepted" >&2
+    sed 's/^/  /' "$output.stdout" "$output.stderr" >&2
+    exit 1
+}
+grep -F 'refused: 1/1 cases refused before execution by alpha' \
+    "$output.stdout" >/dev/null || {
+    printf '%s\n' "FAIL: refusals were not reported separately" >&2
+    exit 1
+}
+
+# One file may not carry both contracts.
+printf '%s\n' \
+    '# expect-reject: the fixture backend must refuse this source' \
+    '# expect: ok' \
+    'fn main() {' \
+    '    print("refused")' \
+    '}' \
+    >"$corpora/sample/reject.kofun"
+expect_failure \
+    "case declaring both a refusal and a run" \
+    'rejection case must not declare execution observations' \
+    run_check
+
+write_alpha_adapter
+write_sample_corpus
+write_supported_manifest
+
 sh "$CHECK" >/dev/null
 printf '%s\n' \
     "PASS: conformance capability manifest rejects policy and coverage drift"

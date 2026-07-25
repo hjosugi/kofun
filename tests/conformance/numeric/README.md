@@ -13,6 +13,17 @@ file carries a second backend list. `./bin/kofun test
 tests/conformance/numeric` dispatches the common runner across every adapter in
 `tests/conformance/backends/`.
 
+A file may instead declare `# expect-reject:`, for a construct the
+specification refuses outright and that therefore has nothing to run.
+`reject_slash_operator.kofun` is the one such case: `/` is not defined on `Int`
+(#687), so what every backend must agree on is the refusal, not a value. Its
+observation is that the backend compiles nothing, leaves no artifact, and
+writes a diagnostic. The diagnostic's bytes stay pinned in each backend's own
+gate, because the specification lets a backend word its own refusal; what this
+corpus pins is that none of them produce a runnable artifact. The recorded
+reason is covered by the observation digest. See
+`spec/backend-differential-contract.md`.
+
 The capability manifest records one of two states for every backend/corpus
 pair:
 

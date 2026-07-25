@@ -116,6 +116,7 @@ run_backend() (
     skipped=0
     total=0
     built=0
+    refused=0
 
     for source in "$CORPUS"/*.kofun; do
         test -f "$source" || continue
@@ -124,6 +125,62 @@ run_backend() (
         stem=$(basename "${source%.kofun}")
         case_work="$runner_work/$stem"
         mkdir -p "$case_work"
+
+        # A rejection case has no runtime observation to compare: the
+        # specification refuses the construct, so the shared contract is that
+        # every backend declines it before execution. The refusal wording stays
+        # per-backend, gated where that backend's diagnostics are pinned; what
+        # this corpus pins is that no backend produces a runnable artifact.
+        reject_reason=$(sed -n 's/^# expect-reject: //p' "$source")
+        if test -n "$reject_reason"; then
+            if grep -Eq '^# expect(-stdout|-stderr|-exit)?: ' "$source"; then
+                printf '%s\n' \
+                    "FAIL [$BACKEND_NAME] $source (a rejection case must not also declare execution observations)"
+                failed=$((failed + 1))
+                continue
+            fi
+
+            # Taken through an AND-OR list, and errexit restored afterwards,
+            # because an adapter may set either option in its own body.
+            compile_status=0
+            backend_compile \
+                "$source" "$case_work/program" "$case_work" \
+                >"$case_work/compile.stdout" 2>"$case_work/compile.stderr" ||
+                compile_status=$?
+            set -e
+
+            if test "$compile_status" -eq 0; then
+                printf '%s\n' \
+                    "FAIL [$BACKEND_NAME] $source (compiled a source the specification refuses)"
+                failed=$((failed + 1))
+                continue
+            fi
+            artifact_found=0
+            for artifact in "$case_work"/program*; do
+                test -e "$artifact" || continue
+                artifact_found=1
+                break
+            done
+            if test "$artifact_found" -ne 0; then
+                printf '%s\n' \
+                    "FAIL [$BACKEND_NAME] $source (refused the source but left an artifact)"
+                failed=$((failed + 1))
+                continue
+            fi
+            if test ! -s "$case_work/compile.stdout" &&
+               test ! -s "$case_work/compile.stderr"
+            then
+                printf '%s\n' \
+                    "FAIL [$BACKEND_NAME] $source (refused the source without a diagnostic)"
+                failed=$((failed + 1))
+                continue
+            fi
+
+            printf '%s\n' "REJECT PASS [$BACKEND_NAME] $source"
+            passed=$((passed + 1))
+            refused=$((refused + 1))
+            continue
+        fi
 
         : >"$case_work/expected.stdout"
         : >"$case_work/expected.stderr"
@@ -156,11 +213,15 @@ run_backend() (
             continue
         fi
 
-        set +e
+        # An adapter is free to set -e in its own body, so a bare call would
+        # abort this backend's whole run the first time a case fails to
+        # compile. Taking the status through an AND-OR list keeps the refusal
+        # observable instead of fatal.
+        compile_status=0
         backend_compile \
             "$source" "$case_work/program" "$case_work" \
-            >"$case_work/compile.stdout" 2>"$case_work/compile.stderr"
-        compile_status=$?
+            >"$case_work/compile.stdout" 2>"$case_work/compile.stderr" ||
+            compile_status=$?
         set -e
 
         if test "$compile_status" -eq 125; then
@@ -231,7 +292,15 @@ run_backend() (
     if test "$executor_available" -eq 0; then
         printf '%s\n' \
             "$built built; $failed failed; 0 executed by $BACKEND_NAME" \
-            "coverage: 0/$total cases executed by $BACKEND_NAME" \
+            "coverage: 0/$total cases executed by $BACKEND_NAME"
+        # A refusal is observed at compile time, so an absent executor does not
+        # reduce what a rejection case measured. Reporting it separately keeps
+        # the executed count from reading as lost coverage.
+        if test "$refused" -ne 0; then
+            printf '%s\n' \
+                "refused: $refused/$total cases refused before execution by $BACKEND_NAME"
+        fi
+        printf '%s\n' \
             "UNAVAILABLE [$BACKEND_NAME] executor for corpus $CORPUS_NAME"
         sed 's/^/  /' \
             "$runner_work/availability.stdout" "$runner_work/availability.stderr"
@@ -248,6 +317,10 @@ run_backend() (
     printf '%s\n' \
         "$passed passed; $failed failed; $skipped explicitly skipped" \
         "coverage: $executed/$total cases executed by $BACKEND_NAME"
+    if test "$refused" -ne 0; then
+        printf '%s\n' \
+            "refused: $refused/$total cases refused before execution by $BACKEND_NAME"
+    fi
     if test "$total" -eq 0 ||
        test "$executed" -eq 0 ||
        test "$failed" -ne 0
