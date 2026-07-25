@@ -1,7 +1,21 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include "kif_v1.h"
 
 #define KOFUN_MODULE_SYMBOLS_NO_MAIN
 #include "module_symbols.c"
+
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#ifndef O_CLOEXEC
+#define O_CLOEXEC 0
+#endif
+#ifndef O_DIRECTORY
+#define O_DIRECTORY 0
+#endif
 
 static const char *kif_fact_kind_name(KofunKifFactKind kind) {
     switch (kind) {
@@ -306,6 +320,7 @@ static bool emit_dump(const KofunKifInterface *interface, const char *path) {
             char target_module_hex[65];
             char target_symbol_hex[65];
             char chain_first_hex[65];
+            size_t chain_index;
             bytes_to_hex(fact->source_import_binding_id, 32u, source_import_hex);
             bytes_to_hex(fact->target_module_id, 32u, target_module_hex);
             bytes_to_hex(fact->target_symbol_id, 32u, target_symbol_hex);
@@ -323,6 +338,18 @@ static bool emit_dump(const KofunKifInterface *interface, const char *path) {
                         : fact->export_target_kind == KOFUN_KIF_EXPORT_TARGET_CONSTRUCTOR
                             ? "constructor" : "module",
                 fact->export_chain_count, chain_first_hex);
+            fprintf(output, ", \"chain_ids\": [");
+            for (chain_index = 0u;
+                 chain_index < fact->export_chain_count;
+                 chain_index += 1u) {
+                char chain_hex[65];
+                bytes_to_hex(fact->export_chain_ids +
+                    chain_index * KOFUN_KIF_ID_BYTES,
+                    KOFUN_KIF_ID_BYTES, chain_hex);
+                fprintf(output, "%s\"%s\"",
+                    chain_index == 0u ? "" : ", ", chain_hex);
+            }
+            fprintf(output, "]");
             if (fact->export_target_kind ==
                     KOFUN_KIF_EXPORT_TARGET_CONSTRUCTOR) {
                 char owner_hex[65];
@@ -334,6 +361,10 @@ static bool emit_dump(const KofunKifInterface *interface, const char *path) {
                     "\"target_constructor_ordinal\": %u",
                     (unsigned)fact->constructor_payload_count, owner_hex,
                     (unsigned)fact->export_target_constructor_ordinal);
+            } else if (fact->export_target_kind ==
+                    KOFUN_KIF_EXPORT_TARGET_MODULE) {
+                fprintf(output, ", \"target_module_path\": \"%s\"",
+                    fact->export_target_module_path);
             }
         }
         fprintf(output, "}%s\n",
@@ -496,25 +527,53 @@ static bool parse_dependency_import(
     return found;
 }
 
-static const KofunKifFact *find_kif_function(
+static bool kif_fact_is_callable_function(const KofunKifFact *fact) {
+    return fact->kind == KOFUN_KIF_FACT_FUNCTION ||
+        (fact->kind == KOFUN_KIF_FACT_EXPORT &&
+         fact->export_target_kind == KOFUN_KIF_EXPORT_TARGET_FUNCTION);
+}
+
+static bool find_kif_function(
+    Program *program,
     const KofunKifInterface *interface,
     bool package_internal,
     const Module *module,
-    const Token *name
+    const Token *name,
+    const KofunKifFact **fact_out
 ) {
+    const KofunKifFact *found = NULL;
     size_t index;
     for (index = 0u; index < interface->public_fact_count; index += 1u) {
         const KofunKifFact *fact = &interface->public_facts[index];
-        if (fact->kind == KOFUN_KIF_FACT_FUNCTION &&
-            token_text_equals(module, name, fact->name)) return fact;
+        if (!kif_fact_is_callable_function(fact) ||
+            !token_text_equals(module, name, fact->name)) continue;
+        if (found != NULL) {
+            set_error(program, "E2S65",
+                "compiled interface has duplicate callable `%.*s`",
+                (int)(name->end - name->start),
+                module->source + name->start);
+            return false;
+        }
+        found = fact;
     }
-    if (!package_internal) return NULL;
-    for (index = 0u; index < interface->internal_fact_count; index += 1u) {
-        const KofunKifFact *fact = &interface->internal_facts[index];
-        if (fact->kind == KOFUN_KIF_FACT_FUNCTION &&
-            token_text_equals(module, name, fact->name)) return fact;
+    if (package_internal) {
+        for (index = 0u; index < interface->internal_fact_count;
+             index += 1u) {
+            const KofunKifFact *fact = &interface->internal_facts[index];
+            if (fact->kind != KOFUN_KIF_FACT_FUNCTION ||
+                !token_text_equals(module, name, fact->name)) continue;
+            if (found != NULL) {
+                set_error(program, "E2S65",
+                    "compiled interface has duplicate callable `%.*s`",
+                    (int)(name->end - name->start),
+                    module->source + name->start);
+                return false;
+            }
+            found = fact;
+        }
     }
-    return NULL;
+    *fact_out = found;
+    return true;
 }
 
 static bool measure_call(
@@ -573,8 +632,11 @@ static bool collect_kif_calls(
             !punctuation_equals(module, &module->tokens[cursor + 1u], '.') ||
             module->tokens[cursor + 2u].kind != TOKEN_IDENTIFIER ||
             !punctuation_equals(module, &module->tokens[cursor + 3u], '(')) continue;
-        fact = find_kif_function(interface, package_internal, module,
-            &module->tokens[cursor + 2u]);
+        if (!find_kif_function(program, interface, package_internal, module,
+                &module->tokens[cursor + 2u], &fact)) {
+            free(calls);
+            return false;
+        }
         if (fact == NULL) {
             set_error(program, "E2S65", "compiled interface has no accessible function `%.*s`",
                 (int)(module->tokens[cursor + 2u].end - module->tokens[cursor + 2u].start),
@@ -623,6 +685,23 @@ static bool collect_kif_calls(
     return true;
 }
 
+static char *resolution_parent_directory(const char *path) {
+    const char *slash = strrchr(path, '/');
+    char *parent;
+    size_t length;
+    if (slash == NULL) {
+        parent = malloc(2u);
+        if (parent != NULL) memcpy(parent, ".", 2u);
+        return parent;
+    }
+    length = slash == path ? 1u : (size_t)(slash - path);
+    parent = malloc(length + 1u);
+    if (parent == NULL) return NULL;
+    memcpy(parent, path, length);
+    parent[length] = '\0';
+    return parent;
+}
+
 static bool emit_kif_resolution(
     const KofunKifInterface *interface,
     bool package_internal,
@@ -632,11 +711,38 @@ static bool emit_kif_resolution(
     size_t count,
     const char *output_path
 ) {
-    FILE *output = fopen(output_path, "wb");
+    size_t output_length = strlen(output_path);
+    char *temporary = NULL;
+    char *parent = NULL;
+    FILE *output = NULL;
+    int descriptor = -1;
+    int directory = -1;
+    bool temporary_exists = false;
+    bool committed = false;
     char module_hex[65];
     char digest_hex[65];
+    int formatted_length;
     size_t index;
-    if (output == NULL) return false;
+    if (output_length > SIZE_MAX - 40u) return false;
+    temporary = malloc(output_length + 40u);
+    parent = resolution_parent_directory(output_path);
+    if (temporary == NULL || parent == NULL) goto done;
+    formatted_length = snprintf(temporary, output_length + 40u,
+        "%s.kif-resolve-tmp.XXXXXX", output_path);
+    if (formatted_length < 0 ||
+        (size_t)formatted_length >= output_length + 40u) {
+        goto done;
+    }
+    descriptor = mkstemp(temporary);
+    if (descriptor < 0) goto done;
+    temporary_exists = true;
+    if (fchmod(descriptor, S_IRUSR | S_IWUSR) != 0 ||
+        fcntl(descriptor, F_SETFD, FD_CLOEXEC) != 0) {
+        goto done;
+    }
+    output = fdopen(descriptor, "wb");
+    if (output == NULL) goto done;
+    descriptor = -1;
     bytes_to_hex(interface->module_id, KOFUN_KIF_ID_BYTES, module_hex);
     bytes_to_hex(package_internal ? interface->package_internal_semantic_digest
             : interface->public_semantic_digest,
@@ -647,22 +753,123 @@ static bool emit_kif_resolution(
         dependency_path, module_hex,
         package_internal ? "package-internal" : "public", digest_hex);
     for (index = 0u; index < count; index += 1u) {
+        const KofunKifFact *fact = calls[index].fact;
         char symbol_hex[65];
-        bytes_to_hex(calls[index].fact->symbol_id, KOFUN_KIF_ID_BYTES, symbol_hex);
-        fprintf(output,
-            "qualified-call|qualifier=%s|name=%s|target-module=%s|"
-            "target-symbol=%s|arity=%zu|signature=fn(%u:Int)->Int|span=%zu..%zu\n",
-            qualifier, calls[index].fact->name, module_hex, symbol_hex,
-            calls[index].arity, (unsigned)calls[index].fact->parameter_count,
-            calls[index].start, calls[index].end);
+        if (fact->kind == KOFUN_KIF_FACT_EXPORT) {
+            char export_hex[65];
+            char target_module_hex[65];
+            size_t chain_index;
+            bytes_to_hex(fact->symbol_id, KOFUN_KIF_ID_BYTES, export_hex);
+            bytes_to_hex(fact->target_module_id, KOFUN_KIF_ID_BYTES,
+                target_module_hex);
+            bytes_to_hex(fact->target_symbol_id, KOFUN_KIF_ID_BYTES,
+                symbol_hex);
+            fprintf(output,
+                "qualified-call|qualifier=%s|name=%s|binding-module=%s|"
+                "export-binding=%s|target-module=%s|target-symbol=%s|"
+                "arity=%zu|signature=fn(%u:Int)->Int|span=%zu..%zu|"
+                "chain=%zu|chain-ids=",
+                qualifier, fact->name, module_hex, export_hex,
+                target_module_hex, symbol_hex, calls[index].arity,
+                (unsigned)fact->parameter_count, calls[index].start,
+                calls[index].end, fact->export_chain_count);
+            for (chain_index = 0u;
+                 chain_index < fact->export_chain_count;
+                 chain_index += 1u) {
+                char chain_hex[65];
+                bytes_to_hex(fact->export_chain_ids +
+                    chain_index * KOFUN_KIF_ID_BYTES,
+                    KOFUN_KIF_ID_BYTES, chain_hex);
+                fprintf(output, "%s%s",
+                    chain_index == 0u ? "" : ",", chain_hex);
+            }
+            fputc('\n', output);
+        } else {
+            bytes_to_hex(fact->symbol_id, KOFUN_KIF_ID_BYTES, symbol_hex);
+            fprintf(output,
+                "qualified-call|qualifier=%s|name=%s|target-module=%s|"
+                "target-symbol=%s|arity=%zu|signature=fn(%u:Int)->Int|span=%zu..%zu\n",
+                qualifier, fact->name, module_hex, symbol_hex,
+                calls[index].arity, (unsigned)fact->parameter_count,
+                calls[index].start, calls[index].end);
+        }
     }
     {
         bool write_failed = ferror(output) != 0;
+        bool flush_failed = fflush(output) != 0;
+        bool sync_failed = !flush_failed && fsync(fileno(output)) != 0;
         int close_status = fclose(output);
-        if (!write_failed && close_status == 0) return true;
-        remove(output_path);
+        output = NULL;
+        if (write_failed || flush_failed || sync_failed ||
+            close_status != 0) {
+            goto done;
+        }
+    }
+#if defined(KOFUN_TEST_DIAGNOSTIC_FAULTS)
+    {
+        const char *fault = getenv("KOFUN_KIF_RESOLVE_FAULT");
+        if (fault != NULL && strcmp(fault, "before-rename") == 0) {
+            goto done;
+        }
+    }
+#endif
+    if (rename(temporary, output_path) != 0) goto done;
+    temporary_exists = false;
+    directory = open(parent, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (directory < 0) goto done;
+    {
+        bool sync_failed = fsync(directory) != 0;
+        int close_status = close(directory);
+        directory = -1;
+        if (sync_failed || close_status != 0) goto done;
+    }
+    committed = true;
+done:
+    if (output != NULL) (void)fclose(output);
+    if (descriptor >= 0) (void)close(descriptor);
+    if (directory >= 0) (void)close(directory);
+    if (temporary_exists) (void)remove(temporary);
+    free(temporary);
+    free(parent);
+    return committed;
+}
+
+static bool reject_resolution_path_alias(
+    Program *program,
+    const char *input_path,
+    const char *output_path
+) {
+    struct stat input_stat;
+    struct stat output_stat;
+    int input_status;
+    int input_error;
+    int output_status;
+    int output_error;
+    if (strcmp(input_path, output_path) == 0) {
+        set_error(program, "E2S68",
+            "KIF consumer input and output paths must be distinct");
         return false;
     }
+    errno = 0;
+    input_status = stat(input_path, &input_stat);
+    input_error = errno;
+    errno = 0;
+    output_status = stat(output_path, &output_stat);
+    output_error = errno;
+    if ((input_status != 0 && input_error != ENOENT) ||
+        (output_status != 0 && output_error != ENOENT)) {
+        set_error(program, "E2S68",
+            "cannot validate KIF consumer input/output path identities");
+        return false;
+    }
+    if (input_status == 0 && output_status == 0 &&
+        input_stat.st_dev == output_stat.st_dev &&
+        input_stat.st_ino == output_stat.st_ino) {
+        set_error(program, "E2S68",
+            "KIF consumer input and output paths must not alias one file");
+        return false;
+    }
+    return true;
 }
 
 static int resolve_mode(
@@ -685,9 +892,15 @@ static int resolve_mode(
     int status = 1;
     memset(&program, 0, sizeof(program));
     program.module_count = 1u;
-    remove(output_path);
     if (!parse_identity(consumer_package_text, consumer_package)) {
         printf("error[KIF-resolve]: consumer PackageId must be 64 lowercase hexadecimal digits\n");
+        return 1;
+    }
+    if (!reject_resolution_path_alias(&program, input_path, output_path) ||
+        !reject_resolution_path_alias(&program, consumer_path,
+            output_path)) {
+        printf("%s\n", program.error);
+        destroy_program(&program);
         return 1;
     }
     if (!read_kif_file(input_path, &bytes, &length)) {
@@ -720,7 +933,6 @@ static int resolve_mode(
     status = 0;
 done:
     if (program.failed) printf("%s\n", program.error);
-    if (status != 0) remove(output_path);
     free(calls);
     destroy_program(&program);
     kofun_kif_destroy(result.interface);

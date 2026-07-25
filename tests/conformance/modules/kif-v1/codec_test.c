@@ -1,4 +1,5 @@
 #include "kif_v1.h"
+#include "sha256.h"
 
 #include <errno.h>
 #include <stdint.h>
@@ -10,10 +11,16 @@
 enum {
     HEADER_BYTES = 12,
     TAG_PUBLIC_FACTS = 0x8006,
+    TAG_INTERNAL_FACTS = 0x8007,
     TAG_PUBLIC_DIGEST = 0x8008,
+    TAG_INTERNAL_DIGEST = 0x8009,
     FACT_TAG_NAMESPACE = 0x8001,
     FACT_TAG_SYMBOL = 0x8002,
-    FACT_TAG_NAME = 0x8004
+    FACT_TAG_KIND = 0x8003,
+    FACT_TAG_NAME = 0x8004,
+    FACT_TAG_EXPORT_CHAIN = 0x800c,
+    FACT_TAG_EXPORT_TARGET_KIND = 0x800d,
+    FACT_TAG_EXPORT_TARGET_MODULE_PATH = 0x8010
 };
 
 typedef struct {
@@ -48,6 +55,127 @@ static void store_u32(uint8_t *bytes, uint32_t value) {
     bytes[1] = (uint8_t)(value >> 16u);
     bytes[2] = (uint8_t)(value >> 8u);
     bytes[3] = (uint8_t)value;
+}
+
+static void hash_field(
+    KofunSha256 *context,
+    uint16_t tag,
+    const uint8_t *value,
+    size_t length
+) {
+    uint8_t tag_bytes[2];
+    uint8_t length_bytes[4];
+    store_u16(tag_bytes, tag);
+    store_u32(length_bytes, (uint32_t)length);
+    kofun_sha256_update(context, tag_bytes, sizeof(tag_bytes));
+    kofun_sha256_update(context, length_bytes, sizeof(length_bytes));
+    kofun_sha256_update(context, value, length);
+}
+
+static void framed_hash(
+    const char *domain,
+    const uint8_t *payload,
+    size_t payload_length,
+    uint8_t digest[KOFUN_KIF_ID_BYTES]
+) {
+    static const uint8_t prefix[6] = { 'K', 'O', 'F', 'U', 'N', 0 };
+    uint8_t domain_length[2];
+    uint8_t framed_length[4];
+    KofunSha256 context;
+    store_u16(domain_length, (uint16_t)strlen(domain));
+    store_u32(framed_length, (uint32_t)payload_length);
+    kofun_sha256_init(&context);
+    kofun_sha256_update(&context, prefix, sizeof(prefix));
+    kofun_sha256_update(&context, domain_length, sizeof(domain_length));
+    kofun_sha256_update(&context, (const uint8_t *)domain, strlen(domain));
+    kofun_sha256_update(&context, framed_length, sizeof(framed_length));
+    kofun_sha256_update(&context, payload, payload_length);
+    kofun_sha256_finish(&context, digest);
+}
+
+static void compute_namespace_id(
+    unsigned tag,
+    const char *name,
+    uint8_t digest[KOFUN_KIF_ID_BYTES]
+) {
+    char payload[96];
+    int length = snprintf(payload, sizeof(payload),
+        "kofun.namespace-id/v1\ntag=%u\nname=%s\n", tag, name);
+    if (length < 0 || (size_t)length >= sizeof(payload)) {
+        fail("namespace identity fixture overflow");
+    }
+    framed_hash("kofun.id.namespace/v1", (const uint8_t *)payload,
+        (size_t)length, digest);
+}
+
+static void compute_symbol_id(
+    const uint8_t module_id[KOFUN_KIF_ID_BYTES],
+    const uint8_t namespace_id[KOFUN_KIF_ID_BYTES],
+    const char *kind,
+    const char *name,
+    uint8_t digest[KOFUN_KIF_ID_BYTES]
+) {
+    static const char domain[] = "kofun.id.symbol/v1";
+    static const uint8_t prefix[6] = { 'K', 'O', 'F', 'U', 'N', 0 };
+    uint8_t domain_length[2];
+    uint8_t payload_length[4];
+    size_t kind_length = strlen(kind);
+    size_t name_length = strlen(name);
+    KofunSha256 context;
+    store_u16(domain_length, (uint16_t)(sizeof(domain) - 1u));
+    store_u32(payload_length,
+        (uint32_t)(88u + kind_length + name_length));
+    kofun_sha256_init(&context);
+    kofun_sha256_update(&context, prefix, sizeof(prefix));
+    kofun_sha256_update(&context, domain_length, sizeof(domain_length));
+    kofun_sha256_update(&context, (const uint8_t *)domain,
+        sizeof(domain) - 1u);
+    kofun_sha256_update(&context, payload_length, sizeof(payload_length));
+    hash_field(&context, UINT16_C(0x8001), module_id,
+        KOFUN_KIF_ID_BYTES);
+    hash_field(&context, UINT16_C(0x8002), namespace_id,
+        KOFUN_KIF_ID_BYTES);
+    hash_field(&context, UINT16_C(0x8003), (const uint8_t *)kind,
+        kind_length);
+    hash_field(&context, UINT16_C(0x8004), (const uint8_t *)name,
+        name_length);
+    kofun_sha256_finish(&context, digest);
+}
+
+static void compute_export_binding_id(
+    const uint8_t module_id[KOFUN_KIF_ID_BYTES],
+    const uint8_t namespace_id[KOFUN_KIF_ID_BYTES],
+    const char *name,
+    const uint8_t target_symbol_id[KOFUN_KIF_ID_BYTES],
+    uint8_t digest[KOFUN_KIF_ID_BYTES]
+) {
+    static const char domain[] = "kofun.id.export-binding/v1";
+    static const uint8_t prefix[6] = { 'K', 'O', 'F', 'U', 'N', 0 };
+    static const uint8_t visibility = 3u;
+    uint8_t domain_length[2];
+    uint8_t payload_length[4];
+    size_t name_length = strlen(name);
+    KofunSha256 context;
+    store_u16(domain_length, (uint16_t)(sizeof(domain) - 1u));
+    store_u32(payload_length,
+        (uint32_t)(30u + 32u + 32u + name_length + 32u + 1u));
+    kofun_sha256_init(&context);
+    kofun_sha256_update(&context, prefix, sizeof(prefix));
+    kofun_sha256_update(&context, domain_length, sizeof(domain_length));
+    kofun_sha256_update(&context, (const uint8_t *)domain,
+        sizeof(domain) - 1u);
+    kofun_sha256_update(&context, payload_length, sizeof(payload_length));
+    hash_field(&context, UINT16_C(0x8001), module_id,
+        KOFUN_KIF_ID_BYTES);
+    hash_field(&context, UINT16_C(0x8002), namespace_id,
+        KOFUN_KIF_ID_BYTES);
+    hash_field(&context, UINT16_C(0x8003), (const uint8_t *)name,
+        name_length);
+    hash_field(&context, UINT16_C(0x8004), target_symbol_id,
+        KOFUN_KIF_ID_BYTES);
+    hash_field(&context, UINT16_C(0x8005), &visibility,
+        sizeof(visibility));
+    kofun_sha256_finish(&context, digest);
 }
 
 static uint8_t *read_file(const char *path, size_t *length_out) {
@@ -179,6 +307,78 @@ static FieldPosition second_record(const uint8_t *bytes, FieldPosition vector) {
         fail("second public record is truncated");
     }
     return second;
+}
+
+static bool find_export_record(
+    const uint8_t *bytes,
+    FieldPosition vector,
+    KofunKifExportTargetKind target_kind,
+    FieldPosition *record_out
+) {
+    uint32_t count;
+    size_t cursor;
+    size_t index;
+    if (vector.length < 4u) return false;
+    count = load_u32(bytes + vector.value);
+    cursor = vector.value + 4u;
+    for (index = 0u; index < count; index += 1u) {
+        FieldPosition record;
+        FieldPosition kind;
+        FieldPosition export_target_kind;
+        uint32_t record_length;
+        if (vector.value + vector.length - cursor < 4u) return false;
+        record_length = load_u32(bytes + cursor);
+        record.header = cursor;
+        record.value = cursor + 4u;
+        record.length = record_length;
+        if ((size_t)record_length >
+                vector.value + vector.length - record.value) {
+            return false;
+        }
+        if (find_field(bytes, record.value, record.length,
+                FACT_TAG_KIND, &kind) &&
+            kind.length == 1u && bytes[kind.value] == KOFUN_KIF_FACT_EXPORT &&
+            find_field(bytes, record.value, record.length,
+                FACT_TAG_EXPORT_TARGET_KIND, &export_target_kind) &&
+            export_target_kind.length == 1u &&
+            bytes[export_target_kind.value] == (uint8_t)target_kind) {
+            *record_out = record;
+            return true;
+        }
+        cursor = record.value + record.length;
+    }
+    return false;
+}
+
+static void recompute_semantic_digests(uint8_t *bytes, size_t length) {
+    FieldPosition public_vector;
+    FieldPosition internal_vector;
+    FieldPosition public_digest;
+    FieldPosition internal_digest;
+    size_t public_view_length;
+    size_t internal_view_length;
+    if (!find_field(bytes, HEADER_BYTES, length - HEADER_BYTES,
+            TAG_PUBLIC_FACTS, &public_vector) ||
+        !find_field(bytes, HEADER_BYTES, length - HEADER_BYTES,
+            TAG_INTERNAL_FACTS, &internal_vector) ||
+        !find_field(bytes, HEADER_BYTES, length - HEADER_BYTES,
+            TAG_PUBLIC_DIGEST, &public_digest) ||
+        !find_field(bytes, HEADER_BYTES, length - HEADER_BYTES,
+            TAG_INTERNAL_DIGEST, &internal_digest) ||
+        public_digest.length != KOFUN_KIF_ID_BYTES ||
+        internal_digest.length != KOFUN_KIF_ID_BYTES) {
+        fail("cannot locate semantic digest fields");
+    }
+    public_view_length =
+        public_vector.value + public_vector.length - HEADER_BYTES;
+    internal_view_length =
+        internal_vector.value + internal_vector.length - HEADER_BYTES;
+    framed_hash("kofun.digest.public-semantic/v1",
+        bytes + HEADER_BYTES, public_view_length,
+        bytes + public_digest.value);
+    framed_hash("kofun.digest.package-internal/v1",
+        bytes + HEADER_BYTES, internal_view_length,
+        bytes + internal_digest.value);
 }
 
 static void test_structural_mutations(const uint8_t *good, size_t length) {
@@ -395,6 +595,222 @@ static void test_writer_failures(const uint8_t *good, size_t length, const char 
     kofun_kif_destroy(read.interface);
 }
 
+static const KofunKifFact *find_public_function(
+    const KofunKifInterface *interface,
+    const char *name
+) {
+    size_t index;
+    for (index = 0u; index < interface->public_fact_count; index += 1u) {
+        const KofunKifFact *fact = &interface->public_facts[index];
+        if (fact->kind == KOFUN_KIF_FACT_FUNCTION &&
+            strcmp(fact->name, name) == 0) {
+            return fact;
+        }
+    }
+    return NULL;
+}
+
+static void test_export_facts(
+    const uint8_t *good,
+    size_t length,
+    const char *work
+) {
+    static char function_name[] = "exported";
+    static char module_name[] = "api";
+    static char module_path[] = "demo.api";
+    KifReadResult dependency =
+        kofun_kif_read(good, length, kofun_kif_default_limits());
+    const KofunKifFact *target_function;
+    KofunKifInterface facade;
+    KofunKifFact public_facts[2];
+    uint8_t function_chain[2u * KOFUN_KIF_ID_BYTES];
+    uint8_t module_chain[KOFUN_KIF_ID_BYTES];
+    KifWriteResult write;
+    KifReadResult readback;
+    char path[1024];
+    uint8_t *bytes;
+    size_t export_length;
+    FieldPosition public_vector;
+    FieldPosition function_record;
+    FieldPosition module_record;
+    FieldPosition chain;
+    FieldPosition target_module_path;
+    uint8_t *mutated;
+    size_t index;
+    bool found_module = false;
+    if (dependency.status != KOFUN_KIF_OK) {
+        fail("cannot read dependency for export fixture");
+    }
+    target_function = find_public_function(dependency.interface,
+        function_name);
+    if (target_function == NULL) fail("export target function is absent");
+
+    memset(&facade, 0, sizeof(facade));
+    memset(public_facts, 0, sizeof(public_facts));
+    memset(facade.module_id, UINT8_C(0x44), KOFUN_KIF_ID_BYTES);
+    memcpy(facade.package_id, dependency.interface->package_id,
+        KOFUN_KIF_ID_BYTES);
+    memcpy(facade.edition, "edition-1", sizeof("edition-1"));
+    facade.public_facts = public_facts;
+    facade.public_fact_count = 2u;
+
+    public_facts[0].kind = KOFUN_KIF_FACT_EXPORT;
+    public_facts[0].visibility = KOFUN_KIF_VISIBILITY_PUBLIC;
+    public_facts[0].name = function_name;
+    public_facts[0].name_length = strlen(function_name);
+    memcpy(public_facts[0].namespace_id, target_function->namespace_id,
+        KOFUN_KIF_ID_BYTES);
+    memset(public_facts[0].source_import_binding_id, UINT8_C(0x55),
+        KOFUN_KIF_ID_BYTES);
+    memcpy(public_facts[0].target_module_id,
+        dependency.interface->module_id, KOFUN_KIF_ID_BYTES);
+    memcpy(public_facts[0].target_symbol_id,
+        target_function->symbol_id, KOFUN_KIF_ID_BYTES);
+    public_facts[0].export_target_kind =
+        KOFUN_KIF_EXPORT_TARGET_FUNCTION;
+    public_facts[0].parameter_count = target_function->parameter_count;
+    public_facts[0].result_type = target_function->result_type;
+    compute_export_binding_id(facade.module_id,
+        public_facts[0].namespace_id, function_name,
+        public_facts[0].target_symbol_id, public_facts[0].symbol_id);
+    memcpy(function_chain, public_facts[0].symbol_id,
+        KOFUN_KIF_ID_BYTES);
+    memset(function_chain + KOFUN_KIF_ID_BYTES, UINT8_C(0x66),
+        KOFUN_KIF_ID_BYTES);
+    public_facts[0].export_chain_ids = function_chain;
+    public_facts[0].export_chain_count = 2u;
+
+    public_facts[1].kind = KOFUN_KIF_FACT_EXPORT;
+    public_facts[1].visibility = KOFUN_KIF_VISIBILITY_PUBLIC;
+    public_facts[1].name = module_name;
+    public_facts[1].name_length = strlen(module_name);
+    compute_namespace_id(2u, "module", public_facts[1].namespace_id);
+    memset(public_facts[1].source_import_binding_id, UINT8_C(0x77),
+        KOFUN_KIF_ID_BYTES);
+    memcpy(public_facts[1].target_module_id,
+        dependency.interface->module_id, KOFUN_KIF_ID_BYTES);
+    public_facts[1].export_target_kind =
+        KOFUN_KIF_EXPORT_TARGET_MODULE;
+    public_facts[1].export_target_module_path = module_path;
+    public_facts[1].export_target_module_path_length =
+        strlen(module_path);
+    compute_symbol_id(public_facts[1].target_module_id,
+        public_facts[1].namespace_id, "module", module_path,
+        public_facts[1].target_symbol_id);
+    compute_export_binding_id(facade.module_id,
+        public_facts[1].namespace_id, module_name,
+        public_facts[1].target_symbol_id, public_facts[1].symbol_id);
+    memcpy(module_chain, public_facts[1].symbol_id,
+        KOFUN_KIF_ID_BYTES);
+    public_facts[1].export_chain_ids = module_chain;
+    public_facts[1].export_chain_count = 1u;
+
+    snprintf(path, sizeof(path), "%s/export-interface.kif", work);
+    remove(path);
+    write = kofun_kif_write(&facade, path);
+    if (write.status != KOFUN_KIF_OK) {
+        fail("valid export interface did not write");
+    }
+    bytes = read_file(path, &export_length);
+    readback = kofun_kif_read(bytes, export_length,
+        kofun_kif_default_limits());
+    if (readback.status != KOFUN_KIF_OK ||
+        readback.interface->public_fact_count != 2u) {
+        fail("valid export interface did not round-trip");
+    }
+    for (index = 0u; index < readback.interface->public_fact_count;
+         index += 1u) {
+        const KofunKifFact *fact =
+            &readback.interface->public_facts[index];
+        if (fact->export_target_kind ==
+                KOFUN_KIF_EXPORT_TARGET_MODULE) {
+            if (strcmp(fact->export_target_module_path, module_path) != 0 ||
+                memcmp(fact->target_symbol_id,
+                    public_facts[1].target_symbol_id,
+                    KOFUN_KIF_ID_BYTES) != 0) {
+                fail("module target identity did not round-trip");
+            }
+            found_module = true;
+        }
+    }
+    if (!found_module) fail("module export fact is absent");
+    kofun_kif_destroy(readback.interface);
+
+    memcpy(function_chain + KOFUN_KIF_ID_BYTES, function_chain,
+        KOFUN_KIF_ID_BYTES);
+    snprintf(path, sizeof(path), "%s/duplicate-chain-writer.kif", work);
+    remove(path);
+    write = kofun_kif_write(&facade, path);
+    if (write.status != KOFUN_KIF_NONCANONICAL) {
+        fail("writer accepted duplicate/cyclic export chain IDs");
+    }
+    memset(function_chain + KOFUN_KIF_ID_BYTES, UINT8_C(0x66),
+        KOFUN_KIF_ID_BYTES);
+
+    public_facts[1].target_symbol_id[0] ^= UINT8_C(1);
+    compute_export_binding_id(facade.module_id,
+        public_facts[1].namespace_id, module_name,
+        public_facts[1].target_symbol_id, public_facts[1].symbol_id);
+    memcpy(module_chain, public_facts[1].symbol_id,
+        KOFUN_KIF_ID_BYTES);
+    snprintf(path, sizeof(path), "%s/bad-module-self-symbol.kif", work);
+    remove(path);
+    write = kofun_kif_write(&facade, path);
+    if (write.status != KOFUN_KIF_NONCANONICAL) {
+        fail("writer accepted a noncanonical module self-symbol");
+    }
+    public_facts[1].target_symbol_id[0] ^= UINT8_C(1);
+    compute_export_binding_id(facade.module_id,
+        public_facts[1].namespace_id, module_name,
+        public_facts[1].target_symbol_id, public_facts[1].symbol_id);
+    memcpy(module_chain, public_facts[1].symbol_id,
+        KOFUN_KIF_ID_BYTES);
+    public_facts[1].export_target_module_path = NULL;
+    public_facts[1].export_target_module_path_length = 0u;
+    write = kofun_kif_write(&facade, path);
+    if (write.status != KOFUN_KIF_NONCANONICAL) {
+        fail("writer accepted a module target without its canonical path");
+    }
+    public_facts[1].export_target_module_path = module_path;
+    public_facts[1].export_target_module_path_length =
+        strlen(module_path);
+
+    if (!find_field(bytes, HEADER_BYTES, export_length - HEADER_BYTES,
+            TAG_PUBLIC_FACTS, &public_vector) ||
+        !find_export_record(bytes, public_vector,
+            KOFUN_KIF_EXPORT_TARGET_FUNCTION, &function_record) ||
+        !find_field(bytes, function_record.value, function_record.length,
+            FACT_TAG_EXPORT_CHAIN, &chain) ||
+        chain.length != 4u + 2u * KOFUN_KIF_ID_BYTES) {
+        fail("cannot locate function export chain");
+    }
+    mutated = duplicate_bytes(bytes, export_length);
+    memcpy(mutated + chain.value + 4u + KOFUN_KIF_ID_BYTES,
+        mutated + chain.value + 4u, KOFUN_KIF_ID_BYTES);
+    recompute_semantic_digests(mutated, export_length);
+    expect_status(mutated, export_length, KOFUN_KIF_NONCANONICAL,
+        "duplicate/cyclic export chain IDs");
+    free(mutated);
+
+    if (!find_export_record(bytes, public_vector,
+            KOFUN_KIF_EXPORT_TARGET_MODULE, &module_record) ||
+        !find_field(bytes, module_record.value, module_record.length,
+            FACT_TAG_EXPORT_TARGET_MODULE_PATH, &target_module_path) ||
+        target_module_path.length != strlen(module_path)) {
+        fail("cannot locate module target path");
+    }
+    mutated = duplicate_bytes(bytes, export_length);
+    mutated[target_module_path.value + target_module_path.length - 1u] =
+        'j';
+    recompute_semantic_digests(mutated, export_length);
+    expect_status(mutated, export_length, KOFUN_KIF_NONCANONICAL,
+        "module self-symbol path mismatch");
+    free(mutated);
+
+    free(bytes);
+    kofun_kif_destroy(dependency.interface);
+}
+
 int main(int argc, char **argv) {
     uint8_t *good;
     size_t length;
@@ -406,6 +822,7 @@ int main(int argc, char **argv) {
     test_structural_mutations(good, length);
     test_limits(good, length);
     test_writer_failures(good, length, argv[2]);
+    test_export_facts(good, length, argv[2]);
     free(good);
     puts("PASS: KIF v1 mutation, limit, publication, and writer transaction matrix");
     return 0;

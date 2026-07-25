@@ -55,7 +55,8 @@ enum {
     FACT_TAG_EXPORT_CHAIN = 0x800cu,
     FACT_TAG_EXPORT_TARGET_KIND = 0x800du,
     FACT_TAG_EXPORT_TARGET_OWNER = 0x800eu,
-    FACT_TAG_EXPORT_TARGET_ORDINAL = 0x800fu
+    FACT_TAG_EXPORT_TARGET_ORDINAL = 0x800fu,
+    FACT_TAG_EXPORT_TARGET_MODULE_PATH = 0x8010u
 };
 
 enum {
@@ -250,6 +251,25 @@ static bool ascii_identifier(const char *text, size_t length) {
     return true;
 }
 
+static bool ascii_module_path(const char *text, size_t length) {
+    size_t component_start = 0u;
+    size_t index;
+    if (text == NULL || length == 0u ||
+        length > KOFUN_KIF_MAX_MODULE_PATH_BYTES ||
+        text[length] != '\0' || strlen(text) != length) {
+        return false;
+    }
+    for (index = 0u; index <= length; index += 1u) {
+        if (index != length && text[index] != '.') continue;
+        if (!ascii_identifier(text + component_start,
+                index - component_start)) {
+            return false;
+        }
+        component_start = index + 1u;
+    }
+    return true;
+}
+
 static bool normalized_edition(const char *edition) {
     size_t length;
     size_t index;
@@ -295,17 +315,16 @@ static void compute_namespace_id(unsigned tag, const char *name, uint8_t digest[
     framed_hash("kofun.id.namespace/v1", (const uint8_t *)payload, (size_t)length, digest);
 }
 
-static void compute_symbol_id(
+static void compute_symbol_id_for_kind(
     const uint8_t module_id[32],
     const uint8_t namespace_id[32],
-    KofunKifFactKind kind,
+    const char *kind_name,
     const char *name,
     size_t name_length,
     uint8_t digest[32]
 ) {
     static const char domain[] = "kofun.id.symbol/v1";
     static const uint8_t prefix[6] = { 'K', 'O', 'F', 'U', 'N', 0 };
-    const char *kind_name = fact_kind_schema_name(kind);
     size_t kind_length = kind_name == NULL ? 0u : strlen(kind_name);
     size_t payload_length = 88u + kind_length + name_length;
     uint8_t u16[2];
@@ -325,6 +344,29 @@ static void compute_symbol_id(
     kofun_sha256_finish(&context, digest);
 }
 
+static void compute_symbol_id(
+    const uint8_t module_id[32],
+    const uint8_t namespace_id[32],
+    KofunKifFactKind kind,
+    const char *name,
+    size_t name_length,
+    uint8_t digest[32]
+) {
+    compute_symbol_id_for_kind(module_id, namespace_id,
+        fact_kind_schema_name(kind), name, name_length, digest);
+}
+
+static void compute_module_self_symbol_id(
+    const uint8_t module_id[32],
+    const uint8_t namespace_id[32],
+    const char *declared_path,
+    size_t declared_path_length,
+    uint8_t digest[32]
+) {
+    compute_symbol_id_for_kind(module_id, namespace_id, "module",
+        declared_path, declared_path_length, digest);
+}
+
 static void compute_export_binding_id(
     const KofunKifInterface *interface,
     const KofunKifFact *fact,
@@ -334,7 +376,7 @@ static void compute_export_binding_id(
     static const uint8_t prefix[6] = { 'K', 'O', 'F', 'U', 'N', 0 };
     static const uint8_t visibility = 3u;
     size_t name_length = fact->name_length;
-    size_t payload_length = 24u + 32u + 32u + name_length + 32u + 1u;
+    size_t payload_length = 30u + 32u + 32u + name_length + 32u + 1u;
     uint8_t u16[2];
     uint8_t u32[4];
     KofunSha256 context;
@@ -449,13 +491,29 @@ static KofunKifStatus validate_fact(
         return KOFUN_KIF_NONCANONICAL;
     }
     if (fact->kind == KOFUN_KIF_FACT_EXPORT &&
-        fact->export_target_kind != KOFUN_KIF_EXPORT_TARGET_MODULE) {
+        fact->export_target_kind == KOFUN_KIF_EXPORT_TARGET_MODULE) {
+        if (!ascii_module_path(fact->export_target_module_path,
+                fact->export_target_module_path_length)) {
+            return KOFUN_KIF_NONCANONICAL;
+        }
+        compute_module_self_symbol_id(fact->target_module_id,
+            fact->namespace_id, fact->export_target_module_path,
+            fact->export_target_module_path_length, expected_target_symbol);
+        if (!constant_time_equal(fact->target_symbol_id,
+                expected_target_symbol, 32u)) {
+            return KOFUN_KIF_NONCANONICAL;
+        }
+    } else if (fact->kind == KOFUN_KIF_FACT_EXPORT) {
         KofunKifFactKind target_kind =
             fact->export_target_kind == KOFUN_KIF_EXPORT_TARGET_FUNCTION
                 ? KOFUN_KIF_FACT_FUNCTION
                 : fact->export_target_kind == KOFUN_KIF_EXPORT_TARGET_ADT
                     ? KOFUN_KIF_FACT_ADT
                     : KOFUN_KIF_FACT_CONSTRUCTOR;
+        if (fact->export_target_module_path != NULL ||
+            fact->export_target_module_path_length != 0u) {
+            return KOFUN_KIF_NONCANONICAL;
+        }
         compute_symbol_id(fact->target_module_id, fact->namespace_id,
             target_kind, fact->name, fact->name_length,
             expected_target_symbol);
@@ -507,9 +565,21 @@ static KofunKifStatus validate_fact(
                 for (chain_index = 0u;
                      chain_index < fact->export_chain_count;
                      chain_index += 1u) {
+                    size_t earlier;
                     if (!id_is_nonzero(fact->export_chain_ids +
                             chain_index * 32u)) {
                         return KOFUN_KIF_NONCANONICAL;
+                    }
+                    for (earlier = 0u; earlier < chain_index;
+                         earlier += 1u) {
+                        if (constant_time_equal(
+                                fact->export_chain_ids +
+                                    earlier * KOFUN_KIF_ID_BYTES,
+                                fact->export_chain_ids +
+                                    chain_index * KOFUN_KIF_ID_BYTES,
+                                KOFUN_KIF_ID_BYTES)) {
+                            return KOFUN_KIF_NONCANONICAL;
+                        }
                     }
                 }
             }
@@ -522,6 +592,24 @@ static int compare_fact_symbol(const void *left, const void *right) {
     const FactReference *a = left;
     const FactReference *b = right;
     return memcmp(a->fact->symbol_id, b->fact->symbol_id, KOFUN_KIF_ID_BYTES);
+}
+
+static int compare_fact_namespace_name(const void *left, const void *right) {
+    const FactReference *a = left;
+    const FactReference *b = right;
+    size_t common;
+    int result = memcmp(a->fact->namespace_id, b->fact->namespace_id,
+        KOFUN_KIF_ID_BYTES);
+    if (result != 0) return result;
+    common = a->fact->name_length < b->fact->name_length
+        ? a->fact->name_length : b->fact->name_length;
+    result = memcmp(a->fact->name, b->fact->name, common);
+    if (result != 0) return result;
+    if (a->fact->name_length != b->fact->name_length) {
+        return a->fact->name_length < b->fact->name_length ? -1 : 1;
+    }
+    return memcmp(a->fact->symbol_id, b->fact->symbol_id,
+        KOFUN_KIF_ID_BYTES);
 }
 
 static int compare_constructor_owner_ordinal(const void *left, const void *right) {
@@ -618,6 +706,22 @@ static KofunKifStatus validate_interface(const KofunKifInterface *interface) {
             expected = constructors[index - 1u].fact->constructor_ordinal + 1u;
         }
         if (constructors[index].fact->constructor_ordinal != expected) {
+            status = KOFUN_KIF_NONCANONICAL;
+            goto done;
+        }
+    }
+    if (total > 1u) {
+        qsort(facts, total, sizeof(*facts), compare_fact_namespace_name);
+    }
+    for (index = 1u; index < total; index += 1u) {
+        if (memcmp(facts[index - 1u].fact->namespace_id,
+                facts[index].fact->namespace_id,
+                KOFUN_KIF_ID_BYTES) == 0 &&
+            facts[index - 1u].fact->name_length ==
+                facts[index].fact->name_length &&
+            memcmp(facts[index - 1u].fact->name,
+                facts[index].fact->name,
+                facts[index].fact->name_length) == 0) {
             status = KOFUN_KIF_NONCANONICAL;
             goto done;
         }
@@ -745,6 +849,15 @@ static KofunKifStatus encode_fact(const KofunKifFact *fact, ByteBuffer *record) 
                 buffer_destroy(&signature);
                 return status;
             }
+        } else if (fact->export_target_kind ==
+                KOFUN_KIF_EXPORT_TARGET_MODULE &&
+            !buffer_field(record, FACT_TAG_EXPORT_TARGET_MODULE_PATH,
+                fact->export_target_module_path,
+                fact->export_target_module_path_length)) {
+            KofunKifStatus status = record->status;
+            buffer_destroy(&chain);
+            buffer_destroy(&signature);
+            return status;
         }
         buffer_destroy(&chain);
     }
@@ -1052,11 +1165,11 @@ static KofunKifStatus parse_fact_record(
     KofunKifLimits limits,
     KofunKifFact *fact
 ) {
-    ParsedField fields[15];
+    ParsedField fields[16];
     size_t index;
     KofunKifStatus status;
     memset(fact, 0, sizeof(*fact));
-    status = scan_fields(bytes, length, limits, FACT_TAG_NAMESPACE_ID, 15u,
+    status = scan_fields(bytes, length, limits, FACT_TAG_NAMESPACE_ID, 16u,
         true, fields);
     if (status != KOFUN_KIF_OK) return status;
     for (index = 0u; index < 6u; index += 1u) {
@@ -1089,7 +1202,7 @@ static KofunKifStatus parse_fact_record(
         }
         memcpy(fact->owner_symbol_id, fields[6].value.bytes, 32u);
         fact->constructor_ordinal = load_u32be(fields[7].value.bytes);
-        for (index = 8u; index < 15u; index += 1u) {
+        for (index = 8u; index < 16u; index += 1u) {
             if (fields[index].tag != 0u) return KOFUN_KIF_NONCANONICAL;
         }
     } else if (fact->kind == KOFUN_KIF_FACT_EXPORT) {
@@ -1127,18 +1240,40 @@ static KofunKifStatus parse_fact_record(
         if (fact->export_target_kind ==
                 KOFUN_KIF_EXPORT_TARGET_CONSTRUCTOR) {
             if (fields[13].value.length != 32u ||
-                fields[14].value.length != 4u) {
+                fields[14].value.length != 4u ||
+                fields[15].tag != 0u) {
                 return KOFUN_KIF_CORRUPT;
             }
             memcpy(fact->export_target_owner_symbol_id,
                 fields[13].value.bytes, 32u);
             fact->export_target_constructor_ordinal =
                 load_u32be(fields[14].value.bytes);
-        } else if (fields[13].tag != 0u || fields[14].tag != 0u) {
+        } else if (fact->export_target_kind ==
+                KOFUN_KIF_EXPORT_TARGET_MODULE) {
+            if (fields[13].tag != 0u || fields[14].tag != 0u ||
+                fields[15].tag == 0u ||
+                fields[15].value.length == 0u ||
+                fields[15].value.length >
+                    KOFUN_KIF_MAX_MODULE_PATH_BYTES) {
+                return KOFUN_KIF_CORRUPT;
+            }
+            fact->export_target_module_path =
+                malloc(fields[15].value.length + 1u);
+            if (fact->export_target_module_path == NULL) {
+                return KOFUN_KIF_INTERNAL_INVARIANT;
+            }
+            memcpy(fact->export_target_module_path,
+                fields[15].value.bytes, fields[15].value.length);
+            fact->export_target_module_path[
+                fields[15].value.length] = '\0';
+            fact->export_target_module_path_length =
+                fields[15].value.length;
+        } else if (fields[13].tag != 0u || fields[14].tag != 0u ||
+            fields[15].tag != 0u) {
             return KOFUN_KIF_NONCANONICAL;
         }
     } else {
-        for (index = 6u; index < 15u; index += 1u) {
+        for (index = 6u; index < 16u; index += 1u) {
             if (fields[index].tag != 0u) return KOFUN_KIF_NONCANONICAL;
         }
     }
@@ -1150,6 +1285,7 @@ static void destroy_fact_array(KofunKifFact *facts, size_t count) {
     if (facts == NULL) return;
     for (index = 0u; index < count; index += 1u) {
         free(facts[index].name);
+        free(facts[index].export_target_module_path);
         free(facts[index].export_chain_ids);
     }
     free(facts);

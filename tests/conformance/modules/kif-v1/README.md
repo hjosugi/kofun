@@ -10,6 +10,15 @@ binary read and says `"authoritative": false`; no compiler path accepts it as
 input. Private declarations, bodies, spans, source paths, and declaration order
 are excluded from KIF. Public and internal-only facts are encoded separately.
 
+The gate also writes public function/module export facts. It validates every
+ExportBindingId independently from the original target, rejects repeated IDs
+inside an ordered export chain, and recomputes a qualified module target's
+ModuleSelfSymbolId from its bounded canonical module path. A source-only
+qualified consumer then calls the exported function through the facade KIF
+with both same-package and external public views. Its HIR retains the facade
+binding, original target, and complete ordered chain. Failed, aliased, and
+injected pre-rename writes preserve the prior output.
+
 Run:
 
 ```sh
