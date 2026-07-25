@@ -53,6 +53,13 @@ export const docs: DocEntry[] = [
     section: "Language",
   },
   {
+    slug: "decimal",
+    title: "Decimal design",
+    summary: "Exact base-10 representation, literals, rounding, fixed point, and law evidence.",
+    source: "docs/DECIMAL.md",
+    section: "Language",
+  },
+  {
     slug: "memory-model",
     title: "Memory model",
     summary: "The read/edit/take ownership model and the distinction between design and active checks.",

@@ -1,8 +1,7 @@
 # Getting started
 
 Kofun is an experimental research compiler. The repository launcher is the
-supported entry point; it builds the checked compiler artifacts as needed and
-does not require Python.
+supported entry point and builds the checked compiler artifacts as needed.
 
 ## Requirements
 

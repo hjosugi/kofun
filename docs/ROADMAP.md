@@ -65,7 +65,7 @@ Exit criteria:
 
 Current foundation:
 
-- Kofun-written Python-free arithmetic Core compiler seed
+- Kofun-written arithmetic Core compiler seed
 - frozen self-host profile and runnable first compiler generation
 - direct x86-64 and AArch64 bounded native checkpoints
 - compiler-wide stable diagnostic and semantic-oracle gates

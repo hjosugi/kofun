@@ -9,7 +9,7 @@ For the adjacent bounded compiler checkpoints, see
 [`bootstrap/stage1/README.md`](../bootstrap/stage1/README.md) and
 [`bootstrap/stage2/README.md`](../bootstrap/stage2/README.md).
 
-The current repository has a Python-free Kofun-written seed and a runnable
-compiler-produced compiler. It does not yet have the required
-three-generation semantic self-hosting fixed point. This file intentionally
-remains a short pointer so that bootstrap status has one authority.
+The current repository has a Kofun-written seed and a runnable compiler-produced
+compiler. It does not yet have the required three-generation semantic
+self-hosting fixed point. This file intentionally remains a short pointer so
+that bootstrap status has one authority.

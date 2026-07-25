@@ -4,6 +4,7 @@ import {
   PLAYGROUND_EXAMPLES,
   runKofun,
 } from "../app/kofun-runtime.ts";
+import { tokenizeKofunForHighlight } from "../app/kofun-highlight.ts";
 
 const expectedOutput = new Map([
   ["pipeline", "56"],
@@ -54,6 +55,37 @@ const bounded = runKofun(`fn main() {
 }`);
 assert.equal(bounded.error?.code, "R008");
 
+const highlightedSource = `fn total(values: List[Int]) -> Int {
+    # Keep syntax coloring lossless while a program is incomplete.
+    let answer = values |> sum() + 12.5
+    return answer != 0
+}`;
+const highlightTokens = tokenizeKofunForHighlight(highlightedSource);
+assert.equal(
+  highlightTokens.map((token) => token.value).join(""),
+  highlightedSource,
+  "syntax highlighting must preserve every source byte",
+);
+for (const kind of [
+  "keyword",
+  "function",
+  "type",
+  "comment",
+  "operator",
+  "number",
+]) {
+  assert.ok(
+    highlightTokens.some((token) => token.kind === kind),
+    `syntax highlighting should classify ${kind}`,
+  );
+}
+assert.ok(
+  tokenizeKofunForHighlight('let draft = "unfinished').some(
+    (token) => token.kind === "string" && token.value === '"unfinished',
+  ),
+  "highlighting incomplete edits must remain tolerant",
+);
+
 console.log(
-  `PASS: ${PLAYGROUND_EXAMPLES.length} examples and browser runtime diagnostics`,
+  `PASS: ${PLAYGROUND_EXAMPLES.length} examples, browser runtime diagnostics, and syntax highlighting`,
 );

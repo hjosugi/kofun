@@ -1,7 +1,7 @@
 # Kofun language specification draft
 
 This directory separates normative language contracts from the smaller
-Python-free bootstrap implementation.
+executable bootstrap implementation.
 
 - `grammar.ebnf` is the full-language grammar draft. The active Stage 1 and
   Stage 2 checkpoints intentionally accept smaller subsets.

@@ -412,7 +412,7 @@ svg {
   border-top: 1px solid var(--line);
   display: flex;
   flex-direction: column;
-  min-height: 430px;
+  min-height: 350px;
   padding: 28px;
   position: relative;
 }
@@ -421,46 +421,7 @@ svg {
   color: var(--ink-soft);
   font-family: var(--mono);
   font-size: 10px;
-}
-
-.mini-mark {
-  height: 90px;
-  margin: 35px 0 45px;
-  position: relative;
-  width: 90px;
-}
-
-.mini-mark span,
-.mini-mark i {
-  background: var(--ink);
-  display: block;
-  left: 50%;
-  position: absolute;
-  transform: translateX(-50%);
-}
-
-.mini-mark span {
-  border: 10px solid var(--acid);
-  border-radius: 50%;
-  height: 47px;
-  top: 0;
-  width: 47px;
-}
-
-.mini-mark i {
-  bottom: 0;
-  clip-path: polygon(25% 0, 75% 0, 100% 100%, 0 100%);
-  height: 48px;
-  width: 60px;
-}
-
-.principle-card:nth-child(2) .mini-mark {
-  transform: rotate(90deg);
-}
-
-.principle-card:nth-child(3) .mini-mark span {
-  background: var(--coral);
-  border-color: var(--ink);
+  margin-bottom: 64px;
 }
 
 .principle-card h3 {
@@ -683,6 +644,7 @@ svg {
   display: grid;
   grid-template-columns: 48px 1fr;
   height: 480px;
+  overflow: hidden;
 }
 
 .line-numbers {
@@ -697,23 +659,83 @@ svg {
   text-align: right;
 }
 
-.editor-wrap textarea {
-  background: transparent;
-  border: 0;
-  color: #e9eddf;
-  font-family: var(--mono);
-  font-size: 13px;
-  line-height: 24px;
+.editor-code {
   min-width: 0;
-  outline: none;
-  padding: 22px 24px 40px 4px;
-  resize: none;
-  tab-size: 4;
-  white-space: pre;
+  overflow: hidden;
+  position: relative;
 }
 
-.editor-wrap textarea::selection {
+.syntax-layer,
+.editor-code textarea {
+  background: transparent;
+  border: 0;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-variant-ligatures: none;
+  height: 100%;
+  line-height: 24px;
+  margin: 0;
+  min-width: 0;
+  overflow: auto;
+  padding: 22px 24px 40px 4px;
+  tab-size: 4;
+  white-space: pre;
+  width: 100%;
+}
+
+.syntax-layer {
+  color: #e9eddf;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.syntax-layer code {
+  font: inherit;
+}
+
+.syntax-keyword {
+  color: #dfff5b;
+  font-weight: 650;
+}
+
+.syntax-function {
+  color: #88bfff;
+}
+
+.syntax-type {
+  color: #ff9b87;
+}
+
+.syntax-number {
+  color: #d5b3ff;
+}
+
+.syntax-string {
+  color: #f3c76d;
+}
+
+.syntax-operator {
+  color: #ff806c;
+}
+
+.syntax-comment {
+  color: #7f8a79;
+  font-style: italic;
+}
+
+.editor-code textarea {
+  caret-color: #f5f4e9;
+  color: transparent;
+  inset: 0;
+  outline: none;
+  position: absolute;
+  resize: none;
+  -webkit-text-fill-color: transparent;
+}
+
+.editor-code textarea::selection {
   background: rgba(223, 255, 91, 0.2);
+  -webkit-text-fill-color: transparent;
 }
 
 .output-pane {
@@ -1206,7 +1228,7 @@ footer {
   }
 
   .principle-card {
-    min-height: 360px;
+    min-height: 320px;
   }
 
   .playground-section,

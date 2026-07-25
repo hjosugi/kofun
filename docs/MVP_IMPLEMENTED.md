@@ -4,7 +4,7 @@
 |---|---|---|
 | `.kofun` source extension | implemented | `make repository-check` |
 | Kofun-written compiler seed | implemented | `compiler.kofun` |
-| Python-free bootstrap | implemented | `bootstrap/stage1/check.sh` |
+| Reproducible bootstrap | implemented | `bootstrap/stage1/check.sh` |
 | arithmetic Core validation/emission | implemented | `tests/cli.sh` |
 | build/run/check/test CLI | Core only | `tests/cli.sh` |
 | explicit skip reporting and coverage | implemented | `kofun test` |
