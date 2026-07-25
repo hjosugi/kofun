@@ -80,7 +80,7 @@ await assert.rejects(
     error.message === "error[R010]: integer overflow in operator `+`",
 );
 const arithmetic = await runKofun(`fn main() {
-  print(7 / 2)
+  print(7 // 2)
   print(-7 // 2)
   print(7 % -2)
   print((8 - 2) * 7 + 1)

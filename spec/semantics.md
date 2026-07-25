@@ -22,8 +22,12 @@ must not wrap, saturate, or vary this behavior between debug and release
 builds. `INT64_MIN // -1` is the same overflow error. A future explicit
 wrapping API does not change ordinary arithmetic.
 
-`/` returns `Float`. `//` computes the mathematical floor of the quotient.
-`%` is paired with that quotient:
+`/` is not defined on `Int`. Kofun performs no implicit numeric conversion, so
+`/` cannot produce a fractional value from two `Int` operands and has nothing to
+mean on them; `Int / Int` is a compile error. The integer quotient is `//`,
+which computes the mathematical **floor** of the quotient — note that `//`
+truncates in some other languages, so the rounding is normative here rather
+than assumed. `%` is paired with that quotient:
 
 ```text
 left == (left // right) * right + (left % right)

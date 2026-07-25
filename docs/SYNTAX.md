@@ -138,10 +138,18 @@ assignment:    =
 
 ## Division
 
+`//` is the integer quotient and takes the **floor**, so it disagrees with C-style
+truncation on negative operands. `%` is paired with that quotient.
+
 ```kofun
-7 / 2  # 3.5
-7 // 2 # 3
+7 // 2   # 3
+-7 // 2  # -4, not -3
+-7 % 2   # 1, the divisor's sign
 ```
+
+`/` is not defined on `Int`. Kofun performs no implicit numeric conversion, so
+`/` cannot produce a fractional value from two `Int` operands; `7 / 2` is a
+compile error rather than either `3` or `3.5`. See `docs/TYPE_SYSTEM.md`.
 
 ## Pipelines
 

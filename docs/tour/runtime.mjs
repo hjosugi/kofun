@@ -5,11 +5,9 @@ const DIAGNOSTICS = new Map([
   [2, "error[R010]: integer overflow in operator `-`"],
   [3, "error[R010]: integer overflow in operator `*`"],
   [4, "error[R010]: integer overflow in unary operator `-`"],
-  [5, "error[R010]: operator `/` failed: division by zero"],
-  [6, "error[R010]: integer overflow in operator `/`"],
-  [7, "error[R010]: operator `//` failed: division by zero"],
-  [8, "error[R010]: integer overflow in operator `//`"],
-  [9, "error[R010]: operator `%` failed: division by zero"],
+  [5, "error[R010]: operator `//` failed: division by zero"],
+  [6, "error[R010]: integer overflow in operator `//`"],
+  [7, "error[R010]: operator `%` failed: division by zero"],
 ]);
 
 export class KofunRuntimeError extends Error {

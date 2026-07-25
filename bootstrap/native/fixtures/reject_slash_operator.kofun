@@ -1,0 +1,11 @@
+# `/` is not defined on Int (#687). Both native targets must refuse this source
+# with the same diagnostic and write no artifact. The operands are parameters
+# rather than literals so the refusal cannot come from constant folding.
+
+fn quotient(a: Int, b: Int) -> Int {
+    return a / b
+}
+
+fn main() {
+    print(quotient(7, 2))
+}

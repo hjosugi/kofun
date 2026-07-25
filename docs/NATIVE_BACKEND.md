@@ -18,8 +18,9 @@ and a call to any other function restores the registers the body claimed, drops
 the frame, and jumps, so it returns straight to this function's caller. Direct
 and mutual recursion written that way therefore run in constant stack. It also
 lowers `//` and `%` with the floor semantics `docs/SEMANTICS.md` defines, and
-lowers `/` with the truncating behavior of the executable seed while the
-conflicting normative Float claim remains tracked by #687. Both targets guard
+does not define `/` on `Int`: with no implicit numeric promotion it cannot
+produce a fractional value from two `Int` operands, so both targets refuse it
+with one diagnostic and emit nothing (#687). Both targets guard
 a zero divisor and the one non-representable quotient before dividing, and bind
 as many locals as fit the shared 32-slot parameter/local frame, taking a
 local's type from its initializer when no annotation is written. That function profile is

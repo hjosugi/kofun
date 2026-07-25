@@ -251,11 +251,25 @@ unsupported_status=$?
     --target wasm32 -g -o "$WORK/debug.wasm" \
     >"$WORK/debug.stdout" 2>"$WORK/debug.stderr"
 debug_status=$?
+# `/` is not defined on Int (#687): with no implicit numeric promotion it
+# cannot produce a fractional value from two Ints, and truncating it while `//`
+# floors would make two near-identical operators disagree on negatives. wasm32
+# must refuse it exactly as the two native targets do, and emit no module.
+"$ROOT/bin/kofun" build \
+    "$ROOT/bootstrap/wasm/fixtures/reject_slash_operator.kofun" \
+    --target wasm32 -o "$WORK/reject-slash.wasm" \
+    >"$WORK/reject-slash.stdout" 2>"$WORK/reject-slash.stderr"
+slash_status=$?
 set -e
 test "$unsupported_status" -eq 1
 test "$debug_status" -eq 2
 test ! -e "$WORK/unsupported.wasm"
 test ! -e "$WORK/debug.wasm"
+test "$slash_status" -eq 1
+test ! -e "$WORK/reject-slash.wasm"
+test ! -s "$WORK/reject-slash.stdout"
+grep -Fq '`/` is not defined on Int; use `//` for the integer quotient' \
+    "$WORK/reject-slash.stderr"
 grep -Fq 'unsupported token in wasm32 arithmetic Core' \
     "$WORK/unsupported.stderr"
 grep -Fq -- \
@@ -271,4 +285,4 @@ printf '%s\n' \
     'PASS: direct Int64 minimum parsing and checked re-negation stayed exact' \
     'PASS: wasm32-node matched C11 for all numeric Core observations' \
     'PASS: Kofun browser sample rendered through a lazy DOM host' \
-    'PASS: unsupported source and debug mode failed without artifacts'
+    'PASS: unsupported source, `/`, and debug mode failed without artifacts'

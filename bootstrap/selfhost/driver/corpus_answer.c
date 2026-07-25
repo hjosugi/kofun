@@ -235,7 +235,7 @@ int main(void) {
         printf("%" PRId64 "\n", value);
     }
     {
-        int64_t value = evaluate("(answer - 2) / 8");
+        int64_t value = evaluate("(answer - 2) // 8");
         if (failed) return 1;
         printf("%" PRId64 "\n", value);
     }

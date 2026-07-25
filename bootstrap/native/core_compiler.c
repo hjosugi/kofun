@@ -279,7 +279,6 @@ typedef enum {
     FUNCTION_TEXT_CONCAT,
     FUNCTION_SUBTRACT,
     FUNCTION_MULTIPLY,
-    FUNCTION_DIVIDE,
     FUNCTION_FLOOR_DIVIDE,
     FUNCTION_FLOOR_MODULO,
     FUNCTION_NEGATE,
@@ -296,9 +295,7 @@ typedef enum {
     FUNCTION_TRAP_SUBTRACT_OVERFLOW,
     FUNCTION_TRAP_MULTIPLY_OVERFLOW,
     FUNCTION_TRAP_NEGATE_OVERFLOW,
-    FUNCTION_TRAP_DIVIDE_OVERFLOW,
     FUNCTION_TRAP_FLOOR_DIVIDE_OVERFLOW,
-    FUNCTION_TRAP_DIVIDE_ZERO,
     FUNCTION_TRAP_FLOOR_DIVIDE_ZERO,
     FUNCTION_TRAP_MODULO_ZERO,
     FUNCTION_TRAP_COUNT,
@@ -314,12 +311,8 @@ static const char *function_trap_message(FunctionTrapKind kind) {
             return "error[R010]: integer overflow in operator `*`\n";
         case FUNCTION_TRAP_NEGATE_OVERFLOW:
             return "error[R010]: integer overflow in unary operator `-`\n";
-        case FUNCTION_TRAP_DIVIDE_OVERFLOW:
-            return "error[R010]: integer overflow in operator `/`\n";
         case FUNCTION_TRAP_FLOOR_DIVIDE_OVERFLOW:
             return "error[R010]: integer overflow in operator `//`\n";
-        case FUNCTION_TRAP_DIVIDE_ZERO:
-            return "error[R010]: operator `/` failed: division by zero\n";
         case FUNCTION_TRAP_FLOOR_DIVIDE_ZERO:
             return "error[R010]: operator `//` failed: division by zero\n";
         case FUNCTION_TRAP_MODULO_ZERO:
@@ -334,24 +327,22 @@ static const char *function_trap_message(FunctionTrapKind kind) {
 static FunctionTrapKind function_divide_zero_trap(
     FunctionExpressionKind kind
 ) {
-    if (kind == FUNCTION_DIVIDE) return FUNCTION_TRAP_DIVIDE_ZERO;
     if (kind == FUNCTION_FLOOR_DIVIDE) {
         return FUNCTION_TRAP_FLOOR_DIVIDE_ZERO;
     }
     if (kind == FUNCTION_FLOOR_MODULO) return FUNCTION_TRAP_MODULO_ZERO;
     fatal("non-dividing expression requested a zero-divisor trap");
-    return FUNCTION_TRAP_DIVIDE_ZERO;
+    return FUNCTION_TRAP_FLOOR_DIVIDE_ZERO;
 }
 
 static FunctionTrapKind function_divide_overflow_trap(
     FunctionExpressionKind kind
 ) {
-    if (kind == FUNCTION_DIVIDE) return FUNCTION_TRAP_DIVIDE_OVERFLOW;
     if (kind == FUNCTION_FLOOR_DIVIDE) {
         return FUNCTION_TRAP_FLOOR_DIVIDE_OVERFLOW;
     }
     fatal("non-quotient expression requested a quotient-overflow trap");
-    return FUNCTION_TRAP_DIVIDE_OVERFLOW;
+    return FUNCTION_TRAP_FLOOR_DIVIDE_OVERFLOW;
 }
 
 typedef struct FunctionExpression FunctionExpression;
@@ -2411,8 +2402,18 @@ static FunctionExpression *function_parse_product(FunctionParser *parser) {
             name = "//";
             width = 2;
         } else {
-            kind = FUNCTION_DIVIDE;
-            name = "/";
+            /* Kofun has no implicit numeric promotion, so `/` cannot produce a
+             * fractional value from two Int operands and has nothing to mean on
+             * Int. The integer quotient is `//`, which floors. Refusing here
+             * rather than truncating keeps `/` free to be given a meaning once
+             * a fractional type exists, with no silent change to any program
+             * that compiles today. */
+            function_error(
+                parser,
+                "native Core `/` is not defined on Int; use `//` for the "
+                "integer quotient"
+            );
+            return left;
         }
         parser->cursor += width;
         FunctionExpression *right = function_parse_unary(parser);
@@ -5463,7 +5464,7 @@ static void x64_function_divide(
         X64_GROUP3_IDIV,
         x64_register_operand(X64_RCX)
     );
-    if (kind != FUNCTION_DIVIDE) {
+    {
         if (kind == FUNCTION_FLOOR_MODULO) {
             x64_mov_register_operand(
                 text,
@@ -5659,8 +5660,7 @@ static void x64_function_expression(
         );
         return;
     }
-    if (expression->kind == FUNCTION_DIVIDE ||
-        expression->kind == FUNCTION_FLOOR_DIVIDE ||
+    if (expression->kind == FUNCTION_FLOOR_DIVIDE ||
         expression->kind == FUNCTION_FLOOR_MODULO) {
         x64_function_divide(text, expression->kind, emitter, result, right);
         return;
@@ -7100,12 +7100,6 @@ static void a64_function_divide(
     size_t done = text->length;
     a64_word(text, UINT32_C(0x14000000)); /* b done */
     a64_patch_imm19(text, general, text->length);
-    if (kind == FUNCTION_DIVIDE) {
-        a64_word(text, UINT32_C(0x9ac10c00)); /* sdiv x0, x0, x1 */
-        a64_patch_imm26(text, done, text->length);
-        a64_move(text, result, a64_register_operand(A64_SCRATCH_A));
-        return;
-    }
     a64_word(text, UINT32_C(0x9ac10c09)); /* sdiv x9, x0, x1 */
     size_t exact;
     if (kind == FUNCTION_FLOOR_MODULO) {
@@ -7271,8 +7265,7 @@ static void a64_function_expression(
         depth + 1
     );
     A64Operand right = a64_eval_operand(layout, depth + 1);
-    if (expression->kind == FUNCTION_DIVIDE ||
-        expression->kind == FUNCTION_FLOOR_DIVIDE ||
+    if (expression->kind == FUNCTION_FLOOR_DIVIDE ||
         expression->kind == FUNCTION_FLOOR_MODULO) {
         a64_function_divide(text, expression->kind, emitter, result, right);
         return;

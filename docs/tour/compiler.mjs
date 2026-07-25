@@ -35,7 +35,6 @@ const NODE = Object.freeze({
   ADD: "add",
   SUBTRACT: "subtract",
   MULTIPLY: "multiply",
-  DIVIDE: "divide",
   FLOOR_DIVIDE: "floor_divide",
   FLOOR_MODULO: "floor_modulo",
 });
@@ -71,11 +70,9 @@ const ERROR = Object.freeze({
   SUBTRACT_OVERFLOW: 2,
   MULTIPLY_OVERFLOW: 3,
   NEGATE_OVERFLOW: 4,
-  DIVIDE_ZERO: 5,
-  DIVIDE_OVERFLOW: 6,
-  FLOOR_DIVIDE_ZERO: 7,
-  FLOOR_DIVIDE_OVERFLOW: 8,
-  MODULO_ZERO: 9,
+  FLOOR_DIVIDE_ZERO: 5,
+  FLOOR_DIVIDE_OVERFLOW: 6,
+  MODULO_ZERO: 7,
 });
 
 export class KofunCompileError extends Error {
@@ -298,10 +295,15 @@ class Parser {
     while (this.error === null) {
       let kind = null;
       if (this.consume(TOKEN.STAR)) kind = NODE.MULTIPLY;
-      else if (this.consume(TOKEN.SLASH)) kind = NODE.DIVIDE;
       else if (this.consume(TOKEN.FLOOR_DIV)) kind = NODE.FLOOR_DIVIDE;
       else if (this.consume(TOKEN.PERCENT)) kind = NODE.FLOOR_MODULO;
-      else break;
+      else if (this.token?.kind === TOKEN.SLASH) {
+        // `/` is not defined on Int: with no implicit numeric promotion it
+        // cannot produce a fractional value from two Ints. `//` is the
+        // integer quotient and floors.
+        this.fail("`/` is not defined on Int; use `//` for the integer quotient");
+        break;
+      } else break;
       const right = this.parseUnary();
       left = this.addNode(kind, left, right);
     }
@@ -624,18 +626,6 @@ function emitExpression(parser, index, body) {
     panicWith(body, ERROR.MULTIPLY_OVERFLOW);
     body.byte(OP.END);
     body.byte(OP.END);
-    return;
-  }
-  if (node.kind === NODE.DIVIDE) {
-    checkDivisionPair(
-      body,
-      left,
-      right,
-      ERROR.DIVIDE_ZERO,
-      ERROR.DIVIDE_OVERFLOW,
-    );
-    body.byte(OP.I64_DIV_S);
-    instructionIndex(body, OP.LOCAL_SET, target);
     return;
   }
   if (node.kind === NODE.FLOOR_DIVIDE) {
