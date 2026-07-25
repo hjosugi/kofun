@@ -8,9 +8,14 @@ E2S64	imports	stdout	1	required	required	forbidden
 E2S65	imports	stdout	1	required	not-applicable	forbidden
 E2S66	imports	stdout	1	required	not-applicable	forbidden
 E2S67	imports	stdout	1	not-applicable	not-applicable	forbidden
+E2S68	imports	stdout	1	not-applicable	not-applicable	forbidden
 E2S69	imports	stdout	1	required	not-applicable	forbidden
 E2S70	imports	stdout	1	required	not-applicable	forbidden
 E2S71	imports	stdout	1	required	not-applicable	forbidden
 E2S72	imports	stdout	1	required	not-applicable	forbidden
 E2S73	imports	stdout	1	required	required	forbidden
 E2S74	imports	stdout	1	required	not-applicable	forbidden
+E2S75	imports	stdout	1	not-applicable	not-applicable	forbidden
+E2S76	imports	stdout	1	not-applicable	not-applicable	forbidden
+E2S77	imports	stdout	1	not-applicable	not-applicable	preserve
+E2S78	imports	stdout	1	not-applicable	not-applicable	forbidden
