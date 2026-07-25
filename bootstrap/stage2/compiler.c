@@ -76,6 +76,7 @@ typedef struct {
 typedef struct {
     char *program_ir;
     char *parse_prefix_ir;
+    char *declaration_observations;
     char *scope_hir;
     char *scope_prefix_hir;
     char *semantic_observations;
@@ -87,6 +88,7 @@ typedef struct {
 } Stage2AuthorityResult;
 
 static void *allocate(size_t size);
+static void fail(const char *message);
 
 /*
  * The audited seed is deliberately single-threaded.  This pointer is scoped
@@ -97,6 +99,7 @@ static Stage2AuthorityContext *stage2_active_authority_context;
 static char **stage2_active_parse_prefix_output;
 static char **stage2_active_scope_prefix_output;
 static Buffer *stage2_active_semantic_observer;
+static Buffer *stage2_active_declaration_observer;
 
 static void stage2_parse_prefix_observe(const Buffer *ir) {
     char *copy;
@@ -300,6 +303,34 @@ static void stage2_semantic_observe(const char *format, ...) {
         buffer_append(stage2_active_semantic_observer, line.data);
     }
     free(line.data);
+}
+
+static void stage2_declaration_observe(const char *format, ...) {
+    va_list arguments;
+    if (stage2_active_declaration_observer == NULL || format == NULL) return;
+    va_start(arguments, format);
+    {
+        va_list copy;
+        int needed;
+        va_copy(copy, arguments);
+        needed = vsnprintf(NULL, 0, format, copy);
+        va_end(copy);
+        if (needed < 0) fail("stage2 seed: formatting failed");
+        buffer_reserve(
+            stage2_active_declaration_observer,
+            (size_t)needed
+        );
+        (void)vsnprintf(
+            stage2_active_declaration_observer->data +
+                stage2_active_declaration_observer->length,
+            stage2_active_declaration_observer->capacity -
+                stage2_active_declaration_observer->length,
+            format,
+            arguments
+        );
+        stage2_active_declaration_observer->length += (size_t)needed;
+    }
+    va_end(arguments);
 }
 
 static char *read_file(const char *path) {
@@ -1894,6 +1925,13 @@ static char *local_visibility_error(
                     cursor,
                     token_end(source, cursor)
                 );
+                stage2_diagnostic_set(
+                    alias ? "E2S34" : "E2S33",
+                    cursor,
+                    token_end(source, cursor),
+                    true,
+                    error.data
+                );
                 free(modifier);
                 return error.data;
             }
@@ -2203,6 +2241,8 @@ static bool reserved_type_name(const char *name) {
            strcmp(name, "_") == 0;
 }
 
+static char *function_return_type(const char *source, const char *wanted);
+
 static char *parse_program(const char *source) {
     Buffer ir;
     Buffer declared_types;
@@ -2242,6 +2282,13 @@ static char *parse_program(const char *source) {
                     "at byte %" PRId64,
                     cursor
                 );
+                stage2_diagnostic_set(
+                    "E2S31",
+                    cursor,
+                    token_end(source, cursor),
+                    true,
+                    ir.data
+                );
                 return ir.data;
             }
             if (name[0] == '\0' || end < 0) {
@@ -2256,6 +2303,13 @@ static char *parse_program(const char *source) {
                     "at byte %" PRId64,
                     cursor
                 );
+                stage2_diagnostic_set(
+                    "E2S31",
+                    cursor,
+                    token_end(source, cursor),
+                    true,
+                    ir.data
+                );
                 return ir.data;
             }
             if (reserved_type_name(name)) {
@@ -2267,6 +2321,13 @@ static char *parse_program(const char *source) {
                     "type `%s` at byte %" PRId64,
                     name,
                     cursor
+                );
+                stage2_diagnostic_set(
+                    "E2S31",
+                    cursor,
+                    token_end(source, cursor),
+                    true,
+                    error.data
                 );
                 free(name);
                 free(declared_types.data);
@@ -2287,6 +2348,13 @@ static char *parse_program(const char *source) {
                     "at byte %" PRId64,
                     cursor
                 );
+                stage2_diagnostic_set(
+                    "E2S31",
+                    cursor,
+                    token_end(source, cursor),
+                    true,
+                    ir.data
+                );
                 return ir.data;
             }
             if (enum_name_covered(declared_types.data, name)) {
@@ -2298,6 +2366,13 @@ static char *parse_program(const char *source) {
                     "at byte %" PRId64,
                     name,
                     cursor
+                );
+                stage2_diagnostic_set(
+                    "E2S31",
+                    cursor,
+                    token_end(source, cursor),
+                    true,
+                    error.data
                 );
                 free(name);
                 free(declared_types.data);
@@ -2314,6 +2389,13 @@ static char *parse_program(const char *source) {
                     "with a constructor at byte %" PRId64,
                     name,
                     cursor
+                );
+                stage2_diagnostic_set(
+                    "E2S31",
+                    cursor,
+                    token_end(source, cursor),
+                    true,
+                    error.data
                 );
                 free(name);
                 free(declared_types.data);
@@ -2342,6 +2424,13 @@ static char *parse_program(const char *source) {
                         cursor
                     );
                 }
+                stage2_diagnostic_set(
+                    "E2S31",
+                    cursor,
+                    token_end(source, cursor),
+                    true,
+                    error.data
+                );
                 free(name);
                 free(declared_types.data);
                 free(declared_constructors.data);
@@ -2434,6 +2523,13 @@ static char *parse_program(const char *source) {
                         constructor_name,
                         constructor
                     );
+                    stage2_diagnostic_set(
+                        "E2S31",
+                        constructor,
+                        token_end(source, constructor),
+                        true,
+                        error.data
+                    );
                     free(constructor_name);
                     free(name);
                     free(declared_types.data);
@@ -2522,6 +2618,7 @@ static char *parse_program(const char *source) {
             }
             free(local_error);
             bool explicit_visibility = declaration_start != function_start;
+            char *return_type = function_return_type(source, name);
             int64_t modifier_start = explicit_visibility ? declaration_start : -1;
             int64_t modifier_end = explicit_visibility ?
                 token_end(source, declaration_start) : -1;
@@ -2542,7 +2639,15 @@ static char *parse_program(const char *source) {
                 end,
                 functions
             );
+            stage2_declaration_observe(
+                "function|%s|%" PRId64 "|%" PRId64 "|%s\n",
+                name,
+                function_start,
+                end,
+                return_type
+            );
             stage2_parse_prefix_observe(&ir);
+            free(return_type);
             free(name);
             ++functions;
             cursor = skip_trivia(source, end);
@@ -3331,8 +3436,6 @@ static char *initializer_type(
     int64_t initializer
 );
 static bool value_control(const char *source, int64_t cursor);
-static char *function_return_type(const char *source, const char *wanted);
-
 static bool newline_between(
     const char *source,
     int64_t start,
@@ -3465,6 +3568,13 @@ static char *builtin_argument_check(
                     index,
                     actual,
                     argument
+                );
+                stage2_diagnostic_set(
+                    "E2S15",
+                    argument,
+                    token_end(source, argument),
+                    true,
+                    error.data
                 );
                 free(actual);
                 return error.data;
@@ -3622,6 +3732,13 @@ static char *validate_core_types(const char *source, const char *hir) {
                             declared,
                             value
                         );
+                        stage2_diagnostic_set(
+                            "E2S15",
+                            value,
+                            token_end(source, value),
+                            true,
+                            error.data
+                        );
                         free(value_type);
                         free(name);
                         free(declared);
@@ -3664,6 +3781,18 @@ static char *validate_core_calls(const char *source, const char *hir) {
                         "at byte %" PRId64,
                         name,
                         cursor
+                    );
+                    stage2_diagnostic_set(
+                        "E2S16",
+                        cursor,
+                        token_end(source, cursor),
+                        true,
+                        error.data
+                    );
+                    stage2_diagnostic_affected(
+                        STAGE2_DIAGNOSTIC_AFFECTED_CALL,
+                        cursor,
+                        token_end(source, cursor)
                     );
                     free(name);
                     free(previous);
@@ -3812,6 +3941,14 @@ static char *validate_core_calls(const char *source, const char *hir) {
     return owned_text("ok");
 }
 
+static char *malformed_core_parameters_error(void) {
+    char *error = owned_text(
+        "error[E2S15]: malformed Core parameter list"
+    );
+    stage2_diagnostic_set("E2S15", 0, 0, false, error);
+    return error;
+}
+
 static char *core_parameters(
     const char *source,
     const char *hir,
@@ -3819,11 +3956,11 @@ static char *core_parameters(
 ) {
     int64_t parameters = parameter_open(source, function_start);
     if (parameters < 0) {
-        return owned_text("error[E2S15]: malformed Core parameter list");
+        return malformed_core_parameters_error();
     }
     int64_t parameters_end = balanced_end(source, parameters, "(", ")");
     if (parameters_end < 0) {
-        return owned_text("error[E2S15]: malformed Core parameter list");
+        return malformed_core_parameters_error();
     }
     int64_t cursor = skip_trivia(source, token_end(source, parameters));
     Buffer emitted;
@@ -4139,9 +4276,12 @@ static char *parse_value_if(
     }
     parts->end = token_end(source, else_close);
     stage2_semantic_observe(
-        "control|if|%" PRId64 "|%" PRId64 "|Int\n",
+        "control|if|%" PRId64 "|%" PRId64 "|Int|%" PRId64
+        "|%" PRId64 "\n",
         cursor,
-        parts->end
+        parts->end,
+        parts->condition_start,
+        parts->condition_end
     );
     return owned_text("ok");
 }
@@ -4382,9 +4522,12 @@ static char *parse_value_match(
     }
     parts->end = token_end(source, arm_cursor);
     stage2_semantic_observe(
-        "control|match|%" PRId64 "|%" PRId64 "|Int\n",
+        "control|match|%" PRId64 "|%" PRId64 "|Int|%" PRId64
+        "|%" PRId64 "\n",
         cursor,
-        parts->end
+        parts->end,
+        parts->value_start,
+        parts->value_end
     );
     return owned_text("ok");
 }
@@ -5629,6 +5772,27 @@ static char *build_scope_hir_mode(
                     name,
                     first_declaration
                 );
+                stage2_diagnostic_set(
+                    "E2S47",
+                    name,
+                    token_end(source, name),
+                    true,
+                    error.data
+                );
+                stage2_diagnostic_affected(
+                    STAGE2_DIAGNOSTIC_AFFECTED_BINDING,
+                    name,
+                    token_end(source, name)
+                );
+                {
+                    int64_t first = decimal_value(first_declaration);
+                    stage2_diagnostic_related(
+                        first,
+                        token_end(source, first),
+                        "first declaration"
+                    );
+                }
+                stage2_diagnostic_remedy(2u);
                 free(name_text);
                 free(first_declaration);
                 free(hir.data);
@@ -5863,6 +6027,28 @@ static char *build_scope_hir_mode(
                             name,
                             first_declaration
                         );
+                        stage2_diagnostic_set(
+                            "E2S47",
+                            name,
+                            token_end(source, name),
+                            true,
+                            error.data
+                        );
+                        stage2_diagnostic_affected(
+                            STAGE2_DIAGNOSTIC_AFFECTED_BINDING,
+                            name,
+                            token_end(source, name)
+                        );
+                        {
+                            int64_t first =
+                                decimal_value(first_declaration);
+                            stage2_diagnostic_related(
+                                first,
+                                token_end(source, first),
+                                "first declaration"
+                            );
+                        }
+                        stage2_diagnostic_remedy(2u);
                         free(name_text);
                         free(first_declaration);
                         free(scope_id);
@@ -6119,6 +6305,13 @@ static char *build_scope_hir_mode(
                                 name,
                                 cursor
                             );
+                            stage2_diagnostic_set(
+                                "E2S35",
+                                cursor,
+                                token_end(source, cursor),
+                                true,
+                                message.data
+                            );
                             free(name);
                             free(scope_id);
                             free(binding_id);
@@ -6226,6 +6419,13 @@ static char *validate_enum_uses(const char *source, const char *hir) {
                             "limit is 256 per function at byte %" PRId64,
                             cursor
                         );
+                        stage2_diagnostic_set(
+                            "E2S32",
+                            cursor,
+                            token_end(source, cursor),
+                            true,
+                            error.data
+                        );
                         free(name);
                         free(binding_id);
                         free(binding_type);
@@ -6255,6 +6455,13 @@ static char *validate_enum_uses(const char *source, const char *hir) {
                                     "slice at byte %" PRId64,
                                     name,
                                     cursor
+                                );
+                                stage2_diagnostic_set(
+                                    "E2S32",
+                                    cursor,
+                                    token_end(source, cursor),
+                                    true,
+                                    error.data
                                 );
                                 free(name);
                                 free(binding_id);
@@ -6290,6 +6497,13 @@ static char *validate_enum_uses(const char *source, const char *hir) {
                                         "match pattern at byte %" PRId64,
                                         name,
                                         cursor
+                                    );
+                                    stage2_diagnostic_set(
+                                        "E2S32",
+                                        cursor,
+                                        token_end(source, cursor),
+                                        true,
+                                        error.data
                                     );
                                     free(name);
                                     free(binding_id);
@@ -7171,9 +7385,12 @@ static char *lower_body(
             }
             buffer_append(&emitted, "\n    }\n");
             stage2_semantic_observe(
-                "control|if|%" PRId64 "|%" PRId64 "|Unit\n",
+                "control|if|%" PRId64 "|%" PRId64 "|Unit|%" PRId64
+                "|%" PRId64 "\n",
                 statement_start,
-                statement_end
+                statement_end,
+                condition_start,
+                condition_close
             );
         } else if (token_equal(source, cursor, "match")) {
             int64_t match_start = cursor;
@@ -7241,9 +7458,12 @@ static char *lower_body(
                 free(match_body);
                 int64_t match_end = enum_match_end(source, match_start);
                 stage2_semantic_observe(
-                    "control|match|%" PRId64 "|%" PRId64 "|Unit\n",
+                    "control|match|%" PRId64 "|%" PRId64
+                    "|Unit|%" PRId64 "|%" PRId64 "\n",
                     match_start,
-                    match_end
+                    match_end,
+                    value_start,
+                    token_end(source, value_start)
                 );
                 cursor = skip_trivia(source, match_end);
             } else {
@@ -7578,9 +7798,12 @@ static char *lower_body(
             free(match_value);
             free(dispatch.data);
             stage2_semantic_observe(
-                "control|match|%" PRId64 "|%" PRId64 "|Unit\n",
+                "control|match|%" PRId64 "|%" PRId64 "|Unit|%" PRId64
+                "|%" PRId64 "\n",
                 match_start,
-                token_end(source, arm_cursor)
+                token_end(source, arm_cursor),
+                value_start,
+                value_end
             );
             cursor = skip_trivia(source, token_end(source, arm_cursor));
             }
@@ -7878,6 +8101,18 @@ static char *lower_c(const char *source, const char *hir) {
                 name,
                 cursor
             );
+            stage2_diagnostic_set(
+                "E2S16",
+                cursor,
+                token_end(source, cursor),
+                true,
+                error.data
+            );
+            stage2_diagnostic_affected(
+                STAGE2_DIAGNOSTIC_AFFECTED_CALL,
+                cursor,
+                token_end(source, cursor)
+            );
             free(name);
             free(c_name);
             free(prototypes.data);
@@ -7927,6 +8162,13 @@ static char *lower_c(const char *source, const char *hir) {
                 "error[E2S15]: Core function `%s` requires Int parameters "
                 "and an Int return",
                 name
+            );
+            stage2_diagnostic_set(
+                "E2S15",
+                cursor,
+                token_end(source, cursor),
+                true,
+                error.data
             );
             free(parameters);
             free(name);
@@ -8089,6 +8331,8 @@ static bool stage2_compile_outcome(
         stage2_active_scope_prefix_output;
     Buffer *previous_semantic_observer =
         stage2_active_semantic_observer;
+    Buffer *previous_declaration_observer =
+        stage2_active_declaration_observer;
     char *tokens;
     char *pattern_check;
     char *lowered;
@@ -8107,7 +8351,19 @@ static bool stage2_compile_outcome(
     result->token_span_committed = true;
     free(tokens);
 
-    result->program_ir = parse_program(source);
+    {
+        Buffer declarations;
+        buffer_init(&declarations);
+        buffer_append(
+            &declarations,
+            "kofun-stage2-declarations/v1\n"
+        );
+        result->declaration_observations = declarations.data;
+        stage2_active_declaration_observer = &declarations;
+        result->program_ir = parse_program(source);
+        stage2_active_declaration_observer =
+            previous_declaration_observer;
+    }
     if (strncmp(result->program_ir, "error[", 6) == 0) {
         result->diagnostic = result->program_ir;
         result->program_ir = result->parse_prefix_ir;
@@ -8151,21 +8407,9 @@ static bool stage2_compile_outcome(
     result->scope_committed = true;
     {
         Buffer observations;
-        Stage2StructuredDiagnostic saved = context == NULL ?
-            (Stage2StructuredDiagnostic){0} : context->diagnostic;
-        char *observed_calls;
         buffer_init(&observations);
         buffer_append(&observations, "kofun-stage2-observations/v1\n");
         stage2_active_semantic_observer = &observations;
-        /*
-         * Call validation is itself an authoritative lowering pass.  Running
-         * it once before C emission preserves successfully validated calls
-         * that precede a later lowering failure; the real lowerer runs the
-         * same validator again and the observer deduplicates its records.
-         */
-        observed_calls = validate_core_calls(source, result->scope_hir);
-        free(observed_calls);
-        if (context != NULL) context->diagnostic = saved;
         lowered = lower_c(source, result->scope_hir);
         stage2_active_semantic_observer = previous_semantic_observer;
         result->semantic_observations = observations.data;
@@ -8180,6 +8424,8 @@ static bool stage2_compile_outcome(
     result->exit_class = 0u;
 
 done:
+    stage2_active_declaration_observer =
+        previous_declaration_observer;
     stage2_active_semantic_observer = previous_semantic_observer;
     stage2_active_scope_prefix_output = previous_scope_prefix_output;
     stage2_active_parse_prefix_output = previous_parse_prefix_output;
@@ -8198,6 +8444,8 @@ static bool stage2_ownership_outcome(
         stage2_active_parse_prefix_output;
     char **previous_scope_prefix_output =
         stage2_active_scope_prefix_output;
+    Buffer *previous_declaration_observer =
+        stage2_active_declaration_observer;
     char *tokens;
     char *ownership;
     memset(result, 0, sizeof(*result));
@@ -8213,7 +8461,19 @@ static bool stage2_ownership_outcome(
     }
     result->token_span_committed = true;
     free(tokens);
-    result->program_ir = parse_program(source);
+    {
+        Buffer declarations;
+        buffer_init(&declarations);
+        buffer_append(
+            &declarations,
+            "kofun-stage2-declarations/v1\n"
+        );
+        result->declaration_observations = declarations.data;
+        stage2_active_declaration_observer = &declarations;
+        result->program_ir = parse_program(source);
+        stage2_active_declaration_observer =
+            previous_declaration_observer;
+    }
     if (strncmp(result->program_ir, "error[", 6) == 0) {
         result->diagnostic = result->program_ir;
         result->program_ir = result->parse_prefix_ir;
@@ -8251,6 +8511,8 @@ static bool stage2_ownership_outcome(
     free(ownership);
     result->exit_class = 0u;
 done:
+    stage2_active_declaration_observer =
+        previous_declaration_observer;
     stage2_active_scope_prefix_output = previous_scope_prefix_output;
     stage2_active_parse_prefix_output = previous_parse_prefix_output;
     stage2_active_authority_context = previous_context;
@@ -8261,6 +8523,7 @@ static void stage2_authority_result_destroy(Stage2AuthorityResult *result) {
     if (result == NULL) return;
     free(result->program_ir);
     free(result->parse_prefix_ir);
+    free(result->declaration_observations);
     free(result->scope_hir);
     free(result->scope_prefix_hir);
     free(result->semantic_observations);

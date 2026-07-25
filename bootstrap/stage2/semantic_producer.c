@@ -39,7 +39,7 @@ enum {
 
 typedef struct {
     KofunSemanticNode value;
-    KofunSemanticId dependency;
+    KofunSemanticId dependencies[KOFUN_SEMANTIC_MAX_RELATIONS];
     KofunSemanticId diagnostic;
     char name[64];
     char type[64];
@@ -59,7 +59,7 @@ typedef struct {
     KofunSemanticFact value;
     char display[160];
     char reason[160];
-    KofunSemanticId dependency;
+    KofunSemanticId dependencies[KOFUN_SEMANTIC_MAX_RELATIONS];
     KofunSemanticId diagnostic;
 } ProducerFact;
 
@@ -85,6 +85,7 @@ typedef struct {
     int64_t start;
     int64_t body_open;
     int64_t end;
+    bool duplicate;
 } ProducerFunction;
 
 typedef struct {
@@ -109,6 +110,7 @@ typedef struct {
     const KofunStage2SemanticInput *input;
     const char *source;
     const char *scope_hir;
+    const char *declaration_observations;
     const char *semantic_observations;
     KofunSemanticSource source_record;
     KofunSemanticId value_namespace_id;
@@ -520,44 +522,86 @@ static ProducerNode *producer_find_node_by_id(
     return NULL;
 }
 
-static ProducerNode *producer_find_containing_node(
+static ProducerNode *producer_find_dependency_node(
     Producer *producer,
-    KofunSemanticNodeKind kind,
     int64_t start,
     int64_t end
 ) {
-    ProducerNode *best = NULL;
     size_t index;
     for (index = 0u; index < producer->node_count; index += 1u) {
         ProducerNode *node = &producer->nodes[index];
-        if (node->value.kind == kind &&
-            node->value.span.start <= (uint32_t)start &&
-            node->value.span.end >= (uint32_t)end &&
-            (best == NULL ||
-             node->value.span.end - node->value.span.start <
-                 best->value.span.end - best->value.span.start)) {
-            best = node;
+        if ((node->value.kind == KOFUN_SEMANTIC_NODE_REFERENCE ||
+             node->value.kind == KOFUN_SEMANTIC_NODE_CALL) &&
+            node->value.span.start == (uint32_t)start &&
+            node->value.span.end == (uint32_t)end) {
+            return node;
         }
     }
-    return best;
+    return NULL;
 }
 
-static void producer_node_set_dependency(
+static int producer_id_compare(const void *left, const void *right) {
+    return memcmp(
+        ((const KofunSemanticId *)left)->bytes,
+        ((const KofunSemanticId *)right)->bytes,
+        KOFUN_SEMANTIC_ID_BYTES
+    );
+}
+
+static bool producer_node_add_dependency(
     ProducerNode *node,
     const KofunSemanticId *dependency
 ) {
-    node->dependency = *dependency;
-    node->value.dependencies = &node->dependency;
-    node->value.dependency_count = 1u;
+    uint16_t index;
+    for (index = 0u; index < node->value.dependency_count; index += 1u) {
+        if (memcmp(
+                node->dependencies[index].bytes,
+                dependency->bytes,
+                KOFUN_SEMANTIC_ID_BYTES) == 0) {
+            return true;
+        }
+    }
+    if (node->value.dependency_count >=
+        KOFUN_SEMANTIC_MAX_RELATIONS) {
+        return false;
+    }
+    node->dependencies[node->value.dependency_count++] = *dependency;
+    qsort(
+        node->dependencies,
+        node->value.dependency_count,
+        sizeof(node->dependencies[0]),
+        producer_id_compare
+    );
+    node->value.dependencies = node->dependencies;
+    return true;
 }
 
-static void producer_fact_set_dependency(
+static bool producer_fact_add_dependency(
     ProducerFact *fact,
     const KofunSemanticId *dependency
 ) {
-    fact->dependency = *dependency;
-    fact->value.dependencies = &fact->dependency;
-    fact->value.dependency_count = 1u;
+    uint16_t index;
+    for (index = 0u; index < fact->value.dependency_count; index += 1u) {
+        if (memcmp(
+                fact->dependencies[index].bytes,
+                dependency->bytes,
+                KOFUN_SEMANTIC_ID_BYTES) == 0) {
+            return true;
+        }
+    }
+    if (fact->value.dependency_count >=
+        KOFUN_SEMANTIC_MAX_RELATIONS) {
+        return false;
+    }
+    fact->dependencies[fact->value.dependency_count++] = *dependency;
+    qsort(
+        fact->dependencies,
+        fact->value.dependency_count,
+        sizeof(fact->dependencies[0]),
+        producer_id_compare
+    );
+    fact->value.dependencies = fact->dependencies;
+    return true;
 }
 
 static ProducerFact *producer_find_fact(
@@ -928,6 +972,39 @@ static int64_t producer_hir_function_body_open(
     return -1;
 }
 
+static char *producer_function_return_type(
+    const Producer *producer,
+    int64_t function_start
+) {
+    int64_t line = hir_record_start(
+        producer->declaration_observations,
+        "function",
+        0
+    );
+    while (line >= 0) {
+        char *start_text = hir_field(
+            producer->declaration_observations,
+            line,
+            2
+        );
+        bool found = decimal_value(start_text) == function_start;
+        free(start_text);
+        if (found) {
+            return hir_field(
+                producer->declaration_observations,
+                line,
+                4
+            );
+        }
+        line = hir_record_start(
+            producer->declaration_observations,
+            "function",
+            line + 1
+        );
+    }
+    return owned_text("");
+}
+
 static bool producer_collect_functions(
     Producer *producer,
     const char *program_ir
@@ -938,17 +1015,28 @@ static bool producer_collect_functions(
         char *name = hir_field(program_ir, line, 1);
         char *start_text = hir_field(program_ir, line, 3);
         char *end_text = hir_field(program_ir, line, 4);
-        char *return_type = function_return_type(producer->source, name);
         int64_t start = decimal_value(start_text);
         int64_t end = decimal_value(end_text);
+        char *return_type = producer_function_return_type(
+            producer,
+            start
+        );
+        bool duplicate =
+            producer_find_function(producer, name) != NULL;
         int64_t body_open = producer_hir_function_body_open(producer, start);
         ProducerNode *node;
         ProducerFunction *function;
+        bool body_available =
+            body_open >= start && body_open < end;
+        bool scope_suffix_unavailable =
+            producer->compiler_exit_class != 0u &&
+            body_open < 0 &&
+            (uint64_t)start >= producer->reference_limit;
         bool valid = name[0] != '\0' && return_type[0] != '\0' &&
             strlen(name) < 64u && strlen(return_type) < 64u &&
             start >= 0 && end > start && end <= source_length &&
             (producer->scope_hir == NULL ||
-             (body_open >= start && body_open < end)) &&
+             body_available || scope_suffix_unavailable) &&
             producer->function_count < PRODUCER_MAX_FUNCTIONS;
         if (!valid) {
             free(name);
@@ -986,6 +1074,7 @@ static bool producer_collect_functions(
         function->start = start;
         function->body_open = body_open;
         function->end = end;
+        function->duplicate = duplicate;
         if (node == NULL ||
             !producer_symbol_id(
                 producer,
@@ -993,11 +1082,12 @@ static bool producer_collect_functions(
                 "function",
                 function->name,
                 &function->symbol) ||
-            !producer_add_stable_identity(
-                producer,
-                function->node,
-                KOFUN_SEMANTIC_ID_SYMBOL,
-                &function->symbol)) {
+            (!duplicate &&
+             !producer_add_stable_identity(
+                 producer,
+                 function->node,
+                 KOFUN_SEMANTIC_ID_SYMBOL,
+                 &function->symbol))) {
             free(name);
             free(start_text);
             free(end_text);
@@ -1192,6 +1282,41 @@ static bool producer_add_authority_diagnostic(
         owner->diagnostic = diagnostic->value.diagnostic_id;
         owner->value.diagnostic_ids = &owner->diagnostic;
         owner->value.diagnostic_count = 1u;
+        if (strcmp(result->diagnostic_code, "E2S16") == 0) {
+            for (index = 0u;
+                 index < producer->function_count;
+                 index += 1u) {
+                ProducerFunction *function =
+                    &producer->functions[index];
+                ProducerNode *duplicate_node;
+                if (!function->duplicate) continue;
+                duplicate_node = producer_find_node_by_id(
+                    producer,
+                    &function->node
+                );
+                if (duplicate_node == NULL) return false;
+                duplicate_node->value.status =
+                    KOFUN_SEMANTIC_ERROR;
+                duplicate_node->diagnostic =
+                    diagnostic->value.diagnostic_id;
+                duplicate_node->value.diagnostic_ids =
+                    &duplicate_node->diagnostic;
+                duplicate_node->value.diagnostic_count = 1u;
+                if (diagnostic->value.affected_count <
+                    sizeof(diagnostic->affected) /
+                        sizeof(diagnostic->affected[0])) {
+                    diagnostic->affected[
+                        diagnostic->value.affected_count++
+                    ] = duplicate_node->value.node_id;
+                    qsort(
+                        diagnostic->affected,
+                        diagnostic->value.affected_count,
+                        sizeof(diagnostic->affected[0]),
+                        producer_id_compare
+                    );
+                }
+            }
+        }
         for (index = 0u; index < producer->reference_count; index += 1u) {
             ProducerReference *reference = &producer->references[index];
             if (memcmp(
@@ -1438,12 +1563,22 @@ static bool producer_finalize_function_types(Producer *producer) {
                 producer,
                 &function->node
             );
-            if (function_node == NULL) return false;
-            producer_node_set_dependency(
-                function_node,
-                &parameters[0]->node
-            );
-            producer_fact_set_dependency(fact, &parameters[0]->node);
+            if (function_node == NULL ||
+                parameter_count > KOFUN_SEMANTIC_MAX_RELATIONS) {
+                return false;
+            }
+            for (binding_index = 0u;
+                 binding_index < parameter_count;
+                 binding_index += 1u) {
+                if (!producer_node_add_dependency(
+                        function_node,
+                        &parameters[binding_index]->node) ||
+                    !producer_fact_add_dependency(
+                        fact,
+                        &parameters[binding_index]->node)) {
+                    return false;
+                }
+            }
         }
     }
     return true;
@@ -1506,14 +1641,10 @@ static bool producer_collect_references(Producer *producer) {
         char *binding_id = hir_field(producer->scope_hir, use_line, 4);
         int64_t start = decimal_value(start_text);
         int64_t end = decimal_value(end_text);
-        ProducerBinding *binding = producer_find_binding_by_hir_id(
-            producer,
-            binding_id
-        );
+        ProducerBinding *binding;
         ProducerNode *use;
         ProducerFact *type_fact;
-        bool valid = binding != NULL &&
-            start >= 0 && end > start && end <= source_length;
+        bool valid = start >= 0 && end > start && end <= source_length;
         if (!valid) {
             free(start_text);
             free(end_text);
@@ -1530,6 +1661,13 @@ static bool producer_collect_references(Producer *producer) {
                 use_line + 1
             );
             continue;
+        }
+        binding = producer_find_binding_by_hir_id(producer, binding_id);
+        if (binding == NULL) {
+            free(start_text);
+            free(end_text);
+            free(binding_id);
+            return false;
         }
         use = producer_add_node(
             producer,
@@ -1566,8 +1704,13 @@ static bool producer_collect_references(Producer *producer) {
             free(binding_id);
             return false;
         }
-        producer_node_set_dependency(use, &binding->node);
-        producer_fact_set_dependency(type_fact, &binding->node);
+        if (!producer_node_add_dependency(use, &binding->node) ||
+            !producer_fact_add_dependency(type_fact, &binding->node)) {
+            free(start_text);
+            free(end_text);
+            free(binding_id);
+            return false;
+        }
         free(start_text);
         free(end_text);
         free(binding_id);
@@ -1735,8 +1878,17 @@ static bool producer_collect_references(Producer *producer) {
                     free(result_type);
                     return false;
                 }
-                producer_node_set_dependency(call, target_node);
-                producer_fact_set_dependency(type_fact, target_node);
+                if (!producer_node_add_dependency(call, target_node) ||
+                    !producer_fact_add_dependency(
+                        type_fact,
+                        target_node)) {
+                    free(target_kind);
+                    free(name);
+                    free(start_text);
+                    free(end_text);
+                    free(result_type);
+                    return false;
+                }
             }
             free(target_kind);
             free(name);
@@ -1777,12 +1929,27 @@ static bool producer_collect_references(Producer *producer) {
                 line,
                 4
             );
+            char *dependency_start_text = hir_field(
+                producer->semantic_observations,
+                line,
+                5
+            );
+            char *dependency_end_text = hir_field(
+                producer->semantic_observations,
+                line,
+                6
+            );
             int64_t start = decimal_value(start_text);
             int64_t end = decimal_value(end_text);
+            int64_t dependency_start =
+                decimal_value(dependency_start_text);
+            int64_t dependency_end =
+                decimal_value(dependency_end_text);
             bool in_prefix = start >= 0 && end > start &&
                 end <= source_length &&
                 (uint64_t)start < producer->reference_limit;
             if (in_prefix) {
+                ProducerNode *dependency;
                 ProducerNode *control = producer_add_node(
                     producer,
                     strcmp(kind, "if") == 0 ?
@@ -1793,19 +1960,40 @@ static bool producer_collect_references(Producer *producer) {
                     kind,
                     false
                 );
-                if (control == NULL ||
+                ProducerFact *type_fact = control == NULL ? NULL :
                     producer_add_fact(
+                    producer,
+                    control->value.node_id,
+                    KOFUN_SEMANTIC_FACT_TYPE,
+                    KOFUN_SEMANTIC_VALIDATED,
+                    result_type,
+                    ""
+                );
+                bool dependency_span_valid =
+                    dependency_start >= start &&
+                    dependency_end > dependency_start &&
+                    dependency_end <= end;
+                dependency = dependency_span_valid ?
+                    producer_find_dependency_node(
                         producer,
-                        control->value.node_id,
-                        KOFUN_SEMANTIC_FACT_TYPE,
-                        KOFUN_SEMANTIC_VALIDATED,
-                        result_type,
-                        ""
-                    ) == NULL) {
+                        dependency_start,
+                        dependency_end
+                    ) : NULL;
+                if (control == NULL || type_fact == NULL ||
+                    !dependency_span_valid ||
+                    (dependency != NULL &&
+                     (!producer_node_add_dependency(
+                          control,
+                          &dependency->value.node_id) ||
+                      !producer_fact_add_dependency(
+                          type_fact,
+                          &dependency->value.node_id)))) {
                     free(kind);
                     free(start_text);
                     free(end_text);
                     free(result_type);
+                    free(dependency_start_text);
+                    free(dependency_end_text);
                     return false;
                 }
             }
@@ -1813,6 +2001,8 @@ static bool producer_collect_references(Producer *producer) {
             free(start_text);
             free(end_text);
             free(result_type);
+            free(dependency_start_text);
+            free(dependency_end_text);
             line = hir_record_start(
                 producer->semantic_observations,
                 "control",
@@ -1869,12 +2059,6 @@ static bool producer_collect_references(Producer *producer) {
                     name,
                     false
                 );
-                ProducerNode *match = producer_find_containing_node(
-                    producer,
-                    KOFUN_SEMANTIC_NODE_MATCH,
-                    start,
-                    end
-                );
                 ProducerFact *type_fact;
                 if (pattern == NULL ||
                     producer_add_reference(
@@ -1908,20 +2092,18 @@ static bool producer_collect_references(Producer *producer) {
                     free(result_type);
                     return false;
                 }
-                producer_node_set_dependency(
-                    pattern,
-                    &constructor->node
-                );
-                producer_fact_set_dependency(
-                    type_fact,
-                    &constructor->node
-                );
-                if (match != NULL &&
-                    match->value.dependency_count == 0u) {
-                    producer_node_set_dependency(
-                        match,
-                        &pattern->value.node_id
-                    );
+                if (!producer_node_add_dependency(
+                        pattern,
+                        &constructor->node) ||
+                    !producer_fact_add_dependency(
+                        type_fact,
+                        &constructor->node)) {
+                    free(pattern_kind);
+                    free(name);
+                    free(start_text);
+                    free(end_text);
+                    free(result_type);
+                    return false;
                 }
             }
             free(pattern_kind);
@@ -1945,38 +2127,10 @@ static bool producer_finalize_control_dependencies(Producer *producer) {
          control_index < producer->node_count;
          control_index += 1u) {
         ProducerNode *control = &producer->nodes[control_index];
-        size_t candidate_index;
+        uint16_t dependency_index;
         if (control->value.kind != KOFUN_SEMANTIC_NODE_IF &&
             control->value.kind != KOFUN_SEMANTIC_NODE_MATCH) {
             continue;
-        }
-        if (control->value.dependency_count == 0u) {
-            ProducerNode *best = NULL;
-            for (candidate_index = 0u;
-                 candidate_index < producer->node_count;
-                 candidate_index += 1u) {
-                ProducerNode *candidate =
-                    &producer->nodes[candidate_index];
-                if ((candidate->value.kind ==
-                        KOFUN_SEMANTIC_NODE_REFERENCE ||
-                     candidate->value.kind ==
-                        KOFUN_SEMANTIC_NODE_CALL) &&
-                    candidate->value.span.start >
-                        control->value.span.start &&
-                    candidate->value.span.end <=
-                        control->value.span.end &&
-                    (best == NULL ||
-                     candidate->value.span.start <
-                        best->value.span.start)) {
-                    best = candidate;
-                }
-            }
-            if (best != NULL) {
-                producer_node_set_dependency(
-                    control,
-                    &best->value.node_id
-                );
-            }
         }
         if (control->value.dependency_count != 0u) {
             ProducerFact *type_fact = producer_find_fact(
@@ -1985,10 +2139,15 @@ static bool producer_finalize_control_dependencies(Producer *producer) {
                 KOFUN_SEMANTIC_FACT_TYPE
             );
             if (type_fact == NULL) return false;
-            producer_fact_set_dependency(
-                type_fact,
-                &control->dependency
-            );
+            for (dependency_index = 0u;
+                 dependency_index < control->value.dependency_count;
+                 dependency_index += 1u) {
+                if (!producer_fact_add_dependency(
+                        type_fact,
+                        &control->dependencies[dependency_index])) {
+                    return false;
+                }
+            }
         }
     }
     return true;
@@ -2017,7 +2176,16 @@ static bool producer_add_origin_facts(Producer *producer) {
         );
         if (origin == NULL) return false;
         if (node->value.dependency_count != 0u) {
-            producer_fact_set_dependency(origin, &node->dependency);
+            uint16_t dependency_index;
+            for (dependency_index = 0u;
+                 dependency_index < node->value.dependency_count;
+                 dependency_index += 1u) {
+                if (!producer_fact_add_dependency(
+                        origin,
+                        &node->dependencies[dependency_index])) {
+                    return false;
+                }
+            }
         }
         if (node->value.diagnostic_count != 0u) {
             origin->diagnostic = node->diagnostic;
@@ -2383,7 +2551,7 @@ static bool producer_emit(
     for (index = 0u; index < producer->node_count; index += 1u) {
         if (producer->nodes[index].value.dependency_count != 0u) {
             producer->nodes[index].value.dependencies =
-                &producer->nodes[index].dependency;
+                producer->nodes[index].dependencies;
         }
         if (producer->nodes[index].value.diagnostic_count != 0u) {
             producer->nodes[index].value.diagnostic_ids =
@@ -2651,6 +2819,8 @@ bool kofun_stage2_produce_semantic_events(
     producer.input = input;
     producer.source = owned_source;
     producer.scope_hir = authority.scope_hir;
+    producer.declaration_observations =
+        authority.declaration_observations;
     producer.semantic_observations = authority.semantic_observations;
     producer.compiler_exit_class = authority.exit_class;
     producer.reference_limit = result->diagnostic_has_byte_span ?

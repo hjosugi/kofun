@@ -70,7 +70,10 @@ $ROOT/tests/typed-sidecar/stage2_events_test.c
     "$ROOT/bootstrap/stage2/function_unknown_error.kofun" \
     "$ROOT/tests/typed-sidecar/fixtures/stage2_parse_prefix_error.kofun" \
     "$ROOT/tests/typed-sidecar/fixtures/stage2_scope_prefix_error.kofun" \
-    "$ROOT/bootstrap/stage2/fixtures/borrowed_move_text.kofun"
+    "$ROOT/bootstrap/stage2/fixtures/borrowed_move_text.kofun" \
+    "$ROOT/tests/conformance/modules/shadowing/duplicate_parameter.kofun" \
+    "$ROOT/tests/typed-sidecar/fixtures/stage2_type_error.kofun" \
+    "$ROOT/tests/typed-sidecar/fixtures/stage2_dependency_events.kofun"
 "$WORK/plain/kofun-stage2-semantic-events" \
     "$FIXTURE" src/main.kofun "$WORK/plain/producer-repeat.kse" 42
 cmp "$WORK/plain/producer-complete.kse" "$WORK/plain/producer-repeat.kse"
@@ -286,6 +289,89 @@ done
 test "$diagnostic_cases" -eq 33 ||
     fail "expected all 33 Stage 2 diagnostic fixtures, saw $diagnostic_cases"
 
+# Enumerate every checked-in Stage 2 language-error companion, including the
+# conformance, bootstrap, ownership, and diagnostic corpora.  Some companions
+# describe a narrower subsystem and therefore name a different expected code;
+# the live Stage 2 authority remains the source of truth for producer parity.
+find "$ROOT/tests" "$ROOT/bootstrap" -type f \
+    \( -name '*.stdout' -o -name '*.stderr' \) \
+    -exec grep -l '^error\[' {} + |
+    sort >"$WORK/plain/repository-error-companions"
+repository_error_cases=0
+while IFS= read -r expected
+do
+    stem=${expected%.*}
+    source=$stem.kofun
+    test -f "$source" || continue
+    companion_code=$(
+        sed -n 's/^error\[\([^]]*\)\].*/\1/p' "$expected" |
+            sed -n '1p'
+    )
+    case $companion_code in
+        E2S*|E007) ;;
+        *) continue ;;
+    esac
+    repository_error_cases=$((repository_error_cases + 1))
+    case_name=repository-error-$repository_error_cases
+    authority_flag=
+    set +e
+    case $companion_code in
+        E007|E2S20|E2S21)
+            authority_flag=--check-ownership
+            "$WORK/plain/kofun-stage2" --check-ownership "$source" \
+                >"$WORK/plain/$case_name.authority"
+            authority_status=$?
+            ;;
+        *)
+            "$WORK/plain/kofun-stage2" --compile-outcome \
+                "$source" \
+                "$WORK/plain/$case_name.c" \
+                "$WORK/plain/$case_name.ir" \
+                "$WORK/plain/$case_name.tokens" \
+                >"$WORK/plain/$case_name.authority"
+            authority_status=$?
+            ;;
+    esac
+    # shellcheck disable=SC2086
+    "$WORK/plain/kofun-stage2-semantic-events" $authority_flag \
+        "$source" "src/$case_name.kofun" \
+        "$WORK/plain/$case_name.kse" 702 \
+        >"$WORK/plain/$case_name.producer"
+    producer_status=$?
+    set -e
+    test "$authority_status" -ne 0 ||
+        fail "repository language-error authority accepted $source"
+    test "$producer_status" -eq "$authority_status" ||
+        fail "$case_name exit: authority=$authority_status producer=$producer_status ($source)"
+    cmp "$WORK/plain/$case_name.authority" \
+        "$WORK/plain/$case_name.producer" ||
+        fail "repository language result diverged: $source"
+    authority_code=$(
+        sed -n 's/^error\[\([^]]*\)\].*/\1/p' \
+            "$WORK/plain/$case_name.authority" |
+            sed -n '1p'
+    )
+    test -n "$authority_code" ||
+        fail "repository authority omitted an error code: $source"
+    case $authority_code in
+        E2S01|EUNICODE*)
+            test ! -e "$WORK/plain/$case_name.kse" ||
+                fail "pre-token diagnostic emitted a stream: $source"
+            ;;
+        *)
+            test -s "$WORK/plain/$case_name.kse" ||
+                fail "repository diagnostic omitted a stream: $source"
+            "$WORK/plain/validate-events" \
+                "$WORK/plain/$case_name.kse"
+            grep -a -q "$authority_code" \
+                "$WORK/plain/$case_name.kse" ||
+                fail "stream omitted $authority_code: $source"
+            ;;
+    esac
+done <"$WORK/plain/repository-error-companions"
+test "$repository_error_cases" -eq 132 ||
+    fail "expected all 132 repository error companions, saw $repository_error_cases"
+
 # Project-owned valid Stage 2 profiles cover functions, value control, concrete
 # enums, nested lexical scopes, and shadowing.  Producer and compiler must both
 # classify every one as complete/exit 0.
@@ -324,6 +410,10 @@ set +e
 no_sink_valid_before_status=$?
 set -e
 test "$no_sink_valid_before_status" -eq 0
+sed -n '1,9p' "$WORK/plain/no-sink-before.ir" \
+    >"$WORK/plain/no-sink-before.function-ir"
+cmp "$ROOT/tests/typed-sidecar/fixtures/stage2_function_ir.golden" \
+    "$WORK/plain/no-sink-before.function-ir"
 set +e
 "$WORK/plain/kofun-stage2" --compile-outcome \
     "$ROOT/bootstrap/stage2/function_unknown_error.kofun" \
