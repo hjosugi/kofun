@@ -1,0 +1,5 @@
+# A positive atom above INT64_MAX is outside the bounded function profile.
+
+fn main() {
+    print(9223372036854775808)
+}

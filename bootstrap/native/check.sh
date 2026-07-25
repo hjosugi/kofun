@@ -1485,9 +1485,9 @@ else
     divide_summary="PASS: AArch64 division/trap images built/audited; execution skipped"
 fi
 
-# Full signed Int64 literals. The function profile used to stop at 65535, which
-# put INT64_MIN out of reach entirely and left the non-representable-quotient
-# guard both backends emit unexecutable by any fixture. It is executable now.
+# The function profile accepts literal magnitudes through INT64_MAX. Exercise
+# each native immediate-encoding boundary; the pre-existing divide gates above
+# independently retain all three INT64_MIN/-1 runtime boundaries.
 INT64_SOURCE="$NATIVE/fixtures/function_int64_boundaries.kofun"
 "$WORK/kofun-native-function-text" \
     "$INT64_SOURCE" x86_64-linux "$WORK/function-int64-direct.elf"
@@ -1504,34 +1504,45 @@ printf '%s\n' \
     -9223372036854775807 \
     0 \
     -9223372036854775808 \
+    65535 \
+    65536 \
+    2147483647 \
+    2147483648 \
+    4294967295 \
     4294967296 \
+    -2147483648 \
+    -2147483649 \
     -4294967296 \
     >"$WORK/function-int64.expected"
 cmp "$WORK/function-int64.expected" "$WORK/function-int64.stdout"
 test ! -s "$WORK/function-int64.stderr"
 
-INT64_TRAP_SOURCE="$NATIVE/fixtures/function_int64_min_quotient.kofun"
-"$WORK/kofun-native-function-text" \
-    "$INT64_TRAP_SOURCE" x86_64-linux "$WORK/function-int64-trap.elf"
-chmod +x "$WORK/function-int64-trap.elf"
-set +e
-"$WORK/function-int64-trap.elf" \
-    >"$WORK/function-int64-trap.stdout" 2>"$WORK/function-int64-trap.stderr"
-int64_trap_status=$?
-set -e
-test "$int64_trap_status" -eq 1
-test ! -s "$WORK/function-int64-trap.stdout"
-cmp "$WORK/function-overflow.expected" "$WORK/function-int64-trap.stderr"
-
-for int64_case in function_int64_boundaries function_int64_min_quotient; do
-    "$KOFUN" build "$NATIVE/fixtures/$int64_case.kofun" \
-        --target aarch64-linux -o "$WORK/$int64_case-aarch64.elf" >/dev/null
-    "$KOFUN" build "$NATIVE/fixtures/$int64_case.kofun" \
-        --target aarch64-linux \
-        -o "$WORK/$int64_case-aarch64.second.elf" >/dev/null
-    cmp "$WORK/$int64_case-aarch64.elf" \
-        "$WORK/$int64_case-aarch64.second.elf"
+for int64_target in x86_64-linux aarch64-linux; do
+    too_large="$WORK/function-int64-too-large-$int64_target.elf"
+    set +e
+    "$KOFUN" build "$NATIVE/fixtures/function_int64_too_large.kofun" \
+        --target "$int64_target" -o "$too_large" \
+        >"$WORK/function-int64-too-large-$int64_target.stdout" \
+        2>"$WORK/function-int64-too-large-$int64_target.stderr"
+    too_large_status=$?
+    set -e
+    test "$too_large_status" -eq 1
+    test ! -e "$too_large"
+    test ! -s "$WORK/function-int64-too-large-$int64_target.stdout"
+    grep -F \
+        "native Core integer literal exceeds 9223372036854775807" \
+        "$WORK/function-int64-too-large-$int64_target.stderr" >/dev/null
 done
+cmp \
+    "$WORK/function-int64-too-large-x86_64-linux.stderr" \
+    "$WORK/function-int64-too-large-aarch64-linux.stderr"
+
+"$KOFUN" build "$INT64_SOURCE" --target aarch64-linux \
+    -o "$WORK/function_int64_boundaries-aarch64.elf" >/dev/null
+"$KOFUN" build "$INT64_SOURCE" --target aarch64-linux \
+    -o "$WORK/function_int64_boundaries-aarch64.second.elf" >/dev/null
+cmp "$WORK/function_int64_boundaries-aarch64.elf" \
+    "$WORK/function_int64_boundaries-aarch64.second.elf"
 
 if test -n "$AARCH64_RUNNER"; then
     "$AARCH64_RUNNER" "$WORK/function_int64_boundaries-aarch64.elf" \
@@ -1539,21 +1550,11 @@ if test -n "$AARCH64_RUNNER"; then
         2>"$WORK/function-int64-aarch64.stderr"
     cmp "$WORK/function-int64.expected" "$WORK/function-int64-aarch64.stdout"
     test ! -s "$WORK/function-int64-aarch64.stderr"
-    set +e
-    "$AARCH64_RUNNER" "$WORK/function_int64_min_quotient-aarch64.elf" \
-        >"$WORK/function-int64-trap-aarch64.stdout" \
-        2>"$WORK/function-int64-trap-aarch64.stderr"
-    int64_trap_status=$?
-    set -e
-    test "$int64_trap_status" -eq 1
-    test ! -s "$WORK/function-int64-trap-aarch64.stdout"
-    cmp "$WORK/function-overflow.expected" \
-        "$WORK/function-int64-trap-aarch64.stderr"
-    int64_summary="PASS: x86-64/AArch64 carry full Int64 literals and trap INT64_MIN // -1"
+    int64_summary="PASS: x86-64/AArch64 carry wide Int64 values at every encoding boundary"
 else
     printf '%s\n' \
         "SKIP: AArch64 Int64 literal execution (qemu-aarch64 unavailable)"
-    int64_summary="PASS: AArch64 Int64 literal images built/audited; execution skipped"
+    int64_summary="PASS: AArch64 wide-Int64 image built/audited; execution skipped"
 fi
 
 # All arithmetic failures share one write/exit runtime and keep their exact
