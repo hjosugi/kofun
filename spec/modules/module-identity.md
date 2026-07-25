@@ -187,6 +187,16 @@ ownership modes, and semantic constant/default values required to type-check a
 consumer. Export facts include `ExportBindingId`, exported name and namespace,
 target identity, effective visibility, and canonical re-export chain.
 
+The first executable export-fact record uses declaration-fact kind tag `4`.
+Its base `symbol_id` field is the `ExportBindingId`, never the target
+`SymbolId`; required fields `0x8009`–`0x800f` carry the source
+`ImportBindingId`, raw target `ModuleId`, raw target `SymbolId`, a
+count-prefixed sequence of at most 64 `ExportBindingId` values, and the
+schema-owned target-kind tag, plus constructor-owner/ordinal facts when the
+target is a constructor. The signature field contains the bounded target
+signature required by a source-free consumer. Existing function/ADT KIF bytes
+are unchanged when no export fact is present.
+
 The public vector contains only facts observable by an external package. The
 internal-only vector contains additional `internal` facts required by other
 modules of the same PackageId. `private` and restricted file/module-local facts

@@ -324,12 +324,20 @@ from #303; a reader never guesses an older export edge.
 
 ## Implementation status and non-goals
 
-`spec/re-exports/check.sh` is the executable reference gate for syntax
+`spec/re-exports/check.sh` remains the executable reference gate for syntax
 inventory, effective visibility, production `ExportBindingId` framing,
 identity preservation, ordering, chain boundaries, cycle ordering, and
-transaction language. General import/re-export resolution is not yet routed
-through the active compiler; #113 and #114 provide its prerequisite import
-bindings.
+transaction language. The bounded resolver checkpoint in
+`bootstrap/stage2/re_exports.c` now resolves both accepted forms through the
+committed #113/#114 import identities, emits source-located HIR, publishes
+public export facts through the defensive KIF v1 codec, and emits a
+facade/canonical tooling projection. Its focused gate is
+`tests/conformance/modules/re-exports/run.sh`.
+
+This checkpoint is not yet routed through ordinary `bin/kofun` builds or
+manifest loading. Its accepted declaration surface is the current
+local-package `Int` function and flat-ADT interface slice; that bounded
+implementation status does not widen the normative language contract.
 
 This contract does not implement external packages, aliases, wildcard/glob
 exports, source-level signature files, linker symbol export, runtime module

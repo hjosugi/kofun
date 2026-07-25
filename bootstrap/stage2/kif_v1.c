@@ -48,13 +48,21 @@ enum {
     FACT_TAG_VISIBILITY = 0x8005u,
     FACT_TAG_SIGNATURE = 0x8006u,
     FACT_TAG_OWNER = 0x8007u,
-    FACT_TAG_ORDINAL = 0x8008u
+    FACT_TAG_ORDINAL = 0x8008u,
+    FACT_TAG_SOURCE_IMPORT = 0x8009u,
+    FACT_TAG_TARGET_MODULE = 0x800au,
+    FACT_TAG_TARGET_SYMBOL = 0x800bu,
+    FACT_TAG_EXPORT_CHAIN = 0x800cu,
+    FACT_TAG_EXPORT_TARGET_KIND = 0x800du,
+    FACT_TAG_EXPORT_TARGET_OWNER = 0x800eu,
+    FACT_TAG_EXPORT_TARGET_ORDINAL = 0x800fu
 };
 
 enum {
     SIGNATURE_FUNCTION = 1u,
     SIGNATURE_ADT = 2u,
-    SIGNATURE_CONSTRUCTOR = 3u
+    SIGNATURE_CONSTRUCTOR = 3u,
+    SIGNATURE_EXPORT = 4u
 };
 
 typedef struct {
@@ -261,6 +269,17 @@ static const char *fact_kind_schema_name(KofunKifFactKind kind) {
         case KOFUN_KIF_FACT_FUNCTION: return "function";
         case KOFUN_KIF_FACT_ADT: return "adt";
         case KOFUN_KIF_FACT_CONSTRUCTOR: return "constructor";
+        case KOFUN_KIF_FACT_EXPORT: return "export";
+    }
+    return NULL;
+}
+
+static const char *export_target_kind_schema_name(KofunKifExportTargetKind kind) {
+    switch (kind) {
+        case KOFUN_KIF_EXPORT_TARGET_FUNCTION: return "function";
+        case KOFUN_KIF_EXPORT_TARGET_ADT: return "adt";
+        case KOFUN_KIF_EXPORT_TARGET_CONSTRUCTOR: return "constructor";
+        case KOFUN_KIF_EXPORT_TARGET_MODULE: return "module";
     }
     return NULL;
 }
@@ -303,6 +322,35 @@ static void compute_symbol_id(
     hash_field(&context, UINT16_C(0x8002), namespace_id, 32u);
     hash_field(&context, UINT16_C(0x8003), (const uint8_t *)kind_name, kind_length);
     hash_field(&context, UINT16_C(0x8004), (const uint8_t *)name, name_length);
+    kofun_sha256_finish(&context, digest);
+}
+
+static void compute_export_binding_id(
+    const KofunKifInterface *interface,
+    const KofunKifFact *fact,
+    uint8_t digest[32]
+) {
+    static const char domain[] = "kofun.id.export-binding/v1";
+    static const uint8_t prefix[6] = { 'K', 'O', 'F', 'U', 'N', 0 };
+    static const uint8_t visibility = 3u;
+    size_t name_length = fact->name_length;
+    size_t payload_length = 24u + 32u + 32u + name_length + 32u + 1u;
+    uint8_t u16[2];
+    uint8_t u32[4];
+    KofunSha256 context;
+    store_u16be(u16, (uint16_t)(sizeof(domain) - 1u));
+    store_u32be(u32, (uint32_t)payload_length);
+    kofun_sha256_init(&context);
+    kofun_sha256_update(&context, prefix, sizeof(prefix));
+    kofun_sha256_update(&context, u16, sizeof(u16));
+    kofun_sha256_update(&context, (const uint8_t *)domain, sizeof(domain) - 1u);
+    kofun_sha256_update(&context, u32, sizeof(u32));
+    hash_field(&context, UINT16_C(0x8001), interface->module_id, 32u);
+    hash_field(&context, UINT16_C(0x8002), fact->namespace_id, 32u);
+    hash_field(&context, UINT16_C(0x8003),
+        (const uint8_t *)fact->name, fact->name_length);
+    hash_field(&context, UINT16_C(0x8004), fact->target_symbol_id, 32u);
+    hash_field(&context, UINT16_C(0x8005), &visibility, 1u);
     kofun_sha256_finish(&context, digest);
 }
 
@@ -353,6 +401,7 @@ static KofunKifStatus validate_fact(
 ) {
     uint8_t expected_namespace[32];
     uint8_t expected_symbol[32];
+    uint8_t expected_target_symbol[32];
     unsigned namespace_tag;
     const char *namespace_name;
     if (fact == NULL || fact->visibility != expected_visibility ||
@@ -360,7 +409,26 @@ static KofunKifStatus validate_fact(
         fact->name[fact->name_length] != '\0' ||
         strlen(fact->name) != fact->name_length ||
         fact_kind_schema_name(fact->kind) == NULL) return KOFUN_KIF_NONCANONICAL;
-    if (fact->kind == KOFUN_KIF_FACT_ADT) {
+    if (fact->kind == KOFUN_KIF_FACT_EXPORT) {
+        if (expected_visibility != KOFUN_KIF_VISIBILITY_PUBLIC ||
+            export_target_kind_schema_name(fact->export_target_kind) == NULL ||
+            !id_is_nonzero(fact->source_import_binding_id) ||
+            !id_is_nonzero(fact->target_module_id) ||
+            !id_is_nonzero(fact->target_symbol_id) ||
+            fact->export_chain_count == 0u ||
+            fact->export_chain_count > KOFUN_KIF_MAX_EXPORT_CHAIN ||
+            fact->export_chain_ids == NULL) return KOFUN_KIF_NONCANONICAL;
+        if (fact->export_target_kind == KOFUN_KIF_EXPORT_TARGET_ADT) {
+            namespace_tag = 1u;
+            namespace_name = "type";
+        } else if (fact->export_target_kind == KOFUN_KIF_EXPORT_TARGET_MODULE) {
+            namespace_tag = 2u;
+            namespace_name = "module";
+        } else {
+            namespace_tag = 0u;
+            namespace_name = "value";
+        }
+    } else if (fact->kind == KOFUN_KIF_FACT_ADT) {
         namespace_tag = 1u;
         namespace_name = "type";
     } else {
@@ -371,10 +439,30 @@ static KofunKifStatus validate_fact(
     if (!constant_time_equal(fact->namespace_id, expected_namespace, 32u)) {
         return KOFUN_KIF_NONCANONICAL;
     }
-    compute_symbol_id(interface->module_id, fact->namespace_id, fact->kind,
-        fact->name, fact->name_length, expected_symbol);
+    if (fact->kind == KOFUN_KIF_FACT_EXPORT) {
+        compute_export_binding_id(interface, fact, expected_symbol);
+    } else {
+        compute_symbol_id(interface->module_id, fact->namespace_id, fact->kind,
+            fact->name, fact->name_length, expected_symbol);
+    }
     if (!constant_time_equal(fact->symbol_id, expected_symbol, 32u)) {
         return KOFUN_KIF_NONCANONICAL;
+    }
+    if (fact->kind == KOFUN_KIF_FACT_EXPORT &&
+        fact->export_target_kind != KOFUN_KIF_EXPORT_TARGET_MODULE) {
+        KofunKifFactKind target_kind =
+            fact->export_target_kind == KOFUN_KIF_EXPORT_TARGET_FUNCTION
+                ? KOFUN_KIF_FACT_FUNCTION
+                : fact->export_target_kind == KOFUN_KIF_EXPORT_TARGET_ADT
+                    ? KOFUN_KIF_FACT_ADT
+                    : KOFUN_KIF_FACT_CONSTRUCTOR;
+        compute_symbol_id(fact->target_module_id, fact->namespace_id,
+            target_kind, fact->name, fact->name_length,
+            expected_target_symbol);
+        if (!constant_time_equal(fact->target_symbol_id,
+                expected_target_symbol, 32u)) {
+            return KOFUN_KIF_NONCANONICAL;
+        }
     }
     switch (fact->kind) {
         case KOFUN_KIF_FACT_FUNCTION:
@@ -389,6 +477,41 @@ static KofunKifStatus validate_fact(
             if (fact->parameter_count != 0u || fact->result_type != 0 ||
                 fact->constructor_payload_count > 1u || !id_is_nonzero(fact->owner_symbol_id)) {
                 return KOFUN_KIF_NONCANONICAL;
+            }
+            break;
+        case KOFUN_KIF_FACT_EXPORT:
+            if (!constant_time_equal(fact->export_chain_ids, fact->symbol_id, 32u) ||
+                (fact->export_target_kind != KOFUN_KIF_EXPORT_TARGET_CONSTRUCTOR &&
+                 fact->constructor_payload_count != 0u)) {
+                return KOFUN_KIF_NONCANONICAL;
+            }
+            if (fact->export_target_kind == KOFUN_KIF_EXPORT_TARGET_FUNCTION) {
+                if (fact->parameter_count > 256u ||
+                    fact->result_type != KOFUN_KIF_TYPE_INT) {
+                    return KOFUN_KIF_NONCANONICAL;
+                }
+            } else if (fact->parameter_count != 0u || fact->result_type != 0) {
+                return KOFUN_KIF_NONCANONICAL;
+            }
+            if (fact->export_target_kind == KOFUN_KIF_EXPORT_TARGET_CONSTRUCTOR) {
+                if (fact->constructor_payload_count > 1u ||
+                    !id_is_nonzero(fact->export_target_owner_symbol_id)) {
+                    return KOFUN_KIF_NONCANONICAL;
+                }
+            } else if (id_is_nonzero(fact->export_target_owner_symbol_id) ||
+                fact->export_target_constructor_ordinal != 0u) {
+                return KOFUN_KIF_NONCANONICAL;
+            }
+            {
+                size_t chain_index;
+                for (chain_index = 0u;
+                     chain_index < fact->export_chain_count;
+                     chain_index += 1u) {
+                    if (!id_is_nonzero(fact->export_chain_ids +
+                            chain_index * 32u)) {
+                        return KOFUN_KIF_NONCANONICAL;
+                    }
+                }
             }
             break;
     }
@@ -530,6 +653,28 @@ static bool encode_signature(const KofunKifFact *fact, ByteBuffer *signature) {
                 return buffer_append(signature, &tag, 1u);
             }
             return true;
+        case KOFUN_KIF_FACT_EXPORT:
+            tag = SIGNATURE_EXPORT;
+            if (!buffer_append(signature, &tag, 1u)) return false;
+            tag = (uint8_t)fact->export_target_kind;
+            if (!buffer_append(signature, &tag, 1u)) return false;
+            if (fact->export_target_kind == KOFUN_KIF_EXPORT_TARGET_FUNCTION) {
+                if (!buffer_u16(signature, fact->parameter_count)) return false;
+                tag = KOFUN_KIF_TYPE_INT;
+                for (index = 0u; index < fact->parameter_count; index += 1u) {
+                    if (!buffer_append(signature, &tag, 1u)) return false;
+                }
+                return buffer_append(signature, &tag, 1u);
+            }
+            if (fact->export_target_kind == KOFUN_KIF_EXPORT_TARGET_CONSTRUCTOR) {
+                if (!buffer_append(signature,
+                        &fact->constructor_payload_count, 1u)) return false;
+                if (fact->constructor_payload_count == 1u) {
+                    tag = KOFUN_KIF_TYPE_INT;
+                    return buffer_append(signature, &tag, 1u);
+                }
+            }
+            return true;
     }
     signature->status = KOFUN_KIF_INTERNAL_INVARIANT;
     return false;
@@ -560,6 +705,48 @@ static KofunKifStatus encode_fact(const KofunKifFact *fact, ByteBuffer *record) 
             buffer_destroy(&signature);
             return status;
         }
+    } else if (fact->kind == KOFUN_KIF_FACT_EXPORT) {
+        ByteBuffer chain = { 0 };
+        uint8_t target_kind = (uint8_t)fact->export_target_kind;
+        size_t chain_bytes;
+        if (fact->export_chain_count > (SIZE_MAX - 4u) / 32u) {
+            buffer_destroy(&signature);
+            return KOFUN_KIF_LIMIT_EXHAUSTED;
+        }
+        chain_bytes = fact->export_chain_count * 32u;
+        if (!buffer_u32(&chain, (uint32_t)fact->export_chain_count) ||
+            !buffer_append(&chain, fact->export_chain_ids, chain_bytes) ||
+            !buffer_field(record, FACT_TAG_SOURCE_IMPORT,
+                fact->source_import_binding_id, 32u) ||
+            !buffer_field(record, FACT_TAG_TARGET_MODULE,
+                fact->target_module_id, 32u) ||
+            !buffer_field(record, FACT_TAG_TARGET_SYMBOL,
+                fact->target_symbol_id, 32u) ||
+            !buffer_field(record, FACT_TAG_EXPORT_CHAIN,
+                chain.bytes, chain.length) ||
+            !buffer_field(record, FACT_TAG_EXPORT_TARGET_KIND,
+                &target_kind, 1u)) {
+            KofunKifStatus status = chain.status != KOFUN_KIF_OK
+                ? chain.status : record->status;
+            buffer_destroy(&chain);
+            buffer_destroy(&signature);
+            return status;
+        }
+        if (fact->export_target_kind == KOFUN_KIF_EXPORT_TARGET_CONSTRUCTOR) {
+            uint8_t target_ordinal[4];
+            store_u32be(target_ordinal,
+                fact->export_target_constructor_ordinal);
+            if (!buffer_field(record, FACT_TAG_EXPORT_TARGET_OWNER,
+                    fact->export_target_owner_symbol_id, 32u) ||
+                !buffer_field(record, FACT_TAG_EXPORT_TARGET_ORDINAL,
+                    target_ordinal, sizeof(target_ordinal))) {
+                KofunKifStatus status = record->status;
+                buffer_destroy(&chain);
+                buffer_destroy(&signature);
+                return status;
+            }
+        }
+        buffer_destroy(&chain);
     }
     buffer_destroy(&signature);
     return KOFUN_KIF_OK;
@@ -808,6 +995,50 @@ static KofunKifStatus parse_signature(ByteView signature, KofunKifFact *fact) {
             return KOFUN_KIF_NONCANONICAL;
         }
         fact->constructor_payload_count = count;
+    } else if (fact->kind == KOFUN_KIF_FACT_EXPORT) {
+        uint8_t target_kind;
+        if (kind != SIGNATURE_EXPORT || signature.length < 2u) {
+            return KOFUN_KIF_NONCANONICAL;
+        }
+        target_kind = signature.bytes[cursor++];
+        fact->export_target_kind = (KofunKifExportTargetKind)target_kind;
+        if (export_target_kind_schema_name(fact->export_target_kind) == NULL) {
+            return KOFUN_KIF_NONCANONICAL;
+        }
+        if (fact->export_target_kind == KOFUN_KIF_EXPORT_TARGET_FUNCTION) {
+            uint16_t count;
+            if (signature.length < 5u) return KOFUN_KIF_NONCANONICAL;
+            count = load_u16be(signature.bytes + cursor);
+            cursor += 2u;
+            if (count > 256u || signature.length != 5u + count) {
+                return KOFUN_KIF_NONCANONICAL;
+            }
+            for (index = 0u; index < count; index += 1u) {
+                if (signature.bytes[cursor++] != KOFUN_KIF_TYPE_INT) {
+                    return KOFUN_KIF_NONCANONICAL;
+                }
+            }
+            if (signature.bytes[cursor++] != KOFUN_KIF_TYPE_INT) {
+                return KOFUN_KIF_NONCANONICAL;
+            }
+            fact->parameter_count = count;
+            fact->result_type = KOFUN_KIF_TYPE_INT;
+        } else if (fact->export_target_kind ==
+                KOFUN_KIF_EXPORT_TARGET_CONSTRUCTOR) {
+            uint8_t count;
+            if (signature.length < 3u) return KOFUN_KIF_NONCANONICAL;
+            count = signature.bytes[cursor++];
+            if (count > 1u || signature.length != 3u + count) {
+                return KOFUN_KIF_NONCANONICAL;
+            }
+            if (count == 1u &&
+                signature.bytes[cursor++] != KOFUN_KIF_TYPE_INT) {
+                return KOFUN_KIF_NONCANONICAL;
+            }
+            fact->constructor_payload_count = count;
+        } else if (signature.length != 2u) {
+            return KOFUN_KIF_NONCANONICAL;
+        }
     } else {
         return KOFUN_KIF_NONCANONICAL;
     }
@@ -821,11 +1052,11 @@ static KofunKifStatus parse_fact_record(
     KofunKifLimits limits,
     KofunKifFact *fact
 ) {
-    ParsedField fields[8];
+    ParsedField fields[15];
     size_t index;
     KofunKifStatus status;
     memset(fact, 0, sizeof(*fact));
-    status = scan_fields(bytes, length, limits, FACT_TAG_NAMESPACE_ID, 8u,
+    status = scan_fields(bytes, length, limits, FACT_TAG_NAMESPACE_ID, 15u,
         true, fields);
     if (status != KOFUN_KIF_OK) return status;
     for (index = 0u; index < 6u; index += 1u) {
@@ -858,8 +1089,58 @@ static KofunKifStatus parse_fact_record(
         }
         memcpy(fact->owner_symbol_id, fields[6].value.bytes, 32u);
         fact->constructor_ordinal = load_u32be(fields[7].value.bytes);
-    } else if (fields[6].tag != 0u || fields[7].tag != 0u) {
-        return KOFUN_KIF_NONCANONICAL;
+        for (index = 8u; index < 15u; index += 1u) {
+            if (fields[index].tag != 0u) return KOFUN_KIF_NONCANONICAL;
+        }
+    } else if (fact->kind == KOFUN_KIF_FACT_EXPORT) {
+        uint32_t chain_count;
+        size_t chain_bytes;
+        if (fields[6].tag != 0u || fields[7].tag != 0u) {
+            return KOFUN_KIF_NONCANONICAL;
+        }
+        for (index = 8u; index < 13u; index += 1u) {
+            if (fields[index].tag == 0u) return KOFUN_KIF_CORRUPT;
+        }
+        if (fields[8].value.length != 32u ||
+            fields[9].value.length != 32u ||
+            fields[10].value.length != 32u ||
+            fields[11].value.length < 4u ||
+            fields[12].value.length != 1u) return KOFUN_KIF_CORRUPT;
+        chain_count = load_u32be(fields[11].value.bytes);
+        if (chain_count == 0u || chain_count > KOFUN_KIF_MAX_EXPORT_CHAIN) {
+            return KOFUN_KIF_LIMIT_EXHAUSTED;
+        }
+        chain_bytes = (size_t)chain_count * 32u;
+        if (fields[11].value.length != 4u + chain_bytes) {
+            return KOFUN_KIF_CORRUPT;
+        }
+        if (fields[12].value.bytes[0] != (uint8_t)fact->export_target_kind) {
+            return KOFUN_KIF_NONCANONICAL;
+        }
+        memcpy(fact->source_import_binding_id, fields[8].value.bytes, 32u);
+        memcpy(fact->target_module_id, fields[9].value.bytes, 32u);
+        memcpy(fact->target_symbol_id, fields[10].value.bytes, 32u);
+        fact->export_chain_ids = malloc(chain_bytes);
+        if (fact->export_chain_ids == NULL) return KOFUN_KIF_INTERNAL_INVARIANT;
+        memcpy(fact->export_chain_ids, fields[11].value.bytes + 4u, chain_bytes);
+        fact->export_chain_count = chain_count;
+        if (fact->export_target_kind ==
+                KOFUN_KIF_EXPORT_TARGET_CONSTRUCTOR) {
+            if (fields[13].value.length != 32u ||
+                fields[14].value.length != 4u) {
+                return KOFUN_KIF_CORRUPT;
+            }
+            memcpy(fact->export_target_owner_symbol_id,
+                fields[13].value.bytes, 32u);
+            fact->export_target_constructor_ordinal =
+                load_u32be(fields[14].value.bytes);
+        } else if (fields[13].tag != 0u || fields[14].tag != 0u) {
+            return KOFUN_KIF_NONCANONICAL;
+        }
+    } else {
+        for (index = 6u; index < 15u; index += 1u) {
+            if (fields[index].tag != 0u) return KOFUN_KIF_NONCANONICAL;
+        }
     }
     return KOFUN_KIF_OK;
 }
@@ -867,7 +1148,10 @@ static KofunKifStatus parse_fact_record(
 static void destroy_fact_array(KofunKifFact *facts, size_t count) {
     size_t index;
     if (facts == NULL) return;
-    for (index = 0u; index < count; index += 1u) free(facts[index].name);
+    for (index = 0u; index < count; index += 1u) {
+        free(facts[index].name);
+        free(facts[index].export_chain_ids);
+    }
     free(facts);
 }
 

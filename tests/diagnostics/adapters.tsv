@@ -3,6 +3,7 @@ stage2	tests/diagnostics/stage2/run.sh	tests/diagnostics/stage2/bless.sh	tests/d
 adt	tests/conformance/adt/run.sh	verify	tests/diagnostics/reports/adt.tsv
 module-symbols	tests/conformance/modules/top-level-declarations/run.sh	verify	tests/diagnostics/reports/module-symbols.tsv
 imports	tests/conformance/modules/imports-selective/run.sh	verify	tests/diagnostics/reports/imports.tsv
+re-exports	tests/conformance/modules/re-exports/run.sh	verify	tests/diagnostics/reports/re-exports.tsv
 adt-exhaustiveness	tests/conformance/adt-exhaustiveness/run.sh	verify	tests/diagnostics/reports/adt-exhaustiveness.tsv
 generics	tests/conformance/generics/run.sh	verify	tests/diagnostics/reports/generics.tsv
 unicode	tests/diagnostics/unicode/run.sh	verify	tests/diagnostics/reports/unicode.tsv

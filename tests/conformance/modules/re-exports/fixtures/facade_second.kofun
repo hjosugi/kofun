@@ -1,0 +1,3 @@
+module api.v2
+
+pub from api.collections import Map

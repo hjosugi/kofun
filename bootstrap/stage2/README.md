@@ -276,13 +276,35 @@ HIR or optional reference C output is committed. The two outputs are
 installed as one rollback-capable transaction. Run the gates with
 `make import-aliases` and `make imports-selective`.
 
-Focused diagnostics are `E2S59` malformed/order/path/alias, `E2S60` missing
-module, `E2S61` self import, `E2S62` duplicate target/import, `E2S63` module
-qualifier collision,
+`bootstrap/stage2/re_exports.c` builds on both import binding forms for the
+accepted `pub import a.b` and `pub from a.b import Name` header declarations.
+It creates a distinct `ExportBindingId` for each facade namespace/name while
+retaining the original target `ModuleId`/`NamespaceId`/`SymbolId`. A public
+request must remain public across the target, enclosing facts, bounded
+signature, and every forwarded edge; the helper never silently narrows one.
+Same-spelled value/type targets expand independently. Local/import/export
+collisions, missing or hidden targets, malformed/deferred forms, canonical
+cycles, and a 65th chain edge fail before HIR, KIF, or tooling publication.
+Exactly 64 edges and 1,024 expanded bindings in one facade are executable
+boundaries.
+
+The resolver writes `kofun-re-exports/v1`, an authoritative KIF interface for
+the selected facade, and a non-authoritative documentation projection that
+retains both facade and canonical paths. Export KIF records store the
+`ExportBindingId` as edge identity and the original target `SymbolId`
+separately; a defensive source-free consumer proves the distinction. These
+source exports do not grant linker, FFI, or runtime forwarding. The helper and
+its six-field inventory are not yet routed through ordinary `bin/kofun`
+builds. Run the sanitizer-, analyzer-, and boundary-backed gate with
+`make re-exports`.
+
+Focused import diagnostics are `E2S59` malformed/order/path/alias, `E2S60`
+missing module, `E2S61` self import, `E2S62` duplicate target/import, `E2S63`
+module qualifier collision,
 `E2S64` canonical cycle, `E2S65` qualified lookup/signature/arity/lowering,
 `E2S66` access denial, `E2S67` bounded-resource exhaustion, and `E2S68`
-allocation/invariant/output failure. Semantic failure removes both requested
-artifacts.
+allocation/invariant/output failure. Re-export diagnostics occupy `E2S85`
+through `E2S94`. Semantic failure removes every requested artifact.
 
 ## Verification
 
@@ -338,7 +360,10 @@ canonical cycles, visibility enforcement, resource rejection, transaction
 failure, and reference-backend execution through the resolved `SymbolId`.
 
 `kif_v1.c` and `kif_v1.h` implement the compiler-authoritative KIF v1 binary
-writer/reader for bounded function and flat-ADT facts. Records use explicit
+writer/reader for bounded function, flat-ADT, and public re-export facts.
+Export records preserve source import, facade edge, original target, and
+canonical chain identities without changing existing declaration-only bytes.
+Records use explicit
 schema tags and big-endian widths, canonical identity ordering, distinct
 public and package-internal semantic views, defensive limits, full self-read,
 and atomic replacement. `kif_v1_tool.c` projects the committed declaration
@@ -347,6 +372,8 @@ qualified-import slice from a validated KIF while the dependency source is
 absent. `tests/conformance/modules/kif-v1/run.sh` covers deterministic bytes,
 visibility, digests, source-free consumption, corruption mutations, exact
 limits, failed publication, C11 warnings, sanitizers, and static analysis.
+`tests/conformance/modules/re-exports/run.sh` adds export-fact digest,
+round-trip, mutation, and source-free facade-consumption coverage.
 
 `bootstrap/stage2/visibility_access.c` is the pure access primitive for the
 next resolver slice. It compares only schema-tagged 32-byte package, module,
