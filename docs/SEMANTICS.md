@@ -34,12 +34,19 @@ A zero divisor in `//` or `%` is `R010`, writes one canonical diagnostic line
 to stderr, and exits with status 1. Backends must check runtime values, not
 only zero literals.
 
+`/` is not defined on `Int` and `Int / Int` is a compile error, so `//` is the
+only integer quotient. See `spec/semantics.md`.
+
 ## Conformance
 
 Every registered backend executes the same `.kofun` corpus. The active
-`c11-stage1` backend passes all nine numeric cases. The runner compares stdout,
+`c11-stage1` backend passes all ten numeric cases. The runner compares stdout,
 stderr, and exit status exactly. Unsupported compilation is an explicit,
 reported skip and reduces coverage; it never counts as a silent pass.
+
+One of the ten is a rejection case rather than a run: `/` has no meaning on
+`Int`, so what every backend must agree on is that it compiles nothing and
+leaves no artifact.
 
 See `spec/backend-differential-contract.md` and
 `tests/conformance/numeric/README.md` for the runner contract and corpus.

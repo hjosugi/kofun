@@ -21,13 +21,33 @@ for source in "$CORPUS"/*.kofun; do
 
     name=$(basename "$source")
     if ! grep -Eq \
-        '^# expect(-stdout|-stderr|-exit)?: ' \
+        '^# expect(-stdout|-stderr|-exit|-reject)?: ' \
         "$source"
     then
         printf '%s\n' \
             "conformance observations: case has no explicit # expect-* header: $source" >&2
         exit 2
     fi
+
+    # A rejection case observes a refusal rather than a run, so it pins the
+    # recorded reason instead of an exit status and two streams. Declaring both
+    # would leave two contradictory contracts in one file.
+    reject_reason=$(sed -n 's/^# expect-reject: //p' "$source")
+    if test -n "$reject_reason"; then
+        if grep -Eq '^# expect(-stdout|-stderr|-exit)?: ' "$source"; then
+            printf '%s\n' \
+                "conformance observations: rejection case must not declare execution observations: $source" >&2
+            exit 2
+        fi
+        printf '%s\n' "$reject_reason" >"$work/reject"
+        reject_bytes=$(wc -c <"$work/reject" | tr -d ' ')
+        printf '%s\n' \
+            "case $name" \
+            "reject $reject_bytes" >>"$contract"
+        cat "$work/reject" >>"$contract"
+        continue
+    fi
+
     expected_status=$(sed -n 's/^# expect-exit: //p' "$source")
     test -n "$expected_status" || expected_status=0
     case $expected_status in

@@ -40,7 +40,9 @@ exit status or reject the construct as unsupported before execution.
 
 The executable boundary cases and failure observations are defined by
 `tests/conformance/numeric/` under the
-`kofun.backend-differential/v1` contract.
+`kofun.backend-differential/v1` contract. That corpus also carries the refusal
+of `/` as `reject_slash_operator.kofun`, so a backend that gives the operator a
+meaning fails the same gate that pins the values of `//` and `%`.
 
 ## Text
 
