@@ -1,0 +1,6 @@
+# code	adapter	channel	exit	primary-span	secondary-span	artifact
+E2S80	generics	stdout	1	required	required	forbidden
+E2S81	generics	stdout	1	required	required	forbidden
+E2S82	generics	stdout	1	required	required	forbidden
+E2S83	generics	stdout	1	required	not-applicable	forbidden
+E2S84	generics	stdout	1	required	not-applicable	forbidden

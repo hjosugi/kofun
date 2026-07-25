@@ -1,0 +1,8 @@
+protocol	kofun.semantic-family/v1
+family	arithmetic-int-core
+generator	arithmetic-lcg-v1
+scope	positive-int-add-multiply-print-v1
+participant	oracle	arithmetic-model	supported	-	../adapters/arithmetic-model.sh
+participant	backend	c11-stage1	supported	-	../adapters/arithmetic-c11.sh
+participant	backend	native-x86_64	supported	-	../adapters/arithmetic-native-x86_64.sh
+participant	backend	wasm32-node	supported	-	../adapters/arithmetic-wasm32-node.sh

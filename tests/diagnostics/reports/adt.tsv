@@ -1,0 +1,12 @@
+# code	adapter	channel	exit	primary-span	secondary-span	artifact
+E2S36	adt	stdout	1	required	required	forbidden
+E2S37	adt	stdout	1	required	required	forbidden
+E2S38	adt	stdout	1	required	required	forbidden
+E2S39	adt	stdout	1	required	not-applicable	forbidden
+E2S40	adt	stdout	1	required	not-applicable	forbidden
+E2S41	adt	stdout	1	required	not-applicable	forbidden
+E2S42	adt	stdout	1	required	required	forbidden
+E2S43	adt	stdout	1	required	required	forbidden
+E2S44	adt	stdout	1	required	not-applicable	forbidden
+E2S45	adt	stdout	1	required	not-applicable	forbidden
+E2S46	adt	stdout	1	required	not-applicable	forbidden

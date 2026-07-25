@@ -97,18 +97,12 @@ for source in "$SUITE"/*.kofun; do
 done
 
 LC_ALL=C sort -u "$WORK/observed.codes" >"$WORK/observed.sorted"
-cmp "$SUITE/codes.txt" "$WORK/observed.sorted" || {
+awk -F '\t' '
+    !/^#/ && $10 == "stage2" && $13 !~ /^gap\(/ { print $1 }
+' "$ROOT/tests/diagnostics/registry.tsv" >"$WORK/registry.codes"
+cmp "$WORK/registry.codes" "$WORK/observed.sorted" || {
     printf '%s\n' \
-        "diagnostics: code inventory and executable cases differ" >&2
-    exit 1
-}
-sed -n \
-    's/.*error\[\(E[0-9A-Z]*\)\].*/\1/p' \
-    "$ROOT/bootstrap/stage2/compiler.kofun" |
-    LC_ALL=C sort -u >"$WORK/compiler.codes"
-cmp "$SUITE/codes.txt" "$WORK/compiler.codes" || {
-    printf '%s\n' \
-        "diagnostics: canonical compiler codes and inventory differ" >&2
+        "diagnostics: registry and executable Stage 2 cases differ" >&2
     exit 1
 }
 

@@ -1,0 +1,3 @@
+# code	adapter	channel	exit	primary-span	secondary-span	artifact
+CABI001	c-abi	stderr	1	required	not-applicable	forbidden
+CABI002	c-abi	stderr	1	not-applicable	not-applicable	forbidden

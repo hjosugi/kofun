@@ -1,0 +1,104 @@
+==================
+Imports and C ABI
+==================
+
+import framework.http
+pub from collections import Map, Set
+
+repr(C) struct Pair {
+  left: CInt,
+  right: CInt,
+}
+
+extern "C" fn add(left: CInt, right: CInt) -> CInt
+
+---
+
+(source_file
+  (import_declaration
+    (module_path
+      (identifier)
+      (identifier)))
+  (from_import_declaration
+    (module_path
+      (identifier))
+    (import_list
+      (identifier)
+      (identifier)))
+  (repr_struct_declaration
+    (identifier)
+    (struct_body
+      (struct_field
+        (identifier)
+        (type
+          (identifier)))
+      (struct_field
+        (identifier)
+        (type
+          (identifier)))))
+  (extern_function_declaration
+    (string)
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (type
+          (identifier)))
+      (parameter
+        (identifier)
+        (type
+          (identifier))))
+    (type
+      (identifier))))
+
+==================
+CLI profile
+==================
+
+cli Tool {
+  name "tool"
+  version "1.0.0"
+  about "Example"
+
+  command greet {
+    about "Greet"
+    position NAME "Name"
+    option shout "--shout" bool "Uppercase"
+    option prefix "--prefix" text "Prefix" default "Hello"
+    action greet
+  }
+}
+
+---
+
+(source_file
+  (cli_declaration
+    (identifier)
+    (cli_body
+      (cli_name_directive
+        (string))
+      (cli_version_directive
+        (string))
+      (cli_about_directive
+        (string))
+      (command_declaration
+        (identifier)
+        (command_body
+          (command_about_directive
+            (string))
+          (position_directive
+            (identifier)
+            (string))
+          (option_directive
+            (identifier)
+            (string)
+            (identifier)
+            (string))
+          (option_directive
+            (identifier)
+            (string)
+            (identifier)
+            (string)
+            (string))
+          (action_directive
+            (identifier)))))))

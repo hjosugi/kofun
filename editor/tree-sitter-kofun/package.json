@@ -1,0 +1,61 @@
+{
+  "name": "tree-sitter-kofun",
+  "version": "0.1.0",
+  "description": "Tree-sitter grammar for the Kofun programming language",
+  "license": "MIT OR Apache-2.0",
+  "author": "Kofun contributors",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hjosugi/kofun.git",
+    "directory": "editor/tree-sitter-kofun"
+  },
+  "homepage": "https://github.com/hjosugi/kofun/tree/main/editor/tree-sitter-kofun",
+  "bugs": {
+    "url": "https://github.com/hjosugi/kofun/issues"
+  },
+  "keywords": [
+    "incremental",
+    "parser",
+    "kofun",
+    "tree-sitter"
+  ],
+  "main": "bindings/node",
+  "types": "bindings/node",
+  "files": [
+    "binding.gyp",
+    "bindings/c/**",
+    "bindings/node/**",
+    "CMakeLists.txt",
+    "grammar.js",
+    "Makefile",
+    "queries/*",
+    "src/**",
+    "tree-sitter.json"
+  ],
+  "scripts": {
+    "generate": "tree-sitter generate",
+    "install": "node-gyp-build",
+    "test": "tree-sitter generate && tree-sitter test && node scripts/test-recovery.mjs",
+    "test:repository-corpus": "node scripts/test-repository-corpus.mjs",
+    "test:queries": "node scripts/test-queries.mjs"
+  },
+  "dependencies": {
+    "node-addon-api": "8.9.0",
+    "node-gyp-build": "4.8.4"
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "0.26.11"
+  },
+  "peerDependencies": {
+    "tree-sitter": "^0.25.0"
+  },
+  "peerDependenciesMeta": {
+    "tree-sitter": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -5,6 +5,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 WORK=${KOFUN_ENUM_MATCH_FUZZ_WORK:-"$ROOT/build/enum-match-fuzz"}
 CASES=${KOFUN_ENUM_MATCH_FUZZ_CASES:-32}
 CC=${CC:-cc}
+. "$ROOT/tests/fuzz/semantic_protocol.sh"
 
 case $CASES in
     ''|*[!0-9]*|0)
@@ -79,21 +80,29 @@ run_valid() {
         -fsanitize=address,undefined -fno-omit-frame-pointer \
         "$case_work/program.c" -o "$case_work/program-sanitized"
 
+    set +e
     "$case_work/program" \
         >"$case_work/actual.stdout" 2>"$case_work/actual.stderr"
+    actual_status=$?
     ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 \
     UBSAN_OPTIONS=halt_on_error=1 \
         "$case_work/program-sanitized" \
         >"$case_work/actual-sanitized.stdout" \
         2>"$case_work/actual-sanitized.stderr"
-    cmp "$expected" "$case_work/actual.stdout" ||
-        fail "$label: runtime stdout differs"
-    cmp "$expected" "$case_work/actual-sanitized.stdout" ||
-        fail "$label: sanitized runtime stdout differs"
-    test ! -s "$case_work/actual.stderr" ||
-        fail "$label: runtime wrote stderr"
-    test ! -s "$case_work/actual-sanitized.stderr" ||
-        fail "$label: sanitized runtime wrote stderr"
+    sanitized_status=$?
+    set -e
+    : >"$case_work/expected.stderr"
+    semantic_wrap_observation_pair \
+        enum-match "$case_work" enum-match-shell-model stage2-c11 \
+        "$expected" "$case_work/expected.stderr" 0 \
+        "$case_work/actual.stdout" "$case_work/actual.stderr" "$actual_status" ||
+        fail "$label: $KOFUN_SEMANTIC_MISMATCH"
+    semantic_wrap_observation_pair \
+        enum-match "$case_work" enum-match-shell-model stage2-c11-sanitized \
+        "$expected" "$case_work/expected.stderr" 0 \
+        "$case_work/actual-sanitized.stdout" \
+        "$case_work/actual-sanitized.stderr" "$sanitized_status" ||
+        fail "$label sanitized runtime: $KOFUN_SEMANTIC_MISMATCH"
 }
 
 run_invalid() {

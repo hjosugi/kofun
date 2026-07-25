@@ -4,7 +4,42 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 WORK=${KOFUN_SEMANTIC_FUZZ_WORK:-"$ROOT/build/semantic-fuzz"}
 CASES=${KOFUN_SEMANTIC_FUZZ_CASES:-48}
-KOFUN="$ROOT/bin/kofun"
+MANIFEST="$ROOT/tests/fuzz/families/arithmetic.tsv"
+RUNNER="$ROOT/tests/fuzz/semantic_runner.sh"
+GENERATOR=arithmetic-lcg-v1
+INITIAL_SEED=195936478
+
+if test "${1-}" = --replay; then
+    test "$#" -eq 2 || {
+        printf '%s\n' \
+            'usage: semantic_differential.sh --replay ARTIFACT' >&2
+        exit 2
+    }
+    artifact=$2
+    test -f "$artifact/family.manifest" &&
+        test -f "$artifact/source.kofun" &&
+        test -f "$artifact/case.tsv" || {
+        printf '%s\n' "semantic fuzz: incomplete replay artifact: $artifact" >&2
+        exit 2
+    }
+    replay_work=$(mktemp -d "${TMPDIR:-/tmp}/kofun-semantic-replay.XXXXXX")
+    trap 'rm -rf "$replay_work"' 0 1 2 15
+    case_index=$(sed -n 's/^case-index	//p' "$artifact/case.tsv")
+    "$RUNNER" \
+        "$artifact/family.manifest" \
+        "$artifact/source.kofun" \
+        "$artifact/case.tsv" \
+        "$replay_work/case" \
+        "$replay_work/failures" \
+        "replay-case-$case_index"
+    printf '%s\n' "PASS: semantic replay case $case_index now agrees"
+    exit 0
+fi
+test "$#" -eq 0 || {
+    printf '%s\n' \
+        'usage: semantic_differential.sh [--replay ARTIFACT]' >&2
+    exit 2
+}
 
 case $CASES in
     ''|*[!0-9]*|0)
@@ -16,7 +51,7 @@ esac
 rm -rf "$WORK"
 mkdir -p "$WORK"
 
-seed=195936478
+seed=$INITIAL_SEED
 next_random() {
     seed=$(((seed * 1103515245 + 12345) % 2147483648))
 }
@@ -58,29 +93,24 @@ while test "$case_index" -lt "$CASES"; do
         printf '    print(%s)\n' "$expression"
         printf '%s\n' '}'
     } >"$source"
+    {
+        printf '%s\t%s\n' \
+            protocol kofun.semantic-case/v1 \
+            family arithmetic-int-core \
+            generator "$GENERATOR" \
+            seed "$INITIAL_SEED" \
+            case-index "$case_index" \
+            left "$left" \
+            right "$right" \
+            factor "$factor" \
+            shape "$shape"
+    } >"$case_work/case.tsv"
 
-    "$KOFUN" build "$source" \
-        --backend c \
-        --emit-c "$case_work/reference.c" \
-        -o "$case_work/reference" >/dev/null
-    "$KOFUN" build "$source" \
-        --target x86_64-linux \
-        -o "$case_work/native" >/dev/null
-
-    "$case_work/reference" \
-        >"$case_work/reference.stdout" \
-        2>"$case_work/reference.stderr"
-    "$case_work/native" \
-        >"$case_work/native.stdout" \
-        2>"$case_work/native.stderr"
-    printf '%s\n' "$expected" >"$case_work/expected.stdout"
-
-    cmp "$case_work/expected.stdout" "$case_work/reference.stdout"
-    cmp "$case_work/reference.stdout" "$case_work/native.stdout"
-    cmp "$case_work/reference.stderr" "$case_work/native.stderr"
-    test ! -s "$case_work/reference.stderr"
+    "$RUNNER" \
+        "$MANIFEST" "$source" "$case_work/case.tsv" \
+        "$case_work/protocol" "$WORK/failures" "case-$case_index"
     case_index=$((case_index + 1))
 done
 
 printf '%s\n' \
-    "PASS: semantic fuzz matched expected, C11, and native output for $CASES programs"
+    "PASS: semantic fuzz matched independent model and all declared backends for $CASES programs"

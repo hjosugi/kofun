@@ -1,4 +1,4 @@
-.PHONY: help compiler test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 patterns adt generics adt-exhaustiveness module-symbols imports-qualified imports-selective kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp roadmap syntax repository-check verify clean
+.PHONY: help compiler test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 patterns adt generics adt-exhaustiveness module-symbols imports-qualified imports-selective kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp tree-sitter roadmap syntax repository-check verify clean
 
 KOFUN := ./bin/kofun
 
@@ -47,6 +47,7 @@ help:
 	  'make typed-sidecar-spec Verify bounded complete/partial tooling artifacts' \
 	  'make typed-sidecar-codec Verify production reader/writer and atomic replacement' \
 	  'make lsp              Verify the stdio language server and editor client' \
+	  'make tree-sitter      Verify the structural grammar and editor queries' \
 	  'make roadmap          Verify the executable issues 31-34 roadmap' \
 	  'make syntax           Verify syntax contracts for issues 35-60' \
 	  'make repository-check Require .kofun sources and the Kofun toolchain' \
@@ -66,10 +67,11 @@ test: compiler
 	$(KOFUN) test tests/conformance/text
 
 diagnostics:
-	sh tests/diagnostics/stage2/run.sh
+	sh tests/diagnostics/run.sh
 
 fuzz:
 	sh tests/fuzz/grammar.sh
+	sh tests/fuzz/semantic_protocol_test.sh
 	sh tests/fuzz/semantic_differential.sh
 	sh tests/fuzz/value_if.sh
 	sh tests/fuzz/match_guard.sh
@@ -199,6 +201,12 @@ typed-sidecar-codec:
 lsp:
 	sh tests/lsp/check.sh
 
+tree-sitter:
+	npm --prefix editor/tree-sitter-kofun ci
+	npm --prefix editor/tree-sitter-kofun test
+	npm --prefix editor/tree-sitter-kofun run test:repository-corpus
+	npm --prefix editor/tree-sitter-kofun run test:queries
+
 roadmap:
 	sh spec/roadmap-31-34/verify-current-gates.sh
 
@@ -215,7 +223,7 @@ repository-check:
 	@grep -q '"extensions": \[".kofun"\]' editor/vscode/package.json
 	@printf '%s\n' 'PASS: .kofun sources only; no Python implementation'
 
-verify: test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 patterns adt generics adt-exhaustiveness module-symbols imports-qualified imports-selective kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp roadmap syntax repository-check
+verify: test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 patterns adt generics adt-exhaustiveness module-symbols imports-qualified imports-selective kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp tree-sitter roadmap syntax repository-check
 	@sh -n bin/kofun bootstrap/stage1/check.sh bootstrap/stage2/check.sh \
 	  bootstrap/selfhost/check-profile.sh \
 	  bootstrap/selfhost/frontend/check-frontend.sh \
@@ -252,6 +260,22 @@ verify: test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-
 	  tests/typed-sidecar/codec.sh \
 	  tests/typed-sidecar/atomic-write.sh \
 	  tests/typed-sidecar/authority-boundary.sh \
+	  tests/diagnostics/check.sh \
+	  tests/diagnostics/run.sh \
+	  tests/diagnostics/self-test.sh \
+	  tests/diagnostics/bless.sh \
+	  tests/diagnostics/c-abi/run.sh \
+	  tests/diagnostics/native/run.sh \
+	  tests/diagnostics/runtime/run.sh \
+	  tests/diagnostics/unicode/run.sh \
+	  tests/fuzz/semantic_protocol.sh \
+	  tests/fuzz/semantic_protocol_test.sh \
+	  tests/fuzz/semantic_runner.sh \
+	  tests/fuzz/adapters/arithmetic-model.sh \
+	  tests/fuzz/adapters/arithmetic-c11.sh \
+	  tests/fuzz/adapters/arithmetic-native-x86_64.sh \
+	  tests/fuzz/adapters/arithmetic-wasm32-node.sh \
+	  tests/fuzz/fixtures/protocol-adapter.sh \
 	  tests/conformance/modules/visibility-syntax/run.sh \
 	  tests/conformance/modules/visibility-access/run.sh \
 	  tests/conformance/adt/run.sh \

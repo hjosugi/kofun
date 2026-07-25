@@ -5,6 +5,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 WORK=${KOFUN_VALUE_IF_FUZZ_WORK:-"$ROOT/build/value-if-fuzz"}
 CASES=${KOFUN_VALUE_IF_FUZZ_CASES:-32}
 CC=${CC:-cc}
+. "$ROOT/tests/fuzz/semantic_protocol.sh"
 
 case $CASES in
     ''|*[!0-9]*|0)
@@ -78,11 +79,22 @@ while test "$case_index" -lt "$CASES"; do
     cmp "$case_work/program.tokens" "$case_work/program-sanitized.tokens"
     "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
         "$case_work/program.c" -o "$case_work/program"
+    set +e
     "$case_work/program" \
         >"$case_work/actual.stdout" 2>"$case_work/actual.stderr"
+    actual_status=$?
+    set -e
     printf '%s\n' "$expected" >"$case_work/expected.stdout"
-    cmp "$case_work/expected.stdout" "$case_work/actual.stdout"
-    test ! -s "$case_work/actual.stderr"
+    : >"$case_work/expected.stderr"
+    if ! semantic_wrap_observation_pair \
+        value-if "$case_work" value-if-shell-model stage2-c11 \
+        "$case_work/expected.stdout" "$case_work/expected.stderr" 0 \
+        "$case_work/actual.stdout" "$case_work/actual.stderr" "$actual_status"
+    then
+        printf '%s\n' \
+            "value-if fuzz: case $case_index: $KOFUN_SEMANTIC_MISMATCH" >&2
+        exit 1
+    fi
 
     case_index=$((case_index + 1))
 done

@@ -1,0 +1,9 @@
+# code	adapter	channel	exit	primary-span	secondary-span	artifact
+E2S48	module-symbols	stdout	1	not-applicable	not-applicable	forbidden
+E2S49	module-symbols	stdout	1	not-applicable	not-applicable	forbidden
+E2S50	module-symbols	stdout	1	required	not-applicable	forbidden
+E2S51	module-symbols	stdout	1	required	required	forbidden
+E2S52	module-symbols	stdout	1	required	not-applicable	forbidden
+E2S53	module-symbols	stdout	1	required	not-applicable	forbidden
+E2S54	module-symbols	stdout	1	required	not-applicable	forbidden
+E2S55	module-symbols	stdout	1	not-applicable	not-applicable	forbidden

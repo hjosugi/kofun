@@ -1,0 +1,1 @@
+error[EUNICODE005] 2行9列 (byte 20): 識別子 `café` はNFCではありません。`café` を使用してください

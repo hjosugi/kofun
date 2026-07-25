@@ -1,0 +1,16 @@
+# code	adapter	channel	exit	primary-span	secondary-span	artifact
+E2S59	imports	stdout	1	required	not-applicable	forbidden
+E2S60	imports	stdout	1	required	not-applicable	forbidden
+E2S61	imports	stdout	1	required	not-applicable	forbidden
+E2S62	imports	stdout	1	required	not-applicable	forbidden
+E2S63	imports	stdout	1	required	not-applicable	forbidden
+E2S64	imports	stdout	1	required	required	forbidden
+E2S65	imports	stdout	1	required	not-applicable	forbidden
+E2S66	imports	stdout	1	required	not-applicable	forbidden
+E2S67	imports	stdout	1	not-applicable	not-applicable	forbidden
+E2S69	imports	stdout	1	required	not-applicable	forbidden
+E2S70	imports	stdout	1	required	not-applicable	forbidden
+E2S71	imports	stdout	1	required	not-applicable	forbidden
+E2S72	imports	stdout	1	required	not-applicable	forbidden
+E2S73	imports	stdout	1	required	required	forbidden
+E2S74	imports	stdout	1	required	not-applicable	forbidden

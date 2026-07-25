@@ -5,10 +5,16 @@ lexer/parser to terminate with either a valid projection or a normal
 diagnostic. A per-case watchdog turns hangs into failures; signals and other
 abnormal statuses fail the gate.
 
-`semantic_differential.sh` generates valid arithmetic programs, calculates the
-expected result independently, and compares exact stdout/stderr across the C11
-reference and direct x86-64 backend. It is deterministic so every CI failure
-can be reproduced from its case number and generated source.
+`semantic_differential.sh` generates valid arithmetic programs and runs the
+versioned semantic adapter protocol documented in
+[`SEMANTIC_PROTOCOL.md`](SEMANTIC_PROTOCOL.md). The accepted
+`arithmetic-model` independently calculates the result from the generator
+inputs. Every backend declared in [`families/arithmetic.tsv`](families/arithmetic.tsv)
+must report support and agree on explicit exit status plus exact stdout/stderr
+bytes. C11, direct x86-64, and wasm32/Node are implementations under test; none
+is presented as the oracle. A failure retains source, seed/case metadata,
+resolved identities, tool checksums, raw observations, and an exact replay
+command.
 
 `value_if.sh` generates valid bounded Int-valued `if` programs for Stage 2,
 calculates the selected result independently, and places checked
@@ -47,6 +53,23 @@ compiler builds must agree on diagnostics and emitted artifacts, and both the
 normal and sanitized generated C programs must produce the expected output.
 The invalid corpus also crosses the 256-occurrence per-function enum-use bound
 and requires `E2S32` without a C artifact.
+
+The valid observable portions of `value_if.sh`, `match_guard.sh`,
+`match_value.sh`, and `enum_match.sh` use the same normalized result records.
+Their shell generators are the accepted bounded models, and the Stage 2 C11
+outputs remain implementations under test. Family-specific sanitizer,
+compiler-artifact, and invalid-diagnostic checks are retained rather than
+being weakened into generic output comparisons.
+
+Run the protocol's deterministic negative and replay fixtures separately:
+
+```sh
+sh tests/fuzz/semantic_protocol_test.sh
+```
+
+They require stdout, stderr, exit status, capability, omission, crash, timeout,
+malformed output, unsupported-only coverage, missing oracle, and missing
+backend failures to remain distinguishable.
 
 Run all fuzz smoke gates:
 

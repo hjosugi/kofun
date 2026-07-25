@@ -18,10 +18,11 @@ command and review the diff:
 sh tests/diagnostics/stage2/bless.sh
 ```
 
-`codes.txt` is the executable inventory for the active Stage 2 frontend,
-lowerer, and ownership-slice diagnostic codes. The runner fails if the
-inventory and cases diverge. Localized `EUNICODE` source-validation
-diagnostics are covered separately by `tests/unicode/run.sh`.
+The canonical inventory is `tests/diagnostics/registry.tsv`. The runner selects
+its `stage2`-owned rows from that registry and fails if the executable cases
+diverge. It does not discover codes by scanning compiler source text.
+Localized `EUNICODE` source-validation diagnostics use the focused adapter in
+`tests/diagnostics/unicode/run.sh`.
 
 The current suite records three existing diagnostics without precise positions
 as `expect-span: none`: `E2S04`, `E2S20`, and `E2S21`. They are visible span
@@ -48,10 +49,6 @@ unsupported record/rest/range families, and the explicit depth/node budgets.
 Normal compilation is transactional; focused `--parse-patterns` mode is the
 recovery surface that retains `ErrorPattern` and later independent arms.
 
-Two additive focused frontends keep their own executable inventories until
-they are routed through the canonical compiler: the typed-only ADT gate owns
-E2S36–E2S46, and the module declaration collector owns E2S48–E2S56. Their
-respective runners compare exact goldens, require transaction failure, and
-verify that their source inventories contain no unregistered code. They are
-not added to this file's `codes.txt`, because `compiler.kofun` does not yet
-emit them.
+Additive focused frontends keep their family-specific execution models, but
+their stable identities and evidence ownership are declared in the same
+repository-wide registry.
