@@ -1,0 +1,7 @@
+# diagnostic-mode: compile
+# expect-code: E2S95
+# expect-span: byte 101
+fn main() {
+    let double = value: Int => value * 2
+    print(0)
+}

@@ -1,0 +1,1 @@
+error[E2S95]: annotated lambda parameter `value` needs parentheses at byte 101; write `(value: Int) =>`

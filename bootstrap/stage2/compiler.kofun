@@ -3067,18 +3067,35 @@ fn block_depth_at(source: Text, function_open: Int, target: Int) -> Int {
     return depth
 }
 
-# The byte after an arrow lambda's body, or -1 when `start` does not open one.
-# A named function has an identifier after `fn`, so requiring `(` there is what
-# separates `fn(x) => x` from `fn name(x) { }`. The body is delimited by the
-# same expression grammar the Core lowers, so a body this Core cannot parse
-# yields -1 and the lambda contributes no scope — the identifiers inside it are
-# then reported by whichever pass would have reported them before.
-fn lambda_body_end(source: Text, start: Int) -> Int {
-    if token_text(source, start) != "fn" {
+# The byte after an arrow lambda's body, or -1 when `open` is not its parameter
+# list. A lambda is keyed by the `(`, not by `fn`, which makes `fn(x) => e` and
+# the parenthesised forms decided in #547 — `(x, y) => e` and `(x: Int) => e` —
+# one code path.
+#
+# Two conditions identify the parameter list, and both are needed:
+#
+# 1. its `)` is immediately followed by `=>`, and
+# 2. its `(` is NOT immediately preceded by an identifier.
+#
+# Condition 2 is not decoration. A constructor pattern ends in `)` and is
+# followed by `=>` — `Ok(value) => value` and `Err(error) => Err(error)` are all
+# over the shipped stdlib — so condition 1 alone matches every one of them. What
+# separates them is what comes before the `(`: a constructor pattern is preceded
+# by its variant name, a lambda's parameter list by `fn`, `=`, `,` or `(`.
+#
+# The bare `x => e` form is deliberately absent. `IDENT => expr` is already enum
+# match-arm syntax — 176 arms in the shipped stdlib, e.g. `Trace => 0` — so one
+# token of lookahead cannot separate the two. See #547.
+#
+# The body is delimited by the same expression grammar the Core lowers, so a
+# body this Core cannot parse yields -1 and the lambda contributes no scope —
+# the identifiers inside it are then reported by whichever pass would have
+# reported them before.
+fn lambda_parameters_end(source: Text, previous: Int, open: Int) -> Int {
+    if token_text(source, open) != "(" {
         return -1
     }
-    let open = skip_trivia(source, token_end(source, start))
-    if open >= len(source) || token_text(source, open) != "(" {
+    if previous >= 0 && token_kind(source, previous) == "identifier" {
         return -1
     }
     let close = balanced_end(source, open, "(", ")")
@@ -3097,12 +3114,13 @@ fn lambda_body_end(source: Text, start: Int) -> Int {
 # not inside one.
 fn lambda_scope_open(source: Text, function_open: Int, target: Int) -> Int {
     let mut cursor = function_open
+    let mut previous = -1
     let mut found = -1
     while cursor < target {
-        if token_text(source, cursor) == "fn" &&
-           lambda_body_end(source, cursor) > target {
-            found = skip_trivia(source, token_end(source, cursor))
+        if lambda_parameters_end(source, previous, cursor) > target {
+            found = cursor
         }
+        previous = cursor
         cursor = skip_trivia(source, token_end(source, cursor))
     }
     return found
@@ -3117,17 +3135,39 @@ fn lambda_declaration_syntax_token(
     target: Int
 ) -> Bool {
     let mut cursor = function_open
+    let mut previous = -1
     while cursor <= target {
-        if token_text(source, cursor) == "fn" &&
-           lambda_body_end(source, cursor) >= 0 {
-            let open = skip_trivia(source, token_end(source, cursor))
-            if target > open && target < balanced_end(source, open, "(", ")") {
-                return true
-            }
+        if lambda_parameters_end(source, previous, cursor) >= 0 &&
+           target > cursor &&
+           target < balanced_end(source, cursor, "(", ")") {
+            return true
         }
+        previous = cursor
         cursor = skip_trivia(source, token_end(source, cursor))
     }
     return false
+}
+
+# `x: Int => e` annotates a lambda parameter without parentheses. #547 rejects
+# it: `:` is the type-annotation position everywhere else, so the bare form
+# reads as a binding whose type is `Int => e`, and accepting it would foreclose
+# writing function types with an arrow before #552 has decided whether to.
+# Detected forward as IDENT `:` TYPE `=>`; every other annotation position is
+# followed by `=`, `)` or `{`, never by `=>`.
+fn lambda_unparenthesised_annotation(source: Text, start: Int) -> Bool {
+    if token_kind(source, start) != "identifier" {
+        return false
+    }
+    let colon = skip_trivia(source, token_end(source, start))
+    if colon >= len(source) || token_text(source, colon) != ":" {
+        return false
+    }
+    let annotation = skip_trivia(source, token_end(source, colon))
+    if annotation >= len(source) {
+        return false
+    }
+    let arrow = skip_trivia(source, token_end(source, annotation))
+    return arrow < len(source) && token_text(source, arrow) == "=>"
 }
 
 fn scope_kind_for_open(
@@ -3769,6 +3809,7 @@ fn build_scope_hir_mode(
             source,
             token_end(source, function_open)
         )
+        let mut previous = -1
         while cursor < function_close {
             if token_text(source, cursor) == "{" {
                 let depth = scope_depth_for_open(
@@ -3802,13 +3843,22 @@ fn build_scope_hir_mode(
                 to_text(cursor) + "|" +
                 to_text(close) + "|" + to_text(depth) + "\n"
                 next_scope_id = next_scope_id + 1
-            } else if token_text(source, cursor) == "fn" {
-                let lambda_close = lambda_body_end(source, cursor)
+            } else if lambda_unparenthesised_annotation(source, cursor) {
+                let colon = skip_trivia(source, token_end(source, cursor))
+                let annotation = skip_trivia(source, token_end(source, colon))
+                return "error[E2S95]: annotated lambda parameter `" +
+                token_text(source, cursor) +
+                "` needs parentheses at byte " + to_text(cursor) +
+                "; write `(" + token_text(source, cursor) + ": " +
+                token_text(source, annotation) + ") =>`"
+            } else {
+                let lambda_close = lambda_parameters_end(
+                    source,
+                    previous,
+                    cursor
+                )
                 if lambda_close >= 0 {
-                    let lambda_open = skip_trivia(
-                        source,
-                        token_end(source, cursor)
-                    )
+                    let lambda_open = cursor
                     let lambda_depth = block_depth_at(
                         source,
                         function_open,
@@ -3835,6 +3885,7 @@ fn build_scope_hir_mode(
                     next_scope_id = next_scope_id + 1
                 }
             }
+            previous = cursor
             cursor = skip_trivia(source, token_end(source, cursor))
         }
 
@@ -3887,13 +3938,10 @@ fn build_scope_hir_mode(
         }
 
         cursor = skip_trivia(source, token_end(source, function_open))
+        previous = -1
         while cursor < function_close {
-            if token_text(source, cursor) == "fn" &&
-               lambda_body_end(source, cursor) >= 0 {
-                let lambda_open = skip_trivia(
-                    source,
-                    token_end(source, cursor)
-                )
+            if lambda_parameters_end(source, previous, cursor) >= 0 {
+                let lambda_open = cursor
                 let lambda_close = balanced_end(source, lambda_open, "(", ")")
                 let lambda_scope = hir_scope_id_for_open(hir, lambda_open)
                 let mut lambda_cursor = skip_trivia(
@@ -3950,6 +3998,7 @@ fn build_scope_hir_mode(
                     }
                 }
             }
+            previous = cursor
             cursor = skip_trivia(source, token_end(source, cursor))
         }
 
