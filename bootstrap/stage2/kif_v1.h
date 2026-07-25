@@ -14,6 +14,7 @@
 #define KOFUN_KIF_MAX_NAME_BYTES 256u
 #define KOFUN_KIF_MAX_EDITION_BYTES 64u
 #define KOFUN_KIF_MAX_EXPORT_CHAIN 64u
+#define KOFUN_KIF_MAX_MODULE_PATH_BYTES 4096u
 
 typedef enum {
     KOFUN_KIF_OK = 0,
@@ -78,6 +79,12 @@ typedef struct {
     KofunKifExportTargetKind export_target_kind;
     uint8_t export_target_owner_symbol_id[KOFUN_KIF_ID_BYTES];
     uint32_t export_target_constructor_ordinal;
+    /*
+     * A module target needs its canonical declared path to validate the
+     * ModuleSelfSymbolId. It is absent for non-module targets.
+     */
+    char *export_target_module_path;
+    size_t export_target_module_path_length;
     uint8_t *export_chain_ids;
     size_t export_chain_count;
 } KofunKifFact;
