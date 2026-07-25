@@ -1,0 +1,15 @@
+type MaybeInt =
+    | Missing
+    | Present(value: Int)
+
+fn later(value: Int) -> Int {
+    let copied = value
+    return copied
+}
+
+fn main() {
+    let mut current = later(41)
+    let choice = Present(current)
+    current = if current == 41 { 42 } else { 0 }
+    print(match true { true => { current }, false => { 0 } })
+}

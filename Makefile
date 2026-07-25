@@ -1,4 +1,4 @@
-.PHONY: help compiler test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 patterns adt generics adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp tree-sitter roadmap syntax repository-check verify clean
+.PHONY: help compiler test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 stage2-events patterns adt generics adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp tree-sitter roadmap syntax repository-check verify clean
 
 KOFUN := ./bin/kofun
 
@@ -17,6 +17,7 @@ help:
 	  'make selfhost-c11-control Gate #621 control/List C11 evidence' \
 	  'make selfhost-native  Prove the self-host Core reaches a native ELF via two backends' \
 	  'make stage2           Verify the Stage 2 semantic frontend checkpoint' \
+	  'make stage2-events    Verify bounded complete/partial semantic events' \
 	  'make patterns         Verify lossless general Pattern syntax trees' \
 	  'make adt              Verify bounded nominal ADT typed frontend' \
 	  'make generics         Verify explicit generic function typing' \
@@ -111,6 +112,10 @@ selfhost-native:
 
 stage2:
 	sh bootstrap/stage2/check.sh
+
+stage2-events:
+	sh tests/typed-sidecar/stage2-events.sh
+	sh tests/typed-sidecar/stage2-event-stream.sh
 
 patterns:
 	sh tests/conformance/patterns/run.sh
@@ -232,7 +237,7 @@ repository-check:
 	@grep -q '"extensions": \[".kofun"\]' editor/vscode/package.json
 	@printf '%s\n' 'PASS: .kofun sources only; no Python implementation'
 
-verify: test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 patterns adt generics adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp tree-sitter roadmap syntax repository-check
+verify: test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 stage2-events patterns adt generics adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp tree-sitter roadmap syntax repository-check
 	@sh -n bin/kofun bootstrap/stage1/check.sh bootstrap/stage2/check.sh \
 	  bootstrap/selfhost/check-profile.sh \
 	  bootstrap/selfhost/frontend/check-frontend.sh \
@@ -269,6 +274,8 @@ verify: test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-
 	  tests/typed-sidecar/codec.sh \
 	  tests/typed-sidecar/atomic-write.sh \
 	  tests/typed-sidecar/authority-boundary.sh \
+	  tests/typed-sidecar/stage2-events.sh \
+	  tests/typed-sidecar/stage2-event-stream.sh \
 	  tests/diagnostics/check.sh \
 	  tests/diagnostics/run.sh \
 	  tests/diagnostics/self-test.sh \

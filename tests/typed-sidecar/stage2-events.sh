@@ -1,0 +1,289 @@
+#!/usr/bin/env sh
+set -eu
+
+LC_ALL=C
+export LC_ALL
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+CC=${CC:-cc}
+WORK=${KOFUN_STAGE2_EVENTS_WORK:-"$ROOT/build/stage2-semantic-events"}
+FIXTURE="$ROOT/tests/typed-sidecar/fixtures/stage2_events.kofun"
+
+fail() {
+    printf '%s\n' "FAIL: $*" >&2
+    exit 1
+}
+
+command -v "$CC" >/dev/null 2>&1 || fail 'a C11 compiler is required'
+case $WORK in
+    */stage2-semantic-events|*/stage2-semantic-events.*) ;;
+    *) fail "work directory must end in stage2-semantic-events[.suffix]: $WORK" ;;
+esac
+rm -rf "$WORK"
+mkdir -p "$WORK/plain" "$WORK/sanitized" "$WORK/analyzer"
+
+COMMON_SOURCES="
+$ROOT/bootstrap/stage2/sha256.c
+$ROOT/unicode/kofun_unicode.c
+$ROOT/bootstrap/stage2/semantic_events.c
+$ROOT/tests/typed-sidecar/stage2_events_test.c
+"
+
+# shellcheck disable=SC2086
+"$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
+    -I"$ROOT/bootstrap/stage2" \
+    $COMMON_SOURCES \
+    -o "$WORK/plain/stage2-events-test"
+"$WORK/plain/stage2-events-test" \
+    events "$WORK/plain/output" "$FIXTURE"
+
+# The production adapter directly invokes the audited Stage 2 lexer, parser,
+# scope-HIR builder, and ownership checker in compiler.c, then emits through
+# the public sink API.
+"$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
+    -I"$ROOT/bootstrap/stage2" \
+    "$ROOT/bootstrap/stage2/semantic_producer.c" \
+    "$ROOT/bootstrap/stage2/semantic_events.c" \
+    "$ROOT/bootstrap/stage2/sha256.c" \
+    -o "$WORK/plain/kofun-stage2-semantic-events"
+"$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
+    -I"$ROOT/bootstrap/stage2" \
+    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
+    "$ROOT/bootstrap/stage2/semantic_events.c" \
+    "$ROOT/tests/typed-sidecar/stage2_event_validate.c" \
+    -o "$WORK/plain/validate-events"
+
+"$WORK/plain/kofun-stage2-semantic-events" \
+    "$FIXTURE" src/main.kofun "$WORK/plain/producer-complete.kse" 42
+"$WORK/plain/validate-events" "$WORK/plain/producer-complete.kse"
+"$WORK/plain/kofun-stage2-semantic-events" \
+    "$FIXTURE" src/main.kofun "$WORK/plain/producer-repeat.kse" 42
+cmp "$WORK/plain/producer-complete.kse" "$WORK/plain/producer-repeat.kse"
+mkdir -p "$WORK/plain/remap-a" "$WORK/plain/remap-b"
+cp "$FIXTURE" "$WORK/plain/remap-a/input.kofun"
+cp "$FIXTURE" "$WORK/plain/remap-b/input.kofun"
+"$WORK/plain/kofun-stage2-semantic-events" \
+    "$WORK/plain/remap-a/input.kofun" src/main.kofun \
+    "$WORK/plain/remap-a/output.kse" 42
+"$WORK/plain/kofun-stage2-semantic-events" \
+    "$WORK/plain/remap-b/input.kofun" src/main.kofun \
+    "$WORK/plain/remap-b/output.kse" 42
+cmp "$WORK/plain/remap-a/output.kse" "$WORK/plain/remap-b/output.kse"
+
+set +e
+"$WORK/plain/kofun-stage2-semantic-events" \
+    "$ROOT/bootstrap/stage2/function_unknown_error.kofun" \
+    src/unknown.kofun "$WORK/plain/producer-unknown.kse" 43
+producer_unknown_status=$?
+"$WORK/plain/kofun-stage2-semantic-events" \
+    "$ROOT/tests/typed-sidecar/fixtures/stage2_type_error.kofun" \
+    src/type-error.kofun "$WORK/plain/producer-type-error.kse" 44
+producer_type_status=$?
+"$WORK/plain/kofun-stage2-semantic-events" \
+    "$ROOT/bootstrap/stage2/fixtures/borrowed_move_text.kofun" \
+    src/borrowed.kofun "$WORK/plain/producer-ownership.kse" 45
+producer_ownership_status=$?
+"$WORK/plain/kofun-stage2-semantic-events" \
+    "$ROOT/bootstrap/stage2/malformed.kofun" \
+    src/malformed.kofun "$WORK/plain/producer-recovery.kse" 46
+producer_recovery_status=$?
+"$WORK/plain/kofun-stage2-semantic-events" \
+    --cancel-after-commit "$FIXTURE" src/main.kofun \
+    "$WORK/plain/producer-cancelled.kse" 47
+producer_cancelled_status=$?
+"$WORK/plain/kofun-stage2-semantic-events" \
+    "$ROOT/tests/unicode/non_nfc_identifier.kofun" \
+    src/early-invalid.kofun "$WORK/plain/producer-early-invalid.kse" 48
+producer_early_status=$?
+set -e
+test "$producer_unknown_status" -eq 1
+test "$producer_type_status" -eq 1
+test "$producer_ownership_status" -eq 1
+test "$producer_recovery_status" -eq 1
+test "$producer_cancelled_status" -eq 1
+test "$producer_early_status" -eq 1
+test ! -e "$WORK/plain/producer-early-invalid.kse"
+for stream in \
+    "$WORK/plain/producer-unknown.kse" \
+    "$WORK/plain/producer-type-error.kse" \
+    "$WORK/plain/producer-ownership.kse" \
+    "$WORK/plain/producer-recovery.kse" \
+    "$WORK/plain/producer-cancelled.kse"
+do
+    "$WORK/plain/validate-events" "$stream"
+done
+grep -a -q 'stage2-semantic-v1' "$WORK/plain/producer-complete.kse"
+grep -a -q 'E2S16' "$WORK/plain/producer-unknown.kse"
+grep -a -q 'E2S15' "$WORK/plain/producer-type-error.kse"
+grep -a -q 'E007' "$WORK/plain/producer-ownership.kse"
+grep -a -q 'E2S03' "$WORK/plain/producer-recovery.kse"
+
+if "$CC" -std=c11 -x c -fsanitize=address,undefined \
+        -o "$WORK/sanitized/probe" - >/dev/null 2>&1 <<'EOF'
+int main(void) { return 0; }
+EOF
+then
+    # shellcheck disable=SC2086
+    "$CC" -std=c11 -O1 -g -Wall -Wextra -Werror -pedantic \
+        -fno-omit-frame-pointer -fsanitize=address,undefined \
+        -I"$ROOT/bootstrap/stage2" \
+        $COMMON_SOURCES \
+        -o "$WORK/sanitized/stage2-events-test"
+    ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+    UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+        "$WORK/sanitized/stage2-events-test" \
+        events "$WORK/sanitized/output" "$FIXTURE"
+    "$CC" -std=c11 -O1 -g -Wall -Wextra -Werror -pedantic \
+        -fno-omit-frame-pointer -fsanitize=address,undefined \
+        -I"$ROOT/bootstrap/stage2" \
+        "$ROOT/bootstrap/stage2/semantic_producer.c" \
+        "$ROOT/bootstrap/stage2/semantic_events.c" \
+        "$ROOT/bootstrap/stage2/sha256.c" \
+        -o "$WORK/sanitized/kofun-stage2-semantic-events"
+    ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+    UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+        "$WORK/sanitized/kofun-stage2-semantic-events" \
+        "$FIXTURE" src/main.kofun \
+        "$WORK/sanitized/producer-complete.kse" 42
+    set +e
+    ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+    UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+        "$WORK/sanitized/kofun-stage2-semantic-events" \
+        "$ROOT/bootstrap/stage2/fixtures/borrowed_move_text.kofun" \
+        src/borrowed.kofun \
+        "$WORK/sanitized/producer-ownership.kse" 45
+    sanitized_ownership_status=$?
+    set -e
+    test "$sanitized_ownership_status" -eq 1
+else
+    fail 'the C compiler must support ASan and UBSan for semantic events'
+fi
+
+if command -v clang >/dev/null 2>&1; then
+    if ! clang --analyze -std=c11 -Wall -Wextra -Werror -pedantic \
+        -I"$ROOT/bootstrap/stage2" \
+        "$ROOT/bootstrap/stage2/semantic_events.c" \
+        "$ROOT/tests/typed-sidecar/stage2_events_test.c" \
+        -Xanalyzer -analyzer-output=text \
+        >"$WORK/analyzer/clang.stdout" \
+        2>"$WORK/analyzer/clang.stderr"
+    then
+        sed -n '1,200p' "$WORK/analyzer/clang.stderr" >&2
+        fail 'clang static analyzer failed'
+    fi
+    if grep -q 'warning:' "$WORK/analyzer/clang.stderr"; then
+        sed -n '1,200p' "$WORK/analyzer/clang.stderr" >&2
+        fail 'clang static analyzer reported a finding'
+    fi
+    if ! clang --analyze -std=c11 -Wall -Wextra -Werror -pedantic \
+        -I"$ROOT/bootstrap/stage2" \
+        "$ROOT/bootstrap/stage2/semantic_producer.c" \
+        -Xanalyzer -analyzer-output=text \
+        >"$WORK/analyzer/producer-clang.stdout" \
+        2>"$WORK/analyzer/producer-clang.stderr"
+    then
+        sed -n '1,200p' "$WORK/analyzer/producer-clang.stderr" >&2
+        fail 'production semantic producer static analysis failed'
+    fi
+    if grep -q 'warning:' "$WORK/analyzer/producer-clang.stderr"; then
+        sed -n '1,200p' "$WORK/analyzer/producer-clang.stderr" >&2
+        fail 'production semantic producer analyzer reported a finding'
+    fi
+elif "$CC" -fanalyzer -x c -c -o "$WORK/analyzer/probe.o" - \
+        >/dev/null 2>&1 <<'EOF'
+int semantic_event_analyzer_probe(void) { return 0; }
+EOF
+then
+    "$CC" -std=c11 -fanalyzer -Wall -Wextra -Werror -pedantic \
+        -I"$ROOT/bootstrap/stage2" \
+        -c "$ROOT/bootstrap/stage2/semantic_events.c" \
+        -o "$WORK/analyzer/semantic-events.o"
+    "$CC" -std=c11 -fanalyzer -Wall -Wextra -Werror -pedantic \
+        -I"$ROOT/bootstrap/stage2" \
+        -c "$ROOT/bootstrap/stage2/semantic_producer.c" \
+        -o "$WORK/analyzer/semantic-producer.o"
+else
+    fail 'clang analyzer or GCC -fanalyzer is required'
+fi
+
+# No-sink Stage 2 behavior stays on the pre-existing command surface.
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$ROOT/bootstrap/stage2/compiler.c" \
+    -o "$WORK/plain/kofun-stage2"
+set +e
+"$WORK/plain/kofun-stage2" --compile-outcome \
+    "$ROOT/bootstrap/stage2/functions_fixture.kofun" \
+    "$WORK/plain/no-sink-before.c" \
+    "$WORK/plain/no-sink-before.ir" \
+    "$WORK/plain/no-sink-before.tokens" \
+    >"$WORK/plain/no-sink-before.stdout" \
+    2>"$WORK/plain/no-sink-before.stderr"
+no_sink_valid_before_status=$?
+set -e
+test "$no_sink_valid_before_status" -eq 0
+set +e
+"$WORK/plain/kofun-stage2" --compile-outcome \
+    "$ROOT/bootstrap/stage2/function_unknown_error.kofun" \
+    "$WORK/plain/unknown-before.c" \
+    "$WORK/plain/unknown-before.ir" \
+    "$WORK/plain/unknown-before.tokens" \
+    >"$WORK/plain/unknown-before.stdout" \
+    2>"$WORK/plain/unknown-before.stderr"
+no_sink_invalid_before_status=$?
+set -e
+test "$no_sink_invalid_before_status" -eq 1
+"$WORK/plain/kofun-stage2-semantic-events" \
+    "$FIXTURE" src/main.kofun "$WORK/plain/no-sink-middle.kse" 99
+set +e
+"$WORK/plain/kofun-stage2" --compile-outcome \
+    "$ROOT/bootstrap/stage2/functions_fixture.kofun" \
+    "$WORK/plain/no-sink-after.c" \
+    "$WORK/plain/no-sink-after.ir" \
+    "$WORK/plain/no-sink-after.tokens" \
+    >"$WORK/plain/no-sink-after.stdout" \
+    2>"$WORK/plain/no-sink-after.stderr"
+no_sink_valid_after_status=$?
+set -e
+test "$no_sink_valid_after_status" -eq 0
+test "$no_sink_valid_before_status" -eq "$no_sink_valid_after_status"
+cmp "$WORK/plain/no-sink-before.c" "$WORK/plain/no-sink-after.c"
+cmp "$WORK/plain/no-sink-before.ir" "$WORK/plain/no-sink-after.ir"
+cmp "$WORK/plain/no-sink-before.tokens" "$WORK/plain/no-sink-after.tokens"
+sed \
+    "s|$WORK/plain/no-sink-before.c|OUTPUT.c|" \
+    "$WORK/plain/no-sink-before.stdout" \
+    >"$WORK/plain/no-sink-before.normalized"
+sed \
+    "s|$WORK/plain/no-sink-after.c|OUTPUT.c|" \
+    "$WORK/plain/no-sink-after.stdout" \
+    >"$WORK/plain/no-sink-after.normalized"
+cmp \
+    "$WORK/plain/no-sink-before.normalized" \
+    "$WORK/plain/no-sink-after.normalized"
+cmp "$WORK/plain/no-sink-before.stderr" "$WORK/plain/no-sink-after.stderr"
+set +e
+"$WORK/plain/kofun-stage2" --compile-outcome \
+    "$ROOT/bootstrap/stage2/function_unknown_error.kofun" \
+    "$WORK/plain/unknown-after.c" \
+    "$WORK/plain/unknown-after.ir" \
+    "$WORK/plain/unknown-after.tokens" \
+    >"$WORK/plain/unknown-after.stdout" \
+    2>"$WORK/plain/unknown-after.stderr"
+no_sink_invalid_after_status=$?
+set -e
+test "$no_sink_invalid_after_status" -eq 1
+test "$no_sink_invalid_before_status" -eq "$no_sink_invalid_after_status"
+cmp "$WORK/plain/unknown-before.ir" "$WORK/plain/unknown-after.ir"
+cmp "$WORK/plain/unknown-before.tokens" "$WORK/plain/unknown-after.tokens"
+cmp "$WORK/plain/unknown-before.stdout" "$WORK/plain/unknown-after.stdout"
+cmp "$WORK/plain/unknown-before.stderr" "$WORK/plain/unknown-after.stderr"
+cmp \
+    "$ROOT/bootstrap/stage2/function_unknown_error.stdout" \
+    "$WORK/plain/unknown-after.stdout"
+test ! -s "$WORK/plain/unknown-after.stderr"
+test ! -e "$WORK/plain/unknown-before.c"
+test ! -e "$WORK/plain/unknown-after.c"
+
+printf '%s\n' \
+    'PASS: Stage 2 semantic sink, compatibility, ASan/UBSan, and analyzer'

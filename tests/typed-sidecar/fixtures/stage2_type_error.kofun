@@ -1,0 +1,8 @@
+fn stable(value: Int) -> Int {
+    return value
+}
+
+fn main() {
+    let wrong: Int = "not an Int"
+    print(stable(1))
+}
