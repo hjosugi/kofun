@@ -349,8 +349,9 @@ general resolver.
 
 ## Imports and re-exports
 
-The ordinary qualified/selective forms are accepted design targets; their
-general resolver remains planned:
+The ordinary qualified, qualified-alias, and selective forms below have
+bounded executable Stage 2 checkpoints. They are not yet routed through the
+general CLI/package resolver:
 
 ```kofun
 import science
@@ -366,11 +367,12 @@ pub import collections
 pub from collections import Map, Set
 ```
 
-An ordinary import never becomes public implicitly. A re-export preserves the
-original target identity, creates a distinct `ExportBindingId`, and fails if
-any target/enclosing/signature boundary is less than public. Aliases,
-wildcards, internal forwarding, and an `export` keyword are not part of the
-first slice.
+An ordinary import or module alias never becomes public implicitly. A
+re-export preserves the original target identity, creates a distinct
+`ExportBindingId`, and fails if any target/enclosing/signature boundary is less
+than public. Re-export aliases, wildcards, internal forwarding, and an
+`export` keyword are not part of the first re-export slice;
+`pub import ... as ...` is rejected.
 
 ## Semicolons
 

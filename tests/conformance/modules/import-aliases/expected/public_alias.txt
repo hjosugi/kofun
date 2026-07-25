@@ -1,0 +1,1 @@
+error[E2S59]: modified import/re-export syntax is outside the ordinary qualified-import slice in `app/main.kofun` at bytes 16..26; hint: remove the visibility modifier; ordinary aliases remain local

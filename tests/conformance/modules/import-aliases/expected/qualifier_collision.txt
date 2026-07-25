@@ -1,0 +1,1 @@
+error[E2S63]: module qualifier `csv` collides between `data.formats.delimited.reader` bytes 16..59 and `other.reader` bytes 60..86 in `app/main.kofun`; hint: choose distinct local qualifiers

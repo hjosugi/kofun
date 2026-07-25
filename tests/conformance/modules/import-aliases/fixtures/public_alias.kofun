@@ -1,0 +1,6 @@
+module app.main
+pub import data.formats.delimited.reader as csv
+
+fn main() -> Int {
+    return csv.as(42)
+}

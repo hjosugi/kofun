@@ -1,0 +1,6 @@
+module app.main
+from data.formats.delimited.reader import as as identity
+
+fn main() -> Int {
+    return identity(42)
+}

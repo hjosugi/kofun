@@ -1334,6 +1334,12 @@ static bool emit_selective_hir(SelectiveResolver *resolver, const char *path) {
             fprintf(output, "%zu..%zu", binding->components[component].start,
                 binding->components[component].end);
         }
+        if (binding->has_alias) {
+            char alias_binding_hex[65];
+            bytes_to_hex(binding->alias_binding_id, 32u, alias_binding_hex);
+            fprintf(output, "|alias-binding=%s|alias-span=%zu..%zu|reexport=false",
+                alias_binding_hex, binding->alias_start, binding->alias_end);
+        }
         fputc('\n', output);
     }
     for (index = 0u; index < resolver->selective_count; index += 1u) {
@@ -1451,8 +1457,17 @@ static bool emit_selective_hir(SelectiveResolver *resolver, const char *path) {
         bytes_to_hex(program->modules[target->module_index].module_id, 32u, target_module_hex);
         bytes_to_hex(target->symbol_id, 32u, symbol_hex);
         fprintf(output,
-            "qualified-call|caller=%s|binding=%s|target-module=%s|target-symbol=%s|name=%s|expression-span=%zu..%zu\n",
-            caller_hex, binding_hex, target_module_hex, symbol_hex, target->name,
+            "qualified-call|caller=%s|binding=%s",
+            caller_hex, binding_hex);
+        if (qualified->imports[use->binding_index].has_alias) {
+            char alias_binding_hex[65];
+            bytes_to_hex(qualified->imports[use->binding_index].alias_binding_id,
+                32u, alias_binding_hex);
+            fprintf(output, "|alias-binding=%s", alias_binding_hex);
+        }
+        fprintf(output,
+            "|target-module=%s|target-symbol=%s|name=%s|expression-span=%zu..%zu\n",
+            target_module_hex, symbol_hex, target->name,
             use->expression_start, use->expression_end);
     }
     for (index = 0u; index < resolver->binding_count; index += 1u) {

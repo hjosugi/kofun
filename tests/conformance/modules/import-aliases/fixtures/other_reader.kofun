@@ -1,0 +1,5 @@
+module other.reader
+
+internal fn as(value: Int) -> Int {
+    return value
+}

@@ -61,6 +61,7 @@ The v1 domains are:
 | SymbolId | `kofun.id.symbol/v1` |
 | TypeId | `kofun.id.type/v1` |
 | ImportBindingId | `kofun.id.import-binding/v1` |
+| AliasBindingId | `kofun.id.alias-binding/v1` |
 | ExportBindingId | `kofun.id.export-binding/v1` |
 | ImplementationId | `kofun.id.implementation/v1` |
 | LawEvidenceId | `kofun.id.law-evidence/v1` |
@@ -94,6 +95,13 @@ The remaining identity payloads are canonical KIF records:
 - `ImportBindingId` contains the importing `ModuleId` and `FileId`, local
   namespace/name, target identity, and import-form tag. It is a local binding,
   never a replacement for the target `SymbolId`.
+- `AliasBindingId` contains the importing `ModuleId` and `FileId`, the exact
+  alias-identifier byte span as unsigned 64-bit big-endian start/end offsets,
+  the local alias name, and the raw target `ModuleId`. It records the
+  source-local qualifier declaration only. Qualified lookup still carries the
+  original target `ModuleId` and `SymbolId`; alias spelling, position, and
+  identity never rename the target or enter a public semantic digest except
+  where that digest explicitly represents the importing file's local binding.
 - `ExportBindingId` contains exporting `ModuleId`, exported namespace/name,
   target `SymbolId`, and effective visibility. A re-export therefore changes
   the exporting interface without changing the target. A module-namespace

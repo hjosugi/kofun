@@ -1,0 +1,6 @@
+module app.main
+import .reader as csv
+
+fn main() -> Int {
+    return 0
+}

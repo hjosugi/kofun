@@ -290,9 +290,14 @@ sed 's/import lib\.math/import lib.9math/' "$CASES/fixtures/main.kofun" > "$WORK
 write_inventory "$WORK/invalid-path.kofun" "$CASES/fixtures/math.kofun" "$WORK/invalid-path.inventory"
 expect_failure E2S59 "$WORK/invalid-path.inventory" "$WORK/invalid-path.hir" "$WORK/invalid-path.log"
 
-sed 's/import lib\.math/import lib.math as m/' "$CASES/fixtures/main.kofun" > "$WORK/alias.kofun"
+sed -e 's/import lib\.math/import lib.math as m/' \
+    -e 's/math\.identity/m.identity/' \
+    "$CASES/fixtures/main.kofun" > "$WORK/alias.kofun"
 write_inventory "$WORK/alias.kofun" "$CASES/fixtures/math.kofun" "$WORK/alias.inventory"
-expect_failure E2S59 "$WORK/alias.inventory" "$WORK/alias.hir" "$WORK/alias.log"
+"$TOOL" "$WORK/alias.inventory" "$WORK/alias.hir"
+grep -F "|local=m|target=$MATH_MODULE|form=qualified-module-v1|" \
+    "$WORK/alias.hir" >/dev/null
+grep -F '|alias-binding=' "$WORK/alias.hir" >/dev/null
 
 sed 's/import lib\.math/import lib.*/' "$CASES/fixtures/main.kofun" > "$WORK/wildcard.kofun"
 write_inventory "$WORK/wildcard.kofun" "$CASES/fixtures/math.kofun" "$WORK/wildcard.inventory"
