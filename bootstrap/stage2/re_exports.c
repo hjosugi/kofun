@@ -16,7 +16,10 @@
 #define RE_EXPORT_BINDINGS_PER_MODULE_LIMIT 1024u
 #define RE_EXPORT_BINDING_LIMIT 65536u
 #define RE_EXPORT_CHAIN_LIMIT 64u
+#define RE_EXPORT_LOOKUP_CAPACITY 131072u
+#ifndef RE_EXPORT_GRAPH_WORK_LIMIT
 #define RE_EXPORT_GRAPH_WORK_LIMIT UINT64_C(20000000)
+#endif
 
 typedef enum {
     RE_EXPORT_QUALIFIED,
@@ -37,6 +40,7 @@ typedef struct {
 typedef struct {
     size_t declaration_index;
     size_t selective_name_index;
+    uint8_t resolved_namespaces;
     bool resolved;
 } ReExportRequest;
 
@@ -64,6 +68,13 @@ typedef struct {
 } ResolvedExport;
 
 typedef struct {
+    bool occupied;
+    size_t exporter_index;
+    unsigned namespace_tag;
+    size_t export_index;
+} ReExportLookupEntry;
+
+typedef struct {
     SelectiveResolver imports;
     ReExportDeclaration *declarations;
     size_t declaration_count;
@@ -76,17 +87,23 @@ typedef struct {
     size_t export_count;
     size_t export_capacity;
     size_t module_export_counts[MODULE_LIMIT];
+    ReExportLookupEntry *export_lookup;
     uint64_t graph_work;
 } ReExportResolver;
 
 static ReExportResolver *re_export_comparison_resolver;
 
-static bool re_export_step(ReExportResolver *resolver) {
+static bool re_export_step(
+    ReExportResolver *resolver,
+    size_t span_start,
+    size_t span_end
+) {
     resolver->graph_work += 1u;
     if (resolver->graph_work <= RE_EXPORT_GRAPH_WORK_LIMIT) return true;
     set_error(&resolver->imports.qualified.program, "E2S90",
-        "re-export graph exceeds %llu operations; hint: split the package or shorten facade chains",
-        (unsigned long long)RE_EXPORT_GRAPH_WORK_LIMIT);
+        "re-export graph exceeds %llu operations at bytes %zu..%zu; hint: split the package or shorten facade chains",
+        (unsigned long long)RE_EXPORT_GRAPH_WORK_LIMIT,
+        span_start, span_end);
     return false;
 }
 
@@ -109,23 +126,25 @@ static void remap_public_import_error(Program *program) {
     replace_error_code(program, "E2S72", "E2S87");
     replace_error_code(program, "E2S73", "E2S88");
     replace_error_code(program, "E2S74", "E2S86");
-    replace_error_code(program, "E2S75", "E2S90");
     replace_error_code(program, "E2S77", "E2S92");
     replace_error_code(program, "E2S78", "E2S94");
 }
 
 static bool reserve_re_export_declaration(
     ReExportResolver *resolver,
-    size_t module_index
+    size_t module_index,
+    size_t span_start,
+    size_t span_end
 ) {
     ReExportDeclaration *resized;
     Program *program = &resolver->imports.qualified.program;
     if (resolver->module_declaration_counts[module_index] >=
             RE_EXPORT_DECLARATIONS_PER_MODULE_LIMIT) {
         set_error(program, "E2S90",
-            "module `%s` exceeds %u re-export declarations; hint: split the facade",
+            "module `%s` exceeds %u re-export declarations at bytes %zu..%zu; hint: split the facade",
             program->modules[module_index].logical_path,
-            RE_EXPORT_DECLARATIONS_PER_MODULE_LIMIT);
+            RE_EXPORT_DECLARATIONS_PER_MODULE_LIMIT,
+            span_start, span_end);
         return false;
     }
     if (resolver->declaration_count < resolver->declaration_capacity) return true;
@@ -144,13 +163,17 @@ static bool reserve_re_export_declaration(
     return true;
 }
 
-static bool reserve_re_export_request(ReExportResolver *resolver) {
+static bool reserve_re_export_request(
+    ReExportResolver *resolver,
+    size_t span_start,
+    size_t span_end
+) {
     ReExportRequest *resized;
     Program *program = &resolver->imports.qualified.program;
     if (resolver->request_count >= RE_EXPORT_BINDING_LIMIT) {
         set_error(program, "E2S90",
-            "package exceeds %u re-export requests; hint: split the package",
-            RE_EXPORT_BINDING_LIMIT);
+            "package exceeds %u re-export requests at bytes %zu..%zu; hint: split the package",
+            RE_EXPORT_BINDING_LIMIT, span_start, span_end);
         return false;
     }
     if (resolver->request_count < resolver->request_capacity) return true;
@@ -169,21 +192,27 @@ static bool reserve_re_export_request(ReExportResolver *resolver) {
     return true;
 }
 
-static bool reserve_resolved_export(ReExportResolver *resolver, size_t module_index) {
+static bool reserve_resolved_export(
+    ReExportResolver *resolver,
+    size_t module_index,
+    size_t span_start,
+    size_t span_end
+) {
     ResolvedExport *resized;
     Program *program = &resolver->imports.qualified.program;
     if (resolver->export_count >= RE_EXPORT_BINDING_LIMIT) {
         set_error(program, "E2S90",
-            "package exceeds %u expanded re-export bindings; hint: split the package",
-            RE_EXPORT_BINDING_LIMIT);
+            "package exceeds %u expanded re-export bindings at bytes %zu..%zu; hint: split the package",
+            RE_EXPORT_BINDING_LIMIT, span_start, span_end);
         return false;
     }
     if (resolver->module_export_counts[module_index] >=
             RE_EXPORT_BINDINGS_PER_MODULE_LIMIT) {
         set_error(program, "E2S90",
-            "module `%s` exceeds %u expanded re-export bindings; hint: export fewer names",
+            "module `%s` exceeds %u expanded re-export bindings at bytes %zu..%zu; hint: export fewer names",
             program->modules[module_index].logical_path,
-            RE_EXPORT_BINDINGS_PER_MODULE_LIMIT);
+            RE_EXPORT_BINDINGS_PER_MODULE_LIMIT,
+            span_start, span_end);
         return false;
     }
     if (resolver->export_count < resolver->export_capacity) return true;
@@ -232,7 +261,8 @@ static bool parse_public_import(
             module->logical_path, pub_start, module->tokens[current].end);
         return false;
     }
-    if (!reserve_re_export_declaration(resolver, module_index)) return false;
+    if (!reserve_re_export_declaration(resolver, module_index,
+            pub_start, pub_end)) return false;
     declaration_index = resolver->declaration_count++;
     declaration = &resolver->declarations[declaration_index];
     memset(declaration, 0, sizeof(*declaration));
@@ -245,6 +275,14 @@ static bool parse_public_import(
         dependency_index = qualified->import_count;
         if (!parse_import(qualified, module_index, &current)) {
             remap_public_import_error(program);
+            return false;
+        }
+        if (qualified->imports[dependency_index].has_alias) {
+            set_error(program, "E2S85",
+                "public module aliases are unsupported in `%s` at bytes %zu..%zu; hint: use `pub import a.b` without `as`",
+                module->logical_path,
+                qualified->imports[dependency_index].alias_start,
+                qualified->imports[dependency_index].alias_end);
             return false;
         }
         declaration->whole_end = qualified->imports[dependency_index].end;
@@ -294,8 +332,10 @@ static bool collect_re_export_module(
             if (qualified->modules[module_index].import_count >=
                     IMPORTS_PER_MODULE_LIMIT) {
                 set_error(program, "E2S90",
-                    "module `%s` exceeds %u import/re-export declarations; hint: combine or remove imports",
-                    module->logical_path, IMPORTS_PER_MODULE_LIMIT);
+                    "module `%s` exceeds %u import/re-export declarations at bytes %zu..%zu; hint: combine or remove imports",
+                    module->logical_path, IMPORTS_PER_MODULE_LIMIT,
+                    module->tokens[cursor].start,
+                    module->tokens[cursor].end);
                 return false;
             }
             if (!parse_import(qualified, module_index, &cursor)) return false;
@@ -386,7 +426,9 @@ static bool build_re_export_requests(ReExportResolver *resolver) {
         ReExportDeclaration *declaration =
             &resolver->declarations[declaration_index];
         if (declaration->form == RE_EXPORT_QUALIFIED) {
-            if (!reserve_re_export_request(resolver)) return false;
+            if (!reserve_re_export_request(resolver,
+                    declaration->whole_start,
+                    declaration->whole_end)) return false;
             resolver->requests[resolver->request_count++] =
                 (ReExportRequest){ .declaration_index = declaration_index };
         } else {
@@ -395,7 +437,9 @@ static bool build_re_export_requests(ReExportResolver *resolver) {
             size_t name_index;
             for (name_index = 0u; name_index < selective->name_count;
                  name_index += 1u) {
-                if (!reserve_re_export_request(resolver)) return false;
+                SelectiveName *name = &selective->names[name_index];
+                if (!reserve_re_export_request(resolver,
+                        name->start, name->end)) return false;
                 resolver->requests[resolver->request_count++] =
                     (ReExportRequest){
                         .declaration_index = declaration_index,
@@ -405,6 +449,69 @@ static bool build_re_export_requests(ReExportResolver *resolver) {
         }
     }
     return true;
+}
+
+static bool validate_ordinary_import_cycles(ReExportResolver *resolver) {
+    ImportResolver *qualified = &resolver->imports.qualified;
+    bool *original_duplicates = NULL;
+    size_t import_index;
+    size_t declaration_index;
+    bool valid;
+    if (qualified->import_count != 0u) {
+        original_duplicates = malloc(
+            qualified->import_count * sizeof(*original_duplicates));
+        if (original_duplicates == NULL) {
+            set_error(&qualified->program, "E2S94",
+                "ordinary import-cycle filter allocation failed");
+            return false;
+        }
+    }
+    for (import_index = 0u; import_index < qualified->import_count;
+         import_index += 1u) {
+        original_duplicates[import_index] =
+            qualified->imports[import_index].graph_duplicate;
+    }
+    for (declaration_index = 0u;
+         declaration_index < resolver->declaration_count;
+         declaration_index += 1u) {
+        size_t dependency_index =
+            resolver->declarations[declaration_index].dependency_index;
+        if (dependency_index < qualified->import_count) {
+            qualified->imports[dependency_index].graph_duplicate = true;
+        }
+    }
+    valid = validate_import_cycles(qualified);
+    for (import_index = 0u; import_index < qualified->import_count;
+         import_index += 1u) {
+        qualified->imports[import_index].graph_duplicate =
+            original_duplicates[import_index];
+    }
+    free(original_duplicates);
+    return valid;
+}
+
+static void add_self_re_export_secondary_span(ReExportResolver *resolver) {
+    Program *program = &resolver->imports.qualified.program;
+    size_t declaration_index;
+    size_t length;
+    if (strstr(program->error, "E2S61") == NULL) return;
+    for (declaration_index = 0u;
+         declaration_index < resolver->declaration_count;
+         declaration_index += 1u) {
+        ReExportDeclaration *declaration =
+            &resolver->declarations[declaration_index];
+        ImportBinding *dependency =
+            &resolver->imports.qualified.imports[
+                declaration->dependency_index];
+        if (declaration->exporter_index != dependency->target_index) continue;
+        length = strlen(program->error);
+        if (length < sizeof(program->error)) {
+            (void)snprintf(program->error + length,
+                sizeof(program->error) - length,
+                "; target module header bytes 0..0");
+        }
+        return;
+    }
 }
 
 static void compute_selected_import_binding_id(
@@ -454,7 +561,7 @@ static void compute_export_binding_id_for_resolver(
     static const uint8_t visibility = 3u;
     const Module *exporter = &program->modules[exporter_index];
     size_t name_length = strlen(name);
-    size_t payload_length = 24u + 32u + 32u + name_length + 32u + 1u;
+    size_t payload_length = 30u + 32u + 32u + name_length + 32u + 1u;
     uint8_t u16[2];
     uint8_t u32[4];
     KofunSha256 context;
@@ -486,6 +593,8 @@ static KofunKifExportTargetKind export_target_kind(DeclarationKind kind) {
 static bool validate_export_function_signature(
     ReExportResolver *resolver,
     const Declaration *target,
+    size_t request_start,
+    size_t request_end,
     uint16_t *parameter_count
 ) {
     Program *program = &resolver->imports.qualified.program;
@@ -519,8 +628,9 @@ static bool validate_export_function_signature(
         type = &module->tokens[cursor + 2u];
         if (!token_equals(module, type, "Int")) {
             set_error(program, "E2S87",
-                "public re-export `%s` in `%s` exposes hidden/incompatible parameter type at bytes %zu..%zu; requested=pub effective=private; hint: expose a public supported signature",
-                target->name, module->logical_path, type->start, type->end);
+                "public re-export `%s` in `%s` at bytes %zu..%zu exposes hidden/incompatible parameter type at target bytes %zu..%zu; requested=pub effective=private; hint: expose a public supported signature",
+                target->name, module->logical_path,
+                request_start, request_end, type->start, type->end);
             return false;
         }
         count += 1u;
@@ -532,12 +642,95 @@ static bool validate_export_function_signature(
         Token *type = close + 2u < module->token_count
             ? &module->tokens[close + 2u] : &module->tokens[close];
         set_error(program, "E2S87",
-            "public re-export `%s` in `%s` exposes hidden/incompatible result type at bytes %zu..%zu; requested=pub effective=private; hint: expose a public supported signature",
-            target->name, module->logical_path, type->start, type->end);
+            "public re-export `%s` in `%s` at bytes %zu..%zu exposes hidden/incompatible result type at target bytes %zu..%zu; requested=pub effective=private; hint: expose a public supported signature",
+            target->name, module->logical_path,
+            request_start, request_end, type->start, type->end);
         return false;
     }
     *parameter_count = count;
     return true;
+}
+
+static size_t export_lookup_slot(
+    size_t exporter_index,
+    unsigned namespace_tag,
+    const char *name
+) {
+    uint64_t hash = UINT64_C(1469598103934665603);
+    const unsigned char *cursor = (const unsigned char *)name;
+    hash ^= (uint64_t)exporter_index;
+    hash *= UINT64_C(1099511628211);
+    hash ^= (uint64_t)namespace_tag;
+    hash *= UINT64_C(1099511628211);
+    while (*cursor != '\0') {
+        hash ^= (uint64_t)*cursor++;
+        hash *= UINT64_C(1099511628211);
+    }
+    return (size_t)(hash & (RE_EXPORT_LOOKUP_CAPACITY - 1u));
+}
+
+static bool ensure_export_lookup(ReExportResolver *resolver) {
+    if (resolver->export_lookup != NULL) return true;
+    resolver->export_lookup = calloc(RE_EXPORT_LOOKUP_CAPACITY,
+        sizeof(*resolver->export_lookup));
+    if (resolver->export_lookup == NULL) {
+        set_error(&resolver->imports.qualified.program, "E2S94",
+            "re-export collision index allocation failed");
+        return false;
+    }
+    return true;
+}
+
+static ResolvedExport *find_indexed_export(
+    ReExportResolver *resolver,
+    size_t exporter_index,
+    unsigned namespace_tag,
+    const char *name
+) {
+    size_t slot;
+    size_t probes;
+    if (resolver->export_lookup == NULL) return NULL;
+    slot = export_lookup_slot(exporter_index, namespace_tag, name);
+    for (probes = 0u; probes < RE_EXPORT_LOOKUP_CAPACITY; probes += 1u) {
+        ReExportLookupEntry *entry = &resolver->export_lookup[slot];
+        ResolvedExport *candidate;
+        if (!entry->occupied) return NULL;
+        candidate = &resolver->exports[entry->export_index];
+        if (entry->exporter_index == exporter_index &&
+            entry->namespace_tag == namespace_tag &&
+            strcmp(candidate->name, name) == 0) {
+            return candidate;
+        }
+        slot = (slot + 1u) & (RE_EXPORT_LOOKUP_CAPACITY - 1u);
+    }
+    return NULL;
+}
+
+static bool index_export(
+    ReExportResolver *resolver,
+    size_t exporter_index,
+    unsigned namespace_tag,
+    const char *name,
+    size_t export_index
+) {
+    size_t slot = export_lookup_slot(exporter_index, namespace_tag, name);
+    size_t probes;
+    for (probes = 0u; probes < RE_EXPORT_LOOKUP_CAPACITY; probes += 1u) {
+        ReExportLookupEntry *entry = &resolver->export_lookup[slot];
+        if (!entry->occupied) {
+            *entry = (ReExportLookupEntry){
+                .occupied = true,
+                .exporter_index = exporter_index,
+                .namespace_tag = namespace_tag,
+                .export_index = export_index
+            };
+            return true;
+        }
+        slot = (slot + 1u) & (RE_EXPORT_LOOKUP_CAPACITY - 1u);
+    }
+    set_error(&resolver->imports.qualified.program, "E2S94",
+        "re-export collision index exhausted");
+    return false;
 }
 
 static bool export_collides(
@@ -553,7 +746,6 @@ static bool export_collides(
     size_t index;
     for (index = 0u; index < program->declaration_count; index += 1u) {
         Declaration *local = &program->declarations[index];
-        if (!re_export_step(resolver)) return true;
         if (local->module_index == source->exporter_index &&
             local->namespace_tag == namespace_tag &&
             strcmp(local->name, name) == 0) {
@@ -570,7 +762,6 @@ static bool export_collides(
         SelectiveDeclaration *selective =
             &resolver->imports.selectives[binding->declaration_index];
         SelectiveName *imported = &selective->names[binding->name_index];
-        if (!re_export_step(resolver)) return true;
         if (!selective->is_re_export &&
             selective->importer_index == source->exporter_index &&
             binding->namespace_tag == namespace_tag &&
@@ -588,7 +779,6 @@ static bool export_collides(
         for (index = qualified->modules[source->exporter_index].first_import;
              index < qualified->import_count; index += 1u) {
             ImportBinding *binding = &qualified->imports[index];
-            if (!re_export_step(resolver)) return true;
             if (binding->importer_index != source->exporter_index) break;
             if (index != source->dependency_index &&
                 binding->form_tag == IMPORT_FORM_QUALIFIED &&
@@ -601,14 +791,10 @@ static bool export_collides(
             }
         }
     }
-    for (index = 0u; index < resolver->export_count; index += 1u) {
-        ResolvedExport *other = &resolver->exports[index];
-        ReExportDeclaration *other_source =
-            &resolver->declarations[other->declaration_index];
-        if (!re_export_step(resolver)) return true;
-        if (other_source->exporter_index == source->exporter_index &&
-            other->namespace_tag == namespace_tag &&
-            strcmp(other->name, name) == 0) {
+    {
+        ResolvedExport *other = find_indexed_export(resolver,
+            source->exporter_index, namespace_tag, name);
+        if (other != NULL) {
             set_error(program, "E2S88",
                 "duplicate/colliding public %s export `%s` in `%s`; binding spans=%zu..%zu,%zu..%zu; hint: keep exactly one facade edge",
                 namespace_name(namespace_tag), name,
@@ -654,7 +840,9 @@ static bool append_export(
     }
     if (export_collides(resolver, declaration_index, name, namespace_tag,
             name_start, name_end)) return false;
-    if (!reserve_resolved_export(resolver, source->exporter_index)) return false;
+    if (!reserve_resolved_export(resolver, source->exporter_index,
+            name_start, name_end) ||
+        !ensure_export_lookup(resolver)) return false;
     result = &resolver->exports[resolver->export_count++];
     memset(result, 0, sizeof(*result));
     result->declaration_index = declaration_index;
@@ -692,6 +880,8 @@ static bool append_export(
             forwarded->chain_count * sizeof(forwarded->chain_ids[0]));
         result->chain_count += forwarded->chain_count;
     }
+    if (!index_export(resolver, source->exporter_index, namespace_tag,
+            name, resolver->export_count - 1u)) return false;
     resolver->module_export_counts[source->exporter_index] += 1u;
     return true;
 }
@@ -707,15 +897,52 @@ static bool resolve_qualified_request(
         &resolver->imports.qualified.imports[source->dependency_index];
     const char *declared_path =
         resolver->imports.qualified.modules[dependency->target_index].declared_path;
+    const Module *exporter_module =
+        &program->modules[source->exporter_index];
+    const Module *target_module =
+        &program->modules[dependency->target_index];
+    KofunAccessContext context;
+    KofunDeclarationAccess declaration;
+    KofunAccessResult access;
     uint8_t target_symbol[32];
     ComponentSpan name_span =
         dependency->components[dependency->component_count - 1u];
+    memset(&context, 0, sizeof(context));
+    memset(&declaration, 0, sizeof(declaration));
+    context.caller_package =
+        access_identity(KOFUN_ID_PACKAGE, exporter_module->package_id);
+    context.caller_module =
+        access_identity(KOFUN_ID_MODULE, exporter_module->module_id);
+    context.caller_file =
+        access_identity(KOFUN_ID_FILE, exporter_module->file_id);
+    context.use_span =
+        (KofunSpan){ (uint32_t)name_span.start, (uint32_t)name_span.end };
+    declaration.declared_visibility = KOFUN_VISIBILITY_PUBLIC;
+    declaration.defining_package =
+        access_identity(KOFUN_ID_PACKAGE, target_module->package_id);
+    declaration.defining_module =
+        access_identity(KOFUN_ID_MODULE, target_module->module_id);
+    declaration.defining_file =
+        access_identity(KOFUN_ID_FILE, target_module->file_id);
+    declaration.declaration_span = (KofunSpan){ 0u, 0u };
+    access = kofun_decide_access(&context, &declaration);
+    if (access.kind != KOFUN_ACCESS_ALLOWED ||
+        !access.usable_reference ||
+        (access.proof & KOFUN_ACCESS_PROOF_SAME_PACKAGE) == 0u) {
+        set_error(program, "E2S87",
+            "public module re-export `%s` in `%s` at bytes %zu..%zu cannot publish target module header bytes 0..0 outside its same-package access boundary; requested=pub effective=private; hint: keep v1 re-exports inside one package",
+            dependency->qualifier, exporter_module->logical_path,
+            name_span.start, name_span.end);
+        return false;
+    }
     compute_symbol_hash(program->modules[dependency->target_index].module_id,
         program->namespace_ids[2], "module", declared_path, target_symbol);
     if (!append_export(resolver, request->declaration_index,
             dependency->qualifier, name_span.start, name_span.end, 2u,
             KOFUN_KIF_EXPORT_TARGET_MODULE, dependency->target_index,
-            SIZE_MAX, target_symbol, 0u, 0u, NULL, 0u, 0u, NULL)) return false;
+            SIZE_MAX, target_symbol, 0u, 0u, NULL, 0u,
+            access.proof, NULL)) return false;
+    request->resolved_namespaces = (uint8_t)(1u << 2u);
     request->resolved = true;
     return true;
 }
@@ -741,7 +968,6 @@ static bool append_direct_declaration_exports(
         Declaration *target = &program->declarations[target_index];
         uint16_t parameter_count = 0u;
         KofunAccessResult access;
-        if (!re_export_step(resolver)) return false;
         if (target->module_index != dependency->target_index ||
             (target->kind != DECLARATION_FUNCTION &&
              target->kind != DECLARATION_ADT &&
@@ -753,25 +979,27 @@ static bool append_direct_declaration_exports(
         if (access.kind != KOFUN_ACCESS_ALLOWED ||
             !access.usable_reference) {
             set_error(program, "E2S87",
-                "public re-export `%s` at `%s` bytes %zu..%zu cannot access its target: %s; requested=pub effective=private; hint: expose a reachable public target",
+                "public re-export `%s` at `%s` bytes %zu..%zu cannot access target declaration bytes %zu..%zu: %s; requested=pub effective=private; hint: expose a reachable public target",
                 name->spelling,
                 program->modules[source->exporter_index].logical_path,
                 name->start, name->end,
+                target->name_start, target->name_end,
                 kofun_access_reason_name(access.reason));
             return false;
         }
         if (target->visibility != VISIBILITY_PUBLIC) {
             set_error(program, "E2S87",
-                "public re-export `%s` at `%s` bytes %zu..%zu would widen target visibility; requested=pub effective=%s; hint: make the complete target API public or keep this an ordinary import",
+                "public re-export `%s` at `%s` bytes %zu..%zu would widen target declaration bytes %zu..%zu visibility; requested=pub effective=%s; hint: make the complete target API public or keep this an ordinary import",
                 name->spelling,
                 program->modules[source->exporter_index].logical_path,
                 name->start, name->end,
+                target->name_start, target->name_end,
                 visibility_name(target->visibility));
             return false;
         }
         if (target->kind == DECLARATION_FUNCTION &&
             !validate_export_function_signature(resolver, target,
-                &parameter_count)) return false;
+                name->start, name->end, &parameter_count)) return false;
         {
             uint8_t payload_count = 0u;
             const uint8_t *owner_symbol = NULL;
@@ -812,6 +1040,8 @@ static bool append_direct_declaration_exports(
                 target->module_index, target_index, target->symbol_id,
                 parameter_count, payload_count, owner_symbol,
                 constructor_ordinal, access.proof, NULL)) return false;
+            request->resolved_namespaces |=
+                (uint8_t)(1u << target->namespace_tag);
         }
     }
     return true;
@@ -830,17 +1060,22 @@ static bool append_forwarded_exports(
         &selective->names[request->selective_name_index];
     ImportBinding *dependency =
         &resolver->imports.qualified.imports[source->dependency_index];
-    size_t export_index;
+    uint8_t namespaces_before = request->resolved_namespaces;
+    unsigned namespace_tag;
     *found = false;
-    for (export_index = 0u; export_index < resolver->export_count;
-         export_index += 1u) {
-        ResolvedExport target_copy = resolver->exports[export_index];
-        ResolvedExport *target = &target_copy;
-        ReExportDeclaration *target_source =
-            &resolver->declarations[target->declaration_index];
-        if (!re_export_step(resolver)) return false;
-        if (target_source->exporter_index != dependency->target_index ||
-            strcmp(target->name, name->spelling) != 0) continue;
+    for (namespace_tag = 0u; namespace_tag < 4u; namespace_tag += 1u) {
+        ResolvedExport target_copy;
+        ResolvedExport *indexed;
+        ResolvedExport *target;
+        if (!re_export_step(resolver, name->start, name->end)) return false;
+        if ((namespaces_before & (uint8_t)(1u << namespace_tag)) != 0u) {
+            continue;
+        }
+        indexed = find_indexed_export(resolver, dependency->target_index,
+            namespace_tag, name->spelling);
+        if (indexed == NULL) continue;
+        target_copy = *indexed;
+        target = &target_copy;
         *found = true;
         if (!append_export(resolver, request->declaration_index,
                 name->spelling, name->start, name->end,
@@ -852,6 +1087,8 @@ static bool append_forwarded_exports(
                 target->target_owner_symbol_id,
                 target->target_constructor_ordinal,
                 target->access_proof, target)) return false;
+        request->resolved_namespaces |=
+            (uint8_t)(1u << target->namespace_tag);
     }
     return true;
 }
@@ -884,7 +1121,7 @@ static void compute_cycle_edge_key(
     Program *program = &resolver->imports.qualified.program;
     const char *name = request_name(resolver, request);
     size_t name_length = strlen(name);
-    size_t payload_length = 12u + 32u + 32u + name_length;
+    size_t payload_length = 18u + 32u + 32u + name_length;
     uint8_t u16[2];
     uint8_t u32[4];
     KofunSha256 context;
@@ -1016,7 +1253,7 @@ static bool diagnose_re_export_cycle(ReExportResolver *resolver) {
     size_t best[MODULE_LIMIT + 1u];
     size_t best_length = SIZE_MAX;
     size_t request_index;
-    size_t start;
+    size_t start_edge;
     edges = malloc(resolver->request_count * sizeof(*edges));
     if (edges == NULL && resolver->request_count != 0u) {
         set_error(program, "E2S94", "cycle edge allocation failed");
@@ -1027,13 +1264,21 @@ static bool diagnose_re_export_cycle(ReExportResolver *resolver) {
         ReExportRequest *request = &resolver->requests[request_index];
         ReExportDeclaration *source =
             &resolver->declarations[request->declaration_index];
-        if (!request->resolved && source->form == RE_EXPORT_SELECTIVE) {
+        if (source->form == RE_EXPORT_QUALIFIED ||
+            (!request->resolved && source->form == RE_EXPORT_SELECTIVE)) {
             edges[edge_count++] = request_index;
         }
     }
     re_export_comparison_resolver = resolver;
     qsort(edges, edge_count, sizeof(edges[0]), compare_request_edges);
-    for (start = 0u; start < program->module_count; start += 1u) {
+    for (start_edge = 0u; start_edge < edge_count; start_edge += 1u) {
+        ReExportRequest *start_request =
+            &resolver->requests[edges[start_edge]];
+        ReExportDeclaration *start_source =
+            &resolver->declarations[start_request->declaration_index];
+        const char *cycle_name = start_source->form == RE_EXPORT_SELECTIVE
+            ? request_name(resolver, start_request) : NULL;
+        size_t start = start_source->exporter_index;
         size_t queue[MODULE_LIMIT];
         bool visited[MODULE_LIMIT] = { false };
         size_t predecessor_module[MODULE_LIMIT];
@@ -1054,11 +1299,18 @@ static bool diagnose_re_export_cycle(ReExportResolver *resolver) {
                     &resolver->imports.qualified.imports[
                         source->dependency_index];
                 size_t target;
-                if (!re_export_step(resolver)) {
+                if (!re_export_step(resolver,
+                        source->whole_start, source->whole_end)) {
                     free(edges);
                     return false;
                 }
-                if (source->exporter_index != node) continue;
+                if (source->exporter_index != node ||
+                    source->form != start_source->form ||
+                    (cycle_name != NULL &&
+                     strcmp(request_name(resolver, request),
+                        cycle_name) != 0)) {
+                    continue;
+                }
                 target = dependency->target_index;
                 if (target == start) {
                     size_t candidate[MODULE_LIMIT + 1u];
@@ -1130,7 +1382,7 @@ static bool diagnose_re_export_cycle(ReExportResolver *resolver) {
             }
             if (index + 1u == best_length &&
                 !append_text(&resolver->imports.qualified, &diagnostic,
-                    "%s; hint: remove one public forwarding edge",
+                    "%s (closing target module header bytes 0..0); hint: remove one public forwarding edge",
                     resolver->imports.qualified.modules[
                         dependency->target_index].declared_path)) {
                 free(diagnostic.bytes);
@@ -1148,7 +1400,6 @@ static bool resolve_re_exports(ReExportResolver *resolver) {
     Program *program = &resolver->imports.qualified.program;
     size_t request_index;
     bool progress;
-    size_t unresolved;
     for (request_index = 0u; request_index < resolver->request_count;
          request_index += 1u) {
         ReExportRequest *request = &resolver->requests[request_index];
@@ -1157,41 +1408,50 @@ static bool resolve_re_exports(ReExportResolver *resolver) {
         if (source->form == RE_EXPORT_QUALIFIED &&
             !resolve_qualified_request(resolver, request)) return false;
     }
+    for (request_index = 0u; request_index < resolver->request_count;
+         request_index += 1u) {
+        ReExportRequest *request = &resolver->requests[request_index];
+        ReExportDeclaration *source =
+            &resolver->declarations[request->declaration_index];
+        bool direct_found;
+        if (source->form != RE_EXPORT_SELECTIVE) continue;
+        if (!append_direct_declaration_exports(resolver, request,
+                &direct_found)) return false;
+    }
     do {
         progress = false;
-        unresolved = 0u;
         for (request_index = 0u; request_index < resolver->request_count;
              request_index += 1u) {
             ReExportRequest *request = &resolver->requests[request_index];
             ReExportDeclaration *source =
                 &resolver->declarations[request->declaration_index];
-            bool direct_found;
             bool forwarded_found;
-            if (request->resolved ||
-                source->form != RE_EXPORT_SELECTIVE) continue;
-            unresolved += 1u;
-            if (!append_direct_declaration_exports(resolver, request,
-                    &direct_found)) return false;
-            if (direct_found) {
-                request->resolved = true;
-                progress = true;
-                continue;
-            }
+            uint8_t namespaces_before;
+            if (source->form != RE_EXPORT_SELECTIVE) continue;
+            namespaces_before = request->resolved_namespaces;
             if (!append_forwarded_exports(resolver, request,
                     &forwarded_found)) return false;
-            if (forwarded_found) {
-                request->resolved = true;
+            if (forwarded_found &&
+                request->resolved_namespaces != namespaces_before) {
                 progress = true;
             }
         }
-    } while (progress && unresolved != 0u);
-    unresolved = 0u;
+    } while (progress);
     for (request_index = 0u; request_index < resolver->request_count;
          request_index += 1u) {
-        if (!resolver->requests[request_index].resolved) unresolved += 1u;
+        ReExportRequest *request = &resolver->requests[request_index];
+        ReExportDeclaration *source =
+            &resolver->declarations[request->declaration_index];
+        if (source->form == RE_EXPORT_SELECTIVE) {
+            request->resolved = request->resolved_namespaces != 0u;
+        }
     }
-    if (unresolved == 0u) return true;
+    for (request_index = 0u; request_index < resolver->request_count;
+         request_index += 1u) {
+        if (!resolver->requests[request_index].resolved) break;
+    }
     if (!diagnose_re_export_cycle(resolver)) return false;
+    if (request_index == resolver->request_count) return true;
     for (request_index = 0u; request_index < resolver->request_count;
          request_index += 1u) {
         ReExportRequest *request = &resolver->requests[request_index];
@@ -1351,15 +1611,25 @@ static bool emit_tooling_projection(
             resolver->imports.qualified.modules[
                 export->target_module_index].declared_path;
         char target_symbol_hex[65];
+        size_t chain_index;
         bytes_to_hex(export->target_symbol_id, 32u, target_symbol_hex);
         fprintf(output,
-            "doc|facade=%s.%s|canonical=%s%s%s|namespace=%s|target-symbol=%s|chain=%zu|linker-forwarding=false|runtime-forwarding=false\n",
+            "doc|facade=%s.%s|canonical=%s%s%s|namespace=%s|target-symbol=%s|chain=%zu|chain-ids=",
             facade_module, export->name, target_module,
             export->target_kind == KOFUN_KIF_EXPORT_TARGET_MODULE ? "" : ".",
             export->target_kind == KOFUN_KIF_EXPORT_TARGET_MODULE
                 ? "" : export->name,
             namespace_name(export->namespace_tag), target_symbol_hex,
             export->chain_count);
+        for (chain_index = 0u; chain_index < export->chain_count;
+             chain_index += 1u) {
+            char chain_hex[65];
+            bytes_to_hex(export->chain_ids[chain_index], 32u, chain_hex);
+            fprintf(output, "%s%s",
+                chain_index == 0u ? "" : ",", chain_hex);
+        }
+        fprintf(output,
+            "|linker-forwarding=false|runtime-forwarding=false\n");
     }
     free(indices);
     if (ferror(output) != 0 || fclose(output) != 0) {
@@ -1385,7 +1655,7 @@ static bool find_facade_module(
             return true;
         }
     }
-    set_error(program, "E2S86",
+    set_error(program, "E2S93",
         "requested facade module `%s` is absent; hint: select a declared module from the inventory",
         declared_path);
     return false;
@@ -1418,6 +1688,7 @@ static bool project_local_interface_fact(
     fact->name_length = strlen(declaration->name);
     if (declaration->kind == DECLARATION_FUNCTION) {
         if (!validate_export_function_signature(resolver, declaration,
+                declaration->name_start, declaration->name_end,
                 &fact->parameter_count)) return false;
         fact->result_type = KOFUN_KIF_TYPE_INT;
     } else if (declaration->kind == DECLARATION_CONSTRUCTOR) {
@@ -1524,6 +1795,13 @@ static bool build_facade_interface(
             program->modules[export->target_module_index].module_id, 32u);
         memcpy(fact->target_symbol_id, export->target_symbol_id, 32u);
         fact->export_target_kind = export->target_kind;
+        if (export->target_kind == KOFUN_KIF_EXPORT_TARGET_MODULE) {
+            fact->export_target_module_path =
+                resolver->imports.qualified.modules[
+                    export->target_module_index].declared_path;
+            fact->export_target_module_path_length =
+                strlen(fact->export_target_module_path);
+        }
         fact->parameter_count = export->parameter_count;
         fact->constructor_payload_count =
             export->constructor_payload_count;
@@ -1552,6 +1830,7 @@ static void destroy_re_export_resolver(ReExportResolver *resolver) {
     free(resolver->declarations);
     free(resolver->requests);
     free(resolver->exports);
+    free(resolver->export_lookup);
     destroy_selective_resolver(&resolver->imports);
 }
 
@@ -1583,6 +1862,34 @@ static bool read_complete_file(
     return true;
 }
 
+static bool validate_module_artifact_paths(
+    Program *program,
+    OutputArtifact *artifacts,
+    size_t artifact_count
+) {
+    size_t module_index;
+    size_t artifact_index;
+    for (module_index = 0u; module_index < program->module_count;
+         module_index += 1u) {
+        const char *host_path = program->modules[module_index].host_path;
+        for (artifact_index = 0u; artifact_index < artifact_count;
+             artifact_index += 1u) {
+            if (!reject_artifact_alias(program, host_path,
+                    artifacts[artifact_index].final_path,
+                    "module source and final output") ||
+                !reject_artifact_alias(program, host_path,
+                    artifacts[artifact_index].temporary_path,
+                    "module source and transaction temporary") ||
+                !reject_artifact_alias(program, host_path,
+                    artifacts[artifact_index].backup_path,
+                    "module source and transaction backup")) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 static void compute_re_export_namespace_id(
     unsigned tag,
     const char *name,
@@ -1605,6 +1912,8 @@ static int resolve_kif_mode(
     const char *namespace_text,
     const char *output_path
 ) {
+    Program program;
+    OutputArtifact artifact;
     uint8_t *bytes = NULL;
     size_t length = 0u;
     KifReadResult read;
@@ -1612,26 +1921,35 @@ static int resolve_kif_mode(
     uint8_t namespace_id[32];
     size_t index;
     const KofunKifFact *found = NULL;
-    FILE *output;
-    remove(output_path);
+    FILE *output = NULL;
+    int status = 1;
+    memset(&program, 0, sizeof(program));
+    memset(&artifact, 0, sizeof(artifact));
+    memset(&read, 0, sizeof(read));
+    if (!reject_artifact_alias(&program, input_path, output_path,
+            "target KIF input and resolved HIR output")) {
+        remap_public_import_error(&program);
+        goto done;
+    }
     if (strcmp(namespace_text, "value") == 0) namespace_tag = 0u;
     else if (strcmp(namespace_text, "type") == 0) namespace_tag = 1u;
     else if (strcmp(namespace_text, "module") == 0) namespace_tag = 2u;
     else {
         printf("error[E2S93]: unknown export namespace `%s`; hint: use value, type, or module\n",
             namespace_text);
-        return 1;
+        goto done;
     }
     if (!read_complete_file(input_path, &bytes, &length)) {
         printf("error[E2S91]: cannot read bounded target KIF; hint: rebuild the dependency interface\n");
-        return 1;
+        goto done;
     }
     read = kofun_kif_read(bytes, length, kofun_kif_default_limits());
     free(bytes);
+    bytes = NULL;
     if (read.status != KOFUN_KIF_OK) {
         printf("error[E2S91]: target KIF is %s and published no export facts; hint: rebuild it from trusted source\n",
             kofun_kif_status_name(read.status));
-        return 1;
+        goto done;
     }
     compute_re_export_namespace_id(namespace_tag, namespace_text,
         namespace_id);
@@ -1641,46 +1959,69 @@ static int resolve_kif_mode(
             strcmp(fact->name, name) == 0 &&
             memcmp(fact->namespace_id, namespace_id, 32u) == 0) {
             if (found != NULL) {
-                kofun_kif_destroy(read.interface);
                 printf("error[E2S93]: target KIF has incompatible duplicate export `%s`; hint: rebuild the facade\n",
                     name);
-                return 1;
+                goto done;
             }
             found = fact;
         }
     }
     if (found == NULL) {
-        kofun_kif_destroy(read.interface);
         printf("error[E2S93]: facade KIF has no public %s export `%s`; hint: import an exported namespace/name\n",
             namespace_text, name);
-        return 1;
+        goto done;
     }
-    output = fopen(output_path, "wb");
+    if (!prepare_output_artifact(&program, &artifact, output_path) ||
+        !validate_transaction_paths(&program, input_path, &artifact, 1u)) {
+        remap_public_import_error(&program);
+        goto done;
+    }
+    output = fopen(artifact.temporary_path, "wb");
     if (output == NULL) {
-        kofun_kif_destroy(read.interface);
         printf("error[E2S92]: cannot create resolved facade HIR; hint: choose a writable output path\n");
-        return 1;
+        goto done;
     }
     {
         char export_hex[65];
         char target_module_hex[65];
         char target_symbol_hex[65];
+        size_t chain_index;
         bytes_to_hex(found->symbol_id, 32u, export_hex);
         bytes_to_hex(found->target_module_id, 32u, target_module_hex);
         bytes_to_hex(found->target_symbol_id, 32u, target_symbol_hex);
         fprintf(output,
-            "kofun-re-export-consumer/v1\nuse|name=%s|namespace=%s|export-binding=%s|target-module=%s|target-symbol=%s|chain=%zu\n",
+            "kofun-re-export-consumer/v1\nuse|name=%s|namespace=%s|export-binding=%s|target-module=%s|target-symbol=%s|chain=%zu|chain-ids=",
             name, namespace_text, export_hex, target_module_hex,
             target_symbol_hex, found->export_chain_count);
+        for (chain_index = 0u; chain_index < found->export_chain_count;
+             chain_index += 1u) {
+            char chain_hex[65];
+            bytes_to_hex(found->export_chain_ids + chain_index * 32u,
+                32u, chain_hex);
+            fprintf(output, "%s%s",
+                chain_index == 0u ? "" : ",", chain_hex);
+        }
+        fprintf(output, "\n");
     }
     if (ferror(output) != 0 || fclose(output) != 0) {
-        remove(output_path);
-        kofun_kif_destroy(read.interface);
+        output = NULL;
+        remove(artifact.temporary_path);
         printf("error[E2S92]: cannot commit resolved facade HIR; hint: choose a writable output path\n");
-        return 1;
+        goto done;
     }
-    kofun_kif_destroy(read.interface);
-    return 0;
+    output = NULL;
+    if (!commit_output_artifacts(&program, &artifact, 1u)) {
+        remap_public_import_error(&program);
+        goto done;
+    }
+    status = 0;
+done:
+    if (output != NULL) fclose(output);
+    free(bytes);
+    if (read.interface != NULL) kofun_kif_destroy(read.interface);
+    if (program.failed) printf("%s\n", program.error);
+    release_output_artifact(&artifact);
+    return status;
 }
 
 int main(int argc, char **argv) {
@@ -1707,31 +2048,49 @@ int main(int argc, char **argv) {
     memset(artifacts, 0, sizeof(artifacts));
     memset(&interface, 0, sizeof(interface));
     qualified->extension_context = &resolver.imports;
-    if (!clear_requested_output(program, argv[3]) ||
-        !clear_requested_output(program, argv[4]) ||
-        !clear_requested_output(program, argv[5])) {
-        remap_public_import_error(program);
-        goto done;
-    }
-    if (!prepare_output_artifact(program, &artifacts[0], argv[3]) ||
-        !prepare_output_artifact(program, &artifacts[1], argv[4]) ||
-        !prepare_output_artifact(program, &artifacts[2], argv[5]) ||
-        !validate_transaction_paths(program, argv[1], artifacts, 3u)) {
+    if (!reject_artifact_alias(program, argv[1], argv[3],
+            "inventory and HIR output") ||
+        !reject_artifact_alias(program, argv[1], argv[4],
+            "inventory and KIF output") ||
+        !reject_artifact_alias(program, argv[1], argv[5],
+            "inventory and tooling output") ||
+        !reject_artifact_alias(program, argv[3], argv[4],
+            "HIR and KIF outputs") ||
+        !reject_artifact_alias(program, argv[3], argv[5],
+            "HIR and tooling outputs") ||
+        !reject_artifact_alias(program, argv[4], argv[5],
+            "KIF and tooling outputs")) {
         remap_public_import_error(program);
         goto done;
     }
     if (!load_qualified_inventory(qualified, argv[1]) ||
         !order_and_validate_inventory(program) ||
         !attach_declared_paths(qualified)) goto done;
+    if (!prepare_output_artifact(program, &artifacts[0], argv[3]) ||
+        !prepare_output_artifact(program, &artifacts[1], argv[4]) ||
+        !prepare_output_artifact(program, &artifacts[2], argv[5]) ||
+        !validate_transaction_paths(program, argv[1], artifacts, 3u) ||
+        !validate_module_artifact_paths(program, artifacts, 3u)) {
+        remap_public_import_error(program);
+        goto done;
+    }
+    if (!clear_requested_output(program, argv[3]) ||
+        !clear_requested_output(program, argv[4]) ||
+        !clear_requested_output(program, argv[5])) {
+        remap_public_import_error(program);
+        goto done;
+    }
     for (index = 0u; index < program->module_count; index += 1u) {
         if (!collect_re_export_module(&resolver, index)) goto done;
     }
     compute_identities(program);
     if (!validate_duplicates(program)) goto done;
     if (!resolve_imports(qualified)) {
+        add_self_re_export_secondary_span(&resolver);
         remap_public_import_error(program);
         goto done;
     }
+    if (!validate_ordinary_import_cycles(&resolver)) goto done;
     canonicalize_import_graph_edges(&resolver.imports);
     if (!resolve_selective_bindings(&resolver.imports)) goto done;
     if (!build_re_export_requests(&resolver) ||
@@ -1751,11 +2110,19 @@ int main(int argc, char **argv) {
     }
     kif_result = kofun_kif_write(&interface, artifacts[1].temporary_path);
     if (kif_result.status != KOFUN_KIF_OK) {
-        set_error(program, kif_result.status == KOFUN_KIF_IO_FAILURE
-                ? "E2S92" : kif_result.status == KOFUN_KIF_LIMIT_EXHAUSTED
-                    ? "E2S90" : "E2S91",
-            "facade KIF transaction failed: %s; hint: fix the export facts and rebuild",
-            kif_result.message);
+        if (kif_result.status == KOFUN_KIF_LIMIT_EXHAUSTED) {
+            set_error(program, "E2S90",
+                "facade KIF transaction exceeded a bounded interface limit at bytes %zu..%zu: %s; hint: export fewer facade facts",
+                program->modules[facade_module].tokens[0].start,
+                program->modules[facade_module].tokens[0].end,
+                kif_result.message);
+        } else {
+            set_error(program,
+                kif_result.status == KOFUN_KIF_IO_FAILURE
+                    ? "E2S92" : "E2S91",
+                "facade KIF transaction failed: %s; hint: fix the export facts and rebuild",
+                kif_result.message);
+        }
         goto done;
     }
     if (!commit_output_artifacts(program, artifacts, 3u)) {

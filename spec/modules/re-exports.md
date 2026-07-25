@@ -224,9 +224,19 @@ cycle:
 
 1. choose the cycle with the fewest edges;
 2. rotate it to start at the smallest raw exporting `ModuleId`;
-3. compare the rotated `(ModuleId, ExportBindingId)` sequence
+3. compare the rotated `(ModuleId, CycleEdgeKey)` sequence
    lexicographically; and
 4. show each edge/import span in that order, closing the path at the start.
+
+An unresolved cycle has no target declaration, namespace, or target
+`SymbolId`, so it cannot have a valid `ExportBindingId`. `CycleEdgeKey` is the
+diagnostic-only framed SHA-256 domain
+`kofun.diagnostic.re-export-cycle-edge/v1` over three strictly increasing
+fields: `0x8001` exporting raw `ModuleId`, `0x8002` dependency raw `ModuleId`,
+and `0x8003` requested UTF-8/NFC spelling. Its outer payload length includes
+all three six-byte TLV headers (`18 + 32 + 32 + spelling_length`). It is never
+published as a semantic binding identity or accepted in place of an
+`ExportBindingId`.
 
 Cycle detection is iterative and operation-bounded. Budget exhaustion is an
 error, never an assumption that the graph is acyclic.

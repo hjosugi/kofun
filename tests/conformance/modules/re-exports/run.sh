@@ -48,6 +48,11 @@ mkdir -p "$WORK"
     "$ROOT/bootstrap/stage2/kif_v1.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$KIF_TOOL"
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+    -I"$ROOT/bootstrap/stage2" \
+    "$CASES/export_binding_reference.c" \
+    "$ROOT/bootstrap/stage2/sha256.c" \
+    -o "$WORK/export-binding-reference"
 
 write_inventory() {
     facade_source=$1
@@ -93,6 +98,9 @@ write_inventory "$CASES/fixtures/facade.kofun" "$WORK/positive.inventory"
 grep -Fx 'kofun-re-exports/v1' "$WORK/positive.hir" >/dev/null
 test "$(grep -c '^export|' "$WORK/positive.hir")" -eq 5
 grep -F '|ns=2:module:' "$WORK/positive.hir" | grep -F '|name=collections|' >/dev/null
+grep -F '|ns=2:module:' "$WORK/positive.hir" |
+    grep -F '|name=collections|' |
+    grep -E '\|access-proof=[1-9][0-9]*\|' >/dev/null
 test "$(grep -F '|name=Map|' "$WORK/positive.hir" | wc -l | tr -d ' ')" -eq 2
 grep -F '|ns=0:value:' "$WORK/positive.hir" | grep -F '|name=Map|' >/dev/null
 grep -F '|ns=1:type:' "$WORK/positive.hir" | grep -F '|name=Map|' >/dev/null
@@ -103,6 +111,33 @@ grep -F 'doc|facade=api.collections.Map|canonical=lib.collections.Map|' \
     "$WORK/positive.tooling" >/dev/null
 grep -F '|linker-forwarding=false|runtime-forwarding=false' \
     "$WORK/positive.tooling" >/dev/null
+value_map_export=$(
+    grep -F '|ns=0:value:' "$WORK/positive.hir" |
+        grep -F '|name=Map|' |
+        head -n 1
+)
+value_map_namespace=$(
+    printf '%s\n' "$value_map_export" |
+        sed -n 's/.*|ns=0:value:\([0-9a-f]*\)|.*/\1/p'
+)
+value_map_binding=$(
+    printf '%s\n' "$value_map_export" |
+        sed -n 's/.*|binding=\([0-9a-f]*\)|.*/\1/p'
+)
+value_map_target=$(
+    printf '%s\n' "$value_map_export" |
+        sed -n 's/.*|target-symbol=\([0-9a-f]*\)|.*/\1/p'
+)
+value_map_chain=$(
+    printf '%s\n' "$value_map_export" |
+        sed -n 's/.*|chain=\([^|]*\)|.*/\1/p'
+)
+test "$value_map_chain" = "$value_map_binding"
+expected_value_map_binding=$(
+    "$WORK/export-binding-reference" \
+        "$FACADE_MODULE" "$value_map_namespace" Map "$value_map_target"
+)
+test "$value_map_binding" = "$expected_value_map_binding"
 
 "$KIF_TOOL" read "$WORK/positive.kif" "$WORK/positive.json"
 test "$(grep -c '"kind": "export"' "$WORK/positive.json")" -eq 5
@@ -120,6 +155,34 @@ grep -F '|namespace=value|' "$WORK/consumer-value.hir" >/dev/null
 grep -F '|namespace=type|' "$WORK/consumer-type.hir" >/dev/null
 grep -F '|namespace=module|' "$WORK/consumer-module.hir" >/dev/null
 grep -F '|namespace=value|' "$WORK/consumer-constructor.hir" >/dev/null
+
+# The ordinary compiled-interface consumer, not only the focused projection,
+# resolves a facade import to the original callable target and full edge chain.
+printf '%s\n' 'module consumer.app' \
+    'import api.collections' \
+    '' \
+    'fn main() -> Int {' \
+    '    return collections.Map(42)' \
+    '}' >"$WORK/ordinary-facade-consumer.kofun"
+"$KIF_TOOL" resolve "$WORK/positive.kif" "$PACKAGE_ID" api.collections \
+    "$WORK/ordinary-facade-consumer.kofun" \
+    "$WORK/ordinary-facade-same.hir"
+"$KIF_TOOL" resolve "$WORK/positive.kif" \
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+    api.collections "$WORK/ordinary-facade-consumer.kofun" \
+    "$WORK/ordinary-facade-external.hir"
+for resolved in "$WORK/ordinary-facade-same.hir" \
+    "$WORK/ordinary-facade-external.hir"
+do
+    grep -F "|binding-module=$FACADE_MODULE|" "$resolved" |
+        grep -F "|export-binding=$value_map_binding|" |
+        grep -F "|target-module=$COLLECTIONS_MODULE|" |
+        grep -F "|target-symbol=$value_map_target|" |
+        grep -F "|chain=1|chain-ids=$value_map_chain" >/dev/null
+done
+grep -F '|view=package-internal|' \
+    "$WORK/ordinary-facade-same.hir" >/dev/null
+grep -F '|view=public|' "$WORK/ordinary-facade-external.hir" >/dev/null
 
 # Source/inventory/path remapping cannot change authoritative interface bytes.
 write_inventory "$CASES/fixtures/facade_reordered.kofun" \
@@ -196,6 +259,48 @@ grep -F 'doc|facade=api.v2.Map|canonical=lib.collections.Map|' \
     "$WORK/two-level.tooling" | grep -F '|chain=2|' >/dev/null
 "$TOOL" --resolve-kif "$WORK/two-level.kif" Map value \
     "$WORK/v2-consumer.hir"
+v2_chain=$(
+    grep -F 'export|module=api.v2|' "$WORK/two-level.hir" |
+        grep -F '|ns=0:value:' | grep -F '|name=Map|' |
+        sed -n 's/.*|chain=\([^|]*\)|.*/\1/p'
+)
+test "$(printf '%s\n' "$v2_chain" | tr ',' '\n' | wc -l | tr -d ' ')" -eq 2
+grep -F "|chain=2|chain-ids=$v2_chain|" \
+    "$WORK/two-level.tooling" >/dev/null
+grep -F "|chain=2|chain-ids=$v2_chain" \
+    "$WORK/v2-consumer.hir" >/dev/null
+
+# One selective spelling expands across a direct value and a forwarded type.
+# Resolution reaches a fixed point per namespace instead of stopping at the
+# first direct match.
+printf '%s\n' 'module mixed.base' \
+    'pub type Mix =' \
+    '    | Empty' \
+    '    | Full(value: Int)' >"$WORK/mixed-base.kofun"
+printf '%s\n' 'module mixed.middle' \
+    'pub from mixed.base import Mix' \
+    'pub fn Mix(value: Int) -> Int {' \
+    '    return value' \
+    '}' >"$WORK/mixed-middle.kofun"
+printf '%s\n' 'module mixed.outer' \
+    'pub from mixed.middle import Mix' >"$WORK/mixed-outer.kofun"
+{
+    printf '%s|%064d|%064d|mixed.base|mixed/base.kofun|%s\n' \
+        "$PACKAGE_ID" 5601 5701 "$WORK/mixed-base.kofun"
+    printf '%s|%064d|%064d|mixed.middle|mixed/middle.kofun|%s\n' \
+        "$PACKAGE_ID" 5602 5702 "$WORK/mixed-middle.kofun"
+    printf '%s|%064d|%064d|mixed.outer|mixed/outer.kofun|%s\n' \
+        "$PACKAGE_ID" 5603 5703 "$WORK/mixed-outer.kofun"
+} >"$WORK/mixed.inventory"
+"$TOOL" "$WORK/mixed.inventory" mixed.outer \
+    "$WORK/mixed.hir" "$WORK/mixed.kif" "$WORK/mixed.tooling"
+test "$(grep -F 'export|module=mixed.outer|' "$WORK/mixed.hir" |
+    grep -F '|name=Mix|' | wc -l | tr -d ' ')" -eq 2
+grep -F 'export|module=mixed.outer|' "$WORK/mixed.hir" |
+    grep -F '|ns=0:value:' | grep -F '|name=Mix|' >/dev/null
+grep -F 'export|module=mixed.outer|' "$WORK/mixed.hir" |
+    grep -F '|ns=1:type:' | grep -F '|name=Mix|' >/dev/null
+
 {
     printf '%s|%s|%s|lib.collections|lib/collections.kofun|%s\n' \
         "$PACKAGE_ID" "$COLLECTIONS_MODULE" "$COLLECTIONS_FILE" \
@@ -289,6 +394,8 @@ write_inventory "$WORK/private-target.kofun" "$WORK/private-target.inventory"
 expect_failure E2S87 private-target api.collections \
     "$WORK/private-target.inventory"
 grep -F 'requested=pub effective=private' "$WORK/private-target.log" >/dev/null
+test "$(grep -Eo '[0-9]+\.\.[0-9]+' "$WORK/private-target.log" |
+    wc -l | tr -d ' ')" -ge 2
 
 sed 's/Map, Set/Concealed/' "$CASES/fixtures/facade.kofun" \
     >"$WORK/private-enclosing-type.kofun"
@@ -303,6 +410,8 @@ write_inventory "$WORK/hidden-signature.kofun" \
     "$WORK/hidden-signature.inventory"
 expect_failure E2S87 hidden-signature api.collections \
     "$WORK/hidden-signature.inventory"
+test "$(grep -Eo '[0-9]+\.\.[0-9]+' "$WORK/hidden-signature.log" |
+    wc -l | tr -d ' ')" -ge 2
 
 {
     printf '%s\n' 'module api.collections'
@@ -344,6 +453,42 @@ printf '%s\n' 'module api.collections' \
 expect_failure E2S88 import-collision api.collections \
     "$WORK/import-collision.inventory"
 
+# The composed adapter preserves the ordinary qualified-import cycle gate even
+# when an unrelated public facade is present.
+printf '%s\n' 'module ordinary.a' \
+    'import ordinary.b' >"$WORK/ordinary-a.kofun"
+printf '%s\n' 'module ordinary.b' \
+    'import ordinary.a' >"$WORK/ordinary-b.kofun"
+{
+    printf '%s|%s|%s|lib.collections|lib/collections.kofun|%s\n' \
+        "$PACKAGE_ID" "$COLLECTIONS_MODULE" "$COLLECTIONS_FILE" \
+        "$CASES/fixtures/collections.kofun"
+    printf '%s|%s|%s|api.collections|api/collections.kofun|%s\n' \
+        "$PACKAGE_ID" "$FACADE_MODULE" "$FACADE_FILE" \
+        "$CASES/fixtures/facade.kofun"
+    printf '%s|%064d|%064d|ordinary.a|ordinary/a.kofun|%s\n' \
+        "$PACKAGE_ID" 5901 5902 "$WORK/ordinary-a.kofun"
+    printf '%s|%064d|%064d|ordinary.b|ordinary/b.kofun|%s\n' \
+        "$PACKAGE_ID" 5903 5904 "$WORK/ordinary-b.kofun"
+} >"$WORK/ordinary-cycle.inventory"
+expect_failure E2S64 ordinary-cycle api.collections \
+    "$WORK/ordinary-cycle.inventory"
+
+# Qualified public module forwarding participates in the export graph even
+# though each module-self target is otherwise independently resolvable.
+printf '%s\n' 'module qualified.a' \
+    'pub import qualified.b' >"$WORK/qualified-cycle-a.kofun"
+printf '%s\n' 'module qualified.b' \
+    'pub import qualified.a' >"$WORK/qualified-cycle-b.kofun"
+{
+    printf '%s|%064d|%064d|qualified.a|qualified/a.kofun|%s\n' \
+        "$PACKAGE_ID" 6001 6002 "$WORK/qualified-cycle-a.kofun"
+    printf '%s|%064d|%064d|qualified.b|qualified/b.kofun|%s\n' \
+        "$PACKAGE_ID" 6003 6004 "$WORK/qualified-cycle-b.kofun"
+} >"$WORK/qualified-cycle.inventory"
+expect_failure E2S89 qualified-cycle qualified.a \
+    "$WORK/qualified-cycle.inventory"
+
 # Self, two-node, three-node, and competing cycles are rejected. Reversing the
 # inventory preserves the canonical shortest diagnostic.
 printf '%s\n' 'module cycle.self' \
@@ -353,6 +498,8 @@ printf '%s|%s|%s|cycle.self|cycle/self.kofun|%s\n' \
     6262626262626262626262626262626262626262626262626262626262626262 \
     "$WORK/self.kofun" >"$WORK/self.inventory"
 expect_failure E2S89 self-cycle cycle.self "$WORK/self.inventory"
+test "$(grep -Eo '[0-9]+\.\.[0-9]+' "$WORK/self-cycle.log" |
+    wc -l | tr -d ' ')" -ge 2
 
 printf '%s\n' 'module cycle.a' \
     'pub from cycle.b import Loop' >"$WORK/cycle-a.kofun"
@@ -375,6 +522,57 @@ sed '1!G;h;$!d' "$WORK/two-cycle.inventory" \
 expect_failure E2S89 two-cycle-reversed cycle.a \
     "$WORK/two-cycle-reversed.inventory"
 cmp "$WORK/two-cycle.log" "$WORK/two-cycle-reversed.log"
+
+# Mutually dependent modules with different requested spellings are missing
+# targets, not a re-export cycle.
+printf '%s\n' 'module mismatch.a' \
+    'pub from mismatch.b import X' >"$WORK/mismatch-a.kofun"
+printf '%s\n' 'module mismatch.b' \
+    'pub from mismatch.a import Y' >"$WORK/mismatch-b.kofun"
+{
+    printf '%s|%064d|%064d|mismatch.a|mismatch/a.kofun|%s\n' \
+        "$PACKAGE_ID" 6601 6701 "$WORK/mismatch-a.kofun"
+    printf '%s|%064d|%064d|mismatch.b|mismatch/b.kofun|%s\n' \
+        "$PACKAGE_ID" 6602 6702 "$WORK/mismatch-b.kofun"
+} >"$WORK/mismatch.inventory"
+expect_failure E2S86 mismatch-names mismatch.a "$WORK/mismatch.inventory"
+if grep -F 'error[E2S89]:' "$WORK/mismatch-names.log" >/dev/null; then
+    fail 'different selective spellings were diagnosed as a cycle'
+fi
+
+# Equal-length cycles use the independently specified CycleEdgeKey framing.
+# These fixed IDs/names distinguish the correct 18-byte TLV overhead from the
+# historical 12-byte length: the canonical cycle is tie.a -> tie.c -> tie.a.
+printf '%s\n' 'module tie.a' \
+    'pub from tie.b import X' \
+    'pub from tie.c import Y' >"$WORK/tie-a.kofun"
+printf '%s\n' 'module tie.b' \
+    'pub from tie.a import X' >"$WORK/tie-b.kofun"
+printf '%s\n' 'module tie.c' \
+    'pub from tie.a import Y' >"$WORK/tie-c.kofun"
+{
+    printf '%s|%s|%064d|tie.a|tie/a.kofun|%s\n' \
+        "$PACKAGE_ID" \
+        0101010101010101010101010101010101010101010101010101010101010101 \
+        11 "$WORK/tie-a.kofun"
+    printf '%s|%s|%064d|tie.b|tie/b.kofun|%s\n' \
+        "$PACKAGE_ID" \
+        0202020202020202020202020202020202020202020202020202020202020202 \
+        12 "$WORK/tie-b.kofun"
+    printf '%s|%s|%064d|tie.c|tie/c.kofun|%s\n' \
+        "$PACKAGE_ID" \
+        0303030303030303030303030303030303030303030303030303030303030303 \
+        13 "$WORK/tie-c.kofun"
+} >"$WORK/tie.inventory"
+expect_failure E2S89 tie-cycle tie.a "$WORK/tie.inventory"
+grep -F 'tie.a --tie/a.kofun:' "$WORK/tie-cycle.log" >/dev/null
+grep -F 'tie.c --tie/c.kofun:' "$WORK/tie-cycle.log" >/dev/null
+if grep -F 'tie.b --tie/b.kofun:' "$WORK/tie-cycle.log" >/dev/null; then
+    fail 'CycleEdgeKey chose the wrong equal-length cycle'
+fi
+sed '1!G;h;$!d' "$WORK/tie.inventory" >"$WORK/tie-reversed.inventory"
+expect_failure E2S89 tie-cycle-reversed tie.a "$WORK/tie-reversed.inventory"
+cmp "$WORK/tie-cycle.log" "$WORK/tie-cycle-reversed.log"
 
 printf '%s\n' 'module cycle.c' \
     'pub from cycle.a import Loop' >"$WORK/cycle-c.kofun"
@@ -450,7 +648,21 @@ head -n 65 "$WORK/chain.inventory" >"$WORK/chain64.inventory"
     "$WORK/chain64.hir" "$WORK/chain64.kif" "$WORK/chain64.tooling"
 grep -F 'doc|facade=chain.e63.Item|canonical=chain.base.Item|' \
     "$WORK/chain64.tooling" | grep -F '|chain=64|' >/dev/null
+"$TOOL" --resolve-kif "$WORK/chain64.kif" Item value \
+    "$WORK/chain64-consumer.hir"
+chain64_ids=$(
+    grep -F 'export|module=chain.e63|' "$WORK/chain64.hir" |
+        grep -F '|name=Item|' |
+        sed -n 's/.*|chain=\([^|]*\)|.*/\1/p'
+)
+test "$(printf '%s\n' "$chain64_ids" | tr ',' '\n' |
+    wc -l | tr -d ' ')" -eq 64
+grep -F "|chain=64|chain-ids=$chain64_ids|" \
+    "$WORK/chain64.tooling" >/dev/null
+grep -F "|chain=64|chain-ids=$chain64_ids" \
+    "$WORK/chain64-consumer.hir" >/dev/null
 expect_failure E2S90 chain65 chain.e64 "$WORK/chain.inventory"
+grep -E 'bytes [0-9]+\.\.[0-9]+' "$WORK/chain65.log" >/dev/null
 
 # The expanded-binding exact boundary succeeds; one-over is rejected.
 printf '%s\n' 'module big.target' >"$WORK/big-target.kofun"
@@ -492,6 +704,7 @@ test "$(grep -c '^export|' "$WORK/big.hir")" -eq 1024
 printf '%s\n' 'pub from big.target import N512' \
     >>"$WORK/big-facade.kofun"
 expect_failure E2S90 expanded-over big.facade "$WORK/big.inventory"
+grep -E 'bytes [0-9]+\.\.[0-9]+' "$WORK/expanded-over.log" >/dev/null
 
 # Exactly 256 source re-export declarations succeed; the 257th is rejected.
 printf '%s\n' 'module declarations.facade' \
@@ -517,6 +730,190 @@ printf '%s\n' 'pub from big.target import N256' \
     >>"$WORK/declarations-facade.kofun"
 expect_failure E2S90 declarations-over declarations.facade \
     "$WORK/declarations.inventory"
+grep -E 'bytes [0-9]+\.\.[0-9]+' \
+    "$WORK/declarations-over.log" >/dev/null
+
+# The package-wide expanded-edge boundary is executable: 64 facades with
+# 1,024 value/type bindings each succeed, and the 65,537th edge is rejected.
+: >"$WORK/package-edges.inventory"
+sed 's/^module big\.target$/module package.target/' \
+    "$WORK/big-target.kofun" >"$WORK/package-target.kofun"
+printf '%s|%064d|%064d|package.target|package/target.kofun|%s\n' \
+    "$PACKAGE_ID" 9400 9500 "$WORK/package-target.kofun" \
+    >>"$WORK/package-edges.inventory"
+package_facade=0
+while test "$package_facade" -lt 65; do
+    package_module=$(printf 'package.f%02d' "$package_facade")
+    package_path=$(printf 'package/f%02d.kofun' "$package_facade")
+    package_source=$(printf '%s/package-f%02d.kofun' \
+        "$WORK" "$package_facade")
+    printf '%s\n' "module $package_module" >"$package_source"
+    for group in 0 1; do
+        printf '%s' 'pub from package.target import ' >>"$package_source"
+        item=0
+        while test "$item" -lt 256; do
+            value=$((group * 256 + item))
+            name=$(printf 'N%03d' "$value")
+            if test "$item" -ne 0; then
+                printf '%s' ', ' >>"$package_source"
+            fi
+            printf '%s' "$name" >>"$package_source"
+            item=$((item + 1))
+        done
+        printf '\n' >>"$package_source"
+    done
+    printf '%s|%064d|%064d|%s|%s|%s\n' \
+        "$PACKAGE_ID" $((9401 + package_facade)) \
+        $((9501 + package_facade)) "$package_module" "$package_path" \
+        "$package_source" >>"$WORK/package-edges.inventory"
+    package_facade=$((package_facade + 1))
+done
+head -n 65 "$WORK/package-edges.inventory" \
+    >"$WORK/package-edges-exact.inventory"
+"$TOOL" "$WORK/package-edges-exact.inventory" package.f63 \
+    "$WORK/package-edges.hir" "$WORK/package-edges.kif" \
+    "$WORK/package-edges.tooling"
+test "$(grep -c '^export|' "$WORK/package-edges.hir")" -eq 65536
+expect_failure E2S90 package-edges-over package.f64 \
+    "$WORK/package-edges.inventory"
+grep -E 'bytes [0-9]+\.\.[0-9]+' \
+    "$WORK/package-edges-over.log" >/dev/null
+
+# A test-only lower operation budget exercises the production budget failure
+# path without changing the release limit.
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+    -DRE_EXPORT_GRAPH_WORK_LIMIT=1 \
+    -I"$ROOT/bootstrap/stage2" \
+    "$ROOT/bootstrap/stage2/re_exports.c" \
+    "$ROOT/bootstrap/stage2/kif_v1.c" \
+    "$ROOT/bootstrap/stage2/visibility_access.c" \
+    "$ROOT/bootstrap/stage2/sha256.c" \
+    -o "$WORK/re-exports-low-work"
+set +e
+"$WORK/re-exports-low-work" "$WORK/two-level.inventory" api.v2 \
+    "$WORK/low-work.hir" "$WORK/low-work.kif" "$WORK/low-work.tooling" \
+    >"$WORK/low-work.log" 2>&1
+low_work_status=$?
+set -e
+test "$low_work_status" -eq 1
+grep -F 'error[E2S90]:' "$WORK/low-work.log" >/dev/null
+grep -E 'bytes [0-9]+\.\.[0-9]+' "$WORK/low-work.log" >/dev/null
+test ! -e "$WORK/low-work.hir"
+test ! -e "$WORK/low-work.kif"
+test ! -e "$WORK/low-work.tooling"
+
+# Input and output identities are preflighted before any requested output is
+# removed. Exact paths and hardlinks preserve inventory, source, and KIF bytes.
+cp "$WORK/positive.inventory" "$WORK/alias-inventory"
+cp "$WORK/alias-inventory" "$WORK/alias-inventory.snapshot"
+set +e
+"$TOOL" "$WORK/alias-inventory" api.collections \
+    "$WORK/alias-inventory" "$WORK/alias-inventory.kif" \
+    "$WORK/alias-inventory.tooling" >"$WORK/alias-inventory.log" 2>&1
+alias_status=$?
+set -e
+test "$alias_status" -eq 1
+grep -F 'error[E2S92]:' "$WORK/alias-inventory.log" >/dev/null
+cmp "$WORK/alias-inventory.snapshot" "$WORK/alias-inventory"
+test ! -e "$WORK/alias-inventory.kif"
+test ! -e "$WORK/alias-inventory.tooling"
+
+cp "$WORK/positive.inventory" "$WORK/alias-inventory-hard"
+cp "$WORK/alias-inventory-hard" "$WORK/alias-inventory-hard.snapshot"
+ln "$WORK/alias-inventory-hard" "$WORK/alias-inventory-hard.hir"
+set +e
+"$TOOL" "$WORK/alias-inventory-hard" api.collections \
+    "$WORK/alias-inventory-hard.hir" "$WORK/alias-inventory-hard.kif" \
+    "$WORK/alias-inventory-hard.tooling" \
+    >"$WORK/alias-inventory-hard.log" 2>&1
+alias_status=$?
+set -e
+test "$alias_status" -eq 1
+grep -F 'error[E2S92]:' "$WORK/alias-inventory-hard.log" >/dev/null
+cmp "$WORK/alias-inventory-hard.snapshot" "$WORK/alias-inventory-hard"
+cmp "$WORK/alias-inventory-hard.snapshot" "$WORK/alias-inventory-hard.hir"
+
+cp "$CASES/fixtures/collections.kofun" "$WORK/alias-source.kofun"
+cp "$WORK/alias-source.kofun" "$WORK/alias-source.snapshot"
+{
+    printf '%s|%s|%s|lib.collections|lib/collections.kofun|%s\n' \
+        "$PACKAGE_ID" "$COLLECTIONS_MODULE" "$COLLECTIONS_FILE" \
+        "$WORK/alias-source.kofun"
+    printf '%s|%s|%s|api.collections|api/collections.kofun|%s\n' \
+        "$PACKAGE_ID" "$FACADE_MODULE" "$FACADE_FILE" \
+        "$CASES/fixtures/facade.kofun"
+} >"$WORK/alias-source.inventory"
+set +e
+"$TOOL" "$WORK/alias-source.inventory" api.collections \
+    "$WORK/alias-source.kofun" "$WORK/alias-source.kif" \
+    "$WORK/alias-source.tooling" >"$WORK/alias-source.log" 2>&1
+alias_status=$?
+set -e
+test "$alias_status" -eq 1
+grep -F 'error[E2S92]:' "$WORK/alias-source.log" >/dev/null
+cmp "$WORK/alias-source.snapshot" "$WORK/alias-source.kofun"
+
+cp "$WORK/alias-source.snapshot" "$WORK/alias-source-hard.kofun"
+ln "$WORK/alias-source-hard.kofun" "$WORK/alias-source-hard.hir"
+sed "s|$WORK/alias-source.kofun|$WORK/alias-source-hard.kofun|" \
+    "$WORK/alias-source.inventory" >"$WORK/alias-source-hard.inventory"
+set +e
+"$TOOL" "$WORK/alias-source-hard.inventory" api.collections \
+    "$WORK/alias-source-hard.hir" "$WORK/alias-source-hard.kif" \
+    "$WORK/alias-source-hard.tooling" \
+    >"$WORK/alias-source-hard.log" 2>&1
+alias_status=$?
+set -e
+test "$alias_status" -eq 1
+grep -F 'error[E2S92]:' "$WORK/alias-source-hard.log" >/dev/null
+cmp "$WORK/alias-source.snapshot" "$WORK/alias-source-hard.kofun"
+cmp "$WORK/alias-source.snapshot" "$WORK/alias-source-hard.hir"
+
+set +e
+"$TOOL" "$WORK/positive.inventory" api.collections \
+    "$WORK/alias-outputs" "$WORK/alias-outputs" \
+    "$WORK/alias-outputs.tooling" >"$WORK/alias-outputs.log" 2>&1
+alias_status=$?
+set -e
+test "$alias_status" -eq 1
+grep -F 'error[E2S92]:' "$WORK/alias-outputs.log" >/dev/null
+
+printf '%s\n' preserved >"$WORK/alias-output-hard-a"
+ln "$WORK/alias-output-hard-a" "$WORK/alias-output-hard-b"
+set +e
+"$TOOL" "$WORK/positive.inventory" api.collections \
+    "$WORK/alias-output-hard-a" "$WORK/alias-output-hard-b" \
+    "$WORK/alias-output-hard-tooling" \
+    >"$WORK/alias-output-hard.log" 2>&1
+alias_status=$?
+set -e
+test "$alias_status" -eq 1
+grep -F 'error[E2S92]:' "$WORK/alias-output-hard.log" >/dev/null
+grep -Fx preserved "$WORK/alias-output-hard-a" >/dev/null
+grep -Fx preserved "$WORK/alias-output-hard-b" >/dev/null
+
+cp "$WORK/positive.kif" "$WORK/resolve-alias.kif"
+cp "$WORK/resolve-alias.kif" "$WORK/resolve-alias.snapshot"
+set +e
+"$TOOL" --resolve-kif "$WORK/resolve-alias.kif" Map value \
+    "$WORK/resolve-alias.kif" >"$WORK/resolve-alias.log" 2>&1
+alias_status=$?
+set -e
+test "$alias_status" -eq 1
+grep -F 'error[E2S92]:' "$WORK/resolve-alias.log" >/dev/null
+cmp "$WORK/resolve-alias.snapshot" "$WORK/resolve-alias.kif"
+
+cp "$WORK/positive.kif" "$WORK/resolve-alias-hard.kif"
+ln "$WORK/resolve-alias-hard.kif" "$WORK/resolve-alias-hard.hir"
+set +e
+"$TOOL" --resolve-kif "$WORK/resolve-alias-hard.kif" Map value \
+    "$WORK/resolve-alias-hard.hir" >"$WORK/resolve-alias-hard.log" 2>&1
+alias_status=$?
+set -e
+test "$alias_status" -eq 1
+grep -F 'error[E2S92]:' "$WORK/resolve-alias-hard.log" >/dev/null
+cmp "$WORK/positive.kif" "$WORK/resolve-alias-hard.kif"
+cmp "$WORK/positive.kif" "$WORK/resolve-alias-hard.hir"
 
 # Defensive KIF consumption and output/internal failures have stable focused
 # categories and never publish a partial success artifact.
