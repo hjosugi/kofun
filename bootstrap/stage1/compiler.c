@@ -242,7 +242,19 @@ void kofun_rt_write_text(const char *path, const char *value) {
 
 static bool kofun_fn_identifier_char(const char * fr_char);
 static bool kofun_fn_valid_name(const char * name);
-static bool kofun_fn_valid_expression(const char * expression);
+static int64_t kofun_fn_digit_value(const char * symbol);
+static bool kofun_fn_all_digits(const char * value);
+static bool kofun_fn_within_bound(const char * digits, const char * bound);
+static bool kofun_fn_preceded_by_operand(const char * expression, int64_t index);
+static int64_t kofun_fn_split_binary(const char * expression, const char * operators);
+static bool kofun_fn_wraps_whole(const char * expression);
+static int64_t kofun_fn_last_newline(const char * value);
+static const char * kofun_fn_lowered_statements(const char * lowered);
+static const char * kofun_fn_lowered_operand(const char * lowered);
+static const char * kofun_fn_lower_step(const char * path, const char * callee, const char * left, const char * right);
+static const char * kofun_fn_lower_atom(const char * atom, const char * bound);
+static const char * kofun_fn_lower_negation(const char * operand, const char * bound, const char * path);
+static const char * kofun_fn_lower_expression(const char * expression, const char * bound, const char * path);
 static const char * kofun_fn_print_expression(const char * line);
 static const char * kofun_fn_binding_name(const char * line);
 static const char * kofun_fn_binding_expression(const char * line);
@@ -275,27 +287,239 @@ static bool kofun_fn_valid_name(const char * name) {
     return true;
 }
 
-static bool kofun_fn_valid_expression(const char * expression) {
-    kofun_text_list symbols = kofun_rt_chars(expression);
+static int64_t kofun_fn_digit_value(const char * symbol) {
+    return kofun_rt_find("0123456789", symbol);
+}
+
+static bool kofun_fn_all_digits(const char * value) {
+    kofun_text_list symbols = kofun_rt_chars(value);
     if (((kofun_rt_text_list_len(symbols)) == (INT64_C(0)))) {
+        return false;
+    }
+    for (int64_t index = INT64_C(0); index < kofun_rt_text_list_len(symbols); ++index) {
+        if ((!kofun_rt_is_digit(kofun_rt_text_list_get(symbols, index)))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool kofun_fn_within_bound(const char * digits, const char * bound) {
+    kofun_text_list symbols = kofun_rt_chars(digits);
+    kofun_text_list limit = kofun_rt_chars(bound);
+    int64_t start = INT64_C(0);
+    while ((((start) + (INT64_C(1))) < (kofun_rt_text_list_len(symbols))) &&
+           kofun_rt_text_equal(kofun_rt_text_list_get(symbols, start), "0")) {
+        start = ((start) + (INT64_C(1)));
+    }
+    int64_t significant = ((kofun_rt_text_list_len(symbols)) - (start));
+    if (((significant) != (kofun_rt_text_list_len(limit)))) {
+        return ((significant) < (kofun_rt_text_list_len(limit)));
+    }
+    for (int64_t index = INT64_C(0); index < kofun_rt_text_list_len(limit); ++index) {
+        int64_t left = kofun_fn_digit_value(
+            kofun_rt_text_list_get(symbols, ((start) + (index))));
+        int64_t right = kofun_fn_digit_value(kofun_rt_text_list_get(limit, index));
+        if (((left) != (right))) {
+            return ((left) < (right));
+        }
+    }
+    return true;
+}
+
+static bool kofun_fn_preceded_by_operand(const char * expression, int64_t index) {
+    kofun_text_list symbols = kofun_rt_chars(expression);
+    int64_t cursor = ((index) - (INT64_C(1)));
+    while (((cursor) >= (INT64_C(0)))) {
+        const char * symbol = kofun_rt_text_list_get(symbols, cursor);
+        if ((!kofun_rt_is_space(symbol))) {
+            return ((kofun_rt_text_equal(symbol, ")")) ||
+                    (kofun_fn_identifier_char(symbol)));
+        }
+        cursor = ((cursor) - (INT64_C(1)));
+    }
+    return false;
+}
+
+static int64_t kofun_fn_split_binary(const char * expression, const char * operators) {
+    kofun_text_list symbols = kofun_rt_chars(expression);
+    int64_t depth = INT64_C(0);
+    int64_t found = INT64_C(-1);
+    for (int64_t index = INT64_C(0); index < kofun_rt_text_list_len(symbols); ++index) {
+        const char * symbol = kofun_rt_text_list_get(symbols, index);
+        if (kofun_rt_text_equal(symbol, "(")) {
+            depth = ((depth) + (INT64_C(1)));
+        } else if (kofun_rt_text_equal(symbol, ")")) {
+            depth = ((depth) - (INT64_C(1)));
+        } else if ((((depth) == (INT64_C(0)))) && (kofun_rt_text_contains(operators, symbol))) {
+            if (kofun_fn_preceded_by_operand(expression, index)) {
+                found = index;
+            }
+        }
+    }
+    return found;
+}
+
+static bool kofun_fn_wraps_whole(const char * expression) {
+    kofun_text_list symbols = kofun_rt_chars(expression);
+    if ((((kofun_rt_text_list_len(symbols)) < (INT64_C(2))) ||
+         ((!kofun_rt_text_equal(kofun_rt_text_list_get(symbols, INT64_C(0)), "("))))) {
         return false;
     }
     int64_t depth = INT64_C(0);
     for (int64_t index = INT64_C(0); index < kofun_rt_text_list_len(symbols); ++index) {
         const char * symbol = kofun_rt_text_list_get(symbols, index);
-        if ((!((((kofun_fn_identifier_char(symbol)) || (kofun_rt_is_space(symbol)))) || (kofun_rt_text_contains("+-*/%()", symbol))))) {
-            return false;
-        }
         if (kofun_rt_text_equal(symbol, "(")) {
             depth = ((depth) + (INT64_C(1)));
         } else if (kofun_rt_text_equal(symbol, ")")) {
             depth = ((depth) - (INT64_C(1)));
-            if (((depth) < (INT64_C(0)))) {
-                return false;
+            if (((depth) == (INT64_C(0)))) {
+                return ((index) == ((kofun_rt_text_list_len(symbols)) - (INT64_C(1))));
             }
         }
     }
-    return ((depth) == (INT64_C(0)));
+    return false;
+}
+
+static int64_t kofun_fn_last_newline(const char * value) {
+    kofun_text_list symbols = kofun_rt_chars(value);
+    int64_t found = INT64_C(-1);
+    for (int64_t index = INT64_C(0); index < kofun_rt_text_list_len(symbols); ++index) {
+        if (kofun_rt_text_equal(kofun_rt_text_list_get(symbols, index), "\n")) {
+            found = index;
+        }
+    }
+    return found;
+}
+
+static const char * kofun_fn_lowered_statements(const char * lowered) {
+    int64_t cut = kofun_fn_last_newline(lowered);
+    if (((cut) < (INT64_C(0)))) {
+        return "";
+    }
+    return kofun_rt_text_slice(lowered, INT64_C(0), ((cut) + (INT64_C(1))));
+}
+
+static const char * kofun_fn_lowered_operand(const char * lowered) {
+    int64_t cut = kofun_fn_last_newline(lowered);
+    return kofun_rt_text_slice(lowered, ((cut) + (INT64_C(1))), kofun_rt_text_len(lowered));
+}
+
+static const char * kofun_fn_lower_step(const char * path, const char * callee, const char * left, const char * right) {
+    const char * temporary = kofun_rt_text_concat("kt_", path);
+    return kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_fn_lowered_statements(left), kofun_fn_lowered_statements(right)), "        int64_t "), temporary), " = "), callee), kofun_fn_lowered_operand(left)), ", "), kofun_rt_text_concat(kofun_fn_lowered_operand(right), ");\n")), temporary);
+}
+
+static const char * kofun_fn_lower_atom(const char * atom, const char * bound) {
+    if (kofun_fn_all_digits(atom)) {
+        if ((!kofun_fn_within_bound(atom, "9223372036854775807"))) {
+            return "";
+        }
+        return atom;
+    }
+    if ((!kofun_fn_valid_name(atom))) {
+        return "";
+    }
+    if (((kofun_rt_find(bound, kofun_rt_text_concat(kofun_rt_text_concat("|", atom), "|"))) < (INT64_C(0)))) {
+        return "";
+    }
+    return kofun_rt_text_concat("kf_", atom);
+}
+
+static const char * kofun_fn_lower_negation(const char * operand, const char * bound, const char * path) {
+    const char * trimmed = kofun_rt_trim(operand);
+    if (kofun_fn_all_digits(trimmed)) {
+        if (kofun_fn_within_bound(trimmed, "9223372036854775807")) {
+            return kofun_rt_text_concat("-", trimmed);
+        }
+        if (kofun_fn_within_bound(trimmed, "9223372036854775808")) {
+            return "INT64_MIN";
+        }
+        return "";
+    }
+    const char * inner = kofun_fn_lower_expression(
+        trimmed, bound, kofun_rt_text_concat(path, "u"));
+    if (((kofun_rt_text_len(inner)) == (INT64_C(0)))) {
+        return "";
+    }
+    const char * temporary = kofun_rt_text_concat("kt_", path);
+    return kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_fn_lowered_statements(inner), "        int64_t "), temporary), " = checked_neg("), kofun_rt_text_concat(kofun_fn_lowered_operand(inner), ");\n")), temporary);
+}
+
+static const char * kofun_fn_lower_expression(const char * expression, const char * bound, const char * path) {
+    const char * trimmed = kofun_rt_trim(expression);
+    if (((kofun_rt_text_len(trimmed)) == (INT64_C(0)))) {
+        return "";
+    }
+
+    int64_t additive = kofun_fn_split_binary(trimmed, "+-");
+    if (((additive) >= (INT64_C(0)))) {
+        const char * left = kofun_fn_lower_expression(
+            kofun_rt_text_slice(trimmed, INT64_C(0), additive), bound,
+            kofun_rt_text_concat(path, "l"));
+        const char * right = kofun_fn_lower_expression(
+            kofun_rt_text_slice(trimmed, ((additive) + (INT64_C(1))),
+                                kofun_rt_text_len(trimmed)), bound,
+            kofun_rt_text_concat(path, "r"));
+        if ((((kofun_rt_text_len(left)) == (INT64_C(0))) ||
+             ((kofun_rt_text_len(right)) == (INT64_C(0))))) {
+            return "";
+        }
+        if (kofun_rt_text_equal(
+                kofun_rt_text_slice(trimmed, additive, ((additive) + (INT64_C(1)))), "+")) {
+            return kofun_fn_lower_step(path, "checked_add(", left, right);
+        }
+        return kofun_fn_lower_step(path, "checked_sub(", left, right);
+    }
+
+    int64_t multiplicative = kofun_fn_split_binary(trimmed, "*%/");
+    if (((multiplicative) >= (INT64_C(0)))) {
+        const char * operator_text = kofun_rt_text_slice(
+            trimmed, multiplicative, ((multiplicative) + (INT64_C(1))));
+        const char * callee = "checked_mul(";
+        int64_t skip = INT64_C(1);
+        if (kofun_rt_text_equal(operator_text, "%")) {
+            callee = "floor_mod(";
+        } else if (kofun_rt_text_equal(operator_text, "/")) {
+            if ((((multiplicative) + (INT64_C(2))) > (kofun_rt_text_len(trimmed)))) {
+                return "";
+            }
+            if ((!kofun_rt_text_equal(
+                    kofun_rt_text_slice(trimmed, ((multiplicative) + (INT64_C(1))),
+                                        ((multiplicative) + (INT64_C(2)))), "/"))) {
+                return "";
+            }
+            callee = "floor_div(";
+            skip = INT64_C(2);
+        }
+        const char * left = kofun_fn_lower_expression(
+            kofun_rt_text_slice(trimmed, INT64_C(0), multiplicative), bound,
+            kofun_rt_text_concat(path, "l"));
+        const char * right = kofun_fn_lower_expression(
+            kofun_rt_text_slice(trimmed, ((multiplicative) + (skip)),
+                                kofun_rt_text_len(trimmed)), bound,
+            kofun_rt_text_concat(path, "r"));
+        if ((((kofun_rt_text_len(left)) == (INT64_C(0))) ||
+             ((kofun_rt_text_len(right)) == (INT64_C(0))))) {
+            return "";
+        }
+        return kofun_fn_lower_step(path, callee, left, right);
+    }
+
+    if (kofun_rt_starts_with(trimmed, "+")) {
+        return kofun_fn_lower_expression(
+            kofun_rt_text_slice(trimmed, INT64_C(1), kofun_rt_text_len(trimmed)), bound, path);
+    }
+    if (kofun_rt_starts_with(trimmed, "-")) {
+        return kofun_fn_lower_negation(
+            kofun_rt_text_slice(trimmed, INT64_C(1), kofun_rt_text_len(trimmed)), bound, path);
+    }
+    if (kofun_fn_wraps_whole(trimmed)) {
+        return kofun_fn_lower_expression(
+            kofun_rt_text_slice(trimmed, INT64_C(1),
+                                ((kofun_rt_text_len(trimmed)) - (INT64_C(1)))), bound, path);
+    }
+    return kofun_fn_lower_atom(trimmed, bound);
 }
 
 static const char * kofun_fn_print_expression(const char * line) {
@@ -350,6 +574,7 @@ static bool kofun_fn_valid_source(const char * source) {
     int64_t prints = INT64_C(0);
     int64_t main_headers = INT64_C(0);
     int64_t body_depth = INT64_C(0);
+    const char * bound = "|";
     for (int64_t index = INT64_C(0); index < kofun_rt_text_list_len(symbols); ++index) {
         if (kofun_rt_text_equal(kofun_rt_text_list_get(symbols, index), "\n")) {
             const char * line = kofun_rt_trim(kofun_rt_text_slice(source, line_start, index));
@@ -369,15 +594,23 @@ static bool kofun_fn_valid_source(const char * source) {
                 if (((body_depth) != (INT64_C(1)))) {
                     return false;
                 }
-                if ((((!kofun_fn_valid_name(kofun_fn_binding_name(line)))) || ((!kofun_fn_valid_expression(kofun_fn_binding_expression(line)))))) {
+                const char * name = kofun_fn_binding_name(line);
+                if ((!kofun_fn_valid_name(name))) {
                     return false;
                 }
+                if (((kofun_rt_find(bound, kofun_rt_text_concat(kofun_rt_text_concat("|", name), "|"))) >= (INT64_C(0)))) {
+                    return false;
+                }
+                if (((kofun_rt_text_len(kofun_fn_lower_expression(kofun_fn_binding_expression(line), bound, "x"))) == (INT64_C(0)))) {
+                    return false;
+                }
+                bound = kofun_rt_text_concat(kofun_rt_text_concat(bound, name), "|");
             } else if (kofun_rt_starts_with(line, "print(")) {
                 if (((body_depth) != (INT64_C(1)))) {
                     return false;
                 }
                 const char * expression = kofun_fn_print_expression(line);
-                if ((!kofun_fn_valid_expression(expression))) {
+                if (((kofun_rt_text_len(kofun_fn_lower_expression(expression, bound, "x"))) == (INT64_C(0)))) {
                     return false;
                 }
                 prints = ((prints) + (INT64_C(1)));
@@ -394,16 +627,33 @@ static const char * kofun_fn_emit_statements(const char * source) {
     kofun_text_list symbols = kofun_rt_chars(source);
     int64_t line_start = INT64_C(0);
     const char * emitted = "";
+    const char * bound = "|";
     for (int64_t index = INT64_C(0); index < kofun_rt_text_list_len(symbols); ++index) {
         if (kofun_rt_text_equal(kofun_rt_text_list_get(symbols, index), "\n")) {
             const char * line = kofun_rt_trim(kofun_rt_text_slice(source, line_start, index));
             if (kofun_rt_starts_with(line, "let ")) {
                 const char * name = kofun_fn_binding_name(line);
-                const char * expression = kofun_fn_binding_expression(line);
-                emitted = kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(emitted, "    set_variable(\""), name), "\", evaluate(\""), expression), "\"));\n"), "    if (failed) return 1;\n");
+                const char * value = kofun_fn_lower_expression(kofun_fn_binding_expression(line), bound, "x");
+                emitted = kofun_rt_text_concat(emitted, "    int64_t kf_");
+                emitted = kofun_rt_text_concat(emitted, name);
+                emitted = kofun_rt_text_concat(emitted, ";\n    {\n");
+                emitted = kofun_rt_text_concat(emitted, kofun_fn_lowered_statements(value));
+                emitted = kofun_rt_text_concat(emitted, "        kf_");
+                emitted = kofun_rt_text_concat(emitted, name);
+                emitted = kofun_rt_text_concat(emitted, " = ");
+                emitted = kofun_rt_text_concat(emitted, kofun_fn_lowered_operand(value));
+                emitted = kofun_rt_text_concat(emitted, ";\n    }\n    if (failed) return 1;\n    (void)kf_");
+                emitted = kofun_rt_text_concat(emitted, name);
+                emitted = kofun_rt_text_concat(emitted, ";\n");
+                bound = kofun_rt_text_concat(kofun_rt_text_concat(bound, name), "|");
             } else if (kofun_rt_starts_with(line, "print(")) {
-                const char * expression = kofun_fn_print_expression(line);
-                emitted = kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(emitted, "    {\n"), "        int64_t value = evaluate(\""), expression), "\");\n"), "        if (failed) return 1;\n"), "        printf(\"%\" PRId64 \"\\n\", value);\n"), "    }\n");
+                const char * value = kofun_fn_lower_expression(kofun_fn_print_expression(line), bound, "x");
+                emitted = kofun_rt_text_concat(emitted, "    {\n");
+                emitted = kofun_rt_text_concat(emitted, kofun_fn_lowered_statements(value));
+                emitted = kofun_rt_text_concat(emitted, "        int64_t value = ");
+                emitted = kofun_rt_text_concat(emitted, kofun_fn_lowered_operand(value));
+                emitted = kofun_rt_text_concat(emitted, ";\n        if (failed) return 1;\n");
+                emitted = kofun_rt_text_concat(emitted, "        printf(\"%\" PRId64 \"\\n\", value);\n    }\n");
             }
             line_start = ((index) + (INT64_C(1)));
         }
@@ -412,7 +662,89 @@ static const char * kofun_fn_emit_statements(const char * source) {
 }
 
 static const char * kofun_fn_emit_c(const char * source) {
-    return kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat(kofun_rt_text_concat("/* Generated by the Kofun-written Stage 1 seed compiler. */\n", "#include <ctype.h>\n"), "#include <inttypes.h>\n"), "#include <stdbool.h>\n"), "#include <stddef.h>\n"), "#include <stdint.h>\n"), "#include <stdio.h>\n"), "#include <string.h>\n\n"), "static const char *cursor;\n"), "static bool failed;\n"), "static const char *variable_names[64];\n"), "static int64_t variable_values[64];\n"), "static size_t variable_count;\n\n"), "static void runtime_error(const char *message) {\n"), "    if (!failed) {\n"), "        fputs(message, stderr);\n"), "        fputc('\\n', stderr);\n"), "    }\n"), "    failed = true;\n"), "}\n\n"), "static void skip_space(void) {\n"), "    while (isspace((unsigned char)*cursor)) ++cursor;\n"), "}\n\n"), "static void set_variable(const char *name, int64_t value) {\n"), "    if (variable_count >= 64) {\n"), "        runtime_error(\"error[R011]: too many Core bindings\");\n"), "        return;\n"), "    }\n"), "    variable_names[variable_count] = name;\n"), "    variable_values[variable_count] = value;\n"), "    ++variable_count;\n"), "}\n\n"), "static int64_t variable(const char *start, size_t length) {\n"), "    for (size_t index = variable_count; index > 0; --index) {\n"), "        const char *name = variable_names[index - 1];\n"), "        if (strlen(name) == length && strncmp(name, start, length) == 0) {\n"), "            return variable_values[index - 1];\n"), "        }\n"), "    }\n"), "    runtime_error(\"error[R011]: unknown Core binding\");\n"), "    return 0;\n"), "}\n\n"), "static uint64_t magnitude(uint64_t limit) {\n"), "    uint64_t value = 0;\n"), "    bool any = false;\n"), "    while (isdigit((unsigned char)*cursor)) {\n"), "        uint64_t digit = (uint64_t)(*cursor++ - '0');\n"), "        any = true;\n"), "        if (value > (limit - digit) / 10) {\n"), "            runtime_error(\"error[R010]: integer overflow in literal\");\n"), "            return 0;\n"), "        }\n"), "        value = value * 10 + digit;\n"), "    }\n"), "    if (!any) runtime_error(\"error[R011]: expected integer expression\");\n"), "    return value;\n"), "}\n\n"), "static int64_t expression(void);\n\n"), "static int64_t primary(void) {\n"), "    skip_space();\n"), "    if (*cursor == '(') {\n"), "        ++cursor;\n"), "        int64_t value = expression();\n"), "        skip_space();\n"), "        if (*cursor != ')') runtime_error(\"error[R011]: expected `)`\");\n"), "        else ++cursor;\n"), "        return value;\n"), "    }\n"), "    if (isalpha((unsigned char)*cursor) || *cursor == '_') {\n"), "        const char *start = cursor++;\n"), "        while (isalnum((unsigned char)*cursor) || *cursor == '_') ++cursor;\n"), "        return variable(start, (size_t)(cursor - start));\n"), "    }\n"), "    return (int64_t)magnitude(INT64_MAX);\n"), "}\n\n"), "static int64_t unary(void) {\n"), "    skip_space();\n"), "    if (*cursor == '+') {\n"), "        ++cursor;\n"), "        return unary();\n"), "    }\n"), "    if (*cursor == '-') {\n"), "        ++cursor;\n"), "        skip_space();\n"), "        if (isdigit((unsigned char)*cursor)) {\n"), "            uint64_t value = magnitude((uint64_t)INT64_MAX + 1);\n"), "            if (value == (uint64_t)INT64_MAX + 1) return INT64_MIN;\n"), "            return -(int64_t)value;\n"), "        }\n"), "        int64_t value = unary();\n"), "        if (!failed && value == INT64_MIN) {\n"), "            runtime_error(\"error[R010]: integer overflow in unary operator `-`\");\n"), "            return 0;\n"), "        }\n"), "        return -value;\n"), "    }\n"), "    return primary();\n"), "}\n\n"), "static int64_t checked_add(int64_t left, int64_t right) {\n"), "    int64_t result;\n"), "    if (__builtin_add_overflow(left, right, &result)) {\n"), "        runtime_error(\"error[R010]: integer overflow in operator `+`\");\n"), "        return 0;\n"), "    }\n"), "    return result;\n"), "}\n\n"), "static int64_t checked_sub(int64_t left, int64_t right) {\n"), "    int64_t result;\n"), "    if (__builtin_sub_overflow(left, right, &result)) {\n"), "        runtime_error(\"error[R010]: integer overflow in operator `-`\");\n"), "        return 0;\n"), "    }\n"), "    return result;\n"), "}\n\n"), "static int64_t checked_mul(int64_t left, int64_t right) {\n"), "    int64_t result;\n"), "    if (__builtin_mul_overflow(left, right, &result)) {\n"), "        runtime_error(\"error[R010]: integer overflow in operator `*`\");\n"), "        return 0;\n"), "    }\n"), "    return result;\n"), "}\n\n"), "static int64_t floor_div(int64_t left, int64_t right) {\n"), "    if (right == 0) {\n"), "        runtime_error(\"error[R010]: operator `//` failed: division by zero\");\n"), "        return 0;\n"), "    }\n"), "    if (left == INT64_MIN && right == -1) {\n"), "        runtime_error(\"error[R010]: integer overflow in operator `//`\");\n"), "        return 0;\n"), "    }\n"), "    int64_t quotient = left / right;\n"), "    int64_t remainder = left % right;\n"), "    if (remainder != 0 && ((remainder < 0) != (right < 0))) --quotient;\n"), "    return quotient;\n"), "}\n\n"), "static int64_t floor_mod(int64_t left, int64_t right) {\n"), "    if (right == 0) {\n"), "        runtime_error(\"error[R010]: operator `%` failed: division by zero\");\n"), "        return 0;\n"), "    }\n"), "    if (left == INT64_MIN && right == -1) return 0;\n"), "    int64_t remainder = left % right;\n"), "    if (remainder != 0 && ((remainder < 0) != (right < 0))) remainder += right;\n"), "    return remainder;\n"), "}\n\n"), "static int64_t term(void) {\n"), "    int64_t value = unary();\n"), "    for (;;) {\n"), "        skip_space();\n"), "        if (*cursor == '*') {\n"), "            ++cursor;\n"), "            value = checked_mul(value, unary());\n"), "        } else if (cursor[0] == '/' && cursor[1] == '/') {\n"), "            cursor += 2;\n"), "            value = floor_div(value, unary());\n"), "        } else if (*cursor == '%') {\n"), "            ++cursor;\n"), "            value = floor_mod(value, unary());\n"), "        } else if (*cursor == '/') {\n"), "            ++cursor;\n"), "            int64_t right = unary();\n"), "            if (right == 0) runtime_error(\"error[R010]: operator `/` failed: division by zero\");\n"), "            else if (value == INT64_MIN && right == -1) runtime_error(\"error[R010]: integer overflow in operator `/`\");\n"), "            else value /= right;\n"), "        } else {\n"), "            return value;\n"), "        }\n"), "    }\n"), "}\n\n"), "static int64_t expression(void) {\n"), "    int64_t value = term();\n"), "    for (;;) {\n"), "        skip_space();\n"), "        if (*cursor == '+') {\n"), "            ++cursor;\n"), "            value = checked_add(value, term());\n"), "        } else if (*cursor == '-') {\n"), "            ++cursor;\n"), "            value = checked_sub(value, term());\n"), "        } else {\n"), "            return value;\n"), "        }\n"), "    }\n"), "}\n\n"), "static int64_t evaluate(const char *source) {\n"), "    cursor = source;\n"), "    int64_t value = expression();\n"), "    skip_space();\n"), "    if (*cursor != '\\0') runtime_error(\"error[R011]: trailing input\");\n"), "    return value;\n"), "}\n\n"), "int main(void) {\n"), "    (void)set_variable;\n"), kofun_fn_emit_statements(source)), "    return 0;\n"), "}\n");
+    static const char *const preamble[] = {
+        "/* Generated by the Kofun-written Stage 1 seed compiler. */\n",
+        "#include <inttypes.h>\n",
+        "#include <stdbool.h>\n",
+        "#include <stdint.h>\n",
+        "#include <stdio.h>\n\n",
+        "static bool failed;\n\n",
+        "static void runtime_error(const char *message) {\n",
+        "    if (!failed) {\n",
+        "        fputs(message, stderr);\n",
+        "        fputc('\\n', stderr);\n",
+        "    }\n",
+        "    failed = true;\n",
+        "}\n\n",
+        "static int64_t checked_add(int64_t left, int64_t right) {\n",
+        "    int64_t result;\n",
+        "    if (__builtin_add_overflow(left, right, &result)) {\n",
+        "        runtime_error(\"error[R010]: integer overflow in operator `+`\");\n",
+        "        return 0;\n",
+        "    }\n",
+        "    return result;\n",
+        "}\n\n",
+        "static int64_t checked_sub(int64_t left, int64_t right) {\n",
+        "    int64_t result;\n",
+        "    if (__builtin_sub_overflow(left, right, &result)) {\n",
+        "        runtime_error(\"error[R010]: integer overflow in operator `-`\");\n",
+        "        return 0;\n",
+        "    }\n",
+        "    return result;\n",
+        "}\n\n",
+        "static int64_t checked_mul(int64_t left, int64_t right) {\n",
+        "    int64_t result;\n",
+        "    if (__builtin_mul_overflow(left, right, &result)) {\n",
+        "        runtime_error(\"error[R010]: integer overflow in operator `*`\");\n",
+        "        return 0;\n",
+        "    }\n",
+        "    return result;\n",
+        "}\n\n",
+        "static int64_t checked_neg(int64_t value) {\n",
+        "    if (value == INT64_MIN) {\n",
+        "        runtime_error(\"error[R010]: integer overflow in unary operator `-`\");\n",
+        "        return 0;\n",
+        "    }\n",
+        "    return -value;\n",
+        "}\n\n",
+        "static int64_t floor_div(int64_t left, int64_t right) {\n",
+        "    if (right == 0) {\n",
+        "        runtime_error(\"error[R010]: operator `//` failed: division by zero\");\n",
+        "        return 0;\n",
+        "    }\n",
+        "    if (left == INT64_MIN && right == -1) {\n",
+        "        runtime_error(\"error[R010]: integer overflow in operator `//`\");\n",
+        "        return 0;\n",
+        "    }\n",
+        "    int64_t quotient = left / right;\n",
+        "    int64_t remainder = left % right;\n",
+        "    if (remainder != 0 && ((remainder < 0) != (right < 0))) --quotient;\n",
+        "    return quotient;\n",
+        "}\n\n",
+        "static int64_t floor_mod(int64_t left, int64_t right) {\n",
+        "    if (right == 0) {\n",
+        "        runtime_error(\"error[R010]: operator `%` failed: division by zero\");\n",
+        "        return 0;\n",
+        "    }\n",
+        "    if (left == INT64_MIN && right == -1) return 0;\n",
+        "    int64_t remainder = left % right;\n",
+        "    if (remainder != 0 && ((remainder < 0) != (right < 0))) remainder += right;\n",
+        "    return remainder;\n",
+        "}\n\n",
+        "int main(void) {\n",
+        "    (void)checked_add;\n",
+        "    (void)checked_sub;\n",
+        "    (void)checked_mul;\n",
+        "    (void)checked_neg;\n",
+        "    (void)floor_div;\n",
+        "    (void)floor_mod;\n",
+    };
+    const char * emitted = "";
+    for (size_t index = 0; index < sizeof(preamble) / sizeof(preamble[0]); ++index) {
+        emitted = kofun_rt_text_concat(emitted, preamble[index]);
+    }
+    emitted = kofun_rt_text_concat(emitted, kofun_fn_emit_statements(source));
+    return kofun_rt_text_concat(emitted, "    return 0;\n}\n");
 }
 
 static bool kofun_fn_compile_file(const char * input_path, const char * output_path) {
@@ -438,18 +770,6 @@ static bool kofun_fn_compile_file(const char * input_path, const char * output_p
         return false;
     }
     const char * emitted = kofun_fn_emit_c(source);
-    emitted = kofun_rt_replace(
-        emitted,
-        "if (isalpha((unsigned char)*cursor) || *cursor == '_')",
-        "if (isalpha((unsigned char)*cursor) || *cursor == '_' || "
-        "(unsigned char)*cursor >= 0x80)"
-    );
-    emitted = kofun_rt_replace(
-        emitted,
-        "while (isalnum((unsigned char)*cursor) || *cursor == '_') ++cursor;",
-        "while (isalnum((unsigned char)*cursor) || *cursor == '_' || "
-        "(unsigned char)*cursor >= 0x80) ++cursor;"
-    );
     (void)(kofun_rt_write_text(output_path, emitted));
     printf("%s\n", output_path);
     return true;

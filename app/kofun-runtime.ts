@@ -403,6 +403,16 @@ class Parser {
       const operator = this.peek();
       const precedence = PRECEDENCE[operator.value];
       if (precedence === undefined || precedence < minimumPrecedence) break;
+      if (operator.value === "/") {
+        // `/` is not defined on Int (#687): with no implicit numeric promotion
+        // it cannot produce a fractional value from two Int operands. Rejected
+        // here so the playground agrees with every compiler backend.
+        throw new KofunError(
+          "P002",
+          "`/` is not defined on Int; use `//` for the integer quotient",
+          operator,
+        );
+      }
       this.advance();
       const right = this.parseExpression(precedence + 1);
       left = {
@@ -872,13 +882,12 @@ class Evaluator {
         token,
       );
     }
-    if (operator === "/" || operator === "//" || operator === "%") {
+    if (operator === "//" || operator === "%") {
       const divisor = this.number(right, token);
       if (divisor === 0) {
         throw new KofunError("R005", "Division by zero", token);
       }
       const dividend = this.number(left, token);
-      if (operator === "/") return dividend / divisor;
       if (operator === "//") return Math.floor(dividend / divisor);
       return dividend - Math.floor(dividend / divisor) * divisor;
     }

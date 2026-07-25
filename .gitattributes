@@ -1,2 +1,6 @@
 *.kofun text eol=lf
 examples/rust-shim/vendor/** -whitespace
+# Typed-HIR evidence records Text-literal bytes verbatim, so a literal that
+# legitimately ends in a space produces a trailing-whitespace record. These
+# files are generated and byte-pinned, never hand-edited.
+bootstrap/selfhost/**/*.hir -whitespace
