@@ -10,6 +10,8 @@ import DocsNav from "../docs-nav";
 import { docBySlug, docBySource, docs } from "../docs-manifest";
 
 const githubBlob = "https://github.com/hjosugi/kofun/blob/main";
+const githubRaw = "https://raw.githubusercontent.com/hjosugi/kofun/main";
+const githubTree = "https://github.com/hjosugi/kofun/tree/main";
 const siteBasePath = process.env.KOFUN_BASE_PATH ?? "";
 
 export const dynamicParams = false;
@@ -31,7 +33,22 @@ function rewriteHref(href: string | undefined, source: string) {
   if (localDoc) {
     return `${siteBasePath}/docs/${localDoc.slug}/${suffix}`;
   }
+  if (rawPath.endsWith("/")) {
+    return `${githubTree}/${resolved.replace(/\/$/, "")}${suffix}`;
+  }
   return `${githubBlob}/${resolved}${suffix}`;
+}
+
+function rewriteImageSrc(src: string | undefined, source: string) {
+  if (!src || /^(?:[a-z]+:|data:)/i.test(src)) return src;
+
+  const resolved = posix.normalize(
+    posix.join(posix.dirname(source), decodeURIComponent(src)),
+  );
+  if (resolved.startsWith("public/")) {
+    return `${siteBasePath}/${resolved.slice("public/".length)}`;
+  }
+  return `${githubRaw}/${resolved}`;
 }
 
 export default async function DocPage({
@@ -80,6 +97,18 @@ export default async function DocPage({
                   return (
                     <a
                       href={rewriteHref(href, entry.source)}
+                      {...props}
+                    />
+                  );
+                },
+                img({ src, ...props }) {
+                  return (
+                    <img
+                      src={
+                        typeof src === "string"
+                          ? rewriteImageSrc(src, entry.source)
+                          : undefined
+                      }
                       {...props}
                     />
                   );

@@ -88,10 +88,10 @@ export default function DocsHome() {
             <div className="docs-section-title">
               <span>02</span>
               <div>
-                <h2>Next evidence tracks</h2>
+                <h2>Evidence tracks</h2>
                 <p>
-                  Ready issues reviewed on {snapshot.reviewed}; issue state may
-                  change between site versions.
+                  Tracker states observed on {snapshot.reviewed}; issue state
+                  may change between site versions.
                 </p>
               </div>
             </div>

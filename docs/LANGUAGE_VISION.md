@@ -9,7 +9,7 @@ Its distinguishing product position is: **the language where you state an
 algebraic law and the compiler hands you a counterexample.** The measured
 implementation status for that position and for the wider systems-language
 goals lives in the
-[README checklist](../README.md#measured-project-status). Target design in this
+[implemented-status matrix](MVP_IMPLEMENTED.md). Target design in this
 document must not be read as implemented behavior.
 
 Rust made memory safety without a GC practical, through ownership and

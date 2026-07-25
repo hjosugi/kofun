@@ -44,7 +44,7 @@ remain important P1 work. None expands the frozen string-scanning profile
 before B4/B5. Advanced effects, dependent or refinement types, concurrency
 runtime implementation, and an optional second backend remain later. The
 evidence and keep/defer/reject decisions are indexed in the
-[README project-status section](../README.md#measured-project-status).
+[implemented-status matrix](MVP_IMPLEMENTED.md).
 
 ## M0 — Specification and UX validation
 

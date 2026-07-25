@@ -121,52 +121,13 @@ svg {
 }
 
 .kofun-mark {
-  background: var(--ink);
-  border-radius: 28%;
-  display: inline-block;
+  display: block;
   height: 124px;
-  overflow: hidden;
-  position: relative;
+  object-fit: contain;
   width: 124px;
 }
 
-.kofun-mark i,
-.kofun-mark b {
-  background: var(--acid);
-  display: block;
-  left: 50%;
-  position: absolute;
-  transform: translateX(-50%);
-}
-
-.kofun-mark i {
-  border-radius: 50%;
-  height: 44%;
-  top: 15%;
-  width: 44%;
-}
-
-.kofun-mark i::after {
-  background: var(--ink);
-  border-radius: 50%;
-  content: "";
-  height: 31%;
-  left: 50%;
-  position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 31%;
-}
-
-.kofun-mark b {
-  bottom: 14%;
-  clip-path: polygon(26% 0, 74% 0, 100% 100%, 0 100%);
-  height: 46%;
-  width: 54%;
-}
-
 .kofun-mark.compact {
-  border-radius: 9px;
   height: 32px;
   width: 32px;
 }
@@ -1361,16 +1322,9 @@ footer {
   padding: 0 4px 22px;
 }
 
-.docs-wordmark-icon {
-  align-items: center;
-  background: var(--acid);
-  border-radius: 8px;
-  color: var(--ink);
-  display: flex;
-  font-size: 15px;
-  font-weight: 850;
+.docs-wordmark .kofun-mark {
+  flex: 0 0 auto;
   height: 34px;
-  justify-content: center;
   width: 34px;
 }
 

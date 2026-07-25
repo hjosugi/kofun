@@ -10,6 +10,7 @@ const required = [
   "index.html",
   "docs/index.html",
   "docs/issue-progress/index.html",
+  "kofun-mark.svg",
   "tour/index.html",
   "tour/compiler.mjs",
 ];

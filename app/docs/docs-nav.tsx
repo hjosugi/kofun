@@ -1,4 +1,5 @@
 import Link from "next/link";
+import KofunMark from "../kofun-mark";
 import { docs, snapshot } from "./docs-manifest";
 
 const sections = ["Start here", "Language", "Compiler", "Project"] as const;
@@ -7,7 +8,7 @@ export default function DocsNav({ active }: { active?: string }) {
   return (
     <aside className="docs-sidebar">
       <Link className="docs-wordmark" href="/">
-        <span className="docs-wordmark-icon">K</span>
+        <KofunMark compact />
         <span>
           <strong>Kofun</strong>
           <small>Documentation</small>
