@@ -644,6 +644,44 @@ static void test_strict_invariant_rejection(const Fixture *fixture) {
     KofunSemanticSink sink;
 
     {
+        KofunSemanticId second_owner = node_id(
+            fixture, KOFUN_SEMANTIC_NODE_MODULE, span, 1u
+        );
+        KofunSemanticId shared_identity;
+        KofunSemanticIdentity identity;
+        stream = kofun_semantic_stream_create();
+        CHECK(stream != NULL);
+        sink = kofun_semantic_stream_sink(stream);
+        CHECK(kofun_semantic_begin(&sink, &fixture->semantic_source));
+        CHECK(emit_node(
+            &sink, module, KOFUN_SEMANTIC_NODE_MODULE, span,
+            KOFUN_SEMANTIC_VALIDATED, NULL, 0u, NULL, 0u
+        ));
+        CHECK(emit_node(
+            &sink, second_owner, KOFUN_SEMANTIC_NODE_MODULE, span,
+            KOFUN_SEMANTIC_VALIDATED, NULL, 0u, NULL, 0u
+        ));
+        CHECK(emit_identity(
+            &sink,
+            module,
+            KOFUN_SEMANTIC_ID_SYMBOL,
+            "identity:shared-owner-pair",
+            &shared_identity
+        ));
+        memset(&identity, 0, sizeof(identity));
+        identity.owner_node_id = second_owner;
+        identity.kind = KOFUN_SEMANTIC_ID_SYMBOL;
+        identity.value = shared_identity;
+        identity.status = KOFUN_SEMANTIC_VALIDATED;
+        CHECK(!kofun_semantic_identity(&sink, &identity));
+        CHECK(strcmp(
+            kofun_semantic_stream_error(stream)->code,
+            "ETS03"
+        ) == 0);
+        kofun_semantic_stream_destroy(stream);
+    }
+
+    {
         KofunSemanticSource source = fixture->semantic_source;
         source.compiler_exit_class = 4u;
         stream = kofun_semantic_stream_create();
@@ -1132,6 +1170,150 @@ static void test_relation_limits(const Fixture *fixture) {
     kofun_semantic_stream_destroy(stream);
 }
 
+static void initialize_limit_diagnostic(
+    const Fixture *fixture,
+    const char *identity,
+    KofunSemanticDiagnostic *diagnostic
+) {
+    KofunSemanticSpan span = {0u, 0u};
+    memset(diagnostic, 0, sizeof(*diagnostic));
+    id_from_text(identity, &diagnostic->diagnostic_id);
+    diagnostic->code = text("W2S01");
+    diagnostic->category = text("test");
+    diagnostic->severity = KOFUN_SEMANTIC_DIAGNOSTIC_WARNING;
+    diagnostic->template_id = text("nested-list-limit");
+    diagnostic->primary_file_id = fixture->file_id;
+    diagnostic->primary_span = span;
+    diagnostic->fallback_text = text("nested list limit");
+}
+
+static void expect_uncommitted_limit_failure(
+    KofunSemanticStream *stream,
+    const char *destination
+) {
+    const uint8_t *bytes;
+    size_t length;
+    struct stat status;
+    CHECK(strcmp(kofun_semantic_stream_error(stream)->code, "ETS04") == 0);
+    CHECK(!kofun_semantic_stream_bytes(stream, &bytes, &length));
+    CHECK(!kofun_semantic_stream_commit(stream, destination));
+    CHECK(lstat(destination, &status) != 0);
+    CHECK(errno == ENOENT);
+}
+
+static void test_nested_diagnostic_list_limits(
+    const Fixture *fixture,
+    const char *work
+) {
+    const uint32_t related_exact =
+        KOFUN_SEMANTIC_MAX_TEXT_BYTES -
+        (2u + KOFUN_SEMANTIC_ID_BYTES + 4u + 4u + 2u);
+    const uint32_t edit_exact =
+        KOFUN_SEMANTIC_MAX_TEXT_BYTES -
+        (2u + 4u + KOFUN_SEMANTIC_ID_BYTES + 4u + 4u + 2u);
+    uint8_t *related_text = (uint8_t *)malloc(related_exact + 1u);
+    uint8_t *edit_text = (uint8_t *)malloc(edit_exact + 1u);
+    KofunSemanticStream *stream;
+    KofunSemanticSink sink;
+    KofunSemanticDiagnostic diagnostic;
+    KofunSemanticRelated related;
+    KofunSemanticEdit edit;
+    uint32_t remedy = 1u;
+    const uint8_t *bytes;
+    size_t length;
+    char destination[1024];
+    CHECK(related_exact == 4052u);
+    CHECK(edit_exact == 4048u);
+    CHECK(related_text != NULL);
+    CHECK(edit_text != NULL);
+    memset(related_text, 'r', related_exact + 1u);
+    memset(edit_text, 'e', edit_exact + 1u);
+
+    memset(&related, 0, sizeof(related));
+    related.file_id = fixture->file_id;
+    related.label.bytes = related_text;
+    related.label.length = related_exact;
+    initialize_limit_diagnostic(
+        fixture, "diagnostic:related-exact", &diagnostic
+    );
+    diagnostic.related = &related;
+    diagnostic.related_count = 1u;
+    stream = kofun_semantic_stream_create();
+    CHECK(stream != NULL);
+    sink = kofun_semantic_stream_sink(stream);
+    CHECK(kofun_semantic_begin(&sink, &fixture->semantic_source));
+    CHECK(kofun_semantic_diagnostic(&sink, &diagnostic));
+    CHECK(kofun_semantic_end(
+        &sink, KOFUN_SOURCE_CHECKED, KOFUN_SEMANTIC_COMPLETE
+    ));
+    CHECK(kofun_semantic_stream_bytes(stream, &bytes, &length));
+    CHECK(kofun_semantic_validate_stream(bytes, length, NULL));
+    kofun_semantic_stream_destroy(stream);
+
+    related.label.length = related_exact + 1u;
+    initialize_limit_diagnostic(
+        fixture, "diagnostic:related-over", &diagnostic
+    );
+    diagnostic.related = &related;
+    diagnostic.related_count = 1u;
+    stream = kofun_semantic_stream_create();
+    CHECK(stream != NULL);
+    sink = kofun_semantic_stream_sink(stream);
+    CHECK(kofun_semantic_begin(&sink, &fixture->semantic_source));
+    CHECK(!kofun_semantic_diagnostic(&sink, &diagnostic));
+    (void)snprintf(
+        destination, sizeof(destination), "%s/related-over.kse", work
+    );
+    expect_uncommitted_limit_failure(stream, destination);
+    kofun_semantic_stream_destroy(stream);
+
+    memset(&edit, 0, sizeof(edit));
+    edit.remedy_id = remedy;
+    edit.file_id = fixture->file_id;
+    edit.replacement.bytes = edit_text;
+    edit.replacement.length = edit_exact;
+    initialize_limit_diagnostic(
+        fixture, "diagnostic:edit-exact", &diagnostic
+    );
+    diagnostic.remedy_ids = &remedy;
+    diagnostic.remedy_count = 1u;
+    diagnostic.edits = &edit;
+    diagnostic.edit_count = 1u;
+    stream = kofun_semantic_stream_create();
+    CHECK(stream != NULL);
+    sink = kofun_semantic_stream_sink(stream);
+    CHECK(kofun_semantic_begin(&sink, &fixture->semantic_source));
+    CHECK(kofun_semantic_diagnostic(&sink, &diagnostic));
+    CHECK(kofun_semantic_end(
+        &sink, KOFUN_SOURCE_CHECKED, KOFUN_SEMANTIC_COMPLETE
+    ));
+    CHECK(kofun_semantic_stream_bytes(stream, &bytes, &length));
+    CHECK(kofun_semantic_validate_stream(bytes, length, NULL));
+    kofun_semantic_stream_destroy(stream);
+
+    edit.replacement.length = edit_exact + 1u;
+    initialize_limit_diagnostic(
+        fixture, "diagnostic:edit-over", &diagnostic
+    );
+    diagnostic.remedy_ids = &remedy;
+    diagnostic.remedy_count = 1u;
+    diagnostic.edits = &edit;
+    diagnostic.edit_count = 1u;
+    stream = kofun_semantic_stream_create();
+    CHECK(stream != NULL);
+    sink = kofun_semantic_stream_sink(stream);
+    CHECK(kofun_semantic_begin(&sink, &fixture->semantic_source));
+    CHECK(!kofun_semantic_diagnostic(&sink, &diagnostic));
+    (void)snprintf(
+        destination, sizeof(destination), "%s/edit-over.kse", work
+    );
+    expect_uncommitted_limit_failure(stream, destination);
+    kofun_semantic_stream_destroy(stream);
+
+    free(edit_text);
+    free(related_text);
+}
+
 static void test_text_limits(const Fixture *fixture) {
     static const char *invalid_paths[] = {
         "/src/main.kofun",
@@ -1482,6 +1664,64 @@ static void test_corruption(const Fixture *fixture) {
     partial = copy_stream(partial_stream, &partial_length);
     CHECK(kofun_semantic_validate_stream(canonical, length, NULL));
     CHECK(kofun_semantic_validate_stream(partial, partial_length, NULL));
+
+    {
+        RejectingSink capture;
+        KofunSemanticSink replay_sink;
+        KofunSemanticError error;
+        size_t first_identity;
+        size_t second_identity;
+        size_t first_owner;
+        size_t second_owner;
+        uint32_t first_length;
+        uint32_t second_length;
+        uint32_t first_owner_length;
+        uint32_t second_owner_length;
+        copy = fresh_copy(canonical, length);
+        first_owner = field_payload_at(
+            canonical, length, 3u, 2u, 1u, &first_owner_length
+        );
+        second_owner = field_payload_at(
+            canonical, length, 3u, 5u, 1u, &second_owner_length
+        );
+        first_identity = field_payload_at(
+            canonical, length, 3u, 2u, 3u, &first_length
+        );
+        second_identity = field_payload_at(
+            copy, length, 3u, 5u, 3u, &second_length
+        );
+        CHECK(first_owner_length == KOFUN_SEMANTIC_ID_BYTES);
+        CHECK(second_owner_length == KOFUN_SEMANTIC_ID_BYTES);
+        CHECK(memcmp(
+            canonical + first_owner,
+            canonical + second_owner,
+            KOFUN_SEMANTIC_ID_BYTES
+        ) != 0);
+        CHECK(first_length == KOFUN_SEMANTIC_ID_BYTES);
+        CHECK(second_length == KOFUN_SEMANTIC_ID_BYTES);
+        memcpy(
+            copy + second_identity,
+            canonical + first_identity,
+            KOFUN_SEMANTIC_ID_BYTES
+        );
+        resign(copy, length);
+        CHECK(!kofun_semantic_validate_stream(copy, length, &error));
+        CHECK(strcmp(error.code, "ETS03") == 0);
+        CHECK(error.event_kind == 3u);
+        memset(&capture, 0, sizeof(capture));
+        replay_sink = rejecting_sink(&capture);
+        CHECK(!kofun_semantic_replay_stream(
+            copy, length, &replay_sink, &error
+        ));
+        CHECK(strcmp(error.code, "ETS03") == 0);
+        CHECK(error.event_kind == 3u);
+        for (index = 0u;
+             index < sizeof(capture.calls) / sizeof(capture.calls[0]);
+             index += 1u) {
+            CHECK(capture.calls[index] == 0u);
+        }
+        free(copy);
+    }
 
     copy = fresh_copy(canonical, length);
     copy[20] ^= 1u;
@@ -1893,6 +2133,7 @@ int main(int argc, char **argv) {
         test_nfc_rejection(&fixture);
         test_independent_sink(&fixture);
         test_relation_limits(&fixture);
+        test_nested_diagnostic_list_limits(&fixture, argv[2]);
         test_text_limits(&fixture);
         test_event_count_limits(&fixture);
         puts("PASS: Stage 2 semantic complete/partial/cancelled event transactions");

@@ -93,9 +93,11 @@ semantic validation.
 Every visible reference contains exactly one identity kind/value target, and
 that exact `(kind, value)` must name an identity record already committed in
 phase 3; an arbitrary or forward target ID is invalid regardless of reference
-status. A validated visible reference additionally requires the target
-identity itself to be validated. Hidden and unavailable references cannot be
-validated.
+status. Each `(kind, value)` pair globally names exactly one owner NodeId, so
+two owners cannot publish the same pair. This singular identity closure makes
+visible-target lookup unambiguous. A validated visible reference additionally
+requires the target identity itself to be validated. Hidden and unavailable
+references cannot be validated.
 They contain at most a safe identity kind and a public reason discriminator;
 their target value is required to be zero and is never serialized. Source
 spans are half-open UTF-8 byte offsets bounded by the committed source length.
