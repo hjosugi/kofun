@@ -74,6 +74,13 @@ export const docs: DocEntry[] = [
     section: "Compiler",
   },
   {
+    slug: "developer-discovery",
+    title: "Developer discovery",
+    summary: "One compiler-backed contract for inferred types, callable operations, and safe explanations.",
+    source: "docs/DEVELOPER_DISCOVERY.md",
+    section: "Compiler",
+  },
+  {
     slug: "self-hosting",
     title: "Self-hosting",
     summary: "The frozen profile, typed HIR evidence, runnable compiler generation, and fixed-point boundary.",
