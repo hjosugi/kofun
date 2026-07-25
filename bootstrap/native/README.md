@@ -223,15 +223,19 @@ because a literal is unsigned before the unary minus applies. The gate executes
 all three `-1` boundaries directly from that literal: `//` and `/` reject the
 non-representable quotient with status 1, while `%` prints `0`.
 
-One limit is left. A runtime arithmetic failure reports
-`kofun: integer overflow` or `kofun: division by zero` rather than the
-canonical per-operator `error[R010]` line the C11 and wasm32 backends write, so
-the native adapters still do not claim the numeric conformance corpus. That is
-the only remaining difference on those nine cases — every value, exit status,
-and stdout byte already agrees — and it is blocked on where the message bytes
-live, not on the diagnostics themselves: they currently sit in the one-page RX
-segment, which `stdlib/set/tests/projection.kofun` already fills to within 23
-bytes.
+A runtime arithmetic failure writes the canonical `error[R010]` line the C11
+and wasm32 backends write, naming the operator, so both direct backends execute
+all nine `tests/conformance/numeric` cases with byte-exact stdout, stderr, and
+exit status.
+
+Naming the operator means one message per operator, and that only fits because
+of where the pieces live. The messages are data, so they sit in the RW page
+rather than the one-page RX segment — `stdlib/set/tests/projection.kofun`
+already fills that segment to within 23 bytes, and naming the operator now
+costs it nothing. The write-and-exit half of a trap is identical for every
+kind, so it is emitted once and each kind reduces to loading its message and
+branching to it. Only the kinds a program can reach are emitted, so a body with
+no arithmetic carries no trap at all.
 
 ## Compiler-shaped Text function bridge
 
