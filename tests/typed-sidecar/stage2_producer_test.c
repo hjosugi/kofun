@@ -28,6 +28,29 @@ enum {
     AUDIT_PHASES = 8
 };
 
+#define AUDIT_MAX_NODES 512u
+#define AUDIT_MAX_FACTS 1024u
+#define AUDIT_MAX_DEPENDENCIES 8u
+
+typedef struct {
+    KofunSemanticId id;
+    KofunSemanticNodeKind kind;
+    KofunSemanticSpan span;
+    KofunSemanticStatus status;
+    KofunSemanticId dependencies[AUDIT_MAX_DEPENDENCIES];
+    uint16_t dependency_count;
+    uint16_t diagnostic_count;
+} AuditNode;
+
+typedef struct {
+    KofunSemanticId owner;
+    KofunSemanticFactKind kind;
+    KofunSemanticStatus status;
+    KofunSemanticId dependencies[AUDIT_MAX_DEPENDENCIES];
+    uint16_t dependency_count;
+    uint16_t diagnostic_count;
+} AuditFact;
+
 typedef struct {
     uint8_t *bytes;
     size_t length;
@@ -55,6 +78,10 @@ typedef struct {
     bool saw_reference;
     uint32_t last_node_start;
     uint32_t last_reference_start;
+    AuditNode nodes[AUDIT_MAX_NODES];
+    size_t node_count;
+    AuditFact facts[AUDIT_MAX_FACTS];
+    size_t fact_count;
 } Audit;
 
 static KofunSemanticBytes text(const char *value) {
@@ -250,6 +277,7 @@ static bool audit_begin(void *context, const KofunSemanticSource *source) {
 
 static bool audit_node(void *context, const KofunSemanticNode *node) {
     Audit *audit = (Audit *)context;
+    AuditNode *snapshot;
     if (!audit_enter(audit, AUDIT_NODE)) return false;
     if (audit->downstream != NULL &&
         !kofun_semantic_node(audit->downstream, node)) {
@@ -268,6 +296,23 @@ static bool audit_node(void *context, const KofunSemanticNode *node) {
         audit->last_node_start = node->span.start;
     }
     if (node->dependency_count != 0u) audit->dependent_nodes += 1u;
+    CHECK(audit->node_count < AUDIT_MAX_NODES);
+    CHECK(node->dependency_count <= AUDIT_MAX_DEPENDENCIES);
+    snapshot = &audit->nodes[audit->node_count++];
+    memset(snapshot, 0, sizeof(*snapshot));
+    snapshot->id = node->node_id;
+    snapshot->kind = node->kind;
+    snapshot->span = node->span;
+    snapshot->status = node->status;
+    snapshot->dependency_count = node->dependency_count;
+    snapshot->diagnostic_count = node->diagnostic_count;
+    if (node->dependency_count != 0u) {
+        memcpy(
+            snapshot->dependencies,
+            node->dependencies,
+            node->dependency_count * sizeof(node->dependencies[0])
+        );
+    }
     return capture_u8(&audit->capture, AUDIT_NODE) &&
         capture_id(&audit->capture, &node->node_id) &&
         capture_u8(&audit->capture, (uint8_t)node->kind) &&
@@ -343,6 +388,7 @@ static bool audit_reference(
 
 static bool audit_fact(void *context, const KofunSemanticFact *fact) {
     Audit *audit = (Audit *)context;
+    AuditFact *snapshot;
     if (!audit_enter(audit, AUDIT_FACT)) return false;
     if (audit->downstream != NULL &&
         !kofun_semantic_fact(audit->downstream, fact)) {
@@ -358,6 +404,22 @@ static bool audit_fact(void *context, const KofunSemanticFact *fact) {
     if (fact->kind == KOFUN_SEMANTIC_FACT_TYPE &&
         text_is(fact->display, "Int -> Int")) {
         audit->saw_callable_signature = true;
+    }
+    CHECK(audit->fact_count < AUDIT_MAX_FACTS);
+    CHECK(fact->dependency_count <= AUDIT_MAX_DEPENDENCIES);
+    snapshot = &audit->facts[audit->fact_count++];
+    memset(snapshot, 0, sizeof(*snapshot));
+    snapshot->owner = fact->owner_node_id;
+    snapshot->kind = fact->kind;
+    snapshot->status = fact->status;
+    snapshot->dependency_count = fact->dependency_count;
+    snapshot->diagnostic_count = fact->diagnostic_count;
+    if (fact->dependency_count != 0u) {
+        memcpy(
+            snapshot->dependencies,
+            fact->dependencies,
+            fact->dependency_count * sizeof(fact->dependencies[0])
+        );
     }
     return capture_u8(&audit->capture, AUDIT_FACT) &&
         capture_id(&audit->capture, &fact->owner_node_id) &&
@@ -462,6 +524,62 @@ static KofunSemanticSink audit_sink(Audit *audit) {
 static void audit_destroy(Audit *audit) {
     free(audit->capture.bytes);
     memset(audit, 0, sizeof(*audit));
+}
+
+static const AuditNode *audit_node_at(
+    const Audit *audit,
+    KofunSemanticNodeKind kind,
+    uint32_t start
+) {
+    size_t index;
+    for (index = 0u; index < audit->node_count; index += 1u) {
+        if (audit->nodes[index].kind == kind &&
+            audit->nodes[index].span.start == start) {
+            return &audit->nodes[index];
+        }
+    }
+    return NULL;
+}
+
+static const AuditFact *audit_fact_for(
+    const Audit *audit,
+    const KofunSemanticId *owner,
+    KofunSemanticFactKind kind
+) {
+    size_t index;
+    for (index = 0u; index < audit->fact_count; index += 1u) {
+        if (audit->facts[index].kind == kind &&
+            memcmp(
+                audit->facts[index].owner.bytes,
+                owner->bytes,
+                KOFUN_SEMANTIC_ID_BYTES) == 0) {
+            return &audit->facts[index];
+        }
+    }
+    return NULL;
+}
+
+static bool audit_dependencies_contain(
+    const KofunSemanticId *dependencies,
+    uint16_t dependency_count,
+    const KofunSemanticId *expected
+) {
+    uint16_t index;
+    for (index = 0u; index < dependency_count; index += 1u) {
+        if (memcmp(
+                dependencies[index].bytes,
+                expected->bytes,
+                KOFUN_SEMANTIC_ID_BYTES) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static uint32_t source_offset(const uint8_t *source, const char *needle) {
+    const char *found = strstr((const char *)source, needle);
+    CHECK(found != NULL);
+    return (uint32_t)(found - (const char *)source);
 }
 
 static bool same_language_result(
@@ -721,7 +839,9 @@ static void reject_phase_preserves_language(
 static void test_failed_prefix_content(
     const char *parse_path,
     const char *scope_path,
-    const char *ownership_path
+    const char *ownership_path,
+    const char *duplicate_parameter_path,
+    const char *type_error_path
 ) {
     uint8_t *source;
     size_t length;
@@ -771,6 +891,214 @@ static void test_failed_prefix_content(
     CHECK(audit.diagnostic_remedies != 0u);
     audit_destroy(&audit);
     free(source);
+
+    source = read_file(duplicate_parameter_path, &length);
+    memset(&audit, 0, sizeof(audit));
+    CHECK(produce(
+        source,
+        length,
+        "src/duplicate-parameter.kofun",
+        &audit,
+        &result
+    ));
+    CHECK(strcmp(result.diagnostic_code, "E2S47") == 0);
+    CHECK(audit.node_kinds[KOFUN_SEMANTIC_NODE_FUNCTION] == 2u);
+    CHECK(audit.node_kinds[KOFUN_SEMANTIC_NODE_PARAMETER] == 1u);
+    CHECK(audit.diagnostic_related != 0u);
+    CHECK(audit.diagnostic_remedies != 0u);
+    audit_destroy(&audit);
+    free(source);
+
+    source = read_file(type_error_path, &length);
+    memset(&audit, 0, sizeof(audit));
+    CHECK(produce(
+        source, length, "src/type-prefix.kofun", &audit, &result
+    ));
+    {
+        const AuditNode *function = audit_node_at(
+            &audit,
+            KOFUN_SEMANTIC_NODE_FUNCTION,
+            source_offset(source, "fn stable")
+        );
+        const AuditNode *parameter = audit_node_at(
+            &audit,
+            KOFUN_SEMANTIC_NODE_PARAMETER,
+            source_offset(source, "value: Int")
+        );
+        const AuditNode *local = audit_node_at(
+            &audit,
+            KOFUN_SEMANTIC_NODE_LOCAL,
+            source_offset(source, "wrong: Int")
+        );
+        const AuditFact *function_type;
+        const AuditFact *local_type;
+        size_t index;
+        bool diagnosed_error = false;
+        CHECK(strcmp(result.diagnostic_code, "E2S12") == 0);
+        CHECK(result.source_status == KOFUN_SOURCE_FAILED);
+        CHECK(result.completeness == KOFUN_SEMANTIC_PARTIAL);
+        CHECK(function != NULL);
+        CHECK(parameter != NULL);
+        CHECK(local != NULL);
+        function_type = audit_fact_for(
+            &audit,
+            &function->id,
+            KOFUN_SEMANTIC_FACT_TYPE
+        );
+        local_type = audit_fact_for(
+            &audit,
+            &local->id,
+            KOFUN_SEMANTIC_FACT_TYPE
+        );
+        CHECK(function_type != NULL);
+        CHECK(local_type != NULL);
+        CHECK(function_type->status == KOFUN_SEMANTIC_VALIDATED);
+        CHECK(local_type->status == KOFUN_SEMANTIC_VALIDATED);
+        CHECK(function_type->dependency_count == 1u);
+        CHECK(audit_dependencies_contain(
+            function_type->dependencies,
+            function_type->dependency_count,
+            &parameter->id
+        ));
+        CHECK(audit.node_kinds[KOFUN_SEMANTIC_NODE_CALL] == 0u);
+        for (index = 0u; index < audit.node_count; index += 1u) {
+            if (audit.nodes[index].status == KOFUN_SEMANTIC_ERROR &&
+                audit.nodes[index].diagnostic_count != 0u) {
+                diagnosed_error = true;
+            }
+        }
+        CHECK(diagnosed_error);
+    }
+    audit_destroy(&audit);
+    free(source);
+}
+
+static void test_exact_dependencies(const char *path) {
+    uint8_t *source;
+    size_t length;
+    Audit audit;
+    KofunStage2SemanticResult result;
+    const AuditNode *function;
+    const AuditNode *left;
+    const AuditNode *right;
+    const AuditNode *statement_if;
+    const AuditNode *branch_call;
+    const AuditNode *match;
+    const AuditNode *scrutinee;
+    const AuditFact *function_type;
+    const AuditFact *match_type;
+    uint32_t match_start;
+    uint32_t scrutinee_start;
+
+    source = read_file(path, &length);
+    memset(&audit, 0, sizeof(audit));
+    CHECK(produce(
+        source,
+        length,
+        "src/exact-dependencies.kofun",
+        &audit,
+        &result
+    ));
+    CHECK(result.compiler_exit_class == 0u);
+    function = audit_node_at(
+        &audit,
+        KOFUN_SEMANTIC_NODE_FUNCTION,
+        source_offset(source, "fn combine")
+    );
+    left = audit_node_at(
+        &audit,
+        KOFUN_SEMANTIC_NODE_PARAMETER,
+        source_offset(source, "left: Int")
+    );
+    right = audit_node_at(
+        &audit,
+        KOFUN_SEMANTIC_NODE_PARAMETER,
+        source_offset(source, "right: Int")
+    );
+    CHECK(function != NULL);
+    CHECK(left != NULL);
+    CHECK(right != NULL);
+    CHECK(function->dependency_count == 2u);
+    CHECK(audit_dependencies_contain(
+        function->dependencies,
+        function->dependency_count,
+        &left->id
+    ));
+    CHECK(audit_dependencies_contain(
+        function->dependencies,
+        function->dependency_count,
+        &right->id
+    ));
+    function_type = audit_fact_for(
+        &audit,
+        &function->id,
+        KOFUN_SEMANTIC_FACT_TYPE
+    );
+    CHECK(function_type != NULL);
+    CHECK(function_type->dependency_count == 2u);
+    CHECK(audit_dependencies_contain(
+        function_type->dependencies,
+        function_type->dependency_count,
+        &left->id
+    ));
+    CHECK(audit_dependencies_contain(
+        function_type->dependencies,
+        function_type->dependency_count,
+        &right->id
+    ));
+
+    statement_if = audit_node_at(
+        &audit,
+        KOFUN_SEMANTIC_NODE_IF,
+        source_offset(source, "if true")
+    );
+    branch_call = audit_node_at(
+        &audit,
+        KOFUN_SEMANTIC_NODE_CALL,
+        source_offset(source, "combine(current")
+    );
+    CHECK(statement_if != NULL);
+    CHECK(branch_call != NULL);
+    CHECK(statement_if->dependency_count == 0u);
+
+    match_start = source_offset(source, "match choice");
+    scrutinee_start = match_start + (uint32_t)strlen("match ");
+    match = audit_node_at(
+        &audit,
+        KOFUN_SEMANTIC_NODE_MATCH,
+        match_start
+    );
+    scrutinee = audit_node_at(
+        &audit,
+        KOFUN_SEMANTIC_NODE_REFERENCE,
+        scrutinee_start
+    );
+    CHECK(match != NULL);
+    CHECK(scrutinee != NULL);
+    CHECK(match->dependency_count == 1u);
+    CHECK(audit_dependencies_contain(
+        match->dependencies,
+        match->dependency_count,
+        &scrutinee->id
+    ));
+    match_type = audit_fact_for(
+        &audit,
+        &match->id,
+        KOFUN_SEMANTIC_FACT_TYPE
+    );
+    CHECK(match_type != NULL);
+    CHECK(match_type->dependency_count == 1u);
+    CHECK(audit_dependencies_contain(
+        match_type->dependencies,
+        match_type->dependency_count,
+        &scrutinee->id
+    ));
+    CHECK(
+        audit.reference_target_kinds[
+            KOFUN_SEMANTIC_ID_CONSTRUCTOR] >= 3u
+    );
+    audit_destroy(&audit);
+    free(source);
 }
 
 int main(int argc, char **argv) {
@@ -779,7 +1107,7 @@ int main(int argc, char **argv) {
     size_t valid_length;
     size_t invalid_length;
     unsigned phase;
-    CHECK(argc == 6);
+    CHECK(argc == 9);
     valid_source = read_file(argv[1], &valid_length);
     invalid_source = read_file(argv[2], &invalid_length);
 
@@ -803,7 +1131,10 @@ int main(int argc, char **argv) {
         "src/invalid.kofun",
         AUDIT_DIAGNOSTIC
     );
-    test_failed_prefix_content(argv[3], argv[4], argv[5]);
+    test_failed_prefix_content(
+        argv[3], argv[4], argv[5], argv[6], argv[7]
+    );
+    test_exact_dependencies(argv[8]);
 
     free(valid_source);
     free(invalid_source);

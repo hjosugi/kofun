@@ -1,0 +1,20 @@
+type MaybeInt =
+    | Missing
+    | Present
+
+fn combine(left: Int, right: Int) -> Int {
+    return left + right
+}
+
+fn main() {
+    let mut current = 1
+    let choice: MaybeInt = Present
+    if true {
+        current = combine(current, 0)
+    }
+    match choice {
+        Present => { current = current },
+        Missing => { current = 0 }
+    }
+    print(current)
+}
