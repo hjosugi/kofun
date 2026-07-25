@@ -1,9 +1,12 @@
 # Kofun Stage 1 compiler seed.
 #
 # The compiler accepts a deliberately small integer Core: `let` bindings and
-# `print(EXPR)` statements inside `fn main()`. It emits standalone C11 with a
-# checked Int64 expression evaluator. This source is canonical; compiler.c is
-# the audited bootstrap artifact generated from it.
+# `print(EXPR)` statements inside `fn main()`. Every expression is tokenized,
+# parsed and resolved here, then lowered to a C11 expression tree over checked
+# Int64 helpers. The emitted program carries no parser, no symbol table and no
+# fragment of the user's source: names are resolved to C locals at compile time
+# and literals are range-checked at compile time. This source is canonical;
+# compiler.c is the audited bootstrap artifact generated from it.
 
 fn identifier_char(char: Text) -> Bool {
     return is_xid_continue(char) ||
@@ -23,30 +26,249 @@ fn valid_name(name: Text) -> Bool {
     return true
 }
 
-fn valid_expression(expression: Text) -> Bool {
-    let symbols = chars(expression)
+fn digit_value(symbol: Text) -> Int {
+    return find("0123456789", symbol)
+}
+
+fn all_digits(value: Text) -> Bool {
+    let symbols = chars(value)
     if len(symbols) == 0 {
         return false
     }
-
-    let mut depth = 0
     for index in 0 .. len(symbols) {
-        let symbol = symbols[index]
-        if !(identifier_char(symbol) ||
-             is_space(symbol) ||
-             contains("+-*/%()", symbol)) {
+        if !is_digit(symbols[index]) {
             return false
         }
+    }
+    return true
+}
+
+# Digit-string comparison. Text ordering is outside the Core, so magnitudes are
+# compared by significant length and then digit by digit.
+fn within_bound(digits: Text, bound: Text) -> Bool {
+    let symbols = chars(digits)
+    let limit = chars(bound)
+    let mut start = 0
+    while start + 1 < len(symbols) && symbols[start] == "0" {
+        start = start + 1
+    }
+    let significant = len(symbols) - start
+    if significant != len(limit) {
+        return significant < len(limit)
+    }
+    for index in 0 .. len(limit) {
+        let left = digit_value(symbols[start + index])
+        let right = digit_value(limit[index])
+        if left != right {
+            return left < right
+        }
+    }
+    return true
+}
+
+# An operator is infix only when a complete operand precedes it; otherwise it is
+# a prefix sign. This is what separates `-7 // 2` from `7 - 2`.
+fn preceded_by_operand(expression: Text, index: Int) -> Bool {
+    let symbols = chars(expression)
+    let mut cursor = index - 1
+    while cursor >= 0 {
+        let symbol = symbols[cursor]
+        if !is_space(symbol) {
+            return symbol == ")" || identifier_char(symbol)
+        }
+        cursor = cursor - 1
+    }
+    return false
+}
+
+# Index of the last top-level infix operator drawn from `operators`, or -1.
+# Splitting at the *last* one makes every operator left-associative. The second
+# `/` of `//` is never preceded by an operand, so `//` reports its first byte.
+fn split_binary(expression: Text, operators: Text) -> Int {
+    let symbols = chars(expression)
+    let mut depth = 0
+    let mut found = -1
+    for index in 0 .. len(symbols) {
+        let symbol = symbols[index]
         if symbol == "(" {
             depth = depth + 1
         } else if symbol == ")" {
             depth = depth - 1
-            if depth < 0 {
-                return false
+        } else if depth == 0 && contains(operators, symbol) {
+            if preceded_by_operand(expression, index) {
+                found = index
             }
         }
     }
-    return depth == 0
+    return found
+}
+
+fn wraps_whole(expression: Text) -> Bool {
+    let symbols = chars(expression)
+    if len(symbols) < 2 || !(symbols[0] == "(") {
+        return false
+    }
+    let mut depth = 0
+    for index in 0 .. len(symbols) {
+        let symbol = symbols[index]
+        if symbol == "(" {
+            depth = depth + 1
+        } else if symbol == ")" {
+            depth = depth - 1
+            if depth == 0 {
+                return index == len(symbols) - 1
+            }
+        }
+    }
+    return false
+}
+
+# A lowered expression is `STATEMENTS + OPERAND`: zero or more complete C
+# statements, each ending in a newline, followed by a newline-free operand that
+# names the result. Emitting one statement per operator is what makes the
+# evaluation order of the Core observable and fixed: C leaves the order of
+# function arguments unspecified, so a nested call tree would let the host C
+# compiler decide which of two failing operators reports first.
+fn last_newline(value: Text) -> Int {
+    let symbols = chars(value)
+    let mut found = -1
+    for index in 0 .. len(symbols) {
+        if symbols[index] == "\n" {
+            found = index
+        }
+    }
+    return found
+}
+
+fn lowered_statements(lowered: Text) -> Text {
+    let cut = last_newline(lowered)
+    if cut < 0 {
+        return ""
+    }
+    return text_slice(lowered, 0, cut + 1)
+}
+
+fn lowered_operand(lowered: Text) -> Text {
+    let cut = last_newline(lowered)
+    return text_slice(lowered, cut + 1, len(lowered))
+}
+
+# Each operator node owns a temporary named after its path from the root of the
+# expression, so names are unique without a mutable counter.
+fn lower_step(path: Text, callee: Text, left: Text, right: Text) -> Text {
+    let temporary = "kt_" + path
+    return lowered_statements(left) + lowered_statements(right) +
+    "        int64_t " + temporary + " = " + callee +
+    lowered_operand(left) + ", " + lowered_operand(right) + ");\n" +
+    temporary
+}
+
+fn lower_atom(atom: Text, bound: Text) -> Text {
+    if all_digits(atom) {
+        if !within_bound(atom, "9223372036854775807") {
+            return ""
+        }
+        return atom
+    }
+    if !valid_name(atom) {
+        return ""
+    }
+    if find(bound, "|" + atom + "|") < 0 {
+        return ""
+    }
+    return "kf_" + atom
+}
+
+# A negated decimal literal is folded at compile time so that the one magnitude
+# with no positive counterpart still has a C spelling.
+fn lower_negation(operand: Text, bound: Text, path: Text) -> Text {
+    let trimmed = trim(operand)
+    if all_digits(trimmed) {
+        if within_bound(trimmed, "9223372036854775807") {
+            return "-" + trimmed
+        }
+        if within_bound(trimmed, "9223372036854775808") {
+            return "INT64_MIN"
+        }
+        return ""
+    }
+    let inner = lower_expression(trimmed, bound, path + "u")
+    if len(inner) == 0 {
+        return ""
+    }
+    let temporary = "kt_" + path
+    return lowered_statements(inner) +
+    "        int64_t " + temporary + " = checked_neg(" +
+    lowered_operand(inner) + ");\n" +
+    temporary
+}
+
+# Lowers one Core expression to a C11 expression, or "" when it is not Core.
+# Acceptance is exactly "this returns a non-empty string", so the parser is the
+# only definition of what the Core admits.
+fn lower_expression(expression: Text, bound: Text, path: Text) -> Text {
+    let trimmed = trim(expression)
+    if len(trimmed) == 0 {
+        return ""
+    }
+
+    let additive = split_binary(trimmed, "+-")
+    if additive >= 0 {
+        let left = lower_expression(
+            text_slice(trimmed, 0, additive), bound, path + "l")
+        let right = lower_expression(
+            text_slice(trimmed, additive + 1, len(trimmed)), bound, path + "r")
+        if len(left) == 0 || len(right) == 0 {
+            return ""
+        }
+        if text_slice(trimmed, additive, additive + 1) == "+" {
+            return lower_step(path, "checked_add(", left, right)
+        }
+        return lower_step(path, "checked_sub(", left, right)
+    }
+
+    let multiplicative = split_binary(trimmed, "*%/")
+    if multiplicative >= 0 {
+        let operator = text_slice(trimmed, multiplicative, multiplicative + 1)
+        let mut callee = "checked_mul("
+        let mut skip = 1
+        if operator == "%" {
+            callee = "floor_mod("
+        } else if operator == "/" {
+            # `/` is not defined on Int; only the floor operator `//` is Core.
+            if multiplicative + 2 > len(trimmed) {
+                return ""
+            }
+            if !(text_slice(trimmed, multiplicative + 1,
+                            multiplicative + 2) == "/") {
+                return ""
+            }
+            callee = "floor_div("
+            skip = 2
+        }
+        let left = lower_expression(
+            text_slice(trimmed, 0, multiplicative), bound, path + "l")
+        let right = lower_expression(
+            text_slice(trimmed, multiplicative + skip, len(trimmed)),
+            bound, path + "r")
+        if len(left) == 0 || len(right) == 0 {
+            return ""
+        }
+        return lower_step(path, callee, left, right)
+    }
+
+    if starts_with(trimmed, "+") {
+        return lower_expression(
+            text_slice(trimmed, 1, len(trimmed)), bound, path)
+    }
+    if starts_with(trimmed, "-") {
+        return lower_negation(text_slice(trimmed, 1, len(trimmed)), bound, path)
+    }
+    if wraps_whole(trimmed) {
+        return lower_expression(
+            text_slice(trimmed, 1, len(trimmed) - 1), bound, path)
+    }
+    return lower_atom(trimmed, bound)
 }
 
 fn print_expression(line: Text) -> Text {
@@ -102,6 +324,7 @@ fn valid_source(source: Text) -> Bool {
     let mut prints = 0
     let mut main_headers = 0
     let mut body_depth = 0
+    let mut bound = "|"
     for index in 0 .. len(symbols) {
         if symbols[index] == "\n" {
             let line = trim(text_slice(source, line_start, index))
@@ -122,16 +345,26 @@ fn valid_source(source: Text) -> Bool {
                 if body_depth != 1 {
                     return false
                 }
-                if !valid_name(binding_name(line)) ||
-                   !valid_expression(binding_expression(line)) {
+                let name = binding_name(line)
+                if !valid_name(name) {
                     return false
                 }
+                # One binding per name: the language rejects same-scope
+                # shadowing, so the seed rejects it too.
+                if find(bound, "|" + name + "|") >= 0 {
+                    return false
+                }
+                if len(lower_expression(binding_expression(line), bound,
+                                       "x")) == 0 {
+                    return false
+                }
+                bound = bound + name + "|"
             } else if starts_with(line, "print(") {
                 if body_depth != 1 {
                     return false
                 }
                 let expression = print_expression(line)
-                if !valid_expression(expression) {
+                if len(lower_expression(expression, bound, "x")) == 0 {
                     return false
                 }
                 prints = prints + 1
@@ -148,21 +381,29 @@ fn emit_statements(source: Text) -> Text {
     let symbols = chars(source)
     let mut line_start = 0
     let mut emitted = ""
+    let mut bound = "|"
     for index in 0 .. len(symbols) {
         if symbols[index] == "\n" {
             let line = trim(text_slice(source, line_start, index))
             if starts_with(line, "let ") {
                 let name = binding_name(line)
-                let expression = binding_expression(line)
+                let value = lower_expression(binding_expression(line), bound,
+                                             "x")
                 emitted = emitted +
-                "    set_variable(\"" + name + "\", evaluate(\"" +
-                expression + "\"));\n" +
-                "    if (failed) return 1;\n"
+                "    int64_t kf_" + name + ";\n" +
+                "    {\n" +
+                lowered_statements(value) +
+                "        kf_" + name + " = " + lowered_operand(value) + ";\n" +
+                "    }\n" +
+                "    if (failed) return 1;\n" +
+                "    (void)kf_" + name + ";\n"
+                bound = bound + name + "|"
             } else if starts_with(line, "print(") {
-                let expression = print_expression(line)
+                let value = lower_expression(print_expression(line), bound, "x")
                 emitted = emitted +
                 "    {\n" +
-                "        int64_t value = evaluate(\"" + expression + "\");\n" +
+                lowered_statements(value) +
+                "        int64_t value = " + lowered_operand(value) + ";\n" +
                 "        if (failed) return 1;\n" +
                 "        printf(\"%\" PRId64 \"\\n\", value);\n" +
                 "    }\n"
@@ -175,102 +416,17 @@ fn emit_statements(source: Text) -> Text {
 
 fn emit_c(source: Text) -> Text {
     return "/* Generated by the Kofun-written Stage 1 seed compiler. */\n" +
-    "#include <ctype.h>\n" +
     "#include <inttypes.h>\n" +
     "#include <stdbool.h>\n" +
-    "#include <stddef.h>\n" +
     "#include <stdint.h>\n" +
-    "#include <stdio.h>\n" +
-    "#include <string.h>\n\n" +
-    "static const char *cursor;\n" +
-    "static bool failed;\n" +
-    "static const char *variable_names[64];\n" +
-    "static int64_t variable_values[64];\n" +
-    "static size_t variable_count;\n\n" +
+    "#include <stdio.h>\n\n" +
+    "static bool failed;\n\n" +
     "static void runtime_error(const char *message) {\n" +
     "    if (!failed) {\n" +
     "        fputs(message, stderr);\n" +
     "        fputc('\\n', stderr);\n" +
     "    }\n" +
     "    failed = true;\n" +
-    "}\n\n" +
-    "static void skip_space(void) {\n" +
-    "    while (isspace((unsigned char)*cursor)) ++cursor;\n" +
-    "}\n\n" +
-    "static void set_variable(const char *name, int64_t value) {\n" +
-    "    if (variable_count >= 64) {\n" +
-    "        runtime_error(\"error[R011]: too many Core bindings\");\n" +
-    "        return;\n" +
-    "    }\n" +
-    "    variable_names[variable_count] = name;\n" +
-    "    variable_values[variable_count] = value;\n" +
-    "    ++variable_count;\n" +
-    "}\n\n" +
-    "static int64_t variable(const char *start, size_t length) {\n" +
-    "    for (size_t index = variable_count; index > 0; --index) {\n" +
-    "        const char *name = variable_names[index - 1];\n" +
-    "        if (strlen(name) == length && strncmp(name, start, length) == 0) {\n" +
-    "            return variable_values[index - 1];\n" +
-    "        }\n" +
-    "    }\n" +
-    "    runtime_error(\"error[R011]: unknown Core binding\");\n" +
-    "    return 0;\n" +
-    "}\n\n" +
-    "static uint64_t magnitude(uint64_t limit) {\n" +
-    "    uint64_t value = 0;\n" +
-    "    bool any = false;\n" +
-    "    while (isdigit((unsigned char)*cursor)) {\n" +
-    "        uint64_t digit = (uint64_t)(*cursor++ - '0');\n" +
-    "        any = true;\n" +
-    "        if (value > (limit - digit) / 10) {\n" +
-    "            runtime_error(\"error[R010]: integer overflow in literal\");\n" +
-    "            return 0;\n" +
-    "        }\n" +
-    "        value = value * 10 + digit;\n" +
-    "    }\n" +
-    "    if (!any) runtime_error(\"error[R011]: expected integer expression\");\n" +
-    "    return value;\n" +
-    "}\n\n" +
-    "static int64_t expression(void);\n\n" +
-    "static int64_t primary(void) {\n" +
-    "    skip_space();\n" +
-    "    if (*cursor == '(') {\n" +
-    "        ++cursor;\n" +
-    "        int64_t value = expression();\n" +
-    "        skip_space();\n" +
-    "        if (*cursor != ')') runtime_error(\"error[R011]: expected `)`\");\n" +
-    "        else ++cursor;\n" +
-    "        return value;\n" +
-    "    }\n" +
-    "    if (isalpha((unsigned char)*cursor) || *cursor == '_') {\n" +
-    "        const char *start = cursor++;\n" +
-    "        while (isalnum((unsigned char)*cursor) || *cursor == '_') ++cursor;\n" +
-    "        return variable(start, (size_t)(cursor - start));\n" +
-    "    }\n" +
-    "    return (int64_t)magnitude(INT64_MAX);\n" +
-    "}\n\n" +
-    "static int64_t unary(void) {\n" +
-    "    skip_space();\n" +
-    "    if (*cursor == '+') {\n" +
-    "        ++cursor;\n" +
-    "        return unary();\n" +
-    "    }\n" +
-    "    if (*cursor == '-') {\n" +
-    "        ++cursor;\n" +
-    "        skip_space();\n" +
-    "        if (isdigit((unsigned char)*cursor)) {\n" +
-    "            uint64_t value = magnitude((uint64_t)INT64_MAX + 1);\n" +
-    "            if (value == (uint64_t)INT64_MAX + 1) return INT64_MIN;\n" +
-    "            return -(int64_t)value;\n" +
-    "        }\n" +
-    "        int64_t value = unary();\n" +
-    "        if (!failed && value == INT64_MIN) {\n" +
-    "            runtime_error(\"error[R010]: integer overflow in unary operator `-`\");\n" +
-    "            return 0;\n" +
-    "        }\n" +
-    "        return -value;\n" +
-    "    }\n" +
-    "    return primary();\n" +
     "}\n\n" +
     "static int64_t checked_add(int64_t left, int64_t right) {\n" +
     "    int64_t result;\n" +
@@ -296,6 +452,13 @@ fn emit_c(source: Text) -> Text {
     "    }\n" +
     "    return result;\n" +
     "}\n\n" +
+    "static int64_t checked_neg(int64_t value) {\n" +
+    "    if (value == INT64_MIN) {\n" +
+    "        runtime_error(\"error[R010]: integer overflow in unary operator `-`\");\n" +
+    "        return 0;\n" +
+    "    }\n" +
+    "    return -value;\n" +
+    "}\n\n" +
     "static int64_t floor_div(int64_t left, int64_t right) {\n" +
     "    if (right == 0) {\n" +
     "        runtime_error(\"error[R010]: operator `//` failed: division by zero\");\n" +
@@ -320,54 +483,13 @@ fn emit_c(source: Text) -> Text {
     "    if (remainder != 0 && ((remainder < 0) != (right < 0))) remainder += right;\n" +
     "    return remainder;\n" +
     "}\n\n" +
-    "static int64_t term(void) {\n" +
-    "    int64_t value = unary();\n" +
-    "    for (;;) {\n" +
-    "        skip_space();\n" +
-    "        if (*cursor == '*') {\n" +
-    "            ++cursor;\n" +
-    "            value = checked_mul(value, unary());\n" +
-    "        } else if (cursor[0] == '/' && cursor[1] == '/') {\n" +
-    "            cursor += 2;\n" +
-    "            value = floor_div(value, unary());\n" +
-    "        } else if (*cursor == '%') {\n" +
-    "            ++cursor;\n" +
-    "            value = floor_mod(value, unary());\n" +
-    "        } else if (*cursor == '/') {\n" +
-    "            ++cursor;\n" +
-    "            int64_t right = unary();\n" +
-    "            if (right == 0) runtime_error(\"error[R010]: operator `/` failed: division by zero\");\n" +
-    "            else if (value == INT64_MIN && right == -1) runtime_error(\"error[R010]: integer overflow in operator `/`\");\n" +
-    "            else value /= right;\n" +
-    "        } else {\n" +
-    "            return value;\n" +
-    "        }\n" +
-    "    }\n" +
-    "}\n\n" +
-    "static int64_t expression(void) {\n" +
-    "    int64_t value = term();\n" +
-    "    for (;;) {\n" +
-    "        skip_space();\n" +
-    "        if (*cursor == '+') {\n" +
-    "            ++cursor;\n" +
-    "            value = checked_add(value, term());\n" +
-    "        } else if (*cursor == '-') {\n" +
-    "            ++cursor;\n" +
-    "            value = checked_sub(value, term());\n" +
-    "        } else {\n" +
-    "            return value;\n" +
-    "        }\n" +
-    "    }\n" +
-    "}\n\n" +
-    "static int64_t evaluate(const char *source) {\n" +
-    "    cursor = source;\n" +
-    "    int64_t value = expression();\n" +
-    "    skip_space();\n" +
-    "    if (*cursor != '\\0') runtime_error(\"error[R011]: trailing input\");\n" +
-    "    return value;\n" +
-    "}\n\n" +
     "int main(void) {\n" +
-    "    (void)set_variable;\n" +
+    "    (void)checked_add;\n" +
+    "    (void)checked_sub;\n" +
+    "    (void)checked_mul;\n" +
+    "    (void)checked_neg;\n" +
+    "    (void)floor_div;\n" +
+    "    (void)floor_mod;\n" +
     emit_statements(source) +
     "    return 0;\n" +
     "}\n"
@@ -385,19 +507,7 @@ fn compile_file(input_path: Text, output_path: Text) -> Bool {
         print("compile error: unsupported Kofun integer Core source")
         return false
     }
-    let mut emitted = replace(
-        emit_c(source),
-        "if (isalpha((unsigned char)*cursor) || *cursor == '_')",
-        "if (isalpha((unsigned char)*cursor) || *cursor == '_' || " +
-        "(unsigned char)*cursor >= 0x80)"
-    )
-    emitted = replace(
-        emitted,
-        "while (isalnum((unsigned char)*cursor) || *cursor == '_') ++cursor;",
-        "while (isalnum((unsigned char)*cursor) || *cursor == '_' || " +
-        "(unsigned char)*cursor >= 0x80) ++cursor;"
-    )
-    write_text(output_path, emitted)
+    write_text(output_path, emit_c(source))
     print(output_path)
     return true
 }

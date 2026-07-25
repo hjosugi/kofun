@@ -120,12 +120,31 @@ while IFS= read -r evidence_path; do
         fail "evidence path does not exist: $evidence_path"
 done < "$tmp_dir/evidence-paths"
 
-# Ignore comments and the continuation lines of the large emitted-C template.
-# The remaining text is the language surface of S, not C tokens inside strings.
+# Ignore comments, then blank the contents of every Text literal, keeping the
+# quotes so Text-literal usage is still visible. What remains is the language
+# surface of S: C tokens that occur only inside the emitted-C template can no
+# longer be mistaken for Kofun calls or constructs. Skipping lines that merely
+# *start* with a quote was not enough once the template is built from literals
+# assigned to locals.
 awk '
     /^[[:space:]]*#/ { next }
-    /^[[:space:]]*"/ { next }
-    { print }
+    {
+        line = $0
+        out = ""
+        in_string = 0
+        width = length(line)
+        for (position = 1; position <= width; position += 1) {
+            character = substr(line, position, 1)
+            if (in_string) {
+                if (character == "\\") { position += 1; continue }
+                if (character == "\"") { in_string = 0; out = out "\"" }
+                continue
+            }
+            if (character == "\"") { in_string = 1; out = out "\"" }
+            else { out = out character }
+        }
+        print out
+    }
 ' "$source_path" > "$tmp_dir/outer-source"
 
 sed -n \
