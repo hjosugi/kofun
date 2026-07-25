@@ -1,0 +1,94 @@
+{
+  "schema": "kofun.native-function-benchmark/v1",
+  "measured_at_utc": "2026-07-25T02:05:00Z",
+  "implementation_commit": "82bbc0fe1331e81199b949f54633ab585ce87f8c",
+  "baseline_revision": "fdb8e6d258312b9222f4dde4df35badee6423d68",
+  "repository_dirty_during_measurement": false,
+  "host": {
+    "kernel": "Linux 7.1.3-2-cachyos #1 SMP PREEMPT_DYNAMIC Wed, 08 Jul 2026 18:34:01 +0000 x86_64",
+    "cpu": "AMD Ryzen 3 7330U with Radeon Graphics"
+  },
+  "compiler": {
+    "command": "cc",
+    "version": "cc (GCC) 16.1.1 20260625",
+    "producer_flags": "-std=c11 -O2 -Wall -Wextra -Werror",
+    "reference_flags": "-O3 -std=c11"
+  },
+  "commands": {
+    "measure": "BASELINE=fdb8e6d258312b9222f4dde4df35badee6423d68 SAMPLES=11 sh benchmarks/native-functions/benchmark.sh",
+    "build_workload": "build/native-functions-benchmark/producer-current benchmarks/native-functions/fib35.kofun x86_64-linux build/native-functions-benchmark/current-fib35.elf"
+  },
+  "producer_sha256": {
+    "current": "85dfb5fc97708b313180387db647e7e285f9cfbdb1f7ead1bf78883fb02d173d",
+    "baseline": "5962e6e6ce44423dc994e251e4d1f936bcbeecc1913b96d5335a48a2ea659683"
+  },
+  "source_sha256": {
+    "fib35": "0271c9c4d1a4c2b4f0b772d04cd359608e85635db9b9ccfcac6018485e8e4284",
+    "mutual_fib32": "527ec81c452f919d3531f4c27d06aeffa598a9e121200e818af7e951b7997614",
+    "six_argument_fib30": "a51fe3fa667429b9e5b1e716c73751f9cee4ebd63dd53227263c3f611e37bdc2"
+  },
+  "method": {
+    "metric": "process CPU microseconds from wait4 rusage, user plus system",
+    "samples": 11,
+    "warmup_runs_per_sample": 1,
+    "summary_statistic": "median of the 11 sorted samples",
+    "sample_order": "one round per sample, current then baseline then reference",
+    "output_checked_before_timing": true,
+    "emitted_code_metric": "p_filesz of the first PT_LOAD program header",
+    "compile_metric": "one producer run over all 12 bounded-corpus sources"
+  },
+  "workloads": {
+    "fib35": {
+      "current_samples_us": [39194, 39197, 39310, 39415, 39455, 39570, 39635, 39731, 40016, 40066, 40177],
+      "current_median_us": 39570,
+      "baseline_samples_us": [83086, 83186, 83194, 83289, 83519, 84250, 84302, 84535, 84648, 84650, 84907],
+      "baseline_median_us": 84250,
+      "median_change_percent": -53.03,
+      "current_text_bytes": 535,
+      "baseline_text_bytes": 547,
+      "text_bytes_change_percent": -2.19
+    },
+    "mutual_fib32": {
+      "current_samples_us": [9393, 9531, 9565, 9638, 9782, 9905, 9928, 9976, 10220, 10349, 10351],
+      "current_median_us": 9905,
+      "baseline_samples_us": [19765, 19888, 19908, 20150, 20159, 20168, 20179, 20181, 20319, 20443, 20499],
+      "baseline_median_us": 20168,
+      "median_change_percent": -50.89,
+      "current_text_bytes": 663,
+      "baseline_text_bytes": 693,
+      "text_bytes_change_percent": -4.33
+    },
+    "six_argument_fib30": {
+      "current_samples_us": [6611, 6633, 6675, 6710, 6722, 6758, 6867, 6907, 7274, 7296, 7538],
+      "current_median_us": 6758,
+      "baseline_samples_us": [15013, 15116, 15120, 15143, 15223, 15272, 15397, 15479, 15610, 15691, 16028],
+      "baseline_median_us": 15272,
+      "median_change_percent": -55.75,
+      "current_text_bytes": 706,
+      "baseline_text_bytes": 737,
+      "text_bytes_change_percent": -4.21
+    }
+  },
+  "c_reference": {
+    "samples_us": [10644, 10731, 10860, 10899, 10931, 11034, 11262, 11373, 11382, 11394, 11544],
+    "median_us": 11034,
+    "current_fib35_to_reference_ratio": 3.586,
+    "baseline_fib35_to_reference_ratio": 7.635,
+    "interpretation": "A scale marker only. The C program has no checked-overflow branch after every arithmetic operation, so the remaining distance is not attributable to value placement alone."
+  },
+  "corpus_compile": {
+    "current_samples_us": [12753, 12968, 13254, 13341, 13355, 13741, 13793, 13923, 13950, 14679, 14934],
+    "current_median_us": 13741,
+    "baseline_samples_us": [13109, 13271, 13441, 13732, 13786, 13791, 13823, 13924, 13960, 14392, 15495],
+    "baseline_median_us": 13791,
+    "change_percent": -0.36
+  },
+  "budgets": {
+    "fib35_median_improvement_percent": 53.03,
+    "required_fib35_improvement_percent": 25,
+    "max_workload_regression_percent": 5,
+    "max_emitted_code_regression_percent": 10,
+    "max_compile_time_regression_percent": 10,
+    "outcome": "all recorded budgets satisfied; no workload, emitted-code, or compile-time regression was observed"
+  }
+}
