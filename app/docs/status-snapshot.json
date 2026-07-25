@@ -1,13 +1,13 @@
 {
   "schema": "kofun.docs-status/v1",
   "repository": "hjosugi/kofun",
-  "source_commit": "468f606002d06b28b2a9c76a92919230dd51c978",
+  "source_commit": "720f2d79fec6256c1381ef640b9b13af8fe08458",
   "verification": {
     "workflow": "CI",
     "status": "completed",
     "conclusion": "success",
-    "completed_at": "2026-07-25T03:45:28Z",
-    "url": "https://github.com/hjosugi/kofun/actions/runs/30142641124"
+    "completed_at": "2026-07-25T05:16:29Z",
+    "url": "https://github.com/hjosugi/kofun/actions/runs/30145301568"
   },
   "issues": [
     {
@@ -29,9 +29,9 @@
     {
       "number": 667,
       "title": "Diagnostics: add a compiler-wide registry and executable coverage gate",
-      "state": "open",
-      "workflow": "in-progress",
-      "updated_at": "2026-07-25T03:31:19Z",
+      "state": "closed",
+      "workflow": "closed",
+      "updated_at": "2026-07-25T04:56:24Z",
       "url": "https://github.com/hjosugi/kofun/issues/667"
     },
     {
@@ -43,5 +43,5 @@
       "url": "https://github.com/hjosugi/kofun/issues/668"
     }
   ],
-  "reviewed_at": "2026-07-25T03:46:56.934Z"
+  "reviewed_at": "2026-07-25T05:26:08.085Z"
 }
