@@ -70,9 +70,7 @@ The remaining native backend work includes:
 - broader Text/List calls and types beyond the bounded x86-64 bridge;
 - local bindings and general control flow inside user-defined functions;
 - allocator reuse/reclamation and general raw syscall intrinsic lowering;
-- canonical per-operator `error[R010]` runtime diagnostics shared with the C11
-  backend, which the numeric conformance corpus requires and which the one-page
-  RX segment currently has no room for;
+- diagnostic coverage beyond the checked-Int64 `R010` runtime paths;
 - variable-location DIEs, multi-function debug information, and AArch64
   List/Text debug rows;
 - unifying the currently separate function, List, and Text profiles.

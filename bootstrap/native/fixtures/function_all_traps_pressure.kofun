@@ -1,0 +1,41 @@
+# One small program references every arithmetic runtime trap. It executes only
+# safe inputs, but emission must retain all nine operator-specific stubs without
+# exceeding the bounded RX or RW pages.
+
+fn add(a: Int, b: Int) -> Int {
+    return a + b
+}
+
+fn subtract(a: Int, b: Int) -> Int {
+    return a - b
+}
+
+fn multiply(a: Int, b: Int) -> Int {
+    return a * b
+}
+
+fn negate(value: Int) -> Int {
+    return -value
+}
+
+fn divide(a: Int, b: Int) -> Int {
+    return a / b
+}
+
+fn floor_divide(a: Int, b: Int) -> Int {
+    return a // b
+}
+
+fn modulo(a: Int, b: Int) -> Int {
+    return a % b
+}
+
+fn main() {
+    print(add(40, 2))
+    print(subtract(44, 2))
+    print(multiply(6, 7))
+    print(negate(-42))
+    print(divide(84, 2))
+    print(floor_divide(85, 2))
+    print(modulo(85, 43))
+}

@@ -215,23 +215,21 @@ overflow flag, and the remainder is always zero — which is why
 corrects: when the remainder is non-zero and its sign differs from the
 divisor's, `//` is one too high and `%` is one divisor short.
 
-The function profile carries full signed Int64 literals, in the narrowest
-encoding that holds each value, so a literal that fit the old 65535 range emits
-exactly the bytes it did before and only wider ones grow. `INT64_MIN` is
-written the way the numeric corpus writes it, `-9223372036854775807 - 1`,
-because a literal is unsigned before the unary minus applies. The gate executes
-all three `-1` boundaries directly from that literal: `//` and `/` reject the
-non-representable quotient with status 1, while `%` prints `0`.
+The function profile accepts non-negative literal magnitudes through
+`INT64_MAX` and encodes each resulting signed Int64 in the narrowest form that
+holds it. A literal that fit the old 65535 range therefore emits exactly the
+bytes it did before and only wider operands grow. `INT64_MIN` is written the
+way the numeric corpus writes it, `-9223372036854775807 - 1`, because an atom
+must fit before unary minus applies. The gate covers the wide encoding
+boundaries on both targets and retains the independently constructed
+`INT64_MIN // -1`, `INT64_MIN / -1`, and `INT64_MIN % -1` checks.
 
-One limit is left. A runtime arithmetic failure reports
-`kofun: integer overflow` or `kofun: division by zero` rather than the
-canonical per-operator `error[R010]` line the C11 and wasm32 backends write, so
-the native adapters still do not claim the numeric conformance corpus. That is
-the only remaining difference on those nine cases — every value, exit status,
-and stdout byte already agrees — and it is blocked on where the message bytes
-live, not on the diagnostics themselves: they currently sit in the one-page RX
-segment, which `stdlib/set/tests/projection.kofun` already fills to within 23
-bytes.
+Arithmetic failures use the same exact per-operator `error[R010]` lines as the
+C11 and wasm32 backends. Messages live in the bounded RW data page; only the
+operator-specific stubs a program uses enter the RX page, and all stubs share
+one write/exit runtime. The native capability entries therefore execute the
+same nine-case numeric corpus. A pressure fixture references every trap kind at
+once, while the large Set projection guards the one-page RX ceiling.
 
 ## Compiler-shaped Text function bridge
 
