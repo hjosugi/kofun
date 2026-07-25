@@ -618,7 +618,8 @@ fi
 # Debug metadata may not change what the AArch64 image does. Missing tooling
 # can only skip this dynamic check; the structural gates above always ran.
 if test -n "$AARCH64_RUNNER"; then
-    chmod +x "$WORK/core_debug_lines_42-aarch64-debug.elf"
+    chmod +x "$WORK/core_debug_lines_42-aarch64-release.elf" \
+        "$WORK/core_debug_lines_42-aarch64-debug.elf"
     set +e
     "$AARCH64_RUNNER" "$WORK/core_debug_lines_42-aarch64-release.elf" \
         >"$WORK/core_debug_lines_42-aarch64-release.stdout" \
