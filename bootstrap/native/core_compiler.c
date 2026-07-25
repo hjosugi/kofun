@@ -5830,19 +5830,29 @@ static void a64_multiply(
     );
 }
 
+/*
+ * Records a debug line row at each point the x86-64 lowering records one: the
+ * first instruction of a literal, and the operation that follows both operands
+ * of a binary node. Both backends lower the same parsed Core, so the two line
+ * tables describe the same source lines in the same order at their own
+ * instruction addresses.
+ */
 static void a64_expression(
     Bytes *text,
     const Node *expression,
+    LineRows *rows,
     unsigned *depth
 ) {
     if (expression->kind == NODE_LITERAL) {
+        line_row(rows, text->length, expression->source_line);
         a64_movz(text, *depth, (unsigned)expression->value);
         ++*depth;
         return;
     }
 
-    a64_expression(text, expression->left, depth);
-    a64_expression(text, expression->right, depth);
+    a64_expression(text, expression->left, rows, depth);
+    a64_expression(text, expression->right, rows, depth);
+    line_row(rows, text->length, expression->source_line);
     unsigned left = *depth - 2;
     unsigned right = *depth - 1;
     if (expression->kind == NODE_ADD) {
@@ -5919,11 +5929,17 @@ static void a64_svc(Bytes *text) {
     a64_word(text, UINT32_C(0xd4000001));
 }
 
-static void a64_text(Bytes *text, const Node *expression) {
+static void a64_text(
+    Bytes *text,
+    const Node *expression,
+    LineRows *rows,
+    size_t print_line
+) {
     unsigned depth = 0;
-    a64_expression(text, expression, &depth);
+    a64_expression(text, expression, rows, &depth);
     if (depth != 1) fatal("invalid AArch64 Core register stack");
 
+    line_row(rows, text->length, print_line);
     a64_movz(text, 3, 10);
     a64_udiv(text, 4, 0, 3);
     a64_msub(text, 5, 4, 3, 0);
@@ -8364,13 +8380,6 @@ int main(int argc, char **argv) {
         fprintf(stderr, "kofun native: unsupported target: %s\n", argv[2]);
         return 2;
     }
-    if (debug && aarch64) {
-        fputs(
-            "kofun native: -g currently requires x86_64-linux\n",
-            stderr
-        );
-        return 2;
-    }
 
     char *source = read_source(argv[1]);
     if (source == NULL) return 1;
@@ -8488,6 +8497,22 @@ int main(int argc, char **argv) {
         free(source);
         return 1;
     }
+    /*
+     * AArch64 debug metadata covers the same single-`main` scalar Core the
+     * x86-64 debug path accepts. The List/Text lowering emits no source-line
+     * rows yet, so it is refused here rather than producing a debug image with
+     * an empty line table.
+     */
+    if (debug && aarch64_aggregate_core) {
+        fputs(
+            "kofun native: -g for the AArch64 List/Text Core is not "
+            "implemented yet\n",
+            stderr
+        );
+        free_node(expression);
+        free(source);
+        return 1;
+    }
 
     Bytes text;
     bytes_init(&text);
@@ -8501,7 +8526,7 @@ int main(int argc, char **argv) {
                 parser.local_count + parser.max_lambda_parameters
             );
         } else {
-            a64_text(&text, expression);
+            a64_text(&text, expression, &rows, parser.print_line);
         }
     } else {
         x64_text(

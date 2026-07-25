@@ -33,11 +33,17 @@ and compared with an independent C11 reference. AArch64 rejects this
 function-Text profile explicitly while retaining its existing Int function and
 closed Text-expression support.
 
-`-g` is currently x86-64-only. It adds source-specific `.debug_line`,
-`.debug_info`, symbols, and section headers without changing release output or
-loaded code/data. The executable gate validates the structures with `readelf`
-and, when installed, proves source stepping and a named `main` backtrace with
-GDB.
+`-g` covers the single-`main` Core on both Linux targets. It adds
+source-specific `.debug_line`, `.debug_info`, symbols, and section headers
+without changing release output or loaded code/data. Both targets emit one
+shared metadata contract: the same sections, the same `main` symbol and DIE,
+and the same retained source lines, each at its own instruction addresses. The
+executable gate validates the structures with `readelf` for both targets and,
+when the tooling is installed, proves source stepping and a named `main`
+backtrace with GDB — natively for x86-64 and through the `qemu-aarch64` gdbstub
+for AArch64. Missing emulator or debugger tooling skips only the stepping
+check. `-g` on the multi-function profile, and on the AArch64 List/Text Core,
+remains an explicit rejection that writes no artifact.
 
 Run:
 
@@ -47,12 +53,13 @@ sh bootstrap/native/check.sh
 
 The remaining native backend work includes:
 
-- general AST/IR lowering and register allocation;
+- general AST/IR lowering, and register allocation for AArch64 functions;
 - broader Text/List calls and types beyond the bounded x86-64 bridge;
 - local bindings and general control flow inside user-defined functions;
 - allocator reuse/reclamation and general raw syscall intrinsic lowering;
 - canonical runtime diagnostic codes shared with the C11 backend;
-- AArch64 debug information and variable-location DIEs;
+- variable-location DIEs, multi-function debug information, and AArch64
+  List/Text debug rows;
 - unifying the currently separate function, List, and Text profiles.
 
 Unsupported cases must be explicit skips, never implicit passes.

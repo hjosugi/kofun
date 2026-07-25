@@ -67,7 +67,8 @@ targets; AArch64 detects multiply overflow with a `smulh`/sign-bit comparison
 and add/sub/negate overflow through the `V` flag. Unknown functions, duplicate
 declarations or parameters, wrong arity, more than six arguments, non-Int or
 non-Text signatures, missing helper returns, and `-g` are rejected before an
-artifact is written. `-g` debug information remains x86-64-only.
+artifact is written. `-g` debug information covers the single-`main` Core on
+both Linux targets, and the multi-function profile on neither.
 
 `tests/conformance/functions` runs the same eight programs under the C11 and
 direct x86-64 adapters, covering ordinary/forward calls, recursion, mutual
@@ -283,16 +284,18 @@ Unlike the page-backed print fixture, this image keeps its message in the RX
 segment. It demonstrates deterministic multi-label rel32 resolution for both a
 forward `call` and a RIP-relative data reference.
 
-## Opt-in x86-64 debug information
+## Opt-in debug information
 
-The general Native Core CLI accepts `-g` for x86-64 Linux:
+The general Native Core CLI accepts `-g` for both Linux targets:
 
 ```sh
 ./bin/kofun build source.kofun \
   --target x86_64-linux -g -o build/program
+./bin/kofun build source.kofun \
+  --target aarch64-linux -g -o build/program-aarch64
 ```
 
-The frontend retains source lines on parsed expression nodes. x86-64 lowering
+The frontend retains source lines on parsed expression nodes. Each lowering
 records the exact instruction offset for each distinct line, then the shared
 metadata builder appends non-allocating ELF sections:
 
@@ -341,8 +344,24 @@ Debug Native Core currently admits exactly one function, `main`, so one
 function DIE is complete for every debug-accepted program. The multi-function
 Int profile rejects `-g` until lowering adds one DIE and symbol for each emitted
 function.
-`-g` on AArch64 is rejected explicitly; AArch64 and Mach-O debug formats are
-separate future work.
+
+AArch64 carries the same contract, not a second one. The AArch64 lowering
+records a row at the same points its x86-64 counterpart does — the first
+instruction of a literal and the operation that follows both operands — so both
+targets describe the same source lines in the same order, each at its own
+instruction addresses, and every AArch64 row lands on a 4-byte instruction
+boundary. `check.sh` validates the AArch64 sections, `main` symbol and DIE,
+compilation-unit source path, and decoded line rows unconditionally, pins the
+debug image's SHA-256, and compares the release and debug loaded bytes. Under
+`qemu-aarch64` it also proves the debug image observes exactly what the release
+image observes; when the emulator's gdbstub and an AArch64-capable GDB are both
+present it breaks in Kofun `main`, steps to the next mapped line, and checks the
+named frame, and reports an explicit skip otherwise. Missing tooling never skips
+the structural validation.
+
+The AArch64 List/Text Core records no source-line rows yet, so `-g` there is an
+explicit rejection that writes no artifact. Mach-O debug formats and
+variable-location DIEs remain separate future work.
 
 ## Labels and fixups
 
@@ -438,7 +457,7 @@ Implemented here:
 - distinct RX and RW mappings;
 - three end-to-end Linux x86-64 executable artifact gates;
 - opt-in section headers, symbols, and DWARF v4 line/function information for
-  arbitrary source accepted by the general x86-64 Native Core CLI.
+  arbitrary source accepted by the general x86-64 and AArch64 Native Core CLI.
 
 Still open:
 
@@ -451,4 +470,5 @@ Still open:
 - first-class/nested collection lambdas and general collection types;
 - broader Text bindings/calls, AArch64 function-Text parity, and the Stage 1
   compiler port;
-- AArch64 debug information and variable/location DIEs.
+- variable/location DIEs, multi-function debug information, and AArch64
+  List/Text debug rows.
