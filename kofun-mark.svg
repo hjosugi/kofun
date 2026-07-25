@@ -1,6 +1,7 @@
 <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <title>Kofun language mark — a keyhole-shaped burial mound</title>
   <rect width="64" height="64" rx="18" fill="#171914"/>
-  <circle cx="32" cy="22" r="11" fill="#DFFF5B"/>
-  <path d="M25 30H39L45 51H19L25 30Z" fill="#DFFF5B"/>
+  <!-- Unified rear circle and flared front square: a zenpo-koen-fun from above. -->
+  <path d="M32 7C23.716 7 17 13.716 17 22C17 26.12 18.662 29.854 21.352 32.564L13 53H51L42.648 32.564C45.338 29.854 47 26.12 47 22C47 13.716 40.284 7 32 7Z" fill="#DFFF5B"/>
   <circle cx="32" cy="22" r="4" fill="#171914"/>
 </svg>
