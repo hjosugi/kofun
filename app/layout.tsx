@@ -9,7 +9,7 @@ export const metadata: Metadata = {
     template: "%s · Kofun",
   },
   description:
-    "Kofun is an experimental programming language combining low-sigil ownership, functional programming, scientific computing, and direct native code generation.",
+    "Kofun is an experimental Kofun-written language with a Python-free bootstrap and bounded direct x86-64/AArch64 ELF backends.",
   keywords: [
     "Kofun",
     "programming language",
@@ -17,6 +17,7 @@ export const metadata: Metadata = {
     "functional programming",
     "native compiler",
     "x86-64",
+    "AArch64",
   ],
   icons: {
     icon: `${siteBasePath}/kofun-mark.svg`,
@@ -24,7 +25,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Kofun — Clear code, native ground",
     description:
-      "Memory-aware, functional by default, and capable of emitting static native binaries directly.",
+      "A research language with executable bootstrap evidence and bounded direct static ELF checkpoints.",
     type: "website",
   },
 };

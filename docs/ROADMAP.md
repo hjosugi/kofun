@@ -12,27 +12,20 @@ Kofun advances milestones by correctness gate, not by feature count.
 
 ## Current critical-path order
 
-The shortest honest route to the first self-hosted fixed point is:
+The smallest compiler source `S`, its typed profile, deterministic C11
+lowering, and the first runnable compiler-produced compiler are active. The
+remaining fixed-point path is intentionally short:
 
-1. freeze the smallest canonical compiler source `S` and mechanically account
-   for every construct it uses
-   ([#618](https://github.com/hjosugi/kofun/issues/618));
-2. type that exact surface and lower it to deterministic C11
-   ([#619](https://github.com/hjosugi/kofun/issues/619) through
-   [#622](https://github.com/hjosugi/kofun/issues/622));
-3. produce `C1/A1`, then let the generated compilers produce `C2/A2` and
-   `C3/A3` ([#271](https://github.com/hjosugi/kofun/issues/271)); and
-4. require byte-identical C sources and executables across all three
-   generations ([#272](https://github.com/hjosugi/kofun/issues/272)).
+1. use the generated compiler to produce `C2/A2` and `C3/A3`
+   ([#271](https://github.com/hjosugi/kofun/issues/271)); and
+2. require equivalent C sources and executables across the three generations
+   ([#272](https://github.com/hjosugi/kofun/issues/272)).
 
-This B4/B5 gate may use one declared, normalized host C11 compiler. Removing
-that dependency with direct-native compiler reproduction is a separate track:
-[#33](https://github.com/hjosugi/kofun/issues/33),
-[#615](https://github.com/hjosugi/kofun/issues/615), including List parity in
-[#629](https://github.com/hjosugi/kofun/issues/629) and UTF-8 Text parity in
-[#630](https://github.com/hjosugi/kofun/issues/630), and
-[#623](https://github.com/hjosugi/kofun/issues/623). AArch64 stays early on
-that track, rather than waiting until after x86-64 compiler reproduction.
+That gate may use one declared, normalized host C11 compiler. Direct x86-64
+and AArch64 compiler reproduction is a separate strengthening track; both
+native backends already execute bounded Int, function, `List[Int]`, and UTF-8
+`Text` profiles. The [implemented-status matrix](MVP_IMPLEMENTED.md) is the
+authority for their exact active boundary.
 
 Heterogeneous records ([#546](https://github.com/hjosugi/kofun/issues/546)),
 the concrete-first law system
@@ -70,16 +63,16 @@ Exit criteria:
 - law assurance labels do not mislead
 - bootstrap status can be verified machine-readably
 
-Current Stage 0 achievements:
+Current foundation:
 
 - Kofun-written Python-free arithmetic Core compiler seed
-- affine ownership prototype
+- frozen self-host profile and runnable first compiler generation
+- direct x86-64 and AArch64 bounded native checkpoints
+- compiler-wide stable diagnostic and semantic-oracle gates
+- affine ownership prototype; the general checker remains design work
 - historical bounded-Monad examples, finite-model artifacts, and JSON schema;
   active compiler integration remains open in
   [#551](https://github.com/hjosugi/kofun/issues/551)
-- Kofun-written Stage 1 arithmetic compiler seed built as native code by Stage 0
-- interpreted/native Stage 1 fixture-output equivalence
-- 13,500 generated implementation issues
 
 ## M1 — Bootstrap compiler
 
@@ -252,10 +245,10 @@ B6  independent reproducible bootstrap
 B7  diverse double compilation
 ```
 
-Current status: `B1` plus a Stage 0-to-native-Stage 1 differential gate. The
-canonical source used for B4/B5 is frozen and audited by
-`bootstrap/selfhost/`; typed/lowered profile coverage and all self-produced
-compiler generations remain open.
+Current status: the canonical B4 source profile is frozen and audited, and the
+repository produces and executes the first generated compiler. B5 remains
+open until the `C1/C2/C3` and `A1/A2/A3` equivalence gates pass. This is a
+runnable first generation, not a semantic self-hosting fixed point.
 
 ## Law verification milestones
 

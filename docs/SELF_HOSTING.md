@@ -68,9 +68,11 @@ from the start.
 
 ## Honest status
 
-Stage 1 does not yet parse and lower every construct in `S`. Therefore the
-trusted-seed bootstrap and frozen-profile gate are working, while semantic
-self-recompile and the executable Stage 2 fixed point remain open.
+The trusted seed now lowers the frozen `S` to `C1`, and the normalized host
+compiler produces a runnable `A1` whose bounded Core behavior matches the
+audited seed. `A1` does not yet produce the required `C2/A2` and `C3/A3`
+generations. Semantic self-recompile and the three-generation fixed point
+therefore remain open.
 
 The active trusted computing base is the canonical Kofun source, audited C11
 seed, host compiler, shell, operating system, and hashing/comparison tools.

@@ -49,7 +49,7 @@ current decisions are:
   [#558](https://github.com/hjosugi/kofun/issues/558))
 
 These decisions are subordinate to the current compiler path. The bounded
-user-defined call slice now runs under C11 and direct x86-64
+user-defined call slice now runs under C11 and direct x86-64/AArch64
 ([#549](https://github.com/hjosugi/kofun/issues/549)). The first self-hosting
 profile deliberately keeps its current string-scanning representation, so
 heterogeneous records ([#546](https://github.com/hjosugi/kofun/issues/546))

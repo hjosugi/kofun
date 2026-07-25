@@ -4,7 +4,7 @@ import { docs, snapshot } from "./docs-manifest";
 
 const trackDescriptions: Record<number, string> = {
   650: "Publish an honest, navigable documentation surface from repository sources.",
-  666: "Make backend conformance coverage explicit and execute numeric cases on direct x86-64.",
+  666: "Make backend conformance coverage explicit and execute numeric cases on direct x86-64 and AArch64.",
   667: "Connect every stable active diagnostic code to executable evidence and deterministic policy.",
   668: "Compare declared backends through normalized observations and an independent family oracle.",
 };

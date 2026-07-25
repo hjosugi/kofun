@@ -28,7 +28,7 @@ const principles = [
   {
     number: "01",
     title: "Ownership you can read",
-    body: "Use read, edit, and take where resources matter. Copy values stay lightweight; affine resources make views and transfers explicit.",
+    body: "The design uses read, edit, and take where resources matter. Its general checker is still open; active ownership slices are documented separately.",
     code: "fn upload(take file: File)",
   },
   {
@@ -94,9 +94,9 @@ export default function Home() {
             <em>Native ground.</em>
           </h1>
           <p>
-            Kofun explores low-sigil ownership, functional composition, and
-            scientific fluency in one language—while keeping every active
-            compiler claim tied to executable evidence.
+            Kofun explores low-sigil ownership and functional composition while
+            building a Python-free bootstrap and direct native checkpoints.
+            Every active compiler claim stays tied to executable evidence.
           </p>
           <div className="hero-actions">
             <Link className="primary-button" href="/docs">
@@ -129,12 +129,12 @@ export default function Home() {
         </div>
       </section>
 
-      <div className="signal-strip" aria-label="Current Kofun capabilities">
+      <div className="signal-strip" aria-label="Current Kofun checkpoints">
         <span>Python-free bootstrap</span>
         <i />
         <span>static ELF</span>
         <i />
-        <span>read · edit · take</span>
+        <span>Unicode 17</span>
         <i />
         <span>typed HIR v1</span>
         <i />
@@ -200,7 +200,7 @@ export default function Home() {
             Inspect the native backend <ArrowIcon />
           </a>
         </div>
-        <div className="compiler-flow" aria-label="Compiler pipeline">
+        <div className="compiler-flow" aria-label="Checked compiler profiles">
           <div className="flow-node">
             <span>01</span>
             <strong>Source</strong>
@@ -209,13 +209,13 @@ export default function Home() {
           <div className="flow-line"><i /></div>
           <div className="flow-node">
             <span>02</span>
-            <strong>Typed HIR</strong>
-            <code>versioned evidence</code>
+            <strong>Bounded profiles</strong>
+            <code>independent gates</code>
           </div>
           <div className="flow-line"><i /></div>
           <div className="flow-node accent">
             <span>03</span>
-            <strong>Checked output</strong>
+            <strong>Checked outputs</strong>
             <code>C11 · ELF64 · wasm32</code>
           </div>
         </div>
