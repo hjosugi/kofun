@@ -180,41 +180,29 @@ fn main() {
                                   (identifier)
                                   (call_expression
                                     (arguments
-                                      (pipeline_expression
-                                        (coalesce_expression
-                                          (logical_or_expression
-                                            (logical_and_expression
-                                              (equality_expression
-                                                (comparison_expression
-                                                  (range_expression
-                                                    (additive_expression
-                                                      (multiplicative_expression
-                                                        (power_expression
-                                                          (unary_expression
-                                                            (postfix_expression
-                                                              (lambda_expression
-                                                                (parameters
-                                                                  (parameter
-                                                                    (identifier)
-                                                                    (type
-                                                                      (identifier))))
-                                                                (pipeline_expression
-                                                                  (coalesce_expression
-                                                                    (logical_or_expression
-                                                                      (logical_and_expression
-                                                                        (equality_expression
-                                                                          (comparison_expression
-                                                                            (range_expression
-                                                                              (additive_expression
-                                                                                (multiplicative_expression
-                                                                                  (power_expression
-                                                                                    (unary_expression
-                                                                                      (postfix_expression
-                                                                                        (identifier)))))))))))))))))
-                                                        (power_expression
-                                                          (unary_expression
-                                                            (postfix_expression
-                                                              (identifier))))))))))))))))))))))))))
+                                      (lambda_expression
+                                        (parameters
+                                          (parameter
+                                            (identifier)
+                                            (type
+                                              (identifier))))
+                                        (pipeline_expression
+                                          (coalesce_expression
+                                            (logical_or_expression
+                                              (logical_and_expression
+                                                (equality_expression
+                                                  (comparison_expression
+                                                    (range_expression
+                                                      (additive_expression
+                                                        (multiplicative_expression
+                                                          (power_expression
+                                                            (unary_expression
+                                                              (postfix_expression
+                                                                (identifier))))
+                                                          (power_expression
+                                                            (unary_expression
+                                                              (postfix_expression
+                                                                (identifier)))))))))))))))))))))))))))
             (coalesce_expression
               (logical_or_expression
                 (logical_and_expression

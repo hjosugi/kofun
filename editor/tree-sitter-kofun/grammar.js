@@ -33,6 +33,13 @@ export default grammar({
     $.comment,
   ],
 
+  // `(` opens a parenthesised lambda parameter list, a tuple, or a grouping,
+  // and nothing decides between them until the `)` is followed (or not) by
+  // `=>`. The GLR parser carries both readings until then.
+  conflicts: ($) => [
+    [$.parameter, $._primary_expression],
+  ],
+
   supertypes: ($) => [
     $.declaration,
     $.statement,
@@ -238,7 +245,11 @@ export default grammar({
 
     expression_statement: ($) => $.expression,
 
-    expression: ($) => $.pipeline_expression,
+    // A lambda sits at the top of the expression tier rather than among the
+    // primaries, so its body extends to the end of the expression: `x => x * 2`
+    // is `x => (x * 2)`, not `(x => x) * 2`. Placing it among the primaries
+    // makes the two readings ambiguous, and the tie resolves to the wrong one.
+    expression: ($) => choice($.pipeline_expression, $.lambda_expression),
 
     pipeline_expression: ($) => binaryExpression(
       $,
@@ -377,7 +388,6 @@ export default grammar({
       $.tuple_expression,
       $.parenthesized_expression,
       $.if_expression,
-      $.lambda_expression,
     ),
 
     list_expression: ($) => seq(
@@ -428,19 +438,46 @@ export default grammar({
       )),
     )),
 
-    lambda_expression: ($) => seq(
-      "fn",
-      field("parameters", $.parameters),
-      repeat($._newline),
-      choice(
-        seq(
-          "=>",
-          repeat($._newline),
-          field("body", $.expression),
+    // Three surface forms share one node:
+    //
+    //   fn(x: Int) => x        the original explicit form
+    //   (x, y) => x + y        a parenthesised parameter list
+    //   x => x * 2             a single unannotated parameter
+    //
+    // The parenthesised forms carry a `parameters` field; the bare form carries
+    // a `parameter` field holding the identifier itself, because there is no
+    // parenthesised list to report.
+    //
+    // Annotating requires parentheses: `x: Int => x` is not a lambda, because
+    // `:` there is the type-annotation position. The bare form admits a lone
+    // identifier only, so that shape cannot arise.
+    lambda_expression: ($) => prec.right(choice(
+      seq(
+        "fn",
+        field("parameters", $.parameters),
+        repeat($._newline),
+        choice(
+          seq(
+            "=>",
+            repeat($._newline),
+            field("body", $.expression),
+          ),
+          field("body", $.block),
         ),
-        field("body", $.block),
       ),
-    ),
+      seq(
+        field("parameters", $.parameters),
+        "=>",
+        repeat($._newline),
+        field("body", choice($.expression, $.block)),
+      ),
+      seq(
+        field("parameter", $.identifier),
+        "=>",
+        repeat($._newline),
+        field("body", choice($.expression, $.block)),
+      ),
+    )),
 
     true: (_) => "true",
     false: (_) => "false",

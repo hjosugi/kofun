@@ -30,6 +30,8 @@
   name: (identifier) @type)
 (parameter
   name: (identifier) @variable.parameter)
+(lambda_expression
+  parameter: (identifier) @variable.parameter)
 (struct_field
   name: (identifier) @property)
 (law_entry
