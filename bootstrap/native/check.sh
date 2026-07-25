@@ -149,6 +149,30 @@ cmp \
     "$WORK/core_debug_lines_42-debug.elf" \
     "$WORK/core_debug_lines_42-debug.second.elf"
 
+# The same single-main Core carries debug metadata on AArch64. Both targets
+# build the identical release image, so the debug build is compared against
+# that image rather than against a target-specific expectation.
+(
+    cd "$ROOT"
+    "$KOFUN" build "$DEBUG_SOURCE" \
+        --target aarch64-linux \
+        -o "$WORK/core_debug_lines_42-aarch64-release.elf" >/dev/null
+    "$KOFUN" build "$DEBUG_SOURCE" \
+        --target aarch64-linux \
+        -g \
+        -o "$WORK/core_debug_lines_42-aarch64-debug.elf" >/dev/null
+    "$KOFUN" build "$DEBUG_SOURCE" \
+        --target aarch64-linux \
+        -g \
+        -o "$WORK/core_debug_lines_42-aarch64-debug.second.elf" >/dev/null
+)
+cmp \
+    "$WORK/core_debug_lines_42-aarch64-debug.elf" \
+    "$WORK/core_debug_lines_42-aarch64-debug.second.elf"
+cmp \
+    "$WORK/core_return_42-aarch64.elf" \
+    "$WORK/core_debug_lines_42-aarch64-release.elf"
+
 set +e
 (
     cd "$ROOT"
@@ -161,21 +185,37 @@ missing_target_status=$?
 (
     cd "$ROOT"
     "$KOFUN" build "$DEBUG_SOURCE" \
+        --target wasm32 \
+        -g \
+        -o "$WORK/core_debug_lines_42-wasm32-debug.wasm"
+) >"$WORK/core_debug_lines_42-wasm32-debug.stdout" \
+    2>"$WORK/core_debug_lines_42-wasm32-debug.stderr"
+wasm32_debug_status=$?
+# AArch64 List/Text lowering records no source-line rows yet, so `-g` there is
+# an explicit rejection instead of a debug image with an empty line table.
+(
+    cd "$ROOT"
+    "$KOFUN" build "$NATIVE/fixtures/core_list_index_42.kofun" \
         --target aarch64-linux \
         -g \
-        -o "$WORK/core_debug_lines_42-aarch64-debug.elf"
-) >"$WORK/core_debug_lines_42-aarch64-debug.stdout" \
-    2>"$WORK/core_debug_lines_42-aarch64-debug.stderr"
-aarch64_debug_status=$?
+        -o "$WORK/core_list_index_42-aarch64-debug.elf"
+) >"$WORK/core_list_index_42-aarch64-debug.stdout" \
+    2>"$WORK/core_list_index_42-aarch64-debug.stderr"
+aarch64_aggregate_debug_status=$?
 set -e
 test "$missing_target_status" -eq 2
-test "$aarch64_debug_status" -eq 2
+test "$wasm32_debug_status" -eq 2
+test "$aarch64_aggregate_debug_status" -eq 1
 test ! -e "$WORK/core_debug_lines_42-missing-target.elf"
-test ! -e "$WORK/core_debug_lines_42-aarch64-debug.elf"
-grep -q -- '-g requires --target x86_64-linux' \
+test ! -e "$WORK/core_debug_lines_42-wasm32-debug.wasm"
+test ! -e "$WORK/core_list_index_42-aarch64-debug.elf"
+grep -q -- '-g requires --target x86_64-linux or --target aarch64-linux' \
     "$WORK/core_debug_lines_42-missing-target.stderr"
-grep -q -- '-g currently requires --target x86_64-linux' \
-    "$WORK/core_debug_lines_42-aarch64-debug.stderr"
+grep -q -- \
+    '-g currently requires --target x86_64-linux or --target aarch64-linux' \
+    "$WORK/core_debug_lines_42-wasm32-debug.stderr"
+grep -q -- '-g for the AArch64 List/Text Core is not implemented yet' \
+    "$WORK/core_list_index_42-aarch64-debug.stderr"
 
 # Source formatting and debug mode must not perturb the release artifact.
 cmp \
@@ -356,6 +396,90 @@ grep -Eq \
     'bootstrap/native/fixtures/core_debug_lines_42.kofun[[:space:]]+4[[:space:]]+0x4000c1' \
     "$WORK/core_debug_lines_42-debug.lines.txt"
 
+# The AArch64 debug image carries the same section set, the same symbol, the
+# same DIEs, and the same retained source lines, at its own instruction
+# addresses. The release image keeps no section table and stays byte-identical
+# inside the loaded region.
+readelf -h "$WORK/core_debug_lines_42-aarch64-release.elf" \
+    >"$WORK/core_debug_lines_42-aarch64-release.header.txt"
+readelf -h "$WORK/core_debug_lines_42-aarch64-debug.elf" \
+    >"$WORK/core_debug_lines_42-aarch64-debug.header.txt"
+grep -Eq 'Machine:[[:space:]]+AArch64' \
+    "$WORK/core_debug_lines_42-aarch64-debug.header.txt"
+grep -Eq 'Entry point address:[[:space:]]+0x4000b0' \
+    "$WORK/core_debug_lines_42-aarch64-debug.header.txt"
+grep -Eq 'Number of section headers:[[:space:]]+0' \
+    "$WORK/core_debug_lines_42-aarch64-release.header.txt"
+grep -Eq 'Number of section headers:[[:space:]]+10' \
+    "$WORK/core_debug_lines_42-aarch64-debug.header.txt"
+test "$(wc -c <"$WORK/core_debug_lines_42-aarch64-release.elf" | tr -d ' ')" \
+    -eq 4099
+test "$(wc -c <"$WORK/core_debug_lines_42-aarch64-debug.elf" | tr -d ' ')" \
+    -gt 4099
+
+dd if="$WORK/core_debug_lines_42-aarch64-release.elf" \
+    of="$WORK/core_debug_lines_42-aarch64-release.loaded" \
+    bs=1 skip=64 count=4035 2>/dev/null
+dd if="$WORK/core_debug_lines_42-aarch64-debug.elf" \
+    of="$WORK/core_debug_lines_42-aarch64-debug.loaded" \
+    bs=1 skip=64 count=4035 2>/dev/null
+cmp \
+    "$WORK/core_debug_lines_42-aarch64-release.loaded" \
+    "$WORK/core_debug_lines_42-aarch64-debug.loaded"
+
+readelf --wide --sections "$WORK/core_debug_lines_42-aarch64-debug.elf" \
+    >"$WORK/core_debug_lines_42-aarch64-debug.sections.txt"
+for section in \
+    .text \
+    .data \
+    .debug_abbrev \
+    .debug_info \
+    .debug_line \
+    .debug_str \
+    .symtab \
+    .strtab \
+    .shstrtab
+do
+    grep -F "$section" \
+        "$WORK/core_debug_lines_42-aarch64-debug.sections.txt" >/dev/null
+done
+
+readelf --wide --symbols "$WORK/core_debug_lines_42-aarch64-debug.elf" \
+    >"$WORK/core_debug_lines_42-aarch64-debug.symbols.txt"
+grep -Eq '[[:space:]]FUNC[[:space:]]+GLOBAL.*[[:space:]]main$' \
+    "$WORK/core_debug_lines_42-aarch64-debug.symbols.txt"
+
+readelf --wide --debug-dump=info \
+    "$WORK/core_debug_lines_42-aarch64-debug.elf" \
+    >"$WORK/core_debug_lines_42-aarch64-debug.info.txt"
+grep -q 'DW_TAG_compile_unit' \
+    "$WORK/core_debug_lines_42-aarch64-debug.info.txt"
+grep -q 'DW_TAG_subprogram' \
+    "$WORK/core_debug_lines_42-aarch64-debug.info.txt"
+grep -Eq 'DW_AT_name[[:space:]]+:.*core_debug_lines_42.kofun$' \
+    "$WORK/core_debug_lines_42-aarch64-debug.info.txt"
+grep -Eq 'DW_AT_name[[:space:]]+:.*main$' \
+    "$WORK/core_debug_lines_42-aarch64-debug.info.txt"
+
+readelf --wide --debug-dump=decodedline \
+    "$WORK/core_debug_lines_42-aarch64-debug.elf" \
+    >"$WORK/core_debug_lines_42-aarch64-debug.lines.txt"
+grep -Eq \
+    'bootstrap/native/fixtures/core_debug_lines_42.kofun[[:space:]]+3[[:space:]]+0x4000b0' \
+    "$WORK/core_debug_lines_42-aarch64-debug.lines.txt"
+grep -Eq \
+    'bootstrap/native/fixtures/core_debug_lines_42.kofun[[:space:]]+4[[:space:]]+0x4000bc' \
+    "$WORK/core_debug_lines_42-aarch64-debug.lines.txt"
+# Every AArch64 debug row must land on a 4-byte instruction boundary.
+awk '
+    $3 ~ /^0x[0-9a-f]+$/ {
+        last = substr($3, length($3), 1)
+        if (last != "0" && last != "4" && last != "8" && last != "c") {
+            exit 1
+        }
+    }
+' "$WORK/core_debug_lines_42-aarch64-debug.lines.txt"
+
 chmod +x \
     "$WORK/exit_42.elf" \
     "$WORK/print_sum_42.elf" \
@@ -489,6 +613,90 @@ if command -v gdb >/dev/null 2>&1; then
 else
     printf '%s\n' \
         "SKIP: gdb unavailable; readelf DWARF structure was still verified"
+fi
+
+# Debug metadata may not change what the AArch64 image does. Missing tooling
+# can only skip this dynamic check; the structural gates above always ran.
+if test -n "$AARCH64_RUNNER"; then
+    chmod +x "$WORK/core_debug_lines_42-aarch64-debug.elf"
+    set +e
+    "$AARCH64_RUNNER" "$WORK/core_debug_lines_42-aarch64-release.elf" \
+        >"$WORK/core_debug_lines_42-aarch64-release.stdout" \
+        2>"$WORK/core_debug_lines_42-aarch64-release.stderr"
+    aarch64_release_status=$?
+    "$AARCH64_RUNNER" "$WORK/core_debug_lines_42-aarch64-debug.elf" \
+        >"$WORK/core_debug_lines_42-aarch64-debug.stdout" \
+        2>"$WORK/core_debug_lines_42-aarch64-debug.stderr"
+    aarch64_debug_run_status=$?
+    set -e
+    test "$aarch64_debug_run_status" -eq "$aarch64_release_status"
+    cmp \
+        "$WORK/core_debug_lines_42.expected" \
+        "$WORK/core_debug_lines_42-aarch64-release.stdout"
+    cmp \
+        "$WORK/core_debug_lines_42-aarch64-release.stdout" \
+        "$WORK/core_debug_lines_42-aarch64-debug.stdout"
+    cmp \
+        "$WORK/core_debug_lines_42-aarch64-release.stderr" \
+        "$WORK/core_debug_lines_42-aarch64-debug.stderr"
+    printf '%s\n' \
+        "PASS: AArch64 debug image observes exactly what release observes"
+else
+    printf '%s\n' \
+        "SKIP: AArch64 debug execution (qemu-aarch64 unavailable)"
+fi
+
+# Source stepping needs both the emulator's gdbstub and a debugger that knows
+# AArch64. When either is missing this is an explicit tooling skip: the ELF and
+# DWARF structure was already validated unconditionally above.
+AARCH64_DEBUGGER=${KOFUN_AARCH64_GDB-}
+if test -z "$AARCH64_DEBUGGER"; then
+    for candidate in gdb-multiarch aarch64-linux-gnu-gdb; do
+        if command -v "$candidate" >/dev/null 2>&1; then
+            AARCH64_DEBUGGER=$(command -v "$candidate")
+            break
+        fi
+    done
+fi
+if test -n "$AARCH64_RUNNER" && test -n "$AARCH64_DEBUGGER"; then
+    gdbstub_port=${KOFUN_AARCH64_GDB_PORT:-45023}
+    "$AARCH64_RUNNER" -g "$gdbstub_port" \
+        "$WORK/core_debug_lines_42-aarch64-debug.elf" \
+        >"$WORK/core_debug_lines_42-aarch64-gdbstub.stdout" \
+        2>"$WORK/core_debug_lines_42-aarch64-gdbstub.stderr" &
+    gdbstub_pid=$!
+    trap 'kill -KILL "$gdbstub_pid" 2>/dev/null || true' 0 1 2 15
+    (
+        cd "$ROOT"
+        "$AARCH64_DEBUGGER" -q -nx -batch \
+            -ex 'set debuginfod enabled off' \
+            -ex 'set pagination off' \
+            -ex 'set architecture aarch64' \
+            -ex "target remote localhost:$gdbstub_port" \
+            -ex 'break main' \
+            -ex 'continue' \
+            -ex 'bt' \
+            -ex 'next' \
+            -ex 'frame' \
+            -ex 'detach' \
+            "$WORK/core_debug_lines_42-aarch64-debug.elf"
+    ) >"$WORK/core_debug_lines_42-aarch64-debug.gdb.txt" 2>&1
+    wait "$gdbstub_pid" || true
+    trap - 0 1 2 15
+    grep -Eq \
+        'Breakpoint 1, main .*core_debug_lines_42.kofun:3' \
+        "$WORK/core_debug_lines_42-aarch64-debug.gdb.txt"
+    grep -Eq \
+        '#0[[:space:]]+main .*core_debug_lines_42.kofun:3' \
+        "$WORK/core_debug_lines_42-aarch64-debug.gdb.txt"
+    grep -Eq \
+        'main .*core_debug_lines_42.kofun:4' \
+        "$WORK/core_debug_lines_42-aarch64-debug.gdb.txt"
+    printf '%s\n' \
+        "PASS: AArch64 gdb broke in Kofun main, stepped, and named the frame"
+else
+    printf '%s\n' \
+        "SKIP: AArch64 source stepping (qemu gdbstub or AArch64 gdb unavailable)"
 fi
 
 # The same target-independent parsed Core must drive both instruction
@@ -1308,6 +1516,7 @@ printf '%s\n' \
     "PASS: opt-in debug image has ELF sections, DWARF lines, and a main DIE" \
     "PASS: release Core image remains byte-identical and 231 bytes" \
     "PASS: build --target x86_64-linux -g emitted source-specific DWARF" \
+    "PASS: build --target aarch64-linux -g emitted the same DWARF contract" \
     "PASS: general Native Core release stayed byte-identical and 4099 bytes" \
     "PASS: --target aarch64-linux emitted deterministic static EM_AARCH64 ELF" \
     "PASS: x86-64 and AArch64 consume one target-independent parsed Core" \

@@ -258,7 +258,8 @@ test ! -e "$WORK/unsupported.wasm"
 test ! -e "$WORK/debug.wasm"
 grep -Fq 'unsupported token in wasm32 arithmetic Core' \
     "$WORK/unsupported.stderr"
-grep -Fq -- '-g currently requires --target x86_64-linux' \
+grep -Fq -- \
+    '-g currently requires --target x86_64-linux or --target aarch64-linux' \
     "$WORK/debug.stderr"
 
 sh "$ROOT/tests/conformance/run.sh" \

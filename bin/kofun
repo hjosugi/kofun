@@ -693,10 +693,15 @@ $2"
                     "kofun: --backend c cannot be combined with --target" >&2
                 exit 2
             }
-            if "$debug" && test "$target" != x86_64-linux; then
-                printf '%s\n' \
-                    "kofun: -g currently requires --target x86_64-linux" >&2
-                exit 2
+            if "$debug"; then
+                case "$target" in
+                    x86_64-linux|aarch64-linux) ;;
+                    *)
+                        printf '%s\n' \
+                            "kofun: -g currently requires --target x86_64-linux or --target aarch64-linux" >&2
+                        exit 2
+                        ;;
+                esac
             fi
             mkdir -p "$(dirname "$output")"
             case "$target" in
@@ -716,7 +721,8 @@ $2"
             exit 0
         fi
         if "$debug"; then
-            printf '%s\n' "kofun: -g requires --target x86_64-linux" >&2
+            printf '%s\n' \
+                "kofun: -g requires --target x86_64-linux or --target aarch64-linux" >&2
             exit 2
         fi
         if test -z "$emitted"; then
