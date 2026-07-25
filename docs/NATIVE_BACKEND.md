@@ -11,7 +11,13 @@ grapheme-cluster length, `chars`, grapheme indexing, and explicit `bytes` /
 `codepoints` views. A separate bounded Int profile
 lowers up to six function arguments,
 returns, forward and mutual recursion, comparison-guarded early returns,
-checked arithmetic, and signed Int64 output directly. That function profile is
+checked arithmetic, and signed Int64 output directly. A `return` whose value is
+a direct call is lowered as a branch instead of a call on both targets: a call
+to the enclosing function reassigns the parameters and jumps past the prologue,
+and a call to any other function restores the registers the body claimed, drops
+the frame, and jumps, so it returns straight to this function's caller. Direct
+and mutual recursion written that way therefore run in constant stack. That
+function profile is
 shared by both backends: the same target-independent parsed program is lowered
 to x86-64 and to AArch64, and both emit a checked-overflow trap with the same
 `kofun: integer overflow` diagnostic and exit status:
@@ -54,6 +60,8 @@ sh bootstrap/native/check.sh
 The remaining native backend work includes:
 
 - general AST/IR lowering, and register allocation for AArch64 functions;
+- accumulator-style loops for recursion that is not already in a returned
+  position;
 - broader Text/List calls and types beyond the bounded x86-64 bridge;
 - local bindings and general control flow inside user-defined functions;
 - allocator reuse/reclamation and general raw syscall intrinsic lowering;

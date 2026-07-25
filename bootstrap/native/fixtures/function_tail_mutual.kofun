@@ -1,0 +1,17 @@
+fn even_parity(n: Int) -> Int {
+    if n == 0 {
+        return 1
+    }
+    return odd_parity(n - 1)
+}
+
+fn odd_parity(n: Int) -> Int {
+    if n == 0 {
+        return 0
+    }
+    return even_parity(n - 1)
+}
+
+fn main() {
+    print(even_parity(60000 * 50 + 1))
+}

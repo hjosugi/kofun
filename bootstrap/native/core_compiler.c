@@ -4719,6 +4719,40 @@ static void function_emitter_free(FunctionEmitter *emitter) {
     a64_core_runtime_free(&emitter->a64_runtime);
 }
 
+/*
+ * Tail calls
+ * ----------
+ *
+ * `return f(...)` leaves this frame nothing to do once `f` starts: `f`'s result
+ * is this function's result, and every location this body owns is dead at that
+ * point. Both backends therefore hand the frame over instead of stacking a
+ * second one on top of it.
+ *
+ *   - a call to the enclosing function reuses the frame as it stands. The
+ *     arguments are evaluated first, then assigned to the parameter locations,
+ *     then control branches back to the first instruction after the prologue,
+ *     so the repetition costs neither a frame nor a saved-register round trip;
+ *   - a call to any other function restores what this body claimed and drops
+ *     the frame before branching, so the callee runs on the frame this
+ *     function was entered with and returns straight to this function's
+ *     caller.
+ *
+ * Recursion written this way runs in constant stack on both targets, whether it
+ * is direct or mutual. A call anywhere but a returned position, and a `return`
+ * of anything but a direct call, is lowered exactly as before.
+ */
+static const FunctionExpression *function_tail_call(
+    const FunctionStatement *statement
+) {
+    if (statement->kind != FUNCTION_STATEMENT_RETURN &&
+        statement->kind != FUNCTION_STATEMENT_IF_RETURN) {
+        return NULL;
+    }
+    if (statement->value == NULL) return NULL;
+    if (statement->value->kind != FUNCTION_CALL) return NULL;
+    return statement->value;
+}
+
 static void x64_function_call(
     Bytes *text,
     FunctionEmitter *emitter,
@@ -5380,6 +5414,72 @@ static void x64_function_epilogue_block(
     x64_function_epilogue(text);
 }
 
+/*
+ * Emits a returned call as a branch rather than a call/return pair. The
+ * arguments are evaluated into their ordinary depths first, so nothing reads a
+ * parameter after the assignment below has started to overwrite one, and no
+ * evaluation depth shares a location with a parameter.
+ */
+static void x64_function_tail_call(
+    Bytes *text,
+    const FunctionExpression *call,
+    FunctionEmitter *emitter,
+    const X64FrameLayout *layout,
+    size_t self_index,
+    size_t body_start
+) {
+    for (size_t index = 0; index < call->argument_count; ++index) {
+        if (index >= MAX_CORE_PARAMETERS) {
+            fatal("native Core call has too many arguments");
+        }
+        x64_function_expression(
+            text,
+            call->arguments[index],
+            emitter,
+            layout,
+            index
+        );
+    }
+    if (call->function_index == self_index) {
+        for (size_t index = 0; index < call->argument_count; ++index) {
+            x64_move(
+                text,
+                x64_value_operand(layout, index),
+                x64_eval_operand(layout, index)
+            );
+        }
+        x64_patch_rel32(text, x64_local_jmp(text), body_start);
+        return;
+    }
+    /* Argument registers are never allocated, so filling the boundary cannot
+     * overwrite an argument that has not been moved yet. */
+    for (size_t index = 0; index < call->argument_count; ++index) {
+        x64_mov_register_operand(
+            text,
+            x64_argument_registers[index],
+            x64_eval_operand(layout, index)
+        );
+    }
+    /* The saved registers still live in frame slots, so they are reloaded
+     * while `rbp` is valid and before `leave` drops the frame. Neither step
+     * touches an argument register. */
+    for (size_t index = layout->saved_count; index > 0; --index) {
+        x64_mov_register_operand(
+            text,
+            layout->saved[index - 1],
+            x64_saved_operand(layout, index - 1)
+        );
+    }
+    byte(text, UINT8_C(0xc9)); /* leave: rsp now points at the return address */
+    byte(text, UINT8_C(0xe9)); /* jmp callee (patched) */
+    function_call_fixup_add(
+        &emitter->calls,
+        text->length,
+        call->function_index
+    );
+    u32_le(text, 0);
+}
+
 static void x64_function_parameter_store(
     Bytes *text,
     const X64FrameLayout *layout,
@@ -5398,6 +5498,7 @@ static void x64_function_parameter_store(
 static void x64_function_declaration(
     Bytes *text,
     const FunctionDeclaration *function,
+    size_t self_index,
     FunctionEmitter *emitter
 ) {
     X64FrameLayout layout = x64_function_layout(function);
@@ -5433,6 +5534,10 @@ static void x64_function_declaration(
     for (size_t index = 0; index < function->parameter_count; ++index) {
         x64_function_parameter_store(text, &layout, index);
     }
+    /* A returned call to this same function reassigns the parameters and
+     * branches here, so the frame, the saved registers, and the argument
+     * hand-off are each paid for exactly once. */
+    size_t body_start = text->length;
 
     /* Every return path reaches the one epilogue emitted after the body. */
     Offsets returns = {0};
@@ -5493,21 +5598,48 @@ static void x64_function_declaration(
                 }
                 skip = x64_local_jcc(text, inverse);
             }
-            x64_function_expression(
-                text,
-                statement->value,
-                emitter,
-                &layout,
-                0
-            );
-            x64_move(
-                text,
-                x64_register_operand(X64_RAX),
-                x64_eval_operand(&layout, 0)
-            );
-            offsets_add(&returns, x64_local_jmp(text));
+            const FunctionExpression *tail_call = function_tail_call(statement);
+            if (tail_call != NULL) {
+                x64_function_tail_call(
+                    text,
+                    tail_call,
+                    emitter,
+                    &layout,
+                    self_index,
+                    body_start
+                );
+            } else {
+                x64_function_expression(
+                    text,
+                    statement->value,
+                    emitter,
+                    &layout,
+                    0
+                );
+                x64_move(
+                    text,
+                    x64_register_operand(X64_RAX),
+                    x64_eval_operand(&layout, 0)
+                );
+                offsets_add(&returns, x64_local_jmp(text));
+            }
             x64_patch_rel32(text, skip, text->length);
         } else if (statement->kind == FUNCTION_STATEMENT_RETURN) {
+            const FunctionExpression *tail_call = function_tail_call(statement);
+            if (tail_call != NULL) {
+                /* The branch itself ends this path; nothing falls through to
+                 * the epilogue and nothing jumps to it from here. */
+                x64_function_tail_call(
+                    text,
+                    tail_call,
+                    emitter,
+                    &layout,
+                    self_index,
+                    body_start
+                );
+                returned = true;
+                continue;
+            }
             x64_function_expression(
                 text,
                 statement->value,
@@ -5703,6 +5835,7 @@ static void x64_function_program(
         x64_function_declaration(
             text,
             &program->functions[index],
+            index,
             &emitter
         );
     }
@@ -6220,9 +6353,53 @@ static void a64_function_expression(
     a64_push(text, 0);
 }
 
+/*
+ * The AArch64 counterpart of x64_function_tail_call. Arguments reach x0..x5
+ * through the same stack-machine discipline an ordinary call uses; only the
+ * `bl` at the end is replaced, either by a branch back to the top of this body
+ * or by a frame teardown and a branch to the callee.
+ */
+static void a64_function_tail_call(
+    Bytes *text,
+    const FunctionExpression *call,
+    FunctionEmitter *emitter,
+    size_t self_index,
+    size_t body_start
+) {
+    for (size_t index = 0; index < call->argument_count; ++index) {
+        a64_function_expression(text, call->arguments[index], emitter);
+    }
+    for (size_t index = call->argument_count; index > 0; --index) {
+        if (index - 1 >= MAX_CORE_PARAMETERS) {
+            fatal("native Core call has too many arguments");
+        }
+        a64_pop(text, (unsigned)(index - 1));
+    }
+    if (call->function_index == self_index) {
+        /* Every argument is already in its own register, so writing the
+         * parameter slots cannot disturb one that has not been written yet. */
+        for (size_t index = 0; index < call->argument_count; ++index) {
+            a64_store_param(text, (unsigned)index, index);
+        }
+        size_t back = text->length;
+        a64_word(text, UINT32_C(0x14000000)); /* b body_start */
+        a64_patch_imm26(text, back, body_start);
+        return;
+    }
+    a64_word(text, UINT32_C(0x910003bf)); /* mov sp, x29 */
+    a64_word(text, UINT32_C(0xa8c17bfd)); /* ldp x29, x30, [sp], #16 */
+    function_call_fixup_add(
+        &emitter->calls,
+        text->length,
+        call->function_index
+    );
+    a64_word(text, UINT32_C(0x14000000)); /* b callee (patched) */
+}
+
 static void a64_function_declaration(
     Bytes *text,
     const FunctionDeclaration *function,
+    size_t self_index,
     FunctionEmitter *emitter
 ) {
     a64_word(text, UINT32_C(0xa9bf7bfd)); /* stp x29, x30, [sp, #-16]! */
@@ -6240,6 +6417,8 @@ static void a64_function_declaration(
             a64_store_param(text, (unsigned)index, index);
         }
     }
+    /* The branch target of a returned call to this same function. */
+    size_t body_start = text->length;
 
     bool returned = false;
     for (size_t index = 0; index < function->statement_count; ++index) {
@@ -6249,11 +6428,34 @@ static void a64_function_declaration(
             a64_pop(text, 0);
             size_t skip = text->length;
             a64_word(text, UINT32_C(0xb4000000)); /* cbz x0, skip */
-            a64_function_expression(text, statement->value, emitter);
-            a64_pop(text, 0);
-            a64_function_epilogue(text);
+            const FunctionExpression *tail_call = function_tail_call(statement);
+            if (tail_call != NULL) {
+                a64_function_tail_call(
+                    text,
+                    tail_call,
+                    emitter,
+                    self_index,
+                    body_start
+                );
+            } else {
+                a64_function_expression(text, statement->value, emitter);
+                a64_pop(text, 0);
+                a64_function_epilogue(text);
+            }
             a64_patch_imm19(text, skip, text->length);
         } else if (statement->kind == FUNCTION_STATEMENT_RETURN) {
+            const FunctionExpression *tail_call = function_tail_call(statement);
+            if (tail_call != NULL) {
+                a64_function_tail_call(
+                    text,
+                    tail_call,
+                    emitter,
+                    self_index,
+                    body_start
+                );
+                returned = true;
+                continue;
+            }
             a64_function_expression(text, statement->value, emitter);
             a64_pop(text, 0);
             a64_function_epilogue(text);
@@ -6383,6 +6585,7 @@ static void a64_function_program(
         a64_function_declaration(
             text,
             &program->functions[index],
+            index,
             &emitter
         );
     }

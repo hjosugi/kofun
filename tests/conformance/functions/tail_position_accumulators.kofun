@@ -1,0 +1,20 @@
+# expect-stdout: 6765
+# expect-stdout: 55
+fn fib_loop(n: Int, a: Int, b: Int) -> Int {
+    if n == 0 {
+        return a
+    }
+    return fib_loop(n - 1, b, a + b)
+}
+
+fn sum_to(n: Int, total: Int) -> Int {
+    if n == 0 {
+        return total
+    }
+    return sum_to(n - 1, total + n)
+}
+
+fn main() {
+    print(fib_loop(20, 0, 1))
+    print(sum_to(10, 0))
+}

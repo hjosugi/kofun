@@ -8,9 +8,16 @@ set -eu
 #
 # With BASELINE set to a git revision, the same workloads are also built by that
 # revision's `bootstrap/native/core_compiler.c` and the recorded budgets are
-# enforced: the fib(35) median must improve by at least 25%, no workload may
-# regress by more than 5%, and neither corpus compile time nor emitted text size
-# may regress by more than 10%.
+# enforced: every workload named in IMPROVE must reduce its median by the
+# percentage declared there, no workload may regress by more than 5%, and
+# neither corpus compile time nor emitted text size may regress by more than
+# 10%.
+#
+# IMPROVE is what a revision claims, so it belongs to the pair (revision,
+# BASELINE) being compared and is expected to change when either does. Its
+# default is the claim of the revision that last recorded results.json; the
+# claim of an earlier revision is reproduced by naming that revision's BASELINE
+# and its IMPROVE together, both of which README.md keeps.
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 BENCH="$ROOT/benchmarks/native-functions"
@@ -20,8 +27,10 @@ CFLAGS_COMMON="-std=c11 -O2 -Wall -Wextra -Werror"
 REFERENCE_CFLAGS=${REFERENCE_CFLAGS:--O3}
 SAMPLES=${SAMPLES:-11}
 BASELINE=${BASELINE:-}
+IMPROVE=${IMPROVE:-"tail_sum30000:60 tail_mutual30000:60"}
 
-WORKLOADS="fib35 mutual_fib32 six_argument_fib30"
+WORKLOADS="fib35 mutual_fib32 six_argument_fib30
+tail_sum30000 tail_mutual30000"
 CORPUS="tests/conformance/functions/arguments_and_forward_reference.kofun
 tests/conformance/functions/branch_join.kofun
 tests/conformance/functions/mutual_recursion.kofun
@@ -29,11 +38,16 @@ tests/conformance/functions/recursion.kofun
 tests/conformance/functions/register_pressure.kofun
 tests/conformance/functions/signed_and_zero.kofun
 tests/conformance/functions/six_arguments.kofun
+tests/conformance/functions/tail_position_accumulators.kofun
+tests/conformance/functions/tail_position_boundary.kofun
+tests/conformance/functions/tail_position_guards.kofun
 tests/conformance/functions/values_across_calls.kofun
 examples/fibonacci_native.kofun
 benchmarks/native-functions/fib35.kofun
 benchmarks/native-functions/mutual_fib32.kofun
-benchmarks/native-functions/six_argument_fib30.kofun"
+benchmarks/native-functions/six_argument_fib30.kofun
+benchmarks/native-functions/tail_sum30000.kofun
+benchmarks/native-functions/tail_mutual30000.kofun"
 
 test "$(uname -s)" = Linux || {
     printf '%s\n' "native function benchmark requires Linux" >&2
@@ -60,6 +74,8 @@ expected_output() {
         fib35) printf '%s\n' 9227465 ;;
         mutual_fib32) printf '%s\n' 2178309 ;;
         six_argument_fib30) printf '%s\n' 832040 ;;
+        tail_sum30000) printf '%s\n' 157505250000 ;;
+        tail_mutual30000) printf '%s\n' 10500000 ;;
         *)
             printf '%s\n' "native function benchmark: unknown workload $1" >&2
             exit 1
@@ -260,16 +276,38 @@ test -n "$BASELINE" || {
     exit 0
 }
 
-improvement=$(
-    reduction_percent "$(median_of baseline-fib35)" "$(median_of current-fib35)"
-)
-printf '%s\n' "fib35_median_improvement_percent=$improvement"
-at_least "$improvement" 25 || {
-    printf '%s\n' \
-        "native function benchmark: fib(35) improved $improvement%, needs 25%" \
-        >&2
-    exit 1
-}
+for claim in $IMPROVE; do
+    claim_stem=${claim%%:*}
+    claim_percent=${claim##*:}
+    test "$claim_stem" != "$claim" || {
+        printf '%s\n' \
+            "native function benchmark: IMPROVE entry needs stem:percent: $claim" \
+            >&2
+        exit 2
+    }
+    claim_measured=false
+    for stem in $WORKLOADS; do
+        test "$stem" != "$claim_stem" || claim_measured=true
+    done
+    test "$claim_measured" = true || {
+        printf '%s\n' \
+            "native function benchmark: IMPROVE names unmeasured workload $claim_stem" \
+            >&2
+        exit 2
+    }
+    improvement=$(
+        reduction_percent \
+            "$(median_of "baseline-$claim_stem")" \
+            "$(median_of "current-$claim_stem")"
+    )
+    printf '%s\n' "${claim_stem}_median_improvement_percent=$improvement"
+    at_least "$improvement" "$claim_percent" || {
+        printf '%s\n' \
+            "native function benchmark: $claim_stem improved $improvement%, needs $claim_percent%" \
+            >&2
+        exit 1
+    }
+done
 
 for stem in $WORKLOADS; do
     regression=$(
