@@ -1,13 +1,13 @@
 {
   "schema": "kofun.docs-status/v1",
   "repository": "hjosugi/kofun",
-  "source_commit": "754ded4ec0de22376e3af638d2ae2abeb03b40a9",
+  "source_commit": "694eed5155651eefce3e9c0a06e0238e9cd0c345",
   "verification": {
     "workflow": "CI",
-    "status": "completed",
-    "conclusion": "success",
-    "completed_at": "2026-07-25T03:12:37Z",
-    "url": "https://github.com/hjosugi/kofun/actions/runs/30141640280"
+    "status": "in_progress",
+    "conclusion": null,
+    "completed_at": null,
+    "url": "https://github.com/hjosugi/kofun/actions/runs/30142387112"
   },
   "issues": [
     {
@@ -30,18 +30,18 @@
       "number": 667,
       "title": "Diagnostics: add a compiler-wide registry and executable coverage gate",
       "state": "open",
-      "workflow": "ready",
-      "updated_at": "2026-07-24T12:26:10Z",
+      "workflow": "in-progress",
+      "updated_at": "2026-07-25T03:31:19Z",
       "url": "https://github.com/hjosugi/kofun/issues/667"
     },
     {
       "number": 668,
       "title": "Semantic fuzzing: define an oracle protocol and compare every declared backend",
-      "state": "open",
-      "workflow": "ready",
-      "updated_at": "2026-07-24T12:26:54Z",
+      "state": "closed",
+      "workflow": "closed",
+      "updated_at": "2026-07-25T03:31:52Z",
       "url": "https://github.com/hjosugi/kofun/issues/668"
     }
   ],
-  "reviewed_at": "2026-07-25T03:14:55.670Z"
+  "reviewed_at": "2026-07-25T03:33:17.842Z"
 }
