@@ -1,0 +1,16 @@
+# expect-stdout: 4223
+# expect-stdout: 2687
+# expect-stdout: -385
+fn pressure(a: Int) -> Int {
+    return 1 + (2 * (3 + (4 * (5 + (6 * (7 + (8 * (9 + a))))))))
+}
+
+fn negated(a: Int) -> Int {
+    return 1 + (2 * (3 + (4 * (5 + (6 * (7 + (8 * -a)))))))
+}
+
+fn main() {
+    print(pressure(1))
+    print(pressure(-3))
+    print(negated(2))
+}

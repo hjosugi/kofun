@@ -1,0 +1,31 @@
+# expect-stdout: 266
+# expect-stdout: 16
+# expect-stdout: -14
+fn twice(n: Int) -> Int {
+    return n + n
+}
+
+fn sum6(a: Int, b: Int, c: Int, d: Int, e: Int, f: Int) -> Int {
+    return a + b * 2 + c * 3 + d * 4 + e * 5 + f * 6
+}
+
+fn spread(n: Int) -> Int {
+    return sum6(
+        twice(1),
+        twice(2),
+        twice(3),
+        twice(4),
+        twice(5),
+        twice(6) + twice(n)
+    )
+}
+
+fn nested(n: Int) -> Int {
+    return twice(twice(n) + twice(n + 1)) - twice(twice(n) - n)
+}
+
+fn main() {
+    print(spread(7))
+    print(nested(2))
+    print(nested(-3))
+}

@@ -232,6 +232,7 @@ verify: test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-
 	  framework/cli/check.sh \
 	  framework/tui/build.sh framework/tui/check.sh \
 	  benchmarks/http/benchmark.sh \
+	  benchmarks/native-functions/benchmark.sh \
 	  stdlib/tests/verify.sh stdlib/testing/tests/verify.sh \
 	  stdlib/logging/tests/verify.sh stdlib/regex/tests/verify.sh \
 	  stdlib/clock/tests/verify.sh stdlib/list/tests/verify.sh \
@@ -279,7 +280,8 @@ verify: test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-
 	  tests/conformance/syntax/issues_35_47/run.sh \
 	  tests/conformance/syntax/issues_48_60/run.sh
 	@$(CC) -std=c11 -fsyntax-only -Wall -Wextra -Werror \
-	  tests/process_cpu_time.c
+	  tests/process_cpu_time.c \
+	  benchmarks/native-functions/cpu_samples.c
 	@git diff --check
 
 clean:

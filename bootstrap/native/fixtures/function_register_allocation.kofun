@@ -1,0 +1,7 @@
+fn scale(value: Int) -> Int {
+    return value * 3 + value
+}
+
+fn main() {
+    print(scale(10))
+}
