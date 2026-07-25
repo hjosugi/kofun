@@ -96,6 +96,13 @@ typedef struct {
 
 static ImportResolver *comparison_resolver;
 
+#if defined(KOFUN_TEST_DIAGNOSTIC_FAULTS)
+static bool diagnostic_fault_requested(const char *name) {
+    const char *requested = getenv("KOFUN_DIAGNOSTIC_FAULT");
+    return requested != NULL && strcmp(requested, name) == 0;
+}
+#endif
+
 static bool append_text(ImportResolver *resolver, TextBuffer *buffer, const char *format, ...) {
     Program *program = &resolver->program;
     va_list arguments;
@@ -276,6 +283,12 @@ static bool load_qualified_inventory(ImportResolver *resolver, const char *path)
 static bool attach_declared_paths(ImportResolver *resolver) {
     Program *program = &resolver->program;
     size_t module_index;
+#if defined(KOFUN_TEST_DIAGNOSTIC_FAULTS)
+    if (diagnostic_fault_requested("qualified-declared-path-attachment")) {
+        set_error(program, "E2S68", "declared-path attachment invariant failed");
+        return false;
+    }
+#endif
     for (module_index = 0u; module_index < program->module_count; module_index += 1u) {
         size_t input_index;
         for (input_index = 0u; input_index < resolver->input_path_count; input_index += 1u) {

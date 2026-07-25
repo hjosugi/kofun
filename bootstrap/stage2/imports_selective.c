@@ -1125,6 +1125,12 @@ static bool resolve_one_type_reference(
 static bool resolve_selective_type_uses(SelectiveResolver *resolver) {
     Program *program = &resolver->qualified.program;
     size_t owner_index;
+#if defined(KOFUN_TEST_DIAGNOSTIC_FAULTS)
+    if (diagnostic_fault_requested("selective-type-resolution-token")) {
+        set_error(program, "E2S78", "type-resolution signature token invariant failed");
+        return false;
+    }
+#endif
     for (owner_index = 0u; owner_index < program->declaration_count; owner_index += 1u) {
         Declaration *owner = &program->declarations[owner_index];
         Module *module;

@@ -223,6 +223,24 @@ expect_failure import_deferred E2S54
 expect_failure cross_module E2S54
 expect_failure transaction_failure E2S52
 
+set +e
+"$WORK/kofun-module-symbols" "$WORK/positive.inventory" \
+    "$WORK/missing-output/declarations.out" \
+    >"$WORK/output_failure.actual" 2>"$WORK/output_failure.internal.stderr"
+output_failure_status=$?
+set -e
+test "$output_failure_status" -eq 1 ||
+    fail "output failure exited $output_failure_status instead of 1"
+test ! -s "$WORK/output_failure.internal.stderr" ||
+    fail 'output failure wrote internal stderr'
+test ! -e "$WORK/missing-output/declarations.out" ||
+    fail 'output failure committed a declaration table'
+printf '%s\n' 'error[E2S56]: cannot create output artifact' \
+    >"$WORK/output_failure.expected"
+cmp "$WORK/output_failure.expected" "$WORK/output_failure.actual" ||
+    fail 'E2S56 output failure diagnostic differs'
+printf '%s\n' 'PASS module-symbol diagnostic: output_failure'
+
 dd if=/dev/zero bs=1048576 count=1 2>/dev/null | tr '\000' '#' \
     >"$WORK/source_limit.kofun"
 write_one_inventory source_limit "$WORK/source_limit.kofun"

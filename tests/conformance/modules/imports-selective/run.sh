@@ -19,6 +19,7 @@ rm -rf "$WORK"
 mkdir -p "$WORK"
 
 "$CC" -std=c11 -Wall -Wextra -Werror -pedantic \
+    -DKOFUN_TEST_DIAGNOSTIC_FAULTS \
     "$ROOT/bootstrap/stage2/imports_selective.c" \
     "$ROOT/bootstrap/stage2/visibility_access.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
@@ -109,6 +110,86 @@ expect_failure E2S69 "$CASES/fixtures/malformed_commas.kofun" malformed-commas
 expect_failure E2S69 "$CASES/fixtures/after_declaration.kofun" after-declaration
 expect_failure E2S74 "$CASES/fixtures/unlisted.kofun" unlisted
 expect_failure E2S74 "$CASES/fixtures/wrong_namespace.kofun" wrong-namespace
+
+expect_exact_forbidden() {
+    code=$1
+    name=$2
+    expected=$3
+    shift 3
+    hir="$WORK/$name.hir"
+    backend="$WORK/$name.c"
+    stdout="$WORK/$name.stdout"
+    stderr="$WORK/$name.stderr"
+    printf '%s\n' stale >"$hir"
+    printf '%s\n' stale >"$backend"
+    set +e
+    "$@" >"$stdout" 2>"$stderr"
+    status=$?
+    set -e
+    test "$status" -eq 1 || {
+        printf '%s\n' "$name exited $status instead of 1" >&2
+        exit 1
+    }
+    test ! -s "$stderr"
+    test ! -e "$hir"
+    test ! -e "$backend"
+    printf '%s\n' "$expected" >"$WORK/$name.expected"
+    cmp "$WORK/$name.expected" "$stdout"
+    grep -F "error[$code]:" "$stdout" >/dev/null
+}
+
+{
+    printf '%s\n' 'module app.main'
+    index=0
+    while test "$index" -lt 257; do
+        printf '%s\n' 'from lib.math import identity'
+        index=$((index + 1))
+    done
+    printf '%s\n' 'fn main() -> Int {' '    return 0' '}'
+} >"$WORK/selective-declarations-over.kofun"
+write_inventory "$WORK/selective-declarations-over.kofun" \
+    "$CASES/fixtures/math.kofun" "$WORK/selective-declarations-over.inventory"
+expect_exact_forbidden E2S75 selective-declarations-over \
+    'error[E2S75]: module `app/main.kofun` exceeds 256 combined qualified/selective imports; hint: combine or remove imports' \
+    "$TOOL" "$WORK/selective-declarations-over.inventory" \
+    "$WORK/selective-declarations-over.hir" "$WORK/selective-declarations-over.c"
+
+sed 's/identity(42)/identity()/' "$CASES/fixtures/main.kofun" \
+    >"$WORK/selective-wrong-arity.kofun"
+write_inventory "$WORK/selective-wrong-arity.kofun" "$CASES/fixtures/math.kofun" \
+    "$WORK/selective-wrong-arity.inventory"
+expect_exact_forbidden E2S76 selective-wrong-arity \
+    'error[E2S76]: selective call `identity` expects 1 arguments but got 0 in `app/main.kofun`; hint: pass exactly 1 arguments' \
+    "$TOOL" "$WORK/selective-wrong-arity.inventory" \
+    "$WORK/selective-wrong-arity.hir" "$WORK/selective-wrong-arity.c"
+
+mkdir -p "$WORK/selective-transaction/preserved.hir"
+printf '%s\n' sentinel >"$WORK/selective-transaction/preserved.hir/marker"
+write_inventory "$CASES/fixtures/runtime.kofun" "$CASES/fixtures/math.kofun" \
+    "$WORK/selective-transaction.inventory"
+set +e
+(
+    cd "$WORK/selective-transaction"
+    "$TOOL" "$WORK/selective-transaction.inventory" preserved.hir \
+        >e2s77.stdout 2>e2s77.stderr
+)
+transaction_status=$?
+set -e
+test "$transaction_status" -eq 1
+test ! -s "$WORK/selective-transaction/e2s77.stderr"
+test -d "$WORK/selective-transaction/preserved.hir"
+grep -Fx sentinel "$WORK/selective-transaction/preserved.hir/marker" >/dev/null
+printf '%s\n' \
+    'error[E2S77]: cannot clear requested output `preserved.hir` before the transaction' \
+    >"$WORK/selective-transaction/e2s77.expected"
+cmp "$WORK/selective-transaction/e2s77.expected" \
+    "$WORK/selective-transaction/e2s77.stdout"
+
+expect_exact_forbidden E2S78 selective-internal \
+    'error[E2S78]: type-resolution signature token invariant failed' \
+    env KOFUN_DIAGNOSTIC_FAULT=selective-type-resolution-token \
+    "$TOOL" "$WORK/positive.inventory" "$WORK/selective-internal.hir" \
+    "$WORK/selective-internal.c"
 
 # The qualified-import helper remains independently buildable and passing.
 sh "$ROOT/tests/conformance/modules/imports-qualified/run.sh"

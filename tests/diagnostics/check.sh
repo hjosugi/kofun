@@ -21,6 +21,8 @@ test -f "$ADAPTERS" || fail "missing adapter registry: $ADAPTERS"
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/kofun-diagnostic-registry.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 
+: >"$WORK/gaps"
+
 awk -F '\t' '
     BEGIN { expected = 13 }
     /^#/ || NF == 0 { next }

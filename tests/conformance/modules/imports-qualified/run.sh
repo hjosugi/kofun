@@ -23,6 +23,7 @@ rm -rf "$WORK"
 mkdir -p "$WORK"
 
 "$CC" -std=c11 -Wall -Wextra -Werror -pedantic \
+    -DKOFUN_TEST_DIAGNOSTIC_FAULTS \
     "$ROOT/bootstrap/stage2/imports_qualified.c" \
     "$ROOT/bootstrap/stage2/visibility_access.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
@@ -104,6 +105,23 @@ set +e
 RUNTIME_STATUS=$?
 set -e
 test "$RUNTIME_STATUS" -eq 42
+
+printf '%s\n' stale >"$WORK/internal-fault.hir"
+printf '%s\n' stale >"$WORK/internal-fault.c"
+set +e
+KOFUN_DIAGNOSTIC_FAULT=qualified-declared-path-attachment \
+    "$TOOL" "$WORK/ok.inventory" "$WORK/internal-fault.hir" \
+    "$WORK/internal-fault.c" >"$WORK/internal-fault.stdout" \
+    2>"$WORK/internal-fault.stderr"
+INTERNAL_FAULT_STATUS=$?
+set -e
+test "$INTERNAL_FAULT_STATUS" -eq 1
+test ! -s "$WORK/internal-fault.stderr"
+test ! -e "$WORK/internal-fault.hir"
+test ! -e "$WORK/internal-fault.c"
+printf '%s\n' 'error[E2S68]: declared-path attachment invariant failed' \
+    >"$WORK/internal-fault.expected"
+cmp "$WORK/internal-fault.expected" "$WORK/internal-fault.stdout"
 
 sed 's/math\.identity(42)/math.identity(math.identity(42))/' \
     "$CASES/fixtures/main.kofun" > "$WORK/nested.kofun"

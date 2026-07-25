@@ -34,14 +34,14 @@ The dispatcher appends an adapter report only after that adapter succeeds.
 Family runners remain responsible for exact public messages, status, channel,
 span, and artifact checks appropriate to their execution model.
 
-## Evidence gaps
+## Internal-path evidence
 
-Rows whose final field is `gap(reason)` remain canonical identities, but are
-deliberately excluded from the passing executable-coverage numerator. This is
-used only for active allocation, invariant, budget, or transaction paths that
-currently lack a deterministic fault-injection fixture. The checker reports
-their count instead of silently treating an owner script as executable
-evidence. Adding a real fixture means replacing the gap with an adapter report.
+Every active stable identity has executable adapter evidence. Ordinary
+frontend, budget, and host-I/O failures use real inputs and filesystem
+conditions. The qualified- and selective-import runners compile their focused
+tools with `KOFUN_TEST_DIAGNOSTIC_FAULTS` and set `KOFUN_DIAGNOSTIC_FAULT` only
+for internal invariants that valid source cannot reach. Production builds do
+not compile those fault branches.
 
 ## Deterministic bless workflow
 
