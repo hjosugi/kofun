@@ -334,8 +334,11 @@ and artifacts remain byte-identical; the focused gate compares them.
 The KSE transport is not KIF or the public typed-sidecar JSON and is never
 accepted as compiler/cache authority. The exact event-kind, field-tag, wire,
 phase, bound, and `ETS03`/`ETS04` contracts are checked in at
-`semantic-events-v1.md`. Run the sanitizer-, analyzer-, corruption-, and
-atomicity-backed gate with `make stage2-events`.
+`semantic-events-v1.md`. The one-way #609 projector validates those bytes
+independently and maps them into an explicitly requested, non-authoritative
+single-file sidecar; its complete field table is
+`../../tooling/typed-sidecar/stage2-projection-v1.md`. Run the producer and
+projector gates with `make stage2-events` and `make typed-sidecar-projector`.
 
 ## Verification
 

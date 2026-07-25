@@ -391,6 +391,24 @@ static void copy_token_text(
     output[length] = '\0';
 }
 
+static bool producer_source_within_declaration_profile(
+    const char *source
+) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, 0);
+    size_t functions = 0u;
+    while (cursor < length) {
+        int64_t end = token_end(source, cursor);
+        if (end <= cursor) return true;
+        if (token_equal(source, cursor, "fn")) {
+            functions += 1u;
+            if (functions > PRODUCER_MAX_FUNCTIONS) return false;
+        }
+        cursor = skip_trivia(source, end);
+    }
+    return true;
+}
+
 static KofunSemanticSpan producer_span(int64_t start, int64_t end) {
     KofunSemanticSpan span;
     span.start = start < 0 ? 0u : (uint32_t)start;
@@ -1744,7 +1762,13 @@ static bool producer_collect_references(Producer *producer) {
             );
             int64_t start = decimal_value(start_text);
             int64_t end = decimal_value(end_text);
-            if (start >= 0 && end > start &&
+            /*
+             * Candidate uses are recovery-only observations.  On a successful
+             * ownership authority run they are not rejected source facts and
+             * cannot be emitted as unavailable into a complete transaction.
+             */
+            if (producer->compiler_exit_class != 0u &&
+                start >= 0 && end > start &&
                 end <= source_length &&
                 (uint64_t)start < producer->reference_limit) {
                 ProducerNode *use = producer_add_node(
@@ -2775,6 +2799,14 @@ bool kofun_stage2_produce_semantic_events(
     }
     memcpy(owned_source, input->source, input->source_length);
     owned_source[input->source_length] = '\0';
+    if (!producer_source_within_declaration_profile(owned_source)) {
+        free(owned_source);
+        producer_set_tooling_error(
+            result, "ETS04", 0u, PRODUCER_EVENT_NONE,
+            "semantic producer declaration limit exceeded"
+        );
+        return false;
+    }
     if (!(input->authority == KOFUN_STAGE2_SEMANTIC_OWNERSHIP ?
           stage2_ownership_outcome(
               owned_source,
@@ -3029,8 +3061,25 @@ int main(int argc, char **argv) {
             &sink,
             cancel,
             &result)) {
+        const KofunSemanticError *stream_error =
+            kofun_semantic_stream_error(stream);
         if (result.has_source_diagnostic) {
             puts(result.diagnostic_fallback);
+        }
+        if (result.tooling_emission_failed) {
+            (void)fprintf(
+                stderr,
+                "%s: %s\n",
+                stream_error != NULL && stream_error->code[0] != '\0' ?
+                    stream_error->code :
+                    (result.tooling_error.code[0] == '\0' ?
+                        "ETS03" : result.tooling_error.code),
+                stream_error != NULL && stream_error->detail[0] != '\0' ?
+                    stream_error->detail :
+                    (result.tooling_error.detail[0] == '\0' ?
+                        "semantic event production failed" :
+                        result.tooling_error.detail)
+            );
         }
         free(source);
         kofun_semantic_stream_destroy(stream);

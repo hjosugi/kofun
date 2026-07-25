@@ -73,6 +73,24 @@ assert.equal(result.ok, false);
 assert.equal(result.error.reason, "wrong-file");
 assert.deepEqual(fs.readFileSync(destination), winnerBytes);
 
+let refreshed = 0;
+result = await writeTypedSidecarAtomic(
+  destination,
+  cloneWithSequence(partial, 9),
+  {
+    currentSourceDigest: partial.file.content_sha256,
+    refreshCurrentSourceDigest: async () => {
+      refreshed += 1;
+      return complete.file.content_sha256;
+    },
+  },
+);
+assert.equal(refreshed, 1);
+assert.equal(result.ok, false);
+assert.equal(result.error.code, "TS005");
+assert.equal(result.error.reason, "source-mismatch");
+assert.deepEqual(fs.readFileSync(destination), winnerBytes);
+
 const controller = new AbortController();
 controller.abort();
 result = await write(destination, cloneWithSequence(partial, 9), partial.file.content_sha256, controller.signal);

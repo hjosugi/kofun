@@ -1,4 +1,4 @@
-.PHONY: help compiler test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 stage2-events patterns adt generics adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp tree-sitter roadmap syntax repository-check verify clean
+.PHONY: help compiler test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 stage2-events patterns adt generics adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec typed-sidecar-projector lsp tree-sitter roadmap syntax repository-check verify clean
 
 KOFUN := ./bin/kofun
 
@@ -49,6 +49,7 @@ help:
 	  'make re-exports-spec  Verify explicit non-widening re-export design' \
 	  'make typed-sidecar-spec Verify bounded complete/partial tooling artifacts' \
 	  'make typed-sidecar-codec Verify production reader/writer and atomic replacement' \
+	  'make typed-sidecar-projector Verify Stage 2 event projection and single-file CLI emission' \
 	  'make lsp              Verify the stdio language server and editor client' \
 	  'make tree-sitter      Verify the structural grammar and editor queries' \
 	  'make roadmap          Verify the executable issues 31-34 roadmap' \
@@ -212,6 +213,12 @@ typed-sidecar-codec:
 	sh tests/typed-sidecar/atomic-write.sh
 	sh tests/typed-sidecar/authority-boundary.sh
 
+typed-sidecar-projector:
+	sh tests/typed-sidecar/stage2-projector.sh
+	sh tests/typed-sidecar/cli.sh
+	sh tests/typed-sidecar/producer-races.sh
+	sh tests/typed-sidecar/authority-boundary.sh
+
 lsp:
 	sh tests/lsp/check.sh
 
@@ -237,7 +244,7 @@ repository-check:
 	@grep -q '"extensions": \[".kofun"\]' editor/vscode/package.json
 	@printf '%s\n' 'PASS: .kofun sources only; no Python implementation'
 
-VERIFY_TARGETS = test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 stage2-events patterns adt generics adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec tree-sitter syntax repository-check
+VERIFY_TARGETS = test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 stage2-events patterns adt generics adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec typed-sidecar-projector tree-sitter syntax repository-check
 
 # Every gate above is independent, so `verify` runs them concurrently rather
 # than asking the caller to remember a `-j`. Override with `make VERIFY_JOBS=1
@@ -290,6 +297,9 @@ verify:
 	  tests/typed-sidecar/codec.sh \
 	  tests/typed-sidecar/atomic-write.sh \
 	  tests/typed-sidecar/authority-boundary.sh \
+	  tests/typed-sidecar/stage2-projector.sh \
+	  tests/typed-sidecar/cli.sh \
+	  tests/typed-sidecar/producer-races.sh \
 	  tests/typed-sidecar/stage2-events.sh \
 	  tests/typed-sidecar/stage2-event-stream.sh \
 	  tests/diagnostics/check.sh \

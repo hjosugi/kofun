@@ -1,0 +1,51 @@
+fn step0(value: Int) -> Int {
+    return value + 1
+}
+
+fn step1(value: Int) -> Int {
+    return step0(value)
+}
+
+fn step2(value: Int) -> Int {
+    return step1(value)
+}
+
+fn step3(value: Int) -> Int {
+    return step2(value)
+}
+
+fn step4(value: Int) -> Int {
+    return step3(value)
+}
+
+fn step5(value: Int) -> Int {
+    return step4(value)
+}
+
+fn step6(value: Int) -> Int {
+    return step5(value)
+}
+
+fn step7(value: Int) -> Int {
+    return step6(value)
+}
+
+fn step8(value: Int) -> Int {
+    return step7(value)
+}
+
+fn step9(value: Int) -> Int {
+    return step8(value)
+}
+
+fn step10(value: Int) -> Int {
+    return step9(value)
+}
+
+fn step11(value: Int) -> Int {
+    return step10(value)
+}
+
+fn main() {
+    print(step11(30))
+}

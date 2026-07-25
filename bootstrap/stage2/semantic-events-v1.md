@@ -251,8 +251,11 @@ must be unique.
 The checked v1 profile permits 4,096 total events, 4 MiB of framed event
 payload, 4,096 bytes per string or nested diagnostic list, and 64
 dependencies, diagnostics, affected IDs, remedies, related locations, or edits
-per record. Counts and lengths are checked before allocation and writing. IDs
-and set-valued lists use canonical byte order.
+per record. The current Stage 2 adapter additionally caps compiler-derived
+function declarations at 64; it token-scans that bound before allocating the
+authority observer transaction and returns `ETS04` when exceeded. Counts and
+lengths are checked before allocation and writing. IDs and set-valued lists
+use canonical byte order.
 
 The reference sink buffers and validates the complete logical transaction,
 builds the header and digest, validates the resulting bytes with its canonical

@@ -65,6 +65,12 @@ $ROOT/tests/typed-sidecar/stage2_events_test.c
 "$WORK/plain/kofun-stage2-semantic-events" \
     "$FIXTURE" src/main.kofun "$WORK/plain/producer-complete.kse" 42
 "$WORK/plain/validate-events" "$WORK/plain/producer-complete.kse"
+"$WORK/plain/kofun-stage2-semantic-events" \
+    "$ROOT/tests/typed-sidecar/fixtures/stage2_observer_reallocation.kofun" \
+    src/observer-reallocation.kofun \
+    "$WORK/plain/producer-observer-reallocation.kse" 42
+"$WORK/plain/validate-events" \
+    "$WORK/plain/producer-observer-reallocation.kse"
 "$WORK/plain/stage2-producer-test" \
     "$FIXTURE" \
     "$ROOT/bootstrap/stage2/function_unknown_error.kofun" \
@@ -164,6 +170,12 @@ then
         "$WORK/sanitized/kofun-stage2-semantic-events" \
         "$FIXTURE" src/main.kofun \
         "$WORK/sanitized/producer-complete.kse" 42
+    ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+    UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+        "$WORK/sanitized/kofun-stage2-semantic-events" \
+        "$ROOT/tests/typed-sidecar/fixtures/stage2_observer_reallocation.kofun" \
+        src/observer-reallocation.kofun \
+        "$WORK/sanitized/producer-observer-reallocation.kse" 42
     set +e
     ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
     UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \

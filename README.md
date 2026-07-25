@@ -27,6 +27,9 @@ Use the repository launcher for the checked compiler paths:
 ```sh
 ./bin/kofun --version
 ./bin/kofun check bootstrap/fixtures/answer.kofun
+mkdir -p build
+./bin/kofun check bootstrap/fixtures/answer.kofun \
+  --emit-typed-sidecar build/answer.kofun-semantic.json --generation 1
 ./bin/kofun run bootstrap/fixtures/answer.kofun
 ./bin/kofun build bootstrap/fixtures/answer.kofun -o build/answer
 ./build/answer
@@ -56,7 +59,7 @@ contains the complete setup, target, and verification guide.
 | WebAssembly | Direct wasm32 checked-Int64 arithmetic Core and browser tour |
 | Interop | Explicit C ABI profile and an audited Rust-crate shim example |
 | Frameworks | Bounded HTTP, native CLI, TUI, package, build-system, and syscall/stdlib gates |
-| Tooling | VS Code/TextMate support, stdio LSP, typed-sidecar contracts, and Tree-sitter parsing |
+| Tooling | VS Code/TextMate support, stdio LSP, explicit Stage 2 typed-sidecar emission, and Tree-sitter parsing |
 | Quality | Conformance corpora, stable-diagnostic registry, Unicode 17 gates, and deterministic semantic oracle fuzzing |
 
 For exact claims and their gates, use the

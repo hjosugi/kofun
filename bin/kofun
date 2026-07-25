@@ -14,6 +14,12 @@ WASM_COMPILER="$WASM_BUILD_DIR/kofun-wasm-core"
 STAGE2_BUILD_DIR=${KOFUN_STAGE2_BUILD_DIR:-"$ROOT/build/stage2"}
 STAGE2_SEED_C="$ROOT/bootstrap/stage2/compiler.c"
 STAGE2_COMPILER="$STAGE2_BUILD_DIR/kofun-stage2"
+STAGE2_EVENTS_BUILD_DIR=${KOFUN_STAGE2_EVENTS_BUILD_DIR:-"$ROOT/build/stage2-events-cli"}
+STAGE2_EVENTS_COMPILER="$STAGE2_EVENTS_BUILD_DIR/kofun-stage2-semantic-events"
+STAGE2_EVENTS_SOURCE="$ROOT/bootstrap/stage2/semantic_producer.c"
+STAGE2_EVENTS_CODEC="$ROOT/bootstrap/stage2/semantic_events.c"
+STAGE2_EVENTS_SHA256="$ROOT/bootstrap/stage2/sha256.c"
+TYPED_SIDECAR_EMITTER="$ROOT/tooling/typed-sidecar/emit-stage2.mjs"
 C_ABI_BUILD_DIR=${KOFUN_C_ABI_BUILD_DIR:-"$ROOT/build/c-abi"}
 C_ABI_SEED_C="$ROOT/bootstrap/c_abi/compiler.c"
 C_ABI_COMPILER="$C_ABI_BUILD_DIR/kofun-c-abi"
@@ -44,6 +50,9 @@ usage:
   kofun new DIRECTORY --template cli
   kofun run INPUT.kofun
   kofun check INPUT.kofun
+  kofun check INPUT.kofun --emit-typed-sidecar OUTPUT.kofun-semantic.json
+                            --generation UNSIGNED_INTEGER
+      The sidecar is non-authoritative tooling data.
   kofun test [PATH]
   kofun bootstrap
   kofun emit-c INPUT.kofun OUTPUT.c
@@ -106,6 +115,23 @@ ensure_stage2_compiler() {
     then
         "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
             "$STAGE2_SEED_C" -o "$STAGE2_COMPILER"
+    fi
+}
+
+ensure_stage2_events_compiler() {
+    mkdir -p "$STAGE2_EVENTS_BUILD_DIR"
+    if [ ! -x "$STAGE2_EVENTS_COMPILER" ] ||
+       [ "$STAGE2_EVENTS_SOURCE" -nt "$STAGE2_EVENTS_COMPILER" ] ||
+       [ "$STAGE2_EVENTS_CODEC" -nt "$STAGE2_EVENTS_COMPILER" ] ||
+       [ "$STAGE2_EVENTS_SHA256" -nt "$STAGE2_EVENTS_COMPILER" ] ||
+       [ "$STAGE2_SEED_C" -nt "$STAGE2_EVENTS_COMPILER" ]
+    then
+        "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -I"$ROOT/bootstrap/stage2" \
+            "$STAGE2_EVENTS_SOURCE" \
+            "$STAGE2_EVENTS_CODEC" \
+            "$STAGE2_EVENTS_SHA256" \
+            -o "$STAGE2_EVENTS_COMPILER"
     fi
 }
 
@@ -245,6 +271,263 @@ require_source() {
         exit 2
     }
 }
+
+sidecar_cli_error() {
+    printf '%s\n' "ETS01: $1" >&2
+    exit 2
+}
+
+canonical_sidecar_generation() {
+    value=$1
+    case $value in
+        ''|*[!0-9]*)
+            return 1
+            ;;
+        0)
+            return 0
+            ;;
+        0*)
+            return 1
+            ;;
+    esac
+    test "${#value}" -le 16 || return 1
+    if test "${#value}" -eq 16; then
+        first=$(
+            printf '%s\n%s\n' "$value" 9007199254740991 |
+                LC_ALL=C sort |
+                sed -n '1p'
+        )
+        test "$first" = "$value" || return 1
+    fi
+}
+
+sidecar_logical_path() (
+    source=$1
+    case $source in
+        "$ROOT"/*)
+            printf '%s\n' "${source#"$ROOT"/}"
+            ;;
+        /*)
+            basename "$source"
+            ;;
+        *)
+            while test "${source#./}" != "$source"; do
+                source=${source#./}
+            done
+            case /$source/ in
+                */../*|*/./*|*//*)
+                    basename "$source"
+                    ;;
+                *)
+                    printf '%s\n' "$source"
+                    ;;
+            esac
+            ;;
+    esac
+)
+
+validate_sidecar_destination() {
+    source=$1
+    destination=$2
+    test "$destination" != "-" ||
+        sidecar_cli_error "typed-sidecar output cannot be standard output"
+    parent=$(dirname "$destination")
+    test -d "$parent" ||
+        sidecar_cli_error "typed-sidecar output parent must already exist"
+    test ! -L "$destination" ||
+        sidecar_cli_error "typed-sidecar output cannot be a symlink"
+    if test -e "$destination"; then
+        test -f "$destination" ||
+            sidecar_cli_error "typed-sidecar output must be a regular file"
+        test ! "$destination" -ef "$source" ||
+            sidecar_cli_error "typed-sidecar output cannot replace the source"
+    fi
+}
+
+check_with_typed_sidecar() (
+    input=$1
+    shift
+    output=
+    generation=
+    emit_seen=false
+    generation_seen=false
+    test "$#" -eq 4 ||
+        sidecar_cli_error "typed-sidecar output and generation are required together"
+    while test "$#" -gt 0; do
+        option=$1
+        shift
+        test "$#" -gt 0 ||
+            sidecar_cli_error "typed-sidecar option value is missing"
+        value=$1
+        shift
+        case $option in
+            --emit-typed-sidecar)
+                test "$emit_seen" = false ||
+                    sidecar_cli_error "typed-sidecar output option is repeated"
+                emit_seen=true
+                output=$value
+                ;;
+            --generation)
+                test "$generation_seen" = false ||
+                    sidecar_cli_error "typed-sidecar generation option is repeated"
+                generation_seen=true
+                generation=$value
+                ;;
+            *)
+                sidecar_cli_error "unsupported typed-sidecar check option"
+                ;;
+        esac
+    done
+    test "$emit_seen" = true && test "$generation_seen" = true ||
+        sidecar_cli_error "typed-sidecar output and generation are required together"
+    canonical_sidecar_generation "$generation" ||
+        sidecar_cli_error "generation must be canonical decimal 0..9007199254740991"
+    validate_sidecar_destination "$input" "$output"
+    command -v node >/dev/null 2>&1 ||
+        sidecar_cli_error "typed-sidecar emission requires node"
+
+    mkdir -p "$ROOT/build"
+    work=$(mktemp -d "$ROOT/build/kofun-check-sidecar.XXXXXX")
+    trap 'rm -rf "$work"' 0 1 2 15
+    compile_events=$work/compile-events.kse
+    ownership_events=$work/ownership-events.kse
+    producer_stdout=$work/compile.stdout
+    producer_stderr=$work/compile.stderr
+    ownership_stdout=$work/ownership.stdout
+    ownership_stderr=$work/ownership.stderr
+    stage1_stdout=$work/stage1.stdout
+    stage1_stderr=$work/stage1.stderr
+    frozen_stdout=$work/frozen.stdout
+    frozen_stderr=$work/frozen.stderr
+    emitter_stdout=$work/emitter.stdout
+    emitter_stderr=$work/emitter.stderr
+    logical_path=$(sidecar_logical_path "$input")
+    ensure_stage2_events_compiler
+    set +e
+    "$STAGE2_EVENTS_COMPILER" \
+        "$input" "$logical_path" "$compile_events" "$generation" \
+        >"$producer_stdout" 2>"$producer_stderr"
+    compile_status=$?
+    set -e
+
+    compiler_status=$compile_status
+    selected_events=$compile_events
+    tooling_failure=
+    : >"$frozen_stdout"
+    : >"$frozen_stderr"
+
+    if test ! -f "$compile_events"; then
+        # The event adapter failed before it could publish the compiler result.
+        # Run the unchanged public check path to freeze language behavior; the
+        # tooling failure remains output-only and cannot affect that authority.
+        set +e
+        "$0" check "$input" >"$frozen_stdout" 2>"$frozen_stderr"
+        compiler_status=$?
+        set -e
+        if grep -Eq '^ETS0[2346]: ' "$producer_stderr"; then
+            tooling_failure=$producer_stderr
+        else
+            printf '%s\n' \
+                "ETS02: committed source identity or span basis is unavailable" \
+                >"$emitter_stderr"
+            tooling_failure=$emitter_stderr
+        fi
+        selected_events=
+    elif test "$compile_status" -eq 0; then
+        printf '%s\n' "ok: $input" >"$frozen_stdout"
+    else
+        stage1_accepted=false
+        if test "$compile_status" -eq 3; then
+            ensure_compiler
+            set +e
+            "$COMPILER" "$input" "$work/stage1.c" \
+                >"$stage1_stdout" 2>"$stage1_stderr"
+            stage1_status=$?
+            set -e
+            if test "$stage1_status" -eq 0 &&
+               test -s "$work/stage1.c"
+            then
+                stage1_accepted=true
+            fi
+        fi
+        if "$stage1_accepted"; then
+            printf '%s\n' "ok: $input" >"$frozen_stdout"
+            compiler_status=0
+            selected_events=
+            printf '%s\n' \
+                "ETS02: Stage 1 compatibility acceptance has no Stage 2 semantic stream" \
+                >"$emitter_stderr"
+            tooling_failure=$emitter_stderr
+        else
+            set +e
+            "$STAGE2_EVENTS_COMPILER" --check-ownership \
+                "$input" "$logical_path" "$ownership_events" "$generation" \
+                >"$ownership_stdout" 2>"$ownership_stderr"
+            ownership_status=$?
+            set -e
+            if test ! -f "$ownership_events" &&
+               grep -Eq '^ETS0[2346]: ' "$ownership_stderr"
+            then
+                # Preserve the established compiler/fallback orchestration if
+                # the optional event projection itself could not be captured.
+                set +e
+                "$0" check "$input" >"$frozen_stdout" 2>"$frozen_stderr"
+                compiler_status=$?
+                set -e
+                selected_events=
+                tooling_failure=$ownership_stderr
+            elif test "$ownership_status" -ne 0 &&
+                 grep -Eq 'error\[(E007|E2S21)\]' "$ownership_stdout"
+            then
+                test ! -s "$ownership_stderr" ||
+                    cat "$ownership_stderr" >"$frozen_stderr"
+                test ! -s "$ownership_stdout" ||
+                    cat "$ownership_stdout" >>"$frozen_stderr"
+                compiler_status=$ownership_status
+                selected_events=$ownership_events
+            elif test "$compile_status" -eq 3 &&
+                 test "$ownership_status" -eq 0
+            then
+                printf '%s\n' \
+                    "ok: $input (Stage 2 Copy/borrow ownership slice; codegen unavailable)" \
+                    >"$frozen_stdout"
+                compiler_status=0
+                selected_events=$ownership_events
+            else
+                test ! -s "$producer_stderr" ||
+                    cat "$producer_stderr" >"$frozen_stderr"
+                test ! -s "$producer_stdout" ||
+                    cat "$producer_stdout" >>"$frozen_stderr"
+                compiler_status=$compile_status
+                selected_events=$compile_events
+            fi
+        fi
+    fi
+
+    emitter_status=3
+    if test -n "$selected_events"; then
+        set +e
+        node "$TYPED_SIDECAR_EMITTER" \
+            "$selected_events" "$output" "$input" \
+            >"$emitter_stdout" 2>"$emitter_stderr"
+        emitter_status=$?
+        set -e
+        test "$emitter_status" -eq 0 || tooling_failure=$emitter_stderr
+    fi
+
+    test ! -s "$frozen_stdout" || cat "$frozen_stdout"
+    test ! -s "$frozen_stderr" || cat "$frozen_stderr" >&2
+    if test "$emitter_status" -ne 0; then
+        test -z "$tooling_failure" ||
+            test ! -s "$tooling_failure" ||
+            cat "$tooling_failure" >&2
+        if test "$compiler_status" -ne 0; then
+            exit "$compiler_status"
+        fi
+        exit 3
+    fi
+    exit "$compiler_status"
+)
 
 emit_c() (
     require_source "$1"
@@ -490,7 +773,15 @@ case ${1-} in
         exec sh "$PACKAGE_MANAGER" "$@"
         ;;
     check)
-        test "$#" -eq 2 || { usage >&2; exit 2; }
+        if test "$#" -ne 2; then
+            test "$#" -ge 3 ||
+                sidecar_cli_error "typed-sidecar check arguments are incomplete"
+            require_source "$2"
+            input=$2
+            shift 2
+            check_with_typed_sidecar "$input" "$@"
+            exit $?
+        fi
         require_source "$2"
         work=$(mktemp -d "${TMPDIR:-/tmp}/kofun-check.XXXXXX")
         trap 'rm -rf "$work"' 0 1 2 15
