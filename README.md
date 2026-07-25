@@ -16,9 +16,10 @@ files use `.kofun`.
 > means an executable gate exists in this repository. Design documents and open
 > issues are not implementation claims.
 
-Kofun's product direction combines readable ownership (`read` / `edit` /
-`take`), functional programming, native code generation, and compiler-checked
-algebraic laws. General ownership and law checking remain open work.
+Kofun's distinguishing product direction is: **the language where you state an
+algebraic law and the compiler hands you a counterexample.** This is product
+direction, not current compiler behavior; general ownership and law checking
+remain open work.
 
 ## Quick start
 
