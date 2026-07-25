@@ -13,7 +13,7 @@
 - `c_abi/check.sh`: libc, archive, Rust cdylib, and C caller ABI gate
 - `fixtures/answer.kofun`: arithmetic Core fixture
 
-Run all four checkpoints:
+Run the four listed checkpoints:
 
 ```sh
 sh bootstrap/stage1/check.sh

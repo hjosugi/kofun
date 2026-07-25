@@ -130,9 +130,14 @@ environment bytes are still untrusted terminal output. See
 
 ## Compile-time law execution
 
-`law monad` checking evaluates user functions during compilation, so it is a compiler attack surface.
+The active compiler does not execute `law monad`; it rejects the syntax with
+`E2S02`. There is therefore no active law-evaluator attack surface or release
+gate. The removed Stage 0 prototype did evaluate user functions during
+compilation, and the controls below record its historical threat model and
+requirements for any future replacement under
+[#551](https://github.com/hjosugi/kofun/issues/551).
 
-Stage 0 runs law checking with ordinary I/O disabled:
+The historical evaluator denied ordinary I/O:
 
 ```text
 print: denied
@@ -143,15 +148,22 @@ file read/write: denied
 network: unavailable
 ```
 
-It also enforces a declared case budget with a default limit of 100,000. Stage 0 does not yet provide a bytecode instruction budget, heap quota, or OS-level sandbox, so untrusted law declarations must not be treated as fully isolated.
+It also enforced a declared case budget with a default limit of 100,000. It did
+not provide a bytecode instruction budget, heap quota, or OS-level sandbox, so
+its untrusted law declarations were never a fully isolated workload. A future
+active evaluator must re-establish and test these limits before accepting
+untrusted law source.
 
-Evidence trust is scoped by assurance:
+The retained historical evidence scoped trust by assurance:
 
 - `bounded-exhaustive` proves only the declared finite model was traversed.
 - `proven-finite` is valid only for a compiler-certified complete finite carrier and complete total-function space.
 - `proven` is reserved for a future trusted proof kernel.
 
-The JSON evidence includes a source SHA-256 and compiler version, but it is not digitally signed. Package registries must recompute or verify signed build provenance before trusting third-party evidence.
+The retained JSON evidence includes a source SHA-256 and compiler version, but
+it is not digitally signed and is not emitted by the active compiler. Any
+future package integration must recompute it or verify signed build provenance
+before trusting third-party evidence.
 
 ## Bootstrap security
 
