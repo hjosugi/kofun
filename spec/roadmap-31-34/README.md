@@ -58,5 +58,5 @@ document has:
 4. no contradiction with `bootstrap/manifest.json`.
 
 Generated bootstrap artifacts may be checked in when their canonical source,
-reproduction command, and digest are recorded. Python is not part of any plan
-or validation command in this directory.
+reproduction command, and digest are recorded. Alternate implementations are
+not introduced solely to preserve obsolete filenames.

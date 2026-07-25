@@ -273,9 +273,9 @@ impl Show[Point] {
 ## Compile-time law declarations
 
 The removed Stage 0 prototype accepted top-level `Monad` law declarations in
-the following form. The active Python-free compiler does not implement this
-syntax: `./bin/kofun check` rejects `law monad` with `E2S02`. The example is
-retained as historical and target-design material; issue
+the following form. The active compiler does not implement this syntax:
+`./bin/kofun check` rejects `law monad` with `E2S02`. The example is retained
+as historical and target-design material; issue
 [#551](https://github.com/hjosugi/kofun/issues/551) tracks a concrete-first
 executable replacement.
 

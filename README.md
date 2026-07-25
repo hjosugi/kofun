@@ -2,9 +2,8 @@
 
 ![Kofun language icon: a keyhole-shaped burial mound](public/kofun-mark.svg)
 
-Kofun is an experimental programming language with a Kofun-written,
-Python-free bootstrap and direct ELF64 backends for x86-64 and AArch64. Source
-files use `.kofun`.
+Kofun is an experimental programming language with a Kofun-written bootstrap
+and direct ELF64 backends for x86-64 and AArch64. Source files use `.kofun`.
 
 [Website](https://hjosugi.github.io/kofun/) ·
 [Documentation](https://hjosugi.github.io/kofun/docs/) ·
@@ -23,7 +22,7 @@ remain open work.
 
 ## Quick start
 
-The repository launcher needs no Python installation:
+Use the repository launcher for the checked compiler paths:
 
 ```sh
 ./bin/kofun --version
@@ -50,7 +49,7 @@ contains the complete setup, target, and verification guide.
 
 | Area | Current executable boundary |
 |---|---|
-| Bootstrap | Kofun-written Stage 1 seed, audited C11 artifact, and Python-free reproduction |
+| Bootstrap | Kofun-written Stage 1 seed, audited C11 artifact, and reproducible generation |
 | Self-hosting | Frozen compiler profile reaches a runnable compiler-produced compiler; the three-generation semantic fixed point is still open |
 | Frontend | Stage 2 lexer/parser plus focused typed, diagnostic, same-package module-alias/public-re-export, ADT, and bounded-generic checkpoints |
 | Native | Direct static ELF64 for bounded Int, function, `List[Int]`, and UTF-8 `Text` profiles on x86-64 and AArch64 |

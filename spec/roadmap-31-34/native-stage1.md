@@ -42,12 +42,11 @@ artifacts from clean directories and compare:
 An unsupported feature must be an explicit failure with a stable diagnostic,
 not a skip that counts as agreement.
 
-The issue predates the Python-free migration and names
-`check_bootstrap.py`. The maintained equivalent is
-`bootstrap/check_bootstrap.kofun`, driven by a POSIX shell gate. Reintroducing
-Python to satisfy the stale filename is forbidden. The current Kofun checker
-already specifies equality of two nonempty Stage 1 C artifacts, but the native
-producer needed for its second input does not exist.
+The issue names the obsolete `check_bootstrap.py`. The maintained equivalent is
+`bootstrap/check_bootstrap.kofun`, driven by a POSIX shell gate. Introducing a
+second implementation only to satisfy the stale filename is forbidden. The
+current Kofun checker already specifies equality of two nonempty Stage 1 C
+artifacts, but the native producer needed for its second input does not exist.
 
 ## Required implementation order
 
@@ -68,5 +67,5 @@ producer needed for its second input does not exist.
 - [ ] Native runtime covers every operation used by Stage 1.
 - [ ] Canonical Stage 1 source produces a native compiler artifact.
 - [ ] Reference and native Stage 1 outputs are byte-identical on the corpus.
-- [ ] The Python-free bootstrap checker runs as part of the native gate.
+- [ ] The bootstrap checker runs as part of the native gate.
 - [ ] The manifest records native Stage 1 provenance and hashes.

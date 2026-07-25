@@ -167,9 +167,8 @@ before trusting third-party evidence.
 
 ## Bootstrap security
 
-The active bootstrap contains no Python runtime or source. Its trusted
-computing base is the checked-in Kofun sources, C11 seeds and C ABI compiler,
-the host C compiler/linker, and the operating system. Stage 1, Stage 2, and C
-ABI artifact checks are reproducibility gates, not a defense against a
+The trusted computing base is the checked-in Kofun sources, C11 seeds and C ABI
+compiler, the host C compiler/linker, and the operating system. Stage 1, Stage
+2, and C ABI artifact checks are reproducibility gates, not a defense against a
 malicious seed and host compiler acting together. Diverse double compilation
 remains open in `bootstrap/manifest.json`.

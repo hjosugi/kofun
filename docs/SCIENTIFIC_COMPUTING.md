@@ -228,8 +228,8 @@ Conversions are to make copy, view, and ownership transfer explicit.
 ## Stage 0
 
 The removed reference prototype had a small API backed by Python lists. The
-active Python-free bootstrap does not implement this API yet; the names below
-are retained as the first compatibility target, not as a current capability.
+active bootstrap does not implement this API yet; the names below are retained
+as the first compatibility target, not as a current capability.
 
 ```text
 linspace

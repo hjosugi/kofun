@@ -3,7 +3,7 @@
 `bootstrap/native/encoder.kofun` implements the direct-native checkpoint:
 little-endian encoding, ELF64 and program/section headers, separate RX/RW
 segments, immediate moves, Linux syscalls, and generic DWARF v4 metadata.
-The Python-free CLI exposes the supported arithmetic Core for x86-64 and
+The repository CLI exposes the supported arithmetic Core for x86-64 and
 AArch64 Linux. Both targets lower local `Int` and `List[Int]` bindings; List
 literals, length, indexing, and generated `map`/`filter`/`fold` loops with typed
 inline lambdas. Both also lower UTF-8 Text concatenation, equality,

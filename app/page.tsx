@@ -46,7 +46,7 @@ const principles = [
 ];
 
 const workingNow = [
-  "Python-free bootstrap with frozen self-host profile",
+  "Frozen self-host profile and checked Stage 1 seed",
   "Complete typed HIR evidence for the frozen compiler source",
   "Runnable compiler-produced compiler through the driver",
   "Direct x86-64 and AArch64 ELF for bounded Int, List, and Text",
@@ -95,8 +95,8 @@ export default function Home() {
           </h1>
           <p>
             Kofun explores low-sigil ownership and functional composition while
-            building a Python-free bootstrap and direct native checkpoints.
-            Every active compiler claim stays tied to executable evidence.
+            building a checked bootstrap and direct native checkpoints. Every
+            active compiler claim stays tied to executable evidence.
           </p>
           <div className="hero-actions">
             <Link className="primary-button" href="/docs">
@@ -130,7 +130,7 @@ export default function Home() {
       </section>
 
       <div className="signal-strip" aria-label="Current Kofun checkpoints">
-        <span>Python-free bootstrap</span>
+        <span>self-host profile</span>
         <i />
         <span>static ELF</span>
         <i />

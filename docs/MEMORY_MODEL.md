@@ -336,7 +336,7 @@ RFC.
 The removed Stage 0 reference prototype described a tracing-GC runtime and
 experimental `let own`, `take`, use-after-take `E330`, and automatic-disposal
 behavior. Those statements are historical; they are not capabilities of the
-current Python-free compiler.
+current compiler.
 
 Current executable compiler evidence is narrower: the bounded Stage 2
 ownership slice reports `E007` when a `Text` element is returned by value from
