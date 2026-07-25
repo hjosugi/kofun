@@ -20,7 +20,7 @@ fi
 export QEMU_AARCH64
 
 if test -n "$QEMU_AARCH64"; then
-    BACKEND_CORPORA='functions list text'
+    BACKEND_CORPORA='functions list text numeric'
 else
     BACKEND_CORPORA=requires-qemu-aarch64
 fi

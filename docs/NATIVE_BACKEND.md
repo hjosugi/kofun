@@ -25,7 +25,7 @@ as many locals as fit the shared 32-slot parameter/local frame, taking a
 local's type from its initializer when no annotation is written. That function profile is
 shared by both backends: the same target-independent parsed program is lowered
 to x86-64 and to AArch64, and both emit a checked-overflow trap with the same
-`kofun: integer overflow` diagnostic and exit status:
+`error[R010]` diagnostic and exit status:
 
 ```sh
 ./bin/kofun build source.kofun \

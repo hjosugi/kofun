@@ -62,7 +62,7 @@ statements in `main`, and explicit or implicit main returns identically.
 
 Runtime Int output covers zero, negative values, and the complete signed
 64-bit decimal width. Arithmetic branches to a deterministic overflow
-diagnostic — the same `kofun: integer overflow` message and exit status on both
+diagnostic — the same `error[R010]` message and exit status on both
 targets; AArch64 detects multiply overflow with a `smulh`/sign-bit comparison
 and add/sub/negate overflow through the `V` flag. Unknown functions, duplicate
 declarations or parameters, wrong arity, more than six arguments, non-Int or

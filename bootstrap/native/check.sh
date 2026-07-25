@@ -806,7 +806,7 @@ function_unknown_aarch64_status=$?
 set -e
 test "$function_overflow_status" -eq 1
 test ! -s "$WORK/function-overflow.stdout"
-printf 'kofun: integer overflow\n' \
+printf 'error[R010]: integer overflow in operator `*`\n' \
     >"$WORK/function-overflow.expected"
 cmp "$WORK/function-overflow.expected" \
     "$WORK/function-overflow.stderr"
@@ -1339,7 +1339,17 @@ cmp \
     "$WORK/function-truncating-divide.stdout"
 test ! -s "$WORK/function-truncating-divide.stderr"
 
-printf 'kofun: division by zero\n' >"$WORK/divide-zero.expected"
+# The message names the operator, so each fixture has its own expectation.
+divide_zero_expected() {
+    case $1 in
+        function_floor_divide_zero) printf '%s\n' \
+            'error[R010]: operator `//` failed: division by zero' ;;
+        function_floor_modulo_zero) printf '%s\n' \
+            'error[R010]: operator `%` failed: division by zero' ;;
+        *) printf '%s\n' \
+            'error[R010]: operator `/` failed: division by zero' ;;
+    esac
+}
 for divide_case in \
     function_floor_divide_zero \
     function_floor_modulo_zero \
@@ -1357,13 +1367,22 @@ do
     set -e
     test "$divide_status" -eq 1
     test ! -s "$WORK/$divide_case.stdout"
-    cmp "$WORK/divide-zero.expected" "$WORK/$divide_case.stderr"
+    divide_zero_expected "$divide_case" >"$WORK/$divide_case.expected"
+    cmp "$WORK/$divide_case.expected" "$WORK/$divide_case.stderr"
 done
 
 # The function profile can construct INT64_MIN from accepted small literals,
 # so the non-representable quotient guard is executable evidence rather than
 # an unreachable code-path claim. Both quotient operators must reject
 # INT64_MIN / -1; modulo by -1 remains exactly zero.
+divide_overflow_expected() {
+    case $1 in
+        function_floor_divide_overflow) printf '%s\n' \
+            'error[R010]: integer overflow in operator `//`' ;;
+        *) printf '%s\n' \
+            'error[R010]: integer overflow in operator `/`' ;;
+    esac
+}
 for divide_case in \
     function_floor_divide_overflow \
     function_truncating_divide_overflow
@@ -1380,7 +1399,9 @@ do
     set -e
     test "$divide_status" -eq 1
     test ! -s "$WORK/$divide_case.stdout"
-    cmp "$WORK/function-overflow.expected" "$WORK/$divide_case.stderr"
+    divide_overflow_expected "$divide_case" \
+        >"$WORK/$divide_case.expected"
+    cmp "$WORK/$divide_case.expected" "$WORK/$divide_case.stderr"
 done
 
 MODULO_MIN_SOURCE="$NATIVE/fixtures/function_floor_modulo_min.kofun"
@@ -1443,7 +1464,8 @@ if test -n "$AARCH64_RUNNER"; then
         set -e
         test "$divide_status" -eq 1
         test ! -s "$WORK/$divide_case-aarch64.stdout"
-        cmp "$WORK/divide-zero.expected" "$WORK/$divide_case-aarch64.stderr"
+        cmp "$WORK/$divide_case.expected" \
+            "$WORK/$divide_case-aarch64.stderr"
     done
     for divide_case in \
         function_floor_divide_overflow \
@@ -1511,7 +1533,9 @@ int64_trap_status=$?
 set -e
 test "$int64_trap_status" -eq 1
 test ! -s "$WORK/function-int64-trap.stdout"
-cmp "$WORK/function-overflow.expected" "$WORK/function-int64-trap.stderr"
+printf 'error[R010]: integer overflow in operator `//`\n' \
+    >"$WORK/function-int64-trap.expected"
+cmp "$WORK/function-int64-trap.expected" "$WORK/function-int64-trap.stderr"
 
 for int64_case in function_int64_boundaries function_int64_min_quotient; do
     "$KOFUN" build "$NATIVE/fixtures/$int64_case.kofun" \
@@ -1537,7 +1561,7 @@ if test -n "$AARCH64_RUNNER"; then
     set -e
     test "$int64_trap_status" -eq 1
     test ! -s "$WORK/function-int64-trap-aarch64.stdout"
-    cmp "$WORK/function-overflow.expected" \
+    cmp "$WORK/function-int64-trap.expected" \
         "$WORK/function-int64-trap-aarch64.stderr"
     int64_summary="PASS: x86-64/AArch64 carry full Int64 literals and trap INT64_MIN // -1"
 else

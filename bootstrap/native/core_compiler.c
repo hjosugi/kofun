@@ -41,6 +41,16 @@ enum {
 
 static const uint64_t IMAGE_BASE = UINT64_C(0x400000);
 static const uint64_t DATA_ADDRESS = UINT64_C(0x401000);
+/*
+ * The RW page has always started with three fixed bytes — two scratch digits
+ * and the newline `print` writes — and reserved a whole page for them. A
+ * backend's data blob is appended after those three, so every address baked
+ * into existing code is unchanged and read-only payload that would otherwise
+ * take room in the one-page RX segment can live here instead. A backend with
+ * nothing to add passes an empty blob and emits exactly the bytes it always
+ * did.
+ */
+enum { DATA_PREFIX = 3 };
 
 typedef struct {
     uint8_t *data;
@@ -107,6 +117,17 @@ static void u32_le(Bytes *bytes, uint32_t value) {
 static void u64_le(Bytes *bytes, uint64_t value) {
     u32_le(bytes, (uint32_t)value);
     u32_le(bytes, (uint32_t)(value >> 32));
+}
+
+static void bytes_append_raw(Bytes *destination, const Bytes *source) {
+    if (source->length == 0) return;
+    bytes_reserve(destination, source->length);
+    memcpy(
+        destination->data + destination->length,
+        source->data,
+        source->length
+    );
+    destination->length += source->length;
 }
 
 static void bytes_pad_to(Bytes *bytes, size_t length) {
@@ -4767,15 +4788,89 @@ static void a64_load_address(
     uint64_t address
 );
 
+/*
+ * Runtime arithmetic failures, one entry per message the language defines.
+ * `docs/SEMANTICS.md` names the operator in every one, so a body that can fail
+ * two ways needs two trap blocks rather than one shared message that says less
+ * than the C11 backend's does. Only the kinds a program can actually reach are
+ * emitted, so a body with no arithmetic carries no trap at all, and the
+ * messages themselves live in the RW page rather than the one-page RX segment.
+ */
+typedef enum {
+    FUNCTION_TRAP_ADD,
+    FUNCTION_TRAP_SUBTRACT,
+    FUNCTION_TRAP_MULTIPLY,
+    FUNCTION_TRAP_NEGATE,
+    FUNCTION_TRAP_FLOOR_DIVIDE,
+    FUNCTION_TRAP_DIVIDE,
+    FUNCTION_TRAP_ZERO_FLOOR_DIVIDE,
+    FUNCTION_TRAP_ZERO_FLOOR_MODULO,
+    FUNCTION_TRAP_ZERO_DIVIDE,
+    FUNCTION_TRAP_COUNT,
+} FunctionTrap;
+
+static const char *const function_trap_messages[FUNCTION_TRAP_COUNT] = {
+    "error[R010]: integer overflow in operator `+`\n",
+    "error[R010]: integer overflow in operator `-`\n",
+    "error[R010]: integer overflow in operator `*`\n",
+    "error[R010]: integer overflow in unary operator `-`\n",
+    "error[R010]: integer overflow in operator `//`\n",
+    "error[R010]: integer overflow in operator `/`\n",
+    "error[R010]: operator `//` failed: division by zero\n",
+    "error[R010]: operator `%` failed: division by zero\n",
+    "error[R010]: operator `/` failed: division by zero\n",
+};
+
+/* The three operators both backends lower through a divide instruction. */
+static bool function_divides(FunctionExpressionKind kind) {
+    return kind == FUNCTION_DIVIDE ||
+        kind == FUNCTION_FLOOR_DIVIDE ||
+        kind == FUNCTION_FLOOR_MODULO;
+}
+
+/* The overflow trap for an arithmetic node, and the zero trap for a divide. */
+static FunctionTrap function_overflow_trap(FunctionExpressionKind kind) {
+    switch (kind) {
+        case FUNCTION_SUBTRACT: return FUNCTION_TRAP_SUBTRACT;
+        case FUNCTION_MULTIPLY: return FUNCTION_TRAP_MULTIPLY;
+        case FUNCTION_NEGATE: return FUNCTION_TRAP_NEGATE;
+        case FUNCTION_FLOOR_DIVIDE: return FUNCTION_TRAP_FLOOR_DIVIDE;
+        case FUNCTION_DIVIDE: return FUNCTION_TRAP_DIVIDE;
+        default: return FUNCTION_TRAP_ADD;
+    }
+}
+
+static FunctionTrap function_zero_trap(FunctionExpressionKind kind) {
+    switch (kind) {
+        case FUNCTION_FLOOR_MODULO: return FUNCTION_TRAP_ZERO_FLOOR_MODULO;
+        case FUNCTION_DIVIDE: return FUNCTION_TRAP_ZERO_DIVIDE;
+        default: return FUNCTION_TRAP_ZERO_FLOOR_DIVIDE;
+    }
+}
+
 typedef struct {
     FunctionCallFixups calls;
     Offsets print_int_calls;
     Offsets print_text_calls;
-    Offsets overflow_jumps;
-    Offsets divide_zero_jumps;
+    Offsets traps[FUNCTION_TRAP_COUNT];
+    Bytes data;
     X64Runtime runtime;
     A64CoreRuntime a64_runtime;
 } FunctionEmitter;
+
+/*
+ * Places one trap message in the RW page and returns the address it will load
+ * from. Identical messages are never requested twice: one block is emitted per
+ * trap kind.
+ */
+static uint64_t function_trap_message(FunctionEmitter *emitter, const char *m) {
+    size_t offset = emitter->data.length;
+    size_t length = strlen(m);
+    bytes_reserve(&emitter->data, length);
+    memcpy(emitter->data.data + emitter->data.length, m, length);
+    emitter->data.length += length;
+    return DATA_ADDRESS + (uint64_t)DATA_PREFIX + (uint64_t)offset;
+}
 
 static void function_call_fixup_add(
     FunctionCallFixups *fixups,
@@ -4803,8 +4898,10 @@ static void function_emitter_free(FunctionEmitter *emitter) {
     free(emitter->calls.items);
     free(emitter->print_int_calls.fields);
     free(emitter->print_text_calls.fields);
-    free(emitter->overflow_jumps.fields);
-    free(emitter->divide_zero_jumps.fields);
+    for (size_t index = 0; index < FUNCTION_TRAP_COUNT; ++index) {
+        free(emitter->traps[index].fields);
+    }
+    free(emitter->data.data);
     x64_runtime_free(&emitter->runtime);
     a64_core_runtime_free(&emitter->a64_runtime);
 }
@@ -4859,25 +4956,27 @@ static void x64_function_call(
 
 static void x64_function_overflow_jump(
     Bytes *text,
-    FunctionEmitter *emitter
+    FunctionEmitter *emitter,
+    FunctionTrap trap
 ) {
     x64_rel32_placeholder(
         text,
         UINT8_C(0x0f),
         UINT8_C(0x80),
-        &emitter->overflow_jumps
+        &emitter->traps[trap]
     );
 }
 
 static void x64_function_divide_zero_jump(
     Bytes *text,
-    FunctionEmitter *emitter
+    FunctionEmitter *emitter,
+    FunctionTrap trap
 ) {
     x64_rel32_placeholder(
         text,
         UINT8_C(0x0f),
         UINT8_C(0x84),
-        &emitter->divide_zero_jumps
+        &emitter->traps[trap]
     );
 }
 
@@ -5350,7 +5449,7 @@ static void x64_function_divide(
         X64_RCX,
         x64_register_operand(X64_RCX)
     );
-    x64_function_divide_zero_jump(text, emitter);
+    x64_function_divide_zero_jump(text, emitter, function_zero_trap(kind));
     const uint8_t compare_minus_one[] = {
         UINT8_C(0x48), UINT8_C(0x83), UINT8_C(0xf9), UINT8_C(0xff),
     };
@@ -5367,7 +5466,11 @@ static void x64_function_divide(
             X64_GROUP3_NEG,
             x64_register_operand(X64_RAX)
         );
-        x64_function_overflow_jump(text, emitter);
+        x64_function_overflow_jump(
+            text,
+            emitter,
+            function_overflow_trap(kind)
+        );
     }
     size_t done = x64_local_jmp(text);
     x64_patch_rel32(text, general, text->length);
@@ -5494,7 +5597,7 @@ static void x64_function_expression(
         );
         /* neg result */
         x64_encode_op(text, X64_GROUP3_RM, X64_GROUP3_NEG, result);
-        x64_function_overflow_jump(text, emitter);
+        x64_function_overflow_jump(text, emitter, FUNCTION_TRAP_NEGATE);
         return;
     }
     if (expression->kind == FUNCTION_TEXT_CONCAT) {
@@ -5562,12 +5665,14 @@ static void x64_function_expression(
                 result
             );
         }
-        x64_function_overflow_jump(text, emitter);
+        x64_function_overflow_jump(
+            text,
+            emitter,
+            function_overflow_trap(expression->kind)
+        );
         return;
     }
-    if (expression->kind == FUNCTION_DIVIDE ||
-        expression->kind == FUNCTION_FLOOR_DIVIDE ||
-        expression->kind == FUNCTION_FLOOR_MODULO) {
+    if (function_divides(expression->kind)) {
         x64_function_divide(text, expression->kind, emitter, result, right);
         return;
     }
@@ -5575,13 +5680,13 @@ static void x64_function_expression(
         static const uint8_t imul[] = {UINT8_C(0x0f), UINT8_C(0xaf)};
         if (result.in_register) {
             x64_encode(text, imul, sizeof(imul), result.reg, right);
-            x64_function_overflow_jump(text, emitter);
+            x64_function_overflow_jump(text, emitter, FUNCTION_TRAP_MULTIPLY);
             return;
         }
         /* `imul` only multiplies into a register. */
         x64_mov_register_operand(text, X64_RAX, result);
         x64_encode(text, imul, sizeof(imul), X64_RAX, right);
-        x64_function_overflow_jump(text, emitter);
+        x64_function_overflow_jump(text, emitter, FUNCTION_TRAP_MULTIPLY);
         x64_mov_operand_register(text, result, X64_RAX);
         return;
     }
@@ -6035,11 +6140,54 @@ static size_t x64_function_print_text_runtime(
     return runtime_at;
 }
 
+/*
+ * Every runtime failure writes a message to stderr and exits 1, and only the
+ * message differs. The write-and-exit half is emitted once and each kind
+ * reduces to loading its message and branching to it — three instructions,
+ * against a whole sequence per kind. The message bytes are in the RW page, so
+ * naming the operator in each one costs the RX segment nothing at all. Both
+ * matter: this backend's images have to fit a single page, and the tightest
+ * one in the tree sits 23 bytes under it.
+ */
+static size_t x64_function_trap_tail(Bytes *text) {
+    size_t tail_at = text->length;
+    x64_mov_r32_imm32(text, UINT8_C(0xb8), 1); /* write */
+    x64_mov_r32_imm32(text, UINT8_C(0xbf), 2); /* stderr */
+    x64_syscall(text);
+    x64_mov_r32_imm32(text, UINT8_C(0xb8), 60); /* exit */
+    x64_mov_r32_imm32(text, UINT8_C(0xbf), 1);
+    x64_syscall(text);
+    byte(text, UINT8_C(0x0f));
+    byte(text, UINT8_C(0x0b)); /* ud2 */
+    return tail_at;
+}
+
+static size_t x64_function_trap(
+    Bytes *text,
+    FunctionEmitter *emitter,
+    FunctionTrap trap,
+    size_t tail_at
+) {
+    const char *message = function_trap_messages[trap];
+    uint64_t address = function_trap_message(emitter, message);
+    size_t trap_at = text->length;
+    x64_mov_r32_imm32(text, UINT8_C(0xbe), (uint32_t)address); /* esi */
+    x64_mov_r32_imm32(
+        text,
+        UINT8_C(0xba),
+        (uint32_t)strlen(message)
+    ); /* edx */
+    x64_patch_rel32(text, x64_local_jmp(text), tail_at);
+    return trap_at;
+}
+
 static void x64_function_program(
     Bytes *text,
+    Bytes *data,
     const FunctionProgram *program
 ) {
     FunctionEmitter emitter = {0};
+    bytes_init(&emitter.data);
     size_t function_addresses[MAX_CORE_FUNCTIONS] = {0};
 
     x64_function_call(text, &emitter, program->main_index);
@@ -6066,37 +6214,22 @@ static void x64_function_program(
         print_text_at =
             x64_function_print_text_runtime(text, &emitter.runtime);
     }
-    size_t overflow_at = text->length;
-    const char overflow_message[] =
-        "kofun: integer overflow\n";
-    size_t overflow_address = x64_diagnostic(
-        text,
-        (uint32_t)(sizeof(overflow_message) - 1),
-        1
-    );
-    size_t overflow_message_at = text->length;
-    x64_emit(
-        text,
-        (const uint8_t *)overflow_message,
-        sizeof(overflow_message) - 1
-    );
-    size_t divide_zero_at = 0;
-    size_t divide_zero_address = 0;
-    size_t divide_zero_message_at = 0;
-    const char divide_zero_message[] = "kofun: division by zero\n";
-    if (emitter.divide_zero_jumps.length > 0) {
-        divide_zero_at = text->length;
-        divide_zero_address = x64_diagnostic(
-            text,
-            (uint32_t)(sizeof(divide_zero_message) - 1),
-            1
-        );
-        divide_zero_message_at = text->length;
-        x64_emit(
-            text,
-            (const uint8_t *)divide_zero_message,
-            sizeof(divide_zero_message) - 1
-        );
+    size_t trap_addresses[FUNCTION_TRAP_COUNT] = {0};
+    bool any_trap = false;
+    for (size_t trap = 0; trap < FUNCTION_TRAP_COUNT; ++trap) {
+        if (emitter.traps[trap].length > 0) any_trap = true;
+    }
+    if (any_trap) {
+        size_t tail_at = x64_function_trap_tail(text);
+        for (size_t trap = 0; trap < FUNCTION_TRAP_COUNT; ++trap) {
+            if (emitter.traps[trap].length == 0) continue;
+            trap_addresses[trap] = x64_function_trap(
+                text,
+                &emitter,
+                (FunctionTrap)trap,
+                tail_at
+            );
+        }
     }
 
     for (size_t index = 0; index < emitter.calls.length; ++index) {
@@ -6129,41 +6262,17 @@ static void x64_function_program(
             print_text_at
         );
     }
-    for (size_t index = 0;
-         index < emitter.overflow_jumps.length;
-         ++index) {
-        x64_patch_rel32(
-            text,
-            emitter.overflow_jumps.fields[index],
-            overflow_at
-        );
-    }
-    x64_patch_u32(
-        text,
-        overflow_address,
-        (uint32_t)(
-            IMAGE_BASE + TEXT_OFFSET + overflow_message_at
-        )
-    );
-    for (size_t index = 0;
-         index < emitter.divide_zero_jumps.length;
-         ++index) {
-        x64_patch_rel32(
-            text,
-            emitter.divide_zero_jumps.fields[index],
-            divide_zero_at
-        );
-    }
-    if (emitter.divide_zero_jumps.length > 0) {
-        x64_patch_u32(
-            text,
-            divide_zero_address,
-            (uint32_t)(
-                IMAGE_BASE + TEXT_OFFSET + divide_zero_message_at
-            )
-        );
+    for (size_t trap = 0; trap < FUNCTION_TRAP_COUNT; ++trap) {
+        for (size_t index = 0; index < emitter.traps[trap].length; ++index) {
+            x64_patch_rel32(
+                text,
+                emitter.traps[trap].fields[index],
+                trap_addresses[trap]
+            );
+        }
     }
     x64_runtime(text, &emitter.runtime);
+    bytes_append_raw(data, &emitter.data);
     function_emitter_free(&emitter);
 }
 
@@ -6563,9 +6672,10 @@ static void a64_function_epilogue(Bytes *text) {
 static void a64_overflow_jump(
     Bytes *text,
     FunctionEmitter *emitter,
-    uint32_t conditional
+    uint32_t conditional,
+    FunctionTrap trap
 ) {
-    offsets_add(&emitter->overflow_jumps, text->length);
+    offsets_add(&emitter->traps[trap], text->length);
     a64_word(text, conditional);
 }
 
@@ -6592,7 +6702,7 @@ static void a64_function_divide(
     FunctionEmitter *emitter
 ) {
     /* cbz x1, division-by-zero trap */
-    offsets_add(&emitter->divide_zero_jumps, text->length);
+    offsets_add(&emitter->traps[function_zero_trap(kind)], text->length);
     a64_word(text, UINT32_C(0xb4000001));
     a64_word(text, UINT32_C(0xb100043f)); /* cmn x1, #1 */
     size_t general = text->length;
@@ -6601,7 +6711,12 @@ static void a64_function_divide(
         a64_word(text, UINT32_C(0xaa1f03e0)); /* mov x0, xzr */
     } else {
         a64_word(text, UINT32_C(0xeb0003e0)); /* negs x0, x0 */
-        a64_overflow_jump(text, emitter, UINT32_C(0x54000006)); /* b.vs */
+        a64_overflow_jump(
+            text,
+            emitter,
+            UINT32_C(0x54000006), /* b.vs */
+            function_overflow_trap(kind)
+        );
     }
     size_t done = text->length;
     a64_word(text, UINT32_C(0x14000000)); /* b done */
@@ -6712,7 +6827,12 @@ static void a64_function_expression(
         a64_function_expression(text, expression->left, emitter);
         a64_pop(text, 0);
         a64_word(text, UINT32_C(0xeb0003e0)); /* negs x0, x0 */
-        a64_overflow_jump(text, emitter, UINT32_C(0x54000006)); /* b.vs */
+        a64_overflow_jump(
+            text,
+            emitter,
+            UINT32_C(0x54000006), /* b.vs */
+            FUNCTION_TRAP_NEGATE
+        );
         a64_push(text, 0);
         return;
     }
@@ -6721,25 +6841,29 @@ static void a64_function_expression(
     a64_function_expression(text, expression->right, emitter);
     a64_pop(text, 1); /* right -> x1 */
     a64_pop(text, 0); /* left  -> x0 */
-    if (expression->kind == FUNCTION_DIVIDE ||
-        expression->kind == FUNCTION_FLOOR_DIVIDE ||
-        expression->kind == FUNCTION_FLOOR_MODULO) {
+    if (function_divides(expression->kind)) {
         a64_function_divide(text, expression->kind, emitter);
         a64_push(text, 0);
         return;
     }
     if (expression->kind == FUNCTION_ADD) {
         a64_word(text, UINT32_C(0xab010000)); /* adds x0, x0, x1 */
-        a64_overflow_jump(text, emitter, UINT32_C(0x54000006)); /* b.vs */
+        a64_overflow_jump(
+            text, emitter, UINT32_C(0x54000006), FUNCTION_TRAP_ADD
+        );
     } else if (expression->kind == FUNCTION_SUBTRACT) {
         a64_word(text, UINT32_C(0xeb010000)); /* subs x0, x0, x1 */
-        a64_overflow_jump(text, emitter, UINT32_C(0x54000006)); /* b.vs */
+        a64_overflow_jump(
+            text, emitter, UINT32_C(0x54000006), FUNCTION_TRAP_SUBTRACT
+        );
     } else if (expression->kind == FUNCTION_MULTIPLY) {
         a64_word(text, UINT32_C(0x9b017c09)); /* mul   x9, x0, x1 */
         a64_word(text, UINT32_C(0x9b417c0a)); /* smulh x10, x0, x1 */
         a64_word(text, UINT32_C(0x937ffd2b)); /* asr   x11, x9, #63 */
         a64_word(text, UINT32_C(0xeb0b015f)); /* cmp   x10, x11 */
-        a64_overflow_jump(text, emitter, UINT32_C(0x54000001)); /* b.ne */
+        a64_overflow_jump(
+            text, emitter, UINT32_C(0x54000001), FUNCTION_TRAP_MULTIPLY
+        );
         a64_word(text, UINT32_C(0xaa0903e0)); /* mov   x0, x9 */
     } else {
         a64_word(text, UINT32_C(0xeb01001f)); /* cmp x0, x1 */
@@ -6974,11 +7098,56 @@ static size_t a64_function_print_text_runtime(Bytes *text) {
     return runtime_at;
 }
 
+/* The AArch64 counterpart of x64_function_trap, with the same contract. */
+static size_t a64_function_trap_tail(Bytes *text) {
+    size_t tail_at = text->length;
+    a64_movz(text, 0, 2);                 /* mov  x0, #2 (stderr) */
+    a64_movz(text, 8, 64);                /* mov  x8, #64 (write) */
+    a64_svc(text);
+    a64_movz(text, 0, 1);                 /* mov  x0, #1 (exit code) */
+    a64_movz(text, 8, 93);                /* mov  x8, #93 (exit) */
+    a64_svc(text);
+    a64_word(text, UINT32_C(0xd4200000)); /* brk  #0 */
+    return tail_at;
+}
+
+static size_t a64_function_trap(
+    Bytes *text,
+    FunctionEmitter *emitter,
+    FunctionTrap trap,
+    size_t tail_at
+) {
+    const char *message = function_trap_messages[trap];
+    uint64_t address = function_trap_message(emitter, message);
+    size_t trap_at = text->length;
+    size_t low_field = text->length;
+    a64_movz(text, 1, 0);                 /* mov  x1, #0 (message, patched) */
+    size_t high_field = text->length;
+    a64_movk_lsl16(text, 1, 0);           /* movk x1, #0, lsl 16 (patched) */
+    a64_movz(text, 2, (unsigned)strlen(message));
+    size_t branch = text->length;
+    a64_word(text, UINT32_C(0x14000000)); /* b tail */
+    a64_patch_imm26(text, branch, tail_at);
+    a64_patch_mov_imm16(
+        text,
+        low_field,
+        (uint32_t)(address & UINT64_C(0xffff))
+    );
+    a64_patch_mov_imm16(
+        text,
+        high_field,
+        (uint32_t)((address >> 16) & UINT64_C(0xffff))
+    );
+    return trap_at;
+}
+
 static void a64_function_program(
     Bytes *text,
+    Bytes *data,
     const FunctionProgram *program
 ) {
     FunctionEmitter emitter = {0};
+    bytes_init(&emitter.data);
     size_t function_addresses[MAX_CORE_FUNCTIONS] = {0};
 
     size_t entry_call = text->length;
@@ -7003,65 +7172,23 @@ static void a64_function_program(
         print_text_at = a64_function_print_text_runtime(text);
     }
 
-    size_t overflow_at = text->length;
-    static const char overflow_message[] = "kofun: integer overflow\n";
-    size_t overflow_length = sizeof(overflow_message) - 1;
-    size_t message_low_field = text->length;
-    a64_movz(text, 1, 0);                 /* mov x1, #0 (message low, patched) */
-    size_t message_high_field = text->length;
-    a64_movk_lsl16(text, 1, 0);           /* movk x1, #0, lsl 16 (patched) */
-    a64_movz(text, 0, 2);                 /* mov x0, #2 (stderr) */
-    a64_movz(text, 2, (unsigned)overflow_length); /* mov x2, #length */
-    a64_movz(text, 8, 64);                /* mov x8, #64 (write) */
-    a64_svc(text);
-    a64_movz(text, 0, 1);                 /* mov x0, #1 (exit code) */
-    a64_movz(text, 8, 93);                /* mov x8, #93 (exit) */
-    a64_svc(text);
-    a64_word(text, UINT32_C(0xd4200000)); /* brk #0 */
-    size_t message_at = text->length;
-    for (size_t index = 0; index < overflow_length; ++index) {
-        byte(text, (uint8_t)overflow_message[index]);
+    size_t trap_addresses[FUNCTION_TRAP_COUNT] = {0};
+    bool any_trap = false;
+    for (size_t trap = 0; trap < FUNCTION_TRAP_COUNT; ++trap) {
+        if (emitter.traps[trap].length > 0) any_trap = true;
     }
-
-    size_t divide_zero_at = 0;
-    size_t divide_zero_low_field = 0;
-    size_t divide_zero_high_field = 0;
-    size_t divide_zero_message_at = 0;
-    static const char divide_zero_message[] = "kofun: division by zero\n";
-    size_t divide_zero_length = sizeof(divide_zero_message) - 1;
-    if (emitter.divide_zero_jumps.length > 0) {
-        divide_zero_at = text->length;
-        divide_zero_low_field = text->length;
-        a64_movz(text, 1, 0);       /* mov x1, #0 (message low, patched) */
-        divide_zero_high_field = text->length;
-        a64_movk_lsl16(text, 1, 0); /* movk x1, #0, lsl 16 (patched) */
-        a64_movz(text, 0, 2);       /* mov x0, #2 (stderr) */
-        a64_movz(text, 2, (unsigned)divide_zero_length);
-        a64_movz(text, 8, 64);      /* mov x8, #64 (write) */
-        a64_svc(text);
-        a64_movz(text, 0, 1);       /* mov x0, #1 (exit code) */
-        a64_movz(text, 8, 93);      /* mov x8, #93 (exit) */
-        a64_svc(text);
-        a64_word(text, UINT32_C(0xd4200000)); /* brk #0 */
-        divide_zero_message_at = text->length;
-        for (size_t index = 0; index < divide_zero_length; ++index) {
-            byte(text, (uint8_t)divide_zero_message[index]);
+    if (any_trap) {
+        size_t tail_at = a64_function_trap_tail(text);
+        for (size_t trap = 0; trap < FUNCTION_TRAP_COUNT; ++trap) {
+            if (emitter.traps[trap].length == 0) continue;
+            trap_addresses[trap] = a64_function_trap(
+                text,
+                &emitter,
+                (FunctionTrap)trap,
+                tail_at
+            );
         }
     }
-
-    uint64_t message_address =
-        IMAGE_BASE + (uint64_t)TEXT_OFFSET + (uint64_t)message_at;
-    a64_patch_mov_imm16(
-        text,
-        message_low_field,
-        (uint32_t)(message_address & UINT64_C(0xffff))
-    );
-    a64_patch_mov_imm16(
-        text,
-        message_high_field,
-        (uint32_t)((message_address >> 16) & UINT64_C(0xffff))
-    );
-
     a64_patch_imm26(
         text,
         entry_call,
@@ -7097,37 +7224,17 @@ static void a64_function_program(
             print_text_at
         );
     }
-    for (size_t index = 0; index < emitter.overflow_jumps.length; ++index) {
-        a64_patch_imm19(
-            text,
-            emitter.overflow_jumps.fields[index],
-            overflow_at
-        );
-    }
-    for (size_t index = 0;
-         index < emitter.divide_zero_jumps.length;
-         ++index) {
-        a64_patch_imm19(
-            text,
-            emitter.divide_zero_jumps.fields[index],
-            divide_zero_at
-        );
-    }
-    if (emitter.divide_zero_jumps.length > 0) {
-        uint64_t divide_zero_address = IMAGE_BASE +
-            (uint64_t)TEXT_OFFSET + (uint64_t)divide_zero_message_at;
-        a64_patch_mov_imm16(
-            text,
-            divide_zero_low_field,
-            (uint32_t)(divide_zero_address & UINT64_C(0xffff))
-        );
-        a64_patch_mov_imm16(
-            text,
-            divide_zero_high_field,
-            (uint32_t)((divide_zero_address >> 16) & UINT64_C(0xffff))
-        );
+    for (size_t trap = 0; trap < FUNCTION_TRAP_COUNT; ++trap) {
+        for (size_t index = 0; index < emitter.traps[trap].length; ++index) {
+            a64_patch_imm19(
+                text,
+                emitter.traps[trap].fields[index],
+                trap_addresses[trap]
+            );
+        }
     }
     a64_core_runtime(text, &emitter.a64_runtime);
+    bytes_append_raw(data, &emitter.data);
     function_emitter_free(&emitter);
 }
 
@@ -8546,16 +8653,26 @@ static void load_segment(
 static void elf_image(
     Bytes *image,
     uint16_t machine,
-    const Bytes *text
+    const Bytes *text,
+    const Bytes *data
 ) {
+    size_t data_length = data == NULL ? 0 : data->length;
     if (text->length > PAGE_SIZE - TEXT_OFFSET) {
         fatal("native Core text exceeds the bounded static RX page");
+    }
+    if (data_length > PAGE_SIZE - DATA_PREFIX) {
+        fatal("native Core data exceeds the bounded static RW page");
     }
     uint64_t rx_size = (uint64_t)TEXT_OFFSET + (uint64_t)text->length;
     elf_header(image, machine);
     load_segment(image, 5, 0, IMAGE_BASE, rx_size, rx_size);
     load_segment(
-        image, 6, PAGE_SIZE, DATA_ADDRESS, 3, PAGE_SIZE
+        image,
+        6,
+        PAGE_SIZE,
+        DATA_ADDRESS,
+        (uint64_t)DATA_PREFIX + (uint64_t)data_length,
+        PAGE_SIZE
     );
     if (image->length != TEXT_OFFSET) {
         fatal("internal ELF header size differs");
@@ -8567,6 +8684,11 @@ static void elf_image(
     byte(image, 0);
     byte(image, 0);
     byte(image, UINT8_C('\n'));
+    if (data_length > 0) {
+        bytes_reserve(image, data_length);
+        memcpy(image->data + image->length, data->data, data_length);
+        image->length += data_length;
+    }
 }
 
 static void bytes_append(Bytes *destination, const Bytes *source) {
@@ -9150,17 +9272,20 @@ int main(int argc, char **argv) {
             return 1;
         }
         Bytes text;
+        Bytes data;
         bytes_init(&text);
+        bytes_init(&data);
         if (aarch64) {
-            a64_function_program(&text, &function_program);
+            a64_function_program(&text, &data, &function_program);
         } else {
-            x64_function_program(&text, &function_program);
+            x64_function_program(&text, &data, &function_program);
         }
         Bytes image;
         bytes_init(&image);
-        elf_image(&image, machine, &text);
+        elf_image(&image, machine, &text, &data);
         bool ok = write_image(output_path, &image);
         free(image.data);
+        free(data.data);
         free(text.data);
         function_program_free(&function_program);
         free(source);
@@ -9236,7 +9361,7 @@ int main(int argc, char **argv) {
 
     Bytes image;
     bytes_init(&image);
-    elf_image(&image, machine, &text);
+    elf_image(&image, machine, &text, NULL);
     if (debug) {
         elf_add_debug(
             &image,
