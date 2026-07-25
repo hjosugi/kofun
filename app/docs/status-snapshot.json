@@ -1,13 +1,13 @@
 {
   "schema": "kofun.docs-status/v1",
   "repository": "hjosugi/kofun",
-  "source_commit": "44111c08cea6951be6a7b9b4a361fd10ac6b7b8b",
+  "source_commit": "754ded4ec0de22376e3af638d2ae2abeb03b40a9",
   "verification": {
     "workflow": "CI",
     "status": "completed",
     "conclusion": "success",
-    "completed_at": "2026-07-24T23:41:12Z",
-    "url": "https://github.com/hjosugi/kofun/actions/runs/30134219354"
+    "completed_at": "2026-07-25T03:12:37Z",
+    "url": "https://github.com/hjosugi/kofun/actions/runs/30141640280"
   },
   "issues": [
     {
@@ -23,7 +23,7 @@
       "title": "Conformance: declare backend capabilities and execute numeric corpus on x86-64",
       "state": "open",
       "workflow": "ready",
-      "updated_at": "2026-07-24T12:25:34Z",
+      "updated_at": "2026-07-25T02:36:03Z",
       "url": "https://github.com/hjosugi/kofun/issues/666"
     },
     {
@@ -43,5 +43,5 @@
       "url": "https://github.com/hjosugi/kofun/issues/668"
     }
   ],
-  "reviewed_at": "2026-07-24T23:44:15.669Z"
+  "reviewed_at": "2026-07-25T03:14:55.670Z"
 }
