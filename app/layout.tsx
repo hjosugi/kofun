@@ -9,7 +9,7 @@ export const metadata: Metadata = {
     template: "%s · Kofun",
   },
   description:
-    "Kofun is an experimental Kofun-written language with a Python-free bootstrap and bounded direct x86-64/AArch64 ELF backends.",
+    "Kofun is an experimental programming language with a Kofun-written, Python-free bootstrap and bounded direct x86-64/AArch64 ELF backends.",
   keywords: [
     "Kofun",
     "programming language",

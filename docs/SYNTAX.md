@@ -2,7 +2,7 @@
 
 ## Files
 
-The standard extension is tentatively `.kofun`.
+The standard extension is `.kofun`.
 
 UTF-8 is the standard, and identifiers may use Unicode.
 
@@ -264,7 +264,12 @@ impl Show[Point] {
 
 ## Compile-time law declarations
 
-In Stage 0, `Monad` laws can be declared at the top level.
+The removed Stage 0 prototype accepted top-level `Monad` law declarations in
+the following form. The active Python-free compiler does not implement this
+syntax: `./bin/kofun check` rejects `law monad` with `E2S02`. The example is
+retained as historical and target-design material; issue
+[#551](https://github.com/hjosugi/kofun/issues/551) tracks a concrete-first
+executable replacement.
 
 ```kofun
 law monad OptionalBoolMonad {
@@ -278,9 +283,14 @@ law monad OptionalBoolMonad {
 }
 ```
 
-Entries are separated by a newline or a comma. The required entries are `pure`, `bind`, `values`, `monads`, and `functions`. The optional entries are `equal`, `limit`, and `complete`.
+In that prototype, entries were separated by a newline or comma. The required
+entries were `pure`, `bind`, `values`, `monads`, and `functions`; `equal`,
+`limit`, and `complete` were optional.
 
-A `law` declaration is not a runtime statement. It is checked by a deterministic compile-time evaluator after type checking and before code generation. A violation becomes a compile error and is not emitted to the C backend.
+The target design treats a `law` declaration as a compile-time check rather
+than a runtime statement. There is no active evaluator or C-backend gate for
+this syntax. See [Law system](LAW_SYSTEM.md) for the historical evidence and
+current boundary.
 
 ## Visibility
 

@@ -51,7 +51,7 @@ contains the complete setup, target, and verification guide.
 |---|---|
 | Bootstrap | Kofun-written Stage 1 seed, audited C11 artifact, and Python-free reproduction |
 | Self-hosting | Frozen compiler profile reaches a runnable compiler-produced compiler; the three-generation semantic fixed point is still open |
-| Frontend | Stage 2 lexer, structural parser, typed checkpoints, diagnostics, modules, ADTs, and bounded generics |
+| Frontend | Stage 2 lexer/parser plus focused typed, diagnostic, same-package module-alias/public-re-export, ADT, and bounded-generic checkpoints |
 | Native | Direct static ELF64 for bounded Int, function, `List[Int]`, and UTF-8 `Text` profiles on x86-64 and AArch64 |
 | WebAssembly | Direct wasm32 checked-Int64 arithmetic Core and browser tour |
 | Interop | Explicit C ABI profile and an audited Rust-crate shim example |

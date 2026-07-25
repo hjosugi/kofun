@@ -331,18 +331,19 @@ Principles:
 `trusted` is the candidate keyword name; the final decision will be made by
 RFC.
 
-## 12. Stage 0 implementation
+## 12. Historical Stage 0 and current boundary
 
-In the current prototype:
+The removed Stage 0 reference prototype described a tracing-GC runtime and
+experimental `let own`, `take`, use-after-take `E330`, and automatic-disposal
+behavior. Those statements are historical; they are not capabilities of the
+current Python-free compiler.
 
-- ordinary heap values will use the Kofun runtime's tracing GC
-- the type checker and runtime binding track `let own`
-- the `take` statement and `take` parameters are implemented
-- use-after-take is detected as E330
-- owned values with a `close()` are automatically disposed at end of scope
-- the narrow Stage 2 ownership slice reports E007 when a `Text` element is
-  returned by value from an explicitly typed borrowed `List[Text]`
-- borrow lifetimes, alias graphs, and async capture are not implemented
+Current executable compiler evidence is narrower: the bounded Stage 2
+ownership slice reports `E007` when a `Text` element is returned by value from
+an explicitly typed borrowed `List[Text]`, while the paired `Int` Copy case
+succeeds. It does not implement a general tracing collector, ownership
+inference, `let own`/`take` checking, automatic disposal, borrow lifetimes,
+alias graphs, or async capture.
 
-Stage 0 exists to validate the syntax and diagnostic UX. It is not a production
-memory safety proof.
+The current slice validates one diagnostic boundary. It is not a production
+memory-safety proof.
