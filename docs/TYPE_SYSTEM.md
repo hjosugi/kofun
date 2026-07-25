@@ -74,16 +74,28 @@ For public APIs, annotations are recommended for stability and documentation.
 
 Planned rules:
 
-- widening conversions are implicit in limited cases
-- narrowing conversions are explicit
-- `Int + Float -> Float`
-- `Int / Int -> Float`
-- `Int // Int -> Int`
+- there are no implicit numeric conversions in either direction; a mixed-type
+  arithmetic expression is a type error rather than a promotion
+- one operator set is resolved per operand type, so there is no separate `+.`
+  family for fractional values
+- once a fractional type exists, mixing it with `Int` in one expression is a
+  type error — `Int + Float` does not promote
+- `Int // Int -> Int`, taking the floor of the quotient
 - the overflow mode is not changed implicitly between debug and release; it is stated explicitly in the build profile
+
+`Int / Int` is a compile error today: `/` is not defined on `Int`, because with
+no promotion it cannot produce a fractional value from two `Int` operands. It is
+left without a meaning rather than given the truncating one, so it can be
+defined later without silently changing any expression that compiles now.
+
+No fractional type is implemented yet. `Float` and `Decimal` appear in this
+document as design, not as types the compiler accepts — `let x: Float = 0.5`
+is rejected. Which fractional type `/` eventually takes is #545's question.
 
 ```kofun
 let exact = 7 // 2 # 3
-let ratio = 7 / 2  # 3.5
+let floor = -7 // 2 # -4, the floor rather than the truncation
+# let ratio = 7 / 2 # compile error: `/` is not defined on Int
 ```
 
 ## Generics

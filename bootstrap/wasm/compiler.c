@@ -55,7 +55,6 @@ typedef enum {
     NODE_ADD,
     NODE_SUBTRACT,
     NODE_MULTIPLY,
-    NODE_DIVIDE,
     NODE_FLOOR_DIVIDE,
     NODE_FLOOR_MODULO
 } NodeKind;
@@ -509,12 +508,19 @@ static int parse_term(Parser *parser) {
         NodeKind kind;
         if (consume(parser, TOKEN_STAR)) {
             kind = NODE_MULTIPLY;
-        } else if (consume(parser, TOKEN_SLASH)) {
-            kind = NODE_DIVIDE;
         } else if (consume(parser, TOKEN_FLOOR_DIV)) {
             kind = NODE_FLOOR_DIVIDE;
         } else if (consume(parser, TOKEN_PERCENT)) {
             kind = NODE_FLOOR_MODULO;
+        } else if (parser->token.kind == TOKEN_SLASH) {
+            /* Kofun has no implicit numeric promotion, so `/` cannot produce a
+             * fractional value from two Int operands and has nothing to mean on
+             * Int. The integer quotient is `//`, which floors. */
+            parse_error(
+                parser,
+                "`/` is not defined on Int; use `//` for the integer quotient"
+            );
+            break;
         } else {
             break;
         }
@@ -677,11 +683,9 @@ enum {
     ERROR_SUBTRACT_OVERFLOW = 2,
     ERROR_MULTIPLY_OVERFLOW = 3,
     ERROR_NEGATE_OVERFLOW = 4,
-    ERROR_DIVIDE_ZERO = 5,
-    ERROR_DIVIDE_OVERFLOW = 6,
-    ERROR_FLOOR_DIVIDE_ZERO = 7,
-    ERROR_FLOOR_DIVIDE_OVERFLOW = 8,
-    ERROR_MODULO_ZERO = 9
+    ERROR_FLOOR_DIVIDE_ZERO = 5,
+    ERROR_FLOOR_DIVIDE_OVERFLOW = 6,
+    ERROR_MODULO_ZERO = 7
 };
 
 static uint32_t node_local(const Parser *parser, int node) {
@@ -844,14 +848,6 @@ static void emit_expression(const Parser *parser, int index, Buffer *body) {
         panic_with(body, ERROR_MULTIPLY_OVERFLOW);
         byte(body, OP_END);
         byte(body, OP_END);
-        return;
-    }
-    if (node->kind == NODE_DIVIDE) {
-        check_division_pair(
-            body, left, right, ERROR_DIVIDE_ZERO, ERROR_DIVIDE_OVERFLOW
-        );
-        byte(body, OP_I64_DIV_S);
-        instruction_index(body, OP_LOCAL_SET, target);
         return;
     }
     if (node->kind == NODE_FLOOR_DIVIDE) {

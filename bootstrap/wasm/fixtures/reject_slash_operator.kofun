@@ -1,0 +1,5 @@
+# `/` is not defined on Int (#687). wasm32 must refuse it and write no module,
+# matching the two native targets.
+fn main() {
+    print(7 / 2)
+}

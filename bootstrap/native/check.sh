@@ -1383,34 +1383,41 @@ fi
 
 # Integer division. `//` and `%` are compared against the C11 backend by
 # tests/conformance/functions/division_floor_signs.kofun, so what is gated here
-# is what that corpus cannot express: the truncating `/`, which the C11 Stage 1
-# emitter does not accept, and each runtime zero-divisor operator. The divisor
-# in every zero fixture is computed rather than written, so a check that only
-# looked at literals would fail these.
-DIVIDE_SOURCE="$NATIVE/fixtures/function_truncating_divide.kofun"
-"$WORK/kofun-native-function-text" \
-    "$DIVIDE_SOURCE" x86_64-linux "$WORK/function-truncating-divide.elf"
-chmod +x "$WORK/function-truncating-divide.elf"
-"$WORK/function-truncating-divide.elf" \
-    >"$WORK/function-truncating-divide.stdout" \
-    2>"$WORK/function-truncating-divide.stderr"
-printf '%s\n' 3 -3 -3 3 5 -9 \
-    >"$WORK/function-truncating-divide.expected"
-cmp \
-    "$WORK/function-truncating-divide.expected" \
-    "$WORK/function-truncating-divide.stdout"
-test ! -s "$WORK/function-truncating-divide.stderr"
+# is what that corpus cannot express: each runtime zero-divisor operator, and
+# the refusal of `/`. The divisor in every zero fixture is computed rather than
+# written, so a check that only looked at literals would fail these.
+#
+# `/` is not defined on Int (#687): with no implicit numeric promotion it
+# cannot produce a fractional value from two Ints, and truncating it while `//`
+# floors would make two near-identical operators disagree on negative operands.
+# Both targets must refuse it with the same diagnostic, and neither may emit an
+# artifact — a backend that quietly accepted `/` again would otherwise only be
+# caught by reading the disassembly.
+SLASH_SOURCE="$NATIVE/fixtures/reject_slash_operator.kofun"
+printf '%s\n' \
+    'kofun native: unsupported function Core at byte 282: native Core `/` is not defined on Int; use `//` for the integer quotient' \
+    >"$WORK/reject-slash.expected"
+for slash_target in x86_64-linux aarch64-linux; do
+    set +e
+    "$WORK/kofun-native-function-text" \
+        "$SLASH_SOURCE" "$slash_target" "$WORK/reject-slash-$slash_target.elf" \
+        >"$WORK/reject-slash-$slash_target.stdout" \
+        2>"$WORK/reject-slash-$slash_target.stderr"
+    slash_status=$?
+    set -e
+    test "$slash_status" -ne 0
+    test ! -s "$WORK/reject-slash-$slash_target.stdout"
+    cmp "$WORK/reject-slash.expected" "$WORK/reject-slash-$slash_target.stderr"
+    test ! -s "$WORK/reject-slash-$slash_target.elf"
+done
 
 printf 'error[R010]: operator `//` failed: division by zero\n' \
     >"$WORK/function_floor_divide_zero.expected"
 printf 'error[R010]: operator `%%` failed: division by zero\n' \
     >"$WORK/function_floor_modulo_zero.expected"
-printf 'error[R010]: operator `/` failed: division by zero\n' \
-    >"$WORK/function_truncating_divide_zero.expected"
 for divide_case in \
     function_floor_divide_zero \
-    function_floor_modulo_zero \
-    function_truncating_divide_zero
+    function_floor_modulo_zero
 do
     divide_source="$NATIVE/fixtures/$divide_case.kofun"
     "$WORK/kofun-native-function-text" \
@@ -1429,15 +1436,12 @@ done
 
 # The function profile can construct INT64_MIN from accepted small literals,
 # so the non-representable quotient guard is executable evidence rather than
-# an unreachable code-path claim. Both quotient operators must reject
-# INT64_MIN / -1; modulo by -1 remains exactly zero.
+# an unreachable code-path claim. The quotient operator must reject
+# INT64_MIN // -1; modulo by -1 remains exactly zero.
 printf 'error[R010]: integer overflow in operator `//`\n' \
     >"$WORK/function_floor_divide_overflow.expected"
-printf 'error[R010]: integer overflow in operator `/`\n' \
-    >"$WORK/function_truncating_divide_overflow.expected"
 for divide_case in \
-    function_floor_divide_overflow \
-    function_truncating_divide_overflow
+    function_floor_divide_overflow
 do
     divide_source="$NATIVE/fixtures/$divide_case.kofun"
     "$WORK/kofun-native-function-text" \
@@ -1471,12 +1475,9 @@ test ! -s "$WORK/function-floor-modulo-min.stderr"
 # silently yields zero there. Both guards therefore have to be emitted, and the
 # images are built twice and audited whether or not the emulator is present.
 for divide_case in \
-    function_truncating_divide \
     function_floor_divide_zero \
     function_floor_modulo_zero \
-    function_truncating_divide_zero \
     function_floor_divide_overflow \
-    function_truncating_divide_overflow \
     function_floor_modulo_min
 do
     divide_source="$NATIVE/fixtures/$divide_case.kofun"
@@ -1494,17 +1495,9 @@ do
 done
 
 if test -n "$AARCH64_RUNNER"; then
-    "$AARCH64_RUNNER" "$WORK/function_truncating_divide-aarch64.elf" \
-        >"$WORK/function-truncating-divide-aarch64.stdout" \
-        2>"$WORK/function-truncating-divide-aarch64.stderr"
-    cmp \
-        "$WORK/function-truncating-divide.expected" \
-        "$WORK/function-truncating-divide-aarch64.stdout"
-    test ! -s "$WORK/function-truncating-divide-aarch64.stderr"
     for divide_case in \
         function_floor_divide_zero \
-        function_floor_modulo_zero \
-        function_truncating_divide_zero
+        function_floor_modulo_zero
     do
         set +e
         "$AARCH64_RUNNER" "$WORK/$divide_case-aarch64.elf" \
@@ -1519,8 +1512,7 @@ if test -n "$AARCH64_RUNNER"; then
             "$WORK/$divide_case-aarch64.stderr"
     done
     for divide_case in \
-        function_floor_divide_overflow \
-        function_truncating_divide_overflow
+        function_floor_divide_overflow
     do
         set +e
         "$AARCH64_RUNNER" "$WORK/$divide_case-aarch64.elf" \
@@ -1621,8 +1613,9 @@ else
 fi
 
 # All arithmetic failures share one write/exit runtime and keep their exact
-# messages in the RW page. This fixture references all nine trap kinds at once;
-# both PT_LOAD segments must remain inside their fixed one-page budgets.
+# messages in the RW page. This fixture references all seven trap kinds at
+# once; both PT_LOAD segments must remain inside their fixed one-page budgets.
+# There is no `/` trap pair: `/` is not defined on Int (#687).
 TRAP_PRESSURE_SOURCE="$NATIVE/fixtures/function_all_traps_pressure.kofun"
 for trap_target in x86_64-linux aarch64-linux; do
     trap_image="$WORK/function-all-traps-$trap_target.elf"
@@ -1670,7 +1663,7 @@ for trap_target in x86_64-linux aarch64-linux; do
     test "$((trap_rw_size))" -le 4096
 done
 
-printf '42\n42\n42\n42\n42\n42\n42\n' \
+printf '42\n42\n42\n42\n42\n42\n' \
     >"$WORK/function-all-traps.expected"
 chmod +x "$WORK/function-all-traps-x86_64-linux.elf"
 "$WORK/function-all-traps-x86_64-linux.elf" \
