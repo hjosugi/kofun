@@ -2622,10 +2622,6 @@ static char *parse_program(const char *source) {
             }
             free(local_error);
             bool explicit_visibility = declaration_start != function_start;
-            char *return_type = function_return_type_at(
-                source,
-                function_start
-            );
             int64_t modifier_start = explicit_visibility ? declaration_start : -1;
             int64_t modifier_end = explicit_visibility ?
                 token_end(source, declaration_start) : -1;
@@ -2646,15 +2642,21 @@ static char *parse_program(const char *source) {
                 end,
                 functions
             );
-            stage2_declaration_observe(
-                "function|%s|%" PRId64 "|%" PRId64 "|%s\n",
-                name,
-                function_start,
-                end,
-                return_type
-            );
+            if (stage2_active_declaration_observer != NULL) {
+                char *return_type = function_return_type_at(
+                    source,
+                    function_start
+                );
+                stage2_declaration_observe(
+                    "function|%s|%" PRId64 "|%" PRId64 "|%s\n",
+                    name,
+                    function_start,
+                    end,
+                    return_type
+                );
+                free(return_type);
+            }
             stage2_parse_prefix_observe(&ir);
-            free(return_type);
             free(name);
             ++functions;
             cursor = skip_trivia(source, end);
