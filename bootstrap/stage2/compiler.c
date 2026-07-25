@@ -2242,6 +2242,10 @@ static bool reserved_type_name(const char *name) {
 }
 
 static char *function_return_type(const char *source, const char *wanted);
+static char *function_return_type_at(
+    const char *source,
+    int64_t function_start
+);
 
 static char *parse_program(const char *source) {
     Buffer ir;
@@ -2618,7 +2622,10 @@ static char *parse_program(const char *source) {
             }
             free(local_error);
             bool explicit_visibility = declaration_start != function_start;
-            char *return_type = function_return_type(source, name);
+            char *return_type = function_return_type_at(
+                source,
+                function_start
+            );
             int64_t modifier_start = explicit_visibility ? declaration_start : -1;
             int64_t modifier_end = explicit_visibility ?
                 token_end(source, declaration_start) : -1;
@@ -5447,6 +5454,31 @@ static const char *builtin_return_type(const char *name) {
     return NULL;
 }
 
+static char *function_return_type_at(
+    const char *source,
+    int64_t function_start
+) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t parameters = parameter_open(source, function_start);
+    int64_t parameters_end;
+    int64_t after;
+    if (parameters < 0) return owned_text("");
+    parameters_end = balanced_end(source, parameters, "(", ")");
+    if (parameters_end < 0) return owned_text("");
+    after = skip_trivia(source, parameters_end);
+    if (after < length && token_equal(source, after, "->")) {
+        int64_t type_cursor = skip_trivia(
+            source,
+            token_end(source, after)
+        );
+        if (type_cursor < length) {
+            return token_copy(source, type_cursor);
+        }
+        return owned_text("");
+    }
+    return owned_text("Void");
+}
+
 /* Declared result type of a user function: the token after `->`, `Void`
  * when there is no arrow, empty when the function is not declared. */
 static char *function_return_type(const char *source, const char *wanted) {
@@ -5457,27 +5489,7 @@ static char *function_return_type(const char *source, const char *wanted) {
         bool match = strcmp(name, wanted) == 0;
         free(name);
         if (match) {
-            int64_t parameters = parameter_open(source, cursor);
-            if (parameters < 0) return owned_text("");
-            int64_t parameters_end = balanced_end(
-                source,
-                parameters,
-                "(",
-                ")"
-            );
-            if (parameters_end < 0) return owned_text("");
-            int64_t after = skip_trivia(source, parameters_end);
-            if (after < length && token_equal(source, after, "->")) {
-                int64_t type_cursor = skip_trivia(
-                    source,
-                    token_end(source, after)
-                );
-                if (type_cursor < length) {
-                    return token_copy(source, type_cursor);
-                }
-                return owned_text("");
-            }
-            return owned_text("Void");
+            return function_return_type_at(source, cursor);
         }
         cursor = next_function_start(source, function_end(source, cursor));
     }
