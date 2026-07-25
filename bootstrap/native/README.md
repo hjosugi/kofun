@@ -215,13 +215,23 @@ overflow flag, and the remainder is always zero — which is why
 corrects: when the remainder is non-zero and its sign differs from the
 divisor's, `//` is one too high and `%` is one divisor short.
 
-One remaining limit is worth stating plainly. A zero divisor reports
-`kofun: division by zero` rather than the canonical `error[R010]` line the C11
-backend writes, so the native adapters still do not claim the numeric
-conformance corpus. Full-width literals also remain separate work, but the gate
-constructs `INT64_MIN` exactly from accepted small factors and executes all
-three `-1` boundaries: `//` and `/` reject the non-representable quotient with
-status 1, while `%` prints `0`.
+The function profile carries full signed Int64 literals, in the narrowest
+encoding that holds each value, so a literal that fit the old 65535 range emits
+exactly the bytes it did before and only wider ones grow. `INT64_MIN` is
+written the way the numeric corpus writes it, `-9223372036854775807 - 1`,
+because a literal is unsigned before the unary minus applies. The gate executes
+all three `-1` boundaries directly from that literal: `//` and `/` reject the
+non-representable quotient with status 1, while `%` prints `0`.
+
+One limit is left. A runtime arithmetic failure reports
+`kofun: integer overflow` or `kofun: division by zero` rather than the
+canonical per-operator `error[R010]` line the C11 and wasm32 backends write, so
+the native adapters still do not claim the numeric conformance corpus. That is
+the only remaining difference on those nine cases — every value, exit status,
+and stdout byte already agrees — and it is blocked on where the message bytes
+live, not on the diagnostics themselves: they currently sit in the one-page RX
+segment, which `stdlib/set/tests/projection.kofun` already fills to within 23
+bytes.
 
 ## Compiler-shaped Text function bridge
 
