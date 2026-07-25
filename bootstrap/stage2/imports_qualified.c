@@ -43,13 +43,17 @@ typedef struct {
     size_t target_index;
     uint8_t form_tag;
     bool graph_duplicate;
+    bool has_alias;
     char *path;
     char qualifier[IDENTIFIER_LIMIT + 1u];
     ComponentSpan *components;
     size_t component_count;
     size_t start;
     size_t end;
+    size_t alias_start;
+    size_t alias_end;
     uint8_t binding_id[32];
+    uint8_t alias_binding_id[32];
 } ImportBinding;
 
 typedef struct {
@@ -345,6 +349,7 @@ static bool parse_source_path(
     ImportResolver *resolver,
     Module *module,
     size_t *cursor,
+    const char *same_line_terminator,
     char **path_output,
     ComponentSpan **components_output,
     size_t *component_count_output,
@@ -376,7 +381,9 @@ static bool parse_source_path(
         current += 1u;
     }
     if (component_count == 0u || expect_identifier ||
-        (current < module->token_count && !module->tokens[current].line_break_before)) {
+        (current < module->token_count && !module->tokens[current].line_break_before &&
+         (same_line_terminator == NULL ||
+          !token_equals(module, &module->tokens[current], same_line_terminator)))) {
         size_t start = *cursor < module->token_count ? module->tokens[*cursor].start : module->source_length;
         size_t end = current < module->token_count ? module->tokens[current].end : module->source_length;
         set_error(program, "E2S59", "malformed module path in `%s` at bytes %zu..%zu",
@@ -414,7 +421,8 @@ static bool parse_and_check_header(ImportResolver *resolver, size_t module_index
         *cursor = 0u;
         return true;
     }
-    if (!parse_source_path(resolver, module, &current, &path, &components, &count, &end)) return false;
+    if (!parse_source_path(resolver, module, &current, NULL,
+            &path, &components, &count, &end)) return false;
     (void)count;
     (void)end;
     if (strcmp(path, resolver->modules[module_index].declared_path) != 0) {
@@ -449,16 +457,75 @@ static bool parse_import(ImportResolver *resolver, size_t module_index, size_t *
     binding->importer_index = module_index;
     binding->form_tag = IMPORT_FORM_QUALIFIED;
     binding->start = module->tokens[*cursor].start;
-    if (!parse_source_path(resolver, module, &current, &binding->path,
+    if (!parse_source_path(resolver, module, &current, "as", &binding->path,
             &binding->components, &binding->component_count, &end)) return false;
-    binding->end = end;
-    qualifier_length = binding->components[binding->component_count - 1u].end -
-        binding->components[binding->component_count - 1u].start;
-    memcpy(binding->qualifier,
-        module->source + binding->components[binding->component_count - 1u].start,
-        qualifier_length);
-    binding->qualifier[qualifier_length] = '\0';
     resolver->import_count += 1u;
+    if (current < module->token_count && !module->tokens[current].line_break_before) {
+        Token *alias;
+        static const char *hard_keywords[] = {
+            "fn", "let", "mut", "own", "read", "edit", "take", "return",
+            "if", "else", "for", "in", "while", "break", "continue", "match",
+            "true", "false", "null", "law", "monad", "meta", "type"
+        };
+        size_t keyword_index;
+        if (!token_equals(module, &module->tokens[current], "as")) {
+            set_error(program, "E2S59",
+                "malformed module alias in `%s` at bytes %zu..%zu; hint: use `import a.b as name`",
+                module->logical_path, module->tokens[current].start, module->tokens[current].end);
+            return false;
+        }
+        current += 1u;
+        if (current >= module->token_count || module->tokens[current].line_break_before) {
+            set_error(program, "E2S59",
+                "module alias is missing after `as` in `%s` at bytes %zu..%zu; hint: add one identifier",
+                module->logical_path, module->tokens[current - 1u].start,
+                module->tokens[current - 1u].end);
+            return false;
+        }
+        alias = &module->tokens[current];
+        if (alias->kind != TOKEN_IDENTIFIER ||
+            token_equals(module, alias, "_")) {
+            set_error(program, "E2S59",
+                "module alias must be one identifier in `%s` at bytes %zu..%zu; hint: use `import a.b as name`",
+                module->logical_path, alias->start, alias->end);
+            return false;
+        }
+        for (keyword_index = 0u;
+            keyword_index < sizeof(hard_keywords) / sizeof(hard_keywords[0]);
+            keyword_index += 1u) {
+            if (token_equals(module, alias, hard_keywords[keyword_index])) break;
+        }
+        if (keyword_index != sizeof(hard_keywords) / sizeof(hard_keywords[0]) ||
+            token_equals(module, alias, "as")) {
+            set_error(program, "E2S59",
+                "module alias `%.*s` is a keyword in `%s` at bytes %zu..%zu; hint: choose a non-keyword identifier",
+                (int)(alias->end - alias->start), module->source + alias->start,
+                module->logical_path, alias->start, alias->end);
+            return false;
+        }
+        qualifier_length = alias->end - alias->start;
+        memcpy(binding->qualifier, module->source + alias->start, qualifier_length);
+        binding->qualifier[qualifier_length] = '\0';
+        binding->has_alias = true;
+        binding->alias_start = alias->start;
+        binding->alias_end = alias->end;
+        binding->end = alias->end;
+        current += 1u;
+        if (current < module->token_count && !module->tokens[current].line_break_before) {
+            set_error(program, "E2S59",
+                "module alias must end after one identifier in `%s` at bytes %zu..%zu; hint: use `import a.b as name`",
+                module->logical_path, module->tokens[current].start, module->tokens[current].end);
+            return false;
+        }
+    } else {
+        binding->end = end;
+        qualifier_length = binding->components[binding->component_count - 1u].end -
+            binding->components[binding->component_count - 1u].start;
+        memcpy(binding->qualifier,
+            module->source + binding->components[binding->component_count - 1u].start,
+            qualifier_length);
+    }
+    binding->qualifier[qualifier_length] = '\0';
     import_module->import_count += 1u;
     *cursor = current;
     return true;
@@ -495,7 +562,7 @@ static bool collect_module_with_imports(ImportResolver *resolver, size_t module_
             if (token_equals(module, &module->tokens[cursor], "import") ||
                 token_equals(module, &module->tokens[cursor], "from")) {
                 set_error(program, "E2S59",
-                    "modified import/re-export syntax is outside the ordinary qualified-import slice in `%s` at bytes %zu..%zu; use unmodified `import a.b`",
+                    "modified import/re-export syntax is outside the ordinary qualified-import slice in `%s` at bytes %zu..%zu; hint: remove the visibility modifier; ordinary aliases remain local",
                     module->logical_path, declaration_start, module->tokens[cursor].end);
                 return false;
             }
@@ -551,6 +618,53 @@ static void compute_import_binding_id(
     kofun_sha256_finish(&context, digest);
 }
 
+static void store_u64be(uint8_t output[8], uint64_t value) {
+    output[0] = (uint8_t)(value >> 56u);
+    output[1] = (uint8_t)(value >> 48u);
+    output[2] = (uint8_t)(value >> 40u);
+    output[3] = (uint8_t)(value >> 32u);
+    output[4] = (uint8_t)(value >> 24u);
+    output[5] = (uint8_t)(value >> 16u);
+    output[6] = (uint8_t)(value >> 8u);
+    output[7] = (uint8_t)value;
+}
+
+static void compute_alias_binding_id(
+    const Program *program,
+    const ImportBinding *binding,
+    uint8_t digest[32]
+) {
+    static const char domain[] = "kofun.id.alias-binding/v1";
+    const Module *importer = &program->modules[binding->importer_index];
+    const Module *target = &program->modules[binding->target_index];
+    size_t domain_length = strlen(domain);
+    size_t qualifier_length = strlen(binding->qualifier);
+    size_t payload_length = 36u + 32u + 32u + 8u + 8u + qualifier_length + 32u;
+    uint8_t prefix[6] = { 'K', 'O', 'F', 'U', 'N', 0 };
+    uint8_t u16[2];
+    uint8_t u32[4];
+    uint8_t alias_start[8];
+    uint8_t alias_end[8];
+    KofunSha256 context;
+    store_u16be(u16, (uint16_t)domain_length);
+    store_u32be(u32, (uint32_t)payload_length);
+    store_u64be(alias_start, (uint64_t)binding->alias_start);
+    store_u64be(alias_end, (uint64_t)binding->alias_end);
+    kofun_sha256_init(&context);
+    kofun_sha256_update(&context, prefix, sizeof(prefix));
+    kofun_sha256_update(&context, u16, sizeof(u16));
+    kofun_sha256_update(&context, (const uint8_t *)domain, domain_length);
+    kofun_sha256_update(&context, u32, sizeof(u32));
+    hash_field(&context, UINT16_C(0x8001), importer->module_id, 32u);
+    hash_field(&context, UINT16_C(0x8002), importer->file_id, 32u);
+    hash_field(&context, UINT16_C(0x8003), alias_start, sizeof(alias_start));
+    hash_field(&context, UINT16_C(0x8004), alias_end, sizeof(alias_end));
+    hash_field(&context, UINT16_C(0x8005),
+        (const uint8_t *)binding->qualifier, qualifier_length);
+    hash_field(&context, UINT16_C(0x8006), target->module_id, 32u);
+    kofun_sha256_finish(&context, digest);
+}
+
 static bool resolve_imports(ImportResolver *resolver) {
     Program *program = &resolver->program;
     size_t index;
@@ -593,7 +707,7 @@ static bool resolve_imports(ImportResolver *resolver) {
                 binding->form_tag == IMPORT_FORM_QUALIFIED &&
                 strcmp(other->qualifier, binding->qualifier) == 0) {
                 set_error(program, "E2S63",
-                    "import qualifier `%s` collides between `%s` bytes %zu..%zu and `%s` bytes %zu..%zu in `%s`; aliases are not supported in this slice",
+                    "module qualifier `%s` collides between `%s` bytes %zu..%zu and `%s` bytes %zu..%zu in `%s`; hint: choose distinct local qualifiers",
                     binding->qualifier, other->path, other->start, other->end,
                     binding->path, binding->start, binding->end,
                     program->modules[binding->importer_index].logical_path);
@@ -601,6 +715,9 @@ static bool resolve_imports(ImportResolver *resolver) {
             }
         }
         compute_import_binding_id(program, binding, binding->binding_id);
+        if (binding->has_alias) {
+            compute_alias_binding_id(program, binding, binding->alias_binding_id);
+        }
     }
     return true;
 }
@@ -1236,6 +1353,12 @@ static bool emit_qualified_hir(ImportResolver *resolver, const char *path) {
             fprintf(output, "%zu..%zu", binding->components[component].start,
                 binding->components[component].end);
         }
+        if (binding->has_alias) {
+            char alias_binding_hex[65];
+            bytes_to_hex(binding->alias_binding_id, 32u, alias_binding_hex);
+            fprintf(output, "|alias-binding=%s|alias-span=%zu..%zu|reexport=false",
+                alias_binding_hex, binding->alias_start, binding->alias_end);
+        }
         fputc('\n', output);
     }
     for (index = 0u; index < target_count; index += 1u) {
@@ -1267,8 +1390,17 @@ static bool emit_qualified_hir(ImportResolver *resolver, const char *path) {
         bytes_to_hex(target->symbol_id, 32u, symbol_hex);
         bytes_to_hex(target->namespace_id, 32u, namespace_hex);
         fprintf(output,
-            "qualified-call|caller=%s|binding=%s|target-module=%s|target-symbol=%s|target-namespace=%s|name=%s|qualifier-span=%zu..%zu|member-span=%zu..%zu|expression-span=%zu..%zu|access=%s|reason=%s|proof=%u|signature=fn(%zu:Int)->Int\n",
-            caller_hex, binding_hex, module_hex, symbol_hex, namespace_hex, target->name,
+            "qualified-call|caller=%s|binding=%s",
+            caller_hex, binding_hex);
+        if (resolver->imports[use->binding_index].has_alias) {
+            char alias_binding_hex[65];
+            bytes_to_hex(resolver->imports[use->binding_index].alias_binding_id,
+                32u, alias_binding_hex);
+            fprintf(output, "|alias-binding=%s", alias_binding_hex);
+        }
+        fprintf(output,
+            "|target-module=%s|target-symbol=%s|target-namespace=%s|name=%s|qualifier-span=%zu..%zu|member-span=%zu..%zu|expression-span=%zu..%zu|access=%s|reason=%s|proof=%u|signature=fn(%zu:Int)->Int\n",
+            module_hex, symbol_hex, namespace_hex, target->name,
             use->qualifier_start, use->qualifier_end, use->member_start, use->member_end,
             use->expression_start, use->expression_end,
             kofun_access_kind_name(use->access.kind), kofun_access_reason_name(use->access.reason),

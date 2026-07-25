@@ -1,0 +1,1 @@
+error[E2S59]: malformed module path in `app/main.kofun` at bytes 23..24

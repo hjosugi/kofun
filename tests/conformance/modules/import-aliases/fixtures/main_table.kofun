@@ -1,0 +1,6 @@
+module app.main
+import data.formats.delimited.reader as table
+
+fn main() -> Int {
+    return table.as(42)
+}

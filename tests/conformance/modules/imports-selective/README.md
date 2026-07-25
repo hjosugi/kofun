@@ -6,7 +6,8 @@ and records a local `ImportBindingId` without creating a declaration identity.
 
 The adapter inventory and line-oriented HIR are focused conformance artifacts;
 neither is a source manifest, KIF, or an authoritative typed sidecar. The slice
-supports local-package functions and flat nominal types only. Aliases, wildcard
+supports local-package functions and flat nominal types only. Qualified module
+aliases may coexist with selective bindings, but per-name aliases, wildcard
 imports, re-exports, external packages, and transitive imports are rejected.
 
 Run it with:

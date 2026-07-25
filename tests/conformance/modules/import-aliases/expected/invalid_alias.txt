@@ -1,0 +1,1 @@
+error[E2S59]: module alias must be one identifier in `app/main.kofun` at bytes 56..57; hint: use `import a.b as name`

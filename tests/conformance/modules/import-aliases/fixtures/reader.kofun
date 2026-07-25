@@ -1,0 +1,5 @@
+module data.formats.delimited.reader
+
+internal fn as(value: Int) -> Int {
+    return value
+}

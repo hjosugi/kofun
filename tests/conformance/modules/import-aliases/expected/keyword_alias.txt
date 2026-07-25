@@ -1,0 +1,1 @@
+error[E2S59]: module alias `return` is a keyword in `app/main.kofun` at bytes 56..62; hint: choose a non-keyword identifier

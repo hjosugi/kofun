@@ -1,0 +1,1 @@
+error[E2S59]: module alias is missing after `as` in `app/main.kofun` at bytes 53..55; hint: add one identifier

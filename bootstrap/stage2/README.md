@@ -215,7 +215,10 @@ PackageId|ModuleId|FileId|declared-module-path|logical-path|host-source
 The declared path is semantic inventory data, not a path inferred from the
 filesystem. An optional source `module` header must match it. A leading
 `import a.b` resolves exactly one inventoried `ModuleId` in the current
-`PackageId` and introduces only the final-component qualifier `b`; it never
+`PackageId` and introduces only the final-component qualifier `b`. The
+contextual form `import a.b as local` instead introduces only `local`; the
+final component is not additionally bound. The alias is one non-keyword
+identifier and remains local to the importing file/module. Neither form
 introduces an unqualified member, transitive binding, export, or re-export.
 In particular, an ordinary import is a private local binding under the
 explicit non-widening re-export contract. `pub import` and `pub from` are
@@ -231,9 +234,12 @@ The helper emits `kofun-imports-qualified/v1`. Import bindings use the
 production `kofun.id.import-binding/v1` framed SHA-256 domain over importer
 `ModuleId`/`FileId`, the module `NamespaceId`, local qualifier, target
 `ModuleId`, and stable numeric tag 1 for the `qualified-module-v1` form.
-Qualified-call HIR retains the
-binding, target `ModuleId`, target `SymbolId`, component/use spans, validated
-signature, and the identity-only access result/proof from
+An aliased import additionally emits `AliasBindingId` under
+`kofun.id.alias-binding/v1`, framed over the importing `ModuleId`/`FileId`,
+alias identifier span, local spelling, and unchanged target `ModuleId`.
+Qualified-call HIR retains the import and alias bindings, target `ModuleId`,
+target `SymbolId`, component/use spans, validated signature, and the
+identity-only access result/proof from
 `visibility_access.c`. Private declarations in another file are denied;
 `internal` and `pub` declarations are usable inside the package.
 The executable qualified-call checkpoint accepts only `Int` parameter and
@@ -261,15 +267,18 @@ binds the accessible declaration in every matching semantic namespace, keeps
 the target `SymbolId`, and derives a distinct selective `ImportBindingId` using
 stable form tag 2. The resolver retains every keyword, path component, name,
 comma, declaration, call, and type-reference span in its deterministic test
-projection. Qualified and selective bindings may coexist; neither introduces
-unlisted, transitive, or re-exported names. Duplicate requests, missing or
-inaccessible names, local/import collisions, wrong-namespace uses, aliases,
-wildcards, malformed lists, and imports after declarations fail before the HIR
-or optional reference C output is committed. The two outputs are installed as
-one rollback-capable transaction. Run the gate with `make imports-selective`.
+projection. Qualified module aliases and selective bindings may coexist;
+neither introduces unlisted, transitive, or re-exported names. Per-name
+aliases remain unsupported. Duplicate requests, missing or inaccessible
+names, local/import collisions, wrong-namespace uses, per-name aliases,
+wildcards, malformed lists, and imports after declarations fail before the
+HIR or optional reference C output is committed. The two outputs are
+installed as one rollback-capable transaction. Run the gates with
+`make import-aliases` and `make imports-selective`.
 
-Focused diagnostics are `E2S59` malformed/order/path, `E2S60` missing module,
-`E2S61` self import, `E2S62` duplicate import, `E2S63` qualifier collision,
+Focused diagnostics are `E2S59` malformed/order/path/alias, `E2S60` missing
+module, `E2S61` self import, `E2S62` duplicate target/import, `E2S63` module
+qualifier collision,
 `E2S64` canonical cycle, `E2S65` qualified lookup/signature/arity/lowering,
 `E2S66` access denial, `E2S67` bounded-resource exhaustion, and `E2S68`
 allocation/invariant/output failure. Semantic failure removes both requested

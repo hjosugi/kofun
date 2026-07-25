@@ -1,4 +1,4 @@
-.PHONY: help compiler test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 patterns adt generics adt-exhaustiveness module-symbols imports-qualified imports-selective kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp tree-sitter roadmap syntax repository-check verify clean
+.PHONY: help compiler test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 patterns adt generics adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp tree-sitter roadmap syntax repository-check verify clean
 
 KOFUN := ./bin/kofun
 
@@ -23,6 +23,7 @@ help:
 	  'make adt-exhaustiveness Verify resolved flat-ADT match diagnostics' \
 	  'make module-symbols   Verify stable top-level declaration collection' \
 	  'make imports-qualified Verify qualified same-package module imports' \
+	  'make import-aliases   Verify local aliases for qualified module imports' \
 	  'make imports-selective Verify selective same-package name imports' \
 	  'make kif-v1           Verify authoritative compiled interfaces' \
 	  'make native           Build and execute the Kofun-emitted ELF64 fixture' \
@@ -128,6 +129,9 @@ module-symbols:
 imports-qualified:
 	sh tests/conformance/modules/imports-qualified/run.sh
 
+import-aliases:
+	sh tests/conformance/modules/import-aliases/run.sh
+
 imports-selective:
 	sh tests/conformance/modules/imports-selective/run.sh
 
@@ -224,7 +228,7 @@ repository-check:
 	@grep -q '"extensions": \[".kofun"\]' editor/vscode/package.json
 	@printf '%s\n' 'PASS: .kofun sources only; no Python implementation'
 
-verify: test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 patterns adt generics adt-exhaustiveness module-symbols imports-qualified imports-selective kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp tree-sitter roadmap syntax repository-check
+verify: test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 patterns adt generics adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective kif-v1 native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec lsp tree-sitter roadmap syntax repository-check
 	@sh -n bin/kofun bootstrap/stage1/check.sh bootstrap/stage2/check.sh \
 	  bootstrap/selfhost/check-profile.sh \
 	  bootstrap/selfhost/frontend/check-frontend.sh \
@@ -287,6 +291,7 @@ verify: test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-
 	  tests/conformance/modules/top-level-declarations/run.sh \
 	  tests/conformance/patterns/run.sh \
 	  tests/conformance/modules/imports-qualified/run.sh \
+	  tests/conformance/modules/import-aliases/run.sh \
 	  tests/conformance/modules/imports-selective/run.sh \
 	  tests/conformance/modules/kif-v1/run.sh \
 	  tests/lsp/check.sh tooling/lsp/kofun-lsp \

@@ -1,0 +1,6 @@
+module app.main
+import data.formats.delimited.reader as csv.short
+
+fn main() -> Int {
+    return 0
+}
