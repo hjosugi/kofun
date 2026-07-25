@@ -301,8 +301,7 @@ writes `kofun: text index out of range` to stderr and exits 1. The gate compares
 Arabic, Hebrew, Hindi, Thai, Japanese, Hangul/Jamo, accented Latin, and complex
 emoji cases and executes the Text OOM and index-failure paths.
 
-The obsolete `tests/kofun/*.kf` acceptance path no longer exists. The active
-Python-free `tests/conformance/list` and `tests/conformance/text` corpora are
+The Python-free `tests/conformance/list` and `tests/conformance/text` corpora are
 registered with both native adapters and execute all 34 cases on x86-64 and,
 under qemu, AArch64. General Text bindings/calls beyond the two-argument
 compiler-shaped bridge and the Stage 1 compiler port remain open.
