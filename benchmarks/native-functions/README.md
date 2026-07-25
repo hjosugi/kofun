@@ -79,11 +79,11 @@ revision before it:
 
 | Workload | Before | After | Change |
 |---|---:|---:|---:|
-| `tail_sum30000` | 28,059 us | 7,802 us | −72.19% |
-| `tail_mutual30000` | 47,500 us | 12,679 us | −73.31% |
-| `six_argument_fib30` | 6,989 us | 6,680 us | −4.42% |
-| `fib35` | 40,223 us | 40,239 us | +0.04% |
-| `mutual_fib32` | 9,691 us | 9,778 us | +0.90% |
+| `tail_sum30000` | 28,397 us | 7,712 us | −72.84% |
+| `tail_mutual30000` | 42,367 us | 12,785 us | −69.82% |
+| `six_argument_fib30` | 6,874 us | 6,708 us | −2.41% |
+| `fib35` | 40,157 us | 39,881 us | −0.69% |
+| `mutual_fib32` | 9,796 us | 9,800 us | +0.04% |
 
 The two tail workloads are the claim. `six_argument_fib30` improves because its
 driver returns `pick6(...)` directly, so that outer call is in a returned
@@ -94,11 +94,11 @@ measuring them here.
 
 Emitted code shrank 1.75% on `tail_sum30000` and grew 0.99% and 2.12% on
 `tail_mutual30000` and `six_argument_fib30`, where a frame teardown now
-precedes each cross-function branch. Corpus compile time was unchanged at
-+0.54%.
+precedes each cross-function branch. Corpus compile time moved +1.48%, inside
+the run-to-run spread of the two sample sets.
 
-The same `fib(35)` written in C and built with `-O3` has a median of 11,089 us
-on this host, so the direct backend stays at 3.629x that reference; nothing in
+The same `fib(35)` written in C and built with `-O3` has a median of 10,998 us
+on this host, so the direct backend stays at 3.626x that reference; nothing in
 this change touches that shape. The remaining distance is not attributable to
 value placement or call lowering alone: the Kofun program branches to a
 checked-overflow diagnostic after every arithmetic operation and the C program
