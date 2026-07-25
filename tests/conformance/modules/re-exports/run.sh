@@ -489,6 +489,21 @@ printf '%s\n' 'module qualified.b' \
 expect_failure E2S89 qualified-cycle qualified.a \
     "$WORK/qualified-cycle.inventory"
 
+# Concrete dependency cycles can mix qualified module forwarding with a
+# selective forwarding edge that resolves through that module export.
+printf '%s\n' 'module mixedcycle.a' \
+    'pub import mixedcycle.b' >"$WORK/mixedcycle-a.kofun"
+printf '%s\n' 'module mixedcycle.b' \
+    'pub from mixedcycle.a import b' >"$WORK/mixedcycle-b.kofun"
+{
+    printf '%s|%064d|%064d|mixedcycle.a|mixedcycle/a.kofun|%s\n' \
+        "$PACKAGE_ID" 6011 6012 "$WORK/mixedcycle-a.kofun"
+    printf '%s|%064d|%064d|mixedcycle.b|mixedcycle/b.kofun|%s\n' \
+        "$PACKAGE_ID" 6013 6014 "$WORK/mixedcycle-b.kofun"
+} >"$WORK/mixedcycle.inventory"
+expect_failure E2S89 mixed-form-cycle mixedcycle.a \
+    "$WORK/mixedcycle.inventory"
+
 # Self, two-node, three-node, and competing cycles are rejected. Reversing the
 # inventory preserves the canonical shortest diagnostic.
 printf '%s\n' 'module cycle.self' \
