@@ -4,9 +4,9 @@
   "source_commit": "7afe252a3e0c6a214e220179c3464ee2861a7e88",
   "verification": {
     "workflow": "CI",
-    "status": "in_progress",
-    "conclusion": null,
-    "completed_at": null,
+    "status": "completed",
+    "conclusion": "success",
+    "completed_at": "2026-07-25T15:53:15Z",
     "url": "https://github.com/hjosugi/kofun/actions/runs/30164199219"
   },
   "issues": [
@@ -43,5 +43,5 @@
       "url": "https://github.com/hjosugi/kofun/issues/668"
     }
   ],
-  "reviewed_at": "2026-07-25T15:45:43.349Z"
+  "reviewed_at": "2026-07-25T16:39:54.624Z"
 }
