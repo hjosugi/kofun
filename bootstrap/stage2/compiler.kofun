@@ -6279,6 +6279,89 @@ fn validate_numeric_operand_types(source: Text, hir: Text) -> Text {
     return "ok"
 }
 
+# A numeric annotation and its initializer must name the same type.
+#
+# #710 frozen decision 4 removes implicit promotion *in both directions*, so
+# `let x: Decimal = 1` is exactly as wrong as `let x: Int = 1.5`. A checker
+# that rejected only the narrowing direction would still be promoting, just
+# quietly and one way — which is the failure this decision exists to prevent.
+#
+# The initializer is typed through `numeric_primary_type`, not
+# `initializer_type`. That matters for what is *not* reported: the former
+# answers "" for Text, Bool and unresolved names, while the latter falls back
+# to `Int`, and an `Int` invented there would report a mismatch against every
+# non-numeric annotation in the corpus.
+#
+# Mixed arithmetic is already rejected before this runs, so typing the first
+# primary types the whole initializer: what reaches here is homogeneous.
+fn validate_numeric_annotations(source: Text, hir: Text) -> Text {
+    let mut function_start = next_function_start(source, 0)
+    while function_start < len(source) {
+        let function_close = function_end(source, function_start)
+        let parameters = parameter_open(source, function_start)
+        let mut function_open = -1
+        if parameters >= 0 {
+            function_open = balanced_end(source, parameters, "(", ")")
+        }
+        if function_open >= 0 {
+            let mut cursor = skip_trivia(source, function_open)
+            while cursor < function_close {
+                if token_text(source, cursor) == "let" {
+                    let mut name = skip_trivia(
+                        source,
+                        token_end(source, cursor)
+                    )
+                    if token_text(source, name) == "mut" {
+                        name = skip_trivia(source, token_end(source, name))
+                    }
+                    let colon = skip_trivia(source, token_end(source, name))
+                    if token_text(source, colon) == ":" {
+                        let annotation = skip_trivia(
+                            source,
+                            token_end(source, colon)
+                        )
+                        let declared = numeric_name(
+                            token_text(source, annotation)
+                        )
+                        let assign = skip_trivia(
+                            source,
+                            token_end(source, annotation)
+                        )
+                        if len(declared) > 0 &&
+                           token_text(source, assign) == "=" {
+                            let initializer = skip_trivia(
+                                source,
+                                token_end(source, assign)
+                            )
+                            let mut actual = ""
+                            if !value_control(
+                                token_text(source, initializer)
+                            ) {
+                                actual = numeric_primary_type(
+                                    source,
+                                    hir,
+                                    function_open,
+                                    initializer
+                                )
+                            }
+                            if len(actual) > 0 && actual != declared {
+                                return "error[E2S101]: binding `" +
+                                token_text(source, name) + "` is " +
+                                declared + " but its value is " + actual +
+                                " at byte " + to_text(initializer) +
+                                "; convert explicitly"
+                            }
+                        }
+                    }
+                }
+                cursor = skip_trivia(source, token_end(source, cursor))
+            }
+        }
+        function_start = next_function_start(source, function_close)
+    }
+    return "ok"
+}
+
 # A well-formed Decimal or Float literal reaching lowering.
 #
 # The refusal names a successor slice rather than reusing the generic `E2S12`,
@@ -6322,6 +6405,13 @@ fn lower_c(source: Text, hir: Text) -> Text {
     let operand_check = validate_numeric_operand_types(source, hir)
     if starts_with(operand_check, "error[") {
         return operand_check
+    }
+    # After the operand check, so `let x: Int = 1 + 1.5` reports the mix it
+    # contains rather than blaming the annotation for a value that has no
+    # single type to compare against.
+    let annotation_check = validate_numeric_annotations(source, hir)
+    if starts_with(annotation_check, "error[") {
+        return annotation_check
     }
     let numeric_kind_check = validate_unsupported_numeric_kinds(source)
     if starts_with(numeric_kind_check, "error[") {

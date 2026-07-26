@@ -9974,6 +9974,117 @@ static char *validate_numeric_operand_types(
 }
 
 /*
+ * A numeric annotation and its initializer must name the same type.
+ *
+ * #710 frozen decision 4 removes implicit promotion *in both directions*, so
+ * `let x: Decimal = 1` is exactly as wrong as `let x: Int = 1.5`. A checker
+ * that rejected only the narrowing direction would still be promoting, just
+ * quietly and one way — which is the failure this decision exists to prevent.
+ *
+ * The initializer is typed through `numeric_primary_type`, not
+ * `initializer_type`. That matters for what is *not* reported: the former
+ * answers "" for Text, Bool and unresolved names, while the latter falls back
+ * to `Int`, and an `Int` invented there would report a mismatch against every
+ * non-numeric annotation in the corpus.
+ *
+ * Mixed arithmetic is already rejected before this runs, so typing the first
+ * primary types the whole initializer: what reaches here is homogeneous.
+ */
+static char *validate_numeric_annotations(
+    const char *source,
+    const char *hir
+) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t function_start = next_function_start(source, 0);
+    while (function_start < length) {
+        int64_t function_close = function_end(source, function_start);
+        int64_t parameters = parameter_open(source, function_start);
+        int64_t function_open = parameters >= 0
+            ? balanced_end(source, parameters, "(", ")")
+            : -1;
+        if (function_open >= 0) {
+            int64_t cursor = skip_trivia(source, function_open);
+            while (cursor < function_close) {
+                if (token_equal(source, cursor, "let")) {
+                    int64_t name = skip_trivia(
+                        source,
+                        token_end(source, cursor)
+                    );
+                    if (token_equal(source, name, "mut")) {
+                        name = skip_trivia(source, token_end(source, name));
+                    }
+                    int64_t colon = skip_trivia(
+                        source,
+                        token_end(source, name)
+                    );
+                    if (token_equal(source, colon, ":")) {
+                        int64_t annotation = skip_trivia(
+                            source,
+                            token_end(source, colon)
+                        );
+                        char *annotation_text = token_copy(source, annotation);
+                        const char *declared = numeric_name(annotation_text);
+                        free(annotation_text);
+                        int64_t assign = skip_trivia(
+                            source,
+                            token_end(source, annotation)
+                        );
+                        if (
+                            declared[0] != '\0' &&
+                            token_equal(source, assign, "=")
+                        ) {
+                            int64_t initializer = skip_trivia(
+                                source,
+                                token_end(source, assign)
+                            );
+                            const char *actual = "";
+                            if (!value_control(source, initializer)) {
+                                actual = numeric_primary_type(
+                                    source,
+                                    hir,
+                                    function_open,
+                                    initializer
+                                );
+                            }
+                            if (
+                                actual[0] != '\0' &&
+                                strcmp(actual, declared) != 0
+                            ) {
+                                char *binding = token_copy(source, name);
+                                Buffer message;
+                                buffer_init(&message);
+                                buffer_format(
+                                    &message,
+                                    "error[E2S101]: binding `%s` is %s but "
+                                    "its value is %s at byte %" PRId64
+                                    "; convert explicitly",
+                                    binding,
+                                    declared,
+                                    actual,
+                                    initializer
+                                );
+                                free(binding);
+                                stage2_diagnostic_set(
+                                    "E2S101",
+                                    initializer,
+                                    token_end(source, initializer),
+                                    true,
+                                    message.data
+                                );
+                                return message.data;
+                            }
+                        }
+                    }
+                }
+                cursor = skip_trivia(source, token_end(source, cursor));
+            }
+        }
+        function_start = next_function_start(source, function_close);
+    }
+    return owned_text("ok");
+}
+
+/*
  * A well-formed Decimal or Float literal reaching lowering.
  *
  * #717 lexes these and stops there: the token contract is slice 1 of #710 and
@@ -10074,6 +10185,12 @@ static char *lower_c(const char *source, const char *hir) {
     char *operand_check = validate_numeric_operand_types(source, hir);
     if (strncmp(operand_check, "error[", 6) == 0) return operand_check;
     free(operand_check);
+    /* After the operand check, so `let x: Int = 1 + 1.5` reports the mix it
+     * contains rather than blaming the annotation for a value that has no
+     * single type to compare against. */
+    char *annotation_check = validate_numeric_annotations(source, hir);
+    if (strncmp(annotation_check, "error[", 6) == 0) return annotation_check;
+    free(annotation_check);
     char *numeric_kind_check = validate_unsupported_numeric_kinds(source);
     if (strncmp(numeric_kind_check, "error[", 6) == 0) {
         return numeric_kind_check;

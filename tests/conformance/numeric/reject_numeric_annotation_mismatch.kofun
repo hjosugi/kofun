@@ -1,0 +1,21 @@
+# contract: kofun.backend-differential/v1
+# expect-reject: a numeric annotation and its value must name the same type
+
+# Kofun performs no implicit numeric conversion *in either direction* (#710
+# frozen decision 4), so an annotation is checked against its initializer rather
+# than coercing it. `let x: Int = 1.5` narrows and `let y: Decimal = 1` widens;
+# both are the same error, and a compiler that accepted the widening one would
+# be promoting, just quietly and one way.
+#
+# The narrowing case is the one written here because it is the one every
+# promoting language accepts silently. See docs/DECIMAL.md.
+#
+# This is a *typing* rejection, not the unfinished-arithmetic refusal: an
+# agreeing `let x: Decimal = 1.5` gets past this rule and stops later, at
+# lowering. A backend that refused every fractional literal outright would pass
+# this case for the wrong reason, so the corpus keeps the two apart.
+
+fn main() {
+    let x: Int = 1.5
+    print(0)
+}

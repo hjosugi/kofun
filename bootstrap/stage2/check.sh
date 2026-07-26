@@ -164,6 +164,87 @@ grep -q 'E2S99' "$temporary/same.stdout" || {
 }
 echo "PASS: mixed Int/Decimal/Float arithmetic is rejected in both orders"
 
+# A numeric annotation must agree with its initializer, in both directions.
+# `let x: Decimal = 1` is listed beside `let x: Int = 1.5` deliberately: a rule
+# that only rejected the narrowing direction still promotes, and would pass a
+# corpus containing only the narrowing half.
+annotation_reject() {
+    binding=$1
+    printf 'fn main() {\n    %s\n    print(0)\n}\n' "$binding" \
+        >"$temporary/annotated.kofun"
+    rm -f "$temporary/annotated.c"
+    set +e
+    "$temporary/kofun-stage2" "$temporary/annotated.kofun" \
+        "$temporary/annotated.c" "$temporary/annotated.ir" \
+        "$temporary/annotated.tokens" \
+        >"$temporary/annotated.stdout" 2>"$temporary/annotated.stderr"
+    annotated_status=$?
+    set -e
+    test "$annotated_status" -eq 1 || {
+        echo "stage2 check: '$binding' was accepted" >&2
+        exit 1
+    }
+    grep -q '^error\[E2S101\]: binding .* convert explicitly$' \
+        "$temporary/annotated.stdout" || {
+        echo "stage2 check: '$binding' did not report E2S101" >&2
+        cat "$temporary/annotated.stdout" >&2
+        exit 1
+    }
+    test ! -e "$temporary/annotated.c" || {
+        echo "stage2 check: '$binding' emitted C" >&2
+        exit 1
+    }
+}
+for annotated in \
+    'let x: Int = 1.5' 'let x: Decimal = 1' \
+    'let x: Int = 1.5f64' 'let x: Float = 1' \
+    'let x: Decimal = 1.5f64' 'let x: Float = 1.5' \
+    'let mut x: Int = 1.5'
+do
+    annotation_reject "$annotated"
+done
+# An agreeing annotation must NOT be caught here. It reaches the ordinary
+# unsupported-lowering refusal, which is what proves the rule compares the two
+# types rather than rejecting every Decimal annotation it sees.
+for agreeing in 'let x: Decimal = 1.5' 'let x: Float = 1.5f64'; do
+    printf 'fn main() {\n    %s\n    print(0)\n}\n' "$agreeing" \
+        >"$temporary/agree.kofun"
+    set +e
+    "$temporary/kofun-stage2" "$temporary/agree.kofun" "$temporary/agree.c" \
+        "$temporary/agree.ir" "$temporary/agree.tokens" \
+        >"$temporary/agree.stdout" 2>&1
+    set -e
+    grep -q 'E2S101' "$temporary/agree.stdout" && {
+        echo "stage2 check: '$agreeing' reported an annotation mismatch" >&2
+        exit 1
+    }
+    grep -q 'E2S99' "$temporary/agree.stdout" || {
+        echo "stage2 check: '$agreeing' did not reach E2S99" >&2
+        cat "$temporary/agree.stdout" >&2
+        exit 1
+    }
+done
+# `let x: Int = 1` still compiles: the Int path must survive the new rule.
+printf 'fn main() {\n    let x: Int = 1\n    print(x)\n}\n' \
+    >"$temporary/int-annotated.kofun"
+"$temporary/kofun-stage2" "$temporary/int-annotated.kofun" \
+    "$temporary/int-annotated.c" "$temporary/int-annotated.ir" \
+    "$temporary/int-annotated.tokens" >/dev/null
+# An annotated binding carries the *annotation* into the scope HIR, which is
+# what the mismatch is measured against.
+printf 'fn typed() {\n    let a: Decimal = 1.5\n    let b: Float = 2.5f64\n}\n' \
+    >"$temporary/annotated-types.kofun"
+"$temporary/kofun-stage2" --emit-scope-hir \
+    "$temporary/annotated-types.kofun" "$temporary/annotated-types.scope-hir"
+for expected in '|a|immutable|Decimal|' '|b|immutable|Float|'; do
+    grep -F "$expected" "$temporary/annotated-types.scope-hir" >/dev/null || {
+        echo "stage2 check: scope HIR is missing a binding typed $expected" >&2
+        cat "$temporary/annotated-types.scope-hir" >&2
+        exit 1
+    }
+done
+echo "PASS: numeric annotations agree with their initializers in both directions"
+
 # The Decimal resource profile (#721, `docs/DECIMAL.md` "Profile v1"). Frozen
 # decision 8 requires its limits to be cross-backend *observable*, so the
 # compiler constructs each literal and reports the limit at the literal's own

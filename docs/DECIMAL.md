@@ -211,6 +211,21 @@ round to a requested decimal scale, or reject an inexact result. A displayed
 `Float` string is not silently treated as the exact binary value, and a binary
 value is not silently treated as the decimal text a user originally typed.
 
+Annotations are checked in both directions. `let x: Decimal = 1` is rejected
+for the same reason `let x: Int = 1.5` is: a rule that rejected only the
+narrowing direction would still be promoting, one way and quietly.
+
+```kofun
+let a: Decimal = 1.5     # ok
+let b: Float = 1.5f64    # ok
+let c: Int = 1.5         # type error: value is Decimal
+let d: Decimal = 1       # type error: value is Int
+let e: Decimal = 1.5f64  # type error: value is Float
+```
+
+An unannotated binding takes its literal's type, so `let f = 1.5` is a
+`Decimal` binding and `let g = 1.5f64` is a `Float` one.
+
 ## Exact arithmetic
 
 Addition and subtraction align scales with exact powers of ten. Multiplication
