@@ -101,6 +101,12 @@ provider_golden select select
 # service never invents `Any`.
 provider_golden type type
 
+# Candidate operations. The disclosure rule is the part with consequences: a
+# hidden candidate never becomes a row in any status, because even an
+# "unavailable" row names it. Two hidden candidates still yield one omission,
+# so an omission cannot be read as a count of what was withheld.
+provider_golden operations operations
+
 # Every rejection path above walks the parser over deliberately malformed
 # bytes, which is exactly where an off-by-one reads past the end. Run the same
 # cases under the sanitizers so a refusal that is "correct" but reads out of
@@ -127,7 +133,7 @@ then
         "$ROOT/bootstrap/stage2/discovery_provider.c" \
         "$CASES/discovery_provider_test.c" \
         -o "$WORK/discovery-provider-sanitized"
-    for mode in analysis-key staleness select type; do
+    for mode in analysis-key staleness select type operations; do
         ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
         UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
             "$WORK/discovery-provider-sanitized" "$mode" >/dev/null

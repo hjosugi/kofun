@@ -314,3 +314,162 @@ bool kofun_discovery_type_from_records(
     out->reason = map_reason(&type_fact->reason);
     return true;
 }
+
+/* Record an omission, keeping the set unique. An omission says only that
+ * something was left out and why — never how much, or what. */
+static void note_omission(KofunDiscoveryOmission *omissions, size_t capacity,
+                          size_t *count, KofunDiscoveryOmissionReason reason) {
+    size_t index;
+    if (omissions == NULL || count == NULL) {
+        return;
+    }
+    for (index = 0; index < *count; index++) {
+        if (omissions[index].reason == reason) {
+            return;
+        }
+    }
+    if (*count >= capacity) {
+        return;
+    }
+    memset(&omissions[*count], 0, sizeof(omissions[*count]));
+    omissions[*count].reason = reason;
+    omissions[*count].has_requested_spelling = false;
+    (*count)++;
+}
+
+static bool reject(KofunDiscoveryOperationFact *operation,
+                   KofunDiscoveryRejectionReason reason) {
+    size_t index;
+    for (index = 0; index < operation->rejection_reason_count; index++) {
+        if (operation->rejection_reasons[index] == reason) {
+            return true;
+        }
+    }
+    if (operation->rejection_reason_count >=
+        KOFUN_DISCOVERY_MAX_REJECTION_REASONS) {
+        return false;
+    }
+    operation->rejection_reasons[operation->rejection_reason_count++] = reason;
+    return true;
+}
+
+size_t kofun_discovery_operations_from_symbols(
+    const KofunDiscoverySymbolRecord *records, size_t record_count,
+    KofunDiscoveryOperationFact *out, size_t out_capacity,
+    KofunDiscoveryOmission *omissions, size_t omission_capacity,
+    size_t *omission_count, bool *truncated) {
+    size_t index;
+    size_t written = 0;
+    size_t omitted = 0;
+
+    if (omission_count != NULL) {
+        *omission_count = 0;
+    }
+    if (truncated != NULL) {
+        *truncated = false;
+    }
+    if (out == NULL || (record_count > 0 && records == NULL)) {
+        return 0;
+    }
+    if (out_capacity > KOFUN_DISCOVERY_MAX_OPERATIONS) {
+        out_capacity = KOFUN_DISCOVERY_MAX_OPERATIONS;
+    }
+
+    for (index = 0; index < record_count; index++) {
+        const KofunDiscoverySymbolRecord *record = &records[index];
+        KofunDiscoveryOperationFact *operation;
+
+        /*
+         * Visibility first, and unconditionally. A hidden candidate must not
+         * reach any later branch, because every one of them would disclose
+         * something about it — even an "unavailable" row names it.
+         */
+        if (!record->visible_to_query) {
+            note_omission(omissions, omission_capacity, &omitted,
+                          KOFUN_DISCOVERY_OMISSION_HIDDEN_BY_VISIBILITY);
+            continue;
+        }
+        /* Outside the current file is outside this slice's profile. */
+        if (!record->in_current_file) {
+            note_omission(omissions, omission_capacity, &omitted,
+                          KOFUN_DISCOVERY_OMISSION_NOT_IMPORTED);
+            continue;
+        }
+
+        if (written >= out_capacity) {
+            /* Stop, and say so, rather than returning a short answer that
+             * reads as complete. */
+            note_omission(omissions, omission_capacity, &omitted,
+                          KOFUN_DISCOVERY_OMISSION_LIMIT_EXHAUSTED);
+            if (truncated != NULL) {
+                *truncated = true;
+            }
+            break;
+        }
+
+        operation = &out[written];
+        memset(operation, 0, sizeof(*operation));
+        operation->status = map_status(record->status);
+        operation->identity.kind = KOFUN_DISCOVERY_IDENTITY_SYMBOL_ID;
+        hex_encode(record->symbol_id.bytes, KOFUN_SEMANTIC_ID_BYTES,
+                   operation->identity.value);
+
+        if (!copy_bytes(&record->display_name, operation->display_name,
+                        sizeof(operation->display_name)) ||
+            !copy_bytes(&record->qualified_name, operation->qualified_name,
+                        sizeof(operation->qualified_name)) ||
+            !copy_bytes(&record->module_name, operation->origin.module,
+                        sizeof(operation->origin.module)) ||
+            !copy_bytes(&record->signature, operation->signature,
+                        sizeof(operation->signature))) {
+            /* A value too long to represent is not silently clipped: an
+             * identity-bearing string that lost bytes is a different name. */
+            note_omission(omissions, omission_capacity, &omitted,
+                          KOFUN_DISCOVERY_OMISSION_INCOMPLETE_ANALYSIS);
+            continue;
+        }
+        if (operation->display_name[0] == '\0' ||
+            operation->qualified_name[0] == '\0') {
+            note_omission(omissions, omission_capacity, &omitted,
+                          KOFUN_DISCOVERY_OMISSION_INCOMPLETE_ANALYSIS);
+            continue;
+        }
+
+        operation->has_signature = operation->signature[0] != '\0';
+        operation->receiver_mode = record->receiver_mode;
+        operation->visibility = record->visibility;
+        operation->origin.kind = record->origin_kind;
+        operation->origin.status = operation->status;
+        operation->origin.module_identity.kind =
+            KOFUN_DISCOVERY_IDENTITY_MODULE_ID;
+        hex_encode(record->module_id.bytes, KOFUN_SEMANTIC_ID_BYTES,
+                   operation->origin.module_identity.value);
+
+        /*
+         * Callable requires the whole closure: a validated fact, a signature,
+         * and a receiver mode. Each missing piece is stated as its own
+         * rejection rather than collapsed into one vague reason, because the
+         * caller's next action differs — re-run analysis versus accept that
+         * the operation genuinely does not apply here.
+         */
+        operation->callable = true;
+        if (operation->status != KOFUN_DISCOVERY_FACT_VALIDATED) {
+            operation->callable = false;
+            reject(operation, KOFUN_DISCOVERY_REJECT_INCOMPLETE_ANALYSIS);
+        }
+        if (!operation->has_signature) {
+            operation->callable = false;
+            reject(operation, KOFUN_DISCOVERY_REJECT_INCOMPLETE_ANALYSIS);
+        }
+        if (operation->receiver_mode == KOFUN_DISCOVERY_RECEIVER_NULL) {
+            operation->callable = false;
+            reject(operation, KOFUN_DISCOVERY_REJECT_INCOMPLETE_ANALYSIS);
+        }
+        written++;
+    }
+
+    if (omission_count != NULL) {
+        *omission_count = omitted;
+    }
+    return written;
+}

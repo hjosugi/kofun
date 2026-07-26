@@ -87,4 +87,64 @@ bool kofun_discovery_type_from_records(
     size_t identity_count, const KofunSemanticFact *facts, size_t fact_count,
     KofunDiscoveryTypeFact *out);
 
+/*
+ * One candidate operation, as the bounded compiler query hook reports it.
+ *
+ * This is deliberately a *record the caller fills in*, not a peek into the
+ * compiler's own tables. The issue requires that the provider "must not
+ * inspect private compiler layout or infer missing fields from display text",
+ * and a value type is how that is enforced rather than merely intended: every
+ * field a row needs has to be produced deliberately by the query, and a field
+ * the query could not establish arrives absent instead of reconstructed.
+ *
+ * `visible_to_query` is the caller's visibility decision, already made against
+ * the querying context. The projection never re-derives it — it only obeys it —
+ * because visibility depends on package and file boundaries this module cannot
+ * see.
+ */
+typedef struct {
+    KofunSemanticId symbol_id;
+    KofunSemanticId module_id;
+    KofunSemanticBytes display_name;
+    KofunSemanticBytes qualified_name;
+    KofunSemanticBytes module_name;
+    /* Empty when the signature was not safely available: the contract says a
+     * null signature means the fact was missing, and that clients must not
+     * reconstruct it. */
+    KofunSemanticBytes signature;
+    KofunSemanticStatus status;
+    KofunDiscoveryReceiverMode receiver_mode;
+    KofunDiscoveryVisibility visibility;
+    KofunDiscoveryOriginKind origin_kind;
+    /* False for a candidate the querying context may not see. Such a candidate
+     * never becomes a row, in any status. */
+    bool visible_to_query;
+    /* The current-core slice answers from the current file only. */
+    bool in_current_file;
+} KofunDiscoverySymbolRecord;
+
+/*
+ * Project candidate symbols into operation rows.
+ *
+ * The disclosure rule is absolute and is the reason this returns omissions
+ * rather than rows for some inputs: "hidden candidates never become rows", so a
+ * candidate the caller marked invisible contributes an `hidden-by-visibility`
+ * omission and nothing else. An omission carries no count, identity, name,
+ * signature, origin, path, span, or documentation, so it cannot be used to
+ * probe for the existence of a private declaration.
+ *
+ * A visible candidate that cannot be called becomes an unavailable row that
+ * says why, because that is information the caller is entitled to.
+ *
+ * Writes at most `out_capacity` rows and `omission_capacity` omissions. Sets
+ * `*truncated` when a limit stopped the projection, which the contract turns
+ * into `partial` with `truncated: true` rather than a silently short answer.
+ * Returns the number of rows written.
+ */
+size_t kofun_discovery_operations_from_symbols(
+    const KofunDiscoverySymbolRecord *records, size_t record_count,
+    KofunDiscoveryOperationFact *out, size_t out_capacity,
+    KofunDiscoveryOmission *omissions, size_t omission_capacity,
+    size_t *omission_count, bool *truncated);
+
 #endif /* KOFUN_STAGE2_DISCOVERY_PROVIDER_H */

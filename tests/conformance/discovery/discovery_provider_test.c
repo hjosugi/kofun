@@ -134,6 +134,65 @@ static void report_type(const char *label,
            type.has_display ? type.display : "(null)", reason);
 }
 
+
+static KofunDiscoverySymbolRecord symbol_of(uint8_t digit, const char *name,
+                                            const char *qualified,
+                                            const char *signature,
+                                            KofunDiscoveryReceiverMode mode) {
+    KofunDiscoverySymbolRecord record;
+    memset(&record, 0, sizeof(record));
+    record.symbol_id = id_of(digit);
+    record.module_id = id_of(0xbb);
+    record.display_name = bytes_of(name);
+    record.qualified_name = bytes_of(qualified);
+    record.module_name = bytes_of("core.list");
+    record.signature = bytes_of(signature);
+    record.status = KOFUN_SEMANTIC_VALIDATED;
+    record.receiver_mode = mode;
+    record.visibility = KOFUN_DISCOVERY_VISIBILITY_PUB;
+    record.origin_kind = KOFUN_DISCOVERY_ORIGIN_MEMBER;
+    record.visible_to_query = true;
+    record.in_current_file = true;
+    return record;
+}
+
+static void report_projection(const char *label,
+                              const KofunDiscoverySymbolRecord *records,
+                              size_t count, size_t row_capacity) {
+    KofunDiscoveryOperationFact rows[8];
+    KofunDiscoveryOmission omissions[8];
+    size_t omission_count = 0;
+    bool truncated = false;
+    size_t written;
+    size_t index;
+    static const char *const omission_names[] = {
+        "?", "hidden-by-visibility", "not-imported", "unsupported-in-profile",
+        "incomplete-analysis", "limit-exhausted"};
+
+    written = kofun_discovery_operations_from_symbols(
+        records, count, rows, row_capacity, omissions, 8u, &omission_count,
+        &truncated);
+    printf("%s: rows=%zu truncated=%s omissions=", label, written,
+           truncated ? "true" : "false");
+    if (omission_count == 0) {
+        printf("none");
+    }
+    for (index = 0; index < omission_count; index++) {
+        printf("%s%s", index > 0 ? "," : "",
+               omission_names[(int)omissions[index].reason]);
+    }
+    printf("\n");
+    for (index = 0; index < written; index++) {
+        printf("    %s availability=%s receiver=%s rejections=%zu\n",
+               rows[index].display_name,
+               rows[index].callable ? "callable" : "unavailable",
+               rows[index].receiver_mode == KOFUN_DISCOVERY_RECEIVER_NULL
+                   ? "null"
+                   : "set",
+               rows[index].rejection_reason_count);
+    }
+}
+
 int main(int argc, char **argv) {
     const char *mode = argc > 1 ? argv[1] : "";
 
@@ -294,7 +353,84 @@ int main(int argc, char **argv) {
         return 0;
     }
 
+
+    if (strcmp(mode, "operations") == 0) {
+        KofunDiscoverySymbolRecord records[6];
+
+        records[0] = symbol_of(0x41, "length", "core.list.length",
+                               "(read List[Text]) -> Int",
+                               KOFUN_DISCOVERY_RECEIVER_READ);
+        records[1] = symbol_of(0x42, "append", "core.list.append",
+                               "(edit List[Text], Text) -> Unit",
+                               KOFUN_DISCOVERY_RECEIVER_EDIT);
+        report_projection("visible-pair", records, 2u, 8u);
+
+        /*
+         * The disclosure rule, which is the part with consequences: a hidden
+         * candidate never becomes a row *in any status*. An "unavailable" row
+         * would still name it, so the only safe output is an omission that
+         * says a candidate was withheld and nothing whatsoever about it.
+         */
+        records[1].visible_to_query = false;
+        report_projection("hidden-candidate", records, 2u, 8u);
+
+        /* Two hidden candidates yield one omission, not two: an omission must
+         * not become a count of what is hidden. */
+        records[0] = symbol_of(0x41, "secret_a", "core.list.secret_a",
+                               "(read List[Text]) -> Int",
+                               KOFUN_DISCOVERY_RECEIVER_READ);
+        records[0].visible_to_query = false;
+        records[1] = symbol_of(0x42, "secret_b", "core.list.secret_b",
+                               "(read List[Text]) -> Int",
+                               KOFUN_DISCOVERY_RECEIVER_READ);
+        records[1].visible_to_query = false;
+        report_projection("two-hidden-one-omission", records, 2u, 8u);
+
+        /* Out-of-file candidates are outside this slice. */
+        records[0] = symbol_of(0x41, "length", "core.list.length",
+                               "(read List[Text]) -> Int",
+                               KOFUN_DISCOVERY_RECEIVER_READ);
+        records[1] = symbol_of(0x42, "elsewhere", "other.mod.elsewhere",
+                               "(read List[Text]) -> Int",
+                               KOFUN_DISCOVERY_RECEIVER_READ);
+        records[1].in_current_file = false;
+        report_projection("out-of-file", records, 2u, 8u);
+
+        /* A visible candidate that cannot be called becomes an unavailable row
+         * that says why — that is information the caller may have. */
+        records[0] = symbol_of(0x41, "length", "core.list.length", "",
+                               KOFUN_DISCOVERY_RECEIVER_READ);
+        report_projection("missing-signature", records, 1u, 8u);
+
+        records[0] = symbol_of(0x41, "length", "core.list.length",
+                               "(read List[Text]) -> Int",
+                               KOFUN_DISCOVERY_RECEIVER_NULL);
+        report_projection("missing-receiver-mode", records, 1u, 8u);
+
+        records[0] = symbol_of(0x41, "length", "core.list.length",
+                               "(read List[Text]) -> Int",
+                               KOFUN_DISCOVERY_RECEIVER_READ);
+        records[0].status = KOFUN_SEMANTIC_PROVISIONAL;
+        report_projection("provisional-status", records, 1u, 8u);
+
+        /* A limit stops the projection and says so, rather than returning a
+         * short answer that reads as the whole set. */
+        records[0] = symbol_of(0x41, "a", "core.list.a", "(read List[Text]) -> Int",
+                               KOFUN_DISCOVERY_RECEIVER_READ);
+        records[1] = symbol_of(0x42, "b", "core.list.b", "(read List[Text]) -> Int",
+                               KOFUN_DISCOVERY_RECEIVER_READ);
+        records[2] = symbol_of(0x43, "c", "core.list.c", "(read List[Text]) -> Int",
+                               KOFUN_DISCOVERY_RECEIVER_READ);
+        report_projection("limit-exhausted", records, 3u, 2u);
+
+        /* A hidden candidate beyond the row limit still must not leak, and the
+         * visibility check runs before the limit check so it cannot. */
+        records[2].visible_to_query = false;
+        report_projection("hidden-beyond-limit", records, 3u, 2u);
+        return 0;
+    }
+
     fprintf(stderr,
-            "usage: discovery-provider-test analysis-key|staleness|select|type\n");
+            "usage: discovery-provider-test analysis-key|staleness|select|type|operations\n");
     return 2;
 }

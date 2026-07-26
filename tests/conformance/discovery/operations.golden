@@ -1,0 +1,20 @@
+visible-pair: rows=2 truncated=false omissions=none
+    length availability=callable receiver=set rejections=0
+    append availability=callable receiver=set rejections=0
+hidden-candidate: rows=1 truncated=false omissions=hidden-by-visibility
+    length availability=callable receiver=set rejections=0
+two-hidden-one-omission: rows=0 truncated=false omissions=hidden-by-visibility
+out-of-file: rows=1 truncated=false omissions=not-imported
+    length availability=callable receiver=set rejections=0
+missing-signature: rows=1 truncated=false omissions=none
+    length availability=unavailable receiver=set rejections=1
+missing-receiver-mode: rows=1 truncated=false omissions=none
+    length availability=unavailable receiver=null rejections=1
+provisional-status: rows=1 truncated=false omissions=none
+    length availability=unavailable receiver=set rejections=1
+limit-exhausted: rows=2 truncated=true omissions=limit-exhausted
+    a availability=callable receiver=set rejections=0
+    b availability=callable receiver=set rejections=0
+hidden-beyond-limit: rows=2 truncated=false omissions=hidden-by-visibility
+    a availability=callable receiver=set rejections=0
+    b availability=callable receiver=set rejections=0
