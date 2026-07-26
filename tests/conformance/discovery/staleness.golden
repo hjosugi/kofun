@@ -1,0 +1,7 @@
+matching: current
+generation: stale stale-generation
+interface-set: stale stale-interface-set
+source: stale stale-source
+semantic-compatibility: stale stale-semantic-compatibility
+file: stale wrong-file
+everything-mismatched: stale wrong-file

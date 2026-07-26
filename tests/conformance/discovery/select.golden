@@ -1,0 +1,6 @@
+narrowest: selected node c0 span 20..25
+enclosing-call: selected node b0 span 10..30
+span-mismatch: rejected invalid-position
+no-expression: rejected invalid-position
+at-span-start: selected node c0 span 20..25
+at-span-end: selected node c0 span 20..25

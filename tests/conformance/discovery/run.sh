@@ -35,10 +35,26 @@ fail() {
     "$CASES/discovery_v1_test.c" \
     -o "$WORK/discovery-test"
 
+"$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
+    -I"$ROOT/bootstrap/stage2" \
+    "$ROOT/bootstrap/stage2/discovery_v1.c" \
+    "$ROOT/bootstrap/stage2/discovery_provider.c" \
+    "$CASES/discovery_provider_test.c" \
+    -o "$WORK/discovery-provider-test"
+
 golden() {
     name=$1
     shift
     "$WORK/discovery-test" "$@" >"$WORK/$name.observed" 2>&1
+    cmp "$CASES/$name.golden" "$WORK/$name.observed" ||
+        fail "$name observation changed"
+    printf '%s\n' "PASS: $name"
+}
+
+provider_golden() {
+    name=$1
+    shift
+    "$WORK/discovery-provider-test" "$@" >"$WORK/$name.observed" 2>&1
     cmp "$CASES/$name.golden" "$WORK/$name.observed" ||
         fail "$name observation changed"
     printf '%s\n' "PASS: $name"
@@ -65,6 +81,26 @@ golden facts facts
 # produce bytes a client would believe.
 golden facts-refused facts-refused
 
+# The provider boundary: #608 semantic records projected into contract facts.
+# The analysis key is derived rather than trusted, and an absent interface
+# digest fails closed instead of matching by accident.
+provider_golden analysis-key analysis-key
+
+# Staleness axes, including a request that mismatches on every axis at once —
+# the reported reason must be the most fundamental one, since that is what
+# tells a client whether to re-target, upgrade, or re-analyze.
+provider_golden staleness staleness
+
+# Expression selection: the narrowest *expression* wins over the declaration
+# and scope that also contain the offset, and a client span that is not the
+# parsed occurrence is refused rather than answered about a different node.
+provider_golden select select
+
+# Type projection: a validated type needs both a validated fact and a
+# validated TypeId, an absent type is unavailable with no display, and the
+# service never invents `Any`.
+provider_golden type type
+
 # Every rejection path above walks the parser over deliberately malformed
 # bytes, which is exactly where an off-by-one reads past the end. Run the same
 # cases under the sanitizers so a refusal that is "correct" but reads out of
@@ -83,6 +119,18 @@ then
         ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
         UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
             "$WORK/discovery-test-sanitized" "$mode" >/dev/null
+    done
+    "$CC" -std=c11 -O1 -g -Wall -Wextra -Werror -pedantic \
+        -fno-omit-frame-pointer -fsanitize=address,undefined \
+        -I"$ROOT/bootstrap/stage2" \
+        "$ROOT/bootstrap/stage2/discovery_v1.c" \
+        "$ROOT/bootstrap/stage2/discovery_provider.c" \
+        "$CASES/discovery_provider_test.c" \
+        -o "$WORK/discovery-provider-sanitized"
+    for mode in analysis-key staleness select type; do
+        ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+        UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+            "$WORK/discovery-provider-sanitized" "$mode" >/dev/null
     done
     printf '%s\n' "PASS: AddressSanitizer and UndefinedBehaviorSanitizer"
 else
