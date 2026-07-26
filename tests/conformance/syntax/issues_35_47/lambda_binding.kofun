@@ -4,9 +4,11 @@ fn main() -> Int {
     let base = 10
     let bump = (value: Int) => value + base
     let quad = (value: Int) => double(double(value))
+    let bare = value => value * 3
     print(double(21))
     print(add(40, 2))
     print(bump(32))
     print(quad(3))
+    print(bare(14))
     return 0
 }

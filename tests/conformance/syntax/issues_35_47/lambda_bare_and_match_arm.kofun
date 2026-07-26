@@ -1,0 +1,19 @@
+# `IDENT => expr` is a bare lambda in expression position and a match arm in
+# arm position. Both spellings appear here, in one file and one function, so a
+# change that resolved the ambiguity in only one direction fails this case
+# rather than passing it quietly. `Trace` and `Debug` are also used as lambda
+# parameter names, which is the shape that a token-level rule would confuse.
+type Level = | Trace | Debug
+
+fn main() -> Int {
+    let double = value => value * 2
+    let Trace = shadowed => shadowed + 100
+    print(double(21))
+    print(Trace(11))
+    let pick: Level = Debug
+    match pick {
+        Trace => { print(90) },
+        Debug => { print(7) },
+    }
+    return 0
+}

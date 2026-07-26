@@ -5046,13 +5046,112 @@ static int64_t block_depth_at(
  * the identifiers inside it are then reported by whichever pass would have
  * reported them before.
  */
+/*
+ * Whether `target` begins a match arm's pattern.
+ *
+ * `IDENT => expr` is both an arm and a bare lambda, and arms are
+ * comma-separated, so the token before it cannot separate them: `,` precedes
+ * both `Debug => 1,` and the lambda in `map(xs, x => x * 2)`. Neither can one
+ * token of lookahead, which is what #547 assumed. What separates them is
+ * position — an arm pattern begins directly inside a `match` block's braces at
+ * an arm boundary, and everything else is expression position.
+ *
+ * Walking arms is what makes this exact rather than approximate. A lambda may
+ * appear inside an arm body (`Some(v) => map(xs, y => y + v)`), so "inside a
+ * match block" would be wrong; only the arm's own first token is a pattern.
+ *
+ * The walk restarts at every `match` token, so a nested match is reached by its
+ * own iteration rather than by recursion here.
+ */
+static bool match_arm_pattern_start(const char *source, int64_t target) {
+    /*
+     * The answer depends only on the source, and every identifier resolution
+     * asks it, so the arm starts are collected once per source and then looked
+     * up. Re-walking the arms per candidate is what makes the compiler
+     * quadratic on a real file: `lambda_scope_open` already consults
+     * `lambda_parameters_end` for every token of every function.
+     */
+    static const char *cached_source = NULL;
+    static int64_t cached_length = -1;
+    static int64_t *starts = NULL;
+    static int64_t start_count = 0;
+    int64_t length = (int64_t)strlen(source);
+    if (source != cached_source || length != cached_length) {
+        free(starts);
+        starts = NULL;
+        start_count = 0;
+        int64_t capacity = 0;
+        int64_t cursor = 0;
+        while (cursor < length) {
+            if (token_equal(source, cursor, "match")) {
+                int64_t open = pattern_match_open(source, cursor);
+                int64_t match_end =
+                    open < 0 ? -1 : balanced_end(source, open, "{", "}");
+                if (open >= 0 && match_end >= 0) {
+                    int64_t close = match_end - 1;
+                    int64_t arm = skip_trivia(source, token_end(source, open));
+                    while (arm < close && !token_equal(source, arm, "}")) {
+                        if (start_count == capacity) {
+                            int64_t grown_capacity =
+                                capacity == 0 ? 64 : capacity * 2;
+                            int64_t *grown = realloc(
+                                starts,
+                                (size_t)grown_capacity * sizeof(*starts)
+                            );
+                            if (grown == NULL) break;
+                            starts = grown;
+                            capacity = grown_capacity;
+                        }
+                        starts[start_count++] = arm;
+                        int64_t arrow = pattern_arm_arrow(source, arm, close);
+                        if (arrow < 0) break;
+                        int64_t body =
+                            skip_trivia(source, token_end(source, arrow));
+                        int64_t body_end = expression_end(source, body);
+                        if (body_end < 0) break;
+                        int64_t next = skip_trivia(source, body_end);
+                        if (next < close && token_equal(source, next, ",")) {
+                            next = skip_trivia(source, token_end(source, next));
+                        }
+                        if (next <= arm) break;
+                        arm = next;
+                    }
+                }
+            }
+            cursor = skip_trivia(source, token_end(source, cursor));
+        }
+        cached_source = source;
+        cached_length = length;
+    }
+    for (int64_t index = 0; index < start_count; ++index) {
+        if (starts[index] == target) return true;
+    }
+    return false;
+}
+
 static int64_t lambda_parameters_end(
     const char *source,
     int64_t previous,
     int64_t open
 ) {
     int64_t length = (int64_t)strlen(source);
-    if (!token_equal(source, open, "(")) return -1;
+    if (!token_equal(source, open, "(")) {
+        /* The bare single-parameter form `x => e` decided in #547. It is a
+         * lambda everywhere an arm pattern is not, which is why the arm check
+         * carries the whole decision. */
+        if (strcmp(token_kind(source, open), "identifier") != 0) return -1;
+        if (keyword_token(source, open)) return -1;
+        int64_t bare_arrow = skip_trivia(source, token_end(source, open));
+        if (bare_arrow >= length ||
+            !token_equal(source, bare_arrow, "=>")) {
+            return -1;
+        }
+        if (match_arm_pattern_start(source, open)) return -1;
+        return expression_end(
+            source,
+            skip_trivia(source, token_end(source, bare_arrow))
+        );
+    }
     if (
         previous >= 0 &&
         strcmp(token_kind(source, previous), "identifier") == 0
@@ -5105,12 +5204,17 @@ static bool lambda_declaration_syntax_token(
     int64_t cursor = function_open;
     int64_t previous = -1;
     while (cursor <= target) {
-        if (
-            lambda_parameters_end(source, previous, cursor) >= 0 &&
-            target > cursor &&
-            target < balanced_end(source, cursor, "(", ")")
-        ) {
-            return true;
+        if (lambda_parameters_end(source, previous, cursor) >= 0) {
+            if (!token_equal(source, cursor, "(")) {
+                /* The bare form has no parameter list: the keying token is
+                 * itself the parameter, so it is the only declaration. */
+                if (target == cursor) return true;
+            } else if (
+                target > cursor &&
+                target < balanced_end(source, cursor, "(", ")")
+            ) {
+                return true;
+            }
         }
         previous = cursor;
         cursor = skip_trivia(source, token_end(source, cursor));
@@ -5615,6 +5719,9 @@ static char *lambda_captures(
 /* The declared parameter count of the lambda whose parameter list opens at
  * `open`. Captures are invisible to a caller, so they are not counted. */
 static int64_t lambda_parameter_count(const char *source, int64_t open) {
+    /* The bare form `x => e` is keyed by its single parameter, so it has no
+     * list to count and its arity is always one. */
+    if (!token_equal(source, open, "(")) return 1;
     int64_t close = balanced_end(source, open, "(", ")");
     if (close < 0) return -1;
     int64_t count = 0;
@@ -6405,20 +6512,20 @@ static char *build_scope_hir_mode(
         while (cursor < function_close) {
             if (lambda_parameters_end(source, previous, cursor) >= 0) {
                 int64_t lambda_open = cursor;
-                int64_t lambda_close = balanced_end(
-                    source,
-                    lambda_open,
-                    "(",
-                    ")"
-                );
+                /* The bare form has no parameter list to walk: the parameter
+                 * is the keying token itself, so the walk below covers exactly
+                 * that one identifier and then stops at the `=>`. */
+                bool bare_lambda = !token_equal(source, lambda_open, "(");
+                int64_t lambda_close = bare_lambda
+                    ? token_end(source, lambda_open)
+                    : balanced_end(source, lambda_open, "(", ")");
                 char *lambda_scope = hir_scope_id_for_open(
                     hir.data,
                     lambda_open
                 );
-                int64_t lambda_cursor = skip_trivia(
-                    source,
-                    token_end(source, lambda_open)
-                );
+                int64_t lambda_cursor = bare_lambda
+                    ? lambda_open
+                    : skip_trivia(source, token_end(source, lambda_open));
                 while (
                     lambda_cursor < lambda_close &&
                     !token_equal(source, lambda_cursor, ")")
@@ -8847,8 +8954,17 @@ static char *emit_lifted_lambdas(
         Buffer signature;
         buffer_init(&signature);
         int64_t parameters = 0;
-        int64_t close = balanced_end(source, open, "(", ")");
-        int64_t parameter = skip_trivia(source, token_end(source, open));
+        /* The bare form is keyed by its single parameter and has no list, so
+         * its "close" is the end of that identifier — which is also where the
+         * `=>` search below starts. Taking `balanced_end` here would yield -1
+         * and walk the source from a negative offset. */
+        bool bare_lambda = !token_equal(source, open, "(");
+        int64_t close = bare_lambda
+            ? token_end(source, open)
+            : balanced_end(source, open, "(", ")");
+        int64_t parameter = bare_lambda
+            ? open
+            : skip_trivia(source, token_end(source, open));
         while (parameter < close) {
             if (strcmp(token_kind(source, parameter), "identifier") != 0) {
                 break;

@@ -467,13 +467,31 @@ printf '%s\n' "PASS executable: Unicode identifiers in Stage 2"
     "$WORK/lambda.c" -o "$WORK/lambda"
 lambda_stage2_output=$("$WORK/lambda")
 # One line per shape #703 scopes: an annotated parameter read in the body, the
-# two-parameter form, a capture of an enclosing binding, and a lambda calling
-# another lambda.
-test "$lambda_stage2_output" = "$(printf '42\n42\n42\n12')" ||
+# two-parameter form, a capture of an enclosing binding, a lambda calling
+# another lambda, and the bare single-parameter form `x => e`.
+test "$lambda_stage2_output" = "$(printf '42\n42\n42\n12\n42')" ||
     fail "Stage 2 lambda bindings printed: $lambda_stage2_output"
 grep 'kofun_lambda_' "$WORK/lambda.c" >/dev/null ||
     fail "Stage 2 lambda binding was not lifted to a top-level function"
 printf '%s\n' "PASS executable: lambda bindings lifted, captured, and called"
+
+# `IDENT => expr` is a bare lambda in expression position and a match arm in
+# arm position. This case puts both in one function, and names a lambda binding
+# after an enum constructor that is also matched, so a rule that decided by
+# token shape rather than by position would fail here instead of silently
+# changing what 81 shipped match arms mean.
+"$WORK/kofun-stage2" \
+    "$CASES/lambda_bare_and_match_arm.kofun" \
+    "$WORK/bare-lambda.c" \
+    "$WORK/bare-lambda.ir" \
+    "$WORK/bare-lambda.tokens" >/dev/null
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$WORK/bare-lambda.c" -o "$WORK/bare-lambda"
+bare_lambda_output=$("$WORK/bare-lambda")
+test "$bare_lambda_output" = "$(printf '42\n111\n7')" ||
+    fail "bare lambda and match arm printed: $bare_lambda_output"
+printf '%s\n' \
+    "PASS executable: bare \`x => e\` and match arms coexist in one function"
 
 expect_stage2_unsupported "$CASES/unsupported_owned_binding.kofun"
 expect_stage2_unsupported "$CASES/unsupported_else_if.kofun"
