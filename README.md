@@ -8,6 +8,7 @@ and direct ELF64 backends for x86-64 and AArch64. Source files use `.kofun`.
 [Website](https://hjosugi.github.io/kofun/) ·
 [Documentation](https://hjosugi.github.io/kofun/docs/) ·
 [Playground](https://hjosugi.github.io/kofun/#playground) ·
+[Delivery plan](https://hjosugi.github.io/kofun/roadmap/) ·
 [Releases](https://github.com/hjosugi/kofun/releases) ·
 [Roadmap](https://hjosugi.github.io/kofun/docs/roadmap/)
 
@@ -143,6 +144,7 @@ Start with:
 - [Native backends](https://hjosugi.github.io/kofun/docs/native-backends/)
 - [Self-hosting boundary](https://hjosugi.github.io/kofun/docs/self-hosting/)
 - [Specification](https://hjosugi.github.io/kofun/docs/specification/)
+- [Delivery roadmap](https://hjosugi.github.io/kofun/roadmap/)
 - [Security](https://hjosugi.github.io/kofun/docs/security/)
 
 The website renders selected Markdown files from this repository, so source and

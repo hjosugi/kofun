@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "owner": "hjosugi",
+  "repository": "hjosugi/kofun",
+  "title": "Kofun Delivery Roadmap",
+  "snapshotPath": "app/roadmap/plan-snapshot.json",
+  "project": {
+    "visibility": "PUBLIC",
+    "description": "Delivery plan for open curated kofun issues. Generated fields are synchronized from app/roadmap/plan-snapshot.json.",
+    "readme": "## Operating model\n\n- Three collision-safe writer lanes: A, B, and C.\n- One dedicated Review lane for integration and CI.\n- Only open issues carrying the exact `curated` label are managed.\n- Planning umbrellas remain in Issues and are not treated as implementation work.\n- Start and target dates are forecasts, not promises; blocked and deferred work may have no dates.\n\n[Open the live roadmap and calendar](https://hjosugi.github.io/kofun/roadmap/) · [Read the generated delivery plan](https://github.com/hjosugi/kofun/blob/main/docs/DELIVERY_PLAN.md)",
+    "fields": [
+      {
+        "name": "Status",
+        "type": "SINGLE_SELECT",
+        "existing": true,
+        "options": ["Todo", "In Progress", "Done"]
+      },
+      {
+        "name": "Priority",
+        "type": "SINGLE_SELECT",
+        "options": ["P0", "P1", "P2", "P3"]
+      },
+      {
+        "name": "Size",
+        "type": "SINGLE_SELECT",
+        "options": ["XS", "S", "M", "L", "XL"]
+      },
+      {
+        "name": "Agent Slot",
+        "type": "SINGLE_SELECT",
+        "options": ["A", "B", "C", "Review"]
+      },
+      {
+        "name": "Start Date",
+        "type": "DATE"
+      },
+      {
+        "name": "Target Date",
+        "type": "DATE"
+      },
+      {
+        "name": "Iteration",
+        "type": "ITERATION",
+        "iteration": {
+          "startDate": "2026-07-27",
+          "duration": 7,
+          "count": 24,
+          "titlePrefix": "Week"
+        }
+      }
+    ],
+    "views": [
+      {
+        "name": "Delivery roadmap",
+        "layout": "roadmap",
+        "filter": "is:issue is:open"
+      },
+      {
+        "name": "This week",
+        "layout": "board",
+        "filter": "is:issue is:open"
+      },
+      {
+        "name": "Agent capacity",
+        "layout": "table",
+        "filter": "is:issue is:open"
+      }
+    ]
+  },
+  "mappings": {
+    "status": {
+      "todo": "Todo",
+      "ready": "Todo",
+      "needs-detail": "Todo",
+      "needs-decision": "Todo",
+      "unclassified": "Todo",
+      "blocked": "Todo",
+      "deferred": "Todo",
+      "scheduled": "Todo",
+      "unscheduled": "Todo",
+      "in-progress": "In Progress",
+      "in progress": "In Progress",
+      "review": "In Progress",
+      "done": "Done",
+      "closed": "Done"
+    },
+    "priority": {
+      "critical": "P0",
+      "highest": "P0",
+      "p0": "P0",
+      "high": "P1",
+      "p1": "P1",
+      "medium": "P2",
+      "normal": "P2",
+      "p2": "P2",
+      "low": "P3",
+      "p3": "P3"
+    },
+    "size": {
+      "xs": "XS",
+      "s": "S",
+      "m": "M",
+      "l": "L",
+      "xl": "XL"
+    },
+    "agentSlot": {
+      "a": "A",
+      "agent-a": "A",
+      "writer-a": "A",
+      "b": "B",
+      "agent-b": "B",
+      "writer-b": "B",
+      "c": "C",
+      "agent-c": "C",
+      "writer-c": "C",
+      "review": "Review",
+      "reviewer": "Review",
+      "integration": "Review"
+    }
+  },
+  "api": {
+    "projectsTokenSecret": "PROJECTS_TOKEN",
+    "viewsVersion": "2026-03-10",
+    "viewsDocumentation": "https://docs.github.com/en/rest/projects/views",
+    "projectsActionsDocumentation": "https://docs.github.com/en/issues/planning-and-tracking-with-projects/automating-your-project/automating-projects-using-actions"
+  }
+}

@@ -9,6 +9,13 @@ another curated page or to the corresponding file on GitHub. The overview
 records the exact reviewed source commit and keeps active implementation claims
 separate from design direction and open issues.
 
+The `/roadmap` route renders the generated delivery snapshot from
+`app/roadmap/plan-snapshot.json`. It separates planning umbrellas from curated
+work, caps active implementation at three collision-safe writer lanes, reserves
+the fourth agent for review and integration, and exposes dependency-aware
+timeline and calendar views. `docs/DELIVERY_PLAN.md` is generated from the same
+snapshot for a reviewable text representation.
+
 The embedded playground is deliberately honest about its boundary:
 
 - `app/kofun-runtime.ts` is a bounded, browser-only learning evaluator.
@@ -31,7 +38,9 @@ npm install
 npm run verify:site
 npm run build:sites
 npm run verify:pages
+npm run check:plan
 npm run check:status
+npm run project:plan
 npm run dev
 ```
 
@@ -55,3 +64,13 @@ documentation/evidence issues. It exits cleanly without rewriting files when
 nothing changed. When it reports a stale snapshot, run `npm run sync:status`,
 review `app/docs/status-snapshot.json` and `docs/ISSUE_PROGRESS.md`, then
 validate any changed capability claims against the named executable gates.
+
+`npm run check:plan` performs the corresponding read-only issue and schedule
+check. `npm run sync:plan` refreshes the checked-in JSON and Markdown delivery
+snapshots. Project configuration is intentionally separate:
+`npm run project:plan` prints the idempotent GitHub Projects changes, while
+`npm run project:apply` applies them only with an explicit classic/OAuth token
+carrying the `project` scope. `.github/workflows/project-roadmap.yml` repeats
+the safe dry-run every six hours and switches to field synchronization only
+after a classic PAT with `repo` and `project` scopes is stored as the
+`PROJECTS_TOKEN` repository secret.

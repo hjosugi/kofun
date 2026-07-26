@@ -74,6 +74,7 @@ export default function Home() {
           <a className="nav-section-link" href="#language">Language</a>
           <a className="nav-section-link" href="#playground">Playground</a>
           <a className="nav-section-link" href="#status">Status</a>
+          <Link href="/roadmap">Roadmap</Link>
           <Link href="/docs">Docs</Link>
           <a
             aria-label="Kofun on GitHub"
@@ -297,6 +298,7 @@ export default function Home() {
         <div className="footer-links">
           <a href={githubUrl}>Repository</a>
           <Link href="/docs">Documentation</Link>
+          <Link href="/roadmap">Delivery roadmap</Link>
           <a href={`${githubUrl}/issues`}>Issues</a>
           <a href={`${githubUrl}/blob/main/LICENSE-MIT`}>License</a>
         </div>

@@ -47,11 +47,14 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           npm run sync:status
+          npm run sync:plan
           git fetch origin gh-pages
 
           tracker_changed=false
           if ! git diff --quiet -- \
               app/docs/status-snapshot.json \
+              app/roadmap/plan-snapshot.json \
+              docs/DELIVERY_PLAN.md \
               docs/ISSUE_PROGRESS.md
           then
             tracker_changed=true
@@ -98,8 +101,10 @@ jobs:
             "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
             app/docs/status-snapshot.json \
+            app/roadmap/plan-snapshot.json \
+            docs/DELIVERY_PLAN.md \
             docs/ISSUE_PROGRESS.md
-          git commit -m "Update issue progress snapshot"
+          git commit -m "Update delivery planning snapshots"
           git push origin HEAD:main
       - name: Publish changed Pages tree
         if: steps.sync.outputs.publish == 'true'
@@ -167,5 +172,7 @@ jobs:
             --output /dev/null https://hjosugi.github.io/kofun/
           curl --fail --retry 3 --silent --show-error \
             --output /dev/null https://hjosugi.github.io/kofun/docs/
+          curl --fail --retry 3 --silent --show-error \
+            --output /dev/null https://hjosugi.github.io/kofun/roadmap/
           curl --fail --retry 3 --silent --show-error \
             --output /dev/null https://hjosugi.github.io/kofun/tour/
