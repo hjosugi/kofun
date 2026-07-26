@@ -551,3 +551,600 @@ size_t kofun_discovery_result_emit_factless(
     }
     return sink.written;
 }
+
+/* ---------------------------------------------------------------------- */
+/* Facts                                                                   */
+/* ---------------------------------------------------------------------- */
+
+static const char *fact_status_name(KofunDiscoveryFactStatus status) {
+    switch (status) {
+    case KOFUN_DISCOVERY_FACT_VALIDATED:
+        return "validated";
+    case KOFUN_DISCOVERY_FACT_PROVISIONAL:
+        return "provisional";
+    case KOFUN_DISCOVERY_FACT_ERROR:
+        return "error";
+    case KOFUN_DISCOVERY_FACT_UNAVAILABLE:
+        return "unavailable";
+    default:
+        return NULL;
+    }
+}
+
+static const char *identity_kind_name(KofunDiscoveryIdentityKind kind) {
+    switch (kind) {
+    case KOFUN_DISCOVERY_IDENTITY_MODULE_ID:
+        return "ModuleId";
+    case KOFUN_DISCOVERY_IDENTITY_SYMBOL_ID:
+        return "SymbolId";
+    case KOFUN_DISCOVERY_IDENTITY_TYPE_ID:
+        return "TypeId";
+    case KOFUN_DISCOVERY_IDENTITY_FILE_ID:
+        return "FileId";
+    default:
+        return NULL;
+    }
+}
+
+static const char *fact_reason_name(KofunDiscoveryFactReason reason) {
+    switch (reason) {
+    case KOFUN_DISCOVERY_FACT_REASON_NONE:
+        return NULL;
+    case KOFUN_DISCOVERY_FACT_REASON_CANCELLED_BEFORE_ANALYSIS:
+        return "cancelled-before-analysis";
+    case KOFUN_DISCOVERY_FACT_REASON_INCOMPLETE_ANALYSIS:
+        return "incomplete-analysis";
+    case KOFUN_DISCOVERY_FACT_REASON_LIMIT_EXHAUSTED:
+        return "limit-exhausted";
+    case KOFUN_DISCOVERY_FACT_REASON_REJECTED_BY_DIAGNOSTIC:
+        return "rejected-by-diagnostic";
+    case KOFUN_DISCOVERY_FACT_REASON_TYPE_NOT_AVAILABLE_IN_CURRENT_SUBSET:
+        return "type-not-available-in-current-subset";
+    case KOFUN_DISCOVERY_FACT_REASON_UNSUPPORTED_CURRENT_STAGE2_FEATURE:
+        return "unsupported-current-stage2-feature";
+    default:
+        return NULL;
+    }
+}
+
+/* Spellings are already in ASCII order, so the enum doubles as the sort key. */
+static const char *rejection_reason_name(KofunDiscoveryRejectionReason reason) {
+    switch (reason) {
+    case KOFUN_DISCOVERY_REJECT_AMBIGUOUS:
+        return "ambiguous";
+    case KOFUN_DISCOVERY_REJECT_INCOMPLETE_ANALYSIS:
+        return "incomplete-analysis";
+    case KOFUN_DISCOVERY_REJECT_LIMIT_EXHAUSTED:
+        return "limit-exhausted";
+    case KOFUN_DISCOVERY_REJECT_MISSING_EFFECT:
+        return "missing-effect";
+    case KOFUN_DISCOVERY_REJECT_REQUIRES_EDIT:
+        return "requires-edit";
+    case KOFUN_DISCOVERY_REJECT_REQUIRES_READ:
+        return "requires-read";
+    case KOFUN_DISCOVERY_REJECT_REQUIRES_TAKE:
+        return "requires-take";
+    case KOFUN_DISCOVERY_REJECT_TYPE_MISMATCH:
+        return "type-mismatch";
+    case KOFUN_DISCOVERY_REJECT_UNSATISFIED_BOUND:
+        return "unsatisfied-bound";
+    case KOFUN_DISCOVERY_REJECT_UNSUPPORTED_IN_PROFILE:
+        return "unsupported-in-profile";
+    default:
+        return NULL;
+    }
+}
+
+static const char *receiver_mode_name(KofunDiscoveryReceiverMode mode) {
+    switch (mode) {
+    case KOFUN_DISCOVERY_RECEIVER_NULL:
+        return NULL;
+    case KOFUN_DISCOVERY_RECEIVER_READ:
+        return "read";
+    case KOFUN_DISCOVERY_RECEIVER_EDIT:
+        return "edit";
+    case KOFUN_DISCOVERY_RECEIVER_TAKE:
+        return "take";
+    case KOFUN_DISCOVERY_RECEIVER_NONE:
+        return "none";
+    default:
+        return NULL;
+    }
+}
+
+static const char *visibility_name(KofunDiscoveryVisibility visibility) {
+    switch (visibility) {
+    case KOFUN_DISCOVERY_VISIBILITY_PRIVATE:
+        return "private";
+    case KOFUN_DISCOVERY_VISIBILITY_INTERNAL:
+        return "internal";
+    case KOFUN_DISCOVERY_VISIBILITY_PUB:
+        return "pub";
+    case KOFUN_DISCOVERY_VISIBILITY_RESTRICTED:
+        return "restricted";
+    default:
+        return NULL;
+    }
+}
+
+static const char *omission_reason_name(KofunDiscoveryOmissionReason reason) {
+    switch (reason) {
+    case KOFUN_DISCOVERY_OMISSION_HIDDEN_BY_VISIBILITY:
+        return "hidden-by-visibility";
+    case KOFUN_DISCOVERY_OMISSION_NOT_IMPORTED:
+        return "not-imported";
+    case KOFUN_DISCOVERY_OMISSION_UNSUPPORTED_IN_PROFILE:
+        return "unsupported-in-profile";
+    case KOFUN_DISCOVERY_OMISSION_INCOMPLETE_ANALYSIS:
+        return "incomplete-analysis";
+    case KOFUN_DISCOVERY_OMISSION_LIMIT_EXHAUSTED:
+        return "limit-exhausted";
+    default:
+        return NULL;
+    }
+}
+
+static bool add_rejection(KofunDiscoveryOperationFact *operation,
+                          KofunDiscoveryRejectionReason reason) {
+    size_t index;
+    for (index = 0; index < operation->rejection_reason_count; index++) {
+        if (operation->rejection_reasons[index] == reason) {
+            return true; /* already present; the set stays duplicate-free */
+        }
+    }
+    if (operation->rejection_reason_count >=
+        KOFUN_DISCOVERY_MAX_REJECTION_REASONS) {
+        return false;
+    }
+    operation->rejection_reasons[operation->rejection_reason_count++] = reason;
+    return true;
+}
+
+size_t kofun_discovery_apply_receiver_rule(
+    KofunDiscoveryOperationFact *operations, size_t count,
+    KofunDiscoveryReceiverMode expression_mode, bool include_unavailable) {
+    size_t read = 0;
+    size_t written = 0;
+
+    if (operations == NULL) {
+        return 0;
+    }
+    /*
+     * Only a `read` expression narrows the set. An `edit` receiver may still
+     * call `read` operations, and `take` consumes the value outright, so
+     * neither is filtered here.
+     */
+    if (expression_mode != KOFUN_DISCOVERY_RECEIVER_READ) {
+        return count;
+    }
+
+    for (read = 0; read < count; read++) {
+        KofunDiscoveryOperationFact *operation = &operations[read];
+        KofunDiscoveryRejectionReason reason;
+
+        if (operation->receiver_mode == KOFUN_DISCOVERY_RECEIVER_EDIT) {
+            reason = KOFUN_DISCOVERY_REJECT_REQUIRES_EDIT;
+        } else if (operation->receiver_mode == KOFUN_DISCOVERY_RECEIVER_TAKE) {
+            reason = KOFUN_DISCOVERY_REJECT_REQUIRES_TAKE;
+        } else {
+            operations[written++] = *operation;
+            continue;
+        }
+
+        /* Dropped entirely unless the client asked to be told why. */
+        if (!include_unavailable) {
+            continue;
+        }
+        operation->callable = false;
+        if (!add_rejection(operation, reason)) {
+            continue;
+        }
+        operations[written++] = *operation;
+    }
+    return written;
+}
+
+/* Raw identity bytes order before any display text, so a plain byte compare
+ * over the hex value is the documented key. */
+static int compare_operations(const KofunDiscoveryOperationFact *left,
+                              const KofunDiscoveryOperationFact *right) {
+    int order = strcmp(left->identity.value, right->identity.value);
+    if (order != 0) {
+        return order;
+    }
+    order = strcmp(left->qualified_name, right->qualified_name);
+    if (order != 0) {
+        return order;
+    }
+    return strcmp(left->signature, right->signature);
+}
+
+static void sort_operations(KofunDiscoveryOperationFact *operations,
+                            size_t count) {
+    size_t index;
+    /* Insertion sort: n is bounded by the 4,096-row limit and the arrays are
+     * near-sorted in practice, so this keeps the ordering rule readable
+     * without pulling in a comparator indirection. */
+    for (index = 1; index < count; index++) {
+        KofunDiscoveryOperationFact pivot = operations[index];
+        size_t scan = index;
+        while (scan > 0 && compare_operations(&operations[scan - 1], &pivot) > 0) {
+            operations[scan] = operations[scan - 1];
+            scan--;
+        }
+        operations[scan] = pivot;
+    }
+}
+
+static void sort_rejections(KofunDiscoveryRejectionReason *reasons,
+                            size_t count) {
+    size_t index;
+    for (index = 1; index < count; index++) {
+        KofunDiscoveryRejectionReason pivot = reasons[index];
+        size_t scan = index;
+        while (scan > 0 && reasons[scan - 1] > pivot) {
+            reasons[scan] = reasons[scan - 1];
+            scan--;
+        }
+        reasons[scan] = pivot;
+    }
+}
+
+static void sort_omissions(KofunDiscoveryOmission *omissions, size_t count) {
+    size_t index;
+    for (index = 1; index < count; index++) {
+        KofunDiscoveryOmission pivot = omissions[index];
+        size_t scan = index;
+        while (scan > 0 &&
+               (omissions[scan - 1].reason > pivot.reason ||
+                (omissions[scan - 1].reason == pivot.reason &&
+                 strcmp(omissions[scan - 1].requested_spelling,
+                        pivot.requested_spelling) > 0))) {
+            omissions[scan] = omissions[scan - 1];
+            scan--;
+        }
+        omissions[scan] = pivot;
+    }
+}
+
+/*
+ * The invariants that make a fact-bearing result well formed. Checking them
+ * here rather than trusting each caller is the point: a provider that gets one
+ * wrong gets no output, instead of output that a client would believe.
+ */
+static bool facts_are_permitted(KofunDiscoveryStatus status,
+                                KofunDiscoveryReason reason,
+                                const KofunDiscoveryAnalysisKey *analysis,
+                                const KofunDiscoveryTypeFact *type,
+                                const KofunDiscoveryOperationFact *operations,
+                                size_t operation_count, size_t omission_count,
+                                bool truncated) {
+    size_t index;
+
+    if (analysis == NULL) {
+        return false;
+    }
+    if (operation_count > KOFUN_DISCOVERY_MAX_OPERATIONS ||
+        omission_count > KOFUN_DISCOVERY_MAX_OMISSIONS) {
+        return false;
+    }
+    if (status != KOFUN_DISCOVERY_STATUS_COMPLETE &&
+        status != KOFUN_DISCOVERY_STATUS_PARTIAL) {
+        return false;
+    }
+    if (status == KOFUN_DISCOVERY_STATUS_COMPLETE) {
+        /* `complete` fixes reason to null and truncated to false. */
+        if (reason != KOFUN_DISCOVERY_REASON_NONE || truncated) {
+            return false;
+        }
+    } else if (operation_count == 0 && omission_count == 0 && type == NULL) {
+        /* `partial` must still carry at least one useful fact. */
+        return false;
+    }
+
+    if (type != NULL) {
+        bool validated = type->status == KOFUN_DISCOVERY_FACT_VALIDATED;
+        if (fact_status_name(type->status) == NULL) {
+            return false;
+        }
+        if (validated) {
+            /* Validated: TypeId identity, non-null display, null reason. */
+            if (type->identity.kind != KOFUN_DISCOVERY_IDENTITY_TYPE_ID ||
+                !type->has_display ||
+                type->reason != KOFUN_DISCOVERY_FACT_REASON_NONE) {
+                return false;
+            }
+        } else {
+            /* Everything else: no identity, and a reason that explains it. */
+            if (type->identity.kind != KOFUN_DISCOVERY_IDENTITY_NONE ||
+                type->reason == KOFUN_DISCOVERY_FACT_REASON_NONE) {
+                return false;
+            }
+            if (type->status == KOFUN_DISCOVERY_FACT_UNAVAILABLE &&
+                type->has_display) {
+                return false;
+            }
+        }
+        if (status == KOFUN_DISCOVERY_STATUS_COMPLETE && !validated) {
+            return false;
+        }
+    }
+
+    for (index = 0; index < operation_count; index++) {
+        const KofunDiscoveryOperationFact *operation = &operations[index];
+        bool validated = operation->status == KOFUN_DISCOVERY_FACT_VALIDATED;
+
+        if (fact_status_name(operation->status) == NULL ||
+            identity_kind_name(operation->identity.kind) == NULL ||
+            visibility_name(operation->visibility) == NULL ||
+            operation->identity.kind != KOFUN_DISCOVERY_IDENTITY_SYMBOL_ID) {
+            return false;
+        }
+        if (operation->display_name[0] == '\0' ||
+            operation->qualified_name[0] == '\0') {
+            return false;
+        }
+        if (operation->origin.kind != KOFUN_DISCOVERY_ORIGIN_FUNCTION &&
+            operation->origin.kind != KOFUN_DISCOVERY_ORIGIN_MEMBER) {
+            return false;
+        }
+        if (operation->origin.module_identity.kind !=
+            KOFUN_DISCOVERY_IDENTITY_MODULE_ID) {
+            return false;
+        }
+        /* A callable row needs a validated origin, a signature, a receiver
+         * mode, and no rejections. */
+        if (operation->callable) {
+            if (!validated ||
+                operation->origin.status != KOFUN_DISCOVERY_FACT_VALIDATED ||
+                !operation->has_signature ||
+                operation->receiver_mode == KOFUN_DISCOVERY_RECEIVER_NULL ||
+                operation->rejection_reason_count != 0) {
+                return false;
+            }
+        } else if (operation->rejection_reason_count == 0) {
+            /* Every unavailable row explains itself. */
+            return false;
+        }
+        /* Non-validated rows cannot claim to be callable. */
+        if (!validated && operation->callable) {
+            return false;
+        }
+        if (status == KOFUN_DISCOVERY_STATUS_COMPLETE &&
+            (!validated || !operation->callable)) {
+            return false;
+        }
+        if (operation->rejection_reason_count >
+            KOFUN_DISCOVERY_MAX_REJECTION_REASONS) {
+            return false;
+        }
+        /* Rows are unique by SymbolId; this slice has no implementation
+         * identity to break ties with. */
+        if (index > 0 && strcmp(operations[index - 1].identity.value,
+                                operation->identity.value) == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void put_identity(Sink *sink, const char *indent,
+                         const KofunDiscoveryIdentity *identity) {
+    put(sink, "{\n");
+    put(sink, indent);
+    put(sink, "  \"kind\": \"");
+    put(sink, identity_kind_name(identity->kind));
+    put(sink, "\",\n");
+    put(sink, indent);
+    put(sink, "  \"value\": \"");
+    put(sink, identity->value);
+    put(sink, "\"\n");
+    put(sink, indent);
+    put(sink, "}");
+}
+
+static void put_analysis(Sink *sink, const KofunDiscoveryAnalysisKey *analysis) {
+    put(sink, "{\n    \"file_id\": \"");
+    put(sink, analysis->file_id);
+    put(sink, "\",\n    \"generation\": ");
+    put_u53(sink, analysis->generation);
+    put(sink, ",\n    \"interface_set_sha256\": \"");
+    put(sink, analysis->interface_set_sha256);
+    put(sink, "\",\n    \"semantic_compatibility\": \"");
+    put(sink, analysis->semantic_compatibility);
+    put(sink, "\",\n    \"source_sha256\": \"");
+    put(sink, analysis->source_sha256);
+    put(sink, "\"\n  }");
+}
+
+static void put_operation(Sink *sink,
+                          const KofunDiscoveryOperationFact *operation) {
+    size_t index;
+    const char *receiver = receiver_mode_name(operation->receiver_mode);
+
+    /* Keys in ASCII lexicographic order. */
+    put(sink, "{\n      \"availability\": \"");
+    put(sink, operation->callable ? "callable" : "unavailable");
+    put(sink, "\",\n      \"dependencies\": [],\n      \"diagnostic_ids\": "
+              "[],\n      \"display_name\": \"");
+    put(sink, operation->display_name);
+    put(sink, "\",\n      \"documentation\": null,\n      "
+              "\"effects\": [],\n      \"generic_requirements\": [],\n      "
+              "\"identity\": ");
+    put_identity(sink, "      ", &operation->identity);
+    put(sink, ",\n      \"origin\": {\n        \"implementation_identity\": "
+              "null,\n        \"kind\": \"");
+    put(sink, operation->origin.kind == KOFUN_DISCOVERY_ORIGIN_FUNCTION
+                  ? "function"
+                  : "member");
+    put(sink, "\",\n        \"module\": \"");
+    put(sink, operation->origin.module);
+    put(sink, "\",\n        \"module_identity\": ");
+    put_identity(sink, "        ", &operation->origin.module_identity);
+    put(sink, ",\n        \"status\": \"");
+    put(sink, fact_status_name(operation->origin.status));
+    put(sink, "\",\n        \"trait\": null,\n        \"trait_identity\": "
+              "null\n      },\n      \"qualified_name\": \"");
+    put(sink, operation->qualified_name);
+    put(sink, "\",\n      \"receiver_mode\": ");
+    if (receiver == NULL) {
+        put(sink, "null");
+    } else {
+        put(sink, "\"");
+        put(sink, receiver);
+        put(sink, "\"");
+    }
+    put(sink, ",\n      \"rejection_reasons\": ");
+    if (operation->rejection_reason_count == 0) {
+        put(sink, "[]");
+    } else {
+        put(sink, "[\n");
+        for (index = 0; index < operation->rejection_reason_count; index++) {
+            put(sink, "        \"");
+            put(sink, rejection_reason_name(operation->rejection_reasons[index]));
+            put(sink, index + 1u < operation->rejection_reason_count ? "\",\n"
+                                                                    : "\"\n");
+        }
+        put(sink, "      ]");
+    }
+    put(sink, ",\n      \"signature\": ");
+    if (operation->has_signature) {
+        put(sink, "\"");
+        put(sink, operation->signature);
+        put(sink, "\"");
+    } else {
+        put(sink, "null");
+    }
+    put(sink, ",\n      \"source\": null,\n      \"status\": \"");
+    put(sink, fact_status_name(operation->status));
+    put(sink, "\",\n      \"visibility\": \"");
+    put(sink, visibility_name(operation->visibility));
+    put(sink, "\"\n    }");
+}
+
+size_t kofun_discovery_result_emit(
+    KofunDiscoveryStatus status, KofunDiscoveryReason reason,
+    const KofunDiscoveryAnalysisKey *analysis,
+    const KofunDiscoveryTypeFact *type, KofunDiscoveryOperationFact *operations,
+    size_t operation_count, KofunDiscoveryOmission *omissions,
+    size_t omission_count, bool truncated, char *buffer, size_t capacity) {
+    Sink sink;
+    size_t index;
+    const char *reason_name;
+
+    if (buffer == NULL || (operation_count > 0 && operations == NULL) ||
+        (omission_count > 0 && omissions == NULL)) {
+        return 0;
+    }
+
+    /* Ordering first: uniqueness is checked against sorted neighbours. */
+    for (index = 0; index < operation_count; index++) {
+        sort_rejections(operations[index].rejection_reasons,
+                        operations[index].rejection_reason_count);
+    }
+    sort_operations(operations, operation_count);
+    sort_omissions(omissions, omission_count);
+
+    if (!facts_are_permitted(status, reason, analysis, type, operations,
+                             operation_count, omission_count, truncated)) {
+        return 0;
+    }
+    if (capacity > KOFUN_DISCOVERY_MAX_RESULT_BYTES) {
+        capacity = KOFUN_DISCOVERY_MAX_RESULT_BYTES;
+    }
+    reason_name = kofun_discovery_reason_name(reason);
+
+    sink.buffer = buffer;
+    sink.capacity = capacity;
+    sink.written = 0;
+    sink.overflowed = false;
+
+    put(&sink, "{\n  \"analysis\": ");
+    put_analysis(&sink, analysis);
+    put(&sink, ",\n  \"authoritative\": false,\n  \"diagnostics\": [],\n  "
+               "\"limit_profile\": \"" KOFUN_DISCOVERY_LIMIT_PROFILE
+               "\",\n  \"omissions\": ");
+    if (omission_count == 0) {
+        put(&sink, "[]");
+    } else {
+        put(&sink, "[\n");
+        for (index = 0; index < omission_count; index++) {
+            put(&sink, "    {\n      \"reason\": \"");
+            put(&sink, omission_reason_name(omissions[index].reason));
+            put(&sink, "\",\n      \"requested_spelling\": ");
+            if (omissions[index].has_requested_spelling) {
+                put(&sink, "\"");
+                put(&sink, omissions[index].requested_spelling);
+                put(&sink, "\"");
+            } else {
+                put(&sink, "null");
+            }
+            put(&sink, "\n    }");
+            put(&sink, index + 1u < omission_count ? ",\n" : "\n");
+        }
+        put(&sink, "  ]");
+    }
+    put(&sink, ",\n  \"operations\": ");
+    if (operation_count == 0) {
+        put(&sink, "[]");
+    } else {
+        put(&sink, "[\n");
+        for (index = 0; index < operation_count; index++) {
+            put(&sink, "    ");
+            put_operation(&sink, &operations[index]);
+            put(&sink, index + 1u < operation_count ? ",\n" : "\n");
+        }
+        put(&sink, "  ]");
+    }
+    put(&sink, ",\n  \"reason\": ");
+    if (reason_name == NULL) {
+        put(&sink, "null");
+    } else {
+        put(&sink, "\"");
+        put(&sink, reason_name);
+        put(&sink, "\"");
+    }
+    put(&sink, ",\n  \"schema\": \"" KOFUN_DISCOVERY_RESULT_SCHEMA
+               "\",\n  \"status\": \"");
+    put(&sink, kofun_discovery_status_name(status));
+    put(&sink, "\",\n  \"truncated\": ");
+    put(&sink, truncated ? "true" : "false");
+    put(&sink, ",\n  \"type\": ");
+    if (type == NULL) {
+        put(&sink, "null");
+    } else {
+        const char *type_reason = fact_reason_name(type->reason);
+        put(&sink, "{\n    \"dependencies\": [],\n    \"diagnostic_ids\": "
+                   "[],\n    \"display\": ");
+        if (type->has_display) {
+            put(&sink, "\"");
+            put(&sink, type->display);
+            put(&sink, "\"");
+        } else {
+            put(&sink, "null");
+        }
+        put(&sink, ",\n    \"identity\": ");
+        if (type->identity.kind == KOFUN_DISCOVERY_IDENTITY_NONE) {
+            put(&sink, "null");
+        } else {
+            put_identity(&sink, "    ", &type->identity);
+        }
+        put(&sink, ",\n    \"reason\": ");
+        if (type_reason == NULL) {
+            put(&sink, "null");
+        } else {
+            put(&sink, "\"");
+            put(&sink, type_reason);
+            put(&sink, "\"");
+        }
+        put(&sink, ",\n    \"status\": \"");
+        put(&sink, fact_status_name(type->status));
+        put(&sink, "\"\n  }");
+    }
+    put(&sink, "\n}\n");
+
+    if (sink.overflowed) {
+        return 0;
+    }
+    return sink.written;
+}

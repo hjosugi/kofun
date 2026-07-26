@@ -155,4 +155,172 @@ size_t kofun_discovery_result_emit_factless(KofunDiscoveryStatus status,
 const char *kofun_discovery_status_name(KofunDiscoveryStatus status);
 const char *kofun_discovery_reason_name(KofunDiscoveryReason reason);
 
+/* ---------------------------------------------------------------------- */
+/* Facts                                                                   */
+/* ---------------------------------------------------------------------- */
+
+/*
+ * The current-core slice deliberately covers direct functions and members
+ * only. Imports, extensions, traits, macros, and general effects are excluded
+ * by the issue's own scope, which is why `generic_requirements`, `effects`, and
+ * `dependencies` are emitted as empty arrays here rather than modelled: an
+ * empty array is what the contract requires for a row that genuinely has none,
+ * and inventing a representation for rows this slice cannot produce would be
+ * guessing at #293/#316's semantics ahead of them.
+ */
+
+#define KOFUN_DISCOVERY_MAX_REJECTION_REASONS 10u
+#define KOFUN_DISCOVERY_MAX_NAME_BYTES 256u
+#define KOFUN_DISCOVERY_MAX_QUALIFIED_NAME_BYTES 4096u
+#define KOFUN_DISCOVERY_MAX_SIGNATURE_BYTES 16384u
+#define KOFUN_DISCOVERY_MAX_DISPLAY_BYTES 4096u
+
+typedef enum {
+    KOFUN_DISCOVERY_FACT_VALIDATED = 1,
+    KOFUN_DISCOVERY_FACT_PROVISIONAL = 2,
+    KOFUN_DISCOVERY_FACT_ERROR = 3,
+    KOFUN_DISCOVERY_FACT_UNAVAILABLE = 4
+} KofunDiscoveryFactStatus;
+
+typedef enum {
+    KOFUN_DISCOVERY_IDENTITY_NONE = 0,
+    KOFUN_DISCOVERY_IDENTITY_MODULE_ID = 1,
+    KOFUN_DISCOVERY_IDENTITY_SYMBOL_ID = 2,
+    KOFUN_DISCOVERY_IDENTITY_TYPE_ID = 3,
+    KOFUN_DISCOVERY_IDENTITY_FILE_ID = 4
+} KofunDiscoveryIdentityKind;
+
+typedef struct {
+    KofunDiscoveryIdentityKind kind;
+    char value[KOFUN_DISCOVERY_ID_CHARS + 1u];
+} KofunDiscoveryIdentity;
+
+typedef enum {
+    KOFUN_DISCOVERY_FACT_REASON_NONE = 0,
+    KOFUN_DISCOVERY_FACT_REASON_CANCELLED_BEFORE_ANALYSIS = 1,
+    KOFUN_DISCOVERY_FACT_REASON_INCOMPLETE_ANALYSIS = 2,
+    KOFUN_DISCOVERY_FACT_REASON_LIMIT_EXHAUSTED = 3,
+    KOFUN_DISCOVERY_FACT_REASON_REJECTED_BY_DIAGNOSTIC = 4,
+    KOFUN_DISCOVERY_FACT_REASON_TYPE_NOT_AVAILABLE_IN_CURRENT_SUBSET = 5,
+    KOFUN_DISCOVERY_FACT_REASON_UNSUPPORTED_CURRENT_STAGE2_FEATURE = 6
+} KofunDiscoveryFactReason;
+
+typedef struct {
+    KofunDiscoveryFactStatus status;
+    /* Identity is absent unless the type is validated, per the contract. */
+    KofunDiscoveryIdentity identity;
+    char display[KOFUN_DISCOVERY_MAX_DISPLAY_BYTES + 1u];
+    bool has_display;
+    KofunDiscoveryFactReason reason;
+} KofunDiscoveryTypeFact;
+
+typedef enum {
+    KOFUN_DISCOVERY_RECEIVER_NULL = 0,
+    KOFUN_DISCOVERY_RECEIVER_READ = 1,
+    KOFUN_DISCOVERY_RECEIVER_EDIT = 2,
+    KOFUN_DISCOVERY_RECEIVER_TAKE = 3,
+    KOFUN_DISCOVERY_RECEIVER_NONE = 4
+} KofunDiscoveryReceiverMode;
+
+typedef enum {
+    KOFUN_DISCOVERY_ORIGIN_FUNCTION = 1,
+    KOFUN_DISCOVERY_ORIGIN_MEMBER = 2
+} KofunDiscoveryOriginKind;
+
+typedef enum {
+    KOFUN_DISCOVERY_VISIBILITY_PRIVATE = 1,
+    KOFUN_DISCOVERY_VISIBILITY_INTERNAL = 2,
+    KOFUN_DISCOVERY_VISIBILITY_PUB = 3,
+    KOFUN_DISCOVERY_VISIBILITY_RESTRICTED = 4
+} KofunDiscoveryVisibility;
+
+/* Sorted ASCII-lexicographically by the emitter, so callers may set them in
+ * any order; duplicates are rejected rather than deduplicated silently. */
+typedef enum {
+    KOFUN_DISCOVERY_REJECT_AMBIGUOUS = 1,
+    KOFUN_DISCOVERY_REJECT_INCOMPLETE_ANALYSIS = 2,
+    KOFUN_DISCOVERY_REJECT_LIMIT_EXHAUSTED = 3,
+    KOFUN_DISCOVERY_REJECT_MISSING_EFFECT = 4,
+    KOFUN_DISCOVERY_REJECT_REQUIRES_EDIT = 5,
+    KOFUN_DISCOVERY_REJECT_REQUIRES_READ = 6,
+    KOFUN_DISCOVERY_REJECT_REQUIRES_TAKE = 7,
+    KOFUN_DISCOVERY_REJECT_TYPE_MISMATCH = 8,
+    KOFUN_DISCOVERY_REJECT_UNSATISFIED_BOUND = 9,
+    KOFUN_DISCOVERY_REJECT_UNSUPPORTED_IN_PROFILE = 10
+} KofunDiscoveryRejectionReason;
+
+typedef struct {
+    KofunDiscoveryFactStatus status;
+    KofunDiscoveryOriginKind kind;
+    char module[KOFUN_DISCOVERY_MAX_QUALIFIED_NAME_BYTES + 1u];
+    KofunDiscoveryIdentity module_identity;
+} KofunDiscoveryOrigin;
+
+typedef struct {
+    KofunDiscoveryFactStatus status;
+    KofunDiscoveryIdentity identity; /* SymbolId */
+    char display_name[KOFUN_DISCOVERY_MAX_NAME_BYTES + 1u];
+    char qualified_name[KOFUN_DISCOVERY_MAX_QUALIFIED_NAME_BYTES + 1u];
+    char signature[KOFUN_DISCOVERY_MAX_SIGNATURE_BYTES + 1u];
+    bool has_signature;
+    KofunDiscoveryReceiverMode receiver_mode;
+    KofunDiscoveryOrigin origin;
+    KofunDiscoveryVisibility visibility;
+    bool callable;
+    KofunDiscoveryRejectionReason
+        rejection_reasons[KOFUN_DISCOVERY_MAX_REJECTION_REASONS];
+    size_t rejection_reason_count;
+} KofunDiscoveryOperationFact;
+
+typedef enum {
+    KOFUN_DISCOVERY_OMISSION_HIDDEN_BY_VISIBILITY = 1,
+    KOFUN_DISCOVERY_OMISSION_NOT_IMPORTED = 2,
+    KOFUN_DISCOVERY_OMISSION_UNSUPPORTED_IN_PROFILE = 3,
+    KOFUN_DISCOVERY_OMISSION_INCOMPLETE_ANALYSIS = 4,
+    KOFUN_DISCOVERY_OMISSION_LIMIT_EXHAUSTED = 5
+} KofunDiscoveryOmissionReason;
+
+typedef struct {
+    KofunDiscoveryOmissionReason reason;
+    /* Only `explain-operation` may echo a spelling; a general query uses
+     * null. An omission carries nothing else — no count, identity, name,
+     * signature, origin, path, span, or documentation. */
+    char requested_spelling[KOFUN_DISCOVERY_MAX_SPELLING_BYTES + 1u];
+    bool has_requested_spelling;
+} KofunDiscoveryOmission;
+
+/*
+ * Apply the receiver-mode disclosure rule to a candidate set.
+ *
+ * A `read` receiver excludes `edit` and `take` operations by default. With
+ * `include_unavailable`, those candidates stay as visible rejected rows
+ * carrying `requires-edit`/`requires-take` and `availability = unavailable`,
+ * which is what "explain them when requested" means: the row is still refused,
+ * it just says why instead of vanishing.
+ *
+ * Rewrites `operations` in place and returns the surviving count.
+ */
+size_t kofun_discovery_apply_receiver_rule(
+    KofunDiscoveryOperationFact *operations, size_t count,
+    KofunDiscoveryReceiverMode expression_mode, bool include_unavailable);
+
+/*
+ * Emit a canonical fact-bearing result.
+ *
+ * Enforces the contract's shape invariants and refuses rather than emitting a
+ * result that violates one: `complete` requires every fact validated, an empty
+ * rejection list on every row, and `truncated = false`; any row that is not
+ * callable carries at least one rejection reason; a `type`-kind query emits no
+ * operations; and operations are sorted into compiler-key order with duplicate
+ * `(SymbolId, implementation)` tuples rejected.
+ *
+ * Returns bytes written, or 0 on refusal or insufficient capacity.
+ */
+size_t kofun_discovery_result_emit(
+    KofunDiscoveryStatus status, KofunDiscoveryReason reason,
+    const KofunDiscoveryAnalysisKey *analysis,
+    const KofunDiscoveryTypeFact *type, KofunDiscoveryOperationFact *operations,
+    size_t operation_count, KofunDiscoveryOmission *omissions,
+    size_t omission_count, bool truncated, char *buffer, size_t capacity);
+
 #endif /* KOFUN_STAGE2_DISCOVERY_V1_H */

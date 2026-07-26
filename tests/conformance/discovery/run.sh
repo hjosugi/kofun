@@ -56,6 +56,15 @@ golden emit emit
 # offsets.
 golden boundaries boundaries
 
+# Facts: the validated `List[Text]` answer, the receiver-mode disclosure rule,
+# provisional types, omission ordering, and canonical operation order.
+golden facts facts
+
+# The shape invariants a fact-bearing result must satisfy. Each case here is a
+# result the contract forbids, and the emitter must refuse it rather than
+# produce bytes a client would believe.
+golden facts-refused facts-refused
+
 # Every rejection path above walks the parser over deliberately malformed
 # bytes, which is exactly where an off-by-one reads past the end. Run the same
 # cases under the sanitizers so a refusal that is "correct" but reads out of
@@ -70,7 +79,7 @@ then
         "$ROOT/bootstrap/stage2/discovery_v1.c" \
         "$CASES/discovery_v1_test.c" \
         -o "$WORK/discovery-test-sanitized"
-    for mode in parse emit boundaries; do
+    for mode in parse emit boundaries facts facts-refused; do
         ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
         UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
             "$WORK/discovery-test-sanitized" "$mode" >/dev/null

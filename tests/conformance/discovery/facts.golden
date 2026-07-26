@@ -1,0 +1,359 @@
+complete: 2786 bytes
+{
+  "analysis": {
+    "file_id": "1111111111111111111111111111111111111111111111111111111111111111",
+    "generation": 17,
+    "interface_set_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+    "semantic_compatibility": "stage2-v1",
+    "source_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "authoritative": false,
+  "diagnostics": [],
+  "limit_profile": "kofun.discovery/default-v1",
+  "omissions": [],
+  "operations": [
+    {
+      "availability": "callable",
+      "dependencies": [],
+      "diagnostic_ids": [],
+      "display_name": "append",
+      "documentation": null,
+      "effects": [],
+      "generic_requirements": [],
+      "identity": {
+        "kind": "SymbolId",
+        "value": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "origin": {
+        "implementation_identity": null,
+        "kind": "member",
+        "module": "core.list",
+        "module_identity": {
+          "kind": "ModuleId",
+          "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "status": "validated",
+        "trait": null,
+        "trait_identity": null
+      },
+      "qualified_name": "core.list.append",
+      "receiver_mode": "edit",
+      "rejection_reasons": [],
+      "signature": "(edit List[Text], Text) -> Unit",
+      "source": null,
+      "status": "validated",
+      "visibility": "pub"
+    },
+    {
+      "availability": "callable",
+      "dependencies": [],
+      "diagnostic_ids": [],
+      "display_name": "length",
+      "documentation": null,
+      "effects": [],
+      "generic_requirements": [],
+      "identity": {
+        "kind": "SymbolId",
+        "value": "7777777777777777777777777777777777777777777777777777777777777777"
+      },
+      "origin": {
+        "implementation_identity": null,
+        "kind": "member",
+        "module": "core.list",
+        "module_identity": {
+          "kind": "ModuleId",
+          "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "status": "validated",
+        "trait": null,
+        "trait_identity": null
+      },
+      "qualified_name": "core.list.length",
+      "receiver_mode": "read",
+      "rejection_reasons": [],
+      "signature": "(read List[Text]) -> Int",
+      "source": null,
+      "status": "validated",
+      "visibility": "pub"
+    }
+  ],
+  "reason": null,
+  "schema": "kofun.discovery.result/v1",
+  "status": "complete",
+  "truncated": false,
+  "type": {
+    "dependencies": [],
+    "diagnostic_ids": [],
+    "display": "List[Text]",
+    "identity": {
+      "kind": "TypeId",
+      "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "reason": null,
+    "status": "validated"
+  }
+}
+key-order-first-row: length (emitted yes)
+read-default-kept: 1
+read-default: 1825 bytes
+{
+  "analysis": {
+    "file_id": "1111111111111111111111111111111111111111111111111111111111111111",
+    "generation": 17,
+    "interface_set_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+    "semantic_compatibility": "stage2-v1",
+    "source_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "authoritative": false,
+  "diagnostics": [],
+  "limit_profile": "kofun.discovery/default-v1",
+  "omissions": [],
+  "operations": [
+    {
+      "availability": "callable",
+      "dependencies": [],
+      "diagnostic_ids": [],
+      "display_name": "length",
+      "documentation": null,
+      "effects": [],
+      "generic_requirements": [],
+      "identity": {
+        "kind": "SymbolId",
+        "value": "7777777777777777777777777777777777777777777777777777777777777777"
+      },
+      "origin": {
+        "implementation_identity": null,
+        "kind": "member",
+        "module": "core.list",
+        "module_identity": {
+          "kind": "ModuleId",
+          "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "status": "validated",
+        "trait": null,
+        "trait_identity": null
+      },
+      "qualified_name": "core.list.length",
+      "receiver_mode": "read",
+      "rejection_reasons": [],
+      "signature": "(read List[Text]) -> Int",
+      "source": null,
+      "status": "validated",
+      "visibility": "pub"
+    }
+  ],
+  "reason": null,
+  "schema": "kofun.discovery.result/v1",
+  "status": "complete",
+  "truncated": false,
+  "type": {
+    "dependencies": [],
+    "diagnostic_ids": [],
+    "display": "List[Text]",
+    "identity": {
+      "kind": "TypeId",
+      "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "reason": null,
+    "status": "validated"
+  }
+}
+read-explained-kept: 3
+read-explained: 3837 bytes
+{
+  "analysis": {
+    "file_id": "1111111111111111111111111111111111111111111111111111111111111111",
+    "generation": 17,
+    "interface_set_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+    "semantic_compatibility": "stage2-v1",
+    "source_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "authoritative": false,
+  "diagnostics": [],
+  "limit_profile": "kofun.discovery/default-v1",
+  "omissions": [],
+  "operations": [
+    {
+      "availability": "unavailable",
+      "dependencies": [],
+      "diagnostic_ids": [],
+      "display_name": "append",
+      "documentation": null,
+      "effects": [],
+      "generic_requirements": [],
+      "identity": {
+        "kind": "SymbolId",
+        "value": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "origin": {
+        "implementation_identity": null,
+        "kind": "member",
+        "module": "core.list",
+        "module_identity": {
+          "kind": "ModuleId",
+          "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "status": "validated",
+        "trait": null,
+        "trait_identity": null
+      },
+      "qualified_name": "core.list.append",
+      "receiver_mode": "edit",
+      "rejection_reasons": [
+        "requires-edit"
+      ],
+      "signature": "(edit List[Text], Text) -> Unit",
+      "source": null,
+      "status": "validated",
+      "visibility": "pub"
+    },
+    {
+      "availability": "unavailable",
+      "dependencies": [],
+      "diagnostic_ids": [],
+      "display_name": "consume",
+      "documentation": null,
+      "effects": [],
+      "generic_requirements": [],
+      "identity": {
+        "kind": "SymbolId",
+        "value": "5555555555555555555555555555555555555555555555555555555555555555"
+      },
+      "origin": {
+        "implementation_identity": null,
+        "kind": "member",
+        "module": "core.list",
+        "module_identity": {
+          "kind": "ModuleId",
+          "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "status": "validated",
+        "trait": null,
+        "trait_identity": null
+      },
+      "qualified_name": "core.list.consume",
+      "receiver_mode": "take",
+      "rejection_reasons": [
+        "requires-take"
+      ],
+      "signature": "(take List[Text]) -> Text",
+      "source": null,
+      "status": "validated",
+      "visibility": "pub"
+    },
+    {
+      "availability": "callable",
+      "dependencies": [],
+      "diagnostic_ids": [],
+      "display_name": "length",
+      "documentation": null,
+      "effects": [],
+      "generic_requirements": [],
+      "identity": {
+        "kind": "SymbolId",
+        "value": "7777777777777777777777777777777777777777777777777777777777777777"
+      },
+      "origin": {
+        "implementation_identity": null,
+        "kind": "member",
+        "module": "core.list",
+        "module_identity": {
+          "kind": "ModuleId",
+          "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "status": "validated",
+        "trait": null,
+        "trait_identity": null
+      },
+      "qualified_name": "core.list.length",
+      "receiver_mode": "read",
+      "rejection_reasons": [],
+      "signature": "(read List[Text]) -> Int",
+      "source": null,
+      "status": "validated",
+      "visibility": "pub"
+    }
+  ],
+  "reason": "incomplete-current-file-facts",
+  "schema": "kofun.discovery.result/v1",
+  "status": "partial",
+  "truncated": false,
+  "type": {
+    "dependencies": [],
+    "diagnostic_ids": [],
+    "display": "List[Text]",
+    "identity": {
+      "kind": "TypeId",
+      "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "reason": null,
+    "status": "validated"
+  }
+}
+edit-receiver-kept: 2
+provisional-type: 798 bytes
+{
+  "analysis": {
+    "file_id": "1111111111111111111111111111111111111111111111111111111111111111",
+    "generation": 17,
+    "interface_set_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+    "semantic_compatibility": "stage2-v1",
+    "source_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "authoritative": false,
+  "diagnostics": [],
+  "limit_profile": "kofun.discovery/default-v1",
+  "omissions": [],
+  "operations": [],
+  "reason": "incomplete-current-file-facts",
+  "schema": "kofun.discovery.result/v1",
+  "status": "partial",
+  "truncated": false,
+  "type": {
+    "dependencies": [],
+    "diagnostic_ids": [],
+    "display": "_T1",
+    "identity": null,
+    "reason": "incomplete-analysis",
+    "status": "provisional"
+  }
+}
+omissions-sorted: 1064 bytes
+{
+  "analysis": {
+    "file_id": "1111111111111111111111111111111111111111111111111111111111111111",
+    "generation": 17,
+    "interface_set_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+    "semantic_compatibility": "stage2-v1",
+    "source_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "authoritative": false,
+  "diagnostics": [],
+  "limit_profile": "kofun.discovery/default-v1",
+  "omissions": [
+    {
+      "reason": "hidden-by-visibility",
+      "requested_spelling": null
+    },
+    {
+      "reason": "unsupported-in-profile",
+      "requested_spelling": null
+    }
+  ],
+  "operations": [],
+  "reason": "unsupported-in-profile",
+  "schema": "kofun.discovery.result/v1",
+  "status": "partial",
+  "truncated": false,
+  "type": {
+    "dependencies": [],
+    "diagnostic_ids": [],
+    "display": "List[Text]",
+    "identity": {
+      "kind": "TypeId",
+      "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "reason": null,
+    "status": "validated"
+  }
+}
