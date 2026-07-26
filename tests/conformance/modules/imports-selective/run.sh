@@ -7,7 +7,7 @@ export LC_ALL
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../../.." && pwd)
 CASES="$ROOT/tests/conformance/modules/imports-selective"
 CC=${CC:-cc}
-WORK=${KOFUN_IMPORTS_SELECTIVE_WORK:-"$ROOT/build/imports-selective"}
+WORK=${KOFUN_IMPORTS_SELECTIVE_WORK:-"$ROOT/build/${KOFUN_GATE_WORK_NAMESPACE:+$KOFUN_GATE_WORK_NAMESPACE/}imports-selective"}
 TOOL="$WORK/imports-selective"
 PACKAGE_ID=1111111111111111111111111111111111111111111111111111111111111111
 MAIN_MODULE=2222222222222222222222222222222222222222222222222222222222222222
@@ -191,8 +191,11 @@ expect_exact_forbidden E2S78 selective-internal \
     "$TOOL" "$WORK/positive.inventory" "$WORK/selective-internal.hir" \
     "$WORK/selective-internal.c"
 
-# The qualified-import helper remains independently buildable and passing.
-sh "$ROOT/tests/conformance/modules/imports-qualified/run.sh"
+# The qualified-import helper remains independently buildable and passing. It
+# gets its own build namespace so this nested run cannot collide with the
+# `imports-qualified` target running concurrently under `make verify` (#713).
+KOFUN_GATE_WORK_NAMESPACE="${KOFUN_GATE_WORK_NAMESPACE:+$KOFUN_GATE_WORK_NAMESPACE/}nested-imports-selective" \
+    sh "$ROOT/tests/conformance/modules/imports-qualified/run.sh"
 
 if command -v clang >/dev/null 2>&1; then
     clang -std=c11 -Wall -Wextra -Werror -pedantic \

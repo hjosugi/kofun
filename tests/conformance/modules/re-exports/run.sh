@@ -7,7 +7,7 @@ export LC_ALL
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../../.." && pwd)
 CASES="$ROOT/tests/conformance/modules/re-exports"
 CC=${CC:-cc}
-WORK=${KOFUN_RE_EXPORTS_WORK:-"$ROOT/build/re-exports"}
+WORK=${KOFUN_RE_EXPORTS_WORK:-"$ROOT/build/${KOFUN_GATE_WORK_NAMESPACE:+$KOFUN_GATE_WORK_NAMESPACE/}re-exports"}
 TOOL="$WORK/re-exports"
 KIF_TOOL="$WORK/kofun-kif-v1"
 PACKAGE_ID=1111111111111111111111111111111111111111111111111111111111111111
@@ -982,9 +982,15 @@ test ! -e "$WORK/internal.kif"
 test ! -e "$WORK/internal.tooling"
 
 # Existing prerequisite gates stay independently executable.
-sh "$ROOT/tests/conformance/modules/imports-qualified/run.sh"
-sh "$ROOT/tests/conformance/modules/imports-selective/run.sh"
-sh "$ROOT/tests/conformance/modules/kif-v1/run.sh"
+# Each nested helper builds under this gate's own namespace, so running them
+# here cannot race the same scripts running as their own `make verify` targets
+# (#713).
+KOFUN_GATE_WORK_NAMESPACE="${KOFUN_GATE_WORK_NAMESPACE:+$KOFUN_GATE_WORK_NAMESPACE/}nested-re-exports" \
+    sh "$ROOT/tests/conformance/modules/imports-qualified/run.sh"
+KOFUN_GATE_WORK_NAMESPACE="${KOFUN_GATE_WORK_NAMESPACE:+$KOFUN_GATE_WORK_NAMESPACE/}nested-re-exports" \
+    sh "$ROOT/tests/conformance/modules/imports-selective/run.sh"
+KOFUN_GATE_WORK_NAMESPACE="${KOFUN_GATE_WORK_NAMESPACE:+$KOFUN_GATE_WORK_NAMESPACE/}nested-re-exports" \
+    sh "$ROOT/tests/conformance/modules/kif-v1/run.sh"
 sh "$ROOT/spec/re-exports/check.sh"
 
 if command -v clang >/dev/null 2>&1; then

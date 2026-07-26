@@ -3,7 +3,7 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 SERVER="$ROOT/editor/vscode/server/kofun-lsp"
-RESULTS="${KOFUN_LSP_RESULTS:-$ROOT/build/lsp/performance.json}"
+RESULTS="${KOFUN_LSP_RESULTS:-$ROOT/build/${KOFUN_GATE_WORK_NAMESPACE:+$KOFUN_GATE_WORK_NAMESPACE/}lsp/performance.json}"
 REVISION=$(git -C "$ROOT" rev-parse --verify HEAD)
 
 node --check "$ROOT/tooling/lsp/server.js"
