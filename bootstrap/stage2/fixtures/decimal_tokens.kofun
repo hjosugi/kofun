@@ -1,0 +1,14 @@
+# Token-contract fixture for docs/DECIMAL.md (#717). Every literal below must
+# become exactly one token of the stated kind, and the range must stay three
+# tokens. Nothing here is lowered: Decimal has no representation yet, so a
+# literal that reaches lowering is refused.
+fn tokens() {
+    let decimal_point = 1.5
+    let scientific = 6.02e23
+    let negative_exponent = 1e-9
+    let float_suffix = 42f64
+    let float_fraction = 0.1f64
+    let grouped = 1_000.000_1
+    let range_low = 1
+    let range_high = 2
+}
