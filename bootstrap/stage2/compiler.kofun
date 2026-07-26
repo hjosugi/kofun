@@ -4475,6 +4475,16 @@ fn initializer_type(
     if kind == "integer" {
         return "Int"
     }
+    # #710 frozen decision 2: an unsuffixed fractional or scientific literal
+    # denotes Decimal, and the `f64` suffix selects binary64 Float. Recording
+    # them here is what puts the type in the scope HIR, so an unannotated
+    # `let x = 1.5` is a Decimal binding rather than the historical Int default.
+    if kind == "decimal" {
+        return "Decimal"
+    }
+    if kind == "float" {
+        return "Float"
+    }
     if kind == "string" {
         return "Text"
     }
@@ -6142,6 +6152,133 @@ fn validate_argument_lambda_captures(source: Text, hir: Text) -> Text {
     return "ok"
 }
 
+# The numeric type of the *primary* at `start`, or "" when it is not one of the
+# three numeric types.
+#
+# Slice 3 of #710 needs the type of one operand, which `initializer_type`
+# cannot give: that function scans the whole initializer line and returns `Bool`
+# the moment it sees a comparison, so typing the `1` in `1 + 2 < 3` through it
+# yields `Bool`. This looks at the primary and nothing else.
+#
+# "" rather than a default is deliberate. `Text`, `Bool` and unresolved names
+# are not numeric operands, and the mixed-arithmetic check must skip them
+# instead of inventing an `Int` and reporting a mismatch that is not there.
+fn numeric_primary_type(
+    source: Text,
+    hir: Text,
+    function_open: Int,
+    start: Int
+) -> Text {
+    let cursor = skip_trivia(source, start)
+    if cursor >= len(source) {
+        return ""
+    }
+    let token = token_text(source, cursor)
+    # Unary sign and a parenthesised group both delegate to what follows.
+    if token == "-" || token == "+" || token == "(" {
+        return numeric_primary_type(
+            source, hir, function_open,
+            skip_trivia(source, token_end(source, cursor)))
+    }
+    let kind = token_kind(source, cursor)
+    if kind == "integer" {
+        return "Int"
+    }
+    if kind == "decimal" {
+        return "Decimal"
+    }
+    if kind == "float" {
+        return "Float"
+    }
+    if kind != "identifier" {
+        return ""
+    }
+    let open = skip_trivia(source, token_end(source, cursor))
+    if open < len(source) && token_text(source, open) == "(" {
+        let declared = function_return_type(source, token)
+        if len(declared) > 0 {
+            return numeric_name(declared)
+        }
+        return numeric_name(builtin_return_type(token))
+    }
+    let scope_open = parent_block_open(source, function_open, cursor)
+    let binding_id = hir_resolve_binding(
+        hir,
+        hir_scope_id_for_open(hir, scope_open),
+        cursor,
+        token
+    )
+    if len(binding_id) == 0 {
+        return ""
+    }
+    return numeric_name(hir_binding_field(hir, binding_id, 5))
+}
+
+fn numeric_name(name: Text) -> Text {
+    if name == "Int" || name == "Decimal" || name == "Float" {
+        return name
+    }
+    return ""
+}
+
+fn arithmetic_operator(token: Text) -> Bool {
+    return token == "+" || token == "-" || token == "*" ||
+    token == "//" || token == "%" || token == "**"
+}
+
+# `Int`, `Decimal` and `Float` never receive implicit promotion (#710 frozen
+# decision 4), so an arithmetic expression mixing two of them is a type error
+# rather than a conversion.
+#
+# Both operand orders are checked by construction: the walk types the primary
+# before each operator and the primary after it, so a rule written for one side
+# only cannot pass. That matters — a promotion bug usually appears on one side.
+#
+# The remedy the diagnostic names is a *named* conversion, which slice 3's
+# remaining half adds. Until then the message says the conversion is needed
+# without claiming a function that does not exist yet.
+fn validate_numeric_operand_types(source: Text, hir: Text) -> Text {
+    let mut function_start = next_function_start(source, 0)
+    while function_start < len(source) {
+        let function_close = function_end(source, function_start)
+        let parameters = parameter_open(source, function_start)
+        let mut function_open = -1
+        if parameters >= 0 {
+            function_open = balanced_end(source, parameters, "(", ")")
+        }
+        if function_open >= 0 {
+            let mut cursor = skip_trivia(source, function_open)
+            let mut last_primary = -1
+            while cursor < function_close {
+                let token = token_text(source, cursor)
+                if arithmetic_operator(token) && last_primary >= 0 {
+                    let right = skip_trivia(source, token_end(source, cursor))
+                    let left_type = numeric_primary_type(
+                        source, hir, function_open, last_primary)
+                    let right_type = numeric_primary_type(
+                        source, hir, function_open, right)
+                    if len(left_type) > 0 && len(right_type) > 0 &&
+                       left_type != right_type {
+                        return "error[E2S100]: operator `" + token +
+                        "` mixes " + left_type + " and " + right_type +
+                        " at byte " + to_text(cursor) +
+                        "; convert one side explicitly"
+                    }
+                    last_primary = right
+                } else if token_kind(source, cursor) == "integer" ||
+                          token_kind(source, cursor) == "decimal" ||
+                          token_kind(source, cursor) == "float" ||
+                          token_kind(source, cursor) == "identifier" {
+                    last_primary = cursor
+                }
+                cursor = skip_trivia(source, token_end(source, cursor))
+            }
+        }
+        function_start = next_function_start(source, function_close)
+    }
+    return "ok"
+}
+
 # A well-formed Decimal or Float literal reaching lowering.
 #
 # The refusal names a successor slice rather than reusing the generic `E2S12`,
@@ -6179,6 +6316,13 @@ fn validate_unsupported_numeric_kinds(source: Text) -> Text {
 }
 
 fn lower_c(source: Text, hir: Text) -> Text {
+    # A mixed-type expression is reported before the unsupported-kind refusal,
+    # so `1 + 1.5` says what is wrong with it rather than reporting the more
+    # generic "no arithmetic yet".
+    let operand_check = validate_numeric_operand_types(source, hir)
+    if starts_with(operand_check, "error[") {
+        return operand_check
+    }
     let numeric_kind_check = validate_unsupported_numeric_kinds(source)
     if starts_with(numeric_kind_check, "error[") {
         return numeric_kind_check

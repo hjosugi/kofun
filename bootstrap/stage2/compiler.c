@@ -6698,6 +6698,13 @@ static char *initializer_type(
     if (cursor >= end) return owned_text("Int");
     const char *kind = token_kind(source, cursor);
     if (strcmp(kind, "integer") == 0) return owned_text("Int");
+    /* #710 frozen decision 2: an unsuffixed fractional or scientific literal
+     * denotes Decimal, and the `f64` suffix selects binary64 Float. Recording
+     * them here is what puts the type in the scope HIR, so an unannotated
+     * `let x = 1.5` is a Decimal binding rather than the historical Int
+     * default. */
+    if (strcmp(kind, "decimal") == 0) return owned_text("Decimal");
+    if (strcmp(kind, "float") == 0) return owned_text("Float");
     if (strcmp(kind, "string") == 0) return owned_text("Text");
     if (
         token_equal(source, cursor, "true") ||
@@ -9795,6 +9802,177 @@ static char *validate_argument_lambda_captures(
     return owned_text("ok");
 }
 
+static const char *numeric_name(const char *name) {
+    if (name == NULL) return "";
+    if (strcmp(name, "Int") == 0) return "Int";
+    if (strcmp(name, "Decimal") == 0) return "Decimal";
+    if (strcmp(name, "Float") == 0) return "Float";
+    return "";
+}
+
+static bool arithmetic_operator_at(const char *source, int64_t cursor) {
+    return token_equal(source, cursor, "+") ||
+           token_equal(source, cursor, "-") ||
+           token_equal(source, cursor, "*") ||
+           token_equal(source, cursor, "//") ||
+           token_equal(source, cursor, "%") ||
+           token_equal(source, cursor, "**");
+}
+
+/*
+ * The numeric type of the *primary* at `start`, or "" when it is not one of
+ * the three numeric types.
+ *
+ * Slice 3 of #710 needs the type of one operand, which `initializer_type`
+ * cannot give: that function scans the whole initializer line and returns
+ * `Bool` the moment it sees a comparison, so typing the `1` in `1 + 2 < 3`
+ * through it yields `Bool`. This looks at the primary and nothing else.
+ *
+ * "" rather than a default is deliberate. `Text`, `Bool` and unresolved names
+ * are not numeric operands, and the mixed-arithmetic check must skip them
+ * instead of inventing an `Int` and reporting a mismatch that is not there.
+ *
+ * The returned pointer is a static string, never owned.
+ */
+static const char *numeric_primary_type(
+    const char *source,
+    const char *hir,
+    int64_t function_open,
+    int64_t start
+) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, start);
+    if (cursor >= length) return "";
+    /* Unary sign and a parenthesised group both delegate to what follows. */
+    if (
+        token_equal(source, cursor, "-") ||
+        token_equal(source, cursor, "+") ||
+        token_equal(source, cursor, "(")
+    ) {
+        return numeric_primary_type(
+            source,
+            hir,
+            function_open,
+            skip_trivia(source, token_end(source, cursor))
+        );
+    }
+    const char *kind = token_kind(source, cursor);
+    if (strcmp(kind, "integer") == 0) return "Int";
+    if (strcmp(kind, "decimal") == 0) return "Decimal";
+    if (strcmp(kind, "float") == 0) return "Float";
+    if (strcmp(kind, "identifier") != 0) return "";
+
+    char *name = token_copy(source, cursor);
+    int64_t open = skip_trivia(source, token_end(source, cursor));
+    const char *result = "";
+    if (open < length && token_equal(source, open, "(")) {
+        char *declared = function_return_type(source, name);
+        if (declared[0] != '\0') {
+            result = numeric_name(declared);
+        } else {
+            result = numeric_name(builtin_return_type(name));
+        }
+        free(declared);
+        free(name);
+        return result;
+    }
+    int64_t scope_open = parent_block_open(source, function_open, cursor);
+    char *scope_id = hir_scope_id_for_open(hir, scope_open);
+    char *binding_id = hir_resolve_binding(hir, scope_id, cursor, name);
+    free(scope_id);
+    if (binding_id[0] != '\0') {
+        char *binding_type = hir_binding_field(hir, binding_id, 5);
+        result = numeric_name(binding_type);
+        free(binding_type);
+    }
+    free(binding_id);
+    free(name);
+    return result;
+}
+
+/*
+ * `Int`, `Decimal` and `Float` never receive implicit promotion (#710 frozen
+ * decision 4), so an arithmetic expression mixing two of them is a type error
+ * rather than a conversion.
+ *
+ * Both operand orders are checked by construction: the walk types the primary
+ * before each operator and the primary after it, so a rule written for one
+ * side only cannot pass. That matters — a promotion bug usually appears on one
+ * side.
+ */
+static char *validate_numeric_operand_types(
+    const char *source,
+    const char *hir
+) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t function_start = next_function_start(source, 0);
+    while (function_start < length) {
+        int64_t function_close = function_end(source, function_start);
+        int64_t parameters = parameter_open(source, function_start);
+        int64_t function_open = parameters >= 0
+            ? balanced_end(source, parameters, "(", ")")
+            : -1;
+        if (function_open >= 0) {
+            int64_t cursor = skip_trivia(source, function_open);
+            int64_t last_primary = -1;
+            while (cursor < function_close) {
+                if (arithmetic_operator_at(source, cursor) &&
+                    last_primary >= 0) {
+                    int64_t right = skip_trivia(
+                        source,
+                        token_end(source, cursor)
+                    );
+                    const char *left_type = numeric_primary_type(
+                        source, hir, function_open, last_primary);
+                    const char *right_type = numeric_primary_type(
+                        source, hir, function_open, right);
+                    if (
+                        left_type[0] != '\0' && right_type[0] != '\0' &&
+                        strcmp(left_type, right_type) != 0
+                    ) {
+                        char *operator_text = token_copy(source, cursor);
+                        Buffer message;
+                        buffer_init(&message);
+                        buffer_format(
+                            &message,
+                            "error[E2S100]: operator `%s` mixes %s and %s "
+                            "at byte %" PRId64
+                            "; convert one side explicitly",
+                            operator_text,
+                            left_type,
+                            right_type,
+                            cursor
+                        );
+                        free(operator_text);
+                        stage2_diagnostic_set(
+                            "E2S100",
+                            cursor,
+                            token_end(source, cursor),
+                            true,
+                            message.data
+                        );
+                        return message.data;
+                    }
+                    last_primary = right;
+                } else {
+                    const char *kind = token_kind(source, cursor);
+                    if (
+                        strcmp(kind, "integer") == 0 ||
+                        strcmp(kind, "decimal") == 0 ||
+                        strcmp(kind, "float") == 0 ||
+                        strcmp(kind, "identifier") == 0
+                    ) {
+                        last_primary = cursor;
+                    }
+                }
+                cursor = skip_trivia(source, token_end(source, cursor));
+            }
+        }
+        function_start = next_function_start(source, function_close);
+    }
+    return owned_text("ok");
+}
+
 /*
  * A well-formed Decimal or Float literal reaching lowering.
  *
@@ -9890,6 +10068,12 @@ static char *validate_unsupported_numeric_kinds(const char *source) {
 
 static char *lower_c(const char *source, const char *hir) {
     int64_t length = (int64_t)strlen(source);
+    /* A mixed-type expression is reported before the unsupported-kind refusal,
+     * so `1 + 1.5` says what is wrong with it rather than reporting the more
+     * generic "no arithmetic yet". */
+    char *operand_check = validate_numeric_operand_types(source, hir);
+    if (strncmp(operand_check, "error[", 6) == 0) return operand_check;
+    free(operand_check);
     char *numeric_kind_check = validate_unsupported_numeric_kinds(source);
     if (strncmp(numeric_kind_check, "error[", 6) == 0) {
         return numeric_kind_check;
