@@ -1294,3 +1294,88 @@ double kofun_float_multiply(double left, double right) {
 double kofun_float_divide(double left, double right) {
     return left / right;
 }
+
+/* --- value shim for generated code (issue #723) --------------------------- */
+
+/*
+ * A flat arena of every Decimal a generated program has produced.
+ *
+ * It grows and is released once; there is no per-value free, because the
+ * lowering has no place to put one. A Kofun expression is a tree and its
+ * intermediate values have no names, so the alternative is emitting
+ * temporaries and unwinding them through every path out of the enclosing
+ * function — which is how generated code leaks.
+ */
+static KofunDecimal **decimal_arena;
+static size_t decimal_arena_count;
+static size_t decimal_arena_capacity;
+
+/*
+ * A resource limit reaching generated code is fatal.
+ *
+ * Frozen decision 8 forbids clamping or changing representation, and there is
+ * no value a program could continue with that would be the answer. So this
+ * reports the profile's own code and stops, rather than the integer path's
+ * "record the failure and keep going" — an integer overflow has a defined
+ * wrong value to carry, an unrepresentable Decimal does not.
+ */
+static void decimal_fatal(KofunDecimalStatus status) {
+    fputs("error[", stderr);
+    fputs(kofun_decimal_status_code(status), stderr);
+    fputs("]: ", stderr);
+    fputs(kofun_decimal_status_message(status), stderr);
+    fputc('\n', stderr);
+    exit(1);
+}
+
+static KofunDecimal *decimal_arena_push(void) {
+    if (decimal_arena_count == decimal_arena_capacity) {
+        size_t capacity = decimal_arena_capacity == 0
+            ? 16
+            : decimal_arena_capacity * 2;
+        KofunDecimal **grown = realloc(
+            decimal_arena,
+            capacity * sizeof(*grown)
+        );
+        if (grown == NULL) decimal_fatal(KOFUN_DECIMAL_MEMORY);
+        decimal_arena = grown;
+        decimal_arena_capacity = capacity;
+    }
+    KofunDecimal *value = malloc(sizeof(*value));
+    if (value == NULL) decimal_fatal(KOFUN_DECIMAL_MEMORY);
+    kofun_decimal_init(value);
+    decimal_arena[decimal_arena_count++] = value;
+    return value;
+}
+
+KofunDecimal *kofun_decimal_value_literal(const char *text, size_t length) {
+    KofunDecimal *value = decimal_arena_push();
+    KofunDecimalStatus status = kofun_decimal_from_literal(
+        text,
+        length,
+        value
+    );
+    if (status != KOFUN_DECIMAL_OK) decimal_fatal(status);
+    return value;
+}
+
+KofunDecimal *kofun_decimal_value_add(
+    const KofunDecimal *left,
+    const KofunDecimal *right
+) {
+    KofunDecimal *value = decimal_arena_push();
+    KofunDecimalStatus status = kofun_decimal_add(left, right, value);
+    if (status != KOFUN_DECIMAL_OK) decimal_fatal(status);
+    return value;
+}
+
+void kofun_decimal_arena_release(void) {
+    for (size_t index = 0; index < decimal_arena_count; ++index) {
+        kofun_decimal_free(decimal_arena[index]);
+        free(decimal_arena[index]);
+    }
+    free(decimal_arena);
+    decimal_arena = NULL;
+    decimal_arena_count = 0;
+    decimal_arena_capacity = 0;
+}

@@ -214,4 +214,32 @@ double kofun_float_subtract(double left, double right);
 double kofun_float_multiply(double left, double right);
 double kofun_float_divide(double left, double right);
 
+/* --- value shim for generated code (issue #723) --------------------------- */
+
+/*
+ * The operations above take an out-parameter and leave ownership to the
+ * caller, which is right for a library but wrong for generated code: a Kofun
+ * expression like `0.1 + 0.2 == 0.3` is a tree, and lowering a tree onto
+ * out-parameters means inventing temporaries and threading frees through every
+ * early return the surrounding program might take.
+ *
+ * These return borrowed pointers into an arena instead, so the lowering is a
+ * direct structural map from the expression tree to a C expression. The arena
+ * is released once at the end of the program.
+ *
+ * Ownership rule: nothing returned here is freed by the caller, and nothing
+ * returned here survives `kofun_decimal_arena_release`.
+ *
+ * A resource limit is fatal on this path. Frozen decision 8 forbids clamping
+ * or changing representation, and a generated program has no value to
+ * substitute, so the shim reports the profile's own diagnostic code and stops
+ * rather than continuing with something that is not the answer.
+ */
+KofunDecimal *kofun_decimal_value_literal(const char *text, size_t length);
+KofunDecimal *kofun_decimal_value_add(
+    const KofunDecimal *left,
+    const KofunDecimal *right
+);
+void kofun_decimal_arena_release(void);
+
 #endif
