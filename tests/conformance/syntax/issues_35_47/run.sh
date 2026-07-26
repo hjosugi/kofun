@@ -514,7 +514,7 @@ test "$lambda_argument_output" = "$(printf '42\n42\n42\n42\n7\n42\n42')" ||
 grep 'int64_t (\*k_b[0-9]*)(int64_t)' "$WORK/lambda-argument.c" >/dev/null ||
     fail "callable parameter did not lower to a C function pointer"
 grep 'int64_t (\*k_b[0-9]*)(void)' "$WORK/lambda-argument.c" >/dev/null ||
-    fail "`() -> Int` did not lower to a zero-argument function pointer"
+    fail "\`() -> Int\` did not lower to a zero-argument function pointer"
 printf '%s\n' \
     "PASS executable: lambda arguments observe as their named equivalents"
 
