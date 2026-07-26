@@ -4,7 +4,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 NATIVE="$ROOT/bootstrap/native"
 KOFUN="$ROOT/bin/kofun"
-WORK=${KOFUN_NATIVE_CHECK_WORK:-"$ROOT/build/native-check"}
+WORK=${KOFUN_NATIVE_CHECK_WORK:-"$ROOT/build/${KOFUN_GATE_WORK_NAMESPACE:+$KOFUN_GATE_WORK_NAMESPACE/}native-check"}
 CC=${CC:-cc}
 
 AARCH64_RUNNER=${QEMU_AARCH64-}

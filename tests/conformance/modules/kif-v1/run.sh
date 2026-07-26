@@ -8,7 +8,7 @@ export LC_ALL
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../../.." && pwd)
 CASES="$ROOT/tests/conformance/modules/kif-v1"
 CC=${CC:-cc}
-WORK=${KOFUN_KIF_V1_WORK:-"$ROOT/build/kif-v1"}
+WORK=${KOFUN_KIF_V1_WORK:-"$ROOT/build/${KOFUN_GATE_WORK_NAMESPACE:+$KOFUN_GATE_WORK_NAMESPACE/}kif-v1"}
 TOOL="$WORK/kofun-kif-v1"
 PACKAGE_ID=1111111111111111111111111111111111111111111111111111111111111111
 EXTERNAL_PACKAGE=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa

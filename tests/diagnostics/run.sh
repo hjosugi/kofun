@@ -37,7 +37,11 @@ sh "$ROOT/tests/diagnostics/check.sh" --registry-only
 while IFS='	' read -r adapter command bless report; do
     case $adapter in ''|\#*) continue ;; esac
     printf '%s\n' "RUN [diagnostic-adapter] $adapter"
-    sh "$ROOT/$command"
+    # An adapter is a full gate script that other `make verify` targets also
+    # run. Give each one its own build namespace so this gate cannot race them
+    # or its own siblings (#713).
+    KOFUN_GATE_WORK_NAMESPACE="diagnostic-adapter/$adapter" \
+        sh "$ROOT/$command"
     awk -F '\t' -v adapter="$adapter" '
         /^#/ || NF == 0 { next }
         $2 != adapter {

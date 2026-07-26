@@ -7,7 +7,11 @@ export LC_ALL
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../../.." && pwd)
 CASES="$ROOT/tests/conformance/modules/imports-qualified"
 CC=${CC:-cc}
-WORK=${KOFUN_IMPORTS_QUALIFIED_WORK:-"$ROOT/build/imports-qualified"}
+# This script is a gate in its own right *and* a helper that imports-selective,
+# re-exports, and the `imports` diagnostic adapter each run. `make verify` runs
+# those as separate concurrent targets, so without a per-caller namespace they
+# all drive this script into one directory that it deletes on entry (#713).
+WORK=${KOFUN_IMPORTS_QUALIFIED_WORK:-"$ROOT/build/${KOFUN_GATE_WORK_NAMESPACE:+$KOFUN_GATE_WORK_NAMESPACE/}imports-qualified"}
 TOOL="$WORK/imports-qualified"
 PACKAGE_ID=1111111111111111111111111111111111111111111111111111111111111111
 MAIN_MODULE=2222222222222222222222222222222222222222222222222222222222222222

@@ -11,7 +11,8 @@ case ${1-} in
         ;;
     --full)
         sh "$STAGE2/check.sh"
-        sh "$ROOT/bootstrap/native/check.sh"
+        KOFUN_GATE_WORK_NAMESPACE=roadmap \
+            sh "$ROOT/bootstrap/native/check.sh"
         ;;
     *)
         printf '%s\n' "usage: $0 [--full]" >&2
@@ -80,7 +81,11 @@ then
     exit 1
 fi
 
-sh "$ROOT/tests/lsp/check.sh"
+# `make verify` runs the `lsp` target and then this one, so this is the second
+# LSP run of the same invocation. Keep its measurements in their own namespace
+# rather than overwriting the first run's results file (#713).
+KOFUN_GATE_WORK_NAMESPACE=roadmap \
+    sh "$ROOT/tests/lsp/check.sh"
 
 printf '%s\n' \
     "PASS: current Stage 2 integer Core probe printed -3 and 2, then exited 42" \

@@ -95,12 +95,20 @@ async function main() {
   await client.waitFor((message) =>
     message.method === 'textDocument/publishDiagnostics' &&
     message.params.version === 2, 10000);
-  const firstRss = residentBytes(client.child.pid);
+  // The baseline used to be sampled here, one edit in. At that point V8 has
+  // not finished growing its heap, so the ratio below charged ordinary warm-up
+  // allocation to "growth" — it measured 9.35% to 13.58% against a 10% budget
+  // on an unmodified tree, i.e. the gate's verdict came from where in the
+  // warm-up the sample happened to land rather than from the server's
+  // behaviour (#713). Warm up first, then measure: growth across a steady
+  // state is what actually distinguishes retention from start-up.
+  const WARMUP_EDITS = 25;
+  let firstRss = null;
 
   const diagnosticMs = [];
   let nearDigit = '1';
   let farDigit = '8';
-  for (let edit = 0; edit < 100; edit += 1) {
+  for (let edit = 0; edit < WARMUP_EDITS + 100; edit += 1) {
     const version = edit + 3;
     const near = edit % 2 === 0;
     let line;
@@ -134,8 +142,15 @@ async function main() {
     const publication = await client.waitFor((message) =>
       message.method === 'textDocument/publishDiagnostics' &&
       message.params.version === version, 10000);
-    diagnosticMs.push(elapsedMilliseconds(start));
+    // Warm-up edits are still asserted for correctness; they are only excluded
+    // from the latency sample and from the growth baseline.
+    if (edit >= WARMUP_EDITS) {
+      diagnosticMs.push(elapsedMilliseconds(start));
+    }
     assert.deepStrictEqual(publication.params.diagnostics, []);
+    if (edit === WARMUP_EDITS - 1) {
+      firstRss = residentBytes(client.child.pid);
+    }
   }
   const lastRss = residentBytes(client.child.pid);
 
