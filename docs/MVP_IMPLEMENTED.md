@@ -10,6 +10,7 @@
 | explicit skip reporting and coverage | implemented | `kofun test` |
 | semantic compiler self-recompile | first runnable compiler generation implemented; three-generation fixed point open | `bootstrap/selfhost/check-compiler-driver.sh` |
 | Stage 2 lexer, parser, and integer Core lowering | checkpoint implemented | `bootstrap/stage2/check.sh` |
+| Stage 2 semantic tooling output | bounded compiler-derived KSE projects one-way into canonical non-authoritative typed-sidecar v1 for explicit single-file `kofun check`; compiler/KIF/cache consumers remain forbidden | `make stage2-events`, `make typed-sidecar-projector` |
 | qualified module aliases | bounded same-package `import a.b as local`; local-only `AliasBindingId` preserves target identity, with no public/per-name/external aliases or `bin/kofun` routing | `tests/conformance/modules/import-aliases/run.sh`, `make import-aliases` |
 | C11 user-function calls | bounded Int Core: recursion and forward calls | `bootstrap/stage2/check.sh` |
 | x86-64 native user-function calls | bounded Int Core: six arguments, guarded returns, recursion | `tests/conformance/functions` |

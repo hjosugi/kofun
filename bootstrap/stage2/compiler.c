@@ -9150,11 +9150,16 @@ static bool stage2_compile_outcome(
             &declarations,
             "kofun-stage2-declarations/v1\n"
         );
-        result->declaration_observations = declarations.data;
         stage2_active_declaration_observer = &declarations;
         result->program_ir = parse_program(source);
         stage2_active_declaration_observer =
             previous_declaration_observer;
+        /*
+         * parse_program may grow and reallocate the observer buffer.  Publish
+         * only its final allocation: retaining the pre-parse pointer makes
+         * result destruction free storage already released by realloc.
+         */
+        result->declaration_observations = declarations.data;
     }
     if (strncmp(result->program_ir, "error[", 6) == 0) {
         result->diagnostic = result->program_ir;
@@ -9204,6 +9209,7 @@ static bool stage2_compile_outcome(
         stage2_active_semantic_observer = &observations;
         lowered = lower_c(source, result->scope_hir);
         stage2_active_semantic_observer = previous_semantic_observer;
+        /* lower_c may reallocate observations; retain the final owner. */
         result->semantic_observations = observations.data;
     }
     if (strncmp(lowered, "error[", 6) == 0) {
@@ -9260,11 +9266,12 @@ static bool stage2_ownership_outcome(
             &declarations,
             "kofun-stage2-declarations/v1\n"
         );
-        result->declaration_observations = declarations.data;
         stage2_active_declaration_observer = &declarations;
         result->program_ir = parse_program(source);
         stage2_active_declaration_observer =
             previous_declaration_observer;
+        /* parse_program may reallocate declarations; retain the final owner. */
+        result->declaration_observations = declarations.data;
     }
     if (strncmp(result->program_ir, "error[", 6) == 0) {
         result->diagnostic = result->program_ir;

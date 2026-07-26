@@ -344,9 +344,12 @@ schema/media version.
 
 `spec/typed-sidecar/check.sh` validates the checked-in JSON Schema, canonical
 complete/partial/cancelled examples, invalid trust/status/relation/order/
-limit cases, path-remap projection, and stale replacement model. It is design
-and reader-reference evidence; the active compiler/LSP does not emit or
-consume sidecars yet.
+limit cases, path-remap projection, and stale replacement model. The explicit
+single-file `kofun check --emit-typed-sidecar ... --generation ...` path now
+projects committed Stage 2 semantic events and atomically emits this document.
+The compiler, KIF, package, linker, build cache, and LSP do not consume it.
+The exact executable mapping is
+`tooling/typed-sidecar/stage2-projection-v1.md`.
 
 This v1 design does not define KIF, compiler cache authority, macro expansion
 details, embedded source snippets, a binary transport, remote distribution,

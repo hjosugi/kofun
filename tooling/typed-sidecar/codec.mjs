@@ -24,6 +24,8 @@ export const TYPED_SIDECAR_LIMITS = Object.freeze({
 const LIMITS = TYPED_SIDECAR_LIMITS;
 const writeQueues = new Map();
 let temporaryCounter = 0;
+const LOCK_WAIT_MILLISECONDS = 2000;
+const LOCK_POLL_MILLISECONDS = 10;
 
 class CodecFailure extends Error {
   constructor(code, message, details = {}) {
@@ -650,6 +652,26 @@ async function openExclusive(filename) {
   return fs.promises.open(filename, flags, 0o600);
 }
 
+async function acquireDestinationLock(filename, signal) {
+  const attempts = Math.ceil(
+    LOCK_WAIT_MILLISECONDS / LOCK_POLL_MILLISECONDS,
+  );
+  for (let attempt = 0; ; attempt += 1) {
+    assertNotCancelled(signal);
+    try {
+      return await openExclusive(filename);
+    } catch (error) {
+      if (error.code !== "EEXIST") {
+        throw ioFailure("cannot acquire typed-sidecar destination lock", error.code);
+      }
+      if (attempt >= attempts) {
+        throw ioFailure("typed-sidecar destination is busy", error.code);
+      }
+      await new Promise((resolve) => setTimeout(resolve, LOCK_POLL_MILLISECONDS));
+    }
+  }
+}
+
 async function readDestination(filename) {
   const flags = fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0);
   let handle;
@@ -706,14 +728,8 @@ async function atomicWrite(destination, document, encodedBytes, context) {
   let renamed = false;
   try {
     assertNotCancelled(context.signal);
-    try {
-      lockHandle = await openExclusive(lockPath);
-      lockStat = await lockHandle.stat();
-    } catch (error) {
-      if (error instanceof CodecFailure) throw error;
-      if (error.code === "EEXIST") throw ioFailure("typed-sidecar destination is busy", error.code);
-      throw ioFailure("cannot acquire typed-sidecar destination lock", error.code);
-    }
+    lockHandle = await acquireDestinationLock(lockPath, context.signal);
+    lockStat = await lockHandle.stat();
 
     const initial = await readDestination(destination);
     let replacement = replacementAgainst(initial, document, context.currentSourceDigest);
@@ -735,11 +751,27 @@ async function atomicWrite(destination, document, encodedBytes, context) {
 
     assertNotCancelled(context.signal);
     const current = await readDestination(destination);
-    replacement = replacementAgainst(current, document, context.currentSourceDigest);
-    if (!replacement.allow) fail(`replacement denied: ${replacement.reason}`, "TS005", { reason: replacement.reason });
     const currentTemporary = await fs.promises.lstat(temporaryPath);
     if (currentTemporary.dev !== temporaryStat.dev || currentTemporary.ino !== temporaryStat.ino ||
         !currentTemporary.isFile()) throw ioFailure("typed-sidecar temporary file identity changed");
+    assertNotCancelled(context.signal);
+    let commitSourceDigest = context.currentSourceDigest;
+    if (context.refreshCurrentSourceDigest) {
+      try {
+        commitSourceDigest = await context.refreshCurrentSourceDigest();
+      } catch {
+        fail("replacement denied: source-mismatch", "TS005", {
+          reason: "source-mismatch",
+        });
+      }
+      if (typeof commitSourceDigest !== "string" || !HEX.test(commitSourceDigest)) {
+        fail("replacement denied: source-mismatch", "TS005", {
+          reason: "source-mismatch",
+        });
+      }
+    }
+    replacement = replacementAgainst(current, document, commitSourceDigest);
+    if (!replacement.allow) fail(`replacement denied: ${replacement.reason}`, "TS005", { reason: replacement.reason });
     assertNotCancelled(context.signal);
     try {
       await fs.promises.rename(temporaryPath, destination);
@@ -763,6 +795,10 @@ export async function writeTypedSidecarAtomic(destination, document, replacement
   if (replacementContext === null || typeof replacementContext !== "object" ||
       typeof replacementContext.currentSourceDigest !== "string") {
     throw new TypeError("typed-sidecar replacement context needs currentSourceDigest");
+  }
+  if ("refreshCurrentSourceDigest" in replacementContext &&
+      typeof replacementContext.refreshCurrentSourceDigest !== "function") {
+    throw new TypeError("typed-sidecar source digest refresh must be a function");
   }
   const encoded = encodeTypedSidecar(document);
   if (!encoded.ok) return encoded;
