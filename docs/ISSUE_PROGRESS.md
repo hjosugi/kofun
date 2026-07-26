@@ -4,11 +4,11 @@ Status: generated read-only snapshot for documentation synchronization.
 
 Repository: [`hjosugi/kofun`](https://github.com/hjosugi/kofun)
 
-Observed main commit: [`86ffe2d`](https://github.com/hjosugi/kofun/commit/86ffe2d153ab4b72cb12e06fa1e6453982514291)
+Observed main commit: [`0d39f3e`](https://github.com/hjosugi/kofun/commit/0d39f3ea4cef8dbd46027bb97c0dc467cca2c2b4)
 
 Implementation verification: [`CI`](https://github.com/hjosugi/kofun/actions/workflows/ci.yml?query=branch%3Amain) is `missing`.
 
-Reviewed at: `2026-07-26T19:48:01.027Z`
+Reviewed at: `2026-07-26T20:41:01.730Z`
 
 | Issue | Workflow | State | Last tracker update | Title |
 |---|---|---|---|---|
