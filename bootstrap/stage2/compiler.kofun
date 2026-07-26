@@ -3164,9 +3164,87 @@ fn block_depth_at(source: Text, function_open: Int, target: Int) -> Int {
 # body this Core cannot parse yields -1 and the lambda contributes no scope —
 # the identifiers inside it are then reported by whichever pass would have
 # reported them before.
+# Whether `target` begins a match arm's pattern.
+#
+# `IDENT => expr` is both an arm and a bare lambda, and arms are comma-separated,
+# so the token before it cannot separate them: `,` precedes both `Debug => 1,`
+# and the lambda in `map(xs, x => x * 2)`. Neither can one token of lookahead,
+# which is what #547 assumed. What separates them is position — an arm pattern
+# begins directly inside a match block's braces at an arm boundary.
+#
+# Walking arms is what makes this exact rather than approximate. A lambda may
+# appear inside an arm body, so "inside a match block" would be wrong; only the
+# arm's own first token is a pattern. The C seed caches this per source because
+# every identifier resolution asks it.
+fn match_arm_pattern_start(source: Text, target: Int) -> Bool {
+    let length = len(source)
+    let mut cursor = 0
+    while cursor < length && cursor <= target {
+        if token_text(source, cursor) == "match" {
+            let open = pattern_match_open(source, cursor)
+            let mut match_end = -1
+            if open >= 0 {
+                match_end = balanced_end(source, open, "{", "}")
+            }
+            if open >= 0 && match_end >= 0 &&
+               target > open && target < match_end {
+                let close = match_end - 1
+                let mut arm = skip_trivia(source, token_end(source, open))
+                while arm < close && token_text(source, arm) != "}" {
+                    if arm == target {
+                        return true
+                    }
+                    if arm > target {
+                        break
+                    }
+                    let arrow = pattern_arm_arrow(source, arm, close)
+                    if arrow < 0 {
+                        break
+                    }
+                    let body = skip_trivia(source, token_end(source, arrow))
+                    let body_end = expression_end(source, body)
+                    if body_end < 0 {
+                        break
+                    }
+                    let mut next = skip_trivia(source, body_end)
+                    if next < close && token_text(source, next) == "," {
+                        next = skip_trivia(source, token_end(source, next))
+                    }
+                    if next <= arm {
+                        break
+                    }
+                    arm = next
+                }
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return false
+}
+
 fn lambda_parameters_end(source: Text, previous: Int, open: Int) -> Int {
     if token_text(source, open) != "(" {
-        return -1
+        # The bare single-parameter form `x => e` decided in #547. It is a
+        # lambda everywhere an arm pattern is not, which is why the arm check
+        # carries the whole decision.
+        if token_kind(source, open) != "identifier" {
+            return -1
+        }
+        if keyword(token_text(source, open)) {
+            return -1
+        }
+        let bare_arrow = skip_trivia(source, token_end(source, open))
+        if bare_arrow >= len(source) ||
+           token_text(source, bare_arrow) != "=>" {
+            return -1
+        }
+        if match_arm_pattern_start(source, open) {
+            return -1
+        }
+        return expression_end(
+            source,
+            skip_trivia(source, token_end(source, bare_arrow))
+        )
     }
     if previous >= 0 && token_kind(source, previous) == "identifier" {
         return -1
@@ -3210,10 +3288,17 @@ fn lambda_declaration_syntax_token(
     let mut cursor = function_open
     let mut previous = -1
     while cursor <= target {
-        if lambda_parameters_end(source, previous, cursor) >= 0 &&
-           target > cursor &&
-           target < balanced_end(source, cursor, "(", ")") {
-            return true
+        if lambda_parameters_end(source, previous, cursor) >= 0 {
+            if token_text(source, cursor) != "(" {
+                # The bare form has no parameter list: the keying token is
+                # itself the parameter, so it is the only declaration.
+                if target == cursor {
+                    return true
+                }
+            } else if target > cursor &&
+                      target < balanced_end(source, cursor, "(", ")") {
+                return true
+            }
         }
         previous = cursor
         cursor = skip_trivia(source, token_end(source, cursor))
@@ -3612,6 +3697,11 @@ fn lambda_captures(source: Text, hir: Text, lambda_open: Int) -> Text {
 # The declared parameter count of the lambda whose parameter list opens at
 # `open`. Captures are invisible to a caller, so they are not counted.
 fn lambda_parameter_count(source: Text, open: Int) -> Int {
+    # The bare form `x => e` is keyed by its single parameter, so it has no
+    # list to count and its arity is always one.
+    if token_text(source, open) != "(" {
+        return 1
+    }
     let close = balanced_end(source, open, "(", ")")
     if close < 0 {
         return -1
@@ -5377,10 +5467,16 @@ fn lower_body(
 # its declared parameters followed by its captures, or "void" when it has
 # neither.
 fn lifted_lambda_signature(source: Text, hir: Text, open: Int) -> Text {
-    let close = balanced_end(source, open, "(", ")")
+    # The bare form is keyed by its single parameter and has no list, so its
+    # close is the end of that identifier and the walk covers exactly it.
+    let mut close = token_end(source, open)
+    let mut parameter = open
+    if token_text(source, open) == "(" {
+        close = balanced_end(source, open, "(", ")")
+        parameter = skip_trivia(source, token_end(source, open))
+    }
     let mut signature = ""
     let mut parameters = 0
-    let mut parameter = skip_trivia(source, token_end(source, open))
     while parameter < close && token_kind(source, parameter) == "identifier" {
         if parameters > 0 {
             signature = signature + ", "
@@ -5446,7 +5542,10 @@ fn emit_lifted_lambdas(source: Text, hir: Text, bodies: Bool) -> Text {
             } else {
                 let binding_id = hir_definition_id_at(hir, name_start)
                 let signature = lifted_lambda_signature(source, hir, open)
-                let close = balanced_end(source, open, "(", ")")
+                let mut close = token_end(source, open)
+                if token_text(source, open) == "(" {
+                    close = balanced_end(source, open, "(", ")")
+                }
                 let arrow = skip_trivia(source, close)
                 let body_start = skip_trivia(source, token_end(source, arrow))
                 let body_end = lambda_parameters_end(source, -1, open)
