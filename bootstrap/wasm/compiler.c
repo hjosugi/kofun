@@ -12,7 +12,13 @@ enum {
     MAX_BINDINGS = 128,
     MAX_NODES = 1024,
     MAX_STATEMENTS = 256,
-    MAX_EXPRESSION_NESTING = 256
+    MAX_EXPRESSION_NESTING = 256,
+    MAX_FUNCTIONS = 64,
+    MAX_PARAMETERS = 6,
+    MAX_ARGUMENTS = 512,
+    MAX_CONDITIONS = 128,
+    MAX_BLOCK_NESTING = 64,
+    NAME_CAPACITY = 64
 };
 
 typedef struct {
@@ -31,13 +37,20 @@ typedef enum {
     TOKEN_RIGHT_BRACE,
     TOKEN_COLON,
     TOKEN_EQUAL,
+    TOKEN_ARROW,
     TOKEN_PLUS,
     TOKEN_MINUS,
     TOKEN_STAR,
     TOKEN_SLASH,
     TOKEN_FLOOR_DIV,
     TOKEN_PERCENT,
-    TOKEN_COMMA
+    TOKEN_COMMA,
+    TOKEN_EQUAL_EQUAL,
+    TOKEN_BANG_EQUAL,
+    TOKEN_LESS,
+    TOKEN_LESS_EQUAL,
+    TOKEN_GREATER,
+    TOKEN_GREATER_EQUAL
 } TokenKind;
 
 typedef struct {
@@ -56,7 +69,8 @@ typedef enum {
     NODE_SUBTRACT,
     NODE_MULTIPLY,
     NODE_FLOOR_DIVIDE,
-    NODE_FLOOR_MODULO
+    NODE_FLOOR_MODULO,
+    NODE_CALL
 } NodeKind;
 
 typedef struct {
@@ -65,23 +79,55 @@ typedef struct {
     int right;
     int binding;
     int64_t value;
+    int callee;
+    int argument_start;
+    int argument_count;
 } Node;
 
 typedef struct {
-    char name[64];
+    char name[NAME_CAPACITY];
     size_t length;
 } Binding;
 
+/* A Kofun Bool never becomes a value in this slice: a comparison exists only
+ * as the i32 branch condition of one `if`, which is what the encoding contract
+ * pins. Keeping conditions out of the Node arena keeps every node local i64. */
+typedef struct {
+    TokenKind comparison;
+    int left;
+    int right;
+} Condition;
+
 typedef enum {
     STATEMENT_BIND,
-    STATEMENT_PRINT
+    STATEMENT_PRINT,
+    STATEMENT_RETURN,
+    STATEMENT_IF
 } StatementKind;
 
 typedef struct {
     StatementKind kind;
     int expression;
     int binding;
+    int condition;
+    int body;
+    int next;
 } Statement;
+
+typedef struct {
+    char name[NAME_CAPACITY];
+    size_t name_length;
+    int parameter_count;
+    bool returns_int;
+    size_t line;
+    /* Parameters and `let` bindings share one ascending run of i64 locals;
+     * `local_slots` is the deepest that run ever gets, because sibling blocks
+     * reuse the slots a finished block released. */
+    int local_slots;
+    int node_base;
+    int node_span;
+    int body;
+} Function;
 
 typedef struct {
     const char *source;
@@ -97,6 +143,15 @@ typedef struct {
     size_t binding_count;
     Statement statements[MAX_STATEMENTS];
     size_t statement_count;
+    Function functions[MAX_FUNCTIONS];
+    size_t function_count;
+    int arguments[MAX_ARGUMENTS];
+    size_t argument_count;
+    Condition conditions[MAX_CONDITIONS];
+    size_t condition_count;
+    int current;
+    int main_index;
+    size_t block_nesting;
     size_t print_count;
     size_t expression_nesting;
 } Parser;
@@ -215,10 +270,14 @@ static char *read_source(const char *path, size_t *length) {
     return source;
 }
 
-static void parse_error(Parser *parser, const char *message) {
+static void parse_error_at(Parser *parser, const char *message, size_t line) {
     if (parser->error != NULL) return;
     parser->error = message;
-    parser->error_line = parser->token.line == 0 ? parser->line : parser->token.line;
+    parser->error_line = line == 0 ? parser->line : line;
+}
+
+static void parse_error(Parser *parser, const char *message) {
+    parse_error_at(parser, message, parser->token.line);
 }
 
 static bool identifier_start(char value) {
@@ -227,6 +286,11 @@ static bool identifier_start(char value) {
 
 static bool identifier_continue(char value) {
     return isalnum((unsigned char)value) || value == '_';
+}
+
+static bool peek_is(const Parser *parser, char value) {
+    return parser->cursor < parser->length &&
+           parser->source[parser->cursor] == value;
 }
 
 static void next_token(Parser *parser) {
@@ -305,13 +369,53 @@ static void next_token(Parser *parser) {
             parser->token.kind = TOKEN_COLON;
             return;
         case '=':
-            parser->token.kind = TOKEN_EQUAL;
+            if (peek_is(parser, '=')) {
+                ++parser->cursor;
+                parser->token.kind = TOKEN_EQUAL_EQUAL;
+                parser->token.length = 2;
+            } else {
+                parser->token.kind = TOKEN_EQUAL;
+            }
+            return;
+        case '!':
+            if (peek_is(parser, '=')) {
+                ++parser->cursor;
+                parser->token.kind = TOKEN_BANG_EQUAL;
+                parser->token.length = 2;
+                return;
+            }
+            parser->token.kind = TOKEN_EOF;
+            parse_error(parser, "unsupported token in wasm32 arithmetic Core");
+            return;
+        case '<':
+            if (peek_is(parser, '=')) {
+                ++parser->cursor;
+                parser->token.kind = TOKEN_LESS_EQUAL;
+                parser->token.length = 2;
+            } else {
+                parser->token.kind = TOKEN_LESS;
+            }
+            return;
+        case '>':
+            if (peek_is(parser, '=')) {
+                ++parser->cursor;
+                parser->token.kind = TOKEN_GREATER_EQUAL;
+                parser->token.length = 2;
+            } else {
+                parser->token.kind = TOKEN_GREATER;
+            }
             return;
         case '+':
             parser->token.kind = TOKEN_PLUS;
             return;
         case '-':
-            parser->token.kind = TOKEN_MINUS;
+            if (peek_is(parser, '>')) {
+                ++parser->cursor;
+                parser->token.kind = TOKEN_ARROW;
+                parser->token.length = 2;
+            } else {
+                parser->token.kind = TOKEN_MINUS;
+            }
             return;
         case '*':
             parser->token.kind = TOKEN_STAR;
@@ -323,8 +427,7 @@ static void next_token(Parser *parser) {
             parser->token.kind = TOKEN_COMMA;
             return;
         case '/':
-            if (parser->cursor < parser->length &&
-                parser->source[parser->cursor] == '/') {
+            if (peek_is(parser, '/')) {
                 ++parser->cursor;
                 parser->token.kind = TOKEN_FLOOR_DIV;
                 parser->token.length = 2;
@@ -337,6 +440,14 @@ static void next_token(Parser *parser) {
             parse_error(parser, "unsupported token in wasm32 arithmetic Core");
             return;
     }
+}
+
+static void reset_lexer(Parser *parser) {
+    parser->cursor = 0;
+    parser->line = 1;
+    parser->expression_nesting = 0;
+    parser->block_nesting = 0;
+    next_token(parser);
 }
 
 static bool token_is(const Parser *parser, const char *value) {
@@ -374,6 +485,16 @@ static bool expect_word(Parser *parser, const char *value, const char *message) 
     return true;
 }
 
+static int allocate_node(Parser *parser, Node node) {
+    if (parser->node_count == MAX_NODES) {
+        parse_error(parser, "too many expressions in wasm32 Core");
+        return -1;
+    }
+    int index = (int)parser->node_count++;
+    parser->nodes[index] = node;
+    return index;
+}
+
 static int add_node(
     Parser *parser,
     NodeKind kind,
@@ -382,21 +503,20 @@ static int add_node(
     int binding,
     int64_t value
 ) {
-    if (parser->node_count == MAX_NODES) {
-        parse_error(parser, "too many expressions in wasm32 Core");
-        return -1;
-    }
-    int index = (int)parser->node_count++;
-    parser->nodes[index] = (Node){
+    return allocate_node(parser, (Node){
         .kind = kind,
         .left = left,
         .right = right,
         .binding = binding,
-        .value = value
-    };
-    return index;
+        .value = value,
+        .callee = -1,
+        .argument_start = 0,
+        .argument_count = 0
+    });
 }
 
+/* Bindings are function-scoped: `binding_count` is reset for each body, so a
+ * binding's index is directly its i64 local index. */
 static int find_binding(
     const Parser *parser,
     const char *name,
@@ -407,6 +527,55 @@ static int find_binding(
         if (binding->length == length &&
             memcmp(binding->name, name, length) == 0) {
             return (int)(index - 1);
+        }
+    }
+    return -1;
+}
+
+static bool check_new_binding(
+    Parser *parser,
+    const char *name,
+    size_t length,
+    const char *duplicate_message
+) {
+    if (length >= NAME_CAPACITY) {
+        parse_error(parser, "binding name is too long");
+        return false;
+    }
+    if (parser->binding_count == MAX_BINDINGS) {
+        parse_error(parser, "too many bindings in wasm32 Core");
+        return false;
+    }
+    if (find_binding(parser, name, length) >= 0) {
+        parse_error(parser, duplicate_message);
+        return false;
+    }
+    return true;
+}
+
+static int commit_binding(Parser *parser, const char *name, size_t length) {
+    int slot = (int)parser->binding_count++;
+    Binding *target = &parser->bindings[slot];
+    memcpy(target->name, name, length);
+    target->name[length] = '\0';
+    target->length = length;
+    Function *function = &parser->functions[parser->current];
+    if ((int)parser->binding_count > function->local_slots) {
+        function->local_slots = (int)parser->binding_count;
+    }
+    return slot;
+}
+
+static int find_function(
+    const Parser *parser,
+    const char *name,
+    size_t length
+) {
+    for (size_t index = 0; index < parser->function_count; ++index) {
+        const Function *function = &parser->functions[index];
+        if (function->name_length == length &&
+            memcmp(function->name, name, length) == 0) {
+            return (int)index;
         }
     }
     return -1;
@@ -431,6 +600,98 @@ static void leave_expression_nesting(Parser *parser) {
         fatal("internal expression nesting underflow");
     }
     --parser->expression_nesting;
+}
+
+/* The callee is resolved against the whole declaration table, which the
+ * signature scan filled before any body was parsed, so a forward call reads
+ * exactly like a backward one. The current token is the `(`. */
+static int parse_call(
+    Parser *parser,
+    const char *name,
+    size_t length,
+    size_t line
+) {
+    int callee = find_function(parser, name, length);
+    if (callee < 0) {
+        if (find_binding(parser, name, length) >= 0) {
+            parse_error_at(
+                parser,
+                "wasm32 Core does not support calling a binding; only direct calls to declared functions",
+                line
+            );
+        } else {
+            parse_error_at(
+                parser,
+                "call to a function the wasm32 Core program does not declare",
+                line
+            );
+        }
+        return -1;
+    }
+    if (!expect(parser, TOKEN_LEFT_PAREN,
+                "expected `(` in wasm32 Core call")) {
+        return -1;
+    }
+    if (!enter_expression_nesting(parser)) return -1;
+    /* Arguments are collected on the C stack first. An argument may itself be
+     * a call, and that inner call claims its own slice of `arguments` while
+     * this one is still being read, so this call cannot reserve a slice until
+     * every nested call has finished taking theirs. */
+    int scratch[MAX_PARAMETERS];
+    int count = 0;
+    if (parser->token.kind != TOKEN_RIGHT_PAREN) {
+        for (;;) {
+            int argument = parse_expression(parser);
+            if (argument < 0) {
+                leave_expression_nesting(parser);
+                return -1;
+            }
+            if (count == MAX_PARAMETERS) {
+                /* No declaration can accept more than six, so an argument past
+                 * the sixth is already an arity mismatch. */
+                parse_error_at(
+                    parser,
+                    "call passes a different number of arguments than the declaration accepts",
+                    line
+                );
+                leave_expression_nesting(parser);
+                return -1;
+            }
+            scratch[count++] = argument;
+            if (!consume(parser, TOKEN_COMMA)) break;
+        }
+    }
+    leave_expression_nesting(parser);
+    if (!expect(parser, TOKEN_RIGHT_PAREN,
+                "expected `)` after the wasm32 Core argument list")) {
+        return -1;
+    }
+    if (count != parser->functions[callee].parameter_count) {
+        parse_error_at(
+            parser,
+            "call passes a different number of arguments than the declaration accepts",
+            line
+        );
+        return -1;
+    }
+    if (parser->argument_count + (size_t)count > MAX_ARGUMENTS) {
+        parse_error(parser, "too many call arguments in wasm32 Core");
+        return -1;
+    }
+    int start = (int)parser->argument_count;
+    for (int argument = 0; argument < count; ++argument) {
+        parser->arguments[parser->argument_count++] = scratch[argument];
+    }
+    return allocate_node(parser, (Node){
+        .kind = NODE_CALL,
+        .left = -1,
+        .right = -1,
+        .binding = -1,
+        .value = 0,
+        .callee = callee,
+        .argument_start = start,
+        .argument_count = count
+    });
 }
 
 static int parse_primary(Parser *parser) {
@@ -458,12 +719,28 @@ static int parse_primary(Parser *parser) {
     if (parser->token.kind == TOKEN_IDENTIFIER) {
         const char *name = parser->token.start;
         size_t length = parser->token.length;
+        size_t line = parser->token.line;
+        next_token(parser);
+        if (parser->token.kind == TOKEN_LEFT_PAREN) {
+            return parse_call(parser, name, length, line);
+        }
         int binding = find_binding(parser, name, length);
         if (binding < 0) {
-            parse_error(parser, "unknown binding in wasm32 Core expression");
+            if (find_function(parser, name, length) >= 0) {
+                parse_error_at(
+                    parser,
+                    "wasm32 Core has no function values; write a direct call instead",
+                    line
+                );
+            } else {
+                parse_error_at(
+                    parser,
+                    "unknown binding in wasm32 Core expression",
+                    line
+                );
+            }
             return -1;
         }
-        next_token(parser);
         return add_node(parser, NODE_VARIABLE, -1, -1, binding, 0);
     }
     parse_error(parser, "expected Int expression in wasm32 Core");
@@ -547,107 +824,419 @@ static int parse_expression(Parser *parser) {
     return left;
 }
 
-static void add_statement(
-    Parser *parser,
-    StatementKind kind,
-    int expression,
-    int binding
-) {
+static int add_statement(Parser *parser, Statement statement) {
     if (parser->statement_count == MAX_STATEMENTS) {
         parse_error(parser, "too many statements in wasm32 Core");
-        return;
+        return -1;
     }
-    parser->statements[parser->statement_count++] = (Statement){
-        .kind = kind,
-        .expression = expression,
-        .binding = binding
-    };
+    int index = (int)parser->statement_count++;
+    parser->statements[index] = statement;
+    return index;
 }
 
-static void parse_binding(Parser *parser) {
-    if (parser->binding_count == MAX_BINDINGS) {
-        parse_error(parser, "too many bindings in wasm32 Core");
-        return;
-    }
+static int parse_binding_statement(Parser *parser) {
     if (parser->token.kind != TOKEN_IDENTIFIER) {
         parse_error(parser, "expected binding name after `let`");
-        return;
+        return -1;
     }
     const char *name = parser->token.start;
     size_t length = parser->token.length;
-    if (length >= sizeof(parser->bindings[0].name)) {
-        parse_error(parser, "binding name is too long");
-        return;
-    }
-    if (find_binding(parser, name, length) >= 0) {
-        parse_error(parser, "duplicate binding in wasm32 Core");
-        return;
+    if (!check_new_binding(parser, name, length,
+                           "duplicate binding in wasm32 Core")) {
+        return -1;
     }
     next_token(parser);
     if (consume(parser, TOKEN_COLON)) {
         if (!expect_word(parser, "Int",
                          "wasm32 arithmetic Core supports only Int bindings")) {
-            return;
+            return -1;
         }
     }
     if (!expect(parser, TOKEN_EQUAL, "expected `=` in wasm32 Core binding")) {
-        return;
+        return -1;
     }
     int expression = parse_expression(parser);
-    if (parser->error != NULL) return;
-
-    int binding = (int)parser->binding_count++;
-    Binding *target = &parser->bindings[binding];
-    memcpy(target->name, name, length);
-    target->name[length] = '\0';
-    target->length = length;
-    add_statement(parser, STATEMENT_BIND, expression, binding);
+    if (expression < 0) return -1;
+    int slot = commit_binding(parser, name, length);
+    return add_statement(parser, (Statement){
+        .kind = STATEMENT_BIND,
+        .expression = expression,
+        .binding = slot,
+        .condition = -1,
+        .body = -1,
+        .next = -1
+    });
 }
 
-static void parse_print(Parser *parser) {
+static int parse_print_statement(Parser *parser) {
     if (!expect(parser, TOKEN_LEFT_PAREN,
                 "expected `(` after print in wasm32 Core")) {
-        return;
+        return -1;
     }
     int expression = parse_expression(parser);
+    if (expression < 0) return -1;
     if (!expect(parser, TOKEN_RIGHT_PAREN,
                 "expected `)` after print expression")) {
-        return;
+        return -1;
     }
-    add_statement(parser, STATEMENT_PRINT, expression, -1);
     ++parser->print_count;
+    return add_statement(parser, (Statement){
+        .kind = STATEMENT_PRINT,
+        .expression = expression,
+        .binding = -1,
+        .condition = -1,
+        .body = -1,
+        .next = -1
+    });
 }
 
-static bool parse_program(Parser *parser) {
-    parser->line = 1;
+static int parse_return_statement(Parser *parser) {
+    const Function *function = &parser->functions[parser->current];
+    if (parser->token.kind == TOKEN_RIGHT_BRACE) {
+        if (function->returns_int) {
+            parse_error(
+                parser,
+                "`return` must carry an Int value in a wasm32 Core function declaring `-> Int`"
+            );
+            return -1;
+        }
+        return add_statement(parser, (Statement){
+            .kind = STATEMENT_RETURN,
+            .expression = -1,
+            .binding = -1,
+            .condition = -1,
+            .body = -1,
+            .next = -1
+        });
+    }
+    if (!function->returns_int) {
+        parse_error(
+            parser,
+            "`return` carries a value but the wasm32 Core function declares no `-> Int` result"
+        );
+        return -1;
+    }
+    int expression = parse_expression(parser);
+    if (expression < 0) return -1;
+    return add_statement(parser, (Statement){
+        .kind = STATEMENT_RETURN,
+        .expression = expression,
+        .binding = -1,
+        .condition = -1,
+        .body = -1,
+        .next = -1
+    });
+}
+
+static bool parse_block(Parser *parser, int *first);
+
+static int parse_if_statement(Parser *parser) {
+    if (parser->condition_count == MAX_CONDITIONS) {
+        parse_error(parser, "too many `if` conditions in wasm32 Core");
+        return -1;
+    }
+    int left = parse_expression(parser);
+    if (left < 0) return -1;
+    TokenKind comparison = parser->token.kind;
+    switch (comparison) {
+        case TOKEN_EQUAL_EQUAL:
+        case TOKEN_BANG_EQUAL:
+        case TOKEN_LESS:
+        case TOKEN_LESS_EQUAL:
+        case TOKEN_GREATER:
+        case TOKEN_GREATER_EQUAL:
+            break;
+        default:
+            parse_error(
+                parser,
+                "an `if` condition in wasm32 Core must compare two Int expressions"
+            );
+            return -1;
+    }
     next_token(parser);
-    if (!expect_word(parser, "fn", "wasm32 Core requires `fn main()`") ||
-        !expect_word(parser, "main", "wasm32 Core requires `fn main()`") ||
-        !expect(parser, TOKEN_LEFT_PAREN, "expected `(` after main") ||
-        !expect(parser, TOKEN_RIGHT_PAREN, "expected `)` after main") ||
-        !expect(parser, TOKEN_LEFT_BRACE, "expected `{` before main body")) {
+    int right = parse_expression(parser);
+    if (right < 0) return -1;
+
+    int condition = (int)parser->condition_count++;
+    parser->conditions[condition] = (Condition){
+        .comparison = comparison,
+        .left = left,
+        .right = right
+    };
+
+    int body = -1;
+    if (!parse_block(parser, &body)) return -1;
+    if (token_is(parser, "else")) {
+        parse_error(parser, "wasm32 Core does not support `else`");
+        return -1;
+    }
+    return add_statement(parser, (Statement){
+        .kind = STATEMENT_IF,
+        .expression = -1,
+        .binding = -1,
+        .condition = condition,
+        .body = body,
+        .next = -1
+    });
+}
+
+static int parse_statement(Parser *parser) {
+    if (consume_word(parser, "let")) return parse_binding_statement(parser);
+    if (consume_word(parser, "print")) return parse_print_statement(parser);
+    if (consume_word(parser, "return")) return parse_return_statement(parser);
+    if (consume_word(parser, "if")) return parse_if_statement(parser);
+    parse_error(
+        parser,
+        "wasm32 Core supports only `let`, `print`, `return`, and `if` statements"
+    );
+    return -1;
+}
+
+static bool parse_block(Parser *parser, int *first) {
+    *first = -1;
+    if (!expect(parser, TOKEN_LEFT_BRACE,
+                "expected `{` before a wasm32 Core block")) {
         return false;
     }
+    if (parser->block_nesting >= MAX_BLOCK_NESTING) {
+        parse_error(parser, "block nesting exceeds the wasm32 limit of 64");
+        return false;
+    }
+    ++parser->block_nesting;
+    size_t scope = parser->binding_count;
+    int last = -1;
     while (parser->error == NULL &&
            parser->token.kind != TOKEN_RIGHT_BRACE &&
            parser->token.kind != TOKEN_EOF) {
-        if (consume_word(parser, "let")) {
-            parse_binding(parser);
-        } else if (consume_word(parser, "print")) {
-            parse_print(parser);
+        int statement = parse_statement(parser);
+        if (statement < 0) break;
+        if (last < 0) {
+            *first = statement;
         } else {
-            parse_error(parser,
-                        "wasm32 Core supports only `let` and `print` statements");
+            parser->statements[last].next = statement;
         }
+        last = statement;
     }
-    if (!expect(parser, TOKEN_RIGHT_BRACE, "expected `}` after main body")) {
+    /* A binding leaves scope with its block; the released slots are reused by
+     * the next sibling block, and `local_slots` keeps the deepest frame. */
+    parser->binding_count = scope;
+    --parser->block_nesting;
+    if (parser->error != NULL) return false;
+    return expect(parser, TOKEN_RIGHT_BRACE,
+                  "expected `}` after a wasm32 Core block");
+}
+
+/* Reads `fn name(...) -> Int` and stops on the opening `{`. The scan pass runs
+ * it with `declare` false to fill the declaration table; the body pass runs it
+ * again with `declare` true so each parameter becomes a local in source order
+ * and a repeated name is caught. */
+static bool parse_signature(Parser *parser, Function *function, bool declare) {
+    if (!expect_word(parser, "fn",
+                     "wasm32 Core supports only top-level `fn` declarations")) {
         return false;
     }
-    if (parser->token.kind != TOKEN_EOF) {
-        parse_error(parser, "unexpected source after `fn main`");
+    if (parser->token.kind != TOKEN_IDENTIFIER) {
+        parse_error(parser, "expected a function name after `fn`");
+        return false;
     }
+    const char *name = parser->token.start;
+    size_t length = parser->token.length;
+    if (length >= NAME_CAPACITY) {
+        parse_error(parser, "function name is too long");
+        return false;
+    }
+    if (length == 5 && memcmp(name, "print", 5) == 0) {
+        parse_error(
+            parser,
+            "wasm32 Core reserves `print` and cannot declare it as a function"
+        );
+        return false;
+    }
+    memcpy(function->name, name, length);
+    function->name[length] = '\0';
+    function->name_length = length;
+    function->line = parser->token.line;
+    next_token(parser);
+
+    if (!expect(parser, TOKEN_LEFT_PAREN,
+                "expected `(` after the function name")) {
+        return false;
+    }
+    function->parameter_count = 0;
+    if (parser->token.kind != TOKEN_RIGHT_PAREN) {
+        for (;;) {
+            if (parser->token.kind != TOKEN_IDENTIFIER) {
+                parse_error(parser, "expected a parameter name");
+                return false;
+            }
+            if (function->parameter_count == MAX_PARAMETERS) {
+                parse_error(
+                    parser,
+                    "wasm32 Core accepts at most six Int parameters"
+                );
+                return false;
+            }
+            const char *parameter = parser->token.start;
+            size_t parameter_length = parser->token.length;
+            if (declare &&
+                !check_new_binding(parser, parameter, parameter_length,
+                                   "duplicate parameter in wasm32 Core")) {
+                return false;
+            }
+            next_token(parser);
+            if (!expect(parser, TOKEN_COLON,
+                        "expected `:` after the parameter name")) {
+                return false;
+            }
+            if (!expect_word(parser, "Int",
+                             "wasm32 Core accepts only Int parameters")) {
+                return false;
+            }
+            if (declare) commit_binding(parser, parameter, parameter_length);
+            ++function->parameter_count;
+            if (!consume(parser, TOKEN_COMMA)) break;
+        }
+    }
+    if (!expect(parser, TOKEN_RIGHT_PAREN,
+                "expected `)` after the parameter list")) {
+        return false;
+    }
+    if (consume(parser, TOKEN_ARROW)) {
+        if (!expect_word(parser, "Int",
+                         "wasm32 Core accepts only an Int function result")) {
+            return false;
+        }
+        function->returns_int = true;
+    }
+    return true;
+}
+
+static bool skip_block(Parser *parser) {
+    size_t depth = 1;
+    while (depth > 0) {
+        if (parser->error != NULL) return false;
+        if (parser->token.kind == TOKEN_EOF) {
+            parse_error(parser, "unterminated function body in wasm32 Core");
+            return false;
+        }
+        if (parser->token.kind == TOKEN_LEFT_BRACE) {
+            ++depth;
+        } else if (parser->token.kind == TOKEN_RIGHT_BRACE) {
+            --depth;
+        }
+        next_token(parser);
+    }
+    return true;
+}
+
+static bool scan_declarations(Parser *parser) {
+    reset_lexer(parser);
+    while (parser->error == NULL && parser->token.kind != TOKEN_EOF) {
+        if (parser->function_count == MAX_FUNCTIONS) {
+            parse_error(parser, "too many functions in wasm32 Core");
+            return false;
+        }
+        Function function = {0};
+        function.body = -1;
+        if (!parse_signature(parser, &function, false)) return false;
+        if (find_function(parser, function.name, function.name_length) >= 0) {
+            parse_error_at(
+                parser,
+                "duplicate function declaration in wasm32 Core",
+                function.line
+            );
+            return false;
+        }
+        parser->functions[parser->function_count++] = function;
+        if (!expect(parser, TOKEN_LEFT_BRACE,
+                    "expected `{` before the function body")) {
+            return false;
+        }
+        if (!skip_block(parser)) return false;
+    }
+    if (parser->error != NULL) return false;
+
+    parser->main_index = find_function(parser, "main", 4);
+    if (parser->main_index < 0) {
+        parse_error_at(parser, "wasm32 Core requires `fn main`", 1);
+        return false;
+    }
+    const Function *entry = &parser->functions[parser->main_index];
+    if (entry->parameter_count != 0) {
+        parse_error_at(
+            parser,
+            "wasm32 Core requires `fn main` to declare no parameters",
+            entry->line
+        );
+        return false;
+    }
+    for (size_t index = 0; index < parser->function_count; ++index) {
+        const Function *function = &parser->functions[index];
+        if (function->returns_int || (int)index == parser->main_index) continue;
+        parse_error_at(
+            parser,
+            "wasm32 Core requires an `-> Int` result on every function other than `main`",
+            function->line
+        );
+        return false;
+    }
+    return true;
+}
+
+static bool block_ends_with_return(const Parser *parser, int first) {
+    int last = -1;
+    for (int index = first; index >= 0;
+         index = parser->statements[index].next) {
+        last = index;
+    }
+    return last >= 0 && parser->statements[last].kind == STATEMENT_RETURN;
+}
+
+static bool parse_bodies(Parser *parser) {
+    reset_lexer(parser);
+    for (size_t index = 0; index < parser->function_count; ++index) {
+        Function *function = &parser->functions[index];
+        parser->current = (int)index;
+        parser->binding_count = 0;
+        function->local_slots = 0;
+
+        Function header = {0};
+        header.body = -1;
+        if (!parse_signature(parser, &header, true)) return false;
+
+        function->node_base = (int)parser->node_count;
+        if (!parse_block(parser, &function->body)) return false;
+        function->node_span = (int)parser->node_count - function->node_base;
+
+        if (function->returns_int &&
+            !block_ends_with_return(parser, function->body)) {
+            parse_error_at(
+                parser,
+                "a wasm32 Core function declaring `-> Int` must end with `return`",
+                function->line
+            );
+            return false;
+        }
+    }
+    if (parser->token.kind != TOKEN_EOF) {
+        parse_error(parser, "unexpected source after the last `fn` declaration");
+        return false;
+    }
+    return parser->error == NULL;
+}
+
+static bool parse_program(Parser *parser) {
+    parser->main_index = -1;
+    parser->current = -1;
+    if (!scan_declarations(parser)) return false;
+    if (!parse_bodies(parser)) return false;
     if (parser->print_count == 0) {
-        parse_error(parser, "wasm32 Core main must print at least one Int");
+        parse_error_at(
+            parser,
+            "wasm32 Core program must print at least one Int",
+            parser->functions[parser->main_index].line
+        );
+        return false;
     }
     return parser->error == NULL;
 }
@@ -656,7 +1245,9 @@ enum {
     OP_UNREACHABLE = 0x00,
     OP_IF = 0x04,
     OP_END = 0x0b,
+    OP_RETURN = 0x0f,
     OP_CALL = 0x10,
+    OP_DROP = 0x1a,
     OP_LOCAL_GET = 0x20,
     OP_LOCAL_SET = 0x21,
     OP_I32_CONST = 0x41,
@@ -667,6 +1258,9 @@ enum {
     OP_I64_EQ = 0x51,
     OP_I64_NE = 0x52,
     OP_I64_LT_S = 0x53,
+    OP_I64_GT_S = 0x55,
+    OP_I64_LE_S = 0x57,
+    OP_I64_GE_S = 0x59,
     OP_I32_AND = 0x71,
     OP_I32_OR = 0x72,
     OP_I64_ADD = 0x7c,
@@ -688,12 +1282,41 @@ enum {
     ERROR_MODULO_ZERO = 7
 };
 
-static uint32_t node_local(const Parser *parser, int node) {
-    return (uint32_t)(parser->binding_count + (size_t)node * 3);
+/* Module function indices start after the two host imports; the declaration
+ * order in the table is the module order, so a call resolves the same whether
+ * the callee is declared before or after the caller. */
+enum {
+    PRINT_INDEX = 0,
+    PANIC_INDEX = 1,
+    FUNCTION_INDEX_BASE = 2,
+    TYPE_PRINT = 0,
+    TYPE_PANIC = 1,
+    TYPE_VOID = 2,
+    TYPE_FIXED_COUNT = 3
+};
+
+typedef struct {
+    /* Int-result arity -> type index, or -1 when this program has no function
+     * of that arity. Only the used ones are emitted, so a program that is one
+     * `fn main()` still emits exactly the three original types. */
+    int int_result_type[MAX_PARAMETERS + 1];
+    int type_count;
+    bool needs_wrapper;
+    uint32_t export_index;
+} Layout;
+
+typedef struct {
+    const Parser *parser;
+    const Function *function;
+} Emitter;
+
+static uint32_t node_local(const Emitter *emitter, int node) {
+    return (uint32_t)(emitter->function->local_slots +
+                      (node - emitter->function->node_base) * 3);
 }
 
-static uint32_t node_aux(const Parser *parser, int node, uint32_t offset) {
-    return node_local(parser, node) + offset;
+static uint32_t node_aux(const Emitter *emitter, int node, uint32_t offset) {
+    return node_local(emitter, node) + offset;
 }
 
 static void instruction_index(Buffer *body, uint8_t opcode, uint32_t index) {
@@ -709,13 +1332,33 @@ static void i64_const(Buffer *body, int64_t value) {
 static void panic_with(Buffer *body, int code) {
     byte(body, OP_I32_CONST);
     sleb(body, code);
-    instruction_index(body, OP_CALL, 1);
+    instruction_index(body, OP_CALL, PANIC_INDEX);
     byte(body, OP_UNREACHABLE);
 }
 
 static void begin_if(Buffer *body) {
     byte(body, OP_IF);
     byte(body, 0x40);
+}
+
+static uint8_t comparison_opcode(TokenKind comparison) {
+    switch (comparison) {
+        case TOKEN_EQUAL_EQUAL:
+            return OP_I64_EQ;
+        case TOKEN_BANG_EQUAL:
+            return OP_I64_NE;
+        case TOKEN_LESS:
+            return OP_I64_LT_S;
+        case TOKEN_LESS_EQUAL:
+            return OP_I64_LE_S;
+        case TOKEN_GREATER:
+            return OP_I64_GT_S;
+        case TOKEN_GREATER_EQUAL:
+            return OP_I64_GE_S;
+        default:
+            fatal("internal unsupported wasm32 comparison");
+    }
+    return OP_I64_EQ;
 }
 
 static void check_division_pair(
@@ -743,9 +1386,10 @@ static void check_division_pair(
     byte(body, OP_END);
 }
 
-static void emit_expression(const Parser *parser, int index, Buffer *body) {
+static void emit_expression(const Emitter *emitter, int index, Buffer *body) {
+    const Parser *parser = emitter->parser;
     const Node *node = &parser->nodes[index];
-    uint32_t target = node_local(parser, index);
+    uint32_t target = node_local(emitter, index);
     if (node->kind == NODE_LITERAL) {
         i64_const(body, node->value);
         instruction_index(body, OP_LOCAL_SET, target);
@@ -756,9 +1400,36 @@ static void emit_expression(const Parser *parser, int index, Buffer *body) {
         instruction_index(body, OP_LOCAL_SET, target);
         return;
     }
+    if (node->kind == NODE_CALL) {
+        /* Arguments are evaluated left to right and exactly once: each one
+         * lands in its own local before any of them is pushed. */
+        for (int argument = 0; argument < node->argument_count; ++argument) {
+            emit_expression(
+                emitter,
+                parser->arguments[node->argument_start + argument],
+                body
+            );
+        }
+        for (int argument = 0; argument < node->argument_count; ++argument) {
+            instruction_index(
+                body,
+                OP_LOCAL_GET,
+                node_local(
+                    emitter,
+                    parser->arguments[node->argument_start + argument]
+                )
+            );
+        }
+        instruction_index(
+            body, OP_CALL,
+            (uint32_t)(FUNCTION_INDEX_BASE + node->callee)
+        );
+        instruction_index(body, OP_LOCAL_SET, target);
+        return;
+    }
 
-    emit_expression(parser, node->left, body);
-    uint32_t left = node_local(parser, node->left);
+    emit_expression(emitter, node->left, body);
+    uint32_t left = node_local(emitter, node->left);
     if (node->kind == NODE_NEGATE) {
         instruction_index(body, OP_LOCAL_GET, left);
         i64_const(body, INT64_MIN);
@@ -773,8 +1444,8 @@ static void emit_expression(const Parser *parser, int index, Buffer *body) {
         return;
     }
 
-    emit_expression(parser, node->right, body);
-    uint32_t right = node_local(parser, node->right);
+    emit_expression(emitter, node->right, body);
+    uint32_t right = node_local(emitter, node->right);
     instruction_index(body, OP_LOCAL_GET, left);
     instruction_index(body, OP_LOCAL_GET, right);
 
@@ -861,12 +1532,12 @@ static void emit_expression(const Parser *parser, int index, Buffer *body) {
         instruction_index(body, OP_LOCAL_GET, left);
         instruction_index(body, OP_LOCAL_GET, right);
         byte(body, OP_I64_REM_S);
-        instruction_index(body, OP_LOCAL_SET, node_aux(parser, index, 1));
+        instruction_index(body, OP_LOCAL_SET, node_aux(emitter, index, 1));
 
-        instruction_index(body, OP_LOCAL_GET, node_aux(parser, index, 1));
+        instruction_index(body, OP_LOCAL_GET, node_aux(emitter, index, 1));
         i64_const(body, 0);
         byte(body, OP_I64_NE);
-        instruction_index(body, OP_LOCAL_GET, node_aux(parser, index, 1));
+        instruction_index(body, OP_LOCAL_GET, node_aux(emitter, index, 1));
         i64_const(body, 0);
         byte(body, OP_I64_LT_S);
         instruction_index(body, OP_LOCAL_GET, right);
@@ -913,7 +1584,112 @@ static void emit_expression(const Parser *parser, int index, Buffer *body) {
     fatal("internal unsupported wasm32 expression");
 }
 
+static void emit_statements(const Emitter *emitter, int first, Buffer *body) {
+    const Parser *parser = emitter->parser;
+    for (int index = first; index >= 0;
+         index = parser->statements[index].next) {
+        const Statement *statement = &parser->statements[index];
+        if (statement->kind == STATEMENT_IF) {
+            const Condition *condition =
+                &parser->conditions[statement->condition];
+            emit_expression(emitter, condition->left, body);
+            emit_expression(emitter, condition->right, body);
+            instruction_index(
+                body, OP_LOCAL_GET, node_local(emitter, condition->left)
+            );
+            instruction_index(
+                body, OP_LOCAL_GET, node_local(emitter, condition->right)
+            );
+            byte(body, comparison_opcode(condition->comparison));
+            begin_if(body);
+            emit_statements(emitter, statement->body, body);
+            byte(body, OP_END);
+            continue;
+        }
+        if (statement->kind == STATEMENT_RETURN) {
+            if (statement->expression >= 0) {
+                emit_expression(emitter, statement->expression, body);
+                instruction_index(
+                    body, OP_LOCAL_GET,
+                    node_local(emitter, statement->expression)
+                );
+            }
+            byte(body, OP_RETURN);
+            continue;
+        }
+        emit_expression(emitter, statement->expression, body);
+        instruction_index(
+            body, OP_LOCAL_GET, node_local(emitter, statement->expression)
+        );
+        if (statement->kind == STATEMENT_BIND) {
+            instruction_index(
+                body, OP_LOCAL_SET, (uint32_t)statement->binding
+            );
+        } else {
+            instruction_index(body, OP_CALL, PRINT_INDEX);
+        }
+    }
+}
+
+static void plan_layout(const Parser *parser, Layout *layout) {
+    for (int arity = 0; arity <= MAX_PARAMETERS; ++arity) {
+        layout->int_result_type[arity] = -1;
+    }
+    layout->type_count = TYPE_FIXED_COUNT;
+    for (size_t index = 0; index < parser->function_count; ++index) {
+        const Function *function = &parser->functions[index];
+        if (!function->returns_int) continue;
+        layout->int_result_type[function->parameter_count] = 0;
+    }
+    for (int arity = 0; arity <= MAX_PARAMETERS; ++arity) {
+        if (layout->int_result_type[arity] < 0) continue;
+        layout->int_result_type[arity] = layout->type_count++;
+    }
+    /* A `main` that declares `-> Int` cannot be the export directly, because
+     * the host ABI is `main(): void`. Only then is a wrapper emitted, so an
+     * arithmetic-Core program keeps exporting its own single function. */
+    layout->needs_wrapper = parser->functions[parser->main_index].returns_int;
+    layout->export_index = (uint32_t)(
+        FUNCTION_INDEX_BASE +
+        (layout->needs_wrapper
+             ? (int)parser->function_count
+             : parser->main_index)
+    );
+}
+
+static uint32_t function_type_index(
+    const Layout *layout,
+    const Function *function
+) {
+    if (!function->returns_int) return TYPE_VOID;
+    return (uint32_t)layout->int_result_type[function->parameter_count];
+}
+
+static Buffer emit_function_body(
+    const Parser *parser,
+    const Function *function
+) {
+    Buffer body = {0};
+    Emitter emitter = { .parser = parser, .function = function };
+    uint64_t declared =
+        (uint64_t)(function->local_slots - function->parameter_count) +
+        (uint64_t)function->node_span * 3;
+    if (declared == 0) {
+        uleb(&body, 0);
+    } else {
+        uleb(&body, 1);
+        uleb(&body, declared);
+        byte(&body, 0x7e);
+    }
+    emit_statements(&emitter, function->body, &body);
+    byte(&body, OP_END);
+    return body;
+}
+
 static Buffer emit_module(const Parser *parser) {
+    Layout layout;
+    plan_layout(parser, &layout);
+
     Buffer module = {0};
     static const uint8_t header[] = {
         0x00, 0x61, 0x73, 0x6d,
@@ -922,7 +1698,7 @@ static Buffer emit_module(const Parser *parser) {
     bytes(&module, header, sizeof(header));
 
     Buffer types = {0};
-    uleb(&types, 3);
+    uleb(&types, (uint64_t)layout.type_count);
     byte(&types, 0x60);
     uleb(&types, 1);
     byte(&types, 0x7e);
@@ -934,6 +1710,16 @@ static Buffer emit_module(const Parser *parser) {
     byte(&types, 0x60);
     uleb(&types, 0);
     uleb(&types, 0);
+    for (int arity = 0; arity <= MAX_PARAMETERS; ++arity) {
+        if (layout.int_result_type[arity] < 0) continue;
+        byte(&types, 0x60);
+        uleb(&types, (uint64_t)arity);
+        for (int parameter = 0; parameter < arity; ++parameter) {
+            byte(&types, 0x7e);
+        }
+        uleb(&types, 1);
+        byte(&types, 0x7e);
+    }
     section(&module, 1, &types);
 
     Buffer imports = {0};
@@ -941,61 +1727,58 @@ static Buffer emit_module(const Parser *parser) {
     wasm_string(&imports, "kofun");
     wasm_string(&imports, "print_i64");
     byte(&imports, 0x00);
-    uleb(&imports, 0);
+    uleb(&imports, TYPE_PRINT);
     wasm_string(&imports, "kofun");
     wasm_string(&imports, "panic");
     byte(&imports, 0x00);
-    uleb(&imports, 1);
+    uleb(&imports, TYPE_PANIC);
     section(&module, 2, &imports);
 
+    uint64_t module_functions =
+        parser->function_count + (layout.needs_wrapper ? 1 : 0);
     Buffer functions = {0};
-    uleb(&functions, 1);
-    uleb(&functions, 2);
+    uleb(&functions, module_functions);
+    for (size_t index = 0; index < parser->function_count; ++index) {
+        uleb(&functions,
+             function_type_index(&layout, &parser->functions[index]));
+    }
+    if (layout.needs_wrapper) uleb(&functions, TYPE_VOID);
     section(&module, 3, &functions);
 
     Buffer exports = {0};
     uleb(&exports, 1);
     wasm_string(&exports, "main");
     byte(&exports, 0x00);
-    uleb(&exports, 2);
+    uleb(&exports, layout.export_index);
     section(&module, 7, &exports);
 
-    Buffer body = {0};
-    uint64_t local_count =
-        parser->binding_count + parser->node_count * UINT64_C(3);
-    if (local_count == 0) {
-        uleb(&body, 0);
-    } else {
-        uleb(&body, 1);
-        uleb(&body, local_count);
-        byte(&body, 0x7e);
-    }
-    for (size_t index = 0; index < parser->statement_count; ++index) {
-        const Statement *statement = &parser->statements[index];
-        emit_expression(parser, statement->expression, &body);
-        uint32_t value = node_local(parser, statement->expression);
-        instruction_index(&body, OP_LOCAL_GET, value);
-        if (statement->kind == STATEMENT_BIND) {
-            instruction_index(
-                &body, OP_LOCAL_SET, (uint32_t)statement->binding
-            );
-        } else {
-            instruction_index(&body, OP_CALL, 0);
-        }
-    }
-    byte(&body, OP_END);
-
     Buffer code = {0};
-    uleb(&code, 1);
-    uleb(&code, body.length);
-    bytes(&code, body.data, body.length);
+    uleb(&code, module_functions);
+    for (size_t index = 0; index < parser->function_count; ++index) {
+        Buffer body = emit_function_body(parser, &parser->functions[index]);
+        uleb(&code, body.length);
+        bytes(&code, body.data, body.length);
+        free(body.data);
+    }
+    if (layout.needs_wrapper) {
+        Buffer wrapper = {0};
+        uleb(&wrapper, 0);
+        instruction_index(
+            &wrapper, OP_CALL,
+            (uint32_t)(FUNCTION_INDEX_BASE + parser->main_index)
+        );
+        byte(&wrapper, OP_DROP);
+        byte(&wrapper, OP_END);
+        uleb(&code, wrapper.length);
+        bytes(&code, wrapper.data, wrapper.length);
+        free(wrapper.data);
+    }
     section(&module, 10, &code);
 
     free(types.data);
     free(imports.data);
     free(functions.data);
     free(exports.data);
-    free(body.data);
     free(code.data);
     return module;
 }
@@ -1026,22 +1809,24 @@ int main(int argc, char **argv) {
     size_t length = 0;
     char *source = read_source(argv[1], &length);
     if (source == NULL) return 1;
-    Parser parser = {
-        .source = source,
-        .length = length
-    };
-    bool parsed = parse_program(&parser);
+    Parser *parser = allocate(sizeof(*parser));
+    memset(parser, 0, sizeof(*parser));
+    parser->source = source;
+    parser->length = length;
+    bool parsed = parse_program(parser);
     if (!parsed) {
         fprintf(stderr, "kofun wasm32: line %zu: %s\n",
-                parser.error_line,
-                parser.error == NULL ? "invalid source" : parser.error);
+                parser->error_line,
+                parser->error == NULL ? "invalid source" : parser->error);
+        free(parser);
         free(source);
         return 1;
     }
 
-    Buffer module = emit_module(&parser);
+    Buffer module = emit_module(parser);
     bool written = write_module(argv[2], &module);
     free(module.data);
+    free(parser);
     free(source);
     return written ? 0 : 1;
 }

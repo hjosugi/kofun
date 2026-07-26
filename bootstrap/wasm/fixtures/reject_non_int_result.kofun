@@ -1,0 +1,8 @@
+# A helper without an Int result has nothing this profile can return.
+fn helper(a: Int) {
+    print(a)
+}
+
+fn main() {
+    helper(1)
+}

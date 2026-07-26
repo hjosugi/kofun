@@ -1,0 +1,4 @@
+# A call must name a function the program declares.
+fn main() {
+    print(missing(1))
+}

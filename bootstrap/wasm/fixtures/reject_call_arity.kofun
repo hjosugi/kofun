@@ -1,0 +1,8 @@
+# A call must pass exactly as many arguments as the declaration accepts.
+fn helper(a: Int, b: Int) -> Int {
+    return a + b
+}
+
+fn main() {
+    print(helper(1))
+}

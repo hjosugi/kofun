@@ -1,0 +1,8 @@
+# Functions are not values in this profile.
+fn helper() -> Int {
+    return 1
+}
+
+fn main() {
+    print(helper)
+}

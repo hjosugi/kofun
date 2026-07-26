@@ -1,0 +1,5 @@
+# A binding is not callable: this profile emits direct calls only.
+fn main() {
+    let helper = 1
+    print(helper(2))
+}

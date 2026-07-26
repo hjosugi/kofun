@@ -1,4 +1,4 @@
-# wasm32 arithmetic Core
+# wasm32 arithmetic and bounded Int function Core
 
 This directory is an executable first slice of issue #26. The seed compiler
 parses Kofun source and writes a standard WebAssembly binary module directly;
@@ -39,20 +39,55 @@ supplies the same bindings and renders the two Kofun-produced values into an
 
 ## Supported source slice
 
-The current profile supports one zero-argument `fn main`, immutable `Int`
+The current profile supports a zero-argument `fn main`, immutable `Int`
 bindings, `print`, Int64 literals and variables, parentheses, unary `+`/`-`,
-and checked `+`, `-`, `*`, `/`, `//`, and `%`. Division and modulo follow the
-same truncating or floor semantics and stable runtime diagnostics as the C11
-Stage 1 backend. Parenthesized expressions and unary operators share one
-deterministic 256-level nesting limit: 128 nested parentheses combined with
-128 unary operators are accepted, while any combined depth of 257 is rejected.
-This makes hostile inputs fail with a compile diagnostic instead of exhausting
-the C stack.
+and checked `+`, `-`, `*`, `//`, and `%`. `/` is not defined on `Int` and is
+refused with a diagnostic (#687), exactly as both native targets refuse it.
+Modulo and the integer quotient follow the same floor semantics and stable
+runtime diagnostics as the C11 Stage 1 backend. Parenthesized expressions,
+unary operators, and call argument lists share one deterministic 256-level
+nesting limit: 128 nested parentheses combined with 128 unary operators are
+accepted, while any combined depth of 257 is rejected. This makes hostile
+inputs fail with a compile diagnostic instead of exhausting the C stack.
+
+On top of that arithmetic the profile lowers a bounded Int function Core:
+zero to six `Int` parameters and an `Int` result, direct calls in expression
+position, forward calls, recursion and mutual recursion, comparison-guarded
+early returns with `==`, `!=`, `<`, `<=`, `>`, and `>=`, and `let` bindings
+inside a function body. Every top-level signature is collected before any body
+is lowered, so a call resolves the same whether its callee is declared above or
+below it. A call evaluates its arguments left to right and exactly once. This
+is ordinary direct-call recursion — no tail-call proposal instruction, host
+callback, or JavaScript trampoline participates — so recursion depth is
+whatever the engine stack allows and the language makes no promise about it.
+
+### Encoding
+
+Module function indices start after the two host imports, and the declaration
+table fixes them before any body is emitted. The module keeps exporting
+`main(): void`, so hosts need no ABI change: when the source `main` declares no
+result it *is* the export, and a program that is one `fn main` still emits the
+same bytes it did before functions existed. Only when `main` declares
+`-> Int` does the module gain a generated wrapper that calls the internal
+`main` and drops its `i64`. Parameters occupy WebAssembly locals in source
+order; expression temporaries follow them deterministically. A Kofun `Bool`
+is never a value here — a comparison exists only as the `i32` branch condition
+of one `if`.
+
+### Refused, with no artifact written
+
+Unknown functions, duplicate declarations, duplicate parameters, wrong call
+arity, a seventh parameter or argument, non-`Int` parameters, a helper without
+an `-> Int` result, an `-> Int` body that does not end in `return`, function
+values, and calls through a binding are all compile failures. Each writes a
+stable source-located diagnostic to stderr, nothing to stdout, and no `.wasm`
+file. `bootstrap/wasm/fixtures/` holds one fixture per refusal and
+`check.sh` asserts every one of them.
 
 `tests/conformance/backends/wasm32-node.sh` registers the target against the
-shared numeric corpus. All nine success and failure cases execute under the
-Node WebAssembly engine and compare exact exit status, stdout, and stderr with
-the C11 observations.
+shared numeric and functions corpora. All nine numeric cases and all twelve
+function cases execute under the Node WebAssembly engine and compare exact exit
+status, stdout, and stderr with the C11 observations.
 
 Run the mandatory gate:
 
@@ -62,9 +97,13 @@ make wasm
 
 ## Honest boundary
 
-This remains a bounded arithmetic target. It has no linear-memory object
-layout, Text or List lowering, general functions, WASI profile, general
-JavaScript value conversion, direct DOM declarations in Kofun, or optimizer.
-The standard module loads in both Node and browsers, the numeric differential
-corpus is executable, and the sample now renders Kofun output in a page. Wider
-language coverage should be tracked independently rather than implied here.
+This remains a bounded Int target. It has no linear-memory object layout, no
+Text or List lowering, no `else`, no loops, no mutation, no tables or indirect
+calls, no closures or function values, no user-declared imports, no WASI
+profile, no general JavaScript value conversion, no direct DOM declarations in
+Kofun, no debug information, and no optimizer. Functions are bounded at six
+`Int` parameters and one `Int` result; anything wider is refused rather than
+silently narrowed. The standard module loads in both Node and browsers, the
+numeric and function differential corpora are executable, and the sample
+renders Kofun output in a page. Wider language coverage should be tracked
+independently rather than implied here.

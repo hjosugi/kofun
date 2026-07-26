@@ -1,0 +1,10 @@
+# An Int result must actually be produced on the way out.
+fn helper(a: Int) -> Int {
+    if a > 0 {
+        return a
+    }
+}
+
+fn main() {
+    print(helper(1))
+}

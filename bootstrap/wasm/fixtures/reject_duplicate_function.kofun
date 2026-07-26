@@ -1,0 +1,12 @@
+# One name declares one function.
+fn helper(a: Int) -> Int {
+    return a
+}
+
+fn helper(a: Int) -> Int {
+    return a + 1
+}
+
+fn main() {
+    print(helper(1))
+}
