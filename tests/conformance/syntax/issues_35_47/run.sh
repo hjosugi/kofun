@@ -455,7 +455,26 @@ grep '^function|main|0|' "$WORK/unicode.ir" >/dev/null ||
     fail "Stage 2 Unicode IR did not record fn main"
 printf '%s\n' "PASS executable: Unicode identifiers in Stage 2"
 
-expect_stage2_unsupported "$CASES/unsupported_lambda.kofun"
+# Lambdas were one of this checkpoint's unsupported fixtures until #703 lifted
+# them to top-level functions. The assertion moved with the capability: what is
+# gated now is that the bound lambda runs, not that it is refused.
+"$WORK/kofun-stage2" \
+    "$CASES/lambda_binding.kofun" \
+    "$WORK/lambda.c" \
+    "$WORK/lambda.ir" \
+    "$WORK/lambda.tokens" >/dev/null
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$WORK/lambda.c" -o "$WORK/lambda"
+lambda_stage2_output=$("$WORK/lambda")
+# One line per shape #703 scopes: an annotated parameter read in the body, the
+# two-parameter form, a capture of an enclosing binding, and a lambda calling
+# another lambda.
+test "$lambda_stage2_output" = "$(printf '42\n42\n42\n12')" ||
+    fail "Stage 2 lambda bindings printed: $lambda_stage2_output"
+grep 'kofun_lambda_' "$WORK/lambda.c" >/dev/null ||
+    fail "Stage 2 lambda binding was not lifted to a top-level function"
+printf '%s\n' "PASS executable: lambda bindings lifted, captured, and called"
+
 expect_stage2_unsupported "$CASES/unsupported_owned_binding.kofun"
 expect_stage2_unsupported "$CASES/unsupported_else_if.kofun"
 expect_stage2_unsupported "$CASES/unsupported_for.kofun"
@@ -483,4 +502,4 @@ printf '%s\n' "PASS diagnostic: invalid if condition"
 
 printf '%s\n' \
     "PASS: syntax issues #35-#47 bootstrap capability checkpoint" \
-    "coverage: 13 subjects; 5 partial; 3 Core-implemented; 5 unsupported via 5 fixtures"
+    "coverage: 13 subjects; 5 partial; 4 Core-implemented; 4 unsupported via 4 fixtures"
