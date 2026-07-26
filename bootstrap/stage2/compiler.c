@@ -3035,6 +3035,31 @@ static char *hir_definition_id_at(
     const char *hir,
     int64_t declaration_start
 );
+static int64_t lambda_initializer_open(
+    const char *source,
+    int64_t value_start
+);
+static int64_t lambda_binding_open(
+    const char *source,
+    const char *hir,
+    const char *binding_id
+);
+static char *lambda_captures(
+    const char *source,
+    const char *hir,
+    int64_t lambda_open
+);
+static void append_captures(
+    Buffer *output,
+    const char *captures,
+    int64_t written,
+    const char *declaration
+);
+static int64_t lambda_call_arity(
+    const char *source,
+    const char *hir,
+    int64_t use_start
+);
 static char *hir_binding_field(
     const char *hir,
     const char *binding_id,
@@ -3218,9 +3243,20 @@ static char *emit_primary(
             free(name);
             return output.data;
         }
-        char *c_name = c_identifier_name(name);
-        buffer_format(&output, "kofun_fn_%s(", c_name);
-        free(c_name);
+        /* A callee the scope HIR resolved to a binding is a lifted lambda;
+         * anything else is a top-level function looked up by name. */
+        char *callee_binding = hir_use_binding_id(hir, cursor);
+        int64_t lambda_open =
+            callee_binding[0] == '\0'
+                ? -1
+                : lambda_binding_open(source, hir, callee_binding);
+        if (lambda_open >= 0) {
+            buffer_format(&output, "kofun_lambda_%s(", callee_binding);
+        } else {
+            char *c_name = c_identifier_name(name);
+            buffer_format(&output, "kofun_fn_%s(", c_name);
+            free(c_name);
+        }
         int64_t argument = skip_trivia(source, token_end(source, open));
         int64_t arguments = 0;
         while (argument < end && !token_equal(source, argument, ")")) {
@@ -3242,7 +3278,13 @@ static char *emit_primary(
                 argument = separator;
             }
         }
+        if (lambda_open >= 0) {
+            char *captures = lambda_captures(source, hir, lambda_open);
+            append_captures(&output, captures, arguments, "");
+            free(captures);
+        }
         buffer_append(&output, ")");
+        free(callee_binding);
         free(name);
         return output.data;
     }
@@ -3806,6 +3848,14 @@ static char *validate_core_calls(const char *source, const char *hir) {
                     free(name);
                     free(previous);
                     return error.data;
+                }
+                if (expected < 0) {
+                    /* A callee the scope HIR bound to a lambda is lifted to a
+                     * top-level function, so it is a known callee even though
+                     * it is absent from the source's function table. Feeding
+                     * its arity back into `expected` gives a lambda call the
+                     * same arity diagnostic a named call already gets. */
+                    expected = lambda_call_arity(source, hir, cursor);
                 }
                 if (expected < 0) {
                     int64_t builtin_expected = builtin_arity(name);
@@ -5362,6 +5412,214 @@ static char *hir_scope_id_for_open(const char *hir, int64_t open) {
         line = hir_record_start(hir, "scope", line + 1);
     }
     return owned_text("");
+}
+
+/* The scope a binding was declared in, or "" when the id names no binding. */
+static char *hir_binding_scope(const char *hir, const char *binding_id) {
+    int64_t line = hir_record_start(hir, "binding", 0);
+    while (line >= 0) {
+        char *candidate = hir_field(hir, line, 1);
+        bool found = strcmp(candidate, binding_id) == 0;
+        free(candidate);
+        if (found) return hir_field(hir, line, 2);
+        line = hir_record_start(hir, "binding", line + 1);
+    }
+    return owned_text("");
+}
+
+/* The byte the binding's declaration starts at, or -1 for an unknown id. */
+static int64_t hir_binding_declaration_start(
+    const char *hir,
+    const char *binding_id
+) {
+    int64_t line = hir_record_start(hir, "binding", 0);
+    while (line >= 0) {
+        char *candidate = hir_field(hir, line, 1);
+        bool found = strcmp(candidate, binding_id) == 0;
+        free(candidate);
+        if (found) {
+            char *start_text = hir_field(hir, line, 8);
+            int64_t start = decimal_value(start_text);
+            free(start_text);
+            return start;
+        }
+        line = hir_record_start(hir, "binding", line + 1);
+    }
+    return -1;
+}
+
+/*
+ * The `(` of the arrow lambda a `let` initializer is, or -1 when the
+ * initializer is something else. `value_start` is the first byte after `=`,
+ * so what precedes the parameter list is `=` or `fn` — never an identifier,
+ * which is why -1 is the right `previous` for `lambda_parameters_end`: the
+ * constructor-pattern ambiguity that argument guards against cannot arise
+ * here.
+ */
+static int64_t lambda_initializer_open(
+    const char *source,
+    int64_t value_start
+) {
+    int64_t cursor = skip_trivia(source, value_start);
+    if (token_equal(source, cursor, "fn")) {
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    if (lambda_parameters_end(source, -1, cursor) < 0) return -1;
+    return cursor;
+}
+
+/*
+ * The `(` of the lambda a binding holds, or -1 when that binding is not a
+ * lambda. This is how a call site reaches the lifted function: the scope HIR
+ * has already resolved the callee name to a binding, shadowing included, so
+ * the lowering never repeats that resolution by name.
+ */
+static int64_t lambda_binding_open(
+    const char *source,
+    const char *hir,
+    const char *binding_id
+) {
+    int64_t declaration_start = hir_binding_declaration_start(hir, binding_id);
+    if (declaration_start < 0) return -1;
+    int64_t equals = skip_trivia(
+        source,
+        token_end(source, declaration_start)
+    );
+    if (!token_equal(source, equals, "=")) return -1;
+    return lambda_initializer_open(
+        source,
+        skip_trivia(source, token_end(source, equals))
+    );
+}
+
+/*
+ * The binding ids a lambda body reads from outside its own parameter list, in
+ * HIR order, separated by `|`, or "" when the lambda captures nothing.
+ *
+ * A capture is exactly a use inside the lambda whose binding lives in another
+ * scope. Lifting passes each one as a trailing parameter, so a lifted lambda
+ * stays a plain `int64_t` function and the frozen profile gains no function
+ * type. The call site appends the same ids in the same order, and a captured
+ * binding is a C local of the enclosing function, so it is in scope wherever
+ * the lambda binding itself is.
+ */
+static char *lambda_captures(
+    const char *source,
+    const char *hir,
+    int64_t lambda_open
+) {
+    int64_t body_end = lambda_parameters_end(source, -1, lambda_open);
+    char *scope_id = hir_scope_id_for_open(hir, lambda_open);
+    Buffer captured;
+    buffer_init(&captured);
+    int64_t line = hir_record_start(hir, "use", 0);
+    while (line >= 0) {
+        char *start_text = hir_field(hir, line, 1);
+        int64_t use_start = decimal_value(start_text);
+        free(start_text);
+        if (use_start > lambda_open && use_start < body_end) {
+            char *binding_id = hir_field(hir, line, 4);
+            char *binding_scope = hir_binding_scope(hir, binding_id);
+            /* A lambda binding in an enclosing scope is not a capture: it has
+             * no `int64_t` to pass, and the call reaches its lifted function
+             * by name. Counting it would emit a parameter for a C variable
+             * that a lambda binding never declares. */
+            if (strcmp(binding_scope, scope_id) != 0 &&
+                lambda_binding_open(source, hir, binding_id) < 0) {
+                /* A body may read the same capture more than once; the
+                 * parameter list must name it once. */
+                Buffer seen;
+                buffer_init(&seen);
+                buffer_format(&seen, "|%s|", captured.data);
+                Buffer wanted;
+                buffer_init(&wanted);
+                buffer_format(&wanted, "|%s|", binding_id);
+                if (strstr(seen.data, wanted.data) == NULL) {
+                    if (captured.length > 0) buffer_append(&captured, "|");
+                    buffer_append(&captured, binding_id);
+                }
+                free(seen.data);
+                free(wanted.data);
+            }
+            free(binding_scope);
+            free(binding_id);
+        }
+        line = hir_record_start(hir, "use", line + 1);
+    }
+    free(scope_id);
+    return captured.data;
+}
+
+/* The declared parameter count of the lambda whose parameter list opens at
+ * `open`. Captures are invisible to a caller, so they are not counted. */
+static int64_t lambda_parameter_count(const char *source, int64_t open) {
+    int64_t close = balanced_end(source, open, "(", ")");
+    if (close < 0) return -1;
+    int64_t count = 0;
+    int64_t parameter = skip_trivia(source, token_end(source, open));
+    while (parameter < close) {
+        if (strcmp(token_kind(source, parameter), "identifier") != 0) break;
+        ++count;
+        int64_t after = skip_trivia(source, token_end(source, parameter));
+        if (after < close && token_equal(source, after, ":")) {
+            int64_t annotation = skip_trivia(source, token_end(source, after));
+            after = skip_trivia(source, token_end(source, annotation));
+        }
+        if (after < close && token_equal(source, after, ",")) {
+            after = skip_trivia(source, token_end(source, after));
+        }
+        parameter = after;
+    }
+    return count;
+}
+
+/*
+ * The declared arity of the lambda a call site resolves to, or -1 when the
+ * callee is not a lambda binding.
+ */
+static int64_t lambda_call_arity(
+    const char *source,
+    const char *hir,
+    int64_t use_start
+) {
+    char *callee_binding = hir_use_binding_id(hir, use_start);
+    if (callee_binding[0] == '\0') {
+        free(callee_binding);
+        return -1;
+    }
+    int64_t open = lambda_binding_open(source, hir, callee_binding);
+    free(callee_binding);
+    if (open < 0) return -1;
+    return lambda_parameter_count(source, open);
+}
+
+/*
+ * Writes one `k_b<id>` per capture into `output`, prefixed by `declaration`
+ * for a parameter list and by nothing for an argument list, separating with
+ * `, ` when `written` items already precede them. The lifted signature and
+ * every call to it go through this one function so their orders cannot drift.
+ */
+static void append_captures(
+    Buffer *output,
+    const char *captures,
+    int64_t written,
+    const char *declaration
+) {
+    int64_t count = 0;
+    size_t cursor = 0;
+    while (captures[cursor] != '\0') {
+        size_t stop = cursor;
+        while (captures[stop] != '\0' && captures[stop] != '|') ++stop;
+        if (written > 0 || count > 0) buffer_append(output, ", ");
+        buffer_append(output, declaration);
+        buffer_append(output, "k_b");
+        for (size_t index = cursor; index < stop; ++index) {
+            char symbol[2] = {captures[index], '\0'};
+            buffer_append(output, symbol);
+        }
+        ++count;
+        cursor = captures[stop] == '\0' ? stop : stop + 1;
+    }
 }
 
 static char *hir_scope_field(
@@ -7495,6 +7753,22 @@ static char *lower_body(
                 cursor = skip_trivia(source, token_end(source, value_start));
                 continue;
             }
+            /*
+             * A lambda binding names a lifted top-level function rather than
+             * holding an `int64_t`, so this statement emits nothing. Without
+             * this the initializer reaches the Int expression grammar and is
+             * rejected as `E2S12`, which is what #703 measured.
+             */
+            int64_t lambda_open = lambda_initializer_open(source, value_start);
+            if (lambda_open >= 0) {
+                free(name);
+                free(binding_id);
+                cursor = skip_trivia(
+                    source,
+                    lambda_parameters_end(source, -1, lambda_open)
+                );
+                continue;
+            }
             if (value_control(source, value_start)) {
                 int64_t value_end = -1;
                 char *result = parse_value_control(
@@ -8451,6 +8725,132 @@ static char *lower_body(
     return emitted.data;
 }
 
+/*
+ * Lifts every lambda binding to a top-level `kofun_lambda_<binding>` and
+ * appends its prototype and body to the module being built.
+ *
+ * Lifting rather than a function value is what keeps this inside the frozen
+ * profile: Stage 2 lowers every value to `int64_t` and has no function type,
+ * no function pointer and no indirect call, so a lambda that stayed a value
+ * would need all three. A lifted lambda is an ordinary Core function, and its
+ * body lowers through the same expression emitter as any other, because the
+ * scope HIR already binds the parameters.
+ */
+static char *emit_lifted_lambdas(
+    const char *source,
+    const char *hir,
+    Buffer *prototypes,
+    Buffer *bodies
+) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < length) {
+        if (!token_equal(source, cursor, "let")) {
+            cursor = skip_trivia(source, token_end(source, cursor));
+            continue;
+        }
+        int64_t name_start = skip_trivia(source, token_end(source, cursor));
+        if (token_equal(source, name_start, "mut")) {
+            name_start = skip_trivia(source, token_end(source, name_start));
+        }
+        if (
+            name_start >= length ||
+            strcmp(token_kind(source, name_start), "identifier") != 0
+        ) {
+            cursor = skip_trivia(source, token_end(source, cursor));
+            continue;
+        }
+        int64_t equals = skip_trivia(source, token_end(source, name_start));
+        if (equals < length && token_equal(source, equals, ":")) {
+            int64_t annotation = skip_trivia(
+                source,
+                token_end(source, equals)
+            );
+            equals = skip_trivia(source, token_end(source, annotation));
+        }
+        if (equals >= length || !token_equal(source, equals, "=")) {
+            cursor = skip_trivia(source, token_end(source, cursor));
+            continue;
+        }
+        int64_t open = lambda_initializer_open(
+            source,
+            skip_trivia(source, token_end(source, equals))
+        );
+        if (open < 0) {
+            cursor = skip_trivia(source, token_end(source, cursor));
+            continue;
+        }
+
+        char *binding_id = hir_definition_id_at(hir, name_start);
+        Buffer signature;
+        buffer_init(&signature);
+        int64_t parameters = 0;
+        int64_t close = balanced_end(source, open, "(", ")");
+        int64_t parameter = skip_trivia(source, token_end(source, open));
+        while (parameter < close) {
+            if (strcmp(token_kind(source, parameter), "identifier") != 0) {
+                break;
+            }
+            char *parameter_id = hir_definition_id_at(hir, parameter);
+            if (parameters > 0) buffer_append(&signature, ", ");
+            buffer_format(&signature, "int64_t k_b%s", parameter_id);
+            free(parameter_id);
+            ++parameters;
+            int64_t after = skip_trivia(source, token_end(source, parameter));
+            if (after < close && token_equal(source, after, ":")) {
+                int64_t annotation = skip_trivia(
+                    source,
+                    token_end(source, after)
+                );
+                after = skip_trivia(source, token_end(source, annotation));
+            }
+            if (after < close && token_equal(source, after, ",")) {
+                after = skip_trivia(source, token_end(source, after));
+            }
+            parameter = after;
+        }
+        char *captures = lambda_captures(source, hir, open);
+        append_captures(&signature, captures, parameters, "int64_t ");
+        free(captures);
+        const char *c_parameters =
+            signature.length == 0 ? "void" : signature.data;
+
+        int64_t arrow = skip_trivia(source, close);
+        int64_t body_start = skip_trivia(source, token_end(source, arrow));
+        int64_t body_end = lambda_parameters_end(source, -1, open);
+        char *value = emit_expression(source, hir, body_start, body_end);
+        if (strncmp(value, "error[", 6) == 0) {
+            free(signature.data);
+            free(binding_id);
+            return value;
+        }
+        buffer_format(
+            prototypes,
+            "static int64_t kofun_lambda_%s(%s);\n",
+            binding_id,
+            c_parameters
+        );
+        buffer_format(
+            bodies,
+            "static int64_t kofun_lambda_%s(%s) {\n"
+            "    {\n"
+            "        int64_t kofun_result = %s;\n"
+            "        if (kofun_failed) return 0;\n"
+            "        return kofun_result;\n"
+            "    }\n"
+            "}\n",
+            binding_id,
+            c_parameters,
+            value
+        );
+        free(value);
+        free(signature.data);
+        free(binding_id);
+        cursor = skip_trivia(source, body_end);
+    }
+    return owned_text("ok");
+}
+
 static char *lower_c(const char *source, const char *hir) {
     int64_t length = (int64_t)strlen(source);
     char *enum_use_check = validate_enum_uses(source, hir);
@@ -8469,6 +8869,15 @@ static char *lower_c(const char *source, const char *hir) {
     Buffer bodies;
     buffer_init(&prototypes);
     buffer_init(&bodies);
+    /* Lifted lambdas come first so a Core function can call one that a later
+     * function binds. */
+    char *lifted = emit_lifted_lambdas(source, hir, &prototypes, &bodies);
+    if (strncmp(lifted, "error[", 6) == 0) {
+        free(prototypes.data);
+        free(bodies.data);
+        return lifted;
+    }
+    free(lifted);
     int64_t cursor = next_function_start(source, 0);
     int64_t main_count = 0;
     while (cursor < length) {

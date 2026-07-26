@@ -1,0 +1,12 @@
+fn main() -> Int {
+    let double = fn(value: Int) => value * 2
+    let add = (left, right) => left + right
+    let base = 10
+    let bump = (value: Int) => value + base
+    let quad = (value: Int) => double(double(value))
+    print(double(21))
+    print(add(40, 2))
+    print(bump(32))
+    print(quad(3))
+    return 0
+}

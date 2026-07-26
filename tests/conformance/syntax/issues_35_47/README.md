@@ -27,8 +27,10 @@ C11 compiler. It proves:
   mismatched enum types/constructors use `E2S32`;
 - Stage 2 structural IR preserves names, arities, spans, and balanced bodies;
 - both frontends enforce the Unicode 17 XID/NFC/security profile; and
-- Stage 2 C lowering explicitly rejects lambda, owned-binding, `else if`,
-  `for`, and `while` fixtures rather than treating them as supported.
+- Stage 2 lowers a bound lambda to a lifted top-level function and calls it
+  (#703); `lambda_binding.kofun` gates the value it prints; and
+- Stage 2 C lowering explicitly rejects owned-binding, `else if`, `for`, and
+  `while` fixtures rather than treating them as supported.
 
 Structural round-trip is not semantic support. The unsupported fixtures are
 future conformance inputs retained as negative capability checks until their
