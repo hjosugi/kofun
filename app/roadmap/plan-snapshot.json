@@ -3,12 +3,12 @@
   "repository": "hjosugi/kofun",
   "time_zone": "Asia/Tokyo",
   "as_of": "2026-07-26",
-  "generated_at": "2026-07-26T13:00:59.884Z",
+  "generated_at": "2026-07-26T13:58:38.166Z",
   "source": {
     "endpoint": "https://api.github.com/repos/hjosugi/kofun/issues",
-    "api_items": 728,
-    "issues": 628,
-    "pull_requests_excluded": 100,
+    "api_items": 736,
+    "issues": 633,
+    "pull_requests_excluded": 103,
     "pages": 8
   },
   "capacity": {
@@ -26,64 +26,62 @@
     "policy": "Three agents implement at most three issues concurrently; one agent owns review, integration, and CI."
   },
   "summary": {
-    "issues_total": 628,
-    "open_issues": 512,
+    "issues_total": 633,
+    "open_issues": 517,
     "closed_issues": 116,
-    "open_curated": 66,
+    "open_curated": 71,
     "open_planning": 446,
     "open_unclassified": 0,
-    "scheduled_curated": 49,
-    "unscheduled_curated": 17,
+    "scheduled_curated": 53,
+    "unscheduled_curated": 18,
     "open_roles": {
-      "curated": 66,
+      "curated": 71,
       "planning": 446
     },
     "open_workflows": {
-      "blocked": 16,
-      "deferred": 11,
-      "in-progress": 6,
-      "needs-decision": 1,
+      "blocked": 17,
+      "deferred": 12,
+      "in-progress": 9,
+      "needs-decision": 3,
       "needs-detail": 31,
-      "ready": 9,
-      "unclassified": 438
+      "ready": 10,
+      "unclassified": 435
     },
     "open_priorities": {
       "P0": 5,
-      "P1": 43,
-      "P2": 28,
-      "P3": 1,
+      "P1": 44,
+      "P2": 31,
+      "P3": 2,
       "none": 435
     },
     "open_sizes": {
-      "L": 13,
-      "M": 31,
-      "S": 2,
-      "none": 466
+      "L": 29,
+      "M": 39,
+      "S": 14,
+      "none": 435
     },
     "curated_workflows": {
-      "blocked": 13,
-      "deferred": 10,
-      "in-progress": 6,
-      "needs-decision": 1,
+      "blocked": 14,
+      "deferred": 11,
+      "in-progress": 9,
+      "needs-decision": 3,
       "needs-detail": 24,
-      "ready": 9,
-      "unclassified": 3
+      "ready": 10
     },
     "curated_priorities": {
       "P0": 4,
-      "P1": 36,
-      "P2": 25,
-      "P3": 1
+      "P1": 37,
+      "P2": 28,
+      "P3": 2
     },
     "curated_sizes": {
-      "L": 2,
-      "M": 31,
-      "S": 2,
-      "none": 31
+      "L": 18,
+      "M": 39,
+      "S": 14
     },
     "state_reasons": {
       "completed": 86,
-      "none": 510,
+      "none": 515,
       "not_planned": 30,
       "reopened": 2
     }
@@ -92,21 +90,21 @@
     "window_days": 14,
     "window_start": "2026-07-12",
     "window_end": "2026-07-26",
-    "created_curated": 116,
+    "created_curated": 121,
     "completed_curated": 49,
     "closed_not_planned": 1,
     "completion_rate_per_week": 24.5,
-    "arrival_rate_per_week": 58,
-    "net_burn_per_week": -33.5,
+    "arrival_rate_per_week": 60.5,
+    "net_burn_per_week": -36,
     "note": "Completion excludes issues closed as not planned; intake uses curated issue creation dates."
   },
   "forecast": {
     "scope": "Open curated issues, excluding deferred work and blockers outside the two represented dependency chains.",
-    "scheduled_count": 49,
-    "unscheduled_count": 17,
+    "scheduled_count": 53,
+    "unscheduled_count": 18,
     "start_date": "2026-07-27",
-    "likely_finish": "2026-12-09",
-    "conservative_finish": "2027-01-13",
+    "likely_finish": "2026-12-11",
+    "conservative_finish": "2027-01-15",
     "confidence": "low",
     "assumptions": [
       "No new issues enter the scheduled scope.",
@@ -122,8 +120,8 @@
         "label": "4-agent capacity plan",
         "writer_slots": 3,
         "reviewer_slots": 1,
-        "finish_date": "2026-12-09",
-        "calendar_days": 136,
+        "finish_date": "2026-12-11",
+        "calendar_days": 138,
         "note": "Deterministic lane simulation with one serial reviewer."
       },
       {
@@ -131,8 +129,8 @@
         "label": "Conservative +25% buffer",
         "writer_slots": 3,
         "reviewer_slots": 1,
-        "finish_date": "2027-01-13",
-        "calendar_days": 171,
+        "finish_date": "2027-01-15",
+        "calendar_days": 173,
         "note": "Allows for refinement, rework, and integration variance."
       },
       {
@@ -140,8 +138,8 @@
         "label": "Observed completion pace, intake frozen",
         "writer_slots": null,
         "reviewer_slots": null,
-        "finish_date": "2026-08-10",
-        "calendar_days": 15,
+        "finish_date": "2026-08-11",
+        "calendar_days": 16,
         "note": "Optimistic extrapolation; it freezes intake and may include retrospective tracker closure."
       },
       {
@@ -349,57 +347,63 @@
           "title": "Decimal slice 3: same-type numeric operators and explicit conversions in the type checker",
           "url": "https://github.com/hjosugi/kofun/issues/722",
           "role": "curated",
-          "workflow": "unclassified",
+          "workflow": "in-progress",
           "state_reason": null,
           "priority": "P1",
-          "size": null,
+          "size": "M",
           "kind": "implementation",
           "area": null,
           "labels": [
             "P1",
             "curated",
-            "kind:implementation"
+            "in-progress",
+            "kind:implementation",
+            "size:M"
           ],
           "start_date": "2026-07-27",
-          "end_date": "2026-08-03"
+          "end_date": "2026-07-31"
         },
         {
           "number": 723,
           "title": "Decimal slice 4: exact addition, subtraction, multiplication, and checked exact division on every backend",
           "url": "https://github.com/hjosugi/kofun/issues/723",
           "role": "curated",
-          "workflow": "unclassified",
+          "workflow": "in-progress",
           "state_reason": null,
           "priority": "P1",
-          "size": null,
+          "size": "L",
           "kind": "implementation",
           "area": null,
           "labels": [
             "P1",
             "curated",
-            "kind:implementation"
+            "in-progress",
+            "kind:implementation",
+            "size:L"
           ],
-          "start_date": "2026-08-04",
-          "end_date": "2026-08-12"
+          "start_date": "2026-08-03",
+          "end_date": "2026-08-14"
         },
         {
           "number": 724,
           "title": "Decimal slice 5: explicit rounding and formatting, then migrate the bounded stdlib checkpoint",
           "url": "https://github.com/hjosugi/kofun/issues/724",
           "role": "curated",
-          "workflow": "unclassified",
+          "workflow": "blocked",
           "state_reason": null,
           "priority": "P1",
-          "size": null,
+          "size": "L",
           "kind": "implementation",
           "area": null,
           "labels": [
             "P1",
+            "blocked",
             "curated",
-            "kind:implementation"
+            "kind:implementation",
+            "size:L"
           ],
-          "start_date": "2026-08-13",
-          "end_date": "2026-08-20"
+          "start_date": "2026-08-17",
+          "end_date": "2026-08-28"
         },
         {
           "number": 725,
@@ -409,17 +413,18 @@
           "workflow": "blocked",
           "state_reason": null,
           "priority": "P2",
-          "size": null,
+          "size": "L",
           "kind": "implementation",
           "area": null,
           "labels": [
             "P2",
             "blocked",
             "curated",
-            "kind:implementation"
+            "kind:implementation",
+            "size:L"
           ],
-          "start_date": "2026-08-21",
-          "end_date": "2026-08-28"
+          "start_date": "2026-08-31",
+          "end_date": "2026-09-11"
         },
         {
           "number": 726,
@@ -429,17 +434,18 @@
           "workflow": "blocked",
           "state_reason": null,
           "priority": "P2",
-          "size": null,
+          "size": "L",
           "kind": "implementation",
           "area": null,
           "labels": [
             "P2",
             "blocked",
             "curated",
-            "kind:implementation"
+            "kind:implementation",
+            "size:L"
           ],
-          "start_date": "2026-08-31",
-          "end_date": "2026-09-07"
+          "start_date": "2026-09-14",
+          "end_date": "2026-09-25"
         }
       ]
     }
@@ -493,31 +499,33 @@
       "state": "open",
       "state_reason": null,
       "role": "curated",
-      "workflow": "unclassified",
+      "workflow": "in-progress",
       "priority": "P1",
-      "size": null,
+      "size": "M",
       "kind": "implementation",
       "area": null,
       "areas": [],
       "labels": [
         "P1",
         "curated",
-        "kind:implementation"
+        "in-progress",
+        "kind:implementation",
+        "size:M"
       ],
       "assignees": [],
       "created_at": "2026-07-26T08:10:58Z",
-      "updated_at": "2026-07-26T08:10:58Z",
+      "updated_at": "2026-07-26T13:09:48Z",
       "closed_at": null,
       "chain_id": "decimal-delivery",
       "depends_on": [],
-      "writer_days": 5,
-      "confidence": "low",
+      "writer_days": 4,
+      "confidence": "medium",
       "lane": "writer-b",
       "start_date": "2026-07-27",
-      "writer_end_date": "2026-07-31",
-      "review_start_date": "2026-08-03",
-      "review_end_date": "2026-08-03",
-      "end_date": "2026-08-03",
+      "writer_end_date": "2026-07-30",
+      "review_start_date": "2026-07-31",
+      "review_end_date": "2026-07-31",
+      "end_date": "2026-07-31",
       "schedule_status": "scheduled"
     },
     {
@@ -558,9 +566,9 @@
       "lane": "writer-c",
       "start_date": "2026-07-27",
       "writer_end_date": "2026-07-30",
-      "review_start_date": "2026-07-31",
-      "review_end_date": "2026-07-31",
-      "end_date": "2026-07-31",
+      "review_start_date": "2026-08-03",
+      "review_end_date": "2026-08-03",
+      "end_date": "2026-08-03",
       "schedule_status": "scheduled"
     },
     {
@@ -613,33 +621,35 @@
       "state": "open",
       "state_reason": null,
       "role": "curated",
-      "workflow": "unclassified",
+      "workflow": "in-progress",
       "priority": "P1",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": null,
       "areas": [],
       "labels": [
         "P1",
         "curated",
-        "kind:implementation"
+        "in-progress",
+        "kind:implementation",
+        "size:L"
       ],
       "assignees": [],
       "created_at": "2026-07-26T08:11:36Z",
-      "updated_at": "2026-07-26T08:11:36Z",
+      "updated_at": "2026-07-26T13:09:50Z",
       "closed_at": null,
       "chain_id": "decimal-delivery",
       "depends_on": [
         722
       ],
-      "writer_days": 5,
+      "writer_days": 8,
       "confidence": "low",
       "lane": "writer-b",
-      "start_date": "2026-08-04",
-      "writer_end_date": "2026-08-10",
-      "review_start_date": "2026-08-12",
-      "review_end_date": "2026-08-12",
-      "end_date": "2026-08-12",
+      "start_date": "2026-08-03",
+      "writer_end_date": "2026-08-12",
+      "review_start_date": "2026-08-13",
+      "review_end_date": "2026-08-14",
+      "end_date": "2026-08-14",
       "schedule_status": "scheduled"
     },
     {
@@ -678,9 +688,9 @@
       "lane": "writer-c",
       "start_date": "2026-08-06",
       "writer_end_date": "2026-08-11",
-      "review_start_date": "2026-08-13",
-      "review_end_date": "2026-08-13",
-      "end_date": "2026-08-13",
+      "review_start_date": "2026-08-12",
+      "review_end_date": "2026-08-12",
+      "end_date": "2026-08-12",
       "schedule_status": "scheduled"
     },
     {
@@ -729,6 +739,83 @@
       "schedule_status": "conditional"
     },
     {
+      "number": 637,
+      "title": "Discovery query v1: project inferred types and callable operations from semantic facts",
+      "url": "https://github.com/hjosugi/kofun/issues/637",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "in-progress",
+      "priority": "P1",
+      "size": "M",
+      "kind": "implementation",
+      "area": "developer_tools",
+      "areas": [
+        "developer_tools"
+      ],
+      "labels": [
+        "P1",
+        "area:developer_tools",
+        "curated",
+        "in-progress",
+        "kind:implementation",
+        "size:M"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-23T13:30:00Z",
+      "updated_at": "2026-07-26T13:13:31Z",
+      "closed_at": null,
+      "chain_id": null,
+      "depends_on": [],
+      "writer_days": 4,
+      "confidence": "medium",
+      "lane": "writer-c",
+      "start_date": "2026-08-12",
+      "writer_end_date": "2026-08-17",
+      "review_start_date": "2026-08-19",
+      "review_end_date": "2026-08-19",
+      "end_date": "2026-08-19",
+      "schedule_status": "scheduled"
+    },
+    {
+      "number": 724,
+      "title": "Decimal slice 5: explicit rounding and formatting, then migrate the bounded stdlib checkpoint",
+      "url": "https://github.com/hjosugi/kofun/issues/724",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "blocked",
+      "priority": "P1",
+      "size": "L",
+      "kind": "implementation",
+      "area": null,
+      "areas": [],
+      "labels": [
+        "P1",
+        "blocked",
+        "curated",
+        "kind:implementation",
+        "size:L"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-26T08:11:38Z",
+      "updated_at": "2026-07-26T13:09:52Z",
+      "closed_at": null,
+      "chain_id": "decimal-delivery",
+      "depends_on": [
+        723
+      ],
+      "writer_days": 8,
+      "confidence": "conditional",
+      "lane": "writer-b",
+      "start_date": "2026-08-17",
+      "writer_end_date": "2026-08-26",
+      "review_start_date": "2026-08-27",
+      "review_end_date": "2026-08-28",
+      "end_date": "2026-08-28",
+      "schedule_status": "conditional"
+    },
+    {
       "number": 120,
       "title": "Define AggregateLayout v1 for native64 and wasm32",
       "url": "https://github.com/hjosugi/kofun/issues/120",
@@ -760,86 +847,11 @@
       "writer_days": 4,
       "confidence": "medium",
       "lane": "writer-c",
-      "start_date": "2026-08-12",
-      "writer_end_date": "2026-08-17",
-      "review_start_date": "2026-08-19",
-      "review_end_date": "2026-08-19",
-      "end_date": "2026-08-19",
-      "schedule_status": "scheduled"
-    },
-    {
-      "number": 724,
-      "title": "Decimal slice 5: explicit rounding and formatting, then migrate the bounded stdlib checkpoint",
-      "url": "https://github.com/hjosugi/kofun/issues/724",
-      "state": "open",
-      "state_reason": null,
-      "role": "curated",
-      "workflow": "unclassified",
-      "priority": "P1",
-      "size": null,
-      "kind": "implementation",
-      "area": null,
-      "areas": [],
-      "labels": [
-        "P1",
-        "curated",
-        "kind:implementation"
-      ],
-      "assignees": [],
-      "created_at": "2026-07-26T08:11:38Z",
-      "updated_at": "2026-07-26T08:11:38Z",
-      "closed_at": null,
-      "chain_id": "decimal-delivery",
-      "depends_on": [
-        723
-      ],
-      "writer_days": 5,
-      "confidence": "low",
-      "lane": "writer-b",
-      "start_date": "2026-08-13",
-      "writer_end_date": "2026-08-19",
-      "review_start_date": "2026-08-20",
-      "review_end_date": "2026-08-20",
-      "end_date": "2026-08-20",
-      "schedule_status": "scheduled"
-    },
-    {
-      "number": 403,
-      "title": "Decide retroactive conformance, orphan rules, and the public keyword",
-      "url": "https://github.com/hjosugi/kofun/issues/403",
-      "state": "open",
-      "state_reason": null,
-      "role": "curated",
-      "workflow": "ready",
-      "priority": "P1",
-      "size": "S",
-      "kind": "spec-design",
-      "area": "type-system",
-      "areas": [
-        "type-system"
-      ],
-      "labels": [
-        "P1",
-        "area:type-system",
-        "curated",
-        "kind:spec-design",
-        "ready",
-        "size:S"
-      ],
-      "assignees": [],
-      "created_at": "2026-07-20T00:19:55Z",
-      "updated_at": "2026-07-25T21:34:17Z",
-      "closed_at": null,
-      "chain_id": null,
-      "depends_on": [],
-      "writer_days": 2,
-      "confidence": "medium",
-      "lane": "writer-c",
       "start_date": "2026-08-18",
-      "writer_end_date": "2026-08-19",
-      "review_start_date": "2026-08-21",
-      "review_end_date": "2026-08-21",
-      "end_date": "2026-08-21",
+      "writer_end_date": "2026-08-21",
+      "review_start_date": "2026-08-24",
+      "review_end_date": "2026-08-24",
+      "end_date": "2026-08-24",
       "schedule_status": "scheduled"
     },
     {
@@ -886,82 +898,43 @@
       "schedule_status": "conditional"
     },
     {
-      "number": 546,
-      "title": "Nominal heterogeneous records for structured compiler and application data",
-      "url": "https://github.com/hjosugi/kofun/issues/546",
+      "number": 403,
+      "title": "Decide retroactive conformance, orphan rules, and the public keyword",
+      "url": "https://github.com/hjosugi/kofun/issues/403",
       "state": "open",
       "state_reason": null,
       "role": "curated",
       "workflow": "ready",
       "priority": "P1",
-      "size": "M",
+      "size": "S",
       "kind": "spec-design",
-      "area": "syntax",
+      "area": "type-system",
       "areas": [
-        "syntax",
         "type-system"
       ],
       "labels": [
         "P1",
-        "area:syntax",
         "area:type-system",
         "curated",
         "kind:spec-design",
         "ready",
-        "size:M"
+        "size:S"
       ],
       "assignees": [],
-      "created_at": "2026-07-20T05:16:09Z",
-      "updated_at": "2026-07-25T21:37:07Z",
+      "created_at": "2026-07-20T00:19:55Z",
+      "updated_at": "2026-07-25T21:34:17Z",
       "closed_at": null,
       "chain_id": null,
       "depends_on": [],
-      "writer_days": 4,
+      "writer_days": 2,
       "confidence": "medium",
       "lane": "writer-c",
-      "start_date": "2026-08-20",
+      "start_date": "2026-08-24",
       "writer_end_date": "2026-08-25",
       "review_start_date": "2026-08-26",
       "review_end_date": "2026-08-26",
       "end_date": "2026-08-26",
       "schedule_status": "scheduled"
-    },
-    {
-      "number": 725,
-      "title": "Decimal slice 6: state scale guarantees truthfully now, and add Fixed[scale] when const generics exist",
-      "url": "https://github.com/hjosugi/kofun/issues/725",
-      "state": "open",
-      "state_reason": null,
-      "role": "curated",
-      "workflow": "blocked",
-      "priority": "P2",
-      "size": null,
-      "kind": "implementation",
-      "area": null,
-      "areas": [],
-      "labels": [
-        "P2",
-        "blocked",
-        "curated",
-        "kind:implementation"
-      ],
-      "assignees": [],
-      "created_at": "2026-07-26T08:12:22Z",
-      "updated_at": "2026-07-26T08:12:22Z",
-      "closed_at": null,
-      "chain_id": "decimal-delivery",
-      "depends_on": [
-        724
-      ],
-      "writer_days": 5,
-      "confidence": "conditional",
-      "lane": "writer-b",
-      "start_date": "2026-08-21",
-      "writer_end_date": "2026-08-27",
-      "review_start_date": "2026-08-28",
-      "review_end_date": "2026-08-28",
-      "end_date": "2026-08-28",
-      "schedule_status": "conditional"
     },
     {
       "number": 272,
@@ -1007,6 +980,85 @@
       "schedule_status": "conditional"
     },
     {
+      "number": 546,
+      "title": "Nominal heterogeneous records for structured compiler and application data",
+      "url": "https://github.com/hjosugi/kofun/issues/546",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "ready",
+      "priority": "P1",
+      "size": "M",
+      "kind": "spec-design",
+      "area": "syntax",
+      "areas": [
+        "syntax",
+        "type-system"
+      ],
+      "labels": [
+        "P1",
+        "area:syntax",
+        "area:type-system",
+        "curated",
+        "kind:spec-design",
+        "ready",
+        "size:M"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-20T05:16:09Z",
+      "updated_at": "2026-07-25T21:37:07Z",
+      "closed_at": null,
+      "chain_id": null,
+      "depends_on": [],
+      "writer_days": 4,
+      "confidence": "medium",
+      "lane": "writer-c",
+      "start_date": "2026-08-26",
+      "writer_end_date": "2026-08-31",
+      "review_start_date": "2026-09-02",
+      "review_end_date": "2026-09-02",
+      "end_date": "2026-09-02",
+      "schedule_status": "scheduled"
+    },
+    {
+      "number": 725,
+      "title": "Decimal slice 6: state scale guarantees truthfully now, and add Fixed[scale] when const generics exist",
+      "url": "https://github.com/hjosugi/kofun/issues/725",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "blocked",
+      "priority": "P2",
+      "size": "L",
+      "kind": "implementation",
+      "area": null,
+      "areas": [],
+      "labels": [
+        "P2",
+        "blocked",
+        "curated",
+        "kind:implementation",
+        "size:L"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-26T08:12:22Z",
+      "updated_at": "2026-07-26T13:08:40Z",
+      "closed_at": null,
+      "chain_id": "decimal-delivery",
+      "depends_on": [
+        724
+      ],
+      "writer_days": 8,
+      "confidence": "conditional",
+      "lane": "writer-b",
+      "start_date": "2026-08-31",
+      "writer_end_date": "2026-09-09",
+      "review_start_date": "2026-09-10",
+      "review_end_date": "2026-09-11",
+      "end_date": "2026-09-11",
+      "schedule_status": "conditional"
+    },
+    {
       "number": 551,
       "title": "Law declarations: make Monad a library law, not a compiler keyword",
       "url": "https://github.com/hjosugi/kofun/issues/551",
@@ -1042,91 +1094,11 @@
       "writer_days": 4,
       "confidence": "medium",
       "lane": "writer-c",
-      "start_date": "2026-08-26",
-      "writer_end_date": "2026-08-31",
-      "review_start_date": "2026-09-02",
-      "review_end_date": "2026-09-02",
-      "end_date": "2026-09-02",
-      "schedule_status": "scheduled"
-    },
-    {
-      "number": 726,
-      "title": "Decimal slice 7: versioned law evidence, the Float associativity counterexample, and backend differential conformance",
-      "url": "https://github.com/hjosugi/kofun/issues/726",
-      "state": "open",
-      "state_reason": null,
-      "role": "curated",
-      "workflow": "blocked",
-      "priority": "P2",
-      "size": null,
-      "kind": "implementation",
-      "area": null,
-      "areas": [],
-      "labels": [
-        "P2",
-        "blocked",
-        "curated",
-        "kind:implementation"
-      ],
-      "assignees": [],
-      "created_at": "2026-07-26T08:12:24Z",
-      "updated_at": "2026-07-26T08:12:24Z",
-      "closed_at": null,
-      "chain_id": "decimal-delivery",
-      "depends_on": [
-        725
-      ],
-      "writer_days": 5,
-      "confidence": "conditional",
-      "lane": "writer-b",
-      "start_date": "2026-08-31",
+      "start_date": "2026-09-01",
       "writer_end_date": "2026-09-04",
       "review_start_date": "2026-09-07",
       "review_end_date": "2026-09-07",
       "end_date": "2026-09-07",
-      "schedule_status": "conditional"
-    },
-    {
-      "number": 626,
-      "title": "Composable sequencing syntax: Result-first propagation and law-generic bind",
-      "url": "https://github.com/hjosugi/kofun/issues/626",
-      "state": "open",
-      "state_reason": null,
-      "role": "curated",
-      "workflow": "ready",
-      "priority": "P1",
-      "size": "M",
-      "kind": "spec-design",
-      "area": "laws",
-      "areas": [
-        "laws",
-        "syntax",
-        "type-system"
-      ],
-      "labels": [
-        "P1",
-        "area:laws",
-        "area:syntax",
-        "area:type-system",
-        "curated",
-        "kind:spec-design",
-        "ready",
-        "size:M"
-      ],
-      "assignees": [],
-      "created_at": "2026-07-23T12:17:55Z",
-      "updated_at": "2026-07-25T21:46:18Z",
-      "closed_at": null,
-      "chain_id": null,
-      "depends_on": [],
-      "writer_days": 4,
-      "confidence": "medium",
-      "lane": "writer-c",
-      "start_date": "2026-09-01",
-      "writer_end_date": "2026-09-04",
-      "review_start_date": "2026-09-09",
-      "review_end_date": "2026-09-09",
-      "end_date": "2026-09-09",
       "schedule_status": "scheduled"
     },
     {
@@ -1173,6 +1145,49 @@
       "schedule_status": "conditional"
     },
     {
+      "number": 626,
+      "title": "Composable sequencing syntax: Result-first propagation and law-generic bind",
+      "url": "https://github.com/hjosugi/kofun/issues/626",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "ready",
+      "priority": "P1",
+      "size": "M",
+      "kind": "spec-design",
+      "area": "laws",
+      "areas": [
+        "laws",
+        "syntax",
+        "type-system"
+      ],
+      "labels": [
+        "P1",
+        "area:laws",
+        "area:syntax",
+        "area:type-system",
+        "curated",
+        "kind:spec-design",
+        "ready",
+        "size:M"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-23T12:17:55Z",
+      "updated_at": "2026-07-25T21:46:18Z",
+      "closed_at": null,
+      "chain_id": null,
+      "depends_on": [],
+      "writer_days": 4,
+      "confidence": "medium",
+      "lane": "writer-c",
+      "start_date": "2026-09-07",
+      "writer_end_date": "2026-09-10",
+      "review_start_date": "2026-09-14",
+      "review_end_date": "2026-09-14",
+      "end_date": "2026-09-14",
+      "schedule_status": "scheduled"
+    },
+    {
       "number": 627,
       "title": "Reactive programming: small Stream/Signal protocol with explicit demand and ownership",
       "url": "https://github.com/hjosugi/kofun/issues/627",
@@ -1207,51 +1222,12 @@
       "depends_on": [],
       "writer_days": 4,
       "confidence": "medium",
-      "lane": "writer-c",
-      "start_date": "2026-09-07",
-      "writer_end_date": "2026-09-10",
-      "review_start_date": "2026-09-11",
-      "review_end_date": "2026-09-11",
-      "end_date": "2026-09-11",
-      "schedule_status": "scheduled"
-    },
-    {
-      "number": 637,
-      "title": "Discovery query v1: project inferred types and callable operations from semantic facts",
-      "url": "https://github.com/hjosugi/kofun/issues/637",
-      "state": "open",
-      "state_reason": null,
-      "role": "curated",
-      "workflow": "ready",
-      "priority": "P1",
-      "size": "M",
-      "kind": "implementation",
-      "area": "developer_tools",
-      "areas": [
-        "developer_tools"
-      ],
-      "labels": [
-        "P1",
-        "area:developer_tools",
-        "curated",
-        "kind:implementation",
-        "ready",
-        "size:M"
-      ],
-      "assignees": [],
-      "created_at": "2026-07-23T13:30:00Z",
-      "updated_at": "2026-07-25T23:57:02Z",
-      "closed_at": null,
-      "chain_id": null,
-      "depends_on": [],
-      "writer_days": 4,
-      "confidence": "medium",
-      "lane": "writer-b",
-      "start_date": "2026-09-08",
-      "writer_end_date": "2026-09-11",
-      "review_start_date": "2026-09-14",
-      "review_end_date": "2026-09-14",
-      "end_date": "2026-09-14",
+      "lane": "writer-a",
+      "start_date": "2026-09-09",
+      "writer_end_date": "2026-09-14",
+      "review_start_date": "2026-09-15",
+      "review_end_date": "2026-09-15",
+      "end_date": "2026-09-15",
       "schedule_status": "scheduled"
     },
     {
@@ -1289,12 +1265,89 @@
       "depends_on": [],
       "writer_days": 4,
       "confidence": "medium",
+      "lane": "writer-c",
+      "start_date": "2026-09-11",
+      "writer_end_date": "2026-09-16",
+      "review_start_date": "2026-09-17",
+      "review_end_date": "2026-09-17",
+      "end_date": "2026-09-17",
+      "schedule_status": "scheduled"
+    },
+    {
+      "number": 726,
+      "title": "Decimal slice 7: versioned law evidence, the Float associativity counterexample, and backend differential conformance",
+      "url": "https://github.com/hjosugi/kofun/issues/726",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "blocked",
+      "priority": "P2",
+      "size": "L",
+      "kind": "implementation",
+      "area": null,
+      "areas": [],
+      "labels": [
+        "P2",
+        "blocked",
+        "curated",
+        "kind:implementation",
+        "size:L"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-26T08:12:24Z",
+      "updated_at": "2026-07-26T13:08:42Z",
+      "closed_at": null,
+      "chain_id": "decimal-delivery",
+      "depends_on": [
+        725
+      ],
+      "writer_days": 8,
+      "confidence": "conditional",
+      "lane": "writer-b",
+      "start_date": "2026-09-14",
+      "writer_end_date": "2026-09-23",
+      "review_start_date": "2026-09-24",
+      "review_end_date": "2026-09-25",
+      "end_date": "2026-09-25",
+      "schedule_status": "conditional"
+    },
+    {
+      "number": 737,
+      "title": "Release evidence manifest: map public capability claims to positive and negative gates",
+      "url": "https://github.com/hjosugi/kofun/issues/737",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "ready",
+      "priority": "P1",
+      "size": "M",
+      "kind": "test-quality",
+      "area": "quality",
+      "areas": [
+        "quality"
+      ],
+      "labels": [
+        "P1",
+        "area:quality",
+        "curated",
+        "kind:test-quality",
+        "ready",
+        "size:M"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-26T13:55:53Z",
+      "updated_at": "2026-07-26T13:55:53Z",
+      "closed_at": null,
+      "chain_id": null,
+      "depends_on": [],
+      "writer_days": 4,
+      "confidence": "medium",
       "lane": "writer-a",
-      "start_date": "2026-09-09",
-      "writer_end_date": "2026-09-14",
-      "review_start_date": "2026-09-15",
-      "review_end_date": "2026-09-15",
-      "end_date": "2026-09-15",
+      "start_date": "2026-09-15",
+      "writer_end_date": "2026-09-18",
+      "review_start_date": "2026-09-21",
+      "review_end_date": "2026-09-21",
+      "end_date": "2026-09-21",
       "schedule_status": "scheduled"
     },
     {
@@ -1331,11 +1384,11 @@
       "writer_days": 7,
       "confidence": "low",
       "lane": "writer-c",
-      "start_date": "2026-09-11",
-      "writer_end_date": "2026-09-21",
-      "review_start_date": "2026-09-22",
-      "review_end_date": "2026-09-22",
-      "end_date": "2026-09-22",
+      "start_date": "2026-09-17",
+      "writer_end_date": "2026-09-25",
+      "review_start_date": "2026-09-28",
+      "review_end_date": "2026-09-28",
+      "end_date": "2026-09-28",
       "schedule_status": "scheduled"
     },
     {
@@ -1347,7 +1400,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "M",
       "kind": "implementation",
       "area": "frameworks",
       "areas": [
@@ -1358,22 +1411,23 @@
         "area:frameworks",
         "curated",
         "kind:implementation",
-        "needs-detail"
+        "needs-detail",
+        "size:M"
       ],
       "assignees": [],
       "created_at": "2026-07-19T23:20:41Z",
-      "updated_at": "2026-07-20T21:51:49Z",
+      "updated_at": "2026-07-26T13:08:33Z",
       "closed_at": null,
       "chain_id": null,
       "depends_on": [],
-      "writer_days": 7,
+      "writer_days": 6,
       "confidence": "low",
-      "lane": "writer-b",
-      "start_date": "2026-09-14",
-      "writer_end_date": "2026-09-22",
-      "review_start_date": "2026-09-23",
-      "review_end_date": "2026-09-23",
-      "end_date": "2026-09-23",
+      "lane": "writer-a",
+      "start_date": "2026-09-21",
+      "writer_end_date": "2026-09-28",
+      "review_start_date": "2026-09-29",
+      "review_end_date": "2026-09-29",
+      "end_date": "2026-09-29",
       "schedule_status": "scheduled"
     },
     {
@@ -1407,12 +1461,12 @@
       "depends_on": [],
       "writer_days": 4,
       "confidence": "low",
-      "lane": "writer-a",
-      "start_date": "2026-09-15",
-      "writer_end_date": "2026-09-18",
-      "review_start_date": "2026-09-21",
-      "review_end_date": "2026-09-21",
-      "end_date": "2026-09-21",
+      "lane": "writer-b",
+      "start_date": "2026-09-28",
+      "writer_end_date": "2026-10-01",
+      "review_start_date": "2026-10-02",
+      "review_end_date": "2026-10-02",
+      "end_date": "2026-10-02",
       "schedule_status": "scheduled"
     },
     {
@@ -1424,7 +1478,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": "meta",
       "areas": [
@@ -1435,22 +1489,23 @@
         "area:meta",
         "curated",
         "kind:implementation",
-        "needs-detail"
+        "needs-detail",
+        "size:L"
       ],
       "assignees": [],
       "created_at": "2026-07-20T00:14:25Z",
-      "updated_at": "2026-07-20T21:47:54Z",
+      "updated_at": "2026-07-26T13:08:43Z",
       "closed_at": null,
       "chain_id": null,
       "depends_on": [],
-      "writer_days": 7,
+      "writer_days": 10,
       "confidence": "low",
-      "lane": "writer-a",
-      "start_date": "2026-09-21",
-      "writer_end_date": "2026-09-29",
-      "review_start_date": "2026-09-30",
-      "review_end_date": "2026-09-30",
-      "end_date": "2026-09-30",
+      "lane": "writer-c",
+      "start_date": "2026-09-28",
+      "writer_end_date": "2026-10-09",
+      "review_start_date": "2026-10-12",
+      "review_end_date": "2026-10-13",
+      "end_date": "2026-10-13",
       "schedule_status": "scheduled"
     },
     {
@@ -1462,7 +1517,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "M",
       "kind": "documentation",
       "area": null,
       "areas": [],
@@ -1470,22 +1525,23 @@
         "P1",
         "curated",
         "kind:documentation",
-        "needs-detail"
+        "needs-detail",
+        "size:M"
       ],
       "assignees": [],
       "created_at": "2026-07-20T00:14:37Z",
-      "updated_at": "2026-07-25T09:31:12Z",
+      "updated_at": "2026-07-26T13:08:35Z",
       "closed_at": null,
       "chain_id": null,
       "depends_on": [],
-      "writer_days": 7,
+      "writer_days": 6,
       "confidence": "low",
-      "lane": "writer-c",
-      "start_date": "2026-09-22",
-      "writer_end_date": "2026-09-30",
-      "review_start_date": "2026-10-01",
-      "review_end_date": "2026-10-01",
-      "end_date": "2026-10-01",
+      "lane": "writer-a",
+      "start_date": "2026-09-29",
+      "writer_end_date": "2026-10-06",
+      "review_start_date": "2026-10-07",
+      "review_end_date": "2026-10-07",
+      "end_date": "2026-10-07",
       "schedule_status": "scheduled"
     },
     {
@@ -1497,7 +1553,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": "ownership",
       "areas": [
@@ -1510,22 +1566,23 @@
         "area:tooling",
         "curated",
         "kind:implementation",
-        "needs-detail"
+        "needs-detail",
+        "size:L"
       ],
       "assignees": [],
       "created_at": "2026-07-20T02:15:05Z",
-      "updated_at": "2026-07-26T01:27:31Z",
+      "updated_at": "2026-07-26T13:08:45Z",
       "closed_at": null,
       "chain_id": null,
       "depends_on": [],
-      "writer_days": 7,
+      "writer_days": 10,
       "confidence": "low",
       "lane": "writer-b",
-      "start_date": "2026-09-23",
-      "writer_end_date": "2026-10-01",
-      "review_start_date": "2026-10-02",
-      "review_end_date": "2026-10-02",
-      "end_date": "2026-10-02",
+      "start_date": "2026-10-02",
+      "writer_end_date": "2026-10-15",
+      "review_start_date": "2026-10-16",
+      "review_end_date": "2026-10-19",
+      "end_date": "2026-10-19",
       "schedule_status": "scheduled"
     },
     {
@@ -1537,7 +1594,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "S",
       "kind": "research",
       "area": "codegen",
       "areas": [
@@ -1549,22 +1606,23 @@
         "curated",
         "kind:research",
         "needs-detail",
-        "research"
+        "research",
+        "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-20T08:09:18Z",
-      "updated_at": "2026-07-20T21:47:28Z",
+      "updated_at": "2026-07-26T13:08:11Z",
       "closed_at": null,
       "chain_id": null,
       "depends_on": [],
-      "writer_days": 7,
+      "writer_days": 4,
       "confidence": "low",
       "lane": "writer-a",
-      "start_date": "2026-09-30",
-      "writer_end_date": "2026-10-08",
-      "review_start_date": "2026-10-09",
-      "review_end_date": "2026-10-09",
-      "end_date": "2026-10-09",
+      "start_date": "2026-10-07",
+      "writer_end_date": "2026-10-12",
+      "review_start_date": "2026-10-14",
+      "review_end_date": "2026-10-14",
+      "end_date": "2026-10-14",
       "schedule_status": "scheduled"
     },
     {
@@ -1576,7 +1634,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "S",
       "kind": "research",
       "area": "concurrency",
       "areas": [
@@ -1588,22 +1646,23 @@
         "curated",
         "kind:research",
         "needs-detail",
-        "research"
+        "research",
+        "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-20T08:09:21Z",
-      "updated_at": "2026-07-20T21:47:30Z",
+      "updated_at": "2026-07-26T13:08:13Z",
       "closed_at": null,
       "chain_id": null,
       "depends_on": [],
-      "writer_days": 7,
+      "writer_days": 4,
       "confidence": "low",
       "lane": "writer-c",
-      "start_date": "2026-10-01",
-      "writer_end_date": "2026-10-09",
-      "review_start_date": "2026-10-12",
-      "review_end_date": "2026-10-12",
-      "end_date": "2026-10-12",
+      "start_date": "2026-10-12",
+      "writer_end_date": "2026-10-15",
+      "review_start_date": "2026-10-20",
+      "review_end_date": "2026-10-20",
+      "end_date": "2026-10-20",
       "schedule_status": "scheduled"
     },
     {
@@ -1615,7 +1674,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "S",
       "kind": "research",
       "area": "effects",
       "areas": [
@@ -1627,22 +1686,23 @@
         "curated",
         "kind:research",
         "needs-detail",
-        "research"
+        "research",
+        "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-20T08:09:25Z",
-      "updated_at": "2026-07-20T21:47:31Z",
+      "updated_at": "2026-07-26T13:08:15Z",
       "closed_at": null,
       "chain_id": null,
       "depends_on": [],
-      "writer_days": 7,
+      "writer_days": 4,
       "confidence": "low",
-      "lane": "writer-b",
-      "start_date": "2026-10-02",
-      "writer_end_date": "2026-10-12",
-      "review_start_date": "2026-10-13",
-      "review_end_date": "2026-10-13",
-      "end_date": "2026-10-13",
+      "lane": "writer-a",
+      "start_date": "2026-10-13",
+      "writer_end_date": "2026-10-16",
+      "review_start_date": "2026-10-21",
+      "review_end_date": "2026-10-21",
+      "end_date": "2026-10-21",
       "schedule_status": "scheduled"
     },
     {
@@ -1654,7 +1714,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "S",
       "kind": "research",
       "area": "type-system",
       "areas": [
@@ -1666,22 +1726,23 @@
         "curated",
         "kind:research",
         "needs-detail",
-        "research"
+        "research",
+        "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-20T08:09:28Z",
-      "updated_at": "2026-07-20T21:47:33Z",
+      "updated_at": "2026-07-26T13:08:16Z",
       "closed_at": null,
       "chain_id": null,
       "depends_on": [],
-      "writer_days": 7,
+      "writer_days": 4,
       "confidence": "low",
-      "lane": "writer-a",
-      "start_date": "2026-10-09",
-      "writer_end_date": "2026-10-19",
-      "review_start_date": "2026-10-20",
-      "review_end_date": "2026-10-20",
-      "end_date": "2026-10-20",
+      "lane": "writer-b",
+      "start_date": "2026-10-16",
+      "writer_end_date": "2026-10-21",
+      "review_start_date": "2026-10-22",
+      "review_end_date": "2026-10-22",
+      "end_date": "2026-10-22",
       "schedule_status": "scheduled"
     },
     {
@@ -1693,7 +1754,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "S",
       "kind": "research",
       "area": "effects",
       "areas": [
@@ -1709,22 +1770,23 @@
         "curated",
         "kind:research",
         "needs-detail",
-        "research"
+        "research",
+        "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-20T21:21:33Z",
-      "updated_at": "2026-07-20T21:47:36Z",
+      "updated_at": "2026-07-26T13:08:19Z",
       "closed_at": null,
       "chain_id": null,
       "depends_on": [],
-      "writer_days": 7,
+      "writer_days": 4,
       "confidence": "low",
       "lane": "writer-c",
-      "start_date": "2026-10-12",
-      "writer_end_date": "2026-10-20",
-      "review_start_date": "2026-10-21",
-      "review_end_date": "2026-10-21",
-      "end_date": "2026-10-21",
+      "start_date": "2026-10-16",
+      "writer_end_date": "2026-10-21",
+      "review_start_date": "2026-10-23",
+      "review_end_date": "2026-10-23",
+      "end_date": "2026-10-23",
       "schedule_status": "scheduled"
     },
     {
@@ -1736,7 +1798,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "S",
       "kind": "research",
       "area": "memory",
       "areas": [
@@ -1752,22 +1814,23 @@
         "curated",
         "kind:research",
         "needs-detail",
-        "research"
+        "research",
+        "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-20T21:21:34Z",
-      "updated_at": "2026-07-20T21:47:37Z",
+      "updated_at": "2026-07-26T13:08:21Z",
       "closed_at": null,
       "chain_id": null,
       "depends_on": [],
-      "writer_days": 7,
+      "writer_days": 4,
       "confidence": "low",
-      "lane": "writer-b",
-      "start_date": "2026-10-13",
-      "writer_end_date": "2026-10-21",
-      "review_start_date": "2026-10-22",
-      "review_end_date": "2026-10-22",
-      "end_date": "2026-10-22",
+      "lane": "writer-a",
+      "start_date": "2026-10-19",
+      "writer_end_date": "2026-10-22",
+      "review_start_date": "2026-10-26",
+      "review_end_date": "2026-10-26",
+      "end_date": "2026-10-26",
       "schedule_status": "scheduled"
     },
     {
@@ -1779,7 +1842,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "S",
       "kind": "research",
       "area": "collections",
       "areas": [
@@ -1795,22 +1858,23 @@
         "curated",
         "kind:research",
         "needs-detail",
-        "research"
+        "research",
+        "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-20T21:21:35Z",
-      "updated_at": "2026-07-20T21:47:39Z",
+      "updated_at": "2026-07-26T13:08:23Z",
       "closed_at": null,
       "chain_id": null,
       "depends_on": [],
-      "writer_days": 7,
+      "writer_days": 4,
       "confidence": "low",
-      "lane": "writer-a",
-      "start_date": "2026-10-20",
-      "writer_end_date": "2026-10-28",
-      "review_start_date": "2026-10-29",
-      "review_end_date": "2026-10-29",
-      "end_date": "2026-10-29",
+      "lane": "writer-b",
+      "start_date": "2026-10-22",
+      "writer_end_date": "2026-10-27",
+      "review_start_date": "2026-10-28",
+      "review_end_date": "2026-10-28",
+      "end_date": "2026-10-28",
       "schedule_status": "scheduled"
     },
     {
@@ -1822,7 +1886,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "S",
       "kind": "research",
       "area": "effects",
       "areas": [
@@ -1840,22 +1904,23 @@
         "curated",
         "kind:research",
         "needs-detail",
-        "research"
+        "research",
+        "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-20T21:25:01Z",
-      "updated_at": "2026-07-20T21:47:42Z",
+      "updated_at": "2026-07-26T13:08:27Z",
       "closed_at": null,
       "chain_id": null,
       "depends_on": [],
-      "writer_days": 7,
+      "writer_days": 4,
       "confidence": "low",
       "lane": "writer-c",
-      "start_date": "2026-10-21",
-      "writer_end_date": "2026-10-29",
-      "review_start_date": "2026-10-30",
-      "review_end_date": "2026-10-30",
-      "end_date": "2026-10-30",
+      "start_date": "2026-10-22",
+      "writer_end_date": "2026-10-27",
+      "review_start_date": "2026-10-29",
+      "review_end_date": "2026-10-29",
+      "end_date": "2026-10-29",
       "schedule_status": "scheduled"
     },
     {
@@ -1867,7 +1932,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "S",
       "kind": "research",
       "area": "diagnostics",
       "areas": [
@@ -1883,22 +1948,23 @@
         "curated",
         "kind:research",
         "needs-detail",
-        "research"
+        "research",
+        "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-20T21:25:02Z",
-      "updated_at": "2026-07-20T21:47:44Z",
+      "updated_at": "2026-07-26T13:08:28Z",
       "closed_at": null,
       "chain_id": null,
       "depends_on": [],
-      "writer_days": 7,
+      "writer_days": 4,
       "confidence": "low",
-      "lane": "writer-b",
-      "start_date": "2026-10-22",
-      "writer_end_date": "2026-10-30",
-      "review_start_date": "2026-11-02",
-      "review_end_date": "2026-11-02",
-      "end_date": "2026-11-02",
+      "lane": "writer-a",
+      "start_date": "2026-10-23",
+      "writer_end_date": "2026-10-28",
+      "review_start_date": "2026-10-30",
+      "review_end_date": "2026-10-30",
+      "end_date": "2026-10-30",
       "schedule_status": "scheduled"
     },
     {
@@ -1938,12 +2004,12 @@
       "depends_on": [],
       "writer_days": 10,
       "confidence": "low",
-      "lane": "writer-a",
-      "start_date": "2026-10-29",
-      "writer_end_date": "2026-11-11",
-      "review_start_date": "2026-11-12",
-      "review_end_date": "2026-11-13",
-      "end_date": "2026-11-13",
+      "lane": "writer-b",
+      "start_date": "2026-10-28",
+      "writer_end_date": "2026-11-10",
+      "review_start_date": "2026-11-11",
+      "review_end_date": "2026-11-12",
+      "end_date": "2026-11-12",
       "schedule_status": "scheduled"
     },
     {
@@ -1980,11 +2046,11 @@
       "writer_days": 4,
       "confidence": "medium",
       "lane": "writer-c",
-      "start_date": "2026-10-30",
-      "writer_end_date": "2026-11-04",
-      "review_start_date": "2026-11-05",
-      "review_end_date": "2026-11-05",
-      "end_date": "2026-11-05",
+      "start_date": "2026-10-28",
+      "writer_end_date": "2026-11-02",
+      "review_start_date": "2026-11-03",
+      "review_end_date": "2026-11-03",
+      "end_date": "2026-11-03",
       "schedule_status": "scheduled"
     },
     {
@@ -2020,12 +2086,12 @@
       "depends_on": [],
       "writer_days": 4,
       "confidence": "medium",
-      "lane": "writer-b",
-      "start_date": "2026-11-02",
-      "writer_end_date": "2026-11-05",
-      "review_start_date": "2026-11-06",
-      "review_end_date": "2026-11-06",
-      "end_date": "2026-11-06",
+      "lane": "writer-a",
+      "start_date": "2026-10-29",
+      "writer_end_date": "2026-11-03",
+      "review_start_date": "2026-11-04",
+      "review_end_date": "2026-11-04",
+      "end_date": "2026-11-04",
       "schedule_status": "scheduled"
     },
     {
@@ -2062,11 +2128,11 @@
       "writer_days": 4,
       "confidence": "medium",
       "lane": "writer-c",
-      "start_date": "2026-11-05",
-      "writer_end_date": "2026-11-10",
-      "review_start_date": "2026-11-11",
-      "review_end_date": "2026-11-11",
-      "end_date": "2026-11-11",
+      "start_date": "2026-11-03",
+      "writer_end_date": "2026-11-06",
+      "review_start_date": "2026-11-09",
+      "review_end_date": "2026-11-09",
+      "end_date": "2026-11-09",
       "schedule_status": "scheduled"
     },
     {
@@ -2100,12 +2166,129 @@
       "depends_on": [],
       "writer_days": 4,
       "confidence": "medium",
+      "lane": "writer-a",
+      "start_date": "2026-11-04",
+      "writer_end_date": "2026-11-09",
+      "review_start_date": "2026-11-10",
+      "review_end_date": "2026-11-10",
+      "end_date": "2026-11-10",
+      "schedule_status": "scheduled"
+    },
+    {
+      "number": 739,
+      "title": "Language RFC ledger: separate acceptance from implementation and require amendments",
+      "url": "https://github.com/hjosugi/kofun/issues/739",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "ready",
+      "priority": "P2",
+      "size": "M",
+      "kind": "maintenance",
+      "area": "docs_tools",
+      "areas": [
+        "docs_tools"
+      ],
+      "labels": [
+        "P2",
+        "area:docs_tools",
+        "curated",
+        "kind:maintenance",
+        "ready",
+        "size:M"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-26T13:57:41Z",
+      "updated_at": "2026-07-26T13:57:41Z",
+      "closed_at": null,
+      "chain_id": null,
+      "depends_on": [],
+      "writer_days": 4,
+      "confidence": "medium",
+      "lane": "writer-c",
+      "start_date": "2026-11-09",
+      "writer_end_date": "2026-11-12",
+      "review_start_date": "2026-11-13",
+      "review_end_date": "2026-11-13",
+      "end_date": "2026-11-13",
+      "schedule_status": "scheduled"
+    },
+    {
+      "number": 735,
+      "title": "One-shot effect handlers: affine resumptions with a runtime double-resume backstop",
+      "url": "https://github.com/hjosugi/kofun/issues/735",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "needs-decision",
+      "priority": "P2",
+      "size": "M",
+      "kind": "spec-design",
+      "area": "effects",
+      "areas": [
+        "effects"
+      ],
+      "labels": [
+        "P2",
+        "area:effects",
+        "curated",
+        "kind:spec-design",
+        "needs-decision",
+        "size:M"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-26T13:53:47Z",
+      "updated_at": "2026-07-26T13:54:00Z",
+      "closed_at": null,
+      "chain_id": null,
+      "depends_on": [],
+      "writer_days": 7,
+      "confidence": "low",
+      "lane": "writer-a",
+      "start_date": "2026-11-10",
+      "writer_end_date": "2026-11-18",
+      "review_start_date": "2026-11-19",
+      "review_end_date": "2026-11-19",
+      "end_date": "2026-11-19",
+      "schedule_status": "scheduled"
+    },
+    {
+      "number": 736,
+      "title": "Deterministic structured concurrency: versioned schedule traces, strict replay, and bounded exploration",
+      "url": "https://github.com/hjosugi/kofun/issues/736",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "needs-decision",
+      "priority": "P2",
+      "size": "M",
+      "kind": "spec-design",
+      "area": "concurrency",
+      "areas": [
+        "concurrency"
+      ],
+      "labels": [
+        "P2",
+        "area:concurrency",
+        "curated",
+        "kind:spec-design",
+        "needs-decision",
+        "size:M"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-26T13:54:57Z",
+      "updated_at": "2026-07-26T13:54:57Z",
+      "closed_at": null,
+      "chain_id": null,
+      "depends_on": [],
+      "writer_days": 7,
+      "confidence": "low",
       "lane": "writer-b",
-      "start_date": "2026-11-06",
-      "writer_end_date": "2026-11-11",
-      "review_start_date": "2026-11-16",
-      "review_end_date": "2026-11-16",
-      "end_date": "2026-11-16",
+      "start_date": "2026-11-11",
+      "writer_end_date": "2026-11-19",
+      "review_start_date": "2026-11-20",
+      "review_end_date": "2026-11-20",
+      "end_date": "2026-11-20",
       "schedule_status": "scheduled"
     },
     {
@@ -2117,7 +2300,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P2",
-      "size": null,
+      "size": "S",
       "kind": "research",
       "area": "quality",
       "areas": [
@@ -2129,22 +2312,23 @@
         "curated",
         "kind:research",
         "needs-detail",
-        "research"
+        "research",
+        "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-20T08:10:27Z",
-      "updated_at": "2026-07-20T21:47:34Z",
+      "updated_at": "2026-07-26T13:08:18Z",
       "closed_at": null,
       "chain_id": null,
       "depends_on": [],
-      "writer_days": 7,
+      "writer_days": 4,
       "confidence": "low",
       "lane": "writer-c",
-      "start_date": "2026-11-11",
-      "writer_end_date": "2026-11-19",
-      "review_start_date": "2026-11-20",
-      "review_end_date": "2026-11-20",
-      "end_date": "2026-11-20",
+      "start_date": "2026-11-13",
+      "writer_end_date": "2026-11-18",
+      "review_start_date": "2026-11-23",
+      "review_end_date": "2026-11-23",
+      "end_date": "2026-11-23",
       "schedule_status": "scheduled"
     },
     {
@@ -2156,7 +2340,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P2",
-      "size": null,
+      "size": "S",
       "kind": "research",
       "area": "diagnostics",
       "areas": [
@@ -2172,22 +2356,23 @@
         "curated",
         "kind:research",
         "needs-detail",
-        "research"
+        "research",
+        "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-20T21:21:35Z",
-      "updated_at": "2026-07-20T21:47:40Z",
+      "updated_at": "2026-07-26T13:08:25Z",
       "closed_at": null,
       "chain_id": null,
       "depends_on": [],
-      "writer_days": 7,
+      "writer_days": 4,
       "confidence": "low",
       "lane": "writer-a",
-      "start_date": "2026-11-12",
-      "writer_end_date": "2026-11-20",
-      "review_start_date": "2026-11-23",
-      "review_end_date": "2026-11-23",
-      "end_date": "2026-11-23",
+      "start_date": "2026-11-19",
+      "writer_end_date": "2026-11-24",
+      "review_start_date": "2026-11-25",
+      "review_end_date": "2026-11-25",
+      "end_date": "2026-11-25",
       "schedule_status": "scheduled"
     },
     {
@@ -2199,7 +2384,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P2",
-      "size": null,
+      "size": "S",
       "kind": "research",
       "area": "memory",
       "areas": [
@@ -2215,22 +2400,23 @@
         "curated",
         "kind:research",
         "needs-detail",
-        "research"
+        "research",
+        "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-20T21:26:21Z",
-      "updated_at": "2026-07-26T01:27:32Z",
+      "updated_at": "2026-07-26T13:08:30Z",
       "closed_at": null,
       "chain_id": null,
       "depends_on": [],
-      "writer_days": 7,
+      "writer_days": 4,
       "confidence": "low",
-      "lane": "writer-b",
-      "start_date": "2026-11-12",
-      "writer_end_date": "2026-11-20",
-      "review_start_date": "2026-11-24",
-      "review_end_date": "2026-11-24",
-      "end_date": "2026-11-24",
+      "lane": "writer-c",
+      "start_date": "2026-11-19",
+      "writer_end_date": "2026-11-24",
+      "review_start_date": "2026-11-26",
+      "review_end_date": "2026-11-26",
+      "end_date": "2026-11-26",
       "schedule_status": "scheduled"
     },
     {
@@ -2264,7 +2450,7 @@
       "depends_on": [],
       "writer_days": 6,
       "confidence": "low",
-      "lane": "writer-c",
+      "lane": "writer-b",
       "start_date": "2026-11-20",
       "writer_end_date": "2026-11-27",
       "review_start_date": "2026-11-30",
@@ -2304,11 +2490,11 @@
       "writer_days": 6,
       "confidence": "low",
       "lane": "writer-a",
-      "start_date": "2026-11-23",
-      "writer_end_date": "2026-11-30",
-      "review_start_date": "2026-12-01",
-      "review_end_date": "2026-12-01",
-      "end_date": "2026-12-01",
+      "start_date": "2026-11-25",
+      "writer_end_date": "2026-12-02",
+      "review_start_date": "2026-12-03",
+      "review_end_date": "2026-12-03",
+      "end_date": "2026-12-03",
       "schedule_status": "scheduled"
     },
     {
@@ -2342,12 +2528,12 @@
       "depends_on": [],
       "writer_days": 6,
       "confidence": "low",
-      "lane": "writer-b",
-      "start_date": "2026-11-23",
-      "writer_end_date": "2026-11-30",
-      "review_start_date": "2026-12-02",
-      "review_end_date": "2026-12-02",
-      "end_date": "2026-12-02",
+      "lane": "writer-c",
+      "start_date": "2026-11-25",
+      "writer_end_date": "2026-12-02",
+      "review_start_date": "2026-12-04",
+      "review_end_date": "2026-12-04",
+      "end_date": "2026-12-04",
       "schedule_status": "scheduled"
     },
     {
@@ -2381,7 +2567,7 @@
       "depends_on": [],
       "writer_days": 6,
       "confidence": "low",
-      "lane": "writer-c",
+      "lane": "writer-b",
       "start_date": "2026-11-30",
       "writer_end_date": "2026-12-07",
       "review_start_date": "2026-12-08",
@@ -2421,11 +2607,11 @@
       "writer_days": 6,
       "confidence": "low",
       "lane": "writer-a",
-      "start_date": "2026-12-01",
-      "writer_end_date": "2026-12-08",
-      "review_start_date": "2026-12-09",
-      "review_end_date": "2026-12-09",
-      "end_date": "2026-12-09",
+      "start_date": "2026-12-03",
+      "writer_end_date": "2026-12-10",
+      "review_start_date": "2026-12-11",
+      "review_end_date": "2026-12-11",
+      "end_date": "2026-12-11",
       "schedule_status": "scheduled"
     }
   ],
@@ -2438,7 +2624,7 @@
       "workflow": "deferred",
       "state_reason": null,
       "priority": "P1",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": "platforms",
       "labels": [
@@ -2446,7 +2632,8 @@
         "area:platforms",
         "curated",
         "deferred",
-        "kind:implementation"
+        "kind:implementation",
+        "size:L"
       ],
       "reason": "deferred outside the active delivery scope"
     },
@@ -2458,7 +2645,7 @@
       "workflow": "deferred",
       "state_reason": null,
       "priority": "P2",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": "codegen",
       "labels": [
@@ -2467,7 +2654,8 @@
         "area:platforms",
         "curated",
         "deferred",
-        "kind:implementation"
+        "kind:implementation",
+        "size:L"
       ],
       "reason": "deferred outside the active delivery scope"
     },
@@ -2479,7 +2667,7 @@
       "workflow": "deferred",
       "state_reason": null,
       "priority": "P2",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": "memory",
       "labels": [
@@ -2488,7 +2676,8 @@
         "area:platforms",
         "curated",
         "deferred",
-        "kind:implementation"
+        "kind:implementation",
+        "size:L"
       ],
       "reason": "deferred outside the active delivery scope"
     },
@@ -2500,7 +2689,7 @@
       "workflow": "deferred",
       "state_reason": null,
       "priority": "P2",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": "memory",
       "labels": [
@@ -2508,7 +2697,8 @@
         "area:memory",
         "curated",
         "deferred",
-        "kind:implementation"
+        "kind:implementation",
+        "size:L"
       ],
       "reason": "deferred outside the active delivery scope"
     },
@@ -2583,7 +2773,7 @@
       "workflow": "deferred",
       "state_reason": null,
       "priority": "P2",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": "build-system",
       "labels": [
@@ -2592,7 +2782,8 @@
         "area:native-backend",
         "curated",
         "deferred",
-        "kind:implementation"
+        "kind:implementation",
+        "size:L"
       ],
       "reason": "deferred outside the active delivery scope"
     },
@@ -2604,7 +2795,7 @@
       "workflow": "deferred",
       "state_reason": null,
       "priority": "P2",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": "science",
       "labels": [
@@ -2612,7 +2803,8 @@
         "area:science",
         "curated",
         "deferred",
-        "kind:implementation"
+        "kind:implementation",
+        "size:L"
       ],
       "reason": "deferred outside the active delivery scope"
     },
@@ -2624,7 +2816,7 @@
       "workflow": "deferred",
       "state_reason": null,
       "priority": "P2",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": "science",
       "labels": [
@@ -2632,7 +2824,8 @@
         "area:science",
         "curated",
         "deferred",
-        "kind:implementation"
+        "kind:implementation",
+        "size:L"
       ],
       "reason": "deferred outside the active delivery scope"
     },
@@ -2644,7 +2837,7 @@
       "workflow": "deferred",
       "state_reason": null,
       "priority": "P2",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": "science",
       "labels": [
@@ -2652,7 +2845,8 @@
         "area:science",
         "curated",
         "deferred",
-        "kind:implementation"
+        "kind:implementation",
+        "size:L"
       ],
       "reason": "deferred outside the active delivery scope"
     },
@@ -2664,7 +2858,7 @@
       "workflow": "deferred",
       "state_reason": null,
       "priority": "P2",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": "science",
       "labels": [
@@ -2672,7 +2866,8 @@
         "area:science",
         "curated",
         "deferred",
-        "kind:implementation"
+        "kind:implementation",
+        "size:L"
       ],
       "reason": "deferred outside the active delivery scope"
     },
@@ -2684,7 +2879,7 @@
       "workflow": "deferred",
       "state_reason": null,
       "priority": "P2",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": "science",
       "labels": [
@@ -2692,7 +2887,8 @@
         "area:science",
         "curated",
         "deferred",
-        "kind:implementation"
+        "kind:implementation",
+        "size:L"
       ],
       "reason": "deferred outside the active delivery scope"
     },
@@ -2779,6 +2975,27 @@
         "size:M"
       ],
       "reason": "blocked without a dependency represented by a scheduled chain"
+    },
+    {
+      "number": 738,
+      "title": "Time-series forecasting research: rolling-origin backtests, uncertainty, and estimator boundaries",
+      "url": "https://github.com/hjosugi/kofun/issues/738",
+      "role": "curated",
+      "workflow": "deferred",
+      "state_reason": null,
+      "priority": "P3",
+      "size": "M",
+      "kind": "research",
+      "area": "science",
+      "labels": [
+        "P3",
+        "area:science",
+        "curated",
+        "deferred",
+        "kind:research",
+        "size:M"
+      ],
+      "reason": "deferred outside the active delivery scope"
     }
   ],
   "calendar": [
@@ -2798,22 +3015,22 @@
         722
       ],
       "finishing_issue_numbers": [
-        550
+        722
       ],
       "review_issue_numbers": [
-        550
+        722
       ],
-      "planned_writer_days": 15,
+      "planned_writer_days": 14,
       "writer_capacity_days": 15
     },
     {
       "week_start": "2026-08-03",
       "week_end": "2026-08-09",
       "active_issue_numbers": [
+        550,
         609,
         618,
         636,
-        722,
         723
       ],
       "starting_issue_numbers": [
@@ -2821,31 +3038,29 @@
         723
       ],
       "finishing_issue_numbers": [
-        609,
-        722
+        550,
+        609
       ],
       "review_issue_numbers": [
-        609,
-        722
+        550,
+        609
       ],
-      "planned_writer_days": 14,
+      "planned_writer_days": 15,
       "writer_capacity_days": 15
     },
     {
       "week_start": "2026-08-10",
       "week_end": "2026-08-16",
       "active_issue_numbers": [
-        120,
         618,
         622,
         636,
-        723,
-        724
+        637,
+        723
       ],
       "starting_issue_numbers": [
-        120,
         622,
-        724
+        637
       ],
       "finishing_issue_numbers": [
         618,
@@ -2866,58 +3081,55 @@
       "active_issue_numbers": [
         120,
         271,
-        403,
-        546,
         622,
-        724,
-        725
+        637,
+        724
       ],
       "starting_issue_numbers": [
+        120,
         271,
-        403,
-        546,
-        725
+        724
       ],
       "finishing_issue_numbers": [
-        120,
-        403,
         622,
-        724
+        637
       ],
       "review_issue_numbers": [
-        120,
-        403,
         622,
-        724
+        637
       ],
-      "planned_writer_days": 13,
+      "planned_writer_days": 14,
       "writer_capacity_days": 15
     },
     {
       "week_start": "2026-08-24",
       "week_end": "2026-08-30",
       "active_issue_numbers": [
+        120,
         271,
         272,
+        403,
         546,
-        551,
-        725
+        724
       ],
       "starting_issue_numbers": [
         272,
-        551
+        403,
+        546
       ],
       "finishing_issue_numbers": [
+        120,
         271,
-        546,
-        725
+        403,
+        724
       ],
       "review_issue_numbers": [
+        120,
         271,
-        546,
-        725
+        403,
+        724
       ],
-      "planned_writer_days": 13,
+      "planned_writer_days": 12,
       "writer_capacity_days": 15
     },
     {
@@ -2926,22 +3138,22 @@
       "active_issue_numbers": [
         272,
         274,
+        546,
         551,
-        626,
-        726
+        725
       ],
       "starting_issue_numbers": [
         274,
-        626,
-        726
+        551,
+        725
       ],
       "finishing_issue_numbers": [
         272,
-        551
+        546
       ],
       "review_issue_numbers": [
         272,
-        551
+        546
       ],
       "planned_writer_days": 14,
       "writer_capacity_days": 15
@@ -2951,54 +3163,54 @@
       "week_end": "2026-09-13",
       "active_issue_numbers": [
         274,
-        625,
+        551,
         626,
         627,
-        637,
         657,
-        726
+        725
       ],
       "starting_issue_numbers": [
-        625,
+        626,
         627,
-        637,
         657
       ],
       "finishing_issue_numbers": [
         274,
-        626,
-        627,
-        726
+        551,
+        725
       ],
       "review_issue_numbers": [
         274,
-        626,
-        627,
-        726
+        551,
+        725
       ],
-      "planned_writer_days": 13,
+      "planned_writer_days": 12,
       "writer_capacity_days": 15
     },
     {
       "week_start": "2026-09-14",
       "week_end": "2026-09-20",
       "active_issue_numbers": [
-        27,
-        112,
         625,
-        637,
-        657
+        626,
+        627,
+        657,
+        726,
+        737
       ],
       "starting_issue_numbers": [
-        27,
-        112
+        625,
+        726,
+        737
       ],
       "finishing_issue_numbers": [
-        637,
+        626,
+        627,
         657
       ],
       "review_issue_numbers": [
-        637,
+        626,
+        627,
         657
       ],
       "planned_writer_days": 15,
@@ -3009,55 +3221,50 @@
       "week_end": "2026-09-27",
       "active_issue_numbers": [
         27,
-        112,
-        276,
-        281,
-        533,
-        625
+        625,
+        726,
+        737
       ],
       "starting_issue_numbers": [
-        276,
-        281,
-        533
+        27
       ],
       "finishing_issue_numbers": [
-        27,
-        112,
-        625
+        726,
+        737
       ],
       "review_issue_numbers": [
-        27,
-        112,
-        625
+        726,
+        737
       ],
-      "planned_writer_days": 15,
+      "planned_writer_days": 13,
       "writer_capacity_days": 15
     },
     {
       "week_start": "2026-09-28",
       "week_end": "2026-10-04",
       "active_issue_numbers": [
+        27,
+        112,
         276,
         281,
         533,
-        554,
-        555,
-        556
+        625
       ],
       "starting_issue_numbers": [
-        554,
-        555,
-        556
+        112,
+        276,
+        281,
+        533
       ],
       "finishing_issue_numbers": [
-        276,
-        281,
-        533
+        27,
+        112,
+        625
       ],
       "review_issue_numbers": [
-        276,
-        281,
-        533
+        27,
+        112,
+        625
       ],
       "planned_writer_days": 15,
       "writer_capacity_days": 15
@@ -3066,19 +3273,19 @@
       "week_start": "2026-10-05",
       "week_end": "2026-10-11",
       "active_issue_numbers": [
-        554,
-        555,
-        556,
-        557
+        276,
+        281,
+        533,
+        554
       ],
       "starting_issue_numbers": [
-        557
+        554
       ],
       "finishing_issue_numbers": [
-        554
+        281
       ],
       "review_issue_numbers": [
-        554
+        281
       ],
       "planned_writer_days": 15,
       "writer_capacity_days": 15
@@ -3087,23 +3294,28 @@
       "week_start": "2026-10-12",
       "week_end": "2026-10-18",
       "active_issue_numbers": [
+        276,
+        533,
+        554,
         555,
         556,
         557,
-        569,
-        570
+        569
       ],
       "starting_issue_numbers": [
-        569,
-        570
+        555,
+        556,
+        557,
+        569
       ],
       "finishing_issue_numbers": [
-        555,
-        556
+        276,
+        554
       ],
       "review_issue_numbers": [
-        555,
-        556
+        276,
+        533,
+        554
       ],
       "planned_writer_days": 15,
       "writer_capacity_days": 15
@@ -3112,6 +3324,9 @@
       "week_start": "2026-10-19",
       "week_end": "2026-10-25",
       "active_issue_numbers": [
+        533,
+        555,
+        556,
         557,
         569,
         570,
@@ -3120,19 +3335,24 @@
         574
       ],
       "starting_issue_numbers": [
+        570,
         571,
         573,
         574
       ],
       "finishing_issue_numbers": [
+        533,
+        555,
+        556,
         557,
-        569,
-        570
+        569
       ],
       "review_issue_numbers": [
+        533,
+        555,
+        556,
         557,
-        569,
-        570
+        569
       ],
       "planned_writer_days": 15,
       "writer_capacity_days": 15
@@ -3141,23 +3361,30 @@
       "week_start": "2026-10-26",
       "week_end": "2026-11-01",
       "active_issue_numbers": [
+        570,
         571,
         573,
         574,
         638,
+        639,
         710
       ],
       "starting_issue_numbers": [
         638,
+        639,
         710
       ],
       "finishing_issue_numbers": [
+        570,
         571,
-        573
+        573,
+        574
       ],
       "review_issue_numbers": [
+        570,
         571,
-        573
+        573,
+        574
       ],
       "planned_writer_days": 15,
       "writer_capacity_days": 15
@@ -3167,7 +3394,6 @@
       "week_end": "2026-11-08",
       "active_issue_numbers": [
         70,
-        574,
         638,
         639,
         640,
@@ -3175,16 +3401,13 @@
       ],
       "starting_issue_numbers": [
         70,
-        639,
         640
       ],
       "finishing_issue_numbers": [
-        574,
         638,
         639
       ],
       "review_issue_numbers": [
-        574,
         638,
         639
       ],
@@ -3197,23 +3420,29 @@
       "active_issue_numbers": [
         70,
         558,
-        572,
-        576,
         640,
-        710
+        710,
+        735,
+        736,
+        739
       ],
       "starting_issue_numbers": [
         558,
-        572,
-        576
+        735,
+        736,
+        739
       ],
       "finishing_issue_numbers": [
+        70,
         640,
-        710
+        710,
+        739
       ],
       "review_issue_numbers": [
+        70,
         640,
-        710
+        710,
+        739
       ],
       "planned_writer_days": 15,
       "writer_capacity_days": 15
@@ -3222,22 +3451,25 @@
       "week_start": "2026-11-16",
       "week_end": "2026-11-22",
       "active_issue_numbers": [
-        70,
         558,
+        572,
+        576,
+        644,
+        735,
+        736
+      ],
+      "starting_issue_numbers": [
         572,
         576,
         644
       ],
-      "starting_issue_numbers": [
-        644
-      ],
       "finishing_issue_numbers": [
-        70,
-        558
+        735,
+        736
       ],
       "review_issue_numbers": [
-        70,
-        558
+        735,
+        736
       ],
       "planned_writer_days": 15,
       "writer_capacity_days": 15
@@ -3246,6 +3478,7 @@
       "week_start": "2026-11-23",
       "week_end": "2026-11-29",
       "active_issue_numbers": [
+        558,
         572,
         576,
         644,
@@ -3257,10 +3490,12 @@
         646
       ],
       "finishing_issue_numbers": [
+        558,
         572,
         576
       ],
       "review_issue_numbers": [
+        558,
         572,
         576
       ],
@@ -3291,7 +3526,7 @@
         645,
         646
       ],
-      "planned_writer_days": 11,
+      "planned_writer_days": 13,
       "writer_capacity_days": 15
     },
     {
@@ -3310,7 +3545,7 @@
         647,
         648
       ],
-      "planned_writer_days": 3,
+      "planned_writer_days": 5,
       "writer_capacity_days": 15
     }
   ],
@@ -3982,7 +4217,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "M",
       "kind": "implementation",
       "area": "frameworks",
       "areas": [
@@ -3993,11 +4228,12 @@
         "area:frameworks",
         "curated",
         "kind:implementation",
-        "needs-detail"
+        "needs-detail",
+        "size:M"
       ],
       "assignees": [],
       "created_at": "2026-07-19T23:20:41Z",
-      "updated_at": "2026-07-20T21:51:49Z",
+      "updated_at": "2026-07-26T13:08:33Z",
       "closed_at": null
     },
     {
@@ -10039,7 +10275,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": "meta",
       "areas": [
@@ -10050,11 +10286,12 @@
         "area:meta",
         "curated",
         "kind:implementation",
-        "needs-detail"
+        "needs-detail",
+        "size:L"
       ],
       "assignees": [],
       "created_at": "2026-07-20T00:14:25Z",
-      "updated_at": "2026-07-20T21:47:54Z",
+      "updated_at": "2026-07-26T13:08:43Z",
       "closed_at": null
     },
     {
@@ -10066,7 +10303,7 @@
       "role": "curated",
       "workflow": "deferred",
       "priority": "P1",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": "platforms",
       "areas": [
@@ -10077,11 +10314,12 @@
         "area:platforms",
         "curated",
         "deferred",
-        "kind:implementation"
+        "kind:implementation",
+        "size:L"
       ],
       "assignees": [],
       "created_at": "2026-07-20T00:14:27Z",
-      "updated_at": "2026-07-26T01:27:34Z",
+      "updated_at": "2026-07-26T13:08:46Z",
       "closed_at": null
     },
     {
@@ -10093,7 +10331,7 @@
       "role": "curated",
       "workflow": "deferred",
       "priority": "P2",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": "codegen",
       "areas": [
@@ -10106,11 +10344,12 @@
         "area:platforms",
         "curated",
         "deferred",
-        "kind:implementation"
+        "kind:implementation",
+        "size:L"
       ],
       "assignees": [],
       "created_at": "2026-07-20T00:14:30Z",
-      "updated_at": "2026-07-26T01:27:33Z",
+      "updated_at": "2026-07-26T13:08:48Z",
       "closed_at": null
     },
     {
@@ -10122,7 +10361,7 @@
       "role": "curated",
       "workflow": "deferred",
       "priority": "P2",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": "memory",
       "areas": [
@@ -10135,11 +10374,12 @@
         "area:platforms",
         "curated",
         "deferred",
-        "kind:implementation"
+        "kind:implementation",
+        "size:L"
       ],
       "assignees": [],
       "created_at": "2026-07-20T00:14:33Z",
-      "updated_at": "2026-07-20T21:47:58Z",
+      "updated_at": "2026-07-26T13:08:50Z",
       "closed_at": null
     },
     {
@@ -10151,7 +10391,7 @@
       "role": "curated",
       "workflow": "deferred",
       "priority": "P2",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": "memory",
       "areas": [
@@ -10162,11 +10402,12 @@
         "area:memory",
         "curated",
         "deferred",
-        "kind:implementation"
+        "kind:implementation",
+        "size:L"
       ],
       "assignees": [],
       "created_at": "2026-07-20T00:14:35Z",
-      "updated_at": "2026-07-20T21:47:59Z",
+      "updated_at": "2026-07-26T13:08:51Z",
       "closed_at": null
     },
     {
@@ -10178,7 +10419,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "M",
       "kind": "documentation",
       "area": null,
       "areas": [],
@@ -10186,11 +10427,12 @@
         "P1",
         "curated",
         "kind:documentation",
-        "needs-detail"
+        "needs-detail",
+        "size:M"
       ],
       "assignees": [],
       "created_at": "2026-07-20T00:14:37Z",
-      "updated_at": "2026-07-25T09:31:12Z",
+      "updated_at": "2026-07-26T13:08:35Z",
       "closed_at": null
     },
     {
@@ -13624,7 +13866,7 @@
       "role": "curated",
       "workflow": "deferred",
       "priority": "P2",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": "build-system",
       "areas": [
@@ -13637,11 +13879,12 @@
         "area:native-backend",
         "curated",
         "deferred",
-        "kind:implementation"
+        "kind:implementation",
+        "size:L"
       ],
       "assignees": [],
       "created_at": "2026-07-20T00:20:26Z",
-      "updated_at": "2026-07-20T21:48:01Z",
+      "updated_at": "2026-07-26T13:08:53Z",
       "closed_at": null
     },
     {
@@ -16225,7 +16468,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": "ownership",
       "areas": [
@@ -16238,11 +16481,12 @@
         "area:tooling",
         "curated",
         "kind:implementation",
-        "needs-detail"
+        "needs-detail",
+        "size:L"
       ],
       "assignees": [],
       "created_at": "2026-07-20T02:15:05Z",
-      "updated_at": "2026-07-26T01:27:31Z",
+      "updated_at": "2026-07-26T13:08:45Z",
       "closed_at": null
     },
     {
@@ -16304,7 +16548,7 @@
       "role": "curated",
       "workflow": "deferred",
       "priority": "P2",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": "science",
       "areas": [
@@ -16315,11 +16559,12 @@
         "area:science",
         "curated",
         "deferred",
-        "kind:implementation"
+        "kind:implementation",
+        "size:L"
       ],
       "assignees": [],
       "created_at": "2026-07-20T02:16:58Z",
-      "updated_at": "2026-07-26T01:27:30Z",
+      "updated_at": "2026-07-26T13:08:54Z",
       "closed_at": null
     },
     {
@@ -16331,7 +16576,7 @@
       "role": "curated",
       "workflow": "deferred",
       "priority": "P2",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": "science",
       "areas": [
@@ -16342,11 +16587,12 @@
         "area:science",
         "curated",
         "deferred",
-        "kind:implementation"
+        "kind:implementation",
+        "size:L"
       ],
       "assignees": [],
       "created_at": "2026-07-20T02:17:02Z",
-      "updated_at": "2026-07-20T21:48:05Z",
+      "updated_at": "2026-07-26T13:08:56Z",
       "closed_at": null
     },
     {
@@ -16358,7 +16604,7 @@
       "role": "curated",
       "workflow": "deferred",
       "priority": "P2",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": "science",
       "areas": [
@@ -16369,11 +16615,12 @@
         "area:science",
         "curated",
         "deferred",
-        "kind:implementation"
+        "kind:implementation",
+        "size:L"
       ],
       "assignees": [],
       "created_at": "2026-07-20T02:17:07Z",
-      "updated_at": "2026-07-20T21:48:06Z",
+      "updated_at": "2026-07-26T13:08:58Z",
       "closed_at": null
     },
     {
@@ -16385,7 +16632,7 @@
       "role": "curated",
       "workflow": "deferred",
       "priority": "P2",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": "science",
       "areas": [
@@ -16396,11 +16643,12 @@
         "area:science",
         "curated",
         "deferred",
-        "kind:implementation"
+        "kind:implementation",
+        "size:L"
       ],
       "assignees": [],
       "created_at": "2026-07-20T02:17:11Z",
-      "updated_at": "2026-07-20T21:48:08Z",
+      "updated_at": "2026-07-26T13:08:59Z",
       "closed_at": null
     },
     {
@@ -16412,7 +16660,7 @@
       "role": "curated",
       "workflow": "deferred",
       "priority": "P2",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": "science",
       "areas": [
@@ -16423,11 +16671,12 @@
         "area:science",
         "curated",
         "deferred",
-        "kind:implementation"
+        "kind:implementation",
+        "size:L"
       ],
       "assignees": [],
       "created_at": "2026-07-20T02:17:15Z",
-      "updated_at": "2026-07-20T21:48:10Z",
+      "updated_at": "2026-07-26T13:09:01Z",
       "closed_at": null
     },
     {
@@ -16771,7 +17020,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "S",
       "kind": "research",
       "area": "codegen",
       "areas": [
@@ -16783,11 +17032,12 @@
         "curated",
         "kind:research",
         "needs-detail",
-        "research"
+        "research",
+        "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-20T08:09:18Z",
-      "updated_at": "2026-07-20T21:47:28Z",
+      "updated_at": "2026-07-26T13:08:11Z",
       "closed_at": null
     },
     {
@@ -16799,7 +17049,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "S",
       "kind": "research",
       "area": "concurrency",
       "areas": [
@@ -16811,11 +17061,12 @@
         "curated",
         "kind:research",
         "needs-detail",
-        "research"
+        "research",
+        "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-20T08:09:21Z",
-      "updated_at": "2026-07-20T21:47:30Z",
+      "updated_at": "2026-07-26T13:08:13Z",
       "closed_at": null
     },
     {
@@ -16827,7 +17078,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "S",
       "kind": "research",
       "area": "effects",
       "areas": [
@@ -16839,11 +17090,12 @@
         "curated",
         "kind:research",
         "needs-detail",
-        "research"
+        "research",
+        "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-20T08:09:25Z",
-      "updated_at": "2026-07-20T21:47:31Z",
+      "updated_at": "2026-07-26T13:08:15Z",
       "closed_at": null
     },
     {
@@ -16855,7 +17107,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "S",
       "kind": "research",
       "area": "type-system",
       "areas": [
@@ -16867,11 +17119,12 @@
         "curated",
         "kind:research",
         "needs-detail",
-        "research"
+        "research",
+        "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-20T08:09:28Z",
-      "updated_at": "2026-07-20T21:47:33Z",
+      "updated_at": "2026-07-26T13:08:16Z",
       "closed_at": null
     },
     {
@@ -16883,7 +17136,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P2",
-      "size": null,
+      "size": "S",
       "kind": "research",
       "area": "quality",
       "areas": [
@@ -16895,11 +17148,12 @@
         "curated",
         "kind:research",
         "needs-detail",
-        "research"
+        "research",
+        "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-20T08:10:27Z",
-      "updated_at": "2026-07-20T21:47:34Z",
+      "updated_at": "2026-07-26T13:08:18Z",
       "closed_at": null
     },
     {
@@ -16911,7 +17165,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "S",
       "kind": "research",
       "area": "effects",
       "areas": [
@@ -16927,11 +17181,12 @@
         "curated",
         "kind:research",
         "needs-detail",
-        "research"
+        "research",
+        "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-20T21:21:33Z",
-      "updated_at": "2026-07-20T21:47:36Z",
+      "updated_at": "2026-07-26T13:08:19Z",
       "closed_at": null
     },
     {
@@ -16943,7 +17198,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "S",
       "kind": "research",
       "area": "memory",
       "areas": [
@@ -16959,11 +17214,12 @@
         "curated",
         "kind:research",
         "needs-detail",
-        "research"
+        "research",
+        "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-20T21:21:34Z",
-      "updated_at": "2026-07-20T21:47:37Z",
+      "updated_at": "2026-07-26T13:08:21Z",
       "closed_at": null
     },
     {
@@ -16975,7 +17231,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "S",
       "kind": "research",
       "area": "collections",
       "areas": [
@@ -16991,11 +17247,12 @@
         "curated",
         "kind:research",
         "needs-detail",
-        "research"
+        "research",
+        "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-20T21:21:35Z",
-      "updated_at": "2026-07-20T21:47:39Z",
+      "updated_at": "2026-07-26T13:08:23Z",
       "closed_at": null
     },
     {
@@ -17007,7 +17264,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P2",
-      "size": null,
+      "size": "S",
       "kind": "research",
       "area": "diagnostics",
       "areas": [
@@ -17023,11 +17280,12 @@
         "curated",
         "kind:research",
         "needs-detail",
-        "research"
+        "research",
+        "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-20T21:21:35Z",
-      "updated_at": "2026-07-20T21:47:40Z",
+      "updated_at": "2026-07-26T13:08:25Z",
       "closed_at": null
     },
     {
@@ -17039,7 +17297,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "S",
       "kind": "research",
       "area": "effects",
       "areas": [
@@ -17057,11 +17315,12 @@
         "curated",
         "kind:research",
         "needs-detail",
-        "research"
+        "research",
+        "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-20T21:25:01Z",
-      "updated_at": "2026-07-20T21:47:42Z",
+      "updated_at": "2026-07-26T13:08:27Z",
       "closed_at": null
     },
     {
@@ -17073,7 +17332,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P1",
-      "size": null,
+      "size": "S",
       "kind": "research",
       "area": "diagnostics",
       "areas": [
@@ -17089,11 +17348,12 @@
         "curated",
         "kind:research",
         "needs-detail",
-        "research"
+        "research",
+        "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-20T21:25:02Z",
-      "updated_at": "2026-07-20T21:47:44Z",
+      "updated_at": "2026-07-26T13:08:28Z",
       "closed_at": null
     },
     {
@@ -17137,7 +17397,7 @@
       "role": "curated",
       "workflow": "needs-detail",
       "priority": "P2",
-      "size": null,
+      "size": "S",
       "kind": "research",
       "area": "memory",
       "areas": [
@@ -17153,11 +17413,12 @@
         "curated",
         "kind:research",
         "needs-detail",
-        "research"
+        "research",
+        "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-20T21:26:21Z",
-      "updated_at": "2026-07-26T01:27:32Z",
+      "updated_at": "2026-07-26T13:08:30Z",
       "closed_at": null
     },
     {
@@ -18085,7 +18346,7 @@
       "state": "open",
       "state_reason": null,
       "role": "curated",
-      "workflow": "ready",
+      "workflow": "in-progress",
       "priority": "P1",
       "size": "M",
       "kind": "implementation",
@@ -18097,13 +18358,13 @@
         "P1",
         "area:developer_tools",
         "curated",
+        "in-progress",
         "kind:implementation",
-        "ready",
         "size:M"
       ],
       "assignees": [],
       "created_at": "2026-07-23T13:30:00Z",
-      "updated_at": "2026-07-25T23:57:02Z",
+      "updated_at": "2026-07-26T13:13:31Z",
       "closed_at": null
     },
     {
@@ -18854,20 +19115,22 @@
       "state": "open",
       "state_reason": null,
       "role": "curated",
-      "workflow": "unclassified",
+      "workflow": "in-progress",
       "priority": "P1",
-      "size": null,
+      "size": "M",
       "kind": "implementation",
       "area": null,
       "areas": [],
       "labels": [
         "P1",
         "curated",
-        "kind:implementation"
+        "in-progress",
+        "kind:implementation",
+        "size:M"
       ],
       "assignees": [],
       "created_at": "2026-07-26T08:10:58Z",
-      "updated_at": "2026-07-26T08:10:58Z",
+      "updated_at": "2026-07-26T13:09:48Z",
       "closed_at": null
     },
     {
@@ -18877,20 +19140,22 @@
       "state": "open",
       "state_reason": null,
       "role": "curated",
-      "workflow": "unclassified",
+      "workflow": "in-progress",
       "priority": "P1",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": null,
       "areas": [],
       "labels": [
         "P1",
         "curated",
-        "kind:implementation"
+        "in-progress",
+        "kind:implementation",
+        "size:L"
       ],
       "assignees": [],
       "created_at": "2026-07-26T08:11:36Z",
-      "updated_at": "2026-07-26T08:11:36Z",
+      "updated_at": "2026-07-26T13:09:50Z",
       "closed_at": null
     },
     {
@@ -18900,20 +19165,22 @@
       "state": "open",
       "state_reason": null,
       "role": "curated",
-      "workflow": "unclassified",
+      "workflow": "blocked",
       "priority": "P1",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": null,
       "areas": [],
       "labels": [
         "P1",
+        "blocked",
         "curated",
-        "kind:implementation"
+        "kind:implementation",
+        "size:L"
       ],
       "assignees": [],
       "created_at": "2026-07-26T08:11:38Z",
-      "updated_at": "2026-07-26T08:11:38Z",
+      "updated_at": "2026-07-26T13:09:52Z",
       "closed_at": null
     },
     {
@@ -18925,7 +19192,7 @@
       "role": "curated",
       "workflow": "blocked",
       "priority": "P2",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": null,
       "areas": [],
@@ -18933,11 +19200,12 @@
         "P2",
         "blocked",
         "curated",
-        "kind:implementation"
+        "kind:implementation",
+        "size:L"
       ],
       "assignees": [],
       "created_at": "2026-07-26T08:12:22Z",
-      "updated_at": "2026-07-26T08:12:22Z",
+      "updated_at": "2026-07-26T13:08:40Z",
       "closed_at": null
     },
     {
@@ -18949,7 +19217,7 @@
       "role": "curated",
       "workflow": "blocked",
       "priority": "P2",
-      "size": null,
+      "size": "L",
       "kind": "implementation",
       "area": null,
       "areas": [],
@@ -18957,11 +19225,152 @@
         "P2",
         "blocked",
         "curated",
-        "kind:implementation"
+        "kind:implementation",
+        "size:L"
       ],
       "assignees": [],
       "created_at": "2026-07-26T08:12:24Z",
-      "updated_at": "2026-07-26T08:12:24Z",
+      "updated_at": "2026-07-26T13:08:42Z",
+      "closed_at": null
+    },
+    {
+      "number": 735,
+      "title": "One-shot effect handlers: affine resumptions with a runtime double-resume backstop",
+      "url": "https://github.com/hjosugi/kofun/issues/735",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "needs-decision",
+      "priority": "P2",
+      "size": "M",
+      "kind": "spec-design",
+      "area": "effects",
+      "areas": [
+        "effects"
+      ],
+      "labels": [
+        "P2",
+        "area:effects",
+        "curated",
+        "kind:spec-design",
+        "needs-decision",
+        "size:M"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-26T13:53:47Z",
+      "updated_at": "2026-07-26T13:54:00Z",
+      "closed_at": null
+    },
+    {
+      "number": 736,
+      "title": "Deterministic structured concurrency: versioned schedule traces, strict replay, and bounded exploration",
+      "url": "https://github.com/hjosugi/kofun/issues/736",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "needs-decision",
+      "priority": "P2",
+      "size": "M",
+      "kind": "spec-design",
+      "area": "concurrency",
+      "areas": [
+        "concurrency"
+      ],
+      "labels": [
+        "P2",
+        "area:concurrency",
+        "curated",
+        "kind:spec-design",
+        "needs-decision",
+        "size:M"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-26T13:54:57Z",
+      "updated_at": "2026-07-26T13:54:57Z",
+      "closed_at": null
+    },
+    {
+      "number": 737,
+      "title": "Release evidence manifest: map public capability claims to positive and negative gates",
+      "url": "https://github.com/hjosugi/kofun/issues/737",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "ready",
+      "priority": "P1",
+      "size": "M",
+      "kind": "test-quality",
+      "area": "quality",
+      "areas": [
+        "quality"
+      ],
+      "labels": [
+        "P1",
+        "area:quality",
+        "curated",
+        "kind:test-quality",
+        "ready",
+        "size:M"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-26T13:55:53Z",
+      "updated_at": "2026-07-26T13:55:53Z",
+      "closed_at": null
+    },
+    {
+      "number": 738,
+      "title": "Time-series forecasting research: rolling-origin backtests, uncertainty, and estimator boundaries",
+      "url": "https://github.com/hjosugi/kofun/issues/738",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "deferred",
+      "priority": "P3",
+      "size": "M",
+      "kind": "research",
+      "area": "science",
+      "areas": [
+        "science"
+      ],
+      "labels": [
+        "P3",
+        "area:science",
+        "curated",
+        "deferred",
+        "kind:research",
+        "size:M"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-26T13:56:47Z",
+      "updated_at": "2026-07-26T13:56:47Z",
+      "closed_at": null
+    },
+    {
+      "number": 739,
+      "title": "Language RFC ledger: separate acceptance from implementation and require amendments",
+      "url": "https://github.com/hjosugi/kofun/issues/739",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "ready",
+      "priority": "P2",
+      "size": "M",
+      "kind": "maintenance",
+      "area": "docs_tools",
+      "areas": [
+        "docs_tools"
+      ],
+      "labels": [
+        "P2",
+        "area:docs_tools",
+        "curated",
+        "kind:maintenance",
+        "ready",
+        "size:M"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-26T13:57:41Z",
+      "updated_at": "2026-07-26T13:57:41Z",
       "closed_at": null
     }
   ]
