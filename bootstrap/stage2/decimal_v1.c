@@ -696,3 +696,574 @@ KofunDecimalStatus kofun_float_from_literal(
     *out = result;
     return KOFUN_DECIMAL_OK;
 }
+
+/* --- exact arithmetic (slice 4 of #710, issue #723) ----------------------- */
+
+static bool magnitude_copy_from(Magnitude *out, const uint32_t *limbs,
+                                size_t count) {
+    magnitude_init(out);
+    if (count == 0) return true;
+    if (!magnitude_reserve(out, count)) return false;
+    memcpy(out->limbs, limbs, count * sizeof(*out->limbs));
+    out->count = count;
+    magnitude_trim(out);
+    return true;
+}
+
+/* sum = a + b. */
+static bool magnitude_add(const Magnitude *a, const Magnitude *b,
+                          Magnitude *sum) {
+    size_t wide = a->count > b->count ? a->count : b->count;
+    magnitude_init(sum);
+    if (!magnitude_reserve(sum, wide + 1)) return false;
+    uint64_t carry = 0;
+    for (size_t index = 0; index < wide; ++index) {
+        uint64_t total = carry;
+        if (index < a->count) total += a->limbs[index];
+        if (index < b->count) total += b->limbs[index];
+        sum->limbs[index] = (uint32_t)(total & 0xFFFFFFFFu);
+        carry = total >> LIMB_BITS;
+    }
+    sum->limbs[wide] = (uint32_t)carry;
+    sum->count = wide + 1;
+    magnitude_trim(sum);
+    return true;
+}
+
+/* difference = a - b, which requires a >= b. */
+static bool magnitude_subtract(const Magnitude *a, const Magnitude *b,
+                               Magnitude *difference) {
+    magnitude_init(difference);
+    if (!magnitude_reserve(difference, a->count == 0 ? 1 : a->count)) {
+        return false;
+    }
+    int64_t borrow = 0;
+    for (size_t index = 0; index < a->count; ++index) {
+        int64_t total = (int64_t)a->limbs[index] - borrow;
+        if (index < b->count) total -= (int64_t)b->limbs[index];
+        if (total < 0) {
+            total += (int64_t)1 << LIMB_BITS;
+            borrow = 1;
+        } else {
+            borrow = 0;
+        }
+        difference->limbs[index] = (uint32_t)total;
+    }
+    difference->count = a->count;
+    magnitude_trim(difference);
+    return true;
+}
+
+/* product = a * b, schoolbook. Exactness needs every partial product kept. */
+static bool magnitude_multiply(const Magnitude *a, const Magnitude *b,
+                               Magnitude *product) {
+    magnitude_init(product);
+    if (a->count == 0 || b->count == 0) return true;
+    size_t wide = a->count + b->count;
+    if (!magnitude_reserve(product, wide)) return false;
+    memset(product->limbs, 0, wide * sizeof(*product->limbs));
+    product->count = wide;
+    for (size_t i = 0; i < a->count; ++i) {
+        uint64_t carry = 0;
+        for (size_t j = 0; j < b->count; ++j) {
+            uint64_t total = (uint64_t)a->limbs[i] * b->limbs[j] +
+                             product->limbs[i + j] + carry;
+            product->limbs[i + j] = (uint32_t)(total & 0xFFFFFFFFu);
+            carry = total >> LIMB_BITS;
+        }
+        size_t index = i + b->count;
+        while (carry != 0) {
+            uint64_t total = product->limbs[index] + carry;
+            product->limbs[index] = (uint32_t)(total & 0xFFFFFFFFu);
+            carry = total >> LIMB_BITS;
+            ++index;
+        }
+    }
+    magnitude_trim(product);
+    return true;
+}
+
+/* m *= 10^power, exactly. */
+static bool magnitude_scale_pow10(Magnitude *m, long power) {
+    if (magnitude_is_zero(m)) return true;
+    while (power >= 9) {
+        if (!magnitude_mul_add_small(m, 1000000000u, 0u)) return false;
+        power -= 9;
+    }
+    while (power > 0) {
+        if (!magnitude_mul_add_small(m, 10u, 0u)) return false;
+        --power;
+    }
+    return true;
+}
+
+/* m *= small^power, exactly. Used for the 2s and 5s an exact quotient needs. */
+static bool magnitude_scale_pow_small(Magnitude *m, uint32_t base, long power) {
+    while (power > 0) {
+        if (!magnitude_mul_add_small(m, base, 0u)) return false;
+        --power;
+    }
+    return true;
+}
+
+/*
+ * quotient, remainder = numerator / divisor, for a divisor of any width.
+ *
+ * Knuth's algorithm D. The single-limb case is split out because the general
+ * path needs a two-limb estimate and so cannot run with a one-limb divisor.
+ *
+ * This exists for one question — does the divisor's non-2-non-5 residue divide
+ * the dividend — but that question is exactly divisibility, so an approximate
+ * answer would be a wrong answer rather than a coarse one.
+ */
+static bool magnitude_divmod(const Magnitude *numerator,
+                             const Magnitude *divisor,
+                             Magnitude *quotient,
+                             Magnitude *remainder) {
+    magnitude_init(quotient);
+    magnitude_init(remainder);
+    if (magnitude_compare(numerator, divisor) < 0) {
+        return magnitude_copy_from(remainder, numerator->limbs,
+                                   numerator->count);
+    }
+    if (divisor->count == 1) {
+        if (!magnitude_copy_from(quotient, numerator->limbs,
+                                 numerator->count)) {
+            return false;
+        }
+        uint32_t rest = magnitude_divmod_small(quotient, divisor->limbs[0]);
+        if (rest != 0) {
+            if (!magnitude_reserve(remainder, 1)) return false;
+            remainder->limbs[0] = rest;
+            remainder->count = 1;
+        }
+        return true;
+    }
+
+    /* Normalize so the divisor's top limb has its high bit set. */
+    unsigned shift = 0;
+    uint32_t top = divisor->limbs[divisor->count - 1];
+    while ((top & 0x80000000u) == 0) {
+        top <<= 1;
+        ++shift;
+    }
+    size_t n = divisor->count;
+    size_t m = numerator->count - n;
+
+    Magnitude u;
+    Magnitude v;
+    magnitude_init(&u);
+    magnitude_init(&v);
+    if (!magnitude_reserve(&u, numerator->count + 1) ||
+        !magnitude_reserve(&v, n)) {
+        magnitude_free(&u);
+        magnitude_free(&v);
+        return false;
+    }
+    for (size_t index = 0; index < n; ++index) {
+        uint32_t low = divisor->limbs[index] << shift;
+        uint32_t high = shift == 0 || index == 0
+            ? 0u
+            : (uint32_t)((uint64_t)divisor->limbs[index - 1] >>
+                         (LIMB_BITS - shift));
+        v.limbs[index] = low | high;
+    }
+    v.count = n;
+    for (size_t index = 0; index < numerator->count; ++index) {
+        uint32_t low = numerator->limbs[index] << shift;
+        uint32_t high = shift == 0 || index == 0
+            ? 0u
+            : (uint32_t)((uint64_t)numerator->limbs[index - 1] >>
+                         (LIMB_BITS - shift));
+        u.limbs[index] = low | high;
+    }
+    u.limbs[numerator->count] = shift == 0
+        ? 0u
+        : (uint32_t)((uint64_t)numerator->limbs[numerator->count - 1] >>
+                     (LIMB_BITS - shift));
+    u.count = numerator->count + 1;
+
+    if (!magnitude_reserve(quotient, m + 1)) {
+        magnitude_free(&u);
+        magnitude_free(&v);
+        return false;
+    }
+    memset(quotient->limbs, 0, (m + 1) * sizeof(*quotient->limbs));
+    quotient->count = m + 1;
+
+    const uint64_t base = (uint64_t)1 << LIMB_BITS;
+    for (size_t j = m + 1; j-- > 0;) {
+        uint64_t two = ((uint64_t)u.limbs[j + n] << LIMB_BITS) |
+                       u.limbs[j + n - 1];
+        uint64_t qhat = two / v.limbs[n - 1];
+        uint64_t rhat = two % v.limbs[n - 1];
+        while (qhat >= base ||
+               qhat * v.limbs[n - 2] > (rhat << LIMB_BITS) + u.limbs[j + n - 2]) {
+            --qhat;
+            rhat += v.limbs[n - 1];
+            if (rhat >= base) break;
+        }
+
+        /* Multiply and subtract. */
+        int64_t borrow = 0;
+        uint64_t carry = 0;
+        for (size_t index = 0; index < n; ++index) {
+            uint64_t product = qhat * v.limbs[index] + carry;
+            carry = product >> LIMB_BITS;
+            int64_t total = (int64_t)u.limbs[index + j] -
+                            (int64_t)(product & 0xFFFFFFFFu) - borrow;
+            if (total < 0) {
+                total += (int64_t)base;
+                borrow = 1;
+            } else {
+                borrow = 0;
+            }
+            u.limbs[index + j] = (uint32_t)total;
+        }
+        int64_t total = (int64_t)u.limbs[j + n] - (int64_t)carry - borrow;
+        if (total < 0) {
+            total += (int64_t)base;
+            borrow = 1;
+        } else {
+            borrow = 0;
+        }
+        u.limbs[j + n] = (uint32_t)total;
+
+        if (borrow != 0) {
+            /* qhat was one too large: add the divisor back. */
+            --qhat;
+            uint64_t back = 0;
+            for (size_t index = 0; index < n; ++index) {
+                uint64_t sum = (uint64_t)u.limbs[index + j] +
+                               v.limbs[index] + back;
+                u.limbs[index + j] = (uint32_t)(sum & 0xFFFFFFFFu);
+                back = sum >> LIMB_BITS;
+            }
+            u.limbs[j + n] = (uint32_t)(u.limbs[j + n] + back);
+        }
+        quotient->limbs[j] = (uint32_t)qhat;
+    }
+    magnitude_trim(quotient);
+
+    /* Denormalize the remainder. */
+    if (!magnitude_reserve(remainder, n)) {
+        magnitude_free(&u);
+        magnitude_free(&v);
+        return false;
+    }
+    for (size_t index = 0; index < n; ++index) {
+        uint32_t low = (uint32_t)((uint64_t)u.limbs[index] >> shift);
+        uint32_t high = shift == 0 || index + 1 >= n
+            ? 0u
+            : (uint32_t)(u.limbs[index + 1] << (LIMB_BITS - shift));
+        remainder->limbs[index] = low | high;
+    }
+    remainder->count = n;
+    magnitude_trim(remainder);
+
+    magnitude_free(&u);
+    magnitude_free(&v);
+    return true;
+}
+
+/* Exact decimal digit count, for the profile's digit limit. */
+static bool magnitude_digit_count(const Magnitude *m, size_t *digits) {
+    *digits = 0;
+    if (magnitude_is_zero(m)) {
+        *digits = 1;
+        return true;
+    }
+    Magnitude scratch;
+    if (!magnitude_copy_from(&scratch, m->limbs, m->count)) return false;
+    while (!magnitude_is_zero(&scratch)) {
+        uint32_t chunk = magnitude_divmod_small(&scratch, 1000000000u);
+        if (magnitude_is_zero(&scratch)) {
+            while (chunk != 0) {
+                ++*digits;
+                chunk /= 10u;
+            }
+        } else {
+            *digits += 9;
+        }
+    }
+    magnitude_free(&scratch);
+    return true;
+}
+
+/*
+ * Turn a computed (sign, magnitude, scale) into a canonical result, applying
+ * the profile's limits.
+ *
+ * The limits are checked *after* canonicalization on purpose. `0.1 + 0.2`
+ * produces 3 with scale 1 only once the trailing zero is moved into the scale;
+ * a check before that would reject results the profile does admit. Frozen
+ * decision 8 requires the limit to fail rather than clamp, so this consumes
+ * the magnitude either way.
+ */
+static KofunDecimalStatus finish(int sign, Magnitude *magnitude, long scale,
+                                 KofunDecimal *out) {
+    kofun_decimal_init(out);
+    magnitude_trim(magnitude);
+    if (magnitude_is_zero(magnitude)) {
+        magnitude_free(magnitude);
+        return KOFUN_DECIMAL_OK;
+    }
+    canonicalize(magnitude, &scale);
+    size_t digits = 0;
+    if (!magnitude_digit_count(magnitude, &digits)) {
+        magnitude_free(magnitude);
+        return KOFUN_DECIMAL_MEMORY;
+    }
+    if (digits > KOFUN_DECIMAL_MAX_SIGNIFICAND_DIGITS) {
+        magnitude_free(magnitude);
+        return KOFUN_DECIMAL_DIGIT_LIMIT;
+    }
+    if (scale > KOFUN_DECIMAL_MAX_SCALE || scale < KOFUN_DECIMAL_MIN_SCALE) {
+        magnitude_free(magnitude);
+        return KOFUN_DECIMAL_SCALE_LIMIT;
+    }
+    out->limbs = magnitude->limbs;
+    out->limb_count = magnitude->count;
+    out->scale = (int32_t)scale;
+    out->sign = sign;
+    out->inline_storage = magnitude->count <= INLINE_LIMBS;
+    return KOFUN_DECIMAL_OK;
+}
+
+/*
+ * Both operands as magnitudes at one common scale.
+ *
+ * The common scale is the larger of the two, reached by multiplying the
+ * coarser operand by an exact power of ten. Scaling the coarser one up is what
+ * keeps the alignment exact: scaling the finer one down would divide, and
+ * dividing is where digits get lost.
+ */
+static KofunDecimalStatus align(const KofunDecimal *left,
+                                const KofunDecimal *right,
+                                Magnitude *a, Magnitude *b, long *scale) {
+    long left_scale = left->scale;
+    long right_scale = right->scale;
+    *scale = left_scale > right_scale ? left_scale : right_scale;
+    if (!magnitude_copy_from(a, left->limbs, left->limb_count)) {
+        return KOFUN_DECIMAL_MEMORY;
+    }
+    if (!magnitude_copy_from(b, right->limbs, right->limb_count)) {
+        magnitude_free(a);
+        return KOFUN_DECIMAL_MEMORY;
+    }
+    if (*scale - left_scale > KOFUN_DECIMAL_MAX_SIGNIFICAND_DIGITS ||
+        *scale - right_scale > KOFUN_DECIMAL_MAX_SIGNIFICAND_DIGITS) {
+        /* The alignment alone would exceed the digit limit. Refuse before
+         * allocating it rather than after. */
+        magnitude_free(a);
+        magnitude_free(b);
+        return KOFUN_DECIMAL_DIGIT_LIMIT;
+    }
+    if (!magnitude_scale_pow10(a, *scale - left_scale) ||
+        !magnitude_scale_pow10(b, *scale - right_scale)) {
+        magnitude_free(a);
+        magnitude_free(b);
+        return KOFUN_DECIMAL_MEMORY;
+    }
+    return KOFUN_DECIMAL_OK;
+}
+
+/* Signed addition of two aligned magnitudes. `right_sign` flips for subtract. */
+static KofunDecimalStatus add_signed(const KofunDecimal *left,
+                                     const KofunDecimal *right,
+                                     int right_sign, KofunDecimal *out) {
+    kofun_decimal_init(out);
+    Magnitude a;
+    Magnitude b;
+    long scale = 0;
+    KofunDecimalStatus status = align(left, right, &a, &b, &scale);
+    if (status != KOFUN_DECIMAL_OK) return status;
+
+    Magnitude result;
+    int sign;
+    if (left->sign == 0) {
+        sign = right_sign;
+        if (!magnitude_copy_from(&result, b.limbs, b.count)) {
+            magnitude_free(&a);
+            magnitude_free(&b);
+            return KOFUN_DECIMAL_MEMORY;
+        }
+    } else if (right_sign == 0) {
+        sign = left->sign;
+        if (!magnitude_copy_from(&result, a.limbs, a.count)) {
+            magnitude_free(&a);
+            magnitude_free(&b);
+            return KOFUN_DECIMAL_MEMORY;
+        }
+    } else if (left->sign == right_sign) {
+        sign = left->sign;
+        if (!magnitude_add(&a, &b, &result)) {
+            magnitude_free(&a);
+            magnitude_free(&b);
+            return KOFUN_DECIMAL_MEMORY;
+        }
+    } else {
+        int order = magnitude_compare(&a, &b);
+        bool ok;
+        if (order >= 0) {
+            sign = left->sign;
+            ok = magnitude_subtract(&a, &b, &result);
+        } else {
+            sign = right_sign;
+            ok = magnitude_subtract(&b, &a, &result);
+        }
+        if (!ok) {
+            magnitude_free(&a);
+            magnitude_free(&b);
+            return KOFUN_DECIMAL_MEMORY;
+        }
+    }
+    magnitude_free(&a);
+    magnitude_free(&b);
+    return finish(sign, &result, scale, out);
+}
+
+KofunDecimalStatus kofun_decimal_add(const KofunDecimal *left,
+                                     const KofunDecimal *right,
+                                     KofunDecimal *out) {
+    if (left == NULL || right == NULL || out == NULL) {
+        return KOFUN_DECIMAL_MALFORMED;
+    }
+    return add_signed(left, right, right->sign, out);
+}
+
+KofunDecimalStatus kofun_decimal_subtract(const KofunDecimal *left,
+                                          const KofunDecimal *right,
+                                          KofunDecimal *out) {
+    if (left == NULL || right == NULL || out == NULL) {
+        return KOFUN_DECIMAL_MALFORMED;
+    }
+    return add_signed(left, right, -right->sign, out);
+}
+
+KofunDecimalStatus kofun_decimal_multiply(const KofunDecimal *left,
+                                          const KofunDecimal *right,
+                                          KofunDecimal *out) {
+    if (left == NULL || right == NULL || out == NULL) {
+        return KOFUN_DECIMAL_MALFORMED;
+    }
+    kofun_decimal_init(out);
+    if (left->sign == 0 || right->sign == 0) return KOFUN_DECIMAL_OK;
+
+    Magnitude a;
+    Magnitude b;
+    if (!magnitude_copy_from(&a, left->limbs, left->limb_count)) {
+        return KOFUN_DECIMAL_MEMORY;
+    }
+    if (!magnitude_copy_from(&b, right->limbs, right->limb_count)) {
+        magnitude_free(&a);
+        return KOFUN_DECIMAL_MEMORY;
+    }
+    Magnitude product;
+    bool ok = magnitude_multiply(&a, &b, &product);
+    magnitude_free(&a);
+    magnitude_free(&b);
+    if (!ok) return KOFUN_DECIMAL_MEMORY;
+
+    /* Scales add, and the sum is computed in long so it cannot wrap before
+     * the profile's range check sees it. */
+    long scale = (long)left->scale + (long)right->scale;
+    return finish(left->sign * right->sign, &product, scale, out);
+}
+
+const char *kofun_decimal_division_name(KofunDecimalDivision outcome) {
+    switch (outcome) {
+        case KOFUN_DECIMAL_DIVISION_EXACT: return "Exact";
+        case KOFUN_DECIMAL_DIVISION_INEXACT: return "InexactDivision";
+        case KOFUN_DECIMAL_DIVISION_BY_ZERO: return "DivisionByZero";
+    }
+    return "Exact";
+}
+
+KofunDecimalStatus kofun_decimal_divide_exact(const KofunDecimal *left,
+                                              const KofunDecimal *right,
+                                              KofunDecimal *out,
+                                              KofunDecimalDivision *outcome) {
+    if (left == NULL || right == NULL || out == NULL || outcome == NULL) {
+        return KOFUN_DECIMAL_MALFORMED;
+    }
+    kofun_decimal_init(out);
+    *outcome = KOFUN_DECIMAL_DIVISION_EXACT;
+    if (right->sign == 0) {
+        *outcome = KOFUN_DECIMAL_DIVISION_BY_ZERO;
+        return KOFUN_DECIMAL_OK;
+    }
+    if (left->sign == 0) return KOFUN_DECIMAL_OK;
+
+    Magnitude numerator;
+    Magnitude divisor;
+    if (!magnitude_copy_from(&numerator, left->limbs, left->limb_count)) {
+        return KOFUN_DECIMAL_MEMORY;
+    }
+    if (!magnitude_copy_from(&divisor, right->limbs, right->limb_count)) {
+        magnitude_free(&numerator);
+        return KOFUN_DECIMAL_MEMORY;
+    }
+
+    /*
+     * Write the divisor as 2^twos * 5^fives * residue. The quotient
+     * terminates exactly when `residue` divides the dividend — the residue is
+     * coprime to ten, so it cannot be cancelled by any power of ten, and it
+     * survives reduction unless the dividend already contains it.
+     */
+    long twos = 0;
+    long fives = 0;
+    while (magnitude_mod_small(&divisor, 2u) == 0) {
+        (void)magnitude_divmod_small(&divisor, 2u);
+        ++twos;
+    }
+    while (magnitude_mod_small(&divisor, 5u) == 0) {
+        (void)magnitude_divmod_small(&divisor, 5u);
+        ++fives;
+    }
+
+    Magnitude quotient;
+    magnitude_init(&quotient);
+    bool residue_is_one = divisor.count == 1 && divisor.limbs[0] == 1u;
+    if (residue_is_one) {
+        if (!magnitude_copy_from(&quotient, numerator.limbs,
+                                 numerator.count)) {
+            magnitude_free(&numerator);
+            magnitude_free(&divisor);
+            return KOFUN_DECIMAL_MEMORY;
+        }
+    } else {
+        Magnitude remainder;
+        if (!magnitude_divmod(&numerator, &divisor, &quotient, &remainder)) {
+            magnitude_free(&numerator);
+            magnitude_free(&divisor);
+            return KOFUN_DECIMAL_MEMORY;
+        }
+        bool exact = magnitude_is_zero(&remainder);
+        magnitude_free(&remainder);
+        if (!exact) {
+            magnitude_free(&numerator);
+            magnitude_free(&divisor);
+            magnitude_free(&quotient);
+            *outcome = KOFUN_DECIMAL_DIVISION_INEXACT;
+            return KOFUN_DECIMAL_OK;
+        }
+    }
+    magnitude_free(&numerator);
+    magnitude_free(&divisor);
+
+    /*
+     * quotient / (2^twos * 5^fives) is made exact by scaling to a common
+     * power of ten: multiply by the factor each side is short of, and record
+     * the ten's power in the scale.
+     */
+    long tens = twos > fives ? twos : fives;
+    if (!magnitude_scale_pow_small(&quotient, 2u, tens - twos) ||
+        !magnitude_scale_pow_small(&quotient, 5u, tens - fives)) {
+        magnitude_free(&quotient);
+        return KOFUN_DECIMAL_MEMORY;
+    }
+
+    long scale = (long)left->scale - (long)right->scale + tens;
+    return finish(left->sign * right->sign, &quotient, scale, out);
+}

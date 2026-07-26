@@ -207,9 +207,167 @@ static int command_limit(const char *kind) {
     return 0;
 }
 
+/*
+ * `arith OP LEFT RIGHT ...` — one exact operation per operand pair.
+ *
+ * The result is printed as canonical text *and* as significand/scale, because
+ * the two catch different mistakes: canonical text would hide a result that
+ * carried the right value with an uncanonical scale, and significand/scale
+ * alone would not show that `0.1 + 0.2` and `0.3` render identically.
+ */
+static int command_arith(const char *op, int count, char **arguments) {
+    for (int index = 0; index + 1 < count; index += 2) {
+        KofunDecimal left;
+        KofunDecimal right;
+        KofunDecimal result;
+        kofun_decimal_init(&left);
+        kofun_decimal_init(&right);
+        kofun_decimal_init(&result);
+        if (kofun_decimal_from_literal(
+                arguments[index], strlen(arguments[index]), &left) !=
+                KOFUN_DECIMAL_OK ||
+            kofun_decimal_from_literal(
+                arguments[index + 1], strlen(arguments[index + 1]), &right) !=
+                KOFUN_DECIMAL_OK) {
+            kofun_decimal_free(&left);
+            kofun_decimal_free(&right);
+            return fail("an operand is not a valid literal");
+        }
+        KofunDecimalStatus status;
+        KofunDecimalDivision outcome = KOFUN_DECIMAL_DIVISION_EXACT;
+        if (strcmp(op, "add") == 0) {
+            status = kofun_decimal_add(&left, &right, &result);
+        } else if (strcmp(op, "sub") == 0) {
+            status = kofun_decimal_subtract(&left, &right, &result);
+        } else if (strcmp(op, "mul") == 0) {
+            status = kofun_decimal_multiply(&left, &right, &result);
+        } else {
+            status = kofun_decimal_divide_exact(
+                &left, &right, &result, &outcome);
+        }
+        if (status != KOFUN_DECIMAL_OK) {
+            printf(
+                "%s %s %s -> %s\n",
+                arguments[index],
+                op,
+                arguments[index + 1],
+                kofun_decimal_status_code(status)
+            );
+        } else if (outcome != KOFUN_DECIMAL_DIVISION_EXACT) {
+            printf(
+                "%s %s %s -> %s\n",
+                arguments[index],
+                op,
+                arguments[index + 1],
+                kofun_decimal_division_name(outcome)
+            );
+        } else {
+            char *canonical = kofun_decimal_to_canonical_text(&result);
+            char *significand = kofun_decimal_significand_text(&result);
+            if (canonical == NULL || significand == NULL) {
+                free(canonical);
+                free(significand);
+                kofun_decimal_free(&left);
+                kofun_decimal_free(&right);
+                kofun_decimal_free(&result);
+                return fail("out of memory rendering a result");
+            }
+            printf(
+                "%s %s %s -> %s significand=%s scale=%d\n",
+                arguments[index],
+                op,
+                arguments[index + 1],
+                canonical,
+                significand,
+                result.scale
+            );
+            free(canonical);
+            free(significand);
+        }
+        kofun_decimal_free(&left);
+        kofun_decimal_free(&right);
+        kofun_decimal_free(&result);
+    }
+    return 0;
+}
+
+/*
+ * `identity LEFT RIGHT SUM ...` — the headline acceptance criterion of #710,
+ * as an equality rather than a rendering: `0.1 + 0.2 == 0.3`.
+ *
+ * This is deliberately not "does it print 0.3". A backend that rendered
+ * correctly while comparing unequal would pass a rendering check and fail
+ * every program a user writes.
+ */
+static int command_identity(int count, char **arguments) {
+    for (int index = 0; index + 2 < count; index += 3) {
+        KofunDecimal left;
+        KofunDecimal right;
+        KofunDecimal expected;
+        KofunDecimal sum;
+        kofun_decimal_init(&left);
+        kofun_decimal_init(&right);
+        kofun_decimal_init(&expected);
+        kofun_decimal_init(&sum);
+        if (kofun_decimal_from_literal(
+                arguments[index], strlen(arguments[index]), &left) !=
+                KOFUN_DECIMAL_OK ||
+            kofun_decimal_from_literal(
+                arguments[index + 1], strlen(arguments[index + 1]), &right) !=
+                KOFUN_DECIMAL_OK ||
+            kofun_decimal_from_literal(
+                arguments[index + 2], strlen(arguments[index + 2]),
+                &expected) != KOFUN_DECIMAL_OK) {
+            kofun_decimal_free(&left);
+            kofun_decimal_free(&right);
+            kofun_decimal_free(&expected);
+            return fail("an operand is not a valid literal");
+        }
+        KofunDecimalStatus status = kofun_decimal_add(&left, &right, &sum);
+        if (status != KOFUN_DECIMAL_OK) {
+            printf(
+                "%s + %s == %s -> %s\n",
+                arguments[index],
+                arguments[index + 1],
+                arguments[index + 2],
+                kofun_decimal_status_code(status)
+            );
+        } else {
+            /*
+             * The binary64 answer is printed beside the decimal one. That is
+             * the whole point of keeping the two types apart: this line is
+             * where `0.30000000000000004` shows up, and it is evidence that
+             * the decimal path is not quietly going through a double.
+             */
+            double binary = strtod(arguments[index], NULL) +
+                            strtod(arguments[index + 1], NULL);
+            printf(
+                "%s + %s == %s -> %s binary64=%.17g\n",
+                arguments[index],
+                arguments[index + 1],
+                arguments[index + 2],
+                kofun_decimal_equal(&sum, &expected) ? "true" : "false",
+                binary
+            );
+        }
+        kofun_decimal_free(&left);
+        kofun_decimal_free(&right);
+        kofun_decimal_free(&expected);
+        kofun_decimal_free(&sum);
+    }
+    return 0;
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) return fail("usage: decimal-test COMMAND [ARGS...]");
     const char *command = argv[1];
+    if (strcmp(command, "add") == 0 || strcmp(command, "sub") == 0 ||
+        strcmp(command, "mul") == 0 || strcmp(command, "div") == 0) {
+        return command_arith(command, argc - 2, argv + 2);
+    }
+    if (strcmp(command, "identity") == 0) {
+        return command_identity(argc - 2, argv + 2);
+    }
     if (strcmp(command, "construct") == 0) {
         return command_construct(argc - 2, argv + 2);
     }

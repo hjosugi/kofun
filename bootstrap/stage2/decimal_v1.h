@@ -125,4 +125,74 @@ KofunDecimalStatus kofun_float_from_literal(
     double *out
 );
 
+/* --- exact arithmetic (slice 4 of #710, issue #723) ----------------------- */
+
+/*
+ * Addition, subtraction and multiplication are exact: the result's scale
+ * follows from the operands and no digit is discarded (frozen decision 5).
+ * `+` and `-` align the two scales with an exact power of ten and take the
+ * larger; `*` adds the scales. The result is canonicalized, so trailing
+ * decimal zeros produced by the operation move into the scale and
+ * `0.1 + 0.2` and `0.3` are one value.
+ *
+ * The only failures are resource failures: a result may exceed the profile's
+ * digit or scale limit, and then it fails rather than rounding. There is no
+ * rounding mode here because these operations never round.
+ *
+ * `out` is initialized by the callee and owned by the caller on success; on
+ * failure it is left as a valid empty value that `kofun_decimal_free` accepts.
+ */
+KofunDecimalStatus kofun_decimal_add(
+    const KofunDecimal *left,
+    const KofunDecimal *right,
+    KofunDecimal *out
+);
+KofunDecimalStatus kofun_decimal_subtract(
+    const KofunDecimal *left,
+    const KofunDecimal *right,
+    KofunDecimal *out
+);
+KofunDecimalStatus kofun_decimal_multiply(
+    const KofunDecimal *left,
+    const KofunDecimal *right,
+    KofunDecimal *out
+);
+
+/*
+ * The outcome of an exact division, which is a fact about the two values
+ * rather than a resource failure — so it is a separate enum from
+ * `KofunDecimalStatus`. Conflating them would let a caller treat "this
+ * quotient needs more digits than the profile allows" and "this quotient does
+ * not terminate at all" as the same thing; only the first would be fixed by a
+ * larger profile.
+ *
+ * There are exactly three outcomes and no fourth. In particular there is no
+ * "rounded" outcome: rounded division is a different operation that requires a
+ * destination scale and a mode, and it is slice 5.
+ */
+typedef enum {
+    KOFUN_DECIMAL_DIVISION_EXACT = 0,
+    KOFUN_DECIMAL_DIVISION_INEXACT = 1,
+    KOFUN_DECIMAL_DIVISION_BY_ZERO = 2
+} KofunDecimalDivision;
+
+/* Stable spelling of an outcome, matching `docs/DECIMAL.md`. */
+const char *kofun_decimal_division_name(KofunDecimalDivision outcome);
+
+/*
+ * Exact division. `out` receives the quotient only when `*outcome` is
+ * `KOFUN_DECIMAL_DIVISION_EXACT`; otherwise it is a valid empty value.
+ *
+ * A quotient terminates exactly when, after reducing, the denominator has no
+ * prime factor other than two and five. This is decided rather than
+ * approximated: the divisor's factors of two and five are removed, and the
+ * quotient is exact precisely when what remains divides the dividend.
+ */
+KofunDecimalStatus kofun_decimal_divide_exact(
+    const KofunDecimal *left,
+    const KofunDecimal *right,
+    KofunDecimal *out,
+    KofunDecimalDivision *outcome
+);
+
 #endif

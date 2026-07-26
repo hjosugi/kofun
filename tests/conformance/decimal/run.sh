@@ -139,6 +139,58 @@ then
 fi
 printf '%s\n' "PASS: no host decimal parser on the conversion path"
 
+# --- exact arithmetic (slice 4 of #710, issue #723) ------------------------
+
+# The headline acceptance criterion of #710, and the reason this type exists.
+# Each line prints the decimal answer beside the binary64 one, so the golden
+# carries its own counterexample: `0.30000000000000004` next to `true` is the
+# evidence that the decimal path is not going through a double.
+golden identity identity \
+    0.1 0.2 0.3 \
+    0.1 0.7 0.8 \
+    1.005 0.005 1.01 \
+    2.675 0.001 2.676 \
+    100000000000000000000 1 100000000000000000001
+
+# Exactness of + - *, on operands chosen so binary64 gives a different answer.
+# 9007199254740993 is 2^53+1, the first integer a double cannot represent, so
+# an implementation that routed through one loses the low digit here.
+# Every operand is unsigned: the profile's literal grammar has no sign, so a
+# negative value arrives through the operator. `sub` below is what produces
+# one, and its golden is where the sign handling is actually observed.
+golden arith_add add \
+    0.1 0.2 \
+    1.5 2.5 \
+    9007199254740993 1 \
+    123456789012345678901234567890 0.000000000000000000000000000001
+golden arith_sub sub \
+    0.3 0.1 \
+    1 1 \
+    0.1 0.2 \
+    9007199254740993 9007199254740992 \
+    1000000 0.000001
+golden arith_mul mul \
+    1.5 2 \
+    0.1 0.1 \
+    1.1 1.1 \
+    9007199254740993 2 \
+    0 12345
+
+# Division has exactly three outcomes and no fourth. The exact cases include a
+# multi-limb divisor whose non-2-non-5 residue divides the dividend, which is
+# the path that decides exactness by dividing rather than by inspecting the
+# denominator's small factors.
+golden arith_div div \
+    1.0 4.0 \
+    1.0 3.0 \
+    1.0 0.0 \
+    0.0 5 \
+    10 4 \
+    1 3333333333333333333333333333333 \
+    9999999999999999999999999999999 3333333333333333333333333333333 \
+    7 70 \
+    1 6
+
 # Sanitizers, matching what the other Stage 2 module gates do. An
 # arbitrary-precision buffer that grows by doubling is exactly the shape where
 # an off-by-one survives a golden comparison.
@@ -169,13 +221,36 @@ then
     ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
     UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
         "$WORK/decimal-test-sanitized" limit digits-over >/dev/null
+    # The arithmetic allocates far more than construction does: alignment
+    # grows an operand by a power of ten, multiplication allocates the full
+    # product, and the general division path normalizes both operands into
+    # scratch buffers. Every one of those is swept here.
+    ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+    UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+        "$WORK/decimal-test-sanitized" add 0.1 0.2 1e-6000 1e6000 \
+        >/dev/null
+    ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+    UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+        "$WORK/decimal-test-sanitized" mul \
+        123456789012345678901234567890 987654321098765432109876543210 \
+        >/dev/null
+    ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+    UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+        "$WORK/decimal-test-sanitized" div \
+        9999999999999999999999999999999 3333333333333333333333333333333 \
+        1.0 3.0 1.0 0.0 \
+        >/dev/null
+    ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+    UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+        "$WORK/decimal-test-sanitized" identity 0.1 0.2 0.3 >/dev/null
     printf '%s\n' "PASS: AddressSanitizer and UndefinedBehaviorSanitizer"
 else
     printf '%s\n' "SKIP: sanitizers unavailable"
 fi
 
 printf '%s\n' \
-    "PASS: Decimal slice 2 — arbitrary-precision canonical representation," \
+    "PASS: Decimal slices 2 and 4 — arbitrary-precision representation," \
     "  versioned resource profile v$( \
         "$WORK/decimal-test" profile | \
-        sed -n 's/^profile-version=//p'), and exact binary64"
+        sed -n 's/^profile-version=//p'), exact binary64," \
+    "  and exact +, -, * with checked exact division"
