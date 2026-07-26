@@ -1,0 +1,57 @@
+{
+  "authoritative": false,
+  "failure": null,
+  "limits": {
+    "diagnostic_bytes": 4096,
+    "diagnostic_frames": 8,
+    "display_bytes": 4096,
+    "frames": 32,
+    "static_message_bytes": 4096,
+    "steps": 256,
+    "structured_bytes": 4194304,
+    "text_explain_bytes": 65536,
+    "trace_records": 256,
+    "type_nodes": 256
+  },
+  "observed": {
+    "frames": 1,
+    "steps": 1,
+    "type_nodes": 1
+  },
+  "profile": "kofun.type-reduction/default-v1",
+  "result": {
+    "display": "Int",
+    "type_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "root": {
+    "display": "Meters",
+    "identity": {
+      "kind": "TypeId",
+      "value": "8888888888888888888888888888888888888888888888888888888888888888"
+    }
+  },
+  "schema": "kofun.type-reduction-trace/v1",
+  "status": "reduced",
+  "steps": [
+    {
+      "arm_index": null,
+      "cumulative_nodes": 1,
+      "cumulative_steps": 1,
+      "declaration_symbol_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "depth": 1,
+      "input": "Meters",
+      "kind": "alias-expansion",
+      "output": "Int",
+      "root_identity": {
+        "kind": "TypeId",
+        "value": "8888888888888888888888888888888888888888888888888888888888888888"
+      },
+      "span": {
+        "end": 24,
+        "file_id": "9999999999999999999999999999999999999999999999999999999999999999",
+        "start": 0
+      },
+      "step": 1
+    }
+  ]
+}

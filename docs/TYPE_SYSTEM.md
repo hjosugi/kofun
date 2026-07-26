@@ -492,17 +492,52 @@ DynArray[Float]
 
 ## Type-level functions
 
+Kofun has selected a deliberately bounded v1 profile, specified normatively in
+[`type-level-programming-v1.md`](../spec/type-level-programming-v1.md). This is
+a design target, not an implemented compiler feature: the active compiler does
+not parse, kind-check, reduce, or emit traces for `type fn`.
+
 ```kofun
-type fn OutputShape[A, B] = Broadcast[A, B]
+type fn Flatten[T: Type] -> Type {
+    match T {
+        List[item] => Flatten[item]
+        _ => T
+    }
+}
 ```
 
-Constraints:
+The selected profile permits only:
 
-- termination or a fuel limit
-- deterministic
-- no IO
-- good diagnostics
-- cacheable
+- non-recursive transparent aliases and nominal constructor application;
+- module-level named `type fn` declarations whose explicit parameter and
+  result kinds are `Type`;
+- exhaustive matches with non-overlapping nominal constructor heads, bound
+  variables, and at most one final residual `_` fallback;
+- an acyclic inter-function call graph; and
+- direct self-recursion only on a strict matched subterm.
+
+It rejects anonymous conditional and mapped types, `infer` chains,
+template-literal types, type lambdas, higher-kinded parameters, implicit union
+distribution, recursive aliases, mutual/general recursion, effects, value
+reflection, and type-level string computation. Trait, law, refinement, const,
+shape, and associated-type solving remain separate features rather than hidden
+steps in this evaluator.
+
+`kofun.type-reduction/default-v1` fixes the root-reduction budget at 32 active
+frames, 256 logical reduction steps, and 256 constructed logical type nodes.
+Programs cannot raise those limits. Exceeding a limit is a deterministic type
+error, never silent acceptance as `Any`, an unknown type, or a partial result.
+
+Every future implementation must produce the versioned
+`kofun.type-reduction-trace/v1` artifact and pass its
+[schema](../spec/type-reduction-trace/kofun.type-reduction-trace.v1.schema.json)
+and [vector gate](../spec/type-reduction-trace/). Ordinary output keeps named
+forms and is capped at 4,096 UTF-8 bytes; normal diagnostics show at most eight
+trace frames. The complete structured trace retains at most 256 records and
+4 MiB, while `kofun type explain` text is capped at 64 KiB with an exact
+omitted-step count. `kofun type eval`, `kofun type explain`, LSP one-step
+expansion, and an interactive debugger must consume the same logical trace
+rather than scrape expanded diagnostic text.
 
 ## Current implementation
 

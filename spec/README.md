@@ -36,6 +36,14 @@ executable bootstrap implementation.
   validator, negative corpus, replacement model, and executable gate.
 - `../tooling/typed-sidecar/` implements the bounded, recursively immutable
   tooling codec and stale-safe atomic replacement without granting authority.
+- `type-level-programming-v1.md` defines the Type-only, named, structurally
+  terminating type-function profile, its fixed reduction/display budgets, and
+  the requirement that type-level features ship with inspectable traces.
+- `type-reduction-trace/kofun.type-reduction-trace.v1.schema.json`, its
+  alias, type-function, and failure vectors in `examples/`, and
+  `type-reduction-trace/check.sh` define the executable
+  `kofun.type-reduction-trace/v1` validation gate. No active compiler emits
+  this trace yet.
 - `law-evidence-v2.schema.json` defines the accepted target
   `kofun.law-evidence/v2` artifact, including purpose-separated cache/evidence
   identities, ground law/implementation/model inputs, standard-v1 resource

@@ -1,0 +1,69 @@
+{
+  "authoritative": false,
+  "failure": {
+    "arm_index": 0,
+    "declaration_symbol_id": "6666666666666666666666666666666666666666666666666666666666666666",
+    "kind": "cycle",
+    "measured": {
+      "frames": 2,
+      "steps": 1,
+      "type_nodes": 1
+    },
+    "message": "type reduction cycle in Loop at arm 0",
+    "span": {
+      "end": 88,
+      "file_id": "7777777777777777777777777777777777777777777777777777777777777777",
+      "start": 64
+    }
+  },
+  "limits": {
+    "diagnostic_bytes": 4096,
+    "diagnostic_frames": 8,
+    "display_bytes": 4096,
+    "frames": 32,
+    "static_message_bytes": 4096,
+    "steps": 256,
+    "structured_bytes": 4194304,
+    "text_explain_bytes": 65536,
+    "trace_records": 256,
+    "type_nodes": 256
+  },
+  "observed": {
+    "frames": 1,
+    "steps": 1,
+    "type_nodes": 1
+  },
+  "profile": "kofun.type-reduction/default-v1",
+  "result": null,
+  "root": {
+    "display": "Loop[Int]",
+    "identity": {
+      "kind": "SymbolId",
+      "value": "5555555555555555555555555555555555555555555555555555555555555555"
+    }
+  },
+  "schema": "kofun.type-reduction-trace/v1",
+  "status": "failed",
+  "steps": [
+    {
+      "arm_index": 0,
+      "cumulative_nodes": 1,
+      "cumulative_steps": 1,
+      "declaration_symbol_id": "6666666666666666666666666666666666666666666666666666666666666666",
+      "depth": 1,
+      "input": "Loop[Int]",
+      "kind": "type-function-arm",
+      "output": "Loop[Int]",
+      "root_identity": {
+        "kind": "SymbolId",
+        "value": "5555555555555555555555555555555555555555555555555555555555555555"
+      },
+      "span": {
+        "end": 88,
+        "file_id": "7777777777777777777777777777777777777777777777777777777777777777",
+        "start": 64
+      },
+      "step": 1
+    }
+  ]
+}

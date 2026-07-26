@@ -1,0 +1,77 @@
+{
+  "authoritative": false,
+  "failure": null,
+  "limits": {
+    "diagnostic_bytes": 4096,
+    "diagnostic_frames": 8,
+    "display_bytes": 4096,
+    "frames": 32,
+    "static_message_bytes": 4096,
+    "steps": 256,
+    "structured_bytes": 4194304,
+    "text_explain_bytes": 65536,
+    "trace_records": 256,
+    "type_nodes": 256
+  },
+  "observed": {
+    "frames": 2,
+    "steps": 2,
+    "type_nodes": 3
+  },
+  "profile": "kofun.type-reduction/default-v1",
+  "result": {
+    "display": "Int",
+    "type_id": "4444444444444444444444444444444444444444444444444444444444444444"
+  },
+  "root": {
+    "display": "Flatten[List[Int]]",
+    "identity": {
+      "kind": "TypeId",
+      "value": "1111111111111111111111111111111111111111111111111111111111111111"
+    }
+  },
+  "schema": "kofun.type-reduction-trace/v1",
+  "status": "reduced",
+  "steps": [
+    {
+      "arm_index": 0,
+      "cumulative_nodes": 2,
+      "cumulative_steps": 1,
+      "declaration_symbol_id": "2222222222222222222222222222222222222222222222222222222222222222",
+      "depth": 1,
+      "input": "Flatten[List[Int]]",
+      "kind": "type-function-arm",
+      "output": "Flatten[Int]",
+      "root_identity": {
+        "kind": "TypeId",
+        "value": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "span": {
+        "end": 140,
+        "file_id": "3333333333333333333333333333333333333333333333333333333333333333",
+        "start": 100
+      },
+      "step": 1
+    },
+    {
+      "arm_index": 1,
+      "cumulative_nodes": 3,
+      "cumulative_steps": 2,
+      "declaration_symbol_id": "2222222222222222222222222222222222222222222222222222222222222222",
+      "depth": 2,
+      "input": "Flatten[Int]",
+      "kind": "type-function-arm",
+      "output": "Int",
+      "root_identity": {
+        "kind": "TypeId",
+        "value": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "span": {
+        "end": 158,
+        "file_id": "3333333333333333333333333333333333333333333333333333333333333333",
+        "start": 141
+      },
+      "step": 2
+    }
+  ]
+}
