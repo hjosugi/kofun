@@ -298,8 +298,8 @@ do
             ;;
     esac
 done
-test "$diagnostic_cases" -eq 39 ||
-    fail "expected all 39 Stage 2 diagnostic fixtures, saw $diagnostic_cases"
+test "$diagnostic_cases" -eq 41 ||
+    fail "expected all 41 Stage 2 diagnostic fixtures, saw $diagnostic_cases"
 
 # Enumerate every checked-in Stage 2 language-error companion, including the
 # conformance, bootstrap, ownership, and diagnostic corpora.  Some companions

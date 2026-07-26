@@ -1,0 +1,6 @@
+# diagnostic-mode: compile
+# expect-code: D002
+# expect-span: byte 92
+fn main() {
+    print(1e-6145)
+}

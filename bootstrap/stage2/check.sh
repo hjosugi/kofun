@@ -83,8 +83,73 @@ set -e
 test "$decimal_lowering_status" -eq 1
 test ! -s "$temporary/decimal-lowering.stdout"
 grep -Fxq \
-    'error[E2S99]: Decimal literal at byte 22 has no runtime representation yet (#710 slice 2)' \
+    'error[E2S99]: Decimal literal at byte 22 has no type yet (#710 slice 3)' \
     "$temporary/decimal-lowering.stderr"
+
+# The Decimal resource profile (#721, `docs/DECIMAL.md` "Profile v1"). Frozen
+# decision 8 requires its limits to be cross-backend *observable*, so the
+# compiler constructs each literal and reports the limit at the literal's own
+# byte. Both boundaries are here beside their one-over cases: a limit that
+# clamped instead of failing would show as a written artifact on the `-over`
+# lines, and a limit set one too tight would fail the `-at` lines.
+#
+# The digit cases are fractional on purpose. A 4097-digit literal with no `.`
+# or `e` is an `Int` token and never reaches the Decimal profile at all, which
+# is correct — `Int` has its own width — and is why an integer spelling here
+# would have measured nothing.
+decimal_limit_case() {
+    label=$1
+    program=$2
+    expected=$3
+    printf '%s' "$program" >"$temporary/decimal-limit.kofun"
+    rm -f "$temporary/decimal-limit.c"
+    set +e
+    "$temporary/kofun-stage2" "$temporary/decimal-limit.kofun" \
+        "$temporary/decimal-limit.c" "$temporary/decimal-limit.ir" \
+        "$temporary/decimal-limit.tokens" \
+        >"$temporary/decimal-limit.stdout" 2>"$temporary/decimal-limit.stderr"
+    decimal_limit_status=$?
+    set -e
+    test "$decimal_limit_status" -eq 1 || {
+        echo "stage2 check: $label was accepted" >&2
+        exit 1
+    }
+    # The byte is not anchored to end of line: a resource diagnostic ends with
+    # `at byte N` while `E2S99` carries it mid-sentence.
+    grep -q "^error\\[$expected\\]:.*byte 22" \
+        "$temporary/decimal-limit.stdout" || {
+        echo "stage2 check: $label did not report $expected at byte 22" >&2
+        cat "$temporary/decimal-limit.stdout" >&2
+        exit 1
+    }
+    test ! -e "$temporary/decimal-limit.c" || {
+        echo "stage2 check: $label emitted C" >&2
+        exit 1
+    }
+}
+
+decimal_nines=$(awk 'BEGIN { while (i++ < 4095) printf "9" }')
+decimal_limit_case "significand at the digit limit" \
+    "fn main() {
+    print(1.$decimal_nines)
+}
+" E2S99
+decimal_limit_case "significand one digit over" \
+    "fn main() {
+    print(1.${decimal_nines}9)
+}
+" D001
+decimal_limit_case "scale at the limit" \
+    'fn main() {
+    print(1e-6144)
+}
+' E2S99
+decimal_limit_case "scale one step over" \
+    'fn main() {
+    print(1e-6145)
+}
+' D002
+echo "PASS: the Decimal resource profile is enforced at the literal's byte"
 
 # The malformed forms `docs/DECIMAL.md` lists are lexical errors, so they must
 # report before a token tape exists and write no artifact. `1..2` is checked

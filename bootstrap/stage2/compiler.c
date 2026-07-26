@@ -16,6 +16,13 @@
 #include <sys/stat.h>
 
 #include "../../unicode/kofun_unicode.c"
+/*
+ * Included as source rather than linked, which is the pattern the Unicode
+ * module above already sets. `compiler.c` is compiled standalone at thirty
+ * call sites across the gates; a link dependency would have to be added to
+ * every one of them, while an include leaves all thirty unchanged.
+ */
+#include "decimal_v1.c"
 
 typedef struct {
     char *data;
@@ -9806,19 +9813,71 @@ static char *validate_unsupported_numeric_kinds(const char *source) {
         const char *kind = token_kind(source, cursor);
         bool decimal = strcmp(kind, "decimal") == 0;
         if (decimal || strcmp(kind, "float") == 0) {
+            int64_t end = token_end(source, cursor);
+            /*
+             * Construct the value here, even though nothing consumes it yet.
+             * That is what puts the profile's limits at the literal's own byte
+             * instead of leaving them a library concern: #710's frozen decision
+             * 8 requires them to be cross-backend *observable*, and a limit
+             * nothing reaches is not observable at all.
+             */
+            size_t literal_length = (size_t)(end - cursor);
+            KofunDecimalStatus status;
+            if (decimal) {
+                KofunDecimal value;
+                status = kofun_decimal_from_literal(
+                    source + cursor,
+                    literal_length,
+                    &value
+                );
+                kofun_decimal_free(&value);
+            } else {
+                /* The `f64` suffix is part of the token but not of the
+                 * number. */
+                double ignored = 0.0;
+                status = kofun_float_from_literal(
+                    source + cursor,
+                    literal_length >= 3 ? literal_length - 3 : 0,
+                    &ignored
+                );
+            }
+
             Buffer message;
             buffer_init(&message);
+            if (status != KOFUN_DECIMAL_OK) {
+                buffer_format(
+                    &message,
+                    "%s at byte %" PRId64,
+                    kofun_decimal_status_message(status),
+                    cursor
+                );
+                stage2_diagnostic_set(
+                    kofun_decimal_status_code(status),
+                    cursor,
+                    end,
+                    true,
+                    message.data
+                );
+                return message.data;
+            }
+            /*
+             * The literal is representable now. What it still lacks is a
+             * *type*: `Int`, `Decimal` and `Float` become three distinct
+             * checker types in slice 3, and until then there is nothing to
+             * lower it as. Naming slice 2 here would be false — that is this
+             * slice.
+             */
             buffer_format(
                 &message,
                 "error[E2S99]: %s literal at byte %" PRId64
-                " has no runtime representation yet (#710 slice 2)",
+                " has no type yet (#710 slice 3)",
                 decimal ? "Decimal" : "Float",
                 cursor
             );
             stage2_diagnostic_set(
                 "E2S99",
                 cursor,
-                token_end(source, cursor),
+                end,
                 true,
                 message.data
             );
