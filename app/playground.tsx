@@ -95,6 +95,7 @@ export default function Playground() {
       <div className="example-rail" aria-label="Playground examples">
         {PLAYGROUND_EXAMPLES.map((example) => (
           <button
+            aria-pressed={selected === example.id}
             key={example.id}
             type="button"
             className={selected === example.id ? "active" : ""}

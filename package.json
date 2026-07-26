@@ -12,12 +12,13 @@
     "check:status": "node site/sync-status.mjs --check",
     "sync:status": "node site/sync-status.mjs",
     "test:docs": "node --experimental-strip-types site/docs-links.test.mjs",
+    "test:design": "node site/design-tokens.test.mjs",
     "test:pages": "node site/pages-export.test.mjs",
     "test:playground": "node --experimental-strip-types site/playground.test.mjs",
     "test:status": "node site/status-snapshot.test.mjs",
     "test:tour": "sh docs/tour/check.sh",
-    "verify:pages": "npm run test:playground && npm run test:tour && npm run test:docs && npm run test:status && npm run build:pages && npm run test:pages",
-    "verify:site": "npm run test:playground && npm run test:tour && npm run test:docs && npm run test:status && npm run build"
+    "verify:pages": "npm run test:design && npm run test:playground && npm run test:tour && npm run test:docs && npm run test:status && npm run build:pages && npm run test:pages",
+    "verify:site": "npm run test:design && npm run test:playground && npm run test:tour && npm run test:docs && npm run test:status && npm run build"
   },
   "dependencies": {
     "next": "^16.2.11",

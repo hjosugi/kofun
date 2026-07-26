@@ -16,7 +16,11 @@ export default function DocsNav({ active }: { active?: string }) {
       </Link>
 
       <nav aria-label="Documentation">
-        <Link className={!active ? "active" : ""} href="/docs">
+        <Link
+          aria-current={!active ? "page" : undefined}
+          className={!active ? "active" : ""}
+          href="/docs"
+        >
           Overview
         </Link>
         {sections.map((section) => (
@@ -26,6 +30,7 @@ export default function DocsNav({ active }: { active?: string }) {
               .filter((entry) => entry.section === section)
               .map((entry) => (
                 <Link
+                  aria-current={active === entry.slug ? "page" : undefined}
                   className={active === entry.slug ? "active" : ""}
                   href={`/docs/${entry.slug}`}
                   key={entry.slug}
@@ -36,6 +41,23 @@ export default function DocsNav({ active }: { active?: string }) {
           </div>
         ))}
       </nav>
+
+      <details className="docs-mobile-menu">
+        <summary>Browse all guides</summary>
+        <div>
+          {docs.map((entry) => (
+            <Link
+              aria-current={active === entry.slug ? "page" : undefined}
+              className={active === entry.slug ? "active" : ""}
+              href={`/docs/${entry.slug}`}
+              key={entry.slug}
+            >
+              <span>{entry.section}</span>
+              {entry.title}
+            </Link>
+          ))}
+        </div>
+      </details>
 
       <div className="docs-snapshot">
         <span>Observed main</span>

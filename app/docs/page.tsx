@@ -11,7 +11,7 @@ const trackDescriptions: Record<number, string> = {
 
 export default function DocsHome() {
   return (
-    <main className="docs-layout">
+    <main className="docs-layout" id="main-content">
       <DocsNav />
       <div className="docs-main">
         <header className="docs-topbar">

@@ -63,19 +63,23 @@ const openWork = [
 
 export default function Home() {
   return (
-    <main>
-      <nav className="nav">
+    <main id="main-content">
+      <nav className="nav" aria-label="Primary">
         <a className="brand" href="#top" aria-label="Kofun home">
           <KofunMark compact />
           <span>Kofun</span>
           <sup>experimental</sup>
         </a>
         <div className="nav-links">
-          <a href="#language">Language</a>
-          <a href="#playground">Playground</a>
-          <a href="#status">Status</a>
+          <a className="nav-section-link" href="#language">Language</a>
+          <a className="nav-section-link" href="#playground">Playground</a>
+          <a className="nav-section-link" href="#status">Status</a>
           <Link href="/docs">Docs</Link>
-          <a className="nav-github" href={githubUrl}>
+          <a
+            aria-label="Kofun on GitHub"
+            className="nav-github"
+            href={githubUrl}
+          >
             <GithubIcon />
             GitHub
           </a>
@@ -108,7 +112,11 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="hero-art" aria-label="Kofun language mark">
+        <div
+          className="hero-art"
+          aria-label="Kofun language mark"
+          role="img"
+        >
           <div className="orbit orbit-one" />
           <div className="orbit orbit-two" />
           <div className="hero-mark">

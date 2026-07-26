@@ -66,7 +66,7 @@ export default async function DocPage({
   );
 
   return (
-    <main className="docs-layout">
+    <main className="docs-layout" id="main-content">
       <DocsNav active={entry.slug} />
       <div className="docs-main">
         <header className="docs-topbar">
