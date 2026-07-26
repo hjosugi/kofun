@@ -105,8 +105,8 @@ const PROJECT_STATE_QUERY = `
   }
 `;
 
-const OPEN_CURATED_QUERY = `
-  query OpenCurated(
+const ALL_ISSUES_QUERY = `
+  query AllIssues(
     $owner: String!
     $repository: String!
     $after: String
@@ -115,8 +115,7 @@ const OPEN_CURATED_QUERY = `
       issues(
         first: 100
         after: $after
-        states: OPEN
-        labels: ["curated"]
+        states: [OPEN, CLOSED]
         orderBy: {field: CREATED_AT, direction: ASC}
       ) {
         nodes {
@@ -312,6 +311,9 @@ export function validateConfig(config) {
   if (config.title !== "Kofun Delivery Roadmap") {
     fail("Project title must be Kofun Delivery Roadmap");
   }
+  if (config.issueScope !== "all") {
+    fail("Project issueScope must be all");
+  }
   if (config.project?.visibility !== "PUBLIC") {
     fail("Kofun Delivery Roadmap must be public");
   }
@@ -460,6 +462,15 @@ export function isOpenCuratedIssue(issue) {
 export function filterOpenCuratedIssues(issues) {
   return arrayValue(issues)
     .filter(isOpenCuratedIssue)
+    .sort((left, right) => left.number - right.number);
+}
+
+export function filterRepositoryIssues(issues) {
+  return arrayValue(issues)
+    .filter((issue) => Number.isInteger(issue?.number) && issue.number > 0)
+    .filter((issue) =>
+      ["open", "closed"].includes(lowerText(issue.state ?? "")),
+    )
     .sort((left, right) => left.number - right.number);
 }
 
@@ -637,7 +648,7 @@ export function buildReconciliationPlan({
   issues,
   schedule,
 }) {
-  const managedIssues = filterOpenCuratedIssues(issues);
+  const managedIssues = filterRepositoryIssues(issues);
   const itemByNumber = new Map(
     arrayValue(projectItems)
       .filter((item) => item?.content?.repository?.nameWithOwner === repository)
@@ -669,7 +680,7 @@ export function buildReconciliationPlan({
   for (const number of schedule.keys()) {
     if (!managedNumbers.has(number)) {
       warnings.push(
-        `#${number}: skipped because it is not an open issue with the curated label`,
+        `#${number}: skipped because it is not a repository issue`,
       );
     }
   }
@@ -977,12 +988,12 @@ function ensureFields(config, project) {
   return changed;
 }
 
-function getOpenCuratedIssues(config) {
+function getAllRepositoryIssues(config) {
   const [owner, repository] = config.repository.split("/");
   const issues = [];
   let after = null;
   do {
-    const data = runGraphQL(OPEN_CURATED_QUERY, {
+    const data = runGraphQL(ALL_ISSUES_QUERY, {
       owner,
       repository,
       after,
@@ -996,7 +1007,7 @@ function getOpenCuratedIssues(config) {
       ? connection.pageInfo.endCursor
       : null;
   } while (after);
-  return filterOpenCuratedIssues(issues);
+  return filterRepositoryIssues(issues);
 }
 
 function getProjectItems(projectId) {
@@ -1019,20 +1030,43 @@ function getProjectItems(projectId) {
   return items;
 }
 
-function addProjectItem(projectId, issue) {
-  const query = `
-    mutation AddItem($project: ID!, $content: ID!) {
-      addProjectV2ItemById(input: {projectId: $project, contentId: $content}) {
-        item {
-          id
-        }
+export function buildAddItemsMutation(issues) {
+  const declarations = ["$project: ID!"];
+  const selections = [];
+  const variables = {};
+  issues.forEach((issue, index) => {
+    declarations.push(`$content${index}: ID!`);
+    selections.push(`
+      add${index}: addProjectV2ItemById(
+        input: {projectId: $project, contentId: $content${index}}
+      ) {
+        item { id }
       }
-    }
-  `;
-  return runGraphQL(query, {
-    project: projectId,
-    content: issue.id,
-  }).addProjectV2ItemById.item.id;
+    `);
+    variables[`content${index}`] = issue.id;
+  });
+  return {
+    query: `mutation AddItems(${declarations.join(", ")}) {
+      ${selections.join("\n")}
+    }`,
+    variables,
+  };
+}
+
+function addProjectItems(projectId, issues, batchSize = 20) {
+  const added = new Map();
+  for (let offset = 0; offset < issues.length; offset += batchSize) {
+    const batch = issues.slice(offset, offset + batchSize);
+    const mutation = buildAddItemsMutation(batch);
+    const data = runGraphQL(mutation.query, {
+      project: projectId,
+      ...mutation.variables,
+    });
+    batch.forEach((issue, index) => {
+      added.set(issue.number, data[`add${index}`].item.id);
+    });
+  }
+  return added;
 }
 
 function applyItemUpdates(projectId, itemId, updates) {
@@ -1125,7 +1159,7 @@ function printDryRun(config, schedule, snapshotPath, guidance) {
   console.log(`Snapshot: ${path.relative(repositoryRoot, snapshotPath)}`);
   console.log(`Curated planning records: ${schedule.size}`);
   console.log(
-    "Apply will query GitHub and add only issues that are currently OPEN and carry the exact curated label.",
+    "Apply will query GitHub and add every open and closed issue from the exact repository.",
   );
   console.log(
     `Fields: ${config.project.fields.map((field) => `${field.name}:${field.type}`).join(", ")}`,
@@ -1167,7 +1201,7 @@ async function apply(config, schedule) {
     project = getProjectState(config, project.number);
   }
 
-  const issues = getOpenCuratedIssues(config);
+  const issues = getAllRepositoryIssues(config);
   let items = getProjectItems(project.id);
   let plan = buildReconciliationPlan({
     repository: config.repository,
@@ -1177,10 +1211,7 @@ async function apply(config, schedule) {
     schedule,
   });
 
-  const addedItemIds = new Map();
-  for (const issue of plan.additions) {
-    addedItemIds.set(issue.number, addProjectItem(project.id, issue));
-  }
+  const addedItemIds = addProjectItems(project.id, plan.additions);
   if (plan.additions.length) {
     items = getProjectItems(project.id);
     plan = buildReconciliationPlan({
@@ -1209,7 +1240,7 @@ async function apply(config, schedule) {
   console.log("");
   console.log("Project synchronization complete.");
   console.log(`Project created: ${projectCreated ? "yes" : "no"}`);
-  console.log(`Open curated issues managed: ${issues.length}`);
+  console.log(`Repository issues managed: ${issues.length}`);
   console.log(`Issues added: ${addedItemIds.size}`);
   console.log(`Field values updated: ${plan.updates.length}`);
   console.log(`Views created: ${viewResult.created.length}`);

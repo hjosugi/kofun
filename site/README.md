@@ -70,7 +70,9 @@ check. `npm run sync:plan` refreshes the checked-in JSON and Markdown delivery
 snapshots. Project configuration is intentionally separate:
 `npm run project:plan` prints the idempotent GitHub Projects changes, while
 `npm run project:apply` applies them only with an explicit classic/OAuth token
-carrying the `project` scope. `.github/workflows/project-roadmap.yml` repeats
+carrying the `project` scope. The Project registers every open and closed
+repository issue; schedule fields remain limited to the curated execution
+scope. `.github/workflows/project-roadmap.yml` repeats
 the safe dry-run every six hours and switches to field synchronization only
 after a classic PAT with `repo` and `project` scopes is stored as the
 `PROJECTS_TOKEN` repository secret.

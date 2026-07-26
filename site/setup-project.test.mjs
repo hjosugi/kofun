@@ -3,11 +3,13 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  buildAddItemsMutation,
   buildIterationConfiguration,
   buildReconciliationPlan,
   buildViewCreateRequest,
   desiredFieldUpdates,
   filterOpenCuratedIssues,
+  filterRepositoryIssues,
   normalizeSchedule,
   parseArguments,
   projectViewKey,
@@ -28,6 +30,7 @@ const liveSnapshot = JSON.parse(
 
 test("configuration pins the only writable repository and required fields", () => {
   assert.deepEqual(validateConfig(structuredClone(config)), config);
+  assert.equal(config.issueScope, "all");
   assert.equal(config.project.visibility, "PUBLIC");
   assert.match(config.project.readme, /hjosugi\.github\.io\/kofun\/roadmap/);
   assert.throws(
@@ -160,7 +163,7 @@ test("iteration configuration produces deterministic weekly values", () => {
   );
 });
 
-test("only open issues with the exact curated label are managed", () => {
+test("curated selector isolates the active delivery scope", () => {
   const result = filterOpenCuratedIssues([
     { number: 3, state: "OPEN", labels: { nodes: [{ name: "curated" }] } },
     { number: 2, state: "CLOSED", labels: { nodes: [{ name: "curated" }] } },
@@ -169,6 +172,19 @@ test("only open issues with the exact curated label are managed", () => {
   assert.deepEqual(
     result.map((issue) => issue.number),
     [3],
+  );
+});
+
+test("all open and closed repository issues are managed", () => {
+  const result = filterRepositoryIssues([
+    { number: 3, state: "OPEN" },
+    { number: 2, state: "CLOSED" },
+    { number: 1, state: "UNKNOWN" },
+    { number: 4, state: "OPEN" },
+  ]);
+  assert.deepEqual(
+    result.map((issue) => issue.number),
+    [2, 3, 4],
   );
 });
 
@@ -260,7 +276,7 @@ test("field reconciliation skips values that are already synchronized", () => {
   );
 });
 
-test("reconciliation adds missing curated issues and ignores other issues", () => {
+test("reconciliation adds every repository issue", () => {
   const schedule = new Map([
     [
       1,
@@ -308,10 +324,23 @@ test("reconciliation adds missing curated issues and ignores other issues", () =
   });
   assert.deepEqual(
     plan.additions.map((issue) => issue.number),
-    [1],
+    [1, 2, 3],
   );
-  assert.match(plan.warnings.join("\n"), /#2: skipped/);
-  assert.doesNotMatch(plan.warnings.join("\n"), /#3/);
+  assert.deepEqual(plan.warnings, []);
+});
+
+test("batch mutation adds multiple issues in one GraphQL request", () => {
+  const mutation = buildAddItemsMutation([
+    { id: "issue-a" },
+    { id: "issue-b" },
+  ]);
+  assert.match(mutation.query, /mutation AddItems/);
+  assert.match(mutation.query, /add0: addProjectV2ItemById/);
+  assert.match(mutation.query, /add1: addProjectV2ItemById/);
+  assert.deepEqual(mutation.variables, {
+    content0: "issue-a",
+    content1: "issue-b",
+  });
 });
 
 test("view request uses the documented 2026 user-project REST endpoint", () => {
