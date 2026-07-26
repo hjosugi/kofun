@@ -141,6 +141,25 @@ then
 fi
 printf '%s\n' "PASS: no host decimal parser on the conversion path"
 
+# `//` and `%` on Decimal are deliberately absent. #710 defers their signed
+# convention to a separate issue and #723 requires that it "must not be settled
+# implicitly here" — but an omission cannot be observed, so it is asserted.
+#
+# This guard exists because the natural way to settle the convention by
+# accident is to add the operation quietly alongside the four exact ones, where
+# it reads as completeness rather than as a decision. `docs/DECIMAL.md` requires
+# positive and negative examples to be landed before either operator becomes
+# available, so adding one must fail here until they are.
+for undecided in floor_div floordiv modulo remainder truncate_div; do
+    if grep -nE "kofun_decimal_$undecided" \
+        "$ROOT/bootstrap/stage2/decimal_v1.h" \
+        "$ROOT/bootstrap/stage2/decimal_v1.c" >/dev/null 2>&1
+    then
+        fail "decimal_v1 defines $undecided; #710 defers the signed convention"
+    fi
+done
+printf '%s\n' "PASS: Decimal // and % remain undecided and unimplemented"
+
 # --- exact arithmetic (slice 4 of #710, issue #723) ------------------------
 
 # The headline acceptance criterion of #710, and the reason this type exists.
