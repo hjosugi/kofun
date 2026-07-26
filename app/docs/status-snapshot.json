@@ -1,13 +1,13 @@
 {
   "schema": "kofun.docs-status/v1",
   "repository": "hjosugi/kofun",
-  "source_commit": "c7db4c321962c7c9db9a4ccabe34043671d8dc2f",
+  "source_commit": "feefe5155792598fc674173f94a5fa2bfc46b936",
   "verification": {
     "workflow": "CI",
     "status": "completed",
     "conclusion": "success",
-    "completed_at": "2026-07-26T13:27:13Z",
-    "url": "https://github.com/hjosugi/kofun/actions/runs/30203930842"
+    "completed_at": "2026-07-26T14:44:36Z",
+    "url": "https://github.com/hjosugi/kofun/actions/runs/30206536905"
   },
   "issues": [
     {
@@ -43,5 +43,5 @@
       "url": "https://github.com/hjosugi/kofun/issues/668"
     }
   ],
-  "reviewed_at": "2026-07-26T13:58:34.039Z"
+  "reviewed_at": "2026-07-26T14:45:47.096Z"
 }

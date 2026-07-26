@@ -4,11 +4,11 @@ Status: generated read-only snapshot for documentation synchronization.
 
 Repository: [`hjosugi/kofun`](https://github.com/hjosugi/kofun)
 
-Observed main commit: [`c7db4c3`](https://github.com/hjosugi/kofun/commit/c7db4c321962c7c9db9a4ccabe34043671d8dc2f)
+Observed main commit: [`feefe51`](https://github.com/hjosugi/kofun/commit/feefe5155792598fc674173f94a5fa2bfc46b936)
 
-Implementation verification: [`CI`](https://github.com/hjosugi/kofun/actions/runs/30203930842) is `success`, completed at `2026-07-26T13:27:13Z`.
+Implementation verification: [`CI`](https://github.com/hjosugi/kofun/actions/runs/30206536905) is `success`, completed at `2026-07-26T14:44:36Z`.
 
-Reviewed at: `2026-07-26T13:58:34.039Z`
+Reviewed at: `2026-07-26T14:45:47.096Z`
 
 | Issue | Workflow | State | Last tracker update | Title |
 |---|---|---|---|---|
