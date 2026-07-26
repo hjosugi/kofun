@@ -1,0 +1,11 @@
+1.0 1 -> equal=yes compare=0
+1.00 1.0 -> equal=yes compare=0
+1.000 1.00 -> equal=yes compare=0
+1000 1e3 -> equal=yes compare=0
+0.1e1 1 -> equal=yes compare=0
+10e-1 1 -> equal=yes compare=0
+0 0.0 -> equal=yes compare=0
+0.1 0.2 -> equal=no compare=-1
+2 10 -> equal=no compare=-1
+1e3 1e4 -> equal=no compare=-1
+0.000001 1e-6 -> equal=yes compare=0

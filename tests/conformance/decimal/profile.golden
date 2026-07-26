@@ -1,0 +1,9 @@
+profile-version=1
+max-significand-digits=4096
+max-scale=6144
+min-scale=-6144
+status= message=
+status=D001 message=error[D001]: Decimal significand exceeds the profile's digit limit
+status=D002 message=error[D002]: Decimal scale is outside the profile's range
+status=D003 message=error[D003]: malformed Decimal literal
+status=D004 message=error[D004]: Decimal allocation refused
