@@ -9,6 +9,7 @@ and direct ELF64 backends for x86-64 and AArch64. Source files use `.kofun`.
 [Documentation](https://hjosugi.github.io/kofun/docs/) ·
 [Playground](https://hjosugi.github.io/kofun/#playground) ·
 [Delivery plan](https://hjosugi.github.io/kofun/roadmap/) ·
+[GitHub Project](https://github.com/users/hjosugi/projects/3) ·
 [Releases](https://github.com/hjosugi/kofun/releases) ·
 [Roadmap](https://hjosugi.github.io/kofun/docs/roadmap/)
 

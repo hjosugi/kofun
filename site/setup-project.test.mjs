@@ -10,6 +10,7 @@ import {
   filterOpenCuratedIssues,
   normalizeSchedule,
   parseArguments,
+  projectViewKey,
   tokenGuidance,
   validateConfig,
   verifyRepositoryRemote,
@@ -327,6 +328,23 @@ test("view request uses the documented 2026 user-project REST endpoint", () => {
     request.headers.includes("X-GitHub-Api-Version: 2026-03-10"),
   );
   assert.equal(request.fields.layout, "roadmap");
+});
+
+test("GraphQL and REST view layouts reconcile to one idempotent key", () => {
+  assert.equal(
+    projectViewKey({
+      name: "Delivery roadmap",
+      layout: "ROADMAP_LAYOUT",
+    }),
+    projectViewKey({
+      name: "Delivery roadmap",
+      layout: "roadmap",
+    }),
+  );
+  assert.equal(
+    projectViewKey({ name: "This week", layout: "BOARD_LAYOUT" }),
+    "this week:board",
+  );
 });
 
 test("Actions apply refuses repository GITHUB_TOKEN without PROJECTS_TOKEN", () => {

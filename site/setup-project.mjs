@@ -691,6 +691,11 @@ export function buildViewCreateRequest(config, projectNumber, view) {
   };
 }
 
+export function projectViewKey(view) {
+  const layout = lowerText(view?.layout ?? "").replace(/_layout$/, "");
+  return `${lowerText(view?.name ?? "")}:${layout}`;
+}
+
 export function tokenGuidance({ apply, actions, projectsTokenConfigured }) {
   if (actions && !projectsTokenConfigured) {
     return {
@@ -1064,14 +1069,12 @@ function applyItemUpdates(projectId, itemId, updates) {
 
 function ensureViews(config, project) {
   const existing = new Set(
-    arrayValue(project.views?.nodes).map(
-      (view) => `${lowerText(view.name)}:${lowerText(view.layout)}`,
-    ),
+    arrayValue(project.views?.nodes).map(projectViewKey),
   );
   const created = [];
   const warnings = [];
   for (const view of config.project.views) {
-    const key = `${lowerText(view.name)}:${lowerText(view.layout)}`;
+    const key = projectViewKey(view);
     if (existing.has(key)) {
       continue;
     }

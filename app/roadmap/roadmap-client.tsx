@@ -1153,7 +1153,7 @@ export default function RoadmapClient({
           </p>
           <div>
             <a href={`${githubRepository}/issues`}>すべてのIssuesを見る ↗</a>
-            <a href="https://github.com/users/hjosugi/projects">
+            <a href="https://github.com/users/hjosugi/projects/3">
               GitHub Projects ↗
             </a>
           </div>
