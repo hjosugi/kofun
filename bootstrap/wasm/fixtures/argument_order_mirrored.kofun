@@ -1,0 +1,9 @@
+# The same call with the two overflowing arguments exchanged. Left-to-right
+# evaluation must now report `-` where argument_order.kofun reported `+`.
+fn pair(a: Int, b: Int) -> Int {
+    return a + b
+}
+
+fn main() {
+    print(pair(-9223372036854775808 - 1, 9223372036854775807 + 1))
+}

@@ -1,0 +1,8 @@
+# Two parameters cannot claim one name.
+fn helper(a: Int, a: Int) -> Int {
+    return a
+}
+
+fn main() {
+    print(helper(1, 2))
+}

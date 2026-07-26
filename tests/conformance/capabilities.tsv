@@ -11,7 +11,7 @@ native-x86_64	functions	supported	bootstrap/native/check.sh	-
 native-x86_64	list	supported	bootstrap/native/check.sh	-
 native-x86_64	numeric	supported	bootstrap/native/check.sh	-
 native-x86_64	text	supported	bootstrap/native/check.sh	-
-wasm32-node	functions	unsupported	-	The wasm32 Core accepts only checked Int64 arithmetic in one main function
+wasm32-node	functions	supported	bootstrap/wasm/check.sh	-
 wasm32-node	list	unsupported	-	The wasm32 Core does not lower List values
 wasm32-node	numeric	supported	bootstrap/wasm/check.sh	-
 wasm32-node	text	unsupported	-	The wasm32 Core does not lower Text values

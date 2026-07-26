@@ -276,13 +276,150 @@ grep -Fq -- \
     '-g currently requires --target x86_64-linux or --target aarch64-linux' \
     "$WORK/debug.stderr"
 
+# The bounded Int function profile (#222). Every case in the maintained
+# corpus is compiled three ways — direct seed, sanitized seed, and public CLI —
+# and the three must agree byte for byte, so "deterministic" covers functions
+# and not only the single-`main` arithmetic Core.
+: >"$WORK/function-modules.list"
+for source in "$ROOT"/tests/conformance/functions/*.kofun
+do
+    stem=$(basename "${source%.kofun}")
+    test "$stem" != expectations || continue
+    "$WORK/compiler" "$source" "$WORK/function-$stem.wasm"
+    ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 \
+    UBSAN_OPTIONS=halt_on_error=1 \
+        "$WORK/compiler-sanitized" \
+        "$source" "$WORK/function-$stem-sanitized.wasm"
+    cmp "$WORK/function-$stem.wasm" "$WORK/function-$stem-sanitized.wasm"
+    "$ROOT/bin/kofun" build "$source" \
+        --target wasm32 -o "$WORK/function-$stem-cli.wasm" >/dev/null
+    "$ROOT/bin/kofun" build "$source" \
+        --target wasm32 -o "$WORK/function-$stem-cli-second.wasm" >/dev/null
+    cmp "$WORK/function-$stem.wasm" "$WORK/function-$stem-cli.wasm"
+    cmp "$WORK/function-$stem-cli.wasm" "$WORK/function-$stem-cli-second.wasm"
+    printf '%s\n' "$WORK/function-$stem.wasm" >>"$WORK/function-modules.list"
+done
+
+# `run.mjs` already refuses to instantiate a module the engine rejects, but the
+# claim "WebAssembly.validate accepts every emitted module" deserves its own
+# gate rather than riding on a runtime that could stop checking.
+node --input-type=module -e '
+import { readFile } from "node:fs/promises";
+const [, listPath] = process.argv;
+const list = (await readFile(listPath, "utf8")).split("\n").filter(Boolean);
+if (list.length === 0) {
+  console.error("wasm32 gate: no function modules were emitted");
+  process.exit(1);
+}
+for (const path of list) {
+  const bytes = await readFile(path);
+  if (!WebAssembly.validate(bytes)) {
+    console.error(`wasm32 gate: engine rejected ${path}`);
+    process.exit(1);
+  }
+}
+console.log(`validated ${list.length} function modules`);
+' "$WORK/function-modules.list" >"$WORK/function-validate.stdout"
+grep -Fxq 'validated 12 function modules' "$WORK/function-validate.stdout"
+
+# A call evaluates its arguments left to right and exactly once. Both arguments
+# below overflow under a different checked operator, so the diagnostic that
+# reaches stderr names the one evaluated first; the mirrored fixture swaps them
+# and must swap the operator. Observing only "some trap" would not tell the two
+# orders apart.
+"$ROOT/bin/kofun" build \
+    "$ROOT/bootstrap/wasm/fixtures/argument_order.kofun" \
+    --target wasm32 -o "$WORK/argument-order.wasm" >/dev/null
+"$ROOT/bin/kofun" build \
+    "$ROOT/bootstrap/wasm/fixtures/argument_order_mirrored.kofun" \
+    --target wasm32 -o "$WORK/argument-order-mirrored.wasm" >/dev/null
+set +e
+node "$ROOT/bootstrap/wasm/run.mjs" "$WORK/argument-order.wasm" \
+    >"$WORK/argument-order.stdout" 2>"$WORK/argument-order.stderr"
+argument_order_status=$?
+node "$ROOT/bootstrap/wasm/run.mjs" "$WORK/argument-order-mirrored.wasm" \
+    >"$WORK/argument-order-mirrored.stdout" \
+    2>"$WORK/argument-order-mirrored.stderr"
+argument_order_mirrored_status=$?
+set -e
+test "$argument_order_status" -eq 1
+test "$argument_order_mirrored_status" -eq 1
+test ! -s "$WORK/argument-order.stdout"
+test ! -s "$WORK/argument-order-mirrored.stdout"
+grep -Fxq 'error[R010]: integer overflow in operator `+`' \
+    "$WORK/argument-order.stderr"
+grep -Fxq 'error[R010]: integer overflow in operator `-`' \
+    "$WORK/argument-order-mirrored.stderr"
+
+# Every refused function signature, call, and body fails through both the
+# public CLI and the sanitized seed, with a stable source-located diagnostic,
+# empty stdout, and no module left behind.
+reject_function_fixture() {
+    fixture=$1
+    expected=$2
+    rm -f "$WORK/reject-$fixture.wasm" "$WORK/reject-$fixture-sanitized.wasm"
+    set +e
+    "$ROOT/bin/kofun" build \
+        "$ROOT/bootstrap/wasm/fixtures/$fixture.kofun" \
+        --target wasm32 -o "$WORK/reject-$fixture.wasm" \
+        >"$WORK/reject-$fixture.stdout" 2>"$WORK/reject-$fixture.stderr"
+    reject_status=$?
+    ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 \
+    UBSAN_OPTIONS=halt_on_error=1 \
+        "$WORK/compiler-sanitized" \
+        "$ROOT/bootstrap/wasm/fixtures/$fixture.kofun" \
+        "$WORK/reject-$fixture-sanitized.wasm" \
+        >"$WORK/reject-$fixture-sanitized.stdout" \
+        2>"$WORK/reject-$fixture-sanitized.stderr"
+    reject_sanitized_status=$?
+    set -e
+    test "$reject_status" -eq 1
+    test "$reject_sanitized_status" -eq 1
+    test ! -e "$WORK/reject-$fixture.wasm"
+    test ! -e "$WORK/reject-$fixture-sanitized.wasm"
+    test ! -s "$WORK/reject-$fixture.stdout"
+    test ! -s "$WORK/reject-$fixture-sanitized.stdout"
+    grep -Fxq "kofun wasm32: $expected" "$WORK/reject-$fixture.stderr"
+    grep -Fxq "kofun wasm32: $expected" \
+        "$WORK/reject-$fixture-sanitized.stderr"
+}
+
+reject_function_fixture reject_unknown_function \
+    'line 3: call to a function the wasm32 Core program does not declare'
+reject_function_fixture reject_duplicate_function \
+    'line 6: duplicate function declaration in wasm32 Core'
+reject_function_fixture reject_duplicate_parameter \
+    'line 2: duplicate parameter in wasm32 Core'
+reject_function_fixture reject_call_arity \
+    'line 7: call passes a different number of arguments than the declaration accepts'
+reject_function_fixture reject_seven_parameters \
+    'line 2: wasm32 Core accepts at most six Int parameters'
+reject_function_fixture reject_seven_arguments \
+    'line 7: call passes a different number of arguments than the declaration accepts'
+reject_function_fixture reject_non_int_parameter \
+    'line 2: wasm32 Core accepts only Int parameters'
+reject_function_fixture reject_non_int_result \
+    'line 2: wasm32 Core requires an `-> Int` result on every function other than `main`'
+reject_function_fixture reject_missing_return \
+    'line 2: a wasm32 Core function declaring `-> Int` must end with `return`'
+reject_function_fixture reject_function_value \
+    'line 7: wasm32 Core has no function values; write a direct call instead'
+reject_function_fixture reject_indirect_call \
+    'line 4: wasm32 Core does not support calling a binding; only direct calls to declared functions'
+
 sh "$ROOT/tests/conformance/run.sh" \
     "$ROOT/tests/conformance/numeric"
+
+sh "$ROOT/tests/conformance/run.sh" \
+    "$ROOT/tests/conformance/functions"
 
 printf '%s\n' \
     'PASS: Kofun emitted deterministic, engine-validated WebAssembly' \
     'PASS: separate and mixed nesting accepted 256 levels and rejected 257 atomically' \
     'PASS: direct Int64 minimum parsing and checked re-negation stayed exact' \
     'PASS: wasm32-node matched C11 for all numeric Core observations' \
+    'PASS: wasm32-node executed the bounded Int function corpus against C11' \
+    'PASS: calls evaluated arguments left to right, exactly once' \
     'PASS: Kofun browser sample rendered through a lazy DOM host' \
-    'PASS: unsupported source, `/`, and debug mode failed without artifacts'
+    'PASS: unsupported source, `/`, and debug mode failed without artifacts' \
+    'PASS: refused signatures, calls, and bodies left no module behind'

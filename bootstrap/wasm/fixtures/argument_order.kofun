@@ -1,0 +1,11 @@
+# Both arguments overflow, with a different checked operator each. Whichever
+# diagnostic reaches stderr names the argument that was evaluated first, so
+# this fixture and its mirror pin the direction rather than merely observing
+# that some trap happened.
+fn pair(a: Int, b: Int) -> Int {
+    return a + b
+}
+
+fn main() {
+    print(pair(9223372036854775807 + 1, -9223372036854775808 - 1))
+}
