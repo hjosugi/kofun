@@ -131,10 +131,31 @@ The lexer must use maximal munch with the range exception:
 ```
 
 `1.`, `.5`, malformed exponents, and underscores outside positions between two
-digits are lexical errors. The token retains the original digit sequence and
-the positions of the decimal point, exponent, and suffix. The lexer must not
-convert through a host `double`; semantic construction removes underscores,
-builds the integer significand, applies the exponent to scale, and normalizes.
+digits are lexical errors. Stage 2 reports all of them as **`E2S98`**, before a
+token tape exists and with no artifact written. The token retains the original
+digit sequence and the positions of the decimal point, exponent, and suffix.
+The lexer must not convert through a host `double`; semantic construction
+removes underscores, builds the integer significand, applies the exponent to
+scale, and normalizes.
+
+`_1` is not in that list. It is a well-formed identifier under the identifier
+grammar rather than a numeric literal, and it reports as an unknown binding at
+its own byte. The underscore rule constrains the numeric grammar; it does not
+remove an identifier spelling.
+
+The scanner stays permissive about `.` on purpose, and the malformed forms are
+diagnosed from the token sequence instead. Deciding between the range operator
+and a fraction inside the scanner needs a character of lookahead at exactly the
+point where the range exception above says not to — so `1..2` and `1.` both
+lex, and `E2S98` reads the result, where `..` and a lone `.` are already
+distinct tokens.
+
+A **well-formed** Decimal or Float literal that reaches lowering is a different
+condition and gets its own code, **`E2S99`**, which names the slice that would
+implement it. Slice 1 delivers the token contract only; the runtime
+representation is slice 2. Reusing a generic "invalid expression" diagnostic
+here would report the literal as wrong when what is true is that the compiler
+is unfinished.
 
 This deliberately revises older planning text that calls every unsuffixed
 fractional or scientific literal a `Float`. That text is migration input, not

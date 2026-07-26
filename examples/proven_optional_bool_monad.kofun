@@ -2,7 +2,7 @@ fn optional_pure(value: Bool) -> Bool? {
     return value
 }
 
-fn optional_bind(value: Bool?, next: Fn[Bool, Bool?]) -> Bool? {
+fn optional_bind(value: Bool?, next: Bool -> Bool?) -> Bool? {
     return if value == null {
         null
     } else {

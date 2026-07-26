@@ -289,7 +289,7 @@ do
     cmp "${source%.kofun}.stderr" "$WORK/plain/$case_name.producer"
     grep -q "error\\[$code\\]" "$WORK/plain/$case_name.producer"
     case $code in
-        E2S01|EUNICODE*)
+        E2S01|E2S98|EUNICODE*)
             test ! -e "$WORK/plain/$case_name.kse"
             ;;
         *)
@@ -298,8 +298,8 @@ do
             ;;
     esac
 done
-test "$diagnostic_cases" -eq 35 ||
-    fail "expected all 35 Stage 2 diagnostic fixtures, saw $diagnostic_cases"
+test "$diagnostic_cases" -eq 39 ||
+    fail "expected all 39 Stage 2 diagnostic fixtures, saw $diagnostic_cases"
 
 # Enumerate every checked-in Stage 2 language-error companion, including the
 # conformance, bootstrap, ownership, and diagnostic corpora.  Some companions
@@ -366,7 +366,7 @@ do
     test -n "$authority_code" ||
         fail "repository authority omitted an error code: $source"
     case $authority_code in
-        E2S01|EUNICODE*)
+        E2S01|E2S98|EUNICODE*)
             test ! -e "$WORK/plain/$case_name.kse" ||
                 fail "pre-token diagnostic emitted a stream: $source"
             ;;
@@ -381,8 +381,8 @@ do
             ;;
     esac
 done <"$WORK/plain/repository-error-companions"
-test "$repository_error_cases" -eq 134 ||
-    fail "expected all 134 repository error companions, saw $repository_error_cases"
+test "$repository_error_cases" -eq 138 ||
+    fail "expected all 138 repository error companions, saw $repository_error_cases"
 
 # Project-owned valid Stage 2 profiles cover functions, value control, concrete
 # enums, nested lexical scopes, and shadowing.  Producer and compiler must both

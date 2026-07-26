@@ -71,7 +71,9 @@ test "$(grep -c '^decimal|' "$temporary/range-exception.tokens")" -eq 0
 test "$(grep -c '^float|' "$temporary/range-exception.tokens")" -eq 0
 
 # A Decimal literal has no representation yet, so reaching lowering must be an
-# explicit, source-located refusal that writes nothing.
+# explicit, source-located refusal that writes nothing and names the slice that
+# would implement it. Reusing `E2S12` said the literal was invalid, which is
+# not what is true: the literal is well formed and the compiler is unfinished.
 printf 'fn main() {\n    print(1.5)\n}\n' >"$temporary/decimal-lowering.kofun"
 set +e
 "$root/bin/kofun" check "$temporary/decimal-lowering.kofun" \
@@ -80,8 +82,36 @@ decimal_lowering_status=$?
 set -e
 test "$decimal_lowering_status" -eq 1
 test ! -s "$temporary/decimal-lowering.stdout"
-grep -Fxq 'error[E2S12]: invalid Int expression at byte 22' \
+grep -Fxq \
+    'error[E2S99]: Decimal literal at byte 22 has no runtime representation yet (#710 slice 2)' \
     "$temporary/decimal-lowering.stderr"
+
+# The malformed forms `docs/DECIMAL.md` lists are lexical errors, so they must
+# report before a token tape exists and write no artifact. `1..2` is checked
+# alongside them because the range exception is the reason the scanner stays
+# permissive about `.` and this pass reads tokens instead of tightening it.
+for malformed in '1.' '.5' '1e' '1e+' '1_' '1._0' '1.0_' '1.0e'; do
+    printf 'fn main() {\n    print(%s)\n}\n' "$malformed" \
+        >"$temporary/malformed.kofun"
+    rm -f "$temporary/malformed.c"
+    set +e
+    "$temporary/kofun-stage2" "$temporary/malformed.kofun" \
+        "$temporary/malformed.c" "$temporary/malformed.ir" \
+        "$temporary/malformed.tokens" \
+        >"$temporary/malformed.stdout" 2>"$temporary/malformed.stderr"
+    malformed_status=$?
+    set -e
+    test "$malformed_status" -eq 1 ||
+        { echo "stage2 check: $malformed was accepted" >&2; exit 1; }
+    grep -q '^error\[E2S98\]: malformed numeric literal at byte ' \
+        "$temporary/malformed.stdout" ||
+        { echo "stage2 check: $malformed did not report E2S98" >&2; exit 1; }
+    test ! -e "$temporary/malformed.c" ||
+        { echo "stage2 check: $malformed emitted C" >&2; exit 1; }
+    test ! -e "$temporary/malformed.tokens" ||
+        { echo "stage2 check: $malformed emitted a token tape" >&2; exit 1; }
+done
+echo "PASS: malformed numeric literals are lexical errors with no artifact"
 
 copy_fixture="$stage2/fixtures/borrowed_copy_int.kofun"
 move_fixture="$stage2/fixtures/borrowed_move_text.kofun"

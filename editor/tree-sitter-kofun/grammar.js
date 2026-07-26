@@ -149,10 +149,48 @@ export default grammar({
       )),
     ),
 
-    type: ($) => seq(
-      field("name", $.identifier),
-      optional(field("type_arguments", $.type_arguments)),
-      optional("?"),
+    // #552 settled one notation for callable types, used in both positions:
+    // `A -> R` for one argument, `(A, B) -> R` for a fixed arity, `() -> R`
+    // for none. `->` has the lowest precedence in a type and associates to
+    // the right, so `A -> B -> R` is `A -> (B -> R)` — a callable returning a
+    // callable, not a two-argument callable. There is no implicit currying,
+    // so those are different types.
+    type: ($) => prec.right(seq(
+      choice(
+        seq(
+          field("name", $.identifier),
+          optional(field("type_arguments", $.type_arguments)),
+          optional("?"),
+        ),
+        seq(
+          field("domain", $.callable_domain),
+          optional("?"),
+        ),
+      ),
+      // No newline may precede the `->`. Newlines are significant here, and
+      // letting a type consume them while looking for an arrow makes a
+      // body-less declaration such as `extern "C" fn add(...) -> CInt`
+      // swallow its terminator and fail at end of input.
+      optional(seq(
+        "->",
+        repeat($._newline),
+        field("result", $.type),
+      )),
+    )),
+
+    // A parenthesised domain, which is also how a parenthesised type is
+    // written: `(A -> B)?` is an optional callable, while `A -> B?` is a
+    // callable returning an optional.
+    callable_domain: ($) => seq(
+      "(",
+      repeat($._separator),
+      optional(seq(
+        $.type,
+        repeat(seq($._comma, $.type)),
+        optional(","),
+        repeat($._separator),
+      )),
+      ")",
     ),
 
     type_arguments: ($) => seq(

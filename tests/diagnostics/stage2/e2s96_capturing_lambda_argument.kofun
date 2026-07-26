@@ -1,0 +1,11 @@
+# diagnostic-mode: compile
+# expect-code: E2S96
+# expect-span: byte 196
+fn apply(action: Int -> Int, value: Int) -> Int {
+    return action(value)
+}
+
+fn main() {
+    let base = 10
+    print(apply(value => value + base, 32))
+}

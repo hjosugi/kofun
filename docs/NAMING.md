@@ -56,6 +56,32 @@ The historical `Fn[...]` spelling is removed, not retained as an alias.
 Migration tooling must give a targeted replacement from `Fn[A, R]` to
 `A -> R` and from a historical multi-argument `Fn[A, B, R]` to
 `(A, B) -> R`. After migration, `Fn` is an ordinary available identifier.
+Stage 2 emits that replacement as `E2S97`, so the rewrite is a diagnostic and
+not only a documented intention.
+
+### Why this, and what was rejected
+
+The decision that mattered was currying, not punctuation. Kofun does not
+curry, so `add(1)` on a two-argument function is an arity error rather than a
+partially applied function. That settles the rest: an arrow only earns its
+keep over brackets when the function type is *itself* an arrow chain, which
+is a curried language's shape.
+
+Two alternatives were rejected.
+
+- **`Fn[A, B]` in types with `->` in declarations** — the state this replaced.
+  It spelled one concept two ways, which is the actual defect; whether `->` is
+  worth two characters was never the question.
+- **Go-style bare result types** (`fn f(a: Int) Int`) — consistent with
+  brackets, but it would have removed the marker that says where a result type
+  begins, and Kofun already allows omitting the result type.
+
+There is **no empirical answer** to whether `fn f(a: Int) -> Int` reads better
+than `func f(a int) int`. No controlled study measures it, and none is cited
+here, because constructing a justification after the fact would be worse than
+saying so. What decided it was consistency with the no-currying rule above:
+one notation, used in both positions, that does not imply a language feature
+Kofun does not have.
 
 Function declarations keep the same arrow before their result:
 
