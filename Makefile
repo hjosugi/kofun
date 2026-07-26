@@ -341,6 +341,7 @@ verify:
 	  tests/conformance/modules/imports-selective/run.sh \
 	  tests/conformance/modules/kif-v1/run.sh \
 	  tests/conformance/incremental/run.sh \
+	  tests/conformance/decimal/run.sh \
 	  tests/lsp/check.sh tooling/lsp/kofun-lsp \
 	  editor/vscode/server/kofun-lsp \
 	  tests/conformance/run.sh tests/conformance/backends/c11-stage1.sh \
