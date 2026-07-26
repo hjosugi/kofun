@@ -1,30 +1,98 @@
 # Getting started
 
-Kofun is an experimental research compiler. The repository launcher is the
-supported entry point and builds the checked compiler artifacts as needed.
+This guide takes a new contributor from a clean machine to a checked local
+change. Kofun is an experimental research compiler, so the repository itself
+is the development environment: there is no separately installed SDK required
+for the normal contributor path.
 
-## Requirements
+## What you will have at the end
 
-The common path needs:
+After about fifteen minutes, you should be able to:
 
-- a POSIX shell
-- a C11 compiler (`cc`, or `CC=clang`)
-- `sha256sum`
-- Node.js for wasm32 execution
-- Linux x86-64 tools for direct native output
+- run the repository launcher;
+- check, run, and build a small `.kofun` program;
+- run the fast test gates for the area you want to change;
+- start the documentation site locally; and
+- identify the next guide for compiler, language, or site work.
 
-The complete repository gate also uses Rust/Cargo, `ar`, `ld`, `readelf`,
-`file`, `ldd`, and `script`. `qemu-aarch64` is optional locally; CI installs it
-and executes the AArch64 corpus.
+If you already have the repository and toolchain, skip to
+[Verify the checkout](#verify-the-checkout).
 
-## First program
+## 1. Use a supported development environment
 
-From the repository root:
+The reference development and CI environment is Linux. Ubuntu or a Linux
+environment under WSL is the shortest path because direct ELF execution,
+binary inspection, and several shell gates use Linux tools.
+
+The common compiler path needs:
+
+| Tool | Why it is needed | Quick check |
+|---|---|---|
+| POSIX shell | launcher and repository gates | `sh --version` or `sh -c 'echo ok'` |
+| C11 compiler | builds the checked compiler seeds | `cc --version` |
+| GNU Make | named verification gates | `make --version` |
+| `sha256sum` | bootstrap and vendored-source integrity | `sha256sum --version` |
+| Node.js 24 | website, typed-sidecar tools, and wasm32 execution | `node --version` |
+| npm | locked website and Tree-sitter dependencies | `npm --version` |
+| Git | source control and some reproducibility checks | `git --version` |
+
+The complete `make verify` gate also uses:
+
+- Rust and Cargo for the audited Rust-shim example;
+- `ar`, `ld`, `readelf`, `file`, and `ldd` for native and ABI checks;
+- `script` from util-linux for terminal tests; and
+- `qemu-aarch64` to execute AArch64 output on a non-AArch64 host.
+
+`qemu-aarch64` is optional for focused local work, but CI installs it and
+executes the AArch64 corpus. macOS can run some frontend and website tasks, but
+it is not a substitute for the Linux verification boundary. If a gate depends
+on ELF, Linux syscalls, `ldd`, or QEMU, use Linux before treating the result as
+verified.
+
+## 2. Get the repository
+
+```sh
+git clone https://github.com/hjosugi/kofun.git
+cd kofun
+git status --short
+```
+
+Run every command in this guide from the repository root, the directory that
+contains `Makefile`, `bin/`, `bootstrap/`, and `docs/`. A clean checkout prints
+nothing for `git status --short`.
+
+The project does not require a global `kofun` install. Use `./bin/kofun` so the
+command and the compiler sources always come from the same commit.
+
+## 3. Run the smallest smoke test
 
 ```sh
 ./bin/kofun --version
+make check
+```
+
+The launcher builds a checked compiler artifact under `build/` when needed.
+`build/` is disposable, ignored output; it is not source and must not be
+committed.
+
+If you prefer Clang:
+
+```sh
+CC=clang make check
+```
+
+`make check` proves that the launcher can build the compiler seed and accept
+the canonical arithmetic fixture. It is intentionally smaller than the full
+repository suite.
+
+## 4. Check, run, and build a program
+
+Use the canonical fixture first:
+
+```sh
 ./bin/kofun check bootstrap/fixtures/answer.kofun
 ./bin/kofun run bootstrap/fixtures/answer.kofun
+mkdir -p build
 ./bin/kofun build bootstrap/fixtures/answer.kofun -o build/answer
 ./build/answer
 ```
@@ -38,26 +106,68 @@ fn main() {
 }
 ```
 
-Source files use `.kofun`. Unsupported syntax or target behavior must be
-reported explicitly; the launcher does not silently switch backends.
+Source files use `.kofun`. Unsupported syntax or target behavior must fail
+explicitly; the launcher must not silently switch to a different frontend or
+backend.
 
-## Choose a checked path
+To inspect the current command surface:
 
-Direct native x86-64:
+```sh
+./bin/kofun --help
+```
+
+### Understand the launcher boundary
+
+`bin/kofun` is an orchestrator, not one monolithic compiler. Depending on the
+command and flags, it builds and invokes a checked Stage 1, Stage 2, native,
+wasm32, C ABI, or CLI-framework compiler. These are deliberately bounded
+profiles. Acceptance by one path does not imply support by all paths.
+
+The [implemented-status matrix](MVP_IMPLEMENTED.md) is the authority for what
+is executable now. The [repository guide](REPOSITORY_GUIDE.md) explains where
+each path lives.
+
+## 5. Choose one checked path
+
+### Stage 2 and the host C backend
+
+The default `build` path tries the Stage 2 C11 Core and uses the explicit
+Stage 1 compatibility path only for source classified as valid but outside the
+Stage 2 lowering slice:
+
+```sh
+./bin/kofun build bootstrap/stage2/core_fixture.kofun \
+  -o build/stage2-example
+./build/stage2-example
+```
+
+Read [`bootstrap/stage2/README.md`](../bootstrap/stage2/README.md) before
+changing frontend behavior. It documents the accepted slice, diagnostics, and
+focused helper checkpoints.
+
+### Direct native x86-64
 
 ```sh
 ./bin/kofun build bootstrap/fixtures/answer.kofun \
-  --target x86_64-linux -o build/answer
+  --target x86_64-linux -o build/answer-x86_64
+./build/answer-x86_64
 ```
 
-Direct native AArch64:
+This emits a static ELF64 image directly. It does not mean every construct
+accepted by the C path is available in direct native code generation.
+
+### Direct native AArch64
 
 ```sh
 ./bin/kofun build bootstrap/fixtures/answer.kofun \
   --target aarch64-linux -o build/answer-aarch64
+qemu-aarch64 ./build/answer-aarch64
 ```
 
-WebAssembly:
+On a native AArch64 Linux machine, run the output directly. On another
+architecture, install QEMU user-mode support first.
+
+### WebAssembly
 
 ```sh
 ./bin/kofun build examples/wasm_arithmetic.kofun \
@@ -65,7 +175,10 @@ WebAssembly:
 node bootstrap/wasm/run.mjs build/arithmetic.wasm
 ```
 
-Declarative native CLI:
+The wasm32 profile is a checked Int64 arithmetic Core, not a browser-complete
+general compiler.
+
+### Declarative native CLI
 
 ```sh
 ./bin/kofun build examples/cli_tool.kofun \
@@ -73,19 +186,154 @@ Declarative native CLI:
 ./build/kofun-tool greet Ada --prefix Welcome
 ```
 
-These are separate bounded profiles, not one general language surface. See the
-[implemented-status matrix](MVP_IMPLEMENTED.md) before relying on a feature.
+The CLI framework has its own source contract and gate in `framework/cli/`.
 
-## Verify the checkout
+### Typed tooling output
 
 ```sh
-make verify        # every active repository gate
-make diagnostics   # stable diagnostic registry and exact fixtures
-make fuzz          # deterministic grammar and semantic oracle fuzzing
-make native        # direct x86-64 and AArch64 ELF checkpoints
-make tour          # no-install browser tour
+mkdir -p build
+./bin/kofun check bootstrap/fixtures/answer.kofun \
+  --emit-typed-sidecar build/answer.kofun-semantic.json \
+  --generation 1
 ```
 
-CI runs `make verify`. For architecture-specific limits and trust boundaries,
-continue with [native backends](NATIVE_BACKEND.md), [compiler architecture](COMPILER_ARCHITECTURE.md),
-and [self-hosting](../bootstrap/selfhost/README.md).
+The typed sidecar is non-authoritative tooling data. It is not compiler input,
+a cache, or proof that broader Stage 2 semantics are implemented.
+
+## 6. Verify the checkout
+
+Use a testing ladder instead of starting every edit with the full suite:
+
+```sh
+make check          # launcher and canonical fixture
+make test           # public build/run/check/test behavior
+make diagnostics    # stable diagnostic registry and exact fixtures
+make stage2         # Stage 2 frontend and bounded C11 lowering
+make native         # direct x86-64 and AArch64 checkpoints
+make fuzz           # deterministic grammar and semantic fuzz smoke tests
+make verify         # every active repository gate, then LSP/roadmap checks
+```
+
+`make verify` runs independent gates in parallel and can consume substantial
+CPU. For readable failure output or local bisection:
+
+```sh
+make VERIFY_JOBS=1 verify
+```
+
+Run the narrow gate while developing, then the broader relevant gate before
+you submit a change. CI runs `make verify`.
+
+See [Contributing](CONTRIBUTING.md#test-the-smallest-relevant-surface) for the
+test command mapped to each repository area.
+
+## 7. Run the documentation site
+
+The official website is a Next.js application under `app/`. Its documentation
+routes render selected repository Markdown at build time.
+
+Install exactly the locked dependencies:
+
+```sh
+npm ci
+```
+
+Start the development server:
+
+```sh
+npm run dev
+```
+
+Open the local URL printed by Next.js, then visit `/docs`. When the repository
+is served with the GitHub Pages base path, the published route is
+`/kofun/docs/`; local development normally uses `/docs`.
+
+Before submitting a site or documentation change:
+
+```sh
+npm run test:docs
+npm run verify:site
+```
+
+For the exact static GitHub Pages export:
+
+```sh
+KOFUN_BASE_PATH=/kofun npm run verify:pages
+```
+
+Do not edit `public/tour/`: it is ignored generated output copied from
+`docs/tour/`. The checked source for the browser tour lives in `docs/tour/`.
+
+## 8. Make a safe first change
+
+A documentation-only first contribution is a good way to learn the gates:
+
+1. create a short-lived branch;
+2. edit the authoritative Markdown under `docs/`;
+3. add it to `app/docs/docs-manifest.ts` if it should become a first-class
+   documentation page;
+4. run `npm run test:docs`;
+5. run `npm run verify:site` for layout or renderer changes;
+6. inspect `git diff --check` and `git status --short`; and
+7. commit only the intended files.
+
+For compiler work, do not begin by editing a generated or audited artifact in
+isolation. Read the nearest README and its `check.sh`, identify the canonical
+source, fixture, expected output, and digest contract, then change them as one
+reviewable unit.
+
+Continue with:
+
+- [Repository guide](REPOSITORY_GUIDE.md) — where code, specifications, tests,
+  generated output, and website sources live;
+- [Contributing](CONTRIBUTING.md) — change recipes, test selection, review
+  expectations, and the definition of done;
+- [Compiler architecture](COMPILER_ARCHITECTURE.md) — bootstrap layers and
+  trust boundaries; or
+- [Syntax](SYNTAX.md) and [Type system](TYPE_SYSTEM.md) — language direction
+  with current implementation qualifiers.
+
+## Common setup problems
+
+### `cc: not found`
+
+Install a C development toolchain and confirm `cc --version`. The compiler
+seeds are C11 and use warnings as errors in their gates.
+
+### A native or ABI gate reports a missing tool
+
+Read the first missing command in the error. Install the corresponding Linux
+binary tools, util-linux, Rust/Cargo, or QEMU package, then rerun the same
+focused gate. Do not reinterpret a skipped architecture as a passing result.
+
+### A test passes alone but fails during parallel `make verify`
+
+Rerun with `make VERIFY_JOBS=1 verify`. If the focused gate still passes,
+capture both results; tests must not depend on shared mutable temporary paths
+or timing that becomes invalid under the repository's parallel verification.
+
+### The website build reports stale generated tour files
+
+Run the supported build or test command, which calls `site/prepare-tour.mjs`.
+Make changes in `docs/tour/`, never in ignored `public/tour/`.
+
+### A diagnostic changed unexpectedly
+
+Run:
+
+```sh
+sh tests/diagnostics/check.sh
+sh tests/diagnostics/run.sh
+```
+
+If the change is intentional, read
+[`tests/diagnostics/README.md`](../tests/diagnostics/README.md) before using
+the bless workflow. Review regenerated goldens; never accept a bulk rewrite
+without understanding each public diagnostic change.
+
+### `git status` contains files you did not edit
+
+Stop before staging. This repository has generated outputs, audited bootstrap
+artifacts, and concurrent work that may be unrelated to your task. Inspect
+`git diff -- <path>`, stage explicit paths, and do not use a broad reset or
+checkout to erase somebody else's work.

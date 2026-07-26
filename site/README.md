@@ -31,6 +31,19 @@ Markdown rendered as first-class site pages. Adding a document there exposes it
 in both the overview and sidebar while preserving the source file as the
 authority.
 
+New-contributor documentation follows a deliberate three-layer route:
+
+- `docs/GETTING_STARTED.md` takes a clean machine to a checked local run;
+- `docs/REPOSITORY_GUIDE.md` maps tasks to sources, boundaries, and gates; and
+- `docs/CONTRIBUTING.md` defines coherent changes, test selection, review, and
+  completion.
+
+Keep this route visible in the `/docs` onboarding panel and the `Start here` /
+`Contribute` navigation sections. Use relative Markdown links so repository
+readers and the site renderer share one source. After adding a curated page,
+run `npm run test:docs` and add its exported route to the required Pages
+artifacts when it is part of this critical onboarding path.
+
 Run the site locally:
 
 ```sh

@@ -5,7 +5,12 @@ export type DocEntry = {
   title: string;
   summary: string;
   source: string;
-  section: "Start here" | "Language" | "Compiler" | "Project";
+  section:
+    | "Start here"
+    | "Language"
+    | "Compiler"
+    | "Contribute"
+    | "Project";
 };
 
 export const snapshot = {
@@ -20,8 +25,15 @@ export const docs: DocEntry[] = [
   {
     slug: "getting-started",
     title: "Getting started",
-    summary: "Requirements, the repository launcher, quick start, and active toolchain paths.",
+    summary: "From a clean machine to a checked compiler run and local documentation site.",
     source: "docs/GETTING_STARTED.md",
+    section: "Start here",
+  },
+  {
+    slug: "repository-guide",
+    title: "Repository guide",
+    summary: "A task-oriented map of every top-level area, compiler path, test family, and generated boundary.",
+    source: "docs/REPOSITORY_GUIDE.md",
     section: "Start here",
   },
   {
@@ -93,6 +105,13 @@ export const docs: DocEntry[] = [
     summary: "The frozen profile, typed HIR evidence, runnable compiler generation, and fixed-point boundary.",
     source: "bootstrap/selfhost/README.md",
     section: "Compiler",
+  },
+  {
+    slug: "contributing",
+    title: "Contributing",
+    summary: "Change recipes, test selection, repository conventions, review expectations, and definition of done.",
+    source: "docs/CONTRIBUTING.md",
+    section: "Contribute",
   },
   {
     slug: "specification",

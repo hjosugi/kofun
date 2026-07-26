@@ -139,6 +139,9 @@ reported as unsupported; it must not silently fall back.
 
 Start with:
 
+- [Getting started](https://hjosugi.github.io/kofun/docs/getting-started/)
+- [Repository guide](https://hjosugi.github.io/kofun/docs/repository-guide/)
+- [Contributing](https://hjosugi.github.io/kofun/docs/contributing/)
 - [Implemented status](https://hjosugi.github.io/kofun/docs/implemented-status/)
 - [Language vision](https://hjosugi.github.io/kofun/docs/language-vision/)
 - [Compiler architecture](https://hjosugi.github.io/kofun/docs/compiler-architecture/)
@@ -153,6 +156,11 @@ published documentation share one authority.
 
 ## Contributing
 
+New contributors should follow the
+[setup guide](https://hjosugi.github.io/kofun/docs/getting-started/), use the
+[repository map](https://hjosugi.github.io/kofun/docs/repository-guide/) to
+find the owning source and gate, and read the full
+[contribution workflow](https://hjosugi.github.io/kofun/docs/contributing/).
 The issue tracker distinguishes planning records from independently refinable
 work. Good starting points carry both
 [`curated`](https://github.com/hjosugi/kofun/issues?q=is%3Aopen+label%3Acurated)

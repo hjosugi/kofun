@@ -9,6 +9,41 @@ const trackDescriptions: Record<number, string> = {
   668: "Compare declared backends through normalized observations and an independent family oracle.",
 };
 
+const contributorPath = [
+  {
+    step: "01",
+    title: "Set up and run Kofun",
+    description:
+      "Install the small toolchain, use the repository launcher, and get a checked program running.",
+    href: "/docs/getting-started",
+    action: "Start setup",
+  },
+  {
+    step: "02",
+    title: "Learn where work belongs",
+    description:
+      "Trace commands through compiler stages, specifications, tests, libraries, tooling, and the site.",
+    href: "/docs/repository-guide",
+    action: "Explore the repository",
+  },
+  {
+    step: "03",
+    title: "Make a verified change",
+    description:
+      "Follow the recipe for your subsystem, select the right gate, and prepare a reviewable patch.",
+    href: "/docs/contributing",
+    action: "Read the workflow",
+  },
+  {
+    step: "04",
+    title: "Check the real boundary",
+    description:
+      "Separate active compiler evidence from focused checkpoints, design direction, and planned work.",
+    href: "/docs/implemented-status",
+    action: "Check implementation",
+  },
+] as const;
+
 export default function DocsHome() {
   return (
     <main className="docs-layout" id="main-content">
@@ -26,9 +61,12 @@ export default function DocsHome() {
         <div className="docs-overview">
           <div className="docs-overview-hero">
             <span className="section-kicker">Kofun docs</span>
-            <h1>Evidence first.<br />Ambition intact.</h1>
+            <h1>Start here.<br />Ship with evidence.</h1>
             <p>
-              The tracker snapshot observes main commit{" "}
+              New to Kofun? Follow the contributor path below to run the
+              compiler, understand the repository, and make a checked change
+              without guessing which source or test owns the behavior. The
+              tracker snapshot observes main commit{" "}
               <a
                 href={`https://github.com/hjosugi/kofun/commit/${snapshot.commit}`}
               >
@@ -48,6 +86,31 @@ export default function DocsHome() {
             </p>
           </div>
 
+          <section className="docs-onboarding" aria-labelledby="contributor-path">
+            <div className="docs-section-title">
+              <span>01</span>
+              <div>
+                <h2 id="contributor-path">Your first day, in order</h2>
+                <p>
+                  Four short guides take you from checkout to a reviewable
+                  contribution.
+                </p>
+              </div>
+            </div>
+            <div className="docs-onboarding-grid">
+              {contributorPath.map((item) => (
+                <Link href={item.href} key={item.step}>
+                  <span>{item.step}</span>
+                  <div>
+                    <h3>{item.title}</h3>
+                    <p>{item.description}</p>
+                  </div>
+                  <b>{item.action} →</b>
+                </Link>
+              ))}
+            </div>
+          </section>
+
           <div className="docs-honesty">
             <span>Current boundary</span>
             <strong>Research compiler, not a production language.</strong>
@@ -63,10 +126,13 @@ export default function DocsHome() {
 
           <section className="docs-card-section">
             <div className="docs-section-title">
-              <span>01</span>
+              <span>02</span>
               <div>
                 <h2>Curated guides</h2>
-                <p>Repository Markdown, with its status qualifiers preserved.</p>
+                <p>
+                  Authoritative repository Markdown, rendered with status
+                  qualifiers and local links preserved.
+                </p>
               </div>
             </div>
             <div className="docs-card-grid">
@@ -87,7 +153,7 @@ export default function DocsHome() {
 
           <section className="docs-card-section">
             <div className="docs-section-title">
-              <span>02</span>
+              <span>03</span>
               <div>
                 <h2>Evidence tracks</h2>
                 <p>

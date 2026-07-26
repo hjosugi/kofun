@@ -59,6 +59,9 @@ export default async function DocPage({
   const { slug } = await params;
   const entry = docBySlug.get(slug);
   if (!entry) notFound();
+  const entryIndex = docs.findIndex((candidate) => candidate.slug === slug);
+  const previous = entryIndex > 0 ? docs[entryIndex - 1] : undefined;
+  const next = entryIndex < docs.length - 1 ? docs[entryIndex + 1] : undefined;
 
   const markdown = await readFile(
     posix.join(process.cwd(), entry.source),
@@ -118,6 +121,25 @@ export default async function DocPage({
               {markdown}
             </ReactMarkdown>
           </div>
+
+          <nav className="docs-pagination" aria-label="Adjacent guides">
+            {previous ? (
+              <Link className="previous" href={`/docs/${previous.slug}`}>
+                <span>← Previous</span>
+                <strong>{previous.title}</strong>
+              </Link>
+            ) : (
+              <span aria-hidden="true" />
+            )}
+            {next ? (
+              <Link className="next" href={`/docs/${next.slug}`}>
+                <span>Next →</span>
+                <strong>{next.title}</strong>
+              </Link>
+            ) : (
+              <span aria-hidden="true" />
+            )}
+          </nav>
         </article>
       </div>
     </main>
