@@ -298,6 +298,37 @@ its six-field inventory are not yet routed through ordinary `bin/kofun`
 builds. Run the sanitizer-, analyzer-, and boundary-backed gate with
 `make re-exports`.
 
+`bootstrap/stage2/incremental_graph.c` is the persisted compiler semantic
+dependency graph built on those digests. It resolves one package inventory,
+derives every module's public and package-internal semantic digest through the
+same KIF writer, and stores nodes and edges under a cache directory. A later
+run recomputes each module's source digest and outgoing edge digest, then
+decides per module whether its interface must be executed or may be reused.
+Reuse is a real skip: a reused module's interface is neither rebuilt nor
+republished, and its digests come from the verified cache entry.
+
+Invalidation follows the digests rather than the file graph. A comment,
+formatting, private body, or unused private declaration edit recomputes only
+its own module because no interface digest moves. A package-internal signature
+change invalidates same-package consumers with matching edges while leaving the
+public view, and therefore any external consumer, reusable. A public change
+invalidates consumers, and continues past them only when their own interfaces
+also move. Removing a selected import or a re-export changes the importing or
+facade module's recorded edge set, so its consumers are never silently reused.
+Modules are decided dependencies-first in canonical `ModuleId` order, so
+inventory discovery order cannot change the persisted graph.
+
+The cache is defensive rather than trusted. An unknown schema tag, malformed
+record, foreign `PackageId`, exceeded node/edge/byte limit, or mutated
+interface blob is a bounded cache miss that recomputes, never a crash and never
+a stale reuse; a corrupt blob demotes only its own module. Manifests and
+interfaces are replaced atomically, and a rejected source commits nothing, so a
+failure is never reusable as a success. This helper owns compiler semantics
+only: it is not Frost's target/action graph, it schedules nothing, and it makes
+no timing claim. Target profile changes, failure-then-repair reuse, and
+path-remapped clean copies are the recorded second slice of #301. Run the
+sanitizer- and analyzer-backed gate with `make incremental`.
+
 Focused import diagnostics are `E2S59` malformed/order/path/alias, `E2S60`
 missing module, `E2S61` self import, `E2S62` duplicate target/import, `E2S63`
 module qualifier collision,
@@ -408,6 +439,17 @@ visibility, digests, source-free consumption, corruption mutations, exact
 limits, failed publication, C11 warnings, sanitizers, and static analysis.
 `tests/conformance/modules/re-exports/run.sh` adds export-fact digest,
 round-trip, mutation, and source-free facade-consumption coverage.
+
+`tests/conformance/incremental/run.sh` pins the semantic invalidation
+decisions on a four-module `core <- service <- app` package plus an unrelated
+`util`. It records the exact executed/reused node set for each of the first
+seven Required edit matrix rows, the transitive case where a changed
+intermediate interface does continue to propagate, the external public
+boundary through source-free KIF resolution, inventory-order invariance,
+bounded recovery from unknown schemas and corrupt manifests and blobs, and
+that a rejected source commits nothing. Rows 8-10 and the collector's
+rejection of top-level comments are explicit `SKIP` lines, never implicit
+passes.
 
 `bootstrap/stage2/visibility_access.c` is the pure access primitive for the
 next resolver slice. It compares only schema-tagged 32-byte package, module,

@@ -1,0 +1,9 @@
+module demo.util
+
+pub fn util_entry(value: Int) -> Int {
+    return value
+}
+
+private fn util_detail(value: Int) -> Int {
+    return value
+}

@@ -1,0 +1,15 @@
+module demo.service
+
+import demo.core
+
+pub fn service_entry(value: Int) -> Int {
+    return core.public_entry(value)
+}
+
+pub fn service_helper(value: Int) -> Int {
+    return value
+}
+
+internal fn service_internal(value: Int) -> Int {
+    return value
+}
