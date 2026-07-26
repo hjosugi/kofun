@@ -2,7 +2,9 @@
 set -eu
 
 # Decimal slice 2 (#721): the runtime representation, its canonical form, and
-# the versioned resource profile.
+# the versioned resource profile. Slice 4 (#723) adds the exact operations and
+# checked exact division below, plus the Float contrast that keeps the two
+# types from being conflated.
 #
 # What this gate is for, beyond "the code runs". Four of #710's frozen
 # decisions are only checkable by observation, and each has a section below:
@@ -191,6 +193,26 @@ golden arith_div div \
     7 70 \
     1 6
 
+# Decimal and Float side by side, which is what makes keeping two types
+# worthwhile. A backend that implemented one by delegating to the other would
+# produce two identical columns; every line here except the exactly
+# representable `1.0 / 4.0` must differ, and that one is kept precisely so the
+# corpus is not just "the columns always disagree".
+#
+# The last two lines differ in *kind* rather than in digits: division by zero
+# is a checked outcome with no value on one side and an infinity on the other,
+# and 2^53+1 is a value binary64 cannot hold at all.
+golden contrast contrast \
+    add 0.1 0.2 \
+    add 1.005 0.005 \
+    mul 1.1 1.1 \
+    mul 0.1 0.1 \
+    sub 0.3 0.1 \
+    div 1.0 4.0 \
+    div 1.0 3.0 \
+    div 1.0 0.0 \
+    add 9007199254740993 1
+
 # Sanitizers, matching what the other Stage 2 module gates do. An
 # arbitrary-precision buffer that grows by doubling is exactly the shape where
 # an off-by-one survives a golden comparison.
@@ -243,6 +265,10 @@ then
     ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
     UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
         "$WORK/decimal-test-sanitized" identity 0.1 0.2 0.3 >/dev/null
+    ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+    UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+        "$WORK/decimal-test-sanitized" contrast div 1.0 0.0 add 0.1 0.2 \
+        >/dev/null
     printf '%s\n' "PASS: AddressSanitizer and UndefinedBehaviorSanitizer"
 else
     printf '%s\n' "SKIP: sanitizers unavailable"

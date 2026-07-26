@@ -195,4 +195,23 @@ KofunDecimalStatus kofun_decimal_divide_exact(
     KofunDecimalDivision *outcome
 );
 
+/*
+ * The same four operations on `Float`, where they are binary64 and therefore
+ * *not* exact. They exist here, beside the exact ones, because keeping the two
+ * types apart is only meaningful if both are implemented and the difference is
+ * observable — `0.1 + 0.2` is `0.3` in one and `0.30000000000000004` in the
+ * other, and a corpus that showed only the Decimal side would not prove the
+ * types are distinct.
+ *
+ * These are thin wrappers on the host's binary64 operations. That is the
+ * point: `Float` is IEEE 754 binary64 with its ordinary behavior, including
+ * infinities from division by zero rather than the checked outcome Decimal
+ * gives. There is no rounding-mode argument because binary64 rounding is
+ * round-to-nearest-even and is a property of the type, not a choice.
+ */
+double kofun_float_add(double left, double right);
+double kofun_float_subtract(double left, double right);
+double kofun_float_multiply(double left, double right);
+double kofun_float_divide(double left, double right);
+
 #endif

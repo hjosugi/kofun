@@ -358,12 +358,108 @@ static int command_identity(int count, char **arguments) {
     return 0;
 }
 
+/*
+ * `contrast OP LEFT RIGHT ...` — the same operation on both types, side by
+ * side.
+ *
+ * This is the corpus that proves `Decimal` and `Float` cannot be conflated.
+ * Each line carries the exact decimal answer and the binary64 one, so a
+ * backend that implemented one type by delegating to the other would produce
+ * two identical columns and fail every line where they must differ.
+ *
+ * Division is where the two differ in kind rather than in digits: Decimal
+ * reports `DivisionByZero` and yields no value, while binary64 yields an
+ * infinity and carries on.
+ */
+static int command_contrast(int count, char **arguments) {
+    for (int index = 0; index + 2 < count; index += 3) {
+        const char *op = arguments[index];
+        const char *left_text = arguments[index + 1];
+        const char *right_text = arguments[index + 2];
+
+        KofunDecimal left;
+        KofunDecimal right;
+        KofunDecimal result;
+        kofun_decimal_init(&left);
+        kofun_decimal_init(&right);
+        kofun_decimal_init(&result);
+        double left_binary = 0.0;
+        double right_binary = 0.0;
+        if (kofun_decimal_from_literal(
+                left_text, strlen(left_text), &left) != KOFUN_DECIMAL_OK ||
+            kofun_decimal_from_literal(
+                right_text, strlen(right_text), &right) != KOFUN_DECIMAL_OK ||
+            kofun_float_from_literal(
+                left_text, strlen(left_text), &left_binary) !=
+                KOFUN_DECIMAL_OK ||
+            kofun_float_from_literal(
+                right_text, strlen(right_text), &right_binary) !=
+                KOFUN_DECIMAL_OK) {
+            kofun_decimal_free(&left);
+            kofun_decimal_free(&right);
+            return fail("an operand is not a valid literal");
+        }
+
+        KofunDecimalStatus status;
+        KofunDecimalDivision outcome = KOFUN_DECIMAL_DIVISION_EXACT;
+        double binary;
+        if (strcmp(op, "add") == 0) {
+            status = kofun_decimal_add(&left, &right, &result);
+            binary = kofun_float_add(left_binary, right_binary);
+        } else if (strcmp(op, "sub") == 0) {
+            status = kofun_decimal_subtract(&left, &right, &result);
+            binary = kofun_float_subtract(left_binary, right_binary);
+        } else if (strcmp(op, "mul") == 0) {
+            status = kofun_decimal_multiply(&left, &right, &result);
+            binary = kofun_float_multiply(left_binary, right_binary);
+        } else {
+            status = kofun_decimal_divide_exact(
+                &left, &right, &result, &outcome);
+            binary = kofun_float_divide(left_binary, right_binary);
+        }
+
+        char decimal_text[64];
+        if (status != KOFUN_DECIMAL_OK) {
+            snprintf(decimal_text, sizeof decimal_text, "%s",
+                     kofun_decimal_status_code(status));
+        } else if (outcome != KOFUN_DECIMAL_DIVISION_EXACT) {
+            snprintf(decimal_text, sizeof decimal_text, "%s",
+                     kofun_decimal_division_name(outcome));
+        } else {
+            char *canonical = kofun_decimal_to_canonical_text(&result);
+            if (canonical == NULL) {
+                kofun_decimal_free(&left);
+                kofun_decimal_free(&right);
+                kofun_decimal_free(&result);
+                return fail("out of memory rendering a result");
+            }
+            snprintf(decimal_text, sizeof decimal_text, "%s", canonical);
+            free(canonical);
+        }
+        printf(
+            "%s %s %s -> Decimal=%s Float=%.17g\n",
+            left_text,
+            op,
+            right_text,
+            decimal_text,
+            binary
+        );
+        kofun_decimal_free(&left);
+        kofun_decimal_free(&right);
+        kofun_decimal_free(&result);
+    }
+    return 0;
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) return fail("usage: decimal-test COMMAND [ARGS...]");
     const char *command = argv[1];
     if (strcmp(command, "add") == 0 || strcmp(command, "sub") == 0 ||
         strcmp(command, "mul") == 0 || strcmp(command, "div") == 0) {
         return command_arith(command, argc - 2, argv + 2);
+    }
+    if (strcmp(command, "contrast") == 0) {
+        return command_contrast(argc - 2, argv + 2);
     }
     if (strcmp(command, "identity") == 0) {
         return command_identity(argc - 2, argv + 2);

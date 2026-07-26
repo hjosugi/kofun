@@ -1267,3 +1267,30 @@ KofunDecimalStatus kofun_decimal_divide_exact(const KofunDecimal *left,
     long scale = (long)left->scale - (long)right->scale + tens;
     return finish(left->sign * right->sign, &quotient, scale, out);
 }
+
+/* --- Float, for contrast (slice 4 of #710, issue #723) -------------------- */
+
+/*
+ * Binary64, with its ordinary behavior and no checking.
+ *
+ * These are one line each and exist as named functions rather than inline
+ * arithmetic so that the two types' operations are reachable through one
+ * surface. The contrast is the deliverable: `kofun_float_divide(1.0, 0.0)`
+ * is an infinity, where `kofun_decimal_divide_exact` reports
+ * `DivisionByZero` and produces no value at all.
+ */
+double kofun_float_add(double left, double right) {
+    return left + right;
+}
+
+double kofun_float_subtract(double left, double right) {
+    return left - right;
+}
+
+double kofun_float_multiply(double left, double right) {
+    return left * right;
+}
+
+double kofun_float_divide(double left, double right) {
+    return left / right;
+}
