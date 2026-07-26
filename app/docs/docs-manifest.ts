@@ -109,6 +109,13 @@ export const docs: DocEntry[] = [
     section: "Project",
   },
   {
+    slug: "delivery-plan",
+    title: "Delivery plan",
+    summary: "Generated four-agent schedule, completion forecast, readiness risks, and dependency lanes.",
+    source: "docs/DELIVERY_PLAN.md",
+    section: "Project",
+  },
+  {
     slug: "security",
     title: "Security",
     summary: "Threat boundaries, unsupported production claims, and hardening work.",

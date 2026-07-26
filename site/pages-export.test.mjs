@@ -8,7 +8,9 @@ const required = [
   ".nojekyll",
   "404.html",
   "index.html",
+  "roadmap/index.html",
   "docs/index.html",
+  "docs/delivery-plan/index.html",
   "docs/issue-progress/index.html",
   "kofun-mark.svg",
   "tour/index.html",
@@ -69,6 +71,25 @@ for (const url of htmlFiles) {
     );
   }
 }
+
+const plan = JSON.parse(
+  await readFile(
+    new URL("../app/roadmap/plan-snapshot.json", import.meta.url),
+    "utf8",
+  ),
+);
+const planningOnly = plan.issues.find(
+  (issue) =>
+    issue.role === "planning" &&
+    !plan.schedule.some((scheduled) => scheduled.number === issue.number),
+);
+assert.ok(planningOnly, "expected a planning-only issue in the plan fixture");
+const roadmapHtml = await readFile(new URL("roadmap/index.html", output), "utf8");
+assert.equal(
+  roadmapHtml.includes(planningOnly.title),
+  false,
+  "roadmap export must not serialize the bulk issue inventory",
+);
 
 assert.ok(checkedUrls > 0, "no root-relative export URLs were checked");
 console.log(

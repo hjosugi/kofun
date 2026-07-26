@@ -17,6 +17,7 @@ export default function DocsHome() {
         <header className="docs-topbar">
           <Link href="/">← Project home</Link>
           <div>
+            <Link href="/roadmap">Delivery roadmap</Link>
             <a href="https://github.com/hjosugi/kofun">GitHub</a>
             <a href="https://github.com/hjosugi/kofun/issues">Issues</a>
           </div>
