@@ -86,6 +86,84 @@ grep -Fxq \
     'error[E2S99]: Decimal literal at byte 22 has no type yet (#710 slice 3)' \
     "$temporary/decimal-lowering.stderr"
 
+# Numeric typing (#722, #710 frozen decisions 2 and 4). Two properties:
+#
+# 1. a literal's type comes from its token kind, and reaches the scope HIR — so
+#    an unannotated `let x = 1.5` is a Decimal binding, not the historical Int
+#    default;
+# 2. mixing two of Int/Decimal/Float in one operator is a type error, in *both*
+#    operand orders. Order matters: a promotion bug normally appears on one
+#    side only, so a rule written once would pass half of these.
+# `--emit-scope-hir` rather than the `.ir`: any source containing a Decimal
+# still refuses at lowering, and the `.ir` carries the scope HIR only when
+# lowering succeeded. The binding type is what is under test, so it is read
+# from the pass that produces it.
+printf 'fn typed() {\n    let a = 1\n    let b = 1.5\n    let c = 42f64\n    let d = "x"\n}\n' \
+    >"$temporary/numeric-types.kofun"
+"$temporary/kofun-stage2" --emit-scope-hir \
+    "$temporary/numeric-types.kofun" "$temporary/numeric-types.scope-hir"
+for expected in '|a|immutable|Int|' '|b|immutable|Decimal|' \
+                '|c|immutable|Float|' '|d|immutable|Text|'; do
+    grep -F "$expected" "$temporary/numeric-types.scope-hir" >/dev/null || {
+        echo "stage2 check: scope HIR is missing a binding typed $expected" >&2
+        cat "$temporary/numeric-types.scope-hir" >&2
+        exit 1
+    }
+done
+echo "PASS: numeric literals carry Decimal/Float into the scope HIR"
+
+mixed_case() {
+    expression=$1
+    printf 'fn main() {\n    print(%s)\n}\n' "$expression" \
+        >"$temporary/mixed.kofun"
+    rm -f "$temporary/mixed.c"
+    set +e
+    "$temporary/kofun-stage2" "$temporary/mixed.kofun" \
+        "$temporary/mixed.c" "$temporary/mixed.ir" \
+        "$temporary/mixed.tokens" \
+        >"$temporary/mixed.stdout" 2>"$temporary/mixed.stderr"
+    mixed_status=$?
+    set -e
+    test "$mixed_status" -eq 1 || {
+        echo "stage2 check: '$expression' was accepted" >&2
+        exit 1
+    }
+    grep -q '^error\[E2S100\]: operator .* mixes ' "$temporary/mixed.stdout" || {
+        echo "stage2 check: '$expression' did not report E2S100" >&2
+        cat "$temporary/mixed.stdout" >&2
+        exit 1
+    }
+    test ! -e "$temporary/mixed.c" || {
+        echo "stage2 check: '$expression' emitted C" >&2
+        exit 1
+    }
+}
+for mixed in \
+    '1 + 1.5' '1.5 + 1' \
+    '1 * 42f64' '42f64 * 1' \
+    '1.5 - 42f64' '42f64 - 1.5' \
+    '2 // 0.5' '0.5 // 2'
+do
+    mixed_case "$mixed"
+done
+# A same-type expression must NOT be caught here: it reaches the ordinary
+# unsupported-lowering refusal instead, so an over-eager rule fails this.
+printf 'fn main() {\n    print(1.5 + 2.5)\n}\n' >"$temporary/same.kofun"
+set +e
+"$temporary/kofun-stage2" "$temporary/same.kofun" "$temporary/same.c" \
+    "$temporary/same.ir" "$temporary/same.tokens" \
+    >"$temporary/same.stdout" 2>&1
+set -e
+grep -q 'E2S100' "$temporary/same.stdout" && {
+    echo "stage2 check: same-type Decimal arithmetic reported a type mismatch" >&2
+    exit 1
+}
+grep -q 'E2S99' "$temporary/same.stdout" || {
+    echo "stage2 check: same-type Decimal arithmetic did not reach E2S99" >&2
+    exit 1
+}
+echo "PASS: mixed Int/Decimal/Float arithmetic is rejected in both orders"
+
 # The Decimal resource profile (#721, `docs/DECIMAL.md` "Profile v1"). Frozen
 # decision 8 requires its limits to be cross-backend *observable*, so the
 # compiler constructs each literal and reports the limit at the literal's own
