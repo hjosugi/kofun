@@ -2123,14 +2123,18 @@ fn emit_argument(source: Text, hir: Text, start: Int, end: Int) -> Text {
     if lambda_parameters_end(source, -1, cursor) >= 0 {
         return argument_lambda_name(cursor)
     }
-    if token_kind(source, cursor) == "identifier" &&
-       call_argument_position(source, cursor) {
+    # `call_argument_position` scans from the start of the source, so it is
+    # tested last in each arm: the cheap HIR lookup rejects the ordinary
+    # identifier argument first, and the scan then runs only for the two rare
+    # shapes that can actually be function values.
+    if token_kind(source, cursor) == "identifier" {
         let value_binding = hir_use_binding_id(hir, cursor)
         if len(value_binding) > 0 {
             # A lambda binding used as a value is the address of its lifted
             # function: lifting never declares a C variable for the binding
             # itself, so `k_b<id>` would name nothing.
-            if lambda_binding_open(source, hir, value_binding) >= 0 {
+            if lambda_binding_open(source, hir, value_binding) >= 0 &&
+               call_argument_position(source, cursor) {
                 return "kofun_lambda_" + value_binding
             }
         } else {
@@ -2139,7 +2143,8 @@ fn emit_argument(source: Text, hir: Text, start: Int, end: Int) -> Text {
             # already an ordinary C function, so its address is the callable.
             let name = token_text(source, cursor)
             if len(enum_constructor_owner(source, name)) == 0 &&
-               function_arity(source, name) >= 0 {
+               function_arity(source, name) >= 0 &&
+               call_argument_position(source, cursor) {
                 return "kofun_fn_" + name
             }
         }

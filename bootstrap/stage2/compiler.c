@@ -3689,16 +3689,20 @@ static char *emit_argument(
     if (lambda_parameters_end(source, -1, cursor) >= 0) {
         return argument_lambda_name(cursor);
     }
-    if (
-        strcmp(token_kind(source, cursor), "identifier") == 0 &&
-        call_argument_position(source, cursor)
-    ) {
+    /* `call_argument_position` scans from the start of the source, so it is
+     * tested last in each arm: the cheap HIR lookup rejects the ordinary
+     * identifier argument first, and the scan then runs only for the two rare
+     * shapes that can actually be function values. */
+    if (strcmp(token_kind(source, cursor), "identifier") == 0) {
         char *value_binding = hir_use_binding_id(hir, cursor);
         if (value_binding[0] != '\0') {
             /* A lambda binding used as a value is the address of its lifted
              * function: lifting never declares a C variable for the binding
              * itself, so `k_b<id>` would name nothing. */
-            if (lambda_binding_open(source, hir, value_binding) >= 0) {
+            if (
+                lambda_binding_open(source, hir, value_binding) >= 0 &&
+                call_argument_position(source, cursor)
+            ) {
                 Buffer output;
                 buffer_init(&output);
                 buffer_format(&output, "kofun_lambda_%s", value_binding);
@@ -3714,7 +3718,11 @@ static char *emit_argument(
             char *owner = enum_constructor_owner(source, name);
             bool constructor = owner[0] != '\0';
             free(owner);
-            if (!constructor && function_arity(source, name) >= 0) {
+            if (
+                !constructor &&
+                function_arity(source, name) >= 0 &&
+                call_argument_position(source, cursor)
+            ) {
                 char *c_name = c_identifier_name(name);
                 Buffer output;
                 buffer_init(&output);
