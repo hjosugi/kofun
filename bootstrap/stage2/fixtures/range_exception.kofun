@@ -1,0 +1,7 @@
+# The maximal-munch range exception from docs/DECIMAL.md: `0..3` must stay
+# three tokens even though a fractional literal is now one token (#717).
+fn spans() {
+    for index in 0..3 {
+        print(index)
+    }
+}

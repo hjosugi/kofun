@@ -88,6 +88,39 @@ fn token_end(source: Text, start: Int) -> Int {
               (is_digit(symbols[cursor]) || symbols[cursor] == "_") {
             cursor = cursor + 1
         }
+        # docs/DECIMAL.md: maximal munch with the range exception. A fraction
+        # needs a digit after the point, so 1..2 stays Int, range, Int and 1.
+        # stays Int followed by the point.
+        if cursor + 1 < len(symbols) && symbols[cursor] == "." &&
+           is_digit(symbols[cursor + 1]) {
+            cursor = cursor + 1
+            while cursor < len(symbols) &&
+                  (is_digit(symbols[cursor]) || symbols[cursor] == "_") {
+                cursor = cursor + 1
+            }
+        }
+        # An exponent joins the token only when digits actually follow, so 1e
+        # remains Int followed by the identifier e.
+        if cursor < len(symbols) &&
+           (symbols[cursor] == "e" || symbols[cursor] == "E") {
+            let mut probe = cursor + 1
+            if probe < len(symbols) &&
+               (symbols[probe] == "+" || symbols[probe] == "-") {
+                probe = probe + 1
+            }
+            if probe < len(symbols) && is_digit(symbols[probe]) {
+                cursor = probe
+                while cursor < len(symbols) &&
+                      (is_digit(symbols[cursor]) || symbols[cursor] == "_") {
+                    cursor = cursor + 1
+                }
+            }
+        }
+        # f64 is part of the numeric token, not an identifier.
+        if cursor + 3 <= len(symbols) && symbols[cursor] == "f" &&
+           symbols[cursor + 1] == "6" && symbols[cursor + 2] == "4" {
+            cursor = cursor + 3
+        }
         return cursor
     }
 
@@ -132,6 +165,23 @@ fn token_kind(source: Text, start: Int) -> Text {
         return "identifier"
     }
     if is_digit(symbols[0]) {
+        # An unsuffixed fractional or scientific literal denotes Decimal; the
+        # f64 suffix selects binary64 Float (docs/DECIMAL.md). Neither has a
+        # representation yet, so the kinds exist to gate the token contract and
+        # to let a backend refuse them explicitly.
+        let size = len(symbols)
+        if size >= 3 && symbols[size - 3] == "f" &&
+           symbols[size - 2] == "6" && symbols[size - 1] == "4" {
+            return "float"
+        }
+        let mut scan = 0
+        while scan < size {
+            if symbols[scan] == "." || symbols[scan] == "e" ||
+               symbols[scan] == "E" {
+                return "decimal"
+            }
+            scan = scan + 1
+        }
         return "integer"
     }
     return "punctuation"

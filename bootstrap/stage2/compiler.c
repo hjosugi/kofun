@@ -533,6 +533,49 @@ static int64_t token_end(const char *source, int64_t start) {
         ) {
             ++cursor;
         }
+        /* docs/DECIMAL.md: maximal munch with the range exception. A fraction
+         * needs a digit after the point, so `1..2` stays Int(1), `..`, Int(2)
+         * and `1.` stays Int(1) followed by `.`. */
+        if (cursor + 1 < length &&
+            source[cursor] == '.' &&
+            source[cursor + 1] >= '0' && source[cursor + 1] <= '9') {
+            ++cursor;
+            while (
+                cursor < length &&
+                ((source[cursor] >= '0' && source[cursor] <= '9') ||
+                 source[cursor] == '_')
+            ) {
+                ++cursor;
+            }
+        }
+        /* An exponent is only part of the token when digits actually follow,
+         * so `1e` remains Int(1) followed by the identifier `e`. */
+        if (cursor < length &&
+            (source[cursor] == 'e' || source[cursor] == 'E')) {
+            int64_t probe = cursor + 1;
+            if (probe < length &&
+                (source[probe] == '+' || source[probe] == '-')) {
+                ++probe;
+            }
+            if (probe < length &&
+                source[probe] >= '0' && source[probe] <= '9') {
+                cursor = probe;
+                while (
+                    cursor < length &&
+                    ((source[cursor] >= '0' && source[cursor] <= '9') ||
+                     source[cursor] == '_')
+                ) {
+                    ++cursor;
+                }
+            }
+        }
+        /* `f64` is part of the numeric token, not an identifier. */
+        if (cursor + 3 <= length &&
+            source[cursor] == 'f' &&
+            source[cursor + 1] == '6' &&
+            source[cursor + 2] == '4') {
+            cursor += 3;
+        }
         return cursor;
     }
     if (cursor < length && pair_token(source, start)) return cursor + 1;
@@ -585,7 +628,26 @@ static const char *token_kind(const char *source, int64_t start) {
             NULL)) {
         return keyword_token(source, start) ? "keyword" : "identifier";
     }
-    if (first >= '0' && first <= '9') return "integer";
+    if (first >= '0' && first <= '9') {
+        /* An unsuffixed fractional or scientific literal denotes Decimal; the
+         * `f64` suffix selects binary64 Float (docs/DECIMAL.md). Neither has a
+         * representation yet — the kinds exist so the token contract can be
+         * gated and so a backend refuses them explicitly (#717). */
+        if (end - start >= 3 &&
+            source[end - 3] == 'f' &&
+            source[end - 2] == '6' &&
+            source[end - 1] == '4') {
+            return "float";
+        }
+        for (int64_t scan = start; scan < end; ++scan) {
+            if (source[scan] == '.' ||
+                source[scan] == 'e' ||
+                source[scan] == 'E') {
+                return "decimal";
+            }
+        }
+        return "integer";
+    }
     return "punctuation";
 }
 

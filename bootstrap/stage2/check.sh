@@ -47,6 +47,42 @@ grep '^function|classify|1|' "$temporary/fixture.ir" >/dev/null
 grep '^function|main|0|' "$temporary/fixture.ir" >/dev/null
 grep '^function-count|2$' "$temporary/fixture.ir" >/dev/null
 
+# Numeric token contract (#717, docs/DECIMAL.md). Each literal must become
+# exactly one token of the stated kind, which is what the byte spans assert —
+# a span one byte short would mean the token split. The spans are pinned rather
+# than counted because "one token per literal" is the property under test.
+round_trip decimal-tokens "$stage2/fixtures/decimal_tokens.kofun"
+grep -Fxq 'decimal|312|315|6' "$temporary/decimal-tokens.tokens"
+grep -Fxq 'decimal|337|344|7' "$temporary/decimal-tokens.tokens"
+grep -Fxq 'decimal|373|377|8' "$temporary/decimal-tokens.tokens"
+grep -Fxq 'float|401|406|9' "$temporary/decimal-tokens.tokens"
+grep -Fxq 'float|432|438|10' "$temporary/decimal-tokens.tokens"
+grep -Fxq 'decimal|457|468|11' "$temporary/decimal-tokens.tokens"
+test "$(grep -c '^decimal|' "$temporary/decimal-tokens.tokens")" -eq 4
+test "$(grep -c '^float|' "$temporary/decimal-tokens.tokens")" -eq 2
+
+# The maximal-munch range exception: `0..3` stays Int, `..`, Int. Asserting the
+# three spans is the point — a lexer that merged `0.` would still round-trip.
+round_trip range-exception "$stage2/fixtures/range_exception.kofun"
+grep -Fxq 'integer|178|179|4' "$temporary/range-exception.tokens"
+grep -Fxq 'punctuation|179|181|4' "$temporary/range-exception.tokens"
+grep -Fxq 'integer|181|182|4' "$temporary/range-exception.tokens"
+test "$(grep -c '^decimal|' "$temporary/range-exception.tokens")" -eq 0
+test "$(grep -c '^float|' "$temporary/range-exception.tokens")" -eq 0
+
+# A Decimal literal has no representation yet, so reaching lowering must be an
+# explicit, source-located refusal that writes nothing.
+printf 'fn main() {\n    print(1.5)\n}\n' >"$temporary/decimal-lowering.kofun"
+set +e
+"$root/bin/kofun" check "$temporary/decimal-lowering.kofun" \
+    >"$temporary/decimal-lowering.stdout" 2>"$temporary/decimal-lowering.stderr"
+decimal_lowering_status=$?
+set -e
+test "$decimal_lowering_status" -eq 1
+test ! -s "$temporary/decimal-lowering.stdout"
+grep -Fxq 'error[E2S12]: invalid Int expression at byte 22' \
+    "$temporary/decimal-lowering.stderr"
+
 copy_fixture="$stage2/fixtures/borrowed_copy_int.kofun"
 move_fixture="$stage2/fixtures/borrowed_move_text.kofun"
 move_diagnostic="$stage2/fixtures/borrowed_move_text.stderr"
