@@ -88,9 +88,35 @@ A conformance profile may impose declared limits on digit count, scale
 magnitude, allocation, or operation cost. Every backend registered for that
 profile must use the same observable limits and diagnostics. Exceeding a limit
 produces a stable resource error before an unbounded allocation. It never
-clamps, wraps, rounds, or silently changes representation. The first concrete
-thresholds and diagnostic codes are deferred, but must be versioned together
-when introduced.
+clamps, wraps, rounds, or silently changes representation.
+
+### Profile v1
+
+The thresholds this document previously deferred are now introduced, and are
+versioned as one unit — a limit cannot move without the version moving with it.
+
+| Limit | Value |
+|---|---|
+| Profile version | 1 |
+| Significand digits | 4096 |
+| Scale | `-6144 .. 6144` |
+
+| Code | Condition |
+|---|---|
+| `D001` | significand exceeds the digit limit |
+| `D002` | scale outside the range, before or after canonicalization |
+| `D003` | not a literal this grammar accepts |
+| `D004` | allocation refused |
+
+Both boundaries and their one-over cases are gated, so exceeding a limit is
+observably a `D00x` code and never a clamped value. Leading zeros do not
+consume the digit budget, and trailing zeros are canonicalized away before the
+scale is checked, so `1000.000` costs one digit and not seven.
+
+The representation is `bootstrap/stage2/decimal_v1.c`; `make decimal` is its
+gate. A significand is a base-2^32 magnitude with no width ceiling, and the
+small-value path is proven unobservable by constructing the last inline value
+and the first promoted one and comparing every public observation.
 
 ## Literal syntax and lexing
 

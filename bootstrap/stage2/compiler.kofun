@@ -6144,13 +6144,22 @@ fn validate_argument_lambda_captures(source: Text, hir: Text) -> Text {
 
 # A well-formed Decimal or Float literal reaching lowering.
 #
-# #717 lexes these and stops there: the token contract is slice 1 of #710 and
-# the runtime representation is slice 2, so there is nothing yet to lower a
-# Decimal *to*. The refusal names that successor rather than reusing the
-# generic `E2S12`, because "invalid Int expression" says the literal is wrong
-# when what is actually true is that the compiler is unfinished. Lowering
-# through Int, or through a host double, would change the value and is exactly
-# what `docs/DECIMAL.md` forbids.
+# The refusal names a successor slice rather than reusing the generic `E2S12`,
+# because "invalid Int expression" says the literal is wrong when what is
+# actually true is that the compiler is unfinished. Lowering through Int, or
+# through a host double, would change the value and is exactly what
+# `docs/DECIMAL.md` forbids.
+#
+# Slice 2 (#721) built the runtime representation, so the literal *is*
+# representable and the successor named here is slice 3, which gives it a type.
+#
+# The C seed additionally constructs the value through `decimal_v1.c` before
+# refusing, which is what puts the resource profile's `D001`/`D002` limits at
+# the literal's own byte. This transliteration cannot: the profile is an
+# arbitrary-precision magnitude in base 2^32, and the frozen self-host profile
+# has no array of integers to hold one. So the two agree on `E2S99` and the
+# resource diagnostics exist only in the seed — which is honest, because the
+# seed is what runs, and it is recorded here rather than left to be discovered.
 fn validate_unsupported_numeric_kinds(source: Text) -> Text {
     let mut cursor = skip_trivia(source, 0)
     while cursor < len(source) {
@@ -6162,7 +6171,7 @@ fn validate_unsupported_numeric_kinds(source: Text) -> Text {
             }
             return "error[E2S99]: " + name +
             " literal at byte " + to_text(cursor) +
-            " has no runtime representation yet (#710 slice 2)"
+            " has no type yet (#710 slice 3)"
         }
         cursor = skip_trivia(source, token_end(source, cursor))
     }

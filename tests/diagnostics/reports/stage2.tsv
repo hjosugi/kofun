@@ -1,4 +1,6 @@
 # code	adapter	channel	exit	primary-span	secondary-span	artifact
+D001	stage2	stdout	1	required	not-applicable	forbidden
+D002	stage2	stdout	1	required	not-applicable	forbidden
 E007	stage2	stdout	1	required	not-applicable	forbidden
 E2S01	stage2	stdout	1	required	not-applicable	forbidden
 E2S02	stage2	stdout	1	required	not-applicable	forbidden
