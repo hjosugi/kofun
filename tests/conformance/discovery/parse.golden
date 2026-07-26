@@ -1,0 +1,25 @@
+canonical: accepted generation=17 offset=84 span=75..84 kind=3 include_unavailable=false spelling=(null)
+reordered-keys: rejected invalid-request
+unknown-field: rejected invalid-request
+duplicate-key: rejected invalid-request
+reindented: rejected invalid-request
+trailing-data: rejected invalid-request
+float-generation: rejected invalid-request
+exponent-generation: rejected invalid-request
+signed-generation: rejected invalid-request
+leading-zero: rejected invalid-request
+zero-generation: accepted generation=0 offset=84 span=75..84 kind=3 include_unavailable=false spelling=(null)
+u53-overflow: rejected invalid-request
+u32-overflow: rejected invalid-request
+uppercase-id: rejected invalid-request
+short-id: rejected invalid-request
+empty-compatibility: rejected invalid-request
+offset-before-span: rejected invalid-position
+inverted-span: rejected invalid-position
+spelling-without-explain: rejected invalid-request
+explain-without-spelling: rejected invalid-request
+explain-with-spelling: accepted generation=17 offset=84 span=75..84 kind=4 include_unavailable=false spelling=map
+empty-spelling: rejected invalid-request
+unknown-kind: rejected invalid-request
+unknown-schema: rejected invalid-request
+control-character: rejected invalid-request

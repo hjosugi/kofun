@@ -1,0 +1,59 @@
+invalid: 291 bytes
+{
+  "analysis": null,
+  "authoritative": false,
+  "diagnostics": [],
+  "limit_profile": "kofun.discovery/default-v1",
+  "omissions": [],
+  "operations": [],
+  "reason": "invalid-request",
+  "schema": "kofun.discovery.result/v1",
+  "status": "invalid",
+  "truncated": false,
+  "type": null
+}
+stale-wrong-file: 617 bytes
+{
+  "analysis": {
+    "file_id": "1111111111111111111111111111111111111111111111111111111111111111",
+    "generation": 17,
+    "interface_set_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+    "semantic_compatibility": "stage2-v1",
+    "source_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "authoritative": false,
+  "diagnostics": [],
+  "limit_profile": "kofun.discovery/default-v1",
+  "omissions": [],
+  "operations": [],
+  "reason": "wrong-file",
+  "schema": "kofun.discovery.result/v1",
+  "status": "stale",
+  "truncated": false,
+  "type": null
+}
+unavailable: 635 bytes
+{
+  "analysis": {
+    "file_id": "1111111111111111111111111111111111111111111111111111111111111111",
+    "generation": 17,
+    "interface_set_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+    "semantic_compatibility": "stage2-v1",
+    "source_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "authoritative": false,
+  "diagnostics": [],
+  "limit_profile": "kofun.discovery/default-v1",
+  "omissions": [],
+  "operations": [],
+  "reason": "unsupported-in-profile",
+  "schema": "kofun.discovery.result/v1",
+  "status": "unavailable",
+  "truncated": false,
+  "type": null
+}
+invalid-with-analysis: refused
+stale-without-analysis: refused
+stale-with-wrong-reason: refused
+unavailable-without-reason: refused
+complete-is-not-factless: refused
