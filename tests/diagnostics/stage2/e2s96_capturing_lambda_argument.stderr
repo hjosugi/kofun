@@ -1,0 +1,1 @@
+error[E2S96]: lambda argument at byte 196 captures an enclosing binding; pass a lambda that reads only its parameters

@@ -6,6 +6,7 @@ CASES="$ROOT/tests/conformance/syntax/issues_35_47"
 SPEC="$ROOT/spec/syntax/FOUNDATIONS_AND_CONTROL.md"
 MATCH_SPEC="$ROOT/spec/bool-match-exhaustiveness.md"
 ENUM_MATCH_SPEC="$ROOT/spec/enum-match-exhaustiveness.md"
+NAMING_SPEC="$ROOT/docs/NAMING.md"
 CC=${CC:-cc}
 
 command -v "$CC" >/dev/null 2>&1 || {
@@ -492,6 +493,67 @@ test "$bare_lambda_output" = "$(printf '42\n111\n7')" ||
     fail "bare lambda and match arm printed: $bare_lambda_output"
 printf '%s\n' \
     "PASS executable: bare \`x => e\` and match arms coexist in one function"
+
+# #703 criterion 3. The case computes each value twice — once through a named
+# function passed as an argument, once through a lambda written at the call
+# site — so identical observations are what is gated, not merely that a lambda
+# argument compiles.
+"$WORK/kofun-stage2" \
+    "$CASES/lambda_argument.kofun" \
+    "$WORK/lambda-argument.c" \
+    "$WORK/lambda-argument.ir" \
+    "$WORK/lambda-argument.tokens" >/dev/null
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$WORK/lambda-argument.c" -o "$WORK/lambda-argument"
+lambda_argument_output=$("$WORK/lambda-argument")
+# One line per pair: `Int -> Int` by name then by lambda, `(Int, Int) -> Int`
+# by name then by lambda, `() -> Int` by name, a `let`-bound lambda passed by
+# name, and a lambda argument nested inside another call's argument.
+test "$lambda_argument_output" = "$(printf '42\n42\n42\n42\n7\n42\n42')" ||
+    fail "Stage 2 lambda arguments printed: $lambda_argument_output"
+grep 'int64_t (\*k_b[0-9]*)(int64_t)' "$WORK/lambda-argument.c" >/dev/null ||
+    fail "callable parameter did not lower to a C function pointer"
+grep 'int64_t (\*k_b[0-9]*)(void)' "$WORK/lambda-argument.c" >/dev/null ||
+    fail "\`() -> Int\` did not lower to a zero-argument function pointer"
+printf '%s\n' \
+    "PASS executable: lambda arguments observe as their named equivalents"
+
+# #703 criterion 4: a shipped example using lambdas compiles and is run by a
+# gate. It goes through the public `kofun run`, not the Stage 2 binary this
+# script builds, because the claim being gated is that a reader who copies the
+# example gets the output it shows.
+KOFUN_BUILD_DIR="$WORK/example-stage1" \
+KOFUN_STAGE2_BUILD_DIR="$WORK/example-stage2" \
+    "$ROOT/bin/kofun" run "$ROOT/examples/lambdas.kofun" \
+    >"$WORK/example-lambdas.stdout" 2>"$WORK/example-lambdas.stderr"
+test "$(cat "$WORK/example-lambdas.stdout")" = \
+    "$(printf '42\n42\n42\n42\n42\n42\n42')" ||
+    fail "examples/lambdas.kofun printed: $(cat "$WORK/example-lambdas.stdout")"
+test ! -s "$WORK/example-lambdas.stderr" ||
+    fail "examples/lambdas.kofun wrote unexpected stderr"
+printf '%s\n' "PASS executable: examples/lambdas.kofun runs through kofun run"
+
+# A capturing lambda cannot be a function value here: lifting passes captures
+# as trailing parameters, so its address is not the declared callable. #703
+# puts closure conversion out of scope, so this must refuse explicitly rather
+# than emit C whose observations would not match.
+expect_stage2_diagnostic \
+    "$ROOT/tests/diagnostics/stage2/e2s96_capturing_lambda_argument.kofun" \
+    "$ROOT/tests/diagnostics/stage2/e2s96_capturing_lambda_argument.stderr"
+
+# #552 removed `Fn[...]` and every normative document requires a targeted
+# rewrite rather than a bare rejection, so the rewrite itself is gated.
+expect_stage2_diagnostic \
+    "$ROOT/tests/diagnostics/stage2/e2s97_removed_callable_notation.kofun" \
+    "$ROOT/tests/diagnostics/stage2/e2s97_removed_callable_notation.stderr"
+grep -- '-> Text' "$NAMING_SPEC" >/dev/null ||
+    fail "callable type notation is missing from docs/NAMING.md"
+grep -- 'no empirical answer' "$NAMING_SPEC" >/dev/null ||
+    fail "docs/NAMING.md must record that the readability question is unmeasured"
+if grep -l -- 'Fn\[' "$ROOT"/examples/*.kofun >/dev/null 2>&1; then
+    fail "a shipped example still uses the removed \`Fn[...]\` notation"
+fi
+printf '%s\n' "PASS: one callable notation, its rejected alternatives, and its rewrite"
 
 expect_stage2_unsupported "$CASES/unsupported_owned_binding.kofun"
 expect_stage2_unsupported "$CASES/unsupported_else_if.kofun"

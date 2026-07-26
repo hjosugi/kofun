@@ -1,0 +1,43 @@
+# #703 criterion 3: a lambda passed as an argument executes with observations
+# identical to the equivalent named function.
+#
+# Each pair below computes one value twice — once through a declared function
+# passed by name, once through a lambda written at the call site — so a
+# lowering that made the two differ fails here instead of passing quietly.
+# Every callable parameter is written in the notation #552 settled: `A -> R`
+# for one argument, `(A, B) -> R` for a fixed arity, `() -> R` for none.
+fn double(value: Int) -> Int {
+    return value * 2
+}
+
+fn add(left: Int, right: Int) -> Int {
+    return left + right
+}
+
+fn seed() -> Int {
+    return 7
+}
+
+fn apply(action: Int -> Int, value: Int) -> Int {
+    return action(value)
+}
+
+fn combine(op: (Int, Int) -> Int, left: Int, right: Int) -> Int {
+    return op(left, right)
+}
+
+fn run_thunk(thunk: () -> Int) -> Int {
+    return thunk()
+}
+
+fn main() -> Int {
+    print(apply(double, 21))
+    print(apply(value => value * 2, 21))
+    print(combine(add, 40, 2))
+    print(combine((left, right) => left + right, 40, 2))
+    print(run_thunk(seed))
+    let triple = value => value * 3
+    print(apply(triple, 14))
+    print(apply(outer => outer * 2, apply(inner => inner + 1, 20)))
+    return 0
+}

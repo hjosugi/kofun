@@ -266,6 +266,21 @@
     }
   },
   {
+    "type": "callable_domain",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "type",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "cli_about_directive",
     "named": true,
     "fields": {
@@ -1550,12 +1565,32 @@
     "type": "type",
     "named": true,
     "fields": {
+      "domain": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "callable_domain",
+            "named": true
+          }
+        ]
+      },
       "name": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "result": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type",
             "named": true
           }
         ]

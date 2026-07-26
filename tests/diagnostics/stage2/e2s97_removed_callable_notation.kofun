@@ -1,0 +1,10 @@
+# diagnostic-mode: compile
+# expect-code: E2S97
+# expect-span: byte 88
+fn apply(action: Fn[Int, Int], value: Int) -> Int {
+    return value
+}
+
+fn main() {
+    print(apply(0, 21))
+}

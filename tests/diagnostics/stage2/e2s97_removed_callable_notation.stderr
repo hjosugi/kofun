@@ -1,0 +1,1 @@
+error[E2S97]: `Fn[...]` is not a callable type at byte 88; write `Int -> Int`

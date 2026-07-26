@@ -659,6 +659,87 @@ static int64_t line_at(const char *source, int64_t target) {
     return line;
 }
 
+/*
+ * Why the malformed forms are diagnosed here rather than in `token_end`, and
+ * what "malformed" means for each of them.
+ *
+ * `token_end` is deliberately permissive about `.`: a fraction needs a digit
+ * after the point, so `1..2` stays `Int`, `..`, `Int` and `1.` stays `Int`
+ * followed by the point. Tightening the scanner instead would have to decide
+ * between the range operator and a fraction with one character of lookahead,
+ * which is the collision `docs/DECIMAL.md` states the range exception exists
+ * to avoid. So the scanner keeps producing tokens and this pass reads the
+ * result, where `..` and a lone `.` are already distinct tokens.
+ *
+ * The rules, all measured against `docs/DECIMAL.md:97-118`:
+ *
+ * - a numeric token immediately followed by an identifier character is one
+ *   malformed literal, not a literal beside a name. This is what makes `1e`,
+ *   `1e+`, `1.0e` and `1._0` errors, and it is also why `42f64` is one token
+ *   while `42 f64` is two: the suffix joins only without a gap.
+ * - a numeric token immediately followed by a lone `.` is `1.`, a fraction
+ *   with no digits. A following `..` is the range operator and is left alone.
+ * - a lone `.` immediately followed by a digit is `.5`, a fraction with no
+ *   integer part.
+ * - `_` must sit between two digits, so `1_`, `1.0_` and `1_.0` are errors
+ *   while `1_000.000_1` is not.
+ *
+ * `_1` is absent on purpose. It is a well-formed identifier under the
+ * identifier grammar, not a numeric literal, and it already reports as an
+ * unknown binding at its own byte. Making it lexical here would ban an
+ * identifier spelling on the strength of a rule about numbers.
+ */
+static bool numeric_digit(char symbol) {
+    return symbol >= '0' && symbol <= '9';
+}
+
+static bool numeric_underscore_error(
+    const char *source,
+    int64_t start,
+    int64_t end
+) {
+    for (int64_t cursor = start; cursor < end; ++cursor) {
+        if (source[cursor] != '_') continue;
+        if (cursor == start || cursor + 1 >= end) return true;
+        if (
+            !numeric_digit(source[cursor - 1]) ||
+            !numeric_digit(source[cursor + 1])
+        ) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool malformed_numeric_literal(
+    const char *source,
+    int64_t start,
+    int64_t end
+) {
+    int64_t length = (int64_t)strlen(source);
+    const char *kind = token_kind(source, start);
+    if (
+        strcmp(kind, "integer") == 0 ||
+        strcmp(kind, "decimal") == 0 ||
+        strcmp(kind, "float") == 0
+    ) {
+        if (numeric_underscore_error(source, start, end)) return true;
+        if (end < length && identifier_start_at(source, (size_t)length, end, NULL)) {
+            return true;
+        }
+        if (end < length && source[end] == '.') {
+            return end + 1 >= length || source[end + 1] != '.';
+        }
+        return false;
+    }
+    /* A lone `.` — `..` lexes as one two-character token, so a
+     * one-character `.` token here is never the range operator. */
+    if (end == start + 1 && source[start] == '.') {
+        return end < length && numeric_digit(source[end]);
+    }
+    return false;
+}
+
 static char *lex_source(const char *source) {
     Buffer tape;
     buffer_init(&tape);
@@ -701,6 +782,25 @@ static char *lex_source(const char *source) {
                 "E2S01",
                 cursor,
                 length,
+                true,
+                tape.data
+            );
+            return tape.data;
+        }
+        if (malformed_numeric_literal(source, cursor, end)) {
+            tape.length = 0;
+            tape.data[0] = '\0';
+            buffer_format(
+                &tape,
+                "error[E2S98]: malformed numeric literal at byte %" PRId64
+                "; `.` and an exponent need digits, and `_` must sit between "
+                "two digits",
+                cursor
+            );
+            stage2_diagnostic_set(
+                "E2S98",
+                cursor,
+                end,
                 true,
                 tape.data
             );
@@ -3127,6 +3227,305 @@ static char *hir_binding_field(
     const char *binding_id,
     int field
 );
+static int64_t lambda_parameters_end(
+    const char *source,
+    int64_t previous,
+    int64_t open
+);
+static int64_t callable_parameter_type_start(
+    const char *source,
+    const char *hir,
+    const char *binding_id
+);
+static int64_t callable_call_arity(
+    const char *source,
+    const char *hir,
+    int64_t use_start
+);
+static int64_t function_arity(const char *source, const char *wanted);
+static char *enum_constructor_owner(const char *source, const char *name);
+static char *source_slice(const char *source, int64_t start, int64_t end);
+
+/*
+ * The byte after a callable type beginning at `start`, or -1 when the tokens
+ * there are not one.
+ *
+ * #552 settled the notation and this Core implements exactly it: `A -> R` for
+ * one argument, `(A, B) -> R` for a fixed arity of two or more, and `() -> R`
+ * for none. There is no implicit currying, so `A -> B -> R` is not a two-
+ * argument callable; it is a one-argument callable returning another, which
+ * this Core has no value to represent and therefore does not accept.
+ *
+ * `Int` is the only type in every domain and result position, because `Int` is
+ * the whole type vocabulary a Core parameter has. A callable naming any other
+ * type is not a callable type here, so the caller reports it as an ordinary
+ * unsupported parameter type rather than as a malformed callable.
+ */
+static int64_t callable_type_end(const char *source, int64_t start) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, start);
+    if (cursor >= length) return -1;
+    int64_t after_domain = -1;
+    if (token_equal(source, cursor, "(")) {
+        int64_t close = balanced_end(source, cursor, "(", ")");
+        if (close < 0) return -1;
+        int64_t element = skip_trivia(source, token_end(source, cursor));
+        while (element < close && !token_equal(source, element, ")")) {
+            if (!token_equal(source, element, "Int")) return -1;
+            int64_t separator = skip_trivia(source, token_end(source, element));
+            if (separator < close && token_equal(source, separator, ",")) {
+                element = skip_trivia(source, token_end(source, separator));
+            } else {
+                element = separator;
+            }
+        }
+        after_domain = close;
+    } else if (token_equal(source, cursor, "Int")) {
+        after_domain = token_end(source, cursor);
+    } else {
+        return -1;
+    }
+    int64_t arrow = skip_trivia(source, after_domain);
+    if (arrow >= length || !token_equal(source, arrow, "->")) return -1;
+    int64_t result = skip_trivia(source, token_end(source, arrow));
+    if (result >= length || !token_equal(source, result, "Int")) return -1;
+    return token_end(source, result);
+}
+
+/*
+ * The argument count of the callable type at `start`, or -1 when there is not
+ * one there. The bare domain `A -> R` is one argument by construction; a
+ * parenthesised domain counts its elements, so `() -> R` is zero.
+ */
+static int64_t callable_type_arity(const char *source, int64_t start) {
+    if (callable_type_end(source, start) < 0) return -1;
+    int64_t cursor = skip_trivia(source, start);
+    if (!token_equal(source, cursor, "(")) return 1;
+    int64_t close = balanced_end(source, cursor, "(", ")");
+    if (close < 0) return -1;
+    int64_t count = 0;
+    int64_t element = skip_trivia(source, token_end(source, cursor));
+    while (element < close && !token_equal(source, element, ")")) {
+        ++count;
+        int64_t separator = skip_trivia(source, token_end(source, element));
+        if (separator < close && token_equal(source, separator, ",")) {
+            element = skip_trivia(source, token_end(source, separator));
+        } else {
+            element = separator;
+        }
+    }
+    return count;
+}
+
+/*
+ * `int64_t (*NAME)(int64_t, ...)` for the callable type at `start`. Every
+ * value this Core lowers is an `int64_t`, so a callable is a plain C function
+ * pointer and needs no environment; that is exactly why a capturing lambda
+ * cannot be one, and `validate_argument_lambda_captures` refuses those.
+ */
+static char *callable_c_declarator(
+    const char *source,
+    int64_t start,
+    const char *name
+) {
+    int64_t arity = callable_type_arity(source, start);
+    if (arity < 0) return owned_text("");
+    Buffer output;
+    buffer_init(&output);
+    buffer_format(&output, "int64_t (*%s)(", name);
+    if (arity == 0) {
+        buffer_append(&output, "void");
+    } else {
+        for (int64_t written = 0; written < arity; ++written) {
+            if (written > 0) buffer_append(&output, ", ");
+            buffer_append(&output, "int64_t");
+        }
+    }
+    buffer_append(&output, ")");
+    return output.data;
+}
+
+/*
+ * The arrow spelling of the removed `Fn[...]` notation whose `[` is at
+ * `open`, or "" when the brackets do not close.
+ *
+ * #552 settled one spelling for both positions, and every normative document
+ * requires a *targeted* rewrite rather than a bare rejection. The last
+ * bracket element is the result and the rest are the domain, so `Fn[R]` is
+ * `() -> R`, `Fn[A, R]` is `A -> R`, and a historical multi-argument
+ * `Fn[A, B, R]` is `(A, B) -> R`. Nested brackets are skipped whole, which is
+ * what keeps `Fn[Int, List[Int]]` from splitting inside `List[Int]`.
+ */
+static char *removed_callable_rewrite(const char *source, int64_t open) {
+    int64_t close = balanced_end(source, open, "[", "]");
+    if (close < 0) return owned_text("");
+    Buffer domain;
+    buffer_init(&domain);
+    char *result = owned_text("");
+    int64_t count = 0;
+    int64_t element = skip_trivia(source, token_end(source, open));
+    while (element < close && !token_equal(source, element, "]")) {
+        int64_t element_start = element;
+        int64_t element_end = element;
+        while (
+            element < close &&
+            !token_equal(source, element, ",") &&
+            !token_equal(source, element, "]")
+        ) {
+            if (token_equal(source, element, "[")) {
+                int64_t nested = balanced_end(source, element, "[", "]");
+                if (nested < 0) {
+                    free(domain.data);
+                    free(result);
+                    return owned_text("");
+                }
+                element_end = nested;
+            } else {
+                element_end = token_end(source, element);
+            }
+            element = skip_trivia(source, element_end);
+        }
+        if (count > 0) {
+            if (domain.length > 0) buffer_append(&domain, ", ");
+            buffer_append(&domain, result);
+        }
+        free(result);
+        result = source_slice(source, element_start, element_end);
+        ++count;
+        if (element < close && token_equal(source, element, ",")) {
+            element = skip_trivia(source, token_end(source, element));
+        }
+    }
+    Buffer output;
+    buffer_init(&output);
+    if (count == 0) {
+        free(domain.data);
+        free(result);
+        free(output.data);
+        return owned_text("");
+    }
+    if (count == 1) {
+        buffer_format(&output, "() -> %s", result);
+    } else if (count == 2) {
+        buffer_format(&output, "%s -> %s", domain.data, result);
+    } else {
+        buffer_format(&output, "(%s) -> %s", domain.data, result);
+    }
+    free(domain.data);
+    free(result);
+    return output.data;
+}
+
+/*
+ * `Fn[...]` is the callable notation #552 removed. `Fn` stays an ordinary
+ * identifier, so only `Fn` immediately followed by `[` is the removed type.
+ */
+static char *validate_removed_callable_notation(const char *source) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < length) {
+        if (
+            token_equal(source, cursor, "Fn") &&
+            strcmp(token_kind(source, cursor), "identifier") == 0
+        ) {
+            int64_t bracket = skip_trivia(source, token_end(source, cursor));
+            if (bracket < length && token_equal(source, bracket, "[")) {
+                char *rewrite = removed_callable_rewrite(source, bracket);
+                if (rewrite[0] != '\0') {
+                    Buffer message;
+                    buffer_init(&message);
+                    buffer_format(
+                        &message,
+                        "error[E2S97]: `Fn[...]` is not a callable type "
+                        "at byte %" PRId64 "; write `%s`",
+                        cursor,
+                        rewrite
+                    );
+                    free(rewrite);
+                    stage2_diagnostic_set(
+                        "E2S97",
+                        cursor,
+                        token_end(source, cursor),
+                        true,
+                        message.data
+                    );
+                    return message.data;
+                }
+                free(rewrite);
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return owned_text("ok");
+}
+
+/*
+ * Whether `target` is a whole argument of a call.
+ *
+ * A bare function name is a value only here. Restricting it to argument
+ * position is what keeps `double + 1` an ordinary unknown-binding error: a
+ * function name that reached the Int expression grammar would lower to a
+ * function address inside integer arithmetic and surface as a C type error
+ * instead of a Kofun diagnostic.
+ *
+ * Two conditions, and both are needed. The token before `target` opens or
+ * continues an argument list — a `(` that itself follows an identifier, so a
+ * parenthesised group does not qualify, or a `,`. And the token after
+ * `target` closes or continues it, so `double` in `print(double + 1)` is
+ * excluded while `double` in `apply(double, 21)` is not.
+ */
+static bool call_argument_position(const char *source, int64_t target) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, 0);
+    int64_t previous = -1;
+    int64_t before_previous = -1;
+    while (cursor < target && cursor < length) {
+        before_previous = previous;
+        previous = cursor;
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    if (cursor != target || previous < 0) return false;
+    int64_t after = skip_trivia(source, token_end(source, target));
+    if (after >= length) return false;
+    if (!token_equal(source, after, ",") && !token_equal(source, after, ")")) {
+        return false;
+    }
+    if (token_equal(source, previous, "(")) {
+        return before_previous >= 0 &&
+               strcmp(token_kind(source, before_previous), "identifier") == 0;
+    }
+    return token_equal(source, previous, ",");
+}
+
+/*
+ * The byte after an argument, which is either an ordinary bounded expression
+ * or an arrow lambda passed directly.
+ *
+ * Only argument position needs this. An argument's preceding token is `(` or
+ * `,`, never an identifier, so the constructor-pattern ambiguity that
+ * `lambda_parameters_end` guards with its `previous` parameter cannot arise
+ * here and -1 is the correct `previous` to pass.
+ */
+static int64_t argument_end(const char *source, int64_t start) {
+    int64_t lambda_end = lambda_parameters_end(source, -1, start);
+    if (lambda_end >= 0) return lambda_end;
+    return expression_end(source, start);
+}
+
+/*
+ * The lifted name of an arrow lambda written directly in argument position.
+ *
+ * A `let`-bound lambda is keyed by its binding id, which an anonymous argument
+ * does not have. Its keying token's byte offset is the identity that is
+ * already unique and already stable across the two walks that must agree —
+ * the one that emits the definition and the one that emits the reference.
+ */
+static char *argument_lambda_name(int64_t open) {
+    Buffer output;
+    buffer_init(&output);
+    buffer_format(&output, "kofun_lambda_at%" PRId64, open);
+    return output.data;
+}
 
 static int64_t primary_end(const char *source, int64_t start) {
     int64_t length = (int64_t)strlen(source);
@@ -3146,9 +3545,9 @@ static int64_t primary_end(const char *source, int64_t start) {
             return token_end(source, argument);
         }
         while (argument < length) {
-            int64_t argument_end = expression_end(source, argument);
-            if (argument_end < 0) return -1;
-            int64_t separator = skip_trivia(source, argument_end);
+            int64_t bound = argument_end(source, argument);
+            if (bound < 0) return -1;
+            int64_t separator = skip_trivia(source, bound);
             if (separator < length && token_equal(source, separator, ")")) {
                 return token_end(source, separator);
             }
@@ -3270,6 +3669,76 @@ static char *format_two(const char *name, const char *left, const char *right) {
     return output.data;
 }
 
+/*
+ * One argument's C expression.
+ *
+ * The three function-value forms are lowered here rather than in
+ * `emit_primary`, because only argument position accepts them and only this
+ * caller knows it is in argument position. Everything else lowers through the
+ * ordinary expression emitter unchanged.
+ */
+static char *emit_argument(
+    const char *source,
+    const char *hir,
+    int64_t start,
+    int64_t end
+) {
+    int64_t cursor = skip_trivia(source, start);
+    /* An arrow lambda argument is the address of the function it was lifted
+     * to. */
+    if (lambda_parameters_end(source, -1, cursor) >= 0) {
+        return argument_lambda_name(cursor);
+    }
+    /* `call_argument_position` scans from the start of the source, so it is
+     * tested last in each arm: the cheap HIR lookup rejects the ordinary
+     * identifier argument first, and the scan then runs only for the two rare
+     * shapes that can actually be function values. */
+    if (strcmp(token_kind(source, cursor), "identifier") == 0) {
+        char *value_binding = hir_use_binding_id(hir, cursor);
+        if (value_binding[0] != '\0') {
+            /* A lambda binding used as a value is the address of its lifted
+             * function: lifting never declares a C variable for the binding
+             * itself, so `k_b<id>` would name nothing. */
+            if (
+                lambda_binding_open(source, hir, value_binding) >= 0 &&
+                call_argument_position(source, cursor)
+            ) {
+                Buffer output;
+                buffer_init(&output);
+                buffer_format(&output, "kofun_lambda_%s", value_binding);
+                free(value_binding);
+                return output.data;
+            }
+        } else {
+            /* A bare name the scope HIR left unresolved that is a declared
+             * Core function is that function used as a value. Its lowered
+             * form is already an ordinary C function, so its address is the
+             * callable. */
+            char *name = token_copy(source, cursor);
+            char *owner = enum_constructor_owner(source, name);
+            bool constructor = owner[0] != '\0';
+            free(owner);
+            if (
+                !constructor &&
+                function_arity(source, name) >= 0 &&
+                call_argument_position(source, cursor)
+            ) {
+                char *c_name = c_identifier_name(name);
+                Buffer output;
+                buffer_init(&output);
+                buffer_format(&output, "kofun_fn_%s", c_name);
+                free(c_name);
+                free(name);
+                free(value_binding);
+                return output.data;
+            }
+            free(name);
+        }
+        free(value_binding);
+    }
+    return emit_expression(source, hir, start, end);
+}
+
 static char *emit_primary(
     const char *source,
     const char *hir,
@@ -3305,15 +3774,21 @@ static char *emit_primary(
             free(name);
             return output.data;
         }
-        /* A callee the scope HIR resolved to a binding is a lifted lambda;
-         * anything else is a top-level function looked up by name. */
+        /* A callee the scope HIR resolved to a binding is either a lifted
+         * lambda or a callable-typed parameter; anything else is a top-level
+         * function looked up by name. */
         char *callee_binding = hir_use_binding_id(hir, cursor);
         int64_t lambda_open =
             callee_binding[0] == '\0'
                 ? -1
                 : lambda_binding_open(source, hir, callee_binding);
+        bool indirect =
+            callee_binding[0] != '\0' &&
+            callable_parameter_type_start(source, hir, callee_binding) >= 0;
         if (lambda_open >= 0) {
             buffer_format(&output, "kofun_lambda_%s(", callee_binding);
+        } else if (indirect) {
+            buffer_format(&output, "k_b%s(", callee_binding);
         } else {
             char *c_name = c_identifier_name(name);
             buffer_format(&output, "kofun_fn_%s(", c_name);
@@ -3322,18 +3797,13 @@ static char *emit_primary(
         int64_t argument = skip_trivia(source, token_end(source, open));
         int64_t arguments = 0;
         while (argument < end && !token_equal(source, argument, ")")) {
-            int64_t argument_end = expression_end(source, argument);
-            char *value = emit_expression(
-                source,
-                hir,
-                argument,
-                argument_end
-            );
+            int64_t bound = argument_end(source, argument);
+            char *value = emit_argument(source, hir, argument, bound);
             if (arguments > 0) buffer_append(&output, ", ");
             buffer_append(&output, value);
             free(value);
             ++arguments;
-            int64_t separator = skip_trivia(source, argument_end);
+            int64_t separator = skip_trivia(source, bound);
             if (separator < end && token_equal(source, separator, ",")) {
                 argument = skip_trivia(source, token_end(source, separator));
             } else {
@@ -3487,12 +3957,12 @@ static int64_t call_arity(const char *source, int64_t open) {
     if (cursor < length && token_equal(source, cursor, ")")) return 0;
     int64_t arity = 0;
     while (cursor < length) {
-        int64_t argument_end = expression_end(source, cursor);
+        int64_t bound = argument_end(source, cursor);
         /* Text-literal arguments are single tokens outside the bounded
          * arithmetic expression grammar. */
-        if (argument_end < 0) argument_end = token_end(source, cursor);
+        if (bound < 0) bound = token_end(source, cursor);
         ++arity;
-        int64_t separator = skip_trivia(source, argument_end);
+        int64_t separator = skip_trivia(source, bound);
         if (separator < length && token_equal(source, separator, ")")) {
             return arity;
         }
@@ -3920,6 +4390,12 @@ static char *validate_core_calls(const char *source, const char *hir) {
                     expected = lambda_call_arity(source, hir, cursor);
                 }
                 if (expected < 0) {
+                    /* A callee bound to a callable-typed parameter is called
+                     * through the pointer it holds. Its arity is declared by
+                     * the type, so the same arity diagnostic applies. */
+                    expected = callable_call_arity(source, hir, cursor);
+                }
+                if (expected < 0) {
                     int64_t builtin_expected = builtin_arity(name);
                     if (builtin_expected < 0) {
                         Buffer error;
@@ -4102,8 +4578,7 @@ static char *core_parameters(
         if (
             colon >= parameters_end ||
             !token_equal(source, colon, ":") ||
-            type_cursor >= parameters_end ||
-            !token_equal(source, type_cursor, "Int")
+            type_cursor >= parameters_end
         ) {
             free(name);
             free(emitted.data);
@@ -4113,13 +4588,48 @@ static char *core_parameters(
                 cursor
             );
         }
-        if (count > 0) buffer_append(&emitted, ", ");
+        /* A callable parameter type is checked before `Int` because its own
+         * domain may be the single token `Int`: `f: Int -> Int` starts exactly
+         * like `f: Int` and only the `->` after it tells them apart. */
+        int64_t callable_end = callable_type_end(source, type_cursor);
+        int64_t type_end = -1;
         char *binding_id = hir_definition_id_at(hir, cursor);
-        buffer_format(&emitted, "int64_t k_b%s", binding_id);
+        char *declarator = NULL;
+        if (callable_end >= 0 && callable_end <= parameters_end) {
+            type_end = callable_end;
+            Buffer pointer_name;
+            buffer_init(&pointer_name);
+            buffer_format(&pointer_name, "k_b%s", binding_id);
+            declarator = callable_c_declarator(
+                source,
+                type_cursor,
+                pointer_name.data
+            );
+            free(pointer_name.data);
+        } else if (token_equal(source, type_cursor, "Int")) {
+            type_end = token_end(source, type_cursor);
+            Buffer plain;
+            buffer_init(&plain);
+            buffer_format(&plain, "int64_t k_b%s", binding_id);
+            declarator = plain.data;
+        }
         free(binding_id);
+        if (type_end < 0) {
+            free(declarator);
+            free(name);
+            free(emitted.data);
+            return lower_error(
+                "E2S15",
+                "Core parameters must have type Int",
+                cursor
+            );
+        }
+        if (count > 0) buffer_append(&emitted, ", ");
+        buffer_append(&emitted, declarator);
+        free(declarator);
         free(name);
         ++count;
-        int64_t separator = skip_trivia(source, token_end(source, type_cursor));
+        int64_t separator = skip_trivia(source, type_end);
         if (separator < parameters_end && token_equal(source, separator, ",")) {
             cursor = skip_trivia(source, token_end(source, separator));
         } else {
@@ -5659,6 +6169,52 @@ static int64_t lambda_binding_open(
 }
 
 /*
+ * The callable type of the parameter a call site's callee binding declares, as
+ * the byte offset of its type, or -1 when the callee is not a callable-typed
+ * parameter. This is how an indirect call reaches its arity and its C
+ * declarator without repeating name resolution: the scope HIR has already
+ * resolved the callee to a binding, shadowing included.
+ */
+static int64_t callable_parameter_type_start(
+    const char *source,
+    const char *hir,
+    const char *binding_id
+) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t declaration_start = hir_binding_declaration_start(hir, binding_id);
+    if (declaration_start < 0) return -1;
+    int64_t colon = skip_trivia(source, token_end(source, declaration_start));
+    if (colon >= length || !token_equal(source, colon, ":")) return -1;
+    int64_t type_cursor = skip_trivia(source, token_end(source, colon));
+    if (callable_type_end(source, type_cursor) < 0) return -1;
+    return type_cursor;
+}
+
+/*
+ * The declared arity of the callable-typed parameter a call site resolves to,
+ * or -1 when the callee is not one.
+ */
+static int64_t callable_call_arity(
+    const char *source,
+    const char *hir,
+    int64_t use_start
+) {
+    char *callee_binding = hir_use_binding_id(hir, use_start);
+    if (callee_binding[0] == '\0') {
+        free(callee_binding);
+        return -1;
+    }
+    int64_t type_start = callable_parameter_type_start(
+        source,
+        hir,
+        callee_binding
+    );
+    free(callee_binding);
+    if (type_start < 0) return -1;
+    return callable_type_arity(source, type_start);
+}
+
+/*
  * The binding ids a lambda body reads from outside its own parameter list, in
  * HIR order, separated by `|`, or "" when the lambda captures nothing.
  *
@@ -6209,6 +6765,12 @@ static char *build_scope_hir_mode(
     bool preserve_pattern_candidates
 ) {
     int64_t length = (int64_t)strlen(source);
+    /* The removed callable notation is rejected before any binding is
+     * collected, so a source written in it gets the migration diagnostic
+     * rather than whatever its multi-token type happens to desynchronise. */
+    char *notation_check = validate_removed_callable_notation(source);
+    if (strncmp(notation_check, "error[", 6) == 0) return notation_check;
+    free(notation_check);
     Buffer hir;
     buffer_init(&hir);
     buffer_append(&hir, "kofun-scope-hir/v1\n");
@@ -6474,7 +7036,17 @@ static char *build_scope_hir_mode(
                     name
                 );
             }
-            char *type_text = token_copy(source, type_cursor);
+            /* A callable type spans several tokens. Stepping over only the
+             * first would leave this walk inside the type, so the parameters
+             * after it would never be bound and their uses would be reported
+             * as unknown lexical bindings. */
+            int64_t callable_end = callable_type_end(source, type_cursor);
+            int64_t type_end = callable_end >= 0
+                ? callable_end
+                : token_end(source, type_cursor);
+            char *type_text = callable_end >= 0
+                ? owned_text("Fn")
+                : token_copy(source, type_cursor);
             buffer_format(
                 &hir,
                 "binding|%" PRId64 "|%" PRId64 "|%s|immutable|%s|copy|"
@@ -6490,10 +7062,7 @@ static char *build_scope_hir_mode(
             stage2_scope_prefix_observe(&hir);
             free(name_text);
             free(type_text);
-            int64_t separator = skip_trivia(
-                source,
-                token_end(source, type_cursor)
-            );
+            int64_t separator = skip_trivia(source, type_end);
             if (
                 separator < parameters_close &&
                 token_equal(source, separator, ",")
@@ -7105,7 +7674,18 @@ static char *build_scope_hir_mode(
                                 return message.data;
                             }
                             free(escaped);
-                        if (owner[0] == '\0') {
+                        /* A declared Core function passed as an argument is
+                         * that function used as a value. It is not a lexical
+                         * binding, so nothing resolves it here, and reporting
+                         * it as unknown would make the only way to pass a
+                         * named function an error. Anywhere but argument
+                         * position it stays unknown, so a function name in
+                         * arithmetic is still this diagnostic. */
+                        if (
+                            owner[0] == '\0' &&
+                            !(function_arity(source, name) >= 0 &&
+                              call_argument_position(source, cursor))
+                        ) {
                             Buffer message;
                             buffer_init(&message);
                             buffer_format(
@@ -9029,8 +9609,233 @@ static char *emit_lifted_lambdas(
     return owned_text("ok");
 }
 
+/*
+ * Whether the arrow lambda keyed at the current token is written directly in
+ * argument position rather than as a `let` initializer.
+ *
+ * `lambda_parameters_end` documents the four tokens that may precede a
+ * parameter list: `fn`, `=`, `,` and `(`. `=` is the initializer position and
+ * the other two are argument position, so the preceding token decides — after
+ * stepping over `fn`, which may sit in front of either.
+ */
+static bool argument_position_lambda(
+    const char *source,
+    int64_t previous,
+    int64_t before_previous
+) {
+    int64_t effective = previous;
+    if (effective >= 0 && token_equal(source, effective, "fn")) {
+        effective = before_previous;
+    }
+    if (effective < 0) return false;
+    return token_equal(source, effective, "(") ||
+           token_equal(source, effective, ",");
+}
+
+/*
+ * Lifts every arrow lambda written in argument position to a top-level
+ * `kofun_lambda_at<offset>`.
+ *
+ * This walk visits every token rather than jumping over a lambda body, so a
+ * lambda nested inside another lambda's argument is lifted too. The `let`
+ * initializer walk cannot be reused: an anonymous argument has no binding id
+ * to key on, and `emit_lifted_lambdas` keys on exactly that.
+ */
+static char *emit_lifted_argument_lambdas(
+    const char *source,
+    const char *hir,
+    Buffer *prototypes,
+    Buffer *bodies
+) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, 0);
+    int64_t previous = -1;
+    int64_t before_previous = -1;
+    while (cursor < length) {
+        int64_t close = lambda_parameters_end(source, previous, cursor);
+        if (
+            close >= 0 &&
+            argument_position_lambda(source, previous, before_previous)
+        ) {
+            Buffer signature;
+            buffer_init(&signature);
+            int64_t parameters = 0;
+            bool bare_lambda = !token_equal(source, cursor, "(");
+            int64_t parameters_close = bare_lambda
+                ? token_end(source, cursor)
+                : balanced_end(source, cursor, "(", ")");
+            int64_t parameter = bare_lambda
+                ? cursor
+                : skip_trivia(source, token_end(source, cursor));
+            while (parameter < parameters_close) {
+                if (strcmp(token_kind(source, parameter), "identifier") != 0) {
+                    break;
+                }
+                char *parameter_id = hir_definition_id_at(hir, parameter);
+                if (parameters > 0) buffer_append(&signature, ", ");
+                buffer_format(&signature, "int64_t k_b%s", parameter_id);
+                free(parameter_id);
+                ++parameters;
+                int64_t after = skip_trivia(
+                    source,
+                    token_end(source, parameter)
+                );
+                if (
+                    after < parameters_close && token_equal(source, after, ":")
+                ) {
+                    int64_t annotation = skip_trivia(
+                        source,
+                        token_end(source, after)
+                    );
+                    after = skip_trivia(source, token_end(source, annotation));
+                }
+                if (
+                    after < parameters_close && token_equal(source, after, ",")
+                ) {
+                    after = skip_trivia(source, token_end(source, after));
+                }
+                parameter = after;
+            }
+            const char *c_parameters =
+                signature.length == 0 ? "void" : signature.data;
+            int64_t arrow = skip_trivia(source, parameters_close);
+            int64_t body_start = skip_trivia(source, token_end(source, arrow));
+            char *value = emit_expression(source, hir, body_start, close);
+            if (strncmp(value, "error[", 6) == 0) {
+                free(signature.data);
+                return value;
+            }
+            char *name = argument_lambda_name(cursor);
+            buffer_format(
+                prototypes,
+                "static int64_t %s(%s);\n",
+                name,
+                c_parameters
+            );
+            buffer_format(
+                bodies,
+                "static int64_t %s(%s) {\n"
+                "    {\n"
+                "        int64_t kofun_result = %s;\n"
+                "        if (kofun_failed) return 0;\n"
+                "        return kofun_result;\n"
+                "    }\n"
+                "}\n",
+                name,
+                c_parameters,
+                value
+            );
+            free(name);
+            free(value);
+            free(signature.data);
+        }
+        before_previous = previous;
+        previous = cursor;
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return owned_text("ok");
+}
+
+/*
+ * A capturing lambda cannot be a function value. Lifting passes each capture
+ * as a trailing `int64_t` parameter, so the lifted function's C type is wider
+ * than the callable type the parameter declares and its address is not that
+ * callable. Closure conversion — an environment travelling with the code — is
+ * #116 and #370, and #703 puts it out of scope, so this refuses rather than
+ * lowering something whose observations would not match.
+ */
+static char *validate_argument_lambda_captures(
+    const char *source,
+    const char *hir
+) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, 0);
+    int64_t previous = -1;
+    int64_t before_previous = -1;
+    while (cursor < length) {
+        int64_t close = lambda_parameters_end(source, previous, cursor);
+        if (
+            close >= 0 &&
+            argument_position_lambda(source, previous, before_previous)
+        ) {
+            char *captures = lambda_captures(source, hir, cursor);
+            bool captured = captures[0] != '\0';
+            free(captures);
+            if (captured) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    "error[E2S96]: lambda argument at byte %" PRId64
+                    " captures an enclosing binding; pass a lambda that reads "
+                    "only its parameters",
+                    cursor
+                );
+                stage2_diagnostic_set(
+                    "E2S96",
+                    cursor,
+                    token_end(source, cursor),
+                    true,
+                    message.data
+                );
+                return message.data;
+            }
+        }
+        before_previous = previous;
+        previous = cursor;
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return owned_text("ok");
+}
+
+/*
+ * A well-formed Decimal or Float literal reaching lowering.
+ *
+ * #717 lexes these and stops there: the token contract is slice 1 of #710 and
+ * the runtime representation is slice 2, so there is nothing yet to lower a
+ * Decimal *to*. The refusal names that successor rather than reusing the
+ * generic `E2S12`, because "invalid Int expression" says the literal is wrong
+ * when what is actually true is that the compiler is unfinished. Lowering
+ * through Int, or through a host double, would change the value and is
+ * exactly what `docs/DECIMAL.md` forbids.
+ */
+static char *validate_unsupported_numeric_kinds(const char *source) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < length) {
+        const char *kind = token_kind(source, cursor);
+        bool decimal = strcmp(kind, "decimal") == 0;
+        if (decimal || strcmp(kind, "float") == 0) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(
+                &message,
+                "error[E2S99]: %s literal at byte %" PRId64
+                " has no runtime representation yet (#710 slice 2)",
+                decimal ? "Decimal" : "Float",
+                cursor
+            );
+            stage2_diagnostic_set(
+                "E2S99",
+                cursor,
+                token_end(source, cursor),
+                true,
+                message.data
+            );
+            return message.data;
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return owned_text("ok");
+}
+
 static char *lower_c(const char *source, const char *hir) {
     int64_t length = (int64_t)strlen(source);
+    char *numeric_kind_check = validate_unsupported_numeric_kinds(source);
+    if (strncmp(numeric_kind_check, "error[", 6) == 0) {
+        return numeric_kind_check;
+    }
+    free(numeric_kind_check);
     char *enum_use_check = validate_enum_uses(source, hir);
     if (strncmp(enum_use_check, "error[", 6) == 0) {
         return enum_use_check;
@@ -9042,6 +9847,9 @@ static char *lower_c(const char *source, const char *hir) {
     char *call_check = validate_core_calls(source, hir);
     if (strncmp(call_check, "error[", 6) == 0) return call_check;
     free(call_check);
+    char *capture_check = validate_argument_lambda_captures(source, hir);
+    if (strncmp(capture_check, "error[", 6) == 0) return capture_check;
+    free(capture_check);
 
     Buffer prototypes;
     Buffer bodies;
@@ -9056,6 +9864,18 @@ static char *lower_c(const char *source, const char *hir) {
         return lifted;
     }
     free(lifted);
+    char *lifted_arguments = emit_lifted_argument_lambdas(
+        source,
+        hir,
+        &prototypes,
+        &bodies
+    );
+    if (strncmp(lifted_arguments, "error[", 6) == 0) {
+        free(prototypes.data);
+        free(bodies.data);
+        return lifted_arguments;
+    }
+    free(lifted_arguments);
     int64_t cursor = next_function_start(source, 0);
     int64_t main_count = 0;
     while (cursor < length) {
@@ -11039,7 +11859,16 @@ static bool sh_parse_signature(Sh *sh, int64_t function_start) {
             sh_fail(sh, "E2S15", "parameter needs `: TYPE`", cursor);
             return false;
         }
-        char *type_text = token_copy(sh->source, type_at);
+        /* A callable parameter type spans several tokens and is recorded under
+         * one name, so the arity stays right and the head of the type list
+         * keeps naming one parameter each. The frozen self-host profile has no
+         * callable values, so `Fn` matches no argument type and a call passing
+         * one is rejected by the ordinary mismatch rather than being silently
+         * accepted as `Int`. */
+        int64_t callable_end = callable_type_end(sh->source, type_at);
+        char *type_text = callable_end >= 0
+            ? owned_text("Fn")
+            : token_copy(sh->source, type_at);
         snprintf(
             sh->functions[slot].parameters[arity],
             sizeof(sh->functions[0].parameters[0]),
@@ -11047,7 +11876,9 @@ static bool sh_parse_signature(Sh *sh, int64_t function_start) {
             type_text
         );
         free(type_text);
-        cursor = skip_trivia(sh->source, token_end(sh->source, type_at));
+        cursor = callable_end >= 0
+            ? skip_trivia(sh->source, callable_end)
+            : skip_trivia(sh->source, token_end(sh->source, type_at));
         if (strcmp(sh->functions[slot].parameters[arity], "List") == 0) {
             /* consume `[ Text ]` */
             cursor = skip_trivia(sh->source, token_end(sh->source, cursor));

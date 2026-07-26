@@ -200,6 +200,74 @@ fn line_at(source: Text, target: Int) -> Int {
     return line
 }
 
+# Why the malformed forms are diagnosed here rather than in `token_end`, and
+# what "malformed" means for each of them.
+#
+# `token_end` is deliberately permissive about `.`: a fraction needs a digit
+# after the point, so `1..2` stays `Int`, `..`, `Int` and `1.` stays `Int`
+# followed by the point. Tightening the scanner instead would have to decide
+# between the range operator and a fraction with one character of lookahead,
+# which is the collision `docs/DECIMAL.md` states the range exception exists to
+# avoid. So the scanner keeps producing tokens and this pass reads the result,
+# where `..` and a lone `.` are already distinct tokens.
+#
+# The rules, all measured against `docs/DECIMAL.md:97-118`:
+#
+# - a numeric token immediately followed by an identifier character is one
+#   malformed literal, not a literal beside a name. This is what makes `1e`,
+#   `1e+`, `1.0e` and `1._0` errors, and it is also why `42f64` is one token
+#   while `42 f64` is two: the suffix joins only without a gap.
+# - a numeric token immediately followed by a lone `.` is `1.`, a fraction with
+#   no digits. A following `..` is the range operator and is left alone.
+# - a lone `.` immediately followed by a digit is `.5`, a fraction with no
+#   integer part.
+# - `_` must sit between two digits, so `1_`, `1.0_` and `1_.0` are errors
+#   while `1_000.000_1` is not.
+#
+# `_1` is absent on purpose. It is a well-formed identifier under the
+# identifier grammar, not a numeric literal, and it already reports as an
+# unknown binding at its own byte. Making it lexical here would ban an
+# identifier spelling on the strength of a rule about numbers.
+fn numeric_underscore_error(source: Text, start: Int, end: Int) -> Bool {
+    let symbols = chars(source)
+    let mut cursor = start
+    while cursor < end {
+        if symbols[cursor] == "_" {
+            if cursor == start || cursor + 1 >= end {
+                return true
+            }
+            if !is_digit(symbols[cursor - 1]) || !is_digit(symbols[cursor + 1]) {
+                return true
+            }
+        }
+        cursor = cursor + 1
+    }
+    return false
+}
+
+fn malformed_numeric_literal(source: Text, start: Int, end: Int) -> Bool {
+    let symbols = chars(source)
+    let kind = token_kind(source, start)
+    if kind == "integer" || kind == "decimal" || kind == "float" {
+        if numeric_underscore_error(source, start, end) {
+            return true
+        }
+        if end < len(symbols) && identifier_start(symbols[end]) {
+            return true
+        }
+        if end < len(symbols) && symbols[end] == "." {
+            return end + 1 >= len(symbols) || symbols[end + 1] != "."
+        }
+        return false
+    }
+    # A lone `.` — `..` lexes as one two-character token, so a one-character
+    # `.` token here is never the range operator.
+    if end == start + 1 && symbols[start] == "." {
+        return end < len(symbols) && is_digit(symbols[end])
+    }
+    return false
+}
+
 fn lex(source: Text) -> Text {
     let unicode_error = validate_unicode_source(source)
     if len(unicode_error) > 0 {
@@ -212,6 +280,12 @@ fn lex(source: Text) -> Text {
         if end <= cursor {
             return "error[E2S01]: unterminated string at byte " +
             to_text(cursor)
+        }
+        if malformed_numeric_literal(source, cursor, end) {
+            return "error[E2S98]: malformed numeric literal at byte " +
+            to_text(cursor) +
+            "; `.` and an exponent need digits, and `_` must sit between " +
+            "two digits"
         }
         tape = tape + token_kind(source, cursor) + "|" +
         to_text(cursor) + "|" + to_text(end) + "|" +
@@ -1941,11 +2015,11 @@ fn primary_end(source: Text, start: Int) -> Int {
             return token_end(source, argument)
         }
         while argument < len(source) {
-            let argument_end = expression_end(source, argument)
-            if argument_end < 0 {
+            let bound = argument_end(source, argument)
+            if bound < 0 {
                 return -1
             }
-            let separator = skip_trivia(source, argument_end)
+            let separator = skip_trivia(source, bound)
             if separator < len(source) &&
                token_text(source, separator) == ")" {
                 return token_end(source, separator)
@@ -2027,6 +2101,57 @@ fn expression_end(source: Text, start: Int) -> Int {
     return cursor
 }
 
+# The lifted name of an arrow lambda written directly in argument position.
+#
+# A `let`-bound lambda is keyed by its binding id, which an anonymous argument
+# does not have. Its keying token's byte offset is the identity that is already
+# unique and already stable across the two walks that must agree — the one that
+# emits the definition and the one that emits the reference.
+fn argument_lambda_name(open: Int) -> Text {
+    return "kofun_lambda_at" + to_text(open)
+}
+
+# One argument's C expression.
+#
+# The three function-value forms are lowered here rather than in
+# `emit_primary`, because only argument position accepts them and only this
+# caller knows it is in argument position. Everything else lowers through the
+# ordinary expression emitter unchanged.
+fn emit_argument(source: Text, hir: Text, start: Int, end: Int) -> Text {
+    let cursor = skip_trivia(source, start)
+    # An arrow lambda argument is the address of the function it was lifted to.
+    if lambda_parameters_end(source, -1, cursor) >= 0 {
+        return argument_lambda_name(cursor)
+    }
+    # `call_argument_position` scans from the start of the source, so it is
+    # tested last in each arm: the cheap HIR lookup rejects the ordinary
+    # identifier argument first, and the scan then runs only for the two rare
+    # shapes that can actually be function values.
+    if token_kind(source, cursor) == "identifier" {
+        let value_binding = hir_use_binding_id(hir, cursor)
+        if len(value_binding) > 0 {
+            # A lambda binding used as a value is the address of its lifted
+            # function: lifting never declares a C variable for the binding
+            # itself, so `k_b<id>` would name nothing.
+            if lambda_binding_open(source, hir, value_binding) >= 0 &&
+               call_argument_position(source, cursor) {
+                return "kofun_lambda_" + value_binding
+            }
+        } else {
+            # A bare name the scope HIR left unresolved that is a declared Core
+            # function is that function used as a value. Its lowered form is
+            # already an ordinary C function, so its address is the callable.
+            let name = token_text(source, cursor)
+            if len(enum_constructor_owner(source, name)) == 0 &&
+               function_arity(source, name) >= 0 &&
+               call_argument_position(source, cursor) {
+                return "kofun_fn_" + name
+            }
+        }
+    }
+    return emit_expression(source, hir, start, end)
+}
+
 fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
     let cursor = skip_trivia(source, start)
     let kind = token_kind(source, cursor)
@@ -2040,28 +2165,33 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
         if open >= end || token_text(source, open) != "(" {
             return "k_b" + hir_use_binding_id(hir, cursor)
         }
-        # A callee the scope HIR resolved to a binding is a lifted lambda;
-        # anything else is a top-level function looked up by name.
+        # A callee the scope HIR resolved to a binding is either a lifted
+        # lambda or a callable-typed parameter; anything else is a top-level
+        # function looked up by name.
         let callee_binding = hir_use_binding_id(hir, cursor)
         let mut lambda_open = -1
+        let mut indirect = false
         if len(callee_binding) > 0 {
             lambda_open = lambda_binding_open(source, hir, callee_binding)
+            indirect =
+                callable_parameter_type_start(source, hir, callee_binding) >= 0
         }
         let mut emitted = "kofun_fn_" + name + "("
         if lambda_open >= 0 {
             emitted = "kofun_lambda_" + callee_binding + "("
+        } else if indirect {
+            emitted = "k_b" + callee_binding + "("
         }
         let mut argument = skip_trivia(source, token_end(source, open))
         let mut arguments = 0
         while argument < end && token_text(source, argument) != ")" {
-            let argument_end = expression_end(source, argument)
+            let bound = argument_end(source, argument)
             if arguments > 0 {
                 emitted = emitted + ", "
             }
-            emitted = emitted +
-            emit_expression(source, hir, argument, argument_end)
+            emitted = emitted + emit_argument(source, hir, argument, bound)
             arguments = arguments + 1
-            let separator = skip_trivia(source, argument_end)
+            let separator = skip_trivia(source, bound)
             if separator < end && token_text(source, separator) == "," {
                 argument = skip_trivia(source, token_end(source, separator))
             } else {
@@ -2167,14 +2297,14 @@ fn call_arity(source: Text, open: Int) -> Int {
     }
     let mut arity = 0
     while cursor < len(source) {
-        let mut argument_end = expression_end(source, cursor)
-        if argument_end < 0 {
+        let mut bound = argument_end(source, cursor)
+        if bound < 0 {
             # Text-literal arguments are single tokens outside the bounded
             # arithmetic expression grammar.
-            argument_end = token_end(source, cursor)
+            bound = token_end(source, cursor)
         }
         arity = arity + 1
-        let separator = skip_trivia(source, argument_end)
+        let separator = skip_trivia(source, bound)
         if separator < len(source) && token_text(source, separator) == ")" {
             return arity
         }
@@ -2471,6 +2601,12 @@ fn validate_core_calls(source: Text, hir: Text) -> Text {
                     expected = lambda_call_arity(source, hir, cursor)
                 }
                 if expected < 0 {
+                    # A callee bound to a callable-typed parameter is called
+                    # through the pointer it holds. Its arity is declared by
+                    # the type, so the same arity diagnostic applies.
+                    expected = callable_call_arity(source, hir, cursor)
+                }
+                if expected < 0 {
                     let builtin_expected = builtin_arity(name)
                     if builtin_expected < 0 {
                         return "error[E2S16]: unknown Core function `" +
@@ -2535,18 +2671,37 @@ fn core_parameters(
         let colon = skip_trivia(source, token_end(source, cursor))
         let type_cursor = skip_trivia(source, token_end(source, colon))
         if colon >= parameters_end || token_text(source, colon) != ":" ||
-           type_cursor >= parameters_end ||
-           token_text(source, type_cursor) != "Int" {
+           type_cursor >= parameters_end {
+            return "error[E2S15]: Core parameters must have type Int at byte " +
+            to_text(cursor)
+        }
+        # A callable parameter type is checked before `Int` because its own
+        # domain may be the single token `Int`: `f: Int -> Int` starts exactly
+        # like `f: Int` and only the `->` after it tells them apart.
+        let callable_end = callable_type_end(source, type_cursor)
+        let mut type_end = -1
+        let mut declarator = ""
+        if callable_end >= 0 && callable_end <= parameters_end {
+            type_end = callable_end
+            declarator = callable_c_declarator(
+                source,
+                type_cursor,
+                "k_b" + hir_definition_id_at(hir, cursor)
+            )
+        } else if token_text(source, type_cursor) == "Int" {
+            type_end = token_end(source, type_cursor)
+            declarator = "int64_t k_b" + hir_definition_id_at(hir, cursor)
+        }
+        if type_end < 0 {
             return "error[E2S15]: Core parameters must have type Int at byte " +
             to_text(cursor)
         }
         if count > 0 {
             emitted = emitted + ", "
         }
-        emitted = emitted + "int64_t k_b" +
-        hir_definition_id_at(hir, cursor)
+        emitted = emitted + declarator
         count = count + 1
-        let separator = skip_trivia(source, token_end(source, type_cursor))
+        let separator = skip_trivia(source, type_end)
         if separator < parameters_end &&
            token_text(source, separator) == "," {
             cursor = skip_trivia(source, token_end(source, separator))
@@ -2555,6 +2710,284 @@ fn core_parameters(
         }
     }
     return emitted
+}
+
+# The callable type of the parameter a call site's callee binding declares, as
+# the byte offset of its type, or -1 when the callee is not a callable-typed
+# parameter. This is how an indirect call reaches its arity and its C
+# declarator without repeating name resolution: the scope HIR has already
+# resolved the callee to a binding, shadowing included.
+fn callable_parameter_type_start(
+    source: Text,
+    hir: Text,
+    binding_id: Text
+) -> Int {
+    let declaration_start = hir_binding_declaration_start(hir, binding_id)
+    if declaration_start < 0 {
+        return -1
+    }
+    let colon = skip_trivia(source, token_end(source, declaration_start))
+    if colon >= len(source) || token_text(source, colon) != ":" {
+        return -1
+    }
+    let type_cursor = skip_trivia(source, token_end(source, colon))
+    if callable_type_end(source, type_cursor) < 0 {
+        return -1
+    }
+    return type_cursor
+}
+
+# The declared arity of the callable-typed parameter a call site resolves to,
+# or -1 when the callee is not one.
+fn callable_call_arity(source: Text, hir: Text, use_start: Int) -> Int {
+    let callee_binding = hir_use_binding_id(hir, use_start)
+    if len(callee_binding) == 0 {
+        return -1
+    }
+    let type_start = callable_parameter_type_start(source, hir, callee_binding)
+    if type_start < 0 {
+        return -1
+    }
+    return callable_type_arity(source, type_start)
+}
+
+# The byte after a callable type beginning at `start`, or -1 when the tokens
+# there are not one.
+#
+# #552 settled the notation and this Core implements exactly it: `A -> R` for
+# one argument, `(A, B) -> R` for a fixed arity of two or more, and `() -> R`
+# for none. There is no implicit currying, so `A -> B -> R` is not a two-
+# argument callable; it is a one-argument callable returning another, which
+# this Core has no value to represent and therefore does not accept.
+#
+# `Int` is the only type in every domain and result position, because `Int` is
+# the whole type vocabulary a Core parameter has. A callable naming any other
+# type is not a callable type here, so the caller reports it as an ordinary
+# unsupported parameter type rather than as a malformed callable.
+fn callable_type_end(source: Text, start: Int) -> Int {
+    let cursor = skip_trivia(source, start)
+    if cursor >= len(source) {
+        return -1
+    }
+    let mut after_domain = -1
+    if token_text(source, cursor) == "(" {
+        let close = balanced_end(source, cursor, "(", ")")
+        if close < 0 {
+            return -1
+        }
+        let mut element = skip_trivia(source, token_end(source, cursor))
+        while element < close && token_text(source, element) != ")" {
+            if token_text(source, element) != "Int" {
+                return -1
+            }
+            let separator = skip_trivia(source, token_end(source, element))
+            if separator < close && token_text(source, separator) == "," {
+                element = skip_trivia(source, token_end(source, separator))
+            } else {
+                element = separator
+            }
+        }
+        after_domain = close
+    } else if token_text(source, cursor) == "Int" {
+        after_domain = token_end(source, cursor)
+    } else {
+        return -1
+    }
+    let arrow = skip_trivia(source, after_domain)
+    if arrow >= len(source) || token_text(source, arrow) != "->" {
+        return -1
+    }
+    let result = skip_trivia(source, token_end(source, arrow))
+    if result >= len(source) || token_text(source, result) != "Int" {
+        return -1
+    }
+    return token_end(source, result)
+}
+
+# The argument count of the callable type at `start`, or -1 when there is not
+# one there. The bare domain `A -> R` is one argument by construction; a
+# parenthesised domain counts its elements, so `() -> R` is zero.
+fn callable_type_arity(source: Text, start: Int) -> Int {
+    if callable_type_end(source, start) < 0 {
+        return -1
+    }
+    let cursor = skip_trivia(source, start)
+    if token_text(source, cursor) != "(" {
+        return 1
+    }
+    let close = balanced_end(source, cursor, "(", ")")
+    if close < 0 {
+        return -1
+    }
+    let mut count = 0
+    let mut element = skip_trivia(source, token_end(source, cursor))
+    while element < close && token_text(source, element) != ")" {
+        count = count + 1
+        let separator = skip_trivia(source, token_end(source, element))
+        if separator < close && token_text(source, separator) == "," {
+            element = skip_trivia(source, token_end(source, separator))
+        } else {
+            element = separator
+        }
+    }
+    return count
+}
+
+# `int64_t (*NAME)(int64_t, ...)` for the callable type at `start`. Every value
+# this Core lowers is an `int64_t`, so a callable is a plain C function pointer
+# and needs no environment; that is exactly why a capturing lambda cannot be
+# one, and `capturing_lambda_argument` refuses those at the call site.
+fn callable_c_declarator(source: Text, start: Int, name: Text) -> Text {
+    let arity = callable_type_arity(source, start)
+    if arity < 0 {
+        return ""
+    }
+    let mut domain = ""
+    let mut written = 0
+    while written < arity {
+        if written > 0 {
+            domain = domain + ", "
+        }
+        domain = domain + "int64_t"
+        written = written + 1
+    }
+    if arity == 0 {
+        domain = "void"
+    }
+    return "int64_t (*" + name + ")(" + domain + ")"
+}
+
+# The arrow spelling of the removed `Fn[...]` notation whose `[` is at `open`,
+# or "" when the brackets do not close.
+#
+# #552 settled one spelling for both positions, and every normative document
+# requires a *targeted* rewrite rather than a bare rejection. The last bracket
+# element is the result and the rest are the domain, so `Fn[R]` is `() -> R`,
+# `Fn[A, R]` is `A -> R`, and a historical multi-argument `Fn[A, B, R]` is
+# `(A, B) -> R`. Nested brackets are skipped whole, which is what keeps
+# `Fn[Int, List[Int]]` from splitting inside `List[Int]`.
+fn removed_callable_rewrite(source: Text, open: Int) -> Text {
+    let close = balanced_end(source, open, "[", "]")
+    if close < 0 {
+        return ""
+    }
+    let mut domain = ""
+    let mut result = ""
+    let mut count = 0
+    let mut element = skip_trivia(source, token_end(source, open))
+    while element < close && token_text(source, element) != "]" {
+        let element_start = element
+        let mut element_end = element
+        while element < close && token_text(source, element) != "," &&
+              token_text(source, element) != "]" {
+            if token_text(source, element) == "[" {
+                let nested = balanced_end(source, element, "[", "]")
+                if nested < 0 {
+                    return ""
+                }
+                element_end = nested
+            } else {
+                element_end = token_end(source, element)
+            }
+            element = skip_trivia(source, element_end)
+        }
+        if count > 0 {
+            if len(domain) > 0 {
+                domain = domain + ", "
+            }
+            domain = domain + result
+        }
+        result = text_slice(source, element_start, element_end)
+        count = count + 1
+        if element < close && token_text(source, element) == "," {
+            element = skip_trivia(source, token_end(source, element))
+        }
+    }
+    if count == 0 {
+        return ""
+    }
+    if count == 1 {
+        return "() -> " + result
+    }
+    if count == 2 {
+        return domain + " -> " + result
+    }
+    return "(" + domain + ") -> " + result
+}
+
+# `Fn[...]` is the callable notation #552 removed. `Fn` stays an ordinary
+# identifier, so only `Fn` immediately followed by `[` is the removed type.
+fn validate_removed_callable_notation(source: Text) -> Text {
+    let mut cursor = skip_trivia(source, 0)
+    while cursor < len(source) {
+        if token_text(source, cursor) == "Fn" &&
+           token_kind(source, cursor) == "identifier" {
+            let bracket = skip_trivia(source, token_end(source, cursor))
+            if bracket < len(source) && token_text(source, bracket) == "[" {
+                let rewrite = removed_callable_rewrite(source, bracket)
+                if len(rewrite) > 0 {
+                    return "error[E2S97]: `Fn[...]` is not a callable type at byte " +
+                    to_text(cursor) + "; write `" + rewrite + "`"
+                }
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return "ok"
+}
+
+# Whether `target` is a whole argument of a call.
+#
+# A bare function name is a value only here. Restricting it to argument
+# position is what keeps `double + 1` an ordinary unknown-binding error: a
+# function name that reached the Int expression grammar would lower to a
+# function address inside integer arithmetic and surface as a C type error
+# instead of a Kofun diagnostic.
+#
+# Two conditions, and both are needed. The token before `target` opens or
+# continues an argument list — a `(` that itself follows an identifier, so a
+# parenthesised group does not qualify, or a `,`. And the token after `target`
+# closes or continues it, so `double` in `print(double + 1)` is excluded while
+# `double` in `apply(double, 21)` is not.
+fn call_argument_position(source: Text, target: Int) -> Bool {
+    let mut cursor = skip_trivia(source, 0)
+    let mut previous = -1
+    let mut before_previous = -1
+    while cursor < target && cursor < len(source) {
+        before_previous = previous
+        previous = cursor
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    if cursor != target || previous < 0 {
+        return false
+    }
+    let after = skip_trivia(source, token_end(source, target))
+    if after >= len(source) {
+        return false
+    }
+    if token_text(source, after) != "," && token_text(source, after) != ")" {
+        return false
+    }
+    if token_text(source, previous) == "(" {
+        return before_previous >= 0 &&
+        token_kind(source, before_previous) == "identifier"
+    }
+    return token_text(source, previous) == ","
+}
+
+# The byte after an argument, which is either an ordinary bounded expression or
+# an arrow lambda passed directly.
+#
+# Only argument position needs this. An argument's preceding token is `(` or
+# `,`, never an identifier, so the constructor-pattern ambiguity that
+# `lambda_parameters_end` guards with its `previous` parameter cannot arise
+# here and -1 is the correct `previous` to pass.
+fn argument_end(source: Text, start: Int) -> Int {
+    let lambda_end = lambda_parameters_end(source, -1, start)
+    if lambda_end >= 0 {
+        return lambda_end
+    }
+    return expression_end(source, start)
 }
 
 fn comparison_operator(token: Text) -> Bool {
@@ -4097,6 +4530,13 @@ fn build_scope_hir_mode(
     source: Text,
     preserve_pattern_candidates: Bool
 ) -> Text {
+    # The removed callable notation is rejected before any binding is
+    # collected, so a source written in it gets the migration diagnostic
+    # rather than whatever its multi-token type happens to desynchronise.
+    let notation_check = validate_removed_callable_notation(source)
+    if starts_with(notation_check, "error[") {
+        return notation_check
+    }
     let mut hir = "kofun-scope-hir/v1\n"
     let mut next_scope_id = 0
     let mut next_binding_id = 0
@@ -4220,6 +4660,17 @@ fn build_scope_hir_mode(
             let name = parameter_cursor
             let colon = skip_trivia(source, token_end(source, name))
             let type_cursor = skip_trivia(source, token_end(source, colon))
+            # A callable type spans several tokens. Stepping over only the
+            # first would leave this walk inside the type, so the parameters
+            # after it would never be bound and their uses would be reported
+            # as unknown lexical bindings.
+            let callable_end = callable_type_end(source, type_cursor)
+            let mut type_end = token_end(source, type_cursor)
+            let mut binding_type = token_text(source, type_cursor)
+            if callable_end >= 0 {
+                type_end = callable_end
+                binding_type = "Fn"
+            }
             let first_declaration = hir_same_scope_declaration(
                 hir,
                 to_text(parameter_scope),
@@ -4238,15 +4689,12 @@ fn build_scope_hir_mode(
             }
             hir = hir + "binding|" + to_text(next_binding_id) + "|" +
             to_text(parameter_scope) + "|" + token_text(source, name) +
-            "|immutable|" + token_text(source, type_cursor) +
+            "|immutable|" + binding_type +
             "|copy|initialized|" + to_text(name) + "|" +
             to_text(token_end(source, name)) + "|" +
             to_text(token_end(source, name)) + "\n"
             next_binding_id = next_binding_id + 1
-            let separator = skip_trivia(
-                source,
-                token_end(source, type_cursor)
-            )
+            let separator = skip_trivia(source, type_end)
             if separator < parameters_close &&
                token_text(source, separator) == "," {
                 parameter_cursor = skip_trivia(
@@ -4263,12 +4711,22 @@ fn build_scope_hir_mode(
         while cursor < function_close {
             if lambda_parameters_end(source, previous, cursor) >= 0 {
                 let lambda_open = cursor
-                let lambda_close = balanced_end(source, lambda_open, "(", ")")
-                let lambda_scope = hir_scope_id_for_open(hir, lambda_open)
+                # The bare form has no parameter list to walk: the parameter is
+                # the keying token itself, so the walk below covers exactly that
+                # one identifier and then stops at the `=>`. Taking
+                # `balanced_end` from a non-`(` token instead runs on to some
+                # later unbalanced `)` and binds `=>` as a parameter name.
+                let bare_lambda = token_text(source, lambda_open) != "("
+                let mut lambda_close = balanced_end(
+                    source, lambda_open, "(", ")")
                 let mut lambda_cursor = skip_trivia(
                     source,
                     token_end(source, lambda_open)
                 )
+                if bare_lambda {
+                    lambda_close = token_end(source, lambda_open)
+                    lambda_cursor = lambda_open
+                }
                 while lambda_cursor < lambda_close &&
                       token_text(source, lambda_cursor) != ")" {
                     let name = lambda_cursor
@@ -4551,7 +5009,16 @@ fn build_scope_hir_mode(
                             "` is outside its lexical scope at byte " +
                             to_text(cursor) + "; declaration at byte " + escaped
                         }
-                        if len(enum_constructor_owner(source, name)) == 0 {
+                        # A declared Core function passed as an argument is
+                        # that function used as a value. It is not a lexical
+                        # binding, so nothing resolves it here, and reporting
+                        # it as unknown would make the only way to pass a
+                        # named function an error. Anywhere but argument
+                        # position it stays unknown, so a function name in
+                        # arithmetic is still this diagnostic.
+                        if len(enum_constructor_owner(source, name)) == 0 &&
+                           !(function_arity(source, name) >= 0 &&
+                             call_argument_position(source, cursor)) {
                             return "error[E2S35]: unknown lexical binding `" +
                             name + "` at byte " + to_text(cursor)
                         }
@@ -5572,7 +6039,141 @@ fn emit_lifted_lambdas(source: Text, hir: Text, bodies: Bool) -> Text {
     return emitted
 }
 
+# Whether the arrow lambda keyed at `open` is written directly in argument
+# position rather than as a `let` initializer.
+#
+# `lambda_parameters_end` documents the four tokens that may precede a
+# parameter list: `fn`, `=`, `,` and `(`. `=` is the initializer position and
+# the other two are argument position, so the preceding token decides — after
+# stepping over `fn`, which may sit in front of either.
+fn argument_position_lambda(
+    source: Text,
+    previous: Int,
+    before_previous: Int
+) -> Bool {
+    let mut effective = previous
+    if effective >= 0 && token_text(source, effective) == "fn" {
+        effective = before_previous
+    }
+    if effective < 0 {
+        return false
+    }
+    return token_text(source, effective) == "(" ||
+    token_text(source, effective) == ","
+}
+
+# Lifts every arrow lambda written in argument position to a top-level
+# `kofun_lambda_at<offset>`, emitting its prototype when `bodies` is false and
+# its definition when true.
+#
+# This walk visits every token rather than jumping over a lambda body, so a
+# lambda nested inside another lambda's argument is lifted too. The `let`
+# initializer walk cannot be reused: an anonymous argument has no binding id to
+# key on, and `emit_lifted_lambdas` keys on exactly that.
+fn emit_lifted_argument_lambdas(
+    source: Text,
+    hir: Text,
+    bodies: Bool
+) -> Text {
+    let mut emitted = ""
+    let mut cursor = skip_trivia(source, 0)
+    let mut previous = -1
+    let mut before_previous = -1
+    while cursor < len(source) {
+        let close = lambda_parameters_end(source, previous, cursor)
+        if close >= 0 &&
+           argument_position_lambda(source, previous, before_previous) {
+            let signature = lifted_lambda_signature(source, hir, cursor)
+            let name = argument_lambda_name(cursor)
+            if bodies {
+                let mut parameters_close = token_end(source, cursor)
+                if token_text(source, cursor) == "(" {
+                    parameters_close = balanced_end(source, cursor, "(", ")")
+                }
+                let arrow = skip_trivia(source, parameters_close)
+                let body_start = skip_trivia(source, token_end(source, arrow))
+                emitted = emitted +
+                "static int64_t " + name + "(" + signature + ") {\n" +
+                "    {\n" +
+                "        int64_t kofun_result = " +
+                emit_expression(source, hir, body_start, close) + ";\n" +
+                "        if (kofun_failed) return 0;\n" +
+                "        return kofun_result;\n" +
+                "    }\n" +
+                "}\n"
+            } else {
+                emitted = emitted +
+                "static int64_t " + name + "(" + signature + ");\n"
+            }
+        }
+        before_previous = previous
+        previous = cursor
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return emitted
+}
+
+# A capturing lambda cannot be a function value. Lifting passes each capture as
+# a trailing `int64_t` parameter, so the lifted function's C type is wider than
+# the callable type the parameter declares and its address is not that
+# callable. Closure conversion — an environment travelling with the code — is
+# #116 and #370, and #703 puts it out of scope, so this refuses rather than
+# lowering something whose observations would not match.
+fn validate_argument_lambda_captures(source: Text, hir: Text) -> Text {
+    let mut cursor = skip_trivia(source, 0)
+    let mut previous = -1
+    let mut before_previous = -1
+    while cursor < len(source) {
+        let close = lambda_parameters_end(source, previous, cursor)
+        if close >= 0 &&
+           argument_position_lambda(source, previous, before_previous) {
+            let captures = lambda_captures(source, hir, cursor)
+            if len(captures) > 0 {
+                return "error[E2S96]: lambda argument at byte " +
+                to_text(cursor) +
+                " captures an enclosing binding; pass a lambda that reads " +
+                "only its parameters"
+            }
+        }
+        before_previous = previous
+        previous = cursor
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return "ok"
+}
+
+# A well-formed Decimal or Float literal reaching lowering.
+#
+# #717 lexes these and stops there: the token contract is slice 1 of #710 and
+# the runtime representation is slice 2, so there is nothing yet to lower a
+# Decimal *to*. The refusal names that successor rather than reusing the
+# generic `E2S12`, because "invalid Int expression" says the literal is wrong
+# when what is actually true is that the compiler is unfinished. Lowering
+# through Int, or through a host double, would change the value and is exactly
+# what `docs/DECIMAL.md` forbids.
+fn validate_unsupported_numeric_kinds(source: Text) -> Text {
+    let mut cursor = skip_trivia(source, 0)
+    while cursor < len(source) {
+        let kind = token_kind(source, cursor)
+        if kind == "decimal" || kind == "float" {
+            let mut name = "Decimal"
+            if kind == "float" {
+                name = "Float"
+            }
+            return "error[E2S99]: " + name +
+            " literal at byte " + to_text(cursor) +
+            " has no runtime representation yet (#710 slice 2)"
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return "ok"
+}
+
 fn lower_c(source: Text, hir: Text) -> Text {
+    let numeric_kind_check = validate_unsupported_numeric_kinds(source)
+    if starts_with(numeric_kind_check, "error[") {
+        return numeric_kind_check
+    }
     let enum_use_check = validate_enum_uses(source, hir)
     if starts_with(enum_use_check, "error[") {
         return enum_use_check
@@ -5585,10 +6186,16 @@ fn lower_c(source: Text, hir: Text) -> Text {
     if starts_with(call_check, "error[") {
         return call_check
     }
+    let capture_check = validate_argument_lambda_captures(source, hir)
+    if starts_with(capture_check, "error[") {
+        return capture_check
+    }
     # Lifted lambdas come first so a Core function can call one that a later
     # function binds.
-    let mut prototypes = emit_lifted_lambdas(source, hir, false)
-    let mut bodies = emit_lifted_lambdas(source, hir, true)
+    let mut prototypes = emit_lifted_lambdas(source, hir, false) +
+    emit_lifted_argument_lambdas(source, hir, false)
+    let mut bodies = emit_lifted_lambdas(source, hir, true) +
+    emit_lifted_argument_lambdas(source, hir, true)
     let mut cursor = next_function_start(source, 0)
     let mut main_count = 0
     while cursor < len(source) {
@@ -6105,9 +6712,22 @@ fn selfhost_signature(source: Text, functions: Text, start: Int) -> Text {
                 "parameter needs `: TYPE`"
             )
         }
-        let parameter_type = token_text(source, type_at)
+        # A callable parameter type spans several tokens and is recorded under
+        # one name, so the arity stays right and the head of the type list
+        # keeps naming one parameter each. The frozen self-host profile has no
+        # callable values, so `Fn` matches no argument type and a call passing
+        # one is rejected by the ordinary mismatch below rather than being
+        # silently accepted as `Int`.
+        let callable_end = callable_type_end(source, type_at)
+        let mut parameter_type = token_text(source, type_at)
+        if callable_end >= 0 {
+            parameter_type = "Fn"
+        }
         parameter_types = parameter_types + "|" + parameter_type
         cursor = skip_trivia(source, token_end(source, type_at))
+        if callable_end >= 0 {
+            cursor = skip_trivia(source, callable_end)
+        }
         if parameter_type == "List" {
             cursor = skip_trivia(source, token_end(source, cursor))
             cursor = skip_trivia(source, token_end(source, cursor))
