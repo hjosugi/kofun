@@ -1,0 +1,7 @@
+# diagnostic-mode: compile
+# expect-code: E2S103
+# expect-span: byte 96
+fn main() {
+    let x = Float.from_decimal(1.5)
+    print(0)
+}

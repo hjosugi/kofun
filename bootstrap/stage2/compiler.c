@@ -4026,6 +4026,9 @@ static char *initializer_type(
     int64_t initializer
 );
 static bool value_control(const char *source, int64_t cursor);
+/* Defined beside the other numeric-type helpers; declared here because the
+ * scope walk is the one caller that runs before them. */
+static bool numeric_conversion_head(const char *source, int64_t cursor);
 static bool newline_between(
     const char *source,
     int64_t start,
@@ -7494,6 +7497,7 @@ static char *build_scope_hir_mode(
                 if (
                     !declaration_token && !initializer_token &&
                     !pattern_token && !lambda_token &&
+                    !numeric_conversion_head(source, cursor) &&
                     !token_equal(source, cursor, "print") &&
                     !token_equal(source, cursor, "_")
                 ) {
@@ -9810,6 +9814,75 @@ static const char *numeric_name(const char *name) {
     return "";
 }
 
+/*
+ * True when `cursor` is the type name heading a `Type.member` path.
+ *
+ * This is the one place the scope walk must not treat a numeric type name as a
+ * binding use. `Decimal` in `Decimal.from_int(3)` names a type, not a value, so
+ * resolving it would report `E2S35: unknown lexical binding` — which is what it
+ * did before the conversions existed.
+ */
+static bool numeric_conversion_head(const char *source, int64_t cursor) {
+    char *name = token_copy(source, cursor);
+    bool numeric = numeric_name(name)[0] != '\0';
+    free(name);
+    if (!numeric) return false;
+    int64_t length = (int64_t)strlen(source);
+    int64_t dot = skip_trivia(source, token_end(source, cursor));
+    return dot < length && token_equal(source, dot, ".");
+}
+
+/*
+ * The `Type.member` conversion path beginning at `cursor`, or "" when there is
+ * not one. The member must be called: a bare `Decimal.from_int` is a value of a
+ * type the language does not have, so only the call form is recognised.
+ *
+ * The caller owns the result.
+ */
+static char *numeric_conversion_at(const char *source, int64_t cursor) {
+    if (!numeric_conversion_head(source, cursor)) return owned_text("");
+    int64_t length = (int64_t)strlen(source);
+    int64_t dot = skip_trivia(source, token_end(source, cursor));
+    int64_t member = skip_trivia(source, token_end(source, dot));
+    if (
+        member >= length ||
+        strcmp(token_kind(source, member), "identifier") != 0
+    ) {
+        return owned_text("");
+    }
+    int64_t open = skip_trivia(source, token_end(source, member));
+    if (open >= length || !token_equal(source, open, "(")) {
+        return owned_text("");
+    }
+    char *head = token_copy(source, cursor);
+    char *tail = token_copy(source, member);
+    Buffer path;
+    buffer_init(&path);
+    buffer_format(&path, "%s.%s", head, tail);
+    free(head);
+    free(tail);
+    return path.data;
+}
+
+/*
+ * The result type of a named conversion, or "" when the path is not one.
+ *
+ * `docs/DECIMAL.md` fixes these three names. `Decimal.from_int` is the only one
+ * that can be written today; the other two are recognised here so that
+ * `validate_numeric_conversions` can reject them for the right reason rather
+ * than calling them unknown.
+ */
+static const char *numeric_conversion_result(const char *conversion) {
+    if (
+        strcmp(conversion, "Decimal.from_int") == 0 ||
+        strcmp(conversion, "Decimal.from_float") == 0
+    ) {
+        return "Decimal";
+    }
+    if (strcmp(conversion, "Float.from_decimal") == 0) return "Float";
+    return "";
+}
+
 static bool arithmetic_operator_at(const char *source, int64_t cursor) {
     return token_equal(source, cursor, "+") ||
            token_equal(source, cursor, "-") ||
@@ -9855,6 +9928,14 @@ static const char *numeric_primary_type(
             function_open,
             skip_trivia(source, token_end(source, cursor))
         );
+    }
+    /* A named conversion is typed by its destination, which is what makes
+     * `Decimal.from_int(n) + 1.5` a same-type expression rather than a mix. */
+    {
+        char *conversion = numeric_conversion_at(source, cursor);
+        const char *converted = numeric_conversion_result(conversion);
+        free(conversion);
+        if (converted[0] != '\0') return converted;
     }
     const char *kind = token_kind(source, cursor);
     if (strcmp(kind, "integer") == 0) return "Int";
@@ -9916,7 +9997,36 @@ static char *validate_numeric_operand_types(
             int64_t cursor = skip_trivia(source, function_open);
             int64_t last_primary = -1;
             while (cursor < function_close) {
-                if (arithmetic_operator_at(source, cursor) &&
+                /* A conversion is one primary and its argument is not an
+                 * operand of the surrounding expression. Without this skip the
+                 * walk stops at the inner literal: `Decimal.from_int(1) + 1`
+                 * would read as Int + Int and be accepted, and
+                 * `Decimal.from_int(1) + 1.5` would read as Int + Decimal and
+                 * be rejected. Both are wrong, and in opposite directions. */
+                int64_t advance = -1;
+                char *primary_conversion = numeric_conversion_at(
+                    source,
+                    cursor
+                );
+                bool is_conversion = primary_conversion[0] != '\0';
+                free(primary_conversion);
+                if (is_conversion) {
+                    last_primary = cursor;
+                    int64_t dot = skip_trivia(
+                        source,
+                        token_end(source, cursor)
+                    );
+                    int64_t member = skip_trivia(
+                        source,
+                        token_end(source, dot)
+                    );
+                    int64_t open = skip_trivia(
+                        source,
+                        token_end(source, member)
+                    );
+                    int64_t close = balanced_end(source, open, "(", ")");
+                    if (close > 0) advance = skip_trivia(source, close);
+                } else if (arithmetic_operator_at(source, cursor) &&
                     last_primary >= 0) {
                     int64_t right = skip_trivia(
                         source,
@@ -9965,7 +10075,11 @@ static char *validate_numeric_operand_types(
                         last_primary = cursor;
                     }
                 }
-                cursor = skip_trivia(source, token_end(source, cursor));
+                if (advance >= 0) {
+                    cursor = advance;
+                } else {
+                    cursor = skip_trivia(source, token_end(source, cursor));
+                }
             }
         }
         function_start = next_function_start(source, function_close);
@@ -10085,6 +10199,181 @@ static char *validate_numeric_annotations(
 }
 
 /*
+ * The three named conversions of `docs/DECIMAL.md`, and what each one costs.
+ *
+ * Conversions are named and explicit because there is no implicit promotion.
+ * But naming a conversion is not enough to make it writable: two of the three
+ * cross the decimal/binary boundary and cannot be exact, and `docs/DECIMAL.md`
+ * forbids any ambient rounding context that would let the compiler pick a mode
+ * on the programmer's behalf.
+ *
+ * So `Decimal.from_int` is accepted — Int to Decimal is exact for every input,
+ * and needs no mode — while `Float.from_decimal` and `Decimal.from_float` are
+ * rejected until slice 5 gives them the rounding mode and policy arguments they
+ * require. Rejecting them is the honest outcome: accepting either one today
+ * would mean choosing a rounding mode silently, which is the single thing the
+ * frozen decisions rule out.
+ *
+ * The refusal for a *valid* conversion comes last, so a program with both a
+ * wrong conversion and a right one reports the wrong one.
+ *
+ * Note for slice 4: lifting the E2S104 refusal exposes `from_int(` to
+ * `validate_core_calls`, which will call it an unknown Core function. Nothing
+ * reaches that path today because this refusal short-circuits first.
+ */
+static char *validate_numeric_conversions(
+    const char *source,
+    const char *hir
+) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t function_start = next_function_start(source, 0);
+    int64_t valid_conversion = -1;
+    while (function_start < length) {
+        int64_t function_close = function_end(source, function_start);
+        int64_t parameters = parameter_open(source, function_start);
+        int64_t function_open = parameters >= 0
+            ? balanced_end(source, parameters, "(", ")")
+            : -1;
+        if (function_open >= 0) {
+            int64_t cursor = skip_trivia(source, function_open);
+            while (cursor < function_close) {
+                if (numeric_conversion_head(source, cursor)) {
+                    char *conversion = numeric_conversion_at(source, cursor);
+                    Buffer message;
+                    buffer_init(&message);
+                    const char *code = NULL;
+                    int64_t span = cursor;
+                    /* The messages stay short on purpose: the member name is
+                     * unbounded and the semantic producer holds a diagnostic
+                     * in 160 bytes, so a long name plus a long tail truncates
+                     * on one side of the gate only. */
+                    if (conversion[0] == '\0') {
+                        char *head = token_copy(source, cursor);
+                        buffer_format(
+                            &message,
+                            "error[E2S102]: `%s` has only conversions at byte "
+                            "%" PRId64 "; write `Decimal.from_int(value)`",
+                            head,
+                            cursor
+                        );
+                        free(head);
+                        code = "E2S102";
+                    } else if (
+                        numeric_conversion_result(conversion)[0] == '\0'
+                    ) {
+                        buffer_format(
+                            &message,
+                            "error[E2S102]: unknown conversion `%s` at byte "
+                            "%" PRId64 "; known: Decimal.from_int, "
+                            "Decimal.from_float, Float.from_decimal",
+                            conversion,
+                            cursor
+                        );
+                        code = "E2S102";
+                    } else if (strcmp(conversion, "Decimal.from_int") != 0) {
+                        buffer_format(
+                            &message,
+                            "error[E2S103]: `%s` cannot be exact at byte "
+                            "%" PRId64 "; it needs a rounding mode "
+                            "(#710 slice 5)",
+                            conversion,
+                            cursor
+                        );
+                        code = "E2S103";
+                    } else {
+                        int64_t dot = skip_trivia(
+                            source,
+                            token_end(source, cursor)
+                        );
+                        int64_t member = skip_trivia(
+                            source,
+                            token_end(source, dot)
+                        );
+                        int64_t open = skip_trivia(
+                            source,
+                            token_end(source, member)
+                        );
+                        int64_t actual = call_arity(source, open);
+                        if (actual != 1) {
+                            buffer_format(
+                                &message,
+                                "error[E2S17]: Core function `%s` expects 1 "
+                                "arguments, got %" PRId64 " at byte %" PRId64,
+                                conversion,
+                                actual,
+                                cursor
+                            );
+                            code = "E2S17";
+                        } else {
+                            int64_t argument = skip_trivia(
+                                source,
+                                token_end(source, open)
+                            );
+                            const char *argument_type = numeric_primary_type(
+                                source,
+                                hir,
+                                function_open,
+                                argument
+                            );
+                            if (
+                                argument_type[0] != '\0' &&
+                                strcmp(argument_type, "Int") != 0
+                            ) {
+                                buffer_format(
+                                    &message,
+                                    "error[E2S15]: builtin `%s` expects Int "
+                                    "for argument 1, got %s at byte %" PRId64,
+                                    conversion,
+                                    argument_type,
+                                    argument
+                                );
+                                code = "E2S15";
+                                span = argument;
+                            } else if (valid_conversion < 0) {
+                                valid_conversion = cursor;
+                            }
+                        }
+                    }
+                    free(conversion);
+                    if (code != NULL) {
+                        stage2_diagnostic_set(
+                            code,
+                            span,
+                            token_end(source, span),
+                            true,
+                            message.data
+                        );
+                        return message.data;
+                    }
+                    free(message.data);
+                }
+                cursor = skip_trivia(source, token_end(source, cursor));
+            }
+        }
+        function_start = next_function_start(source, function_close);
+    }
+    if (valid_conversion >= 0) {
+        Buffer message;
+        buffer_init(&message);
+        buffer_format(
+            &message,
+            "error[E2S104]: Decimal.from_int at byte %" PRId64
+            " has no arithmetic yet (#710 slice 4)",
+            valid_conversion
+        );
+        stage2_diagnostic_set(
+            "E2S104",
+            valid_conversion,
+            token_end(source, valid_conversion),
+            true,
+            message.data
+        );
+        return message.data;
+    }
+    return owned_text("ok");
+}
+
+/*
  * A well-formed Decimal or Float literal reaching lowering.
  *
  * #717 lexes these and stops there: the token contract is slice 1 of #710 and
@@ -10191,6 +10480,12 @@ static char *lower_c(const char *source, const char *hir) {
     char *annotation_check = validate_numeric_annotations(source, hir);
     if (strncmp(annotation_check, "error[", 6) == 0) return annotation_check;
     free(annotation_check);
+    /* After the annotation check, because a conversion is the remedy an
+     * annotation mismatch asks for: `let x: Decimal = 1` should say what is
+     * wrong with the value, not refuse the conversion the fix would introduce. */
+    char *conversion_check = validate_numeric_conversions(source, hir);
+    if (strncmp(conversion_check, "error[", 6) == 0) return conversion_check;
+    free(conversion_check);
     char *numeric_kind_check = validate_unsupported_numeric_kinds(source);
     if (strncmp(numeric_kind_check, "error[", 6) == 0) {
         return numeric_kind_check;

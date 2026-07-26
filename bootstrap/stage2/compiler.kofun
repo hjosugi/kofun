@@ -4938,6 +4938,7 @@ fn build_scope_hir_mode(
                 )
                 if !declaration_token && !initializer_token &&
                    !pattern_token && !lambda_token &&
+                   !numeric_conversion_head(source, cursor) &&
                    name != "print" && name != "_" {
                     let mut scope_open = lambda_scope_open(
                         source,
@@ -6180,6 +6181,14 @@ fn numeric_primary_type(
             source, hir, function_open,
             skip_trivia(source, token_end(source, cursor)))
     }
+    # A named conversion is typed by its destination, which is what makes
+    # `Decimal.from_int(n) + 1.5` a same-type expression rather than a mix.
+    let conversion = numeric_conversion_result(
+        numeric_conversion_at(source, cursor)
+    )
+    if len(conversion) > 0 {
+        return conversion
+    }
     let kind = token_kind(source, cursor)
     if kind == "integer" {
         return "Int"
@@ -6221,6 +6230,55 @@ fn numeric_name(name: Text) -> Text {
     return ""
 }
 
+# True when `cursor` is the type name heading a `Type.member` path.
+#
+# This is the one place the scope walk must not treat a numeric type name as a
+# binding use. `Decimal` in `Decimal.from_int(3)` names a type, not a value, so
+# resolving it would report `E2S35: unknown lexical binding` — which is what it
+# did before the conversions existed.
+fn numeric_conversion_head(source: Text, cursor: Int) -> Bool {
+    if len(numeric_name(token_text(source, cursor))) == 0 {
+        return false
+    }
+    let dot = skip_trivia(source, token_end(source, cursor))
+    return dot < len(source) && token_text(source, dot) == "."
+}
+
+# The `Type.member` conversion path beginning at `cursor`, or "" when there is
+# not one. The member must be called: a bare `Decimal.from_int` is a value of a
+# type the language does not have, so only the call form is recognised.
+fn numeric_conversion_at(source: Text, cursor: Int) -> Text {
+    if !numeric_conversion_head(source, cursor) {
+        return ""
+    }
+    let dot = skip_trivia(source, token_end(source, cursor))
+    let member = skip_trivia(source, token_end(source, dot))
+    if member >= len(source) || token_kind(source, member) != "identifier" {
+        return ""
+    }
+    let open = skip_trivia(source, token_end(source, member))
+    if open >= len(source) || token_text(source, open) != "(" {
+        return ""
+    }
+    return token_text(source, cursor) + "." + token_text(source, member)
+}
+
+# The result type of a named conversion, or "" when the path is not one.
+#
+# `docs/DECIMAL.md` fixes these three names. `Decimal.from_int` is the only one
+# that can be written today; the other two are recognised here so that
+# `validate_numeric_conversions` can reject them for the right reason rather
+# than calling them unknown.
+fn numeric_conversion_result(conversion: Text) -> Text {
+    if conversion == "Decimal.from_int" || conversion == "Decimal.from_float" {
+        return "Decimal"
+    }
+    if conversion == "Float.from_decimal" {
+        return "Float"
+    }
+    return ""
+}
+
 fn arithmetic_operator(token: Text) -> Bool {
     return token == "+" || token == "-" || token == "*" ||
     token == "//" || token == "%" || token == "**"
@@ -6251,7 +6309,23 @@ fn validate_numeric_operand_types(source: Text, hir: Text) -> Text {
             let mut last_primary = -1
             while cursor < function_close {
                 let token = token_text(source, cursor)
-                if arithmetic_operator(token) && last_primary >= 0 {
+                # A conversion is one primary and its argument is not an
+                # operand of the surrounding expression. Without this skip the
+                # walk stops at the inner literal: `Decimal.from_int(1) + 1`
+                # would read as Int + Int and be accepted, and
+                # `Decimal.from_int(1) + 1.5` would read as Int + Decimal and
+                # be rejected. Both are wrong, and in opposite directions.
+                let mut advance = -1
+                if len(numeric_conversion_at(source, cursor)) > 0 {
+                    last_primary = cursor
+                    let dot = skip_trivia(source, token_end(source, cursor))
+                    let member = skip_trivia(source, token_end(source, dot))
+                    let open = skip_trivia(source, token_end(source, member))
+                    let close = balanced_end(source, open, "(", ")")
+                    if close > 0 {
+                        advance = skip_trivia(source, close)
+                    }
+                } else if arithmetic_operator(token) && last_primary >= 0 {
                     let right = skip_trivia(source, token_end(source, cursor))
                     let left_type = numeric_primary_type(
                         source, hir, function_open, last_primary)
@@ -6271,7 +6345,11 @@ fn validate_numeric_operand_types(source: Text, hir: Text) -> Text {
                           token_kind(source, cursor) == "identifier" {
                     last_primary = cursor
                 }
-                cursor = skip_trivia(source, token_end(source, cursor))
+                if advance >= 0 {
+                    cursor = advance
+                } else {
+                    cursor = skip_trivia(source, token_end(source, cursor))
+                }
             }
         }
         function_start = next_function_start(source, function_close)
@@ -6362,6 +6440,106 @@ fn validate_numeric_annotations(source: Text, hir: Text) -> Text {
     return "ok"
 }
 
+# The three named conversions of `docs/DECIMAL.md`, and what each one costs.
+#
+# Conversions are named and explicit because there is no implicit promotion.
+# But naming a conversion is not enough to make it writable: two of the three
+# cross the decimal/binary boundary and cannot be exact, and `docs/DECIMAL.md`
+# forbids any ambient rounding context that would let the compiler pick a mode
+# on the programmer's behalf.
+#
+# So `Decimal.from_int` is accepted — Int to Decimal is exact for every input,
+# and needs no mode — while `Float.from_decimal` and `Decimal.from_float` are
+# rejected until slice 5 gives them the rounding mode and policy arguments they
+# require. Rejecting them is the honest outcome: accepting either one today
+# would mean choosing a rounding mode silently, which is the single thing the
+# frozen decisions rule out.
+#
+# The refusal for a *valid* conversion comes last, so a program with both a
+# wrong conversion and a right one reports the wrong one.
+fn validate_numeric_conversions(source: Text, hir: Text) -> Text {
+    let mut function_start = next_function_start(source, 0)
+    let mut valid_conversion = -1
+    while function_start < len(source) {
+        let function_close = function_end(source, function_start)
+        let parameters = parameter_open(source, function_start)
+        let mut function_open = -1
+        if parameters >= 0 {
+            function_open = balanced_end(source, parameters, "(", ")")
+        }
+        if function_open >= 0 {
+            let mut cursor = skip_trivia(source, function_open)
+            while cursor < function_close {
+                if numeric_conversion_head(source, cursor) {
+                    let conversion = numeric_conversion_at(source, cursor)
+                    # The messages stay short on purpose: the member name is
+                    # unbounded and the semantic producer holds a diagnostic in
+                    # 160 bytes, so a long name plus a long tail truncates on
+                    # one side of the gate only.
+                    if len(conversion) == 0 {
+                        return "error[E2S102]: `" +
+                        token_text(source, cursor) +
+                        "` has only conversions at byte " + to_text(cursor) +
+                        "; write `Decimal.from_int(value)`"
+                    }
+                    let result = numeric_conversion_result(conversion)
+                    if len(result) == 0 {
+                        return "error[E2S102]: unknown conversion `" +
+                        conversion + "` at byte " + to_text(cursor) +
+                        "; known: Decimal.from_int, Decimal.from_float, " +
+                        "Float.from_decimal"
+                    }
+                    if conversion != "Decimal.from_int" {
+                        return "error[E2S103]: `" + conversion +
+                        "` cannot be exact at byte " + to_text(cursor) +
+                        "; it needs a rounding mode (#710 slice 5)"
+                    }
+                    let member = skip_trivia(
+                        source,
+                        token_end(source, skip_trivia(
+                            source,
+                            token_end(source, cursor)
+                        ))
+                    )
+                    let open = skip_trivia(source, token_end(source, member))
+                    let actual = call_arity(source, open)
+                    if actual != 1 {
+                        return "error[E2S17]: Core function `" + conversion +
+                        "` expects 1 arguments, got " + to_text(actual) +
+                        " at byte " + to_text(cursor)
+                    }
+                    let argument = skip_trivia(
+                        source,
+                        token_end(source, open)
+                    )
+                    let argument_type = numeric_primary_type(
+                        source,
+                        hir,
+                        function_open,
+                        argument
+                    )
+                    if len(argument_type) > 0 && argument_type != "Int" {
+                        return "error[E2S15]: builtin `" + conversion +
+                        "` expects Int for argument 1, got " + argument_type +
+                        " at byte " + to_text(argument)
+                    }
+                    if valid_conversion < 0 {
+                        valid_conversion = cursor
+                    }
+                }
+                cursor = skip_trivia(source, token_end(source, cursor))
+            }
+        }
+        function_start = next_function_start(source, function_close)
+    }
+    if valid_conversion >= 0 {
+        return "error[E2S104]: Decimal.from_int at byte " +
+        to_text(valid_conversion) +
+        " has no arithmetic yet (#710 slice 4)"
+    }
+    return "ok"
+}
+
 # A well-formed Decimal or Float literal reaching lowering.
 #
 # The refusal names a successor slice rather than reusing the generic `E2S12`,
@@ -6412,6 +6590,13 @@ fn lower_c(source: Text, hir: Text) -> Text {
     let annotation_check = validate_numeric_annotations(source, hir)
     if starts_with(annotation_check, "error[") {
         return annotation_check
+    }
+    # After the annotation check, because a conversion is the remedy an
+    # annotation mismatch asks for: `let x: Decimal = 1` should say what is
+    # wrong with the value, not refuse the conversion the fix would introduce.
+    let conversion_check = validate_numeric_conversions(source, hir)
+    if starts_with(conversion_check, "error[") {
+        return conversion_check
     }
     let numeric_kind_check = validate_unsupported_numeric_kinds(source)
     if starts_with(numeric_kind_check, "error[") {

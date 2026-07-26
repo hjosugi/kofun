@@ -245,6 +245,122 @@ for expected in '|a|immutable|Decimal|' '|b|immutable|Float|'; do
 done
 echo "PASS: numeric annotations agree with their initializers in both directions"
 
+# The three named conversions of `docs/DECIMAL.md`. Only `Decimal.from_int` is
+# writable: Int to Decimal is exact for every input and needs no rounding mode,
+# while the other two cross the decimal/binary boundary and cannot be exact.
+# Accepting either of those today would mean the compiler picking a rounding
+# mode silently, which frozen decision 7 rules out — so they are rejected by
+# name, not left to look like typos.
+conversion_case() {
+    expression=$1
+    expected=$2
+    printf 'fn main() {\n    let x = %s\n    print(0)\n}\n' "$expression" \
+        >"$temporary/conversion.kofun"
+    rm -f "$temporary/conversion.c"
+    set +e
+    "$temporary/kofun-stage2" "$temporary/conversion.kofun" \
+        "$temporary/conversion.c" "$temporary/conversion.ir" \
+        "$temporary/conversion.tokens" \
+        >"$temporary/conversion.stdout" 2>"$temporary/conversion.stderr"
+    conversion_status=$?
+    set -e
+    test "$conversion_status" -eq 1 || {
+        echo "stage2 check: '$expression' was accepted" >&2
+        exit 1
+    }
+    grep -q "^error\\[$expected\\]" "$temporary/conversion.stdout" || {
+        echo "stage2 check: '$expression' did not report $expected" >&2
+        cat "$temporary/conversion.stdout" >&2
+        exit 1
+    }
+    test ! -e "$temporary/conversion.c" || {
+        echo "stage2 check: '$expression' emitted C" >&2
+        exit 1
+    }
+    # `char display[160]` in semantic_producer.c truncates silently on the
+    # producer side only, so an over-long message fails as a byte comparison
+    # somewhere else entirely. Measure it here, where the cause is visible.
+    message_bytes=$(wc -c <"$temporary/conversion.stdout" | tr -d ' ')
+    test "$message_bytes" -le 160 || {
+        echo "stage2 check: '$expression' message is $message_bytes bytes, over 160" >&2
+        cat "$temporary/conversion.stdout" >&2
+        exit 1
+    }
+}
+# A valid conversion type-checks and stops at the slice it needs.
+conversion_case 'Decimal.from_int(3)' E2S104
+# The two that cannot be exact are refused by name, naming what they need.
+conversion_case 'Float.from_decimal(1.5)' E2S103
+conversion_case 'Decimal.from_float(1.5f64)' E2S103
+# An unknown member is an unknown conversion, not an unknown binding: before
+# the conversions existed this reported `E2S35: unknown lexical binding`.
+conversion_case 'Decimal.from_text("1")' E2S102
+conversion_case 'Int.from_decimal(1.5)' E2S102
+# A very long member name must still fit the producer's message buffer.
+conversion_case 'Decimal.from_something_quite_long_here(1)' E2S102
+# Arity and argument type reuse the codes every other call already uses.
+conversion_case 'Decimal.from_int(1, 2)' E2S17
+conversion_case 'Decimal.from_int()' E2S17
+conversion_case 'Decimal.from_int(1.5)' E2S15
+# The conversion is one primary. Its argument must not be read as an operand:
+# without that, `Decimal.from_int(1) + 1` reads as Int + Int and is accepted,
+# and `Decimal.from_int(1) + 1.5` reads as Int + Decimal and is rejected. Both
+# directions are gated because the skip fixes both and a partial fix passes one.
+mixed_case 'Decimal.from_int(1) + 1'
+mixed_case '1 + Decimal.from_int(1)'
+mixed_case 'Decimal.from_int(1) + 1.5f64'
+for same in 'Decimal.from_int(1) + 1.5' '1.5 + Decimal.from_int(1)' \
+            'Decimal.from_int(1) + Decimal.from_int(2)'
+do
+    printf 'fn main() {\n    print(%s)\n}\n' "$same" \
+        >"$temporary/conversion-same.kofun"
+    set +e
+    "$temporary/kofun-stage2" "$temporary/conversion-same.kofun" \
+        "$temporary/conversion-same.c" "$temporary/conversion-same.ir" \
+        "$temporary/conversion-same.tokens" \
+        >"$temporary/conversion-same.stdout" 2>&1
+    set -e
+    grep -q 'E2S100' "$temporary/conversion-same.stdout" && {
+        echo "stage2 check: '$same' reported a type mismatch" >&2
+        cat "$temporary/conversion-same.stdout" >&2
+        exit 1
+    }
+    grep -q 'E2S10[34]' "$temporary/conversion-same.stdout" || {
+        echo "stage2 check: '$same' did not reach the slice-4 refusal" >&2
+        cat "$temporary/conversion-same.stdout" >&2
+        exit 1
+    }
+done
+# A conversion satisfies a matching annotation, which is what proves
+# `numeric_primary_type` types the path rather than its argument.
+printf 'fn main() {\n    let x: Decimal = Decimal.from_int(3)\n    print(0)\n}\n' \
+    >"$temporary/conversion-annotated.kofun"
+set +e
+"$temporary/kofun-stage2" "$temporary/conversion-annotated.kofun" \
+    "$temporary/conversion-annotated.c" "$temporary/conversion-annotated.ir" \
+    "$temporary/conversion-annotated.tokens" \
+    >"$temporary/conversion-annotated.stdout" 2>&1
+set -e
+grep -q 'E2S104' "$temporary/conversion-annotated.stdout" || {
+    echo "stage2 check: an annotated conversion did not reach E2S104" >&2
+    cat "$temporary/conversion-annotated.stdout" >&2
+    exit 1
+}
+printf 'fn main() {\n    let x: Int = Decimal.from_int(3)\n    print(0)\n}\n' \
+    >"$temporary/conversion-mismatch.kofun"
+set +e
+"$temporary/kofun-stage2" "$temporary/conversion-mismatch.kofun" \
+    "$temporary/conversion-mismatch.c" "$temporary/conversion-mismatch.ir" \
+    "$temporary/conversion-mismatch.tokens" \
+    >"$temporary/conversion-mismatch.stdout" 2>&1
+set -e
+grep -q 'E2S101' "$temporary/conversion-mismatch.stdout" || {
+    echo 'stage2 check: an Int-annotated conversion was not a mismatch' >&2
+    cat "$temporary/conversion-mismatch.stdout" >&2
+    exit 1
+}
+echo "PASS: named numeric conversions type, reject, and refuse by name"
+
 # The Decimal resource profile (#721, `docs/DECIMAL.md` "Profile v1"). Frozen
 # decision 8 requires its limits to be cross-backend *observable*, so the
 # compiler constructs each literal and reports the limit at the literal's own

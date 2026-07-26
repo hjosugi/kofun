@@ -9,7 +9,7 @@ fn corpus_name() -> Text {
 }
 
 fn expected_cases() -> Int {
-    return 11
+    return 12
 }
 
 fn case_names() -> List[Text] {
@@ -23,11 +23,12 @@ fn case_names() -> List[Text] {
         "overflow_multiply.kofun",
         "overflow_negate.kofun",
         "overflow_subtract.kofun",
+        "reject_inexact_numeric_conversion.kofun",
         "reject_numeric_annotation_mismatch.kofun",
         "reject_slash_operator.kofun"
     ]
 }
 
 fn observations_sha256() -> Text {
-    return "e535b1fdf971bda52463bef15ed1f1bd8c14775440dca271cce72508dd0e5ef0"
+    return "868bb63194ec01288d3e68de61122fc98a2e65940331984b1fa1e88701d53101"
 }

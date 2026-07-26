@@ -1,0 +1,23 @@
+# contract: kofun.backend-differential/v1
+# expect-reject: a conversion that cannot be exact needs an explicit rounding mode
+
+# `Float.from_decimal` is one of the three conversions docs/DECIMAL.md names, so
+# this is not a typo being caught — the compiler knows the conversion and still
+# refuses it. Decimal to binary64 cannot be exact, and the rounding mode it
+# needs does not exist yet.
+#
+# Accepting it would mean the compiler choosing a rounding mode on the
+# programmer's behalf, which is exactly the ambient-default rounding context
+# that #710's frozen decisions rule out. A refusal is the only answer that does
+# not silently pick one, so this case pins the refusal itself: an implementation
+# that "helpfully" defaulted to nearest-even would pass every arithmetic test
+# and fail here, which is the point.
+#
+# `Decimal.from_int` is deliberately not written here. It is exact, it needs no
+# mode, and it is accepted by the type checker — a corpus that refused every
+# conversion alike would not distinguish the two.
+
+fn main() {
+    let ratio = Float.from_decimal(1.5)
+    print(0)
+}

@@ -211,6 +211,24 @@ round to a requested decimal scale, or reject an inexact result. A displayed
 `Float` string is not silently treated as the exact binary value, and a binary
 value is not silently treated as the decimal text a user originally typed.
 
+Of the three, only `Decimal.from_int` can be written today. Int to Decimal is
+exact for every input and needs no mode, so it type-checks and stops at
+lowering, naming the slice that will evaluate it. The other two cross the
+decimal/binary boundary and cannot be exact, and the rounding mode and policy
+they require are slice 5 — so the compiler rejects them by name rather than
+choosing a mode. That refusal is the rule about ambient rounding contexts being
+enforced rather than merely written down: there is nowhere for a default to
+come from, so there is no conversion to offer yet.
+
+An unknown member of a numeric type is an unknown *conversion*, and says so.
+Before the conversions existed, `Decimal.from_text("1")` reported an unknown
+lexical binding named `Decimal`, which described the compiler's internals
+rather than the program.
+
+A conversion is one primary. `Decimal.from_int(1) + 1` mixes `Decimal` and
+`Int` and is rejected; `Decimal.from_int(1) + 1.5` is two `Decimal` operands
+and is not.
+
 Annotations are checked in both directions. `let x: Decimal = 1` is rejected
 for the same reason `let x: Int = 1.5` is: a rule that rejected only the
 narrowing direction would still be promoting, one way and quietly.
