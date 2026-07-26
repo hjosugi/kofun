@@ -1,0 +1,17 @@
+module demo.core
+
+pub fn public_entry(value: Int) -> Int {
+    return internal_helper(value)
+}
+
+internal fn internal_helper(value: Int) -> Int {
+    return private_detail(value)
+}
+
+private fn private_detail(value: Int) -> Int {
+    return value
+}
+
+pub type Shape =
+    | Point
+    | Line(value: Int)

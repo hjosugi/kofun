@@ -2033,6 +2033,7 @@ done:
     return status;
 }
 
+#ifndef KOFUN_RE_EXPORTS_NO_MAIN
 int main(int argc, char **argv) {
     ReExportResolver resolver;
     ImportResolver *qualified = &resolver.imports.qualified;
@@ -2151,3 +2152,4 @@ done:
     destroy_re_export_resolver(&resolver);
     return status;
 }
+#endif

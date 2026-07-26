@@ -1,0 +1,8 @@
+module demo.app
+
+import demo.service
+from demo.service import service_entry
+
+internal fn app_entry(value: Int) -> Int {
+    return service_entry(value)
+}
