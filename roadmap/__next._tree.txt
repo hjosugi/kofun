@@ -1,4 +1,4 @@
 :HL["/kofun/_next/static/chunks/0fpos7vm9_kcy.css","style"]
 :HL["/kofun/_next/static/chunks/21r7lzlvh0-p-.css","style"]
 :HL["/kofun/kofun-mark.svg","image"]
-0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"roadmap","param":null,"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}},"staleTime":300,"buildId":"txOLVNktcbAWof_PmrmXG"}
+0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"roadmap","param":null,"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}},"staleTime":300,"buildId":"XRaEEPDyMjiUvwRLt5o5w"}
