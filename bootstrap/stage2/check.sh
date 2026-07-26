@@ -146,6 +146,32 @@ for mixed in \
 do
     mixed_case "$mixed"
 done
+# The rejection names the conversion that fixes the pair, in both orders. The
+# `Int`/`Float` pair has no conversion in `docs/DECIMAL.md`, so it says that
+# instead of naming a function that does not exist — which is the case a
+# message built by pasting the two type names together would get wrong.
+remedy_case() {
+    expression=$1
+    expected=$2
+    printf 'fn main() {\n    print(%s)\n}\n' "$expression" \
+        >"$temporary/remedy.kofun"
+    set +e
+    "$temporary/kofun-stage2" "$temporary/remedy.kofun" \
+        "$temporary/remedy.c" "$temporary/remedy.ir" \
+        "$temporary/remedy.tokens" >"$temporary/remedy.stdout" 2>&1
+    set -e
+    grep -q "; $expected\$" "$temporary/remedy.stdout" || {
+        echo "stage2 check: '$expression' did not advise '$expected'" >&2
+        cat "$temporary/remedy.stdout" >&2
+        exit 1
+    }
+}
+remedy_case '1 + 1.5' 'write Decimal.from_int(...)'
+remedy_case '1.5 + 1' 'write Decimal.from_int(...)'
+remedy_case '1.5 - 42f64' 'write Float.from_decimal(...)'
+remedy_case '42f64 - 1.5' 'write Float.from_decimal(...)'
+remedy_case '1 * 42f64' 'no conversion between them exists'
+remedy_case '42f64 * 1' 'no conversion between them exists'
 # A same-type expression must NOT be caught here: it reaches the ordinary
 # unsupported-lowering refusal instead, so an over-eager rule fails this.
 printf 'fn main() {\n    print(1.5 + 2.5)\n}\n' >"$temporary/same.kofun"

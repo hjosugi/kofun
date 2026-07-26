@@ -9883,6 +9883,39 @@ static const char *numeric_conversion_result(const char *conversion) {
     return "";
 }
 
+/*
+ * The conversion that brings two mixed operand types together, or "" when the
+ * pair has none.
+ *
+ * The pair is unordered because each name works from either side: `1 + 1.5` and
+ * `1.5 + 1` are both fixed by converting the Int with `Decimal.from_int`, and
+ * which operand it wraps is visible in the source.
+ *
+ * `Int` and `Float` return "" because `docs/DECIMAL.md` defines no conversion
+ * between them in either direction. That is a real gap in the conversion set,
+ * not an oversight here — Int to binary64 is exact only below 2^53 and so needs
+ * the same policy argument the other inexact conversions do. Saying so beats
+ * naming a function that does not exist.
+ */
+static const char *numeric_conversion_between(
+    const char *left,
+    const char *right
+) {
+    if (
+        (strcmp(left, "Int") == 0 && strcmp(right, "Decimal") == 0) ||
+        (strcmp(left, "Decimal") == 0 && strcmp(right, "Int") == 0)
+    ) {
+        return "Decimal.from_int";
+    }
+    if (
+        (strcmp(left, "Decimal") == 0 && strcmp(right, "Float") == 0) ||
+        (strcmp(left, "Float") == 0 && strcmp(right, "Decimal") == 0)
+    ) {
+        return "Float.from_decimal";
+    }
+    return "";
+}
+
 static bool arithmetic_operator_at(const char *source, int64_t cursor) {
     return token_equal(source, cursor, "+") ||
            token_equal(source, cursor, "-") ||
@@ -10041,17 +10074,36 @@ static char *validate_numeric_operand_types(
                         strcmp(left_type, right_type) != 0
                     ) {
                         char *operator_text = token_copy(source, cursor);
+                        const char *remedy = numeric_conversion_between(
+                            left_type,
+                            right_type
+                        );
+                        char advice[80];
+                        if (remedy[0] != '\0') {
+                            snprintf(
+                                advice,
+                                sizeof advice,
+                                "write %s(...)",
+                                remedy
+                            );
+                        } else {
+                            snprintf(
+                                advice,
+                                sizeof advice,
+                                "no conversion between them exists"
+                            );
+                        }
                         Buffer message;
                         buffer_init(&message);
                         buffer_format(
                             &message,
                             "error[E2S100]: operator `%s` mixes %s and %s "
-                            "at byte %" PRId64
-                            "; convert one side explicitly",
+                            "at byte %" PRId64 "; %s",
                             operator_text,
                             left_type,
                             right_type,
-                            cursor
+                            cursor,
+                            advice
                         );
                         free(operator_text);
                         stage2_diagnostic_set(

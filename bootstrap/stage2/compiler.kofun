@@ -6279,6 +6279,30 @@ fn numeric_conversion_result(conversion: Text) -> Text {
     return ""
 }
 
+# The conversion that brings two mixed operand types together, or "" when the
+# pair has none.
+#
+# The pair is unordered because each name works from either side: `1 + 1.5` and
+# `1.5 + 1` are both fixed by converting the Int with `Decimal.from_int`, and
+# which operand it wraps is visible in the source.
+#
+# `Int` and `Float` return "" because `docs/DECIMAL.md` defines no conversion
+# between them in either direction. That is a real gap in the conversion set,
+# not an oversight here — Int to binary64 is exact only below 2^53 and so needs
+# the same policy argument the other inexact conversions do. Saying so beats
+# naming a function that does not exist.
+fn numeric_conversion_between(left: Text, right: Text) -> Text {
+    if (left == "Int" && right == "Decimal") ||
+       (left == "Decimal" && right == "Int") {
+        return "Decimal.from_int"
+    }
+    if (left == "Decimal" && right == "Float") ||
+       (left == "Float" && right == "Decimal") {
+        return "Float.from_decimal"
+    }
+    return ""
+}
+
 fn arithmetic_operator(token: Text) -> Bool {
     return token == "+" || token == "-" || token == "*" ||
     token == "//" || token == "%" || token == "**"
@@ -6292,9 +6316,8 @@ fn arithmetic_operator(token: Text) -> Bool {
 # before each operator and the primary after it, so a rule written for one side
 # only cannot pass. That matters — a promotion bug usually appears on one side.
 #
-# The remedy the diagnostic names is a *named* conversion, which slice 3's
-# remaining half adds. Until then the message says the conversion is needed
-# without claiming a function that does not exist yet.
+# The diagnostic names the conversion that fixes the pair, and says plainly when
+# the pair has none — which is the case for `Int` and `Float`.
 fn validate_numeric_operand_types(source: Text, hir: Text) -> Text {
     let mut function_start = next_function_start(source, 0)
     while function_start < len(source) {
@@ -6333,10 +6356,17 @@ fn validate_numeric_operand_types(source: Text, hir: Text) -> Text {
                         source, hir, function_open, right)
                     if len(left_type) > 0 && len(right_type) > 0 &&
                        left_type != right_type {
+                        let remedy = numeric_conversion_between(
+                            left_type,
+                            right_type
+                        )
+                        let mut advice = "no conversion between them exists"
+                        if len(remedy) > 0 {
+                            advice = "write " + remedy + "(...)"
+                        }
                         return "error[E2S100]: operator `" + token +
                         "` mixes " + left_type + " and " + right_type +
-                        " at byte " + to_text(cursor) +
-                        "; convert one side explicitly"
+                        " at byte " + to_text(cursor) + "; " + advice
                     }
                     last_primary = right
                 } else if token_kind(source, cursor) == "integer" ||

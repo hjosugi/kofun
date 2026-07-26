@@ -229,6 +229,14 @@ A conversion is one primary. `Decimal.from_int(1) + 1` mixes `Decimal` and
 `Int` and is rejected; `Decimal.from_int(1) + 1.5` is two `Decimal` operands
 and is not.
 
+A mixed-arithmetic rejection names the conversion that fixes the pair —
+`Decimal.from_int` for `Int` with `Decimal`, `Float.from_decimal` for `Decimal`
+with `Float`. There is no `Int`/`Float` conversion in either direction, so that
+pair is told so rather than pointed at a function that does not exist. That is
+a gap in the set above, not in the checker: `Int` to binary64 is exact only
+below 2^53, so it needs the same policy argument the other inexact conversions
+take, and it should be settled when they are.
+
 Annotations are checked in both directions. `let x: Decimal = 1` is rejected
 for the same reason `let x: Int = 1.5` is: a rule that rejected only the
 narrowing direction would still be promoting, one way and quietly.
