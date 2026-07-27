@@ -1,0 +1,7 @@
+# diagnostic-mode: compile
+# expect-code: E2S101
+# expect-span: byte 102
+fn main() {
+    let x: Int = 1.5
+    print(0)
+}

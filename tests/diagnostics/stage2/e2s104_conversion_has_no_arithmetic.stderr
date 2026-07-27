@@ -1,0 +1,1 @@
+error[E2S104]: Decimal.from_int at byte 96 has no arithmetic yet (#710 slice 4)

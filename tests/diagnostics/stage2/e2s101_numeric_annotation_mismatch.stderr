@@ -1,0 +1,1 @@
+error[E2S101]: binding `x` is Int but its value is Decimal at byte 102; convert explicitly

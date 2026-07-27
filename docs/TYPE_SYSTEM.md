@@ -55,7 +55,8 @@ Separate constructors named `None` or `Nil` are not used for the optional case. 
 
 ```kofun
 let count = 42          # Int
-let ratio = 0.5         # Float
+let ratio = 0.5         # Decimal, not Float: see `docs/DECIMAL.md`
+let binary = 0.5f64     # Float
 let names = ["a", "b"] # List[Text]
 ```
 
@@ -128,8 +129,8 @@ Planned rules:
   arithmetic expression is a type error rather than a promotion
 - one operator set is resolved per operand type, so there is no separate `+.`
   family for fractional values
-- once a fractional type exists, mixing it with `Int` in one expression is a
-  type error — `Int + Float` does not promote
+- mixing a fractional type with `Int` in one expression is a type error —
+  `Int + Float` does not promote
 - `Int // Int -> Int`, taking the floor of the quotient
 - the overflow mode is not changed implicitly between debug and release; it is stated explicitly in the build profile
 
@@ -138,9 +139,17 @@ no promotion it cannot produce a fractional value from two `Int` operands. It is
 left without a meaning rather than given the truncating one, so it can be
 defined later without silently changing any expression that compiles now.
 
-No fractional type is implemented yet. `Float` and `Decimal` appear in this
-document as design, not as types the compiler accepts — `let x: Float = 0.5`
-is rejected. Which fractional type `/` eventually takes is #545's question.
+`Decimal` and `Float` are types the checker knows (#710 slice 3): literals
+carry them, `let` bindings carry them, annotations are checked against them,
+and mixing two numeric types in one operator is a type error. No fractional
+*arithmetic* is implemented — an expression that reaches lowering with a
+`Decimal` or `Float` in it is refused, naming the slice that will evaluate it.
+
+So `let x: Float = 0.5` is still rejected, but for the reason the type system
+gives rather than for the compiler being unfinished: `0.5` is a `Decimal`, and
+there is no implicit conversion to `Float`. `let x: Float = 0.5f64` passes the
+checker and stops at lowering. Which fractional type `/` eventually takes is
+#545's question.
 
 ```kofun
 let exact = 7 // 2 # 3
