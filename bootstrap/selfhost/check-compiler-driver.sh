@@ -85,6 +85,34 @@ cmp bootstrap/selfhost/driver/corpus_answer.c "$temporary/left/output.c" ||
 cmp bootstrap/selfhost/driver/corpus_answer.stdout "$temporary/corpus.stdout" ||
     fail "corpus program output differs from the pinned golden"
 
+# The Bool/comparison slice takes the same two compiler paths. Its checked-in
+# C proves all six comparisons, Bool literals and bindings, `!`, precedence,
+# and the nested left-associative `&&`/`||` shape. Executing it proves real
+# short circuiting: both skipped right operands contain `1 // 0`.
+mkdir -p "$temporary/bool-left" "$temporary/bool-right"
+cp bootstrap/selfhost/driver/corpus_bool.kofun \
+    "$temporary/bool-left/input.kofun"
+cp bootstrap/selfhost/driver/corpus_bool.kofun \
+    "$temporary/bool-right/input.kofun"
+(cd "$temporary/bool-left" &&
+    "$temporary/kofun-a1" input.kofun output.c >stdout.txt 2>stderr.txt)
+(cd "$temporary/bool-right" &&
+    "$temporary/kofun-stage1" input.kofun output.c >stdout.txt 2>stderr.txt)
+cmp "$temporary/bool-left/output.c" "$temporary/bool-right/output.c" ||
+    fail "compiler-from-S and the audited seed emit different Bool C"
+cmp "$temporary/bool-left/stdout.txt" "$temporary/bool-right/stdout.txt" ||
+    fail "compiler-from-S and the audited seed differ on Bool stdout"
+cmp "$temporary/bool-left/stderr.txt" "$temporary/bool-right/stderr.txt" ||
+    fail "compiler-from-S and the audited seed differ on Bool stderr"
+cmp bootstrap/selfhost/driver/corpus_bool.c \
+    "$temporary/bool-left/output.c" ||
+    fail "Bool corpus emission differs from the checked-in evidence"
+"$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$temporary/bool-left/output.c" -o "$temporary/bool-program"
+"$temporary/bool-program" >"$temporary/bool.stdout"
+cmp bootstrap/selfhost/driver/corpus_bool.stdout "$temporary/bool.stdout" ||
+    fail "Bool corpus program output differs from the pinned golden"
+
 # Path remapping: compiling the same relative input from two different
 # directories produces byte-identical C — no absolute-path leakage.
 mkdir -p "$temporary/remap-a/nested" "$temporary/remap-b"
@@ -126,6 +154,46 @@ test ! -e "$temporary/reject.c" ||
 test ! -s "$temporary/reject.stderr" ||
     fail "the reject corpus wrote unexpected stderr"
 
+# Type boundaries introduced with Bool are rejected identically by both
+# compilers, exit nonzero, and never leave a partial output artifact.
+for fixture in \
+    bootstrap/selfhost/driver/corpus_reject_bool_arithmetic.kofun \
+    bootstrap/selfhost/driver/corpus_reject_bool_print.kofun \
+    bootstrap/selfhost/driver/corpus_reject_bool_annotation.kofun \
+    bootstrap/selfhost/driver/corpus_reject_bool_infer_annotation.kofun \
+    bootstrap/selfhost/driver/corpus_reject_bool_keyword_binding.kofun \
+    bootstrap/selfhost/driver/corpus_reject_bool_order.kofun \
+    bootstrap/selfhost/driver/corpus_reject_logical_int.kofun \
+    bootstrap/selfhost/driver/corpus_reject_not_int.kofun \
+    bootstrap/selfhost/driver/corpus_reject_single_pipe.kofun
+do
+    stem=$(basename "$fixture" .kofun)
+    set +e
+    "$temporary/kofun-a1" "$fixture" \
+        "$temporary/$stem.c" >"$temporary/$stem.stdout" 2>"$temporary/$stem.stderr"
+    a1_status=$?
+    "$temporary/kofun-stage1" "$fixture" \
+        "$temporary/$stem-seed.c" >"$temporary/$stem-seed.stdout" \
+        2>"$temporary/$stem-seed.stderr"
+    seed_status=$?
+    set -e
+    test "$a1_status" -eq "$seed_status" ||
+        fail "$stem status diverges from the audited seed"
+    test "$a1_status" -ne 0 ||
+        fail "$stem must exit nonzero"
+    cmp bootstrap/selfhost/driver/corpus_reject.stdout \
+        "$temporary/$stem.stdout" ||
+        fail "$stem diagnostic differs from the pinned refusal"
+    cmp "$temporary/$stem.stdout" "$temporary/$stem-seed.stdout" ||
+        fail "$stem diagnostic diverges from the audited seed"
+    cmp "$temporary/$stem.stderr" "$temporary/$stem-seed.stderr" ||
+        fail "$stem stderr diverges from the audited seed"
+    test ! -e "$temporary/$stem.c" ||
+        fail "$stem produced C through the compiler from S"
+    test ! -e "$temporary/$stem-seed.c" ||
+        fail "$stem produced C through the audited seed"
+done
+
 # I/O failure: a missing input panics with the runtime's bounded message,
 # exits 1, and preserves the previous output bytes.
 printf 'previous output\n' > "$temporary/preserved.c"
@@ -161,4 +229,5 @@ test ! -e "$temporary/no-fallback.c" ||
 printf '%s\n' \
     "PASS: the trusted seed compiles the frozen S into a runnable compiler" \
     "PASS: the compiler from S matches the audited Stage 1 seed byte for byte on the corpus" \
+    "PASS: Int/Bool typing, comparisons, and short-circuiting agree across both seeds" \
     "PASS: emission is deterministic, path-independent, and failure-preserving"

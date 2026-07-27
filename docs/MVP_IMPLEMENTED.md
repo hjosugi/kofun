@@ -3,7 +3,7 @@
 | Capability | Status | Gate | Claim |
 |---|---|---|---|
 | `.kofun` source extension | implemented | `make repository-check` | `source-extension` |
-| Kofun-written compiler seed | implemented | `compiler.kofun` | `compiler-seed` |
+| Kofun-written compiler seed | implemented: Int/Bool comparison Core | `bootstrap/stage1/check.sh` | `compiler-seed` |
 | Reproducible bootstrap | implemented | `bootstrap/stage1/check.sh` | `reproducible-bootstrap` |
 | arithmetic Core validation/emission | implemented | `tests/cli.sh` | `arithmetic-core` |
 | build/run/check/test CLI | Core only | `tests/cli.sh` | `cli-commands` |

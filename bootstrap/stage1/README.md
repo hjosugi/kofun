@@ -8,16 +8,17 @@ Kofun-written compiler.
 sh bootstrap/stage1/check.sh
 ```
 
-Stage 1 accepts the documented arithmetic Core:
+Stage 1 accepts the documented Int/Bool Core:
 
 ```text
 kofun-stage1 INPUT.kofun OUTPUT.c
 ```
 
 The compatibility parser requires one explicit line-oriented `fn main() {`
-body containing only `let` and `print(...)` statements, plus blank lines and
-comments. Unknown structural lines are rejected; they are never ignored while
-extracting an otherwise valid `print`.
+body containing only `let` and Int-valued `print(...)` statements, plus blank
+lines and comments. `let` may infer or explicitly name `Int` or `Bool`.
+Unknown structural lines are rejected; they are never ignored while extracting
+an otherwise valid `print`.
 
 ## Expressions are compiled, not deferred
 
@@ -41,8 +42,20 @@ runtime traps in the emitted program:
 - a reference to a name that is not bound
 - a second `let` for a name already bound (the language rejects same-scope
   shadowing)
+- a binding named `true` or `false` (the Bool literals are reserved)
+- an explicit annotation other than the inferred `Int` or `Bool`
 - an integer literal outside the Int64 range
 - `/`, which is not defined on Int (#687); `//` is the integer quotient
+- arithmetic or ordered comparisons with a `Bool` operand
+- `&&`, `||`, or `!` with an `Int` operand
+- the non-Core single-character `|` or `&` operators
+- a `Bool` passed to the Int-only `print` boundary
+
+The six Int comparisons produce `Bool`; `==` and `!=` additionally compare two
+Bool operands. `&&` and `||` short-circuit their right operands, and `!` has
+unary precedence. The compiler tracks each local as `Int` or `Bool` before
+emission, so the two types never become interchangeable merely because C can
+represent both as integers.
 
 `-9223372036854775808` still compiles: a negated decimal literal is folded at
 compile time, so the one magnitude with no positive counterpart keeps a C

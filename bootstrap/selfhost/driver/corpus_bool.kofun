@@ -1,0 +1,16 @@
+fn main() {
+    let equal: Bool = 7 == 7
+    let different = 7 != 8
+    let less = 1 + 2 < 4 * 2
+    let less_equal = 3 <= 3
+    let greater = 9 > 4
+    let greater_equal = 9 >= 9
+    let bool_equal = true != false
+    let negated = !false
+    let ordered = equal && different && less && less_equal && greater && greater_equal
+    let precedence = false || true && negated
+    let short_and = false && (1 // 0 == 0)
+    let short_or = true || (1 // 0 == 0)
+    let accepted = ordered && bool_equal && precedence && !short_and && short_or
+    print(42)
+}

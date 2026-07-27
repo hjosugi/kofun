@@ -11,7 +11,7 @@ Generated from `release/claims.json` by `make release-evidence`. Do not edit.
 | `checked-int64-contract` | implemented | frontend | Every Core `Int` operation is checked: overflow and non-representable results are refused or trapped, never wrapped. |
 | `cli-commands` | checkpoint | tooling | `build`, `run`, `check` and `test` accept Core sources. Sources outside the Core are refused by the driver, not partially compiled. |
 | `cli-framework` | checkpoint | frameworks | The CLI framework produces a direct static Linux x86-64 binary for the declarative command profile. No dynamic linking or other host is covered. |
-| `compiler-seed` | implemented | bootstrap | The Stage 1 seed is written in Kofun and kept beside a hand-audited C transliteration; the pair is the bootstrap root of trust. |
+| `compiler-seed` | implemented | bootstrap | The Stage 1 seed is written in Kofun and kept beside a hand-audited C transliteration. Its line-oriented Core lowers checked Int arithmetic, six comparisons, Bool equality, Bool literals and bindings, unary `!`, and short-circuiting `&&`/`||`; `print` remains Int-only. |
 | `deterministic-fuzzing` | implemented | quality | Fuzzing is seeded and reproducible: the same seed yields the same programs and the same oracle/backend observations. |
 | `elf64-image-writer` | checkpoint | native | The backend writes a static ELF64 image directly, without an external assembler or linker, for the covered Core profiles. |
 | `enum-matching` | checkpoint | frontend | Payload-free concrete enums match exhaustively over their constructor set. Payload-carrying and generic enums are outside the slice. |

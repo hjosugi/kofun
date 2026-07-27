@@ -1,0 +1,4 @@
+fn main() {
+    let true = false
+    print(0)
+}

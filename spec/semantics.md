@@ -128,9 +128,13 @@ remain identifiable migration material and are never accepted as v2.
 
 ## Backends
 
-The active Stage 1 C11 backend accepts a deliberately small integer Core and
-rejects unsupported constructs before execution. The native checkpoint does
-not yet lower general Kofun programs and therefore is not a registered
-semantic backend. As more backends become executable, each must satisfy the
-differential contract for every construct it accepts. No backend may silently
-reinterpret a construct with different semantics.
+The active Stage 1 C11 backend accepts a deliberately small typed Core:
+checked `Int` arithmetic, six Int comparisons, `Bool` equality, Bool literals
+and bindings, unary `!`, and short-circuiting `&&`/`||`. `print` remains
+Int-only. Arithmetic Bool operands, ordered Bool comparisons, logical Int
+operands, annotation mismatches, and Bool printing are rejected before
+execution. The native checkpoint does not yet lower general Kofun programs and
+therefore is not a registered semantic backend. As more backends become
+executable, each must satisfy the differential contract for every construct it
+accepts. No backend may silently reinterpret a construct with different
+semantics.

@@ -536,7 +536,7 @@ cmp "$move_diagnostic" "$temporary/cli-borrowed-move.stderr"
 round_trip stage1 "$root/bootstrap/stage1/compiler.kofun"
 grep '^function|emit_c|1|' "$temporary/stage1.ir" >/dev/null
 grep '^function|compile_file|2|' "$temporary/stage1.ir" >/dev/null
-grep '^function-count|23$' "$temporary/stage1.ir" >/dev/null
+grep '^function-count|30$' "$temporary/stage1.ir" >/dev/null
 
 round_trip stage2 "$stage2/compiler.kofun"
 grep '^function|lex|1|' "$temporary/stage2.ir" >/dev/null
@@ -860,15 +860,15 @@ test ! -e "$temporary/selfhost-S.c"
 "$temporary/kofun-stage2" --emit-scope-hir \
     "$root/bootstrap/stage1/compiler.kofun" \
     "$temporary/selfhost-S.scopes"
-grep '^binding|2|3|symbols|immutable|List|gc|initialized|769|776|790$' \
+grep '^binding|2|3|symbols|immutable|List|gc|initialized|768|775|789$' \
     "$temporary/selfhost-S.scopes" >/dev/null
-grep '^binding|21|22|symbol|immutable|Text|gc|initialized|2382|2388|2398$' \
+grep '^binding|21|22|symbol|immutable|Text|gc|initialized|2381|2387|2397$' \
     "$temporary/selfhost-S.scopes" >/dev/null
-grep '^binding|69|77|marker|immutable|Text|gc|initialized|8902|8908|8919$' \
+grep '^binding|117|116|marker|immutable|Text|gc|initialized|14552|14558|14569$' \
     "$temporary/selfhost-S.scopes" >/dev/null
-grep '^binding|70|77|start|immutable|Int|copy|initialized|8928|8933|8954$' \
+grep '^binding|118|116|start|immutable|Int|copy|initialized|14578|14583|14604$' \
     "$temporary/selfhost-S.scopes" >/dev/null
-grep '^binding|96|109|emitted|mutable|Text|gc|initialized|12213|12220|12225$' \
+grep '^binding|152|153|emitted|mutable|Text|gc|initialized|18656|18663|18668$' \
     "$temporary/selfhost-S.scopes" >/dev/null
 
 printf '%s\n' \

@@ -288,25 +288,27 @@
     {
       "id": "compiler-seed",
       "public_wording": "Kofun-written compiler seed",
-      "public_status": "implemented",
+      "public_status": "implemented: Int/Bool comparison Core",
       "state": "implemented",
       "area": "bootstrap",
-      "bounded_capability": "The Stage 1 seed is written in Kofun and kept beside a hand-audited C transliteration; the pair is the bootstrap root of trust.",
+      "bounded_capability": "The Stage 1 seed is written in Kofun and kept beside a hand-audited C transliteration. Its line-oriented Core lowers checked Int arithmetic, six comparisons, Bool equality, Bool literals and bindings, unary `!`, and short-circuiting `&&`/`||`; `print` remains Int-only.",
       "targets": [
         "stage1"
       ],
       "specification": [
-        "docs/SELF_HOSTING.md"
+        "docs/SELF_HOSTING.md",
+        "bootstrap/stage1/README.md",
+        "spec/semantics.md"
       ],
-      "compatibility": "The seed pair changes only together, and the digest file records the change.",
+      "compatibility": "The pre-existing arithmetic corpus remains byte-identical. The seed pair changes together, its digest records the change, and the Bool corpus differentials both compiler paths.",
       "positive_gate": {
         "command": "sh bootstrap/stage1/check.sh",
-        "observation": "The Kofun seed and its audited C transliteration agree."
+        "observation": "The Kofun seed and audited C transliteration emit byte-identical C for the arithmetic and Bool corpora; the Bool program executes with both zero-dividing short-circuit operands skipped."
       },
       "negative_boundary": {
-        "kind": "limit",
-        "evidence": "bootstrap/stage1/SHA256SUMS",
-        "observation": "A seed edited without regenerating its digest fails the bootstrap gate."
+        "kind": "rejection",
+        "evidence": "bootstrap/selfhost/driver/corpus_reject_bool_arithmetic.kofun",
+        "observation": "Mixing a Bool comparison into Int arithmetic exits nonzero and writes no C; eight adjacent typed-boundary fixtures are checked by the same gate."
       },
       "safety": {
         "classification": "none"
