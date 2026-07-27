@@ -10,6 +10,13 @@ Kofun advances milestones by correctness gate, not by feature count.
 - distinguish the strength of law evidence as `bounded`, `proven-finite`, or `proven`
 - do not call the project "self-hosting complete" before the Stage 2 fixed point
 
+A milestone is advanced by evidence, not by a decision having been accepted.
+[`RFC_PROCESS.md`](RFC_PROCESS.md) records public semantic decisions and keeps
+`accepted` separate from `implemented`; an accepted RFC carries no schedule and
+moves no milestone until [`release/claims.json`](../release/claims.json)
+evidences the capability. The RFC sets named here are decision work, and appear
+on this roadmap only once they have implementation evidence to advance.
+
 ## Current critical-path order
 
 The smallest compiler source `S`, its typed profile, deterministic C11

@@ -4,11 +4,11 @@
   "repository": "hjosugi/kofun",
   "issueScope": "all",
   "title": "Kofun Delivery Roadmap",
-  "snapshotPath": "app/roadmap/plan-snapshot.json",
+  "snapshotPath": "site/plan-snapshot.json",
   "project": {
     "visibility": "PUBLIC",
     "description": "All kofun issues in one Project, with delivery fields synchronized for the open curated execution scope.",
-    "readme": "## Operating model\n\n- Every open and closed issue from `hjosugi/kofun` is registered.\n- Three collision-safe writer lanes: A, B, and C.\n- One dedicated Review lane for integration and CI.\n- Dates and agent slots are assigned only to the open `curated` execution scope.\n- Planning umbrellas remain visible without being treated as implementation work.\n- Start and target dates are forecasts, not promises; blocked and deferred work may have no dates.\n\n[Open the live roadmap and calendar](https://hjosugi.github.io/kofun/roadmap/) · [Read the generated delivery plan](https://github.com/hjosugi/kofun/blob/main/docs/DELIVERY_PLAN.md)",
+    "readme": "## Operating model\n\n- Every open and closed issue from `hjosugi/kofun` is registered.\n- Three collision-safe writer lanes: A, B, and C.\n- One dedicated Review lane for integration and CI.\n- Dates and agent slots are assigned only to the open `curated` execution scope.\n- Planning umbrellas remain visible without being treated as implementation work.\n- Start and target dates are forecasts, not promises; blocked and deferred work may have no dates.- This board is where delivery planning lives; the public site does not publish a schedule.\n\n[Read the generated delivery plan](https://github.com/hjosugi/kofun/blob/main/docs/DELIVERY_PLAN.md) · [Browse the issues](https://github.com/hjosugi/kofun/issues)",
     "fields": [
       {
         "name": "Status",

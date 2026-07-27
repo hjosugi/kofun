@@ -23,7 +23,7 @@ const config = JSON.parse(
 );
 const liveSnapshot = JSON.parse(
   await readFile(
-    new URL("../app/roadmap/plan-snapshot.json", import.meta.url),
+    new URL("../site/plan-snapshot.json", import.meta.url),
     "utf8",
   ),
 );
@@ -32,7 +32,7 @@ test("configuration pins the only writable repository and required fields", () =
   assert.deepEqual(validateConfig(structuredClone(config)), config);
   assert.equal(config.issueScope, "all");
   assert.equal(config.project.visibility, "PUBLIC");
-  assert.match(config.project.readme, /hjosugi\.github\.io\/kofun\/roadmap/);
+  assert.match(config.project.readme, /\/docs\/DELIVERY_PLAN\.md/);
   assert.throws(
     () =>
       validateConfig({

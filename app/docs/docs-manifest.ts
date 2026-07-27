@@ -128,13 +128,6 @@ export const docs: DocEntry[] = [
     section: "Project",
   },
   {
-    slug: "delivery-plan",
-    title: "Delivery plan",
-    summary: "Generated four-agent schedule, completion forecast, readiness risks, and dependency lanes.",
-    source: "docs/DELIVERY_PLAN.md",
-    section: "Project",
-  },
-  {
     slug: "security",
     title: "Security",
     summary: "Threat boundaries, unsupported production claims, and hardening work.",
@@ -142,10 +135,17 @@ export const docs: DocEntry[] = [
     section: "Project",
   },
   {
-    slug: "issue-progress",
-    title: "Issue progress",
-    summary: "A generated snapshot of selected documentation and executable-evidence tracks.",
-    source: "docs/ISSUE_PROGRESS.md",
+    slug: "rfc-process",
+    title: "RFC process",
+    summary: "How public semantic decisions are proposed, reviewed, amended, and kept separate from whether anything was implemented.",
+    source: "docs/RFC_PROCESS.md",
+    section: "Project",
+  },
+  {
+    slug: "release-evidence",
+    title: "Release evidence",
+    summary: "The machine-checked join between published capability claims and the gates, boundaries, and reproduction commands that bound them.",
+    source: "docs/RELEASE_EVIDENCE.md",
     section: "Project",
   },
 ];

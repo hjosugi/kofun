@@ -38,7 +38,7 @@ export const LANES = [
 ];
 
 const DEFAULT_SNAPSHOT_PATH = new URL(
-  "../app/roadmap/plan-snapshot.json",
+  "../site/plan-snapshot.json",
   import.meta.url,
 );
 const DEFAULT_MARKDOWN_PATH = new URL("../docs/DELIVERY_PLAN.md", import.meta.url);
@@ -916,7 +916,7 @@ ${unscheduledRows}
 ${snapshot.forecast.assumptions.map((assumption) => `- ${assumption}`).join("\n")}
 
 Regenerate this document and
-\`app/roadmap/plan-snapshot.json\` with \`node site/sync-plan.mjs\`. Use
+\`site/plan-snapshot.json\` with \`node site/sync-plan.mjs\`. Use
 \`node site/sync-plan.mjs --check\` in CI to detect semantic drift without
 rewriting files.
 `;

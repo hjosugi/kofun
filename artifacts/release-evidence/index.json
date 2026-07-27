@@ -1,0 +1,611 @@
+{
+  "schema": "kofun.release-evidence/v1",
+  "manifest_version": 1,
+  "inputs": {
+    "release/claims.json": "2a8a999005aa5c66e0679448e6f87e5b411e300141ee20bb3b87d0baf81eb786",
+    "spec/release-claim.schema.json": "c04dd081fbe161b0a0dacb22480dea0e3549f358fcbcb35c0497ca8b2c4c8b21"
+  },
+  "states": {
+    "implemented": 10,
+    "checkpoint": 26,
+    "design": 1,
+    "open": 3
+  },
+  "claims": [
+    {
+      "id": "arithmetic-core",
+      "state": "implemented",
+      "area": "frontend",
+      "targets": [
+        "c11",
+        "stage2"
+      ],
+      "positive_gate": "sh tests/cli.sh",
+      "negative_boundary": "tests/conformance/numeric/reject_slash_operator.kofun",
+      "reproduction": "make test",
+      "prerequisites": []
+    },
+    {
+      "id": "borrowed-list-ownership",
+      "state": "checkpoint",
+      "area": "frontend",
+      "targets": [
+        "stage2"
+      ],
+      "positive_gate": "sh bootstrap/stage2/check.sh",
+      "negative_boundary": "tests/compile-fail/use_after_take.kofun",
+      "reproduction": "make stage2",
+      "prerequisites": []
+    },
+    {
+      "id": "c-abi-profile",
+      "state": "checkpoint",
+      "area": "interop",
+      "targets": [
+        "host-c",
+        "linux-x86_64"
+      ],
+      "positive_gate": "sh bootstrap/c_abi/check.sh",
+      "negative_boundary": "tests/conformance/capabilities.tsv",
+      "reproduction": "make c-abi",
+      "prerequisites": [
+        "cc"
+      ]
+    },
+    {
+      "id": "c11-function-calls",
+      "state": "checkpoint",
+      "area": "c-backend",
+      "targets": [
+        "c11",
+        "stage2"
+      ],
+      "positive_gate": "sh bootstrap/stage2/check.sh",
+      "negative_boundary": "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun",
+      "reproduction": "make stage2",
+      "prerequisites": [
+        "cc"
+      ]
+    },
+    {
+      "id": "checked-int64-contract",
+      "state": "implemented",
+      "area": "frontend",
+      "targets": [
+        "c11",
+        "native-aarch64",
+        "native-x86_64",
+        "stage2",
+        "wasm32"
+      ],
+      "positive_gate": "sh tests/conformance/run.sh",
+      "negative_boundary": "tests/conformance/numeric/reject_slash_operator.kofun",
+      "reproduction": "make check",
+      "prerequisites": []
+    },
+    {
+      "id": "cli-commands",
+      "state": "checkpoint",
+      "area": "tooling",
+      "targets": [
+        "repository",
+        "stage2"
+      ],
+      "positive_gate": "sh tests/cli.sh",
+      "negative_boundary": "tests/cli_stage2_outcomes.sh",
+      "reproduction": "make test",
+      "prerequisites": []
+    },
+    {
+      "id": "cli-framework",
+      "state": "checkpoint",
+      "area": "frameworks",
+      "targets": [
+        "linux-x86_64",
+        "native-x86_64"
+      ],
+      "positive_gate": "sh framework/cli/check.sh",
+      "negative_boundary": "tests/conformance/capabilities.tsv",
+      "reproduction": "make cli-framework",
+      "prerequisites": []
+    },
+    {
+      "id": "compiler-seed",
+      "state": "implemented",
+      "area": "bootstrap",
+      "targets": [
+        "stage1"
+      ],
+      "positive_gate": "sh bootstrap/stage1/check.sh",
+      "negative_boundary": "bootstrap/stage1/SHA256SUMS",
+      "reproduction": "make bootstrap",
+      "prerequisites": [
+        "cc",
+        "sha256sum"
+      ]
+    },
+    {
+      "id": "deterministic-fuzzing",
+      "state": "implemented",
+      "area": "quality",
+      "targets": [
+        "c11",
+        "native-x86_64",
+        "stage2"
+      ],
+      "positive_gate": "sh tests/fuzz/semantic_differential.sh",
+      "negative_boundary": "tests/fuzz/semantic_differential.sh",
+      "reproduction": "make fuzz",
+      "prerequisites": [
+        "cc"
+      ]
+    },
+    {
+      "id": "elf64-image-writer",
+      "state": "checkpoint",
+      "area": "native",
+      "targets": [
+        "native-x86_64"
+      ],
+      "positive_gate": "sh bootstrap/native/check.sh",
+      "negative_boundary": "tests/conformance/capabilities.tsv",
+      "reproduction": "make native",
+      "prerequisites": []
+    },
+    {
+      "id": "enum-matching",
+      "state": "checkpoint",
+      "area": "frontend",
+      "targets": [
+        "c11",
+        "stage2"
+      ],
+      "positive_gate": "sh tests/conformance/syntax/issues_35_47/run.sh",
+      "negative_boundary": "tests/conformance/adt/generic_unsupported.kofun",
+      "reproduction": "make syntax",
+      "prerequisites": [
+        "cc"
+      ]
+    },
+    {
+      "id": "formatter-and-repl",
+      "state": "design",
+      "area": "tooling",
+      "targets": [
+        "repository"
+      ],
+      "positive_gate": null,
+      "negative_boundary": null,
+      "reproduction": "make repository-check",
+      "prerequisites": []
+    },
+    {
+      "id": "general-native-lowering",
+      "state": "open",
+      "area": "native",
+      "targets": [
+        "native-aarch64",
+        "native-x86_64"
+      ],
+      "positive_gate": null,
+      "negative_boundary": null,
+      "reproduction": "make native",
+      "prerequisites": []
+    },
+    {
+      "id": "general-ownership-checking",
+      "state": "open",
+      "area": "frontend",
+      "targets": [
+        "stage2"
+      ],
+      "positive_gate": null,
+      "negative_boundary": null,
+      "reproduction": "make stage2",
+      "prerequisites": []
+    },
+    {
+      "id": "general-parser-type-checker",
+      "state": "open",
+      "area": "frontend",
+      "targets": [
+        "stage2"
+      ],
+      "positive_gate": null,
+      "negative_boundary": null,
+      "reproduction": "make stage2",
+      "prerequisites": []
+    },
+    {
+      "id": "http-framework",
+      "state": "checkpoint",
+      "area": "frameworks",
+      "targets": [
+        "host-c",
+        "linux-x86_64"
+      ],
+      "positive_gate": "sh tests/http/check.sh",
+      "negative_boundary": "tests/http/check.sh",
+      "reproduction": "make http",
+      "prerequisites": [
+        "cc"
+      ]
+    },
+    {
+      "id": "module-aliases",
+      "state": "checkpoint",
+      "area": "frontend",
+      "targets": [
+        "stage2"
+      ],
+      "positive_gate": "sh tests/conformance/modules/import-aliases/run.sh",
+      "negative_boundary": "tests/conformance/capabilities.tsv",
+      "reproduction": "make import-aliases",
+      "prerequisites": []
+    },
+    {
+      "id": "native-aarch64-function-calls",
+      "state": "checkpoint",
+      "area": "native",
+      "targets": [
+        "native-aarch64"
+      ],
+      "positive_gate": "sh bootstrap/native/check.sh",
+      "negative_boundary": "bootstrap/native/check.sh",
+      "reproduction": "make native",
+      "prerequisites": [
+        "qemu-aarch64"
+      ]
+    },
+    {
+      "id": "native-constant-stack-returns",
+      "state": "checkpoint",
+      "area": "native",
+      "targets": [
+        "native-aarch64",
+        "native-x86_64"
+      ],
+      "positive_gate": "sh bootstrap/native/check.sh",
+      "negative_boundary": "bootstrap/native/fixtures/function_all_traps_pressure.kofun",
+      "reproduction": "make native",
+      "prerequisites": []
+    },
+    {
+      "id": "native-int64-values",
+      "state": "checkpoint",
+      "area": "native",
+      "targets": [
+        "native-aarch64",
+        "native-x86_64"
+      ],
+      "positive_gate": "sh bootstrap/native/check.sh",
+      "negative_boundary": "tests/conformance/numeric/reject_slash_operator.kofun",
+      "reproduction": "make native",
+      "prerequisites": []
+    },
+    {
+      "id": "native-integer-division",
+      "state": "checkpoint",
+      "area": "native",
+      "targets": [
+        "native-aarch64",
+        "native-x86_64"
+      ],
+      "positive_gate": "sh bootstrap/native/check.sh",
+      "negative_boundary": "tests/conformance/functions/division_floor_signs.kofun",
+      "reproduction": "make native",
+      "prerequisites": []
+    },
+    {
+      "id": "native-list-int-core",
+      "state": "checkpoint",
+      "area": "native",
+      "targets": [
+        "native-aarch64",
+        "native-x86_64"
+      ],
+      "positive_gate": "sh bootstrap/native/check.sh",
+      "negative_boundary": "tests/conformance/capabilities.tsv",
+      "reproduction": "make native",
+      "prerequisites": [
+        "qemu-aarch64"
+      ]
+    },
+    {
+      "id": "native-text-returning-calls",
+      "state": "checkpoint",
+      "area": "native",
+      "targets": [
+        "native-aarch64",
+        "native-x86_64"
+      ],
+      "positive_gate": "sh bootstrap/native/check.sh",
+      "negative_boundary": "tests/conformance/capabilities.tsv",
+      "reproduction": "make native",
+      "prerequisites": [
+        "qemu-aarch64"
+      ]
+    },
+    {
+      "id": "native-utf8-text-core",
+      "state": "checkpoint",
+      "area": "native",
+      "targets": [
+        "native-aarch64",
+        "native-x86_64"
+      ],
+      "positive_gate": "sh bootstrap/native/check.sh",
+      "negative_boundary": "tests/conformance/capabilities.tsv",
+      "reproduction": "make native",
+      "prerequisites": [
+        "qemu-aarch64"
+      ]
+    },
+    {
+      "id": "native-x86-64-function-calls",
+      "state": "checkpoint",
+      "area": "native",
+      "targets": [
+        "native-x86_64"
+      ],
+      "positive_gate": "sh tests/conformance/run.sh",
+      "negative_boundary": "tests/conformance/capabilities.tsv",
+      "reproduction": "make check",
+      "prerequisites": []
+    },
+    {
+      "id": "public-re-exports",
+      "state": "checkpoint",
+      "area": "frontend",
+      "targets": [
+        "stage2"
+      ],
+      "positive_gate": "sh tests/conformance/modules/re-exports/run.sh",
+      "negative_boundary": "tests/conformance/modules/re-exports/run.sh",
+      "reproduction": "make re-exports",
+      "prerequisites": []
+    },
+    {
+      "id": "reproducible-bootstrap",
+      "state": "implemented",
+      "area": "bootstrap",
+      "targets": [
+        "stage1"
+      ],
+      "positive_gate": "sh bootstrap/stage1/check.sh",
+      "negative_boundary": "bootstrap/stage1/SHA256SUMS",
+      "reproduction": "make bootstrap",
+      "prerequisites": [
+        "cc",
+        "sha256sum"
+      ]
+    },
+    {
+      "id": "rust-crate-shim",
+      "state": "checkpoint",
+      "area": "interop",
+      "targets": [
+        "host-c",
+        "linux-x86_64"
+      ],
+      "positive_gate": "sh examples/rust-shim/check.sh",
+      "negative_boundary": "examples/rust-shim/check.sh",
+      "reproduction": "make rust-shim",
+      "prerequisites": [
+        "cargo"
+      ]
+    },
+    {
+      "id": "self-recompile",
+      "state": "checkpoint",
+      "area": "self-hosting",
+      "targets": [
+        "selfhost"
+      ],
+      "positive_gate": "sh bootstrap/selfhost/check-compiler-driver.sh",
+      "negative_boundary": "bootstrap/selfhost/driver/corpus_reject.kofun",
+      "reproduction": "make selfhost-profile",
+      "prerequisites": [
+        "cc"
+      ]
+    },
+    {
+      "id": "selfhost-native-corpus",
+      "state": "checkpoint",
+      "area": "self-hosting",
+      "targets": [
+        "native-aarch64",
+        "native-x86_64",
+        "selfhost"
+      ],
+      "positive_gate": "sh bootstrap/selfhost/native/check-native-corpus.sh",
+      "negative_boundary": "bootstrap/selfhost/driver/corpus_reject.stdout",
+      "reproduction": "make selfhost-native",
+      "prerequisites": [
+        "qemu-aarch64"
+      ]
+    },
+    {
+      "id": "source-extension",
+      "state": "implemented",
+      "area": "tooling",
+      "targets": [
+        "repository"
+      ],
+      "positive_gate": "make repository-check",
+      "negative_boundary": "Makefile",
+      "reproduction": "make repository-check",
+      "prerequisites": []
+    },
+    {
+      "id": "stable-diagnostics",
+      "state": "implemented",
+      "area": "quality",
+      "targets": [
+        "native-x86_64",
+        "stage2"
+      ],
+      "positive_gate": "sh tests/diagnostics/check.sh",
+      "negative_boundary": "tests/diagnostics/registry.tsv",
+      "reproduction": "make diagnostics",
+      "prerequisites": []
+    },
+    {
+      "id": "stage2-core-lowering",
+      "state": "checkpoint",
+      "area": "frontend",
+      "targets": [
+        "c11",
+        "stage2"
+      ],
+      "positive_gate": "sh bootstrap/stage2/check.sh",
+      "negative_boundary": "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun",
+      "reproduction": "make stage2",
+      "prerequisites": [
+        "cc"
+      ]
+    },
+    {
+      "id": "stage2-typed-sidecar",
+      "state": "checkpoint",
+      "area": "tooling",
+      "targets": [
+        "stage2"
+      ],
+      "positive_gate": "make typed-sidecar-projector",
+      "negative_boundary": "tests/typed-sidecar/authority-boundary.sh",
+      "reproduction": "make typed-sidecar-projector",
+      "prerequisites": [
+        "node"
+      ]
+    },
+    {
+      "id": "stdio-language-server",
+      "state": "checkpoint",
+      "area": "tooling",
+      "targets": [
+        "repository"
+      ],
+      "positive_gate": "sh tests/lsp/check.sh",
+      "negative_boundary": "tests/lsp/performance_test.js",
+      "reproduction": "make lsp",
+      "prerequisites": [
+        "node"
+      ]
+    },
+    {
+      "id": "syscall-file-round-trip",
+      "state": "implemented",
+      "area": "frameworks",
+      "targets": [
+        "linux-x86_64",
+        "native-x86_64"
+      ],
+      "positive_gate": "sh stdlib/tests/verify.sh",
+      "negative_boundary": "stdlib/tests/verify.sh",
+      "reproduction": "make stdlib",
+      "prerequisites": []
+    },
+    {
+      "id": "syscall-stdlib-api",
+      "state": "checkpoint",
+      "area": "frameworks",
+      "targets": [
+        "linux-x86_64"
+      ],
+      "positive_gate": "sh stdlib/tests/verify.sh",
+      "negative_boundary": "tests/conformance/capabilities.tsv",
+      "reproduction": "make stdlib",
+      "prerequisites": []
+    },
+    {
+      "id": "test-skip-reporting",
+      "state": "implemented",
+      "area": "tooling",
+      "targets": [
+        "repository"
+      ],
+      "positive_gate": "sh tests/cli.sh",
+      "negative_boundary": "tests/cli.sh",
+      "reproduction": "make test",
+      "prerequisites": []
+    },
+    {
+      "id": "tree-sitter-grammar",
+      "state": "implemented",
+      "area": "tooling",
+      "targets": [
+        "repository"
+      ],
+      "positive_gate": "make tree-sitter",
+      "negative_boundary": "editor/tree-sitter-kofun/grammar.js",
+      "reproduction": "make tree-sitter",
+      "prerequisites": [
+        "node"
+      ]
+    },
+    {
+      "id": "wasm32-arithmetic-core",
+      "state": "checkpoint",
+      "area": "webassembly",
+      "targets": [
+        "wasm32"
+      ],
+      "positive_gate": "sh bootstrap/wasm/check.sh",
+      "negative_boundary": "bootstrap/wasm/fixtures/unsupported_text.kofun",
+      "reproduction": "make wasm",
+      "prerequisites": [
+        "node"
+      ]
+    }
+  ],
+  "evidence_digests": {
+    "Makefile": "2a153a8feb516544d408d879185e40e3de22788f3c4453a2659892855d709186",
+    "bootstrap/native/check.sh": "d99603522821df27a7d102fbce70c6a0d3cb322a9fe17d1baa76ee9285cee6e4",
+    "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
+    "bootstrap/selfhost/driver/corpus_reject.kofun": "be29fe484a7ba4968c60aaf6f00aa59edb511ce3d9ef46c0ceb2b6ad0e8740b5",
+    "bootstrap/selfhost/driver/corpus_reject.stdout": "fe12ce5f6d708d7a23b60d98cacb06a45bbdbe047309260774ae3f95a1330fcf",
+    "bootstrap/stage1/SHA256SUMS": "ccd84d0494e42f0d21a30af573dee44f15c4926d87d2786571af9fe93264411e",
+    "bootstrap/wasm/fixtures/unsupported_text.kofun": "e0a45136410ddb85e9f5b3e5c39e7903d96da39aa53aaf3078d2555b4f383864",
+    "docs/BUILD_SYSTEM.md": "d4a372fc97c53874cc2438f3de132289beb033ce2bf1e67518b702de796b05a8",
+    "docs/COMPILER_ARCHITECTURE.md": "a442fc09474aa23f704f4351f61abd1da7fea576f16732a083e4c2bee4868854",
+    "docs/GETTING_STARTED.md": "051a79882fbe69a5f00e67e00663167111d94be4d28d276f3a67806c449c2245",
+    "docs/LAW_SYSTEM.md": "6a8f02de7d11307b53fb1233de11a16d9b0066cd12a62ae77394fb18af512d9d",
+    "docs/LINGUIST_RECOGNITION.md": "4e70400a719381abee1b72c5a3157e78181c251b116b12c60b6808cad428b502",
+    "docs/MEMORY_MODEL.md": "2d570b4109e308bbc4219545dbe5138a1224e8ac0b7b593a03f49bc4eb59db3d",
+    "docs/MVP_IMPLEMENTED.md": "29477904236b29cccea8f599aae55538c4bc881c34e2c76ace5bc443d7d08dd1",
+    "docs/NATIVE_BACKEND.md": "f215a24a86882d34c549e3b17716c89f034f5b2acc3c2e6dc10fe39c9a173d89",
+    "docs/ROADMAP.md": "f1dbe10ed6e1700b1f5dc05c8efad5ec76aeec87d50a9a20c047694cd1ef60fe",
+    "docs/RUST_CRATE_SHIMS.md": "4365b064cbc9a05733710d3a609c1db2623b28cb9ed4ba0e48536e35f9d58c47",
+    "docs/SECURITY.md": "2235367ac20334ce4d77d440b773ef197f97f6d21a5d13f69a5b391cb8b4946d",
+    "docs/SELF_HOSTING.md": "c786187cd44fdba04d89c6ff1fba5f0e791c4ca96ce31a99fa17380ffde347a5",
+    "docs/SEMANTICS.md": "6e1d210890f5f53f281ea32fe28a0b4118b2804f5cb1caa4260a36c961b9cb92",
+    "docs/TYPE_SYSTEM.md": "62d5f9ee4305bb140b582639ebac68b5e76dc22b71f9d33a53652b1faa4bf7e8",
+    "editor/tree-sitter-kofun/README.md": "9ccc73df69f3ddd42e8f620a3751f165e2dad00b34a681010249a1989d45b5d4",
+    "editor/tree-sitter-kofun/grammar.js": "5d803ad6c2a2c6467cf402c187bf86a1b6558556497f8d1d9830dd2718c8a1cc",
+    "examples/rust-shim/check.sh": "4cffb7e16d964122e2dff480f533cff5eacd0bd939a35fe5a71f71b447139500",
+    "spec/enum-match-exhaustiveness.md": "5f38b52bf96b8716ad77bfd5975d2cccbc83c58ad81523a3c2d8a90138008535",
+    "spec/modules/module-identity.md": "89df1fe536cd7462131390485ceef446bcdbf3efb0cd0fff87d318facb065aef",
+    "spec/modules/re-exports.md": "e1bd3964901cfbadd1f5675e3c0b5e14a9277198fe6252780381f92581ac2e46",
+    "spec/semantics.md": "b113fae602ff37985c13e8b44c15b5656491fef21db11934d48731798b85b944",
+    "spec/tooling/typed-sidecar.md": "51f18b0fea3734ce73603bbcb43c048edf6a8309e48afb4bd588c386ec23dd92",
+    "spec/typed-sidecar/kofun.typed-sidecar.v1.schema.json": "2574494144647b9e89ff45a126dc768ab947ed21a02044965ee22a0076f77460",
+    "stdlib/tests/verify.sh": "9d35f26d58443796dcfb6d76a7c09d01ea64064e0f32c2657d5c1a4db04aac30",
+    "tests/cli.sh": "39b5da7d2b0f08c7e622169c8efc44d28d6adbefce31264e5ada96eaf03fec08",
+    "tests/cli_stage2_outcomes.sh": "9f84a95495afab023a1572b37a2508a4ee02a3a89881df14b887c209a628a9a7",
+    "tests/compile-fail/use_after_take.kofun": "c190d3a19eef35d4c33e1798604bce227251326cbc8531a19e6b0b88e8ba5054",
+    "tests/conformance/adt/generic_unsupported.kofun": "a005470b2fc8a68df0a849fa97d28b3c1190eee79270037cbc012aade78f54e8",
+    "tests/conformance/capabilities.tsv": "069323c9ba3eb1483f2fbf6ccaa32f9f34f8d9d14bb3f92b84fe386ca979c5ff",
+    "tests/conformance/functions/division_floor_signs.kofun": "6bfd48679ebcf604305c78271b80e803866a64d8e9c8f732f5b1884d4d0d67b0",
+    "tests/conformance/modules/re-exports/run.sh": "97d86da6b802f50199ea2ef9f58d106c2a71a6940f195f067e08d2b1deb342f0",
+    "tests/conformance/numeric/reject_slash_operator.kofun": "49a14dbd0392e6920a681168af44018182f78175a921592283631c9942045c24",
+    "tests/diagnostics/README.md": "456190836326c23c153118d53f085905e4da06eae11883432f39c24548447c12",
+    "tests/diagnostics/registry.tsv": "7cec10ca3da9cc897e15065073661a36cbfee67206c616099c787669a91b7b1c",
+    "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun": "6352ee9e222a46686bfecd5faf627b286469e1638244e33f155c148d1f0d95d8",
+    "tests/fuzz/SEMANTIC_PROTOCOL.md": "95644005013d2aae82a042deb341785a083552c766abafa71bdbf4335deea522",
+    "tests/fuzz/semantic_differential.sh": "f86c3afb9c4e6aa8be68159f40215451d536ef29c821aea9f160def2613c0b7d",
+    "tests/http/check.sh": "73e3dbfb6a59959e8c916bbc32c934e417d115fcdfd86ed082cb976de81f5afc",
+    "tests/lsp/performance_test.js": "1d0214bb437f9791f32789a0572d8e43a404dcd323b0f15d1469d9e2293cbe3e",
+    "tests/typed-sidecar/authority-boundary.sh": "837193aafe458cb732b51837eba0b3d2c432e20c6ce1cfbdc4be568d460ce080"
+  }
+}

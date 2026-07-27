@@ -53,7 +53,7 @@ jobs:
           tracker_changed=false
           if ! git diff --quiet -- \
               app/docs/status-snapshot.json \
-              app/roadmap/plan-snapshot.json \
+              site/plan-snapshot.json \
               docs/DELIVERY_PLAN.md \
               docs/ISSUE_PROGRESS.md
           then
@@ -101,7 +101,7 @@ jobs:
             "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
             app/docs/status-snapshot.json \
-            app/roadmap/plan-snapshot.json \
+            site/plan-snapshot.json \
             docs/DELIVERY_PLAN.md \
             docs/ISSUE_PROGRESS.md
           git commit -m "Update delivery planning snapshots"
@@ -172,7 +172,5 @@ jobs:
             --output /dev/null https://hjosugi.github.io/kofun/
           curl --fail --retry 3 --silent --show-error \
             --output /dev/null https://hjosugi.github.io/kofun/docs/
-          curl --fail --retry 3 --silent --show-error \
-            --output /dev/null https://hjosugi.github.io/kofun/roadmap/
           curl --fail --retry 3 --silent --show-error \
             --output /dev/null https://hjosugi.github.io/kofun/tour/

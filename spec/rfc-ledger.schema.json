@@ -1,0 +1,281 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kofun-lang.invalid/spec/rfc-ledger.schema.json",
+  "title": "Kofun RFC ledger v1",
+  "description": "The durable record of public semantic decisions. This schema constrains shape only; tests/rfc/validate-registry.mjs enforces the rules that shape cannot express -- that acceptance is never implementation, that an implemented decision names capability evidence, and that changed semantics arrive as an amendment.",
+  "type": "object",
+  "required": [
+    "schema",
+    "ledger_version",
+    "rfcs"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "kofun.rfc-ledger/v1"
+    },
+    "ledger_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "review_period_days": {
+      "description": "Minimum calendar days a native proposal stays open before it may be decided.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "rfcs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/rfc"
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "description": "`RFC-nnnn` for a decision that went through this process. `DD-nnn` for a decision migrated from the pre-process record, whose identity already exists in docs/DESIGN_DECISIONS.md.",
+      "type": "string",
+      "pattern": "^(RFC-[0-9]{4}|DD-[0-9]{3})$"
+    },
+    "date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "prose": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048
+    },
+    "repositoryPath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[A-Za-z0-9._][A-Za-z0-9._/-]*$"
+    },
+    "url": {
+      "type": "string",
+      "pattern": "^https://github\\.com/[A-Za-z0-9._/-]+$"
+    },
+    "command": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "claimId": {
+      "description": "A claim id in release/claims.json. This is the join that stops an RFC from asserting an implementation the capability manifest does not evidence.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "state": {
+      "description": "proposed: open for review. accepted: the decision is made and nothing is implemented. rejected/withdrawn: closed, kept discoverable. implemented: the accepted semantics are enabled and gated. superseded: replaced by a later decision.",
+      "enum": [
+        "proposed",
+        "accepted",
+        "rejected",
+        "withdrawn",
+        "implemented",
+        "superseded"
+      ]
+    },
+    "dates": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "opened_on": {
+          "$ref": "#/$defs/date"
+        },
+        "review_closed_on": {
+          "$ref": "#/$defs/date"
+        },
+        "decided_on": {
+          "$ref": "#/$defs/date"
+        },
+        "recorded_on": {
+          "description": "When a migrated decision's text entered the repository. Migrated rows carry this instead of a review window, because inventing an opened_on for a decision that predates the process would be fabricated evidence.",
+          "$ref": "#/$defs/date"
+        }
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "required": [
+        "category",
+        "statement"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "description": "none: no user-visible semantic change. additive: only new behavior. breaking: previously valid programs change meaning or stop compiling. conditional: breaking only for programs with a stated shape, which must then be counted rather than guessed at.",
+          "enum": [
+            "none",
+            "additive",
+            "breaking",
+            "conditional"
+          ]
+        },
+        "statement": {
+          "$ref": "#/$defs/prose"
+        },
+        "corpus_query": {
+          "description": "A command or query another person can run to reproduce the impact count.",
+          "$ref": "#/$defs/command"
+        },
+        "result": {
+          "description": "What that query returned. A number, not an adjective.",
+          "$ref": "#/$defs/prose"
+        },
+        "evidence": {
+          "$ref": "#/$defs/repositoryPath"
+        }
+      }
+    },
+    "implementation": {
+      "type": "object",
+      "required": [
+        "change",
+        "enablement",
+        "gate",
+        "claims"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "change": {
+          "description": "The pull request or issue that landed the behavior.",
+          "$ref": "#/$defs/url"
+        },
+        "enablement": {
+          "description": "Exactly where the behavior is on: which targets, which profile, behind which flag if any.",
+          "$ref": "#/$defs/prose"
+        },
+        "gate": {
+          "description": "The command on the target branch that fails if the behavior regresses.",
+          "$ref": "#/$defs/command"
+        },
+        "claims": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/claimId"
+          }
+        }
+      }
+    },
+    "amendment": {
+      "description": "A change to already-accepted semantics. The original wording is copied here so it survives any later edit of the source document.",
+      "type": "object",
+      "required": [
+        "id",
+        "recorded_on",
+        "delta",
+        "original_semantics",
+        "compatibility"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^A[0-9]{2}$"
+        },
+        "recorded_on": {
+          "$ref": "#/$defs/date"
+        },
+        "change": {
+          "$ref": "#/$defs/url"
+        },
+        "delta": {
+          "description": "What the accepted semantics now say, stated against what they said before.",
+          "$ref": "#/$defs/prose"
+        },
+        "original_semantics": {
+          "description": "The superseded wording, preserved verbatim.",
+          "$ref": "#/$defs/prose"
+        },
+        "compatibility": {
+          "$ref": "#/$defs/compatibility"
+        }
+      }
+    },
+    "rfc": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "provenance",
+        "state",
+        "shepherd",
+        "source",
+        "dates",
+        "normative_spec",
+        "compatibility"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "title": {
+          "$ref": "#/$defs/prose"
+        },
+        "provenance": {
+          "description": "rfc: went through this process. migrated: predates it, and is indexed so the ledger is complete rather than convenient.",
+          "enum": [
+            "rfc",
+            "migrated"
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/state"
+        },
+        "shepherd": {
+          "description": "The person answerable for moving the decision, and for recording its state transitions.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "source": {
+          "description": "Where the decision text lives. For a native RFC this is its immutable proposal document.",
+          "$ref": "#/$defs/repositoryPath"
+        },
+        "document": {
+          "description": "The immutable proposal document. Required for native RFCs.",
+          "$ref": "#/$defs/repositoryPath"
+        },
+        "proposal": {
+          "$ref": "#/$defs/url"
+        },
+        "dates": {
+          "$ref": "#/$defs/dates"
+        },
+        "normative_spec": {
+          "description": "The normative documents that state the decided semantics. These stay editable; the ledger does not duplicate them.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/repositoryPath"
+          }
+        },
+        "compatibility": {
+          "$ref": "#/$defs/compatibility"
+        },
+        "implementation": {
+          "$ref": "#/$defs/implementation"
+        },
+        "amendments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/amendment"
+          }
+        },
+        "superseded_by": {
+          "$ref": "#/$defs/id"
+        },
+        "rationale": {
+          "description": "Why a rejected or withdrawn decision was closed. Required for those states so the reasoning stays discoverable.",
+          "$ref": "#/$defs/prose"
+        }
+      }
+    }
+  }
+}

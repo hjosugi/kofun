@@ -8,13 +8,11 @@ const required = [
   ".nojekyll",
   "404.html",
   "index.html",
-  "roadmap/index.html",
   "docs/index.html",
   "docs/getting-started/index.html",
   "docs/repository-guide/index.html",
   "docs/contributing/index.html",
-  "docs/delivery-plan/index.html",
-  "docs/issue-progress/index.html",
+  "docs/release-evidence/index.html",
   "kofun-mark.svg",
   "tour/index.html",
   "tour/compiler.mjs",
@@ -77,7 +75,7 @@ for (const url of htmlFiles) {
 
 const plan = JSON.parse(
   await readFile(
-    new URL("../app/roadmap/plan-snapshot.json", import.meta.url),
+    new URL("../site/plan-snapshot.json", import.meta.url),
     "utf8",
   ),
 );
@@ -87,12 +85,17 @@ const planningOnly = plan.issues.find(
     !plan.schedule.some((scheduled) => scheduled.number === issue.number),
 );
 assert.ok(planningOnly, "expected a planning-only issue in the plan fixture");
-const roadmapHtml = await readFile(new URL("roadmap/index.html", output), "utf8");
-assert.equal(
-  roadmapHtml.includes(planningOnly.title),
-  false,
-  "roadmap export must not serialize the bulk issue inventory",
-);
+// Delivery planning lives on the GitHub Project board, not on the public site.
+// The roadmap route used to be the one page that could leak the bulk issue
+// inventory; now that it is gone, no exported page may carry it at all.
+for (const url of htmlFiles) {
+  const html = await readFile(url, "utf8");
+  assert.equal(
+    html.includes(planningOnly.title),
+    false,
+    `${url.pathname}: export must not serialize the bulk issue inventory`,
+  );
+}
 
 assert.ok(checkedUrls > 0, "no root-relative export URLs were checked");
 console.log(

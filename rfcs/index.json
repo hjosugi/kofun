@@ -1,0 +1,124 @@
+{
+  "schema": "kofun.rfc-ledger/v1",
+  "ledger_version": 1,
+  "review_period_days": 14,
+  "rfcs": [
+    {
+      "id": "DD-010",
+      "title": "`/` and `//`",
+      "provenance": "migrated",
+      "state": "implemented",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/687",
+      "dates": {
+        "recorded_on": "2026-07-26"
+      },
+      "normative_spec": [
+        "docs/SYNTAX.md",
+        "docs/TYPE_SYSTEM.md",
+        "spec/semantics.md"
+      ],
+      "compatibility": {
+        "category": "breaking",
+        "statement": "`/` applied to two `Int` operands is a compile error. A program written against the original decision, which expected `7 / 2` to yield a fractional value, no longer compiles.",
+        "corpus_query": "git grep -nE '[0-9A-Za-z_)] / [0-9A-Za-z_(]' -- '*.kofun' | grep -v '#' | grep -v '\"'",
+        "result": "4 sites, and all four are the `reject_slash_operator.kofun` fixtures that exist to be refused: one each for the native, self-host C11, wasm32, and numeric-conformance paths. No other tracked Kofun source applies `/` to `Int` operands.",
+        "evidence": "tests/conformance/numeric/reject_slash_operator.kofun"
+      },
+      "implementation": {
+        "change": "https://github.com/hjosugi/kofun/issues/687",
+        "enablement": "Enabled unconditionally, with no flag. The frontend refuses `/` on `Int` before lowering, and the native x86-64, native AArch64, wasm32 and self-host C11 paths each carry their own refusal fixture so no backend can quietly give the operator a meaning.",
+        "gate": "sh tests/conformance/run.sh",
+        "claims": [
+          "checked-int64-contract",
+          "native-integer-division"
+        ]
+      },
+      "amendments": [
+        {
+          "id": "A01",
+          "recorded_on": "2026-07-26",
+          "change": "https://github.com/hjosugi/kofun/issues/687",
+          "delta": "`/` is no longer an `Int` operator at all. It is reserved and refused with one diagnostic rather than returning a fractional value, because no fractional type exists to return. `//` is unchanged and remains floor division.",
+          "original_semantics": "`/` returns floating division. `//` performs integer/floor division.",
+          "compatibility": {
+            "category": "breaking",
+            "statement": "Three documents said `/` on `Int` yielded `Float` while four backends truncated and one refused the operator outright. The amendment makes refusal the single stated meaning, so the documents and the backends agree.",
+            "corpus_query": "./bin/kofun test tests/conformance/numeric",
+            "result": "12 numeric conformance cases execute on every declared backend. The only case applying `/` is `reject_slash_operator.kofun`, and every declared backend refuses it identically.",
+            "evidence": "tests/conformance/numeric/reject_slash_operator.kofun"
+          }
+        }
+      ]
+    },
+    {
+      "id": "DD-012",
+      "title": "No silent backend fallback",
+      "provenance": "migrated",
+      "state": "implemented",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/666",
+      "dates": {
+        "recorded_on": "2026-07-26"
+      },
+      "normative_spec": [
+        "README.md",
+        "docs/NATIVE_BACKEND.md"
+      ],
+      "compatibility": {
+        "category": "none",
+        "statement": "No accepted program changes meaning. The decision constrains implementations: a backend that cannot lower a construct must fail with a source-located error or be recorded as unsupported, and may not substitute a different construct.",
+        "evidence": "tests/conformance/capabilities.tsv"
+      },
+      "implementation": {
+        "change": "https://github.com/hjosugi/kofun/issues/666",
+        "enablement": "Enabled for every registered backend/corpus pair. `tests/conformance/capabilities.tsv` is the closed manifest of supported and unsupported pairs; adapters no longer carry an independently authoritative corpus list, so a backend cannot declare its own coverage.",
+        "gate": "sh tests/conformance/check-capabilities.sh",
+        "claims": [
+          "checked-int64-contract",
+          "native-integer-division",
+          "wasm32-arithmetic-core"
+        ]
+      }
+    },
+    {
+      "id": "DD-013",
+      "title": "Typed hygienic macros",
+      "provenance": "migrated",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "dates": {
+        "recorded_on": "2026-07-26"
+      },
+      "normative_spec": [
+        "docs/METAPROGRAMMING.md"
+      ],
+      "compatibility": {
+        "category": "none",
+        "statement": "Nothing is implemented, so no program changes meaning. The decision binds a future implementation: quote and unquote operate on token trees or a typed public AST, and there is no C-style textual preprocessor."
+      }
+    },
+    {
+      "id": "DD-018",
+      "title": "Versioned machine-readable law evidence",
+      "provenance": "migrated",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "dates": {
+        "recorded_on": "2026-07-26"
+      },
+      "normative_spec": [
+        "spec/law-evidence-v2.schema.json"
+      ],
+      "compatibility": {
+        "category": "breaking",
+        "statement": "`kofun.law-evidence/v2` is deliberately incompatible with v1. A v1 document is historical migration material and is never interpreted as v2, so no v1 evidence can authorize a v2 optimization or cache hit. Nothing emits either version yet, so nothing in the repository is affected today.",
+        "evidence": "spec/law-evidence.schema.json"
+      }
+    }
+  ]
+}

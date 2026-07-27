@@ -45,22 +45,6 @@ const principles = [
   },
 ];
 
-const workingNow = [
-  "Frozen self-host profile and checked Stage 1 seed",
-  "Complete typed HIR evidence for the frozen compiler source",
-  "Runnable compiler-produced compiler through the driver",
-  "Direct x86-64 and AArch64 ELF for bounded Int, List, and Text",
-  "Wasm32 arithmetic Core and no-install browser tour",
-  "C ABI plus bounded HTTP, CLI, TUI, and syscall paths",
-];
-
-const openWork = [
-  "Three-generation semantic self-hosting fixed point",
-  "General type, ownership, effect, and law checking",
-  "General native lowering beyond the checked Core profiles",
-  "Stable specification, production hardening, and ecosystem",
-];
-
 export default function Home() {
   return (
     <main id="main-content">
@@ -73,8 +57,6 @@ export default function Home() {
         <div className="nav-links">
           <a className="nav-section-link" href="#language">Language</a>
           <a className="nav-section-link" href="#playground">Playground</a>
-          <a className="nav-section-link" href="#status">Status</a>
-          <Link href="/roadmap">Roadmap</Link>
           <Link href="/docs">Docs</Link>
           <a
             aria-label="Kofun on GitHub"
@@ -226,41 +208,6 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="status-section section" id="status">
-        <div className="status-title">
-          <span className="section-kicker">Project status</span>
-          <h2>Ambitious,<br />and explicit about the gaps.</h2>
-          <p>
-            Kofun is a working research compiler, not a production language.
-            That distinction is part of the design discipline.
-          </p>
-        </div>
-        <div className="status-board">
-          <div className="status-column">
-            <div className="status-column-title">
-              <span className="status-dot done" />
-              Working now
-            </div>
-            <ul>
-              {workingNow.map((item) => (
-                <li key={item}><span>✓</span>{item}</li>
-              ))}
-            </ul>
-          </div>
-          <div className="status-column open">
-            <div className="status-column-title">
-              <span className="status-dot" />
-              Open by design
-            </div>
-            <ul>
-              {openWork.map((item) => (
-                <li key={item}><span>→</span>{item}</li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      </section>
-
       <section className="quickstart section">
         <div className="quickstart-copy">
           <span className="section-kicker light">Start local</span>
@@ -298,7 +245,6 @@ export default function Home() {
         <div className="footer-links">
           <a href={githubUrl}>Repository</a>
           <Link href="/docs">Documentation</Link>
-          <Link href="/roadmap">Delivery roadmap</Link>
           <a href={`${githubUrl}/issues`}>Issues</a>
           <a href={`${githubUrl}/blob/main/LICENSE-MIT`}>License</a>
         </div>
