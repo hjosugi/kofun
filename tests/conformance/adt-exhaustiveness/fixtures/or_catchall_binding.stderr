@@ -1,0 +1,1 @@
+error[E2S105]: or-pattern alternatives must bind the same names at bytes 172..184: the alternative at bytes 172..177 binds no name but the alternative at bytes 180..184 binds `rest` as a catch-all; hint: bind the same names with the same payload types in every alternative

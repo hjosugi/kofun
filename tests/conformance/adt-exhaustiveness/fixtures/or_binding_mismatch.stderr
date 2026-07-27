@@ -1,0 +1,1 @@
+error[E2S105]: or-pattern alternatives must bind the same names at bytes 172..194: the alternative at bytes 172..180 binds `item` as a payload but the alternative at bytes 183..194 binds `other` as a payload; hint: bind the same names with the same payload types in every alternative

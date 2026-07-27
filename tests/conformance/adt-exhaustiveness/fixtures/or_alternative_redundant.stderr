@@ -1,0 +1,1 @@
+error[E2S26]: redundant or-pattern alternative at bytes 190..195: constructor `Ok` is already covered by the alternative at bytes 172..177; hint: remove the redundant alternative

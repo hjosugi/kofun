@@ -1,2 +1,3 @@
 # code	adapter	channel	exit	primary-span	secondary-span	artifact
+E2S105	adt-exhaustiveness	stdout	1	required	required	forbidden
 E2S79	adt-exhaustiveness	stdout	1	required	not-applicable	forbidden

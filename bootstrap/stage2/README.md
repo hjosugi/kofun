@@ -185,12 +185,18 @@ checkpoint. It defensively joins the declaration table, lossless Pattern tree,
 and lexical ScopeId/BindingId artifact for one source module, then publishes a
 typed match projection only after all identities and spans agree. Constructor
 coverage is keyed by the resolved owner `SymbolId`; same-spelled constructors
-in another module cannot affect the result. Unguarded whole-constructor arms
-remove one constructor, unguarded wildcard or binding arms remove the remaining
-set, and guarded arms remove nothing. `E2S25` lists missing witnesses in
-declaration order and `E2S26` points to a redundant pattern and its earlier
-cover. One-`Int` payload constructors accept `_` or one binding; nested payload
-usefulness and or-pattern expansion remain outside this bounded slice. Run the
+in another module cannot affect the result. An arm is analyzed as the
+alternatives it tests left to right, so `A | B` and a grouping `(A | B)` cover
+the same constructors as two separate arms would. Unguarded whole-constructor
+alternatives remove one constructor each, unguarded wildcard or binding
+alternatives remove the remaining set, and guarded arms remove nothing.
+Every alternative of one arm must bind the same names with the same payload
+roles, which is `E2S105`; the arm body then reads one `BindingId` whichever
+alternative matched. `E2S25` lists missing witnesses in declaration order and
+`E2S26` points to a redundant pattern and its earlier cover, naming the
+alternative rather than the arm when the arm has more than one. One arm accepts
+at most 64 alternatives. One-`Int` payload constructors accept `_` or one
+binding; nested payload usefulness remains outside this bounded slice. Run the
 transactional, sanitizer-backed gate with `make adt-exhaustiveness`.
 
 `bootstrap/stage2/module_symbols.c` is the next resolver-side checkpoint. It
