@@ -119,6 +119,36 @@
         "statement": "`kofun.law-evidence/v2` is deliberately incompatible with v1. A v1 document is historical migration material and is never interpreted as v2, so no v1 evidence can authorize a v2 optimization or cache hit. Nothing emits either version yet, so nothing in the repository is affected today.",
         "evidence": "spec/law-evidence.schema.json"
       }
+    },
+    {
+      "id": "DD-021",
+      "title": "Records declare with `type` and construct with labels",
+      "provenance": "migrated",
+      "state": "implemented",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/546",
+      "dates": {
+        "recorded_on": "2026-07-27"
+      },
+      "normative_spec": [
+        "docs/SYNTAX.md",
+        "docs/TYPE_SYSTEM.md",
+        "spec/records-v1.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "The bounded record frontend adds nominal declarations and labelled construction without changing the meaning of an existing accepted program. The main compiler and backends do not enable this surface yet.",
+        "evidence": "tests/conformance/records/README.md"
+      },
+      "implementation": {
+        "change": "https://github.com/hjosugi/kofun/pull/756",
+        "enablement": "Enabled only in the bounded record frontend invoked by `make records`. Module visibility, generic records, the main compiler, and backend lowering remain outside the checkpoint.",
+        "gate": "make records",
+        "claims": [
+          "nominal-records"
+        ]
+      }
     }
   ]
 }

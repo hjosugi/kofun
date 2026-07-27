@@ -899,6 +899,44 @@
       }
     },
     {
+      "id": "nominal-records",
+      "public_wording": "nominal heterogeneous records",
+      "public_status": "bounded typed frontend only: declaration, labelled construction, typed reads, ownership and layout facts, and a scanner that produces and consumes `List[Token]`; no module, generic, or backend lowering",
+      "state": "checkpoint",
+      "area": "frontend",
+      "bounded_capability": "The dedicated Stage 2 record frontend accepts nominal declarations, labelled construction, typed field reads, whole-record moves, and declaration-order layout facts. Module visibility, generic records, and backend lowering remain outside the checkpoint.",
+      "targets": [
+        "stage2"
+      ],
+      "specification": [
+        "spec/records-v1.md"
+      ],
+      "compatibility": "The checkpoint is additive and intentionally isolated from the main compiler. Expanding it into module resolution, generics, or backend lowering is a separately evidenced capability change.",
+      "positive_gate": {
+        "command": "make records",
+        "observation": "The scanner fixture constructs, passes, returns, reads, and lays out nominal records through the bounded typed frontend."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "tests/conformance/records/generic_record.kofun",
+        "observation": "Generic records are refused explicitly instead of being accepted outside the bounded profile."
+      },
+      "safety": {
+        "classification": "memory-safety",
+        "threat_model": "docs/MEMORY_MODEL.md",
+        "negative_test": "tests/conformance/records/partial_move.kofun"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make records",
+        "prerequisites": [
+          "cc"
+        ]
+      }
+    },
+    {
       "id": "public-re-exports",
       "public_wording": "explicit public re-exports",
       "public_status": "bounded same-package `pub import` / `pub from`; non-widening `ExportBindingId` edges, 64-edge chains, 1,024 bindings/module and 65,536 edges/package, KIF export facts, and facade/canonical tooling paths",
@@ -1119,10 +1157,10 @@
     {
       "id": "stable-diagnostics",
       "public_wording": "stable diagnostics",
-      "public_status": "canonical registry plus executable family owners; Stage 2 retains 33/33 codes and 3 explicit span debts",
+      "public_status": "canonical registry plus executable family owners; Stage 2 retains 46/46 codes and 3 explicit span debts",
       "state": "implemented",
       "area": "quality",
-      "bounded_capability": "Every diagnostic code has a canonical registry row and an executable family owner. Stage 2 retains 33 of 33 codes, with 3 span debts recorded rather than hidden.",
+      "bounded_capability": "Every diagnostic code has a canonical registry row and an executable family owner. Stage 2 retains 46 of 46 codes, with 3 span debts recorded rather than hidden.",
       "targets": [
         "native-x86_64",
         "stage2"
