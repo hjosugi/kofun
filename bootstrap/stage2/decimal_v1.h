@@ -125,4 +125,121 @@ KofunDecimalStatus kofun_float_from_literal(
     double *out
 );
 
+/* --- exact arithmetic (slice 4 of #710, issue #723) ----------------------- */
+
+/*
+ * Addition, subtraction and multiplication are exact: the result's scale
+ * follows from the operands and no digit is discarded (frozen decision 5).
+ * `+` and `-` align the two scales with an exact power of ten and take the
+ * larger; `*` adds the scales. The result is canonicalized, so trailing
+ * decimal zeros produced by the operation move into the scale and
+ * `0.1 + 0.2` and `0.3` are one value.
+ *
+ * The only failures are resource failures: a result may exceed the profile's
+ * digit or scale limit, and then it fails rather than rounding. There is no
+ * rounding mode here because these operations never round.
+ *
+ * `out` is initialized by the callee and owned by the caller on success; on
+ * failure it is left as a valid empty value that `kofun_decimal_free` accepts.
+ */
+KofunDecimalStatus kofun_decimal_add(
+    const KofunDecimal *left,
+    const KofunDecimal *right,
+    KofunDecimal *out
+);
+KofunDecimalStatus kofun_decimal_subtract(
+    const KofunDecimal *left,
+    const KofunDecimal *right,
+    KofunDecimal *out
+);
+KofunDecimalStatus kofun_decimal_multiply(
+    const KofunDecimal *left,
+    const KofunDecimal *right,
+    KofunDecimal *out
+);
+
+/*
+ * The outcome of an exact division, which is a fact about the two values
+ * rather than a resource failure — so it is a separate enum from
+ * `KofunDecimalStatus`. Conflating them would let a caller treat "this
+ * quotient needs more digits than the profile allows" and "this quotient does
+ * not terminate at all" as the same thing; only the first would be fixed by a
+ * larger profile.
+ *
+ * There are exactly three outcomes and no fourth. In particular there is no
+ * "rounded" outcome: rounded division is a different operation that requires a
+ * destination scale and a mode, and it is slice 5.
+ */
+typedef enum {
+    KOFUN_DECIMAL_DIVISION_EXACT = 0,
+    KOFUN_DECIMAL_DIVISION_INEXACT = 1,
+    KOFUN_DECIMAL_DIVISION_BY_ZERO = 2
+} KofunDecimalDivision;
+
+/* Stable spelling of an outcome, matching `docs/DECIMAL.md`. */
+const char *kofun_decimal_division_name(KofunDecimalDivision outcome);
+
+/*
+ * Exact division. `out` receives the quotient only when `*outcome` is
+ * `KOFUN_DECIMAL_DIVISION_EXACT`; otherwise it is a valid empty value.
+ *
+ * A quotient terminates exactly when, after reducing, the denominator has no
+ * prime factor other than two and five. This is decided rather than
+ * approximated: the divisor's factors of two and five are removed, and the
+ * quotient is exact precisely when what remains divides the dividend.
+ */
+KofunDecimalStatus kofun_decimal_divide_exact(
+    const KofunDecimal *left,
+    const KofunDecimal *right,
+    KofunDecimal *out,
+    KofunDecimalDivision *outcome
+);
+
+/*
+ * The same four operations on `Float`, where they are binary64 and therefore
+ * *not* exact. They exist here, beside the exact ones, because keeping the two
+ * types apart is only meaningful if both are implemented and the difference is
+ * observable — `0.1 + 0.2` is `0.3` in one and `0.30000000000000004` in the
+ * other, and a corpus that showed only the Decimal side would not prove the
+ * types are distinct.
+ *
+ * These are thin wrappers on the host's binary64 operations. That is the
+ * point: `Float` is IEEE 754 binary64 with its ordinary behavior, including
+ * infinities from division by zero rather than the checked outcome Decimal
+ * gives. There is no rounding-mode argument because binary64 rounding is
+ * round-to-nearest-even and is a property of the type, not a choice.
+ */
+double kofun_float_add(double left, double right);
+double kofun_float_subtract(double left, double right);
+double kofun_float_multiply(double left, double right);
+double kofun_float_divide(double left, double right);
+
+/* --- value shim for generated code (issue #723) --------------------------- */
+
+/*
+ * The operations above take an out-parameter and leave ownership to the
+ * caller, which is right for a library but wrong for generated code: a Kofun
+ * expression like `0.1 + 0.2 == 0.3` is a tree, and lowering a tree onto
+ * out-parameters means inventing temporaries and threading frees through every
+ * early return the surrounding program might take.
+ *
+ * These return borrowed pointers into an arena instead, so the lowering is a
+ * direct structural map from the expression tree to a C expression. The arena
+ * is released once at the end of the program.
+ *
+ * Ownership rule: nothing returned here is freed by the caller, and nothing
+ * returned here survives `kofun_decimal_arena_release`.
+ *
+ * A resource limit is fatal on this path. Frozen decision 8 forbids clamping
+ * or changing representation, and a generated program has no value to
+ * substitute, so the shim reports the profile's own diagnostic code and stops
+ * rather than continuing with something that is not the answer.
+ */
+KofunDecimal *kofun_decimal_value_literal(const char *text, size_t length);
+KofunDecimal *kofun_decimal_value_add(
+    const KofunDecimal *left,
+    const KofunDecimal *right
+);
+void kofun_decimal_arena_release(void);
+
 #endif

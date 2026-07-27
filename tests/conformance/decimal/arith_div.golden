@@ -1,0 +1,9 @@
+1.0 div 4.0 -> 25e-2 significand=25 scale=2
+1.0 div 3.0 -> InexactDivision
+1.0 div 0.0 -> DivisionByZero
+0.0 div 5 -> 0e0 significand=0 scale=0
+10 div 4 -> 25e-1 significand=25 scale=1
+1 div 3333333333333333333333333333333 -> InexactDivision
+9999999999999999999999999999999 div 3333333333333333333333333333333 -> 3e0 significand=3 scale=0
+7 div 70 -> 1e-1 significand=1 scale=1
+1 div 6 -> InexactDivision

@@ -1,0 +1,5 @@
+0.3 sub 0.1 -> 2e-1 significand=2 scale=1
+1 sub 1 -> 0e0 significand=0 scale=0
+0.1 sub 0.2 -> -1e-1 significand=-1 scale=1
+9007199254740993 sub 9007199254740992 -> 1e0 significand=1 scale=0
+1000000 sub 0.000001 -> 999999999999e-6 significand=999999999999 scale=6

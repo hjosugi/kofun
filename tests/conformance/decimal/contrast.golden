@@ -1,0 +1,9 @@
+0.1 add 0.2 -> Decimal=3e-1 Float=0.30000000000000004
+1.005 add 0.005 -> Decimal=101e-2 Float=1.0099999999999998
+1.1 mul 1.1 -> Decimal=121e-2 Float=1.2100000000000002
+0.1 mul 0.1 -> Decimal=1e-2 Float=0.010000000000000002
+0.3 sub 0.1 -> Decimal=2e-1 Float=0.19999999999999998
+1.0 div 4.0 -> Decimal=25e-2 Float=0.25
+1.0 div 3.0 -> Decimal=InexactDivision Float=0.33333333333333331
+1.0 div 0.0 -> Decimal=DivisionByZero Float=inf
+9007199254740993 add 1 -> Decimal=9007199254740994e0 Float=9007199254740992

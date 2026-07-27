@@ -1,0 +1,5 @@
+1.5 mul 2 -> 3e0 significand=3 scale=0
+0.1 mul 0.1 -> 1e-2 significand=1 scale=2
+1.1 mul 1.1 -> 121e-2 significand=121 scale=2
+9007199254740993 mul 2 -> 18014398509481986e0 significand=18014398509481986 scale=0
+0 mul 12345 -> 0e0 significand=0 scale=0

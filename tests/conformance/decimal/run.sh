@@ -2,7 +2,9 @@
 set -eu
 
 # Decimal slice 2 (#721): the runtime representation, its canonical form, and
-# the versioned resource profile.
+# the versioned resource profile. Slice 4 (#723) adds the exact operations and
+# checked exact division below, plus the Float contrast that keeps the two
+# types from being conflated.
 #
 # What this gate is for, beyond "the code runs". Four of #710's frozen
 # decisions are only checkable by observation, and each has a section below:
@@ -139,6 +141,144 @@ then
 fi
 printf '%s\n' "PASS: no host decimal parser on the conversion path"
 
+# `//` and `%` on Decimal are deliberately absent. #710 defers their signed
+# convention to a separate issue and #723 requires that it "must not be settled
+# implicitly here" — but an omission cannot be observed, so it is asserted.
+#
+# This guard exists because the natural way to settle the convention by
+# accident is to add the operation quietly alongside the four exact ones, where
+# it reads as completeness rather than as a decision. `docs/DECIMAL.md` requires
+# positive and negative examples to be landed before either operator becomes
+# available, so adding one must fail here until they are.
+for undecided in floor_div floordiv modulo remainder truncate_div; do
+    if grep -nE "kofun_decimal_$undecided" \
+        "$ROOT/bootstrap/stage2/decimal_v1.h" \
+        "$ROOT/bootstrap/stage2/decimal_v1.c" >/dev/null 2>&1
+    then
+        fail "decimal_v1 defines $undecided; #710 defers the signed convention"
+    fi
+done
+printf '%s\n' "PASS: Decimal // and % remain undecided and unimplemented"
+
+# --- exact arithmetic (slice 4 of #710, issue #723) ------------------------
+
+# The headline acceptance criterion of #710, and the reason this type exists.
+# Each line prints the decimal answer beside the binary64 one, so the golden
+# carries its own counterexample: `0.30000000000000004` next to `true` is the
+# evidence that the decimal path is not going through a double.
+golden identity identity \
+    0.1 0.2 0.3 \
+    0.1 0.7 0.8 \
+    1.005 0.005 1.01 \
+    2.675 0.001 2.676 \
+    100000000000000000000 1 100000000000000000001
+
+# Exactness of + - *, on operands chosen so binary64 gives a different answer.
+# 9007199254740993 is 2^53+1, the first integer a double cannot represent, so
+# an implementation that routed through one loses the low digit here.
+# Every operand is unsigned: the profile's literal grammar has no sign, so a
+# negative value arrives through the operator. `sub` below is what produces
+# one, and its golden is where the sign handling is actually observed.
+golden arith_add add \
+    0.1 0.2 \
+    1.5 2.5 \
+    9007199254740993 1 \
+    123456789012345678901234567890 0.000000000000000000000000000001
+golden arith_sub sub \
+    0.3 0.1 \
+    1 1 \
+    0.1 0.2 \
+    9007199254740993 9007199254740992 \
+    1000000 0.000001
+golden arith_mul mul \
+    1.5 2 \
+    0.1 0.1 \
+    1.1 1.1 \
+    9007199254740993 2 \
+    0 12345
+
+# Division has exactly three outcomes and no fourth. The exact cases include a
+# multi-limb divisor whose non-2-non-5 residue divides the dividend, which is
+# the path that decides exactness by dividing rather than by inspecting the
+# denominator's small factors.
+golden arith_div div \
+    1.0 4.0 \
+    1.0 3.0 \
+    1.0 0.0 \
+    0.0 5 \
+    10 4 \
+    1 3333333333333333333333333333333 \
+    9999999999999999999999999999999 3333333333333333333333333333333 \
+    7 70 \
+    1 6
+
+# Decimal and Float side by side, which is what makes keeping two types
+# worthwhile. A backend that implemented one by delegating to the other would
+# produce two identical columns; every line here except the exactly
+# representable `1.0 / 4.0` must differ, and that one is kept precisely so the
+# corpus is not just "the columns always disagree".
+#
+# The last two lines differ in *kind* rather than in digits: division by zero
+# is a checked outcome with no value on one side and an infinity on the other,
+# and 2^53+1 is a value binary64 cannot hold at all.
+golden contrast contrast \
+    add 0.1 0.2 \
+    add 1.005 0.005 \
+    mul 1.1 1.1 \
+    mul 0.1 0.1 \
+    sub 0.3 0.1 \
+    div 1.0 4.0 \
+    div 1.0 3.0 \
+    div 1.0 0.0 \
+    add 9007199254740993 1
+
+# --- the emission contract for generated code (issue #723) -----------------
+#
+# Slice 4 requires Decimal to work *on a backend*, which means the runtime has
+# to reach generated programs. The decision (2026-07-26) is that stage2 splices
+# `decimal_v1.h` and `decimal_v1.c` at compile time rather than embedding a
+# copy: one source of truth, so the emitted runtime cannot drift from the one
+# these goldens test.
+#
+# That decision only holds if the splice actually compiles standalone, under
+# the same flags the c11 backend adapter uses and with no extra sources. This
+# builds it exactly as the adapter would and runs #710's headline expression
+# through the value shim, in the exact shape the lowering will emit.
+#
+# It is here rather than in the lowering because it constrains `decimal_v1.c`,
+# not the compiler: adding an include, a non-static helper that collides, or
+# anything needing a separate translation unit breaks emission, and this is
+# where that shows up.
+{
+    grep -v '^#include "decimal_v1.h"' "$ROOT/bootstrap/stage2/decimal_v1.h" |
+        grep -v '^#ifndef KOFUN_STAGE2_DECIMAL_V1_H' |
+        grep -v '^#define KOFUN_STAGE2_DECIMAL_V1_H' |
+        grep -v '^#endif'
+    grep -v '^#include "decimal_v1.h"' "$ROOT/bootstrap/stage2/decimal_v1.c"
+    cat <<'PROGRAM'
+
+int main(void) {
+    printf("%s\n",
+        kofun_decimal_equal(
+            kofun_decimal_value_add(
+                kofun_decimal_value_literal("0.1", 3),
+                kofun_decimal_value_literal("0.2", 3)),
+            kofun_decimal_value_literal("0.3", 3)) ? "true" : "false");
+    kofun_decimal_arena_release();
+    return 0;
+}
+PROGRAM
+} >"$WORK/spliced.c"
+# The adapter's exact flags: `tests/conformance/backends/c11-stage1.sh` builds
+# emitted C with these and nothing else. Adding -pedantic here would test a
+# stricter contract than the backend actually applies.
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror "$WORK/spliced.c" -o "$WORK/spliced"
+printf 'true\n' >"$WORK/spliced.expected"
+"$WORK/spliced" >"$WORK/spliced.observed" 2>&1
+cmp "$WORK/spliced.expected" "$WORK/spliced.observed" ||
+    fail "0.1 + 0.2 == 0.3 did not hold in a spliced standalone program"
+printf '%s\n' "PASS: the runtime splices into a standalone program and 0.1 + 0.2 == 0.3"
+
 # Sanitizers, matching what the other Stage 2 module gates do. An
 # arbitrary-precision buffer that grows by doubling is exactly the shape where
 # an off-by-one survives a golden comparison.
@@ -169,13 +309,50 @@ then
     ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
     UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
         "$WORK/decimal-test-sanitized" limit digits-over >/dev/null
+    # The arithmetic allocates far more than construction does: alignment
+    # grows an operand by a power of ten, multiplication allocates the full
+    # product, and the general division path normalizes both operands into
+    # scratch buffers. Every one of those is swept here.
+    ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+    UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+        "$WORK/decimal-test-sanitized" add 0.1 0.2 1e-6000 1e6000 \
+        >/dev/null
+    ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+    UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+        "$WORK/decimal-test-sanitized" mul \
+        123456789012345678901234567890 987654321098765432109876543210 \
+        >/dev/null
+    ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+    UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+        "$WORK/decimal-test-sanitized" div \
+        9999999999999999999999999999999 3333333333333333333333333333333 \
+        1.0 3.0 1.0 0.0 \
+        >/dev/null
+    ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+    UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+        "$WORK/decimal-test-sanitized" identity 0.1 0.2 0.3 >/dev/null
+    ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+    UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+        "$WORK/decimal-test-sanitized" contrast div 1.0 0.0 add 0.1 0.2 \
+        >/dev/null
+    # The arena is the one allocation the generated program never frees
+    # explicitly, so leak detection on the spliced binary is what proves
+    # `kofun_decimal_arena_release` actually reaches every value.
+    "$CC" -std=c11 -O1 -g -fno-omit-frame-pointer \
+        -fsanitize=address,undefined \
+        -Wall -Wextra -Werror \
+        "$WORK/spliced.c" -o "$WORK/spliced-sanitized"
+    ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+    UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+        "$WORK/spliced-sanitized" >/dev/null
     printf '%s\n' "PASS: AddressSanitizer and UndefinedBehaviorSanitizer"
 else
     printf '%s\n' "SKIP: sanitizers unavailable"
 fi
 
 printf '%s\n' \
-    "PASS: Decimal slice 2 — arbitrary-precision canonical representation," \
+    "PASS: Decimal slices 2 and 4 — arbitrary-precision representation," \
     "  versioned resource profile v$( \
         "$WORK/decimal-test" profile | \
-        sed -n 's/^profile-version=//p'), and exact binary64"
+        sed -n 's/^profile-version=//p'), exact binary64," \
+    "  and exact +, -, * with checked exact division"
