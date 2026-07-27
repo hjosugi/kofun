@@ -101,6 +101,37 @@ cmp "$CASES/fixtures/redundant_catchall.stderr" "$WORK/redundant-catchall.actual
 expect_failure nested-payload "$CASES/fixtures/nested_payload.kofun" E2S79
 grep -F 'nested payload usefulness is unsupported' "$WORK/nested-payload.actual" >/dev/null
 
+# Or-pattern alternatives are tested left to right and each one covers its own
+# constructor. Grouping parentheses carry no coverage meaning.
+run_success or-exhaustive "$CASES/fixtures/or_exhaustive.kofun"
+grep -F '|role=or|constructor=-|constructor-symbol=-|' "$WORK/or-exhaustive.typed" >/dev/null
+test "$(grep -c '^typed-alternative|' "$WORK/or-exhaustive.typed")" -eq 4
+grep -F '|arm=1|index=1|node=6|role=constructor|constructor=Err|' \
+    "$WORK/or-exhaustive.typed" >/dev/null
+# Both alternatives of the first arm publish the one BindingId the body reads.
+OR_BINDING=$(sed -n '/^pattern-binding|/s/^pattern-binding|id=\([^|]*\)|.*|name=item|.*/\1/p' \
+    "$WORK/or-exhaustive.typed")
+test -n "$OR_BINDING"
+test "$(grep -c "|arm=0|index=[01]|node=[0-9]*|role=constructor|constructor=[^|]*|constructor-symbol=[^|]*|binding=$OR_BINDING|" \
+    "$WORK/or-exhaustive.typed")" -eq 2
+test "$(grep -c '^pattern-binding|' "$WORK/or-exhaustive.typed")" -eq 1
+grep -F "|binding=$OR_BINDING|name=item|role=read" "$WORK/or-exhaustive.typed" >/dev/null
+
+expect_failure or-missing "$CASES/fixtures/or_missing.kofun" E2S25
+cmp "$CASES/fixtures/or_missing.stderr" "$WORK/or-missing.actual"
+expect_failure or-guarded "$CASES/fixtures/or_guarded.kofun" E2S25
+cmp "$CASES/fixtures/or_guarded.stderr" "$WORK/or-guarded.actual"
+expect_failure or-alternative-redundant \
+    "$CASES/fixtures/or_alternative_redundant.kofun" E2S26
+cmp "$CASES/fixtures/or_alternative_redundant.stderr" \
+    "$WORK/or-alternative-redundant.actual"
+expect_failure or-arm-redundant "$CASES/fixtures/or_arm_redundant.kofun" E2S26
+cmp "$CASES/fixtures/or_arm_redundant.stderr" "$WORK/or-arm-redundant.actual"
+expect_failure or-binding-mismatch "$CASES/fixtures/or_binding_mismatch.kofun" E2S105
+cmp "$CASES/fixtures/or_binding_mismatch.stderr" "$WORK/or-binding-mismatch.actual"
+expect_failure or-catchall-binding "$CASES/fixtures/or_catchall_binding.kofun" E2S105
+cmp "$CASES/fixtures/or_catchall_binding.stderr" "$WORK/or-catchall-binding.actual"
+
 # Same spelling in another module cannot steal the target constructor identity.
 {
     printf '%s|%s|%s|target/main.kofun|%s\n' \
@@ -166,6 +197,38 @@ run_success budget-boundary "$WORK/budget-boundary.kofun"
 generate_budget_source 62 "$WORK/budget-over.kofun"
 expect_failure budget-over "$WORK/budget-over.kofun" E2S79
 grep -F 'exceeds 4096 operations' "$WORK/budget-over.actual" >/dev/null
+
+# One arm may list every constructor of a 64-constructor ADT as an alternative.
+# The 65th alternative is refused by the declared arm boundary, not by the
+# Pattern artifact reader.
+generate_alternative_source() {
+    alternative_count=$1
+    output=$2
+    {
+        printf '%s\n' 'module wide.main' '' 'type Wide ='
+        constructor=0
+        while test "$constructor" -lt 64; do
+            printf '    | C%s\n' "$constructor"
+            constructor=$((constructor + 1))
+        done
+        printf '%s\n' '' 'fn inspect(value: Wide) -> Int {' \
+            '    let selected: Int = match value {'
+        printf '        '
+        alternative=0
+        while test "$alternative" -lt "$alternative_count"; do
+            test "$alternative" -eq 0 || printf ' | '
+            printf 'C%s' "$((alternative % 64))"
+            alternative=$((alternative + 1))
+        done
+        printf '%s\n' ' => { 0 }' '    }' '    return selected' '}'
+    } > "$output"
+}
+generate_alternative_source 64 "$WORK/alternatives-boundary.kofun"
+run_success alternatives-boundary "$WORK/alternatives-boundary.kofun"
+test "$(grep -c '^typed-alternative|' "$WORK/alternatives-boundary.typed")" -eq 64
+generate_alternative_source 65 "$WORK/alternatives-over.kofun"
+expect_failure alternatives-over "$WORK/alternatives-over.kofun" E2S79
+grep -F 'exceeds 64 alternatives in one arm' "$WORK/alternatives-over.actual" >/dev/null
 
 if command -v clang >/dev/null 2>&1; then
     clang -std=c11 -Wall -Wextra -Werror -pedantic \

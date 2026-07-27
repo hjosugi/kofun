@@ -1,0 +1,1 @@
+error[E2S25]: non-exhaustive match on ADT `Result` at bytes 150..202; missing: Err; ADT declaration is bytes 22..89; hint: add the missing constructor arms or an unguarded catch-all

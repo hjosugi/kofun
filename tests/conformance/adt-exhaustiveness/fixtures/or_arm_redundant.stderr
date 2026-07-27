@@ -1,0 +1,1 @@
+error[E2S26]: redundant or-pattern alternative at bytes 206..213: constructor `Warn` is already covered by the arm at bytes 172..179; hint: remove the redundant alternative
