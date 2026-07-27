@@ -1,4 +1,4 @@
-.PHONY: help compiler decimal discovery test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 stage2-events patterns adt generics adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 incremental native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec typed-sidecar-projector lsp tree-sitter roadmap syntax repository-check verify clean
+.PHONY: help compiler decimal discovery test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 stage2-events patterns adt generics adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 incremental native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec aggregate-layout typed-sidecar-spec typed-sidecar-codec typed-sidecar-projector lsp tree-sitter roadmap syntax repository-check verify clean
 
 KOFUN := ./bin/kofun
 
@@ -50,6 +50,7 @@ help:
 	  'make visibility-syntax Verify executable function visibility syntax' \
 	  'make visibility-access Verify identity-only visibility enforcement' \
 	  'make re-exports-spec  Verify explicit non-widening re-export design' \
+	  'make aggregate-layout Verify AggregateLayout v1 descriptors and vectors' \
 	  'make typed-sidecar-spec Verify bounded complete/partial tooling artifacts' \
 	  'make typed-sidecar-codec Verify production reader/writer and atomic replacement' \
 	  'make typed-sidecar-projector Verify Stage 2 event projection and single-file CLI emission' \
@@ -217,6 +218,9 @@ visibility-access:
 re-exports-spec:
 	sh spec/re-exports/check.sh
 
+aggregate-layout:
+	sh spec/aggregate-layout-v1/check.sh
+
 typed-sidecar-spec:
 	sh spec/typed-sidecar/check.sh
 
@@ -256,7 +260,7 @@ repository-check:
 	@grep -q '"extensions": \[".kofun"\]' editor/vscode/package.json
 	@printf '%s\n' 'PASS: .kofun sources only; no Python implementation'
 
-VERIFY_TARGETS = test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 stage2-events patterns adt generics adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 incremental decimal discovery native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec typed-sidecar-projector tree-sitter syntax repository-check
+VERIFY_TARGETS = test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 stage2-events patterns adt generics adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 incremental decimal discovery native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec aggregate-layout typed-sidecar-spec typed-sidecar-codec typed-sidecar-projector tree-sitter syntax repository-check
 
 # Every gate above is independent, so `verify` runs them concurrently rather
 # than asking the caller to remember a `-j`. Override with `make VERIFY_JOBS=1
@@ -305,6 +309,7 @@ verify:
 	  spec/module-identity/check.sh \
 	  spec/visibility/check.sh \
 	  spec/re-exports/check.sh \
+	  spec/aggregate-layout-v1/check.sh \
 	  spec/typed-sidecar/check.sh \
 	  tests/typed-sidecar/codec.sh \
 	  tests/typed-sidecar/atomic-write.sh \

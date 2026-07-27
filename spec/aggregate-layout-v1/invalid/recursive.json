@@ -1,0 +1,14 @@
+{
+  "schema": "kofun.aggregate-layout-document/v1",
+  "types": [
+    { "id": "Int", "kind": "scalar", "scalar": "Int" },
+    {
+      "id": "Tree",
+      "kind": "record",
+      "fields": [
+        { "name": "value", "type": "Int" },
+        { "name": "child", "type": "Tree" }
+      ]
+    }
+  ]
+}

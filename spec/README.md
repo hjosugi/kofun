@@ -54,6 +54,13 @@ executable bootstrap implementation.
   explicit identification and migration; it is not an active compiler,
   optimizer, cache, or release contract and must never be interpreted as v2.
 
+- `aggregate-layout-v1.md`, its `aggregate-layout-v1/` reference computer,
+  target files, golden vectors, and `aggregate-layout-v1/check.sh` define the
+  accepted target-parameterized byte layout for `Text`, `List`, flat records,
+  and flat ADT variants on `x86_64-linux` and `wasm32`. It is a layout
+  contract only; no backend lowers to it yet, and the shipped native `i64`
+  headers are compared against it rather than governed by it.
+
 Design-only material in `docs/` is not normative until it is promoted here
 with conformance evidence. The specification is versioned independently from
 the implementation; the current draft is `0.3-bootstrap`.

@@ -1,0 +1,13 @@
+{
+  "schema": "kofun.target-data-layout/v1",
+  "name": "wasm32",
+  "endianness": "little",
+  "pointer_size": "4",
+  "pointer_align": "4",
+  "max_object_size": "4294967296",
+  "scalars": {
+    "Bool": { "size": "1", "align": "1" },
+    "Int": { "size": "8", "align": "8" },
+    "Float": { "size": "8", "align": "8" }
+  }
+}

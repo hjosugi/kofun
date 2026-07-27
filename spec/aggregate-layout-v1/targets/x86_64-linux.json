@@ -1,0 +1,13 @@
+{
+  "schema": "kofun.target-data-layout/v1",
+  "name": "x86_64-linux",
+  "endianness": "little",
+  "pointer_size": "8",
+  "pointer_align": "8",
+  "max_object_size": "140737488355328",
+  "scalars": {
+    "Bool": { "size": "1", "align": "1" },
+    "Int": { "size": "8", "align": "8" },
+    "Float": { "size": "8", "align": "8" }
+  }
+}
