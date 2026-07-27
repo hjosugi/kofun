@@ -10494,16 +10494,17 @@ static char *validate_unsupported_numeric_kinds(const char *source) {
                 return message.data;
             }
             /*
-             * The literal is representable now. What it still lacks is a
-             * *type*: `Int`, `Decimal` and `Float` become three distinct
-             * checker types in slice 3, and until then there is nothing to
-             * lower it as. Naming slice 2 here would be false — that is this
-             * slice.
+             * The literal is representable (slice 2) and typed (slice 3):
+             * `Int`, `Decimal` and `Float` are three distinct checker types
+             * now. What it still lacks is a *lowering*, so the successor
+             * named here is slice 4, which evaluates the operations across
+             * the backends. Naming slice 3 would be false — that slice is
+             * done, and this literal has a type.
              */
             buffer_format(
                 &message,
                 "error[E2S99]: %s literal at byte %" PRId64
-                " has no type yet (#710 slice 3)",
+                " has no lowering yet (#710 slice 4)",
                 decimal ? "Decimal" : "Float",
                 cursor
             );
