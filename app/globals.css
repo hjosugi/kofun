@@ -470,7 +470,6 @@ svg {
 
 .section-heading h2,
 .toolchain-intro h2,
-.status-title h2,
 .quickstart h2 {
   font-size: var(--font-size-section);
   font-weight: 650;
@@ -482,7 +481,6 @@ svg {
 
 .section-heading > p,
 .toolchain-intro > p,
-.status-title > p,
 .quickstart-copy > p {
   color: var(--ink-soft);
   font-size: var(--font-size-body);
@@ -1006,86 +1004,6 @@ svg {
   width: 6px;
 }
 
-.status-section {
-  border-top: 1px solid var(--line);
-  display: grid;
-  gap: 90px;
-  grid-template-columns: minmax(300px, 0.75fr) minmax(560px, 1.25fr);
-}
-
-.status-title > p {
-  margin-top: 27px;
-  max-width: 450px;
-}
-
-.status-board {
-  background: var(--paper-strong);
-  border: 1px solid var(--line);
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-}
-
-.status-column {
-  padding: 28px;
-}
-
-.status-column + .status-column {
-  border-left: 1px solid var(--line);
-}
-
-.status-column-title {
-  align-items: center;
-  border-bottom: 1px solid var(--line);
-  display: flex;
-  font-family: var(--mono);
-  font-size: var(--font-size-caption);
-  font-weight: 750;
-  gap: 8px;
-  letter-spacing: 0.06em;
-  padding-bottom: 18px;
-  text-transform: uppercase;
-}
-
-.status-dot {
-  background: var(--coral);
-  border-radius: var(--radius-pill);
-  height: 7px;
-  width: 7px;
-}
-
-.status-dot.done {
-  background: var(--acid-deep);
-}
-
-.status-column ul {
-  list-style: none;
-  margin: 0;
-  padding: 14px 0 0;
-}
-
-.status-column li {
-  align-items: flex-start;
-  border-bottom: 1px solid rgba(23, 25, 20, 0.08);
-  display: flex;
-  font-size: var(--font-size-ui);
-  gap: 10px;
-  line-height: 1.45;
-  padding: 12px 0;
-}
-
-.status-column li:last-child {
-  border-bottom: 0;
-}
-
-.status-column li span {
-  color: var(--success);
-  font-family: var(--mono);
-}
-
-.status-column.open li span {
-  color: var(--coral);
-}
-
 .quickstart {
   background: var(--ink);
   color: var(--paper-strong);
@@ -1232,7 +1150,6 @@ footer {
   }
 
   .toolchain,
-  .status-section,
   .quickstart {
     gap: 50px;
     grid-template-columns: 1fr;
@@ -1320,7 +1237,6 @@ footer {
 
   .section-heading h2,
   .toolchain-intro h2,
-  .status-title h2,
   .quickstart h2 {
     font-size: var(--font-size-section);
   }
@@ -1392,15 +1308,6 @@ footer {
     left: -3px;
     right: auto;
     top: auto;
-  }
-
-  .status-board {
-    grid-template-columns: 1fr;
-  }
-
-  .status-column + .status-column {
-    border-left: 0;
-    border-top: 1px solid var(--line);
   }
 
   footer {

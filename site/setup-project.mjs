@@ -317,8 +317,10 @@ export function validateConfig(config) {
   if (config.project?.visibility !== "PUBLIC") {
     fail("Kofun Delivery Roadmap must be public");
   }
-  if (!String(config.project?.readme ?? "").includes("/kofun/roadmap/")) {
-    fail("Project README must link the published roadmap");
+  // Planning is managed on the Project board rather than on the public site, so
+  // the board's own README has to carry the route back to the source of truth.
+  if (!String(config.project?.readme ?? "").includes("/docs/DELIVERY_PLAN.md")) {
+    fail("Project README must link the generated delivery plan");
   }
   const fields = arrayValue(config.project?.fields);
   const names = new Set(fields.map((field) => field.name));
@@ -1259,7 +1261,7 @@ function help() {
 Options:
   --apply             Mutate the exact configured user Project (default is offline dry-run)
   --config PATH       Override site/project-config.json
-  --snapshot PATH     Override app/roadmap/plan-snapshot.json
+  --snapshot PATH     Override site/plan-snapshot.json
   -h, --help          Show this help
 
 GitHub Actions must provide a classic PAT with project and repo scopes through

@@ -200,6 +200,6 @@ has an external blocker outside the represented serial chains.
 - The conservative date adds a 25% business-day buffer after the simulated review bottleneck.
 
 Regenerate this document and
-`app/roadmap/plan-snapshot.json` with `node site/sync-plan.mjs`. Use
+`site/plan-snapshot.json` with `node site/sync-plan.mjs`. Use
 `node site/sync-plan.mjs --check` in CI to detect semantic drift without
 rewriting files.
