@@ -1,0 +1,225 @@
+#!/usr/bin/env node
+// Negative-mutation fixtures for the RFC ledger.
+//
+// Each mutation is one way the accepted/implemented/enabled/amended distinction
+// can collapse. `check-registry.sh` applies every one and requires the checker
+// to refuse it, naming the decision. Without these, a checker that quietly
+// stopped enforcing a rule would keep reporting PASS on the honest ledger.
+//
+//   node tests/rfc/make-invalid.mjs list
+//   node tests/rfc/make-invalid.mjs <mutation> <output.json>
+
+import { readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+const REGISTRY_PATH = join(ROOT, 'rfcs', 'index.json')
+
+const MUTATIONS = {
+    // Acceptance is not implementation. Both directions of that confusion.
+    'implemented-without-implementation': {
+        blame: 'DD-010',
+        apply(ledger) {
+            delete find(ledger, 'DD-010').implementation
+        },
+    },
+    'accepted-rendered-implemented': {
+        blame: 'DD-013',
+        apply(ledger) {
+            find(ledger, 'DD-013').state = 'implemented'
+        },
+    },
+    'accepted-carrying-implementation': {
+        blame: 'DD-013',
+        apply(ledger) {
+            find(ledger, 'DD-013').implementation = {
+                change: 'https://github.com/hjosugi/kofun/issues/687',
+                enablement: 'Enabled everywhere.',
+                gate: 'make verify',
+                claims: ['checked-int64-contract'],
+            }
+        },
+    },
+
+    // The join with the capability manifest: a decision cannot be implemented
+    // on the strength of a claim that is not.
+    'implementation-on-design-claim': {
+        blame: 'DD-012',
+        apply(ledger) {
+            find(ledger, 'DD-012').implementation.claims = ['formatter-and-repl']
+        },
+    },
+    'implementation-on-unknown-claim': {
+        blame: 'DD-012',
+        apply(ledger) {
+            find(ledger, 'DD-012').implementation.claims = ['a-capability-nobody-manifests']
+        },
+    },
+    'implementation-gate-missing': {
+        blame: 'DD-010',
+        apply(ledger) {
+            find(ledger, 'DD-010').implementation.gate = 'sh tests/conformance/deleted.sh'
+        },
+    },
+
+    // Amendments must be visible from the document a reader actually opens,
+    // and the ledger may not record one the document never announces.
+    'amendment-not-announced': {
+        blame: 'DD-012/A01',
+        apply(ledger) {
+            find(ledger, 'DD-012').amendments = [
+                {
+                    id: 'A01',
+                    recorded_on: '2026-07-26',
+                    delta: 'Backends may now substitute a construct they cannot lower.',
+                    original_semantics: 'A backend that cannot lower a construct fails with a source-located error.',
+                    compatibility: {
+                        category: 'breaking',
+                        statement: 'Programs that previously failed would now silently change meaning.',
+                    },
+                },
+            ]
+        },
+    },
+    'amendment-dropped-from-ledger': {
+        blame: 'DD-010/A01',
+        apply(ledger) {
+            delete find(ledger, 'DD-010').amendments
+        },
+    },
+    'amendment-with-no-delta': {
+        blame: 'DD-010/A01',
+        apply(ledger) {
+            const amendment = find(ledger, 'DD-010').amendments[0]
+            amendment.original_semantics = amendment.delta
+        },
+    },
+
+    // Compatibility analysis has to be a measurement, not an impression.
+    'conditional-without-corpus': {
+        blame: 'DD-010',
+        apply(ledger) {
+            const compatibility = find(ledger, 'DD-010').compatibility
+            compatibility.category = 'conditional'
+            delete compatibility.corpus_query
+            delete compatibility.result
+        },
+    },
+    'hedged-compatibility': {
+        blame: 'DD-018',
+        apply(ledger) {
+            find(ledger, 'DD-018').compatibility.statement =
+                'The change is likely compatible with everything anyone has written.'
+        },
+    },
+
+    // Review windows are real for native RFCs and absent for migrated ones.
+    // Neither may borrow the other's evidence.
+    'migrated-with-invented-review': {
+        blame: 'DD-013',
+        apply(ledger) {
+            find(ledger, 'DD-013').dates.opened_on = '2026-07-01'
+        },
+    },
+    'review-window-too-short': {
+        blame: 'DD-013',
+        apply(ledger) {
+            const rfc = find(ledger, 'DD-013')
+            rfc.provenance = 'rfc'
+            rfc.document = 'rfcs/TEMPLATE.md'
+            rfc.dates = {
+                opened_on: '2026-07-20',
+                review_closed_on: '2026-07-23',
+                decided_on: '2026-07-23',
+            }
+        },
+    },
+    'native-rfc-without-document': {
+        blame: 'DD-013',
+        apply(ledger) {
+            const rfc = find(ledger, 'DD-013')
+            rfc.provenance = 'rfc'
+            rfc.dates = {
+                opened_on: '2026-06-01',
+                review_closed_on: '2026-07-01',
+                decided_on: '2026-07-02',
+            }
+        },
+    },
+
+    // Closed decisions stay discoverable; supersession points somewhere real.
+    'superseded-without-successor': {
+        blame: 'DD-018',
+        apply(ledger) {
+            find(ledger, 'DD-018').state = 'superseded'
+        },
+    },
+    'unknown-successor': {
+        blame: 'DD-018',
+        apply(ledger) {
+            const rfc = find(ledger, 'DD-018')
+            rfc.state = 'superseded'
+            rfc.superseded_by = 'RFC-9999'
+        },
+    },
+    'rejected-without-rationale': {
+        blame: 'DD-013',
+        apply(ledger) {
+            find(ledger, 'DD-013').state = 'rejected'
+        },
+    },
+
+    // Ordinary registry integrity.
+    'duplicate-id': {
+        blame: 'DD-010',
+        apply(ledger) {
+            ledger.rfcs.push(structuredClone(find(ledger, 'DD-010')))
+        },
+    },
+    'missing-normative-spec': {
+        blame: 'DD-013',
+        apply(ledger) {
+            find(ledger, 'DD-013').normative_spec = ['docs/A_DOCUMENT_NOBODY_WROTE.md']
+        },
+    },
+    'unknown-ledger-field': {
+        blame: 'rfcs[0]',
+        apply(ledger) {
+            ledger.rfcs[0].ratified_by_acclamation = true
+        },
+    },
+}
+
+function find(ledger, id) {
+    const rfc = ledger.rfcs.find((candidate) => candidate.id === id)
+    if (rfc === undefined) {
+        process.stderr.write(`rfc-ledger-invalid: the ledger no longer contains \`${id}\`\n`)
+        process.exit(2)
+    }
+    return rfc
+}
+
+const [name, output] = process.argv.slice(2)
+
+if (name === 'list') {
+    for (const [mutation, { blame }] of Object.entries(MUTATIONS)) {
+        process.stdout.write(`${mutation}\t${blame}\n`)
+    }
+    process.exit(0)
+}
+
+if (name === undefined || output === undefined) {
+    process.stderr.write('rfc-ledger-invalid: usage: make-invalid.mjs <mutation|list> <output.json>\n')
+    process.exit(2)
+}
+
+const mutation = MUTATIONS[name]
+if (mutation === undefined) {
+    process.stderr.write(`rfc-ledger-invalid: unknown mutation \`${name}\`\n`)
+    process.exit(2)
+}
+
+const ledger = JSON.parse(readFileSync(REGISTRY_PATH, 'utf8'))
+mutation.apply(ledger)
+writeFileSync(output, `${JSON.stringify(ledger, null, 2)}\n`)

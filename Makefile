@@ -1,4 +1,4 @@
-.PHONY: help compiler decimal discovery test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 stage2-events patterns adt generics adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 incremental native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec typed-sidecar-projector lsp tree-sitter roadmap syntax repository-check verify clean release-claims release-evidence
+.PHONY: help compiler decimal discovery test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 stage2-events patterns adt generics adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 incremental native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec typed-sidecar-projector lsp tree-sitter roadmap syntax repository-check verify clean release-claims release-evidence rfc-registry
 
 KOFUN := ./bin/kofun
 
@@ -60,6 +60,7 @@ help:
 	  'make repository-check Require .kofun sources and the Kofun toolchain' \
 	  'make release-claims   Join published capability claims to their evidence' \
 	  'make release-evidence Regenerate the reviewable release evidence pack' \
+	  'make rfc-registry     Check the language decision ledger' \
 	  'make verify           Run every available gate'
 
 compiler:
@@ -269,7 +270,13 @@ release-claims:
 release-evidence:
 	node tests/release/validate-claims.mjs evidence artifacts/release-evidence
 
-VERIFY_TARGETS = test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 stage2-events patterns adt generics adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 incremental decimal discovery native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec typed-sidecar-projector tree-sitter syntax repository-check release-claims
+# Keeps accepted, implemented, enabled and amended apart in the decision
+# ledger. Like `release-claims` this only reads the repository, so it belongs
+# in the fast lane.
+rfc-registry:
+	sh tests/rfc/check-registry.sh
+
+VERIFY_TARGETS = test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 stage2-events patterns adt generics adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 incremental decimal discovery native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec typed-sidecar-projector tree-sitter syntax repository-check release-claims rfc-registry
 
 # Every gate above is independent, so `verify` runs them concurrently rather
 # than asking the caller to remember a `-j`. Override with `make VERIFY_JOBS=1
@@ -292,6 +299,7 @@ verify:
 	  bootstrap/selfhost/c11/check-c11.sh \
 	  bootstrap/selfhost/check-compiler-driver.sh \
 	  tests/release/check-claims.sh \
+	  tests/rfc/check-registry.sh \
 	  bootstrap/selfhost/native/check-native-corpus.sh \
 	  bootstrap/native/check.sh bootstrap/native/emit-fixture.sh \
 	  bootstrap/wasm/check.sh \

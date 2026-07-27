@@ -135,6 +135,13 @@ export const docs: DocEntry[] = [
     section: "Project",
   },
   {
+    slug: "rfc-process",
+    title: "RFC process",
+    summary: "How public semantic decisions are proposed, reviewed, amended, and kept separate from whether anything was implemented.",
+    source: "docs/RFC_PROCESS.md",
+    section: "Project",
+  },
+  {
     slug: "release-evidence",
     title: "Release evidence",
     summary: "The machine-checked join between published capability claims and the gates, boundaries, and reproduction commands that bound them.",

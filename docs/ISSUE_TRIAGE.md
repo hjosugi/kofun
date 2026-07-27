@@ -19,7 +19,16 @@ The issue tracker and the generated backlog serve different purposes:
 | [`ROADMAP.md`](ROADMAP.md) | Milestone outcomes and exit criteria |
 | Design and specification documents under `docs/` and `spec/` | Intended contracts and target design |
 | GitHub issues | Work selection, discussion, and completion evidence |
+| [`rfcs/index.json`](../rfcs/index.json) | Durable public semantic decisions, and whether each is implemented |
+| [`release/claims.json`](../release/claims.json) | Published capability claims joined to their gates |
 | [`backlog/`](../backlog/README.md) | Generated long-range work catalogue |
+
+Issues own work state; the RFC ledger owns decisions. An issue can be closed
+because the work is done, abandoned, or superseded, so its state says nothing
+durable about what the language decided. When a change alters a public semantic
+contract, [`RFC_PROCESS.md`](RFC_PROCESS.md) applies and the decision is
+recorded in the ledger, which the issue then references. Ordinary work needs no
+RFC.
 
 An open issue is not evidence that a feature is missing, and a closed issue is
 not evidence that a feature works. Check the current source and an executable

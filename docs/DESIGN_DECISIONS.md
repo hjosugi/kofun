@@ -1,5 +1,21 @@
 # Initial design decisions
 
+This is the readable narrative of what Kofun decided. It is not a status
+report: a decision recorded here may be fully implemented, partly implemented,
+or built only in someone's head.
+
+[`rfcs/index.json`](../rfcs/index.json) is the machine-checked ledger that says
+which. A decision indexed there carries its state, the evidence that bounds it,
+and any amendment; `docs/RFC_PROCESS.md` describes how entries move between
+states. Decisions that predate the ledger are migrated into it as they become
+relevant, so absence from the ledger means "not yet indexed", not "not decided".
+
+Where a decision's semantics have changed, the original wording stays here and
+the amendment is announced beside it by its fully-qualified id, such as
+`DD-010/A01`. The ledger checker fails if a marker here has no amendment, or an
+amendment has no marker, so a superseded sentence cannot sit in this file
+reading as current.
+
 ## DD-001: `fn`
 
 Use `fn` for named functions and lambdas.
@@ -58,7 +74,16 @@ Keep `for`, `while`, indexing, and local mutation. FP is a core style, not a ban
 
 ## DD-010: `/` and `//`
 
-`/` returns floating division. `//` performs integer/floor division.
+`//` performs integer/floor division.
+
+Amended by `DD-010/A01`: `/` is not defined on `Int`. It is reserved and
+refused with one diagnostic rather than returning a fractional value, because
+no fractional type exists to return. The original decision read "`/` returns
+floating division"; three documents said so while four backends truncated and
+one refused the operator outright, and #687 settled it in favour of refusal.
+`spec/semantics.md`, `docs/SYNTAX.md` and `docs/TYPE_SYSTEM.md` state the
+current meaning; `rfcs/index.json` records the amendment and its compatibility
+analysis.
 
 ## DD-011: `|>` pipeline
 
