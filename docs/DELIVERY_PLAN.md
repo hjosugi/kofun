@@ -13,16 +13,16 @@ As of: `2026-07-27`
 - Work in progress is capped at three implementation issues.
 - Planning umbrellas are counted but never scheduled as implementation work.
 - `50` curated issues are scheduled and
-  `25` are deferred or externally blocked.
+  `24` are deferred or externally blocked.
 
 | Metric | Count |
 |---|---:|
 | All issues | 645 |
-| Open issues | 521 |
-| Open curated | 75 |
+| Open issues | 520 |
+| Open curated | 74 |
 | Open planning umbrellas | 446 |
 | Scheduled curated | 50 |
-| Unscheduled curated | 25 |
+| Unscheduled curated | 24 |
 
 ## Forecast
 
@@ -37,7 +37,7 @@ Confidence is **low** until missing sizes, refinement
 states, external blockers, and future intake are resolved. Over the trailing
 `14` days, curated intake was
 `66.5`/week and completion was
-`28.5`/week; issues closed as
+`29`/week; issues closed as
 `not_planned` are excluded from completion throughput.
 
 ## Critical dependency chains
@@ -176,7 +176,6 @@ has an external blocker outside the represented serial chains.
 | [#606](https://github.com/hjosugi/kofun/issues/606) | blocked | blocked without a dependency represented by a scheduled chain |
 | [#738](https://github.com/hjosugi/kofun/issues/738) | deferred | deferred outside the active delivery scope |
 | [#741](https://github.com/hjosugi/kofun/issues/741) | deferred | deferred outside the active delivery scope |
-| [#745](https://github.com/hjosugi/kofun/issues/745) | blocked | blocked without a dependency represented by a scheduled chain |
 | [#746](https://github.com/hjosugi/kofun/issues/746) | blocked | blocked without a dependency represented by a scheduled chain |
 | [#747](https://github.com/hjosugi/kofun/issues/747) | blocked | blocked without a dependency represented by a scheduled chain |
 | [#748](https://github.com/hjosugi/kofun/issues/748) | blocked | blocked without a dependency represented by a scheduled chain |
