@@ -36,6 +36,10 @@ executable bootstrap implementation.
   validator, negative corpus, replacement model, and executable gate.
 - `../tooling/typed-sidecar/` implements the bounded, recursively immutable
   tooling codec and stale-safe atomic replacement without granting authority.
+- `records-v1.md` selects `type Name = { ... }` declarations with labelled
+  call-form `Name(field: value)` construction, fixes nominal identity,
+  immutable fields, whole-record moves, and untagged declaration-order layout,
+  and names `tests/conformance/records/` as its executable gate.
 - `type-level-programming-v1.md` defines the Type-only, named, structurally
   terminating type-function profile, its fixed reduction/display budgets, and
   the requirement that type-level features ship with inspectable traces.

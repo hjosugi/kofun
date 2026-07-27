@@ -1,0 +1,1 @@
+error[E2S111]: generic record `Box` is unsupported in the v1 record surface at bytes 34..43

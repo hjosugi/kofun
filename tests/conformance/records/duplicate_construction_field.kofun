@@ -1,0 +1,8 @@
+type Token = {
+    text: Text,
+    start: Int,
+}
+
+fn build() -> Token {
+    return Token(text: "let", start: 0, text: "x")
+}

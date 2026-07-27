@@ -1,0 +1,12 @@
+type Token = {
+    text: Text,
+    start: Int,
+}
+
+fn column(read token: Token) -> Int {
+    return token.start
+}
+
+fn broken() -> Int {
+    return column(42)
+}

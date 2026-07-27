@@ -120,7 +120,9 @@ let counts = { "a": 1, "b": 2 }
 let ids = set { 10, 20, 30 }
 ```
 
-The literal syntax will be settled by UX testing the ambiguity against blocks and records.
+The literal syntax will be settled by UX testing the ambiguity against blocks.
+Records are already settled and do not constrain it: record construction uses
+no braces (see [Records](#records)).
 
 ## Operators
 
@@ -276,7 +278,8 @@ coverage, diagnostic, and implementation limits.
 
 ## Records
 
-planned:
+Accepted design, gated by a bounded frontend rather than the production
+compiler. See [`spec/records-v1.md`](../spec/records-v1.md).
 
 ```kofun
 type Point = {
@@ -284,8 +287,17 @@ type Point = {
     y: Float,
 }
 
-let point = Point { x: 1.0, y: 2.0 }
+let point = Point(x: 1.0, y: 2.0)
+let x = point.x
 ```
+
+Construction is always the parenthesized labelled call form. `Point { ... }` is
+rejected, so `{` never starts an expression and blocks, control-flow
+conditions, and the planned map literal cannot collide with a record. Every
+declared field is supplied exactly once, in any written order; arguments
+evaluate left to right in written order and are stored in declaration order.
+Fields are immutable in v1, `take` moves a whole record, and `take point.x` is
+rejected.
 
 ## Traits and implementations
 

@@ -1,0 +1,9 @@
+type Token = {
+    text: Text,
+    start: Int,
+}
+
+fn shift(token: Token) -> Int {
+    token.start = 1
+    return token.start
+}

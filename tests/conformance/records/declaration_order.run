@@ -1,0 +1,3 @@
+kofun-record-run/v1
+call|function=origin|result=Point(x: 0, y: 0)
+call|function=shifted|result=Point(x: 2, y: 1)

@@ -36,6 +36,7 @@ Generated from `release/claims.json` by `make release-evidence`. Do not edit.
 | `native-text-returning-calls` | limit | `tests/conformance/capabilities.tsv` | Backends that do not lower `Text` values are recorded as unsupported with a stated reason. |
 | `native-utf8-text-core` | limit | `tests/conformance/capabilities.tsv` | Backends that do not lower `Text` values are recorded as unsupported with a stated reason. |
 | `native-x86-64-function-calls` | rejection | `tests/conformance/capabilities.tsv` | Corpora outside the Int Core profile are recorded as unsupported with a stated reason. |
+| `nominal-records` | rejection | `tests/conformance/records/generic_record.kofun` | Generic records are refused explicitly instead of being accepted outside the bounded profile. |
 | `public-re-exports` | limit | `tests/conformance/modules/re-exports/run.sh` | Chains and counts beyond the stated bounds are refused rather than truncated. |
 | `reproducible-bootstrap` | limit | `bootstrap/stage1/SHA256SUMS` | A digest mismatch fails the gate instead of accepting the regenerated artifact. |
 | `rust-crate-shim` | skip | `examples/rust-shim/check.sh` | Without Cargo the gate reports a skip rather than a pass. |

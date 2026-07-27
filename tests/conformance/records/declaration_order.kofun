@@ -1,0 +1,17 @@
+# Nominal identity does not depend on declaration order. `Point` is used
+# before it is declared and its record and field identities must match the
+# identities produced by `ambiguity.kofun`, where the same record is declared
+# before its uses.
+
+fn origin() -> Point {
+    return Point(x: 0, y: 0)
+}
+
+fn shifted() -> Point {
+    return Point(y: 1, x: 2)
+}
+
+type Point = {
+    x: Int,
+    y: Int,
+}

@@ -29,13 +29,14 @@ Generated from `release/claims.json` by `make release-evidence`. Do not edit.
 | `native-text-returning-calls` | checkpoint | native | Functions returning `Text` lower on both targets for the compiler-shaped profile: parameters, locals, concatenation, forwarding and direct calls. |
 | `native-utf8-text-core` | checkpoint | native | UTF-8 `Text` values lower natively on both targets for the Core operation set, with codepoint and grapheme behaviour gated against Unicode data. |
 | `native-x86-64-function-calls` | checkpoint | native | Up to six integer arguments, guarded returns and recursion, for the Int Core only. |
+| `nominal-records` | checkpoint | frontend | The dedicated Stage 2 record frontend accepts nominal declarations, labelled construction, typed field reads, whole-record moves, and declaration-order layout facts. Module visibility, generic records, and backend lowering remain outside the checkpoint. |
 | `public-re-exports` | checkpoint | frontend | Same-package `pub import` / `pub from` with non-widening edges and explicit numeric bounds: 64-edge chains, 1,024 bindings per module, 65,536 edges per package. |
 | `reproducible-bootstrap` | implemented | bootstrap | Regenerating Stage 1 from its seed reproduces the checked-in artifact byte for byte on the supported host toolchain. |
 | `rust-crate-shim` | checkpoint | interop | One vendored Rust crate is reached through an audited C ABI shim, as a worked example. It is not a general Rust interop story. |
 | `self-recompile` | checkpoint | self-hosting | The frozen profile reaches a runnable compiler-produced compiler. The three-generation semantic fixed point is not reached and is not claimed. |
 | `selfhost-native-corpus` | checkpoint | self-hosting | The driver's five-`print` success corpus reaches a static ELF on both native targets and its output matches the self-host C11 path exactly. |
 | `source-extension` | implemented | tooling | `.kofun` is the only source extension in the repository, and the editor integration registers exactly that extension. |
-| `stable-diagnostics` | implemented | quality | Every diagnostic code has a canonical registry row and an executable family owner. Stage 2 retains 33 of 33 codes, with 3 span debts recorded rather than hidden. |
+| `stable-diagnostics` | implemented | quality | Every diagnostic code has a canonical registry row and an executable family owner. Stage 2 retains 46 of 46 codes, with 3 span debts recorded rather than hidden. |
 | `stage2-core-lowering` | checkpoint | frontend | Stage 2 lexes, parses and lowers the integer Core. Sources outside that Core are refused with a diagnostic. |
 | `stage2-typed-sidecar` | checkpoint | tooling | Stage 2 projects compiler-derived semantic events one-way into typed-sidecar v1, for explicit single-file `kofun check` only. The sidecar is non-authoritative and compiler, KIF and cache consumers remain forbidden. |
 | `stdio-language-server` | checkpoint | tooling | A stdio LSP server providing diagnostics, symbols, completion, hover, definitions and references, within measured latency budgets. |

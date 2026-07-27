@@ -5,9 +5,20 @@ program          = separators, { declaration, separators }, EOF ;
 declaration      = law_family_decl
                  | law_impl_decl
                  | law_check_decl
+                 | record_type_decl
                  | function_decl
                  | meta_function_decl
                  | statement ;
+
+(* Nominal records: see spec/records-v1.md. A record is constructed by the
+   labelled call form below, never by `Name { ... }`, so no expression
+   production begins with `{`. *)
+record_type_decl = "type", identifier, "=", separators, record_body ;
+record_body      = "{", separators,
+                   record_field,
+                   { separators, ",", separators, record_field },
+                   [ separators, "," ], separators, "}" ;
+record_field     = identifier, ":", type_ref ;
 
 (* The quoted words in these three productions are contextual in these
    positions; Monad and other family names remain ordinary identifiers. *)
@@ -102,7 +113,11 @@ postfix          = primary, { call | member | index } ;
 call             = "(", arguments, ")" ;
 member           = ".", identifier ;
 index            = "[", expression, "]" ;
-arguments        = [ expression, { separators, ",", separators, expression } ] ;
+arguments        = [ argument, { separators, ",", separators, argument },
+                   [ separators, "," ] ] ;
+argument         = [ identifier, ":" ], expression ;
+elements         = [ expression, { separators, ",", separators, expression },
+                   [ separators, "," ] ] ;
 
 primary          = integer
                  | float
@@ -116,8 +131,8 @@ primary          = integer
                  | if_expr
                  | lambda ;
 
-list             = "[", arguments, "]" ;
-tuple_or_group   = "(", [ expression, [ ",", arguments ] ], ")" ;
+list             = "[", elements, "]" ;
+tuple_or_group   = "(", [ expression, [ ",", elements ] ], ")" ;
 if_expr          = "if", expression, block,
                    [ separators, "else", separators, ( if_expr | block ) ] ;
 lambda           = "fn", "(", parameters, ")",

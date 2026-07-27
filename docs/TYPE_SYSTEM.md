@@ -251,7 +251,18 @@ type User = {
     id: Int,
     name: Text,
 }
+
+let user = User(id: 1, name: "ada")
+let name = user.name
 ```
+
+`type Name = { ... }` is the only record declaration and `Name(field: value)`
+is the only construction form. Identity is nominal, so a second record with the
+same field names and types is a different type. Fields are immutable in v1,
+`take` moves a whole record, and partial moves are rejected. Layout is untagged
+and follows declaration order.
+[`spec/records-v1.md`](../spec/records-v1.md) is normative and
+`make records` is its gate.
 
 Structural record boundary:
 

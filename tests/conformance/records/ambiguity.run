@@ -1,0 +1,5 @@
+kofun-record-run/v1
+call|function=counted|result=3
+call|function=pair|result=[Point(x: 1, y: 2), Point(x: 6, y: 8)]
+call|function=total|result=17
+call|function=flagged|result=1

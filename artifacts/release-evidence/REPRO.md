@@ -17,7 +17,7 @@ report a pass it did not observe.
 | Prerequisite | Claims that need it |
 |---|---|
 | `cargo` | `rust-crate-shim` |
-| `cc` | `c-abi-profile`, `c11-function-calls`, `compiler-seed`, `deterministic-fuzzing`, `enum-matching`, `http-framework`, `reproducible-bootstrap`, `self-recompile`, `stage2-core-lowering` |
+| `cc` | `c-abi-profile`, `c11-function-calls`, `compiler-seed`, `deterministic-fuzzing`, `enum-matching`, `http-framework`, `nominal-records`, `reproducible-bootstrap`, `self-recompile`, `stage2-core-lowering` |
 | `node` | `stage2-typed-sidecar`, `stdio-language-server`, `tree-sitter-grammar`, `wasm32-arithmetic-core` |
 | `qemu-aarch64` | `native-aarch64-function-calls`, `native-list-int-core`, `native-text-returning-calls`, `native-utf8-text-core`, `selfhost-native-corpus` |
 | `sha256sum` | `compiler-seed`, `reproducible-bootstrap` |
@@ -51,6 +51,7 @@ report a pass it did not observe.
 | `native-text-returning-calls` | `make native` |
 | `native-utf8-text-core` | `make native` |
 | `native-x86-64-function-calls` | `make check` |
+| `nominal-records` | `make records` |
 | `public-re-exports` | `make re-exports` |
 | `reproducible-bootstrap` | `make bootstrap` |
 | `rust-crate-shim` | `make rust-shim` |

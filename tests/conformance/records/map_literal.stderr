@@ -1,0 +1,1 @@
+error[E2S125]: `{` never starts an expression in the v1 record surface; map literals are not accepted and record construction is written `Name(field: value)` at bytes 87..88
