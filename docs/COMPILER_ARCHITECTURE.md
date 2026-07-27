@@ -14,11 +14,13 @@ bootstrap/stage1/compiler.c
 kofun-stage1 INPUT.kofun OUTPUT.c
 ```
 
-The current Stage 1 frontend validates line-oriented `let` and Int-valued
-`print(EXPR)` statements in `fn main()`. Expressions cover checked Int
-arithmetic, six Int comparisons, Bool equality, Bool literals and bindings,
-`!`, and short-circuiting `&&`/`||`; typed boundary crossings are refused
-before deterministic standalone C11 is emitted.
+The current Stage 1 frontend validates line-oriented `let` statements,
+Int-valued `print(EXPR)` statements, and nested `if`/`else if`/`else` blocks in
+`fn main()`. Expressions cover checked Int arithmetic, six Int comparisons, Bool
+equality, Bool literals and bindings, `!`, and short-circuiting `&&`/`||`. A
+block scopes the bindings it introduces, and typed boundary crossings,
+non-`Bool` conditions and misplaced `else` lines are refused before
+deterministic standalone C11 is emitted.
 
 Three executable checkpoints extend this path without claiming full
 integration:

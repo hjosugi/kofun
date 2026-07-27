@@ -1,0 +1,8 @@
+fn main() {
+    let total = 1
+    if true {
+        let total = 2
+        print(total)
+    }
+    print(total)
+}

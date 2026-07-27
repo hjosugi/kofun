@@ -288,10 +288,10 @@
     {
       "id": "compiler-seed",
       "public_wording": "Kofun-written compiler seed",
-      "public_status": "implemented: Int/Bool comparison Core",
+      "public_status": "implemented: nested-block Int/Bool Core",
       "state": "implemented",
       "area": "bootstrap",
-      "bounded_capability": "The Stage 1 seed is written in Kofun and kept beside a hand-audited C transliteration. Its line-oriented Core lowers checked Int arithmetic, six comparisons, Bool equality, Bool literals and bindings, unary `!`, and short-circuiting `&&`/`||`; `print` remains Int-only.",
+      "bounded_capability": "The Stage 1 seed is written in Kofun and kept beside a hand-audited C transliteration. Its line-oriented Core lowers checked Int arithmetic, six comparisons, Bool equality, Bool literals and bindings, unary `!`, short-circuiting `&&`/`||`, and nested `if`/`else if`/`else` blocks whose bindings leave scope at their `}`; `print` remains Int-only.",
       "targets": [
         "stage1"
       ],
@@ -300,15 +300,15 @@
         "bootstrap/stage1/README.md",
         "spec/semantics.md"
       ],
-      "compatibility": "The pre-existing arithmetic corpus remains byte-identical. The seed pair changes together, its digest records the change, and the Bool corpus differentials both compiler paths.",
+      "compatibility": "The pre-existing arithmetic and Bool corpora remain byte-identical. The seed pair changes together, its digest records the change, and every corpus differentials both compiler paths.",
       "positive_gate": {
         "command": "sh bootstrap/stage1/check.sh",
-        "observation": "The Kofun seed and audited C transliteration emit byte-identical C for the arithmetic and Bool corpora; the Bool program executes with both zero-dividing short-circuit operands skipped."
+        "observation": "The Kofun seed and audited C transliteration emit byte-identical C for the arithmetic, Bool and nested-block corpora; the Bool and nested-block programs execute with every zero-dividing skipped operand and condition unevaluated."
       },
       "negative_boundary": {
         "kind": "rejection",
-        "evidence": "bootstrap/selfhost/driver/corpus_reject_bool_arithmetic.kofun",
-        "observation": "Mixing a Bool comparison into Int arithmetic exits nonzero and writes no C; eight adjacent typed-boundary fixtures are checked by the same gate."
+        "evidence": "bootstrap/selfhost/driver/corpus_reject_else_without_if.kofun",
+        "observation": "An `else` with no `if` to attach to exits nonzero and writes no C; fifteen adjacent typed-boundary and block-boundary fixtures are checked by the same gate."
       },
       "safety": {
         "classification": "none"

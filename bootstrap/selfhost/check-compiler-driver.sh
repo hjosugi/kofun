@@ -113,6 +113,36 @@ cmp bootstrap/selfhost/driver/corpus_bool.c \
 cmp bootstrap/selfhost/driver/corpus_bool.stdout "$temporary/bool.stdout" ||
     fail "Bool corpus program output differs from the pinned golden"
 
+# The nested-block slice takes the same two compiler paths. Its checked-in C
+# proves one C brace per Kofun block, `else if` chains that do not accumulate
+# braces, and block-local bindings that leave scope at their `}` — the fixture
+# rebinds a freed name afterwards. Executing it proves the skipped `else if`
+# condition and the short-circuited `||` operand, both `1 // 0`, stayed
+# unevaluated.
+mkdir -p "$temporary/branch-left" "$temporary/branch-right"
+cp bootstrap/selfhost/driver/corpus_branch.kofun \
+    "$temporary/branch-left/input.kofun"
+cp bootstrap/selfhost/driver/corpus_branch.kofun \
+    "$temporary/branch-right/input.kofun"
+(cd "$temporary/branch-left" &&
+    "$temporary/kofun-a1" input.kofun output.c >stdout.txt 2>stderr.txt)
+(cd "$temporary/branch-right" &&
+    "$temporary/kofun-stage1" input.kofun output.c >stdout.txt 2>stderr.txt)
+cmp "$temporary/branch-left/output.c" "$temporary/branch-right/output.c" ||
+    fail "compiler-from-S and the audited seed emit different nested-block C"
+cmp "$temporary/branch-left/stdout.txt" "$temporary/branch-right/stdout.txt" ||
+    fail "compiler-from-S and the audited seed differ on nested-block stdout"
+cmp "$temporary/branch-left/stderr.txt" "$temporary/branch-right/stderr.txt" ||
+    fail "compiler-from-S and the audited seed differ on nested-block stderr"
+cmp bootstrap/selfhost/driver/corpus_branch.c \
+    "$temporary/branch-left/output.c" ||
+    fail "nested-block corpus emission differs from the checked-in evidence"
+"$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$temporary/branch-left/output.c" -o "$temporary/branch-program"
+"$temporary/branch-program" >"$temporary/branch.stdout"
+cmp bootstrap/selfhost/driver/corpus_branch.stdout "$temporary/branch.stdout" ||
+    fail "nested-block corpus program output differs from the pinned golden"
+
 # Path remapping: compiling the same relative input from two different
 # directories produces byte-identical C — no absolute-path leakage.
 mkdir -p "$temporary/remap-a/nested" "$temporary/remap-b"
@@ -165,7 +195,14 @@ for fixture in \
     bootstrap/selfhost/driver/corpus_reject_bool_order.kofun \
     bootstrap/selfhost/driver/corpus_reject_logical_int.kofun \
     bootstrap/selfhost/driver/corpus_reject_not_int.kofun \
-    bootstrap/selfhost/driver/corpus_reject_single_pipe.kofun
+    bootstrap/selfhost/driver/corpus_reject_single_pipe.kofun \
+    bootstrap/selfhost/driver/corpus_reject_branch_condition.kofun \
+    bootstrap/selfhost/driver/corpus_reject_branch_scope.kofun \
+    bootstrap/selfhost/driver/corpus_reject_branch_shadow.kofun \
+    bootstrap/selfhost/driver/corpus_reject_else_without_if.kofun \
+    bootstrap/selfhost/driver/corpus_reject_else_after_else.kofun \
+    bootstrap/selfhost/driver/corpus_reject_unclosed_block.kofun \
+    bootstrap/selfhost/driver/corpus_reject_extra_block_end.kofun
 do
     stem=$(basename "$fixture" .kofun)
     set +e
@@ -230,4 +267,5 @@ printf '%s\n' \
     "PASS: the trusted seed compiles the frozen S into a runnable compiler" \
     "PASS: the compiler from S matches the audited Stage 1 seed byte for byte on the corpus" \
     "PASS: Int/Bool typing, comparisons, and short-circuiting agree across both seeds" \
+    "PASS: nested blocks, else-if chains, and block scoping agree across both seeds" \
     "PASS: emission is deterministic, path-independent, and failure-preserving"
