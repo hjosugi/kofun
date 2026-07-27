@@ -1,7 +1,7 @@
 {
   "schema": "kofun.docs-status/v1",
   "repository": "hjosugi/kofun",
-  "source_commit": "391e3df6d4549e915a3d384ec6da28d551b69b60",
+  "source_commit": "0f237caf4d35d85401a2974bc393bd507746e345",
   "verification": {
     "workflow": "CI",
     "status": "missing",
@@ -43,5 +43,5 @@
       "url": "https://github.com/hjosugi/kofun/issues/668"
     }
   ],
-  "reviewed_at": "2026-07-27T02:08:32.086Z"
+  "reviewed_at": "2026-07-27T03:35:55.826Z"
 }
