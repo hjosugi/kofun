@@ -2323,7 +2323,7 @@ fn call_arity(source: Text, open: Int) -> Int {
 # them yet, so accepted uses classify as unsupported lowering, never as an
 # unknown-function source error.
 fn builtin_arity(name: Text) -> Int {
-    if name == "args" {
+    if name == "args" || name == "fail" {
         return 0
     }
     if name == "chars" || name == "is_digit" || name == "is_space" ||
@@ -2345,7 +2345,7 @@ fn builtin_arity(name: Text) -> Int {
 # `len` accepts either Text or List (its only overload); every other
 # signature is exact.
 fn builtin_parameter_types(name: Text) -> Text {
-    if name == "args" {
+    if name == "args" || name == "fail" {
         return ""
     }
     if name == "chars" || name == "is_digit" || name == "is_space" ||
@@ -4375,7 +4375,7 @@ fn builtin_return_type(name: Text) -> Text {
        name == "trim" || name == "validate_unicode_source" {
         return "Text"
     }
-    if name == "write_text" {
+    if name == "fail" || name == "write_text" {
         return "Void"
     }
     return ""
@@ -7279,12 +7279,17 @@ fn selfhost_builtin_signature(slot: Int) -> Text {
     if slot == 15 {
         return "write_text|Void|Text|Text"
     }
+    # Slot 16 is the len List[Text] overload, which has no signature row
+    # here; `fail` follows it at 17 so every id above stays fixed.
+    if slot == 17 {
+        return "fail|Void"
+    }
     return ""
 }
 
 fn selfhost_builtin_slot(name: Text) -> Int {
     let mut slot = 0
-    while slot < 16 {
+    while slot < 18 {
         let signature = selfhost_builtin_signature(slot)
         if pattern_line_field(signature, 0, 0) == name {
             return slot
@@ -7367,6 +7372,20 @@ fn selfhost_register(source: Text, functions: Text) -> Text {
     types = selfhost_records(required)
     symbols = symbols + "symbol|" + to_text(count + 16) + "|builtin|len|" +
     selfhost_field(required, 0) + "|0|0\n"
+    # `fail` is emitted last, after the len List[Text] overload, rather
+    # than in its alphabetical place in the table above. Emission order is
+    # symbol-id order and those ids are checked-in evidence: alphabetical
+    # insertion would renumber thirteen builtins, and appending inside the
+    # loop would still push the overload from 17 to 18. Emitting it here
+    # leaves every existing id fixed, so the pinned typed-HIR fixtures only
+    # gain a line.
+    let fail_required = selfhost_fn_type_require(types, "Void", "")
+    if selfhost_failed(fail_required) {
+        return fail_required
+    }
+    types = selfhost_records(fail_required)
+    symbols = symbols + "symbol|" + to_text(count + 17) + "|builtin|fail|" +
+    selfhost_field(fail_required, 0) + "|0|0\n"
     return "ok\n" + types + symbols + bindings
 }
 
@@ -9341,6 +9360,9 @@ fn selfhost_c11_builtin_helper(name: Text) -> Text {
     if name == "contains" {
         return "kofun_rt_text_contains"
     }
+    if name == "fail" {
+        return "kofun_rt_fail"
+    }
     if name == "find" {
         return "kofun_rt_find"
     }
@@ -9566,6 +9588,10 @@ fn selfhost_c11_prelude() -> Text {
     "\n" +
     "void kofun_rt_panic(const char *message) {\n" +
     "    fprintf(stderr, \"Kofun runtime error: %s\\n\", message);\n" +
+    "    exit(1);\n" +
+    "}\n" +
+    "\n" +
+    "void kofun_rt_fail(void) {\n" +
     "    exit(1);\n" +
     "}\n" +
     "\n" +

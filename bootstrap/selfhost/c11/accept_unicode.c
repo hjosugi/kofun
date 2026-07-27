@@ -107,6 +107,10 @@ void kofun_rt_panic(const char *message) {
     exit(1);
 }
 
+void kofun_rt_fail(void) {
+    exit(1);
+}
+
 void *kofun_rt_alloc(size_t size) {
     void *value = malloc(size == 0 ? 1 : size);
     if (value == NULL) {

@@ -3997,6 +3997,7 @@ static int64_t builtin_arity(const char *name) {
         {"args", 0},
         {"chars", 1},
         {"contains", 2},
+        {"fail", 0},
         {"find", 2},
         {"is_digit", 1},
         {"is_space", 1},
@@ -4053,6 +4054,7 @@ static const char *builtin_parameter_types(const char *name) {
         {"args", ""},
         {"chars", "Text"},
         {"contains", "Text|Text"},
+        {"fail", ""},
         {"find", "Text|Text"},
         {"is_digit", "Text"},
         {"is_space", "Text"},
@@ -6557,7 +6559,7 @@ static int64_t scope_depth_for_open(
 }
 
 /*
- * Result types of the 16 profile builtins for `let` initializer typing.
+ * Result types of the 17 profile builtins for `let` initializer typing.
  * The scope-HIR type vocabulary stays the existing single tokens
  * (Int/Bool/Text/List/Void); List[Text] element typing belongs to the
  * selfhost-HIR emitter. Returns NULL for a non-builtin name.
@@ -6570,6 +6572,7 @@ static const char *builtin_return_type(const char *name) {
         {"args", "List"},
         {"chars", "List"},
         {"contains", "Bool"},
+        {"fail", "Void"},
         {"find", "Int"},
         {"is_digit", "Bool"},
         {"is_space", "Bool"},
@@ -11210,7 +11213,7 @@ typedef struct {
         char parameters[8][16];
     } functions[64];
     int64_t function_count;
-    int64_t builtin_symbols[16];
+    int64_t builtin_symbols[17];
     int64_t len_list_symbol;
     char *error;
     char error_code[8];
@@ -11705,13 +11708,21 @@ static ShExpr *sh_parse_primary(Sh *sh, int64_t *cursor) {
                     if (expected[0] == '|') ++expected;
                 }
                 int64_t slot = -1;
+                /*
+                 * Positions index `builtin_symbols`, so this order must
+                 * match the order those slots are filled in, not the
+                 * alphabetical order of the signature tables. `fail`
+                 * occupies the tail slot because its symbol is assigned
+                 * last, after the len List[Text] overload.
+                 */
                 static const char *ordered[] = {
                     "args", "chars", "contains", "find", "is_digit",
                     "is_space", "is_xid_continue", "len", "print",
                     "read_text", "replace", "starts_with", "text_slice",
                     "trim", "validate_unicode_source", "write_text",
+                    "fail",
                 };
-                for (int64_t index = 0; index < 16; ++index) {
+                for (int64_t index = 0; index < 17; ++index) {
                     if (strcmp(ordered[index], call->text) == 0) {
                         slot = index;
                         break;
@@ -12701,7 +12712,7 @@ static char *emit_selfhost_hir_document(
         function_start = next_function_start(source, symbol_close);
     }
 
-    /* The 16 builtin symbols plus the len List[Text] overload. */
+    /* The 17 builtin symbols plus the len List[Text] overload. */
     {
         static const struct {
             const char *name;
@@ -12760,6 +12771,26 @@ static char *emit_selfhost_hir_document(
                 &sh.symbols,
                 "symbol|%" PRId64 "|builtin|len|%" PRId64 "|0|0\n",
                 sh.len_list_symbol,
+                fn_type
+            );
+        }
+        /*
+         * `fail` is emitted last, after the len List[Text] overload,
+         * rather than in its alphabetical place in the table above.
+         * Emission order is symbol-id order and those ids are checked-in
+         * evidence: alphabetical insertion would renumber thirteen
+         * builtins, and appending inside the loop would still push the
+         * overload from 17 to 18. Emitting it here leaves every existing
+         * id fixed, so the pinned typed-HIR fixtures only gain a line.
+         */
+        if (sh.error == NULL) {
+            char no_parameters[8][16];
+            int64_t fn_type = sh_fn_type_id(&sh, "Void", no_parameters, 0);
+            sh.builtin_symbols[16] = sh.next_symbol++;
+            buffer_format(
+                &sh.symbols,
+                "symbol|%" PRId64 "|builtin|fail|%" PRId64 "|0|0\n",
+                sh.builtin_symbols[16],
                 fn_type
             );
         }
@@ -13330,9 +13361,19 @@ static const char *sl_prelude =
     "\n"
     "";
 
+/*
+ * `kofun_rt_fail` is the whole of the `fail` builtin's host capability:
+ * it ends the process with a nonzero status and writes nothing. The
+ * program has already printed whatever diagnostic it wants, so adding a
+ * message here would change the pinned stdout of every refusing corpus.
+ */
 static const char *sl_prelude_text =
     "void kofun_rt_panic(const char *message) {\n"
     "    fprintf(stderr, \"Kofun runtime error: %s\\n\", message);\n"
+    "    exit(1);\n"
+    "}\n"
+    "\n"
+    "void kofun_rt_fail(void) {\n"
     "    exit(1);\n"
     "}\n"
     "\n"
@@ -13655,6 +13696,7 @@ static const char *sl_builtin_helper(const char *name) {
     if (strcmp(name, "args") == 0) return "kofun_rt_args";
     if (strcmp(name, "chars") == 0) return "kofun_rt_chars";
     if (strcmp(name, "contains") == 0) return "kofun_rt_text_contains";
+    if (strcmp(name, "fail") == 0) return "kofun_rt_fail";
     if (strcmp(name, "find") == 0) return "kofun_rt_find";
     if (strcmp(name, "is_digit") == 0) return "kofun_rt_is_digit";
     if (strcmp(name, "is_space") == 0) return "kofun_rt_is_space";
