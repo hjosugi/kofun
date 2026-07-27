@@ -22,7 +22,16 @@
 #define CONSTRUCTOR_LIMIT 256u
 #define MATCH_LIMIT 256u
 #define ARM_LIMIT 512u
+#define ALTERNATIVE_LIMIT 1024u
+#define ARM_ALTERNATIVE_LIMIT 64u
 #define PATTERN_NODE_LIMIT 256u
+/*
+ * The child capacity stays above the arm-alternative budget so an over-long
+ * or-pattern is refused by the declared analysis boundary rather than by the
+ * artifact reader.
+ */
+#define PATTERN_CHILD_LIMIT 128u
+#define PATTERN_DEPTH_LIMIT 32u
 #define SCOPE_LIMIT 1024u
 #define BINDING_LIMIT 1024u
 #define USE_LIMIT 2048u
@@ -92,7 +101,7 @@ typedef struct {
     size_t close_start;
     size_t close_end;
     size_t child_count;
-    int64_t children[8];
+    int64_t children[PATTERN_CHILD_LIMIT];
 } PatternNode;
 
 typedef struct {
@@ -150,7 +159,8 @@ typedef struct {
 typedef enum {
     ARM_CONSTRUCTOR,
     ARM_WILDCARD,
-    ARM_BINDING
+    ARM_BINDING,
+    ARM_OR
 } ArmRole;
 
 typedef struct {
@@ -162,9 +172,36 @@ typedef struct {
     int64_t scope_id;
     int64_t binding_id;
     bool guarded;
+    size_t first_alternative;
+    size_t alternative_count;
     size_t start;
     size_t end;
 } TypedArm;
+
+/*
+ * One tested alternative of one arm. A pattern without `|` contributes exactly
+ * one alternative, so coverage, redundancy, and the emitted projection use the
+ * same representation for both shapes.
+ */
+typedef struct {
+    size_t match_index;
+    size_t arm_index;
+    size_t index;
+    int64_t pattern_node;
+    ArmRole role;
+    int64_t constructor_index;
+    int64_t binding_id;
+    size_t start;
+    size_t end;
+} TypedAlternative;
+
+/* Classification of one alternative before any BindingId is allocated. */
+typedef struct {
+    ArmRole role;
+    int64_t constructor_index;
+    const PatternNode *binding_node;
+    const char *binding_role;
+} AlternativeShape;
 
 typedef struct {
     size_t id;
@@ -219,6 +256,8 @@ typedef struct {
     size_t match_count;
     TypedArm arms[ARM_LIMIT];
     size_t arm_count;
+    TypedAlternative alternatives[ALTERNATIVE_LIMIT];
+    size_t alternative_count;
     PatternBinding pattern_bindings[PATTERN_BINDING_LIMIT];
     size_t pattern_binding_count;
     int64_t next_binding_id;
@@ -686,8 +725,8 @@ static bool parse_child_ids(Program *program, PatternNode *node, char *value) {
         char *comma = strchr(cursor, ',');
         int64_t id;
         if (comma != NULL) *comma = '\0';
-        if (!parse_i64(cursor, &id) || count >= sizeof(node->children) / sizeof(node->children[0])) {
-            set_error(program, "E2S79", "constructor child id list is malformed");
+        if (!parse_i64(cursor, &id) || count >= PATTERN_CHILD_LIMIT) {
+            set_error(program, "E2S79", "Pattern child id list is malformed");
             return false;
         }
         node->children[count++] = id;
@@ -695,7 +734,7 @@ static bool parse_child_ids(Program *program, PatternNode *node, char *value) {
         cursor = comma + 1;
     }
     if (count != node->child_count) {
-        set_error(program, "E2S79", "constructor child count differs from Pattern record");
+        set_error(program, "E2S79", "Pattern child count differs from Pattern record");
         return false;
     }
     return true;
@@ -789,9 +828,28 @@ static bool parse_pattern_artifact(Program *program, char *artifact) {
                     !parse_size(fields[6], &node->name_start) || !parse_size(fields[7], &node->name_end) ||
                     !parse_size(fields[8], &node->open_start) || !parse_size(fields[9], &node->open_end) ||
                     !parse_size(fields[10], &node->close_start) || !parse_size(fields[11], &node->close_end) ||
-                    !parse_size(fields[12], &node->child_count) || node->child_count > 8u ||
+                    !parse_size(fields[12], &node->child_count) ||
+                    node->child_count > PATTERN_CHILD_LIMIT ||
                     !parse_child_ids(program, node, fields[13])) {
                     if (!program->failed) set_error(program, "E2S79", "ConstructorPattern record is malformed");
+                    return false;
+                }
+            } else if (node->kind == NODE_OR) {
+                if (count != 7u || !parse_size(fields[5], &node->child_count) ||
+                    node->child_count < 2u || node->child_count > PATTERN_CHILD_LIMIT ||
+                    !parse_child_ids(program, node, fields[6])) {
+                    if (!program->failed) set_error(program, "E2S79", "OrPattern record is malformed");
+                    return false;
+                }
+            } else if (node->kind == NODE_PARENTHESIZED) {
+                node->child_count = 1u;
+                if (count != 10u ||
+                    !parse_size(fields[5], &node->open_start) ||
+                    !parse_size(fields[6], &node->open_end) ||
+                    !parse_size(fields[7], &node->close_start) ||
+                    !parse_size(fields[8], &node->close_end) ||
+                    !parse_child_ids(program, node, fields[9])) {
+                    if (!program->failed) set_error(program, "E2S79", "ParenthesizedPattern record is malformed");
                     return false;
                 }
             }
@@ -1112,15 +1170,25 @@ static bool validate_artifacts(Program *program) {
             set_error(program, "E2S79", "named Pattern node %" PRId64 " is stale", node->id);
             return false;
         }
-        if (node->kind == NODE_CONSTRUCTOR &&
+        if ((node->kind == NODE_CONSTRUCTOR || node->kind == NODE_PARENTHESIZED) &&
             (!source_equals(program, node->open_start, node->open_end, "(") ||
              !source_equals(program, node->close_start, node->close_end, ")"))) {
-            set_error(program, "E2S79", "ConstructorPattern delimiters are stale");
+            set_error(program, "E2S79", "%s delimiters are stale",
+                node->kind == NODE_CONSTRUCTOR ? "ConstructorPattern" : "ParenthesizedPattern");
             return false;
         }
         for (child = 0u; child < node->child_count; child += 1u) {
-            if (pattern_node(program, node->children[child]) == NULL) {
-                set_error(program, "E2S79", "ConstructorPattern references unknown child %" PRId64, node->children[child]);
+            PatternNode *nested = pattern_node(program, node->children[child]);
+            if (nested == NULL) {
+                set_error(program, "E2S79", "Pattern node %" PRId64 " references unknown child %" PRId64,
+                    node->id, node->children[child]);
+                return false;
+            }
+            /* A child never escapes its parent's span in a fresh Pattern tree. */
+            if (nested->start < node->start || nested->end > node->end ||
+                nested->id == node->id) {
+                set_error(program, "E2S79",
+                    "Pattern node %" PRId64 " has a child outside its own span", node->id);
                 return false;
             }
         }
@@ -1361,6 +1429,197 @@ static bool arm_is_guarded(Program *program, const PatternArm *arm) {
     return cursor < (size_t)arm->arrow_start && source_token_equals(program, cursor, "if");
 }
 
+/*
+ * Grouping parentheses carry no coverage meaning, so an alternative is the
+ * pattern they wrap. `depth` bounds the walk even for a corrupt tree.
+ */
+static PatternNode *unwrap_parentheses(
+    Program *program,
+    PatternNode *node,
+    size_t depth
+) {
+    while (node != NULL && node->kind == NODE_PARENTHESIZED) {
+        if (depth == 0u) {
+            set_error(program, "E2S79",
+                "Pattern nesting at bytes %zu..%zu exceeds depth %u",
+                node->start, node->end, PATTERN_DEPTH_LIMIT);
+            return NULL;
+        }
+        depth -= 1u;
+        node = pattern_node(program, node->children[0]);
+    }
+    if (node == NULL && !program->failed) {
+        set_error(program, "E2S79", "Pattern tree references an unknown node");
+    }
+    return node;
+}
+
+/*
+ * Flatten one arm pattern into the alternatives tested left to right. A
+ * pattern without `|` yields exactly one alternative; the arm's own operation
+ * pays for it, and each further alternative costs one more operation.
+ */
+static bool collect_alternatives(
+    Program *program,
+    PatternNode *node,
+    PatternNode *alternatives[ARM_ALTERNATIVE_LIMIT],
+    size_t *count,
+    size_t depth,
+    uint64_t *operations
+) {
+    node = unwrap_parentheses(program, node, depth);
+    if (node == NULL) return false;
+    if (node->kind == NODE_OR) {
+        size_t index;
+        if (depth == 0u) {
+            set_error(program, "E2S79",
+                "Pattern nesting at bytes %zu..%zu exceeds depth %u",
+                node->start, node->end, PATTERN_DEPTH_LIMIT);
+            return false;
+        }
+        for (index = 0u; index < node->child_count; index += 1u) {
+            if (!collect_alternatives(program, pattern_node(program, node->children[index]),
+                    alternatives, count, depth - 1u, operations)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (*count >= ARM_ALTERNATIVE_LIMIT) {
+        set_error(program, "E2S79",
+            "or-pattern at bytes %zu..%zu exceeds %u alternatives in one arm",
+            node->start, node->end, ARM_ALTERNATIVE_LIMIT);
+        return false;
+    }
+    if (*count != 0u && !analysis_step(program, operations)) return false;
+    alternatives[(*count)++] = node;
+    return true;
+}
+
+/*
+ * Resolve one alternative against the scrutinee ADT. Constructor identity comes
+ * from the owner `SymbolId`, never from spelling. No BindingId is allocated
+ * here: an or-pattern's alternatives must agree on their names first.
+ */
+static bool classify_alternative(
+    Program *program,
+    const AdtFact *adt,
+    const PatternNode *node,
+    AlternativeShape *shape
+) {
+    ConstructorFact *constructor;
+    memset(shape, 0, sizeof(*shape));
+    shape->constructor_index = -1;
+    if (node->kind == NODE_WILDCARD) {
+        shape->role = ARM_WILDCARD;
+        return true;
+    }
+    if (node->kind == NODE_NAME) {
+        constructor = owned_constructor(program, adt->id, node->name);
+        if (constructor != NULL) {
+            if (constructor->arity != 0u) {
+                set_error(program, "E2S79",
+                    "payload constructor `%s` requires a whole `%s(_)` pattern at bytes %zu..%zu",
+                    constructor->name, constructor->name, node->start, node->end);
+                return false;
+            }
+            shape->role = ARM_CONSTRUCTOR;
+            shape->constructor_index = (int64_t)constructor_index_of(program, constructor);
+            return true;
+        }
+        shape->role = ARM_BINDING;
+        shape->binding_node = node;
+        shape->binding_role = "catchall";
+        return true;
+    }
+    if (node->kind == NODE_CONSTRUCTOR) {
+        PatternNode *child = NULL;
+        constructor = owned_constructor(program, adt->id, node->name);
+        if (constructor == NULL) {
+            set_error(program, "E2S79",
+                "constructor `%s` at bytes %zu..%zu does not belong to ADT `%s`",
+                node->name, node->name_start, node->name_end, adt->name);
+            return false;
+        }
+        if (constructor->arity != node->child_count || constructor->arity > 1u) {
+            set_error(program, "E2S79",
+                "constructor pattern `%s` has %zu payload patterns but resolved arity is %u",
+                node->name, node->child_count, constructor->arity);
+            return false;
+        }
+        if (node->child_count == 1u) child = pattern_node(program, node->children[0]);
+        if (child != NULL && child->kind != NODE_WILDCARD && child->kind != NODE_NAME) {
+            set_error(program, "E2S79",
+                "nested payload usefulness is unsupported at bytes %zu..%zu; hint: use `%s(_)` or one binding",
+                child->start, child->end, node->name);
+            return false;
+        }
+        if (node->child_count == 1u && child == NULL) {
+            set_error(program, "E2S79", "constructor pattern references an unknown payload node");
+            return false;
+        }
+        shape->role = ARM_CONSTRUCTOR;
+        shape->constructor_index = (int64_t)constructor_index_of(program, constructor);
+        if (child != NULL && child->kind == NODE_NAME) {
+            shape->binding_node = child;
+            shape->binding_role = "payload";
+        }
+        return true;
+    }
+    set_error(program, "E2S79",
+        "pattern form at bytes %zu..%zu is outside the bounded ADT exhaustiveness slice",
+        node->start, node->end);
+    return false;
+}
+
+static void describe_alternative_binding(
+    const AlternativeShape *shape,
+    char *buffer,
+    size_t size
+) {
+    if (shape->binding_node == NULL) {
+        (void)snprintf(buffer, size, "binds no name");
+        return;
+    }
+    (void)snprintf(buffer, size, "binds `%s` as a %s", shape->binding_node->name,
+        strcmp(shape->binding_role, "payload") == 0 ? "payload" : "catch-all");
+}
+
+/*
+ * Every alternative of one arm must bind the same names with the same payload
+ * roles, so the arm body sees one BindingId whichever alternative matched.
+ */
+static bool check_alternative_bindings(
+    Program *program,
+    const AlternativeShape shapes[],
+    PatternNode *const alternatives[],
+    size_t count,
+    const TypedArm *arm
+) {
+    size_t index;
+    for (index = 1u; index < count; index += 1u) {
+        const AlternativeShape *first = &shapes[0];
+        const AlternativeShape *other = &shapes[index];
+        char expected[NAME_LIMIT + 32u];
+        char actual[NAME_LIMIT + 32u];
+        bool agree = (first->binding_node == NULL) == (other->binding_node == NULL);
+        if (agree && first->binding_node != NULL) {
+            agree = strcmp(first->binding_node->name, other->binding_node->name) == 0 &&
+                strcmp(first->binding_role, other->binding_role) == 0;
+        }
+        if (agree) continue;
+        describe_alternative_binding(first, expected, sizeof(expected));
+        describe_alternative_binding(other, actual, sizeof(actual));
+        set_error(program, "E2S105",
+            "or-pattern alternatives must bind the same names at bytes %zu..%zu: the alternative at bytes %zu..%zu %s but the alternative at bytes %zu..%zu %s; hint: bind the same names with the same payload types in every alternative",
+            arm->start, arm->end,
+            alternatives[0]->start, alternatives[0]->end, expected,
+            alternatives[index]->start, alternatives[index]->end, actual);
+        return false;
+    }
+    return true;
+}
+
 static bool build_typed_arms(
     Program *program,
     TypedMatch *match,
@@ -1375,7 +1634,10 @@ static bool build_typed_arms(
         PatternNode *root;
         ScopeFact *arm_scope;
         TypedArm *arm;
-        ConstructorFact *constructor = NULL;
+        PatternNode *alternatives[ARM_ALTERNATIVE_LIMIT];
+        AlternativeShape shapes[ARM_ALTERNATIVE_LIMIT];
+        size_t alternative_count = 0u;
+        size_t index;
         size_t body_open;
         if (!analysis_step(program, operations)) return false;
         if (source_arm == NULL || source_arm->arrow_start < 0 || source_arm->arrow_end < 0) {
@@ -1405,64 +1667,51 @@ static bool build_typed_arms(
         arm->guarded = arm_is_guarded(program, source_arm);
         arm->start = source_arm->start;
         arm->end = source_arm->end;
+        arm->first_alternative = program->alternative_count;
 
-        if (root->kind == NODE_WILDCARD) {
-            arm->role = ARM_WILDCARD;
-        } else if (root->kind == NODE_NAME) {
-            constructor = owned_constructor(program, adt->id, root->name);
-            if (constructor != NULL) {
-                if (constructor->arity != 0u) {
-                    set_error(program, "E2S79",
-                        "payload constructor `%s` requires a whole `%s(_)` pattern at bytes %zu..%zu",
-                        constructor->name, constructor->name, root->start, root->end);
-                    return false;
-                }
-                arm->role = ARM_CONSTRUCTOR;
-                arm->constructor_index = (int64_t)constructor_index_of(program, constructor);
-            } else {
-                arm->role = ARM_BINDING;
-                if (!add_pattern_binding(program, match, arm, root, "catchall", &arm->binding_id)) {
-                    return false;
-                }
-            }
-        } else if (root->kind == NODE_CONSTRUCTOR) {
-            PatternNode *child = NULL;
-            constructor = owned_constructor(program, adt->id, root->name);
-            if (constructor == NULL) {
-                set_error(program, "E2S79",
-                    "constructor `%s` at bytes %zu..%zu does not belong to ADT `%s`",
-                    root->name, root->name_start, root->name_end, adt->name);
-                return false;
-            }
-            if (constructor->arity != root->child_count || constructor->arity > 1u) {
-                set_error(program, "E2S79",
-                    "constructor pattern `%s` has %zu payload patterns but resolved arity is %u",
-                    root->name, root->child_count, constructor->arity);
-                return false;
-            }
-            if (root->child_count == 1u) child = pattern_node(program, root->children[0]);
-            if (child != NULL && child->kind != NODE_WILDCARD && child->kind != NODE_NAME) {
-                set_error(program, "E2S79",
-                    "nested payload usefulness is unsupported at bytes %zu..%zu; hint: use `%s(_)` or one binding",
-                    child->start, child->end, root->name);
-                return false;
-            }
-            if (root->child_count == 1u && child == NULL) {
-                set_error(program, "E2S79", "constructor pattern references an unknown payload node");
-                return false;
-            }
-            arm->role = ARM_CONSTRUCTOR;
-            arm->constructor_index = (int64_t)constructor_index_of(program, constructor);
-            if (child != NULL && child->kind == NODE_NAME &&
-                !add_pattern_binding(program, match, arm, child, "payload", &arm->binding_id)) {
-                return false;
-            }
-        } else {
-            set_error(program, "E2S79",
-                "pattern form at bytes %zu..%zu is outside the bounded ADT exhaustiveness slice",
-                root->start, root->end);
+        if (!collect_alternatives(program, root, alternatives, &alternative_count,
+                PATTERN_DEPTH_LIMIT, operations)) {
             return false;
         }
+        if (alternative_count == 0u) {
+            set_error(program, "E2S79",
+                "Pattern arm %zu tests no alternative", arm_index);
+            return false;
+        }
+        for (index = 0u; index < alternative_count; index += 1u) {
+            if (!classify_alternative(program, adt, alternatives[index], &shapes[index])) {
+                return false;
+            }
+        }
+        if (alternative_count > 1u &&
+            !check_alternative_bindings(program, shapes, alternatives, alternative_count, arm)) {
+            return false;
+        }
+        if (shapes[0].binding_node != NULL && !add_pattern_binding(program, match, arm,
+                shapes[0].binding_node, shapes[0].binding_role, &arm->binding_id)) {
+            return false;
+        }
+        arm->role = alternative_count > 1u ? ARM_OR : shapes[0].role;
+        arm->constructor_index = alternative_count > 1u ? -1 : shapes[0].constructor_index;
+        for (index = 0u; index < alternative_count; index += 1u) {
+            TypedAlternative *alternative;
+            if (program->alternative_count >= ALTERNATIVE_LIMIT) {
+                set_error(program, "E2S79", "typed match alternative limit is %u", ALTERNATIVE_LIMIT);
+                return false;
+            }
+            alternative = &program->alternatives[program->alternative_count++];
+            memset(alternative, 0, sizeof(*alternative));
+            alternative->match_index = match->id;
+            alternative->arm_index = arm_index;
+            alternative->index = index;
+            alternative->pattern_node = alternatives[index]->id;
+            alternative->role = shapes[index].role;
+            alternative->constructor_index = shapes[index].constructor_index;
+            alternative->binding_id = shapes[index].binding_node == NULL ? -1 : arm->binding_id;
+            alternative->start = alternatives[index]->start;
+            alternative->end = alternatives[index]->end;
+        }
+        arm->alternative_count = alternative_count;
         match->arm_count += 1u;
     }
     return true;
@@ -1561,6 +1810,7 @@ static bool resolve_pattern_uses(Program *program, uint64_t *operations) {
 static const char *arm_role_name(ArmRole role) {
     if (role == ARM_CONSTRUCTOR) return "constructor";
     if (role == ARM_WILDCARD) return "wildcard";
+    if (role == ARM_OR) return "or";
     return "binding";
 }
 
@@ -1579,16 +1829,42 @@ static TypedArm *typed_arm_at(Program *program, const TypedMatch *match, size_t 
 
 static bool report_redundant(
     Program *program,
-    const TypedArm *arm,
-    const TypedArm *covering,
+    const TypedMatch *match,
+    const TypedAlternative *alternative,
+    const TypedAlternative *covering,
     const char *subject
 ) {
+    const TypedArm *arm = typed_arm_at(program, match, alternative->arm_index);
+    const TypedArm *covering_arm = typed_arm_at(program, match, covering->arm_index);
+    if (arm == NULL || covering_arm == NULL) {
+        set_error(program, "E2S79", "redundant pattern has no owning arm");
+        return false;
+    }
+    /* An or-arm points at the alternative; a plain arm keeps the arm wording. */
+    if (arm->alternative_count > 1u) {
+        set_error(program, "E2S26",
+            "redundant or-pattern alternative at bytes %zu..%zu: %s is already covered by the %s at bytes %zu..%zu; hint: remove the redundant alternative",
+            alternative->start, alternative->end, subject,
+            covering_arm->alternative_count > 1u ? "alternative" : "arm",
+            covering->start, covering->end);
+        return false;
+    }
     set_error(program, "E2S26",
-        "redundant ADT match arm at bytes %zu..%zu: %s is already covered by the arm at bytes %zu..%zu; hint: remove or reorder the redundant arm",
-        arm->start, arm->end, subject, covering->start, covering->end);
+        "redundant ADT match arm at bytes %zu..%zu: %s is already covered by the %s at bytes %zu..%zu; hint: remove or reorder the redundant arm",
+        alternative->start, alternative->end, subject,
+        covering_arm->alternative_count > 1u ? "alternative" : "arm",
+        covering->start, covering->end);
     return false;
 }
 
+/*
+ * Coverage walks arms in order and, inside each arm, alternatives in order.
+ * `matched` carries the arm-local view: an earlier alternative of the same arm
+ * makes a later one redundant even under a guard, because both select the same
+ * constructor and the guard cannot give the later one a case the earlier one
+ * did not already test. Only an unguarded arm commits its view to the static
+ * `covered` set, so a guarded arm still proves no coverage.
+ */
 static bool analyze_match(
     Program *program,
     TypedMatch *match,
@@ -1597,52 +1873,64 @@ static bool analyze_match(
     AdtFact *adt = &program->adts[match->adt_index];
     size_t constructor_count = adt_constructor_count(program, adt);
     bool covered[ADT_LIMIT] = { false };
-    int64_t covering_arm[ADT_LIMIT];
+    int64_t covering[ADT_LIMIT];
+    bool matched[ADT_LIMIT];
+    int64_t matching[ADT_LIMIT];
     size_t arm_index;
     size_t index;
-    for (index = 0u; index < ADT_LIMIT; index += 1u) covering_arm[index] = -1;
+    for (index = 0u; index < ADT_LIMIT; index += 1u) covering[index] = -1;
     for (arm_index = 0u; arm_index < match->arm_count; arm_index += 1u) {
         TypedArm *arm = typed_arm_at(program, match, arm_index);
+        size_t alternative_index;
         if (!analysis_step(program, operations) || arm == NULL) return false;
-        if (arm->role == ARM_CONSTRUCTOR) {
-            ConstructorFact *constructor = &program->constructors[(size_t)arm->constructor_index];
-            size_t ordinal = constructor->ordinal;
-            if (ordinal >= constructor_count) {
-                set_error(program, "E2S79", "constructor ordinal is outside its ADT");
-                return false;
-            }
-            if (covered[ordinal]) {
-                int64_t covering_index = covering_arm[ordinal];
-                TypedArm *covering = typed_arm_at(program, match, (size_t)covering_index);
-                char subject[NAME_LIMIT + 32u];
-                (void)snprintf(subject, sizeof(subject), "constructor `%s`", constructor->name);
-                return report_redundant(program, arm, covering, subject);
-            }
-            if (!arm->guarded) {
-                covered[ordinal] = true;
-                covering_arm[ordinal] = (int64_t)arm_index;
-            }
-        } else {
-            if (all_covered(covered, constructor_count)) {
-                int64_t first = -1;
-                for (index = 0u; index < constructor_count; index += 1u) {
-                    if (covering_arm[index] >= 0 &&
-                        (first < 0 || covering_arm[index] < first)) first = covering_arm[index];
+        memcpy(matched, covered, sizeof(matched));
+        memcpy(matching, covering, sizeof(matching));
+        for (alternative_index = 0u;
+             alternative_index < arm->alternative_count;
+             alternative_index += 1u) {
+            size_t global = arm->first_alternative + alternative_index;
+            TypedAlternative *alternative = &program->alternatives[global];
+            if (alternative_index != 0u && !analysis_step(program, operations)) return false;
+            if (alternative->role == ARM_CONSTRUCTOR) {
+                ConstructorFact *constructor =
+                    &program->constructors[(size_t)alternative->constructor_index];
+                size_t ordinal = constructor->ordinal;
+                if (ordinal >= constructor_count) {
+                    set_error(program, "E2S79", "constructor ordinal is outside its ADT");
+                    return false;
                 }
-                return report_redundant(
-                    program,
-                    arm,
-                    typed_arm_at(program, match, (size_t)first),
-                    "the complete constructor set"
-                );
-            }
-            if (!arm->guarded) {
+                if (matched[ordinal]) {
+                    char subject[NAME_LIMIT + 32u];
+                    (void)snprintf(subject, sizeof(subject), "constructor `%s`", constructor->name);
+                    return report_redundant(program, match, alternative,
+                        &program->alternatives[(size_t)matching[ordinal]], subject);
+                }
+                matched[ordinal] = true;
+                matching[ordinal] = (int64_t)global;
+            } else {
+                if (all_covered(matched, constructor_count)) {
+                    int64_t first = -1;
+                    for (index = 0u; index < constructor_count; index += 1u) {
+                        if (matching[index] >= 0 &&
+                            (first < 0 || matching[index] < first)) first = matching[index];
+                    }
+                    if (first < 0) {
+                        set_error(program, "E2S79", "covered constructor set has no covering pattern");
+                        return false;
+                    }
+                    return report_redundant(program, match, alternative,
+                        &program->alternatives[(size_t)first], "the complete constructor set");
+                }
                 for (index = 0u; index < constructor_count; index += 1u) {
                     if (!analysis_step(program, operations)) return false;
-                    if (!covered[index]) covering_arm[index] = (int64_t)arm_index;
-                    covered[index] = true;
+                    if (!matched[index]) matching[index] = (int64_t)global;
+                    matched[index] = true;
                 }
             }
+        }
+        if (!arm->guarded) {
+            memcpy(covered, matched, sizeof(covered));
+            memcpy(covering, matching, sizeof(covering));
         }
     }
     if (!all_covered(covered, constructor_count)) {
@@ -1691,8 +1979,9 @@ static void emit_typed_hir(Program *program, Buffer *output) {
     size_t index;
     buffer_append(output, "kofun-typed-adt-match/v1\n");
     buffer_format(output,
-        "limits|operations=%" PRIu64 "|display-cap=%u|pattern-bindings=%u\n",
-        OPERATION_LIMIT, DISPLAY_CAP, PATTERN_BINDING_LIMIT);
+        "limits|operations=%" PRIu64 "|display-cap=%u|pattern-bindings=%u"
+        "|arm-alternatives=%u\n",
+        OPERATION_LIMIT, DISPLAY_CAP, PATTERN_BINDING_LIMIT, ARM_ALTERNATIVE_LIMIT);
     for (index = 0u; index < program->match_count; index += 1u) {
         TypedMatch *match = &program->matches[index];
         AdtFact *adt = &program->adts[match->adt_index];
@@ -1715,11 +2004,30 @@ static void emit_typed_hir(Program *program, Buffer *output) {
         buffer_format(output,
             "typed-arm|match=%zu|index=%zu|root=%" PRId64 "|role=%s|constructor=%s"
             "|constructor-symbol=%s|scope=%" PRId64 "|binding=%" PRId64
-            "|guarded=%s|span=%zu..%zu\n",
+            "|guarded=%s|alternatives=%zu|span=%zu..%zu\n",
             arm->match_index, arm->arm_index, arm->pattern_root,
             arm_role_name(arm->role), constructor_name, constructor_id,
             arm->scope_id, arm->binding_id, arm->guarded ? "yes" : "no",
-            arm->start, arm->end);
+            arm->alternative_count, arm->start, arm->end);
+    }
+    for (index = 0u; index < program->alternative_count; index += 1u) {
+        TypedAlternative *alternative = &program->alternatives[index];
+        const char *constructor_id = "-";
+        const char *constructor_name = "-";
+        if (alternative->constructor_index >= 0) {
+            ConstructorFact *constructor =
+                &program->constructors[(size_t)alternative->constructor_index];
+            constructor_id = constructor->id;
+            constructor_name = constructor->name;
+        }
+        buffer_format(output,
+            "typed-alternative|match=%zu|arm=%zu|index=%zu|node=%" PRId64
+            "|role=%s|constructor=%s|constructor-symbol=%s|binding=%" PRId64
+            "|span=%zu..%zu\n",
+            alternative->match_index, alternative->arm_index, alternative->index,
+            alternative->pattern_node, arm_role_name(alternative->role),
+            constructor_name, constructor_id, alternative->binding_id,
+            alternative->start, alternative->end);
     }
     for (index = 0u; index < program->pattern_binding_count; index += 1u) {
         PatternBinding *binding = &program->pattern_bindings[index];

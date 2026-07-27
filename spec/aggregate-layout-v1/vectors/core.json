@@ -1,0 +1,44 @@
+{
+  "schema": "kofun.aggregate-layout-document/v1",
+  "types": [
+    { "id": "Bool", "kind": "scalar", "scalar": "Bool" },
+    { "id": "Int", "kind": "scalar", "scalar": "Int" },
+    { "id": "Text", "kind": "text" },
+    { "id": "List[Int]", "kind": "list", "element": "Int" },
+    { "id": "List[Text]", "kind": "list", "element": "Text" },
+    {
+      "id": "Counter",
+      "kind": "record",
+      "fields": [
+        { "name": "flag", "type": "Bool" },
+        { "name": "count", "type": "Int" }
+      ]
+    },
+    {
+      "id": "Maybe",
+      "kind": "adt",
+      "constructors": [
+        { "name": "Missing", "payload": null },
+        { "name": "Present", "payload": "Int" }
+      ]
+    },
+    {
+      "id": "Shape",
+      "kind": "adt",
+      "constructors": [
+        { "name": "Narrow", "payload": "Bool" },
+        { "name": "Wide", "payload": "Int" },
+        { "name": "Handle", "payload": "Text" }
+      ]
+    },
+    { "id": "Optional[Int]", "kind": "optional", "payload": "Int" }
+  ],
+  "objects": [
+    { "id": "text-ascii", "type": "Text", "text": "ok" },
+    { "id": "text-mixed", "type": "Text", "text": "a日本語" },
+    { "id": "text-empty", "type": "Text", "text": "" },
+    { "id": "list-int-three", "type": "List[Int]", "elements": 3 },
+    { "id": "list-text-two", "type": "List[Text]", "elements": 2 },
+    { "id": "list-int-empty", "type": "List[Int]", "elements": 0 }
+  ]
+}

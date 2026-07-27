@@ -35,6 +35,39 @@ recorded.
 
 Status: accepted M2-alpha design for #403.
 
+### Options compared
+
+The four options #403 put forward, scored against the criteria that issue
+requires. A and B share one semantics and differ only in the keyword, so they
+score identically everywhere except the two rows that are about the word.
+
+| Criterion | A `trait` + orphan rule | B `protocol` + same rule | C `interface`, declaration-site only | D open retroactive, no orphan rule |
+| --- | --- | --- | --- | --- |
+| Deterministic global coherence | yes | yes | yes | **no** — needs import or link order to break ties |
+| Separate compilation | yes | yes | yes | **no** — a candidate can appear in any downstream package |
+| FFI adaptation | yes, via local trait or local newtype | yes | **no** — a foreign type can never gain a conformance | yes |
+| Law evidence identity | one implementation identity per key | same | same | **no** — evidence cannot name a unique implementation |
+| Error explainability | orphan rule must be taught, but rejections are local and stated | same | simplest to explain | worst — failure surfaces at link time |
+| Beginner expectation | `trait` reads as a contract | `protocol` may imply runtime dispatch | `interface` may imply dynamic dispatch | no keyword proposed |
+| Compatibility with current docs/syntax | already the shipped vocabulary | **conflicts** — every doc and example says `trait` | conflicts, and changes semantics too | conflicts |
+| Migration cost | none | rename across docs, examples, TextMate grammar, LSP tokens | rename plus a semantics change | n/a |
+| Future explicit specialization | reachable; identity already keyed | same | limited by declaration-site conformance | unreachable coherently |
+| No runtime instance search | yes, static dictionary | yes | yes | **no** |
+
+D fails four criteria outright and is rejected on the terms #403 set for it:
+it offers no deterministic separate-compilation mechanism. C buys the simplest
+coherence story by giving up the exact capability this decision exists to
+provide — adapting a foreign type — so it is rejected on FFI adaptation. B is
+semantically identical to A, which means its entire effect is migration cost
+against a vocabulary already in the docs, plus a word that suggests runtime
+dispatch this design does not do.
+
+A is accepted. It is the only option that scores clean on coherence,
+separate compilation, FFI adaptation, evidence identity, and static dispatch
+at once, and it is already what the repository says.
+
+### The accepted rule
+
 Kofun retains the `trait` keyword and permits a retroactive implementation
 only when the implementing package owns the trait or the outer nominal type
 constructor of the self type. This is the local-trait-or-local-outer-type

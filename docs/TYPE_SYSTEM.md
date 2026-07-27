@@ -261,6 +261,14 @@ fn render(user: { name: Text, ..R }) -> Text
 
 Row polymorphism is useful for JSON, web APIs, data frames, and testing doubles, but nominal types are preferred for layout-sensitive system APIs.
 
+Byte layout for flat records, flat ADT variants, `Text`, and `List` is not a
+property of the type system: it is decided per target by
+[`spec/aggregate-layout-v1.md`](../spec/aggregate-layout-v1.md). Fields keep
+declaration order, ADT tags follow constructor declaration order from zero,
+and `Optional[T]` carries an explicit tag — no backend may apply a niche
+optimization. Source semantics stay target-independent; only the computed
+bytes differ between `x86_64-linux` and `wasm32`.
+
 ## Union and intersection types
 
 The expressiveness of TypeScript is adopted, but uncontrolled union explosion is avoided.

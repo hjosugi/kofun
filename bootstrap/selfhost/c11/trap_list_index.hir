@@ -19,6 +19,7 @@ type|14|fn|4|4|4|4
 type|15|fn|4|4|0|0
 type|16|fn|11|4|4
 type|17|fn|0|2
+type|18|fn|11
 scope|0|0|module|0|146
 scope|1|0|function|7|145
 scope|2|1|block|17|145
@@ -41,11 +42,12 @@ symbol|14|builtin|trim|13|0|0
 symbol|15|builtin|validate_unicode_source|13|0|0
 symbol|16|builtin|write_text|16|0|0
 symbol|17|builtin|len|17|0|0
-symbol|18|local|symbols|2|27|34
-symbol|19|local|ghost|4|57|62
+symbol|18|builtin|fail|18|0|0
+symbol|19|local|symbols|2|27|34
+symbol|20|local|ghost|4|57|62
 binding|0|0|0|main|imm|3|7
-binding|1|2|18|symbols|imm|27|34
-binding|2|2|19|ghost|imm|57|62
+binding|1|2|19|symbols|imm|27|34
+binding|2|2|20|ghost|imm|57|62
 function|0|0|1|0|145
 node|1|let|23|48|11|copy|1|2
 node|2|call|37|48|2|read|2|3

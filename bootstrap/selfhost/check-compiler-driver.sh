@@ -10,6 +10,12 @@ fail() {
     exit 1
 }
 
+# This gate takes no options. It used to ignore whatever it was handed,
+# so an invocation naming a phase this script never implemented — the
+# `--phase` interface belongs to check-profile.sh — still reported PASS.
+test "$#" -eq 0 ||
+    fail "unexpected argument \`$1\`: this gate takes none (\`--phase\` belongs to check-profile.sh)"
+
 if command -v cc >/dev/null 2>&1; then
     compiler=cc
 elif command -v clang >/dev/null 2>&1; then
@@ -105,6 +111,11 @@ reject_seed_status=$?
 set -e
 test "$reject_status" -eq "$reject_seed_status" ||
     fail "reject corpus exit status diverges from the audited seed"
+# Agreement alone is not the criterion: both seeds returned 0 here for as
+# long as `main` discarded `compile_file`'s Bool, so this gate reported
+# PASS while every refused compile still exited successfully.
+test "$reject_status" -ne 0 ||
+    fail "an unsupported source must exit nonzero"
 cmp bootstrap/selfhost/driver/corpus_reject.stdout \
     "$temporary/reject.stdout" ||
     fail "reject corpus diagnostic differs from the pinned golden"

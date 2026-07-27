@@ -107,3 +107,10 @@ silently narrowed. The standard module loads in both Node and browsers, the
 numeric and function differential corpora are executable, and the sample
 renders Kofun output in a page. Wider language coverage should be tracked
 independently rather than implied here.
+
+When linear-memory objects do arrive, their byte layout is already decided:
+`spec/aggregate-layout-v1.md` defines the `wasm32` target with 4-byte
+references and 8-byte `u64` object headers, with golden vectors in
+`spec/aggregate-layout-v1/examples/core.wasm32.json`. That contract exists
+specifically so this target is not given 64-bit references to match the
+native backend's bytes; `Int` stays signed 64-bit here as everywhere.

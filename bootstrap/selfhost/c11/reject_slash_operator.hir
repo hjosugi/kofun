@@ -19,6 +19,7 @@ type|14|fn|4|4|4|4
 type|15|fn|4|4|0|0
 type|16|fn|11|4|4
 type|17|fn|0|2
+type|18|fn|11
 scope|0|0|module|0|58
 scope|1|0|function|7|57
 scope|2|1|block|17|57
@@ -40,9 +41,10 @@ symbol|14|builtin|trim|13|0|0
 symbol|15|builtin|validate_unicode_source|13|0|0
 symbol|16|builtin|write_text|16|0|0
 symbol|17|builtin|len|17|0|0
-symbol|18|local|half|0|27|31
+symbol|18|builtin|fail|18|0|0
+symbol|19|local|half|0|27|31
 binding|0|0|0|main|imm|3|7
-binding|1|2|18|half|imm|27|31
+binding|1|2|19|half|imm|27|31
 function|0|0|1|0|57
 node|1|let|23|39|11|copy|1|2
 node|2|binary|34|39|0|copy|/|3|4

@@ -77,3 +77,14 @@ The remaining native backend work includes:
 - unifying the currently separate function, List, and Text profiles.
 
 Unsupported cases must be explicit skips, never implicit passes.
+
+## Aggregate layout
+
+The `Text` and `List` byte layouts this backend ships are target-specific
+checkpoints, not a portable aggregate ABI. `spec/aggregate-layout-v1.md` is
+the accepted portable contract; it specifies `u64` object headers where this
+backend uses `i64`, and it records that difference as a versioned migration
+boundary rather than treating the shipped bytes as a compatibility
+requirement. This backend does not lower to AggregateLayout v1 yet, and must
+not claim it until it agrees with the golden vectors under
+`spec/aggregate-layout-v1/examples/`.

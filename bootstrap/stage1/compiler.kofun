@@ -518,5 +518,7 @@ fn main() {
         print("usage: kofun-stage1 INPUT.kofun OUTPUT.c")
         return
     }
-    compile_file(arguments[0], arguments[1])
+    if !compile_file(arguments[0], arguments[1]) {
+        fail()
+    }
 }
