@@ -3,12 +3,12 @@
   "repository": "hjosugi/kofun",
   "time_zone": "Asia/Tokyo",
   "as_of": "2026-07-27",
-  "generated_at": "2026-07-27T05:38:56.039Z",
+  "generated_at": "2026-07-27T09:38:19.125Z",
   "source": {
     "endpoint": "https://api.github.com/repos/hjosugi/kofun/issues",
-    "api_items": 749,
+    "api_items": 752,
     "issues": 644,
-    "pull_requests_excluded": 105,
+    "pull_requests_excluded": 108,
     "pages": 8
   },
   "capacity": {
@@ -41,10 +41,10 @@
     "open_workflows": {
       "blocked": 23,
       "deferred": 13,
-      "in-progress": 9,
+      "in-progress": 10,
       "needs-decision": 5,
       "needs-detail": 31,
-      "ready": 11,
+      "ready": 10,
       "unclassified": 435
     },
     "open_priorities": {
@@ -63,10 +63,10 @@
     "curated_workflows": {
       "blocked": 20,
       "deferred": 12,
-      "in-progress": 9,
+      "in-progress": 10,
       "needs-decision": 5,
       "needs-detail": 24,
-      "ready": 11
+      "ready": 10
     },
     "curated_priorities": {
       "P0": 12,
@@ -529,6 +529,45 @@
       "schedule_status": "scheduled"
     },
     {
+      "number": 750,
+      "title": "selfhost: make a refused compile exit nonzero (#622)",
+      "url": "https://github.com/hjosugi/kofun/issues/750",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "in-progress",
+      "priority": "P0",
+      "size": "S",
+      "kind": "implementation",
+      "area": "bootstrap",
+      "areas": [
+        "bootstrap"
+      ],
+      "labels": [
+        "P0",
+        "area:bootstrap",
+        "curated",
+        "in-progress",
+        "kind:implementation",
+        "size:S"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-26T14:50:35Z",
+      "updated_at": "2026-07-27T09:06:13Z",
+      "closed_at": null,
+      "chain_id": null,
+      "depends_on": [],
+      "writer_days": 2,
+      "confidence": "medium",
+      "lane": "writer-c",
+      "start_date": "2026-07-27",
+      "writer_end_date": "2026-07-28",
+      "review_start_date": "2026-07-29",
+      "review_end_date": "2026-07-29",
+      "end_date": "2026-07-29",
+      "schedule_status": "scheduled"
+    },
+    {
       "number": 744,
       "title": "selfhost: lower comparison operators and Bool values in S (#622)",
       "url": "https://github.com/hjosugi/kofun/issues/744",
@@ -554,45 +593,6 @@
       "assignees": [],
       "created_at": "2026-07-26T14:50:29Z",
       "updated_at": "2026-07-26T14:50:29Z",
-      "closed_at": null,
-      "chain_id": null,
-      "depends_on": [],
-      "writer_days": 2,
-      "confidence": "medium",
-      "lane": "writer-c",
-      "start_date": "2026-07-27",
-      "writer_end_date": "2026-07-28",
-      "review_start_date": "2026-07-29",
-      "review_end_date": "2026-07-29",
-      "end_date": "2026-07-29",
-      "schedule_status": "scheduled"
-    },
-    {
-      "number": 750,
-      "title": "selfhost: make a refused compile exit nonzero (#622)",
-      "url": "https://github.com/hjosugi/kofun/issues/750",
-      "state": "open",
-      "state_reason": null,
-      "role": "curated",
-      "workflow": "ready",
-      "priority": "P0",
-      "size": "S",
-      "kind": "implementation",
-      "area": "bootstrap",
-      "areas": [
-        "bootstrap"
-      ],
-      "labels": [
-        "P0",
-        "area:bootstrap",
-        "curated",
-        "kind:implementation",
-        "ready",
-        "size:S"
-      ],
-      "assignees": [],
-      "created_at": "2026-07-26T14:50:35Z",
-      "updated_at": "2026-07-26T14:50:35Z",
       "closed_at": null,
       "chain_id": null,
       "depends_on": [],
@@ -3278,11 +3278,11 @@
       ],
       "finishing_issue_numbers": [
         722,
-        744
+        750
       ],
       "review_issue_numbers": [
         722,
-        744
+        750
       ],
       "planned_writer_days": 14,
       "writer_capacity_days": 15
@@ -3295,7 +3295,7 @@
         609,
         618,
         723,
-        750
+        744
       ],
       "starting_issue_numbers": [
         609,
@@ -3303,11 +3303,11 @@
       ],
       "finishing_issue_numbers": [
         550,
-        750
+        744
       ],
       "review_issue_numbers": [
         550,
-        750
+        744
       ],
       "planned_writer_days": 15,
       "writer_capacity_days": 15
@@ -11979,7 +11979,7 @@
       ],
       "assignees": [],
       "created_at": "2026-07-20T00:17:20Z",
-      "updated_at": "2026-07-25T23:54:59Z",
+      "updated_at": "2026-07-27T09:30:38Z",
       "closed_at": null
     },
     {
@@ -19921,7 +19921,7 @@
       "state": "open",
       "state_reason": null,
       "role": "curated",
-      "workflow": "ready",
+      "workflow": "in-progress",
       "priority": "P0",
       "size": "S",
       "kind": "implementation",
@@ -19933,13 +19933,13 @@
         "P0",
         "area:bootstrap",
         "curated",
+        "in-progress",
         "kind:implementation",
-        "ready",
         "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-26T14:50:35Z",
-      "updated_at": "2026-07-26T14:50:35Z",
+      "updated_at": "2026-07-27T09:06:13Z",
       "closed_at": null
     },
     {

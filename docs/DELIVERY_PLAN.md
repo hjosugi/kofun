@@ -76,8 +76,8 @@ lane finishes integration.
 |---|---|---|---|---|---|---|---|---|---|
 | [#618](https://github.com/hjosugi/kofun/issues/618) | `writer-a` | needs-detail | P0 | L | 2026-07-27 | 2026-08-07 | 2026-08-11 | low | Self-host profile: freeze the smallest honest compiler S and coverage manifest |
 | [#722](https://github.com/hjosugi/kofun/issues/722) | `writer-b` | in-progress | P1 | M | 2026-07-27 | 2026-07-30 | 2026-07-31 | medium | Decimal slice 3: same-type numeric operators and explicit conversions in the type checker |
-| [#744](https://github.com/hjosugi/kofun/issues/744) | `writer-c` | ready | P0 | S | 2026-07-27 | 2026-07-28 | 2026-07-29 | medium | selfhost: lower comparison operators and Bool values in S (#622) |
-| [#750](https://github.com/hjosugi/kofun/issues/750) | `writer-c` | ready | P0 | S | 2026-07-29 | 2026-07-30 | 2026-08-03 | medium | selfhost: make a refused compile exit nonzero (#622) |
+| [#750](https://github.com/hjosugi/kofun/issues/750) | `writer-c` | in-progress | P0 | S | 2026-07-27 | 2026-07-28 | 2026-07-29 | medium | selfhost: make a refused compile exit nonzero (#622) |
+| [#744](https://github.com/hjosugi/kofun/issues/744) | `writer-c` | ready | P0 | S | 2026-07-29 | 2026-07-30 | 2026-08-03 | medium | selfhost: lower comparison operators and Bool values in S (#622) |
 | [#550](https://github.com/hjosugi/kofun/issues/550) | `writer-c` | in-progress | P1 | M | 2026-07-31 | 2026-08-05 | 2026-08-06 | medium | Implicit return of the final expression — and the lambda/function inconsistency |
 | [#723](https://github.com/hjosugi/kofun/issues/723) | `writer-b` | in-progress | P1 | L | 2026-08-03 | 2026-08-12 | 2026-08-14 | low | Decimal slice 4: exact addition, subtraction, multiplication, and checked exact division on every backend |
 | [#609](https://github.com/hjosugi/kofun/issues/609) | `writer-c` | in-progress | P1 | M | 2026-08-06 | 2026-08-11 | 2026-08-12 | medium | Stage 2 sidecar projector: map semantic events into atomic CLI output |
@@ -135,8 +135,8 @@ lane finishes integration.
 
 | Week of | Active issues | Delivered | Writer load |
 |---|---|---|---:|
-| 2026-07-27 | #550, #618, #722, #744, #750 | #722, #744 | 14/15 |
-| 2026-08-03 | #550, #609, #618, #723, #750 | #550, #750 | 15/15 |
+| 2026-07-27 | #550, #618, #722, #744, #750 | #722, #750 | 14/15 |
+| 2026-08-03 | #550, #609, #618, #723, #744 | #550, #744 | 15/15 |
 | 2026-08-10 | #609, #618, #622, #636, #723 | #609, #618, #723 | 11/15 |
 | 2026-08-17 | #271, #622, #636, #637, #724 | #622, #636 | 14/15 |
 | 2026-08-24 | #120, #271, #272, #403, #637, #724 | #271, #637, #724 | 12/15 |
