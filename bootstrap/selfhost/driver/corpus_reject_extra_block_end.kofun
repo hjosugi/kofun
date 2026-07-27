@@ -1,0 +1,6 @@
+fn main() {
+    if true {
+        print(0)
+    }
+}
+}

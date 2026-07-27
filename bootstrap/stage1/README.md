@@ -15,10 +15,10 @@ kofun-stage1 INPUT.kofun OUTPUT.c
 ```
 
 The compatibility parser requires one explicit line-oriented `fn main() {`
-body containing only `let` and Int-valued `print(...)` statements, plus blank
-lines and comments. `let` may infer or explicitly name `Int` or `Bool`.
-Unknown structural lines are rejected; they are never ignored while extracting
-an otherwise valid `print`.
+body containing only `let` statements, Int-valued `print(...)` statements, and
+`if`/`else if`/`else` blocks, plus blank lines and comments. `let` may infer or
+explicitly name `Int` or `Bool`. Unknown structural lines are rejected; they are
+never ignored while extracting an otherwise valid `print`.
 
 ## Expressions are compiled, not deferred
 
@@ -39,9 +39,8 @@ of two failing operators reports its diagnostic first.
 Because names are resolved here, these are now compile errors rather than
 runtime traps in the emitted program:
 
-- a reference to a name that is not bound
-- a second `let` for a name already bound (the language rejects same-scope
-  shadowing)
+- a reference to a name that is not bound, including one whose block has closed
+- a second `let` for a name already visible (the language rejects shadowing)
 - a binding named `true` or `false` (the Bool literals are reserved)
 - an explicit annotation other than the inferred `Int` or `Bool`
 - an integer literal outside the Int64 range
@@ -50,6 +49,9 @@ runtime traps in the emitted program:
 - `&&`, `||`, or `!` with an `Int` operand
 - the non-Core single-character `|` or `&` operators
 - a `Bool` passed to the Int-only `print` boundary
+- a block condition that is not `Bool`
+- an `else` with no `if` to attach to, or a second `else` in one chain
+- a block left open at the end of the source, or a `}` that closes nothing
 
 The six Int comparisons produce `Bool`; `==` and `!=` additionally compare two
 Bool operands. `&&` and `||` short-circuit their right operands, and `!` has
@@ -60,6 +62,26 @@ represent both as integers.
 `-9223372036854775808` still compiles: a negated decimal literal is folded at
 compile time, so the one magnitude with no positive counterpart keeps a C
 spelling.
+
+## Blocks nest, and their bindings leave scope
+
+`if COND {`, `} else if COND {`, `} else {` and `}` each occupy their own line.
+Both structural walks keep one stack of open blocks, so the depth they agree on
+is the stack's length rather than a separate counter, and an `else` is accepted
+only when the block it closes is a branch no `else` has followed yet. A `let`
+inside a block is visible until that block's `}`, after which its name is free
+again — the scope stack lives in the same text as the bindings, so leaving a
+block truncates back to the marker its `{` pushed.
+
+Each Kofun block becomes exactly one C branch brace, and each `}` closes exactly
+one, so an `else if` chain never leaves the closing line counting braces. A
+chain also gets one enclosing C scope holding the flag that says an earlier
+branch already ran; that flag is what keeps a later `else if` condition
+unevaluated, exactly as `&&` and `||` keep their right operands unevaluated.
+
+Nothing in the accepted Core returns a value yet, so `main` has no path that
+must end in `return`; the per-branch `returned` state arrives with the
+declaration slice that introduces `return` (#751).
 
 It does not yet semantically compile its complete own source, so the Stage 2
 fixed-point gate remains open.

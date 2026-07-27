@@ -1,12 +1,13 @@
 # Kofun Stage 1 compiler seed.
 #
-# The compiler accepts a deliberately small Int/Bool Core: `let` bindings and
-# Int-only `print(EXPR)` statements inside `fn main()`. Every expression is
-# tokenized, parsed, resolved and typed here, then lowered to a C11 statement
-# sequence. The emitted program carries no parser, no symbol table and no
-# fragment of the user's source: names are resolved to typed C locals at
-# compile time and literals are range-checked at compile time. This source is
-# canonical; compiler.c is the audited bootstrap artifact generated from it.
+# The compiler accepts a deliberately small Int/Bool Core: `let` bindings,
+# Int-only `print(EXPR)` statements, and nested `if`/`else if`/`else` blocks
+# inside `fn main()`. Every expression is tokenized, parsed, resolved and typed
+# here, then lowered to a C11 statement sequence. The emitted program carries no
+# parser, no symbol table and no fragment of the user's source: names are
+# resolved to typed C locals at compile time and literals are range-checked at
+# compile time. This source is canonical; compiler.c is the audited bootstrap
+# artifact generated from it.
 
 fn identifier_char(char: Text) -> Bool {
     return is_xid_continue(char) ||
@@ -158,6 +159,10 @@ fn wraps_whole(expression: Text) -> Bool {
 # one statement per operator makes evaluation order observable and fixed: C
 # leaves argument evaluation order unspecified, so a nested call tree would
 # let the host compiler decide which failing operator reports first.
+#
+# `indent` is the C indentation every statement of one expression is written at.
+# It is threaded rather than fixed because a block nests the statement it
+# belongs to; it never changes which expressions are accepted or their types.
 fn last_newline(value: Text) -> Int {
     let symbols = chars(value)
     let mut found = -1
@@ -204,19 +209,20 @@ fn lowered_operand(lowered: Text) -> Text {
 
 # Each operator node owns a temporary named after its path from the root of the
 # expression, so names are unique without a mutable counter.
-fn lower_step(path: Text, callee: Text, left: Text, right: Text) -> Text {
+fn lower_step(path: Text, indent: Text, callee: Text, left: Text,
+              right: Text) -> Text {
     if !(lowered_type(left) == "Int") || !(lowered_type(right) == "Int") {
         return ""
     }
     let temporary = "kt_" + path
     return "Int|" +
     lowered_statements(left) + lowered_statements(right) +
-    "        int64_t " + temporary + " = " + callee +
+    indent + "int64_t " + temporary + " = " + callee +
     lowered_operand(left) + ", " + lowered_operand(right) + ");\n" +
     temporary
 }
 
-fn lower_comparison(path: Text, operator: Text, left: Text,
+fn lower_comparison(path: Text, indent: Text, operator: Text, left: Text,
                     right: Text) -> Text {
     let left_type = lowered_type(left)
     let right_type = lowered_type(right)
@@ -230,12 +236,12 @@ fn lower_comparison(path: Text, operator: Text, left: Text,
     let temporary = "kt_" + path
     return "Bool|" +
     lowered_statements(left) + lowered_statements(right) +
-    "        bool " + temporary + " = " + lowered_operand(left) + " " +
+    indent + "bool " + temporary + " = " + lowered_operand(left) + " " +
     operator + " " + lowered_operand(right) + ";\n" +
     temporary
 }
 
-fn lower_logical(path: Text, operator: Text, left: Text,
+fn lower_logical(path: Text, indent: Text, operator: Text, left: Text,
                  right: Text) -> Text {
     if !(lowered_type(left) == "Bool") ||
        !(lowered_type(right) == "Bool") {
@@ -248,11 +254,11 @@ fn lower_logical(path: Text, operator: Text, left: Text,
     }
     return "Bool|" +
     lowered_statements(left) +
-    "        bool " + temporary + " = " + lowered_operand(left) + ";\n" +
-    "        if (!failed && " + condition + ") {\n" +
+    indent + "bool " + temporary + " = " + lowered_operand(left) + ";\n" +
+    indent + "if (!failed && " + condition + ") {\n" +
     lowered_statements(right) +
-    "            " + temporary + " = " + lowered_operand(right) + ";\n" +
-    "        }\n" +
+    indent + "    " + temporary + " = " + lowered_operand(right) + ";\n" +
+    indent + "}\n" +
     temporary
 }
 
@@ -288,7 +294,8 @@ fn lower_atom(atom: Text, bound: Text) -> Text {
 
 # A negated decimal literal is folded at compile time so that the one magnitude
 # with no positive counterpart still has a C spelling.
-fn lower_negation(operand: Text, bound: Text, path: Text) -> Text {
+fn lower_negation(operand: Text, bound: Text, path: Text,
+                  indent: Text) -> Text {
     let trimmed = trim(operand)
     if all_digits(trimmed) {
         if within_bound(trimmed, "9223372036854775807") {
@@ -299,13 +306,13 @@ fn lower_negation(operand: Text, bound: Text, path: Text) -> Text {
         }
         return ""
     }
-    let inner = lower_expression(trimmed, bound, path + "u")
+    let inner = lower_expression(trimmed, bound, path + "u", indent)
     if !(lowered_type(inner) == "Int") {
         return ""
     }
     let temporary = "kt_" + path
     return "Int|" + lowered_statements(inner) +
-    "        int64_t " + temporary + " = checked_neg(" +
+    indent + "int64_t " + temporary + " = checked_neg(" +
     lowered_operand(inner) + ");\n" +
     temporary
 }
@@ -313,7 +320,8 @@ fn lower_negation(operand: Text, bound: Text, path: Text) -> Text {
 # Lowers one Core expression to a C11 expression, or "" when it is not Core.
 # Acceptance is exactly "this returns a non-empty string", so the parser is the
 # only definition of what the Core admits.
-fn lower_expression(expression: Text, bound: Text, path: Text) -> Text {
+fn lower_expression(expression: Text, bound: Text, path: Text,
+                    indent: Text) -> Text {
     let trimmed = trim(expression)
     if len(trimmed) == 0 {
         return ""
@@ -322,32 +330,32 @@ fn lower_expression(expression: Text, bound: Text, path: Text) -> Text {
     let logical_or = split_operators(trimmed, ",||,")
     if logical_or >= 0 {
         let left = lower_expression(
-            text_slice(trimmed, 0, logical_or), bound, path + "l")
+            text_slice(trimmed, 0, logical_or), bound, path + "l", indent)
         let right = lower_expression(
             text_slice(trimmed, logical_or + 2, len(trimmed)),
-            bound, path + "r")
-        return lower_logical(path, "||", left, right)
+            bound, path + "r", indent)
+        return lower_logical(path, indent, "||", left, right)
     }
 
     let logical_and = split_operators(trimmed, ",&&,")
     if logical_and >= 0 {
         let left = lower_expression(
-            text_slice(trimmed, 0, logical_and), bound, path + "l")
+            text_slice(trimmed, 0, logical_and), bound, path + "l", indent)
         let right = lower_expression(
             text_slice(trimmed, logical_and + 2, len(trimmed)),
-            bound, path + "r")
-        return lower_logical(path, "&&", left, right)
+            bound, path + "r", indent)
+        return lower_logical(path, indent, "&&", left, right)
     }
 
     let equality = split_operators(trimmed, ",==,!=,")
     if equality >= 0 {
         let operator = text_slice(trimmed, equality, equality + 2)
         let left = lower_expression(
-            text_slice(trimmed, 0, equality), bound, path + "l")
+            text_slice(trimmed, 0, equality), bound, path + "l", indent)
         let right = lower_expression(
             text_slice(trimmed, equality + 2, len(trimmed)),
-            bound, path + "r")
-        return lower_comparison(path, operator, left, right)
+            bound, path + "r", indent)
+        return lower_comparison(path, indent, operator, left, right)
     }
 
     let ordering = split_operators(trimmed, ",<=,>=,<,>,")
@@ -359,26 +367,27 @@ fn lower_expression(expression: Text, bound: Text, path: Text) -> Text {
         }
         let operator = text_slice(trimmed, ordering, ordering + skip)
         let left = lower_expression(
-            text_slice(trimmed, 0, ordering), bound, path + "l")
+            text_slice(trimmed, 0, ordering), bound, path + "l", indent)
         let right = lower_expression(
             text_slice(trimmed, ordering + skip, len(trimmed)),
-            bound, path + "r")
-        return lower_comparison(path, operator, left, right)
+            bound, path + "r", indent)
+        return lower_comparison(path, indent, operator, left, right)
     }
 
     let additive = split_binary(trimmed, "+-")
     if additive >= 0 {
         let left = lower_expression(
-            text_slice(trimmed, 0, additive), bound, path + "l")
+            text_slice(trimmed, 0, additive), bound, path + "l", indent)
         let right = lower_expression(
-            text_slice(trimmed, additive + 1, len(trimmed)), bound, path + "r")
+            text_slice(trimmed, additive + 1, len(trimmed)), bound,
+            path + "r", indent)
         if len(left) == 0 || len(right) == 0 {
             return ""
         }
         if text_slice(trimmed, additive, additive + 1) == "+" {
-            return lower_step(path, "checked_add(", left, right)
+            return lower_step(path, indent, "checked_add(", left, right)
         }
-        return lower_step(path, "checked_sub(", left, right)
+        return lower_step(path, indent, "checked_sub(", left, right)
     }
 
     let multiplicative = split_binary(trimmed, "*%/")
@@ -401,41 +410,42 @@ fn lower_expression(expression: Text, bound: Text, path: Text) -> Text {
             skip = 2
         }
         let left = lower_expression(
-            text_slice(trimmed, 0, multiplicative), bound, path + "l")
+            text_slice(trimmed, 0, multiplicative), bound, path + "l", indent)
         let right = lower_expression(
             text_slice(trimmed, multiplicative + skip, len(trimmed)),
-            bound, path + "r")
+            bound, path + "r", indent)
         if len(left) == 0 || len(right) == 0 {
             return ""
         }
-        return lower_step(path, callee, left, right)
+        return lower_step(path, indent, callee, left, right)
     }
 
     if starts_with(trimmed, "+") {
         let inner = lower_expression(
-            text_slice(trimmed, 1, len(trimmed)), bound, path)
+            text_slice(trimmed, 1, len(trimmed)), bound, path, indent)
         if !(lowered_type(inner) == "Int") {
             return ""
         }
         return inner
     }
     if starts_with(trimmed, "-") {
-        return lower_negation(text_slice(trimmed, 1, len(trimmed)), bound, path)
+        return lower_negation(text_slice(trimmed, 1, len(trimmed)), bound, path,
+                              indent)
     }
     if starts_with(trimmed, "!") {
         let inner = lower_expression(
-            text_slice(trimmed, 1, len(trimmed)), bound, path + "u")
+            text_slice(trimmed, 1, len(trimmed)), bound, path + "u", indent)
         if !(lowered_type(inner) == "Bool") {
             return ""
         }
         let temporary = "kt_" + path
         return "Bool|" + lowered_statements(inner) +
-        "        bool " + temporary + " = !" + lowered_operand(inner) + ";\n" +
+        indent + "bool " + temporary + " = !" + lowered_operand(inner) + ";\n" +
         temporary
     }
     if wraps_whole(trimmed) {
         return lower_expression(
-            text_slice(trimmed, 1, len(trimmed) - 1), bound, path)
+            text_slice(trimmed, 1, len(trimmed) - 1), bound, path, indent)
     }
     return lower_atom(trimmed, bound)
 }
@@ -500,12 +510,90 @@ fn binding_annotation(line: Text) -> Text {
     return trim(text_slice(declaration, colon + 1, len(declaration)))
 }
 
+# One indentation unit is four spaces.
+fn indentation(units: Int) -> Text {
+    let mut spaces = ""
+    let mut step = 0
+    while step < units {
+        spaces = spaces + "    "
+        step = step + 1
+    }
+    return spaces
+}
+
+# A Kofun block costs two C braces: the scope holding the branch chain's own
+# state, then the branch. So a body at `depth` writes its statements at
+# `2 * depth - 1` units, and a brace one of them opens indents by one more.
+fn statement_indent(depth: Int) -> Text {
+    return indentation(2 * depth - 1)
+}
+
+fn nested_indent(depth: Int) -> Text {
+    return indentation(2 * depth)
+}
+
+# The bindings in scope are a `|name:Type|` run, and the scope stack lives in
+# that same text: entering a block appends a `{` marker and leaving truncates
+# back to the most recent one, so a name is visible exactly while its block is
+# open. Names cannot contain `{`, so a marker never collides with a binding.
+fn scope_enter(bound: Text) -> Text {
+    return bound + "{|"
+}
+
+fn scope_leave(bound: Text) -> Text {
+    let symbols = chars(bound)
+    let mut found = -1
+    for index in 0 .. len(symbols) {
+        if symbols[index] == "{" {
+            found = index
+        }
+    }
+    if found < 0 {
+        return bound
+    }
+    return text_slice(bound, 0, found)
+}
+
+# The open blocks of the function, innermost last: `f` is the body itself, `i` a
+# branch that `else` may still follow, and `e` a closing `else` that it may not.
+# The stack length is the block depth, so no separate counter can disagree.
+fn block_kind(blocks: Text) -> Text {
+    if len(blocks) == 0 {
+        return ""
+    }
+    return text_slice(blocks, len(blocks) - 1, len(blocks))
+}
+
+fn block_pop(blocks: Text) -> Text {
+    if len(blocks) == 0 {
+        return ""
+    }
+    return text_slice(blocks, 0, len(blocks) - 1)
+}
+
+# A block header carries its condition between `keyword` and a closing ` {`, so
+# both fixed ends are required at once. Returning the empty condition for a line
+# that only looks like a header is what makes the caller reject it: no
+# expression lowers from "".
+fn header_condition(line: Text, keyword: Text) -> Text {
+    if !starts_with(line, keyword) {
+        return ""
+    }
+    if len(line) < len(keyword) + 2 {
+        return ""
+    }
+    if !(text_slice(line, len(line) - 2, len(line)) == " {") {
+        return ""
+    }
+    return trim(text_slice(line, len(keyword), len(line) - 2))
+}
+
 fn valid_source(source: Text) -> Bool {
     let symbols = chars(source)
     let mut line_start = 0
     let mut prints = 0
     let mut main_headers = 0
-    let mut body_depth = 0
+    let mut blocks = ""
     let mut bound = "|"
     for index in 0 .. len(symbols) {
         if symbols[index] == "\n" {
@@ -513,31 +601,66 @@ fn valid_source(source: Text) -> Bool {
             if len(line) == 0 || starts_with(line, "#") {
                 # Comments and blank lines do not change the structural state.
             } else if line == "fn main() {" {
-                if main_headers != 0 || body_depth != 0 {
+                if main_headers != 0 || len(blocks) > 0 {
                     return false
                 }
                 main_headers = main_headers + 1
-                body_depth = 1
+                blocks = "f"
+                bound = scope_enter(bound)
             } else if line == "}" {
-                if body_depth != 1 {
+                if len(blocks) == 0 {
                     return false
                 }
-                body_depth = 0
+                blocks = block_pop(blocks)
+                bound = scope_leave(bound)
+            } else if line == "} else {" {
+                if !(block_kind(blocks) == "i") {
+                    return false
+                }
+                blocks = block_pop(blocks) + "e"
+                bound = scope_enter(scope_leave(bound))
+            } else if starts_with(line, "} else if ") {
+                if !(block_kind(blocks) == "i") {
+                    return false
+                }
+                # The condition belongs to the enclosing scope, not to the
+                # branch it closes, so it is checked after leaving that branch.
+                bound = scope_leave(bound)
+                let condition = lower_expression(
+                    header_condition(line, "} else if "), bound, "x",
+                    statement_indent(len(blocks)))
+                if !(lowered_type(condition) == "Bool") {
+                    return false
+                }
+                bound = scope_enter(bound)
+            } else if starts_with(line, "if ") {
+                if len(blocks) == 0 {
+                    return false
+                }
+                let condition = lower_expression(
+                    header_condition(line, "if "), bound, "x",
+                    statement_indent(len(blocks) + 1))
+                if !(lowered_type(condition) == "Bool") {
+                    return false
+                }
+                blocks = blocks + "i"
+                bound = scope_enter(bound)
             } else if starts_with(line, "let ") {
-                if body_depth != 1 {
+                if len(blocks) == 0 {
                     return false
                 }
                 let name = binding_name(line)
                 if !valid_name(name) || name == "true" || name == "false" {
                     return false
                 }
-                # One binding per name: the language rejects same-scope
-                # shadowing, so the seed rejects it too.
+                # One binding per visible name: the language rejects shadowing,
+                # so the seed rejects it too. A name freed by its block's `}` is
+                # available again.
                 if len(bound_type(bound, name)) > 0 {
                     return false
                 }
                 let value = lower_expression(binding_expression(line), bound,
-                                             "x")
+                                             "x", nested_indent(len(blocks)))
                 let kind = lowered_type(value)
                 if len(kind) == 0 {
                     return false
@@ -549,12 +672,13 @@ fn valid_source(source: Text) -> Bool {
                 }
                 bound = bound + name + ":" + kind + "|"
             } else if starts_with(line, "print(") {
-                if body_depth != 1 {
+                if len(blocks) == 0 {
                     return false
                 }
                 let expression = print_expression(line)
-                if !(lowered_type(lower_expression(expression, bound,
-                                                   "x")) == "Int") {
+                if !(lowered_type(lower_expression(
+                        expression, bound, "x",
+                        nested_indent(len(blocks)))) == "Int") {
                     return false
                 }
                 prints = prints + 1
@@ -564,44 +688,122 @@ fn valid_source(source: Text) -> Bool {
             line_start = index + 1
         }
     }
-    return main_headers == 1 && body_depth == 0 && prints > 0
+    return main_headers == 1 && len(blocks) == 0 && prints > 0
 }
 
+# The second structural walk. It repeats the first one's block and scope
+# bookkeeping rather than sharing it, so `bound` resolves every name to the same
+# binding both walks agreed on, and it only runs on a source `valid_source`
+# already accepted.
+#
+# A branch chain becomes one C scope holding `kt_taken`, the flag saying an
+# earlier branch already ran, and `kt_cond`, the current condition. Each Kofun
+# block-opening line opens exactly one branch brace and each `}` closes exactly
+# one, so `else if` never accumulates braces the closing line has to count. A
+# nested chain declares its own pair inside its own scope.
 fn emit_statements(source: Text) -> Text {
     let symbols = chars(source)
     let mut line_start = 0
     let mut emitted = ""
     let mut bound = "|"
+    let mut blocks = ""
     for index in 0 .. len(symbols) {
         if symbols[index] == "\n" {
             let line = trim(text_slice(source, line_start, index))
-            if starts_with(line, "let ") {
+            if line == "fn main() {" {
+                blocks = "f"
+                bound = scope_enter(bound)
+            } else if line == "}" {
+                let depth = len(blocks)
+                blocks = block_pop(blocks)
+                bound = scope_leave(bound)
+                if len(blocks) > 0 {
+                    emitted = emitted +
+                    nested_indent(depth - 1) + "}\n" +
+                    nested_indent(depth - 1) + "(void)kt_taken;\n" +
+                    statement_indent(depth - 1) + "}\n"
+                }
+            } else if line == "} else {" {
+                let depth = len(blocks)
+                blocks = block_pop(blocks) + "e"
+                bound = scope_enter(scope_leave(bound))
+                emitted = emitted +
+                nested_indent(depth - 1) + "}\n" +
+                nested_indent(depth - 1) + "if (!kt_taken) {\n"
+            } else if starts_with(line, "} else if ") {
+                let depth = len(blocks)
+                bound = scope_leave(bound)
+                let condition = lower_expression(
+                    header_condition(line, "} else if "), bound, "x",
+                    statement_indent(depth))
+                bound = scope_enter(bound)
+                # A skipped `else if` must not evaluate its condition, so the
+                # condition statements sit inside the `kt_taken` guard and the
+                # skipped path assigns a false condition instead.
+                emitted = emitted +
+                nested_indent(depth - 1) + "}\n" +
+                nested_indent(depth - 1) + "if (!kt_taken) {\n" +
+                lowered_statements(condition) +
+                statement_indent(depth) + "kt_cond = " +
+                lowered_operand(condition) + ";\n" +
+                statement_indent(depth) + "if (failed) return 1;\n" +
+                nested_indent(depth - 1) + "} else {\n" +
+                statement_indent(depth) + "kt_cond = false;\n" +
+                nested_indent(depth - 1) + "}\n" +
+                nested_indent(depth - 1) + "if (kt_cond) {\n" +
+                statement_indent(depth) + "kt_taken = true;\n"
+            } else if starts_with(line, "if ") {
+                let depth = len(blocks)
+                let condition = lower_expression(
+                    header_condition(line, "if "), bound, "x",
+                    statement_indent(depth + 1))
+                blocks = blocks + "i"
+                bound = scope_enter(bound)
+                emitted = emitted +
+                statement_indent(depth) + "{\n" +
+                nested_indent(depth) + "bool kt_taken = false;\n" +
+                nested_indent(depth) + "bool kt_cond;\n" +
+                nested_indent(depth) + "{\n" +
+                lowered_statements(condition) +
+                statement_indent(depth + 1) + "kt_cond = " +
+                lowered_operand(condition) + ";\n" +
+                nested_indent(depth) + "}\n" +
+                nested_indent(depth) + "if (failed) return 1;\n" +
+                nested_indent(depth) + "if (kt_cond) {\n" +
+                statement_indent(depth + 1) + "kt_taken = true;\n"
+            } else if starts_with(line, "let ") {
+                let depth = len(blocks)
                 let name = binding_name(line)
                 let value = lower_expression(binding_expression(line), bound,
-                                             "x")
+                                             "x", nested_indent(depth))
                 let kind = lowered_type(value)
                 let mut c_type = "int64_t"
                 if kind == "Bool" {
                     c_type = "bool"
                 }
                 emitted = emitted +
-                "    " + c_type + " kf_" + name + ";\n" +
-                "    {\n" +
+                statement_indent(depth) + c_type + " kf_" + name + ";\n" +
+                statement_indent(depth) + "{\n" +
                 lowered_statements(value) +
-                "        kf_" + name + " = " + lowered_operand(value) + ";\n" +
-                "    }\n" +
-                "    if (failed) return 1;\n" +
-                "    (void)kf_" + name + ";\n"
+                nested_indent(depth) + "kf_" + name + " = " +
+                lowered_operand(value) + ";\n" +
+                statement_indent(depth) + "}\n" +
+                statement_indent(depth) + "if (failed) return 1;\n" +
+                statement_indent(depth) + "(void)kf_" + name + ";\n"
                 bound = bound + name + ":" + kind + "|"
             } else if starts_with(line, "print(") {
-                let value = lower_expression(print_expression(line), bound, "x")
+                let depth = len(blocks)
+                let value = lower_expression(print_expression(line), bound, "x",
+                                             nested_indent(depth))
                 emitted = emitted +
-                "    {\n" +
+                statement_indent(depth) + "{\n" +
                 lowered_statements(value) +
-                "        int64_t value = " + lowered_operand(value) + ";\n" +
-                "        if (failed) return 1;\n" +
-                "        printf(\"%\" PRId64 \"\\n\", value);\n" +
-                "    }\n"
+                nested_indent(depth) + "int64_t value = " +
+                lowered_operand(value) + ";\n" +
+                nested_indent(depth) + "if (failed) return 1;\n" +
+                nested_indent(depth) +
+                "printf(\"%\" PRId64 \"\\n\", value);\n" +
+                statement_indent(depth) + "}\n"
             }
             line_start = index + 1
         }

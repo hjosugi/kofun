@@ -25,6 +25,11 @@ filename or hash special case.
   lower identically through both seeds. Its skipped short-circuit operands
   contain division by zero, so successful execution proves they were not
   evaluated.
+- `corpus_branch.kofun` / `.c` / `.stdout` — the nested-block corpus: `if`,
+  `else if` chains, `else`, blocks nested three deep, and a name rebound after
+  the block that first bound it closed all lower identically through both seeds.
+  Its skipped `else if` condition and short-circuited `||` operand are both
+  `1 // 0`, so successful execution proves neither was evaluated.
 - `corpus_reject.kofun` / `.stdout` — the failure corpus: both
   compilers refuse an out-of-Core source with the same diagnostic bytes
   and write nothing.
@@ -34,6 +39,12 @@ filename or hash special case.
   or an unsupported annotation, reserved Bool-literal binding names, ordered
   Bool, logical Int, `!Int`, and a lone `|` all exit nonzero and write no C
   through either seed.
+- `corpus_reject_branch_*.kofun`, `corpus_reject_else_*.kofun`,
+  `corpus_reject_unclosed_block.kofun` and
+  `corpus_reject_extra_block_end.kofun` — the block boundary: an Int condition,
+  a name read after its block closed, a `let` shadowing an outer binding, an
+  `else` with no `if`, a second `else` in one chain, an unclosed block, and a
+  `}` that closes nothing are all refused the same way by both seeds.
 
 The gate also checks path independence (the same relative input
 compiled from two different directories emits identical C), determinism
