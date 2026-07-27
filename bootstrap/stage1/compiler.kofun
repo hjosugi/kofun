@@ -1,12 +1,12 @@
 # Kofun Stage 1 compiler seed.
 #
-# The compiler accepts a deliberately small integer Core: `let` bindings and
-# `print(EXPR)` statements inside `fn main()`. Every expression is tokenized,
-# parsed and resolved here, then lowered to a C11 expression tree over checked
-# Int64 helpers. The emitted program carries no parser, no symbol table and no
-# fragment of the user's source: names are resolved to C locals at compile time
-# and literals are range-checked at compile time. This source is canonical;
-# compiler.c is the audited bootstrap artifact generated from it.
+# The compiler accepts a deliberately small Int/Bool Core: `let` bindings and
+# Int-only `print(EXPR)` statements inside `fn main()`. Every expression is
+# tokenized, parsed, resolved and typed here, then lowered to a C11 statement
+# sequence. The emitted program carries no parser, no symbol table and no
+# fragment of the user's source: names are resolved to typed C locals at
+# compile time and literals are range-checked at compile time. This source is
+# canonical; compiler.c is the audited bootstrap artifact generated from it.
 
 fn identifier_char(char: Text) -> Bool {
     return is_xid_continue(char) ||
@@ -103,6 +103,35 @@ fn split_binary(expression: Text, operators: Text) -> Int {
     return found
 }
 
+# Index of the last top-level complete operator token listed in the
+# comma-delimited `operators` set, or -1. Two-byte tokens win over their
+# one-byte prefixes, so `<=` is never split as `<` followed by `=`.
+fn split_operators(expression: Text, operators: Text) -> Int {
+    let symbols = chars(expression)
+    let mut depth = 0
+    let mut found = -1
+    for index in 0 .. len(symbols) {
+        let symbol = symbols[index]
+        if symbol == "(" {
+            depth = depth + 1
+        } else if symbol == ")" {
+            depth = depth - 1
+        } else if depth == 0 && preceded_by_operand(expression, index) {
+            let mut candidate = symbol
+            if index + 2 <= len(symbols) {
+                let pair = text_slice(expression, index, index + 2)
+                if find(operators, "," + pair + ",") >= 0 {
+                    candidate = pair
+                }
+            }
+            if find(operators, "," + candidate + ",") >= 0 {
+                found = index
+            }
+        }
+    }
+    return found
+}
+
 fn wraps_whole(expression: Text) -> Bool {
     let symbols = chars(expression)
     if len(symbols) < 2 || !(symbols[0] == "(") {
@@ -123,12 +152,12 @@ fn wraps_whole(expression: Text) -> Bool {
     return false
 }
 
-# A lowered expression is `STATEMENTS + OPERAND`: zero or more complete C
-# statements, each ending in a newline, followed by a newline-free operand that
-# names the result. Emitting one statement per operator is what makes the
-# evaluation order of the Core observable and fixed: C leaves the order of
-# function arguments unspecified, so a nested call tree would let the host C
-# compiler decide which of two failing operators reports first.
+# A lowered expression is `TYPE|STATEMENTS + OPERAND`: its static type, zero or
+# more complete C statements ending in newlines, then a newline-free operand.
+# The type prefix is compiler-only and is removed before C emission. Emitting
+# one statement per operator makes evaluation order observable and fixed: C
+# leaves argument evaluation order unspecified, so a nested call tree would
+# let the host compiler decide which failing operator reports first.
 fn last_newline(value: Text) -> Int {
     let symbols = chars(value)
     let mut found = -1
@@ -140,27 +169,101 @@ fn last_newline(value: Text) -> Int {
     return found
 }
 
+fn lowered_type(lowered: Text) -> Text {
+    if starts_with(lowered, "Int|") {
+        return "Int"
+    }
+    if starts_with(lowered, "Bool|") {
+        return "Bool"
+    }
+    return ""
+}
+
+fn lowered_value(lowered: Text) -> Text {
+    let kind = lowered_type(lowered)
+    if len(kind) == 0 {
+        return ""
+    }
+    return text_slice(lowered, len(kind) + 1, len(lowered))
+}
+
 fn lowered_statements(lowered: Text) -> Text {
-    let cut = last_newline(lowered)
+    let value = lowered_value(lowered)
+    let cut = last_newline(value)
     if cut < 0 {
         return ""
     }
-    return text_slice(lowered, 0, cut + 1)
+    return text_slice(value, 0, cut + 1)
 }
 
 fn lowered_operand(lowered: Text) -> Text {
-    let cut = last_newline(lowered)
-    return text_slice(lowered, cut + 1, len(lowered))
+    let value = lowered_value(lowered)
+    let cut = last_newline(value)
+    return text_slice(value, cut + 1, len(value))
 }
 
 # Each operator node owns a temporary named after its path from the root of the
 # expression, so names are unique without a mutable counter.
 fn lower_step(path: Text, callee: Text, left: Text, right: Text) -> Text {
+    if !(lowered_type(left) == "Int") || !(lowered_type(right) == "Int") {
+        return ""
+    }
     let temporary = "kt_" + path
-    return lowered_statements(left) + lowered_statements(right) +
+    return "Int|" +
+    lowered_statements(left) + lowered_statements(right) +
     "        int64_t " + temporary + " = " + callee +
     lowered_operand(left) + ", " + lowered_operand(right) + ");\n" +
     temporary
+}
+
+fn lower_comparison(path: Text, operator: Text, left: Text,
+                    right: Text) -> Text {
+    let left_type = lowered_type(left)
+    let right_type = lowered_type(right)
+    if operator == "==" || operator == "!=" {
+        if len(left_type) == 0 || !(left_type == right_type) {
+            return ""
+        }
+    } else if !(left_type == "Int") || !(right_type == "Int") {
+        return ""
+    }
+    let temporary = "kt_" + path
+    return "Bool|" +
+    lowered_statements(left) + lowered_statements(right) +
+    "        bool " + temporary + " = " + lowered_operand(left) + " " +
+    operator + " " + lowered_operand(right) + ";\n" +
+    temporary
+}
+
+fn lower_logical(path: Text, operator: Text, left: Text,
+                 right: Text) -> Text {
+    if !(lowered_type(left) == "Bool") ||
+       !(lowered_type(right) == "Bool") {
+        return ""
+    }
+    let temporary = "kt_" + path
+    let mut condition = temporary
+    if operator == "||" {
+        condition = "!" + temporary
+    }
+    return "Bool|" +
+    lowered_statements(left) +
+    "        bool " + temporary + " = " + lowered_operand(left) + ";\n" +
+    "        if (!failed && " + condition + ") {\n" +
+    lowered_statements(right) +
+    "            " + temporary + " = " + lowered_operand(right) + ";\n" +
+    "        }\n" +
+    temporary
+}
+
+fn bound_type(bound: Text, name: Text) -> Text {
+    if find(bound, "|" + name + ":Int|") >= 0 {
+        return "Int"
+    }
+    if find(bound, "|" + name + ":Bool|") >= 0 {
+        return "Bool"
+    }
+    return ""
 }
 
 fn lower_atom(atom: Text, bound: Text) -> Text {
@@ -168,15 +271,19 @@ fn lower_atom(atom: Text, bound: Text) -> Text {
         if !within_bound(atom, "9223372036854775807") {
             return ""
         }
-        return atom
+        return "Int|" + atom
+    }
+    if atom == "true" || atom == "false" {
+        return "Bool|" + atom
     }
     if !valid_name(atom) {
         return ""
     }
-    if find(bound, "|" + atom + "|") < 0 {
+    let kind = bound_type(bound, atom)
+    if len(kind) == 0 {
         return ""
     }
-    return "kf_" + atom
+    return kind + "|kf_" + atom
 }
 
 # A negated decimal literal is folded at compile time so that the one magnitude
@@ -185,19 +292,19 @@ fn lower_negation(operand: Text, bound: Text, path: Text) -> Text {
     let trimmed = trim(operand)
     if all_digits(trimmed) {
         if within_bound(trimmed, "9223372036854775807") {
-            return "-" + trimmed
+            return "Int|-" + trimmed
         }
         if within_bound(trimmed, "9223372036854775808") {
-            return "INT64_MIN"
+            return "Int|INT64_MIN"
         }
         return ""
     }
     let inner = lower_expression(trimmed, bound, path + "u")
-    if len(inner) == 0 {
+    if !(lowered_type(inner) == "Int") {
         return ""
     }
     let temporary = "kt_" + path
-    return lowered_statements(inner) +
+    return "Int|" + lowered_statements(inner) +
     "        int64_t " + temporary + " = checked_neg(" +
     lowered_operand(inner) + ");\n" +
     temporary
@@ -210,6 +317,53 @@ fn lower_expression(expression: Text, bound: Text, path: Text) -> Text {
     let trimmed = trim(expression)
     if len(trimmed) == 0 {
         return ""
+    }
+
+    let logical_or = split_operators(trimmed, ",||,")
+    if logical_or >= 0 {
+        let left = lower_expression(
+            text_slice(trimmed, 0, logical_or), bound, path + "l")
+        let right = lower_expression(
+            text_slice(trimmed, logical_or + 2, len(trimmed)),
+            bound, path + "r")
+        return lower_logical(path, "||", left, right)
+    }
+
+    let logical_and = split_operators(trimmed, ",&&,")
+    if logical_and >= 0 {
+        let left = lower_expression(
+            text_slice(trimmed, 0, logical_and), bound, path + "l")
+        let right = lower_expression(
+            text_slice(trimmed, logical_and + 2, len(trimmed)),
+            bound, path + "r")
+        return lower_logical(path, "&&", left, right)
+    }
+
+    let equality = split_operators(trimmed, ",==,!=,")
+    if equality >= 0 {
+        let operator = text_slice(trimmed, equality, equality + 2)
+        let left = lower_expression(
+            text_slice(trimmed, 0, equality), bound, path + "l")
+        let right = lower_expression(
+            text_slice(trimmed, equality + 2, len(trimmed)),
+            bound, path + "r")
+        return lower_comparison(path, operator, left, right)
+    }
+
+    let ordering = split_operators(trimmed, ",<=,>=,<,>,")
+    if ordering >= 0 {
+        let mut skip = 1
+        if ordering + 2 <= len(trimmed) &&
+           text_slice(trimmed, ordering + 1, ordering + 2) == "=" {
+            skip = 2
+        }
+        let operator = text_slice(trimmed, ordering, ordering + skip)
+        let left = lower_expression(
+            text_slice(trimmed, 0, ordering), bound, path + "l")
+        let right = lower_expression(
+            text_slice(trimmed, ordering + skip, len(trimmed)),
+            bound, path + "r")
+        return lower_comparison(path, operator, left, right)
     }
 
     let additive = split_binary(trimmed, "+-")
@@ -258,11 +412,26 @@ fn lower_expression(expression: Text, bound: Text, path: Text) -> Text {
     }
 
     if starts_with(trimmed, "+") {
-        return lower_expression(
+        let inner = lower_expression(
             text_slice(trimmed, 1, len(trimmed)), bound, path)
+        if !(lowered_type(inner) == "Int") {
+            return ""
+        }
+        return inner
     }
     if starts_with(trimmed, "-") {
         return lower_negation(text_slice(trimmed, 1, len(trimmed)), bound, path)
+    }
+    if starts_with(trimmed, "!") {
+        let inner = lower_expression(
+            text_slice(trimmed, 1, len(trimmed)), bound, path + "u")
+        if !(lowered_type(inner) == "Bool") {
+            return ""
+        }
+        let temporary = "kt_" + path
+        return "Bool|" + lowered_statements(inner) +
+        "        bool " + temporary + " = !" + lowered_operand(inner) + ";\n" +
+        temporary
     }
     if wraps_whole(trimmed) {
         return lower_expression(
@@ -318,6 +487,19 @@ fn binding_expression(line: Text) -> Text {
     return trim(text_slice(line, equals + 1, len(line)))
 }
 
+fn binding_annotation(line: Text) -> Text {
+    let equals = find(line, "=")
+    if equals < 0 {
+        return ""
+    }
+    let declaration = trim(text_slice(line, 4, equals))
+    let colon = find(declaration, ":")
+    if colon < 0 {
+        return ""
+    }
+    return trim(text_slice(declaration, colon + 1, len(declaration)))
+}
+
 fn valid_source(source: Text) -> Bool {
     let symbols = chars(source)
     let mut line_start = 0
@@ -346,25 +528,33 @@ fn valid_source(source: Text) -> Bool {
                     return false
                 }
                 let name = binding_name(line)
-                if !valid_name(name) {
+                if !valid_name(name) || name == "true" || name == "false" {
                     return false
                 }
                 # One binding per name: the language rejects same-scope
                 # shadowing, so the seed rejects it too.
-                if find(bound, "|" + name + "|") >= 0 {
+                if len(bound_type(bound, name)) > 0 {
                     return false
                 }
-                if len(lower_expression(binding_expression(line), bound,
-                                       "x")) == 0 {
+                let value = lower_expression(binding_expression(line), bound,
+                                             "x")
+                let kind = lowered_type(value)
+                if len(kind) == 0 {
                     return false
                 }
-                bound = bound + name + "|"
+                let declaration = trim(text_slice(line, 4, find(line, "=")))
+                let annotation = binding_annotation(line)
+                if find(declaration, ":") >= 0 && !(annotation == kind) {
+                    return false
+                }
+                bound = bound + name + ":" + kind + "|"
             } else if starts_with(line, "print(") {
                 if body_depth != 1 {
                     return false
                 }
                 let expression = print_expression(line)
-                if len(lower_expression(expression, bound, "x")) == 0 {
+                if !(lowered_type(lower_expression(expression, bound,
+                                                   "x")) == "Int") {
                     return false
                 }
                 prints = prints + 1
@@ -389,15 +579,20 @@ fn emit_statements(source: Text) -> Text {
                 let name = binding_name(line)
                 let value = lower_expression(binding_expression(line), bound,
                                              "x")
+                let kind = lowered_type(value)
+                let mut c_type = "int64_t"
+                if kind == "Bool" {
+                    c_type = "bool"
+                }
                 emitted = emitted +
-                "    int64_t kf_" + name + ";\n" +
+                "    " + c_type + " kf_" + name + ";\n" +
                 "    {\n" +
                 lowered_statements(value) +
                 "        kf_" + name + " = " + lowered_operand(value) + ";\n" +
                 "    }\n" +
                 "    if (failed) return 1;\n" +
                 "    (void)kf_" + name + ";\n"
-                bound = bound + name + "|"
+                bound = bound + name + ":" + kind + "|"
             } else if starts_with(line, "print(") {
                 let value = lower_expression(print_expression(line), bound, "x")
                 emitted = emitted +

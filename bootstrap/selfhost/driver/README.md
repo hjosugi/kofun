@@ -20,9 +20,20 @@ filename or hash special case.
   compiler built from `S.c` compiles this Core input to C that is
   byte-identical to what the audited Stage 1 seed emits, prints the
   same stdout, and the compiled program reproduces the pinned output.
+- `corpus_bool.kofun` / `.c` / `.stdout` — the comparison/Bool corpus:
+  all six comparisons, Bool literals and bindings, `!`, `&&` and `||`
+  lower identically through both seeds. Its skipped short-circuit operands
+  contain division by zero, so successful execution proves they were not
+  evaluated.
 - `corpus_reject.kofun` / `.stdout` — the failure corpus: both
   compilers refuse an out-of-Core source with the same diagnostic bytes
   and write nothing.
+- `corpus_reject_bool_*.kofun`, `corpus_reject_logical_int.kofun`,
+  `corpus_reject_not_int.kofun`, and `corpus_reject_single_pipe.kofun` — the
+  typed boundary: Bool in arithmetic or `print`, explicit annotation mismatch
+  or an unsupported annotation, reserved Bool-literal binding names, ordered
+  Bool, logical Int, `!Int`, and a lone `|` all exit nonzero and write no C
+  through either seed.
 
 The gate also checks path independence (the same relative input
 compiled from two different directories emits identical C), determinism

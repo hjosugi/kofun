@@ -1,0 +1,4 @@
+fn main() {
+    let flag: Int = 1 < 2
+    print(0)
+}

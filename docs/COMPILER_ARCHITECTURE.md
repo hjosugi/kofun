@@ -14,8 +14,11 @@ bootstrap/stage1/compiler.c
 kofun-stage1 INPUT.kofun OUTPUT.c
 ```
 
-The current frontend validates `fn main() { print(EXPR) }`, where `EXPR` is the
-documented integer arithmetic Core, and emits deterministic standalone C11.
+The current Stage 1 frontend validates line-oriented `let` and Int-valued
+`print(EXPR)` statements in `fn main()`. Expressions cover checked Int
+arithmetic, six Int comparisons, Bool equality, Bool literals and bindings,
+`!`, and short-circuiting `&&`/`||`; typed boundary crossings are refused
+before deterministic standalone C11 is emitted.
 
 Three executable checkpoints extend this path without claiming full
 integration:

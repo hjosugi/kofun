@@ -1,0 +1,4 @@
+fn main() {
+    let flag: _ = true
+    print(0)
+}
