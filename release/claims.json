@@ -1,0 +1,1448 @@
+{
+  "schema": "kofun.release-claims/v1",
+  "manifest_version": 1,
+  "public_sources": [
+    "docs/MVP_IMPLEMENTED.md"
+  ],
+  "areas": [
+    "bootstrap",
+    "c-backend",
+    "frameworks",
+    "frontend",
+    "interop",
+    "native",
+    "quality",
+    "self-hosting",
+    "tooling",
+    "webassembly"
+  ],
+  "targets": [
+    "c11",
+    "host-c",
+    "linux-x86_64",
+    "native-aarch64",
+    "native-x86_64",
+    "repository",
+    "selfhost",
+    "stage1",
+    "stage2",
+    "wasm32"
+  ],
+  "claims": [
+    {
+      "id": "arithmetic-core",
+      "public_wording": "arithmetic Core validation/emission",
+      "public_status": "implemented",
+      "state": "implemented",
+      "area": "frontend",
+      "bounded_capability": "The arithmetic Core is validated and emitted for the checked Int64 operator set; `/` is deliberately not part of it.",
+      "targets": [
+        "c11",
+        "stage2"
+      ],
+      "specification": [
+        "docs/SEMANTICS.md",
+        "spec/semantics.md"
+      ],
+      "compatibility": "Operator semantics are covered by the numeric conformance corpus; additions arrive as new corpus cases rather than silent behaviour changes.",
+      "positive_gate": {
+        "command": "sh tests/cli.sh",
+        "observation": "The arithmetic Core validates and emits without a diagnostic."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "tests/conformance/numeric/reject_slash_operator.kofun",
+        "observation": "`/` on `Int` is refused with one diagnostic instead of being lowered."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make test",
+        "prerequisites": []
+      }
+    },
+    {
+      "id": "borrowed-list-ownership",
+      "public_wording": "borrowed-List Copy/move ownership check",
+      "public_status": "narrow Stage 2 checkpoint",
+      "state": "checkpoint",
+      "area": "frontend",
+      "bounded_capability": "Stage 2 rejects use-after-move for borrowed `List` bindings only. It is not a general ownership pass.",
+      "targets": [
+        "stage2"
+      ],
+      "specification": [
+        "docs/MEMORY_MODEL.md"
+      ],
+      "compatibility": "Only the borrowed-`List` shape is promised; other ownership errors may still compile until the general pass lands.",
+      "positive_gate": {
+        "command": "sh bootstrap/stage2/check.sh",
+        "observation": "The borrowed-List Copy/move checkpoint passes."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "tests/compile-fail/use_after_take.kofun",
+        "observation": "Using a moved binding is refused at compile time."
+      },
+      "safety": {
+        "classification": "memory-safety",
+        "threat_model": "docs/MEMORY_MODEL.md",
+        "negative_test": "tests/compile-fail/use_after_take.kofun"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make stage2",
+        "prerequisites": []
+      }
+    },
+    {
+      "id": "c-abi-profile",
+      "public_wording": "C ABI `extern` / `repr(C)` profile",
+      "public_status": "bounded host-C implementation",
+      "state": "checkpoint",
+      "area": "interop",
+      "bounded_capability": "`extern` declarations and `repr(C)` layouts are honoured for the host C compiler only; no cross-ABI or cross-target promise is made.",
+      "targets": [
+        "host-c",
+        "linux-x86_64"
+      ],
+      "specification": [
+        "docs/RUST_CRATE_SHIMS.md"
+      ],
+      "compatibility": "Layout guarantees follow the host C compiler; changing compilers may change layout and is not a compatibility break in this profile.",
+      "positive_gate": {
+        "command": "sh bootstrap/c_abi/check.sh",
+        "observation": "The C ABI profile builds and round-trips through host C."
+      },
+      "negative_boundary": {
+        "kind": "limit",
+        "evidence": "tests/conformance/capabilities.tsv",
+        "observation": "Backends outside the host-C profile are recorded as unsupported with a stated reason."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make c-abi",
+        "prerequisites": [
+          "cc"
+        ]
+      }
+    },
+    {
+      "id": "c11-function-calls",
+      "public_wording": "C11 user-function calls",
+      "public_status": "bounded Int Core: recursion and forward calls",
+      "state": "checkpoint",
+      "area": "c-backend",
+      "bounded_capability": "User functions lower to C11 for the Int Core, including recursion and forward references. Other value types are outside the slice.",
+      "targets": [
+        "c11",
+        "stage2"
+      ],
+      "specification": [
+        "docs/COMPILER_ARCHITECTURE.md"
+      ],
+      "compatibility": "Emitted C11 is deterministic for the covered slice; the exact text is pinned by the Stage 2 gate.",
+      "positive_gate": {
+        "command": "sh bootstrap/stage2/check.sh",
+        "observation": "Int Core user-function calls lower and execute through C11."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun",
+        "observation": "Statements outside the lowered slice are refused with `E2S10` rather than mis-lowered."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make stage2",
+        "prerequisites": [
+          "cc"
+        ]
+      }
+    },
+    {
+      "id": "checked-int64-contract",
+      "public_wording": "checked Int64 contract",
+      "public_status": "implemented for Core",
+      "state": "implemented",
+      "area": "frontend",
+      "bounded_capability": "Every Core `Int` operation is checked: overflow and non-representable results are refused or trapped, never wrapped.",
+      "targets": [
+        "c11",
+        "native-aarch64",
+        "native-x86_64",
+        "stage2",
+        "wasm32"
+      ],
+      "specification": [
+        "docs/SEMANTICS.md"
+      ],
+      "compatibility": "The checked contract holds across every backend that claims the Core; a backend that cannot honour it must report unsupported.",
+      "positive_gate": {
+        "command": "sh tests/conformance/run.sh",
+        "observation": "The numeric conformance corpus passes on every supported backend."
+      },
+      "negative_boundary": {
+        "kind": "trap",
+        "evidence": "tests/conformance/numeric/reject_slash_operator.kofun",
+        "observation": "Operations that cannot be represented are refused or trapped rather than wrapping."
+      },
+      "safety": {
+        "classification": "refusal-boundary",
+        "threat_model": "docs/SECURITY.md",
+        "negative_test": "tests/conformance/numeric/reject_slash_operator.kofun"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make check",
+        "prerequisites": []
+      }
+    },
+    {
+      "id": "cli-commands",
+      "public_wording": "build/run/check/test CLI",
+      "public_status": "Core only",
+      "state": "checkpoint",
+      "area": "tooling",
+      "bounded_capability": "`build`, `run`, `check` and `test` accept Core sources. Sources outside the Core are refused by the driver, not partially compiled.",
+      "targets": [
+        "repository",
+        "stage2"
+      ],
+      "specification": [
+        "docs/GETTING_STARTED.md"
+      ],
+      "compatibility": "Command names and exit statuses are stable; the accepted source set grows with the Core.",
+      "positive_gate": {
+        "command": "sh tests/cli.sh",
+        "observation": "Each subcommand succeeds on Core sources."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "tests/cli_stage2_outcomes.sh",
+        "observation": "Non-Core sources produce a refusal outcome instead of a partial build."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make test",
+        "prerequisites": []
+      }
+    },
+    {
+      "id": "cli-framework",
+      "public_wording": "Linux x86-64 native CLI application framework",
+      "public_status": "bounded direct-static implementation",
+      "state": "checkpoint",
+      "area": "frameworks",
+      "bounded_capability": "The CLI framework produces a direct static Linux x86-64 binary for the declarative command profile. No dynamic linking or other host is covered.",
+      "targets": [
+        "linux-x86_64",
+        "native-x86_64"
+      ],
+      "specification": [
+        "docs/NATIVE_BACKEND.md"
+      ],
+      "compatibility": "Argument parsing and exit statuses are gated; the framework surface may grow between releases.",
+      "positive_gate": {
+        "command": "sh framework/cli/check.sh",
+        "observation": "The declarative CLI example builds statically and runs."
+      },
+      "negative_boundary": {
+        "kind": "limit",
+        "evidence": "tests/conformance/capabilities.tsv",
+        "observation": "Targets outside Linux x86-64 are recorded as unsupported with a stated reason."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make cli-framework",
+        "prerequisites": []
+      }
+    },
+    {
+      "id": "compiler-seed",
+      "public_wording": "Kofun-written compiler seed",
+      "public_status": "implemented",
+      "state": "implemented",
+      "area": "bootstrap",
+      "bounded_capability": "The Stage 1 seed is written in Kofun and kept beside a hand-audited C transliteration; the pair is the bootstrap root of trust.",
+      "targets": [
+        "stage1"
+      ],
+      "specification": [
+        "docs/SELF_HOSTING.md"
+      ],
+      "compatibility": "The seed pair changes only together, and the digest file records the change.",
+      "positive_gate": {
+        "command": "sh bootstrap/stage1/check.sh",
+        "observation": "The Kofun seed and its audited C transliteration agree."
+      },
+      "negative_boundary": {
+        "kind": "limit",
+        "evidence": "bootstrap/stage1/SHA256SUMS",
+        "observation": "A seed edited without regenerating its digest fails the bootstrap gate."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make bootstrap",
+        "prerequisites": [
+          "cc",
+          "sha256sum"
+        ]
+      }
+    },
+    {
+      "id": "deterministic-fuzzing",
+      "public_wording": "deterministic compiler fuzzing",
+      "public_status": "versioned oracle/backend observations for arithmetic plus focused grammar, value-if, match-guard, match-value, and enum-match families",
+      "state": "implemented",
+      "area": "quality",
+      "bounded_capability": "Fuzzing is seeded and reproducible: the same seed yields the same programs and the same oracle/backend observations.",
+      "targets": [
+        "c11",
+        "native-x86_64",
+        "stage2"
+      ],
+      "specification": [
+        "tests/fuzz/SEMANTIC_PROTOCOL.md"
+      ],
+      "compatibility": "The observation protocol is versioned; a protocol change is a release-note event.",
+      "positive_gate": {
+        "command": "sh tests/fuzz/semantic_differential.sh",
+        "observation": "Oracle and backend observations agree for every generated program."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "tests/fuzz/semantic_differential.sh",
+        "observation": "A divergence between the oracle and a backend fails the gate with the differing program."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make fuzz",
+        "prerequisites": [
+          "cc"
+        ]
+      }
+    },
+    {
+      "id": "elf64-image-writer",
+      "public_wording": "ELF64/x86-64 native image writer",
+      "public_status": "checkpoint implemented",
+      "state": "checkpoint",
+      "area": "native",
+      "bounded_capability": "The backend writes a static ELF64 image directly, without an external assembler or linker, for the covered Core profiles.",
+      "targets": [
+        "native-x86_64"
+      ],
+      "specification": [
+        "docs/NATIVE_BACKEND.md"
+      ],
+      "compatibility": "Emitted images are byte-deterministic for a given source and target.",
+      "positive_gate": {
+        "command": "sh bootstrap/native/check.sh",
+        "observation": "A static ELF64 image is written and executes."
+      },
+      "negative_boundary": {
+        "kind": "limit",
+        "evidence": "tests/conformance/capabilities.tsv",
+        "observation": "Corpora outside the lowered profiles are recorded as unsupported with a stated reason."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make native",
+        "prerequisites": []
+      }
+    },
+    {
+      "id": "enum-matching",
+      "public_wording": "payload-free concrete enum matching",
+      "public_status": "bounded Stage 2 C11 slice with constructor-set exhaustiveness",
+      "state": "checkpoint",
+      "area": "frontend",
+      "bounded_capability": "Payload-free concrete enums match exhaustively over their constructor set. Payload-carrying and generic enums are outside the slice.",
+      "targets": [
+        "c11",
+        "stage2"
+      ],
+      "specification": [
+        "spec/enum-match-exhaustiveness.md"
+      ],
+      "compatibility": "Exhaustiveness is checked for the covered shape; widening the shape is a release-note event.",
+      "positive_gate": {
+        "command": "sh tests/conformance/syntax/issues_35_47/run.sh",
+        "observation": "Payload-free enum matches lower and execute with exhaustiveness enforced."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "tests/conformance/adt/generic_unsupported.kofun",
+        "observation": "Enum shapes outside the slice are refused rather than silently accepted."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make syntax",
+        "prerequisites": [
+          "cc"
+        ]
+      }
+    },
+    {
+      "id": "formatter-and-repl",
+      "public_wording": "formatter and REPL",
+      "public_status": "open",
+      "state": "design",
+      "area": "tooling",
+      "bounded_capability": "Design only. No formatter or REPL is shipped, and no gate claims one.",
+      "targets": [
+        "repository"
+      ],
+      "specification": [
+        "docs/ROADMAP.md"
+      ],
+      "compatibility": "Nothing is promised; a future implementation arrives with its own claim and gate.",
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make repository-check",
+        "prerequisites": []
+      }
+    },
+    {
+      "id": "general-native-lowering",
+      "public_wording": "general native lowering",
+      "public_status": "open",
+      "state": "open",
+      "area": "native",
+      "bounded_capability": "Unified types, unified control flow, and additional target profiles are absent. Only the enumerated native checkpoints are claimed.",
+      "targets": [
+        "native-aarch64",
+        "native-x86_64"
+      ],
+      "specification": [
+        "docs/NATIVE_BACKEND.md"
+      ],
+      "compatibility": "Nothing beyond the enumerated native checkpoints may be relied on.",
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make native",
+        "prerequisites": []
+      }
+    },
+    {
+      "id": "general-ownership-checking",
+      "public_wording": "general ownership and law checking",
+      "public_status": "open",
+      "state": "open",
+      "area": "frontend",
+      "bounded_capability": "There is no general ownership or law pass. Only the narrow borrowed-`List` checkpoint is claimed.",
+      "targets": [
+        "stage2"
+      ],
+      "specification": [
+        "docs/LAW_SYSTEM.md",
+        "docs/MEMORY_MODEL.md"
+      ],
+      "compatibility": "Ownership errors outside the borrowed-`List` checkpoint may compile; that is a stated absence, not a regression.",
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make stage2",
+        "prerequisites": []
+      }
+    },
+    {
+      "id": "general-parser-type-checker",
+      "public_wording": "general parser/type checker",
+      "public_status": "open",
+      "state": "open",
+      "area": "frontend",
+      "bounded_capability": "The active compiler is not a general parser or type checker. Only the enumerated Stage 2 checkpoints are claimed.",
+      "targets": [
+        "stage2"
+      ],
+      "specification": [
+        "docs/TYPE_SYSTEM.md"
+      ],
+      "compatibility": "No general acceptance is promised; sources outside the checkpoints are refused.",
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make stage2",
+        "prerequisites": []
+      }
+    },
+    {
+      "id": "http-framework",
+      "public_wording": "Linux HTTP/1.1 epoll framework through C ABI",
+      "public_status": "bounded library implementation",
+      "state": "checkpoint",
+      "area": "frameworks",
+      "bounded_capability": "A bounded HTTP/1.1 server library over epoll, reached through the C ABI profile. TLS, HTTP/2 and client redirects are outside it.",
+      "targets": [
+        "host-c",
+        "linux-x86_64"
+      ],
+      "specification": [
+        "docs/BUILD_SYSTEM.md"
+      ],
+      "compatibility": "The request/response state machine is bounded and gated; resource limits may tighten between releases.",
+      "positive_gate": {
+        "command": "sh tests/http/check.sh",
+        "observation": "The bounded HTTP/1.1 server accepts and answers gated requests."
+      },
+      "negative_boundary": {
+        "kind": "limit",
+        "evidence": "tests/http/check.sh",
+        "observation": "Requests beyond the bounded state machine are refused rather than buffered without limit."
+      },
+      "safety": {
+        "classification": "resource-bound",
+        "threat_model": "docs/SECURITY.md",
+        "negative_test": "tests/http/check.sh"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make http",
+        "prerequisites": [
+          "cc"
+        ]
+      }
+    },
+    {
+      "id": "module-aliases",
+      "public_wording": "qualified module aliases",
+      "public_status": "bounded same-package `import a.b as local`; local-only `AliasBindingId` preserves target identity, with no public/per-name/external aliases or `bin/kofun` routing",
+      "state": "checkpoint",
+      "area": "frontend",
+      "bounded_capability": "Same-package `import a.b as local` only. The alias is local, never re-exported, and does not route the driver.",
+      "targets": [
+        "stage2"
+      ],
+      "specification": [
+        "spec/modules/module-identity.md"
+      ],
+      "compatibility": "Alias identity is local-only; making an alias public is a release-note event.",
+      "positive_gate": {
+        "command": "sh tests/conformance/modules/import-aliases/run.sh",
+        "observation": "Same-package aliases resolve while preserving target identity."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "tests/conformance/capabilities.tsv",
+        "observation": "Public, per-name and external aliases are outside the profile and are refused."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make import-aliases",
+        "prerequisites": []
+      }
+    },
+    {
+      "id": "native-aarch64-function-calls",
+      "public_wording": "AArch64 native user-function calls",
+      "public_status": "same bounded Int Core lowered to AArch64; executed under `qemu-aarch64`",
+      "state": "checkpoint",
+      "area": "native",
+      "bounded_capability": "The same bounded Int Core lowers to AArch64. Execution evidence requires `qemu-aarch64`; without it the gate reports a skip rather than a pass.",
+      "targets": [
+        "native-aarch64"
+      ],
+      "specification": [
+        "docs/NATIVE_BACKEND.md"
+      ],
+      "compatibility": "AArch64 tracks the x86-64 Int Core profile; divergence would be a release-note event.",
+      "positive_gate": {
+        "command": "sh bootstrap/native/check.sh",
+        "observation": "AArch64 images are emitted and, with qemu present, execute to the expected values."
+      },
+      "negative_boundary": {
+        "kind": "skip",
+        "evidence": "bootstrap/native/check.sh",
+        "observation": "Without `qemu-aarch64` the execution branch is reported as skipped, never as passed."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make native",
+        "prerequisites": [
+          "qemu-aarch64"
+        ]
+      }
+    },
+    {
+      "id": "native-constant-stack-returns",
+      "public_wording": "x86-64/AArch64 constant-stack returned calls",
+      "public_status": "a `return` of a direct call branches instead of calling, so direct and mutual recursion in that position run in constant stack; proved by executing three million steps under a lowered stack limit",
+      "state": "checkpoint",
+      "area": "native",
+      "bounded_capability": "A `return` of a direct call becomes a branch, so recursion in tail position runs in constant stack. Calls in non-return position still consume stack.",
+      "targets": [
+        "native-aarch64",
+        "native-x86_64"
+      ],
+      "specification": [
+        "docs/NATIVE_BACKEND.md"
+      ],
+      "compatibility": "The constant-stack property is promised only for a `return` of a direct call.",
+      "positive_gate": {
+        "command": "sh bootstrap/native/check.sh",
+        "observation": "Three million recursive steps complete under a lowered stack limit."
+      },
+      "negative_boundary": {
+        "kind": "limit",
+        "evidence": "bootstrap/native/fixtures/function_all_traps_pressure.kofun",
+        "observation": "Calls outside return position remain ordinary calls and are bounded by the stack limit."
+      },
+      "safety": {
+        "classification": "resource-bound",
+        "threat_model": "docs/SECURITY.md",
+        "negative_test": "bootstrap/native/fixtures/function_all_traps_pressure.kofun"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make native",
+        "prerequisites": []
+      }
+    },
+    {
+      "id": "native-int64-values",
+      "public_wording": "x86-64/AArch64 native Int64 values",
+      "public_status": "literal magnitudes through `INT64_MAX`, backward-compatible deterministic encodings, and the complete signed range through checked expressions",
+      "state": "checkpoint",
+      "area": "native",
+      "bounded_capability": "Literals reach `INT64_MAX` and checked expressions reach the complete signed range, with deterministic encodings on both targets.",
+      "targets": [
+        "native-aarch64",
+        "native-x86_64"
+      ],
+      "specification": [
+        "docs/NATIVE_BACKEND.md"
+      ],
+      "compatibility": "Encodings are backward compatible: a previously emitted image stays byte-identical unless a release note says otherwise.",
+      "positive_gate": {
+        "command": "sh bootstrap/native/check.sh",
+        "observation": "Int64 magnitudes and checked expressions emit deterministic encodings on both targets."
+      },
+      "negative_boundary": {
+        "kind": "trap",
+        "evidence": "tests/conformance/numeric/reject_slash_operator.kofun",
+        "observation": "Values outside the representable range are refused or trapped, never wrapped."
+      },
+      "safety": {
+        "classification": "refusal-boundary",
+        "threat_model": "docs/SECURITY.md",
+        "negative_test": "tests/conformance/numeric/reject_slash_operator.kofun"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make native",
+        "prerequisites": []
+      }
+    },
+    {
+      "id": "native-integer-division",
+      "public_wording": "x86-64/AArch64 native integer division",
+      "public_status": "`//` and `%` use the specified floor semantics; `/` is not defined on `Int` and both targets refuse it with one diagnostic (#687); both guard zero and non-representable quotients with canonical per-operator `R010` diagnostics",
+      "state": "checkpoint",
+      "area": "native",
+      "bounded_capability": "`//` and `%` follow floor semantics on both targets. `/` is refused on `Int`, and zero or non-representable quotients trap with a canonical per-operator `R010`.",
+      "targets": [
+        "native-aarch64",
+        "native-x86_64"
+      ],
+      "specification": [
+        "docs/SEMANTICS.md"
+      ],
+      "compatibility": "Floor semantics and the `R010` diagnostic identity are stable; the refusal of `/` on `Int` is deliberate and will not become a fallback.",
+      "positive_gate": {
+        "command": "sh bootstrap/native/check.sh",
+        "observation": "Floor division and remainder agree with the specification on both targets."
+      },
+      "negative_boundary": {
+        "kind": "trap",
+        "evidence": "tests/conformance/functions/division_floor_signs.kofun",
+        "observation": "Division by zero and non-representable quotients trap with a canonical per-operator `R010` diagnostic."
+      },
+      "safety": {
+        "classification": "refusal-boundary",
+        "threat_model": "docs/SECURITY.md",
+        "negative_test": "tests/conformance/numeric/reject_slash_operator.kofun"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make native",
+        "prerequisites": []
+      }
+    },
+    {
+      "id": "native-list-int-core",
+      "public_wording": "x86-64/AArch64 List[Int] Core",
+      "public_status": "checkpoint implemented; AArch64 executes under qemu",
+      "state": "checkpoint",
+      "area": "native",
+      "bounded_capability": "`List[Int]` values lower natively on both targets for the Core operation set. AArch64 execution evidence requires qemu.",
+      "targets": [
+        "native-aarch64",
+        "native-x86_64"
+      ],
+      "specification": [
+        "docs/NATIVE_BACKEND.md"
+      ],
+      "compatibility": "The covered `List[Int]` operations are gated by the list conformance corpus.",
+      "positive_gate": {
+        "command": "sh bootstrap/native/check.sh",
+        "observation": "`List[Int]` programs lower and execute on both targets."
+      },
+      "negative_boundary": {
+        "kind": "limit",
+        "evidence": "tests/conformance/capabilities.tsv",
+        "observation": "Backends that do not lower `List` values are recorded as unsupported with a stated reason."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make native",
+        "prerequisites": [
+          "qemu-aarch64"
+        ]
+      }
+    },
+    {
+      "id": "native-text-returning-calls",
+      "public_wording": "x86-64/AArch64 native Text-returning calls",
+      "public_status": "bounded compiler-shaped profile with parameters, locals, concatenation, forwarding, and direct calls",
+      "state": "checkpoint",
+      "area": "native",
+      "bounded_capability": "Functions returning `Text` lower on both targets for the compiler-shaped profile: parameters, locals, concatenation, forwarding and direct calls.",
+      "targets": [
+        "native-aarch64",
+        "native-x86_64"
+      ],
+      "specification": [
+        "docs/NATIVE_BACKEND.md"
+      ],
+      "compatibility": "The profile is deliberately compiler-shaped; general `Text` lowering is not promised.",
+      "positive_gate": {
+        "command": "sh bootstrap/native/check.sh",
+        "observation": "Text-returning calls lower and execute on both targets."
+      },
+      "negative_boundary": {
+        "kind": "limit",
+        "evidence": "tests/conformance/capabilities.tsv",
+        "observation": "Backends that do not lower `Text` values are recorded as unsupported with a stated reason."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make native",
+        "prerequisites": [
+          "qemu-aarch64"
+        ]
+      }
+    },
+    {
+      "id": "native-utf8-text-core",
+      "public_wording": "x86-64/AArch64 UTF-8 Text Core",
+      "public_status": "checkpoint implemented; AArch64 executes under qemu",
+      "state": "checkpoint",
+      "area": "native",
+      "bounded_capability": "UTF-8 `Text` values lower natively on both targets for the Core operation set, with codepoint and grapheme behaviour gated against Unicode data.",
+      "targets": [
+        "native-aarch64",
+        "native-x86_64"
+      ],
+      "specification": [
+        "docs/NATIVE_BACKEND.md"
+      ],
+      "compatibility": "Unicode behaviour tracks the vendored Unicode version; a version bump is a release-note event.",
+      "positive_gate": {
+        "command": "sh bootstrap/native/check.sh",
+        "observation": "UTF-8 `Text` programs lower and execute on both targets."
+      },
+      "negative_boundary": {
+        "kind": "limit",
+        "evidence": "tests/conformance/capabilities.tsv",
+        "observation": "Backends that do not lower `Text` values are recorded as unsupported with a stated reason."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make native",
+        "prerequisites": [
+          "qemu-aarch64"
+        ]
+      }
+    },
+    {
+      "id": "native-x86-64-function-calls",
+      "public_wording": "x86-64 native user-function calls",
+      "public_status": "bounded Int Core: six arguments, guarded returns, recursion",
+      "state": "checkpoint",
+      "area": "native",
+      "bounded_capability": "Up to six integer arguments, guarded returns and recursion, for the Int Core only.",
+      "targets": [
+        "native-x86_64"
+      ],
+      "specification": [
+        "docs/NATIVE_BACKEND.md"
+      ],
+      "compatibility": "The six-argument bound is part of the claim; exceeding it is refused rather than spilled.",
+      "positive_gate": {
+        "command": "sh tests/conformance/run.sh",
+        "observation": "The functions corpus passes on the x86-64 native backend."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "tests/conformance/capabilities.tsv",
+        "observation": "Corpora outside the Int Core profile are recorded as unsupported with a stated reason."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make check",
+        "prerequisites": []
+      }
+    },
+    {
+      "id": "public-re-exports",
+      "public_wording": "explicit public re-exports",
+      "public_status": "bounded same-package `pub import` / `pub from`; non-widening `ExportBindingId` edges, 64-edge chains, 1,024 bindings/module and 65,536 edges/package, KIF export facts, and facade/canonical tooling paths",
+      "state": "checkpoint",
+      "area": "frontend",
+      "bounded_capability": "Same-package `pub import` / `pub from` with non-widening edges and explicit numeric bounds: 64-edge chains, 1,024 bindings per module, 65,536 edges per package.",
+      "targets": [
+        "stage2"
+      ],
+      "specification": [
+        "spec/modules/re-exports.md"
+      ],
+      "compatibility": "The stated bounds are part of the claim; raising them is a release-note event.",
+      "positive_gate": {
+        "command": "sh tests/conformance/modules/re-exports/run.sh",
+        "observation": "Re-export chains resolve within the stated bounds and preserve binding identity."
+      },
+      "negative_boundary": {
+        "kind": "limit",
+        "evidence": "tests/conformance/modules/re-exports/run.sh",
+        "observation": "Chains and counts beyond the stated bounds are refused rather than truncated."
+      },
+      "safety": {
+        "classification": "resource-bound",
+        "threat_model": "docs/SECURITY.md",
+        "negative_test": "tests/conformance/modules/re-exports/run.sh"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make re-exports",
+        "prerequisites": []
+      }
+    },
+    {
+      "id": "reproducible-bootstrap",
+      "public_wording": "Reproducible bootstrap",
+      "public_status": "implemented",
+      "state": "implemented",
+      "area": "bootstrap",
+      "bounded_capability": "Regenerating Stage 1 from its seed reproduces the checked-in artifact byte for byte on the supported host toolchain.",
+      "targets": [
+        "stage1"
+      ],
+      "specification": [
+        "docs/SELF_HOSTING.md"
+      ],
+      "compatibility": "Byte reproduction is promised for the documented host toolchain, not across arbitrary compilers.",
+      "positive_gate": {
+        "command": "sh bootstrap/stage1/check.sh",
+        "observation": "Regeneration reproduces the checked-in Stage 1 artifact and its digest."
+      },
+      "negative_boundary": {
+        "kind": "limit",
+        "evidence": "bootstrap/stage1/SHA256SUMS",
+        "observation": "A digest mismatch fails the gate instead of accepting the regenerated artifact."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make bootstrap",
+        "prerequisites": [
+          "cc",
+          "sha256sum"
+        ]
+      }
+    },
+    {
+      "id": "rust-crate-shim",
+      "public_wording": "vendored Rust crate through C ABI shim",
+      "public_status": "implemented example",
+      "state": "checkpoint",
+      "area": "interop",
+      "bounded_capability": "One vendored Rust crate is reached through an audited C ABI shim, as a worked example. It is not a general Rust interop story.",
+      "targets": [
+        "host-c",
+        "linux-x86_64"
+      ],
+      "specification": [
+        "docs/RUST_CRATE_SHIMS.md"
+      ],
+      "compatibility": "The example is pinned to its vendored crate version; updating it is a release-note event.",
+      "positive_gate": {
+        "command": "sh examples/rust-shim/check.sh",
+        "observation": "The vendored crate builds and answers through the C ABI shim."
+      },
+      "negative_boundary": {
+        "kind": "skip",
+        "evidence": "examples/rust-shim/check.sh",
+        "observation": "Without Cargo the gate reports a skip rather than a pass."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make rust-shim",
+        "prerequisites": [
+          "cargo"
+        ]
+      }
+    },
+    {
+      "id": "self-recompile",
+      "public_wording": "semantic compiler self-recompile",
+      "public_status": "first runnable compiler generation implemented; three-generation fixed point open",
+      "state": "checkpoint",
+      "area": "self-hosting",
+      "bounded_capability": "The frozen profile reaches a runnable compiler-produced compiler. The three-generation semantic fixed point is not reached and is not claimed.",
+      "targets": [
+        "selfhost"
+      ],
+      "specification": [
+        "docs/SELF_HOSTING.md"
+      ],
+      "compatibility": "Only the first generation is promised; reaching the fixed point will be a release-note event.",
+      "positive_gate": {
+        "command": "sh bootstrap/selfhost/check-compiler-driver.sh",
+        "observation": "The compiler-produced compiler compiles the accept corpus identically to the audited seed."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "bootstrap/selfhost/driver/corpus_reject.kofun",
+        "observation": "A source outside the profile is refused identically by both seeds and writes no C."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make selfhost-profile",
+        "prerequisites": [
+          "cc"
+        ]
+      }
+    },
+    {
+      "id": "selfhost-native-corpus",
+      "public_wording": "self-host success corpus as a native binary",
+      "public_status": "the driver's five-`print` corpus reaches a static ELF on both targets and matches the self-host C11 path exactly",
+      "state": "checkpoint",
+      "area": "self-hosting",
+      "bounded_capability": "The driver's five-`print` success corpus reaches a static ELF on both native targets and its output matches the self-host C11 path exactly.",
+      "targets": [
+        "native-aarch64",
+        "native-x86_64",
+        "selfhost"
+      ],
+      "specification": [
+        "docs/SELF_HOSTING.md"
+      ],
+      "compatibility": "Agreement between the native and C11 self-host paths is the claim; a divergence is a failure, not a variant.",
+      "positive_gate": {
+        "command": "sh bootstrap/selfhost/native/check-native-corpus.sh",
+        "observation": "The native and C11 self-host paths produce identical output."
+      },
+      "negative_boundary": {
+        "kind": "limit",
+        "evidence": "bootstrap/selfhost/driver/corpus_reject.stdout",
+        "observation": "The refusing corpus keeps its pinned output; a change in either path fails the gate."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make selfhost-native",
+        "prerequisites": [
+          "qemu-aarch64"
+        ]
+      }
+    },
+    {
+      "id": "source-extension",
+      "public_wording": "`.kofun` source extension",
+      "public_status": "implemented",
+      "state": "implemented",
+      "area": "tooling",
+      "bounded_capability": "`.kofun` is the only source extension in the repository, and the editor integration registers exactly that extension.",
+      "targets": [
+        "repository"
+      ],
+      "specification": [
+        "docs/LINGUIST_RECOGNITION.md"
+      ],
+      "compatibility": "The extension is stable; no alternate extension is recognised.",
+      "positive_gate": {
+        "command": "make repository-check",
+        "observation": "No Python or `.kf` sources remain and the editor extension registers `.kofun`."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "Makefile",
+        "observation": "A `.kf`, `.py`, `.pyc` or `.pyo` file, or a `pyproject.toml`, fails `repository-check`."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make repository-check",
+        "prerequisites": []
+      }
+    },
+    {
+      "id": "stable-diagnostics",
+      "public_wording": "stable diagnostics",
+      "public_status": "canonical registry plus executable family owners; Stage 2 retains 33/33 codes and 3 explicit span debts",
+      "state": "implemented",
+      "area": "quality",
+      "bounded_capability": "Every diagnostic code has a canonical registry row and an executable family owner. Stage 2 retains 33 of 33 codes, with 3 span debts recorded rather than hidden.",
+      "targets": [
+        "native-x86_64",
+        "stage2"
+      ],
+      "specification": [
+        "tests/diagnostics/README.md"
+      ],
+      "compatibility": "Codes are stable identities; retiring one is a release-note event.",
+      "positive_gate": {
+        "command": "sh tests/diagnostics/check.sh",
+        "observation": "Every registry code has an owner and every fixture matches exactly."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "tests/diagnostics/registry.tsv",
+        "observation": "A code without an executable owner, or an owner without a registry row, fails the gate."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make diagnostics",
+        "prerequisites": []
+      }
+    },
+    {
+      "id": "stage2-core-lowering",
+      "public_wording": "Stage 2 lexer, parser, and integer Core lowering",
+      "public_status": "checkpoint implemented",
+      "state": "checkpoint",
+      "area": "frontend",
+      "bounded_capability": "Stage 2 lexes, parses and lowers the integer Core. Sources outside that Core are refused with a diagnostic.",
+      "targets": [
+        "c11",
+        "stage2"
+      ],
+      "specification": [
+        "docs/COMPILER_ARCHITECTURE.md"
+      ],
+      "compatibility": "The accepted source set is the integer Core; growth is gated by conformance cases.",
+      "positive_gate": {
+        "command": "sh bootstrap/stage2/check.sh",
+        "observation": "Integer Core sources lex, parse, lower and execute."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun",
+        "observation": "A statement outside the Core is refused with `E2S10`."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make stage2",
+        "prerequisites": [
+          "cc"
+        ]
+      }
+    },
+    {
+      "id": "stage2-typed-sidecar",
+      "public_wording": "Stage 2 semantic tooling output",
+      "public_status": "bounded compiler-derived KSE projects one-way into canonical non-authoritative typed-sidecar v1 for explicit single-file `kofun check`; compiler/KIF/cache consumers remain forbidden",
+      "state": "checkpoint",
+      "area": "tooling",
+      "bounded_capability": "Stage 2 projects compiler-derived semantic events one-way into typed-sidecar v1, for explicit single-file `kofun check` only. The sidecar is non-authoritative and compiler, KIF and cache consumers remain forbidden.",
+      "targets": [
+        "stage2"
+      ],
+      "specification": [
+        "spec/typed-sidecar/kofun.typed-sidecar.v1.schema.json"
+      ],
+      "compatibility": "The sidecar is explicitly non-authoritative; no consumer may treat it as compiler input.",
+      "positive_gate": {
+        "command": "make typed-sidecar-projector",
+        "observation": "Stage 2 events project into a schema-valid typed-sidecar v1 document."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "tests/typed-sidecar/authority-boundary.sh",
+        "observation": "A compiler, KIF or cache consumer of the sidecar is refused by the authority-boundary gate."
+      },
+      "evidence_artifact": {
+        "path": "spec/typed-sidecar/kofun.typed-sidecar.v1.schema.json",
+        "schema": "kofun.typed-sidecar/v1"
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make typed-sidecar-projector",
+        "prerequisites": [
+          "node"
+        ]
+      }
+    },
+    {
+      "id": "stdio-language-server",
+      "public_wording": "stdio language server",
+      "public_status": "bounded diagnostics, symbols, completion, hover, definitions, and references",
+      "state": "checkpoint",
+      "area": "tooling",
+      "bounded_capability": "A stdio LSP server providing diagnostics, symbols, completion, hover, definitions and references, within measured latency budgets.",
+      "targets": [
+        "repository"
+      ],
+      "specification": [
+        "spec/tooling/typed-sidecar.md"
+      ],
+      "compatibility": "The supported request set is gated; latency budgets are part of the claim.",
+      "positive_gate": {
+        "command": "sh tests/lsp/check.sh",
+        "observation": "Every supported request answers and the measured percentiles stay inside their budgets."
+      },
+      "negative_boundary": {
+        "kind": "limit",
+        "evidence": "tests/lsp/performance_test.js",
+        "observation": "Exceeding a latency percentile or the resident-set growth ratio fails the gate."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "budgeted",
+        "benchmark": "tests/lsp/performance_test.js",
+        "environment": "Run alone under `make lsp`, after the concurrent verify lane, so a busy machine does not perturb the percentiles.",
+        "budget": "Diagnostic p95 and max, definition p95, hover p95, and a resident-set growth ratio, each asserted against the fixed budgets written in the test."
+      },
+      "reproduction": {
+        "command": "make lsp",
+        "prerequisites": [
+          "node"
+        ]
+      }
+    },
+    {
+      "id": "syscall-file-round-trip",
+      "public_wording": "syscall file round-trip execution",
+      "public_status": "implemented",
+      "state": "implemented",
+      "area": "frameworks",
+      "bounded_capability": "A native ELF program opens, writes, reads back and closes a file through direct syscalls, and reports errno failures explicitly.",
+      "targets": [
+        "linux-x86_64",
+        "native-x86_64"
+      ],
+      "specification": [
+        "docs/NATIVE_BACKEND.md"
+      ],
+      "compatibility": "Success and errno-failure behaviour are both gated; silent failure is not permitted.",
+      "positive_gate": {
+        "command": "sh stdlib/tests/verify.sh",
+        "observation": "The file round-trip succeeds and returns the written bytes."
+      },
+      "negative_boundary": {
+        "kind": "trap",
+        "evidence": "stdlib/tests/verify.sh",
+        "observation": "A failing syscall surfaces its errno instead of returning a success value."
+      },
+      "safety": {
+        "classification": "refusal-boundary",
+        "threat_model": "docs/SECURITY.md",
+        "negative_test": "stdlib/tests/verify.sh"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make stdlib",
+        "prerequisites": []
+      }
+    },
+    {
+      "id": "syscall-stdlib-api",
+      "public_wording": "Linux x86-64 syscall/stdlib API",
+      "public_status": "Kofun source contract",
+      "state": "checkpoint",
+      "area": "frameworks",
+      "bounded_capability": "The syscall and standard-library surface is a Kofun source contract for Linux x86-64. It is not a portable standard library.",
+      "targets": [
+        "linux-x86_64"
+      ],
+      "specification": [
+        "docs/ROADMAP.md"
+      ],
+      "compatibility": "The contract is source-level; signatures are gated but the surface is still growing.",
+      "positive_gate": {
+        "command": "sh stdlib/tests/verify.sh",
+        "observation": "The declared syscall and stdlib contracts check and execute."
+      },
+      "negative_boundary": {
+        "kind": "limit",
+        "evidence": "tests/conformance/capabilities.tsv",
+        "observation": "Targets outside Linux x86-64 are recorded as unsupported with a stated reason."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make stdlib",
+        "prerequisites": []
+      }
+    },
+    {
+      "id": "test-skip-reporting",
+      "public_wording": "explicit skip reporting and coverage",
+      "public_status": "implemented",
+      "state": "implemented",
+      "area": "tooling",
+      "bounded_capability": "`kofun test` reports skipped cases explicitly and counts them separately from passes.",
+      "targets": [
+        "repository"
+      ],
+      "specification": [
+        "docs/GETTING_STARTED.md"
+      ],
+      "compatibility": "A skip is never reported as a pass; that property is the claim.",
+      "positive_gate": {
+        "command": "sh tests/cli.sh",
+        "observation": "Skipped cases appear in the report with their own count."
+      },
+      "negative_boundary": {
+        "kind": "skip",
+        "evidence": "tests/cli.sh",
+        "observation": "A skipped case is reported as skipped and never folded into the pass count."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make test",
+        "prerequisites": []
+      }
+    },
+    {
+      "id": "tree-sitter-grammar",
+      "public_wording": "Tree-sitter grammar",
+      "public_status": "structural grammar, editor queries, recovery corpus, and repository source gate",
+      "state": "implemented",
+      "area": "tooling",
+      "bounded_capability": "A structural Tree-sitter grammar with editor queries and a recovery corpus, gated against the repository's own sources.",
+      "targets": [
+        "repository"
+      ],
+      "specification": [
+        "editor/tree-sitter-kofun/README.md"
+      ],
+      "compatibility": "The grammar is structural, not a type checker; it parses sources the compiler may still refuse.",
+      "positive_gate": {
+        "command": "make tree-sitter",
+        "observation": "The grammar parses the repository corpus and the recovery cases."
+      },
+      "negative_boundary": {
+        "kind": "limit",
+        "evidence": "editor/tree-sitter-kofun/grammar.js",
+        "observation": "Malformed sources produce error nodes through the recovery corpus rather than aborting the parse."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make tree-sitter",
+        "prerequisites": [
+          "node"
+        ]
+      }
+    },
+    {
+      "id": "wasm32-arithmetic-core",
+      "public_wording": "wasm32 Int64 arithmetic Core + lazy browser host",
+      "public_status": "executable checkpoint",
+      "state": "checkpoint",
+      "area": "webassembly",
+      "bounded_capability": "Checked Int64 arithmetic lowers directly to wasm32 and runs in a lazily initialised browser host. Text and List values are outside the slice.",
+      "targets": [
+        "wasm32"
+      ],
+      "specification": [
+        "docs/NATIVE_BACKEND.md"
+      ],
+      "compatibility": "The wasm32 module surface is bounded to the arithmetic Core.",
+      "positive_gate": {
+        "command": "sh bootstrap/wasm/check.sh",
+        "observation": "wasm32 modules are emitted and execute to the expected values."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "bootstrap/wasm/fixtures/unsupported_text.kofun",
+        "observation": "`Text` values are refused by the wasm32 backend rather than partially lowered."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "make wasm",
+        "prerequisites": [
+          "node"
+        ]
+      }
+    }
+  ]
+}

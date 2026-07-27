@@ -23,3 +23,18 @@ jobs:
         run: |
           ./bin/kofun build bootstrap/fixtures/answer.kofun -o build/answer
           test "$(./build/answer)" = "42"
+
+  # The structural lane above (`make release-claims`, inside `make verify`) only
+  # reads the repository. This lane proves the stronger property: a checkout
+  # that has installed nothing regenerates the committed evidence pack byte for
+  # byte. It runs separately so a stale pack is not reported as a verify
+  # failure among fifty other gates.
+  release-evidence:
+    name: Release evidence pack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Regenerate the evidence pack
+        run: make release-evidence
+      - name: Require the committed pack to match
+        run: git diff --exit-code -- artifacts/release-evidence

@@ -1,0 +1,307 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kofun-lang.invalid/spec/release-claim.schema.json",
+  "title": "Kofun release claim manifest v1",
+  "description": "Canonical join between published Kofun capability claims and the executable evidence that bounds them. This schema constrains shape only; tests/release/validate-claims.mjs additionally enforces the semantic rules (coverage, path existence, state/evidence agreement) that shape alone cannot express.",
+  "type": "object",
+  "required": [
+    "schema",
+    "manifest_version",
+    "public_sources",
+    "areas",
+    "targets",
+    "claims"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "kofun.release-claims/v1"
+    },
+    "manifest_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "public_sources": {
+      "description": "Documents whose published capability wording this manifest owns. Every capability row in each source must join exactly one claim.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/repositoryPath"
+      }
+    },
+    "areas": {
+      "description": "Closed set of area names. README's `What works now` rows must be a subset of these.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/name"
+      }
+    },
+    "targets": {
+      "description": "Closed set of target/backend/profile names a claim may declare.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/name"
+      }
+    },
+    "claims": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/claim"
+      }
+    }
+  },
+  "$defs": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9][a-z0-9_-]*$"
+    },
+    "claimId": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "prose": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048
+    },
+    "repositoryPath": {
+      "description": "Normalized repository-relative path. The validator additionally requires it to exist and be tracked by git.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[A-Za-z0-9._][A-Za-z0-9._/-]*$"
+    },
+    "command": {
+      "description": "Deterministic command. The validator resolves `make <target>` against the Makefile and `sh <path>` against a tracked file.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "state": {
+      "description": "implemented: general implementation. checkpoint: bounded executable slice. design: accepted design with no executable claim. open: acknowledged absent. unsupported: an explicitly refused boundary.",
+      "enum": [
+        "implemented",
+        "checkpoint",
+        "design",
+        "open",
+        "unsupported"
+      ]
+    },
+    "positiveGate": {
+      "type": "object",
+      "required": [
+        "command",
+        "observation"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "$ref": "#/$defs/command"
+        },
+        "observation": {
+          "$ref": "#/$defs/prose"
+        }
+      }
+    },
+    "negativeBoundary": {
+      "description": "What fails outside the claim's boundary. `rejection` refuses at compile time, `trap` refuses at run time, `limit` documents a bound reached, `skip` reports an unavailable prerequisite without passing it.",
+      "type": "object",
+      "required": [
+        "kind",
+        "evidence",
+        "observation"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "rejection",
+            "trap",
+            "limit",
+            "skip"
+          ]
+        },
+        "evidence": {
+          "$ref": "#/$defs/repositoryPath"
+        },
+        "observation": {
+          "$ref": "#/$defs/prose"
+        }
+      }
+    },
+    "safety": {
+      "description": "`none` asserts the claim carries no safety promise. Any other classification requires a threat model and a negative test.",
+      "type": "object",
+      "required": [
+        "classification"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "classification": {
+          "enum": [
+            "none",
+            "memory-safety",
+            "resource-bound",
+            "refusal-boundary"
+          ]
+        },
+        "threat_model": {
+          "$ref": "#/$defs/repositoryPath"
+        },
+        "negative_test": {
+          "$ref": "#/$defs/repositoryPath"
+        }
+      }
+    },
+    "performance": {
+      "description": "`none` asserts the claim publishes no performance number. `budgeted` requires a reproducible benchmark, its environment, and the budget it must hold.",
+      "type": "object",
+      "required": [
+        "classification"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "classification": {
+          "enum": [
+            "none",
+            "budgeted"
+          ]
+        },
+        "benchmark": {
+          "$ref": "#/$defs/repositoryPath"
+        },
+        "environment": {
+          "$ref": "#/$defs/prose"
+        },
+        "budget": {
+          "$ref": "#/$defs/prose"
+        }
+      }
+    },
+    "reproduction": {
+      "type": "object",
+      "required": [
+        "command",
+        "prerequisites"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "$ref": "#/$defs/command"
+        },
+        "prerequisites": {
+          "description": "External tools a clean checkout must provide. An empty list asserts the core toolchain suffices.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/name"
+          }
+        }
+      }
+    },
+    "evidenceArtifact": {
+      "type": "object",
+      "required": [
+        "path",
+        "schema"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/repositoryPath"
+        },
+        "schema": {
+          "$ref": "#/$defs/prose"
+        }
+      }
+    },
+    "claim": {
+      "type": "object",
+      "required": [
+        "id",
+        "public_wording",
+        "public_status",
+        "state",
+        "area",
+        "bounded_capability",
+        "targets",
+        "specification",
+        "compatibility",
+        "safety",
+        "performance",
+        "reproduction"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/claimId"
+        },
+        "public_wording": {
+          "description": "Exact capability text as published. The validator requires byte equality with the public source row.",
+          "$ref": "#/$defs/prose"
+        },
+        "public_status": {
+          "description": "Exact status text as published.",
+          "$ref": "#/$defs/prose"
+        },
+        "state": {
+          "$ref": "#/$defs/state"
+        },
+        "area": {
+          "$ref": "#/$defs/name"
+        },
+        "bounded_capability": {
+          "description": "The exact profile the evidence covers, stated so a reader can tell what is outside it.",
+          "$ref": "#/$defs/prose"
+        },
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/name"
+          }
+        },
+        "specification": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/repositoryPath"
+          }
+        },
+        "compatibility": {
+          "description": "What a consumer may rely on, and what may change without a release note.",
+          "$ref": "#/$defs/prose"
+        },
+        "positive_gate": {
+          "$ref": "#/$defs/positiveGate"
+        },
+        "negative_boundary": {
+          "$ref": "#/$defs/negativeBoundary"
+        },
+        "evidence_artifact": {
+          "$ref": "#/$defs/evidenceArtifact"
+        },
+        "safety": {
+          "$ref": "#/$defs/safety"
+        },
+        "performance": {
+          "$ref": "#/$defs/performance"
+        },
+        "reproduction": {
+          "$ref": "#/$defs/reproduction"
+        }
+      }
+    }
+  }
+}

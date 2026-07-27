@@ -142,6 +142,13 @@ export const docs: DocEntry[] = [
     section: "Project",
   },
   {
+    slug: "release-evidence",
+    title: "Release evidence",
+    summary: "The machine-checked join between published capability claims and the gates, boundaries, and reproduction commands that bound them.",
+    source: "docs/RELEASE_EVIDENCE.md",
+    section: "Project",
+  },
+  {
     slug: "issue-progress",
     title: "Issue progress",
     summary: "A generated snapshot of selected documentation and executable-evidence tracks.",

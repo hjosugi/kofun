@@ -66,6 +66,11 @@ contains the complete setup, target, and verification guide.
 
 For exact claims and their gates, use the
 [implemented-status matrix](https://hjosugi.github.io/kofun/docs/implemented-status/).
+Every row there carries a stable claim id from
+[`release/claims.json`](release/claims.json), which names the gate that proves
+it, the boundary that fails outside it, and the command that reproduces both.
+`make release-claims` fails when published wording and executable evidence
+disagree.
 The active compiler is not yet a general parser/type checker, a complete
 memory-safe runtime, or a semantically self-hosting fixed point.
 
@@ -150,6 +155,7 @@ Start with:
 - [Specification](https://hjosugi.github.io/kofun/docs/specification/)
 - [Delivery roadmap](https://hjosugi.github.io/kofun/roadmap/)
 - [Security](https://hjosugi.github.io/kofun/docs/security/)
+- [Release evidence](https://hjosugi.github.io/kofun/docs/release-evidence/)
 
 The website renders selected Markdown files from this repository, so source and
 published documentation share one authority.
