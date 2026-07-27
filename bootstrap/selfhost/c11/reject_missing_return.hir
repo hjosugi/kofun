@@ -20,6 +20,7 @@ type|15|fn|6|6|6|6
 type|16|fn|6|6|0|0
 type|17|fn|12|6|6
 type|18|fn|0|4
+type|19|fn|12
 scope|0|0|module|0|116
 scope|1|0|function|9|69
 scope|2|1|block|29|69
@@ -45,10 +46,11 @@ symbol|15|builtin|trim|14|0|0
 symbol|16|builtin|validate_unicode_source|14|0|0
 symbol|17|builtin|write_text|17|0|0
 symbol|18|builtin|len|18|0|0
-symbol|19|parameter|flag|1|10|14
+symbol|19|builtin|fail|19|0|0
+symbol|20|parameter|flag|1|10|14
 binding|0|0|0|broken|imm|3|9
 binding|1|0|1|main|imm|74|78
-binding|2|1|19|flag|imm|10|14
+binding|2|1|20|flag|imm|10|14
 function|0|0|1|0|69
 node|1|if|35|68|12|copy|2|3|none|-1
 node|2|name|38|42|1|copy|2

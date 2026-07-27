@@ -1,0 +1,8 @@
+{
+  "schema": "kofun.aggregate-layout-document/v1",
+  "types": [
+    { "id": "Int", "kind": "scalar", "scalar": "Int" },
+    { "id": "List[Int]", "kind": "list", "element": "Int" }
+  ],
+  "objects": [{ "id": "overflowing", "type": "List[Int]", "elements": 1000000000000000 }]
+}

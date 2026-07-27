@@ -175,6 +175,124 @@ Parallel evaluation may compute speculative work, but it must commit the same
 failure, shrink trace, diagnostics, and evidence as a single-threaded run.
 Randomized generation or randomized shrinking is not part of v1.
 
+## A second family, and a deliberate defect
+
+The engine must contain no `Monad`-, `Monoid`-, or `Functor`-specific branch.
+That claim is only checkable against a second family written in the same
+constructs, so one is given here. `Monoid` introduces no new grammar: the same
+`law`, `operation`, and `equation` forms, and a `check laws` block that differs
+only in its domains.
+
+```kofun
+law Monoid[T] {
+    operation empty() -> T
+    operation combine(left: T, right: T) -> T
+
+    equation left_identity(
+        value: T in values,
+    ) = combine(empty(), value) == value
+
+    equation right_identity(
+        value: T in values,
+    ) = combine(value, empty()) == value
+
+    equation associativity(
+        first: T in values,
+        second: T in values,
+        third: T in values,
+    ) = combine(combine(first, second), third)
+        == combine(first, combine(second, third))
+}
+
+fn bool_and_empty() -> Bool {
+    return true
+}
+
+fn bool_and_combine(left: Bool, right: Bool) -> Bool {
+    return left && right
+}
+
+impl BoolAndMonoid: Monoid[Bool] {
+    empty = bool_and_empty
+    combine = bool_and_combine
+}
+
+check laws BoolAndMonoidEvidence {
+    instance = BoolAndMonoid
+    domain values: Bool = all
+    equality Bool = structural
+    require assurance = proven_finite
+    budget = standard
+}
+```
+
+`Bool` is a compiler-certified complete carrier, so `all` is accepted and the
+run is exhaustive: two cases for each identity equation and eight for
+associativity, twelve in total. The computed assurance is `proven-finite`.
+Nothing above names a family the compiler knows; substituting `Monad` for
+`Monoid` changes the declarations and not the engine.
+
+### The same family with a wrong identity
+
+`&&` is associative and has identity `true`. Declaring the identity as `false`
+leaves associativity intact and breaks both identity laws, which is what makes
+it a useful defect: the checker must report one specific failure rather than
+whichever it happened to reach first.
+
+```kofun
+fn bool_wrong_empty() -> Bool {
+    return false
+}
+
+impl BrokenBoolMonoid: Monoid[Bool] {
+    empty = bool_wrong_empty
+    combine = bool_and_combine
+}
+
+check laws BrokenBoolMonoidEvidence {
+    instance = BrokenBoolMonoid
+    domain values: Bool = all
+    equality Bool = structural
+    require assurance = proven_finite
+    budget = standard
+}
+```
+
+Equation declaration order and Cartesian enumeration order are semantic, so
+the reported failure is determined rather than chosen. `left_identity` is
+declared first and is evaluated first; over the canonical `Bool` carrier its
+cases are `false` then `true`:
+
+| Case | `combine(empty(), value)` | `value` | Result |
+| --- | --- | --- | --- |
+| `value = false` | `false && false` = `false` | `false` | holds |
+| `value = true` | `false && true` = `false` | `true` | **fails** |
+
+The first failing case is therefore `value = true`. Shrinking looks for a
+smaller failing case under structural size, then canonical encoded byte
+length, then canonical bytes. The only other inhabitant of the carrier is
+`false`, and `false` holds — so `value = true` is already the minimal failing
+fixed point, and the shrink trace terminates without replacing it.
+
+The check must report, at minimum, the law and equation identity
+(`Monoid.left_identity`), the implementation identity (`BrokenBoolMonoid`),
+the bound parameter (`value = true`), and the two sides that disagree
+(`combine(empty(), true)` evaluating to `false` against `true`). `E2S02` is
+what the active compiler emits for this source today, because none of this is
+parsed yet; the dedicated diagnostic codes are allocated with the parser in
+step 1 of the implementation sequence, not reserved here.
+
+A failed law records a canonical counterexample and **no** assurance —
+`proven-finite` is not weakened to `bounded-exhaustive` by failure, it is
+absent. `require assurance = proven_finite` then fails the build, which is the
+gate doing its job rather than a separate reporting mode.
+
+`right_identity` also fails at `value = true`. It is not reported as the
+counterexample, because the first failure in declaration order is, but a
+second run that reordered the two equations must report `right_identity`
+instead — order is part of the evidence identity, so the two are different
+checks and not two answers to the same one.
+
 ## Compile-time sandbox and `standard-v1`
 
 Law evaluation executes untrusted user logic during compilation. Operations,
