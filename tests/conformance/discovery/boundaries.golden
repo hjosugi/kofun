@@ -1,0 +1,5 @@
+ascii: boundaries
+end-of-source: boundaries
+mid-code-point: rejected
+after-code-point: boundaries
+past-end: rejected

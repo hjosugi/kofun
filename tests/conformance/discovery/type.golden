@@ -1,0 +1,7 @@
+validated: status=validated identity=TypeId display=List[Text] reason=null
+validated-without-identity: status=provisional identity=null display=List[Text] reason=incomplete-analysis
+provisional-identity: status=provisional identity=null display=List[Text] reason=incomplete-analysis
+absent: status=unavailable identity=null display=(null) reason=type-not-available-in-current-subset
+provisional: status=provisional identity=null display=_T1 reason=incomplete-analysis
+unsupported-feature: status=unavailable identity=null display=(null) reason=unsupported-current-stage2-feature
+other-node: status=unavailable identity=null display=(null) reason=type-not-available-in-current-subset

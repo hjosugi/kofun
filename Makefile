@@ -1,4 +1,4 @@
-.PHONY: help compiler decimal test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 stage2-events patterns adt generics adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 incremental native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec typed-sidecar-projector lsp tree-sitter roadmap syntax repository-check verify clean
+.PHONY: help compiler decimal discovery test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 stage2-events patterns adt generics adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 incremental native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec typed-sidecar-projector lsp tree-sitter roadmap syntax repository-check verify clean
 
 KOFUN := ./bin/kofun
 
@@ -29,6 +29,7 @@ help:
 	  'make re-exports       Verify explicit public facade forwarding and KIF facts' \
 	  'make kif-v1           Verify authoritative compiled interfaces' \
 	  'make decimal          Verify the Decimal runtime representation and profile' \
+	  'make discovery        Verify the developer discovery v1 request/result contract' \
 	  'make incremental      Verify semantic invalidation and reuse decisions' \
 	  'make native           Build and execute the Kofun-emitted ELF64 fixture' \
 	  'make wasm             Build and execute the wasm32 arithmetic Core' \
@@ -156,6 +157,9 @@ incremental:
 decimal:
 	sh tests/conformance/decimal/run.sh
 
+discovery:
+	sh tests/conformance/discovery/run.sh
+
 native:
 	sh bootstrap/native/check.sh
 
@@ -252,7 +256,7 @@ repository-check:
 	@grep -q '"extensions": \[".kofun"\]' editor/vscode/package.json
 	@printf '%s\n' 'PASS: .kofun sources only; no Python implementation'
 
-VERIFY_TARGETS = test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 stage2-events patterns adt generics adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 incremental decimal native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec typed-sidecar-projector tree-sitter syntax repository-check
+VERIFY_TARGETS = test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 stage2-events patterns adt generics adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 incremental decimal discovery native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec typed-sidecar-spec typed-sidecar-codec typed-sidecar-projector tree-sitter syntax repository-check
 
 # Every gate above is independent, so `verify` runs them concurrently rather
 # than asking the caller to remember a `-j`. Override with `make VERIFY_JOBS=1
@@ -342,6 +346,7 @@ verify:
 	  tests/conformance/modules/kif-v1/run.sh \
 	  tests/conformance/incremental/run.sh \
 	  tests/conformance/decimal/run.sh \
+	  tests/conformance/discovery/run.sh \
 	  tests/lsp/check.sh tooling/lsp/kofun-lsp \
 	  editor/vscode/server/kofun-lsp \
 	  tests/conformance/run.sh tests/conformance/backends/c11-stage1.sh \
