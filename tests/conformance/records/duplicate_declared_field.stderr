@@ -1,0 +1,1 @@
+error[E2S109]: duplicate field `text` in record `Token`; first declared at bytes 19..29 at bytes 35..39

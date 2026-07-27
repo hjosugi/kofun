@@ -24,6 +24,7 @@
 | explicit public re-exports | bounded same-package `pub import` / `pub from`; non-widening `ExportBindingId` edges, 64-edge chains, 1,024 bindings/module and 65,536 edges/package, KIF export facts, and facade/canonical tooling paths | `tests/conformance/modules/re-exports/run.sh`, `make re-exports` | `public-re-exports` |
 | deterministic compiler fuzzing | versioned oracle/backend observations for arithmetic plus focused grammar, value-if, match-guard, match-value, and enum-match families | `tests/fuzz/`, `make fuzz` | `deterministic-fuzzing` |
 | payload-free concrete enum matching | bounded Stage 2 C11 slice with constructor-set exhaustiveness | `tests/conformance/syntax/issues_35_47/run.sh`, `tests/fuzz/enum_match.sh` | `enum-matching` |
+| nominal heterogeneous records | bounded typed frontend only: declaration, labelled construction, typed reads, ownership and layout facts, and a scanner that produces and consumes `List[Token]`; no module, generic, or backend lowering | `make records`, `spec/records-v1.md` | `nominal-records` |
 | general parser/type checker | open | no active gate | `general-parser-type-checker` |
 | borrowed-List Copy/move ownership check | narrow Stage 2 checkpoint | `bootstrap/stage2/check.sh` | `borrowed-list-ownership` |
 | general ownership and law checking | open | no active general pass | `general-ownership-checking` |

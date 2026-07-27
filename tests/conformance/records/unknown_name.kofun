@@ -1,0 +1,7 @@
+type Token = {
+    start: Int,
+}
+
+fn broken() -> Int {
+    return missing
+}

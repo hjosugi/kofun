@@ -1,0 +1,7 @@
+type Token = {
+    start: Int,
+}
+
+fn boom() -> Int {
+    return char_code("ab", 5)
+}

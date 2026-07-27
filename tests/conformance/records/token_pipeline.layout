@@ -1,0 +1,12 @@
+kofun-record-layout/v1
+target|name=x86_64-linux|data-layout=little-endian LP64; Int=int64; Text=(pointer,length); List=(pointer,length); enum tag=uint8|int=8/8|pointer=8/8|bool=1/1|tag=1/1
+target|name=aarch64-linux|data-layout=little-endian LP64; Int=int64; Text=(pointer,length); List=(pointer,length); enum tag=uint8|int=8/8|pointer=8/8|bool=1/1|tag=1/1
+record|target=x86_64-linux|record-id=record:Token|size=32|align=8|payload=25|tagged=false|fields=3
+field|target=x86_64-linux|record-id=record:Token|index=0|name=kind|type=TokenKind|offset=0|size=1|align=1
+field|target=x86_64-linux|record-id=record:Token|index=1|name=text|type=Text|offset=8|size=16|align=8
+field|target=x86_64-linux|record-id=record:Token|index=2|name=start|type=Int|offset=24|size=8|align=8
+record|target=aarch64-linux|record-id=record:Token|size=32|align=8|payload=25|tagged=false|fields=3
+field|target=aarch64-linux|record-id=record:Token|index=0|name=kind|type=TokenKind|offset=0|size=1|align=1
+field|target=aarch64-linux|record-id=record:Token|index=1|name=text|type=Text|offset=8|size=16|align=8
+field|target=aarch64-linux|record-id=record:Token|index=2|name=start|type=Int|offset=24|size=8|align=8
+agreement|record-id=record:Token|targets=x86_64-linux,aarch64-linux|identical=true

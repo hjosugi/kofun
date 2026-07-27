@@ -153,3 +153,24 @@ The existence of compiler source written in Kofun is not by itself self-hosting.
 ## DD-020: Two Stage 1 execution paths
 
 In the early bootstrap stages, compare the Stage 1 output of the Stage 0 interpreter build against the Stage 1 output of the native build produced by the Stage 0 C11 backend. Agreement between the two is the differential gate that precedes Stage 2.
+
+## DD-021: Records declare with `type` and construct with labels
+
+Nominal records are declared `type Name = { field: Type, ... }` and constructed
+`Name(field: value, ...)`. A second `record Name { ... }` declaration family and
+the `Name { ... }` brace construction are both rejected.
+
+Reason:
+
+- one declaration vocabulary already covers aliases, sum types, and records;
+- the parenthesized labelled call form cannot collide with blocks, control-flow
+  conditions, loop iterables, or the still-open map literal, so records do not
+  have to be sequenced behind #52/#624;
+- a construction that never uses braces removes the parser-context suppression
+  that brace construction forces on `if`, `while`, and `for`.
+
+Every declared field is supplied exactly once in any written order. Arguments
+evaluate left to right in written order; storage, layout, and drop follow
+declaration order. Fields are immutable in v1, `take` moves a whole record, and
+`take value.field` is rejected, so no partially moved record exists.
+[`spec/records-v1.md`](../spec/records-v1.md) is normative.

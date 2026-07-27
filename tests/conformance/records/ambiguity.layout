@@ -1,0 +1,10 @@
+kofun-record-layout/v1
+target|name=x86_64-linux|data-layout=little-endian LP64; Int=int64; Text=(pointer,length); List=(pointer,length); enum tag=uint8|int=8/8|pointer=8/8|bool=1/1|tag=1/1
+target|name=aarch64-linux|data-layout=little-endian LP64; Int=int64; Text=(pointer,length); List=(pointer,length); enum tag=uint8|int=8/8|pointer=8/8|bool=1/1|tag=1/1
+record|target=x86_64-linux|record-id=record:Point|size=16|align=8|payload=16|tagged=false|fields=2
+field|target=x86_64-linux|record-id=record:Point|index=0|name=x|type=Int|offset=0|size=8|align=8
+field|target=x86_64-linux|record-id=record:Point|index=1|name=y|type=Int|offset=8|size=8|align=8
+record|target=aarch64-linux|record-id=record:Point|size=16|align=8|payload=16|tagged=false|fields=2
+field|target=aarch64-linux|record-id=record:Point|index=0|name=x|type=Int|offset=0|size=8|align=8
+field|target=aarch64-linux|record-id=record:Point|index=1|name=y|type=Int|offset=8|size=8|align=8
+agreement|record-id=record:Point|targets=x86_64-linux,aarch64-linux|identical=true

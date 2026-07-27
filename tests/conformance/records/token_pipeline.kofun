@@ -1,0 +1,117 @@
+# Issue #546. A Token-shaped nominal record carries an enumeration, a `Text`,
+# and an `Int` field. `scan` produces a `List[Token]` from real input and the
+# reporting functions consume it, so construction, passing, returning, and
+# typed field reads are observed rather than asserted.
+
+type TokenKind =
+    | Identifier
+    | Number
+    | Symbol
+
+type Token = {
+    kind: TokenKind,
+    text: Text,
+    start: Int,
+}
+
+fn is_letter(code: Int) -> Bool {
+    return code >= 97 && code <= 122
+}
+
+fn is_digit(code: Int) -> Bool {
+    return code >= 48 && code <= 57
+}
+
+fn scan(read source: Text) -> List[Token] {
+    let mut tokens: List[Token] = []
+    let mut index = 0
+    while index < len(source) {
+        let code = char_code(source, index)
+        if code == 32 {
+            index = index + 1
+        } else if is_letter(code) {
+            let mut end = index
+            while end < len(source) && is_letter(char_code(source, end)) {
+                end = end + 1
+            }
+            tokens = push(
+                tokens,
+                Token(kind: Identifier, text: slice(source, index, end), start: index)
+            )
+            index = end
+        } else if is_digit(code) {
+            let mut end = index
+            while end < len(source) && is_digit(char_code(source, end)) {
+                end = end + 1
+            }
+            tokens = push(
+                tokens,
+                Token(kind: Number, text: slice(source, index, end), start: index)
+            )
+            index = end
+        } else {
+            # Written field order is free; layout and drop order follow the
+            # declaration, so this construction is the same value shape.
+            tokens = push(
+                tokens,
+                Token(start: index, kind: Symbol, text: slice(source, index, index + 1))
+            )
+            index = index + 1
+        }
+    }
+    return tokens
+}
+
+fn label(kind: TokenKind) -> Text {
+    if kind == Identifier {
+        return "id"
+    }
+    if kind == Number {
+        return "num"
+    }
+    return "sym"
+}
+
+fn describe(read token: Token) -> Text {
+    return label(token.kind) + ":" + token.text
+}
+
+fn render(read tokens: List[Token]) -> Text {
+    let mut out = ""
+    for token in tokens {
+        out = out + describe(token) + " "
+    }
+    return out
+}
+
+fn width(read tokens: List[Token]) -> Int {
+    let mut total = 0
+    for token in tokens {
+        total = total + len(token.text)
+    }
+    return total
+}
+
+fn last_start(read tokens: List[Token]) -> Int {
+    return tokens[count(tokens) - 1].start
+}
+
+fn scanned() -> List[Token] {
+    return scan("let x = 42")
+}
+
+fn first_token() -> Token {
+    return scanned()[0]
+}
+
+fn summary() -> Text {
+    return render(scanned())
+}
+
+fn total_width() -> Int {
+    return width(scanned())
+}
+
+fn final_start() -> Int {
+    return last_start(scanned())
+}

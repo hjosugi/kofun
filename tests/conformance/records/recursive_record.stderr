@@ -1,0 +1,1 @@
+error[E2S112]: recursive record `Node` is unsupported in the v1 record surface at bytes 0..47

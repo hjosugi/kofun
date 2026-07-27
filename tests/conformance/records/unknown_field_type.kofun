@@ -1,0 +1,4 @@
+type Token = {
+    kind: TokenKind,
+    start: Int,
+}

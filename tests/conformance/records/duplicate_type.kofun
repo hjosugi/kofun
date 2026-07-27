@@ -1,0 +1,7 @@
+type Token = {
+    text: Text,
+}
+
+type Token = {
+    start: Int,
+}

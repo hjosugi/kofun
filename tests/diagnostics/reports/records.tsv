@@ -1,0 +1,22 @@
+# code	adapter	channel	exit	primary-span	secondary-span	artifact
+E2S106	records	stdout	1	required	not-applicable	forbidden
+E2S107	records	stdout	1	required	not-applicable	forbidden
+E2S108	records	stdout	1	required	required	forbidden
+E2S109	records	stdout	1	required	required	forbidden
+E2S110	records	stdout	1	required	not-applicable	forbidden
+E2S111	records	stdout	1	required	not-applicable	forbidden
+E2S112	records	stdout	1	required	not-applicable	forbidden
+E2S113	records	stdout	1	required	not-applicable	forbidden
+E2S114	records	stdout	1	required	required	forbidden
+E2S115	records	stdout	1	required	required	forbidden
+E2S116	records	stdout	1	required	not-applicable	forbidden
+E2S117	records	stdout	1	required	not-applicable	forbidden
+E2S118	records	stdout	1	required	not-applicable	forbidden
+E2S119	records	stdout	1	required	not-applicable	forbidden
+E2S120	records	stdout	1	required	not-applicable	forbidden
+E2S121	records	stdout	1	required	not-applicable	forbidden
+E2S122	records	stdout	1	required	not-applicable	forbidden
+E2S123	records	stdout	1	required	not-applicable	forbidden
+E2S124	records	stdout	1	required	not-applicable	forbidden
+E2S125	records	stdout	1	required	not-applicable	forbidden
+E2S126	records	stdout	1	required	not-applicable	forbidden

@@ -1,0 +1,6 @@
+kofun-record-run/v1
+call|function=scanned|result=[Token(kind: TokenKind.Identifier, text: "let", start: 0), Token(kind: TokenKind.Identifier, text: "x", start: 4), Token(kind: TokenKind.Symbol, text: "=", start: 6), Token(kind: TokenKind.Number, text: "42", start: 8)]
+call|function=first_token|result=Token(kind: TokenKind.Identifier, text: "let", start: 0)
+call|function=summary|result="id:let id:x sym:= num:42 "
+call|function=total_width|result=7
+call|function=final_start|result=8

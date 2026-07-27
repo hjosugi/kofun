@@ -1,0 +1,1 @@
+error[E2S108]: duplicate type `Token`; first declared at bytes 0..32 at bytes 39..44

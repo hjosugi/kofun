@@ -1,0 +1,1 @@
+error[E2S116]: record `Token` has no field `kind` at bytes 112..119
