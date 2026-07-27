@@ -5,7 +5,7 @@ a promise that unresolved or externally blocked work will complete by a date.
 
 Repository: [`hjosugi/kofun`](https://github.com/hjosugi/kofun)
 
-As of: `2026-07-26`
+As of: `2026-07-27`
 
 ## Capacity and scope
 

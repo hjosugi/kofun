@@ -2,8 +2,8 @@
   "schema": "kofun.delivery-plan/v1",
   "repository": "hjosugi/kofun",
   "time_zone": "Asia/Tokyo",
-  "as_of": "2026-07-26",
-  "generated_at": "2026-07-26T15:45:18.148Z",
+  "as_of": "2026-07-27",
+  "generated_at": "2026-07-27T01:01:57.438Z",
   "source": {
     "endpoint": "https://api.github.com/repos/hjosugi/kofun/issues",
     "api_items": 748,
@@ -88,8 +88,8 @@
   },
   "throughput": {
     "window_days": 14,
-    "window_start": "2026-07-12",
-    "window_end": "2026-07-26",
+    "window_start": "2026-07-13",
+    "window_end": "2026-07-27",
     "created_curated": 132,
     "completed_curated": 50,
     "closed_not_planned": 1,
