@@ -1,0 +1,9 @@
+fn main() {
+    if true {
+        if true {
+            let deep = 41
+            print(deep)
+        }
+        print(deep)
+    }
+}

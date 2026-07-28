@@ -1,0 +1,1 @@
+error[E2S35]: binding `counted` is outside its lexical scope at byte 94; declaration at byte 42
