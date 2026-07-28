@@ -1,0 +1,7 @@
+fn main() {
+    while false {
+        let counted = 41
+        print(counted)
+    }
+    print(counted)
+}

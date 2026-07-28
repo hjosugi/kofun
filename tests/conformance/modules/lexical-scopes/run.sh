@@ -98,6 +98,9 @@ expect_failure later_declaration
 expect_failure unknown_nested
 expect_failure cross_function_name
 expect_failure enum_constructor_scope_escape
+expect_failure nested_scope_escape
+expect_failure loop_body_escape
+expect_failure loop_bound_escape
 
 "$STAGE2" \
     "$CASES/enum_local_collision.kofun" \

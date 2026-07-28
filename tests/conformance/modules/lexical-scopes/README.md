@@ -11,6 +11,16 @@ use before declaration, unknown nested names, cross-function isolation, and an
 enum-constructor/local-name collision with `E2S35`. Assignment through a child
 scope still preserves `E2S22` for an immutable or unknown target.
 
+Three of them exist because the others share a shape that is narrower than the
+rule. `sibling_leak` and `enum_constructor_scope_escape` both declare at depth
+one and read at depth zero, so a resolver that popped exactly one level on `}`
+would pass both. `nested_scope_escape` declares at depth two and reads at depth
+one, which that resolver cannot survive. `loop_body_escape` and
+`loop_bound_escape` cover the scopes a loop introduces — a `while` body binding
+read after the loop, and a `for` bound read after its body — because a resolver
+that gave `if` a scope and a loop none would otherwise pass every other
+negative here.
+
 The bounded resolver accepts at most 32 lexical levels, 256 scopes, 256
 bindings, and 256 binding uses per function. `run.sh` exercises every accepted
 boundary and its first rejected value. It also recompiles identical source from
