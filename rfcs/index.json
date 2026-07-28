@@ -102,6 +102,49 @@
       }
     },
     {
+      "id": "DD-016",
+      "title": "Algebraic laws are compiler artifacts",
+      "provenance": "migrated",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/551",
+      "dates": {
+        "recorded_on": "2026-07-26"
+      },
+      "normative_spec": [
+        "docs/LAW_SYSTEM.md",
+        "docs/SYNTAX.md",
+        "docs/TYPE_SYSTEM.md",
+        "spec/grammar.ebnf",
+        "spec/semantics.md"
+      ],
+      "compatibility": {
+        "category": "none",
+        "statement": "Nothing is implemented, so no accepted program changes meaning. The decision binds a future implementation: `law` is contextual, family names are ordinary identifiers, and a family, implementation, and check request remain separate source declarations."
+      }
+    },
+    {
+      "id": "DD-017",
+      "title": "Evidence levels are never conflated",
+      "provenance": "migrated",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/551",
+      "dates": {
+        "recorded_on": "2026-07-26"
+      },
+      "normative_spec": [
+        "docs/LAW_SYSTEM.md",
+        "spec/semantics.md"
+      ],
+      "compatibility": {
+        "category": "none",
+        "statement": "Nothing emits executable law evidence, so no accepted program or artifact changes meaning. The decision constrains future checkers to compute and preserve distinct `bounded-exhaustive`, `proven-finite`, and `proven` assurance levels under deterministic finite evaluation."
+      }
+    },
+    {
       "id": "DD-018",
       "title": "Versioned machine-readable law evidence",
       "provenance": "migrated",
