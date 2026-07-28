@@ -1,0 +1,13 @@
+foreign trait Display[T] {
+    fn show(value: T) -> Text
+}
+
+foreign type Duration
+
+type Local = Duration
+
+impl Display[Local] for Local {
+    fn show(value: Local) -> Text {
+        return "aliased"
+    }
+}

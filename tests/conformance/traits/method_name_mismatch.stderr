@@ -1,0 +1,1 @@
+error[E2S127]: trait 'Equal' declares method 'equal' but the implementation declares 'equivalent' at bytes 93..134

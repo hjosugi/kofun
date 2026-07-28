@@ -1,0 +1,1 @@
+error[E2S130]: implementation overlaps impl:abi1/package:local/trait:local:Equal/args=builtin:Int/self=builtin:Int/decl=0 declared earlier; resolution admits exactly one candidate at bytes 161..261

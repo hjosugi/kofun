@@ -1,0 +1,55 @@
+# The same program as positive.kofun with every implementation declared in the
+# opposite order. Selection is by trait and normalized self-type, so each call
+# must reach the same implementation as before; only the declaration ordinal
+# each identity carries may move.
+trait Equal[T] {
+    fn equal(left: T, right: T) -> Bool
+}
+
+type Money
+
+foreign trait Display[T] {
+    fn show(value: T) -> Text
+}
+
+foreign type Duration
+
+impl Equal[Duration] for Duration {
+    fn equal(left: Duration, right: Duration) -> Bool {
+        return true
+    }
+}
+
+impl Display[Money] for Money {
+    fn show(value: Money) -> Text {
+        return "money"
+    }
+}
+
+impl Equal[Money] for Money {
+    fn equal(left: Money, right: Money) -> Bool {
+        return true
+    }
+}
+
+impl Equal[Int] for Int {
+    fn equal(left: Int, right: Int) -> Bool {
+        return true
+    }
+}
+
+fn same[T: Equal[T]](left: T, right: T) -> Bool {
+    return Equal.equal(left, right)
+}
+
+fn use_int(left: Int, right: Int) -> Bool {
+    return same[Int](left, right)
+}
+
+fn use_money(left: Money, right: Money) -> Bool {
+    return same[Money](left, right)
+}
+
+fn use_duration(left: Duration, right: Duration) -> Bool {
+    return same[Duration](left, right)
+}

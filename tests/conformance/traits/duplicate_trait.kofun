@@ -1,0 +1,7 @@
+trait Equal[T] {
+    fn equal(left: T, right: T) -> Bool
+}
+
+trait Equal[T] {
+    fn equal(left: T, right: T) -> Bool
+}

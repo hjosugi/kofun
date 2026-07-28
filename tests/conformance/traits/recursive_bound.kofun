@@ -1,0 +1,9 @@
+trait Equal[T] {
+    fn equal(left: T, right: T) -> Bool
+}
+
+type Wrapper
+
+fn same[T: Equal[Wrapper]](left: T, right: T) -> Bool {
+    return Equal.equal(left, right)
+}

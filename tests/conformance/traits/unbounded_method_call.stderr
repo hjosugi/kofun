@@ -1,0 +1,1 @@
+error[E2S129]: function 'same' calls trait 'Equal' without declaring a bound that provides it at bytes 112..117
