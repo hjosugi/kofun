@@ -4,6 +4,12 @@
 auditable bootstrap seed. A host C11 compiler is enough to build and run this
 Kofun-written compiler.
 
+Two things here are deliberately written twice, and
+[`DD-022`](../../docs/DESIGN_DECISIONS.md) says why they must stay that way: the
+`compiler.kofun`/`compiler.c` pair, and the `valid_source`/`emit_statements`
+walks. Both are differential evidence — sharing either derivation would leave
+its gate passing while proving nothing.
+
 ```sh
 sh bootstrap/stage1/check.sh
 ```

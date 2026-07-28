@@ -55,30 +55,16 @@ cmp "$LOOP_C" "$WORK/loop.c"
 "$WORK/loop" >"$WORK/loop.stdout"
 cmp "$LOOP_STDOUT" "$WORK/loop.stdout"
 
-for fixture in \
-    "$ROOT/bootstrap/selfhost/driver/corpus_reject_bool_arithmetic.kofun" \
-    "$ROOT/bootstrap/selfhost/driver/corpus_reject_bool_print.kofun" \
-    "$ROOT/bootstrap/selfhost/driver/corpus_reject_bool_annotation.kofun" \
-    "$ROOT/bootstrap/selfhost/driver/corpus_reject_bool_infer_annotation.kofun" \
-    "$ROOT/bootstrap/selfhost/driver/corpus_reject_bool_keyword_binding.kofun" \
-    "$ROOT/bootstrap/selfhost/driver/corpus_reject_bool_order.kofun" \
-    "$ROOT/bootstrap/selfhost/driver/corpus_reject_logical_int.kofun" \
-    "$ROOT/bootstrap/selfhost/driver/corpus_reject_not_int.kofun" \
-    "$ROOT/bootstrap/selfhost/driver/corpus_reject_single_pipe.kofun" \
-    "$ROOT/bootstrap/selfhost/driver/corpus_reject_branch_condition.kofun" \
-    "$ROOT/bootstrap/selfhost/driver/corpus_reject_branch_scope.kofun" \
-    "$ROOT/bootstrap/selfhost/driver/corpus_reject_branch_shadow.kofun" \
-    "$ROOT/bootstrap/selfhost/driver/corpus_reject_else_without_if.kofun" \
-    "$ROOT/bootstrap/selfhost/driver/corpus_reject_else_after_else.kofun" \
-    "$ROOT/bootstrap/selfhost/driver/corpus_reject_unclosed_block.kofun" \
-    "$ROOT/bootstrap/selfhost/driver/corpus_reject_extra_block_end.kofun" \
-    "$ROOT/bootstrap/selfhost/driver/corpus_reject_while_condition.kofun" \
-    "$ROOT/bootstrap/selfhost/driver/corpus_reject_range_bound.kofun" \
-    "$ROOT/bootstrap/selfhost/driver/corpus_reject_range_separator.kofun" \
-    "$ROOT/bootstrap/selfhost/driver/corpus_reject_loop_shadow.kofun" \
-    "$ROOT/bootstrap/selfhost/driver/corpus_reject_loop_scope.kofun" \
-    "$ROOT/bootstrap/selfhost/driver/corpus_reject_loop_assignment.kofun" \
-    "$ROOT/bootstrap/selfhost/driver/corpus_reject_else_after_loop.kofun"
+# The refusal corpus is the set of files, not a list written beside it. Both
+# this gate and check-compiler-driver.sh used to name all of them by hand, so a
+# fixture added to one and forgotten in the other would have lowered coverage
+# with nothing to say so. The count is asserted because a glob alone cannot tell
+# "a fixture was deliberately removed" from "a fixture stopped being found":
+# changing it is a reviewable edit, and REJECT_FIXTURE_COUNT is the one number
+# both gates agree on.
+REJECT_FIXTURE_COUNT=23
+reject_checked=0
+for fixture in "$ROOT"/bootstrap/selfhost/driver/corpus_reject_*.kofun
 do
     output="$WORK/$(basename "$fixture" .kofun).c"
     rm -f "$output"
@@ -90,7 +76,13 @@ do
     test ! -e "$output"
     cmp "$ROOT/bootstrap/selfhost/driver/corpus_reject.stdout" \
         "$output.stdout"
+    reject_checked=$((reject_checked + 1))
 done
+test "$reject_checked" -eq "$REJECT_FIXTURE_COUNT" || {
+    printf 'FAIL: ran %s refusal fixtures, expected %s\n' \
+        "$reject_checked" "$REJECT_FIXTURE_COUNT" >&2
+    exit 1
+}
 
 printf '%s\n' \
     "PASS: Python-free Kofun Stage 1 built with $CC" \

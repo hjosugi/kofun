@@ -174,3 +174,41 @@ evaluate left to right in written order; storage, layout, and drop follow
 declaration order. Fields are immutable in v1, `take` moves a whole record, and
 `take value.field` is rejected, so no partially moved record exists.
 [`spec/records-v1.md`](../spec/records-v1.md) is normative.
+
+## DD-022: Redundancy that is evidence is not duplication
+
+Some repeated work in this repository exists *because* it is repeated. Where two
+things are derived independently and a gate asserts they agree, the agreement is
+the evidence, and sharing the derivation deletes it — the gate keeps passing and
+proves nothing. Those sites are not refactoring targets, and DD-020 is the
+general case of the rule.
+
+Load-bearing redundancy, which must stay:
+
+- `bootstrap/stage1/compiler.kofun` and `bootstrap/stage1/compiler.c` — the
+  Kofun source and its hand-audited C transliteration. One change is written
+  twice on purpose: a host C11 compiler alone must be able to start the
+  Kofun-written compiler, and the differential is what says the transliteration
+  is faithful.
+- `valid_source` and `emit_statements` inside that seed — two structural walks
+  that repeat the same block and scope bookkeeping rather than sharing it, so
+  every name resolves to the binding *both* walks agreed on.
+- The audited seed and the compiler built from `S.c`, compared on every accept
+  and reject corpus by `bootstrap/selfhost/check-compiler-driver.sh`.
+
+Ordinary duplication, which should be removed:
+
+- harness scaffolding — the per-corpus setup, comparison, and execution sequence
+  around a differential. Collapsing it changes how the comparison is *invoked*,
+  not what is compared, so the evidence is untouched.
+- parallel hand-written lists of the same set. A list beside the thing it
+  describes drifts silently; derive it, and assert a count so a deliberate
+  change stays reviewable. The refusal corpora are globbed for this reason.
+
+The test that separates the two: **if this were shared, would any gate still
+fail when the underlying property breaks?** If no gate would fail, the
+repetition was the gate. If some gate still fails, the repetition was scaffolding.
+
+Two copies of a *constant* are acceptable where a mismatch fails loudly —
+`REJECT_FIXTURE_COUNT` is asserted in both gates, so a stale copy stops the
+build. The defect DD-022 targets is silent disagreement, not repetition itself.
