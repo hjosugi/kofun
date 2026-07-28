@@ -4948,6 +4948,99 @@ static void x64_function_divide_zero_jump(
 }
 
 /*
+ * The register file every target shares
+ * -------------------------------------
+ *
+ * A target knows three things no target-independent code can derive: which
+ * registers its ABI leaves caller-saved and free to use as scratch, which ones
+ * the callee must preserve, and the value that means "no register". It declares
+ * exactly those as a `TargetRegisterFile`, and the allocation policy below is
+ * written once for every target that does.
+ *
+ * The policy is not new. x86-64 and AArch64 each carried their own copy of
+ * these four functions, identical after the `X64_`/`A64_` prefixes were
+ * normalised away, so the pair proved nothing: two spellings of one algorithm
+ * cannot disagree. Per DD-022 a redundancy is worth keeping only when a gate
+ * can turn it into evidence, and this one never could. The lowering pairs are a
+ * different matter and stay duplicated; see `docs/NATIVE_BACKEND.md`.
+ *
+ * `taken` is indexed by architectural register number and is sized for the
+ * widest register file any target declares, so one type serves a 16-register
+ * and a 32-register target without either one reading the other's bounds.
+ */
+enum { MAX_TARGET_REGISTERS = 32 };
+
+typedef struct {
+    const unsigned *scratch;      /* caller-saved, never an argument register */
+    size_t scratch_count;
+    const unsigned *call_safe;    /* preserved across a call by the callee */
+    size_t call_safe_count;
+    unsigned no_register;         /* the target's "nothing was allocated" */
+} TargetRegisterFile;
+
+typedef struct {
+    const TargetRegisterFile *target;
+    bool taken[MAX_TARGET_REGISTERS];
+} RegisterFile;
+
+static unsigned target_take_scratch_register(RegisterFile *file) {
+    for (size_t index = 0; index < file->target->scratch_count; ++index) {
+        unsigned reg = file->target->scratch[index];
+        if (file->taken[reg]) continue;
+        file->taken[reg] = true;
+        return reg;
+    }
+    return file->target->no_register;
+}
+
+static unsigned target_take_call_safe_register(RegisterFile *file) {
+    for (size_t index = 0; index < file->target->call_safe_count; ++index) {
+        unsigned reg = file->target->call_safe[index];
+        if (file->taken[reg]) continue;
+        file->taken[reg] = true;
+        return reg;
+    }
+    return file->target->no_register;
+}
+
+/*
+ * An intermediate value that must survive a call can only live in the
+ * callee-saved class; anything else prefers the scratch class, which needs no
+ * save at all, and falls back to callee-saved rather than to memory.
+ */
+static unsigned target_take_eval_register(
+    RegisterFile *file,
+    bool across_calls
+) {
+    if (!across_calls) {
+        unsigned scratch = target_take_scratch_register(file);
+        if (scratch != file->target->no_register) return scratch;
+    }
+    return target_take_call_safe_register(file);
+}
+
+/*
+ * A parameter or local is different: it is written once at entry and read
+ * wherever it appears. A scratch register replaces that store and every reload
+ * for free, but a callee-saved register also costs one save and one restore per
+ * invocation, which only pays for itself once the binding is read more than
+ * once. A binding that is never read gets nothing.
+ */
+static unsigned target_take_value_register(
+    RegisterFile *file,
+    bool across_calls,
+    size_t uses
+) {
+    if (uses == 0) return file->target->no_register;
+    if (!across_calls) {
+        unsigned scratch = target_take_scratch_register(file);
+        if (scratch != file->target->no_register) return scratch;
+    }
+    if (uses < 2) return file->target->no_register;
+    return target_take_call_safe_register(file);
+}
+
+/*
  * Register allocation for the bounded function profile
  * ----------------------------------------------------
  *
@@ -4994,66 +5087,13 @@ static const unsigned x64_argument_registers[MAX_CORE_PARAMETERS] = {
     X64_RDI, X64_RSI, X64_RDX, X64_RCX, X64_R8, X64_R9,
 };
 
-typedef struct {
-    bool taken[16];
-} X64RegisterFile;
-
-static unsigned x64_take_scratch_register(X64RegisterFile *file) {
-    for (size_t index = 0; index < X64_SCRATCH_REGISTERS; ++index) {
-        unsigned reg = x64_scratch_registers[index];
-        if (file->taken[reg]) continue;
-        file->taken[reg] = true;
-        return reg;
-    }
-    return X64_NO_REGISTER;
-}
-
-static unsigned x64_take_call_safe_register(X64RegisterFile *file) {
-    for (size_t index = 0; index < X64_CALL_SAFE_REGISTERS; ++index) {
-        unsigned reg = x64_call_safe_registers[index];
-        if (file->taken[reg]) continue;
-        file->taken[reg] = true;
-        return reg;
-    }
-    return X64_NO_REGISTER;
-}
-
-/*
- * An intermediate value that must survive a call can only live in the
- * callee-saved class; anything else prefers the scratch class, which needs no
- * save at all, and falls back to callee-saved rather than to memory.
- */
-static unsigned x64_take_eval_register(
-    X64RegisterFile *file,
-    bool across_calls
-) {
-    if (!across_calls) {
-        unsigned scratch = x64_take_scratch_register(file);
-        if (scratch != X64_NO_REGISTER) return scratch;
-    }
-    return x64_take_call_safe_register(file);
-}
-
-/*
- * A parameter or local is different: it is written once at entry and read
- * wherever it appears. A scratch register replaces that store and every reload
- * for free, but a callee-saved register also costs one save and one restore per
- * invocation, which only pays for itself once the binding is read more than
- * once. A binding that is never read gets nothing.
- */
-static unsigned x64_take_value_register(
-    X64RegisterFile *file,
-    bool across_calls,
-    size_t uses
-) {
-    if (uses == 0) return X64_NO_REGISTER;
-    if (!across_calls) {
-        unsigned scratch = x64_take_scratch_register(file);
-        if (scratch != X64_NO_REGISTER) return scratch;
-    }
-    if (uses < 2) return X64_NO_REGISTER;
-    return x64_take_call_safe_register(file);
-}
+static const TargetRegisterFile x64_register_file = {
+    x64_scratch_registers,
+    X64_SCRATCH_REGISTERS,
+    x64_call_safe_registers,
+    X64_CALL_SAFE_REGISTERS,
+    X64_NO_REGISTER,
+};
 
 typedef struct {
     size_t frame_slots;   /* parameters and locals, at their existing slots */
@@ -5240,20 +5280,20 @@ static X64FrameLayout x64_function_layout(
     size_t tracked = pressure.depth < X64_ALLOCATABLE_REGISTERS
         ? pressure.depth
         : (size_t)X64_ALLOCATABLE_REGISTERS;
-    X64RegisterFile file = {0};
+    RegisterFile file = { .target = &x64_register_file };
     /* Call-crossing depths claim the callee-saved class first: no other class
      * can hold them, while any other depth has an alternative. */
     for (size_t depth = 0; depth < tracked; ++depth) {
         if (!pressure.across_call[depth]) continue;
-        layout.eval_register[depth] = x64_take_eval_register(&file, true);
+        layout.eval_register[depth] = target_take_eval_register(&file, true);
     }
     for (size_t depth = 0; depth < tracked; ++depth) {
         if (pressure.across_call[depth]) continue;
-        layout.eval_register[depth] = x64_take_eval_register(&file, false);
+        layout.eval_register[depth] = target_take_eval_register(&file, false);
     }
     bool calls = function_body_calls(function);
     for (size_t slot = 0; slot < layout.frame_slots; ++slot) {
-        layout.slot_register[slot] = x64_take_value_register(
+        layout.slot_register[slot] = target_take_value_register(
             &file,
             calls,
             function_slot_uses(function, slot)
@@ -6737,56 +6777,13 @@ static const unsigned a64_scratch_registers[A64_SCRATCH_REGISTERS] = {
     12, 13, 14, 15,
 };
 
-typedef struct {
-    bool taken[32];
-} A64RegisterFile;
-
-static unsigned a64_take_scratch_register(A64RegisterFile *file) {
-    for (size_t index = 0; index < A64_SCRATCH_REGISTERS; ++index) {
-        unsigned reg = a64_scratch_registers[index];
-        if (file->taken[reg]) continue;
-        file->taken[reg] = true;
-        return reg;
-    }
-    return A64_NO_REGISTER;
-}
-
-static unsigned a64_take_call_safe_register(A64RegisterFile *file) {
-    for (size_t index = 0; index < A64_CALL_SAFE_REGISTERS; ++index) {
-        unsigned reg = a64_call_safe_registers[index];
-        if (file->taken[reg]) continue;
-        file->taken[reg] = true;
-        return reg;
-    }
-    return A64_NO_REGISTER;
-}
-
-/* The AArch64 counterparts of x64_take_eval_register and
- * x64_take_value_register; the reasoning is documented there. */
-static unsigned a64_take_eval_register(
-    A64RegisterFile *file,
-    bool across_calls
-) {
-    if (!across_calls) {
-        unsigned scratch = a64_take_scratch_register(file);
-        if (scratch != A64_NO_REGISTER) return scratch;
-    }
-    return a64_take_call_safe_register(file);
-}
-
-static unsigned a64_take_value_register(
-    A64RegisterFile *file,
-    bool across_calls,
-    size_t uses
-) {
-    if (uses == 0) return A64_NO_REGISTER;
-    if (!across_calls) {
-        unsigned scratch = a64_take_scratch_register(file);
-        if (scratch != A64_NO_REGISTER) return scratch;
-    }
-    if (uses < 2) return A64_NO_REGISTER;
-    return a64_take_call_safe_register(file);
-}
+static const TargetRegisterFile a64_register_file = {
+    a64_scratch_registers,
+    A64_SCRATCH_REGISTERS,
+    a64_call_safe_registers,
+    A64_CALL_SAFE_REGISTERS,
+    A64_NO_REGISTER,
+};
 
 typedef struct {
     size_t frame_slots;   /* parameters and locals, at their existing slots */
@@ -6828,18 +6825,18 @@ static A64FrameLayout a64_function_layout(
     size_t tracked = pressure.depth < A64_ALLOCATABLE_REGISTERS
         ? pressure.depth
         : (size_t)A64_ALLOCATABLE_REGISTERS;
-    A64RegisterFile file = {0};
+    RegisterFile file = { .target = &a64_register_file };
     for (size_t depth = 0; depth < tracked; ++depth) {
         if (!pressure.across_call[depth]) continue;
-        layout.eval_register[depth] = a64_take_eval_register(&file, true);
+        layout.eval_register[depth] = target_take_eval_register(&file, true);
     }
     for (size_t depth = 0; depth < tracked; ++depth) {
         if (pressure.across_call[depth]) continue;
-        layout.eval_register[depth] = a64_take_eval_register(&file, false);
+        layout.eval_register[depth] = target_take_eval_register(&file, false);
     }
     bool calls = function_body_calls(function);
     for (size_t slot = 0; slot < layout.frame_slots; ++slot) {
-        layout.slot_register[slot] = a64_take_value_register(
+        layout.slot_register[slot] = target_take_value_register(
             &file,
             calls,
             function_slot_uses(function, slot)

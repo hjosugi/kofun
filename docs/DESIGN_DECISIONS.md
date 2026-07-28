@@ -212,3 +212,43 @@ repetition was the gate. If some gate still fails, the repetition was scaffoldin
 Two copies of a *constant* are acceptable where a mismatch fails loudly —
 `REJECT_FIXTURE_COUNT` is asserted in both gates, so a stale copy stops the
 build. The defect DD-022 targets is silent disagreement, not repetition itself.
+
+## DD-023: A native target declares facts, not policy
+
+A native target supplies only what its ABI decides — its register file, its
+calling convention, and its instruction emitter — and adds nothing else.
+Anything derivable from those facts is written once in target-independent code,
+and every target runs that one copy.
+
+Concretely, a target declares a `TargetRegisterFile`: its caller-saved scratch
+class, its call-safe class, and the value meaning "no register". It does not
+bring a register allocator. The allocation policy — scratch first unless a
+value must survive a call, call-safe otherwise, nothing for a binding read
+fewer than twice — lives once in
+[`bootstrap/native/core_compiler.c`](../bootstrap/native/core_compiler.c) and
+reads the declared file.
+[`docs/NATIVE_BACKEND.md`](NATIVE_BACKEND.md) is normative for the contract.
+
+Reason:
+
+- x86-64 and AArch64 each carried a private copy of the four `take_*_register`
+  functions. After normalising the `X64_`/`A64_` prefixes the copies were
+  **identical**, so the pair could not disagree and the native gate proved
+  nothing about them. Under DD-022 that is ordinary duplication, not evidence:
+  sharing it loses nothing and gains one tested implementation.
+- Every queued codegen item is otherwise priced per target, and the multiplier
+  grows with each new backend.
+
+This decision is deliberately narrow, and DD-022 is why. It shares only the
+layer whose duplicate copies were byte-for-byte the same algorithm. The
+lowering pairs — `function_expression`, `function_divide`, `function_compare`
+and the rest listed in `docs/NATIVE_BACKEND.md` — are **not** shared by this
+decision. Those are two genuinely independent lowerings that the native gate
+requires to agree on observable behaviour and on `R010` diagnostic bytes, so
+the agreement is the evidence and sharing them would delete it. Whether to
+share them anyway, and what would replace the lost differential, is a separate
+decision this one does not make.
+
+A new target that re-adds its own copy of the shared allocator is a defect. The
+`function_register_allocation` fixture pins the leaf prologue for both targets,
+so perturbing the shared path fails the native gate on each of them.
