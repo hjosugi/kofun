@@ -11,6 +11,9 @@ BOOL_STDOUT="$ROOT/bootstrap/selfhost/driver/corpus_bool.stdout"
 BRANCH_FIXTURE="$ROOT/bootstrap/selfhost/driver/corpus_branch.kofun"
 BRANCH_C="$ROOT/bootstrap/selfhost/driver/corpus_branch.c"
 BRANCH_STDOUT="$ROOT/bootstrap/selfhost/driver/corpus_branch.stdout"
+LOOP_FIXTURE="$ROOT/bootstrap/selfhost/driver/corpus_loop.kofun"
+LOOP_C="$ROOT/bootstrap/selfhost/driver/corpus_loop.c"
+LOOP_STDOUT="$ROOT/bootstrap/selfhost/driver/corpus_loop.stdout"
 WORK="${KOFUN_STAGE1_WORK:-$ROOT/build/bootstrap-stage1}"
 CC="${CC:-cc}"
 
@@ -42,6 +45,16 @@ cmp "$BRANCH_C" "$WORK/branch.c"
 "$WORK/branch" >"$WORK/branch.stdout"
 cmp "$BRANCH_STDOUT" "$WORK/branch.stdout"
 
+# Loops: the emitted C keeps one brace pair per loop block, evaluates each
+# range end once into the enclosing scope, and scopes the bound name to its
+# own block. Executing it proves the bodies of a false `while` and of an empty
+# range were never entered — each contains `1 // 0`.
+"$WORK/kofun-stage1" "$LOOP_FIXTURE" "$WORK/loop.c"
+cmp "$LOOP_C" "$WORK/loop.c"
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror "$WORK/loop.c" -o "$WORK/loop"
+"$WORK/loop" >"$WORK/loop.stdout"
+cmp "$LOOP_STDOUT" "$WORK/loop.stdout"
+
 for fixture in \
     "$ROOT/bootstrap/selfhost/driver/corpus_reject_bool_arithmetic.kofun" \
     "$ROOT/bootstrap/selfhost/driver/corpus_reject_bool_print.kofun" \
@@ -58,7 +71,14 @@ for fixture in \
     "$ROOT/bootstrap/selfhost/driver/corpus_reject_else_without_if.kofun" \
     "$ROOT/bootstrap/selfhost/driver/corpus_reject_else_after_else.kofun" \
     "$ROOT/bootstrap/selfhost/driver/corpus_reject_unclosed_block.kofun" \
-    "$ROOT/bootstrap/selfhost/driver/corpus_reject_extra_block_end.kofun"
+    "$ROOT/bootstrap/selfhost/driver/corpus_reject_extra_block_end.kofun" \
+    "$ROOT/bootstrap/selfhost/driver/corpus_reject_while_condition.kofun" \
+    "$ROOT/bootstrap/selfhost/driver/corpus_reject_range_bound.kofun" \
+    "$ROOT/bootstrap/selfhost/driver/corpus_reject_range_separator.kofun" \
+    "$ROOT/bootstrap/selfhost/driver/corpus_reject_loop_shadow.kofun" \
+    "$ROOT/bootstrap/selfhost/driver/corpus_reject_loop_scope.kofun" \
+    "$ROOT/bootstrap/selfhost/driver/corpus_reject_loop_assignment.kofun" \
+    "$ROOT/bootstrap/selfhost/driver/corpus_reject_else_after_loop.kofun"
 do
     output="$WORK/$(basename "$fixture" .kofun).c"
     rm -f "$output"
@@ -76,4 +96,5 @@ printf '%s\n' \
     "PASS: Python-free Kofun Stage 1 built with $CC" \
     "PASS: compiled fixture returned $answer" \
     "PASS: Int/Bool Core accepts comparisons and refuses typed boundary crossings" \
-    "PASS: nested if/else blocks scope their bindings and refuse a misplaced else"
+    "PASS: nested if/else blocks scope their bindings and refuse a misplaced else" \
+    "PASS: while and for-range loops nest, bound their range once, and scope their bound name"

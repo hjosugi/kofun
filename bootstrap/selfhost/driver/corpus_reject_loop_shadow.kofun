@@ -1,0 +1,7 @@
+fn main() {
+    let index = 1
+    for index in 0 .. 3 {
+        print(index)
+    }
+    print(index)
+}

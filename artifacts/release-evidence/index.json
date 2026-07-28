@@ -2,7 +2,7 @@
   "schema": "kofun.release-evidence/v1",
   "manifest_version": 1,
   "inputs": {
-    "release/claims.json": "8b9c79a4fbc6cee3917ae857471f3061a7ad69a39977827c772196f1e2de6e67",
+    "release/claims.json": "9f4b966bdf13dde5fdeb24f1af208b5035a0fc179e763c53a64dbce2cebabe20",
     "spec/release-claim.schema.json": "c04dd081fbe161b0a0dacb22480dea0e3549f358fcbcb35c0497ca8b2c4c8b21"
   },
   "states": {
@@ -580,8 +580,8 @@
     "bootstrap/selfhost/driver/corpus_reject.kofun": "be29fe484a7ba4968c60aaf6f00aa59edb511ce3d9ef46c0ceb2b6ad0e8740b5",
     "bootstrap/selfhost/driver/corpus_reject.stdout": "fe12ce5f6d708d7a23b60d98cacb06a45bbdbe047309260774ae3f95a1330fcf",
     "bootstrap/selfhost/driver/corpus_reject_else_without_if.kofun": "599973ccfd5eec4b7399fb506513e8f4190e622b5161f590a7872a0b14dd7c2d",
-    "bootstrap/stage1/README.md": "8faa6fd703eff062c883555b9e84fa12a736103a2cdc4c4fa865ef3ca6cd388d",
-    "bootstrap/stage1/SHA256SUMS": "40a33463f306a6563746c16e50f176aa583bfefc3c3ca1e480dab0a99c63d9b5",
+    "bootstrap/stage1/README.md": "5bc4bc7dd2df1b6804dcd06d334f2198ff4c812b14719741de153478c71bc8d9",
+    "bootstrap/stage1/SHA256SUMS": "eefb02ea75e60d0656857cc80f72e94d3e06c5f9cba18ef85580659008529caf",
     "bootstrap/wasm/fixtures/unsupported_text.kofun": "e0a45136410ddb85e9f5b3e5c39e7903d96da39aa53aaf3078d2555b4f383864",
     "docs/BUILD_SYSTEM.md": "d4a372fc97c53874cc2438f3de132289beb033ce2bf1e67518b702de796b05a8",
     "docs/COMPILER_ARCHITECTURE.md": "2518d0b5af72cf67b7078e3e022fa0c7faf98596d1ba4214dd13a95f45ebf67f",
@@ -589,7 +589,7 @@
     "docs/LAW_SYSTEM.md": "6a8f02de7d11307b53fb1233de11a16d9b0066cd12a62ae77394fb18af512d9d",
     "docs/LINGUIST_RECOGNITION.md": "4e70400a719381abee1b72c5a3157e78181c251b116b12c60b6808cad428b502",
     "docs/MEMORY_MODEL.md": "2d570b4109e308bbc4219545dbe5138a1224e8ac0b7b593a03f49bc4eb59db3d",
-    "docs/MVP_IMPLEMENTED.md": "244de7aea8ecb6273f027f4308917ef36341f9c4378f881f43be87b0162a2f49",
+    "docs/MVP_IMPLEMENTED.md": "fcd24c2d098ff47c74c559d81f05b8f2c7ae24b3a115d89f19b864ff9f7696ee",
     "docs/NATIVE_BACKEND.md": "f215a24a86882d34c549e3b17716c89f034f5b2acc3c2e6dc10fe39c9a173d89",
     "docs/ROADMAP.md": "081574bffd1771102d0c306662141737ae8ed20624780a1e0825689b4b9314ac",
     "docs/RUST_CRATE_SHIMS.md": "4365b064cbc9a05733710d3a609c1db2623b28cb9ed4ba0e48536e35f9d58c47",
@@ -620,7 +620,7 @@
     "tests/conformance/records/partial_move.kofun": "7d418d3ab0531f864cbd61256cbdeaeb46f7a65b213d62bf776229ddcfa67b85",
     "tests/diagnostics/README.md": "456190836326c23c153118d53f085905e4da06eae11883432f39c24548447c12",
     "tests/diagnostics/registry.tsv": "af342151ab323493f92e5652686be7933f5437c5722616017dc0519d52a5d5b3",
-    "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun": "6352ee9e222a46686bfecd5faf627b286469e1638244e33f155c148d1f0d95d8",
+    "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun": "664c4d3b0d4bcd9265fee34b3ae60d8bf0eb58c9ce5c2b504579c1249aa16f2d",
     "tests/fuzz/SEMANTIC_PROTOCOL.md": "95644005013d2aae82a042deb341785a083552c766abafa71bdbf4335deea522",
     "tests/fuzz/semantic_differential.sh": "f86c3afb9c4e6aa8be68159f40215451d536ef29c821aea9f160def2613c0b7d",
     "tests/http/check.sh": "73e3dbfb6a59959e8c916bbc32c934e417d115fcdfd86ed082cb976de81f5afc",

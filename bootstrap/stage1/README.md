@@ -15,10 +15,11 @@ kofun-stage1 INPUT.kofun OUTPUT.c
 ```
 
 The compatibility parser requires one explicit line-oriented `fn main() {`
-body containing only `let` statements, Int-valued `print(...)` statements, and
-`if`/`else if`/`else` blocks, plus blank lines and comments. `let` may infer or
-explicitly name `Int` or `Bool`. Unknown structural lines are rejected; they are
-never ignored while extracting an otherwise valid `print`.
+body containing only `let` statements, Int-valued `print(...)` statements,
+`if`/`else if`/`else` blocks, and `while`/`for` loops, plus blank lines and
+comments. `let` may infer or explicitly name `Int` or `Bool`. Unknown structural
+lines are rejected; they are never ignored while extracting an otherwise valid
+`print`.
 
 ## Expressions are compiled, not deferred
 
@@ -52,6 +53,9 @@ runtime traps in the emitted program:
 - a block condition that is not `Bool`
 - an `else` with no `if` to attach to, or a second `else` in one chain
 - a block left open at the end of the source, or a `}` that closes nothing
+- a `while` condition that is not `Bool`, or a range end that is not `Int`
+- a `for` bound name that shadows a visible binding, or a range written without
+  the spaced `..` separator
 
 The six Int comparisons produce `Bool`; `==` and `!=` additionally compare two
 Bool operands. `&&` and `||` short-circuit their right operands, and `!` has
@@ -82,6 +86,32 @@ unevaluated, exactly as `&&` and `||` keep their right operands unevaluated.
 Nothing in the accepted Core returns a value yet, so `main` has no path that
 must end in `return`; the per-branch `returned` state arrives with the
 declaration slice that introduces `return` (#751).
+
+## Loops nest with branches, on one stack
+
+`while COND {` and `for NAME in START .. END {` each occupy their own line and
+join the same stack of open blocks, so a loop and a branch nest inside each
+other without either keeping a second counter. Only an `if` block admits an
+`else`, so a `}` that closes a loop can never have one attached to it.
+
+A `while` condition is re-evaluated every iteration. C cannot hold the
+condition's statement sequence in its `while` header, so the loop is emitted as
+`while (true)` with the condition lowered as the first statements of the body
+and a `break` when it is false. That keeps one evaluation per iteration rather
+than the two a duplicated condition would cost.
+
+A `for` range is evaluated once, into the enclosing scope, before the loop
+starts: re-evaluating the end per iteration would let a failing end expression
+report its diagnostic more than once and would make the trip count depend on the
+body. The range is half-open, and both ends must be `Int`. The bound name is an
+ordinary immutable binding — it may not shadow a visible one, it is confined to
+the loop body's scope, and the same name is free to bind again after the loop's
+`}`.
+
+The Core has no assignment statement yet, so nothing can write to a loop bound;
+a line that tries is refused as an unknown structural line rather than by a
+mutability rule. `corpus_reject_loop_assignment.kofun` pins that refusal so the
+mutable-local slice cannot make a loop bound assignable by accident.
 
 It does not yet semantically compile its complete own source, so the Stage 2
 fixed-point gate remains open.

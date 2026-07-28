@@ -536,7 +536,7 @@ cmp "$move_diagnostic" "$temporary/cli-borrowed-move.stderr"
 round_trip stage1 "$root/bootstrap/stage1/compiler.kofun"
 grep '^function|emit_c|1|' "$temporary/stage1.ir" >/dev/null
 grep '^function|compile_file|2|' "$temporary/stage1.ir" >/dev/null
-grep '^function-count|38$' "$temporary/stage1.ir" >/dev/null
+grep '^function-count|43$' "$temporary/stage1.ir" >/dev/null
 
 round_trip stage2 "$stage2/compiler.kofun"
 grep '^function|lex|1|' "$temporary/stage2.ir" >/dev/null
@@ -868,7 +868,7 @@ grep '^binding|122|116|marker|immutable|Text|gc|initialized|15191|15197|15208$' 
     "$temporary/selfhost-S.scopes" >/dev/null
 grep '^binding|123|116|start|immutable|Int|copy|initialized|15217|15222|15243$' \
     "$temporary/selfhost-S.scopes" >/dev/null
-grep '^binding|173|186|emitted|mutable|Text|gc|initialized|23968|23975|23980$' \
+grep '^binding|190|210|emitted|mutable|Text|gc|initialized|27670|27677|27682$' \
     "$temporary/selfhost-S.scopes" >/dev/null
 
 printf '%s\n' \
