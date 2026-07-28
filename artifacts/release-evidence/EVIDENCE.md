@@ -11,7 +11,7 @@ Generated from `release/claims.json` by `make release-evidence`. Do not edit.
 | `checked-int64-contract` | `sh tests/conformance/run.sh` | The numeric conformance corpus passes on every supported backend. |
 | `cli-commands` | `sh tests/cli.sh` | Each subcommand succeeds on Core sources. |
 | `cli-framework` | `sh framework/cli/check.sh` | The declarative CLI example builds statically and runs. |
-| `compiler-seed` | `sh bootstrap/stage1/check.sh` | The Kofun seed and audited C transliteration emit byte-identical C for the arithmetic, Bool, nested-block, loop and Text corpora. The Text program compiles under the gate flags, executes escaped literals/concatenation/equality/printing, and retains no expression source; the older four C goldens remain byte-identical. |
+| `compiler-seed` | `sh bootstrap/stage1/check.sh` | The Kofun seed and audited C transliteration emit byte-identical C for the arithmetic, Bool, nested-block, loop, Text, and List[Text] corpora. The List program compiles under the gate flags and executes `chars`, `len`, Text/List indexing, and UTF-8 byte semantics; bounds traps exit 1 with exact R010 diagnostics, typed index boundaries are refused, and all older C goldens remain byte-identical. |
 | `deterministic-fuzzing` | `sh tests/fuzz/semantic_differential.sh` | Oracle and backend observations agree for every generated program. |
 | `elf64-image-writer` | `sh bootstrap/native/check.sh` | A static ELF64 image is written and executes. |
 | `enum-matching` | `sh tests/conformance/syntax/issues_35_47/run.sh` | Payload-free enum matches lower and execute with exhaustiveness enforced. |
