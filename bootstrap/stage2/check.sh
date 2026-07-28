@@ -868,15 +868,15 @@ test ! -e "$temporary/selfhost-S.c"
 "$temporary/kofun-stage2" --emit-scope-hir \
     "$root/bootstrap/stage1/compiler.kofun" \
     "$temporary/selfhost-S.scopes"
-grep '^binding|2|3|symbols|immutable|List|gc|initialized|808|815|829$' \
+grep '^binding|2|3|symbols|immutable|List|gc|initialized|879|886|900$' \
     "$temporary/selfhost-S.scopes" >/dev/null
-grep '^binding|21|22|symbol|immutable|Text|gc|initialized|2421|2427|2437$' \
+grep '^binding|21|22|symbol|immutable|Text|gc|initialized|2492|2498|2508$' \
     "$temporary/selfhost-S.scopes" >/dev/null
-grep '^binding|122|116|marker|immutable|Text|gc|initialized|15191|15197|15208$' \
+grep '^binding|134|143|marker|immutable|Text|gc|initialized|18041|18047|18058$' \
     "$temporary/selfhost-S.scopes" >/dev/null
-grep '^binding|123|116|start|immutable|Int|copy|initialized|15217|15222|15243$' \
+grep '^binding|135|143|start|immutable|Int|copy|initialized|18067|18072|18093$' \
     "$temporary/selfhost-S.scopes" >/dev/null
-grep '^binding|190|210|emitted|mutable|Text|gc|initialized|27670|27677|27682$' \
+grep '^binding|205|242|emitted|mutable|Text|gc|initialized|30899|30906|30911$' \
     "$temporary/selfhost-S.scopes" >/dev/null
 
 printf '%s\n' \

@@ -10,7 +10,7 @@
     "stage1": {
       "implementation": "bootstrap/stage1/compiler.kofun",
       "status": "working-python-free-seed",
-      "role": "Kofun-written compiler for the documented nested-block and looping Int/Bool Core subset"
+      "role": "Kofun-written compiler for the documented nested-block and looping Int/Bool/Text Core subset"
     },
     "selfhost_profile": {
       "implementation": "bootstrap/selfhost/profile.tsv",
