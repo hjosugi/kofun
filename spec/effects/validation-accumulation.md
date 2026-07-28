@@ -1,14 +1,14 @@
 # Validation accumulation v1
 
-Status: proposed normative design for GitHub issue #742, which is
-`needs-decision`. Merging this document records the proposal; the maintainer
-records acceptance on the issue, and the open questions at the end are the
-decisions still to be made. No library, compiler path, or backend implements
-this contract, and its named gate does not exist yet.
+Status: accepted normative design for GitHub issue #742. The five questions
+this document left open were decided as recommended; §Decisions taken records
+each one. No library, compiler path, or backend implements this contract, and
+its named gate does not exist yet — acceptance settles what the contract says,
+not that anything ships.
 
-The umbrella #428 is a planning tracker. Once this document is accepted, #428
-links here as the semantic contract for validation accumulation and defines no
-competing semantics of its own.
+The umbrella #428 is a planning tracker. It links here as the semantic
+contract for validation accumulation and defines no competing semantics of its
+own.
 
 Decision owner: the repository maintainer. A later change to the accepted
 states, operations, ordering, effect rule, ownership boundary, or complexity
@@ -258,7 +258,7 @@ writes output, `map2(a, b, f)` and `map2(b, a, flip(f))` produce identical
 states and reordered-only issues but *different* output interleavings — so
 "independent" grants an implementation no license to reorder or parallelize
 branch evaluation, and a wider effect rule must specify observable order and
-cancellation explicitly before it can be accepted (§Open questions).
+cancellation explicitly before it can be accepted (§Decisions taken, 2).
 
 Because combinator closures are invoked at most once, before the combinator
 returns, they are non-escaping in the `docs/MEMORY_MODEL.md` sense, and may
@@ -321,7 +321,10 @@ is `Valid` or `Invalid`; that equation deliberately excludes `Disputed`.
 
 ## Representation and complexity
 
-`Issues[E]` is representation-free with normative bounds:
+`Issues[E]` is **opaque**: ordered iteration, `first()`, and `count()` are its
+entire observable surface, and no caller may depend on which sequence
+representation v1 chose (§Decisions taken, 5). It is representation-free with
+normative bounds:
 
 - constructing any single state, and each `++` concatenation, is amortized
   O(1) in issue count, excluding user function cost;
@@ -440,28 +443,43 @@ name is new, and `Result`'s observable behavior is untouched. The first
 executable slice requires a separate implementation change, the gate above,
 and conformance evidence before any claim.
 
-## Open questions
+## Decisions taken
 
-Decisions deliberately left to maintainer review, with a recommendation each:
+The five questions this document left to maintainer review were decided on
+2026-07-28, each as recommended. They are recorded here so a later reader sees
+what was chosen and what the choice costs, not only that it was open.
 
-1. **Naming.** `Validated` vs `Validation`; `refuse` vs `refute`; `Disputed`
-   vs `Flagged`; `harden` vs `strict`. Recommended: the names as written —
-   `refuse` matches this repository's refusal diction, and `Validated`
-   reads as a value rather than a process. Pure bikeshed; any consistent
-   choice preserves the semantics.
-2. **Impure dependent continuations.** `and_then` runs its continuation at
-   most once, in a fixed order, so admitting the #556 impure marker there is
-   deterministic and safe in a way independent branches are not. Recommended:
-   keep v1 fully pure for one rule instead of two, and lift the restriction
-   for `and_then` only, later, with an explicit ordering statement.
-3. **Heterogeneous n-ary sugar.** `map2`/`map3` cover the corpus; a
-   record-building or applicative-builder surface depends on open tuple
-   (#52) and metaprogramming decisions. Recommended: defer; adding sugar
-   later is additive.
-4. **Arity ceiling.** Whether `map4`+ are provided or nesting is the answer.
-   Recommended: provide through `map3`, then nest; revisit with evidence
-   from real validators.
-5. **`Issues` visibility.** Whether `Issues[E]` is a public nonempty
-   sequence type or an opaque carrier with `first()`, `count()`, and
-   iteration. Recommended: opaque in v1 so the O(N) representation can
-   change; expose exactly the ordered iteration, `first()`, and `count()`.
+1. **Naming: `Validated`, `refuse`, `Disputed`, `harden`, as written.**
+   `refuse` matches this repository's refusal diction, and `Validated` reads
+   as a value rather than a process. This is the one decision here with no
+   semantic content — `Validation`/`refute`/`Flagged`/`strict` would preserve
+   every law in this document. Renaming after a gate exists is a mechanical
+   but repository-wide change, which is why it is settled now rather than
+   left to the implementation.
+
+2. **V1 branches and continuations are fully pure.** One rule, not two. The
+   argument for admitting the #556 impure marker on `and_then` is real —
+   its continuation runs at most once, in a fixed order, so it is
+   deterministic in a way independent branches are not — and it is deferred
+   rather than rejected. Lifting the restriction for `and_then` only is
+   additive and must arrive with an explicit ordering statement; admitting
+   impurity in `map2`/`map3`/`all` is not on that path, because branch
+   *independence* grants no reordering or parallelism licence (§Effects).
+
+3. **No heterogeneous n-ary sugar in v1.** A record-building or
+   applicative-builder surface depends on tuples (#52) and metaprogramming
+   decisions that are not made. `map2`/`map3` cover the conformance corpus.
+   Adding sugar later is additive and breaks nothing written here.
+
+4. **Arity ceiling at `map3`; beyond that, nest.** `map4`+ are not provided.
+   The cost is real — a four-field validator nests once — and the reason to
+   accept it is that an arity ladder is easy to extend on evidence and
+   awkward to retract. Revisit with real validators, not in advance.
+
+5. **`Issues[E]` is opaque in v1.** It exposes exactly ordered iteration,
+   `first()`, and `count()`; it is not a public nonempty sequence type. This
+   is what keeps §Representation and complexity honest: the O(N) bound
+   including left-associated chains is a conformance requirement, and a
+   caller that could pattern-match the representation would freeze whichever
+   one v1 happened to pick. Widening the surface later is additive;
+   narrowing it would not be.
