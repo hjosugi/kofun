@@ -62,86 +62,68 @@ cmp "$temporary/S.c" "$temporary/S.second.c" ||
 "$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
     bootstrap/stage1/compiler.c -o "$temporary/kofun-stage1"
 
-mkdir -p "$temporary/left" "$temporary/right"
-cp bootstrap/selfhost/driver/corpus_answer.kofun "$temporary/left/input.kofun"
-cp bootstrap/selfhost/driver/corpus_answer.kofun "$temporary/right/input.kofun"
+# One accept corpus through both compiler paths. Every corpus asserts the same
+# five things, so they are asserted in one place: a second copy of this sequence
+# per corpus was how the loop slice's differential nearly shipped comparing the
+# wrong pair. The two compilers run in separate directories with an identically
+# named input, which is what keeps the emitted C free of the path it came from.
+#
+# This is deduplication of the harness, not of the evidence. The two compilers
+# it compares stay independently derived — that pair is the differential, and
+# collapsing it would delete the property this gate exists to prove.
+differential_corpus() {
+    stem=$1
+    label=$2
+    source=bootstrap/selfhost/driver/$stem.kofun
+    left=$temporary/$stem-left
+    right=$temporary/$stem-right
 
-(cd "$temporary/left" &&
-    "$temporary/kofun-a1" input.kofun output.c >stdout.txt 2>stderr.txt)
-(cd "$temporary/right" &&
-    "$temporary/kofun-stage1" input.kofun output.c >stdout.txt 2>stderr.txt)
-cmp "$temporary/left/output.c" "$temporary/right/output.c" ||
-    fail "compiler-from-S and the audited seed emit different C"
-cmp "$temporary/left/stdout.txt" "$temporary/right/stdout.txt" ||
-    fail "compiler-from-S and the audited seed print different stdout"
-cmp "$temporary/left/stderr.txt" "$temporary/right/stderr.txt" ||
-    fail "compiler-from-S and the audited seed print different stderr"
-cmp bootstrap/selfhost/driver/corpus_answer.c "$temporary/left/output.c" ||
-    fail "corpus emission differs from the checked-in evidence"
+    mkdir -p "$left" "$right"
+    cp "$source" "$left/input.kofun"
+    cp "$source" "$right/input.kofun"
+    (cd "$left" &&
+        "$temporary/kofun-a1" input.kofun output.c >stdout.txt 2>stderr.txt)
+    (cd "$right" &&
+        "$temporary/kofun-stage1" input.kofun output.c >stdout.txt 2>stderr.txt)
 
-"$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
-    "$temporary/left/output.c" -o "$temporary/corpus-program"
-"$temporary/corpus-program" >"$temporary/corpus.stdout"
-cmp bootstrap/selfhost/driver/corpus_answer.stdout "$temporary/corpus.stdout" ||
-    fail "corpus program output differs from the pinned golden"
+    cmp "$left/output.c" "$right/output.c" ||
+        fail "compiler-from-S and the audited seed emit different $label C"
+    cmp "$left/stdout.txt" "$right/stdout.txt" ||
+        fail "compiler-from-S and the audited seed differ on $label stdout"
+    cmp "$left/stderr.txt" "$right/stderr.txt" ||
+        fail "compiler-from-S and the audited seed differ on $label stderr"
+    cmp "bootstrap/selfhost/driver/$stem.c" "$left/output.c" ||
+        fail "$label corpus emission differs from the checked-in evidence"
 
-# The Bool/comparison slice takes the same two compiler paths. Its checked-in
-# C proves all six comparisons, Bool literals and bindings, `!`, precedence,
-# and the nested left-associative `&&`/`||` shape. Executing it proves real
-# short circuiting: both skipped right operands contain `1 // 0`.
-mkdir -p "$temporary/bool-left" "$temporary/bool-right"
-cp bootstrap/selfhost/driver/corpus_bool.kofun \
-    "$temporary/bool-left/input.kofun"
-cp bootstrap/selfhost/driver/corpus_bool.kofun \
-    "$temporary/bool-right/input.kofun"
-(cd "$temporary/bool-left" &&
-    "$temporary/kofun-a1" input.kofun output.c >stdout.txt 2>stderr.txt)
-(cd "$temporary/bool-right" &&
-    "$temporary/kofun-stage1" input.kofun output.c >stdout.txt 2>stderr.txt)
-cmp "$temporary/bool-left/output.c" "$temporary/bool-right/output.c" ||
-    fail "compiler-from-S and the audited seed emit different Bool C"
-cmp "$temporary/bool-left/stdout.txt" "$temporary/bool-right/stdout.txt" ||
-    fail "compiler-from-S and the audited seed differ on Bool stdout"
-cmp "$temporary/bool-left/stderr.txt" "$temporary/bool-right/stderr.txt" ||
-    fail "compiler-from-S and the audited seed differ on Bool stderr"
-cmp bootstrap/selfhost/driver/corpus_bool.c \
-    "$temporary/bool-left/output.c" ||
-    fail "Bool corpus emission differs from the checked-in evidence"
-"$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
-    "$temporary/bool-left/output.c" -o "$temporary/bool-program"
-"$temporary/bool-program" >"$temporary/bool.stdout"
-cmp bootstrap/selfhost/driver/corpus_bool.stdout "$temporary/bool.stdout" ||
-    fail "Bool corpus program output differs from the pinned golden"
+    "$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
+        "$left/output.c" -o "$temporary/$stem-program"
+    "$temporary/$stem-program" >"$temporary/$stem.stdout"
+    cmp "bootstrap/selfhost/driver/$stem.stdout" "$temporary/$stem.stdout" ||
+        fail "$label corpus program output differs from the pinned golden"
+}
 
-# The nested-block slice takes the same two compiler paths. Its checked-in C
-# proves one C brace per Kofun block, `else if` chains that do not accumulate
-# braces, and block-local bindings that leave scope at their `}` — the fixture
-# rebinds a freed name afterwards. Executing it proves the skipped `else if`
-# condition and the short-circuited `||` operand, both `1 // 0`, stayed
-# unevaluated.
-mkdir -p "$temporary/branch-left" "$temporary/branch-right"
-cp bootstrap/selfhost/driver/corpus_branch.kofun \
-    "$temporary/branch-left/input.kofun"
-cp bootstrap/selfhost/driver/corpus_branch.kofun \
-    "$temporary/branch-right/input.kofun"
-(cd "$temporary/branch-left" &&
-    "$temporary/kofun-a1" input.kofun output.c >stdout.txt 2>stderr.txt)
-(cd "$temporary/branch-right" &&
-    "$temporary/kofun-stage1" input.kofun output.c >stdout.txt 2>stderr.txt)
-cmp "$temporary/branch-left/output.c" "$temporary/branch-right/output.c" ||
-    fail "compiler-from-S and the audited seed emit different nested-block C"
-cmp "$temporary/branch-left/stdout.txt" "$temporary/branch-right/stdout.txt" ||
-    fail "compiler-from-S and the audited seed differ on nested-block stdout"
-cmp "$temporary/branch-left/stderr.txt" "$temporary/branch-right/stderr.txt" ||
-    fail "compiler-from-S and the audited seed differ on nested-block stderr"
-cmp bootstrap/selfhost/driver/corpus_branch.c \
-    "$temporary/branch-left/output.c" ||
-    fail "nested-block corpus emission differs from the checked-in evidence"
-"$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
-    "$temporary/branch-left/output.c" -o "$temporary/branch-program"
-"$temporary/branch-program" >"$temporary/branch.stdout"
-cmp bootstrap/selfhost/driver/corpus_branch.stdout "$temporary/branch.stdout" ||
-    fail "nested-block corpus program output differs from the pinned golden"
+# The arithmetic corpus is the baseline: same emitted C, stdout, stderr and exit
+# status, and the emitted program reproduces the pinned output.
+differential_corpus corpus_answer arithmetic
+
+# The Bool/comparison slice: all six comparisons, Bool literals and bindings,
+# `!`, precedence, and the nested left-associative `&&`/`||` shape. Executing it
+# proves real short circuiting — both skipped right operands contain `1 // 0`.
+differential_corpus corpus_bool Bool
+
+# The nested-block slice: one C brace per Kofun block, `else if` chains that do
+# not accumulate braces, and block-local bindings that leave scope at their `}`
+# — the fixture rebinds a freed name afterwards. Executing it proves the skipped
+# `else if` condition and the short-circuited `||` operand, both `1 // 0`,
+# stayed unevaluated.
+differential_corpus corpus_branch nested-block
+
+# The loop slice: one brace pair per loop block, a range whose ends are
+# evaluated once into the enclosing scope, a bound name scoped to its own block
+# and rebindable after it, and loops nested in each other and in branches.
+# Executing it proves the body of a false `while` and of an empty range stayed
+# unentered — both hold `1 // 0`.
+differential_corpus corpus_loop loop
 
 # Path remapping: compiling the same relative input from two different
 # directories produces byte-identical C — no absolute-path leakage.
@@ -186,23 +168,13 @@ test ! -s "$temporary/reject.stderr" ||
 
 # Type boundaries introduced with Bool are rejected identically by both
 # compilers, exit nonzero, and never leave a partial output artifact.
-for fixture in \
-    bootstrap/selfhost/driver/corpus_reject_bool_arithmetic.kofun \
-    bootstrap/selfhost/driver/corpus_reject_bool_print.kofun \
-    bootstrap/selfhost/driver/corpus_reject_bool_annotation.kofun \
-    bootstrap/selfhost/driver/corpus_reject_bool_infer_annotation.kofun \
-    bootstrap/selfhost/driver/corpus_reject_bool_keyword_binding.kofun \
-    bootstrap/selfhost/driver/corpus_reject_bool_order.kofun \
-    bootstrap/selfhost/driver/corpus_reject_logical_int.kofun \
-    bootstrap/selfhost/driver/corpus_reject_not_int.kofun \
-    bootstrap/selfhost/driver/corpus_reject_single_pipe.kofun \
-    bootstrap/selfhost/driver/corpus_reject_branch_condition.kofun \
-    bootstrap/selfhost/driver/corpus_reject_branch_scope.kofun \
-    bootstrap/selfhost/driver/corpus_reject_branch_shadow.kofun \
-    bootstrap/selfhost/driver/corpus_reject_else_without_if.kofun \
-    bootstrap/selfhost/driver/corpus_reject_else_after_else.kofun \
-    bootstrap/selfhost/driver/corpus_reject_unclosed_block.kofun \
-    bootstrap/selfhost/driver/corpus_reject_extra_block_end.kofun
+# The fixture set is the glob, for the reason bootstrap/stage1/check.sh gives:
+# both gates must run the same refusals, and a hand-written list in each is how
+# they silently stop doing so. REJECT_FIXTURE_COUNT is asserted in both, so the
+# two lists cannot drift apart without a reviewable edit to the same number.
+REJECT_FIXTURE_COUNT=23
+reject_checked=0
+for fixture in bootstrap/selfhost/driver/corpus_reject_*.kofun
 do
     stem=$(basename "$fixture" .kofun)
     set +e
@@ -229,7 +201,10 @@ do
         fail "$stem produced C through the compiler from S"
     test ! -e "$temporary/$stem-seed.c" ||
         fail "$stem produced C through the audited seed"
+    reject_checked=$((reject_checked + 1))
 done
+test "$reject_checked" -eq "$REJECT_FIXTURE_COUNT" ||
+    fail "ran $reject_checked refusal fixtures, expected $REJECT_FIXTURE_COUNT"
 
 # I/O failure: a missing input panics with the runtime's bounded message,
 # exits 1, and preserves the previous output bytes.
@@ -268,4 +243,5 @@ printf '%s\n' \
     "PASS: the compiler from S matches the audited Stage 1 seed byte for byte on the corpus" \
     "PASS: Int/Bool typing, comparisons, and short-circuiting agree across both seeds" \
     "PASS: nested blocks, else-if chains, and block scoping agree across both seeds" \
+    "PASS: while and for-range loops, their bound scope and range evaluation agree across both seeds" \
     "PASS: emission is deterministic, path-independent, and failure-preserving"

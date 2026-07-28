@@ -53,7 +53,7 @@ contains the complete setup, target, and verification guide.
 
 | Area | Current executable boundary |
 |---|---|
-| Bootstrap | Kofun-written Stage 1 nested-block Int/Bool seed, audited C11 artifact, and reproducible generation |
+| Bootstrap | Kofun-written Stage 1 nested-block and looping Int/Bool seed, audited C11 artifact, and reproducible generation |
 | Self-hosting | Frozen compiler profile reaches a runnable compiler-produced compiler; the three-generation semantic fixed point is still open |
 | Frontend | Stage 2 lexer/parser plus focused typed, diagnostic, same-package module-alias/public-re-export, ADT, and bounded-generic checkpoints |
 | Native | Direct static ELF64 for bounded Int, function, `List[Int]`, and UTF-8 `Text` profiles on x86-64 and AArch64 |

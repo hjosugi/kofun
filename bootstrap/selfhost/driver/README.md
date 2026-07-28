@@ -30,6 +30,12 @@ filename or hash special case.
   the block that first bound it closed all lower identically through both seeds.
   Its skipped `else if` condition and short-circuited `||` operand are both
   `1 // 0`, so successful execution proves neither was evaluated.
+- `corpus_loop.kofun` / `.c` / `.stdout` — the loop corpus: `while` and
+  `for NAME in A .. B` loops nested in each other and in branches, a range whose
+  ends are evaluated once into the enclosing scope, and a bound name rebound
+  after its block closed all lower identically through both seeds. The body of a
+  false `while` and of an empty range each contain `1 // 0`, so successful
+  execution proves neither was entered.
 - `corpus_reject.kofun` / `.stdout` — the failure corpus: both
   compilers refuse an out-of-Core source with the same diagnostic bytes
   and write nothing.
@@ -45,6 +51,17 @@ filename or hash special case.
   a name read after its block closed, a `let` shadowing an outer binding, an
   `else` with no `if`, a second `else` in one chain, an unclosed block, and a
   `}` that closes nothing are all refused the same way by both seeds.
+- `corpus_reject_while_condition.kofun`, `corpus_reject_range_bound.kofun`,
+  `corpus_reject_range_separator.kofun`, `corpus_reject_loop_shadow.kofun`,
+  `corpus_reject_loop_scope.kofun`, `corpus_reject_loop_assignment.kofun` and
+  `corpus_reject_else_after_loop.kofun` — the loop boundary: an Int `while`
+  condition, a Bool range end, a range written `0..3` without the spaced
+  separator, a bound name shadowing a visible binding, a bound name read after
+  its loop closed, an assignment to a bound name, and an `else` attached to a
+  loop are all refused by both seeds. Each differs from an accepted source by
+  exactly the element it pins. Assignment is not a Core statement yet, so the
+  assignment fixture is refused as an unknown structural line; it is checked in
+  now so the mutable-local slice cannot make a loop bound assignable silently.
 
 The gate also checks path independence (the same relative input
 compiled from two different directories emits identical C), determinism

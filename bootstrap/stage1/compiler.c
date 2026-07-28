@@ -277,6 +277,11 @@ static const char * kofun_fn_scope_leave(const char * bound);
 static const char * kofun_fn_block_kind(const char * blocks);
 static const char * kofun_fn_block_pop(const char * blocks);
 static const char * kofun_fn_header_condition(const char * line, const char * keyword);
+static const char * kofun_fn_range_header(const char * line);
+static const char * kofun_fn_range_name(const char * line);
+static const char * kofun_fn_range_bounds(const char * line);
+static const char * kofun_fn_range_start(const char * line);
+static const char * kofun_fn_range_end(const char * line);
 static bool kofun_fn_valid_source(const char * source);
 static const char * kofun_fn_emit_statements(const char * source);
 static const char * kofun_fn_emit_c(const char * source);
@@ -942,6 +947,59 @@ static const char * kofun_fn_header_condition(const char * line, const char * ke
         ((kofun_rt_text_len(line)) - (INT64_C(2)))));
 }
 
+static const char * kofun_fn_range_header(const char * line) {
+    if ((!kofun_rt_starts_with(line, "for "))) {
+        return "";
+    }
+    if ((!kofun_rt_text_equal(
+            kofun_rt_text_slice(
+                line, ((kofun_rt_text_len(line)) - (INT64_C(2))),
+                kofun_rt_text_len(line)),
+            " {"))) {
+        return "";
+    }
+    return kofun_rt_trim(kofun_rt_text_slice(
+        line, INT64_C(4), ((kofun_rt_text_len(line)) - (INT64_C(2)))));
+}
+
+static const char * kofun_fn_range_name(const char * line) {
+    const char * header = kofun_fn_range_header(line);
+    int64_t split = kofun_rt_find(header, " in ");
+    if (((split) < (INT64_C(0)))) {
+        return "";
+    }
+    return kofun_rt_trim(kofun_rt_text_slice(header, INT64_C(0), split));
+}
+
+static const char * kofun_fn_range_bounds(const char * line) {
+    const char * header = kofun_fn_range_header(line);
+    int64_t split = kofun_rt_find(header, " in ");
+    if (((split) < (INT64_C(0)))) {
+        return "";
+    }
+    return kofun_rt_text_slice(
+        header, ((split) + (INT64_C(4))), kofun_rt_text_len(header));
+}
+
+static const char * kofun_fn_range_start(const char * line) {
+    const char * bounds = kofun_fn_range_bounds(line);
+    int64_t split = kofun_rt_find(bounds, " .. ");
+    if (((split) < (INT64_C(0)))) {
+        return "";
+    }
+    return kofun_rt_trim(kofun_rt_text_slice(bounds, INT64_C(0), split));
+}
+
+static const char * kofun_fn_range_end(const char * line) {
+    const char * bounds = kofun_fn_range_bounds(line);
+    int64_t split = kofun_rt_find(bounds, " .. ");
+    if (((split) < (INT64_C(0)))) {
+        return "";
+    }
+    return kofun_rt_trim(kofun_rt_text_slice(
+        bounds, ((split) + (INT64_C(4))), kofun_rt_text_len(bounds)));
+}
+
 static bool kofun_fn_valid_source(const char * source) {
     kofun_text_list symbols = kofun_rt_chars(source);
     int64_t line_start = INT64_C(0);
@@ -1001,6 +1059,52 @@ static bool kofun_fn_valid_source(const char * source) {
                 }
                 blocks = kofun_rt_text_concat(blocks, "i");
                 bound = kofun_fn_scope_enter(bound);
+            } else if (kofun_rt_starts_with(line, "while ")) {
+                if (((kofun_rt_text_len(blocks)) == (INT64_C(0)))) {
+                    return false;
+                }
+                const char * condition = kofun_fn_lower_expression(
+                    kofun_fn_header_condition(line, "while "), bound, "x",
+                    kofun_fn_statement_indent(
+                        ((kofun_rt_text_len(blocks)) + (INT64_C(1)))));
+                if ((!kofun_rt_text_equal(
+                        kofun_fn_lowered_type(condition), "Bool"))) {
+                    return false;
+                }
+                blocks = kofun_rt_text_concat(blocks, "w");
+                bound = kofun_fn_scope_enter(bound);
+            } else if (kofun_rt_starts_with(line, "for ")) {
+                if (((kofun_rt_text_len(blocks)) == (INT64_C(0)))) {
+                    return false;
+                }
+                const char * name = kofun_fn_range_name(line);
+                if (((!kofun_fn_valid_name(name)) ||
+                     kofun_rt_text_equal(name, "true")) ||
+                    kofun_rt_text_equal(name, "false")) {
+                    return false;
+                }
+                if (((kofun_rt_text_len(kofun_fn_bound_type(bound, name))) >
+                     (INT64_C(0)))) {
+                    return false;
+                }
+                const char * from = kofun_fn_lower_expression(
+                    kofun_fn_range_start(line), bound, "xl",
+                    kofun_fn_nested_indent(kofun_rt_text_len(blocks)));
+                const char * to = kofun_fn_lower_expression(
+                    kofun_fn_range_end(line), bound, "xr",
+                    kofun_fn_nested_indent(kofun_rt_text_len(blocks)));
+                if (((!kofun_rt_text_equal(
+                          kofun_fn_lowered_type(from), "Int")) ||
+                     (!kofun_rt_text_equal(
+                          kofun_fn_lowered_type(to), "Int")))) {
+                    return false;
+                }
+                blocks = kofun_rt_text_concat(blocks, "r");
+                bound = kofun_rt_text_concat(
+                    kofun_rt_text_concat(
+                        kofun_rt_text_concat(
+                            kofun_fn_scope_enter(bound), name), ":Int"),
+                    "|");
             } else if (kofun_rt_starts_with(line, "let ")) {
                 if (((kofun_rt_text_len(blocks)) == (INT64_C(0)))) {
                     return false;
@@ -1072,23 +1176,38 @@ static const char * kofun_fn_emit_statements(const char * source) {
                 blocks = "f";
                 bound = kofun_fn_scope_enter(bound);
             } else if (kofun_rt_text_equal(line, "}")) {
+                const char * kind = kofun_fn_block_kind(blocks);
                 int64_t depth = kofun_rt_text_len(blocks);
                 blocks = kofun_fn_block_pop(blocks);
                 bound = kofun_fn_scope_leave(bound);
                 if (((kofun_rt_text_len(blocks)) > (INT64_C(0)))) {
-                    emitted = kofun_rt_text_concat(
-                        emitted,
-                        kofun_fn_nested_indent(((depth) - (INT64_C(1)))));
-                    emitted = kofun_rt_text_concat(emitted, "}\n");
-                    emitted = kofun_rt_text_concat(
-                        emitted,
-                        kofun_fn_nested_indent(((depth) - (INT64_C(1)))));
-                    emitted = kofun_rt_text_concat(
-                        emitted, "(void)kt_taken;\n");
-                    emitted = kofun_rt_text_concat(
-                        emitted,
-                        kofun_fn_statement_indent(((depth) - (INT64_C(1)))));
-                    emitted = kofun_rt_text_concat(emitted, "}\n");
+                    if ((kofun_rt_text_equal(kind, "w") ||
+                         kofun_rt_text_equal(kind, "r"))) {
+                        emitted = kofun_rt_text_concat(
+                            emitted,
+                            kofun_fn_nested_indent(((depth) - (INT64_C(1)))));
+                        emitted = kofun_rt_text_concat(emitted, "}\n");
+                        emitted = kofun_rt_text_concat(
+                            emitted,
+                            kofun_fn_statement_indent(
+                                ((depth) - (INT64_C(1)))));
+                        emitted = kofun_rt_text_concat(emitted, "}\n");
+                    } else {
+                        emitted = kofun_rt_text_concat(
+                            emitted,
+                            kofun_fn_nested_indent(((depth) - (INT64_C(1)))));
+                        emitted = kofun_rt_text_concat(emitted, "}\n");
+                        emitted = kofun_rt_text_concat(
+                            emitted,
+                            kofun_fn_nested_indent(((depth) - (INT64_C(1)))));
+                        emitted = kofun_rt_text_concat(
+                            emitted, "(void)kt_taken;\n");
+                        emitted = kofun_rt_text_concat(
+                            emitted,
+                            kofun_fn_statement_indent(
+                                ((depth) - (INT64_C(1)))));
+                        emitted = kofun_rt_text_concat(emitted, "}\n");
+                    }
                 }
             } else if (kofun_rt_text_equal(line, "} else {")) {
                 int64_t depth = kofun_rt_text_len(blocks);
@@ -1193,6 +1312,94 @@ static const char * kofun_fn_emit_statements(const char * source) {
                     emitted,
                     kofun_fn_statement_indent(((depth) + (INT64_C(1)))));
                 emitted = kofun_rt_text_concat(emitted, "kt_taken = true;\n");
+            } else if (kofun_rt_starts_with(line, "while ")) {
+                int64_t depth = kofun_rt_text_len(blocks);
+                const char * condition = kofun_fn_lower_expression(
+                    kofun_fn_header_condition(line, "while "), bound, "x",
+                    kofun_fn_statement_indent(((depth) + (INT64_C(1)))));
+                blocks = kofun_rt_text_concat(blocks, "w");
+                bound = kofun_fn_scope_enter(bound);
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_statement_indent(depth));
+                emitted = kofun_rt_text_concat(emitted, "{\n");
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_nested_indent(depth));
+                emitted = kofun_rt_text_concat(emitted, "bool kt_cond;\n");
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_nested_indent(depth));
+                emitted = kofun_rt_text_concat(emitted, "while (true) {\n");
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_lowered_statements(condition));
+                emitted = kofun_rt_text_concat(
+                    emitted,
+                    kofun_fn_statement_indent(((depth) + (INT64_C(1)))));
+                emitted = kofun_rt_text_concat(emitted, "kt_cond = ");
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_lowered_operand(condition));
+                emitted = kofun_rt_text_concat(emitted, ";\n");
+                emitted = kofun_rt_text_concat(
+                    emitted,
+                    kofun_fn_statement_indent(((depth) + (INT64_C(1)))));
+                emitted = kofun_rt_text_concat(
+                    emitted, "if (failed) return 1;\n");
+                emitted = kofun_rt_text_concat(
+                    emitted,
+                    kofun_fn_statement_indent(((depth) + (INT64_C(1)))));
+                emitted = kofun_rt_text_concat(
+                    emitted, "if (!kt_cond) break;\n");
+            } else if (kofun_rt_starts_with(line, "for ")) {
+                int64_t depth = kofun_rt_text_len(blocks);
+                const char * name = kofun_fn_range_name(line);
+                const char * from = kofun_fn_lower_expression(
+                    kofun_fn_range_start(line), bound, "xl",
+                    kofun_fn_nested_indent(depth));
+                const char * to = kofun_fn_lower_expression(
+                    kofun_fn_range_end(line), bound, "xr",
+                    kofun_fn_nested_indent(depth));
+                blocks = kofun_rt_text_concat(blocks, "r");
+                bound = kofun_rt_text_concat(
+                    kofun_rt_text_concat(
+                        kofun_rt_text_concat(
+                            kofun_fn_scope_enter(bound), name), ":Int"),
+                    "|");
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_statement_indent(depth));
+                emitted = kofun_rt_text_concat(emitted, "{\n");
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_lowered_statements(from));
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_nested_indent(depth));
+                emitted = kofun_rt_text_concat(emitted, "int64_t kt_from = ");
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_lowered_operand(from));
+                emitted = kofun_rt_text_concat(emitted, ";\n");
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_lowered_statements(to));
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_nested_indent(depth));
+                emitted = kofun_rt_text_concat(emitted, "int64_t kt_to = ");
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_lowered_operand(to));
+                emitted = kofun_rt_text_concat(emitted, ";\n");
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_nested_indent(depth));
+                emitted = kofun_rt_text_concat(
+                    emitted, "if (failed) return 1;\n");
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_nested_indent(depth));
+                emitted = kofun_rt_text_concat(emitted, "for (int64_t kf_");
+                emitted = kofun_rt_text_concat(emitted, name);
+                emitted = kofun_rt_text_concat(emitted, " = kt_from; kf_");
+                emitted = kofun_rt_text_concat(emitted, name);
+                emitted = kofun_rt_text_concat(emitted, " < kt_to; ++kf_");
+                emitted = kofun_rt_text_concat(emitted, name);
+                emitted = kofun_rt_text_concat(emitted, ") {\n");
+                emitted = kofun_rt_text_concat(
+                    emitted,
+                    kofun_fn_statement_indent(((depth) + (INT64_C(1)))));
+                emitted = kofun_rt_text_concat(emitted, "(void)kf_");
+                emitted = kofun_rt_text_concat(emitted, name);
+                emitted = kofun_rt_text_concat(emitted, ";\n");
             } else if (kofun_rt_starts_with(line, "let ")) {
                 int64_t depth = kofun_rt_text_len(blocks);
                 const char * name = kofun_fn_binding_name(line);

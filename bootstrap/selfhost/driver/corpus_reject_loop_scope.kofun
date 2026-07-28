@@ -1,0 +1,6 @@
+fn main() {
+    for index in 0 .. 3 {
+        print(index)
+    }
+    print(index)
+}

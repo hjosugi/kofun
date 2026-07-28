@@ -2,7 +2,6 @@
 # expect-code: E2S10
 # expect-span: byte 87
 fn main() {
-    while true {
-        print(42)
-    }
+    break
+    print(42)
 }

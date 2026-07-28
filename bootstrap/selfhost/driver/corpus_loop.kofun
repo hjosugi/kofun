@@ -1,0 +1,42 @@
+fn main() {
+    let limit = 3
+    for index in 0 .. limit {
+        print(index)
+    }
+    # The bound name left scope with its block, so it is free to bind again.
+    let index = 9
+    print(index)
+    for outer in 0 .. 2 {
+        for inner in 0 .. 2 {
+            print(outer * 10 + inner)
+        }
+    }
+    for guarded in 0 .. 3 {
+        if guarded == 1 {
+            print(100)
+        } else {
+            print(guarded)
+        }
+    }
+    if limit > 0 {
+        for nested in 0 .. 2 {
+            print(200 + nested)
+        }
+    }
+    # A false condition never enters the body, so the `1 // 0` inside it is
+    # never evaluated.
+    while limit < 0 {
+        print(1 // 0)
+    }
+    for scoped in 0 .. 1 {
+        while scoped > limit {
+            print(1 // 0)
+        }
+        print(300 + scoped)
+    }
+    # An empty range never runs its body either, and the end is evaluated once.
+    for empty in 5 .. 5 {
+        print(1 // 0)
+    }
+    print(limit)
+}

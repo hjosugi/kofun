@@ -555,8 +555,10 @@ fn scope_leave(bound: Text) -> Text {
 }
 
 # The open blocks of the function, innermost last: `f` is the body itself, `i` a
-# branch that `else` may still follow, and `e` a closing `else` that it may not.
-# The stack length is the block depth, so no separate counter can disagree.
+# branch that `else` may still follow, `e` a closing `else` that it may not, `w`
+# a `while` body and `r` a `for` body. The stack length is the block depth, so
+# no separate counter can disagree. Only `i` admits an `else`, so a loop is
+# never mistaken for a branch a later `else` could attach to.
 fn block_kind(blocks: Text) -> Text {
     if len(blocks) == 0 {
         return ""
@@ -586,6 +588,60 @@ fn header_condition(line: Text, keyword: Text) -> Text {
         return ""
     }
     return trim(text_slice(line, len(keyword), len(line) - 2))
+}
+
+# A `for` header is `for NAME in START .. END {`. Its three parts are located by
+# the two fixed separators ` in ` and ` .. `, so a header missing either yields
+# the empty part, and the caller refuses that: no name validates and no
+# expression lowers from "". The separators are matched spaced exactly as `S`
+# writes them, so `0..3` is refused rather than silently accepted.
+fn range_header(line: Text) -> Text {
+    if !starts_with(line, "for ") {
+        return ""
+    }
+    if !(text_slice(line, len(line) - 2, len(line)) == " {") {
+        return ""
+    }
+    return trim(text_slice(line, 4, len(line) - 2))
+}
+
+fn range_name(line: Text) -> Text {
+    let header = range_header(line)
+    let split = find(header, " in ")
+    if split < 0 {
+        return ""
+    }
+    return trim(text_slice(header, 0, split))
+}
+
+# The bound text after ` in `, from which both ends are cut. Keeping this one
+# function means `range_start` and `range_end` cannot disagree about where the
+# range begins.
+fn range_bounds(line: Text) -> Text {
+    let header = range_header(line)
+    let split = find(header, " in ")
+    if split < 0 {
+        return ""
+    }
+    return text_slice(header, split + 4, len(header))
+}
+
+fn range_start(line: Text) -> Text {
+    let bounds = range_bounds(line)
+    let split = find(bounds, " .. ")
+    if split < 0 {
+        return ""
+    }
+    return trim(text_slice(bounds, 0, split))
+}
+
+fn range_end(line: Text) -> Text {
+    let bounds = range_bounds(line)
+    let split = find(bounds, " .. ")
+    if split < 0 {
+        return ""
+    }
+    return trim(text_slice(bounds, split + 4, len(bounds)))
 }
 
 fn valid_source(source: Text) -> Bool {
@@ -645,6 +701,46 @@ fn valid_source(source: Text) -> Bool {
                 }
                 blocks = blocks + "i"
                 bound = scope_enter(bound)
+            } else if starts_with(line, "while ") {
+                if len(blocks) == 0 {
+                    return false
+                }
+                let condition = lower_expression(
+                    header_condition(line, "while "), bound, "x",
+                    statement_indent(len(blocks) + 1))
+                if !(lowered_type(condition) == "Bool") {
+                    return false
+                }
+                blocks = blocks + "w"
+                bound = scope_enter(bound)
+            } else if starts_with(line, "for ") {
+                if len(blocks) == 0 {
+                    return false
+                }
+                let name = range_name(line)
+                if !valid_name(name) || name == "true" || name == "false" {
+                    return false
+                }
+                # The bound name is an ordinary binding, so it may not shadow
+                # one already visible, exactly as a `let` may not.
+                if len(bound_type(bound, name)) > 0 {
+                    return false
+                }
+                # Both ends belong to the enclosing scope and are evaluated
+                # once, before the bound name exists, so neither end can name
+                # it. They take different lowering paths because both sets of
+                # statements land in one C scope and would otherwise share
+                # temporaries.
+                let from = lower_expression(range_start(line), bound, "xl",
+                                            nested_indent(len(blocks)))
+                let to = lower_expression(range_end(line), bound, "xr",
+                                          nested_indent(len(blocks)))
+                if !(lowered_type(from) == "Int") ||
+                   !(lowered_type(to) == "Int") {
+                    return false
+                }
+                blocks = blocks + "r"
+                bound = scope_enter(bound) + name + ":Int|"
             } else if starts_with(line, "let ") {
                 if len(blocks) == 0 {
                     return false
@@ -714,14 +810,25 @@ fn emit_statements(source: Text) -> Text {
                 blocks = "f"
                 bound = scope_enter(bound)
             } else if line == "}" {
+                # Which kind of block closes decides only what the closing line
+                # discards, so the kind is read before the pop that forgets it.
+                # Every block costs the same two braces either way.
+                let kind = block_kind(blocks)
                 let depth = len(blocks)
                 blocks = block_pop(blocks)
                 bound = scope_leave(bound)
                 if len(blocks) > 0 {
-                    emitted = emitted +
-                    nested_indent(depth - 1) + "}\n" +
-                    nested_indent(depth - 1) + "(void)kt_taken;\n" +
-                    statement_indent(depth - 1) + "}\n"
+                    if kind == "w" || kind == "r" {
+                        # A loop has no branch chain, so there is no `kt_taken`.
+                        emitted = emitted +
+                        nested_indent(depth - 1) + "}\n" +
+                        statement_indent(depth - 1) + "}\n"
+                    } else {
+                        emitted = emitted +
+                        nested_indent(depth - 1) + "}\n" +
+                        nested_indent(depth - 1) + "(void)kt_taken;\n" +
+                        statement_indent(depth - 1) + "}\n"
+                    }
                 }
             } else if line == "} else {" {
                 let depth = len(blocks)
@@ -771,6 +878,53 @@ fn emit_statements(source: Text) -> Text {
                 nested_indent(depth) + "if (failed) return 1;\n" +
                 nested_indent(depth) + "if (kt_cond) {\n" +
                 statement_indent(depth + 1) + "kt_taken = true;\n"
+            } else if starts_with(line, "while ") {
+                let depth = len(blocks)
+                let condition = lower_expression(
+                    header_condition(line, "while "), bound, "x",
+                    statement_indent(depth + 1))
+                blocks = blocks + "w"
+                bound = scope_enter(bound)
+                # The condition is re-evaluated on every iteration. A C `while`
+                # header holds one expression, not the statement sequence a
+                # lowered condition is, so the condition becomes the first
+                # statements of a `while (true)` body and a `break` carries its
+                # result. That keeps one evaluation per iteration, where a
+                # duplicated condition would cost two.
+                emitted = emitted +
+                statement_indent(depth) + "{\n" +
+                nested_indent(depth) + "bool kt_cond;\n" +
+                nested_indent(depth) + "while (true) {\n" +
+                lowered_statements(condition) +
+                statement_indent(depth + 1) + "kt_cond = " +
+                lowered_operand(condition) + ";\n" +
+                statement_indent(depth + 1) + "if (failed) return 1;\n" +
+                statement_indent(depth + 1) + "if (!kt_cond) break;\n"
+            } else if starts_with(line, "for ") {
+                let depth = len(blocks)
+                let name = range_name(line)
+                let from = lower_expression(range_start(line), bound, "xl",
+                                            nested_indent(depth))
+                let to = lower_expression(range_end(line), bound, "xr",
+                                          nested_indent(depth))
+                blocks = blocks + "r"
+                bound = scope_enter(bound) + name + ":Int|"
+                # Both ends are evaluated once, into the enclosing scope, before
+                # the loop begins: re-evaluating `to` per iteration would let a
+                # failing end expression report a diagnostic more than once and
+                # would make the trip count depend on the body.
+                emitted = emitted +
+                statement_indent(depth) + "{\n" +
+                lowered_statements(from) +
+                nested_indent(depth) + "int64_t kt_from = " +
+                lowered_operand(from) + ";\n" +
+                lowered_statements(to) +
+                nested_indent(depth) + "int64_t kt_to = " +
+                lowered_operand(to) + ";\n" +
+                nested_indent(depth) + "if (failed) return 1;\n" +
+                nested_indent(depth) + "for (int64_t kf_" + name +
+                " = kt_from; kf_" + name + " < kt_to; ++kf_" + name + ") {\n" +
+                statement_indent(depth + 1) + "(void)kf_" + name + ";\n"
             } else if starts_with(line, "let ") {
                 let depth = len(blocks)
                 let name = binding_name(line)
