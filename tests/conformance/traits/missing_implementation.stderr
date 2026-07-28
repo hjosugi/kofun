@@ -1,0 +1,1 @@
+error[E2S129]: no implementation of trait:local:Equal for builtin:Text; the bound on 'same' is unsatisfied and no candidate was found at bytes 207..230

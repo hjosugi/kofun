@@ -1,0 +1,1 @@
+error[E2S127]: trait 'Equal' takes 1 type argument(s) but 2 were written at bytes 60..81

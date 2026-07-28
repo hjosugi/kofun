@@ -574,7 +574,7 @@
     }
   ],
   "evidence_digests": {
-    "Makefile": "b866ed21f03bd7f28aaf3c2c11167c886dca4a85725f62fb191d7f5ba7c8fbcd",
+    "Makefile": "5cc2c16c286b2f398e2d307dd84b58a7527d4efc48573bd0192a9fb35a6b2323",
     "bootstrap/native/check.sh": "d99603522821df27a7d102fbce70c6a0d3cb322a9fe17d1baa76ee9285cee6e4",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/driver/corpus_reject.kofun": "be29fe484a7ba4968c60aaf6f00aa59edb511ce3d9ef46c0ceb2b6ad0e8740b5",
@@ -596,7 +596,7 @@
     "docs/SECURITY.md": "2235367ac20334ce4d77d440b773ef197f97f6d21a5d13f69a5b391cb8b4946d",
     "docs/SELF_HOSTING.md": "c786187cd44fdba04d89c6ff1fba5f0e791c4ca96ce31a99fa17380ffde347a5",
     "docs/SEMANTICS.md": "6e1d210890f5f53f281ea32fe28a0b4118b2804f5cb1caa4260a36c961b9cb92",
-    "docs/TYPE_SYSTEM.md": "98c02a417ae19f6c7de2d9249164352e9d500cfb0100ba90541a6dffc8bd1e59",
+    "docs/TYPE_SYSTEM.md": "ebf299d21b83dedc2ba5b48f2e9efb6fef23983888b8abdd5aeac8f264091bb0",
     "editor/tree-sitter-kofun/README.md": "9ccc73df69f3ddd42e8f620a3751f165e2dad00b34a681010249a1989d45b5d4",
     "editor/tree-sitter-kofun/grammar.js": "5d803ad6c2a2c6467cf402c187bf86a1b6558556497f8d1d9830dd2718c8a1cc",
     "examples/rust-shim/check.sh": "4cffb7e16d964122e2dff480f533cff5eacd0bd939a35fe5a71f71b447139500",

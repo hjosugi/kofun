@@ -1,0 +1,3 @@
+trait Convert[A, B] {
+    fn convert(value: A) -> B
+}

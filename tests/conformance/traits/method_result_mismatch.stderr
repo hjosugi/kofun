@@ -1,0 +1,1 @@
+error[E2S128]: method 'equal' returns builtin:Bool after substitution but the implementation declares builtin:Int at bytes 125..128

@@ -1,0 +1,11 @@
+foreign trait Display[T] {
+    fn show(value: T) -> Text
+}
+
+foreign type Duration
+
+impl Display[Duration] for Duration {
+    fn show(value: Duration) -> Text {
+        return "duration"
+    }
+}
