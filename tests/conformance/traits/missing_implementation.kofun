@@ -1,0 +1,11 @@
+trait Equal[T] {
+    fn equal(left: T, right: T) -> Bool
+}
+
+fn same[T: Equal[T]](left: T, right: T) -> Bool {
+    return Equal.equal(left, right)
+}
+
+fn use_text(left: Text, right: Text) -> Bool {
+    return same[Text](left, right)
+}
