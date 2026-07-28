@@ -69,15 +69,21 @@ start at [`bin/kofun`](../bin/kofun), find the public subcommand, and follow the
 | `vendor/` | reviewed third-party source copied into the tree | `vendor/*/README.kofun.md` | integrity owner named by subsystem |
 | `package/` | locked external native-artifact package manager | `package/README.md` | `make packages` |
 | `examples/` | user-facing and interoperability examples | example plus its nearest check | relevant build or `check.sh` |
-| `docs/` | authored guides, designs, status, and browser-tour source | this guide | `npm run test:docs` |
-| `app/` | Next.js project site, docs renderer, roadmap, playground | `site/README.md` | `npm run verify:site` |
-| `site/` | site build, synchronization, and static-export scripts/tests | `site/README.md` | `npm run verify:pages` |
-| `public/` | static site assets; generated tour output is ignored | `public/kofun-mark.svg` | site verification |
-| `backlog/` | historical/planning inventory, not active implementation | `backlog/README.md` | `scripts/verify_backlog.kofun` owner |
+| `docs/` | authored guides, designs, status, and browser-tour source | this guide | `make tour` for `docs/tour/`; `spec/*/check.sh` for the gated documents |
 | `benchmarks/` | reproducible benchmark programs, harnesses, and recorded results | `benchmarks/README.md` | subsystem benchmark script |
 | `artifacts/` | checked evidence summaries and cost/law artifacts | inspect producer named in the artifact | producer-specific gate |
 | `scripts/` | repository policy verification written in Kofun | script source | caller in repository gates |
-| `.github/workflows/` | CI, docs publication, and project-roadmap automation | workflow YAML | GitHub Actions |
+| `.github/workflows/` | CI | workflow YAML | GitHub Actions |
+
+What is deliberately not here: the official site, its docs renderer, the browser
+playground, the delivery-planning snapshots, and the long-range issue catalogue
+all live in [`hjosugi/kofun-site`](https://github.com/hjosugi/kofun-site), which
+reads this repository as a submodule. The dependency runs one way. No gate in
+this repository reads anything from there, and `make verify` needs no npm,
+Next.js, or Cloudflare toolchain. `docs/tour/` is the exception that proves the
+rule: it looks like site material but `docs/tour/compiler.mjs` is a browser port
+of `bootstrap/wasm/compiler.c` that `make tour` pins to the native wasm32 output
+byte for byte, so it is compiler source and stays here.
 
 Root files are also part of the architecture:
 
@@ -86,9 +92,6 @@ Root files are also part of the architecture:
 | `Makefile` | contributor-facing index of executable gates |
 | `README.md` | concise public project entrypoint |
 | `DESIGN.md` | early high-level language design context |
-| `package.json` / `package-lock.json` | locked official-site toolchain |
-| `next.config.ts` | Next.js static-export and base-path behavior |
-| `wrangler.jsonc` / `open-next.config.ts` | Cloudflare-compatible site build configuration |
 | `LICENSE-*` / `NOTICE` | dual-license and attribution terms |
 
 ## `bootstrap/`: the compiler is several checkpoints
@@ -250,13 +253,14 @@ when the user-visible edit experience changes.
 
 ## Official site and documentation pipeline
 
-The official site has a deliberately simple authority chain:
+The official site has a deliberately simple authority chain, and it crosses a
+repository boundary exactly once:
 
 ```text
-docs/*.md or selected subsystem README
+docs/*.md or selected subsystem README      (this repository)
             |
-            v
-app/docs/docs-manifest.ts
+            v  read through the kofun/ submodule
+app/docs/docs-manifest.ts                   (hjosugi/kofun-site)
             |
             v
 app/docs/[slug]/page.tsx + ReactMarkdown
@@ -265,26 +269,20 @@ app/docs/[slug]/page.tsx + ReactMarkdown
 Next.js build / static export
             |
             v
-GitHub Pages
+GitHub Pages, still served at hjosugi.github.io/kofun/
 ```
 
-- `app/docs/docs-manifest.ts` is the curated list of first-class docs pages.
-- `app/docs/docs-nav.tsx` groups those pages in the sidebar.
-- `app/docs/page.tsx` is the docs landing and new-contributor route.
-- `app/docs/[slug]/page.tsx` reads Markdown during the build and rewrites local
-  links to another rendered document or the matching GitHub source.
-- `site/docs-links.test.mjs` proves every curated source and local link exists.
-- `site/build-pages.mjs` creates the GitHub Pages export under ignored `out/`.
-- `.github/workflows/docs-hourly.yml` synchronizes status snapshots and
-  publishes the checked `gh-pages` tree.
+The renderer, its tests, and the publishing workflow are all in
+[`hjosugi/kofun-site`](https://github.com/hjosugi/kofun-site) and documented in
+that repository's `site/README.md`. What this repository owes the site is only
+this: the documents named in the site's manifest must keep existing at their
+current paths, and their relative links must keep resolving. Moving or renaming
+a document under `docs/` is therefore a cross-repository change.
 
 Generated directories are ignored:
 
-- `node_modules/` — installed JavaScript dependencies;
-- `.next/` — Next.js development and build state;
-- `out/` — static GitHub Pages export;
-- `.open-next/` — Cloudflare-compatible worker build;
-- `public/tour/` — copy of authored `docs/tour/`; and
+- `node_modules/` — dependencies of `editor/tree-sitter-kofun`, the only npm
+  project left in this repository; and
 - `build/` / `.kofun/` — compiler and project output.
 
 Never make a source fix only inside one of these directories.
@@ -306,9 +304,9 @@ Never make a source fix only inside one of these directories.
 | structural editor parsing | `editor/tree-sitter-kofun/` | package README | `make tree-sitter` |
 | VS Code packaging or metadata | `editor/vscode/` | extension README | `make lsp` plus extension check |
 | language contract | `spec/` | spec index and conformance owner | matching spec/conformance gate |
-| explanatory docs | `docs/` | `site/README.md` | `npm run test:docs` |
-| docs UI or playground | `app/` | `site/README.md` | `npm run verify:site` |
-| delivery/status snapshots | `site/sync-*.mjs` | workflow and tests | matching `npm run check:*` |
+| explanatory docs | `docs/` | this guide | the `spec/*/check.sh` that reads the document, if any |
+| the browser tour | `docs/tour/` | `docs/tour/README.md` | `make tour` |
+| docs UI, playground, or delivery snapshots | `hjosugi/kofun-site` | that repository's `site/README.md` | `npm run verify:site` there |
 
 ## What to read on your first day
 
@@ -323,8 +321,11 @@ Choose the shortest path for your work:
   LSP or typed-sidecar README, then its protocol tests.
 - **Library/framework contributor:** `stdlib/README.md` or the framework
   README, followed by the focused fixtures and projection boundary.
-- **Docs/site contributor:** [Contributing](CONTRIBUTING.md), `site/README.md`,
-  `app/docs/docs-manifest.ts`, then `npm run verify:site`.
+- **Docs contributor:** [Contributing](CONTRIBUTING.md), then the document you
+  are changing. If it is one the site renders, check
+  `app/docs/docs-manifest.ts` in
+  [`hjosugi/kofun-site`](https://github.com/hjosugi/kofun-site) before moving or
+  renaming it.
 
 The next practical step for every route is
 [Contributing](CONTRIBUTING.md): it turns this map into a safe edit, test, and
