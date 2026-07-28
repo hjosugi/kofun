@@ -14,6 +14,12 @@ BRANCH_STDOUT="$ROOT/bootstrap/selfhost/driver/corpus_branch.stdout"
 LOOP_FIXTURE="$ROOT/bootstrap/selfhost/driver/corpus_loop.kofun"
 LOOP_C="$ROOT/bootstrap/selfhost/driver/corpus_loop.c"
 LOOP_STDOUT="$ROOT/bootstrap/selfhost/driver/corpus_loop.stdout"
+TEXT_FIXTURE="$ROOT/bootstrap/selfhost/driver/corpus_text.kofun"
+TEXT_C="$ROOT/bootstrap/selfhost/driver/corpus_text.c"
+TEXT_STDOUT="$ROOT/bootstrap/selfhost/driver/corpus_text.stdout"
+TEXT_EQUAL_FIXTURE="$ROOT/bootstrap/selfhost/driver/corpus_text_equality_only.kofun"
+TEXT_EQUAL_C="$ROOT/bootstrap/selfhost/driver/corpus_text_equality_only.c"
+TEXT_EQUAL_STDOUT="$ROOT/bootstrap/selfhost/driver/corpus_text_equality_only.stdout"
 WORK="${KOFUN_STAGE1_WORK:-$ROOT/build/bootstrap-stage1}"
 CC="${CC:-cc}"
 
@@ -55,6 +61,26 @@ cmp "$LOOP_C" "$WORK/loop.c"
 "$WORK/loop" >"$WORK/loop.stdout"
 cmp "$LOOP_STDOUT" "$WORK/loop.stdout"
 
+# Text: literals and their three escapes survive as literals, while `+`,
+# equality and print lower to the emitted program's bounded Text runtime. The
+# scanner must ignore operator and parenthesis bytes inside a literal.
+"$WORK/kofun-stage1" "$TEXT_FIXTURE" "$WORK/text.c"
+cmp "$TEXT_C" "$WORK/text.c"
+! grep -F 'greeting + " " + "compiler"' "$WORK/text.c" >/dev/null
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror "$WORK/text.c" -o "$WORK/text"
+"$WORK/text" >"$WORK/text.stdout"
+cmp "$TEXT_STDOUT" "$WORK/text.stdout"
+
+# A comparison of two literals needs the Text equality runtime even though it
+# emits no Text-typed local. Keep that conditional-emission boundary explicit.
+"$WORK/kofun-stage1" "$TEXT_EQUAL_FIXTURE" "$WORK/text-equality-only.c"
+cmp "$TEXT_EQUAL_C" "$WORK/text-equality-only.c"
+grep -F 'static bool kofun_rt_text_equal' "$WORK/text-equality-only.c" >/dev/null
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$WORK/text-equality-only.c" -o "$WORK/text-equality-only"
+"$WORK/text-equality-only" >"$WORK/text-equality-only.stdout"
+cmp "$TEXT_EQUAL_STDOUT" "$WORK/text-equality-only.stdout"
+
 # The refusal corpus is the set of files, not a list written beside it. Both
 # this gate and check-compiler-driver.sh used to name all of them by hand, so a
 # fixture added to one and forgotten in the other would have lowered coverage
@@ -62,7 +88,7 @@ cmp "$LOOP_STDOUT" "$WORK/loop.stdout"
 # "a fixture was deliberately removed" from "a fixture stopped being found":
 # changing it is a reviewable edit, and REJECT_FIXTURE_COUNT is the one number
 # both gates agree on.
-REJECT_FIXTURE_COUNT=23
+REJECT_FIXTURE_COUNT=29
 reject_checked=0
 for fixture in "$ROOT"/bootstrap/selfhost/driver/corpus_reject_*.kofun
 do
@@ -89,4 +115,5 @@ printf '%s\n' \
     "PASS: compiled fixture returned $answer" \
     "PASS: Int/Bool Core accepts comparisons and refuses typed boundary crossings" \
     "PASS: nested if/else blocks scope their bindings and refuse a misplaced else" \
-    "PASS: while and for-range loops nest, bound their range once, and scope their bound name"
+    "PASS: while and for-range loops nest, bound their range once, and scope their bound name" \
+    "PASS: Text literals, concatenation, equality and printing use the bounded emitted runtime"

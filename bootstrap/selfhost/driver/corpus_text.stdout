@@ -1,0 +1,6 @@
+kofun compiler
+line
+quote:" slash:\
+(+ || ==)
+equal
+42

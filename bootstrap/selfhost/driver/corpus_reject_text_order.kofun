@@ -1,0 +1,4 @@
+fn main() {
+    let bad = "one" < "two"
+    print(0)
+}

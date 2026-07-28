@@ -36,6 +36,14 @@ filename or hash special case.
   after its block closed all lower identically through both seeds. The body of a
   false `while` and of an empty range each contain `1 // 0`, so successful
   execution proves neither was entered.
+- `corpus_text.kofun` / `.c` / `.stdout` — the Text corpus: escaped literals,
+  concatenation, equality/inequality, Text bindings and Text printing lower
+  identically through both seeds. Its `(+ || ==)` literal pins that operator
+  and parenthesis bytes inside quotes remain literal bytes, and the checked-in
+  C shows the allocation-list runtime that is emitted only when Text is used.
+- `corpus_text_equality_only.kofun` / `.c` / `.stdout` — compares two Text
+  literals without creating a Text-typed local, pinning that the conditional
+  runtime is selected from Text operations as well as Text storage.
 - `corpus_reject.kofun` / `.stdout` — the failure corpus: both
   compilers refuse an out-of-Core source with the same diagnostic bytes
   and write nothing.
@@ -62,6 +70,9 @@ filename or hash special case.
   exactly the element it pins. Assignment is not a Core statement yet, so the
   assignment fixture is refused as an unknown structural line; it is checked in
   now so the mutable-local slice cannot make a loop bound assignable silently.
+- `corpus_reject_text_*.kofun` — the Text boundary: `Text + Int`,
+  `Int + Text`, both operand orders of mixed equality, an unsupported escape,
+  and ordered Text comparison all fail identically and write no C.
 
 The gate also checks path independence (the same relative input
 compiled from two different directories emits identical C), determinism
