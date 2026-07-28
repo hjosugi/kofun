@@ -497,3 +497,20 @@ not the same claim as being able to call it.
 synthetic stand-in that makes the orphan rule testable in one file while
 cross-package loading stays out of scope, and it is not proposed surface
 syntax.
+
+The Optional frontend is bounded in the same way. `optional_frontend.c`
+classifies `null` as a keyword, parses one postfix `?` on a primary type, and
+represents the result as `Optional(TypeId)`. The suffix binds to the complete
+primary type before it, so `List[Int]?` and `List[Int?]` are structurally
+distinct rather than two spellings of one type.
+
+`null` is contextual: it has no standalone type, it takes an expected
+`Optional(T)`, and it is refused under an expected `T`. A concrete `T`
+satisfies an expected `Optional(T)` through one injection rule, and the typed
+IR records that injection rather than silently rewriting the type, so the rule
+cannot spread past an expected optional context unnoticed.
+
+Runtime representation is deferred and cannot be inferred from the typed node —
+the gate asserts the IR names no tag, niche, layout, or discriminant.
+Coalescing, narrowing, matching, and propagation are separate issues, and `??`
+is not parsed here at all.

@@ -1,4 +1,4 @@
-.PHONY: help compiler decimal discovery test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 stage2-events patterns adt records generics traits adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 incremental native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec aggregate-layout typed-sidecar-spec typed-sidecar-codec typed-sidecar-projector lsp tree-sitter roadmap syntax repository-check verify clean release-claims release-evidence rfc-registry
+.PHONY: help compiler decimal discovery test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 stage2-events patterns adt records generics traits optional adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 incremental native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec aggregate-layout typed-sidecar-spec typed-sidecar-codec typed-sidecar-projector lsp tree-sitter roadmap syntax repository-check verify clean release-claims release-evidence rfc-registry
 
 KOFUN := ./bin/kofun
 
@@ -23,6 +23,7 @@ help:
 	  'make records          Verify bounded nominal record typed frontend' \
 	  'make generics         Verify explicit generic function typing' \
 	  'make traits           Verify the bounded trait declaration frontend' \
+	  'make optional        Verify the bounded null/T? frontend' \
 	  'make adt-exhaustiveness Verify resolved flat-ADT match diagnostics' \
 	  'make module-symbols   Verify stable top-level declaration collection' \
 	  'make imports-qualified Verify qualified same-package module imports' \
@@ -141,6 +142,9 @@ generics:
 
 traits:
 	sh tests/conformance/traits/run.sh
+
+optional:
+	sh tests/conformance/optional/run.sh
 
 adt-exhaustiveness:
 	sh tests/conformance/adt-exhaustiveness/run.sh
@@ -288,7 +292,7 @@ release-evidence:
 rfc-registry:
 	sh tests/rfc/check-registry.sh
 
-VERIFY_TARGETS = test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 stage2-events patterns adt records generics traits adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 incremental decimal discovery native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec aggregate-layout typed-sidecar-spec typed-sidecar-codec typed-sidecar-projector tree-sitter syntax repository-check release-claims rfc-registry
+VERIFY_TARGETS = test diagnostics fuzz unicode check bootstrap selfhost-profile selfhost-frontend selfhost-c11 selfhost-c11-control selfhost-native stage2 stage2-events patterns adt records generics traits optional adt-exhaustiveness module-symbols imports-qualified import-aliases imports-selective re-exports kif-v1 incremental decimal discovery native wasm tour c-abi rust-shim http cli-framework tui-framework stdlib build-system packages package-roots source-file-mapping namespaces module-identity visibility-spec visibility-syntax visibility-access re-exports-spec aggregate-layout typed-sidecar-spec typed-sidecar-codec typed-sidecar-projector tree-sitter syntax repository-check release-claims rfc-registry
 
 # Every gate above is independent, so `verify` runs them concurrently rather
 # than asking the caller to remember a `-j`. Override with `make VERIFY_JOBS=1

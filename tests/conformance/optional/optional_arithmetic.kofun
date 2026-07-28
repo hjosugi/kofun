@@ -1,0 +1,4 @@
+fn main() {
+    let maybe: Int? = null
+    let total: Int = maybe + 1
+}

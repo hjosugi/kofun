@@ -1,0 +1,6 @@
+# The malformed suffix must not hide the independent error after it, and must
+# not fabricate an Optional node from the broken input.
+fn main() {
+    let broken: Int?? = null
+    let later: Int = null
+}
