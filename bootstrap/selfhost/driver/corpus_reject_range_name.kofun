@@ -1,0 +1,5 @@
+fn main() {
+    for true in 0 .. 3 {
+        print(0)
+    }
+}

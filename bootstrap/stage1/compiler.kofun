@@ -1,13 +1,13 @@
 # Kofun Stage 1 compiler seed.
 #
 # The compiler accepts a deliberately small Int/Bool Core: `let` bindings,
-# Int-only `print(EXPR)` statements, and nested `if`/`else if`/`else` blocks
-# inside `fn main()`. Every expression is tokenized, parsed, resolved and typed
-# here, then lowered to a C11 statement sequence. The emitted program carries no
-# parser, no symbol table and no fragment of the user's source: names are
-# resolved to typed C locals at compile time and literals are range-checked at
-# compile time. This source is canonical; compiler.c is the audited bootstrap
-# artifact generated from it.
+# Int-only `print(EXPR)` statements, nested `if`/`else if`/`else` blocks, and
+# `while`/`for`-range loops inside `fn main()`. Every expression is tokenized,
+# parsed, resolved and typed here, then lowered to a C11 statement sequence. The
+# emitted program carries no parser, no symbol table and no fragment of the
+# user's source: names are resolved to typed C locals at compile time and
+# literals are range-checked at compile time. This source is canonical;
+# compiler.c is the audited bootstrap artifact generated from it.
 
 fn identifier_char(char: Text) -> Bool {
     return is_xid_continue(char) ||
@@ -555,7 +555,8 @@ fn scope_leave(bound: Text) -> Text {
 }
 
 # The open blocks of the function, innermost last: `f` is the body itself, `i` a
-# branch that `else` may still follow, and `e` a closing `else` that it may not.
+# branch that `else` may still follow, `e` a closing `else` that it may not, `w`
+# a `while` body and `r` a `for`-range body — no `else` may follow either loop.
 # The stack length is the block depth, so no separate counter can disagree.
 fn block_kind(blocks: Text) -> Text {
     if len(blocks) == 0 {
@@ -571,10 +572,10 @@ fn block_pop(blocks: Text) -> Text {
     return text_slice(blocks, 0, len(blocks) - 1)
 }
 
-# A block header carries its condition between `keyword` and a closing ` {`, so
-# both fixed ends are required at once. Returning the empty condition for a line
+# A block header carries its subject between `keyword` and a closing ` {`, so
+# both fixed ends are required at once. Returning the empty subject for a line
 # that only looks like a header is what makes the caller reject it: no
-# expression lowers from "".
+# expression lowers from "", and "" is not a valid name.
 fn header_condition(line: Text, keyword: Text) -> Text {
     if !starts_with(line, keyword) {
         return ""
@@ -586,6 +587,44 @@ fn header_condition(line: Text, keyword: Text) -> Text {
         return ""
     }
     return trim(text_slice(line, len(keyword), len(line) - 2))
+}
+
+# A `for NAME in START .. END` header is split at its two fixed separators. A
+# name holds no space, so the first ` in ` always ends it, and ` .. ` appears in
+# no Core expression, so the first one always separates the bounds. Each part is
+# trimmed, which accepts wider spacing without making either separator optional.
+fn range_name(header: Text) -> Text {
+    let split = find(header, " in ")
+    if split < 0 {
+        return ""
+    }
+    return trim(text_slice(header, 0, split))
+}
+
+fn range_bounds(header: Text) -> Text {
+    let split = find(header, " in ")
+    if split < 0 {
+        return ""
+    }
+    return trim(text_slice(header, split + 4, len(header)))
+}
+
+fn range_start(header: Text) -> Text {
+    let bounds = range_bounds(header)
+    let dots = find(bounds, " .. ")
+    if dots < 0 {
+        return ""
+    }
+    return trim(text_slice(bounds, 0, dots))
+}
+
+fn range_end(header: Text) -> Text {
+    let bounds = range_bounds(header)
+    let dots = find(bounds, " .. ")
+    if dots < 0 {
+        return ""
+    }
+    return trim(text_slice(bounds, dots + 4, len(bounds)))
 }
 
 fn valid_source(source: Text) -> Bool {
@@ -645,6 +684,43 @@ fn valid_source(source: Text) -> Bool {
                 }
                 blocks = blocks + "i"
                 bound = scope_enter(bound)
+            } else if starts_with(line, "while ") {
+                if len(blocks) == 0 {
+                    return false
+                }
+                let repeated = lower_expression(
+                    header_condition(line, "while "), bound, "x",
+                    nested_indent(len(blocks) + 1))
+                if !(lowered_type(repeated) == "Bool") {
+                    return false
+                }
+                blocks = blocks + "w"
+                bound = scope_enter(bound)
+            } else if starts_with(line, "for ") {
+                if len(blocks) == 0 {
+                    return false
+                }
+                let header = header_condition(line, "for ")
+                let bound_name = range_name(header)
+                if !valid_name(bound_name) || bound_name == "true" ||
+                   bound_name == "false" {
+                    return false
+                }
+                if len(bound_type(bound, bound_name)) > 0 {
+                    return false
+                }
+                # Both range ends are Int expressions of the enclosing scope:
+                # the bound name is not visible to them.
+                let from = lower_expression(range_start(header), bound, "x",
+                                            statement_indent(len(blocks) + 1))
+                let to = lower_expression(range_end(header), bound, "x",
+                                          statement_indent(len(blocks) + 1))
+                if !(lowered_type(from) == "Int") ||
+                   !(lowered_type(to) == "Int") {
+                    return false
+                }
+                blocks = blocks + "r"
+                bound = scope_enter(bound) + bound_name + ":Int|"
             } else if starts_with(line, "let ") {
                 if len(blocks) == 0 {
                     return false
@@ -701,6 +777,10 @@ fn valid_source(source: Text) -> Bool {
 # block-opening line opens exactly one branch brace and each `}` closes exactly
 # one, so `else if` never accumulates braces the closing line has to count. A
 # nested chain declares its own pair inside its own scope.
+#
+# A loop takes the same shape: one C scope holding its own state, then the loop
+# brace. That is why every block costs two braces and every `}` returns two,
+# whichever kind of block it closes.
 fn emit_statements(source: Text) -> Text {
     let symbols = chars(source)
     let mut line_start = 0
@@ -715,13 +795,16 @@ fn emit_statements(source: Text) -> Text {
                 bound = scope_enter(bound)
             } else if line == "}" {
                 let depth = len(blocks)
+                let kind = block_kind(blocks)
                 blocks = block_pop(blocks)
                 bound = scope_leave(bound)
                 if len(blocks) > 0 {
-                    emitted = emitted +
-                    nested_indent(depth - 1) + "}\n" +
-                    nested_indent(depth - 1) + "(void)kt_taken;\n" +
-                    statement_indent(depth - 1) + "}\n"
+                    emitted = emitted + nested_indent(depth - 1) + "}\n"
+                    if kind == "i" || kind == "e" {
+                        emitted = emitted +
+                        nested_indent(depth - 1) + "(void)kt_taken;\n"
+                    }
+                    emitted = emitted + statement_indent(depth - 1) + "}\n"
                 }
             } else if line == "} else {" {
                 let depth = len(blocks)
@@ -771,6 +854,57 @@ fn emit_statements(source: Text) -> Text {
                 nested_indent(depth) + "if (failed) return 1;\n" +
                 nested_indent(depth) + "if (kt_cond) {\n" +
                 statement_indent(depth + 1) + "kt_taken = true;\n"
+            } else if starts_with(line, "while ") {
+                let depth = len(blocks)
+                let repeated = lower_expression(
+                    header_condition(line, "while "), bound, "x",
+                    nested_indent(depth + 1))
+                blocks = blocks + "w"
+                bound = scope_enter(bound)
+                # The condition is re-evaluated by sitting inside the loop, so
+                # the loop is `for (;;)` with an explicit exit rather than a C
+                # `while`, whose condition has no room for statements.
+                emitted = emitted +
+                statement_indent(depth) + "{\n" +
+                nested_indent(depth) + "bool kt_cond;\n" +
+                nested_indent(depth) + "for (;;) {\n" +
+                statement_indent(depth + 1) + "{\n" +
+                lowered_statements(repeated) +
+                nested_indent(depth + 1) + "kt_cond = " +
+                lowered_operand(repeated) + ";\n" +
+                statement_indent(depth + 1) + "}\n" +
+                statement_indent(depth + 1) + "if (failed) return 1;\n" +
+                statement_indent(depth + 1) + "if (!kt_cond) break;\n"
+            } else if starts_with(line, "for ") {
+                let depth = len(blocks)
+                let header = header_condition(line, "for ")
+                let bound_name = range_name(header)
+                let from = lower_expression(range_start(header), bound, "x",
+                                            statement_indent(depth + 1))
+                let to = lower_expression(range_end(header), bound, "x",
+                                          statement_indent(depth + 1))
+                blocks = blocks + "r"
+                bound = scope_enter(bound) + bound_name + ":Int|"
+                # Both ends are evaluated once, before the loop, so a range end
+                # is not recomputed per iteration.
+                emitted = emitted +
+                statement_indent(depth) + "{\n" +
+                nested_indent(depth) + "int64_t kt_start;\n" +
+                nested_indent(depth) + "int64_t kt_end;\n" +
+                nested_indent(depth) + "{\n" +
+                lowered_statements(from) +
+                statement_indent(depth + 1) + "kt_start = " +
+                lowered_operand(from) + ";\n" +
+                nested_indent(depth) + "}\n" +
+                nested_indent(depth) + "{\n" +
+                lowered_statements(to) +
+                statement_indent(depth + 1) + "kt_end = " +
+                lowered_operand(to) + ";\n" +
+                nested_indent(depth) + "}\n" +
+                nested_indent(depth) + "if (failed) return 1;\n" +
+                nested_indent(depth) + "for (int64_t kf_" + bound_name +
+                " = kt_start; kf_" + bound_name + " < kt_end; ++kf_" +
+                bound_name + ") {\n"
             } else if starts_with(line, "let ") {
                 let depth = len(blocks)
                 let name = binding_name(line)

@@ -51,8 +51,8 @@ cmp "$temporary/S.hir" "$temporary/S.second.hir" ||
 
 grep '^status|complete$' "$temporary/S.hir" >/dev/null ||
     fail "S document must be complete"
-test "$(grep -c "^function|" "$temporary/S.hir")" -eq 38 ||
-    fail "S must type all 38 functions"
+test "$(grep -c "^function|" "$temporary/S.hir")" -eq 42 ||
+    fail "S must type all 42 functions"
 
 # Every positive fixture emits its exact checked-in complete document,
 # deterministically; one accepted document exists per profile row family.

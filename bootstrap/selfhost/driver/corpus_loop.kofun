@@ -1,0 +1,41 @@
+fn main() {
+    let limit = 3
+    for step in 0 .. limit {
+        print(step)
+    }
+    for outer in 0 .. 2 {
+        for inner in 0 .. 2 {
+            let cell = outer * 10 + inner
+            print(cell)
+        }
+    }
+    for step in 0 .. 3 {
+        if step == 0 {
+            print(100)
+        } else if step == 1 {
+            print(200)
+        } else {
+            let scaled = step * 300
+            print(scaled)
+        }
+    }
+    while limit < 0 {
+        print(1 // 0)
+    }
+    for step in 0 .. 2 {
+        while step > limit {
+            print(1 // 0)
+        }
+        print(step)
+    }
+    if limit > 0 {
+        for step in limit .. limit {
+            print(1 // 0)
+        }
+        for step in 1 .. limit {
+            print(step)
+        }
+    }
+    let step = 42
+    print(step)
+}

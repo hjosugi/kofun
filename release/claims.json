@@ -288,10 +288,10 @@
     {
       "id": "compiler-seed",
       "public_wording": "Kofun-written compiler seed",
-      "public_status": "implemented: nested-block Int/Bool Core",
+      "public_status": "implemented: block-and-loop Int/Bool Core",
       "state": "implemented",
       "area": "bootstrap",
-      "bounded_capability": "The Stage 1 seed is written in Kofun and kept beside a hand-audited C transliteration. Its line-oriented Core lowers checked Int arithmetic, six comparisons, Bool equality, Bool literals and bindings, unary `!`, short-circuiting `&&`/`||`, and nested `if`/`else if`/`else` blocks whose bindings leave scope at their `}`; `print` remains Int-only.",
+      "bounded_capability": "The Stage 1 seed is written in Kofun and kept beside a hand-audited C transliteration. Its line-oriented Core lowers checked Int arithmetic, six comparisons, Bool equality, Bool literals and bindings, unary `!`, short-circuiting `&&`/`||`, nested `if`/`else if`/`else` blocks whose bindings leave scope at their `}`, and `while`/`for`-range loops; `print` remains Int-only.",
       "targets": [
         "stage1"
       ],
@@ -303,12 +303,12 @@
       "compatibility": "The pre-existing arithmetic and Bool corpora remain byte-identical. The seed pair changes together, its digest records the change, and every corpus differentials both compiler paths.",
       "positive_gate": {
         "command": "sh bootstrap/stage1/check.sh",
-        "observation": "The Kofun seed and audited C transliteration emit byte-identical C for the arithmetic, Bool and nested-block corpora; the Bool and nested-block programs execute with every zero-dividing skipped operand and condition unevaluated."
+        "observation": "The Kofun seed and audited C transliteration emit byte-identical C for the arithmetic, Bool, nested-block and loop corpora; those programs execute with every zero-dividing skipped operand, branch condition and loop body unevaluated."
       },
       "negative_boundary": {
         "kind": "rejection",
         "evidence": "bootstrap/selfhost/driver/corpus_reject_else_without_if.kofun",
-        "observation": "An `else` with no `if` to attach to exits nonzero and writes no C; fifteen adjacent typed-boundary and block-boundary fixtures are checked by the same gate."
+        "observation": "An `else` with no `if` to attach to exits nonzero and writes no C; twenty-two adjacent typed-boundary, block-boundary and loop-boundary fixtures are checked by the same gate."
       },
       "safety": {
         "classification": "none"

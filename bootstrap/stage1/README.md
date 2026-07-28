@@ -15,10 +15,11 @@ kofun-stage1 INPUT.kofun OUTPUT.c
 ```
 
 The compatibility parser requires one explicit line-oriented `fn main() {`
-body containing only `let` statements, Int-valued `print(...)` statements, and
-`if`/`else if`/`else` blocks, plus blank lines and comments. `let` may infer or
-explicitly name `Int` or `Bool`. Unknown structural lines are rejected; they are
-never ignored while extracting an otherwise valid `print`.
+body containing only `let` statements, Int-valued `print(...)` statements,
+`if`/`else if`/`else` blocks, and `while`/`for`-range loops, plus blank lines and
+comments. `let` may infer or explicitly name `Int` or `Bool`. Unknown structural
+lines are rejected; they are never ignored while extracting an otherwise valid
+`print`.
 
 ## Expressions are compiled, not deferred
 
@@ -49,9 +50,12 @@ runtime traps in the emitted program:
 - `&&`, `||`, or `!` with an `Int` operand
 - the non-Core single-character `|` or `&` operators
 - a `Bool` passed to the Int-only `print` boundary
-- a block condition that is not `Bool`
+- a block or loop condition that is not `Bool`
 - an `else` with no `if` to attach to, or a second `else` in one chain
+- an `else` after a loop body
 - a block left open at the end of the source, or a `}` that closes nothing
+- a range end that is not `Int`, or a range written without ` .. `
+- a `for` bound that is not a valid name, or one that is bound again
 
 The six Int comparisons produce `Bool`; `==` and `!=` additionally compare two
 Bool operands. `&&` and `||` short-circuit their right operands, and `!` has
@@ -82,6 +86,30 @@ unevaluated, exactly as `&&` and `||` keep their right operands unevaluated.
 Nothing in the accepted Core returns a value yet, so `main` has no path that
 must end in `return`; the per-branch `returned` state arrives with the
 declaration slice that introduces `return` (#751).
+
+## Loops reuse that block structure
+
+`while COND {` and `for NAME in START .. END {` are two more block kinds on the
+same stack, so they nest inside `if` and inside each other, and no `else` may
+follow either. Each costs the same two C braces every block costs: one scope
+holding the loop's own state, then the loop itself.
+
+A `while` becomes `for (;;)` with an explicit exit rather than a C `while`,
+because a condition that needs statements has nowhere to put them in a C
+condition. A `for` evaluates both range ends once, before the loop, and iterates
+`START` up to but excluding `END`.
+
+The bound name is visible only inside the loop body. It is immutable because
+every binding in the accepted Core is: there is no assignment form yet, so the
+only way to write to it is a second `let`, which the shadowing rule already
+refuses. When assignment arrives, mutability has to be recorded per binding for
+that rule to stay honest.
+
+Because nothing in the accepted Core can change between iterations, a `while`
+here either runs zero times or forever. So the corpus exercises its
+zero-iteration path — with `1 // 0` in every body it never enters, whose
+termination proves the skip — and pins the emitted shape that re-evaluates the
+condition. A terminating `while` needs the assignment slice.
 
 It does not yet semantically compile its complete own source, so the Stage 2
 fixed-point gate remains open.

@@ -1,0 +1,6 @@
+fn main() {
+    for step in 0 .. 3 {
+        let step = 1
+        print(step)
+    }
+}

@@ -1,0 +1,5 @@
+fn main() {
+    for step in 0..3 {
+        print(step)
+    }
+}

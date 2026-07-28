@@ -30,6 +30,11 @@ filename or hash special case.
   the block that first bound it closed all lower identically through both seeds.
   Its skipped `else if` condition and short-circuited `||` operand are both
   `1 // 0`, so successful execution proves neither was evaluated.
+- `corpus_loop.kofun` / `.c` / `.stdout` — the loop corpus: `for` ranges over a
+  binding and over literals, loops nested in each other and inside `if`, a bound
+  name reused by sibling loops and rebound once they close, and a `while` that
+  never enters. Every loop the fixture never enters has `1 // 0` in its body, so
+  termination proves those paths were skipped.
 - `corpus_reject.kofun` / `.stdout` — the failure corpus: both
   compilers refuse an out-of-Core source with the same diagnostic bytes
   and write nothing.
@@ -45,6 +50,10 @@ filename or hash special case.
   a name read after its block closed, a `let` shadowing an outer binding, an
   `else` with no `if`, a second `else` in one chain, an unclosed block, and a
   `}` that closes nothing are all refused the same way by both seeds.
+- `corpus_reject_loop_*.kofun` and `corpus_reject_range_*.kofun` — the loop
+  boundary: an Int `while` condition, an `else` after a loop body, a `for` bound
+  rebound inside its body or read after it, a non-Int range end, a reserved
+  bound name, and a range written `0..3` without its ` .. ` separator.
 
 The gate also checks path independence (the same relative input
 compiled from two different directories emits identical C), determinism

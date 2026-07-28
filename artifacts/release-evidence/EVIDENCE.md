@@ -11,7 +11,7 @@ Generated from `release/claims.json` by `make release-evidence`. Do not edit.
 | `checked-int64-contract` | `sh tests/conformance/run.sh` | The numeric conformance corpus passes on every supported backend. |
 | `cli-commands` | `sh tests/cli.sh` | Each subcommand succeeds on Core sources. |
 | `cli-framework` | `sh framework/cli/check.sh` | The declarative CLI example builds statically and runs. |
-| `compiler-seed` | `sh bootstrap/stage1/check.sh` | The Kofun seed and audited C transliteration emit byte-identical C for the arithmetic, Bool and nested-block corpora; the Bool and nested-block programs execute with every zero-dividing skipped operand and condition unevaluated. |
+| `compiler-seed` | `sh bootstrap/stage1/check.sh` | The Kofun seed and audited C transliteration emit byte-identical C for the arithmetic, Bool, nested-block and loop corpora; those programs execute with every zero-dividing skipped operand, branch condition and loop body unevaluated. |
 | `deterministic-fuzzing` | `sh tests/fuzz/semantic_differential.sh` | Oracle and backend observations agree for every generated program. |
 | `elf64-image-writer` | `sh bootstrap/native/check.sh` | A static ELF64 image is written and executes. |
 | `enum-matching` | `sh tests/conformance/syntax/issues_35_47/run.sh` | Payload-free enum matches lower and execute with exhaustiveness enforced. |

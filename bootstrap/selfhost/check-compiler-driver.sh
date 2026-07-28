@@ -143,6 +143,35 @@ cmp bootstrap/selfhost/driver/corpus_branch.c \
 cmp bootstrap/selfhost/driver/corpus_branch.stdout "$temporary/branch.stdout" ||
     fail "nested-block corpus program output differs from the pinned golden"
 
+# The loop slice takes the same two compiler paths. Its checked-in C proves both
+# range ends are evaluated once before the loop, that the `while` condition is
+# re-evaluated by sitting inside the loop, and that a loop bound leaves scope at
+# its `}` — the fixture rebinds the name afterwards. Every loop the fixture never
+# enters has `1 // 0` in its body, so termination proves those paths were skipped.
+mkdir -p "$temporary/loop-left" "$temporary/loop-right"
+cp bootstrap/selfhost/driver/corpus_loop.kofun \
+    "$temporary/loop-left/input.kofun"
+cp bootstrap/selfhost/driver/corpus_loop.kofun \
+    "$temporary/loop-right/input.kofun"
+(cd "$temporary/loop-left" &&
+    "$temporary/kofun-a1" input.kofun output.c >stdout.txt 2>stderr.txt)
+(cd "$temporary/loop-right" &&
+    "$temporary/kofun-stage1" input.kofun output.c >stdout.txt 2>stderr.txt)
+cmp "$temporary/loop-left/output.c" "$temporary/loop-right/output.c" ||
+    fail "compiler-from-S and the audited seed emit different loop C"
+cmp "$temporary/loop-left/stdout.txt" "$temporary/loop-right/stdout.txt" ||
+    fail "compiler-from-S and the audited seed differ on loop stdout"
+cmp "$temporary/loop-left/stderr.txt" "$temporary/loop-right/stderr.txt" ||
+    fail "compiler-from-S and the audited seed differ on loop stderr"
+cmp bootstrap/selfhost/driver/corpus_loop.c \
+    "$temporary/loop-left/output.c" ||
+    fail "loop corpus emission differs from the checked-in evidence"
+"$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$temporary/loop-left/output.c" -o "$temporary/loop-program"
+"$temporary/loop-program" >"$temporary/loop.stdout"
+cmp bootstrap/selfhost/driver/corpus_loop.stdout "$temporary/loop.stdout" ||
+    fail "loop corpus program output differs from the pinned golden"
+
 # Path remapping: compiling the same relative input from two different
 # directories produces byte-identical C — no absolute-path leakage.
 mkdir -p "$temporary/remap-a/nested" "$temporary/remap-b"
@@ -202,7 +231,14 @@ for fixture in \
     bootstrap/selfhost/driver/corpus_reject_else_without_if.kofun \
     bootstrap/selfhost/driver/corpus_reject_else_after_else.kofun \
     bootstrap/selfhost/driver/corpus_reject_unclosed_block.kofun \
-    bootstrap/selfhost/driver/corpus_reject_extra_block_end.kofun
+    bootstrap/selfhost/driver/corpus_reject_extra_block_end.kofun \
+    bootstrap/selfhost/driver/corpus_reject_loop_condition.kofun \
+    bootstrap/selfhost/driver/corpus_reject_loop_else.kofun \
+    bootstrap/selfhost/driver/corpus_reject_loop_bound_rebound.kofun \
+    bootstrap/selfhost/driver/corpus_reject_loop_bound_scope.kofun \
+    bootstrap/selfhost/driver/corpus_reject_range_bounds.kofun \
+    bootstrap/selfhost/driver/corpus_reject_range_name.kofun \
+    bootstrap/selfhost/driver/corpus_reject_range_separator.kofun
 do
     stem=$(basename "$fixture" .kofun)
     set +e
@@ -268,4 +304,5 @@ printf '%s\n' \
     "PASS: the compiler from S matches the audited Stage 1 seed byte for byte on the corpus" \
     "PASS: Int/Bool typing, comparisons, and short-circuiting agree across both seeds" \
     "PASS: nested blocks, else-if chains, and block scoping agree across both seeds" \
+    "PASS: while and for-range loops agree across both seeds and scope their bound" \
     "PASS: emission is deterministic, path-independent, and failure-preserving"
