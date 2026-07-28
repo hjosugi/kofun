@@ -10,6 +10,7 @@ import {
   desiredFieldUpdates,
   filterOpenCuratedIssues,
   filterRepositoryIssues,
+  iterationConfigurationMatches,
   normalizeSchedule,
   parseArguments,
   projectViewKey,
@@ -58,6 +59,7 @@ test("live plan schedule schema maps fields, lanes, status, and dates", () => {
           title: "Bootstrap",
           priority: "high",
           size: "m",
+          workstream: "Self-host & Bootstrap",
           lane: "writer-a",
           start_date: "2026-07-27",
           end_date: "2026-07-29",
@@ -68,11 +70,17 @@ test("live plan schedule schema maps fields, lanes, status, and dates", () => {
           fields: {
             priority: "P0",
             size: "L",
+            workstream: "Frontend & Types",
             agentSlot: "reviewer",
             startDate: "2026-07-30",
             targetDate: "2026-08-01",
           },
           status: "ready",
+        },
+        {
+          number: 112,
+          title: "Verification pending",
+          schedule_status: "verification-pending",
         },
       ],
     },
@@ -85,13 +93,17 @@ test("live plan schedule schema maps fields, lanes, status, and dates", () => {
     status: "In Progress",
     priority: "P1",
     size: "M",
+    workstream: "Self-host & Bootstrap",
     agentSlot: "A",
     startDate: "2026-07-27",
     targetDate: "2026-07-29",
     iteration: undefined,
   });
+  assert.equal(schedule.get(618).workstream, "Self-host & Bootstrap");
   assert.equal(schedule.get(622).agentSlot, "Review");
   assert.equal(schedule.get(622).priority, "P0");
+  assert.equal(schedule.get(622).workstream, "Frontend & Types");
+  assert.equal(schedule.get(112).status, "In Progress");
   assert.throws(
     () =>
       normalizeSchedule(
@@ -108,6 +120,10 @@ test("checked-in snapshot values all map to configured Project options", () => {
     status: new Set(["Todo", "In Progress", "Done"]),
     priority: new Set(["P0", "P1", "P2", "P3", undefined]),
     size: new Set(["XS", "S", "M", "L", "XL", undefined]),
+    workstream: new Set(
+      config.project.fields.find((field) => field.name === "Workstream")
+        .options,
+    ),
     agentSlot: new Set(["A", "B", "C", "Review", undefined]),
   };
   assert.ok(schedule.size > 0);
@@ -163,6 +179,28 @@ test("iteration configuration produces deterministic weekly values", () => {
   );
 });
 
+test("iteration configuration detects when the existing Gantt horizon is short", () => {
+  const definition = {
+    startDate: "2026-07-27",
+    duration: 7,
+    count: 3,
+    titlePrefix: "Week",
+  };
+  const desired = buildIterationConfiguration(definition);
+  const field = {
+    configuration: {
+      duration: 7,
+      completedIterations: [desired.iterations[0]],
+      iterations: desired.iterations.slice(1),
+    },
+  };
+  assert.equal(iterationConfigurationMatches(field, definition), true);
+  assert.equal(
+    iterationConfigurationMatches(field, { ...definition, count: 4 }),
+    false,
+  );
+});
+
 test("curated selector isolates the active delivery scope", () => {
   const result = filterOpenCuratedIssues([
     { number: 3, state: "OPEN", labels: { nodes: [{ name: "curated" }] } },
@@ -211,6 +249,12 @@ const fields = [
     options: [{ id: "m", name: "M" }],
   },
   {
+    id: "workstream-field",
+    name: "Workstream",
+    dataType: "SINGLE_SELECT",
+    options: [{ id: "bootstrap", name: "Self-host & Bootstrap" }],
+  },
+  {
     id: "slot-field",
     name: "Agent Slot",
     dataType: "SINGLE_SELECT",
@@ -242,6 +286,7 @@ test("field reconciliation skips values that are already synchronized", () => {
     status: "In Progress",
     priority: "P1",
     size: "M",
+    workstream: "Self-host & Bootstrap",
     agentSlot: "A",
     startDate: "2026-07-27",
     targetDate: "2026-07-29",
@@ -272,7 +317,7 @@ test("field reconciliation skips values that are already synchronized", () => {
   const result = desiredFieldUpdates(scheduleItem, fields, item);
   assert.deepEqual(
     result.updates.map((update) => update.fieldName),
-    ["Priority", "Size", "Agent Slot", "Target Date"],
+    ["Priority", "Size", "Workstream", "Agent Slot", "Target Date"],
   );
 });
 

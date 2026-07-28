@@ -21,7 +21,7 @@ export const DEPENDENCY_CHAINS = [
     id: "self-host-fixed-point",
     title: "Self-host fixed point and independent reproduction",
     lane: "writer-a",
-    issue_numbers: [618, 622, 271, 272, 274],
+    issue_numbers: [744, 745, 746, 747, 748, 749, 751, 618, 622, 271, 272, 274],
   },
   {
     id: "decimal-delivery",
@@ -29,11 +29,127 @@ export const DEPENDENCY_CHAINS = [
     lane: "writer-b",
     issue_numbers: [721, 722, 723, 724, 725, 726],
   },
+  {
+    id: "optional-frontend",
+    title: "Optional frontend, inference, and coalescing",
+    lane: "writer-b",
+    issue_numbers: [70, 312, 314],
+  },
+  {
+    id: "shadowing-resolution",
+    title: "Lexical and pattern-binding shadowing",
+    lane: "writer-b",
+    issue_numbers: [112, 772],
+  },
+  {
+    id: "laws-and-sequencing",
+    title: "Law declarations and composable sequencing",
+    lane: "writer-b",
+    issue_numbers: [551, 626],
+  },
+  {
+    id: "visibility-surfaces",
+    title: "Visibility interfaces, tooling, docs, and LSP",
+    lane: "writer-c",
+    issue_numbers: [583, 584, 585, 606],
+  },
+  {
+    id: "http-client",
+    title: "HTTP client contract and core",
+    lane: "writer-c",
+    issue_numbers: [638, 644],
+  },
+  {
+    id: "date-time",
+    title: "Date/time contract, core, clocks, and time zones",
+    lane: "writer-c",
+    issue_numbers: [639, 645, 647, 648],
+  },
+  {
+    id: "benchmarking",
+    title: "Benchmark contract and report format",
+    lane: "writer-c",
+    issue_numbers: [640, 646],
+  },
+  {
+    id: "repository-split",
+    title: "Repository split and documentation cleanup",
+    lane: "writer-c",
+    issue_numbers: [768, 767, 769],
+  },
+  {
+    id: "semantic-upgrades",
+    title: "Semantic identity and typed upgrade patches",
+    lane: "writer-c",
+    issue_numbers: [740, 741],
+  },
+];
+export const WORKSTREAMS = [
+  {
+    id: "bootstrap",
+    title: "Self-host & Bootstrap",
+    lane: "writer-a",
+    areas: ["bootstrap"],
+  },
+  {
+    id: "decimal",
+    title: "Decimal",
+    lane: "writer-b",
+    issue_numbers: [710, 721, 722, 723, 724, 725, 726],
+  },
+  {
+    id: "frontend-types",
+    title: "Frontend & Types",
+    lane: "writer-b",
+    areas: ["parser", "syntax", "types", "inference", "type-system", "laws", "meta"],
+  },
+  {
+    id: "backend-runtime",
+    title: "Backend & Runtime",
+    lane: "writer-a",
+    areas: ["codegen", "memory", "platforms", "ownership", "collections"],
+  },
+  {
+    id: "effects-concurrency",
+    title: "Effects & Concurrency",
+    lane: "writer-b",
+    areas: ["effects", "concurrency"],
+  },
+  {
+    id: "tooling-diagnostics",
+    title: "Tooling & Diagnostics",
+    lane: "writer-c",
+    areas: ["compiler", "developer_tools", "diagnostics", "tooling"],
+  },
+  {
+    id: "stdlib-frameworks",
+    title: "Stdlib & Frameworks",
+    lane: "writer-c",
+    areas: ["stdlib", "frameworks"],
+  },
+  {
+    id: "repository-docs",
+    title: "Repository & Docs",
+    lane: "writer-c",
+    areas: ["build-system", "docs_tools", "ecosystem", "quality"],
+  },
+  {
+    id: "science-future",
+    title: "Science & Future",
+    lane: "writer-a",
+    areas: ["science"],
+  },
+  {
+    id: "research-positioning",
+    title: "Research & Positioning",
+    lane: "writer-c",
+    issue_numbers: [281],
+  },
 ];
 export const LANES = [
-  { id: "writer-a", label: "Writer A · self-host", role: "writer", capacity: 1 },
-  { id: "writer-b", label: "Writer B · decimal", role: "writer", capacity: 1 },
-  { id: "writer-c", label: "Writer C · ready queue", role: "writer", capacity: 1 },
+  { id: "writer-a", label: "Writer A · compiler core", role: "writer", capacity: 1 },
+  { id: "writer-b", label: "Writer B · language semantics", role: "writer", capacity: 1 },
+  { id: "writer-c", label: "Writer C · tools and ecosystem", role: "writer", capacity: 1 },
   { id: "review", label: "Reviewer · integration", role: "reviewer", capacity: 1 },
 ];
 
@@ -91,6 +207,16 @@ function countBy(values) {
   );
 }
 
+function workstreamFor(issue) {
+  return (
+    WORKSTREAMS.find(
+      (workstream) =>
+        workstream.issue_numbers?.includes(issue.number) ||
+        workstream.areas?.includes(issue.area),
+    ) ?? WORKSTREAMS.at(-1)
+  );
+}
+
 export function normalizeIssue(issue, repository = DEFAULT_REPOSITORY) {
   const labels = (issue.labels ?? [])
     .map(labelName)
@@ -109,6 +235,10 @@ export function normalizeIssue(issue, repository = DEFAULT_REPOSITORY) {
   const areas = labels
     .filter((label) => label.startsWith("area:"))
     .map((label) => label.slice("area:".length));
+  const workstream = workstreamFor({
+    number: issue.number,
+    area: areas[0] ?? null,
+  });
 
   return {
     number: issue.number,
@@ -125,6 +255,7 @@ export function normalizeIssue(issue, repository = DEFAULT_REPOSITORY) {
     kind: findPrefixed(labels, "kind:"),
     area: areas[0] ?? null,
     areas,
+    workstream: workstream.title,
     labels,
     assignees: (issue.assignees ?? [])
       .map((assignee) =>
@@ -259,6 +390,7 @@ function taskRank(left, right) {
 
 function scheduleConfidence(issue, isChain) {
   if (issue.workflow === "blocked") return "conditional";
+  if (issue.workflow === "deferred") return "low";
   if (
     issue.workflow === "needs-detail" ||
     issue.workflow === "needs-decision" ||
@@ -271,39 +403,19 @@ function scheduleConfidence(issue, isChain) {
   return isChain ? "medium" : "medium";
 }
 
-function unscheduledReason(issue) {
-  if (issue.workflow === "deferred") {
-    return "deferred outside the active delivery scope";
-  }
-  if (issue.workflow === "blocked") {
-    return "blocked without a dependency represented by a scheduled chain";
-  }
-  return "not eligible for the active curated schedule";
-}
-
 export function scheduleCuratedIssues(openCurated, options = {}) {
   const startDate = nextBusinessDay(options.startDate ?? new Date(), true);
   const membership = chainMembership(openCurated);
   const scheduledTasks = [];
-  const unscheduled = [];
 
   for (const issue of openCurated) {
     const chain = membership.get(issue.number);
-    if (
-      issue.workflow === "deferred" ||
-      (issue.workflow === "blocked" && !chain)
-    ) {
-      unscheduled.push({
-        ...issue,
-        reason: unscheduledReason(issue),
-      });
-      continue;
-    }
+    const workstream = workstreamFor(issue);
     const duration = durationFor(issue);
     scheduledTasks.push({
       ...issue,
       chain_id: chain?.chain_id ?? null,
-      preferred_lane: chain?.lane ?? null,
+      preferred_lane: chain?.lane ?? workstream.lane,
       depends_on: chain?.depends_on ?? [],
       writer_days: duration.writer,
       review_days: duration.review,
@@ -411,7 +523,9 @@ export function scheduleCuratedIssues(openCurated, options = {}) {
       return {
         ...result,
         schedule_status:
-          task.workflow === "blocked" ? "conditional" : "scheduled",
+          task.workflow === "blocked" || task.workflow === "deferred"
+            ? "conditional"
+            : "scheduled",
       };
     })
     .sort(
@@ -432,7 +546,7 @@ export function scheduleCuratedIssues(openCurated, options = {}) {
           )
         : startDate,
     schedule,
-    unscheduled: unscheduled.sort((left, right) => left.number - right.number),
+    unscheduled: [],
   };
 }
 
@@ -555,6 +669,7 @@ function issueSummary(issue) {
     size: issue.size,
     kind: issue.kind,
     area: issue.area,
+    workstream: issue.workstream,
     labels: issue.labels,
   };
 }
@@ -593,6 +708,27 @@ export function buildPlanSnapshot(rawItems, options = {}) {
     planned.schedule.length,
     throughput,
   );
+  const workstreams = WORKSTREAMS.map((definition) => {
+    const tasks = planned.schedule.filter(
+      (task) => task.workstream === definition.title,
+    );
+    return {
+      id: definition.id,
+      title: definition.title,
+      lane: definition.lane,
+      issue_count: tasks.length,
+      issue_numbers: tasks.map((task) => task.number),
+      start_date: tasks[0]?.start_date ?? null,
+      end_date:
+        tasks.length > 0
+          ? tasks.reduce(
+              (latest, task) =>
+                task.end_date > latest ? task.end_date : latest,
+              tasks[0].end_date,
+            )
+          : null,
+    };
+  }).filter((workstream) => workstream.issue_count > 0);
 
   const dependencyChains = DEPENDENCY_CHAINS.map((chain) => ({
     ...chain,
@@ -631,7 +767,7 @@ export function buildPlanSnapshot(rawItems, options = {}) {
       wip_limit: 3,
       workweek: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
       policy:
-        "Three agents implement at most three issues concurrently; one agent owns review, integration, and CI.",
+        "Related issues stay on one workstream lane while independent workstreams run in parallel; one agent owns review, integration, and CI.",
     },
     summary: {
       issues_total: issues.length,
@@ -660,7 +796,7 @@ export function buildPlanSnapshot(rawItems, options = {}) {
     throughput,
     forecast: {
       scope:
-        "Open curated issues, excluding deferred work and blockers outside the two represented dependency chains.",
+        "All open curated issues. Blocked and deferred items receive low-confidence placeholder dates so the Gantt remains complete.",
       scheduled_count: planned.schedule.length,
       unscheduled_count: planned.unscheduled.length,
       start_date: planned.start_date,
@@ -670,7 +806,8 @@ export function buildPlanSnapshot(rawItems, options = {}) {
       assumptions: [
         "No new issues enter the scheduled scope.",
         "Three writer lanes and one review/integration lane are continuously available on business days.",
-        "Known dependency chains are serial and their blocked members remain conditional.",
+        "Known dependency chains are serial; unrelated workstreams run in parallel on stable lanes to reduce file collisions.",
+        "Blocked and deferred items have rough placeholder dates only; their tracker state remains authoritative.",
         "S/M/L use 2/4/8 writer days; unknown size uses 5; refinement and decision states receive extra time.",
         "The calendar models weekdays only; public holidays, leave, incidents, and new intake are outside the lane simulation.",
         "The conservative date adds a 25% business-day buffer after the simulated review bottleneck.",
@@ -762,6 +899,7 @@ export function buildPlanSnapshot(rawItems, options = {}) {
       ],
     },
     lanes: LANES,
+    workstreams,
     dependency_chains: dependencyChains,
     schedule: planned.schedule,
     unscheduled: planned.unscheduled.map((issue) => ({
@@ -794,6 +932,14 @@ export function renderDeliveryPlan(snapshot) {
         `| ${markdownCell(scenario.label)} | ${markdownCell(scenario.finish_date)} | ${markdownCell(scenario.note)} |`,
     )
     .join("\n");
+  const workstreamRows = snapshot.workstreams
+    .map(
+      (workstream) =>
+        `| ${markdownCell(workstream.title)} | \`${workstream.lane}\` | ` +
+        `${workstream.issue_count} | ${workstream.start_date} | ${workstream.end_date} | ` +
+        `${workstream.issue_numbers.map((number) => `#${number}`).join(", ")} |`,
+    )
+    .join("\n");
   const chainSections = snapshot.dependency_chains
     .map((chain) => {
       const rows = chain.issues
@@ -820,7 +966,7 @@ ${rows}`;
   const scheduleRows = snapshot.schedule
     .map(
       (issue) =>
-        `| ${issueLink(issue)} | \`${issue.lane}\` | ${markdownCell(issue.workflow)} | ` +
+        `| ${issueLink(issue)} | ${markdownCell(issue.workstream)} | \`${issue.lane}\` | ${markdownCell(issue.workflow)} | ` +
         `${markdownCell(issue.priority)} | ${markdownCell(issue.size)} | ` +
         `${issue.start_date} | ${issue.writer_end_date} | ${issue.review_end_date} | ` +
         `${markdownCell(issue.confidence)} | ${markdownCell(issue.title)} |`,
@@ -847,7 +993,7 @@ ${rows}`;
   return `# Delivery plan
 
 Status: generated read-only planning snapshot. This is a capacity forecast, not
-a promise that unresolved or externally blocked work will complete by a date.
+a promise that unresolved, blocked, or deferred work will complete by a date.
 
 Repository: [\`${snapshot.repository}\`](https://github.com/${snapshot.repository})
 
@@ -858,8 +1004,8 @@ As of: \`${snapshot.as_of}\`
 - Maximum four agents: three writer lanes plus one review/integration lane.
 - Work in progress is capped at three implementation issues.
 - Planning umbrellas are counted but never scheduled as implementation work.
-- \`${snapshot.summary.scheduled_curated}\` curated issues are scheduled and
-  \`${snapshot.summary.unscheduled_curated}\` are deferred or externally blocked.
+- All \`${snapshot.summary.scheduled_curated}\` open curated issues have rough
+  Gantt dates; blocked and deferred dates are explicitly low-confidence.
 
 | Metric | Count |
 |---|---:|
@@ -883,6 +1029,15 @@ states, external blockers, and future intake are resolved. Over the trailing
 \`${snapshot.throughput.completion_rate_per_week}\`/week; issues closed as
 \`not_planned\` are excluded from completion throughput.
 
+## Parallel workstreams
+
+Issues in the same workstream stay on one primary writer lane so they can share
+context and avoid cross-worktree collisions. Different lanes run in parallel.
+
+| Workstream | Primary lane | Issues | Start | Rough finish | Grouped issue numbers |
+|---|---|---:|---|---|---|
+${workstreamRows}
+
 ## Critical dependency chains
 
 ${chainSections}
@@ -892,8 +1047,8 @@ ${chainSections}
 Writer end is implementation complete; delivered is after the single reviewer
 lane finishes integration.
 
-| Issue | Lane | State | Priority | Size | Start | Writer end | Delivered | Confidence | Title |
-|---|---|---|---|---|---|---|---|---|---|
+| Issue | Workstream | Lane | State | Priority | Size | Start | Writer end | Delivered | Confidence | Title |
+|---|---|---|---|---|---|---|---|---|---|---|
 ${scheduleRows}
 
 ## Weekly calendar
@@ -902,10 +1057,10 @@ ${scheduleRows}
 |---|---|---|---:|
 ${calendarRows}
 
-## Not scheduled
+## Unscheduled exceptions
 
-No finish date is assigned when the tracker itself says the work is deferred or
-has an external blocker outside the represented serial chains.
+Every open curated issue receives a rough date. This table is therefore normally
+empty; planning umbrellas remain intentionally outside the execution Gantt.
 
 | Issue | State | Reason |
 |---|---|---|

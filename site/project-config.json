@@ -8,7 +8,7 @@
   "project": {
     "visibility": "PUBLIC",
     "description": "All kofun issues in one Project, with delivery fields synchronized for the open curated execution scope.",
-    "readme": "## Operating model\n\n- Every open and closed issue from `hjosugi/kofun` is registered.\n- Three collision-safe writer lanes: A, B, and C.\n- One dedicated Review lane for integration and CI.\n- Dates and agent slots are assigned only to the open `curated` execution scope.\n- Planning umbrellas remain visible without being treated as implementation work.\n- Start and target dates are forecasts, not promises; blocked and deferred work may have no dates.- This board is where delivery planning lives; the public site does not publish a schedule.\n\n[Read the generated delivery plan](https://github.com/hjosugi/kofun/blob/main/docs/DELIVERY_PLAN.md) · [Browse the issues](https://github.com/hjosugi/kofun/issues)",
+    "readme": "## Operating model\n\n- Every open and closed issue from `hjosugi/kofun` is registered.\n- Related open `curated` issues are grouped into workstreams on stable writer lanes A, B, and C.\n- Independent workstreams run in parallel; one dedicated Review lane serializes integration and CI.\n- Every open `curated` issue receives rough Start Date, Target Date, and Iteration values for the Gantt.\n- Blocked and deferred dates are low-confidence placeholders, not promises; the issue workflow label remains authoritative.\n- Planning umbrellas remain visible without being treated as implementation work.\n- This board is where delivery planning lives; the public site does not publish a schedule.\n\n[Read the generated delivery plan](https://github.com/hjosugi/kofun/blob/main/docs/DELIVERY_PLAN.md) · [Browse the issues](https://github.com/hjosugi/kofun/issues)",
     "fields": [
       {
         "name": "Status",
@@ -25,6 +25,22 @@
         "name": "Size",
         "type": "SINGLE_SELECT",
         "options": ["XS", "S", "M", "L", "XL"]
+      },
+      {
+        "name": "Workstream",
+        "type": "SINGLE_SELECT",
+        "options": [
+          "Self-host & Bootstrap",
+          "Decimal",
+          "Frontend & Types",
+          "Backend & Runtime",
+          "Effects & Concurrency",
+          "Tooling & Diagnostics",
+          "Stdlib & Frameworks",
+          "Repository & Docs",
+          "Science & Future",
+          "Research & Positioning"
+        ]
       },
       {
         "name": "Agent Slot",
@@ -45,7 +61,7 @@
         "iteration": {
           "startDate": "2026-07-27",
           "duration": 7,
-          "count": 24,
+          "count": 52,
           "titlePrefix": "Week"
         }
       }
@@ -54,17 +70,17 @@
       {
         "name": "Delivery roadmap",
         "layout": "roadmap",
-        "filter": "is:issue is:open"
+        "filter": "is:issue is:open label:curated"
       },
       {
         "name": "This week",
         "layout": "board",
-        "filter": "is:issue is:open"
+        "filter": "is:issue is:open label:curated"
       },
       {
         "name": "Agent capacity",
         "layout": "table",
-        "filter": "is:issue is:open"
+        "filter": "is:issue is:open label:curated"
       }
     ]
   },
@@ -82,6 +98,7 @@
       "in-progress": "In Progress",
       "in progress": "In Progress",
       "review": "In Progress",
+      "verification-pending": "In Progress",
       "done": "Done",
       "closed": "Done"
     },
