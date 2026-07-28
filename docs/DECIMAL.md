@@ -178,10 +178,11 @@ distinct tokens.
 
 A **well-formed** Decimal or Float literal that reaches lowering is a different
 condition and gets its own code, **`E2S99`**, which names the slice that would
-implement it. Slice 1 delivers the token contract only; the runtime
-representation is slice 2. Reusing a generic "invalid expression" diagnostic
-here would report the literal as wrong when what is true is that the compiler
-is unfinished.
+implement it. The named slice moves as the slices land: slice 1 delivered the
+token contract, slice 2 the runtime representation, slice 3 the checker types —
+so a literal that reaches lowering today waits on slice 4, which evaluates the
+operations. Reusing a generic "invalid expression" diagnostic here would report
+the literal as wrong when what is true is that the compiler is unfinished.
 
 This deliberately revises older planning text that calls every unsuffixed
 fractional or scientific literal a `Float`. That text is migration input, not

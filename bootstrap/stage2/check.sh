@@ -70,10 +70,12 @@ grep -Fxq 'integer|181|182|4' "$temporary/range-exception.tokens"
 test "$(grep -c '^decimal|' "$temporary/range-exception.tokens")" -eq 0
 test "$(grep -c '^float|' "$temporary/range-exception.tokens")" -eq 0
 
-# A Decimal literal has no representation yet, so reaching lowering must be an
-# explicit, source-located refusal that writes nothing and names the slice that
-# would implement it. Reusing `E2S12` said the literal was invalid, which is
-# not what is true: the literal is well formed and the compiler is unfinished.
+# A Decimal literal is representable (slice 2) and typed (slice 3), but has no
+# lowering, so reaching lowering must be an explicit, source-located refusal
+# that writes nothing and names slice 4 — the slice that evaluates it. Reusing
+# `E2S12` said the literal was invalid, which is not what is true: the literal
+# is well formed and the compiler is unfinished. Naming slice 3 became false
+# the moment #722 landed, because the literal has a type now.
 printf 'fn main() {\n    print(1.5)\n}\n' >"$temporary/decimal-lowering.kofun"
 set +e
 "$root/bin/kofun" check "$temporary/decimal-lowering.kofun" \
@@ -83,7 +85,7 @@ set -e
 test "$decimal_lowering_status" -eq 1
 test ! -s "$temporary/decimal-lowering.stdout"
 grep -Fxq \
-    'error[E2S99]: Decimal literal at byte 22 has no type yet (#710 slice 3)' \
+    'error[E2S99]: Decimal literal at byte 22 has no lowering yet (#710 slice 4)' \
     "$temporary/decimal-lowering.stderr"
 
 # Numeric typing (#722, #710 frozen decisions 2 and 4). Two properties:
@@ -138,11 +140,17 @@ mixed_case() {
         exit 1
     }
 }
+# Every arithmetic operator the checker knows (`+ - * // % **`) appears here,
+# each in both orders — the corpus the gate in #722 asks for. A walk keyed on
+# an operator list can drop one operator and still pass a corpus that only
+# spells the common four.
 for mixed in \
     '1 + 1.5' '1.5 + 1' \
     '1 * 42f64' '42f64 * 1' \
     '1.5 - 42f64' '42f64 - 1.5' \
-    '2 // 0.5' '0.5 // 2'
+    '2 // 0.5' '0.5 // 2' \
+    '3 % 1.5' '1.5 % 3' \
+    '2 ** 0.5' '0.5 ** 2'
 do
     mixed_case "$mixed"
 done

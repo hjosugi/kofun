@@ -6578,8 +6578,10 @@ fn validate_numeric_conversions(source: Text, hir: Text) -> Text {
 # through a host double, would change the value and is exactly what
 # `docs/DECIMAL.md` forbids.
 #
-# Slice 2 (#721) built the runtime representation, so the literal *is*
-# representable and the successor named here is slice 3, which gives it a type.
+# Slice 2 (#721) built the runtime representation and slice 3 (#722) made
+# `Decimal` and `Float` checker types, so the literal is representable *and*
+# typed. What it still lacks is a lowering, so the successor named here is
+# slice 4, which evaluates the operations across the backends.
 #
 # The C seed additionally constructs the value through `decimal_v1.c` before
 # refusing, which is what puts the resource profile's `D001`/`D002` limits at
@@ -6599,7 +6601,7 @@ fn validate_unsupported_numeric_kinds(source: Text) -> Text {
             }
             return "error[E2S99]: " + name +
             " literal at byte " + to_text(cursor) +
-            " has no type yet (#710 slice 3)"
+            " has no lowering yet (#710 slice 4)"
         }
         cursor = skip_trivia(source, token_end(source, cursor))
     }

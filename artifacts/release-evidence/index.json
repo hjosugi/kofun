@@ -619,7 +619,7 @@
     "tests/conformance/records/generic_record.kofun": "7b370f4972f44bb2dcb0058ece6bcb14214d22990b79ca5d18a06f86eb485525",
     "tests/conformance/records/partial_move.kofun": "7d418d3ab0531f864cbd61256cbdeaeb46f7a65b213d62bf776229ddcfa67b85",
     "tests/diagnostics/README.md": "456190836326c23c153118d53f085905e4da06eae11883432f39c24548447c12",
-    "tests/diagnostics/registry.tsv": "af342151ab323493f92e5652686be7933f5437c5722616017dc0519d52a5d5b3",
+    "tests/diagnostics/registry.tsv": "8d5284fa200f4e00e5e26cc4e4cb2e701b17de1769a1fd529f7017653f95815a",
     "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun": "664c4d3b0d4bcd9265fee34b3ae60d8bf0eb58c9ce5c2b504579c1249aa16f2d",
     "tests/fuzz/SEMANTIC_PROTOCOL.md": "95644005013d2aae82a042deb341785a083552c766abafa71bdbf4335deea522",
     "tests/fuzz/semantic_differential.sh": "f86c3afb9c4e6aa8be68159f40215451d536ef29c821aea9f160def2613c0b7d",
