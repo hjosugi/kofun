@@ -100,8 +100,8 @@ Stage 1 is the Python-free bootstrap seed.
 - `compiler.kofun` is the canonical Kofun source.
 - `compiler.c` is the checked-in audited C11 seed.
 - `SHA256SUMS` pins the source/artifact relationship.
-- `check.sh` builds the seed and verifies its bounded nested-block Int/Bool/Text
-  Core.
+- `check.sh` builds the seed and verifies its bounded nested-block
+  Int/Bool/Text/List[Text] Core.
 
 Do not edit only a digest to make a gate pass. A Stage 1 change must explain
 which source is canonical, how the audited artifact was produced, and why its
@@ -294,7 +294,7 @@ Never make a source fix only inside one of these directories.
 | You want to change… | Start in… | Read next… | Run first… |
 |---|---|---|---|
 | public CLI routing or exit behavior | `bin/kofun` | `tests/cli.sh` | `make test` |
-| Stage 1 Int/Bool/Text Core | `bootstrap/stage1/` | its README and `check.sh` | `make bootstrap` |
+| Stage 1 Int/Bool/Text/List[Text] Core | `bootstrap/stage1/` | its README and `check.sh` | `make bootstrap` |
 | Stage 2 syntax, typing, or C lowering | `bootstrap/stage2/` | its README and matching fixture | `make stage2` |
 | a stable error code/message/span | emitter plus `tests/diagnostics/` | diagnostics README/registry | `make diagnostics` |
 | x86-64 or AArch64 direct output | `bootstrap/native/` | native README and docs | `make native` |

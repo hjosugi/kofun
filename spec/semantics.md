@@ -131,14 +131,17 @@ remain identifiable migration material and are never accepted as v2.
 The active Stage 1 C11 backend accepts a deliberately small typed Core:
 checked `Int` arithmetic, six Int comparisons, `Bool` equality, Bool literals
 and bindings, unary `!`, short-circuiting `&&`/`||`, Text literals,
-concatenation and equality, nested `if`/`else if`/`else` blocks whose bindings
-leave scope at their `}`, and `while`/half-open `for` loops. `print` accepts
-`Int` and `Text`. Mixed Text/Int operators, arithmetic Bool operands, ordered
-Bool/Text comparisons, logical Int operands, annotation mismatches, Bool
-printing, non-`Bool` conditions, an `else` with no `if`, and unbalanced blocks
-are rejected before execution. A branch that is not taken evaluates neither
-its body nor a later `else if` condition. The native checkpoint does not yet
-lower general Kofun programs and therefore is not a registered semantic
-backend. As more backends become executable, each must satisfy the differential
-contract for every construct it accepts. No backend may silently reinterpret a
-construct with different semantics.
+concatenation and equality, `chars(Text) -> List[Text]`, `len(List[Text])`,
+byte-oriented Text/List indexing, nested `if`/`else if`/`else` blocks whose
+bindings leave scope at their `}`, and `while`/half-open `for` loops. `print`
+accepts `Int` and `Text`. Mixed Text/Int operators, arithmetic Bool operands,
+ordered Bool/Text comparisons, logical Int operands, invalid index
+receiver/index types, annotation mismatches, Bool printing, non-`Bool`
+conditions, an `else` with no `if`, and unbalanced blocks are rejected before
+execution. A valid but out-of-bounds Text/List index exits 1 with `R010`. A
+branch that is not taken evaluates neither its body nor a later `else if`
+condition. The native checkpoint does not yet lower general Kofun programs and
+therefore is not a registered semantic backend. As more backends become
+executable, each must satisfy the differential contract for every construct it
+accepts. No backend may silently reinterpret a construct with different
+semantics.

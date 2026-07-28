@@ -288,10 +288,10 @@
     {
       "id": "compiler-seed",
       "public_wording": "Kofun-written compiler seed",
-      "public_status": "implemented: nested-block and looping Int/Bool/Text Core",
+      "public_status": "implemented: nested-block and looping Int/Bool/Text/List[Text] Core",
       "state": "implemented",
       "area": "bootstrap",
-      "bounded_capability": "The Stage 1 seed is written in Kofun and kept beside a hand-audited C transliteration. Its line-oriented Core lowers checked Int arithmetic, six comparisons, Bool equality, Bool literals and bindings, unary `!`, short-circuiting `&&`/`||`, Text literals/concatenation/equality through a conditionally emitted allocation-list runtime, nested `if`/`else if`/`else` blocks whose bindings leave scope at their `}`, and `while`/`for NAME in A .. B` loops that nest with those blocks, evaluate each range end once, and scope the bound name to the loop body; `print` accepts Int or Text and the Core still has no assignment or non-main function declaration.",
+      "bounded_capability": "The Stage 1 seed is written in Kofun and kept beside a hand-audited C transliteration. Its line-oriented Core lowers checked Int arithmetic, six comparisons, Bool equality, Bool literals and bindings, unary `!`, short-circuiting `&&`/`||`, Text literals/concatenation/equality, `chars(Text) -> List[Text]`, `len(List[Text])`, and byte-oriented Text/List indexing through conditionally emitted allocation-list runtimes, nested `if`/`else if`/`else` blocks whose bindings leave scope at their `}`, and `while`/`for NAME in A .. B` loops that nest with those blocks, evaluate each range end once, and scope the bound name to the loop body; `print` accepts Int or Text and the Core still has no assignment, general builtin calls, or non-main function declaration.",
       "targets": [
         "stage1"
       ],
@@ -300,15 +300,15 @@
         "bootstrap/stage1/README.md",
         "spec/semantics.md"
       ],
-      "compatibility": "The pre-existing arithmetic, Bool, nested-block and loop corpora remain byte-identical because the Text runtime is emitted only for Text programs. The seed pair changes together, its digest records the change, and every corpus differentials both compiler paths.",
+      "compatibility": "The pre-existing arithmetic, Bool, nested-block, loop, Text, and Text-equality-only corpora remain byte-identical because the new index and List runtimes are emitted only when used. The seed pair changes together, its digest records the change, and every corpus differentials both compiler paths.",
       "positive_gate": {
         "command": "sh bootstrap/stage1/check.sh",
-        "observation": "The Kofun seed and audited C transliteration emit byte-identical C for the arithmetic, Bool, nested-block, loop and Text corpora. The Text program compiles under the gate flags, executes escaped literals/concatenation/equality/printing, and retains no expression source; the older four C goldens remain byte-identical."
+        "observation": "The Kofun seed and audited C transliteration emit byte-identical C for the arithmetic, Bool, nested-block, loop, Text, and List[Text] corpora. The List program compiles under the gate flags and executes `chars`, `len`, Text/List indexing, and UTF-8 byte semantics; bounds traps exit 1 with exact R010 diagnostics, typed index boundaries are refused, and all older C goldens remain byte-identical."
       },
       "negative_boundary": {
         "kind": "rejection",
-        "evidence": "bootstrap/selfhost/driver/corpus_reject_else_without_if.kofun",
-        "observation": "An `else` with no `if` to attach to exits nonzero and writes no C; twenty-eight adjacent typed-boundary, block-boundary, loop-boundary and Text-boundary fixtures are checked by the same gate."
+        "evidence": "bootstrap/selfhost/driver/corpus_reject_index_int.kofun",
+        "observation": "Indexing an Int receiver exits nonzero and writes no C; thirty additional typed-boundary, block-boundary, loop-boundary, Text-boundary, and index-boundary fixtures are checked by the same gate."
       },
       "safety": {
         "classification": "none"
