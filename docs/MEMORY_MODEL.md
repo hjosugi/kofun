@@ -7,7 +7,9 @@ Kofun's memory model aims to satisfy all of the following at once.
 - ordinary application code can be written as if in a GC language
 - files, sockets, locks, transactions, and GPU buffers can be released
   deterministically
-- use-after-free, double free, and data races are prevented in safe code
+- use-after-free, double free, and data races are prevented in safe code —
+  data-race freedom only, never race-condition freedom; see
+  [§12](#12-concurrency-stance)
 - no lifetime parameters are written in everyday code
 - the compiler can detect unique values and reuse them in place
 - a no-GC profile can be reached for embedded, real-time, and
@@ -234,8 +236,9 @@ v1 rules:
 
 - a `read` / `edit` capture cannot go into an escaping closure
 - an escaping closure can only capture managed values or taken owned values
-- values passed to an async task satisfy a `Send`-equivalent auto trait
-- values shared between threads satisfy a `Share` equivalent
+- no `Send`- or `Share`-equivalent auto trait is planned; a task captures under
+  the ordinary exclusivity rule instead, for the reasons in
+  [§12](#12-concurrency-stance)
 
 ## 8. GC design
 
@@ -331,7 +334,144 @@ Principles:
 `trusted` is the candidate keyword name; the final decision will be made by
 RFC.
 
-## 12. Historical Stage 0 and current boundary
+## 12. Concurrency stance
+
+Recorded from the survey in
+[#555](https://github.com/hjosugi/kofun/issues/555). None of this is
+implemented. It is written down here because a concurrency design decided later
+and separately would be one the ownership rules in this document cannot check,
+and because §1 promises a safety property that needs a precise name.
+
+### Data-race freedom is not race-condition freedom
+
+What §1 promises is **data-race freedom**: in safe code, two tasks never touch
+the same storage at the same time with at least one of them writing. That is
+the property the exclusivity rule can decide, and it is the only one promised.
+
+What is **not** promised is **race-condition freedom**. A program whose result
+depends on which of two correctly synchronised tasks runs first is still
+wrong, and nothing in this model rejects it. Deadlock, livelock, lost updates
+spread across two separately atomic steps, and check-then-act mistakes all stay
+possible. Swift's actors are the standard illustration of the gap: they are
+reentrant, so state can change across any `await` — data races prevented,
+higher-level races not.
+
+Read every safety statement in this document against that split.
+
+### Scoped parallelism, and possibly only this
+
+The first and perhaps only construct is a scoped block whose tasks join before
+it exits:
+
+```kofun
+fn total(read data: List[Int]) -> Int {
+    par |s| {
+        let a = s.spawn(|| sum(data[0 .. mid]))
+        let b = s.spawn(|| sum(data[mid .. end]))
+        a.join() + b.join()
+    }
+}
+```
+
+The rule is one sentence: **inside a `par` block, sibling tasks are treated as
+simultaneously live and §3's exclusivity rule applies unchanged.**
+
+- any number of tasks may hold `read x`;
+- at most one may hold `edit x`, and no `read x` at the same time;
+- `take x` into a task removes it from the parent.
+
+That needs no new type-system machinery. Second-class references supply what
+Rust needs lifetimes for: a reference that cannot be returned or stored cannot
+outlive its frame, so a task that cannot escape its block cannot outlive its
+referent. Rust states the same guarantee as
+`fn scope<'env, F, T>(f: F) -> T where F: for<'scope> FnOnce(&'scope Scope<'scope, 'env>) -> T`,
+and `std::thread::scope` took until Rust 1.63 to stabilise.
+
+The one real addition this needs is **disjointness for slices and fields**, so
+that `edit v[0 .. k]` and `edit v[k ..]` are provably non-overlapping. That is
+what makes divide-and-conquer expressible, and it is the hard part.
+
+### No `Send`/`Sync`-equivalent trait
+
+§7 previously listed a `Send`-equivalent auto trait for async captures and a
+`Share` equivalent for cross-thread sharing. Neither is planned.
+
+Every exception to Rust's `Send`/`Sync` auto-derivation is a form of hidden
+sharing: raw pointers, `UnsafeCell` and therefore `Cell`/`RefCell`, and `Rc`'s
+unsynchronised refcount. With no raw pointers in safe code, no interior
+mutability, and no non-atomic refcounted pointer, the derivation has no
+exceptions and the trait carries no information.
+
+If a shared-mutable cell is ever added, mark *that type* isolation-local rather
+than adding the trait — default-safe with an opt-out, rather than Rust's
+default-derive with an opt-out. Swift's `@unchecked Sendable` is the warning
+here: an escape hatch that needs no `unsafe` keyword becomes the migration
+strategy. Any escape hatch added must be loud.
+
+`take` also already is what Swift spent SE-0414 and SE-0430 approximating. A
+moved value is disconnected by construction, so the expensive part of Swift 6's
+concurrency model arrives free from ownership.
+
+### Long-lived state, if it is ever needed
+
+If state must outlive a scope, prefer Verona's behaviour-oriented concurrency
+over actors: a `cown` wraps isolated state, and a behaviour names the cowns it
+needs so the runtime acquires them atomically. That gives data-race freedom,
+deadlock freedom (cowns are totally ordered, so circular wait cannot form), and
+multi-resource atomicity — the two-account transfer that is awkward in every
+actor system. For values crossing that boundary, Pony's three-way answer
+applies: unique-and-moved (`take`), deeply immutable, or opaque identity.
+Nothing else crosses, and `read`/`edit` stay inside one domain.
+
+### Not to be built
+
+- **Go-style channels.** [Tu et al., ASPLOS '19](https://songlh.github.io/paper/go-study.pdf)
+  studied 171 concurrency bugs in Docker, Kubernetes, etcd, CockroachDB, gRPC
+  and BoltDB: an almost exact 85/86 blocking/non-blocking split, **58% of the
+  blocking bugs caused by message passing** rather than shared memory, and Go's
+  deadlock detector catching 2 of 21 reproduced blocking bugs. Their conclusion
+  is that message passing is as easy to get wrong as shared memory. (Figures via
+  a secondary summary; check the PDF before quoting them publicly.)
+- **Session types.** No production deployment found, and the Go analysers
+  expect all goroutines to be spawned before any communication occurs, which
+  excludes ordinary server code. The cheap idea worth taking is typestate on a
+  single linear channel endpoint, not multiparty protocol verification.
+- **Erlang-style supervision.** It needs per-process GC, hot code loading, and a
+  managed runtime. HiPE, Erlang's native compiler, was removed in OTP 24 —
+  direct evidence that BEAM's properties and AOT compilation are in tension.
+  Isolation is obtainable from ownership; hot code loading is not.
+
+### Where this stance hurts, stated plainly
+
+Unstructured concurrency becomes hard or impossible. A long-lived actor, a
+channel outliving its frame, a detached task — each needs a value to escape
+upward, which second-class references forbid. Hylo, the closest existing
+design, reached the same point and accepted it, "de facto discarding all forms
+of communication except at spawn and join events"; its concurrency remains
+unimplemented.
+
+The stronger warning is Mojo, which used `borrowed`/`inout`/`owned` — nearly
+these conventions — and has since added `Origin`, `MutOrigin`, `ImmutOrigin`
+and a lifetime checker. The pressure that produced them was not concurrency but
+ordinary library code: indexing that returns a reference into a container,
+iterators, slices. This project will meet the same pressure whatever it decides
+about concurrency, and the mechanism to study is Hylo's `subscript`, which
+yields rather than returns.
+
+**No language combines second-class references with a shipping concurrency
+model.** Pony has capabilities but first-class references; Hylo has
+second-class references and no implemented concurrency; Scala's capture
+checking is experimental; Verona is research. There is no template to follow,
+which is both the opportunity and the risk.
+
+### Still open
+
+Whether unstructured concurrency is answered by behaviour-oriented concurrency
+or by Hylo's spawn/join-only position is not decided. Defaults must be decided
+and written down before any strict mode ships — Swift's annotations were
+largely right and its defaults were not, and correcting them cost credibility.
+
+## 13. Historical Stage 0 and current boundary
 
 The removed Stage 0 reference prototype described a tracing-GC runtime and
 experimental `let own`, `take`, use-after-take `E330`, and automatic-disposal
