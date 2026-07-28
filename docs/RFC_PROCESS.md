@@ -168,6 +168,42 @@ remains the readable narrative of the decisions and carries amendment markers.
 Neither duplicates the other: if the ledger restated semantics, there would be
 two editable sources and one of them would go stale.
 
+### What a document's `Status:` line means
+
+A normative document opens with a `Status:` line, and the wording decides
+whether the ledger should carry a row for it:
+
+| Status wording | Meaning | Ledger |
+|---|---|---|
+| `accepted …` | The decision is made. | Indexed: `accepted`, or `implemented` once the capability manifest evidences the claims. |
+| `normative design target …` | Where the design is going. It does not say the decision was taken. | Not indexed. |
+| `normative for …`, `normative contract …` | A contract over behaviour that already exists or is already gated, rather than one decision. | Indexed only if it also records a decision. |
+| generated snapshot | Not a decision at all. | Never. |
+
+A document whose status says `accepted` and which the ledger does not name is
+a gap to close, not a decision to take again.
+
+`spec/modules/package-roots.md` (#284), `spec/modules/visibility.md` (#285),
+and `spec/syntax/FOUNDATIONS_AND_CONTROL.md` (#35–#47) currently read
+`normative design target`, and later documents build on them as though they
+were settled. Each is resolved the same way: the shepherd either moves the
+status to `accepted` and indexes it, or states in the document what is still
+open.
+
+### Indexing a decision written in `spec/`
+
+Most decisions predate this process and were written straight into a
+specification. Such a decision joins the ledger without being re-taken:
+
+1. Add a `DD-nnn` section to `docs/DESIGN_DECISIONS.md` summarising it, and
+   name the specification that states the semantics.
+2. Add the row with `provenance: migrated`, `source: docs/DESIGN_DECISIONS.md`,
+   `normative_spec` pointing at that specification, and `recorded_on` set to
+   the day the decision's text entered the repository — not the day it was
+   indexed, and never an invented review window.
+3. Record `implemented` only under §6. A gate alone is not enough: the state
+   needs a capability claim that `release/claims.json` already evidences.
+
 ## Expedited path
 
 A security or correctness emergency may be decided immediately, without the
