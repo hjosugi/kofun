@@ -78,6 +78,56 @@ The remaining native backend work includes:
 
 Unsupported cases must be explicit skips, never implicit passes.
 
+## What a target supplies
+
+A target declares only the facts its ABI decides. Everything derivable from
+those facts is written once, in target-independent code, and every target runs
+that one copy.
+
+A target supplies:
+
+- **its register file** — a `TargetRegisterFile` naming the caller-saved
+  scratch class, the call-safe class, and the value that means "no register";
+- **its calling convention** — the argument, return, and reserved registers,
+  and the frame discipline its ABI requires;
+- **its emitter** — instruction encoding, the prologue and epilogue byte
+  sequences, and the target's ELF machine identity.
+
+A target supplies nothing else. In particular it does **not** bring its own
+register allocator: `target_take_scratch_register`,
+`target_take_call_safe_register`, `target_take_eval_register` and
+`target_take_value_register` in `bootstrap/native/core_compiler.c` read the
+declared register file and are the only implementation of the allocation
+policy. `x86_64` and `AArch64` each carried a private copy of those four
+functions until #770; the copies were identical once the `X64_`/`A64_` prefixes
+were normalised away, so the pair could not disagree and proved nothing. A new
+target that re-adds a copy is a defect, not a port.
+
+`function_register_allocation.kofun` is the fixture that keeps the shared path
+honest. The gate pins the leaf prologue for **both** targets — 18 bytes for
+x86-64 and 20 for AArch64 — so a perturbation of the shared allocator changes
+emitted bytes on both and fails the gate twice, rather than leaving one target
+silently unexercised.
+
+### What is deliberately still duplicated
+
+The lowering pairs are not shared, and #770 did not share them. `x64_*` and
+`a64_*` still carry independent implementations of `function_expression`,
+`function_divide`, `function_compare`, `function_call`, `function_layout`,
+`function_epilogue`, `function_guard_inverse`, `function_tail_call`,
+`function_program`, `function_declaration`, `function_print_runtime`,
+`function_print_text_runtime`, `function_trap_runtime`, `function_trap_stub`,
+`function_epilogue_block`, `call_safe_registers`, `scratch_registers`,
+`register_operand`, `slot_operand`, `expression`, `runtime`, `move`,
+`value_operand`, `eval_operand` and `text`.
+
+That is DD-022 applied, not an oversight: those two lowerings are genuinely
+different code that the native gate requires to agree on observable behaviour
+and on `R010` diagnostic bytes, so the agreement *is* the evidence. Sharing
+them would delete it — one shared lowering that is wrong on both targets would
+keep every gate green. Whether to share them anyway, and what would replace the
+lost differential, is a separate decision that #770 explicitly did not make.
+
 ## Aggregate layout
 
 The `Text` and `List` byte layouts this backend ships are target-specific

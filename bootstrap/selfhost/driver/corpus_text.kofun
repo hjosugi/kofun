@@ -1,0 +1,14 @@
+fn main() {
+    let greeting: Text = "kofun"
+    let joined = greeting + " " + "compiler"
+    let punctuation = "(+ || ==)"
+    let equal: Bool = joined == "kofun compiler"
+    let different = punctuation != "(bad)"
+    print(joined)
+    print("line\nquote:\" slash:\\")
+    print(punctuation)
+    if equal && different {
+        print("equal")
+    }
+    print(42)
+}

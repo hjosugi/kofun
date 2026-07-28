@@ -125,6 +125,18 @@ differential_corpus corpus_branch nested-block
 # unentered — both hold `1 // 0`.
 differential_corpus corpus_loop loop
 
+# Text literals, concatenation, equality and printing pass through both
+# independently-derived compilers. The literal containing `(+ || ==)` pins that
+# operator and parenthesis bytes inside quotes are never parsed as syntax.
+differential_corpus corpus_text Text
+! grep -F 'greeting + " " + "compiler"' \
+    "$temporary/corpus_text-left/output.c" >/dev/null ||
+    fail "Text emission retained the user's expression source"
+differential_corpus corpus_text_equality_only Text-equality-only
+grep -F 'static bool kofun_rt_text_equal' \
+    "$temporary/corpus_text_equality_only-left/output.c" >/dev/null ||
+    fail "literal-only Text equality omitted its conditional runtime"
+
 # Path remapping: compiling the same relative input from two different
 # directories produces byte-identical C — no absolute-path leakage.
 mkdir -p "$temporary/remap-a/nested" "$temporary/remap-b"
@@ -172,7 +184,7 @@ test ! -s "$temporary/reject.stderr" ||
 # both gates must run the same refusals, and a hand-written list in each is how
 # they silently stop doing so. REJECT_FIXTURE_COUNT is asserted in both, so the
 # two lists cannot drift apart without a reviewable edit to the same number.
-REJECT_FIXTURE_COUNT=23
+REJECT_FIXTURE_COUNT=29
 reject_checked=0
 for fixture in bootstrap/selfhost/driver/corpus_reject_*.kofun
 do
@@ -244,4 +256,5 @@ printf '%s\n' \
     "PASS: Int/Bool typing, comparisons, and short-circuiting agree across both seeds" \
     "PASS: nested blocks, else-if chains, and block scoping agree across both seeds" \
     "PASS: while and for-range loops, their bound scope and range evaluation agree across both seeds" \
+    "PASS: Text parsing, typing, runtime emission and typed refusals agree across both seeds" \
     "PASS: emission is deterministic, path-independent, and failure-preserving"

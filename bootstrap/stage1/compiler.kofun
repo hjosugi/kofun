@@ -1,11 +1,12 @@
 # Kofun Stage 1 compiler seed.
 #
-# The compiler accepts a deliberately small Int/Bool Core: `let` bindings,
-# Int-only `print(EXPR)` statements, and nested `if`/`else if`/`else` blocks
-# inside `fn main()`. Every expression is tokenized, parsed, resolved and typed
-# here, then lowered to a C11 statement sequence. The emitted program carries no
-# parser, no symbol table and no fragment of the user's source: names are
-# resolved to typed C locals at compile time and literals are range-checked at
+# The compiler accepts a deliberately small Int/Bool/Text Core: `let` bindings,
+# Int- or Text-valued `print(EXPR)` statements, and nested
+# `if`/`else if`/`else` blocks inside `fn main()`. Every expression is tokenized,
+# parsed, resolved and typed here, then lowered to a C11 statement sequence. The
+# emitted program carries no parser or symbol table and retains no expression
+# source beyond the Text literals it executes: names are resolved to typed C
+# locals, integer literals are range-checked, and Text escapes are validated at
 # compile time. This source is canonical; compiler.c is the audited bootstrap
 # artifact generated from it.
 
@@ -75,7 +76,7 @@ fn preceded_by_operand(expression: Text, index: Int) -> Bool {
     while cursor >= 0 {
         let symbol = symbols[cursor]
         if !is_space(symbol) {
-            return symbol == ")" || identifier_char(symbol)
+            return symbol == ")" || symbol == "\"" || identifier_char(symbol)
         }
         cursor = cursor - 1
     }
@@ -89,9 +90,21 @@ fn split_binary(expression: Text, operators: Text) -> Int {
     let symbols = chars(expression)
     let mut depth = 0
     let mut found = -1
+    let mut quoted = false
+    let mut escaped = false
     for index in 0 .. len(symbols) {
         let symbol = symbols[index]
-        if symbol == "(" {
+        if quoted {
+            if escaped {
+                escaped = false
+            } else if symbol == "\\" {
+                escaped = true
+            } else if symbol == "\"" {
+                quoted = false
+            }
+        } else if symbol == "\"" {
+            quoted = true
+        } else if symbol == "(" {
             depth = depth + 1
         } else if symbol == ")" {
             depth = depth - 1
@@ -111,9 +124,21 @@ fn split_operators(expression: Text, operators: Text) -> Int {
     let symbols = chars(expression)
     let mut depth = 0
     let mut found = -1
+    let mut quoted = false
+    let mut escaped = false
     for index in 0 .. len(symbols) {
         let symbol = symbols[index]
-        if symbol == "(" {
+        if quoted {
+            if escaped {
+                escaped = false
+            } else if symbol == "\\" {
+                escaped = true
+            } else if symbol == "\"" {
+                quoted = false
+            }
+        } else if symbol == "\"" {
+            quoted = true
+        } else if symbol == "(" {
             depth = depth + 1
         } else if symbol == ")" {
             depth = depth - 1
@@ -139,9 +164,21 @@ fn wraps_whole(expression: Text) -> Bool {
         return false
     }
     let mut depth = 0
+    let mut quoted = false
+    let mut escaped = false
     for index in 0 .. len(symbols) {
         let symbol = symbols[index]
-        if symbol == "(" {
+        if quoted {
+            if escaped {
+                escaped = false
+            } else if symbol == "\\" {
+                escaped = true
+            } else if symbol == "\"" {
+                quoted = false
+            }
+        } else if symbol == "\"" {
+            quoted = true
+        } else if symbol == "(" {
             depth = depth + 1
         } else if symbol == ")" {
             depth = depth - 1
@@ -180,6 +217,9 @@ fn lowered_type(lowered: Text) -> Text {
     }
     if starts_with(lowered, "Bool|") {
         return "Bool"
+    }
+    if starts_with(lowered, "Text|") {
+        return "Text"
     }
     return ""
 }
@@ -234,6 +274,18 @@ fn lower_comparison(path: Text, indent: Text, operator: Text, left: Text,
         return ""
     }
     let temporary = "kt_" + path
+    if left_type == "Text" {
+        let mut negated = ""
+        if operator == "!=" {
+            negated = "!"
+        }
+        return "Bool|" +
+        lowered_statements(left) + lowered_statements(right) +
+        indent + "bool " + temporary + " = " + negated +
+        "kofun_rt_text_equal(" + lowered_operand(left) + ", " +
+        lowered_operand(right) + ");\n" +
+        temporary
+    }
     return "Bool|" +
     lowered_statements(left) + lowered_statements(right) +
     indent + "bool " + temporary + " = " + lowered_operand(left) + " " +
@@ -269,10 +321,36 @@ fn bound_type(bound: Text, name: Text) -> Text {
     if find(bound, "|" + name + ":Bool|") >= 0 {
         return "Bool"
     }
+    if find(bound, "|" + name + ":Text|") >= 0 {
+        return "Text"
+    }
     return ""
 }
 
 fn lower_atom(atom: Text, bound: Text) -> Text {
+    let symbols = chars(atom)
+    if len(symbols) >= 2 && symbols[0] == "\"" &&
+       symbols[len(symbols) - 1] == "\"" {
+        let mut escaped = false
+        for index in 1 .. len(symbols) - 1 {
+            let symbol = symbols[index]
+            if escaped {
+                if !(symbol == "n") && !(symbol == "\"") &&
+                   !(symbol == "\\") {
+                    return ""
+                }
+                escaped = false
+            } else if symbol == "\\" {
+                escaped = true
+            } else if symbol == "\"" {
+                return ""
+            }
+        }
+        if escaped {
+            return ""
+        }
+        return "Text|" + atom
+    }
     if all_digits(atom) {
         if !within_bound(atom, "9223372036854775807") {
             return ""
@@ -385,6 +463,16 @@ fn lower_expression(expression: Text, bound: Text, path: Text,
             return ""
         }
         if text_slice(trimmed, additive, additive + 1) == "+" {
+            if lowered_type(left) == "Text" &&
+               lowered_type(right) == "Text" {
+                let temporary = "kt_" + path
+                return "Text|" +
+                lowered_statements(left) + lowered_statements(right) +
+                indent + "const char * " + temporary +
+                " = kofun_rt_text_concat(" + lowered_operand(left) + ", " +
+                lowered_operand(right) + ");\n" +
+                temporary
+            }
             return lower_step(path, indent, "checked_add(", left, right)
         }
         return lower_step(path, indent, "checked_sub(", left, right)
@@ -461,9 +549,21 @@ fn print_expression(line: Text) -> Text {
     let symbols = chars(line)
     let mut depth = 1
     let mut index = expression_start
+    let mut quoted = false
+    let mut escaped = false
     while index < len(symbols) {
         let symbol = symbols[index]
-        if symbol == "(" {
+        if quoted {
+            if escaped {
+                escaped = false
+            } else if symbol == "\\" {
+                escaped = true
+            } else if symbol == "\"" {
+                quoted = false
+            }
+        } else if symbol == "\"" {
+            quoted = true
+        } else if symbol == "(" {
             depth = depth + 1
         } else if symbol == ")" {
             depth = depth - 1
@@ -772,9 +872,9 @@ fn valid_source(source: Text) -> Bool {
                     return false
                 }
                 let expression = print_expression(line)
-                if !(lowered_type(lower_expression(
-                        expression, bound, "x",
-                        nested_indent(len(blocks)))) == "Int") {
+                let kind = lowered_type(lower_expression(
+                    expression, bound, "x", nested_indent(len(blocks))))
+                if !(kind == "Int") && !(kind == "Text") {
                     return false
                 }
                 prints = prints + 1
@@ -934,6 +1034,8 @@ fn emit_statements(source: Text) -> Text {
                 let mut c_type = "int64_t"
                 if kind == "Bool" {
                     c_type = "bool"
+                } else if kind == "Text" {
+                    c_type = "const char *"
                 }
                 emitted = emitted +
                 statement_indent(depth) + c_type + " kf_" + name + ";\n" +
@@ -949,15 +1051,26 @@ fn emit_statements(source: Text) -> Text {
                 let depth = len(blocks)
                 let value = lower_expression(print_expression(line), bound, "x",
                                              nested_indent(depth))
+                let kind = lowered_type(value)
                 emitted = emitted +
                 statement_indent(depth) + "{\n" +
-                lowered_statements(value) +
-                nested_indent(depth) + "int64_t value = " +
-                lowered_operand(value) + ";\n" +
-                nested_indent(depth) + "if (failed) return 1;\n" +
-                nested_indent(depth) +
-                "printf(\"%\" PRId64 \"\\n\", value);\n" +
-                statement_indent(depth) + "}\n"
+                lowered_statements(value)
+                if kind == "Text" {
+                    emitted = emitted +
+                    nested_indent(depth) + "const char * value = " +
+                    lowered_operand(value) + ";\n" +
+                    nested_indent(depth) + "if (failed) return 1;\n" +
+                    nested_indent(depth) + "fputs(value, stdout);\n" +
+                    nested_indent(depth) + "fputc('\\n', stdout);\n"
+                } else {
+                    emitted = emitted +
+                    nested_indent(depth) + "int64_t value = " +
+                    lowered_operand(value) + ";\n" +
+                    nested_indent(depth) + "if (failed) return 1;\n" +
+                    nested_indent(depth) +
+                    "printf(\"%\" PRId64 \"\\n\", value);\n"
+                }
+                emitted = emitted + statement_indent(depth) + "}\n"
             }
             line_start = index + 1
         }
@@ -966,11 +1079,71 @@ fn emit_statements(source: Text) -> Text {
 }
 
 fn emit_c(source: Text) -> Text {
+    let statements = emit_statements(source)
+    let mut text_headers = ""
+    let mut text_runtime = ""
+    let mut text_main = ""
+    if find(statements, "const char *") >= 0 ||
+       find(statements, "kofun_rt_text_") >= 0 {
+        text_headers =
+        "#include <stdlib.h>\n" +
+        "#include <string.h>\n"
+        text_runtime =
+        "typedef struct KofunTextAllocation {\n" +
+        "    struct KofunTextAllocation *next;\n" +
+        "    char bytes[];\n" +
+        "} KofunTextAllocation;\n\n" +
+        "static KofunTextAllocation *kofun_rt_text_allocations;\n\n" +
+        "static void kofun_rt_text_cleanup(void) {\n" +
+        "    while (kofun_rt_text_allocations != NULL) {\n" +
+        "        KofunTextAllocation *allocation = kofun_rt_text_allocations;\n" +
+        "        kofun_rt_text_allocations = allocation->next;\n" +
+        "        free(allocation);\n" +
+        "    }\n" +
+        "}\n\n" +
+        "static const char *kofun_rt_text_concat(const char *left, const char *right) {\n" +
+        "    size_t left_size = strlen(left);\n" +
+        "    size_t right_size = strlen(right);\n" +
+        "    if (right_size == SIZE_MAX || left_size > SIZE_MAX - right_size - 1) {\n" +
+        "        runtime_error(\"error[R010]: Text concatenation is too large\");\n" +
+        "        return \"\";\n" +
+        "    }\n" +
+        "    size_t payload_size = left_size + right_size + 1;\n" +
+        "    if (payload_size > SIZE_MAX - sizeof(KofunTextAllocation)) {\n" +
+        "        runtime_error(\"error[R010]: Text concatenation is too large\");\n" +
+        "        return \"\";\n" +
+        "    }\n" +
+        "    KofunTextAllocation *allocation =\n" +
+        "        malloc(sizeof(KofunTextAllocation) + payload_size);\n" +
+        "    if (allocation == NULL) {\n" +
+        "        runtime_error(\"error[R010]: Text allocation failed\");\n" +
+        "        return \"\";\n" +
+        "    }\n" +
+        "    memcpy(allocation->bytes, left, left_size);\n" +
+        "    memcpy(allocation->bytes + left_size, right, right_size);\n" +
+        "    allocation->bytes[left_size + right_size] = '\\0';\n" +
+        "    allocation->next = kofun_rt_text_allocations;\n" +
+        "    kofun_rt_text_allocations = allocation;\n" +
+        "    return allocation->bytes;\n" +
+        "}\n\n" +
+        "static bool kofun_rt_text_equal(const char *left, const char *right) {\n" +
+        "    return strcmp(left, right) == 0;\n" +
+        "}\n\n"
+        text_main =
+        "    if (atexit(kofun_rt_text_cleanup) != 0) {\n" +
+        "        runtime_error(\"error[R010]: Text cleanup registration failed\");\n" +
+        "        return 1;\n" +
+        "    }\n" +
+        "    (void)kofun_rt_text_concat;\n" +
+        "    (void)kofun_rt_text_equal;\n"
+    }
     return "/* Generated by the Kofun-written Stage 1 seed compiler. */\n" +
     "#include <inttypes.h>\n" +
     "#include <stdbool.h>\n" +
     "#include <stdint.h>\n" +
-    "#include <stdio.h>\n\n" +
+    "#include <stdio.h>\n" +
+    text_headers +
+    "\n" +
     "static bool failed;\n\n" +
     "static void runtime_error(const char *message) {\n" +
     "    if (!failed) {\n" +
@@ -1034,6 +1207,7 @@ fn emit_c(source: Text) -> Text {
     "    if (remainder != 0 && ((remainder < 0) != (right < 0))) remainder += right;\n" +
     "    return remainder;\n" +
     "}\n\n" +
+    text_runtime +
     "int main(void) {\n" +
     "    (void)checked_add;\n" +
     "    (void)checked_sub;\n" +
@@ -1041,7 +1215,8 @@ fn emit_c(source: Text) -> Text {
     "    (void)checked_neg;\n" +
     "    (void)floor_div;\n" +
     "    (void)floor_mod;\n" +
-    emit_statements(source) +
+    text_main +
+    statements +
     "    return 0;\n" +
     "}\n"
 }

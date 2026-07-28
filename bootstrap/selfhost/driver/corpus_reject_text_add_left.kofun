@@ -1,0 +1,4 @@
+fn main() {
+    let bad = "one" + 2
+    print(0)
+}

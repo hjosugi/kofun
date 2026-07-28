@@ -288,10 +288,10 @@
     {
       "id": "compiler-seed",
       "public_wording": "Kofun-written compiler seed",
-      "public_status": "implemented: nested-block and looping Int/Bool Core",
+      "public_status": "implemented: nested-block and looping Int/Bool/Text Core",
       "state": "implemented",
       "area": "bootstrap",
-      "bounded_capability": "The Stage 1 seed is written in Kofun and kept beside a hand-audited C transliteration. Its line-oriented Core lowers checked Int arithmetic, six comparisons, Bool equality, Bool literals and bindings, unary `!`, short-circuiting `&&`/`||`, nested `if`/`else if`/`else` blocks whose bindings leave scope at their `}`, and `while`/`for NAME in A .. B` loops that nest with those blocks, evaluate each range end once, and scope the bound name to the loop body; `print` remains Int-only and the Core still has no assignment statement.",
+      "bounded_capability": "The Stage 1 seed is written in Kofun and kept beside a hand-audited C transliteration. Its line-oriented Core lowers checked Int arithmetic, six comparisons, Bool equality, Bool literals and bindings, unary `!`, short-circuiting `&&`/`||`, Text literals/concatenation/equality through a conditionally emitted allocation-list runtime, nested `if`/`else if`/`else` blocks whose bindings leave scope at their `}`, and `while`/`for NAME in A .. B` loops that nest with those blocks, evaluate each range end once, and scope the bound name to the loop body; `print` accepts Int or Text and the Core still has no assignment or non-main function declaration.",
       "targets": [
         "stage1"
       ],
@@ -300,15 +300,15 @@
         "bootstrap/stage1/README.md",
         "spec/semantics.md"
       ],
-      "compatibility": "The pre-existing arithmetic, Bool and nested-block corpora remain byte-identical. The seed pair changes together, its digest records the change, and every corpus differentials both compiler paths.",
+      "compatibility": "The pre-existing arithmetic, Bool, nested-block and loop corpora remain byte-identical because the Text runtime is emitted only for Text programs. The seed pair changes together, its digest records the change, and every corpus differentials both compiler paths.",
       "positive_gate": {
         "command": "sh bootstrap/stage1/check.sh",
-        "observation": "The Kofun seed and audited C transliteration emit byte-identical C for the arithmetic, Bool, nested-block and loop corpora; the Bool, nested-block and loop programs execute with every zero-dividing skipped operand, condition and unentered loop body unevaluated."
+        "observation": "The Kofun seed and audited C transliteration emit byte-identical C for the arithmetic, Bool, nested-block, loop and Text corpora. The Text program compiles under the gate flags, executes escaped literals/concatenation/equality/printing, and retains no expression source; the older four C goldens remain byte-identical."
       },
       "negative_boundary": {
         "kind": "rejection",
         "evidence": "bootstrap/selfhost/driver/corpus_reject_else_without_if.kofun",
-        "observation": "An `else` with no `if` to attach to exits nonzero and writes no C; twenty-two adjacent typed-boundary, block-boundary and loop-boundary fixtures are checked by the same gate."
+        "observation": "An `else` with no `if` to attach to exits nonzero and writes no C; twenty-eight adjacent typed-boundary, block-boundary, loop-boundary and Text-boundary fixtures are checked by the same gate."
       },
       "safety": {
         "classification": "none"
