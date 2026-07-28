@@ -1,0 +1,12 @@
+fn main() {
+    let value = 1
+    print(value)
+    let other = 2
+    print(other)
+    if true {
+        let inner = 3
+        print(inner)
+    }
+    let value = 4
+    print(value)
+}

@@ -93,6 +93,7 @@ expect_failure() {
 
 expect_failure duplicate_parameter
 expect_failure duplicate_let
+expect_failure duplicate_after_statements
 expect_failure duplicate_nested
 expect_failure duplicate_match_arm
 expect_failure immutable_inner

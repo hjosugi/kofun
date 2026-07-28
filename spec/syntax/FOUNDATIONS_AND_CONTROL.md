@@ -471,6 +471,11 @@ declare the same name twice. Binding immutability prohibits rebinding; the
 operations permitted on the value are determined independently by its type
 and ownership mode.
 
+Shadowing needs no keyword and produces no compiler warning. A formatter or a
+linter may hold an opinion about it, and that opinion is non-semantic: it
+never changes which binding a use resolves to, never becomes a compiler
+diagnostic, and never rejects a program the compiler accepts.
+
 ```kofun
 # valid
 let width: Int = 6
@@ -484,9 +489,18 @@ answer = 42
 ```
 
 **Implementation status:** integer immutable declarations execute in Stage 1
-and Stage 2 Core. The Core lowerers do not yet diagnose later assignment
-through a complete semantic checker, and shadowing/type behavior outside the
-integer subset remains open.
+and Stage 2 Core. Stage 2 diagnoses assignment to an immutable binding with a
+span-carrying `E2S22` resolved to the nearest `BindingId`, so an immutable
+child shadow rejects assignment even when its mutable ancestor shares the
+spelling. The same-scope duplicate rule is enforced as `E2S47` at the second
+declaration, carrying the first declaration's byte position, and it compares
+the whole resolved scope rather than the preceding declaration. Ancestor
+shadowing crosses concrete types in the executable subset — a `Signal` enum
+binding shadowed by an `Int` leaves the ancestor's type intact — but `Bool`
+and `Text` are not yet nameable in a `let` annotation, so a shadow into those
+types cannot be written. Duplicate detection over general pattern bindings
+remains open because the canonical frontend has no general pattern bindings
+yet. `sh tests/conformance/modules/shadowing/run.sh` is the gate.
 
 ## #42 — Owned bindings
 
