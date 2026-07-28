@@ -1,7 +1,7 @@
 # Kofun Stage 1 compiler seed.
 #
-# The compiler accepts a deliberately small Int/Bool/Text Core: `let` bindings,
-# Int- or Text-valued `print(EXPR)` statements, and nested
+# The compiler accepts a deliberately small Int/Bool/Text/List[Text] Core:
+# `let` bindings, Int- or Text-valued `print(EXPR)` statements, and nested
 # `if`/`else if`/`else` blocks inside `fn main()`. Every expression is tokenized,
 # parsed, resolved and typed here, then lowered to a C11 statement sequence. The
 # emitted program carries no parser or symbol table and retains no expression
@@ -76,7 +76,8 @@ fn preceded_by_operand(expression: Text, index: Int) -> Bool {
     while cursor >= 0 {
         let symbol = symbols[cursor]
         if !is_space(symbol) {
-            return symbol == ")" || symbol == "\"" || identifier_char(symbol)
+            return symbol == ")" || symbol == "]" || symbol == "\"" ||
+            identifier_char(symbol)
         }
         cursor = cursor - 1
     }
@@ -104,9 +105,9 @@ fn split_binary(expression: Text, operators: Text) -> Int {
             }
         } else if symbol == "\"" {
             quoted = true
-        } else if symbol == "(" {
+        } else if symbol == "(" || symbol == "[" {
             depth = depth + 1
-        } else if symbol == ")" {
+        } else if symbol == ")" || symbol == "]" {
             depth = depth - 1
         } else if depth == 0 && contains(operators, symbol) {
             if preceded_by_operand(expression, index) {
@@ -138,9 +139,9 @@ fn split_operators(expression: Text, operators: Text) -> Int {
             }
         } else if symbol == "\"" {
             quoted = true
-        } else if symbol == "(" {
+        } else if symbol == "(" || symbol == "[" {
             depth = depth + 1
-        } else if symbol == ")" {
+        } else if symbol == ")" || symbol == "]" {
             depth = depth - 1
         } else if depth == 0 && preceded_by_operand(expression, index) {
             let mut candidate = symbol
@@ -190,6 +191,61 @@ fn wraps_whole(expression: Text) -> Bool {
     return false
 }
 
+fn postfix_index(expression: Text) -> Int {
+    let symbols = chars(expression)
+    if len(symbols) < 3 || !(symbols[len(symbols) - 1] == "]") {
+        return -1
+    }
+    let mut parens = 0
+    let mut brackets = 0
+    let mut found = -1
+    let mut quoted = false
+    let mut escaped = false
+    for index in 0 .. len(symbols) {
+        let symbol = symbols[index]
+        if quoted {
+            if escaped {
+                escaped = false
+            } else if symbol == "\\" {
+                escaped = true
+            } else if symbol == "\"" {
+                quoted = false
+            }
+        } else if symbol == "\"" {
+            quoted = true
+        } else if symbol == "(" {
+            parens = parens + 1
+        } else if symbol == ")" {
+            parens = parens - 1
+        } else if symbol == "[" {
+            if parens == 0 && brackets == 0 {
+                found = index
+            }
+            brackets = brackets + 1
+        } else if symbol == "]" {
+            brackets = brackets - 1
+            if brackets < 0 {
+                return -1
+            }
+        }
+    }
+    if parens != 0 || brackets != 0 {
+        return -1
+    }
+    return found
+}
+
+fn call_argument(expression: Text, callee: Text) -> Text {
+    if !starts_with(expression, callee + "(") {
+        return ""
+    }
+    let parenthesized = text_slice(expression, len(callee), len(expression))
+    if !wraps_whole(parenthesized) {
+        return ""
+    }
+    return trim(text_slice(parenthesized, 1, len(parenthesized) - 1))
+}
+
 # A lowered expression is `TYPE|STATEMENTS + OPERAND`: its static type, zero or
 # more complete C statements ending in newlines, then a newline-free operand.
 # The type prefix is compiler-only and is removed before C emission. Emitting
@@ -220,6 +276,9 @@ fn lowered_type(lowered: Text) -> Text {
     }
     if starts_with(lowered, "Text|") {
         return "Text"
+    }
+    if starts_with(lowered, "List[Text]|") {
+        return "List[Text]"
     }
     return ""
 }
@@ -268,6 +327,9 @@ fn lower_comparison(path: Text, indent: Text, operator: Text, left: Text,
     let right_type = lowered_type(right)
     if operator == "==" || operator == "!=" {
         if len(left_type) == 0 || !(left_type == right_type) {
+            return ""
+        }
+        if left_type == "List[Text]" {
             return ""
         }
     } else if !(left_type == "Int") || !(right_type == "Int") {
@@ -323,6 +385,9 @@ fn bound_type(bound: Text, name: Text) -> Text {
     }
     if find(bound, "|" + name + ":Text|") >= 0 {
         return "Text"
+    }
+    if find(bound, "|" + name + ":List[Text]|") >= 0 {
+        return "List[Text]"
     }
     return ""
 }
@@ -506,6 +571,56 @@ fn lower_expression(expression: Text, bound: Text, path: Text,
             return ""
         }
         return lower_step(path, indent, callee, left, right)
+    }
+
+    let index_open = postfix_index(trimmed)
+    if index_open >= 0 {
+        let base = lower_expression(
+            text_slice(trimmed, 0, index_open), bound, path + "b", indent)
+        let index = lower_expression(
+            text_slice(trimmed, index_open + 1, len(trimmed) - 1), bound,
+            path + "i", indent)
+        let base_type = lowered_type(base)
+        if !(lowered_type(index) == "Int") ||
+           (!(base_type == "Text") && !(base_type == "List[Text]")) {
+            return ""
+        }
+        let mut callee = "kofun_rt_text_index("
+        if base_type == "List[Text]" {
+            callee = "kofun_rt_text_list_get("
+        }
+        let temporary = "kt_" + path
+        return "Text|" +
+        lowered_statements(base) + lowered_statements(index) +
+        indent + "const char * " + temporary + " = " + callee +
+        lowered_operand(base) + ", " + lowered_operand(index) + ");\n" +
+        temporary
+    }
+
+    if starts_with(trimmed, "chars(") {
+        let value = lower_expression(
+            call_argument(trimmed, "chars"), bound, path + "c", indent)
+        if !(lowered_type(value) == "Text") {
+            return ""
+        }
+        let temporary = "kt_" + path
+        return "List[Text]|" + lowered_statements(value) +
+        indent + "KofunTextList " + temporary + " = kofun_rt_chars(" +
+        lowered_operand(value) + ");\n" +
+        temporary
+    }
+
+    if starts_with(trimmed, "len(") {
+        let value = lower_expression(
+            call_argument(trimmed, "len"), bound, path + "n", indent)
+        if !(lowered_type(value) == "List[Text]") {
+            return ""
+        }
+        let temporary = "kt_" + path
+        return "Int|" + lowered_statements(value) +
+        indent + "int64_t " + temporary + " = kofun_rt_text_list_len(" +
+        lowered_operand(value) + ");\n" +
+        temporary
     }
 
     if starts_with(trimmed, "+") {
@@ -1036,6 +1151,8 @@ fn emit_statements(source: Text) -> Text {
                     c_type = "bool"
                 } else if kind == "Text" {
                     c_type = "const char *"
+                } else if kind == "List[Text]" {
+                    c_type = "KofunTextList"
                 }
                 emitted = emitted +
                 statement_indent(depth) + c_type + " kf_" + name + ";\n" +
@@ -1083,8 +1200,13 @@ fn emit_c(source: Text) -> Text {
     let mut text_headers = ""
     let mut text_runtime = ""
     let mut text_main = ""
+    let mut text_index_runtime = ""
+    let mut text_index_main = ""
+    let mut list_runtime = ""
+    let mut list_main = ""
     if find(statements, "const char *") >= 0 ||
-       find(statements, "kofun_rt_text_") >= 0 {
+       find(statements, "kofun_rt_text_") >= 0 ||
+       find(statements, "KofunTextList") >= 0 {
         text_headers =
         "#include <stdlib.h>\n" +
         "#include <string.h>\n"
@@ -1136,6 +1258,93 @@ fn emit_c(source: Text) -> Text {
         "    }\n" +
         "    (void)kofun_rt_text_concat;\n" +
         "    (void)kofun_rt_text_equal;\n"
+    }
+    if find(statements, "kofun_rt_text_index") >= 0 {
+        text_index_runtime =
+        "static const char *kofun_rt_text_index(const char *value, int64_t index) {\n" +
+        "    size_t length = strlen(value);\n" +
+        "    if (index < 0 || (uint64_t)index >= (uint64_t)length) {\n" +
+        "        runtime_error(\"error[R010]: Text index out of bounds\");\n" +
+        "        return \"\";\n" +
+        "    }\n" +
+        "    char character[2] = { value[index], '\\0' };\n" +
+        "    return kofun_rt_text_concat(\"\", character);\n" +
+        "}\n\n"
+        text_index_main =
+        "    (void)kofun_rt_text_index;\n"
+    }
+    if find(statements, "KofunTextList") >= 0 {
+        list_runtime =
+        "typedef struct {\n" +
+        "    int64_t len;\n" +
+        "    const char **items;\n" +
+        "} KofunTextList;\n\n" +
+        "typedef struct KofunTextListAllocation {\n" +
+        "    struct KofunTextListAllocation *next;\n" +
+        "    const char *items[];\n" +
+        "} KofunTextListAllocation;\n\n" +
+        "static KofunTextListAllocation *kofun_rt_text_list_allocations;\n\n" +
+        "static void kofun_rt_text_list_cleanup(void) {\n" +
+        "    while (kofun_rt_text_list_allocations != NULL) {\n" +
+        "        KofunTextListAllocation *allocation =\n" +
+        "            kofun_rt_text_list_allocations;\n" +
+        "        kofun_rt_text_list_allocations = allocation->next;\n" +
+        "        free(allocation);\n" +
+        "    }\n" +
+        "}\n\n" +
+        "static KofunTextList kofun_rt_empty_text_list(void) {\n" +
+        "    KofunTextList result = { 0, NULL };\n" +
+        "    return result;\n" +
+        "}\n\n" +
+        "static KofunTextList kofun_rt_chars(const char *value) {\n" +
+        "    size_t length = strlen(value);\n" +
+        "    if ((uint64_t)length > (uint64_t)INT64_MAX ||\n" +
+        "        length > (SIZE_MAX - sizeof(KofunTextListAllocation)) /\n" +
+        "            sizeof(const char *)) {\n" +
+        "        runtime_error(\"error[R010]: List[Text] allocation is too large\");\n" +
+        "        return kofun_rt_empty_text_list();\n" +
+        "    }\n" +
+        "    KofunTextListAllocation *allocation = malloc(\n" +
+        "        sizeof(KofunTextListAllocation) + length * sizeof(const char *));\n" +
+        "    if (allocation == NULL) {\n" +
+        "        runtime_error(\"error[R010]: List[Text] allocation failed\");\n" +
+        "        return kofun_rt_empty_text_list();\n" +
+        "    }\n" +
+        "    allocation->next = kofun_rt_text_list_allocations;\n" +
+        "    kofun_rt_text_list_allocations = allocation;\n" +
+        "    for (size_t index = 0; index < length; ++index) {\n" +
+        "        char character[2] = { value[index], '\\0' };\n" +
+        "        allocation->items[index] =\n" +
+        "            kofun_rt_text_concat(\"\", character);\n" +
+        "        if (failed) return kofun_rt_empty_text_list();\n" +
+        "    }\n" +
+        "    KofunTextList result = {\n" +
+        "        (int64_t)length,\n" +
+        "        allocation->items,\n" +
+        "    };\n" +
+        "    return result;\n" +
+        "}\n\n" +
+        "static int64_t kofun_rt_text_list_len(KofunTextList values) {\n" +
+        "    return values.len;\n" +
+        "}\n\n" +
+        "static const char *kofun_rt_text_list_get(\n" +
+        "    KofunTextList values,\n" +
+        "    int64_t index\n" +
+        ") {\n" +
+        "    if (index < 0 || index >= values.len) {\n" +
+        "        runtime_error(\"error[R010]: List[Text] index out of bounds\");\n" +
+        "        return \"\";\n" +
+        "    }\n" +
+        "    return values.items[index];\n" +
+        "}\n\n"
+        list_main =
+        "    if (atexit(kofun_rt_text_list_cleanup) != 0) {\n" +
+        "        runtime_error(\"error[R010]: List[Text] cleanup registration failed\");\n" +
+        "        return 1;\n" +
+        "    }\n" +
+        "    (void)kofun_rt_chars;\n" +
+        "    (void)kofun_rt_text_list_len;\n" +
+        "    (void)kofun_rt_text_list_get;\n"
     }
     return "/* Generated by the Kofun-written Stage 1 seed compiler. */\n" +
     "#include <inttypes.h>\n" +
@@ -1208,6 +1417,8 @@ fn emit_c(source: Text) -> Text {
     "    return remainder;\n" +
     "}\n\n" +
     text_runtime +
+    text_index_runtime +
+    list_runtime +
     "int main(void) {\n" +
     "    (void)checked_add;\n" +
     "    (void)checked_sub;\n" +
@@ -1216,6 +1427,8 @@ fn emit_c(source: Text) -> Text {
     "    (void)floor_div;\n" +
     "    (void)floor_mod;\n" +
     text_main +
+    text_index_main +
+    list_main +
     statements +
     "    return 0;\n" +
     "}\n"

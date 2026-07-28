@@ -1,0 +1,4 @@
+fn main() {
+    let symbols = chars("a")
+    print(symbols[1])
+}

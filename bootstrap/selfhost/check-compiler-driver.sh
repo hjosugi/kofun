@@ -102,6 +102,43 @@ differential_corpus() {
         fail "$label corpus program output differs from the pinned golden"
 }
 
+differential_trap_corpus() {
+    stem=$1
+    label=$2
+    source=bootstrap/selfhost/driver/$stem.kofun
+    left=$temporary/$stem-left
+    right=$temporary/$stem-right
+
+    mkdir -p "$left" "$right"
+    cp "$source" "$left/input.kofun"
+    cp "$source" "$right/input.kofun"
+    (cd "$left" &&
+        "$temporary/kofun-a1" input.kofun output.c >stdout.txt 2>stderr.txt)
+    (cd "$right" &&
+        "$temporary/kofun-stage1" input.kofun output.c >stdout.txt 2>stderr.txt)
+
+    cmp "$left/output.c" "$right/output.c" ||
+        fail "compiler-from-S and the audited seed emit different $label C"
+    cmp "$left/stdout.txt" "$right/stdout.txt" ||
+        fail "compiler-from-S and the audited seed differ on $label compile stdout"
+    cmp "$left/stderr.txt" "$right/stderr.txt" ||
+        fail "compiler-from-S and the audited seed differ on $label compile stderr"
+
+    "$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
+        "$left/output.c" -o "$temporary/$stem-program"
+    set +e
+    "$temporary/$stem-program" \
+        >"$temporary/$stem.stdout" 2>"$temporary/$stem.stderr"
+    status=$?
+    set -e
+    test "$status" -eq 1 ||
+        fail "$label program must exit 1"
+    test ! -s "$temporary/$stem.stdout" ||
+        fail "$label program wrote unexpected stdout"
+    cmp "bootstrap/selfhost/driver/$stem.stderr" "$temporary/$stem.stderr" ||
+        fail "$label runtime diagnostic differs from the pinned golden"
+}
+
 # The arithmetic corpus is the baseline: same emitted C, stdout, stderr and exit
 # status, and the emitted program reproduces the pinned output.
 differential_corpus corpus_answer arithmetic
@@ -136,6 +173,22 @@ differential_corpus corpus_text_equality_only Text-equality-only
 grep -F 'static bool kofun_rt_text_equal' \
     "$temporary/corpus_text_equality_only-left/output.c" >/dev/null ||
     fail "literal-only Text equality omitted its conditional runtime"
+
+# List[Text] construction, length and indexing must agree between the
+# independently-derived compilers. `k字n` pins the Stage 2 profile's
+# byte-oriented Text/list semantics.
+differential_corpus corpus_list_text List-Text
+grep -F 'static KofunTextList kofun_rt_chars' \
+    "$temporary/corpus_list_text-left/output.c" >/dev/null ||
+    fail "List[Text] emission omitted its conditional runtime"
+grep -F 'static const char *kofun_rt_text_index' \
+    "$temporary/corpus_list_text-left/output.c" >/dev/null ||
+    fail "Text indexing omitted its conditional runtime"
+
+# Bounds checks are runtime failures, not frontend refusals. Pin both receiver
+# kinds to exit 1 with one exact R010 diagnostic and no stdout.
+differential_trap_corpus corpus_trap_list_index List-Text-index-trap
+differential_trap_corpus corpus_trap_text_index Text-index-trap
 
 # Path remapping: compiling the same relative input from two different
 # directories produces byte-identical C — no absolute-path leakage.
@@ -184,7 +237,7 @@ test ! -s "$temporary/reject.stderr" ||
 # both gates must run the same refusals, and a hand-written list in each is how
 # they silently stop doing so. REJECT_FIXTURE_COUNT is asserted in both, so the
 # two lists cannot drift apart without a reviewable edit to the same number.
-REJECT_FIXTURE_COUNT=29
+REJECT_FIXTURE_COUNT=31
 reject_checked=0
 for fixture in bootstrap/selfhost/driver/corpus_reject_*.kofun
 do
@@ -257,4 +310,5 @@ printf '%s\n' \
     "PASS: nested blocks, else-if chains, and block scoping agree across both seeds" \
     "PASS: while and for-range loops, their bound scope and range evaluation agree across both seeds" \
     "PASS: Text parsing, typing, runtime emission and typed refusals agree across both seeds" \
+    "PASS: List[Text] construction, length, indexing and bounds traps agree across both seeds" \
     "PASS: emission is deterministic, path-independent, and failure-preserving"

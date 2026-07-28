@@ -19,11 +19,13 @@ Int- or Text-valued `print(EXPR)` statements, nested
 `if`/`else if`/`else` blocks, and `while`/half-open `for` ranges in `fn main()`.
 Expressions cover checked Int arithmetic, six Int comparisons, Bool equality,
 Bool literals and bindings, `!`, short-circuiting `&&`/`||`, and Text literals,
-concatenation, and equality. Text programs alone receive a checked allocation
-list plus `kofun_rt_text_concat`/`kofun_rt_text_equal`; non-Text C output stays
-byte-identical. A block scopes the bindings it introduces, and typed boundary
-crossings, non-`Bool` conditions and misplaced `else` lines are refused before
-deterministic standalone C11 is emitted.
+concatenation, equality, `chars(Text) -> List[Text]`, `len(List[Text])`, and
+byte-oriented Text/List indexing. Text/List programs alone receive checked
+conditional allocation lists plus the required Text/List helpers; older C
+output stays byte-identical. A block scopes the bindings it introduces, and
+typed boundary crossings, non-`Bool` conditions and misplaced `else` lines are
+refused before deterministic standalone C11 is emitted. General builtins and
+non-main declarations remain later compatibility slices.
 
 Three executable checkpoints extend this path without claiming full
 integration:

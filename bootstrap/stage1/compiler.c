@@ -253,6 +253,8 @@ static bool kofun_fn_preceded_by_operand(const char * expression, int64_t index)
 static int64_t kofun_fn_split_binary(const char * expression, const char * operators);
 static int64_t kofun_fn_split_operators(const char * expression, const char * operators);
 static bool kofun_fn_wraps_whole(const char * expression);
+static int64_t kofun_fn_postfix_index(const char * expression);
+static const char * kofun_fn_call_argument(const char * expression, const char * callee);
 static int64_t kofun_fn_last_newline(const char * value);
 static const char * kofun_fn_lowered_type(const char * lowered);
 static const char * kofun_fn_lowered_value(const char * lowered);
@@ -357,9 +359,10 @@ static bool kofun_fn_preceded_by_operand(const char * expression, int64_t index)
     while (((cursor) >= (INT64_C(0)))) {
         const char * symbol = kofun_rt_text_list_get(symbols, cursor);
         if ((!kofun_rt_is_space(symbol))) {
-            return (((kofun_rt_text_equal(symbol, ")")) ||
+            return ((((kofun_rt_text_equal(symbol, ")")) ||
+                     (kofun_rt_text_equal(symbol, "]"))) ||
                     (kofun_rt_text_equal(symbol, "\""))) ||
-                    (kofun_fn_identifier_char(symbol)));
+                   (kofun_fn_identifier_char(symbol)));
         }
         cursor = ((cursor) - (INT64_C(1)));
     }
@@ -384,9 +387,11 @@ static int64_t kofun_fn_split_binary(const char * expression, const char * opera
             }
         } else if (kofun_rt_text_equal(symbol, "\"")) {
             quoted = true;
-        } else if (kofun_rt_text_equal(symbol, "(")) {
+        } else if ((kofun_rt_text_equal(symbol, "(")) ||
+                   (kofun_rt_text_equal(symbol, "["))) {
             depth = ((depth) + (INT64_C(1)));
-        } else if (kofun_rt_text_equal(symbol, ")")) {
+        } else if ((kofun_rt_text_equal(symbol, ")")) ||
+                   (kofun_rt_text_equal(symbol, "]"))) {
             depth = ((depth) - (INT64_C(1)));
         } else if ((((depth) == (INT64_C(0)))) && (kofun_rt_text_contains(operators, symbol))) {
             if (kofun_fn_preceded_by_operand(expression, index)) {
@@ -415,9 +420,11 @@ static int64_t kofun_fn_split_operators(const char * expression, const char * op
             }
         } else if (kofun_rt_text_equal(symbol, "\"")) {
             quoted = true;
-        } else if (kofun_rt_text_equal(symbol, "(")) {
+        } else if ((kofun_rt_text_equal(symbol, "(")) ||
+                   (kofun_rt_text_equal(symbol, "["))) {
             depth = ((depth) + (INT64_C(1)));
-        } else if (kofun_rt_text_equal(symbol, ")")) {
+        } else if ((kofun_rt_text_equal(symbol, ")")) ||
+                   (kofun_rt_text_equal(symbol, "]"))) {
             depth = ((depth) - (INT64_C(1)));
         } else if ((((depth) == (INT64_C(0)))) &&
                    kofun_fn_preceded_by_operand(expression, index)) {
@@ -478,6 +485,76 @@ static bool kofun_fn_wraps_whole(const char * expression) {
     return false;
 }
 
+static int64_t kofun_fn_postfix_index(const char * expression) {
+    kofun_text_list symbols = kofun_rt_chars(expression);
+    if (((kofun_rt_text_list_len(symbols)) < (INT64_C(3))) ||
+        (!kofun_rt_text_equal(
+            kofun_rt_text_list_get(
+                symbols,
+                ((kofun_rt_text_list_len(symbols)) - (INT64_C(1)))),
+            "]"))) {
+        return INT64_C(-1);
+    }
+    int64_t parens = INT64_C(0);
+    int64_t brackets = INT64_C(0);
+    int64_t found = INT64_C(-1);
+    bool quoted = false;
+    bool escaped = false;
+    for (int64_t index = INT64_C(0);
+         index < kofun_rt_text_list_len(symbols);
+         ++index) {
+        const char * symbol = kofun_rt_text_list_get(symbols, index);
+        if (quoted) {
+            if (escaped) {
+                escaped = false;
+            } else if (kofun_rt_text_equal(symbol, "\\")) {
+                escaped = true;
+            } else if (kofun_rt_text_equal(symbol, "\"")) {
+                quoted = false;
+            }
+        } else if (kofun_rt_text_equal(symbol, "\"")) {
+            quoted = true;
+        } else if (kofun_rt_text_equal(symbol, "(")) {
+            parens = ((parens) + (INT64_C(1)));
+        } else if (kofun_rt_text_equal(symbol, ")")) {
+            parens = ((parens) - (INT64_C(1)));
+        } else if (kofun_rt_text_equal(symbol, "[")) {
+            if (((parens) == (INT64_C(0))) &&
+                ((brackets) == (INT64_C(0)))) {
+                found = index;
+            }
+            brackets = ((brackets) + (INT64_C(1)));
+        } else if (kofun_rt_text_equal(symbol, "]")) {
+            brackets = ((brackets) - (INT64_C(1)));
+            if (((brackets) < (INT64_C(0)))) {
+                return INT64_C(-1);
+            }
+        }
+    }
+    if (((parens) != (INT64_C(0))) ||
+        ((brackets) != (INT64_C(0)))) {
+        return INT64_C(-1);
+    }
+    return found;
+}
+
+static const char * kofun_fn_call_argument(
+        const char * expression,
+        const char * callee) {
+    if ((!kofun_rt_starts_with(
+            expression, kofun_rt_text_concat(callee, "(")))) {
+        return "";
+    }
+    const char * parenthesized = kofun_rt_text_slice(
+        expression, kofun_rt_text_len(callee), kofun_rt_text_len(expression));
+    if ((!kofun_fn_wraps_whole(parenthesized))) {
+        return "";
+    }
+    return kofun_rt_trim(kofun_rt_text_slice(
+        parenthesized, INT64_C(1),
+        ((kofun_rt_text_len(parenthesized)) - (INT64_C(1)))));
+}
+
 static int64_t kofun_fn_last_newline(const char * value) {
     kofun_text_list symbols = kofun_rt_chars(value);
     int64_t found = INT64_C(-1);
@@ -498,6 +575,9 @@ static const char * kofun_fn_lowered_type(const char * lowered) {
     }
     if (kofun_rt_starts_with(lowered, "Text|")) {
         return "Text";
+    }
+    if (kofun_rt_starts_with(lowered, "List[Text]|")) {
+        return "List[Text]";
     }
     return "";
 }
@@ -562,6 +642,9 @@ static const char * kofun_fn_lower_comparison(
         (kofun_rt_text_equal(operator_text, "!="))) {
         if ((((kofun_rt_text_len(left_type)) == (INT64_C(0)))) ||
             ((!kofun_rt_text_equal(left_type, right_type)))) {
+            return "";
+        }
+        if (kofun_rt_text_equal(left_type, "List[Text]")) {
             return "";
         }
     } else if (((!kofun_rt_text_equal(left_type, "Int"))) ||
@@ -666,6 +749,12 @@ static const char * kofun_fn_bound_type(const char * bound, const char * name) {
             kofun_rt_text_concat("|", name), ":Text"), "|");
     if (((kofun_rt_find(bound, text_key)) >= (INT64_C(0)))) {
         return "Text";
+    }
+    const char * list_key = kofun_rt_text_concat(
+        kofun_rt_text_concat(
+            kofun_rt_text_concat("|", name), ":List[Text]"), "|");
+    if (((kofun_rt_find(bound, list_key)) >= (INT64_C(0)))) {
+        return "List[Text]";
     }
     return "";
 }
@@ -891,6 +980,92 @@ static const char * kofun_fn_lower_expression(const char * expression, const cha
                                 kofun_rt_text_len(trimmed)), bound,
             kofun_rt_text_concat(path, "r"), indent);
         return kofun_fn_lower_step(path, indent, callee, left, right);
+    }
+
+    int64_t index_open = kofun_fn_postfix_index(trimmed);
+    if (((index_open) >= (INT64_C(0)))) {
+        const char * base = kofun_fn_lower_expression(
+            kofun_rt_text_slice(trimmed, INT64_C(0), index_open), bound,
+            kofun_rt_text_concat(path, "b"), indent);
+        const char * index = kofun_fn_lower_expression(
+            kofun_rt_text_slice(
+                trimmed, ((index_open) + (INT64_C(1))),
+                ((kofun_rt_text_len(trimmed)) - (INT64_C(1)))),
+            bound, kofun_rt_text_concat(path, "i"), indent);
+        const char * base_type = kofun_fn_lowered_type(base);
+        if ((!kofun_rt_text_equal(
+                kofun_fn_lowered_type(index), "Int")) ||
+            ((!kofun_rt_text_equal(base_type, "Text")) &&
+             (!kofun_rt_text_equal(base_type, "List[Text]")))) {
+            return "";
+        }
+        const char * callee = "kofun_rt_text_index(";
+        if (kofun_rt_text_equal(base_type, "List[Text]")) {
+            callee = "kofun_rt_text_list_get(";
+        }
+        const char * temporary = kofun_rt_text_concat("kt_", path);
+        const char * emitted = "Text|";
+        emitted = kofun_rt_text_concat(
+            emitted, kofun_fn_lowered_statements(base));
+        emitted = kofun_rt_text_concat(
+            emitted, kofun_fn_lowered_statements(index));
+        emitted = kofun_rt_text_concat(emitted, indent);
+        emitted = kofun_rt_text_concat(emitted, "const char * ");
+        emitted = kofun_rt_text_concat(emitted, temporary);
+        emitted = kofun_rt_text_concat(emitted, " = ");
+        emitted = kofun_rt_text_concat(emitted, callee);
+        emitted = kofun_rt_text_concat(
+            emitted, kofun_fn_lowered_operand(base));
+        emitted = kofun_rt_text_concat(emitted, ", ");
+        emitted = kofun_rt_text_concat(
+            emitted, kofun_fn_lowered_operand(index));
+        emitted = kofun_rt_text_concat(emitted, ");\n");
+        return kofun_rt_text_concat(emitted, temporary);
+    }
+
+    if (kofun_rt_starts_with(trimmed, "chars(")) {
+        const char * value = kofun_fn_lower_expression(
+            kofun_fn_call_argument(trimmed, "chars"), bound,
+            kofun_rt_text_concat(path, "c"), indent);
+        if ((!kofun_rt_text_equal(
+                kofun_fn_lowered_type(value), "Text"))) {
+            return "";
+        }
+        const char * temporary = kofun_rt_text_concat("kt_", path);
+        const char * emitted = "List[Text]|";
+        emitted = kofun_rt_text_concat(
+            emitted, kofun_fn_lowered_statements(value));
+        emitted = kofun_rt_text_concat(emitted, indent);
+        emitted = kofun_rt_text_concat(emitted, "KofunTextList ");
+        emitted = kofun_rt_text_concat(emitted, temporary);
+        emitted = kofun_rt_text_concat(emitted, " = kofun_rt_chars(");
+        emitted = kofun_rt_text_concat(
+            emitted, kofun_fn_lowered_operand(value));
+        emitted = kofun_rt_text_concat(emitted, ");\n");
+        return kofun_rt_text_concat(emitted, temporary);
+    }
+
+    if (kofun_rt_starts_with(trimmed, "len(")) {
+        const char * value = kofun_fn_lower_expression(
+            kofun_fn_call_argument(trimmed, "len"), bound,
+            kofun_rt_text_concat(path, "n"), indent);
+        if ((!kofun_rt_text_equal(
+                kofun_fn_lowered_type(value), "List[Text]"))) {
+            return "";
+        }
+        const char * temporary = kofun_rt_text_concat("kt_", path);
+        const char * emitted = "Int|";
+        emitted = kofun_rt_text_concat(
+            emitted, kofun_fn_lowered_statements(value));
+        emitted = kofun_rt_text_concat(emitted, indent);
+        emitted = kofun_rt_text_concat(emitted, "int64_t ");
+        emitted = kofun_rt_text_concat(emitted, temporary);
+        emitted = kofun_rt_text_concat(
+            emitted, " = kofun_rt_text_list_len(");
+        emitted = kofun_rt_text_concat(
+            emitted, kofun_fn_lowered_operand(value));
+        emitted = kofun_rt_text_concat(emitted, ");\n");
+        return kofun_rt_text_concat(emitted, temporary);
     }
 
     if (kofun_rt_starts_with(trimmed, "+")) {
@@ -1547,6 +1722,8 @@ static const char * kofun_fn_emit_statements(const char * source) {
                     c_type = "bool";
                 } else if (kofun_rt_text_equal(kind, "Text")) {
                     c_type = "const char *";
+                } else if (kofun_rt_text_equal(kind, "List[Text]")) {
+                    c_type = "KofunTextList";
                 }
                 emitted = kofun_rt_text_concat(
                     emitted, kofun_fn_statement_indent(depth));
@@ -1642,9 +1819,15 @@ static const char * kofun_fn_emit_statements(const char * source) {
 
 static const char * kofun_fn_emit_c(const char * source) {
     const char * statements = kofun_fn_emit_statements(source);
+    bool uses_text_index =
+        ((kofun_rt_find(statements, "kofun_rt_text_index")) >=
+         (INT64_C(0)));
+    bool uses_list =
+        ((kofun_rt_find(statements, "KofunTextList")) >= (INT64_C(0)));
     bool uses_text =
         (((kofun_rt_find(statements, "const char *")) >= (INT64_C(0))) ||
-         ((kofun_rt_find(statements, "kofun_rt_text_")) >= (INT64_C(0))));
+         ((kofun_rt_find(statements, "kofun_rt_text_")) >= (INT64_C(0))) ||
+         uses_list);
     static const char text_headers[] =
         "#include <stdlib.h>\n"
         "#include <string.h>\n";
@@ -1696,6 +1879,89 @@ static const char * kofun_fn_emit_c(const char * source) {
         "    }\n"
         "    (void)kofun_rt_text_concat;\n"
         "    (void)kofun_rt_text_equal;\n";
+    static const char text_index_runtime[] =
+        "static const char *kofun_rt_text_index(const char *value, int64_t index) {\n"
+        "    size_t length = strlen(value);\n"
+        "    if (index < 0 || (uint64_t)index >= (uint64_t)length) {\n"
+        "        runtime_error(\"error[R010]: Text index out of bounds\");\n"
+        "        return \"\";\n"
+        "    }\n"
+        "    char character[2] = { value[index], '\\0' };\n"
+        "    return kofun_rt_text_concat(\"\", character);\n"
+        "}\n\n";
+    static const char text_index_main[] =
+        "    (void)kofun_rt_text_index;\n";
+    static const char list_runtime[] =
+        "typedef struct {\n"
+        "    int64_t len;\n"
+        "    const char **items;\n"
+        "} KofunTextList;\n\n"
+        "typedef struct KofunTextListAllocation {\n"
+        "    struct KofunTextListAllocation *next;\n"
+        "    const char *items[];\n"
+        "} KofunTextListAllocation;\n\n"
+        "static KofunTextListAllocation *kofun_rt_text_list_allocations;\n\n"
+        "static void kofun_rt_text_list_cleanup(void) {\n"
+        "    while (kofun_rt_text_list_allocations != NULL) {\n"
+        "        KofunTextListAllocation *allocation =\n"
+        "            kofun_rt_text_list_allocations;\n"
+        "        kofun_rt_text_list_allocations = allocation->next;\n"
+        "        free(allocation);\n"
+        "    }\n"
+        "}\n\n"
+        "static KofunTextList kofun_rt_empty_text_list(void) {\n"
+        "    KofunTextList result = { 0, NULL };\n"
+        "    return result;\n"
+        "}\n\n"
+        "static KofunTextList kofun_rt_chars(const char *value) {\n"
+        "    size_t length = strlen(value);\n"
+        "    if ((uint64_t)length > (uint64_t)INT64_MAX ||\n"
+        "        length > (SIZE_MAX - sizeof(KofunTextListAllocation)) /\n"
+        "            sizeof(const char *)) {\n"
+        "        runtime_error(\"error[R010]: List[Text] allocation is too large\");\n"
+        "        return kofun_rt_empty_text_list();\n"
+        "    }\n"
+        "    KofunTextListAllocation *allocation = malloc(\n"
+        "        sizeof(KofunTextListAllocation) + length * sizeof(const char *));\n"
+        "    if (allocation == NULL) {\n"
+        "        runtime_error(\"error[R010]: List[Text] allocation failed\");\n"
+        "        return kofun_rt_empty_text_list();\n"
+        "    }\n"
+        "    allocation->next = kofun_rt_text_list_allocations;\n"
+        "    kofun_rt_text_list_allocations = allocation;\n"
+        "    for (size_t index = 0; index < length; ++index) {\n"
+        "        char character[2] = { value[index], '\\0' };\n"
+        "        allocation->items[index] =\n"
+        "            kofun_rt_text_concat(\"\", character);\n"
+        "        if (failed) return kofun_rt_empty_text_list();\n"
+        "    }\n"
+        "    KofunTextList result = {\n"
+        "        (int64_t)length,\n"
+        "        allocation->items,\n"
+        "    };\n"
+        "    return result;\n"
+        "}\n\n"
+        "static int64_t kofun_rt_text_list_len(KofunTextList values) {\n"
+        "    return values.len;\n"
+        "}\n\n"
+        "static const char *kofun_rt_text_list_get(\n"
+        "    KofunTextList values,\n"
+        "    int64_t index\n"
+        ") {\n"
+        "    if (index < 0 || index >= values.len) {\n"
+        "        runtime_error(\"error[R010]: List[Text] index out of bounds\");\n"
+        "        return \"\";\n"
+        "    }\n"
+        "    return values.items[index];\n"
+        "}\n\n";
+    static const char list_main[] =
+        "    if (atexit(kofun_rt_text_list_cleanup) != 0) {\n"
+        "        runtime_error(\"error[R010]: List[Text] cleanup registration failed\");\n"
+        "        return 1;\n"
+        "    }\n"
+        "    (void)kofun_rt_chars;\n"
+        "    (void)kofun_rt_text_list_len;\n"
+        "    (void)kofun_rt_text_list_get;\n";
     static const char *const preamble[] = {
         "/* Generated by the Kofun-written Stage 1 seed compiler. */\n",
         "#include <inttypes.h>\n",
@@ -1779,6 +2045,12 @@ static const char * kofun_fn_emit_c(const char * source) {
     if (uses_text) {
         emitted = kofun_rt_text_concat(emitted, text_runtime);
     }
+    if (uses_text_index) {
+        emitted = kofun_rt_text_concat(emitted, text_index_runtime);
+    }
+    if (uses_list) {
+        emitted = kofun_rt_text_concat(emitted, list_runtime);
+    }
     emitted = kofun_rt_text_concat(
         emitted,
         "int main(void) {\n"
@@ -1790,6 +2062,12 @@ static const char * kofun_fn_emit_c(const char * source) {
         "    (void)floor_mod;\n");
     if (uses_text) {
         emitted = kofun_rt_text_concat(emitted, text_main);
+    }
+    if (uses_text_index) {
+        emitted = kofun_rt_text_concat(emitted, text_index_main);
+    }
+    if (uses_list) {
+        emitted = kofun_rt_text_concat(emitted, list_main);
     }
     emitted = kofun_rt_text_concat(emitted, statements);
     return kofun_rt_text_concat(emitted, "    return 0;\n}\n");

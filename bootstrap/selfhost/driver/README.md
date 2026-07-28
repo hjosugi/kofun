@@ -44,6 +44,13 @@ filename or hash special case.
 - `corpus_text_equality_only.kofun` / `.c` / `.stdout` — compares two Text
   literals without creating a Text-typed local, pinning that the conditional
   runtime is selected from Text operations as well as Text storage.
+- `corpus_list_text.kofun` / `.c` / `.stdout` — constructs `List[Text]` with
+  `chars`, observes it with `len`, and indexes both List[Text] and Text through
+  both compilers. `k字n` pins the profile's byte-oriented result of `5`.
+- `corpus_trap_list_index.kofun` / `.stderr` and
+  `corpus_trap_text_index.kofun` / `.stderr` — well-typed out-of-bounds
+  programs compile identically, then exit 1 with the exact receiver-specific
+  `R010` diagnostic and no stdout.
 - `corpus_reject.kofun` / `.stdout` — the failure corpus: both
   compilers refuse an out-of-Core source with the same diagnostic bytes
   and write nothing.
@@ -73,6 +80,9 @@ filename or hash special case.
 - `corpus_reject_text_*.kofun` — the Text boundary: `Text + Int`,
   `Int + Text`, both operand orders of mixed equality, an unsupported escape,
   and ordered Text comparison all fail identically and write no C.
+- `corpus_reject_index_int.kofun` and
+  `corpus_reject_index_kind.kofun` — indexing rejects an `Int` receiver and a
+  non-`Int` index identically through both seeds and writes no C.
 
 The gate also checks path independence (the same relative input
 compiled from two different directories emits identical C), determinism

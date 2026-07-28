@@ -1,0 +1,13 @@
+fn main() {
+    let word = "k字n"
+    let symbols: List[Text] = chars(word)
+    let first = symbols[0]
+    let last = symbols[len(symbols) - 1]
+    print(first + last)
+    print(len(symbols))
+    print("abc"[1])
+    if len(chars("k字n")) == 5 {
+        print("utf8-bytes")
+    }
+    print(42)
+}
