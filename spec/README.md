@@ -43,13 +43,13 @@ executable bootstrap implementation.
 - `type-level-programming-v1.md` defines the Type-only, named, structurally
   terminating type-function profile, its fixed reduction/display budgets, and
   the requirement that type-level features ship with inspectable traces.
-- `effects/validation-accumulation.md` proposes the accumulating validation
+- `effects/validation-accumulation.md` defines the accumulating validation
   contract for issue #742: three result states, independent combination that
   collects every issue in deterministic source order, dependent sequencing
-  whose continuation never runs without an input value, pure v1 branches, and
-  an O(N) issue-accumulation bound. It is a proposed design awaiting the #742
-  decision; no library or compiler implements it, and its named gate does not
-  exist yet.
+  whose continuation never runs without an input value, pure v1 branches, an
+  opaque `Issues[E]`, and an O(N) issue-accumulation bound. The design is
+  accepted and its five open questions are decided; no library or compiler
+  implements it, and its named gate does not exist yet.
 - `type-reduction-trace/kofun.type-reduction-trace.v1.schema.json`, its
   alias, type-function, and failure vectors in `examples/`, and
   `type-reduction-trace/check.sh` define the executable
