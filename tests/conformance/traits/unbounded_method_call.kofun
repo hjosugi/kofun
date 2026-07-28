@@ -1,0 +1,7 @@
+trait Equal[T] {
+    fn equal(left: T, right: T) -> Bool
+}
+
+fn same(left: Int, right: Int) -> Bool {
+    return Equal.equal(left, right)
+}

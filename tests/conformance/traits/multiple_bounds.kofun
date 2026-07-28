@@ -1,0 +1,11 @@
+trait Equal[T] {
+    fn equal(left: T, right: T) -> Bool
+}
+
+trait Order[T] {
+    fn before(left: T, right: T) -> Bool
+}
+
+fn sorted[T: Equal[T], U: Order[U]](left: T, right: T) -> Bool {
+    return Equal.equal(left, right)
+}
