@@ -23,9 +23,10 @@ sh bootstrap/c_abi/check.sh
 ```
 
 Stage 1 builds the Kofun-written compiler seed, preserves the arithmetic
-fixture byte for byte, and verifies its bounded Int/Bool comparison,
-short-circuit, nested-block, and loop profile. Stage 2 validates a deterministic
-semantic-frontend boundary. Native builds and executes a static ELF64 fixture.
+fixture byte for byte, and verifies its bounded Int/Bool/Text comparison,
+short-circuit, nested-block, loop, and Text-runtime profile. Stage 2 validates a
+deterministic semantic-frontend boundary. Native builds and executes a static
+ELF64 fixture.
 The C ABI profile deliberately uses the host C compiler and dynamic linker; it
 is not part of the static direct-native path. Semantic self-recompilation, a
 Kofun-written C ABI compiler, and a general native compiler remain open.

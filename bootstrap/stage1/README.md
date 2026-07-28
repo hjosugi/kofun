@@ -14,7 +14,7 @@ its gate passing while proving nothing.
 sh bootstrap/stage1/check.sh
 ```
 
-Stage 1 accepts the documented Int/Bool Core:
+Stage 1 accepts the documented Int/Bool/Text Core:
 
 ```text
 kofun-stage1 INPUT.kofun OUTPUT.c
@@ -23,19 +23,20 @@ kofun-stage1 INPUT.kofun OUTPUT.c
 The compatibility parser requires one explicit line-oriented `fn main() {`
 body containing only `let` statements, Int-valued `print(...)` statements,
 `if`/`else if`/`else` blocks, and `while`/`for` loops, plus blank lines and
-comments. `let` may infer or explicitly name `Int` or `Bool`. Unknown structural
-lines are rejected; they are never ignored while extracting an otherwise valid
-`print`.
+comments. `let` may infer or explicitly name `Int`, `Bool`, or `Text`;
+`print(...)` accepts `Int` and `Text`. Unknown structural lines are rejected;
+they are never ignored while extracting an otherwise valid `print`.
 
 ## Expressions are compiled, not deferred
 
 Each expression is tokenized, parsed by precedence, name-resolved and
 range-checked *by this compiler*, then lowered to a C11 statement sequence over
-checked Int64 helpers. The emitted program contains no parser, no symbol table,
-and no fragment of the user's source text — the earlier seed passed each
-expression's source to an `evaluate()` interpreter that it emitted verbatim
-from string literals, which meant arithmetic, precedence, name lookup and
-overflow checking all happened at the emitted program's runtime.
+checked Int64 and Text helpers. The emitted program contains no parser or symbol
+table and no expression source beyond the Text literals the program executes —
+the earlier seed passed each expression's source to an `evaluate()` interpreter
+that it emitted verbatim from string literals, which meant arithmetic,
+precedence, name lookup and overflow checking all happened at the emitted
+program's runtime.
 
 One C statement is emitted per operator, into a temporary named after that
 operator's path from the root of the expression. That is what makes evaluation
@@ -49,13 +50,15 @@ runtime traps in the emitted program:
 - a reference to a name that is not bound, including one whose block has closed
 - a second `let` for a name already visible (the language rejects shadowing)
 - a binding named `true` or `false` (the Bool literals are reserved)
-- an explicit annotation other than the inferred `Int` or `Bool`
+- an explicit annotation other than the inferred `Int`, `Bool`, or `Text`
 - an integer literal outside the Int64 range
 - `/`, which is not defined on Int (#687); `//` is the integer quotient
-- arithmetic or ordered comparisons with a `Bool` operand
+- arithmetic or ordered comparisons with a `Bool` or `Text` operand
 - `&&`, `||`, or `!` with an `Int` operand
 - the non-Core single-character `|` or `&` operators
-- a `Bool` passed to the Int-only `print` boundary
+- a `Bool` passed to the `Int`/`Text` `print` boundary
+- a `Text`/`Int` `+`, `==`, or `!=` in either operand order
+- a Text escape other than `\n`, `\"`, or `\\`
 - a block condition that is not `Bool`
 - an `else` with no `if` to attach to, or a second `else` in one chain
 - a block left open at the end of the source, or a `}` that closes nothing
@@ -64,10 +67,32 @@ runtime traps in the emitted program:
   the spaced `..` separator
 
 The six Int comparisons produce `Bool`; `==` and `!=` additionally compare two
-Bool operands. `&&` and `||` short-circuit their right operands, and `!` has
-unary precedence. The compiler tracks each local as `Int` or `Bool` before
-emission, so the two types never become interchangeable merely because C can
-represent both as integers.
+Bool or two Text operands. `+` concatenates two Text operands and remains
+checked addition for two Int operands. `&&` and `||` short-circuit their right
+operands, and `!` has unary precedence. The compiler tracks each local as
+`Int`, `Bool`, or `Text` before emission, so no representation crossing is
+accepted merely because C could express it.
+
+## Text is a typed emitted-runtime value
+
+A Text literal retains only its C-compatible literal bytes after `\n`, `\"`,
+and `\\` have been validated. Operator, quote, and parenthesis scanners carry
+string/escape state, so bytes such as `(+ || ==)` inside a literal never become
+syntax.
+
+Only a program that uses Text receives `<stdlib.h>`, `<string.h>`,
+`kofun_rt_text_concat`, and `kofun_rt_text_equal`; the pre-existing arithmetic,
+Bool, branch, and loop C goldens therefore stay byte-identical. Concatenation
+allocates one flexible-array node per result, links it into a program-local
+allocation list, checks every size addition, and registers one cleanup with
+`atexit` before execution. Literal-only programs use the same runtime boundary
+without allocating.
+
+The line-oriented Core still declares only `fn main()`. `Text` is now a
+first-class binding/expression type and its C representation is fixed for the
+later parameter/result work; non-main declarations, including Text parameters
+and results, arrive with #751 rather than being accepted as an untyped special
+case here.
 
 `-9223372036854775808` still compiles: a negated decimal literal is folded at
 compile time, so the one magnitude with no positive counterpart keeps a C
