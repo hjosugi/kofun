@@ -72,8 +72,17 @@ start at [`bin/kofun`](../bin/kofun), find the public subcommand, and follow the
 | `docs/` | authored guides, designs, status, and browser-tour source | this guide | `make tour` for `docs/tour/`; `spec/*/check.sh` for the gated documents |
 | `benchmarks/` | reproducible benchmark programs, harnesses, and recorded results | `benchmarks/README.md` | subsystem benchmark script |
 | `artifacts/` | checked evidence summaries and cost/law artifacts | inspect producer named in the artifact | producer-specific gate |
-| `scripts/` | repository policy verification written in Kofun | script source | caller in repository gates |
+| `scripts/` | repository policy verification written in Kofun; **currently inert**, see below | script source | none — no Make target invokes it |
 | `.github/workflows/` | CI | workflow YAML | GitHub Actions |
+
+`scripts/verify_repository.kofun` deserves a warning rather than a row. It is
+written in Kofun against `read_text`, which the current Core does not implement
+(`error[E2S10]: unsupported Core builtin call 'read_text'`, reproducible with a
+one-line `main`). No Make target invokes it, so nothing reported the breakage,
+and some of its assertions had already gone stale against a README that no
+longer contains the strings they require. Treat it as an aspiration, not a
+gate, until the Core supports reading files — at which point it should be wired
+into `verify` so it cannot rot again.
 
 What is deliberately not here: the official site, its docs renderer, the browser
 playground, the delivery-planning snapshots, and the long-range issue catalogue
