@@ -149,6 +149,248 @@
           "nominal-records"
         ]
       }
+    },
+    {
+      "id": "DD-024",
+      "title": "Four semantic namespaces",
+      "provenance": "migrated",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/290",
+      "dates": {
+        "recorded_on": "2026-07-22"
+      },
+      "normative_spec": [
+        "spec/modules/namespaces.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "Assigning every declaration to one of four syntax-directed namespaces adds an identity domain rather than a restriction. Capitalization stays non-semantic, no source form that resolves today is refused by this decision, and the namespace tag becomes a new input to identity and serialization."
+      }
+    },
+    {
+      "id": "DD-025",
+      "title": "An explicit `module` header is the only module authority",
+      "provenance": "migrated",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/300",
+      "dates": {
+        "recorded_on": "2026-07-22"
+      },
+      "normative_spec": [
+        "spec/modules/source-file-mapping.md"
+      ],
+      "compatibility": {
+        "category": "conditional",
+        "statement": "Breaking for two shapes: a manifest source with no `module` header, and an anonymous single-file operand that carries one. Both are refused rather than given a fallback identity, because a fallback would make a file move a semantic rename.",
+        "corpus_query": "git grep -lE '^module ' -- '*.kofun' | wc -l; git ls-files '*.kofun' | wc -l",
+        "result": "96 of 677 tracked Kofun sources declare a header. All 96 sit under `tests/conformance/` module, ADT-exhaustiveness, and incremental fixtures; no tracked example, benchmark, stdlib, or bootstrap source carries one."
+      }
+    },
+    {
+      "id": "DD-026",
+      "title": "One digest never does two jobs",
+      "provenance": "migrated",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/303",
+      "dates": {
+        "recorded_on": "2026-07-22"
+      },
+      "normative_spec": [
+        "spec/modules/module-identity.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "KIF, the framed SHA-256 preimage, and the three separate semantic and ABI digests are a new compiler-authoritative interface format. No source program changes meaning, and no existing artifact is reinterpreted: a v1 identity exists only where the versioned envelope was written."
+      }
+    },
+    {
+      "id": "DD-027",
+      "title": "Re-exports are explicit and never widen",
+      "provenance": "migrated",
+      "state": "implemented",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/287",
+      "dates": {
+        "recorded_on": "2026-07-23"
+      },
+      "normative_spec": [
+        "spec/modules/re-exports.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "`pub` on an import is new surface. An ordinary `import` keeps its meaning as a private binding, and no declaration becomes publicly reachable without the modifier.",
+        "corpus_query": "git grep -lE '^pub (import|from) ' -- '*.kofun'",
+        "result": "8 tracked sources use the form: 5 re-export fixtures, 1 import-alias fixture, and 2 incremental fixtures. Every one of them was written for this decision's gates.",
+        "evidence": "tests/conformance/modules/re-exports/run.sh"
+      },
+      "implementation": {
+        "change": "https://github.com/hjosugi/kofun/issues/602",
+        "enablement": "Same-package `pub import` and `pub from` in the Stage 2 frontend, with non-widening `ExportBindingId` edges and the stated bounds: 64-edge chains, 1,024 bindings per module, 65,536 edges per package. There is no `internal` re-export form, and cross-package re-export is outside the checkpoint.",
+        "gate": "make re-exports",
+        "claims": [
+          "public-re-exports"
+        ]
+      }
+    },
+    {
+      "id": "DD-028",
+      "title": "The typed sidecar is never authoritative",
+      "provenance": "migrated",
+      "state": "implemented",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/601",
+      "dates": {
+        "recorded_on": "2026-07-23"
+      },
+      "normative_spec": [
+        "spec/tooling/typed-sidecar.md",
+        "spec/typed-sidecar/kofun.typed-sidecar.v1.schema.json"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "The sidecar is a new artifact that no compiler path reads. It is emitted on request, declares `\"authoritative\": false`, and cannot become an input, so no program or build changes meaning.",
+        "evidence": "tests/typed-sidecar/authority-boundary.sh"
+      },
+      "implementation": {
+        "change": "https://github.com/hjosugi/kofun/pull/714",
+        "enablement": "Stage 2 projects compiler-derived semantic events one-way into typed-sidecar v1 for an explicit single-file `kofun check`. The document is non-authoritative, and compiler, KIF, and cache consumers are refused by the authority-boundary gate.",
+        "gate": "make typed-sidecar-projector",
+        "claims": [
+          "stage2-typed-sidecar"
+        ]
+      }
+    },
+    {
+      "id": "DD-029",
+      "title": "Discovery is compiler-backed",
+      "provenance": "migrated",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/635",
+      "dates": {
+        "recorded_on": "2026-07-25"
+      },
+      "normative_spec": [
+        "docs/DEVELOPER_DISCOVERY.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "The `kofun.discovery.request/v1` and `kofun.discovery.result/v1` records are a new tooling surface. Results are non-authoritative and forbidden as compiler, KIF, build, or release input, so nothing that compiles today changes meaning."
+      }
+    },
+    {
+      "id": "DD-030",
+      "title": "Unsuffixed fractional literals are `Decimal`",
+      "provenance": "migrated",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/545",
+      "dates": {
+        "recorded_on": "2026-07-26"
+      },
+      "normative_spec": [
+        "docs/DECIMAL.md"
+      ],
+      "compatibility": {
+        "category": "conditional",
+        "statement": "Breaking for a program that relies on an unsuffixed fractional literal denoting `Float`: under this decision it denotes `Decimal`, and a binary64 value requires the explicit suffix. Mixed `Int`, `Decimal`, and `Float` arithmetic is refused rather than promoted.",
+        "corpus_query": "git grep -nE '(^|[^0-9A-Za-z_.\"])[0-9]+\\.[0-9]+([^0-9A-Za-z_.\"]|$)' -- '*.kofun' | grep -vE '^[^:]+:[0-9]+:\\s*#' | grep -vE '\"[^\"]*[0-9]+\\.[0-9]+[^\"]*\"'",
+        "result": "20 sites in 11 tracked sources. 8 are fixtures that exist to assert this rule -- `d001`, `e2s99`, `e2s100`, `e2s101`, `e2s103`, the two `reject_` numeric conformance fixtures, and the Stage 2 decimal token fixture. The other 12 sites, in `tests/kofun/scientific.kofun`, `examples/science.kofun` and `benchmarks/vector.kofun`, pass unsuffixed literals into Float-shaped scientific calls and need the suffix."
+      }
+    },
+    {
+      "id": "DD-031",
+      "title": "Type-level programming is named and terminating",
+      "provenance": "migrated",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/657",
+      "dates": {
+        "recorded_on": "2026-07-26"
+      },
+      "normative_spec": [
+        "spec/type-level-programming-v1.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "The `kofun.type-reduction/default-v1` profile adds a module-level declaration form. Anonymous type expressions and general recursive type programs are refused by the profile rather than removed from the language, because neither form exists today.",
+        "corpus_query": "git grep -nE '^type fn ' -- '*.kofun' | wc -l",
+        "result": "0 sites. No tracked Kofun source declares a type-level function."
+      }
+    },
+    {
+      "id": "DD-032",
+      "title": "`trait`, with a local-trait-or-local-outer-type orphan rule",
+      "provenance": "migrated",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/403",
+      "dates": {
+        "recorded_on": "2026-07-26"
+      },
+      "normative_spec": [
+        "spec/roadmap-31-34/generics-and-traits.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "The orphan rule and the dictionary-passing baseline constrain implementations written after them; the specification marks the lowering baseline as provisional until its experiment is recorded, and the coherence rule as accepted. The bounded frontend that enforces the rule is gated by `make traits`, and the state stays `accepted` because release/claims.json records no capability claim for it.",
+        "corpus_query": "git grep -lE '^(trait|impl) ' -- '*.kofun' | wc -l",
+        "result": "18 files, all under `tests/conformance/traits` and written for the bounded #332 frontend, which refuses a foreign trait implemented for a foreign type with `E2S131`. No other tracked source declares a trait or an implementation.",
+        "evidence": "tests/conformance/traits/orphan_both_foreign.stderr"
+      }
+    },
+    {
+      "id": "DD-033",
+      "title": "Layout is target-parameterized, not target-identical",
+      "provenance": "migrated",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/120",
+      "dates": {
+        "recorded_on": "2026-07-27"
+      },
+      "normative_spec": [
+        "spec/aggregate-layout-v1.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "The contract defines byte layout only and does not change code generation. A backend that does not claim AggregateLayout v1 is unaffected; one that does must agree with the golden vectors, and its own check asserts that a 32-bit and a 64-bit target do not produce identical descriptors.",
+        "evidence": "spec/aggregate-layout-v1/check.sh"
+      }
+    },
+    {
+      "id": "DD-034",
+      "title": "Validation accumulates in `Validated`, not `Result`",
+      "provenance": "migrated",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/742",
+      "dates": {
+        "recorded_on": "2026-07-28"
+      },
+      "normative_spec": [
+        "spec/effects/validation-accumulation.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "`Validated`, its combinators, and the opaque `Issues[E]` are new surface beside `Result`, which keeps its meaning. The five questions the design left open were decided as recommended; a later change to the states, operations, ordering, effect rule, ownership boundary, or complexity bound is an amendment to this decision.",
+        "corpus_query": "git grep -lE '\\bValidated\\b' -- '*.kofun' | wc -l",
+        "result": "0 files. No tracked Kofun source mentions `Validated`, and no library, compiler path, or backend implements the contract."
+      }
     }
   ]
 }

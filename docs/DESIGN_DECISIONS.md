@@ -10,6 +10,11 @@ and any amendment; `docs/RFC_PROCESS.md` describes how entries move between
 states. Decisions that predate the ledger are migrated into it as they become
 relevant, so absence from the ledger means "not yet indexed", not "not decided".
 
+A later entry may summarise a decision whose normative text was written
+elsewhere — in `spec/`, or in a dedicated document under `docs/` — and names
+it. The summary is the narrative, never a second contract: where the two
+differ, the named specification is the one that decides.
+
 Where a decision's semantics have changed, the original wording stays here and
 the amendment is announced beside it by its fully-qualified id, such as
 `DD-010/A01`. The ledger checker fails if a marker here has no amendment, or an
@@ -252,3 +257,182 @@ decision this one does not make.
 A new target that re-adds its own copy of the shared allocator is a defect. The
 `function_register_allocation` fixture pins the leaf prologue for both targets,
 so perturbing the shared path fails the native gate on each of them.
+
+## DD-024: Four semantic namespaces
+
+Every named declaration belongs to exactly one of four namespaces — value,
+type, module, meta — and lookup is syntax-directed. Capitalization never
+selects a namespace, and no implementation may add a local fifth tag: a new
+kind needs a new schema domain or a compatible schema extension. The tag order
+is canonical serialization order, not lookup precedence.
+
+Reason:
+
+- one unified namespace rejects the type/value name reuse that ordinary
+  programs want;
+- a namespace per declaration kind fragments lookup and tooling;
+- four domains give every symbol an identity while keeping use-site selection
+  teachable.
+
+[`spec/modules/namespaces.md`](../spec/modules/namespaces.md) is normative.
+
+## DD-025: An explicit `module` header is the only module authority
+
+A manifest source declares `module user.service` in its header. The manifest
+says which files belong to the package; the header says which module the file's
+declarations belong to. A directory, filename, source root, working directory,
+or discovery order never supplies a fallback name, and tooling may lint a path
+convention but a lint cannot change `ModuleId`. An anonymous single-file source
+carries no header and always belongs to one synthetic root module.
+
+Reason:
+
+- a file move stops being an API rename;
+- source spelling is host-independent, where path derivation leaks host case
+  and normalization rules;
+- generated and nonstandard layouts declare their intent instead of imitating
+  a directory tree.
+
+[`spec/modules/source-file-mapping.md`](../spec/modules/source-file-mapping.md)
+is normative.
+
+## DD-026: One digest never does two jobs
+
+Compiler-authoritative interfaces are a versioned length-prefixed binary
+(`KIF`); JSON is dump-only. Identities and digests are SHA-256 over a framed,
+domain-separated preimage, never over a bare concatenation. A target-neutral
+public semantic digest, a target-neutral package-internal semantic digest, and
+a target ABI digest are three distinct values with distinct domains and inputs.
+
+Nominal layout stays opaque unless an explicit representation or foreign-ABI
+contract exposes it. Compatible optional minor fields may be skipped; unknown
+required or major data requires a rebuild. A 16 MiB envelope and bounded
+counts and depth are validated before allocation.
+
+[`spec/modules/module-identity.md`](../spec/modules/module-identity.md) is
+normative.
+
+## DD-027: Re-exports are explicit and never widen
+
+A module forwards part of its public API with the existing contextual `pub`
+modifier on an import: `pub import collections`, `pub from collections import
+Map, Set`. An `export import` form, manifest export lists, and implicit
+re-export of ordinary imports are all rejected, so an ordinary `import` stays a
+private binding and an implementation dependency never becomes a compatibility
+commitment by accident. `pub` on a re-export requests public reachability for
+that edge; it is not a request to widen the target.
+
+[`spec/modules/re-exports.md`](../spec/modules/re-exports.md) is normative.
+
+## DD-028: The typed sidecar is never authoritative
+
+Editors and developer tools read a canonical UTF-8 JSON artifact — media type
+`application/vnd.kofun.typed-sidecar+json;version=1`, conventional suffix
+`.kofun-semantic.json` — and every document declares `"authoritative": false`.
+It is deliberately separate from the compiler-authoritative KIF interface: no
+compiler, KIF, or cache consumer may treat a sidecar as input, and a partial
+document says which facts it omits rather than presenting itself as complete.
+
+[`spec/tooling/typed-sidecar.md`](../spec/tooling/typed-sidecar.md) is
+normative.
+
+## DD-029: Discovery is compiler-backed
+
+What type does this expression have, what can be called at this position, and
+why is an expected operation unavailable — one semantic service answers all
+three over the `kofun.discovery.request/v1` and `kofun.discovery.result/v1`
+records. This keeps the useful part of an interactive `methods` listing without
+a universal `Object` hierarchy, runtime dispatch by string, or ambient
+reflection metadata. A runtime adapter stays optional and separately gated, and
+every result carries `"authoritative": false`.
+
+[`docs/DEVELOPER_DISCOVERY.md`](DEVELOPER_DISCOVERY.md) is normative.
+
+## DD-030: Unsuffixed fractional literals are `Decimal`
+
+`Decimal` is Kofun's exact base-10 value type, so `0.1 + 0.2 == 0.3` and
+`1.20 == 1.2` hold without passing through binary floating point. Decimal
+arithmetic never rounds implicitly; no operation implicitly promotes between
+`Int`, `Decimal`, and `Float`; every backend observes the same value, result,
+diagnostic, and explicitly requested rendering; and a resource limit may reject
+an operation but may not change its mathematical result. `Float` remains the
+opt-in binary64 type for numerical computing and native interoperation.
+
+[`docs/DECIMAL.md`](DECIMAL.md) is normative.
+
+## DD-031: Type-level programming is named and terminating
+
+Type-level logic is a module-level declaration with a stable identity —
+`type fn Flatten[T: Type] -> Type { ... }` — and never an anonymous type
+expression at a use site. The v1 profile `kofun.type-reduction/default-v1` is
+Type-only, named, and structurally terminating.
+
+Anonymous conditional, mapped, or inferred type expressions are rejected
+because diagnostics would depend on anonymous internals. General recursive and
+mutually recursive type programs are rejected because termination, cost, and
+error size are not statically bounded, and Turing-complete type programming is
+rejected as a goal. Higher-kinded and effectful type computation is deferred,
+not refused: it needs separate kind, capability, and evidence decisions.
+
+[`spec/type-level-programming-v1.md`](../spec/type-level-programming-v1.md) is
+normative.
+
+## DD-032: `trait`, with a local-trait-or-local-outer-type orphan rule
+
+Kofun keeps the `trait` keyword and permits a retroactive implementation only
+when the implementing package declares the trait, or declares the outer nominal
+type constructor of the self type. Importing, aliasing, or re-exporting an
+identity never changes its owner. At most one implementation applies to one
+fully resolved coherence key across the whole dependency graph, and overlap is
+rejected while declarations and validated interfaces are combined rather than
+deferred to execution.
+
+Dictionary passing is the semantic baseline for a trait-bounded call, and
+runtime instance search is forbidden. Monomorphization is an optional typed-IR
+optimization: a specialization must preserve the observable result of the
+dictionary form and must be removable without changing whether a program
+type-checks. That lowering baseline is provisional — it is the one part of the
+decision the specification marks as awaiting a recorded experiment.
+
+[`spec/roadmap-31-34/generics-and-traits.md`](../spec/roadmap-31-34/generics-and-traits.md)
+is normative.
+
+## DD-033: Layout is target-parameterized, not target-identical
+
+`Text`, `List`, flat records, and flat ADT variants get deterministic byte
+layouts computed from a declared `TargetDataLayout`. Layout identity is the v1
+schema plus the complete target parameters plus type identity, so one type on
+two targets is two descriptors and neither is privileged: a 32-bit target gets
+4-byte references and a 64-bit target 8-byte references without either one
+changing source semantics.
+
+One byte-identical layout on every target is rejected — it decides wasm32
+pointer width in advance and hides that decision inside a diff that looks like
+formatting. An opaque handle for every aggregate is rejected as the default
+representation, because it costs an allocation and a dereference per aggregate
+and forfeits the predictable native layout this contract exists to give.
+
+[`spec/aggregate-layout-v1.md`](../spec/aggregate-layout-v1.md) is normative.
+
+## DD-034: Validation accumulates in `Validated`, not `Result`
+
+`Validated[T, E]` is `Valid(T)`, `Disputed(T, Issues[E])`, or
+`Invalid(Issues[E])`: an ordinary eager value distinct from `Result`.
+Independent combination — `map2`, `map3`, `all` — collects every issue from
+every branch in deterministic left-to-right order. Dependent sequencing,
+`and_then`, never invokes its continuation when the input has no value, so a
+check that needs a parsed value cannot run against a value that was never
+produced. Converting to `Result` treats any issue as failure and carries all
+issues in order.
+
+V1 branches and continuations are pure, one rule rather than two; admitting an
+impure `and_then` marker is deferred, not rejected. There is no heterogeneous
+n-ary sugar, because it depends on tuples and metaprogramming decisions that
+are not made and is additive later. Arity stops at `map3` and then nests, since
+a ladder is easy to extend on evidence and awkward to retract. `Issues[E]` is
+opaque — ordered iteration, `first()`, `count()`, nothing else — which is what
+keeps the O(N) accumulation bound, including left-associated chains, a
+conformance requirement rather than an aspiration.
+
+[`spec/effects/validation-accumulation.md`](../spec/effects/validation-accumulation.md)
+is normative.
