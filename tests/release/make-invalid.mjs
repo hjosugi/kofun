@@ -76,6 +76,10 @@ const MUTATIONS = {
     'unresolvable-command': {
         blame: 'arithmetic-core',
         apply(manifest) {
+            // Deliberately still spelled `make`: this mutation exercises the
+            // "not a resolvable command" refusal, which is a different path
+            // from `missing-task` above. A bulk make-to-task rename must not
+            // touch it.
             find(manifest, 'arithmetic-core').reproduction.command = 'make native'
         },
     },

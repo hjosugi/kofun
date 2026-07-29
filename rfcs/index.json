@@ -233,7 +233,7 @@
       "implementation": {
         "change": "https://github.com/hjosugi/kofun/issues/602",
         "enablement": "Same-package `pub import` and `pub from` in the Stage 2 frontend, with non-widening `ExportBindingId` edges and the stated bounds: 64-edge chains, 1,024 bindings per module, 65,536 edges per package. There is no `internal` re-export form, and cross-package re-export is outside the checkpoint.",
-        "gate": "make re-exports",
+        "gate": "task re-exports",
         "claims": [
           "public-re-exports"
         ]
@@ -262,7 +262,7 @@
       "implementation": {
         "change": "https://github.com/hjosugi/kofun/pull/714",
         "enablement": "Stage 2 projects compiler-derived semantic events one-way into typed-sidecar v1 for an explicit single-file `kofun check`. The document is non-authoritative, and compiler, KIF, and cache consumers are refused by the authority-boundary gate.",
-        "gate": "make typed-sidecar-projector",
+        "gate": "task typed-sidecar-projector",
         "claims": [
           "stage2-typed-sidecar"
         ]
@@ -345,7 +345,7 @@
       ],
       "compatibility": {
         "category": "additive",
-        "statement": "The orphan rule and the dictionary-passing baseline constrain implementations written after them; the specification marks the lowering baseline as provisional until its experiment is recorded, and the coherence rule as accepted. The bounded frontend that enforces the rule is gated by `make traits`, and the state stays `accepted` because release/claims.json records no capability claim for it.",
+        "statement": "The orphan rule and the dictionary-passing baseline constrain implementations written after them; the specification marks the lowering baseline as provisional until its experiment is recorded, and the coherence rule as accepted. The bounded frontend that enforces the rule is gated by `task traits`, and the state stays `accepted` because release/claims.json records no capability claim for it.",
         "corpus_query": "git grep -lE '^(trait|impl) ' -- '*.kofun' | wc -l",
         "result": "18 files, all under `tests/conformance/traits` and written for the bounded #332 frontend, which refuses a foreign trait implemented for a foreign type with `E2S131`. No other tracked source declares a trait or an implementation.",
         "evidence": "tests/conformance/traits/orphan_both_foreign.stderr"
