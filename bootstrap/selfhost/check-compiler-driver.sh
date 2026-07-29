@@ -185,6 +185,42 @@ grep -F 'static const char *kofun_rt_text_index' \
     "$temporary/corpus_list_text-left/output.c" >/dev/null ||
     fail "Text indexing omitted its conditional runtime"
 
+# All 15 profile builtins run through one file/argv corpus. The emitted shim
+# deliberately uses the audited Unicode implementation, so this corpus stays on
+# ASCII for the documented seed/source is_xid_continue deviation while still
+# proving the real Unicode validation path is linked.
+stem=corpus_builtins
+left=$temporary/$stem-left
+right=$temporary/$stem-right
+mkdir -p "$left" "$right"
+cp bootstrap/selfhost/driver/$stem.kofun "$left/input.kofun"
+cp bootstrap/selfhost/driver/$stem.kofun "$right/input.kofun"
+(cd "$left" &&
+    "$temporary/kofun-a1" input.kofun output.c >stdout.txt 2>stderr.txt)
+(cd "$right" &&
+    "$temporary/kofun-stage1" input.kofun output.c >stdout.txt 2>stderr.txt)
+cmp "$left/output.c" "$right/output.c" ||
+    fail "compiler-from-S and the audited seed emit different builtin C"
+cmp "$left/stdout.txt" "$right/stdout.txt" ||
+    fail "compiler-from-S and the audited seed differ on builtin stdout"
+cmp "$left/stderr.txt" "$right/stderr.txt" ||
+    fail "compiler-from-S and the audited seed differ on builtin stderr"
+cmp bootstrap/selfhost/driver/$stem.c "$left/output.c" ||
+    fail "builtin corpus emission differs from the checked-in evidence"
+"$compiler" -std=c11 -O2 -Wall -Wextra -Werror -I unicode \
+    "$left/output.c" -o "$temporary/$stem-program"
+"$temporary/$stem-program" \
+    bootstrap/selfhost/driver/$stem.input "$temporary/$stem.output" \
+    >"$temporary/$stem.stdout"
+cmp bootstrap/selfhost/driver/$stem.stdout "$temporary/$stem.stdout" ||
+    fail "builtin corpus stdout differs from the pinned golden"
+cmp bootstrap/selfhost/driver/$stem.output "$temporary/$stem.output" ||
+    fail "builtin corpus file output differs from the pinned golden"
+test "$(sha256sum bootstrap/selfhost/driver/corpus_answer.c |
+    awk '{ print $1 }')" = \
+    673d6e62ad7947fc878420eea1dffb9e3f13e942adda71f1f972b31575616499 ||
+    fail "the frozen arithmetic corpus changed in the builtin slice"
+
 # Bounds checks are runtime failures, not frontend refusals. Pin both receiver
 # kinds to exit 1 with one exact R010 diagnostic and no stdout.
 differential_trap_corpus corpus_trap_list_index List-Text-index-trap
@@ -271,6 +307,53 @@ done
 test "$reject_checked" -eq "$REJECT_FIXTURE_COUNT" ||
     fail "ran $reject_checked refusal fixtures, expected $REJECT_FIXTURE_COUNT"
 
+# Every profile builtin has one wrong-arity and one wrong-type refusal. Keeping
+# the cases in one reviewable matrix avoids 30 near-identical source files while
+# both independently-derived compilers still see exactly the same full source.
+BUILTIN_REJECT_COUNT=30
+builtin_reject_checked=0
+while IFS='|' read -r label statement
+do
+    fixture="$temporary/builtin-reject-$label.kofun"
+    {
+        printf '%s\n' 'fn main() {'
+        printf '    %s\n' "$statement"
+        printf '%s\n' '    print(0)' '}'
+    } >"$fixture"
+    set +e
+    "$temporary/kofun-a1" "$fixture" \
+        "$temporary/builtin-reject-$label.c" \
+        >"$temporary/builtin-reject-$label.stdout" \
+        2>"$temporary/builtin-reject-$label.stderr"
+    a1_status=$?
+    "$temporary/kofun-stage1" "$fixture" \
+        "$temporary/builtin-reject-$label-seed.c" \
+        >"$temporary/builtin-reject-$label-seed.stdout" \
+        2>"$temporary/builtin-reject-$label-seed.stderr"
+    seed_status=$?
+    set -e
+    test "$a1_status" -eq "$seed_status" ||
+        fail "$label builtin refusal status diverges from the audited seed"
+    test "$a1_status" -ne 0 ||
+        fail "$label builtin refusal must exit nonzero"
+    cmp bootstrap/selfhost/driver/corpus_reject.stdout \
+        "$temporary/builtin-reject-$label.stdout" ||
+        fail "$label builtin refusal diagnostic differs from the pinned refusal"
+    cmp "$temporary/builtin-reject-$label.stdout" \
+        "$temporary/builtin-reject-$label-seed.stdout" ||
+        fail "$label builtin refusal diagnostic diverges from the audited seed"
+    cmp "$temporary/builtin-reject-$label.stderr" \
+        "$temporary/builtin-reject-$label-seed.stderr" ||
+        fail "$label builtin refusal stderr diverges from the audited seed"
+    test ! -e "$temporary/builtin-reject-$label.c" ||
+        fail "$label builtin refusal produced C through the compiler from S"
+    test ! -e "$temporary/builtin-reject-$label-seed.c" ||
+        fail "$label builtin refusal produced C through the audited seed"
+    builtin_reject_checked=$((builtin_reject_checked + 1))
+done < bootstrap/selfhost/driver/corpus_builtin_rejects.tsv
+test "$builtin_reject_checked" -eq "$BUILTIN_REJECT_COUNT" ||
+    fail "ran $builtin_reject_checked builtin refusals, expected $BUILTIN_REJECT_COUNT"
+
 # I/O failure: a missing input panics with the runtime's bounded message,
 # exits 1, and preserves the previous output bytes.
 printf 'previous output\n' > "$temporary/preserved.c"
@@ -311,4 +394,5 @@ printf '%s\n' \
     "PASS: while and for-range loops, their bound scope and range evaluation agree across both seeds" \
     "PASS: Text parsing, typing, runtime emission and typed refusals agree across both seeds" \
     "PASS: List[Text] construction, length, indexing and bounds traps agree across both seeds" \
+    "PASS: all 15 profile builtins and all 30 arity/type refusals agree across both seeds" \
     "PASS: emission is deterministic, path-independent, and failure-preserving"

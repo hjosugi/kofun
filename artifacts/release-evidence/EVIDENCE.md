@@ -11,7 +11,7 @@ Generated from `release/claims.json` by `make release-evidence`. Do not edit.
 | `checked-int64-contract` | `sh tests/conformance/run.sh` | The numeric conformance corpus passes on every supported backend. |
 | `cli-commands` | `sh tests/cli.sh` | Each subcommand succeeds on Core sources. |
 | `cli-framework` | `sh framework/cli/check.sh` | The declarative CLI example builds statically and runs. |
-| `compiler-seed` | `sh bootstrap/stage1/check.sh` | The Kofun seed and audited C transliteration emit byte-identical C for the arithmetic, Bool, nested-block, loop, Text, and List[Text] corpora. The List program compiles under the gate flags and executes `chars`, `len`, Text/List indexing, and UTF-8 byte semantics; bounds traps exit 1 with exact R010 diagnostics, typed index boundaries are refused, and all older C goldens remain byte-identical. |
+| `compiler-seed` | `sh bootstrap/stage1/check.sh` | The audited C seed accepts and executes one corpus covering all 15 typed profile builtins, both `len` overloads, argv/file I/O, Text operations, character predicates, Unicode validation, and stdout. All 30 builtin arity/type boundary rows exit nonzero and write no C, while the older corpora remain byte-identical. |
 | `deterministic-fuzzing` | `sh tests/fuzz/semantic_differential.sh` | Oracle and backend observations agree for every generated program. |
 | `elf64-image-writer` | `sh bootstrap/native/check.sh` | A static ELF64 image is written and executes. |
 | `enum-matching` | `sh tests/conformance/syntax/issues_35_47/run.sh` | Payload-free enum matches lower and execute with exhaustiveness enforced. |
@@ -29,7 +29,7 @@ Generated from `release/claims.json` by `make release-evidence`. Do not edit.
 | `public-re-exports` | `sh tests/conformance/modules/re-exports/run.sh` | Re-export chains resolve within the stated bounds and preserve binding identity. |
 | `reproducible-bootstrap` | `sh bootstrap/stage1/check.sh` | Regeneration reproduces the checked-in Stage 1 artifact and its digest. |
 | `rust-crate-shim` | `sh examples/rust-shim/check.sh` | The vendored crate builds and answers through the C ABI shim. |
-| `self-recompile` | `sh bootstrap/selfhost/check-compiler-driver.sh` | The compiler-produced compiler compiles the accept corpus identically to the audited seed. |
+| `self-recompile` | `sh bootstrap/selfhost/check-compiler-driver.sh` | The compiler-produced compiler emits byte-identical C to the audited seed for every accept corpus, including all 15 profile builtins, and agrees on all 30 builtin arity/type refusals. |
 | `selfhost-native-corpus` | `sh bootstrap/selfhost/native/check-native-corpus.sh` | The native and C11 self-host paths produce identical output. |
 | `source-extension` | `make repository-check` | No Python or `.kf` sources remain and the editor extension registers `.kofun`. |
 | `stable-diagnostics` | `sh tests/diagnostics/check.sh` | Every registry code has an owner and every fixture matches exactly. |

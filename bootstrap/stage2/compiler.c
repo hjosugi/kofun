@@ -12995,7 +12995,7 @@ static int emit_selfhost_hir_file(
  */
 
 enum {
-    SL_MAX_RECORDS = 4096,
+    SL_MAX_RECORDS = 8192,
     SL_MAX_TYPES = 64,
 };
 
