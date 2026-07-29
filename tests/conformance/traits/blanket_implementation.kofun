@@ -1,0 +1,9 @@
+trait Equal[T] {
+    fn equal(left: T, right: T) -> Bool
+}
+
+impl[T] Equal[T] for T {
+    fn equal(left: T, right: T) -> Bool {
+        return true
+    }
+}

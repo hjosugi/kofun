@@ -6,6 +6,7 @@ import {
   dateInTimeZone,
   fetchAllIssues,
   nextBusinessDay,
+  normalizeIssue,
   parseArgs,
   renderDeliveryPlan,
   semanticSnapshot,
@@ -122,6 +123,14 @@ assert.equal(snapshot.capacity.max_agents, 4);
 assert.equal(snapshot.capacity.writer_slots, 3);
 assert.equal(snapshot.capacity.reviewer_slots, 1);
 assert.equal(snapshot.capacity.wip_limit, 3);
+assert.equal(
+  normalizeIssue(
+    issue(782, {
+      labels: ["curated", "ready", "P2", "size:M", "area:c-backend"],
+    }),
+  ).workstream,
+  "Backend & Runtime",
+);
 assert.equal(snapshot.unscheduled.length, 0);
 assert.ok(
   snapshot.workstreams.some(

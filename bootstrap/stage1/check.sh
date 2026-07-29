@@ -20,6 +20,9 @@ TEXT_STDOUT="$ROOT/bootstrap/selfhost/driver/corpus_text.stdout"
 TEXT_EQUAL_FIXTURE="$ROOT/bootstrap/selfhost/driver/corpus_text_equality_only.kofun"
 TEXT_EQUAL_C="$ROOT/bootstrap/selfhost/driver/corpus_text_equality_only.c"
 TEXT_EQUAL_STDOUT="$ROOT/bootstrap/selfhost/driver/corpus_text_equality_only.stdout"
+LIST_TEXT_FIXTURE="$ROOT/bootstrap/selfhost/driver/corpus_list_text.kofun"
+LIST_TEXT_C="$ROOT/bootstrap/selfhost/driver/corpus_list_text.c"
+LIST_TEXT_STDOUT="$ROOT/bootstrap/selfhost/driver/corpus_list_text.stdout"
 WORK="${KOFUN_STAGE1_WORK:-$ROOT/build/bootstrap-stage1}"
 CC="${CC:-cc}"
 
@@ -81,6 +84,36 @@ grep -F 'static bool kofun_rt_text_equal' "$WORK/text-equality-only.c" >/dev/nul
 "$WORK/text-equality-only" >"$WORK/text-equality-only.stdout"
 cmp "$TEXT_EQUAL_STDOUT" "$WORK/text-equality-only.stdout"
 
+# List[Text]: `chars` constructs a byte-oriented list, `len` observes its
+# length, and postfix indexing returns one-byte Text from both Text and lists.
+# The UTF-8 fixture pins the Stage 2 profile's byte semantics.
+"$WORK/kofun-stage1" "$LIST_TEXT_FIXTURE" "$WORK/list-text.c"
+cmp "$LIST_TEXT_C" "$WORK/list-text.c"
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$WORK/list-text.c" -o "$WORK/list-text"
+"$WORK/list-text" >"$WORK/list-text.stdout"
+cmp "$LIST_TEXT_STDOUT" "$WORK/list-text.stdout"
+
+# A well-typed index may still fail at runtime. Both Text and List[Text] bounds
+# traps must exit 1, write only the pinned R010 diagnostic, and produce no
+# stdout.
+runtime_trap_corpus() {
+    stem=$1
+    "$WORK/kofun-stage1" \
+        "$ROOT/bootstrap/selfhost/driver/$stem.kofun" "$WORK/$stem.c"
+    "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+        "$WORK/$stem.c" -o "$WORK/$stem"
+    set +e
+    "$WORK/$stem" >"$WORK/$stem.stdout" 2>"$WORK/$stem.stderr"
+    status=$?
+    set -e
+    test "$status" -eq 1
+    test ! -s "$WORK/$stem.stdout"
+    cmp "$ROOT/bootstrap/selfhost/driver/$stem.stderr" "$WORK/$stem.stderr"
+}
+runtime_trap_corpus corpus_trap_list_index
+runtime_trap_corpus corpus_trap_text_index
+
 # The refusal corpus is the set of files, not a list written beside it. Both
 # this gate and check-compiler-driver.sh used to name all of them by hand, so a
 # fixture added to one and forgotten in the other would have lowered coverage
@@ -88,7 +121,7 @@ cmp "$TEXT_EQUAL_STDOUT" "$WORK/text-equality-only.stdout"
 # "a fixture was deliberately removed" from "a fixture stopped being found":
 # changing it is a reviewable edit, and REJECT_FIXTURE_COUNT is the one number
 # both gates agree on.
-REJECT_FIXTURE_COUNT=29
+REJECT_FIXTURE_COUNT=31
 reject_checked=0
 for fixture in "$ROOT"/bootstrap/selfhost/driver/corpus_reject_*.kofun
 do
@@ -116,4 +149,5 @@ printf '%s\n' \
     "PASS: Int/Bool Core accepts comparisons and refuses typed boundary crossings" \
     "PASS: nested if/else blocks scope their bindings and refuse a misplaced else" \
     "PASS: while and for-range loops nest, bound their range once, and scope their bound name" \
-    "PASS: Text literals, concatenation, equality and printing use the bounded emitted runtime"
+    "PASS: Text literals, concatenation, equality and printing use the bounded emitted runtime" \
+    "PASS: List[Text] construction, length and Text/List indexing use byte semantics and bounded traps"

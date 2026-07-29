@@ -1,0 +1,5 @@
+fn main() {
+    if null {
+        let value: Int = 1
+    }
+}

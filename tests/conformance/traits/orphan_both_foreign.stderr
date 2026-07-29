@@ -1,0 +1,1 @@
+error[E2S131]: orphan rule: this package implements foreign trait trait:foreign:Display for foreign type nominal:foreign:Duration; an implementation requires a local trait or a local outer nominal self-type at bytes 83..193

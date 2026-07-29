@@ -107,7 +107,14 @@ export const WORKSTREAMS = [
     id: "backend-runtime",
     title: "Backend & Runtime",
     lane: "writer-a",
-    areas: ["codegen", "memory", "platforms", "ownership", "collections"],
+    areas: [
+      "codegen",
+      "c-backend",
+      "memory",
+      "platforms",
+      "ownership",
+      "collections",
+    ],
   },
   {
     id: "effects-concurrency",

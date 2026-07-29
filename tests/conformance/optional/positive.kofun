@@ -1,0 +1,25 @@
+fn choose(missing: Bool) -> Int? {
+    if missing {
+        return null
+    }
+    return 42
+}
+
+# List[Int]? is Optional(List(Int)) and List[Int?] is List(Optional(Int)).
+# They are structurally distinct: only the first has an absent value.
+fn count(values: List[Int]?) -> Int {
+    return 0
+}
+
+fn sparse(values: List[Int?]) -> Int {
+    return 1
+}
+
+fn bindings() {
+    let missing: Int? = null
+    let present: Int? = 7
+    let concrete: Int = 3
+    let boxed: List[Int]? = null
+    let label: Text? = "ready"
+    let answer: Int? = choose(true)
+}

@@ -479,3 +479,38 @@ The Copy/borrow checker is likewise intentionally bounded. It recognizes one
 explicit `read List[T]` parameter per function, a named `for` iteration, and a
 same-line return that contains the element. It does not claim full inference,
 borrow lifetimes, `take` call resolution, or collection code generation.
+
+The trait frontend is bounded in the same deliberate way. `traits_frontend.c`
+accepts one-method traits with one type parameter, concrete implementations,
+and generic functions carrying exactly one explicit non-recursive bound. Inside
+that shape it is complete: it assigns `TraitId`, `MethodId`, and
+`ImplementationId`, checks method signatures after substitution, enforces the
+coherence and orphan rules `docs/TYPE_SYSTEM.md` records, and writes the
+implementation each call selected into typed IR.
+
+It lowers none of it. No dictionary is elaborated, nothing is monomorphised,
+and no runtime search is emitted — the gate asserts the IR names no dictionary,
+monomorphisation, or vtable. Recording which implementation a call selected is
+not the same claim as being able to call it.
+
+`foreign` marks a declaration as belonging to another package. It is the
+synthetic stand-in that makes the orphan rule testable in one file while
+cross-package loading stays out of scope, and it is not proposed surface
+syntax.
+
+The Optional frontend is bounded in the same way. `optional_frontend.c`
+classifies `null` as a keyword, parses one postfix `?` on a primary type, and
+represents the result as `Optional(TypeId)`. The suffix binds to the complete
+primary type before it, so `List[Int]?` and `List[Int?]` are structurally
+distinct rather than two spellings of one type.
+
+`null` is contextual: it has no standalone type, it takes an expected
+`Optional(T)`, and it is refused under an expected `T`. A concrete `T`
+satisfies an expected `Optional(T)` through one injection rule, and the typed
+IR records that injection rather than silently rewriting the type, so the rule
+cannot spread past an expected optional context unnoticed.
+
+Runtime representation is deferred and cannot be inferred from the typed node —
+the gate asserts the IR names no tag, niche, layout, or discriminant.
+Coalescing, narrowing, matching, and propagation are separate issues, and `??`
+is not parsed here at all.

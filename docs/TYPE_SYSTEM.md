@@ -364,6 +364,33 @@ than acquire provisional precedence. A later specialization design must be
 versioned, preserve coherent dictionary identity, and leave programs with no
 specialization semantically unchanged.
 
+### What the frontend implements today
+
+`bootstrap/stage2/traits_frontend.c` implements the rules above as a frontend
+and nothing more. It is bounded to one-method traits with one type parameter,
+concrete implementations, and generic functions carrying exactly one explicit
+non-recursive bound. Within that shape it assigns `TraitId`, `MethodId`, and
+`ImplementationId`, checks method signatures after substitution, enforces the
+orphan matrix and the overlap rule exactly as written, and records the selected
+implementation in typed IR. `sh tests/conformance/traits/run.sh` is the
+evidence.
+
+The boundary is that **no dictionary is elaborated, nothing is monomorphised,
+and no runtime search is emitted or implied**. The frontend records which
+implementation a call selected; it does not lower that selection. #471 carries
+dictionary elaboration and #256 the generic law propositions.
+
+Overlap is refused where implementations are declared rather than where they
+are used, so no candidate set is ever ordered at a use site. The gate asserts
+this rather than claiming it: it compiles the same program with every
+implementation declared in the opposite order and requires each call to select
+the same trait and self-type.
+
+Forms outside the bounded shape — blanket and generic implementations, default
+methods, a second bound, more than one trait type parameter, and a bound whose
+argument is not the bounded parameter — fail explicitly with their own
+diagnostics rather than being silently accepted or ignored.
+
 ### Visibility and exported APIs
 
 M2-alpha has no private, package-local, or lexical `impl` candidate. An

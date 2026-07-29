@@ -1,0 +1,1 @@
+error[E2S134]: 'null' has no standalone type; annotate the binding with an optional type so 'null' has an expected type at bytes 28..32

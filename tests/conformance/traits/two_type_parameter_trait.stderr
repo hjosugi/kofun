@@ -1,0 +1,1 @@
+error[E2S132]: a trait with 2 type parameters is unsupported in this slice; exactly one is accepted at bytes 0..19
