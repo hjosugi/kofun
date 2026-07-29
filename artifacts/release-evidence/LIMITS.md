@@ -22,7 +22,7 @@ Generated from `release/claims.json` by `make release-evidence`. Do not edit.
 | `checked-int64-contract` | trap | `tests/conformance/numeric/reject_slash_operator.kofun` | Operations that cannot be represented are refused or trapped rather than wrapping. |
 | `cli-commands` | rejection | `tests/cli_stage2_outcomes.sh` | Non-Core sources produce a refusal outcome instead of a partial build. |
 | `cli-framework` | limit | `tests/conformance/capabilities.tsv` | Targets outside Linux x86-64 are recorded as unsupported with a stated reason. |
-| `compiler-seed` | rejection | `bootstrap/selfhost/driver/corpus_reject_index_int.kofun` | Indexing an Int receiver exits nonzero and writes no C; thirty additional typed-boundary, block-boundary, loop-boundary, Text-boundary, and index-boundary fixtures are checked by the same gate. |
+| `compiler-seed` | rejection | `bootstrap/selfhost/driver/corpus_builtin_rejects.tsv` | Each of the 15 profile builtins has one wrong-arity and one wrong-type row; all 30 expanded sources exit nonzero and write no C. The existing 31 typed, block, loop, Text, and index boundary fixtures remain in the same gate. |
 | `deterministic-fuzzing` | rejection | `tests/fuzz/semantic_differential.sh` | A divergence between the oracle and a backend fails the gate with the differing program. |
 | `elf64-image-writer` | limit | `tests/conformance/capabilities.tsv` | Corpora outside the lowered profiles are recorded as unsupported with a stated reason. |
 | `enum-matching` | rejection | `tests/conformance/adt/generic_unsupported.kofun` | Enum shapes outside the slice are refused rather than silently accepted. |

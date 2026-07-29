@@ -23,6 +23,12 @@ TEXT_EQUAL_STDOUT="$ROOT/bootstrap/selfhost/driver/corpus_text_equality_only.std
 LIST_TEXT_FIXTURE="$ROOT/bootstrap/selfhost/driver/corpus_list_text.kofun"
 LIST_TEXT_C="$ROOT/bootstrap/selfhost/driver/corpus_list_text.c"
 LIST_TEXT_STDOUT="$ROOT/bootstrap/selfhost/driver/corpus_list_text.stdout"
+BUILTINS_FIXTURE="$ROOT/bootstrap/selfhost/driver/corpus_builtins.kofun"
+BUILTINS_C="$ROOT/bootstrap/selfhost/driver/corpus_builtins.c"
+BUILTINS_INPUT="$ROOT/bootstrap/selfhost/driver/corpus_builtins.input"
+BUILTINS_OUTPUT="$ROOT/bootstrap/selfhost/driver/corpus_builtins.output"
+BUILTINS_STDOUT="$ROOT/bootstrap/selfhost/driver/corpus_builtins.stdout"
+BUILTIN_REJECTS="$ROOT/bootstrap/selfhost/driver/corpus_builtin_rejects.tsv"
 WORK="${KOFUN_STAGE1_WORK:-$ROOT/build/bootstrap-stage1}"
 CC="${CC:-cc}"
 
@@ -94,6 +100,23 @@ cmp "$LIST_TEXT_C" "$WORK/list-text.c"
 "$WORK/list-text" >"$WORK/list-text.stdout"
 cmp "$LIST_TEXT_STDOUT" "$WORK/list-text.stdout"
 
+# All 15 Stage 2 profile builtins: argv and file I/O, Text/List length,
+# character predicates, search/slice/trim, Unicode validation, and stdout.
+# The fixture is deliberately ASCII at is_xid_continue, preserving the
+# documented host-seed/source Unicode deviation while linking the real Unicode
+# runtime used by Kofun-compiled source.
+"$WORK/kofun-stage1" "$BUILTINS_FIXTURE" "$WORK/builtins.c"
+cmp "$BUILTINS_C" "$WORK/builtins.c"
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror -I "$ROOT/unicode" \
+    "$WORK/builtins.c" -o "$WORK/builtins"
+"$WORK/builtins" "$BUILTINS_INPUT" "$WORK/builtins.output" \
+    >"$WORK/builtins.stdout"
+cmp "$BUILTINS_STDOUT" "$WORK/builtins.stdout"
+cmp "$BUILTINS_OUTPUT" "$WORK/builtins.output"
+test "$(sha256sum "$ROOT/bootstrap/selfhost/driver/corpus_answer.c" |
+    awk '{ print $1 }')" = \
+    673d6e62ad7947fc878420eea1dffb9e3f13e942adda71f1f972b31575616499
+
 # A well-typed index may still fail at runtime. Both Text and List[Text] bounds
 # traps must exit 1, write only the pinned R010 diagnostic, and produce no
 # stdout.
@@ -143,6 +166,37 @@ test "$reject_checked" -eq "$REJECT_FIXTURE_COUNT" || {
     exit 1
 }
 
+# Exact builtin surface: every profile builtin has one wrong-arity and one
+# wrong-type case. The cases live in one reviewable matrix but are expanded into
+# full sources before the audited seed sees them.
+BUILTIN_REJECT_COUNT=30
+builtin_reject_checked=0
+while IFS='|' read -r label statement
+do
+    fixture="$WORK/builtin-reject-$label.kofun"
+    {
+        printf '%s\n' 'fn main() {'
+        printf '    %s\n' "$statement"
+        printf '%s\n' '    print(0)' '}'
+    } >"$fixture"
+    output="$WORK/builtin-reject-$label.c"
+    rm -f "$output"
+    set +e
+    "$WORK/kofun-stage1" "$fixture" "$output" >"$output.stdout"
+    status=$?
+    set -e
+    test "$status" -ne 0
+    test ! -e "$output"
+    cmp "$ROOT/bootstrap/selfhost/driver/corpus_reject.stdout" \
+        "$output.stdout"
+    builtin_reject_checked=$((builtin_reject_checked + 1))
+done < "$BUILTIN_REJECTS"
+test "$builtin_reject_checked" -eq "$BUILTIN_REJECT_COUNT" || {
+    printf 'FAIL: ran %s builtin refusals, expected %s\n' \
+        "$builtin_reject_checked" "$BUILTIN_REJECT_COUNT" >&2
+    exit 1
+}
+
 printf '%s\n' \
     "PASS: Python-free Kofun Stage 1 built with $CC" \
     "PASS: compiled fixture returned $answer" \
@@ -150,4 +204,5 @@ printf '%s\n' \
     "PASS: nested if/else blocks scope their bindings and refuse a misplaced else" \
     "PASS: while and for-range loops nest, bound their range once, and scope their bound name" \
     "PASS: Text literals, concatenation, equality and printing use the bounded emitted runtime" \
-    "PASS: List[Text] construction, length and Text/List indexing use byte semantics and bounded traps"
+    "PASS: List[Text] construction, length and Text/List indexing use byte semantics and bounded traps" \
+    "PASS: all 15 profile builtins and all 30 arity/type refusals use audited runtime shims"
