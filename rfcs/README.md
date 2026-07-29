@@ -41,21 +41,32 @@ current.
 
 ## Current contents
 
-The ledger starts with four decisions migrated from
-[`docs/DESIGN_DECISIONS.md`](../docs/DESIGN_DECISIONS.md), chosen to exercise
-the states that matter:
+Every recorded decision is `migrated`: its text was written before this process
+existed, and it is indexed so the ledger is complete rather than convenient.
+`make rfc-registry` prints how many there are and how the states divide, so
+this file does not keep a second copy of that list — a hand-written inventory
+beside the ledger drifts silently, which is the defect `DD-022` describes.
 
-| Decision | State | Why it is here |
-|---|---|---|
-| `DD-010` | implemented | Carries a real amendment: `/` on `Int` became a refusal. |
-| `DD-012` | implemented | A bounded capability, joined to three manifest claims. |
-| `DD-013` | accepted | Accepted design with nothing built, and no implementation record. |
-| `DD-018` | accepted | An accepted target artifact that nothing emits yet. |
+Migrated decisions carry `recorded_on` — the date their text entered the
+repository — rather than a review window. Inventing an `opened_on` for a
+decision that predates the process would be exactly the fabricated evidence
+this ledger exists to prevent, and the checker refuses it.
 
-Migrated decisions predate this process, so they carry `recorded_on` — the date
-their text entered the repository — rather than a review window. Inventing an
-`opened_on` for them would be exactly the fabricated evidence this ledger
-exists to prevent, and the checker refuses it.
+Four rows exercise the states that matter, and are worth reading before adding
+a fifth kind:
+
+- `DD-010` carries a real amendment: `/` on `Int` became a refusal, and the
+  amendment is announced in the decision document as well as recorded here.
+- `DD-012` is implemented, joined to three manifest claims.
+- `DD-013` is accepted with nothing built, and therefore carries no
+  implementation record at all.
+- `DD-025` and `DD-030` are `conditional`: each names a query over the tracked
+  corpus and the number it returned, rather than a belief about impact.
+
+A decision whose text lives in `spec/` is indexed through its narrative entry
+in [`docs/DESIGN_DECISIONS.md`](../docs/DESIGN_DECISIONS.md), which is the
+`source` the amendment marker is checked against, while `normative_spec` names
+the specification that actually states the semantics.
 
 No decision is currently `superseded`; that branch of the checker is proved by
 a mutation fixture rather than by a live row.

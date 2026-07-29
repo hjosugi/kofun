@@ -608,7 +608,7 @@
     "spec/tooling/typed-sidecar.md": "51f18b0fea3734ce73603bbcb43c048edf6a8309e48afb4bd588c386ec23dd92",
     "spec/typed-sidecar/kofun.typed-sidecar.v1.schema.json": "2574494144647b9e89ff45a126dc768ab947ed21a02044965ee22a0076f77460",
     "stdlib/tests/verify.sh": "9d35f26d58443796dcfb6d76a7c09d01ea64064e0f32c2657d5c1a4db04aac30",
-    "tests/cli.sh": "cad8049671e8c5c649d44fd2c0a000fee93c22fb0dea6ab695e398e8a458a0db",
+    "tests/cli.sh": "c1e3be662fc1f617197130097eaee38328c2aec87c0153b77c1f9ed49f69b2ae",
     "tests/cli_stage2_outcomes.sh": "9f84a95495afab023a1572b37a2508a4ee02a3a89881df14b887c209a628a9a7",
     "tests/compile-fail/use_after_take.kofun": "c190d3a19eef35d4c33e1798604bce227251326cbc8531a19e6b0b88e8ba5054",
     "tests/conformance/adt/generic_unsupported.kofun": "a005470b2fc8a68df0a849fa97d28b3c1190eee79270037cbc012aade78f54e8",
