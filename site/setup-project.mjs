@@ -733,6 +733,17 @@ export function projectViewKey(view) {
   return `${lowerText(view?.name ?? "")}:${layout}`;
 }
 
+export function buildViewUpdateInput(existing, desired) {
+  if (!existing?.id) {
+    fail("Existing Project view is missing its node ID");
+  }
+  const input = { viewId: existing.id };
+  if ((existing.filter ?? "") !== (desired.filter ?? "")) {
+    input.filter = desired.filter ?? "";
+  }
+  return Object.keys(input).length > 1 ? input : undefined;
+}
+
 export function tokenGuidance({ apply, actions, projectsTokenConfigured }) {
   if (actions && !projectsTokenConfigured) {
     return {
@@ -1156,14 +1167,36 @@ function applyItemUpdates(projectId, itemId, updates) {
 }
 
 function ensureViews(config, project) {
-  const existing = new Set(
-    arrayValue(project.views?.nodes).map(projectViewKey),
+  const existing = new Map(
+    arrayValue(project.views?.nodes).map((view) => [
+      projectViewKey(view),
+      view,
+    ]),
   );
   const created = [];
+  const updated = [];
   const warnings = [];
   for (const view of config.project.views) {
     const key = projectViewKey(view);
-    if (existing.has(key)) {
+    const current = existing.get(key);
+    if (current) {
+      const input = buildViewUpdateInput(current, view);
+      if (input) {
+        runGraphQL(
+          `mutation UpdateProjectView($input: UpdateProjectV2ViewInput!) {
+            updateProjectV2View(input: $input) {
+              projectV2View {
+                id
+                name
+                layout
+                filter
+              }
+            }
+          }`,
+          { input },
+        );
+        updated.push(view.name);
+      }
       continue;
     }
     const request = buildViewCreateRequest(config, project.number, view);
@@ -1186,23 +1219,21 @@ function ensureViews(config, project) {
       );
     }
   }
-  return { created, warnings };
+  return { created, updated, warnings };
 }
 
 function printManualViewConfiguration(projectUrl) {
   console.log("");
+  console.log("View filters are synchronized automatically.");
   console.log("View configuration that the public API still cannot set:");
   console.log(
-    `1. Open ${projectUrl} and edit "Delivery roadmap": filter label:curated; Start Date = Start Date; Target Date = Target Date; group by Workstream.`,
+    `1. Open ${projectUrl} and edit "Delivery roadmap": Start Date = Start Date; Target Date = Target Date; group by Workstream.`,
   );
   console.log(
-    '2. Edit "This week": filter label:curated and current Iteration; group by Status.',
+    '2. Edit "Agent capacity": group by Agent Slot and show Workstream, Size, Start Date, Target Date, and Iteration.',
   );
   console.log(
-    '3. Edit "Agent capacity": filter label:curated; group by Agent Slot and show Workstream, Size, Start Date, Target Date, and Iteration.',
-  );
-  console.log(
-    "The 2026-03-10 view-create endpoint accepts only name, layout, filter, and visible_fields (not roadmap date fields, grouping, or sorting).",
+    "GraphQL can update name, layout, and filter. The 2026-03-10 REST view-create endpoint additionally accepts visible_fields, but neither public API can update roadmap date fields, grouping, or sorting.",
   );
 }
 
@@ -1298,6 +1329,7 @@ async function apply(config, schedule) {
   console.log(`Issues added: ${addedItemIds.size}`);
   console.log(`Field values updated: ${plan.updates.length}`);
   console.log(`Views created: ${viewResult.created.length}`);
+  console.log(`Views updated: ${viewResult.updated.length}`);
   if (warnings.length) {
     console.log("Warnings:");
     for (const warning of warnings) {

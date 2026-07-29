@@ -75,7 +75,7 @@
       {
         "name": "This week",
         "layout": "board",
-        "filter": "is:issue is:open label:curated"
+        "filter": "is:issue is:open label:curated iteration:@current"
       },
       {
         "name": "Agent capacity",

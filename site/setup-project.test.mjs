@@ -7,6 +7,7 @@ import {
   buildIterationConfiguration,
   buildReconciliationPlan,
   buildViewCreateRequest,
+  buildViewUpdateInput,
   desiredFieldUpdates,
   filterOpenCuratedIssues,
   filterRepositoryIssues,
@@ -418,6 +419,35 @@ test("GraphQL and REST view layouts reconcile to one idempotent key", () => {
   assert.equal(
     projectViewKey({ name: "This week", layout: "BOARD_LAYOUT" }),
     "this week:board",
+  );
+});
+
+test("existing Project views reconcile their filters through GraphQL", () => {
+  assert.deepEqual(
+    buildViewUpdateInput(
+      {
+        id: "view-3",
+        name: "This week",
+        layout: "BOARD_LAYOUT",
+        filter: "is:issue is:open",
+      },
+      {
+        name: "This week",
+        layout: "board",
+        filter: "is:issue is:open label:curated iteration:@current",
+      },
+    ),
+    {
+      viewId: "view-3",
+      filter: "is:issue is:open label:curated iteration:@current",
+    },
+  );
+  assert.equal(
+    buildViewUpdateInput(
+      { id: "view-2", filter: "is:issue is:open label:curated" },
+      { filter: "is:issue is:open label:curated" },
+    ),
+    undefined,
   );
 });
 
