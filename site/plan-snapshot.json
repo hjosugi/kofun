@@ -3,12 +3,12 @@
   "repository": "hjosugi/kofun",
   "time_zone": "Asia/Tokyo",
   "as_of": "2026-07-29",
-  "generated_at": "2026-07-29T00:55:24.718Z",
+  "generated_at": "2026-07-29T11:11:42.655Z",
   "source": {
     "endpoint": "https://api.github.com/repos/hjosugi/kofun/issues",
-    "api_items": 781,
+    "api_items": 783,
     "issues": 654,
-    "pull_requests_excluded": 127,
+    "pull_requests_excluded": 129,
     "pages": 8
   },
   "capacity": {
