@@ -235,15 +235,100 @@ fn postfix_index(expression: Text) -> Int {
     return found
 }
 
-fn call_argument(expression: Text, callee: Text) -> Text {
+fn call_arity(expression: Text, callee: Text) -> Int {
     if !starts_with(expression, callee + "(") {
-        return ""
+        return -1
     }
     let parenthesized = text_slice(expression, len(callee), len(expression))
     if !wraps_whole(parenthesized) {
+        return -1
+    }
+    let body = text_slice(parenthesized, 1, len(parenthesized) - 1)
+    if len(trim(body)) == 0 {
+        return 0
+    }
+    let symbols = chars(body)
+    let mut parens = 0
+    let mut brackets = 0
+    let mut arity = 1
+    let mut quoted = false
+    let mut escaped = false
+    for index in 0 .. len(symbols) {
+        let symbol = symbols[index]
+        if quoted {
+            if escaped {
+                escaped = false
+            } else if symbol == "\\" {
+                escaped = true
+            } else if symbol == "\"" {
+                quoted = false
+            }
+        } else if symbol == "\"" {
+            quoted = true
+        } else if symbol == "(" {
+            parens = parens + 1
+        } else if symbol == ")" {
+            parens = parens - 1
+        } else if symbol == "[" {
+            brackets = brackets + 1
+        } else if symbol == "]" {
+            brackets = brackets - 1
+        } else if symbol == "," && parens == 0 && brackets == 0 {
+            arity = arity + 1
+        }
+        if parens < 0 || brackets < 0 {
+            return -1
+        }
+    }
+    if quoted || parens != 0 || brackets != 0 {
+        return -1
+    }
+    return arity
+}
+
+fn call_argument(expression: Text, callee: Text, target: Int) -> Text {
+    let arity = call_arity(expression, callee)
+    if target < 0 || target >= arity {
         return ""
     }
-    return trim(text_slice(parenthesized, 1, len(parenthesized) - 1))
+    let parenthesized = text_slice(expression, len(callee), len(expression))
+    let body = text_slice(parenthesized, 1, len(parenthesized) - 1)
+    let symbols = chars(body)
+    let mut parens = 0
+    let mut brackets = 0
+    let mut current = 0
+    let mut start = 0
+    let mut quoted = false
+    let mut escaped = false
+    for index in 0 .. len(symbols) {
+        let symbol = symbols[index]
+        if quoted {
+            if escaped {
+                escaped = false
+            } else if symbol == "\\" {
+                escaped = true
+            } else if symbol == "\"" {
+                quoted = false
+            }
+        } else if symbol == "\"" {
+            quoted = true
+        } else if symbol == "(" {
+            parens = parens + 1
+        } else if symbol == ")" {
+            parens = parens - 1
+        } else if symbol == "[" {
+            brackets = brackets + 1
+        } else if symbol == "]" {
+            brackets = brackets - 1
+        } else if symbol == "," && parens == 0 && brackets == 0 {
+            if current == target {
+                return trim(text_slice(body, start, index))
+            }
+            current = current + 1
+            start = index + 1
+        }
+    }
+    return trim(text_slice(body, start, len(body)))
 }
 
 # A lowered expression is `TYPE|STATEMENTS + OPERAND`: its static type, zero or
@@ -279,6 +364,9 @@ fn lowered_type(lowered: Text) -> Text {
     }
     if starts_with(lowered, "List[Text]|") {
         return "List[Text]"
+    }
+    if starts_with(lowered, "Void|") {
+        return "Void"
     }
     return ""
 }
@@ -460,6 +548,138 @@ fn lower_negation(operand: Text, bound: Text, path: Text,
     temporary
 }
 
+fn lower_builtin_call(expression: Text, callee: Text, bound: Text,
+                      path: Text, indent: Text) -> Text {
+    let mut arity = 1
+    let mut first_type = "Text"
+    let mut second_type = ""
+    let mut third_type = ""
+    let mut result_type = "Bool"
+    let mut runtime = "kofun_rt_" + callee
+    let mut first_path = "a"
+    if callee == "args" {
+        arity = 0
+        first_type = ""
+        result_type = "List[Text]"
+    } else if callee == "chars" {
+        result_type = "List[Text]"
+        first_path = "c"
+    } else if callee == "contains" {
+        arity = 2
+        second_type = "Text"
+        runtime = "kofun_rt_text_contains"
+    } else if callee == "find" {
+        arity = 2
+        second_type = "Text"
+        result_type = "Int"
+    } else if callee == "len" {
+        first_type = "TextOrList"
+        result_type = "Int"
+        runtime = "kofun_rt_text_len"
+        first_path = "n"
+    } else if callee == "read_text" {
+        result_type = "Text"
+    } else if callee == "starts_with" {
+        arity = 2
+        second_type = "Text"
+    } else if callee == "text_slice" {
+        arity = 3
+        second_type = "Int"
+        third_type = "Int"
+        result_type = "Text"
+    } else if callee == "trim" {
+        result_type = "Text"
+    } else if callee == "validate_unicode_source" {
+        result_type = "Text"
+    } else if callee == "write_text" {
+        arity = 2
+        second_type = "Text"
+        result_type = "Void"
+    }
+    if call_arity(expression, callee) != arity {
+        return ""
+    }
+    let mut first = ""
+    let mut second = ""
+    let mut third = ""
+    let mut statements = ""
+    let mut arguments = ""
+    if arity >= 1 {
+        first = lower_expression(call_argument(expression, callee, 0), bound,
+                                 path + first_path, indent)
+        let kind = lowered_type(first)
+        if first_type == "TextOrList" &&
+           !(kind == "Text") && !(kind == "List[Text]") ||
+           (!(first_type == "TextOrList") && !(kind == first_type)) {
+            return ""
+        }
+        statements = statements + lowered_statements(first)
+        arguments = lowered_operand(first)
+    }
+    if arity >= 2 {
+        second = lower_expression(call_argument(expression, callee, 1), bound,
+                                  path + "b", indent)
+        if !(lowered_type(second) == second_type) {
+            return ""
+        }
+        statements = statements + lowered_statements(second)
+        arguments = arguments + ", " + lowered_operand(second)
+    }
+    if arity >= 3 {
+        third = lower_expression(call_argument(expression, callee, 2), bound,
+                                 path + "c", indent)
+        if !(lowered_type(third) == third_type) {
+            return ""
+        }
+        statements = statements + lowered_statements(third)
+        arguments = arguments + ", " + lowered_operand(third)
+    }
+
+    let mut emitted_callee = runtime
+    if callee == "args" {
+        arguments = "argc, argv"
+    } else if callee == "len" {
+        if lowered_type(first) == "Text" {
+            emitted_callee = "kofun_rt_text_len"
+        } else {
+            emitted_callee = "kofun_rt_text_list_len"
+        }
+    }
+
+    if result_type == "Void" {
+        return "Void|" + statements + indent + emitted_callee + "(" +
+        arguments + ");\n0"
+    }
+    let temporary = "kt_" + path
+    let mut c_type = "int64_t"
+    if result_type == "Bool" {
+        c_type = "bool"
+    } else if result_type == "Text" {
+        c_type = "const char *"
+    } else if result_type == "List[Text]" {
+        c_type = "KofunTextList"
+    }
+    return result_type + "|" + statements + indent + c_type + " " +
+    temporary + " = " + emitted_callee + "(" + arguments + ");\n" +
+    temporary
+}
+
+fn lower_builtin_dispatch(expression: Text, bound: Text, path: Text,
+                          indent: Text) -> Text {
+    let open = find(expression, "(")
+    if open < 0 {
+        return ""
+    }
+    let callee = text_slice(expression, 0, open)
+    let builtins =
+    "|args|chars|contains|find|is_digit|is_space|is_xid_continue|len|" +
+    "read_text|starts_with|text_slice|trim|validate_unicode_source|write_text|"
+    if find(builtins, "|" + callee + "|") < 0 {
+        return ""
+    }
+    return lower_builtin_call(expression, callee, bound, path, indent)
+}
+
 # Lowers one Core expression to a C11 expression, or "" when it is not Core.
 # Acceptance is exactly "this returns a non-empty string", so the parser is the
 # only definition of what the Core admits.
@@ -597,30 +817,9 @@ fn lower_expression(expression: Text, bound: Text, path: Text,
         temporary
     }
 
-    if starts_with(trimmed, "chars(") {
-        let value = lower_expression(
-            call_argument(trimmed, "chars"), bound, path + "c", indent)
-        if !(lowered_type(value) == "Text") {
-            return ""
-        }
-        let temporary = "kt_" + path
-        return "List[Text]|" + lowered_statements(value) +
-        indent + "KofunTextList " + temporary + " = kofun_rt_chars(" +
-        lowered_operand(value) + ");\n" +
-        temporary
-    }
-
-    if starts_with(trimmed, "len(") {
-        let value = lower_expression(
-            call_argument(trimmed, "len"), bound, path + "n", indent)
-        if !(lowered_type(value) == "List[Text]") {
-            return ""
-        }
-        let temporary = "kt_" + path
-        return "Int|" + lowered_statements(value) +
-        indent + "int64_t " + temporary + " = kofun_rt_text_list_len(" +
-        lowered_operand(value) + ");\n" +
-        temporary
+    let builtin = lower_builtin_dispatch(trimmed, bound, path, indent)
+    if len(builtin) > 0 {
+        return builtin
     }
 
     if starts_with(trimmed, "+") {
@@ -973,7 +1172,7 @@ fn valid_source(source: Text) -> Bool {
                 let value = lower_expression(binding_expression(line), bound,
                                              "x", nested_indent(len(blocks)))
                 let kind = lowered_type(value)
-                if len(kind) == 0 {
+                if len(kind) == 0 || kind == "Void" {
                     return false
                 }
                 let declaration = trim(text_slice(line, 4, find(line, "=")))
@@ -993,6 +1192,15 @@ fn valid_source(source: Text) -> Bool {
                     return false
                 }
                 prints = prints + 1
+            } else if starts_with(line, "write_text(") {
+                if len(blocks) == 0 {
+                    return false
+                }
+                let value = lower_expression(line, bound, "x",
+                                             nested_indent(len(blocks)))
+                if !(lowered_type(value) == "Void") {
+                    return false
+                }
             } else {
                 return false
             }
@@ -1188,6 +1396,15 @@ fn emit_statements(source: Text) -> Text {
                     "printf(\"%\" PRId64 \"\\n\", value);\n"
                 }
                 emitted = emitted + statement_indent(depth) + "}\n"
+            } else if starts_with(line, "write_text(") {
+                let depth = len(blocks)
+                let value = lower_expression(line, bound, "x",
+                                             nested_indent(depth))
+                emitted = emitted +
+                statement_indent(depth) + "{\n" +
+                lowered_statements(value) +
+                nested_indent(depth) + "if (failed) return 1;\n" +
+                statement_indent(depth) + "}\n"
             }
             line_start = index + 1
         }
@@ -1197,6 +1414,20 @@ fn emit_statements(source: Text) -> Text {
 
 fn emit_c(source: Text) -> Text {
     let statements = emit_statements(source)
+    let uses_profile_builtins =
+    find(statements, "kofun_rt_args(") >= 0 ||
+    find(statements, "kofun_rt_text_contains(") >= 0 ||
+    find(statements, "kofun_rt_find(") >= 0 ||
+    find(statements, "kofun_rt_is_digit(") >= 0 ||
+    find(statements, "kofun_rt_is_space(") >= 0 ||
+    find(statements, "kofun_rt_is_xid_continue(") >= 0 ||
+    find(statements, "kofun_rt_text_len(") >= 0 ||
+    find(statements, "kofun_rt_read_text(") >= 0 ||
+    find(statements, "kofun_rt_starts_with(") >= 0 ||
+    find(statements, "kofun_rt_text_slice(") >= 0 ||
+    find(statements, "kofun_rt_trim(") >= 0 ||
+    find(statements, "kofun_rt_validate_unicode_source(") >= 0 ||
+    find(statements, "kofun_rt_write_text(") >= 0
     let mut text_headers = ""
     let mut text_runtime = ""
     let mut text_main = ""
@@ -1204,9 +1435,22 @@ fn emit_c(source: Text) -> Text {
     let mut text_index_main = ""
     let mut list_runtime = ""
     let mut list_main = ""
+    let mut profile_headers = ""
+    let mut profile_runtime = ""
+    let mut profile_main = ""
+    let mut main_signature = "int main(void) {\n"
+    if uses_profile_builtins {
+        profile_headers =
+        "#include <ctype.h>\n" +
+        "#include \"kofun_unicode.c\"\n"
+    }
+    if find(statements, "kofun_rt_args(") >= 0 {
+        main_signature = "int main(int argc, char **argv) {\n"
+    }
     if find(statements, "const char *") >= 0 ||
        find(statements, "kofun_rt_text_") >= 0 ||
-       find(statements, "KofunTextList") >= 0 {
+       find(statements, "KofunTextList") >= 0 ||
+       uses_profile_builtins {
         text_headers =
         "#include <stdlib.h>\n" +
         "#include <string.h>\n"
@@ -1273,7 +1517,7 @@ fn emit_c(source: Text) -> Text {
         text_index_main =
         "    (void)kofun_rt_text_index;\n"
     }
-    if find(statements, "KofunTextList") >= 0 {
+    if find(statements, "KofunTextList") >= 0 || uses_profile_builtins {
         list_runtime =
         "typedef struct {\n" +
         "    int64_t len;\n" +
@@ -1346,12 +1590,210 @@ fn emit_c(source: Text) -> Text {
         "    (void)kofun_rt_text_list_len;\n" +
         "    (void)kofun_rt_text_list_get;\n"
     }
+    if uses_profile_builtins {
+        profile_runtime =
+        "static char *kofun_rt_profile_text_allocate(size_t length) {\n" +
+        "    if (length == SIZE_MAX ||\n" +
+        "        length + 1 > SIZE_MAX - sizeof(KofunTextAllocation)) {\n" +
+        "        runtime_error(\"error[R010]: Text allocation is too large\");\n" +
+        "        return NULL;\n" +
+        "    }\n" +
+        "    KofunTextAllocation *allocation =\n" +
+        "        malloc(sizeof(KofunTextAllocation) + length + 1);\n" +
+        "    if (allocation == NULL) {\n" +
+        "        runtime_error(\"error[R010]: Text allocation failed\");\n" +
+        "        return NULL;\n" +
+        "    }\n" +
+        "    allocation->bytes[length] = '\\0';\n" +
+        "    allocation->next = kofun_rt_text_allocations;\n" +
+        "    kofun_rt_text_allocations = allocation;\n" +
+        "    return allocation->bytes;\n" +
+        "}\n\n" +
+        "static const char *kofun_rt_profile_copy_n(\n" +
+        "    const char *value,\n" +
+        "    size_t length\n" +
+        ") {\n" +
+        "    char *result = kofun_rt_profile_text_allocate(length);\n" +
+        "    if (result == NULL) return \"\";\n" +
+        "    if (length > 0) memcpy(result, value, length);\n" +
+        "    return result;\n" +
+        "}\n\n" +
+        "static KofunTextList kofun_rt_args(int argc, char **argv) {\n" +
+        "    if (argc <= 1) return kofun_rt_empty_text_list();\n" +
+        "    size_t length = (size_t)(argc - 1);\n" +
+        "    if (length > (SIZE_MAX - sizeof(KofunTextListAllocation)) /\n" +
+        "            sizeof(const char *)) {\n" +
+        "        runtime_error(\"error[R010]: argument List[Text] is too large\");\n" +
+        "        return kofun_rt_empty_text_list();\n" +
+        "    }\n" +
+        "    KofunTextListAllocation *allocation = malloc(\n" +
+        "        sizeof(KofunTextListAllocation) + length * sizeof(const char *));\n" +
+        "    if (allocation == NULL) {\n" +
+        "        runtime_error(\"error[R010]: argument List[Text] allocation failed\");\n" +
+        "        return kofun_rt_empty_text_list();\n" +
+        "    }\n" +
+        "    allocation->next = kofun_rt_text_list_allocations;\n" +
+        "    kofun_rt_text_list_allocations = allocation;\n" +
+        "    for (size_t index = 0; index < length; ++index) {\n" +
+        "        allocation->items[index] = kofun_rt_profile_copy_n(\n" +
+        "            argv[index + 1], strlen(argv[index + 1]));\n" +
+        "        if (failed) return kofun_rt_empty_text_list();\n" +
+        "    }\n" +
+        "    KofunTextList result = { (int64_t)length, allocation->items };\n" +
+        "    return result;\n" +
+        "}\n\n" +
+        "static int64_t kofun_rt_text_len(const char *value) {\n" +
+        "    size_t length = strlen(value);\n" +
+        "    if ((uint64_t)length > (uint64_t)INT64_MAX) {\n" +
+        "        runtime_error(\"error[R010]: Text length exceeds Int\");\n" +
+        "        return 0;\n" +
+        "    }\n" +
+        "    return (int64_t)length;\n" +
+        "}\n\n" +
+        "static bool kofun_rt_text_contains(\n" +
+        "    const char *value,\n" +
+        "    const char *needle\n" +
+        ") {\n" +
+        "    return strstr(value, needle) != NULL;\n" +
+        "}\n\n" +
+        "static int64_t kofun_rt_find(const char *value, const char *needle) {\n" +
+        "    const char *found = strstr(value, needle);\n" +
+        "    return found == NULL ? INT64_C(-1) : (int64_t)(found - value);\n" +
+        "}\n\n" +
+        "static bool kofun_rt_starts_with(\n" +
+        "    const char *value,\n" +
+        "    const char *prefix\n" +
+        ") {\n" +
+        "    size_t prefix_length = strlen(prefix);\n" +
+        "    return strncmp(value, prefix, prefix_length) == 0;\n" +
+        "}\n\n" +
+        "static bool kofun_rt_is_digit(const char *value) {\n" +
+        "    return value[0] != '\\0' && value[1] == '\\0' &&\n" +
+        "        isdigit((unsigned char)value[0]) != 0;\n" +
+        "}\n\n" +
+        "static bool kofun_rt_is_space(const char *value) {\n" +
+        "    return value[0] != '\\0' && value[1] == '\\0' &&\n" +
+        "        isspace((unsigned char)value[0]) != 0;\n" +
+        "}\n\n" +
+        "static bool kofun_rt_is_xid_continue(const char *value) {\n" +
+        "    uint32_t codepoint = 0;\n" +
+        "    size_t width = 0;\n" +
+        "    size_t length = strlen(value);\n" +
+        "    if (!kofun_unicode_decode((const uint8_t *)value, length, 0,\n" +
+        "                              &codepoint, &width)) {\n" +
+        "        return false;\n" +
+        "    }\n" +
+        "    return kofun_unicode_is_xid_continue(codepoint);\n" +
+        "}\n\n" +
+        "static const char *kofun_rt_text_slice(\n" +
+        "    const char *value,\n" +
+        "    int64_t start,\n" +
+        "    int64_t end\n" +
+        ") {\n" +
+        "    int64_t length = kofun_rt_text_len(value);\n" +
+        "    if (failed) return \"\";\n" +
+        "    if (start < 0) start = 0;\n" +
+        "    if (end < start) end = start;\n" +
+        "    if (start > length) start = length;\n" +
+        "    if (end > length) end = length;\n" +
+        "    return kofun_rt_profile_copy_n(\n" +
+        "        value + start, (size_t)(end - start));\n" +
+        "}\n\n" +
+        "static const char *kofun_rt_trim(const char *value) {\n" +
+        "    const unsigned char *start = (const unsigned char *)value;\n" +
+        "    while (*start != '\\0' && isspace(*start)) ++start;\n" +
+        "    const unsigned char *end =\n" +
+        "        (const unsigned char *)value + strlen(value);\n" +
+        "    while (end > start && isspace(end[-1])) --end;\n" +
+        "    return kofun_rt_profile_copy_n(\n" +
+        "        (const char *)start, (size_t)(end - start));\n" +
+        "}\n\n" +
+        "static const char *kofun_rt_validate_unicode_source(const char *value) {\n" +
+        "    KofunUnicodeError unicode_error;\n" +
+        "    if (kofun_unicode_validate_source((const uint8_t *)value,\n" +
+        "                                      strlen(value), &unicode_error)) {\n" +
+        "        return \"\";\n" +
+        "    }\n" +
+        "    char message[1024];\n" +
+        "    kofun_unicode_format_error(&unicode_error,\n" +
+        "        getenv(\"KOFUN_DIAGNOSTIC_LOCALE\"), message, sizeof(message));\n" +
+        "    return kofun_rt_profile_copy_n(message, strlen(message));\n" +
+        "}\n\n" +
+        "static const char *kofun_rt_read_text(const char *path) {\n" +
+        "    FILE *file = fopen(path, \"rb\");\n" +
+        "    if (file == NULL) {\n" +
+        "        runtime_error(\"error[R010]: cannot open input file\");\n" +
+        "        return \"\";\n" +
+        "    }\n" +
+        "    if (fseek(file, 0, SEEK_END) != 0) {\n" +
+        "        fclose(file);\n" +
+        "        runtime_error(\"error[R010]: cannot seek input file\");\n" +
+        "        return \"\";\n" +
+        "    }\n" +
+        "    long measured = ftell(file);\n" +
+        "    if (measured < 0) {\n" +
+        "        fclose(file);\n" +
+        "        runtime_error(\"error[R010]: cannot measure input file\");\n" +
+        "        return \"\";\n" +
+        "    }\n" +
+        "    rewind(file);\n" +
+        "    size_t size = (size_t)measured;\n" +
+        "    char *result = kofun_rt_profile_text_allocate(size);\n" +
+        "    if (result == NULL) {\n" +
+        "        fclose(file);\n" +
+        "        return \"\";\n" +
+        "    }\n" +
+        "    size_t read = fread(result, 1, size, file);\n" +
+        "    if (read != size && ferror(file)) {\n" +
+        "        fclose(file);\n" +
+        "        runtime_error(\"error[R010]: cannot read input file\");\n" +
+        "        return \"\";\n" +
+        "    }\n" +
+        "    result[read] = '\\0';\n" +
+        "    fclose(file);\n" +
+        "    return result;\n" +
+        "}\n\n" +
+        "static void kofun_rt_write_text(\n" +
+        "    const char *path,\n" +
+        "    const char *value\n" +
+        ") {\n" +
+        "    FILE *file = fopen(path, \"wb\");\n" +
+        "    if (file == NULL) {\n" +
+        "        runtime_error(\"error[R010]: cannot open output file\");\n" +
+        "        return;\n" +
+        "    }\n" +
+        "    size_t length = strlen(value);\n" +
+        "    if (fwrite(value, 1, length, file) != length) {\n" +
+        "        fclose(file);\n" +
+        "        runtime_error(\"error[R010]: cannot write output file\");\n" +
+        "        return;\n" +
+        "    }\n" +
+        "    if (fclose(file) != 0) {\n" +
+        "        runtime_error(\"error[R010]: cannot close output file\");\n" +
+        "    }\n" +
+        "}\n\n"
+        profile_main =
+        "    (void)kofun_rt_args;\n" +
+        "    (void)kofun_rt_text_len;\n" +
+        "    (void)kofun_rt_text_contains;\n" +
+        "    (void)kofun_rt_find;\n" +
+        "    (void)kofun_rt_starts_with;\n" +
+        "    (void)kofun_rt_is_digit;\n" +
+        "    (void)kofun_rt_is_space;\n" +
+        "    (void)kofun_rt_is_xid_continue;\n" +
+        "    (void)kofun_rt_text_slice;\n" +
+        "    (void)kofun_rt_trim;\n" +
+        "    (void)kofun_rt_validate_unicode_source;\n" +
+        "    (void)kofun_rt_read_text;\n" +
+        "    (void)kofun_rt_write_text;\n"
+    }
     return "/* Generated by the Kofun-written Stage 1 seed compiler. */\n" +
     "#include <inttypes.h>\n" +
     "#include <stdbool.h>\n" +
     "#include <stdint.h>\n" +
     "#include <stdio.h>\n" +
     text_headers +
+    profile_headers +
     "\n" +
     "static bool failed;\n\n" +
     "static void runtime_error(const char *message) {\n" +
@@ -1419,7 +1861,8 @@ fn emit_c(source: Text) -> Text {
     text_runtime +
     text_index_runtime +
     list_runtime +
-    "int main(void) {\n" +
+    profile_runtime +
+    main_signature +
     "    (void)checked_add;\n" +
     "    (void)checked_sub;\n" +
     "    (void)checked_mul;\n" +
@@ -1429,6 +1872,7 @@ fn emit_c(source: Text) -> Text {
     text_main +
     text_index_main +
     list_main +
+    profile_main +
     statements +
     "    return 0;\n" +
     "}\n"

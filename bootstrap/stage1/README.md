@@ -21,12 +21,12 @@ kofun-stage1 INPUT.kofun OUTPUT.c
 ```
 
 The compatibility parser requires one explicit line-oriented `fn main() {`
-body containing only `let` statements, Int-valued `print(...)` statements,
-`if`/`else if`/`else` blocks, and `while`/`for` loops, plus blank lines and
-comments. `let` may infer or explicitly name `Int`, `Bool`, `Text`, or
-`List[Text]`; `print(...)` accepts `Int` and `Text`. Unknown structural lines
-are rejected; they are never ignored while extracting an otherwise valid
-`print`.
+body containing only `let` statements, `print(...)` and `write_text(...)`
+statements, `if`/`else if`/`else` blocks, and `while`/`for` loops, plus blank
+lines and comments. `let` may infer or explicitly name `Int`, `Bool`, `Text`,
+or `List[Text]`; `print(...)` accepts `Int` and `Text`. Unknown structural
+lines are rejected; they are never ignored while extracting an otherwise
+valid `print`.
 
 ## Expressions are compiled, not deferred
 
@@ -62,8 +62,10 @@ runtime traps in the emitted program:
 - a `Text`/`Int` `+`, `==`, or `!=` in either operand order
 - an index whose receiver is not `Text` or `List[Text]`, or whose index is not
   `Int`
-- `len` applied to a value other than `List[Text]`, or `chars` applied to a
-  value other than `Text`
+- `len` applied to a value other than `Text` or `List[Text]`, or `chars`
+  applied to a value other than `Text`
+- any profile builtin with the wrong arity or argument type, including a
+  value-returning use of the `Void` builtin `write_text`
 - a Text escape other than `\n`, `\"`, or `\\`
 - a block condition that is not `Bool`
 - an `else` with no `if` to attach to, or a second `else` in one chain
@@ -98,10 +100,10 @@ the same runtime boundary without allocating.
 ## List[Text] and indexing are byte-oriented
 
 `chars(TEXT)` is this slice's one List[Text] constructor, and
-`len(LIST_TEXT)` returns its length. A postfix `BASE[INDEX]` accepts a `Text` or
-`List[Text]` base and an `Int` index, returning one-byte `Text`. `chars` and
-direct Text indexing deliberately follow the existing Stage 2 profile's UTF-8
-byte semantics: `len(chars("k字n"))` is `5`, not `3`.
+`len(TEXT_OR_LIST)` returns its byte/item length. A postfix `BASE[INDEX]`
+accepts a `Text` or `List[Text]` base and an `Int` index, returning one-byte
+`Text`. `chars` and direct Text indexing deliberately follow the existing
+Stage 2 profile's UTF-8 byte semantics: `len(chars("k字n"))` is `5`, not `3`.
 
 The list representation is a length plus an immutable Text pointer array.
 Programs using it receive a conditional flexible-array allocation list and one
@@ -109,11 +111,28 @@ Programs using it receive a conditional flexible-array allocation list and one
 `error[R010]` Text/List bounds diagnostic; invalid receiver/index types are
 compile-time refusals.
 
+## The frozen profile builtins are typed
+
+Stage 1 accepts the 15 builtins used by its own frozen source:
+`args`, `chars`, `contains`, `find`, `is_digit`, `is_space`,
+`is_xid_continue`, `len`, `print`, `read_text`, `starts_with`, `text_slice`,
+`trim`, `validate_unicode_source`, and `write_text`. Calls have exact arity and
+typed arguments; their results are `Int`, `Bool`, `Text`, `List[Text]`, or
+`Void`. Arguments lower once, left to right, before the runtime call.
+
+Only programs using this extended host surface receive its conditional runtime,
+`<ctype.h>`, and `#include "kofun_unicode.c"`; compile those emitted programs
+with the repository's `unicode/` directory on the include path. The Unicode
+shim uses the real Unicode tables. The audited Stage 1 compiler process retains
+its historical non-ASCII `is_xid_continue` approximation, so the seed
+differential deliberately tests that predicate with ASCII while separately
+linking and executing real Unicode source validation.
+
 The line-oriented Core still declares only `fn main()`. `Text` and `List[Text]`
 are first-class binding/expression types and their C representations are fixed
-for later parameter/result work. The other general builtin calls remain #749,
-and non-main declarations — including Text/List parameters and results — arrive
-with #751 rather than being accepted as untyped special cases here.
+for later parameter/result work. Non-main declarations — including Text/List
+parameters and results — remain #751 rather than being accepted as untyped
+special cases here.
 
 `-9223372036854775808` still compiles: a negated decimal literal is folded at
 compile time, so the one magnitude with no positive counterpart keeps a C

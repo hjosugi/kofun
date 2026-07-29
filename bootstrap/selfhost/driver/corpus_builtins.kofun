@@ -1,0 +1,13 @@
+fn main() {
+    let arguments = args()
+    let input = read_text(arguments[0])
+    let unicode_error = validate_unicode_source(input)
+    let clean = trim(input)
+    let symbols = chars(clean)
+    if len(arguments) == 2 && len(clean) == 4 && len(symbols) == 4 && unicode_error == "" && starts_with(clean, "a1") && contains(clean, "1") && find(clean, " z") == 2 && is_digit(symbols[1]) && is_space(symbols[2]) && is_xid_continue(symbols[0]) {
+        write_text(arguments[1], clean + "\n")
+        print(text_slice(clean, 0, 2))
+        print("builtins")
+    }
+    print(42)
+}

@@ -288,10 +288,10 @@
     {
       "id": "compiler-seed",
       "public_wording": "Kofun-written compiler seed",
-      "public_status": "implemented: nested-block and looping Int/Bool/Text/List[Text] Core",
+      "public_status": "implemented: nested-block and looping Int/Bool/Text/List[Text] Core with 15 typed profile builtins",
       "state": "implemented",
       "area": "bootstrap",
-      "bounded_capability": "The Stage 1 seed is written in Kofun and kept beside a hand-audited C transliteration. Its line-oriented Core lowers checked Int arithmetic, six comparisons, Bool equality, Bool literals and bindings, unary `!`, short-circuiting `&&`/`||`, Text literals/concatenation/equality, `chars(Text) -> List[Text]`, `len(List[Text])`, and byte-oriented Text/List indexing through conditionally emitted allocation-list runtimes, nested `if`/`else if`/`else` blocks whose bindings leave scope at their `}`, and `while`/`for NAME in A .. B` loops that nest with those blocks, evaluate each range end once, and scope the bound name to the loop body; `print` accepts Int or Text and the Core still has no assignment, general builtin calls, or non-main function declaration.",
+      "bounded_capability": "The Stage 1 seed is written in Kofun and kept beside a hand-audited C transliteration. Its line-oriented Core lowers checked Int arithmetic, six comparisons, Bool equality, Bool literals and bindings, unary `!`, short-circuiting `&&`/`||`, Text literals/concatenation/equality, byte-oriented Text/List indexing, nested `if`/`else if`/`else` blocks, and `while`/half-open `for` ranges. The 15 builtins used by the frozen self-host source have exact arity and typed lowering: `args`, `chars`, `contains`, `find`, `is_digit`, `is_space`, `is_xid_continue`, `len`, `print`, `read_text`, `starts_with`, `text_slice`, `trim`, `validate_unicode_source`, and `write_text`; the Core still has no assignment or non-main function declaration.",
       "targets": [
         "stage1"
       ],
@@ -300,15 +300,15 @@
         "bootstrap/stage1/README.md",
         "spec/semantics.md"
       ],
-      "compatibility": "The pre-existing arithmetic, Bool, nested-block, loop, Text, and Text-equality-only corpora remain byte-identical because the new index and List runtimes are emitted only when used. The seed pair changes together, its digest records the change, and every corpus differentials both compiler paths.",
+      "compatibility": "The pre-existing arithmetic, Bool, nested-block, loop, Text, Text-equality-only, and List corpora remain byte-identical because the extended host runtime is emitted only when one of its new shims is used. The profile runtime declares its `unicode/` include dependency. The seed pair changes together, its digest records the change, and every corpus differentials both compiler paths.",
       "positive_gate": {
         "command": "sh bootstrap/stage1/check.sh",
-        "observation": "The Kofun seed and audited C transliteration emit byte-identical C for the arithmetic, Bool, nested-block, loop, Text, and List[Text] corpora. The List program compiles under the gate flags and executes `chars`, `len`, Text/List indexing, and UTF-8 byte semantics; bounds traps exit 1 with exact R010 diagnostics, typed index boundaries are refused, and all older C goldens remain byte-identical."
+        "observation": "The audited C seed accepts and executes one corpus covering all 15 typed profile builtins, both `len` overloads, argv/file I/O, Text operations, character predicates, Unicode validation, and stdout. All 30 builtin arity/type boundary rows exit nonzero and write no C, while the older corpora remain byte-identical."
       },
       "negative_boundary": {
         "kind": "rejection",
-        "evidence": "bootstrap/selfhost/driver/corpus_reject_index_int.kofun",
-        "observation": "Indexing an Int receiver exits nonzero and writes no C; thirty additional typed-boundary, block-boundary, loop-boundary, Text-boundary, and index-boundary fixtures are checked by the same gate."
+        "evidence": "bootstrap/selfhost/driver/corpus_builtin_rejects.tsv",
+        "observation": "Each of the 15 profile builtins has one wrong-arity and one wrong-type row; all 30 expanded sources exit nonzero and write no C. The existing 31 typed, block, loop, Text, and index boundary fixtures remain in the same gate."
       },
       "safety": {
         "classification": "none"
@@ -1064,7 +1064,7 @@
       "compatibility": "Only the first generation is promised; reaching the fixed point will be a release-note event.",
       "positive_gate": {
         "command": "sh bootstrap/selfhost/check-compiler-driver.sh",
-        "observation": "The compiler-produced compiler compiles the accept corpus identically to the audited seed."
+        "observation": "The compiler-produced compiler emits byte-identical C to the audited seed for every accept corpus, including all 15 profile builtins, and agrees on all 30 builtin arity/type refusals."
       },
       "negative_boundary": {
         "kind": "rejection",
