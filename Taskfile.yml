@@ -394,65 +394,76 @@ tasks:
   # that string was not.
   verify:
     desc: "Run every available gate"
-    deps:
-      - test
-      - diagnostics
-      - fuzz
-      - unicode
-      - check
-      - bootstrap
-      - selfhost-profile
-      - selfhost-frontend
-      - selfhost-c11
-      - selfhost-c11-control
-      - selfhost-native
-      - stage2
-      - stage2-events
-      - patterns
-      - adt
-      - records
-      - generics
-      - traits
-      - optional
-      - adt-exhaustiveness
-      - module-symbols
-      - imports-qualified
-      - import-aliases
-      - imports-selective
-      - re-exports
-      - kif-v1
-      - incremental
-      - decimal
-      - discovery
-      - native
-      - wasm
-      - tour
-      - c-abi
-      - rust-shim
-      - http
-      - cli-framework
-      - tui-framework
-      - stdlib
-      - build-system
-      - packages
-      - package-roots
-      - source-file-mapping
-      - namespaces
-      - module-identity
-      - visibility-spec
-      - visibility-syntax
-      - visibility-access
-      - re-exports-spec
-      - aggregate-layout
-      - typed-sidecar-spec
-      - typed-sidecar-codec
-      - typed-sidecar-projector
-      - tree-sitter
-      - syntax
-      - repository-check
-      - release-claims
-      - rfc-registry
     cmds:
+      # Every gate here is independent, so they run concurrently — but
+      # *bounded*, the way `make -j$(nproc)` bounded them. go-task runs
+      # `deps:` with no concurrency limit, and 57 gates each starting a C
+      # compiler is not the same workload on a 2-core runner as on a
+      # 12-core laptop: it exhausted the CI runner and a gate died with
+      # exit 126 on a binary it had just built. So `verify` re-invokes
+      # `task` with a limit, exactly as the Makefile re-invoked `make`.
+      #
+      # Override with `VERIFY_JOBS=1 task verify` to bisect a failure
+      # without interleaved output.
+      - cmd: |-
+          task -C "${VERIFY_JOBS:-$(nproc 2>/dev/null || echo 4)}" \
+            test \
+            diagnostics \
+            fuzz \
+            unicode \
+            check \
+            bootstrap \
+            selfhost-profile \
+            selfhost-frontend \
+            selfhost-c11 \
+            selfhost-c11-control \
+            selfhost-native \
+            stage2 \
+            stage2-events \
+            patterns \
+            adt \
+            records \
+            generics \
+            traits \
+            optional \
+            adt-exhaustiveness \
+            module-symbols \
+            imports-qualified \
+            import-aliases \
+            imports-selective \
+            re-exports \
+            kif-v1 \
+            incremental \
+            decimal \
+            discovery \
+            native \
+            wasm \
+            tour \
+            c-abi \
+            rust-shim \
+            http \
+            cli-framework \
+            tui-framework \
+            stdlib \
+            build-system \
+            packages \
+            package-roots \
+            source-file-mapping \
+            namespaces \
+            module-identity \
+            visibility-spec \
+            visibility-syntax \
+            visibility-access \
+            re-exports-spec \
+            aggregate-layout \
+            typed-sidecar-spec \
+            typed-sidecar-codec \
+            typed-sidecar-projector \
+            tree-sitter \
+            syntax \
+            repository-check \
+            release-claims \
+            rfc-registry
       # `tests/lsp/performance_test.js` makes five measurements that a busy
       # machine perturbs: four latency percentiles (diagnostic p95/max,
       # definition p95, hover p95) and the resident-set growth ratio. Run
