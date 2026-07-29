@@ -9,7 +9,7 @@ sharing do not need an application server or remote sandbox.
 Run the deterministic gate:
 
 ```sh
-make tour
+task tour
 ```
 
 Preview the static files with the repository's no-package development server:

@@ -68,7 +68,7 @@ For exact claims and their gates, use the
 Every row there carries a stable claim id from
 [`release/claims.json`](release/claims.json), which names the gate that proves
 it, the boundary that fails outside it, and the command that reproduces both.
-`make release-claims` fails when published wording and executable evidence
+`task release-claims` fails when published wording and executable evidence
 disagree.
 The active compiler is not yet a general parser/type checker, a complete
 memory-safe runtime, or a semantically self-hosting fixed point.
@@ -124,19 +124,22 @@ using it as a compatibility or security promise.
 
 ## Requirements and verification
 
-The core gates require a POSIX shell, a C11 compiler, `sha256sum`, Node.js, and
-Linux x86-64 tooling. Full verification also uses Rust/Cargo, binary inspection
-tools, and optionally `qemu-aarch64` to execute AArch64 output.
+The core gates require [go-task](https://taskfile.dev), a POSIX shell, a C11
+compiler, `sha256sum`, Node.js, and Linux x86-64 tooling. `task` is only the
+entry point — every gate is a shell script, and `Taskfile.yml` is where to read
+the exact command a gate name stands for, so a gate can always be run directly.
+Full verification also uses Rust/Cargo, binary inspection tools, and optionally
+`qemu-aarch64` to execute AArch64 output.
 
 ```sh
-make verify        # every active repository gate
-make diagnostics   # diagnostic registry and exact fixtures
-make fuzz          # deterministic grammar and semantic fuzzing
-make native        # direct ELF64 backends
-make tour          # no-install browser tour
+task verify        # every active repository gate
+task diagnostics   # diagnostic registry and exact fixtures
+task fuzz          # deterministic grammar and semantic fuzzing
+task native        # direct ELF64 backends
+task tour          # no-install browser tour
 ```
 
-CI runs `make verify`. Unsupported target behavior must fail explicitly or be
+CI runs `task verify`. Unsupported target behavior must fail explicitly or be
 reported as unsupported; it must not silently fall back.
 
 ## Documentation

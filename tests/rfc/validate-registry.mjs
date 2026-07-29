@@ -19,6 +19,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { validateAgainstSchema } from '../lib/json-schema.mjs'
+import { taskfileTasks } from '../lib/taskfile.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const SCHEMA_PATH = 'spec/rfc-ledger.schema.json'
@@ -56,15 +57,6 @@ function trackedFiles() {
         maxBuffer: 64 * 1024 * 1024,
     })
     return new Set(output.split('\0').filter((entry) => entry !== ''))
-}
-
-function makefileTargets() {
-    const targets = new Set()
-    for (const line of readRepositoryFile('Makefile').split('\n')) {
-        const match = /^([A-Za-z][A-Za-z0-9_-]*):/.exec(line)
-        if (match) targets.add(match[1])
-    }
-    return targets
 }
 
 function daysBetween(earlier, later) {
@@ -137,11 +129,11 @@ function checkCompatibility(report, subject, label, compatibility, tracked) {
 }
 
 function checkCommand(report, subject, field, value, tracked, targets) {
-    const make = /^make ([A-Za-z][A-Za-z0-9_-]*)$/.exec(value)
-    if (make) {
-        if (!targets.has(make[1])) {
-            report.fail(subject, `${field} names the missing make target \`${make[1]}\``,
-                'name a target that exists in the Makefile')
+    const task = /^task ([A-Za-z][A-Za-z0-9_-]*)$/.exec(value)
+    if (task) {
+        if (!targets.has(task[1])) {
+            report.fail(subject, `${field} names the missing task \`${task[1]}\``,
+                'name a task that exists in Taskfile.yml')
         }
         return
     }
@@ -151,7 +143,7 @@ function checkCommand(report, subject, field, value, tracked, targets) {
         return
     }
     report.fail(subject, `${field} \`${value}\` is not a resolvable command`,
-        'write it as `make <target>` or `sh <tracked-script>` so the checker can resolve it')
+        'write it as `task <name>` or `sh <tracked-script>` so the checker can resolve it')
 }
 
 function claimStates() {
@@ -170,7 +162,7 @@ export function validateRegistry(registry, schema, registryPath = REGISTRY_PATH)
     if (!report.ok) return report
 
     const tracked = trackedFiles()
-    const targets = makefileTargets()
+    const targets = taskfileTasks(ROOT)
     const claims = claimStates()
     const reviewPeriod = registry.review_period_days ?? 14
 

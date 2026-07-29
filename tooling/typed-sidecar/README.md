@@ -57,6 +57,6 @@ compiler or cache success.
 Run the focused gates with:
 
 ~~~sh
-make typed-sidecar-codec
-make typed-sidecar-projector
+task typed-sidecar-codec
+task typed-sidecar-projector
 ~~~

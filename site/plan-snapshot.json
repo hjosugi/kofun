@@ -19134,7 +19134,7 @@
     },
     {
       "number": 713,
-      "title": "make verify is not reproducible: a shared build/ directory race and the LSP resident-growth budget",
+      "title": "task verify is not reproducible: a shared build/ directory race and the LSP resident-growth budget",
       "url": "https://github.com/hjosugi/kofun/issues/713",
       "state": "closed",
       "state_reason": "completed",

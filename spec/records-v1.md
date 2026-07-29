@@ -231,7 +231,7 @@ free unless the frozen compiler profile explicitly adopts records.
 
 ## Executable evidence
 
-`tests/conformance/records/run.sh`, wired as `make records`, gates this
+`tests/conformance/records/run.sh`, wired as `task records`, gates this
 document. It proves, on the current target branch:
 
 - a Token-shaped record with `TokenKind`, `Text`, and `Int` fields constructs,

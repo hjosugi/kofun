@@ -61,7 +61,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make test",
+        "command": "task test",
         "prerequisites": []
       }
     },
@@ -97,7 +97,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make stage2",
+        "command": "task stage2",
         "prerequisites": []
       }
     },
@@ -132,7 +132,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make c-abi",
+        "command": "task c-abi",
         "prerequisites": [
           "cc"
         ]
@@ -169,7 +169,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make stage2",
+        "command": "task stage2",
         "prerequisites": [
           "cc"
         ]
@@ -211,7 +211,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make check",
+        "command": "task check",
         "prerequisites": []
       }
     },
@@ -246,7 +246,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make test",
+        "command": "task test",
         "prerequisites": []
       }
     },
@@ -281,7 +281,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make cli-framework",
+        "command": "task cli-framework",
         "prerequisites": []
       }
     },
@@ -317,7 +317,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make bootstrap",
+        "command": "task bootstrap",
         "prerequisites": [
           "cc",
           "sha256sum"
@@ -356,7 +356,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make fuzz",
+        "command": "task fuzz",
         "prerequisites": [
           "cc"
         ]
@@ -392,7 +392,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make native",
+        "command": "task native",
         "prerequisites": []
       }
     },
@@ -427,7 +427,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make syntax",
+        "command": "task syntax",
         "prerequisites": [
           "cc"
         ]
@@ -454,7 +454,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make repository-check",
+        "command": "task repository-check",
         "prerequisites": []
       }
     },
@@ -480,7 +480,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make native",
+        "command": "task native",
         "prerequisites": []
       }
     },
@@ -506,7 +506,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make stage2",
+        "command": "task stage2",
         "prerequisites": []
       }
     },
@@ -531,7 +531,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make stage2",
+        "command": "task stage2",
         "prerequisites": []
       }
     },
@@ -568,7 +568,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make http",
+        "command": "task http",
         "prerequisites": [
           "cc"
         ]
@@ -604,7 +604,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make import-aliases",
+        "command": "task import-aliases",
         "prerequisites": []
       }
     },
@@ -638,7 +638,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make native",
+        "command": "task native",
         "prerequisites": [
           "qemu-aarch64"
         ]
@@ -677,7 +677,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make native",
+        "command": "task native",
         "prerequisites": []
       }
     },
@@ -714,7 +714,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make native",
+        "command": "task native",
         "prerequisites": []
       }
     },
@@ -751,7 +751,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make native",
+        "command": "task native",
         "prerequisites": []
       }
     },
@@ -786,7 +786,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make native",
+        "command": "task native",
         "prerequisites": [
           "qemu-aarch64"
         ]
@@ -823,7 +823,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make native",
+        "command": "task native",
         "prerequisites": [
           "qemu-aarch64"
         ]
@@ -860,7 +860,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make native",
+        "command": "task native",
         "prerequisites": [
           "qemu-aarch64"
         ]
@@ -896,7 +896,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make check",
+        "command": "task check",
         "prerequisites": []
       }
     },
@@ -915,7 +915,7 @@
       ],
       "compatibility": "The checkpoint is additive and intentionally isolated from the main compiler. Expanding it into module resolution, generics, or backend lowering is a separately evidenced capability change.",
       "positive_gate": {
-        "command": "make records",
+        "command": "task records",
         "observation": "The scanner fixture constructs, passes, returns, reads, and lays out nominal records through the bounded typed frontend."
       },
       "negative_boundary": {
@@ -932,7 +932,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make records",
+        "command": "task records",
         "prerequisites": [
           "cc"
         ]
@@ -970,7 +970,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make re-exports",
+        "command": "task re-exports",
         "prerequisites": []
       }
     },
@@ -1004,7 +1004,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make bootstrap",
+        "command": "task bootstrap",
         "prerequisites": [
           "cc",
           "sha256sum"
@@ -1042,7 +1042,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make rust-shim",
+        "command": "task rust-shim",
         "prerequisites": [
           "cargo"
         ]
@@ -1078,7 +1078,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make selfhost-profile",
+        "command": "task selfhost-profile",
         "prerequisites": [
           "cc"
         ]
@@ -1116,7 +1116,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make selfhost-native",
+        "command": "task selfhost-native",
         "prerequisites": [
           "qemu-aarch64"
         ]
@@ -1137,12 +1137,12 @@
       ],
       "compatibility": "The extension is stable; no alternate extension is recognised.",
       "positive_gate": {
-        "command": "make repository-check",
+        "command": "task repository-check",
         "observation": "No Python or `.kf` sources remain and the editor extension registers `.kofun`."
       },
       "negative_boundary": {
         "kind": "rejection",
-        "evidence": "Makefile",
+        "evidence": "Taskfile.yml",
         "observation": "A `.kf`, `.py`, `.pyc` or `.pyo` file, or a `pyproject.toml`, fails `repository-check`."
       },
       "safety": {
@@ -1152,7 +1152,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make repository-check",
+        "command": "task repository-check",
         "prerequisites": []
       }
     },
@@ -1187,7 +1187,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make diagnostics",
+        "command": "task diagnostics",
         "prerequisites": []
       }
     },
@@ -1222,7 +1222,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make stage2",
+        "command": "task stage2",
         "prerequisites": [
           "cc"
         ]
@@ -1243,7 +1243,7 @@
       ],
       "compatibility": "The sidecar is explicitly non-authoritative; no consumer may treat it as compiler input.",
       "positive_gate": {
-        "command": "make typed-sidecar-projector",
+        "command": "task typed-sidecar-projector",
         "observation": "Stage 2 events project into a schema-valid typed-sidecar v1 document."
       },
       "negative_boundary": {
@@ -1262,7 +1262,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make typed-sidecar-projector",
+        "command": "task typed-sidecar-projector",
         "prerequisites": [
           "node"
         ]
@@ -1297,11 +1297,11 @@
       "performance": {
         "classification": "budgeted",
         "benchmark": "tests/lsp/performance_test.js",
-        "environment": "Run alone under `make lsp`, after the concurrent verify lane, so a busy machine does not perturb the percentiles.",
+        "environment": "Run alone under `task lsp`, after the concurrent verify lane, so a busy machine does not perturb the percentiles.",
         "budget": "Diagnostic p95 and max, definition p95, hover p95, and a resident-set growth ratio, each asserted against the fixed budgets written in the test."
       },
       "reproduction": {
-        "command": "make lsp",
+        "command": "task lsp",
         "prerequisites": [
           "node"
         ]
@@ -1340,7 +1340,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make stdlib",
+        "command": "task stdlib",
         "prerequisites": []
       }
     },
@@ -1374,7 +1374,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make stdlib",
+        "command": "task stdlib",
         "prerequisites": []
       }
     },
@@ -1408,7 +1408,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make test",
+        "command": "task test",
         "prerequisites": []
       }
     },
@@ -1427,7 +1427,7 @@
       ],
       "compatibility": "The grammar is structural, not a type checker; it parses sources the compiler may still refuse.",
       "positive_gate": {
-        "command": "make tree-sitter",
+        "command": "task tree-sitter",
         "observation": "The grammar parses the repository corpus and the recovery cases."
       },
       "negative_boundary": {
@@ -1442,7 +1442,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make tree-sitter",
+        "command": "task tree-sitter",
         "prerequisites": [
           "node"
         ]
@@ -1478,7 +1478,7 @@
         "classification": "none"
       },
       "reproduction": {
-        "command": "make wasm",
+        "command": "task wasm",
         "prerequisites": [
           "node"
         ]

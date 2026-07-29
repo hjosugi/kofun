@@ -1,12 +1,12 @@
 # Reproducing the release evidence
 
-Generated from `release/claims.json` by `make release-evidence`. Do not edit.
+Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 
 From a clean checkout:
 
 ```sh
-make verify
-make release-evidence
+task verify
+task release-evidence
 ```
 
 ## External prerequisites
@@ -26,44 +26,44 @@ report a pass it did not observe.
 
 | Claim | Command |
 |---|---|
-| `arithmetic-core` | `make test` |
-| `borrowed-list-ownership` | `make stage2` |
-| `c-abi-profile` | `make c-abi` |
-| `c11-function-calls` | `make stage2` |
-| `checked-int64-contract` | `make check` |
-| `cli-commands` | `make test` |
-| `cli-framework` | `make cli-framework` |
-| `compiler-seed` | `make bootstrap` |
-| `deterministic-fuzzing` | `make fuzz` |
-| `elf64-image-writer` | `make native` |
-| `enum-matching` | `make syntax` |
-| `formatter-and-repl` | `make repository-check` |
-| `general-native-lowering` | `make native` |
-| `general-ownership-checking` | `make stage2` |
-| `general-parser-type-checker` | `make stage2` |
-| `http-framework` | `make http` |
-| `module-aliases` | `make import-aliases` |
-| `native-aarch64-function-calls` | `make native` |
-| `native-constant-stack-returns` | `make native` |
-| `native-int64-values` | `make native` |
-| `native-integer-division` | `make native` |
-| `native-list-int-core` | `make native` |
-| `native-text-returning-calls` | `make native` |
-| `native-utf8-text-core` | `make native` |
-| `native-x86-64-function-calls` | `make check` |
-| `nominal-records` | `make records` |
-| `public-re-exports` | `make re-exports` |
-| `reproducible-bootstrap` | `make bootstrap` |
-| `rust-crate-shim` | `make rust-shim` |
-| `self-recompile` | `make selfhost-profile` |
-| `selfhost-native-corpus` | `make selfhost-native` |
-| `source-extension` | `make repository-check` |
-| `stable-diagnostics` | `make diagnostics` |
-| `stage2-core-lowering` | `make stage2` |
-| `stage2-typed-sidecar` | `make typed-sidecar-projector` |
-| `stdio-language-server` | `make lsp` |
-| `syscall-file-round-trip` | `make stdlib` |
-| `syscall-stdlib-api` | `make stdlib` |
-| `test-skip-reporting` | `make test` |
-| `tree-sitter-grammar` | `make tree-sitter` |
-| `wasm32-arithmetic-core` | `make wasm` |
+| `arithmetic-core` | `task test` |
+| `borrowed-list-ownership` | `task stage2` |
+| `c-abi-profile` | `task c-abi` |
+| `c11-function-calls` | `task stage2` |
+| `checked-int64-contract` | `task check` |
+| `cli-commands` | `task test` |
+| `cli-framework` | `task cli-framework` |
+| `compiler-seed` | `task bootstrap` |
+| `deterministic-fuzzing` | `task fuzz` |
+| `elf64-image-writer` | `task native` |
+| `enum-matching` | `task syntax` |
+| `formatter-and-repl` | `task repository-check` |
+| `general-native-lowering` | `task native` |
+| `general-ownership-checking` | `task stage2` |
+| `general-parser-type-checker` | `task stage2` |
+| `http-framework` | `task http` |
+| `module-aliases` | `task import-aliases` |
+| `native-aarch64-function-calls` | `task native` |
+| `native-constant-stack-returns` | `task native` |
+| `native-int64-values` | `task native` |
+| `native-integer-division` | `task native` |
+| `native-list-int-core` | `task native` |
+| `native-text-returning-calls` | `task native` |
+| `native-utf8-text-core` | `task native` |
+| `native-x86-64-function-calls` | `task check` |
+| `nominal-records` | `task records` |
+| `public-re-exports` | `task re-exports` |
+| `reproducible-bootstrap` | `task bootstrap` |
+| `rust-crate-shim` | `task rust-shim` |
+| `self-recompile` | `task selfhost-profile` |
+| `selfhost-native-corpus` | `task selfhost-native` |
+| `source-extension` | `task repository-check` |
+| `stable-diagnostics` | `task diagnostics` |
+| `stage2-core-lowering` | `task stage2` |
+| `stage2-typed-sidecar` | `task typed-sidecar-projector` |
+| `stdio-language-server` | `task lsp` |
+| `syscall-file-round-trip` | `task stdlib` |
+| `syscall-stdlib-api` | `task stdlib` |
+| `test-skip-reporting` | `task test` |
+| `tree-sitter-grammar` | `task tree-sitter` |
+| `wasm32-arithmetic-core` | `task wasm` |

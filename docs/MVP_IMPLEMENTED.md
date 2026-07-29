@@ -2,7 +2,7 @@
 
 | Capability | Status | Gate | Claim |
 |---|---|---|---|
-| `.kofun` source extension | implemented | `make repository-check` | `source-extension` |
+| `.kofun` source extension | implemented | `task repository-check` | `source-extension` |
 | Kofun-written compiler seed | implemented: nested-block and looping Int/Bool/Text/List[Text] Core | `bootstrap/stage1/check.sh` | `compiler-seed` |
 | Reproducible bootstrap | implemented | `bootstrap/stage1/check.sh` | `reproducible-bootstrap` |
 | arithmetic Core validation/emission | implemented | `tests/cli.sh` | `arithmetic-core` |
@@ -10,8 +10,8 @@
 | explicit skip reporting and coverage | implemented | `kofun test` | `test-skip-reporting` |
 | semantic compiler self-recompile | first runnable compiler generation implemented; three-generation fixed point open | `bootstrap/selfhost/check-compiler-driver.sh` | `self-recompile` |
 | Stage 2 lexer, parser, and integer Core lowering | checkpoint implemented | `bootstrap/stage2/check.sh` | `stage2-core-lowering` |
-| Stage 2 semantic tooling output | bounded compiler-derived KSE projects one-way into canonical non-authoritative typed-sidecar v1 for explicit single-file `kofun check`; compiler/KIF/cache consumers remain forbidden | `make stage2-events`, `make typed-sidecar-projector` | `stage2-typed-sidecar` |
-| qualified module aliases | bounded same-package `import a.b as local`; local-only `AliasBindingId` preserves target identity, with no public/per-name/external aliases or `bin/kofun` routing | `tests/conformance/modules/import-aliases/run.sh`, `make import-aliases` | `module-aliases` |
+| Stage 2 semantic tooling output | bounded compiler-derived KSE projects one-way into canonical non-authoritative typed-sidecar v1 for explicit single-file `kofun check`; compiler/KIF/cache consumers remain forbidden | `task stage2-events`, `task typed-sidecar-projector` | `stage2-typed-sidecar` |
+| qualified module aliases | bounded same-package `import a.b as local`; local-only `AliasBindingId` preserves target identity, with no public/per-name/external aliases or `bin/kofun` routing | `tests/conformance/modules/import-aliases/run.sh`, `task import-aliases` | `module-aliases` |
 | C11 user-function calls | bounded Int Core: recursion and forward calls | `bootstrap/stage2/check.sh` | `c11-function-calls` |
 | x86-64 native user-function calls | bounded Int Core: six arguments, guarded returns, recursion | `tests/conformance/functions` | `native-x86-64-function-calls` |
 | x86-64/AArch64 native Text-returning calls | bounded compiler-shaped profile with parameters, locals, concatenation, forwarding, and direct calls | `bootstrap/native/check.sh` | `native-text-returning-calls` |
@@ -20,11 +20,11 @@
 | x86-64/AArch64 native integer division | `//` and `%` use the specified floor semantics; `/` is not defined on `Int` and both targets refuse it with one diagnostic (#687); both guard zero and non-representable quotients with canonical per-operator `R010` diagnostics | `tests/conformance/numeric`, `tests/conformance/functions`, `bootstrap/native/check.sh` | `native-integer-division` |
 | self-host success corpus as a native binary | the driver's five-`print` corpus reaches a static ELF on both targets and matches the self-host C11 path exactly | `bootstrap/selfhost/native/check-native-corpus.sh` | `selfhost-native-corpus` |
 | x86-64/AArch64 constant-stack returned calls | a `return` of a direct call branches instead of calling, so direct and mutual recursion in that position run in constant stack; proved by executing three million steps under a lowered stack limit | `bootstrap/native/check.sh`, `tests/conformance/functions` | `native-constant-stack-returns` |
-| stable diagnostics | canonical registry plus executable family owners; Stage 2 retains 46/46 codes and 3 explicit span debts | `tests/diagnostics/`, `make diagnostics` | `stable-diagnostics` |
-| explicit public re-exports | bounded same-package `pub import` / `pub from`; non-widening `ExportBindingId` edges, 64-edge chains, 1,024 bindings/module and 65,536 edges/package, KIF export facts, and facade/canonical tooling paths | `tests/conformance/modules/re-exports/run.sh`, `make re-exports` | `public-re-exports` |
-| deterministic compiler fuzzing | versioned oracle/backend observations for arithmetic plus focused grammar, value-if, match-guard, match-value, and enum-match families | `tests/fuzz/`, `make fuzz` | `deterministic-fuzzing` |
+| stable diagnostics | canonical registry plus executable family owners; Stage 2 retains 46/46 codes and 3 explicit span debts | `tests/diagnostics/`, `task diagnostics` | `stable-diagnostics` |
+| explicit public re-exports | bounded same-package `pub import` / `pub from`; non-widening `ExportBindingId` edges, 64-edge chains, 1,024 bindings/module and 65,536 edges/package, KIF export facts, and facade/canonical tooling paths | `tests/conformance/modules/re-exports/run.sh`, `task re-exports` | `public-re-exports` |
+| deterministic compiler fuzzing | versioned oracle/backend observations for arithmetic plus focused grammar, value-if, match-guard, match-value, and enum-match families | `tests/fuzz/`, `task fuzz` | `deterministic-fuzzing` |
 | payload-free concrete enum matching | bounded Stage 2 C11 slice with constructor-set exhaustiveness | `tests/conformance/syntax/issues_35_47/run.sh`, `tests/fuzz/enum_match.sh` | `enum-matching` |
-| nominal heterogeneous records | bounded typed frontend only: declaration, labelled construction, typed reads, ownership and layout facts, and a scanner that produces and consumes `List[Token]`; no module, generic, or backend lowering | `make records`, `spec/records-v1.md` | `nominal-records` |
+| nominal heterogeneous records | bounded typed frontend only: declaration, labelled construction, typed reads, ownership and layout facts, and a scanner that produces and consumes `List[Token]`; no module, generic, or backend lowering | `task records`, `spec/records-v1.md` | `nominal-records` |
 | general parser/type checker | open | no active gate | `general-parser-type-checker` |
 | borrowed-List Copy/move ownership check | narrow Stage 2 checkpoint | `bootstrap/stage2/check.sh` | `borrowed-list-ownership` |
 | general ownership and law checking | open | no active general pass | `general-ownership-checking` |
@@ -49,7 +49,7 @@ Historical prototypes do not count as active after their source is removed.
 The `Claim` column is the stable identity of each row in
 [`release/claims.json`](../release/claims.json), which binds it to a positive
 gate, a boundary that fails outside it, and a reproduction command.
-`make release-claims` fails if a row here gains, loses, or reworders a
+`task release-claims` fails if a row here gains, loses, or reworders a
 capability without the manifest following, so this table and the evidence
 cannot drift apart. Status text lives here and is mirrored into the manifest;
 do not restate it in the manifest by hand.

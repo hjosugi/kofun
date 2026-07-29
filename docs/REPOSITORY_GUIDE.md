@@ -46,7 +46,7 @@ it open during your first changes.
            +-- locked external native artifacts
            `-- optional Frost project engine
 
-Each path -> focused check.sh or test runner -> Makefile target -> make verify
+Each path -> focused check.sh or test runner -> Makefile target -> task verify
 ```
 
 The launcher source is readable shell. When command routing is surprising,
@@ -57,17 +57,17 @@ start at [`bin/kofun`](../bin/kofun), find the public subcommand, and follow the
 
 | Path | What it owns | Start here | Typical gate |
 |---|---|---|---|
-| `bin/` | repository-local public launcher | `bin/kofun` | `make test` |
-| `bootstrap/` | compiler seeds, frontends, direct backends, self-host evidence | `bootstrap/README.md` | `make bootstrap`, `make stage2`, `make native` |
+| `bin/` | repository-local public launcher | `bin/kofun` | `task test` |
+| `bootstrap/` | compiler seeds, frontends, direct backends, self-host evidence | `bootstrap/README.md` | `task bootstrap`, `task stage2`, `task native` |
 | `spec/` | normative language and tooling contracts plus executable examples | `spec/README.md` | the matching `make *-spec` target |
-| `tests/` | public behavior, conformance, diagnostics, fuzzing, tooling, integration | nearest runner or README | `make test`, `make diagnostics`, `make fuzz` |
-| `stdlib/` | Kofun-authored standard-library contracts and focused projections | `stdlib/README.md` | `make stdlib` |
-| `framework/` | bounded HTTP, CLI, and terminal UI surfaces | subsystem README | `make http`, `make cli-framework`, `make tui-framework` |
-| `tooling/` | language server and typed-sidecar codec/projector | subsystem README | `make lsp`, `make typed-sidecar-codec` |
-| `editor/` | VS Code metadata/LSP bundle and Tree-sitter grammar | subsystem README | `make tree-sitter`, `make lsp` |
-| `unicode/` | Unicode tables, generator, provenance, and C boundary | `unicode/README.md` | `make unicode` |
+| `tests/` | public behavior, conformance, diagnostics, fuzzing, tooling, integration | nearest runner or README | `task test`, `task diagnostics`, `task fuzz` |
+| `stdlib/` | Kofun-authored standard-library contracts and focused projections | `stdlib/README.md` | `task stdlib` |
+| `framework/` | bounded HTTP, CLI, and terminal UI surfaces | subsystem README | `task http`, `task cli-framework`, `task tui-framework` |
+| `tooling/` | language server and typed-sidecar codec/projector | subsystem README | `task lsp`, `task typed-sidecar-codec` |
+| `editor/` | VS Code metadata/LSP bundle and Tree-sitter grammar | subsystem README | `task tree-sitter`, `task lsp` |
+| `unicode/` | Unicode tables, generator, provenance, and C boundary | `unicode/README.md` | `task unicode` |
 | `vendor/` | reviewed third-party source copied into the tree | `vendor/*/README.kofun.md` | integrity owner named by subsystem |
-| `package/` | locked external native-artifact package manager | `package/README.md` | `make packages` |
+| `package/` | locked external native-artifact package manager | `package/README.md` | `task packages` |
 | `examples/` | user-facing and interoperability examples | example plus its nearest check | relevant build or `check.sh` |
 | `docs/` | authored guides, designs, status, and browser-tour source | this guide | `npm run test:docs` |
 | `app/` | Next.js project site, docs renderer, roadmap, playground | `site/README.md` | `npm run verify:site` |
@@ -245,7 +245,7 @@ There are three related but distinct developer-tool surfaces:
    sources and editor queries.
 
 Changing syntax can require updates in all three, but they do not share one
-parser or one semantic authority. Run both `make lsp` and `make tree-sitter`
+parser or one semantic authority. Run both `task lsp` and `task tree-sitter`
 when the user-visible edit experience changes.
 
 ## Official site and documentation pipeline
@@ -293,18 +293,18 @@ Never make a source fix only inside one of these directories.
 
 | You want to change… | Start in… | Read next… | Run first… |
 |---|---|---|---|
-| public CLI routing or exit behavior | `bin/kofun` | `tests/cli.sh` | `make test` |
-| Stage 1 Int/Bool/Text/List[Text] Core | `bootstrap/stage1/` | its README and `check.sh` | `make bootstrap` |
-| Stage 2 syntax, typing, or C lowering | `bootstrap/stage2/` | its README and matching fixture | `make stage2` |
-| a stable error code/message/span | emitter plus `tests/diagnostics/` | diagnostics README/registry | `make diagnostics` |
-| x86-64 or AArch64 direct output | `bootstrap/native/` | native README and docs | `make native` |
-| wasm32 arithmetic output | `bootstrap/wasm/` | wasm README | `make wasm` |
-| C or Rust interoperability | `bootstrap/c_abi/`, `examples/rust-shim/` | security/third-party docs | `make c-abi` or `make rust-shim` |
+| public CLI routing or exit behavior | `bin/kofun` | `tests/cli.sh` | `task test` |
+| Stage 1 Int/Bool/Text/List[Text] Core | `bootstrap/stage1/` | its README and `check.sh` | `task bootstrap` |
+| Stage 2 syntax, typing, or C lowering | `bootstrap/stage2/` | its README and matching fixture | `task stage2` |
+| a stable error code/message/span | emitter plus `tests/diagnostics/` | diagnostics README/registry | `task diagnostics` |
+| x86-64 or AArch64 direct output | `bootstrap/native/` | native README and docs | `task native` |
+| wasm32 arithmetic output | `bootstrap/wasm/` | wasm README | `task wasm` |
+| C or Rust interoperability | `bootstrap/c_abi/`, `examples/rust-shim/` | security/third-party docs | `task c-abi` or `task rust-shim` |
 | a standard-library contract | matching `stdlib/<name>/` | module README | its `tests/verify.sh` |
 | HTTP, CLI, or TUI framework | matching `framework/<name>/` | subsystem README | matching Make target |
-| LSP behavior | `tooling/lsp/`, `tests/lsp/` | LSP README | `make lsp` |
-| structural editor parsing | `editor/tree-sitter-kofun/` | package README | `make tree-sitter` |
-| VS Code packaging or metadata | `editor/vscode/` | extension README | `make lsp` plus extension check |
+| LSP behavior | `tooling/lsp/`, `tests/lsp/` | LSP README | `task lsp` |
+| structural editor parsing | `editor/tree-sitter-kofun/` | package README | `task tree-sitter` |
+| VS Code packaging or metadata | `editor/vscode/` | extension README | `task lsp` plus extension check |
 | language contract | `spec/` | spec index and conformance owner | matching spec/conformance gate |
 | explanatory docs | `docs/` | `site/README.md` | `npm run test:docs` |
 | docs UI or playground | `app/` | `site/README.md` | `npm run verify:site` |

@@ -22,12 +22,12 @@ evidence.
 
 ## The two lanes
 
-**Fast structural lane — `make release-claims`, inside `make verify`.** Reads
+**Fast structural lane — `task release-claims`, inside `task verify`.** Reads
 the repository and runs no gate, so it costs a second. It answers: does every
 published capability still join exactly one claim, does every claim still name
 evidence that exists, and does the committed pack still match the manifest?
 
-**Release lane — `make release-evidence`.** Regenerates
+**Release lane — `task release-evidence`.** Regenerates
 `artifacts/release-evidence/` from the manifest. CI runs this from a clean
 checkout and requires `git diff --exit-code` to be empty, which is what makes
 the pack reproducible rather than a snapshot of one machine.
@@ -74,8 +74,8 @@ manifest, so the rules are tested rather than trusted.
 1. Change the published wording in `docs/MVP_IMPLEMENTED.md` if that is what
    moved, including its `Claim` cell.
 2. Edit `release/claims.json`. Keep `claims` sorted by `id`.
-3. Run `make release-claims`. Each refusal names the row and the repair.
-4. Run `make release-evidence` and commit the regenerated pack.
+3. Run `task release-claims`. Each refusal names the row and the repair.
+4. Run `task release-evidence` and commit the regenerated pack.
 
 Evidence must bind a repository input. A timestamp is not freshness: the
 generated `index.json` records digests of the manifest, the schema, and every

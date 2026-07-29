@@ -143,8 +143,8 @@
       },
       "implementation": {
         "change": "https://github.com/hjosugi/kofun/pull/756",
-        "enablement": "Enabled only in the bounded record frontend invoked by `make records`. Module visibility, generic records, the main compiler, and backend lowering remain outside the checkpoint.",
-        "gate": "make records",
+        "enablement": "Enabled only in the bounded record frontend invoked by `task records`. Module visibility, generic records, the main compiler, and backend lowering remain outside the checkpoint.",
+        "gate": "task records",
         "claims": [
           "nominal-records"
         ]

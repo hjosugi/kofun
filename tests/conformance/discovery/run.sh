@@ -151,6 +151,6 @@ fi
 #
 # Deliberately no second validator here. Re-checking these bytes with a JSON
 # library would mean adding an interpreter this repository does not otherwise
-# use in its gates, and `make repository-check` exists to keep that out.
+# use in its gates, and `task repository-check` exists to keep that out.
 
 printf '%s\n' "discovery: OK"

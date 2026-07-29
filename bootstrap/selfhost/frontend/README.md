@@ -31,7 +31,7 @@ parse, resolve, and type the frozen self-host source `S`
   profile digest, re-emits and byte-compares every document, checks
   determinism across repeated runs, cross-checks every accepted document's
   bindings against the independent scope-HIR inference, and runs the
-  execution differential. Run it with `make selfhost-profile` or directly.
+  execution differential. Run it with `task selfhost-profile` or directly.
 
 ## Canonical source and audited seed
 
@@ -45,4 +45,4 @@ spans, and message bytes, and the same pre-order renumbering, so the seed
 remains the executable stand-in until the self-compile chain (#620–#622)
 can run the canonical source itself. This closed the #654 boundary that
 previously kept the `profile.tsv` frontend cells at `planned:#619`;
-`make selfhost-frontend` is green and is the #619 completion check.
+`task selfhost-frontend` is green and is the #619 completion check.

@@ -9,7 +9,7 @@ is [`docs/RFC_PROCESS.md`](../docs/RFC_PROCESS.md).
 | `TEMPLATE.md` | The proposal template. |
 | `NNNN-<slug>.md` | An accepted proposal. Immutable once accepted. |
 
-`make rfc-registry` checks the ledger, and `make verify` runs it.
+`task rfc-registry` checks the ledger, and `task verify` runs it.
 
 ## What this is not
 

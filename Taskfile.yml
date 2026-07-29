@@ -1,0 +1,465 @@
+# The repository entry point. Every gate below keeps the exact command
+# sequence it had under the Makefile this replaced (#757); only the entry
+# point changed.
+#
+# Descriptions live on the tasks, so `task --list` is generated rather than
+# written. The Makefile carried three hand-maintained copies of the gate set —
+# `.PHONY`, `VERIFY_TARGETS`, and a `help` printf block — none of which could
+# disagree loudly. `clean` had already drifted out of the help block.
+version: "3"
+
+vars:
+  KOFUN: ./bin/kofun
+
+tasks:
+
+  compiler:
+    desc: "Build the Python-free Kofun compiler seed"
+    cmds:
+      - cmd: "{{.KOFUN}} --version"
+        silent: true
+
+  test:
+    desc: "Exercise build/run/check/test"
+    deps: [compiler]
+    cmds:
+      - "sh tests/cli.sh"
+      - "sh tests/cli_stage2_outcomes.sh"
+      - "sh tests/conformance/capabilities_test.sh"
+      - "sh tests/conformance/modules/lexical-scopes/run.sh"
+      - "sh tests/conformance/modules/shadowing/run.sh"
+      - "{{.KOFUN}} test tests/conformance/numeric"
+      - "{{.KOFUN}} test tests/conformance/functions"
+      - "{{.KOFUN}} test tests/conformance/list"
+      - "{{.KOFUN}} test tests/conformance/text"
+
+  diagnostics:
+    desc: "Verify must-fail diagnostic goldens"
+    cmds:
+      - "sh tests/diagnostics/run.sh"
+
+  fuzz:
+    desc: "Run deterministic grammar and semantic fuzz smoke tests"
+    cmds:
+      - "sh tests/fuzz/grammar.sh"
+      - "sh tests/fuzz/semantic_protocol_test.sh"
+      - "sh tests/fuzz/semantic_differential.sh"
+      - "sh tests/fuzz/value_if.sh"
+      - "sh tests/fuzz/match_guard.sh"
+      - "sh tests/fuzz/match_value.sh"
+      - "sh tests/fuzz/match_value_invalid.sh"
+      - "sh tests/fuzz/enum_match.sh"
+
+  unicode:
+    desc: "Verify Unicode identifiers, security, text, and width"
+    cmds:
+      - "sh tests/unicode/run.sh"
+
+  check:
+    desc: "Check canonical bootstrap sources"
+    deps: [compiler]
+    cmds:
+      - "{{.KOFUN}} check bootstrap/fixtures/answer.kofun"
+
+  bootstrap:
+    desc: "Verify the Stage 1 seed path"
+    cmds:
+      - "sh bootstrap/stage1/check.sh"
+
+  selfhost-profile:
+    desc: "Verify the frozen first self-host source profile"
+    cmds:
+      - "sh bootstrap/selfhost/check-profile.sh"
+      - "sh bootstrap/selfhost/frontend/check-frontend.sh"
+      - "sh bootstrap/selfhost/c11/check-c11.sh"
+      - "sh bootstrap/selfhost/check-compiler-driver.sh"
+
+  selfhost-frontend:
+    desc: "Gate #619 typed-frontend evidence (all 46 cells)"
+    cmds:
+      - "sh bootstrap/selfhost/check-profile.sh --phase frontend"
+
+  selfhost-c11:
+    desc: "Gate #620 Text-slice C11 evidence"
+    cmds:
+      - "sh bootstrap/selfhost/check-profile.sh --phase c11-text"
+
+  selfhost-c11-control:
+    desc: "Gate #621 control/List C11 evidence"
+    cmds:
+      - "sh bootstrap/selfhost/check-profile.sh --phase c11-control"
+
+  selfhost-native:
+    desc: "Prove the self-host Core reaches a native ELF via two backends"
+    cmds:
+      - "sh bootstrap/selfhost/native/check-native-corpus.sh"
+
+  stage2:
+    desc: "Verify the Stage 2 semantic frontend checkpoint"
+    cmds:
+      - "sh bootstrap/stage2/check.sh"
+
+  stage2-events:
+    desc: "Verify bounded complete/partial semantic events"
+    cmds:
+      - "sh tests/typed-sidecar/stage2-events.sh"
+      - "sh tests/typed-sidecar/stage2-event-stream.sh"
+
+  patterns:
+    desc: "Verify lossless general Pattern syntax trees"
+    cmds:
+      - "sh tests/conformance/patterns/run.sh"
+
+  adt:
+    desc: "Verify bounded nominal ADT typed frontend"
+    cmds:
+      - "sh tests/conformance/adt/run.sh"
+
+  records:
+    desc: "Verify bounded nominal record typed frontend"
+    cmds:
+      - "sh tests/conformance/records/run.sh"
+
+  generics:
+    desc: "Verify explicit generic function typing"
+    cmds:
+      - "sh tests/conformance/generics/run.sh"
+
+  traits:
+    desc: "Verify the bounded trait declaration frontend"
+    cmds:
+      - "sh tests/conformance/traits/run.sh"
+
+  optional:
+    desc: "Verify the bounded null/T? frontend"
+    cmds:
+      - "sh tests/conformance/optional/run.sh"
+
+  adt-exhaustiveness:
+    desc: "Verify resolved flat-ADT match diagnostics"
+    cmds:
+      - "sh tests/conformance/adt-exhaustiveness/run.sh"
+
+  module-symbols:
+    desc: "Verify stable top-level declaration collection"
+    cmds:
+      - "sh tests/conformance/modules/top-level-declarations/run.sh"
+
+  imports-qualified:
+    desc: "Verify qualified same-package module imports"
+    cmds:
+      - "sh tests/conformance/modules/imports-qualified/run.sh"
+
+  import-aliases:
+    desc: "Verify local aliases for qualified module imports"
+    cmds:
+      - "sh tests/conformance/modules/import-aliases/run.sh"
+
+  imports-selective:
+    desc: "Verify selective same-package name imports"
+    cmds:
+      - "sh tests/conformance/modules/imports-selective/run.sh"
+
+  re-exports:
+    desc: "Verify explicit public facade forwarding and KIF facts"
+    cmds:
+      - "sh tests/conformance/modules/re-exports/run.sh"
+
+  kif-v1:
+    desc: "Verify authoritative compiled interfaces"
+    cmds:
+      - "sh tests/conformance/modules/kif-v1/run.sh"
+
+  incremental:
+    desc: "Verify semantic invalidation and reuse decisions"
+    cmds:
+      - "sh tests/conformance/incremental/run.sh"
+
+  decimal:
+    desc: "Verify the Decimal runtime representation and profile"
+    cmds:
+      - "sh tests/conformance/decimal/run.sh"
+
+  discovery:
+    desc: "Verify the developer discovery v1 request/result contract"
+    cmds:
+      - "sh tests/conformance/discovery/run.sh"
+
+  native:
+    desc: "Build and execute the Kofun-emitted ELF64 fixture"
+    cmds:
+      - "sh bootstrap/native/check.sh"
+
+  wasm:
+    desc: "Build and execute the wasm32 arithmetic Core"
+    cmds:
+      - "sh bootstrap/wasm/check.sh"
+
+  tour:
+    desc: "Verify the no-install browser learning tour"
+    cmds:
+      - "sh docs/tour/check.sh"
+
+  c-abi:
+    desc: "Verify explicit dynamic C ABI interoperability"
+    cmds:
+      - "sh bootstrap/c_abi/check.sh"
+
+  rust-shim:
+    desc: "Verify the vendored Rust crate shim offline"
+    cmds:
+      - "sh examples/rust-shim/check.sh"
+
+  http:
+    desc: "Verify the first-party HTTP/API framework"
+    cmds:
+      - "sh tests/http/check.sh"
+
+  cli-framework:
+    desc: "Verify the direct-static native CLI framework"
+    cmds:
+      - "sh framework/cli/check.sh"
+
+  tui-framework:
+    desc: "Verify the shared terminal UI framework"
+    cmds:
+      - "sh framework/tui/check.sh"
+
+  stdlib:
+    desc: "Verify the Kofun syscall/stdlib contracts"
+    cmds:
+      - "sh stdlib/tests/verify.sh"
+
+  build-system:
+    desc: "Verify direct and Frost-integrated build paths"
+    cmds:
+      - "sh tests/build_system.sh"
+
+  packages:
+    desc: "Verify locked package fetch and offline use"
+    cmds:
+      - "sh tests/package_manager.sh"
+
+  package-roots:
+    desc: "Verify package-root specification examples"
+    cmds:
+      - "sh spec/package-roots/check.sh"
+
+  source-file-mapping:
+    desc: "Verify source/module identity examples"
+    cmds:
+      - "sh spec/source-file-mapping/check.sh"
+
+  namespaces:
+    desc: "Verify semantic namespace and lookup examples"
+    cmds:
+      - "sh spec/namespaces/check.sh"
+
+  module-identity:
+    desc: "Verify stable IDs and interface digest examples"
+    cmds:
+      - "sh spec/module-identity/check.sh"
+
+  visibility-spec:
+    desc: "Verify declaration-visibility specification examples"
+    cmds:
+      - "sh spec/visibility/check.sh"
+
+  visibility-syntax:
+    desc: "Verify executable function visibility syntax"
+    cmds:
+      - "sh tests/conformance/modules/visibility-syntax/run.sh"
+
+  visibility-access:
+    desc: "Verify identity-only visibility enforcement"
+    cmds:
+      - "sh tests/conformance/modules/visibility-access/run.sh"
+
+  re-exports-spec:
+    desc: "Verify explicit non-widening re-export design"
+    cmds:
+      - "sh spec/re-exports/check.sh"
+
+  aggregate-layout:
+    desc: "Verify AggregateLayout v1 descriptors and vectors"
+    cmds:
+      - "sh spec/aggregate-layout-v1/check.sh"
+
+  typed-sidecar-spec:
+    desc: "Verify bounded complete/partial tooling artifacts"
+    cmds:
+      - "sh spec/typed-sidecar/check.sh"
+
+  typed-sidecar-codec:
+    desc: "Verify production reader/writer and atomic replacement"
+    cmds:
+      - "sh tests/typed-sidecar/codec.sh"
+      - "sh tests/typed-sidecar/atomic-write.sh"
+      - "sh tests/typed-sidecar/authority-boundary.sh"
+
+  typed-sidecar-projector:
+    desc: "Verify Stage 2 event projection and single-file CLI emission"
+    cmds:
+      - "sh tests/typed-sidecar/stage2-projector.sh"
+      - "sh tests/typed-sidecar/cli.sh"
+      - "sh tests/typed-sidecar/producer-races.sh"
+      - "sh tests/typed-sidecar/authority-boundary.sh"
+
+  lsp:
+    desc: "Verify the stdio language server and editor client"
+    cmds:
+      - "sh tests/lsp/check.sh"
+
+  tree-sitter:
+    desc: "Verify the structural grammar and editor queries"
+    cmds:
+      - "npm --prefix editor/tree-sitter-kofun ci"
+      - "npm --prefix editor/tree-sitter-kofun test"
+      - "npm --prefix editor/tree-sitter-kofun run test:repository-corpus"
+      - "npm --prefix editor/tree-sitter-kofun run test:queries"
+
+  roadmap:
+    desc: "Verify the executable issues 31-34 roadmap"
+    cmds:
+      - "sh spec/roadmap-31-34/verify-current-gates.sh"
+
+  syntax:
+    desc: "Verify syntax contracts for issues 35-60"
+    cmds:
+      - "sh tests/conformance/syntax/issues_35_47/run.sh"
+      - "sh tests/conformance/syntax/issues_48_60/run.sh"
+
+  # The only recipe that is not a verbatim copy of its Makefile original, and
+  # the reason is a real shell difference rather than a preference. go-task
+  # runs commands through mvdan/sh, which does not negate a *pipeline* with a
+  # leading `!` the way the system shell does: `! false` is negated but
+  # `! find ... | grep -q .` is not. Under a verbatim copy both checks below
+  # would invert, so they are written as an explicit `if ... then exit 1`,
+  # which both shells agree on. The observation is unchanged: the gate fails
+  # when a match exists.
+  repository-check:
+    desc: "Require .kofun sources and the Kofun toolchain"
+    cmds:
+      - cmd: |-
+          if find . -path './.git' -prune -o -path './build' -prune -o \
+            -type f \( -name '*.py' -o -name '*.pyc' -o -name '*.pyo' \) -print | grep -q .
+          then exit 1; fi
+        silent: true
+      - cmd: |-
+          if find . -path './.git' -prune -o -path './build' -prune -o \
+            -type f -name '*.kf' -print | grep -q .
+          then exit 1; fi
+        silent: true
+      - cmd: "test ! -e pyproject.toml"
+        silent: true
+      - cmd: "grep -q '\"extensions\": \\[\".kofun\"\\]' editor/vscode/package.json"
+        silent: true
+      - cmd: "printf '%s\\n' 'PASS: .kofun sources only; no Python implementation'"
+        silent: true
+
+  # The fast structural lane: does every published capability still join the
+  # evidence that bounds it? This reads the repository and never runs a gate, so
+  # it belongs beside the other cheap checks in `verify`.
+  release-claims:
+    desc: "Join published capability claims to their evidence"
+    cmds:
+      - "sh tests/release/check-claims.sh"
+
+  # The release lane: regenerate the reviewable pack. `release-claims` then fails
+  # until the regenerated pack is committed, so the two cannot diverge.
+  release-evidence:
+    desc: "Regenerate the reviewable release evidence pack"
+    cmds:
+      - "node tests/release/validate-claims.mjs evidence artifacts/release-evidence"
+
+  # Keeps accepted, implemented, enabled and amended apart in the decision
+  # ledger. Like `release-claims` this only reads the repository, so it belongs
+  # in the fast lane.
+  rfc-registry:
+    desc: "Check the language decision ledger"
+    cmds:
+      - "sh tests/rfc/check-registry.sh"
+
+  clean:
+    desc: "Remove build/ and scratch directories"
+    cmds:
+      - "rm -rf build .tmp-*"
+
+  # Every gate in `deps` is independent, so they run concurrently rather than
+  # asking the caller to remember a flag. Override with `task -C 1 verify` to
+  # bisect a failure without interleaved output.
+  #
+  # `deps` replaces the Makefile's hand-maintained VERIFY_TARGETS string: a
+  # task named here that does not exist is an error, where a stale name in
+  # that string was not.
+  verify:
+    desc: "Run every available gate"
+    deps:
+      - test
+      - diagnostics
+      - fuzz
+      - unicode
+      - check
+      - bootstrap
+      - selfhost-profile
+      - selfhost-frontend
+      - selfhost-c11
+      - selfhost-c11-control
+      - selfhost-native
+      - stage2
+      - stage2-events
+      - patterns
+      - adt
+      - records
+      - generics
+      - traits
+      - optional
+      - adt-exhaustiveness
+      - module-symbols
+      - imports-qualified
+      - import-aliases
+      - imports-selective
+      - re-exports
+      - kif-v1
+      - incremental
+      - decimal
+      - discovery
+      - native
+      - wasm
+      - tour
+      - c-abi
+      - rust-shim
+      - http
+      - cli-framework
+      - tui-framework
+      - stdlib
+      - build-system
+      - packages
+      - package-roots
+      - source-file-mapping
+      - namespaces
+      - module-identity
+      - visibility-spec
+      - visibility-syntax
+      - visibility-access
+      - re-exports-spec
+      - aggregate-layout
+      - typed-sidecar-spec
+      - typed-sidecar-codec
+      - typed-sidecar-projector
+      - tree-sitter
+      - syntax
+      - repository-check
+      - release-claims
+      - rfc-registry
+    cmds:
+      # `tests/lsp/performance_test.js` makes five measurements that a busy
+      # machine perturbs: four latency percentiles (diagnostic p95/max,
+      # definition p95, hover p95) and the resident-set growth ratio. Run
+      # alone they hold; run beside seven other gates the diagnostic p95
+      # reaches 108ms against a 100ms budget. So they go last and by
+      # themselves, and the budgets stay as written. `roadmap` is here for the
+      # same reason, not for its own sake:
+      # spec/roadmap-31-34/verify-current-gates.sh calls tests/lsp/check.sh.
+      - task: lsp
+      - task: roadmap

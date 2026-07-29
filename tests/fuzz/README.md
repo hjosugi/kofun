@@ -74,7 +74,7 @@ backend failures to remain distinguishable.
 Run all fuzz smoke gates:
 
 ```sh
-make fuzz
+task fuzz
 ```
 
 These are bounded CI smoke budgets, not a replacement for long-running

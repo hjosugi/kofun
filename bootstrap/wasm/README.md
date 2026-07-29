@@ -92,7 +92,7 @@ status, stdout, and stderr with the C11 observations.
 Run the mandatory gate:
 
 ```sh
-make wasm
+task wasm
 ```
 
 ## Honest boundary

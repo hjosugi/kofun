@@ -79,7 +79,7 @@ for page in index.json CLAIMS.md EVIDENCE.md LIMITS.md REPRO.md; do
     fi
     if ! cmp -s "$WORK/pack-a/$page" "$ROOT/$PACK/$page"; then
         printf '%s\n' \
-            "FAIL: release claims: $PACK/$page is stale; run \`make release-evidence\`" >&2
+            "FAIL: release claims: $PACK/$page is stale; run \`task release-evidence\`" >&2
         exit 1
     fi
 done

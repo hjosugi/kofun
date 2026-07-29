@@ -47,6 +47,6 @@ attempts to restore an independent adapter or expectations-file policy,
 partially skipped supported corpora, unregistered same-name corpus
 substitution, unavailable-executor compile bypass, unsafe evidence paths, and
 drift between each expectations manifest and the files or observations the
-runner discovers. `make verify` runs that gate and this corpus. Runtime
+runner discovers. `task verify` runs that gate and this corpus. Runtime
 failures are captured as ordinary stdout/stderr/exit observations rather than
 treated as harness failures.
