@@ -19,12 +19,15 @@ Int- or Text-valued `print(EXPR)` statements, nested
 `if`/`else if`/`else` blocks, and `while`/half-open `for` ranges in `fn main()`.
 Expressions cover checked Int arithmetic, six Int comparisons, Bool equality,
 Bool literals and bindings, `!`, short-circuiting `&&`/`||`, and Text literals,
-concatenation, equality, `chars(Text) -> List[Text]`, `len(List[Text])`, and
-byte-oriented Text/List indexing. Text/List programs alone receive checked
-conditional allocation lists plus the required Text/List helpers; older C
-output stays byte-identical. A block scopes the bindings it introduces, and
-typed boundary crossings, non-`Bool` conditions and misplaced `else` lines are
-refused before deterministic standalone C11 is emitted. General builtins and
+concatenation, equality, `chars(Text) -> List[Text]`, `len(Text|List[Text])`, and
+byte-oriented Text/List indexing. The 15 builtins used by the frozen self-host
+source have exact arity and typed lowering to conditional runtime shims,
+including argv/file I/O, Text search/slice/trim, character predicates, Unicode
+validation, and both Text/List `len`. Existing Text/List programs receive only
+the helpers they already used; the extended host surface additionally declares
+its audited Unicode include dependency. A block scopes the bindings it
+introduces, and typed boundary crossings, non-`Bool` conditions and misplaced
+`else` lines are refused before deterministic C11 is emitted. Assignment and
 non-main declarations remain later compatibility slices.
 
 Three executable checkpoints extend this path without claiming full

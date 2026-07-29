@@ -47,6 +47,16 @@ filename or hash special case.
 - `corpus_list_text.kofun` / `.c` / `.stdout` — constructs `List[Text]` with
   `chars`, observes it with `len`, and indexes both List[Text] and Text through
   both compilers. `k字n` pins the profile's byte-oriented result of `5`.
+- `corpus_builtins.kofun` / `.c` / `.input` / `.output` / `.stdout` — invokes
+  all 15 profile builtins through both seeds, then executes argv decoding,
+  whole-file read/write, both `len` overloads, Text search/slice/trim,
+  character predicates, Unicode validation, and stdout against pinned bytes.
+  Its `is_xid_continue` input is ASCII so the known seed/source deviation is
+  preserved rather than silently closed on one side.
+- `corpus_builtin_rejects.tsv` — one wrong-arity and one wrong-type source line
+  for each of the 15 builtins. The two gates expand all 30 rows into full
+  sources, require identical nonzero refusal from both seeds, and require that
+  no C artifact is written.
 - `corpus_trap_list_index.kofun` / `.stderr` and
   `corpus_trap_text_index.kofun` / `.stderr` — well-typed out-of-bounds
   programs compile identically, then exit 1 with the exact receiver-specific
@@ -90,11 +100,11 @@ across repeated runs, and bounded I/O failure (a missing input panics
 with the runtime's explicit message, exits 1, and preserves the
 previous output bytes).
 
-The host boundary in generated programs is the audited runtime shim
-documented in `../c11/README.md`: bounded argument decoding through
-`kofun_rt_args` (the program name is excluded, exactly like the trusted
-seed), whole-file `read_text`/`write_text` with explicit panics, and
-`print` as line-buffered stdout. Known deliberate deviation from the
-Stage 1 seed, unchanged from #620: `is_xid_continue` consults the real
-Unicode 17 tables rather than the seed's historical `>= 0x80`
-approximation, so the corpus differential stays within ASCII inputs.
+The host boundary in generated programs is the audited runtime shim documented
+in `../c11/README.md`: bounded argument decoding through `kofun_rt_args` (the
+program name is excluded, exactly like the trusted seed), whole-file
+`read_text`/`write_text` with explicit `R010` failures, and `print` as
+line-buffered stdout. Known deliberate deviation from the Stage 1 seed,
+unchanged from #620: `is_xid_continue` consults the real Unicode tables rather
+than the seed's historical `>= 0x80` approximation, so the corpus differential
+stays within ASCII inputs.

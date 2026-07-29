@@ -3,12 +3,12 @@
   "repository": "hjosugi/kofun",
   "time_zone": "Asia/Tokyo",
   "as_of": "2026-07-29",
-  "generated_at": "2026-07-29T00:08:44.349Z",
+  "generated_at": "2026-07-29T12:20:46.929Z",
   "source": {
     "endpoint": "https://api.github.com/repos/hjosugi/kofun/issues",
-    "api_items": 781,
+    "api_items": 784,
     "issues": 654,
-    "pull_requests_excluded": 127,
+    "pull_requests_excluded": 130,
     "pages": 8
   },
   "capacity": {
@@ -27,28 +27,28 @@
   },
   "summary": {
     "issues_total": 654,
-    "open_issues": 521,
-    "closed_issues": 133,
-    "open_curated": 74,
+    "open_issues": 520,
+    "closed_issues": 134,
+    "open_curated": 73,
     "open_planning": 447,
     "open_unclassified": 0,
-    "scheduled_curated": 74,
+    "scheduled_curated": 73,
     "unscheduled_curated": 0,
     "open_roles": {
-      "curated": 74,
+      "curated": 73,
       "planning": 447
     },
     "open_workflows": {
       "blocked": 19,
       "deferred": 13,
-      "in-progress": 8,
+      "in-progress": 7,
       "needs-decision": 8,
       "needs-detail": 30,
       "ready": 8,
       "unclassified": 435
     },
     "open_priorities": {
-      "P0": 7,
+      "P0": 6,
       "P1": 37,
       "P2": 38,
       "P3": 4,
@@ -56,32 +56,32 @@
     },
     "open_sizes": {
       "L": 30,
-      "M": 41,
+      "M": 40,
       "S": 15,
       "none": 435
     },
     "curated_workflows": {
       "blocked": 16,
       "deferred": 12,
-      "in-progress": 8,
+      "in-progress": 7,
       "needs-decision": 7,
       "needs-detail": 23,
       "ready": 8
     },
     "curated_priorities": {
-      "P0": 6,
+      "P0": 5,
       "P1": 30,
       "P2": 34,
       "P3": 4
     },
     "curated_sizes": {
       "L": 18,
-      "M": 41,
+      "M": 40,
       "S": 15
     },
     "state_reasons": {
-      "completed": 103,
-      "none": 519,
+      "completed": 104,
+      "none": 518,
       "not_planned": 30,
       "reopened": 2
     }
@@ -91,20 +91,20 @@
     "window_start": "2026-07-15",
     "window_end": "2026-07-29",
     "created_curated": 141,
-    "completed_curated": 66,
+    "completed_curated": 67,
     "closed_not_planned": 1,
-    "completion_rate_per_week": 33,
+    "completion_rate_per_week": 33.5,
     "arrival_rate_per_week": 70.5,
-    "net_burn_per_week": -37.5,
+    "net_burn_per_week": -37,
     "note": "Completion excludes issues closed as not planned; intake uses curated issue creation dates."
   },
   "forecast": {
     "scope": "All open curated issues. Blocked and deferred items receive low-confidence placeholder dates so the Gantt remains complete.",
-    "scheduled_count": 74,
+    "scheduled_count": 73,
     "unscheduled_count": 0,
     "start_date": "2026-07-29",
-    "likely_finish": "2027-02-23",
-    "conservative_finish": "2027-04-16",
+    "likely_finish": "2027-02-17",
+    "conservative_finish": "2027-04-09",
     "confidence": "low",
     "assumptions": [
       "No new issues enter the scheduled scope.",
@@ -121,8 +121,8 @@
         "label": "4-agent capacity plan",
         "writer_slots": 3,
         "reviewer_slots": 1,
-        "finish_date": "2027-02-23",
-        "calendar_days": 210,
+        "finish_date": "2027-02-17",
+        "calendar_days": 204,
         "note": "Deterministic lane simulation with one serial reviewer."
       },
       {
@@ -130,8 +130,8 @@
         "label": "Conservative +25% buffer",
         "writer_slots": 3,
         "reviewer_slots": 1,
-        "finish_date": "2027-04-16",
-        "calendar_days": 262,
+        "finish_date": "2027-04-09",
+        "calendar_days": 255,
         "note": "Allows for refinement, rework, and integration variance."
       },
       {
@@ -139,8 +139,8 @@
         "label": "Observed completion pace, intake frozen",
         "writer_slots": null,
         "reviewer_slots": null,
-        "finish_date": "2026-08-14",
-        "calendar_days": 17,
+        "finish_date": "2026-08-13",
+        "calendar_days": 16,
         "note": "Optimistic extrapolation; it freezes intake and may include retrospective tracker closure."
       },
       {
@@ -185,9 +185,8 @@
       "id": "bootstrap",
       "title": "Self-host & Bootstrap",
       "lane": "writer-a",
-      "issue_count": 7,
+      "issue_count": 6,
       "issue_numbers": [
-        749,
         751,
         618,
         622,
@@ -196,7 +195,7 @@
         274
       ],
       "start_date": "2026-07-29",
-      "end_date": "2026-10-29"
+      "end_date": "2026-10-19"
     },
     {
       "id": "decimal",
@@ -251,8 +250,8 @@
         279,
         280
       ],
-      "start_date": "2026-08-04",
-      "end_date": "2026-12-24"
+      "start_date": "2026-07-31",
+      "end_date": "2026-12-21"
     },
     {
       "id": "effects-concurrency",
@@ -341,8 +340,8 @@
         540,
         738
       ],
-      "start_date": "2026-12-23",
-      "end_date": "2027-02-23"
+      "start_date": "2026-12-17",
+      "end_date": "2027-02-17"
     },
     {
       "id": "research-positioning",
@@ -495,8 +494,8 @@
           "title": "selfhost: accept the 15 profile builtins in S (#622)",
           "url": "https://github.com/hjosugi/kofun/issues/749",
           "role": "curated",
-          "workflow": "in-progress",
-          "state_reason": null,
+          "workflow": "closed",
+          "state_reason": "completed",
           "priority": "P0",
           "size": "M",
           "kind": "implementation",
@@ -506,12 +505,11 @@
             "P0",
             "area:bootstrap",
             "curated",
-            "in-progress",
             "kind:implementation",
             "size:M"
           ],
-          "start_date": "2026-07-29",
-          "end_date": "2026-08-04"
+          "start_date": null,
+          "end_date": null
         },
         {
           "number": 751,
@@ -533,8 +531,8 @@
             "kind:implementation",
             "size:S"
           ],
-          "start_date": "2026-08-18",
-          "end_date": "2026-08-21"
+          "start_date": "2026-07-29",
+          "end_date": "2026-07-31"
         },
         {
           "number": 618,
@@ -557,8 +555,8 @@
             "needs-detail",
             "size:L"
           ],
-          "start_date": "2026-08-26",
-          "end_date": "2026-09-10"
+          "start_date": "2026-08-14",
+          "end_date": "2026-08-31"
         },
         {
           "number": 622,
@@ -582,8 +580,8 @@
             "kind:implementation",
             "size:M"
           ],
-          "start_date": "2026-09-15",
-          "end_date": "2026-09-21"
+          "start_date": "2026-09-03",
+          "end_date": "2026-09-09"
         },
         {
           "number": 271,
@@ -606,8 +604,8 @@
             "kind:implementation",
             "size:M"
           ],
-          "start_date": "2026-09-25",
-          "end_date": "2026-10-01"
+          "start_date": "2026-09-15",
+          "end_date": "2026-09-21"
         },
         {
           "number": 272,
@@ -630,8 +628,8 @@
             "kind:implementation",
             "size:M"
           ],
-          "start_date": "2026-10-13",
-          "end_date": "2026-10-19"
+          "start_date": "2026-09-25",
+          "end_date": "2026-10-01"
         },
         {
           "number": 274,
@@ -654,8 +652,8 @@
             "kind:test-quality",
             "size:M"
           ],
-          "start_date": "2026-10-23",
-          "end_date": "2026-10-29"
+          "start_date": "2026-10-13",
+          "end_date": "2026-10-19"
         }
       ]
     },
@@ -973,7 +971,7 @@
             "size:M"
           ],
           "start_date": "2026-07-29",
-          "end_date": "2026-08-05"
+          "end_date": "2026-08-04"
         },
         {
           "number": 626,
@@ -998,7 +996,7 @@
             "size:M"
           ],
           "start_date": "2026-08-14",
-          "end_date": "2026-08-24"
+          "end_date": "2026-08-21"
         }
       ]
     },
@@ -1034,7 +1032,7 @@
             "size:M"
           ],
           "start_date": "2026-07-29",
-          "end_date": "2026-08-06"
+          "end_date": "2026-08-05"
         },
         {
           "number": 584,
@@ -1160,7 +1158,7 @@
             "size:M"
           ],
           "start_date": "2026-10-23",
-          "end_date": "2026-10-30"
+          "end_date": "2026-10-29"
         }
       ]
     },
@@ -1299,7 +1297,7 @@
             "size:M"
           ],
           "start_date": "2026-08-14",
-          "end_date": "2026-08-25"
+          "end_date": "2026-08-24"
         },
         {
           "number": 646,
@@ -1357,7 +1355,7 @@
             "size:S"
           ],
           "start_date": "2026-08-31",
-          "end_date": "2026-09-14"
+          "end_date": "2026-09-10"
         },
         {
           "number": 767,
@@ -1437,7 +1435,7 @@
             "size:M"
           ],
           "start_date": "2026-08-20",
-          "end_date": "2026-08-31"
+          "end_date": "2026-09-01"
         },
         {
           "number": 741,
@@ -1467,15 +1465,15 @@
   ],
   "schedule": [
     {
-      "number": 749,
-      "title": "selfhost: accept the 15 profile builtins in S (#622)",
-      "url": "https://github.com/hjosugi/kofun/issues/749",
+      "number": 751,
+      "title": "selfhost: close the remaining declaration forms so A1 compiles S (#622)",
+      "url": "https://github.com/hjosugi/kofun/issues/751",
       "state": "open",
       "state_reason": null,
       "role": "curated",
-      "workflow": "in-progress",
+      "workflow": "blocked",
       "priority": "P0",
-      "size": "M",
+      "size": "S",
       "kind": "implementation",
       "area": "bootstrap",
       "areas": [
@@ -1485,26 +1483,26 @@
       "labels": [
         "P0",
         "area:bootstrap",
+        "blocked",
         "curated",
-        "in-progress",
         "kind:implementation",
-        "size:M"
+        "size:S"
       ],
       "assignees": [],
-      "created_at": "2026-07-26T14:50:34Z",
-      "updated_at": "2026-07-28T13:55:28Z",
+      "created_at": "2026-07-26T14:50:36Z",
+      "updated_at": "2026-07-26T14:50:36Z",
       "closed_at": null,
       "chain_id": "self-host-fixed-point",
       "depends_on": [],
-      "writer_days": 4,
-      "confidence": "medium",
+      "writer_days": 2,
+      "confidence": "conditional",
       "lane": "writer-a",
       "start_date": "2026-07-29",
-      "writer_end_date": "2026-08-03",
-      "review_start_date": "2026-08-04",
-      "review_end_date": "2026-08-04",
-      "end_date": "2026-08-04",
-      "schedule_status": "scheduled"
+      "writer_end_date": "2026-07-30",
+      "review_start_date": "2026-07-31",
+      "review_end_date": "2026-07-31",
+      "end_date": "2026-07-31",
+      "schedule_status": "conditional"
     },
     {
       "number": 551,
@@ -1545,9 +1543,9 @@
       "lane": "writer-b",
       "start_date": "2026-07-29",
       "writer_end_date": "2026-08-03",
-      "review_start_date": "2026-08-05",
-      "review_end_date": "2026-08-05",
-      "end_date": "2026-08-05",
+      "review_start_date": "2026-08-04",
+      "review_end_date": "2026-08-04",
+      "end_date": "2026-08-04",
       "schedule_status": "scheduled"
     },
     {
@@ -1585,9 +1583,9 @@
       "lane": "writer-c",
       "start_date": "2026-07-29",
       "writer_end_date": "2026-08-03",
-      "review_start_date": "2026-08-06",
-      "review_end_date": "2026-08-06",
-      "end_date": "2026-08-06",
+      "review_start_date": "2026-08-05",
+      "review_end_date": "2026-08-05",
+      "end_date": "2026-08-05",
       "schedule_status": "conditional"
     },
     {
@@ -1625,8 +1623,8 @@
       "writer_days": 10,
       "confidence": "low",
       "lane": "writer-a",
-      "start_date": "2026-08-04",
-      "writer_end_date": "2026-08-17",
+      "start_date": "2026-07-31",
+      "writer_end_date": "2026-08-13",
       "review_start_date": "2026-08-19",
       "review_end_date": "2026-08-20",
       "end_date": "2026-08-20",
@@ -1754,6 +1752,50 @@
       "schedule_status": "scheduled"
     },
     {
+      "number": 618,
+      "title": "Self-host profile: freeze the smallest honest compiler S and coverage manifest",
+      "url": "https://github.com/hjosugi/kofun/issues/618",
+      "state": "open",
+      "state_reason": "reopened",
+      "role": "curated",
+      "workflow": "needs-detail",
+      "priority": "P0",
+      "size": "L",
+      "kind": "spec-design",
+      "area": "bootstrap",
+      "areas": [
+        "bootstrap",
+        "c-backend"
+      ],
+      "workstream": "Self-host & Bootstrap",
+      "labels": [
+        "P0",
+        "area:bootstrap",
+        "area:c-backend",
+        "curated",
+        "kind:spec-design",
+        "needs-detail",
+        "size:L"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-23T12:15:18Z",
+      "updated_at": "2026-07-25T23:56:39Z",
+      "closed_at": null,
+      "chain_id": "self-host-fixed-point",
+      "depends_on": [
+        751
+      ],
+      "writer_days": 10,
+      "confidence": "low",
+      "lane": "writer-a",
+      "start_date": "2026-08-14",
+      "writer_end_date": "2026-08-27",
+      "review_start_date": "2026-08-28",
+      "review_end_date": "2026-08-31",
+      "end_date": "2026-08-31",
+      "schedule_status": "scheduled"
+    },
+    {
       "number": 626,
       "title": "Composable sequencing syntax: Result-first propagation and law-generic bind",
       "url": "https://github.com/hjosugi/kofun/issues/626",
@@ -1794,9 +1836,9 @@
       "lane": "writer-b",
       "start_date": "2026-08-14",
       "writer_end_date": "2026-08-19",
-      "review_start_date": "2026-08-24",
-      "review_end_date": "2026-08-24",
-      "end_date": "2026-08-24",
+      "review_start_date": "2026-08-21",
+      "review_end_date": "2026-08-21",
+      "end_date": "2026-08-21",
       "schedule_status": "scheduled"
     },
     {
@@ -1836,92 +1878,9 @@
       "lane": "writer-c",
       "start_date": "2026-08-14",
       "writer_end_date": "2026-08-19",
-      "review_start_date": "2026-08-25",
-      "review_end_date": "2026-08-25",
-      "end_date": "2026-08-25",
-      "schedule_status": "scheduled"
-    },
-    {
-      "number": 751,
-      "title": "selfhost: close the remaining declaration forms so A1 compiles S (#622)",
-      "url": "https://github.com/hjosugi/kofun/issues/751",
-      "state": "open",
-      "state_reason": null,
-      "role": "curated",
-      "workflow": "blocked",
-      "priority": "P0",
-      "size": "S",
-      "kind": "implementation",
-      "area": "bootstrap",
-      "areas": [
-        "bootstrap"
-      ],
-      "workstream": "Self-host & Bootstrap",
-      "labels": [
-        "P0",
-        "area:bootstrap",
-        "blocked",
-        "curated",
-        "kind:implementation",
-        "size:S"
-      ],
-      "assignees": [],
-      "created_at": "2026-07-26T14:50:36Z",
-      "updated_at": "2026-07-26T14:50:36Z",
-      "closed_at": null,
-      "chain_id": "self-host-fixed-point",
-      "depends_on": [
-        749
-      ],
-      "writer_days": 2,
-      "confidence": "conditional",
-      "lane": "writer-a",
-      "start_date": "2026-08-18",
-      "writer_end_date": "2026-08-19",
-      "review_start_date": "2026-08-21",
-      "review_end_date": "2026-08-21",
-      "end_date": "2026-08-21",
-      "schedule_status": "conditional"
-    },
-    {
-      "number": 554,
-      "title": "Backend strategy: reject MLIR, keep the self-hosted backend — with measured costs",
-      "url": "https://github.com/hjosugi/kofun/issues/554",
-      "state": "open",
-      "state_reason": null,
-      "role": "curated",
-      "workflow": "needs-detail",
-      "priority": "P1",
-      "size": "S",
-      "kind": "research",
-      "area": "codegen",
-      "areas": [
-        "codegen"
-      ],
-      "workstream": "Backend & Runtime",
-      "labels": [
-        "P1",
-        "area:codegen",
-        "curated",
-        "kind:research",
-        "needs-detail",
-        "research",
-        "size:S"
-      ],
-      "assignees": [],
-      "created_at": "2026-07-20T08:09:18Z",
-      "updated_at": "2026-07-28T08:58:52Z",
-      "closed_at": null,
-      "chain_id": null,
-      "depends_on": [],
-      "writer_days": 4,
-      "confidence": "low",
-      "lane": "writer-a",
-      "start_date": "2026-08-20",
-      "writer_end_date": "2026-08-25",
-      "review_start_date": "2026-08-27",
-      "review_end_date": "2026-08-27",
-      "end_date": "2026-08-27",
+      "review_start_date": "2026-08-24",
+      "review_end_date": "2026-08-24",
+      "end_date": "2026-08-24",
       "schedule_status": "scheduled"
     },
     {
@@ -1999,53 +1958,9 @@
       "lane": "writer-c",
       "start_date": "2026-08-20",
       "writer_end_date": "2026-08-28",
-      "review_start_date": "2026-08-31",
-      "review_end_date": "2026-08-31",
-      "end_date": "2026-08-31",
-      "schedule_status": "scheduled"
-    },
-    {
-      "number": 618,
-      "title": "Self-host profile: freeze the smallest honest compiler S and coverage manifest",
-      "url": "https://github.com/hjosugi/kofun/issues/618",
-      "state": "open",
-      "state_reason": "reopened",
-      "role": "curated",
-      "workflow": "needs-detail",
-      "priority": "P0",
-      "size": "L",
-      "kind": "spec-design",
-      "area": "bootstrap",
-      "areas": [
-        "bootstrap",
-        "c-backend"
-      ],
-      "workstream": "Self-host & Bootstrap",
-      "labels": [
-        "P0",
-        "area:bootstrap",
-        "area:c-backend",
-        "curated",
-        "kind:spec-design",
-        "needs-detail",
-        "size:L"
-      ],
-      "assignees": [],
-      "created_at": "2026-07-23T12:15:18Z",
-      "updated_at": "2026-07-25T23:56:39Z",
-      "closed_at": null,
-      "chain_id": "self-host-fixed-point",
-      "depends_on": [
-        751
-      ],
-      "writer_days": 10,
-      "confidence": "low",
-      "lane": "writer-a",
-      "start_date": "2026-08-26",
-      "writer_end_date": "2026-09-08",
-      "review_start_date": "2026-09-09",
-      "review_end_date": "2026-09-10",
-      "end_date": "2026-09-10",
+      "review_start_date": "2026-09-01",
+      "review_end_date": "2026-09-01",
+      "end_date": "2026-09-01",
       "schedule_status": "scheduled"
     },
     {
@@ -2088,6 +2003,47 @@
       "schedule_status": "conditional"
     },
     {
+      "number": 554,
+      "title": "Backend strategy: reject MLIR, keep the self-hosted backend — with measured costs",
+      "url": "https://github.com/hjosugi/kofun/issues/554",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "needs-detail",
+      "priority": "P1",
+      "size": "S",
+      "kind": "research",
+      "area": "codegen",
+      "areas": [
+        "codegen"
+      ],
+      "workstream": "Backend & Runtime",
+      "labels": [
+        "P1",
+        "area:codegen",
+        "curated",
+        "kind:research",
+        "needs-detail",
+        "research",
+        "size:S"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-20T08:09:18Z",
+      "updated_at": "2026-07-28T08:58:52Z",
+      "closed_at": null,
+      "chain_id": null,
+      "depends_on": [],
+      "writer_days": 4,
+      "confidence": "low",
+      "lane": "writer-a",
+      "start_date": "2026-08-28",
+      "writer_end_date": "2026-09-02",
+      "review_start_date": "2026-09-03",
+      "review_end_date": "2026-09-03",
+      "end_date": "2026-09-03",
+      "schedule_status": "scheduled"
+    },
+    {
       "number": 768,
       "title": "Move the generated backlog corpus out: 22.6% of tracked bytes that no gate reads",
       "url": "https://github.com/hjosugi/kofun/issues/768",
@@ -2122,10 +2078,56 @@
       "lane": "writer-c",
       "start_date": "2026-08-31",
       "writer_end_date": "2026-09-04",
-      "review_start_date": "2026-09-14",
-      "review_end_date": "2026-09-14",
-      "end_date": "2026-09-14",
+      "review_start_date": "2026-09-10",
+      "review_end_date": "2026-09-10",
+      "end_date": "2026-09-10",
       "schedule_status": "scheduled"
+    },
+    {
+      "number": 622,
+      "title": "Self-host compiler driver: args, file I/O, and compiling S to deterministic C11",
+      "url": "https://github.com/hjosugi/kofun/issues/622",
+      "state": "open",
+      "state_reason": "reopened",
+      "role": "curated",
+      "workflow": "blocked",
+      "priority": "P0",
+      "size": "M",
+      "kind": "implementation",
+      "area": "bootstrap",
+      "areas": [
+        "bootstrap",
+        "build-system",
+        "c-backend"
+      ],
+      "workstream": "Self-host & Bootstrap",
+      "labels": [
+        "P0",
+        "area:bootstrap",
+        "area:build-system",
+        "area:c-backend",
+        "blocked",
+        "curated",
+        "kind:implementation",
+        "size:M"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-23T12:16:18Z",
+      "updated_at": "2026-07-26T14:50:59Z",
+      "closed_at": null,
+      "chain_id": "self-host-fixed-point",
+      "depends_on": [
+        618
+      ],
+      "writer_days": 4,
+      "confidence": "conditional",
+      "lane": "writer-a",
+      "start_date": "2026-09-03",
+      "writer_end_date": "2026-09-08",
+      "review_start_date": "2026-09-09",
+      "review_end_date": "2026-09-09",
+      "end_date": "2026-09-09",
+      "schedule_status": "conditional"
     },
     {
       "number": 772,
@@ -2297,11 +2299,11 @@
       "schedule_status": "conditional"
     },
     {
-      "number": 622,
-      "title": "Self-host compiler driver: args, file I/O, and compiling S to deterministic C11",
-      "url": "https://github.com/hjosugi/kofun/issues/622",
+      "number": 271,
+      "title": "Bootstrap: produce C1/A1 and self-compile S into C2/A2",
+      "url": "https://github.com/hjosugi/kofun/issues/271",
       "state": "open",
-      "state_reason": "reopened",
+      "state_reason": null,
       "role": "curated",
       "workflow": "blocked",
       "priority": "P0",
@@ -2310,14 +2312,12 @@
       "area": "bootstrap",
       "areas": [
         "bootstrap",
-        "build-system",
         "c-backend"
       ],
       "workstream": "Self-host & Bootstrap",
       "labels": [
         "P0",
         "area:bootstrap",
-        "area:build-system",
         "area:c-backend",
         "blocked",
         "curated",
@@ -2325,12 +2325,12 @@
         "size:M"
       ],
       "assignees": [],
-      "created_at": "2026-07-23T12:16:18Z",
-      "updated_at": "2026-07-26T14:50:59Z",
+      "created_at": "2026-07-20T00:10:05Z",
+      "updated_at": "2026-07-25T23:56:25Z",
       "closed_at": null,
       "chain_id": "self-host-fixed-point",
       "depends_on": [
-        618
+        622
       ],
       "writer_days": 4,
       "confidence": "conditional",
@@ -2511,9 +2511,9 @@
       "schedule_status": "scheduled"
     },
     {
-      "number": 271,
-      "title": "Bootstrap: produce C1/A1 and self-compile S into C2/A2",
-      "url": "https://github.com/hjosugi/kofun/issues/271",
+      "number": 272,
+      "title": "Bootstrap fixed point: produce C3/A3, compare three generations, close B4/B5",
+      "url": "https://github.com/hjosugi/kofun/issues/272",
       "state": "open",
       "state_reason": null,
       "role": "curated",
@@ -2537,12 +2537,12 @@
         "size:M"
       ],
       "assignees": [],
-      "created_at": "2026-07-20T00:10:05Z",
-      "updated_at": "2026-07-25T23:56:25Z",
+      "created_at": "2026-07-20T00:10:06Z",
+      "updated_at": "2026-07-25T23:56:26Z",
       "closed_at": null,
       "chain_id": "self-host-fixed-point",
       "depends_on": [
-        622
+        271
       ],
       "writer_days": 4,
       "confidence": "conditional",
@@ -2762,38 +2762,38 @@
       "schedule_status": "scheduled"
     },
     {
-      "number": 272,
-      "title": "Bootstrap fixed point: produce C3/A3, compare three generations, close B4/B5",
-      "url": "https://github.com/hjosugi/kofun/issues/272",
+      "number": 274,
+      "title": "Reproducible bootstrap B6: independent clean builder reproduces the fixed point",
+      "url": "https://github.com/hjosugi/kofun/issues/274",
       "state": "open",
       "state_reason": null,
       "role": "curated",
       "workflow": "blocked",
-      "priority": "P0",
+      "priority": "P1",
       "size": "M",
-      "kind": "implementation",
+      "kind": "test-quality",
       "area": "bootstrap",
       "areas": [
         "bootstrap",
-        "c-backend"
+        "quality"
       ],
       "workstream": "Self-host & Bootstrap",
       "labels": [
-        "P0",
+        "P1",
         "area:bootstrap",
-        "area:c-backend",
+        "area:quality",
         "blocked",
         "curated",
-        "kind:implementation",
+        "kind:test-quality",
         "size:M"
       ],
       "assignees": [],
       "created_at": "2026-07-20T00:10:06Z",
-      "updated_at": "2026-07-25T23:56:26Z",
+      "updated_at": "2026-07-25T23:56:27Z",
       "closed_at": null,
       "chain_id": "self-host-fixed-point",
       "depends_on": [
-        271
+        272
       ],
       "writer_days": 4,
       "confidence": "conditional",
@@ -2968,54 +2968,52 @@
       "lane": "writer-b",
       "start_date": "2026-10-21",
       "writer_end_date": "2026-10-29",
+      "review_start_date": "2026-10-30",
+      "review_end_date": "2026-10-30",
+      "end_date": "2026-10-30",
+      "schedule_status": "scheduled"
+    },
+    {
+      "number": 783,
+      "title": "records: lower nominal record construction and field reads to the Stage 2 C11 slice (#644)",
+      "url": "https://github.com/hjosugi/kofun/issues/783",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "ready",
+      "priority": "P2",
+      "size": "M",
+      "kind": "implementation",
+      "area": "c-backend",
+      "areas": [
+        "c-backend",
+        "type-system"
+      ],
+      "workstream": "Backend & Runtime",
+      "labels": [
+        "P2",
+        "area:c-backend",
+        "area:type-system",
+        "curated",
+        "kind:implementation",
+        "ready",
+        "size:M"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-28T13:42:55Z",
+      "updated_at": "2026-07-28T13:42:55Z",
+      "closed_at": null,
+      "chain_id": null,
+      "depends_on": [],
+      "writer_days": 4,
+      "confidence": "medium",
+      "lane": "writer-a",
+      "start_date": "2026-10-23",
+      "writer_end_date": "2026-10-28",
       "review_start_date": "2026-11-02",
       "review_end_date": "2026-11-02",
       "end_date": "2026-11-02",
       "schedule_status": "scheduled"
-    },
-    {
-      "number": 274,
-      "title": "Reproducible bootstrap B6: independent clean builder reproduces the fixed point",
-      "url": "https://github.com/hjosugi/kofun/issues/274",
-      "state": "open",
-      "state_reason": null,
-      "role": "curated",
-      "workflow": "blocked",
-      "priority": "P1",
-      "size": "M",
-      "kind": "test-quality",
-      "area": "bootstrap",
-      "areas": [
-        "bootstrap",
-        "quality"
-      ],
-      "workstream": "Self-host & Bootstrap",
-      "labels": [
-        "P1",
-        "area:bootstrap",
-        "area:quality",
-        "blocked",
-        "curated",
-        "kind:test-quality",
-        "size:M"
-      ],
-      "assignees": [],
-      "created_at": "2026-07-20T00:10:06Z",
-      "updated_at": "2026-07-25T23:56:27Z",
-      "closed_at": null,
-      "chain_id": "self-host-fixed-point",
-      "depends_on": [
-        272
-      ],
-      "writer_days": 4,
-      "confidence": "conditional",
-      "lane": "writer-a",
-      "start_date": "2026-10-23",
-      "writer_end_date": "2026-10-28",
-      "review_start_date": "2026-10-29",
-      "review_end_date": "2026-10-29",
-      "end_date": "2026-10-29",
-      "schedule_status": "conditional"
     },
     {
       "number": 644,
@@ -3054,51 +3052,49 @@
       "lane": "writer-c",
       "start_date": "2026-10-23",
       "writer_end_date": "2026-10-28",
-      "review_start_date": "2026-10-30",
-      "review_end_date": "2026-10-30",
-      "end_date": "2026-10-30",
+      "review_start_date": "2026-10-29",
+      "review_end_date": "2026-10-29",
+      "end_date": "2026-10-29",
       "schedule_status": "conditional"
     },
     {
-      "number": 783,
-      "title": "records: lower nominal record construction and field reads to the Stage 2 C11 slice (#644)",
-      "url": "https://github.com/hjosugi/kofun/issues/783",
+      "number": 784,
+      "title": "ownership: an affine handle whose owned state cannot be duplicated (#644)",
+      "url": "https://github.com/hjosugi/kofun/issues/784",
       "state": "open",
       "state_reason": null,
       "role": "curated",
-      "workflow": "ready",
+      "workflow": "needs-decision",
       "priority": "P2",
       "size": "M",
       "kind": "implementation",
-      "area": "c-backend",
+      "area": "ownership",
       "areas": [
-        "c-backend",
-        "type-system"
+        "ownership"
       ],
       "workstream": "Backend & Runtime",
       "labels": [
         "P2",
-        "area:c-backend",
-        "area:type-system",
+        "area:ownership",
         "curated",
         "kind:implementation",
-        "ready",
+        "needs-decision",
         "size:M"
       ],
       "assignees": [],
-      "created_at": "2026-07-28T13:42:55Z",
-      "updated_at": "2026-07-28T13:42:55Z",
+      "created_at": "2026-07-28T13:43:04Z",
+      "updated_at": "2026-07-28T13:43:04Z",
       "closed_at": null,
       "chain_id": null,
       "depends_on": [],
-      "writer_days": 4,
-      "confidence": "medium",
+      "writer_days": 7,
+      "confidence": "low",
       "lane": "writer-a",
       "start_date": "2026-10-29",
-      "writer_end_date": "2026-11-03",
-      "review_start_date": "2026-11-04",
-      "review_end_date": "2026-11-04",
-      "end_date": "2026-11-04",
+      "writer_end_date": "2026-11-06",
+      "review_start_date": "2026-11-09",
+      "review_end_date": "2026-11-09",
+      "end_date": "2026-11-09",
       "schedule_status": "scheduled"
     },
     {
@@ -3184,46 +3180,6 @@
       "schedule_status": "scheduled"
     },
     {
-      "number": 784,
-      "title": "ownership: an affine handle whose owned state cannot be duplicated (#644)",
-      "url": "https://github.com/hjosugi/kofun/issues/784",
-      "state": "open",
-      "state_reason": null,
-      "role": "curated",
-      "workflow": "needs-decision",
-      "priority": "P2",
-      "size": "M",
-      "kind": "implementation",
-      "area": "ownership",
-      "areas": [
-        "ownership"
-      ],
-      "workstream": "Backend & Runtime",
-      "labels": [
-        "P2",
-        "area:ownership",
-        "curated",
-        "kind:implementation",
-        "needs-decision",
-        "size:M"
-      ],
-      "assignees": [],
-      "created_at": "2026-07-28T13:43:04Z",
-      "updated_at": "2026-07-28T13:43:04Z",
-      "closed_at": null,
-      "chain_id": null,
-      "depends_on": [],
-      "writer_days": 7,
-      "confidence": "low",
-      "lane": "writer-a",
-      "start_date": "2026-11-04",
-      "writer_end_date": "2026-11-12",
-      "review_start_date": "2026-11-18",
-      "review_end_date": "2026-11-18",
-      "end_date": "2026-11-18",
-      "schedule_status": "scheduled"
-    },
-    {
       "number": 585,
       "title": "Visibility stabilization: document API changes and migration",
       "url": "https://github.com/hjosugi/kofun/issues/585",
@@ -3264,6 +3220,51 @@
       "review_end_date": "2026-11-11",
       "end_date": "2026-11-11",
       "schedule_status": "conditional"
+    },
+    {
+      "number": 576,
+      "title": "Koka: reuse matched ADT constructors in place when storage is unique",
+      "url": "https://github.com/hjosugi/kofun/issues/576",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "needs-detail",
+      "priority": "P2",
+      "size": "S",
+      "kind": "research",
+      "area": "memory",
+      "areas": [
+        "memory",
+        "optimizer",
+        "types"
+      ],
+      "workstream": "Backend & Runtime",
+      "labels": [
+        "P2",
+        "area:memory",
+        "area:optimizer",
+        "area:types",
+        "curated",
+        "kind:research",
+        "needs-detail",
+        "research",
+        "size:S"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-20T21:26:21Z",
+      "updated_at": "2026-07-26T13:08:30Z",
+      "closed_at": null,
+      "chain_id": null,
+      "depends_on": [],
+      "writer_days": 4,
+      "confidence": "low",
+      "lane": "writer-a",
+      "start_date": "2026-11-09",
+      "writer_end_date": "2026-11-12",
+      "review_start_date": "2026-11-18",
+      "review_end_date": "2026-11-18",
+      "end_date": "2026-11-18",
+      "schedule_status": "scheduled"
     },
     {
       "number": 741,
@@ -3308,49 +3309,46 @@
       "schedule_status": "conditional"
     },
     {
-      "number": 576,
-      "title": "Koka: reuse matched ADT constructors in place when storage is unique",
-      "url": "https://github.com/hjosugi/kofun/issues/576",
+      "number": 278,
+      "title": "ARM Cortex-M backend (thumb2)",
+      "url": "https://github.com/hjosugi/kofun/issues/278",
       "state": "open",
       "state_reason": null,
       "role": "curated",
-      "workflow": "needs-detail",
+      "workflow": "deferred",
       "priority": "P2",
-      "size": "S",
-      "kind": "research",
-      "area": "memory",
+      "size": "L",
+      "kind": "implementation",
+      "area": "codegen",
       "areas": [
-        "memory",
-        "optimizer",
-        "types"
+        "codegen",
+        "platforms"
       ],
       "workstream": "Backend & Runtime",
       "labels": [
         "P2",
-        "area:memory",
-        "area:optimizer",
-        "area:types",
+        "area:codegen",
+        "area:platforms",
         "curated",
-        "kind:research",
-        "needs-detail",
-        "research",
-        "size:S"
+        "deferred",
+        "kind:implementation",
+        "size:L"
       ],
       "assignees": [],
-      "created_at": "2026-07-20T21:26:21Z",
-      "updated_at": "2026-07-26T13:08:30Z",
+      "created_at": "2026-07-20T00:14:30Z",
+      "updated_at": "2026-07-26T13:08:48Z",
       "closed_at": null,
       "chain_id": null,
       "depends_on": [],
-      "writer_days": 4,
+      "writer_days": 8,
       "confidence": "low",
       "lane": "writer-a",
       "start_date": "2026-11-13",
-      "writer_end_date": "2026-11-18",
-      "review_start_date": "2026-11-20",
-      "review_end_date": "2026-11-20",
-      "end_date": "2026-11-20",
-      "schedule_status": "scheduled"
+      "writer_end_date": "2026-11-24",
+      "review_start_date": "2026-11-26",
+      "review_end_date": "2026-11-27",
+      "end_date": "2026-11-27",
+      "schedule_status": "conditional"
     },
     {
       "number": 555,
@@ -3436,48 +3434,6 @@
       "schedule_status": "conditional"
     },
     {
-      "number": 278,
-      "title": "ARM Cortex-M backend (thumb2)",
-      "url": "https://github.com/hjosugi/kofun/issues/278",
-      "state": "open",
-      "state_reason": null,
-      "role": "curated",
-      "workflow": "deferred",
-      "priority": "P2",
-      "size": "L",
-      "kind": "implementation",
-      "area": "codegen",
-      "areas": [
-        "codegen",
-        "platforms"
-      ],
-      "workstream": "Backend & Runtime",
-      "labels": [
-        "P2",
-        "area:codegen",
-        "area:platforms",
-        "curated",
-        "deferred",
-        "kind:implementation",
-        "size:L"
-      ],
-      "assignees": [],
-      "created_at": "2026-07-20T00:14:30Z",
-      "updated_at": "2026-07-26T13:08:48Z",
-      "closed_at": null,
-      "chain_id": null,
-      "depends_on": [],
-      "writer_days": 8,
-      "confidence": "low",
-      "lane": "writer-a",
-      "start_date": "2026-11-19",
-      "writer_end_date": "2026-11-30",
-      "review_start_date": "2026-12-02",
-      "review_end_date": "2026-12-03",
-      "end_date": "2026-12-03",
-      "schedule_status": "conditional"
-    },
-    {
       "number": 556,
       "title": "Effect systems: ship pure/impure first; multi-shot continuations are unsound with take",
       "url": "https://github.com/hjosugi/kofun/issues/556",
@@ -3557,10 +3513,52 @@
       "lane": "writer-c",
       "start_date": "2026-11-23",
       "writer_end_date": "2026-11-26",
-      "review_start_date": "2026-11-27",
-      "review_end_date": "2026-11-27",
-      "end_date": "2026-11-27",
+      "review_start_date": "2026-11-30",
+      "review_end_date": "2026-11-30",
+      "end_date": "2026-11-30",
       "schedule_status": "scheduled"
+    },
+    {
+      "number": 279,
+      "title": "Memory-mapped I/O, volatile access, and interrupt handlers",
+      "url": "https://github.com/hjosugi/kofun/issues/279",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "deferred",
+      "priority": "P2",
+      "size": "L",
+      "kind": "implementation",
+      "area": "memory",
+      "areas": [
+        "memory",
+        "platforms"
+      ],
+      "workstream": "Backend & Runtime",
+      "labels": [
+        "P2",
+        "area:memory",
+        "area:platforms",
+        "curated",
+        "deferred",
+        "kind:implementation",
+        "size:L"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-20T00:14:33Z",
+      "updated_at": "2026-07-26T13:08:50Z",
+      "closed_at": null,
+      "chain_id": null,
+      "depends_on": [],
+      "writer_days": 8,
+      "confidence": "low",
+      "lane": "writer-a",
+      "start_date": "2026-11-25",
+      "writer_end_date": "2026-12-04",
+      "review_start_date": "2026-12-08",
+      "review_end_date": "2026-12-09",
+      "end_date": "2026-12-09",
+      "schedule_status": "conditional"
     },
     {
       "number": 557,
@@ -3640,52 +3638,10 @@
       "lane": "writer-c",
       "start_date": "2026-11-27",
       "writer_end_date": "2026-12-02",
-      "review_start_date": "2026-12-04",
-      "review_end_date": "2026-12-04",
-      "end_date": "2026-12-04",
+      "review_start_date": "2026-12-03",
+      "review_end_date": "2026-12-03",
+      "end_date": "2026-12-03",
       "schedule_status": "scheduled"
-    },
-    {
-      "number": 279,
-      "title": "Memory-mapped I/O, volatile access, and interrupt handlers",
-      "url": "https://github.com/hjosugi/kofun/issues/279",
-      "state": "open",
-      "state_reason": null,
-      "role": "curated",
-      "workflow": "deferred",
-      "priority": "P2",
-      "size": "L",
-      "kind": "implementation",
-      "area": "memory",
-      "areas": [
-        "memory",
-        "platforms"
-      ],
-      "workstream": "Backend & Runtime",
-      "labels": [
-        "P2",
-        "area:memory",
-        "area:platforms",
-        "curated",
-        "deferred",
-        "kind:implementation",
-        "size:L"
-      ],
-      "assignees": [],
-      "created_at": "2026-07-20T00:14:33Z",
-      "updated_at": "2026-07-26T13:08:50Z",
-      "closed_at": null,
-      "chain_id": null,
-      "depends_on": [],
-      "writer_days": 8,
-      "confidence": "low",
-      "lane": "writer-a",
-      "start_date": "2026-12-01",
-      "writer_end_date": "2026-12-10",
-      "review_start_date": "2026-12-14",
-      "review_end_date": "2026-12-15",
-      "end_date": "2026-12-15",
-      "schedule_status": "conditional"
     },
     {
       "number": 569,
@@ -3767,10 +3723,50 @@
       "lane": "writer-c",
       "start_date": "2026-12-03",
       "writer_end_date": "2026-12-08",
-      "review_start_date": "2026-12-09",
-      "review_end_date": "2026-12-09",
-      "end_date": "2026-12-09",
+      "review_start_date": "2026-12-10",
+      "review_end_date": "2026-12-10",
+      "end_date": "2026-12-10",
       "schedule_status": "scheduled"
+    },
+    {
+      "number": 280,
+      "title": "No-heap mode: static allocation only",
+      "url": "https://github.com/hjosugi/kofun/issues/280",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "deferred",
+      "priority": "P2",
+      "size": "L",
+      "kind": "implementation",
+      "area": "memory",
+      "areas": [
+        "memory"
+      ],
+      "workstream": "Backend & Runtime",
+      "labels": [
+        "P2",
+        "area:memory",
+        "curated",
+        "deferred",
+        "kind:implementation",
+        "size:L"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-20T00:14:35Z",
+      "updated_at": "2026-07-26T13:08:51Z",
+      "closed_at": null,
+      "chain_id": null,
+      "depends_on": [],
+      "writer_days": 8,
+      "confidence": "low",
+      "lane": "writer-a",
+      "start_date": "2026-12-07",
+      "writer_end_date": "2026-12-16",
+      "review_start_date": "2026-12-18",
+      "review_end_date": "2026-12-21",
+      "end_date": "2026-12-21",
+      "schedule_status": "conditional"
     },
     {
       "number": 573,
@@ -3860,46 +3856,6 @@
       "schedule_status": "scheduled"
     },
     {
-      "number": 280,
-      "title": "No-heap mode: static allocation only",
-      "url": "https://github.com/hjosugi/kofun/issues/280",
-      "state": "open",
-      "state_reason": null,
-      "role": "curated",
-      "workflow": "deferred",
-      "priority": "P2",
-      "size": "L",
-      "kind": "implementation",
-      "area": "memory",
-      "areas": [
-        "memory"
-      ],
-      "workstream": "Backend & Runtime",
-      "labels": [
-        "P2",
-        "area:memory",
-        "curated",
-        "deferred",
-        "kind:implementation",
-        "size:L"
-      ],
-      "assignees": [],
-      "created_at": "2026-07-20T00:14:35Z",
-      "updated_at": "2026-07-26T13:08:51Z",
-      "closed_at": null,
-      "chain_id": null,
-      "depends_on": [],
-      "writer_days": 8,
-      "confidence": "low",
-      "lane": "writer-a",
-      "start_date": "2026-12-11",
-      "writer_end_date": "2026-12-22",
-      "review_start_date": "2026-12-23",
-      "review_end_date": "2026-12-24",
-      "end_date": "2026-12-24",
-      "schedule_status": "conditional"
-    },
-    {
       "number": 710,
       "title": "Compiler-native Decimal: implement the accepted language design across all backends",
       "url": "https://github.com/hjosugi/kofun/issues/710",
@@ -3946,6 +3902,46 @@
       "schedule_status": "scheduled"
     },
     {
+      "number": 536,
+      "title": "ndarray: n-dimensional arrays with views, strides, and broadcasting",
+      "url": "https://github.com/hjosugi/kofun/issues/536",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "deferred",
+      "priority": "P2",
+      "size": "L",
+      "kind": "implementation",
+      "area": "science",
+      "areas": [
+        "science"
+      ],
+      "workstream": "Science & Future",
+      "labels": [
+        "P2",
+        "area:science",
+        "curated",
+        "deferred",
+        "kind:implementation",
+        "size:L"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-20T02:16:58Z",
+      "updated_at": "2026-07-26T13:08:54Z",
+      "closed_at": null,
+      "chain_id": null,
+      "depends_on": [],
+      "writer_days": 8,
+      "confidence": "low",
+      "lane": "writer-a",
+      "start_date": "2026-12-17",
+      "writer_end_date": "2026-12-28",
+      "review_start_date": "2026-12-30",
+      "review_end_date": "2026-12-31",
+      "end_date": "2026-12-31",
+      "schedule_status": "conditional"
+    },
+    {
       "number": 281,
       "title": "Position paper: what replacing C and Rust actually requires",
       "url": "https://github.com/hjosugi/kofun/issues/281",
@@ -3983,46 +3979,6 @@
       "schedule_status": "scheduled"
     },
     {
-      "number": 536,
-      "title": "ndarray: n-dimensional arrays with views, strides, and broadcasting",
-      "url": "https://github.com/hjosugi/kofun/issues/536",
-      "state": "open",
-      "state_reason": null,
-      "role": "curated",
-      "workflow": "deferred",
-      "priority": "P2",
-      "size": "L",
-      "kind": "implementation",
-      "area": "science",
-      "areas": [
-        "science"
-      ],
-      "workstream": "Science & Future",
-      "labels": [
-        "P2",
-        "area:science",
-        "curated",
-        "deferred",
-        "kind:implementation",
-        "size:L"
-      ],
-      "assignees": [],
-      "created_at": "2026-07-20T02:16:58Z",
-      "updated_at": "2026-07-26T13:08:54Z",
-      "closed_at": null,
-      "chain_id": null,
-      "depends_on": [],
-      "writer_days": 8,
-      "confidence": "low",
-      "lane": "writer-a",
-      "start_date": "2026-12-23",
-      "writer_end_date": "2027-01-01",
-      "review_start_date": "2027-01-04",
-      "review_end_date": "2027-01-05",
-      "end_date": "2027-01-05",
-      "schedule_status": "conditional"
-    },
-    {
       "number": 742,
       "title": "Validation accumulation: collect independent errors without running dependent checks",
       "url": "https://github.com/hjosugi/kofun/issues/742",
@@ -4057,9 +4013,9 @@
       "lane": "writer-b",
       "start_date": "2026-12-25",
       "writer_end_date": "2026-12-30",
-      "review_start_date": "2027-01-01",
-      "review_end_date": "2027-01-01",
-      "end_date": "2027-01-01",
+      "review_start_date": "2027-01-04",
+      "review_end_date": "2027-01-04",
+      "end_date": "2027-01-04",
       "schedule_status": "scheduled"
     },
     {
@@ -4102,10 +4058,50 @@
       "lane": "writer-c",
       "start_date": "2026-12-25",
       "writer_end_date": "2026-12-30",
-      "review_start_date": "2026-12-31",
-      "review_end_date": "2026-12-31",
-      "end_date": "2026-12-31",
+      "review_start_date": "2027-01-01",
+      "review_end_date": "2027-01-01",
+      "end_date": "2027-01-01",
       "schedule_status": "scheduled"
+    },
+    {
+      "number": 537,
+      "title": "Linear algebra: matmul, decompositions, solvers, and BLAS/LAPACK binding",
+      "url": "https://github.com/hjosugi/kofun/issues/537",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "deferred",
+      "priority": "P2",
+      "size": "L",
+      "kind": "implementation",
+      "area": "science",
+      "areas": [
+        "science"
+      ],
+      "workstream": "Science & Future",
+      "labels": [
+        "P2",
+        "area:science",
+        "curated",
+        "deferred",
+        "kind:implementation",
+        "size:L"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-20T02:17:02Z",
+      "updated_at": "2026-07-26T13:08:56Z",
+      "closed_at": null,
+      "chain_id": null,
+      "depends_on": [],
+      "writer_days": 8,
+      "confidence": "low",
+      "lane": "writer-a",
+      "start_date": "2026-12-29",
+      "writer_end_date": "2027-01-07",
+      "review_start_date": "2027-01-08",
+      "review_end_date": "2027-01-11",
+      "end_date": "2027-01-11",
+      "schedule_status": "conditional"
     },
     {
       "number": 735,
@@ -4142,9 +4138,9 @@
       "lane": "writer-b",
       "start_date": "2026-12-31",
       "writer_end_date": "2027-01-08",
-      "review_start_date": "2027-01-11",
-      "review_end_date": "2027-01-11",
-      "end_date": "2027-01-11",
+      "review_start_date": "2027-01-12",
+      "review_end_date": "2027-01-12",
+      "end_date": "2027-01-12",
       "schedule_status": "scheduled"
     },
     {
@@ -4188,46 +4184,6 @@
       "schedule_status": "scheduled"
     },
     {
-      "number": 537,
-      "title": "Linear algebra: matmul, decompositions, solvers, and BLAS/LAPACK binding",
-      "url": "https://github.com/hjosugi/kofun/issues/537",
-      "state": "open",
-      "state_reason": null,
-      "role": "curated",
-      "workflow": "deferred",
-      "priority": "P2",
-      "size": "L",
-      "kind": "implementation",
-      "area": "science",
-      "areas": [
-        "science"
-      ],
-      "workstream": "Science & Future",
-      "labels": [
-        "P2",
-        "area:science",
-        "curated",
-        "deferred",
-        "kind:implementation",
-        "size:L"
-      ],
-      "assignees": [],
-      "created_at": "2026-07-20T02:17:02Z",
-      "updated_at": "2026-07-26T13:08:56Z",
-      "closed_at": null,
-      "chain_id": null,
-      "depends_on": [],
-      "writer_days": 8,
-      "confidence": "low",
-      "lane": "writer-a",
-      "start_date": "2027-01-04",
-      "writer_end_date": "2027-01-13",
-      "review_start_date": "2027-01-14",
-      "review_end_date": "2027-01-15",
-      "end_date": "2027-01-15",
-      "schedule_status": "conditional"
-    },
-    {
       "number": 558,
       "title": "What verification actually costs — and why proof-to-code ratios don't measure dependent types",
       "url": "https://github.com/hjosugi/kofun/issues/558",
@@ -4263,10 +4219,50 @@
       "lane": "writer-c",
       "start_date": "2027-01-06",
       "writer_end_date": "2027-01-11",
-      "review_start_date": "2027-01-12",
-      "review_end_date": "2027-01-12",
-      "end_date": "2027-01-12",
+      "review_start_date": "2027-01-13",
+      "review_end_date": "2027-01-13",
+      "end_date": "2027-01-13",
       "schedule_status": "scheduled"
+    },
+    {
+      "number": 538,
+      "title": "Signal and image processing: FFT, convolution, filtering",
+      "url": "https://github.com/hjosugi/kofun/issues/538",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "deferred",
+      "priority": "P2",
+      "size": "L",
+      "kind": "implementation",
+      "area": "science",
+      "areas": [
+        "science"
+      ],
+      "workstream": "Science & Future",
+      "labels": [
+        "P2",
+        "area:science",
+        "curated",
+        "deferred",
+        "kind:implementation",
+        "size:L"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-20T02:17:07Z",
+      "updated_at": "2026-07-26T13:08:58Z",
+      "closed_at": null,
+      "chain_id": null,
+      "depends_on": [],
+      "writer_days": 8,
+      "confidence": "low",
+      "lane": "writer-a",
+      "start_date": "2027-01-08",
+      "writer_end_date": "2027-01-19",
+      "review_start_date": "2027-01-21",
+      "review_end_date": "2027-01-22",
+      "end_date": "2027-01-22",
+      "schedule_status": "conditional"
     },
     {
       "number": 736,
@@ -4354,46 +4350,6 @@
       "schedule_status": "scheduled"
     },
     {
-      "number": 538,
-      "title": "Signal and image processing: FFT, convolution, filtering",
-      "url": "https://github.com/hjosugi/kofun/issues/538",
-      "state": "open",
-      "state_reason": null,
-      "role": "curated",
-      "workflow": "deferred",
-      "priority": "P2",
-      "size": "L",
-      "kind": "implementation",
-      "area": "science",
-      "areas": [
-        "science"
-      ],
-      "workstream": "Science & Future",
-      "labels": [
-        "P2",
-        "area:science",
-        "curated",
-        "deferred",
-        "kind:implementation",
-        "size:L"
-      ],
-      "assignees": [],
-      "created_at": "2026-07-20T02:17:07Z",
-      "updated_at": "2026-07-26T13:08:58Z",
-      "closed_at": null,
-      "chain_id": null,
-      "depends_on": [],
-      "writer_days": 8,
-      "confidence": "low",
-      "lane": "writer-a",
-      "start_date": "2027-01-14",
-      "writer_end_date": "2027-01-25",
-      "review_start_date": "2027-01-26",
-      "review_end_date": "2027-01-27",
-      "end_date": "2027-01-27",
-      "schedule_status": "conditional"
-    },
-    {
       "number": 424,
       "title": "Hot reload at function granularity, via micro-partition",
       "url": "https://github.com/hjosugi/kofun/issues/424",
@@ -4468,11 +4424,11 @@
       "writer_days": 8,
       "confidence": "low",
       "lane": "writer-a",
-      "start_date": "2027-01-26",
-      "writer_end_date": "2027-02-04",
-      "review_start_date": "2027-02-05",
-      "review_end_date": "2027-02-08",
-      "end_date": "2027-02-08",
+      "start_date": "2027-01-20",
+      "writer_end_date": "2027-01-29",
+      "review_start_date": "2027-02-01",
+      "review_end_date": "2027-02-02",
+      "end_date": "2027-02-02",
       "schedule_status": "conditional"
     },
     {
@@ -4508,11 +4464,11 @@
       "writer_days": 8,
       "confidence": "low",
       "lane": "writer-a",
-      "start_date": "2027-02-05",
-      "writer_end_date": "2027-02-16",
-      "review_start_date": "2027-02-17",
-      "review_end_date": "2027-02-18",
-      "end_date": "2027-02-18",
+      "start_date": "2027-02-01",
+      "writer_end_date": "2027-02-10",
+      "review_start_date": "2027-02-11",
+      "review_end_date": "2027-02-12",
+      "end_date": "2027-02-12",
       "schedule_status": "conditional"
     },
     {
@@ -4548,11 +4504,11 @@
       "writer_days": 4,
       "confidence": "low",
       "lane": "writer-a",
-      "start_date": "2027-02-17",
-      "writer_end_date": "2027-02-22",
-      "review_start_date": "2027-02-23",
-      "review_end_date": "2027-02-23",
-      "end_date": "2027-02-23",
+      "start_date": "2027-02-11",
+      "writer_end_date": "2027-02-16",
+      "review_start_date": "2027-02-17",
+      "review_end_date": "2027-02-17",
+      "end_date": "2027-02-17",
       "schedule_status": "conditional"
     }
   ],
@@ -4562,17 +4518,23 @@
       "week_start": "2026-07-27",
       "week_end": "2026-08-02",
       "active_issue_numbers": [
+        533,
         551,
         583,
-        749
+        751
       ],
       "starting_issue_numbers": [
+        533,
         551,
         583,
-        749
+        751
       ],
-      "finishing_issue_numbers": [],
-      "review_issue_numbers": [],
+      "finishing_issue_numbers": [
+        751
+      ],
+      "review_issue_numbers": [
+        751
+      ],
       "planned_writer_days": 9,
       "writer_capacity_days": 15
     },
@@ -4584,23 +4546,19 @@
         551,
         583,
         638,
-        723,
-        749
+        723
       ],
       "starting_issue_numbers": [
-        533,
         638,
         723
       ],
       "finishing_issue_numbers": [
         551,
-        583,
-        749
+        583
       ],
       "review_issue_numbers": [
         551,
-        583,
-        749
+        583
       ],
       "planned_writer_days": 15,
       "writer_capacity_days": 15
@@ -4610,6 +4568,7 @@
       "week_end": "2026-08-16",
       "active_issue_numbers": [
         533,
+        618,
         626,
         638,
         639,
@@ -4617,6 +4576,7 @@
         723
       ],
       "starting_issue_numbers": [
+        618,
         626,
         639,
         640
@@ -4637,31 +4597,28 @@
       "active_issue_numbers": [
         312,
         533,
-        554,
+        618,
         626,
         639,
         640,
         723,
-        740,
-        751
+        740
       ],
       "starting_issue_numbers": [
         312,
-        554,
-        740,
-        751
+        740
       ],
       "finishing_issue_numbers": [
         533,
+        626,
         639,
-        723,
-        751
+        723
       ],
       "review_issue_numbers": [
         533,
+        626,
         639,
-        723,
-        751
+        723
       ],
       "planned_writer_days": 15,
       "writer_capacity_days": 15
@@ -4673,25 +4630,21 @@
         312,
         554,
         618,
-        626,
         640,
         724,
         740
       ],
       "starting_issue_numbers": [
-        618,
+        554,
         724
       ],
       "finishing_issue_numbers": [
         312,
-        554,
-        626,
         640
       ],
       "review_issue_numbers": [
         312,
-        554,
-        626,
+        618,
         640
       ],
       "planned_writer_days": 15,
@@ -4701,18 +4654,25 @@
       "week_start": "2026-08-31",
       "week_end": "2026-09-06",
       "active_issue_numbers": [
+        554,
         618,
+        622,
         724,
         740,
         768
       ],
       "starting_issue_numbers": [
+        622,
         768
       ],
       "finishing_issue_numbers": [
+        554,
+        618,
         740
       ],
       "review_issue_numbers": [
+        554,
+        618,
         740
       ],
       "planned_writer_days": 15,
@@ -4724,7 +4684,7 @@
       "active_issue_numbers": [
         314,
         570,
-        618,
+        622,
         645,
         724,
         768,
@@ -4737,13 +4697,15 @@
         772
       ],
       "finishing_issue_numbers": [
-        618,
+        622,
         724,
+        768,
         772
       ],
       "review_issue_numbers": [
-        618,
+        622,
         724,
+        768,
         772
       ],
       "planned_writer_days": 15,
@@ -4753,30 +4715,27 @@
       "week_start": "2026-09-14",
       "week_end": "2026-09-20",
       "active_issue_numbers": [
+        271,
         314,
         570,
-        622,
         645,
         646,
-        725,
-        768
+        725
       ],
       "starting_issue_numbers": [
-        622,
+        271,
         646,
         725
       ],
       "finishing_issue_numbers": [
         314,
         570,
-        645,
-        768
+        645
       ],
       "review_issue_numbers": [
         314,
         570,
-        645,
-        768
+        645
       ],
       "planned_writer_days": 15,
       "writer_capacity_days": 15
@@ -4786,25 +4745,25 @@
       "week_end": "2026-09-27",
       "active_issue_numbers": [
         271,
+        272,
         571,
-        622,
         646,
         647,
         725
       ],
       "starting_issue_numbers": [
-        271,
+        272,
         571,
         647
       ],
       "finishing_issue_numbers": [
+        271,
         571,
-        622,
         646
       ],
       "review_issue_numbers": [
+        271,
         571,
-        622,
         646
       ],
       "planned_writer_days": 15,
@@ -4814,7 +4773,7 @@
       "week_start": "2026-09-28",
       "week_end": "2026-10-04",
       "active_issue_numbers": [
-        271,
+        272,
         277,
         550,
         647,
@@ -4827,12 +4786,12 @@
         767
       ],
       "finishing_issue_numbers": [
-        271,
+        272,
         647,
         725
       ],
       "review_issue_numbers": [
-        271,
+        272,
         647,
         725
       ],
@@ -4868,14 +4827,14 @@
       "week_start": "2026-10-12",
       "week_end": "2026-10-18",
       "active_issue_numbers": [
-        272,
+        274,
         277,
         627,
         648,
         726
       ],
       "starting_issue_numbers": [
-        272,
+        274,
         627
       ],
       "finishing_issue_numbers": [
@@ -4893,30 +4852,30 @@
       "week_start": "2026-10-19",
       "week_end": "2026-10-25",
       "active_issue_numbers": [
-        272,
         274,
         584,
         625,
         627,
         644,
         648,
-        782
+        782,
+        783
       ],
       "starting_issue_numbers": [
-        274,
         584,
         625,
         644,
-        782
+        782,
+        783
       ],
       "finishing_issue_numbers": [
-        272,
+        274,
         584,
         627,
         648
       ],
       "review_issue_numbers": [
-        272,
+        274,
         584,
         627,
         648
@@ -4928,26 +4887,26 @@
       "week_start": "2026-10-26",
       "week_end": "2026-11-01",
       "active_issue_numbers": [
-        274,
         276,
         625,
         644,
         769,
         782,
-        783
+        783,
+        784
       ],
       "starting_issue_numbers": [
         276,
         769,
-        783
+        784
       ],
       "finishing_issue_numbers": [
-        274,
+        625,
         644,
         782
       ],
       "review_issue_numbers": [
-        274,
+        625,
         644,
         782
       ],
@@ -4960,22 +4919,18 @@
       "active_issue_numbers": [
         276,
         585,
-        625,
         769,
         783,
         784
       ],
       "starting_issue_numbers": [
-        585,
-        784
+        585
       ],
       "finishing_issue_numbers": [
-        625,
         769,
         783
       ],
       "review_issue_numbers": [
-        625,
         769,
         783
       ],
@@ -4987,6 +4942,7 @@
       "week_end": "2026-11-15",
       "active_issue_numbers": [
         276,
+        278,
         555,
         576,
         585,
@@ -4994,16 +4950,19 @@
         784
       ],
       "starting_issue_numbers": [
+        278,
         555,
         576,
         741
       ],
       "finishing_issue_numbers": [
-        585
+        585,
+        784
       ],
       "review_issue_numbers": [
         276,
-        585
+        585,
+        784
       ],
       "planned_writer_days": 15,
       "writer_capacity_days": 15
@@ -5018,11 +4977,9 @@
         556,
         576,
         606,
-        741,
-        784
+        741
       ],
       "starting_issue_numbers": [
-        278,
         556,
         606
       ],
@@ -5030,15 +4987,13 @@
         276,
         555,
         576,
-        741,
-        784
+        741
       ],
       "review_issue_numbers": [
         276,
         555,
         576,
-        741,
-        784
+        741
       ],
       "planned_writer_days": 15,
       "writer_capacity_days": 15
@@ -5048,6 +5003,7 @@
       "week_end": "2026-11-29",
       "active_issue_numbers": [
         278,
+        279,
         556,
         557,
         606,
@@ -5055,19 +5011,20 @@
         636
       ],
       "starting_issue_numbers": [
+        279,
         557,
         609,
         636
       ],
       "finishing_issue_numbers": [
+        278,
         556,
-        606,
-        609
+        606
       ],
       "review_issue_numbers": [
+        278,
         556,
-        606,
-        609
+        606
       ],
       "planned_writer_days": 15,
       "writer_capacity_days": 15
@@ -5076,26 +5033,25 @@
       "week_start": "2026-11-30",
       "week_end": "2026-12-06",
       "active_issue_numbers": [
-        278,
         279,
         557,
         569,
+        609,
         636,
         637
       ],
       "starting_issue_numbers": [
-        279,
         569,
         637
       ],
       "finishing_issue_numbers": [
-        278,
         557,
+        609,
         636
       ],
       "review_issue_numbers": [
-        278,
         557,
+        609,
         636
       ],
       "planned_writer_days": 15,
@@ -5120,11 +5076,13 @@
         710
       ],
       "finishing_issue_numbers": [
+        279,
         569,
         573,
         637
       ],
       "review_issue_numbers": [
+        279,
         569,
         573,
         637
@@ -5137,21 +5095,21 @@
       "week_end": "2026-12-20",
       "active_issue_numbers": [
         27,
-        279,
         280,
         281,
+        536,
         710
       ],
       "starting_issue_numbers": [
-        281
+        281,
+        536
       ],
       "finishing_issue_numbers": [
-        27,
-        279
+        27
       ],
       "review_issue_numbers": [
         27,
-        279
+        280
       ],
       "planned_writer_days": 15,
       "writer_capacity_days": 15
@@ -5168,7 +5126,6 @@
         742
       ],
       "starting_issue_numbers": [
-        536,
         574,
         742
       ],
@@ -5188,6 +5145,7 @@
       "week_end": "2027-01-03",
       "active_issue_numbers": [
         536,
+        537,
         574,
         710,
         735,
@@ -5195,18 +5153,19 @@
         757
       ],
       "starting_issue_numbers": [
+        537,
         735,
         757
       ],
       "finishing_issue_numbers": [
+        536,
         574,
-        710,
-        742
+        710
       ],
       "review_issue_numbers": [
+        536,
         574,
-        710,
-        742
+        710
       ],
       "planned_writer_days": 15,
       "writer_capacity_days": 15
@@ -5215,22 +5174,24 @@
       "week_start": "2027-01-04",
       "week_end": "2027-01-10",
       "active_issue_numbers": [
-        536,
         537,
+        538,
         558,
         735,
+        742,
         757
       ],
       "starting_issue_numbers": [
-        537,
+        538,
         558
       ],
       "finishing_issue_numbers": [
-        536,
+        742,
         757
       ],
       "review_issue_numbers": [
-        536,
+        537,
+        742,
         757
       ],
       "planned_writer_days": 15,
@@ -5248,7 +5209,6 @@
         736
       ],
       "starting_issue_numbers": [
-        538,
         572,
         736
       ],
@@ -5271,17 +5231,21 @@
       "active_issue_numbers": [
         424,
         538,
+        539,
         572,
         736
       ],
       "starting_issue_numbers": [
-        424
+        424,
+        539
       ],
       "finishing_issue_numbers": [
+        538,
         572,
         736
       ],
       "review_issue_numbers": [
+        538,
         572,
         736
       ],
@@ -5293,19 +5257,14 @@
       "week_end": "2027-01-31",
       "active_issue_numbers": [
         424,
-        538,
         539
       ],
-      "starting_issue_numbers": [
-        539
-      ],
+      "starting_issue_numbers": [],
       "finishing_issue_numbers": [
-        424,
-        538
+        424
       ],
       "review_issue_numbers": [
-        424,
-        538
+        424
       ],
       "planned_writer_days": 8,
       "writer_capacity_days": 15
@@ -5320,21 +5279,6 @@
       "starting_issue_numbers": [
         540
       ],
-      "finishing_issue_numbers": [],
-      "review_issue_numbers": [
-        539
-      ],
-      "planned_writer_days": 5,
-      "writer_capacity_days": 15
-    },
-    {
-      "week_start": "2027-02-08",
-      "week_end": "2027-02-14",
-      "active_issue_numbers": [
-        539,
-        540
-      ],
-      "starting_issue_numbers": [],
       "finishing_issue_numbers": [
         539
       ],
@@ -5345,8 +5289,8 @@
       "writer_capacity_days": 15
     },
     {
-      "week_start": "2027-02-15",
-      "week_end": "2027-02-21",
+      "week_start": "2027-02-08",
+      "week_end": "2027-02-14",
       "active_issue_numbers": [
         540,
         738
@@ -5364,8 +5308,8 @@
       "writer_capacity_days": 15
     },
     {
-      "week_start": "2027-02-22",
-      "week_end": "2027-02-28",
+      "week_start": "2027-02-15",
+      "week_end": "2027-02-21",
       "active_issue_numbers": [
         738
       ],
@@ -5376,7 +5320,7 @@
       "review_issue_numbers": [
         738
       ],
-      "planned_writer_days": 1,
+      "planned_writer_days": 2,
       "writer_capacity_days": 15
     }
   ],
@@ -22071,10 +22015,10 @@
       "number": 749,
       "title": "selfhost: accept the 15 profile builtins in S (#622)",
       "url": "https://github.com/hjosugi/kofun/issues/749",
-      "state": "open",
-      "state_reason": null,
+      "state": "closed",
+      "state_reason": "completed",
       "role": "curated",
-      "workflow": "in-progress",
+      "workflow": "closed",
       "priority": "P0",
       "size": "M",
       "kind": "implementation",
@@ -22087,14 +22031,13 @@
         "P0",
         "area:bootstrap",
         "curated",
-        "in-progress",
         "kind:implementation",
         "size:M"
       ],
       "assignees": [],
       "created_at": "2026-07-26T14:50:34Z",
-      "updated_at": "2026-07-28T13:55:28Z",
-      "closed_at": null
+      "updated_at": "2026-07-29T12:16:37Z",
+      "closed_at": "2026-07-29T12:16:05Z"
     },
     {
       "number": 750,
