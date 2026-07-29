@@ -3,12 +3,12 @@
   "repository": "hjosugi/kofun",
   "time_zone": "Asia/Tokyo",
   "as_of": "2026-07-29",
-  "generated_at": "2026-07-29T11:11:42.655Z",
+  "generated_at": "2026-07-29T13:05:46.119Z",
   "source": {
     "endpoint": "https://api.github.com/repos/hjosugi/kofun/issues",
-    "api_items": 783,
+    "api_items": 784,
     "issues": 654,
-    "pull_requests_excluded": 129,
+    "pull_requests_excluded": 130,
     "pages": 8
   },
   "capacity": {
@@ -27,19 +27,19 @@
   },
   "summary": {
     "issues_total": 654,
-    "open_issues": 521,
-    "closed_issues": 133,
-    "open_curated": 74,
+    "open_issues": 520,
+    "closed_issues": 134,
+    "open_curated": 73,
     "open_planning": 447,
     "open_unclassified": 0,
     "scheduled_curated": 53,
-    "unscheduled_curated": 21,
+    "unscheduled_curated": 20,
     "open_roles": {
-      "curated": 74,
+      "curated": 73,
       "planning": 447
     },
     "open_workflows": {
-      "blocked": 19,
+      "blocked": 18,
       "deferred": 13,
       "in-progress": 8,
       "needs-decision": 8,
@@ -48,7 +48,7 @@
       "unclassified": 435
     },
     "open_priorities": {
-      "P0": 7,
+      "P0": 6,
       "P1": 37,
       "P2": 38,
       "P3": 4,
@@ -56,12 +56,12 @@
     },
     "open_sizes": {
       "L": 30,
-      "M": 41,
+      "M": 40,
       "S": 15,
       "none": 435
     },
     "curated_workflows": {
-      "blocked": 16,
+      "blocked": 15,
       "deferred": 12,
       "in-progress": 8,
       "needs-decision": 7,
@@ -69,19 +69,19 @@
       "ready": 8
     },
     "curated_priorities": {
-      "P0": 6,
+      "P0": 5,
       "P1": 30,
       "P2": 34,
       "P3": 4
     },
     "curated_sizes": {
       "L": 18,
-      "M": 41,
+      "M": 40,
       "S": 15
     },
     "state_reasons": {
-      "completed": 103,
-      "none": 519,
+      "completed": 104,
+      "none": 518,
       "not_planned": 30,
       "reopened": 2
     }
@@ -91,17 +91,17 @@
     "window_start": "2026-07-15",
     "window_end": "2026-07-29",
     "created_curated": 141,
-    "completed_curated": 66,
+    "completed_curated": 67,
     "closed_not_planned": 1,
-    "completion_rate_per_week": 33,
+    "completion_rate_per_week": 33.5,
     "arrival_rate_per_week": 70.5,
-    "net_burn_per_week": -37.5,
+    "net_burn_per_week": -37,
     "note": "Completion excludes issues closed as not planned; intake uses curated issue creation dates."
   },
   "forecast": {
     "scope": "Open curated issues, excluding deferred work and blockers outside the two represented dependency chains.",
     "scheduled_count": 53,
-    "unscheduled_count": 21,
+    "unscheduled_count": 20,
     "start_date": "2026-07-29",
     "likely_finish": "2026-12-16",
     "conservative_finish": "2027-01-21",
@@ -138,8 +138,8 @@
         "label": "Observed completion pace, intake frozen",
         "writer_slots": null,
         "reviewer_slots": null,
-        "finish_date": "2026-08-11",
-        "calendar_days": 14,
+        "finish_date": "2026-08-10",
+        "calendar_days": 13,
         "note": "Optimistic extrapolation; it freezes intake and may include retrospective tracker closure."
       },
       {
@@ -529,15 +529,15 @@
       "schedule_status": "scheduled"
     },
     {
-      "number": 749,
-      "title": "selfhost: accept the 15 profile builtins in S (#622)",
-      "url": "https://github.com/hjosugi/kofun/issues/749",
+      "number": 751,
+      "title": "selfhost: close the remaining declaration forms so A1 compiles S (#622)",
+      "url": "https://github.com/hjosugi/kofun/issues/751",
       "state": "open",
       "state_reason": null,
       "role": "curated",
       "workflow": "in-progress",
       "priority": "P0",
-      "size": "M",
+      "size": "S",
       "kind": "implementation",
       "area": "bootstrap",
       "areas": [
@@ -549,22 +549,22 @@
         "curated",
         "in-progress",
         "kind:implementation",
-        "size:M"
+        "size:S"
       ],
       "assignees": [],
-      "created_at": "2026-07-26T14:50:34Z",
-      "updated_at": "2026-07-28T13:55:28Z",
+      "created_at": "2026-07-26T14:50:36Z",
+      "updated_at": "2026-07-29T12:31:52Z",
       "closed_at": null,
       "chain_id": null,
       "depends_on": [],
-      "writer_days": 4,
+      "writer_days": 2,
       "confidence": "medium",
       "lane": "writer-c",
       "start_date": "2026-07-29",
-      "writer_end_date": "2026-08-03",
-      "review_start_date": "2026-08-04",
-      "review_end_date": "2026-08-04",
-      "end_date": "2026-08-04",
+      "writer_end_date": "2026-07-30",
+      "review_start_date": "2026-07-31",
+      "review_end_date": "2026-07-31",
+      "end_date": "2026-07-31",
       "schedule_status": "scheduled"
     },
     {
@@ -603,11 +603,11 @@
       "writer_days": 4,
       "confidence": "medium",
       "lane": "writer-c",
-      "start_date": "2026-08-04",
-      "writer_end_date": "2026-08-07",
-      "review_start_date": "2026-08-14",
-      "review_end_date": "2026-08-14",
-      "end_date": "2026-08-14",
+      "start_date": "2026-07-31",
+      "writer_end_date": "2026-08-05",
+      "review_start_date": "2026-08-06",
+      "review_end_date": "2026-08-06",
+      "end_date": "2026-08-06",
       "schedule_status": "scheduled"
     },
     {
@@ -646,11 +646,11 @@
       "writer_days": 4,
       "confidence": "medium",
       "lane": "writer-c",
-      "start_date": "2026-08-10",
-      "writer_end_date": "2026-08-13",
-      "review_start_date": "2026-08-17",
-      "review_end_date": "2026-08-17",
-      "end_date": "2026-08-17",
+      "start_date": "2026-08-06",
+      "writer_end_date": "2026-08-11",
+      "review_start_date": "2026-08-14",
+      "review_end_date": "2026-08-14",
+      "end_date": "2026-08-14",
       "schedule_status": "scheduled"
     },
     {
@@ -690,6 +690,47 @@
       "review_end_date": "2026-08-25",
       "end_date": "2026-08-25",
       "schedule_status": "conditional"
+    },
+    {
+      "number": 636,
+      "title": "Standard library charter: batteries-included coverage, tiers, compatibility, and update policy",
+      "url": "https://github.com/hjosugi/kofun/issues/636",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "in-progress",
+      "priority": "P1",
+      "size": "M",
+      "kind": "spec-design",
+      "area": "stdlib",
+      "areas": [
+        "stdlib"
+      ],
+      "labels": [
+        "P1",
+        "area:stdlib",
+        "curated",
+        "in-progress",
+        "kind:spec-design",
+        "size:M"
+      ],
+      "assignees": [
+        "hjosugi"
+      ],
+      "created_at": "2026-07-23T13:25:03Z",
+      "updated_at": "2026-07-25T13:37:17Z",
+      "closed_at": null,
+      "chain_id": null,
+      "depends_on": [],
+      "writer_days": 4,
+      "confidence": "medium",
+      "lane": "writer-c",
+      "start_date": "2026-08-12",
+      "writer_end_date": "2026-08-17",
+      "review_start_date": "2026-08-18",
+      "review_end_date": "2026-08-18",
+      "end_date": "2026-08-18",
+      "schedule_status": "scheduled"
     },
     {
       "number": 622,
@@ -737,47 +778,6 @@
       "schedule_status": "conditional"
     },
     {
-      "number": 636,
-      "title": "Standard library charter: batteries-included coverage, tiers, compatibility, and update policy",
-      "url": "https://github.com/hjosugi/kofun/issues/636",
-      "state": "open",
-      "state_reason": null,
-      "role": "curated",
-      "workflow": "in-progress",
-      "priority": "P1",
-      "size": "M",
-      "kind": "spec-design",
-      "area": "stdlib",
-      "areas": [
-        "stdlib"
-      ],
-      "labels": [
-        "P1",
-        "area:stdlib",
-        "curated",
-        "in-progress",
-        "kind:spec-design",
-        "size:M"
-      ],
-      "assignees": [
-        "hjosugi"
-      ],
-      "created_at": "2026-07-23T13:25:03Z",
-      "updated_at": "2026-07-25T13:37:17Z",
-      "closed_at": null,
-      "chain_id": null,
-      "depends_on": [],
-      "writer_days": 4,
-      "confidence": "medium",
-      "lane": "writer-c",
-      "start_date": "2026-08-14",
-      "writer_end_date": "2026-08-19",
-      "review_start_date": "2026-08-21",
-      "review_end_date": "2026-08-21",
-      "end_date": "2026-08-21",
-      "schedule_status": "scheduled"
-    },
-    {
       "number": 637,
       "title": "Discovery query v1: project inferred types and callable operations from semantic facts",
       "url": "https://github.com/hjosugi/kofun/issues/637",
@@ -809,8 +809,8 @@
       "writer_days": 4,
       "confidence": "medium",
       "lane": "writer-c",
-      "start_date": "2026-08-20",
-      "writer_end_date": "2026-08-25",
+      "start_date": "2026-08-18",
+      "writer_end_date": "2026-08-21",
       "review_start_date": "2026-08-26",
       "review_end_date": "2026-08-26",
       "end_date": "2026-08-26",
@@ -860,6 +860,49 @@
       "schedule_status": "conditional"
     },
     {
+      "number": 551,
+      "title": "Law declarations: make Monad a library law, not a compiler keyword",
+      "url": "https://github.com/hjosugi/kofun/issues/551",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "ready",
+      "priority": "P1",
+      "size": "M",
+      "kind": "spec-design",
+      "area": "laws",
+      "areas": [
+        "laws",
+        "syntax",
+        "type-system"
+      ],
+      "labels": [
+        "P1",
+        "area:laws",
+        "area:syntax",
+        "area:type-system",
+        "curated",
+        "kind:spec-design",
+        "ready",
+        "size:M"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-20T07:49:31Z",
+      "updated_at": "2026-07-25T21:45:18Z",
+      "closed_at": null,
+      "chain_id": null,
+      "depends_on": [],
+      "writer_days": 4,
+      "confidence": "medium",
+      "lane": "writer-c",
+      "start_date": "2026-08-24",
+      "writer_end_date": "2026-08-27",
+      "review_start_date": "2026-08-28",
+      "review_end_date": "2026-08-28",
+      "end_date": "2026-08-28",
+      "schedule_status": "scheduled"
+    },
+    {
       "number": 725,
       "title": "Decimal slice 6: state scale guarantees truthfully now, and add Fixed[scale] when const generics exist",
       "url": "https://github.com/hjosugi/kofun/issues/725",
@@ -896,49 +939,6 @@
       "review_end_date": "2026-09-08",
       "end_date": "2026-09-08",
       "schedule_status": "conditional"
-    },
-    {
-      "number": 551,
-      "title": "Law declarations: make Monad a library law, not a compiler keyword",
-      "url": "https://github.com/hjosugi/kofun/issues/551",
-      "state": "open",
-      "state_reason": null,
-      "role": "curated",
-      "workflow": "ready",
-      "priority": "P1",
-      "size": "M",
-      "kind": "spec-design",
-      "area": "laws",
-      "areas": [
-        "laws",
-        "syntax",
-        "type-system"
-      ],
-      "labels": [
-        "P1",
-        "area:laws",
-        "area:syntax",
-        "area:type-system",
-        "curated",
-        "kind:spec-design",
-        "ready",
-        "size:M"
-      ],
-      "assignees": [],
-      "created_at": "2026-07-20T07:49:31Z",
-      "updated_at": "2026-07-25T21:45:18Z",
-      "closed_at": null,
-      "chain_id": null,
-      "depends_on": [],
-      "writer_days": 4,
-      "confidence": "medium",
-      "lane": "writer-c",
-      "start_date": "2026-08-26",
-      "writer_end_date": "2026-08-31",
-      "review_start_date": "2026-09-01",
-      "review_end_date": "2026-09-01",
-      "end_date": "2026-09-01",
-      "schedule_status": "scheduled"
     },
     {
       "number": 272,
@@ -1019,8 +1019,51 @@
       "writer_days": 4,
       "confidence": "medium",
       "lane": "writer-c",
-      "start_date": "2026-09-01",
-      "writer_end_date": "2026-09-04",
+      "start_date": "2026-08-28",
+      "writer_end_date": "2026-09-02",
+      "review_start_date": "2026-09-04",
+      "review_end_date": "2026-09-04",
+      "end_date": "2026-09-04",
+      "schedule_status": "scheduled"
+    },
+    {
+      "number": 627,
+      "title": "Reactive programming: small Stream/Signal protocol with explicit demand and ownership",
+      "url": "https://github.com/hjosugi/kofun/issues/627",
+      "state": "open",
+      "state_reason": null,
+      "role": "curated",
+      "workflow": "ready",
+      "priority": "P1",
+      "size": "M",
+      "kind": "spec-design",
+      "area": "concurrency",
+      "areas": [
+        "concurrency",
+        "stdlib",
+        "type-system"
+      ],
+      "labels": [
+        "P1",
+        "area:concurrency",
+        "area:stdlib",
+        "area:type-system",
+        "curated",
+        "kind:spec-design",
+        "ready",
+        "size:M"
+      ],
+      "assignees": [],
+      "created_at": "2026-07-23T12:33:46Z",
+      "updated_at": "2026-07-25T21:47:44Z",
+      "closed_at": null,
+      "chain_id": null,
+      "depends_on": [],
+      "writer_days": 4,
+      "confidence": "medium",
+      "lane": "writer-c",
+      "start_date": "2026-09-03",
+      "writer_end_date": "2026-09-08",
       "review_start_date": "2026-09-09",
       "review_end_date": "2026-09-09",
       "end_date": "2026-09-09",
@@ -1068,49 +1111,6 @@
       "review_end_date": "2026-09-10",
       "end_date": "2026-09-10",
       "schedule_status": "conditional"
-    },
-    {
-      "number": 627,
-      "title": "Reactive programming: small Stream/Signal protocol with explicit demand and ownership",
-      "url": "https://github.com/hjosugi/kofun/issues/627",
-      "state": "open",
-      "state_reason": null,
-      "role": "curated",
-      "workflow": "ready",
-      "priority": "P1",
-      "size": "M",
-      "kind": "spec-design",
-      "area": "concurrency",
-      "areas": [
-        "concurrency",
-        "stdlib",
-        "type-system"
-      ],
-      "labels": [
-        "P1",
-        "area:concurrency",
-        "area:stdlib",
-        "area:type-system",
-        "curated",
-        "kind:spec-design",
-        "ready",
-        "size:M"
-      ],
-      "assignees": [],
-      "created_at": "2026-07-23T12:33:46Z",
-      "updated_at": "2026-07-25T21:47:44Z",
-      "closed_at": null,
-      "chain_id": null,
-      "depends_on": [],
-      "writer_days": 4,
-      "confidence": "medium",
-      "lane": "writer-c",
-      "start_date": "2026-09-07",
-      "writer_end_date": "2026-09-10",
-      "review_start_date": "2026-09-11",
-      "review_end_date": "2026-09-11",
-      "end_date": "2026-09-11",
-      "schedule_status": "scheduled"
     },
     {
       "number": 726,
@@ -1183,12 +1183,12 @@
       "depends_on": [],
       "writer_days": 7,
       "confidence": "low",
-      "lane": "writer-a",
-      "start_date": "2026-09-11",
-      "writer_end_date": "2026-09-21",
-      "review_start_date": "2026-09-23",
-      "review_end_date": "2026-09-23",
-      "end_date": "2026-09-23",
+      "lane": "writer-c",
+      "start_date": "2026-09-09",
+      "writer_end_date": "2026-09-17",
+      "review_start_date": "2026-09-18",
+      "review_end_date": "2026-09-18",
+      "end_date": "2026-09-18",
       "schedule_status": "scheduled"
     },
     {
@@ -1222,12 +1222,12 @@
       "depends_on": [],
       "writer_days": 6,
       "confidence": "low",
-      "lane": "writer-c",
+      "lane": "writer-a",
       "start_date": "2026-09-11",
       "writer_end_date": "2026-09-18",
-      "review_start_date": "2026-09-24",
-      "review_end_date": "2026-09-24",
-      "end_date": "2026-09-24",
+      "review_start_date": "2026-09-23",
+      "review_end_date": "2026-09-23",
+      "end_date": "2026-09-23",
       "schedule_status": "scheduled"
     },
     {
@@ -1262,11 +1262,11 @@
       "writer_days": 10,
       "confidence": "low",
       "lane": "writer-c",
-      "start_date": "2026-09-21",
-      "writer_end_date": "2026-10-02",
-      "review_start_date": "2026-10-05",
-      "review_end_date": "2026-10-06",
-      "end_date": "2026-10-06",
+      "start_date": "2026-09-18",
+      "writer_end_date": "2026-10-01",
+      "review_start_date": "2026-10-02",
+      "review_end_date": "2026-10-05",
+      "end_date": "2026-10-05",
       "schedule_status": "scheduled"
     },
     {
@@ -1298,11 +1298,11 @@
       "writer_days": 6,
       "confidence": "low",
       "lane": "writer-a",
-      "start_date": "2026-09-22",
-      "writer_end_date": "2026-09-29",
-      "review_start_date": "2026-09-30",
-      "review_end_date": "2026-09-30",
-      "end_date": "2026-09-30",
+      "start_date": "2026-09-21",
+      "writer_end_date": "2026-09-28",
+      "review_start_date": "2026-09-29",
+      "review_end_date": "2026-09-29",
+      "end_date": "2026-09-29",
       "schedule_status": "scheduled"
     },
     {
@@ -1379,11 +1379,11 @@
       "writer_days": 4,
       "confidence": "low",
       "lane": "writer-a",
-      "start_date": "2026-09-30",
-      "writer_end_date": "2026-10-05",
-      "review_start_date": "2026-10-09",
-      "review_end_date": "2026-10-09",
-      "end_date": "2026-10-09",
+      "start_date": "2026-09-29",
+      "writer_end_date": "2026-10-02",
+      "review_start_date": "2026-10-06",
+      "review_end_date": "2026-10-06",
+      "end_date": "2026-10-06",
       "schedule_status": "scheduled"
     },
     {
@@ -1419,11 +1419,11 @@
       "writer_days": 4,
       "confidence": "low",
       "lane": "writer-c",
-      "start_date": "2026-10-05",
-      "writer_end_date": "2026-10-08",
-      "review_start_date": "2026-10-12",
-      "review_end_date": "2026-10-12",
-      "end_date": "2026-10-12",
+      "start_date": "2026-10-02",
+      "writer_end_date": "2026-10-07",
+      "review_start_date": "2026-10-09",
+      "review_end_date": "2026-10-09",
+      "end_date": "2026-10-09",
       "schedule_status": "scheduled"
     },
     {
@@ -1459,11 +1459,11 @@
       "writer_days": 4,
       "confidence": "low",
       "lane": "writer-a",
-      "start_date": "2026-10-06",
-      "writer_end_date": "2026-10-09",
-      "review_start_date": "2026-10-13",
-      "review_end_date": "2026-10-13",
-      "end_date": "2026-10-13",
+      "start_date": "2026-10-05",
+      "writer_end_date": "2026-10-08",
+      "review_start_date": "2026-10-12",
+      "review_end_date": "2026-10-12",
+      "end_date": "2026-10-12",
       "schedule_status": "scheduled"
     },
     {
@@ -1501,9 +1501,9 @@
       "lane": "writer-b",
       "start_date": "2026-10-07",
       "writer_end_date": "2026-10-12",
-      "review_start_date": "2026-10-14",
-      "review_end_date": "2026-10-14",
-      "end_date": "2026-10-14",
+      "review_start_date": "2026-10-13",
+      "review_end_date": "2026-10-13",
+      "end_date": "2026-10-13",
       "schedule_status": "scheduled"
     },
     {
@@ -1543,11 +1543,11 @@
       "writer_days": 4,
       "confidence": "low",
       "lane": "writer-c",
-      "start_date": "2026-10-09",
-      "writer_end_date": "2026-10-14",
-      "review_start_date": "2026-10-15",
-      "review_end_date": "2026-10-15",
-      "end_date": "2026-10-15",
+      "start_date": "2026-10-08",
+      "writer_end_date": "2026-10-13",
+      "review_start_date": "2026-10-14",
+      "review_end_date": "2026-10-14",
+      "end_date": "2026-10-14",
       "schedule_status": "scheduled"
     },
     {
@@ -1587,11 +1587,11 @@
       "writer_days": 4,
       "confidence": "low",
       "lane": "writer-a",
-      "start_date": "2026-10-12",
-      "writer_end_date": "2026-10-15",
-      "review_start_date": "2026-10-16",
-      "review_end_date": "2026-10-16",
-      "end_date": "2026-10-16",
+      "start_date": "2026-10-09",
+      "writer_end_date": "2026-10-14",
+      "review_start_date": "2026-10-15",
+      "review_end_date": "2026-10-15",
+      "end_date": "2026-10-15",
       "schedule_status": "scheduled"
     },
     {
@@ -1677,11 +1677,11 @@
       "writer_days": 4,
       "confidence": "low",
       "lane": "writer-c",
-      "start_date": "2026-10-15",
-      "writer_end_date": "2026-10-20",
-      "review_start_date": "2026-10-21",
-      "review_end_date": "2026-10-21",
-      "end_date": "2026-10-21",
+      "start_date": "2026-10-14",
+      "writer_end_date": "2026-10-19",
+      "review_start_date": "2026-10-20",
+      "review_end_date": "2026-10-20",
+      "end_date": "2026-10-20",
       "schedule_status": "scheduled"
     },
     {
@@ -1721,11 +1721,11 @@
       "writer_days": 4,
       "confidence": "low",
       "lane": "writer-a",
-      "start_date": "2026-10-16",
-      "writer_end_date": "2026-10-21",
-      "review_start_date": "2026-10-22",
-      "review_end_date": "2026-10-22",
-      "end_date": "2026-10-22",
+      "start_date": "2026-10-15",
+      "writer_end_date": "2026-10-20",
+      "review_start_date": "2026-10-21",
+      "review_end_date": "2026-10-21",
+      "end_date": "2026-10-21",
       "schedule_status": "scheduled"
     },
     {
@@ -1807,11 +1807,11 @@
       "writer_days": 4,
       "confidence": "medium",
       "lane": "writer-c",
-      "start_date": "2026-10-21",
-      "writer_end_date": "2026-10-26",
-      "review_start_date": "2026-10-27",
-      "review_end_date": "2026-10-27",
-      "end_date": "2026-10-27",
+      "start_date": "2026-10-20",
+      "writer_end_date": "2026-10-23",
+      "review_start_date": "2026-10-26",
+      "review_end_date": "2026-10-26",
+      "end_date": "2026-10-26",
       "schedule_status": "scheduled"
     },
     {
@@ -1848,11 +1848,11 @@
       "writer_days": 4,
       "confidence": "medium",
       "lane": "writer-a",
-      "start_date": "2026-10-22",
-      "writer_end_date": "2026-10-27",
-      "review_start_date": "2026-10-28",
-      "review_end_date": "2026-10-28",
-      "end_date": "2026-10-28",
+      "start_date": "2026-10-21",
+      "writer_end_date": "2026-10-26",
+      "review_start_date": "2026-10-27",
+      "review_end_date": "2026-10-27",
+      "end_date": "2026-10-27",
       "schedule_status": "scheduled"
     },
     {
@@ -1889,11 +1889,11 @@
       "writer_days": 4,
       "confidence": "medium",
       "lane": "writer-c",
-      "start_date": "2026-10-27",
-      "writer_end_date": "2026-10-30",
-      "review_start_date": "2026-11-04",
-      "review_end_date": "2026-11-04",
-      "end_date": "2026-11-04",
+      "start_date": "2026-10-26",
+      "writer_end_date": "2026-10-29",
+      "review_start_date": "2026-10-30",
+      "review_end_date": "2026-10-30",
+      "end_date": "2026-10-30",
       "schedule_status": "scheduled"
     },
     {
@@ -1928,11 +1928,11 @@
       "writer_days": 4,
       "confidence": "medium",
       "lane": "writer-a",
-      "start_date": "2026-10-28",
-      "writer_end_date": "2026-11-02",
-      "review_start_date": "2026-11-05",
-      "review_end_date": "2026-11-05",
-      "end_date": "2026-11-05",
+      "start_date": "2026-10-27",
+      "writer_end_date": "2026-10-30",
+      "review_start_date": "2026-11-04",
+      "review_end_date": "2026-11-04",
+      "end_date": "2026-11-04",
       "schedule_status": "scheduled"
     },
     {
@@ -1966,12 +1966,12 @@
       "depends_on": [],
       "writer_days": 4,
       "confidence": "medium",
-      "lane": "writer-b",
-      "start_date": "2026-11-02",
-      "writer_end_date": "2026-11-05",
-      "review_start_date": "2026-11-06",
-      "review_end_date": "2026-11-06",
-      "end_date": "2026-11-06",
+      "lane": "writer-c",
+      "start_date": "2026-10-30",
+      "writer_end_date": "2026-11-04",
+      "review_start_date": "2026-11-05",
+      "review_end_date": "2026-11-05",
+      "end_date": "2026-11-05",
       "schedule_status": "scheduled"
     },
     {
@@ -2005,12 +2005,12 @@
       "depends_on": [],
       "writer_days": 4,
       "confidence": "medium",
-      "lane": "writer-c",
+      "lane": "writer-a",
       "start_date": "2026-11-02",
       "writer_end_date": "2026-11-05",
-      "review_start_date": "2026-11-09",
-      "review_end_date": "2026-11-09",
-      "end_date": "2026-11-09",
+      "review_start_date": "2026-11-06",
+      "review_end_date": "2026-11-06",
+      "end_date": "2026-11-06",
       "schedule_status": "scheduled"
     },
     {
@@ -2046,12 +2046,12 @@
       "depends_on": [],
       "writer_days": 4,
       "confidence": "medium",
-      "lane": "writer-a",
-      "start_date": "2026-11-03",
-      "writer_end_date": "2026-11-06",
-      "review_start_date": "2026-11-10",
-      "review_end_date": "2026-11-10",
-      "end_date": "2026-11-10",
+      "lane": "writer-b",
+      "start_date": "2026-11-02",
+      "writer_end_date": "2026-11-05",
+      "review_start_date": "2026-11-09",
+      "review_end_date": "2026-11-09",
+      "end_date": "2026-11-09",
       "schedule_status": "scheduled"
     },
     {
@@ -2085,12 +2085,12 @@
       "depends_on": [],
       "writer_days": 7,
       "confidence": "low",
-      "lane": "writer-b",
-      "start_date": "2026-11-06",
-      "writer_end_date": "2026-11-16",
-      "review_start_date": "2026-11-17",
-      "review_end_date": "2026-11-17",
-      "end_date": "2026-11-17",
+      "lane": "writer-c",
+      "start_date": "2026-11-05",
+      "writer_end_date": "2026-11-13",
+      "review_start_date": "2026-11-16",
+      "review_end_date": "2026-11-16",
+      "end_date": "2026-11-16",
       "schedule_status": "scheduled"
     },
     {
@@ -2124,12 +2124,12 @@
       "depends_on": [],
       "writer_days": 7,
       "confidence": "low",
-      "lane": "writer-c",
+      "lane": "writer-a",
       "start_date": "2026-11-06",
       "writer_end_date": "2026-11-16",
-      "review_start_date": "2026-11-18",
-      "review_end_date": "2026-11-18",
-      "end_date": "2026-11-18",
+      "review_start_date": "2026-11-17",
+      "review_end_date": "2026-11-17",
+      "end_date": "2026-11-17",
       "schedule_status": "scheduled"
     },
     {
@@ -2163,12 +2163,12 @@
       "depends_on": [],
       "writer_days": 7,
       "confidence": "low",
-      "lane": "writer-a",
-      "start_date": "2026-11-09",
-      "writer_end_date": "2026-11-17",
-      "review_start_date": "2026-11-19",
-      "review_end_date": "2026-11-19",
-      "end_date": "2026-11-19",
+      "lane": "writer-b",
+      "start_date": "2026-11-06",
+      "writer_end_date": "2026-11-16",
+      "review_start_date": "2026-11-18",
+      "review_end_date": "2026-11-18",
+      "end_date": "2026-11-18",
       "schedule_status": "scheduled"
     },
     {
@@ -2202,12 +2202,12 @@
       "depends_on": [],
       "writer_days": 5,
       "confidence": "low",
-      "lane": "writer-b",
-      "start_date": "2026-11-17",
-      "writer_end_date": "2026-11-23",
-      "review_start_date": "2026-11-24",
-      "review_end_date": "2026-11-24",
-      "end_date": "2026-11-24",
+      "lane": "writer-c",
+      "start_date": "2026-11-16",
+      "writer_end_date": "2026-11-20",
+      "review_start_date": "2026-11-23",
+      "review_end_date": "2026-11-23",
+      "end_date": "2026-11-23",
       "schedule_status": "scheduled"
     },
     {
@@ -2241,7 +2241,7 @@
       "depends_on": [],
       "writer_days": 7,
       "confidence": "low",
-      "lane": "writer-c",
+      "lane": "writer-a",
       "start_date": "2026-11-17",
       "writer_end_date": "2026-11-25",
       "review_start_date": "2026-11-26",
@@ -2281,12 +2281,12 @@
       "depends_on": [],
       "writer_days": 4,
       "confidence": "low",
-      "lane": "writer-a",
-      "start_date": "2026-11-18",
-      "writer_end_date": "2026-11-23",
-      "review_start_date": "2026-11-25",
-      "review_end_date": "2026-11-25",
-      "end_date": "2026-11-25",
+      "lane": "writer-b",
+      "start_date": "2026-11-17",
+      "writer_end_date": "2026-11-20",
+      "review_start_date": "2026-11-24",
+      "review_end_date": "2026-11-24",
+      "end_date": "2026-11-24",
       "schedule_status": "scheduled"
     },
     {
@@ -2325,12 +2325,12 @@
       "depends_on": [],
       "writer_days": 4,
       "confidence": "low",
-      "lane": "writer-a",
-      "start_date": "2026-11-24",
-      "writer_end_date": "2026-11-27",
-      "review_start_date": "2026-11-30",
-      "review_end_date": "2026-11-30",
-      "end_date": "2026-11-30",
+      "lane": "writer-b",
+      "start_date": "2026-11-23",
+      "writer_end_date": "2026-11-26",
+      "review_start_date": "2026-11-27",
+      "review_end_date": "2026-11-27",
+      "end_date": "2026-11-27",
       "schedule_status": "scheduled"
     },
     {
@@ -2369,12 +2369,12 @@
       "depends_on": [],
       "writer_days": 4,
       "confidence": "low",
-      "lane": "writer-b",
-      "start_date": "2026-11-24",
-      "writer_end_date": "2026-11-27",
-      "review_start_date": "2026-12-01",
-      "review_end_date": "2026-12-01",
-      "end_date": "2026-12-01",
+      "lane": "writer-c",
+      "start_date": "2026-11-23",
+      "writer_end_date": "2026-11-26",
+      "review_start_date": "2026-11-30",
+      "review_end_date": "2026-11-30",
+      "end_date": "2026-11-30",
       "schedule_status": "scheduled"
     },
     {
@@ -2408,7 +2408,7 @@
       "depends_on": [],
       "writer_days": 6,
       "confidence": "low",
-      "lane": "writer-c",
+      "lane": "writer-a",
       "start_date": "2026-11-26",
       "writer_end_date": "2026-12-03",
       "review_start_date": "2026-12-04",
@@ -2447,12 +2447,12 @@
       "depends_on": [],
       "writer_days": 6,
       "confidence": "low",
-      "lane": "writer-a",
-      "start_date": "2026-11-30",
-      "writer_end_date": "2026-12-07",
-      "review_start_date": "2026-12-08",
-      "review_end_date": "2026-12-08",
-      "end_date": "2026-12-08",
+      "lane": "writer-b",
+      "start_date": "2026-11-27",
+      "writer_end_date": "2026-12-04",
+      "review_start_date": "2026-12-07",
+      "review_end_date": "2026-12-07",
+      "end_date": "2026-12-07",
       "schedule_status": "scheduled"
     },
     {
@@ -2486,12 +2486,12 @@
       "depends_on": [],
       "writer_days": 6,
       "confidence": "low",
-      "lane": "writer-b",
-      "start_date": "2026-11-30",
-      "writer_end_date": "2026-12-07",
-      "review_start_date": "2026-12-09",
-      "review_end_date": "2026-12-09",
-      "end_date": "2026-12-09",
+      "lane": "writer-c",
+      "start_date": "2026-11-27",
+      "writer_end_date": "2026-12-04",
+      "review_start_date": "2026-12-08",
+      "review_end_date": "2026-12-08",
+      "end_date": "2026-12-08",
       "schedule_status": "scheduled"
     },
     {
@@ -2525,7 +2525,7 @@
       "depends_on": [],
       "writer_days": 6,
       "confidence": "low",
-      "lane": "writer-c",
+      "lane": "writer-a",
       "start_date": "2026-12-04",
       "writer_end_date": "2026-12-11",
       "review_start_date": "2026-12-14",
@@ -2564,12 +2564,12 @@
       "depends_on": [],
       "writer_days": 6,
       "confidence": "low",
-      "lane": "writer-a",
-      "start_date": "2026-12-08",
-      "writer_end_date": "2026-12-15",
-      "review_start_date": "2026-12-16",
-      "review_end_date": "2026-12-16",
-      "end_date": "2026-12-16",
+      "lane": "writer-b",
+      "start_date": "2026-12-07",
+      "writer_end_date": "2026-12-14",
+      "review_start_date": "2026-12-15",
+      "review_end_date": "2026-12-15",
+      "end_date": "2026-12-15",
       "schedule_status": "scheduled"
     },
     {
@@ -2603,12 +2603,12 @@
       "depends_on": [],
       "writer_days": 5,
       "confidence": "low",
-      "lane": "writer-b",
-      "start_date": "2026-12-08",
-      "writer_end_date": "2026-12-14",
-      "review_start_date": "2026-12-15",
-      "review_end_date": "2026-12-15",
-      "end_date": "2026-12-15",
+      "lane": "writer-c",
+      "start_date": "2026-12-07",
+      "writer_end_date": "2026-12-11",
+      "review_start_date": "2026-12-16",
+      "review_end_date": "2026-12-16",
+      "end_date": "2026-12-16",
       "schedule_status": "scheduled"
     }
   ],
@@ -3016,27 +3016,6 @@
       "reason": "deferred outside the active delivery scope"
     },
     {
-      "number": 751,
-      "title": "selfhost: close the remaining declaration forms so A1 compiles S (#622)",
-      "url": "https://github.com/hjosugi/kofun/issues/751",
-      "role": "curated",
-      "workflow": "blocked",
-      "state_reason": null,
-      "priority": "P0",
-      "size": "S",
-      "kind": "implementation",
-      "area": "bootstrap",
-      "labels": [
-        "P0",
-        "area:bootstrap",
-        "blocked",
-        "curated",
-        "kind:implementation",
-        "size:S"
-      ],
-      "reason": "blocked without a dependency represented by a scheduled chain"
-    },
-    {
       "number": 772,
       "title": "Shadowing over pattern bindings: insert resolved arm bindings into the arm ScopeId",
       "url": "https://github.com/hjosugi/kofun/issues/772",
@@ -3063,17 +3042,23 @@
       "week_start": "2026-07-27",
       "week_end": "2026-08-02",
       "active_issue_numbers": [
+        550,
         618,
         723,
-        749
+        751
       ],
       "starting_issue_numbers": [
+        550,
         618,
         723,
-        749
+        751
       ],
-      "finishing_issue_numbers": [],
-      "review_issue_numbers": [],
+      "finishing_issue_numbers": [
+        751
+      ],
+      "review_issue_numbers": [
+        751
+      ],
       "planned_writer_days": 9,
       "writer_capacity_days": 15
     },
@@ -3082,18 +3067,18 @@
       "week_end": "2026-08-09",
       "active_issue_numbers": [
         550,
+        609,
         618,
-        723,
-        749
+        723
       ],
       "starting_issue_numbers": [
-        550
+        609
       ],
       "finishing_issue_numbers": [
-        749
+        550
       ],
       "review_issue_numbers": [
-        749
+        550
       ],
       "planned_writer_days": 15,
       "writer_capacity_days": 15
@@ -3102,7 +3087,6 @@
       "week_start": "2026-08-10",
       "week_end": "2026-08-16",
       "active_issue_numbers": [
-        550,
         609,
         618,
         622,
@@ -3111,18 +3095,17 @@
         724
       ],
       "starting_issue_numbers": [
-        609,
         622,
         636,
         724
       ],
       "finishing_issue_numbers": [
-        550,
+        609,
         618,
         723
       ],
       "review_issue_numbers": [
-        550,
+        609,
         618,
         723
       ],
@@ -3134,7 +3117,6 @@
       "week_end": "2026-08-23",
       "active_issue_numbers": [
         271,
-        609,
         622,
         636,
         637,
@@ -3145,12 +3127,10 @@
         637
       ],
       "finishing_issue_numbers": [
-        609,
         622,
         636
       ],
       "review_issue_numbers": [
-        609,
         622,
         636
       ],
@@ -3164,6 +3144,7 @@
         271,
         272,
         551,
+        626,
         637,
         724,
         725
@@ -3171,15 +3152,18 @@
       "starting_issue_numbers": [
         272,
         551,
+        626,
         725
       ],
       "finishing_issue_numbers": [
         271,
+        551,
         637,
         724
       ],
       "review_issue_numbers": [
         271,
+        551,
         637,
         724
       ],
@@ -3192,21 +3176,21 @@
       "active_issue_numbers": [
         272,
         274,
-        551,
         626,
+        627,
         725
       ],
       "starting_issue_numbers": [
         274,
-        626
+        627
       ],
       "finishing_issue_numbers": [
         272,
-        551
+        626
       ],
       "review_issue_numbers": [
         272,
-        551
+        626
       ],
       "planned_writer_days": 14,
       "writer_capacity_days": 15
@@ -3218,7 +3202,6 @@
         27,
         274,
         625,
-        626,
         627,
         725,
         726
@@ -3226,18 +3209,15 @@
       "starting_issue_numbers": [
         27,
         625,
-        627,
         726
       ],
       "finishing_issue_numbers": [
         274,
-        626,
         627,
         725
       ],
       "review_issue_numbers": [
         274,
-        626,
         627,
         725
       ],
@@ -3249,12 +3229,19 @@
       "week_end": "2026-09-20",
       "active_issue_numbers": [
         27,
+        276,
         625,
         726
       ],
-      "starting_issue_numbers": [],
-      "finishing_issue_numbers": [],
-      "review_issue_numbers": [],
+      "starting_issue_numbers": [
+        276
+      ],
+      "finishing_issue_numbers": [
+        625
+      ],
+      "review_issue_numbers": [
+        625
+      ],
       "planned_writer_days": 15,
       "writer_capacity_days": 15
     },
@@ -3266,22 +3253,18 @@
         276,
         281,
         533,
-        625,
         726
       ],
       "starting_issue_numbers": [
-        276,
         281,
         533
       ],
       "finishing_issue_numbers": [
         27,
-        625,
         726
       ],
       "review_issue_numbers": [
         27,
-        625,
         726
       ],
       "planned_writer_days": 13,
@@ -3294,15 +3277,18 @@
         276,
         281,
         533,
-        554
+        554,
+        555
       ],
       "starting_issue_numbers": [
-        554
+        554,
+        555
       ],
       "finishing_issue_numbers": [
         281
       ],
       "review_issue_numbers": [
+        276,
         281
       ],
       "planned_writer_days": 15,
@@ -3318,23 +3304,26 @@
         555,
         556,
         557,
-        569
+        569,
+        570
       ],
       "starting_issue_numbers": [
-        555,
         556,
         557,
-        569
+        569,
+        570
       ],
       "finishing_issue_numbers": [
         276,
         533,
-        554
+        554,
+        555
       ],
       "review_issue_numbers": [
         276,
         533,
-        554
+        554,
+        555
       ],
       "planned_writer_days": 15,
       "writer_capacity_days": 15
@@ -3343,7 +3332,6 @@
       "week_start": "2026-10-12",
       "week_end": "2026-10-18",
       "active_issue_numbers": [
-        555,
         556,
         557,
         569,
@@ -3353,20 +3341,17 @@
         574
       ],
       "starting_issue_numbers": [
-        570,
         571,
         573,
         574
       ],
       "finishing_issue_numbers": [
-        555,
         556,
         557,
         569,
         570
       ],
       "review_issue_numbers": [
-        555,
         556,
         557,
         569,
@@ -3412,19 +3397,23 @@
         639,
         640,
         710,
-        742
+        742,
+        757
       ],
       "starting_issue_numbers": [
         640,
-        742
+        742,
+        757
       ],
       "finishing_issue_numbers": [
         638,
-        639
+        639,
+        640
       ],
       "review_issue_numbers": [
         638,
-        639
+        639,
+        640
       ],
       "planned_writer_days": 15,
       "writer_capacity_days": 15
@@ -3433,10 +3422,10 @@
       "week_start": "2026-11-02",
       "week_end": "2026-11-08",
       "active_issue_numbers": [
-        640,
         710,
         735,
         736,
+        740,
         742,
         757,
         782,
@@ -3445,21 +3434,21 @@
       "starting_issue_numbers": [
         735,
         736,
-        757,
+        740,
         782,
         783
       ],
       "finishing_issue_numbers": [
-        640,
         710,
         742,
-        757
+        757,
+        782
       ],
       "review_issue_numbers": [
-        640,
         710,
         742,
-        757
+        757,
+        782
       ],
       "planned_writer_days": 15,
       "writer_capacity_days": 15
@@ -3471,18 +3460,13 @@
         735,
         736,
         740,
-        782,
         783
       ],
-      "starting_issue_numbers": [
-        740
-      ],
+      "starting_issue_numbers": [],
       "finishing_issue_numbers": [
-        782,
         783
       ],
       "review_issue_numbers": [
-        782,
         783
       ],
       "planned_writer_days": 15,
@@ -3525,21 +3509,27 @@
         572,
         576,
         645,
+        646,
+        647,
         768,
         784
       ],
       "starting_issue_numbers": [
         572,
         576,
-        645
+        645,
+        646,
+        647
       ],
       "finishing_issue_numbers": [
         558,
+        572,
         768,
         784
       ],
       "review_issue_numbers": [
         558,
+        572,
         768,
         784
       ],
@@ -3550,7 +3540,6 @@
       "week_start": "2026-11-30",
       "week_end": "2026-12-06",
       "active_issue_numbers": [
-        572,
         576,
         645,
         646,
@@ -3558,17 +3547,13 @@
         648
       ],
       "starting_issue_numbers": [
-        646,
-        647,
         648
       ],
       "finishing_issue_numbers": [
-        572,
         576,
         645
       ],
       "review_issue_numbers": [
-        572,
         576,
         645
       ],
@@ -3619,7 +3604,7 @@
         767,
         769
       ],
-      "planned_writer_days": 3,
+      "planned_writer_days": 1,
       "writer_capacity_days": 15
     }
   ],
@@ -19673,10 +19658,10 @@
       "number": 749,
       "title": "selfhost: accept the 15 profile builtins in S (#622)",
       "url": "https://github.com/hjosugi/kofun/issues/749",
-      "state": "open",
-      "state_reason": null,
+      "state": "closed",
+      "state_reason": "completed",
       "role": "curated",
-      "workflow": "in-progress",
+      "workflow": "closed",
       "priority": "P0",
       "size": "M",
       "kind": "implementation",
@@ -19688,14 +19673,13 @@
         "P0",
         "area:bootstrap",
         "curated",
-        "in-progress",
         "kind:implementation",
         "size:M"
       ],
       "assignees": [],
       "created_at": "2026-07-26T14:50:34Z",
-      "updated_at": "2026-07-28T13:55:28Z",
-      "closed_at": null
+      "updated_at": "2026-07-29T12:16:37Z",
+      "closed_at": "2026-07-29T12:16:05Z"
     },
     {
       "number": 750,
@@ -19716,13 +19700,12 @@
         "P0",
         "area:bootstrap",
         "curated",
-        "in-progress",
         "kind:implementation",
         "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-26T14:50:35Z",
-      "updated_at": "2026-07-27T10:17:49Z",
+      "updated_at": "2026-07-29T12:31:41Z",
       "closed_at": "2026-07-27T10:17:49Z"
     },
     {
@@ -19732,7 +19715,7 @@
       "state": "open",
       "state_reason": null,
       "role": "curated",
-      "workflow": "blocked",
+      "workflow": "in-progress",
       "priority": "P0",
       "size": "S",
       "kind": "implementation",
@@ -19743,14 +19726,14 @@
       "labels": [
         "P0",
         "area:bootstrap",
-        "blocked",
         "curated",
+        "in-progress",
         "kind:implementation",
         "size:S"
       ],
       "assignees": [],
       "created_at": "2026-07-26T14:50:36Z",
-      "updated_at": "2026-07-26T14:50:36Z",
+      "updated_at": "2026-07-29T12:31:52Z",
       "closed_at": null
     },
     {
