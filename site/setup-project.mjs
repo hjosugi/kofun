@@ -328,6 +328,7 @@ export function validateConfig(config) {
     "Status",
     "Priority",
     "Size",
+    "Workstream",
     "Agent Slot",
     "Start Date",
     "Target Date",
@@ -411,6 +412,14 @@ export function normalizeSchedule(snapshot, mappings) {
       size: mappedValue(
         firstDefined(raw?.size, fields.size),
         mappings.size ?? {},
+      ),
+      workstream: cleanText(
+        firstDefined(
+          raw?.workstream,
+          raw?.work_stream,
+          fields.workstream,
+          fields.work_stream,
+        ),
       ),
       agentSlot: mappedValue(
         firstDefined(
@@ -496,6 +505,20 @@ export function buildIterationConfiguration(iteration) {
     duration: iteration.duration,
     iterations,
   };
+}
+
+export function iterationConfigurationMatches(field, definition) {
+  const desired = buildIterationConfiguration(definition);
+  const current = [
+    ...arrayValue(field?.configuration?.completedIterations),
+    ...arrayValue(field?.configuration?.iterations),
+  ]
+    .map(({ title, startDate, duration }) => ({ title, startDate, duration }))
+    .sort((left, right) => left.startDate.localeCompare(right.startDate));
+  return (
+    field?.configuration?.duration === desired.duration &&
+    JSON.stringify(current) === JSON.stringify(desired.iterations)
+  );
 }
 
 function fieldType(field) {
@@ -616,6 +639,7 @@ export function desiredFieldUpdates(scheduleItem, fields, item = undefined) {
   addSingle("Status", scheduleItem.status);
   addSingle("Priority", scheduleItem.priority);
   addSingle("Size", scheduleItem.size);
+  addSingle("Workstream", scheduleItem.workstream);
   addSingle("Agent Slot", scheduleItem.agentSlot);
   addDate("Start Date", scheduleItem.startDate);
   addDate("Target Date", scheduleItem.targetDate);
@@ -707,6 +731,17 @@ export function buildViewCreateRequest(config, projectNumber, view) {
 export function projectViewKey(view) {
   const layout = lowerText(view?.layout ?? "").replace(/_layout$/, "");
   return `${lowerText(view?.name ?? "")}:${layout}`;
+}
+
+export function buildViewUpdateInput(existing, desired) {
+  if (!existing?.id) {
+    fail("Existing Project view is missing its node ID");
+  }
+  const input = { viewId: existing.id };
+  if ((existing.filter ?? "") !== (desired.filter ?? "")) {
+    input.filter = desired.filter ?? "";
+  }
+  return Object.keys(input).length > 1 ? input : undefined;
 }
 
 export function tokenGuidance({ apply, actions, projectsTokenConfigured }) {
@@ -890,6 +925,28 @@ function createIterationField(projectId, definition) {
   });
 }
 
+function updateIterationField(field, definition) {
+  const query = `
+    mutation UpdateIterationField($input: UpdateProjectV2FieldInput!) {
+      updateProjectV2Field(input: $input) {
+        projectV2Field {
+          ... on ProjectV2IterationField {
+            id
+          }
+        }
+      }
+    }
+  `;
+  runGraphQL(query, {
+    input: {
+      fieldId: field.id,
+      iterationConfiguration: buildIterationConfiguration(
+        definition.iteration,
+      ),
+    },
+  });
+}
+
 function createField(config, project, definition) {
   if (definition.type === "ITERATION") {
     createIterationField(project.id, definition);
@@ -985,6 +1042,12 @@ function ensureFields(config, project) {
         updateSingleSelectField(existing, definition.options);
         changed = true;
       }
+    } else if (
+      definition.type === "ITERATION" &&
+      !iterationConfigurationMatches(existing, definition.iteration)
+    ) {
+      updateIterationField(existing, definition);
+      changed = true;
     }
   }
   return changed;
@@ -1104,14 +1167,36 @@ function applyItemUpdates(projectId, itemId, updates) {
 }
 
 function ensureViews(config, project) {
-  const existing = new Set(
-    arrayValue(project.views?.nodes).map(projectViewKey),
+  const existing = new Map(
+    arrayValue(project.views?.nodes).map((view) => [
+      projectViewKey(view),
+      view,
+    ]),
   );
   const created = [];
+  const updated = [];
   const warnings = [];
   for (const view of config.project.views) {
     const key = projectViewKey(view);
-    if (existing.has(key)) {
+    const current = existing.get(key);
+    if (current) {
+      const input = buildViewUpdateInput(current, view);
+      if (input) {
+        runGraphQL(
+          `mutation UpdateProjectView($input: UpdateProjectV2ViewInput!) {
+            updateProjectV2View(input: $input) {
+              projectV2View {
+                id
+                name
+                layout
+                filter
+              }
+            }
+          }`,
+          { input },
+        );
+        updated.push(view.name);
+      }
       continue;
     }
     const request = buildViewCreateRequest(config, project.number, view);
@@ -1134,23 +1219,21 @@ function ensureViews(config, project) {
       );
     }
   }
-  return { created, warnings };
+  return { created, updated, warnings };
 }
 
 function printManualViewConfiguration(projectUrl) {
   console.log("");
+  console.log("View filters are synchronized automatically.");
   console.log("View configuration that the public API still cannot set:");
   console.log(
-    `1. Open ${projectUrl} and edit "Delivery roadmap": Start Date = Start Date; Target Date = Target Date; group by Agent Slot.`,
+    `1. Open ${projectUrl} and edit "Delivery roadmap": Start Date = Start Date; Target Date = Target Date; group by Workstream.`,
   );
   console.log(
-    '2. Edit "This week": group by Status and filter the current Iteration in the UI.',
+    '2. Edit "Agent capacity": group by Agent Slot and show Workstream, Size, Start Date, Target Date, and Iteration.',
   );
   console.log(
-    '3. Edit "Agent capacity": group by Agent Slot and show Size, Start Date, Target Date, and Iteration.',
-  );
-  console.log(
-    "The 2026-03-10 view-create endpoint accepts only name, layout, filter, and visible_fields (not roadmap date fields, grouping, or sorting).",
+    "GraphQL can update name, layout, and filter. The 2026-03-10 REST view-create endpoint additionally accepts visible_fields, but neither public API can update roadmap date fields, grouping, or sorting.",
   );
 }
 
@@ -1246,6 +1329,7 @@ async function apply(config, schedule) {
   console.log(`Issues added: ${addedItemIds.size}`);
   console.log(`Field values updated: ${plan.updates.length}`);
   console.log(`Views created: ${viewResult.created.length}`);
+  console.log(`Views updated: ${viewResult.updated.length}`);
   if (warnings.length) {
     console.log("Warnings:");
     for (const warning of warnings) {

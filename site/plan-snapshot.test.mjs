@@ -6,6 +6,7 @@ import {
   dateInTimeZone,
   fetchAllIssues,
   nextBusinessDay,
+  normalizeIssue,
   parseArgs,
   renderDeliveryPlan,
   semanticSnapshot,
@@ -48,19 +49,19 @@ const fixture = [
   }),
   issue(618, {
     stateReason: "reopened",
-    labels: ["curated", "needs-detail", "P0", "size:L"],
+    labels: ["curated", "needs-detail", "P0", "size:L", "area:bootstrap"],
   }),
   issue(622, {
-    labels: ["curated", "blocked", "P0", "size:M"],
+    labels: ["curated", "blocked", "P0", "size:M", "area:bootstrap"],
   }),
   issue(271, {
-    labels: ["curated", "blocked", "P0", "size:M"],
+    labels: ["curated", "blocked", "P0", "size:M", "area:bootstrap"],
   }),
   issue(272, {
-    labels: ["curated", "blocked", "P0", "size:M"],
+    labels: ["curated", "blocked", "P0", "size:M", "area:bootstrap"],
   }),
   issue(274, {
-    labels: ["curated", "blocked", "P1", "size:M"],
+    labels: ["curated", "blocked", "P1", "size:M", "area:bootstrap"],
   }),
   issue(721, {
     labels: ["curated", "in-progress", "P1", "size:M"],
@@ -84,8 +85,8 @@ assert.equal(snapshot.source.pull_requests_excluded, 1);
 assert.equal(snapshot.summary.issues_total, fixture.length - 1);
 assert.equal(snapshot.summary.open_planning, 1);
 assert.equal(snapshot.summary.open_curated, 14);
-assert.equal(snapshot.summary.scheduled_curated, 12);
-assert.equal(snapshot.summary.unscheduled_curated, 2);
+assert.equal(snapshot.summary.scheduled_curated, 14);
+assert.equal(snapshot.summary.unscheduled_curated, 0);
 assert.equal(
   snapshot.summary.scheduled_curated + snapshot.summary.unscheduled_curated,
   snapshot.summary.open_curated,
@@ -122,6 +123,30 @@ assert.equal(snapshot.capacity.max_agents, 4);
 assert.equal(snapshot.capacity.writer_slots, 3);
 assert.equal(snapshot.capacity.reviewer_slots, 1);
 assert.equal(snapshot.capacity.wip_limit, 3);
+assert.equal(
+  normalizeIssue(
+    issue(782, {
+      labels: ["curated", "ready", "P2", "size:M", "area:c-backend"],
+    }),
+  ).workstream,
+  "Backend & Runtime",
+);
+assert.equal(snapshot.unscheduled.length, 0);
+assert.ok(
+  snapshot.workstreams.some(
+    (workstream) =>
+      workstream.title === "Self-host & Bootstrap" &&
+      workstream.lane === "writer-a",
+  ),
+);
+assert.ok(
+  snapshot.schedule.every(
+    (task) =>
+      snapshot.workstreams.find(
+        (workstream) => workstream.title === task.workstream,
+      )?.lane === task.lane,
+  ),
+);
 
 for (const chain of snapshot.dependency_chains) {
   let previous = null;
@@ -202,6 +227,8 @@ assert.match(markdown, /three writer lanes plus one review\/integration lane/i);
 assert.match(markdown, /\[#618\]\(https:\/\/github\.com\/hjosugi\/kofun\/issues\/618\)/);
 assert.match(markdown, /Open planning umbrellas \| 1/);
 assert.match(markdown, /not_planned/);
+assert.match(markdown, /## Parallel workstreams/);
+assert.match(markdown, /Self-host & Bootstrap/);
 assert.deepEqual(
   snapshot.forecast.scenarios.map((scenario) => scenario.id),
   [
