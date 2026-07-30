@@ -1,8 +1,9 @@
-# Bounded payload-free enum match exhaustiveness
+# Bounded concrete enum match exhaustiveness
 
-This document is the next executable Stage 2 checkpoint for issue #30. It
-generalizes the finite-set coverage already used by `Bool` to named, concrete
-enums without claiming payload patterns, generics, or a general type checker.
+This document defines the executable Stage 2 C11 checkpoint for issue #30 and
+#782. It generalizes the finite-set coverage already used by `Bool` to named,
+concrete enums whose constructors carry zero or one `Int` payload, without
+claiming generics, wider payloads, or a general type checker.
 
 ## Accepted Core
 
@@ -10,22 +11,28 @@ The bounded declaration and use grammar is:
 
 ```text
 enum-declaration := "type" IDENT "=" enum-constructor+
-enum-constructor := "|" IDENT
+enum-constructor := "|" IDENT ("(" IDENT ":" "Int" ")")?
 
 enum-binding     := "let" IDENT ":" IDENT "=" IDENT
+                  | "let" IDENT ":" IDENT "=" IDENT "(" int-expression ")"
+                  | "let" IDENT ":" IDENT "=" enum-returning-call
+
+enum-parameter   := IDENT ":" IDENT
+enum-result      := "->" IDENT
+enum-return      := "return" (IDENT | IDENT "(" int-expression ")")
 
 enum-match       := "match" IDENT "{"
                     enum-arm ("," enum-arm)* ","? "}"
-enum-arm         := (IDENT | "_")
+enum-arm         := (IDENT | IDENT "(" (IDENT | "_") ")" | "_")
                     ("if" bool-expression)? "=>"
                     "{" core-statements "}"
 ```
 
 An enum declaration is top-level, non-generic, and contains one or more
-payload-free constructors. Stage 2 accepts at most 32 enum types in one
-compilation unit and at most 64 constructors in one enum. Exceeding either
-limit is `E2S31`; the compiler must not truncate a constructor set or silently
-change the program.
+constructors. A constructor declares either no field or one named `Int` field.
+Stage 2 accepts at most 32 enum types in one compilation unit and at most 64
+constructors in one enum. Exceeding either limit is `E2S31`; the compiler must
+not truncate a constructor set or silently change the program.
 
 The bounded use validator accepts at most 256 enum-related identifier
 occurrences in one function, counting declarations, initializers, scrutinees,
@@ -42,34 +49,59 @@ Constructor tags are assigned from zero in declaration order. Tags are an
 internal lowering detail and cannot be observed or converted to `Int` by
 Kofun source.
 
-This slice requires an immutable local binding with both an explicit enum type
-and a constructor initializer:
+An enum local is immutable and carries an explicit enum type. Its initializer
+is a same-typed constructor or a call returning that enum:
 
 ```kofun
-type Signal = | Red | Yellow | Green
+type Signal = | Red | Yellow(code: Int) | Green
 
-fn main() {
-    let signal: Signal = Green
+fn choose(code: Int) -> Signal {
+    return Yellow(code)
+}
+
+fn inspect(signal: Signal) -> Int {
+    let mut result = 0
     match signal {
-        Red => { print(1) },
-        Yellow => { print(2) },
-        Green => { print(3) },
+        Red => { result = 1 },
+        Yellow(code) if code > 0 => { result = code },
+        Yellow(_) => { result = 2 },
+        other => {
+            match other {
+                Green => { result = 3 },
+                _ => { result = 4 },
+            }
+        },
     }
+    return result
+}
+
+fn main() -> Int {
+    let signal: Signal = choose(42)
+    print(inspect(signal))
+    print(inspect(Yellow(7)))
+    return 0
 }
 ```
 
 The initializer constructor must belong to the declared type. A match
-scrutinee is a simple local enum-binding name, and normal lexical visibility
-allows a binding from an enclosing block to be matched in a nested block.
-Constructor literals in general expressions, inferred enum bindings, mutation,
-parameters, results, value-producing enum matches, and cross-function enum
-values are outside this checkpoint and are rejected before C emission.
+scrutinee is a simple enum-binding name, including a same-typed parameter or
+binding catch-all. Normal lexical visibility allows a binding from an
+enclosing block to be matched in a nested block. A constructor may appear in
+an explicitly typed initializer, a same-typed function argument, or a
+same-typed return. Inferred enum bindings, mutation, enum values in Int
+expressions, and value-producing enum matches are rejected before C emission.
 
-Each arm uses either a constructor belonging to the scrutinee type or `_`.
-Arm bodies are statement-position Core blocks. Guards use the existing bounded
-Bool grammar: a Bool literal or one checked Int comparison. The scrutinee is
-read once. Arms are tested in source order; a guard runs once only after its
-constructor matches; and the selected arm alone executes.
+Each arm uses a constructor belonging to the scrutinee type, `_`, or a fresh
+binding catch-all. A one-payload constructor must use `C(name)` or `C(_)`; the
+bound `Int` is visible in the guard and arm body. A binding catch-all receives
+the whole enum value and may be re-matched. A bare ASCII-uppercase name is
+constructor-shaped and keeps the unknown-constructor diagnostic when it is not
+declared; a fresh value-style name is the binding catch-all. A declared
+constructor remains a constructor regardless of case. Arm bodies are
+statement-position Core blocks. Guards use the existing bounded Bool grammar:
+a Bool literal or one checked Int comparison. The scrutinee is read once. Arms
+are tested in source order; a guard runs once only after its constructor
+matches; and the selected arm alone executes.
 
 ## Stable structural IR
 
@@ -96,8 +128,8 @@ For a match over enum type `T`, the checker starts with the constructor set of
 1. A guarded constructor or guarded `_` removes nothing because its guard may
    be false at runtime.
 2. An unguarded constructor removes that constructor.
-3. An unguarded `_` removes every remaining constructor and makes every later
-   arm unreachable.
+3. An unguarded `_` or binding catch-all removes every remaining constructor
+   and makes every later arm unreachable.
 4. A constructor already removed by an earlier unguarded arm is unreachable,
    even when the later arm has a guard.
 
@@ -124,15 +156,18 @@ describe coverage failures rather than one scrutinee representation.
 
 ## Representation and deliberate boundary
 
-The bounded C11 lowerer represents a payload-free enum as its declaration-order
-`int64_t` tag. This is not a public ABI.
+The bounded C11 lowerer represents every supported enum value as an internal
+two-word aggregate: its declaration-order `int64_t` tag and one `int64_t`
+payload slot. Payload-free constructors store zero in the unused slot.
+Same-typed functions pass and return this aggregate by value. This is not a
+public ABI.
 The direct native, wasm, and C ABI profiles do not gain enum support from this
 checkpoint and must reject these sources rather than selecting a different
 representation.
 
-Generic enums, constructor payloads, pattern bindings, nested constructor
-patterns, or-patterns, value-producing enum matches, enum equality,
-serialization, ownership-aware destructuring, and layout stabilization remain
-open. In particular, Kofun optional values continue to use `T?` and `null`;
-this slice does not introduce `Option[T]`, `Some`, or `None` as a second
-optional-value model.
+Generic enums, payload types other than `Int`, more than one payload field,
+nested constructor patterns, or-patterns in the executable C11 path,
+value-producing enum matches, enum equality, serialization, ownership-aware
+destructuring, and public layout stabilization remain open. In particular,
+Kofun optional values continue to use `T?` and `null`; this slice does not
+introduce `Option[T]`, `Some`, or `None` as a second optional-value model.

@@ -2531,6 +2531,11 @@ static char *function_return_type_at(
     const char *source,
     int64_t function_start
 );
+static char *function_parameter_type(
+    const char *source,
+    const char *wanted,
+    int64_t index
+);
 
 static char *parse_program(const char *source) {
     Buffer ir;
@@ -3001,6 +3006,16 @@ static char *enum_constructor_owner(
     return owned_text("");
 }
 
+/*
+ * A bare constructor-shaped name must keep the historical E2S32 unknown-name
+ * diagnostic. General patterns distinguish fresh value bindings from
+ * constructor names lexically: an ASCII-uppercase head is constructor-shaped,
+ * while a declared lowercase constructor is still recognized by its symbol.
+ */
+static bool enum_binding_catchall_name(const char *name) {
+    return name[0] != '\0' && !(name[0] >= 'A' && name[0] <= 'Z');
+}
+
 static char *enum_declaration_names(
     const char *source,
     bool constructors
@@ -3317,6 +3332,17 @@ static char *emit_expression(
     const char *hir,
     int64_t start,
     int64_t end
+);
+static char *emit_primary(
+    const char *source,
+    const char *hir,
+    int64_t start,
+    int64_t end
+);
+static char *lower_error(
+    const char *code,
+    const char *message,
+    int64_t cursor
 );
 static char *hir_use_binding_id(const char *hir, int64_t use_start);
 static char *hir_definition_id_at(
@@ -3639,6 +3665,74 @@ static int64_t argument_end(const char *source, int64_t start) {
 }
 
 /*
+ * Expected type of the call argument beginning exactly at `target`.
+ *
+ * The older `call_argument_position` predicate is intentionally cheap and
+ * handles single-token function values.  Enum constructors are calls
+ * themselves (`Ready(8)`), so their first token is not followed by `,` or `)`.
+ * This bounded walk finds the enclosing named call and returns its declared
+ * parameter type without confusing the constructor's own parentheses for the
+ * outer call.
+ */
+static char *call_argument_expected_type(
+    const char *source,
+    int64_t target
+) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < target && cursor < length) {
+        if (strcmp(token_kind(source, cursor), "identifier") == 0) {
+            int64_t open = skip_trivia(
+                source,
+                token_end(source, cursor)
+            );
+            if (open < target && token_equal(source, open, "(")) {
+                int64_t close = balanced_end(source, open, "(", ")");
+                if (close > target) {
+                    int64_t argument = skip_trivia(
+                        source,
+                        token_end(source, open)
+                    );
+                    int64_t index = 0;
+                    while (
+                        argument < close &&
+                        !token_equal(source, argument, ")")
+                    ) {
+                        if (argument == target) {
+                            char *callee = token_copy(source, cursor);
+                            char *type = function_parameter_type(
+                                source,
+                                callee,
+                                index
+                            );
+                            free(callee);
+                            return type;
+                        }
+                        int64_t end = argument_end(source, argument);
+                        if (end < 0) break;
+                        int64_t separator = skip_trivia(source, end);
+                        if (
+                            separator < close &&
+                            token_equal(source, separator, ",")
+                        ) {
+                            argument = skip_trivia(
+                                source,
+                                token_end(source, separator)
+                            );
+                            ++index;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return owned_text("");
+}
+
+/*
  * The lifted name of an arrow lambda written directly in argument position.
  *
  * A `let`-bound lambda is keyed by its binding id, which an anonymous argument
@@ -3796,6 +3890,164 @@ static char *format_two(const char *name, const char *left, const char *right) {
 }
 
 /*
+ * Lower one value of the bounded concrete-enum representation.
+ *
+ * The representation is intentionally uniform for every concrete enum in
+ * this slice: declaration-order tag plus one Int payload slot.  Static typing
+ * keeps values of different enum declarations from crossing a boundary, while
+ * the common internal C shape lets ordinary functions pass and return them
+ * without publishing a per-type ABI.
+ */
+static char *emit_enum_value(
+    const char *source,
+    const char *hir,
+    int64_t start,
+    int64_t end,
+    const char *enum_type
+) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = skip_trivia(source, start);
+    if (
+        cursor >= length ||
+        strcmp(token_kind(source, cursor), "identifier") != 0
+    ) {
+        return lower_error(
+            "E2S32",
+            "concrete enum value must be a constructor, binding, or call",
+            cursor
+        );
+    }
+    char *name = token_copy(source, cursor);
+    int64_t open = skip_trivia(source, token_end(source, cursor));
+    if (open >= end || !token_equal(source, open, "(")) {
+        char *binding_id = hir_use_binding_id(hir, cursor);
+        char *binding_type = hir_binding_field(hir, binding_id, 5);
+        if (
+            binding_id[0] == '\0' ||
+            strcmp(binding_type, enum_type) != 0
+        ) {
+            free(binding_type);
+            free(binding_id);
+            free(name);
+            return lower_error(
+                "E2S32",
+                "concrete enum binding has the wrong type",
+                cursor
+            );
+        }
+        Buffer output;
+        buffer_init(&output);
+        buffer_format(&output, "k_b%s", binding_id);
+        free(binding_type);
+        free(binding_id);
+        free(name);
+        return output.data;
+    }
+
+    char *constructor_owner = enum_constructor_owner(source, name);
+    if (constructor_owner[0] != '\0') {
+        if (strcmp(constructor_owner, enum_type) != 0) {
+            free(constructor_owner);
+            free(name);
+            return lower_error(
+                "E2S32",
+                "constructor belongs to a different concrete enum",
+                cursor
+            );
+        }
+        int64_t tag = enum_constructor_index(source, enum_type, name);
+        int64_t arity = enum_constructor_payload_arity(
+            source,
+            enum_type,
+            name
+        );
+        if (arity < 0) {
+            free(constructor_owner);
+            free(name);
+            return lower_error(
+                "E2S32",
+                "constructor payload is outside the one-Int slice",
+                cursor
+            );
+        }
+        int64_t payload_start = skip_trivia(
+            source,
+            token_end(source, open)
+        );
+        bool empty =
+            payload_start < length &&
+            token_equal(source, payload_start, ")");
+        if ((arity == 0) != empty) {
+            free(constructor_owner);
+            free(name);
+            return lower_error(
+                "E2S32",
+                arity == 1 ?
+                    "constructor takes one Int payload" :
+                    "constructor takes no payload",
+                cursor
+            );
+        }
+        char *payload = owned_text("INT64_C(0)");
+        if (arity == 1) {
+            int64_t payload_end = expression_end(source, payload_start);
+            int64_t close = payload_end < 0 ?
+                -1 :
+                skip_trivia(source, payload_end);
+            if (
+                payload_end < 0 ||
+                close >= length ||
+                !token_equal(source, close, ")")
+            ) {
+                free(payload);
+                free(constructor_owner);
+                free(name);
+                return lower_error(
+                    "E2S32",
+                    "concrete enum payload must be one Int expression",
+                    payload_start
+                );
+            }
+            free(payload);
+            payload = emit_expression(
+                source,
+                hir,
+                payload_start,
+                payload_end
+            );
+        }
+        Buffer output;
+        buffer_init(&output);
+        buffer_format(
+            &output,
+            "((KofunEnumValue){INT64_C(%" PRId64 "), %s})",
+            tag,
+            payload
+        );
+        free(payload);
+        free(constructor_owner);
+        free(name);
+        return output.data;
+    }
+    free(constructor_owner);
+
+    char *return_type = function_return_type(source, name);
+    if (strcmp(return_type, enum_type) == 0) {
+        char *output = emit_primary(source, hir, cursor, end);
+        free(return_type);
+        free(name);
+        return output;
+    }
+    free(return_type);
+    free(name);
+    return lower_error(
+        "E2S32",
+        "call does not return the expected concrete enum",
+        cursor
+    );
+}
+
+/*
  * One argument's C expression.
  *
  * The three function-value forms are lowered here rather than in
@@ -3807,9 +4059,28 @@ static char *emit_argument(
     const char *source,
     const char *hir,
     int64_t start,
-    int64_t end
+    int64_t end,
+    const char *callee,
+    int64_t argument_index
 ) {
     int64_t cursor = skip_trivia(source, start);
+    char *expected_type = function_parameter_type(
+        source,
+        callee,
+        argument_index
+    );
+    if (enum_constructor_count(source, expected_type) >= 0) {
+        char *value = emit_enum_value(
+            source,
+            hir,
+            cursor,
+            end,
+            expected_type
+        );
+        free(expected_type);
+        return value;
+    }
+    free(expected_type);
     /* An arrow lambda argument is the address of the function it was lifted
      * to. */
     if (lambda_parameters_end(source, -1, cursor) >= 0) {
@@ -3924,7 +4195,14 @@ static char *emit_primary(
         int64_t arguments = 0;
         while (argument < end && !token_equal(source, argument, ")")) {
             int64_t bound = argument_end(source, argument);
-            char *value = emit_argument(source, hir, argument, bound);
+            char *value = emit_argument(
+                source,
+                hir,
+                argument,
+                bound,
+                name,
+                arguments
+            );
             if (arguments > 0) buffer_append(&output, ", ");
             buffer_append(&output, value);
             free(value);
@@ -4728,7 +5006,7 @@ static char *core_parameters(
             free(emitted.data);
             return lower_error(
                 "E2S15",
-                "Core parameters must have type Int",
+                "Core parameters must have type Int or a concrete enum",
                 cursor
             );
         }
@@ -4756,6 +5034,22 @@ static char *core_parameters(
             buffer_init(&plain);
             buffer_format(&plain, "int64_t k_b%s", binding_id);
             declarator = plain.data;
+        } else if (
+            strcmp(token_kind(source, type_cursor), "identifier") == 0
+        ) {
+            char *parameter_type = token_copy(source, type_cursor);
+            if (enum_constructor_count(source, parameter_type) >= 0) {
+                type_end = token_end(source, type_cursor);
+                Buffer aggregate;
+                buffer_init(&aggregate);
+                buffer_format(
+                    &aggregate,
+                    "KofunEnumValue k_b%s",
+                    binding_id
+                );
+                declarator = aggregate.data;
+            }
+            free(parameter_type);
         }
         free(binding_id);
         if (type_end < 0) {
@@ -4764,7 +5058,7 @@ static char *core_parameters(
             free(emitted.data);
             return lower_error(
                 "E2S15",
-                "Core parameters must have type Int",
+                "Core parameters must have type Int or a concrete enum",
                 cursor
             );
         }
@@ -5607,7 +5901,13 @@ static int64_t core_body_open(
     int64_t cursor = skip_trivia(source, parameters_end);
     if (cursor < length && token_equal(source, cursor, "->")) {
         cursor = skip_trivia(source, token_end(source, cursor));
-        if (cursor >= length || !token_equal(source, cursor, "Int")) return -1;
+        if (cursor >= length) return -1;
+        char *result_type = token_copy(source, cursor);
+        bool supported_result =
+            strcmp(result_type, "Int") == 0 ||
+            enum_constructor_count(source, result_type) >= 0;
+        free(result_type);
+        if (!supported_result) return -1;
         cursor = skip_trivia(source, token_end(source, cursor));
     } else if (!is_main) {
         return -1;
@@ -6857,6 +7157,112 @@ static char *function_return_type(const char *source, const char *wanted) {
 }
 
 /*
+ * Declared type of one named function parameter.  The bounded enum C11 slice
+ * needs this at call lowering time because an enum value is a two-word
+ * aggregate rather than an Int expression.  Callable and bracketed parameter
+ * types are skipped as one type while walking to the requested index, so the
+ * helper does not change the existing higher-order parameter grammar.
+ */
+static char *function_parameter_type_at(
+    const char *source,
+    int64_t function_start,
+    int64_t wanted_index
+) {
+    int64_t parameters = parameter_open(source, function_start);
+    if (parameters < 0) return owned_text("");
+    int64_t parameters_end = balanced_end(source, parameters, "(", ")");
+    if (parameters_end < 0) return owned_text("");
+    int64_t cursor = skip_trivia(source, token_end(source, parameters));
+    int64_t index = 0;
+    while (
+        cursor < parameters_end &&
+        !token_equal(source, cursor, ")")
+    ) {
+        int64_t colon = skip_trivia(source, token_end(source, cursor));
+        if (
+            colon >= parameters_end ||
+            !token_equal(source, colon, ":")
+        ) {
+            return owned_text("");
+        }
+        int64_t type_start = skip_trivia(source, token_end(source, colon));
+        if (type_start >= parameters_end) return owned_text("");
+        if (index == wanted_index) return token_copy(source, type_start);
+
+        int64_t type_end = callable_type_end(source, type_start);
+        if (type_end < 0) {
+            type_end = token_end(source, type_start);
+            int64_t bracket = skip_trivia(source, type_end);
+            if (
+                bracket < parameters_end &&
+                token_equal(source, bracket, "[")
+            ) {
+                int64_t close = balanced_end(source, bracket, "[", "]");
+                if (close < 0) return owned_text("");
+                type_end = close;
+            }
+        }
+        int64_t separator = skip_trivia(source, type_end);
+        if (
+            separator < parameters_end &&
+            token_equal(source, separator, ",")
+        ) {
+            cursor = skip_trivia(source, token_end(source, separator));
+        } else {
+            cursor = separator;
+        }
+        ++index;
+    }
+    return owned_text("");
+}
+
+static char *function_parameter_type(
+    const char *source,
+    const char *wanted,
+    int64_t index
+) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = next_function_start(source, 0);
+    while (cursor < length) {
+        char *name = function_name(source, cursor);
+        bool match = strcmp(name, wanted) == 0;
+        free(name);
+        if (match) {
+            return function_parameter_type_at(source, cursor, index);
+        }
+        cursor = next_function_start(source, function_end(source, cursor));
+    }
+    return owned_text("");
+}
+
+/* Result type of the function whose body contains `position`. */
+static char *function_return_type_containing(
+    const char *source,
+    int64_t position
+) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = next_function_start(source, 0);
+    while (cursor < length) {
+        int64_t end = function_end(source, cursor);
+        if (position >= cursor && position < end) {
+            return function_return_type_at(source, cursor);
+        }
+        cursor = next_function_start(source, end);
+    }
+    return owned_text("");
+}
+
+static bool function_result_is_enum(
+    const char *source,
+    const char *name
+) {
+    char *type = function_return_type(source, name);
+    bool result = enum_constructor_count(source, type) >= 0;
+    free(type);
+    return result;
+}
+
+/*
  * Bounded initializer typing for unannotated `let` bindings. Top-level
  * comparison and boolean operators make the value Bool; otherwise the
  * profile's operands are homogeneous, so the first primary decides:
@@ -6950,6 +7356,12 @@ static char *initializer_type(
                 return declared;
             }
             free(declared);
+            char *constructor_type = enum_constructor_owner(source, name);
+            if (constructor_type[0] != '\0') {
+                free(name);
+                return constructor_type;
+            }
+            free(constructor_type);
             const char *builtin = builtin_return_type(name);
             free(name);
             if (builtin != NULL) return owned_text(builtin);
@@ -7741,17 +8153,98 @@ static char *build_scope_hir_mode(
                         source,
                         token_end(source, open)
                     );
+                    int64_t binding_start = -1;
+                    char *pattern_binding_type = owned_text("");
                     if (
                         arm.kind == PATTERN_CONSTRUCTOR &&
                         field < function_close &&
                         strcmp(token_kind(source, field), "identifier") == 0 &&
                         !token_equal(source, field, "_")
                     ) {
+                        binding_start = field;
+                        free(pattern_binding_type);
+                        pattern_binding_type = owned_text("Int");
+                    } else if (arm.kind == PATTERN_NAME) {
+                        char *pattern_name = token_copy(
+                            source,
+                            arm_cursor
+                        );
+                        char *constructor_owner = enum_constructor_owner(
+                            source,
+                            pattern_name
+                        );
+                        if (
+                            constructor_owner[0] == '\0' &&
+                            enum_binding_catchall_name(pattern_name)
+                        ) {
+                            int64_t scrutinee = skip_trivia(
+                                source,
+                                token_end(source, cursor)
+                            );
+                            if (
+                                scrutinee < function_close &&
+                                strcmp(
+                                    token_kind(source, scrutinee),
+                                    "identifier"
+                                ) == 0
+                            ) {
+                                char *scrutinee_name = token_copy(
+                                    source,
+                                    scrutinee
+                                );
+                                int64_t scrutinee_scope_open =
+                                    parent_block_open(
+                                        source,
+                                        function_open,
+                                        scrutinee
+                                    );
+                                char *scrutinee_scope =
+                                    hir_scope_id_for_open(
+                                        hir.data,
+                                        scrutinee_scope_open
+                                    );
+                                char *scrutinee_binding =
+                                    hir_resolve_binding(
+                                        hir.data,
+                                        scrutinee_scope,
+                                        scrutinee,
+                                        scrutinee_name
+                                    );
+                                char *scrutinee_type = hir_binding_field(
+                                    hir.data,
+                                    scrutinee_binding,
+                                    5
+                                );
+                                if (
+                                    enum_constructor_count(
+                                        source,
+                                        scrutinee_type
+                                    ) >= 0
+                                ) {
+                                    binding_start = arm_cursor;
+                                    free(pattern_binding_type);
+                                    pattern_binding_type = owned_text(
+                                        scrutinee_type
+                                    );
+                                }
+                                free(scrutinee_type);
+                                free(scrutinee_binding);
+                                free(scrutinee_scope);
+                                free(scrutinee_name);
+                            }
+                        }
+                        free(constructor_owner);
+                        free(pattern_name);
+                    }
+                    if (binding_start >= 0) {
                         char *scope_id = hir_scope_id_for_open(
                             hir.data,
                             body_open
                         );
-                        char *name_text = token_copy(source, field);
+                        char *name_text = token_copy(
+                            source,
+                            binding_start
+                        );
                         char *first_declaration = hir_same_scope_declaration(
                             hir.data,
                             scope_id,
@@ -7766,20 +8259,20 @@ static char *build_scope_hir_mode(
                                 "lexical scope at byte %" PRId64
                                 "; first declaration at byte %s",
                                 name_text,
-                                field,
+                                binding_start,
                                 first_declaration
                             );
                             stage2_diagnostic_set(
                                 "E2S47",
-                                field,
-                                token_end(source, field),
+                                binding_start,
+                                token_end(source, binding_start),
                                 true,
                                 error.data
                             );
                             stage2_diagnostic_affected(
                                 STAGE2_DIAGNOSTIC_AFFECTED_BINDING,
-                                field,
-                                token_end(source, field)
+                                binding_start,
+                                token_end(source, binding_start)
                             );
                             {
                                 int64_t first =
@@ -7794,6 +8287,7 @@ static char *build_scope_hir_mode(
                             free(name_text);
                             free(first_declaration);
                             free(scope_id);
+                            free(pattern_binding_type);
                             free(hir.data);
                             return error.data;
                         }
@@ -7802,28 +8296,31 @@ static char *build_scope_hir_mode(
                         if (binding_count > 256) {
                             free(name_text);
                             free(scope_id);
+                            free(pattern_binding_type);
                             return scope_hir_error(
                                 &hir,
                                 "lexical binding limit is 256 per function",
-                                field
+                                binding_start
                             );
                         }
                         buffer_format(
                             &hir,
-                            "binding|%" PRId64 "|%s|%s|immutable|Int|copy|"
+                            "binding|%" PRId64 "|%s|%s|immutable|%s|copy|"
                             "initialized|%" PRId64 "|%" PRId64 "|%" PRId64
                             "\n",
                             next_binding_id++,
                             scope_id,
                             name_text,
-                            field,
-                            token_end(source, field),
-                            token_end(source, field)
+                            pattern_binding_type,
+                            binding_start,
+                            token_end(source, binding_start),
+                            token_end(source, binding_start)
                         );
                         stage2_scope_prefix_observe(&hir);
                         free(name_text);
                         free(scope_id);
                     }
+                    free(pattern_binding_type);
                     arm_cursor = skip_trivia(source, body_end);
                     if (
                         arm_cursor < function_close &&
@@ -8231,7 +8728,25 @@ static char *validate_enum_uses(const char *source, const char *hir) {
                             bool match_scrutinee =
                                 strcmp(previous, "match") == 0 &&
                                 token_equal(source, after, "{");
-                            if (!match_scrutinee) {
+                            char *argument_type =
+                                call_argument_expected_type(source, cursor);
+                            char *return_type =
+                                function_return_type_containing(
+                                    source,
+                                    cursor
+                                );
+                            bool enum_argument =
+                                strcmp(argument_type, binding_type) == 0;
+                            bool enum_return =
+                                strcmp(previous, "return") == 0 &&
+                                strcmp(return_type, binding_type) == 0;
+                            free(argument_type);
+                            free(return_type);
+                            if (
+                                !match_scrutinee &&
+                                !enum_argument &&
+                                !enum_return
+                            ) {
                                 Buffer error;
                                 buffer_init(&error);
                                 buffer_format(
@@ -8269,10 +8784,39 @@ static char *validate_enum_uses(const char *source, const char *hir) {
                             if (!resolved_function_call) {
                                 char *constructor_owner =
                                     enum_constructor_owner(
+                                    source,
+                                    name
+                                );
+                                char *argument_type =
+                                    call_argument_expected_type(
                                         source,
-                                        name
+                                        cursor
                                     );
-                                if (constructor_owner[0] != '\0') {
+                                char *return_type =
+                                    function_return_type_containing(
+                                        source,
+                                        cursor
+                                    );
+                                bool enum_argument =
+                                    constructor_owner[0] != '\0' &&
+                                    strcmp(
+                                        argument_type,
+                                        constructor_owner
+                                    ) == 0;
+                                bool enum_return =
+                                    constructor_owner[0] != '\0' &&
+                                    strcmp(previous, "return") == 0 &&
+                                    strcmp(
+                                        return_type,
+                                        constructor_owner
+                                    ) == 0;
+                                free(argument_type);
+                                free(return_type);
+                                if (
+                                    constructor_owner[0] != '\0' &&
+                                    !enum_argument &&
+                                    !enum_return
+                                ) {
                                     Buffer error;
                                     buffer_init(&error);
                                     buffer_format(
@@ -8418,7 +8962,16 @@ static char *lower_enum_match(
         token_end(source, arms_open)
     );
     bool seen_catchall = false;
-    const char *failure_result = is_main ? "1" : "0";
+    char *match_result_type = function_return_type_containing(
+        source,
+        function_open
+    );
+    bool match_returns_enum =
+        enum_constructor_count(source, match_result_type) >= 0;
+    free(match_result_type);
+    const char *failure_result =
+        is_main ? "1" :
+        (match_returns_enum ? "KOFUN_ENUM_ZERO" : "0");
     while (arm_cursor < length && !token_equal(source, arm_cursor, "}")) {
         int64_t pattern_start = arm_cursor;
         PatternSummary pattern_summary_value = pattern_summary(
@@ -8426,7 +8979,18 @@ static char *lower_enum_match(
             pattern_start
         );
         char *pattern = token_copy(source, pattern_start);
-        bool catchall = pattern_summary_value.kind == PATTERN_WILDCARD;
+        int64_t tag =
+            pattern_summary_value.kind == PATTERN_NAME ||
+            pattern_summary_value.kind == PATTERN_CONSTRUCTOR
+                ? enum_constructor_index(source, enum_type, pattern)
+                : -1;
+        bool binding_catchall =
+            pattern_summary_value.kind == PATTERN_NAME &&
+            tag < 0 &&
+            enum_binding_catchall_name(pattern);
+        bool catchall =
+            pattern_summary_value.kind == PATTERN_WILDCARD ||
+            binding_catchall;
         if (seen_catchall) {
             free(pattern);
             return lower_enum_match_error(
@@ -8437,13 +9001,14 @@ static char *lower_enum_match(
                 pattern_start
             );
         }
-        int64_t tag = -1;
         /*
          * `-1` means the arm binds no payload name.  Keeping the decision as a
          * source offset rather than an owned id lets every validation path
          * below return without an extra free.
          */
         int64_t payload_name_start = -1;
+        int64_t catchall_name_start =
+            binding_catchall ? pattern_start : -1;
         if (catchall) {
             if (enum_constructors_covered(source, enum_type, covered.data)) {
                 free(pattern);
@@ -8469,7 +9034,6 @@ static char *lower_enum_match(
                     pattern_start
                 );
             }
-            tag = enum_constructor_index(source, enum_type, pattern);
             if (tag < 0) {
                 Buffer message;
                 buffer_init(&message);
@@ -8671,7 +9235,7 @@ static char *lower_enum_match(
         } else {
             buffer_format(
                 &pattern_condition,
-                "kofun_match_value == INT64_C(%" PRId64 ")",
+                "kofun_match_value.tag == INT64_C(%" PRId64 ")",
                 tag
             );
         }
@@ -8701,12 +9265,41 @@ static char *lower_enum_match(
             }
             buffer_format(
                 &payload_declaration,
-                "            int64_t k_b%s = kofun_match_payload;\n"
+                "            int64_t k_b%s = "
+                "kofun_match_value.payload;\n"
                 "            (void)k_b%s;\n",
                 payload_id,
                 payload_id
             );
             free(payload_id);
+        } else if (catchall_name_start >= 0) {
+            char *catchall_id = hir_definition_id_at(
+                hir,
+                catchall_name_start
+            );
+            if (catchall_id[0] == '\0') {
+                free(catchall_id);
+                free(payload_declaration.data);
+                free(pattern_condition.data);
+                free(arm_body);
+                free(pattern);
+                return lower_enum_match_error(
+                    &covered,
+                    &dispatch,
+                    "E2S32",
+                    "enum catch-all binding is unresolved",
+                    catchall_name_start
+                );
+            }
+            buffer_format(
+                &payload_declaration,
+                "            KofunEnumValue k_b%s = "
+                "kofun_match_value;\n"
+                "            (void)k_b%s;\n",
+                catchall_id,
+                catchall_id
+            );
+            free(catchall_id);
         }
         if (guarded) {
             char *guard = emit_condition_into(
@@ -8821,14 +9414,11 @@ static char *lower_enum_match(
     buffer_format(
         &emitted,
         "    {\n"
-        "        int64_t kofun_match_value = k_b%s;\n"
+        "        KofunEnumValue kofun_match_value = k_b%s;\n"
         "        (void)kofun_match_value;\n"
-        "        int64_t kofun_match_payload = k_b%s_payload;\n"
-        "        (void)kofun_match_payload;\n"
         "        bool kofun_match_selected = false;\n"
         "%s"
         "    }\n",
-        binding_id,
         binding_id,
         dispatch.data
     );
@@ -8889,7 +9479,15 @@ static char *lower_body(
     buffer_init(&emitted);
     int64_t cursor = skip_trivia(source, token_end(source, open));
     bool returned = false;
-    const char *failure_result = is_main ? "1" : "0";
+    char *body_result_type = function_return_type_containing(
+        source,
+        function_open
+    );
+    bool returns_enum =
+        enum_constructor_count(source, body_result_type) >= 0;
+    free(body_result_type);
+    const char *failure_result =
+        is_main ? "1" : (returns_enum ? "KOFUN_ENUM_ZERO" : "0");
     while (cursor < length && !token_equal(source, cursor, "}")) {
         if (returned) {
             free(emitted.data);
@@ -8975,6 +9573,63 @@ static char *lower_body(
                         "concrete enum bindings are immutable in this Core slice",
                         value_start
                     );
+                }
+                if (
+                    value_start < length &&
+                    strcmp(token_kind(source, value_start), "identifier") == 0
+                ) {
+                    char *initializer_name = token_copy(
+                        source,
+                        value_start
+                    );
+                    int64_t initializer_open = skip_trivia(
+                        source,
+                        token_end(source, value_start)
+                    );
+                    char *initializer_result = function_return_type(
+                        source,
+                        initializer_name
+                    );
+                    bool enum_call =
+                        initializer_open < length &&
+                        token_equal(source, initializer_open, "(") &&
+                        strcmp(initializer_result, enum_type) == 0;
+                    free(initializer_result);
+                    free(initializer_name);
+                    if (enum_call) {
+                        int64_t value_end = expression_end(
+                            source,
+                            value_start
+                        );
+                        char *value = emit_enum_value(
+                            source,
+                            hir,
+                            value_start,
+                            value_end,
+                            enum_type
+                        );
+                        if (strncmp(value, "error[", 6) == 0) {
+                            free(enum_type);
+                            free(binding_id);
+                            free(name);
+                            free(emitted.data);
+                            return value;
+                        }
+                        buffer_format(
+                            &emitted,
+                            "    KofunEnumValue k_b%s = %s;\n"
+                            "    if (kofun_failed) return %s;\n",
+                            binding_id,
+                            value,
+                            failure_result
+                        );
+                        free(value);
+                        free(enum_type);
+                        free(binding_id);
+                        free(name);
+                        cursor = skip_trivia(source, value_end);
+                        continue;
+                    }
                 }
                 if (
                     value_start >= length ||
@@ -9120,12 +9775,11 @@ static char *lower_body(
                     );
                     buffer_format(
                         &emitted,
-                        "    int64_t k_b%s = INT64_C(%" PRId64 ");\n"
-                        "    int64_t k_b%s_payload = %s;\n"
+                        "    KofunEnumValue k_b%s = "
+                        "{INT64_C(%" PRId64 "), %s};\n"
                         "    if (kofun_failed) return %s;\n",
                         binding_id,
                         tag,
-                        binding_id,
                         payload,
                         failure_result
                     );
@@ -9134,11 +9788,10 @@ static char *lower_body(
                 } else {
                     buffer_format(
                         &emitted,
-                        "    int64_t k_b%s = INT64_C(%" PRId64 ");\n"
-                        "    int64_t k_b%s_payload = INT64_C(0);\n",
+                        "    KofunEnumValue k_b%s = "
+                        "{INT64_C(%" PRId64 "), INT64_C(0)};\n",
                         binding_id,
-                        tag,
-                        binding_id
+                        tag
                     );
                 }
                 free(constructor);
@@ -9861,7 +10514,51 @@ static char *lower_body(
             }
         } else if (token_equal(source, cursor, "return")) {
             int64_t value_start = skip_trivia(source, token_end(source, cursor));
-            if (value_start < length && token_equal(source, value_start, "}")) {
+            if (returns_enum) {
+                int64_t value_end = expression_end(source, value_start);
+                if (
+                    value_end < 0 ||
+                    value_start >= length ||
+                    token_equal(source, value_start, "}")
+                ) {
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S12",
+                        "concrete enum return requires one value",
+                        value_start
+                    );
+                }
+                char *result_type = function_return_type_containing(
+                    source,
+                    function_open
+                );
+                char *value = emit_enum_value(
+                    source,
+                    hir,
+                    value_start,
+                    value_end,
+                    result_type
+                );
+                free(result_type);
+                if (strncmp(value, "error[", 6) == 0) {
+                    free(emitted.data);
+                    return value;
+                }
+                buffer_format(
+                    &emitted,
+                    "    {\n"
+                    "        KofunEnumValue kofun_result = %s;\n"
+                    "        if (kofun_failed) return KOFUN_ENUM_ZERO;\n"
+                    "        return kofun_result;\n"
+                    "    }\n",
+                    value
+                );
+                free(value);
+                cursor = skip_trivia(source, value_end);
+            } else if (
+                value_start < length &&
+                token_equal(source, value_start, "}")
+            ) {
                 buffer_append(&emitted, "    return 0;\n");
                 cursor = value_start;
             } else if (value_control(source, value_start)) {
@@ -10110,7 +10807,9 @@ static char *lower_body(
         free(emitted.data);
         return lower_error(
             "E2S19",
-            "Core function may complete without returning Int",
+            returns_enum ?
+                "Core function may complete without returning its enum" :
+                "Core function may complete without returning Int",
             open
         );
     }
@@ -11246,6 +11945,10 @@ static char *lower_c(const char *source, const char *hir) {
             return error.data;
         }
         bool is_main = strcmp(name, "main") == 0;
+        const char *c_result =
+            function_result_is_enum(source, name) ?
+                "KofunEnumValue" :
+                "int64_t";
         int64_t arity = parameter_count(source, cursor);
         char *parameters = core_parameters(source, hir, cursor);
         if (strncmp(parameters, "error[", 6) == 0) {
@@ -11274,7 +11977,8 @@ static char *lower_c(const char *source, const char *hir) {
         } else {
             buffer_format(
                 &prototypes,
-                "static int64_t kofun_fn_%s(%s);\n",
+                "static %s kofun_fn_%s(%s);\n",
+                c_result,
                 c_name,
                 c_parameters
             );
@@ -11285,8 +11989,8 @@ static char *lower_c(const char *source, const char *hir) {
             buffer_init(&error);
             buffer_format(
                 &error,
-                "error[E2S15]: Core function `%s` requires Int parameters "
-                "and an Int return",
+                "error[E2S15]: Core function `%s` requires Int or concrete "
+                "enum parameters and return",
                 name
             );
             stage2_diagnostic_set(
@@ -11329,7 +12033,8 @@ static char *lower_c(const char *source, const char *hir) {
         } else {
             buffer_format(
                 &bodies,
-                "static int64_t kofun_fn_%s(%s) {\n",
+                "static %s kofun_fn_%s(%s) {\n",
+                c_result,
                 c_name,
                 c_parameters
             );
@@ -11360,6 +12065,12 @@ static char *lower_c(const char *source, const char *hir) {
         "#include <stdbool.h>\n"
         "#include <stdint.h>\n"
         "#include <stdio.h>\n\n"
+        "typedef struct {\n"
+        "    int64_t tag;\n"
+        "    int64_t payload;\n"
+        "} KofunEnumValue;\n"
+        "#define KOFUN_ENUM_ZERO "
+        "((KofunEnumValue){INT64_C(0), INT64_C(0)})\n\n"
         "static bool kofun_failed;\n"
         "static inline void kofun_error(const char *message) {\n"
         "    if (!kofun_failed) { fputs(message, stderr); fputc('\\n', stderr); }\n"

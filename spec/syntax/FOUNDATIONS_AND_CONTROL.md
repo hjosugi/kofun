@@ -31,7 +31,7 @@ compiler cannot yet produce the final diagnostic.
 | #43 | if expressions | Stage 2 lowers statement-position and bounded Int-valued `if` with Bool literals or integer comparisons | partial |
 | #44 | else-if chains | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
 | #45 | for loops | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
-| #46 | match expressions | Stage 2 executes exhaustive guarded Bool matches and statement-position concrete payload-free enum matches | partial |
+| #46 | match expressions | Stage 2 executes exhaustive guarded Bool matches and statement-position concrete zero/one-`Int`-payload enum matches | partial |
 | #47 | while loops | structural projection preserves the tokens; Core lowering rejects the statement | unsupported |
 
 The executable evidence is in
@@ -803,17 +803,18 @@ Int value and is accepted in `let`, `print`, assignment, and `return`. Nested
 value `if` and value `match` forms preserve selected-only evaluation. This is
 an executable Int specialization, not general arm type unification.
 
-The next bounded specialization accepts concrete payload-free enum
-declarations, explicitly typed local constructor bindings, and exhaustive
-statement-position enum matches. Constructor coverage, guards, `_`, and
+The next bounded specialization accepts concrete zero/one-`Int`-payload enum
+declarations, explicitly typed local constructor bindings, same-typed function
+arguments/results, and exhaustive statement-position enum matches.
+Constructor coverage, guards, payload bindings, `_`, binding catch-alls, and
 unreachable-arm checks use the same finite-set rules as Bool. The exact type
 and constructor limits, structural IR, and diagnostics are specified in
 `spec/enum-match-exhaustiveness.md`.
 
-General arm type unification, payload and generic ADT execution, pattern
-resolution/bindings, value-producing enum matches, and ownership-aware
-destructuring remain open. The syntax tree deliberately does not claim those
-semantic or backend capabilities.
+General arm type unification, generic or wider/nested payload execution,
+value-producing enum matches, and ownership-aware destructuring remain open.
+The syntax tree deliberately does not claim those semantic or backend
+capabilities.
 
 ## #47 — While loops
 

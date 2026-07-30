@@ -1,0 +1,48 @@
+# Issue #782 completion fixture.  Payload-carrying enum values cross function
+# boundaries in all three positions the bounded C11 slice promises:
+# constructor argument, constructor return, and an explicitly typed binding.
+type Reply =
+    | Pending
+    | Ready(value: Int)
+    | Failed(code: Int)
+
+fn make_reply(value: Int) -> Reply {
+    return Ready(value + 1)
+}
+
+fn consume(reply: Reply) -> Int {
+    let mut result = 0
+    match reply {
+        Pending => { result = 100 },
+        Ready(value) if value > 10 => { result = value + 2 },
+        Ready(_) => { result = 5 },
+        Failed(code) => { result = code * 2 },
+    }
+    return result
+}
+
+fn main() -> Int {
+    let local: Reply = Ready(41)
+    print(consume(local))
+
+    print(consume(Ready(8)))
+
+    let returned: Reply = make_reply(40)
+    print(consume(returned))
+    match returned {
+        Ready(value) => { print(value + 2) },
+        _ => { print(9000) },
+    }
+
+    let pending: Reply = Pending
+    match pending {
+        Ready(_) => { print(9001) },
+        other => {
+            match other {
+                Pending => { print(7) },
+                _ => { print(9002) },
+            }
+        },
+    }
+    return 0
+}
