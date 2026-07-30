@@ -59,7 +59,7 @@ start at [`bin/kofun`](../bin/kofun), find the public subcommand, and follow the
 |---|---|---|---|
 | `bin/` | repository-local public launcher | `bin/kofun` | `task test` |
 | `bootstrap/` | compiler seeds, frontends, direct backends, self-host evidence | `bootstrap/README.md` | `task bootstrap`, `task stage2`, `task native` |
-| `spec/` | normative language and tooling contracts plus executable examples | `spec/README.md` | the matching `make *-spec` target |
+| `spec/` | normative language and tooling contracts plus executable examples | `spec/README.md` | the matching `task *-spec` target |
 | `tests/` | public behavior, conformance, diagnostics, fuzzing, tooling, integration | nearest runner or README | `task test`, `task diagnostics`, `task fuzz` |
 | `stdlib/` | Kofun-authored standard-library contracts and focused projections | `stdlib/README.md` | `task stdlib` |
 | `framework/` | bounded HTTP, CLI, and terminal UI surfaces | subsystem README | `task http`, `task cli-framework`, `task tui-framework` |
@@ -69,7 +69,7 @@ start at [`bin/kofun`](../bin/kofun), find the public subcommand, and follow the
 | `vendor/` | reviewed third-party source copied into the tree | `vendor/*/README.kofun.md` | integrity owner named by subsystem |
 | `package/` | locked external native-artifact package manager | `package/README.md` | `task packages` |
 | `examples/` | user-facing and interoperability examples | example plus its nearest check | relevant build or `check.sh` |
-| `docs/` | authored guides, designs, status, and browser-tour source | this guide | `make tour` for `docs/tour/`; `spec/*/check.sh` for the gated documents |
+| `docs/` | authored guides, designs, status, and browser-tour source | this guide | `task tour` for `docs/tour/`; `spec/*/check.sh` for the gated documents |
 | `benchmarks/` | reproducible benchmark programs, harnesses, and recorded results | `benchmarks/README.md` | subsystem benchmark script |
 | `artifacts/` | checked evidence summaries and cost/law artifacts | inspect producer named in the artifact | producer-specific gate |
 | `scripts/` | repository policy verification written in Kofun; **currently inert**, see below | script source | none — no Make target invokes it |
@@ -88,10 +88,10 @@ What is deliberately not here: the official site, its docs renderer, the browser
 playground, the delivery-planning snapshots, and the long-range issue catalogue
 all live in [`hjosugi/kofun-site`](https://github.com/hjosugi/kofun-site), which
 reads this repository as a submodule. The dependency runs one way. No gate in
-this repository reads anything from there, and `make verify` needs no npm,
+this repository reads anything from there, and `task verify` needs no npm,
 Next.js, or Cloudflare toolchain. `docs/tour/` is the exception that proves the
 rule: it looks like site material but `docs/tour/compiler.mjs` is a browser port
-of `bootstrap/wasm/compiler.c` that `make tour` pins to the native wasm32 output
+of `bootstrap/wasm/compiler.c` that `task tour` pins to the native wasm32 output
 byte for byte, so it is compiler source and stays here.
 
 Root files are also part of the architecture:
@@ -314,7 +314,7 @@ Never make a source fix only inside one of these directories.
 | VS Code packaging or metadata | `editor/vscode/` | extension README | `task lsp` plus extension check |
 | language contract | `spec/` | spec index and conformance owner | matching spec/conformance gate |
 | explanatory docs | `docs/` | this guide | the `spec/*/check.sh` that reads the document, if any |
-| the browser tour | `docs/tour/` | `docs/tour/README.md` | `make tour` |
+| the browser tour | `docs/tour/` | `docs/tour/README.md` | `task tour` |
 | docs UI, playground, or delivery snapshots | `hjosugi/kofun-site` | that repository's `site/README.md` | `npm run verify:site` there |
 
 ## What to read on your first day

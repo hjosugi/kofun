@@ -309,7 +309,7 @@ use them.
 
 Edit `docs/tour/`. It is compiler source, not site material:
 `docs/tour/compiler.mjs` is a browser port of `bootstrap/wasm/compiler.c`, and
-`make tour` proves the two still agree byte for byte. Run it after any change
+`task tour` proves the two still agree byte for byte. Run it after any change
 there. The site copies the directory at build time and owns no part of it.
 
 ## Test the smallest relevant surface
