@@ -254,18 +254,20 @@ an ordinary identifier.
 
 ## ADT declarations
 
-The executable Stage 2 checkpoint accepts concrete payload-free enums:
+The executable Stage 2 C11 checkpoint accepts concrete enums with zero or one
+named `Int` payload:
 
 ```kofun
 type Signal =
     | Red
-    | Yellow
+    | Yellow(code: Int)
     | Green
 ```
 
-The checkpoint requires explicit local typing (`let signal: Signal = Green`)
-and supports exhaustive statement-position matching. Type parameters and
-constructor payloads remain planned:
+The checkpoint requires explicit local typing (`let signal: Signal = Green`),
+passes and returns enum values through same-typed functions, and supports
+exhaustive statement-position matching with `Yellow(code)`, `Yellow(_)`, `_`,
+or a binding catch-all. Type parameters and wider payloads remain planned:
 
 ```kofun
 type Result[T, E] =

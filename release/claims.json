@@ -399,10 +399,10 @@
     {
       "id": "enum-matching",
       "public_wording": "concrete enum matching with one `Int` payload",
-      "public_status": "bounded Stage 2 C11 slice with constructor-set exhaustiveness; a constructor may carry one `Int` payload that a `C(name)` pattern binds and the arm body and guard read. Wider payload types, more than one field, nested payload patterns, and enum-typed parameters or returns stay outside it",
+      "public_status": "bounded Stage 2 C11 slice with constructor-set exhaustiveness; constructors and enum bindings cross ordinary function arguments and returns, `C(name)` exposes the payload to guards and arm bodies, and a binding catch-all may be re-matched. Wider payload types, more than one field, nested payload patterns, generics, and non-C11 backends stay outside it",
       "state": "checkpoint",
       "area": "frontend",
-      "bounded_capability": "Concrete enums match exhaustively over their constructor set. A constructor may declare one `Int` payload field, constructed as `C(expr)` in an explicitly typed initializer and bound by a `C(name)` or `C(_)` pattern. Wider payload types, more than one payload field, nested payload patterns, generic enums, and enum-typed parameters or returns are outside the slice.",
+      "bounded_capability": "Concrete enums match exhaustively over their constructor set. A constructor may declare one `Int` payload field and be constructed as `C(expr)` in an explicitly typed initializer, same-typed function argument, or same-typed return. Enum bindings pass to and return from same-typed functions. Matches accept `C(name)`, `C(_)`, `_`, and a binding catch-all that may be re-matched. Wider payload types, more than one payload field, nested payload patterns, generic enums, and non-C11 backends are outside the slice.",
       "targets": [
         "c11",
         "stage2"
@@ -413,7 +413,7 @@
       "compatibility": "Exhaustiveness is checked for the covered shape; widening the shape is a release-note event.",
       "positive_gate": {
         "command": "sh tests/conformance/syntax/issues_35_47/run.sh",
-        "observation": "Payload-free and one-`Int`-payload enum matches lower and execute with exhaustiveness enforced; the payload fixture prints values only a real payload read can produce."
+        "observation": "Payload-free and one-`Int`-payload enum matches lower and execute with exhaustiveness enforced; the fixtures read real payloads across local bindings, direct arguments, returns, guarded arms, and a re-matched binding catch-all."
       },
       "negative_boundary": {
         "kind": "rejection",

@@ -104,9 +104,36 @@ test -z "$(find "$WORK" -type f \
     \( -name '*.generated.c' -o -name '*.o' -o -name '*.native' \) -print)" ||
     fail 'ADT frontend emitted a backend/runtime artifact'
 
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$ROOT/bootstrap/stage2/compiler.c" \
+    -o "$WORK/kofun-stage2"
+"$WORK/kofun-stage2" \
+    "$CASES/enum_payload_functions.kofun" \
+    "$WORK/enum_payload_functions.c" \
+    "$WORK/enum_payload_functions.ir" \
+    "$WORK/enum_payload_functions.tokens" >/dev/null
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$WORK/enum_payload_functions.c" \
+    -o "$WORK/enum_payload_functions"
+"$WORK/enum_payload_functions" \
+    >"$WORK/enum_payload_functions.stdout" \
+    2>"$WORK/enum_payload_functions.stderr"
+cmp "$CASES/enum_payload_functions.stdout" \
+    "$WORK/enum_payload_functions.stdout" ||
+    fail 'Stage 2 payload enum function output differs'
+test ! -s "$WORK/enum_payload_functions.stderr" ||
+    fail 'Stage 2 payload enum function wrote unexpected stderr'
+grep '^static KofunEnumValue kofun_fn_make_reply' \
+    "$WORK/enum_payload_functions.c" >/dev/null ||
+    fail 'Stage 2 did not lower the enum-returning function'
+grep '^static int64_t kofun_fn_consume(KofunEnumValue ' \
+    "$WORK/enum_payload_functions.c" >/dev/null ||
+    fail 'Stage 2 did not lower the enum parameter'
+
 printf '%s\n' \
     'PASS: MaybeInt declarations and uses carry deterministic nominal IDs' \
     'PASS: declarations are collected before constructor body resolution' \
     'PASS: bounded parenthesized Int arithmetic payloads type without evaluation' \
     'PASS: zero/one-Int arity and payload typing diagnostics are exact' \
-    'PASS: generic, recursive, multi-field, and malformed forms are explicit'
+    'PASS: generic, recursive, multi-field, and malformed forms are explicit' \
+    'PASS: Stage 2 executes payload enum arguments, returns, and catch-all bindings'
