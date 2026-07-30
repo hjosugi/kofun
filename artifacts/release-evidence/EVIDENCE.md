@@ -14,7 +14,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `compiler-seed` | `sh bootstrap/stage1/check.sh` | The audited C seed accepts and executes one corpus covering all 15 typed profile builtins, both `len` overloads, argv/file I/O, Text operations, character predicates, Unicode validation, and stdout. All 30 builtin arity/type boundary rows exit nonzero and write no C, while the older corpora remain byte-identical. |
 | `deterministic-fuzzing` | `sh tests/fuzz/semantic_differential.sh` | Oracle and backend observations agree for every generated program. |
 | `elf64-image-writer` | `sh bootstrap/native/check.sh` | A static ELF64 image is written and executes. |
-| `enum-matching` | `sh tests/conformance/syntax/issues_35_47/run.sh` | Payload-free enum matches lower and execute with exhaustiveness enforced. |
+| `enum-matching` | `sh tests/conformance/syntax/issues_35_47/run.sh` | Payload-free and one-`Int`-payload enum matches lower and execute with exhaustiveness enforced; the payload fixture prints values only a real payload read can produce. |
 | `http-framework` | `sh tests/http/check.sh` | The bounded HTTP/1.1 server accepts and answers gated requests. |
 | `module-aliases` | `sh tests/conformance/modules/import-aliases/run.sh` | Same-package aliases resolve while preserving target identity. |
 | `native-aarch64-function-calls` | `sh bootstrap/native/check.sh` | AArch64 images are emitted and, with qemu present, execute to the expected values. |

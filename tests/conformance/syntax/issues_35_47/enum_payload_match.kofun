@@ -1,0 +1,47 @@
+# Issue #782. A constructor may carry one `Int` payload.  The values printed
+# here cannot be produced by a tag-only lowering: each one is read back out of
+# the matched constructor rather than recomputed from the tag.
+type Reply =
+    | Pending
+    | Ready(value: Int)
+    | Failed(code: Int)
+
+fn main() -> Int {
+    let ready: Reply = Ready(40 + 2)
+    match ready {
+        Pending => { print(9001) },
+        Ready(value) => { print(value) },
+        Failed(_) => { print(9002) },
+    }
+
+    let failed: Reply = Failed(9)
+    match failed {
+        Ready(value) => { print(9003) },
+        Failed(code) => {
+            print(code * 6)
+            if true {
+                match failed {
+                    Pending => { print(9004) },
+                    Ready(_) => { print(9005) },
+                    Failed(inner) => { print(inner + 1) },
+                }
+            }
+        },
+        Pending => { print(9006) },
+    }
+
+    let pending: Reply = Pending
+    match pending {
+        Ready(value) => { print(9007) },
+        _ => { print(5) },
+    }
+
+    let guarded: Reply = Ready(3)
+    match guarded {
+        Ready(value) if value == 4 => { print(9008) },
+        Ready(value) if value == 3 => { print(value * 111) },
+        Ready(_) => { print(9009) },
+        _ => { print(9010) },
+    }
+    return 0
+}

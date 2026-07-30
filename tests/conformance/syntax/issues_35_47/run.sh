@@ -348,6 +348,54 @@ grep '^constructor|Blue|Signal|2|' "$WORK/enum-match.ir" >/dev/null ||
     fail "Stage 2 IR omitted the Blue constructor tag"
 printf '%s\n' "PASS executable Stage 2 payload-free enum match"
 
+# Issue #782. Every printed value below is read back out of the matched
+# constructor, so a tag-only lowering cannot produce this output.
+"$WORK/kofun-stage2" \
+    "$CASES/enum_payload_match.kofun" \
+    "$WORK/enum-payload.c" \
+    "$WORK/enum-payload.ir" \
+    "$WORK/enum-payload.tokens" >/dev/null
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$WORK/enum-payload.c" -o "$WORK/enum-payload"
+"$WORK/enum-payload" \
+    >"$WORK/enum-payload.stdout" 2>"$WORK/enum-payload.stderr"
+cmp "$CASES/enum_payload_match.stdout" "$WORK/enum-payload.stdout" ||
+    fail "Stage 2 payload enum match output differs"
+test ! -s "$WORK/enum-payload.stderr" ||
+    fail "Stage 2 payload enum match wrote unexpected stderr"
+KOFUN_BUILD_DIR="$WORK/enum-payload-cli-stage1" \
+KOFUN_STAGE2_BUILD_DIR="$WORK/enum-payload-cli-stage2" \
+    "$ROOT/bin/kofun" run "$CASES/enum_payload_match.kofun" \
+    >"$WORK/enum-payload-cli.stdout" 2>"$WORK/enum-payload-cli.stderr"
+cmp "$CASES/enum_payload_match.stdout" "$WORK/enum-payload-cli.stdout" ||
+    fail "public kofun run payload enum match output differs"
+test ! -s "$WORK/enum-payload-cli.stderr" ||
+    fail "public kofun run payload enum match wrote stderr"
+# `Failed` is declared after a payload-carrying constructor, so a walker that
+# stopped at the payload parentheses would drop it from the constructor set and
+# silently weaken exhaustiveness instead of failing.
+grep '^type|Reply|3|' "$WORK/enum-payload.ir" >/dev/null ||
+    fail "Stage 2 IR did not record all three Reply constructors"
+grep '^constructor|Failed|Reply|2|' "$WORK/enum-payload.ir" >/dev/null ||
+    fail "Stage 2 IR omitted a constructor declared after a payload"
+printf '%s\n' "PASS executable Stage 2 payload enum match"
+
+expect_stage2_diagnostic \
+    "$CASES/enum_payload_pattern_arity.kofun" \
+    "$CASES/enum_payload_pattern_arity.stdout"
+expect_stage2_diagnostic \
+    "$CASES/enum_payload_pattern_missing.kofun" \
+    "$CASES/enum_payload_pattern_missing.stdout"
+expect_stage2_diagnostic \
+    "$CASES/enum_payload_initializer_arity.kofun" \
+    "$CASES/enum_payload_initializer_arity.stdout"
+expect_stage2_diagnostic \
+    "$CASES/enum_payload_unsupported_field.kofun" \
+    "$CASES/enum_payload_unsupported_field.stdout"
+expect_stage2_diagnostic \
+    "$CASES/enum_payload_multiple_fields.kofun" \
+    "$CASES/enum_payload_multiple_fields.stdout"
+
 expect_stage2_diagnostic \
     "$CASES/match_missing_false.kofun" \
     "$CASES/match_missing_false.stdout"

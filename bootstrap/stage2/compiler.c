@@ -1730,6 +1730,31 @@ static char *parse_pattern_trees(const char *source) {
     return tree.data;
 }
 
+/*
+ * The executable constructor pattern is exactly `C(name)` or `C(_)`: one
+ * parenthesised payload sub-pattern that is a single token.  A nested payload
+ * such as `Ok(Present(x))` stays parsed-but-not-executable here, and whether
+ * the constructor belongs to the scrutinee's enum with a matching arity is
+ * decided later, where the enum type is known and the diagnostic can name it.
+ */
+static bool executable_constructor_pattern(const char *source, int64_t arm) {
+    int64_t length = (int64_t)strlen(source);
+    if (arm >= length || strcmp(token_kind(source, arm), "identifier") != 0) {
+        return false;
+    }
+    int64_t open = skip_trivia(source, token_end(source, arm));
+    if (open >= length || !token_equal(source, open, "(")) return false;
+    int64_t field = skip_trivia(source, token_end(source, open));
+    if (
+        field >= length ||
+        strcmp(token_kind(source, field), "identifier") != 0
+    ) {
+        return false;
+    }
+    int64_t close = skip_trivia(source, token_end(source, field));
+    return close < length && token_equal(source, close, ")");
+}
+
 static char *validate_executable_patterns(const char *source) {
     int64_t length = (int64_t)strlen(source);
     int64_t cursor = skip_trivia(source, 0);
@@ -1745,6 +1770,8 @@ static char *validate_executable_patterns(const char *source) {
                     PatternSummary summary = pattern_summary(source, arm);
                     bool executable = summary.kind == PATTERN_WILDCARD ||
                         summary.kind == PATTERN_NAME ||
+                        (summary.kind == PATTERN_CONSTRUCTOR &&
+                         executable_constructor_pattern(source, arm)) ||
                         (summary.kind == PATTERN_LITERAL &&
                          (token_equal(source, arm, "true") ||
                           token_equal(source, arm, "false")));
@@ -2307,6 +2334,49 @@ static int64_t enum_declaration_start(
     return -1;
 }
 
+/*
+ * A constructor may carry one parenthesised payload field.  Every walker below
+ * steps over that field with this helper: stopping at the `(` instead would
+ * truncate the constructor set of any enum whose payload-carrying constructor
+ * is not written last, which silently changes coverage rather than failing.
+ */
+static int64_t enum_constructor_token_end(
+    const char *source,
+    int64_t constructor
+) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t after = token_end(source, constructor);
+    int64_t open = skip_trivia(source, after);
+    if (open >= length || !token_equal(source, open, "(")) return after;
+    int64_t close = balanced_end(source, open, "(", ")");
+    return close < 0 ? after : close;
+}
+
+/*
+ * The payload field this Core slice lowers is exactly `name: Int`.  The ADT
+ * frontend already bounds a constructor to one field with `E2S41`; the extra
+ * `Int` requirement here is what lets a constructor value be a tag and one
+ * `int64_t`, so a wider field type must fail rather than lower.
+ */
+static bool enum_payload_field_supported(const char *source, int64_t open) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t field = skip_trivia(source, token_end(source, open));
+    if (
+        field >= length ||
+        strcmp(token_kind(source, field), "identifier") != 0
+    ) {
+        return false;
+    }
+    int64_t colon = skip_trivia(source, token_end(source, field));
+    if (colon >= length || !token_equal(source, colon, ":")) return false;
+    int64_t type_cursor = skip_trivia(source, token_end(source, colon));
+    if (type_cursor >= length || !token_equal(source, type_cursor, "Int")) {
+        return false;
+    }
+    int64_t close = skip_trivia(source, token_end(source, type_cursor));
+    return close < length && token_equal(source, close, ")");
+}
+
 static int64_t enum_constructor_count(
     const char *source,
     const char *enum_type
@@ -2321,9 +2391,46 @@ static int64_t enum_constructor_count(
     while (pipe < end && token_equal(source, pipe, "|")) {
         int64_t constructor = skip_trivia(source, token_end(source, pipe));
         ++count;
-        pipe = skip_trivia(source, token_end(source, constructor));
+        pipe = skip_trivia(
+            source,
+            enum_constructor_token_end(source, constructor)
+        );
     }
     return count;
+}
+
+/*
+ * Payload arity of one named constructor: `0` payload-free, `1` one supported
+ * `Int` field, `-1` when the constructor does not belong to the enum, and `-2`
+ * when it declares a payload this slice cannot lower.
+ */
+static int64_t enum_constructor_payload_arity(
+    const char *source,
+    const char *enum_type,
+    const char *wanted
+) {
+    int64_t declaration = enum_declaration_start(source, enum_type);
+    if (declaration < 0) return -1;
+    int64_t name = skip_trivia(source, token_end(source, declaration));
+    int64_t equals = skip_trivia(source, token_end(source, name));
+    int64_t pipe = skip_trivia(source, token_end(source, equals));
+    int64_t end = type_declaration_end(source, declaration);
+    while (pipe < end && token_equal(source, pipe, "|")) {
+        int64_t constructor = skip_trivia(source, token_end(source, pipe));
+        if (token_equal(source, constructor, wanted)) {
+            int64_t open = skip_trivia(
+                source,
+                token_end(source, constructor)
+            );
+            if (open >= end || !token_equal(source, open, "(")) return 0;
+            return enum_payload_field_supported(source, open) ? 1 : -2;
+        }
+        pipe = skip_trivia(
+            source,
+            enum_constructor_token_end(source, constructor)
+        );
+    }
+    return -1;
 }
 
 static int64_t enum_constructor_index(
@@ -2342,7 +2449,10 @@ static int64_t enum_constructor_index(
         int64_t constructor = skip_trivia(source, token_end(source, pipe));
         if (token_equal(source, constructor, wanted)) return tag;
         ++tag;
-        pipe = skip_trivia(source, token_end(source, constructor));
+        pipe = skip_trivia(
+            source,
+            enum_constructor_token_end(source, constructor)
+        );
     }
     return -1;
 }
@@ -2373,7 +2483,10 @@ static bool enum_constructors_covered(
         bool found = enum_name_covered(covered, constructor_name);
         free(constructor_name);
         if (!found) return false;
-        pipe = skip_trivia(source, token_end(source, constructor));
+        pipe = skip_trivia(
+            source,
+            enum_constructor_token_end(source, constructor)
+        );
     }
     return true;
 }
@@ -2398,7 +2511,10 @@ static char *enum_missing_constructors(
             buffer_format(&missing, "`%s`", constructor_name);
         }
         free(constructor_name);
-        pipe = skip_trivia(source, token_end(source, constructor));
+        pipe = skip_trivia(
+            source,
+            enum_constructor_token_end(source, constructor)
+        );
     }
     return missing.data;
 }
@@ -2724,7 +2840,10 @@ static char *parse_program(const char *source) {
                 );
                 free(constructor_name);
                 ++tag;
-                pipe = skip_trivia(source, token_end(source, constructor));
+                pipe = skip_trivia(
+                    source,
+                    enum_constructor_token_end(source, constructor)
+                );
             }
             stage2_parse_prefix_observe(&ir);
             free(name);
@@ -2918,7 +3037,7 @@ static char *enum_declaration_names(
                     free(name);
                     pipe = skip_trivia(
                         source,
-                        token_end(source, constructor)
+                        enum_constructor_token_end(source, constructor)
                     );
                 }
             } else {
@@ -4360,9 +4479,22 @@ static char *validate_core_calls(const char *source, const char *hir) {
         if (strcmp(token_kind(source, cursor), "identifier") == 0) {
             char *name = token_copy(source, cursor);
             int64_t open = skip_trivia(source, token_end(source, cursor));
+            /*
+             * `C(x)` on a declared enum constructor applies a constructor; it
+             * is not a call.  Where such an application may appear is decided
+             * by the enum guard in the scope HIR, whose diagnostic names the
+             * constructor and its enum, so reporting an unknown callee here
+             * would replace that with a misleading one.
+             */
+            char *constructor_owner = enum_constructor_owner(source, name);
+            bool constructor_application =
+                constructor_owner[0] != '\0' &&
+                function_arity(source, name) < 0;
+            free(constructor_owner);
             if (
                 strcmp(previous, "fn") != 0 &&
                 strcmp(name, "print") != 0 &&
+                !constructor_application &&
                 open < length &&
                 token_equal(source, open, "(")
             ) {
@@ -5517,6 +5649,93 @@ static int64_t parent_block_open(
         cursor = skip_trivia(source, token_end(source, cursor));
     }
     return parent;
+}
+
+/*
+ * A match arm's guard is written outside the arm body braces but belongs to the
+ * arm: `Ready(value) if value == 3` must read the binding the body reads.  This
+ * maps a token inside a guard to that arm's body `{`, so a guard use resolves
+ * in the scope the payload binding was declared in.  The emitted C agrees: the
+ * payload local is declared before the guard, inside the arm's `if`.  Returns
+ * -1 for every token that is not inside a guard.
+ */
+static int64_t match_guard_scope_open(
+    const char *source,
+    int64_t function_open,
+    int64_t target
+) {
+    int64_t cursor = skip_trivia(source, token_end(source, function_open));
+    while (cursor <= target) {
+        if (token_equal(source, cursor, "match")) {
+            int64_t open = pattern_match_open(source, cursor);
+            int64_t match_end = open < 0 ?
+                -1 :
+                balanced_end(source, open, "{", "}");
+            if (open >= 0 && match_end >= 0) {
+                int64_t close = match_end - 1;
+                int64_t arm = skip_trivia(source, token_end(source, open));
+                while (arm < close && !token_equal(source, arm, "}")) {
+                    PatternSummary summary = pattern_summary(source, arm);
+                    int64_t arrow = pattern_arm_arrow(
+                        source,
+                        summary.end,
+                        close
+                    );
+                    if (arrow < 0) break;
+                    int64_t body = skip_trivia(
+                        source,
+                        token_end(source, arrow)
+                    );
+                    if (body >= close || !token_equal(source, body, "{")) {
+                        break;
+                    }
+                    int64_t body_end = balanced_end(source, body, "{", "}");
+                    if (body_end < 0) break;
+                    if (target >= summary.end && target < arrow) {
+                        /*
+                         * Only the payload name is redirected.  Every other
+                         * guard use keeps the scope it already reported, so
+                         * this widening cannot move a use that resolves
+                         * without it.
+                         */
+                        int64_t open = skip_trivia(
+                            source,
+                            token_end(source, arm)
+                        );
+                        int64_t field = skip_trivia(
+                            source,
+                            token_end(source, open)
+                        );
+                        if (
+                            summary.kind == PATTERN_CONSTRUCTOR &&
+                            field < close &&
+                            strcmp(
+                                token_kind(source, field),
+                                "identifier"
+                            ) == 0 &&
+                            !token_equal(source, field, "_")
+                        ) {
+                            char *payload_name = token_copy(source, field);
+                            bool same = token_equal(
+                                source,
+                                target,
+                                payload_name
+                            );
+                            free(payload_name);
+                            if (same) return body;
+                        }
+                        return -1;
+                    }
+                    arm = skip_trivia(source, body_end);
+                    if (arm < close && token_equal(source, arm, ",")) {
+                        arm = skip_trivia(source, token_end(source, arm));
+                    }
+                }
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return -1;
 }
 
 /*
@@ -7468,6 +7687,155 @@ static char *build_scope_hir_mode(
                     free(scope_id);
                 }
             }
+            /*
+             * A constructor pattern that names its payload declares a binding
+             * in the arm body's scope, exactly as a `for` name declares one in
+             * the loop body.  Arm bodies are skipped whole, so a nested match
+             * is reached by its own `match` token and no arm is visited twice.
+             *
+             * Not in candidate-preserving mode: there the resolved ADT
+             * adapter owns pattern bindings and expects the payload name to
+             * arrive unresolved as a `candidate-use`.  Declaring it here would
+             * resolve the name first and take that input away from it.
+             */
+            if (
+                !preserve_pattern_candidates &&
+                token_equal(source, cursor, "match")
+            ) {
+                int64_t arms_open = pattern_match_open(source, cursor);
+                int64_t arms_end = arms_open < 0 ?
+                    -1 :
+                    balanced_end(source, arms_open, "{", "}");
+                int64_t match_close = arms_end < 0 ? -1 : arms_end - 1;
+                int64_t arm_cursor = arms_end < 0 ?
+                    function_close :
+                    skip_trivia(source, token_end(source, arms_open));
+                while (
+                    arm_cursor < match_close &&
+                    arm_cursor < function_close &&
+                    !token_equal(source, arm_cursor, "}")
+                ) {
+                    PatternSummary arm = pattern_summary(source, arm_cursor);
+                    int64_t arrow = pattern_arm_arrow(
+                        source,
+                        arm.end,
+                        match_close
+                    );
+                    if (arrow < 0 || !token_equal(source, arrow, "=>")) break;
+                    int64_t body_open = skip_trivia(
+                        source,
+                        token_end(source, arrow)
+                    );
+                    int64_t body_end = balanced_end(
+                        source,
+                        body_open,
+                        "{",
+                        "}"
+                    );
+                    if (body_end < 0) break;
+                    int64_t open = skip_trivia(
+                        source,
+                        token_end(source, arm_cursor)
+                    );
+                    int64_t field = skip_trivia(
+                        source,
+                        token_end(source, open)
+                    );
+                    if (
+                        arm.kind == PATTERN_CONSTRUCTOR &&
+                        field < function_close &&
+                        strcmp(token_kind(source, field), "identifier") == 0 &&
+                        !token_equal(source, field, "_")
+                    ) {
+                        char *scope_id = hir_scope_id_for_open(
+                            hir.data,
+                            body_open
+                        );
+                        char *name_text = token_copy(source, field);
+                        char *first_declaration = hir_same_scope_declaration(
+                            hir.data,
+                            scope_id,
+                            name_text
+                        );
+                        if (first_declaration[0] != '\0') {
+                            Buffer error;
+                            buffer_init(&error);
+                            buffer_format(
+                                &error,
+                                "error[E2S47]: duplicate binding `%s` in "
+                                "lexical scope at byte %" PRId64
+                                "; first declaration at byte %s",
+                                name_text,
+                                field,
+                                first_declaration
+                            );
+                            stage2_diagnostic_set(
+                                "E2S47",
+                                field,
+                                token_end(source, field),
+                                true,
+                                error.data
+                            );
+                            stage2_diagnostic_affected(
+                                STAGE2_DIAGNOSTIC_AFFECTED_BINDING,
+                                field,
+                                token_end(source, field)
+                            );
+                            {
+                                int64_t first =
+                                    decimal_value(first_declaration);
+                                stage2_diagnostic_related(
+                                    first,
+                                    token_end(source, first),
+                                    "first declaration"
+                                );
+                            }
+                            stage2_diagnostic_remedy(2u);
+                            free(name_text);
+                            free(first_declaration);
+                            free(scope_id);
+                            free(hir.data);
+                            return error.data;
+                        }
+                        free(first_declaration);
+                        ++binding_count;
+                        if (binding_count > 256) {
+                            free(name_text);
+                            free(scope_id);
+                            return scope_hir_error(
+                                &hir,
+                                "lexical binding limit is 256 per function",
+                                field
+                            );
+                        }
+                        buffer_format(
+                            &hir,
+                            "binding|%" PRId64 "|%s|%s|immutable|Int|copy|"
+                            "initialized|%" PRId64 "|%" PRId64 "|%" PRId64
+                            "\n",
+                            next_binding_id++,
+                            scope_id,
+                            name_text,
+                            field,
+                            token_end(source, field),
+                            token_end(source, field)
+                        );
+                        stage2_scope_prefix_observe(&hir);
+                        free(name_text);
+                        free(scope_id);
+                    }
+                    arm_cursor = skip_trivia(source, body_end);
+                    if (
+                        arm_cursor < function_close &&
+                        token_equal(source, arm_cursor, ",")
+                    ) {
+                        arm_cursor = skip_trivia(
+                            source,
+                            token_end(source, arm_cursor)
+                        );
+                    }
+                }
+            }
             cursor = skip_trivia(source, token_end(source, cursor));
         }
 
@@ -7509,6 +7877,13 @@ static char *build_scope_hir_mode(
                         function_open,
                         cursor
                     );
+                    if (scope_open < 0) {
+                        scope_open = match_guard_scope_open(
+                            source,
+                            function_open,
+                            cursor
+                        );
+                    }
                     if (scope_open < 0) {
                         scope_open = parent_block_open(
                             source,
@@ -8063,6 +8438,12 @@ static char *lower_enum_match(
             );
         }
         int64_t tag = -1;
+        /*
+         * `-1` means the arm binds no payload name.  Keeping the decision as a
+         * source offset rather than an owned id lets every validation path
+         * below return without an extra free.
+         */
+        int64_t payload_name_start = -1;
         if (catchall) {
             if (enum_constructors_covered(source, enum_type, covered.data)) {
                 free(pattern);
@@ -8075,7 +8456,10 @@ static char *lower_enum_match(
                 );
             }
         } else {
-            if (pattern_summary_value.kind != PATTERN_NAME) {
+            if (
+                pattern_summary_value.kind != PATTERN_NAME &&
+                pattern_summary_value.kind != PATTERN_CONSTRUCTOR
+            ) {
                 free(pattern);
                 return lower_enum_match_error(
                     &covered,
@@ -8124,6 +8508,89 @@ static char *lower_enum_match(
                 );
                 free(message.data);
                 return error;
+            }
+            int64_t arity = enum_constructor_payload_arity(
+                source,
+                enum_type,
+                pattern
+            );
+            bool applied =
+                pattern_summary_value.kind == PATTERN_CONSTRUCTOR;
+            if (arity < 0) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    "constructor `%s` of enum `%s` declares a payload outside "
+                    "this Core slice; one `Int` field is supported",
+                    pattern,
+                    enum_type
+                );
+                free(pattern);
+                char *error = lower_enum_match_error(
+                    &covered,
+                    &dispatch,
+                    "E2S32",
+                    message.data,
+                    pattern_start
+                );
+                free(message.data);
+                return error;
+            }
+            if (applied != (arity == 1)) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    arity == 1 ?
+                        "constructor pattern `%s` must bind its one `Int` "
+                        "payload or use `_`" :
+                        "constructor pattern `%s` takes no payload",
+                    pattern
+                );
+                free(pattern);
+                char *error = lower_enum_match_error(
+                    &covered,
+                    &dispatch,
+                    "E2S32",
+                    message.data,
+                    pattern_start
+                );
+                free(message.data);
+                return error;
+            }
+            if (applied) {
+                int64_t open = skip_trivia(
+                    source,
+                    token_end(source, pattern_start)
+                );
+                int64_t field = skip_trivia(
+                    source,
+                    token_end(source, open)
+                );
+                int64_t close = field >= length ?
+                    length :
+                    skip_trivia(source, token_end(source, field));
+                bool wildcard = token_equal(source, field, "_");
+                bool named =
+                    field < length &&
+                    strcmp(token_kind(source, field), "identifier") == 0 &&
+                    !wildcard;
+                if (
+                    (!wildcard && !named) ||
+                    close >= length ||
+                    !token_equal(source, close, ")")
+                ) {
+                    free(pattern);
+                    return lower_enum_match_error(
+                        &covered,
+                        &dispatch,
+                        "E2S32",
+                        "constructor payload pattern must be one name or `_`",
+                        field
+                    );
+                }
+                if (named) payload_name_start = field;
             }
         }
 
@@ -8208,6 +8675,39 @@ static char *lower_enum_match(
                 tag
             );
         }
+        /*
+         * The payload name is declared before the guard, not only before the
+         * body, so `Present(value) if value > 5` reads the same local the arm
+         * body reads.  The declaration is inside the arm's `if`, so it is only
+         * in scope where the constructor actually matched.
+         */
+        Buffer payload_declaration;
+        buffer_init(&payload_declaration);
+        if (payload_name_start >= 0) {
+            char *payload_id = hir_definition_id_at(hir, payload_name_start);
+            if (payload_id[0] == '\0') {
+                free(payload_id);
+                free(payload_declaration.data);
+                free(pattern_condition.data);
+                free(arm_body);
+                free(pattern);
+                return lower_enum_match_error(
+                    &covered,
+                    &dispatch,
+                    "E2S32",
+                    "constructor payload binding is unresolved",
+                    payload_name_start
+                );
+            }
+            buffer_format(
+                &payload_declaration,
+                "            int64_t k_b%s = kofun_match_payload;\n"
+                "            (void)k_b%s;\n",
+                payload_id,
+                payload_id
+            );
+            free(payload_id);
+        }
         if (guarded) {
             char *guard = emit_condition_into(
                 source,
@@ -8222,12 +8722,14 @@ static char *lower_enum_match(
                 &dispatch,
                 "        if (!kofun_match_selected && %s) {\n"
                 "%s"
+                "%s"
                 "            if (kofun_match_guard) {\n"
                 "%s"
                 "                kofun_match_selected = true;\n"
                 "            }\n"
                 "        }\n",
                 pattern_condition.data,
+                payload_declaration.data,
                 guard,
                 arm_body
             );
@@ -8237,9 +8739,11 @@ static char *lower_enum_match(
                 &dispatch,
                 "        if (!kofun_match_selected && %s) {\n"
                 "%s"
+                "%s"
                 "            kofun_match_selected = true;\n"
                 "        }\n",
                 pattern_condition.data,
+                payload_declaration.data,
                 arm_body
             );
             if (catchall) {
@@ -8249,6 +8753,7 @@ static char *lower_enum_match(
                 buffer_append(&covered, "|");
             }
         }
+        free(payload_declaration.data);
         free(pattern_condition.data);
         free(arm_body);
         free(pattern);
@@ -8318,9 +8823,12 @@ static char *lower_enum_match(
         "    {\n"
         "        int64_t kofun_match_value = k_b%s;\n"
         "        (void)kofun_match_value;\n"
+        "        int64_t kofun_match_payload = k_b%s_payload;\n"
+        "        (void)kofun_match_payload;\n"
         "        bool kofun_match_selected = false;\n"
         "%s"
         "    }\n",
+        binding_id,
         binding_id,
         dispatch.data
     );
@@ -8510,17 +9018,134 @@ static char *lower_body(
                     free(message.data);
                     return error;
                 }
-                buffer_format(
-                    &emitted,
-                    "    int64_t k_b%s = INT64_C(%" PRId64 ");\n",
-                    binding_id,
-                    tag
+                int64_t arity = enum_constructor_payload_arity(
+                    source,
+                    enum_type,
+                    constructor
                 );
+                int64_t after_constructor = skip_trivia(
+                    source,
+                    token_end(source, value_start)
+                );
+                bool applied = after_constructor < length &&
+                               token_equal(source, after_constructor, "(");
+                if (arity < 0) {
+                    Buffer message;
+                    buffer_init(&message);
+                    buffer_format(
+                        &message,
+                        "constructor `%s` of enum `%s` declares a payload "
+                        "outside this Core slice; one `Int` field is "
+                        "supported",
+                        constructor,
+                        enum_type
+                    );
+                    free(constructor);
+                    free(enum_type);
+                    free(binding_id);
+                    free(name);
+                    free(emitted.data);
+                    char *error = lower_error(
+                        "E2S32",
+                        message.data,
+                        value_start
+                    );
+                    free(message.data);
+                    return error;
+                }
+                if (applied != (arity == 1)) {
+                    Buffer message;
+                    buffer_init(&message);
+                    buffer_format(
+                        &message,
+                        arity == 1 ?
+                            "constructor `%s` takes one `Int` payload" :
+                            "constructor `%s` takes no payload",
+                        constructor
+                    );
+                    free(constructor);
+                    free(enum_type);
+                    free(binding_id);
+                    free(name);
+                    free(emitted.data);
+                    char *error = lower_error(
+                        "E2S32",
+                        message.data,
+                        applied ? after_constructor : value_start
+                    );
+                    free(message.data);
+                    return error;
+                }
+                /*
+                 * Every concrete enum binding holds a tag and one payload
+                 * slot, whether or not its constructor carries a field.  A
+                 * match arm can then read the payload without first proving
+                 * which constructor produced the value, and the two locals
+                 * stay in step through every later assignment.
+                 */
+                int64_t constructor_end = token_end(source, value_start);
+                if (arity == 1) {
+                    int64_t payload_start = skip_trivia(
+                        source,
+                        token_end(source, after_constructor)
+                    );
+                    int64_t payload_end = expression_end(
+                        source,
+                        payload_start
+                    );
+                    int64_t close = payload_end < 0 ?
+                        -1 :
+                        skip_trivia(source, payload_end);
+                    if (
+                        payload_end < 0 ||
+                        close >= length ||
+                        !token_equal(source, close, ")")
+                    ) {
+                        free(constructor);
+                        free(enum_type);
+                        free(binding_id);
+                        free(name);
+                        free(emitted.data);
+                        return lower_error(
+                            "E2S32",
+                            "concrete enum payload must be one Int expression",
+                            payload_start
+                        );
+                    }
+                    char *payload = emit_expression(
+                        source,
+                        hir,
+                        payload_start,
+                        payload_end
+                    );
+                    buffer_format(
+                        &emitted,
+                        "    int64_t k_b%s = INT64_C(%" PRId64 ");\n"
+                        "    int64_t k_b%s_payload = %s;\n"
+                        "    if (kofun_failed) return %s;\n",
+                        binding_id,
+                        tag,
+                        binding_id,
+                        payload,
+                        failure_result
+                    );
+                    free(payload);
+                    constructor_end = token_end(source, close);
+                } else {
+                    buffer_format(
+                        &emitted,
+                        "    int64_t k_b%s = INT64_C(%" PRId64 ");\n"
+                        "    int64_t k_b%s_payload = INT64_C(0);\n",
+                        binding_id,
+                        tag,
+                        binding_id
+                    );
+                }
                 free(constructor);
                 free(enum_type);
                 free(name);
                 free(binding_id);
-                cursor = skip_trivia(source, token_end(source, value_start));
+                cursor = skip_trivia(source, constructor_end);
                 continue;
             }
             /*

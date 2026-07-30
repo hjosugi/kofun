@@ -1,0 +1,12 @@
+type Reply =
+    | Pending
+    | Ready(value: Text)
+
+fn main() -> Int {
+    let reply: Reply = Ready(1)
+    match reply {
+        Pending => { print(0) },
+        Ready(value) => { print(value) },
+    }
+    return 0
+}
