@@ -11,8 +11,10 @@ mode, not because a template asked for it.
 
 ## What it is not
 
-Issues remain the work tracker. [`docs/ISSUE_TRIAGE.md`](ISSUE_TRIAGE.md) owns
-workflow state, sizing, dependencies, and scheduling. Nothing here replaces
+Issues remain the work tracker.
+[`ISSUE_TRIAGE.md`](https://github.com/hjosugi/kofun-site/blob/main/content/ISSUE_TRIAGE.md)
+in `hjosugi/kofun-site` owns workflow state, sizing, dependencies, and
+scheduling. Nothing here replaces
 that, and an RFC is not a prerequisite for ordinary work.
 
 Capability claims remain in [`release/claims.json`](../release/claims.json).

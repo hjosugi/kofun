@@ -14,7 +14,8 @@ is [`docs/RFC_PROCESS.md`](../docs/RFC_PROCESS.md).
 ## What this is not
 
 It is not the work tracker. Issues own work state, scheduling and evidence, and
-[`docs/ISSUE_TRIAGE.md`](../docs/ISSUE_TRIAGE.md) governs them. The ledger owns
+[`ISSUE_TRIAGE.md`](https://github.com/hjosugi/kofun-site/blob/main/content/ISSUE_TRIAGE.md)
+in `hjosugi/kofun-site` governs them. The ledger owns
 one thing issues cannot: the durable statement of what was decided about the
 language, separated from whether anything was built.
 
