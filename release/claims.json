@@ -398,11 +398,11 @@
     },
     {
       "id": "enum-matching",
-      "public_wording": "payload-free concrete enum matching",
-      "public_status": "bounded Stage 2 C11 slice with constructor-set exhaustiveness",
+      "public_wording": "concrete enum matching with one `Int` payload",
+      "public_status": "bounded Stage 2 C11 slice with constructor-set exhaustiveness; a constructor may carry one `Int` payload that a `C(name)` pattern binds and the arm body and guard read. Wider payload types, more than one field, nested payload patterns, and enum-typed parameters or returns stay outside it",
       "state": "checkpoint",
       "area": "frontend",
-      "bounded_capability": "Payload-free concrete enums match exhaustively over their constructor set. Payload-carrying and generic enums are outside the slice.",
+      "bounded_capability": "Concrete enums match exhaustively over their constructor set. A constructor may declare one `Int` payload field, constructed as `C(expr)` in an explicitly typed initializer and bound by a `C(name)` or `C(_)` pattern. Wider payload types, more than one payload field, nested payload patterns, generic enums, and enum-typed parameters or returns are outside the slice.",
       "targets": [
         "c11",
         "stage2"
@@ -413,12 +413,12 @@
       "compatibility": "Exhaustiveness is checked for the covered shape; widening the shape is a release-note event.",
       "positive_gate": {
         "command": "sh tests/conformance/syntax/issues_35_47/run.sh",
-        "observation": "Payload-free enum matches lower and execute with exhaustiveness enforced."
+        "observation": "Payload-free and one-`Int`-payload enum matches lower and execute with exhaustiveness enforced; the payload fixture prints values only a real payload read can produce."
       },
       "negative_boundary": {
         "kind": "rejection",
-        "evidence": "tests/conformance/adt/generic_unsupported.kofun",
-        "observation": "Enum shapes outside the slice are refused rather than silently accepted."
+        "evidence": "tests/conformance/syntax/issues_35_47/enum_payload_unsupported_field.kofun",
+        "observation": "Enum shapes outside the slice — a non-`Int` payload, more than one payload field, or a payload arity the pattern does not match — are refused rather than silently accepted."
       },
       "safety": {
         "classification": "none"

@@ -25,7 +25,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `compiler-seed` | rejection | `bootstrap/selfhost/driver/corpus_builtin_rejects.tsv` | Each of the 15 profile builtins has one wrong-arity and one wrong-type row; all 30 expanded sources exit nonzero and write no C. The existing 31 typed, block, loop, Text, and index boundary fixtures remain in the same gate. |
 | `deterministic-fuzzing` | rejection | `tests/fuzz/semantic_differential.sh` | A divergence between the oracle and a backend fails the gate with the differing program. |
 | `elf64-image-writer` | limit | `tests/conformance/capabilities.tsv` | Corpora outside the lowered profiles are recorded as unsupported with a stated reason. |
-| `enum-matching` | rejection | `tests/conformance/adt/generic_unsupported.kofun` | Enum shapes outside the slice are refused rather than silently accepted. |
+| `enum-matching` | rejection | `tests/conformance/syntax/issues_35_47/enum_payload_unsupported_field.kofun` | Enum shapes outside the slice — a non-`Int` payload, more than one payload field, or a payload arity the pattern does not match — are refused rather than silently accepted. |
 | `http-framework` | limit | `tests/http/check.sh` | Requests beyond the bounded state machine are refused rather than buffered without limit. |
 | `module-aliases` | rejection | `tests/conformance/capabilities.tsv` | Public, per-name and external aliases are outside the profile and are refused. |
 | `native-aarch64-function-calls` | skip | `bootstrap/native/check.sh` | Without `qemu-aarch64` the execution branch is reported as skipped, never as passed. |
