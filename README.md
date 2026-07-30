@@ -1,6 +1,6 @@
 # Kofun
 
-![Kofun language icon: a keyhole-shaped burial mound](public/kofun-mark.svg)
+![Kofun language icon: a keyhole-shaped burial mound](docs/kofun-mark.svg)
 
 Kofun is an experimental programming language with a Kofun-written bootstrap
 and direct ELF64 backends for x86-64 and AArch64. Source files use `.kofun`.
@@ -120,7 +120,12 @@ using it as a compatibility or security promise.
 | [`stdlib/`](stdlib/) | Kofun syscall and standard-library contracts |
 | [`editor/`](editor/) | Editor integrations and structural grammar |
 | [`docs/`](docs/) | Language, compiler, roadmap, security, and status documents |
-| [`app/`](app/) | Official website, docs renderer, and browser playground |
+
+The official site, its docs renderer, the browser playground, and the delivery
+planning snapshots live in
+[`hjosugi/kofun-site`](https://github.com/hjosugi/kofun-site), which reads this
+repository as a submodule. This repository carries no npm, Next.js, or
+Cloudflare toolchain.
 
 ## Requirements and verification
 
@@ -159,7 +164,9 @@ Start with:
 - [Release evidence](https://hjosugi.github.io/kofun/docs/release-evidence/)
 
 The website renders selected Markdown files from this repository, so source and
-published documentation share one authority.
+published documentation share one authority. The renderer itself lives in
+[`hjosugi/kofun-site`](https://github.com/hjosugi/kofun-site); the documents it
+names stay here, under `docs/`.
 
 ## Contributing
 

@@ -2,11 +2,8 @@
 build/
 .tmp-*
 .kofun/
+# editor/tree-sitter-kofun is the only npm project left in this repository.
 node_modules/
-.next/
-.open-next/
-out/
-public/tour/
 
 # Editors
 .vscode/

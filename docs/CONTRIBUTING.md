@@ -289,14 +289,16 @@ for committed compiler/KIF facts.
 Edit Markdown in `docs/` or the selected subsystem README. The website reads
 that source at build time; do not copy it into a React component.
 
-To add a first-class docs page:
+Adding a first-class docs page is a two-repository change. Add the Markdown
+source here, then add one entry to `app/docs/docs-manifest.ts` in
+[`hjosugi/kofun-site`](https://github.com/hjosugi/kofun-site), choosing the
+correct navigation section and linking it from an existing starting point when
+it changes the reading path. That repository's `site/README.md` documents the
+manifest, the link test, and the layout checks.
 
-1. add the Markdown source;
-2. add one entry to `app/docs/docs-manifest.ts`;
-3. choose the correct navigation section;
-4. link it from an existing starting point when it changes the reading path;
-5. run the link test and site build; and
-6. inspect desktop and narrow layouts.
+The same boundary applies to moving or renaming an already rendered document:
+the site names sources by path, so a rename here breaks the site until its
+manifest follows.
 
 Relative links in a curated Markdown source are rewritten to another rendered
 docs route when that source is in the manifest. Other files link to their
@@ -305,27 +307,10 @@ use them.
 
 ### Browser tour
 
-Edit `docs/tour/`. `public/tour/` is ignored generated output created by
-`site/prepare-tour.mjs`.
-
-### Site checks
-
-```sh
-npm ci
-npm run test:docs
-npm run verify:site
-KOFUN_BASE_PATH=/kofun npm run verify:pages
-```
-
-`verify:site` covers design tokens, playground behavior, tour behavior, docs
-links, generated snapshots, and a production Next.js build. `verify:pages`
-also creates and validates the exact base-path static export under `out/`.
-
-The docs/status synchronization scripts query GitHub and may report that a
-checked snapshot is stale. Do not rewrite implementation claims merely to make
-a snapshot current; run the documented synchronization command, review the
-exact commit and workflow evidence, and keep generated planning/status changes
-separate when they are unrelated to your patch.
+Edit `docs/tour/`. It is compiler source, not site material:
+`docs/tour/compiler.mjs` is a browser port of `bootstrap/wasm/compiler.c`, and
+`make tour` proves the two still agree byte for byte. Run it after any change
+there. The site copies the directory at build time and owns no part of it.
 
 ## Test the smallest relevant surface
 
@@ -344,8 +329,8 @@ separate when they are unrelated to your patch.
 | HTTP/CLI/TUI | matching framework target | `task verify` |
 | LSP | `task lsp` | `task verify` |
 | Tree-sitter | package tests | `task tree-sitter`, then `task verify` |
-| docs Markdown | `npm run test:docs` | `npm run verify:site` |
-| docs UI/site | focused npm test | `npm run verify:site` and `npm run verify:pages` |
+| the browser tour | `task tour` | `task verify` |
+| docs Markdown | the `spec/*/check.sh` reading it, if any | `task verify`, plus `npm run test:docs` in `hjosugi/kofun-site` when the site renders it |
 
 The final full suite is not a substitute for the focused test. The narrow gate
 produces readable evidence for the changed contract; the full gate detects
@@ -388,8 +373,7 @@ scripts to that inventory when they become part of the repository gate.
 
 ### Generated and audited files
 
-- `build/`, `.next/`, `out/`, `.open-next/`, `.kofun/`, and `public/tour/` are
-  disposable ignored output.
+- `build/` and `.kofun/` are disposable ignored output.
 - Tree-sitter generated parser files are committed and must be regenerated from
   `grammar.js`.
 - Bootstrap C seeds and checksum manifests are committed, audited artifacts;

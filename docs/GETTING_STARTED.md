@@ -32,8 +32,8 @@ The common compiler path needs:
 | C11 compiler | builds the checked compiler seeds | `cc --version` |
 | GNU Make | named verification gates | `make --version` |
 | `sha256sum` | bootstrap and vendored-source integrity | `sha256sum --version` |
-| Node.js 24 | website, typed-sidecar tools, and wasm32 execution | `node --version` |
-| npm | locked website and Tree-sitter dependencies | `npm --version` |
+| Node.js 24 | browser tour, typed-sidecar tools, and wasm32 execution | `node --version` |
+| npm | locked Tree-sitter dependencies | `npm --version` |
 | Git | source control and some reproducibility checks | `git --version` |
 
 The complete `task verify` gate also uses:
@@ -229,40 +229,30 @@ test command mapped to each repository area.
 
 ## 7. Run the documentation site
 
-The official website is a Next.js application under `app/`. Its documentation
-routes render selected repository Markdown at build time.
+The official website lives in
+[`hjosugi/kofun-site`](https://github.com/hjosugi/kofun-site), not here. It is a
+Next.js application that checks this repository out as a submodule and renders
+selected Markdown from it at build time. This repository needs no npm
+toolchain: `make verify` never touches one.
 
-Install exactly the locked dependencies:
+To run it:
 
 ```sh
+git clone https://github.com/hjosugi/kofun-site
+cd kofun-site
+git submodule update --init
 npm ci
-```
-
-Start the development server:
-
-```sh
 npm run dev
 ```
 
-Open the local URL printed by Next.js, then visit `/docs`. When the repository
-is served with the GitHub Pages base path, the published route is
-`/kofun/docs/`; local development normally uses `/docs`.
+Open the local URL printed by Next.js, then visit `/docs`. When the site is
+served with the GitHub Pages base path, the published route is `/kofun/docs/`;
+local development normally uses `/docs`.
 
-Before submitting a site or documentation change:
-
-```sh
-npm run test:docs
-npm run verify:site
-```
-
-For the exact static GitHub Pages export:
-
-```sh
-KOFUN_BASE_PATH=/kofun npm run verify:pages
-```
-
-Do not edit `public/tour/`: it is ignored generated output copied from
-`docs/tour/`. The checked source for the browser tour lives in `docs/tour/`.
+The browser tour is the exception: `docs/tour/` is checked source in *this*
+repository, because `docs/tour/compiler.mjs` is a browser port of
+`bootstrap/wasm/compiler.c` that `make tour` pins byte for byte. The site only
+copies it.
 
 ## 8. Make a safe first change
 
@@ -270,12 +260,12 @@ A documentation-only first contribution is a good way to learn the gates:
 
 1. create a short-lived branch;
 2. edit the authoritative Markdown under `docs/`;
-3. add it to `app/docs/docs-manifest.ts` if it should become a first-class
-   documentation page;
-4. run `npm run test:docs`;
-5. run `npm run verify:site` for layout or renderer changes;
-6. inspect `git diff --check` and `git status --short`; and
-7. commit only the intended files.
+3. run the `spec/*/check.sh` that reads it, if any, then `make verify`;
+4. if it should become a first-class documentation page, add it to
+   `app/docs/docs-manifest.ts` in `hjosugi/kofun-site` and run `npm run
+   test:docs` there;
+5. inspect `git diff --check` and `git status --short`; and
+6. commit only the intended files.
 
 For compiler work, do not begin by editing a generated or audited artifact in
 isolation. Read the nearest README and its `check.sh`, identify the canonical
@@ -312,10 +302,11 @@ Rerun with `make VERIFY_JOBS=1 verify`. If the focused gate still passes,
 capture both results; tests must not depend on shared mutable temporary paths
 or timing that becomes invalid under the repository's parallel verification.
 
-### The website build reports stale generated tour files
+### The website shows an old browser tour
 
-Run the supported build or test command, which calls `site/prepare-tour.mjs`.
-Make changes in `docs/tour/`, never in ignored `public/tour/`.
+The site copies `docs/tour/` at build time, so a stale copy means the site was
+built against an older submodule pointer. Change the tour here, run `make
+tour`, then advance the submodule in `hjosugi/kofun-site`.
 
 ### A diagnostic changed unexpectedly
 
