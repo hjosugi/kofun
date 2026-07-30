@@ -542,9 +542,12 @@ test ! -s "$temporary/cli-borrowed-move.stdout"
 cmp "$move_diagnostic" "$temporary/cli-borrowed-move.stderr"
 
 round_trip stage1 "$root/bootstrap/stage1/compiler.kofun"
-grep '^function|emit_c|1|' "$temporary/stage1.ir" >/dev/null
+grep '^function|emit_c|2|' "$temporary/stage1.ir" >/dev/null
 grep '^function|compile_file|2|' "$temporary/stage1.ir" >/dev/null
-grep '^function-count|48$' "$temporary/stage1.ir" >/dev/null
+# One function record per declaration in S; derived so a helper split in S
+# does not strand a hand-maintained count here.
+stage1_functions=$(grep -c '^fn ' "$root/bootstrap/stage1/compiler.kofun")
+grep "^function-count|$stage1_functions\$" "$temporary/stage1.ir" >/dev/null
 
 round_trip stage2 "$stage2/compiler.kofun"
 grep '^function|lex|1|' "$temporary/stage2.ir" >/dev/null
@@ -872,11 +875,11 @@ grep '^binding|2|3|symbols|immutable|List|gc|initialized|890|897|911$' \
     "$temporary/selfhost-S.scopes" >/dev/null
 grep '^binding|21|22|symbol|immutable|Text|gc|initialized|2503|2509|2519$' \
     "$temporary/selfhost-S.scopes" >/dev/null
-grep '^binding|205|232|marker|immutable|Text|gc|initialized|27983|27989|28000$' \
+grep '^binding|302|345|marker|immutable|Text|gc|initialized|39969|39975|39986$' \
     "$temporary/selfhost-S.scopes" >/dev/null
-grep '^binding|206|232|start|immutable|Int|copy|initialized|28009|28014|28035$' \
+grep '^binding|303|345|start|immutable|Int|copy|initialized|39995|40000|40021$' \
     "$temporary/selfhost-S.scopes" >/dev/null
-grep '^binding|277|334|emitted|mutable|Text|gc|initialized|41246|41253|41258$' \
+grep '^binding|408|507|emitted|mutable|Text|gc|initialized|61490|61497|61502$' \
     "$temporary/selfhost-S.scopes" >/dev/null
 
 printf '%s\n' \

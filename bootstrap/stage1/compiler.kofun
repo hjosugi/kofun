@@ -1878,17 +1878,8 @@ fn emit_statements(source: Text) -> Text {
                 # condition statements sit inside the `kt_taken` guard and the
                 # skipped path assigns a false condition instead.
                 emitted = emitted +
-                nested_indent(depth - 1) + "}\n" +
-                nested_indent(depth - 1) + "if (!kt_taken) {\n" +
-                lowered_statements(condition) +
-                statement_indent(depth) + "kt_cond = " +
-                lowered_operand(condition) + ";\n" +
-                statement_indent(depth) + "if (failed) return 1;\n" +
-                nested_indent(depth - 1) + "} else {\n" +
-                statement_indent(depth) + "kt_cond = false;\n" +
-                nested_indent(depth - 1) + "}\n" +
-                nested_indent(depth - 1) + "if (kt_cond) {\n" +
-                statement_indent(depth) + "kt_taken = true;\n"
+                emit_profile_else_if(condition, depth,
+                                     "if (failed) return 1;\n")
             } else if starts_with(line, "if ") {
                 let depth = len(blocks)
                 let condition = lower_expression(
@@ -1897,17 +1888,8 @@ fn emit_statements(source: Text) -> Text {
                 blocks = blocks + "i"
                 bound = scope_enter(bound)
                 emitted = emitted +
-                statement_indent(depth) + "{\n" +
-                nested_indent(depth) + "bool kt_taken = false;\n" +
-                nested_indent(depth) + "bool kt_cond;\n" +
-                nested_indent(depth) + "{\n" +
-                lowered_statements(condition) +
-                statement_indent(depth + 1) + "kt_cond = " +
-                lowered_operand(condition) + ";\n" +
-                nested_indent(depth) + "}\n" +
-                nested_indent(depth) + "if (failed) return 1;\n" +
-                nested_indent(depth) + "if (kt_cond) {\n" +
-                statement_indent(depth + 1) + "kt_taken = true;\n"
+                emit_profile_if(condition, depth,
+                                "if (failed) return 1;\n")
             } else if starts_with(line, "while ") {
                 let depth = len(blocks)
                 let condition = lower_expression(
@@ -1922,14 +1904,8 @@ fn emit_statements(source: Text) -> Text {
                 # result. That keeps one evaluation per iteration, where a
                 # duplicated condition would cost two.
                 emitted = emitted +
-                statement_indent(depth) + "{\n" +
-                nested_indent(depth) + "bool kt_cond;\n" +
-                nested_indent(depth) + "while (true) {\n" +
-                lowered_statements(condition) +
-                statement_indent(depth + 1) + "kt_cond = " +
-                lowered_operand(condition) + ";\n" +
-                statement_indent(depth + 1) + "if (failed) return 1;\n" +
-                statement_indent(depth + 1) + "if (!kt_cond) break;\n"
+                emit_profile_while(condition, depth,
+                                   "if (failed) return 1;\n")
             } else if starts_with(line, "for ") {
                 let depth = len(blocks)
                 let name = range_name(line)
@@ -1944,17 +1920,8 @@ fn emit_statements(source: Text) -> Text {
                 # failing end expression report a diagnostic more than once and
                 # would make the trip count depend on the body.
                 emitted = emitted +
-                statement_indent(depth) + "{\n" +
-                lowered_statements(from) +
-                nested_indent(depth) + "int64_t kt_from = " +
-                lowered_operand(from) + ";\n" +
-                lowered_statements(to) +
-                nested_indent(depth) + "int64_t kt_to = " +
-                lowered_operand(to) + ";\n" +
-                nested_indent(depth) + "if (failed) return 1;\n" +
-                nested_indent(depth) + "for (int64_t kf_" + name +
-                " = kt_from; kf_" + name + " < kt_to; ++kf_" + name + ") {\n" +
-                statement_indent(depth + 1) + "(void)kf_" + name + ";\n"
+                emit_profile_for(from, to, name, depth,
+                                 "if (failed) return 1;\n")
             } else if starts_with(line, "let ") {
                 let depth = len(blocks)
                 let name = binding_name(line)
@@ -2071,17 +2038,17 @@ fn emit_function_uses(source: Text) -> Text {
     return emitted
 }
 
-// The four control-header branches of emit_profile_program carry its longest
-// concatenations. They are lifted out so the dispatch loop stays inside the
-// bounded lexical-use limit the Stage 2 resolver enforces per function
-// (E2S35); each helper is pure text and changes no emitted byte.
-fn emit_profile_else_if(condition: Text, depth: Int, result: Text) -> Text {
+# The four control-header branches of emit_profile_program carry its longest
+# concatenations. They are lifted out so the dispatch loop stays inside the
+# bounded lexical-use limit the Stage 2 resolver enforces per function
+# (E2S35); each helper is pure text and changes no emitted byte.
+fn emit_profile_else_if(condition: Text, depth: Int, failure: Text) -> Text {
     return nested_indent(depth - 1) + "}\n" +
     nested_indent(depth - 1) + "if (!kt_taken) {\n" +
     lowered_statements(condition) +
     statement_indent(depth) + "kt_cond = " +
     lowered_operand(condition) + ";\n" +
-    statement_indent(depth) + failure_return(result) +
+    statement_indent(depth) + failure +
     nested_indent(depth - 1) + "} else {\n" +
     statement_indent(depth) + "kt_cond = false;\n" +
     nested_indent(depth - 1) + "}\n" +
@@ -2089,7 +2056,7 @@ fn emit_profile_else_if(condition: Text, depth: Int, result: Text) -> Text {
     statement_indent(depth) + "kt_taken = true;\n"
 }
 
-fn emit_profile_if(condition: Text, depth: Int, result: Text) -> Text {
+fn emit_profile_if(condition: Text, depth: Int, failure: Text) -> Text {
     return statement_indent(depth) + "{\n" +
     nested_indent(depth) + "bool kt_taken = false;\n" +
     nested_indent(depth) + "bool kt_cond;\n" +
@@ -2098,24 +2065,24 @@ fn emit_profile_if(condition: Text, depth: Int, result: Text) -> Text {
     statement_indent(depth + 1) + "kt_cond = " +
     lowered_operand(condition) + ";\n" +
     nested_indent(depth) + "}\n" +
-    nested_indent(depth) + failure_return(result) +
+    nested_indent(depth) + failure +
     nested_indent(depth) + "if (kt_cond) {\n" +
     statement_indent(depth + 1) + "kt_taken = true;\n"
 }
 
-fn emit_profile_while(condition: Text, depth: Int, result: Text) -> Text {
+fn emit_profile_while(condition: Text, depth: Int, failure: Text) -> Text {
     return statement_indent(depth) + "{\n" +
     nested_indent(depth) + "bool kt_cond;\n" +
     nested_indent(depth) + "while (true) {\n" +
     lowered_statements(condition) +
     statement_indent(depth + 1) + "kt_cond = " +
     lowered_operand(condition) + ";\n" +
-    statement_indent(depth + 1) + failure_return(result) +
+    statement_indent(depth + 1) + failure +
     statement_indent(depth + 1) + "if (!kt_cond) break;\n"
 }
 
 fn emit_profile_for(from: Text, to: Text, name: Text, depth: Int,
-                    result: Text) -> Text {
+                    failure: Text) -> Text {
     return statement_indent(depth) + "{\n" +
     lowered_statements(from) +
     nested_indent(depth) + "int64_t kt_from = " +
@@ -2123,7 +2090,7 @@ fn emit_profile_for(from: Text, to: Text, name: Text, depth: Int,
     lowered_statements(to) +
     nested_indent(depth) + "int64_t kt_to = " +
     lowered_operand(to) + ";\n" +
-    nested_indent(depth) + failure_return(result) +
+    nested_indent(depth) + failure +
     nested_indent(depth) + "for (int64_t kf_" + name +
     " = kt_from; kf_" + name + " < kt_to; ++kf_" + name + ") {\n" +
     statement_indent(depth + 1) + "(void)kf_" + name + ";\n"
@@ -2201,7 +2168,8 @@ fn emit_profile_program(source: Text, main_prelude: Text) -> Text {
                     statement_indent(depth))
                 bound = scope_enter(bound)
                 emitted = emitted +
-                emit_profile_else_if(condition, depth, current_result)
+                emit_profile_else_if(condition, depth,
+                                     failure_return(current_result))
             } else if starts_with(line, "if ") {
                 let depth = len(blocks)
                 let condition = lower_expression(
@@ -2210,7 +2178,8 @@ fn emit_profile_program(source: Text, main_prelude: Text) -> Text {
                 blocks = blocks + "i"
                 bound = scope_enter(bound)
                 emitted = emitted +
-                emit_profile_if(condition, depth, current_result)
+                emit_profile_if(condition, depth,
+                                failure_return(current_result))
             } else if starts_with(line, "while ") {
                 let depth = len(blocks)
                 let condition = lower_expression(
@@ -2219,7 +2188,8 @@ fn emit_profile_program(source: Text, main_prelude: Text) -> Text {
                 blocks = blocks + "w"
                 bound = scope_enter(bound)
                 emitted = emitted +
-                emit_profile_while(condition, depth, current_result)
+                emit_profile_while(condition, depth,
+                                   failure_return(current_result))
             } else if starts_with(line, "for ") {
                 let depth = len(blocks)
                 let name = range_name(line)
@@ -2230,7 +2200,8 @@ fn emit_profile_program(source: Text, main_prelude: Text) -> Text {
                 blocks = blocks + "r"
                 bound = scope_enter(bound) + name + ":Int|"
                 emitted = emitted +
-                emit_profile_for(from, to, name, depth, current_result)
+                emit_profile_for(from, to, name, depth,
+                                 failure_return(current_result))
             } else if starts_with(line, "let ") {
                 let depth = len(blocks)
                 let name = binding_name(line)
