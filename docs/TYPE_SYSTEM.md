@@ -208,13 +208,14 @@ The compiler checks exhaustiveness and unreachable patterns.
 
 Executable checkpoints: Stage 2 performs this check for bounded statement-
 position and Int-valued `Bool` matches over `true`, `false`, and `_`, including
-ordered Bool guards with conservative unguarded coverage. It also accepts
-concrete payload-free enum declarations, explicitly typed local constructor
-bindings, and exhaustive statement-position enum matches. See
+ordered Bool guards with conservative unguarded coverage. It also executes
+concrete zero/one-`Int`-payload enum declarations, explicitly typed local
+constructor bindings, same-typed function arguments/results, and exhaustive
+statement-position enum matches with payload and catch-all bindings. See
 `spec/bool-match-exhaustiveness.md` and
-`spec/enum-match-exhaustiveness.md`. Generic and payload constructors,
-nested patterns, ownership-aware destructuring, and general arm-type
-unification remain planned.
+`spec/enum-match-exhaustiveness.md`. Generic enums, wider or nested payload
+patterns, ownership-aware destructuring, and general arm-type unification
+remain planned.
 
 A separate typed-only Stage 2 checkpoint now accepts one bounded payload
 surface before layout and matching are implemented:

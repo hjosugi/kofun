@@ -3,6 +3,7 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../../.." && pwd)
 CASES="$ROOT/tests/conformance/syntax/issues_35_47"
+ADT_CASES="$ROOT/tests/conformance/adt"
 SPEC="$ROOT/spec/syntax/FOUNDATIONS_AND_CONTROL.md"
 MATCH_SPEC="$ROOT/spec/bool-match-exhaustiveness.md"
 ENUM_MATCH_SPEC="$ROOT/spec/enum-match-exhaustiveness.md"
@@ -380,6 +381,45 @@ grep '^constructor|Failed|Reply|2|' "$WORK/enum-payload.ir" >/dev/null ||
     fail "Stage 2 IR omitted a constructor declared after a payload"
 printf '%s\n' "PASS executable Stage 2 payload enum match"
 
+# Payload enum values also cross ordinary function boundaries.  This fixture
+# constructs one directly in argument position, returns one from a function,
+# stores that result in an explicitly typed binding, and re-matches the value
+# held by a binding catch-all.
+"$WORK/kofun-stage2" \
+    "$ADT_CASES/enum_payload_functions.kofun" \
+    "$WORK/enum-payload-functions.c" \
+    "$WORK/enum-payload-functions.ir" \
+    "$WORK/enum-payload-functions.tokens" >/dev/null
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$WORK/enum-payload-functions.c" -o "$WORK/enum-payload-functions"
+"$WORK/enum-payload-functions" \
+    >"$WORK/enum-payload-functions.stdout" \
+    2>"$WORK/enum-payload-functions.stderr"
+cmp \
+    "$ADT_CASES/enum_payload_functions.stdout" \
+    "$WORK/enum-payload-functions.stdout" ||
+    fail "Stage 2 payload enum function output differs"
+test ! -s "$WORK/enum-payload-functions.stderr" ||
+    fail "Stage 2 payload enum function wrote unexpected stderr"
+grep '^static KofunEnumValue kofun_fn_make_reply' \
+    "$WORK/enum-payload-functions.c" >/dev/null ||
+    fail "Stage 2 did not lower the enum-returning function"
+grep '^static int64_t kofun_fn_consume(KofunEnumValue ' \
+    "$WORK/enum-payload-functions.c" >/dev/null ||
+    fail "Stage 2 did not lower the enum parameter"
+KOFUN_BUILD_DIR="$WORK/enum-payload-functions-cli-stage1" \
+KOFUN_STAGE2_BUILD_DIR="$WORK/enum-payload-functions-cli-stage2" \
+    "$ROOT/bin/kofun" run "$ADT_CASES/enum_payload_functions.kofun" \
+    >"$WORK/enum-payload-functions-cli.stdout" \
+    2>"$WORK/enum-payload-functions-cli.stderr"
+cmp \
+    "$ADT_CASES/enum_payload_functions.stdout" \
+    "$WORK/enum-payload-functions-cli.stdout" ||
+    fail "public kofun run payload enum function output differs"
+test ! -s "$WORK/enum-payload-functions-cli.stderr" ||
+    fail "public kofun run payload enum function wrote stderr"
+printf '%s\n' "PASS executable Stage 2 payload enum function boundaries"
+
 expect_stage2_diagnostic \
     "$CASES/enum_payload_pattern_arity.kofun" \
     "$CASES/enum_payload_pattern_arity.stdout"
@@ -462,18 +502,18 @@ for code in E2S24 E2S25 E2S26 E2S29 E2S30; do
 done
 printf '%s\n' "PASS bounded Bool match specification"
 
-grep '^# Bounded payload-free enum match exhaustiveness' \
+grep '^# Bounded concrete enum match exhaustiveness' \
     "$ENUM_MATCH_SPEC" >/dev/null ||
-    fail "bounded payload-free enum match specification is missing"
+    fail "bounded concrete enum match specification is missing"
 for code in E2S25 E2S26 E2S29 E2S31 E2S32; do
     grep "\`$code\`" "$ENUM_MATCH_SPEC" >/dev/null ||
         fail "bounded enum match specification omits $code"
 done
 grep 'at most 32 enum types' "$ENUM_MATCH_SPEC" >/dev/null ||
     fail "bounded enum match specification omits the type limit"
-grep 'at most 64 constructors' "$ENUM_MATCH_SPEC" >/dev/null ||
+grep 'constructors in one enum' "$ENUM_MATCH_SPEC" >/dev/null ||
     fail "bounded enum match specification omits the constructor limit"
-printf '%s\n' "PASS bounded payload-free enum match specification"
+printf '%s\n' "PASS bounded concrete enum match specification"
 
 "$WORK/kofun-stage2" \
     "$CASES/structural_surface.kofun" \

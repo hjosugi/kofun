@@ -14,7 +14,7 @@ The frontend performs five concrete operations:
 1. lexical scanning that ignores comments and treats escaped strings as single
    tokens, producing a deterministic token-span tape;
 2. structural parsing of a compilation unit into textual function and
-   payload-free enum IR, including names, constructor tags, arities, byte
+   zero/one-`Int`-payload enum IR, including names, constructor tags, arities, byte
    spans, and top-level function visibility metadata;
 3. an identity source projection gated by successful lexing and parsing.
 4. statement and precedence-aware expression parsing for a deliberately small
@@ -44,9 +44,10 @@ one zero-argument `fn main()` plus zero or more `Int` Core functions and lowers:
   block arms, including nested matches and ordered optional Bool guards;
 - bounded Int-valued Bool `match` in `let`, `print`, assignment, and `return`,
   with nested value `if`/`match` and selected-only evaluation;
-- top-level, non-generic payload-free enum declarations, explicitly typed
-  immutable constructor bindings, and exhaustive statement-position enum
-  `match` with ordered guards and `_`;
+- top-level, non-generic enums whose constructors carry zero or one `Int`
+  payload, explicitly typed immutable bindings, same-typed function
+  arguments/results, and exhaustive statement-position enum `match` with
+  ordered guards, payload bindings, `_`, and binding catch-alls;
 - `print(Int)` and `return Int`.
 
 The emitted C11 uses checked arithmetic helpers and preserves Kofun floor
@@ -59,13 +60,15 @@ expressions, and loops remain outside this Core slice. Bool match uses a finite
 rejects duplicate or unreachable arms. Guards run only after their pattern
 matches; false continues to the next arm, and guarded arms do not provide
 static coverage. `E2S29` rejects non-Bool guards. `E2S30` rejects bounded value
-arms that do not produce Int. Payload-free enum matches apply the same finite
+arms that do not produce Int. Concrete enum matches apply the same finite
 coverage rules to their declared constructor set; `E2S31` rejects malformed or
 colliding bounded declarations and `E2S32` rejects unresolved or mismatched
-enum uses. Enum bindings remain match-only, including through lexically nested
-blocks, so their internal tags cannot escape into Int expressions. Generic or
-payload constructors, pattern bindings, and value-producing enum matches
-remain outside this executable slice. Independently, the canonical frontend
+enum uses. Enum values use an internal tag-plus-Int-payload aggregate and may
+cross same-typed function arguments and returns; they cannot enter Int
+expressions. Payload bindings are visible to guards and arm bodies, and a
+binding catch-all may be re-matched. Generic enums, wider/nested payloads, and
+value-producing enum matches remain outside this executable slice.
+Independently, the canonical frontend
 appends a versioned `kofun-pattern-tree/v1` syntax section for wildcard,
 Bool/null/Int literal, unresolved name, constructor, nested, or-pattern, and
 parenthesized forms. Literal records retain `literal_kind`, exact token

@@ -21,11 +21,17 @@ both declarations and uses, plus exact byte spans. These bounded single-file
 IDs are replaced by production ModuleId/NamespaceId/SymbolId values when #111
 integrates the table into the general resolver.
 
-There is intentionally no value layout, allocation, matching, interpreter,
-C/native/Wasm lowering, payload evaluation, or runtime representation. The
-typed IR records the resolved constructor identity and `Int` payload type, not
-an evaluated payload value. #120 owns layout, while #73/#93/#118 consume the
-typed constructor table for patterns, exhaustiveness, and lowering.
+This dedicated frontend intentionally has no value layout, allocation,
+matching, interpreter, or backend. Its typed IR records the resolved
+constructor identity and `Int` payload type, not an evaluated payload value.
+Separately, the smaller concrete-enum profile in
+`enum_payload_functions.kofun` lowers the same zero/one-`Int` shape through
+Stage 2 C11, including function arguments, returns, guarded payload reads, and
+a binding catch-all that is matched again. The syntax checkpoint also runs
+this shared fixture through the public CLI. Native and Wasm lowering remain
+outside both checkpoints. #120 owns the shared layout authority, while
+#73/#93/#118 consume the typed constructor table for patterns, exhaustiveness,
+and wider lowering.
 
 Run:
 
