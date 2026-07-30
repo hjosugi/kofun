@@ -30,7 +30,7 @@ The common compiler path needs:
 |---|---|---|
 | POSIX shell | launcher and repository gates | `sh --version` or `sh -c 'echo ok'` |
 | C11 compiler | builds the checked compiler seeds | `cc --version` |
-| GNU Make | named verification gates | `make --version` |
+| Task (go-task) | named verification gates | `task --version` |
 | `sha256sum` | bootstrap and vendored-source integrity | `sha256sum --version` |
 | Node.js 24 | browser tour, typed-sidecar tools, and wasm32 execution | `node --version` |
 | npm | locked Tree-sitter dependencies | `npm --version` |
@@ -218,7 +218,7 @@ task verify         # every active repository gate, then LSP/roadmap checks
 CPU. For readable failure output or local bisection:
 
 ```sh
-make VERIFY_JOBS=1 verify
+VERIFY_JOBS=1 task verify
 ```
 
 Run the narrow gate while developing, then the broader relevant gate before
@@ -233,7 +233,7 @@ The official website lives in
 [`hjosugi/kofun-site`](https://github.com/hjosugi/kofun-site), not here. It is a
 Next.js application that checks this repository out as a submodule and renders
 selected Markdown from it at build time. This repository needs no npm
-toolchain: `make verify` never touches one.
+toolchain: `task verify` never touches one.
 
 To run it:
 
@@ -251,7 +251,7 @@ local development normally uses `/docs`.
 
 The browser tour is the exception: `docs/tour/` is checked source in *this*
 repository, because `docs/tour/compiler.mjs` is a browser port of
-`bootstrap/wasm/compiler.c` that `make tour` pins byte for byte. The site only
+`bootstrap/wasm/compiler.c` that `task tour` pins byte for byte. The site only
 copies it.
 
 ## 8. Make a safe first change
@@ -260,7 +260,7 @@ A documentation-only first contribution is a good way to learn the gates:
 
 1. create a short-lived branch;
 2. edit the authoritative Markdown under `docs/`;
-3. run the `spec/*/check.sh` that reads it, if any, then `make verify`;
+3. run the `spec/*/check.sh` that reads it, if any, then `task verify`;
 4. if it should become a first-class documentation page, add it to
    `app/docs/docs-manifest.ts` in `hjosugi/kofun-site` and run `npm run
    test:docs` there;
@@ -298,7 +298,7 @@ focused gate. Do not reinterpret a skipped architecture as a passing result.
 
 ### A test passes alone but fails during parallel `task verify`
 
-Rerun with `make VERIFY_JOBS=1 verify`. If the focused gate still passes,
+Rerun with `VERIFY_JOBS=1 task verify`. If the focused gate still passes,
 capture both results; tests must not depend on shared mutable temporary paths
 or timing that becomes invalid under the repository's parallel verification.
 
