@@ -11212,7 +11212,7 @@ typedef struct {
         int64_t symbol_id;
         int64_t arity;
         char parameters[8][16];
-    } functions[64];
+    } functions[128];
     int64_t function_count;
     int64_t builtin_symbols[17];
     int64_t len_list_symbol;
@@ -12525,8 +12525,8 @@ static void sh_emit_block(Sh *sh, Buffer *out, ShBlock *block) {
 }
 
 static bool sh_parse_signature(Sh *sh, int64_t function_start) {
-    if (sh->function_count >= 64) {
-        sh_fail(sh, "E2S16", "function limit is 64", function_start);
+    if (sh->function_count >= 128) {
+        sh_fail(sh, "E2S16", "function limit is 128", function_start);
         return false;
     }
     char *name = function_name(sh->source, function_start);

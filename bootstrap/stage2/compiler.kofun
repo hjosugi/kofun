@@ -7141,8 +7141,8 @@ fn selfhost_function_parameters(functions: Text, line: Int) -> Text {
 # internal error. Mirrors the audited seed byte for byte, including the
 # `List` annotation walk that stays inside the parameter list.
 fn selfhost_signature(source: Text, functions: Text, start: Int) -> Text {
-    if selfhost_function_count(functions) >= 64 {
-        return selfhost_error("E2S16", start, "function limit is 64")
+    if selfhost_function_count(functions) >= 128 {
+        return selfhost_error("E2S16", start, "function limit is 128")
     }
     let name = function_name(source, start)
     if selfhost_function_index(functions, name) >= 0 {

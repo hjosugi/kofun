@@ -331,6 +331,292 @@ fn call_argument(expression: Text, callee: Text, target: Int) -> Text {
     return trim(text_slice(body, start, len(body)))
 }
 
+fn text_ends_with(value: Text, suffix: Text) -> Bool {
+    if len(suffix) > len(value) {
+        return false
+    }
+    return text_slice(value, len(value) - len(suffix), len(value)) == suffix
+}
+
+# The bootstrap profile is line-oriented, but canonical S wraps long
+# declarations and expressions for review. Join only lines whose quote-aware
+# delimiter depth or trailing operator says the expression is incomplete.
+fn line_continues(line: Text) -> Bool {
+    let symbols = chars(line)
+    let mut parens = 0
+    let mut brackets = 0
+    let mut quoted = false
+    let mut escaped = false
+    for index in 0 .. len(symbols) {
+        let symbol = symbols[index]
+        if quoted {
+            if escaped {
+                escaped = false
+            } else if symbol == "\\" {
+                escaped = true
+            } else if symbol == "\"" {
+                quoted = false
+            }
+        } else if symbol == "\"" {
+            quoted = true
+        } else if symbol == "(" {
+            parens = parens + 1
+        } else if symbol == ")" {
+            parens = parens - 1
+        } else if symbol == "[" {
+            brackets = brackets + 1
+        } else if symbol == "]" {
+            brackets = brackets - 1
+        }
+    }
+    if quoted || parens > 0 || brackets > 0 {
+        return true
+    }
+    return text_ends_with(line, "||") ||
+    text_ends_with(line, "&&") ||
+    text_ends_with(line, "+") ||
+    text_ends_with(line, "-") ||
+    text_ends_with(line, "*") ||
+    text_ends_with(line, "/") ||
+    text_ends_with(line, "%") ||
+    text_ends_with(line, ",") ||
+    text_ends_with(line, "=")
+}
+
+fn logical_source(source: Text) -> Text {
+    let symbols = chars(source)
+    let mut line_start = 0
+    let mut pending = ""
+    let mut result = ""
+    for index in 0 .. len(symbols) {
+        if symbols[index] == "\n" {
+            let line = trim(text_slice(source, line_start, index))
+            if len(line) > 0 && !starts_with(line, "#") {
+                if len(pending) > 0 {
+                    pending = pending + " "
+                }
+                pending = pending + line
+                if !line_continues(pending) {
+                    result = result + pending + "\n"
+                    pending = ""
+                }
+            }
+            line_start = index + 1
+        }
+    }
+    if len(pending) > 0 {
+        result = result + pending + "\n"
+    }
+    return result
+}
+
+fn valid_profile_type(kind: Text) -> Bool {
+    return kind == "Int" || kind == "Bool" || kind == "Text" ||
+    kind == "List[Text]" || kind == "Void"
+}
+
+fn function_name(line: Text) -> Text {
+    if !starts_with(line, "fn ") {
+        return ""
+    }
+    let open = find(line, "(")
+    if open < 3 {
+        return ""
+    }
+    return trim(text_slice(line, 3, open))
+}
+
+fn function_parameters(line: Text) -> Text {
+    let open = find(line, "(")
+    let close = find(line, ")")
+    if open < 0 || close < open {
+        return ""
+    }
+    return trim(text_slice(line, open + 1, close))
+}
+
+fn function_result(line: Text) -> Text {
+    let close = find(line, ")")
+    if close < 0 {
+        return ""
+    }
+    let tail = trim(text_slice(line, close + 1, len(line)))
+    if tail == "{" {
+        return "Void"
+    }
+    if !starts_with(tail, "-> ") || !text_ends_with(tail, " {") {
+        return ""
+    }
+    return trim(text_slice(tail, 3, len(tail) - 2))
+}
+
+fn parameter_arity(parameters: Text) -> Int {
+    return call_arity("f(" + parameters + ")", "f")
+}
+
+fn parameter_part(parameters: Text, index: Int) -> Text {
+    return call_argument("f(" + parameters + ")", "f", index)
+}
+
+fn parameter_name(parameters: Text, index: Int) -> Text {
+    let part = parameter_part(parameters, index)
+    let colon = find(part, ":")
+    if colon < 0 {
+        return ""
+    }
+    return trim(text_slice(part, 0, colon))
+}
+
+fn parameter_type(parameters: Text, index: Int) -> Text {
+    let part = parameter_part(parameters, index)
+    let colon = find(part, ":")
+    if colon < 0 {
+        return ""
+    }
+    return trim(text_slice(part, colon + 1, len(part)))
+}
+
+fn parameter_types(parameters: Text) -> Text {
+    let mut result = ""
+    for index in 0 .. parameter_arity(parameters) {
+        if index > 0 {
+            result = result + ","
+        }
+        result = result + parameter_type(parameters, index)
+    }
+    return result
+}
+
+fn valid_function_header(line: Text) -> Bool {
+    if !text_ends_with(line, " {") {
+        return false
+    }
+    let name = function_name(line)
+    let result = function_result(line)
+    let parameters = function_parameters(line)
+    let arity = parameter_arity(parameters)
+    if !valid_name(name) || !valid_profile_type(result) ||
+       arity < 0 || arity > 5 {
+        return false
+    }
+    let mut seen = "|"
+    for index in 0 .. arity {
+        let parameter = parameter_name(parameters, index)
+        let kind = parameter_type(parameters, index)
+        if !valid_name(parameter) || !valid_profile_type(kind) ||
+           kind == "Void" || find(seen, "|" + parameter + "|") >= 0 {
+            return false
+        }
+        seen = seen + parameter + "|"
+    }
+    return true
+}
+
+# Function signatures share `bound` with lexical bindings under an `@` prefix.
+# Scope pop therefore discards locals while preserving the complete top-level
+# signature table needed for forward and recursive calls.
+fn collect_function_signatures(source: Text) -> Text {
+    let symbols = chars(source)
+    let mut line_start = 0
+    let mut functions = "|"
+    let mut count = 0
+    for index in 0 .. len(symbols) {
+        if symbols[index] == "\n" {
+            let line = trim(text_slice(source, line_start, index))
+            if starts_with(line, "fn ") {
+                if !valid_function_header(line) {
+                    return ""
+                }
+                let name = function_name(line)
+                if find(functions, "|@" + name + ":") >= 0 {
+                    return ""
+                }
+                functions = functions + "@" + name + ":" +
+                function_result(line) + ";" +
+                parameter_types(function_parameters(line)) + "|"
+                count = count + 1
+            }
+            line_start = index + 1
+        }
+    }
+    if count == 0 {
+        return ""
+    }
+    return functions
+}
+
+fn function_signature(bound: Text, name: Text) -> Text {
+    let marker = "|@" + name + ":"
+    let start = find(bound, marker)
+    if start < 0 {
+        return ""
+    }
+    let tail = text_slice(bound, start + len(marker), len(bound))
+    let finish = find(tail, "|")
+    if finish < 0 {
+        return ""
+    }
+    return text_slice(tail, 0, finish)
+}
+
+fn signature_result(signature: Text) -> Text {
+    let split = find(signature, ";")
+    if split < 0 {
+        return ""
+    }
+    return text_slice(signature, 0, split)
+}
+
+fn signature_parameters(signature: Text) -> Text {
+    let split = find(signature, ";")
+    if split < 0 {
+        return ""
+    }
+    return text_slice(signature, split + 1, len(signature))
+}
+
+fn function_bound(functions: Text, line: Text) -> Text {
+    let parameters = function_parameters(line)
+    let mut bound = scope_enter(functions)
+    for index in 0 .. parameter_arity(parameters) {
+        bound = bound + parameter_name(parameters, index) + ":" +
+        parameter_type(parameters, index) + "|"
+    }
+    return bound
+}
+
+fn emitted_c_type(kind: Text) -> Text {
+    if kind == "Bool" {
+        return "bool"
+    }
+    if kind == "Text" {
+        return "const char *"
+    }
+    if kind == "List[Text]" {
+        return "KofunTextList"
+    }
+    if kind == "Void" {
+        return "void"
+    }
+    return "int64_t"
+}
+
+fn failure_return(kind: Text) -> Text {
+    if kind == "Bool" {
+        return "if (failed) return false;\n"
+    }
+    if kind == "Text" {
+        return "if (failed) return \"\";\n"
+    }
+    if kind == "List[Text]" {
+        return "if (failed) return kofun_rt_empty_text_list();\n"
+    }
+    if kind == "Void" {
+        return "if (failed) return;\n"
+    }
+    return "if (failed) return 0;\n"
+}
+
 # A lowered expression is `TYPE|STATEMENTS + OPERAND`: its static type, zero or
 # more complete C statements ending in newlines, then a newline-free operand.
 # The type prefix is compiler-only and is removed before C emission. Emitting
@@ -465,19 +751,30 @@ fn lower_logical(path: Text, indent: Text, operator: Text, left: Text,
 }
 
 fn bound_type(bound: Text, name: Text) -> Text {
-    if find(bound, "|" + name + ":Int|") >= 0 {
+    if find(bound, "|" + name + ":Int|") >= 0 ||
+       find(bound, "|" + name + ":Int!|") >= 0 {
         return "Int"
     }
-    if find(bound, "|" + name + ":Bool|") >= 0 {
+    if find(bound, "|" + name + ":Bool|") >= 0 ||
+       find(bound, "|" + name + ":Bool!|") >= 0 {
         return "Bool"
     }
-    if find(bound, "|" + name + ":Text|") >= 0 {
+    if find(bound, "|" + name + ":Text|") >= 0 ||
+       find(bound, "|" + name + ":Text!|") >= 0 {
         return "Text"
     }
-    if find(bound, "|" + name + ":List[Text]|") >= 0 {
+    if find(bound, "|" + name + ":List[Text]|") >= 0 ||
+       find(bound, "|" + name + ":List[Text]!|") >= 0 {
         return "List[Text]"
     }
     return ""
+}
+
+fn bound_mutable(bound: Text, name: Text) -> Bool {
+    return find(bound, "|" + name + ":Int!|") >= 0 ||
+    find(bound, "|" + name + ":Bool!|") >= 0 ||
+    find(bound, "|" + name + ":Text!|") >= 0 ||
+    find(bound, "|" + name + ":List[Text]!|") >= 0
 }
 
 fn lower_atom(atom: Text, bound: Text) -> Text {
@@ -561,6 +858,10 @@ fn lower_builtin_call(expression: Text, callee: Text, bound: Text,
         arity = 0
         first_type = ""
         result_type = "List[Text]"
+    } else if callee == "fail" {
+        arity = 0
+        first_type = ""
+        result_type = "Void"
     } else if callee == "chars" {
         result_type = "List[Text]"
         first_path = "c"
@@ -672,12 +973,99 @@ fn lower_builtin_dispatch(expression: Text, bound: Text, path: Text,
     }
     let callee = text_slice(expression, 0, open)
     let builtins =
-    "|args|chars|contains|find|is_digit|is_space|is_xid_continue|len|" +
+    "|args|chars|contains|fail|find|is_digit|is_space|is_xid_continue|len|" +
     "read_text|starts_with|text_slice|trim|validate_unicode_source|write_text|"
     if find(builtins, "|" + callee + "|") < 0 {
         return ""
     }
     return lower_builtin_call(expression, callee, bound, path, indent)
+}
+
+fn signature_parameter_type(signature: Text, index: Int) -> Text {
+    let parameters = signature_parameters(signature)
+    return call_argument("f(" + parameters + ")", "f", index)
+}
+
+fn lower_user_call(expression: Text, bound: Text, path: Text,
+                   indent: Text) -> Text {
+    let open = find(expression, "(")
+    if open < 0 {
+        return ""
+    }
+    let callee = text_slice(expression, 0, open)
+    let signature = function_signature(bound, callee)
+    if len(signature) == 0 {
+        return ""
+    }
+    let expected = parameter_arity(signature_parameters(signature))
+    if call_arity(expression, callee) != expected || expected > 5 {
+        return ""
+    }
+    let mut first = ""
+    let mut second = ""
+    let mut third = ""
+    let mut fourth = ""
+    let mut fifth = ""
+    let mut statements = ""
+    let mut arguments = ""
+    if expected >= 1 {
+        first = lower_expression(call_argument(expression, callee, 0), bound,
+                                 path + "a", indent)
+        if !(lowered_type(first) ==
+             signature_parameter_type(signature, 0)) {
+            return ""
+        }
+        statements = statements + lowered_statements(first)
+        arguments = lowered_operand(first)
+    }
+    if expected >= 2 {
+        second = lower_expression(call_argument(expression, callee, 1), bound,
+                                  path + "b", indent)
+        if !(lowered_type(second) ==
+             signature_parameter_type(signature, 1)) {
+            return ""
+        }
+        statements = statements + lowered_statements(second)
+        arguments = arguments + ", " + lowered_operand(second)
+    }
+    if expected >= 3 {
+        third = lower_expression(call_argument(expression, callee, 2), bound,
+                                 path + "c", indent)
+        if !(lowered_type(third) ==
+             signature_parameter_type(signature, 2)) {
+            return ""
+        }
+        statements = statements + lowered_statements(third)
+        arguments = arguments + ", " + lowered_operand(third)
+    }
+    if expected >= 4 {
+        fourth = lower_expression(call_argument(expression, callee, 3), bound,
+                                  path + "d", indent)
+        if !(lowered_type(fourth) ==
+             signature_parameter_type(signature, 3)) {
+            return ""
+        }
+        statements = statements + lowered_statements(fourth)
+        arguments = arguments + ", " + lowered_operand(fourth)
+    }
+    if expected >= 5 {
+        fifth = lower_expression(call_argument(expression, callee, 4), bound,
+                                 path + "e", indent)
+        if !(lowered_type(fifth) ==
+             signature_parameter_type(signature, 4)) {
+            return ""
+        }
+        statements = statements + lowered_statements(fifth)
+        arguments = arguments + ", " + lowered_operand(fifth)
+    }
+    let result = signature_result(signature)
+    if result == "Void" {
+        return "Void|" + statements + indent + "kf_" + callee + "(" +
+        arguments + ");\n0"
+    }
+    let temporary = "kt_" + path
+    return result + "|" + statements + indent + emitted_c_type(result) + " " +
+    temporary + " = kf_" + callee + "(" + arguments + ");\n" + temporary
 }
 
 # Lowers one Core expression to a C11 expression, or "" when it is not Core.
@@ -821,6 +1209,10 @@ fn lower_expression(expression: Text, bound: Text, path: Text,
     if len(builtin) > 0 {
         return builtin
     }
+    let user_call = lower_user_call(trimmed, bound, path, indent)
+    if len(user_call) > 0 {
+        return user_call
+    }
 
     if starts_with(trimmed, "+") {
         let inner = lower_expression(
@@ -895,7 +1287,11 @@ fn binding_name(line: Text) -> Text {
     if equals < 0 {
         return ""
     }
-    let name = trim(text_slice(line, 4, equals))
+    let mut start = 4
+    if starts_with(line, "let mut ") {
+        start = 8
+    }
+    let name = trim(text_slice(line, start, equals))
     let colon = find(name, ":")
     if colon >= 0 {
         return trim(text_slice(name, 0, colon))
@@ -916,12 +1312,36 @@ fn binding_annotation(line: Text) -> Text {
     if equals < 0 {
         return ""
     }
-    let declaration = trim(text_slice(line, 4, equals))
+    let mut start = 4
+    if starts_with(line, "let mut ") {
+        start = 8
+    }
+    let declaration = trim(text_slice(line, start, equals))
     let colon = find(declaration, ":")
     if colon < 0 {
         return ""
     }
     return trim(text_slice(declaration, colon + 1, len(declaration)))
+}
+
+fn binding_mutable(line: Text) -> Bool {
+    return starts_with(line, "let mut ")
+}
+
+fn assignment_name(line: Text) -> Text {
+    let equals = find(line, "=")
+    if equals < 0 {
+        return ""
+    }
+    return trim(text_slice(line, 0, equals))
+}
+
+fn assignment_expression(line: Text) -> Text {
+    let equals = find(line, "=")
+    if equals < 0 {
+        return ""
+    }
+    return trim(text_slice(line, equals + 1, len(line)))
 }
 
 # One indentation unit is four spaces.
@@ -1056,6 +1476,193 @@ fn range_end(line: Text) -> Text {
         return ""
     }
     return trim(text_slice(bounds, split + 4, len(bounds)))
+}
+
+fn valid_profile_source(source: Text) -> Bool {
+    let functions = collect_function_signatures(source)
+    if len(functions) == 0 {
+        return false
+    }
+    let symbols = chars(source)
+    let mut line_start = 0
+    let mut main_headers = 0
+    let mut blocks = ""
+    let mut bound = functions
+    let mut current_result = ""
+    let mut returns = 0
+    for index in 0 .. len(symbols) {
+        if symbols[index] == "\n" {
+            let line = trim(text_slice(source, line_start, index))
+            if starts_with(line, "fn ") {
+                if len(blocks) > 0 || !valid_function_header(line) {
+                    return false
+                }
+                let name = function_name(line)
+                current_result = function_result(line)
+                if name == "main" {
+                    if main_headers != 0 || !(current_result == "Void") ||
+                       parameter_arity(function_parameters(line)) != 0 {
+                        return false
+                    }
+                    main_headers = main_headers + 1
+                }
+                blocks = "f"
+                bound = function_bound(functions, line)
+                returns = 0
+            } else if line == "}" {
+                if len(blocks) == 0 {
+                    return false
+                }
+                if len(blocks) == 1 && !(current_result == "Void") &&
+                   returns == 0 {
+                    return false
+                }
+                blocks = block_pop(blocks)
+                bound = scope_leave(bound)
+                if len(blocks) == 0 {
+                    current_result = ""
+                }
+            } else if line == "} else {" {
+                if !(block_kind(blocks) == "i") {
+                    return false
+                }
+                blocks = block_pop(blocks) + "e"
+                bound = scope_enter(scope_leave(bound))
+            } else if starts_with(line, "} else if ") {
+                if !(block_kind(blocks) == "i") {
+                    return false
+                }
+                bound = scope_leave(bound)
+                let condition = lower_expression(
+                    header_condition(line, "} else if "), bound, "x",
+                    statement_indent(len(blocks)))
+                if !(lowered_type(condition) == "Bool") {
+                    return false
+                }
+                bound = scope_enter(bound)
+            } else if starts_with(line, "if ") {
+                if len(blocks) == 0 {
+                    return false
+                }
+                let condition = lower_expression(
+                    header_condition(line, "if "), bound, "x",
+                    statement_indent(len(blocks) + 1))
+                if !(lowered_type(condition) == "Bool") {
+                    return false
+                }
+                blocks = blocks + "i"
+                bound = scope_enter(bound)
+            } else if starts_with(line, "while ") {
+                if len(blocks) == 0 {
+                    return false
+                }
+                let condition = lower_expression(
+                    header_condition(line, "while "), bound, "x",
+                    statement_indent(len(blocks) + 1))
+                if !(lowered_type(condition) == "Bool") {
+                    return false
+                }
+                blocks = blocks + "w"
+                bound = scope_enter(bound)
+            } else if starts_with(line, "for ") {
+                if len(blocks) == 0 {
+                    return false
+                }
+                let name = range_name(line)
+                if !valid_name(name) || name == "true" || name == "false" ||
+                   len(bound_type(bound, name)) > 0 {
+                    return false
+                }
+                let from = lower_expression(range_start(line), bound, "xl",
+                                            nested_indent(len(blocks)))
+                let to = lower_expression(range_end(line), bound, "xr",
+                                          nested_indent(len(blocks)))
+                if !(lowered_type(from) == "Int") ||
+                   !(lowered_type(to) == "Int") {
+                    return false
+                }
+                blocks = blocks + "r"
+                bound = scope_enter(bound) + name + ":Int|"
+            } else if starts_with(line, "let ") {
+                if len(blocks) == 0 {
+                    return false
+                }
+                let name = binding_name(line)
+                if !valid_name(name) || name == "true" || name == "false" ||
+                   len(bound_type(bound, name)) > 0 {
+                    return false
+                }
+                let value = lower_expression(binding_expression(line), bound,
+                                             "x", nested_indent(len(blocks)))
+                let kind = lowered_type(value)
+                if len(kind) == 0 || kind == "Void" {
+                    return false
+                }
+                let annotation = binding_annotation(line)
+                if len(annotation) > 0 && !(annotation == kind) {
+                    return false
+                }
+                bound = bound + name + ":" + kind
+                if binding_mutable(line) {
+                    bound = bound + "!"
+                }
+                bound = bound + "|"
+            } else if line == "return" || starts_with(line, "return ") {
+                if len(blocks) == 0 {
+                    return false
+                }
+                if line == "return" {
+                    if !(current_result == "Void") {
+                        return false
+                    }
+                } else {
+                    let value = lower_expression(
+                        trim(text_slice(line, 7, len(line))), bound, "r",
+                        nested_indent(len(blocks)))
+                    if !(lowered_type(value) == current_result) ||
+                       current_result == "Void" {
+                        return false
+                    }
+                }
+                returns = returns + 1
+            } else if starts_with(line, "print(") {
+                if len(blocks) == 0 {
+                    return false
+                }
+                let kind = lowered_type(lower_expression(
+                    print_expression(line), bound, "x",
+                    nested_indent(len(blocks))))
+                if !(kind == "Int") && !(kind == "Text") {
+                    return false
+                }
+            } else if find(line, " = ") > 0 {
+                if len(blocks) == 0 {
+                    return false
+                }
+                let name = assignment_name(line)
+                let value = lower_expression(assignment_expression(line),
+                                             bound, "a",
+                                             nested_indent(len(blocks)))
+                if !valid_name(name) || !bound_mutable(bound, name) ||
+                   !(lowered_type(value) == bound_type(bound, name)) {
+                    return false
+                }
+            } else if find(line, "(") > 0 {
+                if len(blocks) == 0 {
+                    return false
+                }
+                let value = lower_expression(line, bound, "x",
+                                             nested_indent(len(blocks)))
+                if !(lowered_type(value) == "Void") {
+                    return false
+                }
+            } else {
+                return false
+            }
+            line_start = index + 1
+        }
+    }
+    return main_headers == 1 && len(blocks) == 0
 }
 
 fn valid_source(source: Text) -> Bool {
@@ -1412,10 +2019,299 @@ fn emit_statements(source: Text) -> Text {
     return emitted
 }
 
-fn emit_c(source: Text) -> Text {
-    let statements = emit_statements(source)
+fn emitted_parameters(line: Text) -> Text {
+    let parameters = function_parameters(line)
+    let arity = parameter_arity(parameters)
+    if arity == 0 {
+        return "void"
+    }
+    let mut emitted = ""
+    for index in 0 .. arity {
+        if index > 0 {
+            emitted = emitted + ", "
+        }
+        emitted = emitted + emitted_c_type(parameter_type(parameters, index)) +
+        " kf_" + parameter_name(parameters, index)
+    }
+    return emitted
+}
+
+fn emit_function_prototypes(source: Text) -> Text {
+    let symbols = chars(source)
+    let mut line_start = 0
+    let mut emitted = ""
+    for index in 0 .. len(symbols) {
+        if symbols[index] == "\n" {
+            let line = trim(text_slice(source, line_start, index))
+            if starts_with(line, "fn ") && !(function_name(line) == "main") {
+                emitted = emitted + "static " +
+                emitted_c_type(function_result(line)) + " kf_" +
+                function_name(line) + "(" + emitted_parameters(line) + ");\n"
+            }
+            line_start = index + 1
+        }
+    }
+    return emitted + "\n"
+}
+
+fn emit_function_uses(source: Text) -> Text {
+    let symbols = chars(source)
+    let mut line_start = 0
+    let mut emitted = ""
+    for index in 0 .. len(symbols) {
+        if symbols[index] == "\n" {
+            let line = trim(text_slice(source, line_start, index))
+            if starts_with(line, "fn ") && !(function_name(line) == "main") {
+                emitted = emitted + "    (void)kf_" + function_name(line) +
+                ";\n"
+            }
+            line_start = index + 1
+        }
+    }
+    return emitted
+}
+
+fn emit_profile_program(source: Text, main_prelude: Text) -> Text {
+    let functions = collect_function_signatures(source)
+    let symbols = chars(source)
+    let mut line_start = 0
+    let mut emitted = emit_function_prototypes(source)
+    let mut bound = functions
+    let mut blocks = ""
+    let mut current_result = ""
+    let mut current_name = ""
+    for index in 0 .. len(symbols) {
+        if symbols[index] == "\n" {
+            let line = trim(text_slice(source, line_start, index))
+            if starts_with(line, "fn ") {
+                current_name = function_name(line)
+                current_result = function_result(line)
+                blocks = "f"
+                bound = function_bound(functions, line)
+                if current_name == "main" {
+                    emitted = emitted + "int main(int argc, char **argv) {\n" +
+                    "    (void)argc;\n" +
+                    "    (void)argv;\n" +
+                    main_prelude + emit_function_uses(source)
+                } else {
+                    emitted = emitted + "static " +
+                    emitted_c_type(current_result) + " kf_" + current_name +
+                    "(" + emitted_parameters(line) + ") {\n"
+                    let parameters = function_parameters(line)
+                    for parameter in 0 .. parameter_arity(parameters) {
+                        emitted = emitted + "    (void)kf_" +
+                        parameter_name(parameters, parameter) + ";\n"
+                    }
+                }
+            } else if line == "}" {
+                let kind = block_kind(blocks)
+                let depth = len(blocks)
+                blocks = block_pop(blocks)
+                bound = scope_leave(bound)
+                if len(blocks) == 0 {
+                    if current_name == "main" {
+                        emitted = emitted + "    return 0;\n}\n\n"
+                    } else if current_result == "Void" {
+                        emitted = emitted + "    return;\n}\n\n"
+                    } else {
+                        emitted = emitted + "}\n\n"
+                    }
+                    current_name = ""
+                    current_result = ""
+                } else if kind == "w" || kind == "r" {
+                    emitted = emitted +
+                    nested_indent(depth - 1) + "}\n" +
+                    statement_indent(depth - 1) + "}\n"
+                } else {
+                    emitted = emitted +
+                    nested_indent(depth - 1) + "}\n" +
+                    nested_indent(depth - 1) + "(void)kt_taken;\n" +
+                    statement_indent(depth - 1) + "}\n"
+                }
+            } else if line == "} else {" {
+                let depth = len(blocks)
+                blocks = block_pop(blocks) + "e"
+                bound = scope_enter(scope_leave(bound))
+                emitted = emitted +
+                nested_indent(depth - 1) + "}\n" +
+                nested_indent(depth - 1) + "if (!kt_taken) {\n"
+            } else if starts_with(line, "} else if ") {
+                let depth = len(blocks)
+                bound = scope_leave(bound)
+                let condition = lower_expression(
+                    header_condition(line, "} else if "), bound, "x",
+                    statement_indent(depth))
+                bound = scope_enter(bound)
+                emitted = emitted +
+                nested_indent(depth - 1) + "}\n" +
+                nested_indent(depth - 1) + "if (!kt_taken) {\n" +
+                lowered_statements(condition) +
+                statement_indent(depth) + "kt_cond = " +
+                lowered_operand(condition) + ";\n" +
+                statement_indent(depth) +
+                failure_return(current_result) +
+                nested_indent(depth - 1) + "} else {\n" +
+                statement_indent(depth) + "kt_cond = false;\n" +
+                nested_indent(depth - 1) + "}\n" +
+                nested_indent(depth - 1) + "if (kt_cond) {\n" +
+                statement_indent(depth) + "kt_taken = true;\n"
+            } else if starts_with(line, "if ") {
+                let depth = len(blocks)
+                let condition = lower_expression(
+                    header_condition(line, "if "), bound, "x",
+                    statement_indent(depth + 1))
+                blocks = blocks + "i"
+                bound = scope_enter(bound)
+                emitted = emitted +
+                statement_indent(depth) + "{\n" +
+                nested_indent(depth) + "bool kt_taken = false;\n" +
+                nested_indent(depth) + "bool kt_cond;\n" +
+                nested_indent(depth) + "{\n" +
+                lowered_statements(condition) +
+                statement_indent(depth + 1) + "kt_cond = " +
+                lowered_operand(condition) + ";\n" +
+                nested_indent(depth) + "}\n" +
+                nested_indent(depth) + failure_return(current_result) +
+                nested_indent(depth) + "if (kt_cond) {\n" +
+                statement_indent(depth + 1) + "kt_taken = true;\n"
+            } else if starts_with(line, "while ") {
+                let depth = len(blocks)
+                let condition = lower_expression(
+                    header_condition(line, "while "), bound, "x",
+                    statement_indent(depth + 1))
+                blocks = blocks + "w"
+                bound = scope_enter(bound)
+                emitted = emitted +
+                statement_indent(depth) + "{\n" +
+                nested_indent(depth) + "bool kt_cond;\n" +
+                nested_indent(depth) + "while (true) {\n" +
+                lowered_statements(condition) +
+                statement_indent(depth + 1) + "kt_cond = " +
+                lowered_operand(condition) + ";\n" +
+                statement_indent(depth + 1) +
+                failure_return(current_result) +
+                statement_indent(depth + 1) + "if (!kt_cond) break;\n"
+            } else if starts_with(line, "for ") {
+                let depth = len(blocks)
+                let name = range_name(line)
+                let from = lower_expression(range_start(line), bound, "xl",
+                                            nested_indent(depth))
+                let to = lower_expression(range_end(line), bound, "xr",
+                                          nested_indent(depth))
+                blocks = blocks + "r"
+                bound = scope_enter(bound) + name + ":Int|"
+                emitted = emitted +
+                statement_indent(depth) + "{\n" +
+                lowered_statements(from) +
+                nested_indent(depth) + "int64_t kt_from = " +
+                lowered_operand(from) + ";\n" +
+                lowered_statements(to) +
+                nested_indent(depth) + "int64_t kt_to = " +
+                lowered_operand(to) + ";\n" +
+                nested_indent(depth) + failure_return(current_result) +
+                nested_indent(depth) + "for (int64_t kf_" + name +
+                " = kt_from; kf_" + name + " < kt_to; ++kf_" + name + ") {\n" +
+                statement_indent(depth + 1) + "(void)kf_" + name + ";\n"
+            } else if starts_with(line, "let ") {
+                let depth = len(blocks)
+                let name = binding_name(line)
+                let value = lower_expression(binding_expression(line), bound,
+                                             "x", nested_indent(depth))
+                let kind = lowered_type(value)
+                emitted = emitted +
+                statement_indent(depth) + emitted_c_type(kind) + " kf_" +
+                name + ";\n" +
+                statement_indent(depth) + "{\n" +
+                lowered_statements(value) +
+                nested_indent(depth) + "kf_" + name + " = " +
+                lowered_operand(value) + ";\n" +
+                statement_indent(depth) + "}\n" +
+                statement_indent(depth) + failure_return(current_result) +
+                statement_indent(depth) + "(void)kf_" + name + ";\n"
+                bound = bound + name + ":" + kind
+                if binding_mutable(line) {
+                    bound = bound + "!"
+                }
+                bound = bound + "|"
+            } else if line == "return" || starts_with(line, "return ") {
+                let depth = len(blocks)
+                if line == "return" {
+                    if current_name == "main" {
+                        emitted = emitted + statement_indent(depth) +
+                        "return 0;\n"
+                    } else {
+                        emitted = emitted + statement_indent(depth) +
+                        "return;\n"
+                    }
+                } else {
+                    let value = lower_expression(
+                        trim(text_slice(line, 7, len(line))), bound, "r",
+                        nested_indent(depth))
+                    emitted = emitted +
+                    statement_indent(depth) + "{\n" +
+                    lowered_statements(value) +
+                    nested_indent(depth) + failure_return(current_result) +
+                    nested_indent(depth) + "return " +
+                    lowered_operand(value) + ";\n" +
+                    statement_indent(depth) + "}\n"
+                }
+            } else if starts_with(line, "print(") {
+                let depth = len(blocks)
+                let value = lower_expression(print_expression(line), bound,
+                                             "x", nested_indent(depth))
+                let kind = lowered_type(value)
+                emitted = emitted +
+                statement_indent(depth) + "{\n" +
+                lowered_statements(value) +
+                nested_indent(depth) + failure_return(current_result)
+                if kind == "Text" {
+                    emitted = emitted +
+                    nested_indent(depth) + "fputs(" +
+                    lowered_operand(value) + ", stdout);\n" +
+                    nested_indent(depth) + "fputc('\\n', stdout);\n"
+                } else {
+                    emitted = emitted +
+                    nested_indent(depth) + "printf(\"%\" PRId64 \"\\n\", " +
+                    lowered_operand(value) + ");\n"
+                }
+                emitted = emitted + statement_indent(depth) + "}\n"
+            } else if find(line, " = ") > 0 {
+                let depth = len(blocks)
+                let name = assignment_name(line)
+                let value = lower_expression(assignment_expression(line),
+                                             bound, "a",
+                                             nested_indent(depth))
+                emitted = emitted +
+                statement_indent(depth) + "{\n" +
+                lowered_statements(value) +
+                nested_indent(depth) + "kf_" + name + " = " +
+                lowered_operand(value) + ";\n" +
+                statement_indent(depth) + "}\n" +
+                statement_indent(depth) + failure_return(current_result)
+            } else if find(line, "(") > 0 {
+                let depth = len(blocks)
+                let value = lower_expression(line, bound, "x",
+                                             nested_indent(depth))
+                emitted = emitted +
+                statement_indent(depth) + "{\n" +
+                lowered_statements(value) +
+                nested_indent(depth) + failure_return(current_result) +
+                statement_indent(depth) + "}\n"
+            }
+            line_start = index + 1
+        }
+    }
+    return emitted
+}
+
+fn emit_c(source: Text, profile: Bool) -> Text {
+    let mut statements = emit_statements(source)
+    if profile {
+        statements = emit_profile_program(source, "")
+    }
     let uses_profile_builtins =
     find(statements, "kofun_rt_args(") >= 0 ||
+    find(statements, "kofun_rt_fail(") >= 0 ||
     find(statements, "kofun_rt_text_contains(") >= 0 ||
     find(statements, "kofun_rt_find(") >= 0 ||
     find(statements, "kofun_rt_is_digit(") >= 0 ||
@@ -1438,6 +2334,7 @@ fn emit_c(source: Text) -> Text {
     let mut profile_headers = ""
     let mut profile_runtime = ""
     let mut profile_main = ""
+    let mut fail_runtime = ""
     let mut main_signature = "int main(void) {\n"
     if uses_profile_builtins {
         profile_headers =
@@ -1446,6 +2343,12 @@ fn emit_c(source: Text) -> Text {
     }
     if find(statements, "kofun_rt_args(") >= 0 {
         main_signature = "int main(int argc, char **argv) {\n"
+    }
+    if find(statements, "kofun_rt_fail(") >= 0 {
+        fail_runtime =
+        "static void kofun_rt_fail(void) {\n" +
+        "    exit(1);\n" +
+        "}\n\n"
     }
     if find(statements, "const char *") >= 0 ||
        find(statements, "kofun_rt_text_") >= 0 ||
@@ -1787,6 +2690,35 @@ fn emit_c(source: Text) -> Text {
         "    (void)kofun_rt_read_text;\n" +
         "    (void)kofun_rt_write_text;\n"
     }
+    let mut program =
+    main_signature +
+    "    (void)checked_add;\n" +
+    "    (void)checked_sub;\n" +
+    "    (void)checked_mul;\n" +
+    "    (void)checked_neg;\n" +
+    "    (void)floor_div;\n" +
+    "    (void)floor_mod;\n" +
+    text_main +
+    text_index_main +
+    list_main +
+    profile_main +
+    statements +
+    "    return 0;\n" +
+    "}\n"
+    if profile {
+        let prelude =
+        "    (void)checked_add;\n" +
+        "    (void)checked_sub;\n" +
+        "    (void)checked_mul;\n" +
+        "    (void)checked_neg;\n" +
+        "    (void)floor_div;\n" +
+        "    (void)floor_mod;\n" +
+        text_main +
+        text_index_main +
+        list_main +
+        profile_main
+        program = emit_profile_program(source, prelude)
+    }
     return "/* Generated by the Kofun-written Stage 1 seed compiler. */\n" +
     "#include <inttypes.h>\n" +
     "#include <stdbool.h>\n" +
@@ -1862,20 +2794,8 @@ fn emit_c(source: Text) -> Text {
     text_index_runtime +
     list_runtime +
     profile_runtime +
-    main_signature +
-    "    (void)checked_add;\n" +
-    "    (void)checked_sub;\n" +
-    "    (void)checked_mul;\n" +
-    "    (void)checked_neg;\n" +
-    "    (void)floor_div;\n" +
-    "    (void)floor_mod;\n" +
-    text_main +
-    text_index_main +
-    list_main +
-    profile_main +
-    statements +
-    "    return 0;\n" +
-    "}\n"
+    fail_runtime +
+    program
 }
 
 fn compile_file(input_path: Text, output_path: Text) -> Bool {
@@ -1886,11 +2806,17 @@ fn compile_file(input_path: Text, output_path: Text) -> Bool {
         return false
     }
     let source = input + "\n"
-    if !valid_source(source) {
+    if valid_source(source) {
+        write_text(output_path, emit_c(source, false))
+        print(output_path)
+        return true
+    }
+    let profile_source = logical_source(source)
+    if !valid_profile_source(profile_source) {
         print("compile error: unsupported Kofun integer Core source")
         return false
     }
-    write_text(output_path, emit_c(source))
+    write_text(output_path, emit_c(profile_source, true))
     print(output_path)
     return true
 }
