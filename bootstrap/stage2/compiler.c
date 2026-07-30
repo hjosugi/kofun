@@ -94,6 +94,27 @@ typedef struct {
     bool scope_committed;
 } Stage2AuthorityResult;
 
+/* The lexer asks for the source length on every token query. Recomputing it
+ * with strlen made each query linear in the whole file, so a pass that asks
+ * once per token was quadratic in file size. The source of a pass is
+ * immutable for that pass's lifetime, so one memo entry keyed on its address
+ * answers every query; any other pointer falls back to strlen. */
+static const char *source_length_text;
+static int64_t source_length_value;
+
+static int64_t source_length(const char *source) {
+    /* The terminator check rejects a hit whose buffer was reused for longer
+     * content at the same address, so a stale entry cannot make a caller scan
+     * past the end of the string it was handed. */
+    if (source == source_length_text &&
+        source[source_length_value] == '\0') {
+        return source_length_value;
+    }
+    source_length_text = source;
+    source_length_value = (int64_t)strlen(source);
+    return source_length_value;
+}
+
 static void *allocate(size_t size);
 static void fail(const char *message);
 
@@ -458,7 +479,7 @@ static bool identifier_continue_at(
 }
 
 static int64_t skip_trivia(const char *source, int64_t start) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = start;
     while (cursor < length) {
         unsigned char symbol = (unsigned char)source[cursor];
@@ -474,7 +495,7 @@ static int64_t skip_trivia(const char *source, int64_t start) {
 }
 
 static int64_t string_end(const char *source, int64_t start) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = start + 1;
     bool escaped = false;
     while (cursor < length) {
@@ -506,8 +527,8 @@ static bool pair_token(const char *source, int64_t start) {
     return false;
 }
 
-static int64_t token_end(const char *source, int64_t start) {
-    int64_t length = (int64_t)strlen(source);
+static int64_t token_end_uncached(const char *source, int64_t start) {
+    int64_t length = source_length(source);
     if (start >= length) return start;
     char first = source[start];
     if (first == '"') return string_end(source, start);
@@ -589,6 +610,32 @@ static int64_t token_end(const char *source, int64_t start) {
     return cursor;
 }
 
+/* token_end is a pure function of (source, offset) and the scope-HIR walker
+ * asks for the same offsets millions of times. One table per source turns the
+ * repeat queries into a load. Entries store value + 1 so the zero pages a
+ * calloc arrives with mean "unknown", and only queried offsets are ever
+ * touched; the table is rebuilt whenever the source or its length changes,
+ * and a query outside the table falls back to the scan. */
+static const char *token_end_memo_source;
+static int64_t token_end_memo_length;
+static int64_t *token_end_memo;
+
+static int64_t token_end(const char *source, int64_t start) {
+    int64_t length = source_length(source);
+    if (source != token_end_memo_source || length != token_end_memo_length) {
+        free(token_end_memo);
+        token_end_memo = calloc((size_t)length + 1, sizeof(int64_t));
+        if (token_end_memo == NULL) fail("stage2 seed: out of memory");
+        token_end_memo_source = source;
+        token_end_memo_length = length;
+    }
+    if (start < 0 || start > length) return token_end_uncached(source, start);
+    if (token_end_memo[start] != 0) return token_end_memo[start] - 1;
+    int64_t value = token_end_uncached(source, start);
+    token_end_memo[start] = value + 1;
+    return value;
+}
+
 static bool token_equal(const char *source, int64_t start, const char *expected) {
     int64_t end = token_end(source, start);
     size_t length = strlen(expected);
@@ -630,7 +677,7 @@ static const char *token_kind(const char *source, int64_t start) {
     if (first == '"') return "string";
     if (identifier_start_at(
             source,
-            strlen(source),
+            (size_t)source_length(source),
             start,
             NULL)) {
         return keyword_token(source, start) ? "keyword" : "identifier";
@@ -723,7 +770,7 @@ static bool malformed_numeric_literal(
     int64_t start,
     int64_t end
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     const char *kind = token_kind(source, start);
     if (
         strcmp(kind, "integer") == 0 ||
@@ -753,7 +800,7 @@ static char *lex_source(const char *source) {
     KofunUnicodeError unicode_error;
     if (!kofun_unicode_validate_source(
             (const uint8_t *)source,
-            strlen(source),
+            (size_t)source_length(source),
             &unicode_error)) {
         char message[1024];
         kofun_unicode_format_error(
@@ -773,7 +820,7 @@ static char *lex_source(const char *source) {
         return tape.data;
     }
     buffer_append(&tape, "kofun-token-tape/v1\n");
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, 0);
     while (cursor < length) {
         int64_t end = token_end(source, cursor);
@@ -897,7 +944,7 @@ static ParsedPattern parsed_pattern_init(int64_t start) {
 }
 
 static int64_t pattern_recovery_end(const char *source, int64_t start) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, start);
     int64_t paren_depth = 0;
     int64_t bracket_depth = 0;
@@ -1007,7 +1054,7 @@ static void pattern_append_child(Buffer *children, int64_t child) {
 }
 
 static bool pattern_stop_token(const char *source, int64_t start) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     return start >= length || token_equal(source, start, "=>") ||
            token_equal(source, start, ",") ||
            token_equal(source, start, ")") ||
@@ -1021,7 +1068,7 @@ static ParsedPattern parse_pattern_atomic(
     int64_t depth
 ) {
     const char *source = parser->source;
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, start);
     int64_t checkpoint_node_id = parser->next_node_id;
     int64_t checkpoint_nodes = parser->nodes;
@@ -1356,7 +1403,7 @@ static ParsedPattern parse_pattern_or(
     int64_t depth
 ) {
     const char *source = parser->source;
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, start);
     int64_t checkpoint_node_id = parser->next_node_id;
     int64_t checkpoint_nodes = parser->nodes;
@@ -1529,7 +1576,7 @@ static ParsedPattern parse_pattern_or(
 }
 
 static int64_t pattern_match_open(const char *source, int64_t match_start) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, token_end(source, match_start));
     int64_t parens = 0;
     int64_t brackets = 0;
@@ -1586,7 +1633,7 @@ static int64_t pattern_arm_arrow(
 }
 
 static char *parse_pattern_trees(const char *source) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     Buffer tree;
     buffer_init(&tree);
     buffer_append(
@@ -1738,7 +1785,7 @@ static char *parse_pattern_trees(const char *source) {
  * decided later, where the enum type is known and the diagnostic can name it.
  */
 static bool executable_constructor_pattern(const char *source, int64_t arm) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     if (arm >= length || strcmp(token_kind(source, arm), "identifier") != 0) {
         return false;
     }
@@ -1756,7 +1803,7 @@ static bool executable_constructor_pattern(const char *source, int64_t arm) {
 }
 
 static char *validate_executable_patterns(const char *source) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, 0);
     while (cursor < length) {
         if (token_equal(source, cursor, "match")) {
@@ -1888,7 +1935,7 @@ static int64_t balanced_end(
     const char *open,
     const char *close
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = start;
     int64_t depth = 0;
     while (cursor < length) {
@@ -1930,7 +1977,7 @@ static int64_t function_declaration_start(
     const char *source,
     int64_t start
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     if (token_equal(source, start, "fn")) return start;
     if (!basic_visibility_modifier(source, start)) return -1;
     int64_t after_modifier = skip_trivia(source, token_end(source, start));
@@ -1952,7 +1999,7 @@ static const char *visibility_level(const char *source, int64_t start) {
 static int64_t parameter_open(const char *source, int64_t start);
 
 static char *visibility_prefix_error(const char *source, int64_t start) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     Buffer error;
     buffer_init(&error);
     if (
@@ -2138,7 +2185,7 @@ static char *local_visibility_error(
 }
 
 static char *function_name(const char *source, int64_t start) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t after_fn = skip_trivia(source, token_end(source, start));
     if (
         after_fn >= length ||
@@ -2152,7 +2199,7 @@ static char *function_name(const char *source, int64_t start) {
 }
 
 static int64_t parameter_open(const char *source, int64_t start) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t after_fn = skip_trivia(source, token_end(source, start));
     int64_t after_name = skip_trivia(source, token_end(source, after_fn));
     if (after_name >= length || !token_equal(source, after_name, "(")) return -1;
@@ -2193,7 +2240,7 @@ static int64_t parameter_count(const char *source, int64_t start) {
 }
 
 static int64_t function_end(const char *source, int64_t start) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     char *name = function_name(source, start);
     if (!token_equal(source, start, "fn") || name[0] == '\0') {
         free(name);
@@ -2222,7 +2269,7 @@ static int64_t function_end(const char *source, int64_t start) {
 }
 
 static char *type_name(const char *source, int64_t start) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t name = skip_trivia(source, token_end(source, start));
     if (
         name >= length ||
@@ -2236,7 +2283,7 @@ static char *type_name(const char *source, int64_t start) {
 }
 
 static int64_t type_declaration_end(const char *source, int64_t start) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     char *name_text = type_name(source, start);
     bool valid_start = token_equal(source, start, "type") &&
                        name_text[0] != '\0';
@@ -2290,7 +2337,7 @@ static int64_t top_level_end(const char *source, int64_t start) {
 }
 
 static int64_t after_optional_module_header(const char *source, int64_t start) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, start);
     if (!token_equal(source, cursor, "module")) return cursor;
     cursor = skip_trivia(source, token_end(source, cursor));
@@ -2303,7 +2350,12 @@ static int64_t after_optional_module_header(const char *source, int64_t start) {
 }
 
 static int64_t next_function_start(const char *source, int64_t start) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
+    /* Callers advance with function_end's result, which is -1 for a position
+     * that is not a function declaration. Restarting the walk from before the
+     * buffer re-emitted every record with fresh identifiers forever, so a
+     * rejected position ends the walk instead. */
+    if (start < 0) return length;
     int64_t cursor = after_optional_module_header(source, start);
     while (cursor < length && token_equal(source, cursor, "type")) {
         int64_t end = type_declaration_end(source, cursor);
@@ -2318,7 +2370,7 @@ static int64_t enum_declaration_start(
     const char *source,
     const char *wanted
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = after_optional_module_header(source, 0);
     while (cursor < length) {
         if (token_equal(source, cursor, "type")) {
@@ -2344,7 +2396,7 @@ static int64_t enum_constructor_token_end(
     const char *source,
     int64_t constructor
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t after = token_end(source, constructor);
     int64_t open = skip_trivia(source, after);
     if (open >= length || !token_equal(source, open, "(")) return after;
@@ -2359,7 +2411,7 @@ static int64_t enum_constructor_token_end(
  * `int64_t`, so a wider field type must fail rather than lower.
  */
 static bool enum_payload_field_supported(const char *source, int64_t open) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t field = skip_trivia(source, token_end(source, open));
     if (
         field >= length ||
@@ -2546,7 +2598,7 @@ static char *parse_program(const char *source) {
     buffer_init(&declared_constructors);
     buffer_append(&declared_types, "|");
     buffer_append(&declared_constructors, "|");
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     buffer_format(&ir, "kofun-stage2-ir/v1\nsource-bytes|%" PRId64 "\n", length);
     stage2_parse_prefix_observe(&ir);
     int64_t cursor = skip_trivia(source, 0);
@@ -2989,7 +3041,7 @@ static char *enum_constructor_owner(
     const char *source,
     const char *wanted
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, 0);
     while (cursor < length) {
         if (token_equal(source, cursor, "type")) {
@@ -3020,7 +3072,7 @@ static char *enum_declaration_names(
     const char *source,
     bool constructors
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     Buffer names;
     buffer_init(&names);
     buffer_append(&names, "|");
@@ -3109,7 +3161,7 @@ static int64_t return_move_at(
 }
 
 static char *borrowed_collection_check(const char *source) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t function_cursor = next_function_start(source, 0);
     int64_t recognized_loops = 0;
     while (function_cursor < length) {
@@ -3414,7 +3466,7 @@ static char *source_slice(const char *source, int64_t start, int64_t end);
  * unsupported parameter type rather than as a malformed callable.
  */
 static int64_t callable_type_end(const char *source, int64_t start) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, start);
     if (cursor >= length) return -1;
     int64_t after_domain = -1;
@@ -3573,7 +3625,7 @@ static char *removed_callable_rewrite(const char *source, int64_t open) {
  * identifier, so only `Fn` immediately followed by `[` is the removed type.
  */
 static char *validate_removed_callable_notation(const char *source) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, 0);
     while (cursor < length) {
         if (
@@ -3627,7 +3679,7 @@ static char *validate_removed_callable_notation(const char *source) {
  * excluded while `double` in `apply(double, 21)` is not.
  */
 static bool call_argument_position(const char *source, int64_t target) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, 0);
     int64_t previous = -1;
     int64_t before_previous = -1;
@@ -3678,7 +3730,7 @@ static char *call_argument_expected_type(
     const char *source,
     int64_t target
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, 0);
     while (cursor < target && cursor < length) {
         if (strcmp(token_kind(source, cursor), "identifier") == 0) {
@@ -3748,7 +3800,7 @@ static char *argument_lambda_name(int64_t open) {
 }
 
 static int64_t primary_end(const char *source, int64_t start) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, start);
     if (cursor >= length) return -1;
     const char *kind = token_kind(source, cursor);
@@ -3798,7 +3850,7 @@ static int64_t unary_end(const char *source, int64_t start) {
 }
 
 static int64_t product_end(const char *source, int64_t start) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = unary_end(source, start);
     if (cursor < 0) return -1;
     int64_t operator_start = skip_trivia(source, cursor);
@@ -3820,7 +3872,7 @@ static int64_t product_end(const char *source, int64_t start) {
 }
 
 static int64_t expression_end(const char *source, int64_t start) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = product_end(source, start);
     if (cursor < 0) return -1;
     int64_t operator_start = skip_trivia(source, cursor);
@@ -3905,7 +3957,7 @@ static char *emit_enum_value(
     int64_t end,
     const char *enum_type
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, start);
     if (
         cursor >= length ||
@@ -4337,7 +4389,7 @@ static char *lower_error(
 );
 
 static int64_t function_arity(const char *source, const char *wanted) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = next_function_start(source, 0);
     int64_t found = -1;
     while (cursor < length) {
@@ -4356,7 +4408,7 @@ static int64_t function_arity(const char *source, const char *wanted) {
 }
 
 static int64_t call_arity(const char *source, int64_t open) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, token_end(source, open));
     if (cursor < length && token_equal(source, cursor, ")")) return 0;
     int64_t arity = 0;
@@ -4479,7 +4531,7 @@ static int64_t enclosing_function_open(
     const char *source,
     int64_t position
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = next_function_start(source, 0);
     while (cursor < length) {
         int64_t close = function_end(source, cursor);
@@ -4521,7 +4573,7 @@ static char *builtin_argument_check(
     if (parameters == NULL) return owned_text("");
     int64_t function_open = enclosing_function_open(source, call_name);
     if (function_open < 0) return owned_text("");
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t argument = skip_trivia(source, token_end(source, open));
     const char *expected = parameters;
     int64_t index = 1;
@@ -4599,7 +4651,7 @@ static char *builtin_argument_check(
  * value-control operands are skipped rather than guessed.
  */
 static char *validate_core_types(const char *source, const char *hir) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t function_start = next_function_start(source, 0);
     while (function_start < length) {
         int64_t function_close = function_end(source, function_start);
@@ -4750,7 +4802,7 @@ static char *validate_core_types(const char *source, const char *hir) {
 }
 
 static char *validate_core_calls(const char *source, const char *hir) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = next_function_start(source, 0);
     char *previous = owned_text("");
     while (cursor < length) {
@@ -5087,7 +5139,7 @@ static bool comparison_operator(const char *source, int64_t cursor) {
 }
 
 static int64_t condition_end(const char *source, int64_t start) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, start);
     if (
         token_equal(source, cursor, "true") ||
@@ -5248,7 +5300,7 @@ static char *parse_value_if(
     int64_t start,
     ValueIfParts *parts
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, start);
     if (cursor >= length || !token_equal(source, cursor, "if")) {
         return lower_error(
@@ -5360,7 +5412,7 @@ static char *parse_value_match(
     int64_t start,
     ValueMatchParts *parts
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, start);
     if (cursor >= length || !token_equal(source, cursor, "match")) {
         return lower_error(
@@ -5889,7 +5941,7 @@ static int64_t core_body_open(
     int64_t function_start,
     bool is_main
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t parameters = parameter_open(source, function_start);
     if (parameters < 0) return -1;
     int64_t parameters_end = balanced_end(source, parameters, "(", ")");
@@ -6116,7 +6168,7 @@ static bool match_arm_pattern_start(const char *source, int64_t target) {
     static int64_t cached_length = -1;
     static int64_t *starts = NULL;
     static int64_t start_count = 0;
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     if (source != cached_source || length != cached_length) {
         free(starts);
         starts = NULL;
@@ -6175,7 +6227,7 @@ static int64_t lambda_parameters_end(
     int64_t previous,
     int64_t open
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     if (!token_equal(source, open, "(")) {
         /* The bare single-parameter form `x => e` decided in #547. It is a
          * lambda everywhere an arm pattern is not, which is why the arm check
@@ -6275,7 +6327,7 @@ static bool lambda_unparenthesised_annotation(
     const char *source,
     int64_t start
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     if (strcmp(token_kind(source, start), "identifier") != 0) return false;
     int64_t colon = skip_trivia(source, token_end(source, start));
     if (colon >= length || !token_equal(source, colon, ":")) return false;
@@ -6504,25 +6556,14 @@ static int64_t text_find_from(
     const char *wanted,
     int64_t start
 ) {
-    int64_t value_length = (int64_t)strlen(value);
-    int64_t wanted_length = (int64_t)strlen(wanted);
-    if (wanted_length == 0) return start;
-    for (
-        int64_t cursor = start;
-        cursor + wanted_length <= value_length;
-        ++cursor
-    ) {
-        if (
-            strncmp(
-                value + cursor,
-                wanted,
-                (size_t)wanted_length
-            ) == 0
-        ) {
-            return cursor;
-        }
-    }
-    return -1;
+    /* The scope-HIR walker searches the document it is still building, once
+     * per record, so this is the pass's inner loop. strstr answers the same
+     * question as the per-position strncmp scan it replaces: the first offset
+     * at or after `start` where `wanted` occurs, or -1. */
+    if (start < 0) return -1;
+    if (wanted[0] == '\0') return start;
+    const char *hit = strstr(value + start, wanted);
+    return hit == NULL ? -1 : (int64_t)(hit - value);
 }
 
 static int64_t decimal_value(const char *value) {
@@ -6560,11 +6601,11 @@ static char *hir_field(
     int64_t line_start,
     int wanted
 ) {
-    int64_t length = (int64_t)strlen(hir);
+    if (line_start < 0) return owned_text("");
     int64_t cursor = line_start;
     int field = 0;
     int64_t field_start = line_start;
-    while (cursor < length) {
+    while (hir[cursor] != '\0') {
         if (hir[cursor] == '|' || hir[cursor] == '\n') {
             if (field == wanted) {
                 size_t field_length = (size_t)(cursor - field_start);
@@ -6589,49 +6630,312 @@ static char *hir_field(
     return owned_text("");
 }
 
+
+/*
+ * Lazy incremental index over scope-HIR "scope", "binding" and "use"
+ * records. The builder appends records and immediately consults the
+ * document, once per record, so answering each consultation with a whole-
+ * document scan made the build quadratic in record count. This index parses
+ * each complete record line exactly once and answers by key instead.
+ *
+ * One slot, keyed on the document pointer. The builder invalidates the slot
+ * when it starts a new document; a pointer change (a moved reallocation or a
+ * different document) rebuilds from the current bytes, and a grown document
+ * re-parses only the lines appended since the previous consultation. Both
+ * fall back to a full re-parse, so the index can be dropped without changing
+ * a single output byte.
+ *
+ * Key layout: one tag byte, then unit-separated parts. Values are line
+ * offsets in document order, so first-match and last-match callers keep
+ * their original selection order.
+ */
+enum { HIR_INDEX_PARTS = 11 };
+
+typedef struct HirIndexEntry {
+    char *key;
+    int64_t *lines;
+    int64_t count;
+    int64_t capacity;
+} HirIndexEntry;
+
+static const char *hir_index_doc;
+static int64_t hir_index_upto;
+static HirIndexEntry *hir_index_entries;
+static int64_t hir_index_count;
+static int64_t hir_index_capacity;
+static Buffer hir_index_key_buffer;
+
+static void hir_index_invalidate(void) {
+    for (int64_t at = 0; at < hir_index_capacity; at += 1) {
+        free(hir_index_entries[at].key);
+        free(hir_index_entries[at].lines);
+    }
+    free(hir_index_entries);
+    hir_index_entries = NULL;
+    hir_index_count = 0;
+    hir_index_capacity = 0;
+    hir_index_doc = NULL;
+    hir_index_upto = 0;
+    free(hir_index_key_buffer.data);
+    hir_index_key_buffer.data = NULL;
+    hir_index_key_buffer.length = 0;
+    hir_index_key_buffer.capacity = 0;
+}
+
+static uint64_t hir_index_hash(const char *key) {
+    uint64_t hash = UINT64_C(1469598103934665603);
+    for (const char *at = key; *at != '\0'; at += 1) {
+        hash ^= (uint64_t)(unsigned char)*at;
+        hash *= UINT64_C(1099511628211);
+    }
+    return hash;
+}
+
+static HirIndexEntry *hir_index_slot(const char *key) {
+    uint64_t probe = hir_index_hash(key) & (uint64_t)(hir_index_capacity - 1);
+    for (;;) {
+        HirIndexEntry *entry = &hir_index_entries[probe];
+        if (entry->key == NULL || strcmp(entry->key, key) == 0) return entry;
+        probe = (probe + 1) & (uint64_t)(hir_index_capacity - 1);
+    }
+}
+
+static void hir_index_grow(void) {
+    int64_t old_capacity = hir_index_capacity;
+    HirIndexEntry *old_entries = hir_index_entries;
+    hir_index_capacity = old_capacity == 0 ? 1024 : old_capacity * 2;
+    hir_index_entries = calloc(
+        (size_t)hir_index_capacity,
+        sizeof(HirIndexEntry)
+    );
+    if (hir_index_entries == NULL) fail("stage2 seed: out of memory");
+    for (int64_t at = 0; at < old_capacity; at += 1) {
+        if (old_entries[at].key == NULL) continue;
+        *hir_index_slot(old_entries[at].key) = old_entries[at];
+    }
+    free(old_entries);
+}
+
+static void hir_index_add(const char *key, int64_t line, bool first_only) {
+    if (hir_index_count * 10 >= hir_index_capacity * 7) hir_index_grow();
+    HirIndexEntry *entry = hir_index_slot(key);
+    if (entry->key == NULL) {
+        entry->key = owned_text(key);
+        hir_index_count += 1;
+    } else if (first_only) {
+        return;
+    }
+    if (entry->count == entry->capacity) {
+        entry->capacity = entry->capacity == 0 ? 2 : entry->capacity * 2;
+        int64_t *lines = realloc(
+            entry->lines,
+            (size_t)entry->capacity * sizeof(int64_t)
+        );
+        if (lines == NULL) fail("stage2 seed: out of memory");
+        entry->lines = lines;
+    }
+    entry->lines[entry->count] = line;
+    entry->count += 1;
+}
+
+/* The fields of one record line, as offsets of each '|'-separated part.
+ * Returns the number of parts found, up to HIR_INDEX_PARTS. */
+static int hir_index_split(
+    const char *doc,
+    int64_t line,
+    int64_t newline,
+    int64_t *starts,
+    int64_t *ends
+) {
+    int parts = 0;
+    int64_t start = line;
+    for (int64_t at = line; at <= newline && parts < HIR_INDEX_PARTS; at += 1) {
+        if (at == newline || doc[at] == '|') {
+            starts[parts] = start;
+            ends[parts] = at;
+            parts += 1;
+            start = at + 1;
+        }
+    }
+    return parts;
+}
+
+/* "tag \x1f first [\x1f second]" in the reused key buffer. Both the refresh
+ * loop and every lookup build their keys here, so the wire format has one
+ * writer; the buffer is grown in place and freed by hir_index_invalidate. */
+static const char *hir_index_key(
+    char tag,
+    const char *first,
+    size_t first_length,
+    const char *second,
+    size_t second_length
+) {
+    Buffer *key = &hir_index_key_buffer;
+    if (key->data == NULL) buffer_init(key);
+    key->length = 0;
+    buffer_reserve(key, first_length + second_length + 4);
+    key->data[key->length] = tag;
+    key->length += 1;
+    key->data[key->length] = '\x1f';
+    key->length += 1;
+    memcpy(key->data + key->length, first, first_length);
+    key->length += first_length;
+    if (second != NULL) {
+        key->data[key->length] = '\x1f';
+        key->length += 1;
+        memcpy(key->data + key->length, second, second_length);
+        key->length += second_length;
+    }
+    key->data[key->length] = '\0';
+    return key->data;
+}
+
+static void hir_index_refresh(const char *doc) {
+    if (doc != hir_index_doc) {
+        hir_index_invalidate();
+        hir_index_doc = doc;
+    }
+    if (hir_index_capacity == 0) hir_index_grow();
+    int64_t cursor = hir_index_upto;
+    for (;;) {
+        int64_t newline = cursor;
+        while (doc[newline] != '\0' && doc[newline] != '\n') newline += 1;
+        if (doc[newline] == '\0') break;
+        int64_t starts[HIR_INDEX_PARTS];
+        int64_t ends[HIR_INDEX_PARTS];
+        int parts = hir_index_split(doc, cursor, newline, starts, ends);
+        int64_t width = ends[0] - starts[0];
+        if (width == 5 && strncmp(doc + starts[0], "scope", 5) == 0) {
+            if (parts > 1) {
+                hir_index_add(
+                    hir_index_key(
+                        'c', doc + starts[1],
+                        (size_t)(ends[1] - starts[1]), NULL, 0
+                    ),
+                    cursor, true
+                );
+            }
+            if (parts > 4) {
+                hir_index_add(
+                    hir_index_key(
+                        'o', doc + starts[4],
+                        (size_t)(ends[4] - starts[4]), NULL, 0
+                    ),
+                    cursor, true
+                );
+            }
+        } else if (
+            width == 7 && strncmp(doc + starts[0], "binding", 7) == 0
+        ) {
+            if (parts > 1) {
+                hir_index_add(
+                    hir_index_key(
+                        'b', doc + starts[1],
+                        (size_t)(ends[1] - starts[1]), NULL, 0
+                    ),
+                    cursor, true
+                );
+            }
+            if (parts > 3) {
+                hir_index_add(
+                    hir_index_key(
+                        'n', doc + starts[2], (size_t)(ends[2] - starts[2]),
+                        doc + starts[3], (size_t)(ends[3] - starts[3])
+                    ),
+                    cursor, false
+                );
+            }
+            if (parts > 8) {
+                hir_index_add(
+                    hir_index_key(
+                        'd', doc + starts[8],
+                        (size_t)(ends[8] - starts[8]), NULL, 0
+                    ),
+                    cursor, true
+                );
+            }
+        } else if (width == 3 && strncmp(doc + starts[0], "use", 3) == 0) {
+            if (parts > 1) {
+                hir_index_add(
+                    hir_index_key(
+                        'u', doc + starts[1],
+                        (size_t)(ends[1] - starts[1]), NULL, 0
+                    ),
+                    cursor, true
+                );
+            }
+        }
+        cursor = newline + 1;
+    }
+    hir_index_upto = cursor;
+}
+
+/* The record lines a key names, in document order; NULL when none do. The
+ * returned entry borrows the index's table and is valid only until the next
+ * index call, which may grow the table; consumers must not hold it across
+ * another lookup or refresh. */
+static const HirIndexEntry *hir_index_list(
+    const char *doc,
+    char tag,
+    const char *first,
+    const char *second
+) {
+    hir_index_refresh(doc);
+    const char *key = hir_index_key(
+        tag,
+        first, strlen(first),
+        second, second == NULL ? 0 : strlen(second)
+    );
+    HirIndexEntry *entry = hir_index_slot(key);
+    return entry->key == NULL ? NULL : entry;
+}
+
+/* The first record line a key names, or -1. */
+static int64_t hir_index_first(
+    const char *doc,
+    char tag,
+    const char *first,
+    const char *second
+) {
+    const HirIndexEntry *entry = hir_index_list(doc, tag, first, second);
+    return entry == NULL ? -1 : entry->lines[0];
+}
+
+/* One field of the first record a key names, or "" when no record does. */
+static char *hir_index_field(
+    const char *doc,
+    char tag,
+    const char *first,
+    const char *second,
+    int field
+) {
+    int64_t line = hir_index_first(doc, tag, first, second);
+    if (line < 0) return owned_text("");
+    return hir_field(doc, line, field);
+}
+
+/* hir_index_field for the integer-valued keys. */
+static char *hir_index_field_number(
+    const char *doc,
+    char tag,
+    int64_t number,
+    int field
+) {
+    char text[24];
+    snprintf(text, sizeof text, "%" PRId64, number);
+    return hir_index_field(doc, tag, text, NULL, field);
+}
+
 static char *hir_same_scope_declaration(
     const char *hir,
     const char *scope_id,
     const char *name
 ) {
-    int64_t line = hir_record_start(hir, "binding", 0);
-    while (line >= 0) {
-        char *binding_scope = hir_field(hir, line, 2);
-        char *binding_name = hir_field(hir, line, 3);
-        bool found =
-            strcmp(binding_scope, scope_id) == 0 &&
-            strcmp(binding_name, name) == 0;
-        free(binding_scope);
-        free(binding_name);
-        if (found) return hir_field(hir, line, 8);
-        line = hir_record_start(hir, "binding", line + 1);
-    }
-    return owned_text("");
+    return hir_index_field(hir, 'n', scope_id, name, 8);
 }
 
 static char *hir_scope_id_for_open(const char *hir, int64_t open) {
-    int64_t line = hir_record_start(hir, "scope", 0);
-    while (line >= 0) {
-        char *open_text = hir_field(hir, line, 4);
-        bool found = decimal_value(open_text) == open;
-        free(open_text);
-        if (found) return hir_field(hir, line, 1);
-        line = hir_record_start(hir, "scope", line + 1);
-    }
-    return owned_text("");
-}
-
-/* The scope a binding was declared in, or "" when the id names no binding. */
-static char *hir_binding_scope(const char *hir, const char *binding_id) {
-    int64_t line = hir_record_start(hir, "binding", 0);
-    while (line >= 0) {
-        char *candidate = hir_field(hir, line, 1);
-        bool found = strcmp(candidate, binding_id) == 0;
-        free(candidate);
-        if (found) return hir_field(hir, line, 2);
-        line = hir_record_start(hir, "binding", line + 1);
-    }
-    return owned_text("");
+    return hir_index_field_number(hir, 'o', open, 1);
 }
 
 /* The byte the binding's declaration starts at, or -1 for an unknown id. */
@@ -6639,20 +6943,10 @@ static int64_t hir_binding_declaration_start(
     const char *hir,
     const char *binding_id
 ) {
-    int64_t line = hir_record_start(hir, "binding", 0);
-    while (line >= 0) {
-        char *candidate = hir_field(hir, line, 1);
-        bool found = strcmp(candidate, binding_id) == 0;
-        free(candidate);
-        if (found) {
-            char *start_text = hir_field(hir, line, 8);
-            int64_t start = decimal_value(start_text);
-            free(start_text);
-            return start;
-        }
-        line = hir_record_start(hir, "binding", line + 1);
-    }
-    return -1;
+    char *start_text = hir_binding_field(hir, binding_id, 8);
+    int64_t start = start_text[0] == '\0' ? -1 : decimal_value(start_text);
+    free(start_text);
+    return start;
 }
 
 /*
@@ -6711,7 +7005,7 @@ static int64_t callable_parameter_type_start(
     const char *hir,
     const char *binding_id
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t declaration_start = hir_binding_declaration_start(hir, binding_id);
     if (declaration_start < 0) return -1;
     int64_t colon = skip_trivia(source, token_end(source, declaration_start));
@@ -6772,7 +7066,7 @@ static char *lambda_captures(
         free(start_text);
         if (use_start > lambda_open && use_start < body_end) {
             char *binding_id = hir_field(hir, line, 4);
-            char *binding_scope = hir_binding_scope(hir, binding_id);
+            char *binding_scope = hir_binding_field(hir, binding_id, 2);
             /* A lambda binding in an enclosing scope is not a capture: it has
              * no `int64_t` to pass, and the call reaches its lifted function
              * by name. Counting it would emit a parameter for a C variable
@@ -6883,15 +7177,7 @@ static char *hir_scope_field(
     const char *scope_id,
     int field
 ) {
-    int64_t line = hir_record_start(hir, "scope", 0);
-    while (line >= 0) {
-        char *candidate = hir_field(hir, line, 1);
-        bool found = strcmp(candidate, scope_id) == 0;
-        free(candidate);
-        if (found) return hir_field(hir, line, field);
-        line = hir_record_start(hir, "scope", line + 1);
-    }
-    return owned_text("");
+    return hir_index_field(hir, 'c', scope_id, NULL, field);
 }
 
 static char *hir_binding_field(
@@ -6899,42 +7185,18 @@ static char *hir_binding_field(
     const char *binding_id,
     int field
 ) {
-    int64_t line = hir_record_start(hir, "binding", 0);
-    while (line >= 0) {
-        char *candidate = hir_field(hir, line, 1);
-        bool found = strcmp(candidate, binding_id) == 0;
-        free(candidate);
-        if (found) return hir_field(hir, line, field);
-        line = hir_record_start(hir, "binding", line + 1);
-    }
-    return owned_text("");
+    return hir_index_field(hir, 'b', binding_id, NULL, field);
 }
 
 static char *hir_definition_id_at(
     const char *hir,
     int64_t declaration_start
 ) {
-    int64_t line = hir_record_start(hir, "binding", 0);
-    while (line >= 0) {
-        char *start_text = hir_field(hir, line, 8);
-        bool found = decimal_value(start_text) == declaration_start;
-        free(start_text);
-        if (found) return hir_field(hir, line, 1);
-        line = hir_record_start(hir, "binding", line + 1);
-    }
-    return owned_text("");
+    return hir_index_field_number(hir, 'd', declaration_start, 1);
 }
 
 static char *hir_use_binding_id(const char *hir, int64_t use_start) {
-    int64_t line = hir_record_start(hir, "use", 0);
-    while (line >= 0) {
-        char *start_text = hir_field(hir, line, 1);
-        bool found = decimal_value(start_text) == use_start;
-        free(start_text);
-        if (found) return hir_field(hir, line, 4);
-        line = hir_record_start(hir, "use", line + 1);
-    }
-    return owned_text("");
+    return hir_index_field_number(hir, 'u', use_start, 4);
 }
 
 static char *hir_resolve_binding(
@@ -6945,30 +7207,19 @@ static char *hir_resolve_binding(
 ) {
     char *scope_id = owned_text(current_scope);
     while (scope_id[0] != '\0' && strcmp(scope_id, "-1") != 0) {
-        char *resolved = owned_text("");
-        int64_t line = hir_record_start(hir, "binding", 0);
-        while (line >= 0) {
-            char *binding_scope = hir_field(hir, line, 2);
-            char *binding_name = hir_field(hir, line, 3);
+        const HirIndexEntry *list =
+            hir_index_list(hir, 'n', scope_id, name);
+        int64_t entries = list == NULL ? 0 : list->count;
+        for (int64_t at = entries - 1; at >= 0; at -= 1) {
+            int64_t line = list->lines[at];
             char *visible_text = hir_field(hir, line, 10);
-            bool matches =
-                strcmp(binding_scope, scope_id) == 0 &&
-                strcmp(binding_name, name) == 0 &&
-                decimal_value(visible_text) <= use_start;
-            free(binding_scope);
-            free(binding_name);
+            bool visible = decimal_value(visible_text) <= use_start;
             free(visible_text);
-            if (matches) {
-                free(resolved);
-                resolved = hir_field(hir, line, 1);
+            if (visible) {
+                free(scope_id);
+                return hir_field(hir, line, 1);
             }
-            line = hir_record_start(hir, "binding", line + 1);
         }
-        if (resolved[0] != '\0') {
-            free(scope_id);
-            return resolved;
-        }
-        free(resolved);
         char *parent = hir_scope_field(hir, scope_id, 2);
         free(scope_id);
         scope_id = parent;
@@ -6985,27 +7236,21 @@ static char *hir_pending_declaration(
 ) {
     char *scope_id = owned_text(current_scope);
     while (scope_id[0] != '\0' && strcmp(scope_id, "-1") != 0) {
-        int64_t line = hir_record_start(hir, "binding", 0);
-        while (line >= 0) {
-            char *scope = hir_field(hir, line, 2);
-            char *binding_name = hir_field(hir, line, 3);
+        const HirIndexEntry *list =
+            hir_index_list(hir, 'n', scope_id, name);
+        int64_t entries = list == NULL ? 0 : list->count;
+        for (int64_t at = 0; at < entries; at += 1) {
+            int64_t line = list->lines[at];
             char *declaration_text = hir_field(hir, line, 8);
             char *visible_text = hir_field(hir, line, 10);
             int64_t declaration = decimal_value(declaration_text);
             int64_t visible = decimal_value(visible_text);
-            bool found =
-                strcmp(scope, scope_id) == 0 &&
-                strcmp(binding_name, name) == 0 &&
-                declaration < use_start && use_start < visible;
-            free(scope);
-            free(binding_name);
             free(visible_text);
-            if (found) {
+            if (declaration < use_start && use_start < visible) {
                 free(scope_id);
                 return declaration_text;
             }
             free(declaration_text);
-            line = hir_record_start(hir, "binding", line + 1);
         }
         char *parent = hir_scope_field(hir, scope_id, 2);
         free(scope_id);
@@ -7118,7 +7363,7 @@ static char *function_return_type_at(
     const char *source,
     int64_t function_start
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t parameters = parameter_open(source, function_start);
     int64_t parameters_end;
     int64_t after;
@@ -7142,7 +7387,7 @@ static char *function_return_type_at(
 /* Declared result type of a user function: the token after `->`, `Void`
  * when there is no arrow, empty when the function is not declared. */
 static char *function_return_type(const char *source, const char *wanted) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = next_function_start(source, 0);
     while (cursor < length) {
         char *name = function_name(source, cursor);
@@ -7221,7 +7466,7 @@ static char *function_parameter_type(
     const char *wanted,
     int64_t index
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = next_function_start(source, 0);
     while (cursor < length) {
         char *name = function_name(source, cursor);
@@ -7240,7 +7485,7 @@ static char *function_return_type_containing(
     const char *source,
     int64_t position
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = next_function_start(source, 0);
     while (cursor < length) {
         int64_t end = function_end(source, cursor);
@@ -7276,7 +7521,7 @@ static char *initializer_type(
     int64_t function_open,
     int64_t initializer
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t end = expression_end(source, initializer);
     if (end < 0) end = token_end(source, initializer);
     /* The operator scan covers the whole initializer line: it ends at the
@@ -7415,7 +7660,8 @@ static char *build_scope_hir_mode(
     const char *source,
     bool preserve_pattern_candidates
 ) {
-    int64_t length = (int64_t)strlen(source);
+    hir_index_invalidate();
+    int64_t length = source_length(source);
     /* The removed callable notation is rejected before any binding is
      * collected, so a source written in it gets the migration diagnostic
      * rather than whatever its multi-token type happens to desynchronise. */
@@ -8621,7 +8867,7 @@ static char *build_scope_hir(const char *source) {
 }
 
 static char *validate_enum_uses(const char *source, const char *hir) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     char *constructor_names = enum_declaration_names(source, true);
     if (strcmp(constructor_names, "|") == 0) {
         free(constructor_names);
@@ -8898,7 +9144,7 @@ static char *validate_enum_uses(const char *source, const char *hir) {
 }
 
 static int64_t enum_match_end(const char *source, int64_t start) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t value_start = skip_trivia(source, token_end(source, start));
     int64_t arms_open = skip_trivia(source, token_end(source, value_start));
     if (arms_open >= length || !token_equal(source, arms_open, "{")) {
@@ -8936,7 +9182,7 @@ static char *lower_enum_match(
     bool is_main,
     int64_t function_open
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t value_start = skip_trivia(
         source,
         token_end(source, match_start)
@@ -9474,7 +9720,7 @@ static char *lower_body(
     bool append_default,
     int64_t function_open
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     Buffer emitted;
     buffer_init(&emitted);
     int64_t cursor = skip_trivia(source, token_end(source, open));
@@ -10836,7 +11082,7 @@ static char *emit_lifted_lambdas(
     Buffer *prototypes,
     Buffer *bodies
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, 0);
     while (cursor < length) {
         if (!token_equal(source, cursor, "let")) {
@@ -10992,7 +11238,7 @@ static char *emit_lifted_argument_lambdas(
     Buffer *prototypes,
     Buffer *bodies
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, 0);
     int64_t previous = -1;
     int64_t before_previous = -1;
@@ -11093,7 +11339,7 @@ static char *validate_argument_lambda_captures(
     const char *source,
     const char *hir
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, 0);
     int64_t previous = -1;
     int64_t before_previous = -1;
@@ -11154,7 +11400,7 @@ static bool numeric_conversion_head(const char *source, int64_t cursor) {
     bool numeric = numeric_name(name)[0] != '\0';
     free(name);
     if (!numeric) return false;
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t dot = skip_trivia(source, token_end(source, cursor));
     return dot < length && token_equal(source, dot, ".");
 }
@@ -11168,7 +11414,7 @@ static bool numeric_conversion_head(const char *source, int64_t cursor) {
  */
 static char *numeric_conversion_at(const char *source, int64_t cursor) {
     if (!numeric_conversion_head(source, cursor)) return owned_text("");
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t dot = skip_trivia(source, token_end(source, cursor));
     int64_t member = skip_trivia(source, token_end(source, dot));
     if (
@@ -11273,7 +11519,7 @@ static const char *numeric_primary_type(
     int64_t function_open,
     int64_t start
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, start);
     if (cursor >= length) return "";
     /* Unary sign and a parenthesised group both delegate to what follows. */
@@ -11345,7 +11591,7 @@ static char *validate_numeric_operand_types(
     const char *source,
     const char *hir
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t function_start = next_function_start(source, 0);
     while (function_start < length) {
         int64_t function_close = function_end(source, function_start);
@@ -11487,7 +11733,7 @@ static char *validate_numeric_annotations(
     const char *source,
     const char *hir
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t function_start = next_function_start(source, 0);
     while (function_start < length) {
         int64_t function_close = function_end(source, function_start);
@@ -11604,7 +11850,7 @@ static char *validate_numeric_conversions(
     const char *source,
     const char *hir
 ) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t function_start = next_function_start(source, 0);
     int64_t valid_conversion = -1;
     while (function_start < length) {
@@ -11764,7 +12010,7 @@ static char *validate_numeric_conversions(
  * exactly what `docs/DECIMAL.md` forbids.
  */
 static char *validate_unsupported_numeric_kinds(const char *source) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, 0);
     while (cursor < length) {
         const char *kind = token_kind(source, cursor);
@@ -11847,7 +12093,7 @@ static char *validate_unsupported_numeric_kinds(const char *source) {
 }
 
 static char *lower_c(const char *source, const char *hir) {
-    int64_t length = (int64_t)strlen(source);
+    int64_t length = source_length(source);
     /* A mixed-type expression is reported before the unsupported-kind refusal,
      * so `1 + 1.5` says what is wrong with it rather than reporting the more
      * generic "no arithmetic yet". */
@@ -13982,7 +14228,7 @@ static char *emit_selfhost_hir_document(
     Sh sh;
     memset(&sh, 0, sizeof(sh));
     sh.source = source;
-    sh.length = (int64_t)strlen(source);
+    sh.length = source_length(source);
     buffer_init(&sh.types);
     buffer_init(&sh.scopes);
     buffer_init(&sh.symbols);

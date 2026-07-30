@@ -1520,6 +1520,13 @@ fn after_optional_module_header(source: Text, start: Int) -> Int {
 }
 
 fn next_function_start(source: Text, start: Int) -> Int {
+    # Callers advance with function_end's result, which is -1 for a position
+    # that is not a function declaration. Restarting the walk from before the
+    # source re-emitted every record with fresh identifiers forever, so a
+    # rejected position ends the walk instead.
+    if start < 0 {
+        return len(source)
+    }
     let mut cursor = after_optional_module_header(source, start)
     while cursor < len(source) && token_text(source, cursor) == "type" {
         let end = type_declaration_end(source, cursor)
