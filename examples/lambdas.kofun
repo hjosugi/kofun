@@ -1,6 +1,6 @@
 # Lambdas in Kofun.
 #
-# Every form below is one the compiler accepts today. `make verify` runs this
+# Every form below is one the compiler accepts today. `task verify` runs this
 # file through `kofun run` and compares its output, so this example cannot
 # drift ahead of the implementation the way the documentation once did.
 #

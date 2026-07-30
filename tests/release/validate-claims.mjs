@@ -21,6 +21,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { validateAgainstSchema } from '../lib/json-schema.mjs'
+import { taskfileTasks } from '../lib/taskfile.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const SCHEMA_PATH = 'spec/release-claim.schema.json'
@@ -52,15 +53,6 @@ function trackedFiles() {
         maxBuffer: 64 * 1024 * 1024,
     })
     return new Set(output.split('\0').filter((entry) => entry !== ''))
-}
-
-function makefileTargets() {
-    const targets = new Set()
-    for (const line of readRepositoryFile('Makefile').split('\n')) {
-        const match = /^([A-Za-z][A-Za-z0-9_-]*):/.exec(line)
-        if (match) targets.add(match[1])
-    }
-    return targets
 }
 
 // Capability rows published in a Markdown table. The first column is the
@@ -130,11 +122,11 @@ function checkPath(report, subject, field, value, tracked) {
 }
 
 function checkCommand(report, subject, field, value, tracked, targets) {
-    const make = /^make ([A-Za-z][A-Za-z0-9_-]*)$/.exec(value)
-    if (make) {
-        if (!targets.has(make[1])) {
-            report.fail(subject, `${field} names the missing make target \`${make[1]}\``,
-                'name a target that exists in the Makefile')
+    const task = /^task ([A-Za-z][A-Za-z0-9_-]*)$/.exec(value)
+    if (task) {
+        if (!targets.has(task[1])) {
+            report.fail(subject, `${field} names the missing task \`${task[1]}\``,
+                'name a task that exists in Taskfile.yml')
         }
         return
     }
@@ -144,7 +136,7 @@ function checkCommand(report, subject, field, value, tracked, targets) {
         return
     }
     report.fail(subject, `${field} \`${value}\` is not a resolvable command`,
-        'write it as `make <target>` or `sh <tracked-script>` so the checker can resolve it')
+        'write it as `task <name>` or `sh <tracked-script>` so the checker can resolve it')
 }
 
 function validateManifest(manifest, schema, manifestPath = MANIFEST_PATH) {
@@ -158,7 +150,7 @@ function validateManifest(manifest, schema, manifestPath = MANIFEST_PATH) {
     if (!report.ok) return report
 
     const tracked = trackedFiles()
-    const targets = makefileTargets()
+    const targets = taskfileTasks(ROOT)
     const areas = new Set(manifest.areas)
     const declaredTargets = new Set(manifest.targets)
 
@@ -405,7 +397,7 @@ function claimsPage(manifest) {
     const lines = [
         '# Release claims',
         '',
-        `Generated from \`${MANIFEST_PATH}\` by \`make release-evidence\`. Do not edit.`,
+        `Generated from \`${MANIFEST_PATH}\` by \`task release-evidence\`. Do not edit.`,
         '',
         '| Claim | State | Area | Capability |',
         '|---|---|---|---|',
@@ -421,7 +413,7 @@ function evidencePage(manifest) {
     const lines = [
         '# Release evidence',
         '',
-        `Generated from \`${MANIFEST_PATH}\` by \`make release-evidence\`. Do not edit.`,
+        `Generated from \`${MANIFEST_PATH}\` by \`task release-evidence\`. Do not edit.`,
         '',
         '| Claim | Positive gate | Observation |',
         '|---|---|---|',
@@ -438,7 +430,7 @@ function limitsPage(manifest) {
     const lines = [
         '# Release limits',
         '',
-        `Generated from \`${MANIFEST_PATH}\` by \`make release-evidence\`. Do not edit.`,
+        `Generated from \`${MANIFEST_PATH}\` by \`task release-evidence\`. Do not edit.`,
         '',
         '## Claims with no executable gate',
         '',
@@ -468,13 +460,13 @@ function reproPage(manifest) {
     const lines = [
         '# Reproducing the release evidence',
         '',
-        `Generated from \`${MANIFEST_PATH}\` by \`make release-evidence\`. Do not edit.`,
+        `Generated from \`${MANIFEST_PATH}\` by \`task release-evidence\`. Do not edit.`,
         '',
         'From a clean checkout:',
         '',
         '```sh',
-        'make verify',
-        'make release-evidence',
+        'task verify',
+        'task release-evidence',
         '```',
         '',
         '## External prerequisites',

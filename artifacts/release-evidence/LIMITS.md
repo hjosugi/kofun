@@ -1,6 +1,6 @@
 # Release limits
 
-Generated from `release/claims.json` by `make release-evidence`. Do not edit.
+Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 
 ## Claims with no executable gate
 
@@ -42,7 +42,7 @@ Generated from `release/claims.json` by `make release-evidence`. Do not edit.
 | `rust-crate-shim` | skip | `examples/rust-shim/check.sh` | Without Cargo the gate reports a skip rather than a pass. |
 | `self-recompile` | rejection | `bootstrap/selfhost/driver/corpus_reject.kofun` | A source outside the profile is refused identically by both seeds and writes no C. |
 | `selfhost-native-corpus` | limit | `bootstrap/selfhost/driver/corpus_reject.stdout` | The refusing corpus keeps its pinned output; a change in either path fails the gate. |
-| `source-extension` | rejection | `Makefile` | A `.kf`, `.py`, `.pyc` or `.pyo` file, or a `pyproject.toml`, fails `repository-check`. |
+| `source-extension` | rejection | `Taskfile.yml` | A `.kf`, `.py`, `.pyc` or `.pyo` file, or a `pyproject.toml`, fails `repository-check`. |
 | `stable-diagnostics` | rejection | `tests/diagnostics/registry.tsv` | A code without an executable owner, or an owner without a registry row, fails the gate. |
 | `stage2-core-lowering` | rejection | `tests/diagnostics/stage2/e2s10_unsupported_statement.kofun` | A statement outside the Core is refused with `E2S10`. |
 | `stage2-typed-sidecar` | rejection | `tests/typed-sidecar/authority-boundary.sh` | A compiler, KIF or cache consumer of the sidecar is refused by the authority-boundary gate. |

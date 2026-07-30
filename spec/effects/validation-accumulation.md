@@ -418,7 +418,7 @@ The conformance corpus for the first implementation, from #742:
 | Ordering and laws | corpus items 4, 5, and the law fixtures | full-observation laws hold; law 9 carries its label |
 | Ownership | corpus item 7 | borrowed forms pass; duplicated consume is refused |
 | Complexity | corpus item 8 under a #640-compatible benchmark | linear budget met, including left-associated shapes |
-| Repository | `make verify` | pass |
+| Repository | `task verify` | pass |
 
 None of these artifacts exist yet. They are the acceptance bar for the first
 implementation, and no capability claim about validation accumulation may

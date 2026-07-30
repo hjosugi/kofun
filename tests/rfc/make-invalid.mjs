@@ -36,7 +36,7 @@ const MUTATIONS = {
             find(ledger, 'DD-013').implementation = {
                 change: 'https://github.com/hjosugi/kofun/issues/687',
                 enablement: 'Enabled everywhere.',
-                gate: 'make verify',
+                gate: 'task verify',
                 claims: ['checked-int64-contract'],
             }
         },

@@ -113,7 +113,7 @@ observably a `D00x` code and never a clamped value. Leading zeros do not
 consume the digit budget, and trailing zeros are canonicalized away before the
 scale is checked, so `1000.000` costs one digit and not seven.
 
-The representation is `bootstrap/stage2/decimal_v1.c`; `make decimal` is its
+The representation is `bootstrap/stage2/decimal_v1.c`; `task decimal` is its
 gate. A significand is a base-2^32 magnitude with no width ceiling, and the
 small-value path is proven unobservable by constructing the last inline value
 and the first promoted one and comparing every public observation.

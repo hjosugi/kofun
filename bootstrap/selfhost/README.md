@@ -16,7 +16,7 @@ source/profile drift.
 Run the gate with:
 
 ```sh
-make selfhost-profile
+task selfhost-profile
 ```
 
 ## Typed HIR contract and phase gates
@@ -36,7 +36,7 @@ The frontend phase gate fails whenever any profile row's frontend cell
 lacks checked-in evidence, listing each pending cell explicitly; it is the
 #619 acceptance check. Since #654 landed the canonical-source port of the
 typed-HIR emitter and per-family fixtures, all 46 frontend cells carry
-evidence in `frontend/` and the gate runs green inside `make verify`.
+evidence in `frontend/` and the gate runs green inside `task verify`.
 The c11-text and c11-control gates are the matching #620/#621
 completion checks for the c11 cells owned by the Text/function slice
 and the mutation/loop/List slice. #622 completed the remaining host

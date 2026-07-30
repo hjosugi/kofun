@@ -39,7 +39,7 @@ This bootstrap split is intentional:
 Run the non-skipping acceptance gate with:
 
 ```sh
-make cli-framework
+task cli-framework
 ```
 
 See [TUTORIAL.md](TUTORIAL.md), [REFERENCE.md](REFERENCE.md), and

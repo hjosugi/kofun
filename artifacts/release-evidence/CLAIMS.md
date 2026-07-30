@@ -1,6 +1,6 @@
 # Release claims
 
-Generated from `release/claims.json` by `make release-evidence`. Do not edit.
+Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 
 | Claim | State | Area | Capability |
 |---|---|---|---|

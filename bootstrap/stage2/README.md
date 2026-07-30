@@ -178,7 +178,7 @@ resource diagnostics. This helper performs no type-argument inference,
 generic nominal typing, bounds, traits, recursive generic calls,
 monomorphization, dictionary selection, layout, or backend emission. The main
 CLI does not route ordinary builds through it. Run its analyzer- and
-sanitizer-backed gate with `make generics`.
+sanitizer-backed gate with `task generics`.
 
 `bootstrap/stage2/adt_exhaustiveness.c` is the resolved flat-ADT match
 checkpoint. It defensively joins the declaration table, lossless Pattern tree,
@@ -197,7 +197,7 @@ alternative matched. `E2S25` lists missing witnesses in declaration order and
 alternative rather than the arm when the arm has more than one. One arm accepts
 at most 64 alternatives. One-`Int` payload constructors accept `_` or one
 binding; nested payload usefulness remains outside this bounded slice. Run the
-transactional, sanitizer-backed gate with `make adt-exhaustiveness`.
+transactional, sanitizer-backed gate with `task adt-exhaustiveness`.
 
 `bootstrap/stage2/module_symbols.c` is the next resolver-side checkpoint. It
 consumes a validated inventory of raw `PackageId`, `ModuleId`, and `FileId`
@@ -280,7 +280,7 @@ names, local/import collisions, wrong-namespace uses, per-name aliases,
 wildcards, malformed lists, and imports after declarations fail before the
 HIR or optional reference C output is committed. The two outputs are
 installed as one rollback-capable transaction. Run the gates with
-`make import-aliases` and `make imports-selective`.
+`task import-aliases` and `task imports-selective`.
 
 `bootstrap/stage2/re_exports.c` builds on both import binding forms for the
 accepted `pub import a.b` and `pub from a.b import Name` header declarations.
@@ -302,7 +302,7 @@ separately; a defensive source-free consumer proves the distinction. These
 source exports do not grant linker, FFI, or runtime forwarding. The helper and
 its six-field inventory are not yet routed through ordinary `bin/kofun`
 builds. Run the sanitizer-, analyzer-, and boundary-backed gate with
-`make re-exports`.
+`task re-exports`.
 
 `bootstrap/stage2/incremental_graph.c` is the persisted compiler semantic
 dependency graph built on those digests. It resolves one package inventory,
@@ -333,7 +333,7 @@ failure is never reusable as a success. This helper owns compiler semantics
 only: it is not Frost's target/action graph, it schedules nothing, and it makes
 no timing claim. Target profile changes, failure-then-repair reuse, and
 path-remapped clean copies are the recorded second slice of #301. Run the
-sanitizer- and analyzer-backed gate with `make incremental`.
+sanitizer- and analyzer-backed gate with `task incremental`.
 
 Focused import diagnostics are `E2S59` malformed/order/path/alias, `E2S60`
 missing module, `E2S61` self import, `E2S62` duplicate target/import, `E2S63`
@@ -375,7 +375,7 @@ phase, bound, and `ETS03`/`ETS04` contracts are checked in at
 independently and maps them into an explicitly requested, non-authoritative
 single-file sidecar; its complete field table is
 `../../tooling/typed-sidecar/stage2-projection-v1.md`. Run the producer and
-projector gates with `make stage2-events` and `make typed-sidecar-projector`.
+projector gates with `task stage2-events` and `task typed-sidecar-projector`.
 
 ## Verification
 

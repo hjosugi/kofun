@@ -2,7 +2,7 @@
   "schema": "kofun.release-evidence/v1",
   "manifest_version": 1,
   "inputs": {
-    "release/claims.json": "27373232b0c48d5eae72afe96b9aa489381f16d3c82976d0c738a4f516a05617",
+    "release/claims.json": "33a8dfde325f56c4e1ecd06351129eb5592ace864fb416e7b5aae26781337b09",
     "spec/release-claim.schema.json": "c04dd081fbe161b0a0dacb22480dea0e3549f358fcbcb35c0497ca8b2c4c8b21"
   },
   "states": {
@@ -22,7 +22,7 @@
       ],
       "positive_gate": "sh tests/cli.sh",
       "negative_boundary": "tests/conformance/numeric/reject_slash_operator.kofun",
-      "reproduction": "make test",
+      "reproduction": "task test",
       "prerequisites": []
     },
     {
@@ -34,7 +34,7 @@
       ],
       "positive_gate": "sh bootstrap/stage2/check.sh",
       "negative_boundary": "tests/compile-fail/use_after_take.kofun",
-      "reproduction": "make stage2",
+      "reproduction": "task stage2",
       "prerequisites": []
     },
     {
@@ -47,7 +47,7 @@
       ],
       "positive_gate": "sh bootstrap/c_abi/check.sh",
       "negative_boundary": "tests/conformance/capabilities.tsv",
-      "reproduction": "make c-abi",
+      "reproduction": "task c-abi",
       "prerequisites": [
         "cc"
       ]
@@ -62,7 +62,7 @@
       ],
       "positive_gate": "sh bootstrap/stage2/check.sh",
       "negative_boundary": "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun",
-      "reproduction": "make stage2",
+      "reproduction": "task stage2",
       "prerequisites": [
         "cc"
       ]
@@ -80,7 +80,7 @@
       ],
       "positive_gate": "sh tests/conformance/run.sh",
       "negative_boundary": "tests/conformance/numeric/reject_slash_operator.kofun",
-      "reproduction": "make check",
+      "reproduction": "task check",
       "prerequisites": []
     },
     {
@@ -93,7 +93,7 @@
       ],
       "positive_gate": "sh tests/cli.sh",
       "negative_boundary": "tests/cli_stage2_outcomes.sh",
-      "reproduction": "make test",
+      "reproduction": "task test",
       "prerequisites": []
     },
     {
@@ -106,7 +106,7 @@
       ],
       "positive_gate": "sh framework/cli/check.sh",
       "negative_boundary": "tests/conformance/capabilities.tsv",
-      "reproduction": "make cli-framework",
+      "reproduction": "task cli-framework",
       "prerequisites": []
     },
     {
@@ -118,7 +118,7 @@
       ],
       "positive_gate": "sh bootstrap/stage1/check.sh",
       "negative_boundary": "bootstrap/selfhost/driver/corpus_builtin_rejects.tsv",
-      "reproduction": "make bootstrap",
+      "reproduction": "task bootstrap",
       "prerequisites": [
         "cc",
         "sha256sum"
@@ -135,7 +135,7 @@
       ],
       "positive_gate": "sh tests/fuzz/semantic_differential.sh",
       "negative_boundary": "tests/fuzz/semantic_differential.sh",
-      "reproduction": "make fuzz",
+      "reproduction": "task fuzz",
       "prerequisites": [
         "cc"
       ]
@@ -149,7 +149,7 @@
       ],
       "positive_gate": "sh bootstrap/native/check.sh",
       "negative_boundary": "tests/conformance/capabilities.tsv",
-      "reproduction": "make native",
+      "reproduction": "task native",
       "prerequisites": []
     },
     {
@@ -162,7 +162,7 @@
       ],
       "positive_gate": "sh tests/conformance/syntax/issues_35_47/run.sh",
       "negative_boundary": "tests/conformance/adt/generic_unsupported.kofun",
-      "reproduction": "make syntax",
+      "reproduction": "task syntax",
       "prerequisites": [
         "cc"
       ]
@@ -176,7 +176,7 @@
       ],
       "positive_gate": null,
       "negative_boundary": null,
-      "reproduction": "make repository-check",
+      "reproduction": "task repository-check",
       "prerequisites": []
     },
     {
@@ -189,7 +189,7 @@
       ],
       "positive_gate": null,
       "negative_boundary": null,
-      "reproduction": "make native",
+      "reproduction": "task native",
       "prerequisites": []
     },
     {
@@ -201,7 +201,7 @@
       ],
       "positive_gate": null,
       "negative_boundary": null,
-      "reproduction": "make stage2",
+      "reproduction": "task stage2",
       "prerequisites": []
     },
     {
@@ -213,7 +213,7 @@
       ],
       "positive_gate": null,
       "negative_boundary": null,
-      "reproduction": "make stage2",
+      "reproduction": "task stage2",
       "prerequisites": []
     },
     {
@@ -226,7 +226,7 @@
       ],
       "positive_gate": "sh tests/http/check.sh",
       "negative_boundary": "tests/http/check.sh",
-      "reproduction": "make http",
+      "reproduction": "task http",
       "prerequisites": [
         "cc"
       ]
@@ -240,7 +240,7 @@
       ],
       "positive_gate": "sh tests/conformance/modules/import-aliases/run.sh",
       "negative_boundary": "tests/conformance/capabilities.tsv",
-      "reproduction": "make import-aliases",
+      "reproduction": "task import-aliases",
       "prerequisites": []
     },
     {
@@ -252,7 +252,7 @@
       ],
       "positive_gate": "sh bootstrap/native/check.sh",
       "negative_boundary": "bootstrap/native/check.sh",
-      "reproduction": "make native",
+      "reproduction": "task native",
       "prerequisites": [
         "qemu-aarch64"
       ]
@@ -267,7 +267,7 @@
       ],
       "positive_gate": "sh bootstrap/native/check.sh",
       "negative_boundary": "bootstrap/native/fixtures/function_all_traps_pressure.kofun",
-      "reproduction": "make native",
+      "reproduction": "task native",
       "prerequisites": []
     },
     {
@@ -280,7 +280,7 @@
       ],
       "positive_gate": "sh bootstrap/native/check.sh",
       "negative_boundary": "tests/conformance/numeric/reject_slash_operator.kofun",
-      "reproduction": "make native",
+      "reproduction": "task native",
       "prerequisites": []
     },
     {
@@ -293,7 +293,7 @@
       ],
       "positive_gate": "sh bootstrap/native/check.sh",
       "negative_boundary": "tests/conformance/functions/division_floor_signs.kofun",
-      "reproduction": "make native",
+      "reproduction": "task native",
       "prerequisites": []
     },
     {
@@ -306,7 +306,7 @@
       ],
       "positive_gate": "sh bootstrap/native/check.sh",
       "negative_boundary": "tests/conformance/capabilities.tsv",
-      "reproduction": "make native",
+      "reproduction": "task native",
       "prerequisites": [
         "qemu-aarch64"
       ]
@@ -321,7 +321,7 @@
       ],
       "positive_gate": "sh bootstrap/native/check.sh",
       "negative_boundary": "tests/conformance/capabilities.tsv",
-      "reproduction": "make native",
+      "reproduction": "task native",
       "prerequisites": [
         "qemu-aarch64"
       ]
@@ -336,7 +336,7 @@
       ],
       "positive_gate": "sh bootstrap/native/check.sh",
       "negative_boundary": "tests/conformance/capabilities.tsv",
-      "reproduction": "make native",
+      "reproduction": "task native",
       "prerequisites": [
         "qemu-aarch64"
       ]
@@ -350,7 +350,7 @@
       ],
       "positive_gate": "sh tests/conformance/run.sh",
       "negative_boundary": "tests/conformance/capabilities.tsv",
-      "reproduction": "make check",
+      "reproduction": "task check",
       "prerequisites": []
     },
     {
@@ -360,9 +360,9 @@
       "targets": [
         "stage2"
       ],
-      "positive_gate": "make records",
+      "positive_gate": "task records",
       "negative_boundary": "tests/conformance/records/generic_record.kofun",
-      "reproduction": "make records",
+      "reproduction": "task records",
       "prerequisites": [
         "cc"
       ]
@@ -376,7 +376,7 @@
       ],
       "positive_gate": "sh tests/conformance/modules/re-exports/run.sh",
       "negative_boundary": "tests/conformance/modules/re-exports/run.sh",
-      "reproduction": "make re-exports",
+      "reproduction": "task re-exports",
       "prerequisites": []
     },
     {
@@ -388,7 +388,7 @@
       ],
       "positive_gate": "sh bootstrap/stage1/check.sh",
       "negative_boundary": "bootstrap/stage1/SHA256SUMS",
-      "reproduction": "make bootstrap",
+      "reproduction": "task bootstrap",
       "prerequisites": [
         "cc",
         "sha256sum"
@@ -404,7 +404,7 @@
       ],
       "positive_gate": "sh examples/rust-shim/check.sh",
       "negative_boundary": "examples/rust-shim/check.sh",
-      "reproduction": "make rust-shim",
+      "reproduction": "task rust-shim",
       "prerequisites": [
         "cargo"
       ]
@@ -418,7 +418,7 @@
       ],
       "positive_gate": "sh bootstrap/selfhost/check-compiler-driver.sh",
       "negative_boundary": "bootstrap/selfhost/driver/corpus_reject.kofun",
-      "reproduction": "make selfhost-profile",
+      "reproduction": "task selfhost-profile",
       "prerequisites": [
         "cc"
       ]
@@ -434,7 +434,7 @@
       ],
       "positive_gate": "sh bootstrap/selfhost/native/check-native-corpus.sh",
       "negative_boundary": "bootstrap/selfhost/driver/corpus_reject.stdout",
-      "reproduction": "make selfhost-native",
+      "reproduction": "task selfhost-native",
       "prerequisites": [
         "qemu-aarch64"
       ]
@@ -446,9 +446,9 @@
       "targets": [
         "repository"
       ],
-      "positive_gate": "make repository-check",
-      "negative_boundary": "Makefile",
-      "reproduction": "make repository-check",
+      "positive_gate": "task repository-check",
+      "negative_boundary": "Taskfile.yml",
+      "reproduction": "task repository-check",
       "prerequisites": []
     },
     {
@@ -461,7 +461,7 @@
       ],
       "positive_gate": "sh tests/diagnostics/check.sh",
       "negative_boundary": "tests/diagnostics/registry.tsv",
-      "reproduction": "make diagnostics",
+      "reproduction": "task diagnostics",
       "prerequisites": []
     },
     {
@@ -474,7 +474,7 @@
       ],
       "positive_gate": "sh bootstrap/stage2/check.sh",
       "negative_boundary": "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun",
-      "reproduction": "make stage2",
+      "reproduction": "task stage2",
       "prerequisites": [
         "cc"
       ]
@@ -486,9 +486,9 @@
       "targets": [
         "stage2"
       ],
-      "positive_gate": "make typed-sidecar-projector",
+      "positive_gate": "task typed-sidecar-projector",
       "negative_boundary": "tests/typed-sidecar/authority-boundary.sh",
-      "reproduction": "make typed-sidecar-projector",
+      "reproduction": "task typed-sidecar-projector",
       "prerequisites": [
         "node"
       ]
@@ -502,7 +502,7 @@
       ],
       "positive_gate": "sh tests/lsp/check.sh",
       "negative_boundary": "tests/lsp/performance_test.js",
-      "reproduction": "make lsp",
+      "reproduction": "task lsp",
       "prerequisites": [
         "node"
       ]
@@ -517,7 +517,7 @@
       ],
       "positive_gate": "sh stdlib/tests/verify.sh",
       "negative_boundary": "stdlib/tests/verify.sh",
-      "reproduction": "make stdlib",
+      "reproduction": "task stdlib",
       "prerequisites": []
     },
     {
@@ -529,7 +529,7 @@
       ],
       "positive_gate": "sh stdlib/tests/verify.sh",
       "negative_boundary": "tests/conformance/capabilities.tsv",
-      "reproduction": "make stdlib",
+      "reproduction": "task stdlib",
       "prerequisites": []
     },
     {
@@ -541,7 +541,7 @@
       ],
       "positive_gate": "sh tests/cli.sh",
       "negative_boundary": "tests/cli.sh",
-      "reproduction": "make test",
+      "reproduction": "task test",
       "prerequisites": []
     },
     {
@@ -551,9 +551,9 @@
       "targets": [
         "repository"
       ],
-      "positive_gate": "make tree-sitter",
+      "positive_gate": "task tree-sitter",
       "negative_boundary": "editor/tree-sitter-kofun/grammar.js",
-      "reproduction": "make tree-sitter",
+      "reproduction": "task tree-sitter",
       "prerequisites": [
         "node"
       ]
@@ -567,14 +567,14 @@
       ],
       "positive_gate": "sh bootstrap/wasm/check.sh",
       "negative_boundary": "bootstrap/wasm/fixtures/unsupported_text.kofun",
-      "reproduction": "make wasm",
+      "reproduction": "task wasm",
       "prerequisites": [
         "node"
       ]
     }
   ],
   "evidence_digests": {
-    "Makefile": "5cc2c16c286b2f398e2d307dd84b58a7527d4efc48573bd0192a9fb35a6b2323",
+    "Taskfile.yml": "9837e6c650e893465d60e3876d4c41eb185129ad9b6c39d2b9980c98277d1099",
     "bootstrap/native/check.sh": "d99603522821df27a7d102fbce70c6a0d3cb322a9fe17d1baa76ee9285cee6e4",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/driver/corpus_builtin_rejects.tsv": "b1fa0b26247581aef797a81880554a94233a34109215530641706d76777087d4",
@@ -585,25 +585,25 @@
     "bootstrap/wasm/fixtures/unsupported_text.kofun": "e0a45136410ddb85e9f5b3e5c39e7903d96da39aa53aaf3078d2555b4f383864",
     "docs/BUILD_SYSTEM.md": "d4a372fc97c53874cc2438f3de132289beb033ce2bf1e67518b702de796b05a8",
     "docs/COMPILER_ARCHITECTURE.md": "9ca8641a3d117d84be9ce7f311d26c5f7e8df3b1a5772f3be5b8db67808d56cc",
-    "docs/GETTING_STARTED.md": "051a79882fbe69a5f00e67e00663167111d94be4d28d276f3a67806c449c2245",
+    "docs/GETTING_STARTED.md": "1be0630b64d9acb0df61cb58c1eb7d0df58e199ea326d21f3277e3b4c8c3d802",
     "docs/LAW_SYSTEM.md": "6a8f02de7d11307b53fb1233de11a16d9b0066cd12a62ae77394fb18af512d9d",
     "docs/LINGUIST_RECOGNITION.md": "4e70400a719381abee1b72c5a3157e78181c251b116b12c60b6808cad428b502",
     "docs/MEMORY_MODEL.md": "2ff3a5680ddfc3f7013f46e152e76531c328feb7601582485436c33e52b695b7",
-    "docs/MVP_IMPLEMENTED.md": "56322cff6aa56811645eda06dbee189834b640e07252a952e04d0a79980decf6",
+    "docs/MVP_IMPLEMENTED.md": "1112e32cb0a90281efbd5392a88d99e096b19af27278748a2146772b3dd8b0aa",
     "docs/NATIVE_BACKEND.md": "ab16b7bc6ae59071f9ae73c6fafde44732c887d122bb711104eb231297680bfe",
     "docs/ROADMAP.md": "825ebe5cee9fb6fd7d06c21d239a06e27ec0e68ebc311bc90ff087f182cf1c44",
     "docs/RUST_CRATE_SHIMS.md": "4365b064cbc9a05733710d3a609c1db2623b28cb9ed4ba0e48536e35f9d58c47",
     "docs/SECURITY.md": "2235367ac20334ce4d77d440b773ef197f97f6d21a5d13f69a5b391cb8b4946d",
     "docs/SELF_HOSTING.md": "c786187cd44fdba04d89c6ff1fba5f0e791c4ca96ce31a99fa17380ffde347a5",
     "docs/SEMANTICS.md": "6e1d210890f5f53f281ea32fe28a0b4118b2804f5cb1caa4260a36c961b9cb92",
-    "docs/TYPE_SYSTEM.md": "ebf299d21b83dedc2ba5b48f2e9efb6fef23983888b8abdd5aeac8f264091bb0",
+    "docs/TYPE_SYSTEM.md": "9bd5d96c61dd29b9d98b949b4283bb421c41c25244f96786c8916742cbfb0ec5",
     "editor/tree-sitter-kofun/README.md": "9ccc73df69f3ddd42e8f620a3751f165e2dad00b34a681010249a1989d45b5d4",
     "editor/tree-sitter-kofun/grammar.js": "5d803ad6c2a2c6467cf402c187bf86a1b6558556497f8d1d9830dd2718c8a1cc",
     "examples/rust-shim/check.sh": "4cffb7e16d964122e2dff480f533cff5eacd0bd939a35fe5a71f71b447139500",
     "spec/enum-match-exhaustiveness.md": "5f38b52bf96b8716ad77bfd5975d2cccbc83c58ad81523a3c2d8a90138008535",
     "spec/modules/module-identity.md": "89df1fe536cd7462131390485ceef446bcdbf3efb0cd0fff87d318facb065aef",
     "spec/modules/re-exports.md": "e1bd3964901cfbadd1f5675e3c0b5e14a9277198fe6252780381f92581ac2e46",
-    "spec/records-v1.md": "c21fdd56e70ae28e37566104948203c4601fb200afec5d9bc7d0c65cbb926371",
+    "spec/records-v1.md": "6e4a2456765f0af803b25d9856dd8b569a0f33e1db9ef7bd64fbe9fbc3c0da89",
     "spec/semantics.md": "79909588ff01f3f48b79840d434ed2ccea9918d12ebe8a03fd87b60a054c67d3",
     "spec/tooling/typed-sidecar.md": "51f18b0fea3734ce73603bbcb43c048edf6a8309e48afb4bd588c386ec23dd92",
     "spec/typed-sidecar/kofun.typed-sidecar.v1.schema.json": "2574494144647b9e89ff45a126dc768ab947ed21a02044965ee22a0076f77460",
@@ -614,7 +614,7 @@
     "tests/conformance/adt/generic_unsupported.kofun": "a005470b2fc8a68df0a849fa97d28b3c1190eee79270037cbc012aade78f54e8",
     "tests/conformance/capabilities.tsv": "069323c9ba3eb1483f2fbf6ccaa32f9f34f8d9d14bb3f92b84fe386ca979c5ff",
     "tests/conformance/functions/division_floor_signs.kofun": "6bfd48679ebcf604305c78271b80e803866a64d8e9c8f732f5b1884d4d0d67b0",
-    "tests/conformance/modules/re-exports/run.sh": "97d86da6b802f50199ea2ef9f58d106c2a71a6940f195f067e08d2b1deb342f0",
+    "tests/conformance/modules/re-exports/run.sh": "5d91907d17dab78d63b16d501662234530a6fe72cb7f63a187291074fd71204a",
     "tests/conformance/numeric/reject_slash_operator.kofun": "49a14dbd0392e6920a681168af44018182f78175a921592283631c9942045c24",
     "tests/conformance/records/generic_record.kofun": "7b370f4972f44bb2dcb0058ece6bcb14214d22990b79ca5d18a06f86eb485525",
     "tests/conformance/records/partial_move.kofun": "7d418d3ab0531f864cbd61256cbdeaeb46f7a65b213d62bf776229ddcfa67b85",

@@ -262,7 +262,7 @@ same field names and types is a different type. Fields are immutable in v1,
 `take` moves a whole record, and partial moves are rejected. Layout is untagged
 and follows declaration order.
 [`spec/records-v1.md`](../spec/records-v1.md) is normative and
-`make records` is its gate.
+`task records` is its gate.
 
 Structural record boundary:
 

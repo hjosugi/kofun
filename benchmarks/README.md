@@ -12,7 +12,7 @@ The current repository contains correctness-oriented smoke benchmarks, not claim
   from any git revision and recorded runtime, compile-time, and emitted-code
   budgets.
 
-Run the native smoke benchmark with `make native`, the recorded HTTP workload
+Run the native smoke benchmark with `task native`, the recorded HTTP workload
 with `sh benchmarks/http/benchmark.sh`, or the native function workloads with
 `sh benchmarks/native-functions/benchmark.sh`. Each result is a bounded local
 measurement with raw samples and a median, not a production performance

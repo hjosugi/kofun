@@ -42,7 +42,7 @@ sh spec/roadmap-31-34/verify-current-gates.sh --full
 ```
 
 The probe demonstrates real integer Core lowering and the scoped bootstrap LSP.
-The separate `make generics` gate demonstrates only explicit unbounded generic
+The separate `task generics` gate demonstrates only explicit unbounded generic
 function type checking. Neither gate demonstrates generic nominal types,
 traits/bounds, generic lowering, compiler self-reproduction, native Stage 1,
 project-wide editor indexing, or full compiler type inference.

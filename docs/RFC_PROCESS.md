@@ -2,8 +2,8 @@
 
 Kofun records public semantic decisions in a ledger, so that an accepted
 proposal is never mistaken for shipped behaviour. The ledger is
-[`rfcs/index.json`](../rfcs/index.json); `make rfc-registry` checks it and
-`make verify` runs that check.
+[`rfcs/index.json`](../rfcs/index.json); `task rfc-registry` checks it and
+`task verify` runs that check.
 
 This process is deliberately small. It is meant to be usable by one maintainer,
 and every mandatory field exists because its absence has a specific failure
@@ -224,4 +224,4 @@ forgotten.
    implementation record.
 5. When the behaviour ships and the capability manifest evidences it, add the
    implementation record and set `implemented`.
-6. Run `make rfc-registry`. Each refusal names the decision and the repair.
+6. Run `task rfc-registry`. Each refusal names the decision and the repair.

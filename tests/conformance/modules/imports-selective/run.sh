@@ -193,7 +193,7 @@ expect_exact_forbidden E2S78 selective-internal \
 
 # The qualified-import helper remains independently buildable and passing. It
 # gets its own build namespace so this nested run cannot collide with the
-# `imports-qualified` target running concurrently under `make verify` (#713).
+# `imports-qualified` target running concurrently under `task verify` (#713).
 KOFUN_GATE_WORK_NAMESPACE="${KOFUN_GATE_WORK_NAMESPACE:+$KOFUN_GATE_WORK_NAMESPACE/}nested-imports-selective" \
     sh "$ROOT/tests/conformance/modules/imports-qualified/run.sh"
 

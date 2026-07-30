@@ -9,7 +9,7 @@ is [`docs/RFC_PROCESS.md`](../docs/RFC_PROCESS.md).
 | `TEMPLATE.md` | The proposal template. |
 | `NNNN-<slug>.md` | An accepted proposal. Immutable once accepted. |
 
-`make rfc-registry` checks the ledger, and `make verify` runs it.
+`task rfc-registry` checks the ledger, and `task verify` runs it.
 
 ## What this is not
 
@@ -43,7 +43,7 @@ current.
 
 Every recorded decision is `migrated`: its text was written before this process
 existed, and it is indexed so the ledger is complete rather than convenient.
-`make rfc-registry` prints how many there are and how the states divide, so
+`task rfc-registry` prints how many there are and how the states divide, so
 this file does not keep a second copy of that list — a hand-written inventory
 beside the ledger drifts silently, which is the defect `DD-022` describes.
 

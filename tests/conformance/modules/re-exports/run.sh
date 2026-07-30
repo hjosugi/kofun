@@ -983,7 +983,7 @@ test ! -e "$WORK/internal.tooling"
 
 # Existing prerequisite gates stay independently executable.
 # Each nested helper builds under this gate's own namespace, so running them
-# here cannot race the same scripts running as their own `make verify` targets
+# here cannot race the same scripts running as their own `task verify` targets
 # (#713).
 KOFUN_GATE_WORK_NAMESPACE="${KOFUN_GATE_WORK_NAMESPACE:+$KOFUN_GATE_WORK_NAMESPACE/}nested-re-exports" \
     sh "$ROOT/tests/conformance/modules/imports-qualified/run.sh"

@@ -31,7 +31,7 @@ Read:
 
 1. the row in [Implemented status](MVP_IMPLEMENTED.md);
 2. the closest subsystem README;
-3. the `Makefile` target and shell runner that own the claim; and
+3. the `Taskfile.yml` task and shell runner that own the claim; and
 4. the positive, negative, and unsupported fixtures beside that runner.
 
 Do not infer implementation from syntax in a design document. A focused
@@ -71,7 +71,7 @@ clean operation.
 Run the smallest owner gate before changing anything:
 
 ```sh
-make stage2
+task stage2
 ```
 
 Replace `stage2` with the target from the command map below. A passing baseline
@@ -100,8 +100,8 @@ fixture behavior. Never adjust only `SHA256SUMS` to accept unexplained bytes.
 Run:
 
 ```sh
-make bootstrap
-make test
+task bootstrap
+task test
 ```
 
 ### Stage 2
@@ -131,16 +131,16 @@ Add the smallest positive fixture, then add or preserve:
 Run the focused target, for example:
 
 ```sh
-make stage2
-make adt
-make generics
-make imports-qualified
-make re-exports
-make incremental
+task stage2
+task adt
+task generics
+task imports-qualified
+task re-exports
+task incremental
 ```
 
-Then run `make diagnostics` if public rejection behavior changed, and
-`make fuzz` if parsing, evaluation order, arithmetic, matches, or backend
+Then run `task diagnostics` if public rejection behavior changed, and
+`task fuzz` if parsing, evaluation order, arithmetic, matches, or backend
 observations changed.
 
 ### Direct native or wasm32
@@ -152,9 +152,9 @@ and edge cases shared with the accepted semantic oracle.
 Run:
 
 ```sh
-make native
-make wasm
-make fuzz
+task native
+task wasm
+task fuzz
 ```
 
 Use the narrower target during development, then the relevant combination
@@ -221,15 +221,15 @@ Run the smallest module gate, then the aggregate:
 
 ```sh
 sh stdlib/<module>/tests/verify.sh
-make stdlib
+task stdlib
 ```
 
 For frameworks:
 
 ```sh
-make http
-make cli-framework
-make tui-framework
+task http
+task cli-framework
+task tui-framework
 ```
 
 If foreign C or Rust code is involved, also review the security, ABI,
@@ -246,7 +246,7 @@ evidence together. Keep the VS Code-bundled entrypoint synchronized when the
 packaged server changes.
 
 ```sh
-make lsp
+task lsp
 ```
 
 ### Tree-sitter
@@ -274,9 +274,9 @@ Changing it can require synchronized edits under `spec/typed-sidecar/`,
 `tests/typed-sidecar/`.
 
 ```sh
-make typed-sidecar-spec
-make typed-sidecar-codec
-make typed-sidecar-projector
+task typed-sidecar-spec
+task typed-sidecar-codec
+task typed-sidecar-projector
 ```
 
 Never turn the sidecar into compiler input, cache authority, or a substitute
@@ -331,19 +331,19 @@ separate when they are unrelated to your patch.
 
 | Change area | Fast feedback | Required broader gate before review |
 |---|---|---|
-| launcher/public CLI | `make test` | `make verify` |
-| Stage 1 seed | `make bootstrap` | `make test`, then `make verify` |
-| Stage 2 core | `make stage2` | `make diagnostics`, relevant fuzz, then `make verify` |
-| ADT/generics/patterns/modules | matching Make target | `make stage2`, `make diagnostics`, then `make verify` |
-| native backend | `make native` | relevant conformance/fuzz, then `make verify` |
-| wasm32 backend | `make wasm` | relevant conformance/fuzz, then `make verify` |
-| diagnostics | `make diagnostics` | owner gate, then `make verify` |
-| fuzz protocol/generator | focused `tests/fuzz/*.sh` | `make fuzz`, then `make verify` |
-| Unicode | `make unicode` | affected compiler/tooling gates, then `make verify` |
-| standard library | module `tests/verify.sh` | `make stdlib`, then `make verify` |
-| HTTP/CLI/TUI | matching framework target | `make verify` |
-| LSP | `make lsp` | `make verify` |
-| Tree-sitter | package tests | `make tree-sitter`, then `make verify` |
+| launcher/public CLI | `task test` | `task verify` |
+| Stage 1 seed | `task bootstrap` | `task test`, then `task verify` |
+| Stage 2 core | `task stage2` | `task diagnostics`, relevant fuzz, then `task verify` |
+| ADT/generics/patterns/modules | matching Make target | `task stage2`, `task diagnostics`, then `task verify` |
+| native backend | `task native` | relevant conformance/fuzz, then `task verify` |
+| wasm32 backend | `task wasm` | relevant conformance/fuzz, then `task verify` |
+| diagnostics | `task diagnostics` | owner gate, then `task verify` |
+| fuzz protocol/generator | focused `tests/fuzz/*.sh` | `task fuzz`, then `task verify` |
+| Unicode | `task unicode` | affected compiler/tooling gates, then `task verify` |
+| standard library | module `tests/verify.sh` | `task stdlib`, then `task verify` |
+| HTTP/CLI/TUI | matching framework target | `task verify` |
+| LSP | `task lsp` | `task verify` |
+| Tree-sitter | package tests | `task tree-sitter`, then `task verify` |
 | docs Markdown | `npm run test:docs` | `npm run verify:site` |
 | docs UI/site | focused npm test | `npm run verify:site` and `npm run verify:pages` |
 
@@ -364,7 +364,7 @@ cross-component regressions.
   it with traps.
 - Validate unsupported hosts and missing tools explicitly.
 
-`make verify` applies `sh -n` to the checked shell inventory. Add new public
+`task verify` applies `sh -n` to the checked shell inventory. Add new public
 scripts to that inventory when they become part of the repository gate.
 
 ### C
@@ -461,5 +461,5 @@ A contribution is complete when:
 - reviewers can reproduce the result from the commands in the pull request.
 
 If you are unsure which source or gate is authoritative, stop and trace the
-path from `Makefile` to the runner and nearest README. That short investigation
+path from `Taskfile.yml` to the runner and nearest README. That short investigation
 is part of the implementation, not overhead.

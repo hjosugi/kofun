@@ -64,10 +64,23 @@ const MUTATIONS = {
             find(manifest, 'arithmetic-core').negative_boundary.evidence = 'tests/fuzz'
         },
     },
-    'missing-make-target': {
+    // Names a task that does not exist, so the checker must resolve the
+    // command against Taskfile.yml and refuse it. A command that is not a
+    // `task <name>` at all is a different refusal, covered below.
+    'missing-task': {
         blame: 'arithmetic-core',
         apply(manifest) {
-            find(manifest, 'arithmetic-core').reproduction.command = 'make no-such-target'
+            find(manifest, 'arithmetic-core').reproduction.command = 'task no-such-task'
+        },
+    },
+    'unresolvable-command': {
+        blame: 'arithmetic-core',
+        apply(manifest) {
+            // Deliberately still spelled `make`: this mutation exercises the
+            // "not a resolvable command" refusal, which is a different path
+            // from `missing-task` above. A bulk make-to-task rename must not
+            // touch it.
+            find(manifest, 'arithmetic-core').reproduction.command = 'make native'
         },
     },
     'unknown-state': {
@@ -92,7 +105,7 @@ const MUTATIONS = {
         blame: 'general-native-lowering',
         apply(manifest) {
             find(manifest, 'general-native-lowering').positive_gate = {
-                command: 'make native',
+                command: 'task native',
                 observation: 'general native lowering works',
             }
         },

@@ -34,10 +34,10 @@ infers semantics from spelling.
   builtins through the lowering and requires the distinct `E2S10`
   unsupported classification (exit 3), never emitting partial C either
   way.
-- `check-c11.sh` — the gate; run it with `make selfhost-profile` or
+- `check-c11.sh` — the gate; run it with `task selfhost-profile` or
   directly. `sh bootstrap/selfhost/check-profile.sh --phase c11-text`
-  (`make selfhost-c11`) and `--phase c11-control`
-  (`make selfhost-c11-control`) are the completion checks for the
+  (`task selfhost-c11`) and `--phase c11-control`
+  (`task selfhost-c11-control`) are the completion checks for the
   profile rows whose `c11` cells the two slices own; the gate also
   closes the execution differential over three independent paths (typed
   node-record evaluation, the Int-core `--compile-outcome` lowering, and

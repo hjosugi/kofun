@@ -103,7 +103,7 @@ What the success corpus does **not** demonstrate:
 ## Validation
 
 ```sh
-make selfhost-native
+task selfhost-native
 # or
 sh bootstrap/selfhost/native/check-native-corpus.sh
 ```

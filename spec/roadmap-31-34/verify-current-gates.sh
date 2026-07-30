@@ -81,7 +81,7 @@ then
     exit 1
 fi
 
-# `make verify` runs the `lsp` target and then this one, so this is the second
+# `task verify` runs the `lsp` target and then this one, so this is the second
 # LSP run of the same invocation. Keep its measurements in their own namespace
 # rather than overwriting the first run's results file (#713).
 KOFUN_GATE_WORK_NAMESPACE=roadmap \

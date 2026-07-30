@@ -36,7 +36,7 @@ The common compiler path needs:
 | npm | locked website and Tree-sitter dependencies | `npm --version` |
 | Git | source control and some reproducibility checks | `git --version` |
 
-The complete `make verify` gate also uses:
+The complete `task verify` gate also uses:
 
 - Rust and Cargo for the audited Rust-shim example;
 - `ar`, `ld`, `readelf`, `file`, and `ldd` for native and ABI checks;
@@ -68,7 +68,7 @@ command and the compiler sources always come from the same commit.
 
 ```sh
 ./bin/kofun --version
-make check
+task check
 ```
 
 The launcher builds a checked compiler artifact under `build/` when needed.
@@ -78,10 +78,10 @@ committed.
 If you prefer Clang:
 
 ```sh
-CC=clang make check
+CC=clang task check
 ```
 
-`make check` proves that the launcher can build the compiler seed and accept
+`task check` proves that the launcher can build the compiler seed and accept
 the canonical arithmetic fixture. It is intentionally smaller than the full
 repository suite.
 
@@ -205,16 +205,16 @@ a cache, or proof that broader Stage 2 semantics are implemented.
 Use a testing ladder instead of starting every edit with the full suite:
 
 ```sh
-make check          # launcher and canonical fixture
-make test           # public build/run/check/test behavior
-make diagnostics    # stable diagnostic registry and exact fixtures
-make stage2         # Stage 2 frontend and bounded C11 lowering
-make native         # direct x86-64 and AArch64 checkpoints
-make fuzz           # deterministic grammar and semantic fuzz smoke tests
-make verify         # every active repository gate, then LSP/roadmap checks
+task check          # launcher and canonical fixture
+task test           # public build/run/check/test behavior
+task diagnostics    # stable diagnostic registry and exact fixtures
+task stage2         # Stage 2 frontend and bounded C11 lowering
+task native         # direct x86-64 and AArch64 checkpoints
+task fuzz           # deterministic grammar and semantic fuzz smoke tests
+task verify         # every active repository gate, then LSP/roadmap checks
 ```
 
-`make verify` runs independent gates in parallel and can consume substantial
+`task verify` runs independent gates in parallel and can consume substantial
 CPU. For readable failure output or local bisection:
 
 ```sh
@@ -222,7 +222,7 @@ make VERIFY_JOBS=1 verify
 ```
 
 Run the narrow gate while developing, then the broader relevant gate before
-you submit a change. CI runs `make verify`.
+you submit a change. CI runs `task verify`.
 
 See [Contributing](CONTRIBUTING.md#test-the-smallest-relevant-surface) for the
 test command mapped to each repository area.
@@ -306,7 +306,7 @@ Read the first missing command in the error. Install the corresponding Linux
 binary tools, util-linux, Rust/Cargo, or QEMU package, then rerun the same
 focused gate. Do not reinterpret a skipped architecture as a passing result.
 
-### A test passes alone but fails during parallel `make verify`
+### A test passes alone but fails during parallel `task verify`
 
 Rerun with `make VERIFY_JOBS=1 verify`. If the focused gate still passes,
 capture both results; tests must not depend on shared mutable temporary paths

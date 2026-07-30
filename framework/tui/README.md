@@ -50,7 +50,7 @@ short destination buffer is always NUL-terminated and reports `truncated`.
 Run the deterministic contracts and live cost guard with:
 
 ```sh
-make tui-framework
+task tui-framework
 ```
 
 ## Checkpoint limitations

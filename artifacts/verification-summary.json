@@ -36,5 +36,5 @@
     "areas": 27,
     "unique_and_contiguous": true
   },
-  "verification_command": "make verify"
+  "verification_command": "task verify"
 }
