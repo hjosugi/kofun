@@ -1,0 +1,112 @@
+# Benchmark harness contract
+
+## Status
+
+This document is the accepted contract for GitHub issue
+[#640](https://github.com/hjosugi/kofun/issues/640). No public harness is
+implemented: `benchmarks/` scripts are repository evidence, not a library
+contract. The first slice is #646 — the canonical raw-sample report,
+deterministic summaries, and explicit unavailable metrics — before any live
+runner or counters.
+
+Under the standard-library charter the benchmark **API** is portable and the
+`kofun bench` runner ships with the toolchain; #398 and #476 remain the
+allocation/VM counter providers behind this contract and are not duplicated.
+
+The words **must**, **must not**, and **may** are normative.
+
+## Decision summary
+
+A benchmark is a declared function measured by the runner, never an ad-hoc
+shell timing. The API separates what users state (the workload, its
+parameters, its setup) from what the harness owns (warmup, sampling, stop
+rules, statistics, report identity), and every number in a report says which
+clock produced it.
+
+```kofun
+bench parse_config(b: Bench) {
+    let input = fixtures.large_config()      // setup: outside measurement
+    b.iter(fn() => b.consume(config.parse(input)))
+}
+```
+
+## Accepted decisions
+
+### API and runner split
+
+- The portable library defines `Bench`, `b.iter`, `b.consume`, parameterized
+  cases, and the report types. The `kofun bench` runner discovers `bench`
+  declarations, applies budgets, and writes reports. Assertions on
+  performance do not belong in unit tests; the runner owns comparison.
+
+### Measurement model
+
+- Wall, process-CPU, and monotonic readings are distinct fields and can
+  never be mislabeled: each sample records which clock produced it, via the
+  platform-adapter monotonic clock capability.
+- The harness calibrates and reports its own per-iteration overhead;
+  samples are not silently corrected.
+- `b.consume(value)` is the anti-elision primitive: it promises the
+  optimizer the value is observed while changing no program semantics.
+  Work not routed through `b.iter`/`b.consume` may legally be elided, and
+  the contract says so rather than pretending otherwise.
+- Warmup and sampling budgets are explicit with bounded defaults (warmup
+  until steady or 500 ms cap; then up to 100 samples or 3 s, whichever
+  first). Stop rules are deterministic for the same input sample stream.
+
+### Counters
+
+- Allocation, GC/VM, and native counters are attached when the providers
+  (#398, #476) exist for the running backend; otherwise the field is the
+  explicit value `unavailable` — never zero, never omitted. A report that
+  says `unavailable` is honest; a report that invents a number is a bug.
+
+### Reports
+
+- Schema `kofun.bench-report/v1`, versioned, machine-readable, containing:
+  raw samples (never only summaries), requested budgets, harness overhead,
+  toolchain/source/artifact digests, host identity, and CPU
+  affinity/frequency/noise notes as metadata rather than corrections.
+- Summaries (min, median, p90, MAD) are computed deterministically from
+  raw samples; outliers are flagged, never dropped.
+- Comparison between two reports requires both raw sample sets and a
+  stated threshold; the runner never claims a significant speedup from one
+  run.
+- Failures and cancellation produce typed non-success results; a partial
+  report is never published as success.
+
+## Alternatives considered
+
+**Keep shell timing scripts.** Merits: zero new surface. Demerits: no
+anti-elision, no clock discipline, no machine-readable identity — exactly
+the ad-hoc state #640 exists to end. Rejected as the public story;
+`benchmarks/` remains internal evidence.
+
+**Statistical engine first (Criterion-style bootstrapping, outlier
+rejection).** Merits: sophisticated confidence intervals. Demerits:
+statistics computed from discarded samples cannot be audited; raw samples
+plus deterministic summaries let any later tool re-derive better
+statistics without re-running. Rejected for v1 — raw-first, stats later.
+
+**Auto-tuning the host (CPU pinning, governor changes).** Merits: quieter
+numbers. Demerits: requires elevated privileges and hides variance the
+user's real environment has; noise belongs in metadata. Rejected.
+
+**Merging profiler and benchmark.** Merits: one tool. Demerits: profiling
+perturbs timing and has its own contract (#398/#476); the report format
+links to profiles rather than embedding them. Rejected.
+
+## Non-goals
+
+Claiming significance from single runs, embedding a full profiler, silent
+outlier rejection, privileged host tuning, and replacing workload-specific
+methodology.
+
+## Validation
+
+| Check | Artifact | Expected result |
+|---|---|---|
+| Contract review | this document | API, schema, statistics, limits complete |
+| Schema fixture | #646 fixed synthetic samples | byte-deterministic report and summaries |
+| Live smoke | bounded pure/allocation cases | nonzero samples, explicit available counters |
+| Charter matrix | `sh stdlib/check-capabilities.sh` | benchmark row cites this contract |
