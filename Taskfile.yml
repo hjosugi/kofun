@@ -72,6 +72,10 @@ tasks:
       - "sh bootstrap/selfhost/check-profile.sh"
       - "sh bootstrap/selfhost/frontend/check-frontend.sh"
       - "sh bootstrap/selfhost/c11/check-c11.sh"
+
+  selfhost-self-compile:
+    desc: "Compile canonical S with A1 and verify deterministic strict-C11 C2"
+    cmds:
       - "sh bootstrap/selfhost/check-compiler-driver.sh"
 
   selfhost-frontend:
@@ -414,6 +418,7 @@ tasks:
             check \
             bootstrap \
             selfhost-profile \
+            selfhost-self-compile \
             selfhost-frontend \
             selfhost-c11 \
             selfhost-c11-control \

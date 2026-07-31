@@ -19,6 +19,18 @@ Run the gate with:
 task selfhost-profile
 ```
 
+Run the actual compiler self-compile slice with:
+
+```sh
+task selfhost-self-compile
+```
+
+That gate builds `A1`, has it compile the exact canonical `S` bytes under a
+1.5 GiB address-space ceiling from different directories and source names, and
+requires the two nonempty `C2` outputs to be byte-identical and valid strict
+C11. This closes the first `A1(S)` step; it does not claim the three-generation
+fixed point below.
+
 ## Typed HIR contract and phase gates
 
 `hir-v1.md` freezes the versioned `kofun.selfhost-hir/v1` schema: the typed

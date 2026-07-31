@@ -14577,7 +14577,7 @@ static int emit_selfhost_hir_file(
  */
 
 enum {
-    SL_MAX_RECORDS = 8192,
+    SL_MAX_RECORDS = 16384,
     SL_MAX_TYPES = 64,
 };
 
@@ -15007,11 +15007,19 @@ static const char *sl_prelude_text =
     "\n"
     "kofun_text_list kofun_rt_chars(const char *value) {\n"
     "    size_t length = strlen(value);\n"
-    "    const char **items = (const char **)kofun_rt_alloc(\n"
-    "        sizeof(char *) * (length == 0 ? 1 : length)\n"
+    "    if (length > SIZE_MAX / (sizeof(char *) + 2)) {\n"
+    "        kofun_rt_panic(\"List[Text] allocation is too large\");\n"
+    "    }\n"
+    "    size_t pointer_bytes = sizeof(char *) * length;\n"
+    "    char *storage = (char *)kofun_rt_alloc(\n"
+    "        length == 0 ? 1 : pointer_bytes + 2 * length\n"
     "    );\n"
+    "    const char **items = (const char **)storage;\n"
+    "    char *characters = storage + pointer_bytes;\n"
     "    for (size_t index = 0; index < length; ++index) {\n"
-    "        items[index] = kofun_rt_copy_n(value + index, 1);\n"
+    "        characters[2 * index] = value[index];\n"
+    "        characters[2 * index + 1] = '\\0';\n"
+    "        items[index] = characters + 2 * index;\n"
     "    }\n"
     "    kofun_text_list result;\n"
     "    result.len = (int64_t)length;\n"

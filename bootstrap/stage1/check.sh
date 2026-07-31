@@ -5,6 +5,9 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 SOURCE="$ROOT/bootstrap/stage1/compiler.kofun"
 SEED="$ROOT/bootstrap/stage1/compiler.c"
 FIXTURE="$ROOT/bootstrap/fixtures/answer.kofun"
+FUNCTION_FIXTURE="$ROOT/bootstrap/selfhost/driver/corpus_function.kofun"
+FUNCTION_C="$ROOT/bootstrap/selfhost/driver/corpus_function.c"
+FUNCTION_STDOUT="$ROOT/bootstrap/selfhost/driver/corpus_function.stdout"
 BOOL_FIXTURE="$ROOT/bootstrap/selfhost/driver/corpus_bool.kofun"
 BOOL_C="$ROOT/bootstrap/selfhost/driver/corpus_bool.c"
 BOOL_STDOUT="$ROOT/bootstrap/selfhost/driver/corpus_bool.stdout"
@@ -44,6 +47,16 @@ mkdir -p "$WORK"
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror "$WORK/answer.c" -o "$WORK/answer"
 answer=$("$WORK/answer")
 test "$answer" = "42"
+
+# Declaration profile: a non-main function with an explicit result type is
+# accepted by the audited hand-port, emits the pinned C, and executes through
+# an ordinary call from main.
+"$WORK/kofun-stage1" "$FUNCTION_FIXTURE" "$WORK/function.c"
+cmp "$FUNCTION_C" "$WORK/function.c"
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$WORK/function.c" -o "$WORK/function"
+"$WORK/function" >"$WORK/function.stdout"
+cmp "$FUNCTION_STDOUT" "$WORK/function.stdout"
 
 "$WORK/kofun-stage1" "$BOOL_FIXTURE" "$WORK/bool.c"
 cmp "$BOOL_C" "$WORK/bool.c"
