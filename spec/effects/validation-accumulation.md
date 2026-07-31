@@ -413,7 +413,7 @@ The conformance corpus for the first implementation, from #742:
 
 | Check | Artifact/command | Expected result |
 | --- | --- | --- |
-| Semantic model | `sh spec/effects/validation-accumulation/check.sh`, wired as `make validation-accumulation` | full positive/negative corpus passes |
+| Semantic model | `sh spec/effects/validation-accumulation/check.sh`, wired as `task validation-accumulation` | full positive/negative corpus passes |
 | Non-execution | corpus item 2 | sentinel absent; counter unchanged |
 | Ordering and laws | corpus items 4, 5, and the law fixtures | full-observation laws hold; law 9 carries its label |
 | Ownership | corpus item 7 | borrowed forms pass; duplicated consume is refused |

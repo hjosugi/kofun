@@ -3,7 +3,7 @@
   "manifest_version": 1,
   "inputs": {
     "release/claims.json": "06cc69deeb172548ec5a19a3dbed18f247e5c03b2f75e5cf06b53baa008d8297",
-    "spec/release-claim.schema.json": "c04dd081fbe161b0a0dacb22480dea0e3549f358fcbcb35c0497ca8b2c4c8b21"
+    "spec/release-claim.schema.json": "8cf649858ac955e79ef2e05a5cd01d5234b6b1d87b2fd64a998e2a9ec6af3485"
   },
   "states": {
     "implemented": 10,
@@ -585,7 +585,7 @@
     "bootstrap/wasm/fixtures/unsupported_text.kofun": "e0a45136410ddb85e9f5b3e5c39e7903d96da39aa53aaf3078d2555b4f383864",
     "docs/BUILD_SYSTEM.md": "d4a372fc97c53874cc2438f3de132289beb033ce2bf1e67518b702de796b05a8",
     "docs/COMPILER_ARCHITECTURE.md": "9ca8641a3d117d84be9ce7f311d26c5f7e8df3b1a5772f3be5b8db67808d56cc",
-    "docs/GETTING_STARTED.md": "647e22c9957aff93b105c412dc25a156ab2b79c2369881ab7076d457923eb9de",
+    "docs/GETTING_STARTED.md": "927180a9f390778e4e819a175be301a53fe4a9b11412c536cfe97388df7262d6",
     "docs/LAW_SYSTEM.md": "6a8f02de7d11307b53fb1233de11a16d9b0066cd12a62ae77394fb18af512d9d",
     "docs/LINGUIST_RECOGNITION.md": "4e70400a719381abee1b72c5a3157e78181c251b116b12c60b6808cad428b502",
     "docs/MEMORY_MODEL.md": "2ff3a5680ddfc3f7013f46e152e76531c328feb7601582485436c33e52b695b7",

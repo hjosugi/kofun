@@ -319,7 +319,7 @@ there. The site copies the directory at build time and owns no part of it.
 | launcher/public CLI | `task test` | `task verify` |
 | Stage 1 seed | `task bootstrap` | `task test`, then `task verify` |
 | Stage 2 core | `task stage2` | `task diagnostics`, relevant fuzz, then `task verify` |
-| ADT/generics/patterns/modules | matching Make target | `task stage2`, `task diagnostics`, then `task verify` |
+| ADT/generics/patterns/modules | matching task target | `task stage2`, `task diagnostics`, then `task verify` |
 | native backend | `task native` | relevant conformance/fuzz, then `task verify` |
 | wasm32 backend | `task wasm` | relevant conformance/fuzz, then `task verify` |
 | diagnostics | `task diagnostics` | owner gate, then `task verify` |

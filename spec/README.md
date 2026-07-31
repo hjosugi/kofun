@@ -15,6 +15,14 @@ executable bootstrap implementation.
   each claim to explicit bootstrap capability evidence.
 - `syntax/EXPRESSIONS_AND_LITERALS.md` specifies issues 48 through 59 without
   treating planned syntax as implemented behavior.
+- `bool-match-exhaustiveness.md` is the executable Stage 2 checkpoint for issue
+  #30 over the finite `Bool = { true, false }` constructor set in statement and
+  value position. It does not claim the general ADT exhaustiveness algorithm.
+- `enum-match-exhaustiveness.md` generalizes that finite-set coverage to named
+  concrete enums whose constructors carry zero or one `Int` payload for issues
+  #30 and #782, without claiming generics, wider payloads, or a general type
+  checker. Both documents are read by `tests/conformance/syntax/issues_35_47/`,
+  which is their executable gate.
 - `parser/TOKEN_SPANS.md` defines the current Stage 2 byte-span prototype and
   the work still required for a lossless parser.
 - `modules/package-roots.md` defines deterministic manifest and anonymous

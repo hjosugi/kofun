@@ -61,7 +61,7 @@ fn validate_json_file(path: Text) {
 fn main() {
     let required = [
     "README.md",
-    "Makefile",
+    "Taskfile.yml",
     "LICENSE-APACHE",
     "LICENSE-MIT",
     "NOTICE",
@@ -94,7 +94,7 @@ fn main() {
         validate_json_file(json_files[index])
     }
 
-    require_contains("README.md", "proven-finite")
+    require_contains("README.md", "research compiler, not a production language")
     require_contains("spec/law-evidence.schema.json", "kofun.law-evidence/v1")
     require_contains("artifacts/optional-bool-monad.evidence.json", "\"status\": \"passed\"")
     require_contains("artifacts/optional-bool-monad.evidence.json", "\"cases_checked\": 264")
