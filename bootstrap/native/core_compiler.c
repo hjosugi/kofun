@@ -3241,7 +3241,7 @@ static void x64_mov_register_imm64(
 
 static uint32_t x64_local_displacement(size_t slot) {
     if (slot >= (size_t)INT32_MAX / sizeof(uint64_t)) {
-        fatal("native Core local frame is too large");
+        fatal("x86-64 Core local frame is too large");
     }
     int32_t displacement =
         -(int32_t)((slot + 1) * sizeof(uint64_t));
@@ -3393,7 +3393,7 @@ static void x64_expression(
         expression->kind == NODE_BYTES) {
         if (expression->item_count >
             (UINT32_MAX - 8) / sizeof(uint64_t)) {
-            fatal("native Core list is too large");
+            fatal("x86-64 Core list is too large");
         }
         runtime->used = true;
         line_row(rows, text->length, expression->source_line);
@@ -4663,7 +4663,7 @@ static void x64_text(
     X64Runtime runtime = {0};
     if (local_count > 0) {
         if (local_count > UINT32_MAX / sizeof(uint64_t)) {
-            fatal("native Core local frame is too large");
+            fatal("x86-64 Core local frame is too large");
         }
         const uint8_t frame_open[] = {
             UINT8_C(0x55),                         /* push rbp */
@@ -5258,7 +5258,7 @@ static X64FrameLayout x64_function_layout(
     layout.frame_slots =
         function->parameter_count + function->local_count;
     if (layout.frame_slots > X64_MAX_VALUE_SLOTS) {
-        fatal("native Core function has too many bindings");
+        fatal("x86-64 Core function has too many bindings");
     }
     for (size_t slot = 0; slot < X64_MAX_VALUE_SLOTS; ++slot) {
         layout.slot_register[slot] = X64_NO_REGISTER;
@@ -5322,7 +5322,7 @@ static X64Operand x64_eval_operand(
     size_t depth
 ) {
     if (depth >= layout->eval_depth) {
-        fatal("native Core evaluation exceeds its analyzed depth");
+        fatal("x86-64 Core evaluation exceeds its analyzed depth");
     }
     if (depth < X64_ALLOCATABLE_REGISTERS &&
         layout->eval_register[depth] != X64_NO_REGISTER) {
@@ -5341,7 +5341,7 @@ static X64Operand x64_value_operand(
     size_t slot
 ) {
     if (slot >= layout->frame_slots) {
-        fatal("native Core binding is outside its frame");
+        fatal("x86-64 Core binding is outside its frame");
     }
     if (layout->slot_register[slot] != X64_NO_REGISTER) {
         return x64_register_operand(layout->slot_register[slot]);
@@ -5595,7 +5595,7 @@ static void x64_function_expression(
         }
         for (size_t index = 0; index < expression->argument_count; ++index) {
             if (index >= MAX_CORE_PARAMETERS) {
-                fatal("native Core call has too many arguments");
+                fatal("x86-64 Core call has too many arguments");
             }
             /* Argument registers are never allocated, so filling the boundary
              * cannot overwrite an argument that has not been moved yet. */
@@ -5792,7 +5792,7 @@ static void x64_function_tail_call(
 ) {
     for (size_t index = 0; index < call->argument_count; ++index) {
         if (index >= MAX_CORE_PARAMETERS) {
-            fatal("native Core call has too many arguments");
+            fatal("x86-64 Core call has too many arguments");
         }
         x64_function_expression(
             text,
@@ -5848,7 +5848,7 @@ static void x64_function_parameter_store(
     size_t parameter
 ) {
     if (parameter >= MAX_CORE_PARAMETERS) {
-        fatal("native Core parameter register is unavailable");
+        fatal("x86-64 Core parameter register is unavailable");
     }
     x64_move(
         text,
@@ -7211,7 +7211,7 @@ static void a64_function_expression(
         }
         for (size_t index = 0; index < expression->argument_count; ++index) {
             if (index >= MAX_CORE_PARAMETERS) {
-                fatal("native Core call has too many arguments");
+                fatal("aarch64 Core call has too many arguments");
             }
             /* Argument registers are never allocated, so filling the boundary
              * cannot overwrite an argument that has not been moved yet. */
@@ -7342,7 +7342,7 @@ static void a64_function_tail_call(
 ) {
     for (size_t index = 0; index < call->argument_count; ++index) {
         if (index >= MAX_CORE_PARAMETERS) {
-            fatal("native Core call has too many arguments");
+            fatal("aarch64 Core call has too many arguments");
         }
         a64_function_expression(
             text,
@@ -7415,7 +7415,7 @@ static void a64_function_declaration(
     }
     for (size_t index = 0; index < function->parameter_count; ++index) {
         if (index >= MAX_CORE_PARAMETERS) {
-            fatal("native Core parameter register is unavailable");
+            fatal("aarch64 Core parameter register is unavailable");
         }
         a64_move(
             text,
@@ -8239,7 +8239,7 @@ static void a64_core_expression(
         expression->kind == NODE_BYTES) {
         if (expression->item_count >
             (UINT32_MAX - sizeof(uint64_t)) / sizeof(uint64_t)) {
-            fatal("native Core list is too large");
+            fatal("aarch64 Core list is too large");
         }
         uint32_t bytes = (uint32_t)(
             sizeof(uint64_t) +
