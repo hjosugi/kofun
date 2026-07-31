@@ -498,9 +498,14 @@ the whole resolved scope rather than the preceding declaration. Ancestor
 shadowing crosses concrete types in the executable subset — a `Signal` enum
 binding shadowed by an `Int` leaves the ancestor's type intact — but `Bool`
 and `Text` are not yet nameable in a `let` annotation, so a shadow into those
-types cannot be written. Duplicate detection over general pattern bindings
-remains open because the canonical frontend has no general pattern bindings
-yet. `sh tests/conformance/modules/shadowing/run.sh` is the gate.
+types cannot be written. Single-`Int`-payload constructor patterns now bind,
+and their bindings obey the same rules as `let`: they occupy the arm's scope,
+they may shadow an ancestor and restore it on exit, sibling arms may reuse a
+spelling, and assignment resolves the nearest `BindingId` — an immutable
+pattern binding rejects assignment even when a mutable ancestor shares the
+spelling. Multi-field and or-pattern forms are still refused by `E2S24`, so
+duplicate names inside one pattern, and across alternatives, cannot yet be
+written. `sh tests/conformance/modules/shadowing/run.sh` is the gate.
 
 ## #42 — Owned bindings
 

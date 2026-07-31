@@ -1,0 +1,1 @@
+error[E2S47]: duplicate binding `inner` in lexical scope at byte 131; first declaration at byte 103
