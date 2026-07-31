@@ -979,3 +979,71 @@ test ! -e "$temporary/return-mismatch.c"
 echo "PASS: builtin calls check their frozen parameter types"
 echo "PASS: statement conditions and value returns are typed profile-wide"
 echo "stage2 semantic frontend check passed"
+
+# The final expression of a result-carrying function is its result (#550).
+# Only the last statement qualifies: `middle` would return 107 rather than 7 if
+# a non-final expression were taken, and a body that ends in a statement rather
+# than an expression must still say so instead of returning a value nobody
+# wrote.
+cat >"$temporary/implicit-return.kofun" <<'KOFUN'
+fn double(n: Int) -> Int {
+    n * 2
+}
+
+fn mixed(n: Int) -> Int {
+    if n < 0 {
+        return 0
+    }
+    n + 1
+}
+
+fn middle(n: Int) -> Int {
+    n + 100
+    n
+}
+
+fn main() -> Int {
+    print(double(21))
+    print(mixed(0 - 5))
+    print(mixed(3))
+    print(middle(7))
+    return 0
+}
+KOFUN
+"$temporary/kofun-stage2" \
+    "$temporary/implicit-return.kofun" \
+    "$temporary/implicit-return.c" \
+    "$temporary/implicit-return.ir" \
+    "$temporary/implicit-return.tokens" \
+    >/dev/null
+"$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$temporary/implicit-return.c" -o "$temporary/implicit-return"
+"$temporary/implicit-return" >"$temporary/implicit-return.stdout"
+printf '42\n0\n4\n7\n' >"$temporary/implicit-return.expected"
+cmp "$temporary/implicit-return.expected" "$temporary/implicit-return.stdout"
+
+cat >"$temporary/implicit-return-statement.kofun" <<'KOFUN'
+fn falls_off(n: Int) -> Int {
+    let doubled = n * 2
+}
+
+fn main() -> Int {
+    print(falls_off(1))
+    return 0
+}
+KOFUN
+set +e
+"$temporary/kofun-stage2" --compile-outcome \
+    "$temporary/implicit-return-statement.kofun" \
+    "$temporary/implicit-return-statement.c" \
+    "$temporary/implicit-return-statement.ir" \
+    "$temporary/implicit-return-statement.tokens" \
+    >"$temporary/implicit-return-statement.stdout" 2>/dev/null
+implicit_return_statement_status=$?
+set -e
+test "$implicit_return_statement_status" -eq 1
+grep 'error\[E2S19\]: Core function may complete without returning Int' \
+    "$temporary/implicit-return-statement.stdout" >/dev/null
+test ! -e "$temporary/implicit-return-statement.c"
+
+echo "PASS: a final expression is the result, and only the final one"
