@@ -97,6 +97,8 @@ expect_failure duplicate_after_statements
 expect_failure duplicate_nested
 expect_failure duplicate_match_arm
 expect_failure immutable_inner
+expect_failure pattern_binding_duplicate
+expect_failure pattern_binding_immutable
 
 printf '%s\n' \
     'PASS: ancestor shadowing, sibling reuse, BindingId lowering, and E2S47'

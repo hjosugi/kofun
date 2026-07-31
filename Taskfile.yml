@@ -234,6 +234,11 @@ tasks:
     cmds:
       - "sh stdlib/tests/verify.sh"
 
+  capabilities:
+    desc: "Verify the standard library capability matrix states and evidence"
+    cmds:
+      - "sh stdlib/check-capabilities.sh"
+
   build-system:
     desc: "Verify direct and Frost-integrated build paths"
     cmds:
@@ -450,6 +455,7 @@ tasks:
             cli-framework \
             tui-framework \
             stdlib \
+            capabilities \
             build-system \
             packages \
             package-roots \

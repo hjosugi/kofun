@@ -1,0 +1,3 @@
+fn measure(values: List[Int) -> Int {
+    return 0
+}

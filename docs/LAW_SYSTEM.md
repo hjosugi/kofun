@@ -356,6 +356,92 @@ the stable strings `bounded-exhaustive` and `proven-finite`.
 `require assurance` is a build gate. It does not upgrade computed assurance,
 and it is not an input to the reusable evaluation result.
 
+## What the level above `proven-finite` would cost
+
+Recorded from [#558](https://github.com/hjosugi/kofun/issues/558). This section
+exists because `proven` is deliberately unreachable today, and the reason has
+to be a measured one rather than a shrug. Every figure below is from a paper
+read directly unless marked otherwise.
+
+### The framing error to correct first
+
+The famous proof-to-code ratios describe **writing a separate machine-checked
+proof about a program written in an ordinary language.** None of them describes
+the cost of programming in a dependently-typed language where types carry the
+specification.
+
+| system | vehicle | dependently typed? |
+|---|---|---|
+| seL4 | Isabelle/HOL refinement proof over C | no — simple type theory plus Hoare logic |
+| CompCert | Coq; compiler written in Gallina | only occasionally, per Leroy |
+| IronFleet | Dafny plus Z3, auto-active | no — SMT annotations |
+| CakeML | HOL4 | no — classical simply-typed HOL |
+| mathlib | Lean 4 | yes, but it is mathematics, not verified software |
+
+**No empirical study quantifying the cost of Idris- or Agda-style
+dependently-typed programming was found.** That is an open gap, not a number to
+estimate. An argument here that leans on one is leaning on nothing.
+
+### The figures
+
+**seL4** ([SOSP 2009](https://www.sigops.org/s/conferences/sosp/2009/papers/klein-sosp09.pdf),
+[TOCS 2014](https://sel4.systems/Research/pdfs/comprehensive-formal-verification-os-microkernel.pdf)):
+8,700 lines of C and 600 of assembler against 200,000 lines of Isabelle — about
+**23:1**. Development took 2.2 person-years and the proof 20.5, of which 9 went
+into reusable frameworks. Verification found **144 defects** beyond the 16
+testing had already found.
+
+**A widely repeated figure is wrong, and the authors say so.** The 2009 paper's
+$10k/LOC Common Criteria EAL6 estimate, which produced the quoted "$87M for
+seL4", is called *"an embarrassing typo"* in the TOCS 2014 footnote; the real
+rule of thumb is $1k/LOC. seL4 cost **$362/SLOC**, or an estimated $127/SLOC to
+replicate — the authors' own conclusion is that this is *"only about a factor of
+two higher than software engineered to industry-standard quality-assurance
+levels."* Anyone repeating the $87M comparison is inflating it tenfold.
+
+**CompCert** ([CACM 2009](https://xavierleroy.org/publi/compcert-CACM.pdf)):
+42,000 lines of Coq over roughly 3 person-years — 14% compilation algorithms,
+10% language semantics, **76% correctness proof**, so about **5.4:1**. Each pass
+costs 1,500–3,000 lines of Coq.
+
+**IronFleet** (SOSP 2015): **7.7:1**, or 5.4:1 excluding liveness, over 3.7
+person-years. *Secondary source only — the primary PDF was paywalled and two
+paraphrases disagreed slightly, so treat as approximate.*
+
+**Fiat-Crypto** and **CakeML** papers were read in full and contain **no LOC or
+proof-ratio statistics at all.** Any ratio quoted for them is not from the
+primary paper.
+
+### What follows for this design
+
+Full verification is not affordable here, and that is now quantified rather
+than assumed. At CompCert's 5.4:1 — the *cheapest* credible ratio, and for a
+compiler, which is the closest analogue — verifying even a 5,000-line compiler
+implies roughly 27,000 lines of proof and multiple person-years. seL4's ratio is
+four times worse.
+
+The more interesting number is the other one: verification is expensive relative
+to writing code and considerably cheaper relative to its reputation, and it
+found defects testing did not. So the position is not "verification does not pay"
+but "this project cannot pay for *that* form of it".
+
+Hence the three levels above, and their boundaries:
+
+- `bounded-exhaustive` and `proven-finite` are what a finite-model engine can
+  compute at **near-zero user cost** — nobody writes a proof, and a failure
+  yields a counterexample rather than an obligation. That is the niche this
+  document occupies, and it is deliberately not on the ratio curve above.
+- `proven` stays unreachable until a trusted kernel exists. The figures say what
+  reaching it costs.
+- Full dependent types are **rejected**: there is no evidence they are
+  affordable, because the study that would say so does not exist.
+- Refinement types with SMT discharge — IronFleet's shape, where the solver
+  works and the user writes annotations rather than proofs — is the only line
+  with a plausible cost profile, and is to be investigated only after the
+  ordinary type checker is complete. If it is pursued, the SMT dependency must
+  be costed explicitly: build-time cost, nondeterminism, and error-message
+  quality on failure.
+
 ## Evidence v2 and cache identity
 
 The target artifact is `kofun.law-evidence/v2`, defined by

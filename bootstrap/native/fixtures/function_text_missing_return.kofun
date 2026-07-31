@@ -1,5 +1,5 @@
 fn label(kind: Text) -> Text {
-    kind
+    let named = kind
 }
 
 fn main() {
