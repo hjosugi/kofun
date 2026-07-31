@@ -50,7 +50,10 @@ current decisions are:
 - reject full dependent types and investigate refinement types only after the
   ordinary type checker is complete
   ([#557](https://github.com/hjosugi/kofun/issues/557),
-  [#558](https://github.com/hjosugi/kofun/issues/558))
+  [#558](https://github.com/hjosugi/kofun/issues/558)). The measured
+  verification costs behind that, and the tenfold-inflated `$87M` figure the
+  authors themselves retracted, are recorded in
+  [Law system](LAW_SYSTEM.md#what-the-level-above-proven-finite-would-cost)
 
 These decisions are subordinate to the current compiler path. The bounded
 user-defined call slice now runs under C11 and direct x86-64/AArch64
