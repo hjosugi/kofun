@@ -14,9 +14,21 @@ scope. The diagnostic points at the second declaration and includes the first
 declaration byte position. `duplicate_after_statements.kofun` separates the
 two declarations with other statements, another binding, and a whole child
 block, so a resolver that only compared a declaration against the preceding
-one would pass every other negative here and still fail this one. General
-pattern bindings remain unsupported by the current frontend; this gate does
-not infer pattern bindings from constructor or wildcard token text.
+one would pass every other negative here and still fail this one.
+
+Single-`Int`-payload constructor patterns bind, so pattern bindings are now
+part of the same contract rather than an excluded case. The positive fixture
+binds `carried` in two separate match arms, reusing the spelling of an
+enclosing `let`, and reads that `let` afterwards to show the ancestor was
+restored. `pattern_binding_duplicate.kofun` collides an arm-body `let` with
+its own arm's pattern binding, and `pattern_binding_immutable.kofun` assigns
+to an immutable pattern binding while a **mutable** ancestor shares the
+spelling — that one fails only if assignment resolves the nearest
+`BindingId` rather than the name.
+
+Multi-field and or-pattern forms are still refused by `E2S24`, so this gate
+does not cover duplicate names inside one pattern or across alternatives. It
+does not infer pattern bindings from constructor or wildcard token text.
 
 Shadowing is not warned about. Any formatter or linter opinion on it is
 non-semantic, as `spec/syntax/FOUNDATIONS_AND_CONTROL.md` states under `#41`:
