@@ -273,7 +273,8 @@ L7  proof evidence ABI and law-aware optimizer         planned
 
 ## Backlog mapping
 
-The generated backlog uses:
+Every open issue carries one of these milestones, and the GitHub milestone of
+the same name is the tracker's copy of it:
 
 ```text
 M0-spec
@@ -283,4 +284,14 @@ M3-beta
 M4-1.0
 ```
 
-27 areas each contain 25 subjects. Every subject has a 20-step lifecycle from requirements through release acceptance. Total: 13,500 issues.
+The tracker holds curated issues only. A curated issue states its own `State`,
+`Priority`, `Size`, and `Kind`, so the milestone it sits in can be read as work
+rather than as a heading.
+
+The generated subject grid — 27 areas of 25 subjects, each with a 20-step
+lifecycle, 13,500 issues at full expansion — is not held open in the tracker.
+Its placeholders carried no state, size, priority, or kind, so they could not be
+picked up, estimated, or scheduled, and they outnumbered the curated issues
+roughly five to one. Expand a subject into a curated issue when the work is
+about to start; that is the point at which the fields above can be answered
+honestly.
