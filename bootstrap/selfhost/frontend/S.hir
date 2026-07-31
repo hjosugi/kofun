@@ -1,5 +1,5 @@
 schema|kofun.selfhost-hir/v1
-source|bootstrap/stage1/compiler.kofun|6d38d9c6e84e0f5d6148320e7ebce8cc30a53a3a4f71832d36719f0d84f4230d
+source|bootstrap/stage1/compiler.kofun|3d6025f5a951f635fe032e9eb97cb8d873d3837cd113f29c73eb230ba8c194b7
 status|complete
 type|0|bool
 type|1|text
@@ -29,7 +29,7 @@ type|24|fn|19|1
 type|25|fn|1|1|3|3
 type|26|fn|19|1|1
 type|27|fn|3|21
-scope|0|0|module|0|117081
+scope|0|0|module|0|117278
 scope|1|0|function|708|844
 scope|2|1|block|729|844
 scope|3|0|function|859|1131
@@ -692,26 +692,26 @@ scope|659|658|block|91387|91631
 scope|660|658|block|91637|91825
 scope|661|634|block|91938|92589
 scope|662|634|block|92618|93038
-scope|663|0|function|93121|116154
-scope|664|663|block|93159|116154
+scope|663|0|function|93121|116351
+scope|664|663|block|93159|116351
 scope|665|664|block|93205|93257
 scope|666|664|block|95112|95219
 scope|667|664|block|95278|95348
 scope|668|664|block|95366|95487
-scope|669|664|block|95505|98160
-scope|670|664|block|98184|98779
-scope|671|664|block|98797|102401
-scope|672|664|block|102431|112215
-scope|673|664|block|112592|112982
-scope|674|0|function|116171|116858
-scope|675|674|block|116217|116858
-scope|676|675|block|116342|116399
-scope|677|675|block|116458|116567
-scope|678|675|block|116661|116759
-scope|679|0|function|116867|117080
-scope|680|679|block|116870|117080
-scope|681|680|block|116926|117006
-scope|682|680|block|117056|117078
+scope|669|664|block|95505|98357
+scope|670|664|block|98381|98976
+scope|671|664|block|98994|102598
+scope|672|664|block|102628|112412
+scope|673|664|block|112789|113179
+scope|674|0|function|116368|117055
+scope|675|674|block|116414|117055
+scope|676|675|block|116539|116596
+scope|677|675|block|116655|116764
+scope|678|675|block|116858|116956
+scope|679|0|function|117064|117277
+scope|680|679|block|117067|117277
+scope|681|680|block|117123|117203
+scope|682|680|block|117253|117275
 symbol|0|function|identifier_char|2|693|708
 symbol|1|function|valid_name|2|849|859
 symbol|2|function|digit_value|4|1136|1147
@@ -798,8 +798,8 @@ symbol|82|function|emit_profile_while|16|82361|82379
 symbol|83|function|emit_profile_for|17|82809|82825
 symbol|84|function|emit_profile_program|11|83417|83437
 symbol|85|function|emit_c|18|93115|93121
-symbol|86|function|compile_file|5|116159|116171
-symbol|87|function|main|20|116863|116867
+symbol|86|function|compile_file|5|116356|116368
+symbol|87|function|main|20|117060|117064
 symbol|88|builtin|args|22|0|0
 symbol|89|builtin|chars|23|0|0
 symbol|90|builtin|contains|5|0|0
@@ -1402,16 +1402,16 @@ symbol|686|local|profile_runtime|1|94952|94967
 symbol|687|local|profile_main|1|94985|94997
 symbol|688|local|fail_runtime|1|95015|95027
 symbol|689|local|main_signature|1|95045|95059
-symbol|690|local|program|1|112228|112235
-symbol|691|local|prelude|1|112606|112613
-symbol|692|local|output|1|112995|113001
-symbol|693|parameter|input_path|1|116172|116182
-symbol|694|parameter|output_path|1|116190|116201
-symbol|695|local|input|1|116227|116232
-symbol|696|local|unicode_error|1|116265|116278
-symbol|697|local|source|1|116408|116414
-symbol|698|local|profile_source|1|116576|116590
-symbol|699|local|arguments|21|116880|116889
+symbol|690|local|program|1|112425|112432
+symbol|691|local|prelude|1|112803|112810
+symbol|692|local|output|1|113192|113198
+symbol|693|parameter|input_path|1|116369|116379
+symbol|694|parameter|output_path|1|116387|116398
+symbol|695|local|input|1|116424|116429
+symbol|696|local|unicode_error|1|116462|116475
+symbol|697|local|source|1|116605|116611
+symbol|698|local|profile_source|1|116773|116787
+symbol|699|local|arguments|21|117077|117086
 binding|0|0|0|identifier_char|imm|693|708
 binding|1|0|1|valid_name|imm|849|859
 binding|2|0|2|digit_value|imm|1136|1147
@@ -1498,8 +1498,8 @@ binding|82|0|82|emit_profile_while|imm|82361|82379
 binding|83|0|83|emit_profile_for|imm|82809|82825
 binding|84|0|84|emit_profile_program|imm|83417|83437
 binding|85|0|85|emit_c|imm|93115|93121
-binding|86|0|86|compile_file|imm|116159|116171
-binding|87|0|87|main|imm|116863|116867
+binding|86|0|86|compile_file|imm|116356|116368
+binding|87|0|87|main|imm|117060|117064
 binding|88|1|106|char|imm|709|713
 binding|89|3|107|name|imm|860|864
 binding|90|4|108|symbols|imm|890|897
@@ -2084,16 +2084,16 @@ binding|668|664|686|profile_runtime|mut|94952|94967
 binding|669|664|687|profile_main|mut|94985|94997
 binding|670|664|688|fail_runtime|mut|95015|95027
 binding|671|664|689|main_signature|mut|95045|95059
-binding|672|664|690|program|mut|112228|112235
-binding|673|673|691|prelude|imm|112606|112613
-binding|674|664|692|output|mut|112995|113001
-binding|675|674|693|input_path|imm|116172|116182
-binding|676|674|694|output_path|imm|116190|116201
-binding|677|675|695|input|imm|116227|116232
-binding|678|675|696|unicode_error|imm|116265|116278
-binding|679|675|697|source|imm|116408|116414
-binding|680|675|698|profile_source|imm|116576|116590
-binding|681|680|699|arguments|imm|116880|116889
+binding|672|664|690|program|mut|112425|112432
+binding|673|673|691|prelude|imm|112803|112810
+binding|674|664|692|output|mut|113192|113198
+binding|675|674|693|input_path|imm|116369|116379
+binding|676|674|694|output_path|imm|116387|116398
+binding|677|675|695|input|imm|116424|116429
+binding|678|675|696|unicode_error|imm|116462|116475
+binding|679|675|697|source|imm|116605|116611
+binding|680|675|698|profile_source|imm|116773|116787
+binding|681|680|699|arguments|imm|117077|117086
 function|0|0|1|690|844
 node|1|return|735|842|19|copy|2
 node|2|binary|742|842|0|copy|\p\p|3|5
@@ -9918,7 +9918,7 @@ node|7820|name|93064|93069|3|copy|620
 node|7821|literal-int|93072|93073|3|copy|1
 node|7822|return|93094|93108|19|copy|7823
 node|7823|name|93101|93108|1|read|613
-function|7824|85|663|93112|116154
+function|7824|85|663|93112|116351
 node|7825|let-mut|93165|93188|19|copy|653|7826
 node|7826|literal-text|93186|93188|1|read|
 node|7827|if|93193|93262|19|copy|7828|665|none|-1
@@ -10140,7 +10140,7 @@ node|8042|binary|95399|95463|1|read|+|8043|8044
 node|8043|literal-text|95399|95436|1|read|static void kofun_rt_fail(void) {\n
 node|8044|literal-text|95447|95463|1|read|    exit(1);\n
 node|8045|literal-text|95474|95481|1|read|}\n\n
-node|8046|if|95492|98165|19|copy|8047|669|none|-1
+node|8046|if|95492|98362|19|copy|8047|669|none|-1
 node|8047|name|95495|95504|0|copy|659
 node|8048|assign|95515|95595|19|edit|660|8049
 node|8049|binary|95538|95595|1|read|+|8050|8051
@@ -10222,906 +10222,916 @@ node|8124|literal-text|97482|97535|1|read|    allocation->next = kofun_rt_text_a
 node|8125|literal-text|97546|97593|1|read|    kofun_rt_text_allocations = allocation;\n
 node|8126|literal-text|97604|97637|1|read|    return allocation->bytes;\n
 node|8127|literal-text|97648|97655|1|read|}\n\n
-node|8128|assign|97664|97845|19|edit|661|8129
-node|8129|binary|97679|97845|1|read|+|8130|8135
-node|8130|binary|97679|97827|1|read|+|8131|8134
-node|8131|binary|97679|97776|1|read|+|8132|8133
-node|8132|name|97679|97691|1|read|661
-node|8133|literal-text|97702|97776|1|read|static bool kofun_rt_text_equal(const char *left, const char *right) {\n
-node|8134|literal-text|97787|97827|1|read|    return strcmp(left, right) == 0;\n
-node|8135|literal-text|97838|97845|1|read|}\n\n
-node|8136|assign|97854|98154|19|edit|662|8137
-node|8137|binary|97874|98154|1|read|+|8138|8147
-node|8138|binary|97874|98109|1|read|+|8139|8146
-node|8139|binary|97874|98063|1|read|+|8140|8145
-node|8140|binary|97874|98043|1|read|+|8141|8144
-node|8141|binary|97874|98011|1|read|+|8142|8143
-node|8142|literal-text|97874|97923|1|read|    if (atexit(kofun_rt_text_cleanup) != 0) {\n
-node|8143|literal-text|97934|98011|1|read|        runtime_error("error[R010]: Text cleanup registration failed");\n
-node|8144|literal-text|98022|98043|1|read|        return 1;\n
-node|8145|literal-text|98054|98063|1|read|    }\n
-node|8146|literal-text|98074|98109|1|read|    (void)kofun_rt_text_concat;\n
-node|8147|literal-text|98120|98154|1|read|    (void)kofun_rt_text_equal;\n
-node|8148|if|98165|98784|19|copy|8149|670|none|-1
-node|8149|name|98168|98183|0|copy|657
-node|8150|assign|98194|98704|19|edit|663|8151
-node|8151|binary|98223|98704|1|read|+|8152|8167
-node|8152|binary|98223|98686|1|read|+|8153|8166
-node|8153|binary|98223|98622|1|read|+|8154|8165
-node|8154|binary|98223|98559|1|read|+|8155|8164
-node|8155|binary|98223|98539|1|read|+|8156|8163
-node|8156|binary|98223|98504|1|read|+|8157|8162
-node|8157|binary|98223|98424|1|read|+|8158|8161
-node|8158|binary|98223|98350|1|read|+|8159|8160
-node|8159|literal-text|98223|98301|1|read|static const char *kofun_rt_text_index(const char *value, int64_t index) {\n
-node|8160|literal-text|98312|98350|1|read|    size_t length = strlen(value);\n
-node|8161|literal-text|98361|98424|1|read|    if (index < 0 \p\p (uint64_t)index >= (uint64_t)length) {\n
-node|8162|literal-text|98435|98504|1|read|        runtime_error("error[R010]: Text index out of bounds");\n
-node|8163|literal-text|98515|98539|1|read|        return "";\n
-node|8164|literal-text|98550|98559|1|read|    }\n
-node|8165|literal-text|98570|98622|1|read|    char character[2] = { value[index], '\\0' };\n
-node|8166|literal-text|98633|98686|1|read|    return kofun_rt_text_concat("", character);\n
-node|8167|literal-text|98697|98704|1|read|}\n\n
-node|8168|assign|98713|98773|19|edit|664|8169
-node|8169|literal-text|98739|98773|1|read|    (void)kofun_rt_text_index;\n
-node|8170|if|98784|102406|19|copy|8171|671|none|-1
-node|8171|name|98787|98796|0|copy|658
-node|8172|assign|98807|99622|19|edit|665|8173
-node|8173|binary|98830|99622|1|read|+|8174|8205
-node|8174|binary|98830|99604|1|read|+|8175|8204
-node|8175|binary|98830|99584|1|read|+|8176|8203
-node|8176|binary|98830|99544|1|read|+|8177|8202
-node|8177|binary|98830|99471|1|read|+|8178|8201
-node|8178|binary|98830|99413|1|read|+|8179|8200
-node|8179|binary|98830|99353|1|read|+|8180|8199
-node|8180|binary|98830|99286|1|read|+|8181|8198
-node|8181|binary|98830|99225|1|read|+|8182|8197
-node|8182|binary|98830|99145|1|read|+|8183|8196
-node|8183|binary|98830|99102|1|read|+|8184|8195
-node|8184|binary|98830|99063|1|read|+|8185|8194
-node|8185|binary|98830|99007|1|read|+|8186|8193
-node|8186|binary|98830|98952|1|read|+|8187|8192
-node|8187|binary|98830|98919|1|read|+|8188|8191
-node|8188|binary|98830|98881|1|read|+|8189|8190
-node|8189|literal-text|98830|98850|1|read|typedef struct {\n
-node|8190|literal-text|98861|98881|1|read|    int64_t len;\n
-node|8191|literal-text|98892|98919|1|read|    const char **items;\n
-node|8192|literal-text|98930|98952|1|read|} KofunTextList;\n\n
-node|8193|literal-text|98963|99007|1|read|typedef struct KofunTextListAllocation {\n
-node|8194|literal-text|99018|99063|1|read|    struct KofunTextListAllocation *next;\n
-node|8195|literal-text|99074|99102|1|read|    const char *items[];\n
-node|8196|literal-text|99113|99145|1|read|} KofunTextListAllocation;\n\n
-node|8197|literal-text|99156|99225|1|read|static KofunTextListAllocation *kofun_rt_text_list_allocations;\n\n
-node|8198|literal-text|99236|99286|1|read|static void kofun_rt_text_list_cleanup(void) {\n
-node|8199|literal-text|99297|99353|1|read|    while (kofun_rt_text_list_allocations != NULL) {\n
-node|8200|literal-text|99364|99413|1|read|        KofunTextListAllocation *allocation =\n
-node|8201|literal-text|99424|99471|1|read|            kofun_rt_text_list_allocations;\n
-node|8202|literal-text|99482|99544|1|read|        kofun_rt_text_list_allocations = allocation->next;\n
-node|8203|literal-text|99555|99584|1|read|        free(allocation);\n
-node|8204|literal-text|99595|99604|1|read|    }\n
-node|8205|literal-text|99615|99622|1|read|}\n\n
-node|8206|assign|99631|99831|19|edit|665|8207
-node|8207|binary|99646|99831|1|read|+|8208|8215
-node|8208|binary|99646|99813|1|read|+|8209|8214
-node|8209|binary|99646|99780|1|read|+|8210|8213
-node|8210|binary|99646|99726|1|read|+|8211|8212
-node|8211|name|99646|99658|1|read|665
-node|8212|literal-text|99669|99726|1|read|static KofunTextList kofun_rt_empty_text_list(void) {\n
-node|8213|literal-text|99737|99780|1|read|    KofunTextList result = { 0, NULL };\n
-node|8214|literal-text|99791|99813|1|read|    return result;\n
-node|8215|literal-text|99824|99831|1|read|}\n\n
-node|8216|assign|99840|101417|19|edit|665|8217
-node|8217|binary|99855|101417|1|read|+|8218|8275
-node|8218|binary|99855|101399|1|read|+|8219|8274
-node|8219|binary|99855|101366|1|read|+|8220|8273
-node|8220|binary|99855|101345|1|read|+|8221|8272
-node|8221|binary|99855|101304|1|read|+|8222|8271
-node|8222|binary|99855|101265|1|read|+|8223|8270
-node|8223|binary|99855|101222|1|read|+|8224|8269
-node|8224|binary|99855|101202|1|read|+|8225|8268
-node|8225|binary|99855|101129|1|read|+|8226|8267
-node|8226|binary|99855|101072|1|read|+|8227|8266
-node|8227|binary|99855|101012|1|read|+|8228|8265
-node|8228|binary|99855|100944|1|read|+|8229|8264
-node|8229|binary|99855|100869|1|read|+|8230|8263
-node|8230|binary|99855|100806|1|read|+|8231|8262
-node|8231|binary|99855|100737|1|read|+|8232|8261
-node|8232|binary|99855|100717|1|read|+|8233|8260
-node|8233|binary|99855|100660|1|read|+|8234|8259
-node|8234|binary|99855|100576|1|read|+|8235|8258
-node|8235|binary|99855|100532|1|read|+|8236|8257
-node|8236|binary|99855|100472|1|read|+|8237|8256
-node|8237|binary|99855|100416|1|read|+|8238|8255
-node|8238|binary|99855|100352|1|read|+|8239|8254
-node|8239|binary|99855|100332|1|read|+|8240|8253
-node|8240|binary|99855|100275|1|read|+|8241|8252
-node|8241|binary|99855|100185|1|read|+|8242|8251
-node|8242|binary|99855|100129|1|read|+|8243|8250
-node|8243|binary|99855|100051|1|read|+|8244|8249
-node|8244|binary|99855|99987|1|read|+|8245|8248
-node|8245|binary|99855|99938|1|read|+|8246|8247
-node|8246|name|99855|99867|1|read|665
-node|8247|literal-text|99878|99938|1|read|static KofunTextList kofun_rt_chars(const char *value) {\n
-node|8248|literal-text|99949|99987|1|read|    size_t length = strlen(value);\n
-node|8249|literal-text|99998|100051|1|read|    if ((uint64_t)length > (uint64_t)INT64_MAX \p\p\n
-node|8250|literal-text|100062|100129|1|read|        length > (SIZE_MAX - sizeof(KofunTextListAllocation)) /\n
-node|8251|literal-text|100140|100185|1|read|            (sizeof(const char *) + 2)) {\n
-node|8252|literal-text|100196|100275|1|read|        runtime_error("error[R010]: List[Text] allocation is too large");\n
-node|8253|literal-text|100286|100332|1|read|        return kofun_rt_empty_text_list();\n
-node|8254|literal-text|100343|100352|1|read|    }\n
-node|8255|literal-text|100363|100416|1|read|    KofunTextListAllocation *allocation = malloc(\n
-node|8256|literal-text|100427|100472|1|read|        sizeof(KofunTextListAllocation) +\n
-node|8257|literal-text|100483|100532|1|read|        length * (sizeof(const char *) + 2));\n
-node|8258|literal-text|100543|100576|1|read|    if (allocation == NULL) {\n
-node|8259|literal-text|100587|100660|1|read|        runtime_error("error[R010]: List[Text] allocation failed");\n
-node|8260|literal-text|100671|100717|1|read|        return kofun_rt_empty_text_list();\n
-node|8261|literal-text|100728|100737|1|read|    }\n
-node|8262|literal-text|100748|100806|1|read|    allocation->next = kofun_rt_text_list_allocations;\n
-node|8263|literal-text|100817|100869|1|read|    kofun_rt_text_list_allocations = allocation;\n
-node|8264|literal-text|100880|100944|1|read|    char *characters = (char *)(allocation->items + length);\n
-node|8265|literal-text|100955|101012|1|read|    for (size_t index = 0; index < length; ++index) {\n
-node|8266|literal-text|101023|101072|1|read|        characters[2 * index] = value[index];\n
-node|8267|literal-text|101083|101129|1|read|        characters[2 * index + 1] = '\\0';\n
-node|8268|literal-text|101140|101202|1|read|        allocation->items[index] = characters + 2 * index;\n
-node|8269|literal-text|101213|101222|1|read|    }\n
-node|8270|literal-text|101233|101265|1|read|    KofunTextList result = {\n
-node|8271|literal-text|101276|101304|1|read|        (int64_t)length,\n
-node|8272|literal-text|101315|101345|1|read|        allocation->items,\n
-node|8273|literal-text|101356|101366|1|read|    };\n
-node|8274|literal-text|101377|101399|1|read|    return result;\n
-node|8275|literal-text|101410|101417|1|read|}\n\n
-node|8276|assign|101426|101584|19|edit|665|8277
-node|8277|binary|101441|101584|1|read|+|8278|8283
-node|8278|binary|101441|101566|1|read|+|8279|8282
-node|8279|binary|101441|101529|1|read|+|8280|8281
-node|8280|name|101441|101453|1|read|665
-node|8281|literal-text|101464|101529|1|read|static int64_t kofun_rt_text_list_len(KofunTextList values) {\n
-node|8282|literal-text|101540|101566|1|read|    return values.len;\n
-node|8283|literal-text|101577|101584|1|read|}\n\n
-node|8284|assign|101593|102030|19|edit|665|8285
-node|8285|binary|101608|102030|1|read|+|8286|8305
-node|8286|binary|101608|102012|1|read|+|8287|8304
-node|8287|binary|101608|101966|1|read|+|8288|8303
-node|8288|binary|101608|101946|1|read|+|8289|8302
-node|8289|binary|101608|101911|1|read|+|8290|8301
-node|8290|binary|101608|101825|1|read|+|8291|8300
-node|8291|binary|101608|101767|1|read|+|8292|8299
-node|8292|binary|101608|101749|1|read|+|8293|8298
-node|8293|binary|101608|101717|1|read|+|8294|8297
-node|8294|binary|101608|101677|1|read|+|8295|8296
-node|8295|name|101608|101620|1|read|665
-node|8296|literal-text|101631|101677|1|read|static const char *kofun_rt_text_list_get(\n
-node|8297|literal-text|101688|101717|1|read|    KofunTextList values,\n
-node|8298|literal-text|101728|101749|1|read|    int64_t index\n
-node|8299|literal-text|101760|101767|1|read|) {\n
-node|8300|literal-text|101778|101825|1|read|    if (index < 0 \p\p index >= values.len) {\n
-node|8301|literal-text|101836|101911|1|read|        runtime_error("error[R010]: List[Text] index out of bounds");\n
-node|8302|literal-text|101922|101946|1|read|        return "";\n
-node|8303|literal-text|101957|101966|1|read|    }\n
-node|8304|literal-text|101977|102012|1|read|    return values.items[index];\n
-node|8305|literal-text|102023|102030|1|read|}\n\n
-node|8306|assign|102039|102395|19|edit|666|8307
-node|8307|binary|102059|102395|1|read|+|8308|8319
-node|8308|binary|102059|102347|1|read|+|8309|8318
-node|8309|binary|102059|102299|1|read|+|8310|8317
-node|8310|binary|102059|102259|1|read|+|8311|8316
-node|8311|binary|102059|102239|1|read|+|8312|8315
-node|8312|binary|102059|102207|1|read|+|8313|8314
-node|8313|literal-text|102059|102113|1|read|    if (atexit(kofun_rt_text_list_cleanup) != 0) {\n
-node|8314|literal-text|102124|102207|1|read|        runtime_error("error[R010]: List[Text] cleanup registration failed");\n
-node|8315|literal-text|102218|102239|1|read|        return 1;\n
-node|8316|literal-text|102250|102259|1|read|    }\n
-node|8317|literal-text|102270|102299|1|read|    (void)kofun_rt_chars;\n
-node|8318|literal-text|102310|102347|1|read|    (void)kofun_rt_text_list_len;\n
-node|8319|literal-text|102358|102395|1|read|    (void)kofun_rt_text_list_get;\n
-node|8320|if|102406|112220|19|copy|8321|672|none|-1
-node|8321|name|102409|102430|0|copy|655
-node|8322|assign|102441|103329|19|edit|668|8323
-node|8323|binary|102467|103329|1|read|+|8324|8355
-node|8324|binary|102467|103311|1|read|+|8325|8354
-node|8325|binary|102467|103267|1|read|+|8326|8353
-node|8326|binary|102467|103209|1|read|+|8327|8352
-node|8327|binary|102467|103145|1|read|+|8328|8351
-node|8328|binary|102467|103092|1|read|+|8329|8350
-node|8329|binary|102467|103072|1|read|+|8330|8349
-node|8330|binary|102467|103037|1|read|+|8331|8348
-node|8331|binary|102467|102959|1|read|+|8332|8347
-node|8332|binary|102467|102915|1|read|+|8333|8346
-node|8333|binary|102467|102843|1|read|+|8334|8345
-node|8334|binary|102467|102791|1|read|+|8335|8344
-node|8335|binary|102467|102771|1|read|+|8336|8343
-node|8336|binary|102467|102736|1|read|+|8337|8342
-node|8337|binary|102467|102652|1|read|+|8338|8341
-node|8338|binary|102467|102575|1|read|+|8339|8340
-node|8339|literal-text|102467|102531|1|read|static char *kofun_rt_profile_text_allocate(size_t length) {\n
-node|8340|literal-text|102542|102575|1|read|    if (length == SIZE_MAX \p\p\n
-node|8341|literal-text|102586|102652|1|read|        length + 1 > SIZE_MAX - sizeof(KofunTextAllocation)) {\n
-node|8342|literal-text|102663|102736|1|read|        runtime_error("error[R010]: Text allocation is too large");\n
-node|8343|literal-text|102747|102771|1|read|        return NULL;\n
-node|8344|literal-text|102782|102791|1|read|    }\n
-node|8345|literal-text|102802|102843|1|read|    KofunTextAllocation *allocation =\n
-node|8346|literal-text|102854|102915|1|read|        malloc(sizeof(KofunTextAllocation) + length + 1);\n
-node|8347|literal-text|102926|102959|1|read|    if (allocation == NULL) {\n
-node|8348|literal-text|102970|103037|1|read|        runtime_error("error[R010]: Text allocation failed");\n
-node|8349|literal-text|103048|103072|1|read|        return NULL;\n
-node|8350|literal-text|103083|103092|1|read|    }\n
-node|8351|literal-text|103103|103145|1|read|    allocation->bytes[length] = '\\0';\n
-node|8352|literal-text|103156|103209|1|read|    allocation->next = kofun_rt_text_allocations;\n
-node|8353|literal-text|103220|103267|1|read|    kofun_rt_text_allocations = allocation;\n
-node|8354|literal-text|103278|103311|1|read|    return allocation->bytes;\n
-node|8355|literal-text|103322|103329|1|read|}\n\n
-node|8356|assign|103338|103756|19|edit|668|8357
-node|8357|binary|103356|103756|1|read|+|8358|8375
-node|8358|binary|103356|103738|1|read|+|8359|8374
-node|8359|binary|103356|103705|1|read|+|8360|8373
-node|8360|binary|103356|103640|1|read|+|8361|8372
-node|8361|binary|103356|103589|1|read|+|8362|8371
-node|8362|binary|103356|103516|1|read|+|8363|8370
-node|8363|binary|103356|103498|1|read|+|8364|8369
-node|8364|binary|103356|103466|1|read|+|8365|8368
-node|8365|binary|103356|103429|1|read|+|8366|8367
-node|8366|name|103356|103371|1|read|668
-node|8367|literal-text|103382|103429|1|read|static const char *kofun_rt_profile_copy_n(\n
-node|8368|literal-text|103440|103466|1|read|    const char *value,\n
-node|8369|literal-text|103477|103498|1|read|    size_t length\n
-node|8370|literal-text|103509|103516|1|read|) {\n
-node|8371|literal-text|103527|103589|1|read|    char *result = kofun_rt_profile_text_allocate(length);\n
-node|8372|literal-text|103600|103640|1|read|    if (result == NULL) return "";\n
-node|8373|literal-text|103651|103705|1|read|    if (length > 0) memcpy(result, value, length);\n
-node|8374|literal-text|103716|103738|1|read|    return result;\n
-node|8375|literal-text|103749|103756|1|read|}\n\n
-node|8376|assign|103765|105217|19|edit|668|8377
-node|8377|binary|103783|105217|1|read|+|8378|8425
-node|8378|binary|103783|105199|1|read|+|8379|8424
-node|8379|binary|103783|105166|1|read|+|8380|8423
-node|8380|binary|103783|105085|1|read|+|8381|8422
-node|8381|binary|103783|105065|1|read|+|8382|8421
-node|8382|binary|103783|104996|1|read|+|8383|8420
-node|8383|binary|103783|104927|1|read|+|8384|8419
-node|8384|binary|103783|104853|1|read|+|8385|8418
-node|8385|binary|103783|104785|1|read|+|8386|8417
-node|8386|binary|103783|104722|1|read|+|8387|8416
-node|8387|binary|103783|104653|1|read|+|8388|8415
-node|8388|binary|103783|104633|1|read|+|8389|8414
-node|8389|binary|103783|104576|1|read|+|8390|8413
-node|8390|binary|103783|104483|1|read|+|8391|8412
-node|8391|binary|103783|104439|1|read|+|8392|8411
-node|8392|binary|103783|104351|1|read|+|8393|8410
-node|8393|binary|103783|104287|1|read|+|8394|8409
-node|8394|binary|103783|104267|1|read|+|8395|8408
-node|8395|binary|103783|104210|1|read|+|8396|8407
-node|8396|binary|103783|104122|1|read|+|8397|8406
-node|8397|binary|103783|104072|1|read|+|8398|8405
-node|8398|binary|103783|103994|1|read|+|8399|8404
-node|8399|binary|103783|103940|1|read|+|8400|8403
-node|8400|binary|103783|103872|1|read|+|8401|8402
-node|8401|name|103783|103798|1|read|668
-node|8402|literal-text|103809|103872|1|read|static KofunTextList kofun_rt_args(int argc, char **argv) {\n
-node|8403|literal-text|103883|103940|1|read|    if (argc <= 1) return kofun_rt_empty_text_list();\n
-node|8404|literal-text|103951|103994|1|read|    size_t length = (size_t)(argc - 1);\n
-node|8405|literal-text|104005|104072|1|read|    if (length > (SIZE_MAX - sizeof(KofunTextListAllocation)) /\n
-node|8406|literal-text|104083|104122|1|read|            sizeof(const char *)) {\n
-node|8407|literal-text|104133|104210|1|read|        runtime_error("error[R010]: argument List[Text] is too large");\n
-node|8408|literal-text|104221|104267|1|read|        return kofun_rt_empty_text_list();\n
-node|8409|literal-text|104278|104287|1|read|    }\n
-node|8410|literal-text|104298|104351|1|read|    KofunTextListAllocation *allocation = malloc(\n
-node|8411|literal-text|104362|104439|1|read|        sizeof(KofunTextListAllocation) + length * sizeof(const char *));\n
-node|8412|literal-text|104450|104483|1|read|    if (allocation == NULL) {\n
-node|8413|literal-text|104494|104576|1|read|        runtime_error("error[R010]: argument List[Text] allocation failed");\n
-node|8414|literal-text|104587|104633|1|read|        return kofun_rt_empty_text_list();\n
-node|8415|literal-text|104644|104653|1|read|    }\n
-node|8416|literal-text|104664|104722|1|read|    allocation->next = kofun_rt_text_list_allocations;\n
-node|8417|literal-text|104733|104785|1|read|    kofun_rt_text_list_allocations = allocation;\n
-node|8418|literal-text|104796|104853|1|read|    for (size_t index = 0; index < length; ++index) {\n
-node|8419|literal-text|104864|104927|1|read|        allocation->items[index] = kofun_rt_profile_copy_n(\n
-node|8420|literal-text|104938|104996|1|read|            argv[index + 1], strlen(argv[index + 1]));\n
-node|8421|literal-text|105007|105065|1|read|        if (failed) return kofun_rt_empty_text_list();\n
-node|8422|literal-text|105076|105085|1|read|    }\n
-node|8423|literal-text|105096|105166|1|read|    KofunTextList result = { (int64_t)length, allocation->items };\n
-node|8424|literal-text|105177|105199|1|read|    return result;\n
-node|8425|literal-text|105210|105217|1|read|}\n\n
-node|8426|assign|105226|105631|19|edit|668|8427
-node|8427|binary|105244|105631|1|read|+|8428|8443
-node|8428|binary|105244|105613|1|read|+|8429|8442
-node|8429|binary|105244|105571|1|read|+|8430|8441
-node|8430|binary|105244|105551|1|read|+|8431|8440
-node|8431|binary|105244|105519|1|read|+|8432|8439
-node|8432|binary|105244|105440|1|read|+|8433|8438
-node|8433|binary|105244|105376|1|read|+|8434|8437
-node|8434|binary|105244|105327|1|read|+|8435|8436
-node|8435|name|105244|105259|1|read|668
-node|8436|literal-text|105270|105327|1|read|static int64_t kofun_rt_text_len(const char *value) {\n
-node|8437|literal-text|105338|105376|1|read|    size_t length = strlen(value);\n
-node|8438|literal-text|105387|105440|1|read|    if ((uint64_t)length > (uint64_t)INT64_MAX) {\n
-node|8439|literal-text|105451|105519|1|read|        runtime_error("error[R010]: Text length exceeds Int");\n
-node|8440|literal-text|105530|105551|1|read|        return 0;\n
-node|8441|literal-text|105562|105571|1|read|    }\n
-node|8442|literal-text|105582|105613|1|read|    return (int64_t)length;\n
-node|8443|literal-text|105624|105631|1|read|}\n\n
-node|8444|assign|105640|106133|19|edit|668|8445
-node|8445|binary|105658|106133|1|read|+|8446|8465
-node|8446|binary|105658|106115|1|read|+|8447|8464
-node|8447|binary|105658|106034|1|read|+|8448|8463
-node|8448|binary|105658|105973|1|read|+|8449|8462
-node|8449|binary|105658|105889|1|read|+|8450|8461
-node|8450|binary|105658|105871|1|read|+|8451|8460
-node|8451|binary|105658|105815|1|read|+|8452|8459
-node|8452|binary|105658|105797|1|read|+|8453|8458
-node|8453|binary|105658|105760|1|read|+|8454|8457
-node|8454|binary|105658|105723|1|read|+|8455|8456
-node|8455|name|105658|105673|1|read|668
-node|8456|literal-text|105684|105723|1|read|static bool kofun_rt_text_contains(\n
-node|8457|literal-text|105734|105760|1|read|    const char *value,\n
-node|8458|literal-text|105771|105797|1|read|    const char *needle\n
-node|8459|literal-text|105808|105815|1|read|) {\n
-node|8460|literal-text|105826|105871|1|read|    return strstr(value, needle) != NULL;\n
-node|8461|literal-text|105882|105889|1|read|}\n\n
-node|8462|literal-text|105900|105973|1|read|static int64_t kofun_rt_find(const char *value, const char *needle) {\n
-node|8463|literal-text|105984|106034|1|read|    const char *found = strstr(value, needle);\n
-node|8464|literal-text|106045|106115|1|read|    return found == NULL ? INT64_C(-1) : (int64_t)(found - value);\n
-node|8465|literal-text|106126|106133|1|read|}\n\n
-node|8466|assign|106142|106459|19|edit|668|8467
-node|8467|binary|106160|106459|1|read|+|8468|8481
-node|8468|binary|106160|106441|1|read|+|8469|8480
-node|8469|binary|106160|106372|1|read|+|8470|8479
-node|8470|binary|106160|106315|1|read|+|8471|8478
-node|8471|binary|106160|106297|1|read|+|8472|8477
-node|8472|binary|106160|106260|1|read|+|8473|8476
-node|8473|binary|106160|106223|1|read|+|8474|8475
-node|8474|name|106160|106175|1|read|668
-node|8475|literal-text|106186|106223|1|read|static bool kofun_rt_starts_with(\n
-node|8476|literal-text|106234|106260|1|read|    const char *value,\n
-node|8477|literal-text|106271|106297|1|read|    const char *prefix\n
-node|8478|literal-text|106308|106315|1|read|) {\n
-node|8479|literal-text|106326|106372|1|read|    size_t prefix_length = strlen(prefix);\n
-node|8480|literal-text|106383|106441|1|read|    return strncmp(value, prefix, prefix_length) == 0;\n
-node|8481|literal-text|106452|106459|1|read|}\n\n
-node|8482|assign|106468|107409|19|edit|668|8483
-node|8483|binary|106486|107409|1|read|+|8484|8519
-node|8484|binary|106486|107391|1|read|+|8485|8518
-node|8485|binary|106486|107324|1|read|+|8486|8517
-node|8486|binary|106486|107304|1|read|+|8487|8516
-node|8487|binary|106486|107268|1|read|+|8488|8515
-node|8488|binary|106486|107201|1|read|+|8489|8514
-node|8489|binary|106486|107122|1|read|+|8490|8513
-node|8490|binary|106486|107073|1|read|+|8491|8512
-node|8491|binary|106486|107037|1|read|+|8492|8511
-node|8492|binary|106486|106995|1|read|+|8493|8510
-node|8493|binary|106486|106923|1|read|+|8494|8509
-node|8494|binary|106486|106905|1|read|+|8495|8508
-node|8495|binary|106486|106844|1|read|+|8496|8507
-node|8496|binary|106486|106777|1|read|+|8497|8506
-node|8497|binary|106486|106712|1|read|+|8498|8505
-node|8498|binary|106486|106694|1|read|+|8499|8504
-node|8499|binary|106486|106633|1|read|+|8500|8503
-node|8500|binary|106486|106566|1|read|+|8501|8502
-node|8501|name|106486|106501|1|read|668
-node|8502|literal-text|106512|106566|1|read|static bool kofun_rt_is_digit(const char *value) {\n
-node|8503|literal-text|106577|106633|1|read|    return value[0] != '\\0' && value[1] == '\\0' &&\n
-node|8504|literal-text|106644|106694|1|read|        isdigit((unsigned char)value[0]) != 0;\n
-node|8505|literal-text|106705|106712|1|read|}\n\n
-node|8506|literal-text|106723|106777|1|read|static bool kofun_rt_is_space(const char *value) {\n
-node|8507|literal-text|106788|106844|1|read|    return value[0] != '\\0' && value[1] == '\\0' &&\n
-node|8508|literal-text|106855|106905|1|read|        isspace((unsigned char)value[0]) != 0;\n
-node|8509|literal-text|106916|106923|1|read|}\n\n
-node|8510|literal-text|106934|106995|1|read|static bool kofun_rt_is_xid_continue(const char *value) {\n
-node|8511|literal-text|107006|107037|1|read|    uint32_t codepoint = 0;\n
-node|8512|literal-text|107048|107073|1|read|    size_t width = 0;\n
-node|8513|literal-text|107084|107122|1|read|    size_t length = strlen(value);\n
-node|8514|literal-text|107133|107201|1|read|    if (!kofun_unicode_decode((const uint8_t *)value, length, 0,\n
-node|8515|literal-text|107212|107268|1|read|                              &codepoint, &width)) {\n
-node|8516|literal-text|107279|107304|1|read|        return false;\n
-node|8517|literal-text|107315|107324|1|read|    }\n
-node|8518|literal-text|107335|107391|1|read|    return kofun_unicode_is_xid_continue(codepoint);\n
-node|8519|literal-text|107402|107409|1|read|}\n\n
-node|8520|assign|107418|108580|19|edit|668|8521
-node|8521|binary|107436|108580|1|read|+|8522|8567
-node|8522|binary|107436|108562|1|read|+|8523|8566
-node|8523|binary|107436|108495|1|read|+|8524|8565
-node|8524|binary|107436|108445|1|read|+|8525|8564
-node|8525|binary|107436|108380|1|read|+|8526|8563
-node|8526|binary|107436|108312|1|read|+|8527|8562
-node|8527|binary|107436|108267|1|read|+|8528|8561
-node|8528|binary|107436|108197|1|read|+|8529|8560
-node|8529|binary|107436|108120|1|read|+|8530|8559
-node|8530|binary|107436|108052|1|read|+|8531|8558
-node|8531|binary|107436|108034|1|read|+|8532|8557
-node|8532|binary|107436|107973|1|read|+|8533|8556
-node|8533|binary|107436|107923|1|read|+|8534|8555
-node|8534|binary|107436|107873|1|read|+|8535|8554
-node|8535|binary|107436|107819|1|read|+|8536|8553
-node|8536|binary|107436|107771|1|read|+|8537|8552
-node|8537|binary|107436|107727|1|read|+|8538|8551
-node|8538|binary|107436|107684|1|read|+|8539|8550
-node|8539|binary|107436|107623|1|read|+|8540|8549
-node|8540|binary|107436|107605|1|read|+|8541|8548
-node|8541|binary|107436|107575|1|read|+|8542|8547
-node|8542|binary|107436|107542|1|read|+|8543|8546
-node|8543|binary|107436|107505|1|read|+|8544|8545
-node|8544|name|107436|107451|1|read|668
-node|8545|literal-text|107462|107505|1|read|static const char *kofun_rt_text_slice(\n
-node|8546|literal-text|107516|107542|1|read|    const char *value,\n
-node|8547|literal-text|107553|107575|1|read|    int64_t start,\n
-node|8548|literal-text|107586|107605|1|read|    int64_t end\n
-node|8549|literal-text|107616|107623|1|read|) {\n
-node|8550|literal-text|107634|107684|1|read|    int64_t length = kofun_rt_text_len(value);\n
-node|8551|literal-text|107695|107727|1|read|    if (failed) return "";\n
-node|8552|literal-text|107738|107771|1|read|    if (start < 0) start = 0;\n
-node|8553|literal-text|107782|107819|1|read|    if (end < start) end = start;\n
-node|8554|literal-text|107830|107873|1|read|    if (start > length) start = length;\n
-node|8555|literal-text|107884|107923|1|read|    if (end > length) end = length;\n
-node|8556|literal-text|107934|107973|1|read|    return kofun_rt_profile_copy_n(\n
-node|8557|literal-text|107984|108034|1|read|        value + start, (size_t)(end - start));\n
-node|8558|literal-text|108045|108052|1|read|}\n\n
-node|8559|literal-text|108063|108120|1|read|static const char *kofun_rt_trim(const char *value) {\n
-node|8560|literal-text|108131|108197|1|read|    const unsigned char *start = (const unsigned char *)value;\n
-node|8561|literal-text|108208|108267|1|read|    while (*start != '\\0' && isspace(*start)) ++start;\n
-node|8562|literal-text|108278|108312|1|read|    const unsigned char *end =\n
-node|8563|literal-text|108323|108380|1|read|        (const unsigned char *)value + strlen(value);\n
-node|8564|literal-text|108391|108445|1|read|    while (end > start && isspace(end[-1])) --end;\n
-node|8565|literal-text|108456|108495|1|read|    return kofun_rt_profile_copy_n(\n
-node|8566|literal-text|108506|108562|1|read|        (const char *)start, (size_t)(end - start));\n
-node|8567|literal-text|108573|108580|1|read|}\n\n
-node|8568|assign|108589|109256|19|edit|668|8569
-node|8569|binary|108607|109256|1|read|+|8570|8591
-node|8570|binary|108607|109238|1|read|+|8571|8590
-node|8571|binary|108607|109162|1|read|+|8572|8589
-node|8572|binary|108607|109076|1|read|+|8573|8588
-node|8573|binary|108607|109015|1|read|+|8574|8587
-node|8574|binary|108607|108977|1|read|+|8575|8586
-node|8575|binary|108607|108957|1|read|+|8576|8585
-node|8576|binary|108607|108922|1|read|+|8577|8584
-node|8577|binary|108607|108836|1|read|+|8578|8583
-node|8578|binary|108607|108760|1|read|+|8579|8582
-node|8579|binary|108607|108709|1|read|+|8580|8581
-node|8580|name|108607|108622|1|read|668
-node|8581|literal-text|108633|108709|1|read|static const char *kofun_rt_validate_unicode_source(const char *value) {\n
-node|8582|literal-text|108720|108760|1|read|    KofunUnicodeError unicode_error;\n
-node|8583|literal-text|108771|108836|1|read|    if (kofun_unicode_validate_source((const uint8_t *)value,\n
-node|8584|literal-text|108847|108922|1|read|                                      strlen(value), &unicode_error)) {\n
-node|8585|literal-text|108933|108957|1|read|        return "";\n
-node|8586|literal-text|108968|108977|1|read|    }\n
-node|8587|literal-text|108988|109015|1|read|    char message[1024];\n
-node|8588|literal-text|109026|109076|1|read|    kofun_unicode_format_error(&unicode_error,\n
-node|8589|literal-text|109087|109162|1|read|        getenv("KOFUN_DIAGNOSTIC_LOCALE"), message, sizeof(message));\n
-node|8590|literal-text|109173|109238|1|read|    return kofun_rt_profile_copy_n(message, strlen(message));\n
-node|8591|literal-text|109249|109256|1|read|}\n\n
-node|8592|assign|109265|110766|19|edit|668|8593
-node|8593|binary|109283|110766|1|read|+|8594|8661
-node|8594|binary|109283|110748|1|read|+|8595|8660
-node|8595|binary|109283|110715|1|read|+|8596|8659
-node|8596|binary|109283|110683|1|read|+|8597|8658
-node|8597|binary|109283|110643|1|read|+|8598|8657
-node|8598|binary|109283|110623|1|read|+|8599|8656
-node|8599|binary|109283|110588|1|read|+|8600|8655
-node|8600|binary|109283|110510|1|read|+|8601|8654
-node|8601|binary|109283|110474|1|read|+|8602|8653
-node|8602|binary|109283|110420|1|read|+|8603|8652
-node|8603|binary|109283|110358|1|read|+|8604|8651
-node|8604|binary|109283|110338|1|read|+|8605|8650
-node|8605|binary|109283|110303|1|read|+|8606|8649
-node|8606|binary|109283|110267|1|read|+|8607|8648
-node|8607|binary|109283|110227|1|read|+|8608|8647
-node|8608|binary|109283|110156|1|read|+|8609|8646
-node|8609|binary|109283|110106|1|read|+|8610|8645
-node|8610|binary|109283|110074|1|read|+|8611|8644
-node|8611|binary|109283|110054|1|read|+|8612|8643
-node|8612|binary|109283|110019|1|read|+|8613|8642
-node|8613|binary|109283|109938|1|read|+|8614|8641
-node|8614|binary|109283|109902|1|read|+|8615|8640
-node|8615|binary|109283|109864|1|read|+|8616|8639
-node|8616|binary|109283|109817|1|read|+|8617|8638
-node|8617|binary|109283|109797|1|read|+|8618|8637
-node|8618|binary|109283|109762|1|read|+|8619|8636
-node|8619|binary|109283|109684|1|read|+|8620|8635
-node|8620|binary|109283|109648|1|read|+|8621|8634
-node|8621|binary|109283|109593|1|read|+|8622|8633
-node|8622|binary|109283|109573|1|read|+|8623|8632
-node|8623|binary|109283|109538|1|read|+|8624|8631
-node|8624|binary|109283|109460|1|read|+|8625|8630
-node|8625|binary|109283|109422|1|read|+|8626|8629
-node|8626|binary|109283|109370|1|read|+|8627|8628
-node|8627|name|109283|109298|1|read|668
-node|8628|literal-text|109309|109370|1|read|static const char *kofun_rt_read_text(const char *path) {\n
-node|8629|literal-text|109381|109422|1|read|    FILE *file = fopen(path, "rb");\n
-node|8630|literal-text|109433|109460|1|read|    if (file == NULL) {\n
-node|8631|literal-text|109471|109538|1|read|        runtime_error("error[R010]: cannot open input file");\n
-node|8632|literal-text|109549|109573|1|read|        return "";\n
-node|8633|literal-text|109584|109593|1|read|    }\n
-node|8634|literal-text|109604|109648|1|read|    if (fseek(file, 0, SEEK_END) != 0) {\n
-node|8635|literal-text|109659|109684|1|read|        fclose(file);\n
-node|8636|literal-text|109695|109762|1|read|        runtime_error("error[R010]: cannot seek input file");\n
-node|8637|literal-text|109773|109797|1|read|        return "";\n
-node|8638|literal-text|109808|109817|1|read|    }\n
-node|8639|literal-text|109828|109864|1|read|    long measured = ftell(file);\n
-node|8640|literal-text|109875|109902|1|read|    if (measured < 0) {\n
-node|8641|literal-text|109913|109938|1|read|        fclose(file);\n
-node|8642|literal-text|109949|110019|1|read|        runtime_error("error[R010]: cannot measure input file");\n
-node|8643|literal-text|110030|110054|1|read|        return "";\n
-node|8644|literal-text|110065|110074|1|read|    }\n
-node|8645|literal-text|110085|110106|1|read|    rewind(file);\n
-node|8646|literal-text|110117|110156|1|read|    size_t size = (size_t)measured;\n
-node|8647|literal-text|110167|110227|1|read|    char *result = kofun_rt_profile_text_allocate(size);\n
-node|8648|literal-text|110238|110267|1|read|    if (result == NULL) {\n
-node|8649|literal-text|110278|110303|1|read|        fclose(file);\n
-node|8650|literal-text|110314|110338|1|read|        return "";\n
-node|8651|literal-text|110349|110358|1|read|    }\n
-node|8652|literal-text|110369|110420|1|read|    size_t read = fread(result, 1, size, file);\n
-node|8653|literal-text|110431|110474|1|read|    if (read != size && ferror(file)) {\n
-node|8654|literal-text|110485|110510|1|read|        fclose(file);\n
-node|8655|literal-text|110521|110588|1|read|        runtime_error("error[R010]: cannot read input file");\n
-node|8656|literal-text|110599|110623|1|read|        return "";\n
-node|8657|literal-text|110634|110643|1|read|    }\n
-node|8658|literal-text|110654|110683|1|read|    result[read] = '\\0';\n
-node|8659|literal-text|110694|110715|1|read|    fclose(file);\n
-node|8660|literal-text|110726|110748|1|read|    return result;\n
-node|8661|literal-text|110759|110766|1|read|}\n\n
-node|8662|assign|110775|111606|19|edit|668|8663
-node|8663|binary|110793|111606|1|read|+|8664|8701
-node|8664|binary|110793|111588|1|read|+|8665|8700
-node|8665|binary|110793|111568|1|read|+|8666|8699
-node|8666|binary|110793|111488|1|read|+|8667|8698
-node|8667|binary|110793|111445|1|read|+|8668|8697
-node|8668|binary|110793|111425|1|read|+|8669|8696
-node|8669|binary|110793|111395|1|read|+|8670|8695
-node|8670|binary|110793|111315|1|read|+|8671|8694
-node|8671|binary|110793|111279|1|read|+|8672|8693
-node|8672|binary|110793|111213|1|read|+|8673|8692
-node|8673|binary|110793|111164|1|read|+|8674|8691
-node|8674|binary|110793|111144|1|read|+|8675|8690
-node|8675|binary|110793|111114|1|read|+|8676|8689
-node|8676|binary|110793|111035|1|read|+|8677|8688
-node|8677|binary|110793|110997|1|read|+|8678|8687
-node|8678|binary|110793|110945|1|read|+|8679|8686
-node|8679|binary|110793|110927|1|read|+|8680|8685
-node|8680|binary|110793|110891|1|read|+|8681|8684
-node|8681|binary|110793|110855|1|read|+|8682|8683
-node|8682|name|110793|110808|1|read|668
-node|8683|literal-text|110819|110855|1|read|static void kofun_rt_write_text(\n
-node|8684|literal-text|110866|110891|1|read|    const char *path,\n
-node|8685|literal-text|110902|110927|1|read|    const char *value\n
-node|8686|literal-text|110938|110945|1|read|) {\n
-node|8687|literal-text|110956|110997|1|read|    FILE *file = fopen(path, "wb");\n
-node|8688|literal-text|111008|111035|1|read|    if (file == NULL) {\n
-node|8689|literal-text|111046|111114|1|read|        runtime_error("error[R010]: cannot open output file");\n
-node|8690|literal-text|111125|111144|1|read|        return;\n
-node|8691|literal-text|111155|111164|1|read|    }\n
-node|8692|literal-text|111175|111213|1|read|    size_t length = strlen(value);\n
-node|8693|literal-text|111224|111279|1|read|    if (fwrite(value, 1, length, file) != length) {\n
-node|8694|literal-text|111290|111315|1|read|        fclose(file);\n
-node|8695|literal-text|111326|111395|1|read|        runtime_error("error[R010]: cannot write output file");\n
-node|8696|literal-text|111406|111425|1|read|        return;\n
-node|8697|literal-text|111436|111445|1|read|    }\n
-node|8698|literal-text|111456|111488|1|read|    if (fclose(file) != 0) {\n
-node|8699|literal-text|111499|111568|1|read|        runtime_error("error[R010]: cannot close output file");\n
-node|8700|literal-text|111579|111588|1|read|    }\n
-node|8701|literal-text|111599|111606|1|read|}\n\n
-node|8702|assign|111615|112209|19|edit|669|8703
-node|8703|binary|111638|112209|1|read|+|8704|8727
-node|8704|binary|111638|112164|1|read|+|8705|8726
-node|8705|binary|111638|112120|1|read|+|8706|8725
-node|8706|binary|111638|112062|1|read|+|8707|8724
-node|8707|binary|111638|112023|1|read|+|8708|8723
-node|8708|binary|111638|111978|1|read|+|8709|8722
-node|8709|binary|111638|111928|1|read|+|8710|8721
-node|8710|binary|111638|111885|1|read|+|8711|8720
-node|8711|binary|111638|111842|1|read|+|8712|8719
-node|8712|binary|111638|111796|1|read|+|8713|8718
-node|8713|binary|111638|111757|1|read|+|8714|8717
-node|8714|binary|111638|111709|1|read|+|8715|8716
-node|8715|literal-text|111638|111666|1|read|    (void)kofun_rt_args;\n
-node|8716|literal-text|111677|111709|1|read|    (void)kofun_rt_text_len;\n
-node|8717|literal-text|111720|111757|1|read|    (void)kofun_rt_text_contains;\n
-node|8718|literal-text|111768|111796|1|read|    (void)kofun_rt_find;\n
-node|8719|literal-text|111807|111842|1|read|    (void)kofun_rt_starts_with;\n
-node|8720|literal-text|111853|111885|1|read|    (void)kofun_rt_is_digit;\n
-node|8721|literal-text|111896|111928|1|read|    (void)kofun_rt_is_space;\n
-node|8722|literal-text|111939|111978|1|read|    (void)kofun_rt_is_xid_continue;\n
-node|8723|literal-text|111989|112023|1|read|    (void)kofun_rt_text_slice;\n
-node|8724|literal-text|112034|112062|1|read|    (void)kofun_rt_trim;\n
-node|8725|literal-text|112073|112120|1|read|    (void)kofun_rt_validate_unicode_source;\n
-node|8726|literal-text|112131|112164|1|read|    (void)kofun_rt_read_text;\n
-node|8727|literal-text|112175|112209|1|read|    (void)kofun_rt_write_text;\n
-node|8728|let-mut|112220|112576|19|copy|672|8729
-node|8729|binary|112242|112576|1|read|+|8730|8755
-node|8730|binary|112242|112564|1|read|+|8731|8754
-node|8731|binary|112242|112540|1|read|+|8732|8753
-node|8732|binary|112242|112523|1|read|+|8733|8752
-node|8733|binary|112242|112504|1|read|+|8734|8751
-node|8734|binary|112242|112488|1|read|+|8735|8750
-node|8735|binary|112242|112466|1|read|+|8736|8749
-node|8736|binary|112242|112450|1|read|+|8737|8748
-node|8737|binary|112242|112419|1|read|+|8738|8747
-node|8738|binary|112242|112388|1|read|+|8739|8746
-node|8739|binary|112242|112355|1|read|+|8740|8745
-node|8740|binary|112242|112322|1|read|+|8741|8744
-node|8741|binary|112242|112289|1|read|+|8742|8743
-node|8742|name|112242|112256|1|read|671
-node|8743|literal-text|112263|112289|1|read|    (void)checked_add;\n
-node|8744|literal-text|112296|112322|1|read|    (void)checked_sub;\n
-node|8745|literal-text|112329|112355|1|read|    (void)checked_mul;\n
-node|8746|literal-text|112362|112388|1|read|    (void)checked_neg;\n
-node|8747|literal-text|112395|112419|1|read|    (void)floor_div;\n
-node|8748|literal-text|112426|112450|1|read|    (void)floor_mod;\n
-node|8749|name|112457|112466|1|read|662
-node|8750|name|112473|112488|1|read|664
-node|8751|name|112495|112504|1|read|666
-node|8752|name|112511|112523|1|read|669
-node|8753|name|112530|112540|1|read|653
-node|8754|literal-text|112547|112564|1|read|    return 0;\n
-node|8755|literal-text|112571|112576|1|read|}\n
-node|8756|if|112581|112987|19|copy|8757|673|none|-1
-node|8757|name|112584|112591|0|copy|652
-node|8758|let|112602|112920|19|copy|673|8759
-node|8759|binary|112624|112920|1|read|+|8760|8777
-node|8760|binary|112624|112897|1|read|+|8761|8776
-node|8761|binary|112624|112877|1|read|+|8762|8775
-node|8762|binary|112624|112851|1|read|+|8763|8774
-node|8763|binary|112624|112831|1|read|+|8764|8773
-node|8764|binary|112624|112796|1|read|+|8765|8772
-node|8765|binary|112624|112761|1|read|+|8766|8771
-node|8766|binary|112624|112724|1|read|+|8767|8770
-node|8767|binary|112624|112687|1|read|+|8768|8769
-node|8768|literal-text|112624|112650|1|read|    (void)checked_add;\n
-node|8769|literal-text|112661|112687|1|read|    (void)checked_sub;\n
-node|8770|literal-text|112698|112724|1|read|    (void)checked_mul;\n
-node|8771|literal-text|112735|112761|1|read|    (void)checked_neg;\n
-node|8772|literal-text|112772|112796|1|read|    (void)floor_div;\n
-node|8773|literal-text|112807|112831|1|read|    (void)floor_mod;\n
-node|8774|name|112842|112851|1|read|662
-node|8775|name|112862|112877|1|read|664
-node|8776|name|112888|112897|1|read|666
-node|8777|name|112908|112920|1|read|669
-node|8778|assign|112929|112976|19|edit|672|8779
-node|8779|call|112939|112976|1|read|84|8780|8781
-node|8780|name|112960|112966|1|read|651
-node|8781|name|112968|112975|1|read|673
-node|8782|let-mut|112987|113506|19|copy|674|8783
-node|8783|binary|113008|113506|1|read|+|8784|8813
-node|8784|binary|113008|113492|1|read|+|8785|8812
-node|8785|binary|113008|113463|1|read|+|8786|8811
-node|8786|binary|113008|113447|1|read|+|8787|8810
-node|8787|binary|113008|113407|1|read|+|8788|8809
-node|8788|binary|113008|113365|1|read|+|8789|8808
-node|8789|binary|113008|113336|1|read|+|8790|8807
-node|8790|binary|113008|113277|1|read|+|8791|8806
-node|8791|binary|113008|113245|1|read|+|8792|8805
-node|8792|binary|113008|113234|1|read|+|8793|8804
-node|8793|binary|113008|113212|1|read|+|8794|8803
-node|8794|binary|113008|113193|1|read|+|8795|8802
-node|8795|binary|113008|113164|1|read|+|8796|8801
-node|8796|binary|113008|113134|1|read|+|8797|8800
-node|8797|binary|113008|113103|1|read|+|8798|8799
-node|8798|literal-text|113008|113071|1|read|/* Generated by the Kofun-written Stage 1 seed compiler. */\n
-node|8799|literal-text|113078|113103|1|read|#include <inttypes.h>\n
-node|8800|literal-text|113110|113134|1|read|#include <stdbool.h>\n
-node|8801|literal-text|113141|113164|1|read|#include <stdint.h>\n
-node|8802|literal-text|113171|113193|1|read|#include <stdio.h>\n
-node|8803|name|113200|113212|1|read|660
-node|8804|name|113219|113234|1|read|667
-node|8805|literal-text|113241|113245|1|read|\n
-node|8806|literal-text|113252|113277|1|read|static bool failed;\n\n
-node|8807|literal-text|113284|113336|1|read|static void runtime_error(const char *message) {\n
-node|8808|literal-text|113343|113365|1|read|    if (!failed) {\n
-node|8809|literal-text|113372|113407|1|read|        fputs(message, stderr);\n
-node|8810|literal-text|113414|113447|1|read|        fputc('\\n', stderr);\n
-node|8811|literal-text|113454|113463|1|read|    }\n
-node|8812|literal-text|113470|113492|1|read|    failed = true;\n
-node|8813|literal-text|113499|113506|1|read|}\n\n
-node|8814|assign|113511|113861|19|edit|674|8815
-node|8815|binary|113520|113861|1|read|+|8816|8831
-node|8816|binary|113520|113847|1|read|+|8817|8830
-node|8817|binary|113520|113818|1|read|+|8818|8829
-node|8818|binary|113520|113802|1|read|+|8819|8828
-node|8819|binary|113520|113774|1|read|+|8820|8827
-node|8820|binary|113520|113690|1|read|+|8821|8826
-node|8821|binary|113520|113624|1|read|+|8822|8825
-node|8822|binary|113520|113594|1|read|+|8823|8824
-node|8823|name|113520|113526|1|read|674
-node|8824|literal-text|113533|113594|1|read|static int64_t checked_add(int64_t left, int64_t right) {\n
-node|8825|literal-text|113601|113624|1|read|    int64_t result;\n
-node|8826|literal-text|113631|113690|1|read|    if (__builtin_add_overflow(left, right, &result)) {\n
-node|8827|literal-text|113697|113774|1|read|        runtime_error("error[R010]: integer overflow in operator `+`");\n
-node|8828|literal-text|113781|113802|1|read|        return 0;\n
-node|8829|literal-text|113809|113818|1|read|    }\n
-node|8830|literal-text|113825|113847|1|read|    return result;\n
-node|8831|literal-text|113854|113861|1|read|}\n\n
-node|8832|assign|113866|114216|19|edit|674|8833
-node|8833|binary|113875|114216|1|read|+|8834|8849
-node|8834|binary|113875|114202|1|read|+|8835|8848
-node|8835|binary|113875|114173|1|read|+|8836|8847
-node|8836|binary|113875|114157|1|read|+|8837|8846
-node|8837|binary|113875|114129|1|read|+|8838|8845
-node|8838|binary|113875|114045|1|read|+|8839|8844
-node|8839|binary|113875|113979|1|read|+|8840|8843
-node|8840|binary|113875|113949|1|read|+|8841|8842
-node|8841|name|113875|113881|1|read|674
-node|8842|literal-text|113888|113949|1|read|static int64_t checked_sub(int64_t left, int64_t right) {\n
-node|8843|literal-text|113956|113979|1|read|    int64_t result;\n
-node|8844|literal-text|113986|114045|1|read|    if (__builtin_sub_overflow(left, right, &result)) {\n
-node|8845|literal-text|114052|114129|1|read|        runtime_error("error[R010]: integer overflow in operator `-`");\n
-node|8846|literal-text|114136|114157|1|read|        return 0;\n
-node|8847|literal-text|114164|114173|1|read|    }\n
-node|8848|literal-text|114180|114202|1|read|    return result;\n
-node|8849|literal-text|114209|114216|1|read|}\n\n
-node|8850|assign|114221|114571|19|edit|674|8851
-node|8851|binary|114230|114571|1|read|+|8852|8867
-node|8852|binary|114230|114557|1|read|+|8853|8866
-node|8853|binary|114230|114528|1|read|+|8854|8865
-node|8854|binary|114230|114512|1|read|+|8855|8864
-node|8855|binary|114230|114484|1|read|+|8856|8863
-node|8856|binary|114230|114400|1|read|+|8857|8862
-node|8857|binary|114230|114334|1|read|+|8858|8861
-node|8858|binary|114230|114304|1|read|+|8859|8860
-node|8859|name|114230|114236|1|read|674
-node|8860|literal-text|114243|114304|1|read|static int64_t checked_mul(int64_t left, int64_t right) {\n
-node|8861|literal-text|114311|114334|1|read|    int64_t result;\n
-node|8862|literal-text|114341|114400|1|read|    if (__builtin_mul_overflow(left, right, &result)) {\n
-node|8863|literal-text|114407|114484|1|read|        runtime_error("error[R010]: integer overflow in operator `*`");\n
-node|8864|literal-text|114491|114512|1|read|        return 0;\n
-node|8865|literal-text|114519|114528|1|read|    }\n
-node|8866|literal-text|114535|114557|1|read|    return result;\n
-node|8867|literal-text|114564|114571|1|read|}\n\n
-node|8868|assign|114576|114862|19|edit|674|8869
-node|8869|binary|114585|114862|1|read|+|8870|8883
-node|8870|binary|114585|114848|1|read|+|8871|8882
-node|8871|binary|114585|114819|1|read|+|8872|8881
-node|8872|binary|114585|114803|1|read|+|8873|8880
-node|8873|binary|114585|114775|1|read|+|8874|8879
-node|8874|binary|114585|114685|1|read|+|8875|8878
-node|8875|binary|114585|114645|1|read|+|8876|8877
-node|8876|name|114585|114591|1|read|674
-node|8877|literal-text|114598|114645|1|read|static int64_t checked_neg(int64_t value) {\n
-node|8878|literal-text|114652|114685|1|read|    if (value == INT64_MIN) {\n
-node|8879|literal-text|114692|114775|1|read|        runtime_error("error[R010]: integer overflow in unary operator `-`");\n
-node|8880|literal-text|114782|114803|1|read|        return 0;\n
-node|8881|literal-text|114810|114819|1|read|    }\n
-node|8882|literal-text|114826|114848|1|read|    return -value;\n
-node|8883|literal-text|114855|114862|1|read|}\n\n
-node|8884|assign|114867|115519|19|edit|674|8885
-node|8885|binary|114876|115519|1|read|+|8886|8913
-node|8886|binary|114876|115505|1|read|+|8887|8912
-node|8887|binary|114876|115474|1|read|+|8888|8911
-node|8888|binary|114876|115392|1|read|+|8889|8910
-node|8889|binary|114876|115344|1|read|+|8890|8909
-node|8890|binary|114876|115297|1|read|+|8891|8908
-node|8891|binary|114876|115281|1|read|+|8892|8907
-node|8892|binary|114876|115253|1|read|+|8893|8906
-node|8893|binary|114876|115168|1|read|+|8894|8905
-node|8894|binary|114876|115114|1|read|+|8895|8904
-node|8895|binary|114876|115098|1|read|+|8896|8903
-node|8896|binary|114876|115070|1|read|+|8897|8902
-node|8897|binary|114876|114980|1|read|+|8898|8901
-node|8898|binary|114876|114948|1|read|+|8899|8900
-node|8899|name|114876|114882|1|read|674
-node|8900|literal-text|114889|114948|1|read|static int64_t floor_div(int64_t left, int64_t right) {\n
-node|8901|literal-text|114955|114980|1|read|    if (right == 0) {\n
-node|8902|literal-text|114987|115070|1|read|        runtime_error("error[R010]: operator `//` failed: division by zero");\n
-node|8903|literal-text|115077|115098|1|read|        return 0;\n
-node|8904|literal-text|115105|115114|1|read|    }\n
-node|8905|literal-text|115121|115168|1|read|    if (left == INT64_MIN && right == -1) {\n
-node|8906|literal-text|115175|115253|1|read|        runtime_error("error[R010]: integer overflow in operator `//`");\n
-node|8907|literal-text|115260|115281|1|read|        return 0;\n
-node|8908|literal-text|115288|115297|1|read|    }\n
-node|8909|literal-text|115304|115344|1|read|    int64_t quotient = left / right;\n
-node|8910|literal-text|115351|115392|1|read|    int64_t remainder = left % right;\n
-node|8911|literal-text|115399|115474|1|read|    if (remainder != 0 && ((remainder < 0) != (right < 0))) --quotient;\n
-node|8912|literal-text|115481|115505|1|read|    return quotient;\n
-node|8913|literal-text|115512|115519|1|read|}\n\n
-node|8914|assign|115524|116016|19|edit|674|8915
-node|8915|binary|115533|116016|1|read|+|8916|8935
-node|8916|binary|115533|116002|1|read|+|8917|8934
-node|8917|binary|115533|115970|1|read|+|8918|8933
-node|8918|binary|115533|115880|1|read|+|8919|8932
-node|8919|binary|115533|115832|1|read|+|8920|8931
-node|8920|binary|115533|115770|1|read|+|8921|8930
-node|8921|binary|115533|115754|1|read|+|8922|8929
-node|8922|binary|115533|115726|1|read|+|8923|8928
-node|8923|binary|115533|115637|1|read|+|8924|8927
-node|8924|binary|115533|115605|1|read|+|8925|8926
-node|8925|name|115533|115539|1|read|674
-node|8926|literal-text|115546|115605|1|read|static int64_t floor_mod(int64_t left, int64_t right) {\n
-node|8927|literal-text|115612|115637|1|read|    if (right == 0) {\n
-node|8928|literal-text|115644|115726|1|read|        runtime_error("error[R010]: operator `%` failed: division by zero");\n
-node|8929|literal-text|115733|115754|1|read|        return 0;\n
-node|8930|literal-text|115761|115770|1|read|    }\n
-node|8931|literal-text|115777|115832|1|read|    if (left == INT64_MIN && right == -1) return 0;\n
-node|8932|literal-text|115839|115880|1|read|    int64_t remainder = left % right;\n
-node|8933|literal-text|115887|115970|1|read|    if (remainder != 0 && ((remainder < 0) != (right < 0))) remainder += right;\n
-node|8934|literal-text|115977|116002|1|read|    return remainder;\n
-node|8935|literal-text|116009|116016|1|read|}\n\n
-node|8936|return|116021|116152|19|copy|8937
-node|8937|binary|116028|116152|1|read|+|8938|8949
-node|8938|binary|116028|116138|1|read|+|8939|8948
-node|8939|binary|116028|116119|1|read|+|8940|8947
-node|8940|binary|116028|116097|1|read|+|8941|8946
-node|8941|binary|116028|116078|1|read|+|8942|8945
-node|8942|binary|116028|116053|1|read|+|8943|8944
-node|8943|name|116028|116034|1|read|674
-node|8944|name|116041|116053|1|read|661
-node|8945|name|116060|116078|1|read|663
-node|8946|name|116085|116097|1|read|665
-node|8947|name|116104|116119|1|read|668
-node|8948|name|116126|116138|1|read|670
-node|8949|name|116145|116152|1|read|672
-function|8950|86|674|116156|116858
-node|8951|let|116223|116256|19|copy|677|8952
-node|8952|call|116235|116256|1|read|97|8953
-node|8953|name|116245|116255|1|read|675
-node|8954|let|116261|116311|19|copy|678|8955
-node|8955|call|116281|116311|1|read|102|8956
-node|8956|name|116305|116310|1|read|677
-node|8957|if|116316|116404|19|copy|8958|676|none|-1
-node|8958|binary|116319|116341|0|copy|>|8959|8961
-node|8959|call|116319|116337|3|copy|95|8960
-node|8960|name|116323|116336|1|read|678
-node|8961|literal-int|116340|116341|3|copy|0
-node|8962|expr-stmt|116352|116372|19|copy|8963
-node|8963|call|116352|116372|19|copy|96|8964
-node|8964|name|116358|116371|1|read|678
-node|8965|return|116381|116393|19|copy|8966
-node|8966|literal-bool|116388|116393|0|copy|false
-node|8967|let|116404|116429|19|copy|679|8968
-node|8968|binary|116417|116429|1|read|+|8969|8970
-node|8969|name|116417|116422|1|read|677
-node|8970|literal-text|116425|116429|1|read|\n
-node|8971|if|116434|116572|19|copy|8972|677|none|-1
-node|8972|call|116437|116457|0|copy|75|8973
-node|8973|name|116450|116456|1|read|679
-node|8974|expr-stmt|116468|116514|19|copy|8975
-node|8975|call|116468|116514|19|copy|103|8976|8977
-node|8976|name|116479|116490|1|read|676
-node|8977|call|116492|116513|1|read|85|8978|8979
-node|8978|name|116499|116505|1|read|679
-node|8979|literal-bool|116507|116512|0|copy|false
-node|8980|expr-stmt|116523|116541|19|copy|8981
-node|8981|call|116523|116541|19|copy|96|8982
-node|8982|name|116529|116540|1|read|676
-node|8983|return|116550|116561|19|copy|8984
-node|8984|literal-bool|116557|116561|0|copy|true
-node|8985|let|116572|116615|19|copy|680|8986
-node|8986|call|116593|116615|1|read|14|8987
-node|8987|name|116608|116614|1|read|679
-node|8988|if|116620|116764|19|copy|8989|678|none|-1
-node|8989|unary|116623|116660|0|copy|!|8990
-node|8990|call|116624|116660|0|copy|74|8991
-node|8991|name|116645|116659|1|read|680
-node|8992|expr-stmt|116671|116732|19|copy|8993
-node|8993|call|116671|116732|19|copy|96|8994
-node|8994|literal-text|116677|116731|1|read|compile error: unsupported Kofun integer Core source
-node|8995|return|116741|116753|19|copy|8996
-node|8996|literal-bool|116748|116753|0|copy|false
-node|8997|expr-stmt|116764|116817|19|copy|8998
-node|8998|call|116764|116817|19|copy|103|8999|9000
-node|8999|name|116775|116786|1|read|676
-node|9000|call|116788|116816|1|read|85|9001|9002
-node|9001|name|116795|116809|1|read|680
-node|9002|literal-bool|116811|116815|0|copy|true
-node|9003|expr-stmt|116822|116840|19|copy|9004
-node|9004|call|116822|116840|19|copy|96|9005
-node|9005|name|116828|116839|1|read|676
-node|9006|return|116845|116856|19|copy|9007
-node|9007|literal-bool|116852|116856|0|copy|true
-function|9008|87|679|116860|117080
-node|9009|let|116876|116898|19|copy|681|9010
-node|9010|call|116892|116898|21|read|88
-node|9011|if|116903|117011|19|copy|9012|681|none|-1
-node|9012|binary|116906|116925|0|copy|!=|9013|9015
-node|9013|call|116906|116920|3|copy|104|9014
-node|9014|name|116910|116919|21|read|681
-node|9015|literal-int|116924|116925|3|copy|2
-node|9016|expr-stmt|116936|116985|19|copy|9017
-node|9017|call|116936|116985|19|copy|96|9018
-node|9018|literal-text|116942|116984|1|read|usage: kofun-stage1 INPUT.kofun OUTPUT.c
-node|9019|return|116994|117000|19|copy|none
-node|9020|if|117011|117079|19|copy|9021|682|none|-1
-node|9021|unary|117014|117055|0|copy|!|9022
-node|9022|call|117015|117055|0|copy|86|9023|9026
-node|9023|index|117028|117040|1|read|9024|9025
-node|9024|name|117028|117037|21|read|681
-node|9025|literal-int|117038|117039|3|copy|0
-node|9026|index|117042|117054|1|read|9027|9028
-node|9027|name|117042|117051|21|read|681
-node|9028|literal-int|117052|117053|3|copy|1
-node|9029|expr-stmt|117066|117072|19|copy|9030
-node|9030|call|117066|117072|19|copy|105
+node|8128|assign|97664|98042|19|edit|661|8129
+node|8129|binary|97679|98042|1|read|+|8130|8145
+node|8130|binary|97679|98024|1|read|+|8131|8144
+node|8131|binary|97679|97982|1|read|+|8132|8143
+node|8132|binary|97679|97962|1|read|+|8133|8142
+node|8133|binary|97679|97928|1|read|+|8134|8141
+node|8134|binary|97679|97895|1|read|+|8135|8140
+node|8135|binary|97679|97838|1|read|+|8136|8139
+node|8136|binary|97679|97776|1|read|+|8137|8138
+node|8137|name|97679|97691|1|read|661
+node|8138|literal-text|97702|97776|1|read|static bool kofun_rt_text_equal(const char *left, const char *right) {\n
+node|8139|literal-text|97787|97838|1|read|    while (*left != '\\0' && *right != '\\0') {\n
+node|8140|literal-text|97849|97895|1|read|        if (*left != *right) return false;\n
+node|8141|literal-text|97906|97928|1|read|        left += 1;\n
+node|8142|literal-text|97939|97962|1|read|        right += 1;\n
+node|8143|literal-text|97973|97982|1|read|    }\n
+node|8144|literal-text|97993|98024|1|read|    return *left == *right;\n
+node|8145|literal-text|98035|98042|1|read|}\n\n
+node|8146|assign|98051|98351|19|edit|662|8147
+node|8147|binary|98071|98351|1|read|+|8148|8157
+node|8148|binary|98071|98306|1|read|+|8149|8156
+node|8149|binary|98071|98260|1|read|+|8150|8155
+node|8150|binary|98071|98240|1|read|+|8151|8154
+node|8151|binary|98071|98208|1|read|+|8152|8153
+node|8152|literal-text|98071|98120|1|read|    if (atexit(kofun_rt_text_cleanup) != 0) {\n
+node|8153|literal-text|98131|98208|1|read|        runtime_error("error[R010]: Text cleanup registration failed");\n
+node|8154|literal-text|98219|98240|1|read|        return 1;\n
+node|8155|literal-text|98251|98260|1|read|    }\n
+node|8156|literal-text|98271|98306|1|read|    (void)kofun_rt_text_concat;\n
+node|8157|literal-text|98317|98351|1|read|    (void)kofun_rt_text_equal;\n
+node|8158|if|98362|98981|19|copy|8159|670|none|-1
+node|8159|name|98365|98380|0|copy|657
+node|8160|assign|98391|98901|19|edit|663|8161
+node|8161|binary|98420|98901|1|read|+|8162|8177
+node|8162|binary|98420|98883|1|read|+|8163|8176
+node|8163|binary|98420|98819|1|read|+|8164|8175
+node|8164|binary|98420|98756|1|read|+|8165|8174
+node|8165|binary|98420|98736|1|read|+|8166|8173
+node|8166|binary|98420|98701|1|read|+|8167|8172
+node|8167|binary|98420|98621|1|read|+|8168|8171
+node|8168|binary|98420|98547|1|read|+|8169|8170
+node|8169|literal-text|98420|98498|1|read|static const char *kofun_rt_text_index(const char *value, int64_t index) {\n
+node|8170|literal-text|98509|98547|1|read|    size_t length = strlen(value);\n
+node|8171|literal-text|98558|98621|1|read|    if (index < 0 \p\p (uint64_t)index >= (uint64_t)length) {\n
+node|8172|literal-text|98632|98701|1|read|        runtime_error("error[R010]: Text index out of bounds");\n
+node|8173|literal-text|98712|98736|1|read|        return "";\n
+node|8174|literal-text|98747|98756|1|read|    }\n
+node|8175|literal-text|98767|98819|1|read|    char character[2] = { value[index], '\\0' };\n
+node|8176|literal-text|98830|98883|1|read|    return kofun_rt_text_concat("", character);\n
+node|8177|literal-text|98894|98901|1|read|}\n\n
+node|8178|assign|98910|98970|19|edit|664|8179
+node|8179|literal-text|98936|98970|1|read|    (void)kofun_rt_text_index;\n
+node|8180|if|98981|102603|19|copy|8181|671|none|-1
+node|8181|name|98984|98993|0|copy|658
+node|8182|assign|99004|99819|19|edit|665|8183
+node|8183|binary|99027|99819|1|read|+|8184|8215
+node|8184|binary|99027|99801|1|read|+|8185|8214
+node|8185|binary|99027|99781|1|read|+|8186|8213
+node|8186|binary|99027|99741|1|read|+|8187|8212
+node|8187|binary|99027|99668|1|read|+|8188|8211
+node|8188|binary|99027|99610|1|read|+|8189|8210
+node|8189|binary|99027|99550|1|read|+|8190|8209
+node|8190|binary|99027|99483|1|read|+|8191|8208
+node|8191|binary|99027|99422|1|read|+|8192|8207
+node|8192|binary|99027|99342|1|read|+|8193|8206
+node|8193|binary|99027|99299|1|read|+|8194|8205
+node|8194|binary|99027|99260|1|read|+|8195|8204
+node|8195|binary|99027|99204|1|read|+|8196|8203
+node|8196|binary|99027|99149|1|read|+|8197|8202
+node|8197|binary|99027|99116|1|read|+|8198|8201
+node|8198|binary|99027|99078|1|read|+|8199|8200
+node|8199|literal-text|99027|99047|1|read|typedef struct {\n
+node|8200|literal-text|99058|99078|1|read|    int64_t len;\n
+node|8201|literal-text|99089|99116|1|read|    const char **items;\n
+node|8202|literal-text|99127|99149|1|read|} KofunTextList;\n\n
+node|8203|literal-text|99160|99204|1|read|typedef struct KofunTextListAllocation {\n
+node|8204|literal-text|99215|99260|1|read|    struct KofunTextListAllocation *next;\n
+node|8205|literal-text|99271|99299|1|read|    const char *items[];\n
+node|8206|literal-text|99310|99342|1|read|} KofunTextListAllocation;\n\n
+node|8207|literal-text|99353|99422|1|read|static KofunTextListAllocation *kofun_rt_text_list_allocations;\n\n
+node|8208|literal-text|99433|99483|1|read|static void kofun_rt_text_list_cleanup(void) {\n
+node|8209|literal-text|99494|99550|1|read|    while (kofun_rt_text_list_allocations != NULL) {\n
+node|8210|literal-text|99561|99610|1|read|        KofunTextListAllocation *allocation =\n
+node|8211|literal-text|99621|99668|1|read|            kofun_rt_text_list_allocations;\n
+node|8212|literal-text|99679|99741|1|read|        kofun_rt_text_list_allocations = allocation->next;\n
+node|8213|literal-text|99752|99781|1|read|        free(allocation);\n
+node|8214|literal-text|99792|99801|1|read|    }\n
+node|8215|literal-text|99812|99819|1|read|}\n\n
+node|8216|assign|99828|100028|19|edit|665|8217
+node|8217|binary|99843|100028|1|read|+|8218|8225
+node|8218|binary|99843|100010|1|read|+|8219|8224
+node|8219|binary|99843|99977|1|read|+|8220|8223
+node|8220|binary|99843|99923|1|read|+|8221|8222
+node|8221|name|99843|99855|1|read|665
+node|8222|literal-text|99866|99923|1|read|static KofunTextList kofun_rt_empty_text_list(void) {\n
+node|8223|literal-text|99934|99977|1|read|    KofunTextList result = { 0, NULL };\n
+node|8224|literal-text|99988|100010|1|read|    return result;\n
+node|8225|literal-text|100021|100028|1|read|}\n\n
+node|8226|assign|100037|101614|19|edit|665|8227
+node|8227|binary|100052|101614|1|read|+|8228|8285
+node|8228|binary|100052|101596|1|read|+|8229|8284
+node|8229|binary|100052|101563|1|read|+|8230|8283
+node|8230|binary|100052|101542|1|read|+|8231|8282
+node|8231|binary|100052|101501|1|read|+|8232|8281
+node|8232|binary|100052|101462|1|read|+|8233|8280
+node|8233|binary|100052|101419|1|read|+|8234|8279
+node|8234|binary|100052|101399|1|read|+|8235|8278
+node|8235|binary|100052|101326|1|read|+|8236|8277
+node|8236|binary|100052|101269|1|read|+|8237|8276
+node|8237|binary|100052|101209|1|read|+|8238|8275
+node|8238|binary|100052|101141|1|read|+|8239|8274
+node|8239|binary|100052|101066|1|read|+|8240|8273
+node|8240|binary|100052|101003|1|read|+|8241|8272
+node|8241|binary|100052|100934|1|read|+|8242|8271
+node|8242|binary|100052|100914|1|read|+|8243|8270
+node|8243|binary|100052|100857|1|read|+|8244|8269
+node|8244|binary|100052|100773|1|read|+|8245|8268
+node|8245|binary|100052|100729|1|read|+|8246|8267
+node|8246|binary|100052|100669|1|read|+|8247|8266
+node|8247|binary|100052|100613|1|read|+|8248|8265
+node|8248|binary|100052|100549|1|read|+|8249|8264
+node|8249|binary|100052|100529|1|read|+|8250|8263
+node|8250|binary|100052|100472|1|read|+|8251|8262
+node|8251|binary|100052|100382|1|read|+|8252|8261
+node|8252|binary|100052|100326|1|read|+|8253|8260
+node|8253|binary|100052|100248|1|read|+|8254|8259
+node|8254|binary|100052|100184|1|read|+|8255|8258
+node|8255|binary|100052|100135|1|read|+|8256|8257
+node|8256|name|100052|100064|1|read|665
+node|8257|literal-text|100075|100135|1|read|static KofunTextList kofun_rt_chars(const char *value) {\n
+node|8258|literal-text|100146|100184|1|read|    size_t length = strlen(value);\n
+node|8259|literal-text|100195|100248|1|read|    if ((uint64_t)length > (uint64_t)INT64_MAX \p\p\n
+node|8260|literal-text|100259|100326|1|read|        length > (SIZE_MAX - sizeof(KofunTextListAllocation)) /\n
+node|8261|literal-text|100337|100382|1|read|            (sizeof(const char *) + 2)) {\n
+node|8262|literal-text|100393|100472|1|read|        runtime_error("error[R010]: List[Text] allocation is too large");\n
+node|8263|literal-text|100483|100529|1|read|        return kofun_rt_empty_text_list();\n
+node|8264|literal-text|100540|100549|1|read|    }\n
+node|8265|literal-text|100560|100613|1|read|    KofunTextListAllocation *allocation = malloc(\n
+node|8266|literal-text|100624|100669|1|read|        sizeof(KofunTextListAllocation) +\n
+node|8267|literal-text|100680|100729|1|read|        length * (sizeof(const char *) + 2));\n
+node|8268|literal-text|100740|100773|1|read|    if (allocation == NULL) {\n
+node|8269|literal-text|100784|100857|1|read|        runtime_error("error[R010]: List[Text] allocation failed");\n
+node|8270|literal-text|100868|100914|1|read|        return kofun_rt_empty_text_list();\n
+node|8271|literal-text|100925|100934|1|read|    }\n
+node|8272|literal-text|100945|101003|1|read|    allocation->next = kofun_rt_text_list_allocations;\n
+node|8273|literal-text|101014|101066|1|read|    kofun_rt_text_list_allocations = allocation;\n
+node|8274|literal-text|101077|101141|1|read|    char *characters = (char *)(allocation->items + length);\n
+node|8275|literal-text|101152|101209|1|read|    for (size_t index = 0; index < length; ++index) {\n
+node|8276|literal-text|101220|101269|1|read|        characters[2 * index] = value[index];\n
+node|8277|literal-text|101280|101326|1|read|        characters[2 * index + 1] = '\\0';\n
+node|8278|literal-text|101337|101399|1|read|        allocation->items[index] = characters + 2 * index;\n
+node|8279|literal-text|101410|101419|1|read|    }\n
+node|8280|literal-text|101430|101462|1|read|    KofunTextList result = {\n
+node|8281|literal-text|101473|101501|1|read|        (int64_t)length,\n
+node|8282|literal-text|101512|101542|1|read|        allocation->items,\n
+node|8283|literal-text|101553|101563|1|read|    };\n
+node|8284|literal-text|101574|101596|1|read|    return result;\n
+node|8285|literal-text|101607|101614|1|read|}\n\n
+node|8286|assign|101623|101781|19|edit|665|8287
+node|8287|binary|101638|101781|1|read|+|8288|8293
+node|8288|binary|101638|101763|1|read|+|8289|8292
+node|8289|binary|101638|101726|1|read|+|8290|8291
+node|8290|name|101638|101650|1|read|665
+node|8291|literal-text|101661|101726|1|read|static int64_t kofun_rt_text_list_len(KofunTextList values) {\n
+node|8292|literal-text|101737|101763|1|read|    return values.len;\n
+node|8293|literal-text|101774|101781|1|read|}\n\n
+node|8294|assign|101790|102227|19|edit|665|8295
+node|8295|binary|101805|102227|1|read|+|8296|8315
+node|8296|binary|101805|102209|1|read|+|8297|8314
+node|8297|binary|101805|102163|1|read|+|8298|8313
+node|8298|binary|101805|102143|1|read|+|8299|8312
+node|8299|binary|101805|102108|1|read|+|8300|8311
+node|8300|binary|101805|102022|1|read|+|8301|8310
+node|8301|binary|101805|101964|1|read|+|8302|8309
+node|8302|binary|101805|101946|1|read|+|8303|8308
+node|8303|binary|101805|101914|1|read|+|8304|8307
+node|8304|binary|101805|101874|1|read|+|8305|8306
+node|8305|name|101805|101817|1|read|665
+node|8306|literal-text|101828|101874|1|read|static const char *kofun_rt_text_list_get(\n
+node|8307|literal-text|101885|101914|1|read|    KofunTextList values,\n
+node|8308|literal-text|101925|101946|1|read|    int64_t index\n
+node|8309|literal-text|101957|101964|1|read|) {\n
+node|8310|literal-text|101975|102022|1|read|    if (index < 0 \p\p index >= values.len) {\n
+node|8311|literal-text|102033|102108|1|read|        runtime_error("error[R010]: List[Text] index out of bounds");\n
+node|8312|literal-text|102119|102143|1|read|        return "";\n
+node|8313|literal-text|102154|102163|1|read|    }\n
+node|8314|literal-text|102174|102209|1|read|    return values.items[index];\n
+node|8315|literal-text|102220|102227|1|read|}\n\n
+node|8316|assign|102236|102592|19|edit|666|8317
+node|8317|binary|102256|102592|1|read|+|8318|8329
+node|8318|binary|102256|102544|1|read|+|8319|8328
+node|8319|binary|102256|102496|1|read|+|8320|8327
+node|8320|binary|102256|102456|1|read|+|8321|8326
+node|8321|binary|102256|102436|1|read|+|8322|8325
+node|8322|binary|102256|102404|1|read|+|8323|8324
+node|8323|literal-text|102256|102310|1|read|    if (atexit(kofun_rt_text_list_cleanup) != 0) {\n
+node|8324|literal-text|102321|102404|1|read|        runtime_error("error[R010]: List[Text] cleanup registration failed");\n
+node|8325|literal-text|102415|102436|1|read|        return 1;\n
+node|8326|literal-text|102447|102456|1|read|    }\n
+node|8327|literal-text|102467|102496|1|read|    (void)kofun_rt_chars;\n
+node|8328|literal-text|102507|102544|1|read|    (void)kofun_rt_text_list_len;\n
+node|8329|literal-text|102555|102592|1|read|    (void)kofun_rt_text_list_get;\n
+node|8330|if|102603|112417|19|copy|8331|672|none|-1
+node|8331|name|102606|102627|0|copy|655
+node|8332|assign|102638|103526|19|edit|668|8333
+node|8333|binary|102664|103526|1|read|+|8334|8365
+node|8334|binary|102664|103508|1|read|+|8335|8364
+node|8335|binary|102664|103464|1|read|+|8336|8363
+node|8336|binary|102664|103406|1|read|+|8337|8362
+node|8337|binary|102664|103342|1|read|+|8338|8361
+node|8338|binary|102664|103289|1|read|+|8339|8360
+node|8339|binary|102664|103269|1|read|+|8340|8359
+node|8340|binary|102664|103234|1|read|+|8341|8358
+node|8341|binary|102664|103156|1|read|+|8342|8357
+node|8342|binary|102664|103112|1|read|+|8343|8356
+node|8343|binary|102664|103040|1|read|+|8344|8355
+node|8344|binary|102664|102988|1|read|+|8345|8354
+node|8345|binary|102664|102968|1|read|+|8346|8353
+node|8346|binary|102664|102933|1|read|+|8347|8352
+node|8347|binary|102664|102849|1|read|+|8348|8351
+node|8348|binary|102664|102772|1|read|+|8349|8350
+node|8349|literal-text|102664|102728|1|read|static char *kofun_rt_profile_text_allocate(size_t length) {\n
+node|8350|literal-text|102739|102772|1|read|    if (length == SIZE_MAX \p\p\n
+node|8351|literal-text|102783|102849|1|read|        length + 1 > SIZE_MAX - sizeof(KofunTextAllocation)) {\n
+node|8352|literal-text|102860|102933|1|read|        runtime_error("error[R010]: Text allocation is too large");\n
+node|8353|literal-text|102944|102968|1|read|        return NULL;\n
+node|8354|literal-text|102979|102988|1|read|    }\n
+node|8355|literal-text|102999|103040|1|read|    KofunTextAllocation *allocation =\n
+node|8356|literal-text|103051|103112|1|read|        malloc(sizeof(KofunTextAllocation) + length + 1);\n
+node|8357|literal-text|103123|103156|1|read|    if (allocation == NULL) {\n
+node|8358|literal-text|103167|103234|1|read|        runtime_error("error[R010]: Text allocation failed");\n
+node|8359|literal-text|103245|103269|1|read|        return NULL;\n
+node|8360|literal-text|103280|103289|1|read|    }\n
+node|8361|literal-text|103300|103342|1|read|    allocation->bytes[length] = '\\0';\n
+node|8362|literal-text|103353|103406|1|read|    allocation->next = kofun_rt_text_allocations;\n
+node|8363|literal-text|103417|103464|1|read|    kofun_rt_text_allocations = allocation;\n
+node|8364|literal-text|103475|103508|1|read|    return allocation->bytes;\n
+node|8365|literal-text|103519|103526|1|read|}\n\n
+node|8366|assign|103535|103953|19|edit|668|8367
+node|8367|binary|103553|103953|1|read|+|8368|8385
+node|8368|binary|103553|103935|1|read|+|8369|8384
+node|8369|binary|103553|103902|1|read|+|8370|8383
+node|8370|binary|103553|103837|1|read|+|8371|8382
+node|8371|binary|103553|103786|1|read|+|8372|8381
+node|8372|binary|103553|103713|1|read|+|8373|8380
+node|8373|binary|103553|103695|1|read|+|8374|8379
+node|8374|binary|103553|103663|1|read|+|8375|8378
+node|8375|binary|103553|103626|1|read|+|8376|8377
+node|8376|name|103553|103568|1|read|668
+node|8377|literal-text|103579|103626|1|read|static const char *kofun_rt_profile_copy_n(\n
+node|8378|literal-text|103637|103663|1|read|    const char *value,\n
+node|8379|literal-text|103674|103695|1|read|    size_t length\n
+node|8380|literal-text|103706|103713|1|read|) {\n
+node|8381|literal-text|103724|103786|1|read|    char *result = kofun_rt_profile_text_allocate(length);\n
+node|8382|literal-text|103797|103837|1|read|    if (result == NULL) return "";\n
+node|8383|literal-text|103848|103902|1|read|    if (length > 0) memcpy(result, value, length);\n
+node|8384|literal-text|103913|103935|1|read|    return result;\n
+node|8385|literal-text|103946|103953|1|read|}\n\n
+node|8386|assign|103962|105414|19|edit|668|8387
+node|8387|binary|103980|105414|1|read|+|8388|8435
+node|8388|binary|103980|105396|1|read|+|8389|8434
+node|8389|binary|103980|105363|1|read|+|8390|8433
+node|8390|binary|103980|105282|1|read|+|8391|8432
+node|8391|binary|103980|105262|1|read|+|8392|8431
+node|8392|binary|103980|105193|1|read|+|8393|8430
+node|8393|binary|103980|105124|1|read|+|8394|8429
+node|8394|binary|103980|105050|1|read|+|8395|8428
+node|8395|binary|103980|104982|1|read|+|8396|8427
+node|8396|binary|103980|104919|1|read|+|8397|8426
+node|8397|binary|103980|104850|1|read|+|8398|8425
+node|8398|binary|103980|104830|1|read|+|8399|8424
+node|8399|binary|103980|104773|1|read|+|8400|8423
+node|8400|binary|103980|104680|1|read|+|8401|8422
+node|8401|binary|103980|104636|1|read|+|8402|8421
+node|8402|binary|103980|104548|1|read|+|8403|8420
+node|8403|binary|103980|104484|1|read|+|8404|8419
+node|8404|binary|103980|104464|1|read|+|8405|8418
+node|8405|binary|103980|104407|1|read|+|8406|8417
+node|8406|binary|103980|104319|1|read|+|8407|8416
+node|8407|binary|103980|104269|1|read|+|8408|8415
+node|8408|binary|103980|104191|1|read|+|8409|8414
+node|8409|binary|103980|104137|1|read|+|8410|8413
+node|8410|binary|103980|104069|1|read|+|8411|8412
+node|8411|name|103980|103995|1|read|668
+node|8412|literal-text|104006|104069|1|read|static KofunTextList kofun_rt_args(int argc, char **argv) {\n
+node|8413|literal-text|104080|104137|1|read|    if (argc <= 1) return kofun_rt_empty_text_list();\n
+node|8414|literal-text|104148|104191|1|read|    size_t length = (size_t)(argc - 1);\n
+node|8415|literal-text|104202|104269|1|read|    if (length > (SIZE_MAX - sizeof(KofunTextListAllocation)) /\n
+node|8416|literal-text|104280|104319|1|read|            sizeof(const char *)) {\n
+node|8417|literal-text|104330|104407|1|read|        runtime_error("error[R010]: argument List[Text] is too large");\n
+node|8418|literal-text|104418|104464|1|read|        return kofun_rt_empty_text_list();\n
+node|8419|literal-text|104475|104484|1|read|    }\n
+node|8420|literal-text|104495|104548|1|read|    KofunTextListAllocation *allocation = malloc(\n
+node|8421|literal-text|104559|104636|1|read|        sizeof(KofunTextListAllocation) + length * sizeof(const char *));\n
+node|8422|literal-text|104647|104680|1|read|    if (allocation == NULL) {\n
+node|8423|literal-text|104691|104773|1|read|        runtime_error("error[R010]: argument List[Text] allocation failed");\n
+node|8424|literal-text|104784|104830|1|read|        return kofun_rt_empty_text_list();\n
+node|8425|literal-text|104841|104850|1|read|    }\n
+node|8426|literal-text|104861|104919|1|read|    allocation->next = kofun_rt_text_list_allocations;\n
+node|8427|literal-text|104930|104982|1|read|    kofun_rt_text_list_allocations = allocation;\n
+node|8428|literal-text|104993|105050|1|read|    for (size_t index = 0; index < length; ++index) {\n
+node|8429|literal-text|105061|105124|1|read|        allocation->items[index] = kofun_rt_profile_copy_n(\n
+node|8430|literal-text|105135|105193|1|read|            argv[index + 1], strlen(argv[index + 1]));\n
+node|8431|literal-text|105204|105262|1|read|        if (failed) return kofun_rt_empty_text_list();\n
+node|8432|literal-text|105273|105282|1|read|    }\n
+node|8433|literal-text|105293|105363|1|read|    KofunTextList result = { (int64_t)length, allocation->items };\n
+node|8434|literal-text|105374|105396|1|read|    return result;\n
+node|8435|literal-text|105407|105414|1|read|}\n\n
+node|8436|assign|105423|105828|19|edit|668|8437
+node|8437|binary|105441|105828|1|read|+|8438|8453
+node|8438|binary|105441|105810|1|read|+|8439|8452
+node|8439|binary|105441|105768|1|read|+|8440|8451
+node|8440|binary|105441|105748|1|read|+|8441|8450
+node|8441|binary|105441|105716|1|read|+|8442|8449
+node|8442|binary|105441|105637|1|read|+|8443|8448
+node|8443|binary|105441|105573|1|read|+|8444|8447
+node|8444|binary|105441|105524|1|read|+|8445|8446
+node|8445|name|105441|105456|1|read|668
+node|8446|literal-text|105467|105524|1|read|static int64_t kofun_rt_text_len(const char *value) {\n
+node|8447|literal-text|105535|105573|1|read|    size_t length = strlen(value);\n
+node|8448|literal-text|105584|105637|1|read|    if ((uint64_t)length > (uint64_t)INT64_MAX) {\n
+node|8449|literal-text|105648|105716|1|read|        runtime_error("error[R010]: Text length exceeds Int");\n
+node|8450|literal-text|105727|105748|1|read|        return 0;\n
+node|8451|literal-text|105759|105768|1|read|    }\n
+node|8452|literal-text|105779|105810|1|read|    return (int64_t)length;\n
+node|8453|literal-text|105821|105828|1|read|}\n\n
+node|8454|assign|105837|106330|19|edit|668|8455
+node|8455|binary|105855|106330|1|read|+|8456|8475
+node|8456|binary|105855|106312|1|read|+|8457|8474
+node|8457|binary|105855|106231|1|read|+|8458|8473
+node|8458|binary|105855|106170|1|read|+|8459|8472
+node|8459|binary|105855|106086|1|read|+|8460|8471
+node|8460|binary|105855|106068|1|read|+|8461|8470
+node|8461|binary|105855|106012|1|read|+|8462|8469
+node|8462|binary|105855|105994|1|read|+|8463|8468
+node|8463|binary|105855|105957|1|read|+|8464|8467
+node|8464|binary|105855|105920|1|read|+|8465|8466
+node|8465|name|105855|105870|1|read|668
+node|8466|literal-text|105881|105920|1|read|static bool kofun_rt_text_contains(\n
+node|8467|literal-text|105931|105957|1|read|    const char *value,\n
+node|8468|literal-text|105968|105994|1|read|    const char *needle\n
+node|8469|literal-text|106005|106012|1|read|) {\n
+node|8470|literal-text|106023|106068|1|read|    return strstr(value, needle) != NULL;\n
+node|8471|literal-text|106079|106086|1|read|}\n\n
+node|8472|literal-text|106097|106170|1|read|static int64_t kofun_rt_find(const char *value, const char *needle) {\n
+node|8473|literal-text|106181|106231|1|read|    const char *found = strstr(value, needle);\n
+node|8474|literal-text|106242|106312|1|read|    return found == NULL ? INT64_C(-1) : (int64_t)(found - value);\n
+node|8475|literal-text|106323|106330|1|read|}\n\n
+node|8476|assign|106339|106656|19|edit|668|8477
+node|8477|binary|106357|106656|1|read|+|8478|8491
+node|8478|binary|106357|106638|1|read|+|8479|8490
+node|8479|binary|106357|106569|1|read|+|8480|8489
+node|8480|binary|106357|106512|1|read|+|8481|8488
+node|8481|binary|106357|106494|1|read|+|8482|8487
+node|8482|binary|106357|106457|1|read|+|8483|8486
+node|8483|binary|106357|106420|1|read|+|8484|8485
+node|8484|name|106357|106372|1|read|668
+node|8485|literal-text|106383|106420|1|read|static bool kofun_rt_starts_with(\n
+node|8486|literal-text|106431|106457|1|read|    const char *value,\n
+node|8487|literal-text|106468|106494|1|read|    const char *prefix\n
+node|8488|literal-text|106505|106512|1|read|) {\n
+node|8489|literal-text|106523|106569|1|read|    size_t prefix_length = strlen(prefix);\n
+node|8490|literal-text|106580|106638|1|read|    return strncmp(value, prefix, prefix_length) == 0;\n
+node|8491|literal-text|106649|106656|1|read|}\n\n
+node|8492|assign|106665|107606|19|edit|668|8493
+node|8493|binary|106683|107606|1|read|+|8494|8529
+node|8494|binary|106683|107588|1|read|+|8495|8528
+node|8495|binary|106683|107521|1|read|+|8496|8527
+node|8496|binary|106683|107501|1|read|+|8497|8526
+node|8497|binary|106683|107465|1|read|+|8498|8525
+node|8498|binary|106683|107398|1|read|+|8499|8524
+node|8499|binary|106683|107319|1|read|+|8500|8523
+node|8500|binary|106683|107270|1|read|+|8501|8522
+node|8501|binary|106683|107234|1|read|+|8502|8521
+node|8502|binary|106683|107192|1|read|+|8503|8520
+node|8503|binary|106683|107120|1|read|+|8504|8519
+node|8504|binary|106683|107102|1|read|+|8505|8518
+node|8505|binary|106683|107041|1|read|+|8506|8517
+node|8506|binary|106683|106974|1|read|+|8507|8516
+node|8507|binary|106683|106909|1|read|+|8508|8515
+node|8508|binary|106683|106891|1|read|+|8509|8514
+node|8509|binary|106683|106830|1|read|+|8510|8513
+node|8510|binary|106683|106763|1|read|+|8511|8512
+node|8511|name|106683|106698|1|read|668
+node|8512|literal-text|106709|106763|1|read|static bool kofun_rt_is_digit(const char *value) {\n
+node|8513|literal-text|106774|106830|1|read|    return value[0] != '\\0' && value[1] == '\\0' &&\n
+node|8514|literal-text|106841|106891|1|read|        isdigit((unsigned char)value[0]) != 0;\n
+node|8515|literal-text|106902|106909|1|read|}\n\n
+node|8516|literal-text|106920|106974|1|read|static bool kofun_rt_is_space(const char *value) {\n
+node|8517|literal-text|106985|107041|1|read|    return value[0] != '\\0' && value[1] == '\\0' &&\n
+node|8518|literal-text|107052|107102|1|read|        isspace((unsigned char)value[0]) != 0;\n
+node|8519|literal-text|107113|107120|1|read|}\n\n
+node|8520|literal-text|107131|107192|1|read|static bool kofun_rt_is_xid_continue(const char *value) {\n
+node|8521|literal-text|107203|107234|1|read|    uint32_t codepoint = 0;\n
+node|8522|literal-text|107245|107270|1|read|    size_t width = 0;\n
+node|8523|literal-text|107281|107319|1|read|    size_t length = strlen(value);\n
+node|8524|literal-text|107330|107398|1|read|    if (!kofun_unicode_decode((const uint8_t *)value, length, 0,\n
+node|8525|literal-text|107409|107465|1|read|                              &codepoint, &width)) {\n
+node|8526|literal-text|107476|107501|1|read|        return false;\n
+node|8527|literal-text|107512|107521|1|read|    }\n
+node|8528|literal-text|107532|107588|1|read|    return kofun_unicode_is_xid_continue(codepoint);\n
+node|8529|literal-text|107599|107606|1|read|}\n\n
+node|8530|assign|107615|108777|19|edit|668|8531
+node|8531|binary|107633|108777|1|read|+|8532|8577
+node|8532|binary|107633|108759|1|read|+|8533|8576
+node|8533|binary|107633|108692|1|read|+|8534|8575
+node|8534|binary|107633|108642|1|read|+|8535|8574
+node|8535|binary|107633|108577|1|read|+|8536|8573
+node|8536|binary|107633|108509|1|read|+|8537|8572
+node|8537|binary|107633|108464|1|read|+|8538|8571
+node|8538|binary|107633|108394|1|read|+|8539|8570
+node|8539|binary|107633|108317|1|read|+|8540|8569
+node|8540|binary|107633|108249|1|read|+|8541|8568
+node|8541|binary|107633|108231|1|read|+|8542|8567
+node|8542|binary|107633|108170|1|read|+|8543|8566
+node|8543|binary|107633|108120|1|read|+|8544|8565
+node|8544|binary|107633|108070|1|read|+|8545|8564
+node|8545|binary|107633|108016|1|read|+|8546|8563
+node|8546|binary|107633|107968|1|read|+|8547|8562
+node|8547|binary|107633|107924|1|read|+|8548|8561
+node|8548|binary|107633|107881|1|read|+|8549|8560
+node|8549|binary|107633|107820|1|read|+|8550|8559
+node|8550|binary|107633|107802|1|read|+|8551|8558
+node|8551|binary|107633|107772|1|read|+|8552|8557
+node|8552|binary|107633|107739|1|read|+|8553|8556
+node|8553|binary|107633|107702|1|read|+|8554|8555
+node|8554|name|107633|107648|1|read|668
+node|8555|literal-text|107659|107702|1|read|static const char *kofun_rt_text_slice(\n
+node|8556|literal-text|107713|107739|1|read|    const char *value,\n
+node|8557|literal-text|107750|107772|1|read|    int64_t start,\n
+node|8558|literal-text|107783|107802|1|read|    int64_t end\n
+node|8559|literal-text|107813|107820|1|read|) {\n
+node|8560|literal-text|107831|107881|1|read|    int64_t length = kofun_rt_text_len(value);\n
+node|8561|literal-text|107892|107924|1|read|    if (failed) return "";\n
+node|8562|literal-text|107935|107968|1|read|    if (start < 0) start = 0;\n
+node|8563|literal-text|107979|108016|1|read|    if (end < start) end = start;\n
+node|8564|literal-text|108027|108070|1|read|    if (start > length) start = length;\n
+node|8565|literal-text|108081|108120|1|read|    if (end > length) end = length;\n
+node|8566|literal-text|108131|108170|1|read|    return kofun_rt_profile_copy_n(\n
+node|8567|literal-text|108181|108231|1|read|        value + start, (size_t)(end - start));\n
+node|8568|literal-text|108242|108249|1|read|}\n\n
+node|8569|literal-text|108260|108317|1|read|static const char *kofun_rt_trim(const char *value) {\n
+node|8570|literal-text|108328|108394|1|read|    const unsigned char *start = (const unsigned char *)value;\n
+node|8571|literal-text|108405|108464|1|read|    while (*start != '\\0' && isspace(*start)) ++start;\n
+node|8572|literal-text|108475|108509|1|read|    const unsigned char *end =\n
+node|8573|literal-text|108520|108577|1|read|        (const unsigned char *)value + strlen(value);\n
+node|8574|literal-text|108588|108642|1|read|    while (end > start && isspace(end[-1])) --end;\n
+node|8575|literal-text|108653|108692|1|read|    return kofun_rt_profile_copy_n(\n
+node|8576|literal-text|108703|108759|1|read|        (const char *)start, (size_t)(end - start));\n
+node|8577|literal-text|108770|108777|1|read|}\n\n
+node|8578|assign|108786|109453|19|edit|668|8579
+node|8579|binary|108804|109453|1|read|+|8580|8601
+node|8580|binary|108804|109435|1|read|+|8581|8600
+node|8581|binary|108804|109359|1|read|+|8582|8599
+node|8582|binary|108804|109273|1|read|+|8583|8598
+node|8583|binary|108804|109212|1|read|+|8584|8597
+node|8584|binary|108804|109174|1|read|+|8585|8596
+node|8585|binary|108804|109154|1|read|+|8586|8595
+node|8586|binary|108804|109119|1|read|+|8587|8594
+node|8587|binary|108804|109033|1|read|+|8588|8593
+node|8588|binary|108804|108957|1|read|+|8589|8592
+node|8589|binary|108804|108906|1|read|+|8590|8591
+node|8590|name|108804|108819|1|read|668
+node|8591|literal-text|108830|108906|1|read|static const char *kofun_rt_validate_unicode_source(const char *value) {\n
+node|8592|literal-text|108917|108957|1|read|    KofunUnicodeError unicode_error;\n
+node|8593|literal-text|108968|109033|1|read|    if (kofun_unicode_validate_source((const uint8_t *)value,\n
+node|8594|literal-text|109044|109119|1|read|                                      strlen(value), &unicode_error)) {\n
+node|8595|literal-text|109130|109154|1|read|        return "";\n
+node|8596|literal-text|109165|109174|1|read|    }\n
+node|8597|literal-text|109185|109212|1|read|    char message[1024];\n
+node|8598|literal-text|109223|109273|1|read|    kofun_unicode_format_error(&unicode_error,\n
+node|8599|literal-text|109284|109359|1|read|        getenv("KOFUN_DIAGNOSTIC_LOCALE"), message, sizeof(message));\n
+node|8600|literal-text|109370|109435|1|read|    return kofun_rt_profile_copy_n(message, strlen(message));\n
+node|8601|literal-text|109446|109453|1|read|}\n\n
+node|8602|assign|109462|110963|19|edit|668|8603
+node|8603|binary|109480|110963|1|read|+|8604|8671
+node|8604|binary|109480|110945|1|read|+|8605|8670
+node|8605|binary|109480|110912|1|read|+|8606|8669
+node|8606|binary|109480|110880|1|read|+|8607|8668
+node|8607|binary|109480|110840|1|read|+|8608|8667
+node|8608|binary|109480|110820|1|read|+|8609|8666
+node|8609|binary|109480|110785|1|read|+|8610|8665
+node|8610|binary|109480|110707|1|read|+|8611|8664
+node|8611|binary|109480|110671|1|read|+|8612|8663
+node|8612|binary|109480|110617|1|read|+|8613|8662
+node|8613|binary|109480|110555|1|read|+|8614|8661
+node|8614|binary|109480|110535|1|read|+|8615|8660
+node|8615|binary|109480|110500|1|read|+|8616|8659
+node|8616|binary|109480|110464|1|read|+|8617|8658
+node|8617|binary|109480|110424|1|read|+|8618|8657
+node|8618|binary|109480|110353|1|read|+|8619|8656
+node|8619|binary|109480|110303|1|read|+|8620|8655
+node|8620|binary|109480|110271|1|read|+|8621|8654
+node|8621|binary|109480|110251|1|read|+|8622|8653
+node|8622|binary|109480|110216|1|read|+|8623|8652
+node|8623|binary|109480|110135|1|read|+|8624|8651
+node|8624|binary|109480|110099|1|read|+|8625|8650
+node|8625|binary|109480|110061|1|read|+|8626|8649
+node|8626|binary|109480|110014|1|read|+|8627|8648
+node|8627|binary|109480|109994|1|read|+|8628|8647
+node|8628|binary|109480|109959|1|read|+|8629|8646
+node|8629|binary|109480|109881|1|read|+|8630|8645
+node|8630|binary|109480|109845|1|read|+|8631|8644
+node|8631|binary|109480|109790|1|read|+|8632|8643
+node|8632|binary|109480|109770|1|read|+|8633|8642
+node|8633|binary|109480|109735|1|read|+|8634|8641
+node|8634|binary|109480|109657|1|read|+|8635|8640
+node|8635|binary|109480|109619|1|read|+|8636|8639
+node|8636|binary|109480|109567|1|read|+|8637|8638
+node|8637|name|109480|109495|1|read|668
+node|8638|literal-text|109506|109567|1|read|static const char *kofun_rt_read_text(const char *path) {\n
+node|8639|literal-text|109578|109619|1|read|    FILE *file = fopen(path, "rb");\n
+node|8640|literal-text|109630|109657|1|read|    if (file == NULL) {\n
+node|8641|literal-text|109668|109735|1|read|        runtime_error("error[R010]: cannot open input file");\n
+node|8642|literal-text|109746|109770|1|read|        return "";\n
+node|8643|literal-text|109781|109790|1|read|    }\n
+node|8644|literal-text|109801|109845|1|read|    if (fseek(file, 0, SEEK_END) != 0) {\n
+node|8645|literal-text|109856|109881|1|read|        fclose(file);\n
+node|8646|literal-text|109892|109959|1|read|        runtime_error("error[R010]: cannot seek input file");\n
+node|8647|literal-text|109970|109994|1|read|        return "";\n
+node|8648|literal-text|110005|110014|1|read|    }\n
+node|8649|literal-text|110025|110061|1|read|    long measured = ftell(file);\n
+node|8650|literal-text|110072|110099|1|read|    if (measured < 0) {\n
+node|8651|literal-text|110110|110135|1|read|        fclose(file);\n
+node|8652|literal-text|110146|110216|1|read|        runtime_error("error[R010]: cannot measure input file");\n
+node|8653|literal-text|110227|110251|1|read|        return "";\n
+node|8654|literal-text|110262|110271|1|read|    }\n
+node|8655|literal-text|110282|110303|1|read|    rewind(file);\n
+node|8656|literal-text|110314|110353|1|read|    size_t size = (size_t)measured;\n
+node|8657|literal-text|110364|110424|1|read|    char *result = kofun_rt_profile_text_allocate(size);\n
+node|8658|literal-text|110435|110464|1|read|    if (result == NULL) {\n
+node|8659|literal-text|110475|110500|1|read|        fclose(file);\n
+node|8660|literal-text|110511|110535|1|read|        return "";\n
+node|8661|literal-text|110546|110555|1|read|    }\n
+node|8662|literal-text|110566|110617|1|read|    size_t read = fread(result, 1, size, file);\n
+node|8663|literal-text|110628|110671|1|read|    if (read != size && ferror(file)) {\n
+node|8664|literal-text|110682|110707|1|read|        fclose(file);\n
+node|8665|literal-text|110718|110785|1|read|        runtime_error("error[R010]: cannot read input file");\n
+node|8666|literal-text|110796|110820|1|read|        return "";\n
+node|8667|literal-text|110831|110840|1|read|    }\n
+node|8668|literal-text|110851|110880|1|read|    result[read] = '\\0';\n
+node|8669|literal-text|110891|110912|1|read|    fclose(file);\n
+node|8670|literal-text|110923|110945|1|read|    return result;\n
+node|8671|literal-text|110956|110963|1|read|}\n\n
+node|8672|assign|110972|111803|19|edit|668|8673
+node|8673|binary|110990|111803|1|read|+|8674|8711
+node|8674|binary|110990|111785|1|read|+|8675|8710
+node|8675|binary|110990|111765|1|read|+|8676|8709
+node|8676|binary|110990|111685|1|read|+|8677|8708
+node|8677|binary|110990|111642|1|read|+|8678|8707
+node|8678|binary|110990|111622|1|read|+|8679|8706
+node|8679|binary|110990|111592|1|read|+|8680|8705
+node|8680|binary|110990|111512|1|read|+|8681|8704
+node|8681|binary|110990|111476|1|read|+|8682|8703
+node|8682|binary|110990|111410|1|read|+|8683|8702
+node|8683|binary|110990|111361|1|read|+|8684|8701
+node|8684|binary|110990|111341|1|read|+|8685|8700
+node|8685|binary|110990|111311|1|read|+|8686|8699
+node|8686|binary|110990|111232|1|read|+|8687|8698
+node|8687|binary|110990|111194|1|read|+|8688|8697
+node|8688|binary|110990|111142|1|read|+|8689|8696
+node|8689|binary|110990|111124|1|read|+|8690|8695
+node|8690|binary|110990|111088|1|read|+|8691|8694
+node|8691|binary|110990|111052|1|read|+|8692|8693
+node|8692|name|110990|111005|1|read|668
+node|8693|literal-text|111016|111052|1|read|static void kofun_rt_write_text(\n
+node|8694|literal-text|111063|111088|1|read|    const char *path,\n
+node|8695|literal-text|111099|111124|1|read|    const char *value\n
+node|8696|literal-text|111135|111142|1|read|) {\n
+node|8697|literal-text|111153|111194|1|read|    FILE *file = fopen(path, "wb");\n
+node|8698|literal-text|111205|111232|1|read|    if (file == NULL) {\n
+node|8699|literal-text|111243|111311|1|read|        runtime_error("error[R010]: cannot open output file");\n
+node|8700|literal-text|111322|111341|1|read|        return;\n
+node|8701|literal-text|111352|111361|1|read|    }\n
+node|8702|literal-text|111372|111410|1|read|    size_t length = strlen(value);\n
+node|8703|literal-text|111421|111476|1|read|    if (fwrite(value, 1, length, file) != length) {\n
+node|8704|literal-text|111487|111512|1|read|        fclose(file);\n
+node|8705|literal-text|111523|111592|1|read|        runtime_error("error[R010]: cannot write output file");\n
+node|8706|literal-text|111603|111622|1|read|        return;\n
+node|8707|literal-text|111633|111642|1|read|    }\n
+node|8708|literal-text|111653|111685|1|read|    if (fclose(file) != 0) {\n
+node|8709|literal-text|111696|111765|1|read|        runtime_error("error[R010]: cannot close output file");\n
+node|8710|literal-text|111776|111785|1|read|    }\n
+node|8711|literal-text|111796|111803|1|read|}\n\n
+node|8712|assign|111812|112406|19|edit|669|8713
+node|8713|binary|111835|112406|1|read|+|8714|8737
+node|8714|binary|111835|112361|1|read|+|8715|8736
+node|8715|binary|111835|112317|1|read|+|8716|8735
+node|8716|binary|111835|112259|1|read|+|8717|8734
+node|8717|binary|111835|112220|1|read|+|8718|8733
+node|8718|binary|111835|112175|1|read|+|8719|8732
+node|8719|binary|111835|112125|1|read|+|8720|8731
+node|8720|binary|111835|112082|1|read|+|8721|8730
+node|8721|binary|111835|112039|1|read|+|8722|8729
+node|8722|binary|111835|111993|1|read|+|8723|8728
+node|8723|binary|111835|111954|1|read|+|8724|8727
+node|8724|binary|111835|111906|1|read|+|8725|8726
+node|8725|literal-text|111835|111863|1|read|    (void)kofun_rt_args;\n
+node|8726|literal-text|111874|111906|1|read|    (void)kofun_rt_text_len;\n
+node|8727|literal-text|111917|111954|1|read|    (void)kofun_rt_text_contains;\n
+node|8728|literal-text|111965|111993|1|read|    (void)kofun_rt_find;\n
+node|8729|literal-text|112004|112039|1|read|    (void)kofun_rt_starts_with;\n
+node|8730|literal-text|112050|112082|1|read|    (void)kofun_rt_is_digit;\n
+node|8731|literal-text|112093|112125|1|read|    (void)kofun_rt_is_space;\n
+node|8732|literal-text|112136|112175|1|read|    (void)kofun_rt_is_xid_continue;\n
+node|8733|literal-text|112186|112220|1|read|    (void)kofun_rt_text_slice;\n
+node|8734|literal-text|112231|112259|1|read|    (void)kofun_rt_trim;\n
+node|8735|literal-text|112270|112317|1|read|    (void)kofun_rt_validate_unicode_source;\n
+node|8736|literal-text|112328|112361|1|read|    (void)kofun_rt_read_text;\n
+node|8737|literal-text|112372|112406|1|read|    (void)kofun_rt_write_text;\n
+node|8738|let-mut|112417|112773|19|copy|672|8739
+node|8739|binary|112439|112773|1|read|+|8740|8765
+node|8740|binary|112439|112761|1|read|+|8741|8764
+node|8741|binary|112439|112737|1|read|+|8742|8763
+node|8742|binary|112439|112720|1|read|+|8743|8762
+node|8743|binary|112439|112701|1|read|+|8744|8761
+node|8744|binary|112439|112685|1|read|+|8745|8760
+node|8745|binary|112439|112663|1|read|+|8746|8759
+node|8746|binary|112439|112647|1|read|+|8747|8758
+node|8747|binary|112439|112616|1|read|+|8748|8757
+node|8748|binary|112439|112585|1|read|+|8749|8756
+node|8749|binary|112439|112552|1|read|+|8750|8755
+node|8750|binary|112439|112519|1|read|+|8751|8754
+node|8751|binary|112439|112486|1|read|+|8752|8753
+node|8752|name|112439|112453|1|read|671
+node|8753|literal-text|112460|112486|1|read|    (void)checked_add;\n
+node|8754|literal-text|112493|112519|1|read|    (void)checked_sub;\n
+node|8755|literal-text|112526|112552|1|read|    (void)checked_mul;\n
+node|8756|literal-text|112559|112585|1|read|    (void)checked_neg;\n
+node|8757|literal-text|112592|112616|1|read|    (void)floor_div;\n
+node|8758|literal-text|112623|112647|1|read|    (void)floor_mod;\n
+node|8759|name|112654|112663|1|read|662
+node|8760|name|112670|112685|1|read|664
+node|8761|name|112692|112701|1|read|666
+node|8762|name|112708|112720|1|read|669
+node|8763|name|112727|112737|1|read|653
+node|8764|literal-text|112744|112761|1|read|    return 0;\n
+node|8765|literal-text|112768|112773|1|read|}\n
+node|8766|if|112778|113184|19|copy|8767|673|none|-1
+node|8767|name|112781|112788|0|copy|652
+node|8768|let|112799|113117|19|copy|673|8769
+node|8769|binary|112821|113117|1|read|+|8770|8787
+node|8770|binary|112821|113094|1|read|+|8771|8786
+node|8771|binary|112821|113074|1|read|+|8772|8785
+node|8772|binary|112821|113048|1|read|+|8773|8784
+node|8773|binary|112821|113028|1|read|+|8774|8783
+node|8774|binary|112821|112993|1|read|+|8775|8782
+node|8775|binary|112821|112958|1|read|+|8776|8781
+node|8776|binary|112821|112921|1|read|+|8777|8780
+node|8777|binary|112821|112884|1|read|+|8778|8779
+node|8778|literal-text|112821|112847|1|read|    (void)checked_add;\n
+node|8779|literal-text|112858|112884|1|read|    (void)checked_sub;\n
+node|8780|literal-text|112895|112921|1|read|    (void)checked_mul;\n
+node|8781|literal-text|112932|112958|1|read|    (void)checked_neg;\n
+node|8782|literal-text|112969|112993|1|read|    (void)floor_div;\n
+node|8783|literal-text|113004|113028|1|read|    (void)floor_mod;\n
+node|8784|name|113039|113048|1|read|662
+node|8785|name|113059|113074|1|read|664
+node|8786|name|113085|113094|1|read|666
+node|8787|name|113105|113117|1|read|669
+node|8788|assign|113126|113173|19|edit|672|8789
+node|8789|call|113136|113173|1|read|84|8790|8791
+node|8790|name|113157|113163|1|read|651
+node|8791|name|113165|113172|1|read|673
+node|8792|let-mut|113184|113703|19|copy|674|8793
+node|8793|binary|113205|113703|1|read|+|8794|8823
+node|8794|binary|113205|113689|1|read|+|8795|8822
+node|8795|binary|113205|113660|1|read|+|8796|8821
+node|8796|binary|113205|113644|1|read|+|8797|8820
+node|8797|binary|113205|113604|1|read|+|8798|8819
+node|8798|binary|113205|113562|1|read|+|8799|8818
+node|8799|binary|113205|113533|1|read|+|8800|8817
+node|8800|binary|113205|113474|1|read|+|8801|8816
+node|8801|binary|113205|113442|1|read|+|8802|8815
+node|8802|binary|113205|113431|1|read|+|8803|8814
+node|8803|binary|113205|113409|1|read|+|8804|8813
+node|8804|binary|113205|113390|1|read|+|8805|8812
+node|8805|binary|113205|113361|1|read|+|8806|8811
+node|8806|binary|113205|113331|1|read|+|8807|8810
+node|8807|binary|113205|113300|1|read|+|8808|8809
+node|8808|literal-text|113205|113268|1|read|/* Generated by the Kofun-written Stage 1 seed compiler. */\n
+node|8809|literal-text|113275|113300|1|read|#include <inttypes.h>\n
+node|8810|literal-text|113307|113331|1|read|#include <stdbool.h>\n
+node|8811|literal-text|113338|113361|1|read|#include <stdint.h>\n
+node|8812|literal-text|113368|113390|1|read|#include <stdio.h>\n
+node|8813|name|113397|113409|1|read|660
+node|8814|name|113416|113431|1|read|667
+node|8815|literal-text|113438|113442|1|read|\n
+node|8816|literal-text|113449|113474|1|read|static bool failed;\n\n
+node|8817|literal-text|113481|113533|1|read|static void runtime_error(const char *message) {\n
+node|8818|literal-text|113540|113562|1|read|    if (!failed) {\n
+node|8819|literal-text|113569|113604|1|read|        fputs(message, stderr);\n
+node|8820|literal-text|113611|113644|1|read|        fputc('\\n', stderr);\n
+node|8821|literal-text|113651|113660|1|read|    }\n
+node|8822|literal-text|113667|113689|1|read|    failed = true;\n
+node|8823|literal-text|113696|113703|1|read|}\n\n
+node|8824|assign|113708|114058|19|edit|674|8825
+node|8825|binary|113717|114058|1|read|+|8826|8841
+node|8826|binary|113717|114044|1|read|+|8827|8840
+node|8827|binary|113717|114015|1|read|+|8828|8839
+node|8828|binary|113717|113999|1|read|+|8829|8838
+node|8829|binary|113717|113971|1|read|+|8830|8837
+node|8830|binary|113717|113887|1|read|+|8831|8836
+node|8831|binary|113717|113821|1|read|+|8832|8835
+node|8832|binary|113717|113791|1|read|+|8833|8834
+node|8833|name|113717|113723|1|read|674
+node|8834|literal-text|113730|113791|1|read|static int64_t checked_add(int64_t left, int64_t right) {\n
+node|8835|literal-text|113798|113821|1|read|    int64_t result;\n
+node|8836|literal-text|113828|113887|1|read|    if (__builtin_add_overflow(left, right, &result)) {\n
+node|8837|literal-text|113894|113971|1|read|        runtime_error("error[R010]: integer overflow in operator `+`");\n
+node|8838|literal-text|113978|113999|1|read|        return 0;\n
+node|8839|literal-text|114006|114015|1|read|    }\n
+node|8840|literal-text|114022|114044|1|read|    return result;\n
+node|8841|literal-text|114051|114058|1|read|}\n\n
+node|8842|assign|114063|114413|19|edit|674|8843
+node|8843|binary|114072|114413|1|read|+|8844|8859
+node|8844|binary|114072|114399|1|read|+|8845|8858
+node|8845|binary|114072|114370|1|read|+|8846|8857
+node|8846|binary|114072|114354|1|read|+|8847|8856
+node|8847|binary|114072|114326|1|read|+|8848|8855
+node|8848|binary|114072|114242|1|read|+|8849|8854
+node|8849|binary|114072|114176|1|read|+|8850|8853
+node|8850|binary|114072|114146|1|read|+|8851|8852
+node|8851|name|114072|114078|1|read|674
+node|8852|literal-text|114085|114146|1|read|static int64_t checked_sub(int64_t left, int64_t right) {\n
+node|8853|literal-text|114153|114176|1|read|    int64_t result;\n
+node|8854|literal-text|114183|114242|1|read|    if (__builtin_sub_overflow(left, right, &result)) {\n
+node|8855|literal-text|114249|114326|1|read|        runtime_error("error[R010]: integer overflow in operator `-`");\n
+node|8856|literal-text|114333|114354|1|read|        return 0;\n
+node|8857|literal-text|114361|114370|1|read|    }\n
+node|8858|literal-text|114377|114399|1|read|    return result;\n
+node|8859|literal-text|114406|114413|1|read|}\n\n
+node|8860|assign|114418|114768|19|edit|674|8861
+node|8861|binary|114427|114768|1|read|+|8862|8877
+node|8862|binary|114427|114754|1|read|+|8863|8876
+node|8863|binary|114427|114725|1|read|+|8864|8875
+node|8864|binary|114427|114709|1|read|+|8865|8874
+node|8865|binary|114427|114681|1|read|+|8866|8873
+node|8866|binary|114427|114597|1|read|+|8867|8872
+node|8867|binary|114427|114531|1|read|+|8868|8871
+node|8868|binary|114427|114501|1|read|+|8869|8870
+node|8869|name|114427|114433|1|read|674
+node|8870|literal-text|114440|114501|1|read|static int64_t checked_mul(int64_t left, int64_t right) {\n
+node|8871|literal-text|114508|114531|1|read|    int64_t result;\n
+node|8872|literal-text|114538|114597|1|read|    if (__builtin_mul_overflow(left, right, &result)) {\n
+node|8873|literal-text|114604|114681|1|read|        runtime_error("error[R010]: integer overflow in operator `*`");\n
+node|8874|literal-text|114688|114709|1|read|        return 0;\n
+node|8875|literal-text|114716|114725|1|read|    }\n
+node|8876|literal-text|114732|114754|1|read|    return result;\n
+node|8877|literal-text|114761|114768|1|read|}\n\n
+node|8878|assign|114773|115059|19|edit|674|8879
+node|8879|binary|114782|115059|1|read|+|8880|8893
+node|8880|binary|114782|115045|1|read|+|8881|8892
+node|8881|binary|114782|115016|1|read|+|8882|8891
+node|8882|binary|114782|115000|1|read|+|8883|8890
+node|8883|binary|114782|114972|1|read|+|8884|8889
+node|8884|binary|114782|114882|1|read|+|8885|8888
+node|8885|binary|114782|114842|1|read|+|8886|8887
+node|8886|name|114782|114788|1|read|674
+node|8887|literal-text|114795|114842|1|read|static int64_t checked_neg(int64_t value) {\n
+node|8888|literal-text|114849|114882|1|read|    if (value == INT64_MIN) {\n
+node|8889|literal-text|114889|114972|1|read|        runtime_error("error[R010]: integer overflow in unary operator `-`");\n
+node|8890|literal-text|114979|115000|1|read|        return 0;\n
+node|8891|literal-text|115007|115016|1|read|    }\n
+node|8892|literal-text|115023|115045|1|read|    return -value;\n
+node|8893|literal-text|115052|115059|1|read|}\n\n
+node|8894|assign|115064|115716|19|edit|674|8895
+node|8895|binary|115073|115716|1|read|+|8896|8923
+node|8896|binary|115073|115702|1|read|+|8897|8922
+node|8897|binary|115073|115671|1|read|+|8898|8921
+node|8898|binary|115073|115589|1|read|+|8899|8920
+node|8899|binary|115073|115541|1|read|+|8900|8919
+node|8900|binary|115073|115494|1|read|+|8901|8918
+node|8901|binary|115073|115478|1|read|+|8902|8917
+node|8902|binary|115073|115450|1|read|+|8903|8916
+node|8903|binary|115073|115365|1|read|+|8904|8915
+node|8904|binary|115073|115311|1|read|+|8905|8914
+node|8905|binary|115073|115295|1|read|+|8906|8913
+node|8906|binary|115073|115267|1|read|+|8907|8912
+node|8907|binary|115073|115177|1|read|+|8908|8911
+node|8908|binary|115073|115145|1|read|+|8909|8910
+node|8909|name|115073|115079|1|read|674
+node|8910|literal-text|115086|115145|1|read|static int64_t floor_div(int64_t left, int64_t right) {\n
+node|8911|literal-text|115152|115177|1|read|    if (right == 0) {\n
+node|8912|literal-text|115184|115267|1|read|        runtime_error("error[R010]: operator `//` failed: division by zero");\n
+node|8913|literal-text|115274|115295|1|read|        return 0;\n
+node|8914|literal-text|115302|115311|1|read|    }\n
+node|8915|literal-text|115318|115365|1|read|    if (left == INT64_MIN && right == -1) {\n
+node|8916|literal-text|115372|115450|1|read|        runtime_error("error[R010]: integer overflow in operator `//`");\n
+node|8917|literal-text|115457|115478|1|read|        return 0;\n
+node|8918|literal-text|115485|115494|1|read|    }\n
+node|8919|literal-text|115501|115541|1|read|    int64_t quotient = left / right;\n
+node|8920|literal-text|115548|115589|1|read|    int64_t remainder = left % right;\n
+node|8921|literal-text|115596|115671|1|read|    if (remainder != 0 && ((remainder < 0) != (right < 0))) --quotient;\n
+node|8922|literal-text|115678|115702|1|read|    return quotient;\n
+node|8923|literal-text|115709|115716|1|read|}\n\n
+node|8924|assign|115721|116213|19|edit|674|8925
+node|8925|binary|115730|116213|1|read|+|8926|8945
+node|8926|binary|115730|116199|1|read|+|8927|8944
+node|8927|binary|115730|116167|1|read|+|8928|8943
+node|8928|binary|115730|116077|1|read|+|8929|8942
+node|8929|binary|115730|116029|1|read|+|8930|8941
+node|8930|binary|115730|115967|1|read|+|8931|8940
+node|8931|binary|115730|115951|1|read|+|8932|8939
+node|8932|binary|115730|115923|1|read|+|8933|8938
+node|8933|binary|115730|115834|1|read|+|8934|8937
+node|8934|binary|115730|115802|1|read|+|8935|8936
+node|8935|name|115730|115736|1|read|674
+node|8936|literal-text|115743|115802|1|read|static int64_t floor_mod(int64_t left, int64_t right) {\n
+node|8937|literal-text|115809|115834|1|read|    if (right == 0) {\n
+node|8938|literal-text|115841|115923|1|read|        runtime_error("error[R010]: operator `%` failed: division by zero");\n
+node|8939|literal-text|115930|115951|1|read|        return 0;\n
+node|8940|literal-text|115958|115967|1|read|    }\n
+node|8941|literal-text|115974|116029|1|read|    if (left == INT64_MIN && right == -1) return 0;\n
+node|8942|literal-text|116036|116077|1|read|    int64_t remainder = left % right;\n
+node|8943|literal-text|116084|116167|1|read|    if (remainder != 0 && ((remainder < 0) != (right < 0))) remainder += right;\n
+node|8944|literal-text|116174|116199|1|read|    return remainder;\n
+node|8945|literal-text|116206|116213|1|read|}\n\n
+node|8946|return|116218|116349|19|copy|8947
+node|8947|binary|116225|116349|1|read|+|8948|8959
+node|8948|binary|116225|116335|1|read|+|8949|8958
+node|8949|binary|116225|116316|1|read|+|8950|8957
+node|8950|binary|116225|116294|1|read|+|8951|8956
+node|8951|binary|116225|116275|1|read|+|8952|8955
+node|8952|binary|116225|116250|1|read|+|8953|8954
+node|8953|name|116225|116231|1|read|674
+node|8954|name|116238|116250|1|read|661
+node|8955|name|116257|116275|1|read|663
+node|8956|name|116282|116294|1|read|665
+node|8957|name|116301|116316|1|read|668
+node|8958|name|116323|116335|1|read|670
+node|8959|name|116342|116349|1|read|672
+function|8960|86|674|116353|117055
+node|8961|let|116420|116453|19|copy|677|8962
+node|8962|call|116432|116453|1|read|97|8963
+node|8963|name|116442|116452|1|read|675
+node|8964|let|116458|116508|19|copy|678|8965
+node|8965|call|116478|116508|1|read|102|8966
+node|8966|name|116502|116507|1|read|677
+node|8967|if|116513|116601|19|copy|8968|676|none|-1
+node|8968|binary|116516|116538|0|copy|>|8969|8971
+node|8969|call|116516|116534|3|copy|95|8970
+node|8970|name|116520|116533|1|read|678
+node|8971|literal-int|116537|116538|3|copy|0
+node|8972|expr-stmt|116549|116569|19|copy|8973
+node|8973|call|116549|116569|19|copy|96|8974
+node|8974|name|116555|116568|1|read|678
+node|8975|return|116578|116590|19|copy|8976
+node|8976|literal-bool|116585|116590|0|copy|false
+node|8977|let|116601|116626|19|copy|679|8978
+node|8978|binary|116614|116626|1|read|+|8979|8980
+node|8979|name|116614|116619|1|read|677
+node|8980|literal-text|116622|116626|1|read|\n
+node|8981|if|116631|116769|19|copy|8982|677|none|-1
+node|8982|call|116634|116654|0|copy|75|8983
+node|8983|name|116647|116653|1|read|679
+node|8984|expr-stmt|116665|116711|19|copy|8985
+node|8985|call|116665|116711|19|copy|103|8986|8987
+node|8986|name|116676|116687|1|read|676
+node|8987|call|116689|116710|1|read|85|8988|8989
+node|8988|name|116696|116702|1|read|679
+node|8989|literal-bool|116704|116709|0|copy|false
+node|8990|expr-stmt|116720|116738|19|copy|8991
+node|8991|call|116720|116738|19|copy|96|8992
+node|8992|name|116726|116737|1|read|676
+node|8993|return|116747|116758|19|copy|8994
+node|8994|literal-bool|116754|116758|0|copy|true
+node|8995|let|116769|116812|19|copy|680|8996
+node|8996|call|116790|116812|1|read|14|8997
+node|8997|name|116805|116811|1|read|679
+node|8998|if|116817|116961|19|copy|8999|678|none|-1
+node|8999|unary|116820|116857|0|copy|!|9000
+node|9000|call|116821|116857|0|copy|74|9001
+node|9001|name|116842|116856|1|read|680
+node|9002|expr-stmt|116868|116929|19|copy|9003
+node|9003|call|116868|116929|19|copy|96|9004
+node|9004|literal-text|116874|116928|1|read|compile error: unsupported Kofun integer Core source
+node|9005|return|116938|116950|19|copy|9006
+node|9006|literal-bool|116945|116950|0|copy|false
+node|9007|expr-stmt|116961|117014|19|copy|9008
+node|9008|call|116961|117014|19|copy|103|9009|9010
+node|9009|name|116972|116983|1|read|676
+node|9010|call|116985|117013|1|read|85|9011|9012
+node|9011|name|116992|117006|1|read|680
+node|9012|literal-bool|117008|117012|0|copy|true
+node|9013|expr-stmt|117019|117037|19|copy|9014
+node|9014|call|117019|117037|19|copy|96|9015
+node|9015|name|117025|117036|1|read|676
+node|9016|return|117042|117053|19|copy|9017
+node|9017|literal-bool|117049|117053|0|copy|true
+function|9018|87|679|117057|117277
+node|9019|let|117073|117095|19|copy|681|9020
+node|9020|call|117089|117095|21|read|88
+node|9021|if|117100|117208|19|copy|9022|681|none|-1
+node|9022|binary|117103|117122|0|copy|!=|9023|9025
+node|9023|call|117103|117117|3|copy|104|9024
+node|9024|name|117107|117116|21|read|681
+node|9025|literal-int|117121|117122|3|copy|2
+node|9026|expr-stmt|117133|117182|19|copy|9027
+node|9027|call|117133|117182|19|copy|96|9028
+node|9028|literal-text|117139|117181|1|read|usage: kofun-stage1 INPUT.kofun OUTPUT.c
+node|9029|return|117191|117197|19|copy|none
+node|9030|if|117208|117276|19|copy|9031|682|none|-1
+node|9031|unary|117211|117252|0|copy|!|9032
+node|9032|call|117212|117252|0|copy|86|9033|9036
+node|9033|index|117225|117237|1|read|9034|9035
+node|9034|name|117225|117234|21|read|681
+node|9035|literal-int|117235|117236|3|copy|0
+node|9036|index|117239|117251|1|read|9037|9038
+node|9037|name|117239|117248|21|read|681
+node|9038|literal-int|117249|117250|3|copy|1
+node|9039|expr-stmt|117263|117269|19|copy|9040
+node|9040|call|117263|117269|19|copy|105
