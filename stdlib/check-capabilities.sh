@@ -127,6 +127,7 @@ logging
 unit-testing
 benchmark-harness
 concurrency
+stream-protocol
 buffered-io
 url
 hashes-checksums
@@ -163,7 +164,7 @@ mutate unknown-tier sed -i 's/\tportable\timplemented\t/\tstandard\timplemented\
 mutate implemented-without-task sed -i 's/\timplemented\ttask stdlib\t/\timplemented\tstdlib\/json\t/'
 mutate implemented-unknown-task sed -i 's/\timplemented\ttask stdlib\t/\timplemented\ttask no-such-target\t/'
 mutate specified-missing-file sed -i 's|\tspecified\tspec/effects/validation-accumulation.md\t|\tspecified\tspec/effects/does-not-exist.md\t|'
-mutate planned-without-issue sed -i 's/\tplanned\t#638 #644\t/\tplanned\tsoon\t/'
+mutate planned-without-issue sed -i 's/\tplanned\t#555 #736\t/\tplanned\tsoon\t/'
 mutate non-goal-with-evidence sed -i 's/\tnon-goal\tcharter\t/\tnon-goal\ttask stdlib\t/'
 mutate missing-note sed -i 's/\tTOML is the baseline config format.*$/\t/'
 

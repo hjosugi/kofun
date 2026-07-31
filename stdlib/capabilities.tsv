@@ -35,12 +35,13 @@ cli-parsing	module	implemented	task cli-framework	bounded direct-static native C
 http-server	module	implemented	task http	bounded first-party HTTP/API framework; closed #24, not evidence of a client
 validation-accumulation	portable	specified	spec/effects/validation-accumulation.md	accepted contract; no library implements it and its gate does not exist
 aggregate-layout	portable	specified	spec/aggregate-layout-v1.md	layout facts consumed by resource APIs
-http-client	module	planned	#638 #644	contract first; URL, TLS, streaming and cancellation boundaries are undecided
-date-time-core	portable	planned	#639 #645	Gregorian values, checked arithmetic, strict RFC 3339
-time-zone-data	module	planned	#648	versioned tiny tzdb reader with gap and fold resolution
+http-client	module	specified	docs/stdlib/http-client.md	accepted contract (#638); HTTP/1.1 core over the scripted transport is #644, live DNS/socket/TLS adapters separate
+date-time-core	portable	specified	docs/stdlib/date-time.md	accepted contract (#639); core calendar and strict RFC 3339 slice is #645
+time-zone-data	module	specified	docs/stdlib/date-time.md	accepted contract (#639); versioned tzdb reader with gap/fold resolution is #648
 clock-adapters	adapter	planned	#647	explicit monotonic/system identities, sleep, deterministic fake time
-benchmark-harness	portable	planned	#640 #646	warmup, sampling, allocation metrics, reproducible reports
+benchmark-harness	portable	specified	docs/stdlib/benchmark.md	accepted contract (#640); raw-sample report schema slice is #646
 concurrency	portable	planned	#555 #736	scoped parallelism only, after the runtime contract exists
+stream-protocol	portable	specified	docs/stdlib/stream-protocol.md	accepted protocol contract (#627); no operators, scheduler, or adapters implemented
 buffered-io	portable	planned	#231	no buffered reader/writer exists over the syscall seed today
 url	portable	planned	#638	parsing and normalisation; owned by the HTTP client contract, not independent
 secure-randomness	adapter	planned	#234	the Linux entropy adapter exists; the portable capability boundary does not
