@@ -74,6 +74,6 @@ The lowering lives in both halves of the Stage 2 lockstep pair — the
 digests pinned together in `bootstrap/stage2/SHA256SUMS`. The seed
 remains the executable stand-in until the self-compile chain (#621/#622)
 can run the canonical source itself; the canonical port mirrors the seed
-record for record, and the seed additionally bounds documents (8192
+record for record, and the seed additionally bounds documents (16384
 records, 16 fields, 64 types) that the canonical Text scans leave
 unbounded.

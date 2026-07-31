@@ -105,11 +105,13 @@ with the runtime's explicit message, exits 1, and preserves the
 previous output bytes).
 
 For #751 the same gate goes one generation further: A1 compiles the exact
-canonical `bootstrap/stage1/compiler.kofun` bytes in two distinct directories,
-requires both nonempty C2 files to be byte-identical, compares C2 with the
-audited hand-port's independently emitted bytes, and compiles C2 under strict
-C11 warnings. On shells that provide `ulimit -v`, each S compilation is capped
-at 1.5 GiB by default; `KOFUN_SELFHOST_VMEM_KIB` can set another positive bound.
+canonical `bootstrap/stage1/compiler.kofun` bytes under distinct source names
+in two distinct directories, requires both nonempty C2 files to be
+byte-identical, compares C2 with the audited hand-port's independently emitted
+bytes, and compiles C2 under strict C11 warnings. On shells that provide
+`ulimit -v`, each S compilation is capped at 1.5 GiB by default;
+`KOFUN_SELFHOST_VMEM_KIB` can set another positive bound. Where the host
+provides `timeout`, `KOFUN_SELFHOST_TIMEOUT` sets its 120-second default.
 
 The host boundary in generated programs is the audited runtime shim documented
 in `../c11/README.md`: bounded argument decoding through `kofun_rt_args` (the
