@@ -1,0 +1,33 @@
+capability	tier	state	evidence
+result-optional-core	T0	implemented	spec/syntax/EXPRESSIONS_AND_LITERALS.md
+validation-accumulation	T0	specified	spec/effects/validation-accumulation.md
+collections-core	T1	implemented	stdlib/list stdlib/array stdlib/map stdlib/set stdlib/vector stdlib/tuple stdlib/binary_heap
+decimal	T1	implemented	stdlib/decimal docs/DECIMAL.md
+json	T1	implemented	stdlib/json
+csv	T1	implemented	stdlib/csv
+toml	T1	implemented	stdlib/toml
+regex	T1	implemented	stdlib/regex
+logging	T1	implemented	stdlib/logging
+testing	T1	implemented	stdlib/testing
+benchmark-harness	T1	specified	docs/stdlib/benchmark.md
+stream-protocol	T1	specified	docs/stdlib/stream-protocol.md
+buffered-io	T1	planned	issue:#636
+url	T1	planned	issue:#638
+hashes-checksums	T1	planned	issue:#636
+mime	T1	deferred	issue:#636
+date-time-civil-types	T1	specified	docs/stdlib/date-time.md
+fs-portable-interface	T2	planned	issue:#491
+environment-process	T2	planned	issue:#494
+clock-capability	T2	specified	docs/stdlib/date-time.md
+secure-randomness	T2	planned	issue:#234
+temporary-files	T2	planned	issue:#636
+linux-x86-64-seed	T2	implemented	stdlib/linux_x86_64 stdlib/tests
+http-server	T3	implemented	framework/http
+cli-framework	T1	implemented	framework/cli
+http-client	T3	specified	docs/stdlib/http-client.md
+tls	T3	deferred	issue:#638
+time-zone-data	T3	specified	docs/stdlib/date-time.md
+compression-archive	T3	deferred	issue:#636
+crypto-primitives	T3	deferred	issue:#636
+yaml	T3	non-goal	docs/STANDARD_LIBRARY_CHARTER.md
+concurrency-scoped	T1	deferred	issue:#555

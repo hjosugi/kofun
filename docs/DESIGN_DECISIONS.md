@@ -436,3 +436,134 @@ conformance requirement rather than an aspiration.
 
 [`spec/effects/validation-accumulation.md`](../spec/effects/validation-accumulation.md)
 is normative.
+
+## DD-035: Laws are library declarations checked by a finite-model engine
+
+`law`, `instance`, and `model` are ordinary contextual top-level
+declarations. `Monad`, `Monoid`, `Functor`, `Applicative`, and `Semigroup`
+are ordinary library identifiers; the compiler contains no branch for any
+one family. Equations are data checked by a generic typed finite-model
+evaluator inside a compile-time sandbox with explicit case/step/allocation
+budgets, and evidence carries one of three distinct assurance levels —
+`bounded-exhaustive`, `proven-finite`, `proven` — none of which is granted
+by a passing sample alone.
+
+A privileged `monad` keyword is rejected: it freezes one family's equations
+into the compiler and gives other algebras nothing. Blocking on full
+higher-kinded types is rejected: concrete finite instantiations
+(`Optional[Bool]`, a bounded `Int` monoid) deliver a checkable engine first,
+and generic laws layer on later. Beginners never need this feature for
+ordinary `Result` code.
+
+[`docs/LAW_SYSTEM.md`](LAW_SYSTEM.md) is normative, including the
+`kofun.law-evidence/v2` identity and sandbox contract.
+
+## DD-036: Result propagation is postfix `?`, monomorphic to `Result`
+
+One initial sequencing sugar: `expr?` on a `Result[T, E]` inside a function
+returning `Result[U, E]` desugars after type resolution to the four-line
+`match`-and-early-return core, with single evaluation, moved operand, and
+unchanged effects. `T?` optionals do not propagate — `?` on an optional is a
+dedicated refusal suggesting `ok_or` — and a bare `?` on a pipeline stage is
+refused with a parenthesize suggestion, which keeps the visual overlap with
+DD-002's `T?` out of the diagnostics.
+
+Gleam-style `use` flattening is rejected for v1 because its
+captured-continuation desugaring carries the heaviest ownership/debugger
+burden; a lawful generic bind statement is rejected for v1 because it would
+block everyday errors on the DD-035 law engine; "no sugar" is rejected
+because the most common error path stays a `flat_map` ladder. None of the
+three is precluded later.
+
+[`spec/result-propagation-v1.md`](../spec/result-propagation-v1.md) is
+normative.
+
+## DD-037: Streams are a library protocol with explicit demand
+
+`Stream[T, E]` delivers serial `Next` signals bounded by explicit
+`request(n)` credit and exactly one terminal `Error`/`Complete`;
+`Subscription` is an affine handle whose cancellation is idempotent, prompt,
+and resource-releasing. Sources are cold by default; hot fan-out and replay
+are explicit adapters that demand a bounded buffer policy (`wait`,
+`drop_oldest`, `drop_newest`, `coalesce`, `fail`). No reactive keyword
+enters the language, no scheduler is ambient, and `flat_map` claims no
+Monad law until the observation model prices in timing, demand, and
+cancellation. There is no `Signal[T]` in v1 — a held current value over a
+stream must first prove insufficient.
+
+Unbounded channels as the composition story are rejected: without a demand
+contract every queue is a latent leak. A ReactiveX-scale catalog and
+continuous-time FRP are rejected as v1 surface.
+
+[`docs/stdlib/stream-protocol.md`](stdlib/stream-protocol.md) is normative.
+
+## DD-038: The standard library ships in four tiers
+
+T0 prelude (essentials, no authority), T1 portable standard library
+(toolchain-versioned, edition-compatible), T2 platform adapters (explicit
+target support, typed build-time refusal elsewhere), T3 official
+independently versioned modules (HTTP/TLS, time-zone data, frameworks —
+security updates never wait for a compiler release). Coverage is governed
+by the machine-checked matrix `stdlib/capabilities.tsv` with states
+`implemented`/`specified`/`planned`/`deferred`/`non-goal`, gated by
+`sh stdlib/check-capabilities.sh`; an open planning issue is never
+implementation evidence. YAML is a first-party non-goal; HTTP client,
+date/time, and the benchmark harness are the first specified children.
+
+A Go-shaped monolith is rejected because security-critical data cannot wait
+for compiler releases; a Rust-shaped minimal core is rejected because
+ordinary work would immediately require unvetted dependencies; a
+scripting-shaped implicit prelude is rejected because it grants ambient
+authority.
+
+[`docs/STANDARD_LIBRARY_CHARTER.md`](STANDARD_LIBRARY_CHARTER.md) is
+normative.
+
+## DD-039: The HTTP client is bounded, capability-explicit, HTTP/1.1 first
+
+A T3 module: affine `Client`-owned pooling, stream-protocol bodies with
+caller limits on every read, redirects off by default with typed
+method/body rewriting when enabled, proxies only from explicit
+configuration, DNS/sockets behind the `Network` capability, and TLS behind
+a `TlsProvider` interface that is secure by default and takes root-store
+updates on its own channel. Conformance runs only against local
+deterministic transports, including smuggling-shaped and
+decompression-bomb negatives.
+
+Wrapping libcurl is rejected for its ambient-authority surface;
+implementing TLS from scratch is rejected as a v1 liability; HTTP/2-first
+is rejected until the HTTP/1.1 core has conformance evidence.
+
+[`docs/stdlib/http-client.md`](stdlib/http-client.md) is normative.
+
+## DD-040: Time is six types; zones are versioned data; clocks are capabilities
+
+`Duration` (64-bit nanoseconds, checked), unserializable `Monotonic`,
+POSIX `Instant`, civil `Date`/`TimeOfDay`/`DateTime`, fixed `Offset`, and
+`Zoned` carrying the tz-db version it resolved against. DST folds and gaps
+take an explicit `Resolve` rule — there is no silent default. RFC 3339 is
+the first parse/format profile; locale formatting is a non-goal. Clocks are
+explicit T2 capabilities with injected fakes in tests; IANA tzdata is a
+pinned T3 artifact updated independently of the compiler.
+
+A single zone-optional `DateTime` is rejected on the accumulated evidence
+of instant/civil confusion; silent fold disambiguation and
+compiler-bundled tzdata are rejected as wrong-answer generators.
+
+[`docs/stdlib/date-time.md`](stdlib/date-time.md) is normative.
+
+## DD-041: Benchmarks are declared, raw-sample-first, and honest about counters
+
+A T1 `bench` API plus `kofun bench` runner: per-sample clock identity
+(wall/process/monotonic can never be mislabeled), an explicit `consume`
+anti-elision primitive, deterministic warmup/stop/summary rules, and a
+versioned `kofun.bench-report/v1` that always retains raw samples,
+toolchain/source/host identity, and harness overhead. Missing counters are
+the explicit value `unavailable`, outliers are flagged never dropped, and
+no single run may claim a significant speedup. #398/#476 stay the counter
+providers behind this contract.
+
+Shell timing as the public story, statistics over discarded samples,
+privileged host tuning, and an embedded profiler are rejected.
+
+[`docs/stdlib/benchmark.md`](stdlib/benchmark.md) is normative.

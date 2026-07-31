@@ -434,6 +434,152 @@
         "corpus_query": "git grep -lE '\\bValidated\\b' -- '*.kofun' | wc -l",
         "result": "0 files. No tracked Kofun source mentions `Validated`, and no library, compiler path, or backend implements the contract."
       }
+    },
+    {
+      "id": "DD-035",
+      "title": "Laws are library declarations checked by a finite-model engine",
+      "provenance": "migrated",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/551",
+      "dates": {
+        "recorded_on": "2026-07-31"
+      },
+      "normative_spec": [
+        "docs/LAW_SYSTEM.md",
+        "spec/law-evidence-v2.schema.json"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "`law`, `instance`, and `model` are new contextual top-level declarations; no family name is a keyword. The active compiler rejects every existing `law` example today, so no program changes meaning when the declarations start to parse.",
+        "corpus_query": "git grep -l '^law ' -- '*.kofun' | wc -l",
+        "result": "3 files, all historical examples that `kofun check` currently rejects with E2S02; none participates in a build."
+      }
+    },
+    {
+      "id": "DD-036",
+      "title": "Result propagation is postfix `?`, monomorphic to `Result`",
+      "provenance": "migrated",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/626",
+      "dates": {
+        "recorded_on": "2026-07-31"
+      },
+      "normative_spec": [
+        "spec/result-propagation-v1.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "Postfix `?` on expressions is currently a parse error, so giving it Result-propagation meaning breaks no existing program. `T?` in type position keeps its DD-002 meaning untouched.",
+        "corpus_query": "git grep -nE '[[:alnum:]_)]\\?[[:space:];)]' -- '*.kofun' | wc -l",
+        "result": "17 sites, and every one is a `T?` optional type suffix in type position; no tracked source contains an expression-position postfix `?`."
+      }
+    },
+    {
+      "id": "DD-037",
+      "title": "Streams are a library protocol with explicit demand",
+      "provenance": "migrated",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/627",
+      "dates": {
+        "recorded_on": "2026-07-31"
+      },
+      "normative_spec": [
+        "docs/stdlib/stream-protocol.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "`Stream[T, E]`, `Subscription`, and the demand/overflow contract are new library surface; no language keyword is added and `Channel` remains a distinct abstraction behind an explicit adapter.",
+        "corpus_query": "git grep -lE '\\bStream\\b' -- '*.kofun' | wc -l",
+        "result": "0 files. No tracked Kofun source mentions `Stream`, and no library, compiler path, or backend implements the protocol."
+      }
+    },
+    {
+      "id": "DD-038",
+      "title": "The standard library ships in four tiers",
+      "provenance": "migrated",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/636",
+      "dates": {
+        "recorded_on": "2026-07-31"
+      },
+      "normative_spec": [
+        "docs/STANDARD_LIBRARY_CHARTER.md"
+      ],
+      "compatibility": {
+        "category": "none",
+        "statement": "The charter assigns tiers, states, and update policy to library capabilities; it changes no program semantics. The machine-checked matrix keeps every coverage claim bounded by evidence."
+      }
+    },
+    {
+      "id": "DD-039",
+      "title": "The HTTP client is bounded, capability-explicit, HTTP/1.1 first",
+      "provenance": "migrated",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/638",
+      "dates": {
+        "recorded_on": "2026-07-31"
+      },
+      "normative_spec": [
+        "docs/stdlib/http-client.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "The client is a new T3 module; the closed #24 HTTP server framework keeps its documented bounded profile and is not evidence for this contract. No client is implemented.",
+        "corpus_query": "git grep -lE '\\bhttp\\.' -- '*.kofun' | wc -l",
+        "result": "0 files. No tracked Kofun source calls the proposed client API."
+      }
+    },
+    {
+      "id": "DD-040",
+      "title": "Time is six types; zones are versioned data; clocks are capabilities",
+      "provenance": "migrated",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/639",
+      "dates": {
+        "recorded_on": "2026-07-31"
+      },
+      "normative_spec": [
+        "docs/stdlib/date-time.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "Civil types, `Resolve` disambiguation, RFC 3339 profiles, and versioned tz data are new surface. The stdlib/clock seed keeps its syscall-level per-clock `Instant`; the portable contract absorbs that boundary rather than changing it.",
+        "corpus_query": "git grep -lE '\\bInstant\\b|\\bZoned\\b' -- '*.kofun' | wc -l",
+        "result": "2 files, both in the stdlib/clock syscall seed; no civil calendar, zone, or RFC 3339 code exists."
+      }
+    },
+    {
+      "id": "DD-041",
+      "title": "Benchmarks are declared, raw-sample-first, and honest about counters",
+      "provenance": "migrated",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/640",
+      "dates": {
+        "recorded_on": "2026-07-31"
+      },
+      "normative_spec": [
+        "docs/stdlib/benchmark.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "`bench` declarations, the `Bench` API, and the kofun.bench-report/v1 schema are new surface; repository benchmark scripts remain internal evidence and no public harness exists.",
+        "corpus_query": "git grep -lE '^bench ' -- '*.kofun' | wc -l",
+        "result": "0 files. No tracked Kofun source declares a benchmark."
+      }
     }
   ]
 }
