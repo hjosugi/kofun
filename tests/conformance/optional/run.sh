@@ -109,6 +109,12 @@ optional_void:E2S137
 prefix_optional:E2S138
 recovery_after_suffix:E2S137
 unconstrained_null:E2S134
+unknown_type:E2S141
+expected_type:E2S141
+list_missing_bracket:E2S141
+list_unclosed:E2S141
+unterminated_text:E2S141
+unsupported_byte:E2S141
 '
 
 previous_ifs=$IFS
