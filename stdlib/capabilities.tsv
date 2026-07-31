@@ -1,0 +1,53 @@
+# Standard library capability matrix. Normative states for docs/STANDARD_LIBRARY_CHARTER.md.
+#
+# Columns:
+#   job         stable identifier; never reused for a different capability
+#   tier        prelude | portable | adapter | module | none
+#   state       implemented | specified | planned | deferred | non-goal
+#   evidence    a command, a spec path, or an issue reference; see the state rules
+#   note        one line explaining the boundary, especially what is NOT covered
+#
+# State rules, enforced by stdlib/check-capabilities.sh:
+#   implemented  evidence must be a `task <target>` command that exists in Taskfile.yml
+#   specified    evidence must be a spec/ or docs/ path that exists
+#   planned      evidence must be one or more issue references
+#   deferred     evidence must be one or more issue references
+#   non-goal     evidence must be the literal `charter`, and the note carries the reason
+#
+# An open generated planning issue is not implementation evidence. The checker
+# does not know which issues are generated, so the reviewer does: never cite
+# #35-#525 alone as evidence for anything.
+job	tier	state	evidence	note
+collections-sequence	portable	implemented	task stdlib	list, vector, array, tuple; bounded Kofun sources with per-module verify.sh
+collections-associative	portable	implemented	task stdlib	map, set; no ordered or persistent variants
+collections-priority	portable	implemented	task stdlib	binary_heap; PriorityQueue as a distinct API is not offered
+decimal-library	portable	implemented	task stdlib	stdlib/decimal source module; compiler-native Decimal is #710 and is not this row
+json	portable	implemented	task stdlib	strict value codec; number lexemes preserved rather than coerced
+csv	portable	implemented	task stdlib	bounded reader/writer
+toml	portable	implemented	task stdlib	baseline config format for the toolchain
+regex	portable	implemented	task stdlib	bounded engine; no backtracking-unbounded constructs
+logging	portable	implemented	task stdlib	structured fields, levels, sinks
+unit-testing	portable	implemented	task stdlib	assertions and fixtures; subprocess tests are not covered
+clock-core	portable	implemented	task stdlib	deterministic Clock core, separate from calendar and time-zone data
+random-core	portable	implemented	task stdlib	deterministic core; the Linux entropy adapter is the only nondeterministic point
+filesystem-process-env	adapter	implemented	task stdlib	Linux x86-64 syscall seed: files, memory, process, env, sockets, time
+cli-parsing	module	implemented	task cli-framework	bounded direct-static native CLI with generated help; closed #25
+http-server	module	implemented	task http	bounded first-party HTTP/API framework; closed #24, not evidence of a client
+validation-accumulation	portable	specified	spec/effects/validation-accumulation.md	accepted contract; no library implements it and its gate does not exist
+aggregate-layout	portable	specified	spec/aggregate-layout-v1.md	layout facts consumed by resource APIs
+http-client	module	planned	#638 #644	contract first; URL, TLS, streaming and cancellation boundaries are undecided
+date-time-core	portable	planned	#639 #645	Gregorian values, checked arithmetic, strict RFC 3339
+time-zone-data	module	planned	#648	versioned tiny tzdb reader with gap and fold resolution
+clock-adapters	adapter	planned	#647	explicit monotonic/system identities, sleep, deterministic fake time
+benchmark-harness	portable	planned	#640 #646	warmup, sampling, allocation metrics, reproducible reports
+concurrency	portable	planned	#555 #736	scoped parallelism only, after the runtime contract exists
+buffered-io	portable	planned	#231	no buffered reader/writer exists over the syscall seed today
+url	portable	planned	#638	parsing and normalisation; owned by the HTTP client contract, not independent
+secure-randomness	adapter	planned	#234	the Linux entropy adapter exists; the portable capability boundary does not
+temporary-files	adapter	planned	#231	creation, cleanup on take, and collision behaviour are unspecified
+hashes-checksums	portable	deferred	#636	no consumer yet; the toolchain uses sha256sum from the host
+compression-archive	module	deferred	#636	no consumer yet; belongs to the module tier when one appears
+mime	module	deferred	#638	only meaningful once the HTTP client contract fixes content negotiation
+crypto-tls	module	deferred	#638	security-critical and independently versioned; must not enter the portable tier
+yaml	none	non-goal	charter	TOML is the baseline config format; a second one splits the toolchain's own config
+database-drivers	none	non-goal	charter	protocol- and vendor-specific; belongs outside the distribution entirely
