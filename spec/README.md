@@ -48,6 +48,11 @@ executable bootstrap implementation.
   call-form `Name(field: value)` construction, fixes nominal identity,
   immutable fields, whole-record moves, and untagged declaration-order layout,
   and names `tests/conformance/records/` as its executable gate.
+- `result-propagation-v1.md` selects postfix `?` on `Result[T, E]` as the one
+  initial sequencing sugar, monomorphic to `Result` and desugaring after type
+  resolution to the `match`-and-early-return core. Accepted as DD-036; nothing
+  implements it yet and it has no gate, so acceptance settles what the sugar is,
+  not that it ships.
 - `type-level-programming-v1.md` defines the Type-only, named, structurally
   terminating type-function profile, its fixed reduction/display budgets, and
   the requirement that type-level features ship with inspectable traces.
