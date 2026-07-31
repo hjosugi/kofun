@@ -8103,8 +8103,8 @@ fn selfhost_function_parameters(functions: Text, line: Int) -> Text {
 # internal error. Mirrors the audited seed byte for byte, including the
 # `List` annotation walk that stays inside the parameter list.
 fn selfhost_signature(source: Text, functions: Text, start: Int) -> Text {
-    if selfhost_function_count(functions) >= 64 {
-        return selfhost_error("E2S16", start, "function limit is 64")
+    if selfhost_function_count(functions) >= 128 {
+        return selfhost_error("E2S16", start, "function limit is 128")
     }
     let name = function_name(source, start)
     if selfhost_function_index(functions, name) >= 0 {
@@ -10586,7 +10586,12 @@ fn selfhost_c11_prelude() -> Text {
     "}\n" +
     "\n" +
     "bool kofun_rt_text_equal(const char *left, const char *right) {\n" +
-    "    return strcmp(left, right) == 0;\n" +
+    "    while (*left != '\\0' && *right != '\\0') {\n" +
+    "        if (*left != *right) return false;\n" +
+    "        left += 1;\n" +
+    "        right += 1;\n" +
+    "    }\n" +
+    "    return *left == *right;\n" +
     "}\n" +
     "\n" +
     "int64_t kofun_rt_text_len(const char *value) {\n" +
@@ -10606,11 +10611,19 @@ fn selfhost_c11_prelude() -> Text {
     "\n" +
     "kofun_text_list kofun_rt_chars(const char *value) {\n" +
     "    size_t length = strlen(value);\n" +
-    "    const char **items = (const char **)kofun_rt_alloc(\n" +
-    "        sizeof(char *) * (length == 0 ? 1 : length)\n" +
+    "    if (length > SIZE_MAX / (sizeof(char *) + 2)) {\n" +
+    "        kofun_rt_panic(\"List[Text] allocation is too large\");\n" +
+    "    }\n" +
+    "    size_t pointer_bytes = sizeof(char *) * length;\n" +
+    "    char *storage = (char *)kofun_rt_alloc(\n" +
+    "        length == 0 ? 1 : pointer_bytes + 2 * length\n" +
     "    );\n" +
+    "    const char **items = (const char **)storage;\n" +
+    "    char *characters = storage + pointer_bytes;\n" +
     "    for (size_t index = 0; index < length; ++index) {\n" +
-    "        items[index] = kofun_rt_copy_n(value + index, 1);\n" +
+    "        characters[2 * index] = value[index];\n" +
+    "        characters[2 * index + 1] = '\\0';\n" +
+    "        items[index] = characters + 2 * index;\n" +
     "    }\n" +
     "    kofun_text_list result;\n" +
     "    result.len = (int64_t)length;\n" +

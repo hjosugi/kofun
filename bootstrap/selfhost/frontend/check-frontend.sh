@@ -51,8 +51,12 @@ cmp "$temporary/S.hir" "$temporary/S.second.hir" ||
 
 grep '^status|complete$' "$temporary/S.hir" >/dev/null ||
     fail "S document must be complete"
-test "$(grep -c "^function|" "$temporary/S.hir")" -eq 48 ||
-    fail "S must type all 48 functions"
+# One function record per declaration in S: the byte-identity check above
+# already pins the exact document, so this derives the count instead of
+# hand-maintaining a literal that drifts on every helper split.
+declared_functions=$(grep -c '^fn ' bootstrap/stage1/compiler.kofun)
+test "$(grep -c "^function|" "$temporary/S.hir")" -eq "$declared_functions" ||
+    fail "S must type all $declared_functions functions"
 
 # Every positive fixture emits its exact checked-in complete document,
 # deterministically; one accepted document exists per profile row family.

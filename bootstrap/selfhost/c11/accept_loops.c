@@ -138,7 +138,12 @@ char *kofun_rt_text_concat(const char *left, const char *right) {
 }
 
 bool kofun_rt_text_equal(const char *left, const char *right) {
-    return strcmp(left, right) == 0;
+    while (*left != '\0' && *right != '\0') {
+        if (*left != *right) return false;
+        left += 1;
+        right += 1;
+    }
+    return *left == *right;
 }
 
 int64_t kofun_rt_text_len(const char *value) {
@@ -158,11 +163,19 @@ kofun_text_list kofun_rt_args(void) {
 
 kofun_text_list kofun_rt_chars(const char *value) {
     size_t length = strlen(value);
-    const char **items = (const char **)kofun_rt_alloc(
-        sizeof(char *) * (length == 0 ? 1 : length)
+    if (length > SIZE_MAX / (sizeof(char *) + 2)) {
+        kofun_rt_panic("List[Text] allocation is too large");
+    }
+    size_t pointer_bytes = sizeof(char *) * length;
+    char *storage = (char *)kofun_rt_alloc(
+        length == 0 ? 1 : pointer_bytes + 2 * length
     );
+    const char **items = (const char **)storage;
+    char *characters = storage + pointer_bytes;
     for (size_t index = 0; index < length; ++index) {
-        items[index] = kofun_rt_copy_n(value + index, 1);
+        characters[2 * index] = value[index];
+        characters[2 * index + 1] = '\0';
+        items[index] = characters + 2 * index;
     }
     kofun_text_list result;
     result.len = (int64_t)length;

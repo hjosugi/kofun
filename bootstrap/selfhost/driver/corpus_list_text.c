@@ -119,7 +119,12 @@ static const char *kofun_rt_text_concat(const char *left, const char *right) {
 }
 
 static bool kofun_rt_text_equal(const char *left, const char *right) {
-    return strcmp(left, right) == 0;
+    while (*left != '\0' && *right != '\0') {
+        if (*left != *right) return false;
+        left += 1;
+        right += 1;
+    }
+    return *left == *right;
 }
 
 static const char *kofun_rt_text_index(const char *value, int64_t index) {
@@ -162,23 +167,24 @@ static KofunTextList kofun_rt_chars(const char *value) {
     size_t length = strlen(value);
     if ((uint64_t)length > (uint64_t)INT64_MAX ||
         length > (SIZE_MAX - sizeof(KofunTextListAllocation)) /
-            sizeof(const char *)) {
+            (sizeof(const char *) + 2)) {
         runtime_error("error[R010]: List[Text] allocation is too large");
         return kofun_rt_empty_text_list();
     }
     KofunTextListAllocation *allocation = malloc(
-        sizeof(KofunTextListAllocation) + length * sizeof(const char *));
+        sizeof(KofunTextListAllocation) +
+        length * (sizeof(const char *) + 2));
     if (allocation == NULL) {
         runtime_error("error[R010]: List[Text] allocation failed");
         return kofun_rt_empty_text_list();
     }
     allocation->next = kofun_rt_text_list_allocations;
     kofun_rt_text_list_allocations = allocation;
+    char *characters = (char *)(allocation->items + length);
     for (size_t index = 0; index < length; ++index) {
-        char character[2] = { value[index], '\0' };
-        allocation->items[index] =
-            kofun_rt_text_concat("", character);
-        if (failed) return kofun_rt_empty_text_list();
+        characters[2 * index] = value[index];
+        characters[2 * index + 1] = '\0';
+        allocation->items[index] = characters + 2 * index;
     }
     KofunTextList result = {
         (int64_t)length,

@@ -12819,7 +12819,7 @@ typedef struct {
         int64_t symbol_id;
         int64_t arity;
         char parameters[8][16];
-    } functions[64];
+    } functions[128];
     int64_t function_count;
     int64_t builtin_symbols[17];
     int64_t len_list_symbol;
@@ -14132,8 +14132,8 @@ static void sh_emit_block(Sh *sh, Buffer *out, ShBlock *block) {
 }
 
 static bool sh_parse_signature(Sh *sh, int64_t function_start) {
-    if (sh->function_count >= 64) {
-        sh_fail(sh, "E2S16", "function limit is 64", function_start);
+    if (sh->function_count >= 128) {
+        sh_fail(sh, "E2S16", "function limit is 128", function_start);
         return false;
     }
     char *name = function_name(sh->source, function_start);
@@ -14602,7 +14602,7 @@ static int emit_selfhost_hir_file(
  */
 
 enum {
-    SL_MAX_RECORDS = 8192,
+    SL_MAX_RECORDS = 16384,
     SL_MAX_TYPES = 64,
 };
 
@@ -15012,7 +15012,12 @@ static const char *sl_prelude_text =
     "}\n"
     "\n"
     "bool kofun_rt_text_equal(const char *left, const char *right) {\n"
-    "    return strcmp(left, right) == 0;\n"
+    "    while (*left != '\\0' && *right != '\\0') {\n"
+    "        if (*left != *right) return false;\n"
+    "        left += 1;\n"
+    "        right += 1;\n"
+    "    }\n"
+    "    return *left == *right;\n"
     "}\n"
     "\n"
     "int64_t kofun_rt_text_len(const char *value) {\n"
@@ -15032,11 +15037,19 @@ static const char *sl_prelude_text =
     "\n"
     "kofun_text_list kofun_rt_chars(const char *value) {\n"
     "    size_t length = strlen(value);\n"
-    "    const char **items = (const char **)kofun_rt_alloc(\n"
-    "        sizeof(char *) * (length == 0 ? 1 : length)\n"
+    "    if (length > SIZE_MAX / (sizeof(char *) + 2)) {\n"
+    "        kofun_rt_panic(\"List[Text] allocation is too large\");\n"
+    "    }\n"
+    "    size_t pointer_bytes = sizeof(char *) * length;\n"
+    "    char *storage = (char *)kofun_rt_alloc(\n"
+    "        length == 0 ? 1 : pointer_bytes + 2 * length\n"
     "    );\n"
+    "    const char **items = (const char **)storage;\n"
+    "    char *characters = storage + pointer_bytes;\n"
     "    for (size_t index = 0; index < length; ++index) {\n"
-    "        items[index] = kofun_rt_copy_n(value + index, 1);\n"
+    "        characters[2 * index] = value[index];\n"
+    "        characters[2 * index + 1] = '\\0';\n"
+    "        items[index] = characters + 2 * index;\n"
     "    }\n"
     "    kofun_text_list result;\n"
     "    result.len = (int64_t)length;\n"

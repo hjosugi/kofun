@@ -574,14 +574,14 @@
     }
   ],
   "evidence_digests": {
-    "Taskfile.yml": "6298a919ab6d5b21128a14e2d7b58d3335704d5ed688d98cd5f24519fb1d528a",
+    "Taskfile.yml": "bf7c9e3cb2aa3d2afffe19ab148b7e9c6eca4cbe9103346b56092bb7cf2135e8",
     "bootstrap/native/check.sh": "d99603522821df27a7d102fbce70c6a0d3cb322a9fe17d1baa76ee9285cee6e4",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/driver/corpus_builtin_rejects.tsv": "b1fa0b26247581aef797a81880554a94233a34109215530641706d76777087d4",
-    "bootstrap/selfhost/driver/corpus_reject.kofun": "be29fe484a7ba4968c60aaf6f00aa59edb511ce3d9ef46c0ceb2b6ad0e8740b5",
+    "bootstrap/selfhost/driver/corpus_reject.kofun": "2593f52fbcf8237c4e3f6cdf1302115e7ef0d42a4b9133456e001edfc721adec",
     "bootstrap/selfhost/driver/corpus_reject.stdout": "fe12ce5f6d708d7a23b60d98cacb06a45bbdbe047309260774ae3f95a1330fcf",
     "bootstrap/stage1/README.md": "e4f5444bab201f25fbe4d4fe9d7273dc0a6d374771787084b8300d4b0e31a9af",
-    "bootstrap/stage1/SHA256SUMS": "f42c22c6e41d5acf2c81885172e583a457967b1207e6d537286338b66f7a88eb",
+    "bootstrap/stage1/SHA256SUMS": "02f4c987697b281e83e593c623e9f1d1ec7a629f20077896c821411c1f4f2755",
     "bootstrap/wasm/fixtures/unsupported_text.kofun": "e0a45136410ddb85e9f5b3e5c39e7903d96da39aa53aaf3078d2555b4f383864",
     "docs/BUILD_SYSTEM.md": "d4a372fc97c53874cc2438f3de132289beb033ce2bf1e67518b702de796b05a8",
     "docs/COMPILER_ARCHITECTURE.md": "9ca8641a3d117d84be9ce7f311d26c5f7e8df3b1a5772f3be5b8db67808d56cc",
