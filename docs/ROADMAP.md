@@ -37,13 +37,16 @@ authority for their exact active boundary.
 The heterogeneous record design is settled, not pending: [#546](https://github.com/hjosugi/kofun/issues/546)
 closed once [`spec/records-v1.md`](../spec/records-v1.md) was accepted, and
 `task records` gates it. What stays open is lowering records past the bounded
-frontend ([#783](https://github.com/hjosugi/kofun/issues/783)). The
-concrete-first law system
-([#551](https://github.com/hjosugi/kofun/issues/551)), syntax decisions in
-[#624](https://github.com/hjosugi/kofun/issues/624) through
-[#626](https://github.com/hjosugi/kofun/issues/626), and the small-core
-reactive protocol in [#627](https://github.com/hjosugi/kofun/issues/627)
-remain important P1 work. None expands the frozen string-scanning profile
+frontend ([#783](https://github.com/hjosugi/kofun/issues/783)).
+
+The concrete-first law system, `Result` sequencing, and the small-core reactive
+protocol are settled the same way, as DD-035, DD-036 and DD-037 in
+[Design decisions](DESIGN_DECISIONS.md); what remains for each is implementation
+rather than design. Function-call ergonomics
+([#625](https://github.com/hjosugi/kofun/issues/625)) is the syntax decision
+still open. Read `docs/DESIGN_DECISIONS.md` rather than an issue number for
+whether a design is settled — issues close as their decisions land, so a list of
+numbers here rots. None of this expands the frozen string-scanning profile
 before B4/B5. Advanced effects, dependent or refinement types, concurrency
 runtime implementation, and an optional second backend remain later. The
 evidence and keep/defer/reject decisions are indexed in the
