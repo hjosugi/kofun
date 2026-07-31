@@ -56,7 +56,14 @@ char *kofun_rt_text_concat(const char *left, const char *right) {
 }
 
 bool kofun_rt_text_equal(const char *left, const char *right) {
-    return strcmp(left, right) == 0;
+    while (*left != '\0' && *right != '\0') {
+        if (*left != *right) {
+            return false;
+        }
+        ++left;
+        ++right;
+    }
+    return *left == *right;
 }
 
 int64_t kofun_rt_text_len(const char *value) {
@@ -3743,7 +3750,14 @@ static const char * kofun_fn_emit_c(const char * source, bool profile) {
         "    return allocation->bytes;\n"
         "}\n\n"
         "static bool kofun_rt_text_equal(const char *left, const char *right) {\n"
-        "    return strcmp(left, right) == 0;\n"
+        "    while (*left != '\\0' && *right != '\\0') {\n"
+        "        if (*left != *right) {\n"
+        "            return false;\n"
+        "        }\n"
+        "        ++left;\n"
+        "        ++right;\n"
+        "    }\n"
+        "    return *left == *right;\n"
         "}\n\n";
     static const char text_main[] =
         "    if (atexit(kofun_rt_text_cleanup) != 0) {\n"

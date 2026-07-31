@@ -138,7 +138,14 @@ char *kofun_rt_text_concat(const char *left, const char *right) {
 }
 
 bool kofun_rt_text_equal(const char *left, const char *right) {
-    return strcmp(left, right) == 0;
+    while (*left != '\0' && *right != '\0') {
+        if (*left != *right) {
+            return false;
+        }
+        ++left;
+        ++right;
+    }
+    return *left == *right;
 }
 
 int64_t kofun_rt_text_len(const char *value) {
