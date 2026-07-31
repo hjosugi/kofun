@@ -25,10 +25,11 @@ Run the actual compiler self-compile slice with:
 task selfhost-self-compile
 ```
 
-That gate builds `A1`, has it compile the exact canonical `S` bytes under a
-1.5 GiB address-space ceiling from different directories and source names, and
-requires the two nonempty `C2` outputs to be byte-identical and valid strict
-C11. This closes the first `A1(S)` step; it does not claim the three-generation
+That gate builds `A1`, has it compile the exact canonical `S` bytes from
+different directories and source names, and requires the two nonempty `C2`
+outputs to be byte-identical and valid strict C11. On hosts exposing
+`ulimit -v`, each compilation also runs under a 1.5 GiB address-space ceiling.
+This closes the first `A1(S)` step; it does not claim the three-generation
 fixed point below.
 
 ## Typed HIR contract and phase gates

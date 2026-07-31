@@ -139,11 +139,9 @@ char *kofun_rt_text_concat(const char *left, const char *right) {
 
 bool kofun_rt_text_equal(const char *left, const char *right) {
     while (*left != '\0' && *right != '\0') {
-        if (*left != *right) {
-            return false;
-        }
-        ++left;
-        ++right;
+        if (*left != *right) return false;
+        left += 1;
+        right += 1;
     }
     return *left == *right;
 }

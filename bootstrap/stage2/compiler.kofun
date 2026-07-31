@@ -10587,11 +10587,9 @@ fn selfhost_c11_prelude() -> Text {
     "\n" +
     "bool kofun_rt_text_equal(const char *left, const char *right) {\n" +
     "    while (*left != '\\0' && *right != '\\0') {\n" +
-    "        if (*left != *right) {\n" +
-    "            return false;\n" +
-    "        }\n" +
-    "        ++left;\n" +
-    "        ++right;\n" +
+    "        if (*left != *right) return false;\n" +
+    "        left += 1;\n" +
+    "        right += 1;\n" +
     "    }\n" +
     "    return *left == *right;\n" +
     "}\n" +

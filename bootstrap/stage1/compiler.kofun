@@ -2443,7 +2443,7 @@ fn emit_profile_program(source: Text, main_prelude: Text) -> Text {
                 bound = scope_leave(bound)
                 if len(blocks) == 0 {
                     if current_name == "main" {
-                        emitted = emitted + "    return 0;\n}\n"
+                        emitted = emitted + "    return 0;\n}\n\n"
                     } else if current_result == "Void" {
                         emitted = emitted + "    return;\n}\n\n"
                     } else {
@@ -2711,11 +2711,9 @@ fn emit_c(source: Text, profile: Bool) -> Text {
         text_runtime = text_runtime +
         "static bool kofun_rt_text_equal(const char *left, const char *right) {\n" +
         "    while (*left != '\\0' && *right != '\\0') {\n" +
-        "        if (*left != *right) {\n" +
-        "            return false;\n" +
-        "        }\n" +
-        "        ++left;\n" +
-        "        ++right;\n" +
+        "        if (*left != *right) return false;\n" +
+        "        left += 1;\n" +
+        "        right += 1;\n" +
         "    }\n" +
         "    return *left == *right;\n" +
         "}\n\n"

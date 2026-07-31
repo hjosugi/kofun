@@ -247,9 +247,9 @@ cmp "$temporary/remap-a/nested/remapped.c" "$temporary/remap-b/remapped.c" ||
 
 # The self-compile gate for #751: A1 must compile the exact canonical S bytes
 # into a nonempty C2 in ordinary source-to-C mode. Two runs from distinct
-# directories pin determinism and path independence; the audited hand-port is
-# a third, independently derived byte differential. Finally, C2 must satisfy
-# the repository's strict C11 host boundary.
+# directories and source names pin determinism and path independence; the
+# audited hand-port is a third, independently derived byte differential.
+# Finally, C2 must satisfy the repository's strict C11 host boundary.
 selfhost_vmem_kib=${KOFUN_SELFHOST_VMEM_KIB:-1572864}
 selfhost_timeout_seconds=${KOFUN_SELFHOST_TIMEOUT:-120}
 case "$selfhost_vmem_kib" in
@@ -260,16 +260,16 @@ case "$selfhost_timeout_seconds" in
     ''|*[!0-9]*) fail "KOFUN_SELFHOST_TIMEOUT must be a positive integer" ;;
     0) fail "KOFUN_SELFHOST_TIMEOUT must be a positive integer" ;;
 esac
-if ! (ulimit -v "$selfhost_vmem_kib") 2>/dev/null; then
-    fail "this host shell cannot enforce the self-compile memory ceiling"
-fi
 
 selfhost_compile() {
     directory=$1
     compiler_path=$2
     source_name=$3
     (
-        ulimit -v "$selfhost_vmem_kib" || exit 125
+        # Linux and the CI shell support this bound. Other POSIX shells may
+        # not expose -v; they still run the proof, but never turn a portable
+        # shell feature check into a product failure.
+        if ulimit -v "$selfhost_vmem_kib" 2>/dev/null; then :; fi
         cd "$directory"
         if command -v timeout >/dev/null 2>&1; then
             timeout "${selfhost_timeout_seconds}s" \
@@ -290,11 +290,13 @@ cmp bootstrap/stage1/compiler.kofun "$temporary/self-a/source-left.kofun" ||
     fail "self-compile input differs from canonical S"
 cmp bootstrap/stage1/compiler.kofun "$temporary/self-b/source-right.kofun" ||
     fail "repeated self-compile input differs from canonical S"
+cmp bootstrap/stage1/compiler.kofun "$temporary/self-seed/source-seed.kofun" ||
+    fail "audited hand-port input differs from canonical S"
 
 selfhost_compile "$temporary/self-a" "$temporary/kofun-a1" \
-    source-left.kofun || fail "A1 could not compile S within the resource bounds"
+    source-left.kofun || fail "A1 could not compile S"
 selfhost_compile "$temporary/self-b" "$temporary/kofun-a1" \
-    source-right.kofun || fail "A1 repeat could not compile S within the resource bounds"
+    source-right.kofun || fail "A1 repeat could not compile S"
 selfhost_compile "$temporary/self-seed" "$temporary/kofun-stage1" \
     source-seed.kofun || fail "the audited hand-port could not compile S"
 
