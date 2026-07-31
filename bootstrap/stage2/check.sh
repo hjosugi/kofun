@@ -875,11 +875,11 @@ grep '^binding|2|3|symbols|immutable|List|gc|initialized|890|897|911$' \
     "$temporary/selfhost-S.scopes" >/dev/null
 grep '^binding|21|22|symbol|immutable|Text|gc|initialized|2503|2509|2519$' \
     "$temporary/selfhost-S.scopes" >/dev/null
-grep '^binding|302|345|marker|immutable|Text|gc|initialized|39969|39975|39986$' \
+grep '^binding|303|347|marker|immutable|Text|gc|initialized|40600|40606|40617$' \
     "$temporary/selfhost-S.scopes" >/dev/null
-grep '^binding|303|345|start|immutable|Int|copy|initialized|39995|40000|40021$' \
+grep '^binding|304|347|start|immutable|Int|copy|initialized|40626|40631|40652$' \
     "$temporary/selfhost-S.scopes" >/dev/null
-grep '^binding|408|507|emitted|mutable|Text|gc|initialized|61490|61497|61502$' \
+grep '^binding|461|586|emitted|mutable|Text|gc|initialized|71428|71435|71440$' \
     "$temporary/selfhost-S.scopes" >/dev/null
 
 printf '%s\n' \

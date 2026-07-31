@@ -1,7 +1,5 @@
-fn helper() -> Int {
-    return 1
-}
-
 fn main() {
-    print(helper())
+    match true {
+        _ => { print("x") }
+    }
 }

@@ -76,9 +76,18 @@ kofun_text_list kofun_rt_args(void) {
 
 kofun_text_list kofun_rt_chars(const char *value) {
     size_t length = strlen(value);
-    const char **items = (const char **)kofun_rt_alloc(sizeof(char *) * (length == 0 ? 1 : length));
+    if (length > SIZE_MAX / (sizeof(char *) + 2)) {
+        kofun_rt_panic("List[Text] allocation is too large");
+    }
+    size_t pointer_bytes = sizeof(char *) * length;
+    char *storage = (char *)kofun_rt_alloc(
+        length == 0 ? 1 : pointer_bytes + 2 * length);
+    const char **items = (const char **)storage;
+    char *characters = storage + pointer_bytes;
     for (size_t index = 0; index < length; ++index) {
-        items[index] = kofun_rt_copy_n(value + index, 1);
+        characters[2 * index] = value[index];
+        characters[2 * index + 1] = '\0';
+        items[index] = characters + 2 * index;
     }
     kofun_text_list result;
     result.len = (int64_t)length;
@@ -289,9 +298,49 @@ static const char * kofun_fn_range_start(const char * line);
 static const char * kofun_fn_range_end(const char * line);
 static bool kofun_fn_valid_source(const char * source);
 static const char * kofun_fn_emit_statements(const char * source);
-static const char * kofun_fn_emit_c(const char * source);
+static const char * kofun_fn_emit_c(const char * source, bool profile);
 static bool kofun_fn_compile_file(const char * input_path, const char * output_path);
 static void kofun_fn_main(void);
+static bool kofun_fn_text_ends_with(const char * value, const char * suffix);
+static bool kofun_fn_line_continues(const char * line);
+static const char * kofun_fn_logical_source(const char * source);
+static bool kofun_fn_valid_profile_type(const char * kind);
+static const char * kofun_fn_function_name(const char * line);
+static const char * kofun_fn_function_parameters(const char * line);
+static const char * kofun_fn_function_result(const char * line);
+static int64_t kofun_fn_parameter_arity(const char * parameters);
+static const char * kofun_fn_parameter_part(const char * parameters, int64_t index);
+static const char * kofun_fn_parameter_name(const char * parameters, int64_t index);
+static const char * kofun_fn_parameter_type(const char * parameters, int64_t index);
+static const char * kofun_fn_parameter_types(const char * parameters);
+static bool kofun_fn_valid_function_header(const char * line);
+static const char * kofun_fn_collect_function_signatures(const char * source);
+static const char * kofun_fn_function_signature(const char * bound, const char * name);
+static const char * kofun_fn_signature_result(const char * signature);
+static const char * kofun_fn_signature_parameters(const char * signature);
+static const char * kofun_fn_function_bound(const char * functions, const char * line);
+static const char * kofun_fn_emitted_c_type(const char * kind);
+static const char * kofun_fn_failure_return(const char * kind);
+static bool kofun_fn_profile_uses_builtin(const char * source);
+static bool kofun_fn_bound_mutable(const char * bound, const char * name);
+static const char * kofun_fn_signature_parameter_type(const char * signature, int64_t index);
+static const char * kofun_fn_lower_user_call(const char * expression, const char * bound, const char * path, const char * indent);
+static bool kofun_fn_binding_mutable(const char * line);
+static const char * kofun_fn_assignment_name(const char * line);
+static const char * kofun_fn_assignment_expression(const char * line);
+static const char * kofun_fn_profile_builtin_type(const char * expression, const char * callee, const char * bound);
+static const char * kofun_fn_profile_user_call_type(const char * expression, const char * callee, const char * bound);
+static const char * kofun_fn_profile_additive_type(const char * expression, const char * bound);
+static const char * kofun_fn_profile_expression_type(const char * expression, const char * bound);
+static bool kofun_fn_valid_profile_source(const char * source);
+static const char * kofun_fn_emitted_parameters(const char * line);
+static const char * kofun_fn_emit_function_prototypes(const char * source);
+static const char * kofun_fn_emit_function_uses(const char * source);
+static const char * kofun_fn_emit_profile_else_if(const char * condition, int64_t depth, const char * failure);
+static const char * kofun_fn_emit_profile_if(const char * condition, int64_t depth, const char * failure);
+static const char * kofun_fn_emit_profile_while(const char * condition, int64_t depth, const char * failure);
+static const char * kofun_fn_emit_profile_for(const char * from, const char * to, const char * name, int64_t depth, const char * failure);
+static const char * kofun_fn_emit_profile_program(const char * source, const char * main_prelude);
 
 static bool kofun_fn_identifier_char(const char * fr_char) {
     unsigned char first = (unsigned char)fr_char[0];
@@ -301,6 +350,1031 @@ static bool kofun_fn_identifier_char(const char * fr_char) {
             "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_",
             fr_char
         );
+}
+
+static const char * kofun_fn_emit_profile_program(
+        const char * source,
+        const char * main_prelude) {
+    const char *functions = kofun_fn_collect_function_signatures(source);
+    kofun_text_list symbols = kofun_rt_chars(source);
+    int64_t line_start = INT64_C(0);
+    const char *program = kofun_fn_emit_function_prototypes(source);
+    const char *emitted = "";
+    const char *bound = functions;
+    const char *blocks = "";
+    const char *current_result = "";
+    const char *current_name = "";
+    const char *current_failure = "";
+    for (int64_t index = INT64_C(0);
+         index < kofun_rt_text_list_len(symbols); ++index) {
+        if (!kofun_rt_text_equal(kofun_rt_text_list_get(symbols, index),
+                                 "\n")) {
+            continue;
+        }
+        const char *line = kofun_rt_trim(
+            kofun_rt_text_slice(source, line_start, index));
+        line_start = index + INT64_C(1);
+        if (kofun_rt_starts_with(line, "fn ")) {
+            emitted = "";
+            current_name = kofun_fn_function_name(line);
+            current_result = kofun_fn_function_result(line);
+            blocks = "f";
+            bound = kofun_fn_function_bound(functions, line);
+            if (kofun_rt_text_equal(current_name, "main")) {
+                current_failure = "if (failed) return 1;\n";
+                emitted = kofun_rt_text_concat(
+                    emitted, "int main(int argc, char **argv) {\n");
+                emitted = kofun_rt_text_concat(emitted, "    (void)argc;\n");
+                emitted = kofun_rt_text_concat(emitted, "    (void)argv;\n");
+                emitted = kofun_rt_text_concat(emitted, main_prelude);
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_emit_function_uses(source));
+            } else {
+                current_failure = kofun_fn_failure_return(current_result);
+                emitted = kofun_rt_text_concat(emitted, "static ");
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_emitted_c_type(current_result));
+                emitted = kofun_rt_text_concat(emitted, " kf_");
+                emitted = kofun_rt_text_concat(emitted, current_name);
+                emitted = kofun_rt_text_concat(emitted, "(");
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_emitted_parameters(line));
+                emitted = kofun_rt_text_concat(emitted, ") {\n");
+                const char *parameters = kofun_fn_function_parameters(line);
+                for (int64_t parameter = INT64_C(0);
+                     parameter < kofun_fn_parameter_arity(parameters);
+                     ++parameter) {
+                    emitted = kofun_rt_text_concat(
+                        emitted, "    (void)kf_");
+                    emitted = kofun_rt_text_concat(
+                        emitted,
+                        kofun_fn_parameter_name(parameters, parameter));
+                    emitted = kofun_rt_text_concat(emitted, ";\n");
+                }
+            }
+        } else if (kofun_rt_text_equal(line, "}")) {
+            const char *kind = kofun_fn_block_kind(blocks);
+            int64_t depth = kofun_rt_text_len(blocks);
+            blocks = kofun_fn_block_pop(blocks);
+            bound = kofun_fn_scope_leave(bound);
+            if (kofun_rt_text_len(blocks) == INT64_C(0)) {
+                if (kofun_rt_text_equal(current_name, "main")) {
+                    emitted = kofun_rt_text_concat(
+                        emitted, "    return 0;\n}\n\n");
+                } else if (kofun_rt_text_equal(current_result, "Void")) {
+                    emitted = kofun_rt_text_concat(
+                        emitted, "    return;\n}\n\n");
+                } else {
+                    emitted = kofun_rt_text_concat(emitted, "}\n\n");
+                }
+                program = kofun_rt_text_concat(program, emitted);
+                emitted = "";
+                current_name = "";
+                current_result = "";
+            } else if (kofun_rt_text_equal(kind, "w") ||
+                       kofun_rt_text_equal(kind, "r")) {
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_nested_indent(depth - INT64_C(1)));
+                emitted = kofun_rt_text_concat(emitted, "}\n");
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_statement_indent(depth - INT64_C(1)));
+                emitted = kofun_rt_text_concat(emitted, "}\n");
+            } else {
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_nested_indent(depth - INT64_C(1)));
+                emitted = kofun_rt_text_concat(emitted, "}\n");
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_nested_indent(depth - INT64_C(1)));
+                emitted = kofun_rt_text_concat(emitted, "(void)kt_taken;\n");
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_statement_indent(depth - INT64_C(1)));
+                emitted = kofun_rt_text_concat(emitted, "}\n");
+            }
+        } else if (kofun_rt_text_equal(line, "} else {")) {
+            int64_t depth = kofun_rt_text_len(blocks);
+            blocks = kofun_rt_text_concat(kofun_fn_block_pop(blocks), "e");
+            bound = kofun_fn_scope_enter(kofun_fn_scope_leave(bound));
+            emitted = kofun_rt_text_concat(
+                emitted, kofun_fn_nested_indent(depth - INT64_C(1)));
+            emitted = kofun_rt_text_concat(emitted, "}\n");
+            emitted = kofun_rt_text_concat(
+                emitted, kofun_fn_nested_indent(depth - INT64_C(1)));
+            emitted = kofun_rt_text_concat(emitted, "if (!kt_taken) {\n");
+        } else if (kofun_rt_starts_with(line, "} else if ")) {
+            int64_t depth = kofun_rt_text_len(blocks);
+            bound = kofun_fn_scope_leave(bound);
+            const char *condition = kofun_fn_lower_expression(
+                kofun_fn_header_condition(line, "} else if "), bound, "x",
+                kofun_fn_statement_indent(depth));
+            bound = kofun_fn_scope_enter(bound);
+            emitted = kofun_rt_text_concat(
+                emitted,
+                kofun_fn_emit_profile_else_if(
+                    condition, depth,
+                    current_failure));
+        } else if (kofun_rt_starts_with(line, "if ")) {
+            int64_t depth = kofun_rt_text_len(blocks);
+            const char *condition = kofun_fn_lower_expression(
+                kofun_fn_header_condition(line, "if "), bound, "x",
+                kofun_fn_statement_indent(depth + INT64_C(1)));
+            blocks = kofun_rt_text_concat(blocks, "i");
+            bound = kofun_fn_scope_enter(bound);
+            emitted = kofun_rt_text_concat(
+                emitted,
+                kofun_fn_emit_profile_if(
+                    condition, depth,
+                    current_failure));
+        } else if (kofun_rt_starts_with(line, "while ")) {
+            int64_t depth = kofun_rt_text_len(blocks);
+            const char *condition = kofun_fn_lower_expression(
+                kofun_fn_header_condition(line, "while "), bound, "x",
+                kofun_fn_statement_indent(depth + INT64_C(1)));
+            blocks = kofun_rt_text_concat(blocks, "w");
+            bound = kofun_fn_scope_enter(bound);
+            emitted = kofun_rt_text_concat(
+                emitted,
+                kofun_fn_emit_profile_while(
+                    condition, depth,
+                    current_failure));
+        } else if (kofun_rt_starts_with(line, "for ")) {
+            int64_t depth = kofun_rt_text_len(blocks);
+            const char *name = kofun_fn_range_name(line);
+            const char *from = kofun_fn_lower_expression(
+                kofun_fn_range_start(line), bound, "xl",
+                kofun_fn_nested_indent(depth));
+            const char *to = kofun_fn_lower_expression(
+                kofun_fn_range_end(line), bound, "xr",
+                kofun_fn_nested_indent(depth));
+            blocks = kofun_rt_text_concat(blocks, "r");
+            bound = kofun_rt_text_concat(
+                kofun_rt_text_concat(
+                    kofun_rt_text_concat(
+                        kofun_fn_scope_enter(bound), name),
+                    ":Int"),
+                "|");
+            emitted = kofun_rt_text_concat(
+                emitted,
+                kofun_fn_emit_profile_for(
+                    from, to, name, depth,
+                    current_failure));
+        } else if (kofun_rt_starts_with(line, "let ")) {
+            int64_t depth = kofun_rt_text_len(blocks);
+            const char *name = kofun_fn_binding_name(line);
+            const char *value = kofun_fn_lower_expression(
+                kofun_fn_binding_expression(line), bound, "x",
+                kofun_fn_nested_indent(depth));
+            const char *kind = kofun_fn_lowered_type(value);
+            emitted = kofun_rt_text_concat(
+                emitted, kofun_fn_statement_indent(depth));
+            emitted = kofun_rt_text_concat(
+                emitted, kofun_fn_emitted_c_type(kind));
+            emitted = kofun_rt_text_concat(emitted, " kf_");
+            emitted = kofun_rt_text_concat(emitted, name);
+            emitted = kofun_rt_text_concat(emitted, ";\n");
+            emitted = kofun_rt_text_concat(
+                emitted, kofun_fn_statement_indent(depth));
+            emitted = kofun_rt_text_concat(emitted, "{\n");
+            emitted = kofun_rt_text_concat(
+                emitted, kofun_fn_lowered_statements(value));
+            emitted = kofun_rt_text_concat(
+                emitted, kofun_fn_nested_indent(depth));
+            emitted = kofun_rt_text_concat(emitted, "kf_");
+            emitted = kofun_rt_text_concat(emitted, name);
+            emitted = kofun_rt_text_concat(emitted, " = ");
+            emitted = kofun_rt_text_concat(
+                emitted, kofun_fn_lowered_operand(value));
+            emitted = kofun_rt_text_concat(emitted, ";\n");
+            emitted = kofun_rt_text_concat(
+                emitted, kofun_fn_statement_indent(depth));
+            emitted = kofun_rt_text_concat(emitted, "}\n");
+            emitted = kofun_rt_text_concat(
+                emitted, kofun_fn_statement_indent(depth));
+            emitted = kofun_rt_text_concat(
+                emitted, current_failure);
+            emitted = kofun_rt_text_concat(
+                emitted, kofun_fn_statement_indent(depth));
+            emitted = kofun_rt_text_concat(emitted, "(void)kf_");
+            emitted = kofun_rt_text_concat(emitted, name);
+            emitted = kofun_rt_text_concat(emitted, ";\n");
+            bound = kofun_rt_text_concat(
+                kofun_rt_text_concat(
+                    kofun_rt_text_concat(bound, name), ":"),
+                kind);
+            if (kofun_fn_binding_mutable(line)) {
+                bound = kofun_rt_text_concat(bound, "!");
+            }
+            bound = kofun_rt_text_concat(bound, "|");
+        } else if (kofun_rt_text_equal(line, "return") ||
+                   kofun_rt_starts_with(line, "return ")) {
+            int64_t depth = kofun_rt_text_len(blocks);
+            if (kofun_rt_text_equal(line, "return")) {
+                if (kofun_rt_text_equal(current_name, "main")) {
+                    emitted = kofun_rt_text_concat(
+                        emitted, kofun_fn_statement_indent(depth));
+                    emitted = kofun_rt_text_concat(emitted, "return 0;\n");
+                } else {
+                    emitted = kofun_rt_text_concat(
+                        emitted, kofun_fn_statement_indent(depth));
+                    emitted = kofun_rt_text_concat(emitted, "return;\n");
+                }
+            } else {
+                const char *value = kofun_fn_lower_expression(
+                    kofun_rt_trim(kofun_rt_text_slice(
+                        line, INT64_C(7), kofun_rt_text_len(line))),
+                    bound, "r", kofun_fn_nested_indent(depth));
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_statement_indent(depth));
+                emitted = kofun_rt_text_concat(emitted, "{\n");
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_lowered_statements(value));
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_nested_indent(depth));
+                emitted = kofun_rt_text_concat(
+                    emitted, current_failure);
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_nested_indent(depth));
+                emitted = kofun_rt_text_concat(emitted, "return ");
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_lowered_operand(value));
+                emitted = kofun_rt_text_concat(emitted, ";\n");
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_statement_indent(depth));
+                emitted = kofun_rt_text_concat(emitted, "}\n");
+            }
+        } else if (kofun_rt_starts_with(line, "print(")) {
+            int64_t depth = kofun_rt_text_len(blocks);
+            const char *value = kofun_fn_lower_expression(
+                kofun_fn_print_expression(line), bound, "x",
+                kofun_fn_nested_indent(depth));
+            const char *kind = kofun_fn_lowered_type(value);
+            emitted = kofun_rt_text_concat(
+                emitted, kofun_fn_statement_indent(depth));
+            emitted = kofun_rt_text_concat(emitted, "{\n");
+            emitted = kofun_rt_text_concat(
+                emitted, kofun_fn_lowered_statements(value));
+            emitted = kofun_rt_text_concat(
+                emitted, kofun_fn_nested_indent(depth));
+            emitted = kofun_rt_text_concat(
+                emitted, current_failure);
+            if (kofun_rt_text_equal(kind, "Text")) {
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_nested_indent(depth));
+                emitted = kofun_rt_text_concat(emitted, "fputs(");
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_lowered_operand(value));
+                emitted = kofun_rt_text_concat(emitted, ", stdout);\n");
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_nested_indent(depth));
+                emitted = kofun_rt_text_concat(
+                    emitted, "fputc('\\n', stdout);\n");
+            } else {
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_nested_indent(depth));
+                emitted = kofun_rt_text_concat(
+                    emitted, "printf(\"%\" PRId64 \"\\n\", ");
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_lowered_operand(value));
+                emitted = kofun_rt_text_concat(emitted, ");\n");
+            }
+            emitted = kofun_rt_text_concat(
+                emitted, kofun_fn_statement_indent(depth));
+            emitted = kofun_rt_text_concat(emitted, "}\n");
+        } else if (kofun_rt_find(line, " = ") > INT64_C(0)) {
+            int64_t depth = kofun_rt_text_len(blocks);
+            const char *name = kofun_fn_assignment_name(line);
+            const char *value = kofun_fn_lower_expression(
+                kofun_fn_assignment_expression(line), bound, "a",
+                kofun_fn_nested_indent(depth));
+            emitted = kofun_rt_text_concat(
+                emitted, kofun_fn_statement_indent(depth));
+            emitted = kofun_rt_text_concat(emitted, "{\n");
+            emitted = kofun_rt_text_concat(
+                emitted, kofun_fn_lowered_statements(value));
+            emitted = kofun_rt_text_concat(
+                emitted, kofun_fn_nested_indent(depth));
+            emitted = kofun_rt_text_concat(emitted, "kf_");
+            emitted = kofun_rt_text_concat(emitted, name);
+            emitted = kofun_rt_text_concat(emitted, " = ");
+            emitted = kofun_rt_text_concat(
+                emitted, kofun_fn_lowered_operand(value));
+            emitted = kofun_rt_text_concat(emitted, ";\n");
+            emitted = kofun_rt_text_concat(
+                emitted, kofun_fn_statement_indent(depth));
+            emitted = kofun_rt_text_concat(emitted, "}\n");
+            emitted = kofun_rt_text_concat(
+                emitted, kofun_fn_statement_indent(depth));
+            emitted = kofun_rt_text_concat(
+                emitted, current_failure);
+        } else if (kofun_rt_find(line, "(") > INT64_C(0)) {
+            int64_t depth = kofun_rt_text_len(blocks);
+            const char *value = kofun_fn_lower_expression(
+                line, bound, "x", kofun_fn_nested_indent(depth));
+            emitted = kofun_rt_text_concat(
+                emitted, kofun_fn_statement_indent(depth));
+            emitted = kofun_rt_text_concat(emitted, "{\n");
+            emitted = kofun_rt_text_concat(
+                emitted, kofun_fn_lowered_statements(value));
+            emitted = kofun_rt_text_concat(
+                emitted, kofun_fn_nested_indent(depth));
+            emitted = kofun_rt_text_concat(
+                emitted, current_failure);
+            emitted = kofun_rt_text_concat(
+                emitted, kofun_fn_statement_indent(depth));
+            emitted = kofun_rt_text_concat(emitted, "}\n");
+        }
+    }
+    return program;
+}
+
+static const char * kofun_fn_emitted_parameters(const char * line) {
+    const char *parameters = kofun_fn_function_parameters(line);
+    int64_t arity = kofun_fn_parameter_arity(parameters);
+    if (arity == INT64_C(0)) {
+        return "void";
+    }
+    const char *emitted = "";
+    for (int64_t index = INT64_C(0); index < arity; ++index) {
+        if (index > INT64_C(0)) {
+            emitted = kofun_rt_text_concat(emitted, ", ");
+        }
+        emitted = kofun_rt_text_concat(
+            emitted,
+            kofun_fn_emitted_c_type(
+                kofun_fn_parameter_type(parameters, index)));
+        emitted = kofun_rt_text_concat(emitted, " kf_");
+        emitted = kofun_rt_text_concat(
+            emitted, kofun_fn_parameter_name(parameters, index));
+    }
+    return emitted;
+}
+
+static const char * kofun_fn_emit_function_prototypes(const char * source) {
+    kofun_text_list symbols = kofun_rt_chars(source);
+    int64_t line_start = INT64_C(0);
+    const char *emitted = "";
+    for (int64_t index = INT64_C(0);
+         index < kofun_rt_text_list_len(symbols); ++index) {
+        if (kofun_rt_text_equal(kofun_rt_text_list_get(symbols, index),
+                                "\n")) {
+            const char *line = kofun_rt_trim(
+                kofun_rt_text_slice(source, line_start, index));
+            if (kofun_rt_starts_with(line, "fn ") &&
+                !kofun_rt_text_equal(kofun_fn_function_name(line), "main")) {
+                emitted = kofun_rt_text_concat(emitted, "static ");
+                emitted = kofun_rt_text_concat(
+                    emitted,
+                    kofun_fn_emitted_c_type(kofun_fn_function_result(line)));
+                emitted = kofun_rt_text_concat(emitted, " kf_");
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_function_name(line));
+                emitted = kofun_rt_text_concat(emitted, "(");
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_emitted_parameters(line));
+                emitted = kofun_rt_text_concat(emitted, ");\n");
+            }
+            line_start = index + INT64_C(1);
+        }
+    }
+    return kofun_rt_text_concat(emitted, "\n");
+}
+
+static const char * kofun_fn_emit_function_uses(const char * source) {
+    kofun_text_list symbols = kofun_rt_chars(source);
+    int64_t line_start = INT64_C(0);
+    const char *emitted = "";
+    for (int64_t index = INT64_C(0);
+         index < kofun_rt_text_list_len(symbols); ++index) {
+        if (kofun_rt_text_equal(kofun_rt_text_list_get(symbols, index),
+                                "\n")) {
+            const char *line = kofun_rt_trim(
+                kofun_rt_text_slice(source, line_start, index));
+            if (kofun_rt_starts_with(line, "fn ") &&
+                !kofun_rt_text_equal(kofun_fn_function_name(line), "main")) {
+                emitted = kofun_rt_text_concat(emitted, "    (void)kf_");
+                emitted = kofun_rt_text_concat(
+                    emitted, kofun_fn_function_name(line));
+                emitted = kofun_rt_text_concat(emitted, ";\n");
+            }
+            line_start = index + INT64_C(1);
+        }
+    }
+    return emitted;
+}
+
+static const char * kofun_fn_emit_profile_else_if(
+        const char * condition,
+        int64_t depth,
+        const char * failure) {
+    const char *emitted = kofun_fn_nested_indent(depth - INT64_C(1));
+    emitted = kofun_rt_text_concat(emitted, "}\n");
+    emitted = kofun_rt_text_concat(
+        emitted, kofun_fn_nested_indent(depth - INT64_C(1)));
+    emitted = kofun_rt_text_concat(emitted, "if (!kt_taken) {\n");
+    emitted = kofun_rt_text_concat(
+        emitted, kofun_fn_lowered_statements(condition));
+    emitted = kofun_rt_text_concat(
+        emitted, kofun_fn_statement_indent(depth));
+    emitted = kofun_rt_text_concat(emitted, "kt_cond = ");
+    emitted = kofun_rt_text_concat(
+        emitted, kofun_fn_lowered_operand(condition));
+    emitted = kofun_rt_text_concat(emitted, ";\n");
+    emitted = kofun_rt_text_concat(
+        emitted, kofun_fn_statement_indent(depth));
+    emitted = kofun_rt_text_concat(emitted, failure);
+    emitted = kofun_rt_text_concat(
+        emitted, kofun_fn_nested_indent(depth - INT64_C(1)));
+    emitted = kofun_rt_text_concat(emitted, "} else {\n");
+    emitted = kofun_rt_text_concat(
+        emitted, kofun_fn_statement_indent(depth));
+    emitted = kofun_rt_text_concat(emitted, "kt_cond = false;\n");
+    emitted = kofun_rt_text_concat(
+        emitted, kofun_fn_nested_indent(depth - INT64_C(1)));
+    emitted = kofun_rt_text_concat(emitted, "}\n");
+    emitted = kofun_rt_text_concat(
+        emitted, kofun_fn_nested_indent(depth - INT64_C(1)));
+    emitted = kofun_rt_text_concat(emitted, "if (kt_cond) {\n");
+    emitted = kofun_rt_text_concat(
+        emitted, kofun_fn_statement_indent(depth));
+    emitted = kofun_rt_text_concat(emitted, "kt_taken = true;\n");
+    return emitted;
+}
+
+static const char * kofun_fn_emit_profile_if(
+        const char * condition,
+        int64_t depth,
+        const char * failure) {
+    const char *emitted = kofun_fn_statement_indent(depth);
+    emitted = kofun_rt_text_concat(emitted, "{\n");
+    emitted = kofun_rt_text_concat(emitted, kofun_fn_nested_indent(depth));
+    emitted = kofun_rt_text_concat(emitted, "bool kt_taken = false;\n");
+    emitted = kofun_rt_text_concat(emitted, kofun_fn_nested_indent(depth));
+    emitted = kofun_rt_text_concat(emitted, "bool kt_cond;\n");
+    emitted = kofun_rt_text_concat(emitted, kofun_fn_nested_indent(depth));
+    emitted = kofun_rt_text_concat(emitted, "{\n");
+    emitted = kofun_rt_text_concat(
+        emitted, kofun_fn_lowered_statements(condition));
+    emitted = kofun_rt_text_concat(
+        emitted, kofun_fn_statement_indent(depth + INT64_C(1)));
+    emitted = kofun_rt_text_concat(emitted, "kt_cond = ");
+    emitted = kofun_rt_text_concat(
+        emitted, kofun_fn_lowered_operand(condition));
+    emitted = kofun_rt_text_concat(emitted, ";\n");
+    emitted = kofun_rt_text_concat(emitted, kofun_fn_nested_indent(depth));
+    emitted = kofun_rt_text_concat(emitted, "}\n");
+    emitted = kofun_rt_text_concat(emitted, kofun_fn_nested_indent(depth));
+    emitted = kofun_rt_text_concat(emitted, failure);
+    emitted = kofun_rt_text_concat(emitted, kofun_fn_nested_indent(depth));
+    emitted = kofun_rt_text_concat(emitted, "if (kt_cond) {\n");
+    emitted = kofun_rt_text_concat(
+        emitted, kofun_fn_statement_indent(depth + INT64_C(1)));
+    emitted = kofun_rt_text_concat(emitted, "kt_taken = true;\n");
+    return emitted;
+}
+
+static const char * kofun_fn_emit_profile_while(
+        const char * condition,
+        int64_t depth,
+        const char * failure) {
+    const char *emitted = kofun_fn_statement_indent(depth);
+    emitted = kofun_rt_text_concat(emitted, "{\n");
+    emitted = kofun_rt_text_concat(emitted, kofun_fn_nested_indent(depth));
+    emitted = kofun_rt_text_concat(emitted, "bool kt_cond;\n");
+    emitted = kofun_rt_text_concat(emitted, kofun_fn_nested_indent(depth));
+    emitted = kofun_rt_text_concat(emitted, "while (true) {\n");
+    emitted = kofun_rt_text_concat(
+        emitted, kofun_fn_lowered_statements(condition));
+    emitted = kofun_rt_text_concat(
+        emitted, kofun_fn_statement_indent(depth + INT64_C(1)));
+    emitted = kofun_rt_text_concat(emitted, "kt_cond = ");
+    emitted = kofun_rt_text_concat(
+        emitted, kofun_fn_lowered_operand(condition));
+    emitted = kofun_rt_text_concat(emitted, ";\n");
+    emitted = kofun_rt_text_concat(
+        emitted, kofun_fn_statement_indent(depth + INT64_C(1)));
+    emitted = kofun_rt_text_concat(emitted, failure);
+    emitted = kofun_rt_text_concat(
+        emitted, kofun_fn_statement_indent(depth + INT64_C(1)));
+    emitted = kofun_rt_text_concat(emitted, "if (!kt_cond) break;\n");
+    return emitted;
+}
+
+static const char * kofun_fn_emit_profile_for(
+        const char * from,
+        const char * to,
+        const char * name,
+        int64_t depth,
+        const char * failure) {
+    const char *emitted = kofun_fn_statement_indent(depth);
+    emitted = kofun_rt_text_concat(emitted, "{\n");
+    emitted = kofun_rt_text_concat(
+        emitted, kofun_fn_lowered_statements(from));
+    emitted = kofun_rt_text_concat(emitted, kofun_fn_nested_indent(depth));
+    emitted = kofun_rt_text_concat(emitted, "int64_t kt_from = ");
+    emitted = kofun_rt_text_concat(emitted, kofun_fn_lowered_operand(from));
+    emitted = kofun_rt_text_concat(emitted, ";\n");
+    emitted = kofun_rt_text_concat(
+        emitted, kofun_fn_lowered_statements(to));
+    emitted = kofun_rt_text_concat(emitted, kofun_fn_nested_indent(depth));
+    emitted = kofun_rt_text_concat(emitted, "int64_t kt_to = ");
+    emitted = kofun_rt_text_concat(emitted, kofun_fn_lowered_operand(to));
+    emitted = kofun_rt_text_concat(emitted, ";\n");
+    emitted = kofun_rt_text_concat(emitted, kofun_fn_nested_indent(depth));
+    emitted = kofun_rt_text_concat(emitted, failure);
+    emitted = kofun_rt_text_concat(emitted, kofun_fn_nested_indent(depth));
+    emitted = kofun_rt_text_concat(emitted, "for (int64_t kf_");
+    emitted = kofun_rt_text_concat(emitted, name);
+    emitted = kofun_rt_text_concat(emitted, " = kt_from; kf_");
+    emitted = kofun_rt_text_concat(emitted, name);
+    emitted = kofun_rt_text_concat(emitted, " < kt_to; ++kf_");
+    emitted = kofun_rt_text_concat(emitted, name);
+    emitted = kofun_rt_text_concat(emitted, ") {\n");
+    emitted = kofun_rt_text_concat(
+        emitted, kofun_fn_statement_indent(depth + INT64_C(1)));
+    emitted = kofun_rt_text_concat(emitted, "(void)kf_");
+    emitted = kofun_rt_text_concat(emitted, name);
+    emitted = kofun_rt_text_concat(emitted, ";\n");
+    return emitted;
+}
+
+static const char * kofun_fn_signature_parameter_type(
+        const char * signature,
+        int64_t index) {
+    const char *parameters = kofun_fn_signature_parameters(signature);
+    return kofun_fn_call_argument(
+        kofun_rt_text_concat(
+            kofun_rt_text_concat("f(", parameters), ")"),
+        "f", index);
+}
+
+static const char * kofun_fn_lower_user_call(
+        const char * expression,
+        const char * bound,
+        const char * path,
+        const char * indent) {
+    int64_t open = kofun_rt_find(expression, "(");
+    if (open < INT64_C(0)) {
+        return "";
+    }
+    const char *callee = kofun_rt_text_slice(expression, INT64_C(0), open);
+    const char *signature = kofun_fn_function_signature(bound, callee);
+    if (kofun_rt_text_len(signature) == INT64_C(0)) {
+        return "";
+    }
+    int64_t expected = kofun_fn_parameter_arity(
+        kofun_fn_signature_parameters(signature));
+    if (kofun_fn_call_arity(expression, callee) != expected ||
+        expected > INT64_C(5)) {
+        return "";
+    }
+    static const char *argument_paths[] = { "a", "b", "c", "d", "e" };
+    const char *statements = "";
+    const char *arguments = "";
+    for (int64_t index = INT64_C(0); index < expected; ++index) {
+        const char *argument = kofun_fn_lower_expression(
+            kofun_fn_call_argument(expression, callee, index), bound,
+            kofun_rt_text_concat(path, argument_paths[index]), indent);
+        if (!kofun_rt_text_equal(
+                kofun_fn_lowered_type(argument),
+                kofun_fn_signature_parameter_type(signature, index))) {
+            return "";
+        }
+        statements = kofun_rt_text_concat(
+            statements, kofun_fn_lowered_statements(argument));
+        if (index > INT64_C(0)) {
+            arguments = kofun_rt_text_concat(arguments, ", ");
+        }
+        arguments = kofun_rt_text_concat(
+            arguments, kofun_fn_lowered_operand(argument));
+    }
+    const char *result = kofun_fn_signature_result(signature);
+    if (kofun_rt_text_equal(result, "Void")) {
+        return kofun_rt_text_concat(
+            kofun_rt_text_concat(
+                kofun_rt_text_concat(
+                    kofun_rt_text_concat(
+                        kofun_rt_text_concat("Void|", statements), indent),
+                    kofun_rt_text_concat("kf_", callee)),
+                kofun_rt_text_concat("(", arguments)),
+            ");\n0");
+    }
+    const char *temporary = kofun_rt_text_concat("kt_", path);
+    const char *emitted = kofun_rt_text_concat(result, "|");
+    emitted = kofun_rt_text_concat(emitted, statements);
+    emitted = kofun_rt_text_concat(emitted, indent);
+    emitted = kofun_rt_text_concat(
+        emitted, kofun_fn_emitted_c_type(result));
+    emitted = kofun_rt_text_concat(emitted, " ");
+    emitted = kofun_rt_text_concat(emitted, temporary);
+    emitted = kofun_rt_text_concat(emitted, " = kf_");
+    emitted = kofun_rt_text_concat(emitted, callee);
+    emitted = kofun_rt_text_concat(emitted, "(");
+    emitted = kofun_rt_text_concat(emitted, arguments);
+    emitted = kofun_rt_text_concat(emitted, ");\n");
+    return kofun_rt_text_concat(emitted, temporary);
+}
+
+static bool kofun_fn_binding_mutable(const char * line) {
+    return kofun_rt_starts_with(line, "let mut ");
+}
+
+static const char * kofun_fn_assignment_name(const char * line) {
+    int64_t equals = kofun_rt_find(line, "=");
+    if (equals < INT64_C(0)) {
+        return "";
+    }
+    return kofun_rt_trim(kofun_rt_text_slice(line, INT64_C(0), equals));
+}
+
+static const char * kofun_fn_assignment_expression(const char * line) {
+    int64_t equals = kofun_rt_find(line, "=");
+    if (equals < INT64_C(0)) {
+        return "";
+    }
+    return kofun_rt_trim(kofun_rt_text_slice(
+        line, equals + INT64_C(1), kofun_rt_text_len(line)));
+}
+
+static bool kofun_fn_bound_mutable(const char * bound, const char * name) {
+    const char *prefix = kofun_rt_text_concat("|", name);
+    return kofun_rt_find(bound, kofun_rt_text_concat(
+               prefix, ":Int!|")) >= INT64_C(0) ||
+           kofun_rt_find(bound, kofun_rt_text_concat(
+               prefix, ":Bool!|")) >= INT64_C(0) ||
+           kofun_rt_find(bound, kofun_rt_text_concat(
+               prefix, ":Text!|")) >= INT64_C(0) ||
+           kofun_rt_find(bound, kofun_rt_text_concat(
+               prefix, ":List[Text]!|")) >= INT64_C(0);
+}
+
+static bool kofun_fn_text_ends_with(const char * value, const char * suffix) {
+    if (kofun_rt_text_len(suffix) > kofun_rt_text_len(value)) {
+        return false;
+    }
+    return kofun_rt_text_equal(
+        kofun_rt_text_slice(
+            value,
+            kofun_rt_text_len(value) - kofun_rt_text_len(suffix),
+            kofun_rt_text_len(value)),
+        suffix);
+}
+
+static bool kofun_fn_line_continues(const char * line) {
+    kofun_text_list symbols = kofun_rt_chars(line);
+    int64_t parens = INT64_C(0);
+    int64_t brackets = INT64_C(0);
+    bool quoted = false;
+    bool escaped = false;
+    for (int64_t index = INT64_C(0);
+         index < kofun_rt_text_list_len(symbols); ++index) {
+        const char *symbol = kofun_rt_text_list_get(symbols, index);
+        if (quoted) {
+            if (escaped) {
+                escaped = false;
+            } else if (kofun_rt_text_equal(symbol, "\\")) {
+                escaped = true;
+            } else if (kofun_rt_text_equal(symbol, "\"")) {
+                quoted = false;
+            }
+        } else if (kofun_rt_text_equal(symbol, "\"")) {
+            quoted = true;
+        } else if (kofun_rt_text_equal(symbol, "(")) {
+            parens = parens + INT64_C(1);
+        } else if (kofun_rt_text_equal(symbol, ")")) {
+            parens = parens - INT64_C(1);
+        } else if (kofun_rt_text_equal(symbol, "[")) {
+            brackets = brackets + INT64_C(1);
+        } else if (kofun_rt_text_equal(symbol, "]")) {
+            brackets = brackets - INT64_C(1);
+        }
+    }
+    if (quoted || parens > INT64_C(0) || brackets > INT64_C(0)) {
+        return true;
+    }
+    return kofun_fn_text_ends_with(line, "||") ||
+           kofun_fn_text_ends_with(line, "&&") ||
+           kofun_fn_text_ends_with(line, "+") ||
+           kofun_fn_text_ends_with(line, "-") ||
+           kofun_fn_text_ends_with(line, "*") ||
+           kofun_fn_text_ends_with(line, "/") ||
+           kofun_fn_text_ends_with(line, "%") ||
+           kofun_fn_text_ends_with(line, ",") ||
+           kofun_fn_text_ends_with(line, "=");
+}
+
+static const char * kofun_fn_logical_source(const char * source) {
+    kofun_text_list symbols = kofun_rt_chars(source);
+    int64_t line_start = INT64_C(0);
+    const char *pending = "";
+    const char *result = "";
+    for (int64_t index = INT64_C(0);
+         index < kofun_rt_text_list_len(symbols); ++index) {
+        if (kofun_rt_text_equal(kofun_rt_text_list_get(symbols, index),
+                                "\n")) {
+            const char *line = kofun_rt_trim(
+                kofun_rt_text_slice(source, line_start, index));
+            if (kofun_rt_text_len(line) > INT64_C(0) &&
+                !kofun_rt_starts_with(line, "#")) {
+                if (kofun_rt_text_len(pending) > INT64_C(0)) {
+                    pending = kofun_rt_text_concat(pending, " ");
+                }
+                pending = kofun_rt_text_concat(pending, line);
+                if (!kofun_fn_line_continues(pending)) {
+                    result = kofun_rt_text_concat(
+                        kofun_rt_text_concat(result, pending), "\n");
+                    pending = "";
+                }
+            }
+            line_start = index + INT64_C(1);
+        }
+    }
+    if (kofun_rt_text_len(pending) > INT64_C(0)) {
+        result = kofun_rt_text_concat(
+            kofun_rt_text_concat(result, pending), "\n");
+    }
+    return result;
+}
+
+static bool kofun_fn_valid_profile_type(const char * kind) {
+    return kofun_rt_text_equal(kind, "Int") ||
+           kofun_rt_text_equal(kind, "Bool") ||
+           kofun_rt_text_equal(kind, "Text") ||
+           kofun_rt_text_equal(kind, "List[Text]") ||
+           kofun_rt_text_equal(kind, "Void");
+}
+
+static const char * kofun_fn_function_name(const char * line) {
+    if (!kofun_rt_starts_with(line, "fn ")) {
+        return "";
+    }
+    int64_t open = kofun_rt_find(line, "(");
+    if (open < INT64_C(3)) {
+        return "";
+    }
+    return kofun_rt_trim(kofun_rt_text_slice(line, INT64_C(3), open));
+}
+
+static const char * kofun_fn_function_parameters(const char * line) {
+    int64_t open = kofun_rt_find(line, "(");
+    int64_t close = kofun_rt_find(line, ")");
+    if (open < INT64_C(0) || close < open) {
+        return "";
+    }
+    return kofun_rt_trim(
+        kofun_rt_text_slice(line, open + INT64_C(1), close));
+}
+
+static const char * kofun_fn_function_result(const char * line) {
+    int64_t close = kofun_rt_find(line, ")");
+    if (close < INT64_C(0)) {
+        return "";
+    }
+    const char *tail = kofun_rt_trim(kofun_rt_text_slice(
+        line, close + INT64_C(1), kofun_rt_text_len(line)));
+    if (kofun_rt_text_equal(tail, "{")) {
+        return "Void";
+    }
+    if (!kofun_rt_starts_with(tail, "-> ") ||
+        !kofun_fn_text_ends_with(tail, " {")) {
+        return "";
+    }
+    return kofun_rt_trim(kofun_rt_text_slice(
+        tail, INT64_C(3), kofun_rt_text_len(tail) - INT64_C(2)));
+}
+
+static int64_t kofun_fn_parameter_arity(const char * parameters) {
+    return kofun_fn_call_arity(
+        kofun_rt_text_concat(
+            kofun_rt_text_concat("f(", parameters), ")"),
+        "f");
+}
+
+static const char * kofun_fn_parameter_part(
+        const char * parameters,
+        int64_t index) {
+    return kofun_fn_call_argument(
+        kofun_rt_text_concat(
+            kofun_rt_text_concat("f(", parameters), ")"),
+        "f", index);
+}
+
+static const char * kofun_fn_parameter_name(
+        const char * parameters,
+        int64_t index) {
+    const char *part = kofun_fn_parameter_part(parameters, index);
+    int64_t colon = kofun_rt_find(part, ":");
+    if (colon < INT64_C(0)) {
+        return "";
+    }
+    return kofun_rt_trim(kofun_rt_text_slice(part, INT64_C(0), colon));
+}
+
+static const char * kofun_fn_parameter_type(
+        const char * parameters,
+        int64_t index) {
+    const char *part = kofun_fn_parameter_part(parameters, index);
+    int64_t colon = kofun_rt_find(part, ":");
+    if (colon < INT64_C(0)) {
+        return "";
+    }
+    return kofun_rt_trim(kofun_rt_text_slice(
+        part, colon + INT64_C(1), kofun_rt_text_len(part)));
+}
+
+static const char * kofun_fn_parameter_types(const char * parameters) {
+    const char *result = "";
+    for (int64_t index = INT64_C(0);
+         index < kofun_fn_parameter_arity(parameters); ++index) {
+        if (index > INT64_C(0)) {
+            result = kofun_rt_text_concat(result, ",");
+        }
+        result = kofun_rt_text_concat(
+            result, kofun_fn_parameter_type(parameters, index));
+    }
+    return result;
+}
+
+static bool kofun_fn_valid_function_header(const char * line) {
+    if (!kofun_fn_text_ends_with(line, " {")) {
+        return false;
+    }
+    const char *name = kofun_fn_function_name(line);
+    const char *result = kofun_fn_function_result(line);
+    const char *parameters = kofun_fn_function_parameters(line);
+    int64_t arity = kofun_fn_parameter_arity(parameters);
+    if (!kofun_fn_valid_name(name) ||
+        !kofun_fn_valid_profile_type(result) ||
+        arity < INT64_C(0) || arity > INT64_C(5)) {
+        return false;
+    }
+    const char *seen = "|";
+    for (int64_t index = INT64_C(0); index < arity; ++index) {
+        const char *parameter = kofun_fn_parameter_name(parameters, index);
+        const char *kind = kofun_fn_parameter_type(parameters, index);
+        if (!kofun_fn_valid_name(parameter) ||
+            !kofun_fn_valid_profile_type(kind) ||
+            kofun_rt_text_equal(kind, "Void") ||
+            kofun_rt_find(seen,
+                          kofun_rt_text_concat(
+                              kofun_rt_text_concat("|", parameter),
+                              "|")) >= INT64_C(0)) {
+            return false;
+        }
+        seen = kofun_rt_text_concat(
+            kofun_rt_text_concat(seen, parameter), "|");
+    }
+    return true;
+}
+
+static const char * kofun_fn_collect_function_signatures(
+        const char * source) {
+    kofun_text_list symbols = kofun_rt_chars(source);
+    int64_t line_start = INT64_C(0);
+    const char *functions = "|";
+    int64_t count = INT64_C(0);
+    for (int64_t index = INT64_C(0);
+         index < kofun_rt_text_list_len(symbols); ++index) {
+        if (kofun_rt_text_equal(kofun_rt_text_list_get(symbols, index),
+                                "\n")) {
+            const char *line = kofun_rt_trim(
+                kofun_rt_text_slice(source, line_start, index));
+            if (kofun_rt_starts_with(line, "fn ")) {
+                if (!kofun_fn_valid_function_header(line)) {
+                    return "";
+                }
+                const char *name = kofun_fn_function_name(line);
+                if (kofun_rt_find(functions,
+                                  kofun_rt_text_concat(
+                                      kofun_rt_text_concat("|@", name),
+                                      ":")) >= INT64_C(0)) {
+                    return "";
+                }
+                functions = kofun_rt_text_concat(
+                    kofun_rt_text_concat(
+                        kofun_rt_text_concat(
+                            kofun_rt_text_concat(
+                                kofun_rt_text_concat(
+                                    kofun_rt_text_concat(functions, "@"),
+                                    name),
+                                ":"),
+                            kofun_fn_function_result(line)),
+                        ";"),
+                    kofun_rt_text_concat(
+                        kofun_fn_parameter_types(
+                            kofun_fn_function_parameters(line)),
+                        "|"));
+                count = count + INT64_C(1);
+            }
+            line_start = index + INT64_C(1);
+        }
+    }
+    if (count == INT64_C(0)) {
+        return "";
+    }
+    return functions;
+}
+
+static const char * kofun_fn_function_signature(
+        const char * bound,
+        const char * name) {
+    const char *marker = kofun_rt_text_concat(
+        kofun_rt_text_concat("|@", name), ":");
+    int64_t start = kofun_rt_find(bound, marker);
+    if (start < INT64_C(0)) {
+        return "";
+    }
+    const char *tail = kofun_rt_text_slice(
+        bound, start + kofun_rt_text_len(marker), kofun_rt_text_len(bound));
+    int64_t finish = kofun_rt_find(tail, "|");
+    if (finish < INT64_C(0)) {
+        return "";
+    }
+    return kofun_rt_text_slice(tail, INT64_C(0), finish);
+}
+
+static const char * kofun_fn_signature_result(const char * signature) {
+    int64_t split = kofun_rt_find(signature, ";");
+    if (split < INT64_C(0)) {
+        return "";
+    }
+    return kofun_rt_text_slice(signature, INT64_C(0), split);
+}
+
+static const char * kofun_fn_signature_parameters(const char * signature) {
+    int64_t split = kofun_rt_find(signature, ";");
+    if (split < INT64_C(0)) {
+        return "";
+    }
+    return kofun_rt_text_slice(
+        signature, split + INT64_C(1), kofun_rt_text_len(signature));
+}
+
+static const char * kofun_fn_function_bound(
+        const char * functions,
+        const char * line) {
+    const char *parameters = kofun_fn_function_parameters(line);
+    const char *bound = kofun_fn_scope_enter(functions);
+    for (int64_t index = INT64_C(0);
+         index < kofun_fn_parameter_arity(parameters); ++index) {
+        bound = kofun_rt_text_concat(
+            kofun_rt_text_concat(
+                kofun_rt_text_concat(
+                    kofun_rt_text_concat(
+                        bound, kofun_fn_parameter_name(parameters, index)),
+                    ":"),
+                kofun_fn_parameter_type(parameters, index)),
+            "|");
+    }
+    return bound;
+}
+
+static const char * kofun_fn_emitted_c_type(const char * kind) {
+    if (kofun_rt_text_equal(kind, "Bool")) {
+        return "bool";
+    }
+    if (kofun_rt_text_equal(kind, "Text")) {
+        return "const char *";
+    }
+    if (kofun_rt_text_equal(kind, "List[Text]")) {
+        return "KofunTextList";
+    }
+    if (kofun_rt_text_equal(kind, "Void")) {
+        return "void";
+    }
+    return "int64_t";
+}
+
+static const char * kofun_fn_failure_return(const char * kind) {
+    if (kofun_rt_text_equal(kind, "Bool")) {
+        return "if (failed) return false;\n";
+    }
+    if (kofun_rt_text_equal(kind, "Text")) {
+        return "if (failed) return \"\";\n";
+    }
+    if (kofun_rt_text_equal(kind, "List[Text]")) {
+        return "if (failed) return kofun_rt_empty_text_list();\n";
+    }
+    if (kofun_rt_text_equal(kind, "Void")) {
+        return "if (failed) return;\n";
+    }
+    return "if (failed) return 0;\n";
+}
+
+static bool kofun_fn_profile_uses_builtin(const char * source) {
+    return kofun_rt_find(source, "args(") >= INT64_C(0) ||
+        kofun_rt_find(source, "chars(") >= INT64_C(0) ||
+        kofun_rt_find(source, "contains(") >= INT64_C(0) ||
+        kofun_rt_find(source, "fail(") >= INT64_C(0) ||
+        kofun_rt_find(source, "find(") >= INT64_C(0) ||
+        kofun_rt_find(source, "is_digit(") >= INT64_C(0) ||
+        kofun_rt_find(source, "is_space(") >= INT64_C(0) ||
+        kofun_rt_find(source, "is_xid_continue(") >= INT64_C(0) ||
+        kofun_rt_find(source, "len(") >= INT64_C(0) ||
+        kofun_rt_find(source, "read_text(") >= INT64_C(0) ||
+        kofun_rt_find(source, "starts_with(") >= INT64_C(0) ||
+        kofun_rt_find(source, "text_slice(") >= INT64_C(0) ||
+        kofun_rt_find(source, "trim(") >= INT64_C(0) ||
+        kofun_rt_find(source, "validate_unicode_source(") >= INT64_C(0) ||
+        kofun_rt_find(source, "write_text(") >= INT64_C(0);
 }
 
 static bool kofun_fn_valid_name(const char * name) {
@@ -829,25 +1903,41 @@ static const char * kofun_fn_bound_type(const char * bound, const char * name) {
     const char * int_key = kofun_rt_text_concat(
         kofun_rt_text_concat(
             kofun_rt_text_concat("|", name), ":Int"), "|");
-    if (((kofun_rt_find(bound, int_key)) >= (INT64_C(0)))) {
+    const char * int_key_mut = kofun_rt_text_concat(
+        kofun_rt_text_concat(
+            kofun_rt_text_concat("|", name), ":Int!"), "|");
+    if (((kofun_rt_find(bound, int_key)) >= (INT64_C(0))) ||
+        ((kofun_rt_find(bound, int_key_mut)) >= (INT64_C(0)))) {
         return "Int";
     }
     const char * bool_key = kofun_rt_text_concat(
         kofun_rt_text_concat(
             kofun_rt_text_concat("|", name), ":Bool"), "|");
-    if (((kofun_rt_find(bound, bool_key)) >= (INT64_C(0)))) {
+    const char * bool_key_mut = kofun_rt_text_concat(
+        kofun_rt_text_concat(
+            kofun_rt_text_concat("|", name), ":Bool!"), "|");
+    if (((kofun_rt_find(bound, bool_key)) >= (INT64_C(0))) ||
+        ((kofun_rt_find(bound, bool_key_mut)) >= (INT64_C(0)))) {
         return "Bool";
     }
     const char * text_key = kofun_rt_text_concat(
         kofun_rt_text_concat(
             kofun_rt_text_concat("|", name), ":Text"), "|");
-    if (((kofun_rt_find(bound, text_key)) >= (INT64_C(0)))) {
+    const char * text_key_mut = kofun_rt_text_concat(
+        kofun_rt_text_concat(
+            kofun_rt_text_concat("|", name), ":Text!"), "|");
+    if (((kofun_rt_find(bound, text_key)) >= (INT64_C(0))) ||
+        ((kofun_rt_find(bound, text_key_mut)) >= (INT64_C(0)))) {
         return "Text";
     }
     const char * list_key = kofun_rt_text_concat(
         kofun_rt_text_concat(
             kofun_rt_text_concat("|", name), ":List[Text]"), "|");
-    if (((kofun_rt_find(bound, list_key)) >= (INT64_C(0)))) {
+    const char * list_key_mut = kofun_rt_text_concat(
+        kofun_rt_text_concat(
+            kofun_rt_text_concat("|", name), ":List[Text]!"), "|");
+    if (((kofun_rt_find(bound, list_key)) >= (INT64_C(0))) ||
+        ((kofun_rt_find(bound, list_key_mut)) >= (INT64_C(0)))) {
         return "List[Text]";
     }
     return "";
@@ -953,6 +2043,10 @@ static const char * kofun_fn_lower_builtin_call(
         arity = 0;
         first_type = "";
         result_type = "List[Text]";
+    } else if (kofun_rt_text_equal(callee, "fail")) {
+        arity = 0;
+        first_type = "";
+        result_type = "Void";
     } else if (kofun_rt_text_equal(callee, "chars")) {
         result_type = "List[Text]";
         first_path = "c";
@@ -1089,7 +2183,7 @@ static const char * kofun_fn_lower_builtin_dispatch(
     if (open < 0) return "";
     const char *callee = kofun_rt_text_slice(expression, 0, open);
     static const char *builtins[] = {
-        "args", "chars", "contains", "find", "is_digit", "is_space",
+        "args", "chars", "contains", "fail", "find", "is_digit", "is_space",
         "is_xid_continue", "len", "read_text", "starts_with",
         "text_slice", "trim", "validate_unicode_source", "write_text",
     };
@@ -1289,6 +2383,10 @@ static const char * kofun_fn_lower_expression(const char * expression, const cha
         trimmed, bound, path, indent);
     if (kofun_rt_text_len(builtin) > 0) return builtin;
 
+    const char *user_call = kofun_fn_lower_user_call(
+        trimmed, bound, path, indent);
+    if (kofun_rt_text_len(user_call) > 0) return user_call;
+
     if (kofun_rt_starts_with(trimmed, "+")) {
         const char * inner = kofun_fn_lower_expression(
             kofun_rt_text_slice(trimmed, INT64_C(1), kofun_rt_text_len(trimmed)), bound, path, indent);
@@ -1372,7 +2470,11 @@ static const char * kofun_fn_binding_name(const char * line) {
     if (((equals) < (INT64_C(0)))) {
         return "";
     }
-    const char * name = kofun_rt_trim(kofun_rt_text_slice(line, INT64_C(4), equals));
+    int64_t start = INT64_C(4);
+    if (kofun_rt_starts_with(line, "let mut ")) {
+        start = INT64_C(8);
+    }
+    const char * name = kofun_rt_trim(kofun_rt_text_slice(line, start, equals));
     int64_t colon = kofun_rt_find(name, ":");
     if (((colon) >= (INT64_C(0)))) {
         return kofun_rt_trim(kofun_rt_text_slice(name, INT64_C(0), colon));
@@ -1393,8 +2495,12 @@ static const char * kofun_fn_binding_annotation(const char * line) {
     if (((equals) < (INT64_C(0)))) {
         return "";
     }
+    int64_t start = INT64_C(4);
+    if (kofun_rt_starts_with(line, "let mut ")) {
+        start = INT64_C(8);
+    }
     const char * declaration = kofun_rt_trim(
-        kofun_rt_text_slice(line, INT64_C(4), equals));
+        kofun_rt_text_slice(line, start, equals));
     int64_t colon = kofun_rt_find(declaration, ":");
     if (((colon) < (INT64_C(0)))) {
         return "";
@@ -1529,6 +2635,615 @@ static const char * kofun_fn_range_end(const char * line) {
     }
     return kofun_rt_trim(kofun_rt_text_slice(
         bounds, ((split) + (INT64_C(4))), kofun_rt_text_len(bounds)));
+}
+
+static const char * kofun_fn_profile_builtin_type(
+        const char *expression,
+        const char *callee,
+        const char *bound) {
+    int64_t arity = INT64_C(1);
+    const char *first_type = "Text";
+    const char *second_type = "";
+    const char *third_type = "";
+    const char *result_type = "Bool";
+    if (kofun_rt_text_equal(callee, "args")) {
+        arity = INT64_C(0);
+        first_type = "";
+        result_type = "List[Text]";
+    } else if (kofun_rt_text_equal(callee, "fail")) {
+        arity = INT64_C(0);
+        first_type = "";
+        result_type = "Void";
+    } else if (kofun_rt_text_equal(callee, "chars")) {
+        result_type = "List[Text]";
+    } else if (kofun_rt_text_equal(callee, "contains")) {
+        arity = INT64_C(2);
+        second_type = "Text";
+    } else if (kofun_rt_text_equal(callee, "find")) {
+        arity = INT64_C(2);
+        second_type = "Text";
+        result_type = "Int";
+    } else if (kofun_rt_text_equal(callee, "len")) {
+        first_type = "TextOrList";
+        result_type = "Int";
+    } else if (kofun_rt_text_equal(callee, "read_text")) {
+        result_type = "Text";
+    } else if (kofun_rt_text_equal(callee, "starts_with")) {
+        arity = INT64_C(2);
+        second_type = "Text";
+    } else if (kofun_rt_text_equal(callee, "text_slice")) {
+        arity = INT64_C(3);
+        second_type = "Int";
+        third_type = "Int";
+        result_type = "Text";
+    } else if (kofun_rt_text_equal(callee, "trim") ||
+               kofun_rt_text_equal(callee, "validate_unicode_source")) {
+        result_type = "Text";
+    } else if (kofun_rt_text_equal(callee, "write_text")) {
+        arity = INT64_C(2);
+        second_type = "Text";
+        result_type = "Void";
+    }
+    if (kofun_fn_call_arity(expression, callee) != arity) {
+        return "";
+    }
+    if (arity >= INT64_C(1)) {
+        const char *kind = kofun_fn_profile_expression_type(
+            kofun_fn_call_argument(expression, callee, INT64_C(0)), bound);
+        if ((kofun_rt_text_equal(first_type, "TextOrList") &&
+             !kofun_rt_text_equal(kind, "Text") &&
+             !kofun_rt_text_equal(kind, "List[Text]")) ||
+            (!kofun_rt_text_equal(first_type, "TextOrList") &&
+             !kofun_rt_text_equal(kind, first_type))) {
+            return "";
+        }
+    }
+    if (arity >= INT64_C(2) &&
+        !kofun_rt_text_equal(
+            kofun_fn_profile_expression_type(
+                kofun_fn_call_argument(expression, callee, INT64_C(1)),
+                bound),
+            second_type)) {
+        return "";
+    }
+    if (arity >= INT64_C(3) &&
+        !kofun_rt_text_equal(
+            kofun_fn_profile_expression_type(
+                kofun_fn_call_argument(expression, callee, INT64_C(2)),
+                bound),
+            third_type)) {
+        return "";
+    }
+    return result_type;
+}
+
+static const char * kofun_fn_profile_user_call_type(
+        const char *expression,
+        const char *callee,
+        const char *bound) {
+    const char *signature = kofun_fn_function_signature(bound, callee);
+    if (kofun_rt_text_len(signature) == INT64_C(0)) {
+        return "";
+    }
+    int64_t expected = kofun_fn_parameter_arity(
+        kofun_fn_signature_parameters(signature));
+    if (kofun_fn_call_arity(expression, callee) != expected ||
+        expected > INT64_C(5)) {
+        return "";
+    }
+    for (int64_t index = INT64_C(0); index < expected; ++index) {
+        if (!kofun_rt_text_equal(
+                kofun_fn_profile_expression_type(
+                    kofun_fn_call_argument(expression, callee, index), bound),
+                kofun_fn_signature_parameter_type(signature, index))) {
+            return "";
+        }
+    }
+    return kofun_fn_signature_result(signature);
+}
+
+static const char * kofun_fn_profile_additive_type(
+        const char *expression,
+        const char *bound) {
+    kofun_text_list symbols = kofun_rt_chars(expression);
+    int64_t depth = INT64_C(0);
+    bool quoted = false;
+    bool escaped = false;
+    int64_t start = INT64_C(0);
+    bool found = false;
+    const char *operator = "";
+    const char *result = "";
+    for (int64_t index = INT64_C(0);
+         index < kofun_rt_text_list_len(symbols); ++index) {
+        const char *symbol = kofun_rt_text_list_get(symbols, index);
+        if (quoted) {
+            if (escaped) {
+                escaped = false;
+            } else if (kofun_rt_text_equal(symbol, "\\")) {
+                escaped = true;
+            } else if (kofun_rt_text_equal(symbol, "\"")) {
+                quoted = false;
+            }
+        } else if (kofun_rt_text_equal(symbol, "\"")) {
+            quoted = true;
+        } else if (kofun_rt_text_equal(symbol, "(") ||
+                   kofun_rt_text_equal(symbol, "[")) {
+            depth = depth + INT64_C(1);
+        } else if (kofun_rt_text_equal(symbol, ")") ||
+                   kofun_rt_text_equal(symbol, "]")) {
+            depth = depth - INT64_C(1);
+        } else if (depth == INT64_C(0) &&
+                   (kofun_rt_text_equal(symbol, "+") ||
+                    kofun_rt_text_equal(symbol, "-"))) {
+            int64_t cursor = index - INT64_C(1);
+            bool preceded = false;
+            while (cursor >= INT64_C(0) && !preceded) {
+                const char *previous = kofun_rt_text_list_get(symbols, cursor);
+                if (!kofun_rt_is_space(previous)) {
+                    preceded = kofun_rt_text_equal(previous, ")") ||
+                        kofun_rt_text_equal(previous, "]") ||
+                        kofun_rt_text_equal(previous, "\"") ||
+                        kofun_fn_identifier_char(previous);
+                }
+                cursor = cursor - INT64_C(1);
+            }
+            if (preceded) {
+                const char *kind = kofun_fn_profile_expression_type(
+                    kofun_rt_text_slice(expression, start, index), bound);
+                if (!found) {
+                    result = kind;
+                } else if (kofun_rt_text_equal(operator, "+") &&
+                           kofun_rt_text_equal(result, "Text") &&
+                           kofun_rt_text_equal(kind, "Text")) {
+                    result = "Text";
+                } else if (kofun_rt_text_equal(result, "Int") &&
+                           kofun_rt_text_equal(kind, "Int")) {
+                    result = "Int";
+                } else {
+                    return "";
+                }
+                if (kofun_rt_text_len(result) == INT64_C(0)) {
+                    return "";
+                }
+                found = true;
+                operator = symbol;
+                start = index + INT64_C(1);
+            }
+        }
+    }
+    if (!found) {
+        return "NoAdditive";
+    }
+    const char *kind = kofun_fn_profile_expression_type(
+        kofun_rt_text_slice(
+            expression, start, kofun_rt_text_len(expression)),
+        bound);
+    if (kofun_rt_text_equal(operator, "+") &&
+        kofun_rt_text_equal(result, "Text") &&
+        kofun_rt_text_equal(kind, "Text")) {
+        return "Text";
+    }
+    if (kofun_rt_text_equal(result, "Int") &&
+        kofun_rt_text_equal(kind, "Int")) {
+        return "Int";
+    }
+    return "";
+}
+
+static const char * kofun_fn_profile_expression_type(
+        const char *expression,
+        const char *bound) {
+    const char *trimmed = kofun_rt_trim(expression);
+    if (kofun_rt_text_len(trimmed) == INT64_C(0)) {
+        return "";
+    }
+    int64_t logical_or = kofun_fn_split_operators(trimmed, ",||,");
+    if (logical_or >= INT64_C(0)) {
+        if (kofun_rt_text_equal(
+                kofun_fn_profile_expression_type(
+                    kofun_rt_text_slice(trimmed, INT64_C(0), logical_or),
+                    bound),
+                "Bool") &&
+            kofun_rt_text_equal(
+                kofun_fn_profile_expression_type(
+                    kofun_rt_text_slice(
+                        trimmed, logical_or + INT64_C(2),
+                        kofun_rt_text_len(trimmed)),
+                    bound),
+                "Bool")) {
+            return "Bool";
+        }
+        return "";
+    }
+    int64_t logical_and = kofun_fn_split_operators(trimmed, ",&&,");
+    if (logical_and >= INT64_C(0)) {
+        if (kofun_rt_text_equal(
+                kofun_fn_profile_expression_type(
+                    kofun_rt_text_slice(trimmed, INT64_C(0), logical_and),
+                    bound),
+                "Bool") &&
+            kofun_rt_text_equal(
+                kofun_fn_profile_expression_type(
+                    kofun_rt_text_slice(
+                        trimmed, logical_and + INT64_C(2),
+                        kofun_rt_text_len(trimmed)),
+                    bound),
+                "Bool")) {
+            return "Bool";
+        }
+        return "";
+    }
+    int64_t equality = kofun_fn_split_operators(trimmed, ",==,!=,");
+    if (equality >= INT64_C(0)) {
+        const char *left = kofun_fn_profile_expression_type(
+            kofun_rt_text_slice(trimmed, INT64_C(0), equality), bound);
+        const char *right = kofun_fn_profile_expression_type(
+            kofun_rt_text_slice(
+                trimmed, equality + INT64_C(2), kofun_rt_text_len(trimmed)),
+            bound);
+        if (kofun_rt_text_len(left) > INT64_C(0) &&
+            kofun_rt_text_equal(left, right) &&
+            !kofun_rt_text_equal(left, "List[Text]")) {
+            return "Bool";
+        }
+        return "";
+    }
+    int64_t ordering = kofun_fn_split_operators(trimmed, ",<=,>=,<,>,");
+    if (ordering >= INT64_C(0)) {
+        int64_t skip = INT64_C(1);
+        if (ordering + INT64_C(2) <= kofun_rt_text_len(trimmed) &&
+            kofun_rt_text_equal(
+                kofun_rt_text_slice(
+                    trimmed, ordering + INT64_C(1),
+                    ordering + INT64_C(2)),
+                "=")) {
+            skip = INT64_C(2);
+        }
+        if (kofun_rt_text_equal(
+                kofun_fn_profile_expression_type(
+                    kofun_rt_text_slice(trimmed, INT64_C(0), ordering),
+                    bound),
+                "Int") &&
+            kofun_rt_text_equal(
+                kofun_fn_profile_expression_type(
+                    kofun_rt_text_slice(
+                        trimmed, ordering + skip,
+                        kofun_rt_text_len(trimmed)),
+                    bound),
+                "Int")) {
+            return "Bool";
+        }
+        return "";
+    }
+    const char *additive = kofun_fn_profile_additive_type(trimmed, bound);
+    if (!kofun_rt_text_equal(additive, "NoAdditive")) {
+        return additive;
+    }
+    int64_t multiplicative = kofun_fn_split_binary(trimmed, "*%/");
+    if (multiplicative >= INT64_C(0)) {
+        int64_t skip = INT64_C(1);
+        if (kofun_rt_text_equal(
+                kofun_rt_text_slice(
+                    trimmed, multiplicative, multiplicative + INT64_C(1)),
+                "/")) {
+            if (multiplicative + INT64_C(2) >
+                    kofun_rt_text_len(trimmed) ||
+                !kofun_rt_text_equal(
+                    kofun_rt_text_slice(
+                        trimmed, multiplicative + INT64_C(1),
+                        multiplicative + INT64_C(2)),
+                    "/")) {
+                return "";
+            }
+            skip = INT64_C(2);
+        }
+        if (kofun_rt_text_equal(
+                kofun_fn_profile_expression_type(
+                    kofun_rt_text_slice(
+                        trimmed, INT64_C(0), multiplicative),
+                    bound),
+                "Int") &&
+            kofun_rt_text_equal(
+                kofun_fn_profile_expression_type(
+                    kofun_rt_text_slice(
+                        trimmed, multiplicative + skip,
+                        kofun_rt_text_len(trimmed)),
+                    bound),
+                "Int")) {
+            return "Int";
+        }
+        return "";
+    }
+    int64_t index_open = kofun_fn_postfix_index(trimmed);
+    if (index_open >= INT64_C(0)) {
+        const char *base = kofun_fn_profile_expression_type(
+            kofun_rt_text_slice(trimmed, INT64_C(0), index_open), bound);
+        const char *index = kofun_fn_profile_expression_type(
+            kofun_rt_text_slice(
+                trimmed, index_open + INT64_C(1),
+                kofun_rt_text_len(trimmed) - INT64_C(1)),
+            bound);
+        if (kofun_rt_text_equal(index, "Int") &&
+            (kofun_rt_text_equal(base, "Text") ||
+             kofun_rt_text_equal(base, "List[Text]"))) {
+            return "Text";
+        }
+        return "";
+    }
+    int64_t open = kofun_rt_find(trimmed, "(");
+    if (open >= INT64_C(0)) {
+        const char *callee = kofun_rt_text_slice(
+            trimmed, INT64_C(0), open);
+        const char *builtins =
+            "|args|chars|contains|fail|find|is_digit|is_space|"
+            "is_xid_continue|len|read_text|starts_with|text_slice|trim|"
+            "validate_unicode_source|write_text|";
+        const char *needle = kofun_rt_text_concat(
+            kofun_rt_text_concat("|", callee), "|");
+        if (kofun_rt_find(builtins, needle) >= INT64_C(0)) {
+            return kofun_fn_profile_builtin_type(trimmed, callee, bound);
+        }
+        const char *user_type = kofun_fn_profile_user_call_type(
+            trimmed, callee, bound);
+        if (kofun_rt_text_len(user_type) > INT64_C(0)) {
+            return user_type;
+        }
+    }
+    if (kofun_rt_starts_with(trimmed, "+")) {
+        if (kofun_rt_text_equal(
+                kofun_fn_profile_expression_type(
+                    kofun_rt_text_slice(
+                        trimmed, INT64_C(1), kofun_rt_text_len(trimmed)),
+                    bound),
+                "Int")) {
+            return "Int";
+        }
+        return "";
+    }
+    if (kofun_rt_starts_with(trimmed, "-")) {
+        const char *operand = kofun_rt_trim(kofun_rt_text_slice(
+            trimmed, INT64_C(1), kofun_rt_text_len(trimmed)));
+        if (kofun_fn_all_digits(operand)) {
+            if (kofun_fn_within_bound(operand, "9223372036854775808")) {
+                return "Int";
+            }
+            return "";
+        }
+        if (kofun_rt_text_equal(
+                kofun_fn_profile_expression_type(operand, bound), "Int")) {
+            return "Int";
+        }
+        return "";
+    }
+    if (kofun_rt_starts_with(trimmed, "!")) {
+        if (kofun_rt_text_equal(
+                kofun_fn_profile_expression_type(
+                    kofun_rt_text_slice(
+                        trimmed, INT64_C(1), kofun_rt_text_len(trimmed)),
+                    bound),
+                "Bool")) {
+            return "Bool";
+        }
+        return "";
+    }
+    if (kofun_fn_wraps_whole(trimmed)) {
+        return kofun_fn_profile_expression_type(
+            kofun_rt_text_slice(
+                trimmed, INT64_C(1),
+                kofun_rt_text_len(trimmed) - INT64_C(1)),
+            bound);
+    }
+    return kofun_fn_lowered_type(kofun_fn_lower_atom(trimmed, bound));
+}
+
+static bool kofun_fn_valid_profile_source(const char * source) {
+    const char *functions = kofun_fn_collect_function_signatures(source);
+    if (kofun_rt_text_len(functions) == INT64_C(0)) {
+        return false;
+    }
+    kofun_text_list symbols = kofun_rt_chars(source);
+    int64_t line_start = INT64_C(0);
+    int64_t main_headers = INT64_C(0);
+    const char *blocks = "";
+    const char *bound = functions;
+    const char *current_result = "";
+    int64_t returns = INT64_C(0);
+    for (int64_t index = INT64_C(0);
+         index < kofun_rt_text_list_len(symbols); ++index) {
+        if (!kofun_rt_text_equal(kofun_rt_text_list_get(symbols, index),
+                                 "\n")) {
+            continue;
+        }
+        const char *line = kofun_rt_trim(
+            kofun_rt_text_slice(source, line_start, index));
+        line_start = index + INT64_C(1);
+        if (kofun_rt_starts_with(line, "fn ")) {
+            if (kofun_rt_text_len(blocks) > INT64_C(0) ||
+                !kofun_fn_valid_function_header(line)) {
+                return false;
+            }
+            const char *name = kofun_fn_function_name(line);
+            current_result = kofun_fn_function_result(line);
+            if (kofun_rt_text_equal(name, "main")) {
+                if (main_headers != INT64_C(0) ||
+                    !kofun_rt_text_equal(current_result, "Void") ||
+                    kofun_fn_parameter_arity(
+                        kofun_fn_function_parameters(line)) != INT64_C(0)) {
+                    return false;
+                }
+                main_headers = main_headers + INT64_C(1);
+            }
+            blocks = "f";
+            bound = kofun_fn_function_bound(functions, line);
+            returns = INT64_C(0);
+        } else if (kofun_rt_text_equal(line, "}")) {
+            if (kofun_rt_text_len(blocks) == INT64_C(0)) {
+                return false;
+            }
+            if (kofun_rt_text_len(blocks) == INT64_C(1) &&
+                !kofun_rt_text_equal(current_result, "Void") &&
+                returns == INT64_C(0)) {
+                return false;
+            }
+            blocks = kofun_fn_block_pop(blocks);
+            bound = kofun_fn_scope_leave(bound);
+            if (kofun_rt_text_len(blocks) == INT64_C(0)) {
+                current_result = "";
+            }
+        } else if (kofun_rt_text_equal(line, "} else {")) {
+            if (!kofun_rt_text_equal(kofun_fn_block_kind(blocks), "i")) {
+                return false;
+            }
+            blocks = kofun_rt_text_concat(kofun_fn_block_pop(blocks), "e");
+            bound = kofun_fn_scope_enter(kofun_fn_scope_leave(bound));
+        } else if (kofun_rt_starts_with(line, "} else if ")) {
+            if (!kofun_rt_text_equal(kofun_fn_block_kind(blocks), "i")) {
+                return false;
+            }
+            bound = kofun_fn_scope_leave(bound);
+            const char *condition = kofun_fn_profile_expression_type(
+                kofun_fn_header_condition(line, "} else if "), bound);
+            if (!kofun_rt_text_equal(condition, "Bool")) {
+                return false;
+            }
+            bound = kofun_fn_scope_enter(bound);
+        } else if (kofun_rt_starts_with(line, "if ")) {
+            if (kofun_rt_text_len(blocks) == INT64_C(0)) {
+                return false;
+            }
+            const char *condition = kofun_fn_profile_expression_type(
+                kofun_fn_header_condition(line, "if "), bound);
+            if (!kofun_rt_text_equal(condition, "Bool")) {
+                return false;
+            }
+            blocks = kofun_rt_text_concat(blocks, "i");
+            bound = kofun_fn_scope_enter(bound);
+        } else if (kofun_rt_starts_with(line, "while ")) {
+            if (kofun_rt_text_len(blocks) == INT64_C(0)) {
+                return false;
+            }
+            const char *condition = kofun_fn_profile_expression_type(
+                kofun_fn_header_condition(line, "while "), bound);
+            if (!kofun_rt_text_equal(condition, "Bool")) {
+                return false;
+            }
+            blocks = kofun_rt_text_concat(blocks, "w");
+            bound = kofun_fn_scope_enter(bound);
+        } else if (kofun_rt_starts_with(line, "for ")) {
+            if (kofun_rt_text_len(blocks) == INT64_C(0)) {
+                return false;
+            }
+            const char *name = kofun_fn_range_name(line);
+            if (!kofun_fn_valid_name(name) ||
+                kofun_rt_text_equal(name, "true") ||
+                kofun_rt_text_equal(name, "false") ||
+                kofun_rt_text_len(
+                    kofun_fn_bound_type(bound, name)) > INT64_C(0)) {
+                return false;
+            }
+            const char *from = kofun_fn_profile_expression_type(
+                kofun_fn_range_start(line), bound);
+            const char *to = kofun_fn_profile_expression_type(
+                kofun_fn_range_end(line), bound);
+            if (!kofun_rt_text_equal(from, "Int") ||
+                !kofun_rt_text_equal(to, "Int")) {
+                return false;
+            }
+            blocks = kofun_rt_text_concat(blocks, "r");
+            bound = kofun_rt_text_concat(
+                kofun_rt_text_concat(
+                    kofun_rt_text_concat(
+                        kofun_fn_scope_enter(bound), name),
+                    ":Int"),
+                "|");
+        } else if (kofun_rt_starts_with(line, "let ")) {
+            if (kofun_rt_text_len(blocks) == INT64_C(0)) {
+                return false;
+            }
+            const char *name = kofun_fn_binding_name(line);
+            if (!kofun_fn_valid_name(name) ||
+                kofun_rt_text_equal(name, "true") ||
+                kofun_rt_text_equal(name, "false") ||
+                kofun_rt_text_len(
+                    kofun_fn_bound_type(bound, name)) > INT64_C(0)) {
+                return false;
+            }
+            const char *kind = kofun_fn_profile_expression_type(
+                kofun_fn_binding_expression(line), bound);
+            if (kofun_rt_text_len(kind) == INT64_C(0) ||
+                kofun_rt_text_equal(kind, "Void")) {
+                return false;
+            }
+            const char *annotation = kofun_fn_binding_annotation(line);
+            if (kofun_rt_text_len(annotation) > INT64_C(0) &&
+                !kofun_rt_text_equal(annotation, kind)) {
+                return false;
+            }
+            bound = kofun_rt_text_concat(
+                kofun_rt_text_concat(
+                    kofun_rt_text_concat(bound, name), ":"),
+                kind);
+            if (kofun_fn_binding_mutable(line)) {
+                bound = kofun_rt_text_concat(bound, "!");
+            }
+            bound = kofun_rt_text_concat(bound, "|");
+        } else if (kofun_rt_text_equal(line, "return") ||
+                   kofun_rt_starts_with(line, "return ")) {
+            if (kofun_rt_text_len(blocks) == INT64_C(0)) {
+                return false;
+            }
+            if (kofun_rt_text_equal(line, "return")) {
+                if (!kofun_rt_text_equal(current_result, "Void")) {
+                    return false;
+                }
+            } else {
+                const char *kind = kofun_fn_profile_expression_type(
+                    kofun_rt_trim(kofun_rt_text_slice(
+                        line, INT64_C(7), kofun_rt_text_len(line))),
+                    bound);
+                if (!kofun_rt_text_equal(kind, current_result) ||
+                    kofun_rt_text_equal(current_result, "Void")) {
+                    return false;
+                }
+            }
+            returns = returns + INT64_C(1);
+        } else if (kofun_rt_starts_with(line, "print(")) {
+            if (kofun_rt_text_len(blocks) == INT64_C(0)) {
+                return false;
+            }
+            const char *kind = kofun_fn_profile_expression_type(
+                kofun_fn_print_expression(line), bound);
+            if (!kofun_rt_text_equal(kind, "Int") &&
+                !kofun_rt_text_equal(kind, "Text")) {
+                return false;
+            }
+        } else if (kofun_rt_find(line, " = ") > INT64_C(0)) {
+            if (kofun_rt_text_len(blocks) == INT64_C(0)) {
+                return false;
+            }
+            const char *name = kofun_fn_assignment_name(line);
+            const char *kind = kofun_fn_profile_expression_type(
+                kofun_fn_assignment_expression(line), bound);
+            if (!kofun_fn_valid_name(name) ||
+                !kofun_fn_bound_mutable(bound, name) ||
+                !kofun_rt_text_equal(
+                    kind, kofun_fn_bound_type(bound, name))) {
+                return false;
+            }
+        } else if (kofun_rt_find(line, "(") > INT64_C(0)) {
+            if (kofun_rt_text_len(blocks) == INT64_C(0)) {
+                return false;
+            }
+            if (!kofun_rt_text_equal(
+                    kofun_fn_profile_expression_type(line, bound), "Void")) {
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
+    return main_headers == INT64_C(1) &&
+           kofun_rt_text_len(blocks) == INT64_C(0);
 }
 
 static bool kofun_fn_valid_source(const char * source) {
@@ -1775,43 +3490,8 @@ static const char * kofun_fn_emit_statements(const char * source) {
                 bound = kofun_fn_scope_enter(bound);
                 emitted = kofun_rt_text_concat(
                     emitted,
-                    kofun_fn_nested_indent(((depth) - (INT64_C(1)))));
-                emitted = kofun_rt_text_concat(emitted, "}\n");
-                emitted = kofun_rt_text_concat(
-                    emitted,
-                    kofun_fn_nested_indent(((depth) - (INT64_C(1)))));
-                emitted = kofun_rt_text_concat(
-                    emitted, "if (!kt_taken) {\n");
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_lowered_statements(condition));
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_statement_indent(depth));
-                emitted = kofun_rt_text_concat(emitted, "kt_cond = ");
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_lowered_operand(condition));
-                emitted = kofun_rt_text_concat(emitted, ";\n");
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_statement_indent(depth));
-                emitted = kofun_rt_text_concat(
-                    emitted, "if (failed) return 1;\n");
-                emitted = kofun_rt_text_concat(
-                    emitted,
-                    kofun_fn_nested_indent(((depth) - (INT64_C(1)))));
-                emitted = kofun_rt_text_concat(emitted, "} else {\n");
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_statement_indent(depth));
-                emitted = kofun_rt_text_concat(emitted, "kt_cond = false;\n");
-                emitted = kofun_rt_text_concat(
-                    emitted,
-                    kofun_fn_nested_indent(((depth) - (INT64_C(1)))));
-                emitted = kofun_rt_text_concat(emitted, "}\n");
-                emitted = kofun_rt_text_concat(
-                    emitted,
-                    kofun_fn_nested_indent(((depth) - (INT64_C(1)))));
-                emitted = kofun_rt_text_concat(emitted, "if (kt_cond) {\n");
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_statement_indent(depth));
-                emitted = kofun_rt_text_concat(emitted, "kt_taken = true;\n");
+                    kofun_fn_emit_profile_else_if(
+                        condition, depth, "if (failed) return 1;\n"));
             } else if (kofun_rt_starts_with(line, "if ")) {
                 int64_t depth = kofun_rt_text_len(blocks);
                 const char * condition = kofun_fn_lower_expression(
@@ -1820,41 +3500,9 @@ static const char * kofun_fn_emit_statements(const char * source) {
                 blocks = kofun_rt_text_concat(blocks, "i");
                 bound = kofun_fn_scope_enter(bound);
                 emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_statement_indent(depth));
-                emitted = kofun_rt_text_concat(emitted, "{\n");
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_nested_indent(depth));
-                emitted = kofun_rt_text_concat(
-                    emitted, "bool kt_taken = false;\n");
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_nested_indent(depth));
-                emitted = kofun_rt_text_concat(emitted, "bool kt_cond;\n");
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_nested_indent(depth));
-                emitted = kofun_rt_text_concat(emitted, "{\n");
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_lowered_statements(condition));
-                emitted = kofun_rt_text_concat(
                     emitted,
-                    kofun_fn_statement_indent(((depth) + (INT64_C(1)))));
-                emitted = kofun_rt_text_concat(emitted, "kt_cond = ");
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_lowered_operand(condition));
-                emitted = kofun_rt_text_concat(emitted, ";\n");
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_nested_indent(depth));
-                emitted = kofun_rt_text_concat(emitted, "}\n");
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_nested_indent(depth));
-                emitted = kofun_rt_text_concat(
-                    emitted, "if (failed) return 1;\n");
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_nested_indent(depth));
-                emitted = kofun_rt_text_concat(emitted, "if (kt_cond) {\n");
-                emitted = kofun_rt_text_concat(
-                    emitted,
-                    kofun_fn_statement_indent(((depth) + (INT64_C(1)))));
-                emitted = kofun_rt_text_concat(emitted, "kt_taken = true;\n");
+                    kofun_fn_emit_profile_if(
+                        condition, depth, "if (failed) return 1;\n"));
             } else if (kofun_rt_starts_with(line, "while ")) {
                 int64_t depth = kofun_rt_text_len(blocks);
                 const char * condition = kofun_fn_lower_expression(
@@ -1863,33 +3511,9 @@ static const char * kofun_fn_emit_statements(const char * source) {
                 blocks = kofun_rt_text_concat(blocks, "w");
                 bound = kofun_fn_scope_enter(bound);
                 emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_statement_indent(depth));
-                emitted = kofun_rt_text_concat(emitted, "{\n");
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_nested_indent(depth));
-                emitted = kofun_rt_text_concat(emitted, "bool kt_cond;\n");
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_nested_indent(depth));
-                emitted = kofun_rt_text_concat(emitted, "while (true) {\n");
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_lowered_statements(condition));
-                emitted = kofun_rt_text_concat(
                     emitted,
-                    kofun_fn_statement_indent(((depth) + (INT64_C(1)))));
-                emitted = kofun_rt_text_concat(emitted, "kt_cond = ");
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_lowered_operand(condition));
-                emitted = kofun_rt_text_concat(emitted, ";\n");
-                emitted = kofun_rt_text_concat(
-                    emitted,
-                    kofun_fn_statement_indent(((depth) + (INT64_C(1)))));
-                emitted = kofun_rt_text_concat(
-                    emitted, "if (failed) return 1;\n");
-                emitted = kofun_rt_text_concat(
-                    emitted,
-                    kofun_fn_statement_indent(((depth) + (INT64_C(1)))));
-                emitted = kofun_rt_text_concat(
-                    emitted, "if (!kt_cond) break;\n");
+                    kofun_fn_emit_profile_while(
+                        condition, depth, "if (failed) return 1;\n"));
             } else if (kofun_rt_starts_with(line, "for ")) {
                 int64_t depth = kofun_rt_text_len(blocks);
                 const char * name = kofun_fn_range_name(line);
@@ -1906,43 +3530,9 @@ static const char * kofun_fn_emit_statements(const char * source) {
                             kofun_fn_scope_enter(bound), name), ":Int"),
                     "|");
                 emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_statement_indent(depth));
-                emitted = kofun_rt_text_concat(emitted, "{\n");
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_lowered_statements(from));
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_nested_indent(depth));
-                emitted = kofun_rt_text_concat(emitted, "int64_t kt_from = ");
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_lowered_operand(from));
-                emitted = kofun_rt_text_concat(emitted, ";\n");
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_lowered_statements(to));
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_nested_indent(depth));
-                emitted = kofun_rt_text_concat(emitted, "int64_t kt_to = ");
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_lowered_operand(to));
-                emitted = kofun_rt_text_concat(emitted, ";\n");
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_nested_indent(depth));
-                emitted = kofun_rt_text_concat(
-                    emitted, "if (failed) return 1;\n");
-                emitted = kofun_rt_text_concat(
-                    emitted, kofun_fn_nested_indent(depth));
-                emitted = kofun_rt_text_concat(emitted, "for (int64_t kf_");
-                emitted = kofun_rt_text_concat(emitted, name);
-                emitted = kofun_rt_text_concat(emitted, " = kt_from; kf_");
-                emitted = kofun_rt_text_concat(emitted, name);
-                emitted = kofun_rt_text_concat(emitted, " < kt_to; ++kf_");
-                emitted = kofun_rt_text_concat(emitted, name);
-                emitted = kofun_rt_text_concat(emitted, ") {\n");
-                emitted = kofun_rt_text_concat(
                     emitted,
-                    kofun_fn_statement_indent(((depth) + (INT64_C(1)))));
-                emitted = kofun_rt_text_concat(emitted, "(void)kf_");
-                emitted = kofun_rt_text_concat(emitted, name);
-                emitted = kofun_rt_text_concat(emitted, ";\n");
+                    kofun_fn_emit_profile_for(
+                        from, to, name, depth, "if (failed) return 1;\n"));
             } else if (kofun_rt_starts_with(line, "let ")) {
                 int64_t depth = kofun_rt_text_len(blocks);
                 const char * name = kofun_fn_binding_name(line);
@@ -2066,10 +3656,16 @@ static const char * kofun_fn_emit_statements(const char * source) {
     return emitted;
 }
 
-static const char * kofun_fn_emit_c(const char * source) {
-    const char * statements = kofun_fn_emit_statements(source);
-    bool uses_profile_builtins =
+static const char * kofun_fn_emit_c(const char * source, bool profile) {
+    const char * statements = "";
+    if (!profile) {
+        statements = kofun_fn_emit_statements(source);
+    }
+    bool profile_builtins =
+        profile && kofun_fn_profile_uses_builtin(source);
+    bool uses_profile_builtins = profile_builtins ||
         kofun_rt_find(statements, "kofun_rt_args(") >= 0 ||
+        kofun_rt_find(statements, "kofun_rt_fail(") >= 0 ||
         kofun_rt_find(statements, "kofun_rt_text_contains(") >= 0 ||
         kofun_rt_find(statements, "kofun_rt_find(") >= 0 ||
         kofun_rt_find(statements, "kofun_rt_is_digit(") >= 0 ||
@@ -2082,14 +3678,23 @@ static const char * kofun_fn_emit_c(const char * source) {
         kofun_rt_find(statements, "kofun_rt_trim(") >= 0 ||
         kofun_rt_find(statements, "kofun_rt_validate_unicode_source(") >= 0 ||
         kofun_rt_find(statements, "kofun_rt_write_text(") >= 0;
-    bool uses_args = kofun_rt_find(statements, "kofun_rt_args(") >= 0;
+    bool uses_args = profile ||
+        kofun_rt_find(statements, "kofun_rt_args(") >= 0;
+    bool uses_fail =
+        (profile && kofun_rt_find(source, "fail(") >= INT64_C(0)) ||
+        kofun_rt_find(statements, "kofun_rt_fail(") >= INT64_C(0);
     bool uses_text_index =
+        (profile && kofun_rt_find(source, "[") >= INT64_C(0)) ||
         ((kofun_rt_find(statements, "kofun_rt_text_index")) >=
          (INT64_C(0)));
     bool uses_list =
+        (profile && kofun_rt_find(source, "List[Text]") >= INT64_C(0)) ||
         ((kofun_rt_find(statements, "KofunTextList")) >= (INT64_C(0))) ||
         uses_profile_builtins;
     bool uses_text =
+        (profile &&
+         (kofun_rt_find(source, "Text") >= INT64_C(0) ||
+          kofun_rt_find(source, "\"") >= INT64_C(0))) ||
         (((kofun_rt_find(statements, "const char *")) >= (INT64_C(0))) ||
          ((kofun_rt_find(statements, "kofun_rt_text_")) >= (INT64_C(0))) ||
          uses_list || uses_profile_builtins);
@@ -2185,23 +3790,24 @@ static const char * kofun_fn_emit_c(const char * source) {
         "    size_t length = strlen(value);\n"
         "    if ((uint64_t)length > (uint64_t)INT64_MAX ||\n"
         "        length > (SIZE_MAX - sizeof(KofunTextListAllocation)) /\n"
-        "            sizeof(const char *)) {\n"
+        "            (sizeof(const char *) + 2)) {\n"
         "        runtime_error(\"error[R010]: List[Text] allocation is too large\");\n"
         "        return kofun_rt_empty_text_list();\n"
         "    }\n"
         "    KofunTextListAllocation *allocation = malloc(\n"
-        "        sizeof(KofunTextListAllocation) + length * sizeof(const char *));\n"
+        "        sizeof(KofunTextListAllocation) +\n"
+        "        length * (sizeof(const char *) + 2));\n"
         "    if (allocation == NULL) {\n"
         "        runtime_error(\"error[R010]: List[Text] allocation failed\");\n"
         "        return kofun_rt_empty_text_list();\n"
         "    }\n"
         "    allocation->next = kofun_rt_text_list_allocations;\n"
         "    kofun_rt_text_list_allocations = allocation;\n"
+        "    char *characters = (char *)(allocation->items + length);\n"
         "    for (size_t index = 0; index < length; ++index) {\n"
-        "        char character[2] = { value[index], '\\0' };\n"
-        "        allocation->items[index] =\n"
-        "            kofun_rt_text_concat(\"\", character);\n"
-        "        if (failed) return kofun_rt_empty_text_list();\n"
+        "        characters[2 * index] = value[index];\n"
+        "        characters[2 * index + 1] = '\\0';\n"
+        "        allocation->items[index] = characters + 2 * index;\n"
         "    }\n"
         "    KofunTextList result = {\n"
         "        (int64_t)length,\n"
@@ -2520,29 +4126,40 @@ static const char * kofun_fn_emit_c(const char * source) {
     if (uses_profile_builtins) {
         emitted = kofun_rt_text_concat(emitted, profile_runtime);
     }
-    emitted = kofun_rt_text_concat(
-        emitted,
-        uses_args ? "int main(int argc, char **argv) {\n" : "int main(void) {\n");
-    emitted = kofun_rt_text_concat(
-        emitted,
+    if (uses_fail) {
+        emitted = kofun_rt_text_concat(
+            emitted,
+            "static void kofun_rt_fail(void) {\n"
+            "    exit(1);\n"
+            "}\n\n");
+    }
+    const char *prelude =
         "    (void)checked_add;\n"
         "    (void)checked_sub;\n"
         "    (void)checked_mul;\n"
         "    (void)checked_neg;\n"
         "    (void)floor_div;\n"
-        "    (void)floor_mod;\n");
+        "    (void)floor_mod;\n";
     if (uses_text) {
-        emitted = kofun_rt_text_concat(emitted, text_main);
+        prelude = kofun_rt_text_concat(prelude, text_main);
     }
     if (uses_text_index) {
-        emitted = kofun_rt_text_concat(emitted, text_index_main);
+        prelude = kofun_rt_text_concat(prelude, text_index_main);
     }
     if (uses_list) {
-        emitted = kofun_rt_text_concat(emitted, list_main);
+        prelude = kofun_rt_text_concat(prelude, list_main);
     }
     if (uses_profile_builtins) {
-        emitted = kofun_rt_text_concat(emitted, profile_main);
+        prelude = kofun_rt_text_concat(prelude, profile_main);
     }
+    if (profile) {
+        return kofun_rt_text_concat(
+            emitted, kofun_fn_emit_profile_program(source, prelude));
+    }
+    emitted = kofun_rt_text_concat(
+        emitted,
+        uses_args ? "int main(int argc, char **argv) {\n" : "int main(void) {\n");
+    emitted = kofun_rt_text_concat(emitted, prelude);
     emitted = kofun_rt_text_concat(emitted, statements);
     return kofun_rt_text_concat(emitted, "    return 0;\n}\n");
 }
@@ -2565,12 +4182,19 @@ static bool kofun_fn_compile_file(const char * input_path, const char * output_p
         return false;
     }
     const char * source = kofun_rt_text_concat(input, "\n");
-    if ((!kofun_fn_valid_source(source))) {
+    if (kofun_fn_valid_source(source)) {
+        (void)(kofun_rt_write_text(
+            output_path, kofun_fn_emit_c(source, false)));
+        printf("%s\n", output_path);
+        return true;
+    }
+    const char * profile_source = kofun_fn_logical_source(source);
+    if ((!kofun_fn_valid_profile_source(profile_source))) {
         printf("%s\n", "compile error: unsupported Kofun integer Core source");
         return false;
     }
-    const char * emitted = kofun_fn_emit_c(source);
-    (void)(kofun_rt_write_text(output_path, emitted));
+    (void)(kofun_rt_write_text(
+        output_path, kofun_fn_emit_c(profile_source, true)));
     printf("%s\n", output_path);
     return true;
 }

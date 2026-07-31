@@ -143,6 +143,11 @@ differential_trap_corpus() {
 # status, and the emitted program reproduces the pinned output.
 differential_corpus corpus_answer arithmetic
 
+# Top-level declarations are part of S's profile now. A helper with an
+# explicit result type must lower identically through the generated compiler
+# and the audited hand-port, then execute with its pinned result.
+differential_corpus corpus_function function-declaration
+
 # The Bool/comparison slice: all six comparisons, Bool literals and bindings,
 # `!`, precedence, and the nested left-associative `&&`/`||` shape. Executing it
 # proves real short circuiting — both skipped right operands contain `1 // 0`.
@@ -239,6 +244,58 @@ cp bootstrap/selfhost/driver/corpus_answer.kofun \
     "$temporary/kofun-a1" program.kofun remapped.c >/dev/null)
 cmp "$temporary/remap-a/nested/remapped.c" "$temporary/remap-b/remapped.c" ||
     fail "emitted C depends on the compilation directory"
+
+# The fixed-point gate for #751: A1 must compile the exact canonical S bytes
+# into a nonempty C2 in ordinary source-to-C mode. Two runs from distinct
+# directories pin determinism and path independence; the audited hand-port is
+# a third, independently derived byte differential. Finally, C2 must satisfy
+# the repository's strict C11 host boundary.
+selfhost_vmem_kib=${KOFUN_SELFHOST_VMEM_KIB:-1572864}
+case "$selfhost_vmem_kib" in
+    ''|*[!0-9]*) fail "KOFUN_SELFHOST_VMEM_KIB must be a positive integer" ;;
+    0) fail "KOFUN_SELFHOST_VMEM_KIB must be a positive integer" ;;
+esac
+
+selfhost_compile() {
+    directory=$1
+    compiler_path=$2
+    (
+        # Linux and the CI shell support this bound. Other POSIX shells may
+        # not expose -v; they still run the proof, but never turn a portable
+        # shell feature check into a product failure.
+        if ulimit -v "$selfhost_vmem_kib" 2>/dev/null; then :; fi
+        cd "$directory"
+        "$compiler_path" input.kofun C2.c >stdout.txt 2>stderr.txt
+    )
+}
+
+mkdir -p "$temporary/self-a" "$temporary/self-b" "$temporary/self-seed"
+cp bootstrap/stage1/compiler.kofun "$temporary/self-a/input.kofun"
+cp bootstrap/stage1/compiler.kofun "$temporary/self-b/input.kofun"
+cp bootstrap/stage1/compiler.kofun "$temporary/self-seed/input.kofun"
+cmp bootstrap/stage1/compiler.kofun "$temporary/self-a/input.kofun" ||
+    fail "self-compile input differs from canonical S"
+
+selfhost_compile "$temporary/self-a" "$temporary/kofun-a1"
+selfhost_compile "$temporary/self-b" "$temporary/kofun-a1"
+selfhost_compile "$temporary/self-seed" "$temporary/kofun-stage1"
+
+test -s "$temporary/self-a/C2.c" || fail "A1 produced an empty C2"
+cmp "$temporary/self-a/C2.c" "$temporary/self-b/C2.c" ||
+    fail "A1(S) is not deterministic and path-independent"
+cmp "$temporary/self-a/C2.c" "$temporary/self-seed/C2.c" ||
+    fail "A1 and the audited hand-port emit different C2 bytes"
+cmp "$temporary/self-a/stdout.txt" "$temporary/self-b/stdout.txt" ||
+    fail "A1(S) stdout is not deterministic and path-independent"
+cmp "$temporary/self-a/stderr.txt" "$temporary/self-b/stderr.txt" ||
+    fail "A1(S) stderr is not deterministic and path-independent"
+cmp "$temporary/self-a/stdout.txt" "$temporary/self-seed/stdout.txt" ||
+    fail "A1 and the audited hand-port differ on S stdout"
+cmp "$temporary/self-a/stderr.txt" "$temporary/self-seed/stderr.txt" ||
+    fail "A1 and the audited hand-port differ on S stderr"
+
+"$compiler" -std=c11 -O2 -Wall -Wextra -Werror -I unicode \
+    "$temporary/self-a/C2.c" -o "$temporary/kofun-a2"
 
 # Failure corpus: an out-of-Core source is refused with the seed's exact
 # diagnostic and writes nothing; the seed agrees byte for byte.
@@ -395,4 +452,5 @@ printf '%s\n' \
     "PASS: Text parsing, typing, runtime emission and typed refusals agree across both seeds" \
     "PASS: List[Text] construction, length, indexing and bounds traps agree across both seeds" \
     "PASS: all 15 profile builtins and all 30 arity/type refusals agree across both seeds" \
-    "PASS: emission is deterministic, path-independent, and failure-preserving"
+    "PASS: emission is deterministic, path-independent, and failure-preserving" \
+    "PASS: A1 compiles canonical S into deterministic C2 that matches the hand-port and compiles as strict C11"

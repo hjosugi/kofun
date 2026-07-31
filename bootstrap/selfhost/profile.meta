@@ -1,6 +1,6 @@
 schema|kofun.selfhost-profile/v1
 canonical_source|bootstrap/stage1/compiler.kofun
-source_sha256|6e0323c35953d93bd89e824c36795439fbb98505f8e44b8a661e78adfc575aa1
+source_sha256|6d38d9c6e84e0f5d6148320e7ebce8cc30a53a3a4f71832d36719f0d84f4230d
 fixed_point_backend|deterministic-c11
 host_compiler|declared-and-normalized
 direct_native_for_b4_b5|not-required

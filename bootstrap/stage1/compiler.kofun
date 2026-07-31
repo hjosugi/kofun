@@ -617,6 +617,24 @@ fn failure_return(kind: Text) -> Text {
     return "if (failed) return 0;\n"
 }
 
+fn profile_uses_builtin(source: Text) -> Bool {
+    return find(source, "args(") >= 0 ||
+    find(source, "chars(") >= 0 ||
+    find(source, "contains(") >= 0 ||
+    find(source, "fail(") >= 0 ||
+    find(source, "find(") >= 0 ||
+    find(source, "is_digit(") >= 0 ||
+    find(source, "is_space(") >= 0 ||
+    find(source, "is_xid_continue(") >= 0 ||
+    find(source, "len(") >= 0 ||
+    find(source, "read_text(") >= 0 ||
+    find(source, "starts_with(") >= 0 ||
+    find(source, "text_slice(") >= 0 ||
+    find(source, "trim(") >= 0 ||
+    find(source, "validate_unicode_source(") >= 0 ||
+    find(source, "write_text(") >= 0
+}
+
 # A lowered expression is `TYPE|STATEMENTS + OPERAND`: its static type, zero or
 # more complete C statements ending in newlines, then a newline-free operand.
 # The type prefix is compiler-only and is removed before C emission. Emitting
@@ -1478,6 +1496,303 @@ fn range_end(line: Text) -> Text {
     return trim(text_slice(bounds, split + 4, len(bounds)))
 }
 
+# Validation needs only an expression's type. Reusing the C-emitting lowerer
+# here retained every temporary statement string until process exit, so A1(S)
+# exhausted memory before it reached emission. These helpers follow the same
+# parser branches and call signatures without constructing discarded C.
+fn profile_builtin_type(expression: Text, callee: Text,
+                        bound: Text) -> Text {
+    let mut arity = 1
+    let mut first_type = "Text"
+    let mut second_type = ""
+    let mut third_type = ""
+    let mut result_type = "Bool"
+    if callee == "args" {
+        arity = 0
+        first_type = ""
+        result_type = "List[Text]"
+    } else if callee == "fail" {
+        arity = 0
+        first_type = ""
+        result_type = "Void"
+    } else if callee == "chars" {
+        result_type = "List[Text]"
+    } else if callee == "contains" {
+        arity = 2
+        second_type = "Text"
+    } else if callee == "find" {
+        arity = 2
+        second_type = "Text"
+        result_type = "Int"
+    } else if callee == "len" {
+        first_type = "TextOrList"
+        result_type = "Int"
+    } else if callee == "read_text" {
+        result_type = "Text"
+    } else if callee == "starts_with" {
+        arity = 2
+        second_type = "Text"
+    } else if callee == "text_slice" {
+        arity = 3
+        second_type = "Int"
+        third_type = "Int"
+        result_type = "Text"
+    } else if callee == "trim" || callee == "validate_unicode_source" {
+        result_type = "Text"
+    } else if callee == "write_text" {
+        arity = 2
+        second_type = "Text"
+        result_type = "Void"
+    }
+    if call_arity(expression, callee) != arity {
+        return ""
+    }
+    if arity >= 1 {
+        let kind = profile_expression_type(
+            call_argument(expression, callee, 0), bound)
+        if first_type == "TextOrList" &&
+           !(kind == "Text") && !(kind == "List[Text]") ||
+           (!(first_type == "TextOrList") && !(kind == first_type)) {
+            return ""
+        }
+    }
+    if arity >= 2 &&
+       !(profile_expression_type(call_argument(expression, callee, 1),
+                                  bound) == second_type) {
+        return ""
+    }
+    if arity >= 3 &&
+       !(profile_expression_type(call_argument(expression, callee, 2),
+                                  bound) == third_type) {
+        return ""
+    }
+    return result_type
+}
+
+fn profile_user_call_type(expression: Text, callee: Text,
+                          bound: Text) -> Text {
+    let signature = function_signature(bound, callee)
+    if len(signature) == 0 {
+        return ""
+    }
+    let expected = parameter_arity(signature_parameters(signature))
+    if call_arity(expression, callee) != expected || expected > 5 {
+        return ""
+    }
+    for index in 0 .. expected {
+        if !(profile_expression_type(
+                call_argument(expression, callee, index), bound) ==
+             signature_parameter_type(signature, index)) {
+            return ""
+        }
+    }
+    return signature_result(signature)
+}
+
+fn profile_additive_type(expression: Text, bound: Text) -> Text {
+    let symbols = chars(expression)
+    let mut depth = 0
+    let mut quoted = false
+    let mut escaped = false
+    let mut start = 0
+    let mut found = false
+    let mut operator = ""
+    let mut result = ""
+    for index in 0 .. len(symbols) {
+        let symbol = symbols[index]
+        if quoted {
+            if escaped {
+                escaped = false
+            } else if symbol == "\\" {
+                escaped = true
+            } else if symbol == "\"" {
+                quoted = false
+            }
+        } else if symbol == "\"" {
+            quoted = true
+        } else if symbol == "(" || symbol == "[" {
+            depth = depth + 1
+        } else if symbol == ")" || symbol == "]" {
+            depth = depth - 1
+        } else if depth == 0 && (symbol == "+" || symbol == "-") {
+            let mut cursor = index - 1
+            let mut preceded = false
+            while cursor >= 0 && !preceded {
+                let previous = symbols[cursor]
+                if !is_space(previous) {
+                    preceded = previous == ")" || previous == "]" ||
+                    previous == "\"" || identifier_char(previous)
+                }
+                cursor = cursor - 1
+            }
+            if preceded {
+                let kind = profile_expression_type(
+                    text_slice(expression, start, index), bound)
+                if !found {
+                    result = kind
+                } else if operator == "+" && result == "Text" &&
+                          kind == "Text" {
+                    result = "Text"
+                } else if result == "Int" && kind == "Int" {
+                    result = "Int"
+                } else {
+                    return ""
+                }
+                if len(result) == 0 {
+                    return ""
+                }
+                found = true
+                operator = symbol
+                start = index + 1
+            }
+        }
+    }
+    if !found {
+        return "NoAdditive"
+    }
+    let kind = profile_expression_type(
+        text_slice(expression, start, len(expression)), bound)
+    if operator == "+" && result == "Text" && kind == "Text" {
+        return "Text"
+    }
+    if result == "Int" && kind == "Int" {
+        return "Int"
+    }
+    return ""
+}
+
+fn profile_expression_type(expression: Text, bound: Text) -> Text {
+    let trimmed = trim(expression)
+    if len(trimmed) == 0 {
+        return ""
+    }
+    let logical_or = split_operators(trimmed, ",||,")
+    if logical_or >= 0 {
+        if profile_expression_type(text_slice(trimmed, 0, logical_or), bound) == "Bool" &&
+           profile_expression_type(text_slice(trimmed, logical_or + 2,
+                                              len(trimmed)), bound) == "Bool" {
+            return "Bool"
+        }
+        return ""
+    }
+    let logical_and = split_operators(trimmed, ",&&,")
+    if logical_and >= 0 {
+        if profile_expression_type(text_slice(trimmed, 0, logical_and), bound) == "Bool" &&
+           profile_expression_type(text_slice(trimmed, logical_and + 2,
+                                              len(trimmed)), bound) == "Bool" {
+            return "Bool"
+        }
+        return ""
+    }
+    let equality = split_operators(trimmed, ",==,!=,")
+    if equality >= 0 {
+        let left = profile_expression_type(
+            text_slice(trimmed, 0, equality), bound)
+        let right = profile_expression_type(
+            text_slice(trimmed, equality + 2, len(trimmed)), bound)
+        if len(left) > 0 && left == right && !(left == "List[Text]") {
+            return "Bool"
+        }
+        return ""
+    }
+    let ordering = split_operators(trimmed, ",<=,>=,<,>,")
+    if ordering >= 0 {
+        let mut skip = 1
+        if ordering + 2 <= len(trimmed) &&
+           text_slice(trimmed, ordering + 1, ordering + 2) == "=" {
+            skip = 2
+        }
+        if profile_expression_type(text_slice(trimmed, 0, ordering), bound) == "Int" &&
+           profile_expression_type(text_slice(trimmed, ordering + skip,
+                                              len(trimmed)), bound) == "Int" {
+            return "Bool"
+        }
+        return ""
+    }
+    let additive = profile_additive_type(trimmed, bound)
+    if !(additive == "NoAdditive") {
+        return additive
+    }
+    let multiplicative = split_binary(trimmed, "*%/")
+    if multiplicative >= 0 {
+        let mut skip = 1
+        if text_slice(trimmed, multiplicative, multiplicative + 1) == "/" {
+            if multiplicative + 2 > len(trimmed) ||
+               !(text_slice(trimmed, multiplicative + 1,
+                            multiplicative + 2) == "/") {
+                return ""
+            }
+            skip = 2
+        }
+        if profile_expression_type(
+                text_slice(trimmed, 0, multiplicative), bound) == "Int" &&
+           profile_expression_type(
+                text_slice(trimmed, multiplicative + skip, len(trimmed)),
+                bound) == "Int" {
+            return "Int"
+        }
+        return ""
+    }
+    let index_open = postfix_index(trimmed)
+    if index_open >= 0 {
+        let base = profile_expression_type(
+            text_slice(trimmed, 0, index_open), bound)
+        let index = profile_expression_type(
+            text_slice(trimmed, index_open + 1, len(trimmed) - 1), bound)
+        if index == "Int" && (base == "Text" || base == "List[Text]") {
+            return "Text"
+        }
+        return ""
+    }
+    let open = find(trimmed, "(")
+    if open >= 0 {
+        let callee = text_slice(trimmed, 0, open)
+        let builtins =
+        "|args|chars|contains|fail|find|is_digit|is_space|is_xid_continue|len|" +
+        "read_text|starts_with|text_slice|trim|validate_unicode_source|write_text|"
+        if find(builtins, "|" + callee + "|") >= 0 {
+            return profile_builtin_type(trimmed, callee, bound)
+        }
+        let user_type = profile_user_call_type(trimmed, callee, bound)
+        if len(user_type) > 0 {
+            return user_type
+        }
+    }
+    if starts_with(trimmed, "+") {
+        let kind = profile_expression_type(
+            text_slice(trimmed, 1, len(trimmed)), bound)
+        if kind == "Int" {
+            return "Int"
+        }
+        return ""
+    }
+    if starts_with(trimmed, "-") {
+        let operand = trim(text_slice(trimmed, 1, len(trimmed)))
+        if all_digits(operand) {
+            if within_bound(operand, "9223372036854775808") {
+                return "Int"
+            }
+            return ""
+        }
+        if profile_expression_type(operand, bound) == "Int" {
+            return "Int"
+        }
+        return ""
+    }
+    if starts_with(trimmed, "!") {
+        if profile_expression_type(
+                text_slice(trimmed, 1, len(trimmed)), bound) == "Bool" {
+            return "Bool"
+        }
+        return ""
+    }
+    if wraps_whole(trimmed) {
+        return profile_expression_type(
+            text_slice(trimmed, 1, len(trimmed) - 1), bound)
+    }
+    return lowered_type(lower_atom(trimmed, bound))
+}
+
 fn valid_profile_source(source: Text) -> Bool {
     let functions = collect_function_signatures(source)
     if len(functions) == 0 {
@@ -1533,10 +1848,9 @@ fn valid_profile_source(source: Text) -> Bool {
                     return false
                 }
                 bound = scope_leave(bound)
-                let condition = lower_expression(
-                    header_condition(line, "} else if "), bound, "x",
-                    statement_indent(len(blocks)))
-                if !(lowered_type(condition) == "Bool") {
+                let condition = profile_expression_type(
+                    header_condition(line, "} else if "), bound)
+                if !(condition == "Bool") {
                     return false
                 }
                 bound = scope_enter(bound)
@@ -1544,10 +1858,9 @@ fn valid_profile_source(source: Text) -> Bool {
                 if len(blocks) == 0 {
                     return false
                 }
-                let condition = lower_expression(
-                    header_condition(line, "if "), bound, "x",
-                    statement_indent(len(blocks) + 1))
-                if !(lowered_type(condition) == "Bool") {
+                let condition = profile_expression_type(
+                    header_condition(line, "if "), bound)
+                if !(condition == "Bool") {
                     return false
                 }
                 blocks = blocks + "i"
@@ -1556,10 +1869,9 @@ fn valid_profile_source(source: Text) -> Bool {
                 if len(blocks) == 0 {
                     return false
                 }
-                let condition = lower_expression(
-                    header_condition(line, "while "), bound, "x",
-                    statement_indent(len(blocks) + 1))
-                if !(lowered_type(condition) == "Bool") {
+                let condition = profile_expression_type(
+                    header_condition(line, "while "), bound)
+                if !(condition == "Bool") {
                     return false
                 }
                 blocks = blocks + "w"
@@ -1573,12 +1885,9 @@ fn valid_profile_source(source: Text) -> Bool {
                    len(bound_type(bound, name)) > 0 {
                     return false
                 }
-                let from = lower_expression(range_start(line), bound, "xl",
-                                            nested_indent(len(blocks)))
-                let to = lower_expression(range_end(line), bound, "xr",
-                                          nested_indent(len(blocks)))
-                if !(lowered_type(from) == "Int") ||
-                   !(lowered_type(to) == "Int") {
+                let from = profile_expression_type(range_start(line), bound)
+                let to = profile_expression_type(range_end(line), bound)
+                if !(from == "Int") || !(to == "Int") {
                     return false
                 }
                 blocks = blocks + "r"
@@ -1592,9 +1901,8 @@ fn valid_profile_source(source: Text) -> Bool {
                    len(bound_type(bound, name)) > 0 {
                     return false
                 }
-                let value = lower_expression(binding_expression(line), bound,
-                                             "x", nested_indent(len(blocks)))
-                let kind = lowered_type(value)
+                let kind = profile_expression_type(
+                    binding_expression(line), bound)
                 if len(kind) == 0 || kind == "Void" {
                     return false
                 }
@@ -1616,10 +1924,9 @@ fn valid_profile_source(source: Text) -> Bool {
                         return false
                     }
                 } else {
-                    let value = lower_expression(
-                        trim(text_slice(line, 7, len(line))), bound, "r",
-                        nested_indent(len(blocks)))
-                    if !(lowered_type(value) == current_result) ||
+                    let kind = profile_expression_type(
+                        trim(text_slice(line, 7, len(line))), bound)
+                    if !(kind == current_result) ||
                        current_result == "Void" {
                         return false
                     }
@@ -1629,9 +1936,8 @@ fn valid_profile_source(source: Text) -> Bool {
                 if len(blocks) == 0 {
                     return false
                 }
-                let kind = lowered_type(lower_expression(
-                    print_expression(line), bound, "x",
-                    nested_indent(len(blocks))))
+                let kind = profile_expression_type(
+                    print_expression(line), bound)
                 if !(kind == "Int") && !(kind == "Text") {
                     return false
                 }
@@ -1640,20 +1946,17 @@ fn valid_profile_source(source: Text) -> Bool {
                     return false
                 }
                 let name = assignment_name(line)
-                let value = lower_expression(assignment_expression(line),
-                                             bound, "a",
-                                             nested_indent(len(blocks)))
+                let kind = profile_expression_type(
+                    assignment_expression(line), bound)
                 if !valid_name(name) || !bound_mutable(bound, name) ||
-                   !(lowered_type(value) == bound_type(bound, name)) {
+                   !(kind == bound_type(bound, name)) {
                     return false
                 }
             } else if find(line, "(") > 0 {
                 if len(blocks) == 0 {
                     return false
                 }
-                let value = lower_expression(line, bound, "x",
-                                             nested_indent(len(blocks)))
-                if !(lowered_type(value) == "Void") {
+                if !(profile_expression_type(line, bound) == "Void") {
                     return false
                 }
             } else {
@@ -2100,25 +2403,30 @@ fn emit_profile_program(source: Text, main_prelude: Text) -> Text {
     let functions = collect_function_signatures(source)
     let symbols = chars(source)
     let mut line_start = 0
-    let mut emitted = emit_function_prototypes(source)
+    let mut program = emit_function_prototypes(source)
+    let mut emitted = ""
     let mut bound = functions
     let mut blocks = ""
     let mut current_result = ""
     let mut current_name = ""
+    let mut current_failure = ""
     for index in 0 .. len(symbols) {
         if symbols[index] == "\n" {
             let line = trim(text_slice(source, line_start, index))
             if starts_with(line, "fn ") {
+                emitted = ""
                 current_name = function_name(line)
                 current_result = function_result(line)
                 blocks = "f"
                 bound = function_bound(functions, line)
                 if current_name == "main" {
+                    current_failure = "if (failed) return 1;\n"
                     emitted = emitted + "int main(int argc, char **argv) {\n" +
                     "    (void)argc;\n" +
                     "    (void)argv;\n" +
                     main_prelude + emit_function_uses(source)
                 } else {
+                    current_failure = failure_return(current_result)
                     emitted = emitted + "static " +
                     emitted_c_type(current_result) + " kf_" + current_name +
                     "(" + emitted_parameters(line) + ") {\n"
@@ -2141,6 +2449,8 @@ fn emit_profile_program(source: Text, main_prelude: Text) -> Text {
                     } else {
                         emitted = emitted + "}\n\n"
                     }
+                    program = program + emitted
+                    emitted = ""
                     current_name = ""
                     current_result = ""
                 } else if kind == "w" || kind == "r" {
@@ -2169,7 +2479,7 @@ fn emit_profile_program(source: Text, main_prelude: Text) -> Text {
                 bound = scope_enter(bound)
                 emitted = emitted +
                 emit_profile_else_if(condition, depth,
-                                     failure_return(current_result))
+                                     current_failure)
             } else if starts_with(line, "if ") {
                 let depth = len(blocks)
                 let condition = lower_expression(
@@ -2179,7 +2489,7 @@ fn emit_profile_program(source: Text, main_prelude: Text) -> Text {
                 bound = scope_enter(bound)
                 emitted = emitted +
                 emit_profile_if(condition, depth,
-                                failure_return(current_result))
+                                current_failure)
             } else if starts_with(line, "while ") {
                 let depth = len(blocks)
                 let condition = lower_expression(
@@ -2189,7 +2499,7 @@ fn emit_profile_program(source: Text, main_prelude: Text) -> Text {
                 bound = scope_enter(bound)
                 emitted = emitted +
                 emit_profile_while(condition, depth,
-                                   failure_return(current_result))
+                                   current_failure)
             } else if starts_with(line, "for ") {
                 let depth = len(blocks)
                 let name = range_name(line)
@@ -2201,7 +2511,7 @@ fn emit_profile_program(source: Text, main_prelude: Text) -> Text {
                 bound = scope_enter(bound) + name + ":Int|"
                 emitted = emitted +
                 emit_profile_for(from, to, name, depth,
-                                 failure_return(current_result))
+                                 current_failure)
             } else if starts_with(line, "let ") {
                 let depth = len(blocks)
                 let name = binding_name(line)
@@ -2216,7 +2526,7 @@ fn emit_profile_program(source: Text, main_prelude: Text) -> Text {
                 nested_indent(depth) + "kf_" + name + " = " +
                 lowered_operand(value) + ";\n" +
                 statement_indent(depth) + "}\n" +
-                statement_indent(depth) + failure_return(current_result) +
+                statement_indent(depth) + current_failure +
                 statement_indent(depth) + "(void)kf_" + name + ";\n"
                 bound = bound + name + ":" + kind
                 if binding_mutable(line) {
@@ -2240,7 +2550,7 @@ fn emit_profile_program(source: Text, main_prelude: Text) -> Text {
                     emitted = emitted +
                     statement_indent(depth) + "{\n" +
                     lowered_statements(value) +
-                    nested_indent(depth) + failure_return(current_result) +
+                    nested_indent(depth) + current_failure +
                     nested_indent(depth) + "return " +
                     lowered_operand(value) + ";\n" +
                     statement_indent(depth) + "}\n"
@@ -2253,7 +2563,7 @@ fn emit_profile_program(source: Text, main_prelude: Text) -> Text {
                 emitted = emitted +
                 statement_indent(depth) + "{\n" +
                 lowered_statements(value) +
-                nested_indent(depth) + failure_return(current_result)
+                nested_indent(depth) + current_failure
                 if kind == "Text" {
                     emitted = emitted +
                     nested_indent(depth) + "fputs(" +
@@ -2277,7 +2587,7 @@ fn emit_profile_program(source: Text, main_prelude: Text) -> Text {
                 nested_indent(depth) + "kf_" + name + " = " +
                 lowered_operand(value) + ";\n" +
                 statement_indent(depth) + "}\n" +
-                statement_indent(depth) + failure_return(current_result)
+                statement_indent(depth) + current_failure
             } else if find(line, "(") > 0 {
                 let depth = len(blocks)
                 let value = lower_expression(line, bound, "x",
@@ -2285,22 +2595,23 @@ fn emit_profile_program(source: Text, main_prelude: Text) -> Text {
                 emitted = emitted +
                 statement_indent(depth) + "{\n" +
                 lowered_statements(value) +
-                nested_indent(depth) + failure_return(current_result) +
+                nested_indent(depth) + current_failure +
                 statement_indent(depth) + "}\n"
             }
             line_start = index + 1
         }
     }
-    return emitted
+    return program
 }
 
 fn emit_c(source: Text, profile: Bool) -> Text {
-    let mut statements = emit_statements(source)
-    if profile {
-        statements = emit_profile_program(source, "")
+    let mut statements = ""
+    if !profile {
+        statements = emit_statements(source)
     }
+    let profile_builtins = profile && profile_uses_builtin(source)
     let uses_profile_builtins =
-    find(statements, "kofun_rt_args(") >= 0 ||
+    profile_builtins || find(statements, "kofun_rt_args(") >= 0 ||
     find(statements, "kofun_rt_fail(") >= 0 ||
     find(statements, "kofun_rt_text_contains(") >= 0 ||
     find(statements, "kofun_rt_find(") >= 0 ||
@@ -2314,6 +2625,20 @@ fn emit_c(source: Text, profile: Bool) -> Text {
     find(statements, "kofun_rt_trim(") >= 0 ||
     find(statements, "kofun_rt_validate_unicode_source(") >= 0 ||
     find(statements, "kofun_rt_write_text(") >= 0
+    let uses_fail =
+    profile && find(source, "fail(") >= 0 ||
+    find(statements, "kofun_rt_fail(") >= 0
+    let uses_text_index =
+    profile && find(source, "[") >= 0 ||
+    find(statements, "kofun_rt_text_index") >= 0
+    let uses_list =
+    profile && find(source, "List[Text]") >= 0 ||
+    find(statements, "KofunTextList") >= 0 || uses_profile_builtins
+    let uses_text =
+    profile && (find(source, "Text") >= 0 || find(source, "\"") >= 0) ||
+    find(statements, "const char *") >= 0 ||
+    find(statements, "kofun_rt_text_") >= 0 || uses_list ||
+    uses_profile_builtins
     let mut text_headers = ""
     let mut text_runtime = ""
     let mut text_main = ""
@@ -2331,19 +2656,16 @@ fn emit_c(source: Text, profile: Bool) -> Text {
         "#include <ctype.h>\n" +
         "#include \"kofun_unicode.c\"\n"
     }
-    if find(statements, "kofun_rt_args(") >= 0 {
+    if profile || find(statements, "kofun_rt_args(") >= 0 {
         main_signature = "int main(int argc, char **argv) {\n"
     }
-    if find(statements, "kofun_rt_fail(") >= 0 {
+    if uses_fail {
         fail_runtime =
         "static void kofun_rt_fail(void) {\n" +
         "    exit(1);\n" +
         "}\n\n"
     }
-    if find(statements, "const char *") >= 0 ||
-       find(statements, "kofun_rt_text_") >= 0 ||
-       find(statements, "KofunTextList") >= 0 ||
-       uses_profile_builtins {
+    if uses_text {
         text_headers =
         "#include <stdlib.h>\n" +
         "#include <string.h>\n"
@@ -2359,7 +2681,8 @@ fn emit_c(source: Text, profile: Bool) -> Text {
         "        kofun_rt_text_allocations = allocation->next;\n" +
         "        free(allocation);\n" +
         "    }\n" +
-        "}\n\n" +
+        "}\n\n"
+        text_runtime = text_runtime +
         "static const char *kofun_rt_text_concat(const char *left, const char *right) {\n" +
         "    size_t left_size = strlen(left);\n" +
         "    size_t right_size = strlen(right);\n" +
@@ -2384,7 +2707,8 @@ fn emit_c(source: Text, profile: Bool) -> Text {
         "    allocation->next = kofun_rt_text_allocations;\n" +
         "    kofun_rt_text_allocations = allocation;\n" +
         "    return allocation->bytes;\n" +
-        "}\n\n" +
+        "}\n\n"
+        text_runtime = text_runtime +
         "static bool kofun_rt_text_equal(const char *left, const char *right) {\n" +
         "    return strcmp(left, right) == 0;\n" +
         "}\n\n"
@@ -2396,7 +2720,7 @@ fn emit_c(source: Text, profile: Bool) -> Text {
         "    (void)kofun_rt_text_concat;\n" +
         "    (void)kofun_rt_text_equal;\n"
     }
-    if find(statements, "kofun_rt_text_index") >= 0 {
+    if uses_text_index {
         text_index_runtime =
         "static const char *kofun_rt_text_index(const char *value, int64_t index) {\n" +
         "    size_t length = strlen(value);\n" +
@@ -2410,7 +2734,7 @@ fn emit_c(source: Text, profile: Bool) -> Text {
         text_index_main =
         "    (void)kofun_rt_text_index;\n"
     }
-    if find(statements, "KofunTextList") >= 0 || uses_profile_builtins {
+    if uses_list {
         list_runtime =
         "typedef struct {\n" +
         "    int64_t len;\n" +
@@ -2428,42 +2752,47 @@ fn emit_c(source: Text, profile: Bool) -> Text {
         "        kofun_rt_text_list_allocations = allocation->next;\n" +
         "        free(allocation);\n" +
         "    }\n" +
-        "}\n\n" +
+        "}\n\n"
+        list_runtime = list_runtime +
         "static KofunTextList kofun_rt_empty_text_list(void) {\n" +
         "    KofunTextList result = { 0, NULL };\n" +
         "    return result;\n" +
-        "}\n\n" +
+        "}\n\n"
+        list_runtime = list_runtime +
         "static KofunTextList kofun_rt_chars(const char *value) {\n" +
         "    size_t length = strlen(value);\n" +
         "    if ((uint64_t)length > (uint64_t)INT64_MAX ||\n" +
         "        length > (SIZE_MAX - sizeof(KofunTextListAllocation)) /\n" +
-        "            sizeof(const char *)) {\n" +
+        "            (sizeof(const char *) + 2)) {\n" +
         "        runtime_error(\"error[R010]: List[Text] allocation is too large\");\n" +
         "        return kofun_rt_empty_text_list();\n" +
         "    }\n" +
         "    KofunTextListAllocation *allocation = malloc(\n" +
-        "        sizeof(KofunTextListAllocation) + length * sizeof(const char *));\n" +
+        "        sizeof(KofunTextListAllocation) +\n" +
+        "        length * (sizeof(const char *) + 2));\n" +
         "    if (allocation == NULL) {\n" +
         "        runtime_error(\"error[R010]: List[Text] allocation failed\");\n" +
         "        return kofun_rt_empty_text_list();\n" +
         "    }\n" +
         "    allocation->next = kofun_rt_text_list_allocations;\n" +
         "    kofun_rt_text_list_allocations = allocation;\n" +
+        "    char *characters = (char *)(allocation->items + length);\n" +
         "    for (size_t index = 0; index < length; ++index) {\n" +
-        "        char character[2] = { value[index], '\\0' };\n" +
-        "        allocation->items[index] =\n" +
-        "            kofun_rt_text_concat(\"\", character);\n" +
-        "        if (failed) return kofun_rt_empty_text_list();\n" +
+        "        characters[2 * index] = value[index];\n" +
+        "        characters[2 * index + 1] = '\\0';\n" +
+        "        allocation->items[index] = characters + 2 * index;\n" +
         "    }\n" +
         "    KofunTextList result = {\n" +
         "        (int64_t)length,\n" +
         "        allocation->items,\n" +
         "    };\n" +
         "    return result;\n" +
-        "}\n\n" +
+        "}\n\n"
+        list_runtime = list_runtime +
         "static int64_t kofun_rt_text_list_len(KofunTextList values) {\n" +
         "    return values.len;\n" +
-        "}\n\n" +
+        "}\n\n"
+        list_runtime = list_runtime +
         "static const char *kofun_rt_text_list_get(\n" +
         "    KofunTextList values,\n" +
         "    int64_t index\n" +
@@ -2501,7 +2830,8 @@ fn emit_c(source: Text, profile: Bool) -> Text {
         "    allocation->next = kofun_rt_text_allocations;\n" +
         "    kofun_rt_text_allocations = allocation;\n" +
         "    return allocation->bytes;\n" +
-        "}\n\n" +
+        "}\n\n"
+        profile_runtime = profile_runtime +
         "static const char *kofun_rt_profile_copy_n(\n" +
         "    const char *value,\n" +
         "    size_t length\n" +
@@ -2510,7 +2840,8 @@ fn emit_c(source: Text, profile: Bool) -> Text {
         "    if (result == NULL) return \"\";\n" +
         "    if (length > 0) memcpy(result, value, length);\n" +
         "    return result;\n" +
-        "}\n\n" +
+        "}\n\n"
+        profile_runtime = profile_runtime +
         "static KofunTextList kofun_rt_args(int argc, char **argv) {\n" +
         "    if (argc <= 1) return kofun_rt_empty_text_list();\n" +
         "    size_t length = (size_t)(argc - 1);\n" +
@@ -2534,7 +2865,8 @@ fn emit_c(source: Text, profile: Bool) -> Text {
         "    }\n" +
         "    KofunTextList result = { (int64_t)length, allocation->items };\n" +
         "    return result;\n" +
-        "}\n\n" +
+        "}\n\n"
+        profile_runtime = profile_runtime +
         "static int64_t kofun_rt_text_len(const char *value) {\n" +
         "    size_t length = strlen(value);\n" +
         "    if ((uint64_t)length > (uint64_t)INT64_MAX) {\n" +
@@ -2542,7 +2874,8 @@ fn emit_c(source: Text, profile: Bool) -> Text {
         "        return 0;\n" +
         "    }\n" +
         "    return (int64_t)length;\n" +
-        "}\n\n" +
+        "}\n\n"
+        profile_runtime = profile_runtime +
         "static bool kofun_rt_text_contains(\n" +
         "    const char *value,\n" +
         "    const char *needle\n" +
@@ -2552,14 +2885,16 @@ fn emit_c(source: Text, profile: Bool) -> Text {
         "static int64_t kofun_rt_find(const char *value, const char *needle) {\n" +
         "    const char *found = strstr(value, needle);\n" +
         "    return found == NULL ? INT64_C(-1) : (int64_t)(found - value);\n" +
-        "}\n\n" +
+        "}\n\n"
+        profile_runtime = profile_runtime +
         "static bool kofun_rt_starts_with(\n" +
         "    const char *value,\n" +
         "    const char *prefix\n" +
         ") {\n" +
         "    size_t prefix_length = strlen(prefix);\n" +
         "    return strncmp(value, prefix, prefix_length) == 0;\n" +
-        "}\n\n" +
+        "}\n\n"
+        profile_runtime = profile_runtime +
         "static bool kofun_rt_is_digit(const char *value) {\n" +
         "    return value[0] != '\\0' && value[1] == '\\0' &&\n" +
         "        isdigit((unsigned char)value[0]) != 0;\n" +
@@ -2577,7 +2912,8 @@ fn emit_c(source: Text, profile: Bool) -> Text {
         "        return false;\n" +
         "    }\n" +
         "    return kofun_unicode_is_xid_continue(codepoint);\n" +
-        "}\n\n" +
+        "}\n\n"
+        profile_runtime = profile_runtime +
         "static const char *kofun_rt_text_slice(\n" +
         "    const char *value,\n" +
         "    int64_t start,\n" +
@@ -2600,7 +2936,8 @@ fn emit_c(source: Text, profile: Bool) -> Text {
         "    while (end > start && isspace(end[-1])) --end;\n" +
         "    return kofun_rt_profile_copy_n(\n" +
         "        (const char *)start, (size_t)(end - start));\n" +
-        "}\n\n" +
+        "}\n\n"
+        profile_runtime = profile_runtime +
         "static const char *kofun_rt_validate_unicode_source(const char *value) {\n" +
         "    KofunUnicodeError unicode_error;\n" +
         "    if (kofun_unicode_validate_source((const uint8_t *)value,\n" +
@@ -2611,7 +2948,8 @@ fn emit_c(source: Text, profile: Bool) -> Text {
         "    kofun_unicode_format_error(&unicode_error,\n" +
         "        getenv(\"KOFUN_DIAGNOSTIC_LOCALE\"), message, sizeof(message));\n" +
         "    return kofun_rt_profile_copy_n(message, strlen(message));\n" +
-        "}\n\n" +
+        "}\n\n"
+        profile_runtime = profile_runtime +
         "static const char *kofun_rt_read_text(const char *path) {\n" +
         "    FILE *file = fopen(path, \"rb\");\n" +
         "    if (file == NULL) {\n" +
@@ -2645,7 +2983,8 @@ fn emit_c(source: Text, profile: Bool) -> Text {
         "    result[read] = '\\0';\n" +
         "    fclose(file);\n" +
         "    return result;\n" +
-        "}\n\n" +
+        "}\n\n"
+        profile_runtime = profile_runtime +
         "static void kofun_rt_write_text(\n" +
         "    const char *path,\n" +
         "    const char *value\n" +
@@ -2709,7 +3048,8 @@ fn emit_c(source: Text, profile: Bool) -> Text {
         profile_main
         program = emit_profile_program(source, prelude)
     }
-    return "/* Generated by the Kofun-written Stage 1 seed compiler. */\n" +
+    let mut output =
+    "/* Generated by the Kofun-written Stage 1 seed compiler. */\n" +
     "#include <inttypes.h>\n" +
     "#include <stdbool.h>\n" +
     "#include <stdint.h>\n" +
@@ -2724,7 +3064,8 @@ fn emit_c(source: Text, profile: Bool) -> Text {
     "        fputc('\\n', stderr);\n" +
     "    }\n" +
     "    failed = true;\n" +
-    "}\n\n" +
+    "}\n\n"
+    output = output +
     "static int64_t checked_add(int64_t left, int64_t right) {\n" +
     "    int64_t result;\n" +
     "    if (__builtin_add_overflow(left, right, &result)) {\n" +
@@ -2732,7 +3073,8 @@ fn emit_c(source: Text, profile: Bool) -> Text {
     "        return 0;\n" +
     "    }\n" +
     "    return result;\n" +
-    "}\n\n" +
+    "}\n\n"
+    output = output +
     "static int64_t checked_sub(int64_t left, int64_t right) {\n" +
     "    int64_t result;\n" +
     "    if (__builtin_sub_overflow(left, right, &result)) {\n" +
@@ -2740,7 +3082,8 @@ fn emit_c(source: Text, profile: Bool) -> Text {
     "        return 0;\n" +
     "    }\n" +
     "    return result;\n" +
-    "}\n\n" +
+    "}\n\n"
+    output = output +
     "static int64_t checked_mul(int64_t left, int64_t right) {\n" +
     "    int64_t result;\n" +
     "    if (__builtin_mul_overflow(left, right, &result)) {\n" +
@@ -2748,14 +3091,16 @@ fn emit_c(source: Text, profile: Bool) -> Text {
     "        return 0;\n" +
     "    }\n" +
     "    return result;\n" +
-    "}\n\n" +
+    "}\n\n"
+    output = output +
     "static int64_t checked_neg(int64_t value) {\n" +
     "    if (value == INT64_MIN) {\n" +
     "        runtime_error(\"error[R010]: integer overflow in unary operator `-`\");\n" +
     "        return 0;\n" +
     "    }\n" +
     "    return -value;\n" +
-    "}\n\n" +
+    "}\n\n"
+    output = output +
     "static int64_t floor_div(int64_t left, int64_t right) {\n" +
     "    if (right == 0) {\n" +
     "        runtime_error(\"error[R010]: operator `//` failed: division by zero\");\n" +
@@ -2769,7 +3114,8 @@ fn emit_c(source: Text, profile: Bool) -> Text {
     "    int64_t remainder = left % right;\n" +
     "    if (remainder != 0 && ((remainder < 0) != (right < 0))) --quotient;\n" +
     "    return quotient;\n" +
-    "}\n\n" +
+    "}\n\n"
+    output = output +
     "static int64_t floor_mod(int64_t left, int64_t right) {\n" +
     "    if (right == 0) {\n" +
     "        runtime_error(\"error[R010]: operator `%` failed: division by zero\");\n" +
@@ -2779,7 +3125,8 @@ fn emit_c(source: Text, profile: Bool) -> Text {
     "    int64_t remainder = left % right;\n" +
     "    if (remainder != 0 && ((remainder < 0) != (right < 0))) remainder += right;\n" +
     "    return remainder;\n" +
-    "}\n\n" +
+    "}\n\n"
+    return output +
     text_runtime +
     text_index_runtime +
     list_runtime +
