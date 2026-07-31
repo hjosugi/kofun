@@ -34,8 +34,11 @@ native backends already execute bounded Int, function, `List[Int]`, and UTF-8
 `Text` profiles. The [implemented-status matrix](MVP_IMPLEMENTED.md) is the
 authority for their exact active boundary.
 
-Heterogeneous records ([#546](https://github.com/hjosugi/kofun/issues/546)),
-the concrete-first law system
+The heterogeneous record design is settled, not pending: [#546](https://github.com/hjosugi/kofun/issues/546)
+closed once [`spec/records-v1.md`](../spec/records-v1.md) was accepted, and
+`task records` gates it. What stays open is lowering records past the bounded
+frontend ([#783](https://github.com/hjosugi/kofun/issues/783)). The
+concrete-first law system
 ([#551](https://github.com/hjosugi/kofun/issues/551)), syntax decisions in
 [#624](https://github.com/hjosugi/kofun/issues/624) through
 [#626](https://github.com/hjosugi/kofun/issues/626), and the small-core
