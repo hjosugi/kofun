@@ -1,0 +1,14 @@
+type Box = | Empty | Full(value: Int)
+
+fn main() {
+    let mut inner = 1
+    let b: Box = Full(7)
+    match b {
+        Full(inner) => {
+            inner = 9
+            print(inner)
+        },
+        Empty => { print(0) },
+    }
+    print(inner)
+}

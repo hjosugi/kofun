@@ -1,3 +1,5 @@
+type Signal2 = | Empty2 | Full2(value: Int)
+
 type Signal = | Red | Green | Blue
 
 fn exercise(root: Int) -> Int {
@@ -57,6 +59,17 @@ fn exercise(root: Int) -> Int {
         print(level)
     }
     print(level)
+    let carried = 100
+    let boxed: Signal2 = Full2(7)
+    match boxed {
+        Full2(carried) => { print(carried) },
+        Empty2 => { print(0) },
+    }
+    match boxed {
+        Full2(carried) => { print(carried + 1) },
+        Empty2 => { print(0) },
+    }
+    print(carried)
     return value
 }
 
