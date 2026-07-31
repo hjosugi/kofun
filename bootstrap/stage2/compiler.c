@@ -11029,13 +11029,38 @@ static char *lower_body(
                     );
                 }
                 char *value = emit_expression(source, hir, cursor, value_end);
-                buffer_format(
-                    &emitted,
-                    "    (void)%s;\n"
-                    "    if (kofun_failed) return %s;\n",
-                    value,
-                    failure_result
-                );
+                int64_t after = skip_trivia(source, value_end);
+                /*
+                 * The final expression of an Int-returning function is its
+                 * result. Only the last statement qualifies, and only when the
+                 * closing brace follows it, so an expression in the middle of a
+                 * body keeps being discarded exactly as before. `main` and
+                 * enum-returning functions are deliberately excluded: `main`
+                 * already appends its own status return, and an enum result
+                 * needs the KofunEnumValue shape rather than this one.
+                 */
+                if (!is_main && append_default && !returns_enum &&
+                    after < length && token_equal(source, after, "}")) {
+                    buffer_format(
+                        &emitted,
+                        "    {\n"
+                        "        int64_t kofun_result = %s;\n"
+                        "        if (kofun_failed) return %s;\n"
+                        "        return kofun_result;\n"
+                        "    }\n",
+                        value,
+                        failure_result
+                    );
+                    returned = true;
+                } else {
+                    buffer_format(
+                        &emitted,
+                        "    (void)%s;\n"
+                        "    if (kofun_failed) return %s;\n",
+                        value,
+                        failure_result
+                    );
+                }
                 free(value);
                 cursor = skip_trivia(source, value_end);
             }

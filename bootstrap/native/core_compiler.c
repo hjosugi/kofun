@@ -2757,6 +2757,28 @@ static bool function_bodies(
             }
         }
         if (parser.error[0] == '\0' && function->has_result) {
+            /*
+             * The final expression of a result-carrying function is its
+             * result. This is a parse-time rewrite of the last statement, not
+             * a lowering change: both targets see an ordinary return, so
+             * neither x86-64 nor AArch64 needs to know the rule exists.
+             *
+             * Only an expression whose value kind already matches the declared
+             * result qualifies. A mismatch, or a body ending in anything that
+             * is not an expression, keeps the original refusal — a function
+             * that falls off its end must still say so rather than return a
+             * value nobody wrote.
+             */
+            if (function->statement_count > 0) {
+                FunctionStatement *last = &function->statements[
+                    function->statement_count - 1
+                ];
+                if (last->kind == FUNCTION_STATEMENT_EXPRESSION &&
+                    last->value != NULL &&
+                    last->value->value_kind == function->result_kind) {
+                    last->kind = FUNCTION_STATEMENT_RETURN;
+                }
+            }
             if (function->statement_count == 0 ||
                 function->statements[
                     function->statement_count - 1
