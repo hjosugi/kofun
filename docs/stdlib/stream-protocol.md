@@ -10,8 +10,9 @@ children (protocol/types, deterministic test scheduler, core operators, I/O
 adapters, native optimization) can be reviewed independently. Reactive
 support is not a prerequisite for the self-host fixed point #618–#622.
 
-Under the standard-library charter the protocol is a **T1 portable
-interface**; schedulers and I/O sources are T2/T3 adapters.
+Under the standard-library charter the protocol is a **portable
+interface**; schedulers and I/O sources are platform adapters or
+independently versioned modules.
 
 The words **must**, **must not**, and **may** are normative.
 

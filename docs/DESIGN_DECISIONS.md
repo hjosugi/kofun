@@ -499,16 +499,17 @@ continuous-time FRP are rejected as v1 surface.
 
 ## DD-038: The standard library ships in four tiers
 
-T0 prelude (essentials, no authority), T1 portable standard library
-(toolchain-versioned, edition-compatible), T2 platform adapters (explicit
-target support, typed build-time refusal elsewhere), T3 official
+The prelude (essentials, no authority), the portable standard library
+(toolchain-versioned, edition-compatible), platform adapters (explicit
+target support, typed build-time refusal elsewhere), and official
 independently versioned modules (HTTP/TLS, time-zone data, frameworks —
 security updates never wait for a compiler release). Coverage is governed
 by the machine-checked matrix `stdlib/capabilities.tsv` with states
 `implemented`/`specified`/`planned`/`deferred`/`non-goal`, gated by
-`sh stdlib/check-capabilities.sh`; an open planning issue is never
-implementation evidence. YAML is a first-party non-goal; HTTP client,
-date/time, and the benchmark harness are the first specified children.
+`sh stdlib/check-capabilities.sh` (`task capabilities`); an open planning
+issue is never implementation evidence. YAML is a first-party non-goal;
+the HTTP client, date/time, and benchmark harness contracts are the first
+rows to move from `planned` to `specified`.
 
 A Go-shaped monolith is rejected because security-critical data cannot wait
 for compiler releases; a Rust-shaped minimal core is rejected because
@@ -521,7 +522,8 @@ normative.
 
 ## DD-039: The HTTP client is bounded, capability-explicit, HTTP/1.1 first
 
-A T3 module: affine `Client`-owned pooling, stream-protocol bodies with
+An independently versioned official module: affine `Client`-owned pooling,
+stream-protocol bodies with
 caller limits on every read, redirects off by default with typed
 method/body rewriting when enabled, proxies only from explicit
 configuration, DNS/sockets behind the `Network` capability, and TLS behind
@@ -543,8 +545,9 @@ POSIX `Instant`, civil `Date`/`TimeOfDay`/`DateTime`, fixed `Offset`, and
 `Zoned` carrying the tz-db version it resolved against. DST folds and gaps
 take an explicit `Resolve` rule — there is no silent default. RFC 3339 is
 the first parse/format profile; locale formatting is a non-goal. Clocks are
-explicit T2 capabilities with injected fakes in tests; IANA tzdata is a
-pinned T3 artifact updated independently of the compiler.
+explicit platform-adapter capabilities with injected fakes in tests; IANA
+tzdata is a pinned, independently versioned module artifact updated
+independently of the compiler.
 
 A single zone-optional `DateTime` is rejected on the accumulated evidence
 of instant/civil confusion; silent fold disambiguation and
@@ -554,7 +557,7 @@ compiler-bundled tzdata are rejected as wrong-answer generators.
 
 ## DD-041: Benchmarks are declared, raw-sample-first, and honest about counters
 
-A T1 `bench` API plus `kofun bench` runner: per-sample clock identity
+A portable `bench` API plus `kofun bench` runner: per-sample clock identity
 (wall/process/monotonic can never be mislabeled), an explicit `consume`
 anti-elision primitive, deterministic warmup/stop/summary rules, and a
 versioned `kofun.bench-report/v1` that always retains raw samples,

@@ -9,7 +9,7 @@ contract. The first slice is #646 — the canonical raw-sample report,
 deterministic summaries, and explicit unavailable metrics — before any live
 runner or counters.
 
-Under the standard-library charter the benchmark **API** is T1 and the
+Under the standard-library charter the benchmark **API** is portable and the
 `kofun bench` runner ships with the toolchain; #398 and #476 remain the
 allocation/VM counter providers behind this contract and are not duplicated.
 
@@ -34,7 +34,7 @@ bench parse_config(b: Bench) {
 
 ### API and runner split
 
-- The T1 library defines `Bench`, `b.iter`, `b.consume`, parameterized
+- The portable library defines `Bench`, `b.iter`, `b.consume`, parameterized
   cases, and the report types. The `kofun bench` runner discovers `bench`
   declarations, applies budgets, and writes reports. Assertions on
   performance do not belong in unit tests; the runner owns comparison.
@@ -43,7 +43,7 @@ bench parse_config(b: Bench) {
 
 - Wall, process-CPU, and monotonic readings are distinct fields and can
   never be mislabeled: each sample records which clock produced it, via the
-  T2 monotonic clock capability.
+  platform-adapter monotonic clock capability.
 - The harness calibrates and reports its own per-iteration overhead;
   samples are not silently corrected.
 - `b.consume(value)` is the anti-elision primitive: it promises the

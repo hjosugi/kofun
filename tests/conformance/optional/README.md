@@ -64,8 +64,24 @@ no typed IR is written from the broken input.
 | `nil_is_an_identifier` | E2S139 | `nil` and `None` as absence |
 | `null_condition` | E2S140 | `if null`, because there is no truthiness |
 | `recovery_after_suffix` | E2S137 | and reports the later error too |
+| `unknown_type` | E2S141 | a type name the bounded frontend does not know |
+| `expected_type` | E2S141 | an annotation position with no type |
+| `list_missing_bracket` | E2S141 | `List` without `[` |
+| `list_unclosed` | E2S141 | `List[Int` without `]` |
+| `unterminated_text` | E2S141 | a text literal with no closing quote |
+| `unsupported_byte` | E2S141 | a byte the bounded syntax does not accept |
 
 The gate asserts its own refusal list is the same size as the glob, so a
 fixture added without a gate entry stops the build (DD-022).
 
-The frontend owns `E2S134`–`E2S141`.
+The frontend owns `E2S134`–`E2S141`. `E2S141` is the widest of them: it is one
+code for seven lexer and type-parser conditions, six of which are pinned above.
+The seventh — exceeding the frontend's own source limits — needs a generated
+source larger than the fixture corpus and is not pinned here.
+
+None of `E2S134`–`E2S141` has a row in `tests/diagnostics/registry.tsv`. That
+registry's completeness check compares the registry against the codes the
+fixtures in `tests/diagnostics/stage2/` actually emit, so a code from a
+separate emitter such as `optional_frontend.c` is absent from both sides and
+passes unremarked. This suite is the evidence for these codes until they are
+registered.

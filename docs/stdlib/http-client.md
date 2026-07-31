@@ -9,7 +9,7 @@ not that anything ships. The first bounded implementation slice is #644 — the
 HTTP/1.1 core over the deterministic scripted transport — and live DNS,
 socket, and TLS adapters remain separate children.
 
-Under the standard-library charter the client is a **T3 independently
+Under the standard-library charter the client is an **independently
 versioned official module**: its TLS policy and root-store handling must be
 updateable without a compiler release. Closed #24 is evidence of a bounded
 HTTP/1.1 *server*, not of any client API.
@@ -50,8 +50,8 @@ fn fetch_user(take net: Network, read base: Url) -> Result[User, HttpError] {
 
 ### URL
 
-- URL parsing/normalization (percent-encoding, IDNA non-goal in v1) is a T1
-  `url` module dependency, specified with this contract; the client never
+- URL parsing/normalization (percent-encoding, IDNA non-goal in v1) is a
+  portable `url` module dependency, specified with this contract; the client never
   accepts raw strings for structured parts.
 
 ### Scope
@@ -84,7 +84,8 @@ fn fetch_user(take net: Network, read base: Url) -> Result[User, HttpError] {
 
 ### TLS
 
-- TLS is a separate T3 adapter behind a `TlsProvider` interface: the client
+- TLS is a separate independently versioned adapter behind a `TlsProvider`
+  interface: the client
   is specified against the interface, not a vendor.
 - Secure by default: hostname verification and SNI on, minimum TLS 1.2,
   certificate verification cannot be disabled through `ClientConfig` — an

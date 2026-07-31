@@ -1,33 +1,54 @@
-capability	tier	state	evidence
-result-optional-core	T0	implemented	spec/syntax/EXPRESSIONS_AND_LITERALS.md
-validation-accumulation	T0	specified	spec/effects/validation-accumulation.md
-collections-core	T1	implemented	stdlib/list stdlib/array stdlib/map stdlib/set stdlib/vector stdlib/tuple stdlib/binary_heap
-decimal	T1	implemented	stdlib/decimal docs/DECIMAL.md
-json	T1	implemented	stdlib/json
-csv	T1	implemented	stdlib/csv
-toml	T1	implemented	stdlib/toml
-regex	T1	implemented	stdlib/regex
-logging	T1	implemented	stdlib/logging
-testing	T1	implemented	stdlib/testing
-benchmark-harness	T1	specified	docs/stdlib/benchmark.md
-stream-protocol	T1	specified	docs/stdlib/stream-protocol.md
-buffered-io	T1	planned	issue:#636
-url	T1	planned	issue:#638
-hashes-checksums	T1	planned	issue:#636
-mime	T1	deferred	issue:#636
-date-time-civil-types	T1	specified	docs/stdlib/date-time.md
-fs-portable-interface	T2	planned	issue:#491
-environment-process	T2	planned	issue:#494
-clock-capability	T2	specified	docs/stdlib/date-time.md
-secure-randomness	T2	planned	issue:#234
-temporary-files	T2	planned	issue:#636
-linux-x86-64-seed	T2	implemented	stdlib/linux_x86_64 stdlib/tests
-http-server	T3	implemented	framework/http
-cli-framework	T1	implemented	framework/cli
-http-client	T3	specified	docs/stdlib/http-client.md
-tls	T3	deferred	issue:#638
-time-zone-data	T3	specified	docs/stdlib/date-time.md
-compression-archive	T3	deferred	issue:#636
-crypto-primitives	T3	deferred	issue:#636
-yaml	T3	non-goal	docs/STANDARD_LIBRARY_CHARTER.md
-concurrency-scoped	T1	deferred	issue:#555
+# Standard library capability matrix. Normative states for docs/STANDARD_LIBRARY_CHARTER.md.
+#
+# Columns:
+#   job         stable identifier; never reused for a different capability
+#   tier        prelude | portable | adapter | module | none
+#   state       implemented | specified | planned | deferred | non-goal
+#   evidence    a command, a spec path, or an issue reference; see the state rules
+#   note        one line explaining the boundary, especially what is NOT covered
+#
+# State rules, enforced by stdlib/check-capabilities.sh:
+#   implemented  evidence must be a `task <target>` command that exists in Taskfile.yml
+#   specified    evidence must be a spec/ or docs/ path that exists
+#   planned      evidence must be one or more issue references
+#   deferred     evidence must be one or more issue references
+#   non-goal     evidence must be the literal `charter`, and the note carries the reason
+#
+# An open generated planning issue is not implementation evidence. The checker
+# does not know which issues are generated, so the reviewer does: never cite
+# #35-#525 alone as evidence for anything.
+job	tier	state	evidence	note
+collections-sequence	portable	implemented	task stdlib	list, vector, array, tuple; bounded Kofun sources with per-module verify.sh
+collections-associative	portable	implemented	task stdlib	map, set; no ordered or persistent variants
+collections-priority	portable	implemented	task stdlib	binary_heap; PriorityQueue as a distinct API is not offered
+decimal-library	portable	implemented	task stdlib	stdlib/decimal source module; compiler-native Decimal is #710 and is not this row
+json	portable	implemented	task stdlib	strict value codec; number lexemes preserved rather than coerced
+csv	portable	implemented	task stdlib	bounded reader/writer
+toml	portable	implemented	task stdlib	baseline config format for the toolchain
+regex	portable	implemented	task stdlib	bounded engine; no backtracking-unbounded constructs
+logging	portable	implemented	task stdlib	structured fields, levels, sinks
+unit-testing	portable	implemented	task stdlib	assertions and fixtures; subprocess tests are not covered
+clock-core	portable	implemented	task stdlib	deterministic Clock core, separate from calendar and time-zone data
+random-core	portable	implemented	task stdlib	deterministic core; the Linux entropy adapter is the only nondeterministic point
+filesystem-process-env	adapter	implemented	task stdlib	Linux x86-64 syscall seed: files, memory, process, env, sockets, time
+cli-parsing	module	implemented	task cli-framework	bounded direct-static native CLI with generated help; closed #25
+http-server	module	implemented	task http	bounded first-party HTTP/API framework; closed #24, not evidence of a client
+validation-accumulation	portable	specified	spec/effects/validation-accumulation.md	accepted contract; no library implements it and its gate does not exist
+aggregate-layout	portable	specified	spec/aggregate-layout-v1.md	layout facts consumed by resource APIs
+http-client	module	specified	docs/stdlib/http-client.md	accepted contract (#638); HTTP/1.1 core over the scripted transport is #644, live DNS/socket/TLS adapters separate
+date-time-core	portable	specified	docs/stdlib/date-time.md	accepted contract (#639); core calendar and strict RFC 3339 slice is #645
+time-zone-data	module	specified	docs/stdlib/date-time.md	accepted contract (#639); versioned tzdb reader with gap/fold resolution is #648
+clock-adapters	adapter	planned	#647	explicit monotonic/system identities, sleep, deterministic fake time
+benchmark-harness	portable	specified	docs/stdlib/benchmark.md	accepted contract (#640); raw-sample report schema slice is #646
+concurrency	portable	planned	#555 #736	scoped parallelism only, after the runtime contract exists
+stream-protocol	portable	specified	docs/stdlib/stream-protocol.md	accepted protocol contract (#627); no operators, scheduler, or adapters implemented
+buffered-io	portable	planned	#231	no buffered reader/writer exists over the syscall seed today
+url	portable	planned	#638	parsing and normalisation; owned by the HTTP client contract, not independent
+secure-randomness	adapter	planned	#234	the Linux entropy adapter exists; the portable capability boundary does not
+temporary-files	adapter	planned	#231	creation, cleanup on take, and collision behaviour are unspecified
+hashes-checksums	portable	deferred	#636	no consumer yet; the toolchain uses sha256sum from the host
+compression-archive	module	deferred	#636	no consumer yet; belongs to the module tier when one appears
+mime	module	deferred	#638	only meaningful once the HTTP client contract fixes content negotiation
+crypto-tls	module	deferred	#638	security-critical and independently versioned; must not enter the portable tier
+yaml	none	non-goal	charter	TOML is the baseline config format; a second one splits the toolchain's own config
+database-drivers	none	non-goal	charter	protocol- and vendor-specific; belongs outside the distribution entirely

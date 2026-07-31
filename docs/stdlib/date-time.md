@@ -10,9 +10,9 @@ evidence of calendar or time-zone support. Implementation is split into core
 calendar arithmetic and RFC 3339 (#645), explicit clock adapters (#647), and
 versioned time-zone data (#648).
 
-Under the standard-library charter: portable civil types are **T1**, clock
-capabilities are **T2**, and time-zone data is a **T3** independently
-versioned module.
+Under the standard-library charter: civil types belong to the **portable
+standard library**, clock capabilities are **platform adapters**, and
+time-zone data is an **independently versioned official module**.
 
 The words **must**, **must not**, and **may** are normative.
 
@@ -54,7 +54,8 @@ typed `Result`; and no API reads the host clock or host zone implicitly.
   `reject` or shift under `earlier`/`later` with the choice visible at the
   call site.
 - Zone lookups go through a `TimeZones` capability backed by IANA tzdata
-  packaged as a T3 versioned artifact. Builds pin the tz-db version; every
+  packaged as an independently versioned module artifact. Builds pin the
+  tz-db version; every
   `Zoned` carries the version it was resolved against; updating tzdata
   never requires a compiler release.
 - An unknown zone id, missing tz data, or version mismatch is a typed
@@ -72,7 +73,7 @@ typed `Result`; and no API reads the host clock or host zone implicitly.
 
 ## Clocks and testing
 
-- `Clock` (wall) and `MonotonicClock` are T2 capabilities passed
+- `Clock` (wall) and `MonotonicClock` are platform-adapter capabilities passed
   explicitly; there is no global `now()`.
 - Tests inject fake clocks and fixed zone data; no conformance fixture may
   depend on host time or host zone. Golden corpora cover leap years, month
@@ -93,7 +94,7 @@ exists to prevent; the explicit rule costs one argument. Rejected.
 
 **Bundle tzdata into the compiler release.** Merits: zero configuration.
 Demerits: tz rules change on political timescales, so stale compilers give
-wrong answers; T3 versioned data with per-build pinning keeps builds
+wrong answers; independently versioned data with per-build pinning keeps builds
 reproducible *and* updateable. Rejected.
 
 **128-bit nanosecond `Duration`.** Merits: astronomical range. Demerits:

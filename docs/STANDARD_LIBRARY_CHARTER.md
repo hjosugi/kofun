@@ -1,190 +1,188 @@
 # Standard library charter
 
-## Status
+Status: accepted policy for GitHub issue
+[#636](https://github.com/hjosugi/kofun/issues/636). This document decides what
+ships, who owns it, and how it is versioned. It does **not** claim that every
+capability below is implemented — the matrix says which are, and the checker
+refuses a matrix that overstates.
 
-This document is the accepted charter for GitHub issue
-[#636](https://github.com/hjosugi/kofun/issues/636). It decides what "the
-standard library is enough for ordinary work" means for Kofun: the tiers, the
-coverage goal, the compatibility and update policy, and the engineering rules
-every library module answers to.
+Decision owner: the repository maintainer. Changing a tier boundary, the
+compatibility promise, or a `non-goal` classification requires a separately
+reviewed change to this document and to
+[`stdlib/capabilities.tsv`](../stdlib/capabilities.tsv).
 
-It is a policy contract, not a status report. The machine-checked coverage
-matrix lives in [`stdlib/capabilities.tsv`](../stdlib/capabilities.tsv) and is
-validated by `sh stdlib/check-capabilities.sh`; a row saying `planned` or
-`deferred` there is the honest state, and nothing in this charter promotes it.
-The generated planning issues #479–#503 are routed by this charter; an open
-planning issue is never implementation evidence.
+The words **must**, **must not**, **should**, and **may** are normative.
 
-## The four tiers
+## The problem this solves
 
-Every library capability belongs to exactly one tier. The tier decides how it
-ships, how it is versioned, and what compatibility it promises.
+"Standard library" already means four different things in this repository:
+a Linux syscall seed under `stdlib/`, first-party frameworks under
+`framework/`, a generated planning catalogue, and prose in the roadmap. Each
+carried its own implied promise about portability, compatibility, and security
+updates. This charter makes one promise per tier, and makes the coverage claim
+machine-checked so it cannot drift ahead of the code.
 
-### T0 — Prelude / built-ins
+## Tiers
 
-Tiny, implicitly available language essentials only: `Result`, `Optional`
-(`T?`), `Validated`, core numeric/text/boolean operations, comparison, and the
-collection literals the language itself defines. No I/O, no network, no clock,
-no randomness, no process access, no hidden allocation-heavy convenience.
+Four tiers, distinguished by what each promises rather than by what it
+contains.
 
-- Ships: inseparable from the compiler release.
-- Compatibility: edition-scoped source compatibility; a break is a language
-  change and goes through the RFC ledger.
+### 1. Prelude / built-ins
 
-### T1 — Portable standard library
+Tiny, implicitly available language essentials. **No** I/O, network, clock,
+randomness, process access, or allocation-heavy convenience. Anything that can
+observe or change the outside world is disqualified from this tier by
+definition, not by judgement.
 
-Shipped and tested with every Kofun toolchain; explicitly imported; pure Kofun
-where practical; no platform authority. Collections, text/bytes, encodings,
-JSON/CSV/TOML, regex, logging, testing primitives, validation, the benchmark
-API, and portable interfaces (such as the stream protocol) belong here.
+### 2. Portable standard library
 
-- Ships: with the toolchain, versioned with it.
-- Compatibility: source-compatible within an edition.
+Shipped and tested with every toolchain, explicitly imported, source-compatible
+within an edition, and pure Kofun where practical. Collections, text and bytes,
+`Result`/`Optional`, path-independent encodings, testing primitives, and the
+portable half of any capability whose other half is a platform adapter.
 
-### T2 — Platform standard adapters
+### 3. Platform standard adapters
 
-First-party implementations of filesystem, process, environment, clock,
-entropy, socket, and terminal capabilities. Target support is explicit:
-an unsupported target fails at build time with a typed refusal rather than
-silently degrading. The current `stdlib/linux_x86_64` syscall contract is the
-first T2 adapter.
+First-party implementations of filesystem, process, clock, entropy, socket, and
+terminal capabilities. **Target support is explicit: an unsupported target must
+fail at build time rather than degrade silently.** A capability that cannot fail
+loudly on an unsupported target does not belong in this tier.
 
-- Ships: with the toolchain, per target.
-- Compatibility: the portable interface is T1-stable; the adapter set may
-  grow per target.
+### 4. Official independently versioned modules
 
-### T3 — Official independently versioned modules
+Security- and protocol-heavy components — HTTP and TLS, time-zone databases,
+compression, database drivers, application frameworks. They may ship in the
+default distribution, but **must be updateable without waiting for a compiler
+release**, because a TLS fix that waits for a language release is a TLS fix that
+arrives late.
 
-Security- and protocol-heavy components: HTTP client and TLS, time-zone
-database, compression/archive formats, database drivers, and the application
-frameworks under `framework/`. They may ship in the default distribution but
-must be updateable without waiting for a compiler release, because their
-threat model moves faster than the language.
+Any later simplification of these four must still preserve the explicit
+bundling, versioning, security-update, target-support, and binary-size
+contracts. Merging tiers 3 and 4 in particular would put a security update on
+the compiler's release cadence, which is the failure this split exists to
+prevent.
 
-- Ships: in the default distribution, independently versioned (semver).
-- Compatibility: per-module semver; each module names its own support window
-  and security-update channel.
+## The coverage matrix
 
-## Alternatives considered
+[`stdlib/capabilities.tsv`](../stdlib/capabilities.tsv) is the normative
+statement of what exists. `sh stdlib/check-capabilities.sh` — wired in as
+`task capabilities` and part of `task verify` — enforces it.
 
-**One monolithic stdlib, everything compiler-versioned (Go's shape).**
-Merits: one import namespace, one compatibility promise, no tier bookkeeping.
-Demerits: TLS root stores, time-zone data, and protocol parsers cannot wait
-for compiler releases to take security updates; Go itself has had to carve
-out `golang.org/x/` for exactly this pressure. Rejected.
+Five states, and what each is allowed to cite as evidence:
 
-**Minimal core plus third-party ecosystem (Rust's shape).** Merits: smallest
-trusted surface, fastest ecosystem iteration. Demerits: ordinary work
-(JSON, HTTP, dates, logging) immediately requires unvetted dependency
-choices, which contradicts the batteries-included outcome #636 requires and
-multiplies supply-chain review for every user. Rejected.
+| state | meaning | evidence the checker requires |
+|---|---|---|
+| `implemented` | executable today | a `task <target>` that **exists in `Taskfile.yml`** |
+| `specified` | accepted contract, nothing shipped | a `spec/` or `docs/` path that **exists** |
+| `planned` | scoped, not started | one or more issue references |
+| `deferred` | valid, outside the active milestone | one or more issue references |
+| `non-goal` | refused, with a reason | the literal `charter`; the note carries the reason |
 
-**Everything implicit in the prelude (scripting-language shape).** Merits:
-zero-import ergonomics. Demerits: ambient authority (I/O, clock, randomness
-reachable without a visible capability) breaks Kofun's explicit-capability
-rule, and unused convenience bloats every static artifact. Rejected.
+The evidence rule is the point. `implemented` cannot be claimed by citing a
+source file, because a source file no gate reads proves nothing — the checker
+refuses `implemented` unless the evidence is a task target it can find. An open
+generated planning issue (`#35`–`#525`) is **never** implementation evidence;
+the checker cannot tell which issues are generated, so the reviewer must.
 
-**The four tiers above.** Merits: batteries are reliable and documented
-(Ruby's lesson), the compatibility promise is cohesive where it can be
-(Go's lesson), and security-critical parts update independently (the
-default-gem lesson). Demerits: tier assignment is a real decision per module
-and must be policed by the matrix checker; the boundary between T1 and T3
-will occasionally be argued. Accepted: the demerit is bookkeeping, and the
-bookkeeping is mechanical.
+The checker also carries nine negative self-tests. Each breaks exactly one rule
+— an unknown state, an `implemented` row citing a path instead of a task, a
+`specified` row citing a file that does not exist, a `non-goal` that smuggles in
+evidence, a duplicated job id — and each must be refused. A checker that
+silently stopped enforcing one of these would keep reporting PASS on an honest
+matrix, which is why the mutations are run rather than trusted.
 
-## Coverage goal and the matrix
+Finally, the checker holds its own list of the capabilities this charter names,
+and fails if the matrix lacks a row for one. **A missing row looks exactly like
+a missing problem**, so absence is the failure mode worth catching.
 
-A user must be able to do all of the following without choosing an unvetted
-third-party dependency: files/paths, environment/process, time (clock,
-calendar, zones), JSON/CSV/TOML, logging, unit testing, CLI parsing, HTTP
-server and client, streams/concurrency composition, validation, and
-benchmarking — plus the Go-style gap set: buffered I/O, URL handling,
-hashes/checksums, compression/archives, crypto/TLS, MIME, temporary files,
-and secure randomness.
+## What is decided here
 
-[`stdlib/capabilities.tsv`](../stdlib/capabilities.tsv) is the single
-machine-checked matrix. Each row assigns one capability a tier, exactly one
-state — `implemented`, `specified`, `planned`, `deferred`, or `non-goal` —
-and evidence: repository paths for `implemented`/`specified`, an issue or
-this charter for the rest. `sh stdlib/check-capabilities.sh` fails the build
-of truth when a state is unknown, evidence is missing, or a named path does
-not exist. Breadth is this decision matrix, not an automatic promise to
-implement every package.
+#636 asked for four classifications. They are:
 
-### Decisions the matrix records (first child set)
+- **HTTP client** — `planned`, tier 4. The contract (#638) comes before the
+  core (#644), because URL, TLS, streaming, and cancellation boundaries change
+  the shape of the API. The closed HTTP *server* framework (#24) is not
+  evidence that a client exists.
+- **Calendar, date, and time zones** — split. `date-time-core` is `planned` in
+  tier 2 (#639, #645); `time-zone-data` is `planned` in tier 4 (#648), because
+  a tzdb is data that expires and must update independently. `clock-core` is
+  already `implemented` and stays deliberately separate from both: a monotonic
+  reading is not a calendar.
+- **Benchmark harness** — `planned`, tier 2 (#640, #646).
+- **YAML** — **`non-goal`**. TOML is the baseline configuration format and the
+  toolchain's own config uses it. A second configuration language splits every
+  tool that reads config, and the cost is paid forever by users who did not
+  choose it. This is a refusal, not a deferral: it should not be revisited
+  without a concrete consumer that TOML cannot serve.
 
-- **HTTP client**: T3 official module. Contract accepted in
-  [`docs/stdlib/http-client.md`](stdlib/http-client.md) (#638); first
-  implementation slice is #644.
-- **Calendar / date / time zones**: split across tiers — portable civil
-  types T1, clock capability T2, time-zone data T3. Contract accepted in
-  [`docs/stdlib/date-time.md`](stdlib/date-time.md) (#639); slices #645,
-  #647, #648.
-- **Benchmark harness**: T1 library API plus a `kofun bench` runner.
-  Contract accepted in [`docs/stdlib/benchmark.md`](stdlib/benchmark.md)
-  (#640); first slice is #646.
-- **YAML**: **non-goal** as a first-party module. Merits of shipping it:
-  ubiquitous config format. Demerits: the specification is large and
-  security-hostile (anchors, aliases, implicit typing have a long CVE
-  history), JSON+TOML already cover Kofun's config needs, and Ruby's own
-  trajectory (Psych moving toward safe-by-default loading) shows the cost
-  of owning it. A future community or T3 module may revisit this with a
-  safe-subset profile; the charter does not.
-- **Stream protocol**: T1 portable interface, accepted in
-  [`docs/stdlib/stream-protocol.md`](stdlib/stream-protocol.md) (#627).
-- **Concurrency**: deferred behind the #555 runtime contract; the charter
-  assigns scoped tasks/channels to T1-interface/T2-runtime once that
-  contract exists.
+Also classified, since #636 required the Go-style gap inventory to be explicit
+rather than implied: buffered I/O, URL, secure randomness, and temporary files
+are `planned`; hashes and checksums, compression and archives, MIME, and
+crypto/TLS are `deferred`; database drivers are a `non-goal`.
+
+Three of those deserve their reason stated. **Hashes and checksums** are
+deferred because there is no consumer — the toolchain uses the host's
+`sha256sum`, and a standard hash API written before something needs it will be
+the wrong API. **MIME** is deferred to the HTTP client contract, because content
+negotiation is where it acquires meaning. **Crypto and TLS** are deferred *and*
+pinned to tier 4: they must never enter the portable tier, whatever their state,
+because that would put them on the compiler's release cadence.
 
 ## Engineering rules
 
-1. Prefer Kofun source over trusted/native code; keep the trusted platform
-   surface small and audited (`stdlib/CONTRACT.md` governs the seed).
-2. Third-party native dependencies are permitted only when declared, pinned,
-   licensed, reproducible, replaceable behind a Kofun contract, and absent
-   from targets/profiles that do not opt in.
-3. No ambient authority: filesystem, process, clock, randomness, and network
-   operations keep explicit effect/capability boundaries at every tier.
-4. Resource APIs use `read` / `edit` / `take` with deterministic cleanup;
-   raw handles and errno values do not leak through public signatures.
-5. Pay-for-what-you-use: an unused module adds zero bytes to a static
-   artifact; the included cost of each module is recorded beside its
-   release evidence.
-6. Parsers and protocol modules carry adversarial input limits, fuzz
-   fixtures, and typed `Result` errors; no undocumented sentinel values.
-7. Every public module has a short recipe, a precise reference, a runnable
-   example, and is listable/searchable by `kofun` tooling.
-8. T3 security-critical modules name an update channel and support window
-   separate from compiler releases.
+- Prefer Kofun source over trusted or native code. Keep the trusted platform
+  surface small and audited.
+- Third-party native dependencies are not forbidden, but must be declared,
+  pinned, licensed, reproducible, replaceable behind a Kofun contract, and
+  absent from targets and profiles that do not opt in.
+- **No ambient authority.** Filesystem, process, clock, randomness, and network
+  operations retain explicit effect and capability boundaries. `stdlib/random`
+  already follows this: one adapter file is the sole point at which
+  nondeterministic input enters, and the core is deterministic.
+- Resource APIs use `read` / `edit` / `take` with deterministic cleanup. Raw
+  handles and errno values do not leak into user code.
+- **Pay for what you use.** An unused standard module must not enlarge a static
+  artifact, and the code-size and startup cost of included modules is recorded.
+- Parsers and protocols carry adversarial limits, fuzz fixtures, and typed
+  `Result` errors. No undocumented sentinel values.
+- Every public module has a short recipe, a precise reference, a runnable
+  example, and a way for `kofun` tooling to list and search its exported
+  operations.
+- Security-critical tier 4 modules have an update channel and support window
+  separate from compiler releases.
 
-## Compatibility and deprecation
+## Compatibility
 
-- T0/T1: source compatibility within an edition; removal requires a
-  deprecation period of at least one minor toolchain release with a
-  diagnostic that names the replacement.
-- T2: the portable interface follows T1; per-target adapters may be added
-  freely and removed only with the same deprecation discipline.
-- T3: per-module semver; a security fix may break API in a major bump, and
-  the module's support window says how long the previous major receives
-  patches.
+Two promises, deliberately distinct and separately testable.
 
-## Routing of existing work
+**Core compatibility** covers the prelude, the portable standard library, and
+the platform adapters. Within an edition, source compatibility is kept: a
+program that compiles against one toolchain compiles against the next. Removing
+or renaming a public operation is an edition-level change.
 
-- #479–#503 (generated planning): become children of the matrix rows they
-  name; they inherit this charter's tiers and rules rather than restating
-  library-wide policy.
-- #231–#234 (platform abstractions): T2 adapter contracts.
-- #398 / #476 (profiling counters): providers behind the #640 benchmark
-  contract, not duplicated stdlib API.
-- Closed #24 (HTTP server) and #25 (CLI): remain T3/T1 evidence of their
-  documented bounded profiles; neither is evidence for a portable HTTP
-  client or a general options API.
+**Module compatibility** covers tier 4. Each module carries its own version and
+its own compatibility statement. A module may make a breaking change without an
+edition, and the distribution may ship a newer module against an older compiler.
+This is the whole reason the tier exists.
 
-## Non-goals
+A capability that moves between tiers changes which promise applies to it. That
+is an edition-level change and must be recorded here, not only in the matrix.
 
-- implementing every module named in the matrix;
-- Ruby API compatibility or Go package-name cloning;
-- making convenience functions implicit in the prelude;
-- treating `framework/` as language core;
-- banning auditable third-party code categorically;
-- reading an open planning issue as implementation evidence.
+## What this charter does not do
+
+- It does not implement anything.
+- It does not promise Ruby API compatibility or clone Go package names. Those
+  are prior art for *coverage and documentation discipline*, not an API to copy.
+- It does not make convenience functions implicit in the prelude.
+- It does not treat frameworks as language core.
+- It does not turn the generated `#479`–`#503` catalogue into 25 simultaneous
+  implementation tasks. Those issues describe subjects; this document describes
+  policy; neither is executable evidence.
+
+## Validation
+
+| Check | Command | Expected |
+| --- | --- | --- |
+| Matrix | `task capabilities` | every row valid, every named capability present, 9 mutations refused |
+| Existing seed | `task stdlib` | pass without widening the trusted surface |
+| Repository | `task verify` | pass |

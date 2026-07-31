@@ -1,0 +1,3 @@
+fn measure(shape: ) -> Int {
+    return 0
+}
