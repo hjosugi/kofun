@@ -272,9 +272,10 @@ tasks:
       - "sh stdlib/tests/verify.sh"
 
   clock-adapters:
-    desc: "Verify explicit clock identities, affine handles, and fake time"
+    desc: "Verify explicit clock identities, fake time, and Linux integration"
     cmds:
       - "sh tests/stdlib/clock-adapters/check.sh"
+      - "sh tests/stdlib/clock-adapters/check-linux-x86_64.sh"
 
   example-law-evidence:
     desc: "Bind example law evidence to its exact source and honest status"
