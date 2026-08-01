@@ -1,0 +1,9 @@
+type NestedBox = | EmptyNested | Nested(value: Int)
+
+fn main() {
+    let nested: NestedBox = Nested(7)
+    match nested {
+        Nested(value, Nested(value)) => { print(value) },
+        EmptyNested => { print(0) },
+    }
+}

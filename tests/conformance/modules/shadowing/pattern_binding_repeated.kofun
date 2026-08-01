@@ -1,0 +1,9 @@
+type PairBox = | EmptyPair | Pair(value: Int)
+
+fn main() {
+    let pair: PairBox = Pair(7)
+    match pair {
+        Pair(value, value) => { print(value) },
+        EmptyPair => { print(0) },
+    }
+}

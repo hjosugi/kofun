@@ -13,7 +13,8 @@ const IGNORED_KEYWORDS = new Set(['$schema', '$id', 'title', 'description', '$de
 const KNOWN_KEYWORDS = new Set([
     '$ref', 'type', 'required', 'properties', 'additionalProperties', 'const',
     'enum', 'minimum', 'minItems', 'uniqueItems', 'items', 'minLength',
-    'maxLength', 'pattern',
+    'maxLength', 'pattern', 'maximum', 'maxItems', 'oneOf', 'allOf', 'if',
+    'then', 'not',
 ])
 
 function resolveRef(schema, ref) {
@@ -43,9 +44,34 @@ export function validateAgainstSchema(root, node, value, path, errors) {
         validateAgainstSchema(root, resolveRef(root, node.$ref), value, path, errors)
     }
 
+    const schemaMatches = (candidate) => {
+        const candidateErrors = []
+        validateAgainstSchema(root, candidate, value, path, candidateErrors)
+        return candidateErrors.length === 0
+    }
+
+    if (node.not !== undefined && schemaMatches(node.not)) {
+        errors.push(`${path}: value matches a forbidden schema`)
+    }
+    if (node.oneOf !== undefined) {
+        const matches = node.oneOf.filter(schemaMatches).length
+        if (matches !== 1) {
+            errors.push(`${path}: expected exactly one oneOf branch, found ${matches}`)
+        }
+    }
+    for (const candidate of node.allOf ?? []) {
+        validateAgainstSchema(root, candidate, value, path, errors)
+    }
+    if (node.if !== undefined && schemaMatches(node.if) && node.then !== undefined) {
+        validateAgainstSchema(root, node.then, value, path, errors)
+    }
+
     const actual = typeOf(value)
-    if (node.type !== undefined && actual !== node.type) {
-        errors.push(`${path}: expected ${node.type}, found ${actual}`)
+    const expectedTypes = Array.isArray(node.type) ? node.type : [node.type]
+    const typeMatches = expectedTypes.some((expected) =>
+        expected === actual || (expected === 'number' && actual === 'integer'))
+    if (node.type !== undefined && !typeMatches) {
+        errors.push(`${path}: expected ${expectedTypes.join(' or ')}, found ${actual}`)
         return
     }
     if (node.const !== undefined && value !== node.const) {
@@ -56,6 +82,9 @@ export function validateAgainstSchema(root, node, value, path, errors) {
     }
     if (node.minimum !== undefined && value < node.minimum) {
         errors.push(`${path}: must be at least ${node.minimum}`)
+    }
+    if (node.maximum !== undefined && value > node.maximum) {
+        errors.push(`${path}: must be at most ${node.maximum}`)
     }
 
     if (actual === 'string') {
@@ -77,6 +106,9 @@ export function validateAgainstSchema(root, node, value, path, errors) {
         if (node.uniqueItems === true) {
             const seen = new Set(value.map((item) => JSON.stringify(item)))
             if (seen.size !== value.length) errors.push(`${path}: items must be unique`)
+        }
+        if (node.maxItems !== undefined && value.length > node.maxItems) {
+            errors.push(`${path}: must contain at most ${node.maxItems} items`)
         }
         if (node.items !== undefined) {
             value.forEach((item, index) => {

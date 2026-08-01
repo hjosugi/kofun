@@ -45,6 +45,12 @@ instants, non-negative durations, checked elapsed/deadline arithmetic, and an
 explicit manual clock. Its Linux adapter is the only system-time read; the
 focused gate executes a deterministic Int-Core projection of the pure rules.
 
+The platform-independent [`date_time/`](date_time/) producer executes seven
+nominal civil/instant shapes, a closed typed outcome, preflight-checked
+arithmetic, duration normalization, and a recursive canonical RFC 3339 UTC
+parser directly through Stage 2 C11. It is the bounded core producer, not a
+clock adapter or time-zone implementation.
+
 The platform-independent [`list/`](list/) checkpoint defines an eager,
 value-returning `List[Int]` surface with typed empty/index failures and ordered
 pipeline contracts. Its gate executes real Lists through direct x86-64 plus a
