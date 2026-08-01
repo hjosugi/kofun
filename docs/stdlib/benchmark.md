@@ -67,13 +67,29 @@ bench parse_config(b: Bench) {
   raw samples (never only summaries), requested budgets, harness overhead,
   toolchain/source/artifact digests, host identity, and CPU
   affinity/frequency/noise notes as metadata rather than corrections.
-- Summaries (min, median, p90, MAD) are computed deterministically from
-  raw samples; outliers are flagged, never dropped.
+- Summaries (min, max, median, p25, p75, MAD) are computed deterministically
+  from raw samples; outliers are flagged, never dropped.
 - Comparison between two reports requires both raw sample sets and a
   stated threshold; the runner never claims a significant speedup from one
   run.
 - Failures and cancellation produce typed non-success results; a partial
   report is never published as success.
+
+### Deterministic v1 summary rule
+
+Sort the complete raw sample series in ascending order before computing a
+summary. For `n` samples, v1 quantiles use the one-based nearest-rank rule:
+the rank for quantile `p` is `ceil(p * n)`. There is no interpolation. Thus an
+even-count median is the lower of the two middle observations. `p25`, median,
+and `p75` use `p = 0.25`, `0.50`, and `0.75` respectively; `min` and `max` are
+the first and last sorted observations.
+
+MAD is the median absolute deviation from that v1 median: compute the absolute
+difference between every raw observation and the median, sort those
+differences, and apply the same nearest-rank median rule. Scaled integer
+observations therefore produce exact integer summaries without an implicit
+rounding mode. A future interpolated statistic requires a new schema version;
+it must not silently change these bytes.
 
 ## Examples
 

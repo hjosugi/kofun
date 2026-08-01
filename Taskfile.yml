@@ -276,6 +276,11 @@ tasks:
     cmds:
       - "sh tests/stdlib/clock-adapters/check.sh"
 
+  benchmark-summary:
+    desc: "Verify deterministic benchmark quantiles and MAD"
+    cmds:
+      - "sh tests/stdlib/benchmark-summary/check.sh"
+
   capabilities:
     desc: "Verify the standard library capability matrix states and evidence"
     cmds:
@@ -520,6 +525,7 @@ tasks:
             tui-framework \
             stdlib \
             clock-adapters \
+            benchmark-summary \
             capabilities \
             build-system \
             packages \
