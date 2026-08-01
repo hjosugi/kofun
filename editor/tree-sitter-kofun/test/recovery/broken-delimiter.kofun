@@ -1,4 +1,0 @@
-fn main() {
-  print([1, 2)
-  print("still visible")
-}

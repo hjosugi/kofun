@@ -1,6 +1,6 @@
 # Registry marker for the List corpus.
 fn expected_cases() -> Int {
-    return 13
+    return 17
 }
 
 fn case_names() -> List[Text] {
@@ -14,6 +14,10 @@ fn case_names() -> List[Text] {
         "filter_runtime.kofun",
         "fold_runtime.kofun",
         "index_out_of_range.kofun",
+        "index_print_above_bound.kofun",
+        "index_print_negative.kofun",
+        "index_print_single_digit.kofun",
+        "index_print_zero.kofun",
         "length.kofun",
         "map_runtime.kofun",
         "negative_index.kofun",
@@ -22,7 +26,7 @@ fn case_names() -> List[Text] {
 }
 
 fn observations_sha256() -> Text {
-    return "8a7d5f190ed9b8c76eb0b9c77988df82307f3cf609096ea01121c2a568d47805"
+    return "fdd1ab0ff14675bd20cd3840e709f4f9a8f958bf092b4cddf0a769933795f4d5"
 }
 
 fn corpus_name() -> Text {

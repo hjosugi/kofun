@@ -18,7 +18,7 @@ report a pass it did not observe.
 |---|---|
 | `cargo` | `rust-crate-shim` |
 | `cc` | `c-abi-profile`, `c11-function-calls`, `compiled-visibility-interfaces`, `compiler-seed`, `decimal-arithmetic-v1`, `deterministic-fuzzing`, `documentation-index`, `enum-matching`, `http-framework`, `nominal-records`, `reproducible-bootstrap`, `self-recompile`, `stage2-core-lowering` |
-| `node` | `compiled-visibility-interfaces`, `documentation-index`, `stage2-typed-sidecar`, `stdio-language-server`, `tree-sitter-grammar`, `wasm32-arithmetic-core` |
+| `node` | `compiled-visibility-interfaces`, `documentation-index`, `stage2-typed-sidecar`, `stdio-language-server`, `wasm32-arithmetic-core` |
 | `qemu-aarch64` | `native-aarch64-function-calls`, `native-list-int-core`, `native-text-returning-calls`, `native-utf8-text-core`, `selfhost-native-corpus` |
 | `sha256sum` | `compiler-seed`, `reproducible-bootstrap` |
 
@@ -68,5 +68,4 @@ report a pass it did not observe.
 | `syscall-file-round-trip` | `task stdlib` |
 | `syscall-stdlib-api` | `task stdlib` |
 | `test-skip-reporting` | `task test` |
-| `tree-sitter-grammar` | `task tree-sitter` |
 | `wasm32-arithmetic-core` | `task wasm` |

@@ -3,7 +3,7 @@
 // every declaration comes from `analyzeKofun`, which runs the same parser that
 // emits the module, so the editor cannot claim more than the compiler does.
 //
-// The rules deliberately match the language server in editor/vscode/server:
+// The rules deliberately match the language server in tooling/lsp:
 // visibility is declaration-before-use, a bounded list is reported incomplete
 // rather than silently truncated, and positions that are not references answer
 // with nothing instead of a guess.

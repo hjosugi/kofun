@@ -14,7 +14,7 @@ import {
   publishDiagnostics,
   semanticSnapshotFromBytes,
   shutdownSemanticAnalysis,
-} from "../../editor/vscode/server/semantic-sidecar.mjs";
+} from "../../tooling/lsp/semantic-sidecar.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const EXAMPLES = path.join(ROOT, "spec/typed-sidecar/examples");
