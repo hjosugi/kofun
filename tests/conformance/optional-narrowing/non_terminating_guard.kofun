@@ -1,0 +1,7 @@
+# The guarded branch does not definitely return, so nothing is carried past it.
+fn probe(x: Int?) -> Int {
+    if x == null {
+        let fallback: Int = 0
+    }
+    return x + 1
+}

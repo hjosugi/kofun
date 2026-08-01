@@ -12,5 +12,8 @@ node_modules/
 .idea/
 *.swp
 
+# Transient agent worktrees created under the checkout
+.claude/worktrees/
+
 # OS
 .DS_Store

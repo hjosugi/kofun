@@ -1,0 +1,10 @@
+# Assignment discards the refinement even when the refinement was established
+# on this very edge.
+fn probe() -> Int {
+    let mut x: Int? = 1
+    if x != null {
+        x = null
+        return x + 1
+    }
+    return 0
+}

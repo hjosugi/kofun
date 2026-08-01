@@ -1,0 +1,8 @@
+# A refinement is a fact about one edge: the sibling branch never sees it.
+fn probe(x: Int?) -> Int {
+    if x != null {
+        return x + 1
+    } else {
+        return x + 1
+    }
+}

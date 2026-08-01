@@ -609,9 +609,12 @@ let label = if score >= 90 {
 Both forms require braces, accept Bool literals or integer comparisons, support
 nesting, evaluate the condition once, and evaluate only the selected branch.
 The value slice accepts one final Int expression per branch in `let`, `print`,
-assignment, or `return`; `E2S27` rejects a missing `else`, and `E2S28` rejects
-a branch outside that bounded Int type. General Bool expressions, multi-
-statement value blocks, general branch type unification, `else if`,
+assignment, `return`, and — since #550 — the last statement of a function that
+owes its caller a result, where the `if` is that result; `E2S27` rejects a
+missing `else` in every one of those positions, and `E2S28` rejects a branch
+outside that bounded Int type. That final position is Stage 2 only: the native
+and wasm32 Cores still require an explicit `return`. General Bool expressions,
+multi-statement value blocks, general branch type unification, `else if`,
 interpreter/native differential coverage, and full static typing remain open.
 Mutable assignment is supported within the current branch block, while
 assignment from a branch to an outer binding is explicitly rejected as

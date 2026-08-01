@@ -40,6 +40,64 @@ Rules:
 - no implicit conversion from `T?` to `T`
 - narrowing happens through `??`, pattern matching, or guards
 
+### Narrowing direct bindings
+
+A narrowing refinement is a fact about one edge of the control-flow graph. It
+does not change the binding's declared type, it does not survive its function,
+and it never becomes part of an inferred signature. `x` stays `Optional(T)`
+everywhere the declaration is read; only a *use* on a refined edge is typed as
+`T`.
+
+Recognized conditions, and only these:
+
+| Condition | Refined edge |
+|---|---|
+| `x != null` | true |
+| `null != x` | true |
+| `x == null` | false |
+| `null == x` | false |
+
+Either of those as the condition of an `if` whose taken branch definitely
+returns is an early-return guard: the opposite edge's refinement continues past
+the guard.
+
+```kofun
+fn describe(x: Int?) -> Int {
+    if x == null {
+        return 0
+    }
+    return x + 1        # x is Int here
+}
+```
+
+`x` must be a direct local binding — a parameter or a `let` — whose declared
+type is `Optional(T)`, and the comparison must not be overloaded. Any other
+condition is still a legal `Bool`; it simply refines nothing, and a use of `x`
+as `T` under it stays an error.
+
+Invalidation. The rule when anything is uncertain is to discard, never to
+assume:
+
+| Event | Effect on the refinement |
+|---|---|
+| sibling branch | never sees it; each edge has its own environment |
+| control-flow join | merged by intersection |
+| `x = value` | discarded, after `value` is checked against the declared `Optional(T)` |
+| mutable `x` passed to an `edit`/`own`/unknown-effect call | discarded after the call |
+| immutable `let x` passed to a call | retained; it can be neither reassigned nor mutably aliased |
+| loop backedge | discards every refinement that is not loop-invariant |
+
+Not recognized, and refused rather than guessed at: compound boolean
+conditions, property and index paths, aliases (`let y = x` refines `y` alone),
+captured variables, interprocedural summaries, `match`, safe navigation,
+truthiness, user-defined equality, and general union narrowing. Narrowing
+chooses no runtime representation.
+
+**Implementation status:** frontend-only, in
+`bootstrap/stage2/optional_frontend.c`, gated by
+`tests/conformance/optional-narrowing/run.sh` and
+`tests/fuzz/optional_narrowing.sh`. No backend lowering is claimed.
+
 Planned pattern:
 
 ```kofun

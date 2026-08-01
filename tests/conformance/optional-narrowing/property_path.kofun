@@ -1,0 +1,7 @@
+# Only a direct local binding is recognized; a property path is not.
+fn probe(x: Int?) -> Int {
+    if x.value != null {
+        return 0
+    }
+    return 0
+}

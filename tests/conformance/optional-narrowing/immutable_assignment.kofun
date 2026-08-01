@@ -1,0 +1,7 @@
+# An immutable binding may keep a refinement across a call precisely because it
+# cannot be reassigned, so the reassignment itself has to be refused.
+fn probe() -> Int {
+    let x: Int? = 1
+    x = null
+    return 0
+}

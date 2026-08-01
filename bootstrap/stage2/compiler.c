@@ -5878,6 +5878,81 @@ static char *emit_condition_into(
     return output.data;
 }
 
+/*
+ * The byte after the `{ ... }` that follows an `if` condition, or -1 when the
+ * shape is not a statement `if` at all. This is the walk the statement
+ * lowering performs; it exists separately so the lowering can ask where the
+ * construct ends *before* committing to lower it, which is what deciding
+ * whether an `if` is a body's last statement requires.
+ */
+static int64_t if_then_branch_end(const char *source, int64_t start) {
+    int64_t length = source_length(source);
+    int64_t condition_start = skip_trivia(source, token_end(source, start));
+    int64_t condition_close = condition_end(source, condition_start);
+    if (condition_close < 0) return -1;
+    int64_t branch_open = skip_trivia(source, condition_close);
+    if (branch_open >= length || !token_equal(source, branch_open, "{")) {
+        return -1;
+    }
+    return balanced_end(source, branch_open, "{", "}");
+}
+
+/*
+ * Whether the `if` at `start` carries an `else` block. An `if` in final
+ * position without one cannot be the result: its false path produces nothing.
+ */
+static bool if_has_else(const char *source, int64_t start) {
+    int64_t branch_close = if_then_branch_end(source, start);
+    if (branch_close < 0) return false;
+    int64_t else_keyword = skip_trivia(source, branch_close);
+    return else_keyword < source_length(source) &&
+           token_equal(source, else_keyword, "else");
+}
+
+/*
+ * The byte after a statement-position `if`, counting its `else` block when one
+ * follows, or -1 when the shape is not a statement `if` at all.
+ */
+static int64_t if_statement_end(const char *source, int64_t start) {
+    int64_t length = source_length(source);
+    int64_t branch_close = if_then_branch_end(source, start);
+    if (branch_close < 0) return -1;
+    if (!if_has_else(source, start)) return branch_close;
+    int64_t else_keyword = skip_trivia(source, branch_close);
+    int64_t else_open = skip_trivia(source, token_end(source, else_keyword));
+    if (else_open >= length || !token_equal(source, else_open, "{")) {
+        return -1;
+    }
+    return balanced_end(source, else_open, "{", "}");
+}
+
+/*
+ * Whether the `if` at `start` is the last statement of a body that owes its
+ * caller an Int result — the position where #550 makes it the function's value
+ * rather than a discarded statement. `main`, enum-returning, and
+ * record-returning functions are excluded: `main` appends its own status
+ * return, and an enum or record result needs its own C shape rather than the
+ * `int64_t` this position emits. A nested body (`append_default` false) is not
+ * a result position either; its own enclosing function decides that.
+ */
+static bool final_result_if(
+    const char *source,
+    int64_t start,
+    bool is_main,
+    bool append_default,
+    bool returns_enum,
+    bool returns_record
+) {
+    if (is_main || !append_default || returns_enum || returns_record) {
+        return false;
+    }
+    int64_t close = if_statement_end(source, start);
+    if (close < 0) return false;
+    int64_t after = skip_trivia(source, close);
+    return after < source_length(source) &&
+           token_equal(source, after, "}");
+}
+
 typedef struct {
     int64_t condition_start;
     int64_t condition_end;
@@ -11344,6 +11419,69 @@ static char *lower_body(
             );
             free(value);
             cursor = skip_trivia(source, token_end(source, call_close));
+        } else if (token_equal(source, cursor, "if") &&
+                   final_result_if(
+                       source,
+                       cursor,
+                       is_main,
+                       append_default,
+                       returns_enum,
+                       returns_record
+                   )) {
+            /*
+             * The final `if` of a result-carrying function is its result, and
+             * its type is the join of the two branch types (#550). The join and
+             * the lowering are the ones `return if ... { } else { }` already
+             * uses, so this position gains no rules of its own — it reaches the
+             * same validator and the same emitter.
+             *
+             * Every path has to produce a value, so an `if` without `else` is
+             * refused here rather than falling through to the statement form,
+             * where it would have become a body that reaches its closing brace.
+             */
+            if (!if_has_else(source, cursor)) {
+                free(emitted.data);
+                return lower_error(
+                    "E2S27",
+                    "a final `if` needs an `else`; "
+                    "its false path yields no Int",
+                    cursor
+                );
+            }
+            ValueIfParts final_parts;
+            char *result = parse_value_if(source, cursor, &final_parts);
+            if (strncmp(result, "error[", 6) == 0) {
+                free(emitted.data);
+                return result;
+            }
+            free(result);
+            int64_t branch_end = final_parts.end;
+            char *value_body = emit_value_into(
+                source,
+                hir,
+                cursor,
+                branch_end,
+                "kofun_result",
+                failure_result
+            );
+            if (strncmp(value_body, "error[", 6) == 0) {
+                free(emitted.data);
+                return value_body;
+            }
+            buffer_append(
+                &emitted,
+                "    {\n"
+                "        int64_t kofun_result = INT64_C(0);\n"
+            );
+            buffer_append(&emitted, value_body);
+            buffer_append(
+                &emitted,
+                "        return kofun_result;\n"
+                "    }\n"
+            );
+            free(value_body);
+            returned = true;
+            cursor = skip_trivia(source, branch_end);
         } else if (token_equal(source, cursor, "if")) {
             int64_t statement_start = cursor;
             int64_t condition_start = skip_trivia(
@@ -12213,12 +12351,14 @@ static char *lower_body(
                  * The final expression of an Int-returning function is its
                  * result. Only the last statement qualifies, and only when the
                  * closing brace follows it, so an expression in the middle of a
-                 * body keeps being discarded exactly as before. `main` and
-                 * enum-returning functions are deliberately excluded: `main`
-                 * already appends its own status return, and an enum result
-                 * needs the KofunEnumValue shape rather than this one.
+                 * body keeps being discarded exactly as before. `main`,
+                 * enum-returning, and record-returning functions are
+                 * deliberately excluded: `main` already appends its own status
+                 * return, and an enum or record result needs its own C shape
+                 * rather than the `int64_t` this emits.
                  */
                 if (!is_main && append_default && !returns_enum &&
+                    !returns_record &&
                     after < length && token_equal(source, after, "}")) {
                     buffer_format(
                         &emitted,

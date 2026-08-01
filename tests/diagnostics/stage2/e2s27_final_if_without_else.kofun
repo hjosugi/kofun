@@ -1,0 +1,12 @@
+# diagnostic-mode: compile
+# expect-code: E2S27
+# expect-span: byte 105
+fn positive(n: Int) -> Int {
+    if n > 0 {
+        n
+    }
+}
+
+fn main() {
+    print(positive(5))
+}

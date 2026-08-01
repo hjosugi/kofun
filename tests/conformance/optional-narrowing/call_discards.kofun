@@ -1,0 +1,14 @@
+# A mutable binding handed to a call loses its refinement after the call: this
+# frontend refuses ownership modes, so every call has unknown effects.
+fn touch(value: Int?) -> Int {
+    return 0
+}
+
+fn probe() -> Int {
+    let mut x: Int? = 1
+    if x != null {
+        let seen: Int = touch(x)
+        return x + 1
+    }
+    return 0
+}

@@ -1,0 +1,12 @@
+# Nothing loop-carried is assumed on the next iteration: the backedge discards
+# the refinement of every mutable binding the body mentions.
+fn probe(flag: Bool) -> Int {
+    let mut x: Int? = 1
+    if x != null {
+        while flag {
+            let total: Int = x + 1
+            x = null
+        }
+    }
+    return 0
+}

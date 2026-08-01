@@ -528,5 +528,43 @@ cannot spread past an expected optional context unnoticed.
 
 Runtime representation is deferred and cannot be inferred from the typed node —
 the gate asserts the IR names no tag, niche, layout, or discriminant.
-Coalescing, narrowing, matching, and propagation are separate issues, and `??`
-is not parsed here at all.
+Coalescing, matching, and propagation are separate issues, and `??` is not
+parsed here at all.
+
+Flow-sensitive narrowing (#312) is layered on that typed node, and is
+**frontend-only**: it decides how a use of `x` is typed, and nothing else. It
+selects no runtime representation, emits no lowering, and no backend consumes
+it. `optional_frontend.c` recognizes exactly four conditions — `x != null` and
+`null != x` refine the true edge, `x == null` and `null == x` refine the false
+edge — over a direct local binding declared `Optional(T)`, plus the
+early-return guard forms where a definitely-returning branch carries the
+opposite edge past it. Every other condition still types as a `Bool` and
+refines nothing.
+
+A refinement is a fact about one edge, never a change to a declared type and
+never something that escapes its function. The typed IR carries that
+distinction explicitly: `refinement` rows print the declared type beside the
+refined one, `narrowed-use` rows mark each use the frontend typed as `T`
+rather than `Optional(T)`, and `refinement-discarded` rows record every
+invalidation with its reason — `assignment`, `call`, or `loop-backedge` —
+rather than leaving the discard to be inferred from the absence of an error.
+Each branch gets its own environment, joins merge by intersection, an
+assignment is checked against the declared `Optional(T)` before it discards,
+a mutable binding loses its refinement to any call because this frontend
+refuses ownership modes and therefore has only unknown effects, an immutable
+`let` keeps its refinement, and a loop backedge discards the refinement of
+every mutable binding the body mentions.
+
+Unsupported shapes stay errors rather than optimistic assumptions: property
+and index paths are refused (`E2S142`), as is `null` in any comparison outside
+the four recognized ones, and assignment to an immutable binding is refused
+(`E2S143`) because the retain-across-calls rule depends on it. Compound
+conditions, aliases, captured variables, interprocedural summaries, `match`,
+safe navigation, truthiness, and user-defined equality are all out of the
+slice. The gate is `tests/conformance/optional-narrowing/run.sh`, with
+generated control-flow graphs in `tests/fuzz/optional_narrowing.sh`.
+
+`E2S142` and `E2S143` are registered in `tests/diagnostics/registry.tsv` under
+the `optional-narrowing` adapter. `E2S134`-`E2S141` are still unregistered:
+see the note in `tests/conformance/optional/README.md` for why the registry's
+completeness check cannot see codes emitted from a separate frontend.

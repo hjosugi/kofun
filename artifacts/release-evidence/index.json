@@ -574,7 +574,7 @@
     }
   ],
   "evidence_digests": {
-    "Taskfile.yml": "bf7c9e3cb2aa3d2afffe19ab148b7e9c6eca4cbe9103346b56092bb7cf2135e8",
+    "Taskfile.yml": "c750787f6bc1180e92e5ee79ef2c2df1664b1fe78c51a19d4b9f6664fea5d733",
     "bootstrap/native/check.sh": "d99603522821df27a7d102fbce70c6a0d3cb322a9fe17d1baa76ee9285cee6e4",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/driver/corpus_builtin_rejects.tsv": "b1fa0b26247581aef797a81880554a94233a34109215530641706d76777087d4",
@@ -596,7 +596,7 @@
     "docs/SECURITY.md": "2235367ac20334ce4d77d440b773ef197f97f6d21a5d13f69a5b391cb8b4946d",
     "docs/SELF_HOSTING.md": "c786187cd44fdba04d89c6ff1fba5f0e791c4ca96ce31a99fa17380ffde347a5",
     "docs/SEMANTICS.md": "6e1d210890f5f53f281ea32fe28a0b4118b2804f5cb1caa4260a36c961b9cb92",
-    "docs/TYPE_SYSTEM.md": "30c470a72d395e49c32813ee3eb01f433d253b2431854dad801fd9275d2ba47d",
+    "docs/TYPE_SYSTEM.md": "0ff95be9bc626358ce8d35b0ceab41ba2b1418d86cd116da774cbe1575c3f761",
     "editor/tree-sitter-kofun/README.md": "9ccc73df69f3ddd42e8f620a3751f165e2dad00b34a681010249a1989d45b5d4",
     "editor/tree-sitter-kofun/grammar.js": "5d803ad6c2a2c6467cf402c187bf86a1b6558556497f8d1d9830dd2718c8a1cc",
     "examples/rust-shim/check.sh": "4cffb7e16d964122e2dff480f533cff5eacd0bd939a35fe5a71f71b447139500",
@@ -619,7 +619,7 @@
     "tests/conformance/records/stage2_unsupported_field.kofun": "2ac9b2e9ca754689330a836304a349a49cdf9820be6523e3d02be8158fba4eae",
     "tests/conformance/syntax/issues_35_47/enum_payload_unsupported_field.kofun": "e1b4ce6cda998dac0a955ed016c8eb2f81a9effaed91b823011572cf68f6c59e",
     "tests/diagnostics/README.md": "456190836326c23c153118d53f085905e4da06eae11883432f39c24548447c12",
-    "tests/diagnostics/registry.tsv": "8d5284fa200f4e00e5e26cc4e4cb2e701b17de1769a1fd529f7017653f95815a",
+    "tests/diagnostics/registry.tsv": "8fd30a5fd7c9a787f063ac7f32868816ab25d154a1ea1fda2d4e692bd8bb6139",
     "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun": "664c4d3b0d4bcd9265fee34b3ae60d8bf0eb58c9ce5c2b504579c1249aa16f2d",
     "tests/fuzz/SEMANTIC_PROTOCOL.md": "95644005013d2aae82a042deb341785a083552c766abafa71bdbf4335deea522",
     "tests/fuzz/semantic_differential.sh": "f86c3afb9c4e6aa8be68159f40215451d536ef29c821aea9f160def2613c0b7d",
