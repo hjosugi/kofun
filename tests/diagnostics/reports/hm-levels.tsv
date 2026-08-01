@@ -1,0 +1,8 @@
+# code	adapter	channel	exit	primary-span	secondary-span	artifact
+HML001	hm-levels	stdout	1	required	not-applicable	forbidden
+HML002	hm-levels	stdout	1	required	required	forbidden
+HML003	hm-levels	stdout	1	required	required	forbidden
+HML004	hm-levels	stdout	1	required	not-applicable	forbidden
+HML005	hm-levels	stdout	1	required	not-applicable	forbidden
+HML006	hm-levels	stdout	1	required	not-applicable	forbidden
+HML007	hm-levels	stdout	1	required	not-applicable	forbidden

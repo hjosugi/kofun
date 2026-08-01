@@ -11,8 +11,8 @@ WORK=${KOFUN_DIAGNOSTIC_REGISTRY_WORK:-"$ROOT/build/diagnostic-registry"}
 rm -rf "$WORK"
 mkdir -p "$WORK"
 
-# Seven of the twelve adapters run a script that is also its own task, and each
-# defaults to one shared work directory. Under a concurrent `task verify` the two
+# Several adapters run a script that is also its own task, and each defaults to
+# one shared work directory. Under a concurrent `task verify` the two
 # copies interleave in that directory: the module-symbols pair appends to one
 # module inventory until it trips `E2S55: inventory exceeds 256 modules`. Give the
 # adapter copies their own directories so the two invocations cannot meet. Each
@@ -24,12 +24,14 @@ mkdir -p "$WORK"
 KOFUN_ADT_FRONTEND_WORK="$WORK/adt-frontend.diagnostics"
 KOFUN_RECORD_FRONTEND_WORK="$WORK/record-frontend.diagnostics"
 KOFUN_GENERICS_FRONTEND_WORK="$WORK/generics-frontend.diagnostics"
+KOFUN_HM_LEVELS_WORK="$WORK/hm-levels.diagnostics"
 KOFUN_ADT_EXHAUSTIVENESS_WORK="$WORK/adt-exhaustiveness.diagnostics"
 KOFUN_MODULE_SYMBOLS_WORK="$WORK/module-symbols.diagnostics"
 KOFUN_IMPORTS_SELECTIVE_WORK="$WORK/imports-selective.diagnostics"
 KOFUN_RE_EXPORTS_WORK="$WORK/re-exports.diagnostics"
 export KOFUN_ADT_FRONTEND_WORK KOFUN_RECORD_FRONTEND_WORK
 export KOFUN_GENERICS_FRONTEND_WORK
+export KOFUN_HM_LEVELS_WORK
 export KOFUN_ADT_EXHAUSTIVENESS_WORK KOFUN_MODULE_SYMBOLS_WORK
 export KOFUN_IMPORTS_SELECTIVE_WORK KOFUN_RE_EXPORTS_WORK
 
