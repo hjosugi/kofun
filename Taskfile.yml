@@ -221,6 +221,11 @@ tasks:
     cmds:
       - "sh stdlib/date_time/tests/verify.sh"
 
+  tzdb:
+    desc: "Verify bounded injected-Bytes tzdb lookup, gap/fold resolution, and provenance"
+    cmds:
+      - "sh tests/stdlib/tzdb/check.sh"
+
   discovery:
     desc: "Verify the developer discovery v1 request/result contract"
     cmds:

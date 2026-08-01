@@ -102,6 +102,43 @@
       }
     },
     {
+      "id": "bounded-tzdb-producer",
+      "public_wording": "bounded injected-Bytes time-zone transition producer",
+      "public_status": "bounded Stage 2/C11 checkpoint",
+      "state": "checkpoint",
+      "area": "c-backend",
+      "bounded_capability": "One offline fixed-capacity tzdb fixture is parsed and validated in Kofun source, including version/content-digest provenance, deterministic lookup, explicit unique/gap/fold results, typed malformed and limit outcomes, and agreement between the reference executor and emitted C11. It is not a packaged IANA database, ambient file adapter, or stable public API.",
+      "targets": [
+        "c11",
+        "stage2"
+      ],
+      "specification": [
+        "tests/stdlib/tzdb/README.md"
+      ],
+      "compatibility": "Only the synthetic two-transition Bytes20 fixture format and its stated bounds are checkpointed; future database formats require a new version and must preserve explicit ambiguity and provenance.",
+      "positive_gate": {
+        "command": "sh tests/stdlib/tzdb/check.sh",
+        "observation": "Typed HIR, emitted C11, the reference executor, and two repeated backend runs agree on exact normal/gap/fold, provenance, malformed, and resource-limit observations."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "tests/stdlib/tzdb/tzdb.kofun",
+        "observation": "Malformed magic, unsupported version, digest mismatch, invalid zone, truncation, trailing bytes, arithmetic overflow, oversized input, and transition-limit exhaustion are distinct closed values."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "task tzdb",
+        "prerequisites": [
+          "cc"
+        ]
+      }
+    },
+    {
       "id": "c-abi-profile",
       "public_wording": "C ABI `extern` / `repr(C)` profile",
       "public_status": "bounded host-C implementation",
