@@ -1,0 +1,24 @@
+# Executable manifest for kofun.backend-differential/v1.
+
+fn corpus_name() -> Text {
+    return "decimal-arithmetic"
+}
+
+fn expected_cases() -> Int {
+    return 6
+}
+
+fn case_names() -> List[Text] {
+    return [
+        "checked_division.kofun",
+        "decimal_exactness.kofun",
+        "float_contrast.kofun",
+        "from_int_exact.kofun",
+        "reject_decimal_floor_div.kofun",
+        "reject_decimal_modulo.kofun"
+    ]
+}
+
+fn observations_sha256() -> Text {
+    return "58f818c7fd705b79cdac3824427e85081995b6aab9e75a2fa62cc1199922aec0"
+}

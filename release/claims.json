@@ -325,6 +325,44 @@
       }
     },
     {
+      "id": "decimal-arithmetic-v1",
+      "public_wording": "exact Decimal and binary64 Float arithmetic",
+      "public_status": "Stage 2 C11 lowers exact Decimal `+`, `-`, `*`, comparison/equality, and checked `/` with `Exact`/`InexactDivision`/`DivisionByZero`; Float remains observably binary64; every other declared backend has an explicit unsupported capability row (#723)",
+      "state": "checkpoint",
+      "area": "c-backend",
+      "bounded_capability": "Stage 2 C11 lowers exact arbitrary-precision Decimal addition, subtraction, multiplication, comparison and checked exact division, plus explicitly binary64 Float arithmetic. Int has no `/`, Decimal has no `//` or `%`, mixed numeric arithmetic requires an explicit conversion, and the other declared backends remain unsupported for this corpus.",
+      "targets": [
+        "c11",
+        "stage2"
+      ],
+      "specification": [
+        "docs/DECIMAL.md",
+        "docs/TYPE_SYSTEM.md"
+      ],
+      "compatibility": "Decimal results are canonical and exact within the versioned resource profile; checked division outcomes and binary64 Float observations are part of the corpus contract. A backend gains this capability only by changing its manifest row and passing the shared corpus.",
+      "positive_gate": {
+        "command": "task decimal-arithmetic",
+        "observation": "The Stage 2 C11 backend executes all Decimal and Float arithmetic cases, including exactness beyond binary64 and checked division outcomes."
+      },
+      "negative_boundary": {
+        "kind": "limit",
+        "evidence": "tests/conformance/capabilities.tsv",
+        "observation": "Every backend without this runtime has an explicit unsupported row, while Decimal `//` and `%` are refused before an artifact is produced."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "task decimal-arithmetic",
+        "prerequisites": [
+          "cc"
+        ]
+      }
+    },
+    {
       "id": "deterministic-fuzzing",
       "public_wording": "deterministic compiler fuzzing",
       "public_status": "versioned oracle/backend observations for arithmetic plus focused grammar, value-if, match-guard, match-value, and enum-match families",

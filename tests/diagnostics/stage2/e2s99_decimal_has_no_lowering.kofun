@@ -1,6 +1,0 @@
-# diagnostic-mode: compile
-# expect-code: E2S99
-# expect-span: byte 93
-fn main() {
-    print(1.5)
-}

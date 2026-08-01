@@ -6,14 +6,16 @@
  * BCD wastes space and gets no help from the CPU, and a fixed width would make
  * ordinary exact expressions fail at an arbitrary magnitude boundary.
  *
- * Only four big-integer primitives are needed, because slice 2 has no
- * arithmetic: multiply by a small factor, add a small term, divide by a small
- * divisor, and compare. Construction is `((0 * 10 + d) * 10 + d) ...`;
- * canonicalization is repeated division by ten. Slices 3 and 4 add the rest.
+ * Slice 2 starts with four big-integer primitives: multiply by a small factor,
+ * add a small term, divide by a small divisor, and compare. Construction is
+ * `((0 * 10 + d) * 10 + d) ...`; canonicalization is repeated division by
+ * ten. Slice 4 extends those primitives below with exact signed arithmetic and
+ * arbitrary-width division.
  */
 
 #include "decimal_v1.h"
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1309,6 +1311,9 @@ double kofun_float_divide(double left, double right) {
 static KofunDecimal **decimal_arena;
 static size_t decimal_arena_count;
 static size_t decimal_arena_capacity;
+static KofunDecimalResult **decimal_result_arena;
+static size_t decimal_result_arena_count;
+static size_t decimal_result_arena_capacity;
 
 /*
  * A resource limit reaching generated code is fatal.
@@ -1320,9 +1325,6 @@ static size_t decimal_arena_capacity;
  * wrong value to carry, an unrepresentable Decimal does not.
  */
 static void decimal_fatal(KofunDecimalStatus status) {
-    fputs("error[", stderr);
-    fputs(kofun_decimal_status_code(status), stderr);
-    fputs("]: ", stderr);
     fputs(kofun_decimal_status_message(status), stderr);
     fputc('\n', stderr);
     exit(1);
@@ -1359,12 +1361,106 @@ KofunDecimal *kofun_decimal_value_literal(const char *text, size_t length) {
     return value;
 }
 
+KofunDecimal *kofun_decimal_value_from_int(int64_t source) {
+    char digits[32];
+    uint64_t magnitude = source < 0
+        ? (uint64_t)(-(source + 1)) + UINT64_C(1)
+        : (uint64_t)source;
+    int written = snprintf(digits, sizeof digits, "%" PRIu64, magnitude);
+    if (written < 0 || (size_t)written >= sizeof digits) {
+        decimal_fatal(KOFUN_DECIMAL_MALFORMED);
+    }
+    KofunDecimal *value = kofun_decimal_value_literal(
+        digits,
+        (size_t)written
+    );
+    if (source < 0 && value->sign != 0) value->sign = -value->sign;
+    return value;
+}
+
 KofunDecimal *kofun_decimal_value_add(
     const KofunDecimal *left,
     const KofunDecimal *right
 ) {
     KofunDecimal *value = decimal_arena_push();
     KofunDecimalStatus status = kofun_decimal_add(left, right, value);
+    if (status != KOFUN_DECIMAL_OK) decimal_fatal(status);
+    return value;
+}
+
+KofunDecimal *kofun_decimal_value_subtract(
+    const KofunDecimal *left,
+    const KofunDecimal *right
+) {
+    KofunDecimal *value = decimal_arena_push();
+    KofunDecimalStatus status = kofun_decimal_subtract(left, right, value);
+    if (status != KOFUN_DECIMAL_OK) decimal_fatal(status);
+    return value;
+}
+
+KofunDecimal *kofun_decimal_value_multiply(
+    const KofunDecimal *left,
+    const KofunDecimal *right
+) {
+    KofunDecimal *value = decimal_arena_push();
+    KofunDecimalStatus status = kofun_decimal_multiply(left, right, value);
+    if (status != KOFUN_DECIMAL_OK) decimal_fatal(status);
+    return value;
+}
+
+KofunDecimal *kofun_decimal_value_negate(const KofunDecimal *source) {
+    KofunDecimal zero;
+    kofun_decimal_init(&zero);
+    KofunDecimal *value = kofun_decimal_value_subtract(&zero, source);
+    kofun_decimal_free(&zero);
+    return value;
+}
+
+static KofunDecimalResult *decimal_result_arena_push(void) {
+    if (decimal_result_arena_count == decimal_result_arena_capacity) {
+        size_t capacity = decimal_result_arena_capacity == 0
+            ? 8
+            : decimal_result_arena_capacity * 2;
+        KofunDecimalResult **grown = realloc(
+            decimal_result_arena,
+            capacity * sizeof(*grown)
+        );
+        if (grown == NULL) decimal_fatal(KOFUN_DECIMAL_MEMORY);
+        decimal_result_arena = grown;
+        decimal_result_arena_capacity = capacity;
+    }
+    KofunDecimalResult *result = malloc(sizeof(*result));
+    if (result == NULL) decimal_fatal(KOFUN_DECIMAL_MEMORY);
+    result->outcome = KOFUN_DECIMAL_DIVISION_INEXACT;
+    kofun_decimal_init(&result->value);
+    decimal_result_arena[decimal_result_arena_count++] = result;
+    return result;
+}
+
+KofunDecimalResult *kofun_decimal_value_divide_exact(
+    const KofunDecimal *left,
+    const KofunDecimal *right
+) {
+    KofunDecimalResult *result = decimal_result_arena_push();
+    KofunDecimalStatus status = kofun_decimal_divide_exact(
+        left,
+        right,
+        &result->value,
+        &result->outcome
+    );
+    if (status != KOFUN_DECIMAL_OK) decimal_fatal(status);
+    return result;
+}
+
+const char *kofun_decimal_value_division_name(
+    const KofunDecimalResult *result
+) {
+    return kofun_decimal_division_name(result->outcome);
+}
+
+double kofun_float_value_literal(const char *text, size_t length) {
+    double value = 0.0;
+    KofunDecimalStatus status = kofun_float_from_literal(text, length, &value);
     if (status != KOFUN_DECIMAL_OK) decimal_fatal(status);
     return value;
 }
@@ -1378,4 +1474,12 @@ void kofun_decimal_arena_release(void) {
     decimal_arena = NULL;
     decimal_arena_count = 0;
     decimal_arena_capacity = 0;
+    for (size_t index = 0; index < decimal_result_arena_count; ++index) {
+        kofun_decimal_free(&decimal_result_arena[index]->value);
+        free(decimal_result_arena[index]);
+    }
+    free(decimal_result_arena);
+    decimal_result_arena = NULL;
+    decimal_result_arena_count = 0;
+    decimal_result_arena_capacity = 0;
 }

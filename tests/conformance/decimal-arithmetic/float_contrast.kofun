@@ -1,0 +1,16 @@
+# contract: kofun.backend-differential/v1
+# expect-stdout: 1
+# expect-stdout: 1
+
+fn main() {
+    if 0.1f64 + 0.2f64 == 0.3f64 {
+        print(0)
+    } else {
+        print(1)
+    }
+    if 9007199254740993f64 + 1f64 == 9007199254740992f64 {
+        print(1)
+    } else {
+        print(0)
+    }
+}

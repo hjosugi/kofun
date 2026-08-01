@@ -195,6 +195,11 @@ tasks:
     cmds:
       - "sh tests/conformance/decimal/run.sh"
 
+  decimal-arithmetic:
+    desc: "Verify Stage 2 C11 Decimal and Float arithmetic"
+    cmds:
+      - "sh tests/conformance/run.sh tests/conformance/decimal-arithmetic"
+
   discovery:
     desc: "Verify the developer discovery v1 request/result contract"
     cmds:
@@ -472,6 +477,7 @@ tasks:
             stage2-kif-producer \
             incremental \
             decimal \
+            decimal-arithmetic \
             discovery \
             native \
             wasm \

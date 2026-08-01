@@ -3752,6 +3752,15 @@ static char *borrowed_collection_check(const char *source) {
 }
 
 static int64_t expression_end(const char *source, int64_t start);
+static int64_t enclosing_function_open(const char *source, int64_t position);
+static const char *numeric_primary_type(
+    const char *source,
+    const char *hir,
+    int64_t function_open,
+    int64_t start
+);
+static char *numeric_conversion_at(const char *source, int64_t cursor);
+static const char *numeric_conversion_result(const char *conversion);
 static char *emit_expression(
     const char *source,
     const char *hir,
@@ -4208,10 +4217,32 @@ static int64_t primary_end(const char *source, int64_t start) {
     int64_t cursor = skip_trivia(source, start);
     if (cursor >= length) return -1;
     const char *kind = token_kind(source, cursor);
-    if (strcmp(kind, "integer") == 0) {
+    if (
+        strcmp(kind, "integer") == 0 ||
+        strcmp(kind, "decimal") == 0 ||
+        strcmp(kind, "float") == 0
+    ) {
         return field_postfix_end(source, token_end(source, cursor));
     }
     if (strcmp(kind, "identifier") == 0) {
+        char *conversion = numeric_conversion_at(source, cursor);
+        if (conversion[0] != '\0') {
+            int64_t dot = skip_trivia(source, token_end(source, cursor));
+            int64_t member = skip_trivia(source, token_end(source, dot));
+            int64_t open = skip_trivia(source, token_end(source, member));
+            int64_t argument = skip_trivia(source, token_end(source, open));
+            int64_t bound = expression_end(source, argument);
+            int64_t close = bound < 0 ? -1 : skip_trivia(source, bound);
+            free(conversion);
+            if (
+                close < 0 || close >= length ||
+                !token_equal(source, close, ")")
+            ) {
+                return -1;
+            }
+            return field_postfix_end(source, token_end(source, close));
+        }
+        free(conversion);
         int64_t open = skip_trivia(source, token_end(source, cursor));
         if (open >= length || !token_equal(source, open, "(")) {
             return field_postfix_end(source, token_end(source, cursor));
@@ -4267,6 +4298,7 @@ static int64_t product_end(const char *source, int64_t start) {
     while (
         operator_start < length &&
         (token_equal(source, operator_start, "*") ||
+         token_equal(source, operator_start, "/") ||
          token_equal(source, operator_start, "//") ||
          token_equal(source, operator_start, "%"))
     ) {
@@ -4710,6 +4742,36 @@ static char *emit_primary(
 ) {
     int64_t cursor = skip_trivia(source, start);
     const char *kind = token_kind(source, cursor);
+    if (strcmp(kind, "decimal") == 0) {
+        char *literal = source_slice(source, cursor, token_end(source, cursor));
+        Buffer output;
+        buffer_init(&output);
+        buffer_format(
+            &output,
+            "kofun_decimal_value_literal(\"%s\", %zu)",
+            literal,
+            strlen(literal)
+        );
+        free(literal);
+        return output.data;
+    }
+    if (strcmp(kind, "float") == 0) {
+        int64_t literal_end = token_end(source, cursor);
+        int64_t number_end = literal_end >= cursor + 3
+            ? literal_end - 3
+            : cursor;
+        char *literal = source_slice(source, cursor, number_end);
+        Buffer output;
+        buffer_init(&output);
+        buffer_format(
+            &output,
+            "kofun_float_value_literal(\"%s\", %zu)",
+            literal,
+            strlen(literal)
+        );
+        free(literal);
+        return output.data;
+    }
     if (strcmp(kind, "integer") == 0) {
         char *literal = source_slice(source, cursor, end);
         Buffer output;
@@ -4726,6 +4788,31 @@ static char *emit_primary(
         return output.data;
     }
     if (strcmp(kind, "identifier") == 0) {
+        char *conversion = numeric_conversion_at(source, cursor);
+        if (strcmp(conversion, "Decimal.from_int") == 0) {
+            int64_t dot = skip_trivia(source, token_end(source, cursor));
+            int64_t member = skip_trivia(source, token_end(source, dot));
+            int64_t open = skip_trivia(source, token_end(source, member));
+            int64_t argument = skip_trivia(source, token_end(source, open));
+            int64_t argument_end = expression_end(source, argument);
+            char *value = emit_expression(
+                source,
+                hir,
+                argument,
+                argument_end
+            );
+            Buffer converted;
+            buffer_init(&converted);
+            buffer_format(
+                &converted,
+                "kofun_decimal_value_from_int(%s)",
+                value
+            );
+            free(value);
+            free(conversion);
+            return converted.data;
+        }
+        free(conversion);
         char *name = token_copy(source, cursor);
         int64_t open = skip_trivia(source, token_end(source, cursor));
         Buffer output;
@@ -4868,7 +4955,20 @@ static char *emit_unary(
         char *value = emit_unary(source, hir, value_start, end);
         Buffer output;
         buffer_init(&output);
-        buffer_format(&output, "kofun_neg(%s)", value);
+        int64_t function_open = enclosing_function_open(source, cursor);
+        const char *type = numeric_primary_type(
+            source,
+            hir,
+            function_open,
+            value_start
+        );
+        if (strcmp(type, "Decimal") == 0) {
+            buffer_format(&output, "kofun_decimal_value_negate(%s)", value);
+        } else if (strcmp(type, "Float") == 0) {
+            buffer_format(&output, "(-(%s))", value);
+        } else {
+            buffer_format(&output, "kofun_neg(%s)", value);
+        }
         free(value);
         return output.data;
     }
@@ -4883,6 +4983,13 @@ static char *emit_product(
 ) {
     int64_t cursor = unary_end(source, start);
     char *emitted = emit_unary(source, hir, start, cursor);
+    int64_t function_open = enclosing_function_open(source, start);
+    const char *type = numeric_primary_type(
+        source,
+        hir,
+        function_open,
+        start
+    );
     int64_t operator_start = skip_trivia(source, cursor);
     while (operator_start < end) {
         char *operator_text = token_copy(source, operator_start);
@@ -4894,7 +5001,27 @@ static char *emit_product(
         char *right = emit_unary(source, hir, right_start, right_end);
         char *combined = emitted;
         if (strcmp(operator_text, "*") == 0) {
-            combined = format_two("kofun_mul", emitted, right);
+            if (strcmp(type, "Decimal") == 0) {
+                combined = format_two(
+                    "kofun_decimal_value_multiply",
+                    emitted,
+                    right
+                );
+            } else if (strcmp(type, "Float") == 0) {
+                combined = format_two("kofun_float_multiply", emitted, right);
+            } else {
+                combined = format_two("kofun_mul", emitted, right);
+            }
+        } else if (strcmp(operator_text, "/") == 0) {
+            if (strcmp(type, "Decimal") == 0) {
+                combined = format_two(
+                    "kofun_decimal_value_divide_exact",
+                    emitted,
+                    right
+                );
+            } else if (strcmp(type, "Float") == 0) {
+                combined = format_two("kofun_float_divide", emitted, right);
+            }
         } else if (strcmp(operator_text, "//") == 0) {
             combined = format_two("kofun_floor_div", emitted, right);
         } else if (strcmp(operator_text, "%") == 0) {
@@ -4918,6 +5045,13 @@ static char *emit_expression(
 ) {
     int64_t cursor = product_end(source, start);
     char *emitted = emit_product(source, hir, start, cursor);
+    int64_t function_open = enclosing_function_open(source, start);
+    const char *type = numeric_primary_type(
+        source,
+        hir,
+        function_open,
+        start
+    );
     int64_t operator_start = skip_trivia(source, cursor);
     while (operator_start < end) {
         char *operator_text = token_copy(source, operator_start);
@@ -4929,9 +5063,29 @@ static char *emit_expression(
         char *right = emit_product(source, hir, right_start, right_end);
         char *combined = emitted;
         if (strcmp(operator_text, "+") == 0) {
-            combined = format_two("kofun_add", emitted, right);
+            if (strcmp(type, "Decimal") == 0) {
+                combined = format_two(
+                    "kofun_decimal_value_add",
+                    emitted,
+                    right
+                );
+            } else if (strcmp(type, "Float") == 0) {
+                combined = format_two("kofun_float_add", emitted, right);
+            } else {
+                combined = format_two("kofun_add", emitted, right);
+            }
         } else if (strcmp(operator_text, "-") == 0) {
-            combined = format_two("kofun_sub", emitted, right);
+            if (strcmp(type, "Decimal") == 0) {
+                combined = format_two(
+                    "kofun_decimal_value_subtract",
+                    emitted,
+                    right
+                );
+            } else if (strcmp(type, "Float") == 0) {
+                combined = format_two("kofun_float_subtract", emitted, right);
+            } else {
+                combined = format_two("kofun_sub", emitted, right);
+            }
         }
         if (combined != emitted) free(emitted);
         free(right);
@@ -5480,6 +5634,7 @@ static char *validate_core_calls(const char *source, const char *hir) {
             free(constructor_owner);
             if (
                 strcmp(previous, "fn") != 0 &&
+                strcmp(previous, ".") != 0 &&
                 strcmp(name, "print") != 0 &&
                 !constructor_application &&
                 open < length &&
@@ -5917,25 +6072,69 @@ static char *emit_condition_into(
     char *right = emit_expression(source, hir, right_start, end);
     Buffer output;
     buffer_init(&output);
-    buffer_format(
-        &output,
-        "%sint64_t kofun_condition_left = %s;\n"
-        "%sif (kofun_failed) return %s;\n"
-        "%sint64_t kofun_condition_right = %s;\n"
-        "%sif (kofun_failed) return %s;\n"
-        "%sbool %s = kofun_condition_left %s kofun_condition_right;\n",
-        indent,
-        left,
-        indent,
-        failure_result,
-        indent,
-        right,
-        indent,
-        failure_result,
-        indent,
-        target,
-        operator_text
+    int64_t function_open = enclosing_function_open(source, cursor);
+    const char *type = numeric_primary_type(
+        source,
+        hir,
+        function_open,
+        cursor
     );
+    if (strcmp(type, "Decimal") == 0) {
+        const char *comparison = "== 0";
+        if (strcmp(operator_text, "!=") == 0) comparison = "!= 0";
+        else if (strcmp(operator_text, "<") == 0) comparison = "< 0";
+        else if (strcmp(operator_text, "<=") == 0) comparison = "<= 0";
+        else if (strcmp(operator_text, ">") == 0) comparison = "> 0";
+        else if (strcmp(operator_text, ">=") == 0) comparison = ">= 0";
+        buffer_format(
+            &output,
+            "%sKofunDecimal *kofun_condition_left = %s;\n"
+            "%sKofunDecimal *kofun_condition_right = %s;\n"
+            "%sbool %s = kofun_decimal_compare("
+            "kofun_condition_left, kofun_condition_right) %s;\n",
+            indent,
+            left,
+            indent,
+            right,
+            indent,
+            target,
+            comparison
+        );
+    } else if (strcmp(type, "Float") == 0) {
+        buffer_format(
+            &output,
+            "%sdouble kofun_condition_left = %s;\n"
+            "%sdouble kofun_condition_right = %s;\n"
+            "%sbool %s = kofun_condition_left %s kofun_condition_right;\n",
+            indent,
+            left,
+            indent,
+            right,
+            indent,
+            target,
+            operator_text
+        );
+    } else {
+        buffer_format(
+            &output,
+            "%sint64_t kofun_condition_left = %s;\n"
+            "%sif (kofun_failed) return %s;\n"
+            "%sint64_t kofun_condition_right = %s;\n"
+            "%sif (kofun_failed) return %s;\n"
+            "%sbool %s = kofun_condition_left %s kofun_condition_right;\n",
+            indent,
+            left,
+            indent,
+            failure_result,
+            indent,
+            right,
+            indent,
+            failure_result,
+            indent,
+            target,
+            operator_text
+        );
+    }
     free(left);
     free(operator_text);
     free(right);
@@ -8405,6 +8604,7 @@ static char *initializer_type(
     int64_t length = source_length(source);
     int64_t end = expression_end(source, initializer);
     if (end < 0) end = token_end(source, initializer);
+    bool exact_decimal_division = false;
     /* The operator scan covers the whole initializer line: it ends at the
      * first newline outside parentheses, not at the bounded arithmetic
      * expression end, so `1 < 2` and multi-line parenthesized calls are
@@ -8439,6 +8639,8 @@ static char *initializer_type(
              token_equal(source, walk, "!"))
         ) {
             return owned_text("Bool");
+        } else if (depth == 0 && token_equal(source, walk, "/")) {
+            exact_decimal_division = true;
         }
         previous_end = token_end(source, walk);
         walk = skip_trivia(source, previous_end);
@@ -8453,6 +8655,20 @@ static char *initializer_type(
         cursor = skip_trivia(source, token_end(source, cursor));
     }
     if (cursor >= end) return owned_text("Int");
+    {
+        char *conversion = numeric_conversion_at(source, cursor);
+        const char *result = numeric_conversion_result(conversion);
+        if (result[0] != '\0') {
+            char *type = owned_text(
+                exact_decimal_division && strcmp(result, "Decimal") == 0
+                    ? "DecimalResult"
+                    : result
+            );
+            free(conversion);
+            return type;
+        }
+        free(conversion);
+    }
     const char *kind = token_kind(source, cursor);
     if (strcmp(kind, "integer") == 0) return owned_text("Int");
     /* #710 frozen decision 2: an unsuffixed fractional or scientific literal
@@ -8460,7 +8676,11 @@ static char *initializer_type(
      * them here is what puts the type in the scope HIR, so an unannotated
      * `let x = 1.5` is a Decimal binding rather than the historical Int
      * default. */
-    if (strcmp(kind, "decimal") == 0) return owned_text("Decimal");
+    if (strcmp(kind, "decimal") == 0) {
+        return owned_text(
+            exact_decimal_division ? "DecimalResult" : "Decimal"
+        );
+    }
     if (strcmp(kind, "float") == 0) return owned_text("Float");
     if (strcmp(kind, "string") == 0) return owned_text("Text");
     if (
@@ -8534,6 +8754,13 @@ static char *initializer_type(
                 if (indexed && strcmp(type, "List") == 0) {
                     free(type);
                     return owned_text("Text");
+                }
+                if (
+                    exact_decimal_division &&
+                    strcmp(type, "Decimal") == 0
+                ) {
+                    free(type);
+                    return owned_text("DecimalResult");
                 }
                 return type;
             }
@@ -10949,7 +11176,15 @@ static char *lower_body(
                 }
                 char *declared_type = token_copy(source, cursor);
                 if (strcmp(declared_type, "Int") != 0) {
-                    if (enum_constructor_count(source, declared_type) >= 0) {
+                    if (
+                        strcmp(declared_type, "Decimal") == 0 ||
+                        strcmp(declared_type, "Float") == 0 ||
+                        strcmp(declared_type, "DecimalResult") == 0
+                    ) {
+                        free(declared_type);
+                    } else if (
+                        enum_constructor_count(source, declared_type) >= 0
+                    ) {
                         enum_type = declared_type;
                     } else if (
                         record_declaration_start(source, declared_type) >= 0
@@ -11389,14 +11624,38 @@ static char *lower_body(
                 return lower_error("E2S12", "invalid Int expression", value_start);
             }
             char *value = emit_expression(source, hir, value_start, value_end);
+            char *binding_type = hir_binding_field(hir, binding_id, 5);
+            const char *c_type = "int64_t";
+            if (strcmp(binding_type, "Decimal") == 0) {
+                c_type = "KofunDecimal *";
+            } else if (strcmp(binding_type, "Float") == 0) {
+                c_type = "double";
+            } else if (strcmp(binding_type, "DecimalResult") == 0) {
+                c_type = "KofunDecimalResult *";
+            }
+            if (mutable && strcmp(binding_type, "Int") != 0) {
+                free(binding_type);
+                free(value);
+                free(binding_id);
+                free(name);
+                free(emitted.data);
+                return lower_error(
+                    "E2S144",
+                    "mutable Decimal, DecimalResult, and Float bindings are "
+                    "outside this lowering slice",
+                    value_start
+                );
+            }
             buffer_format(
                 &emitted,
-                "    int64_t k_b%s = %s;\n"
+                "    %s k_b%s = %s;\n"
                 "    if (kofun_failed) return %s;\n",
+                c_type,
                 binding_id,
                 value,
                 failure_result
             );
+            free(binding_type);
             free(value);
             free(name);
             free(binding_id);
@@ -11471,16 +11730,56 @@ static char *lower_body(
                 return lower_error("E2S13", "expected `)`", call_close);
             }
             char *value = emit_expression(source, hir, value_start, value_end);
-            buffer_format(
-                &emitted,
-                "    {\n"
-                "        int64_t kofun_value = %s;\n"
-                "        if (kofun_failed) return %s;\n"
-                "        printf(\"%%\" PRId64 \"\\n\", kofun_value);\n"
-                "    }\n",
-                value,
-                failure_result
+            char *value_type = initializer_type(
+                source,
+                hir,
+                function_open,
+                value_start
             );
+            if (strcmp(value_type, "Decimal") == 0) {
+                buffer_format(
+                    &emitted,
+                    "    {\n"
+                    "        KofunDecimal *kofun_value = %s;\n"
+                    "        char *kofun_text = "
+                    "kofun_decimal_to_canonical_text(kofun_value);\n"
+                    "        printf(\"%%s\\n\", kofun_text);\n"
+                    "        free(kofun_text);\n"
+                    "    }\n",
+                    value
+                );
+            } else if (strcmp(value_type, "Float") == 0) {
+                buffer_format(
+                    &emitted,
+                    "    {\n"
+                    "        double kofun_value = %s;\n"
+                    "        printf(\"%%.17g\\n\", kofun_value);\n"
+                    "    }\n",
+                    value
+                );
+            } else if (strcmp(value_type, "DecimalResult") == 0) {
+                buffer_format(
+                    &emitted,
+                    "    {\n"
+                    "        KofunDecimalResult *kofun_value = %s;\n"
+                    "        printf(\"%%s\\n\", "
+                    "kofun_decimal_value_division_name(kofun_value));\n"
+                    "    }\n",
+                    value
+                );
+            } else {
+                buffer_format(
+                    &emitted,
+                    "    {\n"
+                    "        int64_t kofun_value = %s;\n"
+                    "        if (kofun_failed) return %s;\n"
+                    "        printf(\"%%\" PRId64 \"\\n\", kofun_value);\n"
+                    "    }\n",
+                    value,
+                    failure_result
+                );
+            }
+            free(value_type);
             free(value);
             cursor = skip_trivia(source, token_end(source, call_close));
         } else if (token_equal(source, cursor, "if") &&
@@ -12901,6 +13200,7 @@ static bool arithmetic_operator_at(const char *source, int64_t cursor) {
     return token_equal(source, cursor, "+") ||
            token_equal(source, cursor, "-") ||
            token_equal(source, cursor, "*") ||
+           token_equal(source, cursor, "/") ||
            token_equal(source, cursor, "//") ||
            token_equal(source, cursor, "%") ||
            token_equal(source, cursor, "**");
@@ -13121,6 +13421,115 @@ static char *validate_numeric_operand_types(
 }
 
 /*
+ * `/` belongs to Decimal (checked exact result) and Float (binary64), never
+ * Int.  Conversely `//`, `%`, and `**` remain outside the fractional slice.
+ * This is validated before C emission so an unsupported operator cannot leak
+ * through as a host-C type error or accidentally settle Decimal remainder
+ * semantics.
+ */
+static char *validate_fractional_operators(
+    const char *source,
+    const char *hir
+) {
+    int64_t length = source_length(source);
+    int64_t function_start = next_function_start(source, 0);
+    while (function_start < length) {
+        int64_t function_close = function_end(source, function_start);
+        int64_t parameters = parameter_open(source, function_start);
+        int64_t function_open = parameters >= 0
+            ? balanced_end(source, parameters, "(", ")")
+            : -1;
+        int64_t cursor = function_open >= 0
+            ? skip_trivia(source, function_open)
+            : function_close;
+        int64_t last_primary = -1;
+        while (cursor < function_close) {
+            bool relevant =
+                token_equal(source, cursor, "/") ||
+                token_equal(source, cursor, "//") ||
+                token_equal(source, cursor, "%") ||
+                token_equal(source, cursor, "**");
+            if (relevant && last_primary >= 0) {
+                int64_t right = skip_trivia(
+                    source,
+                    token_end(source, cursor)
+                );
+                const char *left_type = numeric_primary_type(
+                    source,
+                    hir,
+                    function_open,
+                    last_primary
+                );
+                const char *right_type = numeric_primary_type(
+                    source,
+                    hir,
+                    function_open,
+                    right
+                );
+                bool slash_on_int =
+                    token_equal(source, cursor, "/") &&
+                    strcmp(left_type, "Int") == 0 &&
+                    strcmp(right_type, "Int") == 0;
+                bool fractional_reserved =
+                    !token_equal(source, cursor, "/") &&
+                    (
+                        strcmp(left_type, "Decimal") == 0 ||
+                        strcmp(left_type, "Float") == 0 ||
+                        strcmp(right_type, "Decimal") == 0 ||
+                        strcmp(right_type, "Float") == 0
+                    );
+                if (slash_on_int || fractional_reserved) {
+                    char *operator_text = token_copy(source, cursor);
+                    Buffer message;
+                    buffer_init(&message);
+                    if (slash_on_int) {
+                        buffer_format(
+                            &message,
+                            "error[E2S144]: `/` is not defined on Int at "
+                            "byte %" PRId64 "; use `//` for the integer "
+                            "quotient",
+                            cursor
+                        );
+                    } else {
+                        buffer_format(
+                            &message,
+                            "error[E2S144]: operator `%s` is not defined on "
+                            "%s at byte %" PRId64,
+                            operator_text,
+                            left_type[0] == '\0' ? right_type : left_type,
+                            cursor
+                        );
+                    }
+                    free(operator_text);
+                    stage2_diagnostic_set(
+                        "E2S144",
+                        cursor,
+                        token_end(source, cursor),
+                        true,
+                        message.data
+                    );
+                    return message.data;
+                }
+                last_primary = right;
+            } else {
+                const char *kind = token_kind(source, cursor);
+                if (
+                    strcmp(kind, "integer") == 0 ||
+                    strcmp(kind, "decimal") == 0 ||
+                    strcmp(kind, "float") == 0 ||
+                    strcmp(kind, "identifier") == 0
+                ) {
+                    last_primary = cursor;
+                }
+            }
+            cursor = skip_trivia(source, token_end(source, cursor));
+        }
+        function_start = next_function_start(source, function_close);
+    }
+    return owned_text("ok");
+}
+
+/*
  * A numeric annotation and its initializer must name the same type.
  *
  * #710 frozen decision 4 removes implicit promotion *in both directions*, so
@@ -13247,12 +13656,9 @@ static char *validate_numeric_annotations(
  * would mean choosing a rounding mode silently, which is the single thing the
  * frozen decisions rule out.
  *
- * The refusal for a *valid* conversion comes last, so a program with both a
- * wrong conversion and a right one reports the wrong one.
- *
- * Note for slice 4: lifting the E2S104 refusal exposes `from_int(` to
- * `validate_core_calls`, which will call it an unknown Core function. Nothing
- * reaches that path today because this refusal short-circuits first.
+ * Validation records a valid exact conversion while continuing to look for a
+ * later invalid one; lowering handles `Decimal.from_int` structurally, and the
+ * ordinary call validator skips the member token following `.`.
  */
 static char *validate_numeric_conversions(
     const char *source,
@@ -13385,39 +13791,17 @@ static char *validate_numeric_conversions(
         }
         function_start = next_function_start(source, function_close);
     }
-    if (valid_conversion >= 0) {
-        Buffer message;
-        buffer_init(&message);
-        buffer_format(
-            &message,
-            "error[E2S104]: Decimal.from_int at byte %" PRId64
-            " has no arithmetic yet (#710 slice 4)",
-            valid_conversion
-        );
-        stage2_diagnostic_set(
-            "E2S104",
-            valid_conversion,
-            token_end(source, valid_conversion),
-            true,
-            message.data
-        );
-        return message.data;
-    }
+    (void)valid_conversion;
     return owned_text("ok");
 }
 
 /*
- * A well-formed Decimal or Float literal reaching lowering.
- *
- * #717 lexes these and stops there: the token contract is slice 1 of #710 and
- * the runtime representation is slice 2, so there is nothing yet to lower a
- * Decimal *to*. The refusal names that successor rather than reusing the
- * generic `E2S12`, because "invalid Int expression" says the literal is wrong
- * when what is actually true is that the compiler is unfinished. Lowering
- * through Int, or through a host double, would change the value and is
- * exactly what `docs/DECIMAL.md` forbids.
+ * Validate every fractional literal against the versioned profile before
+ * lowering. Runtime construction repeats the same check, but doing it here is
+ * what keeps D001/D002 source-located and prevents an output artifact from
+ * being written for a statically over-limit program.
  */
-static char *validate_unsupported_numeric_kinds(const char *source) {
+static char *validate_numeric_literals(const char *source) {
     int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, 0);
     while (cursor < length) {
@@ -13471,33 +13855,28 @@ static char *validate_unsupported_numeric_kinds(const char *source) {
                 );
                 return message.data;
             }
-            /*
-             * The literal is representable (slice 2) and typed (slice 3):
-             * `Int`, `Decimal` and `Float` are three distinct checker types
-             * now. What it still lacks is a *lowering*, so the successor
-             * named here is slice 4, which evaluates the operations across
-             * the backends. Naming slice 3 would be false — that slice is
-             * done, and this literal has a type.
-             */
-            buffer_format(
-                &message,
-                "error[E2S99]: %s literal at byte %" PRId64
-                " has no lowering yet (#710 slice 4)",
-                decimal ? "Decimal" : "Float",
-                cursor
-            );
-            stage2_diagnostic_set(
-                "E2S99",
-                cursor,
-                end,
-                true,
-                message.data
-            );
-            return message.data;
+            free(message.data);
         }
         cursor = skip_trivia(source, token_end(source, cursor));
     }
     return owned_text("ok");
+}
+
+static bool source_uses_fractional_values(const char *source) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < length) {
+        const char *kind = token_kind(source, cursor);
+        if (
+            strcmp(kind, "decimal") == 0 ||
+            strcmp(kind, "float") == 0 ||
+            numeric_conversion_head(source, cursor)
+        ) {
+            return true;
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return false;
 }
 
 static int64_t record_align_up(int64_t value, int64_t alignment) {
@@ -13611,12 +13990,20 @@ static char *emit_record_c_declarations(const char *source) {
 
 static char *lower_c(const char *source, const char *hir) {
     int64_t length = source_length(source);
-    /* A mixed-type expression is reported before the unsupported-kind refusal,
-     * so `1 + 1.5` says what is wrong with it rather than reporting the more
-     * generic "no arithmetic yet". */
+    bool fractional_values = source_uses_fractional_values(source);
+    /* A mixed-type expression is reported before operator lowering, so
+     * `1 + 1.5` names the missing explicit conversion. */
     char *operand_check = validate_numeric_operand_types(source, hir);
     if (strncmp(operand_check, "error[", 6) == 0) return operand_check;
     free(operand_check);
+    char *fractional_operator_check = validate_fractional_operators(
+        source,
+        hir
+    );
+    if (strncmp(fractional_operator_check, "error[", 6) == 0) {
+        return fractional_operator_check;
+    }
+    free(fractional_operator_check);
     /* After the operand check, so `let x: Int = 1 + 1.5` reports the mix it
      * contains rather than blaming the annotation for a value that has no
      * single type to compare against. */
@@ -13629,7 +14016,7 @@ static char *lower_c(const char *source, const char *hir) {
     char *conversion_check = validate_numeric_conversions(source, hir);
     if (strncmp(conversion_check, "error[", 6) == 0) return conversion_check;
     free(conversion_check);
-    char *numeric_kind_check = validate_unsupported_numeric_kinds(source);
+    char *numeric_kind_check = validate_numeric_literals(source);
     if (strncmp(numeric_kind_check, "error[", 6) == 0) {
         return numeric_kind_check;
     }
@@ -13809,6 +14196,13 @@ static char *lower_c(const char *source, const char *hir) {
                 "    (void)kofun_floor_div;\n"
                 "    (void)kofun_floor_mod;\n"
             );
+            if (fractional_values) {
+                buffer_append(
+                    &bodies,
+                    "    if (atexit(kofun_decimal_arena_release) != 0) "
+                    "return 1;\n"
+                );
+            }
             buffer_append(&bodies, body);
             buffer_append(&bodies, "}\n");
         } else {
@@ -13846,7 +14240,14 @@ static char *lower_c(const char *source, const char *hir) {
         "#include <stdbool.h>\n"
         "#include <stddef.h>\n"
         "#include <stdint.h>\n"
-        "#include <stdio.h>\n\n"
+        "#include <stdio.h>\n"
+    );
+    if (fractional_values) {
+        buffer_append(&output, "#include \"decimal_v1.c\"\n");
+    }
+    buffer_append(
+        &output,
+        "\n"
         "typedef struct {\n"
         "    int64_t tag;\n"
         "    int64_t payload;\n"

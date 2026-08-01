@@ -1,0 +1,10 @@
+# contract: kofun.backend-differential/v1
+# expect-stdout: 1
+
+fn main() {
+    if Decimal.from_int(3) + 0.5 == 3.5 {
+        print(1)
+    } else {
+        print(0)
+    }
+}

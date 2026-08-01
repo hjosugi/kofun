@@ -1,16 +1,25 @@
 backend	corpus	state	evidence	reason
+c11-stage1	decimal-arithmetic	unsupported	-	The Stage 1 C11 Core does not lower Decimal or Float values
 c11-stage1	functions	supported	tests/conformance/run.sh	-
 c11-stage1	list	unsupported	-	The Stage 1 C11 Core does not lower List values
 c11-stage1	numeric	supported	tests/conformance/run.sh	-
 c11-stage1	text	unsupported	-	The Stage 1 C11 Core does not lower Text values
+c11-stage2	decimal-arithmetic	supported	tests/conformance/run.sh	-
+c11-stage2	functions	supported	tests/conformance/run.sh	-
+c11-stage2	list	unsupported	-	The Stage 2 C11 Core does not lower List values in this backend profile
+c11-stage2	numeric	supported	tests/conformance/run.sh	-
+c11-stage2	text	unsupported	-	The Stage 2 C11 Core does not lower Text values in this backend profile
+native-aarch64	decimal-arithmetic	unsupported	-	The direct AArch64 backend has no arbitrary-precision Decimal runtime
 native-aarch64	functions	supported	bootstrap/native/check.sh	-
 native-aarch64	list	supported	bootstrap/native/check.sh	-
 native-aarch64	numeric	supported	bootstrap/native/check.sh	-
 native-aarch64	text	supported	bootstrap/native/check.sh	-
+native-x86_64	decimal-arithmetic	unsupported	-	The direct x86-64 backend has no arbitrary-precision Decimal runtime
 native-x86_64	functions	supported	bootstrap/native/check.sh	-
 native-x86_64	list	supported	bootstrap/native/check.sh	-
 native-x86_64	numeric	supported	bootstrap/native/check.sh	-
 native-x86_64	text	supported	bootstrap/native/check.sh	-
+wasm32-node	decimal-arithmetic	unsupported	-	The wasm32 backend has no arbitrary-precision Decimal runtime
 wasm32-node	functions	supported	bootstrap/wasm/check.sh	-
 wasm32-node	list	unsupported	-	The wasm32 Core does not lower List values
 wasm32-node	numeric	supported	bootstrap/wasm/check.sh	-

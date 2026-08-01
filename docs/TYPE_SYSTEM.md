@@ -197,17 +197,17 @@ no promotion it cannot produce a fractional value from two `Int` operands. It is
 left without a meaning rather than given the truncating one, so it can be
 defined later without silently changing any expression that compiles now.
 
-`Decimal` and `Float` are types the checker knows (#710 slice 3): literals
-carry them, `let` bindings carry them, annotations are checked against them,
-and mixing two numeric types in one operator is a type error. No fractional
-*arithmetic* is implemented — an expression that reaches lowering with a
-`Decimal` or `Float` in it is refused, naming the slice that will evaluate it.
+`Decimal` and `Float` are distinct checker and lowering types. Literals and
+`let` bindings carry them, annotations are checked against them, and mixing two
+numeric types in one operator is a type error. The Stage 2 C11 backend lowers
+exact Decimal `+`, `-`, `*`, comparison/equality, checked exact `/`, and the
+binary64 Float counterparts. Other declared backends refuse the
+`decimal-arithmetic` capability explicitly rather than changing values.
 
-So `let x: Float = 0.5` is still rejected, but for the reason the type system
-gives rather than for the compiler being unfinished: `0.5` is a `Decimal`, and
-there is no implicit conversion to `Float`. `let x: Float = 0.5f64` passes the
-checker and stops at lowering. Which fractional type `/` eventually takes is
-#545's question.
+So `let x: Float = 0.5` is rejected because `0.5` is a `Decimal` and there is
+no implicit conversion to `Float`; `let x: Float = 0.5f64` lowers as binary64.
+`Decimal / Decimal` produces the checked `DecimalResult`, while `Float / Float`
+keeps binary64 division. `/` remains undefined on `Int`.
 
 ```kofun
 let exact = 7 // 2 # 3

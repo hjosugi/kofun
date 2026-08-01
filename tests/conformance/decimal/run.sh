@@ -295,7 +295,9 @@ golden contrast contrast \
     grep -v '^#include "decimal_v1.h"' "$ROOT/bootstrap/stage2/decimal_v1.c"
     cat <<'PROGRAM'
 
-int main(void) {
+int main(int argc, char **argv) {
+    (void)argv;
+    if (argc > 1) decimal_fatal(KOFUN_DECIMAL_DIGIT_LIMIT);
     printf("%s\n",
         kofun_decimal_equal(
             kofun_decimal_value_add(
@@ -316,6 +318,26 @@ printf 'true\n' >"$WORK/spliced.expected"
 cmp "$WORK/spliced.expected" "$WORK/spliced.observed" ||
     fail "0.1 + 0.2 == 0.3 did not hold in a spliced standalone program"
 printf '%s\n' "PASS: the runtime splices into a standalone program and 0.1 + 0.2 == 0.3"
+
+# The generated-code shim exits on an unrepresentable result. Pin the complete
+# diagnostic so its stable code is not accidentally prefixed twice or replaced
+# with an allocation-dependent message.
+set +e
+"$WORK/spliced" force-resource-failure \
+    >"$WORK/spliced-fatal.stdout" 2>"$WORK/spliced-fatal.observed"
+spliced_fatal_status=$?
+set -e
+if test "$spliced_fatal_status" -ne 1; then
+    fail "generated Decimal resource failure exited $spliced_fatal_status instead of 1"
+fi
+printf '%s\n' \
+    "error[D001]: Decimal significand exceeds the profile's digit limit" \
+    >"$WORK/spliced-fatal.expected"
+cmp "$WORK/spliced-fatal.expected" "$WORK/spliced-fatal.observed" ||
+    fail "generated Decimal resource failure diagnostic changed"
+test ! -s "$WORK/spliced-fatal.stdout" ||
+    fail "generated Decimal resource failure wrote stdout"
+printf '%s\n' "PASS: generated Decimal resource failures preserve one canonical diagnostic"
 
 # Sanitizers, matching what the other Stage 2 module gates do. An
 # arbitrary-precision buffer that grows by doubling is exactly the shape where
