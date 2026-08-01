@@ -344,12 +344,21 @@ The cache is defensive rather than trusted. An unknown schema tag, malformed
 record, foreign `PackageId`, exceeded node/edge/byte limit, or mutated
 interface blob is a bounded cache miss that recomputes, never a crash and never
 a stale reuse; a corrupt blob demotes only its own module. Manifests and
-interfaces are replaced atomically, and a rejected source commits nothing, so a
-failure is never reusable as a success. This helper owns compiler semantics
-only: it is not Frost's target/action graph, it schedules nothing, and it makes
-no timing claim. Target profile changes, failure-then-repair reuse, and
-path-remapped clean copies are the recorded second slice of #301. Run the
-sanitizer- and analyzer-backed gate with `task incremental`.
+interfaces are replaced atomically, and a rejected source commits nothing, so
+a failure is never reusable as a success. Its repaired successor therefore
+starts from the last committed success rather than from failed work.
+
+The fourth argument is a 64-digit `TARGET_PROFILE_DIGEST` supplied by the
+upstream target ABI/profile fact producer. The digest, never a host path, is
+part of the persisted target action key. A profile-only change reuses unchanged
+semantic nodes but conservatively rebuilds every target artifact; an unchanged
+profile may reuse a target artifact only when its module's semantic work was
+also reused. This is the compiler-to-action boundary, not Frost's full
+target/action graph: the helper does not derive ABI facts, schedule work, or
+make timing claims. The gate also proves that clean copies under different
+physical source roots produce byte-identical manifests and reports. Run all ten
+edit-matrix rows, failure/repair, path-remap, sanitizer, and analyzer checks
+with `task incremental`.
 
 Focused import diagnostics are `E2S59` malformed/order/path/alias, `E2S60`
 missing module, `E2S61` self import, `E2S62` duplicate target/import, `E2S63`
@@ -462,16 +471,16 @@ limits, failed publication, C11 warnings, sanitizers, and static analysis.
 `tests/conformance/modules/re-exports/run.sh` adds export-fact digest,
 round-trip, mutation, and source-free facade-consumption coverage.
 
-`tests/conformance/incremental/run.sh` pins the semantic invalidation
-decisions on a four-module `core <- service <- app` package plus an unrelated
-`util`. It records the exact executed/reused node set for each of the first
-seven Required edit matrix rows, the transitive case where a changed
-intermediate interface does continue to propagate, the external public
-boundary through source-free KIF resolution, inventory-order invariance,
-bounded recovery from unknown schemas and corrupt manifests and blobs, and
-that a rejected source commits nothing. Rows 8-10 and the collector's
-rejection of top-level comments are explicit `SKIP` lines, never implicit
-passes.
+`tests/conformance/incremental/run.sh` pins the semantic and target-action
+invalidation decisions on a four-module `core <- service <- app` package plus
+an unrelated `util`. It records the exact executed/reused or rebuilt/reused set
+for all ten Required edit matrix rows, including target-profile changes, a
+cold failed compile followed by repair, and path-remapped clean copies. It also
+covers the transitive case where a changed intermediate interface continues to
+propagate, the external public boundary through source-free KIF resolution,
+inventory-order invariance, bounded recovery from unknown schemas and corrupt
+manifests and blobs, and failure non-publication. The collector's rejection of
+top-level comments remains an explicit `SKIP`, never an implicit pass.
 
 `bootstrap/stage2/visibility_access.c` is the pure access primitive for the
 next resolver slice. It compares only schema-tagged 32-byte package, module,
