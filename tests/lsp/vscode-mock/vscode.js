@@ -40,10 +40,25 @@ class Diagnostic {
   }
 }
 
+class CompletionItem {
+  constructor(label, kind) {
+    this.label = label;
+    this.kind = kind;
+  }
+}
+
+class CompletionList {
+  constructor(items, isIncomplete) {
+    this.items = items;
+    this.isIncomplete = isIncomplete;
+  }
+}
+
 const state = {
   diagnostics: new Map(),
   definitionProvider: null,
   hoverProvider: null,
+  completionProvider: null,
   output: []
 };
 
@@ -73,6 +88,7 @@ module.exports = {
   __state: state,
   __document: document,
   Position, Range, Uri, Location, MarkdownString, Hover, Diagnostic,
+  CompletionItem, CompletionList,
   workspace: {
     workspaceFolders: [{ uri: Uri.parse('file:///workspace'), name: 'workspace' }],
     textDocuments: [document],
@@ -95,6 +111,10 @@ module.exports = {
     },
     registerHoverProvider(_language, provider) {
       state.hoverProvider = provider;
+      return disposable();
+    },
+    registerCompletionItemProvider(_language, provider) {
+      state.completionProvider = provider;
       return disposable();
     }
   },

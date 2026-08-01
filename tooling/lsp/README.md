@@ -2,7 +2,7 @@
 
 `kofun-lsp` is a dependency-free stdio language server for the bootstrap
 language. It implements incremental document synchronization, versioned
-diagnostics, go-to-definition, and hover.
+diagnostics, go-to-definition, hover, and completion.
 
 ```sh
 tooling/lsp/kofun-lsp
@@ -14,7 +14,18 @@ open document:
 - lexical/delimiter diagnostics;
 - functions, parameters, `let`/`for` bindings, and planned `type`
   declarations;
-- declared types, basic literal types, and parameter modes.
+- declared types, basic literal types, and parameter modes;
+- completion over the names in scope at the cursor, plus the builtin and
+  keyword vocabulary.
+
+Completion answers with the declarations that are visible at the requested
+position, resolved by the same rules go-to-definition uses, so the two never
+name different declarations. Each item reports whether its type came from the
+validated typed sidecar or from the labelled syntactic fallback. Members and
+fields are not completed and no trigger character is advertised for them, so
+`.` never opens a list this server cannot fill. Long lists are filtered by the
+identifier already typed and then bounded at 200 items, and a bounded list is
+returned as incomplete so the editor asks again as the prefix narrows.
 
 It does not read unopened files, build a project-wide import graph, or claim
 full compiler type inference. Unknown types are reported as either an

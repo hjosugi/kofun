@@ -62,12 +62,33 @@
                 <h3 id="editor-title">Your Kofun program</h3>
                 <span>Ctrl/⌘ + Enter to run</span>
               </div>
-              <textarea
-                data-editor
-                aria-label="Editable Kofun source"
-                spellcheck="false"
-                autocomplete="off"
-              ></textarea>
+              <div class="editor-surface">
+                <!-- Holds the same text at the same metrics as the textarea,
+                     which is what makes a mouse position resolvable to a source
+                     offset. It is inert and hidden from assistive technology;
+                     the textarea remains the only thing focusable here. -->
+                <div class="editor-mirror" data-editor-mirror aria-hidden="true"></div>
+                <textarea
+                  data-editor
+                  aria-label="Editable Kofun source"
+                  spellcheck="false"
+                  autocomplete="off"
+                  role="combobox"
+                  aria-expanded="false"
+                  aria-autocomplete="list"
+                  aria-controls="editor-completion"
+                ></textarea>
+                <ul
+                  class="completion"
+                  id="editor-completion"
+                  data-completion
+                  role="listbox"
+                  aria-label="Completions"
+                  hidden
+                ></ul>
+                <div class="hover-card" data-hover-card hidden></div>
+              </div>
+              <p class="inspector" data-inspector role="status" aria-live="polite"></p>
               <div class="actions">
                 <button class="primary" type="button" data-run>Run</button>
                 <button type="button" data-reset>Reset</button>

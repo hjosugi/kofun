@@ -93,6 +93,9 @@ class Parser {
     this.error = null;
     this.nodes = [];
     this.bindings = [];
+    // Parallel to `bindings`, so binding indices and the local-slot arithmetic
+    // that depends on them stay exactly as they were.
+    this.bindingSpans = [];
     this.statements = [];
     this.printCount = 0;
   }
@@ -121,7 +124,10 @@ class Parser {
     }
 
     if (this.cursor === this.source.length) {
-      this.token = { kind: TOKEN.EOF, text: "", line: this.line };
+      this.token = {
+        kind: TOKEN.EOF, text: "", line: this.line,
+        start: this.cursor, end: this.cursor,
+      };
       return;
     }
 
@@ -139,6 +145,10 @@ class Parser {
         kind: TOKEN.IDENTIFIER,
         text: this.source.slice(start, this.cursor),
         line,
+        // Editor features need where a name is, not only what it is. Nothing
+        // downstream of the parser reads these, so codegen is unaffected.
+        start,
+        end: this.cursor,
       };
       return;
     }
@@ -155,6 +165,8 @@ class Parser {
             text: this.source.slice(start, this.cursor),
             magnitude,
             line,
+            start,
+            end: this.cursor,
           };
           this.fail("integer literal exceeds Int64");
           return;
@@ -165,6 +177,8 @@ class Parser {
         text: this.source.slice(start, this.cursor),
         magnitude,
         line,
+        start,
+        end: this.cursor,
       };
       return;
     }
@@ -185,17 +199,27 @@ class Parser {
     if (value === "/") {
       if (this.source[this.cursor] === "/") {
         this.cursor += 1;
-        this.token = { kind: TOKEN.FLOOR_DIV, text: "//", line };
+        this.token = {
+          kind: TOKEN.FLOOR_DIV, text: "//", line,
+          start, end: this.cursor,
+        };
       } else {
-        this.token = { kind: TOKEN.SLASH, text: "/", line };
+        this.token = {
+          kind: TOKEN.SLASH, text: "/", line, start, end: this.cursor,
+        };
       }
       return;
     }
     if (single.has(value)) {
-      this.token = { kind: single.get(value), text: value, line };
+      this.token = {
+        kind: single.get(value), text: value, line,
+        start, end: this.cursor,
+      };
       return;
     }
-    this.token = { kind: TOKEN.EOF, text: value, line };
+    this.token = {
+      kind: TOKEN.EOF, text: value, line, start, end: this.cursor,
+    };
     this.fail("unsupported token in wasm32 arithmetic Core");
   }
 
@@ -341,6 +365,9 @@ class Parser {
       return;
     }
     const name = this.token.text;
+    const nameStart = this.token.start;
+    const nameEnd = this.token.end;
+    const nameLine = this.token.line;
     if (name.length >= 64) {
       this.fail("binding name is too long");
       return;
@@ -366,6 +393,14 @@ class Parser {
     if (this.error !== null) return;
     const binding = this.bindings.length;
     this.bindings.push(name);
+    // Pushed here, after the initializer is parsed, for the same reason the
+    // name is: a binding is not in scope inside its own initializer.
+    this.bindingSpans.push({
+      name, start: nameStart, end: nameEnd, line: nameLine,
+      // Where the initializer stopped, which is exactly where this name starts
+      // meaning something. `let x = x + 1` must not offer `x` to itself.
+      scopeStart: this.token.start,
+    });
     this.addStatement("bind", expression, binding);
   }
 
@@ -760,6 +795,41 @@ function emitModule(parser) {
   code.bytes(body.data);
   module.section(10, code);
   return module.toUint8Array();
+}
+
+// Editor features run the same parser that emits the module rather than a
+// second, looser reading of the text. A program that does not compile still
+// yields every binding the parser accepted before it stopped, which is what
+// makes completion useful while a line is half-typed.
+export function analyzeKofun(source) {
+  if (typeof source !== "string") {
+    throw new TypeError("Kofun source must be a string");
+  }
+  if (new TextEncoder().encode(source).length > MAX_SOURCE_BYTES) {
+    return { declarations: [], error: "source exceeds 1 MiB wasm32 Core limit" };
+  }
+  // parseProgram throws once it has a diagnostic, which is what compileKofun
+  // wants. Here the partial parse is the point, so the parser is held onto and
+  // the diagnostic is reported rather than raised.
+  const parser = new Parser(source);
+  try {
+    parser.parseProgram();
+  } catch (caught) {
+    if (!(caught instanceof KofunCompileError)) throw caught;
+  }
+  return {
+    declarations: parser.bindingSpans.map((binding) => ({
+      name: binding.name,
+      start: binding.start,
+      end: binding.end,
+      line: binding.line,
+      scopeStart: binding.scopeStart,
+      // The browser Core accepts Int bindings only, and refuses every other
+      // annotation by name, so this is the checked type rather than a guess.
+      type: "Int",
+    })),
+    error: parser.error === null ? null : parser.error.message,
+  };
 }
 
 export function compileKofun(source) {

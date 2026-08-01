@@ -451,6 +451,32 @@ export function hoverAt(snapshot, utf16Position) {
   } : null;
 }
 
+// Completion enriches each visible declaration with the checked facts for that
+// declaration. The caller states which node kind the name must have been
+// declared by: a function.declaration spans its whole body, so without that
+// requirement every local inside it would silently inherit the function's own
+// type when an incomplete document left the local unemitted.
+export function declarationFactsAt(snapshot, requests) {
+  const state = internals.get(snapshot);
+  return requests.map((request) => {
+    const offset = request === null ? null : request.offset;
+    if (!state || offset === null || offset === undefined) return null;
+    const node = containing(state.nodes, offset, nodeOrder);
+    if (!node || !request.kinds.includes(node.kind)) return null;
+    if (node.status !== "validated" && node.status !== "provisional") return null;
+    const facts = {};
+    for (const field of ["type", "ownership"]) {
+      const fact = node[field];
+      if (!fact) continue;
+      if (fact.status !== "validated" && fact.status !== "provisional") continue;
+      facts[field] = boundedText(fact.display, 256);
+    }
+    if (facts.type === undefined && facts.ownership === undefined) return null;
+    facts.provisional = node.status === "provisional";
+    return facts;
+  });
+}
+
 export function definitionAt(snapshot, utf16Position) {
   const state = internals.get(snapshot);
   if (!state) return null;

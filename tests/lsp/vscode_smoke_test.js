@@ -36,6 +36,19 @@ async function main() {
   );
   assert.match(hover.contents.value, /type: Int/);
   assert.doesNotMatch(hover.contents.value, /syntactic fallback/);
+
+  const completion = await vscode.__state.completionProvider.provideCompletionItems(
+    vscode.__document, new vscode.Position(6, 10)
+  );
+  assert.strictEqual(completion.isIncomplete, false);
+  const items = new Map(completion.items.map((item) => [item.label, item]));
+  // VS Code's Variable/Function/Keyword are the LSP kinds minus one; a client
+  // that forwarded the LSP numbers unchanged would render every icon wrong.
+  assert.strictEqual(items.get('copy').kind, 5);
+  assert.strictEqual(items.get('identity').kind, 2);
+  assert.strictEqual(items.get('let').kind, 13);
+  assert.strictEqual(items.has('value'), false);
+
   await extension.deactivate();
   process.stdout.write('PASS: packaged VS Code client starts, queries, and stops the bundled server\n');
 }
