@@ -11,6 +11,9 @@ fn main() {
     print(inspect(socket))
     consume(socket)
 
-    # Uncommenting this line produces E330: value was already taken.
+    # Uncommenting this line is a use after `take`. The general ownership pass
+    # that would reject it here is open (docs/MVP_IMPLEMENTED.md); the
+    # rejection is executable today only for records, as `E2S123` in
+    # tests/conformance/records/use_after_move.kofun.
     # print(inspect(socket))
 }

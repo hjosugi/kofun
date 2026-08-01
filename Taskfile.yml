@@ -241,6 +241,11 @@ tasks:
     cmds:
       - "sh bootstrap/wasm/check.sh"
 
+  examples:
+    desc: "Verify every example is bound to the check that owns it"
+    cmds:
+      - "sh examples/check.sh"
+
   tour:
     desc: "Verify the no-install browser learning tour"
     cmds:
@@ -290,7 +295,7 @@ tasks:
   example-law-evidence:
     desc: "Bind example law evidence to its exact source and honest status"
     cmds:
-      - "sh examples/check.sh"
+      - "sh examples/check-law-evidence.sh"
 
   benchmark-summary:
     desc: "Verify deterministic benchmark quantiles and MAD"
@@ -555,6 +560,7 @@ tasks:
             discovery \
             native \
             wasm \
+            examples \
             tour \
             c-abi \
             bindgen-c \
