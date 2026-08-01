@@ -620,7 +620,7 @@
     }
   ],
   "evidence_digests": {
-    "Taskfile.yml": "0e9eee9923d8f02665973b9fc73f479ee67f8290d29ddd392dc4548c103798ac",
+    "Taskfile.yml": "4cc11051da98fad1f0cd8edc529d99803c9ff1470e953d94dc985b0e434c1b65",
     "bootstrap/native/check.sh": "fea94cb623757e1bf17e4497f43d656b1e8ff57a39a92ece871d8ff257c0f2ef",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/driver/corpus_builtin_rejects.tsv": "b1fa0b26247581aef797a81880554a94233a34109215530641706d76777087d4",
@@ -633,7 +633,7 @@
     "docs/COMPILER_ARCHITECTURE.md": "9ca8641a3d117d84be9ce7f311d26c5f7e8df3b1a5772f3be5b8db67808d56cc",
     "docs/DECIMAL.md": "901455a8ad89af0fa6fc7be449a98cbb5c16cf663a2e6814e239b2f51cc88c29",
     "docs/DOCUMENTATION_INDEX.md": "82d6ef91e36f8c9acb729a72a314f58f5d5d48bf646036f5efe3424658b75b5b",
-    "docs/GETTING_STARTED.md": "927180a9f390778e4e819a175be301a53fe4a9b11412c536cfe97388df7262d6",
+    "docs/GETTING_STARTED.md": "4a9a3bae70796c12216f7448e98898f0297926ab3bd80219234b21dc06cc1f95",
     "docs/LAW_SYSTEM.md": "81276192f86e03b94369d6d2342a5f681533e64e6df9d4eddd73f3f25de96f99",
     "docs/LINGUIST_RECOGNITION.md": "9d81df186a6a92b4b65850e4ca7fb0e9ba97ec705774b935466d2148865eab87",
     "docs/MEMORY_MODEL.md": "bc3add7dd5703cb241cf66771351fb072fff9c2015026cb6b3cedcae389c3185",

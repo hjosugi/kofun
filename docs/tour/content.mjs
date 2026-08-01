@@ -15,6 +15,10 @@ fn main() {
     print(distance)
 }`,
     expected: ["240", "68"],
+    guide: {
+      ready: "Two printed numbers steer me: the first is my colour, and the second is my finish line.",
+      success: "That output moved me for real. Change both named numbers and run it once more.",
+    },
   },
   {
     id: "names",
@@ -30,6 +34,10 @@ fn main() {
     print(laps * points_per_lap)
 }`,
     expected: ["60"],
+    guide: {
+      ready: "Put the caret on a name to see the compiler-backed Int fact, or start typing to complete it.",
+      success: "The useful names survived compilation. Try the exercise without putting 100 directly in print.",
+    },
   },
   {
     id: "ownership-bug",
@@ -49,6 +57,10 @@ fn main() {
     print(winners + refused)
 }`,
     expected: ["1", "1", "2"],
+    guide: {
+      ready: "First see the double-sale bug, then learn read, edit, and take. This runnable Core models only the outcome.",
+      success: "One winner plus one refusal keeps the total at two. The ownership note below marks what is design, not browser enforcement.",
+    },
     ownership: {
       bug: "Without exclusive access: buyer A sees 1, buyer B sees 1, both sell it.",
       prevention:
@@ -73,6 +85,11 @@ fn main() {
     print(-7 // divisor)
 }`,
     expectedError: "error[R010]: operator `//` failed: division by zero",
+    guide: {
+      ready: "This first run is supposed to stop. A checked failure is useful output, not a browser crash.",
+      success: "The program runs again. With a divisor of 2, floor division makes -7 // 2 equal -4.",
+      expectedFailure: "Good: the runtime caught division by zero. Change the divisor and run again to repair it.",
+    },
   },
 ]);
 export const GUIDES = Object.freeze([

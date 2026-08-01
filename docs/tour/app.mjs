@@ -1,6 +1,7 @@
 import { analyzeKofun } from "./compiler.mjs";
 import { GUIDES, STEPS } from "./content.mjs";
 import { completionAt, hoverAt } from "./intelligence.mjs";
+import { renderKofunKun } from "./kofun-kun.mjs";
 import { runKofun } from "./runtime.mjs";
 import { decodeShareHash, encodeShareHash } from "./share.mjs";
 
@@ -14,6 +15,7 @@ const elements = {
   run: document.querySelector("[data-run]"),
   reset: document.querySelector("[data-reset]"),
   share: document.querySelector("[data-share]"),
+  next: document.querySelector("[data-next]"),
   status: document.querySelector("[data-status]"),
   output: document.querySelector("[data-output]"),
   ownership: document.querySelector("[data-ownership]"),
@@ -26,6 +28,11 @@ const elements = {
   completion: document.querySelector("[data-completion]"),
   hoverCard: document.querySelector("[data-hover-card]"),
   inspector: document.querySelector("[data-inspector]"),
+  progress: document.querySelector("[data-progress]"),
+  feedback: document.querySelector("[data-kofun-feedback]"),
+  heroButton: document.querySelector("[data-kofun-button]"),
+  heroKofun: document.querySelector("[data-kofun-hero]"),
+  runnerKofun: document.querySelector("[data-kofun-runner]"),
 };
 
 let currentStep = STEPS[0];
@@ -240,6 +247,11 @@ function setStatus(message, state = "idle") {
   elements.status.dataset.state = state;
 }
 
+function setKofunFeedback(message, pose = "idle") {
+  elements.feedback.textContent = message;
+  renderKofunKun(elements.runnerKofun, pose);
+}
+
 function renderResult(lines) {
   elements.output.textContent = lines.length === 0 ? "(no output)" : lines.join("\n");
   const hue = Number.parseInt(lines[0] ?? "210", 10);
@@ -256,21 +268,40 @@ function renderResult(lines) {
   elements.finish.style.setProperty("--finish-position", `${safeDistance}%`);
 }
 
-async function runEditor() {
+async function runEditor({ announceGuide = true } = {}) {
   if (running) return;
   running = true;
   elements.run.disabled = true;
   setStatus("Compiling locally…", "working");
+  if (announceGuide) {
+    setKofunFeedback("I am checking exactly what this browser compiler accepts…", "blink");
+  }
   try {
     const { lines, moduleBytes } = await runKofun(elements.editor.value);
     renderResult(lines);
+    if (announceGuide) setKofunFeedback(currentStep.guide.success, "smile");
     setStatus(
       `Ran ${moduleBytes.length} WebAssembly bytes in this browser.`,
       "success",
     );
   } catch (error) {
-    elements.output.textContent = error instanceof Error ? error.message : String(error);
-    setStatus("The program stopped with a useful diagnostic.", "error");
+    const message = error instanceof Error ? error.message : String(error);
+    const expectedFailure = currentStep.expectedError === message;
+    elements.output.textContent = message;
+    if (announceGuide) {
+      setKofunFeedback(
+        expectedFailure
+          ? currentStep.guide.expectedFailure
+          : "Read the diagnostic, repair the source, and I will try the exact same path again.",
+        expectedFailure ? "smile" : "blink",
+      );
+    }
+    setStatus(
+      expectedFailure
+        ? "The expected checked failure was reported. Now repair it."
+        : "The program stopped with a useful diagnostic.",
+      expectedFailure ? "lesson" : "error",
+    );
   } finally {
     elements.run.disabled = false;
     running = false;
@@ -304,6 +335,7 @@ function renderOwnership(step) {
 
 function selectStep(step, source = step.source, { autorun = true } = {}) {
   currentStep = step;
+  const stepIndex = STEPS.indexOf(step);
   elements.eyebrow.textContent = step.eyebrow;
   elements.title.textContent = step.title;
   elements.intro.textContent = step.intro;
@@ -313,12 +345,23 @@ function selectStep(step, source = step.source, { autorun = true } = {}) {
   describeHover(null);
   onEditorChanged();
   renderOwnership(step);
+  elements.progress.textContent = `Step ${stepIndex + 1} of ${STEPS.length}`;
+  elements.next.textContent = stepIndex === STEPS.length - 1
+    ? "Start again"
+    : "Next lesson";
+  setKofunFeedback(step.guide.ready);
   for (const button of elements.stepList.querySelectorAll("button")) {
     const selected = button.dataset.step === step.id;
     button.setAttribute("aria-current", selected ? "step" : "false");
   }
   setStatus("Ready. Edit the code or press Run.");
-  if (autorun) void runEditor();
+  if (autorun) void runEditor({ announceGuide: false });
+}
+
+function selectNextStep() {
+  const currentIndex = STEPS.indexOf(currentStep);
+  selectStep(STEPS[(currentIndex + 1) % STEPS.length]);
+  document.querySelector("#lesson").scrollIntoView({ block: "start" });
 }
 
 function renderSteps() {
@@ -327,7 +370,13 @@ function renderSteps() {
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.step = step.id;
-    button.textContent = `${index + 1}. ${step.title}`;
+    const number = document.createElement("span");
+    number.className = "step-number";
+    number.textContent = String(index + 1).padStart(2, "0");
+    const label = document.createElement("span");
+    label.className = "step-label";
+    label.textContent = step.title;
+    button.append(number, label);
     button.addEventListener("click", () => selectStep(step));
     item.append(button);
     elements.stepList.append(item);
@@ -395,6 +444,16 @@ function loadSharedSource() {
 elements.run.addEventListener("click", runEditor);
 elements.reset.addEventListener("click", () => selectStep(currentStep));
 elements.share.addEventListener("click", shareEditor);
+elements.next.addEventListener("click", selectNextStep);
+elements.heroButton.addEventListener("click", () => {
+  if (elements.heroButton.classList.contains("is-hopping")) return;
+  renderKofunKun(elements.heroKofun, "smile");
+  elements.heroButton.classList.add("is-hopping");
+  elements.heroKofun.addEventListener("animationend", () => {
+    elements.heroButton.classList.remove("is-hopping");
+    renderKofunKun(elements.heroKofun, "idle");
+  }, { once: true });
+});
 elements.editor.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
     event.preventDefault();
@@ -460,6 +519,11 @@ elements.direction.addEventListener("change", () => {
   document.documentElement.dir = elements.direction.value;
 });
 
+for (const sprite of document.querySelectorAll("[data-kofun-sprite]")) {
+  renderKofunKun(sprite, sprite.dataset.pose ?? "idle");
+}
+renderKofunKun(elements.heroKofun, "idle");
+renderKofunKun(elements.runnerKofun, "idle");
 renderSteps();
 renderGuides();
 const initial = loadSharedSource();

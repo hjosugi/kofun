@@ -61,6 +61,16 @@ Run every command in this guide from the repository root, the directory that
 contains `Taskfile.yml`, `bin/`, `bootstrap/`, and `docs/`. A clean checkout
 prints nothing for `git status --short`.
 
+Run bare `task` to open the grouped contributor guide. It keeps task names and
+descriptions from go-task's own inventory, then groups them by role so the
+complete gate surface is easier to scan. `task help` prints the same guide;
+`task --list` remains the official flat inventory.
+
+```sh
+task
+task --list
+```
+
 The project does not require a global `kofun` install. Use `./bin/kofun` so the
 command and the compiler sources always come from the same commit.
 

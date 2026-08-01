@@ -55,8 +55,12 @@ an optimizer, or `read`/`edit`/`take` checking. The ownership lesson therefore
 teaches the double-sale bug and intended access model, then labels its runnable
 arithmetic example as a model rather than an ownership-checker demonstration.
 
-The CSS mascot is only a tour guide. `kofun-hub` is not in this repository and
-cannot be integrated by this slice.
+Kofun-kun is the tour guide, not compiler evidence. `kofun-kun.mjs` is a static
+browser port of the canonical 16x16 pixel grid in
+[`hjosugi/hjosugi-hub`](https://github.com/hjosugi/hjosugi-hub/blob/8435101e7b0ae91a934fbd1f280e00e2449e468b/lib/hjosugi_hub/kofun.ex),
+which is licensed 0BSD. The grid, its idle/blink/smile/munch poses, and the
+poke-to-hop interaction are copied into this directory; the tour never fetches
+the portfolio site at runtime and remains a dependency-free static surface.
 
 ## Reading paths
 
