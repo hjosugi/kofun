@@ -26,15 +26,16 @@ async function main() {
   );
 
   const definition = await vscode.__state.definitionProvider.provideDefinition(
-    vscode.__document, new vscode.Position(2, 12)
+    vscode.__document, new vscode.Position(6, 10)
   );
-  assert.strictEqual(definition.range.start.line, 1);
+  assert.strictEqual(definition.range.start.line, 5);
   assert.strictEqual(definition.range.start.character, 8);
 
   const hover = await vscode.__state.hoverProvider.provideHover(
-    vscode.__document, new vscode.Position(1, 16)
+    vscode.__document, new vscode.Position(1, 11)
   );
-  assert.match(hover.contents.value, /value: Int \(mode: read\)/);
+  assert.match(hover.contents.value, /type: Int/);
+  assert.doesNotMatch(hover.contents.value, /syntactic fallback/);
   await extension.deactivate();
   process.stdout.write('PASS: packaged VS Code client starts, queries, and stops the bundled server\n');
 }

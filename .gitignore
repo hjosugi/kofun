@@ -3,6 +3,7 @@ build/
 .tmp-*
 .kofun/
 /graphify-out/
+/editor/vscode/server/generated/
 # editor/tree-sitter-kofun is the only npm project left in this repository.
 node_modules/
 

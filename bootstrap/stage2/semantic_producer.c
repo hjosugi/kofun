@@ -398,12 +398,18 @@ static bool producer_source_within_declaration_profile(
     int64_t length = (int64_t)strlen(source);
     int64_t cursor = skip_trivia(source, 0);
     size_t functions = 0u;
+    size_t bindings = 0u;
     while (cursor < length) {
         int64_t end = token_end(source, cursor);
         if (end <= cursor) return true;
         if (token_equal(source, cursor, "fn")) {
             functions += 1u;
             if (functions > PRODUCER_MAX_FUNCTIONS) return false;
+        }
+        if (token_equal(source, cursor, "let") ||
+            token_equal(source, cursor, "for")) {
+            bindings += 1u;
+            if (bindings > PRODUCER_MAX_BINDINGS) return false;
         }
         cursor = skip_trivia(source, end);
     }

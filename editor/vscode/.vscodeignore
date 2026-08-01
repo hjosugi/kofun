@@ -1,0 +1,3 @@
+server/native/**
+server/build-semantic-bundle.sh
+**/*.map

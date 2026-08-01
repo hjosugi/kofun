@@ -5,6 +5,9 @@
   "version": "0.3.0",
   "publisher": "kofun-language-project",
   "main": "./extension.js",
+  "scripts": {
+    "vscode:prepublish": "sh server/build-semantic-bundle.sh"
+  },
   "activationEvents": [
     "onLanguage:kofun"
   ],
