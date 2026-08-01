@@ -201,7 +201,10 @@ defined later without silently changing any expression that compiles now.
 `let` bindings carry them, annotations are checked against them, and mixing two
 numeric types in one operator is a type error. The Stage 2 C11 backend lowers
 exact Decimal `+`, `-`, `*`, comparison/equality, checked exact `/`, and the
-binary64 Float counterparts. Other declared backends refuse the
+binary64 Float counterparts. Its bounded member surface also lowers
+`Decimal.round(value, scale, mode)`, `Decimal.divide(left, right, scale, mode)`,
+`Decimal.format(value, display_scale)`, and `Decimal.parse(text)`. A rounding
+scale or mode cannot be omitted, and formatting never rounds. Other declared backends refuse the
 `decimal-arithmetic` capability explicitly rather than changing values.
 
 So `let x: Float = 0.5` is rejected because `0.5` is a `Decimal` and there is

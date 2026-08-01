@@ -5,20 +5,27 @@ fn corpus_name() -> Text {
 }
 
 fn expected_cases() -> Int {
-    return 6
+    return 13
 }
 
 fn case_names() -> List[Text] {
     return [
         "checked_division.kofun",
         "decimal_exactness.kofun",
+        "explicit_rounding.kofun",
         "float_contrast.kofun",
+        "format_parse.kofun",
+        "format_refuses_rounding.kofun",
         "from_int_exact.kofun",
         "reject_decimal_floor_div.kofun",
-        "reject_decimal_modulo.kofun"
+        "reject_decimal_modulo.kofun",
+        "reject_divide_missing_scale_mode.kofun",
+        "reject_invalid_rounding_mode.kofun",
+        "reject_round_missing_mode.kofun",
+        "rounded_division.kofun"
     ]
 }
 
 fn observations_sha256() -> Text {
-    return "58f818c7fd705b79cdac3824427e85081995b6aab9e75a2fa62cc1199922aec0"
+    return "0243e2a04908ddddfdda02777c02c168f40cd4a9a1f304693d6fa785b92ea310"
 }

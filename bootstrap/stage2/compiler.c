@@ -3781,6 +3781,13 @@ static const char *numeric_primary_type(
 );
 static char *numeric_conversion_at(const char *source, int64_t cursor);
 static const char *numeric_conversion_result(const char *conversion);
+static int64_t numeric_member_argument(
+    const char *source,
+    int64_t open,
+    int64_t wanted
+);
+static bool decimal_rounding_mode_name(const char *name);
+static const char *decimal_rounding_c_name(const char *name);
 static char *emit_expression(
     const char *source,
     const char *hir,
@@ -4240,7 +4247,8 @@ static int64_t primary_end(const char *source, int64_t start) {
     if (
         strcmp(kind, "integer") == 0 ||
         strcmp(kind, "decimal") == 0 ||
-        strcmp(kind, "float") == 0
+        strcmp(kind, "float") == 0 ||
+        strcmp(kind, "string") == 0
     ) {
         return field_postfix_end(source, token_end(source, cursor));
     }
@@ -4251,16 +4259,39 @@ static int64_t primary_end(const char *source, int64_t start) {
             int64_t member = skip_trivia(source, token_end(source, dot));
             int64_t open = skip_trivia(source, token_end(source, member));
             int64_t argument = skip_trivia(source, token_end(source, open));
-            int64_t bound = expression_end(source, argument);
-            int64_t close = bound < 0 ? -1 : skip_trivia(source, bound);
             free(conversion);
-            if (
-                close < 0 || close >= length ||
-                !token_equal(source, close, ")")
-            ) {
-                return -1;
+            if (argument < length && token_equal(source, argument, ")")) {
+                return field_postfix_end(
+                    source,
+                    token_end(source, argument)
+                );
             }
-            return field_postfix_end(source, token_end(source, close));
+            while (argument < length) {
+                int64_t bound = argument_end(source, argument);
+                int64_t separator;
+                if (bound < 0) return -1;
+                separator = skip_trivia(source, bound);
+                if (
+                    separator < length &&
+                    token_equal(source, separator, ")")
+                ) {
+                    return field_postfix_end(
+                        source,
+                        token_end(source, separator)
+                    );
+                }
+                if (
+                    separator >= length ||
+                    !token_equal(source, separator, ",")
+                ) {
+                    return -1;
+                }
+                argument = skip_trivia(
+                    source,
+                    token_end(source, separator)
+                );
+            }
+            return -1;
         }
         free(conversion);
         int64_t open = skip_trivia(source, token_end(source, cursor));
@@ -4807,28 +4838,112 @@ static char *emit_primary(
         free(literal);
         return output.data;
     }
+    if (strcmp(kind, "string") == 0) {
+        return source_slice(source, cursor, token_end(source, cursor));
+    }
     if (strcmp(kind, "identifier") == 0) {
         char *conversion = numeric_conversion_at(source, cursor);
-        if (strcmp(conversion, "Decimal.from_int") == 0) {
+        if (conversion[0] != '\0') {
             int64_t dot = skip_trivia(source, token_end(source, cursor));
             int64_t member = skip_trivia(source, token_end(source, dot));
             int64_t open = skip_trivia(source, token_end(source, member));
-            int64_t argument = skip_trivia(source, token_end(source, open));
-            int64_t argument_end = expression_end(source, argument);
-            char *value = emit_expression(
-                source,
-                hir,
-                argument,
-                argument_end
-            );
+            int64_t first = numeric_member_argument(source, open, 0);
+            int64_t first_end = argument_end(source, first);
+            char *first_value = NULL;
             Buffer converted;
             buffer_init(&converted);
-            buffer_format(
-                &converted,
-                "kofun_decimal_value_from_int(%s)",
-                value
-            );
-            free(value);
+            if (strcmp(conversion, "Decimal.parse") == 0) {
+                char *text_value = emit_expression(
+                    source,
+                    hir,
+                    first,
+                    first_end
+                );
+                buffer_format(
+                    &converted,
+                    "kofun_decimal_value_parse(%s, strlen(%s))",
+                    text_value,
+                    text_value
+                );
+                free(text_value);
+            } else {
+                first_value = emit_expression(
+                    source,
+                    hir,
+                    first,
+                    first_end
+                );
+                if (strcmp(conversion, "Decimal.from_int") == 0) {
+                    buffer_format(
+                        &converted,
+                        "kofun_decimal_value_from_int(%s)",
+                        first_value
+                    );
+                } else if (strcmp(conversion, "Decimal.round") == 0) {
+                    int64_t scale = numeric_member_argument(source, open, 1);
+                    int64_t mode = numeric_member_argument(source, open, 2);
+                    char *scale_value = emit_expression(
+                        source,
+                        hir,
+                        scale,
+                        argument_end(source, scale)
+                    );
+                    char *mode_name = token_copy(source, mode);
+                    buffer_format(
+                        &converted,
+                        "kofun_decimal_value_round(%s, %s, %s)",
+                        first_value,
+                        scale_value,
+                        decimal_rounding_c_name(mode_name)
+                    );
+                    free(mode_name);
+                    free(scale_value);
+                } else if (strcmp(conversion, "Decimal.divide") == 0) {
+                    int64_t right = numeric_member_argument(source, open, 1);
+                    int64_t scale = numeric_member_argument(source, open, 2);
+                    int64_t mode = numeric_member_argument(source, open, 3);
+                    char *right_value = emit_expression(
+                        source,
+                        hir,
+                        right,
+                        argument_end(source, right)
+                    );
+                    char *scale_value = emit_expression(
+                        source,
+                        hir,
+                        scale,
+                        argument_end(source, scale)
+                    );
+                    char *mode_name = token_copy(source, mode);
+                    buffer_format(
+                        &converted,
+                        "kofun_decimal_value_divide_rounded(%s, %s, %s, %s)",
+                        first_value,
+                        right_value,
+                        scale_value,
+                        decimal_rounding_c_name(mode_name)
+                    );
+                    free(mode_name);
+                    free(scale_value);
+                    free(right_value);
+                } else if (strcmp(conversion, "Decimal.format") == 0) {
+                    int64_t scale = numeric_member_argument(source, open, 1);
+                    char *scale_value = emit_expression(
+                        source,
+                        hir,
+                        scale,
+                        argument_end(source, scale)
+                    );
+                    buffer_format(
+                        &converted,
+                        "kofun_decimal_value_format(%s, %s)",
+                        first_value,
+                        scale_value
+                    );
+                    free(scale_value);
+                }
+                free(first_value);
+            }
             free(conversion);
             return converted.data;
         }
@@ -9767,6 +9882,7 @@ static char *build_scope_hir_mode(
                     !initializer_token &&
                     !pattern_token && !lambda_token &&
                     !numeric_conversion_head(source, cursor) &&
+                    !decimal_rounding_mode_name(name) &&
                     !token_equal(source, cursor, "print") &&
                     !token_equal(source, cursor, "_")
                 ) {
@@ -11197,6 +11313,7 @@ static char *lower_body(
                 char *declared_type = token_copy(source, cursor);
                 if (strcmp(declared_type, "Int") != 0) {
                     if (
+                        strcmp(declared_type, "Text") == 0 ||
                         strcmp(declared_type, "Decimal") == 0 ||
                         strcmp(declared_type, "Float") == 0 ||
                         strcmp(declared_type, "DecimalResult") == 0
@@ -11645,6 +11762,26 @@ static char *lower_body(
             }
             char *value = emit_expression(source, hir, value_start, value_end);
             char *binding_type = hir_binding_field(hir, binding_id, 5);
+            char *actual_type = initializer_type(
+                source,
+                hir,
+                function_open,
+                value_start
+            );
+            if (strcmp(actual_type, binding_type) != 0) {
+                free(actual_type);
+                free(binding_type);
+                free(value);
+                free(binding_id);
+                free(name);
+                free(emitted.data);
+                return lower_error(
+                    "E2S15",
+                    "initializer type mismatch",
+                    value_start
+                );
+            }
+            free(actual_type);
             const char *c_type = "int64_t";
             if (strcmp(binding_type, "Decimal") == 0) {
                 c_type = "KofunDecimal *";
@@ -11652,6 +11789,8 @@ static char *lower_body(
                 c_type = "double";
             } else if (strcmp(binding_type, "DecimalResult") == 0) {
                 c_type = "KofunDecimalResult *";
+            } else if (strcmp(binding_type, "Text") == 0) {
+                c_type = "const char *";
             }
             if (mutable && strcmp(binding_type, "Int") != 0) {
                 free(binding_type);
@@ -11661,7 +11800,7 @@ static char *lower_body(
                 free(emitted.data);
                 return lower_error(
                     "E2S144",
-                    "mutable Decimal, DecimalResult, and Float bindings are "
+                    "mutable Decimal, DecimalResult, Float, and Text bindings are "
                     "outside this lowering slice",
                     value_start
                 );
@@ -11784,6 +11923,15 @@ static char *lower_body(
                     "        KofunDecimalResult *kofun_value = %s;\n"
                     "        printf(\"%%s\\n\", "
                     "kofun_decimal_value_division_name(kofun_value));\n"
+                    "    }\n",
+                    value
+                );
+            } else if (strcmp(value_type, "Text") == 0) {
+                buffer_format(
+                    &emitted,
+                    "    {\n"
+                    "        const char *kofun_value = %s;\n"
+                    "        printf(\"%%s\\n\", kofun_value);\n"
                     "    }\n",
                     value
                 );
@@ -13164,6 +13312,46 @@ static char *numeric_conversion_at(const char *source, int64_t cursor) {
     return path.data;
 }
 
+/* Start of the zero-based argument in a validated numeric member call. */
+static int64_t numeric_member_argument(
+    const char *source,
+    int64_t open,
+    int64_t wanted
+) {
+    int64_t length = source_length(source);
+    int64_t argument = skip_trivia(source, token_end(source, open));
+    int64_t index = 0;
+    while (argument < length && !token_equal(source, argument, ")")) {
+        int64_t bound;
+        int64_t separator;
+        if (index == wanted) return argument;
+        bound = argument_end(source, argument);
+        if (bound < 0) return -1;
+        separator = skip_trivia(source, bound);
+        if (!token_equal(source, separator, ",")) return -1;
+        argument = skip_trivia(source, token_end(source, separator));
+        ++index;
+    }
+    return -1;
+}
+
+static bool decimal_rounding_mode_name(const char *name) {
+    return strcmp(name, "HalfUp") == 0 ||
+           strcmp(name, "HalfEven") == 0 ||
+           strcmp(name, "TowardZero") == 0 ||
+           strcmp(name, "Floor") == 0 ||
+           strcmp(name, "Ceiling") == 0;
+}
+
+static const char *decimal_rounding_c_name(const char *name) {
+    if (strcmp(name, "HalfUp") == 0) return "KOFUN_DECIMAL_HALF_UP";
+    if (strcmp(name, "HalfEven") == 0) return "KOFUN_DECIMAL_HALF_EVEN";
+    if (strcmp(name, "TowardZero") == 0) return "KOFUN_DECIMAL_TOWARD_ZERO";
+    if (strcmp(name, "Floor") == 0) return "KOFUN_DECIMAL_FLOOR";
+    if (strcmp(name, "Ceiling") == 0) return "KOFUN_DECIMAL_CEILING";
+    return "KOFUN_DECIMAL_HALF_EVEN";
+}
+
 /*
  * The result type of a named conversion, or "" when the path is not one.
  *
@@ -13175,10 +13363,14 @@ static char *numeric_conversion_at(const char *source, int64_t cursor) {
 static const char *numeric_conversion_result(const char *conversion) {
     if (
         strcmp(conversion, "Decimal.from_int") == 0 ||
-        strcmp(conversion, "Decimal.from_float") == 0
+        strcmp(conversion, "Decimal.from_float") == 0 ||
+        strcmp(conversion, "Decimal.round") == 0 ||
+        strcmp(conversion, "Decimal.divide") == 0 ||
+        strcmp(conversion, "Decimal.parse") == 0
     ) {
         return "Decimal";
     }
+    if (strcmp(conversion, "Decimal.format") == 0) return "Text";
     if (strcmp(conversion, "Float.from_decimal") == 0) return "Float";
     return "";
 }
@@ -13660,8 +13852,55 @@ static char *validate_numeric_annotations(
     return owned_text("ok");
 }
 
+static int64_t numeric_member_expected_arity(const char *member) {
+    if (
+        strcmp(member, "Decimal.from_int") == 0 ||
+        strcmp(member, "Decimal.from_float") == 0 ||
+        strcmp(member, "Decimal.parse") == 0
+    ) {
+        return 1;
+    }
+    if (
+        strcmp(member, "Float.from_decimal") == 0 ||
+        strcmp(member, "Decimal.format") == 0
+    ) {
+        return 2;
+    }
+    if (strcmp(member, "Decimal.round") == 0) return 3;
+    if (strcmp(member, "Decimal.divide") == 0) return 4;
+    return -1;
+}
+
+static const char *numeric_member_expected_type(
+    const char *member,
+    int64_t index
+) {
+    if (strcmp(member, "Decimal.from_int") == 0) return "Int";
+    if (strcmp(member, "Decimal.round") == 0) {
+        if (index == 0) return "Decimal";
+        if (index == 1) return "Int";
+        return "";
+    }
+    if (strcmp(member, "Decimal.divide") == 0) {
+        if (index == 0 || index == 1) return "Decimal";
+        if (index == 2) return "Int";
+        return "";
+    }
+    if (strcmp(member, "Decimal.format") == 0) {
+        return index == 0 ? "Decimal" : "Int";
+    }
+    if (strcmp(member, "Decimal.parse") == 0) return "Text";
+    return "";
+}
+
+static int64_t numeric_member_mode_index(const char *member) {
+    if (strcmp(member, "Decimal.round") == 0) return 2;
+    if (strcmp(member, "Decimal.divide") == 0) return 3;
+    return -1;
+}
+
 /*
- * The three named conversions of `docs/DECIMAL.md`, and what each one costs.
+ * The named conversions and Decimal slice-5 operations, and what each costs.
  *
  * Conversions are named and explicit because there is no implicit promotion.
  * But naming a conversion is not enough to make it writable: two of the three
@@ -13723,22 +13962,29 @@ static char *validate_numeric_conversions(
                         buffer_format(
                             &message,
                             "error[E2S102]: unknown conversion `%s` at byte "
-                            "%" PRId64 "; known: Decimal.from_int, "
-                            "Decimal.from_float, Float.from_decimal",
+                            "%" PRId64 "; known: from_int, round, divide, "
+                            "format, parse",
                             conversion,
                             cursor
                         );
                         code = "E2S102";
-                    } else if (strcmp(conversion, "Decimal.from_int") != 0) {
+                    } else if (
+                        strcmp(conversion, "Decimal.from_float") == 0 ||
+                        strcmp(conversion, "Float.from_decimal") == 0
+                    ) {
                         buffer_format(
                             &message,
                             "error[E2S103]: `%s` cannot be exact at byte "
-                            "%" PRId64 "; it needs a rounding mode "
-                            "(#710 slice 5)",
+                            "%" PRId64
+                            "; its cross-radix policy is not implemented",
                             conversion,
                             cursor
                         );
                         code = "E2S103";
+                    } else if (
+                        strcmp(conversion, "Decimal.from_int") != 0
+                    ) {
+                        if (valid_conversion < 0) valid_conversion = cursor;
                     } else {
                         int64_t dot = skip_trivia(
                             source,
@@ -13812,6 +14058,156 @@ static char *validate_numeric_conversions(
         function_start = next_function_start(source, function_close);
     }
     (void)valid_conversion;
+    return owned_text("ok");
+}
+
+/* Validate the explicit Decimal slice-5 member surface. */
+static char *validate_decimal_slice5_members(
+    const char *source,
+    const char *hir
+) {
+    int64_t length = source_length(source);
+    int64_t function_start = next_function_start(source, 0);
+    while (function_start < length) {
+        int64_t function_close = function_end(source, function_start);
+        int64_t parameters = parameter_open(source, function_start);
+        int64_t function_open = parameters >= 0
+            ? balanced_end(source, parameters, "(", ")")
+            : -1;
+        if (function_open >= 0) {
+            int64_t cursor = skip_trivia(source, function_open);
+            while (cursor < function_close) {
+                char *member = numeric_conversion_at(source, cursor);
+                bool slice5 =
+                    strcmp(member, "Decimal.round") == 0 ||
+                    strcmp(member, "Decimal.divide") == 0 ||
+                    strcmp(member, "Decimal.format") == 0 ||
+                    strcmp(member, "Decimal.parse") == 0;
+                if (slice5) {
+                    int64_t dot = skip_trivia(
+                        source,
+                        token_end(source, cursor)
+                    );
+                    int64_t name = skip_trivia(
+                        source,
+                        token_end(source, dot)
+                    );
+                    int64_t open = skip_trivia(
+                        source,
+                        token_end(source, name)
+                    );
+                    int64_t expected_arity =
+                        numeric_member_expected_arity(member);
+                    int64_t actual_arity = call_arity(source, open);
+                    if (actual_arity != expected_arity) {
+                        Buffer message;
+                        buffer_init(&message);
+                        buffer_format(
+                            &message,
+                            "error[E2S17]: Core function `%s` expects "
+                            "%" PRId64 " arguments, got %" PRId64
+                            " at byte %" PRId64,
+                            member,
+                            expected_arity,
+                            actual_arity,
+                            cursor
+                        );
+                        stage2_diagnostic_set(
+                            "E2S17",
+                            cursor,
+                            token_end(source, cursor),
+                            true,
+                            message.data
+                        );
+                        free(member);
+                        return message.data;
+                    }
+                    int64_t mode_index = numeric_member_mode_index(member);
+                    for (int64_t index = 0; index < expected_arity; ++index) {
+                        int64_t argument = numeric_member_argument(
+                            source,
+                            open,
+                            index
+                        );
+                        if (index == mode_index) {
+                            char *mode = token_copy(source, argument);
+                            bool valid =
+                                strcmp(
+                                    token_kind(source, argument),
+                                    "identifier"
+                                ) == 0 &&
+                                decimal_rounding_mode_name(mode);
+                            free(mode);
+                            if (!valid) {
+                                Buffer message;
+                                buffer_init(&message);
+                                buffer_format(
+                                    &message,
+                                    "error[E2S15]: builtin `%s` expects "
+                                    "HalfUp, HalfEven, TowardZero, Floor, "
+                                    "or Ceiling for argument %" PRId64
+                                    " at byte %" PRId64,
+                                    member,
+                                    index + 1,
+                                    argument
+                                );
+                                stage2_diagnostic_set(
+                                    "E2S15",
+                                    argument,
+                                    token_end(source, argument),
+                                    true,
+                                    message.data
+                                );
+                                free(member);
+                                return message.data;
+                            }
+                        } else {
+                            const char *expected =
+                                numeric_member_expected_type(member, index);
+                            char *actual = initializer_type(
+                                source,
+                                hir,
+                                function_open,
+                                argument
+                            );
+                            if (
+                                expected[0] != '\0' &&
+                                strcmp(actual, expected) != 0
+                            ) {
+                                Buffer message;
+                                buffer_init(&message);
+                                buffer_format(
+                                    &message,
+                                    "error[E2S15]: builtin `%s` expects %s "
+                                    "for argument %" PRId64 ", got %s at "
+                                    "byte %" PRId64,
+                                    member,
+                                    expected,
+                                    index + 1,
+                                    actual,
+                                    argument
+                                );
+                                stage2_diagnostic_set(
+                                    "E2S15",
+                                    argument,
+                                    token_end(source, argument),
+                                    true,
+                                    message.data
+                                );
+                                free(actual);
+                                free(member);
+                                return message.data;
+                            }
+                            free(actual);
+                        }
+                    }
+                }
+                free(member);
+                cursor = skip_trivia(source, token_end(source, cursor));
+            }
+        }
+        function_start = next_function_start(source, function_close);
+    }
     return owned_text("ok");
 }
 
@@ -14036,6 +14432,11 @@ static char *lower_c(const char *source, const char *hir) {
     char *conversion_check = validate_numeric_conversions(source, hir);
     if (strncmp(conversion_check, "error[", 6) == 0) return conversion_check;
     free(conversion_check);
+    char *decimal_member_check = validate_decimal_slice5_members(source, hir);
+    if (strncmp(decimal_member_check, "error[", 6) == 0) {
+        return decimal_member_check;
+    }
+    free(decimal_member_check);
     char *numeric_kind_check = validate_numeric_literals(source);
     if (strncmp(numeric_kind_check, "error[", 6) == 0) {
         return numeric_kind_check;

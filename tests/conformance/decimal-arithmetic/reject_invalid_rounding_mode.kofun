@@ -1,0 +1,6 @@
+# contract: kofun.backend-differential/v1
+# expect-reject: the rounding mode must be one of the five pinned names
+
+fn main() {
+    print(Decimal.round(2.5, 0, 3))
+}

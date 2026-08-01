@@ -4,7 +4,8 @@ set -eu
 # Decimal slice 2 (#721): the runtime representation, its canonical form, and
 # the versioned resource profile. Slice 4 (#723) adds the exact operations and
 # checked exact division below, plus the Float contrast that keeps the two
-# types from being conflated.
+# types from being conflated. Slice 5 (#724) adds the explicit rounding and
+# formatting boundaries; no command below acquires a default scale or mode.
 #
 # What this gate is for, beyond "the code runs". Four of #710's frozen
 # decisions are only checkable by observation, and each has a section below:
@@ -184,18 +185,21 @@ done
 grep -qF 'no static scale safety' "$ROOT/docs/DECIMAL.md" ||
     fail "docs/DECIMAL.md stopped stating that static scale safety is absent"
 
-# The implementation side. Scale is a runtime field of a record and a mismatch
-# is a runtime failure; a const-generic `Fixed[...]` declaration would
-# contradict every sentence the two documents just passed.
-grep -qE '^type Fixed = \{' "$ROOT/stdlib/decimal/decimal.kofun" ||
-    fail "stdlib Fixed is no longer a plain record; $PROFILE no longer describes it"
-if grep -nE '^type Fixed[[:space:]]*\[' "$ROOT/stdlib/decimal/decimal.kofun" \
+# The implementation side. Slice 5 exposes scale only as an explicit runtime
+# argument. It must not publish either a fake Fixed[scale] guarantee or the old
+# Int64-significand placeholder beside the compiler-native Decimal type.
+if grep -nE '^type (Decimal|Fixed)[[:space:]]*=' \
+    "$ROOT/stdlib/decimal/decimal.kofun" >/dev/null 2>&1
+then
+    fail "stdlib Decimal source still redeclares a native numeric type"
+fi
+if grep -nF 'significand: Int' "$ROOT/stdlib/decimal/decimal.kofun" \
     >/dev/null 2>&1
 then
-    fail "Fixed[scale] landed; the documents must stop claiming $PROFILE"
+    fail "stdlib Decimal source retains the retired Int64 significand"
 fi
-grep -qF 'ScaleMismatch' "$ROOT/stdlib/decimal/decimal.kofun" ||
-    fail "scale mismatch is no longer a runtime failure; $PROFILE is stale"
+grep -qF 'destination_scale' "$ROOT/stdlib/decimal/decimal.kofun" ||
+    fail "stdlib Decimal source does not expose explicit runtime scale"
 printf '%s\n' "PASS: scale guarantees are stated as $PROFILE and still true"
 
 # --- exact arithmetic (slice 4 of #710, issue #723) ------------------------
@@ -249,6 +253,33 @@ golden arith_div div \
     9999999999999999999999999999999 3333333333333333333333333333333 \
     7 70 \
     1 6
+
+# Every named rounding mode is pinned on both sides of zero. The carry cases
+# show that rounding is arbitrary precision and canonicalizes only after the
+# explicit destination scale has done its work.
+golden round round \
+    2.5 0 HalfUp -2.5 0 HalfUp \
+    2.5 0 HalfEven -2.5 0 HalfEven \
+    2.5 0 TowardZero -2.5 0 TowardZero \
+    2.5 0 Floor -2.5 0 Floor \
+    2.5 0 Ceiling -2.5 0 Ceiling \
+    1.999 2 HalfUp -1.999 2 HalfUp \
+    999999999999999999999999999999.5 0 HalfEven
+
+# Rounded division has no ambient policy: each group supplies scale and mode,
+# including exact inputs. Division by zero remains a stable failure.
+golden rounded_divide rounded-divide \
+    1 8 2 HalfUp -1 8 2 HalfUp \
+    1 8 2 HalfEven -1 8 2 HalfEven \
+    1 3 2 Floor -1 3 2 Floor \
+    1 3 2 Ceiling -1 3 2 Ceiling \
+    2 4 2 HalfEven 1 0 2 HalfEven
+
+# Formatting retains the requested display scale but may not discard digits.
+# Parsing every successful result back to the native type must recover the
+# same canonical value, including negative and exponent-normalized inputs.
+golden format_parse format-parse \
+    1.2 2 -1.2 2 1000 2 0.001 4 12.34 1 0 3
 
 # Decimal and Float side by side, which is what makes keeping two types
 # worthwhile. A backend that implemented one by delegating to the other would
@@ -395,6 +426,18 @@ then
     UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
         "$WORK/decimal-test-sanitized" contrast div 1.0 0.0 add 0.1 0.2 \
         >/dev/null
+    ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+    UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+        "$WORK/decimal-test-sanitized" round \
+        2.5 0 HalfUp -2.5 0 HalfEven 1.999 2 HalfUp >/dev/null
+    ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+    UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+        "$WORK/decimal-test-sanitized" rounded-divide \
+        1 8 2 HalfEven -1 3 2 Floor 1 0 2 HalfUp >/dev/null
+    ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+    UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+        "$WORK/decimal-test-sanitized" format-parse \
+        1.2 2 -1.2 2 1000 2 0.001 4 12.34 1 >/dev/null
     # The arena is the one allocation the generated program never frees
     # explicitly, so leak detection on the spliced binary is what proves
     # `kofun_decimal_arena_release` actually reaches every value.
@@ -411,8 +454,9 @@ else
 fi
 
 printf '%s\n' \
-    "PASS: Decimal slices 2 and 4 — arbitrary-precision representation," \
+    "PASS: Decimal slices 2, 4, and 5 — arbitrary-precision representation," \
     "  versioned resource profile v$( \
         "$WORK/decimal-test" profile | \
         sed -n 's/^profile-version=//p'), exact binary64," \
-    "  and exact +, -, * with checked exact division"
+    "  exact +, -, * with checked exact division," \
+    "  and explicit rounding, formatting, and parsing"

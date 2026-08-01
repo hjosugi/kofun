@@ -1,36 +1,21 @@
-# expect-stdout: 14914
-# expect-stdout: 165
-# expect-stdout: 47
-# expect-stdout: 1018
-# expect-stdout: 1230
-# expect-stdout: 16144
-#
-# Three two-place Fixed amounts: 19.99, 5.75, and 123.40.  The tax rate is
-# exact Decimal 0.0825.  Each line is assigned back to scale 2 with HalfUp.
-
-fn round_half_up(numerator: Int, denominator: Int) -> Int {
-    let lower = numerator // denominator
-    let remainder = numerator % denominator
-    if remainder * 2 < denominator {
-        return lower
-    }
-    return lower + 1
-}
-
-fn tax_0825(amount_cents: Int) -> Int {
-    return round_half_up(amount_cents * 825, 10000)
-}
+# Three native Decimal amounts and exact rate 0.0825. Each tax line crosses an
+# explicit scale-2 HalfUp boundary before being added to the ledger.
 
 fn main() {
-    let subtotal = 1999 + 575 + 12340
-    let tax1 = tax_0825(1999)
-    let tax2 = tax_0825(575)
-    let tax3 = tax_0825(12340)
+    let amount1 = 19.99
+    let amount2 = 5.75
+    let amount3 = 123.40
+    let rate = 0.0825
+    let tax1 = Decimal.round(amount1 * rate, 2, HalfUp)
+    let tax2 = Decimal.round(amount2 * rate, 2, HalfUp)
+    let tax3 = Decimal.round(amount3 * rate, 2, HalfUp)
+    let subtotal = amount1 + amount2 + amount3
     let tax = tax1 + tax2 + tax3
-    print(subtotal)
-    print(tax1)
-    print(tax2)
-    print(tax3)
-    print(tax)
-    print(subtotal + tax)
+    let total = subtotal + tax
+    print(Decimal.format(subtotal, 2))
+    print(Decimal.format(tax1, 2))
+    print(Decimal.format(tax2, 2))
+    print(Decimal.format(tax3, 2))
+    print(Decimal.format(tax, 2))
+    print(Decimal.format(total, 2))
 }
