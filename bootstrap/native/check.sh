@@ -972,8 +972,8 @@ expect_function_text_rejection() {
         >"$WORK/$stem.stdout" 2>"$WORK/$stem.stderr"
     rejection_status=$?
     set -e
-    test "$rejection_status" -eq 1
-    test ! -e "$WORK/$stem.elf"
+    assert_num "rejection status" "$rejection_status" -eq 1
+    assert_absent "$stem.elf" "$WORK/$stem.elf"
     grep -F "$message" "$WORK/$stem.stderr" >/dev/null
 }
 
@@ -1802,7 +1802,7 @@ run_native_list_differential() {
         >"$WORK/$stem.stdout" \
         2>"$WORK/$stem.stderr"
     cmp "$WORK/$stem-reference.stdout" "$WORK/$stem.stdout"
-    test ! -s "$WORK/$stem.stderr"
+    assert_file_empty "$stem.stderr" "$WORK/$stem.stderr"
 
     if test -n "$AARCH64_RUNNER"; then
         "$AARCH64_RUNNER" "$WORK/$stem-aarch64.elf" \
@@ -1811,7 +1811,7 @@ run_native_list_differential() {
         cmp \
             "$WORK/$stem-reference.stdout" \
             "$WORK/$stem-aarch64.stdout"
-        test ! -s "$WORK/$stem-aarch64.stderr"
+        assert_file_empty "$stem-aarch64.stderr" "$WORK/$stem-aarch64.stderr"
     fi
 }
 
@@ -1974,13 +1974,13 @@ run_native_text_differential() {
         >"$WORK/$stem.stdout" \
         2>"$WORK/$stem.stderr"
     cmp "$WORK/$stem.reference" "$WORK/$stem.stdout"
-    test ! -s "$WORK/$stem.stderr"
+    assert_file_empty "$stem.stderr" "$WORK/$stem.stderr"
     if test -n "$AARCH64_RUNNER"; then
         "$AARCH64_RUNNER" "$WORK/$stem-aarch64.elf" \
             >"$WORK/$stem-aarch64.stdout" \
             2>"$WORK/$stem-aarch64.stderr"
         cmp "$WORK/$stem.reference" "$WORK/$stem-aarch64.stdout"
-        test ! -s "$WORK/$stem-aarch64.stderr"
+        assert_file_empty "$stem-aarch64.stderr" "$WORK/$stem-aarch64.stderr"
     fi
 }
 

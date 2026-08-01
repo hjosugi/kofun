@@ -71,7 +71,7 @@ expect_failure() {
         exit 1
     fi
     grep -F "error[$expected]:" "$log" >/dev/null
-    test ! -e "$output"
+    assert_absent "output" "$output"
     test ! -e "$backend"
 }
 
@@ -86,7 +86,7 @@ expect_backend_failure() {
         exit 1
     fi
     grep -F "error[$expected]:" "$log" >/dev/null
-    test ! -e "$hir"
+    assert_absent "hir" "$hir"
     test ! -e "$backend"
 }
 

@@ -38,8 +38,8 @@ round_trip() {
         "$temporary/$name.ir" \
         "$temporary/$name.tokens" >/dev/null
     cmp "$source" "$temporary/$name.kofun"
-    test -s "$temporary/$name.ir"
-    test -s "$temporary/$name.tokens"
+    assert_file_nonempty "$temporary/$name.ir" "$temporary/$name.ir"
+    assert_file_nonempty "$temporary/$name.tokens" "$temporary/$name.tokens"
     grep '^kofun-stage2-ir/v1$' "$temporary/$name.ir" >/dev/null
     grep '^kofun-token-tape/v1$' "$temporary/$name.tokens" >/dev/null
 }
@@ -402,8 +402,9 @@ decimal_limit_case() {
     decimal_limit_status=$?
     set -e
     if test "$expected" = OK; then
-        test "$decimal_limit_status" -eq 0
-        test -s "$temporary/decimal-limit.c"
+        assert_num "decimal limit status" "$decimal_limit_status" -eq 0
+        assert_file_nonempty "$temporary/decimal-limit.c" \
+            "$temporary/decimal-limit.c"
     else
         test "$decimal_limit_status" -eq 1 || {
             echo "stage2 check: $label was accepted" >&2

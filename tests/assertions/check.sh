@@ -6,10 +6,16 @@ set -eu
 #
 # A silent assertion is a `test` or `[` command that
 #
-#   1. is at top level, not inside a function body where it may be a return
-#      value rather than an assertion;
-#   2. carries no `||` or `&&` handler; and
-#   3. is not the condition of an `if`.
+#   1. carries no `||` or `&&` handler;
+#   2. is not the condition of an `if`; and
+#   3. is not the last command of a function body, where a bare `test` is the
+#      function's return value rather than an assertion.
+#
+# Rule 3 replaces a blunter one. #814 skipped every `test` inside a function,
+# because some of them are predicates — `semantic_status_is_valid()` in
+# tests/fuzz/semantic_protocol.sh is a range check and nothing else. That
+# exclusion also hid 38 real assertions sitting mid-function, which #836
+# counted and migrated. Being last is what makes a `test` a return value.
 #
 # Under `set -e` each one aborts its gate with an empty stderr. #814 sized the
 # problem at 459 across 43 files and is driving the number to zero; this gate is
@@ -63,21 +69,33 @@ count_file() {
             }
             return (sq || dq || depth > 0)
         }
+        # A candidate inside a function is held until the next meaningful
+        # line says whether the function ended right after it.
+        function settle(line,   t) {
+            if (!pending) return
+            t = line
+            sub(/^[ \t]+/, "", t)
+            if (t == "" || t ~ /^#/) return
+            if (line ~ /^\}/) { pending = 0; return }
+            n++
+            pending = 0
+        }
         function flush(  s) {
             if (buf == "") return
             s = buf
             sub(/^[ \t]+/, "", s)
-            if (start_depth == 0 &&
-                s ~ /^(test|\[)[ \t]/ &&
+            if (s ~ /^(test|\[)[ \t]/ &&
                 s !~ /\|\|/ &&
                 s !~ /&&/ &&
                 s !~ /;[ \t]*then/) {
-                n++
+                if (start_depth == 0) n++
+                else pending = 1
             }
             buf = ""
         }
         {
             line = $0
+            settle(line)
             if (heredoc != "") {
                 t = line
                 sub(/^[ \t]+/, "", t)
@@ -106,7 +124,9 @@ count_file() {
             }
             flush()
         }
-        END { flush(); print n + 0 }
+        # A file that ends inside a function is malformed; count the
+        # candidate rather than silently dropping it.
+        END { flush(); if (pending) n++; print n + 0 }
     ' "$1"
 }
 

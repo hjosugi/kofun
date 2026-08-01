@@ -97,10 +97,10 @@ expect_failure() {
         printf '%s\n' "expected $expected_code failure for $stem" >&2
         exit 1
     fi
-    test ! -s "$WORK/$stem.stderr"
+    assert_file_empty "$stem.stderr" "$WORK/$stem.stderr"
     grep -F "error[$expected_code]:" "$WORK/$stem.stdout" >/dev/null
     cmp "$expected_output" "$WORK/$stem.stdout"
-    test ! -e "$WORK/$stem.hir"
+    assert_absent "$stem.hir" "$WORK/$stem.hir"
     test ! -e "$WORK/$stem.c"
 }
 

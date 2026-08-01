@@ -382,12 +382,14 @@ reject_function_fixture() {
         2>"$WORK/reject-$fixture-sanitized.stderr"
     reject_sanitized_status=$?
     set -e
-    test "$reject_status" -eq 1
-    test "$reject_sanitized_status" -eq 1
-    test ! -e "$WORK/reject-$fixture.wasm"
-    test ! -e "$WORK/reject-$fixture-sanitized.wasm"
-    test ! -s "$WORK/reject-$fixture.stdout"
-    test ! -s "$WORK/reject-$fixture-sanitized.stdout"
+    assert_num "reject status" "$reject_status" -eq 1
+    assert_num "reject sanitized status" "$reject_sanitized_status" -eq 1
+    assert_absent "reject-$fixture.wasm" "$WORK/reject-$fixture.wasm"
+    assert_absent "reject-$fixture-sanitized.wasm" \
+        "$WORK/reject-$fixture-sanitized.wasm"
+    assert_file_empty "reject-$fixture.stdout" "$WORK/reject-$fixture.stdout"
+    assert_file_empty "reject-$fixture-sanitized.stdout" \
+        "$WORK/reject-$fixture-sanitized.stdout"
     grep -Fxq "kofun wasm32: $expected" "$WORK/reject-$fixture.stderr"
     grep -Fxq "kofun wasm32: $expected" \
         "$WORK/reject-$fixture-sanitized.stderr"
