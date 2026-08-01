@@ -4,6 +4,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../../.." && pwd)
 CASES="$ROOT/tests/conformance/modules/visibility-syntax"
 CC=${CC:-cc}
+. "$ROOT/bootstrap/stage2/build.sh"
 
 command -v "$CC" >/dev/null 2>&1 || {
     printf '%s\n' "visibility syntax: a C11 compiler is required" >&2
@@ -89,8 +90,7 @@ expect_failure() {
     printf '%s\n' "PASS visibility diagnostic: $stem"
 }
 
-"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
-    "$ROOT/bootstrap/stage2/compiler.c" -o "$WORK/kofun-stage2"
+kofun_stage2_build "$ROOT" "$WORK/kofun-stage2"
 
 compile_positive implicit_private_fn helper private implicit
 compile_positive explicit_private_fn helper private explicit

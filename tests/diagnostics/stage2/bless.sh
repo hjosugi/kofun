@@ -4,14 +4,12 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 SUITE="$ROOT/tests/diagnostics/stage2"
 WORK=${KOFUN_DIAGNOSTIC_BLESS_WORK:-"$ROOT/build/diagnostics-stage2-bless"}
-CC=${CC:-cc}
+. "$ROOT/bootstrap/stage2/build.sh"
 
 rm -rf "$WORK"
 mkdir -p "$WORK/goldens"
 
-"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
-    "$ROOT/bootstrap/stage2/compiler.c" \
-    -o "$WORK/kofun-stage2"
+kofun_stage2_build "$ROOT" "$WORK/kofun-stage2"
 
 for source in "$SUITE"/*.kofun; do
     stem=$(basename "${source%.kofun}")

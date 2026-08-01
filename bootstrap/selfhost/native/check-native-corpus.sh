@@ -27,6 +27,7 @@ SELF="$ROOT/bootstrap/selfhost/native"
 KOFUN="$ROOT/bin/kofun"
 WORK=${KOFUN_SELFHOST_NATIVE_WORK:-"$ROOT/build/selfhost-native"}
 CC=${CC:-cc}
+. "$ROOT/bootstrap/stage2/build.sh"
 
 fail() {
     printf '%s\n' "FAIL: selfhost native parity: $*" >&2
@@ -60,8 +61,7 @@ test "$profile_digest" = "$actual_digest" ||
     fail "S digest differs from the frozen profile"
 
 # Path 1: the compiler built from S (A1) lowers the Core to C11, then cc links.
-"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
-    bootstrap/stage2/compiler.c -o "$WORK/kofun-stage2"
+kofun_stage2_build "$ROOT" "$WORK/kofun-stage2"
 "$WORK/kofun-stage2" --selfhost-compile \
     bootstrap/stage1/compiler.kofun "$WORK/S.c" "$profile_digest" >/dev/null
 cmp bootstrap/selfhost/driver/S.c "$WORK/S.c" ||

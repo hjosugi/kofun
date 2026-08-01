@@ -130,8 +130,10 @@ Stage 2 contains the broadest collection of semantic frontend checkpoints:
 - focused ADT, generic, module, import, visibility, re-export, KIF, and
   incremental helpers;
 - semantic-event producer and typed-tooling boundary;
-- fixtures, exact stdout/stderr, and `SHA256SUMS`; and
-- `check.sh`, which compiles and compares the expected artifacts.
+- fixtures, exact stdout/stderr, and `SHA256SUMS`;
+- `check.sh`, which compiles and compares the expected artifacts; and
+- `build.sh`, sourced rather than run, which is the single definition of how a
+  Stage 2 compiler binary is produced for a gate that needs one.
 
 Not every focused helper is routed through ordinary `./bin/kofun` commands.
 The detailed [`bootstrap/stage2/README.md`](../bootstrap/stage2/README.md)

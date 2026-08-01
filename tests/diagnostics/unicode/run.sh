@@ -7,13 +7,12 @@ export LC_ALL
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 SUITE="$ROOT/tests/diagnostics/unicode"
 WORK=${KOFUN_UNICODE_DIAGNOSTIC_WORK:-"$ROOT/build/diagnostics-unicode"}
-CC=${CC:-cc}
+. "$ROOT/bootstrap/stage2/build.sh"
 
 rm -rf "$WORK"
 mkdir -p "$WORK"
 
-"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
-    "$ROOT/bootstrap/stage2/compiler.c" -o "$WORK/kofun-stage2"
+kofun_stage2_build "$ROOT" "$WORK/kofun-stage2"
 
 set +e
 KOFUN_DIAGNOSTIC_LOCALE=ja_JP \

@@ -401,6 +401,19 @@ Run:
 sh bootstrap/stage2/check.sh
 ```
 
+`build.sh` in this directory is not a gate and is not executable. It is sourced
+by the twenty gates that need a Stage 2 compiler binary, and it is the single
+definition of how one is produced:
+
+```sh
+. "$ROOT/bootstrap/stage2/build.sh"
+kofun_stage2_build "$ROOT" "$WORK/kofun-stage2"
+```
+
+Every one of those gates therefore honours `KOFUN_STAGE2_COMPILER`. Export it
+with a compiler you have already built and each gate copies it instead of
+spending about 4.6s recompiling `compiler.c`.
+
 The check validates the canonical-source and seed hashes, compiles the audited
 C11 seed, round-trips the fixture, current Stage 1 compiler, and Stage 2
 compiler byte-for-byte, inspects their function IR, checks token-tape

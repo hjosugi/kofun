@@ -4,6 +4,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 WORK=${KOFUN_UNICODE_WORK:-"$ROOT/build/unicode"}
 CC=${CC:-cc}
+. "$ROOT/bootstrap/stage2/build.sh"
 
 mkdir -p "$WORK"
 
@@ -19,9 +20,7 @@ mkdir -p "$WORK"
 
 "$WORK/unicode-test"
 
-"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
-    "$ROOT/bootstrap/stage2/compiler.c" \
-    -o "$WORK/kofun-stage2"
+kofun_stage2_build "$ROOT" "$WORK/kofun-stage2"
 
 "$WORK/kofun-stage2" \
     "$ROOT/tests/unicode/stage2_identifiers.kofun" \

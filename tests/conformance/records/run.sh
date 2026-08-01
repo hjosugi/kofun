@@ -5,6 +5,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 CASES="$ROOT/tests/conformance/records"
 CC=${CC:-cc}
 WORK=${KOFUN_RECORD_FRONTEND_WORK:-"$ROOT/build/record-frontend"}
+. "$ROOT/bootstrap/stage2/build.sh"
 
 fail() {
     printf '%s\n' "FAIL: $*" >&2
@@ -206,9 +207,7 @@ test -z "$(find "$WORK" -type f \
 # must execute construction in either written label order, pass and return the
 # nominal value, and read both field types.
 
-"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
-    "$ROOT/bootstrap/stage2/compiler.c" \
-    -o "$WORK/kofun-stage2"
+kofun_stage2_build "$ROOT" "$WORK/kofun-stage2"
 "$WORK/kofun-stage2" \
     "$CASES/record_functions.kofun" \
     "$WORK/record_functions.c" \

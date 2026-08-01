@@ -6,6 +6,7 @@ NATIVE="$ROOT/bootstrap/native"
 KOFUN="$ROOT/bin/kofun"
 WORK=${KOFUN_NATIVE_CHECK_WORK:-"$ROOT/build/${KOFUN_GATE_WORK_NAMESPACE:+$KOFUN_GATE_WORK_NAMESPACE/}native-check"}
 CC=${CC:-cc}
+. "$ROOT/bootstrap/stage2/build.sh"
 
 AARCH64_RUNNER=${QEMU_AARCH64-}
 if test -n "$AARCH64_RUNNER" &&
@@ -23,9 +24,7 @@ fi
 rm -rf "$WORK"
 mkdir -p "$WORK"
 
-"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
-    "$ROOT/bootstrap/stage2/compiler.c" \
-    -o "$WORK/kofun-stage2"
+kofun_stage2_build "$ROOT" "$WORK/kofun-stage2"
 "$WORK/kofun-stage2" \
     "$NATIVE/encoder.kofun" \
     "$WORK/encoder.kofun" \

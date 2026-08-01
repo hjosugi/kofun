@@ -8,6 +8,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 CC=${CC:-cc}
 WORK=${KOFUN_STAGE2_EVENTS_WORK:-"$ROOT/build/stage2-semantic-events"}
 FIXTURE="$ROOT/tests/typed-sidecar/fixtures/stage2_events.kofun"
+. "$ROOT/bootstrap/stage2/build.sh"
 
 fail() {
     printf '%s\n' "FAIL: $*" >&2
@@ -239,9 +240,7 @@ else
 fi
 
 # No-sink Stage 2 behavior stays on the pre-existing command surface.
-"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
-    "$ROOT/bootstrap/stage2/compiler.c" \
-    -o "$WORK/plain/kofun-stage2"
+kofun_stage2_build "$ROOT" "$WORK/plain/kofun-stage2"
 
 # Every checked-in Stage 2 must-fail case is compared against the exact
 # compiler authority selected by its diagnostic-mode directive.  This keeps
