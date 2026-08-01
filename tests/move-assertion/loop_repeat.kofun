@@ -1,0 +1,13 @@
+# Rejected: the assertion sits inside a loop body while the binding lives
+# outside it, so a later iteration performs the same read again. Reason:
+# later use.
+
+fn main() -> Int {
+    let banner: Text = "banner"
+    let mut count = 0
+    while count < 2 {
+        compiler.ensure_move(banner)
+        count = count + 1
+    }
+    return 0
+}

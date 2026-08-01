@@ -1,0 +1,18 @@
+# Positive: a straight-line last use. Every earlier read of `banner` is an
+# argument to a call whose result is a Copy value or no value — `print`,
+# `len`, and an Int-returning user function — so none of them can have
+# created an alias, and the assertion is the final use in the binding's own
+# scope on the only path there is.
+
+fn width(label: Text) -> Int {
+    return len(label)
+}
+
+fn main() -> Int {
+    let banner: Text = "banner"
+    print(banner)
+    print(width(banner))
+    print(len(banner))
+    compiler.ensure_move(banner)
+    return 0
+}

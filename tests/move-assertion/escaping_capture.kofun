@@ -1,0 +1,11 @@
+# Rejected: a lambda captures the binding, and a capture can observe the
+# storage whenever the lambda runs — the assertion cannot bound that.
+# Reason: escaping capture.
+
+fn main() -> Int {
+    let banner: Text = "banner"
+    let measure = (extra: Int) => len(banner) + extra
+    compiler.ensure_move(banner)
+    print(measure(1))
+    return 0
+}

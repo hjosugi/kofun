@@ -1,0 +1,11 @@
+# Rejected: an earlier read of the binding is a whole `let` initializer, so
+# another binding may alias the same storage; the storage identity is no
+# longer provably unique when the assertion runs. Reason: possible alias.
+
+fn main() -> Int {
+    let banner: Text = "banner"
+    let keep: Text = banner
+    compiler.ensure_move(banner)
+    print(keep)
+    return 0
+}
