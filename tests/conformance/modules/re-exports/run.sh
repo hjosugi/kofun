@@ -97,24 +97,33 @@ expect_failure() {
 write_inventory "$CASES/fixtures/facade.kofun" "$WORK/positive.inventory"
 "$TOOL" "$WORK/positive.inventory" api.collections \
     "$WORK/positive.hir" "$WORK/positive.kif" "$WORK/positive.tooling"
-grep -Fx 'kofun-re-exports/v1' "$WORK/positive.hir" >/dev/null
+assert_grep "positive.hir" -Fx 'kofun-re-exports/v1' "$WORK/positive.hir"
 assert_num "^export| lines in positive.hir" \
     "$(grep -c '^export|' "$WORK/positive.hir")" -eq 5
-grep -F '|ns=2:module:' "$WORK/positive.hir" | grep -F '|name=collections|' >/dev/null
+grep -F '|ns=2:module:' "$WORK/positive.hir" | grep -F '|name=collections|' >/dev/null ||
+    assert_fail "the collections module is not re-exported in positive.hir"
 grep -F '|ns=2:module:' "$WORK/positive.hir" |
     grep -F '|name=collections|' |
-    grep -E '\|access-proof=[1-9][0-9]*\|' >/dev/null
+    grep -E '\|access-proof=[1-9][0-9]*\|' >/dev/null ||
+    assert_fail "the re-exported collections module carries no access proof in positive.hir"
 assert_num "Map rows in positive.hir" \
     "$(grep -F '|name=Map|' "$WORK/positive.hir" | wc -l | tr -d ' ')" -eq 2
-grep -F '|ns=0:value:' "$WORK/positive.hir" | grep -F '|name=Map|' >/dev/null
-grep -F '|ns=1:type:' "$WORK/positive.hir" | grep -F '|name=Map|' >/dev/null
-grep -F '|name=Set|' "$WORK/positive.hir" >/dev/null
-grep -F '|name=Present|' "$WORK/positive.hir" >/dev/null
-grep -F '|proof=non-widening-public-v1' "$WORK/positive.hir" >/dev/null
-grep -F 'doc|facade=api.collections.Map|canonical=lib.collections.Map|' \
-    "$WORK/positive.tooling" >/dev/null
-grep -F '|linker-forwarding=false|runtime-forwarding=false' \
-    "$WORK/positive.tooling" >/dev/null
+grep -F '|ns=0:value:' "$WORK/positive.hir" | grep -F '|name=Map|' >/dev/null ||
+    assert_fail "Map is missing from the value namespace in positive.hir"
+grep -F '|ns=1:type:' "$WORK/positive.hir" | grep -F '|name=Map|' >/dev/null ||
+    assert_fail "Map is missing from the type namespace in positive.hir"
+assert_grep "positive.hir" -F '|name=Set|' "$WORK/positive.hir"
+assert_grep "positive.hir" -F '|name=Present|' "$WORK/positive.hir"
+assert_grep "positive.hir" \
+    -F '|proof=non-widening-public-v1' "$WORK/positive.hir"
+assert_grep "positive.tooling" \
+    -F \
+    'doc|facade=api.collections.Map|canonical=lib.collections.Map|' \
+    "$WORK/positive.tooling"
+assert_grep "positive.tooling" \
+    -F \
+    '|linker-forwarding=false|runtime-forwarding=false' \
+    "$WORK/positive.tooling"
 value_map_export=$(
     grep -F '|ns=0:value:' "$WORK/positive.hir" |
         grep -F '|name=Map|' |
@@ -147,8 +156,8 @@ assert_eq "value map binding" \
 "$KIF_TOOL" read "$WORK/positive.kif" "$WORK/positive.json"
 assert_num "\"kind\": \"export\" lines in positive.json" \
     "$(grep -c '"kind": "export"' "$WORK/positive.json")" -eq 5
-grep -F '"target_kind": "function", "chain_count": 1' \
-    "$WORK/positive.json" >/dev/null
+assert_grep "positive.json" \
+    -F '"target_kind": "function", "chain_count": 1' "$WORK/positive.json"
 "$TOOL" --resolve-kif "$WORK/positive.kif" Map value \
     "$WORK/consumer-value.hir"
 "$TOOL" --resolve-kif "$WORK/positive.kif" Map type \
@@ -157,10 +166,13 @@ grep -F '"target_kind": "function", "chain_count": 1' \
     "$WORK/consumer-module.hir"
 "$TOOL" --resolve-kif "$WORK/positive.kif" Present value \
     "$WORK/consumer-constructor.hir"
-grep -F '|namespace=value|' "$WORK/consumer-value.hir" >/dev/null
-grep -F '|namespace=type|' "$WORK/consumer-type.hir" >/dev/null
-grep -F '|namespace=module|' "$WORK/consumer-module.hir" >/dev/null
-grep -F '|namespace=value|' "$WORK/consumer-constructor.hir" >/dev/null
+assert_grep "consumer-value.hir" \
+    -F '|namespace=value|' "$WORK/consumer-value.hir"
+assert_grep "consumer-type.hir" -F '|namespace=type|' "$WORK/consumer-type.hir"
+assert_grep "consumer-module.hir" \
+    -F '|namespace=module|' "$WORK/consumer-module.hir"
+assert_grep "consumer-constructor.hir" \
+    -F '|namespace=value|' "$WORK/consumer-constructor.hir"
 
 # The ordinary compiled-interface consumer, not only the focused projection,
 # resolves a facade import to the original callable target and full edge chain.
@@ -184,11 +196,13 @@ do
         grep -F "|export-binding=$value_map_binding|" |
         grep -F "|target-module=$COLLECTIONS_MODULE|" |
         grep -F "|target-symbol=$value_map_target|" |
-        grep -F "|chain=1|chain-ids=$value_map_chain" >/dev/null
+        grep -F "|chain=1|chain-ids=$value_map_chain" >/dev/null ||
+        assert_fail "the resolved value Map row does not carry the expected one-hop chain"
 done
-grep -F '|view=package-internal|' \
-    "$WORK/ordinary-facade-same.hir" >/dev/null
-grep -F '|view=public|' "$WORK/ordinary-facade-external.hir" >/dev/null
+assert_grep "ordinary-facade-same.hir" \
+    -F '|view=package-internal|' "$WORK/ordinary-facade-same.hir"
+assert_grep "ordinary-facade-external.hir" \
+    -F '|view=public|' "$WORK/ordinary-facade-external.hir"
 
 # Source/inventory/path remapping cannot change authoritative interface bytes.
 write_inventory "$CASES/fixtures/facade_reordered.kofun" \
@@ -263,7 +277,8 @@ assert_num "chained Map exports from api.v2 in two-level.hir" \
     "$(grep -F 'export|module=api.v2|' "$WORK/two-level.hir" | grep -F '|name=Map|' | grep -c '|chain=')" \
     -eq 2
 grep -F 'doc|facade=api.v2.Map|canonical=lib.collections.Map|' \
-    "$WORK/two-level.tooling" | grep -F '|chain=2|' >/dev/null
+    "$WORK/two-level.tooling" | grep -F '|chain=2|' >/dev/null ||
+    assert_fail "the api.v2.Map doc row does not record a two-hop chain"
 "$TOOL" --resolve-kif "$WORK/two-level.kif" Map value \
     "$WORK/v2-consumer.hir"
 v2_chain=$(
@@ -273,10 +288,10 @@ v2_chain=$(
 )
 assert_num "hops in the api.v2 Map re-export chain" \
     "$(printf '%s\n' "$v2_chain" | tr ',' '\n' | wc -l | tr -d ' ')" -eq 2
-grep -F "|chain=2|chain-ids=$v2_chain|" \
-    "$WORK/two-level.tooling" >/dev/null
-grep -F "|chain=2|chain-ids=$v2_chain" \
-    "$WORK/v2-consumer.hir" >/dev/null
+assert_grep "two-level.tooling" \
+    -F "|chain=2|chain-ids=$v2_chain|" "$WORK/two-level.tooling"
+assert_grep "v2-consumer.hir" \
+    -F "|chain=2|chain-ids=$v2_chain" "$WORK/v2-consumer.hir"
 
 # One selective spelling expands across a direct value and a forwarded type.
 # Resolution reaches a fixed point per namespace instead of stopping at the
@@ -306,9 +321,11 @@ assert_num "Mix rows exported by mixed.outer in mixed.hir" \
     "$(grep -F 'export|module=mixed.outer|' "$WORK/mixed.hir" | grep -F '|name=Mix|' | wc -l | tr -d ' ')" \
     -eq 2
 grep -F 'export|module=mixed.outer|' "$WORK/mixed.hir" |
-    grep -F '|ns=0:value:' | grep -F '|name=Mix|' >/dev/null
+    grep -F '|ns=0:value:' | grep -F '|name=Mix|' >/dev/null ||
+    assert_fail "Mix is not exported from mixed.outer in the value namespace"
 grep -F 'export|module=mixed.outer|' "$WORK/mixed.hir" |
-    grep -F '|ns=1:type:' | grep -F '|name=Mix|' >/dev/null
+    grep -F '|ns=1:type:' | grep -F '|name=Mix|' >/dev/null ||
+    assert_fail "Mix is not exported from mixed.outer in the type namespace"
 
 {
     printf '%s|%s|%s|lib.collections|lib/collections.kofun|%s\n' \
@@ -402,7 +419,8 @@ sed 's/Map, Set/hidden/' "$CASES/fixtures/facade.kofun" \
 write_inventory "$WORK/private-target.kofun" "$WORK/private-target.inventory"
 expect_failure E2S87 private-target api.collections \
     "$WORK/private-target.inventory"
-grep -F 'requested=pub effective=private' "$WORK/private-target.log" >/dev/null
+assert_grep "private-target.log" \
+    -F 'requested=pub effective=private' "$WORK/private-target.log"
 assert_num "spans in private-target.log" \
     "$(grep -Eo '[0-9]+\.\.[0-9]+' "$WORK/private-target.log" | wc -l | tr -d ' ')" \
     -ge 2
@@ -431,7 +449,7 @@ assert_num "spans in hidden-signature.log" \
 } >"$WORK/duplicate.kofun"
 write_inventory "$WORK/duplicate.kofun" "$WORK/duplicate.inventory"
 expect_failure E2S88 duplicate api.collections "$WORK/duplicate.inventory"
-grep -F 'binding spans=' "$WORK/duplicate.log" >/dev/null
+assert_grep "duplicate.log" -F 'binding spans=' "$WORK/duplicate.log"
 
 {
     printf '%s\n' 'module api.collections'
@@ -543,7 +561,8 @@ printf '%s\n' 'module cycle.b' \
         "$WORK/cycle-b.kofun"
 } >"$WORK/two-cycle.inventory"
 expect_failure E2S89 two-cycle cycle.a "$WORK/two-cycle.inventory"
-grep -F 'canonical re-export cycle:' "$WORK/two-cycle.log" >/dev/null
+assert_grep "two-cycle.log" \
+    -F 'canonical re-export cycle:' "$WORK/two-cycle.log"
 sed '1!G;h;$!d' "$WORK/two-cycle.inventory" \
     >"$WORK/two-cycle-reversed.inventory"
 expect_failure E2S89 two-cycle-reversed cycle.a \
@@ -592,8 +611,8 @@ printf '%s\n' 'module tie.c' \
         13 "$WORK/tie-c.kofun"
 } >"$WORK/tie.inventory"
 expect_failure E2S89 tie-cycle tie.a "$WORK/tie.inventory"
-grep -F 'tie.a --tie/a.kofun:' "$WORK/tie-cycle.log" >/dev/null
-grep -F 'tie.c --tie/c.kofun:' "$WORK/tie-cycle.log" >/dev/null
+assert_grep "tie-cycle.log" -F 'tie.a --tie/a.kofun:' "$WORK/tie-cycle.log"
+assert_grep "tie-cycle.log" -F 'tie.c --tie/c.kofun:' "$WORK/tie-cycle.log"
 if grep -F 'tie.b --tie/b.kofun:' "$WORK/tie-cycle.log" >/dev/null; then
     fail 'CycleEdgeKey chose the wrong equal-length cycle'
 fi
@@ -674,7 +693,8 @@ head -n 65 "$WORK/chain.inventory" >"$WORK/chain64.inventory"
 "$TOOL" "$WORK/chain64.inventory" chain.e63 \
     "$WORK/chain64.hir" "$WORK/chain64.kif" "$WORK/chain64.tooling"
 grep -F 'doc|facade=chain.e63.Item|canonical=chain.base.Item|' \
-    "$WORK/chain64.tooling" | grep -F '|chain=64|' >/dev/null
+    "$WORK/chain64.tooling" | grep -F '|chain=64|' >/dev/null ||
+    assert_fail "the chain.e63.Item doc row does not record a 64-hop chain"
 "$TOOL" --resolve-kif "$WORK/chain64.kif" Item value \
     "$WORK/chain64-consumer.hir"
 chain64_ids=$(
@@ -684,12 +704,12 @@ chain64_ids=$(
 )
 assert_num "hops in the chain.e63 Item re-export chain" \
     "$(printf '%s\n' "$chain64_ids" | tr ',' '\n' | wc -l | tr -d ' ')" -eq 64
-grep -F "|chain=64|chain-ids=$chain64_ids|" \
-    "$WORK/chain64.tooling" >/dev/null
-grep -F "|chain=64|chain-ids=$chain64_ids" \
-    "$WORK/chain64-consumer.hir" >/dev/null
+assert_grep "chain64.tooling" \
+    -F "|chain=64|chain-ids=$chain64_ids|" "$WORK/chain64.tooling"
+assert_grep "chain64-consumer.hir" \
+    -F "|chain=64|chain-ids=$chain64_ids" "$WORK/chain64-consumer.hir"
 expect_failure E2S90 chain65 chain.e64 "$WORK/chain.inventory"
-grep -E 'bytes [0-9]+\.\.[0-9]+' "$WORK/chain65.log" >/dev/null
+assert_grep "chain65.log" -E 'bytes [0-9]+\.\.[0-9]+' "$WORK/chain65.log"
 
 # The expanded-binding exact boundary succeeds; one-over is rejected.
 printf '%s\n' 'module big.target' >"$WORK/big-target.kofun"
@@ -732,7 +752,8 @@ assert_num "^export| lines in big.hir" \
 printf '%s\n' 'pub from big.target import N512' \
     >>"$WORK/big-facade.kofun"
 expect_failure E2S90 expanded-over big.facade "$WORK/big.inventory"
-grep -E 'bytes [0-9]+\.\.[0-9]+' "$WORK/expanded-over.log" >/dev/null
+assert_grep "expanded-over.log" \
+    -E 'bytes [0-9]+\.\.[0-9]+' "$WORK/expanded-over.log"
 
 # Exactly 256 source re-export declarations succeed; the 257th is rejected.
 printf '%s\n' 'module declarations.facade' \
@@ -759,8 +780,8 @@ printf '%s\n' 'pub from big.target import N256' \
     >>"$WORK/declarations-facade.kofun"
 expect_failure E2S90 declarations-over declarations.facade \
     "$WORK/declarations.inventory"
-grep -E 'bytes [0-9]+\.\.[0-9]+' \
-    "$WORK/declarations-over.log" >/dev/null
+assert_grep "declarations-over.log" \
+    -E 'bytes [0-9]+\.\.[0-9]+' "$WORK/declarations-over.log"
 
 # The package-wide expanded-edge boundary is executable: 64 facades with
 # 1,024 value/type bindings each succeed, and the 65,537th edge is rejected.
@@ -806,8 +827,8 @@ assert_num "^export| lines in package-edges.hir" \
     "$(grep -c '^export|' "$WORK/package-edges.hir")" -eq 65536
 expect_failure E2S90 package-edges-over package.f64 \
     "$WORK/package-edges.inventory"
-grep -E 'bytes [0-9]+\.\.[0-9]+' \
-    "$WORK/package-edges-over.log" >/dev/null
+assert_grep "package-edges-over.log" \
+    -E 'bytes [0-9]+\.\.[0-9]+' "$WORK/package-edges-over.log"
 
 # A test-only lower operation budget exercises the production budget failure
 # path without changing the release limit.
@@ -826,8 +847,8 @@ set +e
 low_work_status=$?
 set -e
 assert_num "low work status" "$low_work_status" -eq 1
-grep -F 'error[E2S90]:' "$WORK/low-work.log" >/dev/null
-grep -E 'bytes [0-9]+\.\.[0-9]+' "$WORK/low-work.log" >/dev/null
+assert_grep "low-work.log" -F 'error[E2S90]:' "$WORK/low-work.log"
+assert_grep "low-work.log" -E 'bytes [0-9]+\.\.[0-9]+' "$WORK/low-work.log"
 assert_absent "low-work.hir" "$WORK/low-work.hir"
 assert_absent "low-work.kif" "$WORK/low-work.kif"
 assert_absent "low-work.tooling" "$WORK/low-work.tooling"
@@ -844,7 +865,8 @@ alias_status=$?
 set -e
 assert_num "rejection status for an inventory aliased to the HIR output" \
     "$alias_status" -eq 1
-grep -F 'error[E2S92]:' "$WORK/alias-inventory.log" >/dev/null
+assert_grep "alias-inventory.log" \
+    -F 'error[E2S92]:' "$WORK/alias-inventory.log"
 cmp "$WORK/alias-inventory.snapshot" "$WORK/alias-inventory"
 assert_absent "alias-inventory.kif" "$WORK/alias-inventory.kif"
 assert_absent "alias-inventory.tooling" "$WORK/alias-inventory.tooling"
@@ -861,7 +883,8 @@ alias_status=$?
 set -e
 assert_num "rejection status for an inventory hardlinked to the HIR output" \
     "$alias_status" -eq 1
-grep -F 'error[E2S92]:' "$WORK/alias-inventory-hard.log" >/dev/null
+assert_grep "alias-inventory-hard.log" \
+    -F 'error[E2S92]:' "$WORK/alias-inventory-hard.log"
 cmp "$WORK/alias-inventory-hard.snapshot" "$WORK/alias-inventory-hard"
 cmp "$WORK/alias-inventory-hard.snapshot" "$WORK/alias-inventory-hard.hir"
 
@@ -883,7 +906,7 @@ alias_status=$?
 set -e
 assert_num "rejection status for a source aliased to the HIR output" \
     "$alias_status" -eq 1
-grep -F 'error[E2S92]:' "$WORK/alias-source.log" >/dev/null
+assert_grep "alias-source.log" -F 'error[E2S92]:' "$WORK/alias-source.log"
 cmp "$WORK/alias-source.snapshot" "$WORK/alias-source.kofun"
 
 cp "$WORK/alias-source.snapshot" "$WORK/alias-source-hard.kofun"
@@ -899,7 +922,8 @@ alias_status=$?
 set -e
 assert_num "rejection status for a source hardlinked to the HIR output" \
     "$alias_status" -eq 1
-grep -F 'error[E2S92]:' "$WORK/alias-source-hard.log" >/dev/null
+assert_grep "alias-source-hard.log" \
+    -F 'error[E2S92]:' "$WORK/alias-source-hard.log"
 cmp "$WORK/alias-source.snapshot" "$WORK/alias-source-hard.kofun"
 cmp "$WORK/alias-source.snapshot" "$WORK/alias-source-hard.hir"
 
@@ -910,7 +934,7 @@ set +e
 alias_status=$?
 set -e
 assert_num "rejection status for two outputs at one path" "$alias_status" -eq 1
-grep -F 'error[E2S92]:' "$WORK/alias-outputs.log" >/dev/null
+assert_grep "alias-outputs.log" -F 'error[E2S92]:' "$WORK/alias-outputs.log"
 
 printf '%s\n' preserved >"$WORK/alias-output-hard-a"
 ln "$WORK/alias-output-hard-a" "$WORK/alias-output-hard-b"
@@ -922,9 +946,10 @@ set +e
 alias_status=$?
 set -e
 assert_num "rejection status for hardlinked outputs" "$alias_status" -eq 1
-grep -F 'error[E2S92]:' "$WORK/alias-output-hard.log" >/dev/null
-grep -Fx preserved "$WORK/alias-output-hard-a" >/dev/null
-grep -Fx preserved "$WORK/alias-output-hard-b" >/dev/null
+assert_grep "alias-output-hard.log" \
+    -F 'error[E2S92]:' "$WORK/alias-output-hard.log"
+assert_grep "alias-output-hard-a" -Fx preserved "$WORK/alias-output-hard-a"
+assert_grep "alias-output-hard-b" -Fx preserved "$WORK/alias-output-hard-b"
 
 cp "$WORK/positive.kif" "$WORK/resolve-alias.kif"
 cp "$WORK/resolve-alias.kif" "$WORK/resolve-alias.snapshot"
@@ -935,7 +960,7 @@ alias_status=$?
 set -e
 assert_num "rejection status for --resolve-kif writing over its input" \
     "$alias_status" -eq 1
-grep -F 'error[E2S92]:' "$WORK/resolve-alias.log" >/dev/null
+assert_grep "resolve-alias.log" -F 'error[E2S92]:' "$WORK/resolve-alias.log"
 cmp "$WORK/resolve-alias.snapshot" "$WORK/resolve-alias.kif"
 
 cp "$WORK/positive.kif" "$WORK/resolve-alias-hard.kif"
@@ -947,7 +972,8 @@ alias_status=$?
 set -e
 assert_num "rejection status for a --resolve-kif output hardlinked to its input" \
     "$alias_status" -eq 1
-grep -F 'error[E2S92]:' "$WORK/resolve-alias-hard.log" >/dev/null
+assert_grep "resolve-alias-hard.log" \
+    -F 'error[E2S92]:' "$WORK/resolve-alias-hard.log"
 cmp "$WORK/positive.kif" "$WORK/resolve-alias-hard.kif"
 cmp "$WORK/positive.kif" "$WORK/resolve-alias-hard.hir"
 
@@ -962,7 +988,7 @@ set +e
 corrupt_status=$?
 set -e
 assert_num "corrupt status" "$corrupt_status" -eq 1
-grep -F 'error[E2S91]:' "$WORK/corrupt-kif.log" >/dev/null
+assert_grep "corrupt-kif.log" -F 'error[E2S91]:' "$WORK/corrupt-kif.log"
 assert_absent "corrupt-consumer.hir" "$WORK/corrupt-consumer.hir"
 
 set +e
@@ -971,7 +997,7 @@ set +e
 missing_export_status=$?
 set -e
 assert_num "missing export status" "$missing_export_status" -eq 1
-grep -F 'error[E2S93]:' "$WORK/missing-export.log" >/dev/null
+assert_grep "missing-export.log" -F 'error[E2S93]:' "$WORK/missing-export.log"
 assert_absent "missing-export.hir" "$WORK/missing-export.hir"
 
 set +e
@@ -981,7 +1007,7 @@ set +e
 io_status=$?
 set -e
 assert_num "io status" "$io_status" -eq 1
-grep -F 'error[E2S92]:' "$WORK/io.log" >/dev/null
+assert_grep "io.log" -F 'error[E2S92]:' "$WORK/io.log"
 assert_absent "absent/out.hir" "$WORK/absent/out.hir"
 assert_absent "io.kif" "$WORK/io.kif"
 assert_absent "io.tooling" "$WORK/io.tooling"
@@ -997,7 +1023,7 @@ KOFUN_DIAGNOSTIC_FAULT=re-export-chain \
 internal_status=$?
 set -e
 assert_num "internal status" "$internal_status" -eq 1
-grep -F 'error[E2S94]:' "$WORK/internal.log" >/dev/null
+assert_grep "internal.log" -F 'error[E2S94]:' "$WORK/internal.log"
 assert_absent "internal.hir" "$WORK/internal.hir"
 assert_absent "internal.kif" "$WORK/internal.kif"
 assert_absent "internal.tooling" "$WORK/internal.tooling"

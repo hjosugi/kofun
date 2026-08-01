@@ -98,7 +98,7 @@ expect_failure() {
         exit 1
     fi
     assert_file_empty "$stem.stderr" "$WORK/$stem.stderr"
-    grep -F "error[$expected_code]:" "$WORK/$stem.stdout" >/dev/null
+    assert_grep "$stem.stdout" -F "error[$expected_code]:" "$WORK/$stem.stdout"
     cmp "$expected_output" "$WORK/$stem.stdout"
     assert_absent "$stem.hir" "$WORK/$stem.hir"
     test ! -e "$WORK/$stem.c"
@@ -106,11 +106,13 @@ expect_failure() {
 
 run_program "$FIXTURES/main_csv.kofun" csv
 cmp "$CASES/expected.hir" "$WORK/csv.hir"
-grep -F "|local=csv|target=$TARGET_MODULE|form=qualified-module-v1|" \
-    "$WORK/csv.hir" >/dev/null
-grep -F '|alias-binding=' "$WORK/csv.hir" >/dev/null
-grep -F '|alias-span=' "$WORK/csv.hir" >/dev/null
-grep -F '|reexport=false' "$WORK/csv.hir" >/dev/null
+assert_grep "csv.hir" \
+    -F \
+    "|local=csv|target=$TARGET_MODULE|form=qualified-module-v1|" \
+    "$WORK/csv.hir"
+assert_grep "csv.hir" -F '|alias-binding=' "$WORK/csv.hir"
+assert_grep "csv.hir" -F '|alias-span=' "$WORK/csv.hir"
+assert_grep "csv.hir" -F '|reexport=false' "$WORK/csv.hir"
 if grep -F '|local=reader|' "$WORK/csv.hir" >/dev/null; then
     printf '%s\n' 'default final-component qualifier was bound beside the alias' >&2
     exit 1
@@ -130,9 +132,12 @@ assert_eq "ALIAS BINDING" "$ALIAS_BINDING" "$EXPECTED_ALIAS_BINDING"
 assert_num "${#ALIAS_BINDING}" "${#ALIAS_BINDING}" -eq 64
 "$SELECTIVE_TOOL" "$WORK/csv.inventory" \
     "$WORK/csv-selective.hir" "$WORK/csv-selective.c"
-grep -F "|local=csv|target=$TARGET_MODULE|" "$WORK/csv-selective.hir" >/dev/null
-grep -F "|alias-binding=$ALIAS_BINDING|alias-span=$ALIAS_SPAN|reexport=false" \
-    "$WORK/csv-selective.hir" >/dev/null
+assert_grep "csv-selective.hir" \
+    -F "|local=csv|target=$TARGET_MODULE|" "$WORK/csv-selective.hir"
+assert_grep "csv-selective.hir" \
+    -F \
+    "|alias-binding=$ALIAS_BINDING|alias-span=$ALIAS_SPAN|reexport=false" \
+    "$WORK/csv-selective.hir"
 "$CC" -std=c11 -Wall -Wextra -Werror -pedantic \
     "$WORK/csv-selective.c" -o "$WORK/csv-selective-program"
 set +e

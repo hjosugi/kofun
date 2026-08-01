@@ -70,7 +70,7 @@ expect_failure() {
         printf '%s\n' "expected $expected failure" >&2
         exit 1
     fi
-    grep -F "error[$expected]:" "$log" >/dev/null
+    assert_grep "log" -F "error[$expected]:" "$log"
     assert_absent "output" "$output"
     test ! -e "$backend"
 }
@@ -85,7 +85,7 @@ expect_backend_failure() {
         printf '%s\n' "expected $expected backend failure" >&2
         exit 1
     fi
-    grep -F "error[$expected]:" "$log" >/dev/null
+    assert_grep "log" -F "error[$expected]:" "$log"
     assert_absent "hir" "$hir"
     test ! -e "$backend"
 }
@@ -93,18 +93,23 @@ expect_backend_failure() {
 write_inventory "$CASES/fixtures/main.kofun" "$CASES/fixtures/math.kofun" "$WORK/ok.inventory"
 "$TOOL" "$WORK/ok.inventory" "$WORK/ok.hir" "$WORK/ok.c"
 cmp "$CASES/expected.hir" "$WORK/ok.hir"
-grep -Fx 'kofun-imports-qualified/v1' "$WORK/ok.hir" >/dev/null
-grep -F "|local=math|target=$MATH_MODULE|form=qualified-module-v1|" "$WORK/ok.hir" >/dev/null
-grep -F "|target-module=$MATH_MODULE|target-symbol=" "$WORK/ok.hir" >/dev/null
-grep -F '|name=identity|' "$WORK/ok.hir" >/dev/null
-grep -F '|access=Allowed|reason=Allowed|proof=17|' "$WORK/ok.hir" >/dev/null
-grep -F '|signature=fn(1:Int)->Int' "$WORK/ok.hir" >/dev/null
+assert_grep "ok.hir" -Fx 'kofun-imports-qualified/v1' "$WORK/ok.hir"
+assert_grep "ok.hir" \
+    -F \
+    "|local=math|target=$MATH_MODULE|form=qualified-module-v1|" \
+    "$WORK/ok.hir"
+assert_grep "ok.hir" \
+    -F "|target-module=$MATH_MODULE|target-symbol=" "$WORK/ok.hir"
+assert_grep "ok.hir" -F '|name=identity|' "$WORK/ok.hir"
+assert_grep "ok.hir" \
+    -F '|access=Allowed|reason=Allowed|proof=17|' "$WORK/ok.hir"
+assert_grep "ok.hir" -F '|signature=fn(1:Int)->Int' "$WORK/ok.hir"
 ACTUAL_BINDING=$(sed -n 's/^import|binding=\([0-9a-f]*\)|.*/\1/p' "$WORK/ok.hir")
 EXPECTED_BINDING=$("$WORK/identity-reference" "$MAIN_MODULE" "$MAIN_FILE" math "$MATH_MODULE")
 assert_eq "ACTUAL BINDING" "$ACTUAL_BINDING" "$EXPECTED_BINDING"
 TARGET_SYMBOL=$(sed -n 's/^qualified-call|.*|target-symbol=\([0-9a-f]*\)|.*/\1/p' "$WORK/ok.hir")
 assert_num "${#TARGET_SYMBOL}" "${#TARGET_SYMBOL}" -eq 64
-grep -F "kofun_s_$TARGET_SYMBOL(" "$WORK/ok.c" >/dev/null
+assert_grep "ok.c" -F "kofun_s_$TARGET_SYMBOL(" "$WORK/ok.c"
 "$CC" -std=c11 -Wall -Wextra -Werror -pedantic "$WORK/ok.c" -o "$WORK/ok-program"
 set +e
 "$WORK/ok-program"
@@ -253,12 +258,14 @@ fi
 sed 's/internal fn/pub fn/' "$CASES/fixtures/math.kofun" > "$WORK/public-math.kofun"
 write_inventory "$CASES/fixtures/main.kofun" "$WORK/public-math.kofun" "$WORK/public.inventory"
 "$TOOL" "$WORK/public.inventory" "$WORK/public.hir"
-grep -F '|access=Allowed|reason=Allowed|' "$WORK/public.hir" >/dev/null
+assert_grep "public.hir" \
+    -F '|access=Allowed|reason=Allowed|' "$WORK/public.hir"
 
 sed 's/math\.identity(42)/identity(42)/' "$CASES/fixtures/main.kofun" > "$WORK/unqualified.kofun"
 write_inventory "$WORK/unqualified.kofun" "$CASES/fixtures/math.kofun" "$WORK/unqualified.inventory"
 expect_failure E2S65 "$WORK/unqualified.inventory" "$WORK/unqualified.hir" "$WORK/unqualified.log"
-grep -F 'requires its module qualifier' "$WORK/unqualified.log" >/dev/null
+assert_grep "unqualified.log" \
+    -F 'requires its module qualifier' "$WORK/unqualified.log"
 
 write_inventory "$WORK/unqualified.kofun" "$WORK/private-math.kofun" "$WORK/private-unqualified.inventory"
 expect_failure E2S53 "$WORK/private-unqualified.inventory" \
@@ -310,9 +317,11 @@ sed -e 's/import lib\.math/import lib.math as m/' \
     "$CASES/fixtures/main.kofun" > "$WORK/alias.kofun"
 write_inventory "$WORK/alias.kofun" "$CASES/fixtures/math.kofun" "$WORK/alias.inventory"
 "$TOOL" "$WORK/alias.inventory" "$WORK/alias.hir"
-grep -F "|local=m|target=$MATH_MODULE|form=qualified-module-v1|" \
-    "$WORK/alias.hir" >/dev/null
-grep -F '|alias-binding=' "$WORK/alias.hir" >/dev/null
+assert_grep "alias.hir" \
+    -F \
+    "|local=m|target=$MATH_MODULE|form=qualified-module-v1|" \
+    "$WORK/alias.hir"
+assert_grep "alias.hir" -F '|alias-binding=' "$WORK/alias.hir"
 
 sed 's/import lib\.math/import lib.*/' "$CASES/fixtures/main.kofun" > "$WORK/wildcard.kofun"
 write_inventory "$WORK/wildcard.kofun" "$CASES/fixtures/math.kofun" "$WORK/wildcard.inventory"
@@ -321,7 +330,8 @@ expect_failure E2S59 "$WORK/wildcard.inventory" "$WORK/wildcard.hir" "$WORK/wild
 sed 's/import lib\.math/pub import lib.math/' "$CASES/fixtures/main.kofun" > "$WORK/re-export.kofun"
 write_inventory "$WORK/re-export.kofun" "$CASES/fixtures/math.kofun" "$WORK/re-export.inventory"
 expect_failure E2S59 "$WORK/re-export.inventory" "$WORK/re-export.hir" "$WORK/re-export.log"
-grep -F 'outside the ordinary qualified-import slice' "$WORK/re-export.log" >/dev/null
+assert_grep "re-export.log" \
+    -F 'outside the ordinary qualified-import slice' "$WORK/re-export.log"
 
 {
     printf '%s|%s|%s|app.main|../app/main.kofun|%s\n' \
@@ -378,10 +388,15 @@ assert_num "'-->' edges in cycle-64.log" \
 assert_num "':17..33-->' spans in cycle-64.log" \
     "$(awk '{ count = 0; rest = $0; token = ":17..33-->"; while ((at = index(rest, token)) > 0) { count += 1; rest = substr(rest, at + length(token)); } print count; }' "$WORK/cycle-64.log")" \
     -eq 64
-grep -F 'error[E2S64]: canonical import cycle: cycle.m00 --cycle/m00.kofun:17..33-->' \
-    "$WORK/cycle-64.log" >/dev/null
-grep -F -- '--> cycle.m00; hint: remove one import edge from this cycle' \
-    "$WORK/cycle-64.log" >/dev/null
+assert_grep "cycle-64.log" \
+    -F \
+    'error[E2S64]: canonical import cycle: cycle.m00 --cycle/m00.kofun:17..33-->' \
+    "$WORK/cycle-64.log"
+assert_grep "cycle-64.log" \
+    -F \
+    -- \
+    '--> cycle.m00; hint: remove one import edge from this cycle' \
+    "$WORK/cycle-64.log"
 
 sed '/module lib\.math/a import core.numbers' "$CASES/fixtures/math.kofun" > "$WORK/transitive-math.kofun"
 {
@@ -402,9 +417,14 @@ sed '/module core\.numbers/a import app.main' "$CASES/fixtures/numbers.kofun" > 
 sed "s|$CASES/fixtures/numbers.kofun|$WORK/cycle-numbers.kofun|" \
     "$WORK/transitive.inventory" > "$WORK/three-cycle.inventory"
 expect_failure E2S64 "$WORK/three-cycle.inventory" "$WORK/three-cycle.hir" "$WORK/three-cycle.log"
-grep -F 'canonical import cycle: app.main --app/main.kofun:' "$WORK/three-cycle.log" >/dev/null
-grep -F -- '--> lib.math --lib/math.kofun:' "$WORK/three-cycle.log" >/dev/null
-grep -F -- '--> core.numbers --core/numbers.kofun:' "$WORK/three-cycle.log" >/dev/null
+assert_grep "three-cycle.log" \
+    -F \
+    'canonical import cycle: app.main --app/main.kofun:' \
+    "$WORK/three-cycle.log"
+assert_grep "three-cycle.log" \
+    -F -- '--> lib.math --lib/math.kofun:' "$WORK/three-cycle.log"
+assert_grep "three-cycle.log" \
+    -F -- '--> core.numbers --core/numbers.kofun:' "$WORK/three-cycle.log"
 
 {
     printf '%s\n' 'module app.main'
@@ -547,9 +567,17 @@ identifier=${identifier}a
 write_inventory "$WORK/identifier-257.kofun" "$CASES/fixtures/math.kofun" "$WORK/identifier-257.inventory"
 expect_failure E2S55 "$WORK/identifier-257.inventory" "$WORK/identifier-257.hir" "$WORK/identifier-257.log"
 
-grep -F '#define IMPORT_EDGE_LIMIT 65536u' "$ROOT/bootstrap/stage2/imports_qualified.c" >/dev/null
-grep -F '#define QUALIFIED_USE_LIMIT 65536u' "$ROOT/bootstrap/stage2/imports_qualified.c" >/dev/null
-grep -F '#define IMPORT_GRAPH_WORK_LIMIT UINT64_C(20000000)' \
-    "$ROOT/bootstrap/stage2/imports_qualified.c" >/dev/null
+assert_grep "bootstrap/stage2/imports_qualified.c" \
+    -F \
+    '#define IMPORT_EDGE_LIMIT 65536u' \
+    "$ROOT/bootstrap/stage2/imports_qualified.c"
+assert_grep "bootstrap/stage2/imports_qualified.c" \
+    -F \
+    '#define QUALIFIED_USE_LIMIT 65536u' \
+    "$ROOT/bootstrap/stage2/imports_qualified.c"
+assert_grep "bootstrap/stage2/imports_qualified.c" \
+    -F \
+    '#define IMPORT_GRAPH_WORK_LIMIT UINT64_C(20000000)' \
+    "$ROOT/bootstrap/stage2/imports_qualified.c"
 
 printf '%s\n' 'PASS: qualified same-package imports and HIR projection'

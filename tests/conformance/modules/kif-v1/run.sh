@@ -84,15 +84,23 @@ cmp "$WORK/interface.kif" "$WORK/reordered.kif" || fail 'declaration order chang
 
 "$TOOL" read "$WORK/interface.kif" "$WORK/readback.json"
 cmp "$WORK/interface.json" "$WORK/readback.json" || fail 'writer/readback facts differ'
-grep -F '"authoritative": false' "$WORK/interface.json" >/dev/null
-grep -F '"name": "exported", "visibility": "pub", "parameter_count": 1' \
-    "$WORK/interface.json" >/dev/null
-grep -F '"name": "sibling", "visibility": "internal", "parameter_count": 1' \
-    "$WORK/interface.json" >/dev/null
-grep -F '"name": "Some", "visibility": "pub", "payload_count": 1' \
-    "$WORK/interface.json" >/dev/null
-grep -F '"name": "Right", "visibility": "internal", "payload_count": 1' \
-    "$WORK/interface.json" >/dev/null
+assert_grep "interface.json" -F '"authoritative": false' "$WORK/interface.json"
+assert_grep "interface.json" \
+    -F \
+    '"name": "exported", "visibility": "pub", "parameter_count": 1' \
+    "$WORK/interface.json"
+assert_grep "interface.json" \
+    -F \
+    '"name": "sibling", "visibility": "internal", "parameter_count": 1' \
+    "$WORK/interface.json"
+assert_grep "interface.json" \
+    -F \
+    '"name": "Some", "visibility": "pub", "payload_count": 1' \
+    "$WORK/interface.json"
+assert_grep "interface.json" \
+    -F \
+    '"name": "Right", "visibility": "internal", "payload_count": 1' \
+    "$WORK/interface.json"
 if grep -Eq '"name": "(hidden|implicit_private|HiddenChoice|Invisible|Secret)"' \
     "$WORK/interface.json"
 then
@@ -109,23 +117,30 @@ test "$public_digest" != "$internal_digest" || fail 'public/internal digests une
 "$WORK/codec-test" "$WORK/interface.kif" "$WORK"
 "$TOOL" read "$WORK/export-interface.kif" "$WORK/export-interface.json"
 grep -F '"target_kind": "module"' "$WORK/export-interface.json" |
-    grep -F '"target_module_path": "demo.api"' >/dev/null
+    grep -F '"target_module_path": "demo.api"' >/dev/null ||
+    assert_fail "export-interface.json does not name demo.api as a module target"
 
 # The dependency source is deliberately absent from the consumer invocation.
 cp "$CASES/fixtures/consumer.kofun" "$WORK/consumer.kofun"
 assert_absent "dependency-source.kofun" "$WORK/dependency-source.kofun"
 "$TOOL" resolve "$WORK/interface.kif" "$PACKAGE_ID" demo.api \
     "$WORK/consumer.kofun" "$WORK/source-free.hir"
-grep -Fx 'kofun-imports-qualified/v1' "$WORK/source-free.hir" >/dev/null
-grep -F '|path=demo.api|module=2222222222222222222222222222222222222222222222222222222222222222|view=package-internal|' \
-    "$WORK/source-free.hir" >/dev/null
-grep -F '|qualifier=api|name=exported|' "$WORK/source-free.hir" >/dev/null
-grep -F '|arity=1|signature=fn(1:Int)->Int|' "$WORK/source-free.hir" >/dev/null
+assert_grep "source-free.hir" \
+    -Fx 'kofun-imports-qualified/v1' "$WORK/source-free.hir"
+assert_grep "source-free.hir" \
+    -F \
+    '|path=demo.api|module=2222222222222222222222222222222222222222222222222222222222222222|view=package-internal|' \
+    "$WORK/source-free.hir"
+assert_grep "source-free.hir" \
+    -F '|qualifier=api|name=exported|' "$WORK/source-free.hir"
+assert_grep "source-free.hir" \
+    -F '|arity=1|signature=fn(1:Int)->Int|' "$WORK/source-free.hir"
 
 "$TOOL" resolve "$WORK/interface.kif" "$PACKAGE_ID" demo.api \
     "$CASES/fixtures/consumer_internal.kofun" "$WORK/internal.hir"
-grep -F '|qualifier=api|name=sibling|' "$WORK/internal.hir" >/dev/null
-grep -F '|view=package-internal|' "$WORK/internal.hir" >/dev/null
+assert_grep "internal.hir" \
+    -F '|qualifier=api|name=sibling|' "$WORK/internal.hir"
+assert_grep "internal.hir" -F '|view=package-internal|' "$WORK/internal.hir"
 
 if "$TOOL" resolve "$WORK/interface.kif" "$EXTERNAL_PACKAGE" demo.api \
     "$CASES/fixtures/consumer_internal.kofun" "$WORK/external-internal.hir" \
@@ -133,7 +148,8 @@ if "$TOOL" resolve "$WORK/interface.kif" "$EXTERNAL_PACKAGE" demo.api \
 then
     fail 'external package consumed an internal KIF fact'
 fi
-grep -F 'error[E2S65]:' "$WORK/external-internal.log" >/dev/null
+assert_grep "external-internal.log" \
+    -F 'error[E2S65]:' "$WORK/external-internal.log"
 test ! -e "$WORK/external-internal.hir" || fail 'rejected resolver published HIR'
 
 # A normal qualified import consumes a public facade edge, but keeps the
@@ -157,17 +173,22 @@ assert_absent "facade-source.kofun" "$WORK/facade-source.kofun"
     "$CASES/fixtures/consumer_export.kofun" "$WORK/export-same-package.hir"
 "$TOOL" resolve "$WORK/export-interface.kif" "$EXTERNAL_PACKAGE" facade.api \
     "$CASES/fixtures/consumer_export.kofun" "$WORK/export-external.hir"
-grep -F "|path=facade.api|module=$FACADE_MODULE|view=package-internal|" \
-    "$WORK/export-same-package.hir" >/dev/null
-grep -F "|path=facade.api|module=$FACADE_MODULE|view=public|" \
-    "$WORK/export-external.hir" >/dev/null
+assert_grep "export-same-package.hir" \
+    -F \
+    "|path=facade.api|module=$FACADE_MODULE|view=package-internal|" \
+    "$WORK/export-same-package.hir"
+assert_grep "export-external.hir" \
+    -F \
+    "|path=facade.api|module=$FACADE_MODULE|view=public|" \
+    "$WORK/export-external.hir"
 for resolved in "$WORK/export-same-package.hir" "$WORK/export-external.hir"
 do
     grep -F "|binding-module=$FACADE_MODULE|export-binding=$export_binding|" \
         "$resolved" |
         grep -F "|target-module=$MODULE_ID|target-symbol=$export_target|" |
         grep -F "|chain=2|chain-ids=$export_binding,$SECOND_EXPORT_EDGE" \
-        >/dev/null
+        >/dev/null ||
+        assert_fail "the resolved export row does not carry the expected two-hop chain"
 done
 
 if "$TOOL" resolve "$WORK/export-interface.kif" "$PACKAGE_ID" facade.api \
@@ -176,7 +197,8 @@ if "$TOOL" resolve "$WORK/export-interface.kif" "$PACKAGE_ID" facade.api \
 then
     fail 'facade export accepted the wrong function arity'
 fi
-grep -F 'error[E2S65]:' "$WORK/export-wrong-arity.log" >/dev/null
+assert_grep "export-wrong-arity.log" \
+    -F 'error[E2S65]:' "$WORK/export-wrong-arity.log"
 assert_absent "export-wrong-arity.hir" "$WORK/export-wrong-arity.hir"
 
 printf '%s\n' prior-resolution >"$WORK/preserved-resolution.hir"
@@ -189,7 +211,8 @@ if KOFUN_KIF_RESOLVE_FAULT=before-rename \
 then
     fail 'injected pre-rename interruption committed KIF resolution'
 fi
-grep -F 'error[E2S68]:' "$WORK/interrupted-resolution.log" >/dev/null
+assert_grep "interrupted-resolution.log" \
+    -F 'error[E2S68]:' "$WORK/interrupted-resolution.log"
 cmp "$WORK/preserved-resolution.expected" "$WORK/preserved-resolution.hir"
 if find "$WORK" -maxdepth 1 -name \
     'preserved-resolution.hir.kif-resolve-tmp.*' | grep . >/dev/null
@@ -203,7 +226,8 @@ if "$TOOL" resolve "$WORK/export-interface.kif" "$PACKAGE_ID" facade.api \
 then
     fail 'module export was accepted as a function'
 fi
-grep -F 'error[E2S65]:' "$WORK/module-export-call.log" >/dev/null
+assert_grep "module-export-call.log" \
+    -F 'error[E2S65]:' "$WORK/module-export-call.log"
 assert_absent "module-export-call.hir" "$WORK/module-export-call.hir"
 
 # Resolver output paths are rejected before an exact or hardlink alias can
@@ -216,7 +240,7 @@ if "$TOOL" resolve "$WORK/alias-input.kif" "$PACKAGE_ID" facade.api \
 then
     fail 'KIF resolver accepted its input path as output'
 fi
-grep -F 'error[E2S68]:' "$WORK/alias-input.log" >/dev/null
+assert_grep "alias-input.log" -F 'error[E2S68]:' "$WORK/alias-input.log"
 cmp "$WORK/alias-input.expected" "$WORK/alias-input.kif"
 
 cp "$WORK/export-interface.kif" "$WORK/hardlink-input.kif"
@@ -227,7 +251,7 @@ if "$TOOL" resolve "$WORK/hardlink-input.kif" "$PACKAGE_ID" facade.api \
 then
     fail 'KIF resolver accepted a hardlinked input/output pair'
 fi
-grep -F 'error[E2S68]:' "$WORK/hardlink-input.log" >/dev/null
+assert_grep "hardlink-input.log" -F 'error[E2S68]:' "$WORK/hardlink-input.log"
 cmp "$WORK/hardlink-input.kif" "$WORK/hardlink-output.hir"
 
 cp "$CASES/fixtures/consumer_export.kofun" "$WORK/alias-consumer.kofun"
@@ -238,7 +262,7 @@ if "$TOOL" resolve "$WORK/export-interface.kif" "$PACKAGE_ID" facade.api \
 then
     fail 'KIF resolver accepted its consumer source path as output'
 fi
-grep -F 'error[E2S68]:' "$WORK/alias-consumer.log" >/dev/null
+assert_grep "alias-consumer.log" -F 'error[E2S68]:' "$WORK/alias-consumer.log"
 cmp "$WORK/alias-consumer.expected" "$WORK/alias-consumer.kofun"
 
 cp "$CASES/fixtures/consumer_export.kofun" "$WORK/hardlink-consumer.kofun"
@@ -249,7 +273,8 @@ if "$TOOL" resolve "$WORK/export-interface.kif" "$PACKAGE_ID" facade.api \
 then
     fail 'KIF resolver accepted a hardlinked source/output pair'
 fi
-grep -F 'error[E2S68]:' "$WORK/hardlink-consumer.log" >/dev/null
+assert_grep "hardlink-consumer.log" \
+    -F 'error[E2S68]:' "$WORK/hardlink-consumer.log"
 cmp "$WORK/hardlink-consumer.kofun" \
     "$WORK/hardlink-consumer-output.hir"
 
@@ -261,7 +286,7 @@ if "$TOOL" resolve "$WORK/corrupt.kif" "$PACKAGE_ID" demo.api \
 then
     fail 'corrupt dependency KIF resolved'
 fi
-grep -F 'error[KIF-corrupt]:' "$WORK/corrupt.log" >/dev/null
+assert_grep "corrupt.log" -F 'error[KIF-corrupt]:' "$WORK/corrupt.log"
 grep -Fx stale "$WORK/corrupt.hir" >/dev/null ||
     fail 'corrupt KIF replaced the prior atomic resolution'
 
@@ -282,7 +307,7 @@ if "$TOOL" write "$WORK/unsupported.inventory" "$MODULE_ID" edition-1 \
 then
     fail 'unsupported constructor payload was emitted'
 fi
-grep -F 'error[E2S50]:' "$WORK/unsupported.log" >/dev/null
+assert_grep "unsupported.log" -F 'error[E2S50]:' "$WORK/unsupported.log"
 cmp "$WORK/interface.kif" "$WORK/preserved.kif" || fail 'failed write replaced prior KIF'
 
 if command -v clang >/dev/null 2>&1; then

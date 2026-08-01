@@ -54,7 +54,7 @@ expect_failure() {
         printf '%s\n' "expected $code failure for $name" >&2
         exit 1
     fi
-    grep -F "error[$code]:" "$log" >/dev/null
+    assert_grep "log" -F "error[$code]:" "$log"
     assert_absent "hir" "$hir"
     test ! -e "$backend"
 }
@@ -63,19 +63,22 @@ write_inventory "$CASES/fixtures/main.kofun" "$CASES/fixtures/math.kofun" \
     "$WORK/positive.inventory"
 "$TOOL" "$WORK/positive.inventory" "$WORK/positive.hir"
 
-grep -Fx 'kofun-imports-selective/v1' "$WORK/positive.hir" >/dev/null
-grep -F '|local=identity|' "$WORK/positive.hir" >/dev/null
-grep -F '|local=answer|' "$WORK/positive.hir" >/dev/null
+assert_grep "positive.hir" \
+    -Fx 'kofun-imports-selective/v1' "$WORK/positive.hir"
+assert_grep "positive.hir" -F '|local=identity|' "$WORK/positive.hir"
+assert_grep "positive.hir" -F '|local=answer|' "$WORK/positive.hir"
 assert_num "|local=Value| lines in positive.hir" \
     "$(grep -c '|local=Value|' "$WORK/positive.hir")" -eq 2
-grep -F '|namespace-name=value|local=Value|' "$WORK/positive.hir" >/dev/null
-grep -F '|namespace-name=type|local=Value|' "$WORK/positive.hir" >/dev/null
-grep -F 'qualified-import|' "$WORK/positive.hir" >/dev/null
-grep -F 'selective-call|' "$WORK/positive.hir" >/dev/null
-grep -F 'qualified-call|' "$WORK/positive.hir" >/dev/null
-grep -F 'type-reference|' "$WORK/positive.hir" >/dev/null
-grep -F '|reexport=false' "$WORK/positive.hir" >/dev/null
-grep -F '|interface=no|' "$WORK/positive.hir" >/dev/null
+assert_grep "positive.hir" \
+    -F '|namespace-name=value|local=Value|' "$WORK/positive.hir"
+assert_grep "positive.hir" \
+    -F '|namespace-name=type|local=Value|' "$WORK/positive.hir"
+assert_grep "positive.hir" -F 'qualified-import|' "$WORK/positive.hir"
+assert_grep "positive.hir" -F 'selective-call|' "$WORK/positive.hir"
+assert_grep "positive.hir" -F 'qualified-call|' "$WORK/positive.hir"
+assert_grep "positive.hir" -F 'type-reference|' "$WORK/positive.hir"
+assert_grep "positive.hir" -F '|reexport=false' "$WORK/positive.hir"
+assert_grep "positive.hir" -F '|interface=no|' "$WORK/positive.hir"
 
 write_inventory "$CASES/fixtures/runtime.kofun" "$CASES/fixtures/math.kofun" \
     "$WORK/runtime.inventory"
@@ -183,7 +186,8 @@ assert_file_empty "selective-transaction/e2s77.stderr" \
     "$WORK/selective-transaction/e2s77.stderr"
 assert_dir "selective-transaction/preserved.hir" \
     "$WORK/selective-transaction/preserved.hir"
-grep -Fx sentinel "$WORK/selective-transaction/preserved.hir/marker" >/dev/null
+assert_grep "selective-transaction/preserved.hir/marker" \
+    -Fx sentinel "$WORK/selective-transaction/preserved.hir/marker"
 printf '%s\n' \
     'error[E2S77]: cannot clear requested output `preserved.hir` before the transaction' \
     >"$WORK/selective-transaction/e2s77.expected"
