@@ -180,6 +180,11 @@ tasks:
     cmds:
       - "sh tests/conformance/modules/kif-v1/run.sh"
 
+  stage2-kif-producer:
+    desc: "Verify committed Stage 2 declarations publish KIF"
+    cmds:
+      - "sh tests/conformance/modules/stage2-kif-producer/run.sh"
+
   incremental:
     desc: "Verify semantic invalidation and reuse decisions"
     cmds:
@@ -464,6 +469,7 @@ tasks:
             imports-selective \
             re-exports \
             kif-v1 \
+            stage2-kif-producer \
             incremental \
             decimal \
             discovery \

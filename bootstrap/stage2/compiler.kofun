@@ -1225,7 +1225,8 @@ fn visibility_prefix_candidate(source: Text, start: Int) -> Bool {
         return false
     }
     let next = skip_trivia(source, token_end(source, start))
-    return token_text(source, next) == "fn"
+    return token_text(source, next) == "fn" ||
+    token_text(source, next) == "type"
 }
 
 fn function_declaration_start(source: Text, start: Int) -> Int {
@@ -1238,6 +1239,21 @@ fn function_declaration_start(source: Text, start: Int) -> Int {
     let after_modifier = skip_trivia(source, token_end(source, start))
     if after_modifier < len(source) &&
        token_text(source, after_modifier) == "fn" {
+        return after_modifier
+    }
+    return -1
+}
+
+fn type_declaration_start(source: Text, start: Int) -> Int {
+    if token_text(source, start) == "type" {
+        return start
+    }
+    if !basic_visibility_modifier(source, start) {
+        return -1
+    }
+    let after_modifier = skip_trivia(source, token_end(source, start))
+    if after_modifier < len(source) &&
+       token_text(source, after_modifier) == "type" {
         return after_modifier
     }
     return -1
@@ -1263,7 +1279,9 @@ fn visibility_prefix_error(source: Text, start: Int) -> Text {
     if !basic_visibility_modifier(source, start) {
         let next = skip_trivia(source, token_end(source, start))
         if token_kind(source, start) == "identifier" &&
-           next < len(source) && token_text(source, next) == "fn" {
+           next < len(source) &&
+           (token_text(source, next) == "fn" ||
+            token_text(source, next) == "type") {
             return "error[E2S33]: unknown visibility modifier `" +
             modifier + "`; expected `pub`, `internal`, or `private` at bytes " +
             to_text(start) + ".." + to_text(token_end(source, start))
@@ -1272,7 +1290,9 @@ fn visibility_prefix_error(source: Text, start: Int) -> Text {
     }
 
     let next = skip_trivia(source, token_end(source, start))
-    if next < len(source) && token_text(source, next) == "fn" {
+    if next < len(source) &&
+       (token_text(source, next) == "fn" ||
+        token_text(source, next) == "type") {
         return ""
     }
     if next < len(source) && basic_visibility_modifier(source, next) {
@@ -1302,7 +1322,7 @@ fn visibility_prefix_error(source: Text, start: Int) -> Text {
         to_text(start) + ".." + to_text(form_end)
     }
     return "error[E2S33]: visibility modifier `" + modifier +
-    "` must be followed by a top-level `fn` declaration at bytes " +
+    "` must be followed by a top-level `fn` or `type` declaration at bytes " +
     to_text(start) + ".." + to_text(token_end(source, start))
 }
 
@@ -1521,10 +1541,11 @@ fn record_declaration_at(source: Text, start: Int) -> Bool {
 fn record_declaration_start(source: Text, wanted: Text) -> Int {
     let mut cursor = after_optional_module_header(source, 0)
     while cursor < len(source) {
-        if token_text(source, cursor) == "type" &&
-           record_declaration_at(source, cursor) &&
-           type_name(source, cursor) == wanted {
-            return cursor
+        let type_start = type_declaration_start(source, cursor)
+        if type_start >= 0 &&
+           record_declaration_at(source, type_start) &&
+           type_name(source, type_start) == wanted {
+            return type_start
         }
         let end = top_level_end(source, cursor)
         if end <= cursor {
@@ -1650,8 +1671,9 @@ fn record_field_index(
 }
 
 fn top_level_end(source: Text, start: Int) -> Int {
-    if token_text(source, start) == "type" {
-        return type_declaration_end(source, start)
+    let type_start = type_declaration_start(source, start)
+    if type_start >= 0 {
+        return type_declaration_end(source, type_start)
     }
     let function_start = function_declaration_start(source, start)
     if function_start < 0 {
@@ -1666,12 +1688,22 @@ fn after_optional_module_header(source: Text, start: Int) -> Int {
         return cursor
     }
     cursor = skip_trivia(source, token_end(source, cursor))
-    while cursor < len(source) && token_text(source, cursor) != "type" &&
-          token_text(source, cursor) != "fn" &&
-          !visibility_prefix_candidate(source, cursor) {
-        cursor = skip_trivia(source, token_end(source, cursor))
+    if cursor >= len(source) || token_kind(source, cursor) != "identifier" {
+        return cursor
     }
-    return cursor
+    cursor = token_end(source, cursor)
+    while cursor < len(source) {
+        let dot = skip_trivia(source, cursor)
+        if dot >= len(source) || token_text(source, dot) != "." {
+            break
+        }
+        let part = skip_trivia(source, token_end(source, dot))
+        if part >= len(source) || token_kind(source, part) != "identifier" {
+            break
+        }
+        cursor = token_end(source, part)
+    }
+    return skip_trivia(source, cursor)
 }
 
 fn next_function_start(source: Text, start: Int) -> Int {
@@ -1683,8 +1715,9 @@ fn next_function_start(source: Text, start: Int) -> Int {
         return len(source)
     }
     let mut cursor = after_optional_module_header(source, start)
-    while cursor < len(source) && token_text(source, cursor) == "type" {
-        let end = type_declaration_end(source, cursor)
+    while cursor < len(source) && type_declaration_start(source, cursor) >= 0 {
+        let type_start = type_declaration_start(source, cursor)
+        let end = type_declaration_end(source, type_start)
         if end <= cursor {
             return len(source)
         }
@@ -1700,10 +1733,11 @@ fn next_function_start(source: Text, start: Int) -> Int {
 fn enum_declaration_start(source: Text, wanted: Text) -> Int {
     let mut cursor = after_optional_module_header(source, 0)
     while cursor < len(source) {
-        if token_text(source, cursor) == "type" &&
-           !record_declaration_at(source, cursor) &&
-           type_name(source, cursor) == wanted {
-            return cursor
+        let type_start = type_declaration_start(source, cursor)
+        if type_start >= 0 &&
+           !record_declaration_at(source, type_start) &&
+           type_name(source, type_start) == wanted {
+            return type_start
         }
         let end = top_level_end(source, cursor)
         if end <= cursor {
@@ -1840,8 +1874,9 @@ fn enum_constructor_index(
 fn enum_constructor_owner(source: Text, wanted: Text) -> Text {
     let mut cursor = skip_trivia(source, 0)
     while cursor < len(source) {
-        if token_text(source, cursor) == "type" {
-            let enum_type = type_name(source, cursor)
+        let type_start = type_declaration_start(source, cursor)
+        if type_start >= 0 {
+            let enum_type = type_name(source, type_start)
             if enum_constructor_index(source, enum_type, wanted) >= 0 {
                 return enum_type
             }
@@ -1869,11 +1904,12 @@ fn enum_declaration_names(source: Text, constructors: Bool) -> Text {
     let mut names = "|"
     let mut cursor = skip_trivia(source, 0)
     while cursor < len(source) {
-        if token_text(source, cursor) == "type" {
+        let type_start = type_declaration_start(source, cursor)
+        if type_start >= 0 {
             if constructors {
                 let type_cursor = skip_trivia(
                     source,
-                    token_end(source, cursor)
+                    token_end(source, type_start)
                 )
                 let equals = skip_trivia(
                     source,
@@ -1883,7 +1919,7 @@ fn enum_declaration_names(source: Text, constructors: Bool) -> Text {
                     source,
                     token_end(source, equals)
                 )
-                let end = type_declaration_end(source, cursor)
+                let end = type_declaration_end(source, type_start)
                 while pipe < end && token_text(source, pipe) == "|" {
                     let constructor = skip_trivia(
                         source,
@@ -1896,7 +1932,7 @@ fn enum_declaration_names(source: Text, constructors: Bool) -> Text {
                     )
                 }
             } else {
-                names = names + type_name(source, cursor) + "|"
+                names = names + type_name(source, type_start) + "|"
             }
         }
         let end = top_level_end(source, cursor)
@@ -1983,10 +2019,21 @@ fn parse_program(source: Text) -> Text {
         if len(visibility_error) > 0 {
             return visibility_error
         }
-        if token_text(source, cursor) == "type" {
-            let name = type_name(source, cursor)
-            let end = type_declaration_end(source, cursor)
-            if record_declaration_at(source, cursor) {
+        let declaration_start = cursor
+        let type_start = type_declaration_start(source, declaration_start)
+        if type_start >= 0 {
+            let name = type_name(source, type_start)
+            let end = type_declaration_end(source, type_start)
+            let explicit_visibility = declaration_start != type_start
+            let mut origin = "implicit"
+            let mut modifier_start = -1
+            let mut modifier_end = -1
+            if explicit_visibility {
+                origin = "explicit"
+                modifier_start = declaration_start
+                modifier_end = token_end(source, declaration_start)
+            }
+            if record_declaration_at(source, type_start) {
                 let fields = record_field_count(source, name)
                 if len(name) == 0 || end < 0 || fields == -3 {
                     return "error[E2S32]: malformed nominal record declaration at byte " +
@@ -2026,7 +2073,9 @@ fn parse_program(source: Text) -> Text {
                 }
                 declared_types = declared_types + name + "|"
                 ir = ir + "record|" + name + "|" + to_text(fields) + "|" +
-                to_text(cursor) + "|" + to_text(end) + "\n"
+                to_text(type_start) + "|" + to_text(end) + "|" +
+                visibility_level(source, declaration_start) + "|" + origin + "|" +
+                to_text(modifier_start) + "|" + to_text(modifier_end) + "\n"
                 let mut field_index = 0
                 while field_index < fields {
                     ir = ir + "record-field|" + name + "|" +
@@ -2082,8 +2131,10 @@ fn parse_program(source: Text) -> Text {
                 to_text(cursor)
             }
             ir = ir + "type|" + name + "|" + to_text(count) + "|" +
-            to_text(cursor) + "|" + to_text(end) + "\n"
-            let name_cursor = skip_trivia(source, token_end(source, cursor))
+            to_text(type_start) + "|" + to_text(end) + "|" +
+            visibility_level(source, declaration_start) + "|" + origin + "|" +
+            to_text(modifier_start) + "|" + to_text(modifier_end) + "\n"
+            let name_cursor = skip_trivia(source, token_end(source, type_start))
             let equals = skip_trivia(source, token_end(source, name_cursor))
             let mut pipe = skip_trivia(source, token_end(source, equals))
             let mut tag = 0
@@ -2108,10 +2159,22 @@ fn parse_program(source: Text) -> Text {
                 }
                 declared_constructors = declared_constructors +
                 constructor_name + "|"
+                let payload_open = skip_trivia(
+                    source,
+                    token_end(source, constructor)
+                )
+                let mut payload_count = 0
+                let mut payload_type = ""
+                if payload_open < end &&
+                   token_text(source, payload_open) == "(" {
+                    payload_count = 1
+                    payload_type = "Int"
+                }
                 ir = ir + "constructor|" + constructor_name + "|" +
                 name + "|" + to_text(tag) + "|" +
                 to_text(constructor) + "|" +
-                to_text(token_end(source, constructor)) + "\n"
+                to_text(token_end(source, constructor)) + "|" +
+                to_text(payload_count) + "|" + payload_type + "\n"
                 tag = tag + 1
                 pipe = skip_trivia(
                     source,
@@ -8429,9 +8492,9 @@ fn emit_record_c_declarations(source: Text) -> Text {
     let mut declarations = ""
     let mut cursor = after_optional_module_header(source, 0)
     while cursor < len(source) {
-        if token_text(source, cursor) == "type" &&
-           record_declaration_at(source, cursor) {
-            let record_type = type_name(source, cursor)
+        let type_start = type_declaration_start(source, cursor)
+        if type_start >= 0 && record_declaration_at(source, type_start) {
+            let record_type = type_name(source, type_start)
             let c_type = record_c_type_name(record_type)
             let fields = record_field_count(source, record_type)
             let mut extent = 0

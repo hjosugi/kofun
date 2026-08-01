@@ -1,0 +1,27 @@
+internal type InternalChoice =
+    | Left
+    | Right(value: Int)
+
+pub type MaybeInt =
+    | None
+    | Some(value: Int)
+
+private type HiddenChoice =
+    | Invisible
+    | Secret(value: Int)
+
+internal fn sibling(value: Int) -> Int {
+    return value
+}
+
+pub fn exported(value: Int) -> Int {
+    return value
+}
+
+fn main() {
+    print(exported(41))
+}
+
+private fn hidden(value: Int) -> Int {
+    return value
+}

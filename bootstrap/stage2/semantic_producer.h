@@ -33,10 +33,57 @@ typedef struct {
     KofunSemanticError tooling_error;
 } KofunStage2SemanticResult;
 
+enum {
+    KOFUN_STAGE2_INTERFACE_MAX_FACTS = 256,
+    KOFUN_STAGE2_INTERFACE_NAME_BYTES = 257
+};
+
+typedef enum {
+    KOFUN_STAGE2_INTERFACE_FUNCTION = 1,
+    KOFUN_STAGE2_INTERFACE_ADT = 2,
+    KOFUN_STAGE2_INTERFACE_CONSTRUCTOR = 3,
+    KOFUN_STAGE2_INTERFACE_RECORD = 4
+} KofunStage2InterfaceFactKind;
+
+typedef enum {
+    KOFUN_STAGE2_INTERFACE_PRIVATE = 1,
+    KOFUN_STAGE2_INTERFACE_INTERNAL = 2,
+    KOFUN_STAGE2_INTERFACE_PUBLIC = 3
+} KofunStage2InterfaceVisibility;
+
+typedef struct {
+    KofunStage2InterfaceFactKind kind;
+    KofunStage2InterfaceVisibility visibility;
+    KofunSemanticId namespace_id;
+    KofunSemanticId symbol_id;
+    KofunSemanticId owner_symbol_id;
+    char name[KOFUN_STAGE2_INTERFACE_NAME_BYTES];
+    uint16_t parameter_count;
+    uint8_t constructor_payload_count;
+    uint32_t constructor_ordinal;
+} KofunStage2InterfaceFact;
+
+typedef struct {
+    bool committed;
+    KofunSemanticId package_id;
+    KofunSemanticId module_id;
+    char edition[65];
+    KofunStage2InterfaceFact facts[KOFUN_STAGE2_INTERFACE_MAX_FACTS];
+    size_t fact_count;
+} KofunStage2InterfaceSnapshot;
+
 bool kofun_stage2_produce_semantic_events(
     const KofunStage2SemanticInput *input,
     KofunSemanticSink *sink,
     bool cancellation_observed_after_commit,
+    KofunStage2SemanticResult *result
+);
+
+bool kofun_stage2_compile_interface(
+    const KofunStage2SemanticInput *input,
+    KofunSemanticBytes edition,
+    bool cancellation_observed_after_commit,
+    KofunStage2InterfaceSnapshot *snapshot,
     KofunStage2SemanticResult *result
 );
 

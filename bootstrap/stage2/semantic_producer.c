@@ -22,6 +22,7 @@ enum {
     PRODUCER_MAX_FACTS = 1024,
     PRODUCER_MAX_DIAGNOSTICS = 128,
     PRODUCER_MAX_FUNCTIONS = 64,
+    PRODUCER_MAX_TYPES = 48,
     PRODUCER_MAX_CONSTRUCTORS = 128,
     PRODUCER_MAX_BINDINGS = 256,
     PRODUCER_IDENTIFIER_CAPACITY = 257
@@ -86,14 +87,28 @@ typedef struct {
     int64_t start;
     int64_t body_open;
     int64_t end;
+    KofunStage2InterfaceVisibility visibility;
+    uint16_t parameter_count;
     bool duplicate;
 } ProducerFunction;
+
+typedef struct {
+    char name[PRODUCER_IDENTIFIER_CAPACITY];
+    KofunSemanticId node;
+    KofunSemanticId symbol;
+    KofunStage2InterfaceVisibility visibility;
+    KofunStage2InterfaceFactKind kind;
+} ProducerType;
 
 typedef struct {
     char name[PRODUCER_IDENTIFIER_CAPACITY];
     char result_type[PRODUCER_IDENTIFIER_CAPACITY];
     KofunSemanticId node;
     KofunSemanticId symbol;
+    KofunSemanticId owner_symbol;
+    KofunStage2InterfaceVisibility visibility;
+    uint8_t payload_count;
+    uint32_t ordinal;
 } ProducerConstructor;
 
 typedef struct {
@@ -128,6 +143,8 @@ typedef struct {
     size_t diagnostic_count;
     ProducerFunction functions[PRODUCER_MAX_FUNCTIONS];
     size_t function_count;
+    ProducerType types[PRODUCER_MAX_TYPES];
+    size_t type_count;
     ProducerConstructor constructors[PRODUCER_MAX_CONSTRUCTORS];
     size_t constructor_count;
     ProducerBinding bindings[PRODUCER_MAX_BINDINGS];
@@ -169,6 +186,25 @@ static KofunSemanticBytes producer_text(const char *value) {
     text_value.bytes = (const uint8_t *)value;
     text_value.length = (uint32_t)strlen(value);
     return text_value;
+}
+
+static bool producer_interface_visibility(
+    const char *text,
+    KofunStage2InterfaceVisibility *visibility
+) {
+    if (strcmp(text, "public") == 0) {
+        *visibility = KOFUN_STAGE2_INTERFACE_PUBLIC;
+        return true;
+    }
+    if (strcmp(text, "internal") == 0) {
+        *visibility = KOFUN_STAGE2_INTERFACE_INTERNAL;
+        return true;
+    }
+    if (strcmp(text, "private") == 0) {
+        *visibility = KOFUN_STAGE2_INTERFACE_PRIVATE;
+        return true;
+    }
+    return false;
 }
 
 static bool producer_copy_authority_diagnostic(
@@ -847,17 +883,25 @@ static bool producer_collect_type_records(
         char *name = hir_field(program_ir, line, 1);
         char *start_text = hir_field(program_ir, line, 3);
         char *end_text = hir_field(program_ir, line, 4);
+        char *visibility_text = hir_field(program_ir, line, 5);
         int64_t start = decimal_value(start_text);
         int64_t end = decimal_value(end_text);
         ProducerNode *type_node;
+        ProducerType *type;
         KofunSemanticId type_symbol;
+        KofunStage2InterfaceVisibility visibility;
         bool valid = name[0] != '\0' &&
             strlen(name) < PRODUCER_IDENTIFIER_CAPACITY &&
-            start >= 0 && end > start && end <= source_length;
+            start >= 0 && end > start && end <= source_length &&
+            producer_interface_visibility(visibility_text, &visibility) &&
+            producer->type_count < PRODUCER_MAX_TYPES;
         if (!valid) {
             free(name);
             free(start_text);
             free(end_text);
+            free(visibility_text);
+            producer->resource_failed =
+                producer->type_count >= PRODUCER_MAX_TYPES;
             return false;
         }
         type_node = producer_add_node(
@@ -883,14 +927,34 @@ static bool producer_collect_type_records(
             free(name);
             free(start_text);
             free(end_text);
+            free(visibility_text);
             return false;
         }
+        type = &producer->types[producer->type_count++];
+        memset(type, 0, sizeof(*type));
+        (void)snprintf(type->name, sizeof(type->name), "%s", name);
+        type->node = type_node->value.node_id;
+        type->symbol = type_symbol;
+        type->visibility = visibility;
+        type->kind = strcmp(record_kind, "record") == 0 ?
+            KOFUN_STAGE2_INTERFACE_RECORD : KOFUN_STAGE2_INTERFACE_ADT;
         free(name);
         free(start_text);
         free(end_text);
+        free(visibility_text);
         line = hir_record_start(program_ir, record_kind, line + 1);
     }
     return true;
+}
+
+static ProducerType *producer_find_type(Producer *producer, const char *name) {
+    size_t index;
+    for (index = 0u; index < producer->type_count; index += 1u) {
+        if (strcmp(producer->types[index].name, name) == 0) {
+            return &producer->types[index];
+        }
+    }
+    return NULL;
 }
 
 static bool producer_collect_types(
@@ -911,21 +975,33 @@ static bool producer_collect_types(
         char *owner = hir_field(program_ir, line, 2);
         char *start_text = hir_field(program_ir, line, 4);
         char *end_text = hir_field(program_ir, line, 5);
+        char *ordinal_text = hir_field(program_ir, line, 3);
+        char *payload_count_text = hir_field(program_ir, line, 6);
+        char *payload_type = hir_field(program_ir, line, 7);
         int64_t start = decimal_value(start_text);
         int64_t end = decimal_value(end_text);
+        int64_t ordinal = decimal_value(ordinal_text);
+        int64_t payload_count = decimal_value(payload_count_text);
         ProducerNode *node;
         ProducerConstructor *constructor;
+        ProducerType *owner_type = producer_find_type(producer, owner);
         KofunSemanticId symbol;
         bool valid = name[0] != '\0' && owner[0] != '\0' &&
             strlen(name) < PRODUCER_IDENTIFIER_CAPACITY &&
             strlen(owner) < PRODUCER_IDENTIFIER_CAPACITY &&
             start >= 0 && end > start && end <= source_length &&
+            owner_type != NULL && ordinal >= 0 && ordinal <= UINT32_MAX &&
+            (payload_count == 0 ||
+             (payload_count == 1 && strcmp(payload_type, "Int") == 0)) &&
             producer->constructor_count < PRODUCER_MAX_CONSTRUCTORS;
         if (!valid) {
             free(name);
             free(owner);
             free(start_text);
             free(end_text);
+            free(ordinal_text);
+            free(payload_count_text);
+            free(payload_type);
             producer->resource_failed =
                 producer->constructor_count >= PRODUCER_MAX_CONSTRUCTORS;
             return false;
@@ -969,14 +1045,24 @@ static bool producer_collect_types(
             free(owner);
             free(start_text);
             free(end_text);
+            free(ordinal_text);
+            free(payload_count_text);
+            free(payload_type);
             return false;
         }
         constructor->node = node->value.node_id;
         constructor->symbol = symbol;
+        constructor->owner_symbol = owner_type->symbol;
+        constructor->visibility = owner_type->visibility;
+        constructor->payload_count = (uint8_t)payload_count;
+        constructor->ordinal = (uint32_t)ordinal;
         free(name);
         free(owner);
         free(start_text);
         free(end_text);
+        free(ordinal_text);
+        free(payload_count_text);
+        free(payload_type);
         line = hir_record_start(program_ir, "constructor", line + 1);
     }
     return true;
@@ -1057,6 +1143,7 @@ static bool producer_collect_functions(
         char *name = hir_field(program_ir, line, 1);
         char *start_text = hir_field(program_ir, line, 3);
         char *end_text = hir_field(program_ir, line, 4);
+        char *visibility_text = hir_field(program_ir, line, 5);
         int64_t start = decimal_value(start_text);
         int64_t end = decimal_value(end_text);
         char *return_type = producer_function_return_type(
@@ -1068,6 +1155,7 @@ static bool producer_collect_functions(
         int64_t body_open = producer_hir_function_body_open(producer, start);
         ProducerNode *node;
         ProducerFunction *function;
+        KofunStage2InterfaceVisibility visibility;
         bool body_available =
             body_open >= start && body_open < end;
         bool scope_suffix_unavailable =
@@ -1077,6 +1165,7 @@ static bool producer_collect_functions(
         bool valid = name[0] != '\0' && return_type[0] != '\0' &&
             strlen(name) < PRODUCER_IDENTIFIER_CAPACITY &&
             strlen(return_type) < PRODUCER_IDENTIFIER_CAPACITY &&
+            producer_interface_visibility(visibility_text, &visibility) &&
             start >= 0 && end > start && end <= source_length &&
             (producer->scope_hir == NULL ||
              body_available || scope_suffix_unavailable) &&
@@ -1086,6 +1175,7 @@ static bool producer_collect_functions(
             free(start_text);
             free(end_text);
             free(return_type);
+            free(visibility_text);
             producer->resource_failed =
                 producer->function_count >= PRODUCER_MAX_FUNCTIONS;
             return false;
@@ -1117,6 +1207,7 @@ static bool producer_collect_functions(
         function->start = start;
         function->body_open = body_open;
         function->end = end;
+        function->visibility = visibility;
         function->duplicate = duplicate;
         if (node == NULL ||
             !producer_symbol_id(
@@ -1135,12 +1226,14 @@ static bool producer_collect_functions(
             free(start_text);
             free(end_text);
             free(return_type);
+            free(visibility_text);
             return false;
         }
         free(name);
         free(start_text);
         free(end_text);
         free(return_type);
+        free(visibility_text);
         line = hir_record_start(program_ir, "function", line + 1);
     }
     return true;
@@ -1592,6 +1685,8 @@ static bool producer_finalize_function_types(Producer *producer) {
                 }
             }
         }
+        if (parameter_count > UINT16_MAX) return false;
+        function->parameter_count = (uint16_t)parameter_count;
         fact = producer_add_fact(
             producer,
             function->node,
@@ -2776,10 +2871,146 @@ static bool producer_emit(
     return true;
 }
 
-bool kofun_stage2_produce_semantic_events(
+static bool producer_snapshot_add(
+    KofunStage2InterfaceSnapshot *snapshot,
+    KofunStage2InterfaceFactKind kind,
+    KofunStage2InterfaceVisibility visibility,
+    const KofunSemanticId *namespace_id,
+    const KofunSemanticId *symbol_id,
+    const KofunSemanticId *owner_symbol_id,
+    const char *name,
+    uint16_t parameter_count,
+    uint8_t payload_count,
+    uint32_t ordinal
+) {
+    KofunStage2InterfaceFact *fact;
+    if (snapshot->fact_count >= KOFUN_STAGE2_INTERFACE_MAX_FACTS ||
+        strlen(name) >= KOFUN_STAGE2_INTERFACE_NAME_BYTES) {
+        return false;
+    }
+    fact = &snapshot->facts[snapshot->fact_count++];
+    memset(fact, 0, sizeof(*fact));
+    fact->kind = kind;
+    fact->visibility = visibility;
+    fact->namespace_id = *namespace_id;
+    fact->symbol_id = *symbol_id;
+    if (owner_symbol_id != NULL) fact->owner_symbol_id = *owner_symbol_id;
+    (void)snprintf(fact->name, sizeof(fact->name), "%s", name);
+    fact->parameter_count = parameter_count;
+    fact->constructor_payload_count = payload_count;
+    fact->constructor_ordinal = ordinal;
+    return true;
+}
+
+static bool producer_function_interface_supported(
+    Producer *producer,
+    const ProducerFunction *function
+) {
+    size_t index;
+    size_t parameters = 0u;
+    if (strcmp(function->return_type, "Int") != 0) return false;
+    for (index = 0u; index < producer->binding_count; index += 1u) {
+        const ProducerBinding *binding = &producer->bindings[index];
+        ProducerNode *node = producer_find_node_by_id(producer, &binding->node);
+        if (binding->function_start != function->start || node == NULL ||
+            node->value.kind != KOFUN_SEMANTIC_NODE_PARAMETER) {
+            continue;
+        }
+        if (strcmp(binding->type, "Int") != 0) return false;
+        parameters += 1u;
+    }
+    return parameters == function->parameter_count;
+}
+
+static bool producer_build_interface_snapshot(
+    Producer *producer,
+    KofunSemanticBytes edition,
+    KofunStage2InterfaceSnapshot *snapshot,
+    KofunStage2SemanticResult *result
+) {
+    size_t index;
+    if (edition.bytes == NULL || edition.length == 0u || edition.length > 64u ||
+        memchr(edition.bytes, 0, edition.length) != NULL) {
+        producer_set_tooling_error(
+            result, "EKI01", 0u, PRODUCER_EVENT_NONE,
+            "KIF edition is invalid"
+        );
+        return false;
+    }
+    memset(snapshot, 0, sizeof(*snapshot));
+    snapshot->package_id = producer->source_record.package_id;
+    snapshot->module_id = producer->source_record.module_id;
+    memcpy(snapshot->edition, edition.bytes, edition.length);
+    snapshot->edition[edition.length] = '\0';
+    for (index = 0u; index < producer->function_count; index += 1u) {
+        ProducerFunction *function = &producer->functions[index];
+        if (function->visibility == KOFUN_STAGE2_INTERFACE_PRIVATE) continue;
+        if (!producer_function_interface_supported(producer, function)) {
+            producer_set_tooling_error(
+                result, "EKI02", 0u, PRODUCER_EVENT_NONE,
+                "KIF v1 supports only complete Int function signatures"
+            );
+            return false;
+        }
+        if (!producer_snapshot_add(
+                snapshot, KOFUN_STAGE2_INTERFACE_FUNCTION,
+                function->visibility, &producer->value_namespace_id,
+                &function->symbol, NULL, function->name,
+                function->parameter_count, 0u, 0u)) {
+            producer_set_tooling_error(
+                result, "EKI03", 0u, PRODUCER_EVENT_NONE,
+                "KIF compiler fact limit exceeded"
+            );
+            return false;
+        }
+    }
+    for (index = 0u; index < producer->type_count; index += 1u) {
+        ProducerType *type = &producer->types[index];
+        if (type->visibility == KOFUN_STAGE2_INTERFACE_PRIVATE) continue;
+        if (type->kind != KOFUN_STAGE2_INTERFACE_ADT) {
+            producer_set_tooling_error(
+                result, "EKI02", 0u, PRODUCER_EVENT_NONE,
+                "KIF v1 does not support record signature publication"
+            );
+            return false;
+        }
+        if (!producer_snapshot_add(
+                snapshot, type->kind, type->visibility,
+                &producer->type_namespace_id, &type->symbol, NULL,
+                type->name, 0u, 0u, 0u)) {
+            producer_set_tooling_error(
+                result, "EKI03", 0u, PRODUCER_EVENT_NONE,
+                "KIF compiler fact limit exceeded"
+            );
+            return false;
+        }
+    }
+    for (index = 0u; index < producer->constructor_count; index += 1u) {
+        ProducerConstructor *constructor = &producer->constructors[index];
+        if (constructor->visibility == KOFUN_STAGE2_INTERFACE_PRIVATE) continue;
+        if (!producer_snapshot_add(
+                snapshot, KOFUN_STAGE2_INTERFACE_CONSTRUCTOR,
+                constructor->visibility, &producer->value_namespace_id,
+                &constructor->symbol, &constructor->owner_symbol,
+                constructor->name, 0u, constructor->payload_count,
+                constructor->ordinal)) {
+            producer_set_tooling_error(
+                result, "EKI03", 0u, PRODUCER_EVENT_NONE,
+                "KIF compiler fact limit exceeded"
+            );
+            return false;
+        }
+    }
+    snapshot->committed = true;
+    return true;
+}
+
+static bool producer_run(
     const KofunStage2SemanticInput *input,
     KofunSemanticSink *sink,
     bool cancellation_observed_after_commit,
+    KofunSemanticBytes edition,
+    KofunStage2InterfaceSnapshot *snapshot,
     KofunStage2SemanticResult *result
 ) {
     Producer producer;
@@ -2790,7 +3021,7 @@ bool kofun_stage2_produce_semantic_events(
     memset(result, 0, sizeof(*result));
     result->source_status = KOFUN_SOURCE_FAILED;
     result->completeness = KOFUN_SEMANTIC_PARTIAL;
-    if (input == NULL || sink == NULL ||
+    if (input == NULL || (sink == NULL && snapshot == NULL) ||
         input->source == NULL ||
         input->source_length > UINT32_MAX ||
         input->source_length > KOFUN_SEMANTIC_MAX_EVENT_BYTES ||
@@ -2977,11 +3208,24 @@ bool kofun_stage2_produce_semantic_events(
         );
         return false;
     }
-    if (!producer_emit(
-            &producer,
-            sink,
-            cancellation_observed_after_commit &&
-                authority.exit_class == 0u,
+    if (snapshot != NULL &&
+        (authority.exit_class != 0u || cancellation_observed_after_commit)) {
+        if (cancellation_observed_after_commit && authority.exit_class == 0u) {
+            result->source_status = KOFUN_SOURCE_CANCELLED;
+        }
+        stage2_authority_result_destroy(&authority);
+        free(owned_source);
+        return false;
+    }
+    if (snapshot != NULL &&
+        !producer_build_interface_snapshot(&producer, edition, snapshot, result)) {
+        stage2_authority_result_destroy(&authority);
+        free(owned_source);
+        return false;
+    }
+    if (sink != NULL && !producer_emit(
+            &producer, sink,
+            cancellation_observed_after_commit && authority.exit_class == 0u,
             result)) {
         stage2_authority_result_destroy(&authority);
         free(owned_source);
@@ -2990,6 +3234,34 @@ bool kofun_stage2_produce_semantic_events(
     stage2_authority_result_destroy(&authority);
     free(owned_source);
     return true;
+}
+
+bool kofun_stage2_produce_semantic_events(
+    const KofunStage2SemanticInput *input,
+    KofunSemanticSink *sink,
+    bool cancellation_observed_after_commit,
+    KofunStage2SemanticResult *result
+) {
+    KofunSemanticBytes no_edition = {NULL, 0u};
+    return producer_run(
+        input, sink, cancellation_observed_after_commit,
+        no_edition, NULL, result
+    );
+}
+
+bool kofun_stage2_compile_interface(
+    const KofunStage2SemanticInput *input,
+    KofunSemanticBytes edition,
+    bool cancellation_observed_after_commit,
+    KofunStage2InterfaceSnapshot *snapshot,
+    KofunStage2SemanticResult *result
+) {
+    if (snapshot == NULL) return false;
+    memset(snapshot, 0, sizeof(*snapshot));
+    return producer_run(
+        input, NULL, cancellation_observed_after_commit,
+        edition, snapshot, result
+    );
 }
 
 #ifndef KOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY

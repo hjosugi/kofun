@@ -16,7 +16,7 @@ The frontend performs five concrete operations:
 2. structural parsing of a compilation unit into textual function,
    zero/one-`Int`-payload enum, and bounded nominal `Int`/`Bool` record IR,
    including names, constructor tags or declaration-order fields, arities,
-   byte spans, and top-level function visibility metadata;
+   byte spans, and top-level function/type visibility metadata;
 3. an identity source projection gated by successful lexing and parsing.
 4. statement and precedence-aware expression parsing for a deliberately small
    integer Core, followed by deterministic standalone C11 lowering.
@@ -392,10 +392,10 @@ bindings, and uses that precede a later failure. Lowering hooks similarly
 publish only successfully validated calls, constructors, patterns, and
 control expressions. These nullable hooks are seed-only C instrumentation
 enabled by the internal semantic-event process; ordinary `compiler.c`
-execution leaves them disabled, and they do not add a sink API to canonical
-`compiler.kofun` or change its language semantics. The internal executable is
-a process boundary for the later projector, not a user-facing `bin/kofun`
-option.
+execution leaves them disabled. The canonical source and audited C seed both
+accept basic visibility on bounded top-level functions and nominal types. The
+internal event executable remains a process boundary for the later projector,
+not a user-facing `bin/kofun` option.
 
 The reference sink writes the internal
 `kofun-stage2-semantic-events/v1` KSE framing only after source/span
@@ -495,6 +495,19 @@ visibility, digests, source-free consumption, corruption mutations, exact
 limits, failed publication, C11 warnings, sanitizers, and static analysis.
 `tests/conformance/modules/re-exports/run.sh` adds export-fact digest,
 round-trip, mutation, and source-free facade-consumption coverage.
+
+`stage2_kif_producer.c` is the normal Stage 2 source-to-KIF bridge. It asks the
+same committed compiler run used by `semantic_producer.c` for structured
+function, ADT, constructor, identity, visibility, and type facts; it never
+reconstructs authority from rendered event text or an adapter inventory. Only
+complete `Int` function signatures and zero/one-`Int` flat-ADT constructors are
+accepted by KIF v1. Private facts are omitted, records and wider signatures
+fail explicitly, and cancellation or any compiler/publication failure reaches
+the atomic writer neither on a cold destination nor over a prior interface.
+`kofun check INPUT.kofun --emit-kif OUTPUT.kif` exposes this authoritative
+path. `task stage2-kif-producer` covers exact public/internal contents,
+source-order and physical-path independence, failure preservation, and a
+source-free consumer.
 
 `tests/conformance/incremental/run.sh` pins the semantic and target-action
 invalidation decisions on a four-module `core <- service <- app` package plus
