@@ -1,0 +1,1429 @@
+# Executable clock-adapter producer for issue #647.
+#
+# This is the Stage 2 artifact the issue asks for: distinct monotonic and
+# system value shapes, a closed ClockError with payloads reached by `match`,
+# an explicitly passed affine clock handle whose every transition returns one
+# next state, and a scripted waiter that wakes equal deadlines in a stated
+# order and honours cancellation. Nothing here reads ambient time. The only
+# time this program knows is the time a caller wrote into the fake clock.
+#
+# The Stage 2 Core this file is checked and lowered by is deliberately small:
+# record fields are Int or Bool, an ADT constructor carries at most one Int,
+# there are no loops, and `let` binds Int expressions. So the surface below is
+# a projection, not the canonical API — stdlib/clock/adapters.kofun holds the
+# canonical records, ADT payloads, and Result shapes, and tests/stdlib/
+# clock-adapters/check.sh pins both. The projection keeps every decision the
+# canonical surface makes; it only spells values with the vocabulary the Core
+# accepts today.
+#
+# Encodings, all of them checked by the gate:
+#
+#   clock domain     1 monotonic, 2 system
+#   outcome code     0 success; -1..-7 map one-to-one onto ClockError below
+#   waiter state     0 empty, 1 pending, 2 woken, 3 cancelled
+#
+# A domain tag is not an identity. Two monotonic clocks in one process are
+# different clocks, so an identity is the domain *and* a serial, and instants
+# carry both.
+
+fn nanoseconds_per_second() -> Int {
+    return 1000000000
+}
+
+fn int_max() -> Int {
+    return 9223372036854775807
+}
+
+fn domain_monotonic() -> Int {
+    return 1
+}
+
+fn domain_system() -> Int {
+    return 2
+}
+
+fn code_ok() -> Int {
+    return 0
+}
+
+fn code_wrong_identity() -> Int {
+    return -1
+}
+
+fn code_backwards_time() -> Int {
+    return -2
+}
+
+fn code_arithmetic_overflow() -> Int {
+    return -3
+}
+
+fn code_waiter_cancelled() -> Int {
+    return -4
+}
+
+fn code_platform_read_failed() -> Int {
+    return -5
+}
+
+fn code_stale_handle() -> Int {
+    return -6
+}
+
+fn code_waiter_unavailable() -> Int {
+    return -7
+}
+
+fn waiter_empty() -> Int {
+    return 0
+}
+
+fn waiter_pending() -> Int {
+    return 1
+}
+
+fn waiter_woken() -> Int {
+    return 2
+}
+
+fn waiter_cancelled() -> Int {
+    return 3
+}
+
+fn no_waiter() -> Int {
+    return -1
+}
+
+# ----------------------------------------------------------------- values
+
+# One clock instance, not one clock kind. `serial` separates two monotonic
+# clocks that would otherwise compare as if they shared a time line.
+type ClockIdentity = {
+    domain: Int,
+    serial: Int,
+}
+
+# Monotonic readings carry their identity. They are elapsed-time and deadline
+# values: there is no epoch, and the Unix era cannot be recovered from them.
+type MonotonicInstant = {
+    domain: Int,
+    serial: Int,
+    seconds: Int,
+    nanoseconds: Int,
+}
+
+# System readings are Unix-era observations. They deliberately carry no
+# identity and use a different field name, so a monotonic value cannot be
+# passed where a system value belongs and neither can be read as the other.
+type SystemInstant = {
+    epoch_seconds: Int,
+    nanoseconds: Int,
+}
+
+# Non-negative and canonical: nanoseconds is always below one second.
+type Duration = {
+    seconds: Int,
+    nanoseconds: Int,
+}
+
+# The closed clock error domain. Every failing path in this file returns one
+# of these; there is no sentinel, no wraparound, and no silent success.
+type ClockError =
+    | WrongClockIdentity(observed: Int)
+    | BackwardsTime(regression: Int)
+    | ClockArithmeticOverflow(operand: Int)
+    | WaiterCancelled(waiter: Int)
+    | PlatformReadFailed(errno: Int)
+    | StaleClockHandle(generation: Int)
+    | WaiterSlotUnavailable(waiter: Int)
+
+# Rebuilds the closed error value from the outcome code an operation reported.
+# The precondition is that `code` is a failing code; the Core has no
+# unreachable form, so the last arm is written out rather than left implicit,
+# and an unknown code is reported as a platform failure rather than quietly
+# becoming a success.
+fn clock_error(code: Int, detail: Int) -> ClockError {
+    if code == code_wrong_identity() {
+        return WrongClockIdentity(detail)
+    }
+    if code == code_backwards_time() {
+        return BackwardsTime(detail)
+    }
+    if code == code_arithmetic_overflow() {
+        return ClockArithmeticOverflow(detail)
+    }
+    if code == code_waiter_cancelled() {
+        return WaiterCancelled(detail)
+    }
+    if code == code_stale_handle() {
+        return StaleClockHandle(detail)
+    }
+    if code == code_waiter_unavailable() {
+        return WaiterSlotUnavailable(detail)
+    }
+    return PlatformReadFailed(detail)
+}
+
+fn clock_error_code(error: ClockError) -> Int {
+    let mut code = 0
+    match error {
+        WrongClockIdentity(_) => { code = code_wrong_identity() },
+        BackwardsTime(_) => { code = code_backwards_time() },
+        ClockArithmeticOverflow(_) => { code = code_arithmetic_overflow() },
+        WaiterCancelled(_) => { code = code_waiter_cancelled() },
+        PlatformReadFailed(_) => { code = code_platform_read_failed() },
+        StaleClockHandle(_) => { code = code_stale_handle() },
+        WaiterSlotUnavailable(_) => { code = code_waiter_unavailable() },
+    }
+    return code
+}
+
+fn clock_error_detail(error: ClockError) -> Int {
+    let mut detail = 0
+    match error {
+        WrongClockIdentity(observed) => { detail = observed },
+        BackwardsTime(regression) => { detail = regression },
+        ClockArithmeticOverflow(operand) => { detail = operand },
+        WaiterCancelled(waiter) => { detail = waiter },
+        PlatformReadFailed(errno) => { detail = errno },
+        StaleClockHandle(generation) => { detail = generation },
+        WaiterSlotUnavailable(waiter) => { detail = waiter },
+    }
+    return detail
+}
+
+fn monotonic_instant(
+    serial: Int,
+    seconds: Int,
+    nanoseconds: Int
+) -> MonotonicInstant {
+    let instant: MonotonicInstant = MonotonicInstant(
+        domain: domain_monotonic(),
+        serial: serial,
+        seconds: seconds,
+        nanoseconds: nanoseconds
+    )
+    return instant
+}
+
+fn monotonic_identity(instant: MonotonicInstant) -> ClockIdentity {
+    let identity: ClockIdentity = ClockIdentity(
+        domain: instant.domain,
+        serial: instant.serial
+    )
+    return identity
+}
+
+fn system_instant(epoch_seconds: Int, nanoseconds: Int) -> SystemInstant {
+    let instant: SystemInstant = SystemInstant(
+        epoch_seconds: epoch_seconds,
+        nanoseconds: nanoseconds
+    )
+    return instant
+}
+
+fn duration(seconds: Int, nanoseconds: Int) -> Duration {
+    let value: Duration = Duration(
+        seconds: seconds,
+        nanoseconds: nanoseconds
+    )
+    return value
+}
+
+fn identity_same(left: ClockIdentity, right: ClockIdentity) -> Int {
+    if left.domain != right.domain {
+        return 0
+    }
+    if left.serial != right.serial {
+        return 0
+    }
+    return 1
+}
+
+# --------------------------------------------------------- pure ordering
+
+# -1, 0, or 1 for two readings already known to share an identity.
+fn compare_parts(
+    left_seconds: Int,
+    left_nanoseconds: Int,
+    right_seconds: Int,
+    right_nanoseconds: Int
+) -> Int {
+    if left_seconds < right_seconds {
+        return -1
+    }
+    if left_seconds > right_seconds {
+        return 1
+    }
+    if left_nanoseconds < right_nanoseconds {
+        return -1
+    }
+    if left_nanoseconds > right_nanoseconds {
+        return 1
+    }
+    return 0
+}
+
+type OrderResult = {
+    code: Int,
+    detail: Int,
+    order: Int,
+}
+
+# Ordering is only defined inside one clock identity. Two monotonic clocks
+# that happen to report similar numbers are still different time lines, so a
+# mismatch is a typed error and never a comparison of their representations.
+fn monotonic_compare(
+    left: MonotonicInstant,
+    right: MonotonicInstant
+) -> OrderResult {
+    let left_identity: ClockIdentity = monotonic_identity(left)
+    let right_identity: ClockIdentity = monotonic_identity(right)
+    if identity_same(left_identity, right_identity) == 0 {
+        let rejected: OrderResult = OrderResult(
+            code: code_wrong_identity(),
+            detail: right.serial,
+            order: 0
+        )
+        return rejected
+    }
+    let order: Int = compare_parts(
+        left.seconds,
+        left.nanoseconds,
+        right.seconds,
+        right.nanoseconds
+    )
+    let compared: OrderResult = OrderResult(
+        code: code_ok(),
+        detail: 0,
+        order: order
+    )
+    return compared
+}
+
+type DurationResult = {
+    code: Int,
+    detail: Int,
+    seconds: Int,
+    nanoseconds: Int,
+}
+
+fn duration_result(
+    code: Int,
+    detail: Int,
+    seconds: Int,
+    nanoseconds: Int
+) -> DurationResult {
+    let result: DurationResult = DurationResult(
+        code: code,
+        detail: detail,
+        seconds: seconds,
+        nanoseconds: nanoseconds
+    )
+    return result
+}
+
+fn duration_result_value(result: DurationResult) -> Duration {
+    return duration(result.seconds, result.nanoseconds)
+}
+
+fn difference_overflows(later: Int, earlier: Int) -> Int {
+    if earlier < 0 {
+        if later > int_max() + earlier {
+            return 1
+        }
+    }
+    return 0
+}
+
+# Elapsed time is non-negative by construction. A monotonic clock that ran
+# backwards is a defect, not a negative duration, so it is reported with the
+# regression in nanoseconds rather than smoothed to zero.
+fn monotonic_elapsed(
+    start: MonotonicInstant,
+    end: MonotonicInstant
+) -> DurationResult {
+    let ordering: OrderResult = monotonic_compare(start, end)
+    if ordering.code != code_ok() {
+        return duration_result(ordering.code, ordering.detail, 0, 0)
+    }
+    if ordering.order > 0 {
+        let regression: Int = compare_regression(start, end)
+        return duration_result(code_backwards_time(), regression, 0, 0)
+    }
+
+    let mut borrow = 0
+    if end.nanoseconds < start.nanoseconds {
+        borrow = 1
+    }
+    let adjusted_end_seconds: Int = end.seconds - borrow
+    if difference_overflows(adjusted_end_seconds, start.seconds) == 1 {
+        return duration_result(
+            code_arithmetic_overflow(),
+            start.seconds,
+            0,
+            0
+        )
+    }
+    let seconds: Int = adjusted_end_seconds - start.seconds
+    let nanoseconds: Int = end.nanoseconds
+        + borrow * nanoseconds_per_second()
+        - start.nanoseconds
+    return duration_result(code_ok(), 0, seconds, nanoseconds)
+}
+
+# How far a backwards reading went back, in nanoseconds, saturating at the
+# signed-Int maximum rather than wrapping.
+fn compare_regression(
+    start: MonotonicInstant,
+    end: MonotonicInstant
+) -> Int {
+    let second_gap: Int = start.seconds - end.seconds
+    if second_gap > int_max() // nanoseconds_per_second() {
+        return int_max()
+    }
+    return second_gap * nanoseconds_per_second()
+        + start.nanoseconds
+        - end.nanoseconds
+}
+
+type InstantResult = {
+    code: Int,
+    detail: Int,
+    domain: Int,
+    serial: Int,
+    seconds: Int,
+    nanoseconds: Int,
+}
+
+fn instant_result(
+    code: Int,
+    detail: Int,
+    domain: Int,
+    serial: Int,
+    seconds: Int,
+    nanoseconds: Int
+) -> InstantResult {
+    let result: InstantResult = InstantResult(
+        code: code,
+        detail: detail,
+        domain: domain,
+        serial: serial,
+        seconds: seconds,
+        nanoseconds: nanoseconds
+    )
+    return result
+}
+
+fn instant_result_value(result: InstantResult) -> MonotonicInstant {
+    let instant: MonotonicInstant = MonotonicInstant(
+        domain: result.domain,
+        serial: result.serial,
+        seconds: result.seconds,
+        nanoseconds: result.nanoseconds
+    )
+    return instant
+}
+
+# A deadline is a monotonic instant, computed with a checked carry. Overflow
+# is a typed error; it never wraps into a deadline in the past.
+fn monotonic_add(
+    instant: MonotonicInstant,
+    step: Duration
+) -> InstantResult {
+    let nanosecond_sum: Int = instant.nanoseconds + step.nanoseconds
+    let mut carry = 0
+    if nanosecond_sum >= nanoseconds_per_second() {
+        carry = 1
+    }
+    if instant.seconds > int_max() - step.seconds {
+        return instant_result(
+            code_arithmetic_overflow(),
+            instant.seconds,
+            0,
+            0,
+            0,
+            0
+        )
+    }
+    let second_sum: Int = instant.seconds + step.seconds
+    if carry == 1 {
+        if second_sum == int_max() {
+            return instant_result(
+                code_arithmetic_overflow(),
+                second_sum,
+                0,
+                0,
+                0,
+                0
+            )
+        }
+    }
+    return instant_result(
+        code_ok(),
+        0,
+        instant.domain,
+        instant.serial,
+        second_sum + carry,
+        nanosecond_sum % nanoseconds_per_second()
+    )
+}
+
+# ------------------------------------------------------ affine capability
+
+# The handle is the capability. Holding one is the only way to read or advance
+# the clock, and a handle is valid for exactly one transition: every operation
+# returns the next handle, and a handle whose generation is not the live one is
+# rejected. A caller who keeps a copy and uses it again gets
+# StaleClockHandle, not a second read.
+type ClockHandle = {
+    domain: Int,
+    serial: Int,
+    generation: Int,
+}
+
+# The fake clock owns the time this program can observe. `read_errno` scripts
+# a platform failure so the platform-read error path executes without a
+# syscall, and `reads` counts every reading taken, so the gate can prove the
+# count came from here and not from the host.
+type FakeClock = {
+    domain: Int,
+    serial: Int,
+    live_generation: Int,
+    monotonic_seconds: Int,
+    monotonic_nanoseconds: Int,
+    system_seconds: Int,
+    system_nanoseconds: Int,
+    read_errno: Int,
+    reads: Int,
+}
+
+# One transition: the next clock state, the next handle, the value read, and
+# the outcome. Nothing else is returned, so there is no path that advances the
+# clock without handing back the state that advance produced.
+type ClockStep = {
+    code: Int,
+    detail: Int,
+    domain: Int,
+    serial: Int,
+    live_generation: Int,
+    monotonic_seconds: Int,
+    monotonic_nanoseconds: Int,
+    system_seconds: Int,
+    system_nanoseconds: Int,
+    read_errno: Int,
+    reads: Int,
+    handle_generation: Int,
+    value_seconds: Int,
+    value_nanoseconds: Int,
+}
+
+fn fake_clock(
+    serial: Int,
+    monotonic_seconds: Int,
+    monotonic_nanoseconds: Int,
+    system_seconds: Int,
+    system_nanoseconds: Int
+) -> FakeClock {
+    let clock: FakeClock = FakeClock(
+        domain: domain_monotonic(),
+        serial: serial,
+        live_generation: 0,
+        monotonic_seconds: monotonic_seconds,
+        monotonic_nanoseconds: monotonic_nanoseconds,
+        system_seconds: system_seconds,
+        system_nanoseconds: system_nanoseconds,
+        read_errno: 0,
+        reads: 0
+    )
+    return clock
+}
+
+# Arms the next platform read to fail. This is how a test reaches the
+# PlatformReadFailed path: by writing the failure down, not by breaking a host.
+fn fake_clock_script_read_failure(clock: FakeClock, errno: Int) -> FakeClock {
+    let next: FakeClock = FakeClock(
+        domain: clock.domain,
+        serial: clock.serial,
+        live_generation: clock.live_generation,
+        monotonic_seconds: clock.monotonic_seconds,
+        monotonic_nanoseconds: clock.monotonic_nanoseconds,
+        system_seconds: clock.system_seconds,
+        system_nanoseconds: clock.system_nanoseconds,
+        read_errno: errno,
+        reads: clock.reads
+    )
+    return next
+}
+
+# Mints the single live handle for a clock.
+fn fake_clock_handle(clock: FakeClock) -> ClockHandle {
+    let handle: ClockHandle = ClockHandle(
+        domain: clock.domain,
+        serial: clock.serial,
+        generation: clock.live_generation
+    )
+    return handle
+}
+
+fn clock_step(
+    clock: FakeClock,
+    code: Int,
+    detail: Int,
+    live_generation: Int,
+    reads: Int,
+    value_seconds: Int,
+    value_nanoseconds: Int
+) -> ClockStep {
+    let step: ClockStep = ClockStep(
+        code: code,
+        detail: detail,
+        domain: clock.domain,
+        serial: clock.serial,
+        live_generation: live_generation,
+        monotonic_seconds: clock.monotonic_seconds,
+        monotonic_nanoseconds: clock.monotonic_nanoseconds,
+        system_seconds: clock.system_seconds,
+        system_nanoseconds: clock.system_nanoseconds,
+        read_errno: clock.read_errno,
+        reads: reads,
+        handle_generation: live_generation,
+        value_seconds: value_seconds,
+        value_nanoseconds: value_nanoseconds
+    )
+    return step
+}
+
+fn step_clock(step: ClockStep) -> FakeClock {
+    let clock: FakeClock = FakeClock(
+        domain: step.domain,
+        serial: step.serial,
+        live_generation: step.live_generation,
+        monotonic_seconds: step.monotonic_seconds,
+        monotonic_nanoseconds: step.monotonic_nanoseconds,
+        system_seconds: step.system_seconds,
+        system_nanoseconds: step.system_nanoseconds,
+        read_errno: step.read_errno,
+        reads: step.reads
+    )
+    return clock
+}
+
+fn step_handle(step: ClockStep) -> ClockHandle {
+    let handle: ClockHandle = ClockHandle(
+        domain: step.domain,
+        serial: step.serial,
+        generation: step.handle_generation
+    )
+    return handle
+}
+
+fn step_monotonic(step: ClockStep) -> MonotonicInstant {
+    let instant: MonotonicInstant = MonotonicInstant(
+        domain: domain_monotonic(),
+        serial: step.serial,
+        seconds: step.value_seconds,
+        nanoseconds: step.value_nanoseconds
+    )
+    return instant
+}
+
+fn step_system(step: ClockStep) -> SystemInstant {
+    return system_instant(step.value_seconds, step.value_nanoseconds)
+}
+
+# A stale handle changes nothing: the generation, the reading count, and the
+# clock all stay where the live handle left them.
+fn stale_step(clock: FakeClock, handle: ClockHandle) -> ClockStep {
+    return clock_step(
+        clock,
+        code_stale_handle(),
+        handle.generation,
+        clock.live_generation,
+        clock.reads,
+        0,
+        0
+    )
+}
+
+fn handle_is_live(clock: FakeClock, handle: ClockHandle) -> Int {
+    if handle.domain != clock.domain {
+        return 0
+    }
+    if handle.serial != clock.serial {
+        return 0
+    }
+    if handle.generation != clock.live_generation {
+        return 0
+    }
+    return 1
+}
+
+fn monotonic_now(clock: FakeClock, handle: ClockHandle) -> ClockStep {
+    if handle_is_live(clock, handle) == 0 {
+        return stale_step(clock, handle)
+    }
+    return clock_step(
+        clock,
+        code_ok(),
+        0,
+        clock.live_generation + 1,
+        clock.reads + 1,
+        clock.monotonic_seconds,
+        clock.monotonic_nanoseconds
+    )
+}
+
+# The system read is a separate capability call returning a separate type, so
+# a caller cannot pick up a wall-clock reading while asking for elapsed time.
+fn system_now(clock: FakeClock, handle: ClockHandle) -> ClockStep {
+    if handle_is_live(clock, handle) == 0 {
+        return stale_step(clock, handle)
+    }
+    if clock.read_errno != 0 {
+        return clock_step(
+            clock,
+            code_platform_read_failed(),
+            clock.read_errno,
+            clock.live_generation + 1,
+            clock.reads,
+            0,
+            0
+        )
+    }
+    return clock_step(
+        clock,
+        code_ok(),
+        0,
+        clock.live_generation + 1,
+        clock.reads + 1,
+        clock.system_seconds,
+        clock.system_nanoseconds
+    )
+}
+
+# Manual advance is the only way time moves here. It reuses the checked
+# deadline arithmetic, so an advance that would overflow is the same typed
+# error a deadline computation reports.
+fn fake_clock_advance(
+    clock: FakeClock,
+    handle: ClockHandle,
+    step: Duration
+) -> ClockStep {
+    if handle_is_live(clock, handle) == 0 {
+        return stale_step(clock, handle)
+    }
+    let current: MonotonicInstant = monotonic_instant(
+        clock.serial,
+        clock.monotonic_seconds,
+        clock.monotonic_nanoseconds
+    )
+    let advanced: InstantResult = monotonic_add(current, step)
+    if advanced.code != code_ok() {
+        return clock_step(
+            clock,
+            advanced.code,
+            advanced.detail,
+            clock.live_generation,
+            clock.reads,
+            0,
+            0
+        )
+    }
+    let moved: FakeClock = FakeClock(
+        domain: clock.domain,
+        serial: clock.serial,
+        live_generation: clock.live_generation + 1,
+        monotonic_seconds: advanced.seconds,
+        monotonic_nanoseconds: advanced.nanoseconds,
+        system_seconds: clock.system_seconds,
+        system_nanoseconds: clock.system_nanoseconds,
+        read_errno: clock.read_errno,
+        reads: clock.reads
+    )
+    return clock_step(
+        moved,
+        code_ok(),
+        0,
+        moved.live_generation,
+        moved.reads,
+        moved.monotonic_seconds,
+        moved.monotonic_nanoseconds
+    )
+}
+
+# ---------------------------------------------------------- scripted waiter
+
+# The right to block is not the right to read time, so the sleeper is its own
+# capability with its own affine token. It is checked exactly like the clock
+# handle: only the live generation is accepted, and every accepted transition
+# leaves the next one.
+type SleeperHandle = {
+    domain: Int,
+    serial: Int,
+    generation: Int,
+}
+
+# Three slots, because the scripted scenario needs exactly three: two equal
+# deadlines to fix the wake order and one to cancel. Slot index is registration
+# order, and that is the stable order equal deadlines wake in.
+type WaiterTable = {
+    domain: Int,
+    serial: Int,
+    live_generation: Int,
+    w0_state: Int,
+    w0_seconds: Int,
+    w0_nanoseconds: Int,
+    w1_state: Int,
+    w1_seconds: Int,
+    w1_nanoseconds: Int,
+    w2_state: Int,
+    w2_seconds: Int,
+    w2_nanoseconds: Int,
+    woken: Int,
+    last_woken: Int,
+}
+
+type WaiterStep = {
+    code: Int,
+    detail: Int,
+    domain: Int,
+    serial: Int,
+    live_generation: Int,
+    handle_generation: Int,
+    w0_state: Int,
+    w0_seconds: Int,
+    w0_nanoseconds: Int,
+    w1_state: Int,
+    w1_seconds: Int,
+    w1_nanoseconds: Int,
+    w2_state: Int,
+    w2_seconds: Int,
+    w2_nanoseconds: Int,
+    woken: Int,
+    last_woken: Int,
+}
+
+fn waiter_table(serial: Int) -> WaiterTable {
+    let table: WaiterTable = WaiterTable(
+        domain: domain_monotonic(),
+        serial: serial,
+        live_generation: 0,
+        w0_state: waiter_empty(),
+        w0_seconds: 0,
+        w0_nanoseconds: 0,
+        w1_state: waiter_empty(),
+        w1_seconds: 0,
+        w1_nanoseconds: 0,
+        w2_state: waiter_empty(),
+        w2_seconds: 0,
+        w2_nanoseconds: 0,
+        woken: 0,
+        last_woken: no_waiter()
+    )
+    return table
+}
+
+# Mints the single live sleeper handle for a table.
+fn waiter_sleeper(table: WaiterTable) -> SleeperHandle {
+    let handle: SleeperHandle = SleeperHandle(
+        domain: table.domain,
+        serial: table.serial,
+        generation: table.live_generation
+    )
+    return handle
+}
+
+fn step_sleeper(step: WaiterStep) -> SleeperHandle {
+    let handle: SleeperHandle = SleeperHandle(
+        domain: step.domain,
+        serial: step.serial,
+        generation: step.handle_generation
+    )
+    return handle
+}
+
+fn sleeper_is_live(table: WaiterTable, handle: SleeperHandle) -> Int {
+    if handle.domain != table.domain {
+        return 0
+    }
+    if handle.serial != table.serial {
+        return 0
+    }
+    if handle.generation != table.live_generation {
+        return 0
+    }
+    return 1
+}
+
+fn waiter_step(
+    table: WaiterTable,
+    code: Int,
+    detail: Int,
+    live_generation: Int,
+    w0_state: Int,
+    w0_seconds: Int,
+    w0_nanoseconds: Int,
+    w1_state: Int,
+    w1_seconds: Int,
+    w1_nanoseconds: Int,
+    w2_state: Int,
+    w2_seconds: Int,
+    w2_nanoseconds: Int,
+    woken: Int,
+    last_woken: Int
+) -> WaiterStep {
+    let step: WaiterStep = WaiterStep(
+        code: code,
+        detail: detail,
+        domain: table.domain,
+        serial: table.serial,
+        live_generation: live_generation,
+        handle_generation: live_generation,
+        w0_state: w0_state,
+        w0_seconds: w0_seconds,
+        w0_nanoseconds: w0_nanoseconds,
+        w1_state: w1_state,
+        w1_seconds: w1_seconds,
+        w1_nanoseconds: w1_nanoseconds,
+        w2_state: w2_state,
+        w2_seconds: w2_seconds,
+        w2_nanoseconds: w2_nanoseconds,
+        woken: woken,
+        last_woken: last_woken
+    )
+    return step
+}
+
+# A rejected operation consumes nothing: the table, the waiters, and the live
+# generation all stay where the last accepted transition left them.
+fn waiter_unchanged(table: WaiterTable, code: Int, detail: Int) -> WaiterStep {
+    return waiter_step(
+        table,
+        code,
+        detail,
+        table.live_generation,
+        table.w0_state,
+        table.w0_seconds,
+        table.w0_nanoseconds,
+        table.w1_state,
+        table.w1_seconds,
+        table.w1_nanoseconds,
+        table.w2_state,
+        table.w2_seconds,
+        table.w2_nanoseconds,
+        table.woken,
+        no_waiter()
+    )
+}
+
+fn step_table(step: WaiterStep) -> WaiterTable {
+    let table: WaiterTable = WaiterTable(
+        domain: step.domain,
+        serial: step.serial,
+        live_generation: step.live_generation,
+        w0_state: step.w0_state,
+        w0_seconds: step.w0_seconds,
+        w0_nanoseconds: step.w0_nanoseconds,
+        w1_state: step.w1_state,
+        w1_seconds: step.w1_seconds,
+        w1_nanoseconds: step.w1_nanoseconds,
+        w2_state: step.w2_state,
+        w2_seconds: step.w2_seconds,
+        w2_nanoseconds: step.w2_nanoseconds,
+        woken: step.woken,
+        last_woken: step.last_woken
+    )
+    return table
+}
+
+fn waiter_state(table: WaiterTable, slot: Int) -> Int {
+    if slot == 0 {
+        return table.w0_state
+    }
+    if slot == 1 {
+        return table.w1_state
+    }
+    return table.w2_state
+}
+
+# Asks what became of a registered waiter. A cancelled waiter answers
+# WaiterCancelled carrying its own slot, which is the answer a caller that was
+# waiting on that deadline has to handle; a woken or still-pending waiter is
+# not an error, and an empty slot was never registered.
+fn waiter_await(table: WaiterTable, slot: Int) -> WaiterStep {
+    let state: Int = waiter_state(table, slot)
+    if state == waiter_cancelled() {
+        return waiter_unchanged(table, code_waiter_cancelled(), slot)
+    }
+    if state == waiter_empty() {
+        return waiter_unchanged(table, code_waiter_unavailable(), slot)
+    }
+    return waiter_unchanged(table, code_ok(), 0)
+}
+
+fn table_identity(table: WaiterTable) -> ClockIdentity {
+    let identity: ClockIdentity = ClockIdentity(
+        domain: table.domain,
+        serial: table.serial
+    )
+    return identity
+}
+
+# A deadline belongs to the clock that produced it. Registering a deadline
+# from another clock is the same typed rejection as comparing across clocks.
+fn waiter_register(
+    table: WaiterTable,
+    handle: SleeperHandle,
+    slot: Int,
+    deadline: MonotonicInstant
+) -> WaiterStep {
+    if sleeper_is_live(table, handle) == 0 {
+        return waiter_unchanged(
+            table,
+            code_stale_handle(),
+            handle.generation
+        )
+    }
+    let table_id: ClockIdentity = table_identity(table)
+    let deadline_id: ClockIdentity = monotonic_identity(deadline)
+    if identity_same(table_id, deadline_id) == 0 {
+        return waiter_unchanged(
+            table,
+            code_wrong_identity(),
+            deadline.serial
+        )
+    }
+    if waiter_state(table, slot) != waiter_empty() {
+        return waiter_unchanged(table, code_waiter_unavailable(), slot)
+    }
+
+    let mut s0 = table.w0_state
+    let mut d0 = table.w0_seconds
+    let mut n0 = table.w0_nanoseconds
+    let mut s1 = table.w1_state
+    let mut d1 = table.w1_seconds
+    let mut n1 = table.w1_nanoseconds
+    let mut s2 = table.w2_state
+    let mut d2 = table.w2_seconds
+    let mut n2 = table.w2_nanoseconds
+    if slot == 0 {
+        s0 = waiter_pending()
+        d0 = deadline.seconds
+        n0 = deadline.nanoseconds
+    }
+    if slot == 1 {
+        s1 = waiter_pending()
+        d1 = deadline.seconds
+        n1 = deadline.nanoseconds
+    }
+    if slot == 2 {
+        s2 = waiter_pending()
+        d2 = deadline.seconds
+        n2 = deadline.nanoseconds
+    }
+    return waiter_step(
+        table,
+        code_ok(),
+        0,
+        table.live_generation + 1,
+        s0,
+        d0,
+        n0,
+        s1,
+        d1,
+        n1,
+        s2,
+        d2,
+        n2,
+        table.woken,
+        no_waiter()
+    )
+}
+
+# Cancellation is explicit and only applies to a pending waiter. A cancelled
+# waiter never wakes, asking about it later still says it was cancelled, and
+# the sleeper handle that cancelled it is spent.
+fn waiter_cancel(
+    table: WaiterTable,
+    handle: SleeperHandle,
+    slot: Int
+) -> WaiterStep {
+    if sleeper_is_live(table, handle) == 0 {
+        return waiter_unchanged(
+            table,
+            code_stale_handle(),
+            handle.generation
+        )
+    }
+    if waiter_state(table, slot) != waiter_pending() {
+        return waiter_unchanged(table, code_waiter_unavailable(), slot)
+    }
+    let mut s0 = table.w0_state
+    let mut s1 = table.w1_state
+    let mut s2 = table.w2_state
+    if slot == 0 {
+        s0 = waiter_cancelled()
+    }
+    if slot == 1 {
+        s1 = waiter_cancelled()
+    }
+    if slot == 2 {
+        s2 = waiter_cancelled()
+    }
+    return waiter_step(
+        table,
+        code_ok(),
+        0,
+        table.live_generation + 1,
+        s0,
+        table.w0_seconds,
+        table.w0_nanoseconds,
+        s1,
+        table.w1_seconds,
+        table.w1_nanoseconds,
+        s2,
+        table.w2_seconds,
+        table.w2_nanoseconds,
+        table.woken,
+        no_waiter()
+    )
+}
+
+fn waiter_due(
+    state: Int,
+    deadline_seconds: Int,
+    deadline_nanoseconds: Int,
+    now_seconds: Int,
+    now_nanoseconds: Int
+) -> Int {
+    if state != waiter_pending() {
+        return 0
+    }
+    let order: Int = compare_parts(
+        deadline_seconds,
+        deadline_nanoseconds,
+        now_seconds,
+        now_nanoseconds
+    )
+    if order > 0 {
+        return 0
+    }
+    return 1
+}
+
+fn waiter_wake(table: WaiterTable, slot: Int) -> WaiterStep {
+    let mut s0 = table.w0_state
+    let mut s1 = table.w1_state
+    let mut s2 = table.w2_state
+    if slot == 0 {
+        s0 = waiter_woken()
+    }
+    if slot == 1 {
+        s1 = waiter_woken()
+    }
+    if slot == 2 {
+        s2 = waiter_woken()
+    }
+    return waiter_step(
+        table,
+        code_ok(),
+        0,
+        table.live_generation + 1,
+        s0,
+        table.w0_seconds,
+        table.w0_nanoseconds,
+        s1,
+        table.w1_seconds,
+        table.w1_nanoseconds,
+        s2,
+        table.w2_seconds,
+        table.w2_nanoseconds,
+        table.woken + 1,
+        slot
+    )
+}
+
+# Wakes at most one waiter per poll, lowest slot first. Slots are registration
+# order, so two waiters with the same deadline wake in the order they were
+# registered — the stable order this fixture states and the gate checks.
+# `now` is supplied by the caller; the waiter never reads a clock itself.
+fn waiter_poll(
+    table: WaiterTable,
+    handle: SleeperHandle,
+    now: MonotonicInstant
+) -> WaiterStep {
+    if sleeper_is_live(table, handle) == 0 {
+        return waiter_unchanged(
+            table,
+            code_stale_handle(),
+            handle.generation
+        )
+    }
+    let table_id: ClockIdentity = table_identity(table)
+    let now_id: ClockIdentity = monotonic_identity(now)
+    if identity_same(table_id, now_id) == 0 {
+        return waiter_unchanged(table, code_wrong_identity(), now.serial)
+    }
+    if waiter_due(
+        table.w0_state,
+        table.w0_seconds,
+        table.w0_nanoseconds,
+        now.seconds,
+        now.nanoseconds
+    ) == 1 {
+        return waiter_wake(table, 0)
+    }
+    if waiter_due(
+        table.w1_state,
+        table.w1_seconds,
+        table.w1_nanoseconds,
+        now.seconds,
+        now.nanoseconds
+    ) == 1 {
+        return waiter_wake(table, 1)
+    }
+    if waiter_due(
+        table.w2_state,
+        table.w2_seconds,
+        table.w2_nanoseconds,
+        now.seconds,
+        now.nanoseconds
+    ) == 1 {
+        return waiter_wake(table, 2)
+    }
+    return waiter_idle(table)
+}
+
+# A poll that found nothing due is still an accepted transition: it consumed
+# the handle it was given, so the next one is handed back even though no
+# waiter moved.
+fn waiter_idle(table: WaiterTable) -> WaiterStep {
+    return waiter_step(
+        table,
+        code_ok(),
+        0,
+        table.live_generation + 1,
+        table.w0_state,
+        table.w0_seconds,
+        table.w0_nanoseconds,
+        table.w1_state,
+        table.w1_seconds,
+        table.w1_nanoseconds,
+        table.w2_state,
+        table.w2_seconds,
+        table.w2_nanoseconds,
+        table.woken,
+        no_waiter()
+    )
+}
+
+# ------------------------------------------------------- scripted scenario
+
+# Rebuilds the closed error value from the code and payload an operation
+# reported, then prints the constructor's own code and its payload. Every
+# failure below is reported this way, so the recorded output is a sequence of
+# typed errors reached by `match` rather than a sequence of bare numbers.
+fn report_error(code: Int, detail: Int) -> Int {
+    let error: ClockError = clock_error(code, detail)
+    print(clock_error_code(error))
+    print(clock_error_detail(error))
+    return 0
+}
+
+fn main() -> Int {
+    # --- identities: a domain tag is not an identity
+    let start: MonotonicInstant = monotonic_instant(7, 10, 750000000)
+    let start_identity: ClockIdentity = monotonic_identity(start)
+    print(start_identity.domain)
+    print(start_identity.serial)
+    print(domain_system())
+
+    let other: MonotonicInstant = monotonic_instant(9, 10, 750000000)
+    let other_identity: ClockIdentity = monotonic_identity(other)
+    print(identity_same(start_identity, start_identity))
+    print(identity_same(start_identity, other_identity))
+
+    # --- system readings are a different shape with a different field
+    let epoch: SystemInstant = system_instant(1700000000, 250000000)
+    print(epoch.epoch_seconds)
+    print(epoch.nanoseconds)
+
+    # --- ordering inside one identity, rejection across identities
+    let later: MonotonicInstant = monotonic_instant(7, 12, 250000000)
+    let same_order: OrderResult = monotonic_compare(start, start)
+    print(same_order.order)
+    let forward: OrderResult = monotonic_compare(start, later)
+    print(forward.order)
+    let backward: OrderResult = monotonic_compare(later, start)
+    print(backward.order)
+    let mixed: OrderResult = monotonic_compare(start, other)
+    print(mixed.code)
+    print(mixed.detail)
+
+    # --- elapsed time, backwards time, and checked deadline arithmetic
+    let span: DurationResult = monotonic_elapsed(start, later)
+    let span_value: Duration = duration_result_value(span)
+    print(span.code)
+    print(span_value.seconds)
+    print(span_value.nanoseconds)
+
+    let regressed: DurationResult = monotonic_elapsed(later, start)
+    report_error(regressed.code, regressed.detail)
+
+    let step: Duration = duration(1, 500000000)
+    let deadline: InstantResult = monotonic_add(start, step)
+    let deadline_value: MonotonicInstant = instant_result_value(deadline)
+    print(deadline.code)
+    print(deadline_value.seconds)
+    print(deadline_value.nanoseconds)
+
+    let brink: MonotonicInstant = monotonic_instant(7, int_max(), 999999999)
+    let overflowed: InstantResult = monotonic_add(brink, step)
+    report_error(overflowed.code, overflowed.detail)
+
+    # --- affine capability: one handle, one transition, one next state
+    let clock0: FakeClock = fake_clock(7, 10, 750000000, 1700000000, 250000000)
+    let handle0: ClockHandle = fake_clock_handle(clock0)
+    let read0: ClockStep = monotonic_now(clock0, handle0)
+    let clock1: FakeClock = step_clock(read0)
+    let handle1: ClockHandle = step_handle(read0)
+    let now0: MonotonicInstant = step_monotonic(read0)
+    print(read0.code)
+    print(now0.seconds)
+    print(now0.nanoseconds)
+    print(clock1.live_generation)
+    print(clock1.reads)
+
+    # the retained copy of handle0 is refused, and refusing it changes nothing
+    let replayed: ClockStep = monotonic_now(clock1, handle0)
+    report_error(replayed.code, replayed.detail)
+    let clock2: FakeClock = step_clock(replayed)
+    print(clock2.live_generation)
+    print(clock2.reads)
+
+    # --- system read through the same handle discipline
+    let read1: ClockStep = system_now(clock2, handle1)
+    let clock3: FakeClock = step_clock(read1)
+    let handle2: ClockHandle = step_handle(read1)
+    let wall: SystemInstant = step_system(read1)
+    print(read1.code)
+    print(wall.epoch_seconds)
+    print(wall.nanoseconds)
+    print(clock3.reads)
+
+    # --- scripted platform failure: the error path with no syscall
+    let armed: FakeClock = fake_clock_script_read_failure(clock3, 11)
+    let failed: ClockStep = system_now(armed, handle2)
+    report_error(failed.code, failed.detail)
+    let clock4: FakeClock = step_clock(failed)
+    let handle3: ClockHandle = step_handle(failed)
+    print(clock4.reads)
+
+    # --- scripted waiter: two equal deadlines and one cancellation
+    let base: MonotonicInstant = monotonic_instant(7, 10, 750000000)
+    let one_second: Duration = duration(1, 0)
+    let three_seconds: Duration = duration(3, 0)
+    let near_deadline: InstantResult = monotonic_add(base, one_second)
+    let near: MonotonicInstant = instant_result_value(near_deadline)
+    let far_deadline: InstantResult = monotonic_add(base, three_seconds)
+    let far: MonotonicInstant = instant_result_value(far_deadline)
+
+    # the sleeper is its own capability: registering, cancelling, and polling
+    # each consume one sleeper handle and hand back the next
+    let table0: WaiterTable = waiter_table(7)
+    let sleep0: SleeperHandle = waiter_sleeper(table0)
+    let register0: WaiterStep = waiter_register(table0, sleep0, 0, near)
+    let table1: WaiterTable = step_table(register0)
+    let sleep1: SleeperHandle = step_sleeper(register0)
+    let register1: WaiterStep = waiter_register(table1, sleep1, 1, near)
+    let table2: WaiterTable = step_table(register1)
+    let sleep2: SleeperHandle = step_sleeper(register1)
+    let register2: WaiterStep = waiter_register(table2, sleep2, 2, far)
+    let table3: WaiterTable = step_table(register2)
+    let sleep3: SleeperHandle = step_sleeper(register2)
+    print(register0.code)
+    print(register1.code)
+    print(register2.code)
+
+    # a deadline minted by another clock is refused
+    let foreign_deadline: MonotonicInstant = monotonic_instant(9, 11, 750000000)
+    let refused: WaiterStep = waiter_register(
+        table3,
+        sleep3,
+        0,
+        foreign_deadline
+    )
+    report_error(refused.code, refused.detail)
+
+    # the retained copy of the first sleeper handle is refused too
+    let replayed_sleep: WaiterStep = waiter_register(table3, sleep0, 0, near)
+    report_error(replayed_sleep.code, replayed_sleep.detail)
+
+    # nothing is due before the clock is advanced
+    let idle: WaiterStep = waiter_poll(table3, sleep3, base)
+    let table4: WaiterTable = step_table(idle)
+    let sleep4: SleeperHandle = step_sleeper(idle)
+    print(idle.last_woken)
+
+    # advance by hand; no wall clock is consulted
+    let advanced: ClockStep = fake_clock_advance(clock4, handle3, one_second)
+    let clock5: FakeClock = step_clock(advanced)
+    let handle4: ClockHandle = step_handle(advanced)
+    let now1: MonotonicInstant = step_monotonic(advanced)
+    print(advanced.code)
+    print(now1.seconds)
+    print(now1.nanoseconds)
+
+    # equal deadlines wake in registration order, one per poll
+    let wake0: WaiterStep = waiter_poll(table4, sleep4, now1)
+    let table5: WaiterTable = step_table(wake0)
+    let sleep5: SleeperHandle = step_sleeper(wake0)
+    print(wake0.last_woken)
+    let wake1: WaiterStep = waiter_poll(table5, sleep5, now1)
+    let table6: WaiterTable = step_table(wake1)
+    let sleep6: SleeperHandle = step_sleeper(wake1)
+    print(wake1.last_woken)
+    let wake2: WaiterStep = waiter_poll(table6, sleep6, now1)
+    let table7: WaiterTable = step_table(wake2)
+    let sleep7: SleeperHandle = step_sleeper(wake2)
+    print(wake2.last_woken)
+    print(table7.woken)
+
+    # cancel the remaining waiter, then advance past its deadline
+    let cancelled: WaiterStep = waiter_cancel(table7, sleep7, 2)
+    let table8: WaiterTable = step_table(cancelled)
+    let sleep8: SleeperHandle = step_sleeper(cancelled)
+    print(cancelled.code)
+    print(waiter_state(table8, 2))
+
+    # the handle that cancelled is spent: reusing it is refused, and refusing
+    # it leaves the cancellation exactly as it was
+    let after_spent: WaiterStep = waiter_poll(table8, sleep7, now1)
+    report_error(after_spent.code, after_spent.detail)
+    print(waiter_state(step_table(after_spent), 2))
+
+    let two_seconds: Duration = duration(2, 0)
+    let advanced2: ClockStep = fake_clock_advance(clock5, handle4, two_seconds)
+    let clock6: FakeClock = step_clock(advanced2)
+    let now2: MonotonicInstant = step_monotonic(advanced2)
+    print(now2.seconds)
+
+    let after_cancel: WaiterStep = waiter_poll(table8, sleep8, now2)
+    let table9: WaiterTable = step_table(after_cancel)
+    let sleep9: SleeperHandle = step_sleeper(after_cancel)
+    print(after_cancel.last_woken)
+    print(table9.woken)
+
+    # the cancelled waiter answers with its own typed error, not silence
+    let awaited: WaiterStep = waiter_await(table9, 2)
+    report_error(awaited.code, awaited.detail)
+
+    # cancelling a waiter that already woke is refused, not silently repeated
+    let recancel: WaiterStep = waiter_cancel(table9, sleep9, 0)
+    report_error(recancel.code, recancel.detail)
+
+    # every reading in this run came from the fake clock
+    print(clock6.reads)
+    return 0
+}

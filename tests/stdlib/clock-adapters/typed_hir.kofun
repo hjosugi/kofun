@@ -1,0 +1,109 @@
+# Typed-HIR witness for the clock adapter value shapes.
+#
+# adapters.kofun is the full producer, and it is larger than the Stage 2
+# semantic sidecar's bounded projection accepts — that projection caps a
+# program at 64 functions and 512 nodes. This file carries the same four value
+# shapes and the same closed error through the whole pipeline instead:
+# `kofun check --emit-typed-sidecar` must name the types here in a validated
+# typed HIR, and the same source must then run on the backend.
+#
+# It is deliberately the smallest program that still distinguishes the two
+# clock domains, rejects a cross-identity comparison, and reaches a closed
+# error constructor by `match`.
+
+type ClockIdentity = {
+    domain: Int,
+    serial: Int,
+}
+
+type MonotonicInstant = {
+    domain: Int,
+    serial: Int,
+    seconds: Int,
+    nanoseconds: Int,
+}
+
+type SystemInstant = {
+    epoch_seconds: Int,
+    nanoseconds: Int,
+}
+
+type Duration = {
+    seconds: Int,
+    nanoseconds: Int,
+}
+
+type ClockError =
+    | WrongClockIdentity(observed: Int)
+    | BackwardsTime(regression: Int)
+    | PlatformReadFailed(errno: Int)
+
+fn monotonic_identity(instant: MonotonicInstant) -> ClockIdentity {
+    let identity: ClockIdentity = ClockIdentity(
+        domain: instant.domain,
+        serial: instant.serial
+    )
+    return identity
+}
+
+fn identity_same(left: ClockIdentity, right: ClockIdentity) -> Int {
+    if left.domain != right.domain {
+        return 0
+    }
+    if left.serial != right.serial {
+        return 0
+    }
+    return 1
+}
+
+fn error_code(error: ClockError) -> Int {
+    let mut code = 0
+    match error {
+        WrongClockIdentity(_) => { code = -1 },
+        BackwardsTime(_) => { code = -2 },
+        PlatformReadFailed(_) => { code = -5 },
+    }
+    return code
+}
+
+fn error_detail(error: ClockError) -> Int {
+    let mut detail = 0
+    match error {
+        WrongClockIdentity(observed) => { detail = observed },
+        BackwardsTime(regression) => { detail = regression },
+        PlatformReadFailed(errno) => { detail = errno },
+    }
+    return detail
+}
+
+fn main() -> Int {
+    let left: MonotonicInstant = MonotonicInstant(
+        domain: 1,
+        serial: 7,
+        seconds: 10,
+        nanoseconds: 750000000
+    )
+    let right: MonotonicInstant = MonotonicInstant(
+        domain: 1,
+        serial: 9,
+        seconds: 10,
+        nanoseconds: 750000000
+    )
+    let wall: SystemInstant = SystemInstant(
+        epoch_seconds: 1700000000,
+        nanoseconds: 250000000
+    )
+    let span: Duration = Duration(seconds: 1, nanoseconds: 500000000)
+
+    let left_identity: ClockIdentity = monotonic_identity(left)
+    let right_identity: ClockIdentity = monotonic_identity(right)
+    print(identity_same(left_identity, left_identity))
+    print(identity_same(left_identity, right_identity))
+    print(wall.epoch_seconds)
+    print(span.nanoseconds)
+
+    let rejected: ClockError = WrongClockIdentity(right.serial)
+    print(error_code(rejected))
+    print(error_detail(rejected))
+    return 0
+}

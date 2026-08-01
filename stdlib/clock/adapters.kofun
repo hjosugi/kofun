@@ -1,0 +1,586 @@
+# Explicit clock capabilities: monotonic and system time with separate
+# identities, finite sleeps with cancellation, and a deterministic fake clock.
+#
+# This is the adapter contract for docs/stdlib/date-time.md. It is the
+# successor to clock.kofun, which is the earlier tagged-instant checkpoint:
+# that file gives one `Clock` tag to both domains, and this one gives each
+# domain its own type so a wall-clock reading and an elapsed-time reading
+# cannot reach the same argument.
+#
+# Three rules shape everything below.
+#
+# A domain is not an identity. Two monotonic clocks in one process are two
+# time lines, so an identity is the domain *and* a serial, and every monotonic
+# reading carries the identity that produced it. Comparing across identities
+# is a typed error, not a comparison of representations.
+#
+# A capability is passed, never ambient. There is no `now()`. A caller who
+# cannot name a clock cannot read time, which is what makes a test that
+# injects a fake clock a complete test rather than a hopeful one.
+#
+# A handle is affine. Every read, sleep, advance, and cancel consumes the
+# handle it was given and leaves exactly one next handle in its place, so
+# there is no way to observe two different times through the same capability
+# state. An operation that reaches the clock consumes the handle; one rejected
+# before it gets there — a stale handle, a foreign identity, an advance that
+# would overflow — consumes nothing.
+#
+# Reading a real operating-system clock lives in a platform adapter;
+# adapters_linux_x86_64.kofun is the Linux x86-64 one.
+#
+# Boundary: the active compiler does not yet lower these records, ADT
+# payloads, and Result values. tests/stdlib/clock-adapters/adapters.kofun is
+# the executable Stage 2 projection of exactly these decisions, and
+# tests/stdlib/clock-adapters/check.sh pins both files against each other.
+
+let CLOCK_NANOSECONDS_PER_SECOND = 1000000000
+let CLOCK_INT_MAX = 9223372036854775807
+
+type ClockDomain =
+    | MonotonicDomain
+    | SystemDomain
+
+# One clock instance. `serial` distinguishes two clocks of the same domain;
+# it is an opaque token and carries no time information of its own.
+type ClockIdentity = {
+    domain: ClockDomain,
+    serial: Int,
+}
+
+# A monotonic reading. There is no epoch and no constructor from a bare
+# number, so it cannot be serialized, printed as a date, or compared with a
+# system reading. Subtracting two of them yields a Duration.
+type MonotonicInstant = {
+    identity: ClockIdentity,
+    seconds: Int,
+    nanoseconds: Int,
+}
+
+# A Unix-era observation. It may move backwards when the system clock is
+# adjusted, so it is never the basis for elapsed time or a deadline.
+type SystemInstant = {
+    epoch_seconds: Int,
+    nanoseconds: Int,
+}
+
+# Non-negative and canonical: nanoseconds is always below one second.
+type Duration = {
+    seconds: Int,
+    nanoseconds: Int,
+}
+
+type WaiterId = {
+    value: Int,
+}
+
+# What one poll did. `NoDeadlineDue` is a normal answer, not an error: a
+# scheduler asking "is anything ready" and hearing "no" has not failed.
+type Wake =
+    | Woke(WaiterId)
+    | NoDeadlineDue
+
+# The closed clock error domain. Every failing operation in this module
+# returns one of these.
+type ClockError =
+    | InvalidInstantNanoseconds(Int)
+    | InvalidDuration(Int, Int)
+    | WrongClockIdentity(ClockIdentity, ClockIdentity)
+    | BackwardsTime(Duration)
+    | ClockArithmeticOverflow
+    | WaiterCancelled(WaiterId)
+    | StaleClockHandle(Int)
+    # The platform code an adapter observed. The adapter maps its own error
+    # type onto this so the portable surface does not name a syscall.
+    | PlatformReadFailed(Int)
+
+# ------------------------------------------------------------ capabilities
+
+# The monotonic clock capability. `generation` is the affine token: an
+# operation accepts only the live generation and advances the handle to the
+# next one, so a copy kept behind is now at a dead generation and every later
+# use of it is StaleClockHandle rather than a second reading.
+type MonotonicClock = {
+    identity: ClockIdentity,
+    generation: Int,
+}
+
+type SystemClock = {
+    identity: ClockIdentity,
+    generation: Int,
+}
+
+# Finite sleeping. A Sleeper is separate from a clock because the right to
+# read time and the right to block are different capabilities: a pure
+# computation may be given the first without the second.
+type Sleeper = {
+    identity: ClockIdentity,
+    generation: Int,
+}
+
+# A registered waiter. `deadline` is a monotonic instant, so a system clock
+# adjustment can neither delay nor fire it.
+type Waiter = {
+    id: WaiterId,
+    deadline: MonotonicInstant,
+    cancelled: Bool,
+    woken: Bool,
+}
+
+# The deterministic clock. It is mutable, explicitly passed, and performs no
+# ambient read: the caller chooses the start and every advance. Waiters are
+# stored in registration order, and that order is the tie-break when two
+# deadlines are equal.
+type FakeClock = {
+    identity: ClockIdentity,
+    generation: Int,
+    monotonic: MonotonicInstant,
+    system: SystemInstant,
+    waiters: List[Waiter],
+    next_waiter: Int,
+    # When non-zero, the next platform read fails with this code. Tests reach
+    # the PlatformReadFailed path by writing the failure down.
+    scripted_read_failure: Int,
+    reads: Int,
+}
+
+# ------------------------------------------------------------- value rules
+
+fn clock_valid_nanoseconds(nanoseconds: Int) -> Bool {
+    return nanoseconds >= 0 &&
+        nanoseconds < CLOCK_NANOSECONDS_PER_SECOND
+}
+
+fn clock_domain_same(left: ClockDomain, right: ClockDomain) -> Bool {
+    return match left {
+        MonotonicDomain => match right {
+            MonotonicDomain => true,
+            SystemDomain => false,
+        },
+        SystemDomain => match right {
+            MonotonicDomain => false,
+            SystemDomain => true,
+        },
+    }
+}
+
+fn clock_identity_same(
+    read left: ClockIdentity,
+    read right: ClockIdentity,
+) -> Bool {
+    return clock_domain_same(left.domain, right.domain) &&
+        left.serial == right.serial
+}
+
+fn clock_duration(
+    seconds: Int,
+    nanoseconds: Int,
+) -> Result[Duration, ClockError] {
+    if seconds < 0 || !clock_valid_nanoseconds(nanoseconds) {
+        return Err(InvalidDuration(seconds, nanoseconds))
+    }
+    return Ok(Duration { seconds: seconds, nanoseconds: nanoseconds })
+}
+
+fn clock_system_instant(
+    epoch_seconds: Int,
+    nanoseconds: Int,
+) -> Result[SystemInstant, ClockError] {
+    if !clock_valid_nanoseconds(nanoseconds) {
+        return Err(InvalidInstantNanoseconds(nanoseconds))
+    }
+    return Ok(SystemInstant {
+        epoch_seconds: epoch_seconds,
+        nanoseconds: nanoseconds,
+    })
+}
+
+# Monotonic instants are minted only by a clock, so there is no public
+# constructor taking a bare number. This function is module-internal and the
+# identity it stamps is the reading clock's own.
+fn clock_monotonic_instant(
+    read identity: ClockIdentity,
+    seconds: Int,
+    nanoseconds: Int,
+) -> Result[MonotonicInstant, ClockError] {
+    if !clock_valid_nanoseconds(nanoseconds) {
+        return Err(InvalidInstantNanoseconds(nanoseconds))
+    }
+    return Ok(MonotonicInstant {
+        identity: identity,
+        seconds: seconds,
+        nanoseconds: nanoseconds,
+    })
+}
+
+# ------------------------------------------------------- monotonic algebra
+
+# Returns -1, 0, or 1. Readings from different clock identities are a typed
+# error: two monotonic clocks that report similar numbers are still separate
+# time lines.
+fn clock_monotonic_compare(
+    read left: MonotonicInstant,
+    read right: MonotonicInstant,
+) -> Result[Int, ClockError] {
+    if !clock_identity_same(left.identity, right.identity) {
+        return Err(WrongClockIdentity(left.identity, right.identity))
+    }
+    if left.seconds < right.seconds { return Ok(-1) }
+    if left.seconds > right.seconds { return Ok(1) }
+    if left.nanoseconds < right.nanoseconds { return Ok(-1) }
+    if left.nanoseconds > right.nanoseconds { return Ok(1) }
+    return Ok(0)
+}
+
+fn clock_difference_overflows(later: Int, earlier: Int) -> Bool {
+    return earlier < 0 && later > CLOCK_INT_MAX + earlier
+}
+
+# Elapsed time is non-negative by construction. A monotonic clock that ran
+# backwards is a defect, so the regression is reported rather than clamped.
+fn clock_monotonic_elapsed(
+    read start: MonotonicInstant,
+    read end: MonotonicInstant,
+) -> Result[Duration, ClockError] {
+    let order = match clock_monotonic_compare(start, end) {
+        Ok(value) => value,
+        Err(error) => return Err(error),
+    }
+    if order > 0 {
+        return match clock_monotonic_regression(start, end) {
+            Ok(regression) => Err(BackwardsTime(regression)),
+            Err(error) => Err(error),
+        }
+    }
+
+    let borrow = end.nanoseconds < start.nanoseconds
+    let adjusted_end_seconds = if borrow { end.seconds - 1 } else { end.seconds }
+    if clock_difference_overflows(adjusted_end_seconds, start.seconds) {
+        return Err(ClockArithmeticOverflow)
+    }
+    let seconds = adjusted_end_seconds - start.seconds
+    let nanoseconds = if borrow {
+        end.nanoseconds + CLOCK_NANOSECONDS_PER_SECOND - start.nanoseconds
+    } else {
+        end.nanoseconds - start.nanoseconds
+    }
+    return Ok(Duration { seconds: seconds, nanoseconds: nanoseconds })
+}
+
+fn clock_monotonic_regression(
+    read later: MonotonicInstant,
+    read earlier: MonotonicInstant,
+) -> Result[Duration, ClockError] {
+    let borrow = later.nanoseconds < earlier.nanoseconds
+    let adjusted = if borrow { later.seconds - 1 } else { later.seconds }
+    if clock_difference_overflows(adjusted, earlier.seconds) {
+        return Err(ClockArithmeticOverflow)
+    }
+    let nanoseconds = if borrow {
+        later.nanoseconds + CLOCK_NANOSECONDS_PER_SECOND - earlier.nanoseconds
+    } else {
+        later.nanoseconds - earlier.nanoseconds
+    }
+    return Ok(Duration {
+        seconds: adjusted - earlier.seconds,
+        nanoseconds: nanoseconds,
+    })
+}
+
+# A deadline is a monotonic instant computed with a checked carry. Overflow is
+# a typed error; it never wraps into a deadline in the past.
+fn clock_monotonic_add(
+    read instant: MonotonicInstant,
+    read step: Duration,
+) -> Result[MonotonicInstant, ClockError] {
+    if !clock_valid_nanoseconds(instant.nanoseconds) {
+        return Err(InvalidInstantNanoseconds(instant.nanoseconds))
+    }
+    if step.seconds < 0 || !clock_valid_nanoseconds(step.nanoseconds) {
+        return Err(InvalidDuration(step.seconds, step.nanoseconds))
+    }
+    let nanosecond_sum = instant.nanoseconds + step.nanoseconds
+    let carry = if nanosecond_sum >= CLOCK_NANOSECONDS_PER_SECOND { 1 } else { 0 }
+    if instant.seconds > CLOCK_INT_MAX - step.seconds {
+        return Err(ClockArithmeticOverflow)
+    }
+    let second_sum = instant.seconds + step.seconds
+    if carry == 1 && second_sum == CLOCK_INT_MAX {
+        return Err(ClockArithmeticOverflow)
+    }
+    return Ok(MonotonicInstant {
+        identity: instant.identity,
+        seconds: second_sum + carry,
+        nanoseconds: nanosecond_sum % CLOCK_NANOSECONDS_PER_SECOND,
+    })
+}
+
+fn clock_deadline_reached(
+    read now: MonotonicInstant,
+    read deadline: MonotonicInstant,
+) -> Result[Bool, ClockError] {
+    return match clock_monotonic_compare(now, deadline) {
+        Ok(order) => Ok(order >= 0),
+        Err(error) => Err(error),
+    }
+}
+
+# ---------------------------------------------------------- affine handles
+
+# Accepts a handle only at the live generation. A caller who kept a copy of an
+# earlier handle gets StaleClockHandle instead of a second reading.
+fn clock_handle_live(
+    read clock: FakeClock,
+    read identity: ClockIdentity,
+    generation: Int,
+) -> Result[Void, ClockError] {
+    if !clock_identity_same(clock.identity, identity) {
+        return Err(WrongClockIdentity(clock.identity, identity))
+    }
+    if generation != clock.generation {
+        return Err(StaleClockHandle(generation))
+    }
+    return Ok(())
+}
+
+# --------------------------------------------------------- deterministic
+
+# Builds a fake clock with no waiters and no scripted failure. Every later
+# transition is caller-driven.
+fn clock_fake(
+    serial: Int,
+    read monotonic: MonotonicInstant,
+    read system: SystemInstant,
+) -> Result[FakeClock, ClockError] {
+    let identity = ClockIdentity { domain: MonotonicDomain, serial: serial }
+    if !clock_identity_same(monotonic.identity, identity) {
+        return Err(WrongClockIdentity(identity, monotonic.identity))
+    }
+    return Ok(FakeClock {
+        identity: identity,
+        generation: 0,
+        monotonic: monotonic,
+        system: system,
+        waiters: [],
+        next_waiter: 0,
+        scripted_read_failure: 0,
+        reads: 0,
+    })
+}
+
+fn clock_fake_monotonic_handle(read clock: FakeClock) -> MonotonicClock {
+    return MonotonicClock {
+        identity: clock.identity,
+        generation: clock.generation,
+    }
+}
+
+fn clock_fake_system_handle(read clock: FakeClock) -> SystemClock {
+    return SystemClock {
+        identity: clock.identity,
+        generation: clock.generation,
+    }
+}
+
+fn clock_fake_sleeper(read clock: FakeClock) -> Sleeper {
+    return Sleeper {
+        identity: clock.identity,
+        generation: clock.generation,
+    }
+}
+
+# Arms the next system read to fail, so the PlatformReadFailed path runs
+# without a syscall and without an unreliable host.
+fn clock_fake_script_read_failure(edit clock: FakeClock, code: Int) -> Void {
+    clock.scripted_read_failure = code
+}
+
+fn clock_fake_monotonic_now(
+    edit clock: FakeClock,
+    edit handle: MonotonicClock,
+) -> Result[MonotonicInstant, ClockError] {
+    match clock_handle_live(clock, handle.identity, handle.generation) {
+        Ok(_) => (),
+        Err(error) => return Err(error),
+    }
+    clock.generation = clock.generation + 1
+    handle.generation = clock.generation
+    clock.reads = clock.reads + 1
+    return Ok(clock.monotonic)
+}
+
+fn clock_fake_system_now(
+    edit clock: FakeClock,
+    edit handle: SystemClock,
+) -> Result[SystemInstant, ClockError] {
+    match clock_handle_live(clock, handle.identity, handle.generation) {
+        Ok(_) => (),
+        Err(error) => return Err(error),
+    }
+    clock.generation = clock.generation + 1
+    handle.generation = clock.generation
+    if clock.scripted_read_failure != 0 {
+        return Err(PlatformReadFailed(clock.scripted_read_failure))
+    }
+    clock.reads = clock.reads + 1
+    return Ok(clock.system)
+}
+
+# The only way time moves. It reuses the checked deadline arithmetic, so an
+# advance that would overflow is the same typed error a deadline reports.
+fn clock_fake_advance(
+    edit clock: FakeClock,
+    edit handle: MonotonicClock,
+    read step: Duration,
+) -> Result[MonotonicInstant, ClockError] {
+    match clock_handle_live(clock, handle.identity, handle.generation) {
+        Ok(_) => (),
+        Err(error) => return Err(error),
+    }
+    return match clock_monotonic_add(clock.monotonic, step) {
+        Ok(moved) => {
+            clock.generation = clock.generation + 1
+            handle.generation = clock.generation
+            clock.monotonic = moved
+            Ok(moved)
+        },
+        Err(error) => Err(error),
+    }
+}
+
+# ---------------------------------------------------------------- waiters
+
+# Registers a deadline. The deadline must come from this clock: a deadline
+# minted by another clock is the same rejection as comparing across clocks.
+fn clock_fake_register(
+    edit clock: FakeClock,
+    edit handle: Sleeper,
+    read deadline: MonotonicInstant,
+) -> Result[WaiterId, ClockError] {
+    match clock_handle_live(clock, handle.identity, handle.generation) {
+        Ok(_) => (),
+        Err(error) => return Err(error),
+    }
+    if !clock_identity_same(clock.identity, deadline.identity) {
+        return Err(WrongClockIdentity(clock.identity, deadline.identity))
+    }
+    let id = WaiterId { value: clock.next_waiter }
+    clock.generation = clock.generation + 1
+    handle.generation = clock.generation
+    clock.next_waiter = clock.next_waiter + 1
+    clock.waiters = push(clock.waiters, Waiter {
+        id: id,
+        deadline: deadline,
+        cancelled: false,
+        woken: false,
+    })
+    return Ok(id)
+}
+
+# Cancellation is explicit and idempotent only in its answer: cancelling a
+# waiter that already woke reports WaiterCancelled for the caller to handle
+# rather than pretending the wake did not happen.
+fn clock_fake_cancel(
+    edit clock: FakeClock,
+    edit handle: Sleeper,
+    read id: WaiterId,
+) -> Result[Void, ClockError] {
+    match clock_handle_live(clock, handle.identity, handle.generation) {
+        Ok(_) => (),
+        Err(error) => return Err(error),
+    }
+    clock.generation = clock.generation + 1
+    handle.generation = clock.generation
+    return clock_waiters_cancel(clock, id)
+}
+
+# Wakes at most one waiter: the earliest deadline that is due, and among equal
+# deadlines the one registered first. Repeated polling drains the due set in
+# that stable order. The waiter never reads a clock; `now` is the fake clock's
+# own current monotonic reading.
+fn clock_fake_poll(
+    edit clock: FakeClock,
+    edit handle: Sleeper,
+) -> Result[Wake, ClockError] {
+    match clock_handle_live(clock, handle.identity, handle.generation) {
+        Ok(_) => (),
+        Err(error) => return Err(error),
+    }
+    clock.generation = clock.generation + 1
+    handle.generation = clock.generation
+    return clock_waiters_wake_due(clock, clock.monotonic)
+}
+
+# Marks a registered waiter cancelled. A waiter that already woke is reported,
+# not silently re-cancelled, so a caller cannot believe it stopped something
+# that had already run.
+fn clock_waiters_cancel(
+    edit clock: FakeClock,
+    read id: WaiterId,
+) -> Result[Void, ClockError] {
+    let mut updated: List[Waiter] = []
+    let mut found = false
+    for waiter in clock.waiters {
+        if waiter.id.value == id.value {
+            found = true
+            if waiter.woken {
+                return Err(WaiterCancelled(id))
+            }
+            updated = push(updated, Waiter {
+                id: waiter.id,
+                deadline: waiter.deadline,
+                cancelled: true,
+                woken: false,
+            })
+        } else {
+            updated = push(updated, waiter)
+        }
+    }
+    if !found {
+        return Err(WaiterCancelled(id))
+    }
+    clock.waiters = updated
+    return Ok(())
+}
+
+# Wakes the single lowest-registration-order waiter whose deadline is due.
+# Registration order is the tie-break, so equal deadlines wake in the order
+# they were registered and repeated polling drains them in that stable order.
+fn clock_waiters_wake_due(
+    edit clock: FakeClock,
+    read now: MonotonicInstant,
+) -> Result[Wake, ClockError] {
+    let mut chosen = -1
+    let mut index = 0
+    for waiter in clock.waiters {
+        if chosen < 0 && !waiter.cancelled && !waiter.woken {
+            let due = match clock_deadline_reached(now, waiter.deadline) {
+                Ok(value) => value,
+                Err(error) => return Err(error),
+            }
+            if due {
+                chosen = index
+            }
+        }
+        index = index + 1
+    }
+    if chosen < 0 {
+        return Ok(NoDeadlineDue)
+    }
+
+    let target = clock.waiters[chosen]
+    let mut updated: List[Waiter] = []
+    for waiter in clock.waiters {
+        if waiter.id.value == target.id.value {
+            updated = push(updated, Waiter {
+                id: waiter.id,
+                deadline: waiter.deadline,
+                cancelled: false,
+                woken: true,
+            })
+        } else {
+            updated = push(updated, waiter)
+        }
+    }
+    clock.waiters = updated
+    return Ok(Woke(target.id))
+}

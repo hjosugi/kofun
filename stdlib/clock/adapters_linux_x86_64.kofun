@@ -1,0 +1,160 @@
+import stdlib.clock.adapters
+import stdlib.linux_x86_64.abi
+# Aliased because stdlib/linux_x86_64/time.kofun has its own Timestamp and
+# Duration shapes. Those are the raw `struct timespec` projection; the values
+# this adapter hands back are the clock-adapter ones, and keeping the two
+# spellings apart is the whole point of the conversion below.
+import stdlib.linux_x86_64.time as posix
+
+# Linux x86-64 clock adapter for stdlib/clock/adapters.kofun.
+#
+# This is the only file in the clock module that reads system time. It
+# declares no syscall of its own and goes through the existing safe
+# `clock_gettime(2)` and `nanosleep(2)` wrappers in stdlib/linux_x86_64, and it
+# preserves their documented units — seconds plus nanoseconds, with
+# nanoseconds in 0..999999999 — rather than flattening them into one number
+# here.
+#
+# It takes the same handles the deterministic clock takes, so code written
+# against a fake clock runs unchanged against this one. What the adapter
+# enforces is identity: a handle minted for another clock is refused. The
+# generation advances for uniformity with the deterministic clock rather than
+# to ration readings — reading a real clock twice is not a mistake, and
+# nothing here pretends otherwise.
+
+let LINUX_CLOCK_REALTIME = 0
+let LINUX_CLOCK_MONOTONIC = 1
+
+# CLOCK_MONOTONIC on Linux excludes time spent suspended. That is the reading
+# a deadline should be built from: a deadline that silently absorbs a suspend
+# fires late by however long the machine slept.
+type LinuxClockAdapter = {
+    identity: ClockIdentity,
+}
+
+fn clock_linux_adapter(serial: Int) -> LinuxClockAdapter {
+    return LinuxClockAdapter {
+        identity: ClockIdentity { domain: MonotonicDomain, serial: serial },
+    }
+}
+
+fn clock_linux_monotonic_handle(
+    read adapter: LinuxClockAdapter,
+) -> MonotonicClock {
+    return MonotonicClock { identity: adapter.identity, generation: 0 }
+}
+
+fn clock_linux_system_handle(read adapter: LinuxClockAdapter) -> SystemClock {
+    return SystemClock { identity: adapter.identity, generation: 0 }
+}
+
+fn clock_linux_sleeper(read adapter: LinuxClockAdapter) -> Sleeper {
+    return Sleeper { identity: adapter.identity, generation: 0 }
+}
+
+# SysError becomes the portable PlatformReadFailed code. The errno is kept,
+# because "the clock read failed" without the reason is not a diagnosis.
+fn clock_linux_platform_error(read error: SysError) -> ClockError {
+    return PlatformReadFailed(error.errno)
+}
+
+fn clock_linux_identity_matches(
+    read adapter: LinuxClockAdapter,
+    read identity: ClockIdentity,
+) -> Result[Void, ClockError] {
+    if !clock_identity_same(adapter.identity, identity) {
+        return Err(WrongClockIdentity(adapter.identity, identity))
+    }
+    return Ok(())
+}
+
+# Reads CLOCK_MONOTONIC and stamps the reading with this adapter's identity,
+# so it can be compared and subtracted only against other readings from the
+# same adapter.
+fn clock_linux_monotonic_now(
+    read adapter: LinuxClockAdapter,
+    edit handle: MonotonicClock,
+) -> Result[MonotonicInstant, ClockError] {
+    match clock_linux_identity_matches(adapter, handle.identity) {
+        Ok(_) => (),
+        Err(error) => return Err(error),
+    }
+    handle.generation = handle.generation + 1
+    return match posix.clock_now(LINUX_CLOCK_MONOTONIC) {
+        Ok(timestamp) => clock_monotonic_instant(
+            adapter.identity,
+            timestamp.seconds,
+            timestamp.nanoseconds,
+        ),
+        Err(error) => Err(clock_linux_platform_error(error)),
+    }
+}
+
+# Reads CLOCK_REALTIME. The result is a SystemInstant and carries no identity:
+# it is a Unix-era observation that may move when the clock is adjusted, and
+# it is never a basis for elapsed time.
+fn clock_linux_system_now(
+    read adapter: LinuxClockAdapter,
+    edit handle: SystemClock,
+) -> Result[SystemInstant, ClockError] {
+    match clock_linux_identity_matches(adapter, handle.identity) {
+        Ok(_) => (),
+        Err(error) => return Err(error),
+    }
+    handle.generation = handle.generation + 1
+    return match posix.clock_now(LINUX_CLOCK_REALTIME) {
+        Ok(timestamp) => clock_system_instant(
+            timestamp.seconds,
+            timestamp.nanoseconds,
+        ),
+        Err(error) => Err(clock_linux_platform_error(error)),
+    }
+}
+
+# Sleeps for a finite, non-negative duration. Validation happens against the
+# adapter contract before the syscall, so an out-of-range nanosecond field is
+# a ClockError here and not an EINVAL from the kernel.
+fn clock_linux_sleep(
+    read adapter: LinuxClockAdapter,
+    edit handle: Sleeper,
+    read step: Duration,
+) -> Result[Void, ClockError] {
+    match clock_linux_identity_matches(adapter, handle.identity) {
+        Ok(_) => (),
+        Err(error) => return Err(error),
+    }
+    if step.seconds < 0 || !clock_valid_nanoseconds(step.nanoseconds) {
+        return Err(InvalidDuration(step.seconds, step.nanoseconds))
+    }
+    handle.generation = handle.generation + 1
+    let request = posix.Duration {
+        seconds: step.seconds,
+        nanoseconds: step.nanoseconds,
+    }
+    return match posix.sleep_once(request) {
+        Ok(_) => Ok(()),
+        Err(error) => Err(clock_linux_platform_error(error)),
+    }
+}
+
+# Sleeps until a monotonic deadline, computing the remaining span from a fresh
+# reading of the same clock. A deadline already reached returns immediately
+# instead of sleeping for a wrapped-around duration.
+fn clock_linux_sleep_until(
+    read adapter: LinuxClockAdapter,
+    edit clock_handle: MonotonicClock,
+    edit sleep_handle: Sleeper,
+    read deadline: MonotonicInstant,
+) -> Result[Void, ClockError] {
+    let now = match clock_linux_monotonic_now(adapter, clock_handle) {
+        Ok(value) => value,
+        Err(error) => return Err(error),
+    }
+    let remaining = match clock_monotonic_elapsed(now, deadline) {
+        Ok(value) => value,
+        # The deadline is in the past: there is nothing left to wait for.
+        Err(BackwardsTime(_)) => return Ok(()),
+        Err(error) => return Err(error),
+    }
+    return clock_linux_sleep(adapter, sleep_handle, remaining)
+}

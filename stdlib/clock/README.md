@@ -5,6 +5,21 @@ durations, elapsed-time and deadline arithmetic, and a deterministic manual
 clock. [`linux_x86_64.kofun`](linux_x86_64.kofun) is the explicit system-read
 adapter.
 
+[`adapters.kofun`](adapters.kofun) is the successor surface for
+[#647](https://github.com/hjosugi/kofun/issues/647), with
+[`adapters_linux_x86_64.kofun`](adapters_linux_x86_64.kofun) as its platform
+adapter. Where `clock.kofun` gives both domains one `Clock` tag, the adapter
+surface gives each its own type — `MonotonicInstant` carries a
+`ClockIdentity`, `SystemInstant` carries an epoch and no identity — so a
+wall-clock reading and an elapsed-time reading cannot reach the same argument.
+It adds affine clock, sleeper, and fake-clock handles, finite sleep with
+explicit cancellation, and a deterministic waiter. Its executable evidence is
+[`tests/stdlib/clock-adapters/`](../../tests/stdlib/clock-adapters/):
+
+```sh
+task clock-adapters
+```
+
 ```kofun
 let start = match clock_instant(MonotonicClock, 10, 750000000) {
     Ok(value) => value,
@@ -63,11 +78,29 @@ records is outside the contract until opaque types are implemented.
 This checkpoint does not provide sleeping, timers, time zones, calendar
 conversion, formatting/parsing, serialization, a parallel scheduler, or
 cross-platform adapters. It does not promise realtime monotonicity or compare
-values from different clock domains. Those remain later lifecycle work rather
-than undocumented behavior.
+values from different clock domains. Sleeping, deadlines with cancellation,
+and deterministic waiters are the adapter surface below; the rest remains
+later lifecycle work rather than undocumented behavior.
 
 Run the Python-free focused gate with:
 
 ```sh
 sh stdlib/clock/tests/verify.sh
 ```
+
+## Adapter surface boundary
+
+`adapters.kofun` and `adapters_linux_x86_64.kofun` are at the same compiler
+boundary as `clock.kofun`: the active compiler stops at the first top-level
+form outside `fn`/`type` — the constants here, the imports there — before code
+generation, so they are the canonical statement of the contract rather than a
+running library. The executable evidence lives in
+`tests/stdlib/clock-adapters/`, which projects the same decisions into the
+Stage 2 Core and runs them on the reference executor and the C11 backend.
+`sh tests/stdlib/clock-adapters/check.sh` pins the canonical files against
+that projection, so neither can drift.
+
+The deterministic fake clock, its waiters, and cancellation are executable
+today. The Linux read and sleep adapter is canonical source with no executable
+gate of its own; it follows the deterministic core rather than justifying
+ambient time in tests, and wiring it to a platform gate is later work.
