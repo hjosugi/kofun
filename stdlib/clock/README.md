@@ -101,6 +101,7 @@ Stage 2 Core and runs them on the reference executor and the C11 backend.
 that projection, so neither can drift.
 
 The deterministic fake clock, its waiters, and cancellation are executable
-today. The Linux read and sleep adapter is canonical source with no executable
-gate of its own; it follows the deterministic core rather than justifying
-ambient time in tests, and wiring it to a platform gate is later work.
+today. `tests/stdlib/clock-adapters/check-linux-x86_64.sh` is the explicitly
+platform-labelled read/sleep gate: it observes both Linux clock IDs, timespec
+nanosecond ranges, raw `-EINVAL`, and a zero-duration sleep. It is separate
+from the deterministic corpus and makes no elapsed wall-time assertion.
