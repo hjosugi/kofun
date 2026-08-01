@@ -499,15 +499,23 @@ round-trip, mutation, and source-free facade-consumption coverage.
 `stage2_kif_producer.c` is the normal Stage 2 source-to-KIF bridge. It asks the
 same committed compiler run used by `semantic_producer.c` for structured
 function, ADT, constructor, identity, visibility, and type facts; it never
-reconstructs authority from rendered event text or an adapter inventory. Only
-complete `Int` function signatures and zero/one-`Int` flat-ADT constructors are
-accepted by KIF v1. Private facts are omitted, records and wider signatures
-fail explicitly, and cancellation or any compiler/publication failure reaches
-the atomic writer neither on a cold destination nor over a prior interface.
+reconstructs authority from rendered event text or an adapter inventory. KIF
+v1.1 keeps the existing `Int` encoding byte-for-byte and adds resolved flat
+nominal ADT SymbolIds to function parameters/results and zero/one-field
+constructor payloads. Public signatures may reference only public ADTs;
+package-internal signatures may reference public or internal ADTs. A private,
+absent, or non-ADT identity fails closed before the writer, and the reader
+rechecks the same relationship before exposing decoded facts. Private facts
+are omitted. Records, generics, effects, and ownership signature components
+fail explicitly until their canonical KIF producers exist. Cancellation,
+leakage, unsupported publication, or any compiler failure reaches the atomic
+writer neither on a cold destination nor over a prior interface.
 `kofun check INPUT.kofun --emit-kif OUTPUT.kif` exposes this authoritative
-path. `task stage2-kif-producer` covers exact public/internal contents,
-source-order and physical-path independence, failure preservation, and a
-source-free consumer.
+path. `task stage2-kif-producer` retains the producer transaction baseline;
+`task visibility-filtering`, `task visibility-api-leaks`, and
+`task module-interface-artifact` cover exact nominal identities, digest-view
+changes, non-disclosing source diagnostics, source-free view selection, and
+malicious hidden/absent identity rejection.
 
 `tests/conformance/incremental/run.sh` pins the semantic and target-action
 invalidation decisions on a four-module `core <- service <- app` package plus

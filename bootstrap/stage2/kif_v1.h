@@ -48,7 +48,8 @@ typedef enum {
 } KofunKifVisibility;
 
 typedef enum {
-    KOFUN_KIF_TYPE_INT = 1
+    KOFUN_KIF_TYPE_INT = 1,
+    KOFUN_KIF_TYPE_NOMINAL = 2
 } KofunKifTypeTag;
 
 typedef struct {
@@ -59,12 +60,19 @@ typedef struct {
     char *name;
     size_t name_length;
 
-    /* Function facts: every parameter and the result are Int in v1. */
+    /*
+     * Function facts use a zero 32-byte entry for Int and a non-zero ADT
+     * SymbolId for one flat nominal reference. A NULL parameter array is the
+     * canonical writer shorthand for an all-Int parameter list.
+     */
     uint16_t parameter_count;
+    uint8_t *parameter_type_symbol_ids;
     KofunKifTypeTag result_type;
+    uint8_t result_type_symbol_id[KOFUN_KIF_ID_BYTES];
 
-    /* Constructor facts: zero or one Int payload, with a nominal owner. */
+    /* A zero payload SymbolId means Int; a non-zero value names an ADT fact. */
     uint8_t constructor_payload_count;
+    uint8_t constructor_payload_type_symbol_id[KOFUN_KIF_ID_BYTES];
     uint8_t owner_symbol_id[KOFUN_KIF_ID_BYTES];
     uint32_t constructor_ordinal;
 

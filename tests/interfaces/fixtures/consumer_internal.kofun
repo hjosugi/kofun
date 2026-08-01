@@ -1,0 +1,5 @@
+import demo.api
+
+fn main() {
+    print(api.package_identity(1))
+}

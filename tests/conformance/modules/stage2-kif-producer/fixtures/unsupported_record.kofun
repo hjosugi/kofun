@@ -1,0 +1,7 @@
+pub type ExposedRecord = {
+    value: Int,
+}
+
+fn main() {
+    print(0)
+}

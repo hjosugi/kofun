@@ -1,0 +1,10 @@
+internal type PackageValue =
+    | PackageZero
+
+pub fn expose(value: PackageValue) -> Int {
+    return 0
+}
+
+fn main() {
+    print(0)
+}

@@ -96,6 +96,8 @@ typedef struct {
     char name[PRODUCER_IDENTIFIER_CAPACITY];
     KofunSemanticId node;
     KofunSemanticId symbol;
+    int64_t start;
+    int64_t end;
     KofunStage2InterfaceVisibility visibility;
     KofunStage2InterfaceFactKind kind;
 } ProducerType;
@@ -103,9 +105,12 @@ typedef struct {
 typedef struct {
     char name[PRODUCER_IDENTIFIER_CAPACITY];
     char result_type[PRODUCER_IDENTIFIER_CAPACITY];
+    char payload_type[PRODUCER_IDENTIFIER_CAPACITY];
     KofunSemanticId node;
     KofunSemanticId symbol;
     KofunSemanticId owner_symbol;
+    int64_t start;
+    int64_t end;
     KofunStage2InterfaceVisibility visibility;
     uint8_t payload_count;
     uint32_t ordinal;
@@ -448,6 +453,73 @@ static bool producer_source_within_declaration_profile(
             if (bindings > PRODUCER_MAX_BINDINGS) return false;
         }
         cursor = skip_trivia(source, end);
+    }
+    return true;
+}
+
+static bool producer_publication_surface_supported(
+    const char *source,
+    KofunStage2SemanticResult *result
+) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < length) {
+        int64_t declaration;
+        int64_t name;
+        int64_t after_name;
+        int64_t parameters_end;
+        int64_t part;
+        if (!token_equal(source, cursor, "pub") &&
+            !token_equal(source, cursor, "internal")) {
+            cursor = skip_trivia(source, token_end(source, cursor));
+            continue;
+        }
+        declaration = skip_trivia(source, token_end(source, cursor));
+        if (token_equal(source, declaration, "async") ||
+            token_equal(source, declaration, "effect") ||
+            token_equal(source, declaration, "throws")) {
+            producer_set_tooling_error(
+                result, "EKI02", 0u, PRODUCER_EVENT_NONE,
+                "KIF v1 does not support effect components in published signatures"
+            );
+            return false;
+        }
+        if (!token_equal(source, declaration, "fn")) {
+            cursor = declaration;
+            continue;
+        }
+        name = skip_trivia(source, token_end(source, declaration));
+        after_name = skip_trivia(source, token_end(source, name));
+        if (token_equal(source, after_name, "[")) {
+            producer_set_tooling_error(
+                result, "EKI02", 0u, PRODUCER_EVENT_NONE,
+                "KIF v1 does not support generic components in published signatures"
+            );
+            return false;
+        }
+        if (!token_equal(source, after_name, "(")) {
+            cursor = after_name;
+            continue;
+        }
+        parameters_end = balanced_end(source, after_name, "(", ")");
+        if (parameters_end < 0) {
+            cursor = after_name;
+            continue;
+        }
+        part = skip_trivia(source, token_end(source, after_name));
+        while (part < parameters_end) {
+            if (token_equal(source, part, "read") ||
+                token_equal(source, part, "edit") ||
+                token_equal(source, part, "take")) {
+                producer_set_tooling_error(
+                    result, "EKI02", 0u, PRODUCER_EVENT_NONE,
+                    "KIF v1 does not support ownership modes in published signatures"
+                );
+                return false;
+            }
+            part = skip_trivia(source, token_end(source, part));
+        }
+        cursor = parameters_end;
     }
     return true;
 }
@@ -935,6 +1007,8 @@ static bool producer_collect_type_records(
         (void)snprintf(type->name, sizeof(type->name), "%s", name);
         type->node = type_node->value.node_id;
         type->symbol = type_symbol;
+        type->start = start;
+        type->end = end;
         type->visibility = visibility;
         type->kind = strcmp(record_kind, "record") == 0 ?
             KOFUN_STAGE2_INTERFACE_RECORD : KOFUN_STAGE2_INTERFACE_ADT;
@@ -992,7 +1066,8 @@ static bool producer_collect_types(
             start >= 0 && end > start && end <= source_length &&
             owner_type != NULL && ordinal >= 0 && ordinal <= UINT32_MAX &&
             (payload_count == 0 ||
-             (payload_count == 1 && strcmp(payload_type, "Int") == 0)) &&
+             (payload_count == 1 && payload_type[0] != '\0' &&
+              strlen(payload_type) < PRODUCER_IDENTIFIER_CAPACITY)) &&
             producer->constructor_count < PRODUCER_MAX_CONSTRUCTORS;
         if (!valid) {
             free(name);
@@ -1029,6 +1104,12 @@ static bool producer_collect_types(
             "%s",
             owner
         );
+        (void)snprintf(
+            constructor->payload_type,
+            sizeof(constructor->payload_type),
+            "%s",
+            payload_count == 0 ? "" : payload_type
+        );
         if (node == NULL ||
             !producer_symbol_id(
                 producer,
@@ -1053,6 +1134,8 @@ static bool producer_collect_types(
         constructor->node = node->value.node_id;
         constructor->symbol = symbol;
         constructor->owner_symbol = owner_type->symbol;
+        constructor->start = start;
+        constructor->end = end;
         constructor->visibility = owner_type->visibility;
         constructor->payload_count = (uint8_t)payload_count;
         constructor->ordinal = (uint32_t)ordinal;
@@ -2902,24 +2985,182 @@ static bool producer_snapshot_add(
     return true;
 }
 
-static bool producer_function_interface_supported(
-    Producer *producer,
-    const ProducerFunction *function
+static const char *producer_visibility_name(
+    KofunStage2InterfaceVisibility visibility
 ) {
-    size_t index;
-    size_t parameters = 0u;
-    if (strcmp(function->return_type, "Int") != 0) return false;
-    for (index = 0u; index < producer->binding_count; index += 1u) {
-        const ProducerBinding *binding = &producer->bindings[index];
-        ProducerNode *node = producer_find_node_by_id(producer, &binding->node);
-        if (binding->function_start != function->start || node == NULL ||
-            node->value.kind != KOFUN_SEMANTIC_NODE_PARAMETER) {
-            continue;
-        }
-        if (strcmp(binding->type, "Int") != 0) return false;
-        parameters += 1u;
+    switch (visibility) {
+        case KOFUN_STAGE2_INTERFACE_PRIVATE: return "private";
+        case KOFUN_STAGE2_INTERFACE_INTERNAL: return "internal";
+        case KOFUN_STAGE2_INTERFACE_PUBLIC: return "pub";
     }
-    return parameters == function->parameter_count;
+    return "invalid";
+}
+
+static void producer_set_visibility_leak(
+    KofunStage2SemanticResult *result,
+    KofunSemanticSpan use,
+    const ProducerType *type,
+    KofunStage2InterfaceVisibility requested
+) {
+    int written;
+    if (result == NULL || type == NULL) return;
+    result->has_source_diagnostic = true;
+    result->diagnostic_has_byte_span = true;
+    result->compiler_exit_class = 1u;
+    result->source_status = KOFUN_SOURCE_FAILED;
+    result->completeness = KOFUN_SEMANTIC_PARTIAL;
+    result->diagnostic_span = use;
+    (void)snprintf(
+        result->diagnostic_code,
+        sizeof(result->diagnostic_code),
+        "E2S145"
+    );
+    (void)snprintf(
+        result->diagnostic_category,
+        sizeof(result->diagnostic_category),
+        "visibility"
+    );
+    (void)snprintf(
+        result->diagnostic_template_id,
+        sizeof(result->diagnostic_template_id),
+        "visibility-api-leak"
+    );
+    written = snprintf(
+        result->diagnostic_fallback,
+        sizeof(result->diagnostic_fallback),
+        "error[E2S145]: API type at bytes %" PRIu32 "..%" PRIu32
+        " leaks a narrower declaration at bytes %" PRIu32 "..%" PRIu32
+        "; requested=%s effective=%s; change API or declaration visibility",
+        use.start,
+        use.end,
+        (uint32_t)type->start,
+        (uint32_t)type->end,
+        producer_visibility_name(requested),
+        producer_visibility_name(type->visibility)
+    );
+    result->diagnostic_truncated = written < 0 ||
+        (size_t)written >= sizeof(result->diagnostic_fallback);
+}
+
+static bool producer_parameter_type_span(
+    const Producer *producer,
+    const ProducerBinding *binding,
+    KofunSemanticSpan *span
+) {
+    int64_t colon = skip_trivia(
+        producer->source,
+        token_end(producer->source, binding->declaration_start)
+    );
+    int64_t start;
+    int64_t end;
+    if (!token_equal(producer->source, colon, ":")) return false;
+    start = skip_trivia(producer->source, token_end(producer->source, colon));
+    end = token_end(producer->source, start);
+    if (end <= start) return false;
+    *span = producer_span(start, end);
+    return true;
+}
+
+static bool producer_parameter_ownership_span(
+    const Producer *producer,
+    const ProducerFunction *function,
+    const ProducerBinding *binding,
+    KofunSemanticSpan *span
+) {
+    int64_t open = parameter_open(producer->source, function->start);
+    int64_t cursor;
+    if (open < 0) return false;
+    cursor = skip_trivia(producer->source, token_end(producer->source, open));
+    while (cursor < binding->declaration_start) {
+        int64_t next = skip_trivia(
+            producer->source,
+            token_end(producer->source, cursor)
+        );
+        if (next == binding->declaration_start &&
+            (token_equal(producer->source, cursor, "read") ||
+             token_equal(producer->source, cursor, "edit") ||
+             token_equal(producer->source, cursor, "take"))) {
+            *span = producer_span(
+                cursor, token_end(producer->source, cursor));
+            return true;
+        }
+        if (next <= cursor) break;
+        cursor = next;
+    }
+    return false;
+}
+
+static bool producer_result_type_span(
+    const Producer *producer,
+    const ProducerFunction *function,
+    KofunSemanticSpan *span
+) {
+    int64_t open = parameter_open(producer->source, function->start);
+    int64_t close;
+    int64_t arrow;
+    int64_t start;
+    int64_t end;
+    if (open < 0) return false;
+    close = balanced_end(producer->source, open, "(", ")");
+    if (close < 0) return false;
+    arrow = skip_trivia(producer->source, close);
+    if (!token_equal(producer->source, arrow, "->")) return false;
+    start = skip_trivia(producer->source, token_end(producer->source, arrow));
+    end = token_end(producer->source, start);
+    if (end <= start) return false;
+    *span = producer_span(start, end);
+    return true;
+}
+
+static bool producer_constructor_payload_type_span(
+    const Producer *producer,
+    const ProducerConstructor *constructor,
+    KofunSemanticSpan *span
+) {
+    int64_t open = skip_trivia(
+        producer->source,
+        token_end(producer->source, constructor->start)
+    );
+    int64_t field;
+    int64_t colon;
+    int64_t start;
+    int64_t end;
+    if (!token_equal(producer->source, open, "(")) return false;
+    field = skip_trivia(producer->source, token_end(producer->source, open));
+    colon = skip_trivia(producer->source, token_end(producer->source, field));
+    if (!token_equal(producer->source, colon, ":")) return false;
+    start = skip_trivia(producer->source, token_end(producer->source, colon));
+    end = token_end(producer->source, start);
+    if (end <= start) return false;
+    *span = producer_span(start, end);
+    return true;
+}
+
+static bool producer_resolve_interface_type(
+    Producer *producer,
+    const char *name,
+    KofunSemanticSpan use,
+    KofunStage2InterfaceVisibility requested,
+    KofunSemanticId *symbol_id,
+    KofunStage2SemanticResult *result
+) {
+    ProducerType *type;
+    memset(symbol_id, 0, sizeof(*symbol_id));
+    if (strcmp(name, "Int") == 0) return true;
+    type = producer_find_type(producer, name);
+    if (type == NULL || type->kind != KOFUN_STAGE2_INTERFACE_ADT) {
+        producer_set_tooling_error(
+            result, "EKI02", 0u, PRODUCER_EVENT_NONE,
+            "KIF v1 supports only complete Int or flat nominal function signatures"
+        );
+        return false;
+    }
+    if (type->visibility < requested) {
+        producer_set_visibility_leak(result, use, type, requested);
+        return false;
+    }
+    *symbol_id = type->symbol;
+    return true;
 }
 
 static bool producer_build_interface_snapshot(
@@ -2944,25 +3185,98 @@ static bool producer_build_interface_snapshot(
     snapshot->edition[edition.length] = '\0';
     for (index = 0u; index < producer->function_count; index += 1u) {
         ProducerFunction *function = &producer->functions[index];
+        KofunSemanticId result_type_symbol_id;
+        KofunSemanticSpan result_span;
+        size_t parameter_start = snapshot->type_reference_count;
+        size_t parameter_count = 0u;
+        size_t binding_index;
+        KofunStage2InterfaceFact *fact;
         if (function->visibility == KOFUN_STAGE2_INTERFACE_PRIVATE) continue;
-        if (!producer_function_interface_supported(producer, function)) {
-            producer_set_tooling_error(
-                result, "EKI02", 0u, PRODUCER_EVENT_NONE,
-                "KIF v1 supports only complete Int function signatures"
-            );
+        if (!producer_result_type_span(producer, function, &result_span) ||
+            !producer_resolve_interface_type(
+                producer, function->return_type, result_span,
+                function->visibility, &result_type_symbol_id, result)) {
+            if (!result->has_source_diagnostic &&
+                !result->tooling_emission_failed) {
+                producer_set_tooling_error(
+                    result, "EKI02", 0u, PRODUCER_EVENT_NONE,
+                    "KIF v1 function signature is incomplete"
+                );
+            }
+            return false;
+        }
+        for (binding_index = 0u;
+             binding_index < producer->binding_count;
+             binding_index += 1u) {
+            const ProducerBinding *binding =
+                &producer->bindings[binding_index];
+            ProducerNode *node = producer_find_node_by_id(
+                producer, &binding->node);
+            KofunSemanticSpan use;
+            KofunSemanticSpan ownership;
+            KofunSemanticId type_symbol_id;
+            if (binding->function_start != function->start || node == NULL ||
+                node->value.kind != KOFUN_SEMANTIC_NODE_PARAMETER) {
+                continue;
+            }
+            if (producer_parameter_ownership_span(
+                    producer, function, binding, &ownership)) {
+                producer_set_tooling_error(
+                    result, "EKI02", 0u, PRODUCER_EVENT_NONE,
+                    "KIF v1 does not support ownership modes in published signatures"
+                );
+                return false;
+            }
+            if (snapshot->type_reference_count >=
+                    KOFUN_STAGE2_INTERFACE_MAX_TYPE_REFERENCES) {
+                producer_set_tooling_error(
+                    result, "EKI03", 0u, PRODUCER_EVENT_NONE,
+                    "KIF compiler type-reference limit exceeded"
+                );
+                return false;
+            }
+            if (!producer_parameter_type_span(producer, binding, &use) ||
+                !producer_resolve_interface_type(
+                    producer, binding->type, use, function->visibility,
+                    &type_symbol_id, result)) {
+                if (!result->has_source_diagnostic &&
+                    !result->tooling_emission_failed) {
+                    producer_set_tooling_error(
+                        result, "EKI02", 0u, PRODUCER_EVENT_NONE,
+                        "KIF v1 function parameter signature is incomplete"
+                    );
+                }
+                return false;
+            }
+            snapshot->type_reference_symbol_ids[
+                snapshot->type_reference_count++] = type_symbol_id;
+            parameter_count += 1u;
+        }
+        if (parameter_count != function->parameter_count ||
+            parameter_count > UINT16_MAX) {
+            if (!result->has_source_diagnostic &&
+                !result->tooling_emission_failed) {
+                producer_set_tooling_error(
+                    result, "EKI02", 0u, PRODUCER_EVENT_NONE,
+                    "KIF v1 function signature is incomplete"
+                );
+            }
             return false;
         }
         if (!producer_snapshot_add(
                 snapshot, KOFUN_STAGE2_INTERFACE_FUNCTION,
                 function->visibility, &producer->value_namespace_id,
                 &function->symbol, NULL, function->name,
-                function->parameter_count, 0u, 0u)) {
+                (uint16_t)parameter_count, 0u, 0u)) {
             producer_set_tooling_error(
                 result, "EKI03", 0u, PRODUCER_EVENT_NONE,
                 "KIF compiler fact limit exceeded"
             );
             return false;
         }
+        fact = &snapshot->facts[snapshot->fact_count - 1u];
+        fact->parameter_type_start = (uint16_t)parameter_start;
+        fact->result_type_symbol_id = result_type_symbol_id;
     }
     for (index = 0u; index < producer->type_count; index += 1u) {
         ProducerType *type = &producer->types[index];
@@ -2987,7 +3301,28 @@ static bool producer_build_interface_snapshot(
     }
     for (index = 0u; index < producer->constructor_count; index += 1u) {
         ProducerConstructor *constructor = &producer->constructors[index];
+        KofunSemanticId payload_type_symbol_id;
+        KofunStage2InterfaceFact *fact;
+        memset(&payload_type_symbol_id, 0, sizeof(payload_type_symbol_id));
         if (constructor->visibility == KOFUN_STAGE2_INTERFACE_PRIVATE) continue;
+        if (constructor->payload_count == 1u) {
+            KofunSemanticSpan use;
+            if (!producer_constructor_payload_type_span(
+                    producer, constructor, &use) ||
+                !producer_resolve_interface_type(
+                    producer, constructor->payload_type, use,
+                    constructor->visibility, &payload_type_symbol_id,
+                    result)) {
+                if (!result->has_source_diagnostic &&
+                    !result->tooling_emission_failed) {
+                    producer_set_tooling_error(
+                        result, "EKI02", 0u, PRODUCER_EVENT_NONE,
+                        "KIF v1 constructor payload signature is incomplete"
+                    );
+                }
+                return false;
+            }
+        }
         if (!producer_snapshot_add(
                 snapshot, KOFUN_STAGE2_INTERFACE_CONSTRUCTOR,
                 constructor->visibility, &producer->value_namespace_id,
@@ -3000,6 +3335,9 @@ static bool producer_build_interface_snapshot(
             );
             return false;
         }
+        fact = &snapshot->facts[snapshot->fact_count - 1u];
+        fact->constructor_payload_type_symbol_id =
+            payload_type_symbol_id;
     }
     snapshot->committed = true;
     return true;
@@ -3055,6 +3393,11 @@ static bool producer_run(
     }
     memcpy(owned_source, input->source, input->source_length);
     owned_source[input->source_length] = '\0';
+    if (snapshot != NULL &&
+        !producer_publication_surface_supported(owned_source, result)) {
+        free(owned_source);
+        return false;
+    }
     if (!producer_source_within_declaration_profile(owned_source)) {
         free(owned_source);
         producer_set_tooling_error(

@@ -1,0 +1,11 @@
+pub type PublicRecord = {
+    value: Int,
+}
+
+pub fn borrow(edit value: PublicRecord) -> Int {
+    return value.value
+}
+
+fn main() {
+    print(0)
+}

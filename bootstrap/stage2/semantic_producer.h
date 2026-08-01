@@ -35,6 +35,7 @@ typedef struct {
 
 enum {
     KOFUN_STAGE2_INTERFACE_MAX_FACTS = 256,
+    KOFUN_STAGE2_INTERFACE_MAX_TYPE_REFERENCES = 1024,
     KOFUN_STAGE2_INTERFACE_NAME_BYTES = 257
 };
 
@@ -59,7 +60,10 @@ typedef struct {
     KofunSemanticId owner_symbol_id;
     char name[KOFUN_STAGE2_INTERFACE_NAME_BYTES];
     uint16_t parameter_count;
+    uint16_t parameter_type_start;
+    KofunSemanticId result_type_symbol_id;
     uint8_t constructor_payload_count;
+    KofunSemanticId constructor_payload_type_symbol_id;
     uint32_t constructor_ordinal;
 } KofunStage2InterfaceFact;
 
@@ -70,6 +74,9 @@ typedef struct {
     char edition[65];
     KofunStage2InterfaceFact facts[KOFUN_STAGE2_INTERFACE_MAX_FACTS];
     size_t fact_count;
+    KofunSemanticId type_reference_symbol_ids[
+        KOFUN_STAGE2_INTERFACE_MAX_TYPE_REFERENCES];
+    size_t type_reference_count;
 } KofunStage2InterfaceSnapshot;
 
 bool kofun_stage2_produce_semantic_events(

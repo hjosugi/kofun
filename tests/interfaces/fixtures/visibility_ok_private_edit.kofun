@@ -1,0 +1,28 @@
+pub type PublicValue =
+    | PublicZero
+    | PublicSome(value: Int)
+
+pub type PublicEnvelope =
+    | PublicWrap(value: PublicValue)
+
+internal type PackageValue =
+    | PackageZero
+
+private type RenamedFileValue =
+    | RenamedFileZero
+
+pub fn public_identity(value: PublicValue) -> PublicValue {
+    return value
+}
+
+internal fn package_identity(value: PackageValue) -> PackageValue {
+    return value
+}
+
+private fn renamed_file_identity(value: RenamedFileValue) -> RenamedFileValue {
+    return value
+}
+
+fn main() {
+    print(0)
+}

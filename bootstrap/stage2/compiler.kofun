@@ -2168,7 +2168,21 @@ fn parse_program(source: Text) -> Text {
                 if payload_open < end &&
                    token_text(source, payload_open) == "(" {
                     payload_count = 1
-                    payload_type = "Int"
+                    let payload_name = skip_trivia(
+                        source,
+                        token_end(source, payload_open)
+                    )
+                    let payload_colon = skip_trivia(
+                        source,
+                        token_end(source, payload_name)
+                    )
+                    let payload_type_start = skip_trivia(
+                        source,
+                        token_end(source, payload_colon)
+                    )
+                    if payload_type_start < end {
+                        payload_type = token_text(source, payload_type_start)
+                    }
                 }
                 ir = ir + "constructor|" + constructor_name + "|" +
                 name + "|" + to_text(tag) + "|" +

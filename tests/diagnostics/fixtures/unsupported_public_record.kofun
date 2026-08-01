@@ -1,0 +1,7 @@
+pub type PublicRecord = {
+    value: Int,
+}
+
+fn main() {
+    print(0)
+}

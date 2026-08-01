@@ -1,0 +1,10 @@
+private type FileValue =
+    | FileZero
+
+pub type PublicEnvelope =
+    | Empty
+    | Wrap(value: FileValue)
+
+fn main() {
+    print(0)
+}

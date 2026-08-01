@@ -27,7 +27,17 @@ static KofunKifFactKind kif_kind(KofunStage2InterfaceFactKind kind) {
     return 0;
 }
 
+static bool semantic_id_is_nonzero(const KofunSemanticId *id) {
+    uint8_t combined = 0u;
+    size_t index;
+    for (index = 0u; index < KOFUN_SEMANTIC_ID_BYTES; index += 1u) {
+        combined |= id->bytes[index];
+    }
+    return combined != 0u;
+}
+
 static void project_fact(
+    const KofunStage2InterfaceSnapshot *snapshot,
     const KofunStage2InterfaceFact *source,
     KofunKifFact *destination
 ) {
@@ -42,11 +52,28 @@ static void project_fact(
     destination->name_length = strlen(source->name);
     destination->parameter_count = source->parameter_count;
     if (source->kind == KOFUN_STAGE2_INTERFACE_FUNCTION) {
-        destination->result_type = KOFUN_KIF_TYPE_INT;
+        if (source->parameter_count != 0u) {
+            destination->parameter_type_symbol_ids =
+                (uint8_t *)snapshot->type_reference_symbol_ids[
+                    source->parameter_type_start].bytes;
+        }
+        memcpy(
+            destination->result_type_symbol_id,
+            source->result_type_symbol_id.bytes,
+            KOFUN_KIF_ID_BYTES
+        );
+        destination->result_type = semantic_id_is_nonzero(
+            &source->result_type_symbol_id) ?
+                KOFUN_KIF_TYPE_NOMINAL : KOFUN_KIF_TYPE_INT;
     }
     if (source->kind == KOFUN_STAGE2_INTERFACE_CONSTRUCTOR) {
         destination->constructor_payload_count =
             source->constructor_payload_count;
+        memcpy(
+            destination->constructor_payload_type_symbol_id,
+            source->constructor_payload_type_symbol_id.bytes,
+            KOFUN_KIF_ID_BYTES
+        );
         memcpy(destination->owner_symbol_id, source->owner_symbol_id.bytes,
             KOFUN_KIF_ID_BYTES);
         destination->constructor_ordinal = source->constructor_ordinal;
@@ -116,7 +143,7 @@ bool kofun_stage2_publish_kif(
         } else {
             destination_fact = &interface.internal_facts[internal_output++];
         }
-        project_fact(source, destination_fact);
+        project_fact(&snapshot, source, destination_fact);
     }
     interface.public_fact_count = public_output;
     interface.internal_fact_count = internal_output;

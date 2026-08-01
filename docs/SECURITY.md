@@ -47,6 +47,25 @@ never interpolate them into a shell command. The direct-static native CLI
 application compiler does not invoke a host compiler, assembler, linker, or
 shell while emitting the final ELF.
 
+### Compiled interface visibility
+
+KIF inputs are untrusted semantic cache material. A public fact must not gain
+authority by naming an internal, private, absent, or wrong-kind identity. The
+bounded KIF v1.1 reader resolves every nominal function and constructor-payload
+reference against the validated fact set before exposing any fact. Public
+references require public ADTs; package-internal references accept public or
+internal ADTs; private facts never enter either view. Failure returns the
+generic `visibility-leak` class without names, paths, spans, candidate counts,
+or SymbolIds and cannot replace the caller's prior atomic artifact.
+
+The compiler performs the same check against committed resolved declarations
+before serialization. Same-source diagnostics identify byte spans and
+requested/effective boundaries but intentionally omit hidden spellings.
+Records, generics, effects, and ownership signature components are refused
+until a canonical producer can classify every component rather than treating
+an absent fact as public. `tests/security/module-interface-artifact.sh` is the
+negative test for this refusal boundary.
+
 ## Runtime threat model
 
 - allocation denial of service

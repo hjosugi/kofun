@@ -185,6 +185,21 @@ tasks:
     cmds:
       - "sh tests/conformance/modules/stage2-kif-producer/run.sh"
 
+  visibility-filtering:
+    desc: "Verify compiler-produced public and package-internal KIF views"
+    cmds:
+      - "sh tests/interfaces/visibility-filtering.sh"
+
+  visibility-api-leaks:
+    desc: "Verify source-located API visibility leak diagnostics"
+    cmds:
+      - "sh tests/diagnostics/visibility-api-leaks.sh"
+
+  module-interface-artifact:
+    desc: "Verify hidden interface identities fail closed"
+    cmds:
+      - "sh tests/security/module-interface-artifact.sh"
+
   incremental:
     desc: "Verify semantic invalidation and reuse decisions"
     cmds:
@@ -480,6 +495,9 @@ tasks:
             re-exports \
             kif-v1 \
             stage2-kif-producer \
+            visibility-filtering \
+            visibility-api-leaks \
+            module-interface-artifact \
             incremental \
             decimal \
             decimal-arithmetic \
