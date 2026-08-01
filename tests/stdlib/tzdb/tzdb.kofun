@@ -106,6 +106,49 @@ type LocalResolution =
     | Nonexistent(next_instant: Int)
     | ResolutionFailed(error_code: Int)
 
+# The executable Core cannot return Text yet, so serialization is a nominal,
+# fixed-width numeric projection. Field order is the byte-stable wire order the
+# golden prints. Provenance is copied from the Tzdb by serialize_resolution;
+# callers never pass a zone, version, or digest independently.
+type SerializedResolution = {
+    zone_code: Int,
+    version: Int,
+    content_digest: Int,
+    resolution_kind: Int,
+    resolution_payload: Int,
+}
+
+# Fold and gap policies are separate types. Distinct constructor names avoid a
+# shared unqualified Reject constructor and make the decision visible in HIR.
+# The ignored Int marker is the current Stage 2 single-payload ADT projection;
+# the canonical surface uses payload-free policy constructors.
+type FoldPolicy =
+    | FoldEarlier(marker: Int)
+    | FoldLater(marker: Int)
+    | FoldReject(marker: Int)
+
+type GapPolicy =
+    | GapShiftForward(marker: Int)
+    | GapReject(marker: Int)
+
+# Refusing a policy is not a tzdb reader failure. The closed outcome keeps the
+# two domains separate before the result is projected into numeric fields.
+type PolicyApplication =
+    | PolicyApplied(instant: Int)
+    | FoldPolicyRefused(reason: Int)
+    | GapPolicyRefused(reason: Int)
+
+type SerializedAppliedResolution = {
+    zone_code: Int,
+    version: Int,
+    content_digest: Int,
+    resolution_kind: Int,
+    resolution_payload: Int,
+    policy_code: Int,
+    outcome_code: Int,
+    outcome_payload: Int,
+}
+
 fn code_ok() -> Int { return 0 }
 fn code_malformed() -> Int { return -1 }
 fn code_unsupported_version() -> Int { return -2 }
@@ -116,6 +159,8 @@ fn code_trailing() -> Int { return -6 }
 fn code_arithmetic_overflow() -> Int { return -7 }
 fn code_oversized() -> Int { return -8 }
 fn code_limit_exhausted() -> Int { return -9 }
+fn code_fold_policy_refused() -> Int { return -10 }
+fn code_gap_policy_refused() -> Int { return -11 }
 
 fn fixture(
     length: Int,
@@ -126,13 +171,38 @@ fn fixture(
     transition_count: Int,
     trailing: Int
 ) -> Bytes20 {
+    return fixture_with_first_transition(
+        length,
+        claimed_digest,
+        magic0,
+        version,
+        zone,
+        transition_count,
+        trailing,
+        1000
+    )
+}
+
+# The drift observation changes only byte 6, the low byte of transition 1.
+# Keeping this as the same v1 fixture shape proves digest sensitivity without
+# introducing a second input format.
+fn fixture_with_first_transition(
+    length: Int,
+    claimed_digest: Int,
+    magic0: Int,
+    version: Int,
+    zone: Int,
+    transition_count: Int,
+    trailing: Int,
+    transition1_utc: Int
+) -> Bytes20 {
     let bytes: Bytes20 = Bytes20(
         length: length,
         claimed_digest: claimed_digest,
         word0: magic0 + 90 * 256,
         word1: version + zone * 256,
         word2: transition_count,
-        word3: 1000,
+        word3: transition1_utc,
         word4: 0,
         word5: 100,
         word6: 2000,
@@ -466,6 +536,131 @@ fn resolution_payload(result: LocalResolution) -> Int {
     return payload
 }
 
+fn serialize_resolution(
+    db: Tzdb,
+    local: LocalDateTime
+) -> SerializedResolution {
+    let resolution: LocalResolution = resolve_local(db, local)
+    let serialized: SerializedResolution = SerializedResolution(
+        zone_code: db.zone_code,
+        version: db.version,
+        content_digest: db.content_digest,
+        resolution_kind: resolution_kind(resolution),
+        resolution_payload: resolution_payload(resolution)
+    )
+    return serialized
+}
+
+fn fold_policy_code(policy: FoldPolicy) -> Int {
+    let mut code = 0
+    match policy {
+        FoldEarlier(_) => { code = 1 },
+        FoldLater(_) => { code = 2 },
+        FoldReject(_) => { code = 3 },
+    }
+    return code
+}
+
+fn gap_policy_code(policy: GapPolicy) -> Int {
+    let mut code = 0
+    match policy {
+        GapShiftForward(_) => { code = 4 },
+        GapReject(_) => { code = 5 },
+    }
+    return code
+}
+
+fn apply_fold_policy(
+    resolved: SerializedResolution,
+    policy: FoldPolicy
+) -> PolicyApplication {
+    if resolved.resolution_kind == 1 {
+        return PolicyApplied(resolved.resolution_payload)
+    }
+    if resolved.resolution_kind == 2 {
+        if fold_policy_code(policy) == 1 {
+            return PolicyApplied(resolved.resolution_payload // 100000)
+        }
+        if fold_policy_code(policy) == 2 {
+            return PolicyApplied(resolved.resolution_payload % 100000)
+        }
+        return FoldPolicyRefused(fold_policy_code(policy))
+    }
+    return FoldPolicyRefused(resolved.resolution_kind)
+}
+
+fn apply_gap_policy(
+    resolved: SerializedResolution,
+    policy: GapPolicy
+) -> PolicyApplication {
+    if resolved.resolution_kind == 1 {
+        return PolicyApplied(resolved.resolution_payload)
+    }
+    if resolved.resolution_kind == 3 {
+        if gap_policy_code(policy) == 4 {
+            return PolicyApplied(resolved.resolution_payload)
+        }
+        return GapPolicyRefused(gap_policy_code(policy))
+    }
+    return GapPolicyRefused(resolved.resolution_kind)
+}
+
+fn policy_outcome_code(outcome: PolicyApplication) -> Int {
+    let mut code = 0
+    match outcome {
+        PolicyApplied(_) => { code = 1 },
+        FoldPolicyRefused(_) => { code = code_fold_policy_refused() },
+        GapPolicyRefused(_) => { code = code_gap_policy_refused() },
+    }
+    return code
+}
+
+fn policy_outcome_payload(outcome: PolicyApplication) -> Int {
+    let mut payload = 0
+    match outcome {
+        PolicyApplied(value) => { payload = value },
+        FoldPolicyRefused(value) => { payload = value },
+        GapPolicyRefused(value) => { payload = value },
+    }
+    return payload
+}
+
+fn serialize_fold_application(
+    resolved: SerializedResolution,
+    policy: FoldPolicy
+) -> SerializedAppliedResolution {
+    let outcome: PolicyApplication = apply_fold_policy(resolved, policy)
+    let serialized: SerializedAppliedResolution = SerializedAppliedResolution(
+        zone_code: resolved.zone_code,
+        version: resolved.version,
+        content_digest: resolved.content_digest,
+        resolution_kind: resolved.resolution_kind,
+        resolution_payload: resolved.resolution_payload,
+        policy_code: fold_policy_code(policy),
+        outcome_code: policy_outcome_code(outcome),
+        outcome_payload: policy_outcome_payload(outcome)
+    )
+    return serialized
+}
+
+fn serialize_gap_application(
+    resolved: SerializedResolution,
+    policy: GapPolicy
+) -> SerializedAppliedResolution {
+    let outcome: PolicyApplication = apply_gap_policy(resolved, policy)
+    let serialized: SerializedAppliedResolution = SerializedAppliedResolution(
+        zone_code: resolved.zone_code,
+        version: resolved.version,
+        content_digest: resolved.content_digest,
+        resolution_kind: resolved.resolution_kind,
+        resolution_payload: resolved.resolution_payload,
+        policy_code: gap_policy_code(policy),
+        outcome_code: policy_outcome_code(outcome),
+        outcome_payload: policy_outcome_payload(outcome)
+    )
+    return serialized
+}
+
 fn load_failure_code(result: LoadResult) -> Int {
     let error: TzdbError = load_error(result)
     return error_code(error)
@@ -568,4 +763,174 @@ fn main() {
     let fold_high: LocalResolution = resolve_local(db, local_date_time(2100))
     print(resolution_kind(fold_high))
     print(resolution_payload(fold_high))
+
+    # Each unresolved projection is self-attributing. These five-field rows are
+    # the bounded numeric serialization until portable Text results land.
+    let serialized_normal: SerializedResolution = serialize_resolution(
+        db,
+        local_date_time(1500)
+    )
+    print(serialized_normal.zone_code)
+    print(serialized_normal.version)
+    print(serialized_normal.content_digest)
+    print(serialized_normal.resolution_kind)
+    print(serialized_normal.resolution_payload)
+
+    let serialized_gap: SerializedResolution = serialize_resolution(
+        db,
+        local_date_time(1050)
+    )
+    print(serialized_gap.zone_code)
+    print(serialized_gap.version)
+    print(serialized_gap.content_digest)
+    print(serialized_gap.resolution_kind)
+    print(serialized_gap.resolution_payload)
+
+    let serialized_fold: SerializedResolution = serialize_resolution(
+        db,
+        local_date_time(2050)
+    )
+    print(serialized_fold.zone_code)
+    print(serialized_fold.version)
+    print(serialized_fold.content_digest)
+    print(serialized_fold.resolution_kind)
+    print(serialized_fold.resolution_payload)
+
+    # Changing transition 1 from 1000 to 1001 changes exactly byte 6. Re-sign
+    # the same v1 shape, then show that every independently carried digest
+    # moves to the new rule identity.
+    let drift_unsigned: Bytes20 = fixture_with_first_transition(
+        18,
+        0,
+        75,
+        1,
+        7,
+        2,
+        0,
+        1001
+    )
+    let drift_digest = content_digest(drift_unsigned)
+    let drift_bytes: Bytes20 = fixture_with_first_transition(
+        18,
+        drift_digest,
+        75,
+        1,
+        7,
+        2,
+        0,
+        1001
+    )
+    let drift_loaded: LoadResult = load_tzdb(drift_bytes)
+    let drift_db: Tzdb = load_result_tzdb(drift_loaded)
+
+    let drift_normal: SerializedResolution = serialize_resolution(
+        drift_db,
+        local_date_time(1500)
+    )
+    print(drift_normal.zone_code)
+    print(drift_normal.version)
+    print(drift_normal.content_digest)
+    print(drift_normal.resolution_kind)
+    print(drift_normal.resolution_payload)
+
+    let drift_gap: SerializedResolution = serialize_resolution(
+        drift_db,
+        local_date_time(1050)
+    )
+    print(drift_gap.zone_code)
+    print(drift_gap.version)
+    print(drift_gap.content_digest)
+    print(drift_gap.resolution_kind)
+    print(drift_gap.resolution_payload)
+
+    let drift_fold: SerializedResolution = serialize_resolution(
+        drift_db,
+        local_date_time(2050)
+    )
+    print(drift_fold.zone_code)
+    print(drift_fold.version)
+    print(drift_fold.content_digest)
+    print(drift_fold.resolution_kind)
+    print(drift_fold.resolution_payload)
+    print(byte_at(bytes, 6))
+    print(byte_at(drift_bytes, 6))
+
+    # Applying a policy records the original closed resolution, the distinct
+    # policy code, and either the selected instant or a typed refusal.
+    let fold_earlier: SerializedAppliedResolution = serialize_fold_application(serialized_fold, FoldEarlier(0))
+    print(fold_earlier.zone_code)
+    print(fold_earlier.version)
+    print(fold_earlier.content_digest)
+    print(fold_earlier.resolution_kind)
+    print(fold_earlier.resolution_payload)
+    print(fold_earlier.policy_code)
+    print(fold_earlier.outcome_code)
+    print(fold_earlier.outcome_payload)
+
+    let fold_later: SerializedAppliedResolution = serialize_fold_application(
+        serialized_fold,
+        FoldLater(0)
+    )
+    print(fold_later.zone_code)
+    print(fold_later.version)
+    print(fold_later.content_digest)
+    print(fold_later.resolution_kind)
+    print(fold_later.resolution_payload)
+    print(fold_later.policy_code)
+    print(fold_later.outcome_code)
+    print(fold_later.outcome_payload)
+
+    let fold_reject: SerializedAppliedResolution = serialize_fold_application(
+        serialized_fold,
+        FoldReject(0)
+    )
+    print(fold_reject.zone_code)
+    print(fold_reject.version)
+    print(fold_reject.content_digest)
+    print(fold_reject.resolution_kind)
+    print(fold_reject.resolution_payload)
+    print(fold_reject.policy_code)
+    print(fold_reject.outcome_code)
+    print(fold_reject.outcome_payload)
+
+    let gap_shift: SerializedAppliedResolution = serialize_gap_application(
+        serialized_gap,
+        GapShiftForward(0)
+    )
+    print(gap_shift.zone_code)
+    print(gap_shift.version)
+    print(gap_shift.content_digest)
+    print(gap_shift.resolution_kind)
+    print(gap_shift.resolution_payload)
+    print(gap_shift.policy_code)
+    print(gap_shift.outcome_code)
+    print(gap_shift.outcome_payload)
+
+    let gap_reject: SerializedAppliedResolution = serialize_gap_application(
+        serialized_gap,
+        GapReject(0)
+    )
+    print(gap_reject.zone_code)
+    print(gap_reject.version)
+    print(gap_reject.content_digest)
+    print(gap_reject.resolution_kind)
+    print(gap_reject.resolution_payload)
+    print(gap_reject.policy_code)
+    print(gap_reject.outcome_code)
+    print(gap_reject.outcome_payload)
+
+    # A policy applied to Unique is a no-op selection, but the decision remains
+    # in the serialized row. FoldReject only rejects an actual fold.
+    let unique_policy: SerializedAppliedResolution = serialize_fold_application(
+        serialized_normal,
+        FoldReject(0)
+    )
+    print(unique_policy.zone_code)
+    print(unique_policy.version)
+    print(unique_policy.content_digest)
+    print(unique_policy.resolution_kind)
+    print(unique_policy.resolution_payload)
+    print(unique_policy.policy_code)
+    print(unique_policy.outcome_code)
+    print(unique_policy.outcome_payload)
 }
