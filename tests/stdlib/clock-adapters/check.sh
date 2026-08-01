@@ -35,15 +35,14 @@ require_line() {
     file=$1
     needle=$2
     label=$3
-    grep -Fq "$needle" "$file" || fail "$label: $needle"
+    assert_grep "$label" -Fq -- "$needle" "$file"
 }
 
 # ------------------------------------------------------- corpus hygiene
 
-if find "$CASES" -type f \( -name '*.py' -o -name '*.kf' \) | grep -q .
-then
-    fail 'forbidden Python or .kf source found'
-fi
+find "$CASES" -type f \( -name '*.py' -o -name '*.kf' \) >"$WORK/forbidden"
+assert_file_empty 'forbidden Python or .kf source in the corpus' \
+    "$WORK/forbidden"
 
 # ---------------------------------------------------- canonical surface
 
@@ -94,14 +93,13 @@ require_line "$canonical" '    identity: ClockIdentity,' \
     'monotonic instants no longer carry an identity'
 require_line "$canonical" '    epoch_seconds: Int,' \
     'system instants no longer carry an epoch'
-if grep -A 4 'type SystemInstant = {' "$canonical" | grep -q 'identity'; then
-    fail 'SystemInstant grew an identity; it is not comparable across reads'
-fi
+grep -A 4 'type SystemInstant = {' "$canonical" >"$WORK/system_instant.block"
+assert_not_grep 'SystemInstant grew an identity; it is not comparable across reads' \
+    -q -- 'identity' "$WORK/system_instant.block"
 
 # The fake clock is the deterministic one: it must not read anything.
-if grep -q 'clock_gettime\|nanosleep\|__linux_syscall' "$canonical"; then
-    fail 'the portable adapter surface names a syscall'
-fi
+assert_not_grep 'the portable adapter surface names a syscall' \
+    -q -- 'clock_gettime\|nanosleep\|__linux_syscall' "$canonical"
 
 adapter="$ROOT/stdlib/clock/adapters_linux_x86_64.kofun"
 assert_regular_file 'Linux adapter' "$adapter"
@@ -121,9 +119,8 @@ require_line "$adapter" 'posix.clock_now(LINUX_CLOCK_MONOTONIC)' \
     'Linux adapter does not use the existing safe clock_gettime wrapper'
 require_line "$adapter" 'posix.sleep_once(request)' \
     'Linux adapter does not use the existing safe nanosleep wrapper'
-if grep -q 'trusted intrinsic\|__linux_syscall' "$adapter"; then
-    fail 'Linux clock adapter bypasses the standard Linux ABI boundary'
-fi
+assert_not_grep 'Linux clock adapter bypasses the standard Linux ABI boundary' \
+    -q -- 'trusted intrinsic\|__linux_syscall' "$adapter"
 
 # Both canonical files are still ahead of the compiler. Pinning that keeps
 # the corpus honest: the executable evidence is the producer below, not these.
@@ -147,12 +144,10 @@ assert_regular_file 'producer golden' "$expected"
 
 # The producer is self-contained on purpose: it cannot read a clock it cannot
 # name, and it names none.
-if grep -q '^import ' "$producer"; then
-    fail 'the deterministic producer imports a module and is no longer sealed'
-fi
-if grep -q 'clock_gettime\|nanosleep\|__linux_syscall\|Timestamp' "$producer"; then
-    fail 'the deterministic producer names a platform clock'
-fi
+assert_not_grep 'the deterministic producer imports a module and is no longer sealed' \
+    -q -- '^import ' "$producer"
+assert_not_grep 'the deterministic producer names a platform clock' \
+    -q -- 'clock_gettime\|nanosleep\|__linux_syscall\|Timestamp' "$producer"
 
 "$ROOT/bin/kofun" check "$producer" \
     >"$WORK/check.stdout" 2>"$WORK/check.stderr" ||
@@ -178,11 +173,9 @@ cmp "$WORK/backend.stdout" "$WORK/backend.second" ||
     fail 'the deterministic producer is not reproducible across runs'
 
 # No ambient time, checked against the code that actually runs.
-if grep -qE 'time\.h|clock_gettime|gettimeofday|nanosleep|localtime|CLOCK_[A-Z]' \
+assert_not_grep 'the emitted C reaches for host time' -qE -- \
+    'time\.h|clock_gettime|gettimeofday|nanosleep|localtime|CLOCK_[A-Z]' \
     "$WORK/adapters.c"
-then
-    fail 'the emitted C reaches for host time'
-fi
 
 # ---------------------------------------------------------- typed HIR
 #
