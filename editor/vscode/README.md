@@ -26,6 +26,12 @@ fallback.
   it.
 - **References and highlights** resolve through the same rule, so a shadowed
   name is not swept up with the one shadowing it.
+- **Signature help** tracks which argument the caret is in, across nested
+  calls, and shows nothing outside a call rather than the last signature it
+  produced.
+- **Folding** covers block bodies and runs of comment lines; **selection
+  ranges** expand from the token through each enclosing block.
+- **Tasks** run `kofun check`, `build`, and `test` on the active file.
 
 ## What is deliberately absent
 
@@ -35,8 +41,15 @@ server can never fill; it belongs here once one does. Completion advertises no
 trigger characters for the same reason — member and field completion is not
 implemented, so `.` must not promise a list that cannot be produced.
 
-There is no formatter, rename, or signature help, because no `kofun fmt` exists
-and rename without whole-project reference coverage would be unsafe.
+The tasks contribute no problem matcher. The CLI reports byte offsets rather
+than line and column, so a matcher would place every problem on the wrong line;
+diagnostics come from the language server, which converts those spans correctly
+against the open document.
+
+There is no formatter, rename, or workspace symbol list: no `kofun fmt` exists,
+rename without whole-project reference coverage would be unsafe, and the server
+does not read unopened files, so a workspace symbol list would be silently
+partial.
 
 ## Commands
 

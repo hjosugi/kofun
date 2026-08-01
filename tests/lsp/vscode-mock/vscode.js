@@ -62,6 +62,44 @@ class DocumentHighlight {
   constructor(range, kind) { this.range = range; this.kind = kind; }
 }
 
+class SignatureHelp {
+  constructor() {
+    this.signatures = [];
+    this.activeSignature = 0;
+    this.activeParameter = 0;
+  }
+}
+
+class SignatureInformation {
+  constructor(label) { this.label = label; this.parameters = []; }
+}
+
+class ParameterInformation {
+  constructor(label) { this.label = label; }
+}
+
+class FoldingRange {
+  constructor(start, end, kind) { this.start = start; this.end = end; this.kind = kind; }
+}
+
+class SelectionRange {
+  constructor(range, parent) { this.range = range; this.parent = parent; }
+}
+
+class Task {
+  constructor(definition, scope, name, source, execution) {
+    this.definition = definition;
+    this.scope = scope;
+    this.name = name;
+    this.source = source;
+    this.execution = execution;
+  }
+}
+
+class ShellExecution {
+  constructor(command, args) { this.command = command; this.args = args; }
+}
+
 class InlayHint {
   constructor(position, label, kind) {
     this.position = position;
@@ -86,6 +124,10 @@ const state = {
   referenceProvider: null,
   documentHighlightProvider: null,
   inlayHintsProvider: null,
+  signatureHelpProvider: null,
+  foldingRangeProvider: null,
+  selectionRangeProvider: null,
+  taskProvider: null,
   commands: new Map(),
   statusBar: [],
   output: []
@@ -118,7 +160,17 @@ module.exports = {
   __document: document,
   Position, Range, Uri, Location, MarkdownString, Hover, Diagnostic,
   CompletionItem, CompletionList, DocumentSymbol, DocumentHighlight, InlayHint,
+  SignatureHelp, SignatureInformation, ParameterInformation, FoldingRange,
+  SelectionRange, Task, ShellExecution,
   StatusBarAlignment: { Left: 1, Right: 2 },
+  TaskScope: { Workspace: 2 },
+  FoldingRangeKind: { Comment: 1, Region: 3 },
+  tasks: {
+    registerTaskProvider(type, provider) {
+      state.taskProvider = { type, provider };
+      return disposable();
+    }
+  },
   commands: {
     registerCommand(id, handler) {
       state.commands.set(id, handler);
@@ -167,6 +219,18 @@ module.exports = {
     },
     registerInlayHintsProvider(_language, provider) {
       state.inlayHintsProvider = provider;
+      return disposable();
+    },
+    registerSignatureHelpProvider(_language, provider) {
+      state.signatureHelpProvider = provider;
+      return disposable();
+    },
+    registerFoldingRangeProvider(_language, provider) {
+      state.foldingRangeProvider = provider;
+      return disposable();
+    },
+    registerSelectionRangeProvider(_language, provider) {
+      state.selectionRangeProvider = provider;
       return disposable();
     }
   },

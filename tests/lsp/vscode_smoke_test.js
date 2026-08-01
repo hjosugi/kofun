@@ -84,6 +84,40 @@ async function main() {
   // Parameter stays 2 rather than being shifted like the two above.
   assert.strictEqual(hints.find((hint) => hint.label === 'value:').kind, 2);
 
+  const help = await vscode.__state.signatureHelpProvider.provideSignatureHelp(
+    vscode.__document, new vscode.Position(5, 26)
+  );
+  assert.match(help.signatures[0].label, /fn identity\(value: Int\) -> Int/);
+  assert.strictEqual(help.activeParameter, 0);
+  assert.deepStrictEqual(
+    help.signatures[0].parameters.map((item) => item.label), ['value: Int']);
+
+  const folds = await vscode.__state.foldingRangeProvider.provideFoldingRanges(
+    vscode.__document
+  );
+  assert.ok(folds.length >= 2, `expected function bodies to fold, got ${folds.length}`);
+  assert.strictEqual(folds[0].start, 0);
+
+  const selections = await vscode.__state.selectionRangeProvider.provideSelectionRanges(
+    vscode.__document, [new vscode.Position(1, 11)]
+  );
+  // Token, then the enclosing block, then the document: each parent strictly
+  // contains its child.
+  let node = selections[0];
+  let depth = 0;
+  while (node.parent) {
+    assert.ok(node.parent.range.start.line <= node.range.start.line);
+    node = node.parent;
+    depth += 1;
+  }
+  assert.ok(depth >= 2, `expected an expanding chain, got ${depth} parents`);
+
+  // Tasks are contributed for the toolchain, as the Go and Rust extensions do.
+  assert.strictEqual(vscode.__state.taskProvider.type, 'kofun');
+  const tasks = await vscode.__state.taskProvider.provider.provideTasks();
+  assert.deepStrictEqual(tasks.map((task) => task.name), ['check', 'build', 'test']);
+  assert.deepStrictEqual(tasks[0].execution.args, ['check', '${file}']);
+
   assert.ok(vscode.__state.commands.has('kofun.restartServer'));
   assert.ok(vscode.__state.commands.has('kofun.showOutput'));
   assert.ok(vscode.__state.statusBar.some((text) => text.includes('Kofun')));

@@ -813,6 +813,118 @@ function inlayHints(doc, index, startOffset, endOffset, settings) {
   return hints;
 }
 
+function enclosingCall(index, offset) {
+  // The innermost unclosed call whose name resolves to a function: scan the
+  // open parens that still contain the cursor, nearest first.
+  for (let at = index.tokens.length - 1; at >= 0; at -= 1) {
+    const token = index.tokens[at];
+    if (token.start >= offset) continue;
+    if (tokenText(index, token) !== '(') continue;
+    const close = token.match;
+    if (close >= 0 && index.tokens[close].start < offset) continue;
+    if (at === 0) continue;
+    const name = index.tokens[at - 1];
+    if (name.kind !== 'id' || index.declarations.has(at - 1)) continue;
+    const callee = resolve(index, name);
+    if (!callee || callee.kind !== 'function' || !callee.parameters) continue;
+    return { open: at, callee };
+  }
+  return null;
+}
+
+function activeParameter(index, openIndex, offset) {
+  const close = index.tokens[openIndex].match;
+  const limit = close >= 0 ? close : index.tokens.length;
+  let position = 0;
+  let depth = 0;
+  for (let at = openIndex + 1; at < limit; at += 1) {
+    const token = index.tokens[at];
+    if (token.start >= offset) break;
+    const text = tokenText(index, token);
+    if (text === '(' || text === '[' || text === '{') depth += 1;
+    else if (text === ')' || text === ']' || text === '}') depth -= 1;
+    else if (text === ',' && depth === 0) position += 1;
+  }
+  return position;
+}
+
+function signatureHelp(index, offset) {
+  const call = enclosingCall(index, offset);
+  if (!call) return null;
+  const parameters = call.callee.parameters.map((parameter) => ({
+    label: `${parameter.mode ? `${parameter.mode} ` : ''}${parameter.name}: ${parameter.type}`,
+    documentation: parameter.mode
+      ? { kind: 'markdown', value: `Passed by \`${parameter.mode}\`.` }
+      : undefined
+  }));
+  const active = activeParameter(index, call.open, offset);
+  return {
+    signatures: [{
+      label: call.callee.type,
+      parameters,
+      // A caller past the last parameter is already an arity error; pointing at
+      // a parameter that does not exist would only add a second wrong claim.
+      activeParameter: Math.min(active, Math.max(0, parameters.length - 1))
+    }],
+    activeSignature: 0,
+    activeParameter: Math.min(active, Math.max(0, parameters.length - 1))
+  };
+}
+
+function foldingRanges(doc, index) {
+  const ranges = [];
+  for (const token of index.tokens) {
+    if (tokenText(index, token) !== '{' || token.match < 0) continue;
+    const open = offsetToPosition(doc, token.start);
+    const close = offsetToPosition(doc, index.tokens[token.match].start);
+    // A block that opens and closes on one line has nothing to fold.
+    if (close.line <= open.line) continue;
+    ranges.push({ startLine: open.line, endLine: close.line - 1, kind: 'region' });
+  }
+  // Consecutive comment lines fold as one block, which is how every editor
+  // treats a licence header or a long explanation.
+  let commentStart = -1;
+  for (let line = 0; line < doc.lines.length; line += 1) {
+    const start = doc.lines[line];
+    const end = line + 1 < doc.lines.length ? doc.lines[line + 1] - 1 : doc.text.length;
+    const isComment = doc.text.slice(start, end).trimStart().startsWith('#');
+    if (isComment && commentStart < 0) commentStart = line;
+    if (!isComment && commentStart >= 0) {
+      if (line - 1 > commentStart) {
+        ranges.push({ startLine: commentStart, endLine: line - 1, kind: 'comment' });
+      }
+      commentStart = -1;
+    }
+  }
+  if (commentStart >= 0 && doc.lines.length - 1 > commentStart) {
+    ranges.push({ startLine: commentStart, endLine: doc.lines.length - 1, kind: 'comment' });
+  }
+  ranges.sort((left, right) => left.startLine - right.startLine);
+  return ranges;
+}
+
+function selectionRange(doc, index, offset) {
+  // Widest last: the token, then each enclosing brace block, then the document.
+  const spans = [];
+  const token = index.tokens[tokenIndexAt(index, offset)];
+  if (token && token.start <= offset && offset <= token.end) {
+    spans.push([token.start, token.end]);
+  }
+  let container = token ? token.container : -1;
+  while (container >= 0) {
+    const open = index.tokens[container];
+    if (!open || open.match < 0) break;
+    spans.push([open.start, index.tokens[open.match].end]);
+    container = open.container;
+  }
+  spans.push([0, doc.text.length]);
+  let result = null;
+  for (let at = spans.length - 1; at >= 0; at -= 1) {
+    result = { range: range(doc, spans[at][0], spans[at][1]), parent: result };
+  }
+  return result;
+}
+
 function publishSyntacticDiagnostics(doc, diagnostics = doc.diagnostics) {
   send({
     jsonrpc: '2.0',
@@ -988,7 +1100,10 @@ function handle(message) {
           documentSymbolProvider: true,
           referencesProvider: true,
           documentHighlightProvider: true,
-          inlayHintProvider: { resolveProvider: false }
+          inlayHintProvider: { resolveProvider: false },
+          signatureHelpProvider: { triggerCharacters: ['(', ','] },
+          foldingRangeProvider: true,
+          selectionRangeProvider: true
           // No codeActionProvider: no diagnostic in tests/diagnostics/registry.tsv
           // carries a remedy today, so the capability would advertise a list
           // this server can never fill. It belongs here once one does.
@@ -1072,6 +1187,45 @@ function handle(message) {
         uri: doc.uri,
         range: range(doc, symbol.start, symbol.end)
       } : null);
+      break;
+    }
+    case 'textDocument/signatureHelp': {
+      const item = params.textDocument;
+      const doc = item && documents.get(item.uri);
+      const offset = doc ? positionToOffset(doc, params.position) : null;
+      if (!doc || offset === null || (doc.analysisState !== 'semantic' &&
+          doc.analysisState !== 'syntactic-fallback')) {
+        response(message.id, null);
+        break;
+      }
+      response(message.id, signatureHelp(completionIndex(doc), offset));
+      break;
+    }
+    case 'textDocument/foldingRange': {
+      const item = params.textDocument;
+      const doc = item && documents.get(item.uri);
+      if (!doc || (doc.analysisState !== 'semantic' &&
+          doc.analysisState !== 'syntactic-fallback')) {
+        response(message.id, []);
+        break;
+      }
+      response(message.id, foldingRanges(doc, completionIndex(doc)));
+      break;
+    }
+    case 'textDocument/selectionRange': {
+      const item = params.textDocument;
+      const doc = item && documents.get(item.uri);
+      if (!doc || !Array.isArray(params.positions) ||
+          (doc.analysisState !== 'semantic' &&
+           doc.analysisState !== 'syntactic-fallback')) {
+        response(message.id, []);
+        break;
+      }
+      const index = completionIndex(doc);
+      response(message.id, params.positions.map((position) => {
+        const offset = positionToOffset(doc, position);
+        return offset === null ? null : selectionRange(doc, index, offset);
+      }).filter(Boolean));
       break;
     }
     case 'textDocument/documentSymbol': {

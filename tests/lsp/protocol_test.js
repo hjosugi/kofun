@@ -34,6 +34,10 @@ async function main() {
   assert.strictEqual(initialized.result.capabilities.documentHighlightProvider, true);
   assert.deepStrictEqual(initialized.result.capabilities.inlayHintProvider,
     { resolveProvider: false });
+  assert.deepStrictEqual(initialized.result.capabilities.signatureHelpProvider,
+    { triggerCharacters: ['(', ','] });
+  assert.strictEqual(initialized.result.capabilities.foldingRangeProvider, true);
+  assert.strictEqual(initialized.result.capabilities.selectionRangeProvider, true);
   // No diagnostic in the registry carries a remedy, so the server must not
   // advertise an action list it can never fill.
   assert.strictEqual(initialized.result.capabilities.codeActionProvider, undefined);
@@ -205,6 +209,39 @@ async function main() {
     range: { start: { line: 0, character: 0 }, end: { line: 2, character: 0 } }
   });
   assert.strictEqual(narrowHints.some((hint) => hint.position.line > 2), false);
+
+  // Signature help tracks which argument the caret is in.
+  const firstArgument = await requestAt('textDocument/signatureHelp', {
+    position: { line: 6, character: 26 }
+  });
+  assert.match(firstArgument.signatures[0].label, /fn identity\(value: Int\) -> Int/);
+  assert.strictEqual(firstArgument.activeParameter, 0);
+  // Outside any call there is no signature to show, and the server says so
+  // rather than returning the last one it saw.
+  assert.strictEqual(await requestAt('textDocument/signatureHelp', {
+    position: { line: 2, character: 0 }
+  }), null);
+
+  const folds = await requestAt('textDocument/foldingRange', {});
+  const bodies = folds.filter((item) => item.kind === 'region');
+  assert.deepStrictEqual(bodies.map((item) => item.startLine), [0, 4]);
+  // A block that opens and closes on one line has nothing to fold.
+  assert.strictEqual(folds.some((item) => item.endLine < item.startLine), false);
+
+  const selections = await requestAt('textDocument/selectionRange', {
+    positions: [{ line: 1, character: parameterReference }]
+  });
+  let node = selections[0];
+  let widened = 0;
+  while (node.parent) {
+    // Each parent strictly contains its child, which is what makes repeated
+    // expand-selection converge instead of jumping.
+    assert.ok(node.parent.range.start.line <= node.range.start.line);
+    assert.ok(node.parent.range.end.line >= node.range.end.line);
+    node = node.parent;
+    widened += 1;
+  }
+  assert.ok(widened >= 2, `expected an expanding chain, got ${widened}`);
 
   // A failed partial document keeps an earlier validated local available.
   client.send({
@@ -419,7 +456,8 @@ async function main() {
   process.stdout.write(
     `PASS: sidecar-backed LSP framing/lifecycle, UTF-16, diagnostics, ` +
     `definition, hover, scoped completion, outline, references, highlights, ` +
-    `inlay hints, edit/reopen guards, and ` +
+    `inlay hints, signature help, folding, selection ranges, ` +
+    `edit/reopen guards, and ` +
     `${depth}-deep fallback (${deepMilliseconds.toFixed(2)}ms)\n`
   );
 }

@@ -142,6 +142,53 @@ class KofunClient {
             this.toRange(item.range), item.kind - 1));
         }
       }),
+      vscode.languages.registerSignatureHelpProvider('kofun', {
+        provideSignatureHelp: async (document, position) => {
+          const result = await this.request('textDocument/signatureHelp', {
+            textDocument: { uri: document.uri.toString() }, position
+          });
+          if (!result || !Array.isArray(result.signatures)) return null;
+          const help = new vscode.SignatureHelp();
+          help.signatures = result.signatures.map((item) => {
+            const signature = new vscode.SignatureInformation(item.label);
+            signature.parameters = (item.parameters || []).map((parameter) =>
+              new vscode.ParameterInformation(parameter.label));
+            return signature;
+          });
+          help.activeSignature = result.activeSignature || 0;
+          help.activeParameter = result.activeParameter || 0;
+          return help;
+        }
+      }, '(', ','),
+      vscode.languages.registerFoldingRangeProvider('kofun', {
+        provideFoldingRanges: async (document) => {
+          const result = await this.request('textDocument/foldingRange', {
+            textDocument: { uri: document.uri.toString() }
+          });
+          if (!Array.isArray(result)) return [];
+          const kinds = {
+            comment: vscode.FoldingRangeKind ? vscode.FoldingRangeKind.Comment : undefined,
+            region: vscode.FoldingRangeKind ? vscode.FoldingRangeKind.Region : undefined
+          };
+          return result.map((item) =>
+            new vscode.FoldingRange(item.startLine, item.endLine, kinds[item.kind]));
+        }
+      }),
+      vscode.languages.registerSelectionRangeProvider('kofun', {
+        provideSelectionRanges: async (document, positions) => {
+          const result = await this.request('textDocument/selectionRange', {
+            textDocument: { uri: document.uri.toString() },
+            positions: positions.map((position) => ({
+              line: position.line, character: position.character
+            }))
+          });
+          if (!Array.isArray(result)) return [];
+          const build = (node) => node
+            ? new vscode.SelectionRange(this.toRange(node.range), build(node.parent))
+            : undefined;
+          return result.map(build);
+        }
+      }),
       vscode.languages.registerInlayHintsProvider('kofun', {
         provideInlayHints: async (document, range) => {
           const result = await this.request('textDocument/inlayHint', {
@@ -327,10 +374,40 @@ async function startClient(context, output, statusItem) {
   return client;
 }
 
+// `kofun check|build|test` as ordinary tasks, the way the Go and Rust
+// extensions expose their toolchains. No problemMatcher is contributed: the
+// CLI reports byte offsets rather than line and column, so a matcher would
+// place every problem on the wrong line. Diagnostics come from the language
+// server, which converts those byte spans against the open document.
+function registerTasks(context) {
+  if (!vscode.tasks || !vscode.tasks.registerTaskProvider) return;
+  const definitions = [
+    { name: 'check', description: 'Type-check the active file' },
+    { name: 'build', description: 'Build the active file' },
+    { name: 'test', description: 'Run the tests beside the active file' }
+  ];
+  context.subscriptions.push(vscode.tasks.registerTaskProvider('kofun', {
+    provideTasks: () => definitions.map((entry) => {
+      const executable = vscode.workspace.getConfiguration('kofun')
+        .get('cli.path', 'kofun');
+      const task = new vscode.Task(
+        { type: 'kofun', command: entry.name },
+        vscode.TaskScope ? vscode.TaskScope.Workspace : undefined,
+        entry.name, 'kofun',
+        new vscode.ShellExecution(executable, [entry.name, '${file}'])
+      );
+      task.detail = entry.description;
+      return task;
+    }),
+    resolveTask: () => undefined
+  }));
+}
+
 async function activate(context) {
   const output = vscode.window.createOutputChannel('Kofun Language Server');
   context.subscriptions.push(output);
   const statusItem = createStatusItem(context);
+  registerTasks(context);
 
   context.subscriptions.push(
     vscode.commands.registerCommand('kofun.showOutput', () => output.show(true)),

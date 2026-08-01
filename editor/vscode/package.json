@@ -1,8 +1,8 @@
 {
   "name": "kofun-language-bootstrap",
   "displayName": "Kofun Language Bootstrap",
-  "description": "Syntax highlighting, diagnostics, navigation, hover, completion, outline, references, and ownership inlay hints for Kofun.",
-  "version": "0.3.0",
+  "description": "Language support for Kofun: diagnostics, navigation, completion, outline, references, signature help, and read/edit/take ownership inlay hints.",
+  "version": "0.4.0",
   "publisher": "kofun-language-project",
   "main": "./extension.js",
   "scripts": {
@@ -61,6 +61,11 @@
           "type": "boolean",
           "default": true,
           "description": "Show the inferred type after a let binding that does not write one. A type the server cannot determine is never guessed at."
+        },
+        "kofun.cli.path": {
+          "type": "string",
+          "default": "kofun",
+          "description": "Executable used by the Kofun tasks. The language server is configured separately by kofun.languageServer.path."
         }
       }
     },
@@ -81,6 +86,42 @@
         "language": "kofun",
         "path": "./snippets/kofun.json"
       }
+    ],
+    "taskDefinitions": [
+      {
+        "type": "kofun",
+        "required": [
+          "command"
+        ],
+        "properties": {
+          "command": {
+            "type": "string",
+            "enum": [
+              "check",
+              "build",
+              "test"
+            ],
+            "description": "The kofun subcommand to run."
+          }
+        }
+      }
     ]
-  }
+  },
+  "keywords": [
+    "kofun",
+    "language server",
+    "ownership",
+    "systems programming"
+  ],
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hjosugi/kofun.git",
+    "directory": "editor/vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/hjosugi/kofun/issues"
+  },
+  "homepage": "https://github.com/hjosugi/kofun/tree/main/editor/vscode",
+  "qna": "https://github.com/hjosugi/kofun/issues"
 }

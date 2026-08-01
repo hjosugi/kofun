@@ -29,8 +29,11 @@ The first server must implement JSON-RPC/LSP framing and these methods:
 - `textDocument/completion`;
 - `textDocument/documentSymbol`;
 - `textDocument/references`;
-- `textDocument/documentHighlight`; and
-- `textDocument/inlayHint`.
+- `textDocument/documentHighlight`;
+- `textDocument/inlayHint`;
+- `textDocument/signatureHelp`;
+- `textDocument/foldingRange`; and
+- `textDocument/selectionRange`.
 
 The client must negotiate UTF-16 positions unless both sides explicitly select
 another standard LSP position encoding. Compiler byte spans must be converted
@@ -82,6 +85,18 @@ A capability may not be advertised for a result the server cannot produce. No
 `codeActionProvider` is offered while no registered diagnostic carries a
 remedy, for the same reason completion advertises no trigger characters.
 
+Signature help reports the active argument and returns nothing outside a call
+rather than the last signature it produced. Folding covers block bodies and
+runs of comment lines, and never emits a range that ends before it begins.
+Selection ranges expand from the token through each enclosing block to the
+document, and every parent strictly contains its child.
+
+The editor client is part of the contract: every capability the server
+advertises must have a registered provider, every contributed command must have
+a handler, and every contributed setting must be read. A gate asserts all three
+against the manifest, because a capability with no provider is invisible and a
+setting nothing reads is a promise the extension does not keep.
+
 ## Incremental performance gate
 
 Create a deterministic generated `.kofun` benchmark with 10,000 declarations
@@ -112,8 +127,14 @@ gate.
    malformed messages.
 4. Semantic fixtures cover diagnostics, definition, hover, completion,
    shadowing, and recovery after incomplete edits.
-5. The editor smoke test launches the packaged client against the real server.
-6. The incremental benchmark enforces the thresholds above in a dedicated
+5. The editor smoke test launches the packaged client against the real server,
+   covering the LSP-to-VS Code enumeration conversions, the contributed
+   commands, tasks, and the status item.
+6. The manifest gate checks the released artifact: marketplace metadata, a
+   changelog entry for the shipped version, capability/provider and
+   command/handler and setting/reader agreement, and the files the VSIX must
+   and must not carry.
+7. The incremental benchmark enforces the thresholds above in a dedicated
    performance job.
 
 ## Executable close checklist
