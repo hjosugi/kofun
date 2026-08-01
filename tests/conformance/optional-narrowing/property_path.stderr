@@ -1,0 +1,1 @@
+error[E2S142]: 'x' is followed by a property or index path; narrowing and this Optional slice recognize a direct local binding only at bytes 103..105

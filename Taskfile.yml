@@ -49,6 +49,7 @@ tasks:
       - "sh tests/fuzz/match_value.sh"
       - "sh tests/fuzz/match_value_invalid.sh"
       - "sh tests/fuzz/enum_match.sh"
+      - "sh tests/fuzz/optional_narrowing.sh"
 
   unicode:
     desc: "Verify Unicode identifiers, security, text, and width"
@@ -138,6 +139,11 @@ tasks:
     desc: "Verify the bounded null/T? frontend"
     cmds:
       - "sh tests/conformance/optional/run.sh"
+
+  optional-narrowing:
+    desc: "Verify flow-sensitive narrowing of direct Optional bindings"
+    cmds:
+      - "sh tests/conformance/optional-narrowing/run.sh"
 
   adt-exhaustiveness:
     desc: "Verify resolved flat-ADT match diagnostics"
@@ -436,6 +442,7 @@ tasks:
             generics \
             traits \
             optional \
+            optional-narrowing \
             adt-exhaustiveness \
             module-symbols \
             imports-qualified \

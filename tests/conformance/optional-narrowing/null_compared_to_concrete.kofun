@@ -1,0 +1,8 @@
+# A concrete binding has no absent value, so comparing it to null is not a
+# narrowing site; it is an error.
+fn probe(n: Int) -> Int {
+    if n != null {
+        return 0
+    }
+    return 0
+}

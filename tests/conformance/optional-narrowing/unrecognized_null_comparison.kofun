@@ -1,0 +1,7 @@
+# `null` outside the four recognized shapes is refused rather than guessed at.
+fn probe(x: Int?) -> Int {
+    if null == null {
+        return 0
+    }
+    return 0
+}

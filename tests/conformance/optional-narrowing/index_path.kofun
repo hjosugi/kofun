@@ -1,0 +1,7 @@
+# Only a direct local binding is recognized; an index path is not.
+fn probe(xs: List[Int]?) -> Int {
+    if xs[0] != null {
+        return 0
+    }
+    return 0
+}

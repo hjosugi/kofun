@@ -1,0 +1,7 @@
+# The replacement is checked against the declared Optional(T), not against the
+# refined T.
+fn probe() -> Int {
+    let mut x: Int? = 1
+    x = "text"
+    return 0
+}

@@ -1,0 +1,3 @@
+# code	adapter	channel	exit	primary-span	secondary-span	artifact
+E2S142	optional-narrowing	stdout	1	required	not-applicable	forbidden
+E2S143	optional-narrowing	stdout	1	required	not-applicable	forbidden

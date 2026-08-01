@@ -1,0 +1,8 @@
+# Narrowing `y` says nothing about `x`. There is no alias analysis here.
+fn probe(x: Int?) -> Int {
+    let y: Int? = x
+    if y != null {
+        return x + 1
+    }
+    return 0
+}

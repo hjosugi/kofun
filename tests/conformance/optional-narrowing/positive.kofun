@@ -1,0 +1,113 @@
+# Every recognized narrowing form, and nothing beyond them. A refinement is a
+# fact about one control-flow edge: it never changes a declared type and it
+# never leaves its function.
+
+fn sink(value: Int) -> Int {
+    return value
+}
+
+fn observe(value: Int?) -> Int {
+    return 0
+}
+
+# `x != null` narrows on the true edge, in either operand order.
+fn not_null_name_first(x: Int?) -> Int {
+    if x != null {
+        return x + 1
+    }
+    return 0
+}
+
+fn not_null_null_first(x: Int?) -> Int {
+    if null != x {
+        return x + 1
+    }
+    return 0
+}
+
+# `x == null` narrows on the false edge, in either operand order.
+fn is_null_name_first(x: Int?) -> Int {
+    if x == null {
+        return 0
+    } else {
+        return x + 1
+    }
+}
+
+fn is_null_null_first(x: Int?) -> Int {
+    if null == x {
+        return 0
+    } else {
+        return x + 1
+    }
+}
+
+# A definitely-returning guard carries the opposite edge past it.
+fn guard(x: Int?) -> Int {
+    if x == null {
+        return 0
+    }
+    return x + 1
+}
+
+fn inverse_guard(x: Int?) -> Int {
+    if x != null {
+        return x + 1
+    }
+    return 0
+}
+
+# Branch-local arithmetic uses the refined `T` on both operands.
+fn branch_local(x: Int?) -> Int {
+    let total: Int = 0
+    if x != null {
+        let doubled: Int = x + x
+        return doubled
+    }
+    return total
+}
+
+# A nested branch sits under the outer refinement, which dominates it.
+fn nested(x: Int?, flag: Bool) -> Int {
+    if x != null {
+        if flag {
+            return x + 1
+        }
+        return x + 2
+    }
+    return 0
+}
+
+# An immutable binding keeps its refinement across calls: it can be neither
+# reassigned nor mutably aliased in this slice.
+fn immutable_across_call(x: Int?) -> Int {
+    if x != null {
+        let unrelated: Int = sink(3)
+        let seen: Int = observe(x)
+        return x + 1
+    }
+    return 0
+}
+
+# A mutable binding loses its refinement once it is handed to a call, so the
+# refined use has to happen before the call.
+fn mutable_until_call() -> Int {
+    let mut x: Int? = 1
+    if x != null {
+        let first: Int = x + 1
+        let seen: Int = observe(x)
+        return first
+    }
+    return 0
+}
+
+# An immutable refinement is loop-invariant, so the backedge keeps it.
+fn invariant_across_loop(x: Int?, flag: Bool) -> Int {
+    let mut total: Int = 0
+    if x != null {
+        while flag {
+            total = x + total
+        }
+    }
+    return total
+}

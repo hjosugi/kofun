@@ -1,0 +1,8 @@
+# A comparison that is not against null is a legal Bool condition that refines
+# nothing.
+fn probe(x: Int?) -> Int {
+    if x != 0 {
+        return x + 1
+    }
+    return 0
+}

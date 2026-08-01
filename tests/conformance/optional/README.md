@@ -38,9 +38,14 @@ gate pins both, and `positive.kofun` deliberately cannot initialise a
 
 Runtime representation is deferred. The gate asserts the IR names no `tag`,
 `niche`, `layout`, or `discriminant`, so no representation can be inferred from
-the typed node. Coalescing (#314), narrowing and inference (#312), matching
-(#30), and propagation (#409) are all outside this slice — `??` is not even
-parsed.
+the typed node. Coalescing (#314), matching (#30), and propagation (#409) are
+all outside this slice — `??` is not even parsed.
+
+Flow-sensitive narrowing (#312) is layered on the same typed node and has its
+own suite in `tests/conformance/optional-narrowing/`. It is frontend-only too:
+it decides how a use of `x` is typed and claims no runtime support. This suite
+stays the evidence for the declaration and injection rules; that one is the
+evidence for the edge rules.
 
 ## Recovery
 
