@@ -11,13 +11,13 @@
 #
 # count	path
 3	benchmarks/http/benchmark.sh
-8	bootstrap/c_abi/check.sh
+0	bootstrap/c_abi/check.sh
 0	bootstrap/native/check.sh
-1	bootstrap/native/emit-fixture.sh
-1	bootstrap/selfhost/check-compiler-driver.sh
-6	bootstrap/stage1/check.sh
-55	bootstrap/stage2/check.sh
-27	bootstrap/wasm/check.sh
+0	bootstrap/native/emit-fixture.sh
+0	bootstrap/selfhost/check-compiler-driver.sh
+0	bootstrap/stage1/check.sh
+0	bootstrap/stage2/check.sh
+0	bootstrap/wasm/check.sh
 1	docs/tour/check.sh
 18	framework/cli/check.sh
 1	framework/tui/check.sh

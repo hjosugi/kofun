@@ -34,6 +34,8 @@ BUILTINS_STDOUT="$ROOT/bootstrap/selfhost/driver/corpus_builtins.stdout"
 BUILTIN_REJECTS="$ROOT/bootstrap/selfhost/driver/corpus_builtin_rejects.tsv"
 WORK="${KOFUN_STAGE1_WORK:-$ROOT/build/bootstrap-stage1}"
 CC="${CC:-cc}"
+ASSERT_CONTEXT=stage1
+. "$ROOT/tests/assertions/assert.sh"
 
 mkdir -p "$WORK"
 
@@ -46,7 +48,7 @@ mkdir -p "$WORK"
 "$WORK/kofun-stage1" "$FIXTURE" "$WORK/answer.c"
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror "$WORK/answer.c" -o "$WORK/answer"
 answer=$("$WORK/answer")
-test "$answer" = "42"
+assert_eq "answer" "$answer" "42"
 
 # Declaration profile: a non-main function with an explicit result type is
 # accepted by the audited hand-port, emits the pinned C, and executes through
@@ -126,8 +128,8 @@ cmp "$BUILTINS_C" "$WORK/builtins.c"
     >"$WORK/builtins.stdout"
 cmp "$BUILTINS_STDOUT" "$WORK/builtins.stdout"
 cmp "$BUILTINS_OUTPUT" "$WORK/builtins.output"
-test "$(sha256sum "$ROOT/bootstrap/selfhost/driver/corpus_answer.c" |
-    awk '{ print $1 }')" = \
+assert_eq "corpus_answer.c digest" \
+    "$(sha256sum "$ROOT/bootstrap/selfhost/driver/corpus_answer.c" | awk '{ print $1 }')" \
     673d6e62ad7947fc878420eea1dffb9e3f13e942adda71f1f972b31575616499
 
 # A well-typed index may still fail at runtime. Both Text and List[Text] bounds
@@ -167,8 +169,8 @@ do
     "$WORK/kofun-stage1" "$fixture" "$output" >"$output.stdout"
     status=$?
     set -e
-    test "$status" -ne 0
-    test ! -e "$output"
+    assert_num "refusal status for $fixture" "$status" -ne 0
+    assert_absent "C11 output for $fixture" "$output"
     cmp "$ROOT/bootstrap/selfhost/driver/corpus_reject.stdout" \
         "$output.stdout"
     reject_checked=$((reject_checked + 1))
@@ -198,8 +200,8 @@ do
     "$WORK/kofun-stage1" "$fixture" "$output" >"$output.stdout"
     status=$?
     set -e
-    test "$status" -ne 0
-    test ! -e "$output"
+    assert_num "refusal status for builtin case $label" "$status" -ne 0
+    assert_absent "C11 output for builtin case $label" "$output"
     cmp "$ROOT/bootstrap/selfhost/driver/corpus_reject.stdout" \
         "$output.stdout"
     builtin_reject_checked=$((builtin_reject_checked + 1))

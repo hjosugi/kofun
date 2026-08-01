@@ -12,7 +12,7 @@
 # with an empty stderr, and the reader has to bisect the script to find which
 # comparison fired. #794 records one instance of that costing real time — the
 # native gate's pinned-digest check, failing with an empty stderr. #814 counts
-# 460 of them.
+# 459 of them.
 #
 # These helpers exist so the failing check names itself. Each takes a label
 # first, prints one line naming the label, the expectation, and the
@@ -94,6 +94,18 @@ assert_file_empty() {
 # assert_present LABEL PATH — the path exists, of any type.
 assert_present() {
     if ! test -e "$2"; then
+        assert_fail "$1: expected $2 to exist"
+    fi
+}
+
+# assert_regular_file LABEL PATH — the path exists and is a regular file. Kept
+# separate from assert_present because `test -f` and `test -e` are not the same
+# assertion, and mapping one onto the other quietly weakens a gate.
+assert_regular_file() {
+    if ! test -f "$2"; then
+        if test -e "$2"; then
+            assert_fail "$1: expected $2 to be a regular file"
+        fi
         assert_fail "$1: expected $2 to exist"
     fi
 }

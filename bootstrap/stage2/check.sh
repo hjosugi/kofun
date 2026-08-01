@@ -3,6 +3,8 @@ set -eu
 
 root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 stage2="$root/bootstrap/stage2"
+ASSERT_CONTEXT=stage2
+. "$root/tests/assertions/assert.sh"
 
 (
     cd "$root"
@@ -58,8 +60,10 @@ grep -Fxq 'decimal|373|377|8' "$temporary/decimal-tokens.tokens"
 grep -Fxq 'float|401|406|9' "$temporary/decimal-tokens.tokens"
 grep -Fxq 'float|432|438|10' "$temporary/decimal-tokens.tokens"
 grep -Fxq 'decimal|457|468|11' "$temporary/decimal-tokens.tokens"
-test "$(grep -c '^decimal|' "$temporary/decimal-tokens.tokens")" -eq 4
-test "$(grep -c '^float|' "$temporary/decimal-tokens.tokens")" -eq 2
+assert_num "^decimal| lines in $temporary/decimal-tokens.tokens" \
+    "$(grep -c '^decimal|' "$temporary/decimal-tokens.tokens")" -eq 4
+assert_num "^float| lines in $temporary/decimal-tokens.tokens" \
+    "$(grep -c '^float|' "$temporary/decimal-tokens.tokens")" -eq 2
 
 # The maximal-munch range exception: `0..3` stays Int, `..`, Int. Asserting the
 # three spans is the point — a lexer that merged `0.` would still round-trip.
@@ -67,8 +71,10 @@ round_trip range-exception "$stage2/fixtures/range_exception.kofun"
 grep -Fxq 'integer|178|179|4' "$temporary/range-exception.tokens"
 grep -Fxq 'punctuation|179|181|4' "$temporary/range-exception.tokens"
 grep -Fxq 'integer|181|182|4' "$temporary/range-exception.tokens"
-test "$(grep -c '^decimal|' "$temporary/range-exception.tokens")" -eq 0
-test "$(grep -c '^float|' "$temporary/range-exception.tokens")" -eq 0
+assert_num "^decimal| lines in $temporary/range-exception.tokens" \
+    "$(grep -c '^decimal|' "$temporary/range-exception.tokens")" -eq 0
+assert_num "^float| lines in $temporary/range-exception.tokens" \
+    "$(grep -c '^float|' "$temporary/range-exception.tokens")" -eq 0
 
 # A Decimal literal is representable (slice 2) and typed (slice 3), but has no
 # lowering, so reaching lowering must be an explicit, source-located refusal
@@ -82,8 +88,9 @@ set +e
     >"$temporary/decimal-lowering.stdout" 2>"$temporary/decimal-lowering.stderr"
 decimal_lowering_status=$?
 set -e
-test "$decimal_lowering_status" -eq 1
-test ! -s "$temporary/decimal-lowering.stdout"
+assert_num "decimal lowering status" "$decimal_lowering_status" -eq 1
+assert_file_empty "$temporary/decimal-lowering.stdout" \
+    "$temporary/decimal-lowering.stdout"
 grep -Fxq \
     'error[E2S99]: Decimal literal at byte 22 has no lowering yet (#710 slice 4)' \
     "$temporary/decimal-lowering.stderr"
@@ -499,8 +506,10 @@ grep '^function|first|1|' "$temporary/borrowed-move.ir" >/dev/null
 "$temporary/kofun-stage2" --check-ownership "$copy_fixture" \
     >"$temporary/borrowed-copy.stdout" \
     2>"$temporary/borrowed-copy.stderr"
-test ! -s "$temporary/borrowed-copy.stdout"
-test ! -s "$temporary/borrowed-copy.stderr"
+assert_file_empty "$temporary/borrowed-copy.stdout" \
+    "$temporary/borrowed-copy.stdout"
+assert_file_empty "$temporary/borrowed-copy.stderr" \
+    "$temporary/borrowed-copy.stderr"
 
 set +e
 "$temporary/kofun-stage2" --check-ownership "$move_fixture" \
@@ -512,12 +521,14 @@ borrowed_move_status=$?
     2>"$temporary/ownership-unsupported.stderr"
 ownership_unsupported_status=$?
 set -e
-test "$borrowed_move_status" -eq 1
+assert_num "borrowed move status" "$borrowed_move_status" -eq 1
 cmp "$move_diagnostic" "$temporary/borrowed-move.stdout"
-test ! -s "$temporary/borrowed-move.stderr"
-test "$ownership_unsupported_status" -eq 1
+assert_file_empty "$temporary/borrowed-move.stderr" \
+    "$temporary/borrowed-move.stderr"
+assert_num "ownership unsupported status" "$ownership_unsupported_status" -eq 1
 grep 'error\[E2S20\]' "$temporary/ownership-unsupported.stdout" >/dev/null
-test ! -s "$temporary/ownership-unsupported.stderr"
+assert_file_empty "$temporary/ownership-unsupported.stderr" \
+    "$temporary/ownership-unsupported.stderr"
 
 KOFUN_BUILD_DIR="$temporary/cli-stage1" \
 KOFUN_STAGE2_BUILD_DIR="$temporary/cli-stage2" \
@@ -527,7 +538,8 @@ KOFUN_STAGE2_BUILD_DIR="$temporary/cli-stage2" \
 grep -F \
     "ok: $copy_fixture (Stage 2 Copy/borrow ownership slice; codegen unavailable)" \
     "$temporary/cli-borrowed-copy.stdout" >/dev/null
-test ! -s "$temporary/cli-borrowed-copy.stderr"
+assert_file_empty "$temporary/cli-borrowed-copy.stderr" \
+    "$temporary/cli-borrowed-copy.stderr"
 
 set +e
 KOFUN_BUILD_DIR="$temporary/cli-stage1" \
@@ -537,8 +549,9 @@ KOFUN_STAGE2_BUILD_DIR="$temporary/cli-stage2" \
     2>"$temporary/cli-borrowed-move.stderr"
 cli_borrowed_move_status=$?
 set -e
-test "$cli_borrowed_move_status" -eq 1
-test ! -s "$temporary/cli-borrowed-move.stdout"
+assert_num "cli borrowed move status" "$cli_borrowed_move_status" -eq 1
+assert_file_empty "$temporary/cli-borrowed-move.stdout" \
+    "$temporary/cli-borrowed-move.stdout"
 cmp "$move_diagnostic" "$temporary/cli-borrowed-move.stderr"
 
 round_trip stage1 "$root/bootstrap/stage1/compiler.kofun"
@@ -596,7 +609,7 @@ awk '
     "$temporary/core.c" -o "$temporary/core-program"
 "$temporary/core-program" >"$temporary/core.stdout" 2>"$temporary/core.stderr"
 cmp "$stage2/core_fixture.stdout" "$temporary/core.stdout"
-test ! -s "$temporary/core.stderr"
+assert_file_empty "$temporary/core.stderr" "$temporary/core.stderr"
 
 "$temporary/kofun-stage2" \
     "$stage2/functions_fixture.kofun" \
@@ -619,7 +632,7 @@ grep 'static int64_t kofun_fn_fib' "$temporary/functions.c" >/dev/null
 "$temporary/functions-program" \
     >"$temporary/functions.stdout" 2>"$temporary/functions.stderr"
 cmp "$stage2/functions_fixture.stdout" "$temporary/functions.stdout"
-test ! -s "$temporary/functions.stderr"
+assert_file_empty "$temporary/functions.stderr" "$temporary/functions.stderr"
 
 KOFUN_BUILD_DIR="$temporary/cli-stage1-functions" \
 KOFUN_STAGE2_BUILD_DIR="$temporary/cli-stage2-functions" \
@@ -627,7 +640,8 @@ KOFUN_STAGE2_BUILD_DIR="$temporary/cli-stage2-functions" \
     >"$temporary/cli-functions.stdout" \
     2>"$temporary/cli-functions.stderr"
 cmp "$stage2/functions_fixture.stdout" "$temporary/cli-functions.stdout"
-test ! -s "$temporary/cli-functions.stderr"
+assert_file_empty "$temporary/cli-functions.stderr" \
+    "$temporary/cli-functions.stderr"
 
 set +e
 "$temporary/kofun-stage2" \
@@ -647,18 +661,22 @@ function_arity_status=$?
     2>"$temporary/function-unknown-error.stderr"
 function_unknown_status=$?
 set -e
-test "$function_arity_status" -eq 1
-test "$function_unknown_status" -eq 1
+assert_num "function arity status" "$function_arity_status" -eq 1
+assert_num "function unknown status" "$function_unknown_status" -eq 1
 cmp \
     "$stage2/function_arity_error.stdout" \
     "$temporary/function-arity-error.stdout"
 cmp \
     "$stage2/function_unknown_error.stdout" \
     "$temporary/function-unknown-error.stdout"
-test ! -s "$temporary/function-arity-error.stderr"
-test ! -s "$temporary/function-unknown-error.stderr"
-test ! -e "$temporary/function-arity-error.c"
-test ! -e "$temporary/function-unknown-error.c"
+assert_file_empty "$temporary/function-arity-error.stderr" \
+    "$temporary/function-arity-error.stderr"
+assert_file_empty "$temporary/function-unknown-error.stderr" \
+    "$temporary/function-unknown-error.stderr"
+assert_absent "$temporary/function-arity-error.c" \
+    "$temporary/function-arity-error.c"
+assert_absent "$temporary/function-unknown-error.c" \
+    "$temporary/function-unknown-error.c"
 
 "$temporary/kofun-stage2" \
     "$stage2/core_error_fixture.kofun" \
@@ -672,8 +690,8 @@ set +e
     >"$temporary/core-error.stdout" 2>"$temporary/core-error.stderr"
 core_error_status=$?
 set -e
-test "$core_error_status" -eq 1
-test ! -s "$temporary/core-error.stdout"
+assert_num "core error status" "$core_error_status" -eq 1
+assert_file_empty "$temporary/core-error.stdout" "$temporary/core-error.stdout"
 cmp "$stage2/core_error_fixture.stderr" "$temporary/core-error.stderr"
 
 set +e
@@ -799,11 +817,12 @@ set +e
     2>"$temporary/for-range-int.stderr"
 for_range_status=$?
 set -e
-test "$for_range_status" -eq 3
+assert_num "for range status" "$for_range_status" -eq 3
 grep 'error\[E2S10\]' "$temporary/for-range-int.stdout" >/dev/null
 ! grep 'E2S35' "$temporary/for-range-int.stdout" >/dev/null
-test ! -s "$temporary/for-range-int.stderr"
-test ! -e "$temporary/for-range-int.c"
+assert_file_empty "$temporary/for-range-int.stderr" \
+    "$temporary/for-range-int.stderr"
+assert_absent "$temporary/for-range-int.c" "$temporary/for-range-int.c"
 
 # The 16 profile builtins are known, arity-checked names. A builtin call with
 # wrong arity is a real E2S17 frontend fact; a well-formed builtin call is
@@ -831,14 +850,14 @@ builtin_arity_status=$?
     2>"$temporary/builtin-call.stderr"
 builtin_call_status=$?
 set -e
-test "$builtin_arity_status" -eq 1
+assert_num "builtin arity status" "$builtin_arity_status" -eq 1
 grep 'error\[E2S17\]: Core function `len` expects 1 arguments, got 2' \
     "$temporary/builtin-arity.stdout" >/dev/null
-test "$builtin_call_status" -eq 3
+assert_num "builtin call status" "$builtin_call_status" -eq 3
 grep 'error\[E2S10\]: unsupported Core builtin call `len`' \
     "$temporary/builtin-call.stdout" >/dev/null
-test ! -e "$temporary/builtin-arity.c"
-test ! -e "$temporary/builtin-call.c"
+assert_absent "$temporary/builtin-arity.c" "$temporary/builtin-arity.c"
+assert_absent "$temporary/builtin-call.c" "$temporary/builtin-call.c"
 
 # The frozen self-host source S (bootstrap/stage1/compiler.kofun) clears the
 # complete lexical binding layer, including every `for index` loop, and every
@@ -856,12 +875,12 @@ set +e
     2>"$temporary/selfhost-S.stderr"
 selfhost_frontier_status=$?
 set -e
-test "$selfhost_frontier_status" -eq 3
+assert_num "selfhost frontier status" "$selfhost_frontier_status" -eq 3
 ! grep 'E2S35' "$temporary/selfhost-S.stdout" >/dev/null
 ! grep 'E2S16' "$temporary/selfhost-S.stdout" >/dev/null
 grep 'error\[E2S10\]: unsupported Core builtin call `is_xid_continue`' \
     "$temporary/selfhost-S.stdout" >/dev/null
-test ! -e "$temporary/selfhost-S.c"
+assert_absent "$temporary/selfhost-S.c" "$temporary/selfhost-S.c"
 
 # Unannotated `let` bindings carry inferred types in the scope-HIR:
 # literal kinds, builtin and user-function result types, List indexing to
@@ -925,18 +944,19 @@ builtin_argument_two_status=$?
     >"$temporary/builtin-text-args.stdout" 2>/dev/null
 builtin_text_args_status=$?
 set -e
-test "$builtin_argument_status" -eq 1
+assert_num "builtin argument status" "$builtin_argument_status" -eq 1
 grep 'error\[E2S15\]: builtin `chars` expects Text for argument 1, got Int' \
     "$temporary/builtin-argument.stdout" >/dev/null
-test "$builtin_argument_two_status" -eq 1
+assert_num "builtin argument two status" "$builtin_argument_two_status" -eq 1
 grep 'error\[E2S15\]: builtin `find` expects Text for argument 2, got Int' \
     "$temporary/builtin-argument-two.stdout" >/dev/null
-test "$builtin_text_args_status" -eq 3
+assert_num "builtin text args status" "$builtin_text_args_status" -eq 3
 grep 'error\[E2S10\]: unsupported Core builtin call `contains`' \
     "$temporary/builtin-text-args.stdout" >/dev/null
-test ! -e "$temporary/builtin-argument.c"
-test ! -e "$temporary/builtin-argument-two.c"
-test ! -e "$temporary/builtin-text-args.c"
+assert_absent "$temporary/builtin-argument.c" "$temporary/builtin-argument.c"
+assert_absent "$temporary/builtin-argument-two.c" \
+    "$temporary/builtin-argument-two.c"
+assert_absent "$temporary/builtin-text-args.c" "$temporary/builtin-text-args.c"
 
 echo "PASS: Stage 2 statically compiled Copy Int borrowed-return slice"
 echo "PASS: Stage 2 and kofun check rejected non-Copy Text move with E007"
@@ -970,14 +990,14 @@ while_text_status=$?
     >"$temporary/return-mismatch.stdout" 2>/dev/null
 return_mismatch_status=$?
 set -e
-test "$while_text_status" -eq 1
+assert_num "while text status" "$while_text_status" -eq 1
 grep 'error\[E2S23\]: while condition must be Bool' \
     "$temporary/while-text.stdout" >/dev/null
-test "$return_mismatch_status" -eq 1
+assert_num "return mismatch status" "$return_mismatch_status" -eq 1
 grep 'error\[E2S15\]: Core function `wrong` returns Int, expected Text' \
     "$temporary/return-mismatch.stdout" >/dev/null
-test ! -e "$temporary/while-text.c"
-test ! -e "$temporary/return-mismatch.c"
+assert_absent "$temporary/while-text.c" "$temporary/while-text.c"
+assert_absent "$temporary/return-mismatch.c" "$temporary/return-mismatch.c"
 
 echo "PASS: builtin calls check their frozen parameter types"
 echo "PASS: statement conditions and value returns are typed profile-wide"
@@ -1044,10 +1064,12 @@ set +e
     >"$temporary/implicit-return-statement.stdout" 2>/dev/null
 implicit_return_statement_status=$?
 set -e
-test "$implicit_return_statement_status" -eq 1
+assert_num "implicit return statement status" \
+    "$implicit_return_statement_status" -eq 1
 grep 'error\[E2S19\]: Core function may complete without returning Int' \
     "$temporary/implicit-return-statement.stdout" >/dev/null
-test ! -e "$temporary/implicit-return-statement.c"
+assert_absent "$temporary/implicit-return-statement.c" \
+    "$temporary/implicit-return-statement.c"
 
 echo "PASS: a final expression is the result, and only the final one"
 
@@ -1150,10 +1172,10 @@ set +e
     >"$temporary/value-if-no-else.stdout" 2>/dev/null
 value_if_no_else_status=$?
 set -e
-test "$value_if_no_else_status" -eq 1
+assert_num "value if no else status" "$value_if_no_else_status" -eq 1
 grep 'error\[E2S27\]: a final `if` needs an `else`; its false path yields no Int' \
     "$temporary/value-if-no-else.stdout" >/dev/null
-test ! -e "$temporary/value-if-no-else.c"
+assert_absent "$temporary/value-if-no-else.c" "$temporary/value-if-no-else.c"
 
 # A branch that produces no value is refused for the same reason, one level in:
 # `print` is Void, so the true path has nothing to yield.
@@ -1180,10 +1202,11 @@ set +e
     >"$temporary/value-if-void-branch.stdout" 2>/dev/null
 value_if_void_branch_status=$?
 set -e
-test "$value_if_void_branch_status" -eq 1
+assert_num "value if void branch status" "$value_if_void_branch_status" -eq 1
 grep 'error\[E2S28\]: value-position if branch must produce Int, not Void' \
     "$temporary/value-if-void-branch.stdout" >/dev/null
-test ! -e "$temporary/value-if-void-branch.c"
+assert_absent "$temporary/value-if-void-branch.c" \
+    "$temporary/value-if-void-branch.c"
 
 echo "PASS: a final if/else is the result and every path must produce one"
 
@@ -1280,9 +1303,10 @@ set +e
     >"$temporary/final-value-record.stdout" 2>/dev/null
 final_value_record_status=$?
 set -e
-test "$final_value_record_status" -eq 1
+assert_num "final value record status" "$final_value_record_status" -eq 1
 grep 'error\[E2S19\]' "$temporary/final-value-record.stdout" >/dev/null
-test ! -e "$temporary/final-value-record.c"
+assert_absent "$temporary/final-value-record.c" \
+    "$temporary/final-value-record.c"
 
 cat >"$temporary/final-value-record-if.kofun" <<'KOFUN'
 type Packet = {
@@ -1315,8 +1339,9 @@ set +e
     >"$temporary/final-value-record-if.stdout" 2>/dev/null
 final_value_record_if_status=$?
 set -e
-test "$final_value_record_if_status" -eq 1
+assert_num "final value record if status" "$final_value_record_if_status" -eq 1
 grep 'error\[E2S19\]' "$temporary/final-value-record-if.stdout" >/dev/null
-test ! -e "$temporary/final-value-record-if.c"
+assert_absent "$temporary/final-value-record-if.c" \
+    "$temporary/final-value-record-if.c"
 
 echo "PASS: the final-value rule stops at Int results, records included"
