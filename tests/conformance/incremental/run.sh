@@ -1,10 +1,10 @@
 #!/usr/bin/env sh
 
-# Semantic incremental invalidation gate (#301, first slice).
+# Semantic incremental invalidation gate (#301).
 #
-# It pins the exact executed/reused module sets for edit-matrix rows 1-7, the
-# external public-interface boundary, and the bounded recovery paths. Rows 8-10
-# are an explicitly recorded second slice, not a silent pass.
+# It pins the exact executed/reused semantic module sets and rebuilt/reused
+# target artifact sets for all ten edit-matrix rows, the external
+# public-interface boundary, and the bounded recovery paths.
 
 set -eu
 
@@ -33,6 +33,9 @@ APP_FILE=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 CORE_FILE=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 SERVICE_FILE=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 UTIL_FILE=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+# These are upstream-owned target ABI/profile fact digests, not host paths.
+TARGET_PROFILE=5555555555555555555555555555555555555555555555555555555555555555
+TARGET_PROFILE_CHANGED=6666666666666666666666666666666666666666666666666666666666666666
 
 fail() {
     printf '%s\n' "FAIL: $*" >&2
@@ -72,6 +75,15 @@ build_tool "$CC" "$TOOL" -O2
 
 # POSIX shell functions share one variable namespace, so every helper here
 # prefixes its parameters rather than reusing a caller's names.
+
+run_graph() {
+    rg_tool=$1
+    rg_inventory=$2
+    rg_cache=$3
+    rg_report=$4
+    rg_profile=${5:-$TARGET_PROFILE}
+    "$rg_tool" "$rg_inventory" "$rg_cache" "$rg_report" "$rg_profile"
+}
 
 # Inventory rows are emitted in a deliberately non-alphabetical order so the
 # resolver's canonical ordering, not discovery order, decides the result.
@@ -132,6 +144,36 @@ expect_summary() {
         fail "$3: expected summary [$2], got [$esm_actual]"
 }
 
+target_outcome_set() {
+    awk '$1 == "target" {
+        path = $4
+        for (i = 5; i <= NF; i += 1) path = path " " $i
+        printf "%s=%s ", path, $2
+    }' "$1"
+}
+
+expect_target_set() {
+    ets_actual=$(target_outcome_set "$1")
+    [ "$ets_actual" = "$2" ] ||
+        fail "$3: expected target set [$2], got [$ets_actual]"
+}
+
+expect_target_reason() {
+    etr_actual=$(awk '$1 == "target" {
+        path = $4
+        for (i = 5; i <= NF; i += 1) path = path " " $i
+        if (path == p) print $3
+    }' p="$2" "$1")
+    [ "$etr_actual" = "$3" ] ||
+        fail "$4: $2 expected target reason $3, got ${etr_actual:-none}"
+}
+
+expect_target_summary() {
+    ets_actual=$(awk '$1 == "target-summary" { print $2, $3 }' "$1")
+    [ "$ets_actual" = "$2" ] ||
+        fail "$3: expected target summary [$2], got [$ets_actual]"
+}
+
 public_digest() {
     awk '$1 == "public" {
         path = $3
@@ -148,40 +190,46 @@ run_row() {
     rr_app=$4
     rm -rf "$WORK/cache-$rr_label"
     write_base_inventory "$WORK/$rr_label-base.inventory"
-    "$TOOL" "$WORK/$rr_label-base.inventory" "$WORK/cache-$rr_label" \
+    run_graph "$TOOL" "$WORK/$rr_label-base.inventory" "$WORK/cache-$rr_label" \
         "$WORK/$rr_label-cold.report" >/dev/null ||
         fail "$rr_label: cold run failed"
     write_inventory "$WORK/$rr_label-edit.inventory" "$rr_core" "$rr_service" \
         "$rr_app" "$FIXTURES/util.kofun"
-    "$TOOL" "$WORK/$rr_label-edit.inventory" "$WORK/cache-$rr_label" \
+    run_graph "$TOOL" "$WORK/$rr_label-edit.inventory" "$WORK/cache-$rr_label" \
         "$WORK/$rr_label.report" >/dev/null ||
         fail "$rr_label: edited run failed"
 }
 
 ALL_EXECUTED='demo/app.kofun=executed demo/core.kofun=executed demo/service.kofun=executed demo/util.kofun=executed '
 ALL_REUSED='demo/app.kofun=reused demo/core.kofun=reused demo/service.kofun=reused demo/util.kofun=reused '
+ALL_TARGET_REBUILT='demo/app.kofun=rebuilt demo/core.kofun=rebuilt demo/service.kofun=rebuilt demo/util.kofun=rebuilt '
+ALL_TARGET_REUSED='demo/app.kofun=reused demo/core.kofun=reused demo/service.kofun=reused demo/util.kofun=reused '
 
 # ------------------------------------------------- cold and warm base state
 
 write_base_inventory "$WORK/base.inventory"
-"$TOOL" "$WORK/base.inventory" "$WORK/cache" "$WORK/cold.report" >/dev/null ||
+run_graph "$TOOL" "$WORK/base.inventory" "$WORK/cache" "$WORK/cold.report" >/dev/null ||
     fail 'cold run failed'
 expect_set "$WORK/cold.report" "$ALL_EXECUTED" 'cold cache'
 expect_summary "$WORK/cold.report" 'executed=4 reused=0' 'cold cache'
 expect_reason "$WORK/cold.report" demo/core.kofun cold-cache 'cold cache'
+expect_target_set "$WORK/cold.report" "$ALL_TARGET_REBUILT" 'cold cache'
+expect_target_summary "$WORK/cold.report" 'rebuilt=4 reused=0' 'cold cache'
 grep -q '^cache cold$' "$WORK/cold.report" || fail 'cold run did not report a cold cache'
 test -f "$WORK/cache/manifest" || fail 'cold run committed no manifest'
 test -f "$WORK/cache/m-$CORE_MODULE.kif" || fail 'cold run published no core interface'
 
-"$TOOL" "$WORK/base.inventory" "$WORK/cache" "$WORK/warm.report" >/dev/null ||
+run_graph "$TOOL" "$WORK/base.inventory" "$WORK/cache" "$WORK/warm.report" >/dev/null ||
     fail 'warm run failed'
 expect_set "$WORK/warm.report" "$ALL_REUSED" 'warm no-op'
 expect_summary "$WORK/warm.report" 'executed=0 reused=4' 'warm no-op'
+expect_target_set "$WORK/warm.report" "$ALL_TARGET_REUSED" 'warm no-op'
+expect_target_summary "$WORK/warm.report" 'rebuilt=0 reused=4' 'warm no-op'
 
 # A repeated no-op is byte-identical: the graph is a fixed point, and the
 # manifest is not rewritten with different content.
 cp "$WORK/cache/manifest" "$WORK/manifest.first"
-"$TOOL" "$WORK/base.inventory" "$WORK/cache" "$WORK/warm-repeat.report" >/dev/null ||
+run_graph "$TOOL" "$WORK/base.inventory" "$WORK/cache" "$WORK/warm-repeat.report" >/dev/null ||
     fail 'repeated warm run failed'
 cmp "$WORK/warm.report" "$WORK/warm-repeat.report" ||
     fail 'repeated warm run produced a different report'
@@ -200,7 +248,7 @@ cmp "$WORK/manifest.first" "$WORK/cache/manifest" ||
         "$PACKAGE_ID" "$APP_MODULE" "$APP_FILE" "$FIXTURES/app.kofun"
 } >"$WORK/reordered.inventory"
 rm -rf "$WORK/cache-order"
-"$TOOL" "$WORK/reordered.inventory" "$WORK/cache-order" \
+run_graph "$TOOL" "$WORK/reordered.inventory" "$WORK/cache-order" \
     "$WORK/reordered.report" >/dev/null || fail 'reordered inventory run failed'
 cmp "$WORK/cache/manifest" "$WORK/cache-order/manifest" ||
     fail 'inventory discovery order changed the persisted graph'
@@ -214,9 +262,9 @@ cmp "$WORK/cache/manifest" "$WORK/cache-order/manifest" ||
         "$PACKAGE_ID" "$UTIL_MODULE" "$UTIL_FILE" "$FIXTURES/util.kofun"
 } >"$WORK/spaced.inventory"
 rm -rf "$WORK/cache-spaced"
-"$TOOL" "$WORK/spaced.inventory" "$WORK/cache-spaced" \
+run_graph "$TOOL" "$WORK/spaced.inventory" "$WORK/cache-spaced" \
     "$WORK/spaced-cold.report" >/dev/null || fail 'spaced logical path run failed'
-"$TOOL" "$WORK/spaced.inventory" "$WORK/cache-spaced" \
+run_graph "$TOOL" "$WORK/spaced.inventory" "$WORK/cache-spaced" \
     "$WORK/spaced-warm.report" >/dev/null ||
     fail 'spaced logical path warm run failed'
 expect_set "$WORK/spaced-warm.report" \
@@ -307,6 +355,27 @@ expect_reason "$WORK/row7.report" demo/app.kofun public-digest-changed 'row 7'
   "$(public_digest "$WORK/row7.report" demo/core.kofun)" ] ||
     fail 'row 7: removing a facade edge moved the canonical target digest'
 
+# Row 8: the upstream target ABI/profile facts move while source and semantic
+# interfaces remain byte-identical. Semantic nodes are reused, but every target
+# artifact action is conservatively rebuilt under the new profile key.
+rm -rf "$WORK/cache-row8"
+cp -R "$WORK/cache" "$WORK/cache-row8"
+run_graph "$TOOL" "$WORK/base.inventory" "$WORK/cache-row8" \
+    "$WORK/row8.report" "$TARGET_PROFILE_CHANGED" >/dev/null ||
+    fail 'row 8 target-profile run failed'
+expect_set "$WORK/row8.report" "$ALL_REUSED" 'row 8 target profile change'
+expect_target_set "$WORK/row8.report" "$ALL_TARGET_REBUILT" \
+    'row 8 target profile change'
+expect_target_reason "$WORK/row8.report" demo/core.kofun \
+    target-profile-changed 'row 8'
+expect_target_summary "$WORK/row8.report" 'rebuilt=4 reused=0' 'row 8'
+run_graph "$TOOL" "$WORK/base.inventory" "$WORK/cache-row8" \
+    "$WORK/row8-warm.report" "$TARGET_PROFILE_CHANGED" >/dev/null ||
+    fail 'row 8 warm target-profile run failed'
+expect_set "$WORK/row8-warm.report" "$ALL_REUSED" 'row 8 warm profile'
+expect_target_set "$WORK/row8-warm.report" "$ALL_TARGET_REUSED" \
+    'row 8 warm profile'
+
 # ------------------------------------------------ external consumer boundary
 
 # The external boundary is the public view. An internal edit leaves a
@@ -342,9 +411,9 @@ test ! -e "$WORK/external-row4.hir" ||
 # An unknown schema version is a bounded cache miss, never a trusted read.
 rm -rf "$WORK/cache-schema"
 cp -R "$WORK/cache" "$WORK/cache-schema"
-sed 's|^schema kofun-incremental-graph/v1$|schema kofun-incremental-graph/v99|' \
+sed 's|^schema kofun-incremental-graph/v2$|schema kofun-incremental-graph/v99|' \
     "$WORK/cache/manifest" >"$WORK/cache-schema/manifest"
-"$TOOL" "$WORK/base.inventory" "$WORK/cache-schema" \
+run_graph "$TOOL" "$WORK/base.inventory" "$WORK/cache-schema" \
     "$WORK/schema.report" >/dev/null || fail 'unknown schema version was fatal'
 expect_set "$WORK/schema.report" "$ALL_EXECUTED" 'unknown schema version'
 grep -q '^cache miss$' "$WORK/schema.report" ||
@@ -358,7 +427,7 @@ do
     rm -rf "$WORK/cache-mutated"
     cp -R "$WORK/cache" "$WORK/cache-mutated"
     printf '%s\n' "$mutation" >>"$WORK/cache-mutated/manifest"
-    "$TOOL" "$WORK/base.inventory" "$WORK/cache-mutated" \
+    run_graph "$TOOL" "$WORK/base.inventory" "$WORK/cache-mutated" \
         "$WORK/mutated.report" >/dev/null ||
         fail "mutated manifest was fatal: $mutation"
     expect_set "$WORK/mutated.report" "$ALL_EXECUTED" \
@@ -372,7 +441,7 @@ rm -rf "$WORK/cache-package"
 cp -R "$WORK/cache" "$WORK/cache-package"
 sed "s|^package $PACKAGE_ID\$|package $EXTERNAL_PACKAGE|" \
     "$WORK/cache/manifest" >"$WORK/cache-package/manifest"
-"$TOOL" "$WORK/base.inventory" "$WORK/cache-package" \
+run_graph "$TOOL" "$WORK/base.inventory" "$WORK/cache-package" \
     "$WORK/package.report" >/dev/null || fail 'package mismatch was fatal'
 expect_reason "$WORK/package.report" demo/core.kofun \
     manifest-package-mismatch 'package mismatch'
@@ -381,7 +450,7 @@ expect_reason "$WORK/package.report" demo/core.kofun \
 rm -rf "$WORK/cache-blob"
 cp -R "$WORK/cache" "$WORK/cache-blob"
 printf 'corruption' >>"$WORK/cache-blob/m-$CORE_MODULE.kif"
-"$TOOL" "$WORK/base.inventory" "$WORK/cache-blob" \
+run_graph "$TOOL" "$WORK/base.inventory" "$WORK/cache-blob" \
     "$WORK/blob.report" >/dev/null || fail 'a corrupt interface blob was fatal'
 expect_reason "$WORK/blob.report" demo/core.kofun \
     cached-interface-unusable 'corrupt interface blob'
@@ -393,13 +462,13 @@ expect_set "$WORK/blob.report" \
 rm -rf "$WORK/cache-missing"
 cp -R "$WORK/cache" "$WORK/cache-missing"
 rm -f "$WORK/cache-missing/m-$UTIL_MODULE.kif"
-"$TOOL" "$WORK/base.inventory" "$WORK/cache-missing" \
+run_graph "$TOOL" "$WORK/base.inventory" "$WORK/cache-missing" \
     "$WORK/missing.report" >/dev/null || fail 'a missing interface blob was fatal'
 expect_reason "$WORK/missing.report" demo/util.kofun \
     cached-interface-unusable 'missing interface blob'
 
 # Recovery is complete: the repaired cache is warm and fully reused again.
-"$TOOL" "$WORK/base.inventory" "$WORK/cache-blob" \
+run_graph "$TOOL" "$WORK/base.inventory" "$WORK/cache-blob" \
     "$WORK/blob-recovered.report" >/dev/null || fail 'recovery run failed'
 expect_set "$WORK/blob-recovered.report" "$ALL_REUSED" 'recovered cache'
 
@@ -410,7 +479,7 @@ cp "$WORK/cache-invalid/manifest" "$WORK/manifest.before-failure"
 write_inventory "$WORK/invalid.inventory" "$EDITS/core_top_level_comment.kofun" \
     "$FIXTURES/service.kofun" "$FIXTURES/app.kofun" "$FIXTURES/util.kofun"
 rm -f "$WORK/invalid.report"
-if "$TOOL" "$WORK/invalid.inventory" "$WORK/cache-invalid" \
+if run_graph "$TOOL" "$WORK/invalid.inventory" "$WORK/cache-invalid" \
     "$WORK/invalid.report" >"$WORK/invalid.out" 2>&1
 then
     fail 'a rejected source was accepted'
@@ -423,9 +492,39 @@ cmp "$WORK/manifest.before-failure" "$WORK/cache-invalid/manifest" ||
     fail 'a rejected source mutated the committed graph'
 
 # The cache survives the failure: the next valid run still reuses everything.
-"$TOOL" "$WORK/base.inventory" "$WORK/cache-invalid" \
+run_graph "$TOOL" "$WORK/base.inventory" "$WORK/cache-invalid" \
     "$WORK/after-failure.report" >/dev/null || fail 'post-failure run failed'
 expect_set "$WORK/after-failure.report" "$ALL_REUSED" 'cache after a failure'
+expect_target_set "$WORK/after-failure.report" "$ALL_TARGET_REUSED" \
+    'row 9 repaired compile'
+
+# Row 10: clean copies rooted at different physical directories produce the
+# same logical semantic graph IDs and target action decisions. Physical source
+# roots and cache roots are never serialized into the manifest or report.
+mkdir "$WORK/remap-a" "$WORK/remap-b"
+cp "$FIXTURES/core.kofun" "$FIXTURES/service.kofun" \
+    "$FIXTURES/app.kofun" "$FIXTURES/util.kofun" "$WORK/remap-a/"
+cp "$FIXTURES/core.kofun" "$FIXTURES/service.kofun" \
+    "$FIXTURES/app.kofun" "$FIXTURES/util.kofun" "$WORK/remap-b/"
+write_inventory "$WORK/remap-a.inventory" "$WORK/remap-a/core.kofun" \
+    "$WORK/remap-a/service.kofun" "$WORK/remap-a/app.kofun" \
+    "$WORK/remap-a/util.kofun"
+write_inventory "$WORK/remap-b.inventory" "$WORK/remap-b/core.kofun" \
+    "$WORK/remap-b/service.kofun" "$WORK/remap-b/app.kofun" \
+    "$WORK/remap-b/util.kofun"
+run_graph "$TOOL" "$WORK/remap-a.inventory" "$WORK/cache-remap-a" \
+    "$WORK/remap-a.report" >/dev/null || fail 'row 10 remap A failed'
+run_graph "$TOOL" "$WORK/remap-b.inventory" "$WORK/cache-remap-b" \
+    "$WORK/remap-b.report" >/dev/null || fail 'row 10 remap B failed'
+cmp "$WORK/cache-remap-a/manifest" "$WORK/cache-remap-b/manifest" ||
+    fail 'row 10: physical source root changed semantic graph IDs'
+cmp "$WORK/remap-a.report" "$WORK/remap-b.report" ||
+    fail 'row 10: physical source root changed incremental decisions'
+if grep -F "$WORK/remap-" "$WORK/cache-remap-a/manifest" \
+    "$WORK/cache-remap-b/manifest" >/dev/null
+then
+    fail 'row 10: a physical source root entered a persisted graph'
+fi
 
 # No temporary file survives a committed or a failed run.
 find "$WORK/cache" "$WORK/cache-invalid" -name '*.tmp' | grep . >/dev/null &&
@@ -436,23 +535,20 @@ find "$WORK/cache" "$WORK/cache-invalid" -name '*.tmp' | grep . >/dev/null &&
 # A comment before the module header is rejected by the shared declaration
 # collector, so row 1 is gated with in-body comments and blank lines. This is
 # recorded as an explicit boundary, not silently avoided.
-if "$TOOL" "$WORK/invalid.inventory" "$WORK/cache-skip" \
+if run_graph "$TOOL" "$WORK/invalid.inventory" "$WORK/cache-skip" \
     "$WORK/skip.report" >/dev/null 2>&1
 then
     fail 'a top-level comment was unexpectedly accepted; widen row 1'
 fi
 printf '%s\n' \
-    'SKIP: top-level comments are rejected by the declaration collector (row 1 uses in-body comments)' \
-    'SKIP: row 8 target profile change is the second slice (#301 rows 8-10)' \
-    'SKIP: row 9 failed-then-repaired compile is the second slice (#301 rows 8-10)' \
-    'SKIP: row 10 path-remapped clean copy is the second slice (#301 rows 8-10)'
+    'SKIP: top-level comments are rejected by the declaration collector (row 1 uses in-body comments)'
 
 # ------------------------------------------- toolchain, sanitizers, analyzer
 
 if command -v clang >/dev/null 2>&1; then
     build_tool clang "$WORK/incremental-clang" -O2
     rm -rf "$WORK/cache-clang"
-    "$WORK/incremental-clang" "$WORK/base.inventory" "$WORK/cache-clang" \
+    run_graph "$WORK/incremental-clang" "$WORK/base.inventory" "$WORK/cache-clang" \
         "$WORK/clang.report" >/dev/null
     cmp "$WORK/cache/manifest" "$WORK/cache-clang/manifest" ||
         fail 'clang produced a different persisted graph'
@@ -463,11 +559,11 @@ build_tool "$CC" "$WORK/incremental-sanitized" -O1 -g \
 rm -rf "$WORK/cache-sanitized"
 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
 UBSAN_OPTIONS=halt_on_error=1 \
-    "$WORK/incremental-sanitized" "$WORK/base.inventory" \
+    run_graph "$WORK/incremental-sanitized" "$WORK/base.inventory" \
     "$WORK/cache-sanitized" "$WORK/sanitized-cold.report" >/dev/null
 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
 UBSAN_OPTIONS=halt_on_error=1 \
-    "$WORK/incremental-sanitized" "$WORK/base.inventory" \
+    run_graph "$WORK/incremental-sanitized" "$WORK/base.inventory" \
     "$WORK/cache-sanitized" "$WORK/sanitized-warm.report" >/dev/null
 cmp "$WORK/cache/manifest" "$WORK/cache-sanitized/manifest" ||
     fail 'the sanitized build produced a different persisted graph'
@@ -492,4 +588,6 @@ printf '%s\n' \
     'PASS: selected import and re-export removals invalidate exactly their edge consumers' \
     'PASS: the external public boundary is reused on internal edits and rejected on public edits' \
     'PASS: unknown schema, corrupt manifest, and corrupt interface blobs are bounded cache misses' \
-    'PASS: a rejected source is never committed as a reusable success'
+    'PASS: a target profile change reuses semantic nodes and rebuilds target artifacts' \
+    'PASS: a failed compile is never committed and its repaired successor reuses the last success' \
+    'PASS: path-remapped clean copies preserve semantic graph IDs and target decisions'

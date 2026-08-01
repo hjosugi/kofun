@@ -344,12 +344,21 @@ The cache is defensive rather than trusted. An unknown schema tag, malformed
 record, foreign `PackageId`, exceeded node/edge/byte limit, or mutated
 interface blob is a bounded cache miss that recomputes, never a crash and never
 a stale reuse; a corrupt blob demotes only its own module. Manifests and
-interfaces are replaced atomically, and a rejected source commits nothing, so a
-failure is never reusable as a success. This helper owns compiler semantics
-only: it is not Frost's target/action graph, it schedules nothing, and it makes
-no timing claim. Target profile changes, failure-then-repair reuse, and
-path-remapped clean copies are the recorded second slice of #301. Run the
-sanitizer- and analyzer-backed gate with `task incremental`.
+interfaces are replaced atomically, and a rejected source commits nothing, so
+a failure is never reusable as a success. Its repaired successor therefore
+starts from the last committed success rather than from failed work.
+
+The fourth argument is a 64-digit `TARGET_PROFILE_DIGEST` supplied by the
+upstream target ABI/profile fact producer. The digest, never a host path, is
+part of the persisted target action key. A profile-only change reuses unchanged
+semantic nodes but conservatively rebuilds every target artifact; an unchanged
+profile may reuse a target artifact only when its module's semantic work was
+also reused. This is the compiler-to-action boundary, not Frost's full
+target/action graph: the helper does not derive ABI facts, schedule work, or
+make timing claims. The gate also proves that clean copies under different
+physical source roots produce byte-identical manifests and reports. Run all ten
+edit-matrix rows, failure/repair, path-remap, sanitizer, and analyzer checks
+with `task incremental`.
 
 Focused import diagnostics are `E2S59` malformed/order/path/alias, `E2S60`
 missing module, `E2S61` self import, `E2S62` duplicate target/import, `E2S63`

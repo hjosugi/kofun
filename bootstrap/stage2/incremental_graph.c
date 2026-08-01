@@ -1,5 +1,5 @@
 /*
- * Persisted compiler semantic dependency graph (#301, first slice).
+ * Persisted compiler semantic dependency graph (#301).
  *
  * This helper is the semantic-invalidation layer that sits above the KIF v1
  * interface digests. It resolves one package inventory, derives each module's
@@ -7,9 +7,10 @@
  * a cache directory, and on a later run decides which modules must be executed
  * and which semantic products may be reused.
  *
- * It owns compiler semantics only. It is not Frost's target/action graph, it
- * schedules nothing, and it never claims a timing result. The gate records the
- * exact executed/reused node sets.
+ * It owns compiler semantics plus the conservative boundary to a target
+ * artifact action. It is not Frost's full target/action graph, it schedules
+ * nothing, and it never claims a timing result. The gate records the exact
+ * semantic executed/reused and target rebuilt/reused node sets.
  *
  * Reuse is a real skip: a reused module's interface is neither rebuilt nor
  * republished, and its digests are taken from the verified cache entry.
@@ -27,8 +28,8 @@
 #pragma GCC diagnostic pop
 #endif
 
-#define INCREMENTAL_GRAPH_SCHEMA "kofun-incremental-graph/v1"
-#define INCREMENTAL_REPORT_SCHEMA "kofun-incremental-report/v1"
+#define INCREMENTAL_GRAPH_SCHEMA "kofun-incremental-graph/v2"
+#define INCREMENTAL_REPORT_SCHEMA "kofun-incremental-report/v2"
 
 /*
  * Resource limits. Every one of them is a bounded cache miss when a stored
@@ -65,6 +66,7 @@ typedef struct {
     CacheState state;
     const char *miss_reason;
     uint8_t package_id[32];
+    uint8_t target_profile_digest[32];
     CachedModule modules[INCREMENTAL_MODULE_LIMIT];
     size_t module_count;
 } CachedGraph;
@@ -73,6 +75,11 @@ typedef enum {
     NODE_EXECUTED = 0,
     NODE_REUSED = 1
 } NodeOutcome;
+
+typedef enum {
+    TARGET_REBUILT = 0,
+    TARGET_REUSED = 1
+} TargetOutcome;
 
 typedef struct {
     uint8_t source_digest[32];
@@ -104,8 +111,13 @@ typedef struct {
     size_t order[INCREMENTAL_MODULE_LIMIT];
     size_t order_count;
     char cache_directory[INCREMENTAL_PATH_LIMIT];
+    uint8_t target_profile_digest[32];
+    TargetOutcome target_outcomes[INCREMENTAL_MODULE_LIMIT];
+    const char *target_reasons[INCREMENTAL_MODULE_LIMIT];
     size_t executed_count;
     size_t reused_count;
+    size_t target_rebuilt_count;
+    size_t target_reused_count;
 } IncrementalGraph;
 
 /* ---------------------------------------------------------------- helpers */
@@ -474,6 +486,7 @@ static void load_cached_graph(
     char *line;
     bool seen_schema = false;
     bool seen_package = false;
+    bool seen_target_profile = false;
     memset(cache, 0, sizeof(*cache));
     cache->state = CACHE_STATE_COLD;
     if (!join_cache_path(path, sizeof(path), directory, "manifest")) {
@@ -531,9 +544,20 @@ static void load_cached_graph(
             seen_package = true;
             continue;
         }
+        if (strcmp(field, "target-profile") == 0) {
+            if (!seen_package || seen_target_profile ||
+                !manifest_field(&rest, &field) ||
+                !parse_identity(field, cache->target_profile_digest) ||
+                *rest != '\0') {
+                cache_miss(cache, "manifest-malformed-record");
+                break;
+            }
+            seen_target_profile = true;
+            continue;
+        }
         if (strcmp(field, "module") == 0) {
             CachedModule *entry;
-            if (!seen_package) {
+            if (!seen_package || !seen_target_profile) {
                 cache_miss(cache, "manifest-malformed-record");
                 break;
             }
@@ -576,7 +600,7 @@ static void load_cached_graph(
     }
     free(bytes);
     if (cache->state == CACHE_STATE_MISS) return;
-    if (!seen_schema || !seen_package) {
+    if (!seen_schema || !seen_package || !seen_target_profile) {
         cache_miss(cache, "manifest-incomplete");
         return;
     }
@@ -838,6 +862,44 @@ static bool decide_modules(IncrementalGraph *graph) {
     return true;
 }
 
+/*
+ * A target artifact is reusable only when both its target-profile action-key
+ * input and its source-level semantic work are unchanged. The profile digest
+ * is supplied by the caller because this seed helper does not own the target
+ * ABI fact producer. A profile-only change therefore preserves semantic nodes
+ * while conservatively rebuilding every target artifact.
+ */
+static void decide_target_artifacts(IncrementalGraph *graph) {
+    Program *program = &graph->resolver.imports.qualified.program;
+    bool profile_matches = graph->cache.state == CACHE_STATE_WARM &&
+        digests_equal(graph->target_profile_digest,
+            graph->cache.target_profile_digest);
+    size_t index;
+    for (index = 0u; index < program->module_count; index += 1u) {
+        if (graph->cache.state == CACHE_STATE_COLD) {
+            graph->target_outcomes[index] = TARGET_REBUILT;
+            graph->target_reasons[index] = "cold-cache";
+        } else if (graph->cache.state == CACHE_STATE_MISS) {
+            graph->target_outcomes[index] = TARGET_REBUILT;
+            graph->target_reasons[index] = graph->cache.miss_reason;
+        } else if (!profile_matches) {
+            graph->target_outcomes[index] = TARGET_REBUILT;
+            graph->target_reasons[index] = "target-profile-changed";
+        } else if (graph->states[index].outcome == NODE_EXECUTED) {
+            graph->target_outcomes[index] = TARGET_REBUILT;
+            graph->target_reasons[index] = "semantic-executed";
+        } else {
+            graph->target_outcomes[index] = TARGET_REUSED;
+            graph->target_reasons[index] = "unchanged";
+        }
+        if (graph->target_outcomes[index] == TARGET_REBUILT) {
+            graph->target_rebuilt_count += 1u;
+        } else {
+            graph->target_reused_count += 1u;
+        }
+    }
+}
+
 /* --------------------------------------------------------------- outputs */
 
 static bool commit_manifest(IncrementalGraph *graph) {
@@ -845,6 +907,7 @@ static bool commit_manifest(IncrementalGraph *graph) {
     LineBuffer buffer;
     char path[INCREMENTAL_PATH_LIMIT];
     char package_hex[65];
+    char target_profile_hex[65];
     size_t index;
     bool committed;
     memset(&buffer, 0, sizeof(buffer));
@@ -853,8 +916,10 @@ static bool commit_manifest(IncrementalGraph *graph) {
         return false;
     }
     bytes_to_hex(program->modules[0].package_id, 32u, package_hex);
+    bytes_to_hex(graph->target_profile_digest, 32u, target_profile_hex);
     line_buffer_appendf(&buffer, "schema %s\n", INCREMENTAL_GRAPH_SCHEMA);
     line_buffer_appendf(&buffer, "package %s\n", package_hex);
+    line_buffer_appendf(&buffer, "target-profile %s\n", target_profile_hex);
     for (index = 0u; index < program->module_count; index += 1u) {
         Module *module = &program->modules[index];
         ModuleState *state = &graph->states[index];
@@ -913,6 +978,11 @@ static bool commit_report(IncrementalGraph *graph, const char *path) {
         line_buffer_appendf(&buffer, "cache-miss-reason %s\n",
             graph->cache.miss_reason);
     }
+    {
+        char target_profile_hex[65];
+        bytes_to_hex(graph->target_profile_digest, 32u, target_profile_hex);
+        line_buffer_appendf(&buffer, "target-profile %s\n", target_profile_hex);
+    }
     for (index = 0u; index < program->module_count; index += 1u) {
         ModuleState *state = &graph->states[index];
         char public_hex[65];
@@ -931,9 +1001,16 @@ static bool commit_report(IncrementalGraph *graph, const char *path) {
             public_hex, program->modules[index].logical_path);
         line_buffer_appendf(&buffer, "internal %s %s\n",
             internal_hex, program->modules[index].logical_path);
+        line_buffer_appendf(&buffer, "target %s %s %s\n",
+            graph->target_outcomes[index] == TARGET_REBUILT
+                ? "rebuilt" : "reused",
+            graph->target_reasons[index],
+            program->modules[index].logical_path);
     }
     line_buffer_appendf(&buffer, "summary executed=%zu reused=%zu\n",
         graph->executed_count, graph->reused_count);
+    line_buffer_appendf(&buffer, "target-summary rebuilt=%zu reused=%zu\n",
+        graph->target_rebuilt_count, graph->target_reused_count);
     if (buffer.failed) {
         line_buffer_release(&buffer);
         set_error(program, "E2S94", "incremental report exceeds its byte limit");
@@ -958,8 +1035,9 @@ int main(int argc, char **argv) {
     Program *program = &qualified->program;
     size_t index;
     int status = 1;
-    if (argc != 4) {
-        fprintf(stderr, "usage: %s INVENTORY CACHE_DIRECTORY REPORT\n", argv[0]);
+    if (argc != 5) {
+        fprintf(stderr, "usage: %s INVENTORY CACHE_DIRECTORY REPORT "
+            "TARGET_PROFILE_DIGEST\n", argv[0]);
         return 2;
     }
     memset(&graph, 0, sizeof(graph));
@@ -970,6 +1048,11 @@ int main(int argc, char **argv) {
         return 2;
     }
     memcpy(graph.cache_directory, argv[2], strlen(argv[2]) + 1u);
+    if (!parse_identity(argv[4], graph.target_profile_digest)) {
+        fprintf(stderr, "error: target profile digest must be 64 lowercase "
+            "hexadecimal digits\n");
+        return 2;
+    }
     if (!ensure_directory_tree(graph.cache_directory)) {
         fprintf(stderr, "error: cannot create cache directory `%s`\n", argv[2]);
         return 2;
@@ -1007,6 +1090,7 @@ int main(int argc, char **argv) {
     }
     order_modules_dependencies_first(&graph);
     if (!decide_modules(&graph)) goto done;
+    decide_target_artifacts(&graph);
     /*
      * A failed decision never reaches this point, so a failure is never
      * committed as a reusable success.
