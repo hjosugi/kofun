@@ -86,6 +86,24 @@ class SelectionRange {
   constructor(range, parent) { this.range = range; this.parent = parent; }
 }
 
+class SemanticTokens {
+  constructor(data) { this.data = data; }
+}
+
+class SemanticTokensLegend {
+  constructor(tokenTypes, tokenModifiers) {
+    this.tokenTypes = tokenTypes;
+    this.tokenModifiers = tokenModifiers;
+  }
+}
+
+class WorkspaceEdit {
+  constructor() { this.edits = []; }
+  replace(uri, range, newText) {
+    this.edits.push({ uri: uri.toString(), range, newText });
+  }
+}
+
 class Task {
   constructor(definition, scope, name, source, execution) {
     this.definition = definition;
@@ -128,6 +146,9 @@ const state = {
   foldingRangeProvider: null,
   selectionRangeProvider: null,
   taskProvider: null,
+  semanticTokensProvider: null,
+  semanticLegend: null,
+  renameProvider: null,
   commands: new Map(),
   statusBar: [],
   output: []
@@ -161,7 +182,8 @@ module.exports = {
   Position, Range, Uri, Location, MarkdownString, Hover, Diagnostic,
   CompletionItem, CompletionList, DocumentSymbol, DocumentHighlight, InlayHint,
   SignatureHelp, SignatureInformation, ParameterInformation, FoldingRange,
-  SelectionRange, Task, ShellExecution,
+  SelectionRange, Task, ShellExecution, SemanticTokens, SemanticTokensLegend,
+  WorkspaceEdit,
   StatusBarAlignment: { Left: 1, Right: 2 },
   TaskScope: { Workspace: 2 },
   FoldingRangeKind: { Comment: 1, Region: 3 },
@@ -231,6 +253,15 @@ module.exports = {
     },
     registerSelectionRangeProvider(_language, provider) {
       state.selectionRangeProvider = provider;
+      return disposable();
+    },
+    registerDocumentSemanticTokensProvider(_language, provider, legend) {
+      state.semanticTokensProvider = provider;
+      state.semanticLegend = legend;
+      return disposable();
+    },
+    registerRenameProvider(_language, provider) {
+      state.renameProvider = provider;
       return disposable();
     }
   },

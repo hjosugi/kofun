@@ -32,8 +32,10 @@ The first server must implement JSON-RPC/LSP framing and these methods:
 - `textDocument/documentHighlight`;
 - `textDocument/inlayHint`;
 - `textDocument/signatureHelp`;
-- `textDocument/foldingRange`; and
-- `textDocument/selectionRange`.
+- `textDocument/foldingRange`;
+- `textDocument/selectionRange`;
+- `textDocument/semanticTokens/full`; and
+- `textDocument/prepareRename` and `textDocument/rename`.
 
 The client must negotiate UTF-16 positions unless both sides explicitly select
 another standard LSP position encoding. Compiler byte spans must be converted

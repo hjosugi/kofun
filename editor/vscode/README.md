@@ -31,6 +31,12 @@ fallback.
   produced.
 - **Folding** covers block bodies and runs of comment lines; **selection
   ranges** expand from the token through each enclosing block.
+- **Semantic tokens** colour by what a name resolved to, not by its spelling,
+  so a parameter and a local sharing a name are drawn differently. An
+  unresolved name is left to TextMate rather than coloured as a guess.
+- **Rename** covers locals and parameters. Renaming a function or a type is
+  refused: they can be named from a file this server never reads, so the rename
+  would edit some uses and leave others behind.
 - **Tasks** run `kofun check`, `build`, and `test` on the active file.
 
 ## What is deliberately absent

@@ -48,10 +48,12 @@ const CAPABILITY_PROVIDERS = Object.freeze({
   signatureHelpProvider: "registerSignatureHelpProvider",
   foldingRangeProvider: "registerFoldingRangeProvider",
   selectionRangeProvider: "registerSelectionRangeProvider",
+  semanticTokensProvider: "registerDocumentSemanticTokensProvider",
+  renameProvider: "registerRenameProvider",
 });
 const advertised = [...server.matchAll(/^\s{10}(\w+Provider)\s*:/gmu)]
   .map((match) => match[1]);
-assert.ok(advertised.length >= 10,
+assert.ok(advertised.length >= 12,
   `expected the server to advertise its capabilities, found ${advertised}`);
 for (const capability of advertised) {
   const register = CAPABILITY_PROVIDERS[capability];

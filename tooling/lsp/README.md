@@ -4,7 +4,8 @@
 language. It implements incremental document synchronization, versioned
 diagnostics, go-to-definition, hover, completion, a document outline,
 find-all-references, occurrence highlighting, inlay hints, signature help,
-folding ranges, and selection ranges.
+folding ranges, selection ranges, semantic tokens, and rename for locals and
+parameters.
 
 ```sh
 tooling/lsp/kofun-lsp

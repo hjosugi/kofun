@@ -112,6 +112,35 @@ async function main() {
   }
   assert.ok(depth >= 2, `expected an expanding chain, got ${depth} parents`);
 
+  // The legend comes from the server's own initialize result, so the client
+  // cannot drift into decoding token types the server never sends.
+  assert.deepStrictEqual(vscode.__state.semanticLegend.tokenTypes,
+    ['function', 'parameter', 'variable', 'type', 'keyword', 'number', 'string']);
+  const tokens = await vscode.__state.semanticTokensProvider
+    .provideDocumentSemanticTokens(vscode.__document);
+  assert.ok(tokens.data instanceof Uint32Array);
+  assert.strictEqual(tokens.data.length % 5, 0);
+  assert.ok(tokens.data.length >= 5 * 10, 'expected the document to be classified');
+
+  // Renaming a local rewrites its declaration and every use.
+  const prepared = await vscode.__state.renameProvider.prepareRename(
+    vscode.__document, new vscode.Position(5, 9)
+  );
+  assert.strictEqual(prepared.placeholder, 'copy');
+  const edit = await vscode.__state.renameProvider.provideRenameEdits(
+    vscode.__document, new vscode.Position(5, 9), 'total'
+  );
+  assert.strictEqual(edit.edits.length, 2);
+  assert.ok(edit.edits.every((item) => item.newText === 'total'));
+
+  // Renaming a function is refused, because uses in unopened files would be
+  // left behind and this server never reads them.
+  await assert.rejects(
+    vscode.__state.renameProvider.prepareRename(
+      vscode.__document, new vscode.Position(0, 4)),
+    /only the open document/u
+  );
+
   // Tasks are contributed for the toolchain, as the Go and Rust extensions do.
   assert.strictEqual(vscode.__state.taskProvider.type, 'kofun');
   const tasks = await vscode.__state.taskProvider.provider.provideTasks();

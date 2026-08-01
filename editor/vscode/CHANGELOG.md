@@ -25,6 +25,15 @@ actually support.
 - **Signature help** with the active parameter tracked across nested calls.
 - **Folding ranges** for blocks and for runs of comment lines.
 - **Selection ranges** expanding from the token through each enclosing block.
+- **Semantic tokens.** Names are coloured by what they resolved to rather than
+  by their spelling, so a parameter and a local sharing a name are drawn
+  differently, declarations carry a declaration modifier, and builtins carry
+  `defaultLibrary`. An unresolved name is left to TextMate rather than coloured
+  as a guess.
+- **Rename** for locals and parameters, rewriting the declaration and every use
+  in one edit. It refuses a name that is a keyword, a builtin, not a valid
+  identifier, or already visible where the old one is used — that last case
+  would capture a different declaration.
 - **Tasks** for `kofun check`, `build`, and `test`.
 - **Snippets** for the declaration forms, including one per ownership mode.
 - **Commands** to restart the language server and open its output, and a
@@ -41,9 +50,13 @@ actually support.
   line and column, so a matcher would place every problem on the wrong line;
   diagnostics come from the language server, which converts those spans
   correctly against the open document.
-- No formatter, rename, or workspace symbols. There is no `kofun fmt`; rename
-  without whole-project reference coverage would be unsafe; and the server does
-  not read unopened files, so a workspace symbol list would be silently partial.
+- No renaming of functions or types. They can be named from a file this server
+  never reads, so a rename would edit some uses and silently leave others
+  behind. The request is refused with that reason rather than performed
+  partially.
+- No formatter and no workspace symbols. There is no `kofun fmt`, and the
+  server does not read unopened files, so a workspace symbol list would be
+  silently partial.
 
 ## 0.3.0
 

@@ -36,7 +36,7 @@ class KofunClient {
       this.output.appendLine(caught.message);
     });
     const configuration = vscode.workspace.getConfiguration('kofun');
-    await this.request('initialize', {
+    const initialized = await this.request('initialize', {
       processId: process.pid,
       rootUri: this.rootUri,
       capabilities: { general: { positionEncodings: ['utf-16'] } },
@@ -52,6 +52,12 @@ class KofunClient {
           uri: folder.uri.toString(), name: folder.name
         })) : null
     });
+    const semantic = initialized && initialized.capabilities &&
+      initialized.capabilities.semanticTokensProvider;
+    this.semanticLegend = semantic && semantic.legend
+      ? new vscode.SemanticTokensLegend(
+        semantic.legend.tokenTypes, semantic.legend.tokenModifiers)
+      : new vscode.SemanticTokensLegend([], []);
     this.notify('initialized', {});
 
     for (const document of vscode.workspace.textDocuments) this.open(document);
@@ -140,6 +146,41 @@ class KofunClient {
           if (!Array.isArray(result)) return [];
           return result.map((item) => new vscode.DocumentHighlight(
             this.toRange(item.range), item.kind - 1));
+        }
+      }),
+      vscode.languages.registerDocumentSemanticTokensProvider('kofun', {
+        provideDocumentSemanticTokens: async (document) => {
+          const result = await this.request('textDocument/semanticTokens/full', {
+            textDocument: { uri: document.uri.toString() }
+          });
+          if (!result || !Array.isArray(result.data)) return null;
+          // The server already emits the delta encoding the protocol defines,
+          // so the array is handed over as-is rather than decoded and rebuilt.
+          return new vscode.SemanticTokens(new Uint32Array(result.data));
+        }
+      }, this.semanticLegend),
+      vscode.languages.registerRenameProvider('kofun', {
+        prepareRename: async (document, position) => {
+          const result = await this.request('textDocument/prepareRename', {
+            textDocument: { uri: document.uri.toString() }, position
+          });
+          if (!result) throw new Error('this name cannot be renamed here');
+          return {
+            range: this.toRange(result.range), placeholder: result.placeholder
+          };
+        },
+        provideRenameEdits: async (document, position, newName) => {
+          const result = await this.request('textDocument/rename', {
+            textDocument: { uri: document.uri.toString() }, position, newName
+          });
+          if (!result || !result.changes) return null;
+          const edit = new vscode.WorkspaceEdit();
+          for (const [uri, edits] of Object.entries(result.changes)) {
+            for (const item of edits) {
+              edit.replace(vscode.Uri.parse(uri), this.toRange(item.range), item.newText);
+            }
+          }
+          return edit;
         }
       }),
       vscode.languages.registerSignatureHelpProvider('kofun', {

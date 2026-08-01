@@ -925,6 +925,105 @@ function selectionRange(doc, index, offset) {
   return result;
 }
 
+// TextMate colours by spelling; this colours by what a name resolved to, which
+// is the difference between a parameter and a local that share a spelling.
+const SEMANTIC_TOKEN_TYPES = Object.freeze([
+  'function', 'parameter', 'variable', 'type', 'keyword', 'number', 'string'
+]);
+const SEMANTIC_TOKEN_MODIFIERS = Object.freeze(['declaration', 'defaultLibrary']);
+const TOKEN_TYPE_INDEX = Object.freeze(Object.fromEntries(
+  SEMANTIC_TOKEN_TYPES.map((name, at) => [name, at])));
+const DECLARATION_BIT = 1;
+const DEFAULT_LIBRARY_BIT = 2;
+
+function semanticTokenAt(index, at) {
+  const token = index.tokens[at];
+  if (token.kind === 'number') return { type: 'number', modifiers: 0 };
+  if (token.kind === 'string') return { type: 'string', modifiers: 0 };
+  if (token.kind !== 'id') return null;
+  const name = tokenText(index, token);
+  if (keywordNames.has(name) || MODE_KEYWORDS.includes(name) ||
+      BINDING_KEYWORDS.includes(name)) {
+    return { type: 'keyword', modifiers: 0 };
+  }
+  const declaration = index.declarations.has(at);
+  const symbol = resolve(index, token);
+  if (symbol) {
+    const type = symbol.kind === 'function' ? 'function'
+      : symbol.kind === 'parameter' ? 'parameter'
+      : symbol.kind === 'type' ? 'type' : 'variable';
+    return { type, modifiers: declaration ? DECLARATION_BIT : 0 };
+  }
+  // A builtin resolves to no declaration in this document, which is exactly
+  // what marks it as coming from the default library.
+  if (BUILTIN_FUNCTIONS.includes(name)) {
+    return { type: 'function', modifiers: DEFAULT_LIBRARY_BIT };
+  }
+  if (BUILTIN_TYPES.includes(name)) {
+    return { type: 'type', modifiers: DEFAULT_LIBRARY_BIT };
+  }
+  // An unresolved name is left to TextMate rather than coloured as a guess.
+  return null;
+}
+
+function semanticTokens(doc, index) {
+  const data = [];
+  let previousLine = 0;
+  let previousStart = 0;
+  for (let at = 0; at < index.tokens.length; at += 1) {
+    const classified = semanticTokenAt(index, at);
+    if (!classified) continue;
+    const token = index.tokens[at];
+    const position = offsetToPosition(doc, token.start);
+    const end = offsetToPosition(doc, token.end);
+    // A token spanning a line break cannot be encoded as one entry, and none
+    // of the kinds classified above can, so this only guards the invariant.
+    if (end.line !== position.line) continue;
+    data.push(
+      position.line - previousLine,
+      position.line === previousLine
+        ? position.character - previousStart : position.character,
+      end.character - position.character,
+      TOKEN_TYPE_INDEX[classified.type],
+      classified.modifiers
+    );
+    previousLine = position.line;
+    previousStart = position.character;
+  }
+  return { data };
+}
+
+// Renaming is offered only where this server can see every reference. A local
+// or a parameter cannot be named from another file; a function or a type can
+// be, and this server never reads unopened files, so renaming one would edit
+// some uses and silently leave others behind.
+const RENAMABLE = new Set(['binding', 'parameter']);
+
+function renameTarget(index, offset) {
+  const token = tokenAt(index, offset);
+  const symbol = token ? resolve(index, token) : null;
+  if (!symbol) return { error: 'no declaration is in scope at this position' };
+  if (!RENAMABLE.has(symbol.kind)) {
+    return {
+      error: `renaming a ${symbol.kind} is not supported: this server reads ` +
+        'only the open document, so uses in other files would be left behind'
+    };
+  }
+  return { symbol, token };
+}
+
+function validRenameName(name) {
+  if (typeof name !== 'string' || name.length === 0) return 'a new name is required';
+  if (!isIdentifierStart(name.charCodeAt(0))) return `'${name}' is not a valid name`;
+  for (let at = 1; at < name.length; at += 1) {
+    if (!isIdentifierContinue(name.charCodeAt(at))) return `'${name}' is not a valid name`;
+  }
+  if (keywordNames.has(name) || MODE_KEYWORDS.includes(name) ||
+      BINDING_KEYWORDS.includes(name)) return `'${name}' is a keyword`;
+  if (builtinNames.has(name)) return `'${name}' is a builtin name`;
+  return null;
+}
+
 function publishSyntacticDiagnostics(doc, diagnostics = doc.diagnostics) {
   send({
     jsonrpc: '2.0',
@@ -1103,7 +1202,16 @@ function handle(message) {
           inlayHintProvider: { resolveProvider: false },
           signatureHelpProvider: { triggerCharacters: ['(', ','] },
           foldingRangeProvider: true,
-          selectionRangeProvider: true
+          selectionRangeProvider: true,
+          semanticTokensProvider: {
+            legend: {
+              tokenTypes: SEMANTIC_TOKEN_TYPES,
+              tokenModifiers: SEMANTIC_TOKEN_MODIFIERS
+            },
+            full: true,
+            range: false
+          },
+          renameProvider: { prepareProvider: true }
           // No codeActionProvider: no diagnostic in tests/diagnostics/registry.tsv
           // carries a remedy today, so the capability would advertise a list
           // this server can never fill. It belongs here once one does.
@@ -1187,6 +1295,78 @@ function handle(message) {
         uri: doc.uri,
         range: range(doc, symbol.start, symbol.end)
       } : null);
+      break;
+    }
+    case 'textDocument/semanticTokens/full': {
+      const item = params.textDocument;
+      const doc = item && documents.get(item.uri);
+      if (!doc || (doc.analysisState !== 'semantic' &&
+          doc.analysisState !== 'syntactic-fallback')) {
+        response(message.id, { data: [] });
+        break;
+      }
+      response(message.id, semanticTokens(doc, completionIndex(doc)));
+      break;
+    }
+    case 'textDocument/prepareRename': {
+      const item = params.textDocument;
+      const doc = item && documents.get(item.uri);
+      const offset = doc ? positionToOffset(doc, params.position) : null;
+      if (!doc || offset === null || (doc.analysisState !== 'semantic' &&
+          doc.analysisState !== 'syntactic-fallback')) {
+        response(message.id, null);
+        break;
+      }
+      const target = renameTarget(completionIndex(doc), offset);
+      if (target.error) {
+        // A request error rather than a null result: the editor shows the
+        // reason instead of silently doing nothing.
+        error(message.id, -32803, target.error);
+        break;
+      }
+      response(message.id, {
+        range: range(doc, target.token.start, target.token.end),
+        placeholder: target.symbol.name
+      });
+      break;
+    }
+    case 'textDocument/rename': {
+      const item = params.textDocument;
+      const doc = item && documents.get(item.uri);
+      const offset = doc ? positionToOffset(doc, params.position) : null;
+      if (!doc || offset === null || (doc.analysisState !== 'semantic' &&
+          doc.analysisState !== 'syntactic-fallback')) {
+        response(message.id, null);
+        break;
+      }
+      const index = completionIndex(doc);
+      const target = renameTarget(index, offset);
+      if (target.error) {
+        error(message.id, -32803, target.error);
+        break;
+      }
+      const invalid = validRenameName(params.newName);
+      if (invalid) {
+        error(message.id, -32803, invalid);
+        break;
+      }
+      // The new name must not already be visible where the old one is used, or
+      // the rename would capture a different declaration at that point.
+      for (const entry of occurrences(doc, index, offset)) {
+        const existing = visibleSymbols(index, entry.start).get(params.newName);
+        if (existing && existing !== target.symbol) {
+          error(message.id, -32803,
+            `'${params.newName}' is already declared where '${target.symbol.name}' is used`);
+          return;
+        }
+      }
+      response(message.id, {
+        changes: {
+          [doc.uri]: occurrences(doc, index, offset).map((entry) => ({
+            range: range(doc, entry.start, entry.end), newText: params.newName
+          }))
+        }
+      });
       break;
     }
     case 'textDocument/signatureHelp': {

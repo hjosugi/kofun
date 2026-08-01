@@ -38,6 +38,12 @@ async function main() {
     { triggerCharacters: ['(', ','] });
   assert.strictEqual(initialized.result.capabilities.foldingRangeProvider, true);
   assert.strictEqual(initialized.result.capabilities.selectionRangeProvider, true);
+  assert.deepStrictEqual(initialized.result.capabilities.renameProvider,
+    { prepareProvider: true });
+  const legend = initialized.result.capabilities.semanticTokensProvider.legend;
+  assert.deepStrictEqual(legend.tokenTypes,
+    ['function', 'parameter', 'variable', 'type', 'keyword', 'number', 'string']);
+  assert.deepStrictEqual(legend.tokenModifiers, ['declaration', 'defaultLibrary']);
   // No diagnostic in the registry carries a remedy, so the server must not
   // advertise an action list it can never fill.
   assert.strictEqual(initialized.result.capabilities.codeActionProvider, undefined);
@@ -242,6 +248,71 @@ async function main() {
     widened += 1;
   }
   assert.ok(widened >= 2, `expected an expanding chain, got ${widened}`);
+
+  // Semantic tokens colour by what a name resolved to, not by its spelling:
+  // `value` is a parameter at its declaration and at its use, `result` is a
+  // variable, and `print` is a function from the default library.
+  const semantic = await requestAt('textDocument/semanticTokens/full', {});
+  assert.strictEqual(semantic.data.length % 5, 0);
+  const decoded = [];
+  let tokenLine = 0;
+  let tokenStart = 0;
+  for (let at = 0; at < semantic.data.length; at += 5) {
+    const [deltaLine, deltaStart, length, type, modifiers] = semantic.data.slice(at, at + 5);
+    tokenLine += deltaLine;
+    tokenStart = deltaLine === 0 ? tokenStart + deltaStart : deltaStart;
+    decoded.push({
+      text: source.split('\n')[tokenLine].substr(tokenStart, length),
+      type: legend.tokenTypes[type], modifiers
+    });
+  }
+  const classified = (text) => decoded.filter((item) => item.text === text);
+  assert.deepStrictEqual(classified('value').map((item) => item.type),
+    ['parameter', 'parameter']);
+  // The declaration carries the declaration modifier; the use does not.
+  assert.deepStrictEqual(classified('value').map((item) => item.modifiers), [1, 0]);
+  assert.deepStrictEqual(classified('result').map((item) => item.type),
+    ['variable', 'variable']);
+  assert.deepStrictEqual(classified('print').map((item) => item.modifiers), [2]);
+  assert.strictEqual(classified('fn').every((item) => item.type === 'keyword'), true);
+  assert.strictEqual(classified('41')[0].type, 'number');
+  // Nothing inside the comment is classified; that stays TextMate's job.
+  assert.strictEqual(decoded.some((item) => item.text.includes('😀')), false);
+
+  // Renaming a local rewrites its declaration and every use.
+  const prepared = await requestAt('textDocument/prepareRename', {
+    position: { line: 6, character: 9 }
+  });
+  assert.strictEqual(prepared.placeholder, 'result');
+  const renamed = await requestAt('textDocument/rename', {
+    position: { line: 6, character: 9 }, newName: 'answer'
+  });
+  assert.deepStrictEqual(renamed.changes[uri].map((item) => item.range.start.line), [6, 7]);
+  assert.ok(renamed.changes[uri].every((item) => item.newText === 'answer'));
+
+  async function renameError(position, newName) {
+    client.send({
+      jsonrpc: '2.0', id, method: 'textDocument/rename',
+      params: { textDocument: { uri }, position, newName }
+    });
+    const reply = await client.waitFor((message) => message.id === id);
+    id += 1;
+    return reply.error;
+  }
+  // A function may be named from a file this server never reads, so renaming
+  // one is refused rather than silently leaving those uses behind.
+  assert.match((await renameError({ line: 0, character: 4 }, 'other')).message,
+    /only the open document/u);
+  assert.match((await renameError({ line: 6, character: 9 }, 'let')).message,
+    /keyword/u);
+  assert.match((await renameError({ line: 6, character: 9 }, 'print')).message,
+    /builtin/u);
+  assert.match((await renameError({ line: 6, character: 9 }, '2bad')).message,
+    /not a valid name/u);
+  // Renaming onto a name already visible at a use would capture that other
+  // declaration instead of the one being renamed.
+  assert.match((await renameError({ line: 6, character: 9 }, 'identity')).message,
+    /already declared/u);
 
   // A failed partial document keeps an earlier validated local available.
   client.send({
@@ -457,6 +528,7 @@ async function main() {
     `PASS: sidecar-backed LSP framing/lifecycle, UTF-16, diagnostics, ` +
     `definition, hover, scoped completion, outline, references, highlights, ` +
     `inlay hints, signature help, folding, selection ranges, ` +
+    `semantic tokens, guarded rename, ` +
     `edit/reopen guards, and ` +
     `${depth}-deep fallback (${deepMilliseconds.toFixed(2)}ms)\n`
   );
