@@ -418,6 +418,23 @@ tasks:
         silent: true
       - cmd: "printf '%s\\n' 'PASS: .kofun sources only; no Python implementation'"
         silent: true
+      # scripts/verify_repository.kofun cannot run: it is written against
+      # read_text, which the Core does not implement. Nothing invoked it, so
+      # its file list rotted twice unnoticed — a deleted Makefile, and then
+      # three editor/vscode paths that survived the split to
+      # hjosugi/kofun-vscode. Until the Core can read files, at least keep the
+      # list honest: every path it names must exist here and be non-empty.
+      - cmd: |-
+          missing=$(grep -E '^[[:space:]]*"[^"]*",?$' scripts/verify_repository.kofun \
+            | tr -d ' ",' | sort -u \
+            | while read -r path; do test -s "$path" || printf '  %s\n' "$path"; done)
+          if test -n "$missing"; then
+            printf '%s\n' 'FAIL: scripts/verify_repository.kofun names files that are not here:' "$missing" >&2
+            exit 1
+          fi
+          count=$(grep -cE '^[[:space:]]*"[^"]*",?$' scripts/verify_repository.kofun)
+          printf 'PASS: all %s paths named by verify_repository.kofun exist\n' "$count"
+        silent: true
 
   # A gate that fails without printing anything turns a specific defect into a
   # bare exit code, and #814 counted 460 assertions that do exactly that. This
