@@ -221,6 +221,7 @@ struct Node {
     Node *third;
     Node **items;
     size_t item_count;
+    const Node *known_collection;
     size_t slot;
 };
 
@@ -236,6 +237,7 @@ typedef struct {
     size_t item_count;
     int64_t value;
     bool value_known;
+    const Node *known_collection;
     size_t slot;
     bool parameter;
 } Binding;
@@ -525,6 +527,7 @@ static Node *node(
     result->third = NULL;
     result->items = NULL;
     result->item_count = 0;
+    result->known_collection = NULL;
     result->slot = 0;
     return result;
 }
@@ -682,6 +685,7 @@ static bool add_binding(
     binding->item_count = item_count;
     binding->value = value;
     binding->value_known = value_known;
+    binding->known_collection = NULL;
     binding->slot = slot;
     binding->parameter = parameter;
     return true;
@@ -1127,6 +1131,7 @@ static Node *parse_atom(Parser *parser) {
         );
         variable->element_kind = binding->element_kind;
         variable->item_count = binding->item_count;
+        variable->known_collection = binding->known_collection;
         variable->slot = binding->slot;
         return variable;
     }
@@ -1183,15 +1188,25 @@ static Node *parse_primary(Parser *parser) {
         int64_t resolved = 0;
         uint8_t *resolved_text = NULL;
         size_t resolved_text_length = 0;
+        const Node *known_collection =
+            value->value_kind == VALUE_LIST
+                ? (value->value_known ? value : value->known_collection)
+                : NULL;
         size_t target_length =
             value->value_kind == VALUE_TEXT
                 ? value->text_graphemes
-                : value->item_count;
+                : known_collection == NULL
+                    ? value->item_count
+                    : known_collection->item_count;
         ValueKind result_kind =
             value->value_kind == VALUE_TEXT
                 ? VALUE_TEXT
                 : value->element_kind;
-        bool known = value->value_known && index->value_known;
+        bool known =
+            index->value_known &&
+            (value->value_kind == VALUE_TEXT
+                ? value->value_known
+                : known_collection != NULL);
         if (known) {
             int64_t wanted = index->value;
             if (wanted < 0) wanted += (int64_t)target_length;
@@ -1212,7 +1227,7 @@ static Node *parse_primary(Parser *parser) {
                     resolved_text_length
                 );
             } else {
-                Node *item = value->items[(size_t)wanted];
+                Node *item = known_collection->items[(size_t)wanted];
                 known = item->value_known;
                 if (result_kind == VALUE_TEXT) {
                     resolved_text_length = item->text_length;
@@ -1544,6 +1559,13 @@ static Node *parse_program(Parser *parser) {
                 slot,
                 false)) {
             return initializer;
+        }
+        if (initializer->value_kind == VALUE_LIST) {
+            Binding *binding = &parser->bindings[parser->binding_count - 1];
+            binding->known_collection =
+                initializer->value_known
+                    ? initializer
+                    : initializer->known_collection;
         }
         initializers[let_count++] = initializer;
     }

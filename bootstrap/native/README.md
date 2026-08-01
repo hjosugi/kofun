@@ -315,6 +315,10 @@ lowering: lambdas are inline and non-escaping, nested higher-order operations
 inside a lambda body are rejected, and allocation uses one mmap chunk per
 List. x86-64 and AArch64 consume the same parsed expression tree and preserve
 the same frame-slot, value-layout, bounds, allocation, and output contracts.
+Known List contents remain available to the shared frontend after a local
+binding solely for validation: an indexed integer outside the aggregate
+Core's `10..99` print boundary is refused before either target writes an
+artifact. Runtime list storage and indexing are unchanged.
 
 Both direct targets also implement immutable UTF-8 `Text` values with the
 historical native ABI `[byte length: i64][UTF-8 bytes]`. The closed native Core
@@ -570,8 +574,9 @@ Implemented here:
   shared aggregate ABI on both targets;
 - registered Python-free Text conformance coverage with 21/21 cases executed by
   the native x86-64 and, under qemu, AArch64 adapters;
-- registered Python-free List conformance coverage with 13/13 cases executed by
-  the native x86-64 and, under qemu, AArch64 adapters;
+- registered Python-free List conformance coverage with 17/17 cases: 13 execute
+  and four are refused before execution by native x86-64 and, under qemu, the
+  AArch64 adapter;
 - two-digit integer-to-ASCII conversion for the shared scalar fixture;
 - distinct RX and RW mappings;
 - three end-to-end Linux x86-64 executable artifact gates;

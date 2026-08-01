@@ -1,0 +1,5 @@
+# expect-reject: aggregate native Core print requires a known value in 10..99
+fn main() {
+    let values = [7]
+    print(values[0])
+}
