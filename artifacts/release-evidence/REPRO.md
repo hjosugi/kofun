@@ -17,7 +17,7 @@ report a pass it did not observe.
 | Prerequisite | Claims that need it |
 |---|---|
 | `cargo` | `rust-crate-shim` |
-| `cc` | `c-abi-profile`, `c11-function-calls`, `compiled-visibility-interfaces`, `compiler-seed`, `decimal-arithmetic-v1`, `deterministic-fuzzing`, `documentation-index`, `enum-matching`, `http-framework`, `nominal-records`, `reproducible-bootstrap`, `self-recompile`, `stage2-core-lowering` |
+| `cc` | `bounded-tzdb-producer`, `c-abi-profile`, `c11-function-calls`, `compiled-visibility-interfaces`, `compiler-seed`, `decimal-arithmetic-v1`, `deterministic-fuzzing`, `documentation-index`, `enum-matching`, `http-framework`, `nominal-records`, `reproducible-bootstrap`, `self-recompile`, `stage2-core-lowering` |
 | `node` | `compiled-visibility-interfaces`, `documentation-index`, `stage2-typed-sidecar`, `stdio-language-server`, `wasm32-arithmetic-core` |
 | `qemu-aarch64` | `native-aarch64-function-calls`, `native-list-int-core`, `native-text-returning-calls`, `native-utf8-text-core`, `selfhost-native-corpus` |
 | `sha256sum` | `compiler-seed`, `reproducible-bootstrap` |
@@ -28,6 +28,7 @@ report a pass it did not observe.
 |---|---|
 | `arithmetic-core` | `task test` |
 | `borrowed-list-ownership` | `task stage2` |
+| `bounded-tzdb-producer` | `task tzdb` |
 | `c-abi-profile` | `task c-abi` |
 | `c11-function-calls` | `task stage2` |
 | `checked-int64-contract` | `task check` |

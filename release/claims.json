@@ -66,6 +66,42 @@
       }
     },
     {
+      "id": "borrowed-list-ownership",
+      "public_wording": "borrowed-List Copy/move ownership check",
+      "public_status": "narrow Stage 2 checkpoint",
+      "state": "checkpoint",
+      "area": "frontend",
+      "bounded_capability": "Stage 2 rejects use-after-move for borrowed `List` bindings only. It is not a general ownership pass.",
+      "targets": [
+        "stage2"
+      ],
+      "specification": [
+        "docs/MEMORY_MODEL.md"
+      ],
+      "compatibility": "Only the borrowed-`List` shape is promised; other ownership errors may still compile until the general pass lands.",
+      "positive_gate": {
+        "command": "sh bootstrap/stage2/check.sh",
+        "observation": "The borrowed-List Copy/move checkpoint passes."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "tests/compile-fail/use_after_take.kofun",
+        "observation": "Using a moved binding is refused at compile time."
+      },
+      "safety": {
+        "classification": "memory-safety",
+        "threat_model": "docs/MEMORY_MODEL.md",
+        "negative_test": "tests/compile-fail/use_after_take.kofun"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "task stage2",
+        "prerequisites": []
+      }
+    },
+    {
       "id": "bounded-tzdb-producer",
       "public_wording": "bounded injected-Bytes time-zone transition producer",
       "public_status": "bounded Stage 2/C11 checkpoint",
@@ -100,42 +136,6 @@
         "prerequisites": [
           "cc"
         ]
-      }
-    },
-    {
-      "id": "borrowed-list-ownership",
-      "public_wording": "borrowed-List Copy/move ownership check",
-      "public_status": "narrow Stage 2 checkpoint",
-      "state": "checkpoint",
-      "area": "frontend",
-      "bounded_capability": "Stage 2 rejects use-after-move for borrowed `List` bindings only. It is not a general ownership pass.",
-      "targets": [
-        "stage2"
-      ],
-      "specification": [
-        "docs/MEMORY_MODEL.md"
-      ],
-      "compatibility": "Only the borrowed-`List` shape is promised; other ownership errors may still compile until the general pass lands.",
-      "positive_gate": {
-        "command": "sh bootstrap/stage2/check.sh",
-        "observation": "The borrowed-List Copy/move checkpoint passes."
-      },
-      "negative_boundary": {
-        "kind": "rejection",
-        "evidence": "tests/compile-fail/use_after_take.kofun",
-        "observation": "Using a moved binding is refused at compile time."
-      },
-      "safety": {
-        "classification": "memory-safety",
-        "threat_model": "docs/MEMORY_MODEL.md",
-        "negative_test": "tests/compile-fail/use_after_take.kofun"
-      },
-      "performance": {
-        "classification": "none"
-      },
-      "reproduction": {
-        "command": "task stage2",
-        "prerequisites": []
       }
     },
     {

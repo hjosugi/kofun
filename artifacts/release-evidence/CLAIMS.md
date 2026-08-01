@@ -6,6 +6,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 |---|---|---|---|
 | `arithmetic-core` | implemented | frontend | The arithmetic Core is validated and emitted for the checked Int64 operator set; `/` is deliberately not part of it. |
 | `borrowed-list-ownership` | checkpoint | frontend | Stage 2 rejects use-after-move for borrowed `List` bindings only. It is not a general ownership pass. |
+| `bounded-tzdb-producer` | checkpoint | c-backend | One offline fixed-capacity tzdb fixture is parsed and validated in Kofun source, including version/content-digest provenance, deterministic lookup, explicit unique/gap/fold results, typed malformed and limit outcomes, and agreement between the reference executor and emitted C11. It is not a packaged IANA database, ambient file adapter, or stable public API. |
 | `c-abi-profile` | checkpoint | interop | `extern` declarations and `repr(C)` layouts are honoured for the host C compiler only; no cross-ABI or cross-target promise is made. |
 | `c11-function-calls` | checkpoint | c-backend | User functions lower to C11 for the Int Core, including recursion and forward references. Other value types are outside the slice. |
 | `checked-int64-contract` | implemented | frontend | Every Core `Int` operation is checked: overflow and non-representable results are refused or trapped, never wrapped. |
