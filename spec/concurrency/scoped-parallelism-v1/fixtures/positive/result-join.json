@@ -1,0 +1,19 @@
+{
+  "schema": "kofun.scoped-parallelism-model/v1",
+  "scope": {
+    "exit_step": 8,
+    "tasks": [
+      {
+        "id": "compute",
+        "spawn_step": 1,
+        "join_step": 3,
+        "captures": [{ "mode": "edit", "place": { "base": "state" } }],
+        "outcome": "success",
+        "result": "42"
+      }
+    ],
+    "parent_actions": [
+      { "step": 4, "mode": "edit", "place": { "base": "state" } }
+    ]
+  }
+}

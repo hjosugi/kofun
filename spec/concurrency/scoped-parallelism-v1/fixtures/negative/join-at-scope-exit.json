@@ -1,0 +1,9 @@
+{
+  "schema": "kofun.scoped-parallelism-model/v1",
+  "scope": {
+    "exit_step": 5,
+    "tasks": [
+      { "id": "invalid", "spawn_step": 1, "join_step": 5, "captures": [] }
+    ]
+  }
+}

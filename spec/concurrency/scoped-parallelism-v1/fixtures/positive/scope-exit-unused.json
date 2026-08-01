@@ -1,0 +1,15 @@
+{
+  "schema": "kofun.scoped-parallelism-model/v1",
+  "scope": {
+    "exit_step": 6,
+    "tasks": [
+      {
+        "id": "unused",
+        "spawn_step": 1,
+        "captures": [{ "mode": "read", "place": { "base": "input" } }],
+        "outcome": "success",
+        "result": "discarded"
+      }
+    ]
+  }
+}
