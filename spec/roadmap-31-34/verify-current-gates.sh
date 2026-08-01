@@ -77,12 +77,8 @@ sed -n '/"stage2": {/,/^[[:space:]]*}/p' \
     "$ROOT/bootstrap/manifest.json" |
     grep -q '"status": "open"'
 
-assert_grep "editor/vscode/package.json" \
-    -q '"main": "./extension.js"' "$ROOT/editor/vscode/package.json"
-assert_executable "editor/vscode/server/kofun-lsp" \
-    "$ROOT/editor/vscode/server/kofun-lsp"
-assert_regular_file "editor/vscode/server/server.js" \
-    "$ROOT/editor/vscode/server/server.js"
+assert_executable "tooling/lsp/kofun-lsp" "$ROOT/tooling/lsp/kofun-lsp"
+assert_regular_file "tooling/lsp/server.js" "$ROOT/tooling/lsp/server.js"
 assert_regular_file "tests/lsp/check.sh" "$ROOT/tests/lsp/check.sh"
 
 if find "$ROADMAP" -type f \
@@ -102,4 +98,4 @@ KOFUN_GATE_WORK_NAMESPACE=roadmap \
 printf '%s\n' \
     "PASS: current Stage 2 integer Core probe printed -3 and 2, then exited 42" \
     "PASS: Stage 2 self-recompile and artifact-equivalence gates remain open" \
-    "PASS: VS Code package bundles the verified Kofun language server"
+    "PASS: the stdio language server is present and its gate runs"

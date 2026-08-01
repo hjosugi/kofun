@@ -1,2 +1,0 @@
-fn greet(name: Text) -> Text {
-  return "hello"

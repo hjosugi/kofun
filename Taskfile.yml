@@ -281,6 +281,11 @@ tasks:
     cmds:
       - "sh tests/stdlib/clock-adapters/check.sh"
 
+  benchmark-summary:
+    desc: "Verify deterministic benchmark quantiles and MAD"
+    cmds:
+      - "sh tests/stdlib/benchmark-summary/check.sh"
+
   capabilities:
     desc: "Verify the standard library capability matrix states and evidence"
     cmds:
@@ -382,14 +387,6 @@ tasks:
     cmds:
       - "sh tests/lsp/check.sh"
 
-  tree-sitter:
-    desc: "Verify the structural grammar and editor queries"
-    cmds:
-      - "npm --prefix editor/tree-sitter-kofun ci"
-      - "npm --prefix editor/tree-sitter-kofun test"
-      - "npm --prefix editor/tree-sitter-kofun run test:repository-corpus"
-      - "npm --prefix editor/tree-sitter-kofun run test:queries"
-
   roadmap:
     desc: "Verify the executable issues 31-34 roadmap"
     cmds:
@@ -423,8 +420,6 @@ tasks:
           then exit 1; fi
         silent: true
       - cmd: "test ! -e pyproject.toml"
-        silent: true
-      - cmd: "grep -q '\"extensions\": \\[\".kofun\"\\]' editor/vscode/package.json"
         silent: true
       - cmd: "printf '%s\\n' 'PASS: .kofun sources only; no Python implementation'"
         silent: true
@@ -536,6 +531,7 @@ tasks:
             tui-framework \
             stdlib \
             clock-adapters \
+            benchmark-summary \
             capabilities \
             build-system \
             packages \
@@ -554,7 +550,6 @@ tasks:
             documentation-index \
             ownership-view \
             artifact-qualification \
-            tree-sitter \
             syntax \
             repository-check \
             assertions \

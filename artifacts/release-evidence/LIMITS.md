@@ -53,5 +53,4 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `syscall-file-round-trip` | trap | `stdlib/tests/verify.sh` | A failing syscall surfaces its errno instead of returning a success value. |
 | `syscall-stdlib-api` | limit | `tests/conformance/capabilities.tsv` | Targets outside Linux x86-64 are recorded as unsupported with a stated reason. |
 | `test-skip-reporting` | skip | `tests/cli.sh` | A skipped case is reported as skipped and never folded into the pass count. |
-| `tree-sitter-grammar` | limit | `editor/tree-sitter-kofun/grammar.js` | Malformed sources produce error nodes through the recovery corpus rather than aborting the parse. |
 | `wasm32-arithmetic-core` | rejection | `bootstrap/wasm/fixtures/unsupported_text.kofun` | `Text` values are refused by the wasm32 backend rather than partially lowered. |

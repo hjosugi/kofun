@@ -1249,7 +1249,7 @@
       "public_status": "implemented",
       "state": "implemented",
       "area": "tooling",
-      "bounded_capability": "`.kofun` is the only source extension in the repository, and the editor integration registers exactly that extension.",
+      "bounded_capability": "`.kofun` is the only source extension in the repository. The editor integration that registers it is hjosugi/kofun-vscode and is gated there, not here.",
       "targets": [
         "repository"
       ],
@@ -1259,7 +1259,7 @@
       "compatibility": "The extension is stable; no alternate extension is recognised.",
       "positive_gate": {
         "command": "task repository-check",
-        "observation": "No Python or `.kf` sources remain and the editor extension registers `.kofun`."
+        "observation": "No Python or `.kf` sources remain."
       },
       "negative_boundary": {
         "kind": "rejection",
@@ -1531,42 +1531,6 @@
       "reproduction": {
         "command": "task test",
         "prerequisites": []
-      }
-    },
-    {
-      "id": "tree-sitter-grammar",
-      "public_wording": "Tree-sitter grammar",
-      "public_status": "structural grammar, editor queries, recovery corpus, and repository source gate",
-      "state": "implemented",
-      "area": "tooling",
-      "bounded_capability": "A structural Tree-sitter grammar with editor queries and a recovery corpus, gated against the repository's own sources.",
-      "targets": [
-        "repository"
-      ],
-      "specification": [
-        "editor/tree-sitter-kofun/README.md"
-      ],
-      "compatibility": "The grammar is structural, not a type checker; it parses sources the compiler may still refuse.",
-      "positive_gate": {
-        "command": "task tree-sitter",
-        "observation": "The grammar parses the repository corpus and the recovery cases."
-      },
-      "negative_boundary": {
-        "kind": "limit",
-        "evidence": "editor/tree-sitter-kofun/grammar.js",
-        "observation": "Malformed sources produce error nodes through the recovery corpus rather than aborting the parse."
-      },
-      "safety": {
-        "classification": "none"
-      },
-      "performance": {
-        "classification": "none"
-      },
-      "reproduction": {
-        "command": "task tree-sitter",
-        "prerequisites": [
-          "node"
-        ]
       }
     },
     {
