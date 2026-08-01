@@ -6,6 +6,16 @@ CORPUS_INPUT=${1-"$ROOT/tests/conformance/numeric"}
 BACKENDS=${KOFUN_CONFORMANCE_BACKENDS-"$ROOT/tests/conformance/backends"}
 CAPABILITIES=${KOFUN_CONFORMANCE_CAPABILITIES-"$ROOT/tests/conformance/capabilities.tsv"}
 CORPORA=${KOFUN_CONFORMANCE_CORPORA-"$ROOT/tests/conformance"}
+REQUIRE_ALL=${KOFUN_CONFORMANCE_REQUIRE_ALL-0}
+
+case $REQUIRE_ALL in
+    0|1) ;;
+    *)
+        printf '%s\n' \
+            "conformance: KOFUN_CONFORMANCE_REQUIRE_ALL must be 0 or 1" >&2
+        exit 2
+        ;;
+esac
 
 test -d "$CORPUS_INPUT" || {
     printf '%s\n' "conformance: corpus not found: $CORPUS_INPUT" >&2
@@ -340,6 +350,12 @@ for adapter in "$BACKENDS"/*.sh; do
     backend_status=$?
     set -e
     if test "$backend_status" -eq 125; then
+        if test "$REQUIRE_ALL" -eq 1; then
+            applicable=$((applicable + 1))
+            status=1
+            printf '%s\n' \
+                "FAIL [$adapter] unsupported backend is a conformance failure"
+        fi
         continue
     fi
     applicable=$((applicable + 1))

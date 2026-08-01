@@ -26,9 +26,13 @@ to an immutable pattern binding while a **mutable** ancestor shares the
 spelling — that one fails only if assignment resolves the nearest
 `BindingId` rather than the name.
 
-Multi-field and or-pattern forms are still refused by `E2S24`, so this gate
-does not cover duplicate names inside one pattern or across alternatives. It
-does not infer pattern bindings from constructor or wildcard token text.
+Executable multi-field forms are still refused by `E2S24`, but the lossless
+Pattern tree now rejects repeated and nested repeated binding names with
+`E2S47` before that lowering boundary. Or-pattern alternatives remain resolved
+by the ADT projector, where sibling alternatives publish one `BindingId`, so
+this gate leaves alternative binding-set equality to that projector. The
+duplicate fixtures inspect resolved Pattern records; they do not infer bindings
+from constructor or wildcard token text.
 
 Shadowing is not warned about. Any formatter or linter opinion on it is
 non-semantic, as `spec/syntax/FOUNDATIONS_AND_CONTROL.md` states under `#41`:

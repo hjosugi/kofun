@@ -1,7 +1,7 @@
 # diagnostic-mode: compile
 # expect-code: E2S15
 # expect-span: byte 80
-fn value(input: Text) -> Int {
+fn value(input: Bool) -> Int {
     return 0
 }
 

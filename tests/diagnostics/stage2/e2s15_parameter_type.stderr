@@ -1,1 +1,1 @@
-error[E2S15]: Core parameters must have type Int or a concrete enum at byte 80
+error[E2S15]: Core parameters must have type Int, Text, a concrete enum, or a nominal record at byte 80
