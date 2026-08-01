@@ -266,7 +266,8 @@ ownership/place analysis, runtime/scheduler, diagnostics, and backend work. It
 must preserve every rejection and lifecycle rule here. Passing this model is
 not evidence that any production component is implemented.
 
-The repository RFC/decision-ledger entry is intentionally serialized after the
-active allocator-capability RFC lane. Until that row is added and its review
-period is observed, this document and model are issue evidence, not an accepted
-RFC and not a shipped feature.
+This document is a normative input to proposed
+[`RFC-0003`](../../rfcs/0003-scoped-parallelism.md). Its 14-day review is
+scheduled to close on 2026-08-16. Until the review closes and the ledger records
+an explicit decision, this document and model are proposal evidence, not an
+accepted RFC and not a shipped feature.
