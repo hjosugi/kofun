@@ -49,6 +49,13 @@ checked statically.  `fixed_add` rejects a runtime scale mismatch.  Moving the
 field into a future const-generic type is an API evolution point, not an
 implemented compiler feature.
 
+This is the `runtime-scale/v1` interim profile named in
+[`docs/DECIMAL.md`](../../docs/DECIMAL.md): the destination scale is a runtime
+argument, the carried scale is a runtime field, a mismatch is a runtime failure,
+and there is no static scale safety.  `Fixed[2]` and `Fixed[3]` are not
+different types here, so mixing them compiles and fails while running.  `task
+decimal` holds both this file and `docs/DECIMAL.md` to that statement.
+
 ## Law evidence and compiler boundary
 
 [`tests/checkpoint.kofun`](tests/checkpoint.kofun) executes exact Decimal

@@ -160,6 +160,44 @@ for undecided in floor_div floordiv modulo remainder truncate_div; do
 done
 printf '%s\n' "PASS: Decimal // and % remain undecided and unimplemented"
 
+# `Fixed[scale]` does not exist, because const-generic integer parameters do
+# not. #710 requires the language to state its scale guarantees truthfully
+# either by delivering the type or by naming an interim profile; #725 Part A
+# takes the second route and names it `runtime-scale/v1`.
+#
+# Two halves are asserted, because either alone drifts:
+#
+#   1. the documents must carry the name and the disclaimer, so a reader is
+#      told what the guarantee is rather than left to infer it;
+#   2. the implementation must still match that description, so the sentence
+#      cannot go on being printed after it stops being true.
+#
+# The second half is the one that bites. Landing `Fixed[scale]` while leaving
+# "no static scale safety" in `docs/DECIMAL.md` would make the document false,
+# and the document has no other reader that would notice.
+PROFILE='runtime-scale/v1'
+
+for doc in docs/DECIMAL.md stdlib/decimal/README.md; do
+    grep -qF "$PROFILE" "$ROOT/$doc" ||
+        fail "$doc does not name the interim scale profile $PROFILE"
+done
+grep -qF 'no static scale safety' "$ROOT/docs/DECIMAL.md" ||
+    fail "docs/DECIMAL.md stopped stating that static scale safety is absent"
+
+# The implementation side. Scale is a runtime field of a record and a mismatch
+# is a runtime failure; a const-generic `Fixed[...]` declaration would
+# contradict every sentence the two documents just passed.
+grep -qE '^type Fixed = \{' "$ROOT/stdlib/decimal/decimal.kofun" ||
+    fail "stdlib Fixed is no longer a plain record; $PROFILE no longer describes it"
+if grep -nE '^type Fixed[[:space:]]*\[' "$ROOT/stdlib/decimal/decimal.kofun" \
+    >/dev/null 2>&1
+then
+    fail "Fixed[scale] landed; the documents must stop claiming $PROFILE"
+fi
+grep -qF 'ScaleMismatch' "$ROOT/stdlib/decimal/decimal.kofun" ||
+    fail "scale mismatch is no longer a runtime failure; $PROFILE is stale"
+printf '%s\n' "PASS: scale guarantees are stated as $PROFILE and still true"
+
 # --- exact arithmetic (slice 4 of #710, issue #723) ------------------------
 
 # The headline acceptance criterion of #710, and the reason this type exists.
