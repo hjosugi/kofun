@@ -5,6 +5,8 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 RUNNER="$ROOT/tests/fuzz/semantic_runner.sh"
 FIXTURE="$ROOT/tests/fuzz/fixtures/protocol-adapter.sh"
 WORK=${KOFUN_SEMANTIC_PROTOCOL_TEST_WORK:-"$ROOT/build/semantic-protocol-test"}
+ASSERT_CONTEXT='semantic protocol'
+. "$ROOT/tests/assertions/assert.sh"
 
 rm -rf "$WORK"
 mkdir -p "$WORK/adapters" "$WORK/manifests" "$WORK/cases" "$WORK/failures"
@@ -114,11 +116,11 @@ write_manifest "$manifest" \
 KOFUN_SEMANTIC_TIMEOUT=1 \
     "$RUNNER" "$manifest" "$source" "$case_meta" \
     "$WORK/cases/explicit-unsupported" "$WORK/failures" explicit-unsupported
-test -f \
+assert_regular_file "cases/explicit-unsupported/runs/backend-unsupported-only/capability.stdout" \
     "$WORK/cases/explicit-unsupported/runs/backend-unsupported-only/capability.stdout"
-test ! -e \
+assert_absent "cases/explicit-unsupported/runs/backend-unsupported-only/run.status" \
     "$WORK/cases/explicit-unsupported/runs/backend-unsupported-only/run.status"
-test ! -e \
+assert_absent "cases/explicit-unsupported/results/backend-unsupported-only" \
     "$WORK/cases/explicit-unsupported/results/backend-unsupported-only"
 
 for mismatch in stdout stderr status
@@ -189,7 +191,7 @@ set +e
     >"$WORK/replay.stdout" 2>"$WORK/replay.stderr"
 replay_status=$?
 set -e
-test "$replay_status" -eq 1
+assert_num "replay status" "$replay_status" -eq 1
 grep -Fq 'stdout mismatch' "$WORK/replay.stderr"
 
 printf '%s\n' \

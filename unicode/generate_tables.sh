@@ -11,8 +11,16 @@ derived=$1
 confusables=$2
 output=$3
 
-test -f "$derived"
-test -f "$confusables"
+# Not tests/assertions/assert.sh: this is a generator invoked with explicit
+# paths from anywhere, with no repository root in scope to source the helper
+# from. The message matters more than the mechanism.
+for required in "$derived" "$confusables"; do
+    if ! test -f "$required"; then
+        printf '%s\n' \
+            "generate_tables.sh: $required is not a readable file" >&2
+        exit 2
+    fi
+done
 
 temporary="${output}.tmp.$$"
 trap 'rm -f "$temporary" "${temporary}.confusables"' 0 1 2 15

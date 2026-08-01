@@ -5,13 +5,16 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 SERVER="$ROOT/editor/vscode/server/kofun-lsp"
 RESULTS="${KOFUN_LSP_RESULTS:-$ROOT/build/${KOFUN_GATE_WORK_NAMESPACE:+$KOFUN_GATE_WORK_NAMESPACE/}lsp/performance.json}"
 REVISION=$(git -C "$ROOT" rev-parse --verify HEAD)
+ASSERT_CONTEXT='lsp'
+. "$ROOT/tests/assertions/assert.sh"
 
 npm --prefix "$ROOT/editor/vscode" run vscode:prepublish --silent
 cmp "$ROOT/tooling/typed-sidecar/from-stage2.mjs" \
     "$ROOT/editor/vscode/server/generated/from-stage2.mjs"
 cmp "$ROOT/tooling/typed-sidecar/codec.mjs" \
     "$ROOT/editor/vscode/server/generated/codec.mjs"
-test -s "$ROOT/editor/vscode/server/generated/semantic-bridge.node"
+assert_file_nonempty "editor/vscode/server/generated/semantic-bridge.node" \
+    "$ROOT/editor/vscode/server/generated/semantic-bridge.node"
 
 node --check "$ROOT/tooling/lsp/server.js"
 node --check "$ROOT/editor/vscode/server/server.js"

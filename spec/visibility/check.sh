@@ -5,6 +5,8 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 SPEC="$ROOT/spec/modules/visibility.md"
 FOUNDATIONS="$ROOT/spec/syntax/FOUNDATIONS_AND_CONTROL.md"
 SYNTAX_DOC="$ROOT/docs/SYNTAX.md"
+ASSERT_CONTEXT='visibility spec'
+. "$ROOT/tests/assertions/assert.sh"
 
 fail() {
     printf '%s\n' "FAIL: $*" >&2
@@ -53,9 +55,12 @@ require_text "$SPEC" 'deliberately excluded from the first executable'
 require_text "$FOUNDATIONS" '`pub`, `internal`, and `private` are contextual declaration modifiers'
 require_text "$SYNTAX_DOC" 'Public API is intentional'
 
-test "$(visibility_rank private)" -lt "$(visibility_rank restricted)"
-test "$(visibility_rank restricted)" -lt "$(visibility_rank internal)"
-test "$(visibility_rank internal)" -lt "$(visibility_rank pub)"
+assert_num "output of visibility_rank private" \
+    "$(visibility_rank private)" -lt "$(visibility_rank restricted)"
+assert_num "output of visibility_rank restricted" \
+    "$(visibility_rank restricted)" -lt "$(visibility_rank internal)"
+assert_num "output of visibility_rank internal" \
+    "$(visibility_rank internal)" -lt "$(visibility_rank pub)"
 
 can_expose private private || fail 'private declaration cannot use private component'
 can_expose internal pub || fail 'internal declaration cannot use public component'

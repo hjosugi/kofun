@@ -5,6 +5,8 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 SUITE="$ROOT/tests/diagnostics/stage2"
 WORK=${KOFUN_DIAGNOSTIC_BLESS_WORK:-"$ROOT/build/diagnostics-stage2-bless"}
 . "$ROOT/bootstrap/stage2/build.sh"
+ASSERT_CONTEXT='diagnostics bless'
+. "$ROOT/tests/assertions/assert.sh"
 
 rm -rf "$WORK"
 mkdir -p "$WORK/goldens"
@@ -34,8 +36,8 @@ for source in "$SUITE"/*.kofun; do
     status=$?
     set -e
 
-    test "$status" -eq 1
-    test ! -s "$WORK/$stem.internal.stderr"
+    assert_num "refusal status for $source" "$status" -eq 1
+    assert_file_empty "$stem.internal.stderr" "$WORK/$stem.internal.stderr"
     grep -F "error[$code]:" "$actual" >/dev/null
     if test "$span" != none; then
         grep -F "at $span" "$actual" >/dev/null

@@ -8,6 +8,8 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 SUITE="$ROOT/tests/diagnostics/unicode"
 WORK=${KOFUN_UNICODE_DIAGNOSTIC_WORK:-"$ROOT/build/diagnostics-unicode"}
 . "$ROOT/bootstrap/stage2/build.sh"
+ASSERT_CONTEXT='diagnostics unicode'
+. "$ROOT/tests/assertions/assert.sh"
 
 rm -rf "$WORK"
 mkdir -p "$WORK"
@@ -28,12 +30,12 @@ non_nfc_status=$?
 confusable_status=$?
 set -e
 
-test "$non_nfc_status" -eq 1
-test "$confusable_status" -eq 1
-test ! -s "$WORK/non-nfc.stderr"
-test ! -s "$WORK/confusable.stderr"
-test ! -e "$WORK/non-nfc.c"
-test ! -e "$WORK/confusable.c"
+assert_num "non nfc status" "$non_nfc_status" -eq 1
+assert_num "confusable status" "$confusable_status" -eq 1
+assert_file_empty "non-nfc.stderr" "$WORK/non-nfc.stderr"
+assert_file_empty "confusable.stderr" "$WORK/confusable.stderr"
+assert_absent "non-nfc.c" "$WORK/non-nfc.c"
+assert_absent "confusable.c" "$WORK/confusable.c"
 cmp "$SUITE/eunicode005.stdout" "$WORK/non-nfc.stdout"
 cmp "$SUITE/eunicode006.stdout" "$WORK/confusable.stdout"
 

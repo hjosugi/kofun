@@ -29,7 +29,14 @@ case $action in
         esac
         ;;
     run)
-        test "$#" -eq 6
+        # Not tests/assertions/assert.sh: this fixture is executed from a work
+        # directory with no repository root in scope, and inventing one to reach
+        # the helper would be a heavier dependency than the message it saves.
+        if test "$#" -ne 6; then
+            printf '%s\n' \
+                "protocol adapter: run expected 6 arguments, got $#" >&2
+            exit 2
+        fi
         result=$5
         work=$6
         mkdir -p "$work"

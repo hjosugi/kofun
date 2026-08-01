@@ -7,6 +7,8 @@ export LC_ALL
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 WORK=${KOFUN_RUNTIME_DIAGNOSTIC_WORK:-"$ROOT/build/diagnostics-runtime"}
 CC=${CC:-cc}
+ASSERT_CONTEXT='diagnostics runtime'
+. "$ROOT/tests/assertions/assert.sh"
 
 rm -rf "$WORK"
 mkdir -p "$WORK"
@@ -22,8 +24,8 @@ set +e
 status=$?
 set -e
 
-test "$status" -eq 1
-test ! -s "$WORK/trap-division.stdout"
+assert_num "trap-division exit status" "$status" -eq 1
+assert_file_empty "trap-division.stdout" "$WORK/trap-division.stdout"
 cmp "$ROOT/bootstrap/selfhost/c11/trap_division.stderr" \
     "$WORK/trap-division.stderr"
 

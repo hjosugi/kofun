@@ -5,6 +5,8 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 WORK=${KOFUN_UNICODE_WORK:-"$ROOT/build/unicode"}
 CC=${CC:-cc}
 . "$ROOT/bootstrap/stage2/build.sh"
+ASSERT_CONTEXT='unicode'
+. "$ROOT/tests/assertions/assert.sh"
 
 mkdir -p "$WORK"
 
@@ -36,7 +38,7 @@ grep -F 'kofun_fn_k_u005408_u008A08' \
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
     "$WORK/stage2-identifiers.c" \
     -o "$WORK/stage2-identifiers"
-test "$("$WORK/stage2-identifiers")" = "42"
+assert_eq "output of stage2-identifiers" "$("$WORK/stage2-identifiers")" "42"
 
 set +e
 KOFUN_DIAGNOSTIC_LOCALE=ja_JP \
@@ -57,10 +59,10 @@ non_nfc_status=$?
 confusable_status=$?
 set -e
 
-test "$non_nfc_status" -eq 1
-test "$confusable_status" -eq 1
-test ! -s "$WORK/non-nfc.stderr"
-test ! -s "$WORK/confusable.stderr"
+assert_num "non nfc status" "$non_nfc_status" -eq 1
+assert_num "confusable status" "$confusable_status" -eq 1
+assert_file_empty "non-nfc.stderr" "$WORK/non-nfc.stderr"
+assert_file_empty "confusable.stderr" "$WORK/confusable.stderr"
 grep -F 'error[EUNICODE005]' "$WORK/non-nfc.stdout" >/dev/null
 grep -F 'NFCではありません' "$WORK/non-nfc.stdout" >/dev/null
 grep -F 'error[EUNICODE006]' "$WORK/confusable.stdout" >/dev/null
@@ -74,7 +76,7 @@ grep -F 'confusable with `paypal`' "$WORK/confusable.stdout" >/dev/null
     x86_64-linux \
     "$WORK/native-identifiers"
 chmod +x "$WORK/native-identifiers"
-test "$("$WORK/native-identifiers")" = "42"
+assert_eq "output of native-identifiers" "$("$WORK/native-identifiers")" "42"
 
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
     "$ROOT/bootstrap/stage1/compiler.c" \
@@ -86,7 +88,7 @@ test "$("$WORK/native-identifiers")" = "42"
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
     "$WORK/stage1-identifiers.c" \
     -o "$WORK/stage1-identifiers"
-test "$("$WORK/stage1-identifiers")" = "42"
+assert_eq "output of stage1-identifiers" "$("$WORK/stage1-identifiers")" "42"
 
 printf '%s\n' \
     "PASS: Stage 2 lowered Japanese and Hangul identifiers through ASCII-safe C names" \

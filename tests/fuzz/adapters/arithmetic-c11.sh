@@ -3,6 +3,8 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 . "${KOFUN_SEMANTIC_PROTOCOL_LIB:-$ROOT/tests/fuzz/semantic_protocol.sh}"
+ASSERT_CONTEXT='arithmetic c11 adapter'
+. "$ROOT/tests/assertions/assert.sh"
 
 action=${1-}
 family=${2-}
@@ -18,8 +20,8 @@ case $action in
         fi
         ;;
     run)
-        test "$#" -eq 6
-        test "$family" = arithmetic-int-core
+        assert_num "argument count" "$#" -eq 6
+        assert_eq "family" "$family" arithmetic-int-core
         source=$3
         result=$5
         work=$6
