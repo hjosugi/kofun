@@ -14,8 +14,9 @@
  * is `significand * 10^-scale`. Scale may be negative, so `1e3` and `1000`
  * are the same canonical value.
  *
- * There is no arithmetic here. Slice 2 constructs, canonicalizes, compares and
- * renders; the operators are slices 3 and 4. `docs/DECIMAL.md` is normative.
+ * Slice 2 constructs, canonicalizes, compares and renders. Slice 4 adds the
+ * exact arithmetic and checked division declared later in this header;
+ * `docs/DECIMAL.md` is normative for both layers.
  */
 
 /*
@@ -236,10 +237,42 @@ double kofun_float_divide(double left, double right);
  * rather than continuing with something that is not the answer.
  */
 KofunDecimal *kofun_decimal_value_literal(const char *text, size_t length);
+KofunDecimal *kofun_decimal_value_from_int(int64_t value);
 KofunDecimal *kofun_decimal_value_add(
     const KofunDecimal *left,
     const KofunDecimal *right
 );
+KofunDecimal *kofun_decimal_value_subtract(
+    const KofunDecimal *left,
+    const KofunDecimal *right
+);
+KofunDecimal *kofun_decimal_value_multiply(
+    const KofunDecimal *left,
+    const KofunDecimal *right
+);
+KofunDecimal *kofun_decimal_value_negate(const KofunDecimal *value);
+
+/*
+ * Checked `/` stays a value.  The outcome is always observable; `value` is
+ * meaningful only for `KOFUN_DECIMAL_DIVISION_EXACT`.  Keeping the result in
+ * the same program-lifetime arena lets generated code bind and print it
+ * without unwrapping, trapping, or inventing an ambient rounding policy.
+ */
+typedef struct {
+    KofunDecimalDivision outcome;
+    KofunDecimal value;
+} KofunDecimalResult;
+
+KofunDecimalResult *kofun_decimal_value_divide_exact(
+    const KofunDecimal *left,
+    const KofunDecimal *right
+);
+const char *kofun_decimal_value_division_name(
+    const KofunDecimalResult *result
+);
+
+/* Deterministic literal construction for generated binary64 code. */
+double kofun_float_value_literal(const char *text, size_t length);
 void kofun_decimal_arena_release(void);
 
 #endif

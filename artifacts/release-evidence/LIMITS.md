@@ -23,6 +23,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `cli-commands` | rejection | `tests/cli_stage2_outcomes.sh` | Non-Core sources produce a refusal outcome instead of a partial build. |
 | `cli-framework` | limit | `tests/conformance/capabilities.tsv` | Targets outside Linux x86-64 are recorded as unsupported with a stated reason. |
 | `compiler-seed` | rejection | `bootstrap/selfhost/driver/corpus_builtin_rejects.tsv` | Each of the 15 profile builtins has one wrong-arity and one wrong-type row; all 30 expanded sources exit nonzero and write no C. The existing 31 typed, block, loop, Text, and index boundary fixtures remain in the same gate. |
+| `decimal-arithmetic-v1` | limit | `tests/conformance/capabilities.tsv` | Every backend without this runtime has an explicit unsupported row, while Decimal `//` and `%` are refused before an artifact is produced. |
 | `deterministic-fuzzing` | rejection | `tests/fuzz/semantic_differential.sh` | A divergence between the oracle and a backend fails the gate with the differing program. |
 | `elf64-image-writer` | limit | `tests/conformance/capabilities.tsv` | Corpora outside the lowered profiles are recorded as unsupported with a stated reason. |
 | `enum-matching` | rejection | `tests/conformance/syntax/issues_35_47/enum_payload_unsupported_field.kofun` | Enum shapes outside the slice — a non-`Int` payload, more than one payload field, or a payload arity the pattern does not match — are refused rather than silently accepted. |

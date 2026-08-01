@@ -13,6 +13,8 @@ WASM_SEED_C="$ROOT/bootstrap/wasm/compiler.c"
 WASM_COMPILER="$WASM_BUILD_DIR/kofun-wasm-core"
 STAGE2_BUILD_DIR=${KOFUN_STAGE2_BUILD_DIR:-"$ROOT/build/stage2"}
 STAGE2_SEED_C="$ROOT/bootstrap/stage2/compiler.c"
+STAGE2_DECIMAL_C="$ROOT/bootstrap/stage2/decimal_v1.c"
+STAGE2_DECIMAL_H="$ROOT/bootstrap/stage2/decimal_v1.h"
 STAGE2_COMPILER="$STAGE2_BUILD_DIR/kofun-stage2"
 STAGE2_EVENTS_BUILD_DIR=${KOFUN_STAGE2_EVENTS_BUILD_DIR:-"$ROOT/build/stage2-events-cli"}
 STAGE2_EVENTS_COMPILER="$STAGE2_EVENTS_BUILD_DIR/kofun-stage2-semantic-events"
@@ -112,6 +114,8 @@ ensure_stage2_compiler() {
     mkdir -p "$STAGE2_BUILD_DIR"
     if [ ! -x "$STAGE2_COMPILER" ] ||
        [ "$STAGE2_SEED_C" -nt "$STAGE2_COMPILER" ] ||
+       [ "$STAGE2_DECIMAL_C" -nt "$STAGE2_COMPILER" ] ||
+       [ "$STAGE2_DECIMAL_H" -nt "$STAGE2_COMPILER" ] ||
        [ "$UNICODE_C" -nt "$STAGE2_COMPILER" ] ||
        [ "$UNICODE_H" -nt "$STAGE2_COMPILER" ] ||
        [ "$UNICODE_TABLES" -nt "$STAGE2_COMPILER" ] ||
@@ -644,7 +648,8 @@ emit_c_abi() (
 
 build_file() (
     emit_c "$1" "$3" >/dev/null
-    "$CC" -std=c11 -O2 -Wall -Wextra -Werror "$3" -o "$2"
+    "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+        -I"$ROOT/bootstrap/stage2" "$3" -o "$2"
 )
 
 canonical_link_library() (
@@ -1133,7 +1138,8 @@ $2"
                 skipped=$((skipped + 1))
                 continue
             fi
-            if ! "$CC" -std=c11 -O2 -Wall -Wextra -Werror "$c_file" -o "$binary"; then
+            if ! "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+                -I"$ROOT/bootstrap/stage2" "$c_file" -o "$binary"; then
                 printf '%s\n' "FAIL $source"
                 failed=$((failed + 1))
                 continue

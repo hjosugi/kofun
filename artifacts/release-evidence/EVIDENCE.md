@@ -12,6 +12,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `cli-commands` | `sh tests/cli.sh` | Each subcommand succeeds on Core sources. |
 | `cli-framework` | `sh framework/cli/check.sh` | The declarative CLI example builds statically and runs. |
 | `compiler-seed` | `sh bootstrap/stage1/check.sh` | The audited C seed accepts and executes one corpus covering all 15 typed profile builtins, both `len` overloads, argv/file I/O, Text operations, character predicates, Unicode validation, and stdout. All 30 builtin arity/type boundary rows exit nonzero and write no C, while the older corpora remain byte-identical. |
+| `decimal-arithmetic-v1` | `task decimal-arithmetic` | The Stage 2 C11 backend executes all Decimal and Float arithmetic cases, including exactness beyond binary64 and checked division outcomes. |
 | `deterministic-fuzzing` | `sh tests/fuzz/semantic_differential.sh` | Oracle and backend observations agree for every generated program. |
 | `elf64-image-writer` | `sh bootstrap/native/check.sh` | A static ELF64 image is written and executes. |
 | `enum-matching` | `sh tests/conformance/syntax/issues_35_47/run.sh` | Payload-free and one-`Int`-payload enum matches lower and execute with exhaustiveness enforced; the fixtures read real payloads across local bindings, direct arguments, returns, guarded arms, and a re-matched binding catch-all. |

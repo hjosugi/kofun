@@ -176,13 +176,13 @@ point where the range exception above says not to — so `1..2` and `1.` both
 lex, and `E2S98` reads the result, where `..` and a lone `.` are already
 distinct tokens.
 
-A **well-formed** Decimal or Float literal that reaches lowering is a different
-condition and gets its own code, **`E2S99`**, which names the slice that would
-implement it. The named slice moves as the slices land: slice 1 delivered the
-token contract, slice 2 the runtime representation, slice 3 the checker types —
-so a literal that reaches lowering today waits on slice 4, which evaluates the
-operations. Reusing a generic "invalid expression" diagnostic here would report
-the literal as wrong when what is true is that the compiler is unfinished.
+A well-formed Decimal or Float literal now lowers through the Stage 2 C11
+backend. Decimal construction never passes through a host `double`; Float
+construction uses the deterministic correctly-rounded binary64 conversion.
+The versioned D001/D002 limits are still checked before an artifact is written
+and again by the generated runtime. Backends without that runtime declare the
+`decimal-arithmetic` corpus unsupported, with a reason, in
+`tests/conformance/capabilities.tsv`.
 
 This deliberately revises older planning text that calls every unsuffixed
 fractional or scientific literal a `Float`. That text is migration input, not

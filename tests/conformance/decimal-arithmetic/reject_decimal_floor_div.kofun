@@ -1,0 +1,6 @@
+# contract: kofun.backend-differential/v1
+# expect-reject: Decimal `//` remains undefined pending its signed convention
+
+fn main() {
+    print(7.0 // 2.0)
+}

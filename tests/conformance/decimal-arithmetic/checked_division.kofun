@@ -1,0 +1,10 @@
+# contract: kofun.backend-differential/v1
+# expect-stdout: Exact
+# expect-stdout: InexactDivision
+# expect-stdout: DivisionByZero
+
+fn main() {
+    print(1.0 / 4.0)
+    print(1.0 / 3.0)
+    print(1.0 / 0.0)
+}

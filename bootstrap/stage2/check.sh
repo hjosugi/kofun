@@ -76,24 +76,19 @@ assert_num "^decimal| lines in $temporary/range-exception.tokens" \
 assert_num "^float| lines in $temporary/range-exception.tokens" \
     "$(grep -c '^float|' "$temporary/range-exception.tokens")" -eq 0
 
-# A Decimal literal is representable (slice 2) and typed (slice 3), but has no
-# lowering, so reaching lowering must be an explicit, source-located refusal
-# that writes nothing and names slice 4 — the slice that evaluates it. Reusing
-# `E2S12` said the literal was invalid, which is not what is true: the literal
-# is well formed and the compiler is unfinished. Naming slice 3 became false
-# the moment #722 landed, because the literal has a type now.
+# Slice 4 lowers a Decimal literal through the exact runtime and emits a
+# canonical observation.  Compiling and running here keeps the Stage 2 seed's
+# include contract (`decimal_v1.c`) executable rather than merely greppable.
 printf 'fn main() {\n    print(1.5)\n}\n' >"$temporary/decimal-lowering.kofun"
-set +e
-"$root/bin/kofun" check "$temporary/decimal-lowering.kofun" \
-    >"$temporary/decimal-lowering.stdout" 2>"$temporary/decimal-lowering.stderr"
-decimal_lowering_status=$?
-set -e
-assert_num "decimal lowering status" "$decimal_lowering_status" -eq 1
-assert_file_empty "$temporary/decimal-lowering.stdout" \
-    "$temporary/decimal-lowering.stdout"
-grep -Fxq \
-    'error[E2S99]: Decimal literal at byte 22 has no lowering yet (#710 slice 4)' \
-    "$temporary/decimal-lowering.stderr"
+"$temporary/kofun-stage2" "$temporary/decimal-lowering.kofun" \
+    "$temporary/decimal-lowering.c" "$temporary/decimal-lowering.ir" \
+    "$temporary/decimal-lowering.tokens" >/dev/null
+"$compiler" -std=c11 -O2 -Wall -Wextra -Werror -I"$stage2" \
+    "$temporary/decimal-lowering.c" -o "$temporary/decimal-lowering"
+decimal_lowering_observed=$("$temporary/decimal-lowering") ||
+    assert_fail "Decimal literal executable exited non-zero"
+assert_eq "Decimal literal canonical output" \
+    "$decimal_lowering_observed" '15e-1'
 
 # Numeric typing (#722, #710 frozen decisions 2 and 4). Two properties:
 #
@@ -187,22 +182,17 @@ remedy_case '1.5 - 42f64' 'write Float.from_decimal(...)'
 remedy_case '42f64 - 1.5' 'write Float.from_decimal(...)'
 remedy_case '1 * 42f64' 'no conversion between them exists'
 remedy_case '42f64 * 1' 'no conversion between them exists'
-# A same-type expression must NOT be caught here: it reaches the ordinary
-# unsupported-lowering refusal instead, so an over-eager rule fails this.
+# A same-type expression must lower and execute; an over-eager mixed-type rule
+# or a host-double lowering fails the canonical exact result.
 printf 'fn main() {\n    print(1.5 + 2.5)\n}\n' >"$temporary/same.kofun"
-set +e
 "$temporary/kofun-stage2" "$temporary/same.kofun" "$temporary/same.c" \
     "$temporary/same.ir" "$temporary/same.tokens" \
     >"$temporary/same.stdout" 2>&1
-set -e
-grep -q 'E2S100' "$temporary/same.stdout" && {
-    echo "stage2 check: same-type Decimal arithmetic reported a type mismatch" >&2
-    exit 1
-}
-grep -q 'E2S99' "$temporary/same.stdout" || {
-    echo "stage2 check: same-type Decimal arithmetic did not reach E2S99" >&2
-    exit 1
-}
+"$compiler" -std=c11 -O2 -Wall -Wextra -Werror -I"$stage2" \
+    "$temporary/same.c" -o "$temporary/same"
+same_decimal_observed=$("$temporary/same") ||
+    assert_fail "same-type Decimal arithmetic executable exited non-zero"
+assert_eq "same-type Decimal arithmetic output" "$same_decimal_observed" '4e0'
 echo "PASS: mixed Int/Decimal/Float arithmetic is rejected in both orders"
 
 # A numeric annotation must agree with its initializer, in both directions.
@@ -244,26 +234,16 @@ for annotated in \
 do
     annotation_reject "$annotated"
 done
-# An agreeing annotation must NOT be caught here. It reaches the ordinary
-# unsupported-lowering refusal, which is what proves the rule compares the two
-# types rather than rejecting every Decimal annotation it sees.
+# An agreeing annotation must lower, which proves the rule compares the two
+# types rather than rejecting every fractional annotation it sees.
 for agreeing in 'let x: Decimal = 1.5' 'let x: Float = 1.5f64'; do
     printf 'fn main() {\n    %s\n    print(0)\n}\n' "$agreeing" \
         >"$temporary/agree.kofun"
-    set +e
     "$temporary/kofun-stage2" "$temporary/agree.kofun" "$temporary/agree.c" \
         "$temporary/agree.ir" "$temporary/agree.tokens" \
         >"$temporary/agree.stdout" 2>&1
-    set -e
-    grep -q 'E2S101' "$temporary/agree.stdout" && {
-        echo "stage2 check: '$agreeing' reported an annotation mismatch" >&2
-        exit 1
-    }
-    grep -q 'E2S99' "$temporary/agree.stdout" || {
-        echo "stage2 check: '$agreeing' did not reach E2S99" >&2
-        cat "$temporary/agree.stdout" >&2
-        exit 1
-    }
+    assert_file_nonempty "C output for agreeing annotation '$agreeing'" \
+        "$temporary/agree.c"
 done
 # `let x: Int = 1` still compiles: the Int path must survive the new rule.
 printf 'fn main() {\n    let x: Int = 1\n    print(x)\n}\n' \
@@ -328,8 +308,18 @@ conversion_case() {
         exit 1
     }
 }
-# A valid conversion type-checks and stops at the slice it needs.
-conversion_case 'Decimal.from_int(3)' E2S104
+# A valid exact conversion lowers and executes; only conversions that need a
+# rounding policy remain refusals.
+printf 'fn main() {\n    print(Decimal.from_int(3))\n}\n' \
+    >"$temporary/conversion-exact.kofun"
+"$temporary/kofun-stage2" "$temporary/conversion-exact.kofun" \
+    "$temporary/conversion-exact.c" "$temporary/conversion-exact.ir" \
+    "$temporary/conversion-exact.tokens" >/dev/null
+"$compiler" -std=c11 -O2 -Wall -Wextra -Werror -I"$stage2" \
+    "$temporary/conversion-exact.c" -o "$temporary/conversion-exact"
+conversion_exact_observed=$("$temporary/conversion-exact") ||
+    assert_fail "Decimal.from_int executable exited non-zero"
+assert_eq "Decimal.from_int canonical output" "$conversion_exact_observed" '3e0'
 # The two that cannot be exact are refused by name, naming what they need.
 conversion_case 'Float.from_decimal(1.5)' E2S103
 conversion_case 'Decimal.from_float(1.5f64)' E2S103
@@ -355,38 +345,23 @@ for same in 'Decimal.from_int(1) + 1.5' '1.5 + Decimal.from_int(1)' \
 do
     printf 'fn main() {\n    print(%s)\n}\n' "$same" \
         >"$temporary/conversion-same.kofun"
-    set +e
     "$temporary/kofun-stage2" "$temporary/conversion-same.kofun" \
         "$temporary/conversion-same.c" "$temporary/conversion-same.ir" \
         "$temporary/conversion-same.tokens" \
         >"$temporary/conversion-same.stdout" 2>&1
-    set -e
-    grep -q 'E2S100' "$temporary/conversion-same.stdout" && {
-        echo "stage2 check: '$same' reported a type mismatch" >&2
-        cat "$temporary/conversion-same.stdout" >&2
-        exit 1
-    }
-    grep -q 'E2S10[34]' "$temporary/conversion-same.stdout" || {
-        echo "stage2 check: '$same' did not reach the slice-4 refusal" >&2
-        cat "$temporary/conversion-same.stdout" >&2
-        exit 1
-    }
+    assert_file_nonempty "C output for same-type conversion '$same'" \
+        "$temporary/conversion-same.c"
 done
 # A conversion satisfies a matching annotation, which is what proves
 # `numeric_primary_type` types the path rather than its argument.
 printf 'fn main() {\n    let x: Decimal = Decimal.from_int(3)\n    print(0)\n}\n' \
     >"$temporary/conversion-annotated.kofun"
-set +e
 "$temporary/kofun-stage2" "$temporary/conversion-annotated.kofun" \
     "$temporary/conversion-annotated.c" "$temporary/conversion-annotated.ir" \
     "$temporary/conversion-annotated.tokens" \
     >"$temporary/conversion-annotated.stdout" 2>&1
-set -e
-grep -q 'E2S104' "$temporary/conversion-annotated.stdout" || {
-    echo "stage2 check: an annotated conversion did not reach E2S104" >&2
-    cat "$temporary/conversion-annotated.stdout" >&2
-    exit 1
-}
+assert_file_nonempty "annotated Decimal.from_int C output" \
+    "$temporary/conversion-annotated.c"
 printf 'fn main() {\n    let x: Int = Decimal.from_int(3)\n    print(0)\n}\n' \
     >"$temporary/conversion-mismatch.kofun"
 set +e
@@ -426,22 +401,25 @@ decimal_limit_case() {
         >"$temporary/decimal-limit.stdout" 2>"$temporary/decimal-limit.stderr"
     decimal_limit_status=$?
     set -e
-    test "$decimal_limit_status" -eq 1 || {
-        echo "stage2 check: $label was accepted" >&2
-        exit 1
-    }
-    # The byte is not anchored to end of line: a resource diagnostic ends with
-    # `at byte N` while `E2S99` carries it mid-sentence.
-    grep -q "^error\\[$expected\\]:.*byte 22" \
-        "$temporary/decimal-limit.stdout" || {
-        echo "stage2 check: $label did not report $expected at byte 22" >&2
-        cat "$temporary/decimal-limit.stdout" >&2
-        exit 1
-    }
-    test ! -e "$temporary/decimal-limit.c" || {
-        echo "stage2 check: $label emitted C" >&2
-        exit 1
-    }
+    if test "$expected" = OK; then
+        test "$decimal_limit_status" -eq 0
+        test -s "$temporary/decimal-limit.c"
+    else
+        test "$decimal_limit_status" -eq 1 || {
+            echo "stage2 check: $label was accepted" >&2
+            exit 1
+        }
+        grep -q "^error\\[$expected\\]:.*byte 22" \
+            "$temporary/decimal-limit.stdout" || {
+            echo "stage2 check: $label did not report $expected at byte 22" >&2
+            cat "$temporary/decimal-limit.stdout" >&2
+            exit 1
+        }
+        test ! -e "$temporary/decimal-limit.c" || {
+            echo "stage2 check: $label emitted C" >&2
+            exit 1
+        }
+    fi
 }
 
 decimal_nines=$(awk 'BEGIN { while (i++ < 4095) printf "9" }')
@@ -449,7 +427,7 @@ decimal_limit_case "significand at the digit limit" \
     "fn main() {
     print(1.$decimal_nines)
 }
-" E2S99
+" OK
 decimal_limit_case "significand one digit over" \
     "fn main() {
     print(1.${decimal_nines}9)
@@ -459,7 +437,7 @@ decimal_limit_case "scale at the limit" \
     'fn main() {
     print(1e-6144)
 }
-' E2S99
+' OK
 decimal_limit_case "scale one step over" \
     'fn main() {
     print(1e-6145)
