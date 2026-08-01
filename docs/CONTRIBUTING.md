@@ -49,6 +49,12 @@ labels. Read the entire issue, linked contract, and recent discussion before
 coding. Planning or umbrella issues describe outcomes but may not be an
 independently mergeable unit.
 
+[`ISSUE_READINESS.md`](ISSUE_READINESS.md) states what `ready` means, what the
+other states mean, and how an issue moves between them. Read it before starting
+a `ready` issue — in particular, re-run the commands in its **Current behavior
+and evidence** section. `main` moves several times an hour here, and an issue's
+stated premise can be stale by the time you pick it up.
+
 If no issue exists, a small documentation correction can be submitted
 directly. For changes to language semantics, stable diagnostics, public
 artifact schemas, security boundaries, or release behavior, open or agree on
