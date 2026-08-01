@@ -1,0 +1,7 @@
+# contract: kofun.backend-differential/v1
+# expect-stderr: error[D007]: Decimal format scale would discard digits
+# expect-exit: 1
+
+fn main() {
+    print(Decimal.format(12.34, 1))
+}

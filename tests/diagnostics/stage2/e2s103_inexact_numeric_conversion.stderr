@@ -1,1 +1,1 @@
-error[E2S103]: `Float.from_decimal` cannot be exact at byte 96; it needs a rounding mode (#710 slice 5)
+error[E2S103]: `Float.from_decimal` cannot be exact at byte 96; its cross-radix policy is not implemented

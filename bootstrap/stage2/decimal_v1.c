@@ -39,6 +39,9 @@ const char *kofun_decimal_status_code(KofunDecimalStatus status) {
         case KOFUN_DECIMAL_SCALE_LIMIT: return "D002";
         case KOFUN_DECIMAL_MALFORMED: return "D003";
         case KOFUN_DECIMAL_MEMORY: return "D004";
+        case KOFUN_DECIMAL_DIVISION_ZERO: return "D005";
+        case KOFUN_DECIMAL_ROUNDING_MODE: return "D006";
+        case KOFUN_DECIMAL_FORMAT_INEXACT: return "D007";
     }
     return "";
 }
@@ -56,6 +59,12 @@ const char *kofun_decimal_status_message(KofunDecimalStatus status) {
             return "error[D003]: malformed Decimal literal";
         case KOFUN_DECIMAL_MEMORY:
             return "error[D004]: Decimal allocation refused";
+        case KOFUN_DECIMAL_DIVISION_ZERO:
+            return "error[D005]: rounded Decimal division by zero";
+        case KOFUN_DECIMAL_ROUNDING_MODE:
+            return "error[D006]: invalid Decimal rounding mode";
+        case KOFUN_DECIMAL_FORMAT_INEXACT:
+            return "error[D007]: Decimal format scale would discard digits";
     }
     return "";
 }
@@ -1270,6 +1279,315 @@ KofunDecimalStatus kofun_decimal_divide_exact(const KofunDecimal *left,
     return finish(left->sign * right->sign, &quotient, scale, out);
 }
 
+/* --- explicit rounding and formatting (slice 5, issue #724) ------------- */
+
+const char *kofun_decimal_rounding_name(KofunDecimalRounding mode) {
+    switch (mode) {
+        case KOFUN_DECIMAL_HALF_UP: return "HalfUp";
+        case KOFUN_DECIMAL_HALF_EVEN: return "HalfEven";
+        case KOFUN_DECIMAL_TOWARD_ZERO: return "TowardZero";
+        case KOFUN_DECIMAL_FLOOR: return "Floor";
+        case KOFUN_DECIMAL_CEILING: return "Ceiling";
+    }
+    return "";
+}
+
+static bool decimal_rounding_valid(KofunDecimalRounding mode) {
+    return mode >= KOFUN_DECIMAL_HALF_UP &&
+           mode <= KOFUN_DECIMAL_CEILING;
+}
+
+/* Decide whether a non-zero remainder increments the unsigned quotient. */
+static KofunDecimalStatus rounding_increment(
+    int sign,
+    const Magnitude *quotient,
+    const Magnitude *remainder,
+    const Magnitude *divisor,
+    KofunDecimalRounding mode,
+    bool *increment
+) {
+    *increment = false;
+    if (magnitude_is_zero(remainder)) return KOFUN_DECIMAL_OK;
+    if (!decimal_rounding_valid(mode)) return KOFUN_DECIMAL_ROUNDING_MODE;
+
+    if (mode == KOFUN_DECIMAL_TOWARD_ZERO) return KOFUN_DECIMAL_OK;
+    if (mode == KOFUN_DECIMAL_FLOOR) {
+        *increment = sign < 0;
+        return KOFUN_DECIMAL_OK;
+    }
+    if (mode == KOFUN_DECIMAL_CEILING) {
+        *increment = sign > 0;
+        return KOFUN_DECIMAL_OK;
+    }
+
+    Magnitude twice;
+    if (!magnitude_copy_from(&twice, remainder->limbs, remainder->count)) {
+        return KOFUN_DECIMAL_MEMORY;
+    }
+    if (!magnitude_mul_add_small(&twice, 2u, 0u)) {
+        magnitude_free(&twice);
+        return KOFUN_DECIMAL_MEMORY;
+    }
+    int half = magnitude_compare(&twice, divisor);
+    magnitude_free(&twice);
+    if (half > 0) {
+        *increment = true;
+    } else if (half == 0) {
+        *increment = mode == KOFUN_DECIMAL_HALF_UP ||
+            magnitude_mod_small(quotient, 2u) != 0;
+    }
+    return KOFUN_DECIMAL_OK;
+}
+
+/*
+ * Divide two positive magnitudes, round the signed quotient, and consume both
+ * inputs. The result is finalized at the caller's explicit destination scale.
+ */
+static KofunDecimalStatus divide_and_round(
+    int sign,
+    Magnitude *numerator,
+    Magnitude *divisor,
+    long target_scale,
+    KofunDecimalRounding mode,
+    KofunDecimal *out
+) {
+    Magnitude quotient;
+    Magnitude remainder;
+    bool divided = magnitude_divmod(
+        numerator,
+        divisor,
+        &quotient,
+        &remainder
+    );
+    magnitude_free(numerator);
+    if (!divided) {
+        magnitude_free(divisor);
+        return KOFUN_DECIMAL_MEMORY;
+    }
+
+    bool increment = false;
+    KofunDecimalStatus status = rounding_increment(
+        sign,
+        &quotient,
+        &remainder,
+        divisor,
+        mode,
+        &increment
+    );
+    magnitude_free(&remainder);
+    magnitude_free(divisor);
+    if (status != KOFUN_DECIMAL_OK) {
+        magnitude_free(&quotient);
+        return status;
+    }
+    if (increment && !magnitude_mul_add_small(&quotient, 1u, 1u)) {
+        magnitude_free(&quotient);
+        return KOFUN_DECIMAL_MEMORY;
+    }
+    return finish(sign, &quotient, target_scale, out);
+}
+
+KofunDecimalStatus kofun_decimal_round(
+    const KofunDecimal *value,
+    long target_scale,
+    KofunDecimalRounding mode,
+    KofunDecimal *out
+) {
+    if (value == NULL || out == NULL) return KOFUN_DECIMAL_MALFORMED;
+    kofun_decimal_init(out);
+    if (target_scale > KOFUN_DECIMAL_MAX_SCALE ||
+        target_scale < KOFUN_DECIMAL_MIN_SCALE) {
+        return KOFUN_DECIMAL_SCALE_LIMIT;
+    }
+    if (!decimal_rounding_valid(mode)) return KOFUN_DECIMAL_ROUNDING_MODE;
+
+    Magnitude numerator;
+    if (!magnitude_copy_from(
+            &numerator,
+            value->limbs,
+            value->limb_count)) {
+        return KOFUN_DECIMAL_MEMORY;
+    }
+    if (target_scale >= value->scale || value->sign == 0) {
+        return finish(value->sign, &numerator, value->scale, out);
+    }
+
+    Magnitude divisor;
+    magnitude_init(&divisor);
+    if (!magnitude_reserve(&divisor, 1)) {
+        magnitude_free(&numerator);
+        return KOFUN_DECIMAL_MEMORY;
+    }
+    divisor.limbs[0] = 1u;
+    divisor.count = 1;
+    if (!magnitude_scale_pow10(&divisor, (long)value->scale - target_scale)) {
+        magnitude_free(&numerator);
+        magnitude_free(&divisor);
+        return KOFUN_DECIMAL_MEMORY;
+    }
+    return divide_and_round(
+        value->sign,
+        &numerator,
+        &divisor,
+        target_scale,
+        mode,
+        out
+    );
+}
+
+KofunDecimalStatus kofun_decimal_divide_rounded(
+    const KofunDecimal *left,
+    const KofunDecimal *right,
+    long target_scale,
+    KofunDecimalRounding mode,
+    KofunDecimal *out
+) {
+    if (left == NULL || right == NULL || out == NULL) {
+        return KOFUN_DECIMAL_MALFORMED;
+    }
+    kofun_decimal_init(out);
+    if (target_scale > KOFUN_DECIMAL_MAX_SCALE ||
+        target_scale < KOFUN_DECIMAL_MIN_SCALE) {
+        return KOFUN_DECIMAL_SCALE_LIMIT;
+    }
+    if (!decimal_rounding_valid(mode)) return KOFUN_DECIMAL_ROUNDING_MODE;
+    if (right->sign == 0) return KOFUN_DECIMAL_DIVISION_ZERO;
+    if (left->sign == 0) return KOFUN_DECIMAL_OK;
+
+    Magnitude numerator;
+    Magnitude divisor;
+    if (!magnitude_copy_from(
+            &numerator,
+            left->limbs,
+            left->limb_count)) {
+        return KOFUN_DECIMAL_MEMORY;
+    }
+    if (!magnitude_copy_from(
+            &divisor,
+            right->limbs,
+            right->limb_count)) {
+        magnitude_free(&numerator);
+        return KOFUN_DECIMAL_MEMORY;
+    }
+
+    long exponent = (long)right->scale + target_scale - (long)left->scale;
+    bool scaled = exponent >= 0
+        ? magnitude_scale_pow10(&numerator, exponent)
+        : magnitude_scale_pow10(&divisor, -exponent);
+    if (!scaled) {
+        magnitude_free(&numerator);
+        magnitude_free(&divisor);
+        return KOFUN_DECIMAL_MEMORY;
+    }
+    return divide_and_round(
+        left->sign * right->sign,
+        &numerator,
+        &divisor,
+        target_scale,
+        mode,
+        out
+    );
+}
+
+KofunDecimalStatus kofun_decimal_parse(
+    const char *text,
+    size_t length,
+    KofunDecimal *out
+) {
+    if (text == NULL || out == NULL || length == 0) {
+        return KOFUN_DECIMAL_MALFORMED;
+    }
+    bool negative = false;
+    size_t offset = 0;
+    if (text[0] == '+' || text[0] == '-') {
+        negative = text[0] == '-';
+        offset = 1;
+    }
+    if (offset == length) return KOFUN_DECIMAL_MALFORMED;
+    KofunDecimalStatus status = kofun_decimal_from_literal(
+        text + offset,
+        length - offset,
+        out
+    );
+    if (status == KOFUN_DECIMAL_OK && negative && out->sign != 0) {
+        out->sign = -out->sign;
+    }
+    return status;
+}
+
+KofunDecimalStatus kofun_decimal_format(
+    const KofunDecimal *value,
+    long display_scale,
+    char **out
+) {
+    if (value == NULL || out == NULL) return KOFUN_DECIMAL_MALFORMED;
+    *out = NULL;
+    if (display_scale < 0 || display_scale > KOFUN_DECIMAL_MAX_SCALE) {
+        return KOFUN_DECIMAL_SCALE_LIMIT;
+    }
+    if (display_scale < value->scale) {
+        return KOFUN_DECIMAL_FORMAT_INEXACT;
+    }
+
+    char *digits = magnitude_to_text(value, false);
+    if (digits == NULL) return KOFUN_DECIMAL_MEMORY;
+    size_t digit_count = strlen(digits);
+    size_t trailing = (size_t)(display_scale - (long)value->scale);
+    long integer_digits = (long)digit_count - (long)value->scale;
+    size_t leading = integer_digits > 0 ? 0u : (size_t)(1 - integer_digits);
+    size_t sign = value->sign < 0 ? 1u : 0u;
+    size_t point = display_scale > 0 ? 1u : 0u;
+    size_t capacity = sign + leading + digit_count + trailing + point + 1u;
+    char *text = malloc(capacity);
+    if (text == NULL) {
+        free(digits);
+        return KOFUN_DECIMAL_MEMORY;
+    }
+
+    size_t written = 0;
+    if (sign != 0) text[written++] = '-';
+    if (integer_digits <= 0) {
+        text[written++] = '0';
+        if (display_scale > 0) text[written++] = '.';
+        for (size_t index = 1; index < leading; ++index) {
+            text[written++] = '0';
+        }
+        memcpy(text + written, digits, digit_count);
+        written += digit_count;
+        for (size_t index = 0; index < trailing; ++index) {
+            text[written++] = '0';
+        }
+    } else {
+        size_t whole = (size_t)integer_digits;
+        size_t copied_whole = whole < digit_count ? whole : digit_count;
+        memcpy(text + written, digits, copied_whole);
+        written += copied_whole;
+        size_t whole_zeroes = whole - copied_whole;
+        size_t zeroes_before_point = whole_zeroes < trailing
+            ? whole_zeroes
+            : trailing;
+        for (size_t index = 0; index < zeroes_before_point; ++index) {
+            text[written++] = '0';
+        }
+        trailing -= zeroes_before_point;
+        if (display_scale > 0) {
+            text[written++] = '.';
+            if (copied_whole < digit_count) {
+                size_t fraction = digit_count - copied_whole;
+                memcpy(text + written, digits + copied_whole, fraction);
+                written += fraction;
+            }
+            for (size_t index = 0; index < trailing; ++index) {
+                text[written++] = '0';
+            }
+        }
+    }
+    text[written] = '\0';
+    free(digits);
+    *out = text;
+    return KOFUN_DECIMAL_OK;
+}
+
 /* --- Float, for contrast (slice 4 of #710, issue #723) -------------------- */
 
 /*
@@ -1314,6 +1632,9 @@ static size_t decimal_arena_capacity;
 static KofunDecimalResult **decimal_result_arena;
 static size_t decimal_result_arena_count;
 static size_t decimal_result_arena_capacity;
+static char **decimal_text_arena;
+static size_t decimal_text_arena_count;
+static size_t decimal_text_arena_capacity;
 
 /*
  * A resource limit reaching generated code is fatal.
@@ -1416,6 +1737,78 @@ KofunDecimal *kofun_decimal_value_negate(const KofunDecimal *source) {
     return value;
 }
 
+KofunDecimal *kofun_decimal_value_round(
+    const KofunDecimal *source,
+    long target_scale,
+    KofunDecimalRounding mode
+) {
+    KofunDecimal *value = decimal_arena_push();
+    KofunDecimalStatus status = kofun_decimal_round(
+        source,
+        target_scale,
+        mode,
+        value
+    );
+    if (status != KOFUN_DECIMAL_OK) decimal_fatal(status);
+    return value;
+}
+
+KofunDecimal *kofun_decimal_value_divide_rounded(
+    const KofunDecimal *left,
+    const KofunDecimal *right,
+    long target_scale,
+    KofunDecimalRounding mode
+) {
+    KofunDecimal *value = decimal_arena_push();
+    KofunDecimalStatus status = kofun_decimal_divide_rounded(
+        left,
+        right,
+        target_scale,
+        mode,
+        value
+    );
+    if (status != KOFUN_DECIMAL_OK) decimal_fatal(status);
+    return value;
+}
+
+KofunDecimal *kofun_decimal_value_parse(const char *text, size_t length) {
+    KofunDecimal *value = decimal_arena_push();
+    KofunDecimalStatus status = kofun_decimal_parse(text, length, value);
+    if (status != KOFUN_DECIMAL_OK) decimal_fatal(status);
+    return value;
+}
+
+static const char *decimal_text_arena_push(char *text) {
+    if (decimal_text_arena_count == decimal_text_arena_capacity) {
+        size_t capacity = decimal_text_arena_capacity == 0
+            ? 8
+            : decimal_text_arena_capacity * 2;
+        char **grown = realloc(decimal_text_arena, capacity * sizeof(*grown));
+        if (grown == NULL) {
+            free(text);
+            decimal_fatal(KOFUN_DECIMAL_MEMORY);
+        }
+        decimal_text_arena = grown;
+        decimal_text_arena_capacity = capacity;
+    }
+    decimal_text_arena[decimal_text_arena_count++] = text;
+    return text;
+}
+
+const char *kofun_decimal_value_format(
+    const KofunDecimal *value,
+    long display_scale
+) {
+    char *text = NULL;
+    KofunDecimalStatus status = kofun_decimal_format(
+        value,
+        display_scale,
+        &text
+    );
+    if (status != KOFUN_DECIMAL_OK) decimal_fatal(status);
+    return decimal_text_arena_push(text);
+}
+
 static KofunDecimalResult *decimal_result_arena_push(void) {
     if (decimal_result_arena_count == decimal_result_arena_capacity) {
         size_t capacity = decimal_result_arena_capacity == 0
@@ -1482,4 +1875,11 @@ void kofun_decimal_arena_release(void) {
     decimal_result_arena = NULL;
     decimal_result_arena_count = 0;
     decimal_result_arena_capacity = 0;
+    for (size_t index = 0; index < decimal_text_arena_count; ++index) {
+        free(decimal_text_arena[index]);
+    }
+    free(decimal_text_arena);
+    decimal_text_arena = NULL;
+    decimal_text_arena_count = 0;
+    decimal_text_arena_capacity = 0;
 }

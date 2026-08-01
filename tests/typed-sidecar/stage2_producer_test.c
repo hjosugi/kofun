@@ -934,7 +934,7 @@ static void test_failed_prefix_content(
         const AuditFact *local_type;
         size_t index;
         bool diagnosed_error = false;
-        CHECK(strcmp(result.diagnostic_code, "E2S12") == 0);
+        CHECK(strcmp(result.diagnostic_code, "E2S15") == 0);
         CHECK(result.source_status == KOFUN_SOURCE_FAILED);
         CHECK(result.completeness == KOFUN_SEMANTIC_PARTIAL);
         CHECK(function != NULL);

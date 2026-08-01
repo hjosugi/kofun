@@ -1,12 +1,10 @@
 # Decimal design
 
-Status: accepted language design for issue #545. This document specifies the
-target semantics; it does not claim that the compiler implements Decimal
-literals or the representation described here.
-
-The executable module under [`stdlib/decimal`](../stdlib/decimal/) is a bounded
-checkpoint. It is useful migration evidence, but its signed 64-bit significand
-and scale range `0 .. 18` are not the final language representation.
+Status: accepted language design for issue #545. The executable
+[`stdlib/decimal`](../stdlib/decimal/) checkpoint now uses the compiler-native
+arbitrary-precision value through slice 5: literals, exact arithmetic, explicit
+rounding and rounded division, and exact format/parse boundaries. It no longer
+carries the former signed-64-bit significand implementation.
 
 ## Goals
 
@@ -107,6 +105,9 @@ versioned as one unit — a limit cannot move without the version moving with it
 | `D002` | scale outside the range, before or after canonicalization |
 | `D003` | not a literal this grammar accepts |
 | `D004` | allocation refused |
+| `D005` | rounded division by zero |
+| `D006` | invalid rounding mode reached the runtime boundary |
+| `D007` | formatting at the requested scale would discard digits |
 
 Both boundaries and their one-over cases are gated, so exceeding a limit is
 observably a `D00x` code and never a clamped value. Leading zeros do not
@@ -212,14 +213,12 @@ round to a requested decimal scale, or reject an inexact result. A displayed
 `Float` string is not silently treated as the exact binary value, and a binary
 value is not silently treated as the decimal text a user originally typed.
 
-Of the three, only `Decimal.from_int` can be written today. Int to Decimal is
-exact for every input and needs no mode, so it type-checks and stops at
-lowering, naming the slice that will evaluate it. The other two cross the
-decimal/binary boundary and cannot be exact, and the rounding mode and policy
-they require are slice 5 — so the compiler rejects them by name rather than
-choosing a mode. That refusal is the rule about ambient rounding contexts being
-enforced rather than merely written down: there is nowhere for a default to
-come from, so there is no conversion to offer yet.
+Of the three conversions, `Decimal.from_int` is implemented because it is exact
+for every input. The two cross-radix conversions remain rejected by name: a
+rounding mode alone does not settle their complete binary/decimal policy.
+Slice 5 instead implements the operations whose destination is unambiguous:
+`Decimal.round`, `Decimal.divide`, `Decimal.format`, and `Decimal.parse`. No
+conversion or operation acquires an ambient policy.
 
 An unknown member of a numeric type is an unknown *conversion*, and says so.
 Before the conversions existed, `Decimal.from_text("1")` reported an unknown
@@ -336,6 +335,24 @@ A plain Decimal normalizes after rounding, so formatting scale is not part of
 its identity. Code that must retain `2.00` uses `Fixed` or an explicit format
 scale.
 
+### Formatting and parsing
+
+The bounded Stage 2 surface uses positional arguments because named arguments
+are not part of this compiler profile:
+
+```kofun
+let rounded = Decimal.round(value, 2, HalfEven)
+let quotient = Decimal.divide(left, right, 2, HalfUp)
+let text = Decimal.format(rounded, 2)
+let restored = Decimal.parse(text)
+```
+
+Formatting has an explicit non-negative display scale and never rounds. If the
+value needs more fractional digits than requested, it fails with `D007` rather
+than discarding them. Successful formatted text parses back to the same
+canonical value; requested trailing zeroes are a text observation, not part of
+Decimal identity.
+
 ## Fixed point
 
 `Fixed[scale]` is the target scale-carrying type. Its scale is a compile-time
@@ -364,28 +381,18 @@ interim profile, and naming it is how the requirement that the language state
 its scale guarantees truthfully is met — by saying what the guarantee is, not by
 delivering the type.
 
-**`runtime-scale/v1` is what exists.** Under it:
+**`runtime-scale/v1` is what exists.** Under it, destination and display scales
+are ordinary runtime `Int` arguments to Decimal operations. There is no
+implemented `Fixed` value and therefore no carried or statically checked scale.
+The earlier `Fixed { significand: Int, scale: Int }` checkpoint was removed when
+the stdlib moved to native Decimal; keeping it would preserve the fixed-width
+representation under a second name.
 
-- a destination scale is an ordinary **runtime argument**: `fixed_assign` takes
-  it as a value, not as a type parameter;
-- the scale a value carries is an ordinary **runtime field**, so two values of
-  the same static type may hold different scales;
-- a scale mismatch is a **runtime failure**: `fixed_add` returns
-  `ScaleMismatch`, and nothing is reported at compile time;
-- there is therefore **no static scale safety**. Nothing about scale is checked
-  before the program runs.
-
-The difference this name exists to keep visible: under `Fixed[scale]`, `Fixed[2]`
-and `Fixed[3]` are different types and mixing them cannot compile. Under
-`runtime-scale/v1` they are one type, so mixing them compiles and then fails
-while running. That is a strictly weaker guarantee, and describing the runtime
-field as an approximation of the static one would be false rather than
-imprecise.
-
-Migration must move the scale into the type. Until it does, no document may
-claim that the runtime field already provides static safety. The exact
-const-generic landing order is deferred to the type-system work that implements
-integer value parameters.
+The difference this name keeps visible is that `Fixed[2]` and `Fixed[3]` cannot
+yet be expressed as different types at all. Explicit runtime arguments prevent
+implicit rounding, but provide **no static scale safety**. A future
+const-generic Fixed implementation must move scale into the type and replace
+this profile rather than presenting runtime arguments as that guarantee.
 
 ## Laws
 
@@ -418,9 +425,10 @@ Initial executable evidence must include:
   limits.
 
 Decimal has an infinite carrier, so execution over a finite set cannot produce
-`proven-finite` evidence for Decimal as a whole. Bounded evidence must remain
-labeled `bounded-exhaustive`; it is not a universal proof. A universal Decimal
-law claim requires future proof-kernel evidence labeled `proven`.
+`proven-finite` evidence for Decimal as a whole. Slice 5's native checkpoint is
+labeled `bounded-examples`; even a future exhaustive finite model must remain
+`bounded-exhaustive`, not a universal proof. A universal Decimal law claim
+requires future proof-kernel evidence labeled `proven`.
 
 ## Relationship to IEEE decimal formats
 
@@ -441,8 +449,8 @@ The following details are intentionally not invented by this design:
 - the first cross-backend digit, scale, allocation, and operation-cost limits;
 - stable diagnostic codes for those resource failures;
 - the implementation schedule for integer const generics and `Fixed[scale]`;
-- the canonical human-readable formatting API, exponent thresholds, locale
-  layer, and preservation of requested display scale;
+- locale-aware formatting and exponent-selection thresholds beyond the exact
+  fixed-display-scale API;
 - the signed quotient/remainder convention for Decimal `//` and `%`;
 - concrete IEEE decimal, database, and wire-format adapters.
 
@@ -452,19 +460,12 @@ noncanonical Decimal representation.
 
 ## Migration from the checkpoint
 
-The existing `stdlib/decimal` checkpoint already demonstrates:
-
-- a binary significand;
-- exact addition, subtraction, multiplication, and equality in a bounded
-  range;
-- explicit exact and rounded division;
-- all five rounding modes;
-- a runtime scale-carrying Fixed form;
-- bounded law evidence and a ledger/tax example.
-
-It does not establish arbitrary precision, Decimal literal parsing, `f64`
-suffixes, `Fixed[scale]`, compiler law declarations, backend runtime layout, or
-interchange formats.
+The migrated `stdlib/decimal` checkpoint demonstrates compiler-native exact
+arithmetic, all five signed rounding modes, explicit rounded division,
+format/parse round trips, bounded evidence, and a native ledger/tax example.
+The Stage 2 C11 backend and direct runtime gates establish arbitrary precision
+for their declared profile. `Fixed[scale]`, general compiler law declarations,
+other backend runtimes, and interchange formats remain open.
 
 Implementation should land in this order:
 
@@ -472,7 +473,8 @@ Implementation should land in this order:
 2. add the arbitrary-precision runtime representation and canonicalization;
 3. enforce same-type operators and explicit conversions in the type checker;
 4. implement exact operations and checked exact division across every backend;
-5. implement explicit rounding and formatting, then migrate the checkpoint;
+5. implement explicit rounding and formatting, then migrate the checkpoint
+   (landed in issue #724);
 6. add `Fixed[scale]` after integer const generics exist;
 7. connect versioned law evidence and backend differential tests.
 

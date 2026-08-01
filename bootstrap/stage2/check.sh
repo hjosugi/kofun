@@ -386,6 +386,39 @@ grep -q 'E2S101' "$temporary/conversion-mismatch.stdout" || {
 }
 echo "PASS: named numeric conversions type, reject, and refuse by name"
 
+# Slice 5 members require every scale/mode argument, pin all five signed modes,
+# and keep display scale separate from Decimal identity.
+conversion_case 'Decimal.round(2.5, 0)' E2S17
+conversion_case 'Decimal.divide(1.0, 3.0)' E2S17
+conversion_case 'Decimal.round(2.5, 0, 3)' E2S15
+conversion_case 'Decimal.format(1.25, 1.5)' E2S15
+printf '%s\n' \
+    'fn main() {' \
+    '    print(Decimal.round(2.5, 0, HalfUp))' \
+    '    print(Decimal.round(-2.5, 0, HalfEven))' \
+    '    print(Decimal.round(-2.5, 0, Floor))' \
+    '    print(Decimal.round(-2.5, 0, Ceiling))' \
+    '    print(Decimal.round(-2.5, 0, TowardZero))' \
+    '    print(Decimal.divide(1.0, 8.0, 2, HalfEven))' \
+    '    print(Decimal.format(Decimal.parse("-1.20"), 2))' \
+    '}' >"$temporary/decimal-slice5.kofun"
+"$temporary/kofun-stage2" "$temporary/decimal-slice5.kofun" \
+    "$temporary/decimal-slice5.c" "$temporary/decimal-slice5.ir" \
+    "$temporary/decimal-slice5.tokens" >/dev/null
+"$compiler" -std=c11 -O2 -Wall -Wextra -Werror -I"$stage2" \
+    "$temporary/decimal-slice5.c" -o "$temporary/decimal-slice5"
+decimal_slice5_observed=$("$temporary/decimal-slice5") ||
+    assert_fail "Decimal slice 5 executable exited non-zero"
+assert_eq "Decimal slice 5 output" "$decimal_slice5_observed" \
+    '3e0
+-2e0
+-3e0
+-2e0
+-2e0
+12e-2
+-1.20'
+echo "PASS: explicit Decimal rounding, division, formatting, and parsing"
+
 # The Decimal resource profile (#721, `docs/DECIMAL.md` "Profile v1"). Frozen
 # decision 8 requires its limits to be cross-backend *observable*, so the
 # compiler constructs each literal and reports the limit at the literal's own

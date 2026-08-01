@@ -1,0 +1,14 @@
+# contract: kofun.backend-differential/v1
+# expect-stdout: 13e-2
+# expect-stdout: 12e-2
+# expect-stdout: -34e-2
+# expect-stdout: -33e-2
+# expect-stdout: 5e-1
+
+fn main() {
+    print(Decimal.divide(1.0, 8.0, 2, HalfUp))
+    print(Decimal.divide(1.0, 8.0, 2, HalfEven))
+    print(Decimal.divide(-1.0, 3.0, 2, Floor))
+    print(Decimal.divide(-1.0, 3.0, 2, Ceiling))
+    print(Decimal.divide(2.0, 4.0, 2, HalfEven))
+}

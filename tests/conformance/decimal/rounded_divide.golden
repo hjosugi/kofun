@@ -1,0 +1,10 @@
+1 / 8 scale=2 HalfUp -> 13e-2
+-1 / 8 scale=2 HalfUp -> -13e-2
+1 / 8 scale=2 HalfEven -> 12e-2
+-1 / 8 scale=2 HalfEven -> -12e-2
+1 / 3 scale=2 Floor -> 33e-2
+-1 / 3 scale=2 Floor -> -34e-2
+1 / 3 scale=2 Ceiling -> 34e-2
+-1 / 3 scale=2 Ceiling -> -33e-2
+2 / 4 scale=2 HalfEven -> 5e-1
+1 / 0 scale=2 HalfEven -> D005

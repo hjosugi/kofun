@@ -1,0 +1,13 @@
+2.5 scale=0 HalfUp -> 3e0 significand=3 scale=0
+-2.5 scale=0 HalfUp -> -3e0 significand=-3 scale=0
+2.5 scale=0 HalfEven -> 2e0 significand=2 scale=0
+-2.5 scale=0 HalfEven -> -2e0 significand=-2 scale=0
+2.5 scale=0 TowardZero -> 2e0 significand=2 scale=0
+-2.5 scale=0 TowardZero -> -2e0 significand=-2 scale=0
+2.5 scale=0 Floor -> 2e0 significand=2 scale=0
+-2.5 scale=0 Floor -> -3e0 significand=-3 scale=0
+2.5 scale=0 Ceiling -> 3e0 significand=3 scale=0
+-2.5 scale=0 Ceiling -> -2e0 significand=-2 scale=0
+1.999 scale=2 HalfUp -> 2e0 significand=2 scale=0
+-1.999 scale=2 HalfUp -> -2e0 significand=-2 scale=0
+999999999999999999999999999999.5 scale=0 HalfEven -> 1e30 significand=1 scale=-30

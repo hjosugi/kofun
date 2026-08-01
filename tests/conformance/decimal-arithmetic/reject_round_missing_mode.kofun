@@ -1,0 +1,6 @@
+# contract: kofun.backend-differential/v1
+# expect-reject: Decimal rounding requires destination scale and mode
+
+fn main() {
+    print(Decimal.round(2.5, 0))
+}

@@ -14,9 +14,10 @@
  * is `significand * 10^-scale`. Scale may be negative, so `1e3` and `1000`
  * are the same canonical value.
  *
- * Slice 2 constructs, canonicalizes, compares and renders. Slice 4 adds the
- * exact arithmetic and checked division declared later in this header;
- * `docs/DECIMAL.md` is normative for both layers.
+ * Slice 2 constructs, canonicalizes, compares and renders. Slice 4 adds exact
+ * arithmetic and checked division; slice 5 adds explicit rounding, rounded
+ * division, parsing, and scale-preserving display. `docs/DECIMAL.md` is
+ * normative for every layer.
  */
 
 /*
@@ -42,7 +43,13 @@ typedef enum {
     /* Not a literal this profile's grammar accepts. */
     KOFUN_DECIMAL_MALFORMED = 3,
     /* Allocation refused. */
-    KOFUN_DECIMAL_MEMORY = 4
+    KOFUN_DECIMAL_MEMORY = 4,
+    /* Rounded division by zero has no Decimal result. */
+    KOFUN_DECIMAL_DIVISION_ZERO = 5,
+    /* A value outside the five pinned rounding modes reached the runtime. */
+    KOFUN_DECIMAL_ROUNDING_MODE = 6,
+    /* Formatting at the requested scale would discard a non-zero digit. */
+    KOFUN_DECIMAL_FORMAT_INEXACT = 7
 } KofunDecimalStatus;
 
 /* Stable diagnostic code, `D001`-style, or "" for OK. */
@@ -196,6 +203,61 @@ KofunDecimalStatus kofun_decimal_divide_exact(
     KofunDecimalDivision *outcome
 );
 
+/* --- explicit rounding and formatting (slice 5, issue #724) ------------- */
+
+typedef enum {
+    KOFUN_DECIMAL_HALF_UP = 0,
+    KOFUN_DECIMAL_HALF_EVEN = 1,
+    KOFUN_DECIMAL_TOWARD_ZERO = 2,
+    KOFUN_DECIMAL_FLOOR = 3,
+    KOFUN_DECIMAL_CEILING = 4
+} KofunDecimalRounding;
+
+const char *kofun_decimal_rounding_name(KofunDecimalRounding mode);
+
+/*
+ * Round to `target_scale`, then canonicalize the Decimal result. The scale and
+ * mode are mandatory even when the particular value already fits, so callers
+ * cannot acquire an ambient or data-dependent default.
+ */
+KofunDecimalStatus kofun_decimal_round(
+    const KofunDecimal *value,
+    long target_scale,
+    KofunDecimalRounding mode,
+    KofunDecimal *out
+);
+
+/* Rounded division with an explicit destination scale and rounding mode. */
+KofunDecimalStatus kofun_decimal_divide_rounded(
+    const KofunDecimal *left,
+    const KofunDecimal *right,
+    long target_scale,
+    KofunDecimalRounding mode,
+    KofunDecimal *out
+);
+
+/*
+ * Parse signed decimal text into the canonical native value. Unlike source
+ * literals this accepts a leading `+` or `-`, because formatted runtime text
+ * must round-trip negative values too.
+ */
+KofunDecimalStatus kofun_decimal_parse(
+    const char *text,
+    size_t length,
+    KofunDecimal *out
+);
+
+/*
+ * Render exactly `display_scale` fractional digits. This never rounds: if the
+ * requested scale would discard a non-zero digit it reports D007. Caller
+ * frees the returned text.
+ */
+KofunDecimalStatus kofun_decimal_format(
+    const KofunDecimal *value,
+    long display_scale,
+    char **out
+);
+
 /*
  * The same four operations on `Float`, where they are binary64 and therefore
  * *not* exact. They exist here, beside the exact ones, because keeping the two
@@ -251,6 +313,22 @@ KofunDecimal *kofun_decimal_value_multiply(
     const KofunDecimal *right
 );
 KofunDecimal *kofun_decimal_value_negate(const KofunDecimal *value);
+KofunDecimal *kofun_decimal_value_round(
+    const KofunDecimal *value,
+    long target_scale,
+    KofunDecimalRounding mode
+);
+KofunDecimal *kofun_decimal_value_divide_rounded(
+    const KofunDecimal *left,
+    const KofunDecimal *right,
+    long target_scale,
+    KofunDecimalRounding mode
+);
+KofunDecimal *kofun_decimal_value_parse(const char *text, size_t length);
+const char *kofun_decimal_value_format(
+    const KofunDecimal *value,
+    long display_scale
+);
 
 /*
  * Checked `/` stays a value.  The outcome is always observable; `value` is

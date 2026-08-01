@@ -154,12 +154,165 @@ static int command_profile(void) {
            (unsigned)KOFUN_DECIMAL_MAX_SIGNIFICAND_DIGITS);
     printf("max-scale=%ld\n", (long)KOFUN_DECIMAL_MAX_SCALE);
     printf("min-scale=%ld\n", (long)KOFUN_DECIMAL_MIN_SCALE);
-    for (int status = 0; status <= 4; ++status) {
+    for (int status = 0; status <= 7; ++status) {
         printf(
             "status=%s message=%s\n",
             kofun_decimal_status_code((KofunDecimalStatus)status),
             kofun_decimal_status_message((KofunDecimalStatus)status)
         );
+    }
+    return 0;
+}
+
+static bool parse_rounding(
+    const char *name,
+    KofunDecimalRounding *mode
+) {
+    if (strcmp(name, "HalfUp") == 0) {
+        *mode = KOFUN_DECIMAL_HALF_UP;
+    } else if (strcmp(name, "HalfEven") == 0) {
+        *mode = KOFUN_DECIMAL_HALF_EVEN;
+    } else if (strcmp(name, "TowardZero") == 0) {
+        *mode = KOFUN_DECIMAL_TOWARD_ZERO;
+    } else if (strcmp(name, "Floor") == 0) {
+        *mode = KOFUN_DECIMAL_FLOOR;
+    } else if (strcmp(name, "Ceiling") == 0) {
+        *mode = KOFUN_DECIMAL_CEILING;
+    } else {
+        return false;
+    }
+    return true;
+}
+
+/* `round VALUE SCALE MODE ...` — one explicit rounding boundary per triple. */
+static int command_round(int count, char **arguments) {
+    if (count % 3 != 0) return fail("round needs VALUE SCALE MODE triples");
+    for (int index = 0; index < count; index += 3) {
+        KofunDecimal source;
+        KofunDecimal result;
+        kofun_decimal_init(&source);
+        kofun_decimal_init(&result);
+        KofunDecimalRounding mode;
+        if (!parse_rounding(arguments[index + 2], &mode) ||
+            kofun_decimal_parse(
+                arguments[index], strlen(arguments[index]), &source) !=
+                KOFUN_DECIMAL_OK) {
+            kofun_decimal_free(&source);
+            return fail("invalid round case");
+        }
+        long scale = strtol(arguments[index + 1], NULL, 10);
+        KofunDecimalStatus status = kofun_decimal_round(
+            &source, scale, mode, &result);
+        if (status != KOFUN_DECIMAL_OK) {
+            printf("%s scale=%ld %s -> %s\n", arguments[index], scale,
+                   arguments[index + 2], kofun_decimal_status_code(status));
+        } else {
+            char *canonical = kofun_decimal_to_canonical_text(&result);
+            char *significand = kofun_decimal_significand_text(&result);
+            if (canonical == NULL || significand == NULL) {
+                free(canonical);
+                free(significand);
+                kofun_decimal_free(&source);
+                kofun_decimal_free(&result);
+                return fail("out of memory rendering a rounded value");
+            }
+            printf(
+                "%s scale=%ld %s -> %s significand=%s scale=%d\n",
+                arguments[index], scale, arguments[index + 2], canonical,
+                significand, result.scale);
+            free(canonical);
+            free(significand);
+        }
+        kofun_decimal_free(&source);
+        kofun_decimal_free(&result);
+    }
+    return 0;
+}
+
+/* `rounded-divide LEFT RIGHT SCALE MODE ...` — explicit rounded division. */
+static int command_rounded_divide(int count, char **arguments) {
+    if (count % 4 != 0) {
+        return fail("rounded-divide needs LEFT RIGHT SCALE MODE groups");
+    }
+    for (int index = 0; index < count; index += 4) {
+        KofunDecimal left;
+        KofunDecimal right;
+        KofunDecimal result;
+        kofun_decimal_init(&left);
+        kofun_decimal_init(&right);
+        kofun_decimal_init(&result);
+        KofunDecimalRounding mode;
+        if (!parse_rounding(arguments[index + 3], &mode) ||
+            kofun_decimal_parse(
+                arguments[index], strlen(arguments[index]), &left) !=
+                KOFUN_DECIMAL_OK ||
+            kofun_decimal_parse(
+                arguments[index + 1], strlen(arguments[index + 1]), &right) !=
+                KOFUN_DECIMAL_OK) {
+            kofun_decimal_free(&left);
+            kofun_decimal_free(&right);
+            return fail("invalid rounded-divide case");
+        }
+        long scale = strtol(arguments[index + 2], NULL, 10);
+        KofunDecimalStatus status = kofun_decimal_divide_rounded(
+            &left, &right, scale, mode, &result);
+        if (status != KOFUN_DECIMAL_OK) {
+            printf("%s / %s scale=%ld %s -> %s\n", arguments[index],
+                   arguments[index + 1], scale, arguments[index + 3],
+                   kofun_decimal_status_code(status));
+        } else {
+            char *canonical = kofun_decimal_to_canonical_text(&result);
+            if (canonical == NULL) {
+                kofun_decimal_free(&left);
+                kofun_decimal_free(&right);
+                kofun_decimal_free(&result);
+                return fail("out of memory rendering a quotient");
+            }
+            printf("%s / %s scale=%ld %s -> %s\n", arguments[index],
+                   arguments[index + 1], scale, arguments[index + 3],
+                   canonical);
+            free(canonical);
+        }
+        kofun_decimal_free(&left);
+        kofun_decimal_free(&right);
+        kofun_decimal_free(&result);
+    }
+    return 0;
+}
+
+/* `format-parse VALUE SCALE ...` — display text and canonical round trip. */
+static int command_format_parse(int count, char **arguments) {
+    if (count % 2 != 0) return fail("format-parse needs VALUE SCALE pairs");
+    for (int index = 0; index < count; index += 2) {
+        KofunDecimal source;
+        KofunDecimal parsed;
+        kofun_decimal_init(&source);
+        kofun_decimal_init(&parsed);
+        if (kofun_decimal_parse(
+                arguments[index], strlen(arguments[index]), &source) !=
+                KOFUN_DECIMAL_OK) {
+            return fail("invalid format source");
+        }
+        long scale = strtol(arguments[index + 1], NULL, 10);
+        char *formatted = NULL;
+        KofunDecimalStatus status = kofun_decimal_format(
+            &source, scale, &formatted);
+        if (status != KOFUN_DECIMAL_OK) {
+            printf("%s scale=%ld -> %s\n", arguments[index], scale,
+                   kofun_decimal_status_code(status));
+        } else {
+            KofunDecimalStatus parse_status = kofun_decimal_parse(
+                formatted, strlen(formatted), &parsed);
+            printf("%s scale=%ld -> %s roundtrip=%s\n", arguments[index],
+                   scale, formatted,
+                   parse_status == KOFUN_DECIMAL_OK &&
+                           kofun_decimal_equal(&source, &parsed)
+                       ? "equal"
+                       : "different");
+        }
+        free(formatted);
+        kofun_decimal_free(&source);
+        kofun_decimal_free(&parsed);
     }
     return 0;
 }
@@ -463,6 +616,15 @@ int main(int argc, char **argv) {
     }
     if (strcmp(command, "identity") == 0) {
         return command_identity(argc - 2, argv + 2);
+    }
+    if (strcmp(command, "round") == 0) {
+        return command_round(argc - 2, argv + 2);
+    }
+    if (strcmp(command, "rounded-divide") == 0) {
+        return command_rounded_divide(argc - 2, argv + 2);
+    }
+    if (strcmp(command, "format-parse") == 0) {
+        return command_format_parse(argc - 2, argv + 2);
     }
     if (strcmp(command, "construct") == 0) {
         return command_construct(argc - 2, argv + 2);

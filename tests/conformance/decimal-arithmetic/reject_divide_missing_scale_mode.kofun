@@ -1,0 +1,6 @@
+# contract: kofun.backend-differential/v1
+# expect-reject: rounded Decimal division requires destination scale and mode
+
+fn main() {
+    print(Decimal.divide(1.0, 3.0))
+}
