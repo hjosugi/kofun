@@ -3815,6 +3815,80 @@ fn value_if_end(source: Text, start: Int) -> Int {
     return token_end(source, else_close)
 }
 
+# The byte after the `{ ... }` that follows an `if` condition, or -1 when the
+# shape is not a statement `if` at all. This is the walk the statement lowering
+# performs; it exists separately so the lowering can ask where the construct
+# ends *before* committing to lower it, which is what deciding whether an `if`
+# is a body's last statement requires.
+fn if_then_branch_end(source: Text, start: Int) -> Int {
+    let condition_start = skip_trivia(source, token_end(source, start))
+    let condition_close = condition_end(source, condition_start)
+    if condition_close < 0 {
+        return -1
+    }
+    let branch_open = skip_trivia(source, condition_close)
+    if branch_open >= len(source) || token_text(source, branch_open) != "{" {
+        return -1
+    }
+    return balanced_end(source, branch_open, "{", "}")
+}
+
+# Whether the `if` at `start` carries an `else` block. An `if` in final position
+# without one cannot be the result: its false path produces nothing.
+fn if_has_else(source: Text, start: Int) -> Bool {
+    let branch_close = if_then_branch_end(source, start)
+    if branch_close < 0 {
+        return false
+    }
+    let else_keyword = skip_trivia(source, branch_close)
+    return else_keyword < len(source) &&
+    token_text(source, else_keyword) == "else"
+}
+
+# The byte after a statement-position `if`, counting its `else` block when one
+# follows, or -1 when the shape is not a statement `if` at all.
+fn if_statement_end(source: Text, start: Int) -> Int {
+    let branch_close = if_then_branch_end(source, start)
+    if branch_close < 0 {
+        return -1
+    }
+    if !if_has_else(source, start) {
+        return branch_close
+    }
+    let else_keyword = skip_trivia(source, branch_close)
+    let else_open = skip_trivia(source, token_end(source, else_keyword))
+    if else_open >= len(source) || token_text(source, else_open) != "{" {
+        return -1
+    }
+    return balanced_end(source, else_open, "{", "}")
+}
+
+# Whether the `if` at `start` is the last statement of a body that owes its
+# caller an Int result — the position where #550 makes it the function's value
+# rather than a discarded statement. `main`, enum-returning, and
+# record-returning functions are excluded: `main` appends its own status
+# return, and an enum or record result needs its own C shape rather than the
+# `int64_t` this position emits. A nested body (`append_default` false) is not
+# a result position either; its own enclosing function decides that.
+fn final_result_if(
+    source: Text,
+    start: Int,
+    is_main: Bool,
+    append_default: Bool,
+    returns_enum: Bool,
+    returns_record: Bool
+) -> Bool {
+    if is_main || !append_default || returns_enum || returns_record {
+        return false
+    }
+    let close = if_statement_end(source, start)
+    if close < 0 {
+        return false
+    }
+    let after = skip_trivia(source, close)
+    return after < len(source) && token_text(source, after) == "}"
+}
+
 fn value_match_end(source: Text, start: Int) -> Int {
     let cursor = skip_trivia(source, start)
     let value_start = skip_trivia(source, token_end(source, cursor))
@@ -7119,6 +7193,48 @@ fn lower_body(
                 "    }\n"
                 cursor = skip_trivia(source, token_end(source, call_close))
             }
+        } else if statement == "if" &&
+                  final_result_if(
+                      source,
+                      cursor,
+                      is_main,
+                      append_default,
+                      returns_enum,
+                      returns_record
+                  ) {
+            # The final `if` of a result-carrying function is its result, and
+            # its type is the join of the two branch types (#550). The join and
+            # the lowering are the ones `return if ... { } else { }` already
+            # uses, so this position gains no rules of its own — it reaches the
+            # same validator and the same emitter.
+            #
+            # Every path has to produce a value, so an `if` without `else` is
+            # refused here rather than falling through to the statement form,
+            # where it would have become a body that reaches its closing brace.
+            if !if_has_else(source, cursor) {
+                return "error[E2S27]: a final `if` needs an `else`; its false path yields no Int at byte " +
+                to_text(cursor)
+            }
+            let value_check = validate_value_if(source, cursor)
+            if starts_with(value_check, "error[") {
+                return value_check
+            }
+            let branch_end = value_if_end(source, cursor)
+            emitted = emitted +
+            "    {\n" +
+            "        int64_t kofun_result = INT64_C(0);\n" +
+            emit_value_into(
+                source,
+                hir,
+                cursor,
+                branch_end,
+                "kofun_result",
+                failure_result
+            ) +
+            "        return kofun_result;\n" +
+            "    }\n"
+            returned = true
+            cursor = skip_trivia(source, branch_end)
         } else if statement == "if" {
             let condition_start = skip_trivia(
                 source,
@@ -7590,11 +7706,13 @@ fn lower_body(
                 # The final expression of an Int-returning function is its
                 # result. Only the last statement qualifies, and only when the
                 # closing brace follows it, so an expression in the middle of a
-                # body keeps being discarded exactly as before. `main` and
-                # enum-returning functions are deliberately excluded: `main`
-                # already appends its own status return, and an enum result
-                # needs the KofunEnumValue shape rather than this one.
+                # body keeps being discarded exactly as before. `main`,
+                # enum-returning, and record-returning functions are
+                # deliberately excluded: `main` already appends its own status
+                # return, and an enum or record result needs its own C shape
+                # rather than the `int64_t` this emits.
                 if !is_main && append_default && !returns_enum &&
+                   !returns_record &&
                    after < len(source) && token_text(source, after) == "}" {
                     emitted = emitted +
                     "    {\n" +

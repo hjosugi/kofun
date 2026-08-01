@@ -1050,3 +1050,273 @@ grep 'error\[E2S19\]: Core function may complete without returning Int' \
 test ! -e "$temporary/implicit-return-statement.c"
 
 echo "PASS: a final expression is the result, and only the final one"
+
+# A final `if`/`else` is the function's result and its type is the join of the
+# two branch types (#550). `sign` is the issue's own example. `clamp` mixes an
+# explicit early `return` with a final value-`if` in one body, which is the
+# criterion that says the two forms coexist. `nested` puts a value-`if` inside
+# the `else` arm, so the join composes rather than being one level deep.
+# `statement_if` keeps the statement form honest: an `if` that is *not* last
+# still runs for effect, and the expression after it is the result — it would
+# print 0 if the trailing expression had been swallowed by the `if`.
+cat >"$temporary/value-if-final.kofun" <<'KOFUN'
+fn sign(n: Int) -> Int {
+    if n < 0 {
+        0 - 1
+    } else {
+        1
+    }
+}
+
+fn clamp(n: Int) -> Int {
+    if n < 0 {
+        return 0
+    }
+    if n > 10 {
+        10
+    } else {
+        n
+    }
+}
+
+fn nested(n: Int) -> Int {
+    if n < 0 {
+        0 - 1
+    } else {
+        if n == 0 {
+            0
+        } else {
+            1
+        }
+    }
+}
+
+fn statement_if(n: Int) -> Int {
+    let mut total = 0
+    if n > 0 {
+        total = total + n
+    }
+    total
+}
+
+fn main() -> Int {
+    print(sign(0 - 5))
+    print(sign(7))
+    print(clamp(0 - 3))
+    print(clamp(42))
+    print(clamp(4))
+    print(nested(0 - 1))
+    print(nested(0))
+    print(nested(5))
+    print(statement_if(6))
+    return 0
+}
+KOFUN
+"$temporary/kofun-stage2" \
+    "$temporary/value-if-final.kofun" \
+    "$temporary/value-if-final.c" \
+    "$temporary/value-if-final.ir" \
+    "$temporary/value-if-final.tokens" \
+    >/dev/null
+"$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$temporary/value-if-final.c" -o "$temporary/value-if-final"
+"$temporary/value-if-final" >"$temporary/value-if-final.stdout"
+printf -- '-1\n1\n0\n10\n4\n-1\n0\n1\n6\n' \
+    >"$temporary/value-if-final.expected"
+cmp "$temporary/value-if-final.expected" "$temporary/value-if-final.stdout"
+
+# An `if` without `else` in final position cannot be the result: one path
+# yields nothing. It is refused, and the refusal names the path — not the
+# silent unit return that falling through to the statement form would have
+# produced.
+cat >"$temporary/value-if-no-else.kofun" <<'KOFUN'
+fn positive(n: Int) -> Int {
+    if n > 0 {
+        n
+    }
+}
+
+fn main() -> Int {
+    print(positive(5))
+    return 0
+}
+KOFUN
+set +e
+"$temporary/kofun-stage2" --compile-outcome \
+    "$temporary/value-if-no-else.kofun" \
+    "$temporary/value-if-no-else.c" \
+    "$temporary/value-if-no-else.ir" \
+    "$temporary/value-if-no-else.tokens" \
+    >"$temporary/value-if-no-else.stdout" 2>/dev/null
+value_if_no_else_status=$?
+set -e
+test "$value_if_no_else_status" -eq 1
+grep 'error\[E2S27\]: a final `if` needs an `else`; its false path yields no Int' \
+    "$temporary/value-if-no-else.stdout" >/dev/null
+test ! -e "$temporary/value-if-no-else.c"
+
+# A branch that produces no value is refused for the same reason, one level in:
+# `print` is Void, so the true path has nothing to yield.
+cat >"$temporary/value-if-void-branch.kofun" <<'KOFUN'
+fn shout(n: Int) -> Int {
+    if n > 0 {
+        print(n)
+    } else {
+        0
+    }
+}
+
+fn main() -> Int {
+    print(shout(1))
+    return 0
+}
+KOFUN
+set +e
+"$temporary/kofun-stage2" --compile-outcome \
+    "$temporary/value-if-void-branch.kofun" \
+    "$temporary/value-if-void-branch.c" \
+    "$temporary/value-if-void-branch.ir" \
+    "$temporary/value-if-void-branch.tokens" \
+    >"$temporary/value-if-void-branch.stdout" 2>/dev/null
+value_if_void_branch_status=$?
+set -e
+test "$value_if_void_branch_status" -eq 1
+grep 'error\[E2S28\]: value-position if branch must produce Int, not Void' \
+    "$temporary/value-if-void-branch.stdout" >/dev/null
+test ! -e "$temporary/value-if-void-branch.c"
+
+echo "PASS: a final if/else is the result and every path must produce one"
+
+# Named functions and lambdas follow one rule about what their body yields
+# (#550). This asserts the two forms agree rather than assuming they do: the
+# same expression, written once as a named function's final statement and once
+# as a lambda body, produces the same value.
+#
+# The forms compared are the ones this Core has. A lambda here is an arrow
+# lambda whose body *is* an expression — `fn(x) => x * 2` — so it has no block
+# whose last statement could be anything else; that is precisely why the rule
+# was already true for lambdas and had to be brought to named functions. A
+# braced lambda body, and a value-`if` as a lambda body, are not in this Core's
+# grammar and belong to #547.
+cat >"$temporary/final-expression-parity.kofun" <<'KOFUN'
+fn named_double(n: Int) -> Int {
+    n * 2
+}
+
+fn named_shift(n: Int) -> Int {
+    n + 100
+}
+
+fn main() -> Int {
+    let lambda_double = fn(x) => x * 2
+    let lambda_shift = (x) => x + 100
+    print(named_double(21))
+    print(lambda_double(21))
+    print(named_shift(21))
+    print(lambda_shift(21))
+    return 0
+}
+KOFUN
+"$temporary/kofun-stage2" \
+    "$temporary/final-expression-parity.kofun" \
+    "$temporary/final-expression-parity.c" \
+    "$temporary/final-expression-parity.ir" \
+    "$temporary/final-expression-parity.tokens" \
+    >/dev/null
+"$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$temporary/final-expression-parity.c" \
+    -o "$temporary/final-expression-parity"
+"$temporary/final-expression-parity" \
+    >"$temporary/final-expression-parity.stdout"
+printf '42\n42\n121\n121\n' >"$temporary/final-expression-parity.expected"
+cmp \
+    "$temporary/final-expression-parity.expected" \
+    "$temporary/final-expression-parity.stdout"
+# The two forms are not merely both correct — they agree pairwise.
+sed -n '1p;3p' "$temporary/final-expression-parity.stdout" \
+    >"$temporary/final-expression-parity.named"
+sed -n '2p;4p' "$temporary/final-expression-parity.stdout" \
+    >"$temporary/final-expression-parity.lambda"
+cmp \
+    "$temporary/final-expression-parity.named" \
+    "$temporary/final-expression-parity.lambda"
+
+echo "PASS: a named function and a lambda agree on what their body yields"
+
+# The final-value rule is about Int results only, and the guard that keeps it
+# there has to name every other result shape. Nominal records (#783) arrived
+# after the final-expression rule (#799) and were not in its exclusion list, so
+# `make_packet` below was *accepted* and lowered to `int64_t kofun_result =
+# k_b1;` — a struct assigned to an integer, which the C compiler then refused.
+# Rejecting it is the contract: a function whose result is not an Int does not
+# take this path, whether its last statement is an expression or an `if`.
+#
+# The refusal is what is asserted rather than the C, because emitting nothing
+# is the point — the earlier defect produced a .c file that no compiler would
+# accept.
+cat >"$temporary/final-value-record.kofun" <<'KOFUN'
+type Packet = {
+    count: Int,
+    enabled: Bool,
+}
+
+fn make_packet(count: Int) -> Packet {
+    let packet: Packet = Packet(enabled: true, count: count)
+    packet
+}
+
+fn main() -> Int {
+    let returned: Packet = make_packet(43)
+    print(returned.count)
+    return 0
+}
+KOFUN
+set +e
+"$temporary/kofun-stage2" --compile-outcome \
+    "$temporary/final-value-record.kofun" \
+    "$temporary/final-value-record.c" \
+    "$temporary/final-value-record.ir" \
+    "$temporary/final-value-record.tokens" \
+    >"$temporary/final-value-record.stdout" 2>/dev/null
+final_value_record_status=$?
+set -e
+test "$final_value_record_status" -eq 1
+grep 'error\[E2S19\]' "$temporary/final-value-record.stdout" >/dev/null
+test ! -e "$temporary/final-value-record.c"
+
+cat >"$temporary/final-value-record-if.kofun" <<'KOFUN'
+type Packet = {
+    count: Int,
+    enabled: Bool,
+}
+
+fn pick(left: Packet, right: Packet, n: Int) -> Packet {
+    if n > 0 {
+        left
+    } else {
+        right
+    }
+}
+
+fn main() -> Int {
+    let a: Packet = Packet(count: 1, enabled: true)
+    let b: Packet = Packet(count: 2, enabled: false)
+    let chosen: Packet = pick(a, b, 1)
+    print(chosen.count)
+    return 0
+}
+KOFUN
+set +e
+"$temporary/kofun-stage2" --compile-outcome \
+    "$temporary/final-value-record-if.kofun" \
+    "$temporary/final-value-record-if.c" \
+    "$temporary/final-value-record-if.ir" \
+    "$temporary/final-value-record-if.tokens" \
+    >"$temporary/final-value-record-if.stdout" 2>/dev/null
+final_value_record_if_status=$?
+set -e
+test "$final_value_record_if_status" -eq 1
+grep 'error\[E2S19\]' "$temporary/final-value-record-if.stdout" >/dev/null
+test ! -e "$temporary/final-value-record-if.c"
+
+echo "PASS: the final-value rule stops at Int results, records included"
