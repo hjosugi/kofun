@@ -424,6 +424,16 @@ Initial executable evidence must include:
 - explicit failures for division by zero, inexact exact-division, and resource
   limits.
 
+The library-owned v2 evidence now executes Decimal addition associativity over
+its declared ordered finite domain and records the result as
+`bounded-exhaustive`. A separate versioned artifact records the expected Float
+associativity failure and its witness. The ledger/tax fixture is compared
+digit-for-digit with an independent BigInt scaled-integer reference, and the
+strict differential gate turns every unsupported declared backend into a
+failure instead of a skip. These are release evidence for the current bounded
+profile, not compiler support for `law` declarations and not a universal
+Decimal proof.
+
 Decimal has an infinite carrier, so execution over a finite set cannot produce
 `proven-finite` evidence for Decimal as a whole. Slice 5's native checkpoint is
 labeled `bounded-examples`; even a future exhaustive finite model must remain

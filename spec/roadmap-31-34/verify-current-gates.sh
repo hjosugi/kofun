@@ -40,10 +40,14 @@ mkdir -p "$temporary"
     "$temporary/current-core-probe.ir" \
     "$temporary/current-core-probe.tokens" >/dev/null
 
-grep -q '^kofun-stage2-ir/v1$' "$temporary/current-core-probe.ir"
-grep -q '^kofun-token-tape/v1$' "$temporary/current-core-probe.tokens"
-grep -q 'kofun_floor_div' "$temporary/current-core-probe.c"
-grep -q 'kofun_floor_mod' "$temporary/current-core-probe.c"
+assert_grep "current-core-probe.ir" \
+    -q '^kofun-stage2-ir/v1$' "$temporary/current-core-probe.ir"
+assert_grep "current-core-probe.tokens" \
+    -q '^kofun-token-tape/v1$' "$temporary/current-core-probe.tokens"
+assert_grep "current-core-probe.c" \
+    -q 'kofun_floor_div' "$temporary/current-core-probe.c"
+assert_grep "current-core-probe.c" \
+    -q 'kofun_floor_mod' "$temporary/current-core-probe.c"
 
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
     "$temporary/current-core-probe.c" \
@@ -63,15 +67,18 @@ cmp \
 assert_file_empty "$temporary/current-core-probe.stderr" \
     "$temporary/current-core-probe.stderr"
 
-grep -q '"stage1_self_recompile": "open"' \
-    "$ROOT/bootstrap/manifest.json"
-grep -q '"stage1_stage2_artifact_equivalence": "open"' \
+assert_grep "bootstrap/manifest.json" \
+    -q '"stage1_self_recompile": "open"' "$ROOT/bootstrap/manifest.json"
+assert_grep "bootstrap/manifest.json" \
+    -q \
+    '"stage1_stage2_artifact_equivalence": "open"' \
     "$ROOT/bootstrap/manifest.json"
 sed -n '/"stage2": {/,/^[[:space:]]*}/p' \
     "$ROOT/bootstrap/manifest.json" |
     grep -q '"status": "open"'
 
-grep -q '"main": "./extension.js"' "$ROOT/editor/vscode/package.json"
+assert_grep "editor/vscode/package.json" \
+    -q '"main": "./extension.js"' "$ROOT/editor/vscode/package.json"
 assert_executable "editor/vscode/server/kofun-lsp" \
     "$ROOT/editor/vscode/server/kofun-lsp"
 assert_regular_file "editor/vscode/server/server.js" \

@@ -64,7 +64,9 @@ assert_eq "output of template/reproduced-program sum -8 50" \
     "$("$WORK/template/reproduced-program" sum -8 50)" 42
 "$WORK/template/reproduced-program" --help \
     >"$WORK/template/reproduced-help.txt"
-grep -Fq 'Usage: kofun-tool <command> [options]' \
+assert_grep "template/reproduced-help.txt" \
+    -Fq \
+    'Usage: kofun-tool <command> [options]' \
     "$WORK/template/reproduced-help.txt"
 
 # Build the declaration compiler with strict warnings and with ASAN/UBSAN.
@@ -99,33 +101,41 @@ cmp "$PROGRAM" "$WORK/no-host-tool-output"
 
 # The product is an actual static, dependency-free, executable ELF.
 file "$PROGRAM" >"$WORK/file.txt"
-grep -q 'ELF 64-bit.*x86-64.*statically linked' "$WORK/file.txt"
+assert_grep "file.txt" \
+    -q 'ELF 64-bit.*x86-64.*statically linked' "$WORK/file.txt"
 readelf -lW "$PROGRAM" >"$WORK/program-headers.txt"
 assert_num "^  LOAD lines in program-headers.txt" \
     "$(grep -c '^  LOAD' "$WORK/program-headers.txt")" -eq 2
-! grep -Eq 'INTERP|DYNAMIC' "$WORK/program-headers.txt"
+assert_not_grep "program-headers.txt" \
+    -Eq 'INTERP|DYNAMIC' "$WORK/program-headers.txt"
 readelf -dW "$PROGRAM" >"$WORK/dynamic.txt" 2>&1 || true
-! grep -q 'NEEDED' "$WORK/dynamic.txt"
+assert_not_grep "dynamic.txt" -q 'NEEDED' "$WORK/dynamic.txt"
 readelf -hW "$PROGRAM" >"$WORK/header.txt"
-grep -Eq 'Number of section headers:[[:space:]]+0' "$WORK/header.txt"
+assert_grep "header.txt" \
+    -Eq 'Number of section headers:[[:space:]]+0' "$WORK/header.txt"
 set +e
 ldd "$PROGRAM" >"$WORK/ldd.txt" 2>&1
 ldd_status=$?
 set -e
 assert_num "ldd status" "$ldd_status" -ne 0
-grep -Eq 'not a dynamic executable|statically linked' "$WORK/ldd.txt"
+assert_grep "ldd.txt" \
+    -Eq 'not a dynamic executable|statically linked' "$WORK/ldd.txt"
 
 # Help and dispatch are generated from the same declaration metadata.
 "$PROGRAM" --help >"$WORK/help.txt"
-grep -Fq 'kofun-tool 1.0.0' "$WORK/help.txt"
-grep -Fq '  greet	Greet a person' "$WORK/help.txt"
-grep -Fq '  sum	Add two signed 64-bit integers' "$WORK/help.txt"
-grep -Fq '  env	Print an environment variable' "$WORK/help.txt"
-grep -Fq '  status	Render a terminal-aware progress status' "$WORK/help.txt"
+assert_grep "help.txt" -Fq 'kofun-tool 1.0.0' "$WORK/help.txt"
+assert_grep "help.txt" -Fq '  greet	Greet a person' "$WORK/help.txt"
+assert_grep "help.txt" \
+    -Fq '  sum	Add two signed 64-bit integers' "$WORK/help.txt"
+assert_grep "help.txt" \
+    -Fq '  env	Print an environment variable' "$WORK/help.txt"
+assert_grep "help.txt" \
+    -Fq '  status	Render a terminal-aware progress status' "$WORK/help.txt"
 "$PROGRAM" greet --help >"$WORK/greet-help.txt"
-grep -Fq 'Usage: kofun-tool greet <NAME> [options]' \
-    "$WORK/greet-help.txt"
-grep -Fq '  --prefix <VALUE>	Greeting prefix' "$WORK/greet-help.txt"
+assert_grep "greet-help.txt" \
+    -Fq 'Usage: kofun-tool greet <NAME> [options]' "$WORK/greet-help.txt"
+assert_grep "greet-help.txt" \
+    -Fq '  --prefix <VALUE>	Greeting prefix' "$WORK/greet-help.txt"
 
 sed \
     -e 's/name "kofun-tool"/name "changed-tool"/' \
@@ -137,9 +147,12 @@ sed \
 assert_eq "output of metamorphic welcome Lin --salutation Ahoy" \
     "$("$WORK/metamorphic" welcome Lin --salutation Ahoy)" 'Ahoy, Lin!'
 "$WORK/metamorphic" --help >"$WORK/metamorphic-help.txt"
-grep -Fq 'changed-tool 1.0.0' "$WORK/metamorphic-help.txt"
-grep -Fq '  welcome	Welcome a person' "$WORK/metamorphic-help.txt"
-! grep -Fq '  greet	' "$WORK/metamorphic-help.txt"
+assert_grep "metamorphic-help.txt" \
+    -Fq 'changed-tool 1.0.0' "$WORK/metamorphic-help.txt"
+assert_grep "metamorphic-help.txt" \
+    -Fq '  welcome	Welcome a person' "$WORK/metamorphic-help.txt"
+assert_not_grep "metamorphic-help.txt" \
+    -Fq '  greet	' "$WORK/metamorphic-help.txt"
 if cmp -s "$PROGRAM" "$WORK/metamorphic"; then
     printf '%s\n' "FAIL: declaration mutation did not change emitted ELF" >&2
     exit 1
@@ -211,19 +224,20 @@ cmp "$WORK/missing-env.expected" "$WORK/missing-env.stderr"
 escape=$(printf '\033')
 env -u NO_COLOR script -qefc \
     "'$PROGRAM' greet Ada" /dev/null >"$WORK/tty-color.txt"
-grep -Fq "${escape}[32m" "$WORK/tty-color.txt"
+assert_grep "tty-color.txt" -Fq "${escape}[32m" "$WORK/tty-color.txt"
 NO_COLOR=1 script -qefc \
     "'$PROGRAM' greet Ada" /dev/null >"$WORK/tty-no-color.txt"
-! grep -Fq "$escape" "$WORK/tty-no-color.txt"
+assert_not_grep "tty-no-color.txt" -Fq "$escape" "$WORK/tty-no-color.txt"
 env -u NO_COLOR script -qefc \
     "'$PROGRAM' status compiling" /dev/null >"$WORK/tty-status.txt"
-grep -Fq "${escape}[36m... compiling" "$WORK/tty-status.txt"
-grep -Fq "${escape}[K${escape}[32mdone compiling" \
-    "$WORK/tty-status.txt"
+assert_grep "tty-status.txt" \
+    -Fq "${escape}[36m... compiling" "$WORK/tty-status.txt"
+assert_grep "tty-status.txt" \
+    -Fq "${escape}[K${escape}[32mdone compiling" "$WORK/tty-status.txt"
 "$PROGRAM" status compiling >"$WORK/non-tty-status.txt"
 assert_eq "contents of non-tty-status.txt" \
     "$(cat "$WORK/non-tty-status.txt")" 'status: compiling'
-! grep -Fq "$escape" "$WORK/non-tty-status.txt"
+assert_not_grep "non-tty-status.txt" -Fq "$escape" "$WORK/non-tty-status.txt"
 
 expect_compiler_failure() {
     label=$1

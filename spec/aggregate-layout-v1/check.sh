@@ -84,11 +84,11 @@ expect_rejected big-endian \
     "$HERE/invalid/big-endian-target.json" "$HERE/vectors/core.json"
 
 # The normative rules the golden vectors cannot express on their own.
-grep -q 'option B' "$SPEC"
-grep -q 'niche optimization' "$SPEC"
-grep -q 'declaration order' "$SPEC"
-grep -q 'decimal string' "$SPEC"
-grep -q 'not a compatibility requirement' "$SPEC"
+assert_grep "SPEC" -q 'option B' "$SPEC"
+assert_grep "SPEC" -q 'niche optimization' "$SPEC"
+assert_grep "SPEC" -q 'declaration order' "$SPEC"
+assert_grep "SPEC" -q 'decimal string' "$SPEC"
+assert_grep "SPEC" -q 'not a compatibility requirement' "$SPEC"
 
 printf '%s\n' \
     'PASS: AggregateLayout v1 descriptors are deterministic and target-parameterized' \

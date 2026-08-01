@@ -23,7 +23,8 @@ mkdir -p "$WORK"
     "$ROOT/framework/tui/tests/benchmark.c" \
     -o "$WORK/benchmark-tui"
 "$WORK/benchmark-tui" | tee "$WORK/benchmark.txt"
-grep -Fq '2,000,000 ns frame budget' "$WORK/benchmark.txt"
+assert_grep "benchmark.txt" \
+    -Fq '2,000,000 ns frame budget' "$WORK/benchmark.txt"
 
 "$ROOT/framework/tui/build.sh" \
     "$ROOT/examples/tui_dashboard.kofun" \
@@ -32,10 +33,10 @@ TERM=xterm-256color COLORTERM=truecolor \
     "$WORK/tui-dashboard" >"$WORK/dashboard.stdout"
 assert_num "lines in dashboard.stdout" \
     "$(wc -l <"$WORK/dashboard.stdout")" -eq 6
-grep -Fq 'compile 東京' "$WORK/dashboard.stdout"
-grep -Fq 'linux-x86_64' "$WORK/dashboard.stdout"
-grep -Fq 'artifact' "$WORK/dashboard.stdout"
-grep -Fq 'build complete' "$WORK/dashboard.stdout"
+assert_grep "dashboard.stdout" -Fq 'compile 東京' "$WORK/dashboard.stdout"
+assert_grep "dashboard.stdout" -Fq 'linux-x86_64' "$WORK/dashboard.stdout"
+assert_grep "dashboard.stdout" -Fq 'artifact' "$WORK/dashboard.stdout"
+assert_grep "dashboard.stdout" -Fq 'build complete' "$WORK/dashboard.stdout"
 if LC_ALL=C grep "$(printf '\033')" "$WORK/dashboard.stdout" >/dev/null; then
     printf '%s\n' 'FAIL: append-only Kofun output contained an escape sequence' >&2
     exit 1

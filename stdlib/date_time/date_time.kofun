@@ -1,0 +1,631 @@
+# Bounded executable producer for the portable date/time contract.  This is
+# intentionally the Stage 2 Core subset: nominal Int records, a closed
+# one-payload outcome, checked arithmetic, and a strict canonical RFC 3339 UTC
+# parser.  Host time, host calendar routines, and host parsing are never used.
+
+type Duration = {
+    seconds: Int,
+    nanoseconds: Int,
+}
+
+type Instant = {
+    seconds: Int,
+    nanoseconds: Int,
+}
+
+type Date = {
+    year: Int,
+    month: Int,
+    day: Int,
+}
+
+type TimeOfDay = {
+    hour: Int,
+    minute: Int,
+    second: Int,
+    nanosecond: Int,
+}
+
+type LocalDateTime = {
+    year: Int,
+    month: Int,
+    day: Int,
+    hour: Int,
+    minute: Int,
+    second: Int,
+    nanosecond: Int,
+}
+
+type UtcOffset = {
+    seconds: Int,
+}
+
+type OffsetDateTime = {
+    year: Int,
+    month: Int,
+    day: Int,
+    hour: Int,
+    minute: Int,
+    second: Int,
+    nanosecond: Int,
+    offset_seconds: Int,
+}
+
+type DateTimeOutcome =
+    | DateTimeOk(value: Int)
+    | InvalidField(field: Int)
+    | ParsePosition(position: Int)
+    | InexactConversion(remainder: Int)
+    | ArithmeticOverflow(operation: Int)
+
+fn make_duration(seconds: Int, nanoseconds: Int) -> Duration {
+    let value: Duration = Duration(
+        seconds: seconds,
+        nanoseconds: nanoseconds    )
+    return value
+}
+
+fn make_instant(seconds: Int, nanoseconds: Int) -> Instant {
+    let value: Instant = Instant(
+        seconds: seconds,
+        nanoseconds: nanoseconds    )
+    return value
+}
+
+fn make_date(year: Int, month: Int, day: Int) -> Date {
+    let value: Date = Date(year: year, month: month, day: day)
+    return value
+}
+
+fn make_time(
+    hour: Int,
+    minute: Int,
+    second: Int,
+    nanosecond: Int
+) -> TimeOfDay {
+    let value: TimeOfDay = TimeOfDay(
+        hour: hour,
+        minute: minute,
+        second: second,
+        nanosecond: nanosecond    )
+    return value
+}
+
+fn make_local_date_time(
+    year: Int,
+    month: Int,
+    day: Int,
+    hour: Int,
+    minute: Int,
+    second: Int,
+    nanosecond: Int
+) -> LocalDateTime {
+    let value: LocalDateTime = LocalDateTime(
+        year: year,
+        month: month,
+        day: day,
+        hour: hour,
+        minute: minute,
+        second: second,
+        nanosecond: nanosecond    )
+    return value
+}
+
+fn make_utc_offset(seconds: Int) -> UtcOffset {
+    let value: UtcOffset = UtcOffset(seconds: seconds)
+    return value
+}
+
+fn make_offset_date_time(
+    year: Int,
+    month: Int,
+    day: Int,
+    hour: Int,
+    minute: Int,
+    second: Int,
+    nanosecond: Int,
+    offset_seconds: Int
+) -> OffsetDateTime {
+    let value: OffsetDateTime = OffsetDateTime(
+        year: year,
+        month: month,
+        day: day,
+        hour: hour,
+        minute: minute,
+        second: second,
+        nanosecond: nanosecond,
+        offset_seconds: offset_seconds    )
+    return value
+}
+
+fn same_duration(left: Duration, right: Duration) -> Int {
+    if left.seconds == right.seconds {
+        if left.nanoseconds == right.nanoseconds {
+            return 1
+        }
+    }
+    return 0
+}
+
+fn same_instant(left: Instant, right: Instant) -> Int {
+    if left.seconds == right.seconds {
+        if left.nanoseconds == right.nanoseconds {
+            return 1
+        }
+    }
+    return 0
+}
+
+fn same_date(left: Date, right: Date) -> Int {
+    if left.year == right.year {
+        if left.month == right.month {
+            if left.day == right.day {
+                return 1
+            }
+        }
+    }
+    return 0
+}
+
+fn same_time(left: TimeOfDay, right: TimeOfDay) -> Int {
+    if left.hour == right.hour {
+        if left.minute == right.minute {
+            if left.second == right.second {
+                if left.nanosecond == right.nanosecond {
+                    return 1
+                }
+            }
+        }
+    }
+    return 0
+}
+
+fn same_local_date_time(
+    left: LocalDateTime,
+    right: LocalDateTime
+) -> Int {
+    if left.year == right.year {
+        if left.month == right.month {
+            if left.day == right.day {
+                if left.hour == right.hour {
+                    if left.minute == right.minute {
+                        if left.second == right.second {
+                            if left.nanosecond == right.nanosecond {
+                                return 1
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return 0
+}
+
+fn same_utc_offset(left: UtcOffset, right: UtcOffset) -> Int {
+    if left.seconds == right.seconds {
+        return 1
+    }
+    return 0
+}
+
+fn same_offset_date_time(
+    left: OffsetDateTime,
+    right: OffsetDateTime
+) -> Int {
+    if left.year == right.year {
+        if left.month == right.month {
+            if left.day == right.day {
+                if left.hour == right.hour {
+                    if left.minute == right.minute {
+                        if left.second == right.second {
+                            if left.nanosecond == right.nanosecond {
+                                if left.offset_seconds == right.offset_seconds {
+                                    return 1
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return 0
+}
+
+fn normalize_duration(seconds: Int, nanoseconds: Int) -> Duration {
+    if nanoseconds < 0 {
+        return make_duration(seconds - 1, nanoseconds + 1000000000)
+    }
+    if nanoseconds >= 1000000000 {
+        return make_duration(seconds + 1, nanoseconds - 1000000000)
+    }
+    return make_duration(seconds, nanoseconds)
+}
+
+# The payload is an operation id.  `1` is addition.  The boundary checks run
+# before the arithmetic expression, so overflow becomes a closed value rather
+# than the backend's R010 runtime failure.
+fn checked_add(left: Int, right: Int) -> DateTimeOutcome {
+    let maximum = 9223372036854775807
+    let minimum = (0 - 9223372036854775807) - 1
+    if right > 0 {
+        if left > maximum - right {
+            return ArithmeticOverflow(1)
+        }
+    }
+    if right < 0 {
+        if left < minimum - right {
+            return ArithmeticOverflow(1)
+        }
+    }
+    return DateTimeOk(left + right)
+}
+
+fn nanos_to_millis(nanoseconds: Int) -> DateTimeOutcome {
+    let remainder = nanoseconds % 1000000
+    if remainder != 0 {
+        return InexactConversion(remainder)
+    }
+    return DateTimeOk(nanoseconds // 1000000)
+}
+
+fn digit_at(text: Text, position: Int) -> DateTimeOutcome {
+    let symbol = text_slice(text, position, position + 1)
+    if symbol == "0" { return DateTimeOk(0) }
+    if symbol == "1" { return DateTimeOk(1) }
+    if symbol == "2" { return DateTimeOk(2) }
+    if symbol == "3" { return DateTimeOk(3) }
+    if symbol == "4" { return DateTimeOk(4) }
+    if symbol == "5" { return DateTimeOk(5) }
+    if symbol == "6" { return DateTimeOk(6) }
+    if symbol == "7" { return DateTimeOk(7) }
+    if symbol == "8" { return DateTimeOk(8) }
+    if symbol == "9" { return DateTimeOk(9) }
+    return ParsePosition(position)
+}
+
+fn parse_digits(
+    text: Text,
+    position: Int,
+    end: Int,
+    value: Int
+) -> DateTimeOutcome {
+    if position == end {
+        return DateTimeOk(value)
+    }
+    let digit: DateTimeOutcome = digit_at(text, position)
+    match digit {
+        DateTimeOk(number) => {
+            return parse_digits(
+                text,
+                position + 1,
+                end,
+                value * 10 + number            )
+        },
+        other => { return other },
+    }
+    return ParsePosition(position)
+}
+
+fn require_character(
+    text: Text,
+    position: Int,
+    expected: Text
+) -> DateTimeOutcome {
+    if text_slice(text, position, position + 1) == expected {
+        return DateTimeOk(0)
+    }
+    return ParsePosition(position)
+}
+
+fn leap_year(year: Int) -> Int {
+    if year % 400 == 0 { return 1 }
+    if year % 100 == 0 { return 0 }
+    if year % 4 == 0 { return 1 }
+    return 0
+}
+
+fn days_in_month(year: Int, month: Int) -> Int {
+    if month == 2 {
+        if leap_year(year) == 1 { return 29 }
+        return 28
+    }
+    if month == 4 { return 30 }
+    if month == 6 { return 30 }
+    if month == 9 { return 30 }
+    if month == 11 { return 30 }
+    return 31
+}
+
+fn validate_parts(
+    year: Int,
+    month: Int,
+    day: Int,
+    hour: Int,
+    minute: Int,
+    second: Int,
+    nanosecond: Int
+) -> DateTimeOutcome {
+    if month < 1 { return InvalidField(2) }
+    if month > 12 { return InvalidField(2) }
+    if day < 1 { return InvalidField(3) }
+    if day > days_in_month(year, month) { return InvalidField(3) }
+    if hour < 0 { return InvalidField(4) }
+    if hour > 23 { return InvalidField(4) }
+    if minute < 0 { return InvalidField(5) }
+    if minute > 59 { return InvalidField(5) }
+    if second < 0 { return InvalidField(6) }
+    if second > 59 { return InvalidField(6) }
+    if nanosecond < 0 { return InvalidField(7) }
+    if nanosecond > 999999999 { return InvalidField(7) }
+    return DateTimeOk(nanosecond)
+}
+
+fn scale_fraction(value: Int, digits: Int) -> Int {
+    if digits == 9 { return value }
+    return scale_fraction(value * 10, digits + 1)
+}
+
+fn parse_fraction(
+    text: Text,
+    length: Int,
+    year: Int,
+    month: Int,
+    day: Int,
+    hour: Int,
+    minute: Int,
+    second: Int
+) -> DateTimeOutcome {
+    if length < 22 { return ParsePosition(20) }
+    if length > 30 { return ParsePosition(30) }
+    let terminator: DateTimeOutcome = require_character(text, length - 1, "Z")
+    match terminator {
+        DateTimeOk(_) => {},
+        other => { return other },
+    }
+    let fraction: DateTimeOutcome = parse_digits(text, 20, length - 1, 0)
+    match fraction {
+        DateTimeOk(value) => {
+            return validate_parts(
+                year,
+                month,
+                day,
+                hour,
+                minute,
+                second,
+                scale_fraction(value, (length - 1) - 20)            )
+        },
+        other => { return other },
+    }
+    return ParsePosition(20)
+}
+
+fn parse_second(
+    text: Text,
+    length: Int,
+    year: Int,
+    month: Int,
+    day: Int,
+    hour: Int,
+    minute: Int
+) -> DateTimeOutcome {
+    let result: DateTimeOutcome = parse_digits(text, 17, 19, 0)
+    match result {
+        DateTimeOk(second) => {
+            if length == 20 {
+                let terminator: DateTimeOutcome = require_character(text, 19, "Z")
+                match terminator {
+                    DateTimeOk(_) => {
+                        return validate_parts(
+                            year,
+                            month,
+                            day,
+                            hour,
+                            minute,
+                            second,
+                            0                        )
+                    },
+                    other => { return other },
+                }
+            }
+            let point: DateTimeOutcome = require_character(text, 19, ".")
+            match point {
+                DateTimeOk(_) => {
+                    return parse_fraction(
+                        text,
+                        length,
+                        year,
+                        month,
+                        day,
+                        hour,
+                        minute,
+                        second                    )
+                },
+                other => { return other },
+            }
+        },
+        other => { return other },
+    }
+    return ParsePosition(17)
+}
+
+fn parse_minute(
+    text: Text,
+    length: Int,
+    year: Int,
+    month: Int,
+    day: Int,
+    hour: Int
+) -> DateTimeOutcome {
+    let result: DateTimeOutcome = parse_digits(text, 14, 16, 0)
+    match result {
+        DateTimeOk(minute) => {
+            let separator: DateTimeOutcome = require_character(text, 16, ":")
+            match separator {
+                DateTimeOk(_) => {
+                    return parse_second(
+                        text,
+                        length,
+                        year,
+                        month,
+                        day,
+                        hour,
+                        minute                    )
+                },
+                other => { return other },
+            }
+        },
+        other => { return other },
+    }
+    return ParsePosition(14)
+}
+
+fn parse_hour(
+    text: Text,
+    length: Int,
+    year: Int,
+    month: Int,
+    day: Int
+) -> DateTimeOutcome {
+    let result: DateTimeOutcome = parse_digits(text, 11, 13, 0)
+    match result {
+        DateTimeOk(hour) => {
+            let separator: DateTimeOutcome = require_character(text, 13, ":")
+            match separator {
+                DateTimeOk(_) => {
+                    return parse_minute(
+                        text,
+                        length,
+                        year,
+                        month,
+                        day,
+                        hour                    )
+                },
+                other => { return other },
+            }
+        },
+        other => { return other },
+    }
+    return ParsePosition(11)
+}
+
+fn parse_day(
+    text: Text,
+    length: Int,
+    year: Int,
+    month: Int
+) -> DateTimeOutcome {
+    let result: DateTimeOutcome = parse_digits(text, 8, 10, 0)
+    match result {
+        DateTimeOk(day) => {
+            let separator: DateTimeOutcome = require_character(text, 10, "T")
+            match separator {
+                DateTimeOk(_) => {
+                    return parse_hour(text, length, year, month, day)
+                },
+                other => { return other },
+            }
+        },
+        other => { return other },
+    }
+    return ParsePosition(8)
+}
+
+fn parse_month(text: Text, length: Int, year: Int) -> DateTimeOutcome {
+    let result: DateTimeOutcome = parse_digits(text, 5, 7, 0)
+    match result {
+        DateTimeOk(month) => {
+            let separator: DateTimeOutcome = require_character(text, 7, "-")
+            match separator {
+                DateTimeOk(_) => {
+                    return parse_day(text, length, year, month)
+                },
+                other => { return other },
+            }
+        },
+        other => { return other },
+    }
+    return ParsePosition(5)
+}
+
+fn parse_year(text: Text, length: Int) -> DateTimeOutcome {
+    let result: DateTimeOutcome = parse_digits(text, 0, 4, 0)
+    match result {
+        DateTimeOk(year) => {
+            let separator: DateTimeOutcome = require_character(text, 4, "-")
+            match separator {
+                DateTimeOk(_) => { return parse_month(text, length, year) },
+                other => { return other },
+            }
+        },
+        other => { return other },
+    }
+    return ParsePosition(0)
+}
+
+fn parse_rfc3339(text: Text) -> DateTimeOutcome {
+    let length = len(text)
+    if length < 20 { return ParsePosition(length) }
+    return parse_year(text, length)
+}
+
+fn observe(outcome: DateTimeOutcome) -> Int {
+    let mut result = 0
+    match outcome {
+        DateTimeOk(value) => { result = 100 + value },
+        InvalidField(field) => { result = 200 + field },
+        ParsePosition(position) => { result = 300 + position },
+        InexactConversion(remainder) => { result = 400 + remainder },
+        ArithmeticOverflow(operation) => { result = 500 + operation },
+    }
+    return result
+}
+
+fn main() -> Int {
+    let duration: Duration = make_duration(3, 4)
+    print(same_duration(duration, make_duration(3, 4)))
+
+    let instant: Instant = make_instant(5, 6)
+    print(same_instant(instant, make_instant(5, 6)))
+
+    let date: Date = make_date(2024, 2, 29)
+    print(same_date(date, make_date(2024, 2, 29)))
+
+    let time: TimeOfDay = make_time(12, 34, 56, 789)
+    print(same_time(time, make_time(12, 34, 56, 789)))
+
+    let local: LocalDateTime = make_local_date_time(2024, 2, 29, 12, 34, 56, 789)
+    print(same_local_date_time(
+        local,
+        make_local_date_time(2024, 2, 29, 12, 34, 56, 789)    ))
+
+    let offset: UtcOffset = make_utc_offset(0)
+    print(same_utc_offset(offset, make_utc_offset(0)))
+
+    let offset_date_time: OffsetDateTime = make_offset_date_time(
+        2024,
+        2,
+        29,
+        12,
+        34,
+        56,
+        789,
+        0    )
+    print(same_offset_date_time(
+        offset_date_time,
+        make_offset_date_time(2024, 2, 29, 12, 34, 56, 789, 0)    ))
+
+    print(observe(parse_rfc3339("2024-02-29T12:34:56Z")))
+    print(observe(parse_rfc3339("2023-02-29T12:34:56Z")))
+
+    let negative: Duration = normalize_duration(0, -1)
+    print(negative.seconds)
+    print(negative.nanoseconds)
+
+    print(observe(checked_add(9223372036854775807, 1)))
+    print(observe(parse_rfc3339("2024-02-29T12:34:X6Z")))
+    print(observe(nanos_to_millis(1000001)))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56.123456789Z")))
+    return 0
+}

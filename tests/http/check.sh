@@ -23,8 +23,9 @@ test -f "$RESULTS" || {
     echo "http integration requires committed benchmark results" >&2
     exit 1
 }
-grep -Fq '"schema": "kofun.http-benchmark/v1"' "$RESULTS"
-grep -Fq '"sample_count": 5' "$RESULTS"
+assert_grep "RESULTS" \
+    -Fq '"schema": "kofun.http-benchmark/v1"' "$RESULTS"
+assert_grep "RESULTS" -Fq '"sample_count": 5' "$RESULTS"
 assert_num "median_requests_per_second lines in $RESULTS" \
     "$(grep -c 'median_requests_per_second' "$RESULTS")" -eq 2
 implementation_commit=$(

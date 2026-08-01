@@ -1089,6 +1089,52 @@ fn pattern_summary_end(summary: Text) -> Int {
     return decimal_value(pattern_line_field(summary, 0, 1))
 }
 
+# Reject repeated resolved binding names from the lossless Pattern tree before
+# the bounded executable-shape check.  This deliberately reads NamePattern
+# records rather than rescanning constructor/wildcard token spellings.  An
+# or-pattern is left to the resolved ADT projector, where sibling alternatives
+# publish one shared BindingId and therefore are not same-scope declarations.
+fn pattern_duplicate_binding_error(source: Text, start: Int) -> Text {
+    let parsed = parse_pattern_or_result(source, start, 1, 0, 0, 0, -1)
+    let records = pattern_result_records(parsed)
+    if contains(records, "|OrPattern|") {
+        return ""
+    }
+    let symbols = chars(records)
+    let mut line = 0
+    let mut seen = ""
+    while line < len(symbols) {
+        let kind = pattern_line_field(records, line, 2)
+        if pattern_line_field(records, line, 0) == "node" &&
+           kind == "NamePattern" {
+            let name = pattern_line_field(records, line, 5)
+            let declaration = pattern_line_field(records, line, 3)
+            if len(enum_constructor_owner(source, name)) == 0 &&
+               enum_binding_catchall_name(name) {
+                let mut prior = 0
+                while prior < len(seen) {
+                    if pattern_line_field(seen, prior, 0) == name {
+                        return "error[E2S47]: duplicate binding `" + name +
+                        "` in pattern at byte " + declaration +
+                        "; first declaration at byte " +
+                        pattern_line_field(seen, prior, 1)
+                    }
+                    while prior < len(seen) && seen[prior] != "\n" {
+                        prior = prior + 1
+                    }
+                    prior = prior + 1
+                }
+                seen = seen + name + "|" + declaration + "\n"
+            }
+        }
+        while line < len(symbols) && symbols[line] != "\n" {
+            line = line + 1
+        }
+        line = line + 1
+    }
+    return ""
+}
+
 # The executable constructor pattern is exactly `C(name)` or `C(_)`: one
 # parenthesised payload sub-pattern that is a single token.  A nested payload
 # such as `Ok(Present(x))` stays parsed-but-not-executable here, and whether the
@@ -1123,6 +1169,13 @@ fn validate_executable_patterns(source: Text) -> Text {
                 let close = match_end - 1
                 let mut arm = skip_trivia(source, token_end(source, open))
                 while arm < close && token_text(source, arm) != "}" {
+                    let duplicate = pattern_duplicate_binding_error(
+                        source,
+                        arm
+                    )
+                    if starts_with(duplicate, "error[") {
+                        return duplicate
+                    }
                     let summary = pattern_summary(source, arm)
                     let kind = pattern_summary_kind(summary)
                     let executable = kind == "WildcardPattern" ||
@@ -2879,6 +2932,31 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
         }
         let name = token_text(source, cursor)
         let open = skip_trivia(source, token_end(source, cursor))
+        if open < end && token_text(source, open) == "(" && name == "len" {
+            let value = skip_trivia(source, token_end(source, open))
+            return "((int64_t)strlen(" + emit_expression(
+                source, hir, value, argument_end(source, value)) + "))"
+        }
+        if open < end && token_text(source, open) == "(" &&
+           name == "text_slice" {
+            let value = skip_trivia(source, token_end(source, open))
+            let value_end = argument_end(source, value)
+            let first_separator = skip_trivia(source, value_end)
+            let first = skip_trivia(
+                source,
+                token_end(source, first_separator)
+            )
+            let first_end = argument_end(source, first)
+            let second_separator = skip_trivia(source, first_end)
+            let second = skip_trivia(
+                source,
+                token_end(source, second_separator)
+            )
+            return "kofun_text_slice(" + emit_expression(
+                source, hir, value, value_end) + ", " + emit_expression(
+                source, hir, first, first_end) + ", " + emit_expression(
+                source, hir, second, argument_end(source, second)) + ")"
+        }
         if open >= end || token_text(source, open) != "(" {
             let binding_id = hir_use_binding_id(hir, cursor)
             if open < end && token_text(source, open) == "." {
@@ -3150,9 +3228,9 @@ fn call_arity(source: Text, open: Int) -> Int {
 # The 16 host builtins of the frozen self-host profile (#618/#619), keyed by
 # arity. `print` stays a statement-level special case. `len` is one name here;
 # its Text/List[Text] overload is resolved by type, not arity. Builtin calls
-# are known and arity-checked, but the bounded Int C11 slice cannot lower
-# them yet, so accepted uses classify as unsupported lowering, never as an
-# unknown-function source error.
+# are known and arity-checked. The bounded date/time slice lowers `len(Text)`
+# and `text_slice`; the remaining accepted uses classify as unsupported
+# lowering, never as an unknown-function source error.
 fn builtin_arity(name: Text) -> Int {
     if name == "args" || name == "fail" {
         return 0
@@ -3550,8 +3628,12 @@ fn validate_core_calls(source: Text, hir: Text) -> Text {
                     if len(argument_error) > 0 {
                         return argument_error
                     }
-                    return "error[E2S10]: unsupported Core builtin call `" +
-                    name + "` at byte " + to_text(cursor)
+                    if name == "len" || name == "text_slice" {
+                        expected = builtin_expected
+                    } else {
+                        return "error[E2S10]: unsupported Core builtin call `" +
+                        name + "` at byte " + to_text(cursor)
+                    }
                 }
                 let actual = call_arity(source, open)
                 if actual != expected {
@@ -3593,7 +3675,7 @@ fn core_parameters(
         let type_cursor = skip_trivia(source, token_end(source, colon))
         if colon >= parameters_end || token_text(source, colon) != ":" ||
            type_cursor >= parameters_end {
-            return "error[E2S15]: Core parameters must have type Int or a concrete enum at byte " +
+            return "error[E2S15]: Core parameters must have type Int, Text, a concrete enum, or a nominal record at byte " +
             to_text(cursor)
         }
         # A callable parameter type is checked before `Int` because its own
@@ -3612,6 +3694,10 @@ fn core_parameters(
         } else if token_text(source, type_cursor) == "Int" {
             type_end = token_end(source, type_cursor)
             declarator = "int64_t k_b" + hir_definition_id_at(hir, cursor)
+        } else if token_text(source, type_cursor) == "Text" {
+            type_end = token_end(source, type_cursor)
+            declarator = "const char *k_b" +
+            hir_definition_id_at(hir, cursor)
         } else if enum_constructor_count(
             source,
             token_text(source, type_cursor)
@@ -3629,7 +3715,7 @@ fn core_parameters(
             ) + " k_b" + hir_definition_id_at(hir, cursor)
         }
         if type_end < 0 {
-            return "error[E2S15]: Core parameters must have type Int or a concrete enum at byte " +
+            return "error[E2S15]: Core parameters must have type Int, Text, a concrete enum, or a nominal record at byte " +
             to_text(cursor)
         }
         if count > 0 {
@@ -3995,6 +4081,44 @@ fn call_argument_expected_type(source: Text, target: Int) -> Text {
     return ""
 }
 
+# `initializer_type` deliberately types an entire condition as Bool. Text
+# comparison lowering needs only the left primary's type.
+fn primary_is_text(source: Text, hir: Text, start: Int) -> Bool {
+    let mut cursor = skip_trivia(source, start)
+    while token_text(source, cursor) == "(" {
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    if token_kind(source, cursor) == "string" {
+        return true
+    }
+    if token_kind(source, cursor) != "identifier" {
+        return false
+    }
+    if numeric_conversion_at(source, cursor) == "Decimal.format" {
+        return true
+    }
+    let name = token_text(source, cursor)
+    let open = skip_trivia(source, token_end(source, cursor))
+    if token_text(source, open) == "(" {
+        return name == "text_slice" ||
+        function_return_type(source, name) == "Text"
+    }
+    let binding_id = hir_use_binding_id(hir, cursor)
+    let binding_type = hir_binding_field(hir, binding_id, 5)
+    if binding_type == "Text" {
+        return true
+    }
+    if token_text(source, open) == "." {
+        let field_cursor = skip_trivia(source, token_end(source, open))
+        return record_field_type_named(
+            source,
+            binding_type,
+            token_text(source, field_cursor)
+        ) == "Text"
+    }
+    return false
+}
+
 fn comparison_operator(token: Text) -> Bool {
     return token == "==" || token == "!=" || token == "<" ||
     token == "<=" || token == ">" || token == ">="
@@ -4071,6 +4195,25 @@ fn emit_condition_into(
         enclosing_function_open(source, cursor),
         cursor
     )
+    if primary_is_text(source, hir, cursor) {
+        let mut comparison = "== 0"
+        if operator == "!=" {
+            comparison = "!= 0"
+        } else if operator == "<" {
+            comparison = "< 0"
+        } else if operator == "<=" {
+            comparison = "<= 0"
+        } else if operator == ">" {
+            comparison = "> 0"
+        } else if operator == ">=" {
+            comparison = ">= 0"
+        }
+        return indent + "const char *kofun_condition_left = " + left +
+        ";\n" + indent + "const char *kofun_condition_right = " + right +
+        ";\n" + indent + "bool " + target + " = strcmp(" +
+        "kofun_condition_left, kofun_condition_right) " + comparison +
+        ";\n"
+    }
     if value_type == "Decimal" {
         let mut comparison = "== 0"
         if operator == "!=" {
@@ -9231,7 +9374,8 @@ fn lower_c(source: Text, hir: Text) -> Text {
     "#include <stdbool.h>\n" +
     "#include <stddef.h>\n" +
     "#include <stdint.h>\n" +
-    "#include <stdio.h>\n" + decimal_include + "\n" +
+    "#include <stdio.h>\n" +
+    "#include <string.h>\n" + decimal_include + "\n" +
     "typedef struct {\n" +
     "    int64_t tag;\n" +
     "    int64_t payload;\n" +
@@ -9241,6 +9385,15 @@ fn lower_c(source: Text, hir: Text) -> Text {
     "static inline void kofun_error(const char *message) {\n" +
     "    if (!kofun_failed) { fputs(message, stderr); fputc('\\n', stderr); }\n" +
     "    kofun_failed = true;\n" +
+    "}\n" +
+    "static inline const char *kofun_text_slice(const char *text, int64_t start, int64_t end) {\n" +
+    "    static char slots[64][32]; static size_t next_slot;\n" +
+    "    size_t length = strlen(text);\n" +
+    "    if (start < 0 || end < start || (uint64_t)end > length || end - start > 31) {\n" +
+    "        kofun_error(\"error[R020]: bounded Text slice out of range\"); return \"\";\n" +
+    "    }\n" +
+    "    char *slot = slots[next_slot++ % 64u]; size_t width = (size_t)(end - start);\n" +
+    "    memcpy(slot, text + start, width); slot[width] = '\\0'; return slot;\n" +
     "}\n" +
     "static inline int64_t kofun_add(int64_t a, int64_t b) {\n" +
     "    int64_t r; if (__builtin_add_overflow(a, b, &r)) {\n" +

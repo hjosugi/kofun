@@ -20,6 +20,13 @@ writeTypedSidecarAtomic(path, document, {
 })
 ~~~
 
+`documentation-index.mjs` joins a validated KIF visibility projection with
+the typed sidecar's current validated identities. It emits disclosure-safe
+public or exact-package internal documentation indexes without copying
+sidecar paths, spans, diagnostic text, or inferred display names. The full
+trust model, CLI procedure, limits, and atomic replacement rules are in
+[`docs/DOCUMENTATION_INDEX.md`](../../docs/DOCUMENTATION_INDEX.md).
+
 Read and encode return tagged `{ ok: true, ... }` or
 `{ ok: false, error }` records. Read documents and result records are
 recursively immutable. Replacement decisions are `{ allow, reason }` with
@@ -59,4 +66,5 @@ Run the focused gates with:
 ~~~sh
 task typed-sidecar-codec
 task typed-sidecar-projector
+task documentation-index
 ~~~

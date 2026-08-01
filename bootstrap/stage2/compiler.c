@@ -932,6 +932,8 @@ static ParsedPattern parse_pattern_or(
     int64_t depth
 );
 static PatternSummary pattern_summary(const char *source, int64_t start);
+static char *enum_constructor_owner(const char *source, const char *name);
+static bool enum_binding_catchall_name(const char *name);
 
 static ParsedPattern parsed_pattern_init(int64_t start) {
     ParsedPattern result;
@@ -1802,6 +1804,114 @@ static bool executable_constructor_pattern(const char *source, int64_t arm) {
     return close < length && token_equal(source, close, ")");
 }
 
+static char *pattern_record_field(const char *line, int wanted) {
+    const char *cursor = line;
+    const char *start = line;
+    int field = 0;
+    while (*cursor != '\0' && *cursor != '\n') {
+        if (*cursor == '|') {
+            if (field == wanted) break;
+            ++field;
+            start = cursor + 1;
+        }
+        ++cursor;
+    }
+    if (field != wanted) return owned_text("");
+    size_t length = (size_t)(cursor - start);
+    char *value = allocate(length + 1u);
+    memcpy(value, start, length);
+    value[length] = '\0';
+    return value;
+}
+
+/*
+ * Same-pattern duplicate checking consumes the lossless Pattern records, not
+ * constructor/wildcard token spellings.  Or-pattern binding-set equality and
+ * its one-BindingId projection belong to the resolved ADT projector, so an
+ * occurrence containing OrPattern is intentionally left to that authority.
+ */
+static char *pattern_duplicate_binding_error(
+    const char *source,
+    int64_t start
+) {
+    PatternParser parser = {
+        .source = source,
+        .next_node_id = 0,
+        .nodes = 0,
+        .errors = 0,
+        .limit_error_id = -1,
+    };
+    ParsedPattern parsed = parse_pattern_or(&parser, start, 1);
+    if (strstr(parsed.records.data, "|OrPattern|") != NULL) {
+        free(parsed.records.data);
+        return owned_text("");
+    }
+    char *names[PATTERN_NODE_LIMIT] = {0};
+    int64_t starts[PATTERN_NODE_LIMIT] = {0};
+    size_t count = 0u;
+    const char *line = parsed.records.data;
+    while (*line != '\0') {
+        char *record = pattern_record_field(line, 0);
+        char *kind = pattern_record_field(line, 2);
+        if (strcmp(record, "node") == 0 &&
+            strcmp(kind, "NamePattern") == 0) {
+            char *name = pattern_record_field(line, 5);
+            char *start_text = pattern_record_field(line, 3);
+            int64_t declaration = strtoll(start_text, NULL, 10);
+            char *owner = enum_constructor_owner(source, name);
+            bool binding = owner[0] == '\0' && enum_binding_catchall_name(name);
+            free(owner);
+            free(start_text);
+            if (binding) {
+                size_t index = 0u;
+                while (index < count && strcmp(names[index], name) != 0) {
+                    ++index;
+                }
+                if (index < count) {
+                    Buffer error;
+                    buffer_init(&error);
+                    buffer_format(
+                        &error,
+                        "error[E2S47]: duplicate binding `%s` in pattern at "
+                        "byte %" PRId64 "; first declaration at byte %" PRId64,
+                        name,
+                        declaration,
+                        starts[index]
+                    );
+                    stage2_diagnostic_set(
+                        "E2S47",
+                        declaration,
+                        declaration,
+                        true,
+                        error.data
+                    );
+                    free(name);
+                    for (size_t held = 0u; held < count; ++held) {
+                        free(names[held]);
+                    }
+                    free(record);
+                    free(kind);
+                    free(parsed.records.data);
+                    return error.data;
+                }
+                names[count] = name;
+                starts[count] = declaration;
+                ++count;
+            } else {
+                free(name);
+            }
+        }
+        free(record);
+        free(kind);
+        const char *next = strchr(line, '\n');
+        if (next == NULL) break;
+        line = next + 1;
+    }
+    for (size_t held = 0u; held < count; ++held) free(names[held]);
+    free(parsed.records.data);
+    return owned_text("");
+}
+
 static char *validate_executable_patterns(const char *source) {
     int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, 0);
@@ -1814,6 +1924,14 @@ static char *validate_executable_patterns(const char *source) {
                 int64_t close = match_end - 1;
                 int64_t arm = skip_trivia(source, token_end(source, open));
                 while (arm < close && !token_equal(source, arm, "}")) {
+                    char *duplicate = pattern_duplicate_binding_error(
+                        source,
+                        arm
+                    );
+                    if (strncmp(duplicate, "error[", 6) == 0) {
+                        return duplicate;
+                    }
+                    free(duplicate);
                     PatternSummary summary = pattern_summary(source, arm);
                     bool executable = summary.kind == PATTERN_WILDCARD ||
                         summary.kind == PATTERN_NAME ||
@@ -4973,6 +5091,64 @@ static char *emit_primary(
         free(conversion);
         char *name = token_copy(source, cursor);
         int64_t open = skip_trivia(source, token_end(source, cursor));
+        if (
+            open < end && token_equal(source, open, "(") &&
+            strcmp(name, "len") == 0
+        ) {
+            int64_t value = skip_trivia(source, token_end(source, open));
+            char *emitted = emit_expression(
+                source,
+                hir,
+                value,
+                argument_end(source, value)
+            );
+            Buffer length;
+            buffer_init(&length);
+            buffer_format(&length, "((int64_t)strlen(%s))", emitted);
+            free(emitted);
+            free(name);
+            return length.data;
+        }
+        if (
+            open < end && token_equal(source, open, "(") &&
+            strcmp(name, "text_slice") == 0
+        ) {
+            int64_t value = skip_trivia(source, token_end(source, open));
+            int64_t value_end = argument_end(source, value);
+            int64_t first_separator = skip_trivia(source, value_end);
+            int64_t first = skip_trivia(
+                source,
+                token_end(source, first_separator)
+            );
+            int64_t first_end = argument_end(source, first);
+            int64_t second_separator = skip_trivia(source, first_end);
+            int64_t second = skip_trivia(
+                source,
+                token_end(source, second_separator)
+            );
+            char *value_text = emit_expression(source, hir, value, value_end);
+            char *first_text = emit_expression(source, hir, first, first_end);
+            char *second_text = emit_expression(
+                source,
+                hir,
+                second,
+                argument_end(source, second)
+            );
+            Buffer slice;
+            buffer_init(&slice);
+            buffer_format(
+                &slice,
+                "kofun_text_slice(%s, %s, %s)",
+                value_text,
+                first_text,
+                second_text
+            );
+            free(second_text);
+            free(first_text);
+            free(value_text);
+            free(name);
+            return slice.data;
+        }
         Buffer output;
         buffer_init(&output);
         if (open >= end || !token_equal(source, open, "(")) {
@@ -5342,9 +5518,9 @@ static int64_t call_arity(const char *source, int64_t open) {
  * The 16 host builtins of the frozen self-host profile (#618/#619), keyed by
  * arity. `print` stays a statement-level special case. `len` is one name here;
  * its Text/List[Text] overload is resolved by type, not arity. Builtin calls
- * are known and arity-checked, but the bounded Int C11 slice cannot lower
- * them yet, so accepted uses classify as unsupported lowering, never as an
- * unknown-function source error.
+ * are known and arity-checked. The bounded date/time slice lowers `len(Text)`
+ * and `text_slice`; the remaining accepted uses classify as unsupported
+ * lowering, never as an unknown-function source error.
  */
 static int64_t builtin_arity(const char *name) {
     static const struct {
@@ -5960,25 +6136,32 @@ static char *validate_core_calls(const char *source, const char *hir) {
                         return argument_error;
                     }
                     free(argument_error);
-                    Buffer error;
-                    buffer_init(&error);
-                    buffer_format(
-                        &error,
-                        "error[E2S10]: unsupported Core builtin call `%s` "
-                        "at byte %" PRId64,
-                        name,
-                        cursor
-                    );
-                    stage2_diagnostic_set(
-                        "E2S10",
-                        cursor,
-                        token_end(source, cursor),
-                        true,
-                        error.data
-                    );
-                    free(name);
-                    free(previous);
-                    return error.data;
+                    if (
+                        strcmp(name, "len") == 0 ||
+                        strcmp(name, "text_slice") == 0
+                    ) {
+                        expected = builtin_expected;
+                    } else {
+                        Buffer error;
+                        buffer_init(&error);
+                        buffer_format(
+                            &error,
+                            "error[E2S10]: unsupported Core builtin call `%s` "
+                            "at byte %" PRId64,
+                            name,
+                            cursor
+                        );
+                        stage2_diagnostic_set(
+                            "E2S10",
+                            cursor,
+                            token_end(source, cursor),
+                            true,
+                            error.data
+                        );
+                        free(name);
+                        free(previous);
+                        return error.data;
+                    }
                 }
                 int64_t actual = call_arity(source, open);
                 if (actual != expected) {
@@ -6084,7 +6267,8 @@ static char *core_parameters(
             free(emitted.data);
             return lower_error(
                 "E2S15",
-                "Core parameters must have type Int or a concrete enum",
+                "Core parameters must have type Int, Text, a concrete enum, "
+                "or a nominal record",
                 cursor
             );
         }
@@ -6111,6 +6295,12 @@ static char *core_parameters(
             Buffer plain;
             buffer_init(&plain);
             buffer_format(&plain, "int64_t k_b%s", binding_id);
+            declarator = plain.data;
+        } else if (token_equal(source, type_cursor, "Text")) {
+            type_end = token_end(source, type_cursor);
+            Buffer plain;
+            buffer_init(&plain);
+            buffer_format(&plain, "const char *k_b%s", binding_id);
             declarator = plain.data;
         } else if (
             strcmp(token_kind(source, type_cursor), "identifier") == 0
@@ -6151,7 +6341,8 @@ static char *core_parameters(
             free(emitted.data);
             return lower_error(
                 "E2S15",
-                "Core parameters must have type Int or a concrete enum",
+                "Core parameters must have type Int, Text, a concrete enum, "
+                "or a nominal record",
                 cursor
             );
         }
@@ -6168,6 +6359,54 @@ static char *core_parameters(
         }
     }
     return emitted.data;
+}
+
+/* `initializer_type` deliberately types an entire condition as Bool. Text
+ * comparison lowering needs the type of only its left primary. */
+static bool primary_is_text(
+    const char *source,
+    const char *hir,
+    int64_t start
+) {
+    int64_t cursor = skip_trivia(source, start);
+    while (token_equal(source, cursor, "(")) {
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    if (strcmp(token_kind(source, cursor), "string") == 0) return true;
+    if (strcmp(token_kind(source, cursor), "identifier") != 0) return false;
+    char *conversion = numeric_conversion_at(source, cursor);
+    bool text = strcmp(conversion, "Decimal.format") == 0;
+    free(conversion);
+    if (text) return true;
+    char *name = token_copy(source, cursor);
+    int64_t open = skip_trivia(source, token_end(source, cursor));
+    if (token_equal(source, open, "(")) {
+        char *declared = function_return_type(source, name);
+        text = strcmp(name, "text_slice") == 0 ||
+            strcmp(declared, "Text") == 0;
+        free(declared);
+        free(name);
+        return text;
+    }
+    char *binding_id = hir_use_binding_id(hir, cursor);
+    char *binding_type = hir_binding_field(hir, binding_id, 5);
+    text = strcmp(binding_type, "Text") == 0;
+    if (!text && token_equal(source, open, ".")) {
+        int64_t field_cursor = skip_trivia(source, token_end(source, open));
+        char *field = token_copy(source, field_cursor);
+        char *field_type = record_field_type_named(
+            source,
+            binding_type,
+            field
+        );
+        text = strcmp(field_type, "Text") == 0;
+        free(field_type);
+        free(field);
+    }
+    free(binding_type);
+    free(binding_id);
+    free(name);
+    return text;
 }
 
 static bool comparison_operator(const char *source, int64_t cursor) {
@@ -6285,7 +6524,28 @@ static char *emit_condition_into(
         function_open,
         cursor
     );
-    if (strcmp(type, "Decimal") == 0) {
+    if (primary_is_text(source, hir, cursor)) {
+        const char *comparison = "== 0";
+        if (strcmp(operator_text, "!=") == 0) comparison = "!= 0";
+        else if (strcmp(operator_text, "<") == 0) comparison = "< 0";
+        else if (strcmp(operator_text, "<=") == 0) comparison = "<= 0";
+        else if (strcmp(operator_text, ">") == 0) comparison = "> 0";
+        else if (strcmp(operator_text, ">=") == 0) comparison = ">= 0";
+        buffer_format(
+            &output,
+            "%sconst char *kofun_condition_left = %s;\n"
+            "%sconst char *kofun_condition_right = %s;\n"
+            "%sbool %s = strcmp(kofun_condition_left, "
+            "kofun_condition_right) %s;\n",
+            indent,
+            left,
+            indent,
+            right,
+            indent,
+            target,
+            comparison
+        );
+    } else if (strcmp(type, "Decimal") == 0) {
         const char *comparison = "== 0";
         if (strcmp(operator_text, "!=") == 0) comparison = "!= 0";
         else if (strcmp(operator_text, "<") == 0) comparison = "< 0";
@@ -14758,6 +15018,7 @@ static char *lower_c(const char *source, const char *hir) {
         "#include <stddef.h>\n"
         "#include <stdint.h>\n"
         "#include <stdio.h>\n"
+        "#include <string.h>\n"
     );
     if (fractional_values) {
         buffer_append(&output, "#include \"decimal_v1.c\"\n");
@@ -14775,6 +15036,15 @@ static char *lower_c(const char *source, const char *hir) {
         "static inline void kofun_error(const char *message) {\n"
         "    if (!kofun_failed) { fputs(message, stderr); fputc('\\n', stderr); }\n"
         "    kofun_failed = true;\n"
+        "}\n"
+        "static inline const char *kofun_text_slice(const char *text, int64_t start, int64_t end) {\n"
+        "    static char slots[64][32]; static size_t next_slot;\n"
+        "    size_t length = strlen(text);\n"
+        "    if (start < 0 || end < start || (uint64_t)end > length || end - start > 31) {\n"
+        "        kofun_error(\"error[R020]: bounded Text slice out of range\"); return \"\";\n"
+        "    }\n"
+        "    char *slot = slots[next_slot++ % 64u]; size_t width = (size_t)(end - start);\n"
+        "    memcpy(slot, text + start, width); slot[width] = '\\0'; return slot;\n"
         "}\n"
         "static inline int64_t kofun_add(int64_t a, int64_t b) {\n"
         "    int64_t r; if (__builtin_add_overflow(a, b, &r)) {\n"
