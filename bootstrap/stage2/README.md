@@ -471,16 +471,16 @@ limits, failed publication, C11 warnings, sanitizers, and static analysis.
 `tests/conformance/modules/re-exports/run.sh` adds export-fact digest,
 round-trip, mutation, and source-free facade-consumption coverage.
 
-`tests/conformance/incremental/run.sh` pins the semantic invalidation
-decisions on a four-module `core <- service <- app` package plus an unrelated
-`util`. It records the exact executed/reused node set for each of the first
-seven Required edit matrix rows, the transitive case where a changed
-intermediate interface does continue to propagate, the external public
-boundary through source-free KIF resolution, inventory-order invariance,
-bounded recovery from unknown schemas and corrupt manifests and blobs, and
-that a rejected source commits nothing. Rows 8-10 and the collector's
-rejection of top-level comments are explicit `SKIP` lines, never implicit
-passes.
+`tests/conformance/incremental/run.sh` pins the semantic and target-action
+invalidation decisions on a four-module `core <- service <- app` package plus
+an unrelated `util`. It records the exact executed/reused or rebuilt/reused set
+for all ten Required edit matrix rows, including target-profile changes, a
+cold failed compile followed by repair, and path-remapped clean copies. It also
+covers the transitive case where a changed intermediate interface continues to
+propagate, the external public boundary through source-free KIF resolution,
+inventory-order invariance, bounded recovery from unknown schemas and corrupt
+manifests and blobs, and failure non-publication. The collector's rejection of
+top-level comments remains an explicit `SKIP`, never an implicit pass.
 
 `bootstrap/stage2/visibility_access.c` is the pure access primitive for the
 next resolver slice. It compares only schema-tagged 32-byte package, module,

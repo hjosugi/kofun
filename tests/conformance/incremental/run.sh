@@ -472,7 +472,7 @@ run_graph "$TOOL" "$WORK/base.inventory" "$WORK/cache-blob" \
     "$WORK/blob-recovered.report" >/dev/null || fail 'recovery run failed'
 expect_set "$WORK/blob-recovered.report" "$ALL_REUSED" 'recovered cache'
 
-# A rejected source never commits a reusable success.
+# A rejected edit never replaces the last committed reusable success.
 rm -rf "$WORK/cache-invalid"
 cp -R "$WORK/cache" "$WORK/cache-invalid"
 cp "$WORK/cache-invalid/manifest" "$WORK/manifest.before-failure"
@@ -491,12 +491,44 @@ test ! -e "$WORK/invalid.report" ||
 cmp "$WORK/manifest.before-failure" "$WORK/cache-invalid/manifest" ||
     fail 'a rejected source mutated the committed graph'
 
-# The cache survives the failure: the next valid run still reuses everything.
+# The last committed success survives the failure and remains reusable.
 run_graph "$TOOL" "$WORK/base.inventory" "$WORK/cache-invalid" \
     "$WORK/after-failure.report" >/dev/null || fail 'post-failure run failed'
 expect_set "$WORK/after-failure.report" "$ALL_REUSED" 'cache after a failure'
 expect_target_set "$WORK/after-failure.report" "$ALL_TARGET_REUSED" \
-    'row 9 repaired compile'
+    'preserved cache after a failure'
+
+# Row 9: a cold rejected compile publishes no reusable graph. Repairing the
+# source therefore executes every semantic and target node once; only the next
+# successful warm run may reuse those products.
+rm -rf "$WORK/cache-row9"
+rm -f "$WORK/row9-failed.report"
+if run_graph "$TOOL" "$WORK/invalid.inventory" "$WORK/cache-row9" \
+    "$WORK/row9-failed.report" >"$WORK/row9-failed.out" 2>&1
+then
+    fail 'row 9: a cold rejected source was accepted'
+fi
+grep -q '^error\[' "$WORK/row9-failed.out" ||
+    fail 'row 9: a cold rejected source produced no diagnostic'
+test ! -e "$WORK/row9-failed.report" ||
+    fail 'row 9: a cold failure published a report'
+test ! -e "$WORK/cache-row9/manifest" ||
+    fail 'row 9: a cold failure published a reusable graph'
+run_graph "$TOOL" "$WORK/base.inventory" "$WORK/cache-row9" \
+    "$WORK/row9-repaired.report" >/dev/null ||
+    fail 'row 9: repaired compile failed'
+expect_set "$WORK/row9-repaired.report" "$ALL_EXECUTED" 'row 9 repair'
+expect_summary "$WORK/row9-repaired.report" 'executed=4 reused=0' 'row 9 repair'
+expect_target_set "$WORK/row9-repaired.report" "$ALL_TARGET_REBUILT" \
+    'row 9 repair'
+expect_target_summary "$WORK/row9-repaired.report" 'rebuilt=4 reused=0' \
+    'row 9 repair'
+run_graph "$TOOL" "$WORK/base.inventory" "$WORK/cache-row9" \
+    "$WORK/row9-warm.report" >/dev/null ||
+    fail 'row 9: repaired warm compile failed'
+expect_set "$WORK/row9-warm.report" "$ALL_REUSED" 'row 9 repaired warm run'
+expect_target_set "$WORK/row9-warm.report" "$ALL_TARGET_REUSED" \
+    'row 9 repaired warm run'
 
 # Row 10: clean copies rooted at different physical directories produce the
 # same logical semantic graph IDs and target action decisions. Physical source
@@ -589,5 +621,5 @@ printf '%s\n' \
     'PASS: the external public boundary is reused on internal edits and rejected on public edits' \
     'PASS: unknown schema, corrupt manifest, and corrupt interface blobs are bounded cache misses' \
     'PASS: a target profile change reuses semantic nodes and rebuilds target artifacts' \
-    'PASS: a failed compile is never committed and its repaired successor reuses the last success' \
+    'PASS: failures publish no success; repair executes cold and reuses only after success' \
     'PASS: path-remapped clean copies preserve semantic graph IDs and target decisions'
