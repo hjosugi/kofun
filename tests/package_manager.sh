@@ -38,14 +38,14 @@ package_command() (
 )
 
 package_command lock >"$WORK/lock.stdout"
-grep -Fqx 'locked 1 package(s)' "$WORK/lock.stdout"
+assert_grep "lock.stdout" -Fqx 'locked 1 package(s)' "$WORK/lock.stdout"
 cp "$WORK/project/kofun.packages.lock" "$WORK/first.lock"
 package_command lock >"$WORK/relock.stdout"
 cmp "$WORK/first.lock" "$WORK/project/kofun.packages.lock"
 
 expected_hash=$(sha256sum "$WORK/original-libanswer.a" | awk '{ print $1 }')
-grep -Fqx "sha256 = \"$expected_hash\"" \
-    "$WORK/project/kofun.packages.lock"
+assert_grep "project/kofun.packages.lock" \
+    -Fqx "sha256 = \"$expected_hash\"" "$WORK/project/kofun.packages.lock"
 cache_entry=$WORK/cache/sha256/$expected_hash
 assert_regular_file "cache entry" "$cache_entry"
 assert_eq "digest of $cache_entry" \
@@ -62,7 +62,8 @@ package_command lock \
 invalid_manifest_status=$?
 set -e
 assert_num "invalid manifest status" "$invalid_manifest_status" -ne 0
-grep -q 'unsupported manifest syntax' "$WORK/invalid-manifest.stderr"
+assert_grep "invalid-manifest.stderr" \
+    -q 'unsupported manifest syntax' "$WORK/invalid-manifest.stderr"
 cmp "$WORK/first.lock" "$WORK/project/kofun.packages.lock"
 cp "$WORK/valid-manifest" "$WORK/project/kofun.packages.toml"
 
@@ -75,7 +76,8 @@ package_command fetch --offline \
 invalid_lock_status=$?
 set -e
 assert_num "invalid lock status" "$invalid_lock_status" -ne 0
-grep -q 'unsupported lockfile syntax' "$WORK/invalid-lock.stderr"
+assert_grep "invalid-lock.stderr" \
+    -q 'unsupported lockfile syntax' "$WORK/invalid-lock.stderr"
 cp "$WORK/valid.lock" "$WORK/project/kofun.packages.lock"
 
 # Collisions with the old .tmp.$$ names must not redirect cache population or
@@ -117,14 +119,15 @@ implicit_status=$?
 set -e
 assert_num "implicit status" "$implicit_status" -ne 0
 assert_absent "project/implicit-c-abi" "$WORK/project/implicit-c-abi"
-grep -q -- '--package requires --backend c --c-abi' \
-    "$WORK/implicit.stderr"
+assert_grep "implicit.stderr" \
+    -q -- '--package requires --backend c --c-abi' "$WORK/implicit.stderr"
 
 # The declared source disappears. The content-addressed cache alone must be
 # sufficient for both an explicit fetch and the actual Kofun C ABI build.
 rm -rf "$WORK/upstream"
 package_command fetch --offline >"$WORK/offline-fetch.stdout"
-grep -Fqx 'fetched 1 package(s)' "$WORK/offline-fetch.stdout"
+assert_grep "offline-fetch.stdout" \
+    -Fqx 'fetched 1 package(s)' "$WORK/offline-fetch.stdout"
 (
     cd "$WORK/project"
     KOFUN_PACKAGE_CACHE="$WORK/cache" \
@@ -179,7 +182,8 @@ package_command fetch --offline \
 corrupt_status=$?
 set -e
 assert_num "corrupt status" "$corrupt_status" -ne 0
-grep -q 'cached content hash mismatch' "$WORK/corrupt.stderr"
+assert_grep "corrupt.stderr" \
+    -q 'cached content hash mismatch' "$WORK/corrupt.stderr"
 
 # A missing cache entry may be fetched online/file-locally, but the fetched
 # artifact still has to match the exact lock hash.
@@ -196,7 +200,8 @@ package_command fetch \
 mismatch_status=$?
 set -e
 assert_num "mismatch status" "$mismatch_status" -ne 0
-grep -q 'content hash mismatch for package answer' "$WORK/mismatch.stderr"
+assert_grep "mismatch.stderr" \
+    -q 'content hash mismatch for package answer' "$WORK/mismatch.stderr"
 assert_absent "cache entry" "$cache_entry"
 
 set +e
@@ -205,7 +210,8 @@ package_command fetch --offline \
 miss_status=$?
 set -e
 assert_num "miss status" "$miss_status" -ne 0
-grep -q 'offline cache miss for package answer' "$WORK/miss.stderr"
+assert_grep "miss.stderr" \
+    -q 'offline cache miss for package answer' "$WORK/miss.stderr"
 
 printf '%s\n' \
     "PASS: dependency declaration locked exact SHA-256 artifact bytes" \

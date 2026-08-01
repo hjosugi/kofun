@@ -44,13 +44,13 @@ expect_status() (
 )
 
 run_kofun --help >"$WORK/help"
-grep -q -- '--emit-typed-sidecar' "$WORK/help"
-grep -q 'non-authoritative tooling data' "$WORK/help"
+assert_grep "help" -q -- '--emit-typed-sidecar' "$WORK/help"
+assert_grep "help" -q 'non-authoritative tooling data' "$WORK/help"
 
 expect_status 0 complete check "$COMPLETE" \
     --emit-typed-sidecar "$WORK/output/complete.kofun-semantic.json" \
     --generation 1
-grep -Fx "ok: $COMPLETE" "$WORK/complete.stdout" >/dev/null
+assert_grep "complete.stdout" -Fx "ok: $COMPLETE" "$WORK/complete.stdout"
 assert_file_empty "complete.stderr" "$WORK/complete.stderr"
 assert_file_nonempty "output/complete.kofun-semantic.json" \
     "$WORK/output/complete.kofun-semantic.json"
@@ -89,7 +89,8 @@ do
     expect_status 2 "generation-$label" check "$COMPLETE" \
         --emit-typed-sidecar "$WORK/output/generation-$label.json" \
         --generation "$value"
-    grep -q '^ETS01: ' "$WORK/generation-$label.stderr"
+    assert_grep "generation-$label.stderr" \
+        -q '^ETS01: ' "$WORK/generation-$label.stderr"
 done
 
 expect_status 2 missing-generation check "$COMPLETE" \
@@ -105,7 +106,7 @@ expect_status 2 unknown-option check "$COMPLETE" \
 for label in missing-generation missing-output duplicate-output \
     duplicate-generation unknown-option
 do
-    grep -q '^ETS01: ' "$WORK/$label.stderr"
+    assert_grep "$label.stderr" -q '^ETS01: ' "$WORK/$label.stderr"
 done
 
 expect_status 2 dash check "$COMPLETE" \
@@ -128,7 +129,7 @@ if command -v mkfifo >/dev/null 2>&1; then
 fi
 for label in dash directory symlink source-output missing-parent
 do
-    grep -q '^ETS01: ' "$WORK/$label.stderr"
+    assert_grep "$label.stderr" -q '^ETS01: ' "$WORK/$label.stderr"
 done
 assert_eq "contents of output/victim" "$(cat "$WORK/output/victim")" keep
 
@@ -138,7 +139,7 @@ expect_status 1 failed check "$FAILED" \
 cmp "$WORK/failed-plain.stdout" "$WORK/failed.stdout"
 cmp "$WORK/failed-plain.stderr" "$WORK/failed.stderr"
 assert_file_empty "failed.stdout" "$WORK/failed.stdout"
-grep -Fq 'error[' "$WORK/failed.stderr"
+assert_grep "failed.stderr" -Fq 'error[' "$WORK/failed.stderr"
 assert_file_nonempty "output/failed.json" "$WORK/output/failed.json"
 node --input-type=module - "$WORK/output/failed.json" <<'NODE'
 import assert from "node:assert/strict";
@@ -155,7 +156,7 @@ cp "$WORK/output/complete.kofun-semantic.json" "$WORK/equal.before"
 expect_status 3 equal-clean check "$COMPLETE" \
     --emit-typed-sidecar "$WORK/output/complete.kofun-semantic.json" \
     --generation 1
-grep -q '^ETS05: ' "$WORK/equal-clean.stderr"
+assert_grep "equal-clean.stderr" -q '^ETS05: ' "$WORK/equal-clean.stderr"
 cmp "$WORK/complete.stdout" "$WORK/equal-clean.stdout"
 cmp "$WORK/equal.before" "$WORK/output/complete.kofun-semantic.json"
 

@@ -147,9 +147,9 @@ project_build() (
 )
 
 project_build >"$WORK/initial.log" 2>&1
-grep -q 'ran kofun:alpha' "$WORK/initial.log"
-grep -q 'ran kofun:beta' "$WORK/initial.log"
-grep -q '2 built' "$WORK/initial.log"
+assert_grep "initial.log" -q 'ran kofun:alpha' "$WORK/initial.log"
+assert_grep "initial.log" -q 'ran kofun:beta' "$WORK/initial.log"
+assert_grep "initial.log" -q '2 built' "$WORK/initial.log"
 
 ENGINE="$WORK/project/.kofun/frost-workspace"
 assert_eq "output of $ENGINE/.frost/bin/debug/alpha" \
@@ -162,7 +162,7 @@ assert_file_nonempty "$ENGINE/.frost/obj/debug/beta/kofun.c" \
     "$ENGINE/.frost/obj/debug/beta/kofun.c"
 
 project_build >"$WORK/noop.log" 2>&1
-grep -q 'up to date' "$WORK/noop.log"
+assert_grep "noop.log" -q 'up to date' "$WORK/noop.log"
 if grep -q '  ran ' "$WORK/noop.log"; then
     printf '%s\n' "FAIL: no-op project build executed an action" >&2
     exit 1
@@ -171,13 +171,15 @@ fi
 sed 's/\* 6/* 7/' \
     "$FIXTURE" >"$WORK/project/src/alpha.kofun"
 project_build >"$WORK/incremental.log" 2>&1
-grep -q 'ran kofun:alpha :: input changed: src/alpha.kofun' \
+assert_grep "incremental.log" \
+    -q \
+    'ran kofun:alpha :: input changed: src/alpha.kofun' \
     "$WORK/incremental.log"
 if grep -q 'ran kofun:beta' "$WORK/incremental.log"; then
     printf '%s\n' "FAIL: unchanged beta target rebuilt" >&2
     exit 1
 fi
-grep -q '1 built, 1 cached' "$WORK/incremental.log"
+assert_grep "incremental.log" -q '1 built, 1 cached' "$WORK/incremental.log"
 assert_eq "output of $ENGINE/.frost/bin/debug/alpha" \
     "$("$ENGINE/.frost/bin/debug/alpha")" 49
 assert_eq "output of $ENGINE/.frost/bin/debug/beta" \
@@ -189,7 +191,7 @@ rm -f \
     "$ENGINE/.frost/bin/debug/alpha" \
     "$ENGINE/.frost/obj/debug/alpha/kofun.c"
 project_build >"$WORK/cache-hit.log" 2>&1
-grep -q 'cached kofun:alpha' "$WORK/cache-hit.log"
+assert_grep "cache-hit.log" -q 'cached kofun:alpha' "$WORK/cache-hit.log"
 if grep -q 'ran kofun:alpha' "$WORK/cache-hit.log"; then
     printf '%s\n' "FAIL: CAS-restored alpha target recompiled" >&2
     exit 1

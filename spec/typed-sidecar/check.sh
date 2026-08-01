@@ -93,9 +93,15 @@ for case in bom invalid-utf8 prototype-key depth-overflow; do
     expect_invalid "$case" "$TMP_DIR/$case.json"
 done
 
-grep -q 'must be the JSON boolean `false`' "$ROOT/spec/tooling/typed-sidecar.md"
-grep -q 'new sequence is greater than the stored sequence' "$ROOT/spec/tooling/typed-sidecar.md"
-grep -q '16 MiB canonical JSON bytes' "$ROOT/spec/tooling/typed-sidecar.md"
-grep -q 'private name, path, span, or ID' "$ROOT/spec/tooling/typed-sidecar.md"
+assert_grep "spec/tooling/typed-sidecar.md" \
+    -q 'must be the JSON boolean `false`' "$ROOT/spec/tooling/typed-sidecar.md"
+assert_grep "spec/tooling/typed-sidecar.md" \
+    -q \
+    'new sequence is greater than the stored sequence' \
+    "$ROOT/spec/tooling/typed-sidecar.md"
+assert_grep "spec/tooling/typed-sidecar.md" \
+    -q '16 MiB canonical JSON bytes' "$ROOT/spec/tooling/typed-sidecar.md"
+assert_grep "spec/tooling/typed-sidecar.md" \
+    -q 'private name, path, span, or ID' "$ROOT/spec/tooling/typed-sidecar.md"
 
 printf '%s\n' 'PASS: typed semantic sidecar v1 specification'
