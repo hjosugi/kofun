@@ -346,6 +346,12 @@ tasks:
       - "sh tests/typed-sidecar/producer-races.sh"
       - "sh tests/typed-sidecar/authority-boundary.sh"
 
+  documentation-index:
+    desc: "Verify disclosure-safe typed-sidecar documentation indexes"
+    cmds:
+      - "sh tests/docs/documentation-index.sh"
+      - "sh docs/tour/check.sh"
+
   ownership-view:
     desc: "Verify bounded current-file ScopeId and BindingId ownership views"
     cmds:
@@ -527,6 +533,7 @@ tasks:
             typed-sidecar-spec \
             typed-sidecar-codec \
             typed-sidecar-projector \
+            documentation-index \
             ownership-view \
             artifact-qualification \
             tree-sitter \
