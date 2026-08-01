@@ -30,6 +30,7 @@
 | nominal heterogeneous records | bounded typed frontend plus Stage 2 C11 lowering for nominal `Int`/`Bool` records: written-order labelled construction, declaration-order AggregateLayout, typed reads, and whole-record value arguments/results; no module, generic, native, stable-ABI, or wider-field lowering | `task records`, `spec/records-v1.md` | `nominal-records` |
 | general parser/type checker | open | no active gate | `general-parser-type-checker` |
 | borrowed-List Copy/move ownership check | narrow Stage 2 checkpoint | `bootstrap/stage2/check.sh` | `borrowed-list-ownership` |
+| bounded injected-Bytes time-zone transition producer | bounded Stage 2/C11 checkpoint | `task tzdb` | `bounded-tzdb-producer` |
 | general ownership and law checking | open | no active general pass | `general-ownership-checking` |
 | ELF64/x86-64 native image writer | checkpoint implemented | `bootstrap/native/check.sh` | `elf64-image-writer` |
 | wasm32 Int64 arithmetic Core + lazy browser host | executable checkpoint | `bootstrap/wasm/check.sh`, `tests/conformance/numeric`, `examples/wasm-browser` | `wasm32-arithmetic-core` |
