@@ -6,8 +6,10 @@ Kofun uses default-private declarations and explicit public API. This document
 defines declared and effective visibility for top-level declarations, nominal
 type members, imports, re-exports, entry points, and interface construction.
 The active Stage 2 compiler implements the basic modifiers on top-level
-functions as the bounded #578 syntax/HIR slice. Resolver enforcement and other
-declaration kinds remain follow-up work.
+functions as the bounded #578 syntax/HIR slice. #824 extends the same committed
+metadata to bounded flat ADT declarations for direct KIF publication. Resolver
+enforcement, independent constructor/member visibility, and wider declaration
+kinds remain follow-up work.
 
 The words **must**, **must not**, **should**, and **may** are normative.
 
@@ -189,12 +191,16 @@ misplaced, malformed, and unsupported restricted forms are diagnostics at the
 modifier/form span. Changing these spellings into hard keywords is an
 edition-level compatibility change.
 
-The first executable slice #578 applies only to supported top-level function
+The first executable slice #578 applies to supported top-level function
 declarations and preserves implicit versus explicit private in syntax/HIR. Its
 structural function record appends, in order, semantic level, origin, modifier
 start/end (`-1|-1` when omitted), declaration start/end, the bounded
 single-input `file:0` identity, and a declaration-order `symbol:N` identity.
-It does not claim cross-file or package access enforcement.
+#824 adds the same level/origin/modifier tuple to bounded type records; the
+first flat-ADT KIF producer carries that owner visibility onto its constructor
+facts as one explicitly bounded publication unit. Neither slice claims the
+independent constructor syntax or cross-file/package access enforcement owned
+by the complete visibility implementation.
 
 ## Canonical examples
 

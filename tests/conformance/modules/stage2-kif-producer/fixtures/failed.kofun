@@ -1,0 +1,7 @@
+pub fn broken(value: Int) -> Int {
+    return missing(value)
+}
+
+fn main() {
+    print(0)
+}

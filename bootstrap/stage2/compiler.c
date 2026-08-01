@@ -1970,7 +1970,8 @@ static bool visibility_prefix_candidate(const char *source, int64_t start) {
     if (visibility_word(source, start)) return true;
     if (strcmp(token_kind(source, start), "identifier") != 0) return false;
     int64_t next = skip_trivia(source, token_end(source, start));
-    return token_equal(source, next, "fn");
+    return token_equal(source, next, "fn") ||
+           token_equal(source, next, "type");
 }
 
 static int64_t function_declaration_start(
@@ -1984,6 +1985,23 @@ static int64_t function_declaration_start(
     if (
         after_modifier < length &&
         token_equal(source, after_modifier, "fn")
+    ) {
+        return after_modifier;
+    }
+    return -1;
+}
+
+static int64_t type_declaration_start(
+    const char *source,
+    int64_t start
+) {
+    int64_t length = source_length(source);
+    if (token_equal(source, start, "type")) return start;
+    if (!basic_visibility_modifier(source, start)) return -1;
+    int64_t after_modifier = skip_trivia(source, token_end(source, start));
+    if (
+        after_modifier < length &&
+        token_equal(source, after_modifier, "type")
     ) {
         return after_modifier;
     }
@@ -2030,7 +2048,9 @@ static char *visibility_prefix_error(const char *source, int64_t start) {
         int64_t next = skip_trivia(source, token_end(source, start));
         if (
             strcmp(token_kind(source, start), "identifier") == 0 &&
-            next < length && token_equal(source, next, "fn")
+            next < length &&
+            (token_equal(source, next, "fn") ||
+             token_equal(source, next, "type"))
         ) {
             char *modifier = token_copy(source, start);
             buffer_format(
@@ -2055,7 +2075,9 @@ static char *visibility_prefix_error(const char *source, int64_t start) {
     }
 
     int64_t next = skip_trivia(source, token_end(source, start));
-    if (next < length && token_equal(source, next, "fn")) return error.data;
+    if (next < length &&
+        (token_equal(source, next, "fn") ||
+         token_equal(source, next, "type"))) return error.data;
     if (next < length && basic_visibility_modifier(source, next)) {
         char *first = token_copy(source, start);
         char *second = token_copy(source, next);
@@ -2112,7 +2134,7 @@ static char *visibility_prefix_error(const char *source, int64_t start) {
     buffer_format(
         &error,
         "error[E2S33]: visibility modifier `%s` must be followed by a "
-        "top-level `fn` declaration at bytes %" PRId64 "..%" PRId64,
+        "top-level `fn` or `type` declaration at bytes %" PRId64 "..%" PRId64,
         modifier,
         start,
         token_end(source, start)
@@ -2365,14 +2387,15 @@ static int64_t record_declaration_start(
     int64_t length = (int64_t)strlen(source);
     int64_t cursor = after_optional_module_header(source, 0);
     while (cursor < length) {
+        int64_t type_start = type_declaration_start(source, cursor);
         if (
-            token_equal(source, cursor, "type") &&
-            record_declaration_at(source, cursor)
+            type_start >= 0 &&
+            record_declaration_at(source, type_start)
         ) {
-            char *name = type_name(source, cursor);
+            char *name = type_name(source, type_start);
             bool found = strcmp(name, wanted) == 0;
             free(name);
-            if (found) return cursor;
+            if (found) return type_start;
         }
         int64_t end = top_level_end(source, cursor);
         if (end <= cursor) return -1;
@@ -2508,8 +2531,9 @@ static int64_t record_field_index(
 }
 
 static int64_t top_level_end(const char *source, int64_t start) {
-    if (token_equal(source, start, "type")) {
-        return type_declaration_end(source, start);
+    int64_t type_start = type_declaration_start(source, start);
+    if (type_start >= 0) {
+        return type_declaration_end(source, type_start);
     }
     int64_t function_start = function_declaration_start(source, start);
     if (function_start < 0) return -1;
@@ -2521,12 +2545,23 @@ static int64_t after_optional_module_header(const char *source, int64_t start) {
     int64_t cursor = skip_trivia(source, start);
     if (!token_equal(source, cursor, "module")) return cursor;
     cursor = skip_trivia(source, token_end(source, cursor));
-    while (cursor < length && !token_equal(source, cursor, "type") &&
-           !token_equal(source, cursor, "fn") &&
-           !visibility_prefix_candidate(source, cursor)) {
-        cursor = skip_trivia(source, token_end(source, cursor));
+    if (cursor >= length || strcmp(token_kind(source, cursor), "identifier") != 0) {
+        return cursor;
     }
-    return cursor;
+    cursor = token_end(source, cursor);
+    while (cursor < length) {
+        int64_t dot = skip_trivia(source, cursor);
+        if (dot >= length || !token_equal(source, dot, ".")) break;
+        int64_t part = skip_trivia(source, token_end(source, dot));
+        if (
+            part >= length ||
+            strcmp(token_kind(source, part), "identifier") != 0
+        ) {
+            break;
+        }
+        cursor = token_end(source, part);
+    }
+    return skip_trivia(source, cursor);
 }
 
 static int64_t next_function_start(const char *source, int64_t start) {
@@ -2537,8 +2572,9 @@ static int64_t next_function_start(const char *source, int64_t start) {
      * rejected position ends the walk instead. */
     if (start < 0) return length;
     int64_t cursor = after_optional_module_header(source, start);
-    while (cursor < length && token_equal(source, cursor, "type")) {
-        int64_t end = type_declaration_end(source, cursor);
+    while (cursor < length && type_declaration_start(source, cursor) >= 0) {
+        int64_t type_start = type_declaration_start(source, cursor);
+        int64_t end = type_declaration_end(source, type_start);
         if (end <= cursor) return length;
         cursor = skip_trivia(source, end);
     }
@@ -2553,13 +2589,14 @@ static int64_t enum_declaration_start(
     int64_t length = source_length(source);
     int64_t cursor = after_optional_module_header(source, 0);
     while (cursor < length) {
-        if (token_equal(source, cursor, "type")) {
-            char *name = type_name(source, cursor);
+        int64_t type_start = type_declaration_start(source, cursor);
+        if (type_start >= 0) {
+            char *name = type_name(source, type_start);
             bool found =
                 strcmp(name, wanted) == 0 &&
-                !record_declaration_at(source, cursor);
+                !record_declaration_at(source, type_start);
             free(name);
-            if (found) return cursor;
+            if (found) return type_start;
         }
         int64_t end = top_level_end(source, cursor);
         if (end <= cursor) return -1;
@@ -2797,10 +2834,16 @@ static char *parse_program(const char *source) {
             return visibility_error;
         }
         free(visibility_error);
-        if (token_equal(source, cursor, "type")) {
-            char *name = type_name(source, cursor);
-            int64_t end = type_declaration_end(source, cursor);
-            if (record_declaration_at(source, cursor)) {
+        int64_t declaration_start = cursor;
+        int64_t type_start = type_declaration_start(source, declaration_start);
+        if (type_start >= 0) {
+            char *name = type_name(source, type_start);
+            int64_t end = type_declaration_end(source, type_start);
+            bool explicit_visibility = declaration_start != type_start;
+            int64_t modifier_start = explicit_visibility ? declaration_start : -1;
+            int64_t modifier_end = explicit_visibility ?
+                token_end(source, declaration_start) : -1;
+            if (record_declaration_at(source, type_start)) {
                 int64_t fields = record_field_count(source, name);
                 Buffer error;
                 buffer_init(&error);
@@ -2809,7 +2852,7 @@ static char *parse_program(const char *source) {
                         &error,
                         "error[E2S32]: malformed nominal record declaration "
                         "at byte %" PRId64,
-                        cursor
+                        type_start
                     );
                 } else if (fields == -2) {
                     buffer_format(
@@ -2817,14 +2860,14 @@ static char *parse_program(const char *source) {
                         "error[E2S32]: record `%s` has a field type outside "
                         "the Stage 2 Int/Bool slice at byte %" PRId64,
                         name,
-                        cursor
+                        type_start
                     );
                 } else if (fields == -4) {
                     buffer_format(
                         &error,
                         "error[E2S32]: nominal record field limit is 128 "
                         "per record at byte %" PRId64,
-                        cursor
+                        type_start
                     );
                 } else if (reserved_type_name(name)) {
                     buffer_format(
@@ -2832,7 +2875,7 @@ static char *parse_program(const char *source) {
                         "error[E2S32]: nominal record cannot shadow built-in "
                         "type `%s` at byte %" PRId64,
                         name,
-                        cursor
+                        type_start
                     );
                 } else if (enum_name_covered(declared_types.data, name)) {
                     buffer_format(
@@ -2840,7 +2883,7 @@ static char *parse_program(const char *source) {
                         "error[E2S32]: duplicate nominal aggregate type `%s` "
                         "at byte %" PRId64,
                         name,
-                        cursor
+                        type_start
                     );
                 } else if (
                     enum_name_covered(declared_constructors.data, name)
@@ -2874,8 +2917,8 @@ static char *parse_program(const char *source) {
                 if (error.length > 0) {
                     stage2_diagnostic_set(
                         "E2S32",
-                        cursor,
-                        token_end(source, cursor),
+                        type_start,
+                        token_end(source, type_start),
                         true,
                         error.data
                     );
@@ -2890,11 +2933,16 @@ static char *parse_program(const char *source) {
                 buffer_append(&declared_types, "|");
                 buffer_format(
                     &ir,
-                    "record|%s|%" PRId64 "|%" PRId64 "|%" PRId64 "\n",
+                    "record|%s|%" PRId64 "|%" PRId64 "|%" PRId64
+                    "|%s|%s|%" PRId64 "|%" PRId64 "\n",
                     name,
                     fields,
-                    cursor,
-                    end
+                    type_start,
+                    end,
+                    visibility_level(source, declaration_start),
+                    explicit_visibility ? "explicit" : "implicit",
+                    modifier_start,
+                    modifier_end
                 );
                 for (int64_t index = 0; index < fields; ++index) {
                     char *field = record_field_text(
@@ -2935,12 +2983,12 @@ static char *parse_program(const char *source) {
                     &ir,
                     "error[E2S31]: concrete enum constructor limit is 64 "
                     "at byte %" PRId64,
-                    cursor
+                    type_start
                 );
                 stage2_diagnostic_set(
                     "E2S31",
-                    cursor,
-                    token_end(source, cursor),
+                    type_start,
+                    token_end(source, type_start),
                     true,
                     ir.data
                 );
@@ -2956,12 +3004,12 @@ static char *parse_program(const char *source) {
                     &ir,
                     "error[E2S31]: malformed concrete enum declaration "
                     "at byte %" PRId64,
-                    cursor
+                    type_start
                 );
                 stage2_diagnostic_set(
                     "E2S31",
-                    cursor,
-                    token_end(source, cursor),
+                    type_start,
+                    token_end(source, type_start),
                     true,
                     ir.data
                 );
@@ -2975,12 +3023,12 @@ static char *parse_program(const char *source) {
                     "error[E2S31]: concrete enum cannot shadow built-in "
                     "type `%s` at byte %" PRId64,
                     name,
-                    cursor
+                    type_start
                 );
                 stage2_diagnostic_set(
                     "E2S31",
-                    cursor,
-                    token_end(source, cursor),
+                    type_start,
+                    token_end(source, type_start),
                     true,
                     error.data
                 );
@@ -3001,12 +3049,12 @@ static char *parse_program(const char *source) {
                     &ir,
                     "error[E2S31]: concrete enum limit is 32 types "
                     "at byte %" PRId64,
-                    cursor
+                    type_start
                 );
                 stage2_diagnostic_set(
                     "E2S31",
-                    cursor,
-                    token_end(source, cursor),
+                    type_start,
+                    token_end(source, type_start),
                     true,
                     ir.data
                 );
@@ -3094,15 +3142,20 @@ static char *parse_program(const char *source) {
             }
             buffer_format(
                 &ir,
-                "type|%s|%" PRId64 "|%" PRId64 "|%" PRId64 "\n",
+                "type|%s|%" PRId64 "|%" PRId64 "|%" PRId64
+                "|%s|%s|%" PRId64 "|%" PRId64 "\n",
                 name,
                 count,
-                cursor,
-                end
+                type_start,
+                end,
+                visibility_level(source, declaration_start),
+                explicit_visibility ? "explicit" : "implicit",
+                modifier_start,
+                modifier_end
             );
             int64_t name_cursor = skip_trivia(
                 source,
-                token_end(source, cursor)
+                token_end(source, type_start)
             );
             int64_t equals = skip_trivia(
                 source,
@@ -3194,15 +3247,24 @@ static char *parse_program(const char *source) {
                 }
                 buffer_append(&declared_constructors, constructor_name);
                 buffer_append(&declared_constructors, "|");
+                int64_t payload_open = skip_trivia(
+                    source,
+                    token_end(source, constructor)
+                );
+                int64_t payload_count =
+                    payload_open < end && token_equal(source, payload_open, "(") ?
+                        1 : 0;
                 buffer_format(
                     &ir,
                     "constructor|%s|%s|%" PRId64 "|%" PRId64
-                    "|%" PRId64 "\n",
+                    "|%" PRId64 "|%" PRId64 "|%s\n",
                     constructor_name,
                     name,
                     tag,
                     constructor,
-                    token_end(source, constructor)
+                    token_end(source, constructor),
+                    payload_count,
+                    payload_count == 0 ? "" : "Int"
                 );
                 free(constructor_name);
                 ++tag;
@@ -3353,8 +3415,9 @@ static char *enum_constructor_owner(
     int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, 0);
     while (cursor < length) {
-        if (token_equal(source, cursor, "type")) {
-            char *enum_type = type_name(source, cursor);
+        int64_t type_start = type_declaration_start(source, cursor);
+        if (type_start >= 0) {
+            char *enum_type = type_name(source, type_start);
             if (enum_constructor_index(source, enum_type, wanted) >= 0) {
                 return enum_type;
             }
@@ -3387,11 +3450,12 @@ static char *enum_declaration_names(
     buffer_append(&names, "|");
     int64_t cursor = skip_trivia(source, 0);
     while (cursor < length) {
-        if (token_equal(source, cursor, "type")) {
+        int64_t type_start = type_declaration_start(source, cursor);
+        if (type_start >= 0) {
             if (constructors) {
                 int64_t type_cursor = skip_trivia(
                     source,
-                    token_end(source, cursor)
+                    token_end(source, type_start)
                 );
                 int64_t equals = skip_trivia(
                     source,
@@ -3401,7 +3465,7 @@ static char *enum_declaration_names(
                     source,
                     token_end(source, equals)
                 );
-                int64_t end = type_declaration_end(source, cursor);
+                int64_t end = type_declaration_end(source, type_start);
                 while (pipe < end && token_equal(source, pipe, "|")) {
                     int64_t constructor = skip_trivia(
                         source,
@@ -3417,7 +3481,7 @@ static char *enum_declaration_names(
                     );
                 }
             } else {
-                char *name = type_name(source, cursor);
+                char *name = type_name(source, type_start);
                 buffer_append(&names, name);
                 buffer_append(&names, "|");
                 free(name);
@@ -13447,11 +13511,12 @@ static char *emit_record_c_declarations(const char *source) {
     Buffer declarations;
     buffer_init(&declarations);
     while (cursor < length) {
+        int64_t type_start = type_declaration_start(source, cursor);
         if (
-            token_equal(source, cursor, "type") &&
-            record_declaration_at(source, cursor)
+            type_start >= 0 &&
+            record_declaration_at(source, type_start)
         ) {
-            char *record_type = type_name(source, cursor);
+            char *record_type = type_name(source, type_start);
             char *c_type = record_c_type_name(record_type);
             int64_t fields = record_field_count(source, record_type);
             int64_t extent = 0;

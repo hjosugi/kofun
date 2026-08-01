@@ -1,7 +1,9 @@
 # Visibility syntax conformance
 
-This corpus is the executable Stage 2 frontend slice for issue #578 and the
-normative visibility contract in `spec/modules/visibility.md`.
+This corpus is the executable Stage 2 function-visibility slice for issue #578
+and the normative visibility contract in `spec/modules/visibility.md`. The
+same basic modifiers on bounded nominal types are covered by the compiler-to-
+KIF gate under `../stage2-kif-producer/`.
 
 The positive cases prove that an omitted modifier is recorded as implicit
 private, while `private`, `internal`, and `pub` are recorded as explicit
@@ -17,7 +19,7 @@ misplaced basic modifiers and `E2S34` for deferred or foreign visibility
 forms. Rejection happens during structural parsing, before requested C, IR, or
 token artifacts are written.
 
-This slice performs no cross-file, module, package, import, re-export,
+These syntax slices perform no cross-file, module, package, import, re-export,
 signature-leak, tooling, FFI, or linker visibility enforcement. Those checks
 remain in #582–#585.
 

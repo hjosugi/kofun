@@ -19,6 +19,10 @@ STAGE2_EVENTS_COMPILER="$STAGE2_EVENTS_BUILD_DIR/kofun-stage2-semantic-events"
 STAGE2_EVENTS_SOURCE="$ROOT/bootstrap/stage2/semantic_producer.c"
 STAGE2_EVENTS_CODEC="$ROOT/bootstrap/stage2/semantic_events.c"
 STAGE2_EVENTS_SHA256="$ROOT/bootstrap/stage2/sha256.c"
+STAGE2_KIF_BUILD_DIR=${KOFUN_STAGE2_KIF_BUILD_DIR:-"$ROOT/build/stage2-kif-cli"}
+STAGE2_KIF_COMPILER="$STAGE2_KIF_BUILD_DIR/kofun-stage2-kif"
+STAGE2_KIF_SOURCE="$ROOT/bootstrap/stage2/stage2_kif_producer.c"
+STAGE2_KIF_CODEC="$ROOT/bootstrap/stage2/kif_v1.c"
 TYPED_SIDECAR_EMITTER="$ROOT/tooling/typed-sidecar/emit-stage2.mjs"
 C_ABI_BUILD_DIR=${KOFUN_C_ABI_BUILD_DIR:-"$ROOT/build/c-abi"}
 C_ABI_SEED_C="$ROOT/bootstrap/c_abi/compiler.c"
@@ -53,6 +57,8 @@ usage:
   kofun check INPUT.kofun --emit-typed-sidecar OUTPUT.kofun-semantic.json
                             --generation UNSIGNED_INTEGER
       The sidecar is non-authoritative tooling data.
+  kofun check INPUT.kofun --emit-kif OUTPUT.kif
+      KIF is an authoritative, source-free Stage 2 interface.
   kofun test [PATH]
   kofun bootstrap
   kofun emit-c INPUT.kofun OUTPUT.c
@@ -132,6 +138,28 @@ ensure_stage2_events_compiler() {
             "$STAGE2_EVENTS_CODEC" \
             "$STAGE2_EVENTS_SHA256" \
             -o "$STAGE2_EVENTS_COMPILER"
+    fi
+}
+
+ensure_stage2_kif_compiler() {
+    mkdir -p "$STAGE2_KIF_BUILD_DIR"
+    if [ ! -x "$STAGE2_KIF_COMPILER" ] ||
+       [ "$STAGE2_KIF_SOURCE" -nt "$STAGE2_KIF_COMPILER" ] ||
+       [ "$STAGE2_EVENTS_SOURCE" -nt "$STAGE2_KIF_COMPILER" ] ||
+       [ "$STAGE2_EVENTS_CODEC" -nt "$STAGE2_KIF_COMPILER" ] ||
+       [ "$STAGE2_KIF_CODEC" -nt "$STAGE2_KIF_COMPILER" ] ||
+       [ "$STAGE2_EVENTS_SHA256" -nt "$STAGE2_KIF_COMPILER" ] ||
+       [ "$STAGE2_SEED_C" -nt "$STAGE2_KIF_COMPILER" ]
+    then
+        "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
+            -I"$ROOT/bootstrap/stage2" \
+            "$STAGE2_KIF_SOURCE" \
+            "$STAGE2_EVENTS_SOURCE" \
+            "$STAGE2_EVENTS_CODEC" \
+            "$STAGE2_KIF_CODEC" \
+            "$STAGE2_EVENTS_SHA256" \
+            -o "$STAGE2_KIF_COMPILER"
     fi
 }
 
@@ -277,6 +305,11 @@ sidecar_cli_error() {
     exit 2
 }
 
+kif_cli_error() {
+    printf '%s\n' "EKI01: $1" >&2
+    exit 2
+}
+
 canonical_sidecar_generation() {
     value=$1
     case $value in
@@ -343,6 +376,34 @@ validate_sidecar_destination() {
             sidecar_cli_error "typed-sidecar output cannot replace the source"
     fi
 }
+
+validate_kif_destination() {
+    source=$1
+    destination=$2
+    test "$destination" != "-" ||
+        kif_cli_error "KIF output cannot be standard output"
+    parent=$(dirname "$destination")
+    test -d "$parent" ||
+        kif_cli_error "KIF output parent must already exist"
+    test ! -L "$destination" ||
+        kif_cli_error "KIF output cannot be a symlink"
+    if test -e "$destination"; then
+        test -f "$destination" ||
+            kif_cli_error "KIF output must be a regular file"
+        test ! "$destination" -ef "$source" ||
+            kif_cli_error "KIF output cannot replace the source"
+    fi
+}
+
+check_with_kif() (
+    input=$1
+    output=$2
+    validate_kif_destination "$input" "$output"
+    logical_path=$(sidecar_logical_path "$input")
+    ensure_stage2_kif_compiler
+    exec "$STAGE2_KIF_COMPILER" \
+        "$input" "$logical_path" "$output" 2026
+)
 
 check_with_typed_sidecar() (
     input=$1
@@ -773,6 +834,11 @@ case ${1-} in
         exec sh "$PACKAGE_MANAGER" "$@"
         ;;
     check)
+        if test "$#" -eq 4 && test "$3" = --emit-kif; then
+            require_source "$2"
+            check_with_kif "$2" "$4"
+            exit $?
+        fi
         if test "$#" -ne 2; then
             test "$#" -ge 3 ||
                 sidecar_cli_error "typed-sidecar check arguments are incomplete"
