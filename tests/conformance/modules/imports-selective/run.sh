@@ -14,6 +14,8 @@ MAIN_MODULE=2222222222222222222222222222222222222222222222222222222222222222
 MATH_MODULE=3333333333333333333333333333333333333333333333333333333333333333
 MAIN_FILE=4444444444444444444444444444444444444444444444444444444444444444
 MATH_FILE=5555555555555555555555555555555555555555555555555555555555555555
+ASSERT_CONTEXT='imports selective'
+. "$ROOT/tests/assertions/assert.sh"
 
 rm -rf "$WORK"
 mkdir -p "$WORK"
@@ -64,7 +66,8 @@ write_inventory "$CASES/fixtures/main.kofun" "$CASES/fixtures/math.kofun" \
 grep -Fx 'kofun-imports-selective/v1' "$WORK/positive.hir" >/dev/null
 grep -F '|local=identity|' "$WORK/positive.hir" >/dev/null
 grep -F '|local=answer|' "$WORK/positive.hir" >/dev/null
-test "$(grep -c '|local=Value|' "$WORK/positive.hir")" -eq 2
+assert_num "|local=Value| lines in positive.hir" \
+    "$(grep -c '|local=Value|' "$WORK/positive.hir")" -eq 2
 grep -F '|namespace-name=value|local=Value|' "$WORK/positive.hir" >/dev/null
 grep -F '|namespace-name=type|local=Value|' "$WORK/positive.hir" >/dev/null
 grep -F 'qualified-import|' "$WORK/positive.hir" >/dev/null
@@ -83,7 +86,7 @@ if "$WORK/runtime"; then
 else
     runtime_status=$?
 fi
-test "$runtime_status" -eq 42
+assert_num "runtime status" "$runtime_status" -eq 42
 
 # Declaration order and host path remapping cannot perturb semantic output.
 write_inventory "$CASES/fixtures/main.kofun" "$CASES/fixtures/math_reordered.kofun" \
@@ -175,9 +178,11 @@ set +e
 )
 transaction_status=$?
 set -e
-test "$transaction_status" -eq 1
-test ! -s "$WORK/selective-transaction/e2s77.stderr"
-test -d "$WORK/selective-transaction/preserved.hir"
+assert_num "transaction status" "$transaction_status" -eq 1
+assert_file_empty "selective-transaction/e2s77.stderr" \
+    "$WORK/selective-transaction/e2s77.stderr"
+assert_dir "selective-transaction/preserved.hir" \
+    "$WORK/selective-transaction/preserved.hir"
 grep -Fx sentinel "$WORK/selective-transaction/preserved.hir/marker" >/dev/null
 printf '%s\n' \
     'error[E2S77]: cannot clear requested output `preserved.hir` before the transaction' \

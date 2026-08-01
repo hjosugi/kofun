@@ -19,6 +19,8 @@ MAIN_FILE=4444444444444444444444444444444444444444444444444444444444444444
 TARGET_FILE=5555555555555555555555555555555555555555555555555555555555555555
 OTHER_MODULE=6666666666666666666666666666666666666666666666666666666666666666
 OTHER_FILE=7777777777777777777777777777777777777777777777777777777777777777
+ASSERT_CONTEXT='import aliases'
+. "$ROOT/tests/assertions/assert.sh"
 
 rm -rf "$WORK"
 mkdir -p "$WORK"
@@ -124,8 +126,8 @@ EXPECTED_ALIAS_BINDING=$(
     "$WORK/alias-identity-reference" "$MAIN_MODULE" "$MAIN_FILE" \
         "$ALIAS_START" "$ALIAS_END" csv "$TARGET_MODULE"
 )
-test "$ALIAS_BINDING" = "$EXPECTED_ALIAS_BINDING"
-test "${#ALIAS_BINDING}" -eq 64
+assert_eq "ALIAS BINDING" "$ALIAS_BINDING" "$EXPECTED_ALIAS_BINDING"
+assert_num "${#ALIAS_BINDING}" "${#ALIAS_BINDING}" -eq 64
 "$SELECTIVE_TOOL" "$WORK/csv.inventory" \
     "$WORK/csv-selective.hir" "$WORK/csv-selective.c"
 grep -F "|local=csv|target=$TARGET_MODULE|" "$WORK/csv-selective.hir" >/dev/null
@@ -137,12 +139,14 @@ set +e
 "$WORK/csv-selective-program"
 SELECTIVE_STATUS=$?
 set -e
-test "$SELECTIVE_STATUS" -eq 42
+assert_num "SELECTIVE STATUS" "$SELECTIVE_STATUS" -eq 42
 
 run_program "$FIXTURES/main_table.kofun" table
-test "$(sed -n 's/^import|binding=\([0-9a-f]*\)|.*/\1/p' "$WORK/csv.hir")" != \
+assert_ne "import binding ids in csv.hir and table.hir" \
+    "$(sed -n 's/^import|binding=\([0-9a-f]*\)|.*/\1/p' "$WORK/csv.hir")" \
     "$(sed -n 's/^import|binding=\([0-9a-f]*\)|.*/\1/p' "$WORK/table.hir")"
-test "$(sed -n 's/^import|.*|alias-binding=\([0-9a-f]*\)|.*/\1/p' "$WORK/csv.hir")" != \
+assert_ne "alias-binding ids in csv.hir and table.hir" \
+    "$(sed -n 's/^import|.*|alias-binding=\([0-9a-f]*\)|.*/\1/p' "$WORK/csv.hir")" \
     "$(sed -n 's/^import|.*|alias-binding=\([0-9a-f]*\)|.*/\1/p' "$WORK/table.hir")"
 sed -n 's/^target|/target|/p; s/^qualified-call|.*|target-module=/target-module=/p' \
     "$WORK/csv.hir" |
@@ -210,9 +214,9 @@ UBSAN_OPTIONS=halt_on_error=1 \
     >"$WORK/sanitized-failure.stdout"
 SANITIZED_STATUS=$?
 set -e
-test "$SANITIZED_STATUS" -eq 1
+assert_num "SANITIZED STATUS" "$SANITIZED_STATUS" -eq 1
 cmp "$EXPECTED/missing_alias.txt" "$WORK/sanitized-failure.stdout"
-test ! -e "$WORK/sanitized-failure.hir"
+assert_absent "sanitized-failure.hir" "$WORK/sanitized-failure.hir"
 
 printf '%s\n' \
     'PASS: module aliases preserve target identities and reject malformed or widening forms'

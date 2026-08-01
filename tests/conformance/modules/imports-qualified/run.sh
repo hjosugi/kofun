@@ -22,6 +22,8 @@ OTHER_MODULE=6666666666666666666666666666666666666666666666666666666666666666
 OTHER_FILE=7777777777777777777777777777777777777777777777777777777777777777
 NUMBERS_MODULE=8888888888888888888888888888888888888888888888888888888888888888
 NUMBERS_FILE=9999999999999999999999999999999999999999999999999999999999999999
+ASSERT_CONTEXT='imports qualified'
+. "$ROOT/tests/assertions/assert.sh"
 
 rm -rf "$WORK"
 mkdir -p "$WORK"
@@ -99,16 +101,16 @@ grep -F '|access=Allowed|reason=Allowed|proof=17|' "$WORK/ok.hir" >/dev/null
 grep -F '|signature=fn(1:Int)->Int' "$WORK/ok.hir" >/dev/null
 ACTUAL_BINDING=$(sed -n 's/^import|binding=\([0-9a-f]*\)|.*/\1/p' "$WORK/ok.hir")
 EXPECTED_BINDING=$("$WORK/identity-reference" "$MAIN_MODULE" "$MAIN_FILE" math "$MATH_MODULE")
-test "$ACTUAL_BINDING" = "$EXPECTED_BINDING"
+assert_eq "ACTUAL BINDING" "$ACTUAL_BINDING" "$EXPECTED_BINDING"
 TARGET_SYMBOL=$(sed -n 's/^qualified-call|.*|target-symbol=\([0-9a-f]*\)|.*/\1/p' "$WORK/ok.hir")
-test "${#TARGET_SYMBOL}" -eq 64
+assert_num "${#TARGET_SYMBOL}" "${#TARGET_SYMBOL}" -eq 64
 grep -F "kofun_s_$TARGET_SYMBOL(" "$WORK/ok.c" >/dev/null
 "$CC" -std=c11 -Wall -Wextra -Werror -pedantic "$WORK/ok.c" -o "$WORK/ok-program"
 set +e
 "$WORK/ok-program"
 RUNTIME_STATUS=$?
 set -e
-test "$RUNTIME_STATUS" -eq 42
+assert_num "RUNTIME STATUS" "$RUNTIME_STATUS" -eq 42
 
 printf '%s\n' stale >"$WORK/internal-fault.hir"
 printf '%s\n' stale >"$WORK/internal-fault.c"
@@ -119,10 +121,10 @@ KOFUN_DIAGNOSTIC_FAULT=qualified-declared-path-attachment \
     2>"$WORK/internal-fault.stderr"
 INTERNAL_FAULT_STATUS=$?
 set -e
-test "$INTERNAL_FAULT_STATUS" -eq 1
-test ! -s "$WORK/internal-fault.stderr"
-test ! -e "$WORK/internal-fault.hir"
-test ! -e "$WORK/internal-fault.c"
+assert_num "INTERNAL FAULT STATUS" "$INTERNAL_FAULT_STATUS" -eq 1
+assert_file_empty "internal-fault.stderr" "$WORK/internal-fault.stderr"
+assert_absent "internal-fault.hir" "$WORK/internal-fault.hir"
+assert_absent "internal-fault.c" "$WORK/internal-fault.c"
 printf '%s\n' 'error[E2S68]: declared-path attachment invariant failed' \
     >"$WORK/internal-fault.expected"
 cmp "$WORK/internal-fault.expected" "$WORK/internal-fault.stdout"
@@ -131,9 +133,14 @@ sed 's/math\.identity(42)/math.identity(math.identity(42))/' \
     "$CASES/fixtures/main.kofun" > "$WORK/nested.kofun"
 write_inventory "$WORK/nested.kofun" "$CASES/fixtures/math.kofun" "$WORK/nested.inventory"
 "$TOOL" "$WORK/nested.inventory" "$WORK/nested.hir" "$WORK/nested.c"
-test "$(grep -c '^qualified-call|' "$WORK/nested.hir")" -eq 2
-test "$(sed -n 's/^qualified-call|.*|binding=\([0-9a-f]*\)|.*/\1/p' "$WORK/nested.hir" | sort -u | wc -l)" -eq 1
-test "$(sed -n 's/^qualified-call|.*|target-symbol=\([0-9a-f]*\)|.*/\1/p' "$WORK/nested.hir" | sort -u | wc -l)" -eq 1
+assert_num "^qualified-call| lines in nested.hir" \
+    "$(grep -c '^qualified-call|' "$WORK/nested.hir")" -eq 2
+assert_num "distinct qualified-call binding ids in nested.hir" \
+    "$(sed -n 's/^qualified-call|.*|binding=\([0-9a-f]*\)|.*/\1/p' "$WORK/nested.hir" | sort -u | wc -l)" \
+    -eq 1
+assert_num "distinct qualified-call target-symbol ids in nested.hir" \
+    "$(sed -n 's/^qualified-call|.*|target-symbol=\([0-9a-f]*\)|.*/\1/p' "$WORK/nested.hir" | sort -u | wc -l)" \
+    -eq 1
 sed -n 's/^qualified-call|.*|expression-span=\([^|]*\)|.*/\1/p' \
     "$WORK/nested.hir" > "$WORK/nested-expression-spans.actual"
 printf '%s\n' '63..95' '77..94' > "$WORK/nested-expression-spans.expected"
@@ -143,7 +150,7 @@ set +e
 "$WORK/nested-program"
 NESTED_STATUS=$?
 set -e
-test "$NESTED_STATUS" -eq 42
+assert_num "NESTED STATUS" "$NESTED_STATUS" -eq 42
 
 printf '%s\n' \
     'module app.main' \
@@ -161,7 +168,7 @@ set +e
 "$WORK/private-local-program"
 PRIVATE_LOCAL_STATUS=$?
 set -e
-test "$PRIVATE_LOCAL_STATUS" -eq 42
+assert_num "PRIVATE LOCAL STATUS" "$PRIVATE_LOCAL_STATUS" -eq 42
 
 sed 's/return value/return value + 1/' "$CASES/fixtures/math.kofun" > "$WORK/backend-unsupported-math.kofun"
 write_inventory "$CASES/fixtures/main.kofun" "$WORK/backend-unsupported-math.kofun" "$WORK/backend-unsupported.inventory"
@@ -183,9 +190,13 @@ cmp "$WORK/ok.hir" "$WORK/copy.hir"
         "$PACKAGE_ID" "$MAIN_MODULE" "$MAIN_FILE" "$CASES/fixtures/main.kofun"
 } > "$WORK/two-importers.inventory"
 "$TOOL" "$WORK/two-importers.inventory" "$WORK/two-importers.hir"
-test "$(grep -c "^module|id=$MATH_MODULE|" "$WORK/two-importers.hir")" -eq 1
-test "$(grep -c "|target=$MATH_MODULE|" "$WORK/two-importers.hir")" -eq 2
-test "$(sed -n 's/^import|binding=\([0-9a-f]*\)|.*|target=3333333333333333333333333333333333333333333333333333333333333333|.*/\1/p' "$WORK/two-importers.hir" | sort -u | wc -l)" -eq 2
+assert_num "module rows for the math module in two-importers.hir" \
+    "$(grep -c "^module|id=$MATH_MODULE|" "$WORK/two-importers.hir")" -eq 1
+assert_num "rows targeting the math module in two-importers.hir" \
+    "$(grep -c "|target=$MATH_MODULE|" "$WORK/two-importers.hir")" -eq 2
+assert_num "distinct import binding ids targeting the math module in two-importers.hir" \
+    "$(sed -n 's/^import|binding=\([0-9a-f]*\)|.*|target=3333333333333333333333333333333333333333333333333333333333333333|.*/\1/p' "$WORK/two-importers.hir" | sort -u | wc -l)" \
+    -eq 2
 {
     printf '%s|%s|%s|app.main|app/main.kofun|%s\n' \
         "$PACKAGE_ID" "$MAIN_MODULE" "$MAIN_FILE" "$CASES/fixtures/main.kofun"
@@ -359,9 +370,14 @@ while test "$index" -lt 64; do
     index=$((index + 1))
 done
 expect_failure E2S64 "$WORK/cycle-64.inventory" "$WORK/cycle-64.hir" "$WORK/cycle-64.log"
-test "$(wc -c < "$WORK/cycle-64.log" | tr -d '[:space:]')" -gt 1400
-test "$(awk '{ count = 0; rest = $0; token = "-->"; while ((at = index(rest, token)) > 0) { count += 1; rest = substr(rest, at + length(token)); } print count; }' "$WORK/cycle-64.log")" -eq 64
-test "$(awk '{ count = 0; rest = $0; token = ":17..33-->"; while ((at = index(rest, token)) > 0) { count += 1; rest = substr(rest, at + length(token)); } print count; }' "$WORK/cycle-64.log")" -eq 64
+assert_num "size of cycle-64.log" \
+    "$(wc -c < "$WORK/cycle-64.log" | tr -d '[:space:]')" -gt 1400
+assert_num "'-->' edges in cycle-64.log" \
+    "$(awk '{ count = 0; rest = $0; token = "-->"; while ((at = index(rest, token)) > 0) { count += 1; rest = substr(rest, at + length(token)); } print count; }' "$WORK/cycle-64.log")" \
+    -eq 64
+assert_num "':17..33-->' spans in cycle-64.log" \
+    "$(awk '{ count = 0; rest = $0; token = ":17..33-->"; while ((at = index(rest, token)) > 0) { count += 1; rest = substr(rest, at + length(token)); } print count; }' "$WORK/cycle-64.log")" \
+    -eq 64
 grep -F 'error[E2S64]: canonical import cycle: cycle.m00 --cycle/m00.kofun:17..33-->' \
     "$WORK/cycle-64.log" >/dev/null
 grep -F -- '--> cycle.m00; hint: remove one import edge from this cycle' \
@@ -426,7 +442,8 @@ while test "$index" -lt 256; do
     index=$((index + 1))
 done
 "$TOOL" "$WORK/modules-256.inventory" "$WORK/modules-256.hir"
-test "$(grep -c '^module|' "$WORK/modules-256.hir")" -eq 256
+assert_num "^module| lines in modules-256.hir" \
+    "$(grep -c '^module|' "$WORK/modules-256.hir")" -eq 256
 cp "$WORK/modules-256.inventory" "$WORK/modules-257.inventory"
 module_id=$(printf '%064x' 256)
 file_id=f$(printf '%063x' 256)
@@ -456,7 +473,8 @@ while test "$index" -lt 256; do
     index=$((index + 1))
 done
 "$TOOL" "$WORK/imports-255.inventory" "$WORK/imports-255.hir"
-test "$(grep -c '^import|' "$WORK/imports-255.hir")" -eq 255
+assert_num "^import| lines in imports-255.hir" \
+    "$(grep -c '^import|' "$WORK/imports-255.hir")" -eq 255
 
 long_path=
 index=0
@@ -472,7 +490,7 @@ while test "$index" -lt 64; do
     if test "$index" -eq 0; then long_path=$component; else long_path=$long_path.$component; fi
     index=$((index + 1))
 done
-test "${#long_path}" -eq 4096
+assert_num "${#long_path}" "${#long_path}" -eq 4096
 {
     printf 'module app.main\nimport %s\nfn main() -> Int {\n    return 0\n}\n' "$long_path"
 } > "$WORK/path-4096.kofun"

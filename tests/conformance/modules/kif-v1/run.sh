@@ -16,6 +16,8 @@ MODULE_ID=2222222222222222222222222222222222222222222222222222222222222222
 FILE_ID=3333333333333333333333333333333333333333333333333333333333333333
 FACADE_MODULE=4444444444444444444444444444444444444444444444444444444444444444
 SECOND_EXPORT_EDGE=6666666666666666666666666666666666666666666666666666666666666666
+ASSERT_CONTEXT='kif v1'
+. "$ROOT/tests/assertions/assert.sh"
 
 fail() {
     printf '%s\n' "FAIL: $*" >&2
@@ -111,7 +113,7 @@ grep -F '"target_kind": "module"' "$WORK/export-interface.json" |
 
 # The dependency source is deliberately absent from the consumer invocation.
 cp "$CASES/fixtures/consumer.kofun" "$WORK/consumer.kofun"
-test ! -e "$WORK/dependency-source.kofun"
+assert_absent "dependency-source.kofun" "$WORK/dependency-source.kofun"
 "$TOOL" resolve "$WORK/interface.kif" "$PACKAGE_ID" demo.api \
     "$WORK/consumer.kofun" "$WORK/source-free.hir"
 grep -Fx 'kofun-imports-qualified/v1' "$WORK/source-free.hir" >/dev/null
@@ -148,9 +150,9 @@ export_target=$(
     printf '%s\n' "$export_line" |
         sed -n 's/.*"target_symbol_id": "\([0-9a-f]*\)".*/\1/p'
 )
-test "${#export_binding}" -eq 64
-test "${#export_target}" -eq 64
-test ! -e "$WORK/facade-source.kofun"
+assert_num "${#export_binding}" "${#export_binding}" -eq 64
+assert_num "${#export_target}" "${#export_target}" -eq 64
+assert_absent "facade-source.kofun" "$WORK/facade-source.kofun"
 "$TOOL" resolve "$WORK/export-interface.kif" "$PACKAGE_ID" facade.api \
     "$CASES/fixtures/consumer_export.kofun" "$WORK/export-same-package.hir"
 "$TOOL" resolve "$WORK/export-interface.kif" "$EXTERNAL_PACKAGE" facade.api \
@@ -175,7 +177,7 @@ then
     fail 'facade export accepted the wrong function arity'
 fi
 grep -F 'error[E2S65]:' "$WORK/export-wrong-arity.log" >/dev/null
-test ! -e "$WORK/export-wrong-arity.hir"
+assert_absent "export-wrong-arity.hir" "$WORK/export-wrong-arity.hir"
 
 printf '%s\n' prior-resolution >"$WORK/preserved-resolution.hir"
 cp "$WORK/preserved-resolution.hir" "$WORK/preserved-resolution.expected"
@@ -202,7 +204,7 @@ then
     fail 'module export was accepted as a function'
 fi
 grep -F 'error[E2S65]:' "$WORK/module-export-call.log" >/dev/null
-test ! -e "$WORK/module-export-call.hir"
+assert_absent "module-export-call.hir" "$WORK/module-export-call.hir"
 
 # Resolver output paths are rejected before an exact or hardlink alias can
 # truncate either compiled-interface bytes or consumer source.

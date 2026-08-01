@@ -17,6 +17,8 @@ TARGET_FILE=3333333333333333333333333333333333333333333333333333333333333333
 OTHER_MODULE=4444444444444444444444444444444444444444444444444444444444444444
 OTHER_FILE=5555555555555555555555555555555555555555555555555555555555555555
 LOGICAL=demo/matching.kofun
+ASSERT_CONTEXT='adt exhaustiveness'
+. "$ROOT/tests/assertions/assert.sh"
 
 rm -rf "$WORK"
 mkdir -p "$WORK"
@@ -105,16 +107,19 @@ grep -F 'nested payload usefulness is unsupported' "$WORK/nested-payload.actual"
 # constructor. Grouping parentheses carry no coverage meaning.
 run_success or-exhaustive "$CASES/fixtures/or_exhaustive.kofun"
 grep -F '|role=or|constructor=-|constructor-symbol=-|' "$WORK/or-exhaustive.typed" >/dev/null
-test "$(grep -c '^typed-alternative|' "$WORK/or-exhaustive.typed")" -eq 4
+assert_num "^typed-alternative| lines in or-exhaustive.typed" \
+    "$(grep -c '^typed-alternative|' "$WORK/or-exhaustive.typed")" -eq 4
 grep -F '|arm=1|index=1|node=6|role=constructor|constructor=Err|' \
     "$WORK/or-exhaustive.typed" >/dev/null
 # Both alternatives of the first arm publish the one BindingId the body reads.
 OR_BINDING=$(sed -n '/^pattern-binding|/s/^pattern-binding|id=\([^|]*\)|.*|name=item|.*/\1/p' \
     "$WORK/or-exhaustive.typed")
-test -n "$OR_BINDING"
-test "$(grep -c "|arm=0|index=[01]|node=[0-9]*|role=constructor|constructor=[^|]*|constructor-symbol=[^|]*|binding=$OR_BINDING|" \
-    "$WORK/or-exhaustive.typed")" -eq 2
-test "$(grep -c '^pattern-binding|' "$WORK/or-exhaustive.typed")" -eq 1
+assert_nonempty "OR BINDING" "$OR_BINDING"
+assert_num "constructor rows binding $OR_BINDING in or-exhaustive.typed" \
+    "$(grep -c "|arm=0|index=[01]|node=[0-9]*|role=constructor|constructor=[^|]*|constructor-symbol=[^|]*|binding=$OR_BINDING|" "$WORK/or-exhaustive.typed")" \
+    -eq 2
+assert_num "^pattern-binding| lines in or-exhaustive.typed" \
+    "$(grep -c '^pattern-binding|' "$WORK/or-exhaustive.typed")" -eq 1
 grep -F "|binding=$OR_BINDING|name=item|role=read" "$WORK/or-exhaustive.typed" >/dev/null
 
 expect_failure or-missing "$CASES/fixtures/or_missing.kofun" E2S25
@@ -146,7 +151,7 @@ cmp "$CASES/fixtures/or_catchall_binding.stderr" "$WORK/or-catchall-binding.actu
     "$WORK/same.symbols" "$WORK/same.patterns" "$WORK/same.scopes" "$WORK/same.typed"
 TARGET_SAME=$(sed -n '/module=0|.*kind=constructor|name=Same|/s/.*|symbol=\([^|]*\)|.*/\1/p' \
     "$WORK/same.symbols")
-test "${#TARGET_SAME}" -eq 64
+assert_num "${#TARGET_SAME}" "${#TARGET_SAME}" -eq 64
 grep -F "|constructor=Same|constructor-symbol=$TARGET_SAME|" "$WORK/same.typed" >/dev/null
 
 # Repeated runs and host-path remapping preserve the typed projection.
@@ -170,7 +175,7 @@ then
     exit 1
 fi
 grep -F 'error[E2S79]:' "$WORK/stale.actual" >/dev/null
-test ! -e "$WORK/stale.typed"
+assert_absent "stale.typed" "$WORK/stale.typed"
 
 # Generate a 64-constructor ADT and prove the declared operation boundary.
 generate_budget_source() {
@@ -225,7 +230,9 @@ generate_alternative_source() {
 }
 generate_alternative_source 64 "$WORK/alternatives-boundary.kofun"
 run_success alternatives-boundary "$WORK/alternatives-boundary.kofun"
-test "$(grep -c '^typed-alternative|' "$WORK/alternatives-boundary.typed")" -eq 64
+assert_num "^typed-alternative| lines in alternatives-boundary.typed" \
+    "$(grep -c '^typed-alternative|' "$WORK/alternatives-boundary.typed")" \
+    -eq 64
 generate_alternative_source 65 "$WORK/alternatives-over.kofun"
 expect_failure alternatives-over "$WORK/alternatives-over.kofun" E2S79
 grep -F 'exceeds 64 alternatives in one arm' "$WORK/alternatives-over.actual" >/dev/null
