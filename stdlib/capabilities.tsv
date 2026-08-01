@@ -37,7 +37,7 @@ validation-accumulation	portable	specified	spec/effects/validation-accumulation.
 aggregate-layout	portable	specified	spec/aggregate-layout-v1.md	layout facts consumed by resource APIs
 http-client	module	specified	docs/stdlib/http-client.md	accepted contract (#638); HTTP/1.1 core over the scripted transport is #644, live DNS/socket/TLS adapters separate
 date-time-core	portable	specified	docs/stdlib/date-time.md	accepted contract (#639); core calendar and strict RFC 3339 slice is #645
-time-zone-data	module	specified	docs/stdlib/date-time.md	accepted contract (#639); versioned tzdb reader with gap/fold resolution is #648
+time-zone-data	module	specified	docs/stdlib/date-time.md	accepted contract (#639); `task tzdb` executes a bounded injected-bytes reader with gap/fold resolution (#878); the IANA database, a file adapter, and the full date/time core remain #648
 clock-adapters	adapter	implemented	task clock-adapters	explicit monotonic/system identities, affine handles, deterministic fake time and waiters; Linux x86-64 gate checks read/sleep units and errno behavior
 benchmark-harness	portable	specified	docs/stdlib/benchmark.md	accepted contract (#640); raw-sample report schema slice is #646
 concurrency	portable	planned	#555 #736	scoped parallelism only, after the runtime contract exists
