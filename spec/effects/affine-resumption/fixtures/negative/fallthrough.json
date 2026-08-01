@@ -1,0 +1,1 @@
+{"schema":"kofun.affine-resumption-model/v1","name":"implicit-fallthrough","capture":[],"program":[],"expect":{"result":"EAF006","capture_span":{"file":"fallthrough.kofun","start":10,"end":20},"end_span":{"file":"fallthrough.kofun","start":50,"end":51},"primary_span":{"file":"fallthrough.kofun","start":50,"end":51},"related_span":{"file":"fallthrough.kofun","start":10,"end":20}}}
