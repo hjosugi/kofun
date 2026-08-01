@@ -3,6 +3,8 @@ set -eu
 
 here=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 root=$(CDPATH= cd -- "$here/../../../.." && pwd)
+ASSERT_CONTEXT='syntax 48-60'
+. "$root/tests/assertions/assert.sh"
 
 if command -v cc >/dev/null 2>&1; then
     compiler=cc
@@ -65,7 +67,8 @@ while IFS='|' read -r kind start end line; do
     width=$((end - start))
     dd if="$here/token-spans.kofun" bs=1 skip="$start" count="$width" \
         2>/dev/null >"$temporary/slice"
-    test "$(wc -c <"$temporary/slice" | tr -d ' ')" -eq "$width"
+    assert_num "size of $temporary/slice" \
+        "$(wc -c <"$temporary/slice" | tr -d ' ')" -eq "$width"
 
     case "$kind" in
         keyword|identifier|integer|string|punctuation) ;;
@@ -82,7 +85,7 @@ while IFS='|' read -r kind start end line; do
         tr -d ' '
     )
     actual_line=$((newline_count + 1))
-    test "$line" -eq "$actual_line"
+    assert_num "line" "$line" -eq "$actual_line"
 done
 
 grep '^punctuation|.*|.*|.*$' "$temporary/output.tokens" >/dev/null
@@ -96,7 +99,7 @@ pair_line=$(grep '^punctuation|.*|.*|.*$' "$temporary/output.tokens" |
             printf '%s\n' "$kind|$start|$end|$line"
         fi
     done)
-test -n "$pair_line"
+assert_nonempty "pair line" "$pair_line"
 
 set +e
 "$temporary/kofun-stage2" \
@@ -108,12 +111,12 @@ set +e
 broken_status=$?
 set -e
 
-test "$broken_status" -eq 1
-test ! -s "$temporary/broken.stderr"
+assert_num "broken status" "$broken_status" -eq 1
+assert_file_empty "$temporary/broken.stderr" "$temporary/broken.stderr"
 printf '%s\n' 'error[E2S01]: unterminated string at byte 24' \
     >"$temporary/expected-broken.stdout"
 cmp "$temporary/expected-broken.stdout" "$temporary/broken.stdout"
-test ! -e "$temporary/broken.tokens"
+assert_absent "$temporary/broken.tokens" "$temporary/broken.tokens"
 
 awk -F '\t' '
     NF != 3 { exit 20 }

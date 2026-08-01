@@ -613,7 +613,7 @@
     "tests/compile-fail/use_after_take.kofun": "c190d3a19eef35d4c33e1798604bce227251326cbc8531a19e6b0b88e8ba5054",
     "tests/conformance/capabilities.tsv": "069323c9ba3eb1483f2fbf6ccaa32f9f34f8d9d14bb3f92b84fe386ca979c5ff",
     "tests/conformance/functions/division_floor_signs.kofun": "6bfd48679ebcf604305c78271b80e803866a64d8e9c8f732f5b1884d4d0d67b0",
-    "tests/conformance/modules/re-exports/run.sh": "5d91907d17dab78d63b16d501662234530a6fe72cb7f63a187291074fd71204a",
+    "tests/conformance/modules/re-exports/run.sh": "055a2189282c2e5875cb50fd43eddd798f71d736d1686f81e8eed3655f140805",
     "tests/conformance/numeric/reject_slash_operator.kofun": "49a14dbd0392e6920a681168af44018182f78175a921592283631c9942045c24",
     "tests/conformance/records/partial_move.kofun": "7d418d3ab0531f864cbd61256cbdeaeb46f7a65b213d62bf776229ddcfa67b85",
     "tests/conformance/records/stage2_unsupported_field.kofun": "2ac9b2e9ca754689330a836304a349a49cdf9820be6523e3d02be8158fba4eae",
