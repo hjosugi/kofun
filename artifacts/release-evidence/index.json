@@ -2,7 +2,7 @@
   "schema": "kofun.release-evidence/v1",
   "manifest_version": 1,
   "inputs": {
-    "release/claims.json": "5bc02793d65597338093510a64aa812a7d6aecbcd8321658082fa79e4a5abd25",
+    "release/claims.json": "d1a61e1bd9fd9c3e92842d2f1145a5d91bae8c59b28f1b2b5c511736ba77fab8",
     "spec/release-claim.schema.json": "8cf649858ac955e79ef2e05a5cd01d5234b6b1d87b2fd64a998e2a9ec6af3485"
   },
   "states": {

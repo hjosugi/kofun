@@ -274,6 +274,27 @@ expect_stage2_failure stage2_unsupported_field
 expect_stage2_failure stage2_direct_construction
 expect_stage2_failure stage2_labelled_call
 
+# A record argument that is not a whole record binding.  Each of these three
+# once exited 0 and wrote the diagnostic text into the emitted C as if it were
+# an expression, so `kofun check` reported `ok:` and only `cc` failed.  The
+# field read was worse than a broken artifact: it lowered to the record the
+# field was read from, so it compiled and ran, and the program computed
+# something the source never said.  `expect_stage2_failure` asserts the
+# property that was lost — status 1, the exact diagnostic, and no emitted C.
+expect_stage2_failure stage2_argument_field_read
+expect_stage2_failure stage2_argument_wrong_record
+expect_stage2_failure stage2_argument_not_a_record
+
+# The same rejected call in five statement positions.  Propagation was per
+# site, so each position had to be reached before it refused, and arithmetic
+# hid the rejection a second way: wrapping it as `kofun_add(error[...], 1)`
+# produced a string that no longer began with `error[`, so every check above
+# the operator saw a well-formed expression.
+expect_stage2_failure stage2_argument_in_let
+expect_stage2_failure stage2_argument_in_return
+expect_stage2_failure stage2_argument_in_arithmetic
+expect_stage2_failure stage2_argument_in_condition
+
 printf '%s\n' \
     'PASS: Token-shaped records construct, pass, return, and read' \
     'PASS: written field order is free and storage follows declaration order' \
@@ -281,4 +302,6 @@ printf '%s\n' \
     'PASS: layout is untagged and identical on x86-64 and AArch64' \
     'PASS: blocks, conditions, loops, and lists stay separable from records' \
     'PASS: duplicate, missing, unknown, wrong-type, mutation, and move diagnostics are exact' \
-    'PASS: Stage 2 executes nominal Int/Bool records in AggregateLayout order'
+    'PASS: Stage 2 executes nominal Int/Bool records in AggregateLayout order' \
+    'PASS: a rejected record argument fails the compile instead of reaching the C' \
+    'PASS: the rejection survives let, return, arithmetic, and condition positions'

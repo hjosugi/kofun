@@ -27,7 +27,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `native-text-returning-calls` | `sh bootstrap/native/check.sh` | Text-returning calls lower and execute on both targets. |
 | `native-utf8-text-core` | `sh bootstrap/native/check.sh` | UTF-8 `Text` programs lower and execute on both targets. |
 | `native-x86-64-function-calls` | `sh tests/conformance/run.sh` | The functions corpus passes on the x86-64 native backend. |
-| `nominal-records` | `task records` | The scanner fixture gates the full typed contract; the Stage 2 fixture executes Int/Bool record construction in both label orders, field reads, value arguments/results, and AggregateLayout assertions. |
+| `nominal-records` | `task records` | The scanner fixture gates the full typed contract; the Stage 2 fixture executes Int/Bool record construction in both label orders, field reads, value arguments/results, and AggregateLayout assertions. Three argument fixtures hold the value-argument boundary from the other side: a field read, a binding of another record type, and an arithmetic expression each fail the compile with a named diagnostic and emit no C. |
 | `public-re-exports` | `sh tests/conformance/modules/re-exports/run.sh` | Re-export chains resolve within the stated bounds and preserve binding identity. |
 | `reproducible-bootstrap` | `sh bootstrap/stage1/check.sh` | Regeneration reproduces the checked-in Stage 1 artifact and its digest. |
 | `rust-crate-shim` | `sh examples/rust-shim/check.sh` | The vendored crate builds and answers through the C ABI shim. |

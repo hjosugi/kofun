@@ -2599,7 +2599,13 @@ fn emit_enum_value(
     }
     let name = token_text(source, cursor)
     let open = skip_trivia(source, token_end(source, cursor))
-    if open >= end || token_text(source, open) != "(" {
+    # Same whole-value rule as `emit_record_value`: a bare binding may not be
+    # a prefix of a larger expression.
+    if open < end && token_text(source, open) != "(" {
+        return "error[E2S32]: concrete enum value must be a whole binding, constructor, or call at byte " +
+        to_text(cursor)
+    }
+    if open >= end {
         let binding_id = hir_use_binding_id(hir, cursor)
         if len(binding_id) == 0 ||
            hir_binding_field(hir, binding_id, 5) != enum_type {
@@ -2703,7 +2709,16 @@ fn emit_record_value(
     }
     let name = token_text(source, cursor)
     let open = skip_trivia(source, token_end(source, cursor))
-    if open >= end || token_text(source, open) != "(" {
+    # A bare binding has to be the *whole* value. Accepting a prefix silently
+    # dropped the rest: `takes_record(value.field)` lowered to `value`, so an
+    # `Int` field read compiled and ran as the record it was read from, with
+    # no diagnostic anywhere. Anything left unconsumed that is not a call is
+    # not a record value in this slice.
+    if open < end && token_text(source, open) != "(" {
+        return "error[E2S32]: nominal record value must be a whole binding or function call at byte " +
+        to_text(cursor)
+    }
+    if open >= end {
         let binding_id = hir_use_binding_id(hir, cursor)
         if len(binding_id) == 0 ||
            hir_binding_field(hir, binding_id, 5) != record_type {
@@ -2912,10 +2927,7 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
         let mut arguments = 0
         while argument < end && token_text(source, argument) != ")" {
             let bound = argument_end(source, argument)
-            if arguments > 0 {
-                emitted = emitted + ", "
-            }
-            emitted = emitted + emit_argument(
+            let argument_value = emit_argument(
                 source,
                 hir,
                 argument,
@@ -2923,6 +2935,17 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
                 name,
                 arguments
             )
+            # Every other lowering site propagates an `error[` result. This one
+            # appended it, so a rejected argument became C source: the
+            # diagnostic text was emitted inside the call, the compiler still
+            # exited 0, and only `cc` reported the failure.
+            if starts_with(argument_value, "error[") {
+                return argument_value
+            }
+            if arguments > 0 {
+                emitted = emitted + ", "
+            }
+            emitted = emitted + argument_value
             arguments = arguments + 1
             let separator = skip_trivia(source, bound)
             if separator < end && token_text(source, separator) == "," {
@@ -2992,6 +3015,15 @@ fn emit_product(source: Text, hir: Text, start: Int, end: Int) -> Text {
         )
         let right_end = unary_end(source, right_start)
         let right = emit_unary(source, hir, right_start, right_end)
+        # Combining a rejected operand hid it: `kofun_add(error[...], x)` no
+        # longer starts with `error[`, so every caller above this loop saw a
+        # well-formed expression. Refuse before wrapping.
+        if starts_with(emitted, "error[") {
+            return emitted
+        }
+        if starts_with(right, "error[") {
+            return right
+        }
         if operator == "*" {
             if value_type == "Decimal" {
                 emitted = "kofun_decimal_value_multiply(" + emitted +
@@ -3039,6 +3071,14 @@ fn emit_expression(source: Text, hir: Text, start: Int, end: Int) -> Text {
         )
         let right_end = product_end(source, right_start)
         let right = emit_product(source, hir, right_start, right_end)
+        # Same rule as `emit_product`: a rejected operand must not be wrapped
+        # into a call that looks like a valid expression.
+        if starts_with(emitted, "error[") {
+            return emitted
+        }
+        if starts_with(right, "error[") {
+            return right
+        }
         if operator == "+" {
             if value_type == "Decimal" {
                 emitted = "kofun_decimal_value_add(" + emitted +
@@ -4004,8 +4044,12 @@ fn emit_condition_into(
     let operator_start = skip_trivia(source, left_end)
     if operator_start >= end ||
        !comparison_operator(token_text(source, operator_start)) {
-        return indent + "bool " + target + " = " +
-        emit_expression(source, hir, cursor, left_end) + ";\n"
+        let bare = emit_expression(source, hir, cursor, left_end)
+        # A rejected bare condition became the condition's C text.
+        if starts_with(bare, "error[") {
+            return bare
+        }
+        return indent + "bool " + target + " = " + bare + ";\n"
     }
     let right_start = skip_trivia(
         source,
@@ -4013,6 +4057,13 @@ fn emit_condition_into(
     )
     let left = emit_expression(source, hir, cursor, left_end)
     let right = emit_expression(source, hir, right_start, end)
+    # A rejected comparison operand became the condition's C text.
+    if starts_with(left, "error[") {
+        return left
+    }
+    if starts_with(right, "error[") {
+        return right
+    }
     let operator = token_text(source, operator_start)
     let value_type = numeric_primary_type(
         source,
@@ -7420,6 +7471,16 @@ fn lower_body(
                     return "error[E2S12]: invalid Int expression at byte " +
                     to_text(value_start)
                 }
+                let initializer = emit_expression(
+                    source,
+                    hir,
+                    value_start,
+                    value_end
+                )
+                # A rejected initializer became the C initializer text.
+                if starts_with(initializer, "error[") {
+                    return initializer
+                }
                 let inferred_type = hir_binding_field(hir, binding_id, 5)
                 let actual_type = initializer_type(
                     source,
@@ -7446,7 +7507,7 @@ fn lower_body(
                     to_text(value_start)
                 }
                 emitted = emitted + "    " + c_type + " " + storage + " = " +
-                emit_expression(source, hir, value_start, value_end) + ";\n" +
+                initializer + ";\n" +
                 "    if (kofun_failed) return " + failure_result + ";\n"
                 cursor = skip_trivia(source, value_end)
             }
@@ -7502,6 +7563,12 @@ fn lower_body(
                     value_start,
                     value_end
                 )
+                # `print` formatted this straight into the emitted C without
+                # the `error[` check every other statement performs, so a
+                # rejected argument reached the output instead of the caller.
+                if starts_with(value, "error[") {
+                    return value
+                }
                 let value_type = initializer_type(
                     source,
                     hir,
@@ -7614,9 +7681,7 @@ fn lower_body(
             if starts_with(branch_body, "error[") {
                 return branch_body
             }
-            emitted = emitted +
-            "    {\n" +
-            emit_condition_into(
+            let condition = emit_condition_into(
                 source,
                 hir,
                 condition_start,
@@ -7624,7 +7689,14 @@ fn lower_body(
                 "kofun_condition",
                 failure_result,
                 "        "
-            ) +
+            )
+            # A rejected condition became the statement's C prelude.
+            if starts_with(condition, "error[") {
+                return condition
+            }
+            emitted = emitted +
+            "    {\n" +
+            condition +
             "        if (kofun_condition) {\n" +
             branch_body +
             "        }"
@@ -7974,10 +8046,20 @@ fn lower_body(
                     return "error[E2S12]: invalid return expression at byte " +
                     to_text(value_start)
                 }
+                let returned_value = emit_expression(
+                    source,
+                    hir,
+                    value_start,
+                    value_end
+                )
+                # A rejected return expression became the C return value.
+                if starts_with(returned_value, "error[") {
+                    return returned_value
+                }
                 emitted = emitted +
                 "    {\n" +
                 "        int64_t kofun_result = " +
-                emit_expression(source, hir, value_start, value_end) + ";\n" +
+                returned_value + ";\n" +
                 "        if (kofun_failed) return " + failure_result + ";\n"
                 if is_main {
                     emitted = emitted +

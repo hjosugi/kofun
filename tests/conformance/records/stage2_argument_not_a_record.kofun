@@ -1,0 +1,12 @@
+type Packet = {
+    count: Int,
+}
+
+fn score(packet: Packet) -> Int {
+    return packet.count
+}
+
+fn main() -> Int {
+    print(score(1 + 2))
+    return 0
+}

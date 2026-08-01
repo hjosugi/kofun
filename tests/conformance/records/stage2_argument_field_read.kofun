@@ -1,0 +1,14 @@
+type Packet = {
+    count: Int,
+    enabled: Bool,
+}
+
+fn score(packet: Packet) -> Int {
+    return packet.count
+}
+
+fn main() -> Int {
+    let packet: Packet = Packet(count: 41, enabled: true)
+    print(score(packet.count))
+    return 0
+}

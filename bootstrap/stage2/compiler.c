@@ -4479,7 +4479,20 @@ static char *emit_record_value(
     }
     char *name = token_copy(source, cursor);
     int64_t open = skip_trivia(source, token_end(source, cursor));
-    if (open >= end || !token_equal(source, open, "(")) {
+    /* A bare binding has to be the *whole* value. Accepting a prefix silently
+     * dropped the rest: `takes_record(value.field)` lowered to `value`, so an
+     * `Int` field read compiled and ran as the record it was read from, with
+     * no diagnostic anywhere. Anything left unconsumed that is not a call is
+     * not a record value in this slice. */
+    if (open < end && !token_equal(source, open, "(")) {
+        free(name);
+        return lower_error(
+            "E2S32",
+            "nominal record value must be a whole binding or function call",
+            cursor
+        );
+    }
+    if (open >= end) {
         char *binding_id = hir_use_binding_id(hir, cursor);
         char *binding_type = hir_binding_field(hir, binding_id, 5);
         if (
@@ -4557,7 +4570,17 @@ static char *emit_enum_value(
     }
     char *name = token_copy(source, cursor);
     int64_t open = skip_trivia(source, token_end(source, cursor));
-    if (open >= end || !token_equal(source, open, "(")) {
+    /* Same whole-value rule as `emit_record_value`: a bare binding may not be
+     * a prefix of a larger expression. */
+    if (open < end && !token_equal(source, open, "(")) {
+        free(name);
+        return lower_error(
+            "E2S32",
+            "concrete enum value must be a whole binding, constructor, or call",
+            cursor
+        );
+    }
+    if (open >= end) {
         char *binding_id = hir_use_binding_id(hir, cursor);
         char *binding_type = hir_binding_field(hir, binding_id, 5);
         if (
@@ -5038,6 +5061,16 @@ static char *emit_primary(
                 name,
                 arguments
             );
+            /* Every other lowering site propagates an `error[` result. This
+             * one appended it, so a rejected argument became C source: the
+             * diagnostic text was emitted inside the call, the compiler still
+             * exited 0, and only `cc` reported the failure. */
+            if (strncmp(value, "error[", 6) == 0) {
+                free(output.data);
+                free(callee_binding);
+                free(name);
+                return value;
+            }
             if (arguments > 0) buffer_append(&output, ", ");
             buffer_append(&output, value);
             free(value);
@@ -5134,6 +5167,19 @@ static char *emit_product(
         );
         int64_t right_end = unary_end(source, right_start);
         char *right = emit_unary(source, hir, right_start, right_end);
+        /* Combining a rejected operand hid it: `kofun_add(error[...], x)` no
+         * longer starts with `error[`, so every caller above this loop saw a
+         * well-formed expression. Refuse before wrapping. */
+        if (strncmp(emitted, "error[", 6) == 0) {
+            free(right);
+            free(operator_text);
+            return emitted;
+        }
+        if (strncmp(right, "error[", 6) == 0) {
+            free(emitted);
+            free(operator_text);
+            return right;
+        }
         char *combined = emitted;
         if (strcmp(operator_text, "*") == 0) {
             if (strcmp(type, "Decimal") == 0) {
@@ -5196,6 +5242,18 @@ static char *emit_expression(
         );
         int64_t right_end = product_end(source, right_start);
         char *right = emit_product(source, hir, right_start, right_end);
+        /* Same rule as `emit_product`: a rejected operand must not be wrapped
+         * into a call that looks like a valid expression. */
+        if (strncmp(emitted, "error[", 6) == 0) {
+            free(right);
+            free(operator_text);
+            return emitted;
+        }
+        if (strncmp(right, "error[", 6) == 0) {
+            free(emitted);
+            free(operator_text);
+            return right;
+        }
         char *combined = emitted;
         if (strcmp(operator_text, "+") == 0) {
             if (strcmp(type, "Decimal") == 0) {
@@ -6186,6 +6244,8 @@ static char *emit_condition_into(
         !comparison_operator(source, operator_start)
     ) {
         char *value = emit_expression(source, hir, cursor, left_end);
+        /* A rejected bare condition became the condition's C text. */
+        if (strncmp(value, "error[", 6) == 0) return value;
         Buffer output;
         buffer_init(&output);
         buffer_format(
@@ -6205,6 +6265,17 @@ static char *emit_condition_into(
     char *left = emit_expression(source, hir, cursor, left_end);
     char *operator_text = token_copy(source, operator_start);
     char *right = emit_expression(source, hir, right_start, end);
+    /* A rejected comparison operand became the condition's C text. */
+    if (strncmp(left, "error[", 6) == 0) {
+        free(right);
+        free(operator_text);
+        return left;
+    }
+    if (strncmp(right, "error[", 6) == 0) {
+        free(left);
+        free(operator_text);
+        return right;
+    }
     Buffer output;
     buffer_init(&output);
     int64_t function_open = enclosing_function_open(source, cursor);
@@ -11761,6 +11832,13 @@ static char *lower_body(
                 return lower_error("E2S12", "invalid Int expression", value_start);
             }
             char *value = emit_expression(source, hir, value_start, value_end);
+            /* A rejected initializer became the C initializer text. */
+            if (strncmp(value, "error[", 6) == 0) {
+                free(binding_id);
+                free(name);
+                free(emitted.data);
+                return value;
+            }
             char *binding_type = hir_binding_field(hir, binding_id, 5);
             char *actual_type = initializer_type(
                 source,
@@ -11889,6 +11967,13 @@ static char *lower_body(
                 return lower_error("E2S13", "expected `)`", call_close);
             }
             char *value = emit_expression(source, hir, value_start, value_end);
+            /* `print` formatted this straight into the emitted C without the
+             * `error[` check every other statement performs, so a rejected
+             * argument reached the output instead of the caller. */
+            if (strncmp(value, "error[", 6) == 0) {
+                free(emitted.data);
+                return value;
+            }
             char *value_type = initializer_type(
                 source,
                 hir,
@@ -12075,6 +12160,12 @@ static char *lower_body(
                 failure_result,
                 "        "
             );
+            /* A rejected condition became the statement's C prelude. */
+            if (strncmp(condition, "error[", 6) == 0) {
+                free(branch_body);
+                free(emitted.data);
+                return condition;
+            }
             buffer_format(
                 &emitted,
                 "    {\n"
@@ -12715,6 +12806,11 @@ static char *lower_body(
                     value_start,
                     value_end
                 );
+                /* A rejected return expression became the C return value. */
+                if (strncmp(value, "error[", 6) == 0) {
+                    free(emitted.data);
+                    return value;
+                }
                 buffer_format(
                     &emitted,
                     "    {\n"
