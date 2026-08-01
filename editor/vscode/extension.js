@@ -35,10 +35,18 @@ class KofunClient {
     this.process.on('error', (caught) => {
       this.output.appendLine(caught.message);
     });
+    const configuration = vscode.workspace.getConfiguration('kofun');
     await this.request('initialize', {
       processId: process.pid,
       rootUri: this.rootUri,
       capabilities: { general: { positionEncodings: ['utf-16'] } },
+      initializationOptions: {
+        inlayHints: {
+          parameterNames: configuration.get('inlayHints.parameterNames', true),
+          ownershipModes: configuration.get('inlayHints.ownershipModes', true),
+          inferredTypes: configuration.get('inlayHints.inferredTypes', true)
+        }
+      },
       workspaceFolders: vscode.workspace.workspaceFolders
         ? vscode.workspace.workspaceFolders.map((folder) => ({
           uri: folder.uri.toString(), name: folder.name
@@ -88,6 +96,73 @@ class KofunClient {
             return value;
           });
           return new vscode.CompletionList(items, result.isIncomplete === true);
+        }
+      }),
+      vscode.languages.registerDocumentSymbolProvider('kofun', {
+        provideDocumentSymbols: async (document) => {
+          const result = await this.request('textDocument/documentSymbol', {
+            textDocument: { uri: document.uri.toString() }
+          });
+          if (!Array.isArray(result)) return [];
+          // VS Code's SymbolKind is the LSP enumeration minus one, as its
+          // DiagnosticSeverity and CompletionItemKind are. InlayHintKind below
+          // is the exception: that one matches LSP exactly.
+          return result.map((item) => {
+            const symbol = new vscode.DocumentSymbol(
+              item.name, item.detail || '', item.kind - 1,
+              this.toRange(item.range), this.toRange(item.selectionRange)
+            );
+            symbol.children = (item.children || []).map((child) =>
+              new vscode.DocumentSymbol(
+                child.name, child.detail || '', child.kind - 1,
+                this.toRange(child.range), this.toRange(child.selectionRange)
+              ));
+            return symbol;
+          });
+        }
+      }),
+      vscode.languages.registerReferenceProvider('kofun', {
+        provideReferences: async (document, position, context) => {
+          const result = await this.request('textDocument/references', {
+            textDocument: { uri: document.uri.toString() }, position,
+            context: { includeDeclaration: context ? context.includeDeclaration : true }
+          });
+          if (!Array.isArray(result)) return [];
+          return result.map((item) => new vscode.Location(
+            vscode.Uri.parse(item.uri), this.toRange(item.range)));
+        }
+      }),
+      vscode.languages.registerDocumentHighlightProvider('kofun', {
+        provideDocumentHighlights: async (document, position) => {
+          const result = await this.request('textDocument/documentHighlight', {
+            textDocument: { uri: document.uri.toString() }, position
+          });
+          if (!Array.isArray(result)) return [];
+          return result.map((item) => new vscode.DocumentHighlight(
+            this.toRange(item.range), item.kind - 1));
+        }
+      }),
+      vscode.languages.registerInlayHintsProvider('kofun', {
+        provideInlayHints: async (document, range) => {
+          const result = await this.request('textDocument/inlayHint', {
+            textDocument: { uri: document.uri.toString() },
+            range: range ? {
+              start: range.start, end: range.end
+            } : undefined
+          });
+          if (!Array.isArray(result)) return [];
+          // InlayHintKind is one of the few enumerations LSP and VS Code
+          // number identically, so this one is passed through unchanged.
+          return result.map((item) => {
+            const hint = new vscode.InlayHint(
+              new vscode.Position(item.position.line, item.position.character),
+              item.label, item.kind
+            );
+            if (item.tooltip) hint.tooltip = item.tooltip;
+            if (item.paddingLeft) hint.paddingLeft = true;
+            if (item.paddingRight) hint.paddingRight = true;
+            return hint;
+          });
         }
       })
     );
@@ -216,17 +291,67 @@ function serverCommand(context) {
   throw new Error('Bundled Kofun language server is missing.');
 }
 
+// A server that died is otherwise invisible until a request silently returns
+// nothing, so its state is always on screen while a Kofun file is open.
+function createStatusItem(context) {
+  const item = vscode.window.createStatusBarItem
+    ? vscode.window.createStatusBarItem(vscode.StatusBarAlignment
+      ? vscode.StatusBarAlignment.Right : undefined, 100)
+    : null;
+  if (!item) return null;
+  item.command = 'kofun.showOutput';
+  context.subscriptions.push(item);
+  return item;
+}
+
+function setStatus(item, state, detail) {
+  if (!item) return;
+  const faces = {
+    starting: '$(sync~spin) Kofun',
+    running: '$(check) Kofun',
+    stopped: '$(error) Kofun'
+  };
+  item.text = faces[state] || 'Kofun';
+  item.tooltip = detail;
+  item.show();
+}
+
+async function startClient(context, output, statusItem) {
+  const rootUri = vscode.workspace.workspaceFolders &&
+    vscode.workspace.workspaceFolders.length > 0
+    ? vscode.workspace.workspaceFolders[0].uri.toString() : null;
+  setStatus(statusItem, 'starting', 'Kofun language server is starting');
+  const client = new KofunClient(serverCommand(context), rootUri, output);
+  await client.start(context);
+  setStatus(statusItem, 'running', 'Kofun language server is running');
+  return client;
+}
+
 async function activate(context) {
   const output = vscode.window.createOutputChannel('Kofun Language Server');
   context.subscriptions.push(output);
+  const statusItem = createStatusItem(context);
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('kofun.showOutput', () => output.show(true)),
+    vscode.commands.registerCommand('kofun.restartServer', async () => {
+      output.appendLine('restarting the Kofun language server');
+      try {
+        if (activeClient) await activeClient.stop();
+        activeClient = await startClient(context, output, statusItem);
+      } catch (caught) {
+        setStatus(statusItem, 'stopped', caught.message);
+        output.appendLine(caught.stack || caught.message);
+        vscode.window.showErrorMessage(`Kofun language server: ${caught.message}`);
+      }
+    })
+  );
+
   try {
-    const rootUri = vscode.workspace.workspaceFolders &&
-      vscode.workspace.workspaceFolders.length > 0
-      ? vscode.workspace.workspaceFolders[0].uri.toString() : null;
-    activeClient = new KofunClient(serverCommand(context), rootUri, output);
-    await activeClient.start(context);
+    activeClient = await startClient(context, output, statusItem);
     context.subscriptions.push({ dispose: () => activeClient.stop() });
   } catch (caught) {
+    setStatus(statusItem, 'stopped', caught.message);
     output.appendLine(caught.stack || caught.message);
     vscode.window.showErrorMessage(`Kofun language server: ${caught.message}`);
   }

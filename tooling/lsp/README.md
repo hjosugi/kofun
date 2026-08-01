@@ -2,7 +2,8 @@
 
 `kofun-lsp` is a dependency-free stdio language server for the bootstrap
 language. It implements incremental document synchronization, versioned
-diagnostics, go-to-definition, hover, and completion.
+diagnostics, go-to-definition, hover, completion, a document outline,
+find-all-references, occurrence highlighting, and inlay hints.
 
 ```sh
 tooling/lsp/kofun-lsp

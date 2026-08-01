@@ -47,6 +47,29 @@ class CompletionItem {
   }
 }
 
+class DocumentSymbol {
+  constructor(name, detail, kind, range, selectionRange) {
+    this.name = name;
+    this.detail = detail;
+    this.kind = kind;
+    this.range = range;
+    this.selectionRange = selectionRange;
+    this.children = [];
+  }
+}
+
+class DocumentHighlight {
+  constructor(range, kind) { this.range = range; this.kind = kind; }
+}
+
+class InlayHint {
+  constructor(position, label, kind) {
+    this.position = position;
+    this.label = label;
+    this.kind = kind;
+  }
+}
+
 class CompletionList {
   constructor(items, isIncomplete) {
     this.items = items;
@@ -59,6 +82,12 @@ const state = {
   definitionProvider: null,
   hoverProvider: null,
   completionProvider: null,
+  documentSymbolProvider: null,
+  referenceProvider: null,
+  documentHighlightProvider: null,
+  inlayHintsProvider: null,
+  commands: new Map(),
+  statusBar: [],
   output: []
 };
 
@@ -88,7 +117,14 @@ module.exports = {
   __state: state,
   __document: document,
   Position, Range, Uri, Location, MarkdownString, Hover, Diagnostic,
-  CompletionItem, CompletionList,
+  CompletionItem, CompletionList, DocumentSymbol, DocumentHighlight, InlayHint,
+  StatusBarAlignment: { Left: 1, Right: 2 },
+  commands: {
+    registerCommand(id, handler) {
+      state.commands.set(id, handler);
+      return disposable();
+    }
+  },
   workspace: {
     workspaceFolders: [{ uri: Uri.parse('file:///workspace'), name: 'workspace' }],
     textDocuments: [document],
@@ -116,6 +152,22 @@ module.exports = {
     registerCompletionItemProvider(_language, provider) {
       state.completionProvider = provider;
       return disposable();
+    },
+    registerDocumentSymbolProvider(_language, provider) {
+      state.documentSymbolProvider = provider;
+      return disposable();
+    },
+    registerReferenceProvider(_language, provider) {
+      state.referenceProvider = provider;
+      return disposable();
+    },
+    registerDocumentHighlightProvider(_language, provider) {
+      state.documentHighlightProvider = provider;
+      return disposable();
+    },
+    registerInlayHintsProvider(_language, provider) {
+      state.inlayHintsProvider = provider;
+      return disposable();
     }
   },
   window: {
@@ -126,6 +178,13 @@ module.exports = {
         dispose() {}
       };
     },
-    showErrorMessage(message) { throw new Error(message); }
+    showErrorMessage(message) { throw new Error(message); },
+    createStatusBarItem(alignment, priority) {
+      const item = {
+        alignment, priority, text: '', tooltip: '', command: '',
+        show() { state.statusBar.push(this.text); }, dispose() {}
+      };
+      return item;
+    }
   }
 };

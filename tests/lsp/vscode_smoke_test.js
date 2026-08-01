@@ -49,6 +49,45 @@ async function main() {
   assert.strictEqual(items.get('let').kind, 13);
   assert.strictEqual(items.has('value'), false);
 
+  // The outline nests parameters and locals under the function that declares
+  // them, which is what the breadcrumb bar and the symbol picker read.
+  const symbols = await vscode.__state.documentSymbolProvider.provideDocumentSymbols(
+    vscode.__document
+  );
+  assert.deepStrictEqual(symbols.map((item) => item.name), ['identity', 'main']);
+  // VS Code's SymbolKind.Function is 11; the LSP number is 12.
+  assert.strictEqual(symbols[0].kind, 11);
+  assert.deepStrictEqual(symbols[0].children.map((item) => item.name), ['value']);
+  assert.deepStrictEqual(symbols[1].children.map((item) => item.name), ['copy']);
+  assert.match(symbols[0].detail, /Int/);
+
+  const references = await vscode.__state.referenceProvider.provideReferences(
+    vscode.__document, new vscode.Position(1, 11), { includeDeclaration: true }
+  );
+  assert.strictEqual(references.length, 2);
+  assert.strictEqual(references[0].range.start.line, 0);
+  assert.strictEqual(references[1].range.start.line, 1);
+
+  const highlights = await vscode.__state.documentHighlightProvider.provideDocumentHighlights(
+    vscode.__document, new vscode.Position(5, 9)
+  );
+  // VS Code's DocumentHighlightKind.Write is 2; the LSP number is 3.
+  assert.strictEqual(highlights[0].kind, 2);
+  assert.strictEqual(highlights.length, 2);
+
+  const hints = await vscode.__state.inlayHintsProvider.provideInlayHints(
+    vscode.__document, undefined
+  );
+  const labels = hints.map((hint) => hint.label);
+  assert.ok(labels.includes('value:'), `parameter name hint missing from ${labels}`);
+  // InlayHintKind is one of the few enumerations LSP and VS Code agree on, so
+  // Parameter stays 2 rather than being shifted like the two above.
+  assert.strictEqual(hints.find((hint) => hint.label === 'value:').kind, 2);
+
+  assert.ok(vscode.__state.commands.has('kofun.restartServer'));
+  assert.ok(vscode.__state.commands.has('kofun.showOutput'));
+  assert.ok(vscode.__state.statusBar.some((text) => text.includes('Kofun')));
+
   await extension.deactivate();
   process.stdout.write('PASS: packaged VS Code client starts, queries, and stops the bundled server\n');
 }

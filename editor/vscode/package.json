@@ -1,7 +1,7 @@
 {
   "name": "kofun-language-bootstrap",
   "displayName": "Kofun Language Bootstrap",
-  "description": "Syntax highlighting, diagnostics, navigation, and hover support for Kofun.",
+  "description": "Syntax highlighting, diagnostics, navigation, hover, completion, outline, references, and ownership inlay hints for Kofun.",
   "version": "0.3.0",
   "publisher": "kofun-language-project",
   "main": "./extension.js",
@@ -15,14 +15,20 @@
     "vscode": "^1.80.0"
   },
   "categories": [
-    "Programming Languages"
+    "Programming Languages",
+    "Linters"
   ],
   "contributes": {
     "languages": [
       {
         "id": "kofun",
-        "aliases": ["Kofun", "kofun"],
-        "extensions": [".kofun"],
+        "aliases": [
+          "Kofun",
+          "kofun"
+        ],
+        "extensions": [
+          ".kofun"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],
@@ -40,8 +46,41 @@
           "type": "string",
           "default": "",
           "description": "Optional absolute path to kofun-lsp. The bundled server is used by default."
+        },
+        "kofun.inlayHints.parameterNames": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the callee's parameter name before each call argument."
+        },
+        "kofun.inlayHints.ownershipModes": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the read/edit/take mode at call sites. The mode is declared in the callee's signature but its consequence lands on the caller."
+        },
+        "kofun.inlayHints.inferredTypes": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the inferred type after a let binding that does not write one. A type the server cannot determine is never guessed at."
         }
       }
-    }
+    },
+    "commands": [
+      {
+        "command": "kofun.restartServer",
+        "title": "Restart Language Server",
+        "category": "Kofun"
+      },
+      {
+        "command": "kofun.showOutput",
+        "title": "Show Language Server Output",
+        "category": "Kofun"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "kofun",
+        "path": "./snippets/kofun.json"
+      }
+    ]
   }
 }

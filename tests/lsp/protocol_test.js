@@ -29,6 +29,14 @@ async function main() {
   // a list this server cannot produce.
   assert.deepStrictEqual(initialized.result.capabilities.completionProvider,
     { resolveProvider: false });
+  assert.strictEqual(initialized.result.capabilities.documentSymbolProvider, true);
+  assert.strictEqual(initialized.result.capabilities.referencesProvider, true);
+  assert.strictEqual(initialized.result.capabilities.documentHighlightProvider, true);
+  assert.deepStrictEqual(initialized.result.capabilities.inlayHintProvider,
+    { resolveProvider: false });
+  // No diagnostic in the registry carries a remedy, so the server must not
+  // advertise an action list it can never fill.
+  assert.strictEqual(initialized.result.capabilities.codeActionProvider, undefined);
   client.send({ jsonrpc: '2.0', method: 'initialized', params: {} });
 
   const source = [
@@ -143,6 +151,60 @@ async function main() {
   const inComment = await completionAt(5, 8);
   assert.deepStrictEqual(inComment.items, []);
   assert.strictEqual(inComment.isIncomplete, false);
+
+  async function requestAt(method, extra) {
+    client.send({
+      jsonrpc: '2.0', id, method,
+      params: { textDocument: { uri }, ...extra }
+    });
+    const reply = await client.waitFor((message) => message.id === id);
+    id += 1;
+    return reply.result;
+  }
+
+  // The outline nests each function's parameters and locals under it.
+  const outline = await requestAt('textDocument/documentSymbol', {});
+  assert.deepStrictEqual(outline.map((item) => item.name), ['identity', 'main']);
+  assert.strictEqual(outline[0].kind, 12);
+  assert.deepStrictEqual(outline[0].children.map((item) => item.name), ['value']);
+  assert.deepStrictEqual(outline[1].children.map((item) => item.name), ['result']);
+  assert.match(outline[0].detail, /fn identity\(value: Int\) -> Int/);
+  // The function's range covers its body; the selection range is just the name.
+  assert.strictEqual(outline[0].selectionRange.start.character, 3);
+  assert.ok(outline[0].range.end.line >= outline[0].selectionRange.end.line);
+
+  // References resolve through `resolve`, so a shadowed name is not swept up.
+  const references = await requestAt('textDocument/references', {
+    position: { line: 1, character: parameterReference },
+    context: { includeDeclaration: true }
+  });
+  assert.deepStrictEqual(references.map((item) => item.range.start.line), [0, 1]);
+  const withoutDeclaration = await requestAt('textDocument/references', {
+    position: { line: 1, character: parameterReference },
+    context: { includeDeclaration: false }
+  });
+  assert.deepStrictEqual(withoutDeclaration.map((item) => item.range.start.line), [1]);
+
+  const highlights = await requestAt('textDocument/documentHighlight', {
+    position: { line: 6, character: 9 }
+  });
+  // LSP DocumentHighlightKind: the declaration is a Write (3), its use a Read (2).
+  assert.deepStrictEqual(highlights.map((item) => item.kind), [3, 2]);
+  assert.deepStrictEqual(highlights.map((item) => item.range.start.line), [6, 7]);
+
+  // The parameter name is shown at the call argument, which is where the
+  // callee's signature actually lands on the caller.
+  const allHints = await requestAt('textDocument/inlayHint', {});
+  const callHint = allHints.find((hint) => hint.label === 'value:');
+  assert.ok(callHint, `expected a parameter-name hint, got ${JSON.stringify(allHints)}`);
+  assert.strictEqual(callHint.kind, 2);
+  assert.strictEqual(callHint.position.line, 6);
+  assert.match(callHint.tooltip, /value: Int/);
+  // A range request must not answer for lines outside it.
+  const narrowHints = await requestAt('textDocument/inlayHint', {
+    range: { start: { line: 0, character: 0 }, end: { line: 2, character: 0 } }
+  });
+  assert.strictEqual(narrowHints.some((hint) => hint.position.line > 2), false);
 
   // A failed partial document keeps an earlier validated local available.
   client.send({
@@ -356,7 +418,8 @@ async function main() {
 
   process.stdout.write(
     `PASS: sidecar-backed LSP framing/lifecycle, UTF-16, diagnostics, ` +
-    `definition, hover, scoped completion, edit/reopen guards, and ` +
+    `definition, hover, scoped completion, outline, references, highlights, ` +
+    `inlay hints, edit/reopen guards, and ` +
     `${depth}-deep fallback (${deepMilliseconds.toFixed(2)}ms)\n`
   );
 }

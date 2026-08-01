@@ -1,11 +1,52 @@
 # Kofun VS Code metadata
 
 This extension provides `.kofun` language registration, comments, brackets,
-indentation, TextMate highlighting, inline diagnostics, go-to-definition, and
-hover types. The stdio language server is bundled in `server/` and starts when
-a Kofun document opens. Diagnostics, hover, and definition for the covered
-Stage 2 subset consume one validated in-memory typed sidecar; sources outside
-the bounded producer profile use a visibly labelled syntactic fallback.
+indentation, TextMate highlighting, and snippets, plus a bundled stdio language
+server offering inline diagnostics, go-to-definition, hover types, completion,
+a document outline, find-all-references, occurrence highlighting, and inlay
+hints. The server starts when a Kofun document opens. Everything it reports for
+the covered Stage 2 subset consumes one validated in-memory typed sidecar;
+sources outside the bounded producer profile use a visibly labelled syntactic
+fallback.
+
+## What the editor shows
+
+- **Inlay hints** put the callee's parameter name — and its `read`/`edit`/`take`
+  mode — before each call argument, so `process(data)` reads as
+  `process(take data:)` without opening the callee. The mode is declared in the
+  signature but its consequence lands on the caller, which is why it is shown
+  here. A `let` without a written type shows the inferred one; a type the
+  server cannot determine is left blank rather than guessed at. Each of the
+  three is switchable under `kofun.inlayHints`.
+- **Completion** offers the names visible at the cursor under the same
+  visibility and shadowing rules go-to-definition resolves by, so the two never
+  disagree. Items state whether their type came from the validated sidecar or
+  the syntactic fallback.
+- **Outline and breadcrumbs** nest each function's parameters and locals under
+  it.
+- **References and highlights** resolve through the same rule, so a shadowed
+  name is not swept up with the one shadowing it.
+
+## What is deliberately absent
+
+There is no code-action provider. No diagnostic in `tests/diagnostics/registry.tsv`
+carries a remedy today, so the capability would advertise a quick-fix list the
+server can never fill; it belongs here once one does. Completion advertises no
+trigger characters for the same reason — member and field completion is not
+implemented, so `.` must not promise a list that cannot be produced.
+
+There is no formatter, rename, or signature help, because no `kofun fmt` exists
+and rename without whole-project reference coverage would be unsafe.
+
+## Commands
+
+- **Kofun: Restart Language Server** — stops and restarts the bundled server.
+- **Kofun: Show Language Server Output** — opens the server's output channel,
+  which is also what the status-bar item opens when clicked.
+
+A status-bar item reports whether the server is starting, running, or stopped,
+because a server that died is otherwise invisible until a request quietly
+returns nothing.
 
 Run `npm --prefix editor/vscode run vscode:prepublish` before opening
 `editor/vscode` with VS Code's extension development host or packaging a VSIX.

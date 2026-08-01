@@ -25,8 +25,12 @@ The first server must implement JSON-RPC/LSP framing and these methods:
   `textDocument/didClose`;
 - `textDocument/publishDiagnostics`;
 - `textDocument/definition`;
-- `textDocument/hover`; and
-- `textDocument/completion`.
+- `textDocument/hover`;
+- `textDocument/completion`;
+- `textDocument/documentSymbol`;
+- `textDocument/references`;
+- `textDocument/documentHighlight`; and
+- `textDocument/inlayHint`.
 
 The client must negotiate UTF-16 positions unless both sides explicitly select
 another standard LSP position encoding. Compiler byte spans must be converted
@@ -64,6 +68,19 @@ Positions inside comments and string literals return no items. Member and
 field completion is not implemented, so no trigger character may be advertised
 for it. A list bounded for size must be returned as incomplete rather than
 silently truncated.
+
+The outline, references, occurrence highlights, and inlay hints resolve names
+by the same rule definition does, so none of them may report a declaration
+definition would not. The outline nests a function's parameters and locals
+under it. Inlay hints put the callee's parameter name and its ownership mode at
+the call argument, because the mode is declared in the callee's signature while
+its consequence lands on the caller; a `let` without a written type shows the
+inferred one, and a type the server cannot determine produces no hint rather
+than a guess. A range request must not answer outside the requested range.
+
+A capability may not be advertised for a result the server cannot produce. No
+`codeActionProvider` is offered while no registered diagnostic carries a
+remedy, for the same reason completion advertises no trigger characters.
 
 ## Incremental performance gate
 
