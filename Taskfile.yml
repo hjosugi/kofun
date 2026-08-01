@@ -265,6 +265,11 @@ tasks:
     cmds:
       - "sh stdlib/tests/verify.sh"
 
+  clock-adapters:
+    desc: "Verify explicit clock identities, affine handles, and fake time"
+    cmds:
+      - "sh tests/stdlib/clock-adapters/check.sh"
+
   capabilities:
     desc: "Verify the standard library capability matrix states and evidence"
     cmds:
@@ -511,6 +516,7 @@ tasks:
             cli-framework \
             tui-framework \
             stdlib \
+            clock-adapters \
             capabilities \
             build-system \
             packages \

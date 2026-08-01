@@ -1,0 +1,24 @@
+# A monotonic reading has no epoch. Asking one for `epoch_seconds` is the
+# mistake of treating an elapsed-time value as a Unix-era timestamp, and it is
+# rejected by name rather than answered with the raw counter.
+type MonotonicInstant = {
+    domain: Int,
+    serial: Int,
+    seconds: Int,
+    nanoseconds: Int,
+}
+
+fn epoch_of(instant: MonotonicInstant) -> Int {
+    return instant.epoch_seconds
+}
+
+fn main() -> Int {
+    let reading: MonotonicInstant = MonotonicInstant(
+        domain: 1,
+        serial: 7,
+        seconds: 10,
+        nanoseconds: 750000000
+    )
+    print(epoch_of(reading))
+    return 0
+}

@@ -44,6 +44,10 @@ The platform-independent [`clock/`](clock/) checkpoint defines clock-tagged
 instants, non-negative durations, checked elapsed/deadline arithmetic, and an
 explicit manual clock. Its Linux adapter is the only system-time read; the
 focused gate executes a deterministic Int-Core projection of the pure rules.
+Its adapter surface splits monotonic and system readings into separate types,
+adds affine clock and sleeper handles, and adds a deterministic waiter with
+cancellation; `task clock-adapters` runs that producer on the reference
+executor and the C11 backend and proves no host clock is read.
 
 The platform-independent [`list/`](list/) checkpoint defines an eager,
 value-returning `List[Int]` surface with typed empty/index failures and ordered

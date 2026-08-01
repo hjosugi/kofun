@@ -1,0 +1,27 @@
+# A system reading may not stand in for a monotonic one. The two clocks have
+# separate types precisely so this is a check-time rejection rather than a
+# subtraction of a wall-clock number from an elapsed-time number.
+type MonotonicInstant = {
+    domain: Int,
+    serial: Int,
+    seconds: Int,
+    nanoseconds: Int,
+}
+
+type SystemInstant = {
+    epoch_seconds: Int,
+    nanoseconds: Int,
+}
+
+fn monotonic_seconds(instant: MonotonicInstant) -> Int {
+    return instant.seconds
+}
+
+fn main() -> Int {
+    let wall: SystemInstant = SystemInstant(
+        epoch_seconds: 1700000000,
+        nanoseconds: 250000000
+    )
+    print(monotonic_seconds(wall))
+    return 0
+}

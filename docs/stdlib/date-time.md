@@ -14,6 +14,15 @@ Under the standard-library charter: civil types belong to the **portable
 standard library**, clock capabilities are **platform adapters**, and
 time-zone data is an **independently versioned official module**.
 
+The clock-adapter half of #647 has an executable producer:
+`stdlib/clock/adapters.kofun` states the surface and
+`tests/stdlib/clock-adapters/` runs the deterministic core — separate
+monotonic and system identities, affine handles, checked deadline arithmetic,
+manual advance, stable waiter order, and cancellation — on the reference
+executor and the C11 backend. Reading a real clock and sleeping remain
+canonical source without a platform gate. Calendar values, RFC 3339, and
+time-zone data are untouched by that and stay open.
+
 The words **must**, **must not**, and **may** are normative.
 
 ## Decision summary
@@ -112,5 +121,6 @@ scheduling/cron, network time synchronization, and leap-second arithmetic.
 |---|---|---|
 | Contract review | this document | every type, range, conversion, failure explicit |
 | Golden corpus | #645 fixtures | deterministic results, host-independent |
+| Clock adapters | `sh tests/stdlib/clock-adapters/check.sh` | distinct monotonic/system identities, affine handles, deterministic fake time and waiters; no host clock read |
 | Existing seed | `sh stdlib/tests/verify.sh` | current clock contract remains truthful |
 | Charter matrix | `sh stdlib/check-capabilities.sh` | date/time rows cite this contract |
