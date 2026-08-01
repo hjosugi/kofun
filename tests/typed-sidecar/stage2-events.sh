@@ -141,11 +141,16 @@ for stream in \
 do
     "$WORK/plain/validate-events" "$stream"
 done
-grep -a -q 'stage2-semantic-v1' "$WORK/plain/producer-complete.kse"
-grep -a -q 'E2S16' "$WORK/plain/producer-unknown.kse"
-grep -a -q 'E2S15' "$WORK/plain/producer-type-error.kse"
-grep -a -q 'E007' "$WORK/plain/producer-ownership.kse"
-grep -a -q 'E2S03' "$WORK/plain/producer-recovery.kse"
+assert_grep "plain/producer-complete.kse" \
+    -a -q 'stage2-semantic-v1' "$WORK/plain/producer-complete.kse"
+assert_grep "plain/producer-unknown.kse" \
+    -a -q 'E2S16' "$WORK/plain/producer-unknown.kse"
+assert_grep "plain/producer-type-error.kse" \
+    -a -q 'E2S15' "$WORK/plain/producer-type-error.kse"
+assert_grep "plain/producer-ownership.kse" \
+    -a -q 'E007' "$WORK/plain/producer-ownership.kse"
+assert_grep "plain/producer-recovery.kse" \
+    -a -q 'E2S03' "$WORK/plain/producer-recovery.kse"
 
 if "$CC" -std=c11 -x c -fsanitize=address,undefined \
         -o "$WORK/sanitized/probe" - >/dev/null 2>&1 <<'EOF'
@@ -289,14 +294,16 @@ do
     cmp "$WORK/plain/$case_name.authority" \
         "$WORK/plain/$case_name.producer"
     cmp "${source%.kofun}.stderr" "$WORK/plain/$case_name.producer"
-    grep -q "error\\[$code\\]" "$WORK/plain/$case_name.producer"
+    assert_grep "plain/$case_name.producer" \
+        -q "error\\[$code\\]" "$WORK/plain/$case_name.producer"
     case $code in
         E2S01|E2S98|EUNICODE*)
             assert_absent "plain/$case_name.kse" "$WORK/plain/$case_name.kse"
             ;;
         *)
             "$WORK/plain/validate-events" "$WORK/plain/$case_name.kse"
-            grep -a -q "$code" "$WORK/plain/$case_name.kse"
+            assert_grep "plain/$case_name.kse" \
+                -a -q "$code" "$WORK/plain/$case_name.kse"
             ;;
     esac
 done
@@ -383,8 +390,8 @@ do
             ;;
     esac
 done <"$WORK/plain/repository-error-companions"
-test "$repository_error_cases" -eq 228 ||
-    fail "expected all 228 repository error companions, saw $repository_error_cases"
+test "$repository_error_cases" -eq 230 ||
+    fail "expected all 230 repository error companions, saw $repository_error_cases"
 
 # Project-owned valid Stage 2 profiles cover functions, value control, concrete
 # enums, nested lexical scopes, and shadowing.  Producer and compiler must both

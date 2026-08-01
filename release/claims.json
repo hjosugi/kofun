@@ -443,6 +443,47 @@
       }
     },
     {
+      "id": "documentation-index",
+      "public_wording": "typed-sidecar documentation index",
+      "public_status": "bounded KIF-filtered projection: canonical public and exact-package internal declaration views with explicit partial/stale trust and atomic publication",
+      "state": "checkpoint",
+      "area": "tooling",
+      "bounded_capability": "A validated KIF v1.1 visibility projection supplies stable declaration identities, names, signatures, visibility and semantic-view digests; the matching typed sidecar supplies only current validated-identity status. Public output contains only public KIF facts. Package-internal output requires the exact declaring PackageId and labels internal entries non-public. Partial output is a validated prefix, while stale and cancelled projections contain no entries.",
+      "targets": [
+        "stage2"
+      ],
+      "specification": [
+        "docs/DOCUMENTATION_INDEX.md",
+        "spec/modules/module-identity.md",
+        "spec/modules/visibility.md"
+      ],
+      "compatibility": "The documentation-index v1 JSON is canonical but explicitly non-authoritative. It is bounded to KIF v1.1 function, flat ADT, constructor and re-export facts; sidecar paths, spans, diagnostics and display strings are never compatibility inputs.",
+      "positive_gate": {
+        "command": "task documentation-index",
+        "observation": "An actual Stage 2 KIF binary and matching typed sidecar project deterministically into distinct public and exact-package internal documentation views, including explicit current, partial, stale and cancelled trust states."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "tests/docs/documentation_index_test.mjs",
+        "observation": "Private/internal disclosure, wrong-package internal access, unvalidated KIF projections, malformed or oversized artifacts, trust regression, stale publication, unsafe destinations and races are refused without partial replacement."
+      },
+      "safety": {
+        "classification": "refusal-boundary",
+        "threat_model": "docs/DOCUMENTATION_INDEX.md",
+        "negative_test": "tests/docs/documentation_index_test.mjs"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "task documentation-index",
+        "prerequisites": [
+          "cc",
+          "node"
+        ]
+      }
+    },
+    {
       "id": "elf64-image-writer",
       "public_wording": "ELF64/x86-64 native image writer",
       "public_status": "checkpoint implemented",

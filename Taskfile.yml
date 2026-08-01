@@ -216,6 +216,11 @@ tasks:
     cmds:
       - "sh tests/conformance/run.sh tests/conformance/decimal-arithmetic"
 
+  date-time:
+    desc: "Verify bounded date/time values, failures, arithmetic, and RFC 3339"
+    cmds:
+      - "sh stdlib/date_time/tests/verify.sh"
+
   discovery:
     desc: "Verify the developer discovery v1 request/result contract"
     cmds:
@@ -350,6 +355,12 @@ tasks:
       - "sh tests/typed-sidecar/cli.sh"
       - "sh tests/typed-sidecar/producer-races.sh"
       - "sh tests/typed-sidecar/authority-boundary.sh"
+
+  documentation-index:
+    desc: "Verify disclosure-safe typed-sidecar documentation indexes"
+    cmds:
+      - "sh tests/docs/documentation-index.sh"
+      - "sh docs/tour/check.sh"
 
   ownership-view:
     desc: "Verify bounded current-file ScopeId and BindingId ownership views"
@@ -507,6 +518,7 @@ tasks:
             incremental \
             decimal \
             decimal-arithmetic \
+            date-time \
             discovery \
             native \
             wasm \
@@ -533,6 +545,7 @@ tasks:
             typed-sidecar-spec \
             typed-sidecar-codec \
             typed-sidecar-projector \
+            documentation-index \
             ownership-view \
             artifact-qualification \
             tree-sitter \

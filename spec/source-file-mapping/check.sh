@@ -7,6 +7,8 @@ PACKAGE_SPEC="$ROOT/spec/modules/package-roots.md"
 SYNTAX_SPEC="$ROOT/spec/syntax/FOUNDATIONS_AND_CONTROL.md"
 BUILD_DOC="$ROOT/docs/BUILD_SYSTEM.md"
 WORK=${KOFUN_SOURCE_MAPPING_SPEC_WORK:-"$ROOT/build/source-file-mapping-spec"}
+ASSERT_CONTEXT='source-file mapping'
+. "$ROOT/tests/assertions/assert.sh"
 
 fail() {
     printf '%s\n' "FAIL: $*" >&2

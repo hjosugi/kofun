@@ -82,7 +82,12 @@ count_file() {
             t = line
             sub(/^[ \t]+/, "", t)
             if (t == "" || t ~ /^#/) return
-            if (line ~ /^\}/) { pending = 0; return }
+            # `}` ends the function, and a bare `return` hands the status back
+            # to the caller — in both cases the candidate was a return value,
+            # not an assertion. spec/source-file-mapping/check.sh has the
+            # second shape, and migrating it turned a predicate into a hard
+            # failure until this rule existed.
+            if (line ~ /^\}/ || t == "return") { pending = 0; return }
             n++
             pending = 0
         }

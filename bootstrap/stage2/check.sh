@@ -862,9 +862,9 @@ assert_file_empty "$temporary/for-range-int.stderr" \
 assert_absent "$temporary/for-range-int.c" "$temporary/for-range-int.c"
 
 # The 16 profile builtins are known, arity-checked names. A builtin call with
-# wrong arity is a real E2S17 frontend fact; a well-formed builtin call is
-# valid source outside the bounded Int C11 slice (unsupported lowering, exit
-# 3), and only genuinely undeclared names remain invalid E2S16.
+# wrong arity is a real E2S17 frontend fact. The bounded date/time slice lowers
+# `len(Text)` and `text_slice`; the remaining well-formed builtins classify as
+# unsupported lowering, and only genuinely undeclared names remain E2S16.
 printf 'fn main() {\n    print(len(1, 2))\n}\n' \
     >"$temporary/builtin-arity.kofun"
 printf 'fn main() {\n    print(len("x"))\n}\n' \
@@ -891,12 +891,14 @@ assert_num "builtin arity status" "$builtin_arity_status" -eq 1
 assert_grep "builtin-arity.stdout" \
     'error\[E2S17\]: Core function `len` expects 1 arguments, got 2' \
     "$temporary/builtin-arity.stdout"
-assert_num "builtin call status" "$builtin_call_status" -eq 3
-assert_grep "builtin-call.stdout" \
-    'error\[E2S10\]: unsupported Core builtin call `len`' \
-    "$temporary/builtin-call.stdout"
+assert_num "builtin call status" "$builtin_call_status" -eq 0
+"$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$temporary/builtin-call.c" -o "$temporary/builtin-call"
+builtin_call_observed=$("$temporary/builtin-call") ||
+    assert_fail "lowered len(Text) executable exited non-zero"
+assert_eq "lowered len(Text) output" "$builtin_call_observed" '1'
 assert_absent "$temporary/builtin-arity.c" "$temporary/builtin-arity.c"
-assert_absent "$temporary/builtin-call.c" "$temporary/builtin-call.c"
+assert_file_nonempty "$temporary/builtin-call.c" "$temporary/builtin-call.c"
 
 # The frozen self-host source S (bootstrap/stage1/compiler.kofun) clears the
 # complete lexical binding layer, including every `for index` loop, and every
@@ -1011,7 +1013,7 @@ echo "PASS: Stage 2 statically compiled Copy Int borrowed-return slice"
 echo "PASS: Stage 2 and kofun check rejected non-Copy Text move with E007"
 echo "PASS: Stage 2 C11 calls support recursion, arity checks, and forward references"
 echo "PASS: for-range loop variables bind in the loop body lexical scope"
-echo "PASS: profile builtins are known, arity-checked, unsupported-to-lower names"
+echo "PASS: profile builtins are known, arity-checked, and len(Text) lowers"
 echo "PASS: the frozen self-host S is valid source outside the bounded slice"
 echo "PASS: unannotated let bindings carry inferred scope-HIR types"
 # Statement conditions and value returns are typed across the whole

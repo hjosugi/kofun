@@ -95,7 +95,7 @@ expect_failure() {
             "semantic protocol self-test: incomplete artifact for $name" >&2
         exit 1
     }
-    grep -Fq 'seed	668' "$artifact/case.tsv"
+    assert_grep "$artifact/case.tsv" -Fq 'seed	668' "$artifact/case.tsv"
     grep -Fq 'case-index	0' "$artifact/case.tsv"
 }
 
@@ -192,7 +192,7 @@ set +e
 replay_status=$?
 set -e
 assert_num "replay status" "$replay_status" -eq 1
-grep -Fq 'stdout mismatch' "$WORK/replay.stderr"
+assert_grep "replay.stderr" -Fq 'stdout mismatch' "$WORK/replay.stderr"
 
 printf '%s\n' \
     'PASS: semantic protocol rejected observation, capability, omission, crash, timeout, malformed, unsupported, and missing-authority fixtures'

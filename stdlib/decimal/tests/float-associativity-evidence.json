@@ -1,0 +1,154 @@
+{
+  "schema": "kofun.law-evidence/v2",
+  "identities": {
+    "evaluation_cache_key": {
+      "domain": "kofun.cache.law-evaluation/v2",
+      "algorithm": "sha256",
+      "sha256": "220fe9f827440d7bab3c7aa89ca2e3018aea0ac04f5f9e1dbdbf143f18b67ff0"
+    },
+    "evidence": {
+      "domain": "kofun.id.law-evidence/v2",
+      "algorithm": "sha256",
+      "sha256": "855438cfd9e03695a9cd22a33555c8cff0012e551f468616a8ad9ff8e8f3c71f"
+    }
+  },
+  "compiler": {
+    "name": "Kofun",
+    "semantic_version": "0.3.38-seed",
+    "semantics_sha256": "da453186e833f7ffa56561cbad6f06cca873d0c1f7141d57006f1f7085f4e996",
+    "evaluator_version": "stdlib-decimal-laws/v2",
+    "evidence_abi": "kofun.law-evidence/v2"
+  },
+  "subject": {
+    "package_id": "df5fdea78cee0f19ca4bb3f07ce4fd2d745fe39cf0b5f47341125f1da24850f5",
+    "module_id": "9da109a255169a7c9841210426077867ad8308a2c6525c2682a52584bf266881",
+    "law_declaration_id": "d7bb50476eb0eb2afcd5d6b77857eba89ce2e2152559f544c8111e0e4f243387",
+    "law_name": "FloatAdditionAssociativity",
+    "ground_types": [
+      {
+        "slot": "Value",
+        "type_id": "71558a2f7be0bfdaf1cb679b0bc587a4393ce7f3459190bc2932195b5a110ab5",
+        "canonical_type": "Float"
+      }
+    ],
+    "normalized_equations_sha256": "a70249882fec5fa72932e5f901c088b761486ec8166d391ee3a5b3733f98bdfb",
+    "implementation": {
+      "implementation_id": "2b7a7aac57004829063aba852148eff5fcffd584107cd86d14c6b78b020bfe1e",
+      "trait_implementation_id": null,
+      "interface_sha256": "74bfd8fdf9788ee665b8db2d8214dd8ebb0e7f081044f5b746c103c6760a03ca",
+      "body_sha256": "da453186e833f7ffa56561cbad6f06cca873d0c1f7141d57006f1f7085f4e996",
+      "transitive_dependency_digests": []
+    }
+  },
+  "model": {
+    "domains": [
+      {
+        "name": "values",
+        "type_id": "71558a2f7be0bfdaf1cb679b0bc587a4393ce7f3459190bc2932195b5a110ab5",
+        "canonical_type": "Float",
+        "declaration_order": 0,
+        "origin": "explicit-sample",
+        "canonical_values_sha256": "f6bb3c227fc41197b4cd1b047d66296a1a8414a0719fc8f05d80c51bd018afbe",
+        "input_domain": null,
+        "output_domain": null
+      }
+    ],
+    "equalities": [
+      {
+        "type_id": "71558a2f7be0bfdaf1cb679b0bc587a4393ce7f3459190bc2932195b5a110ab5",
+        "canonical_type": "Float",
+        "kind": "compiler-structural",
+        "equality_id": "6e5bc3a3a3edad64ed509de240bd8ac1b562256ef4dd6a6258dce67a212d606e",
+        "interface_sha256": "49e6f2c8152923dfe4d76ad32547e99eb2eac6bd19d0be463e4a70fe5f606649",
+        "body_sha256": "93c1bbe18bc69365d4e9391ecddc2153bfd2ab5294365c6bf3d64c35ed7a56c4",
+        "equivalence_certification_sha256": null
+      }
+    ],
+    "budget": {
+      "profile": "kofun.law-eval/standard-v1",
+      "planned_cases": 1,
+      "evaluator_steps": 8,
+      "recursion_depth": 32,
+      "allocations": 10000,
+      "live_heap_bytes": 1048576,
+      "value_bytes": 4096,
+      "diagnostic_bytes": 4096
+    },
+    "enumeration_algorithm": "kofun.law-cartesian/v1",
+    "shrinking_algorithm": "kofun.law-structural-shrink/v1"
+  },
+  "evaluation": {
+    "cases_planned": 1,
+    "cases_checked": 1,
+    "evaluator_steps": 8,
+    "max_recursion_depth": 1,
+    "allocations": 0,
+    "peak_live_heap_bytes": 0,
+    "max_value_bytes": 64,
+    "diagnostic_bytes": 0,
+    "cancellation_check_interval_steps": 1024
+  },
+  "result": {
+    "status": "failed",
+    "assurance": null,
+    "reusable": false,
+    "outcome_sha256": "cb79128068888136ce32796acb876974f0337be70e014e694d5b4ed18f0aa4ff",
+    "counterexample": {
+      "equation_id": "a70249882fec5fa72932e5f901c088b761486ec8166d391ee3a5b3733f98bdfb",
+      "canonical_sha256": "307c73502c152075b346aef1559582de34fcdb430d930b4d0d8e9e963a936999",
+      "bindings": [
+        {
+          "name": "a",
+          "type_id": "71558a2f7be0bfdaf1cb679b0bc587a4393ce7f3459190bc2932195b5a110ab5",
+          "value": {
+            "encoding": "kofun.canonical-value/v1",
+            "sha256": "3dcfbdf290754c3c57eca1f48cbf18dae7c0ced304c6855f8c4fe50fce0679de",
+            "display": "10000000000000000"
+          }
+        },
+        {
+          "name": "b",
+          "type_id": "71558a2f7be0bfdaf1cb679b0bc587a4393ce7f3459190bc2932195b5a110ab5",
+          "value": {
+            "encoding": "kofun.canonical-value/v1",
+            "sha256": "5b9e26a7515225af30d7b5568c5de91dc5d942f8e68798e4fe8f7eef155573f6",
+            "display": "-10000000000000000"
+          }
+        },
+        {
+          "name": "c",
+          "type_id": "71558a2f7be0bfdaf1cb679b0bc587a4393ce7f3459190bc2932195b5a110ab5",
+          "value": {
+            "encoding": "kofun.canonical-value/v1",
+            "sha256": "5ade39bd085090ce06447576f2a668d3607aa3a5c1448e2f6bd3221ff00f3646",
+            "display": "1"
+          }
+        }
+      ],
+      "left": {
+        "encoding": "kofun.canonical-value/v1",
+        "sha256": "5ade39bd085090ce06447576f2a668d3607aa3a5c1448e2f6bd3221ff00f3646",
+        "display": "1"
+      },
+      "right": {
+        "encoding": "kofun.canonical-value/v1",
+        "sha256": "7785a82b134527a44a9163d9b86411efe3b86ca3ed28dc8c6eead14d892061fb",
+        "display": "0"
+      },
+      "shrink_steps": 0
+    },
+    "diagnostics": [
+      {
+        "code": "L001",
+        "message": "Float addition associativity failed with the committed counterexample"
+      }
+    ]
+  },
+  "policy": {
+    "requested_assurance": null,
+    "requirement_met": false
+  },
+  "metadata": {
+    "logical_source_path": "stdlib/decimal/tests/float_counterexample.js"
+  }
+}

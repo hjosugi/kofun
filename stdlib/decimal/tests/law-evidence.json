@@ -1,19 +1,106 @@
 {
-  "schema": "kofun.decimal-law-evidence/v1",
-  "producer": "stdlib/decimal/tests/verify.sh",
-  "decimal_addition": {
+  "schema": "kofun.law-evidence/v2",
+  "identities": {
+    "evaluation_cache_key": {
+      "domain": "kofun.cache.law-evaluation/v2",
+      "algorithm": "sha256",
+      "sha256": "cca6ece16dd4696e29e039167ec9e1d1ef6b1913ca0d8f6ed18832837f5cc0db"
+    },
+    "evidence": {
+      "domain": "kofun.id.law-evidence/v2",
+      "algorithm": "sha256",
+      "sha256": "c1e8c19ceb0c3ec827add90c4b494c78cdaebf49131278afbd624dbc79a95d2b"
+    }
+  },
+  "compiler": {
+    "name": "Kofun",
+    "semantic_version": "0.3.38-seed",
+    "semantics_sha256": "da453186e833f7ffa56561cbad6f06cca873d0c1f7141d57006f1f7085f4e996",
+    "evaluator_version": "stdlib-decimal-laws/v2",
+    "evidence_abi": "kofun.law-evidence/v2"
+  },
+  "subject": {
+    "package_id": "df5fdea78cee0f19ca4bb3f07ce4fd2d745fe39cf0b5f47341125f1da24850f5",
+    "module_id": "74ae2b59bb324209838212ecf2df3b4b4ca86224c25a94d21f266815b18bd75a",
+    "law_declaration_id": "fc57d8bb7bdbbfad2d61aedff6f850a093927d703ca4b7f1cc07dce28c268b2e",
+    "law_name": "DecimalAdditionAssociativity",
+    "ground_types": [
+      {
+        "slot": "Value",
+        "type_id": "833bf66c0d1916d70595960b18f66b3467008a6373b0f7bd285ae0a84663da7c",
+        "canonical_type": "Decimal"
+      }
+    ],
+    "normalized_equations_sha256": "a70249882fec5fa72932e5f901c088b761486ec8166d391ee3a5b3733f98bdfb",
+    "implementation": {
+      "implementation_id": "6a11781cd1e877cb61137105bbdbc58418a66e761737825cb22af8378caad796",
+      "trait_implementation_id": null,
+      "interface_sha256": "aaa5d796f3073d9aeecadc38693c420457d97bcd31deb1f59953d66cb76600dc",
+      "body_sha256": "da453186e833f7ffa56561cbad6f06cca873d0c1f7141d57006f1f7085f4e996",
+      "transitive_dependency_digests": []
+    }
+  },
+  "model": {
+    "domains": [
+      {
+        "name": "values",
+        "type_id": "833bf66c0d1916d70595960b18f66b3467008a6373b0f7bd285ae0a84663da7c",
+        "canonical_type": "Decimal",
+        "declaration_order": 0,
+        "origin": "explicit-sample",
+        "canonical_values_sha256": "46fe11da7c2621af30b0477cae0f7838c948f3e10d5cc3a1a087fc624f7ab370",
+        "input_domain": null,
+        "output_domain": null
+      }
+    ],
+    "equalities": [
+      {
+        "type_id": "833bf66c0d1916d70595960b18f66b3467008a6373b0f7bd285ae0a84663da7c",
+        "canonical_type": "Decimal",
+        "kind": "compiler-structural",
+        "equality_id": "d49c6111e80961ad3a448975d21bc211c7761e2db1ecf0ed337fb2bc6b69444a",
+        "interface_sha256": "d6481c7ba20603f3b66dc592b0ff1cd0e642cea94ac49738c0d3794adee14e1f",
+        "body_sha256": "e3f38daee15e599cd1d332b51ffa327ba8ed1345c6e24112fcf7f0ad604b5ac4",
+        "equivalence_certification_sha256": null
+      }
+    ],
+    "budget": {
+      "profile": "kofun.law-eval/standard-v1",
+      "planned_cases": 125,
+      "evaluator_steps": 1000,
+      "recursion_depth": 32,
+      "allocations": 10000,
+      "live_heap_bytes": 1048576,
+      "value_bytes": 4096,
+      "diagnostic_bytes": 4096
+    },
+    "enumeration_algorithm": "kofun.law-cartesian/v1",
+    "shrinking_algorithm": "kofun.law-structural-shrink/v1"
+  },
+  "evaluation": {
+    "cases_planned": 125,
+    "cases_checked": 125,
+    "evaluator_steps": 1000,
+    "max_recursion_depth": 1,
+    "allocations": 0,
+    "peak_live_heap_bytes": 0,
+    "max_value_bytes": 64,
+    "diagnostic_bytes": 0,
+    "cancellation_check_interval_steps": 1024
+  },
+  "result": {
     "status": "passed",
-    "assurance": "bounded-examples",
-    "cases_checked": 15,
-    "cases_planned": 15,
-    "model": ["native Decimal identity", "five signed rounding modes", "rounded division", "format/parse round trip"]
+    "assurance": "bounded-exhaustive",
+    "reusable": true,
+    "outcome_sha256": "726179d11750e137909f01e469dec599c9d86606c6cdb652b8cb773c3fabf617",
+    "counterexample": null,
+    "diagnostics": []
   },
-  "float_addition": {
-    "status": "failed",
-    "assurance": "counterexample",
-    "counterexample": [10000000000000000, -10000000000000000, 1],
-    "left_associated": 1,
-    "right_associated": 0
+  "policy": {
+    "requested_assurance": "bounded-exhaustive",
+    "requirement_met": true
   },
-  "compiler_law_checker": "not-yet-general"
+  "metadata": {
+    "logical_source_path": "stdlib/decimal/tests/generated-addition-associativity.kofun"
+  }
 }

@@ -3,12 +3,14 @@
 ## Status
 
 This document is the accepted contract for GitHub issue
-[#639](https://github.com/hjosugi/kofun/issues/639). Nothing here is
-implemented as a portable library: `stdlib/linux_x86_64/time.kofun` and
-`stdlib/clock` are the syscall-level seed, and `clock_gettime` is not
-evidence of calendar or time-zone support. Implementation is split into core
-calendar arithmetic and RFC 3339 (#645), explicit clock adapters (#647), and
-versioned time-zone data (#648).
+[#639](https://github.com/hjosugi/kofun/issues/639). The bounded portable
+producer in `stdlib/date_time` now executes the minimum value shapes, typed
+failures, checked addition, duration normalization, and canonical RFC 3339 UTC
+parsing required by #846. It is not the complete public library:
+`stdlib/linux_x86_64/time.kofun` and `stdlib/clock` remain the syscall-level
+seed, and `clock_gettime` is not evidence of calendar or time-zone support.
+Wider implementation remains split into core calendar arithmetic and RFC 3339
+(#645), explicit clock adapters (#647), and versioned time-zone data (#648).
 
 Under the standard-library charter: civil types belong to the **portable
 standard library**, clock capabilities are **platform adapters**, and

@@ -49,6 +49,12 @@ adds affine clock and sleeper handles, and adds a deterministic waiter with
 cancellation; `task clock-adapters` runs that producer on the reference
 executor and the C11 backend and proves no host clock is read.
 
+The platform-independent [`date_time/`](date_time/) producer executes seven
+nominal civil/instant shapes, a closed typed outcome, preflight-checked
+arithmetic, duration normalization, and a recursive canonical RFC 3339 UTC
+parser directly through Stage 2 C11. It is the bounded core producer, not a
+clock adapter or time-zone implementation.
+
 The platform-independent [`list/`](list/) checkpoint defines an eager,
 value-returning `List[Int]` surface with typed empty/index failures and ordered
 pipeline contracts. Its gate executes real Lists through direct x86-64 plus a
