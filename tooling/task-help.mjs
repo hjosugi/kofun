@@ -32,7 +32,8 @@ export const GROUPS = Object.freeze([
         hint: 'Syntax, typing, diagnostics, data types, numerics, and deterministic fuzzing.',
         tasks: [
             'diagnostics', 'fuzz', 'unicode', 'patterns', 'adt', 'records',
-            'move-assertion',
+            'move-assertion', 'call-arguments-spec', 'affine-resumption',
+            'schedule-trace',
             'generics', 'traits', 'optional', 'optional-narrowing',
             'adt-exhaustiveness', 'decimal', 'decimal-arithmetic', 'date-time', 'syntax'
         ]
@@ -45,6 +46,7 @@ export const GROUPS = Object.freeze([
             're-exports', 'kif-v1', 'stage2-kif-producer', 'visibility-filtering',
             'visibility-api-leaks', 'module-interface-artifact', 'incremental',
             'package-roots', 'source-file-mapping', 'namespaces', 'module-identity',
+            'semantic-identity',
             'visibility-spec', 'visibility-syntax', 'visibility-access',
             're-exports-spec', 'aggregate-layout'
         ]
@@ -55,7 +57,7 @@ export const GROUPS = Object.freeze([
         tasks: [
             'task-help', 'discovery', 'cli-framework', 'tui-framework', 'build-system',
             'packages', 'typed-sidecar-spec', 'typed-sidecar-codec',
-            'typed-sidecar-projector', 'documentation-index', 'ownership-view',
+            'typed-sidecar-projector', 'upgrade-patch', 'documentation-index', 'ownership-view',
             'artifact-qualification', 'lsp', 'roadmap'
         ]
     },

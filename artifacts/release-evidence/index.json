@@ -620,7 +620,7 @@
     }
   ],
   "evidence_digests": {
-    "Taskfile.yml": "4cc11051da98fad1f0cd8edc529d99803c9ff1470e953d94dc985b0e434c1b65",
+    "Taskfile.yml": "0de45db2b8f66d0c70e74e65d1e58a044e7d8624ae240a418bdcd0ae5aa19dc0",
     "bootstrap/native/check.sh": "fea94cb623757e1bf17e4497f43d656b1e8ff57a39a92ece871d8ff257c0f2ef",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/driver/corpus_builtin_rejects.tsv": "b1fa0b26247581aef797a81880554a94233a34109215530641706d76777087d4",
@@ -647,7 +647,7 @@
     "docs/TYPE_SYSTEM.md": "7c7f90b9807656be7e42772d259c6afa360c9f52bb0797861f44429a1bebddfb",
     "examples/rust-shim/check.sh": "4cffb7e16d964122e2dff480f533cff5eacd0bd939a35fe5a71f71b447139500",
     "spec/enum-match-exhaustiveness.md": "f37bf350b76ab939a9a06c9a7b7128f1b5a0c49ca378c090b311210e79ec4eb9",
-    "spec/modules/module-identity.md": "89df1fe536cd7462131390485ceef446bcdbf3efb0cd0fff87d318facb065aef",
+    "spec/modules/module-identity.md": "87600e04ec9f39421c4993462dbbb1b07123c8757e7021844bbbaf23e03f4276",
     "spec/modules/re-exports.md": "e1bd3964901cfbadd1f5675e3c0b5e14a9277198fe6252780381f92581ac2e46",
     "spec/modules/visibility.md": "40209bbc776037f0f397b169b428e3f6d9cf8a0536c2ba12c10988f20a7c0c22",
     "spec/records-v1.md": "9020f6d70397d9e55ef2e33a9ec4cb13464a0120fec86dfeb56c4e1f5adbe4ef",

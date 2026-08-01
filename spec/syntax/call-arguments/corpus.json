@@ -1,0 +1,18 @@
+{
+  "schema": "kofun.call-arguments-corpus/v1",
+  "surface": [
+    { "name": "short trailing", "source": "items.fold(initial: 0) fn(acc, item) => acc + item", "kind": "trailing-call" },
+    { "name": "comment boundary", "source": "items.fold(initial: 0) # keep attached\n fn(acc, item) => acc + item", "kind": "trailing-call" },
+    { "name": "pipeline trailing", "source": "items |> fold(initial: 0) fn(acc, item) => acc + item", "kind": "pipeline-trailing-call" },
+    { "name": "nested trailing", "source": "outer(inner() fn(x) => x) fn(y) => y", "kind": "trailing-call" },
+    { "name": "block trailing", "source": "items.visit(order: depth_first) fn(item) { consume(item) }", "kind": "trailing-call" },
+    { "name": "named declaration follows", "source": "consume(value)\nfn next(value: Int) => value", "kind": "separate-declaration" },
+    { "name": "ordinary", "source": "replace(in: source, from: old, to: new)", "kind": "ordinary-call" }
+  ],
+  "usability": [
+    { "call": "replace(in: source, from: old, to: new)", "ordinary": "replace(source, old, new)", "material": true, "reason": "three Text values have distinct roles and reversal is plausible" },
+    { "call": "draw(width: 10, height: 20, filled: false)", "ordinary": "draw(10, 20, false)", "material": true, "reason": "same-typed dimensions and a Boolean policy become reviewable" },
+    { "call": "abs(value)", "ordinary": "abs(value)", "material": false, "reason": "one obvious argument remains positional" },
+    { "call": "values |> fold(initial: 0) fn(total, value) => total + value", "ordinary": "fold(values, 0, fn(total, value) => total + value)", "material": true, "reason": "subject, initial state, and operation are visually distinct" }
+  ]
+}

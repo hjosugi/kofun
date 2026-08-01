@@ -310,6 +310,12 @@ target/link edges use the ABI digest. A consumer records referenced identities
 as a precision aid, but cannot substitute source mtimes or path hashes for a
 required view digest.
 
+#740's term-level identity is a separate, content-scoped identity for bounded
+test/evaluation cache keys and structural diffs. It neither names declarations
+like `SymbolId` nor invalidates dependency edges like the public, internal, and
+ABI views above. The decision, complete semantic inputs, and cache trust
+boundary are recorded in `docs/research/term-semantic-identity.md`.
+
 The compiler validates the whole envelope, canonical order, identity graph,
 visibility closure, digest claims, and limits before exposing a module table,
 object, executable, typed sidecar, cache hit, or dependency-graph success.

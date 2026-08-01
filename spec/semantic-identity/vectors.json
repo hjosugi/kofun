@@ -1,0 +1,8 @@
+{
+  "schema": "kofun.semantic-identity-vectors/v1",
+  "baseline": "9f5eede2fe4b22c60b87f038b72e5c4f1721f02136036472f217ab3f4fcac2a1",
+  "crossScc": "a02b59d185879a806cafad595384b263d6a24e4b9212f4ca3d15a4b9b8d01e0f",
+  "mutualRecursive": "d607d2ae546166dac97198e979774f695f6a40a1f25c4b85f6b51dabd4f09bd4",
+  "selfRecursive": "5fd51e9500af67149f9111b092d46effab329169f7f60cfc856af9809c450585",
+  "symmetricComponent": "961a1c1ae412cbc87cf4c61b195688ab74690429386972439746d239ef124748"
+}

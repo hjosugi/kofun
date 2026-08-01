@@ -313,6 +313,16 @@ tasks:
       - "sh tests/stdlib/clock-adapters/check.sh"
       - "sh tests/stdlib/clock-adapters/check-linux-x86_64.sh"
 
+  schedule-trace:
+    desc: "Verify deterministic scoped-concurrency schedule traces and replay"
+    cmds:
+      - "sh spec/concurrency/schedule-trace/check.sh"
+
+  affine-resumption:
+    desc: "Verify the one-shot affine-resumption contract and runtime backstop"
+    cmds:
+      - "sh spec/effects/affine-resumption/check.sh"
+
   example-law-evidence:
     desc: "Bind example law evidence to its exact source and honest status"
     cmds:
@@ -363,6 +373,11 @@ tasks:
     cmds:
       - "sh spec/module-identity/check.sh"
 
+  semantic-identity:
+    desc: "Verify bounded typed-Core identities, caches, and structural diffs"
+    cmds:
+      - "sh spec/semantic-identity/check.sh"
+
   visibility-spec:
     desc: "Verify declaration-visibility specification examples"
     cmds:
@@ -408,6 +423,11 @@ tasks:
       - "sh tests/typed-sidecar/producer-races.sh"
       - "sh tests/typed-sidecar/authority-boundary.sh"
 
+  upgrade-patch:
+    desc: "Verify typed upgrade relations, frontiers, previews, and atomicity"
+    cmds:
+      - "sh spec/tooling/upgrade-patch/check.sh"
+
   documentation-index:
     desc: "Verify disclosure-safe typed-sidecar documentation indexes"
     cmds:
@@ -439,6 +459,11 @@ tasks:
     cmds:
       - "sh tests/conformance/syntax/issues_35_47/run.sh"
       - "sh tests/conformance/syntax/issues_48_60/run.sh"
+
+  call-arguments-spec:
+    desc: "Verify labelled call binding and the single trailing-lambda form"
+    cmds:
+      - "sh spec/syntax/call-arguments/check.sh"
 
   # The only recipe that is not a verbatim copy of its Makefile original, and
   # the reason is a real shell difference rather than a preference. go-task
@@ -592,6 +617,8 @@ tasks:
             tui-framework \
             stdlib \
             clock-adapters \
+            schedule-trace \
+            affine-resumption \
             example-law-evidence \
             benchmark-summary \
             move-assertion \
@@ -602,6 +629,7 @@ tasks:
             source-file-mapping \
             namespaces \
             module-identity \
+            semantic-identity \
             visibility-spec \
             visibility-syntax \
             visibility-access \
@@ -610,10 +638,12 @@ tasks:
             typed-sidecar-spec \
             typed-sidecar-codec \
             typed-sidecar-projector \
+            upgrade-patch \
             documentation-index \
             ownership-view \
             artifact-qualification \
             syntax \
+            call-arguments-spec \
             task-help \
             repository-check \
             assertions \
