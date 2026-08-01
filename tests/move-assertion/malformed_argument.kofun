@@ -1,0 +1,9 @@
+# Rejected: the argument must be exactly one bare binding name. A call
+# expression is a temporary; the assertion refuses it rather than guessing
+# at a storage identity.
+
+fn main() -> Int {
+    let banner: Text = "banner"
+    compiler.ensure_move(len(banner))
+    return 0
+}

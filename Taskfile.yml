@@ -297,6 +297,11 @@ tasks:
     cmds:
       - "sh tests/stdlib/benchmark-summary/check.sh"
 
+  move-assertion:
+    desc: "Verify the unstable compile-time move assertion and its erasure"
+    cmds:
+      - "sh tests/move-assertion/check.sh"
+
   capabilities:
     desc: "Verify the standard library capability matrix states and evidence"
     cmds:
@@ -561,6 +566,7 @@ tasks:
             clock-adapters \
             example-law-evidence \
             benchmark-summary \
+            move-assertion \
             capabilities \
             build-system \
             packages \

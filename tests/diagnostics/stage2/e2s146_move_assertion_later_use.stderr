@@ -1,0 +1,1 @@
+error[E2S146]: unstable `compiler.ensure_move`: `banner` is used again at byte 167 (later use) at byte 149

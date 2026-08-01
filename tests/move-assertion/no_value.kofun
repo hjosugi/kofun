@@ -1,0 +1,8 @@
+# Rejected: the assertion is compile-time only and produces no value, so it
+# cannot initialize a binding or appear in any expression position.
+
+fn main() -> Int {
+    let banner: Text = "banner"
+    let taken = compiler.ensure_move(banner)
+    return 0
+}
