@@ -42,7 +42,7 @@
 | Linux x86-64 syscall/stdlib API | Kofun source contract | `stdlib/tests/verify.sh` | `syscall-stdlib-api` |
 | syscall file round-trip execution | implemented | native ELF success and errno failure gates | `syscall-file-round-trip` |
 | Tree-sitter grammar | structural grammar, editor queries, recovery corpus, and repository source gate | `editor/tree-sitter-kofun/` | `tree-sitter-grammar` |
-| stdio language server | bounded diagnostics, symbols, completion, hover, definitions, and references | `tests/lsp/check.sh` | `stdio-language-server` |
+| stdio language server | bounded diagnostics, definitions, hover, completion, outline, references, highlights, ownership inlay hints, signature help, folding, selection ranges, semantic tokens, and rename for locals and parameters | `tests/lsp/check.sh` | `stdio-language-server` |
 | formatter and REPL | open | design only | `formatter-and-repl` |
 | checked Int64 contract | implemented for Core | numeric conformance corpus | `checked-int64-contract` |
 
