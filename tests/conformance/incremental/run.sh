@@ -82,7 +82,13 @@ run_graph() {
     rg_cache=$3
     rg_report=$4
     rg_profile=${5:-$TARGET_PROFILE}
-    "$rg_tool" "$rg_inventory" "$rg_cache" "$rg_report" "$rg_profile"
+    rg_cancel=${6:-}
+    if [ -n "$rg_cancel" ]; then
+        "$rg_tool" "$rg_inventory" "$rg_cache" "$rg_report" "$rg_profile" \
+            "$rg_cancel"
+    else
+        "$rg_tool" "$rg_inventory" "$rg_cache" "$rg_report" "$rg_profile"
+    fi
 }
 
 # Inventory rows are emitted in a deliberately non-alphabetical order so the
@@ -142,6 +148,26 @@ expect_summary() {
     esm_actual=$(awk '$1 == "summary" { print $2, $3 }' "$1")
     [ "$esm_actual" = "$2" ] ||
         fail "$3: expected summary [$2], got [$esm_actual]"
+}
+
+expect_artifact_summary() {
+    eas_actual=$(awk '$1 == "artifact-summary" { print $2, $3 }' "$1")
+    [ "$eas_actual" = "$2" ] ||
+        fail "$3: expected artifact summary [$2], got [$eas_actual]"
+}
+
+artifact_executed_bytes() {
+    awk '$1 == "artifact-summary" {
+        sub(/^executed-bytes=/, "", $2)
+        print $2
+    }' "$1"
+}
+
+artifact_reused_bytes() {
+    awk '$1 == "artifact-summary" {
+        sub(/^reused-bytes=/, "", $3)
+        print $3
+    }' "$1"
 }
 
 target_outcome_set() {
@@ -215,7 +241,16 @@ expect_summary "$WORK/cold.report" 'executed=4 reused=0' 'cold cache'
 expect_reason "$WORK/cold.report" demo/core.kofun cold-cache 'cold cache'
 expect_target_set "$WORK/cold.report" "$ALL_TARGET_REBUILT" 'cold cache'
 expect_target_summary "$WORK/cold.report" 'rebuilt=4 reused=0' 'cold cache'
+COLD_ARTIFACT_BYTES=$(artifact_executed_bytes "$WORK/cold.report")
+case $COLD_ARTIFACT_BYTES in
+    ''|*[!0-9]*) fail "cold cache reported invalid artifact bytes: $COLD_ARTIFACT_BYTES" ;;
+esac
+[ "$COLD_ARTIFACT_BYTES" -gt 0 ] || fail 'cold cache reported zero artifact bytes'
+expect_artifact_summary "$WORK/cold.report" \
+    "executed-bytes=$COLD_ARTIFACT_BYTES reused-bytes=0" 'cold cache'
 grep -q '^cache cold$' "$WORK/cold.report" || fail 'cold run did not report a cold cache'
+grep -q '^schema kofun-incremental-report/v3$' "$WORK/cold.report" ||
+    fail 'cold run did not report the artifact-byte schema'
 test -f "$WORK/cache/manifest" || fail 'cold run committed no manifest'
 test -f "$WORK/cache/m-$CORE_MODULE.kif" || fail 'cold run published no core interface'
 
@@ -225,6 +260,11 @@ expect_set "$WORK/warm.report" "$ALL_REUSED" 'warm no-op'
 expect_summary "$WORK/warm.report" 'executed=0 reused=4' 'warm no-op'
 expect_target_set "$WORK/warm.report" "$ALL_TARGET_REUSED" 'warm no-op'
 expect_target_summary "$WORK/warm.report" 'rebuilt=0 reused=4' 'warm no-op'
+WARM_ARTIFACT_BYTES=$(artifact_reused_bytes "$WORK/warm.report")
+[ "$WARM_ARTIFACT_BYTES" = "$COLD_ARTIFACT_BYTES" ] ||
+    fail "warm reused bytes $WARM_ARTIFACT_BYTES differ from cold executed bytes $COLD_ARTIFACT_BYTES"
+expect_artifact_summary "$WORK/warm.report" \
+    "executed-bytes=0 reused-bytes=$COLD_ARTIFACT_BYTES" 'warm no-op'
 
 # A repeated no-op is byte-identical: the graph is a fixed point, and the
 # manifest is not rewritten with different content.
@@ -421,6 +461,19 @@ grep -q '^cache miss$' "$WORK/schema.report" ||
 expect_reason "$WORK/schema.report" demo/core.kofun \
     manifest-unknown-schema 'unknown schema version'
 
+# A manifest beyond its declared byte budget is never parsed or trusted.
+rm -rf "$WORK/cache-oversized-manifest"
+cp -R "$WORK/cache" "$WORK/cache-oversized-manifest"
+dd if=/dev/zero bs=1048576 count=5 2>/dev/null >> \
+    "$WORK/cache-oversized-manifest/manifest"
+run_graph "$TOOL" "$WORK/base.inventory" "$WORK/cache-oversized-manifest" \
+    "$WORK/oversized-manifest.report" >/dev/null ||
+    fail 'an oversized manifest was fatal'
+expect_set "$WORK/oversized-manifest.report" "$ALL_EXECUTED" \
+    'oversized manifest'
+expect_reason "$WORK/oversized-manifest.report" demo/core.kofun \
+    manifest-unreadable-or-oversized 'oversized manifest'
+
 # A truncated or garbled manifest is likewise a bounded miss.
 for mutation in 'module not-hex' 'unknown-record 1' 'schema'
 do
@@ -457,6 +510,20 @@ expect_reason "$WORK/blob.report" demo/core.kofun \
 expect_set "$WORK/blob.report" \
     'demo/app.kofun=reused demo/core.kofun=executed demo/service.kofun=reused demo/util.kofun=reused ' \
     'corrupt interface blob'
+
+# The KIF envelope byte budget is enforced before hashing or reuse.
+rm -rf "$WORK/cache-oversized-blob"
+cp -R "$WORK/cache" "$WORK/cache-oversized-blob"
+dd if=/dev/zero bs=1048576 count=17 2>/dev/null >> \
+    "$WORK/cache-oversized-blob/m-$CORE_MODULE.kif"
+run_graph "$TOOL" "$WORK/base.inventory" "$WORK/cache-oversized-blob" \
+    "$WORK/oversized-blob.report" >/dev/null ||
+    fail 'an oversized interface blob was fatal'
+expect_reason "$WORK/oversized-blob.report" demo/core.kofun \
+    cached-interface-unusable 'oversized interface blob'
+expect_set "$WORK/oversized-blob.report" \
+    'demo/app.kofun=reused demo/core.kofun=executed demo/service.kofun=reused demo/util.kofun=reused ' \
+    'oversized interface blob'
 
 # A removed interface blob is the same bounded miss.
 rm -rf "$WORK/cache-missing"
@@ -497,6 +564,38 @@ run_graph "$TOOL" "$WORK/base.inventory" "$WORK/cache-invalid" \
 expect_set "$WORK/after-failure.report" "$ALL_REUSED" 'cache after a failure'
 expect_target_set "$WORK/after-failure.report" "$ALL_TARGET_REUSED" \
     'preserved cache after a failure'
+
+# Deterministic cancellation occurs after real semantic work but before the
+# manifest/report transaction. The orphaned cold KIF has no graph reference,
+# so repair executes the complete package and only its successor may reuse it.
+rm -rf "$WORK/cache-cancelled"
+rm -f "$WORK/cancelled.report"
+if run_graph "$TOOL" "$WORK/base.inventory" "$WORK/cache-cancelled" \
+    "$WORK/cancelled.report" "$TARGET_PROFILE" 1 \
+    >"$WORK/cancelled.out" 2>&1
+then
+    fail 'a cancelled incremental computation returned success'
+fi
+grep -q 'incremental computation cancelled after 1 executed module' \
+    "$WORK/cancelled.out" || fail 'cancellation produced no bounded note'
+test ! -e "$WORK/cancelled.report" ||
+    fail 'a cancelled computation published a report'
+test ! -e "$WORK/cache-cancelled/manifest" ||
+    fail 'a cancelled computation published a reusable graph'
+find "$WORK/cache-cancelled" -name 'm-*.kif' -print | grep -q . ||
+    fail 'cancellation did not occur after semantic artifact work'
+run_graph "$TOOL" "$WORK/base.inventory" "$WORK/cache-cancelled" \
+    "$WORK/cancelled-repair.report" >/dev/null ||
+    fail 'cancelled computation repair failed'
+expect_set "$WORK/cancelled-repair.report" "$ALL_EXECUTED" \
+    'cancelled computation repair'
+expect_summary "$WORK/cancelled-repair.report" 'executed=4 reused=0' \
+    'cancelled computation repair'
+run_graph "$TOOL" "$WORK/base.inventory" "$WORK/cache-cancelled" \
+    "$WORK/cancelled-warm.report" >/dev/null ||
+    fail 'cancelled computation repaired warm run failed'
+expect_set "$WORK/cancelled-warm.report" "$ALL_REUSED" \
+    'cancelled computation repaired warm run'
 
 # Row 9: a cold rejected compile publishes no reusable graph. Repairing the
 # source therefore executes every semantic and target node once; only the next
@@ -619,7 +718,8 @@ printf '%s\n' \
     'PASS: public digest changes invalidate consumers, transitively when they change too' \
     'PASS: selected import and re-export removals invalidate exactly their edge consumers' \
     'PASS: the external public boundary is reused on internal edits and rejected on public edits' \
-    'PASS: unknown schema, corrupt manifest, and corrupt interface blobs are bounded cache misses' \
+    'PASS: unknown schema, corrupt, and oversized cache artifacts are bounded misses' \
     'PASS: a target profile change reuses semantic nodes and rebuilds target artifacts' \
-    'PASS: failures publish no success; repair executes cold and reuses only after success' \
+    'PASS: failures and cancellation publish no reusable success; repair executes cold' \
+    'PASS: cold executed bytes equal warm reused bytes with exact work counts' \
     'PASS: path-remapped clean copies preserve semantic graph IDs and target decisions'
