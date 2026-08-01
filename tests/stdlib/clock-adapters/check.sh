@@ -241,25 +241,29 @@ assert_eq 'the scripted failure is PlatformReadFailed(11) and reads no clock' \
     "$(field 36 38)" '-5 11 2 '
 assert_eq 'three registrations accepted, a foreign deadline refused' \
     "$(field 39 43)" '0 0 0 -1 9 '
+assert_eq 'the retained sleeper handle is StaleClockHandle(0)' \
+    "$(field 44 45)" '-6 0 '
 assert_eq 'nothing is due before the clock is advanced by hand' \
-    "$(field 44 44)" '-1 '
+    "$(field 46 46)" '-1 '
 assert_eq 'manual advance moves monotonic time and nothing else' \
-    "$(field 45 47)" '0 11 750000000 '
+    "$(field 47 49)" '0 11 750000000 '
 assert_eq 'equal deadlines wake in registration order, one per poll' \
-    "$(field 48 51)" '0 1 -1 2 '
+    "$(field 50 53)" '0 1 -1 2 '
 assert_eq 'cancellation is accepted and the waiter stays cancelled' \
-    "$(field 52 53)" '0 3 '
+    "$(field 54 55)" '0 3 '
+assert_eq 'the handle that cancelled is spent, and refusing it changes nothing' \
+    "$(field 56 58)" '-6 7 3 '
 assert_eq 'advancing past a cancelled deadline wakes nobody' \
-    "$(field 54 56)" '13 -1 2 '
+    "$(field 59 61)" '13 -1 2 '
 assert_eq 'WaiterCancelled carries the waiter it cancelled' \
-    "$(field 57 58)" '-4 2 '
+    "$(field 62 63)" '-4 2 '
 assert_eq 'cancelling an already woken waiter is refused, not repeated' \
-    "$(field 59 60)" '-7 0 '
+    "$(field 64 65)" '-7 0 '
 assert_eq 'every reading in the run came from the fake clock' \
-    "$(field 61 61)" '2 '
+    "$(field 66 66)" '2 '
 
 lines=$(wc -l <"$expected" | tr -d ' ')
-assert_num 'recorded decisions cover the whole golden' "$lines" -eq 61
+assert_num 'recorded decisions cover the whole golden' "$lines" -eq 66
 
 # --------------------------------------------------------- mixing is a bug
 #

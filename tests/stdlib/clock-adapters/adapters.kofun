@@ -754,12 +754,23 @@ fn fake_clock_advance(
 
 # ---------------------------------------------------------- scripted waiter
 
+# The right to block is not the right to read time, so the sleeper is its own
+# capability with its own affine token. It is checked exactly like the clock
+# handle: only the live generation is accepted, and every accepted transition
+# leaves the next one.
+type SleeperHandle = {
+    domain: Int,
+    serial: Int,
+    generation: Int,
+}
+
 # Three slots, because the scripted scenario needs exactly three: two equal
 # deadlines to fix the wake order and one to cancel. Slot index is registration
 # order, and that is the stable order equal deadlines wake in.
 type WaiterTable = {
     domain: Int,
     serial: Int,
+    live_generation: Int,
     w0_state: Int,
     w0_seconds: Int,
     w0_nanoseconds: Int,
@@ -778,6 +789,8 @@ type WaiterStep = {
     detail: Int,
     domain: Int,
     serial: Int,
+    live_generation: Int,
+    handle_generation: Int,
     w0_state: Int,
     w0_seconds: Int,
     w0_nanoseconds: Int,
@@ -795,6 +808,7 @@ fn waiter_table(serial: Int) -> WaiterTable {
     let table: WaiterTable = WaiterTable(
         domain: domain_monotonic(),
         serial: serial,
+        live_generation: 0,
         w0_state: waiter_empty(),
         w0_seconds: 0,
         w0_nanoseconds: 0,
@@ -810,10 +824,43 @@ fn waiter_table(serial: Int) -> WaiterTable {
     return table
 }
 
+# Mints the single live sleeper handle for a table.
+fn waiter_sleeper(table: WaiterTable) -> SleeperHandle {
+    let handle: SleeperHandle = SleeperHandle(
+        domain: table.domain,
+        serial: table.serial,
+        generation: table.live_generation
+    )
+    return handle
+}
+
+fn step_sleeper(step: WaiterStep) -> SleeperHandle {
+    let handle: SleeperHandle = SleeperHandle(
+        domain: step.domain,
+        serial: step.serial,
+        generation: step.handle_generation
+    )
+    return handle
+}
+
+fn sleeper_is_live(table: WaiterTable, handle: SleeperHandle) -> Int {
+    if handle.domain != table.domain {
+        return 0
+    }
+    if handle.serial != table.serial {
+        return 0
+    }
+    if handle.generation != table.live_generation {
+        return 0
+    }
+    return 1
+}
+
 fn waiter_step(
     table: WaiterTable,
     code: Int,
     detail: Int,
+    live_generation: Int,
     w0_state: Int,
     w0_seconds: Int,
     w0_nanoseconds: Int,
@@ -831,6 +878,8 @@ fn waiter_step(
         detail: detail,
         domain: table.domain,
         serial: table.serial,
+        live_generation: live_generation,
+        handle_generation: live_generation,
         w0_state: w0_state,
         w0_seconds: w0_seconds,
         w0_nanoseconds: w0_nanoseconds,
@@ -846,11 +895,14 @@ fn waiter_step(
     return step
 }
 
+# A rejected operation consumes nothing: the table, the waiters, and the live
+# generation all stay where the last accepted transition left them.
 fn waiter_unchanged(table: WaiterTable, code: Int, detail: Int) -> WaiterStep {
     return waiter_step(
         table,
         code,
         detail,
+        table.live_generation,
         table.w0_state,
         table.w0_seconds,
         table.w0_nanoseconds,
@@ -869,6 +921,7 @@ fn step_table(step: WaiterStep) -> WaiterTable {
     let table: WaiterTable = WaiterTable(
         domain: step.domain,
         serial: step.serial,
+        live_generation: step.live_generation,
         w0_state: step.w0_state,
         w0_seconds: step.w0_seconds,
         w0_nanoseconds: step.w0_nanoseconds,
@@ -921,9 +974,17 @@ fn table_identity(table: WaiterTable) -> ClockIdentity {
 # from another clock is the same typed rejection as comparing across clocks.
 fn waiter_register(
     table: WaiterTable,
+    handle: SleeperHandle,
     slot: Int,
     deadline: MonotonicInstant
 ) -> WaiterStep {
+    if sleeper_is_live(table, handle) == 0 {
+        return waiter_unchanged(
+            table,
+            code_stale_handle(),
+            handle.generation
+        )
+    }
     let table_id: ClockIdentity = table_identity(table)
     let deadline_id: ClockIdentity = monotonic_identity(deadline)
     if identity_same(table_id, deadline_id) == 0 {
@@ -965,6 +1026,7 @@ fn waiter_register(
         table,
         code_ok(),
         0,
+        table.live_generation + 1,
         s0,
         d0,
         n0,
@@ -980,8 +1042,20 @@ fn waiter_register(
 }
 
 # Cancellation is explicit and only applies to a pending waiter. A cancelled
-# waiter never wakes, and asking about it later still says it was cancelled.
-fn waiter_cancel(table: WaiterTable, slot: Int) -> WaiterStep {
+# waiter never wakes, asking about it later still says it was cancelled, and
+# the sleeper handle that cancelled it is spent.
+fn waiter_cancel(
+    table: WaiterTable,
+    handle: SleeperHandle,
+    slot: Int
+) -> WaiterStep {
+    if sleeper_is_live(table, handle) == 0 {
+        return waiter_unchanged(
+            table,
+            code_stale_handle(),
+            handle.generation
+        )
+    }
     if waiter_state(table, slot) != waiter_pending() {
         return waiter_unchanged(table, code_waiter_unavailable(), slot)
     }
@@ -1001,6 +1075,7 @@ fn waiter_cancel(table: WaiterTable, slot: Int) -> WaiterStep {
         table,
         code_ok(),
         0,
+        table.live_generation + 1,
         s0,
         table.w0_seconds,
         table.w0_nanoseconds,
@@ -1054,6 +1129,7 @@ fn waiter_wake(table: WaiterTable, slot: Int) -> WaiterStep {
         table,
         code_ok(),
         0,
+        table.live_generation + 1,
         s0,
         table.w0_seconds,
         table.w0_nanoseconds,
@@ -1072,7 +1148,18 @@ fn waiter_wake(table: WaiterTable, slot: Int) -> WaiterStep {
 # order, so two waiters with the same deadline wake in the order they were
 # registered — the stable order this fixture states and the gate checks.
 # `now` is supplied by the caller; the waiter never reads a clock itself.
-fn waiter_poll(table: WaiterTable, now: MonotonicInstant) -> WaiterStep {
+fn waiter_poll(
+    table: WaiterTable,
+    handle: SleeperHandle,
+    now: MonotonicInstant
+) -> WaiterStep {
+    if sleeper_is_live(table, handle) == 0 {
+        return waiter_unchanged(
+            table,
+            code_stale_handle(),
+            handle.generation
+        )
+    }
     let table_id: ClockIdentity = table_identity(table)
     let now_id: ClockIdentity = monotonic_identity(now)
     if identity_same(table_id, now_id) == 0 {
@@ -1105,7 +1192,30 @@ fn waiter_poll(table: WaiterTable, now: MonotonicInstant) -> WaiterStep {
     ) == 1 {
         return waiter_wake(table, 2)
     }
-    return waiter_unchanged(table, code_ok(), 0)
+    return waiter_idle(table)
+}
+
+# A poll that found nothing due is still an accepted transition: it consumed
+# the handle it was given, so the next one is handed back even though no
+# waiter moved.
+fn waiter_idle(table: WaiterTable) -> WaiterStep {
+    return waiter_step(
+        table,
+        code_ok(),
+        0,
+        table.live_generation + 1,
+        table.w0_state,
+        table.w0_seconds,
+        table.w0_nanoseconds,
+        table.w1_state,
+        table.w1_seconds,
+        table.w1_nanoseconds,
+        table.w2_state,
+        table.w2_seconds,
+        table.w2_nanoseconds,
+        table.woken,
+        no_waiter()
+    )
 }
 
 # ------------------------------------------------------- scripted scenario
@@ -1219,24 +1329,41 @@ fn main() -> Int {
     let far_deadline: InstantResult = monotonic_add(base, three_seconds)
     let far: MonotonicInstant = instant_result_value(far_deadline)
 
+    # the sleeper is its own capability: registering, cancelling, and polling
+    # each consume one sleeper handle and hand back the next
     let table0: WaiterTable = waiter_table(7)
-    let register0: WaiterStep = waiter_register(table0, 0, near)
+    let sleep0: SleeperHandle = waiter_sleeper(table0)
+    let register0: WaiterStep = waiter_register(table0, sleep0, 0, near)
     let table1: WaiterTable = step_table(register0)
-    let register1: WaiterStep = waiter_register(table1, 1, near)
+    let sleep1: SleeperHandle = step_sleeper(register0)
+    let register1: WaiterStep = waiter_register(table1, sleep1, 1, near)
     let table2: WaiterTable = step_table(register1)
-    let register2: WaiterStep = waiter_register(table2, 2, far)
+    let sleep2: SleeperHandle = step_sleeper(register1)
+    let register2: WaiterStep = waiter_register(table2, sleep2, 2, far)
     let table3: WaiterTable = step_table(register2)
+    let sleep3: SleeperHandle = step_sleeper(register2)
     print(register0.code)
     print(register1.code)
     print(register2.code)
 
     # a deadline minted by another clock is refused
     let foreign_deadline: MonotonicInstant = monotonic_instant(9, 11, 750000000)
-    let refused: WaiterStep = waiter_register(table3, 0, foreign_deadline)
+    let refused: WaiterStep = waiter_register(
+        table3,
+        sleep3,
+        0,
+        foreign_deadline
+    )
     report_error(refused.code, refused.detail)
 
+    # the retained copy of the first sleeper handle is refused too
+    let replayed_sleep: WaiterStep = waiter_register(table3, sleep0, 0, near)
+    report_error(replayed_sleep.code, replayed_sleep.detail)
+
     # nothing is due before the clock is advanced
-    let idle: WaiterStep = waiter_poll(table3, base)
+    let idle: WaiterStep = waiter_poll(table3, sleep3, base)
+    let table4: WaiterTable = step_table(idle)
+    let sleep4: SleeperHandle = step_sleeper(idle)
     print(idle.last_woken)
 
     # advance by hand; no wall clock is consulted
@@ -1249,22 +1376,32 @@ fn main() -> Int {
     print(now1.nanoseconds)
 
     # equal deadlines wake in registration order, one per poll
-    let wake0: WaiterStep = waiter_poll(table3, now1)
-    let table4: WaiterTable = step_table(wake0)
+    let wake0: WaiterStep = waiter_poll(table4, sleep4, now1)
+    let table5: WaiterTable = step_table(wake0)
+    let sleep5: SleeperHandle = step_sleeper(wake0)
     print(wake0.last_woken)
-    let wake1: WaiterStep = waiter_poll(table4, now1)
-    let table5: WaiterTable = step_table(wake1)
+    let wake1: WaiterStep = waiter_poll(table5, sleep5, now1)
+    let table6: WaiterTable = step_table(wake1)
+    let sleep6: SleeperHandle = step_sleeper(wake1)
     print(wake1.last_woken)
-    let wake2: WaiterStep = waiter_poll(table5, now1)
-    let table6: WaiterTable = step_table(wake2)
+    let wake2: WaiterStep = waiter_poll(table6, sleep6, now1)
+    let table7: WaiterTable = step_table(wake2)
+    let sleep7: SleeperHandle = step_sleeper(wake2)
     print(wake2.last_woken)
-    print(table6.woken)
+    print(table7.woken)
 
     # cancel the remaining waiter, then advance past its deadline
-    let cancelled: WaiterStep = waiter_cancel(table6, 2)
-    let table7: WaiterTable = step_table(cancelled)
+    let cancelled: WaiterStep = waiter_cancel(table7, sleep7, 2)
+    let table8: WaiterTable = step_table(cancelled)
+    let sleep8: SleeperHandle = step_sleeper(cancelled)
     print(cancelled.code)
-    print(waiter_state(table7, 2))
+    print(waiter_state(table8, 2))
+
+    # the handle that cancelled is spent: reusing it is refused, and refusing
+    # it leaves the cancellation exactly as it was
+    let after_spent: WaiterStep = waiter_poll(table8, sleep7, now1)
+    report_error(after_spent.code, after_spent.detail)
+    print(waiter_state(step_table(after_spent), 2))
 
     let two_seconds: Duration = duration(2, 0)
     let advanced2: ClockStep = fake_clock_advance(clock5, handle4, two_seconds)
@@ -1272,17 +1409,18 @@ fn main() -> Int {
     let now2: MonotonicInstant = step_monotonic(advanced2)
     print(now2.seconds)
 
-    let after_cancel: WaiterStep = waiter_poll(table7, now2)
-    let table8: WaiterTable = step_table(after_cancel)
+    let after_cancel: WaiterStep = waiter_poll(table8, sleep8, now2)
+    let table9: WaiterTable = step_table(after_cancel)
+    let sleep9: SleeperHandle = step_sleeper(after_cancel)
     print(after_cancel.last_woken)
-    print(table8.woken)
+    print(table9.woken)
 
     # the cancelled waiter answers with its own typed error, not silence
-    let awaited: WaiterStep = waiter_await(table8, 2)
+    let awaited: WaiterStep = waiter_await(table9, 2)
     report_error(awaited.code, awaited.detail)
 
     # cancelling a waiter that already woke is refused, not silently repeated
-    let recancel: WaiterStep = waiter_cancel(table8, 0)
+    let recancel: WaiterStep = waiter_cancel(table9, sleep9, 0)
     report_error(recancel.code, recancel.detail)
 
     # every reading in this run came from the fake clock
