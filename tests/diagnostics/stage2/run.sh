@@ -4,14 +4,12 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 SUITE="$ROOT/tests/diagnostics/stage2"
 WORK=${KOFUN_DIAGNOSTIC_WORK:-"$ROOT/build/diagnostics-stage2"}
-CC=${CC:-cc}
+. "$ROOT/bootstrap/stage2/build.sh"
 
 rm -rf "$WORK"
 mkdir -p "$WORK"
 
-"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
-    "$ROOT/bootstrap/stage2/compiler.c" \
-    -o "$WORK/kofun-stage2"
+kofun_stage2_build "$ROOT" "$WORK/kofun-stage2"
 
 passed=0
 span_count=0

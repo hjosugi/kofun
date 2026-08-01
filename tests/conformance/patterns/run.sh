@@ -3,23 +3,17 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 CASES="$ROOT/tests/conformance/patterns"
-CC=${CC:-cc}
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/kofun-patterns.XXXXXX")
 trap 'rm -rf "$WORK"' 0 1 2 15
+. "$ROOT/bootstrap/stage2/build.sh"
 
 fail() {
     printf '%s\n' "patterns: $*" >&2
     exit 1
 }
 
-if test -n "${KOFUN_STAGE2_COMPILER:-}"; then
-    STAGE2=$KOFUN_STAGE2_COMPILER
-else
-    command -v "$CC" >/dev/null 2>&1 || fail 'a C11 compiler is required'
-    STAGE2="$WORK/kofun-stage2"
-    "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
-        "$ROOT/bootstrap/stage2/compiler.c" -o "$STAGE2"
-fi
+STAGE2="$WORK/kofun-stage2"
+kofun_stage2_build "$ROOT" "$STAGE2"
 
 for implementation in \
     "$ROOT/bootstrap/stage2/compiler.c" \

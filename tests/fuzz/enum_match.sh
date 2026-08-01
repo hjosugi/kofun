@@ -6,6 +6,7 @@ WORK=${KOFUN_ENUM_MATCH_FUZZ_WORK:-"$ROOT/build/enum-match-fuzz"}
 CASES=${KOFUN_ENUM_MATCH_FUZZ_CASES:-32}
 CC=${CC:-cc}
 . "$ROOT/tests/fuzz/semantic_protocol.sh"
+. "$ROOT/bootstrap/stage2/build.sh"
 
 case $CASES in
     ''|*[!0-9]*|0)
@@ -16,9 +17,7 @@ esac
 
 rm -rf "$WORK"
 mkdir -p "$WORK"
-"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
-    "$ROOT/bootstrap/stage2/compiler.c" \
-    -o "$WORK/kofun-stage2"
+kofun_stage2_build "$ROOT" "$WORK/kofun-stage2"
 "$CC" -std=c11 -O1 -g -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     "$ROOT/bootstrap/stage2/compiler.c" \

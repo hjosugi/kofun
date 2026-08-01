@@ -5,6 +5,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 CASES="$ROOT/tests/conformance/adt"
 CC=${CC:-cc}
 WORK=${KOFUN_ADT_FRONTEND_WORK:-"$ROOT/build/adt-frontend"}
+. "$ROOT/bootstrap/stage2/build.sh"
 
 fail() {
     printf '%s\n' "FAIL: $*" >&2
@@ -104,9 +105,7 @@ test -z "$(find "$WORK" -type f \
     \( -name '*.generated.c' -o -name '*.o' -o -name '*.native' \) -print)" ||
     fail 'ADT frontend emitted a backend/runtime artifact'
 
-"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
-    "$ROOT/bootstrap/stage2/compiler.c" \
-    -o "$WORK/kofun-stage2"
+kofun_stage2_build "$ROOT" "$WORK/kofun-stage2"
 "$WORK/kofun-stage2" \
     "$CASES/enum_payload_functions.kofun" \
     "$WORK/enum_payload_functions.c" \

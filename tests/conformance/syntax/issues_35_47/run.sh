@@ -9,6 +9,7 @@ MATCH_SPEC="$ROOT/spec/bool-match-exhaustiveness.md"
 ENUM_MATCH_SPEC="$ROOT/spec/enum-match-exhaustiveness.md"
 NAMING_SPEC="$ROOT/docs/NAMING.md"
 CC=${CC:-cc}
+. "$ROOT/bootstrap/stage2/build.sh"
 
 command -v "$CC" >/dev/null 2>&1 || {
     printf '%s\n' "syntax issues #35-#47: a C11 compiler is required" >&2
@@ -100,8 +101,7 @@ test "$unicode_stage1_output" = 42 ||
     fail "Stage 1 Japanese/Hangul identifiers did not print 42"
 printf '%s\n' "PASS executable: Unicode identifiers in Stage 1"
 
-"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
-    "$ROOT/bootstrap/stage2/compiler.c" -o "$WORK/kofun-stage2"
+kofun_stage2_build "$ROOT" "$WORK/kofun-stage2"
 
 "$WORK/kofun-stage2" \
     "$CASES/stage2_mutable_surface.kofun" \

@@ -3,8 +3,8 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 WORK=${KOFUN_GRAMMAR_FUZZ_WORK:-"$ROOT/build/grammar-fuzz"}
-CC=${CC:-cc}
 CASES=${KOFUN_GRAMMAR_FUZZ_CASES:-128}
+. "$ROOT/bootstrap/stage2/build.sh"
 
 command -v timeout >/dev/null 2>&1 || {
     printf '%s\n' "grammar fuzz: timeout is required" >&2
@@ -19,9 +19,7 @@ esac
 
 rm -rf "$WORK"
 mkdir -p "$WORK"
-"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
-    "$ROOT/bootstrap/stage2/compiler.c" \
-    -o "$WORK/kofun-stage2"
+kofun_stage2_build "$ROOT" "$WORK/kofun-stage2"
 
 seed=12648430
 next_random() {
