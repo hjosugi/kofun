@@ -201,10 +201,85 @@ test -z "$(find "$WORK" -type f \
     \( -name '*.generated.c' -o -name '*.o' -o -name '*.native' \) -print)" ||
     fail 'record frontend emitted a backend/runtime artifact'
 
+# ------------------------------------------------------- Stage 2 C11 slice
+# The accepted bounded backend slice uses only nominal Int/Bool fields.  It
+# must execute construction in either written label order, pass and return the
+# nominal value, and read both field types.
+
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$ROOT/bootstrap/stage2/compiler.c" \
+    -o "$WORK/kofun-stage2"
+"$WORK/kofun-stage2" \
+    "$CASES/record_functions.kofun" \
+    "$WORK/record_functions.c" \
+    "$WORK/record_functions.stage2.ir" \
+    "$WORK/record_functions.tokens" >/dev/null
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+    "$WORK/record_functions.c" \
+    -o "$WORK/record_functions"
+"$WORK/record_functions" \
+    >"$WORK/record_functions.stdout" \
+    2>"$WORK/record_functions.stderr"
+cmp "$CASES/record_functions.stdout" "$WORK/record_functions.stdout" ||
+    fail 'Stage 2 nominal record output differs'
+test ! -s "$WORK/record_functions.stderr" ||
+    fail 'Stage 2 nominal record program wrote unexpected stderr'
+grep -F \
+    '_Static_assert(offsetof(KofunRecord_Packet, f_count) == 0,' \
+    "$WORK/record_functions.c" >/dev/null ||
+    fail 'Stage 2 record count offset disagrees with AggregateLayout'
+grep -F \
+    '_Static_assert(offsetof(KofunRecord_Packet, f_enabled) == 8,' \
+    "$WORK/record_functions.c" >/dev/null ||
+    fail 'Stage 2 record Bool offset disagrees with AggregateLayout'
+grep -F \
+    '_Static_assert(sizeof(KofunRecord_Packet) == 16,' \
+    "$WORK/record_functions.c" >/dev/null ||
+    fail 'Stage 2 record size disagrees with AggregateLayout'
+enabled_line=$(grep -n 'k_b4.f_enabled = true;' \
+    "$WORK/record_functions.c" | cut -d: -f1)
+count_line=$(grep -n 'k_b4.f_count = INT64_C(41);' \
+    "$WORK/record_functions.c" | cut -d: -f1)
+test "$enabled_line" -lt "$count_line" ||
+    fail 'Stage 2 reordered labelled record field evaluation'
+grep '^static int64_t kofun_fn_score(KofunRecord_Packet ' \
+    "$WORK/record_functions.c" >/dev/null ||
+    fail 'Stage 2 did not lower the nominal record parameter'
+grep '^static KofunRecord_Packet kofun_fn_make_packet' \
+    "$WORK/record_functions.c" >/dev/null ||
+    fail 'Stage 2 did not lower the nominal record result'
+
+expect_stage2_failure() {
+    stem=$1
+    set +e
+    "$WORK/kofun-stage2" \
+        "$CASES/$stem.kofun" \
+        "$WORK/$stem.c" \
+        "$WORK/$stem.stage2.ir" \
+        "$WORK/$stem.tokens" \
+        >"$WORK/$stem.stage2.actual" \
+        2>"$WORK/$stem.stage2.internal.stderr"
+    stage2_status=$?
+    set -e
+    test "$stage2_status" -eq 1 ||
+        fail "$stem exited $stage2_status instead of 1"
+    cmp "$CASES/$stem.diagnostic" "$WORK/$stem.stage2.actual" ||
+        fail "$stem Stage 2 diagnostic differs"
+    test ! -s "$WORK/$stem.stage2.internal.stderr" ||
+        fail "$stem wrote internal Stage 2 stderr"
+    test ! -e "$WORK/$stem.c" ||
+        fail "$stem emitted rejected C"
+}
+
+expect_stage2_failure stage2_unsupported_field
+expect_stage2_failure stage2_direct_construction
+expect_stage2_failure stage2_labelled_call
+
 printf '%s\n' \
     'PASS: Token-shaped records construct, pass, return, and read' \
     'PASS: written field order is free and storage follows declaration order' \
     'PASS: nominal record and field identities ignore declaration order' \
     'PASS: layout is untagged and identical on x86-64 and AArch64' \
     'PASS: blocks, conditions, loops, and lists stay separable from records' \
-    'PASS: duplicate, missing, unknown, wrong-type, mutation, and move diagnostics are exact'
+    'PASS: duplicate, missing, unknown, wrong-type, mutation, and move diagnostics are exact' \
+    'PASS: Stage 2 executes nominal Int/Bool records in AggregateLayout order'

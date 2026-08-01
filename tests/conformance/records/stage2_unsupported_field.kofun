@@ -1,0 +1,7 @@
+type Unsupported = {
+    text: Text,
+}
+
+fn main() -> Int {
+    return 0
+}

@@ -23,7 +23,8 @@ enum {
     PRODUCER_MAX_DIAGNOSTICS = 128,
     PRODUCER_MAX_FUNCTIONS = 64,
     PRODUCER_MAX_CONSTRUCTORS = 128,
-    PRODUCER_MAX_BINDINGS = 256
+    PRODUCER_MAX_BINDINGS = 256,
+    PRODUCER_IDENTIFIER_CAPACITY = 257
 };
 
 enum {
@@ -41,8 +42,8 @@ typedef struct {
     KofunSemanticNode value;
     KofunSemanticId dependencies[KOFUN_SEMANTIC_MAX_RELATIONS];
     KofunSemanticId diagnostic;
-    char name[64];
-    char type[64];
+    char name[PRODUCER_IDENTIFIER_CAPACITY];
+    char type[PRODUCER_IDENTIFIER_CAPACITY];
     bool is_declaration;
 } ProducerNode;
 
@@ -78,8 +79,8 @@ typedef struct {
 } ProducerDiagnostic;
 
 typedef struct {
-    char name[64];
-    char return_type[64];
+    char name[PRODUCER_IDENTIFIER_CAPACITY];
+    char return_type[PRODUCER_IDENTIFIER_CAPACITY];
     KofunSemanticId node;
     KofunSemanticId symbol;
     int64_t start;
@@ -89,16 +90,16 @@ typedef struct {
 } ProducerFunction;
 
 typedef struct {
-    char name[64];
-    char result_type[64];
+    char name[PRODUCER_IDENTIFIER_CAPACITY];
+    char result_type[PRODUCER_IDENTIFIER_CAPACITY];
     KofunSemanticId node;
     KofunSemanticId symbol;
 } ProducerConstructor;
 
 typedef struct {
     char hir_id[24];
-    char name[64];
-    char type[64];
+    char name[PRODUCER_IDENTIFIER_CAPACITY];
+    char type[PRODUCER_IDENTIFIER_CAPACITY];
     char ownership[32];
     KofunSemanticId node;
     KofunSemanticId binding;
@@ -397,12 +398,18 @@ static bool producer_source_within_declaration_profile(
     int64_t length = (int64_t)strlen(source);
     int64_t cursor = skip_trivia(source, 0);
     size_t functions = 0u;
+    size_t bindings = 0u;
     while (cursor < length) {
         int64_t end = token_end(source, cursor);
         if (end <= cursor) return true;
         if (token_equal(source, cursor, "fn")) {
             functions += 1u;
             if (functions > PRODUCER_MAX_FUNCTIONS) return false;
+        }
+        if (token_equal(source, cursor, "let") ||
+            token_equal(source, cursor, "for")) {
+            bindings += 1u;
+            if (bindings > PRODUCER_MAX_BINDINGS) return false;
         }
         cursor = skip_trivia(source, end);
     }
@@ -828,11 +835,13 @@ static ProducerBinding *producer_add_hir_binding(
     return binding;
 }
 
-static bool producer_collect_types(
+static bool producer_collect_type_records(
     Producer *producer,
-    const char *program_ir
+    const char *program_ir,
+    const char *record_kind,
+    const char *declaration_kind
 ) {
-    int64_t line = hir_record_start(program_ir, "type", 0);
+    int64_t line = hir_record_start(program_ir, record_kind, 0);
     int64_t source_length = (int64_t)producer->input->source_length;
     while (line >= 0) {
         char *name = hir_field(program_ir, line, 1);
@@ -843,7 +852,7 @@ static bool producer_collect_types(
         ProducerNode *type_node;
         KofunSemanticId type_symbol;
         bool valid = name[0] != '\0' &&
-            strlen(name) < 64u &&
+            strlen(name) < PRODUCER_IDENTIFIER_CAPACITY &&
             start >= 0 && end > start && end <= source_length;
         if (!valid) {
             free(name);
@@ -863,7 +872,7 @@ static bool producer_collect_types(
             !producer_symbol_id(
                 producer,
                 &producer->type_namespace_id,
-                "adt",
+                declaration_kind,
                 name,
                 &type_symbol) ||
             !producer_add_stable_identity(
@@ -879,9 +888,23 @@ static bool producer_collect_types(
         free(name);
         free(start_text);
         free(end_text);
-        line = hir_record_start(program_ir, "type", line + 1);
+        line = hir_record_start(program_ir, record_kind, line + 1);
     }
+    return true;
+}
 
+static bool producer_collect_types(
+    Producer *producer,
+    const char *program_ir
+) {
+    int64_t line;
+    int64_t source_length = (int64_t)producer->input->source_length;
+    if (!producer_collect_type_records(
+            producer, program_ir, "type", "adt") ||
+        !producer_collect_type_records(
+            producer, program_ir, "record", "record")) {
+        return false;
+    }
     line = hir_record_start(program_ir, "constructor", 0);
     while (line >= 0) {
         char *name = hir_field(program_ir, line, 1);
@@ -894,7 +917,8 @@ static bool producer_collect_types(
         ProducerConstructor *constructor;
         KofunSemanticId symbol;
         bool valid = name[0] != '\0' && owner[0] != '\0' &&
-            strlen(name) < 64u && strlen(owner) < 64u &&
+            strlen(name) < PRODUCER_IDENTIFIER_CAPACITY &&
+            strlen(owner) < PRODUCER_IDENTIFIER_CAPACITY &&
             start >= 0 && end > start && end <= source_length &&
             producer->constructor_count < PRODUCER_MAX_CONSTRUCTORS;
         if (!valid) {
@@ -1051,7 +1075,8 @@ static bool producer_collect_functions(
             body_open < 0 &&
             (uint64_t)start >= producer->reference_limit;
         bool valid = name[0] != '\0' && return_type[0] != '\0' &&
-            strlen(name) < 64u && strlen(return_type) < 64u &&
+            strlen(name) < PRODUCER_IDENTIFIER_CAPACITY &&
+            strlen(return_type) < PRODUCER_IDENTIFIER_CAPACITY &&
             start >= 0 && end > start && end <= source_length &&
             (producer->scope_hir == NULL ||
              body_available || scope_suffix_unavailable) &&
@@ -1134,7 +1159,7 @@ static bool producer_add_failed_reference_prefix(
     Producer *producer,
     const KofunStage2SemanticResult *result
 ) {
-    char name[64];
+    char name[PRODUCER_IDENTIFIER_CAPACITY];
     ProducerNode *call;
     if (strcmp(result->diagnostic_code, "E2S16") != 0 ||
         !result->diagnostic_has_byte_span ||
@@ -1450,8 +1475,8 @@ static bool producer_collect_scopes_and_bindings(Producer *producer) {
             start >= 0 && end >= start && end <= source_length &&
             function != NULL &&
             strlen(binding_id) < 24u &&
-            strlen(name) < 64u &&
-            strlen(type_name) < 64u &&
+            strlen(name) < PRODUCER_IDENTIFIER_CAPACITY &&
+            strlen(type_name) < PRODUCER_IDENTIFIER_CAPACITY &&
             strlen(ownership) < 32u;
         if (!valid ||
             producer_add_hir_binding(

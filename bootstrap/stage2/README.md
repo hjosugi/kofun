@@ -13,9 +13,10 @@ The frontend performs five concrete operations:
 
 1. lexical scanning that ignores comments and treats escaped strings as single
    tokens, producing a deterministic token-span tape;
-2. structural parsing of a compilation unit into textual function and
-   zero/one-`Int`-payload enum IR, including names, constructor tags, arities, byte
-   spans, and top-level function visibility metadata;
+2. structural parsing of a compilation unit into textual function,
+   zero/one-`Int`-payload enum, and bounded nominal `Int`/`Bool` record IR,
+   including names, constructor tags or declaration-order fields, arities,
+   byte spans, and top-level function visibility metadata;
 3. an identity source projection gated by successful lexing and parsing.
 4. statement and precedence-aware expression parsing for a deliberately small
    integer Core, followed by deterministic standalone C11 lowering.
@@ -48,6 +49,10 @@ one zero-argument `fn main()` plus zero or more `Int` Core functions and lowers:
   payload, explicitly typed immutable bindings, same-typed function
   arguments/results, and exhaustive statement-position enum `match` with
   ordered guards, payload bindings, `_`, and binding catch-alls;
+- top-level nominal records with one or more `Int`/`Bool` fields, labelled
+  construction evaluated left to right in written order, declaration-order
+  AggregateLayout C structs, typed field reads, and same-typed whole-record
+  function arguments/results;
 - `print(Int)` and `return Int`.
 
 The emitted C11 uses checked arithmetic helpers and preserves Kofun floor
@@ -68,6 +73,14 @@ cross same-typed function arguments and returns; they cannot enter Int
 expressions. Payload bindings are visible to guards and arm bodies, and a
 binding catch-all may be re-matched. Generic enums, wider/nested payloads, and
 value-producing enum matches remain outside this executable slice.
+Record values are untagged per-type structs rather than the enum
+tag-plus-payload representation. Generated `offsetof`/`sizeof` assertions pin
+their LP64 layout to AggregateLayout v1. Direct construction is lowered only
+into an immutable typed binding so separate assignments preserve source
+evaluation order; pass and return positions accept an existing binding or a
+same-typed function result. `Text`, `List`, ADT, nested-record, generic,
+mutable, partial-move, native, and stable-ABI record support remain outside
+this executable slice.
 Independently, the canonical frontend
 appends a versioned `kofun-pattern-tree/v1` syntax section for wildcard,
 Bool/null/Int literal, unresolved name, constructor, nested, or-pattern, and

@@ -60,7 +60,7 @@ manifest, so the rules are tested rather than trusted.
 - a claim id, or status text, that has drifted from the published table;
 - a duplicate claim id, unknown state, unknown area, or unknown target;
 - an evidence path that is missing, untracked, unnormalized, or a directory;
-- a gate or reproduction command naming a make target that does not exist;
+- a gate or reproduction command naming a task that does not exist;
 - an `implemented` or `checkpoint` claim with no boundary that fails outside it;
 - an `unsupported` claim without an explicit rejection or skip observation;
 - a `design` or `open` claim asserting a positive gate;

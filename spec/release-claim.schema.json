@@ -82,7 +82,7 @@
       "pattern": "^[A-Za-z0-9._][A-Za-z0-9._/-]*$"
     },
     "command": {
-      "description": "Deterministic command. The validator resolves `make <target>` against the Makefile and `sh <path>` against a tracked file.",
+      "description": "Deterministic command. The validator resolves `task <target>` against Taskfile.yml and `sh <path>` against a tracked file.",
       "type": "string",
       "minLength": 1,
       "maxLength": 512

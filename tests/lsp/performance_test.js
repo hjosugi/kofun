@@ -210,6 +210,10 @@ async function main() {
     }
   };
 
+  // Keep raw evidence even when a host-dependent budget assertion fails.
+  fs.mkdirSync(path.dirname(output), { recursive: true });
+  fs.writeFileSync(output, `${JSON.stringify(metrics, null, 2)}\n`);
+
   assert.ok(metrics.summary.diagnosticP95Ms <= 100,
     `diagnostic p95 ${metrics.summary.diagnosticP95Ms.toFixed(2)}ms exceeds 100ms`);
   assert.ok(metrics.summary.diagnosticMaxMs <= 250,
@@ -223,8 +227,6 @@ async function main() {
       `resident growth ${(metrics.summary.residentGrowthRatio * 100).toFixed(2)}% is not below 10%`);
   }
 
-  fs.mkdirSync(path.dirname(output), { recursive: true });
-  fs.writeFileSync(output, `${JSON.stringify(metrics, null, 2)}\n`);
   await client.stop(id);
   stopped = true;
   process.stdout.write(

@@ -2282,6 +2282,14 @@ static char *type_name(const char *source, int64_t start) {
     return token_copy(source, name);
 }
 
+static int64_t top_level_end(const char *source, int64_t start);
+static int64_t after_optional_module_header(
+    const char *source,
+    int64_t start
+);
+static char *owned_text(const char *text);
+static bool enum_name_covered(const char *covered, const char *name);
+
 static int64_t type_declaration_end(const char *source, int64_t start) {
     int64_t length = source_length(source);
     char *name_text = type_name(source, start);
@@ -2294,6 +2302,20 @@ static int64_t type_declaration_end(const char *source, int64_t start) {
     int64_t equals = skip_trivia(source, token_end(source, name));
     if (equals >= length || !token_equal(source, equals, "=")) return -1;
     int64_t pipe = skip_trivia(source, token_end(source, equals));
+    if (pipe < length && token_equal(source, pipe, "{")) {
+        int64_t close = balanced_end(source, pipe, "{", "}");
+        if (close < 0) return -1;
+        int64_t next = skip_trivia(source, close);
+        if (
+            next < length &&
+            !token_equal(source, next, "fn") &&
+            !token_equal(source, next, "type") &&
+            !visibility_prefix_candidate(source, next)
+        ) {
+            return -1;
+        }
+        return close;
+    }
     int64_t constructors = 0;
     int64_t last_end = -1;
     while (pipe < length && token_equal(source, pipe, "|")) {
@@ -2325,6 +2347,164 @@ static int64_t type_declaration_end(const char *source, int64_t start) {
         return -1;
     }
     return last_end;
+}
+
+static bool record_declaration_at(const char *source, int64_t start) {
+    if (!token_equal(source, start, "type")) return false;
+    int64_t name = skip_trivia(source, token_end(source, start));
+    int64_t equals = skip_trivia(source, token_end(source, name));
+    int64_t open = skip_trivia(source, token_end(source, equals));
+    return token_equal(source, equals, "=") &&
+           token_equal(source, open, "{");
+}
+
+static int64_t record_declaration_start(
+    const char *source,
+    const char *wanted
+) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = after_optional_module_header(source, 0);
+    while (cursor < length) {
+        if (
+            token_equal(source, cursor, "type") &&
+            record_declaration_at(source, cursor)
+        ) {
+            char *name = type_name(source, cursor);
+            bool found = strcmp(name, wanted) == 0;
+            free(name);
+            if (found) return cursor;
+        }
+        int64_t end = top_level_end(source, cursor);
+        if (end <= cursor) return -1;
+        cursor = skip_trivia(source, end);
+    }
+    return -1;
+}
+
+/*
+ * Validate and count one bounded record declaration.  `-2` means a field type
+ * outside the Stage 2 Int/Bool slice, `-3` malformed or duplicate fields, and
+ * `-4` the per-record 128-field ceiling.  AggregateLayout v1 remains the
+ * authority for the corresponding declaration-order C layout.
+ */
+static int64_t record_field_count(
+    const char *source,
+    const char *record_type
+) {
+    int64_t declaration = record_declaration_start(source, record_type);
+    if (declaration < 0) return -1;
+    int64_t name = skip_trivia(source, token_end(source, declaration));
+    int64_t equals = skip_trivia(source, token_end(source, name));
+    int64_t open = skip_trivia(source, token_end(source, equals));
+    int64_t close = balanced_end(source, open, "{", "}");
+    if (close < 0) return -3;
+    int64_t cursor = skip_trivia(source, token_end(source, open));
+    Buffer covered;
+    buffer_init(&covered);
+    buffer_append(&covered, "|");
+    int64_t count = 0;
+    while (cursor < close && !token_equal(source, cursor, "}")) {
+        if (strcmp(token_kind(source, cursor), "identifier") != 0) {
+            free(covered.data);
+            return -3;
+        }
+        char *field = token_copy(source, cursor);
+        if (enum_name_covered(covered.data, field)) {
+            free(field);
+            free(covered.data);
+            return -3;
+        }
+        buffer_append(&covered, field);
+        buffer_append(&covered, "|");
+        free(field);
+        int64_t colon = skip_trivia(source, token_end(source, cursor));
+        int64_t field_type = skip_trivia(source, token_end(source, colon));
+        if (
+            !token_equal(source, colon, ":") ||
+            strcmp(token_kind(source, field_type), "identifier") != 0
+        ) {
+            free(covered.data);
+            return -3;
+        }
+        if (
+            !token_equal(source, field_type, "Int") &&
+            !token_equal(source, field_type, "Bool")
+        ) {
+            free(covered.data);
+            return -2;
+        }
+        ++count;
+        if (count > 128) {
+            free(covered.data);
+            return -4;
+        }
+        int64_t separator = skip_trivia(
+            source,
+            token_end(source, field_type)
+        );
+        if (separator < close && token_equal(source, separator, ",")) {
+            cursor = skip_trivia(source, token_end(source, separator));
+        } else if (separator == close || token_equal(source, separator, "}")) {
+            cursor = separator;
+        } else {
+            free(covered.data);
+            return -3;
+        }
+    }
+    free(covered.data);
+    return count == 0 ? -3 : count;
+}
+
+static char *record_field_text(
+    const char *source,
+    const char *record_type,
+    int64_t wanted_index,
+    bool want_type
+) {
+    int64_t declaration = record_declaration_start(source, record_type);
+    if (declaration < 0) return owned_text("");
+    int64_t name = skip_trivia(source, token_end(source, declaration));
+    int64_t equals = skip_trivia(source, token_end(source, name));
+    int64_t open = skip_trivia(source, token_end(source, equals));
+    int64_t close = balanced_end(source, open, "{", "}");
+    int64_t cursor = skip_trivia(source, token_end(source, open));
+    int64_t index = 0;
+    while (cursor < close && !token_equal(source, cursor, "}")) {
+        int64_t colon = skip_trivia(source, token_end(source, cursor));
+        int64_t field_type = skip_trivia(source, token_end(source, colon));
+        if (index == wanted_index) {
+            return token_copy(source, want_type ? field_type : cursor);
+        }
+        int64_t separator = skip_trivia(
+            source,
+            token_end(source, field_type)
+        );
+        cursor = token_equal(source, separator, ",")
+            ? skip_trivia(source, token_end(source, separator))
+            : separator;
+        ++index;
+    }
+    return owned_text("");
+}
+
+static int64_t record_field_index(
+    const char *source,
+    const char *record_type,
+    const char *wanted
+) {
+    int64_t count = record_field_count(source, record_type);
+    for (int64_t index = 0; index < count; ++index) {
+        char *field = record_field_text(
+            source,
+            record_type,
+            index,
+            false
+        );
+        bool found = strcmp(field, wanted) == 0;
+        free(field);
+        if (found) return index;
+    }
+    return -1;
 }
 
 static int64_t top_level_end(const char *source, int64_t start) {
@@ -2375,7 +2555,9 @@ static int64_t enum_declaration_start(
     while (cursor < length) {
         if (token_equal(source, cursor, "type")) {
             char *name = type_name(source, cursor);
-            bool found = strcmp(name, wanted) == 0;
+            bool found =
+                strcmp(name, wanted) == 0 &&
+                !record_declaration_at(source, cursor);
             free(name);
             if (found) return cursor;
         }
@@ -2604,6 +2786,8 @@ static char *parse_program(const char *source) {
     int64_t cursor = skip_trivia(source, 0);
     int64_t functions = 0;
     int64_t types = 0;
+    int64_t records = 0;
+    int64_t record_fields = 0;
     while (cursor < length) {
         char *visibility_error = visibility_prefix_error(source, cursor);
         if (visibility_error[0] != '\0') {
@@ -2616,6 +2800,131 @@ static char *parse_program(const char *source) {
         if (token_equal(source, cursor, "type")) {
             char *name = type_name(source, cursor);
             int64_t end = type_declaration_end(source, cursor);
+            if (record_declaration_at(source, cursor)) {
+                int64_t fields = record_field_count(source, name);
+                Buffer error;
+                buffer_init(&error);
+                if (name[0] == '\0' || end < 0 || fields == -3) {
+                    buffer_format(
+                        &error,
+                        "error[E2S32]: malformed nominal record declaration "
+                        "at byte %" PRId64,
+                        cursor
+                    );
+                } else if (fields == -2) {
+                    buffer_format(
+                        &error,
+                        "error[E2S32]: record `%s` has a field type outside "
+                        "the Stage 2 Int/Bool slice at byte %" PRId64,
+                        name,
+                        cursor
+                    );
+                } else if (fields == -4) {
+                    buffer_format(
+                        &error,
+                        "error[E2S32]: nominal record field limit is 128 "
+                        "per record at byte %" PRId64,
+                        cursor
+                    );
+                } else if (reserved_type_name(name)) {
+                    buffer_format(
+                        &error,
+                        "error[E2S32]: nominal record cannot shadow built-in "
+                        "type `%s` at byte %" PRId64,
+                        name,
+                        cursor
+                    );
+                } else if (enum_name_covered(declared_types.data, name)) {
+                    buffer_format(
+                        &error,
+                        "error[E2S32]: duplicate nominal aggregate type `%s` "
+                        "at byte %" PRId64,
+                        name,
+                        cursor
+                    );
+                } else if (
+                    enum_name_covered(declared_constructors.data, name)
+                ) {
+                    buffer_format(
+                        &error,
+                        "error[E2S32]: nominal record type `%s` conflicts "
+                        "with an enum constructor at byte %" PRId64,
+                        name,
+                        cursor
+                    );
+                }
+                ++records;
+                record_fields += fields > 0 ? fields : 0;
+                if (error.length == 0 && records > 16) {
+                    buffer_format(
+                        &error,
+                        "error[E2S32]: nominal record limit is 16 types "
+                        "at byte %" PRId64,
+                        cursor
+                    );
+                }
+                if (error.length == 0 && record_fields > 128) {
+                    buffer_format(
+                        &error,
+                        "error[E2S32]: nominal record field limit is 128 "
+                        "per module at byte %" PRId64,
+                        cursor
+                    );
+                }
+                if (error.length > 0) {
+                    stage2_diagnostic_set(
+                        "E2S32",
+                        cursor,
+                        token_end(source, cursor),
+                        true,
+                        error.data
+                    );
+                    free(name);
+                    free(declared_types.data);
+                    free(declared_constructors.data);
+                    free(ir.data);
+                    return error.data;
+                }
+                free(error.data);
+                buffer_append(&declared_types, name);
+                buffer_append(&declared_types, "|");
+                buffer_format(
+                    &ir,
+                    "record|%s|%" PRId64 "|%" PRId64 "|%" PRId64 "\n",
+                    name,
+                    fields,
+                    cursor,
+                    end
+                );
+                for (int64_t index = 0; index < fields; ++index) {
+                    char *field = record_field_text(
+                        source,
+                        name,
+                        index,
+                        false
+                    );
+                    char *field_type = record_field_text(
+                        source,
+                        name,
+                        index,
+                        true
+                    );
+                    buffer_format(
+                        &ir,
+                        "record-field|%s|%s|%s|%" PRId64 "\n",
+                        name,
+                        field,
+                        field_type,
+                        index
+                    );
+                    free(field);
+                    free(field_type);
+                }
+                stage2_parse_prefix_observe(&ir);
+                free(name);
+                cursor = skip_trivia(source, end);
+                continue;
+            }
             if (end == -2) {
                 free(name);
                 free(declared_types.data);
@@ -3713,6 +4022,20 @@ static bool call_argument_position(const char *source, int64_t target) {
 static int64_t argument_end(const char *source, int64_t start) {
     int64_t lambda_end = lambda_parameters_end(source, -1, start);
     if (lambda_end >= 0) return lambda_end;
+    int64_t label = skip_trivia(source, start);
+    if (strcmp(token_kind(source, label), "identifier") == 0) {
+        int64_t colon = skip_trivia(source, token_end(source, label));
+        if (token_equal(source, colon, ":")) {
+            int64_t value = skip_trivia(source, token_end(source, colon));
+            if (
+                token_equal(source, value, "true") ||
+                token_equal(source, value, "false")
+            ) {
+                return token_end(source, value);
+            }
+            return expression_end(source, value);
+        }
+    }
     return expression_end(source, start);
 }
 
@@ -3799,29 +4122,52 @@ static char *argument_lambda_name(int64_t open) {
     return output.data;
 }
 
+static int64_t field_postfix_end(
+    const char *source,
+    int64_t primary
+) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t dot = skip_trivia(source, primary);
+    if (dot >= length || !token_equal(source, dot, ".")) return primary;
+    int64_t field = skip_trivia(source, token_end(source, dot));
+    if (
+        field >= length ||
+        strcmp(token_kind(source, field), "identifier") != 0
+    ) {
+        return -1;
+    }
+    return token_end(source, field);
+}
+
 static int64_t primary_end(const char *source, int64_t start) {
     int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, start);
     if (cursor >= length) return -1;
     const char *kind = token_kind(source, cursor);
     if (strcmp(kind, "integer") == 0) {
-        return token_end(source, cursor);
+        return field_postfix_end(source, token_end(source, cursor));
     }
     if (strcmp(kind, "identifier") == 0) {
         int64_t open = skip_trivia(source, token_end(source, cursor));
         if (open >= length || !token_equal(source, open, "(")) {
-            return token_end(source, cursor);
+            return field_postfix_end(source, token_end(source, cursor));
         }
         int64_t argument = skip_trivia(source, token_end(source, open));
         if (argument < length && token_equal(source, argument, ")")) {
-            return token_end(source, argument);
+            return field_postfix_end(
+                source,
+                token_end(source, argument)
+            );
         }
         while (argument < length) {
             int64_t bound = argument_end(source, argument);
             if (bound < 0) return -1;
             int64_t separator = skip_trivia(source, bound);
             if (separator < length && token_equal(source, separator, ")")) {
-                return token_end(source, separator);
+                return field_postfix_end(
+                    source,
+                    token_end(source, separator)
+                );
             }
             if (separator >= length || !token_equal(source, separator, ",")) {
                 return -1;
@@ -3836,7 +4182,7 @@ static int64_t primary_end(const char *source, int64_t start) {
         if (value_end < 0) return -1;
         int64_t close = skip_trivia(source, value_end);
         if (close >= length || !token_equal(source, close, ")")) return -1;
-        return token_end(source, close);
+        return field_postfix_end(source, token_end(source, close));
     }
     return -1;
 }
@@ -3934,11 +4280,104 @@ static char *c_identifier_name(const char *identifier) {
     return output.data;
 }
 
+static char *record_c_type_name(const char *record_type) {
+    char *name = c_identifier_name(record_type);
+    Buffer output;
+    buffer_init(&output);
+    buffer_format(&output, "KofunRecord_%s", name);
+    free(name);
+    return output.data;
+}
+
+static char *record_c_field_name(const char *field) {
+    char *name = c_identifier_name(field);
+    Buffer output;
+    buffer_init(&output);
+    buffer_format(&output, "f_%s", name);
+    free(name);
+    return output.data;
+}
+
+static char *record_field_type_named(
+    const char *source,
+    const char *record_type,
+    const char *field
+) {
+    int64_t index = record_field_index(source, record_type, field);
+    if (index < 0) return owned_text("");
+    return record_field_text(source, record_type, index, true);
+}
+
 static char *format_two(const char *name, const char *left, const char *right) {
     Buffer output;
     buffer_init(&output);
     buffer_format(&output, "%s(%s, %s)", name, left, right);
     return output.data;
+}
+
+static char *emit_record_value(
+    const char *source,
+    const char *hir,
+    int64_t start,
+    int64_t end,
+    const char *record_type
+) {
+    int64_t cursor = skip_trivia(source, start);
+    if (strcmp(token_kind(source, cursor), "identifier") != 0) {
+        return lower_error(
+            "E2S32",
+            "nominal record value must be a binding or function call",
+            cursor
+        );
+    }
+    char *name = token_copy(source, cursor);
+    int64_t open = skip_trivia(source, token_end(source, cursor));
+    if (open >= end || !token_equal(source, open, "(")) {
+        char *binding_id = hir_use_binding_id(hir, cursor);
+        char *binding_type = hir_binding_field(hir, binding_id, 5);
+        if (
+            binding_id[0] == '\0' ||
+            strcmp(binding_type, record_type) != 0
+        ) {
+            free(binding_type);
+            free(binding_id);
+            free(name);
+            return lower_error(
+                "E2S32",
+                "nominal record binding has the wrong type",
+                cursor
+            );
+        }
+        Buffer output;
+        buffer_init(&output);
+        buffer_format(&output, "k_b%s", binding_id);
+        free(binding_type);
+        free(binding_id);
+        free(name);
+        return output.data;
+    }
+    if (record_declaration_start(source, name) >= 0) {
+        free(name);
+        return lower_error(
+            "E2S32",
+            "bind record construction before passing or returning it",
+            cursor
+        );
+    }
+    char *return_type = function_return_type(source, name);
+    if (strcmp(return_type, record_type) == 0) {
+        char *output = emit_primary(source, hir, cursor, end);
+        free(return_type);
+        free(name);
+        return output;
+    }
+    free(return_type);
+    free(name);
+    return lower_error(
+        "E2S32",
+        "call does not return the expected nominal record",
+        cursor
+    );
 }
 
 /*
@@ -4132,6 +4571,17 @@ static char *emit_argument(
         free(expected_type);
         return value;
     }
+    if (record_declaration_start(source, expected_type) >= 0) {
+        char *value = emit_record_value(
+            source,
+            hir,
+            cursor,
+            end,
+            expected_type
+        );
+        free(expected_type);
+        return value;
+    }
     free(expected_type);
     /* An arrow lambda argument is the address of the function it was lifted
      * to. */
@@ -4218,6 +4668,53 @@ static char *emit_primary(
         buffer_init(&output);
         if (open >= end || !token_equal(source, open, "(")) {
             char *binding_id = hir_use_binding_id(hir, cursor);
+            if (open < end && token_equal(source, open, ".")) {
+                int64_t field_cursor = skip_trivia(
+                    source,
+                    token_end(source, open)
+                );
+                char *binding_type = hir_binding_field(
+                    hir,
+                    binding_id,
+                    5
+                );
+                char *field = token_copy(source, field_cursor);
+                char *field_type = record_field_type_named(
+                    source,
+                    binding_type,
+                    field
+                );
+                if (
+                    binding_id[0] == '\0' ||
+                    field_type[0] == '\0'
+                ) {
+                    free(field_type);
+                    free(field);
+                    free(binding_type);
+                    free(binding_id);
+                    free(name);
+                    free(output.data);
+                    return lower_error(
+                        "E2S32",
+                        "unknown nominal record field read",
+                        field_cursor
+                    );
+                }
+                char *c_field = record_c_field_name(field);
+                buffer_format(
+                    &output,
+                    "k_b%s.%s",
+                    binding_id,
+                    c_field
+                );
+                free(c_field);
+                free(field_type);
+                free(field);
+                free(binding_type);
+                free(binding_id);
+                free(name);
+                return output.data;
+            }
             buffer_format(&output, "k_b%s", binding_id);
             free(binding_id);
             free(name);
@@ -4474,6 +4971,11 @@ static char *initializer_type(
     const char *hir,
     int64_t function_open,
     int64_t initializer
+);
+static bool record_initializer_constructor_token(
+    const char *source,
+    int64_t function_open,
+    int64_t target
 );
 static bool value_control(const char *source, int64_t cursor);
 /* Defined beside the other numeric-type helpers; declared here because the
@@ -4801,6 +5303,94 @@ static char *validate_core_types(const char *source, const char *hir) {
     return owned_text("ok");
 }
 
+static bool call_has_labelled_argument(
+    const char *source,
+    int64_t open
+) {
+    int64_t close = balanced_end(source, open, "(", ")");
+    if (close < 0) return false;
+    int64_t argument = skip_trivia(source, token_end(source, open));
+    while (argument < close && !token_equal(source, argument, ")")) {
+        if (strcmp(token_kind(source, argument), "identifier") == 0) {
+            int64_t colon = skip_trivia(
+                source,
+                token_end(source, argument)
+            );
+            if (token_equal(source, colon, ":")) return true;
+        }
+        int64_t end = argument_end(source, argument);
+        if (end < 0) return false;
+        int64_t separator = skip_trivia(source, end);
+        if (separator < close && token_equal(source, separator, ",")) {
+            argument = skip_trivia(source, token_end(source, separator));
+        } else {
+            break;
+        }
+    }
+    return false;
+}
+
+static char *validate_record_uses(const char *source) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t function_start = next_function_start(source, 0);
+    while (function_start < length) {
+        int64_t function_close = function_end(source, function_start);
+        int64_t parameters = parameter_open(source, function_start);
+        int64_t parameters_close = balanced_end(
+            source,
+            parameters,
+            "(",
+            ")"
+        );
+        int64_t function_open = skip_trivia(source, parameters_close);
+        while (
+            function_open < function_close &&
+            !token_equal(source, function_open, "{")
+        ) {
+            function_open = skip_trivia(
+                source,
+                token_end(source, function_open)
+            );
+        }
+        int64_t cursor = skip_trivia(
+            source,
+            token_end(source, function_open)
+        );
+        while (cursor < function_close) {
+            if (strcmp(token_kind(source, cursor), "identifier") == 0) {
+                char *name = token_copy(source, cursor);
+                int64_t open = skip_trivia(
+                    source,
+                    token_end(source, cursor)
+                );
+                bool construction =
+                    open < function_close &&
+                    token_equal(source, open, "(") &&
+                    record_declaration_start(source, name) >= 0;
+                free(name);
+                if (
+                    construction &&
+                    !record_initializer_constructor_token(
+                        source,
+                        function_open,
+                        cursor
+                    )
+                ) {
+                    return lower_error(
+                        "E2S32",
+                        "bind record construction to an explicitly typed "
+                        "immutable record before using it",
+                        cursor
+                    );
+                }
+            }
+            cursor = skip_trivia(source, token_end(source, cursor));
+        }
+        function_start = next_function_start(source, function_close);
+    }
+    return owned_text("ok");
+}
+
 static char *validate_core_calls(const char *source, const char *hir) {
     int64_t length = source_length(source);
     int64_t cursor = next_function_start(source, 0);
@@ -4818,7 +5408,10 @@ static char *validate_core_calls(const char *source, const char *hir) {
              */
             char *constructor_owner = enum_constructor_owner(source, name);
             bool constructor_application =
-                constructor_owner[0] != '\0' &&
+                (
+                    constructor_owner[0] != '\0' ||
+                    record_declaration_start(source, name) >= 0
+                ) &&
                 function_arity(source, name) < 0;
             free(constructor_owner);
             if (
@@ -4828,6 +5421,27 @@ static char *validate_core_calls(const char *source, const char *hir) {
                 open < length &&
                 token_equal(source, open, "(")
             ) {
+                if (call_has_labelled_argument(source, open)) {
+                    Buffer error;
+                    buffer_init(&error);
+                    buffer_format(
+                        &error,
+                        "error[E2S32]: ordinary function `%s` does not "
+                        "accept labelled arguments at byte %" PRId64,
+                        name,
+                        cursor
+                    );
+                    stage2_diagnostic_set(
+                        "E2S32",
+                        cursor,
+                        token_end(source, cursor),
+                        true,
+                        error.data
+                    );
+                    free(name);
+                    free(previous);
+                    return error.data;
+                }
                 int64_t expected = function_arity(source, name);
                 if (expected == -2) {
                     Buffer error;
@@ -5100,6 +5714,21 @@ static char *core_parameters(
                     binding_id
                 );
                 declarator = aggregate.data;
+            } else if (
+                record_declaration_start(source, parameter_type) >= 0
+            ) {
+                type_end = token_end(source, type_cursor);
+                char *c_type = record_c_type_name(parameter_type);
+                Buffer aggregate;
+                buffer_init(&aggregate);
+                buffer_format(
+                    &aggregate,
+                    "%s k_b%s",
+                    c_type,
+                    binding_id
+                );
+                free(c_type);
+                declarator = aggregate.data;
             }
             free(parameter_type);
         }
@@ -5154,7 +5783,13 @@ static int64_t condition_end(const char *source, int64_t start) {
         operator_start >= length ||
         !comparison_operator(source, operator_start)
     ) {
-        return -1;
+        int64_t member = skip_trivia(
+            source,
+            token_end(source, cursor)
+        );
+        return member < left_end && token_equal(source, member, ".")
+            ? left_end
+            : -1;
     }
     int64_t right_start = skip_trivia(
         source,
@@ -5192,6 +5827,23 @@ static char *emit_condition_into(
     }
     int64_t left_end = expression_end(source, cursor);
     int64_t operator_start = skip_trivia(source, left_end);
+    if (
+        operator_start >= end ||
+        !comparison_operator(source, operator_start)
+    ) {
+        char *value = emit_expression(source, hir, cursor, left_end);
+        Buffer output;
+        buffer_init(&output);
+        buffer_format(
+            &output,
+            "%sbool %s = %s;\n",
+            indent,
+            target,
+            value
+        );
+        free(value);
+        return output.data;
+    }
     int64_t right_start = skip_trivia(
         source,
         token_end(source, operator_start)
@@ -5957,7 +6609,8 @@ static int64_t core_body_open(
         char *result_type = token_copy(source, cursor);
         bool supported_result =
             strcmp(result_type, "Int") == 0 ||
-            enum_constructor_count(source, result_type) >= 0;
+            enum_constructor_count(source, result_type) >= 0 ||
+            record_declaration_start(source, result_type) >= 0;
         free(result_type);
         if (!supported_result) return -1;
         cursor = skip_trivia(source, token_end(source, cursor));
@@ -6417,6 +7070,85 @@ static bool enum_declaration_syntax_token(
         if (token_equal(source, cursor, "for")) {
             int64_t name = skip_trivia(source, token_end(source, cursor));
             if (name == target) return true;
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return false;
+}
+
+static bool record_syntax_token(
+    const char *source,
+    int64_t function_open,
+    int64_t target
+) {
+    int64_t cursor = skip_trivia(source, token_end(source, function_open));
+    int64_t previous = function_open;
+    while (cursor <= target) {
+        if (cursor == target) {
+            if (token_equal(source, previous, ".")) return true;
+            int64_t after = skip_trivia(
+                source,
+                token_end(source, cursor)
+            );
+            if (token_equal(source, after, ":")) return true;
+            if (token_equal(source, after, "(")) {
+                char *name = token_copy(source, cursor);
+                bool constructor =
+                    record_declaration_start(source, name) >= 0;
+                free(name);
+                if (constructor) return true;
+            }
+            return false;
+        }
+        previous = cursor;
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return false;
+}
+
+static bool record_initializer_constructor_token(
+    const char *source,
+    int64_t function_open,
+    int64_t target
+) {
+    int64_t cursor = skip_trivia(source, token_end(source, function_open));
+    while (cursor <= target) {
+        if (token_equal(source, cursor, "let")) {
+            int64_t name = skip_trivia(source, token_end(source, cursor));
+            if (token_equal(source, name, "mut")) {
+                name = skip_trivia(source, token_end(source, name));
+            }
+            int64_t colon = skip_trivia(source, token_end(source, name));
+            if (token_equal(source, colon, ":")) {
+                int64_t type_cursor = skip_trivia(
+                    source,
+                    token_end(source, colon)
+                );
+                int64_t equals = skip_trivia(
+                    source,
+                    token_end(source, type_cursor)
+                );
+                int64_t initializer = skip_trivia(
+                    source,
+                    token_end(source, equals)
+                );
+                if (
+                    initializer == target &&
+                    token_equal(source, equals, "=")
+                ) {
+                    char *record_type = token_copy(source, type_cursor);
+                    char *constructor = token_copy(source, initializer);
+                    bool valid =
+                        strcmp(record_type, constructor) == 0 &&
+                        record_declaration_start(
+                            source,
+                            record_type
+                        ) >= 0;
+                    free(record_type);
+                    free(constructor);
+                    return valid;
+                }
+            }
         }
         cursor = skip_trivia(source, token_end(source, cursor));
     }
@@ -7507,6 +8239,16 @@ static bool function_result_is_enum(
     return result;
 }
 
+static bool function_result_is_record(
+    const char *source,
+    const char *name
+) {
+    char *type = function_return_type(source, name);
+    bool result = record_declaration_start(source, type) >= 0;
+    free(type);
+    return result;
+}
+
 /*
  * Bounded initializer typing for unannotated `let` bindings. Top-level
  * comparison and boolean operators make the value Bool; otherwise the
@@ -7601,6 +8343,9 @@ static char *initializer_type(
                 return declared;
             }
             free(declared);
+            if (record_declaration_start(source, name) >= 0) {
+                return name;
+            }
             char *constructor_type = enum_constructor_owner(source, name);
             if (constructor_type[0] != '\0') {
                 free(name);
@@ -7625,6 +8370,24 @@ static char *initializer_type(
             free(binding_id);
             free(name);
             if (type[0] != '\0') {
+                if (open < length && token_equal(source, open, ".")) {
+                    int64_t field_cursor = skip_trivia(
+                        source,
+                        token_end(source, open)
+                    );
+                    char *field = token_copy(source, field_cursor);
+                    char *field_type = record_field_type_named(
+                        source,
+                        type,
+                        field
+                    );
+                    free(field);
+                    if (field_type[0] != '\0') {
+                        free(type);
+                        return field_type;
+                    }
+                    free(field_type);
+                }
                 /* Indexing the profile's List[Text] yields its Text
                  * element. */
                 bool indexed =
@@ -8593,6 +9356,11 @@ static char *build_scope_hir_mode(
                     function_open,
                     cursor
                 );
+                bool record_token = record_syntax_token(
+                    source,
+                    function_open,
+                    cursor
+                );
                 bool initializer_token = enum_initializer_constructor_token(
                     source,
                     function_open,
@@ -8609,7 +9377,8 @@ static char *build_scope_hir_mode(
                     cursor
                 );
                 if (
-                    !declaration_token && !initializer_token &&
+                    !declaration_token && !record_token &&
+                    !initializer_token &&
                     !pattern_token && !lambda_token &&
                     !numeric_conversion_head(source, cursor) &&
                     !token_equal(source, cursor, "print") &&
@@ -9712,6 +10481,253 @@ static char *lower_match_error(
     return lower_error(code, message, cursor);
 }
 
+/*
+ * Lower one labelled record construction into a zeroed declaration followed
+ * by declaration-safe field assignments in the exact written order.  C does
+ * not promise a portable evaluation order for compound-literal initializers;
+ * spelling the assignments separately preserves the records-v1 contract.
+ */
+static char *lower_record_binding(
+    const char *source,
+    const char *hir,
+    int64_t function_open,
+    int64_t value_start,
+    const char *record_type,
+    const char *binding_id,
+    int64_t *value_end
+) {
+    int64_t length = (int64_t)strlen(source);
+    if (
+        value_start >= length ||
+        strcmp(token_kind(source, value_start), "identifier") != 0
+    ) {
+        return lower_error(
+            "E2S32",
+            "nominal record initializer must name its record type",
+            value_start
+        );
+    }
+    char *constructor = token_copy(source, value_start);
+    if (strcmp(constructor, record_type) != 0) {
+        Buffer message;
+        buffer_init(&message);
+        buffer_format(
+            &message,
+            "record constructor `%s` does not construct `%s`",
+            constructor,
+            record_type
+        );
+        free(constructor);
+        char *error = lower_error("E2S32", message.data, value_start);
+        free(message.data);
+        return error;
+    }
+    free(constructor);
+    int64_t open = skip_trivia(
+        source,
+        token_end(source, value_start)
+    );
+    if (open >= length || !token_equal(source, open, "(")) {
+        return lower_error(
+            "E2S32",
+            "nominal record construction requires labelled fields",
+            value_start
+        );
+    }
+    int64_t close = balanced_end(source, open, "(", ")");
+    if (close < 0) {
+        return lower_error(
+            "E2S32",
+            "unterminated nominal record construction",
+            open
+        );
+    }
+    char *c_type = record_c_type_name(record_type);
+    Buffer emitted;
+    Buffer covered;
+    buffer_init(&emitted);
+    buffer_init(&covered);
+    buffer_append(&covered, "|");
+    buffer_format(
+        &emitted,
+        "    %s k_b%s = {0};\n",
+        c_type,
+        binding_id
+    );
+    free(c_type);
+    int64_t cursor = skip_trivia(source, token_end(source, open));
+    while (cursor < close && !token_equal(source, cursor, ")")) {
+        if (strcmp(token_kind(source, cursor), "identifier") != 0) {
+            free(covered.data);
+            free(emitted.data);
+            return lower_error(
+                "E2S32",
+                "expected nominal record field label",
+                cursor
+            );
+        }
+        char *field = token_copy(source, cursor);
+        int64_t field_index = record_field_index(
+            source,
+            record_type,
+            field
+        );
+        if (field_index < 0) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(
+                &message,
+                "record `%s` has no field `%s`",
+                record_type,
+                field
+            );
+            free(field);
+            free(covered.data);
+            free(emitted.data);
+            char *error = lower_error("E2S32", message.data, cursor);
+            free(message.data);
+            return error;
+        }
+        if (enum_name_covered(covered.data, field)) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(
+                &message,
+                "record field `%s` is initialized more than once",
+                field
+            );
+            free(field);
+            free(covered.data);
+            free(emitted.data);
+            char *error = lower_error("E2S32", message.data, cursor);
+            free(message.data);
+            return error;
+        }
+        buffer_append(&covered, field);
+        buffer_append(&covered, "|");
+        int64_t colon = skip_trivia(source, token_end(source, cursor));
+        if (!token_equal(source, colon, ":")) {
+            free(field);
+            free(covered.data);
+            free(emitted.data);
+            return lower_error(
+                "E2S32",
+                "record construction requires `field: value`",
+                cursor
+            );
+        }
+        int64_t value = skip_trivia(source, token_end(source, colon));
+        char *expected = record_field_text(
+            source,
+            record_type,
+            field_index,
+            true
+        );
+        int64_t end =
+            token_equal(source, value, "true") ||
+            token_equal(source, value, "false")
+                ? token_end(source, value)
+                : expression_end(source, value);
+        if (end < 0) {
+            free(expected);
+            free(field);
+            free(covered.data);
+            free(emitted.data);
+            return lower_error(
+                "E2S32",
+                "invalid nominal record field value",
+                value
+            );
+        }
+        char *actual = initializer_type(
+            source,
+            hir,
+            function_open,
+            value
+        );
+        if (strcmp(actual, expected) != 0) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(
+                &message,
+                "record field `%s` expects %s, got %s",
+                field,
+                expected,
+                actual
+            );
+            free(actual);
+            free(expected);
+            free(field);
+            free(covered.data);
+            free(emitted.data);
+            char *error = lower_error("E2S32", message.data, value);
+            free(message.data);
+            return error;
+        }
+        free(actual);
+        char *field_value =
+            token_equal(source, value, "true") ||
+            token_equal(source, value, "false")
+                ? token_copy(source, value)
+                : emit_expression(source, hir, value, end);
+        char *c_field = record_c_field_name(field);
+        buffer_format(
+            &emitted,
+            "    k_b%s.%s = %s;\n",
+            binding_id,
+            c_field,
+            field_value
+        );
+        free(c_field);
+        free(field_value);
+        free(expected);
+        free(field);
+        int64_t separator = skip_trivia(source, end);
+        if (separator < close && token_equal(source, separator, ",")) {
+            cursor = skip_trivia(source, token_end(source, separator));
+        } else if (separator == close || token_equal(source, separator, ")")) {
+            cursor = separator;
+        } else {
+            free(covered.data);
+            free(emitted.data);
+            return lower_error(
+                "E2S32",
+                "expected `,` between nominal record fields",
+                separator
+            );
+        }
+    }
+    int64_t fields = record_field_count(source, record_type);
+    for (int64_t index = 0; index < fields; ++index) {
+        char *field = record_field_text(
+            source,
+            record_type,
+            index,
+            false
+        );
+        bool present = enum_name_covered(covered.data, field);
+        if (!present) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(
+                &message,
+                "record construction is missing field `%s`",
+                field
+            );
+            free(field);
+            free(covered.data);
+            free(emitted.data);
+            char *error = lower_error("E2S32", message.data, value_start);
+            free(message.data);
+            return error;
+        }
+        free(field);
+    }
+    free(covered.data);
+    *value_end = close;
+    return emitted.data;
+}
+
 static char *lower_body(
     const char *source,
     const char *hir,
@@ -9731,9 +10747,28 @@ static char *lower_body(
     );
     bool returns_enum =
         enum_constructor_count(source, body_result_type) >= 0;
+    bool returns_record =
+        record_declaration_start(source, body_result_type) >= 0;
+    char failure_record[512] = "";
+    if (returns_record) {
+        char *c_type = record_c_type_name(body_result_type);
+        snprintf(
+            failure_record,
+            sizeof failure_record,
+            "((%s){0})",
+            c_type
+        );
+        free(c_type);
+    }
     free(body_result_type);
     const char *failure_result =
-        is_main ? "1" : (returns_enum ? "KOFUN_ENUM_ZERO" : "0");
+        is_main ?
+            "1" :
+            (
+                returns_enum ?
+                    "KOFUN_ENUM_ZERO" :
+                    (returns_record ? failure_record : "0")
+            );
     while (cursor < length && !token_equal(source, cursor, "}")) {
         if (returned) {
             free(emitted.data);
@@ -9756,6 +10791,7 @@ static char *lower_body(
             char *name = token_copy(source, cursor);
             char *binding_id = hir_definition_id_at(hir, cursor);
             char *enum_type = NULL;
+            char *record_type = NULL;
             cursor = skip_trivia(source, token_end(source, cursor));
             if (cursor < length && token_equal(source, cursor, ":")) {
                 cursor = skip_trivia(source, token_end(source, cursor));
@@ -9774,12 +10810,18 @@ static char *lower_body(
                 }
                 char *declared_type = token_copy(source, cursor);
                 if (strcmp(declared_type, "Int") != 0) {
-                    if (enum_constructor_count(source, declared_type) < 0) {
+                    if (enum_constructor_count(source, declared_type) >= 0) {
+                        enum_type = declared_type;
+                    } else if (
+                        record_declaration_start(source, declared_type) >= 0
+                    ) {
+                        record_type = declared_type;
+                    } else {
                         Buffer message;
                         buffer_init(&message);
                         buffer_format(
                             &message,
-                            "unknown concrete enum type `%s`",
+                            "unknown supported aggregate type `%s`",
                             declared_type
                         );
                         free(declared_type);
@@ -9794,13 +10836,13 @@ static char *lower_body(
                         free(message.data);
                         return error;
                     }
-                    enum_type = declared_type;
                 } else {
                     free(declared_type);
                 }
                 cursor = skip_trivia(source, token_end(source, cursor));
             }
             if (cursor >= length || !token_equal(source, cursor, "=")) {
+                free(record_type);
                 free(enum_type);
                 free(binding_id);
                 free(name);
@@ -9808,6 +10850,97 @@ static char *lower_body(
                 return lower_error("E2S11", "expected `=`", cursor);
             }
             int64_t value_start = skip_trivia(source, token_end(source, cursor));
+            if (record_type != NULL) {
+                if (mutable) {
+                    free(record_type);
+                    free(enum_type);
+                    free(binding_id);
+                    free(name);
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S32",
+                        "nominal record bindings are immutable in this slice",
+                        value_start
+                    );
+                }
+                if (
+                    value_start < length &&
+                    strcmp(token_kind(source, value_start), "identifier") == 0
+                ) {
+                    char *initializer_name = token_copy(
+                        source,
+                        value_start
+                    );
+                    bool construction =
+                        strcmp(initializer_name, record_type) == 0;
+                    free(initializer_name);
+                    if (!construction) {
+                        int64_t value_end = expression_end(
+                            source,
+                            value_start
+                        );
+                        char *value = emit_record_value(
+                            source,
+                            hir,
+                            value_start,
+                            value_end,
+                            record_type
+                        );
+                        if (strncmp(value, "error[", 6) == 0) {
+                            free(record_type);
+                            free(enum_type);
+                            free(binding_id);
+                            free(name);
+                            free(emitted.data);
+                            return value;
+                        }
+                        char *c_type = record_c_type_name(record_type);
+                        buffer_format(
+                            &emitted,
+                            "    %s k_b%s = %s;\n"
+                            "    if (kofun_failed) return %s;\n",
+                            c_type,
+                            binding_id,
+                            value,
+                            failure_result
+                        );
+                        free(c_type);
+                        free(value);
+                        free(record_type);
+                        free(enum_type);
+                        free(binding_id);
+                        free(name);
+                        cursor = skip_trivia(source, value_end);
+                        continue;
+                    }
+                }
+                int64_t value_end = -1;
+                char *declaration = lower_record_binding(
+                    source,
+                    hir,
+                    function_open,
+                    value_start,
+                    record_type,
+                    binding_id,
+                    &value_end
+                );
+                if (strncmp(declaration, "error[", 6) == 0) {
+                    free(record_type);
+                    free(enum_type);
+                    free(binding_id);
+                    free(name);
+                    free(emitted.data);
+                    return declaration;
+                }
+                buffer_append(&emitted, declaration);
+                free(declaration);
+                free(record_type);
+                free(enum_type);
+                free(binding_id);
+                free(name);
+                cursor = skip_trivia(source, value_end);
+                continue;
+            }
             if (enum_type != NULL) {
                 if (mutable) {
                     free(enum_type);
@@ -10799,6 +11932,52 @@ static char *lower_body(
                     "    }\n",
                     value
                 );
+                free(value);
+                cursor = skip_trivia(source, value_end);
+            } else if (returns_record) {
+                int64_t value_end = expression_end(source, value_start);
+                if (
+                    value_end < 0 ||
+                    value_start >= length ||
+                    token_equal(source, value_start, "}")
+                ) {
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S12",
+                        "nominal record return requires one value",
+                        value_start
+                    );
+                }
+                char *result_type = function_return_type_containing(
+                    source,
+                    function_open
+                );
+                char *value = emit_record_value(
+                    source,
+                    hir,
+                    value_start,
+                    value_end,
+                    result_type
+                );
+                char *c_type = record_c_type_name(result_type);
+                free(result_type);
+                if (strncmp(value, "error[", 6) == 0) {
+                    free(c_type);
+                    free(emitted.data);
+                    return value;
+                }
+                buffer_format(
+                    &emitted,
+                    "    {\n"
+                    "        %s kofun_result = %s;\n"
+                    "        if (kofun_failed) return %s;\n"
+                    "        return kofun_result;\n"
+                    "    }\n",
+                    c_type,
+                    value,
+                    failure_result
+                );
+                free(c_type);
                 free(value);
                 cursor = skip_trivia(source, value_end);
             } else if (
@@ -12117,6 +13296,114 @@ static char *validate_unsupported_numeric_kinds(const char *source) {
     return owned_text("ok");
 }
 
+static int64_t record_align_up(int64_t value, int64_t alignment) {
+    int64_t remainder = value % alignment;
+    return remainder == 0 ? value : value + alignment - remainder;
+}
+
+static char *emit_record_c_declarations(const char *source) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = after_optional_module_header(source, 0);
+    Buffer declarations;
+    buffer_init(&declarations);
+    while (cursor < length) {
+        if (
+            token_equal(source, cursor, "type") &&
+            record_declaration_at(source, cursor)
+        ) {
+            char *record_type = type_name(source, cursor);
+            char *c_type = record_c_type_name(record_type);
+            int64_t fields = record_field_count(source, record_type);
+            int64_t extent = 0;
+            int64_t record_alignment = 1;
+            buffer_append(&declarations, "typedef struct {\n");
+            for (int64_t index = 0; index < fields; ++index) {
+                char *field = record_field_text(
+                    source,
+                    record_type,
+                    index,
+                    false
+                );
+                char *field_type = record_field_text(
+                    source,
+                    record_type,
+                    index,
+                    true
+                );
+                char *c_field = record_c_field_name(field);
+                const char *c_field_type =
+                    strcmp(field_type, "Bool") == 0 ? "bool" : "int64_t";
+                int64_t field_size =
+                    strcmp(field_type, "Bool") == 0 ? 1 : 8;
+                int64_t field_alignment = field_size;
+                int64_t offset = record_align_up(
+                    extent,
+                    field_alignment
+                );
+                if (field_alignment > record_alignment) {
+                    record_alignment = field_alignment;
+                }
+                extent = offset + field_size;
+                buffer_format(
+                    &declarations,
+                    "    %s %s;\n",
+                    c_field_type,
+                    c_field
+                );
+                free(c_field);
+                free(field_type);
+                free(field);
+            }
+            buffer_format(&declarations, "} %s;\n", c_type);
+            extent = record_align_up(extent, record_alignment);
+            int64_t running = 0;
+            for (int64_t index = 0; index < fields; ++index) {
+                char *field = record_field_text(
+                    source,
+                    record_type,
+                    index,
+                    false
+                );
+                char *field_type = record_field_text(
+                    source,
+                    record_type,
+                    index,
+                    true
+                );
+                char *c_field = record_c_field_name(field);
+                int64_t field_size =
+                    strcmp(field_type, "Bool") == 0 ? 1 : 8;
+                int64_t offset = record_align_up(running, field_size);
+                buffer_format(
+                    &declarations,
+                    "_Static_assert(offsetof(%s, %s) == %" PRId64
+                    ", \"AggregateLayout field offset\");\n",
+                    c_type,
+                    c_field,
+                    offset
+                );
+                running = offset + field_size;
+                free(c_field);
+                free(field_type);
+                free(field);
+            }
+            buffer_format(
+                &declarations,
+                "_Static_assert(sizeof(%s) == %" PRId64
+                ", \"AggregateLayout record size\");\n\n",
+                c_type,
+                extent
+            );
+            free(c_type);
+            free(record_type);
+        }
+        int64_t end = top_level_end(source, cursor);
+        if (end <= cursor) break;
+        cursor = skip_trivia(source, end);
+    }
+    return declarations.data;
+}
+
 static char *lower_c(const char *source, const char *hir) {
     int64_t length = source_length(source);
     /* A mixed-type expression is reported before the unsupported-kind refusal,
@@ -12147,6 +13434,11 @@ static char *lower_c(const char *source, const char *hir) {
         return enum_use_check;
     }
     free(enum_use_check);
+    char *record_use_check = validate_record_uses(source);
+    if (strncmp(record_use_check, "error[", 6) == 0) {
+        return record_use_check;
+    }
+    free(record_use_check);
     char *type_check = validate_core_types(source, hir);
     if (strncmp(type_check, "error[", 6) == 0) return type_check;
     free(type_check);
@@ -12216,10 +13508,23 @@ static char *lower_c(const char *source, const char *hir) {
             return error.data;
         }
         bool is_main = strcmp(name, "main") == 0;
-        const char *c_result =
-            function_result_is_enum(source, name) ?
-                "KofunEnumValue" :
-                "int64_t";
+        char c_result_record[512] = "";
+        const char *c_result = "int64_t";
+        if (function_result_is_enum(source, name)) {
+            c_result = "KofunEnumValue";
+        } else if (function_result_is_record(source, name)) {
+            char *result_type = function_return_type(source, name);
+            char *record_c_type = record_c_type_name(result_type);
+            snprintf(
+                c_result_record,
+                sizeof c_result_record,
+                "%s",
+                record_c_type
+            );
+            free(record_c_type);
+            free(result_type);
+            c_result = c_result_record;
+        }
         int64_t arity = parameter_count(source, cursor);
         char *parameters = core_parameters(source, hir, cursor);
         if (strncmp(parameters, "error[", 6) == 0) {
@@ -12334,6 +13639,7 @@ static char *lower_c(const char *source, const char *hir) {
         "/* Generated by the Kofun-written Stage 2 Core lowerer. */\n"
         "#include <inttypes.h>\n"
         "#include <stdbool.h>\n"
+        "#include <stddef.h>\n"
         "#include <stdint.h>\n"
         "#include <stdio.h>\n\n"
         "typedef struct {\n"
@@ -12388,6 +13694,9 @@ static char *lower_c(const char *source, const char *hir) {
         "    return r;\n"
         "}\n\n"
     );
+    char *record_declarations = emit_record_c_declarations(source);
+    buffer_append(&output, record_declarations);
+    free(record_declarations);
     buffer_append(&output, prototypes.data);
     buffer_append(&output, "\n");
     buffer_append(&output, bodies.data);
