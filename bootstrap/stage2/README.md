@@ -196,6 +196,19 @@ monomorphization, dictionary selection, layout, or backend emission. The main
 CLI does not route ordinary builds through it. Run its analyzer- and
 sanitizer-backed gate with `task generics`.
 
+`bootstrap/stage2/hm_levels_frontend.c` is the separate typed-only checkpoint
+for bounded Algorithm J inference over immutable local lambda bindings. It
+owns mutable metavariables, occurs checking with level lowering, conservative
+lambda-only generalization, fresh instantiation, shadow-safe `BindingId`
+resolution, and deterministic `kofun-hm-levels-ir/v1`. `HML001`-`HML007` are
+registered to its transactional fixture owner. The focused gate proves
+alpha-renaming, declaration-order, path, and repetition invariance and checks
+the independent substitution oracle with analyzers and sanitizers. Recursion,
+named-function inference, traits, rows, records, matches, effects, ownership
+modes, mutable locals, and backend lowering remain explicit refusals. The main
+CLI does not route ordinary builds through this helper. Run its complete gate
+with `task hm-levels`.
+
 `bootstrap/stage2/adt_exhaustiveness.c` is the resolved flat-ADT match
 checkpoint. It defensively joins the declaration table, lossless Pattern tree,
 and lexical ScopeId/BindingId artifact for one source module, then publishes a
