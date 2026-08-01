@@ -22,13 +22,8 @@
     "languages": [
       {
         "id": "kofun",
-        "aliases": [
-          "Kofun",
-          "kofun"
-        ],
-        "extensions": [
-          ".kofun"
-        ],
+        "aliases": ["Kofun", "kofun"],
+        "extensions": [".kofun"],
         "configuration": "./language-configuration.json"
       }
     ],

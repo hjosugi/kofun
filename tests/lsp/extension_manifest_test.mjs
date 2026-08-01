@@ -118,6 +118,13 @@ for (const entry of manifest.contributes.snippets) {
 }
 JSON.parse(read(manifest.contributes.grammars[0].path));
 JSON.parse(read(manifest.contributes.languages[0].configuration));
+assert.deepStrictEqual(manifest.contributes.languages[0].extensions, [".kofun"]);
+// `task repository-check` greps for this registration as one line. Reformatting
+// package.json — a JSON pretty-printer expanding short arrays, say — keeps the
+// document identical but breaks that gate with no explanation, so the shape is
+// asserted here where the reason is written down.
+assert.match(read("package.json"), /"extensions": \[".kofun"\]/u,
+  'repository-check greps for `"extensions": [".kofun"]` on one line');
 
 // The VSIX must carry the server it starts, and must not carry the build inputs
 // used to produce it.
