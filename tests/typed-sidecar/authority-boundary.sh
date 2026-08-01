@@ -41,10 +41,12 @@ assert_num "output of count_matches tooling/typed-sidecar/emit-stage2\\.mjs $ROO
     -eq 1
 assert_num "output of count_matches node \\\$TYPED_SIDECAR_EMITTER $ROOT/bin/kofun" \
     "$(count_matches 'node "\$TYPED_SIDECAR_EMITTER"' "$ROOT/bin/kofun")" -eq 1
-grep -q 'projectStage2SemanticEvents' \
+assert_grep "tooling/typed-sidecar/from-stage2.mjs" \
+    -q \
+    'projectStage2SemanticEvents' \
     "$ROOT/tooling/typed-sidecar/from-stage2.mjs"
-grep -q 'authoritative: false' \
-    "$ROOT/tooling/typed-sidecar/from-stage2.mjs"
+assert_grep "tooling/typed-sidecar/from-stage2.mjs" \
+    -q 'authoritative: false' "$ROOT/tooling/typed-sidecar/from-stage2.mjs"
 
 printf '%s\n' \
     'PASS: check invokes one output-only emitter; compiler, build, package, linker, KIF, and cache paths cannot read sidecars'

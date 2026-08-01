@@ -29,36 +29,49 @@ node "$ROOT/docs/tour/check.mjs" \
     "$ROOT/examples/wasm-browser/app.kofun" "$WORK/native.wasm" \
     >"$WORK/check.stdout"
 
-grep -Fq \
+assert_grep "check.stdout" \
+    -Fq \
     'PASS: browser compiler matched the native wasm32 seed byte for byte' \
     "$WORK/check.stdout"
-grep -Fq \
+assert_grep "check.stdout" \
+    -Fq \
     'PASS: every editable tour step ran with deterministic observations' \
     "$WORK/check.stdout"
-grep -Fq \
+assert_grep "check.stdout" \
+    -Fq \
     "PASS: hover and completion answered from the compiler's own parse, in scope" \
     "$WORK/check.stdout"
-grep -Fq 'data-editor' "$ROOT/docs/tour/index.html"
+assert_grep "docs/tour/index.html" \
+    -Fq 'data-editor' "$ROOT/docs/tour/index.html"
 # The editor intelligence is only reachable if its surfaces are in the page and
 # the mirror the pointer is resolved against is hidden from assistive tech.
-grep -Fq 'data-editor-mirror' "$ROOT/docs/tour/index.html"
-grep -Fq 'data-completion' "$ROOT/docs/tour/index.html"
-grep -Fq 'data-hover-card' "$ROOT/docs/tour/index.html"
-grep -Fq 'role="listbox"' "$ROOT/docs/tour/index.html"
-grep -Fq 'aria-autocomplete="list"' "$ROOT/docs/tour/index.html"
-grep -Fq 'data-direction' "$ROOT/docs/tour/index.html"
-grep -Fq 'aria-live="polite"' "$ROOT/docs/tour/index.html"
-grep -Fq 'inset-inline-start' "$ROOT/docs/tour/styles.css"
-grep -Fq '[dir="rtl"]' "$ROOT/docs/tour/styles.css"
-! grep -Eq '(margin|padding|border)-(left|right):' \
-    "$ROOT/docs/tour/styles.css"
+assert_grep "docs/tour/index.html" \
+    -Fq 'data-editor-mirror' "$ROOT/docs/tour/index.html"
+assert_grep "docs/tour/index.html" \
+    -Fq 'data-completion' "$ROOT/docs/tour/index.html"
+assert_grep "docs/tour/index.html" \
+    -Fq 'data-hover-card' "$ROOT/docs/tour/index.html"
+assert_grep "docs/tour/index.html" \
+    -Fq 'role="listbox"' "$ROOT/docs/tour/index.html"
+assert_grep "docs/tour/index.html" \
+    -Fq 'aria-autocomplete="list"' "$ROOT/docs/tour/index.html"
+assert_grep "docs/tour/index.html" \
+    -Fq 'data-direction' "$ROOT/docs/tour/index.html"
+assert_grep "docs/tour/index.html" \
+    -Fq 'aria-live="polite"' "$ROOT/docs/tour/index.html"
+assert_grep "docs/tour/styles.css" \
+    -Fq 'inset-inline-start' "$ROOT/docs/tour/styles.css"
+assert_grep "docs/tour/styles.css" \
+    -Fq '[dir="rtl"]' "$ROOT/docs/tour/styles.css"
+assert_not_grep "docs/tour/styles.css" \
+    -Eq '(margin|padding|border)-(left|right):' "$ROOT/docs/tour/styles.css"
 
 for language in python typescript go rust
 do
     assert_file_nonempty "docs/tour/guides/$language.md" \
         "$ROOT/docs/tour/guides/$language.md"
-    grep -Fq 'Where Kofun is worse today' \
-        "$ROOT/docs/tour/guides/$language.md"
+    assert_grep "docs/tour/guides/$language.md" \
+        -Fq 'Where Kofun is worse today' "$ROOT/docs/tour/guides/$language.md"
 done
 
 printf '%s\n' \

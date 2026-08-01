@@ -38,9 +38,9 @@ for source in "$SUITE"/*.kofun; do
 
     assert_num "refusal status for $source" "$status" -eq 1
     assert_file_empty "$stem.internal.stderr" "$WORK/$stem.internal.stderr"
-    grep -F "error[$code]:" "$actual" >/dev/null
+    assert_grep "actual" -F "error[$code]:" "$actual"
     if test "$span" != none; then
-        grep -F "at $span" "$actual" >/dev/null
+        assert_grep "actual" -F "at $span" "$actual"
     fi
 done
 

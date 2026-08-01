@@ -30,10 +30,12 @@ kofun_stage2_build "$ROOT" "$WORK/kofun-stage2"
     "$WORK/stage2-identifiers.ir" \
     "$WORK/stage2-identifiers.tokens" >/dev/null
 
-grep -F 'function|main|0|' "$WORK/stage2-identifiers.ir" >/dev/null
-grep -F 'identifier|' "$WORK/stage2-identifiers.tokens" >/dev/null
-grep -F 'kofun_fn_k_u005408_u008A08' \
-    "$WORK/stage2-identifiers.c" >/dev/null
+assert_grep "stage2-identifiers.ir" \
+    -F 'function|main|0|' "$WORK/stage2-identifiers.ir"
+assert_grep "stage2-identifiers.tokens" \
+    -F 'identifier|' "$WORK/stage2-identifiers.tokens"
+assert_grep "stage2-identifiers.c" \
+    -F 'kofun_fn_k_u005408_u008A08' "$WORK/stage2-identifiers.c"
 
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
     "$WORK/stage2-identifiers.c" \
@@ -63,10 +65,12 @@ assert_num "non nfc status" "$non_nfc_status" -eq 1
 assert_num "confusable status" "$confusable_status" -eq 1
 assert_file_empty "non-nfc.stderr" "$WORK/non-nfc.stderr"
 assert_file_empty "confusable.stderr" "$WORK/confusable.stderr"
-grep -F 'error[EUNICODE005]' "$WORK/non-nfc.stdout" >/dev/null
-grep -F 'NFCではありません' "$WORK/non-nfc.stdout" >/dev/null
-grep -F 'error[EUNICODE006]' "$WORK/confusable.stdout" >/dev/null
-grep -F 'confusable with `paypal`' "$WORK/confusable.stdout" >/dev/null
+assert_grep "non-nfc.stdout" -F 'error[EUNICODE005]' "$WORK/non-nfc.stdout"
+assert_grep "non-nfc.stdout" -F 'NFCではありません' "$WORK/non-nfc.stdout"
+assert_grep "confusable.stdout" \
+    -F 'error[EUNICODE006]' "$WORK/confusable.stdout"
+assert_grep "confusable.stdout" \
+    -F 'confusable with `paypal`' "$WORK/confusable.stdout"
 
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
     "$ROOT/bootstrap/native/core_compiler.c" \

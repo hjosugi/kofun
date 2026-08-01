@@ -657,7 +657,7 @@
     "spec/typed-sidecar/kofun.typed-sidecar.v1.schema.json": "2574494144647b9e89ff45a126dc768ab947ed21a02044965ee22a0076f77460",
     "stdlib/decimal/README.md": "1eb69b7696c0c7a5ae1f41497e6c0db89c644dec93ffb8303f0b610af034f200",
     "stdlib/tests/verify.sh": "9d35f26d58443796dcfb6d76a7c09d01ea64064e0f32c2657d5c1a4db04aac30",
-    "tests/cli.sh": "8a19cd05810fb433d831442619a8d31e6704df602c6a888e31521d14e0580175",
+    "tests/cli.sh": "f1709dc289f6bd599a0bc9c48629e1f645d63ac22c76ec41e7194e5d7094b4ae",
     "tests/cli_stage2_outcomes.sh": "9f84a95495afab023a1572b37a2508a4ee02a3a89881df14b887c209a628a9a7",
     "tests/compile-fail/use_after_take.kofun": "c190d3a19eef35d4c33e1798604bce227251326cbc8531a19e6b0b88e8ba5054",
     "tests/conformance/capabilities.tsv": "30acd606796aa6214b63dac906a6a41d1ad1fd1011537a81c2840f2418eef7e1",
@@ -674,9 +674,9 @@
     "tests/docs/documentation_index_test.mjs": "249fd426d8f058fa487df75e16db8695bab882c1ee6ad4297bb1fbe61b3f8abe",
     "tests/fuzz/SEMANTIC_PROTOCOL.md": "95644005013d2aae82a042deb341785a083552c766abafa71bdbf4335deea522",
     "tests/fuzz/semantic_differential.sh": "f86c3afb9c4e6aa8be68159f40215451d536ef29c821aea9f160def2613c0b7d",
-    "tests/http/check.sh": "bf3355eab6c96647075c03cab70ad33fa3baab5657a8a69818fa4adfad966714",
+    "tests/http/check.sh": "b3fcbd128033bb7a3c0b7e4f89b679743e0e5e49e9eaa1bdc9573cbb5794aafd",
     "tests/lsp/performance_test.js": "9be9916dd14466b33b631fe1435ddcc038c44288f80c320e1458bcb16d2aab33",
     "tests/security/module-interface-artifact.sh": "0050bbe11ab21fe931bbf6d5043d9adccd4ff36afe26343c69a9ff5277307010",
-    "tests/typed-sidecar/authority-boundary.sh": "2847c69ac7f2039e860f21bd6d1122909254cf396f0ff8ffed3ebb3f08633350"
+    "tests/typed-sidecar/authority-boundary.sh": "dc97e4f38bf93297b9ff40f48a0c008121a4f6a9a3bd1c4aab7c5d5f121ec005"
   }
 }
