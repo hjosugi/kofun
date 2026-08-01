@@ -1,0 +1,179 @@
+# Time-zone rules from injected bytes: a bounded reader, a bounded transition
+# lookup, and a resolution that never guesses.
+#
+# This is the tzdb contract for docs/stdlib/date-time.md and the surface issue
+# #878 describes. It reads versioned bytes a caller hands over; it does not
+# read a zoneinfo file, consult TZ, download anything, or know what time it is.
+#
+# Three rules shape everything below.
+#
+# A local reading is not an instant. Converting one to the other is where a
+# time-zone library either tells the truth or quietly loses an hour, so the
+# conversion returns a closed sum: a local reading names exactly one instant,
+# or none because the clock jumped forward over it, or two because the clock
+# jumped back. `Ambiguous` carries both offsets and `Nonexistent` carries the
+# offsets either side of the gap. Neither hands back one of them as if it were
+# the answer, because "pick the earlier one" is a policy a caller may hold and
+# a library may not.
+#
+# The rules are data, and their provenance travels with every answer. A `Tzdb`
+# carries the format version it was read at and the content digest of the bytes
+# it came from, and every serialized resolution repeats both. Two answers
+# produced from different rule versions are then distinguishable, which is the
+# drift this design exists to make observable rather than to prevent.
+#
+# Failure is typed and total. Every way the bytes can be wrong — a bad magic, a
+# version this build does not implement, a digest that does not match, a zone
+# that is not in the file, an input that stops early or runs long, an input
+# larger than the reader accepts, more transitions than the bound allows, and
+# arithmetic that would leave the Int range — is its own constructor carrying
+# what was observed. There is no sentinel offset, and no path returns UTC
+# because it could not decide.
+#
+# Boundary: the active compiler does not yet lower `Bytes`, `List`, multi-field
+# ADT payloads, or `Result`. tests/stdlib/tzdb/tzdb.kofun is the executable
+# Stage 2 projection of exactly these decisions, and tests/stdlib/tzdb/check.sh
+# pins both files against each other.
+
+let TZDB_FORMAT_VERSION = 1
+let TZDB_DIGEST_MODULUS = 251
+let TZDB_MAX_INPUT_BYTES = 24
+let TZDB_MAX_TRANSITIONS = 2
+let TZDB_INT_MAX = 9223372036854775807
+
+# A zone is named, not numbered. The projection carries a code because the
+# Core has no Text in a record; the name is the identity here.
+type ZoneId = {
+    name: Text,
+}
+
+# Seconds east of UTC. Its own type, so an offset cannot be added to an
+# instant that already has one applied, or passed where a duration belongs.
+type UtcOffset = {
+    total_seconds: Int,
+}
+
+# A point on the UTC time line. It needs no zone to be meaningful, which is
+# exactly why resolving one is never ambiguous.
+type Instant = {
+    seconds: Int,
+    nanoseconds: Int,
+}
+
+# A wall-clock reading with no offset attached. This is the shape that can fail
+# to name an instant, and it is deliberately not constructible from an Instant
+# without naming the offset used.
+type LocalDateTime = {
+    wall_seconds: Int,
+    nanosecond: Int,
+}
+
+# One rule change: the instant it takes effect, and the offsets either side.
+# Carrying both offsets rather than only the new one is what lets the resolver
+# describe a gap or a fold without looking at its neighbours.
+type Transition = {
+    at: Instant,
+    offset_before: UtcOffset,
+    offset_after: UtcOffset,
+}
+
+# The rules, with the provenance of the bytes they were read from.
+type Tzdb = {
+    version: Int,
+    digest: Int,
+    zone: ZoneId,
+    transitions: List[Transition],
+}
+
+# The closed failure domain for reading and resolving. Each constructor
+# carries what was observed, not a description of it.
+type TzdbError =
+    | MalformedHeader(offset: Int)
+    | UnsupportedVersion(found: Int, supported: Int)
+    | DigestMismatch(computed: Int, declared: Int)
+    | InvalidZone(zone: ZoneId)
+    | TruncatedInput(expected: Int, actual: Int)
+    | TrailingBytes(expected: Int, actual: Int)
+    | TzdbArithmeticOverflow(operand: Int)
+    | OversizedInput(limit: Int, actual: Int)
+    | LimitExhausted(limit: Int, requested: Int)
+
+# The closed resolution domain. There is no fourth case and no default.
+type Resolution =
+    | Unique(offset: UtcOffset)
+    | Ambiguous(earlier: UtcOffset, later: UtcOffset)
+    | Nonexistent(before: UtcOffset, after: UtcOffset)
+
+# A resolution together with what produced it. Serializing this rather than a
+# bare offset is what makes rule-version drift visible in recorded output.
+type ResolvedLocal = {
+    zone: ZoneId,
+    local: LocalDateTime,
+    resolution: Resolution,
+    version: Int,
+    digest: Int,
+}
+
+# The sum over bytes 0 .. n-2, modulo TZDB_DIGEST_MODULUS. The declared digest
+# byte is excluded so it can be compared against what was computed. 251 is the
+# largest prime below 256, so every single-byte edit changes the result.
+fn tzdb_digest(input: Bytes) -> Result[Int, TzdbError] {
+    ...
+}
+
+# Reads the whole input or fails. Checks are ordered size, shape, version,
+# zone, bounds, digest: a digest computed over bytes whose length was never
+# checked would be a digest over whatever the buffer happened to hold.
+fn tzdb_read(input: Bytes) -> Result[Tzdb, TzdbError] {
+    ...
+}
+
+fn tzdb_zone(database: Tzdb) -> ZoneId {
+    ...
+}
+
+fn tzdb_transitions(database: Tzdb) -> List[Transition] {
+    ...
+}
+
+# The bounded lookup. Both resolvers use it, and it is bounded by
+# TZDB_MAX_TRANSITIONS rather than by the size of the input, so a file that
+# declared more transitions than the bound is LimitExhausted rather than a
+# longer search.
+fn tzdb_interval(database: Tzdb, local: LocalDateTime) -> Result[Int, TzdbError] {
+    ...
+}
+
+# The operation that can fail to name one instant, and therefore the one that
+# returns the closed sum.
+fn tzdb_resolve_local(
+    database: Tzdb,
+    local: LocalDateTime
+) -> Result[Resolution, TzdbError] {
+    ...
+}
+
+# An instant already names one point on the UTC time line, so exactly one
+# offset is in force there and the result is an offset rather than a sum.
+fn tzdb_resolve_instant(
+    database: Tzdb,
+    instant: Instant
+) -> Result[UtcOffset, TzdbError] {
+    ...
+}
+
+# Applies an offset to reach a local reading. Fails rather than wrapping when
+# the addition would leave the Int range.
+fn tzdb_local_from_instant(
+    instant: Instant,
+    offset: UtcOffset
+) -> Result[LocalDateTime, TzdbError] {
+    ...
+}
+
+# The canonical serialization: zone, the value asked about, the answer with
+# every offset it names, and the version and digest of the rules that produced
+# it. Byte-identical for identical inputs.
+fn tzdb_serialize(resolved: ResolvedLocal) -> Text {
+    ...
+}

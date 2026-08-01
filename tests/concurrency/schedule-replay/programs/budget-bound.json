@@ -1,0 +1,1 @@
+{"schema":"kofun.schedule-program/v1","name":"decision-budget-bound","budgets":{"tasks":4,"decisions":2,"steps":8,"states":64},"channels":[],"root":[{"op":"print","text":"one\n"},{"op":"yield"},{"op":"print","text":"three\n"}]}

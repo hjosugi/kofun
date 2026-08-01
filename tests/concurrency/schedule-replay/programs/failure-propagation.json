@@ -1,0 +1,1 @@
+{"schema":"kofun.schedule-program/v1","name":"failure-propagation","budgets":{"tasks":8,"decisions":32,"steps":32,"states":256},"channels":[],"root":[{"op":"spawn","as":"child","body":[{"op":"yield"},{"op":"fail","code":"ECHILD42","message":"child failed"}]},{"op":"join","task":"child"},{"op":"print","text":"unreachable\n"}]}

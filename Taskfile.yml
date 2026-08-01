@@ -221,6 +221,11 @@ tasks:
     cmds:
       - "sh stdlib/date_time/tests/verify.sh"
 
+  tzdb:
+    desc: "Verify bounded injected-Bytes tzdb lookup, gap/fold resolution, and provenance"
+    cmds:
+      - "sh tests/stdlib/tzdb/check.sh"
+
   discovery:
     desc: "Verify the developer discovery v1 request/result contract"
     cmds:
@@ -245,6 +250,11 @@ tasks:
     desc: "Verify explicit dynamic C ABI interoperability"
     cmds:
       - "sh bootstrap/c_abi/check.sh"
+
+  bindgen-c:
+    desc: "Verify audited raw C bindings generated from the Clang AST"
+    cmds:
+      - "sh tests/interop/bindgen-c/check.sh"
 
   rust-shim:
     desc: "Verify the vendored Rust crate shim offline"
@@ -272,9 +282,10 @@ tasks:
       - "sh stdlib/tests/verify.sh"
 
   clock-adapters:
-    desc: "Verify explicit clock identities, affine handles, and fake time"
+    desc: "Verify explicit clock identities, fake time, and Linux integration"
     cmds:
       - "sh tests/stdlib/clock-adapters/check.sh"
+      - "sh tests/stdlib/clock-adapters/check-linux-x86_64.sh"
 
   example-law-evidence:
     desc: "Bind example law evidence to its exact source and honest status"
@@ -546,6 +557,7 @@ tasks:
             wasm \
             tour \
             c-abi \
+            bindgen-c \
             rust-shim \
             http \
             cli-framework \

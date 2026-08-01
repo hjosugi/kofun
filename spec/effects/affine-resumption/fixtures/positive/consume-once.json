@@ -1,0 +1,1 @@
+{"schema":"kofun.affine-resumption-model/v1","name":"consume-once","capture":[],"program":[{"op":"consume","span":{"file":"consume.kofun","start":30,"end":36}}],"expect":{"result":"accept","capture_span":{"file":"consume.kofun","start":10,"end":20},"end_span":{"file":"consume.kofun","start":40,"end":41},"primary_span":null,"related_span":null}}

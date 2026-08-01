@@ -2,12 +2,12 @@
   "schema": "kofun.release-evidence/v1",
   "manifest_version": 1,
   "inputs": {
-    "release/claims.json": "6bf42de53699017883f8319a6b2ac99609ec95e7ce5cb3f10db8ada19a68df0d",
+    "release/claims.json": "87462aea7cca526f84aa4648418d20156d132968bf3ebab8eaf71de1c6026667",
     "spec/release-claim.schema.json": "8cf649858ac955e79ef2e05a5cd01d5234b6b1d87b2fd64a998e2a9ec6af3485"
   },
   "states": {
     "implemented": 9,
-    "checkpoint": 30,
+    "checkpoint": 31,
     "design": 1,
     "open": 3
   },
@@ -36,6 +36,21 @@
       "negative_boundary": "tests/compile-fail/use_after_take.kofun",
       "reproduction": "task stage2",
       "prerequisites": []
+    },
+    {
+      "id": "bounded-tzdb-producer",
+      "state": "checkpoint",
+      "area": "c-backend",
+      "targets": [
+        "c11",
+        "stage2"
+      ],
+      "positive_gate": "sh tests/stdlib/tzdb/check.sh",
+      "negative_boundary": "tests/stdlib/tzdb/tzdb.kofun",
+      "reproduction": "task tzdb",
+      "prerequisites": [
+        "cc"
+      ]
     },
     {
       "id": "c-abi-profile",
@@ -605,7 +620,7 @@
     }
   ],
   "evidence_digests": {
-    "Taskfile.yml": "9b0a7a478b0149c260eee38ebba35d6609e46fb14c0e04a1e78fce3533ec5e29",
+    "Taskfile.yml": "57f2d4bbba7e3a3246e04779685e2d724e13c00ea5602b84c2bb21ecdd9900d7",
     "bootstrap/native/check.sh": "fea94cb623757e1bf17e4497f43d656b1e8ff57a39a92ece871d8ff257c0f2ef",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/driver/corpus_builtin_rejects.tsv": "b1fa0b26247581aef797a81880554a94233a34109215530641706d76777087d4",
@@ -622,7 +637,7 @@
     "docs/LAW_SYSTEM.md": "81276192f86e03b94369d6d2342a5f681533e64e6df9d4eddd73f3f25de96f99",
     "docs/LINGUIST_RECOGNITION.md": "9d81df186a6a92b4b65850e4ca7fb0e9ba97ec705774b935466d2148865eab87",
     "docs/MEMORY_MODEL.md": "bc3add7dd5703cb241cf66771351fb072fff9c2015026cb6b3cedcae389c3185",
-    "docs/MVP_IMPLEMENTED.md": "df410d3d621aafb1af9ec47751c882ccb503be9d2b209727e726e2083a1b2fa3",
+    "docs/MVP_IMPLEMENTED.md": "a90d0400777d52f5240b8d7cc8a8bd46fb139bf786ae36ba39ca493cc1ccca40",
     "docs/NATIVE_BACKEND.md": "ab16b7bc6ae59071f9ae73c6fafde44732c887d122bb711104eb231297680bfe",
     "docs/ROADMAP.md": "31d94eba2d40de326e29f7835b9244ace4073d1f482a23372ea2b11c6a873209",
     "docs/RUST_CRATE_SHIMS.md": "4365b064cbc9a05733710d3a609c1db2623b28cb9ed4ba0e48536e35f9d58c47",
@@ -661,6 +676,8 @@
     "tests/http/check.sh": "b3fcbd128033bb7a3c0b7e4f89b679743e0e5e49e9eaa1bdc9573cbb5794aafd",
     "tests/lsp/performance_test.js": "9be9916dd14466b33b631fe1435ddcc038c44288f80c320e1458bcb16d2aab33",
     "tests/security/module-interface-artifact.sh": "0050bbe11ab21fe931bbf6d5043d9adccd4ff36afe26343c69a9ff5277307010",
+    "tests/stdlib/tzdb/README.md": "46806b302662a3195ba2be1bfecd1379032758d976583ef2b79a038f83081308",
+    "tests/stdlib/tzdb/tzdb.kofun": "a6bd03d5d075ae86f754f2855f72fd5e89fa95984f4b75c9fe4fa265d0528e55",
     "tests/typed-sidecar/authority-boundary.sh": "dc97e4f38bf93297b9ff40f48a0c008121a4f6a9a3bd1c4aab7c5d5f121ec005"
   }
 }

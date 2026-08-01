@@ -1,0 +1,109 @@
+{
+  "bound": null,
+  "observation": {
+    "diagnostic": null,
+    "exit_category": "success",
+    "ownership_event": null,
+    "stderr": "",
+    "stdout": "before\nafter\n"
+  },
+  "policy": "fifo",
+  "program": {
+    "budgets": {
+      "decisions": 16,
+      "states": 64,
+      "steps": 16,
+      "tasks": 4
+    },
+    "channels": [],
+    "name": "checked-in-valid-replay",
+    "root": [
+      {
+        "op": "print",
+        "text": "before\n"
+      },
+      {
+        "op": "yield"
+      },
+      {
+        "op": "print",
+        "text": "after\n"
+      }
+    ],
+    "schema": "kofun.schedule-program/v1"
+  },
+  "schema": "kofun.schedule-witness/v1",
+  "status": "success",
+  "trace": {
+    "algorithm": "fifo-v1",
+    "budgets": {
+      "decisions": 16,
+      "states": 64,
+      "steps": 16,
+      "tasks": 4
+    },
+    "decisions": [
+      {
+        "index": 0,
+        "runnable": [
+          "s0.t0"
+        ],
+        "selected": "s0.t0"
+      },
+      {
+        "index": 1,
+        "runnable": [
+          "s0.t0"
+        ],
+        "selected": "s0.t0"
+      },
+      {
+        "index": 2,
+        "runnable": [
+          "s0.t0"
+        ],
+        "selected": "s0.t0"
+      }
+    ],
+    "events": [
+      {
+        "detail": {
+          "text": "before\n"
+        },
+        "kind": "stdout",
+        "scope": "s0",
+        "sequence": 0,
+        "task": "s0.t0"
+      },
+      {
+        "detail": {
+          "origin": "user"
+        },
+        "kind": "yield",
+        "scope": "s0",
+        "sequence": 1,
+        "task": "s0.t0"
+      },
+      {
+        "detail": {
+          "text": "after\n"
+        },
+        "kind": "stdout",
+        "scope": "s0",
+        "sequence": 2,
+        "task": "s0.t0"
+      },
+      {
+        "detail": {},
+        "kind": "complete",
+        "scope": "s0",
+        "sequence": 3,
+        "task": "s0.t0"
+      }
+    ],
+    "program_digest": "102280684dfe44ba9da772471a6ca3746dfdaa77a1ef32c7be353796928737d3",
+    "schema": "kofun.schedule-trace/v1",
+    "seed": null,
+    "target_semantics": "kofun.scoped-concurrency/model-v1"
+  }
+}

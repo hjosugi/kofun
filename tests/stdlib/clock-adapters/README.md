@@ -8,6 +8,7 @@ handles, and a deterministic fake clock with a scripted waiter.
 
 ```sh
 sh tests/stdlib/clock-adapters/check.sh
+sh tests/stdlib/clock-adapters/check-linux-x86_64.sh
 ```
 
 ## What is proved here
@@ -42,6 +43,9 @@ names `ClockIdentity`, `MonotonicInstant`, `SystemInstant`, `Duration`, and
 | the platform-failure path runs without a platform | the fake clock is scripted to fail and returns `PlatformReadFailed` |
 | no wall-clock read occurs | the emitted C contains no time header and no time symbol, and two runs are byte-identical |
 | the clock types survive to typed HIR | `typed_hir.kofun` emits a complete Stage 2 semantic sidecar naming all five |
+| Linux preserves `timespec` units | the explicit Linux x86-64 platform gate reads both clocks and requires nanoseconds in `0..999999999` |
+| Linux failures keep errno | direct raw syscall probes require `-EINVAL`, while the source gate pins the `SysError` to `PlatformReadFailed(errno)` conversion |
+| a valid sleep reaches the kernel | the explicit platform gate executes a zero-duration `nanosleep`; deterministic conformance tests still never sleep |
 
 ## Why this is a projection
 
@@ -67,8 +71,11 @@ was minted at, the owner of the state names the live one, and only a match is
 accepted. #784 is the open design issue for a general affine handle; its
 decision has not landed, so this projection does not pre-empt it.
 
-The gate pins both files, so the canonical surface cannot drift away from the
-projection that proves it.
+The deterministic gate pins both files, so the canonical surface cannot drift
+away from the projection that proves it. The separate Linux x86-64 gate is
+deliberately platform-labelled: it reads `CLOCK_MONOTONIC` and
+`CLOCK_REALTIME`, executes a zero-duration sleep, and checks raw `-EINVAL`
+behavior without making any assertion about elapsed wall time.
 
 ## Mixing is refused by the frontend
 
