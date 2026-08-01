@@ -590,7 +590,7 @@
   ],
   "evidence_digests": {
     "Taskfile.yml": "96997bf9c1723f885e2c8ae133cf07f831f56591769aad3cf701a32383e44d0e",
-    "bootstrap/native/check.sh": "255a9618fc644e1fad3767f031aaaa32a362af424ca9b01eb76efcdfc2841485",
+    "bootstrap/native/check.sh": "89d0ce8d1903f3ab668df64a02f3f708226b5662c1e140d05f7f017d726bd47a",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/driver/corpus_builtin_rejects.tsv": "b1fa0b26247581aef797a81880554a94233a34109215530641706d76777087d4",
     "bootstrap/selfhost/driver/corpus_reject.kofun": "2593f52fbcf8237c4e3f6cdf1302115e7ef0d42a4b9133456e001edfc721adec",
@@ -639,7 +639,7 @@
     "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun": "664c4d3b0d4bcd9265fee34b3ae60d8bf0eb58c9ce5c2b504579c1249aa16f2d",
     "tests/fuzz/SEMANTIC_PROTOCOL.md": "95644005013d2aae82a042deb341785a083552c766abafa71bdbf4335deea522",
     "tests/fuzz/semantic_differential.sh": "f86c3afb9c4e6aa8be68159f40215451d536ef29c821aea9f160def2613c0b7d",
-    "tests/http/check.sh": "1f5fd04637db4cf5204cb82727dde47053d0c523fdf2db0627bca8fa7807ecc4",
+    "tests/http/check.sh": "bf3355eab6c96647075c03cab70ad33fa3baab5657a8a69818fa4adfad966714",
     "tests/lsp/performance_test.js": "9be9916dd14466b33b631fe1435ddcc038c44288f80c320e1458bcb16d2aab33",
     "tests/typed-sidecar/authority-boundary.sh": "2847c69ac7f2039e860f21bd6d1122909254cf396f0ff8ffed3ebb3f08633350"
   }

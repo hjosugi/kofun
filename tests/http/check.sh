@@ -42,7 +42,7 @@ check_recorded_hash() {
             "s/.*\"$key\": \"\\([0-9a-f][0-9a-f]*\\)\".*/\\1/p" \
             "$RESULTS"
     )
-    test "${#recorded}" -eq 64
+    assert_num "length of the recorded $key digest" "${#recorded}" -eq 64
     actual=$(sha256sum "$file")
     actual=${actual%% *}
     test "$recorded" = "$actual" || {

@@ -154,8 +154,8 @@ expect_program_failure() {
     "$PROGRAM" "$@" >"$WORK/$label.stdout" 2>"$WORK/$label.stderr"
     actual_status=$?
     set -e
-    test "$actual_status" -eq "$expected_status"
-    test ! -s "$WORK/$label.stdout"
+    assert_num "actual status" "$actual_status" -eq "$expected_status"
+    assert_file_empty "$label.stdout" "$WORK/$label.stdout"
     printf '%s\n' "$expected_stderr" >"$WORK/$label.expected"
     cmp "$WORK/$label.expected" "$WORK/$label.stderr"
 }
@@ -236,8 +236,8 @@ expect_compiler_failure() {
         >"$WORK/$label.stdout" 2>"$WORK/$label.stderr"
     status=$?
     set -e
-    test "$status" -eq 2
-    test ! -e "$WORK/$label-output"
+    assert_num "status" "$status" -eq 2
+    assert_absent "$label-output" "$WORK/$label-output"
     grep -Fq "$expected" "$WORK/$label.stderr"
 }
 

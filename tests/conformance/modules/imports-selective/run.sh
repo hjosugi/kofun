@@ -55,7 +55,7 @@ expect_failure() {
         exit 1
     fi
     grep -F "error[$code]:" "$log" >/dev/null
-    test ! -e "$hir"
+    assert_absent "hir" "$hir"
     test ! -e "$backend"
 }
 
@@ -133,9 +133,9 @@ expect_exact_forbidden() {
         printf '%s\n' "$name exited $status instead of 1" >&2
         exit 1
     }
-    test ! -s "$stderr"
-    test ! -e "$hir"
-    test ! -e "$backend"
+    assert_file_empty "stderr" "$stderr"
+    assert_absent "hir" "$hir"
+    assert_absent "backend" "$backend"
     printf '%s\n' "$expected" >"$WORK/$name.expected"
     cmp "$WORK/$name.expected" "$stdout"
     grep -F "error[$code]:" "$stdout" >/dev/null

@@ -9,6 +9,8 @@ TMP_PARENT="$ROOT/build/tmp"
 mkdir -p "$TMP_PARENT"
 TMP_DIR=$(mktemp -d "$TMP_PARENT/typed-sidecar.XXXXXX")
 trap 'rm -rf "$TMP_DIR"' EXIT HUP INT TERM
+ASSERT_CONTEXT='typed-sidecar spec'
+. "$ROOT/tests/assertions/assert.sh"
 
 node --check "$VALIDATOR"
 node --check "$GENERATOR"
@@ -41,9 +43,10 @@ expect_denied() {
     else
         status=$?
     fi
-    test "$status" -eq 1
-    test ! -s "$TMP_DIR/$label.out"
-    test "$(wc -l < "$TMP_DIR/$label.err")" -eq 1
+    assert_num "exit status for $label" "$status" -eq 1
+    assert_file_empty "$TMP_DIR/$label.out" "$TMP_DIR/$label.out"
+    assert_num "lines in $TMP_DIR/$label.err" \
+        "$(wc -l < "$TMP_DIR/$label.err")" -eq 1
     grep -q '^typed-sidecar: ' "$TMP_DIR/$label.err"
 }
 
@@ -66,9 +69,10 @@ expect_invalid() {
     else
         status=$?
     fi
-    test "$status" -eq 1
-    test ! -s "$TMP_DIR/$label.out"
-    test "$(wc -l < "$TMP_DIR/$label.err")" -eq 1
+    assert_num "exit status for invalid case $label" "$status" -eq 1
+    assert_file_empty "$TMP_DIR/$label.out" "$TMP_DIR/$label.out"
+    assert_num "lines in $TMP_DIR/$label.err" \
+        "$(wc -l < "$TMP_DIR/$label.err")" -eq 1
     grep -q '^typed-sidecar: ' "$TMP_DIR/$label.err"
 }
 

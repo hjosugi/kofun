@@ -9,6 +9,8 @@ TMP_PARENT="$ROOT/build/tmp"
 mkdir -p "$TMP_PARENT"
 TMP_DIR=$(mktemp -d "$TMP_PARENT/aggregate-layout.XXXXXX")
 trap 'rm -rf "$TMP_DIR"' EXIT HUP INT TERM
+ASSERT_CONTEXT='aggregate layout v1'
+. "$ROOT/tests/assertions/assert.sh"
 
 node --check "$LAYOUT"
 node "$LAYOUT" schema > /dev/null
@@ -67,7 +69,8 @@ expect_rejected() {
             printf '%s\n' "FAIL: aggregate-layout: $label wrote a descriptor while failing" >&2
             exit 1
         }
-    test "$(wc -l < "$TMP_DIR/$label.err")" -eq 1
+    assert_num "lines in $TMP_DIR/$label.err" \
+        "$(wc -l < "$TMP_DIR/$label.err")" -eq 1
     grep -q '^aggregate-layout: ' "$TMP_DIR/$label.err"
 }
 

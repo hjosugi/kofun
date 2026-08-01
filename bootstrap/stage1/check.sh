@@ -145,8 +145,8 @@ runtime_trap_corpus() {
     "$WORK/$stem" >"$WORK/$stem.stdout" 2>"$WORK/$stem.stderr"
     status=$?
     set -e
-    test "$status" -eq 1
-    test ! -s "$WORK/$stem.stdout"
+    assert_num "exit status for $stem" "$status" -eq 1
+    assert_file_empty "$stem.stdout" "$WORK/$stem.stdout"
     cmp "$ROOT/bootstrap/selfhost/driver/$stem.stderr" "$WORK/$stem.stderr"
 }
 runtime_trap_corpus corpus_trap_list_index
