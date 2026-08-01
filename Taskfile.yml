@@ -276,6 +276,11 @@ tasks:
     cmds:
       - "sh tests/stdlib/clock-adapters/check.sh"
 
+  example-law-evidence:
+    desc: "Bind example law evidence to its exact source and honest status"
+    cmds:
+      - "sh examples/check.sh"
+
   benchmark-summary:
     desc: "Verify deterministic benchmark quantiles and MAD"
     cmds:
@@ -547,6 +552,7 @@ tasks:
             tui-framework \
             stdlib \
             clock-adapters \
+            example-law-evidence \
             benchmark-summary \
             move-assertion \
             capabilities \
