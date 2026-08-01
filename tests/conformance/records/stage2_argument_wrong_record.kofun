@@ -1,0 +1,17 @@
+type Packet = {
+    count: Int,
+}
+
+type Frame = {
+    count: Int,
+}
+
+fn score(packet: Packet) -> Int {
+    return packet.count
+}
+
+fn main() -> Int {
+    let frame: Frame = Frame(count: 41)
+    print(score(frame))
+    return 0
+}

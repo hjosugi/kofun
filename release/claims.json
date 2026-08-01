@@ -1037,7 +1037,7 @@
       "compatibility": "The C11 slice is additive and has no public or FFI ABI promise. Expanding it into module resolution, generics, other field types, mutation, partial moves, or another backend is a separately evidenced capability change.",
       "positive_gate": {
         "command": "task records",
-        "observation": "The scanner fixture gates the full typed contract; the Stage 2 fixture executes Int/Bool record construction in both label orders, field reads, value arguments/results, and AggregateLayout assertions."
+        "observation": "The scanner fixture gates the full typed contract; the Stage 2 fixture executes Int/Bool record construction in both label orders, field reads, value arguments/results, and AggregateLayout assertions. Three argument fixtures hold the value-argument boundary from the other side: a field read, a binding of another record type, and an arithmetic expression each fail the compile with a named diagnostic and emit no C."
       },
       "negative_boundary": {
         "kind": "rejection",
