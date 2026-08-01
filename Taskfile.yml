@@ -251,6 +251,11 @@ tasks:
     cmds:
       - "sh bootstrap/c_abi/check.sh"
 
+  bindgen-c:
+    desc: "Verify audited raw C bindings generated from the Clang AST"
+    cmds:
+      - "sh tests/interop/bindgen-c/check.sh"
+
   rust-shim:
     desc: "Verify the vendored Rust crate shim offline"
     cmds:
@@ -547,6 +552,7 @@ tasks:
             wasm \
             tour \
             c-abi \
+            bindgen-c \
             rust-shim \
             http \
             cli-framework \

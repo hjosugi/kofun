@@ -64,6 +64,12 @@ usage:
   kofun test [PATH]
   kofun bootstrap
   kofun emit-c INPUT.kofun OUTPUT.c
+  kofun bindgen-c HEADER.h --out-dir DIR [--module NAME]
+                  [-D NAME[=VALUE]]... [-I DIR]... [--std STD]
+                  [--target TRIPLE] [--sysroot DIR] [--clang PATH]
+      Generates raw trusted C bindings plus a machine-readable audit
+      report from the Clang AST. Generated bindings are not safe; see
+      tooling/bindgen-c/README.md.
   kofun --version
 EOF
 }
@@ -833,6 +839,14 @@ case ${1-} in
     emit-c)
         test "$#" -eq 3 || { usage >&2; exit 2; }
         emit_c "$2" "$3"
+        ;;
+    bindgen-c)
+        shift
+        command -v node >/dev/null 2>&1 || {
+            printf '%s\n' "kofun: bindgen-c requires node" >&2
+            exit 2
+        }
+        exec node "$ROOT/tooling/bindgen-c/bindgen-c.mjs" "$@"
         ;;
     package)
         shift
