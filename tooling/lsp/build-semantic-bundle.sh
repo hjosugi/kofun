@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
-SERVER="$ROOT/editor/vscode/server"
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+SERVER="$ROOT/tooling/lsp"
 OUTPUT=${KOFUN_LSP_BUNDLE_DIR:-"$SERVER/generated"}
 CC=${CC:-cc}
 NODE=${NODE:-node}

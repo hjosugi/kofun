@@ -377,14 +377,6 @@ tasks:
     cmds:
       - "sh tests/lsp/check.sh"
 
-  tree-sitter:
-    desc: "Verify the structural grammar and editor queries"
-    cmds:
-      - "npm --prefix editor/tree-sitter-kofun ci"
-      - "npm --prefix editor/tree-sitter-kofun test"
-      - "npm --prefix editor/tree-sitter-kofun run test:repository-corpus"
-      - "npm --prefix editor/tree-sitter-kofun run test:queries"
-
   roadmap:
     desc: "Verify the executable issues 31-34 roadmap"
     cmds:
@@ -418,8 +410,6 @@ tasks:
           then exit 1; fi
         silent: true
       - cmd: "test ! -e pyproject.toml"
-        silent: true
-      - cmd: "grep -q '\"extensions\": \\[\".kofun\"\\]' editor/vscode/package.json"
         silent: true
       - cmd: "printf '%s\\n' 'PASS: .kofun sources only; no Python implementation'"
         silent: true
@@ -548,7 +538,6 @@ tasks:
             documentation-index \
             ownership-view \
             artifact-qualification \
-            tree-sitter \
             syntax \
             repository-check \
             assertions \
