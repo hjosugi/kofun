@@ -174,7 +174,7 @@ function asBuffer(bytes) {
   throw new TypeError("typed-sidecar bytes must be Buffer, Uint8Array, or ArrayBuffer");
 }
 
-function decodeDocument(input, { canonical = true } = {}) {
+function decodeJsonBytes(input) {
   const bytes = asBuffer(input);
   ensureDocumentBytes(bytes.length);
   if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
@@ -187,6 +187,15 @@ function decodeDocument(input, { canonical = true } = {}) {
     fail("document is not valid UTF-8", "TS001");
   }
   const value = new JsonParser(text).parse();
+  return { text, value };
+}
+
+export function parseJsonBytesStrict(input) {
+  return decodeJsonBytes(input).value;
+}
+
+function decodeDocument(input, { canonical = true } = {}) {
+  const { text, value } = decodeJsonBytes(input);
   if (canonical && canonicalTypedSidecarBytes(value) !== text) fail("document is not canonical JSON", "TS002");
   return value;
 }

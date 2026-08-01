@@ -2,12 +2,12 @@
   "schema": "kofun.release-evidence/v1",
   "manifest_version": 1,
   "inputs": {
-    "release/claims.json": "f98d62c70731df37faf3406a21ea772cac28d1112198537239998678c69530ab",
+    "release/claims.json": "b388ea4d2b80d863e0fb942ff4f3978bede4048f03a22b2a461eaf56b536ba59",
     "spec/release-claim.schema.json": "8cf649858ac955e79ef2e05a5cd01d5234b6b1d87b2fd64a998e2a9ec6af3485"
   },
   "states": {
     "implemented": 10,
-    "checkpoint": 29,
+    "checkpoint": 30,
     "design": 1,
     "open": 3
   },
@@ -168,6 +168,21 @@
       "reproduction": "task fuzz",
       "prerequisites": [
         "cc"
+      ]
+    },
+    {
+      "id": "documentation-index",
+      "state": "checkpoint",
+      "area": "tooling",
+      "targets": [
+        "stage2"
+      ],
+      "positive_gate": "task documentation-index",
+      "negative_boundary": "tests/docs/documentation_index_test.mjs",
+      "reproduction": "task documentation-index",
+      "prerequisites": [
+        "cc",
+        "node"
       ]
     },
     {
@@ -604,7 +619,7 @@
     }
   ],
   "evidence_digests": {
-    "Taskfile.yml": "fdd93095036b994ff5daec1834495395218b2dad11f2a3018ca7afe78067c477",
+    "Taskfile.yml": "96fa596367479fe022a010ff6f5afe6ea96d976b14c08e7df8de7a47281a994e",
     "bootstrap/native/check.sh": "d28f268eb439104bc76d55daa7d00b7c409e764d447fa911faf8c866b871d4f3",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/driver/corpus_builtin_rejects.tsv": "b1fa0b26247581aef797a81880554a94233a34109215530641706d76777087d4",
@@ -616,11 +631,12 @@
     "docs/BUILD_SYSTEM.md": "d4a372fc97c53874cc2438f3de132289beb033ce2bf1e67518b702de796b05a8",
     "docs/COMPILER_ARCHITECTURE.md": "9ca8641a3d117d84be9ce7f311d26c5f7e8df3b1a5772f3be5b8db67808d56cc",
     "docs/DECIMAL.md": "e078f812ba5c28dcdf58459694a157d8884605b8f188fc368ded51439d23d54f",
+    "docs/DOCUMENTATION_INDEX.md": "82d6ef91e36f8c9acb729a72a314f58f5d5d48bf646036f5efe3424658b75b5b",
     "docs/GETTING_STARTED.md": "927180a9f390778e4e819a175be301a53fe4a9b11412c536cfe97388df7262d6",
     "docs/LAW_SYSTEM.md": "1d5fb69332e8c4405fd5627567a8921b072b298f2f6d70498ec38958a5359f31",
     "docs/LINGUIST_RECOGNITION.md": "4e70400a719381abee1b72c5a3157e78181c251b116b12c60b6808cad428b502",
     "docs/MEMORY_MODEL.md": "2ff3a5680ddfc3f7013f46e152e76531c328feb7601582485436c33e52b695b7",
-    "docs/MVP_IMPLEMENTED.md": "d9d0166080a92b25b8f250e42884cef7afcee3f7f3c80d9b07483235c1c1b843",
+    "docs/MVP_IMPLEMENTED.md": "cb946ccfc2cb5ca07c828d6cc35d83de7ca035603299e95997e2575ed5cf1659",
     "docs/NATIVE_BACKEND.md": "ab16b7bc6ae59071f9ae73c6fafde44732c887d122bb711104eb231297680bfe",
     "docs/ROADMAP.md": "d58e8abcfd1ed6106539d49ef55ba674451823aa8222ed595e92f825f28f5bc8",
     "docs/RUST_CRATE_SHIMS.md": "4365b064cbc9a05733710d3a609c1db2623b28cb9ed4ba0e48536e35f9d58c47",
@@ -654,6 +670,7 @@
     "tests/diagnostics/registry.tsv": "19c2776563fa28b8b42e861304a9944c4c73fa3beb78dbbcd5b8e9d46b69afef",
     "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun": "664c4d3b0d4bcd9265fee34b3ae60d8bf0eb58c9ce5c2b504579c1249aa16f2d",
     "tests/diagnostics/visibility-api-leaks.sh": "d87ad383a90d32e88526c9833c1086aea6035796964ce4983a2cfbfd7d9683ff",
+    "tests/docs/documentation_index_test.mjs": "249fd426d8f058fa487df75e16db8695bab882c1ee6ad4297bb1fbe61b3f8abe",
     "tests/fuzz/SEMANTIC_PROTOCOL.md": "95644005013d2aae82a042deb341785a083552c766abafa71bdbf4335deea522",
     "tests/fuzz/semantic_differential.sh": "f86c3afb9c4e6aa8be68159f40215451d536ef29c821aea9f160def2613c0b7d",
     "tests/http/check.sh": "bf3355eab6c96647075c03cab70ad33fa3baab5657a8a69818fa4adfad966714",
