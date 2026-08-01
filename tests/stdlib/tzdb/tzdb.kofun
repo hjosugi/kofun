@@ -1,0 +1,556 @@
+# Bounded executable tzdb producer for issue #878.
+#
+# The fixture format is intentionally tiny and injected as Bytes20. The first
+# eighteen bytes are authoritative; length and claimed_digest are metadata and
+# are not part of the content digest. Offsets and transition instants are
+# unsigned little-endian 16-bit values in this checkpoint.
+#
+#   0..1   magic "KZ"
+#   2      schema version (1)
+#   3      ZoneId code (7 = Test/GapFold)
+#   4      transition count (bounded to 2)
+#   5      initial UTC offset seconds
+#   6..11  transition 1: UTC instant, before offset, after offset
+#   12..17 transition 2: UTC instant, before offset, after offset
+#
+# The committed fixture changes from offset 0 to +100 at UTC 1000, then back
+# to 0 at UTC 2000. Local 1050 is therefore nonexistent, local 2050 is
+# ambiguous, and local 1500 uniquely maps to UTC 1400.
+
+type Bytes20 = {
+    length: Int,
+    claimed_digest: Int,
+    word0: Int,
+    word1: Int,
+    word2: Int,
+    word3: Int,
+    word4: Int,
+    word5: Int,
+    word6: Int,
+    word7: Int,
+    word8: Int,
+    word9: Int,
+}
+
+type ZoneId = {
+    code: Int,
+}
+
+type Transition = {
+    utc_seconds: Int,
+    before_offset_seconds: Int,
+    after_offset_seconds: Int,
+}
+
+type TzdbMetadata = {
+    version: Int,
+    content_digest: Int,
+}
+
+type Instant = {
+    seconds: Int,
+}
+
+type LocalDateTime = {
+    wall_seconds: Int,
+}
+
+type UtcOffset = {
+    seconds: Int,
+}
+
+type Tzdb = {
+    version: Int,
+    content_digest: Int,
+    zone_code: Int,
+    initial_offset: Int,
+    transition1_utc: Int,
+    transition1_before: Int,
+    transition1_after: Int,
+    transition2_utc: Int,
+    transition2_before: Int,
+    transition2_after: Int,
+}
+
+type LoadResult = {
+    code: Int,
+    detail: Int,
+    version: Int,
+    content_digest: Int,
+    zone_code: Int,
+    initial_offset: Int,
+    transition1_utc: Int,
+    transition1_before: Int,
+    transition1_after: Int,
+    transition2_utc: Int,
+    transition2_before: Int,
+    transition2_after: Int,
+}
+
+type TzdbError =
+    | MalformedInput(reason: Int)
+    | UnsupportedVersion(version: Int)
+    | DigestMismatch(observed: Int)
+    | InvalidZone(zone: Int)
+    | TruncatedBytes(length: Int)
+    | TrailingBytes(extra: Int)
+    | ArithmeticOverflow(operation: Int)
+    | OversizedInput(length: Int)
+    | LimitExhausted(count: Int)
+
+# Ambiguous packs the earlier and later UTC instants into one bounded Int:
+# earlier * 100000 + later. The fixture bounds make this reversible.
+type LocalResolution =
+    | Unique(instant: Int)
+    | Ambiguous(packed_instants: Int)
+    | Nonexistent(next_instant: Int)
+    | ResolutionFailed(error_code: Int)
+
+fn code_ok() -> Int { return 0 }
+fn code_malformed() -> Int { return -1 }
+fn code_unsupported_version() -> Int { return -2 }
+fn code_digest_mismatch() -> Int { return -3 }
+fn code_invalid_zone() -> Int { return -4 }
+fn code_truncated() -> Int { return -5 }
+fn code_trailing() -> Int { return -6 }
+fn code_arithmetic_overflow() -> Int { return -7 }
+fn code_oversized() -> Int { return -8 }
+fn code_limit_exhausted() -> Int { return -9 }
+
+fn fixture(
+    length: Int,
+    claimed_digest: Int,
+    magic0: Int,
+    version: Int,
+    zone: Int,
+    transition_count: Int,
+    trailing: Int
+) -> Bytes20 {
+    let bytes: Bytes20 = Bytes20(
+        length: length,
+        claimed_digest: claimed_digest,
+        word0: magic0 + 90 * 256,
+        word1: version + zone * 256,
+        word2: transition_count,
+        word3: 1000,
+        word4: 0,
+        word5: 100,
+        word6: 2000,
+        word7: 100,
+        word8: 0,
+        word9: trailing
+    )
+    return bytes
+}
+
+fn byte_at(bytes: Bytes20, index: Int) -> Int {
+    let mut word = 0
+    if index // 2 == 0 { word = bytes.word0 }
+    if index // 2 == 1 { word = bytes.word1 }
+    if index // 2 == 2 { word = bytes.word2 }
+    if index // 2 == 3 { word = bytes.word3 }
+    if index // 2 == 4 { word = bytes.word4 }
+    if index // 2 == 5 { word = bytes.word5 }
+    if index // 2 == 6 { word = bytes.word6 }
+    if index // 2 == 7 { word = bytes.word7 }
+    if index // 2 == 8 { word = bytes.word8 }
+    if index // 2 == 9 { word = bytes.word9 }
+    if index % 2 == 0 { return word % 256 }
+    if index < 20 { return word // 256 }
+    return -1
+}
+
+fn bytes_are_valid(bytes: Bytes20, index: Int) -> Int {
+    if index == bytes.length { return 1 }
+    let value = byte_at(bytes, index)
+    if value < 0 { return 0 }
+    if value > 255 { return 0 }
+    return bytes_are_valid(bytes, index + 1)
+}
+
+# A versioned, bounded polynomial digest. It is content identity for this
+# fixture format, not a cryptographic trust primitive. The modulus keeps every
+# multiplication inside signed Int.
+fn digest_bytes(bytes: Bytes20, index: Int, accumulator: Int) -> Int {
+    if index == bytes.length { return accumulator }
+    let next = (accumulator * 257 + byte_at(bytes, index)) % 1000000007
+    return digest_bytes(bytes, index + 1, next)
+}
+
+fn content_digest(bytes: Bytes20) -> Int {
+    return digest_bytes(bytes, 0, 17)
+}
+
+fn decode_u16(low: Int, high: Int) -> Int {
+    return low + high * 256
+}
+
+fn load_result(
+    code: Int,
+    detail: Int,
+    version: Int,
+    digest: Int,
+    zone: Int,
+    initial: Int,
+    transition1_utc: Int,
+    transition1_before: Int,
+    transition1_after: Int,
+    transition2_utc: Int,
+    transition2_before: Int,
+    transition2_after: Int
+) -> LoadResult {
+    let result: LoadResult = LoadResult(
+        code: code,
+        detail: detail,
+        version: version,
+        content_digest: digest,
+        zone_code: zone,
+        initial_offset: initial,
+        transition1_utc: transition1_utc,
+        transition1_before: transition1_before,
+        transition1_after: transition1_after,
+        transition2_utc: transition2_utc,
+        transition2_before: transition2_before,
+        transition2_after: transition2_after
+    )
+    return result
+}
+
+fn load_failure(code: Int, detail: Int) -> LoadResult {
+    return load_result(code, detail, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+}
+
+fn load_tzdb(bytes: Bytes20) -> LoadResult {
+    if bytes.length < 0 { return load_failure(code_malformed(), 0) }
+    if bytes.length > 20 { return load_failure(code_oversized(), bytes.length) }
+    if bytes.length < 18 { return load_failure(code_truncated(), bytes.length) }
+    if bytes.length > 18 {
+        return load_failure(code_trailing(), bytes.length - 18)
+    }
+    if bytes_are_valid(bytes, 0) == 0 {
+        return load_failure(code_malformed(), 2)
+    }
+    if byte_at(bytes, 0) != 75 { return load_failure(code_malformed(), 0) }
+    if byte_at(bytes, 1) != 90 { return load_failure(code_malformed(), 1) }
+    if byte_at(bytes, 2) != 1 {
+        return load_failure(code_unsupported_version(), byte_at(bytes, 2))
+    }
+    if byte_at(bytes, 3) != 7 {
+        return load_failure(code_invalid_zone(), byte_at(bytes, 3))
+    }
+    if byte_at(bytes, 4) > 2 {
+        return load_failure(code_limit_exhausted(), byte_at(bytes, 4))
+    }
+    if byte_at(bytes, 4) != 2 { return load_failure(code_malformed(), 4) }
+
+    let transition1_utc = decode_u16(byte_at(bytes, 6), byte_at(bytes, 7))
+    let transition1_before = decode_u16(byte_at(bytes, 8), byte_at(bytes, 9))
+    let transition1_after = decode_u16(byte_at(bytes, 10), byte_at(bytes, 11))
+    let transition2_utc = decode_u16(byte_at(bytes, 12), byte_at(bytes, 13))
+    let transition2_before = decode_u16(byte_at(bytes, 14), byte_at(bytes, 15))
+    let transition2_after = decode_u16(byte_at(bytes, 16), byte_at(bytes, 17))
+
+    if transition1_utc >= transition2_utc {
+        return load_failure(code_malformed(), 12)
+    }
+    if transition1_before != byte_at(bytes, 5) {
+        return load_failure(code_malformed(), 8)
+    }
+    if transition2_before != transition1_after {
+        return load_failure(code_malformed(), 14)
+    }
+
+    let observed_digest = content_digest(bytes)
+    if observed_digest != bytes.claimed_digest {
+        return load_failure(code_digest_mismatch(), observed_digest)
+    }
+
+    return load_result(
+        code_ok(),
+        0,
+        byte_at(bytes, 2),
+        observed_digest,
+        byte_at(bytes, 3),
+        byte_at(bytes, 5),
+        transition1_utc,
+        transition1_before,
+        transition1_after,
+        transition2_utc,
+        transition2_before,
+        transition2_after
+    )
+}
+
+fn load_result_tzdb(result: LoadResult) -> Tzdb {
+    let db: Tzdb = Tzdb(
+        version: result.version,
+        content_digest: result.content_digest,
+        zone_code: result.zone_code,
+        initial_offset: result.initial_offset,
+        transition1_utc: result.transition1_utc,
+        transition1_before: result.transition1_before,
+        transition1_after: result.transition1_after,
+        transition2_utc: result.transition2_utc,
+        transition2_before: result.transition2_before,
+        transition2_after: result.transition2_after
+    )
+    return db
+}
+
+fn tzdb_metadata(db: Tzdb) -> TzdbMetadata {
+    let metadata: TzdbMetadata = TzdbMetadata(
+        version: db.version,
+        content_digest: db.content_digest
+    )
+    return metadata
+}
+
+fn tzdb_zone(db: Tzdb) -> ZoneId {
+    let zone: ZoneId = ZoneId(code: db.zone_code)
+    return zone
+}
+
+fn tzdb_transition1(db: Tzdb) -> Transition {
+    let transition: Transition = Transition(
+        utc_seconds: db.transition1_utc,
+        before_offset_seconds: db.transition1_before,
+        after_offset_seconds: db.transition1_after
+    )
+    return transition
+}
+
+fn tzdb_transition2(db: Tzdb) -> Transition {
+    let transition: Transition = Transition(
+        utc_seconds: db.transition2_utc,
+        before_offset_seconds: db.transition2_before,
+        after_offset_seconds: db.transition2_after
+    )
+    return transition
+}
+
+fn instant(seconds: Int) -> Instant {
+    let value: Instant = Instant(seconds: seconds)
+    return value
+}
+
+fn local_date_time(wall_seconds: Int) -> LocalDateTime {
+    let value: LocalDateTime = LocalDateTime(wall_seconds: wall_seconds)
+    return value
+}
+
+fn utc_offset(seconds: Int) -> UtcOffset {
+    let value: UtcOffset = UtcOffset(seconds: seconds)
+    return value
+}
+
+fn load_error(result: LoadResult) -> TzdbError {
+    if result.code == code_malformed() { return MalformedInput(result.detail) }
+    if result.code == code_unsupported_version() {
+        return UnsupportedVersion(result.detail)
+    }
+    if result.code == code_digest_mismatch() {
+        return DigestMismatch(result.detail)
+    }
+    if result.code == code_invalid_zone() { return InvalidZone(result.detail) }
+    if result.code == code_truncated() { return TruncatedBytes(result.detail) }
+    if result.code == code_trailing() { return TrailingBytes(result.detail) }
+    if result.code == code_arithmetic_overflow() {
+        return ArithmeticOverflow(result.detail)
+    }
+    if result.code == code_oversized() { return OversizedInput(result.detail) }
+    return LimitExhausted(result.detail)
+}
+
+fn error_code(error: TzdbError) -> Int {
+    let mut code = 0
+    match error {
+        MalformedInput(_) => { code = code_malformed() },
+        UnsupportedVersion(_) => { code = code_unsupported_version() },
+        DigestMismatch(_) => { code = code_digest_mismatch() },
+        InvalidZone(_) => { code = code_invalid_zone() },
+        TruncatedBytes(_) => { code = code_truncated() },
+        TrailingBytes(_) => { code = code_trailing() },
+        ArithmeticOverflow(_) => { code = code_arithmetic_overflow() },
+        OversizedInput(_) => { code = code_oversized() },
+        LimitExhausted(_) => { code = code_limit_exhausted() },
+    }
+    return code
+}
+
+fn error_detail(error: TzdbError) -> Int {
+    let mut detail = 0
+    match error {
+        MalformedInput(value) => { detail = value },
+        UnsupportedVersion(value) => { detail = value },
+        DigestMismatch(value) => { detail = value },
+        InvalidZone(value) => { detail = value },
+        TruncatedBytes(value) => { detail = value },
+        TrailingBytes(value) => { detail = value },
+        ArithmeticOverflow(value) => { detail = value },
+        OversizedInput(value) => { detail = value },
+        LimitExhausted(value) => { detail = value },
+    }
+    return detail
+}
+
+fn pack_instants(earlier: Int, later: Int) -> Int {
+    return earlier * 100000 + later
+}
+
+fn resolve_local(db: Tzdb, local: LocalDateTime) -> LocalResolution {
+    let gap_start = db.transition1_utc + db.transition1_before
+    let gap_end = db.transition1_utc + db.transition1_after
+    if local.wall_seconds >= gap_start {
+        if local.wall_seconds < gap_end {
+            return Nonexistent(db.transition1_utc)
+        }
+    }
+
+    let fold_start = db.transition2_utc + db.transition2_after
+    let fold_end = db.transition2_utc + db.transition2_before
+    if local.wall_seconds >= fold_start {
+        if local.wall_seconds < fold_end {
+            let earlier = local.wall_seconds - db.transition2_before
+            let later = local.wall_seconds - db.transition2_after
+            return Ambiguous(pack_instants(earlier, later))
+        }
+    }
+
+    if local.wall_seconds < gap_start {
+        return Unique(local.wall_seconds - db.initial_offset)
+    }
+    if local.wall_seconds < fold_start {
+        return Unique(local.wall_seconds - db.transition1_after)
+    }
+    return Unique(local.wall_seconds - db.transition2_after)
+}
+
+fn resolve_fixed_offset(
+    local: LocalDateTime,
+    offset: UtcOffset
+) -> LocalResolution {
+    let maximum = 9223372036854775807
+    let minimum = (0 - 9223372036854775807) - 1
+    if offset.seconds > 0 {
+        if local.wall_seconds < minimum + offset.seconds {
+            return ResolutionFailed(code_arithmetic_overflow())
+        }
+    }
+    if offset.seconds < 0 {
+        if local.wall_seconds > maximum + offset.seconds {
+            return ResolutionFailed(code_arithmetic_overflow())
+        }
+    }
+    return Unique(local.wall_seconds - offset.seconds)
+}
+
+fn resolution_kind(result: LocalResolution) -> Int {
+    let mut kind = 0
+    match result {
+        Unique(_) => { kind = 1 },
+        Ambiguous(_) => { kind = 2 },
+        Nonexistent(_) => { kind = 3 },
+        ResolutionFailed(code) => { kind = code },
+    }
+    return kind
+}
+
+fn resolution_payload(result: LocalResolution) -> Int {
+    let mut payload = 0
+    match result {
+        Unique(value) => { payload = value },
+        Ambiguous(value) => { payload = value },
+        Nonexistent(value) => { payload = value },
+        ResolutionFailed(value) => { payload = value },
+    }
+    return payload
+}
+
+fn load_failure_code(result: LoadResult) -> Int {
+    let error: TzdbError = load_error(result)
+    return error_code(error)
+}
+
+fn load_failure_detail(result: LoadResult) -> Int {
+    let error: TzdbError = load_error(result)
+    return error_detail(error)
+}
+
+fn main() {
+    let unsigned: Bytes20 = fixture(18, 0, 75, 1, 7, 2, 0)
+    let digest = content_digest(unsigned)
+    let bytes: Bytes20 = fixture(18, digest, 75, 1, 7, 2, 0)
+    let loaded: LoadResult = load_tzdb(bytes)
+    let db: Tzdb = load_result_tzdb(loaded)
+    let metadata: TzdbMetadata = tzdb_metadata(db)
+    let zone: ZoneId = tzdb_zone(db)
+    let first: Transition = tzdb_transition1(db)
+    let second: Transition = tzdb_transition2(db)
+    let normal_instant: Instant = instant(1400)
+
+    print(loaded.code)
+    print(metadata.version)
+    print(metadata.content_digest)
+    print(zone.code)
+    print(first.utc_seconds)
+    print(first.before_offset_seconds)
+    print(first.after_offset_seconds)
+    print(second.utc_seconds)
+    print(second.before_offset_seconds)
+    print(second.after_offset_seconds)
+    print(normal_instant.seconds)
+
+    let normal: LocalResolution = resolve_local(db, local_date_time(1500))
+    print(resolution_kind(normal))
+    print(resolution_payload(normal))
+
+    let gap: LocalResolution = resolve_local(db, local_date_time(1050))
+    print(resolution_kind(gap))
+    print(resolution_payload(gap))
+
+    let fold: LocalResolution = resolve_local(db, local_date_time(2050))
+    print(resolution_kind(fold))
+    print(resolution_payload(fold))
+
+    let malformed: LoadResult = load_tzdb(fixture(18, digest, 0, 1, 7, 2, 0))
+    print(load_failure_code(malformed))
+    print(load_failure_detail(malformed))
+
+    let unsupported: LoadResult = load_tzdb(fixture(18, digest, 75, 2, 7, 2, 0))
+    print(load_failure_code(unsupported))
+    print(load_failure_detail(unsupported))
+
+    let mismatched: LoadResult = load_tzdb(
+        fixture(18, digest + 1, 75, 1, 7, 2, 0)
+    )
+    print(load_failure_code(mismatched))
+    print(load_failure_detail(mismatched))
+
+    let invalid_zone: LoadResult = load_tzdb(fixture(18, digest, 75, 1, 8, 2, 0))
+    print(load_failure_code(invalid_zone))
+    print(load_failure_detail(invalid_zone))
+
+    let truncated: LoadResult = load_tzdb(fixture(17, digest, 75, 1, 7, 2, 0))
+    print(load_failure_code(truncated))
+    print(load_failure_detail(truncated))
+
+    let trailing: LoadResult = load_tzdb(fixture(19, digest, 75, 1, 7, 2, 1))
+    print(load_failure_code(trailing))
+    print(load_failure_detail(trailing))
+
+    let oversized: LoadResult = load_tzdb(fixture(21, digest, 75, 1, 7, 2, 0))
+    print(load_failure_code(oversized))
+    print(load_failure_detail(oversized))
+
+    let exhausted: LoadResult = load_tzdb(fixture(18, digest, 75, 1, 7, 3, 0))
+    print(load_failure_code(exhausted))
+    print(load_failure_detail(exhausted))
+
+    let minimum = (0 - 9223372036854775807) - 1
+    let overflow: LocalResolution = resolve_fixed_offset(
+        local_date_time(minimum),
+        utc_offset(100)
+    )
+    print(resolution_kind(overflow))
+    print(resolution_payload(overflow))
+}
