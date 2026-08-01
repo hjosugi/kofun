@@ -497,7 +497,7 @@
       "negative_boundary": {
         "kind": "rejection",
         "evidence": "tests/conformance/syntax/issues_35_47/enum_payload_unsupported_field.kofun",
-        "observation": "Enum shapes outside the slice — a non-`Int` payload, more than one payload field, or a payload arity the pattern does not match — are refused rather than silently accepted."
+        "observation": "Enum shapes outside the slice \u2014 a non-`Int` payload, more than one payload field, or a payload arity the pattern does not match \u2014 are refused rather than silently accepted."
       },
       "safety": {
         "classification": "none"
@@ -1350,10 +1350,10 @@
     {
       "id": "stdio-language-server",
       "public_wording": "stdio language server",
-      "public_status": "bounded diagnostics, symbols, completion, hover, definitions, and references",
+      "public_status": "bounded diagnostics, definitions, hover, completion, outline, references, highlights, ownership inlay hints, signature help, folding, selection ranges, semantic tokens, and rename for locals and parameters",
       "state": "checkpoint",
       "area": "tooling",
-      "bounded_capability": "A stdio LSP server providing diagnostics, symbols, completion, hover, definitions and references, within measured latency budgets.",
+      "bounded_capability": "A stdio LSP server providing diagnostics, definitions, hover, completion, document symbols, references, highlights, inlay hints carrying the read/edit/take mode at call sites, signature help, folding, selection ranges, semantic tokens, and rename restricted to locals and parameters, within measured latency budgets. Renaming a function or type is refused because the server reads only open documents; no code actions are offered because no registered diagnostic carries a remedy.",
       "targets": [
         "repository"
       ],
