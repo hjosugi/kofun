@@ -112,6 +112,28 @@ responses are refused, never repaired), `Timeout`, `Cancelled`,
 `LimitExceeded`, `RedirectLimit`, `BodyTruncated`. Idempotent-request retry
 is caller policy; the client never retries automatically.
 
+### Targets and cost
+
+- **The client exists only where a `Network` capability does.** It is specified
+  against that capability (#232) and never opens sockets ambiently, so a target
+  with no `Network` adapter does not get a degraded client — it does not get the
+  module at all, and asking for it is a compile-time error naming the target
+  rather than a runtime failure. **wasm32 is such a target today**: its Core is
+  bounded arithmetic with a browser host, and a browser `fetch` is a different
+  contract (no connection ownership, no framing, its own redirect and CORS
+  rules) that must not be presented as this API.
+- Dependencies are two, both named: the portable `url` module, specified with
+  this contract, and a `TlsProvider` adapter for `https`. **Plain `http` does not
+  pull TLS in** — a program that never constructs an `https` URL does not carry
+  the provider or a root store.
+- The provider is where the artifact cost lives. A native TLS backend is a
+  pinned dependency with its own update channel, and the charter's rule 2 is
+  what permits it; a Kofun implementation is out of scope for v1 (see
+  Alternatives). Either way the cost is the adapter's and is not paid by the
+  HTTP/1.1 core, which is why they are separate children.
+- The scripted transport (#644) substitutes at the `Network` boundary, so the
+  core's own conformance evidence costs no adapter at all.
+
 ### Testing
 
 - The conformance corpus runs only against local deterministic transports:

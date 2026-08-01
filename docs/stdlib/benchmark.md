@@ -75,6 +75,76 @@ bench parse_config(b: Bench) {
 - Failures and cancellation produce typed non-success results; a partial
   report is never published as success.
 
+## Examples
+
+Five cases, because each one is a distinct way to measure the wrong thing.
+
+**Pure computation.** The whole workload is inside `b.iter`, and its result is
+routed through `b.consume` — without that the optimizer is entitled to delete
+the call, and the benchmark would report the cost of an empty loop.
+
+```kofun
+bench fib_30(b: Bench) {
+    b.iter(fn() => b.consume(math.fib(30)))
+}
+```
+
+**Setup outside the measured region.** Building the input is not part of the
+workload. Everything before `b.iter` runs once and is not sampled.
+
+```kofun
+bench parse_config(b: Bench) {
+    let input = fixtures.large_config()      // setup: outside measurement
+    b.iter(fn() => b.consume(config.parse(input)))
+}
+```
+
+**Allocation-heavy code.** Identical in shape, different in what the report
+carries: allocation counters attach when a provider (#398, #476) exists for the
+running backend. The benchmark does not ask for them and does not change if
+they are absent — see the last case.
+
+```kofun
+bench build_index(b: Bench) {
+    let words = fixtures.word_list()
+    b.iter(fn() => b.consume(index.build(words)))
+}
+```
+
+**Parameterized cases.** One declaration, one report entry per parameter, each
+with its own samples. Sizes are stated rather than swept, so the same
+declaration measures the same points on every run.
+
+```kofun
+bench sort_n(b: Bench) {
+    for n in b.params([64, 4_096, 262_144]) {
+        let data = fixtures.shuffled(n)
+        b.iter(fn() => b.consume(sort.ascending(data.clone())))
+    }
+}
+```
+
+**An unavailable counter.** What a report says when a counter has no provider on
+this backend. The field is present and explicitly `unavailable`; it is never
+zero and never omitted, because a zero would read as *"no allocations"* and an
+omission as *"nobody asked"*.
+
+```json
+{
+  "schema": "kofun.bench-report/v1",
+  "bench": "build_index",
+  "samples": [412037, 409881, 411204],
+  "counters": {
+    "wall": { "unit": "ns", "clock": "monotonic" },
+    "allocated_bytes": "unavailable"
+  }
+}
+```
+
+A consumer that cannot distinguish those three states cannot be trusted with a
+comparison, which is why the schema makes the distinction rather than leaving it
+to a convention.
+
 ## Alternatives considered
 
 **Keep shell timing scripts.** Merits: zero new surface. Demerits: no
