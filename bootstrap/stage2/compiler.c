@@ -3254,6 +3254,25 @@ static char *parse_program(const char *source) {
                 int64_t payload_count =
                     payload_open < end && token_equal(source, payload_open, "(") ?
                         1 : 0;
+                char *payload_type = owned_text("");
+                if (payload_count != 0) {
+                    int64_t payload_name = skip_trivia(
+                        source,
+                        token_end(source, payload_open)
+                    );
+                    int64_t payload_colon = skip_trivia(
+                        source,
+                        token_end(source, payload_name)
+                    );
+                    int64_t payload_type_start = skip_trivia(
+                        source,
+                        token_end(source, payload_colon)
+                    );
+                    if (payload_type_start < end) {
+                        free(payload_type);
+                        payload_type = token_copy(source, payload_type_start);
+                    }
+                }
                 buffer_format(
                     &ir,
                     "constructor|%s|%s|%" PRId64 "|%" PRId64
@@ -3264,8 +3283,9 @@ static char *parse_program(const char *source) {
                     constructor,
                     token_end(source, constructor),
                     payload_count,
-                    payload_count == 0 ? "" : "Int"
+                    payload_type
                 );
+                free(payload_type);
                 free(constructor_name);
                 ++tag;
                 pipe = skip_trivia(

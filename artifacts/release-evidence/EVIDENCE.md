@@ -11,6 +11,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `checked-int64-contract` | `sh tests/conformance/run.sh` | The numeric conformance corpus passes on every supported backend. |
 | `cli-commands` | `sh tests/cli.sh` | Each subcommand succeeds on Core sources. |
 | `cli-framework` | `sh framework/cli/check.sh` | The declarative CLI example builds statically and runs. |
+| `compiled-visibility-interfaces` | `sh tests/interfaces/visibility-filtering.sh` | Compiler-produced nominal parameter, result, and payload identities round-trip exactly; public/internal views and edit-sensitive digests match the visibility matrix. |
 | `compiler-seed` | `sh bootstrap/stage1/check.sh` | The audited C seed accepts and executes one corpus covering all 15 typed profile builtins, both `len` overloads, argv/file I/O, Text operations, character predicates, Unicode validation, and stdout. All 30 builtin arity/type boundary rows exit nonzero and write no C, while the older corpora remain byte-identical. |
 | `decimal-arithmetic-v1` | `task decimal-arithmetic` | The Stage 2 C11 backend executes all Decimal and Float arithmetic cases, including exactness beyond binary64 and checked division outcomes. |
 | `deterministic-fuzzing` | `sh tests/fuzz/semantic_differential.sh` | Oracle and backend observations agree for every generated program. |

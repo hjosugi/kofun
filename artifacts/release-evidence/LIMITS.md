@@ -22,6 +22,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `checked-int64-contract` | trap | `tests/conformance/numeric/reject_slash_operator.kofun` | Operations that cannot be represented are refused or trapped rather than wrapping. |
 | `cli-commands` | rejection | `tests/cli_stage2_outcomes.sh` | Non-Core sources produce a refusal outcome instead of a partial build. |
 | `cli-framework` | limit | `tests/conformance/capabilities.tsv` | Targets outside Linux x86-64 are recorded as unsupported with a stated reason. |
+| `compiled-visibility-interfaces` | rejection | `tests/diagnostics/visibility-api-leaks.sh` | Public-to-internal/private and internal-to-private signatures produce deterministic E2S145 diagnostics and publish neither a replacement nor a cold artifact. |
 | `compiler-seed` | rejection | `bootstrap/selfhost/driver/corpus_builtin_rejects.tsv` | Each of the 15 profile builtins has one wrong-arity and one wrong-type row; all 30 expanded sources exit nonzero and write no C. The existing 31 typed, block, loop, Text, and index boundary fixtures remain in the same gate. |
 | `decimal-arithmetic-v1` | limit | `tests/conformance/capabilities.tsv` | Every backend without this runtime has an explicit unsupported row, while Decimal `//` and `%` are refused before an artifact is produced. |
 | `deterministic-fuzzing` | rejection | `tests/fuzz/semantic_differential.sh` | A divergence between the oracle and a backend fails the gate with the differing program. |

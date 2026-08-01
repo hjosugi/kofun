@@ -1,0 +1,1 @@
+error[E2S145]: API type at bytes 69..81 leaks a narrower declaration at bytes 9..46; requested=pub effective=internal; change API or declaration visibility

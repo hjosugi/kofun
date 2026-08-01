@@ -17,8 +17,8 @@ report a pass it did not observe.
 | Prerequisite | Claims that need it |
 |---|---|
 | `cargo` | `rust-crate-shim` |
-| `cc` | `c-abi-profile`, `c11-function-calls`, `compiler-seed`, `decimal-arithmetic-v1`, `deterministic-fuzzing`, `enum-matching`, `http-framework`, `nominal-records`, `reproducible-bootstrap`, `self-recompile`, `stage2-core-lowering` |
-| `node` | `stage2-typed-sidecar`, `stdio-language-server`, `tree-sitter-grammar`, `wasm32-arithmetic-core` |
+| `cc` | `c-abi-profile`, `c11-function-calls`, `compiled-visibility-interfaces`, `compiler-seed`, `decimal-arithmetic-v1`, `deterministic-fuzzing`, `enum-matching`, `http-framework`, `nominal-records`, `reproducible-bootstrap`, `self-recompile`, `stage2-core-lowering` |
+| `node` | `compiled-visibility-interfaces`, `stage2-typed-sidecar`, `stdio-language-server`, `tree-sitter-grammar`, `wasm32-arithmetic-core` |
 | `qemu-aarch64` | `native-aarch64-function-calls`, `native-list-int-core`, `native-text-returning-calls`, `native-utf8-text-core`, `selfhost-native-corpus` |
 | `sha256sum` | `compiler-seed`, `reproducible-bootstrap` |
 
@@ -33,6 +33,7 @@ report a pass it did not observe.
 | `checked-int64-contract` | `task check` |
 | `cli-commands` | `task test` |
 | `cli-framework` | `task cli-framework` |
+| `compiled-visibility-interfaces` | `task visibility-filtering` |
 | `compiler-seed` | `task bootstrap` |
 | `decimal-arithmetic-v1` | `task decimal-arithmetic` |
 | `deterministic-fuzzing` | `task fuzz` |

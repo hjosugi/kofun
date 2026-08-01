@@ -98,7 +98,7 @@ set +e
 "$PRODUCER" "$CASES/fixtures/failed.kofun" "$LOGICAL_PATH" \
     "$WORK/interface.kif" 2026 >"$WORK/failed.stdout" 2>"$WORK/failed.stderr"
 failed_status=$?
-"$PRODUCER" "$CASES/fixtures/unsupported_text.kofun" "$LOGICAL_PATH" \
+"$PRODUCER" "$CASES/fixtures/unsupported_record.kofun" "$LOGICAL_PATH" \
     "$WORK/interface.kif" 2026 >"$WORK/unsupported.stdout" 2>"$WORK/unsupported.stderr"
 unsupported_status=$?
 "$PRODUCER" --cancel-after-commit "$CASES/fixtures/interface.kofun" \
@@ -118,7 +118,7 @@ if test -s "$WORK/cancel.stderr"; then
 fi
 grep -F 'error[E2S16]:' "$WORK/failed.stdout" >/dev/null ||
     fail 'failed compile did not retain the compiler diagnostic'
-grep -F 'EKI02: KIF v1 supports only complete Int function signatures' \
+grep -F 'EKI02: KIF v1 does not support record signature publication' \
     "$WORK/unsupported.stderr" >/dev/null ||
     fail 'unsupported signature did not fail explicitly'
 cmp "$WORK/prior.kif" "$WORK/interface.kif" ||
@@ -127,7 +127,7 @@ cmp "$WORK/prior.kif" "$WORK/interface.kif" ||
 set +e
 "$PRODUCER" "$CASES/fixtures/failed.kofun" "$LOGICAL_PATH" \
     "$WORK/cold-failed.kif" 2026 >/dev/null 2>&1
-"$PRODUCER" "$CASES/fixtures/unsupported_text.kofun" "$LOGICAL_PATH" \
+"$PRODUCER" "$CASES/fixtures/unsupported_record.kofun" "$LOGICAL_PATH" \
     "$WORK/cold-unsupported.kif" 2026 >/dev/null 2>&1
 "$PRODUCER" --cancel-after-commit "$CASES/fixtures/interface.kofun" \
     "$LOGICAL_PATH" "$WORK/cold-cancelled.kif" 2026 >/dev/null 2>&1

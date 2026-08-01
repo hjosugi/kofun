@@ -35,6 +35,30 @@ static const char *kif_visibility_name(KofunKifVisibility visibility) {
     return "invalid";
 }
 
+static bool type_reference_is_nominal(
+    const uint8_t symbol_id[KOFUN_KIF_ID_BYTES]
+) {
+    uint8_t combined = 0u;
+    size_t index;
+    for (index = 0u; index < KOFUN_KIF_ID_BYTES; index += 1u) {
+        combined |= symbol_id[index];
+    }
+    return combined != 0u;
+}
+
+static void emit_type_reference(
+    FILE *output,
+    const uint8_t symbol_id[KOFUN_KIF_ID_BYTES]
+) {
+    char symbol_hex[65];
+    if (!type_reference_is_nominal(symbol_id)) {
+        fputs("\"Int\"", output);
+        return;
+    }
+    bytes_to_hex(symbol_id, KOFUN_KIF_ID_BYTES, symbol_hex);
+    fprintf(output, "\"nominal:%s\"", symbol_hex);
+}
+
 static KofunKifFactKind map_kind(DeclarationKind kind) {
     switch (kind) {
         case DECLARATION_FUNCTION: return KOFUN_KIF_FACT_FUNCTION;
@@ -306,8 +330,21 @@ static bool emit_dump(const KofunKifInterface *interface, const char *path) {
             namespace_hex, symbol_hex, kif_fact_kind_name(fact->kind), fact->name,
             kif_visibility_name(fact->visibility));
         if (fact->kind == KOFUN_KIF_FACT_FUNCTION) {
-            fprintf(output, ", \"parameter_count\": %u, \"result\": \"Int\"",
+            size_t parameter_index;
+            fprintf(output, ", \"parameter_count\": %u, \"parameter_types\": [",
                 (unsigned)fact->parameter_count);
+            for (parameter_index = 0u;
+                 parameter_index < fact->parameter_count;
+                 parameter_index += 1u) {
+                const uint8_t *type_id = fact->parameter_type_symbol_ids == NULL ?
+                    (const uint8_t[KOFUN_KIF_ID_BYTES]){0} :
+                    fact->parameter_type_symbol_ids +
+                        parameter_index * KOFUN_KIF_ID_BYTES;
+                if (parameter_index != 0u) fputs(", ", output);
+                emit_type_reference(output, type_id);
+            }
+            fputs("], \"result\": ", output);
+            emit_type_reference(output, fact->result_type_symbol_id);
         } else if (fact->kind == KOFUN_KIF_FACT_CONSTRUCTOR) {
             char owner_hex[65];
             bytes_to_hex(fact->owner_symbol_id, 32u, owner_hex);
@@ -315,6 +352,11 @@ static bool emit_dump(const KofunKifInterface *interface, const char *path) {
                 "\"ordinal\": %u",
                 (unsigned)fact->constructor_payload_count, owner_hex,
                 (unsigned)fact->constructor_ordinal);
+            if (fact->constructor_payload_count == 1u) {
+                fputs(", \"payload_type\": ", output);
+                emit_type_reference(
+                    output, fact->constructor_payload_type_symbol_id);
+            }
         } else if (fact->kind == KOFUN_KIF_FACT_EXPORT) {
             char source_import_hex[65];
             char target_module_hex[65];
@@ -702,6 +744,60 @@ static char *resolution_parent_directory(const char *path) {
     return parent;
 }
 
+static bool function_signature_has_nominal_type(
+    const KofunKifFact *fact
+) {
+    size_t index;
+    if (type_reference_is_nominal(fact->result_type_symbol_id)) return true;
+    for (index = 0u; index < fact->parameter_count; index += 1u) {
+        if (fact->parameter_type_symbol_ids != NULL &&
+            type_reference_is_nominal(
+                fact->parameter_type_symbol_ids +
+                    index * KOFUN_KIF_ID_BYTES)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void emit_resolution_signature(
+    FILE *output,
+    const KofunKifFact *fact
+) {
+    static const uint8_t builtin_int[KOFUN_KIF_ID_BYTES] = { 0 };
+    size_t index;
+    if (!function_signature_has_nominal_type(fact)) {
+        fprintf(output, "fn(%u:Int)->Int", (unsigned)fact->parameter_count);
+        return;
+    }
+    fprintf(output, "fn(%u:", (unsigned)fact->parameter_count);
+    for (index = 0u; index < fact->parameter_count; index += 1u) {
+        const uint8_t *type_id = fact->parameter_type_symbol_ids == NULL ?
+            builtin_int : fact->parameter_type_symbol_ids +
+                index * KOFUN_KIF_ID_BYTES;
+        if (index != 0u) fputc(',', output);
+        if (type_reference_is_nominal(type_id)) {
+            char type_hex[65];
+            bytes_to_hex(type_id, KOFUN_KIF_ID_BYTES, type_hex);
+            fprintf(output, "nominal:%s", type_hex);
+        } else {
+            fputs("Int", output);
+        }
+    }
+    fputs(")->", output);
+    if (type_reference_is_nominal(fact->result_type_symbol_id)) {
+        char type_hex[65];
+        bytes_to_hex(
+            fact->result_type_symbol_id,
+            KOFUN_KIF_ID_BYTES,
+            type_hex
+        );
+        fprintf(output, "nominal:%s", type_hex);
+    } else {
+        fputs("Int", output);
+    }
+}
+
 static bool emit_kif_resolution(
     const KofunKifInterface *interface,
     bool package_internal,
@@ -788,9 +884,11 @@ static bool emit_kif_resolution(
             bytes_to_hex(fact->symbol_id, KOFUN_KIF_ID_BYTES, symbol_hex);
             fprintf(output,
                 "qualified-call|qualifier=%s|name=%s|target-module=%s|"
-                "target-symbol=%s|arity=%zu|signature=fn(%u:Int)->Int|span=%zu..%zu\n",
+                "target-symbol=%s|arity=%zu|signature=",
                 qualifier, fact->name, module_hex, symbol_hex,
-                calls[index].arity, (unsigned)fact->parameter_count,
+                calls[index].arity);
+            emit_resolution_signature(output, fact);
+            fprintf(output, "|span=%zu..%zu\n",
                 calls[index].start, calls[index].end);
         }
     }

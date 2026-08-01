@@ -1,0 +1,10 @@
+private type FileValue =
+    | FileZero
+
+pub fn expose(value: FileValue) -> FileValue {
+    return value
+}
+
+fn main() {
+    print(0)
+}

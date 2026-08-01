@@ -1,0 +1,5 @@
+import demo.api
+
+fn main() {
+    print(api.public_identity(1))
+}

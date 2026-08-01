@@ -7,9 +7,11 @@ defines declared and effective visibility for top-level declarations, nominal
 type members, imports, re-exports, entry points, and interface construction.
 The active Stage 2 compiler implements the basic modifiers on top-level
 functions as the bounded #578 syntax/HIR slice. #824 extends the same committed
-metadata to bounded flat ADT declarations for direct KIF publication. Resolver
-enforcement, independent constructor/member visibility, and wider declaration
-kinds remain follow-up work.
+metadata to bounded flat ADT declarations for direct KIF publication. #583
+checks resolved flat nominal function and constructor-payload references before
+publication and filters exact public/package-internal KIF views. Independent
+constructor/member syntax, restricted visibility, cross-package signature
+components, and wider declaration kinds remain follow-up work.
 
 The words **must**, **must not**, **should**, and **may** are normative.
 
@@ -272,9 +274,16 @@ semantics. The executable identity-only
 `tests/conformance/modules/visibility-access/run.sh` gate enforces private,
 internal, public, and enclosing boundaries from resolved PackageId, ModuleId,
 FileId, and TypeId values. It also fixes structured denial reasons, safe
-disclosure, remedies, schema failures, and the 64-boundary limit. The engine is
-not yet wired to general declaration/import resolution, and compilers must
-continue to reject unsupported visibility syntax explicitly.
+disclosure, remedies, schema failures, and the 64-boundary limit. The bounded
+compiler-interface path is executable through
+`tests/interfaces/visibility-filtering.sh`: public function and constructor
+payload references may name only public flat ADTs, while internal signatures
+may also name internal ADTs. `tests/diagnostics/visibility-api-leaks.sh` fixes
+the public/internal/private matrix and source-located `E2S145` without hidden
+spellings. `tests/security/module-interface-artifact.sh` proves that a forged,
+missing, or less-visible nominal SymbolId publishes no replacement artifact.
+Records, generics, effects, ownership signature modes, general imports, and
+restricted visibility remain explicit unsupported-publication boundaries.
 
 ## Non-goals
 
