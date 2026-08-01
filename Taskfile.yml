@@ -236,6 +236,11 @@ tasks:
     cmds:
       - "sh bootstrap/wasm/check.sh"
 
+  examples:
+    desc: "Verify every example is bound to the check that owns it"
+    cmds:
+      - "sh examples/check.sh"
+
   tour:
     desc: "Verify the no-install browser learning tour"
     cmds:
@@ -522,6 +527,7 @@ tasks:
             discovery \
             native \
             wasm \
+            examples \
             tour \
             c-abi \
             rust-shim \
