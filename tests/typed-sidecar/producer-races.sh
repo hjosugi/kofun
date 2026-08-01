@@ -9,6 +9,8 @@ CC=${CC:-cc}
 WORK=${KOFUN_TYPED_SIDECAR_RACE_WORK:-"$ROOT/build/typed-sidecar-races"}
 SOURCE="$ROOT/tests/typed-sidecar/fixtures/stage2_events.kofun"
 FAILED_SOURCE="$ROOT/bootstrap/stage2/function_unknown_error.kofun"
+ASSERT_CONTEXT='typed-sidecar races'
+. "$ROOT/tests/assertions/assert.sh"
 
 fail() {
     printf '%s\n' "FAIL: $*" >&2
@@ -48,8 +50,8 @@ partial_status=$?
     "$SOURCE" src/main.kofun "$WORK/cancelled-generation-5.kse" 5
 cancelled_status=$?
 set -e
-test "$partial_status" -eq 1
-test "$cancelled_status" -eq 1
+assert_num "partial status" "$partial_status" -eq 1
+assert_num "cancelled status" "$cancelled_status" -eq 1
 
 node --check "$ROOT/tests/typed-sidecar/producer_races_test.mjs"
 node "$ROOT/tests/typed-sidecar/producer_races_test.mjs" \

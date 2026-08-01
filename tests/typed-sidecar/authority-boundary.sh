@@ -2,6 +2,8 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+ASSERT_CONTEXT='typed-sidecar authority'
+. "$ROOT/tests/assertions/assert.sh"
 
 # POSIX `grep -r`, not `rg`. CI does not install ripgrep, and the two negative
 # checks below are `if <search>; then FAIL; fi` — with `rg` missing, the search
@@ -34,8 +36,11 @@ require_absent \
     'FAIL: the CLI reads tooling output or imports the sidecar codec directly' \
     "$ROOT/bin"
 
-test "$(count_matches 'tooling/typed-sidecar/emit-stage2\.mjs' "$ROOT/bin/kofun")" -eq 1
-test "$(count_matches 'node "\$TYPED_SIDECAR_EMITTER"' "$ROOT/bin/kofun")" -eq 1
+assert_num "output of count_matches tooling/typed-sidecar/emit-stage2\\.mjs $ROOT/bin/kofun" \
+    "$(count_matches 'tooling/typed-sidecar/emit-stage2\.mjs' "$ROOT/bin/kofun")" \
+    -eq 1
+assert_num "output of count_matches node \\\$TYPED_SIDECAR_EMITTER $ROOT/bin/kofun" \
+    "$(count_matches 'node "\$TYPED_SIDECAR_EMITTER"' "$ROOT/bin/kofun")" -eq 1
 grep -q 'projectStage2SemanticEvents' \
     "$ROOT/tooling/typed-sidecar/from-stage2.mjs"
 grep -q 'authoritative: false' \

@@ -7,6 +7,8 @@ WORK=${KOFUN_PACKAGE_TEST_WORK:-"$ROOT/build/package-manager-test"}
 CC=${CC:-cc}
 REAL_CC=$(command -v "$CC")
 REAL_CP=$(command -v cp)
+ASSERT_CONTEXT='package manager'
+. "$ROOT/tests/assertions/assert.sh"
 
 rm -rf "$WORK"
 mkdir -p "$WORK/project" "$WORK/upstream" "$WORK/cache"
@@ -45,8 +47,9 @@ expected_hash=$(sha256sum "$WORK/original-libanswer.a" | awk '{ print $1 }')
 grep -Fqx "sha256 = \"$expected_hash\"" \
     "$WORK/project/kofun.packages.lock"
 cache_entry=$WORK/cache/sha256/$expected_hash
-test -f "$cache_entry"
-test "$(sha256sum "$cache_entry" | awk '{ print $1 }')" = "$expected_hash"
+assert_regular_file "cache entry" "$cache_entry"
+assert_eq "digest of $cache_entry" \
+    "$(sha256sum "$cache_entry" | awk '{ print $1 }')" "$expected_hash"
 
 # A parser failure must not be hidden by a successful downstream sort.
 cp "$WORK/project/kofun.packages.toml" "$WORK/valid-manifest"
@@ -58,7 +61,7 @@ package_command lock \
     2>"$WORK/invalid-manifest.stderr"
 invalid_manifest_status=$?
 set -e
-test "$invalid_manifest_status" -ne 0
+assert_num "invalid manifest status" "$invalid_manifest_status" -ne 0
 grep -q 'unsupported manifest syntax' "$WORK/invalid-manifest.stderr"
 cmp "$WORK/first.lock" "$WORK/project/kofun.packages.lock"
 cp "$WORK/valid-manifest" "$WORK/project/kofun.packages.toml"
@@ -71,7 +74,7 @@ package_command fetch --offline \
     >"$WORK/invalid-lock.stdout" 2>"$WORK/invalid-lock.stderr"
 invalid_lock_status=$?
 set -e
-test "$invalid_lock_status" -ne 0
+assert_num "invalid lock status" "$invalid_lock_status" -ne 0
 grep -q 'unsupported lockfile syntax' "$WORK/invalid-lock.stderr"
 cp "$WORK/valid.lock" "$WORK/project/kofun.packages.lock"
 
@@ -95,10 +98,12 @@ printf '%s\n' lock-sentinel >"$WORK/lock-victim"
     KOFUN_REAL_CP="$REAL_CP" \
         "$KOFUN" package lock
 ) >"$WORK/collision.stdout"
-test "$(cat "$WORK/cache-victim")" = cache-sentinel
-test "$(cat "$WORK/lock-victim")" = lock-sentinel
-test "$(sha256sum "$WORK/collision-cache/sha256/$expected_hash" |
-    awk '{ print $1 }')" = "$expected_hash"
+assert_eq "contents of cache-victim" \
+    "$(cat "$WORK/cache-victim")" cache-sentinel
+assert_eq "contents of lock-victim" "$(cat "$WORK/lock-victim")" lock-sentinel
+assert_eq "digest of collision-cache/sha256/$expected_hash" \
+    "$(sha256sum "$WORK/collision-cache/sha256/$expected_hash" | awk '{ print $1 }')" \
+    "$expected_hash"
 
 # Package use cannot silently opt an ordinary build into the host-C ABI.
 set +e
@@ -110,8 +115,8 @@ set +e
 ) >"$WORK/implicit.stdout" 2>"$WORK/implicit.stderr"
 implicit_status=$?
 set -e
-test "$implicit_status" -ne 0
-test ! -e "$WORK/project/implicit-c-abi"
+assert_num "implicit status" "$implicit_status" -ne 0
+assert_absent "project/implicit-c-abi" "$WORK/project/implicit-c-abi"
 grep -q -- '--package requires --backend c --c-abi' \
     "$WORK/implicit.stderr"
 
@@ -127,7 +132,7 @@ grep -Fqx 'fetched 1 package(s)' "$WORK/offline-fetch.stdout"
         --backend c --c-abi --package answer --offline \
         -o "$WORK/project/app" >/dev/null
 )
-test "$("$WORK/project/app")" = 42
+assert_eq "output of project/app" "$("$WORK/project/app")" 42
 
 # Change the verified shared cache entry while the C ABI compiler is being
 # built. The output must keep using the build-private snapshot, and that
@@ -152,12 +157,14 @@ chmod +x "$WORK/cc-consistency-bin/cc"
         --backend c --c-abi --package answer --offline \
         -o "$WORK/project/consistent-app" >/dev/null
 )
-test -e "$WORK/cache-changed"
-test "$("$WORK/project/consistent-app")" = 42
+assert_present "cache-changed" "$WORK/cache-changed"
+assert_eq "output of project/consistent-app" \
+    "$("$WORK/project/consistent-app")" 42
 snapshot_path=$(cat "$WORK/snapshot-path")
-test -n "$snapshot_path"
-test ! -e "$snapshot_path"
-test "$(sha256sum "$cache_entry" | awk '{ print $1 }')" != "$expected_hash"
+assert_nonempty "snapshot path" "$snapshot_path"
+assert_absent "snapshot path" "$snapshot_path"
+assert_ne "digest of $cache_entry" \
+    "$(sha256sum "$cache_entry" | awk '{ print $1 }')" "$expected_hash"
 chmod u+w "$cache_entry"
 cp "$WORK/original-libanswer.a" "$cache_entry"
 chmod 444 "$cache_entry"
@@ -171,7 +178,7 @@ package_command fetch --offline \
     >"$WORK/corrupt.stdout" 2>"$WORK/corrupt.stderr"
 corrupt_status=$?
 set -e
-test "$corrupt_status" -ne 0
+assert_num "corrupt status" "$corrupt_status" -ne 0
 grep -q 'cached content hash mismatch' "$WORK/corrupt.stderr"
 
 # A missing cache entry may be fetched online/file-locally, but the fetched
@@ -188,16 +195,16 @@ package_command fetch \
     >"$WORK/mismatch.stdout" 2>"$WORK/mismatch.stderr"
 mismatch_status=$?
 set -e
-test "$mismatch_status" -ne 0
+assert_num "mismatch status" "$mismatch_status" -ne 0
 grep -q 'content hash mismatch for package answer' "$WORK/mismatch.stderr"
-test ! -e "$cache_entry"
+assert_absent "cache entry" "$cache_entry"
 
 set +e
 package_command fetch --offline \
     >"$WORK/miss.stdout" 2>"$WORK/miss.stderr"
 miss_status=$?
 set -e
-test "$miss_status" -ne 0
+assert_num "miss status" "$miss_status" -ne 0
 grep -q 'offline cache miss for package answer' "$WORK/miss.stderr"
 
 printf '%s\n' \

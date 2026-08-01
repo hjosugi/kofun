@@ -9,6 +9,8 @@ CC=${CC:-cc}
 WORK=${KOFUN_STAGE2_EVENTS_WORK:-"$ROOT/build/stage2-semantic-events"}
 FIXTURE="$ROOT/tests/typed-sidecar/fixtures/stage2_events.kofun"
 . "$ROOT/bootstrap/stage2/build.sh"
+ASSERT_CONTEXT='stage2 events'
+. "$ROOT/tests/assertions/assert.sh"
 
 fail() {
     printf '%s\n' "FAIL: $*" >&2
@@ -122,13 +124,14 @@ producer_cancelled_status=$?
     src/early-invalid.kofun "$WORK/plain/producer-early-invalid.kse" 48
 producer_early_status=$?
 set -e
-test "$producer_unknown_status" -eq 1
-test "$producer_type_status" -eq 1
-test "$producer_ownership_status" -eq 1
-test "$producer_recovery_status" -eq 1
-test "$producer_cancelled_status" -eq 1
-test "$producer_early_status" -eq 1
-test ! -e "$WORK/plain/producer-early-invalid.kse"
+assert_num "producer unknown status" "$producer_unknown_status" -eq 1
+assert_num "producer type status" "$producer_type_status" -eq 1
+assert_num "producer ownership status" "$producer_ownership_status" -eq 1
+assert_num "producer recovery status" "$producer_recovery_status" -eq 1
+assert_num "producer cancelled status" "$producer_cancelled_status" -eq 1
+assert_num "producer early status" "$producer_early_status" -eq 1
+assert_absent "plain/producer-early-invalid.kse" \
+    "$WORK/plain/producer-early-invalid.kse"
 for stream in \
     "$WORK/plain/producer-unknown.kse" \
     "$WORK/plain/producer-type-error.kse" \
@@ -187,7 +190,7 @@ then
         "$WORK/sanitized/producer-ownership.kse" 45
     sanitized_ownership_status=$?
     set -e
-    test "$sanitized_ownership_status" -eq 1
+    assert_num "sanitized ownership status" "$sanitized_ownership_status" -eq 1
 else
     fail 'the C compiler must support ASan and UBSan for semantic events'
 fi
@@ -289,7 +292,7 @@ do
     grep -q "error\\[$code\\]" "$WORK/plain/$case_name.producer"
     case $code in
         E2S01|E2S98|EUNICODE*)
-            test ! -e "$WORK/plain/$case_name.kse"
+            assert_absent "plain/$case_name.kse" "$WORK/plain/$case_name.kse"
             ;;
         *)
             "$WORK/plain/validate-events" "$WORK/plain/$case_name.kse"
@@ -409,7 +412,7 @@ do
         "$WORK/plain/valid-$valid_index.kse" 701
     "$WORK/plain/validate-events" "$WORK/plain/valid-$valid_index.kse"
 done
-test "$valid_index" -eq 8
+assert_num "valid index" "$valid_index" -eq 8
 
 set +e
 "$WORK/plain/kofun-stage2" --compile-outcome \
@@ -421,7 +424,7 @@ set +e
     2>"$WORK/plain/no-sink-before.stderr"
 no_sink_valid_before_status=$?
 set -e
-test "$no_sink_valid_before_status" -eq 0
+assert_num "no sink valid before status" "$no_sink_valid_before_status" -eq 0
 sed -n '1,9p' "$WORK/plain/no-sink-before.ir" \
     >"$WORK/plain/no-sink-before.function-ir"
 cmp "$ROOT/tests/typed-sidecar/fixtures/stage2_function_ir.golden" \
@@ -436,7 +439,8 @@ set +e
     2>"$WORK/plain/unknown-before.stderr"
 no_sink_invalid_before_status=$?
 set -e
-test "$no_sink_invalid_before_status" -eq 1
+assert_num "no sink invalid before status" \
+    "$no_sink_invalid_before_status" -eq 1
 "$WORK/plain/kofun-stage2-semantic-events" \
     "$FIXTURE" src/main.kofun "$WORK/plain/no-sink-middle.kse" 99
 set +e
@@ -449,8 +453,9 @@ set +e
     2>"$WORK/plain/no-sink-after.stderr"
 no_sink_valid_after_status=$?
 set -e
-test "$no_sink_valid_after_status" -eq 0
-test "$no_sink_valid_before_status" -eq "$no_sink_valid_after_status"
+assert_num "no sink valid after status" "$no_sink_valid_after_status" -eq 0
+assert_num "no sink valid before status" \
+    "$no_sink_valid_before_status" -eq "$no_sink_valid_after_status"
 cmp "$WORK/plain/no-sink-before.c" "$WORK/plain/no-sink-after.c"
 cmp "$WORK/plain/no-sink-before.ir" "$WORK/plain/no-sink-after.ir"
 cmp "$WORK/plain/no-sink-before.tokens" "$WORK/plain/no-sink-after.tokens"
@@ -476,8 +481,9 @@ set +e
     2>"$WORK/plain/unknown-after.stderr"
 no_sink_invalid_after_status=$?
 set -e
-test "$no_sink_invalid_after_status" -eq 1
-test "$no_sink_invalid_before_status" -eq "$no_sink_invalid_after_status"
+assert_num "no sink invalid after status" "$no_sink_invalid_after_status" -eq 1
+assert_num "no sink invalid before status" \
+    "$no_sink_invalid_before_status" -eq "$no_sink_invalid_after_status"
 cmp "$WORK/plain/unknown-before.ir" "$WORK/plain/unknown-after.ir"
 cmp "$WORK/plain/unknown-before.tokens" "$WORK/plain/unknown-after.tokens"
 cmp "$WORK/plain/unknown-before.stdout" "$WORK/plain/unknown-after.stdout"
@@ -485,9 +491,10 @@ cmp "$WORK/plain/unknown-before.stderr" "$WORK/plain/unknown-after.stderr"
 cmp \
     "$ROOT/bootstrap/stage2/function_unknown_error.stdout" \
     "$WORK/plain/unknown-after.stdout"
-test ! -s "$WORK/plain/unknown-after.stderr"
-test ! -e "$WORK/plain/unknown-before.c"
-test ! -e "$WORK/plain/unknown-after.c"
+assert_file_empty "plain/unknown-after.stderr" \
+    "$WORK/plain/unknown-after.stderr"
+assert_absent "plain/unknown-before.c" "$WORK/plain/unknown-before.c"
+assert_absent "plain/unknown-after.c" "$WORK/plain/unknown-after.c"
 
 printf '%s\n' \
     'PASS: Stage 2 semantic sink, compatibility, ASan/UBSan, and analyzer'
