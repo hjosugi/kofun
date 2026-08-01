@@ -37,7 +37,8 @@ malformed_status=$?
 set -e
 assert_num "malformed status" "$malformed_status" -ne 0
 assert_absent "malformed.c" "$WORK/malformed.c"
-grep -q 'only `extern "C"` is supported' "$WORK/malformed.stderr"
+assert_grep "malformed.stderr" \
+    -q 'only `extern "C"` is supported' "$WORK/malformed.stderr"
 
 # libc is available to the explicit host-C path without a separate library.
 sed '/rust_add/d; /^extern "C" fn rust_stack_sum(/,/^) -> CLong$/d; /rust_transform/d; /let answer/d; /let stack_answer/d; /let transformed/d; /print(answer)/d; /print(stack_answer)/d; /print(transformed/d' \
@@ -45,7 +46,8 @@ sed '/rust_add/d; /^extern "C" fn rust_stack_sum(/,/^) -> CLong$/d; /rust_transf
 "$ROOT/bin/kofun" build "$WORK/puts.kofun" \
     --backend c --c-abi --emit-c "$WORK/puts.c" -o "$WORK/puts"
 assert_eq "puts program output" "$("$WORK/puts")" "hello from Kofun C ABI"
-grep -Fqx 'extern int puts(const char * message);' "$WORK/puts.c"
+assert_grep "puts.c" \
+    -Fqx 'extern int puts(const char * message);' "$WORK/puts.c"
 
 set +e
 "$ROOT/bin/kofun" build "$WORK/puts.kofun" --c-abi \
@@ -55,7 +57,10 @@ implicit_status=$?
 set -e
 assert_num "implicit status" "$implicit_status" -ne 0
 assert_absent "implicit-backend" "$WORK/implicit-backend"
-grep -q -- '--c-abi requires explicit --backend c' \
+assert_grep "implicit-backend.stderr" \
+    -q \
+    -- \
+    '--c-abi requires explicit --backend c' \
     "$WORK/implicit-backend.stderr"
 
 expect_link_rejection() {
@@ -126,16 +131,20 @@ assert_eq "c.stdout" "$(cat "$WORK/c.stdout")" "42
 2
 3"
 
-grep -Fqx 'typedef struct Pair {' "$WORK/kofun.c"
-grep -Fqx 'extern Pair rust_transform(Pair value);' "$WORK/kofun.c"
-grep -Fq '_Static_assert(sizeof(Pair) == 24,' "$WORK/kofun.c"
-grep -Fq '_Static_assert(_Alignof(Pair) == 8,' "$WORK/kofun.c"
-grep -Fqx 'extern long rust_stack_sum(long one, long two, long three, long four, long five, long six, long seven, long eight);' \
+assert_grep "kofun.c" -Fqx 'typedef struct Pair {' "$WORK/kofun.c"
+assert_grep "kofun.c" \
+    -Fqx 'extern Pair rust_transform(Pair value);' "$WORK/kofun.c"
+assert_grep "kofun.c" -Fq '_Static_assert(sizeof(Pair) == 24,' "$WORK/kofun.c"
+assert_grep "kofun.c" -Fq '_Static_assert(_Alignof(Pair) == 8,' "$WORK/kofun.c"
+assert_grep "kofun.c" \
+    -Fqx \
+    'extern long rust_stack_sum(long one, long two, long three, long four, long five, long six, long seven, long eight);' \
     "$WORK/kofun.c"
 
 if command -v readelf >/dev/null 2>&1; then
     readelf -d "$WORK/kofun-caller" >"$WORK/dynamic.txt"
-    grep -q 'NEEDED.*libkofun_issue21.so' "$WORK/dynamic.txt"
+    assert_grep "dynamic.txt" \
+        -q 'NEEDED.*libkofun_issue21.so' "$WORK/dynamic.txt"
 fi
 
 printf '%s\n' \

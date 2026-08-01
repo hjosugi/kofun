@@ -40,26 +40,32 @@ round_trip() {
     cmp "$source" "$temporary/$name.kofun"
     assert_file_nonempty "$temporary/$name.ir" "$temporary/$name.ir"
     assert_file_nonempty "$temporary/$name.tokens" "$temporary/$name.tokens"
-    grep '^kofun-stage2-ir/v1$' "$temporary/$name.ir" >/dev/null
+    assert_grep "$name.ir" '^kofun-stage2-ir/v1$' "$temporary/$name.ir"
     grep '^kofun-token-tape/v1$' "$temporary/$name.tokens" >/dev/null
 }
 
 round_trip fixture "$stage2/fixture.kofun"
-grep '^function|classify|1|' "$temporary/fixture.ir" >/dev/null
-grep '^function|main|0|' "$temporary/fixture.ir" >/dev/null
-grep '^function-count|2$' "$temporary/fixture.ir" >/dev/null
+assert_grep "fixture.ir" '^function|classify|1|' "$temporary/fixture.ir"
+assert_grep "fixture.ir" '^function|main|0|' "$temporary/fixture.ir"
+assert_grep "fixture.ir" '^function-count|2$' "$temporary/fixture.ir"
 
 # Numeric token contract (#717, docs/DECIMAL.md). Each literal must become
 # exactly one token of the stated kind, which is what the byte spans assert —
 # a span one byte short would mean the token split. The spans are pinned rather
 # than counted because "one token per literal" is the property under test.
 round_trip decimal-tokens "$stage2/fixtures/decimal_tokens.kofun"
-grep -Fxq 'decimal|312|315|6' "$temporary/decimal-tokens.tokens"
-grep -Fxq 'decimal|337|344|7' "$temporary/decimal-tokens.tokens"
-grep -Fxq 'decimal|373|377|8' "$temporary/decimal-tokens.tokens"
-grep -Fxq 'float|401|406|9' "$temporary/decimal-tokens.tokens"
-grep -Fxq 'float|432|438|10' "$temporary/decimal-tokens.tokens"
-grep -Fxq 'decimal|457|468|11' "$temporary/decimal-tokens.tokens"
+assert_grep "decimal-tokens.tokens" \
+    -Fxq 'decimal|312|315|6' "$temporary/decimal-tokens.tokens"
+assert_grep "decimal-tokens.tokens" \
+    -Fxq 'decimal|337|344|7' "$temporary/decimal-tokens.tokens"
+assert_grep "decimal-tokens.tokens" \
+    -Fxq 'decimal|373|377|8' "$temporary/decimal-tokens.tokens"
+assert_grep "decimal-tokens.tokens" \
+    -Fxq 'float|401|406|9' "$temporary/decimal-tokens.tokens"
+assert_grep "decimal-tokens.tokens" \
+    -Fxq 'float|432|438|10' "$temporary/decimal-tokens.tokens"
+assert_grep "decimal-tokens.tokens" \
+    -Fxq 'decimal|457|468|11' "$temporary/decimal-tokens.tokens"
 assert_num "^decimal| lines in $temporary/decimal-tokens.tokens" \
     "$(grep -c '^decimal|' "$temporary/decimal-tokens.tokens")" -eq 4
 assert_num "^float| lines in $temporary/decimal-tokens.tokens" \
@@ -68,9 +74,12 @@ assert_num "^float| lines in $temporary/decimal-tokens.tokens" \
 # The maximal-munch range exception: `0..3` stays Int, `..`, Int. Asserting the
 # three spans is the point — a lexer that merged `0.` would still round-trip.
 round_trip range-exception "$stage2/fixtures/range_exception.kofun"
-grep -Fxq 'integer|178|179|4' "$temporary/range-exception.tokens"
-grep -Fxq 'punctuation|179|181|4' "$temporary/range-exception.tokens"
-grep -Fxq 'integer|181|182|4' "$temporary/range-exception.tokens"
+assert_grep "range-exception.tokens" \
+    -Fxq 'integer|178|179|4' "$temporary/range-exception.tokens"
+assert_grep "range-exception.tokens" \
+    -Fxq 'punctuation|179|181|4' "$temporary/range-exception.tokens"
+assert_grep "range-exception.tokens" \
+    -Fxq 'integer|181|182|4' "$temporary/range-exception.tokens"
 assert_num "^decimal| lines in $temporary/range-exception.tokens" \
     "$(grep -c '^decimal|' "$temporary/range-exception.tokens")" -eq 0
 assert_num "^float| lines in $temporary/range-exception.tokens" \
@@ -478,9 +487,11 @@ move_fixture="$stage2/fixtures/borrowed_move_text.kofun"
 move_diagnostic="$stage2/fixtures/borrowed_move_text.stderr"
 
 round_trip borrowed-copy "$copy_fixture"
-grep '^function|first|1|' "$temporary/borrowed-copy.ir" >/dev/null
+assert_grep "borrowed-copy.ir" \
+    '^function|first|1|' "$temporary/borrowed-copy.ir"
 round_trip borrowed-move "$move_fixture"
-grep '^function|first|1|' "$temporary/borrowed-move.ir" >/dev/null
+assert_grep "borrowed-move.ir" \
+    '^function|first|1|' "$temporary/borrowed-move.ir"
 
 "$temporary/kofun-stage2" --check-ownership "$copy_fixture" \
     >"$temporary/borrowed-copy.stdout" \
@@ -505,7 +516,8 @@ cmp "$move_diagnostic" "$temporary/borrowed-move.stdout"
 assert_file_empty "$temporary/borrowed-move.stderr" \
     "$temporary/borrowed-move.stderr"
 assert_num "ownership unsupported status" "$ownership_unsupported_status" -eq 1
-grep 'error\[E2S20\]' "$temporary/ownership-unsupported.stdout" >/dev/null
+assert_grep "ownership-unsupported.stdout" \
+    'error\[E2S20\]' "$temporary/ownership-unsupported.stdout"
 assert_file_empty "$temporary/ownership-unsupported.stderr" \
     "$temporary/ownership-unsupported.stderr"
 
@@ -514,9 +526,10 @@ KOFUN_STAGE2_BUILD_DIR="$temporary/cli-stage2" \
     "$root/bin/kofun" check "$copy_fixture" \
     >"$temporary/cli-borrowed-copy.stdout" \
     2>"$temporary/cli-borrowed-copy.stderr"
-grep -F \
+assert_grep "cli-borrowed-copy.stdout" \
+    -F \
     "ok: $copy_fixture (Stage 2 Copy/borrow ownership slice; codegen unavailable)" \
-    "$temporary/cli-borrowed-copy.stdout" >/dev/null
+    "$temporary/cli-borrowed-copy.stdout"
 assert_file_empty "$temporary/cli-borrowed-copy.stderr" \
     "$temporary/cli-borrowed-copy.stderr"
 
@@ -534,23 +547,28 @@ assert_file_empty "$temporary/cli-borrowed-move.stdout" \
 cmp "$move_diagnostic" "$temporary/cli-borrowed-move.stderr"
 
 round_trip stage1 "$root/bootstrap/stage1/compiler.kofun"
-grep '^function|emit_c|2|' "$temporary/stage1.ir" >/dev/null
-grep '^function|compile_file|2|' "$temporary/stage1.ir" >/dev/null
+assert_grep "stage1.ir" '^function|emit_c|2|' "$temporary/stage1.ir"
+assert_grep "stage1.ir" '^function|compile_file|2|' "$temporary/stage1.ir"
 # One function record per declaration in S; derived so a helper split in S
 # does not strand a hand-maintained count here.
 stage1_functions=$(grep -c '^fn ' "$root/bootstrap/stage1/compiler.kofun")
-grep "^function-count|$stage1_functions\$" "$temporary/stage1.ir" >/dev/null
+assert_grep "stage1.ir" \
+    "^function-count|$stage1_functions\$" "$temporary/stage1.ir"
 
 round_trip stage2 "$stage2/compiler.kofun"
-grep '^function|lex|1|' "$temporary/stage2.ir" >/dev/null
-grep '^function|parse_program|1|' "$temporary/stage2.ir" >/dev/null
-grep '^function|parse_pattern_trees|1|' "$temporary/stage2.ir" >/dev/null
-grep '^function|parse_patterns_file|2|' "$temporary/stage2.ir" >/dev/null
-grep '^function|borrowed_collection_check|1|' "$temporary/stage2.ir" >/dev/null
-grep '^function|lower_c|2|' "$temporary/stage2.ir" >/dev/null
-grep '^function|emit_kofun|2|' "$temporary/stage2.ir" >/dev/null
-grep '^function|compile_file|4|' "$temporary/stage2.ir" >/dev/null
-grep '^function|check_ownership_file|1|' "$temporary/stage2.ir" >/dev/null
+assert_grep "stage2.ir" '^function|lex|1|' "$temporary/stage2.ir"
+assert_grep "stage2.ir" '^function|parse_program|1|' "$temporary/stage2.ir"
+assert_grep "stage2.ir" \
+    '^function|parse_pattern_trees|1|' "$temporary/stage2.ir"
+assert_grep "stage2.ir" \
+    '^function|parse_patterns_file|2|' "$temporary/stage2.ir"
+assert_grep "stage2.ir" \
+    '^function|borrowed_collection_check|1|' "$temporary/stage2.ir"
+assert_grep "stage2.ir" '^function|lower_c|2|' "$temporary/stage2.ir"
+assert_grep "stage2.ir" '^function|emit_kofun|2|' "$temporary/stage2.ir"
+assert_grep "stage2.ir" '^function|compile_file|4|' "$temporary/stage2.ir"
+assert_grep "stage2.ir" \
+    '^function|check_ownership_file|1|' "$temporary/stage2.ir"
 
 "$temporary/kofun-stage2" \
     "$stage2/compiler.kofun" \
@@ -574,10 +592,10 @@ cmp "$temporary/stage2.tokens" "$temporary/stage2-second.tokens"
 cmp "$temporary/core.c" "$temporary/core-second.c"
 cmp "$temporary/core.ir" "$temporary/core-second.ir"
 cmp "$temporary/core.tokens" "$temporary/core-second.tokens"
-grep '^function|main|0|' "$temporary/core.ir" >/dev/null
-grep 'kofun_mul' "$temporary/core.c" >/dev/null
-grep 'kofun_floor_div' "$temporary/core.c" >/dev/null
-grep 'kofun_floor_mod' "$temporary/core.c" >/dev/null
+assert_grep "core.ir" '^function|main|0|' "$temporary/core.ir"
+assert_grep "core.c" 'kofun_mul' "$temporary/core.c"
+assert_grep "core.c" 'kofun_floor_div' "$temporary/core.c"
+assert_grep "core.c" 'kofun_floor_mod' "$temporary/core.c"
 awk '
     /int64_t kofun_replacement =/ { state = 1; next }
     state == 1 && /if \(kofun_failed\) return 1;/ { state = 2; next }
@@ -603,9 +621,11 @@ assert_file_empty "$temporary/core.stderr" "$temporary/core.stderr"
 cmp "$temporary/functions.c" "$temporary/functions-second.c"
 cmp "$temporary/functions.ir" "$temporary/functions-second.ir"
 cmp "$temporary/functions.tokens" "$temporary/functions-second.tokens"
-grep '^function|fib|1|' "$temporary/functions.ir" >/dev/null
-grep '^function|forward_answer|0|' "$temporary/functions.ir" >/dev/null
-grep 'static int64_t kofun_fn_fib' "$temporary/functions.c" >/dev/null
+assert_grep "functions.ir" '^function|fib|1|' "$temporary/functions.ir"
+assert_grep "functions.ir" \
+    '^function|forward_answer|0|' "$temporary/functions.ir"
+assert_grep "functions.c" \
+    'static int64_t kofun_fn_fib' "$temporary/functions.c"
 "$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
     "$temporary/functions.c" -o "$temporary/functions-program"
 "$temporary/functions-program" \
@@ -773,10 +793,13 @@ KOFUN_STAGE2_COMPILER="$temporary/kofun-stage2" \
 "$temporary/kofun-stage2" --emit-scope-hir \
     "$stage2/fixture.kofun" \
     "$temporary/fixture.scopes"
-grep '^binding|2|6|value|immutable|Int|copy|initialized|283|288|288$' \
-    "$temporary/fixture.scopes" >/dev/null
-grep '^use|325|330|6|2|read$' "$temporary/fixture.scopes" >/dev/null
-! grep '^candidate-use|283|' "$temporary/fixture.scopes" >/dev/null
+assert_grep "fixture.scopes" \
+    '^binding|2|6|value|immutable|Int|copy|initialized|283|288|288$' \
+    "$temporary/fixture.scopes"
+assert_grep "fixture.scopes" \
+    '^use|325|330|6|2|read$' "$temporary/fixture.scopes"
+assert_not_grep "fixture.scopes" \
+    '^candidate-use|283|' "$temporary/fixture.scopes"
 
 printf '%s\n' \
     'fn main() {' \
@@ -797,8 +820,10 @@ set +e
 for_range_status=$?
 set -e
 assert_num "for range status" "$for_range_status" -eq 3
-grep 'error\[E2S10\]' "$temporary/for-range-int.stdout" >/dev/null
-! grep 'E2S35' "$temporary/for-range-int.stdout" >/dev/null
+assert_grep "for-range-int.stdout" \
+    'error\[E2S10\]' "$temporary/for-range-int.stdout"
+assert_not_grep "for-range-int.stdout" \
+    'E2S35' "$temporary/for-range-int.stdout"
 assert_file_empty "$temporary/for-range-int.stderr" \
     "$temporary/for-range-int.stderr"
 assert_absent "$temporary/for-range-int.c" "$temporary/for-range-int.c"
@@ -830,11 +855,13 @@ builtin_arity_status=$?
 builtin_call_status=$?
 set -e
 assert_num "builtin arity status" "$builtin_arity_status" -eq 1
-grep 'error\[E2S17\]: Core function `len` expects 1 arguments, got 2' \
-    "$temporary/builtin-arity.stdout" >/dev/null
+assert_grep "builtin-arity.stdout" \
+    'error\[E2S17\]: Core function `len` expects 1 arguments, got 2' \
+    "$temporary/builtin-arity.stdout"
 assert_num "builtin call status" "$builtin_call_status" -eq 3
-grep 'error\[E2S10\]: unsupported Core builtin call `len`' \
-    "$temporary/builtin-call.stdout" >/dev/null
+assert_grep "builtin-call.stdout" \
+    'error\[E2S10\]: unsupported Core builtin call `len`' \
+    "$temporary/builtin-call.stdout"
 assert_absent "$temporary/builtin-arity.c" "$temporary/builtin-arity.c"
 assert_absent "$temporary/builtin-call.c" "$temporary/builtin-call.c"
 
@@ -855,10 +882,11 @@ set +e
 selfhost_frontier_status=$?
 set -e
 assert_num "selfhost frontier status" "$selfhost_frontier_status" -eq 3
-! grep 'E2S35' "$temporary/selfhost-S.stdout" >/dev/null
-! grep 'E2S16' "$temporary/selfhost-S.stdout" >/dev/null
-grep 'error\[E2S10\]: unsupported Core builtin call `is_xid_continue`' \
-    "$temporary/selfhost-S.stdout" >/dev/null
+assert_not_grep "selfhost-S.stdout" 'E2S35' "$temporary/selfhost-S.stdout"
+assert_not_grep "selfhost-S.stdout" 'E2S16' "$temporary/selfhost-S.stdout"
+assert_grep "selfhost-S.stdout" \
+    'error\[E2S10\]: unsupported Core builtin call `is_xid_continue`' \
+    "$temporary/selfhost-S.stdout"
 assert_absent "$temporary/selfhost-S.c" "$temporary/selfhost-S.c"
 
 # Unannotated `let` bindings carry inferred types in the scope-HIR:
@@ -869,16 +897,21 @@ assert_absent "$temporary/selfhost-S.c" "$temporary/selfhost-S.c"
 "$temporary/kofun-stage2" --emit-scope-hir \
     "$root/bootstrap/stage1/compiler.kofun" \
     "$temporary/selfhost-S.scopes"
-grep '^binding|2|3|symbols|immutable|List|gc|initialized|890|897|911$' \
-    "$temporary/selfhost-S.scopes" >/dev/null
-grep '^binding|21|22|symbol|immutable|Text|gc|initialized|2503|2509|2519$' \
-    "$temporary/selfhost-S.scopes" >/dev/null
-grep '^binding|303|347|marker|immutable|Text|gc|initialized|40600|40606|40617$' \
-    "$temporary/selfhost-S.scopes" >/dev/null
-grep '^binding|304|347|start|immutable|Int|copy|initialized|40626|40631|40652$' \
-    "$temporary/selfhost-S.scopes" >/dev/null
-grep '^binding|461|586|emitted|mutable|Text|gc|initialized|71428|71435|71440$' \
-    "$temporary/selfhost-S.scopes" >/dev/null
+assert_grep "selfhost-S.scopes" \
+    '^binding|2|3|symbols|immutable|List|gc|initialized|890|897|911$' \
+    "$temporary/selfhost-S.scopes"
+assert_grep "selfhost-S.scopes" \
+    '^binding|21|22|symbol|immutable|Text|gc|initialized|2503|2509|2519$' \
+    "$temporary/selfhost-S.scopes"
+assert_grep "selfhost-S.scopes" \
+    '^binding|303|347|marker|immutable|Text|gc|initialized|40600|40606|40617$' \
+    "$temporary/selfhost-S.scopes"
+assert_grep "selfhost-S.scopes" \
+    '^binding|304|347|start|immutable|Int|copy|initialized|40626|40631|40652$' \
+    "$temporary/selfhost-S.scopes"
+assert_grep "selfhost-S.scopes" \
+    '^binding|461|586|emitted|mutable|Text|gc|initialized|71428|71435|71440$' \
+    "$temporary/selfhost-S.scopes"
 
 printf '%s\n' \
     'fn main() {' \
@@ -888,7 +921,8 @@ printf '%s\n' \
 "$temporary/kofun-stage2" --emit-scope-hir \
     "$temporary/bool-infer.kofun" \
     "$temporary/bool-infer.scopes"
-grep '|ok|immutable|Bool|copy|' "$temporary/bool-infer.scopes" >/dev/null
+assert_grep "bool-infer.scopes" \
+    '|ok|immutable|Bool|copy|' "$temporary/bool-infer.scopes"
 
 # Builtin calls are checked against their frozen parameter types: a
 # mismatched argument is a real E2S15 frontend fact naming the builtin,
@@ -924,14 +958,17 @@ builtin_argument_two_status=$?
 builtin_text_args_status=$?
 set -e
 assert_num "builtin argument status" "$builtin_argument_status" -eq 1
-grep 'error\[E2S15\]: builtin `chars` expects Text for argument 1, got Int' \
-    "$temporary/builtin-argument.stdout" >/dev/null
+assert_grep "builtin-argument.stdout" \
+    'error\[E2S15\]: builtin `chars` expects Text for argument 1, got Int' \
+    "$temporary/builtin-argument.stdout"
 assert_num "builtin argument two status" "$builtin_argument_two_status" -eq 1
-grep 'error\[E2S15\]: builtin `find` expects Text for argument 2, got Int' \
-    "$temporary/builtin-argument-two.stdout" >/dev/null
+assert_grep "builtin-argument-two.stdout" \
+    'error\[E2S15\]: builtin `find` expects Text for argument 2, got Int' \
+    "$temporary/builtin-argument-two.stdout"
 assert_num "builtin text args status" "$builtin_text_args_status" -eq 3
-grep 'error\[E2S10\]: unsupported Core builtin call `contains`' \
-    "$temporary/builtin-text-args.stdout" >/dev/null
+assert_grep "builtin-text-args.stdout" \
+    'error\[E2S10\]: unsupported Core builtin call `contains`' \
+    "$temporary/builtin-text-args.stdout"
 assert_absent "$temporary/builtin-argument.c" "$temporary/builtin-argument.c"
 assert_absent "$temporary/builtin-argument-two.c" \
     "$temporary/builtin-argument-two.c"
@@ -970,11 +1007,13 @@ while_text_status=$?
 return_mismatch_status=$?
 set -e
 assert_num "while text status" "$while_text_status" -eq 1
-grep 'error\[E2S23\]: while condition must be Bool' \
-    "$temporary/while-text.stdout" >/dev/null
+assert_grep "while-text.stdout" \
+    'error\[E2S23\]: while condition must be Bool' \
+    "$temporary/while-text.stdout"
 assert_num "return mismatch status" "$return_mismatch_status" -eq 1
-grep 'error\[E2S15\]: Core function `wrong` returns Int, expected Text' \
-    "$temporary/return-mismatch.stdout" >/dev/null
+assert_grep "return-mismatch.stdout" \
+    'error\[E2S15\]: Core function `wrong` returns Int, expected Text' \
+    "$temporary/return-mismatch.stdout"
 assert_absent "$temporary/while-text.c" "$temporary/while-text.c"
 assert_absent "$temporary/return-mismatch.c" "$temporary/return-mismatch.c"
 
@@ -1045,8 +1084,9 @@ implicit_return_statement_status=$?
 set -e
 assert_num "implicit return statement status" \
     "$implicit_return_statement_status" -eq 1
-grep 'error\[E2S19\]: Core function may complete without returning Int' \
-    "$temporary/implicit-return-statement.stdout" >/dev/null
+assert_grep "implicit-return-statement.stdout" \
+    'error\[E2S19\]: Core function may complete without returning Int' \
+    "$temporary/implicit-return-statement.stdout"
 assert_absent "$temporary/implicit-return-statement.c" \
     "$temporary/implicit-return-statement.c"
 
@@ -1152,8 +1192,9 @@ set +e
 value_if_no_else_status=$?
 set -e
 assert_num "value if no else status" "$value_if_no_else_status" -eq 1
-grep 'error\[E2S27\]: a final `if` needs an `else`; its false path yields no Int' \
-    "$temporary/value-if-no-else.stdout" >/dev/null
+assert_grep "value-if-no-else.stdout" \
+    'error\[E2S27\]: a final `if` needs an `else`; its false path yields no Int' \
+    "$temporary/value-if-no-else.stdout"
 assert_absent "$temporary/value-if-no-else.c" "$temporary/value-if-no-else.c"
 
 # A branch that produces no value is refused for the same reason, one level in:
@@ -1182,8 +1223,9 @@ set +e
 value_if_void_branch_status=$?
 set -e
 assert_num "value if void branch status" "$value_if_void_branch_status" -eq 1
-grep 'error\[E2S28\]: value-position if branch must produce Int, not Void' \
-    "$temporary/value-if-void-branch.stdout" >/dev/null
+assert_grep "value-if-void-branch.stdout" \
+    'error\[E2S28\]: value-position if branch must produce Int, not Void' \
+    "$temporary/value-if-void-branch.stdout"
 assert_absent "$temporary/value-if-void-branch.c" \
     "$temporary/value-if-void-branch.c"
 
@@ -1283,7 +1325,8 @@ set +e
 final_value_record_status=$?
 set -e
 assert_num "final value record status" "$final_value_record_status" -eq 1
-grep 'error\[E2S19\]' "$temporary/final-value-record.stdout" >/dev/null
+assert_grep "final-value-record.stdout" \
+    'error\[E2S19\]' "$temporary/final-value-record.stdout"
 assert_absent "$temporary/final-value-record.c" \
     "$temporary/final-value-record.c"
 
@@ -1319,7 +1362,8 @@ set +e
 final_value_record_if_status=$?
 set -e
 assert_num "final value record if status" "$final_value_record_if_status" -eq 1
-grep 'error\[E2S19\]' "$temporary/final-value-record-if.stdout" >/dev/null
+assert_grep "final-value-record-if.stdout" \
+    'error\[E2S19\]' "$temporary/final-value-record-if.stdout"
 assert_absent "$temporary/final-value-record-if.c" \
     "$temporary/final-value-record-if.c"
 

@@ -90,7 +90,7 @@ cmp "$LOOP_STDOUT" "$WORK/loop.stdout"
 # scanner must ignore operator and parenthesis bytes inside a literal.
 "$WORK/kofun-stage1" "$TEXT_FIXTURE" "$WORK/text.c"
 cmp "$TEXT_C" "$WORK/text.c"
-! grep -F 'greeting + " " + "compiler"' "$WORK/text.c" >/dev/null
+assert_not_grep "text.c" -F 'greeting + " " + "compiler"' "$WORK/text.c"
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror "$WORK/text.c" -o "$WORK/text"
 "$WORK/text" >"$WORK/text.stdout"
 cmp "$TEXT_STDOUT" "$WORK/text.stdout"
@@ -99,7 +99,8 @@ cmp "$TEXT_STDOUT" "$WORK/text.stdout"
 # emits no Text-typed local. Keep that conditional-emission boundary explicit.
 "$WORK/kofun-stage1" "$TEXT_EQUAL_FIXTURE" "$WORK/text-equality-only.c"
 cmp "$TEXT_EQUAL_C" "$WORK/text-equality-only.c"
-grep -F 'static bool kofun_rt_text_equal' "$WORK/text-equality-only.c" >/dev/null
+assert_grep "text-equality-only.c" \
+    -F 'static bool kofun_rt_text_equal' "$WORK/text-equality-only.c"
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
     "$WORK/text-equality-only.c" -o "$WORK/text-equality-only"
 "$WORK/text-equality-only" >"$WORK/text-equality-only.stdout"

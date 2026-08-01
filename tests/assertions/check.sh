@@ -4,12 +4,18 @@ set -eu
 # Counts assertions that fail without saying anything, and holds every file to a
 # recorded budget.
 #
-# A silent assertion is a `test` or `[` command that
+# A silent assertion is a `test`, `[`, or silenced `grep` command that
 #
 #   1. carries no `||` or `&&` handler;
 #   2. is not the condition of an `if`; and
 #   3. is not the last command of a function body, where a bare `test` is the
 #      function's return value rather than an assertion.
+#
+# A grep counts when it is silenced — `-q`, or its output sent to /dev/null —
+# and a leading `!` does not change that: `! grep -q X f` asserts that X is
+# absent, and fails just as quietly. Those three forms are assertions with the
+# message deliberately thrown away, and #838 counted 417 of them after #814
+# finished with `test`.
 #
 # Rule 3 replaces a blunter one. #814 skipped every `test` inside a function,
 # because some of them are predicates — `semantic_status_is_valid()` in
@@ -84,7 +90,9 @@ count_file() {
             if (buf == "") return
             s = buf
             sub(/^[ \t]+/, "", s)
-            if (s ~ /^(test|\[)[ \t]/ &&
+            if ((s ~ /^(test|\[)[ \t]/ ||
+                 s ~ /^!?[ \t]*grep[ \t]+(-[A-Za-z]+[ \t]+)*-[A-Za-z]*q/ ||
+                 (s ~ /^!?[ \t]*grep[ \t]/ && s ~ />[ \t]*\/dev\/null/)) &&
                 s !~ /\|\|/ &&
                 s !~ /&&/ &&
                 s !~ /;[ \t]*then/) {
