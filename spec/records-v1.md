@@ -1,8 +1,11 @@
 # Nominal heterogeneous records v1
 
 Status: accepted normative design for GitHub issue #546. The bounded frontend
-under `tests/conformance/records/` implements and gates this document; no
-production compiler path, module system, or backend lowers records yet.
+under `tests/conformance/records/` implements and gates the full typed contract.
+The production Stage 2 C11 path additionally lowers the #783 slice: nominal
+records whose fields are only `Int` or `Bool`, with labelled construction,
+field reads, and whole-record value arguments/results. Module integration,
+other field types, and other backends remain outside that slice.
 
 Decision owner: the repository maintainer. A later change to the accepted
 declaration form, construction form, ownership boundary, or layout authority
@@ -247,4 +250,15 @@ document. It proves, on the current target branch:
   and no artifact survives a rejected source.
 
 It deliberately does not prove: module-level visibility, generic records,
-native or C11 lowering of record values, or an ABI. Those remain open.
+native lowering, a stable ABI, or C11 lowering for `Text`, `List`, ADT,
+nested-record, generic, mutable, or partially moved fields. The additional
+`record_functions.kofun` Stage 2 fixture proves the narrow C11 slice by:
+
+- executing both declaration-order and reordered labelled construction with
+  the same result while checking that emitted assignments preserve written
+  evaluation order;
+- passing and returning the nominal record by value and reading both an `Int`
+  and a `Bool` field;
+- statically checking C offsets and size against AggregateLayout v1 for the
+  named LP64 profile; and
+- rejecting a field type outside the `Int`/`Bool` slice before emitting C.

@@ -903,25 +903,25 @@
     {
       "id": "nominal-records",
       "public_wording": "nominal heterogeneous records",
-      "public_status": "bounded typed frontend only: declaration, labelled construction, typed reads, ownership and layout facts, and a scanner that produces and consumes `List[Token]`; no module, generic, or backend lowering",
+      "public_status": "bounded typed frontend plus Stage 2 C11 lowering for nominal `Int`/`Bool` records: written-order labelled construction, declaration-order AggregateLayout, typed reads, and whole-record value arguments/results; no module, generic, native, stable-ABI, or wider-field lowering",
       "state": "checkpoint",
       "area": "frontend",
-      "bounded_capability": "The dedicated Stage 2 record frontend accepts nominal declarations, labelled construction, typed field reads, whole-record moves, and declaration-order layout facts. Module visibility, generic records, and backend lowering remain outside the checkpoint.",
+      "bounded_capability": "The dedicated record frontend accepts the full bounded typed contract. The production Stage 2 C11 slice additionally lowers nominal records containing only Int/Bool fields, preserves written construction evaluation order, uses declaration-order AggregateLayout, supports typed field reads, and passes/returns whole records by value. Module visibility, generic records, wider field types, native lowering, and a stable ABI remain outside the checkpoint.",
       "targets": [
         "stage2"
       ],
       "specification": [
         "spec/records-v1.md"
       ],
-      "compatibility": "The checkpoint is additive and intentionally isolated from the main compiler. Expanding it into module resolution, generics, or backend lowering is a separately evidenced capability change.",
+      "compatibility": "The C11 slice is additive and has no public or FFI ABI promise. Expanding it into module resolution, generics, other field types, mutation, partial moves, or another backend is a separately evidenced capability change.",
       "positive_gate": {
         "command": "task records",
-        "observation": "The scanner fixture constructs, passes, returns, reads, and lays out nominal records through the bounded typed frontend."
+        "observation": "The scanner fixture gates the full typed contract; the Stage 2 fixture executes Int/Bool record construction in both label orders, field reads, value arguments/results, and AggregateLayout assertions."
       },
       "negative_boundary": {
         "kind": "rejection",
-        "evidence": "tests/conformance/records/generic_record.kofun",
-        "observation": "Generic records are refused explicitly instead of being accepted outside the bounded profile."
+        "evidence": "tests/conformance/records/stage2_unsupported_field.kofun",
+        "observation": "The production Stage 2 C11 path refuses a field type outside its Int/Bool slice before emitting an artifact."
       },
       "safety": {
         "classification": "memory-safety",
