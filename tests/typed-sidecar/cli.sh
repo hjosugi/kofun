@@ -9,6 +9,8 @@ WORK=${KOFUN_TYPED_SIDECAR_CLI_WORK:-"$ROOT/build/typed-sidecar-cli"}
 COMPLETE="$ROOT/tests/typed-sidecar/fixtures/stage2_events.kofun"
 FAILED="$ROOT/bootstrap/stage2/function_unknown_error.kofun"
 BORROWED="$ROOT/bootstrap/stage2/fixtures/borrowed_copy_int.kofun"
+ASSERT_CONTEXT='typed-sidecar cli'
+. "$ROOT/tests/assertions/assert.sh"
 
 fail() {
     printf '%s\n' "FAIL: $*" >&2
@@ -49,15 +51,16 @@ expect_status 0 complete check "$COMPLETE" \
     --emit-typed-sidecar "$WORK/output/complete.kofun-semantic.json" \
     --generation 1
 grep -Fx "ok: $COMPLETE" "$WORK/complete.stdout" >/dev/null
-test ! -s "$WORK/complete.stderr"
-test -s "$WORK/output/complete.kofun-semantic.json"
+assert_file_empty "complete.stderr" "$WORK/complete.stderr"
+assert_file_nonempty "output/complete.kofun-semantic.json" \
+    "$WORK/output/complete.kofun-semantic.json"
 
 expect_status 0 borrowed-plain check "$BORROWED"
 expect_status 0 borrowed-sidecar check "$BORROWED" \
     --emit-typed-sidecar "$WORK/output/borrowed.json" --generation 4
 cmp "$WORK/borrowed-plain.stdout" "$WORK/borrowed-sidecar.stdout"
 cmp "$WORK/borrowed-plain.stderr" "$WORK/borrowed-sidecar.stderr"
-test -s "$WORK/output/borrowed.json"
+assert_file_nonempty "output/borrowed.json" "$WORK/output/borrowed.json"
 
 expect_status 0 reverse-order check "$COMPLETE" \
     --generation 2 \
@@ -127,16 +130,16 @@ for label in dash directory symlink source-output missing-parent
 do
     grep -q '^ETS01: ' "$WORK/$label.stderr"
 done
-test "$(cat "$WORK/output/victim")" = keep
+assert_eq "contents of output/victim" "$(cat "$WORK/output/victim")" keep
 
 expect_status 1 failed-plain check "$FAILED"
 expect_status 1 failed check "$FAILED" \
     --emit-typed-sidecar "$WORK/output/failed.json" --generation 20
 cmp "$WORK/failed-plain.stdout" "$WORK/failed.stdout"
 cmp "$WORK/failed-plain.stderr" "$WORK/failed.stderr"
-test ! -s "$WORK/failed.stdout"
+assert_file_empty "failed.stdout" "$WORK/failed.stdout"
 grep -Fq 'error[' "$WORK/failed.stderr"
-test -s "$WORK/output/failed.json"
+assert_file_nonempty "output/failed.json" "$WORK/output/failed.json"
 node --input-type=module - "$WORK/output/failed.json" <<'NODE'
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -168,7 +171,7 @@ cmp "$WORK/equal-failed.before" "$WORK/output/failed.json"
 printf '\303\050' >"$WORK/invalid-utf8.kofun"
 expect_status 1 invalid-utf8 check "$WORK/invalid-utf8.kofun" \
     --emit-typed-sidecar "$WORK/output/invalid-utf8.json" --generation 1
-test ! -e "$WORK/output/invalid-utf8.json"
+assert_absent "output/invalid-utf8.json" "$WORK/output/invalid-utf8.json"
 
 # The production adapter rejects its bounded declaration profile before
 # entering an oversized observer transaction.  The public CLI must report one
@@ -213,7 +216,8 @@ tail -n 1 "$WORK/declaration-limit.stderr" |
 ! grep -Eq 'double free|free\\(\\)|Aborted|core dumped|sanitizer' \
     "$WORK/declaration-limit.stderr" ||
     fail "declaration-limit path exposed a process abort"
-test ! -e "$WORK/output/declaration-limit.json"
+assert_absent "output/declaration-limit.json" \
+    "$WORK/output/declaration-limit.json"
 
 expect_status 2 build-reject build "$COMPLETE" \
     --emit-typed-sidecar "$WORK/output/build.json" --generation 1
@@ -230,7 +234,8 @@ run_kofun check "$ROOT/bootstrap/fixtures/answer.kofun" \
     >"$WORK/no-flag-b.stdout" 2>"$WORK/no-flag-b.stderr"
 cmp "$WORK/no-flag-a.stdout" "$WORK/no-flag-b.stdout"
 cmp "$WORK/no-flag-a.stderr" "$WORK/no-flag-b.stderr"
-test ! -e "$ROOT/bootstrap/fixtures/answer.kofun-semantic.json"
+assert_absent "$ROOT/bootstrap/fixtures/answer.kofun-semantic.json" \
+    "$ROOT/bootstrap/fixtures/answer.kofun-semantic.json"
 
 printf '%s\n' \
     'PASS: typed-sidecar CLI grammar, exact fallback channels, races, exit precedence, and no-flag compatibility'

@@ -4,6 +4,8 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 WORK=${KOFUN_TUI_WORK:-"$ROOT/build/tui-framework"}
 CC=${CC:-cc}
+ASSERT_CONTEXT='tui framework'
+. "$ROOT/tests/assertions/assert.sh"
 
 rm -rf "$WORK"
 mkdir -p "$WORK"
@@ -28,7 +30,8 @@ grep -Fq '2,000,000 ns frame budget' "$WORK/benchmark.txt"
     "$WORK/tui-dashboard" >/dev/null
 TERM=xterm-256color COLORTERM=truecolor \
     "$WORK/tui-dashboard" >"$WORK/dashboard.stdout"
-test "$(wc -l <"$WORK/dashboard.stdout")" -eq 6
+assert_num "lines in dashboard.stdout" \
+    "$(wc -l <"$WORK/dashboard.stdout")" -eq 6
 grep -Fq 'compile 東京' "$WORK/dashboard.stdout"
 grep -Fq 'linux-x86_64' "$WORK/dashboard.stdout"
 grep -Fq 'artifact' "$WORK/dashboard.stdout"

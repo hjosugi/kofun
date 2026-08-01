@@ -5,6 +5,8 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 KOFUN="$ROOT/bin/kofun"
 FIXTURE="$ROOT/bootstrap/fixtures/answer.kofun"
 WORK=${KOFUN_BUILD_SYSTEM_TEST_WORK:-"$ROOT/build/build-system-test"}
+ASSERT_CONTEXT='build system'
+. "$ROOT/tests/assertions/assert.sh"
 
 rm -rf "$WORK"
 mkdir -p "$WORK/single"
@@ -32,8 +34,8 @@ chmod +x "$WORK/frost-spy"
         -o "$WORK/single/main" \
         --emit-c "$WORK/single/main.c" >/dev/null
 )
-test "$("$WORK/single/main")" = 42
-test ! -e "$WORK/frost-spy.log"
+assert_eq "output of single/main" "$("$WORK/single/main")" 42
+assert_absent "frost-spy.log" "$WORK/frost-spy.log"
 
 # Issue #19's <5 ms threshold is compiler-internal, non-Python work. It is not
 # CLI wall time and deliberately excludes the external C compiler/link step.
@@ -150,10 +152,14 @@ grep -q 'ran kofun:beta' "$WORK/initial.log"
 grep -q '2 built' "$WORK/initial.log"
 
 ENGINE="$WORK/project/.kofun/frost-workspace"
-test "$("$ENGINE/.frost/bin/debug/alpha")" = 42
-test "$("$ENGINE/.frost/bin/debug/beta")" = 42
-test -s "$ENGINE/.frost/obj/debug/alpha/kofun.c"
-test -s "$ENGINE/.frost/obj/debug/beta/kofun.c"
+assert_eq "output of $ENGINE/.frost/bin/debug/alpha" \
+    "$("$ENGINE/.frost/bin/debug/alpha")" 42
+assert_eq "output of $ENGINE/.frost/bin/debug/beta" \
+    "$("$ENGINE/.frost/bin/debug/beta")" 42
+assert_file_nonempty "$ENGINE/.frost/obj/debug/alpha/kofun.c" \
+    "$ENGINE/.frost/obj/debug/alpha/kofun.c"
+assert_file_nonempty "$ENGINE/.frost/obj/debug/beta/kofun.c" \
+    "$ENGINE/.frost/obj/debug/beta/kofun.c"
 
 project_build >"$WORK/noop.log" 2>&1
 grep -q 'up to date' "$WORK/noop.log"
@@ -172,8 +178,10 @@ if grep -q 'ran kofun:beta' "$WORK/incremental.log"; then
     exit 1
 fi
 grep -q '1 built, 1 cached' "$WORK/incremental.log"
-test "$("$ENGINE/.frost/bin/debug/alpha")" = 49
-test "$("$ENGINE/.frost/bin/debug/beta")" = 42
+assert_eq "output of $ENGINE/.frost/bin/debug/alpha" \
+    "$("$ENGINE/.frost/bin/debug/alpha")" 49
+assert_eq "output of $ENGINE/.frost/bin/debug/beta" \
+    "$("$ENGINE/.frost/bin/debug/beta")" 42
 
 # Remove both declared alpha outputs. The next invocation must restore them
 # from Frost's content-addressed action cache without invoking Kofun again.
@@ -186,8 +194,10 @@ if grep -q 'ran kofun:alpha' "$WORK/cache-hit.log"; then
     printf '%s\n' "FAIL: CAS-restored alpha target recompiled" >&2
     exit 1
 fi
-test "$("$ENGINE/.frost/bin/debug/alpha")" = 49
-test -s "$ENGINE/.frost/obj/debug/alpha/kofun.c"
+assert_eq "output of $ENGINE/.frost/bin/debug/alpha" \
+    "$("$ENGINE/.frost/bin/debug/alpha")" 49
+assert_file_nonempty "$ENGINE/.frost/obj/debug/alpha/kofun.c" \
+    "$ENGINE/.frost/obj/debug/alpha/kofun.c"
 
 printf '%s\n' \
     "PASS: single-file path bypassed manifest and Frost" \

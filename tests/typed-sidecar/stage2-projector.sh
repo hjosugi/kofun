@@ -8,6 +8,8 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 CC=${CC:-cc}
 WORK=${KOFUN_STAGE2_PROJECTOR_WORK:-"$ROOT/build/stage2-projector"}
 FIXTURE="$ROOT/tests/typed-sidecar/fixtures/stage2_events.kofun"
+ASSERT_CONTEXT='stage2 projector'
+. "$ROOT/tests/assertions/assert.sh"
 
 fail() {
     printf '%s\n' "FAIL: $*" >&2
@@ -64,11 +66,11 @@ duplicate_status=$?
     "$FIXTURE" src/main.kofun "$WORK/cancelled.kse" 48
 cancelled_status=$?
 set -e
-test "$partial_status" -eq 1
-test "$type_status" -eq 1
-test "$ownership_status" -eq 1
-test "$duplicate_status" -eq 1
-test "$cancelled_status" -eq 1
+assert_num "partial status" "$partial_status" -eq 1
+assert_num "type status" "$type_status" -eq 1
+assert_num "ownership status" "$ownership_status" -eq 1
+assert_num "duplicate status" "$duplicate_status" -eq 1
+assert_num "cancelled status" "$cancelled_status" -eq 1
 
 node --check "$ROOT/tooling/typed-sidecar/from-stage2.mjs"
 node --check "$ROOT/tests/typed-sidecar/stage2_projector_test.mjs"

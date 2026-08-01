@@ -6,6 +6,8 @@ WORK=${KOFUN_CLI_FRAMEWORK_WORK:-"$ROOT/build/cli-framework"}
 CC=${CC:-cc}
 PROGRAM="$WORK/kofun-tool"
 SOURCE="$ROOT/examples/cli_tool.kofun"
+ASSERT_CONTEXT='cli framework'
+. "$ROOT/tests/assertions/assert.sh"
 
 require_tool() {
     command -v "$1" >/dev/null 2>&1 || {
@@ -58,7 +60,8 @@ cp "$WORK/template/first.inc" "$WORK/template/runtime_template.inc"
     -o "$WORK/template/reproduced-compiler"
 "$WORK/template/reproduced-compiler" \
     "$SOURCE" "$WORK/template/reproduced-program"
-test "$("$WORK/template/reproduced-program" sum -8 50)" = 42
+assert_eq "output of template/reproduced-program sum -8 50" \
+    "$("$WORK/template/reproduced-program" sum -8 50)" 42
 "$WORK/template/reproduced-program" --help \
     >"$WORK/template/reproduced-help.txt"
 grep -Fq 'Usage: kofun-tool <command> [options]' \
@@ -98,7 +101,8 @@ cmp "$PROGRAM" "$WORK/no-host-tool-output"
 file "$PROGRAM" >"$WORK/file.txt"
 grep -q 'ELF 64-bit.*x86-64.*statically linked' "$WORK/file.txt"
 readelf -lW "$PROGRAM" >"$WORK/program-headers.txt"
-test "$(grep -c '^  LOAD' "$WORK/program-headers.txt")" -eq 2
+assert_num "^  LOAD lines in program-headers.txt" \
+    "$(grep -c '^  LOAD' "$WORK/program-headers.txt")" -eq 2
 ! grep -Eq 'INTERP|DYNAMIC' "$WORK/program-headers.txt"
 readelf -dW "$PROGRAM" >"$WORK/dynamic.txt" 2>&1 || true
 ! grep -q 'NEEDED' "$WORK/dynamic.txt"
@@ -108,7 +112,7 @@ set +e
 ldd "$PROGRAM" >"$WORK/ldd.txt" 2>&1
 ldd_status=$?
 set -e
-test "$ldd_status" -ne 0
+assert_num "ldd status" "$ldd_status" -ne 0
 grep -Eq 'not a dynamic executable|statically linked' "$WORK/ldd.txt"
 
 # Help and dispatch are generated from the same declaration metadata.
@@ -130,8 +134,8 @@ sed \
     -e 's/"--prefix"/"--salutation"/' \
     "$SOURCE" >"$WORK/metamorphic.kofun"
 "$WORK/compiler" "$WORK/metamorphic.kofun" "$WORK/metamorphic"
-test "$("$WORK/metamorphic" welcome Lin --salutation Ahoy)" = \
-    'Ahoy, Lin!'
+assert_eq "output of metamorphic welcome Lin --salutation Ahoy" \
+    "$("$WORK/metamorphic" welcome Lin --salutation Ahoy)" 'Ahoy, Lin!'
 "$WORK/metamorphic" --help >"$WORK/metamorphic-help.txt"
 grep -Fq 'changed-tool 1.0.0' "$WORK/metamorphic-help.txt"
 grep -Fq '  welcome	Welcome a person' "$WORK/metamorphic-help.txt"
@@ -157,15 +161,20 @@ expect_program_failure() {
 }
 
 # Runtime values—not compiler-known answers—drive each action.
-test "$("$PROGRAM" greet Ada)" = 'Hello, Ada!'
-test "$("$PROGRAM" greet Grace --prefix=Welcome)" = 'Welcome, Grace!'
-test "$("$PROGRAM" greet Lin --prefix Ahoy --shout)" = 'AHOY, LIN!'
-test "$("$PROGRAM" greet -- --shout)" = 'Hello, --shout!'
-test "$("$PROGRAM" sum 1 2)" = 3
-test "$("$PROGRAM" sum -8 50)" = 42
-test "$(KOFUN_CLI_VALUE=runtime "$PROGRAM" env KOFUN_CLI_VALUE)" = \
-    runtime
-test "$("$PROGRAM" status indexing)" = 'status: indexing'
+assert_eq "output of $PROGRAM greet Ada" \
+    "$("$PROGRAM" greet Ada)" 'Hello, Ada!'
+assert_eq "output of $PROGRAM greet Grace --prefix=Welcome" \
+    "$("$PROGRAM" greet Grace --prefix=Welcome)" 'Welcome, Grace!'
+assert_eq "output of $PROGRAM greet Lin --prefix Ahoy --shout" \
+    "$("$PROGRAM" greet Lin --prefix Ahoy --shout)" 'AHOY, LIN!'
+assert_eq "output of $PROGRAM greet -- --shout" \
+    "$("$PROGRAM" greet -- --shout)" 'Hello, --shout!'
+assert_eq "output of $PROGRAM sum 1 2" "$("$PROGRAM" sum 1 2)" 3
+assert_eq "output of $PROGRAM sum -8 50" "$("$PROGRAM" sum -8 50)" 42
+assert_eq "output of KOFUN_CLI_VALUE=runtime $PROGRAM env KOFUN_CLI_VALUE" \
+    "$(KOFUN_CLI_VALUE=runtime "$PROGRAM" env KOFUN_CLI_VALUE)" runtime
+assert_eq "output of $PROGRAM status indexing" \
+    "$("$PROGRAM" status indexing)" 'status: indexing'
 
 expect_program_failure unknown-command 2 \
     'kofun-tool: unknown command: missing' missing
@@ -191,8 +200,8 @@ env -u KOFUN_CLI_MISSING "$PROGRAM" env KOFUN_CLI_MISSING \
     >"$WORK/missing-env.stdout" 2>"$WORK/missing-env.stderr"
 missing_env_status=$?
 set -e
-test "$missing_env_status" -eq 3
-test ! -s "$WORK/missing-env.stdout"
+assert_num "missing env status" "$missing_env_status" -eq 3
+assert_file_empty "missing-env.stdout" "$WORK/missing-env.stdout"
 printf '%s\n' \
     'kofun-tool: environment variable not set: KOFUN_CLI_MISSING' \
     >"$WORK/missing-env.expected"
@@ -212,7 +221,8 @@ grep -Fq "${escape}[36m... compiling" "$WORK/tty-status.txt"
 grep -Fq "${escape}[K${escape}[32mdone compiling" \
     "$WORK/tty-status.txt"
 "$PROGRAM" status compiling >"$WORK/non-tty-status.txt"
-test "$(cat "$WORK/non-tty-status.txt")" = 'status: compiling'
+assert_eq "contents of non-tty-status.txt" \
+    "$(cat "$WORK/non-tty-status.txt")" 'status: compiling'
 ! grep -Fq "$escape" "$WORK/non-tty-status.txt"
 
 expect_compiler_failure() {
@@ -247,13 +257,13 @@ expect_compiler_failure oversized "$WORK/oversized.kofun" \
 # `kofun new` creates a clean, buildable project, not a documentation stub.
 KOFUN_CLI_BUILD_DIR="$WORK/scaffold-compiler" \
     "$ROOT/bin/kofun" new "$WORK/demo-cli" --template cli >/dev/null
-test -f "$WORK/demo-cli/src/main.kofun"
-test -f "$WORK/demo-cli/README.md"
+assert_regular_file "demo-cli/src/main.kofun" "$WORK/demo-cli/src/main.kofun"
+assert_regular_file "demo-cli/README.md" "$WORK/demo-cli/README.md"
 KOFUN_CLI_BUILD_DIR="$WORK/scaffold-compiler" \
     "$ROOT/bin/kofun" build "$WORK/demo-cli/src/main.kofun" \
     --framework cli -o "$WORK/demo-cli/build/demo-cli" >/dev/null
-test "$("$WORK/demo-cli/build/demo-cli" greet World)" = \
-    'Hello, World!'
+assert_eq "output of demo-cli/build/demo-cli greet World" \
+    "$("$WORK/demo-cli/build/demo-cli" greet World)" 'Hello, World!'
 "$WORK/demo-cli/build/demo-cli" --help |
     grep -Fq 'Usage: demo-cli <command> [options]'
 
