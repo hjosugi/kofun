@@ -1,0 +1,14 @@
+# contract: kofun.backend-differential/v1
+# expect-stdout: 1.20
+# expect-stdout: -1.20
+# expect-stdout: 1000.00
+# expect-stdout: 0.0010
+# expect-stdout: -12e-1
+
+fn main() {
+    print(Decimal.format(Decimal.parse("1.20"), 2))
+    print(Decimal.format(Decimal.parse("-1.20"), 2))
+    print(Decimal.format(Decimal.parse("1000"), 2))
+    print(Decimal.format(Decimal.parse("0.0010"), 4))
+    print(Decimal.parse("-1.20"))
+}
