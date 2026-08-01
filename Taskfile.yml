@@ -320,6 +320,11 @@ tasks:
       - "sh tests/typed-sidecar/producer-races.sh"
       - "sh tests/typed-sidecar/authority-boundary.sh"
 
+  ownership-view:
+    desc: "Verify bounded current-file ScopeId and BindingId ownership views"
+    cmds:
+      - "sh tests/tooling/ownership-view/run.sh"
+
   lsp:
     desc: "Verify the stdio language server and editor client"
     cmds:
@@ -486,6 +491,7 @@ tasks:
             typed-sidecar-spec \
             typed-sidecar-codec \
             typed-sidecar-projector \
+            ownership-view \
             tree-sitter \
             syntax \
             repository-check \
