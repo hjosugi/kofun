@@ -1,0 +1,9 @@
+# Rejected: the binding is read again after the assertion, so the asserted
+# read is not its last use. Reason: later use.
+
+fn main() -> Int {
+    let banner: Text = "banner"
+    compiler.ensure_move(banner)
+    print(banner)
+    return 0
+}

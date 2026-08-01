@@ -56,7 +56,9 @@ The compiler is free to apply any of the following optimizations.
 - promotion to owned allocation
 - in-place reuse
 
-It must not change the observable semantics, however.
+It must not change the observable semantics, however. The boundary between
+these optimizations and the semantic transfer of [§3.3](#33-take-t) is stated
+precisely in [§14](#14-semantic-take-versus-optimization-only-moves).
 
 ### 2.3 Owned resources
 
@@ -487,3 +489,68 @@ alias graphs, or async capture.
 
 The current slice validates one diagnostic boundary. It is not a production
 memory-safety proof.
+
+## 14. Semantic `take` versus optimization-only moves
+
+Recorded from [#572](https://github.com/hjosugi/kofun/issues/572), which
+follows Nim's `sink`/`ensureMove` design. Two things are both called "moves"
+and must never be confused.
+
+**Semantic `take` is observable.** A `take` parameter or a consumed `own`
+binding transfers ownership as part of the program's meaning: the source
+binding becomes unusable, use-after-take is a compile error, and cleanup
+obligations move with the value. No optimization level, backend, or analysis
+improvement may infer a `take` away or weaken its diagnostics. §2.3 and §3.3
+define this behavior; it is part of the language.
+
+**Managed-value moves are optimization only.** When the compiler moves or
+reuses the storage of a managed value (§2.2) instead of copying, retaining,
+or reallocating, that choice must be invisible: disabling every such move may
+change allocation counts, retain/release traffic, and code size — never
+program output, error behavior, cleanup order, or what any alias observes.
+No program may be correct only when the optimization fires.
+
+Nim's "last syntactic read" rule is not sufficient here, because immutable
+managed values alias freely and a tracing-GC backend keeps aliased storage
+alive. The proof obligation is last use of the unique storage identity: no
+later use, no live alias, no capture that can observe the storage afterwards.
+
+### The unstable assertion: `compiler.ensure_move(value)`
+
+**Everything in this subsection is unstable.** The name, the diagnostic code,
+and the proof rule may all change; nothing here is language surface. The
+assertion exists for standard-library implementation, performance regression
+tests, and measured hot paths. Everyday code should never contain it.
+
+`compiler.ensure_move(value)` is a compile-time-only statement. It produces
+no value, is erased before code generation — the emitted C of a program with
+and without the assertion is byte-identical — and never evaluates its
+argument. Its single effect is on compilation: the build fails with
+diagnostic `E2S146` unless the Stage 2 slice can prove that `value` is a
+managed local binding at its last use under the narrowest sound rule it can
+decide today:
+
+- the argument is an immutable local binding of managed type (`Text` or
+  `List`), named directly — not a parameter, which the caller may retain
+  (borrowed view, §3.1);
+- the assertion sits in the binding's own scope: an assertion inside a
+  conditional arm or loop that the binding outlives is rejected, not
+  analysed;
+- the binding has no use at any later byte and no use inside any lambda;
+- every earlier read is provably alias-free: an operand of `==`/`!=`, or an
+  argument to a call whose result is a Copy value or no value. A read that
+  becomes a `let` initializer, a constructor field, a return value, or an
+  argument to a managed-result call conservatively defeats the proof.
+
+Every `E2S146` rejection names its reason using the vocabulary of #572:
+`later use`, `possible alias`, `branch mismatch`, `escaping capture`, or
+`backend limitation`. `unknown foreign call` is reserved; the current slice
+cannot express a foreign call. A failed assertion never weakens to a
+warning and never falls back to another compiler: a source file that both
+contains the assertion and steps outside the Stage 2 slice is rejected by
+the seed compiler, which does not accept the syntax.
+
+The general inference — last-use over branches, loops, and aggregates,
+allocation counters, and optimization remarks — remains future work under
+#572, and the in-place ADT reuse built on top of this assertion is #576.
+The gate is `tests/move-assertion/check.sh`.

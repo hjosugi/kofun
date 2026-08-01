@@ -256,6 +256,11 @@ tasks:
     cmds:
       - "sh bootstrap/c_abi/check.sh"
 
+  bindgen-c:
+    desc: "Verify audited raw C bindings generated from the Clang AST"
+    cmds:
+      - "sh tests/interop/bindgen-c/check.sh"
+
   rust-shim:
     desc: "Verify the vendored Rust crate shim offline"
     cmds:
@@ -296,6 +301,11 @@ tasks:
     desc: "Verify deterministic benchmark quantiles and MAD"
     cmds:
       - "sh tests/stdlib/benchmark-summary/check.sh"
+
+  move-assertion:
+    desc: "Verify the unstable compile-time move assertion and its erasure"
+    cmds:
+      - "sh tests/move-assertion/check.sh"
 
   capabilities:
     desc: "Verify the standard library capability matrix states and evidence"
@@ -553,6 +563,7 @@ tasks:
             examples \
             tour \
             c-abi \
+            bindgen-c \
             rust-shim \
             http \
             cli-framework \
@@ -561,6 +572,7 @@ tasks:
             clock-adapters \
             example-law-evidence \
             benchmark-summary \
+            move-assertion \
             capabilities \
             build-system \
             packages \

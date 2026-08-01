@@ -1,0 +1,12 @@
+# Rejected: the argument names a declared function, not a local binding.
+# A function name has no storage identity this slice can track, so there
+# is nothing whose last use could be proved. Reason: backend limitation.
+
+fn width(label: Text) -> Int {
+    return len(label)
+}
+
+fn main() -> Int {
+    compiler.ensure_move(width)
+    return 0
+}

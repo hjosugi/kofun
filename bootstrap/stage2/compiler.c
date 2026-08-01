@@ -5568,6 +5568,9 @@ static bool value_control(const char *source, int64_t cursor);
 /* Defined beside the other numeric-type helpers; declared here because the
  * scope walk is the one caller that runs before them. */
 static bool numeric_conversion_head(const char *source, int64_t cursor);
+/* Defined beside the move-assertion validator; declared here because the
+ * scope walk must not resolve the `compiler` head as a lexical binding. */
+static bool move_assertion_head(const char *source, int64_t cursor);
 static bool newline_between(
     const char *source,
     int64_t start,
@@ -10213,6 +10216,7 @@ static char *build_scope_hir_mode(
                     !initializer_token &&
                     !pattern_token && !lambda_token &&
                     !numeric_conversion_head(source, cursor) &&
+                    !move_assertion_head(source, cursor) &&
                     !decimal_rounding_mode_name(name) &&
                     !token_equal(source, cursor, "print") &&
                     !token_equal(source, cursor, "_")
@@ -11606,6 +11610,31 @@ static char *lower_body(
         if (returned) {
             free(emitted.data);
             return lower_error("E2S14", "statement follows `return`", cursor);
+        }
+        if (move_assertion_head(source, cursor)) {
+            /*
+             * #572: the compile-time move assertion. validate_move_assertions
+             * already proved it or failed the compile, so lowering erases the
+             * statement entirely — no C is emitted and the argument is never
+             * evaluated. Zero runtime footprint is the assertion's contract:
+             * removing the line may change diagnostics, never behavior.
+             */
+            int64_t dot = skip_trivia(source, token_end(source, cursor));
+            int64_t member = skip_trivia(source, token_end(source, dot));
+            int64_t open_paren = skip_trivia(source, token_end(source, member));
+            int64_t close_end = open_paren < length ?
+                balanced_end(source, open_paren, "(", ")") : -1;
+            if (close_end < 0) {
+                free(emitted.data);
+                return lower_error(
+                    "E2S146",
+                    "unstable `compiler.ensure_move` takes exactly one "
+                    "local binding or parameter name",
+                    cursor
+                );
+            }
+            cursor = skip_trivia(source, close_end);
+            continue;
         }
         if (token_equal(source, cursor, "let")) {
             cursor = skip_trivia(source, token_end(source, cursor));
@@ -13668,6 +13697,24 @@ static char *numeric_conversion_at(const char *source, int64_t cursor) {
     return path.data;
 }
 
+/*
+ * True when `cursor` heads the unstable compile-time move assertion
+ * `compiler.ensure_move(...)` (#572). Like `numeric_conversion_head`, the
+ * scope walk must not resolve the head as a binding: `compiler` names the
+ * intrinsic namespace here, not a value. Only this exact member is
+ * recognised; any other `compiler.` path keeps its existing meaning, so a
+ * user binding named `compiler` still resolves everywhere else. While the
+ * assertion is unstable, `compiler.ensure_move` is reserved.
+ */
+static bool move_assertion_head(const char *source, int64_t cursor) {
+    if (!token_equal(source, cursor, "compiler")) return false;
+    int64_t length = source_length(source);
+    int64_t dot = skip_trivia(source, token_end(source, cursor));
+    if (dot >= length || !token_equal(source, dot, ".")) return false;
+    int64_t member = skip_trivia(source, token_end(source, dot));
+    return member < length && token_equal(source, member, "ensure_move");
+}
+
 /* Start of the zero-based argument in a validated numeric member call. */
 static int64_t numeric_member_argument(
     const char *source,
@@ -14760,9 +14807,547 @@ static char *emit_record_c_declarations(const char *source) {
     return declarations.data;
 }
 
+/*
+ * #572: `compiler.ensure_move(value)` — the unstable compile-time move
+ * assertion. docs/MEMORY_MODEL.md §14 records the distinction it serves:
+ * semantic `take` is an observable ownership transfer, while moving a
+ * managed value is an optimization the compiler may perform. This assertion
+ * turns "may" into a compile-time obligation without adding any runtime
+ * behavior — the statement produces no value, is erased before C is
+ * emitted, and compilation fails with an explained reason when the proof
+ * does not hold.
+ *
+ * The rule is deliberately the narrowest sound one this slice can decide.
+ * The argument must be an immutable local binding of a managed type
+ * (`Text` or `List`), asserted in the binding's own scope, with no use at
+ * any later byte, no use inside a lambda, and no earlier read that could
+ * have created an alias of the storage. Every rejection names its reason in
+ * the issue's vocabulary: later use, possible alias, branch mismatch,
+ * escaping capture, or backend limitation. `unknown foreign call` is
+ * reserved: this slice can express no foreign call to blame.
+ */
+
+static char *move_assertion_fail(
+    const char *source,
+    Buffer *message,
+    int64_t primary,
+    int64_t related
+) {
+    stage2_diagnostic_set(
+        "E2S146",
+        primary,
+        token_end(source, primary),
+        true,
+        message->data
+    );
+    if (related >= 0) {
+        stage2_diagnostic_related(
+            related,
+            token_end(source, related),
+            "conflicting use"
+        );
+    }
+    return message->data;
+}
+
+/*
+ * Walks the scope parent chain from `from_scope` to `to_scope`, recording
+ * which scope kinds the chain crosses before arriving. Returns false when
+ * `to_scope` is not an ancestor, leaving the flags valid for the whole
+ * chain.
+ */
+static bool move_assertion_scope_reaches(
+    const char *hir,
+    const char *from_scope,
+    const char *to_scope,
+    bool *crosses_lambda,
+    bool *crosses_branch,
+    bool *crosses_block
+) {
+    char *scope = owned_text(from_scope);
+    while (scope[0] != '\0' && strcmp(scope, "-1") != 0) {
+        if (strcmp(scope, to_scope) == 0) {
+            free(scope);
+            return true;
+        }
+        char *kind = hir_scope_field(hir, scope, 3);
+        if (strcmp(kind, "lambda-parameters") == 0) {
+            *crosses_lambda = true;
+        } else if (
+            strcmp(kind, "if-then") == 0 ||
+            strcmp(kind, "if-else") == 0 ||
+            strcmp(kind, "match-arm") == 0
+        ) {
+            *crosses_branch = true;
+        } else if (strcmp(kind, "block") == 0) {
+            *crosses_block = true;
+        }
+        free(kind);
+        char *parent = hir_scope_field(hir, scope, 2);
+        free(scope);
+        scope = parent;
+    }
+    free(scope);
+    return false;
+}
+
+/*
+ * True when a call to `name` provably keeps no alias of a managed argument.
+ * With no globals and no escaping views in this slice, the only channel out
+ * of a call is its result, so a callee whose result is a Copy value or no
+ * value cannot extend the argument's storage. Everything unknown says no.
+ */
+static bool move_assertion_callee_is_alias_free(
+    const char *source,
+    const char *name
+) {
+    if (strcmp(name, "print") == 0) return true;
+    if (strcmp(name, "ensure_move") == 0) return true;
+    const char *builtin = builtin_return_type(name);
+    if (builtin != NULL) {
+        return strcmp(builtin, "Int") == 0 ||
+               strcmp(builtin, "Bool") == 0 ||
+               strcmp(builtin, "Void") == 0;
+    }
+    char *owner = enum_constructor_owner(source, name);
+    bool constructor = owner[0] != '\0';
+    free(owner);
+    if (constructor || record_declaration_start(source, name) >= 0) {
+        return false;
+    }
+    char *result = function_return_type(source, name);
+    bool alias_free =
+        strcmp(result, "Int") == 0 ||
+        strcmp(result, "Bool") == 0 ||
+        strcmp(result, "Void") == 0;
+    free(result);
+    return alias_free;
+}
+
+/*
+ * True when the read at `use_start` provably creates no alias: it is one
+ * operand of an equality comparison, or it sits inside a call whose callee
+ * is alias-free per the rule above. A grouping parenthesis inherits the
+ * verdict of the call it sits in; at statement depth it stays conservative,
+ * because the read could be a whole initializer or return value there.
+ */
+static bool move_assertion_read_is_alias_free(
+    const char *source,
+    int64_t function_open,
+    int64_t use_start
+) {
+    int64_t after = skip_trivia(source, token_end(source, use_start));
+    if (
+        token_equal(source, after, "==") ||
+        token_equal(source, after, "!=")
+    ) {
+        return true;
+    }
+    bool alias_free_stack[64];
+    int64_t depth = 0;
+    int64_t previous = function_open;
+    int64_t cursor = skip_trivia(source, token_end(source, function_open));
+    while (cursor < use_start) {
+        if (
+            token_equal(source, cursor, "(") ||
+            token_equal(source, cursor, "[")
+        ) {
+            bool alias_free = false;
+            if (
+                token_equal(source, cursor, "(") &&
+                strcmp(token_kind(source, previous), "identifier") == 0
+            ) {
+                char *name = token_copy(source, previous);
+                alias_free =
+                    move_assertion_callee_is_alias_free(source, name);
+                free(name);
+            } else if (depth > 0 && depth <= 64) {
+                alias_free = alias_free_stack[depth - 1];
+            }
+            if (depth < 64) alias_free_stack[depth] = alias_free;
+            ++depth;
+        } else if (
+            token_equal(source, cursor, ")") ||
+            token_equal(source, cursor, "]")
+        ) {
+            if (depth > 0) --depth;
+        }
+        previous = cursor;
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    if (
+        token_equal(source, previous, "==") ||
+        token_equal(source, previous, "!=")
+    ) {
+        return true;
+    }
+    if (depth <= 0 || depth > 64) return false;
+    return alias_free_stack[depth - 1];
+}
+
+static char *validate_move_assertions(const char *source, const char *hir) {
+    int64_t length = source_length(source);
+    int64_t function_start = next_function_start(source, 0);
+    while (function_start < length) {
+        int64_t function_close = function_end(source, function_start);
+        int64_t parameters = parameter_open(source, function_start);
+        int64_t parameters_close = parameters < 0 ?
+            -1 : balanced_end(source, parameters, "(", ")");
+        if (parameters_close < 0) {
+            function_start = next_function_start(source, function_close);
+            continue;
+        }
+        int64_t function_open = skip_trivia(source, parameters_close);
+        while (
+            function_open < function_close &&
+            !token_equal(source, function_open, "{")
+        ) {
+            function_open = skip_trivia(
+                source,
+                token_end(source, function_open)
+            );
+        }
+        int64_t previous = function_open;
+        int64_t depth = 0;
+        int64_t cursor = skip_trivia(
+            source,
+            token_end(source, function_open)
+        );
+        while (cursor < function_close) {
+            if (!move_assertion_head(source, cursor)) {
+                if (
+                    token_equal(source, cursor, "(") ||
+                    token_equal(source, cursor, "[")
+                ) {
+                    ++depth;
+                } else if (
+                    token_equal(source, cursor, ")") ||
+                    token_equal(source, cursor, "]")
+                ) {
+                    if (depth > 0) --depth;
+                }
+                previous = cursor;
+                cursor = skip_trivia(source, token_end(source, cursor));
+                continue;
+            }
+            /*
+             * Same statement-position test the condition validator uses: a
+             * statement begins after `{`, `}`, `else`, or a newline — and
+             * never inside an open parenthesis, which covers a multi-line
+             * argument list.
+             */
+            bool statement_context =
+                depth == 0 &&
+                (token_equal(source, previous, "{") ||
+                 token_equal(source, previous, "}") ||
+                 token_equal(source, previous, "else") ||
+                 newline_between(
+                     source,
+                     token_end(source, previous),
+                     cursor
+                 ));
+            if (!statement_context) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    "error[E2S146]: unstable `compiler.ensure_move` is "
+                    "compile-time only and has no value here at byte "
+                    "%" PRId64,
+                    cursor
+                );
+                return move_assertion_fail(source, &message, cursor, -1);
+            }
+            int64_t dot = skip_trivia(source, token_end(source, cursor));
+            int64_t member = skip_trivia(source, token_end(source, dot));
+            int64_t open = skip_trivia(source, token_end(source, member));
+            int64_t argument = skip_trivia(source, token_end(source, open));
+            int64_t close = argument < length ?
+                skip_trivia(source, token_end(source, argument)) : length;
+            if (
+                open >= function_close ||
+                !token_equal(source, open, "(") ||
+                argument >= function_close ||
+                strcmp(token_kind(source, argument), "identifier") != 0 ||
+                close >= function_close ||
+                !token_equal(source, close, ")")
+            ) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    "error[E2S146]: unstable `compiler.ensure_move` takes "
+                    "exactly one local binding or parameter name at byte "
+                    "%" PRId64,
+                    cursor
+                );
+                return move_assertion_fail(source, &message, cursor, -1);
+            }
+            char *argument_name = token_copy(source, argument);
+            char *binding_id = hir_use_binding_id(hir, argument);
+            if (binding_id[0] == '\0' || strcmp(binding_id, "-1") == 0) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    "error[E2S146]: unstable `compiler.ensure_move`: `%s` "
+                    "names no local storage identity (backend limitation) "
+                    "at byte %" PRId64,
+                    argument_name,
+                    argument
+                );
+                free(binding_id);
+                free(argument_name);
+                return move_assertion_fail(source, &message, argument, -1);
+            }
+            char *binding_scope = hir_binding_field(hir, binding_id, 2);
+            char *mutability = hir_binding_field(hir, binding_id, 4);
+            char *binding_type = hir_binding_field(hir, binding_id, 5);
+            char *scope_kind = hir_scope_field(hir, binding_scope, 3);
+            char *use_scope = hir_index_field_number(hir, 'u', argument, 3);
+            char *failure = NULL;
+            Buffer message;
+            buffer_init(&message);
+            if (
+                strcmp(scope_kind, "parameters") == 0 ||
+                strcmp(scope_kind, "lambda-parameters") == 0
+            ) {
+                buffer_format(
+                    &message,
+                    "error[E2S146]: unstable `compiler.ensure_move`: "
+                    "parameter `%s` is borrowed from the caller (possible "
+                    "alias) at byte %" PRId64,
+                    argument_name,
+                    argument
+                );
+                failure = move_assertion_fail(
+                    source,
+                    &message,
+                    argument,
+                    -1
+                );
+            } else if (strcmp(mutability, "immutable") != 0) {
+                buffer_format(
+                    &message,
+                    "error[E2S146]: unstable `compiler.ensure_move`: `%s` "
+                    "is mutable, so its storage can be re-bound (backend "
+                    "limitation) at byte %" PRId64,
+                    argument_name,
+                    argument
+                );
+                failure = move_assertion_fail(
+                    source,
+                    &message,
+                    argument,
+                    -1
+                );
+            } else if (
+                strcmp(binding_type, "Text") != 0 &&
+                strcmp(binding_type, "List") != 0
+            ) {
+                buffer_format(
+                    &message,
+                    "error[E2S146]: unstable `compiler.ensure_move`: `%s` "
+                    "has Copy type `%s`, not managed storage (backend "
+                    "limitation) at byte %" PRId64,
+                    argument_name,
+                    binding_type,
+                    argument
+                );
+                failure = move_assertion_fail(
+                    source,
+                    &message,
+                    argument,
+                    -1
+                );
+            }
+            /* Any use inside a lambda — including this one — escapes. */
+            int64_t use_line = failure != NULL ?
+                -1 : hir_record_start(hir, "use", 0);
+            while (use_line >= 0) {
+                char *use_binding = hir_field(hir, use_line, 4);
+                if (strcmp(use_binding, binding_id) == 0) {
+                    char *start_text = hir_field(hir, use_line, 1);
+                    char *this_scope = hir_field(hir, use_line, 3);
+                    int64_t use_start = decimal_value(start_text);
+                    bool lambda = false;
+                    bool branch = false;
+                    bool block = false;
+                    move_assertion_scope_reaches(
+                        hir,
+                        this_scope,
+                        binding_scope,
+                        &lambda,
+                        &branch,
+                        &block
+                    );
+                    if (lambda) {
+                        buffer_format(
+                            &message,
+                            "error[E2S146]: unstable "
+                            "`compiler.ensure_move`: `%s` is captured by a "
+                            "lambda at byte %" PRId64 " (escaping capture) "
+                            "at byte %" PRId64,
+                            argument_name,
+                            use_start,
+                            argument
+                        );
+                        failure = move_assertion_fail(
+                            source,
+                            &message,
+                            argument,
+                            use_start
+                        );
+                    }
+                    free(this_scope);
+                    free(start_text);
+                }
+                free(use_binding);
+                use_line = failure != NULL ?
+                    -1 : hir_record_start(hir, "use", use_line);
+            }
+            /* The assertion itself must sit in the binding's own scope. */
+            if (failure == NULL) {
+                bool lambda = false;
+                bool branch = false;
+                bool block = false;
+                move_assertion_scope_reaches(
+                    hir,
+                    use_scope,
+                    binding_scope,
+                    &lambda,
+                    &branch,
+                    &block
+                );
+                if (branch) {
+                    buffer_format(
+                        &message,
+                        "error[E2S146]: unstable `compiler.ensure_move`: "
+                        "the assertion is inside a conditional arm that "
+                        "`%s` outlives (branch mismatch) at byte %" PRId64,
+                        argument_name,
+                        argument
+                    );
+                    failure = move_assertion_fail(
+                        source,
+                        &message,
+                        argument,
+                        -1
+                    );
+                } else if (block) {
+                    buffer_format(
+                        &message,
+                        "error[E2S146]: unstable `compiler.ensure_move`: "
+                        "an enclosing loop or block can repeat this read "
+                        "of `%s` (later use) at byte %" PRId64,
+                        argument_name,
+                        argument
+                    );
+                    failure = move_assertion_fail(
+                        source,
+                        &message,
+                        argument,
+                        -1
+                    );
+                }
+            }
+            /* No use at any later byte, in any scope. */
+            use_line = failure != NULL ?
+                -1 : hir_record_start(hir, "use", 0);
+            while (use_line >= 0) {
+                char *use_binding = hir_field(hir, use_line, 4);
+                if (strcmp(use_binding, binding_id) == 0) {
+                    char *start_text = hir_field(hir, use_line, 1);
+                    int64_t use_start = decimal_value(start_text);
+                    if (use_start > argument) {
+                        buffer_format(
+                            &message,
+                            "error[E2S146]: unstable "
+                            "`compiler.ensure_move`: `%s` is used again "
+                            "at byte %" PRId64 " (later use) at byte "
+                            "%" PRId64,
+                            argument_name,
+                            use_start,
+                            argument
+                        );
+                        failure = move_assertion_fail(
+                            source,
+                            &message,
+                            argument,
+                            use_start
+                        );
+                    }
+                    free(start_text);
+                }
+                free(use_binding);
+                use_line = failure != NULL ?
+                    -1 : hir_record_start(hir, "use", use_line);
+            }
+            /* Every earlier read must be provably alias-free. */
+            use_line = failure != NULL ?
+                -1 : hir_record_start(hir, "use", 0);
+            while (use_line >= 0) {
+                char *use_binding = hir_field(hir, use_line, 4);
+                if (strcmp(use_binding, binding_id) == 0) {
+                    char *start_text = hir_field(hir, use_line, 1);
+                    int64_t use_start = decimal_value(start_text);
+                    if (
+                        use_start < argument &&
+                        !move_assertion_read_is_alias_free(
+                            source,
+                            function_open,
+                            use_start
+                        )
+                    ) {
+                        buffer_format(
+                            &message,
+                            "error[E2S146]: unstable "
+                            "`compiler.ensure_move`: the read of `%s` at "
+                            "byte %" PRId64 " may create an alias "
+                            "(possible alias) at byte %" PRId64,
+                            argument_name,
+                            use_start,
+                            argument
+                        );
+                        failure = move_assertion_fail(
+                            source,
+                            &message,
+                            argument,
+                            use_start
+                        );
+                    }
+                    free(start_text);
+                }
+                free(use_binding);
+                use_line = failure != NULL ?
+                    -1 : hir_record_start(hir, "use", use_line);
+            }
+            free(use_scope);
+            free(scope_kind);
+            free(binding_type);
+            free(mutability);
+            free(binding_scope);
+            free(binding_id);
+            free(argument_name);
+            if (failure != NULL) return failure;
+            free(message.data);
+            previous = close;
+            cursor = skip_trivia(source, token_end(source, close));
+        }
+        function_start = next_function_start(source, function_close);
+    }
+    return owned_text("ok");
+}
+
 static char *lower_c(const char *source, const char *hir) {
     int64_t length = source_length(source);
     bool fractional_values = source_uses_fractional_values(source);
+    /* First, before every other validator: a program that asks for the
+     * move guarantee must hear the assertion's own verdict, not a
+     * diagnostic about tokens the erased statement happens to contain. */
+    char *move_check = validate_move_assertions(source, hir);
+    if (strncmp(move_check, "error[", 6) == 0) return move_check;
+    free(move_check);
     /* A mixed-type expression is reported before operator lowering, so
      * `1 + 1.5` names the missing explicit conversion. */
     char *operand_check = validate_numeric_operand_types(source, hir);

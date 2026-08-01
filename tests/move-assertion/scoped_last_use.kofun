@@ -1,0 +1,15 @@
+# Positive: the narrowest rule still proves a binding that lives entirely
+# inside one conditional arm. Declaration and assertion share the same
+# scope, so no path exists on which the storage outlives the assertion.
+
+fn main() -> Int {
+    let flag = 1
+    if flag > 0 {
+        let scoped: Text = "scoped"
+        print(scoped)
+        compiler.ensure_move(scoped)
+    } else {
+        print("other")
+    }
+    return 0
+}

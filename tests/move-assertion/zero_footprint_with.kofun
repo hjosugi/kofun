@@ -1,0 +1,19 @@
+# Zero-footprint witness. The two zero_footprint_*.kofun files differ by
+# exactly one line — the assertion — and the gate checks that textually.
+# It then proves the pair produce identical stdout on the reference
+# executor and on the C11 backend, and that the two emitted C translation
+# units are byte-identical: the assertion compiles to nothing at all.
+
+fn shout(label: Text) -> Int {
+    print(label)
+    return len(label)
+}
+
+fn main() -> Int {
+    let greeting: Text = "kofun"
+    print(shout(greeting))
+    compiler.ensure_move(greeting)
+    let count = 3
+    print(count * 7)
+    return 0
+}

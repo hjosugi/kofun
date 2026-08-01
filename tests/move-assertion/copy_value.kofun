@@ -1,0 +1,9 @@
+# Rejected: `Int` is a Copy value. Copies are the semantics — there is no
+# managed storage whose move could be proved or missed. Reason: backend
+# limitation.
+
+fn main() -> Int {
+    let answer = 41
+    compiler.ensure_move(answer)
+    return 0
+}

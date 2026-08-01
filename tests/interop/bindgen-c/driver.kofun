@@ -1,0 +1,33 @@
+# bindgen-c gate driver (#574).
+#
+# This file is NOT a standalone program: the gate concatenates the generated
+# kbfix.raw.kofun module in front of it and builds the result with
+# `kofun build --backend c --c-abi --link-library libkbfix.so`. Every
+# function called here is a generated raw binding, so a wrong signature, a
+# wrong struct layout, or a wrong symbol fails the build, the link, or the
+# recorded decisions below.
+#
+# Decisions recorded in driver.stdout:
+#   1. a fresh counter accepts an in-range add and reports KBFIX_OK (0);
+#   2. the counter then reads back 42 through the opaque handle;
+#   3. an out-of-range add is refused with KBFIX_ERR_RANGE (-2);
+#   4. the refused add left the counter unchanged (still 42);
+#   5-7. a by-value record round-trips through kbfix_stats_scale with the
+#        layout the report recorded: total 40*3=120, events 2*3=6, flags 7;
+#   8. the library-owned name "kbfix" has length 5, observed without the
+#      driver ever dereferencing the CStr itself.
+fn main() {
+    let counter = kbfix_counter_new(40)
+    let add_accepted = kbfix_counter_add(counter, 2)
+    print(add_accepted)
+    print(kbfix_counter_value(counter))
+    let add_refused = kbfix_counter_add(counter, 2000000)
+    print(add_refused)
+    print(kbfix_counter_value(counter))
+    let scaled = kbfix_stats_scale(kbfix_stats_t(40, 2, 7), 3)
+    print(scaled.total)
+    print(scaled.events)
+    print(scaled.flags)
+    print(kbfix_name_length(kbfix_library_name()))
+    kbfix_counter_free(counter)
+}

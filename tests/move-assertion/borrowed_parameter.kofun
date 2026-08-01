@@ -1,0 +1,14 @@
+# Rejected: a parameter is a borrowed view — the caller keeps the argument
+# alive, so the callee can never prove the last use of the caller's
+# storage. A `take` parameter mode would make this provable; the Stage 2
+# slice cannot express one yet. Reason: possible alias.
+
+fn describe(label: Text) -> Int {
+    compiler.ensure_move(label)
+    return 0
+}
+
+fn main() -> Int {
+    print(describe("x"))
+    return 0
+}

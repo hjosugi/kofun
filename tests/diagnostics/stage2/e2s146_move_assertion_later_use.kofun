@@ -1,0 +1,9 @@
+# diagnostic-mode: compile
+# expect-code: E2S146
+# expect-span: byte 149
+fn main() -> Int {
+    let banner: Text = "banner"
+    compiler.ensure_move(banner)
+    print(banner)
+    return 0
+}
