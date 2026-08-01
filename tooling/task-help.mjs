@@ -1,0 +1,225 @@
+#!/usr/bin/env node
+
+// A grouped view over go-task's own JSON inventory. Taskfile.yml remains the
+// source of truth for names and descriptions; this file owns only the smaller
+// presentation taxonomy that go-task does not model. New visible tasks fail
+// `--check` until a contributor puts them in exactly one group.
+
+import { spawnSync } from 'node:child_process'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+
+export const GROUPS = Object.freeze([
+    {
+        title: 'Start here',
+        hint: 'The shortest paths for learning, a focused change, and the final gate.',
+        tasks: ['help', 'check', 'test', 'examples', 'tour', 'verify']
+    },
+    {
+        title: 'Compiler and self-hosting',
+        hint: 'Bootstrap seeds, Stage 2, fixed-point evidence, code generation, and ABIs.',
+        tasks: [
+            'compiler', 'bootstrap', 'selfhost-profile', 'selfhost-self-compile',
+            'selfhost-frontend', 'selfhost-c11', 'selfhost-c11-control',
+            'selfhost-native', 'stage2', 'stage2-events', 'native', 'wasm', 'c-abi',
+            'bindgen-c'
+        ]
+    },
+    {
+        title: 'Language semantics',
+        hint: 'Syntax, typing, diagnostics, data types, numerics, and deterministic fuzzing.',
+        tasks: [
+            'diagnostics', 'fuzz', 'unicode', 'patterns', 'adt', 'records',
+            'move-assertion', 'call-arguments-spec', 'affine-resumption',
+            'schedule-trace',
+            'generics', 'traits', 'optional', 'optional-narrowing',
+            'adt-exhaustiveness', 'decimal', 'decimal-arithmetic', 'date-time', 'syntax'
+        ]
+    },
+    {
+        title: 'Modules and interfaces',
+        hint: 'Stable identities, imports, visibility, KIF, layout, and invalidation.',
+        tasks: [
+            'module-symbols', 'imports-qualified', 'import-aliases', 'imports-selective',
+            're-exports', 'kif-v1', 'stage2-kif-producer', 'visibility-filtering',
+            'visibility-api-leaks', 'module-interface-artifact', 'incremental',
+            'package-roots', 'source-file-mapping', 'namespaces', 'module-identity',
+            'semantic-identity',
+            'visibility-spec', 'visibility-syntax', 'visibility-access',
+            're-exports-spec', 'aggregate-layout'
+        ]
+    },
+    {
+        title: 'Tooling and developer UX',
+        hint: 'Discovery, sidecars, editors, frameworks, packages, and evidence adapters.',
+        tasks: [
+            'task-help', 'discovery', 'cli-framework', 'tui-framework', 'build-system',
+            'packages', 'typed-sidecar-spec', 'typed-sidecar-codec',
+            'typed-sidecar-projector', 'upgrade-patch', 'documentation-index', 'ownership-view',
+            'artifact-qualification', 'lsp', 'roadmap'
+        ]
+    },
+    {
+        title: 'Runtime and standard library',
+        hint: 'Host integration, measured costs, and the executable standard-library capability surface.',
+        tasks: [
+            'rust-shim', 'http', 'stdlib', 'tzdb', 'clock-adapters', 'benchmark-summary',
+            'capabilities'
+        ]
+    },
+    {
+        title: 'Repository and release',
+        hint: 'Repository policy, claim/evidence joins, decisions, generated evidence, and cleanup.',
+        tasks: [
+            'repository-check', 'assertions', 'example-law-evidence',
+            'release-claims', 'release-evidence', 'rfc-registry', 'clean'
+        ]
+    }
+])
+
+function taskInventory(flag) {
+    const result = spawnSync(
+        'task', [flag, '--json', '--sort', 'none'],
+        { cwd: ROOT, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } }
+    )
+    if (result.status !== 0) {
+        const detail = (result.stderr || result.stdout || 'no diagnostic').trim()
+        throw new Error(`go-task ${flag} failed (${result.status}): ${detail}`)
+    }
+    let payload
+    try {
+        payload = JSON.parse(result.stdout)
+    } catch (error) {
+        throw new Error(`go-task ${flag} returned invalid JSON: ${error.message}`)
+    }
+    if (!Array.isArray(payload.tasks)) {
+        throw new Error(`go-task ${flag} JSON has no tasks array`)
+    }
+    return payload.tasks
+}
+
+export function groupedTasks(visibleTasks) {
+    const byName = new Map()
+    for (const task of visibleTasks) {
+        if (byName.has(task.name)) throw new Error(`duplicate visible task: ${task.name}`)
+        if (typeof task.desc !== 'string' || task.desc.trim() === '') {
+            throw new Error(`visible task has no description: ${task.name}`)
+        }
+        byName.set(task.name, task)
+    }
+
+    const assigned = new Set()
+    const groups = GROUPS.map((group) => ({
+        ...group,
+        tasks: group.tasks.map((name) => {
+            if (assigned.has(name)) throw new Error(`task appears in two help groups: ${name}`)
+            const task = byName.get(name)
+            if (task === undefined) throw new Error(`help group names a missing task: ${name}`)
+            assigned.add(name)
+            return task
+        })
+    }))
+
+    const unassigned = [...byName.keys()].filter((name) => !assigned.has(name))
+    if (unassigned.length !== 0) {
+        throw new Error(`visible task is not in a help group: ${unassigned.join(', ')}`)
+    }
+    return groups
+}
+
+function words(text, width) {
+    const lines = []
+    let line = ''
+    for (const word of text.trim().split(/\s+/u)) {
+        if (line === '') line = word
+        else if (line.length + 1 + word.length <= width) line += ` ${word}`
+        else {
+            lines.push(line)
+            line = word
+        }
+    }
+    if (line !== '') lines.push(line)
+    return lines
+}
+
+function paint(enabled, code, text) {
+    return enabled ? `\u001b[${code}m${text}\u001b[0m` : text
+}
+
+export function renderHelp(groups, options = {}) {
+    const columns = Math.max(52, options.columns ?? process.stdout.columns ?? 100)
+    const color = options.color ?? Boolean(
+        process.stdout.isTTY && process.env.NO_COLOR === undefined && process.env.TERM !== 'dumb'
+    )
+    const taskWidth = Math.max(...groups.flatMap((group) => group.tasks.map((task) => task.name.length)))
+    const output = [
+        paint(color, '1;36', 'Kofun task guide'),
+        paint(color, '2', 'Choose the smallest gate that proves your change.'),
+        paint(color, '2', '─'.repeat(Math.min(columns, 72)))
+    ]
+
+    for (const group of groups) {
+        output.push('', paint(color, '1;35', group.title))
+        for (const line of words(group.hint, columns - 2)) {
+            output.push(paint(color, '2', `  ${line}`))
+        }
+        for (const task of group.tasks) {
+            const prefix = `  task ${task.name.padEnd(taskWidth)}  `
+            const descriptionWidth = Math.max(20, columns - prefix.length)
+            const descriptionLines = words(task.desc, descriptionWidth)
+            const command = [
+                paint(color, '2', '  task '),
+                paint(color, '1;36', task.name.padEnd(taskWidth)),
+                '  '
+            ].join('')
+            output.push(`${command}${descriptionLines[0]}`)
+            for (const line of descriptionLines.slice(1)) {
+                output.push(`${' '.repeat(prefix.length)}${line}`)
+            }
+        }
+    }
+
+    output.push(
+        '',
+        paint(color, '1;35', 'More detail'),
+        '  task --list             Official flat list from go-task',
+        '  task <name> --summary   Detailed metadata for one task',
+        '  VERIFY_JOBS=1 task verify   Serialize the full gate when debugging'
+    )
+    return `${output.join('\n')}\n`
+}
+
+export function buildHelp() {
+    const visible = taskInventory('--list')
+    const all = taskInventory('--list-all')
+    const visibleNames = new Set(visible.map((task) => task.name))
+    const hidden = all.filter((task) => !visibleNames.has(task.name)).map((task) => task.name)
+    if (hidden.length !== 1 || hidden[0] !== 'default') {
+        throw new Error(`only default may omit desc; hidden tasks: ${hidden.join(', ') || '(none)'}`)
+    }
+    return { groups: groupedTasks(visible), count: visible.length }
+}
+
+function main() {
+    const args = process.argv.slice(2)
+    if (args.some((arg) => arg !== '--check')) {
+        throw new Error(`usage: node tooling/task-help.mjs [--check]`)
+    }
+    const { groups, count } = buildHelp()
+    if (args.includes('--check')) {
+        process.stdout.write(`PASS: ${count} documented tasks belong to exactly one help group\n`)
+    } else {
+        process.stdout.write(renderHelp(groups))
+    }
+}
+
+if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+    try {
+        main()
+    } catch (error) {
+        process.stderr.write(`task help: ${error.message}\n`)
+        process.exitCode = 1
+    }
+}

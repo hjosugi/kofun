@@ -15,7 +15,7 @@
     <a class="skip-link" href="#lesson">Skip to the current lesson</a>
     <header class="site-header">
       <a class="brand" href="./" aria-label="Kofun Tour home">
-        <span class="brand-mark" aria-hidden="true">⌁</span>
+        <span class="brand-mark" data-kofun-sprite data-pose="idle" aria-hidden="true"></span>
         <span>Kofun Tour</span>
       </a>
       <label class="direction-control">
@@ -38,14 +38,31 @@
           </p>
         </div>
         <div class="mascot-card">
-          <div class="mascot" aria-hidden="true"><span></span></div>
-          <p><strong>Kofun-kun</strong> will turn your first two numbers into colour and motion.</p>
+          <button
+            class="mascot-button"
+            type="button"
+            data-kofun-button
+            aria-label="Make Kofun-kun hop"
+            aria-describedby="kofun-introduction"
+          >
+            <span class="kofun-kun hero-kofun" data-kofun-hero aria-hidden="true"></span>
+            <span class="kofun-spark" data-kofun-spark aria-hidden="true">♪</span>
+          </button>
+          <div>
+            <p class="mascot-label">Your guide · Kofun-kun</p>
+            <p id="kofun-introduction">
+              I turn compiler output into colour and motion, then point you to
+              the next small experiment.
+            </p>
+            <p class="mascot-hint">Tap or focus me for a cheer.</p>
+          </div>
         </div>
       </section>
 
       <section class="tour-shell" aria-label="Interactive Kofun tour">
         <nav class="step-nav" aria-label="Tour steps">
           <p class="nav-title">Four small steps</p>
+          <p class="nav-progress" data-progress aria-live="polite"></p>
           <ol data-step-list></ol>
         </nav>
 
@@ -93,6 +110,7 @@
                 <button class="primary" type="button" data-run>Run</button>
                 <button type="button" data-reset>Reset</button>
                 <button type="button" data-share>Share this code</button>
+                <button type="button" data-next>Next lesson</button>
               </div>
               <p class="status" data-status role="status" aria-live="polite"></p>
             </section>
@@ -105,9 +123,10 @@
               <div class="stage" data-stage>
                 <div class="finish" data-finish aria-hidden="true"></div>
                 <div class="runner" data-character aria-hidden="true">
-                  <div class="mascot mini"><span></span></div>
+                  <div class="kofun-kun mini" data-kofun-runner></div>
                 </div>
               </div>
+              <p class="kofun-feedback" data-kofun-feedback aria-live="polite"></p>
               <h4>Printed output</h4>
               <pre class="output" data-output aria-live="polite"></pre>
             </section>
@@ -138,8 +157,10 @@
           DOM API, ownership checker, linear memory objects, WASI, packages, or optimizer yet.
         </p>
         <p>
-          Kofun-kun currently lives in this tour only; the proposed kofun-hub
-          integration cannot exist until that separate project is created.
+          This tour uses the canonical 16×16 Kofun-kun pixel grid from
+          <a href="https://github.com/hjosugi/hjosugi-hub">hjosugi-hub</a>.
+          The grid is copied locally under its 0BSD license, so opening or
+          sharing the tour never contacts that site.
         </p>
       </section>
     </main>

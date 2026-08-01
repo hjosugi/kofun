@@ -2,16 +2,37 @@
 # sequence it had under the Makefile this replaced (#757); only the entry
 # point changed.
 #
-# Descriptions live on the tasks, so `task --list` is generated rather than
-# written. The Makefile carried three hand-maintained copies of the gate set —
-# `.PHONY`, `VERIFY_TARGETS`, and a `help` printf block — none of which could
-# disagree loudly. `clean` had already drifted out of the help block.
+# Descriptions live on the tasks, so go-task remains their source of truth.
+# `task --list` emits the complete flat inventory; bare `task` and `task help`
+# present that same JSON inventory in bounded contributor-facing groups. The
+# Makefile carried three hand-maintained copies of the gate set — `.PHONY`,
+# `VERIFY_TARGETS`, and a `help` printf block — none of which could disagree
+# loudly. `clean` had already drifted out of the help block.
 version: "3"
 
 vars:
   KOFUN: ./bin/kofun
 
 tasks:
+
+  # `default` deliberately has no desc, so the official `task --list` does not
+  # show a redundant alias. The task-help gate permits this one hidden row and
+  # requires every visible task to have a description and exactly one group.
+  default:
+    silent: true
+    cmds:
+      - task: help
+
+  help:
+    desc: "Show the grouped contributor task guide"
+    silent: true
+    cmds:
+      - "node tooling/task-help.mjs"
+
+  task-help:
+    desc: "Verify grouped task help, descriptions, and complete classification"
+    cmds:
+      - "sh tests/tooling/task-help/check.sh"
 
   compiler:
     desc: "Build the Python-free Kofun compiler seed"
@@ -582,6 +603,7 @@ tasks:
             decimal \
             decimal-arithmetic \
             date-time \
+            tzdb \
             discovery \
             native \
             wasm \
@@ -622,6 +644,7 @@ tasks:
             artifact-qualification \
             syntax \
             call-arguments-spec \
+            task-help \
             repository-check \
             assertions \
             release-claims \

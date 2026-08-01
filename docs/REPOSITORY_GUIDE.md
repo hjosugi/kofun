@@ -115,7 +115,7 @@ Root files are also part of the architecture:
 
 | File | Purpose |
 |---|---|
-| `Taskfile.yml` | contributor-facing index of executable gates |
+| `Taskfile.yml` | executable gates and the grouped bare-`task` contributor guide |
 | `README.md` | concise public project entrypoint |
 | `DESIGN.md` | early high-level language design context |
 | `LICENSE-*` / `NOTICE` | dual-license and attribution terms |
