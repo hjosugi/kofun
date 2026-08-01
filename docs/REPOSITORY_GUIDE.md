@@ -77,12 +77,17 @@ start at [`bin/kofun`](../bin/kofun), find the public subcommand, and follow the
 `scripts/verify_repository.kofun` deserves a warning rather than a row. It is
 written in Kofun against `read_text`, which the current Core does not implement
 (`error[E2S10]: unsupported Core builtin call 'read_text'`, reproducible with a
-one-line `main`). No task invokes it, so nothing reported the breakage, and two
-of its assertions had gone stale unnoticed: it required a deleted `Makefile`
-and a README string the README no longer carries. Both are re-pinned against
-this tree, but nothing keeps them that way. Treat it as an aspiration, not a
-gate, until the Core supports reading files — at which point it should be wired
-into `verify` so it cannot rot again.
+one-line `main`). No task invokes it, so nothing reported the breakage, and its
+assertions went stale unnoticed twice: first a deleted `Makefile` and a README
+string the README no longer carries, then three `editor/vscode/` paths that
+outlived the move to `hjosugi/kofun-vscode`.
+
+`repository-check` now holds the file list to the tree: every path the script
+names must exist here and be non-empty. That is the half of it a gate can check
+without `read_text` — the string assertions and the JSON validation still
+cannot run, and still rot silently. Treat the script as an aspiration rather
+than a gate until the Core supports reading files, at which point it should
+move into `verify` whole.
 
 What is deliberately not here, and where it lives instead:
 
