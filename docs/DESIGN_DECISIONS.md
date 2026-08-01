@@ -6,9 +6,11 @@ or built only in someone's head.
 
 [`rfcs/index.json`](../rfcs/index.json) is the machine-checked ledger that says
 which. A decision indexed there carries its state, the evidence that bounds it,
-and any amendment; `docs/RFC_PROCESS.md` describes how entries move between
-states. Decisions that predate the ledger are migrated into it as they become
-relevant, so absence from the ledger means "not yet indexed", not "not decided".
+and any amendment; the
+[public RFC process](https://hjosugi.github.io/kofun/docs/rfc-process/)
+describes how entries move between states. Decisions that predate the ledger
+are migrated into it as they become relevant, so absence from the ledger means
+"not yet indexed", not "not decided".
 
 A later entry may summarise a decision whose normative text was written
 elsewhere — in `spec/`, or in a dedicated document under `docs/` — and names

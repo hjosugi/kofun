@@ -12,7 +12,7 @@ it accepted, with their source spans; `intelligence.mjs` answers from those
 declarations and nothing else. A name the compiler did not accept is reported
 as unknown rather than given a plausible type, and a binding is not offered
 inside its own initializer, because that is the point at which the parser
-makes it visible. The rules match the language server in `editor/vscode`:
+makes it visible. The rules match the language server in `tooling/lsp`:
 declaration-before-use visibility, prefix narrowing, a bounded list reported as
 incomplete, and no answer at all inside a comment.
 
