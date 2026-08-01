@@ -1,0 +1,7 @@
+fn main() {
+    let id = fn(x) => x
+    let answer = id(42)
+    let selected = id(true)
+    let label = id("ready")
+    label
+}

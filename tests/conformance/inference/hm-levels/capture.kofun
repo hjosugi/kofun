@@ -1,0 +1,10 @@
+fn main() {
+    let outer = fn(x) => {
+        let ignore = fn(y) => x
+        let first = ignore(1)
+        let second = ignore(true)
+        second
+    }
+    let result = outer("kept")
+    result
+}
