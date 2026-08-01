@@ -53,9 +53,13 @@ const document = {
   uri: Uri.parse('file:///workspace/smoke.kofun'),
   getText() {
     return [
-      'fn identity(read value: Int) -> Int {',
-      '    let copy = value',
-      '    return copy',
+      'fn identity(value: Int) -> Int {',
+      '    return value',
+      '}',
+      '',
+      'fn main() {',
+      '    let copy = identity(41)',
+      '    print(copy)',
       '}',
       ''
     ].join('\n');

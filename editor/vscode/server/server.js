@@ -2,18 +2,29 @@
 'use strict';
 
 /*
- * A deliberately small, dependency-free language server for the syntax that
- * the bootstrap Kofun frontend accepts today.  It indexes one open document at
- * a time; it does not pretend to be a project-wide type checker.
+ * A deliberately small language server for the syntax that the bootstrap
+ * Kofun frontend accepts today. Covered Stage 2 semantics come only from the
+ * validated typed-sidecar adapter. The bounded tokenizer below remains an
+ * explicitly labelled fallback for producer profiles that report ETS04.
  */
 
 const fs = require('fs');
+const path = require('path');
+const { fileURLToPath } = require('url');
 
 const documents = new Map();
 const MAX_HEADER_BYTES = 8 * 1024;
 let input = Buffer.alloc(0);
 let shutdownRequested = false;
 let framingFailed = false;
+let workspaceRoot = null;
+let sessionSequence = 0;
+let semanticAdapter = null;
+let semanticLoadFailureLogged = false;
+const semanticAdapterPromise = import('./semantic-sidecar.mjs').then((loaded) => {
+  semanticAdapter = loaded;
+  return loaded;
+});
 
 function send(message, callback) {
   const body = Buffer.from(JSON.stringify(message), 'utf8');
@@ -480,7 +491,7 @@ function resolve(doc, token) {
   return ambiguous ? null : best;
 }
 
-function publishDiagnostics(doc, diagnostics = doc.diagnostics) {
+function publishSyntacticDiagnostics(doc, diagnostics = doc.diagnostics) {
   send({
     jsonrpc: '2.0',
     method: 'textDocument/publishDiagnostics',
@@ -491,11 +502,114 @@ function publishDiagnostics(doc, diagnostics = doc.diagnostics) {
         range: range(doc, item.start, item.end),
         severity: item.severity,
         code: item.code,
-        source: 'kofun',
-        message: item.message
+        source: 'kofun-syntax',
+        message: item.message,
+        data: { analysis: 'syntactic' }
       }))
     }
   });
+}
+
+function publishSemanticDiagnostics(doc, diagnostics) {
+  send({
+    jsonrpc: '2.0',
+    method: 'textDocument/publishDiagnostics',
+    params: { uri: doc.uri, version: doc.version, diagnostics }
+  });
+}
+
+function logicalPath(uri) {
+  try {
+    const parsed = new URL(uri);
+    if (parsed.protocol === 'file:') {
+      const filename = fileURLToPath(parsed);
+      let value = workspaceRoot ? path.relative(workspaceRoot, filename) :
+        path.basename(filename);
+      if (value && !path.isAbsolute(value) &&
+          value !== '..' && !value.startsWith(`..${path.sep}`)) {
+        value = value.split(path.sep).join('/').normalize('NFC');
+        if (value && !value.split('/').some((part) =>
+          part === '' || part === '.' || part === '..')) return value;
+      }
+      const basename = path.basename(filename).normalize('NFC');
+      if (basename && basename !== '.' && basename !== '..') return basename;
+    }
+  } catch {
+    // Untitled and custom-scheme buffers use a transport-independent identity.
+  }
+  return 'editor-buffer.kofun';
+}
+
+function currentAnalysis(doc, captured) {
+  return documents.get(doc.uri) === doc &&
+    doc.version === captured.version &&
+    doc.generation === captured.generation &&
+    doc.sessionEpoch === captured.sessionEpoch &&
+    doc.text === captured.sourceText &&
+    !captured.signal.aborted;
+}
+
+async function runSemanticAnalysis(doc, captured, retry = 0) {
+  let adapter;
+  let result;
+  try {
+    adapter = await semanticAdapterPromise;
+    result = await adapter.analyzeDocument({
+      uri: doc.uri,
+      version: captured.version,
+      generation: captured.generation,
+      sessionEpoch: captured.sessionEpoch,
+      logicalPath: doc.logicalPath,
+      sourceText: captured.sourceText,
+      expectedFileId: doc.fileId,
+    }, captured.signal);
+  } catch (caught) {
+    result = { ok: false, code: 'ETS03', detail: caught.message };
+    if (!semanticLoadFailureLogged) {
+      semanticLoadFailureLogged = true;
+      fs.writeSync(2, `kofun-lsp semantic adapter: ${caught.message}\n`);
+    }
+  }
+  if (!currentAnalysis(doc, captured) || result.cancelled) return;
+  if (!result.ok) {
+    if (result.code === 'ETS04') {
+      buildIndex(doc);
+      collectAfterLargeReindex(doc);
+      doc.analysisState = 'syntactic-fallback';
+      doc.validatedSidecar = null;
+      publishSyntacticDiagnostics(doc);
+      return;
+    }
+    if (retry === 0) {
+      setImmediate(() => runSemanticAnalysis(doc, captured, 1));
+      return;
+    }
+    doc.analysisState = 'discarded-invalid-sidecar';
+    doc.validatedSidecar = null;
+    publishSemanticDiagnostics(doc, []);
+    return;
+  }
+  if (!currentAnalysis(doc, captured)) return;
+  doc.fileId = result.snapshot.fileId;
+  doc.validatedSidecar = result.snapshot;
+  doc.analysisState = 'semantic';
+  publishSemanticDiagnostics(doc, adapter.publishDiagnostics(result.snapshot));
+}
+
+function scheduleSemanticAnalysis(doc) {
+  if (doc.abortController) doc.abortController.abort();
+  doc.abortController = new AbortController();
+  doc.generation += 1;
+  doc.analysisState = 'pending';
+  doc.validatedSidecar = null;
+  const captured = Object.freeze({
+    version: doc.version,
+    generation: doc.generation,
+    sessionEpoch: doc.sessionEpoch,
+    sourceText: doc.text,
+    signal: doc.abortController.signal,
+  });
+  void runSemanticAnalysis(doc, captured);
 }
 
 function applyChanges(doc, changes) {
@@ -523,6 +637,14 @@ function handle(message) {
   const params = message.params || {};
   switch (message.method) {
     case 'initialize':
+      if (typeof params.rootUri === 'string') {
+        try {
+          const root = new URL(params.rootUri);
+          workspaceRoot = root.protocol === 'file:' ? fileURLToPath(root) : null;
+        } catch {
+          workspaceRoot = null;
+        }
+      }
       response(message.id, {
         capabilities: {
           positionEncoding: 'utf-16',
@@ -538,22 +660,35 @@ function handle(message) {
       break;
     case 'shutdown':
       shutdownRequested = true;
+      for (const doc of documents.values()) doc.abortController?.abort();
       response(message.id, null);
       break;
     case 'exit':
-      process.exit(shutdownRequested ? 0 : 1);
+      if (semanticAdapter) {
+        void semanticAdapter.shutdownSemanticAnalysis().finally(() =>
+          process.exit(shutdownRequested ? 0 : 1));
+      } else {
+        process.exit(shutdownRequested ? 0 : 1);
+      }
       break;
     case 'textDocument/didOpen': {
       const item = params.textDocument;
       if (!item || typeof item.uri !== 'string' || typeof item.text !== 'string') return;
       const doc = {
         uri: item.uri, version: Number.isInteger(item.version) ? item.version : 0,
-        text: item.text, lines: lineStarts(item.text)
+        text: item.text, lines: lineStarts(item.text),
+        logicalPath: logicalPath(item.uri),
+        sessionEpoch: ++sessionSequence,
+        generation: 0,
+        fileId: null,
+        validatedSidecar: null,
+        analysisState: 'pending',
+        abortController: null,
       };
-      buildIndex(doc);
-      collectAfterLargeReindex(doc);
+      const previous = documents.get(doc.uri);
+      if (previous) previous.abortController?.abort();
       documents.set(doc.uri, doc);
-      publishDiagnostics(doc);
+      scheduleSemanticAnalysis(doc);
       break;
     }
     case 'textDocument/didChange': {
@@ -563,22 +698,32 @@ function handle(message) {
           !Array.isArray(params.contentChanges)) return;
       if (!applyChanges(doc, params.contentChanges)) return;
       doc.version = item.version;
-      buildIndex(doc);
-      collectAfterLargeReindex(doc);
-      publishDiagnostics(doc);
+      scheduleSemanticAnalysis(doc);
       break;
     }
     case 'textDocument/didClose': {
       const item = params.textDocument;
       const doc = item && documents.get(item.uri);
       if (!doc) return;
-      publishDiagnostics(doc, []);
+      doc.abortController?.abort();
+      doc.validatedSidecar = null;
+      publishSemanticDiagnostics(doc, []);
       documents.delete(item.uri);
       break;
     }
     case 'textDocument/definition': {
       const item = params.textDocument;
       const doc = item && documents.get(item.uri);
+      if (doc && doc.analysisState === 'semantic' &&
+          doc.validatedSidecar && semanticAdapter) {
+        response(message.id, semanticAdapter.definitionAt(
+          doc.validatedSidecar, params.position));
+        break;
+      }
+      if (!doc || doc.analysisState !== 'syntactic-fallback') {
+        response(message.id, null);
+        break;
+      }
       const offset = doc ? positionToOffset(doc, params.position) : null;
       const token = offset === null || !doc ? null : tokenAt(doc, offset);
       const symbol = token ? resolve(doc, token) : null;
@@ -591,6 +736,16 @@ function handle(message) {
     case 'textDocument/hover': {
       const item = params.textDocument;
       const doc = item && documents.get(item.uri);
+      if (doc && doc.analysisState === 'semantic' &&
+          doc.validatedSidecar && semanticAdapter) {
+        response(message.id, semanticAdapter.hoverAt(
+          doc.validatedSidecar, params.position));
+        break;
+      }
+      if (!doc || doc.analysisState !== 'syntactic-fallback') {
+        response(message.id, null);
+        break;
+      }
       const offset = doc ? positionToOffset(doc, params.position) : null;
       const token = offset === null || !doc ? null : tokenAt(doc, offset);
       const symbol = token ? resolve(doc, token) : null;
@@ -604,7 +759,10 @@ function handle(message) {
         if (symbol.mode) value += ` (mode: ${symbol.mode})`;
       }
       response(message.id, {
-        contents: { kind: 'markdown', value: `\`\`\`kofun\n${value}\n\`\`\`` },
+        contents: {
+          kind: 'markdown',
+          value: `**syntactic fallback**\n\n\`\`\`kofun\n${value}\n\`\`\``
+        },
         range: range(doc, token.start, token.end)
       });
       break;

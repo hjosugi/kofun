@@ -624,7 +624,7 @@
     "tests/fuzz/SEMANTIC_PROTOCOL.md": "95644005013d2aae82a042deb341785a083552c766abafa71bdbf4335deea522",
     "tests/fuzz/semantic_differential.sh": "f86c3afb9c4e6aa8be68159f40215451d536ef29c821aea9f160def2613c0b7d",
     "tests/http/check.sh": "73e3dbfb6a59959e8c916bbc32c934e417d115fcdfd86ed082cb976de81f5afc",
-    "tests/lsp/performance_test.js": "1d0214bb437f9791f32789a0572d8e43a404dcd323b0f15d1469d9e2293cbe3e",
+    "tests/lsp/performance_test.js": "2d25cd49d370f05e14b67f49ff9c14e0635b12088114c11ca2090492266edce8",
     "tests/typed-sidecar/authority-boundary.sh": "837193aafe458cb732b51837eba0b3d2c432e20c6ce1cfbdc4be568d460ce080"
   }
 }
