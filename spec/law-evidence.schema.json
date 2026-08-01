@@ -5,13 +5,9 @@
   "type": "object",
   "required": [
     "schema",
-    "compiler",
     "source",
     "status",
-    "required_assurance",
-    "assurance_violations",
-    "diagnostics",
-    "reports"
+    "diagnostics"
   ],
   "properties": {
     "schema": {"const": "kofun.law-evidence/v1"},
@@ -33,7 +29,7 @@
       },
       "additionalProperties": false
     },
-    "status": {"enum": ["passed", "failed"]},
+    "status": {"enum": ["passed", "failed", "unverified"]},
     "required_assurance": {
       "type": ["string", "null"],
       "enum": [null, "bounded-exhaustive", "proven-finite", "proven"]
@@ -68,5 +64,37 @@
       }
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"status": {"enum": ["passed", "failed"]}},
+        "required": ["status"]
+      },
+      "then": {
+        "required": [
+          "compiler",
+          "required_assurance",
+          "assurance_violations",
+          "reports"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {"status": {"const": "unverified"}},
+        "required": ["status"]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {"required": ["compiler"]},
+            {"required": ["required_assurance"]},
+            {"required": ["assurance_violations"]},
+            {"required": ["reports"]}
+          ]
+        }
+      }
+    }
+  ],
   "additionalProperties": false
 }

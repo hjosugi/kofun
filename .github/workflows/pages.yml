@@ -36,7 +36,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: hjosugi/kofun-site
-          ref: b297ed31e8c6c741f5449309689f289d11d5d129
+          ref: f100caaddeceb8a195f7e3ec89d8a665f38069c9
           path: site
           persist-credentials: false
       - name: Check out the verified Kofun source

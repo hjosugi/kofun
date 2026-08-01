@@ -64,7 +64,6 @@ start at [`bin/kofun`](../bin/kofun), find the public subcommand, and follow the
 | `stdlib/` | Kofun-authored standard-library contracts and focused projections | `stdlib/README.md` | `task stdlib` |
 | `framework/` | bounded HTTP, CLI, and terminal UI surfaces | subsystem README | `task http`, `task cli-framework`, `task tui-framework` |
 | `tooling/` | language server, typed-sidecar codec/projector, and disclosure-safe documentation index | subsystem README and [`docs/DOCUMENTATION_INDEX.md`](DOCUMENTATION_INDEX.md) | `task lsp`, `task typed-sidecar-codec`, `task documentation-index` |
-| `editor/` | VS Code metadata/LSP bundle and Tree-sitter grammar | subsystem README | `task tree-sitter`, `task lsp` |
 | `unicode/` | Unicode tables, generator, provenance, and C boundary | `unicode/README.md` | `task unicode` |
 | `vendor/` | reviewed third-party source copied into the tree | `vendor/*/README.kofun.md` | integrity owner named by subsystem |
 | `package/` | locked external native-artifact package manager | `package/README.md` | `task packages` |
@@ -78,19 +77,36 @@ start at [`bin/kofun`](../bin/kofun), find the public subcommand, and follow the
 `scripts/verify_repository.kofun` deserves a warning rather than a row. It is
 written in Kofun against `read_text`, which the current Core does not implement
 (`error[E2S10]: unsupported Core builtin call 'read_text'`, reproducible with a
-one-line `main`). No task invokes it, so nothing reported the breakage, and two
-of its assertions had gone stale unnoticed: it required a deleted `Makefile`
-and a README string the README no longer carries. Both are re-pinned against
-this tree, but nothing keeps them that way. Treat it as an aspiration, not a
-gate, until the Core supports reading files — at which point it should be wired
-into `verify` so it cannot rot again.
+one-line `main`). No task invokes it, so nothing reported the breakage, and its
+assertions went stale unnoticed twice: first a deleted `Makefile` and a README
+string the README no longer carries, then three `editor/vscode/` paths that
+outlived the move to `hjosugi/kofun-vscode`.
 
-What is deliberately not here: the official site, its docs renderer, the browser
-playground, the delivery-planning snapshots, and the long-range issue catalogue
-all live in [`hjosugi/kofun-site`](https://github.com/hjosugi/kofun-site), which
-reads this repository as a submodule. The dependency runs one way. No gate in
-this repository reads anything from there, and `task verify` needs no npm,
-Next.js, or Cloudflare toolchain. `docs/tour/` is the exception that proves the
+`repository-check` now holds the file list to the tree: every path the script
+names must exist here and be non-empty. That is the half of it a gate can check
+without `read_text` — the string assertions and the JSON validation still
+cannot run, and still rot silently. Treat the script as an aspiration rather
+than a gate until the Core supports reading files, at which point it should
+move into `verify` whole.
+
+What is deliberately not here, and where it lives instead:
+
+| what | repository |
+|---|---|
+| official site, docs renderer, browser playground, delivery-planning snapshots, long-range issue catalogue | [`hjosugi/kofun-site`](https://github.com/hjosugi/kofun-site) |
+| VS Code extension: metadata, TextMate highlighting, snippets, packaging | [`hjosugi/kofun-vscode`](https://github.com/hjosugi/kofun-vscode) |
+| Tree-sitter grammar, editor queries, recovery corpus | [`hjosugi/tree-sitter-kofun`](https://github.com/hjosugi/tree-sitter-kofun) |
+
+Each reads this repository, never the other way. No gate here reads anything
+from them, and `task verify` needs no npm, Next.js, or Cloudflare toolchain —
+which became true when the grammar left, because it was the last npm project
+here and `task tree-sitter` ran `npm ci` inside `verify`.
+
+The language server is the case that decides where a tool belongs. It stays in
+`tooling/lsp/` because `tests/lsp/check.sh` requires the bundle it ships to
+equal `tooling/typed-sidecar/{from-stage2,codec}.mjs` byte for byte; a
+repository that does not own those files cannot prove it. The extension that
+packages the server has no such coupling, so it left. `docs/tour/` is the exception that proves the
 rule: it looks like site material but `docs/tour/compiler.mjs` is a browser port
 of `bootstrap/wasm/compiler.c` that `task tour` pins to the native wasm32 output
 byte for byte, so it is compiler source and stays here.
@@ -208,21 +224,22 @@ each one fails a gate when the document it names goes missing or drifts:
 
 | Resolver | What it names | Gate |
 |---|---|---|
-| `release/claims.json` | `docs/MVP_IMPLEMENTED.md` as the sole `public_sources` entry, twelve documents as `specification`, and `docs/MEMORY_MODEL.md` and `docs/SECURITY.md` as `threat_model` | `task release-claims` |
-| `rfcs/index.json` | `docs/DESIGN_DECISIONS.md` as a decision `source`, and four documents as `normative_spec` | `task rfc-registry` |
-| `artifacts/release-evidence/index.json` | a SHA-256 of each of fourteen documents under `evidence_digests` | `task release-claims`, regenerated by `task release-evidence` |
+| `release/claims.json` | `docs/MVP_IMPLEMENTED.md` as the sole `public_sources` entry, fifteen documents as `specification`, and three documents as `threat_model` | `task release-claims` |
+| `rfcs/index.json` | `docs/DESIGN_DECISIONS.md` as a decision `source`, and twelve documents as `normative_spec` | `task rfc-registry` |
+| `artifacts/release-evidence/index.json` | a SHA-256 of each of sixteen documents under `evidence_digests` | `task release-claims`, regenerated by `task release-evidence` |
 | a gate script | `spec/*/check.sh`, `tests/**/run.sh`, `bootstrap/*/check.sh` and `docs/tour/check.sh` read documents directly | the owning `task` target |
 
-Measured on this tree, of the thirty-one tracked `.md` files under `docs/`:
+Measured on this tree, of the thirty-three tracked `.md` files under `docs/`:
 
-- **twenty-five are resolved by one of the four.** Moving any of them would not
+- **thirty-one are resolved by one of the four.** Moving any of them would not
   lose prose, it would break a gate.
-- **five are resolved only by `app/docs/docs-manifest.ts`** in
+- **one is resolved only by `app/docs/docs-manifest.ts`** in
   [`hjosugi/kofun-site`](https://github.com/hjosugi/kofun-site), which renders
-  them out of the submodule: `CONTRIBUTING.md`, `LANGUAGE_VISION.md`,
-  `RELEASE_EVIDENCE.md`, `REPOSITORY_GUIDE.md` and `RFC_PROCESS.md`. That
-  resolver lives in the other repository, and the dependency still runs one
-  way: the site reads these, and nothing here reads the site.
+  `CONTRIBUTING.md` out of the submodule. It stays because it describes this
+  source tree and its contribution gates.
+- **three public project documents moved to `kofun-site`:** language vision,
+  RFC process, and release-evidence guidance. They name compiler evidence by
+  absolute link, while the executable sources remain here.
 - **one is resolved by nothing:** `docs/tour/README.md`, kept because it
   documents `docs/tour/`, every other file of which stays.
 
@@ -342,17 +359,21 @@ is currently supported.
 
 ## Editor and tooling paths
 
-There are three related but distinct developer-tool surfaces:
+One developer-tool surface lives here, and two do not:
 
-1. `tooling/lsp/` is the dependency-free stdio language server.
-2. `editor/vscode/` bundles language metadata, TextMate highlighting, and a
-   copy of the LSP entrypoint for extension development.
-3. `editor/tree-sitter-kofun/` is a structural grammar with generated parser
-   sources and editor queries.
+1. `tooling/lsp/` is the dependency-free stdio language server, and it stays
+   because it is byte-coupled to this repository: `tests/lsp/check.sh` requires
+   the bundle it ships to equal `tooling/typed-sidecar/{from-stage2,codec}.mjs`
+   exactly, and only this repository can prove that.
+2. The VS Code extension — metadata, TextMate highlighting, snippets,
+   packaging — is
+   [`hjosugi/kofun-vscode`](https://github.com/hjosugi/kofun-vscode).
+3. The structural grammar and editor queries are
+   [`hjosugi/tree-sitter-kofun`](https://github.com/hjosugi/tree-sitter-kofun).
 
-Changing syntax can require updates in all three, but they do not share one
-parser or one semantic authority. Run both `task lsp` and `task tree-sitter`
-when the user-visible edit experience changes.
+Changing syntax can require updates in all three, and they do not share one
+parser or one semantic authority. `task lsp` covers the part that lives here;
+the other two are gated in their own repositories.
 
 ## Official site and documentation pipeline
 
@@ -392,8 +413,8 @@ therefore a cross-repository change.
 
 Generated directories are ignored:
 
-- `node_modules/` — dependencies of `editor/tree-sitter-kofun`, the only npm
-  project left in this repository; and
+- `node_modules/` — nothing in this repository declares npm dependencies any
+  more; the entry stays so a stray install cannot be committed; and
 - `build/` / `.kofun/` — compiler and project output.
 
 Never make a source fix only inside one of these directories.
@@ -412,8 +433,8 @@ Never make a source fix only inside one of these directories.
 | a standard-library contract | matching `stdlib/<name>/` | module README | its `tests/verify.sh` |
 | HTTP, CLI, or TUI framework | matching `framework/<name>/` | subsystem README | matching task target |
 | LSP behavior | `tooling/lsp/`, `tests/lsp/` | LSP README | `task lsp` |
-| structural editor parsing | `editor/tree-sitter-kofun/` | package README | `task tree-sitter` |
-| VS Code packaging or metadata | `editor/vscode/` | extension README | `task lsp` plus extension check |
+| structural editor parsing | `hjosugi/tree-sitter-kofun` | that repository's README | its own gate |
+| VS Code packaging or metadata | `hjosugi/kofun-vscode` | that repository's README | its own gate |
 | language contract | `spec/` | spec index and conformance owner | matching spec/conformance gate |
 | explanatory docs | `docs/` | this guide | the `spec/*/check.sh` that reads the document, if any |
 | the browser tour | `docs/tour/` | `docs/tour/README.md` | `task tour` |

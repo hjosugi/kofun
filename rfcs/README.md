@@ -1,7 +1,7 @@
 # Kofun RFCs
 
 This directory is the durable record of public semantic decisions. The process
-is [`docs/RFC_PROCESS.md`](../docs/RFC_PROCESS.md).
+is the [public RFC process](https://hjosugi.github.io/kofun/docs/rfc-process/).
 
 | File | Role |
 |---|---|

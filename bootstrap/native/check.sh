@@ -1854,6 +1854,36 @@ assert_grep "corpus-answer-debug.stderr" \
     -o "$WORK/core-list-reference"
 LIST_CORPUS="$ROOT/tests/conformance/list"
 
+# The aggregate Core promises exactly one known Int print in 10..99. Preserve
+# literal List contents across a local binding for validation, and require the
+# shared frontend to refuse every boundary shape before target selection. This
+# gives AArch64 evidence even when qemu-aarch64 is unavailable.
+for print_bound_case in \
+    index_print_above_bound \
+    index_print_negative \
+    index_print_single_digit \
+    index_print_zero
+do
+    for print_bound_target in x86_64-linux aarch64-linux
+    do
+        print_bound_stem="$print_bound_case-$print_bound_target"
+        set +e
+        "$KOFUN" build "$LIST_CORPUS/$print_bound_case.kofun" \
+            --target "$print_bound_target" \
+            -o "$WORK/$print_bound_stem.elf" \
+            >"$WORK/$print_bound_stem.stdout" \
+            2>"$WORK/$print_bound_stem.stderr"
+        print_bound_status=$?
+        set -e
+        assert_num "$print_bound_stem status" "$print_bound_status" -eq 1
+        assert_absent "$print_bound_stem.elf" "$WORK/$print_bound_stem.elf"
+        assert_file_empty "$print_bound_stem.stdout" \
+            "$WORK/$print_bound_stem.stdout"
+        assert_grep "$print_bound_stem.stderr" \
+            -F 'unsupported Core' "$WORK/$print_bound_stem.stderr"
+    done
+done
+
 run_native_list_differential() {
     source=$1
     stem=$2

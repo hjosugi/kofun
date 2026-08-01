@@ -70,12 +70,14 @@ decision has not landed, so this projection does not pre-empt it.
 The gate pins both files, so the canonical surface cannot drift away from the
 projection that proves it.
 
-## Known compiler boundary
+## Mixing is refused by the frontend
 
-`mixed_instants.kofun` and `monotonic_epoch_field.kofun` are rejected — the
-toolchain exits non-zero and names `E2S32` — but they are rejected during
-lowering, not by `kofun check`, and the message reaches the reader through the
-C backend rather than as a frontend diagnostic. The gate asserts the rejection
-and the reason, and deliberately does not assert that `check` alone catches
-them, because today it does not. That is a Stage 2 diagnostic gap, not a clock
-one.
+`mixed_instants.kofun` and `monotonic_epoch_field.kofun` are refused by
+`kofun check` with `E2S32`, and refused again by `kofun build`, which emits no
+binary. The gate asserts all three, so a mistake the frontend catches cannot
+later be accepted by a backend, and a passing `check` is enough to trust.
+
+This was weaker when the corpus landed: both files were accepted by `check`
+and only stopped once the C backend choked on the spliced diagnostic, so the
+gate could assert the rejection but not the phase. #857 fixed that, and the
+gate was tightened to match.

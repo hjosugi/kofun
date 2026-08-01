@@ -68,34 +68,26 @@ year. A PR submitted before that threshold is likely to be closed immediately.
 
 ### Summary
 
-Linguist requires a TextMate grammar hosted in its own GitHub repository.
-`editor/vscode/syntaxes/kofun.tmLanguage.json` already exists, but it lives
-inside this monorepo. The Linguist `script/add-grammar` script expects a
-dedicated grammar repository that it can pin as a git submodule.
+Linguist requires a TextMate grammar hosted in its own GitHub repository, which
+`script/add-grammar` pins as a git submodule. That is now satisfied without a
+purpose-built repository: the grammar moved to
+[`hjosugi/kofun-vscode`](https://github.com/hjosugi/kofun-vscode) with the rest
+of the VS Code extension, at `syntaxes/kofun.tmLanguage.json`. A VS Code
+extension repository is the shape most Linguist grammar submodules already
+take, so no separate `kofun-language` repository is needed.
 
-Create `hjosugi/kofun-language` (or `hjosugi/kofun-textmate`) containing:
-
-```
-kofun-language/
-├── syntaxes/
-│   └── kofun.tmLanguage.json   # copy from editor/vscode/syntaxes/
-├── package.json                # VS Code grammar manifest
-├── LICENSE                     # must be a Linguist-approved licence
-└── README.md
-```
-
-The grammar file must carry a Linguist-approved open-source licence (MIT,
-Apache-2.0, etc.). `kofun.tmLanguage.json` is already Apache-2.0/MIT dual
-licenced in this repository.
+What remains is the licensing and manifest check against that repository rather
+than a move. The grammar must carry a Linguist-approved open-source licence;
+`kofun-vscode` is Apache-2.0 OR MIT, carried over from here.
 
 ### Acceptance criteria
 
-- [ ] `hjosugi/kofun-language` (or equivalent) repository is public.
-- [ ] `syntaxes/kofun.tmLanguage.json` is present, valid JSON, and matches
-  the version in `editor/vscode/syntaxes/`.
-- [ ] `package.json` identifies the grammar scope `source.kofun`.
-- [ ] An approved open-source `LICENSE` file is present.
-- [ ] `script/add-grammar https://github.com/hjosugi/kofun-language` runs
+- [x] A public repository holds the grammar on its own: `hjosugi/kofun-vscode`.
+- [x] `syntaxes/kofun.tmLanguage.json` is present and valid JSON.
+- [x] `package.json` identifies the grammar scope `source.kofun`.
+- [x] Approved open-source licence files are present (`LICENSE-APACHE`,
+  `LICENSE-MIT`).
+- [ ] `script/add-grammar https://github.com/hjosugi/kofun-vscode` runs
   without error in a local Linguist checkout.
 
 ---
@@ -177,7 +169,8 @@ description.
 
 ### Summary
 
-Publishing the VS Code extension (`editor/vscode/`) to the
+Publishing the VS Code extension, now
+[`hjosugi/kofun-vscode`](https://github.com/hjosugi/kofun-vscode), to the
 [VS Code Marketplace](https://marketplace.visualstudio.com/) provides:
 
 1. Discoverability — developers searching for Kofun find it immediately.
@@ -186,19 +179,24 @@ Publishing the VS Code extension (`editor/vscode/`) to the
 
 Steps:
 1. Create or link a publisher account on the Marketplace (`hjosugi`).
-2. Add required `publisher` and `repository` fields to
-   `editor/vscode/package.json`.
-3. Write a meaningful `README.md` for the extension page.
-4. Run `vsce package` and `vsce publish`.
-5. Add a publish step to CI so releases stay in sync.
+2. ~~Add required `publisher` and `repository` fields.~~ Done.
+3. ~~Write a meaningful `README.md` for the extension page.~~ Done.
+4. ~~Run `vsce package` and `vsce publish`.~~ Packaging is scripted; publishing
+   waits on step 1 and on the `VSCE_PAT` secret.
+5. ~~Add a publish step to CI so releases stay in sync.~~ Done — the
+   **Extension Package** workflow packages `linux-x64`, `darwin-x64` and
+   `darwin-arm64` and publishes them together on dispatch.
 
 ### Acceptance criteria
 
 - [ ] Extension is listed at `https://marketplace.visualstudio.com/items?itemName=hjosugi.kofun`.
 - [ ] Installing it enables `.kofun` syntax highlighting in VS Code.
-- [ ] `editor/vscode/package.json` contains `publisher`, `repository`, and a
+- [x] The extension manifest contains `publisher`, `repository`, and a
   populated `description`.
-- [ ] CI produces a versioned `.vsix` artefact on each release tag.
+- [x] CI produces versioned per-platform `.vsix` artefacts. Per platform is not
+  a refinement: the bundled server loads a natively compiled bridge, and an
+  untargeted VSIX installs anywhere and then answers every request with `null`,
+  showing neither an error nor the syntactic fallback.
 
 ---
 

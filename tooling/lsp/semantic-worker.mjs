@@ -8,10 +8,25 @@ import {
 import { encodeTypedSidecar } from "./generated/codec.mjs";
 
 const require = createRequire(import.meta.url);
-const bridge = require("./generated/semantic-bridge.node");
+const bridgePath = "./generated/semantic-bridge.node";
+let bridge = null;
+let bridgeLoadFailure = null;
+try {
+  bridge = require(bridgePath);
+} catch (caught) {
+  bridgeLoadFailure =
+    `native bridge ${bridgePath} is unavailable for ${process.platform}/${process.arch}: ` +
+    String(caught?.message || caught || "load failed").slice(0, 384);
+}
 
-function failure(code, detail) {
-  return { ok: false, code: code || "ETS03", detail: String(detail || "semantic analysis failed").slice(0, 512) };
+function failure(code, detail, fallback) {
+  const result = {
+    ok: false,
+    code: code || "ETS03",
+    detail: String(detail || "semantic analysis failed").slice(0, 512),
+  };
+  if (fallback) result.fallback = fallback;
+  return result;
 }
 
 function project(produced) {
@@ -33,6 +48,9 @@ function project(produced) {
 }
 
 function produce(message) {
+  if (bridgeLoadFailure) {
+    return failure("ETS04", bridgeLoadFailure, "native-bridge-unavailable");
+  }
   const source = Buffer.from(
     message.sourceBytes.buffer,
     message.sourceBytes.byteOffset,
