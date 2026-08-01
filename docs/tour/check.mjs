@@ -3,6 +3,11 @@ import { readFile } from "node:fs/promises";
 import { analyzeKofun, compileKofun, KofunCompileError } from "./compiler.mjs";
 import { GUIDES, STEPS } from "./content.mjs";
 import { completionAt, hoverAt, VOCABULARY } from "./intelligence.mjs";
+import {
+  KOFUN_KUN_POSES,
+  KOFUN_KUN_SOURCE,
+  kofunKunSvg,
+} from "./kofun-kun.mjs";
 import { KofunRuntimeError, runKofun } from "./runtime.mjs";
 import {
   decodeShareHash,
@@ -30,6 +35,8 @@ assert.equal(WebAssembly.validate(firstModule), true);
 for (const step of STEPS) {
   assert.ok(step.id);
   assert.ok(step.exercise.length > 20, `${step.id} must include an exercise`);
+  assert.ok(step.guide.ready.length > 20, `${step.id} must guide the next action`);
+  assert.ok(step.guide.success.length > 20, `${step.id} must explain a successful run`);
   try {
     const result = await runKofun(step.source);
     assert.deepEqual(result.lines, step.expected, `${step.id} output`);
@@ -40,6 +47,26 @@ for (const step of STEPS) {
   }
 }
 assert.ok(STEPS.find((step) => step.id === "ownership-bug")?.ownership);
+
+// The tour uses the exact 16x16 geometry from hjosugi-hub, not the former CSS
+// oval. Poses share the same 17 body rows and remain byte-deterministic.
+assert.deepEqual(KOFUN_KUN_POSES, ["idle", "blink", "smile", "munch"]);
+assert.match(KOFUN_KUN_SOURCE, /hjosugi\/hjosugi-hub\/blob\/8435101e/u);
+const idleKofun = kofunKunSvg("idle");
+assert.equal(kofunKunSvg("idle"), idleKofun);
+assert.match(idleKofun, /viewBox="0 0 16 16"/u);
+assert.match(idleKofun, /<rect x="6" y="0" width="4" height="1"\/>/u);
+assert.match(idleKofun, /<rect x="9" y="15" width="3" height="1"\/>/u);
+assert.equal((idleKofun.match(/<rect /gu) ?? []).length, 20);
+assert.equal((kofunKunSvg("smile").match(/<rect /gu) ?? []).length, 22);
+assert.match(kofunKunSvg("munch"), /class="kofun-kun-treat"/u);
+assert.throws(() => kofunKunSvg("missing"), /unknown Kofun-kun pose/u);
+
+const tourHtml = await readFile(new URL("./index.html", import.meta.url), "utf8");
+assert.match(tourHtml, /data-kofun-hero/u);
+assert.match(tourHtml, /data-kofun-runner/u);
+assert.match(tourHtml, /data-kofun-feedback/u);
+assert.match(tourHtml, /data-next/u);
 
 assert.deepEqual(
   GUIDES.map((guide) => guide.id),
@@ -155,6 +182,7 @@ console.log("PASS: browser compiler matched the native wasm32 seed byte for byte
 console.log("PASS: every editable tour step ran with deterministic observations");
 console.log("PASS: URL snippets round-tripped UTF-8 without a server");
 console.log("PASS: ownership and four candid coming-from guides are present");
+console.log("PASS: canonical hjosugi-hub Kofun-kun guides every tour step");
 console.log(
   "PASS: hover and completion answered from the compiler's own parse, in scope",
 );

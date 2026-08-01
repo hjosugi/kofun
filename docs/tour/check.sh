@@ -17,7 +17,7 @@ done
 rm -rf "$WORK"
 mkdir -p "$WORK"
 
-for module in app compiler content intelligence runtime share check
+for module in app compiler content intelligence kofun-kun runtime share check
 do
     node --check "$ROOT/docs/tour/$module.mjs"
 done
@@ -40,6 +40,10 @@ assert_grep "check.stdout" \
 assert_grep "check.stdout" \
     -Fq \
     "PASS: hover and completion answered from the compiler's own parse, in scope" \
+    "$WORK/check.stdout"
+assert_grep "check.stdout" \
+    -Fq \
+    'PASS: canonical hjosugi-hub Kofun-kun guides every tour step' \
     "$WORK/check.stdout"
 assert_grep "docs/tour/index.html" \
     -Fq 'data-editor' "$ROOT/docs/tour/index.html"

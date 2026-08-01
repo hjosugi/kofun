@@ -144,11 +144,11 @@ footer {
   inline-size: 2.25rem;
   block-size: 2.25rem;
   place-items: center;
-  /* Mascot geometry, not a step on the radius scale: these percentages are the
-     shape itself and have no relationship to the panel and control corners. */
-  border-radius: 40% 40% 52% 52%;
+  padding: 0.3rem;
+  border-radius: var(--radius-sm);
   background: var(--plum);
-  color: white;
+  color: var(--mint);
+  --kofun-face: var(--plum-dark);
 }
 
 .direction-control {
@@ -208,6 +208,10 @@ h2 {
 }
 
 .mascot-card {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.7fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: center;
   padding: 1.4rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
@@ -215,48 +219,112 @@ h2 {
   box-shadow: 0.8rem 0.8rem 0 var(--mint);
 }
 
-.mascot {
+.mascot-card p:last-child {
+  margin-block-end: 0;
+}
+
+.mascot-button {
   position: relative;
-  inline-size: 8rem;
-  block-size: 5.6rem;
+  display: grid;
+  inline-size: 7.5rem;
+  block-size: 7.5rem;
   margin-inline: auto;
-  border: 0.4rem solid var(--ink);
-  border-radius: 48% 48% 34% 34%;
-  background: var(--orange);
+  place-items: center;
+  padding: 0.75rem;
+  border-color: var(--line);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(90deg, #32134f0d 1px, transparent 1px),
+    linear-gradient(#32134f0d 1px, transparent 1px),
+    #fffaf2;
+  background-size: 0.75rem 0.75rem;
+  box-shadow: 0.35rem 0.35rem 0 var(--orange);
 }
 
-.mascot::before,
-.mascot::after {
+.mascot-button:hover,
+.mascot-button:focus-visible {
+  box-shadow: 0.35rem 0.35rem 0 var(--orange), 0 0 0 3px var(--mint);
+}
+
+.kofun-kun {
+  color: var(--orange);
+  --kofun-face: var(--ink);
+}
+
+.kofun-kun-svg {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  image-rendering: pixelated;
+}
+
+.kofun-kun-body {
+  fill: currentColor;
+}
+
+.kofun-kun-face {
+  fill: var(--kofun-face);
+}
+
+.kofun-kun-treat {
+  fill: #4cbd78;
+}
+
+[dir="rtl"] .hero-kofun,
+[dir="rtl"] .kofun-kun.mini {
+  scale: -1 1;
+}
+
+.hero-kofun {
+  inline-size: 5.25rem;
+  block-size: 5.25rem;
+  filter: drop-shadow(0.25rem 0.35rem 0 #32134f26);
+}
+
+.mascot-label {
+  margin-block-end: 0.35rem;
+  color: var(--plum);
+  font-size: var(--text-base);
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mascot-hint {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.kofun-spark {
   position: absolute;
-  inset-block-start: 1.6rem;
-  inline-size: 0.7rem;
-  block-size: 0.85rem;
-  border-radius: 50%;
-  background: var(--ink);
-  content: "";
+  inset-block-start: 0.25rem;
+  inset-inline-end: 0.5rem;
+  color: var(--plum);
+  font-weight: 850;
+  opacity: 0;
+  pointer-events: none;
 }
 
-.mascot::before {
-  inset-inline-start: 2rem;
+.mascot-button.is-hopping .hero-kofun {
+  animation: kofun-hop 620ms ease-out;
 }
 
-.mascot::after {
-  inset-inline-end: 2rem;
+.mascot-button.is-hopping .kofun-spark {
+  animation: kofun-spark 620ms ease-out;
 }
 
-.mascot > span {
-  position: absolute;
-  inset-block-start: 3.25rem;
-  inset-inline-start: 50%;
-  inline-size: 1.65rem;
-  block-size: 0.65rem;
-  border-block-end: 0.25rem solid var(--ink);
-  border-radius: 50%;
-  translate: -50% 0;
+@keyframes kofun-hop {
+  0% { transform: translateY(0) scale(1); }
+  18% { transform: translateY(0) scale(1.14, 0.82); }
+  48% { transform: translateY(-1.25rem) scale(0.92, 1.12); }
+  75% { transform: translateY(0) scale(1.08, 0.9); }
+  100% { transform: translateY(0) scale(1); }
 }
 
-[dir="rtl"] .mascot > span {
-  translate: 50% 0;
+@keyframes kofun-spark {
+  0% { opacity: 0; transform: translateY(0) scale(0.6); }
+  30% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-1.6rem) scale(1.15); }
 }
 
 .tour-shell {
@@ -279,6 +347,12 @@ h2 {
   color: var(--mint);
 }
 
+.nav-progress {
+  margin-block-end: 1rem;
+  color: #d8cde3;
+  font-size: var(--text-sm);
+}
+
 .step-nav ol {
   display: grid;
   gap: 0.55rem;
@@ -288,11 +362,25 @@ h2 {
 }
 
 .step-nav button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.7rem;
+  align-items: baseline;
   inline-size: 100%;
   border-color: transparent;
   background: transparent;
   color: white;
   text-align: start;
+}
+
+.step-number {
+  color: #b9a7c8;
+  font-family: var(--editor-font);
+  font-size: var(--text-sm);
+}
+
+.step-label {
+  font-weight: 700;
 }
 
 .step-nav button[aria-current="step"] {
@@ -394,6 +482,10 @@ textarea {
   color: #9a2c27;
 }
 
+.status[data-state="lesson"] {
+  color: #805019;
+}
+
 .result-panel h4 {
   margin-block: 1rem 0.35rem;
   padding-inline: 1rem;
@@ -439,33 +531,20 @@ textarea {
   animation: run-result 900ms cubic-bezier(0.22, 0.8, 0.25, 1) forwards;
 }
 
-.mascot.mini {
-  inline-size: 3.7rem;
-  block-size: 2.7rem;
-  border-width: 0.22rem;
-  background: hsl(var(--result-hue) 80% 62%);
+.kofun-kun.mini {
+  inline-size: 3.5rem;
+  block-size: 3.5rem;
+  color: hsl(var(--result-hue) 80% 55%);
+  filter: drop-shadow(0.15rem 0.2rem 0 #1d24303d);
 }
 
-.mascot.mini::before,
-.mascot.mini::after {
-  inset-block-start: 0.75rem;
-  inline-size: 0.32rem;
-  block-size: 0.42rem;
+.runner.is-running .kofun-kun {
+  animation: kofun-waddle 260ms ease-in-out 3;
 }
 
-.mascot.mini::before {
-  inset-inline-start: 0.9rem;
-}
-
-.mascot.mini::after {
-  inset-inline-end: 0.9rem;
-}
-
-.mascot.mini > span {
-  inset-block-start: 1.55rem;
-  inline-size: 0.75rem;
-  block-size: 0.35rem;
-  border-block-end-width: 0.12rem;
+@keyframes kofun-waddle {
+  0%, 100% { rotate: -5deg; }
+  50% { rotate: 5deg; }
 }
 
 @keyframes run-result {
@@ -475,9 +554,28 @@ textarea {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .runner.is-running {
+  .runner.is-running,
+  .runner.is-running .kofun-kun,
+  .mascot-button.is-hopping .hero-kofun,
+  .mascot-button.is-hopping .kofun-spark {
     animation-duration: 1ms;
   }
+}
+
+.kofun-feedback {
+  min-block-size: 4.1rem;
+  margin: 0;
+  padding-block: 0.75rem;
+  padding-inline: 1rem;
+  border-block-end: 1px solid var(--line);
+  background: #fff8e8;
+  color: #68400f;
+  font-size: var(--text-base);
+}
+
+.kofun-feedback::before {
+  content: "Kofun-kun: ";
+  font-weight: 850;
 }
 
 .output {

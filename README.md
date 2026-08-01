@@ -136,6 +136,8 @@ Full verification also uses Rust/Cargo, binary inspection tools, and optionally
 `qemu-aarch64` to execute AArch64 output.
 
 ```sh
+task               # grouped contributor guide
+task --list        # complete flat task inventory
 task verify        # every active repository gate
 task diagnostics   # diagnostic registry and exact fixtures
 task fuzz          # deterministic grammar and semantic fuzzing
