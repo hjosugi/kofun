@@ -1,0 +1,15 @@
+# Rejected: the assertion covers only the then-arm while the binding is
+# declared outside the conditional — and the other arm goes on reading it.
+# The narrow rule proves nothing across sibling arms. Reason: branch
+# mismatch.
+
+fn main() -> Int {
+    let banner: Text = "banner"
+    let flag = 1
+    if flag > 0 {
+        compiler.ensure_move(banner)
+    } else {
+        print(banner)
+    }
+    return 0
+}
