@@ -6,6 +6,8 @@ MODEL="$ROOT/spec/concurrency/schedule-trace/model.mjs"
 CORPUS="$ROOT/tests/concurrency/schedule-replay"
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/kofun-schedule-trace.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
+ASSERT_CONTEXT="schedule-trace"
+. "$ROOT/tests/assertions/assert.sh"
 
 command -v node >/dev/null 2>&1 || {
     printf '%s\n' 'FAIL: schedule-trace: node is required' >&2
@@ -39,13 +41,13 @@ node "$MODEL" replay "$CORPUS/programs/valid-replay.json" \
 
 node "$MODEL" exhaustive "$CORPUS/programs/ownership-conflict.json" \
     >"$WORK/exhaustive.json"
-grep -Fq '"failure_witness"' "$WORK/exhaustive.json"
-grep -Fq '"ownership_event"' "$WORK/exhaustive.json"
+assert_grep "exhaustive failure witness" -Fq '"failure_witness"' "$WORK/exhaustive.json"
+assert_grep "exhaustive ownership observation" -Fq '"ownership_event"' "$WORK/exhaustive.json"
 node "$MODEL" replay-witness "$WORK/exhaustive.json" >/dev/null
 
 node "$MODEL" exhaustive "$CORPUS/programs/budget-bound.json" \
     >"$WORK/budget.json"
-grep -Fq '"decisions"' "$WORK/budget.json"
+assert_grep "bounded exploration decision report" -Fq '"decisions"' "$WORK/budget.json"
 
 rejections=0
 for rejection in "$CORPUS"/rejections/*.json

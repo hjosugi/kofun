@@ -2,8 +2,11 @@
 set -eu
 
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ROOT=$(CDPATH= cd -- "$HERE/../../.." && pwd)
 MODEL="$HERE/model.mjs"
 FIXTURES="$HERE/fixtures"
+ASSERT_CONTEXT="affine-resumption"
+. "$ROOT/tests/assertions/assert.sh"
 
 command -v node >/dev/null 2>&1 || {
     printf '%s\n' 'FAIL: affine-resumption: node is required' >&2
@@ -19,9 +22,12 @@ do
 done
 
 runtime=$(node "$MODEL" runtime)
-printf '%s\n' "$runtime" | grep -Fq '"stderr": "EAFR01: affine resumption already consumed\n"'
-printf '%s\n' "$runtime" | grep -Fq '"cleanup_runs": 1'
-printf '%s\n' "$runtime" | grep -Fq '"ownership_transfers": 1'
+runtime_file=$(mktemp "${TMPDIR:-/tmp}/kofun-affine-resumption.XXXXXX")
+trap 'rm -f "$runtime_file"' EXIT HUP INT TERM
+printf '%s\n' "$runtime" >"$runtime_file"
+assert_grep "stable runtime diagnostic" -Fq '"stderr": "EAFR01: affine resumption already consumed\n"' "$runtime_file"
+assert_grep "single cleanup" -Fq '"cleanup_runs": 1' "$runtime_file"
+assert_grep "single ownership transfer" -Fq '"ownership_transfers": 1' "$runtime_file"
 
 test "$count" -eq 17 || {
     printf '%s\n' "FAIL: affine-resumption: expected 17 fixtures, found $count" >&2
