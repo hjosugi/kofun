@@ -5,8 +5,18 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 SERVER="$ROOT/tooling/lsp/kofun-lsp"
 RESULTS="${KOFUN_LSP_RESULTS:-$ROOT/build/${KOFUN_GATE_WORK_NAMESPACE:+$KOFUN_GATE_WORK_NAMESPACE/}lsp/performance.json}"
 REVISION=$(git -C "$ROOT" rev-parse --verify HEAD)
+BRIDGE="$ROOT/tooling/lsp/generated/semantic-bridge.node"
+DISABLED_BRIDGE="$ROOT/tooling/lsp/generated/semantic-bridge.node.issue866-disabled"
 ASSERT_CONTEXT='lsp'
 . "$ROOT/tests/assertions/assert.sh"
+
+cleanup() {
+    if test -f "$DISABLED_BRIDGE"
+    then
+        mv "$DISABLED_BRIDGE" "$BRIDGE"
+    fi
+}
+trap cleanup EXIT HUP INT TERM
 
 # The bundle used to be produced by the extension's `vscode:prepublish`. The
 # extension is hjosugi/kofun-vscode now; the server it packages stays here,
@@ -29,7 +39,15 @@ node --check "$ROOT/tests/lsp/client.js"
 node --check "$ROOT/tests/lsp/protocol_test.js"
 node --check "$ROOT/tests/lsp/semantic_sidecar_test.mjs"
 node --check "$ROOT/tests/lsp/performance_test.js"
+node --check "$ROOT/tests/lsp/bridge_fallback_test.js"
 node --expose-gc "$ROOT/tests/lsp/semantic_sidecar_test.mjs"
 node "$ROOT/tests/lsp/protocol_test.js" "$SERVER"
 KOFUN_LSP_REVISION="$REVISION" \
     node "$ROOT/tests/lsp/performance_test.js" "$SERVER" "$RESULTS"
+
+# A missing or foreign-platform native bridge must be observable and must not
+# turn valid requests into silent nulls. Disable only the generated bridge,
+# after all native-sidecar tests have used it, and restore it on every exit.
+mv "$BRIDGE" "$DISABLED_BRIDGE"
+node "$ROOT/tests/lsp/bridge_fallback_test.js" "$SERVER"
+mv "$DISABLED_BRIDGE" "$BRIDGE"
