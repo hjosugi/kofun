@@ -8,6 +8,8 @@ AR=${AR:-ar}
 REQUESTS=${REQUESTS:-20000}
 CONCURRENCY=${CONCURRENCY:-4}
 SAMPLES=${SAMPLES:-5}
+ASSERT_CONTEXT='http benchmark'
+. "$ROOT/tests/assertions/assert.sh"
 
 test "$(uname -s)" = Linux || {
     printf '%s\n' "http benchmark requires Linux" >&2
@@ -75,9 +77,9 @@ run_server_sample() (
     kill -TERM "$pid"
     wait "$pid"
     trap - 0 1 2 15
-    test ! -s "$stderr"
-    test "$(sed -n '2p' "$stdout")" = DRAINING
-    test "$(sed -n '3p' "$stdout")" = ""
+    assert_file_empty "stderr" "$stderr"
+    assert_eq "output of sed -n 2p $stdout" "$(sed -n '2p' "$stdout")" DRAINING
+    assert_eq "output of sed -n 3p $stdout" "$(sed -n '3p' "$stdout")" ""
 )
 
 : >"$WORK/kofun.samples-ns"

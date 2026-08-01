@@ -3,6 +3,8 @@ set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$root"
+ASSERT_CONTEXT='http'
+. "$root/tests/assertions/assert.sh"
 
 if [ "$(uname -s)" != "Linux" ]; then
     echo "http integration requires Linux" >&2
@@ -23,13 +25,14 @@ test -f "$RESULTS" || {
 }
 grep -Fq '"schema": "kofun.http-benchmark/v1"' "$RESULTS"
 grep -Fq '"sample_count": 5' "$RESULTS"
-test "$(grep -c 'median_requests_per_second' "$RESULTS")" -eq 2
+assert_num "median_requests_per_second lines in $RESULTS" \
+    "$(grep -c 'median_requests_per_second' "$RESULTS")" -eq 2
 implementation_commit=$(
     sed -n \
         's/.*"implementation_commit": "\([0-9a-f][0-9a-f]*\)".*/\1/p' \
         "$RESULTS"
 )
-test "${#implementation_commit}" -eq 40
+assert_num "${#implementation_commit}" "${#implementation_commit}" -eq 40
 
 check_recorded_hash() {
     key=$1
@@ -69,9 +72,11 @@ set +e
     2>build/http-invalid-route.stderr
 invalid_route_status=$?
 set -e
-test "$invalid_route_status" -eq 2
-test ! -s build/http-invalid-route.stdout
-test ! -s build/http-invalid-route.stderr
+assert_num "invalid route status" "$invalid_route_status" -eq 2
+assert_file_empty "build/http-invalid-route.stdout" \
+    build/http-invalid-route.stdout
+assert_file_empty "build/http-invalid-route.stderr" \
+    build/http-invalid-route.stderr
 
 printf '%s\n' \
     "http integration: rejected invalid Kofun route configuration" \

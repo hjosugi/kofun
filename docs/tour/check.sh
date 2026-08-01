@@ -3,6 +3,8 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 WORK=${KOFUN_TOUR_CHECK_WORK:-"$ROOT/build/tour-check"}
+ASSERT_CONTEXT='tour'
+. "$ROOT/tests/assertions/assert.sh"
 
 for tool in node grep cmp
 do
@@ -53,7 +55,8 @@ grep -Fq '[dir="rtl"]' "$ROOT/docs/tour/styles.css"
 
 for language in python typescript go rust
 do
-    test -s "$ROOT/docs/tour/guides/$language.md"
+    assert_file_nonempty "docs/tour/guides/$language.md" \
+        "$ROOT/docs/tour/guides/$language.md"
     grep -Fq 'Where Kofun is worse today' \
         "$ROOT/docs/tour/guides/$language.md"
 done

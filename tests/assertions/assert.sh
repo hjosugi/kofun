@@ -117,6 +117,18 @@ assert_absent() {
     fi
 }
 
+# assert_executable LABEL PATH — the path exists and carries the execute bit.
+# Kept distinct from assert_present for the same reason as assert_regular_file:
+# `test -x` and `test -e` are not the same assertion.
+assert_executable() {
+    if ! test -x "$2"; then
+        if test -e "$2"; then
+            assert_fail "$1: expected $2 to be executable"
+        fi
+        assert_fail "$1: expected $2 to exist"
+    fi
+}
+
 # assert_dir LABEL PATH — the path exists and is a directory.
 assert_dir() {
     if ! test -d "$2"; then

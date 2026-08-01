@@ -8,6 +8,8 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 SUITE="$ROOT/tests/diagnostics/native"
 WORK=${KOFUN_NATIVE_DIAGNOSTIC_WORK:-"$ROOT/build/diagnostics-native"}
 CC=${CC:-cc}
+ASSERT_CONTEXT='diagnostics native'
+. "$ROOT/tests/assertions/assert.sh"
 
 rm -rf "$WORK"
 mkdir -p "$WORK"
@@ -27,9 +29,9 @@ set +e
 status=$?
 set -e
 
-test "$status" -eq 1
-test ! -s "$WORK/invalid-utf8.stdout"
-test ! -e "$WORK/invalid-utf8.elf"
+assert_num "invalid-utf8 native lowering status" "$status" -eq 1
+assert_file_empty "invalid-utf8.stdout" "$WORK/invalid-utf8.stdout"
+assert_absent "invalid-utf8.elf" "$WORK/invalid-utf8.elf"
 cmp "$SUITE/eunicode001.stderr" "$WORK/invalid-utf8.stderr"
 
 printf '%s\n' \

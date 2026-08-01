@@ -5,6 +5,8 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 ROADMAP="$ROOT/spec/roadmap-31-34"
 STAGE2="$ROOT/bootstrap/stage2"
 CC=${CC:-cc}
+ASSERT_CONTEXT='roadmap 31-34'
+. "$ROOT/tests/assertions/assert.sh"
 
 case ${1-} in
     "")
@@ -54,11 +56,12 @@ set +e
 status=$?
 set -e
 
-test "$status" -eq 42
+assert_num "current-core-probe exit status" "$status" -eq 42
 cmp \
     "$ROADMAP/current-core-probe.stdout" \
     "$temporary/current-core-probe.stdout"
-test ! -s "$temporary/current-core-probe.stderr"
+assert_file_empty "$temporary/current-core-probe.stderr" \
+    "$temporary/current-core-probe.stderr"
 
 grep -q '"stage1_self_recompile": "open"' \
     "$ROOT/bootstrap/manifest.json"
@@ -69,9 +72,11 @@ sed -n '/"stage2": {/,/^[[:space:]]*}/p' \
     grep -q '"status": "open"'
 
 grep -q '"main": "./extension.js"' "$ROOT/editor/vscode/package.json"
-test -x "$ROOT/editor/vscode/server/kofun-lsp"
-test -f "$ROOT/editor/vscode/server/server.js"
-test -f "$ROOT/tests/lsp/check.sh"
+assert_executable "editor/vscode/server/kofun-lsp" \
+    "$ROOT/editor/vscode/server/kofun-lsp"
+assert_regular_file "editor/vscode/server/server.js" \
+    "$ROOT/editor/vscode/server/server.js"
+assert_regular_file "tests/lsp/check.sh" "$ROOT/tests/lsp/check.sh"
 
 if find "$ROADMAP" -type f \
     \( -name '*.py' -o -name '*.pyc' -o -name '*.pyo' \) |

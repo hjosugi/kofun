@@ -8,6 +8,8 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 SUITE="$ROOT/tests/diagnostics/c-abi"
 WORK=${KOFUN_C_ABI_DIAGNOSTIC_WORK:-"$ROOT/build/diagnostics-c-abi"}
 CC=${CC:-cc}
+ASSERT_CONTEXT='diagnostics c-abi'
+. "$ROOT/tests/assertions/assert.sh"
 
 rm -rf "$WORK"
 mkdir -p "$WORK"
@@ -28,12 +30,12 @@ malformed_status=$?
 missing_status=$?
 set -e
 
-test "$malformed_status" -eq 1
-test "$missing_status" -eq 1
-test ! -s "$WORK/malformed.stdout"
-test ! -s "$WORK/missing.stdout"
-test ! -e "$WORK/malformed.c"
-test ! -e "$WORK/missing.c"
+assert_num "malformed status" "$malformed_status" -eq 1
+assert_num "missing status" "$missing_status" -eq 1
+assert_file_empty "malformed.stdout" "$WORK/malformed.stdout"
+assert_file_empty "missing.stdout" "$WORK/missing.stdout"
+assert_absent "malformed.c" "$WORK/malformed.c"
+assert_absent "missing.c" "$WORK/missing.c"
 cmp "$SUITE/cabi001.stderr" "$WORK/malformed.stderr"
 cmp "$SUITE/cabi002.stderr" "$WORK/missing.stderr"
 

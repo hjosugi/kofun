@@ -623,7 +623,7 @@
     "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun": "664c4d3b0d4bcd9265fee34b3ae60d8bf0eb58c9ce5c2b504579c1249aa16f2d",
     "tests/fuzz/SEMANTIC_PROTOCOL.md": "95644005013d2aae82a042deb341785a083552c766abafa71bdbf4335deea522",
     "tests/fuzz/semantic_differential.sh": "f86c3afb9c4e6aa8be68159f40215451d536ef29c821aea9f160def2613c0b7d",
-    "tests/http/check.sh": "73e3dbfb6a59959e8c916bbc32c934e417d115fcdfd86ed082cb976de81f5afc",
+    "tests/http/check.sh": "1f5fd04637db4cf5204cb82727dde47053d0c523fdf2db0627bca8fa7807ecc4",
     "tests/lsp/performance_test.js": "9be9916dd14466b33b631fe1435ddcc038c44288f80c320e1458bcb16d2aab33",
     "tests/typed-sidecar/authority-boundary.sh": "2847c69ac7f2039e860f21bd6d1122909254cf396f0ff8ffed3ebb3f08633350"
   }
