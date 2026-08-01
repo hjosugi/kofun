@@ -71,6 +71,24 @@ class KofunClient {
             ? new vscode.MarkdownString(result.contents.value) : result.contents;
           return new vscode.Hover(contents, result.range ? this.toRange(result.range) : undefined);
         }
+      }),
+      vscode.languages.registerCompletionItemProvider('kofun', {
+        provideCompletionItems: async (document, position) => {
+          const result = await this.request('textDocument/completion', {
+            textDocument: { uri: document.uri.toString() }, position
+          });
+          if (!result) return null;
+          const items = result.items.map((item) => {
+            // VS Code's CompletionItemKind is the LSP enumeration minus one,
+            // the same offset the diagnostic severities above are converted by.
+            const value = new vscode.CompletionItem(
+              item.label, item.kind === undefined ? undefined : item.kind - 1);
+            if (item.detail) value.detail = item.detail;
+            if (item.sortText) value.sortText = item.sortText;
+            return value;
+          });
+          return new vscode.CompletionList(items, result.isIncomplete === true);
+        }
       })
     );
     context.subscriptions.push(...this.disposables);

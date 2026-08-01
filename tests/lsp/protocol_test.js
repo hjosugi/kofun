@@ -25,6 +25,10 @@ async function main() {
   assert.strictEqual(initialized.result.capabilities.textDocumentSync.change, 2);
   assert.strictEqual(initialized.result.capabilities.definitionProvider, true);
   assert.strictEqual(initialized.result.capabilities.hoverProvider, true);
+  // Member completion is not implemented, so no trigger character may promise
+  // a list this server cannot produce.
+  assert.deepStrictEqual(initialized.result.capabilities.completionProvider,
+    { resolveProvider: false });
   client.send({ jsonrpc: '2.0', method: 'initialized', params: {} });
 
   const source = [
@@ -80,6 +84,65 @@ async function main() {
   id += 1;
   assert.match(hover.result.contents.value, /type: Int/);
   assert.doesNotMatch(hover.result.contents.value, /syntactic fallback/);
+
+  async function completionAt(line, character) {
+    client.send({
+      jsonrpc: '2.0', id, method: 'textDocument/completion',
+      params: { textDocument: { uri }, position: { line, character } }
+    });
+    const reply = await client.waitFor((message) => message.id === id);
+    id += 1;
+    return reply.result;
+  }
+
+  // Inside main's body: the local, both functions, and the fixed vocabulary are
+  // offered, and the checked type comes from the sidecar rather than the
+  // bounded tokenizer's guess.
+  const inMain = await completionAt(7, 10);
+  assert.strictEqual(inMain.isIncomplete, false);
+  const byLabel = new Map(inMain.items.map((item) => [item.label, item]));
+  assert.strictEqual(byLabel.get('result').data.provenance, 'validated-sidecar');
+  assert.match(byLabel.get('result').detail, /^result: Int/);
+  assert.strictEqual(byLabel.get('result').kind, 6);
+  assert.strictEqual(byLabel.get('identity').kind, 3);
+  assert.match(byLabel.get('identity').detail, /Int/);
+  assert.strictEqual(byLabel.get('print').data.provenance, 'builtin');
+  assert.strictEqual(byLabel.get('let').kind, 14);
+  assert.strictEqual(byLabel.get('take').data.provenance, 'keyword');
+  // A parameter of another function is not in scope here, and completion must
+  // not offer a name that definition would refuse to resolve.
+  assert.strictEqual(byLabel.has('value'), false);
+  // The local is offered exactly once even though it is also a declaration.
+  assert.strictEqual(inMain.items.filter((item) => item.label === 'result').length, 1);
+  // Locals sort ahead of functions, which sort ahead of the fixed vocabulary.
+  assert.ok(byLabel.get('result').sortText < byLabel.get('identity').sortText);
+  assert.ok(byLabel.get('identity').sortText < byLabel.get('print').sortText);
+
+  // Typing narrows the list server-side: only names carrying the prefix are
+  // sent, and the fixed vocabulary is filtered by the same rule.
+  // Matching is case-insensitive, as editors filter, so the builtin type and
+  // the ownership keyword belong in this list too.
+  const narrowed = await completionAt(7, 12);
+  const narrowedLabels = narrowed.items.map((item) => item.label).sort();
+  assert.deepStrictEqual(narrowedLabels, ['Result', 'read', 'result', 'return']);
+  assert.strictEqual(narrowed.isIncomplete, false);
+
+  // The parameter is in scope only inside its own function body.
+  const inIdentity = await completionAt(1, 11);
+  const identityLabels = new Map(inIdentity.items.map((item) => [item.label, item]));
+  assert.strictEqual(identityLabels.get('value').data.provenance, 'validated-sidecar');
+  assert.match(identityLabels.get('value').detail, /^value: Int/);
+  assert.strictEqual(identityLabels.has('result'), false);
+
+  // A local is not visible before its own declaration.
+  const beforeLocal = await completionAt(6, 8);
+  assert.strictEqual(beforeLocal.items.some((item) => item.label === 'result'), false);
+
+  // Comments carry no references. The position sits after a combining mark and
+  // an astral scalar, so UTF-16 conversion is exercised here too.
+  const inComment = await completionAt(5, 8);
+  assert.deepStrictEqual(inComment.items, []);
+  assert.strictEqual(inComment.isIncomplete, false);
 
   // A failed partial document keeps an earlier validated local available.
   client.send({
@@ -237,6 +300,40 @@ async function main() {
   );
   assert.strictEqual(deepDiagnostics.params.diagnostics[0].source, 'kofun-syntax');
   assert.strictEqual(deepDiagnostics.params.diagnostics[0].data.analysis, 'syntactic');
+
+  // Completion stays available on the fallback path and says so, so a type
+  // there is never mistaken for a checked one.
+  client.send({
+    jsonrpc: '2.0', id, method: 'textDocument/completion',
+    params: { textDocument: { uri: deepUri }, position: { line: 0, character: 27 } }
+  });
+  const deepCompletion = await client.waitFor((message) => message.id === id);
+  id += 1;
+  const deepLabels = new Map(deepCompletion.result.items.map((item) => [item.label, item]));
+  assert.strictEqual(deepLabels.get('value').data.provenance, 'syntactic-fallback');
+  assert.strictEqual(deepLabels.get('f1').data.provenance, 'syntactic-fallback');
+  // f1's own parameter is a different declaration of the same name and must not
+  // leak out of its function body; only f0's is in scope here.
+  assert.strictEqual(
+    deepCompletion.result.items.filter((item) => item.label === 'value').length, 1);
+  // 65 functions plus the fixed vocabulary stay under the bound, so this list
+  // is complete; the bound itself is exercised by the 10k performance corpus.
+  assert.strictEqual(deepCompletion.result.isIncomplete, false);
+  assert.ok(deepCompletion.result.items.length <= 200);
+  // Reserving the vocabulary means `print` and `let` survive a crowded scope.
+  assert.ok(deepLabels.has('print') && deepLabels.has('let'));
+
+  // The final line is an unterminated string. Nothing inside it is a reference.
+  client.send({
+    jsonrpc: '2.0', id, method: 'textDocument/completion',
+    params: {
+      textDocument: { uri: deepUri },
+      position: { line: deepSource.split('\n').length - 1, character: 1 }
+    }
+  });
+  const stringCompletion = await client.waitFor((message) => message.id === id);
+  id += 1;
+  assert.deepStrictEqual(stringCompletion.result.items, []);
   client.send({
     jsonrpc: '2.0', method: 'textDocument/didClose',
     params: { textDocument: { uri: deepUri } }
@@ -259,8 +356,8 @@ async function main() {
 
   process.stdout.write(
     `PASS: sidecar-backed LSP framing/lifecycle, UTF-16, diagnostics, ` +
-    `definition, hover, edit/reopen guards, and ${depth}-deep fallback ` +
-    `(${deepMilliseconds.toFixed(2)}ms)\n`
+    `definition, hover, scoped completion, edit/reopen guards, and ` +
+    `${depth}-deep fallback (${deepMilliseconds.toFixed(2)}ms)\n`
   );
 }
 

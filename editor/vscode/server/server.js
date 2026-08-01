@@ -14,6 +14,22 @@ const { fileURLToPath } = require('url');
 
 const documents = new Map();
 const MAX_HEADER_BYTES = 8 * 1024;
+
+// The unresolved-call diagnostic and the completion list must never disagree
+// about what this server claims to know, so both read the same names.
+const BUILTIN_FUNCTIONS = Object.freeze([
+  'assert', 'assert_eq', 'debug', 'len', 'panic', 'print'
+]);
+const BUILTIN_TYPES = Object.freeze([
+  'Int', 'Float', 'Text', 'Bool', 'List', 'Map', 'Result', 'Option'
+]);
+const KEYWORDS = Object.freeze([
+  'fn', 'if', 'else', 'while', 'for', 'return', 'let', 'law', 'meta'
+]);
+const MODE_KEYWORDS = Object.freeze(['read', 'edit', 'take']);
+const BINDING_KEYWORDS = Object.freeze(['own', 'mut']);
+const builtinNames = new Set([...BUILTIN_FUNCTIONS, ...BUILTIN_TYPES]);
+const keywordNames = new Set(KEYWORDS);
 let input = Buffer.alloc(0);
 let shutdownRequested = false;
 let framingFailed = false;
@@ -318,7 +334,7 @@ function buildIndex(doc) {
       let at = segmentStart;
       let mode = '';
       if (at < segmentEnd &&
-          ['read', 'edit', 'take'].includes(tokenText(doc, tokens[at]))) {
+          MODE_KEYWORDS.includes(tokenText(doc, tokens[at]))) {
         mode = tokenText(doc, tokens[at++]);
       }
       if (at < segmentEnd && tokens[at].kind === 'id') {
@@ -367,7 +383,7 @@ function buildIndex(doc) {
     if (tokenText(doc, tokens[i]) !== 'let') continue;
     let nameIndex = i + 1;
     while (nameIndex < tokens.length &&
-           ['own', 'mut'].includes(tokenText(doc, tokens[nameIndex]))) nameIndex += 1;
+           BINDING_KEYWORDS.includes(tokenText(doc, tokens[nameIndex]))) nameIndex += 1;
     if (!tokens[nameIndex] || tokens[nameIndex].kind !== 'id') continue;
     let cursor = nameIndex + 1;
     let type = '';
@@ -425,18 +441,11 @@ function buildIndex(doc) {
     }
   }
 
-  const builtins = new Set([
-    'assert', 'assert_eq', 'debug', 'len', 'panic', 'print',
-    'Int', 'Float', 'Text', 'Bool', 'List', 'Map', 'Result', 'Option'
-  ]);
-  const nonReferences = new Set([
-    'fn', 'if', 'else', 'while', 'for', 'return', 'let', 'law', 'meta'
-  ]);
   for (let i = 0; i + 1 < tokens.length; i += 1) {
     const token = tokens[i];
     const name = tokenText(doc, token);
     if (token.kind !== 'id' || tokenText(doc, tokens[i + 1]) !== '(' ||
-        doc.declarations.has(i) || builtins.has(name) || nonReferences.has(name) ||
+        doc.declarations.has(i) || builtinNames.has(name) || keywordNames.has(name) ||
         (i > 0 && tokenText(doc, tokens[i - 1]) === '.')) continue;
     if (!resolve(doc, token)) {
       doc.diagnostics.push(diagnostic(
@@ -489,6 +498,164 @@ function resolve(doc, token) {
     }
   }
   return ambiguous ? null : best;
+}
+
+function completionIndex(doc) {
+  // Names and lexical scopes are not carried by the typed sidecar, and the
+  // semantic path never builds the bounded index. Build it against a detached
+  // view so the fallback path's own tokens and diagnostics stay untouched; the
+  // KLS diagnostics it collects there are never published, because Stage 2
+  // owns diagnostics whenever a validated sidecar exists.
+  if (doc.analysisState === 'syntactic-fallback' && doc.tokens) return doc;
+  if (doc.lexicalIndex && doc.lexicalIndex.text === doc.text) return doc.lexicalIndex;
+  const view = { text: doc.text };
+  buildIndex(view);
+  doc.lexicalIndex = view;
+  return view;
+}
+
+function tokenIndexAt(doc, offset) {
+  let low = 0;
+  let high = doc.tokens.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (doc.tokens[middle].end <= offset) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+function completionContext(doc, offset) {
+  // Strings are tokenized; comments are skipped by the tokenizer and so are
+  // recovered from the line text. Completing inside either would offer names
+  // that are not references at all.
+  // A caret at the closing quote ends the string token, so the preceding token
+  // has to be considered too, exactly as tokenAt does for identifiers.
+  const at = tokenIndexAt(doc, offset);
+  for (const candidate of [doc.tokens[at], doc.tokens[at - 1]]) {
+    if (candidate && candidate.kind === 'string' &&
+        candidate.start < offset && offset <= candidate.end) return 'string';
+  }
+  let lineStart = offset;
+  while (lineStart > 0 && doc.text.charCodeAt(lineStart - 1) !== 10) lineStart -= 1;
+  for (let at = lineStart; at < offset; at += 1) {
+    if (doc.text.charCodeAt(at) !== 35) continue;
+    const covering = doc.tokens[tokenIndexAt(doc, at)];
+    const quoted = covering && covering.kind === 'string' &&
+      covering.start <= at && at < covering.end;
+    if (!quoted) return 'comment';
+  }
+  return 'code';
+}
+
+function visibleSymbols(doc, offset) {
+  // Mirrors resolve(): the same visibility window and the same shadowing order,
+  // so every name offered here is the declaration that definition would jump
+  // to. Two declarations of one name in one scope already raise KLS1002, so the
+  // later one wins instead of the name being offered twice.
+  const visible = new Map();
+  for (const symbol of doc.symbols) {
+    if (offset < symbol.scopeStart || offset > symbol.scopeEnd) continue;
+    if (symbol.kind !== 'function' && symbol.kind !== 'type' &&
+        symbol.start > offset) continue;
+    const previous = visible.get(symbol.name);
+    if (!previous || symbol.depth > previous.depth ||
+        (symbol.depth === previous.depth && symbol.start > previous.start)) {
+      visible.set(symbol.name, symbol);
+    }
+  }
+  return visible;
+}
+
+// LSP CompletionItemKind: Function, Variable, Class, Keyword.
+const COMPLETION_KIND = Object.freeze({
+  function: 3, parameter: 6, binding: 6, type: 7, keyword: 14
+});
+
+// Which sidecar node kind must have declared a name before its checked facts
+// may be attached to that name's completion item.
+const SIDECAR_DECLARATION_KINDS = Object.freeze({
+  function: ['function.declaration'],
+  parameter: ['parameter.binding'],
+  binding: ['local.binding'],
+  type: ['adt.declaration']
+});
+
+// A single scope can hold thousands of bindings, and one keystroke must not
+// serialize all of them. The list is filtered by the identifier already typed
+// and then bounded; a bounded list is reported as incomplete so the client
+// asks again as the prefix narrows, which is what isIncomplete is for.
+const MAX_COMPLETION_ITEMS = 200;
+
+function completionPrefix(doc, offset) {
+  let start = offset;
+  while (start > 0 && isIdentifierContinue(doc.text.charCodeAt(start - 1))) start -= 1;
+  // A run starting with a digit is a number literal, not a name being typed.
+  if (start < offset && !isIdentifierStart(doc.text.charCodeAt(start))) return '';
+  return doc.text.slice(start, offset);
+}
+
+function completionItems(doc, offset, facts) {
+  const prefix = completionPrefix(doc, offset).toLowerCase();
+  const taken = new Set();
+  function item(label, kind, detail, group, provenance) {
+    if (taken.has(label)) return null;
+    if (prefix && !label.toLowerCase().startsWith(prefix)) return null;
+    taken.add(label);
+    const value = {
+      label, kind,
+      // Locals before parameters before functions before types before the
+      // fixed vocabulary, so the nearest declaration is the first suggestion.
+      sortText: `${group}${label}`,
+      data: { provenance }
+    };
+    if (detail) value.detail = detail;
+    return value;
+  }
+
+  // Declarations are emitted first so a binding named `print` shadows the
+  // builtin rather than being dropped as a duplicate, but their share of the
+  // bound is reduced by the whole fixed vocabulary: a scope holding thousands
+  // of bindings must not push `print` and `let` out of the list.
+  const reserved = BUILTIN_FUNCTIONS.length + BUILTIN_TYPES.length +
+    KEYWORDS.length + MODE_KEYWORDS.length + BINDING_KEYWORDS.length;
+  const declarations = [];
+  let truncated = false;
+  for (const symbol of visibleSymbols(doc, offset).values()) {
+    if (declarations.length >= MAX_COMPLETION_ITEMS - reserved) {
+      truncated = true;
+      break;
+    }
+    const fact = facts ? facts.get(symbol.start) : null;
+    const type = fact && fact.type ? fact.type : symbol.type;
+    const mode = fact && fact.ownership ? fact.ownership : symbol.mode;
+    let detail = symbol.kind === 'function' || symbol.kind === 'type'
+      ? type : `${symbol.name}: ${type}`;
+    if (mode && symbol.kind !== 'function' && symbol.kind !== 'type') {
+      detail += ` (mode: ${mode})`;
+    }
+    // Hover marks a fact from a still-failing document as provisional; a
+    // completion item drawn from the same node must not read as settled.
+    if (fact && fact.provisional) detail += ' (provisional)';
+    const group = symbol.kind === 'binding' ? '0'
+      : symbol.kind === 'parameter' ? '1'
+      : symbol.kind === 'function' ? '2' : '3';
+    const value = item(symbol.name, COMPLETION_KIND[symbol.kind] ?? 6, detail, group,
+      fact ? 'validated-sidecar' : 'syntactic-fallback');
+    if (value) declarations.push(value);
+  }
+
+  const vocabulary = [];
+  for (const name of BUILTIN_FUNCTIONS) {
+    vocabulary.push(item(name, COMPLETION_KIND.function, `builtin ${name}`, '4', 'builtin'));
+  }
+  for (const name of BUILTIN_TYPES) {
+    vocabulary.push(item(name, COMPLETION_KIND.type, `builtin type ${name}`, '5', 'builtin'));
+  }
+  for (const name of [...KEYWORDS, ...MODE_KEYWORDS, ...BINDING_KEYWORDS]) {
+    vocabulary.push(item(name, COMPLETION_KIND.keyword, undefined, '6', 'keyword'));
+  }
+  return { items: [...declarations, ...vocabulary.filter(Boolean)], truncated };
 }
 
 function publishSyntacticDiagnostics(doc, diagnostics = doc.diagnostics) {
@@ -650,7 +817,11 @@ function handle(message) {
           positionEncoding: 'utf-16',
           textDocumentSync: { openClose: true, change: 2, save: false },
           definitionProvider: true,
-          hoverProvider: true
+          hoverProvider: true,
+          // No trigger characters: member and field completion is not
+          // implemented, so '.' must not advertise a list this server cannot
+          // produce. Completion is driven by the identifier being typed.
+          completionProvider: { resolveProvider: false }
         },
         serverInfo: { name: 'kofun-lsp', version: '0.1.0' }
       });
@@ -731,6 +902,53 @@ function handle(message) {
         uri: doc.uri,
         range: range(doc, symbol.start, symbol.end)
       } : null);
+      break;
+    }
+    case 'textDocument/completion': {
+      const item = params.textDocument;
+      const doc = item && documents.get(item.uri);
+      const offset = doc ? positionToOffset(doc, params.position) : null;
+      if (!doc || offset === null) {
+        response(message.id, { isIncomplete: false, items: [] });
+        break;
+      }
+      // Analysis that has not settled must not answer with a list the next
+      // version would contradict; isIncomplete asks the client to come back.
+      if (doc.analysisState !== 'semantic' &&
+          doc.analysisState !== 'syntactic-fallback') {
+        response(message.id, { isIncomplete: true, items: [] });
+        break;
+      }
+      const index = completionIndex(doc);
+      if (completionContext(index, offset) !== 'code') {
+        response(message.id, { isIncomplete: false, items: [] });
+        break;
+      }
+      let facts = null;
+      if (doc.analysisState === 'semantic' && doc.validatedSidecar && semanticAdapter) {
+        const symbols = [...visibleSymbols(index, offset).values()];
+        const requests = symbols.map((symbol) => {
+          const kinds = SIDECAR_DECLARATION_KINDS[symbol.kind];
+          if (!kinds) return null;
+          return {
+            offset: semanticAdapter.positionToByte(
+              doc.validatedSidecar, offsetToPosition(doc, symbol.start)),
+            kinds
+          };
+        });
+        const resolved = semanticAdapter.declarationFactsAt(doc.validatedSidecar, requests);
+        facts = new Map();
+        for (const [at, symbol] of symbols.entries()) {
+          if (resolved[at]) facts.set(symbol.start, resolved[at]);
+        }
+      }
+      const completion = completionItems(index, offset, facts);
+      response(message.id, {
+        // A bounded list must say so, or the client caches it and stops asking
+        // as the prefix narrows to names that were cut.
+        isIncomplete: completion.truncated,
+        items: completion.items
+      });
       break;
     }
     case 'textDocument/hover': {

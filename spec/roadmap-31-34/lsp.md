@@ -6,13 +6,15 @@ The VS Code extension bundles a dependency-free stdio language server and a
 small client. The server owns versioned open-document text, applies LSP range
 changes, and indexes the current bootstrap syntax in a linear pass. It provides
 lexical/delimiter diagnostics, same-document definitions, declared and basic
-literal hover types, and parameter modes. It explicitly reports unavailable or
-incomplete inference rather than claiming compiler inference or using `Any`.
+literal hover types, parameter modes, and scope-accurate completion. It
+explicitly reports unavailable or incomplete inference rather than claiming
+compiler inference or using `Any`.
 
 `sh tests/lsp/check.sh` covers fragmented framing, lifecycle, incremental edits,
-stale versions, Unicode UTF-16 positions, diagnostics, definition, hover, a
-packaged-client smoke test, and the numeric 10,000-declaration gate. Raw
-performance and memory samples are written to `build/lsp/performance.json`.
+stale versions, Unicode UTF-16 positions, diagnostics, definition, hover,
+completion scope/prefix/provenance, a packaged-client smoke test, and the
+numeric 10,000-declaration gate. Raw performance and memory samples are written
+to `build/lsp/performance.json`.
 
 ## Protocol baseline
 
@@ -22,8 +24,9 @@ The first server must implement JSON-RPC/LSP framing and these methods:
 - `textDocument/didOpen`, `textDocument/didChange`, and
   `textDocument/didClose`;
 - `textDocument/publishDiagnostics`;
-- `textDocument/definition`; and
-- `textDocument/hover`.
+- `textDocument/definition`;
+- `textDocument/hover`; and
+- `textDocument/completion`.
 
 The client must negotiate UTF-16 positions unless both sides explicitly select
 another standard LSP position encoding. Compiler byte spans must be converted
@@ -49,6 +52,19 @@ Hover must return the normalized inferred or declared type and the parameter
 mode (`read`, `edit`, or `take`) when applicable. It must distinguish an
 unknown type caused by an incomplete edit from a valid `Any`.
 
+Completion must offer exactly the names visible at the requested position,
+under the same visibility and shadowing rules definition resolves by, so the
+two can never disagree about which declaration a name refers to. A local is
+not offered before its own declaration, and a parameter is not offered outside
+its function body. Each item carries the checked type — and the ownership mode
+when the declaration has one — taken from the validated sidecar when one
+exists, and states which of the two analyses produced it; a fact from a
+document that is still failing is marked provisional, as hover marks it.
+Positions inside comments and string literals return no items. Member and
+field completion is not implemented, so no trigger character may be advertised
+for it. A list bounded for size must be returned as incomplete rather than
+silently truncated.
+
 ## Incremental performance gate
 
 Create a deterministic generated `.kofun` benchmark with 10,000 declarations
@@ -60,7 +76,9 @@ On the documented reference machine:
 
 - diagnostic publication for the edited version has p95 latency at or below
   100 ms and maximum latency at or below 250 ms;
-- definition and hover requests have p95 latency at or below 50 ms;
+- definition, hover, and completion requests have p95 latency at or below
+  50 ms, with completion measured both on the first request after an edit,
+  which rebuilds the lexical index, and on a cached repeat;
 - no response or diagnostic carries a stale document version; and
 - resident memory growth from the first to the hundredth edit is below 10%.
 
@@ -75,8 +93,8 @@ gate.
 2. Position tests cover byte-to-UTF-16 conversion and edit application.
 3. Protocol transcript tests cover lifecycle, cancellation, stale results, and
    malformed messages.
-4. Semantic fixtures cover diagnostics, definition, hover, shadowing, and
-   recovery after incomplete edits.
+4. Semantic fixtures cover diagnostics, definition, hover, completion,
+   shadowing, and recovery after incomplete edits.
 5. The editor smoke test launches the packaged client against the real server.
 6. The incremental benchmark enforces the thresholds above in a dedicated
    performance job.
@@ -89,6 +107,8 @@ gate.
 - [x] Inline diagnostics update and clear correctly while typing.
 - [x] Definition resolves local bindings, parameters, functions, and types.
 - [x] Hover exposes available normalized types and parameter modes.
+- [x] Completion offers the names visible at the position, with checked types
+      and stated provenance.
 - [x] Unicode position conversion passes the protocol fixtures.
 - [x] The packaged VS Code client starts and stops the real server.
 - [x] The recorded 10,000-declaration benchmark meets every threshold.

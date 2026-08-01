@@ -183,6 +183,60 @@ async function main() {
     assert.ok(hover.result && /: Int/.test(hover.result.contents.value));
   }
 
+  // Completion is the only request that has to build the lexical index, which
+  // the semantic path never builds otherwise. Measuring only a cached request
+  // would hide that cost, so each sample edits first and times the rebuild.
+  const completionColdMs = [];
+  const completionWarmMs = [];
+  // Sampled at the far end of the file, where the whole scope's 9,999 earlier
+  // bindings are visible and the bound actually applies.
+  const completionCharacter = lines[farLine].indexOf('let') + 4;
+  let coldDigit = '1';
+  for (let sample = 0; sample < 25; sample += 1) {
+    const version = WARMUP_EDITS + 103 + sample;
+    coldDigit = coldDigit === '1' ? '0' : '1';
+    client.send({
+      jsonrpc: '2.0', method: 'textDocument/didChange',
+      params: {
+        textDocument: { uri, version },
+        contentChanges: [{
+          range: {
+            start: { line: nearLine, character: nearCharacter },
+            end: { line: nearLine, character: nearCharacter + 1 }
+          },
+          text: coldDigit
+        }]
+      }
+    });
+    await client.waitFor((message) =>
+      message.method === 'textDocument/publishDiagnostics' &&
+      message.params.version === version, 10000);
+
+    const position = { line: farLine, character: completionCharacter };
+    let start = process.hrtime.bigint();
+    client.send({
+      jsonrpc: '2.0', id, method: 'textDocument/completion',
+      params: { textDocument: { uri }, position }
+    });
+    const cold = await client.waitFor((message) => message.id === id, 10000);
+    id += 1;
+    completionColdMs.push(elapsedMilliseconds(start));
+    // The corpus declares 10,000 bindings in one scope, so the bound applies
+    // and the reply must say it is incomplete.
+    assert.ok(cold.result.items.length <= 200);
+    assert.strictEqual(cold.result.isIncomplete, true);
+    assert.ok(cold.result.items.some((item) => item.label === 'print'));
+
+    start = process.hrtime.bigint();
+    client.send({
+      jsonrpc: '2.0', id, method: 'textDocument/completion',
+      params: { textDocument: { uri }, position }
+    });
+    await client.waitFor((message) => message.id === id, 10000);
+    id += 1;
+    completionWarmMs.push(elapsedMilliseconds(start));
+  }
+
   const metrics = {
     schemaVersion: 1,
     serverRevision: process.env.KOFUN_LSP_REVISION || 'working-tree',
@@ -200,11 +254,15 @@ async function main() {
     diagnosticMs,
     definitionMs,
     hoverMs,
+    completionColdMs,
+    completionWarmMs,
     summary: {
       diagnosticP95Ms: percentile(diagnosticMs, 0.95),
       diagnosticMaxMs: Math.max(...diagnosticMs),
       definitionP95Ms: percentile(definitionMs, 0.95),
       hoverP95Ms: percentile(hoverMs, 0.95),
+      completionColdP95Ms: percentile(completionColdMs, 0.95),
+      completionWarmP95Ms: percentile(completionWarmMs, 0.95),
       residentGrowthRatio: firstRss === null || lastRss === null
         ? null : (lastRss - firstRss) / firstRss
     }
@@ -222,6 +280,14 @@ async function main() {
     `definition p95 ${metrics.summary.definitionP95Ms.toFixed(2)}ms exceeds 50ms`);
   assert.ok(metrics.summary.hoverP95Ms <= 50,
     `hover p95 ${metrics.summary.hoverP95Ms.toFixed(2)}ms exceeds 50ms`);
+  // A cold completion rebuilds the whole 10,000-declaration lexical index and
+  // still measures around 4ms, so it is held to the same 50ms as definition and
+  // hover rather than to the diagnostic budget: the index rebuild is not where
+  // this corpus spends its time, and a looser budget would gate nothing.
+  assert.ok(metrics.summary.completionColdP95Ms <= 50,
+    `cold completion p95 ${metrics.summary.completionColdP95Ms.toFixed(2)}ms exceeds 50ms`);
+  assert.ok(metrics.summary.completionWarmP95Ms <= 50,
+    `warm completion p95 ${metrics.summary.completionWarmP95Ms.toFixed(2)}ms exceeds 50ms`);
   if (metrics.summary.residentGrowthRatio !== null) {
     assert.ok(metrics.summary.residentGrowthRatio < 0.10,
       `resident growth ${(metrics.summary.residentGrowthRatio * 100).toFixed(2)}% is not below 10%`);
@@ -234,6 +300,8 @@ async function main() {
     `max=${metrics.summary.diagnosticMaxMs.toFixed(2)}ms, ` +
     `definition p95=${metrics.summary.definitionP95Ms.toFixed(2)}ms, ` +
     `hover p95=${metrics.summary.hoverP95Ms.toFixed(2)}ms, ` +
+    `completion p95 cold=${metrics.summary.completionColdP95Ms.toFixed(2)}ms ` +
+    `warm=${metrics.summary.completionWarmP95Ms.toFixed(2)}ms, ` +
     `RSS growth=${metrics.summary.residentGrowthRatio === null ? 'n/a' :
       `${(metrics.summary.residentGrowthRatio * 100).toFixed(2)}%`}\n`
   );
