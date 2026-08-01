@@ -356,11 +356,36 @@ Converting that product to a different target scale requires an explicit mode
 when it discards digits. Other operations that can exceed a requested scale
 likewise specify their result type and rounding boundary.
 
-The current checkpoint stores scale as a runtime field because const-generic
-integer parameters are not implemented. It must migrate to `Fixed[scale]`
-without claiming that the runtime field already provides static scale safety.
-The exact const-generic landing order is deferred to the type-system work that
-implements integer value parameters.
+### Interim profile: `runtime-scale/v1`
+
+Everything above describes a type that does not exist yet, because const-generic
+integer parameters are not implemented. What Kofun actually ships is a named
+interim profile, and naming it is how the requirement that the language state
+its scale guarantees truthfully is met — by saying what the guarantee is, not by
+delivering the type.
+
+**`runtime-scale/v1` is what exists.** Under it:
+
+- a destination scale is an ordinary **runtime argument**: `fixed_assign` takes
+  it as a value, not as a type parameter;
+- the scale a value carries is an ordinary **runtime field**, so two values of
+  the same static type may hold different scales;
+- a scale mismatch is a **runtime failure**: `fixed_add` returns
+  `ScaleMismatch`, and nothing is reported at compile time;
+- there is therefore **no static scale safety**. Nothing about scale is checked
+  before the program runs.
+
+The difference this name exists to keep visible: under `Fixed[scale]`, `Fixed[2]`
+and `Fixed[3]` are different types and mixing them cannot compile. Under
+`runtime-scale/v1` they are one type, so mixing them compiles and then fails
+while running. That is a strictly weaker guarantee, and describing the runtime
+field as an approximation of the static one would be false rather than
+imprecise.
+
+Migration must move the scale into the type. Until it does, no document may
+claim that the runtime field already provides static safety. The exact
+const-generic landing order is deferred to the type-system work that implements
+integer value parameters.
 
 ## Laws
 
@@ -468,7 +493,8 @@ Language-level Decimal is not complete until all of the following hold.
 - Exact division, inexact division, division by zero, and every rounding mode
   have deterministic checked behavior.
 - `Fixed[scale]` or an explicitly named interim profile carries storage scale
-  without pretending runtime scale is static.
+  without pretending runtime scale is static. The interim profile is
+  `runtime-scale/v1` above, and `task decimal` holds this document to it.
 - Decimal laws pass at their stated assurance level and the Float
   associativity counterexample is reported.
 - The ledger/tax example agrees digit for digit with its decimal reference.
