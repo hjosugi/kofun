@@ -1,0 +1,7 @@
+fn main() {
+    let identity = fn(x) => x
+    let mono = identity(fn(value) => value)
+    let first = mono(1)
+    let second = mono(true)
+    second
+}

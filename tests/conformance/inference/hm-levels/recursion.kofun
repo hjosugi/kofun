@@ -1,0 +1,4 @@
+fn main() {
+    let loop = fn(x) => loop(x)
+    loop
+}

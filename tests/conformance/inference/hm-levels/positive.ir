@@ -1,0 +1,12 @@
+kofun-hm-levels-ir/v1
+binding|binding-id=binding:x:0|name=x|role=parameter|scheme=_0|span=28..29
+binding|binding-id=binding:id:0|name=id|role=let|scheme=forall 'a. ('a -> 'a)|span=20..35
+binding|binding-id=binding:answer:0|name=answer|role=let|scheme=Int|span=44..59
+binding|binding-id=binding:selected:0|name=selected|role=let|scheme=Bool|span=68..87
+binding|binding-id=binding:label:0|name=label|role=let|scheme=Text|span=96..115
+use|binding-id=binding:x:0|name=x|type=_0|span=34..35
+use|binding-id=binding:id:0|name=id|type=(Int -> Int)|span=53..55
+use|binding-id=binding:id:0|name=id|type=(Bool -> Bool)|span=79..81
+use|binding-id=binding:id:0|name=id|type=(Text -> Text)|span=104..106
+use|binding-id=binding:label:0|name=label|type=Text|span=120..125
+result|type=Text|span=10..127
