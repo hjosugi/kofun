@@ -5,6 +5,8 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 WORK=${KOFUN_C_ABI_WORK:-"$ROOT/build/c-abi"}
 CC=${CC:-cc}
 SOURCE="$ROOT/tests/ffi/c_abi.kofun"
+ASSERT_CONTEXT=c-abi
+. "$ROOT/tests/assertions/assert.sh"
 
 command -v rustc >/dev/null 2>&1 || {
     printf '%s\n' \
@@ -33,8 +35,8 @@ set +e
     >"$WORK/malformed.stdout" 2>"$WORK/malformed.stderr"
 malformed_status=$?
 set -e
-test "$malformed_status" -ne 0
-test ! -e "$WORK/malformed.c"
+assert_num "malformed status" "$malformed_status" -ne 0
+assert_absent "malformed.c" "$WORK/malformed.c"
 grep -q 'only `extern "C"` is supported' "$WORK/malformed.stderr"
 
 # libc is available to the explicit host-C path without a separate library.
@@ -42,7 +44,7 @@ sed '/rust_add/d; /^extern "C" fn rust_stack_sum(/,/^) -> CLong$/d; /rust_transf
     "$SOURCE" >"$WORK/puts.kofun"
 "$ROOT/bin/kofun" build "$WORK/puts.kofun" \
     --backend c --c-abi --emit-c "$WORK/puts.c" -o "$WORK/puts"
-test "$("$WORK/puts")" = "hello from Kofun C ABI"
+assert_eq "puts program output" "$("$WORK/puts")" "hello from Kofun C ABI"
 grep -Fqx 'extern int puts(const char * message);' "$WORK/puts.c"
 
 set +e
@@ -51,8 +53,8 @@ set +e
     >"$WORK/implicit-backend.stdout" 2>"$WORK/implicit-backend.stderr"
 implicit_status=$?
 set -e
-test "$implicit_status" -ne 0
-test ! -e "$WORK/implicit-backend"
+assert_num "implicit status" "$implicit_status" -ne 0
+assert_absent "implicit-backend" "$WORK/implicit-backend"
 grep -q -- '--c-abi requires explicit --backend c' \
     "$WORK/implicit-backend.stderr"
 
@@ -67,8 +69,10 @@ expect_link_rejection() {
         2>"$WORK/rejected-$label.stderr"
     rejected_status=$?
     set -e
-    test "$rejected_status" -ne 0
-    test ! -e "$WORK/rejected-$label"
+    assert_num "rejection status for link input $label" \
+        "$rejected_status" -ne 0
+    assert_absent "executable for rejected link input $label" \
+        "$WORK/rejected-$label"
 }
 
 expect_link_rejection option '-Wl,--export-dynamic'
@@ -91,7 +95,7 @@ if command -v ar >/dev/null 2>&1; then
         --link-library "$WORK/libkofun static.a" \
         --link-library "$WORK/libkofun static.a" \
         -o "$WORK/static-caller"
-    test "$("$WORK/static-caller")" = 42
+    assert_eq "static-caller program output" "$("$WORK/static-caller")" 42
     printf '%s\n' \
         "PASS: repeated --link-library preserves an archive path with spaces"
 else
@@ -114,8 +118,9 @@ rustc --crate-type=cdylib \
 "$WORK/c-caller" >"$WORK/c.stdout"
 sed -n '2,$p' "$WORK/kofun.stdout" >"$WORK/kofun-abi.stdout"
 cmp "$WORK/c.stdout" "$WORK/kofun-abi.stdout"
-test "$(sed -n '1p' "$WORK/kofun.stdout")" = "hello from Kofun C ABI"
-test "$(cat "$WORK/c.stdout")" = "42
+assert_eq "first line of kofun.stdout" \
+    "$(sed -n '1p' "$WORK/kofun.stdout")" "hello from Kofun C ABI"
+assert_eq "c.stdout" "$(cat "$WORK/c.stdout")" "42
 36
 41
 2

@@ -4,6 +4,8 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 NATIVE="$ROOT/bootstrap/native"
 KOFUN="$ROOT/bin/kofun"
+ASSERT_CONTEXT=native
+. "$ROOT/tests/assertions/assert.sh"
 
 usage() {
     printf '%s\n' "usage: $0 [-g] -o OUTPUT" >&2
@@ -118,6 +120,7 @@ test -z "$pending" || {
     printf '%s\n' "native fixture: encoded stream has an incomplete pair" >&2
     exit 1
 }
-test "$(wc -c <"$temporary" | tr -d ' ')" -eq "$expected_size"
+assert_num "size of $temporary" \
+    "$(wc -c <"$temporary" | tr -d ' ')" -eq "$expected_size"
 chmod +x "$temporary"
 mv "$temporary" "$output"

@@ -310,7 +310,7 @@ naming the label, the expectation, and the observation.
 They exist because every gate runs under `set -eu`, where a bare
 `test "$a" = "$b"` that fails exits the script and prints **nothing**. #794
 records that costing real time — the native gate's digest check failing with an
-empty stderr — and #814 counted 460 assertions still in that shape.
+empty stderr — and #814 sized the problem at 459 assertions in that shape.
 
 `tests/assertions/check.sh` (`task assertions`) counts them and holds every
 script to the budget recorded in `tests/assertions/budget.tsv`. It fails in

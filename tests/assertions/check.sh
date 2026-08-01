@@ -11,9 +11,9 @@ set -eu
 #   2. carries no `||` or `&&` handler; and
 #   3. is not the condition of an `if`.
 #
-# Under `set -e` each one aborts its gate with an empty stderr. #814 counted 460
-# of them across 43 files and is driving the number to zero; this gate is what
-# stops them coming back while that work is in flight.
+# Under `set -e` each one aborts its gate with an empty stderr. #814 sized the
+# problem at 459 across 43 files and is driving the number to zero; this gate is
+# what stops them coming back while that work is in flight.
 #
 # The budget is exact in both directions. A file over its budget has regressed.
 # A file *under* its budget has been improved without the improvement being
@@ -32,11 +32,37 @@ ASSERT_CONTEXT="assertion budget"
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/kofun-assertions.XXXXXX")
 trap 'rm -rf "$WORK"' 0 1 2 15
 
-# Counts one script. Continuation lines, `||`/`&&` at end of line, heredoc
-# bodies, and function bodies are all handled, because each of them otherwise
-# turns into a wrong number.
+# Counts one script. Continuation lines, `||`/`&&` at end of line, unclosed
+# quotes and `$(`, heredoc bodies, and function bodies are all handled, because
+# each of them otherwise turns into a wrong number. The `$(` case is not
+# hypothetical: `test "$(sha256sum f |` puts the pipeline on one line and the
+# `|| fail` two lines later, and a counter that stops at the newline reports a
+# handled assertion as a silent one.
 count_file() {
     awk '
+        # True while the accumulated text cannot end a command: inside a quoted
+        # string, or inside an unclosed command substitution.
+        function open_text(s,   i, c, sq, dq, depth) {
+            sq = 0; dq = 0; depth = 0
+            for (i = 1; i <= length(s); i++) {
+                c = substr(s, i, 1)
+                if (sq) { if (c == "'"'"'") sq = 0; continue }
+                if (dq) {
+                    if (c == "\\") { i++; continue }
+                    if (c == "\"") { dq = 0; continue }
+                    if (c == "$" && substr(s, i + 1, 1) == "(") { depth++; i++ }
+                    else if (c == ")" && depth > 0) depth--
+                    continue
+                }
+                if (c == "\\") { i++; continue }
+                if (c == "'"'"'") { sq = 1; continue }
+                if (c == "\"") { dq = 1; continue }
+                if (c == "#" && depth == 0) return (depth > 0)
+                if (c == "$" && substr(s, i + 1, 1) == "(") { depth++; i++ }
+                else if (c == ")" && depth > 0) depth--
+            }
+            return (sq || dq || depth > 0)
+        }
         function flush(  s) {
             if (buf == "") return
             s = buf
@@ -68,7 +94,8 @@ count_file() {
             buf = (buf == "") ? t : buf " " t
 
             if (buf ~ /\\$/) { sub(/\\$/, "", buf); next }
-            if (buf ~ /(\|\||&&)$/) next
+            if (buf ~ /(\|\||&&|\|)$/) next
+            if (open_text(buf)) next
 
             if (line ~ /<<-?[ \t]*['"'"'"]?[A-Za-z_][A-Za-z0-9_]*['"'"'"]?/) {
                 tag = line

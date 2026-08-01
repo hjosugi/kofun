@@ -4,6 +4,8 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 WORK=${KOFUN_WASM_CHECK_WORK:-"$ROOT/build/wasm-check"}
 CC=${CC:-cc}
+ASSERT_CONTEXT=wasm
+. "$ROOT/tests/assertions/assert.sh"
 
 for tool in "$CC" node sha256sum cmp
 do
@@ -112,7 +114,7 @@ node "$ROOT/bootstrap/wasm/run.mjs" "$WORK/nesting-256.wasm" \
     >"$WORK/nesting-256.stdout" 2>"$WORK/nesting-256.stderr"
 printf '1\n1\n1\n' >"$WORK/nesting-256.expected"
 cmp "$WORK/nesting-256.expected" "$WORK/nesting-256.stdout"
-test ! -s "$WORK/nesting-256.stderr"
+assert_file_empty "nesting-256.stderr" "$WORK/nesting-256.stderr"
 
 "$WORK/compiler" \
     "$WORK/int64-minimum.kofun" "$WORK/int64-minimum.wasm"
@@ -125,7 +127,7 @@ node "$ROOT/bootstrap/wasm/run.mjs" "$WORK/int64-minimum.wasm" \
     >"$WORK/int64-minimum.stdout" 2>"$WORK/int64-minimum.stderr"
 printf '%s\n' '-9223372036854775808' >"$WORK/int64-minimum.expected"
 cmp "$WORK/int64-minimum.expected" "$WORK/int64-minimum.stdout"
-test ! -s "$WORK/int64-minimum.stderr"
+assert_file_empty "int64-minimum.stderr" "$WORK/int64-minimum.stderr"
 
 "$WORK/compiler" \
     "$WORK/negated-int64-minimum.kofun" \
@@ -145,8 +147,9 @@ node "$ROOT/bootstrap/wasm/run.mjs" \
     2>"$WORK/negated-int64-minimum.stderr"
 negated_minimum_status=$?
 set -e
-test "$negated_minimum_status" -eq 1
-test ! -s "$WORK/negated-int64-minimum.stdout"
+assert_num "negated minimum status" "$negated_minimum_status" -eq 1
+assert_file_empty "negated-int64-minimum.stdout" \
+    "$WORK/negated-int64-minimum.stdout"
 grep -Fxq \
     'error[R010]: integer overflow in unary operator `-`' \
     "$WORK/negated-int64-minimum.stderr"
@@ -188,18 +191,22 @@ UBSAN_OPTIONS=halt_on_error=1 \
     2>"$WORK/mixed-nesting-257.stderr"
 sanitized_mixed_nesting_status=$?
 set -e
-test "$nesting_status" -eq 1
-test "$sanitized_parenthesized_nesting_status" -eq 1
-test "$sanitized_nesting_status" -eq 1
-test "$sanitized_mixed_nesting_status" -eq 1
+assert_num "nesting status" "$nesting_status" -eq 1
+assert_num "sanitized parenthesized nesting status" \
+    "$sanitized_parenthesized_nesting_status" -eq 1
+assert_num "sanitized nesting status" "$sanitized_nesting_status" -eq 1
+assert_num "sanitized mixed nesting status" \
+    "$sanitized_mixed_nesting_status" -eq 1
 cmp "$WORK/cli.wasm" "$WORK/preserved.wasm"
-test ! -e "$WORK/parenthesized-nesting-257.wasm"
-test ! -e "$WORK/unary-nesting-257.wasm"
-test ! -e "$WORK/mixed-nesting-257.wasm"
-test ! -s "$WORK/nesting-257.stdout"
-test ! -s "$WORK/parenthesized-nesting-257.stdout"
-test ! -s "$WORK/unary-nesting-257.stdout"
-test ! -s "$WORK/mixed-nesting-257.stdout"
+assert_absent "parenthesized-nesting-257.wasm" \
+    "$WORK/parenthesized-nesting-257.wasm"
+assert_absent "unary-nesting-257.wasm" "$WORK/unary-nesting-257.wasm"
+assert_absent "mixed-nesting-257.wasm" "$WORK/mixed-nesting-257.wasm"
+assert_file_empty "nesting-257.stdout" "$WORK/nesting-257.stdout"
+assert_file_empty "parenthesized-nesting-257.stdout" \
+    "$WORK/parenthesized-nesting-257.stdout"
+assert_file_empty "unary-nesting-257.stdout" "$WORK/unary-nesting-257.stdout"
+assert_file_empty "mixed-nesting-257.stdout" "$WORK/mixed-nesting-257.stdout"
 grep -Fxq \
     'kofun wasm32: line 2: expression nesting exceeds wasm32 limit of 256' \
     "$WORK/nesting-257.stderr"
@@ -225,7 +232,7 @@ node "$ROOT/bootstrap/wasm/run.mjs" "$WORK/cli.wasm" \
     >"$WORK/sample.stdout" 2>"$WORK/sample.stderr"
 printf '42\n-4\n' >"$WORK/sample.expected"
 cmp "$WORK/sample.expected" "$WORK/sample.stdout"
-test ! -s "$WORK/sample.stderr"
+assert_file_empty "sample.stderr" "$WORK/sample.stderr"
 
 "$ROOT/examples/wasm-browser/build.sh" "$WORK/browser" \
     >"$WORK/browser-build.stdout"
@@ -261,13 +268,13 @@ debug_status=$?
     >"$WORK/reject-slash.stdout" 2>"$WORK/reject-slash.stderr"
 slash_status=$?
 set -e
-test "$unsupported_status" -eq 1
-test "$debug_status" -eq 2
-test ! -e "$WORK/unsupported.wasm"
-test ! -e "$WORK/debug.wasm"
-test "$slash_status" -eq 1
-test ! -e "$WORK/reject-slash.wasm"
-test ! -s "$WORK/reject-slash.stdout"
+assert_num "unsupported status" "$unsupported_status" -eq 1
+assert_num "debug status" "$debug_status" -eq 2
+assert_absent "unsupported.wasm" "$WORK/unsupported.wasm"
+assert_absent "debug.wasm" "$WORK/debug.wasm"
+assert_num "slash status" "$slash_status" -eq 1
+assert_absent "reject-slash.wasm" "$WORK/reject-slash.wasm"
+assert_file_empty "reject-slash.stdout" "$WORK/reject-slash.stdout"
 grep -Fq '`/` is not defined on Int; use `//` for the integer quotient' \
     "$WORK/reject-slash.stderr"
 grep -Fq 'unsupported token in wasm32 arithmetic Core' \
@@ -342,10 +349,12 @@ node "$ROOT/bootstrap/wasm/run.mjs" "$WORK/argument-order-mirrored.wasm" \
     2>"$WORK/argument-order-mirrored.stderr"
 argument_order_mirrored_status=$?
 set -e
-test "$argument_order_status" -eq 1
-test "$argument_order_mirrored_status" -eq 1
-test ! -s "$WORK/argument-order.stdout"
-test ! -s "$WORK/argument-order-mirrored.stdout"
+assert_num "argument order status" "$argument_order_status" -eq 1
+assert_num "argument order mirrored status" \
+    "$argument_order_mirrored_status" -eq 1
+assert_file_empty "argument-order.stdout" "$WORK/argument-order.stdout"
+assert_file_empty "argument-order-mirrored.stdout" \
+    "$WORK/argument-order-mirrored.stdout"
 grep -Fxq 'error[R010]: integer overflow in operator `+`' \
     "$WORK/argument-order.stderr"
 grep -Fxq 'error[R010]: integer overflow in operator `-`' \
