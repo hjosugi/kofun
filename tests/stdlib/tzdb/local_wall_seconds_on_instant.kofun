@@ -1,0 +1,14 @@
+# A local reading has no instant inside it: reaching one requires an offset,
+# and choosing that offset is exactly what the resolution sum exists to do.
+# Reading `seconds` off a LocalDateTime would produce a number that looks like
+# an instant and is not one.
+
+type LocalDateTime = {
+    wall_seconds: Int,
+}
+
+fn main() -> Int {
+    let wall: LocalDateTime = LocalDateTime(wall_seconds: 2050)
+    print(wall.seconds)
+    return 0
+}
