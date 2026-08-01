@@ -1,0 +1,55 @@
+# Silent-assertion budget. One line per script that still has assertions which
+# fail without saying anything, plus a `0` for every script that has been
+# cleaned so the win is recorded rather than left as slack.
+#
+# `sh tests/assertions/check.sh` fails in BOTH directions: over budget is a
+# regression, under budget means an improvement was not recorded. Regenerate
+# the counts with `sh tests/assertions/check.sh --count`.
+#
+# The definition of a silent assertion, and the plan to drive this file to all
+# zeroes, are in #814.
+#
+# count	path
+3	benchmarks/http/benchmark.sh
+8	bootstrap/c_abi/check.sh
+0	bootstrap/native/check.sh
+1	bootstrap/native/emit-fixture.sh
+1	bootstrap/selfhost/check-compiler-driver.sh
+6	bootstrap/stage1/check.sh
+55	bootstrap/stage2/check.sh
+27	bootstrap/wasm/check.sh
+1	docs/tour/check.sh
+18	framework/cli/check.sh
+1	framework/tui/check.sh
+5	spec/roadmap-31-34/verify-current-gates.sh
+3	spec/visibility/check.sh
+10	tests/build_system.sh
+3	tests/cli.sh
+7	tests/conformance/adt-exhaustiveness/run.sh
+7	tests/conformance/modules/import-aliases/run.sh
+21	tests/conformance/modules/imports-qualified/run.sh
+5	tests/conformance/modules/imports-selective/run.sh
+6	tests/conformance/modules/kif-v1/run.sh
+44	tests/conformance/modules/re-exports/run.sh
+6	tests/conformance/syntax/issues_48_60/run.sh
+6	tests/diagnostics/c-abi/run.sh
+3	tests/diagnostics/native/run.sh
+2	tests/diagnostics/runtime/run.sh
+2	tests/diagnostics/stage2/bless.sh
+6	tests/diagnostics/unicode/run.sh
+2	tests/fuzz/adapters/arithmetic-c11.sh
+3	tests/fuzz/adapters/arithmetic-model.sh
+2	tests/fuzz/adapters/arithmetic-native-x86_64.sh
+2	tests/fuzz/adapters/arithmetic-wasm32-node.sh
+1	tests/fuzz/fixtures/protocol-adapter.sh
+4	tests/fuzz/semantic_protocol_test.sh
+5	tests/http/check.sh
+1	tests/lsp/check.sh
+19	tests/package_manager.sh
+2	tests/typed-sidecar/authority-boundary.sh
+9	tests/typed-sidecar/cli.sh
+2	tests/typed-sidecar/producer-races.sh
+19	tests/typed-sidecar/stage2-events.sh
+5	tests/typed-sidecar/stage2-projector.sh
+7	tests/unicode/run.sh
+2	unicode/generate_tables.sh

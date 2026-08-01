@@ -372,6 +372,15 @@ tasks:
       - cmd: "printf '%s\\n' 'PASS: .kofun sources only; no Python implementation'"
         silent: true
 
+  # A gate that fails without printing anything turns a specific defect into a
+  # bare exit code, and #814 counted 460 assertions that do exactly that. This
+  # holds every script to a recorded budget in both directions, so the number
+  # can only fall while that work is in flight.
+  assertions:
+    desc: "Hold every gate to its recorded silent-assertion budget"
+    cmds:
+      - "sh tests/assertions/check.sh"
+
   # The fast structural lane: does every published capability still join the
   # evidence that bounds it? This reads the repository and never runs a gate, so
   # it belongs beside the other cheap checks in `verify`.
@@ -480,6 +489,7 @@ tasks:
             tree-sitter \
             syntax \
             repository-check \
+            assertions \
             release-claims \
             rfc-registry
       # `tests/lsp/performance_test.js` makes five measurements that a busy
