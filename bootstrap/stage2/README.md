@@ -345,8 +345,17 @@ record, foreign `PackageId`, exceeded node/edge/byte limit, or mutated
 interface blob is a bounded cache miss that recomputes, never a crash and never
 a stale reuse; a corrupt blob demotes only its own module. Manifests and
 interfaces are replaced atomically, and a rejected source commits nothing, so
-a failure is never reusable as a success. Its repaired successor therefore
-starts from the last committed success rather than from failed work.
+a failure is never reusable as a success. The maintained gate also injects a
+deterministic cancellation after semantic work and proves that no manifest or
+report is committed; its repaired successor executes from cold rather than
+reusing the unreferenced partial artifact. Oversized manifests and KIF blobs
+are exercised at their real 4 MiB and 16 MiB bounds.
+
+Report schema `kofun-incremental-report/v3` records an `artifact BYTES PATH`
+row for each KIF and an `artifact-summary executed-bytes=N reused-bytes=N`
+row. Together with the semantic and target work-count summaries, this makes the
+cold baseline directly comparable to warm reuse without treating time as a
+correctness signal: cold executed bytes must equal warm reused bytes.
 
 The fourth argument is a 64-digit `TARGET_PROFILE_DIGEST` supplied by the
 upstream target ABI/profile fact producer. The digest, never a host path, is
@@ -358,7 +367,10 @@ target/action graph: the helper does not derive ABI facts, schedule work, or
 make timing claims. The gate also proves that clean copies under different
 physical source roots produce byte-identical manifests and reports. Run all ten
 edit-matrix rows, failure/repair, path-remap, sanitizer, and analyzer checks
-with `task incremental`.
+with `task incremental`. The optional fifth argument,
+`CANCEL_AFTER_EXECUTIONS`, is a bounded conformance fault-injection input; it
+stops before manifest/report commitment after the requested number of executed
+semantic modules and is not part of the persisted action key.
 
 Focused import diagnostics are `E2S59` malformed/order/path/alias, `E2S60`
 missing module, `E2S61` self import, `E2S62` duplicate target/import, `E2S63`

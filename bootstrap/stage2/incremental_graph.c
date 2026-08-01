@@ -29,7 +29,7 @@
 #endif
 
 #define INCREMENTAL_GRAPH_SCHEMA "kofun-incremental-graph/v2"
-#define INCREMENTAL_REPORT_SCHEMA "kofun-incremental-report/v2"
+#define INCREMENTAL_REPORT_SCHEMA "kofun-incremental-report/v3"
 
 /*
  * Resource limits. Every one of them is a bounded cache miss when a stored
@@ -87,6 +87,7 @@ typedef struct {
     uint8_t internal_digest[32];
     uint8_t kif_digest[32];
     uint8_t edge_digest[32];
+    size_t artifact_bytes;
     NodeOutcome outcome;
     const char *reason;
     /* Logical path of the upstream module that forced this execution. */
@@ -116,8 +117,11 @@ typedef struct {
     const char *target_reasons[INCREMENTAL_MODULE_LIMIT];
     size_t executed_count;
     size_t reused_count;
+    size_t executed_artifact_bytes;
+    size_t reused_artifact_bytes;
     size_t target_rebuilt_count;
     size_t target_reused_count;
+    size_t cancel_after_executions;
 } IncrementalGraph;
 
 /* ---------------------------------------------------------------- helpers */
@@ -132,6 +136,25 @@ static void incremental_note(const char *format, ...) {
 
 static bool digests_equal(const uint8_t left[32], const uint8_t right[32]) {
     return memcmp(left, right, 32u) == 0;
+}
+
+static bool parse_execution_limit(const char *value, size_t *output) {
+    size_t parsed = 0u;
+    const unsigned char *cursor = (const unsigned char *)value;
+    if (*cursor == '\0') return false;
+    while (*cursor != '\0') {
+        size_t digit;
+        if (*cursor < (unsigned char)'0' || *cursor > (unsigned char)'9') {
+            return false;
+        }
+        digit = (size_t)(*cursor - (unsigned char)'0');
+        if (parsed > (INCREMENTAL_MODULE_LIMIT - digit) / 10u) return false;
+        parsed = parsed * 10u + digit;
+        cursor += 1;
+    }
+    if (parsed == 0u || parsed > INCREMENTAL_MODULE_LIMIT) return false;
+    *output = parsed;
+    return true;
 }
 
 static bool join_cache_path(
@@ -629,7 +652,8 @@ static const CachedModule *find_cached_module(
 static bool cached_kif_is_intact(
     const char *directory,
     const uint8_t module_id[32],
-    const uint8_t expected_digest[32]
+    const uint8_t expected_digest[32],
+    size_t *artifact_bytes
 ) {
     char leaf[80];
     char path[INCREMENTAL_PATH_LIMIT];
@@ -645,6 +669,7 @@ static bool cached_kif_is_intact(
     kofun_sha256(bytes, length, actual);
     intact = digests_equal(actual, expected_digest);
     free(bytes);
+    if (intact) *artifact_bytes = length;
     return intact;
 }
 
@@ -782,6 +807,7 @@ static bool execute_module(
     }
     kofun_sha256(bytes, length, state->kif_digest);
     free(bytes);
+    state->artifact_bytes = length;
     state->digests_known = true;
     return true;
 }
@@ -795,6 +821,7 @@ static bool decide_modules(IncrementalGraph *graph) {
         Module *module = &program->modules[module_index];
         ModuleState *state = &graph->states[module_index];
         const CachedModule *cached;
+        size_t cached_artifact_bytes = 0u;
         kofun_sha256((const uint8_t *)module->source, module->source_length,
             state->source_digest);
         if (!compute_edge_digest(graph, module_index, state->edge_digest)) {
@@ -823,7 +850,8 @@ static bool decide_modules(IncrementalGraph *graph) {
             state->outcome = NODE_EXECUTED;
             state->reason = "edges-changed";
         } else if (!cached_kif_is_intact(graph->cache_directory,
-                       module->module_id, cached->kif_digest)) {
+                       module->module_id, cached->kif_digest,
+                       &cached_artifact_bytes)) {
             state->outcome = NODE_EXECUTED;
             state->reason = "cached-interface-unusable";
         } else {
@@ -832,6 +860,7 @@ static bool decide_modules(IncrementalGraph *graph) {
             memcpy(state->public_digest, cached->public_digest, 32u);
             memcpy(state->internal_digest, cached->internal_digest, 32u);
             memcpy(state->kif_digest, cached->kif_digest, 32u);
+            state->artifact_bytes = cached_artifact_bytes;
             state->digests_known = true;
         }
         state->decided = true;
@@ -854,8 +883,30 @@ static bool decide_modules(IncrementalGraph *graph) {
             if (graph->cache.state == CACHE_STATE_WARM) {
                 propagate_invalidation(graph, module_index);
             }
+            if (SIZE_MAX - graph->executed_artifact_bytes <
+                state->artifact_bytes) {
+                set_error(program, "E2S94",
+                    "incremental executed artifact byte count overflowed");
+                return false;
+            }
+            graph->executed_artifact_bytes += state->artifact_bytes;
             graph->executed_count += 1u;
+            if (graph->cancel_after_executions != 0u &&
+                graph->executed_count == graph->cancel_after_executions) {
+                incremental_note(
+                    "note: incremental computation cancelled after %zu "
+                    "executed module(s); no graph or report was committed",
+                    graph->executed_count);
+                return false;
+            }
         } else {
+            if (SIZE_MAX - graph->reused_artifact_bytes <
+                state->artifact_bytes) {
+                set_error(program, "E2S94",
+                    "incremental reused artifact byte count overflowed");
+                return false;
+            }
+            graph->reused_artifact_bytes += state->artifact_bytes;
             graph->reused_count += 1u;
         }
     }
@@ -1001,6 +1052,8 @@ static bool commit_report(IncrementalGraph *graph, const char *path) {
             public_hex, program->modules[index].logical_path);
         line_buffer_appendf(&buffer, "internal %s %s\n",
             internal_hex, program->modules[index].logical_path);
+        line_buffer_appendf(&buffer, "artifact %zu %s\n",
+            state->artifact_bytes, program->modules[index].logical_path);
         line_buffer_appendf(&buffer, "target %s %s %s\n",
             graph->target_outcomes[index] == TARGET_REBUILT
                 ? "rebuilt" : "reused",
@@ -1009,6 +1062,9 @@ static bool commit_report(IncrementalGraph *graph, const char *path) {
     }
     line_buffer_appendf(&buffer, "summary executed=%zu reused=%zu\n",
         graph->executed_count, graph->reused_count);
+    line_buffer_appendf(&buffer,
+        "artifact-summary executed-bytes=%zu reused-bytes=%zu\n",
+        graph->executed_artifact_bytes, graph->reused_artifact_bytes);
     line_buffer_appendf(&buffer, "target-summary rebuilt=%zu reused=%zu\n",
         graph->target_rebuilt_count, graph->target_reused_count);
     if (buffer.failed) {
@@ -1035,9 +1091,9 @@ int main(int argc, char **argv) {
     Program *program = &qualified->program;
     size_t index;
     int status = 1;
-    if (argc != 5) {
+    if (argc != 5 && argc != 6) {
         fprintf(stderr, "usage: %s INVENTORY CACHE_DIRECTORY REPORT "
-            "TARGET_PROFILE_DIGEST\n", argv[0]);
+            "TARGET_PROFILE_DIGEST [CANCEL_AFTER_EXECUTIONS]\n", argv[0]);
         return 2;
     }
     memset(&graph, 0, sizeof(graph));
@@ -1051,6 +1107,12 @@ int main(int argc, char **argv) {
     if (!parse_identity(argv[4], graph.target_profile_digest)) {
         fprintf(stderr, "error: target profile digest must be 64 lowercase "
             "hexadecimal digits\n");
+        return 2;
+    }
+    if (argc == 6 &&
+        !parse_execution_limit(argv[5], &graph.cancel_after_executions)) {
+        fprintf(stderr, "error: cancel-after-executions must be an integer "
+            "from 1 through %u\n", (unsigned)INCREMENTAL_MODULE_LIMIT);
         return 2;
     }
     if (!ensure_directory_tree(graph.cache_directory)) {
