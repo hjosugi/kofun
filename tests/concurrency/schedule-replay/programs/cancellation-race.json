@@ -1,0 +1,1 @@
+{"schema":"kofun.schedule-program/v1","name":"cancellation-race","budgets":{"tasks":8,"decisions":48,"steps":48,"states":512},"channels":[],"root":[{"op":"spawn","as":"child","body":[{"op":"yield"},{"op":"print","text":"child-complete\n"}]},{"op":"yield"},{"op":"cancel","task":"child"},{"op":"join","task":"child"},{"op":"print","text":"parent-complete\n"}]}
