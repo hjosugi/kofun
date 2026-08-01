@@ -1,0 +1,183 @@
+# Typed-HIR witness for issue #878.
+#
+# The Stage 2 semantic sidecar projects a bounded program, and tzdb.kofun is
+# larger than that bound. This file carries the same six value shapes, the same
+# closed error, and the same closed resolution sum through the projection, so
+# "checked source -> typed HIR -> executable backend" is observed on a source
+# that names the tzdb types rather than asserted about one that cannot fit.
+#
+# It is a witness, not a second implementation: the rules it exercises are one
+# gap, one fold, and one unique reading against a two-transition table written
+# in place, and tests/stdlib/tzdb/check.sh pins its output the same way it pins
+# the producer's.
+
+type ZoneId = {
+    code: Int,
+}
+
+type UtcOffset = {
+    total_seconds: Int,
+}
+
+type Instant = {
+    epoch_seconds: Int,
+}
+
+type LocalDateTime = {
+    local_seconds: Int,
+}
+
+type Transition = {
+    at_seconds: Int,
+    offset_before: Int,
+    offset_after: Int,
+}
+
+type Tzdb = {
+    version: Int,
+    zone_code: Int,
+    digest: Int,
+}
+
+type TzdbError =
+    | MalformedHeader(offset: Int)
+    | UnsupportedVersion(found: Int)
+    | DigestMismatch(computed: Int)
+    | InvalidZone(code: Int)
+    | TruncatedInput(length: Int)
+    | TrailingBytes(length: Int)
+    | TzdbArithmeticOverflow(operand: Int)
+    | OversizedInput(length: Int)
+    | LimitExhausted(count: Int)
+
+type ResolutionKind =
+    | Unique(offset: Int)
+    | Ambiguous(earlier: Int)
+    | Nonexistent(before: Int)
+
+fn at_or_past(value: Int, boundary: Int) -> Int {
+    if value >= boundary {
+        return 1
+    }
+    return 0
+}
+
+fn boundary_low(transition: Transition) -> Int {
+    if transition.offset_after > transition.offset_before {
+        return transition.at_seconds + transition.offset_before
+    }
+    return transition.at_seconds + transition.offset_after
+}
+
+fn boundary_high(transition: Transition) -> Int {
+    if transition.offset_after > transition.offset_before {
+        return transition.at_seconds + transition.offset_after
+    }
+    return transition.at_seconds + transition.offset_before
+}
+
+# The same rank as the producer, over one transition rather than two.
+fn interval_rank(local: LocalDateTime, transition: Transition) -> Int {
+    return at_or_past(local.local_seconds, boundary_low(transition))
+        + at_or_past(local.local_seconds, boundary_high(transition))
+}
+
+fn resolve(local: LocalDateTime, transition: Transition) -> ResolutionKind {
+    let rank: Int = interval_rank(local, transition)
+    if rank == 0 {
+        return Unique(transition.offset_before)
+    }
+    if rank == 2 {
+        return Unique(transition.offset_after)
+    }
+    if transition.offset_after > transition.offset_before {
+        return Nonexistent(transition.offset_before)
+    }
+    return Ambiguous(transition.offset_before)
+}
+
+fn kind_code(kind: ResolutionKind) -> Int {
+    let mut code = 0
+    match kind {
+        Unique(_) => { code = 1 },
+        Ambiguous(_) => { code = 2 },
+        Nonexistent(_) => { code = 3 },
+    }
+    return code
+}
+
+fn kind_offset(kind: ResolutionKind) -> Int {
+    let mut offset = 0
+    match kind {
+        Unique(value) => { offset = value },
+        Ambiguous(earlier) => { offset = earlier },
+        Nonexistent(before) => { offset = before },
+    }
+    return offset
+}
+
+fn error_code(error: TzdbError) -> Int {
+    let mut code = 0
+    match error {
+        MalformedHeader(_) => { code = -1 },
+        UnsupportedVersion(_) => { code = -2 },
+        DigestMismatch(_) => { code = -3 },
+        InvalidZone(_) => { code = -4 },
+        TruncatedInput(_) => { code = -5 },
+        TrailingBytes(_) => { code = -6 },
+        TzdbArithmeticOverflow(_) => { code = -7 },
+        OversizedInput(_) => { code = -8 },
+        LimitExhausted(_) => { code = -9 },
+    }
+    return code
+}
+
+fn main() -> Int {
+    let database: Tzdb = Tzdb(version: 1, zone_code: 7, digest: 101)
+    let zone: ZoneId = ZoneId(code: database.zone_code)
+    print(zone.code)
+    print(database.version)
+    print(database.digest)
+
+    # spring forward at 10000: local [10000, 13600) names no instant
+    let forward: Transition = Transition(
+        at_seconds: 10000,
+        offset_before: 0,
+        offset_after: 3600
+    )
+    let early: LocalDateTime = LocalDateTime(local_seconds: 5000)
+    let before: ResolutionKind = resolve(early, forward)
+    print(kind_code(before))
+    print(kind_offset(before))
+    let inside_gap: LocalDateTime = LocalDateTime(local_seconds: 12000)
+    let gap: ResolutionKind = resolve(inside_gap, forward)
+    print(kind_code(gap))
+    print(kind_offset(gap))
+
+    # fall back at 20000: local [20000, 23600) names two instants
+    let backward: Transition = Transition(
+        at_seconds: 20000,
+        offset_before: 3600,
+        offset_after: 0
+    )
+    let inside_fold: LocalDateTime = LocalDateTime(local_seconds: 21000)
+    let fold: ResolutionKind = resolve(inside_fold, backward)
+    print(kind_code(fold))
+    print(kind_offset(fold))
+    let late: LocalDateTime = LocalDateTime(local_seconds: 30000)
+    let after: ResolutionKind = resolve(late, backward)
+    print(kind_code(after))
+    print(kind_offset(after))
+
+    # an instant names one point, and an offset is its own shape
+    let moment: Instant = Instant(epoch_seconds: 16000)
+    let offset: UtcOffset = UtcOffset(total_seconds: forward.offset_after)
+    print(moment.epoch_seconds)
+    print(offset.total_seconds)
+
+    let mismatch: TzdbError = DigestMismatch(101)
+    let exhausted: TzdbError = LimitExhausted(3)
+    print(error_code(mismatch))
+    print(error_code(exhausted))
+    return 0
+}

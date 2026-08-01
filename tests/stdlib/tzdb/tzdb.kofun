@@ -1,0 +1,1063 @@
+# Executable bounded tzdb producer for issue #878.
+#
+# This is the Stage 2 artifact the issue asks for: versioned time-zone bytes
+# handed in by the caller, a deterministic bounded reader over them, a bounded
+# transition lookup, and explicit Unique/Ambiguous/Nonexistent results carrying
+# their provenance. Nothing here reads a host zoneinfo file, a host clock, or
+# the network. The only time-zone rules this program knows are the bytes a
+# caller wrote into it.
+#
+# The Stage 2 Core this file is checked and lowered by is deliberately small:
+# record fields are Int, an ADT constructor carries at most one Int, there are
+# no loops, and `let` binds Int expressions. So the surface below is a
+# projection, not the canonical API — stdlib/tzdb/tzdb.kofun holds the
+# canonical `Bytes` input, the multi-payload resolution sum, and the Result
+# shapes, and tests/stdlib/tzdb/check.sh pins both. The projection keeps every
+# decision the canonical surface makes; it only spells values with the
+# vocabulary the Core accepts today.
+#
+# Two spellings differ from the canonical surface, and only these two:
+#
+#   * `Bytes` is projected as a fixed-capacity record of Int byte slots plus a
+#     length. The reader still reads through one accessor and still refuses a
+#     length it did not expect, so truncation and trailing bytes are observed
+#     rather than assumed away.
+#   * A resolution payload of two offsets is spelled as a record beside a
+#     one-Int constructor, because the Core's ADT carries a single Int. The sum
+#     is still closed and is still reached by `match`.
+#
+# The committed fixture format, 17 bytes, all values 0..255:
+#
+#   0..3   magic 'K' 'T' 'Z' '1'
+#   4      format version
+#   5      zone code
+#   6      transition count
+#   7      reserved, must be zero
+#   8..9   transition 0 instant, seconds, high byte then low byte
+#   10     transition 0 offset before, minutes, biased by 128
+#   11     transition 0 offset after, minutes, biased by 128
+#   12..13 transition 1 instant, seconds, high byte then low byte
+#   14     transition 1 offset before, minutes, biased by 128
+#   15     transition 1 offset after, minutes, biased by 128
+#   16     content digest: the sum of bytes 0..15, modulo 251
+#
+# 251 is the largest prime below 256, so every single-byte edit changes the
+# digest. The digest is carried into every serialized result: a result produced
+# from different rules cannot be mistaken for one produced from these.
+
+# ------------------------------------------------------------- constants
+
+fn byte_capacity() -> Int {
+    return 24
+}
+
+fn fixture_length() -> Int {
+    return 17
+}
+
+fn magic_k() -> Int {
+    return 75
+}
+
+fn magic_t() -> Int {
+    return 84
+}
+
+fn magic_z() -> Int {
+    return 90
+}
+
+fn magic_one() -> Int {
+    return 49
+}
+
+fn supported_version() -> Int {
+    return 1
+}
+
+fn fixture_zone_code() -> Int {
+    return 7
+}
+
+fn max_transitions() -> Int {
+    return 2
+}
+
+fn digest_modulus() -> Int {
+    return 251
+}
+
+fn offset_bias() -> Int {
+    return 128
+}
+
+fn seconds_per_minute() -> Int {
+    return 60
+}
+
+fn int_max() -> Int {
+    return 9223372036854775807
+}
+
+# Resolution kinds. A kind is never inferred from an offset value: an offset of
+# zero is a perfectly ordinary unique result.
+fn kind_unique() -> Int {
+    return 1
+}
+
+fn kind_ambiguous() -> Int {
+    return 2
+}
+
+fn kind_nonexistent() -> Int {
+    return 3
+}
+
+# The closed error domain, as codes. Every failing path below returns one of
+# these and nothing else; there is no sentinel offset and no silent success.
+fn code_ok() -> Int {
+    return 0
+}
+
+fn code_malformed_header() -> Int {
+    return -1
+}
+
+fn code_unsupported_version() -> Int {
+    return -2
+}
+
+fn code_digest_mismatch() -> Int {
+    return -3
+}
+
+fn code_invalid_zone() -> Int {
+    return -4
+}
+
+fn code_truncated_input() -> Int {
+    return -5
+}
+
+fn code_trailing_bytes() -> Int {
+    return -6
+}
+
+fn code_arithmetic_overflow() -> Int {
+    return -7
+}
+
+fn code_oversized_input() -> Int {
+    return -8
+}
+
+fn code_limit_exhausted() -> Int {
+    return -9
+}
+
+# ---------------------------------------------------------------- values
+
+# The injected bytes. `length` is what the caller says it handed over, and it
+# is checked against the slots rather than trusted: a caller that claims more
+# bytes than the capacity is refused before any slot is read.
+type TzdbBytes = {
+    length: Int,
+    b0: Int,
+    b1: Int,
+    b2: Int,
+    b3: Int,
+    b4: Int,
+    b5: Int,
+    b6: Int,
+    b7: Int,
+    b8: Int,
+    b9: Int,
+    b10: Int,
+    b11: Int,
+    b12: Int,
+    b13: Int,
+    b14: Int,
+    b15: Int,
+    b16: Int,
+    b17: Int,
+    b18: Int,
+    b19: Int,
+    b20: Int,
+    b21: Int,
+    b22: Int,
+    b23: Int,
+}
+
+# A zone is named by a code, not by a string the Core cannot hold. An unknown
+# code is a typed error, never a fallback to UTC.
+type ZoneId = {
+    code: Int,
+}
+
+# Seconds east of UTC. Kept as a distinct shape so an offset cannot be passed
+# where an instant belongs.
+type UtcOffset = {
+    total_seconds: Int,
+}
+
+# A point on the UTC time line.
+type Instant = {
+    epoch_seconds: Int,
+}
+
+# A wall-clock reading with no offset attached. This is the shape that can fail
+# to name a unique instant, which is the whole reason the resolution sum exists.
+type LocalDateTime = {
+    local_seconds: Int,
+}
+
+# One rule change: the instant it takes effect, the offset in force before it,
+# and the offset in force after it.
+type Transition = {
+    at_seconds: Int,
+    offset_before: Int,
+    offset_after: Int,
+}
+
+# What the reader recovered from the bytes, including the provenance every
+# result carries: the format version and the content digest.
+type Tzdb = {
+    version: Int,
+    zone_code: Int,
+    transition_count: Int,
+    digest: Int,
+    t0_at: Int,
+    t0_before: Int,
+    t0_after: Int,
+    t1_at: Int,
+    t1_before: Int,
+    t1_after: Int,
+}
+
+# The closed typed error domain for reading and resolving.
+type TzdbError =
+    | MalformedHeader(offset: Int)
+    | UnsupportedVersion(found: Int)
+    | DigestMismatch(computed: Int)
+    | InvalidZone(code: Int)
+    | TruncatedInput(length: Int)
+    | TrailingBytes(length: Int)
+    | TzdbArithmeticOverflow(operand: Int)
+    | OversizedInput(length: Int)
+    | LimitExhausted(count: Int)
+
+# The closed resolution domain. The constructor carries the offset a caller
+# most needs; `Resolution` beside it carries both offsets for the two-offset
+# cases, because the Core's ADT payload is a single Int. Neither is a default:
+# an Ambiguous result never hands back one offset as if it were the answer.
+type ResolutionKind =
+    | Unique(offset: Int)
+    | Ambiguous(earlier: Int)
+    | Nonexistent(before: Int)
+
+# A read that either produced a Tzdb or produced an error. `code` is
+# `code_ok()` exactly when the fields below it are meaningful.
+type ReadResult = {
+    code: Int,
+    detail: Int,
+    version: Int,
+    zone_code: Int,
+    transition_count: Int,
+    digest: Int,
+    t0_at: Int,
+    t0_before: Int,
+    t0_after: Int,
+    t1_at: Int,
+    t1_before: Int,
+    t1_after: Int,
+}
+
+# A resolution that either produced a kind with its offsets, or an error.
+# `secondary` is only meaningful for Ambiguous and Nonexistent; for Unique it
+# repeats `primary` rather than holding a value that means nothing.
+type Resolution = {
+    code: Int,
+    detail: Int,
+    kind: Int,
+    primary: Int,
+    secondary: Int,
+    zone_code: Int,
+    version: Int,
+    digest: Int,
+}
+
+# ------------------------------------------------------- typed error access
+
+# Rebuilds the closed error from the code and payload a step reported. The
+# Core has no unreachable form, so the final arm is written out; an unknown
+# code becomes MalformedHeader rather than quietly becoming a success.
+fn tzdb_error(code: Int, detail: Int) -> TzdbError {
+    if code == code_unsupported_version() {
+        return UnsupportedVersion(detail)
+    }
+    if code == code_digest_mismatch() {
+        return DigestMismatch(detail)
+    }
+    if code == code_invalid_zone() {
+        return InvalidZone(detail)
+    }
+    if code == code_truncated_input() {
+        return TruncatedInput(detail)
+    }
+    if code == code_trailing_bytes() {
+        return TrailingBytes(detail)
+    }
+    if code == code_arithmetic_overflow() {
+        return TzdbArithmeticOverflow(detail)
+    }
+    if code == code_oversized_input() {
+        return OversizedInput(detail)
+    }
+    if code == code_limit_exhausted() {
+        return LimitExhausted(detail)
+    }
+    return MalformedHeader(detail)
+}
+
+fn tzdb_error_code(error: TzdbError) -> Int {
+    let mut code = 0
+    match error {
+        MalformedHeader(_) => { code = code_malformed_header() },
+        UnsupportedVersion(_) => { code = code_unsupported_version() },
+        DigestMismatch(_) => { code = code_digest_mismatch() },
+        InvalidZone(_) => { code = code_invalid_zone() },
+        TruncatedInput(_) => { code = code_truncated_input() },
+        TrailingBytes(_) => { code = code_trailing_bytes() },
+        TzdbArithmeticOverflow(_) => { code = code_arithmetic_overflow() },
+        OversizedInput(_) => { code = code_oversized_input() },
+        LimitExhausted(_) => { code = code_limit_exhausted() },
+    }
+    return code
+}
+
+fn tzdb_error_detail(error: TzdbError) -> Int {
+    let mut detail = 0
+    match error {
+        MalformedHeader(offset) => { detail = offset },
+        UnsupportedVersion(found) => { detail = found },
+        DigestMismatch(computed) => { detail = computed },
+        InvalidZone(code) => { detail = code },
+        TruncatedInput(length) => { detail = length },
+        TrailingBytes(length) => { detail = length },
+        TzdbArithmeticOverflow(operand) => { detail = operand },
+        OversizedInput(length) => { detail = length },
+        LimitExhausted(count) => { detail = count },
+    }
+    return detail
+}
+
+# Rebuilds the closed resolution kind, so the printed answer comes from the sum
+# rather than from the record that carried it.
+fn resolution_kind(kind: Int, primary: Int) -> ResolutionKind {
+    if kind == kind_ambiguous() {
+        return Ambiguous(primary)
+    }
+    if kind == kind_nonexistent() {
+        return Nonexistent(primary)
+    }
+    return Unique(primary)
+}
+
+fn resolution_kind_code(kind: ResolutionKind) -> Int {
+    let mut code = 0
+    match kind {
+        Unique(_) => { code = kind_unique() },
+        Ambiguous(_) => { code = kind_ambiguous() },
+        Nonexistent(_) => { code = kind_nonexistent() },
+    }
+    return code
+}
+
+fn resolution_kind_offset(kind: ResolutionKind) -> Int {
+    let mut offset = 0
+    match kind {
+        Unique(value) => { offset = value },
+        Ambiguous(earlier) => { offset = earlier },
+        Nonexistent(before) => { offset = before },
+    }
+    return offset
+}
+
+# ------------------------------------------------------------ byte access
+
+# One accessor, so every read of the injected bytes goes through one bounds
+# decision. An index outside the capacity yields -1, which no valid byte can
+# be, and every caller that could see it checks for it.
+fn byte_at(input: TzdbBytes, index: Int) -> Int {
+    if index == 0 {
+        return input.b0
+    }
+    if index == 1 {
+        return input.b1
+    }
+    if index == 2 {
+        return input.b2
+    }
+    if index == 3 {
+        return input.b3
+    }
+    if index == 4 {
+        return input.b4
+    }
+    if index == 5 {
+        return input.b5
+    }
+    if index == 6 {
+        return input.b6
+    }
+    if index == 7 {
+        return input.b7
+    }
+    if index == 8 {
+        return input.b8
+    }
+    if index == 9 {
+        return input.b9
+    }
+    if index == 10 {
+        return input.b10
+    }
+    if index == 11 {
+        return input.b11
+    }
+    if index == 12 {
+        return input.b12
+    }
+    if index == 13 {
+        return input.b13
+    }
+    if index == 14 {
+        return input.b14
+    }
+    if index == 15 {
+        return input.b15
+    }
+    if index == 16 {
+        return input.b16
+    }
+    if index == 17 {
+        return input.b17
+    }
+    if index == 18 {
+        return input.b18
+    }
+    if index == 19 {
+        return input.b19
+    }
+    if index == 20 {
+        return input.b20
+    }
+    if index == 21 {
+        return input.b21
+    }
+    if index == 22 {
+        return input.b22
+    }
+    if index == 23 {
+        return input.b23
+    }
+    return -1
+}
+
+# A big-endian pair. Both halves are byte values by construction, so the sum
+# cannot exceed 65535 and cannot overflow.
+fn read_u16(input: TzdbBytes, index: Int) -> Int {
+    return byte_at(input, index) * 256 + byte_at(input, index + 1)
+}
+
+# Minutes east of UTC, recovered from the biased byte, in seconds.
+fn read_offset(input: TzdbBytes, index: Int) -> Int {
+    return (byte_at(input, index) - offset_bias()) * seconds_per_minute()
+}
+
+# The digest covers every byte the rules are made of, which is bytes 0..15 —
+# the digest byte itself is excluded so it can be compared against what was
+# computed. Written out rather than looped because the Core has no loops, and
+# the byte count is fixed by the format.
+fn content_digest(input: TzdbBytes) -> Int {
+    let total: Int = byte_at(input, 0)
+        + byte_at(input, 1)
+        + byte_at(input, 2)
+        + byte_at(input, 3)
+        + byte_at(input, 4)
+        + byte_at(input, 5)
+        + byte_at(input, 6)
+        + byte_at(input, 7)
+        + byte_at(input, 8)
+        + byte_at(input, 9)
+        + byte_at(input, 10)
+        + byte_at(input, 11)
+        + byte_at(input, 12)
+        + byte_at(input, 13)
+        + byte_at(input, 14)
+        + byte_at(input, 15)
+    return total % digest_modulus()
+}
+
+# ---------------------------------------------------------------- reading
+
+fn read_error(code: Int, detail: Int) -> ReadResult {
+    let result: ReadResult = ReadResult(
+        code: code,
+        detail: detail,
+        version: 0,
+        zone_code: 0,
+        transition_count: 0,
+        digest: 0,
+        t0_at: 0,
+        t0_before: 0,
+        t0_after: 0,
+        t1_at: 0,
+        t1_before: 0,
+        t1_after: 0
+    )
+    return result
+}
+
+# The first byte position whose magic value is wrong, or -1 when the magic is
+# intact. Reporting the position rather than a bare "malformed" is what lets a
+# caller say which byte disagreed.
+fn magic_fault(input: TzdbBytes) -> Int {
+    if byte_at(input, 0) != magic_k() {
+        return 0
+    }
+    if byte_at(input, 1) != magic_t() {
+        return 1
+    }
+    if byte_at(input, 2) != magic_z() {
+        return 2
+    }
+    if byte_at(input, 3) != magic_one() {
+        return 3
+    }
+    if byte_at(input, 7) != 0 {
+        return 7
+    }
+    return -1
+}
+
+# The order below is the contract, and the gate reads it: size before shape,
+# shape before version, version before zone, zone before bounds, bounds before
+# digest. A digest computed over bytes whose length was never checked would be
+# a digest over whatever happened to be in the slots.
+fn read_tzdb(input: TzdbBytes) -> ReadResult {
+    if input.length > byte_capacity() {
+        return read_error(code_oversized_input(), input.length)
+    }
+    if input.length < fixture_length() {
+        return read_error(code_truncated_input(), input.length)
+    }
+    if input.length > fixture_length() {
+        return read_error(code_trailing_bytes(), input.length)
+    }
+
+    let fault: Int = magic_fault(input)
+    if fault >= 0 {
+        return read_error(code_malformed_header(), fault)
+    }
+
+    let version: Int = byte_at(input, 4)
+    if version != supported_version() {
+        return read_error(code_unsupported_version(), version)
+    }
+
+    let zone_code: Int = byte_at(input, 5)
+    if zone_code != fixture_zone_code() {
+        return read_error(code_invalid_zone(), zone_code)
+    }
+
+    let count: Int = byte_at(input, 6)
+    if count > max_transitions() {
+        return read_error(code_limit_exhausted(), count)
+    }
+
+    let digest: Int = byte_at(input, 16)
+    let computed: Int = content_digest(input)
+    if computed != digest {
+        return read_error(code_digest_mismatch(), computed)
+    }
+
+    let result: ReadResult = ReadResult(
+        code: code_ok(),
+        detail: 0,
+        version: version,
+        zone_code: zone_code,
+        transition_count: count,
+        digest: digest,
+        t0_at: read_u16(input, 8),
+        t0_before: read_offset(input, 10),
+        t0_after: read_offset(input, 11),
+        t1_at: read_u16(input, 12),
+        t1_before: read_offset(input, 14),
+        t1_after: read_offset(input, 15)
+    )
+    return result
+}
+
+fn read_result_tzdb(result: ReadResult) -> Tzdb {
+    let database: Tzdb = Tzdb(
+        version: result.version,
+        zone_code: result.zone_code,
+        transition_count: result.transition_count,
+        digest: result.digest,
+        t0_at: result.t0_at,
+        t0_before: result.t0_before,
+        t0_after: result.t0_after,
+        t1_at: result.t1_at,
+        t1_before: result.t1_before,
+        t1_after: result.t1_after
+    )
+    return database
+}
+
+fn transition_zero(database: Tzdb) -> Transition {
+    let transition: Transition = Transition(
+        at_seconds: database.t0_at,
+        offset_before: database.t0_before,
+        offset_after: database.t0_after
+    )
+    return transition
+}
+
+fn transition_one(database: Tzdb) -> Transition {
+    let transition: Transition = Transition(
+        at_seconds: database.t1_at,
+        offset_before: database.t1_before,
+        offset_after: database.t1_after
+    )
+    return transition
+}
+
+# ----------------------------------------------------------- bounded lookup
+
+# 1 when `value` is at or past `boundary`, 0 otherwise. Four of these make the
+# lookup below.
+fn at_or_past(value: Int, boundary: Int) -> Int {
+    if value >= boundary {
+        return 1
+    }
+    return 0
+}
+
+# The local-time boundaries a transition creates, in order. A forward jump
+# opens a gap between `at + before` and `at + after`; a backward jump opens a
+# fold between `at + after` and `at + before`. Both are half-open at the top.
+fn boundary_low(transition: Transition) -> Int {
+    if transition.offset_after > transition.offset_before {
+        return transition.at_seconds + transition.offset_before
+    }
+    return transition.at_seconds + transition.offset_after
+}
+
+fn boundary_high(transition: Transition) -> Int {
+    if transition.offset_after > transition.offset_before {
+        return transition.at_seconds + transition.offset_after
+    }
+    return transition.at_seconds + transition.offset_before
+}
+
+# The interval a local reading falls in, as a rank over the four boundaries:
+#
+#   0  before the first transition
+#   1  inside the first transition's gap or fold
+#   2  between the transitions
+#   3  inside the second transition's gap or fold
+#   4  after the second transition
+#
+# The rank is a sum of four comparisons, so the comparison count and the
+# control flow are the same for every input. That is a stronger property than
+# a binary search over the same four boundaries, which the issue also allows:
+# a replay cannot take a different path through the table, because there is
+# only one path. No branch here selects an offset; the rank does not know what
+# an offset is.
+fn interval_rank(
+    local: LocalDateTime,
+    first: Transition,
+    second: Transition
+) -> Int {
+    return at_or_past(local.local_seconds, boundary_low(first))
+        + at_or_past(local.local_seconds, boundary_high(first))
+        + at_or_past(local.local_seconds, boundary_low(second))
+        + at_or_past(local.local_seconds, boundary_high(second))
+}
+
+fn resolution_error(code: Int, detail: Int, database: Tzdb) -> Resolution {
+    let result: Resolution = Resolution(
+        code: code,
+        detail: detail,
+        kind: 0,
+        primary: 0,
+        secondary: 0,
+        zone_code: database.zone_code,
+        version: database.version,
+        digest: database.digest
+    )
+    return result
+}
+
+fn resolution_value(
+    kind: Int,
+    primary: Int,
+    secondary: Int,
+    database: Tzdb
+) -> Resolution {
+    let result: Resolution = Resolution(
+        code: code_ok(),
+        detail: 0,
+        kind: kind,
+        primary: primary,
+        secondary: secondary,
+        zone_code: database.zone_code,
+        version: database.version,
+        digest: database.digest
+    )
+    return result
+}
+
+# A gap is a forward jump, a fold is a backward one. Reading the direction from
+# the transition rather than from the rank means the two cases cannot be
+# swapped by editing the boundary order.
+fn transition_resolution(transition: Transition, database: Tzdb) -> Resolution {
+    if transition.offset_after > transition.offset_before {
+        return resolution_value(
+            kind_nonexistent(),
+            transition.offset_before,
+            transition.offset_after,
+            database
+        )
+    }
+    return resolution_value(
+        kind_ambiguous(),
+        transition.offset_before,
+        transition.offset_after,
+        database
+    )
+}
+
+# Resolving a local reading is the operation that can fail to name one instant,
+# so it is the one that returns the closed sum. Every branch names an offset it
+# read from the table; none defaults.
+fn resolve_local(local: LocalDateTime, database: Tzdb) -> Resolution {
+    if database.transition_count != max_transitions() {
+        return resolution_error(
+            code_limit_exhausted(),
+            database.transition_count,
+            database
+        )
+    }
+    let first: Transition = transition_zero(database)
+    let second: Transition = transition_one(database)
+
+    # An offset is added to a local reading to reach an instant, so a reading
+    # close enough to the Int limit that the addition would wrap is a typed
+    # error rather than an instant in the distant past.
+    if local.local_seconds > int_max() - second.offset_before {
+        return resolution_error(
+            code_arithmetic_overflow(),
+            local.local_seconds,
+            database
+        )
+    }
+
+    let rank: Int = interval_rank(local, first, second)
+    if rank == 0 {
+        return resolution_value(
+            kind_unique(),
+            first.offset_before,
+            first.offset_before,
+            database
+        )
+    }
+    if rank == 1 {
+        return transition_resolution(first, database)
+    }
+    if rank == 2 {
+        return resolution_value(
+            kind_unique(),
+            first.offset_after,
+            first.offset_after,
+            database
+        )
+    }
+    if rank == 3 {
+        return transition_resolution(second, database)
+    }
+    return resolution_value(
+        kind_unique(),
+        second.offset_after,
+        second.offset_after,
+        database
+    )
+}
+
+# Resolving an instant cannot be ambiguous: an instant already names one point
+# on the UTC time line, and exactly one offset is in force there. It is here so
+# the difference is visible in the output rather than argued for in a comment.
+fn resolve_instant(instant: Instant, database: Tzdb) -> Resolution {
+    if database.transition_count != max_transitions() {
+        return resolution_error(
+            code_limit_exhausted(),
+            database.transition_count,
+            database
+        )
+    }
+    let first: Transition = transition_zero(database)
+    let second: Transition = transition_one(database)
+    let rank: Int = at_or_past(instant.epoch_seconds, first.at_seconds)
+        + at_or_past(instant.epoch_seconds, second.at_seconds)
+    if rank == 0 {
+        return resolution_value(
+            kind_unique(),
+            first.offset_before,
+            first.offset_before,
+            database
+        )
+    }
+    if rank == 1 {
+        return resolution_value(
+            kind_unique(),
+            first.offset_after,
+            first.offset_after,
+            database
+        )
+    }
+    return resolution_value(
+        kind_unique(),
+        second.offset_after,
+        second.offset_after,
+        database
+    )
+}
+
+# --------------------------------------------------------- canonical output
+
+# Every serialized result binds the zone, the value asked about, the answer,
+# and the provenance of the rules that produced it. A result that omitted the
+# version and digest would be indistinguishable from one produced by different
+# rules, which is the drift this record exists to make observable.
+fn emit_resolution(subject: Int, resolution: Resolution) -> Int {
+    print(resolution.zone_code)
+    print(subject)
+    let kind: ResolutionKind = resolution_kind(
+        resolution.kind,
+        resolution.primary
+    )
+    print(resolution_kind_code(kind))
+    print(resolution_kind_offset(kind))
+    print(resolution.secondary)
+    print(resolution.version)
+    print(resolution.digest)
+    return 0
+}
+
+fn emit_error(code: Int, detail: Int) -> Int {
+    let error: TzdbError = tzdb_error(code, detail)
+    print(tzdb_error_code(error))
+    print(tzdb_error_detail(error))
+    return 0
+}
+
+# ------------------------------------------------------------- the fixture
+
+# The committed 17-byte fixture. Transition 0 springs forward at 10000 seconds
+# from +00:00 to +01:00, opening a gap over local [10000, 13600). Transition 1
+# falls back at 20000 seconds from +01:00 to +00:00, opening a fold over local
+# [20000, 23600).
+fn fixture_bytes() -> TzdbBytes {
+    let input: TzdbBytes = TzdbBytes(
+        length: 17,
+        b0: 75,
+        b1: 84,
+        b2: 90,
+        b3: 49,
+        b4: 1,
+        b5: 7,
+        b6: 2,
+        b7: 0,
+        b8: 39,
+        b9: 16,
+        b10: 128,
+        b11: 188,
+        b12: 78,
+        b13: 32,
+        b14: 188,
+        b15: 128,
+        b16: 101,
+        b17: 0,
+        b18: 0,
+        b19: 0,
+        b20: 0,
+        b21: 0,
+        b22: 0,
+        b23: 0
+    )
+    return input
+}
+
+# The fixture with one byte replaced. This is how every malformed vector below
+# is built: from the good bytes, with exactly one thing wrong, so the error the
+# reader reports is attributable to that one change.
+fn fixture_with(index: Int, value: Int, length: Int) -> TzdbBytes {
+    let good: TzdbBytes = fixture_bytes()
+    let mut v0 = good.b0
+    let mut v1 = good.b1
+    let mut v4 = good.b4
+    let mut v5 = good.b5
+    let mut v6 = good.b6
+    let mut v7 = good.b7
+    let mut v16 = good.b16
+    if index == 0 {
+        v0 = value
+    }
+    if index == 1 {
+        v1 = value
+    }
+    if index == 4 {
+        v4 = value
+    }
+    if index == 5 {
+        v5 = value
+    }
+    if index == 6 {
+        v6 = value
+    }
+    if index == 7 {
+        v7 = value
+    }
+    if index == 16 {
+        v16 = value
+    }
+    let edited: TzdbBytes = TzdbBytes(
+        length: length,
+        b0: v0,
+        b1: v1,
+        b2: good.b2,
+        b3: good.b3,
+        b4: v4,
+        b5: v5,
+        b6: v6,
+        b7: v7,
+        b8: good.b8,
+        b9: good.b9,
+        b10: good.b10,
+        b11: good.b11,
+        b12: good.b12,
+        b13: good.b13,
+        b14: good.b14,
+        b15: good.b15,
+        b16: v16,
+        b17: good.b17,
+        b18: good.b18,
+        b19: good.b19,
+        b20: good.b20,
+        b21: good.b21,
+        b22: good.b22,
+        b23: good.b23
+    )
+    return edited
+}
+
+fn local_at(seconds: Int) -> LocalDateTime {
+    let value: LocalDateTime = LocalDateTime(local_seconds: seconds)
+    return value
+}
+
+fn instant_at(seconds: Int) -> Instant {
+    let value: Instant = Instant(epoch_seconds: seconds)
+    return value
+}
+
+fn zone_of(database: Tzdb) -> ZoneId {
+    let zone: ZoneId = ZoneId(code: database.zone_code)
+    return zone
+}
+
+fn offset_of(resolution: Resolution) -> UtcOffset {
+    let offset: UtcOffset = UtcOffset(total_seconds: resolution.primary)
+    return offset
+}
+
+# A malformed vector: read it, and report the typed error it produced. A vector
+# that unexpectedly reads cleanly prints code_ok() and is caught by the gate.
+fn report_read(input: TzdbBytes) -> Int {
+    let result: ReadResult = read_tzdb(input)
+    return emit_error(result.code, result.detail)
+}
+
+fn main() -> Int {
+    # --- the good fixture reads, and its provenance is what was written
+    let input: TzdbBytes = fixture_bytes()
+    let read: ReadResult = read_tzdb(input)
+    print(read.code)
+    let database: Tzdb = read_result_tzdb(read)
+    let zone: ZoneId = zone_of(database)
+    print(zone.code)
+    print(database.version)
+    print(database.digest)
+    print(database.transition_count)
+
+    # --- the transitions the bytes described, in seconds
+    let first: Transition = transition_zero(database)
+    let second: Transition = transition_one(database)
+    print(first.at_seconds)
+    print(first.offset_before)
+    print(first.offset_after)
+    print(second.at_seconds)
+    print(second.offset_before)
+    print(second.offset_after)
+
+    # --- a normal local reading before any transition
+    emit_resolution(5000, resolve_local(local_at(5000), database))
+
+    # --- inside the gap: no instant has this local reading
+    emit_resolution(12000, resolve_local(local_at(12000), database))
+
+    # --- between the transitions, the single summer offset
+    emit_resolution(16000, resolve_local(local_at(16000), database))
+
+    # --- inside the fold: two instants have this local reading
+    emit_resolution(21000, resolve_local(local_at(21000), database))
+
+    # --- after both transitions
+    emit_resolution(30000, resolve_local(local_at(30000), database))
+
+    # --- the boundaries themselves: gap and fold are half-open at the top
+    emit_resolution(10000, resolve_local(local_at(10000), database))
+    emit_resolution(13600, resolve_local(local_at(13600), database))
+    emit_resolution(20000, resolve_local(local_at(20000), database))
+    emit_resolution(23600, resolve_local(local_at(23600), database))
+
+    # --- an instant is never ambiguous, including at the fold's own instant
+    emit_resolution(5000, resolve_instant(instant_at(5000), database))
+    emit_resolution(16000, resolve_instant(instant_at(16000), database))
+    emit_resolution(20000, resolve_instant(instant_at(20000), database))
+
+    # --- the offset shape a caller receives is a distinct type
+    let folded: Resolution = resolve_local(local_at(21000), database)
+    let earlier: UtcOffset = offset_of(folded)
+    print(earlier.total_seconds)
+    print(folded.secondary)
+
+    # --- every malformed vector, each one byte away from the good fixture
+    report_read(fixture_with(0, 76, 17))
+    report_read(fixture_with(7, 1, 17))
+    report_read(fixture_with(4, 2, 17))
+    report_read(fixture_with(5, 8, 17))
+    report_read(fixture_with(6, 3, 17))
+    report_read(fixture_with(16, 100, 17))
+    report_read(fixture_with(16, 101, 16))
+    report_read(fixture_with(16, 101, 18))
+    report_read(fixture_with(16, 101, 25))
+
+    # --- a local reading close enough to the Int limit that adding an offset
+    #     would wrap is refused rather than answered
+    let overflowed: Resolution = resolve_local(local_at(int_max()), database)
+    emit_error(overflowed.code, overflowed.detail)
+
+    return 0
+}

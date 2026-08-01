@@ -1,0 +1,22 @@
+# An instant is not a local reading. Handing one to the resolver that answers
+# Unique/Ambiguous/Nonexistent would ask a question that has no gap or fold,
+# and would silently answer it. The types refuse it; this file exists so the
+# gate can prove they do.
+
+type Instant = {
+    epoch_seconds: Int,
+}
+
+type LocalDateTime = {
+    local_seconds: Int,
+}
+
+fn resolve_local(local: LocalDateTime) -> Int {
+    return local.local_seconds
+}
+
+fn main() -> Int {
+    let moment: Instant = Instant(epoch_seconds: 21000)
+    print(resolve_local(moment))
+    return 0
+}

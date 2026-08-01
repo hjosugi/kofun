@@ -1,0 +1,13 @@
+# A local reading has no epoch. Reading one off it would produce a number that
+# looks like an instant and is not one, which is exactly the confusion the two
+# separate shapes exist to prevent.
+
+type LocalDateTime = {
+    local_seconds: Int,
+}
+
+fn main() -> Int {
+    let wall: LocalDateTime = LocalDateTime(local_seconds: 21000)
+    print(wall.epoch_seconds)
+    return 0
+}
