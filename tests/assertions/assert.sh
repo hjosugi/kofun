@@ -98,6 +98,43 @@ assert_present() {
     fi
 }
 
+# assert_grep LABEL GREP-ARGS... — the grep must match.
+# assert_not_grep LABEL GREP-ARGS... — the grep must not match.
+#
+# The caller's flags are passed through untouched: `-F`, `-x`, `-E` and `--`
+# each change what the pattern means, so rewriting them would change the
+# assertion. Output is discarded here, which is what `-q` or a `>/dev/null`
+# redirect was doing at the call site; the difference is that a failure now
+# says which pattern did not match, in which file.
+# grep answers three ways, and collapsing them would lose what the silenced
+# call still had: 0 matched, 1 did not match, anything else is grep failing —
+# an unreadable file, a bad pattern. Before this helper existed a missing file
+# printed grep's own "No such file or directory"; reporting it as "no match"
+# would be a quieter gate than the one being replaced.
+assert_grep() {
+    kofun_assert_label=$1
+    shift
+    kofun_assert_status=0
+    kofun_assert_error=$(grep "$@" 2>&1 >/dev/null) || kofun_assert_status=$?
+    if test "$kofun_assert_status" -eq 1; then
+        assert_fail "$kofun_assert_label: no match for: grep $*"
+    elif test "$kofun_assert_status" -ne 0; then
+        assert_fail "$kofun_assert_label: grep failed (status $kofun_assert_status): ${kofun_assert_error:-grep $*}"
+    fi
+}
+
+assert_not_grep() {
+    kofun_assert_label=$1
+    shift
+    kofun_assert_status=0
+    kofun_assert_error=$(grep "$@" 2>&1 >/dev/null) || kofun_assert_status=$?
+    if test "$kofun_assert_status" -eq 0; then
+        assert_fail "$kofun_assert_label: unexpected match for: grep $*"
+    elif test "$kofun_assert_status" -ne 1; then
+        assert_fail "$kofun_assert_label: grep failed (status $kofun_assert_status): ${kofun_assert_error:-grep $*}"
+    fi
+}
+
 # assert_regular_file LABEL PATH — the path exists and is a regular file. Kept
 # separate from assert_present because `test -f` and `test -e` are not the same
 # assertion, and mapping one onto the other quietly weakens a gate.

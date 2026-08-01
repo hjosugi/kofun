@@ -150,7 +150,8 @@ set -e
 assert_num "negated minimum status" "$negated_minimum_status" -eq 1
 assert_file_empty "negated-int64-minimum.stdout" \
     "$WORK/negated-int64-minimum.stdout"
-grep -Fxq \
+assert_grep "negated-int64-minimum.stderr" \
+    -Fxq \
     'error[R010]: integer overflow in unary operator `-`' \
     "$WORK/negated-int64-minimum.stderr"
 
@@ -207,16 +208,20 @@ assert_file_empty "parenthesized-nesting-257.stdout" \
     "$WORK/parenthesized-nesting-257.stdout"
 assert_file_empty "unary-nesting-257.stdout" "$WORK/unary-nesting-257.stdout"
 assert_file_empty "mixed-nesting-257.stdout" "$WORK/mixed-nesting-257.stdout"
-grep -Fxq \
+assert_grep "nesting-257.stderr" \
+    -Fxq \
     'kofun wasm32: line 2: expression nesting exceeds wasm32 limit of 256' \
     "$WORK/nesting-257.stderr"
-grep -Fxq \
+assert_grep "parenthesized-nesting-257.stderr" \
+    -Fxq \
     'kofun wasm32: line 2: expression nesting exceeds wasm32 limit of 256' \
     "$WORK/parenthesized-nesting-257.stderr"
-grep -Fxq \
+assert_grep "unary-nesting-257.stderr" \
+    -Fxq \
     'kofun wasm32: line 2: expression nesting exceeds wasm32 limit of 256' \
     "$WORK/unary-nesting-257.stderr"
-grep -Fxq \
+assert_grep "mixed-nesting-257.stderr" \
+    -Fxq \
     'kofun wasm32: line 2: expression nesting exceeds wasm32 limit of 256' \
     "$WORK/mixed-nesting-257.stderr"
 for temporary in "$WORK"/preserved.wasm.tmp.*
@@ -238,14 +243,18 @@ assert_file_empty "sample.stderr" "$WORK/sample.stderr"
     >"$WORK/browser-build.stdout"
 node "$ROOT/examples/wasm-browser/check.mjs" "$WORK/browser/app.wasm" \
     >"$WORK/browser-check.stdout"
-grep -Fq \
+assert_grep "browser-check.stdout" \
+    -Fq \
     'PASS: browser host loaded and rendered Kofun WebAssembly' \
     "$WORK/browser-check.stdout"
-grep -Fq \
+assert_grep "browser-check.stdout" \
+    -Fq \
     'PASS: viewport lazy loading deferred the wasm fetch' \
     "$WORK/browser-check.stdout"
-grep -Fq 'data-kofun-wasm="./app.wasm"' "$WORK/browser/index.html"
-grep -Fq 'src="./main.mjs"' "$WORK/browser/index.html"
+assert_grep "browser/index.html" \
+    -Fq 'data-kofun-wasm="./app.wasm"' "$WORK/browser/index.html"
+assert_grep "browser/index.html" \
+    -Fq 'src="./main.mjs"' "$WORK/browser/index.html"
 cmp "$ROOT/examples/wasm-browser/main.mjs" "$WORK/browser/main.mjs"
 
 set +e
@@ -275,11 +284,17 @@ assert_absent "debug.wasm" "$WORK/debug.wasm"
 assert_num "slash status" "$slash_status" -eq 1
 assert_absent "reject-slash.wasm" "$WORK/reject-slash.wasm"
 assert_file_empty "reject-slash.stdout" "$WORK/reject-slash.stdout"
-grep -Fq '`/` is not defined on Int; use `//` for the integer quotient' \
+assert_grep "reject-slash.stderr" \
+    -Fq \
+    '`/` is not defined on Int; use `//` for the integer quotient' \
     "$WORK/reject-slash.stderr"
-grep -Fq 'unsupported token in wasm32 arithmetic Core' \
+assert_grep "unsupported.stderr" \
+    -Fq \
+    'unsupported token in wasm32 arithmetic Core' \
     "$WORK/unsupported.stderr"
-grep -Fq -- \
+assert_grep "debug.stderr" \
+    -Fq \
+    -- \
     '-g currently requires --target x86_64-linux or --target aarch64-linux' \
     "$WORK/debug.stderr"
 
@@ -327,7 +342,8 @@ for (const path of list) {
 }
 console.log(`validated ${list.length} function modules`);
 ' "$WORK/function-modules.list" >"$WORK/function-validate.stdout"
-grep -Fxq 'validated 12 function modules' "$WORK/function-validate.stdout"
+assert_grep "function-validate.stdout" \
+    -Fxq 'validated 12 function modules' "$WORK/function-validate.stdout"
 
 # A call evaluates its arguments left to right and exactly once. Both arguments
 # below overflow under a different checked operator, so the diagnostic that
@@ -355,9 +371,13 @@ assert_num "argument order mirrored status" \
 assert_file_empty "argument-order.stdout" "$WORK/argument-order.stdout"
 assert_file_empty "argument-order-mirrored.stdout" \
     "$WORK/argument-order-mirrored.stdout"
-grep -Fxq 'error[R010]: integer overflow in operator `+`' \
+assert_grep "argument-order.stderr" \
+    -Fxq \
+    'error[R010]: integer overflow in operator `+`' \
     "$WORK/argument-order.stderr"
-grep -Fxq 'error[R010]: integer overflow in operator `-`' \
+assert_grep "argument-order-mirrored.stderr" \
+    -Fxq \
+    'error[R010]: integer overflow in operator `-`' \
     "$WORK/argument-order-mirrored.stderr"
 
 # Every refused function signature, call, and body fails through both the
@@ -390,7 +410,8 @@ reject_function_fixture() {
     assert_file_empty "reject-$fixture.stdout" "$WORK/reject-$fixture.stdout"
     assert_file_empty "reject-$fixture-sanitized.stdout" \
         "$WORK/reject-$fixture-sanitized.stdout"
-    grep -Fxq "kofun wasm32: $expected" "$WORK/reject-$fixture.stderr"
+    assert_grep "reject-$fixture.stderr" \
+        -Fxq "kofun wasm32: $expected" "$WORK/reject-$fixture.stderr"
     grep -Fxq "kofun wasm32: $expected" \
         "$WORK/reject-$fixture-sanitized.stderr"
 }
