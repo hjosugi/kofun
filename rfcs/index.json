@@ -580,6 +580,30 @@
         "corpus_query": "git grep -lE '^bench ' -- '*.kofun' | wc -l",
         "result": "0 files. No tracked Kofun source declares a benchmark."
       }
+    },
+    {
+      "id": "RFC-0001",
+      "title": "Allocator choice is a scoped, effect-tracked capability",
+      "provenance": "rfc",
+      "state": "proposed",
+      "shepherd": "hjosugi",
+      "source": "rfcs/0001-allocator-capability.md",
+      "document": "rfcs/0001-allocator-capability.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/573",
+      "dates": {
+        "opened_on": "2026-08-01",
+        "review_closed_on": "2026-08-15",
+        "decided_on": "2026-08-15"
+      },
+      "normative_spec": [
+        "rfcs/0001-allocator-capability.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "Everything proposed is new surface: the `alloc` effect label, the `Alloc` capability and its authority derivation, region-tagged values, diagnostics E340-E343 and R030, capability-taking standard-library variants, and a contextual `with` allocator scope. The managed default stays the default and existing signatures keep their meaning, so no tracked program changes meaning or stops compiling.",
+        "corpus_query": "git grep -niE '\\ballocator\\b' -- '*.kofun' | wc -l; git grep -nE '^[[:space:]]*with\\b' -- '*.kofun' | wc -l",
+        "result": "0 and 0 across 761 tracked `.kofun` sources: no tracked Kofun source names an allocator, and none begins a statement with `with`, so the contextual keyword and the new surface collide with nothing."
+      }
     }
   ]
 }
