@@ -1,0 +1,26 @@
+# contract: kofun.backend-differential/v1
+# expect-stdout: 3e0
+# expect-stdout: -3e0
+# expect-stdout: 2e0
+# expect-stdout: -2e0
+# expect-stdout: 2e0
+# expect-stdout: -2e0
+# expect-stdout: 2e0
+# expect-stdout: -3e0
+# expect-stdout: 3e0
+# expect-stdout: -2e0
+# expect-stdout: 2e0
+
+fn main() {
+    print(Decimal.round(2.5, 0, HalfUp))
+    print(Decimal.round(-2.5, 0, HalfUp))
+    print(Decimal.round(2.5, 0, HalfEven))
+    print(Decimal.round(-2.5, 0, HalfEven))
+    print(Decimal.round(2.5, 0, TowardZero))
+    print(Decimal.round(-2.5, 0, TowardZero))
+    print(Decimal.round(2.5, 0, Floor))
+    print(Decimal.round(-2.5, 0, Floor))
+    print(Decimal.round(2.5, 0, Ceiling))
+    print(Decimal.round(-2.5, 0, Ceiling))
+    print(Decimal.round(1.999, 2, HalfUp))
+}

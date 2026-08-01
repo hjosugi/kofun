@@ -143,7 +143,7 @@ do
 done
 grep -a -q 'stage2-semantic-v1' "$WORK/plain/producer-complete.kse"
 grep -a -q 'E2S16' "$WORK/plain/producer-unknown.kse"
-grep -a -q 'E2S12' "$WORK/plain/producer-type-error.kse"
+grep -a -q 'E2S15' "$WORK/plain/producer-type-error.kse"
 grep -a -q 'E007' "$WORK/plain/producer-ownership.kse"
 grep -a -q 'E2S03' "$WORK/plain/producer-recovery.kse"
 

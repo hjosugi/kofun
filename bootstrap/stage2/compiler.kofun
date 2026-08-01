@@ -2439,7 +2439,8 @@ fn primary_end(source: Text, start: Int) -> Int {
         return -1
     }
     let kind = token_kind(source, cursor)
-    if kind == "integer" || kind == "decimal" || kind == "float" {
+    if kind == "integer" || kind == "decimal" || kind == "float" ||
+       kind == "string" {
         return field_postfix_end(source, token_end(source, cursor))
     }
     if kind == "identifier" {
@@ -2447,16 +2448,30 @@ fn primary_end(source: Text, start: Int) -> Int {
             let dot = skip_trivia(source, token_end(source, cursor))
             let member = skip_trivia(source, token_end(source, dot))
             let open = skip_trivia(source, token_end(source, member))
-            let argument = skip_trivia(source, token_end(source, open))
-            let bound = expression_end(source, argument)
-            if bound < 0 {
-                return -1
+            let mut argument = skip_trivia(source, token_end(source, open))
+            if argument < len(source) && token_text(source, argument) == ")" {
+                return field_postfix_end(source, token_end(source, argument))
             }
-            let close = skip_trivia(source, bound)
-            if close >= len(source) || token_text(source, close) != ")" {
-                return -1
+            while argument < len(source) {
+                let bound = argument_end(source, argument)
+                if bound < 0 {
+                    return -1
+                }
+                let separator = skip_trivia(source, bound)
+                if separator < len(source) &&
+                   token_text(source, separator) == ")" {
+                    return field_postfix_end(
+                        source,
+                        token_end(source, separator)
+                    )
+                }
+                if separator >= len(source) ||
+                   token_text(source, separator) != "," {
+                    return -1
+                }
+                argument = skip_trivia(source, token_end(source, separator))
             }
-            return field_postfix_end(source, token_end(source, close))
+            return -1
         }
         let open = skip_trivia(source, token_end(source, cursor))
         if open >= len(source) || token_text(source, open) != "(" {
@@ -2800,19 +2815,52 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
         return "INT64_C(" +
         replace(text_slice(source, cursor, end), "_", "") + ")"
     }
+    if kind == "string" {
+        return text_slice(source, cursor, token_end(source, cursor))
+    }
     if kind == "identifier" {
-        if numeric_conversion_at(source, cursor) == "Decimal.from_int" {
+        let numeric_member = numeric_conversion_at(source, cursor)
+        if len(numeric_member) > 0 {
             let dot = skip_trivia(source, token_end(source, cursor))
             let member = skip_trivia(source, token_end(source, dot))
             let open = skip_trivia(source, token_end(source, member))
-            let argument = skip_trivia(source, token_end(source, open))
-            let argument_end = expression_end(source, argument)
-            return "kofun_decimal_value_from_int(" + emit_expression(
-                source,
-                hir,
-                argument,
-                argument_end
-            ) + ")"
+            let first = numeric_member_argument(source, open, 0)
+            let first_end = argument_end(source, first)
+            if numeric_member == "Decimal.from_int" {
+                return "kofun_decimal_value_from_int(" + emit_expression(
+                    source, hir, first, first_end) + ")"
+            }
+            if numeric_member == "Decimal.round" {
+                let scale = numeric_member_argument(source, open, 1)
+                let mode = numeric_member_argument(source, open, 2)
+                return "kofun_decimal_value_round(" + emit_expression(
+                    source, hir, first, first_end) + ", " + emit_expression(
+                    source, hir, scale, argument_end(source, scale)) + ", " +
+                    decimal_rounding_c_name(token_text(source, mode)) + ")"
+            }
+            if numeric_member == "Decimal.divide" {
+                let right = numeric_member_argument(source, open, 1)
+                let scale = numeric_member_argument(source, open, 2)
+                let mode = numeric_member_argument(source, open, 3)
+                return "kofun_decimal_value_divide_rounded(" +
+                emit_expression(source, hir, first, first_end) + ", " +
+                emit_expression(
+                    source, hir, right, argument_end(source, right)) + ", " +
+                emit_expression(
+                    source, hir, scale, argument_end(source, scale)) + ", " +
+                decimal_rounding_c_name(token_text(source, mode)) + ")"
+            }
+            if numeric_member == "Decimal.format" {
+                let scale = numeric_member_argument(source, open, 1)
+                return "kofun_decimal_value_format(" + emit_expression(
+                    source, hir, first, first_end) + ", " + emit_expression(
+                    source, hir, scale, argument_end(source, scale)) + ")"
+            }
+            if numeric_member == "Decimal.parse" {
+                let text = emit_expression(source, hir, first, first_end)
+                return "kofun_decimal_value_parse(" + text +
+                ", strlen(" + text + "))"
+            }
         }
         let name = token_text(source, cursor)
         let open = skip_trivia(source, token_end(source, cursor))
@@ -6466,6 +6514,7 @@ fn build_scope_hir_mode(
                    !initializer_token &&
                    !pattern_token && !lambda_token &&
                    !numeric_conversion_head(source, cursor) &&
+                   !decimal_rounding_mode_name(name) &&
                    name != "print" && name != "_" {
                     let mut scope_open = lambda_scope_open(
                         source,
@@ -7156,6 +7205,7 @@ fn lower_body(
                 }
                 binding_type = token_text(source, cursor)
                 if binding_type != "Int" &&
+                   binding_type != "Text" &&
                    binding_type != "Decimal" &&
                    binding_type != "Float" &&
                    binding_type != "DecimalResult" &&
@@ -7171,6 +7221,7 @@ fn lower_body(
             }
             let value_start = skip_trivia(source, token_end(source, cursor))
             if binding_type != "Int" &&
+               binding_type != "Text" &&
                binding_type != "Decimal" &&
                binding_type != "Float" &&
                binding_type != "DecimalResult" {
@@ -7370,6 +7421,16 @@ fn lower_body(
                     to_text(value_start)
                 }
                 let inferred_type = hir_binding_field(hir, binding_id, 5)
+                let actual_type = initializer_type(
+                    source,
+                    hir,
+                    function_open,
+                    value_start
+                )
+                if actual_type != inferred_type {
+                    return "error[E2S15]: initializer type mismatch at byte " +
+                    to_text(value_start)
+                }
                 let mut c_type = "int64_t"
                 if inferred_type == "Decimal" {
                     c_type = "KofunDecimal *"
@@ -7377,9 +7438,11 @@ fn lower_body(
                     c_type = "double"
                 } else if inferred_type == "DecimalResult" {
                     c_type = "KofunDecimalResult *"
+                } else if inferred_type == "Text" {
+                    c_type = "const char *"
                 }
                 if mutable && inferred_type != "Int" {
-                    return "error[E2S144]: mutable Decimal, DecimalResult, and Float bindings are outside this lowering slice at byte " +
+                    return "error[E2S144]: mutable Decimal, DecimalResult, Float, and Text bindings are outside this lowering slice at byte " +
                     to_text(value_start)
                 }
                 emitted = emitted + "    " + c_type + " " + storage + " = " +
@@ -7461,6 +7524,11 @@ fn lower_body(
                     "        KofunDecimalResult *kofun_value = " + value +
                     ";\n" + "        printf(\"%s\\n\", " +
                     "kofun_decimal_value_division_name(kofun_value));\n" +
+                    "    }\n"
+                } else if value_type == "Text" {
+                    emitted = emitted + "    {\n" +
+                    "        const char *kofun_value = " + value + ";\n" +
+                    "        printf(\"%s\\n\", kofun_value);\n" +
                     "    }\n"
                 } else {
                     emitted = emitted + "    {\n" +
@@ -8351,6 +8419,52 @@ fn numeric_conversion_at(source: Text, cursor: Int) -> Text {
     return token_text(source, cursor) + "." + token_text(source, member)
 }
 
+# Start of the zero-based argument in a validated numeric member call.
+fn numeric_member_argument(source: Text, open: Int, wanted: Int) -> Int {
+    let mut argument = skip_trivia(source, token_end(source, open))
+    let mut index = 0
+    while argument < len(source) && token_text(source, argument) != ")" {
+        if index == wanted {
+            return argument
+        }
+        let bound = argument_end(source, argument)
+        if bound < 0 {
+            return -1
+        }
+        let separator = skip_trivia(source, bound)
+        if token_text(source, separator) != "," {
+            return -1
+        }
+        argument = skip_trivia(source, token_end(source, separator))
+        index = index + 1
+    }
+    return -1
+}
+
+fn decimal_rounding_mode_name(name: Text) -> Bool {
+    return name == "HalfUp" || name == "HalfEven" ||
+    name == "TowardZero" || name == "Floor" || name == "Ceiling"
+}
+
+fn decimal_rounding_c_name(name: Text) -> Text {
+    if name == "HalfUp" {
+        return "KOFUN_DECIMAL_HALF_UP"
+    }
+    if name == "HalfEven" {
+        return "KOFUN_DECIMAL_HALF_EVEN"
+    }
+    if name == "TowardZero" {
+        return "KOFUN_DECIMAL_TOWARD_ZERO"
+    }
+    if name == "Floor" {
+        return "KOFUN_DECIMAL_FLOOR"
+    }
+    if name == "Ceiling" {
+        return "KOFUN_DECIMAL_CEILING"
+    }
+    return "KOFUN_DECIMAL_HALF_EVEN"
+}
+
 # The result type of a named conversion, or "" when the path is not one.
 #
 # `docs/DECIMAL.md` fixes these three names. `Decimal.from_int` is the only one
@@ -8358,8 +8472,13 @@ fn numeric_conversion_at(source: Text, cursor: Int) -> Text {
 # `validate_numeric_conversions` can reject them for the right reason rather
 # than calling them unknown.
 fn numeric_conversion_result(conversion: Text) -> Text {
-    if conversion == "Decimal.from_int" || conversion == "Decimal.from_float" {
+    if conversion == "Decimal.from_int" || conversion == "Decimal.from_float" ||
+       conversion == "Decimal.round" || conversion == "Decimal.divide" ||
+       conversion == "Decimal.parse" {
         return "Decimal"
+    }
+    if conversion == "Decimal.format" {
+        return "Text"
     }
     if conversion == "Float.from_decimal" {
         return "Float"
@@ -8611,7 +8730,58 @@ fn validate_numeric_annotations(source: Text, hir: Text) -> Text {
     return "ok"
 }
 
-# The three named conversions of `docs/DECIMAL.md`, and what each one costs.
+# Arity and ordinary argument types for the bounded numeric member surface.
+# A blank expected type marks the rounding-mode slot, validated by name below.
+fn numeric_member_expected_arity(member: Text) -> Int {
+    if member == "Decimal.from_int" || member == "Decimal.from_float" {
+        return 1
+    }
+    if member == "Float.from_decimal" || member == "Decimal.format" {
+        return 2
+    }
+    if member == "Decimal.round" {
+        return 3
+    }
+    if member == "Decimal.divide" {
+        return 4
+    }
+    if member == "Decimal.parse" {
+        return 1
+    }
+    return -1
+}
+
+fn numeric_member_expected_type(member: Text, index: Int) -> Text {
+    if member == "Decimal.from_int" {
+        return "Int"
+    }
+    if member == "Decimal.round" {
+        if index == 0 { return "Decimal" }
+        if index == 1 { return "Int" }
+        return ""
+    }
+    if member == "Decimal.divide" {
+        if index == 0 || index == 1 { return "Decimal" }
+        if index == 2 { return "Int" }
+        return ""
+    }
+    if member == "Decimal.format" {
+        if index == 0 { return "Decimal" }
+        return "Int"
+    }
+    if member == "Decimal.parse" {
+        return "Text"
+    }
+    return ""
+}
+
+fn numeric_member_mode_index(member: Text) -> Int {
+    if member == "Decimal.round" { return 2 }
+    if member == "Decimal.divide" { return 3 }
+    return -1
+}
+
+# The named conversions and Decimal slice-5 operations, and what each costs.
 #
 # Conversions are named and explicit because there is no implicit promotion.
 # But naming a conversion is not enough to make it writable: two of the three
@@ -8619,12 +8789,11 @@ fn validate_numeric_annotations(source: Text, hir: Text) -> Text {
 # forbids any ambient rounding context that would let the compiler pick a mode
 # on the programmer's behalf.
 #
-# So `Decimal.from_int` is accepted — Int to Decimal is exact for every input,
-# and needs no mode — while `Float.from_decimal` and `Decimal.from_float` are
-# rejected until slice 5 gives them the rounding mode and policy arguments they
-# require. Rejecting them is the honest outcome: accepting either one today
-# would mean choosing a rounding mode silently, which is the single thing the
-# frozen decisions rule out.
+# `Decimal.from_int` is exact. `Decimal.round` and `Decimal.divide` require both
+# destination scale and a pinned mode; `Decimal.format` requires display scale
+# and refuses to round; `Decimal.parse` consumes explicit text. Cross-radix
+# Float conversions remain refused because their complete policies are not in
+# this bounded slice.
 #
 # The refusal for a *valid* conversion comes last, so a program with both a
 # wrong conversion and a right one reports the wrong one.
@@ -8657,13 +8826,13 @@ fn validate_numeric_conversions(source: Text, hir: Text) -> Text {
                     if len(result) == 0 {
                         return "error[E2S102]: unknown conversion `" +
                         conversion + "` at byte " + to_text(cursor) +
-                        "; known: Decimal.from_int, Decimal.from_float, " +
-                        "Float.from_decimal"
+                        "; known: from_int, round, divide, format, parse"
                     }
-                    if conversion != "Decimal.from_int" {
+                    if conversion == "Decimal.from_float" ||
+                       conversion == "Float.from_decimal" {
                         return "error[E2S103]: `" + conversion +
                         "` cannot be exact at byte " + to_text(cursor) +
-                        "; it needs a rounding mode (#710 slice 5)"
+                        "; its cross-radix policy is not implemented"
                     }
                     let member = skip_trivia(
                         source,
@@ -8674,25 +8843,52 @@ fn validate_numeric_conversions(source: Text, hir: Text) -> Text {
                     )
                     let open = skip_trivia(source, token_end(source, member))
                     let actual = call_arity(source, open)
-                    if actual != 1 {
+                    let expected_arity = numeric_member_expected_arity(
+                        conversion
+                    )
+                    if actual != expected_arity {
                         return "error[E2S17]: Core function `" + conversion +
-                        "` expects 1 arguments, got " + to_text(actual) +
+                        "` expects " + to_text(expected_arity) +
+                        " arguments, got " + to_text(actual) +
                         " at byte " + to_text(cursor)
                     }
-                    let argument = skip_trivia(
-                        source,
-                        token_end(source, open)
-                    )
-                    let argument_type = numeric_primary_type(
-                        source,
-                        hir,
-                        function_open,
-                        argument
-                    )
-                    if len(argument_type) > 0 && argument_type != "Int" {
-                        return "error[E2S15]: builtin `" + conversion +
-                        "` expects Int for argument 1, got " + argument_type +
-                        " at byte " + to_text(argument)
+                    let mode_index = numeric_member_mode_index(conversion)
+                    let mut index = 0
+                    while index < expected_arity {
+                        let argument = numeric_member_argument(
+                            source,
+                            open,
+                            index
+                        )
+                        if index == mode_index {
+                            if token_kind(source, argument) != "identifier" ||
+                               !decimal_rounding_mode_name(
+                                   token_text(source, argument)) {
+                                return "error[E2S15]: builtin `" + conversion +
+                                "` expects HalfUp, HalfEven, TowardZero, " +
+                                "Floor, or Ceiling for argument " +
+                                to_text(index + 1) + " at byte " +
+                                to_text(argument)
+                            }
+                        } else {
+                            let expected = numeric_member_expected_type(
+                                conversion,
+                                index
+                            )
+                            let actual_type = initializer_type(
+                                source,
+                                hir,
+                                function_open,
+                                argument
+                            )
+                            if len(expected) > 0 && actual_type != expected {
+                                return "error[E2S15]: builtin `" + conversion +
+                                "` expects " + expected + " for argument " +
+                                to_text(index + 1) + ", got " + actual_type +
+                                " at byte " + to_text(argument)
+                            }
+                        }
+                        index = index + 1
                     }
                     if valid_conversion < 0 {
                         valid_conversion = cursor

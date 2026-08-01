@@ -206,12 +206,13 @@ tasks:
       - "sh tests/conformance/incremental/run.sh"
 
   decimal:
-    desc: "Verify the Decimal runtime representation and profile"
+    desc: "Verify native Decimal runtime, rounding, formatting, and stdlib"
     cmds:
       - "sh tests/conformance/decimal/run.sh"
+      - "sh stdlib/decimal/tests/verify.sh"
 
   decimal-arithmetic:
-    desc: "Verify Stage 2 C11 Decimal and Float arithmetic"
+    desc: "Verify Stage 2 C11 Decimal/Float arithmetic and rounding"
     cmds:
       - "sh tests/conformance/run.sh tests/conformance/decimal-arithmetic"
 

@@ -7,3 +7,6 @@ status=D001 message=error[D001]: Decimal significand exceeds the profile's digit
 status=D002 message=error[D002]: Decimal scale is outside the profile's range
 status=D003 message=error[D003]: malformed Decimal literal
 status=D004 message=error[D004]: Decimal allocation refused
+status=D005 message=error[D005]: rounded Decimal division by zero
+status=D006 message=error[D006]: invalid Decimal rounding mode
+status=D007 message=error[D007]: Decimal format scale would discard digits

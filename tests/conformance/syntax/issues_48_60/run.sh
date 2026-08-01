@@ -88,9 +88,9 @@ while IFS='|' read -r kind start end line; do
     assert_num "line" "$line" -eq "$actual_line"
 done
 
-grep '^punctuation|.*|.*|.*$' "$temporary/output.tokens" >/dev/null
-grep '^string|.*|.*|.*$' "$temporary/output.tokens" >/dev/null
-grep '^integer|.*|.*|.*$' "$temporary/output.tokens" >/dev/null
+assert_grep "output.tokens" '^punctuation|.*|.*|.*$' "$temporary/output.tokens"
+assert_grep "output.tokens" '^string|.*|.*|.*$' "$temporary/output.tokens"
+assert_grep "output.tokens" '^integer|.*|.*|.*$' "$temporary/output.tokens"
 
 pair_line=$(grep '^punctuation|.*|.*|.*$' "$temporary/output.tokens" |
     while IFS='|' read -r kind start end line; do

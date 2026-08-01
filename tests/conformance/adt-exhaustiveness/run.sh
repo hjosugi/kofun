@@ -70,23 +70,30 @@ expect_failure() {
         printf '%s\n' "expected $code failure for $stem" >&2
         exit 1
     fi
-    grep -F "error[$code]:" "$WORK/$stem.actual" >/dev/null
+    assert_grep "$stem.actual" -F "error[$code]:" "$WORK/$stem.actual"
     test ! -e "$WORK/$stem.typed"
 }
 
 run_success exhaustive "$CASES/fixtures/exhaustive.kofun"
-grep -Fx 'kofun-typed-adt-match/v1' "$WORK/exhaustive.typed" >/dev/null
-grep -F '|adt=Result|adt-symbol=' "$WORK/exhaustive.typed" >/dev/null
-grep -F '|constructor=Ok|constructor-symbol=' "$WORK/exhaustive.typed" >/dev/null
-grep -F '|constructor=Err|constructor-symbol=' "$WORK/exhaustive.typed" >/dev/null
-grep -F '|name=item|role=payload|' "$WORK/exhaustive.typed" >/dev/null
-grep -F '|binding=2|name=item|role=read' "$WORK/exhaustive.typed" >/dev/null
+assert_grep "exhaustive.typed" \
+    -Fx 'kofun-typed-adt-match/v1' "$WORK/exhaustive.typed"
+assert_grep "exhaustive.typed" \
+    -F '|adt=Result|adt-symbol=' "$WORK/exhaustive.typed"
+assert_grep "exhaustive.typed" \
+    -F '|constructor=Ok|constructor-symbol=' "$WORK/exhaustive.typed"
+assert_grep "exhaustive.typed" \
+    -F '|constructor=Err|constructor-symbol=' "$WORK/exhaustive.typed"
+assert_grep "exhaustive.typed" \
+    -F '|name=item|role=payload|' "$WORK/exhaustive.typed"
+assert_grep "exhaustive.typed" \
+    -F '|binding=2|name=item|role=read' "$WORK/exhaustive.typed"
 
 run_success wildcard "$CASES/fixtures/wildcard.kofun"
-grep -F '|role=wildcard|' "$WORK/wildcard.typed" >/dev/null
+assert_grep "wildcard.typed" -F '|role=wildcard|' "$WORK/wildcard.typed"
 run_success binding "$CASES/fixtures/binding.kofun"
-grep -F '|role=binding|' "$WORK/binding.typed" >/dev/null
-grep -F '|name=anything|role=catchall|' "$WORK/binding.typed" >/dev/null
+assert_grep "binding.typed" -F '|role=binding|' "$WORK/binding.typed"
+assert_grep "binding.typed" \
+    -F '|name=anything|role=catchall|' "$WORK/binding.typed"
 
 expect_failure missing-payload "$CASES/fixtures/missing_payload.kofun" E2S25
 cmp "$CASES/fixtures/missing_payload.stderr" "$WORK/missing-payload.actual"
@@ -101,16 +108,22 @@ cmp "$CASES/fixtures/after_catchall.stderr" "$WORK/after-catchall.actual"
 expect_failure redundant-catchall "$CASES/fixtures/redundant_catchall.kofun" E2S26
 cmp "$CASES/fixtures/redundant_catchall.stderr" "$WORK/redundant-catchall.actual"
 expect_failure nested-payload "$CASES/fixtures/nested_payload.kofun" E2S79
-grep -F 'nested payload usefulness is unsupported' "$WORK/nested-payload.actual" >/dev/null
+assert_grep "nested-payload.actual" \
+    -F 'nested payload usefulness is unsupported' "$WORK/nested-payload.actual"
 
 # Or-pattern alternatives are tested left to right and each one covers its own
 # constructor. Grouping parentheses carry no coverage meaning.
 run_success or-exhaustive "$CASES/fixtures/or_exhaustive.kofun"
-grep -F '|role=or|constructor=-|constructor-symbol=-|' "$WORK/or-exhaustive.typed" >/dev/null
+assert_grep "or-exhaustive.typed" \
+    -F \
+    '|role=or|constructor=-|constructor-symbol=-|' \
+    "$WORK/or-exhaustive.typed"
 assert_num "^typed-alternative| lines in or-exhaustive.typed" \
     "$(grep -c '^typed-alternative|' "$WORK/or-exhaustive.typed")" -eq 4
-grep -F '|arm=1|index=1|node=6|role=constructor|constructor=Err|' \
-    "$WORK/or-exhaustive.typed" >/dev/null
+assert_grep "or-exhaustive.typed" \
+    -F \
+    '|arm=1|index=1|node=6|role=constructor|constructor=Err|' \
+    "$WORK/or-exhaustive.typed"
 # Both alternatives of the first arm publish the one BindingId the body reads.
 OR_BINDING=$(sed -n '/^pattern-binding|/s/^pattern-binding|id=\([^|]*\)|.*|name=item|.*/\1/p' \
     "$WORK/or-exhaustive.typed")
@@ -120,7 +133,8 @@ assert_num "constructor rows binding $OR_BINDING in or-exhaustive.typed" \
     -eq 2
 assert_num "^pattern-binding| lines in or-exhaustive.typed" \
     "$(grep -c '^pattern-binding|' "$WORK/or-exhaustive.typed")" -eq 1
-grep -F "|binding=$OR_BINDING|name=item|role=read" "$WORK/or-exhaustive.typed" >/dev/null
+assert_grep "or-exhaustive.typed" \
+    -F "|binding=$OR_BINDING|name=item|role=read" "$WORK/or-exhaustive.typed"
 
 expect_failure or-missing "$CASES/fixtures/or_missing.kofun" E2S25
 cmp "$CASES/fixtures/or_missing.stderr" "$WORK/or-missing.actual"
@@ -152,7 +166,8 @@ cmp "$CASES/fixtures/or_catchall_binding.stderr" "$WORK/or-catchall-binding.actu
 TARGET_SAME=$(sed -n '/module=0|.*kind=constructor|name=Same|/s/.*|symbol=\([^|]*\)|.*/\1/p' \
     "$WORK/same.symbols")
 assert_num "${#TARGET_SAME}" "${#TARGET_SAME}" -eq 64
-grep -F "|constructor=Same|constructor-symbol=$TARGET_SAME|" "$WORK/same.typed" >/dev/null
+assert_grep "same.typed" \
+    -F "|constructor=Same|constructor-symbol=$TARGET_SAME|" "$WORK/same.typed"
 
 # Repeated runs and host-path remapping preserve the typed projection.
 "$TOOL" "$CASES/fixtures/exhaustive.kofun" "$LOGICAL" "$WORK/exhaustive.symbols" \
@@ -174,7 +189,7 @@ then
     printf '%s\n' 'expected stale artifact failure' >&2
     exit 1
 fi
-grep -F 'error[E2S79]:' "$WORK/stale.actual" >/dev/null
+assert_grep "stale.actual" -F 'error[E2S79]:' "$WORK/stale.actual"
 assert_absent "stale.typed" "$WORK/stale.typed"
 
 # Generate a 64-constructor ADT and prove the declared operation boundary.
@@ -201,7 +216,8 @@ generate_budget_source 61 "$WORK/budget-boundary.kofun"
 run_success budget-boundary "$WORK/budget-boundary.kofun"
 generate_budget_source 62 "$WORK/budget-over.kofun"
 expect_failure budget-over "$WORK/budget-over.kofun" E2S79
-grep -F 'exceeds 4096 operations' "$WORK/budget-over.actual" >/dev/null
+assert_grep "budget-over.actual" \
+    -F 'exceeds 4096 operations' "$WORK/budget-over.actual"
 
 # One arm may list every constructor of a 64-constructor ADT as an alternative.
 # The 65th alternative is refused by the declared arm boundary, not by the
@@ -235,7 +251,8 @@ assert_num "^typed-alternative| lines in alternatives-boundary.typed" \
     -eq 64
 generate_alternative_source 65 "$WORK/alternatives-over.kofun"
 expect_failure alternatives-over "$WORK/alternatives-over.kofun" E2S79
-grep -F 'exceeds 64 alternatives in one arm' "$WORK/alternatives-over.actual" >/dev/null
+assert_grep "alternatives-over.actual" \
+    -F 'exceeds 64 alternatives in one arm' "$WORK/alternatives-over.actual"
 
 if command -v clang >/dev/null 2>&1; then
     clang -std=c11 -Wall -Wextra -Werror -pedantic \

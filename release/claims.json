@@ -367,23 +367,24 @@
     },
     {
       "id": "decimal-arithmetic-v1",
-      "public_wording": "exact Decimal and binary64 Float arithmetic",
-      "public_status": "Stage 2 C11 lowers exact Decimal `+`, `-`, `*`, comparison/equality, and checked `/` with `Exact`/`InexactDivision`/`DivisionByZero`; Float remains observably binary64; every other declared backend has an explicit unsupported capability row (#723)",
+      "public_wording": "exact Decimal arithmetic, explicit rounding, and binary64 Float",
+      "public_status": "Stage 2 C11 lowers native Decimal `+`, `-`, `*`, comparison/equality, checked `/`, all five signed rounding modes, rounded division with mandatory scale/mode, and exact display-scale format/parse; Float remains observably binary64; every other declared backend has an explicit unsupported capability row (#724)",
       "state": "checkpoint",
       "area": "c-backend",
-      "bounded_capability": "Stage 2 C11 lowers exact arbitrary-precision Decimal addition, subtraction, multiplication, comparison and checked exact division, plus explicitly binary64 Float arithmetic. Int has no `/`, Decimal has no `//` or `%`, mixed numeric arithmetic requires an explicit conversion, and the other declared backends remain unsupported for this corpus.",
+      "bounded_capability": "Stage 2 C11 lowers exact arbitrary-precision Decimal addition, subtraction, multiplication, comparison and checked exact division, explicit round and rounded divide with mandatory destination scale and one of five modes, and format/parse that never rounds, plus explicitly binary64 Float arithmetic. Int has no `/`, Decimal has no `//` or `%`, mixed numeric arithmetic requires an explicit conversion, and the other declared backends remain unsupported for this corpus.",
       "targets": [
         "c11",
         "stage2"
       ],
       "specification": [
         "docs/DECIMAL.md",
-        "docs/TYPE_SYSTEM.md"
+        "docs/TYPE_SYSTEM.md",
+        "stdlib/decimal/README.md"
       ],
-      "compatibility": "Decimal results are canonical and exact within the versioned resource profile; checked division outcomes and binary64 Float observations are part of the corpus contract. A backend gains this capability only by changing its manifest row and passing the shared corpus.",
+      "compatibility": "Decimal results are canonical and exact within the versioned resource profile; rounding requires explicit scale/mode, formatting cannot round, and checked division plus binary64 Float observations are part of the corpus contract. A backend gains this capability only by changing its manifest row and passing the shared corpus.",
       "positive_gate": {
         "command": "task decimal-arithmetic",
-        "observation": "The Stage 2 C11 backend executes all Decimal and Float arithmetic cases, including exactness beyond binary64 and checked division outcomes."
+        "observation": "The Stage 2 C11 backend executes all Decimal and Float cases, including exactness beyond binary64, checked division, five signed rounding modes, mandatory scale/mode refusals, and format/parse round trips."
       },
       "negative_boundary": {
         "kind": "limit",
@@ -497,7 +498,7 @@
       "negative_boundary": {
         "kind": "rejection",
         "evidence": "tests/conformance/syntax/issues_35_47/enum_payload_unsupported_field.kofun",
-        "observation": "Enum shapes outside the slice — a non-`Int` payload, more than one payload field, or a payload arity the pattern does not match — are refused rather than silently accepted."
+        "observation": "Enum shapes outside the slice \u2014 a non-`Int` payload, more than one payload field, or a payload arity the pattern does not match \u2014 are refused rather than silently accepted."
       },
       "safety": {
         "classification": "none"
@@ -1350,10 +1351,10 @@
     {
       "id": "stdio-language-server",
       "public_wording": "stdio language server",
-      "public_status": "bounded diagnostics, symbols, completion, hover, definitions, and references",
+      "public_status": "bounded diagnostics, definitions, hover, completion, outline, references, highlights, ownership inlay hints, signature help, folding, selection ranges, semantic tokens, and rename for locals and parameters",
       "state": "checkpoint",
       "area": "tooling",
-      "bounded_capability": "A stdio LSP server providing diagnostics, symbols, completion, hover, definitions and references, within measured latency budgets.",
+      "bounded_capability": "A stdio LSP server providing diagnostics, definitions, hover, completion, document symbols, references, highlights, inlay hints carrying the read/edit/take mode at call sites, signature help, folding, selection ranges, semantic tokens, and rename restricted to locals and parameters, within measured latency budgets. Renaming a function or type is refused because the server reads only open documents; no code actions are offered because no registered diagnostic carries a remedy.",
       "targets": [
         "repository"
       ],
