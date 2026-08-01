@@ -1,0 +1,1 @@
+{"schema":"kofun.schedule-program/v1","name":"checked-in-valid-replay","budgets":{"tasks":4,"decisions":16,"steps":16,"states":64},"channels":[],"root":[{"op":"print","text":"before\n"},{"op":"yield"},{"op":"print","text":"after\n"}]}
