@@ -20,6 +20,44 @@ producer="$CASES/tzdb.kofun"
 expected="$CASES/tzdb.stdout"
 readme="$CASES/README.md"
 
+canonical="$ROOT/stdlib/tzdb/tzdb.kofun"
+assert_regular_file 'canonical tzdb surface' "$canonical"
+
+for declaration in \
+    'type ZoneId = {' \
+    'type UtcOffset = {' \
+    'type Instant = {' \
+    'type LocalDateTime = {' \
+    'type Transition = {' \
+    'type Tzdb = {' \
+    'type TzdbError =' \
+    'type Resolution =' \
+    'fn tzdb_read(input: Bytes)' \
+    'fn tzdb_resolve_local(' \
+    'fn tzdb_resolve_instant('
+do
+    assert_grep 'canonical tzdb surface lost a declaration' \
+        -Fq -- "$declaration" "$canonical"
+done
+
+# The whole contract rests on this: the two cases that name more than one
+# offset carry both of them, rather than handing back one as the answer.
+assert_grep 'canonical Ambiguous no longer carries both offsets' -Fq -- \
+    '| Ambiguous(earlier: UtcOffset, later: UtcOffset)' "$canonical"
+assert_grep 'canonical Nonexistent no longer carries the offsets either side' \
+    -Fq -- '| Nonexistent(before: UtcOffset, after: UtcOffset)' "$canonical"
+
+# The canonical file is still ahead of the compiler. Pinning that keeps the
+# corpus honest: the executable evidence is the producer, not this.
+if "$ROOT/bin/kofun" check "$canonical" \
+    >"$WORK/canonical.stdout" 2>"$WORK/canonical.stderr"
+then
+    fail "canonical source unexpectedly claimed executable codegen: $canonical"
+fi
+assert_grep 'canonical source did not stop at the documented compiler boundary' \
+    -Fq -- 'error[E2S02]: expected top-level `fn` or `type`' \
+    "$WORK/canonical.stderr"
+
 assert_regular_file 'Kofun tzdb producer' "$producer"
 assert_regular_file 'tzdb exact golden' "$expected"
 assert_regular_file 'tzdb boundary documentation' "$readme"
@@ -80,6 +118,23 @@ cmp "$expected" "$WORK/reference.stdout" ||
 cmp "$WORK/backend.stdout" "$WORK/backend.second" ||
     fail 'two executions of the same tzdb binary differ'
 
+# Independence from ambient time-zone and locale state, demonstrated rather
+# than grepped for. The greps prove the symbols are not named; these runs prove
+# the behaviour, which is the claim that matters to a caller. The empty
+# environment is included because a program that needed TZ would more likely
+# fall back than fail, and a fallback would not show up as a difference between
+# two hostile settings.
+TZ=Pacific/Kiritimati LC_ALL=C LANG=C "$WORK/tzdb" >"$WORK/hostile.stdout"
+cmp "$WORK/backend.stdout" "$WORK/hostile.stdout" ||
+    fail 'output changed under TZ=Pacific/Kiritimati'
+TZ=America/Sao_Paulo LC_ALL=tr_TR.UTF-8 LANG=tr_TR.UTF-8 "$WORK/tzdb" \
+    >"$WORK/hostile.locale.stdout"
+cmp "$WORK/backend.stdout" "$WORK/hostile.locale.stdout" ||
+    fail 'output changed under a different time zone and locale'
+env -i "$WORK/tzdb" >"$WORK/bare.stdout"
+cmp "$WORK/backend.stdout" "$WORK/bare.stdout" ||
+    fail 'output changed with an empty environment'
+
 assert_not_grep 'emitted C reaches ambient time, file, zoneinfo, locale, network, or randomness' \
     -qE -- 'time\.h|clock_gettime|gettimeofday|nanosleep|fopen|zoneinfo|localtime|setlocale|socket|connect|rand\(' \
     "$WORK/tzdb.c"
@@ -137,10 +192,60 @@ assert_eq 'transition limit detail' "$(field 33)" '3'
 assert_eq 'arithmetic overflow error code' "$(field 34)" '-7'
 assert_eq 'arithmetic overflow payload' "$(field 35)" '-7'
 
-assert_num 'golden line count' "$(wc -l <"$expected" | tr -d ' ')" -eq 35
+# The edges of the gap and the fold. Nothing above reads one: the resolver gets
+# them right — `local >= start && local < end` for both — but an off-by-one at
+# an edge is the classic way an hour goes missing, and until now nothing pinned
+# it. Half-open at the top means the first local second of an interval is
+# inside it and the first second after is not.
+assert_eq 'the gap includes its low edge' "$(field 36)" '3'
+assert_eq 'the gap excludes its high edge' "$(field 37)" '1'
+assert_eq 'the second past the gap maps through the new offset' \
+    "$(field 38)" '1000'
+assert_eq 'the fold includes its low edge' "$(field 39)" '2'
+assert_eq 'the fold excludes its high edge' "$(field 40)" '1'
+assert_eq 'the second past the fold maps through the new offset' \
+    "$(field 41)" '2100'
+
+assert_num 'golden line count' "$(wc -l <"$expected" | tr -d ' ')" -eq 41
+
+# A local reading and an instant are both one number. Keeping them apart is the
+# whole reason the resolution sum has anywhere to live, so the toolchain must
+# refuse to confuse them — at `check`, not only once the backend runs.
+
+expect_rejected() {
+    stem=$1
+    reason=$2
+
+    if "$ROOT/bin/kofun" check "$CASES/$stem.kofun" \
+        >"$WORK/$stem.check.stdout" 2>"$WORK/$stem.check.stderr"
+    then
+        fail "$stem passed \`kofun check\`; the separate tzdb types did not stop it"
+    fi
+    assert_grep "$stem was rejected by check for the wrong reason" \
+        -Fq -- "$reason" "$WORK/$stem.check.stderr"
+
+    if "$ROOT/bin/kofun" build "$CASES/$stem.kofun" -o "$WORK/$stem" \
+        >"$WORK/$stem.stdout" 2>"$WORK/$stem.stderr"
+    then
+        fail "$stem built after check refused it"
+    fi
+    assert_grep "$stem was rejected by build for the wrong reason" \
+        -Fq -- "$reason" "$WORK/$stem.stderr"
+    assert_absent "$stem emitted a binary despite being refused" "$WORK/$stem"
+
+    printf 'tzdb: refused by check and build: %s\n' "$stem"
+}
+
+expect_rejected mixed_local_instant \
+    'error[E2S32]: nominal record binding has the wrong type'
+expect_rejected local_wall_seconds_on_instant \
+    'error[E2S32]: unknown nominal record field read'
 
 printf '%s\n' \
     'tzdb injected Bytes and versioned digest: PASS' \
     'tzdb normal, gap, and fold resolution: PASS' \
     'tzdb malformed, version, digest, zone, truncation, trailing, overflow, size, and limit errors: PASS' \
+    'tzdb gap and fold edges are half-open at the top: PASS' \
+    'tzdb local readings and instants cannot be confused: PASS' \
+    'tzdb bytes do not move under a hostile TZ, locale, or an empty environment: PASS' \
     'tzdb reference and C11 backend observations: PASS'
