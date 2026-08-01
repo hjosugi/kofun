@@ -47,6 +47,85 @@ class CompletionItem {
   }
 }
 
+class DocumentSymbol {
+  constructor(name, detail, kind, range, selectionRange) {
+    this.name = name;
+    this.detail = detail;
+    this.kind = kind;
+    this.range = range;
+    this.selectionRange = selectionRange;
+    this.children = [];
+  }
+}
+
+class DocumentHighlight {
+  constructor(range, kind) { this.range = range; this.kind = kind; }
+}
+
+class SignatureHelp {
+  constructor() {
+    this.signatures = [];
+    this.activeSignature = 0;
+    this.activeParameter = 0;
+  }
+}
+
+class SignatureInformation {
+  constructor(label) { this.label = label; this.parameters = []; }
+}
+
+class ParameterInformation {
+  constructor(label) { this.label = label; }
+}
+
+class FoldingRange {
+  constructor(start, end, kind) { this.start = start; this.end = end; this.kind = kind; }
+}
+
+class SelectionRange {
+  constructor(range, parent) { this.range = range; this.parent = parent; }
+}
+
+class SemanticTokens {
+  constructor(data) { this.data = data; }
+}
+
+class SemanticTokensLegend {
+  constructor(tokenTypes, tokenModifiers) {
+    this.tokenTypes = tokenTypes;
+    this.tokenModifiers = tokenModifiers;
+  }
+}
+
+class WorkspaceEdit {
+  constructor() { this.edits = []; }
+  replace(uri, range, newText) {
+    this.edits.push({ uri: uri.toString(), range, newText });
+  }
+}
+
+class Task {
+  constructor(definition, scope, name, source, execution) {
+    this.definition = definition;
+    this.scope = scope;
+    this.name = name;
+    this.source = source;
+    this.execution = execution;
+  }
+}
+
+class ShellExecution {
+  constructor(command, args) { this.command = command; this.args = args; }
+}
+
+class InlayHint {
+  constructor(position, label, kind) {
+    this.position = position;
+    this.label = label;
+    this.kind = kind;
+  }
+}
+
 class CompletionList {
   constructor(items, isIncomplete) {
     this.items = items;
@@ -59,6 +138,19 @@ const state = {
   definitionProvider: null,
   hoverProvider: null,
   completionProvider: null,
+  documentSymbolProvider: null,
+  referenceProvider: null,
+  documentHighlightProvider: null,
+  inlayHintsProvider: null,
+  signatureHelpProvider: null,
+  foldingRangeProvider: null,
+  selectionRangeProvider: null,
+  taskProvider: null,
+  semanticTokensProvider: null,
+  semanticLegend: null,
+  renameProvider: null,
+  commands: new Map(),
+  statusBar: [],
   output: []
 };
 
@@ -88,7 +180,25 @@ module.exports = {
   __state: state,
   __document: document,
   Position, Range, Uri, Location, MarkdownString, Hover, Diagnostic,
-  CompletionItem, CompletionList,
+  CompletionItem, CompletionList, DocumentSymbol, DocumentHighlight, InlayHint,
+  SignatureHelp, SignatureInformation, ParameterInformation, FoldingRange,
+  SelectionRange, Task, ShellExecution, SemanticTokens, SemanticTokensLegend,
+  WorkspaceEdit,
+  StatusBarAlignment: { Left: 1, Right: 2 },
+  TaskScope: { Workspace: 2 },
+  FoldingRangeKind: { Comment: 1, Region: 3 },
+  tasks: {
+    registerTaskProvider(type, provider) {
+      state.taskProvider = { type, provider };
+      return disposable();
+    }
+  },
+  commands: {
+    registerCommand(id, handler) {
+      state.commands.set(id, handler);
+      return disposable();
+    }
+  },
   workspace: {
     workspaceFolders: [{ uri: Uri.parse('file:///workspace'), name: 'workspace' }],
     textDocuments: [document],
@@ -116,6 +226,43 @@ module.exports = {
     registerCompletionItemProvider(_language, provider) {
       state.completionProvider = provider;
       return disposable();
+    },
+    registerDocumentSymbolProvider(_language, provider) {
+      state.documentSymbolProvider = provider;
+      return disposable();
+    },
+    registerReferenceProvider(_language, provider) {
+      state.referenceProvider = provider;
+      return disposable();
+    },
+    registerDocumentHighlightProvider(_language, provider) {
+      state.documentHighlightProvider = provider;
+      return disposable();
+    },
+    registerInlayHintsProvider(_language, provider) {
+      state.inlayHintsProvider = provider;
+      return disposable();
+    },
+    registerSignatureHelpProvider(_language, provider) {
+      state.signatureHelpProvider = provider;
+      return disposable();
+    },
+    registerFoldingRangeProvider(_language, provider) {
+      state.foldingRangeProvider = provider;
+      return disposable();
+    },
+    registerSelectionRangeProvider(_language, provider) {
+      state.selectionRangeProvider = provider;
+      return disposable();
+    },
+    registerDocumentSemanticTokensProvider(_language, provider, legend) {
+      state.semanticTokensProvider = provider;
+      state.semanticLegend = legend;
+      return disposable();
+    },
+    registerRenameProvider(_language, provider) {
+      state.renameProvider = provider;
+      return disposable();
     }
   },
   window: {
@@ -126,6 +273,13 @@ module.exports = {
         dispose() {}
       };
     },
-    showErrorMessage(message) { throw new Error(message); }
+    showErrorMessage(message) { throw new Error(message); },
+    createStatusBarItem(alignment, priority) {
+      const item = {
+        alignment, priority, text: '', tooltip: '', command: '',
+        show() { state.statusBar.push(this.text); }, dispose() {}
+      };
+      return item;
+    }
   }
 };

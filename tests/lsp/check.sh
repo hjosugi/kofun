@@ -28,8 +28,10 @@ node --check "$ROOT/tests/lsp/protocol_test.js"
 node --check "$ROOT/tests/lsp/semantic_sidecar_test.mjs"
 node --check "$ROOT/tests/lsp/performance_test.js"
 node --check "$ROOT/tests/lsp/vscode_smoke_test.js"
+node --check "$ROOT/tests/lsp/extension_manifest_test.mjs"
 node --expose-gc "$ROOT/tests/lsp/semantic_sidecar_test.mjs"
 node "$ROOT/tests/lsp/protocol_test.js" "$SERVER"
+node "$ROOT/tests/lsp/extension_manifest_test.mjs" "$ROOT/editor/vscode"
 NODE_PATH="$ROOT/tests/lsp/vscode-mock" \
     node "$ROOT/tests/lsp/vscode_smoke_test.js" "$ROOT/editor/vscode"
 KOFUN_LSP_REVISION="$REVISION" \

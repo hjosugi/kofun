@@ -29,6 +29,24 @@ async function main() {
   // a list this server cannot produce.
   assert.deepStrictEqual(initialized.result.capabilities.completionProvider,
     { resolveProvider: false });
+  assert.strictEqual(initialized.result.capabilities.documentSymbolProvider, true);
+  assert.strictEqual(initialized.result.capabilities.referencesProvider, true);
+  assert.strictEqual(initialized.result.capabilities.documentHighlightProvider, true);
+  assert.deepStrictEqual(initialized.result.capabilities.inlayHintProvider,
+    { resolveProvider: false });
+  assert.deepStrictEqual(initialized.result.capabilities.signatureHelpProvider,
+    { triggerCharacters: ['(', ','] });
+  assert.strictEqual(initialized.result.capabilities.foldingRangeProvider, true);
+  assert.strictEqual(initialized.result.capabilities.selectionRangeProvider, true);
+  assert.deepStrictEqual(initialized.result.capabilities.renameProvider,
+    { prepareProvider: true });
+  const legend = initialized.result.capabilities.semanticTokensProvider.legend;
+  assert.deepStrictEqual(legend.tokenTypes,
+    ['function', 'parameter', 'variable', 'type', 'keyword', 'number', 'string']);
+  assert.deepStrictEqual(legend.tokenModifiers, ['declaration', 'defaultLibrary']);
+  // No diagnostic in the registry carries a remedy, so the server must not
+  // advertise an action list it can never fill.
+  assert.strictEqual(initialized.result.capabilities.codeActionProvider, undefined);
   client.send({ jsonrpc: '2.0', method: 'initialized', params: {} });
 
   const source = [
@@ -143,6 +161,158 @@ async function main() {
   const inComment = await completionAt(5, 8);
   assert.deepStrictEqual(inComment.items, []);
   assert.strictEqual(inComment.isIncomplete, false);
+
+  async function requestAt(method, extra) {
+    client.send({
+      jsonrpc: '2.0', id, method,
+      params: { textDocument: { uri }, ...extra }
+    });
+    const reply = await client.waitFor((message) => message.id === id);
+    id += 1;
+    return reply.result;
+  }
+
+  // The outline nests each function's parameters and locals under it.
+  const outline = await requestAt('textDocument/documentSymbol', {});
+  assert.deepStrictEqual(outline.map((item) => item.name), ['identity', 'main']);
+  assert.strictEqual(outline[0].kind, 12);
+  assert.deepStrictEqual(outline[0].children.map((item) => item.name), ['value']);
+  assert.deepStrictEqual(outline[1].children.map((item) => item.name), ['result']);
+  assert.match(outline[0].detail, /fn identity\(value: Int\) -> Int/);
+  // The function's range covers its body; the selection range is just the name.
+  assert.strictEqual(outline[0].selectionRange.start.character, 3);
+  assert.ok(outline[0].range.end.line >= outline[0].selectionRange.end.line);
+
+  // References resolve through `resolve`, so a shadowed name is not swept up.
+  const references = await requestAt('textDocument/references', {
+    position: { line: 1, character: parameterReference },
+    context: { includeDeclaration: true }
+  });
+  assert.deepStrictEqual(references.map((item) => item.range.start.line), [0, 1]);
+  const withoutDeclaration = await requestAt('textDocument/references', {
+    position: { line: 1, character: parameterReference },
+    context: { includeDeclaration: false }
+  });
+  assert.deepStrictEqual(withoutDeclaration.map((item) => item.range.start.line), [1]);
+
+  const highlights = await requestAt('textDocument/documentHighlight', {
+    position: { line: 6, character: 9 }
+  });
+  // LSP DocumentHighlightKind: the declaration is a Write (3), its use a Read (2).
+  assert.deepStrictEqual(highlights.map((item) => item.kind), [3, 2]);
+  assert.deepStrictEqual(highlights.map((item) => item.range.start.line), [6, 7]);
+
+  // The parameter name is shown at the call argument, which is where the
+  // callee's signature actually lands on the caller.
+  const allHints = await requestAt('textDocument/inlayHint', {});
+  const callHint = allHints.find((hint) => hint.label === 'value:');
+  assert.ok(callHint, `expected a parameter-name hint, got ${JSON.stringify(allHints)}`);
+  assert.strictEqual(callHint.kind, 2);
+  assert.strictEqual(callHint.position.line, 6);
+  assert.match(callHint.tooltip, /value: Int/);
+  // A range request must not answer for lines outside it.
+  const narrowHints = await requestAt('textDocument/inlayHint', {
+    range: { start: { line: 0, character: 0 }, end: { line: 2, character: 0 } }
+  });
+  assert.strictEqual(narrowHints.some((hint) => hint.position.line > 2), false);
+
+  // Signature help tracks which argument the caret is in.
+  const firstArgument = await requestAt('textDocument/signatureHelp', {
+    position: { line: 6, character: 26 }
+  });
+  assert.match(firstArgument.signatures[0].label, /fn identity\(value: Int\) -> Int/);
+  assert.strictEqual(firstArgument.activeParameter, 0);
+  // Outside any call there is no signature to show, and the server says so
+  // rather than returning the last one it saw.
+  assert.strictEqual(await requestAt('textDocument/signatureHelp', {
+    position: { line: 2, character: 0 }
+  }), null);
+
+  const folds = await requestAt('textDocument/foldingRange', {});
+  const bodies = folds.filter((item) => item.kind === 'region');
+  assert.deepStrictEqual(bodies.map((item) => item.startLine), [0, 4]);
+  // A block that opens and closes on one line has nothing to fold.
+  assert.strictEqual(folds.some((item) => item.endLine < item.startLine), false);
+
+  const selections = await requestAt('textDocument/selectionRange', {
+    positions: [{ line: 1, character: parameterReference }]
+  });
+  let node = selections[0];
+  let widened = 0;
+  while (node.parent) {
+    // Each parent strictly contains its child, which is what makes repeated
+    // expand-selection converge instead of jumping.
+    assert.ok(node.parent.range.start.line <= node.range.start.line);
+    assert.ok(node.parent.range.end.line >= node.range.end.line);
+    node = node.parent;
+    widened += 1;
+  }
+  assert.ok(widened >= 2, `expected an expanding chain, got ${widened}`);
+
+  // Semantic tokens colour by what a name resolved to, not by its spelling:
+  // `value` is a parameter at its declaration and at its use, `result` is a
+  // variable, and `print` is a function from the default library.
+  const semantic = await requestAt('textDocument/semanticTokens/full', {});
+  assert.strictEqual(semantic.data.length % 5, 0);
+  const decoded = [];
+  let tokenLine = 0;
+  let tokenStart = 0;
+  for (let at = 0; at < semantic.data.length; at += 5) {
+    const [deltaLine, deltaStart, length, type, modifiers] = semantic.data.slice(at, at + 5);
+    tokenLine += deltaLine;
+    tokenStart = deltaLine === 0 ? tokenStart + deltaStart : deltaStart;
+    decoded.push({
+      text: source.split('\n')[tokenLine].substr(tokenStart, length),
+      type: legend.tokenTypes[type], modifiers
+    });
+  }
+  const classified = (text) => decoded.filter((item) => item.text === text);
+  assert.deepStrictEqual(classified('value').map((item) => item.type),
+    ['parameter', 'parameter']);
+  // The declaration carries the declaration modifier; the use does not.
+  assert.deepStrictEqual(classified('value').map((item) => item.modifiers), [1, 0]);
+  assert.deepStrictEqual(classified('result').map((item) => item.type),
+    ['variable', 'variable']);
+  assert.deepStrictEqual(classified('print').map((item) => item.modifiers), [2]);
+  assert.strictEqual(classified('fn').every((item) => item.type === 'keyword'), true);
+  assert.strictEqual(classified('41')[0].type, 'number');
+  // Nothing inside the comment is classified; that stays TextMate's job.
+  assert.strictEqual(decoded.some((item) => item.text.includes('😀')), false);
+
+  // Renaming a local rewrites its declaration and every use.
+  const prepared = await requestAt('textDocument/prepareRename', {
+    position: { line: 6, character: 9 }
+  });
+  assert.strictEqual(prepared.placeholder, 'result');
+  const renamed = await requestAt('textDocument/rename', {
+    position: { line: 6, character: 9 }, newName: 'answer'
+  });
+  assert.deepStrictEqual(renamed.changes[uri].map((item) => item.range.start.line), [6, 7]);
+  assert.ok(renamed.changes[uri].every((item) => item.newText === 'answer'));
+
+  async function renameError(position, newName) {
+    client.send({
+      jsonrpc: '2.0', id, method: 'textDocument/rename',
+      params: { textDocument: { uri }, position, newName }
+    });
+    const reply = await client.waitFor((message) => message.id === id);
+    id += 1;
+    return reply.error;
+  }
+  // A function may be named from a file this server never reads, so renaming
+  // one is refused rather than silently leaving those uses behind.
+  assert.match((await renameError({ line: 0, character: 4 }, 'other')).message,
+    /only the open document/u);
+  assert.match((await renameError({ line: 6, character: 9 }, 'let')).message,
+    /keyword/u);
+  assert.match((await renameError({ line: 6, character: 9 }, 'print')).message,
+    /builtin/u);
+  assert.match((await renameError({ line: 6, character: 9 }, '2bad')).message,
+    /not a valid name/u);
+  // Renaming onto a name already visible at a use would capture that other
+  // declaration instead of the one being renamed.
+  assert.match((await renameError({ line: 6, character: 9 }, 'identity')).message,
+    /already declared/u);
 
   // A failed partial document keeps an earlier validated local available.
   client.send({
@@ -356,7 +526,10 @@ async function main() {
 
   process.stdout.write(
     `PASS: sidecar-backed LSP framing/lifecycle, UTF-16, diagnostics, ` +
-    `definition, hover, scoped completion, edit/reopen guards, and ` +
+    `definition, hover, scoped completion, outline, references, highlights, ` +
+    `inlay hints, signature help, folding, selection ranges, ` +
+    `semantic tokens, guarded rename, ` +
+    `edit/reopen guards, and ` +
     `${depth}-deep fallback (${deepMilliseconds.toFixed(2)}ms)\n`
   );
 }

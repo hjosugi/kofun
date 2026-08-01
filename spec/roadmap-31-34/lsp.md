@@ -25,8 +25,17 @@ The first server must implement JSON-RPC/LSP framing and these methods:
   `textDocument/didClose`;
 - `textDocument/publishDiagnostics`;
 - `textDocument/definition`;
-- `textDocument/hover`; and
-- `textDocument/completion`.
+- `textDocument/hover`;
+- `textDocument/completion`;
+- `textDocument/documentSymbol`;
+- `textDocument/references`;
+- `textDocument/documentHighlight`;
+- `textDocument/inlayHint`;
+- `textDocument/signatureHelp`;
+- `textDocument/foldingRange`;
+- `textDocument/selectionRange`;
+- `textDocument/semanticTokens/full`; and
+- `textDocument/prepareRename` and `textDocument/rename`.
 
 The client must negotiate UTF-16 positions unless both sides explicitly select
 another standard LSP position encoding. Compiler byte spans must be converted
@@ -65,6 +74,31 @@ field completion is not implemented, so no trigger character may be advertised
 for it. A list bounded for size must be returned as incomplete rather than
 silently truncated.
 
+The outline, references, occurrence highlights, and inlay hints resolve names
+by the same rule definition does, so none of them may report a declaration
+definition would not. The outline nests a function's parameters and locals
+under it. Inlay hints put the callee's parameter name and its ownership mode at
+the call argument, because the mode is declared in the callee's signature while
+its consequence lands on the caller; a `let` without a written type shows the
+inferred one, and a type the server cannot determine produces no hint rather
+than a guess. A range request must not answer outside the requested range.
+
+A capability may not be advertised for a result the server cannot produce. No
+`codeActionProvider` is offered while no registered diagnostic carries a
+remedy, for the same reason completion advertises no trigger characters.
+
+Signature help reports the active argument and returns nothing outside a call
+rather than the last signature it produced. Folding covers block bodies and
+runs of comment lines, and never emits a range that ends before it begins.
+Selection ranges expand from the token through each enclosing block to the
+document, and every parent strictly contains its child.
+
+The editor client is part of the contract: every capability the server
+advertises must have a registered provider, every contributed command must have
+a handler, and every contributed setting must be read. A gate asserts all three
+against the manifest, because a capability with no provider is invisible and a
+setting nothing reads is a promise the extension does not keep.
+
 ## Incremental performance gate
 
 Create a deterministic generated `.kofun` benchmark with 10,000 declarations
@@ -95,8 +129,14 @@ gate.
    malformed messages.
 4. Semantic fixtures cover diagnostics, definition, hover, completion,
    shadowing, and recovery after incomplete edits.
-5. The editor smoke test launches the packaged client against the real server.
-6. The incremental benchmark enforces the thresholds above in a dedicated
+5. The editor smoke test launches the packaged client against the real server,
+   covering the LSP-to-VS Code enumeration conversions, the contributed
+   commands, tasks, and the status item.
+6. The manifest gate checks the released artifact: marketplace metadata, a
+   changelog entry for the shipped version, capability/provider and
+   command/handler and setting/reader agreement, and the files the VSIX must
+   and must not carry.
+7. The incremental benchmark enforces the thresholds above in a dedicated
    performance job.
 
 ## Executable close checklist

@@ -30,6 +30,12 @@ const MODE_KEYWORDS = Object.freeze(['read', 'edit', 'take']);
 const BINDING_KEYWORDS = Object.freeze(['own', 'mut']);
 const builtinNames = new Set([...BUILTIN_FUNCTIONS, ...BUILTIN_TYPES]);
 const keywordNames = new Set(KEYWORDS);
+
+// Overridden from the client's initializationOptions; every hint is on unless
+// the editor turns it off.
+const inlayHintSettings = {
+  parameterNames: true, ownershipModes: true, inferredTypes: true
+};
 let input = Buffer.alloc(0);
 let shutdownRequested = false;
 let framingFailed = false;
@@ -345,7 +351,9 @@ function buildIndex(doc) {
           type = normalizedSlice(doc, at + 1, segmentEnd) ||
             '<unknown: incomplete edit>';
         }
-        parameters.push(`${mode ? `${mode} ` : ''}${tokenText(doc, tokens[nameToken])}: ${type}`);
+        parameters.push({
+          name: tokenText(doc, tokens[nameToken]), type, mode
+        });
         addSymbol({
           kind: 'parameter', tokenIndex: nameToken,
           start: tokens[nameToken].start, end: tokens[nameToken].end,
@@ -358,7 +366,13 @@ function buildIndex(doc) {
     addSymbol({
       kind: 'function', tokenIndex: i + 1,
       start: tokens[i + 1].start, end: tokens[i + 1].end,
-      type: `fn ${tokenText(doc, tokens[i + 1])}(${parameters.join(', ')}) -> ${returnType}`,
+      type: `fn ${tokenText(doc, tokens[i + 1])}(${parameters.map((parameter) =>
+        `${parameter.mode ? `${parameter.mode} ` : ''}${parameter.name}: ${parameter.type}`
+      ).join(', ')}) -> ${returnType}`,
+      // Kept structurally as well as in the rendered signature: inlay hints
+      // need the callee's parameter names and modes one argument at a time.
+      parameters, returnType,
+      bodyStart: functionScopeStart, bodyEnd: functionScopeEnd,
       mode: '', scopeStart: 0, scopeEnd: doc.text.length,
       depth: tokens[i].depth
     });
@@ -658,6 +672,358 @@ function completionItems(doc, offset, facts) {
   return { items: [...declarations, ...vocabulary.filter(Boolean)], truncated };
 }
 
+// LSP SymbolKind: Function, Variable, Class.
+const SYMBOL_KIND = Object.freeze({
+  function: 12, parameter: 13, binding: 13, type: 5
+});
+
+function documentSymbols(doc, index) {
+  // Functions own their parameters and locals, which is the nesting an outline
+  // and the breadcrumb bar expect. Anything declared outside a function body —
+  // there is nothing today, but a `type` is not inside one — stays top level.
+  const functions = index.symbols.filter((symbol) => symbol.kind === 'function');
+  const children = new Map(functions.map((symbol) => [symbol, []]));
+  const top = [];
+  for (const symbol of index.symbols) {
+    if (symbol.kind === 'function') continue;
+    // From the function's own name to the end of its body, so a parameter —
+    // declared before the body opens — is owned by it too. The latest match
+    // wins, which is the innermost function when they ever nest.
+    let owner = null;
+    for (const candidate of functions) {
+      if (symbol.start < candidate.start || symbol.start > candidate.bodyEnd) continue;
+      if (!owner || candidate.start > owner.start) owner = candidate;
+    }
+    (owner ? children.get(owner) : top).push(symbol);
+  }
+  function shape(symbol, selection) {
+    return {
+      name: symbol.name,
+      detail: symbol.kind === 'function' ? symbol.type
+        : symbol.mode ? `${symbol.mode} ${symbol.type}` : symbol.type,
+      kind: SYMBOL_KIND[symbol.kind] ?? 13,
+      range: range(doc, selection.start, selection.end),
+      selectionRange: range(doc, symbol.start, symbol.end)
+    };
+  }
+  const result = [];
+  for (const symbol of index.symbols) {
+    if (symbol.kind !== 'function') continue;
+    const node = shape(symbol, { start: symbol.start, end: symbol.bodyEnd });
+    const owned = children.get(symbol);
+    if (owned.length > 0) {
+      node.children = owned.map((child) => shape(child, child));
+    }
+    result.push(node);
+  }
+  for (const symbol of top) result.push(shape(symbol, symbol));
+  result.sort((left, right) =>
+    left.range.start.line - right.range.start.line ||
+    left.range.start.character - right.range.start.character);
+  return result;
+}
+
+function occurrences(doc, index, offset) {
+  // Every token that resolves to the same declaration, plus the declaration
+  // itself. Resolution is `resolve`, so a shadowed name is not swept up with
+  // the one that shadows it.
+  const token = tokenAt(index, offset);
+  const target = token ? resolve(index, token) : null;
+  if (!target) return [];
+  const found = [{ start: target.start, end: target.end, write: true }];
+  for (const candidate of index.tokens) {
+    if (candidate.kind !== 'id') continue;
+    if (candidate.start === target.start && candidate.end === target.end) continue;
+    if (tokenText(index, candidate) !== target.name) continue;
+    if (resolve(index, candidate) !== target) continue;
+    found.push({ start: candidate.start, end: candidate.end, write: false });
+  }
+  found.sort((left, right) => left.start - right.start);
+  return found;
+}
+
+function callArgumentStarts(index, openIndex) {
+  // Argument boundaries at the call's own nesting depth, so a nested call or a
+  // parenthesised expression does not split its parent's argument list.
+  const close = index.tokens[openIndex].match;
+  if (close < 0) return [];
+  const starts = [];
+  let depth = 0;
+  let expecting = true;
+  for (let at = openIndex + 1; at < close; at += 1) {
+    const text = tokenText(index, index.tokens[at]);
+    if (expecting) {
+      starts.push(index.tokens[at].start);
+      expecting = false;
+    }
+    if (text === '(' || text === '[' || text === '{') depth += 1;
+    else if (text === ')' || text === ']' || text === '}') depth -= 1;
+    else if (text === ',' && depth === 0) expecting = true;
+  }
+  return starts;
+}
+
+function inlayHints(doc, index, startOffset, endOffset, settings) {
+  const hints = [];
+  for (let at = 0; at + 1 < index.tokens.length; at += 1) {
+    const token = index.tokens[at];
+    if (token.kind !== 'id' || tokenText(index, index.tokens[at + 1]) !== '(') continue;
+    if (index.declarations.has(at)) continue;
+    if (token.start < startOffset || token.start > endOffset) continue;
+    const callee = resolve(index, token);
+    if (!callee || callee.kind !== 'function' || !callee.parameters) continue;
+    const starts = callArgumentStarts(index, at + 1);
+    if (starts.length !== callee.parameters.length) continue;
+    for (const [position, parameter] of callee.parameters.entries()) {
+      // The mode lives in the callee's signature but the consequence lands on
+      // the caller, which is the whole reason to surface it here.
+      const label = parameter.mode
+        ? `${parameter.mode} ${parameter.name}:`
+        : `${parameter.name}:`;
+      if (!settings.parameterNames && !parameter.mode) continue;
+      if (!settings.ownershipModes && parameter.mode) continue;
+      hints.push({
+        position: offsetToPosition(doc, starts[position]),
+        label,
+        kind: 2,
+        paddingRight: true,
+        tooltip: `${parameter.name}: ${parameter.type}`
+      });
+    }
+  }
+  if (settings.inferredTypes) {
+    for (const symbol of index.symbols) {
+      if (symbol.kind !== 'binding') continue;
+      if (symbol.start < startOffset || symbol.start > endOffset) continue;
+      // Only where the author did not write the type; an annotated binding
+      // already says it, and repeating it is noise.
+      if (index.text.slice(symbol.end).trimStart().startsWith(':')) continue;
+      if (symbol.type.startsWith('<unknown')) continue;
+      hints.push({
+        position: offsetToPosition(doc, symbol.end),
+        label: `: ${symbol.type}`,
+        kind: 1,
+        paddingLeft: false
+      });
+    }
+  }
+  hints.sort((left, right) =>
+    left.position.line - right.position.line ||
+    left.position.character - right.position.character);
+  return hints;
+}
+
+function enclosingCall(index, offset) {
+  // The innermost unclosed call whose name resolves to a function: scan the
+  // open parens that still contain the cursor, nearest first.
+  for (let at = index.tokens.length - 1; at >= 0; at -= 1) {
+    const token = index.tokens[at];
+    if (token.start >= offset) continue;
+    if (tokenText(index, token) !== '(') continue;
+    const close = token.match;
+    if (close >= 0 && index.tokens[close].start < offset) continue;
+    if (at === 0) continue;
+    const name = index.tokens[at - 1];
+    if (name.kind !== 'id' || index.declarations.has(at - 1)) continue;
+    const callee = resolve(index, name);
+    if (!callee || callee.kind !== 'function' || !callee.parameters) continue;
+    return { open: at, callee };
+  }
+  return null;
+}
+
+function activeParameter(index, openIndex, offset) {
+  const close = index.tokens[openIndex].match;
+  const limit = close >= 0 ? close : index.tokens.length;
+  let position = 0;
+  let depth = 0;
+  for (let at = openIndex + 1; at < limit; at += 1) {
+    const token = index.tokens[at];
+    if (token.start >= offset) break;
+    const text = tokenText(index, token);
+    if (text === '(' || text === '[' || text === '{') depth += 1;
+    else if (text === ')' || text === ']' || text === '}') depth -= 1;
+    else if (text === ',' && depth === 0) position += 1;
+  }
+  return position;
+}
+
+function signatureHelp(index, offset) {
+  const call = enclosingCall(index, offset);
+  if (!call) return null;
+  const parameters = call.callee.parameters.map((parameter) => ({
+    label: `${parameter.mode ? `${parameter.mode} ` : ''}${parameter.name}: ${parameter.type}`,
+    documentation: parameter.mode
+      ? { kind: 'markdown', value: `Passed by \`${parameter.mode}\`.` }
+      : undefined
+  }));
+  const active = activeParameter(index, call.open, offset);
+  return {
+    signatures: [{
+      label: call.callee.type,
+      parameters,
+      // A caller past the last parameter is already an arity error; pointing at
+      // a parameter that does not exist would only add a second wrong claim.
+      activeParameter: Math.min(active, Math.max(0, parameters.length - 1))
+    }],
+    activeSignature: 0,
+    activeParameter: Math.min(active, Math.max(0, parameters.length - 1))
+  };
+}
+
+function foldingRanges(doc, index) {
+  const ranges = [];
+  for (const token of index.tokens) {
+    if (tokenText(index, token) !== '{' || token.match < 0) continue;
+    const open = offsetToPosition(doc, token.start);
+    const close = offsetToPosition(doc, index.tokens[token.match].start);
+    // A block that opens and closes on one line has nothing to fold.
+    if (close.line <= open.line) continue;
+    ranges.push({ startLine: open.line, endLine: close.line - 1, kind: 'region' });
+  }
+  // Consecutive comment lines fold as one block, which is how every editor
+  // treats a licence header or a long explanation.
+  let commentStart = -1;
+  for (let line = 0; line < doc.lines.length; line += 1) {
+    const start = doc.lines[line];
+    const end = line + 1 < doc.lines.length ? doc.lines[line + 1] - 1 : doc.text.length;
+    const isComment = doc.text.slice(start, end).trimStart().startsWith('#');
+    if (isComment && commentStart < 0) commentStart = line;
+    if (!isComment && commentStart >= 0) {
+      if (line - 1 > commentStart) {
+        ranges.push({ startLine: commentStart, endLine: line - 1, kind: 'comment' });
+      }
+      commentStart = -1;
+    }
+  }
+  if (commentStart >= 0 && doc.lines.length - 1 > commentStart) {
+    ranges.push({ startLine: commentStart, endLine: doc.lines.length - 1, kind: 'comment' });
+  }
+  ranges.sort((left, right) => left.startLine - right.startLine);
+  return ranges;
+}
+
+function selectionRange(doc, index, offset) {
+  // Widest last: the token, then each enclosing brace block, then the document.
+  const spans = [];
+  const token = index.tokens[tokenIndexAt(index, offset)];
+  if (token && token.start <= offset && offset <= token.end) {
+    spans.push([token.start, token.end]);
+  }
+  let container = token ? token.container : -1;
+  while (container >= 0) {
+    const open = index.tokens[container];
+    if (!open || open.match < 0) break;
+    spans.push([open.start, index.tokens[open.match].end]);
+    container = open.container;
+  }
+  spans.push([0, doc.text.length]);
+  let result = null;
+  for (let at = spans.length - 1; at >= 0; at -= 1) {
+    result = { range: range(doc, spans[at][0], spans[at][1]), parent: result };
+  }
+  return result;
+}
+
+// TextMate colours by spelling; this colours by what a name resolved to, which
+// is the difference between a parameter and a local that share a spelling.
+const SEMANTIC_TOKEN_TYPES = Object.freeze([
+  'function', 'parameter', 'variable', 'type', 'keyword', 'number', 'string'
+]);
+const SEMANTIC_TOKEN_MODIFIERS = Object.freeze(['declaration', 'defaultLibrary']);
+const TOKEN_TYPE_INDEX = Object.freeze(Object.fromEntries(
+  SEMANTIC_TOKEN_TYPES.map((name, at) => [name, at])));
+const DECLARATION_BIT = 1;
+const DEFAULT_LIBRARY_BIT = 2;
+
+function semanticTokenAt(index, at) {
+  const token = index.tokens[at];
+  if (token.kind === 'number') return { type: 'number', modifiers: 0 };
+  if (token.kind === 'string') return { type: 'string', modifiers: 0 };
+  if (token.kind !== 'id') return null;
+  const name = tokenText(index, token);
+  if (keywordNames.has(name) || MODE_KEYWORDS.includes(name) ||
+      BINDING_KEYWORDS.includes(name)) {
+    return { type: 'keyword', modifiers: 0 };
+  }
+  const declaration = index.declarations.has(at);
+  const symbol = resolve(index, token);
+  if (symbol) {
+    const type = symbol.kind === 'function' ? 'function'
+      : symbol.kind === 'parameter' ? 'parameter'
+      : symbol.kind === 'type' ? 'type' : 'variable';
+    return { type, modifiers: declaration ? DECLARATION_BIT : 0 };
+  }
+  // A builtin resolves to no declaration in this document, which is exactly
+  // what marks it as coming from the default library.
+  if (BUILTIN_FUNCTIONS.includes(name)) {
+    return { type: 'function', modifiers: DEFAULT_LIBRARY_BIT };
+  }
+  if (BUILTIN_TYPES.includes(name)) {
+    return { type: 'type', modifiers: DEFAULT_LIBRARY_BIT };
+  }
+  // An unresolved name is left to TextMate rather than coloured as a guess.
+  return null;
+}
+
+function semanticTokens(doc, index) {
+  const data = [];
+  let previousLine = 0;
+  let previousStart = 0;
+  for (let at = 0; at < index.tokens.length; at += 1) {
+    const classified = semanticTokenAt(index, at);
+    if (!classified) continue;
+    const token = index.tokens[at];
+    const position = offsetToPosition(doc, token.start);
+    const end = offsetToPosition(doc, token.end);
+    // A token spanning a line break cannot be encoded as one entry, and none
+    // of the kinds classified above can, so this only guards the invariant.
+    if (end.line !== position.line) continue;
+    data.push(
+      position.line - previousLine,
+      position.line === previousLine
+        ? position.character - previousStart : position.character,
+      end.character - position.character,
+      TOKEN_TYPE_INDEX[classified.type],
+      classified.modifiers
+    );
+    previousLine = position.line;
+    previousStart = position.character;
+  }
+  return { data };
+}
+
+// Renaming is offered only where this server can see every reference. A local
+// or a parameter cannot be named from another file; a function or a type can
+// be, and this server never reads unopened files, so renaming one would edit
+// some uses and silently leave others behind.
+const RENAMABLE = new Set(['binding', 'parameter']);
+
+function renameTarget(index, offset) {
+  const token = tokenAt(index, offset);
+  const symbol = token ? resolve(index, token) : null;
+  if (!symbol) return { error: 'no declaration is in scope at this position' };
+  if (!RENAMABLE.has(symbol.kind)) {
+    return {
+      error: `renaming a ${symbol.kind} is not supported: this server reads ` +
+        'only the open document, so uses in other files would be left behind'
+    };
+  }
+  return { symbol, token };
+}
+
+function validRenameName(name) {
+  if (typeof name !== 'string' || name.length === 0) return 'a new name is required';
+  if (!isIdentifierStart(name.charCodeAt(0))) return `'${name}' is not a valid name`;
+  for (let at = 1; at < name.length; at += 1) {
+    if (!isIdentifierContinue(name.charCodeAt(at))) return `'${name}' is not a valid name`;
+  }
+  if (keywordNames.has(name) || MODE_KEYWORDS.includes(name) ||
+      BINDING_KEYWORDS.includes(name)) return `'${name}' is a keyword`;
+  if (builtinNames.has(name)) return `'${name}' is a builtin name`;
+  return null;
+}
+
 function publishSyntacticDiagnostics(doc, diagnostics = doc.diagnostics) {
   send({
     jsonrpc: '2.0',
@@ -804,6 +1170,14 @@ function handle(message) {
   const params = message.params || {};
   switch (message.method) {
     case 'initialize':
+      if (params.initializationOptions && typeof params.initializationOptions === 'object') {
+        const requested = params.initializationOptions.inlayHints;
+        if (requested && typeof requested === 'object') {
+          for (const name of ['parameterNames', 'ownershipModes', 'inferredTypes']) {
+            if (typeof requested[name] === 'boolean') inlayHintSettings[name] = requested[name];
+          }
+        }
+      }
       if (typeof params.rootUri === 'string') {
         try {
           const root = new URL(params.rootUri);
@@ -821,7 +1195,26 @@ function handle(message) {
           // No trigger characters: member and field completion is not
           // implemented, so '.' must not advertise a list this server cannot
           // produce. Completion is driven by the identifier being typed.
-          completionProvider: { resolveProvider: false }
+          completionProvider: { resolveProvider: false },
+          documentSymbolProvider: true,
+          referencesProvider: true,
+          documentHighlightProvider: true,
+          inlayHintProvider: { resolveProvider: false },
+          signatureHelpProvider: { triggerCharacters: ['(', ','] },
+          foldingRangeProvider: true,
+          selectionRangeProvider: true,
+          semanticTokensProvider: {
+            legend: {
+              tokenTypes: SEMANTIC_TOKEN_TYPES,
+              tokenModifiers: SEMANTIC_TOKEN_MODIFIERS
+            },
+            full: true,
+            range: false
+          },
+          renameProvider: { prepareProvider: true }
+          // No codeActionProvider: no diagnostic in tests/diagnostics/registry.tsv
+          // carries a remedy today, so the capability would advertise a list
+          // this server can never fill. It belongs here once one does.
         },
         serverInfo: { name: 'kofun-lsp', version: '0.1.0' }
       });
@@ -902,6 +1295,177 @@ function handle(message) {
         uri: doc.uri,
         range: range(doc, symbol.start, symbol.end)
       } : null);
+      break;
+    }
+    case 'textDocument/semanticTokens/full': {
+      const item = params.textDocument;
+      const doc = item && documents.get(item.uri);
+      if (!doc || (doc.analysisState !== 'semantic' &&
+          doc.analysisState !== 'syntactic-fallback')) {
+        response(message.id, { data: [] });
+        break;
+      }
+      response(message.id, semanticTokens(doc, completionIndex(doc)));
+      break;
+    }
+    case 'textDocument/prepareRename': {
+      const item = params.textDocument;
+      const doc = item && documents.get(item.uri);
+      const offset = doc ? positionToOffset(doc, params.position) : null;
+      if (!doc || offset === null || (doc.analysisState !== 'semantic' &&
+          doc.analysisState !== 'syntactic-fallback')) {
+        response(message.id, null);
+        break;
+      }
+      const target = renameTarget(completionIndex(doc), offset);
+      if (target.error) {
+        // A request error rather than a null result: the editor shows the
+        // reason instead of silently doing nothing.
+        error(message.id, -32803, target.error);
+        break;
+      }
+      response(message.id, {
+        range: range(doc, target.token.start, target.token.end),
+        placeholder: target.symbol.name
+      });
+      break;
+    }
+    case 'textDocument/rename': {
+      const item = params.textDocument;
+      const doc = item && documents.get(item.uri);
+      const offset = doc ? positionToOffset(doc, params.position) : null;
+      if (!doc || offset === null || (doc.analysisState !== 'semantic' &&
+          doc.analysisState !== 'syntactic-fallback')) {
+        response(message.id, null);
+        break;
+      }
+      const index = completionIndex(doc);
+      const target = renameTarget(index, offset);
+      if (target.error) {
+        error(message.id, -32803, target.error);
+        break;
+      }
+      const invalid = validRenameName(params.newName);
+      if (invalid) {
+        error(message.id, -32803, invalid);
+        break;
+      }
+      // The new name must not already be visible where the old one is used, or
+      // the rename would capture a different declaration at that point.
+      for (const entry of occurrences(doc, index, offset)) {
+        const existing = visibleSymbols(index, entry.start).get(params.newName);
+        if (existing && existing !== target.symbol) {
+          error(message.id, -32803,
+            `'${params.newName}' is already declared where '${target.symbol.name}' is used`);
+          return;
+        }
+      }
+      response(message.id, {
+        changes: {
+          [doc.uri]: occurrences(doc, index, offset).map((entry) => ({
+            range: range(doc, entry.start, entry.end), newText: params.newName
+          }))
+        }
+      });
+      break;
+    }
+    case 'textDocument/signatureHelp': {
+      const item = params.textDocument;
+      const doc = item && documents.get(item.uri);
+      const offset = doc ? positionToOffset(doc, params.position) : null;
+      if (!doc || offset === null || (doc.analysisState !== 'semantic' &&
+          doc.analysisState !== 'syntactic-fallback')) {
+        response(message.id, null);
+        break;
+      }
+      response(message.id, signatureHelp(completionIndex(doc), offset));
+      break;
+    }
+    case 'textDocument/foldingRange': {
+      const item = params.textDocument;
+      const doc = item && documents.get(item.uri);
+      if (!doc || (doc.analysisState !== 'semantic' &&
+          doc.analysisState !== 'syntactic-fallback')) {
+        response(message.id, []);
+        break;
+      }
+      response(message.id, foldingRanges(doc, completionIndex(doc)));
+      break;
+    }
+    case 'textDocument/selectionRange': {
+      const item = params.textDocument;
+      const doc = item && documents.get(item.uri);
+      if (!doc || !Array.isArray(params.positions) ||
+          (doc.analysisState !== 'semantic' &&
+           doc.analysisState !== 'syntactic-fallback')) {
+        response(message.id, []);
+        break;
+      }
+      const index = completionIndex(doc);
+      response(message.id, params.positions.map((position) => {
+        const offset = positionToOffset(doc, position);
+        return offset === null ? null : selectionRange(doc, index, offset);
+      }).filter(Boolean));
+      break;
+    }
+    case 'textDocument/documentSymbol': {
+      const item = params.textDocument;
+      const doc = item && documents.get(item.uri);
+      if (!doc || (doc.analysisState !== 'semantic' &&
+          doc.analysisState !== 'syntactic-fallback')) {
+        response(message.id, []);
+        break;
+      }
+      response(message.id, documentSymbols(doc, completionIndex(doc)));
+      break;
+    }
+    case 'textDocument/references': {
+      const item = params.textDocument;
+      const doc = item && documents.get(item.uri);
+      const offset = doc ? positionToOffset(doc, params.position) : null;
+      if (!doc || offset === null || (doc.analysisState !== 'semantic' &&
+          doc.analysisState !== 'syntactic-fallback')) {
+        response(message.id, []);
+        break;
+      }
+      const index = completionIndex(doc);
+      const includeDeclaration = params.context
+        ? params.context.includeDeclaration !== false : true;
+      response(message.id, occurrences(doc, index, offset)
+        .filter((entry) => includeDeclaration || !entry.write)
+        .map((entry) => ({ uri: doc.uri, range: range(doc, entry.start, entry.end) })));
+      break;
+    }
+    case 'textDocument/documentHighlight': {
+      const item = params.textDocument;
+      const doc = item && documents.get(item.uri);
+      const offset = doc ? positionToOffset(doc, params.position) : null;
+      if (!doc || offset === null || (doc.analysisState !== 'semantic' &&
+          doc.analysisState !== 'syntactic-fallback')) {
+        response(message.id, []);
+        break;
+      }
+      // LSP DocumentHighlightKind: Text is 1, Write 3. The declaration is the
+      // write; a reference is a read this server does not distinguish further.
+      response(message.id, occurrences(doc, completionIndex(doc), offset).map((entry) => ({
+        range: range(doc, entry.start, entry.end), kind: entry.write ? 3 : 2
+      })));
+      break;
+    }
+    case 'textDocument/inlayHint': {
+      const item = params.textDocument;
+      const doc = item && documents.get(item.uri);
+      if (!doc || (doc.analysisState !== 'semantic' &&
+          doc.analysisState !== 'syntactic-fallback')) {
+        response(message.id, []);
+        break;
+      }
+      const requested = params.range;
+      const from = requested ? positionToOffset(doc, requested.start) : 0;
+      const to = requested ? positionToOffset(doc, requested.end) : doc.text.length;
+      response(message.id, inlayHints(doc, completionIndex(doc),
+        from === null ? 0 : from, to === null ? doc.text.length : to,
+        inlayHintSettings));
       break;
     }
     case 'textDocument/completion': {
