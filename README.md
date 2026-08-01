@@ -118,7 +118,6 @@ using it as a compatibility or security promise.
 | [`tests/`](tests/) | Conformance, diagnostics, fuzzing, CLI, and integration gates |
 | [`framework/`](framework/) | HTTP, CLI, and terminal UI libraries |
 | [`stdlib/`](stdlib/) | Kofun syscall and standard-library contracts |
-| [`editor/`](editor/) | Editor integrations and structural grammar |
 | [`docs/`](docs/) | Language, compiler, roadmap, security, and status documents |
 
 The official site, its docs renderer, the browser playground, and the delivery

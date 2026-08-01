@@ -34,7 +34,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `rust-crate-shim` | `sh examples/rust-shim/check.sh` | The vendored crate builds and answers through the C ABI shim. |
 | `self-recompile` | `sh bootstrap/selfhost/check-compiler-driver.sh` | The compiler-produced compiler emits byte-identical C to the audited seed for every accept corpus, including all 15 profile builtins, and agrees on all 30 builtin arity/type refusals. |
 | `selfhost-native-corpus` | `sh bootstrap/selfhost/native/check-native-corpus.sh` | The native and C11 self-host paths produce identical output. |
-| `source-extension` | `task repository-check` | No Python or `.kf` sources remain and the editor extension registers `.kofun`. |
+| `source-extension` | `task repository-check` | No Python or `.kf` sources remain. |
 | `stable-diagnostics` | `sh tests/diagnostics/check.sh` | Every registry code has an owner and every fixture matches exactly. |
 | `stage2-core-lowering` | `sh bootstrap/stage2/check.sh` | Integer Core sources lex, parse, lower and execute. |
 | `stage2-typed-sidecar` | `task typed-sidecar-projector` | Stage 2 events project into a schema-valid typed-sidecar v1 document. |
@@ -42,5 +42,4 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `syscall-file-round-trip` | `sh stdlib/tests/verify.sh` | The file round-trip succeeds and returns the written bytes. |
 | `syscall-stdlib-api` | `sh stdlib/tests/verify.sh` | The declared syscall and stdlib contracts check and execute. |
 | `test-skip-reporting` | `sh tests/cli.sh` | Skipped cases appear in the report with their own count. |
-| `tree-sitter-grammar` | `task tree-sitter` | The grammar parses the repository corpus and the recovery cases. |
 | `wasm32-arithmetic-core` | `sh bootstrap/wasm/check.sh` | wasm32 modules are emitted and execute to the expected values. |
