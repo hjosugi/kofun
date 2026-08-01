@@ -5033,6 +5033,82 @@ typedef struct {
     bool taken[MAX_TARGET_REGISTERS];
 } RegisterFile;
 
+/*
+ * The frame layout every target shares
+ * ------------------------------------
+ *
+ * A layout is the allocator's answer for one function: which evaluation depths
+ * and which bindings got a register, where the rest spill, and which
+ * callee-saved registers the prologue must preserve. None of that is
+ * target-specific; the counts are, and they come from the `TargetRegisterFile`
+ * the layout was built against.
+ *
+ * The arrays are sized for the widest target that declares itself, the way
+ * `taken[]` is, with a static assertion below so a target that outgrows them
+ * fails to compile rather than writing past the end.
+ *
+ * `slot_register` is sized by `MAX_FUNCTION_FRAME_SLOTS`, which is the bound
+ * the parser actually enforces. x86-64 used to size it by
+ * `MAX_CORE_PARAMETERS + MAX_CORE_STATEMENTS` — 70 entries where 32 are
+ * reachable, with an abort that could never fire. That was drift, not a design
+ * choice, and unifying is what surfaced it.
+ *
+ * `frame_bytes` is per-function data, not per-target; x86-64 leaves it zero.
+ */
+enum {
+    MAX_TARGET_ALLOCATABLE = 12,
+    MAX_TARGET_CALL_SAFE = 8,
+    MAX_TARGET_VALUE_SLOTS = MAX_FUNCTION_FRAME_SLOTS,
+};
+
+typedef struct {
+    const TargetRegisterFile *target;
+    size_t frame_slots;   /* parameters and locals, at their existing slots */
+    size_t spill_slots;   /* evaluation depths that did not get a register */
+    size_t eval_depth;    /* evaluation depths this body uses */
+    uint32_t frame_bytes; /* the whole frame, rounded to 16 bytes */
+    unsigned eval_register[MAX_TARGET_ALLOCATABLE];
+    size_t eval_spill[MAX_TARGET_ALLOCATABLE];
+    size_t deep_spill_base;
+    unsigned slot_register[MAX_TARGET_VALUE_SLOTS];
+    unsigned saved[MAX_TARGET_CALL_SAFE];
+    size_t saved_count;
+} FrameLayout;
+
+static size_t target_allocatable_registers(const TargetRegisterFile *target) {
+    return target->scratch_count + target->call_safe_count;
+}
+
+/*
+ * The two materialisation helpers, written once. Both targets carried an
+ * identical copy of each — identical after the prefixes and the abort label
+ * were normalised away — so the pair proved nothing a gate could read.
+ */
+static Operand target_eval_operand(const FrameLayout *layout, size_t depth) {
+    size_t allocatable = target_allocatable_registers(layout->target);
+    if (depth >= layout->eval_depth) {
+        fatal("native Core evaluation exceeds its analyzed depth");
+    }
+    if (depth < allocatable &&
+        layout->eval_register[depth] != layout->target->no_register) {
+        return target_register_operand(layout->eval_register[depth]);
+    }
+    size_t spill = depth < allocatable
+        ? layout->eval_spill[depth]
+        : layout->deep_spill_base + (depth - allocatable);
+    return target_slot_operand(layout->frame_slots + spill);
+}
+
+static Operand target_value_operand(const FrameLayout *layout, size_t slot) {
+    if (slot >= layout->frame_slots) {
+        fatal("native Core binding is outside its frame");
+    }
+    if (layout->slot_register[slot] != layout->target->no_register) {
+        return target_register_operand(layout->slot_register[slot]);
+    }
+    return target_slot_operand(slot);
+}
+
 static unsigned target_take_scratch_register(RegisterFile *file) {
     for (size_t index = 0; index < file->target->scratch_count; ++index) {
         unsigned reg = file->target->scratch[index];
@@ -5122,7 +5198,6 @@ enum {
     X64_SCRATCH_REGISTERS = 2,
     X64_ALLOCATABLE_REGISTERS =
         X64_CALL_SAFE_REGISTERS + X64_SCRATCH_REGISTERS,
-    X64_MAX_VALUE_SLOTS = MAX_CORE_PARAMETERS + MAX_CORE_STATEMENTS,
 };
 
 static const unsigned x64_call_safe_registers[X64_CALL_SAFE_REGISTERS] = {
@@ -5145,17 +5220,6 @@ static const TargetRegisterFile x64_register_file = {
     X64_NO_REGISTER,
 };
 
-typedef struct {
-    size_t frame_slots;   /* parameters and locals, at their existing slots */
-    size_t spill_slots;   /* evaluation depths that did not get a register */
-    size_t eval_depth;    /* evaluation depths this body uses */
-    unsigned eval_register[X64_ALLOCATABLE_REGISTERS];
-    size_t eval_spill[X64_ALLOCATABLE_REGISTERS];
-    size_t deep_spill_base;
-    unsigned slot_register[X64_MAX_VALUE_SLOTS];
-    unsigned saved[X64_CALL_SAFE_REGISTERS];
-    size_t saved_count;
-} X64FrameLayout;
 
 /*
  * The liveness analysis below is shared by both direct backends: it is
@@ -5301,16 +5365,17 @@ static bool function_body_calls(const FunctionDeclaration *function) {
     return false;
 }
 
-static X64FrameLayout x64_function_layout(
+static FrameLayout x64_function_layout(
     const FunctionDeclaration *function
 ) {
-    X64FrameLayout layout = {0};
+    FrameLayout layout = {0};
+    layout.target = &x64_register_file;
     layout.frame_slots =
         function->parameter_count + function->local_count;
-    if (layout.frame_slots > X64_MAX_VALUE_SLOTS) {
+    if (layout.frame_slots > MAX_TARGET_VALUE_SLOTS) {
         fatal("x86-64 Core function has too many bindings");
     }
-    for (size_t slot = 0; slot < X64_MAX_VALUE_SLOTS; ++slot) {
+    for (size_t slot = 0; slot < MAX_TARGET_VALUE_SLOTS; ++slot) {
         layout.slot_register[slot] = X64_NO_REGISTER;
     }
     for (size_t depth = 0;
@@ -5367,40 +5432,11 @@ static X64FrameLayout x64_function_layout(
 }
 
 /* Where the value produced at `depth` lives: a register or a spill slot. */
-static Operand x64_eval_operand(
-    const X64FrameLayout *layout,
-    size_t depth
-) {
-    if (depth >= layout->eval_depth) {
-        fatal("x86-64 Core evaluation exceeds its analyzed depth");
-    }
-    if (depth < X64_ALLOCATABLE_REGISTERS &&
-        layout->eval_register[depth] != X64_NO_REGISTER) {
-        return target_register_operand(layout->eval_register[depth]);
-    }
-    size_t spill = depth < X64_ALLOCATABLE_REGISTERS
-        ? layout->eval_spill[depth]
-        : layout->deep_spill_base +
-            (depth - (size_t)X64_ALLOCATABLE_REGISTERS);
-    return target_slot_operand(layout->frame_slots + spill);
-}
 
 /* Where a parameter or local lives: a register or its existing frame slot. */
-static Operand x64_value_operand(
-    const X64FrameLayout *layout,
-    size_t slot
-) {
-    if (slot >= layout->frame_slots) {
-        fatal("x86-64 Core binding is outside its frame");
-    }
-    if (layout->slot_register[slot] != X64_NO_REGISTER) {
-        return target_register_operand(layout->slot_register[slot]);
-    }
-    return target_slot_operand(slot);
-}
 
 static Operand x64_saved_operand(
-    const X64FrameLayout *layout,
+    const FrameLayout *layout,
     size_t index
 ) {
     return target_slot_operand(
@@ -5435,11 +5471,11 @@ static void x64_move(Bytes *text, Operand into, Operand from) {
  */
 static void x64_function_compare(
     Bytes *text,
-    const X64FrameLayout *layout,
+    const FrameLayout *layout,
     size_t depth
 ) {
-    Operand left = x64_eval_operand(layout, depth);
-    Operand right = x64_eval_operand(layout, depth + 1);
+    Operand left = target_eval_operand(layout, depth);
+    Operand right = target_eval_operand(layout, depth + 1);
     if (left.in_register) {
         x64_encode_op(text, X64_CMP_REG_RM, left.reg, right);
         return;
@@ -5603,10 +5639,10 @@ static void x64_function_expression(
     Bytes *text,
     const FunctionExpression *expression,
     FunctionEmitter *emitter,
-    const X64FrameLayout *layout,
+    const FrameLayout *layout,
     size_t depth
 ) {
-    Operand result = x64_eval_operand(layout, depth);
+    Operand result = target_eval_operand(layout, depth);
     if (expression->kind == FUNCTION_LITERAL) {
         unsigned reg = result.in_register ? result.reg : X64_RAX;
         x64_mov_register_imm64(text, reg, expression->value);
@@ -5630,7 +5666,7 @@ static void x64_function_expression(
         return;
     }
     if (expression->kind == FUNCTION_PARAMETER) {
-        x64_move(text, result, x64_value_operand(layout, expression->slot));
+        x64_move(text, result, target_value_operand(layout, expression->slot));
         return;
     }
     if (expression->kind == FUNCTION_CALL) {
@@ -5652,7 +5688,7 @@ static void x64_function_expression(
             x64_mov_register_operand(
                 text,
                 x64_argument_registers[index],
-                x64_eval_operand(layout, depth + index)
+                target_eval_operand(layout, depth + index)
             );
         }
         x64_function_call(text, emitter, expression->function_index);
@@ -5695,7 +5731,7 @@ static void x64_function_expression(
         x64_mov_register_operand(
             text,
             X64_RSI,
-            x64_eval_operand(layout, depth + 1)
+            target_eval_operand(layout, depth + 1)
         );
         x64_call_runtime(
             text,
@@ -5714,7 +5750,7 @@ static void x64_function_expression(
         layout,
         depth + 1
     );
-    Operand right = x64_eval_operand(layout, depth + 1);
+    Operand right = target_eval_operand(layout, depth + 1);
     if (expression->kind == FUNCTION_ADD ||
         expression->kind == FUNCTION_SUBTRACT) {
         bool add = expression->kind == FUNCTION_ADD;
@@ -5814,7 +5850,7 @@ static void x64_function_epilogue(Bytes *text) {
  */
 static void x64_function_epilogue_block(
     Bytes *text,
-    const X64FrameLayout *layout
+    const FrameLayout *layout
 ) {
     for (size_t index = layout->saved_count; index > 0; --index) {
         x64_mov_register_operand(
@@ -5836,7 +5872,7 @@ static void x64_function_tail_call(
     Bytes *text,
     const FunctionExpression *call,
     FunctionEmitter *emitter,
-    const X64FrameLayout *layout,
+    const FrameLayout *layout,
     size_t self_index,
     size_t body_start
 ) {
@@ -5856,8 +5892,8 @@ static void x64_function_tail_call(
         for (size_t index = 0; index < call->argument_count; ++index) {
             x64_move(
                 text,
-                x64_value_operand(layout, index),
-                x64_eval_operand(layout, index)
+                target_value_operand(layout, index),
+                target_eval_operand(layout, index)
             );
         }
         x64_patch_rel32(text, x64_local_jmp(text), body_start);
@@ -5869,7 +5905,7 @@ static void x64_function_tail_call(
         x64_mov_register_operand(
             text,
             x64_argument_registers[index],
-            x64_eval_operand(layout, index)
+            target_eval_operand(layout, index)
         );
     }
     /* The saved registers still live in frame slots, so they are reloaded
@@ -5894,7 +5930,7 @@ static void x64_function_tail_call(
 
 static void x64_function_parameter_store(
     Bytes *text,
-    const X64FrameLayout *layout,
+    const FrameLayout *layout,
     size_t parameter
 ) {
     if (parameter >= MAX_CORE_PARAMETERS) {
@@ -5902,7 +5938,7 @@ static void x64_function_parameter_store(
     }
     x64_move(
         text,
-        x64_value_operand(layout, parameter),
+        target_value_operand(layout, parameter),
         target_register_operand(x64_argument_registers[parameter])
     );
 }
@@ -5913,7 +5949,7 @@ static void x64_function_declaration(
     size_t self_index,
     FunctionEmitter *emitter
 ) {
-    X64FrameLayout layout = x64_function_layout(function);
+    FrameLayout layout = x64_function_layout(function);
     const uint8_t frame_open[] = {
         UINT8_C(0x55),                         /* push rbp */
         UINT8_C(0x48), UINT8_C(0x89), UINT8_C(0xe5),
@@ -5990,7 +6026,7 @@ static void x64_function_declaration(
                     &layout,
                     0
                 );
-                Operand condition = x64_eval_operand(&layout, 0);
+                Operand condition = target_eval_operand(&layout, 0);
                 if (condition.in_register) {
                     /* test condition, condition */
                     x64_encode_op(
@@ -6031,7 +6067,7 @@ static void x64_function_declaration(
                 x64_move(
                     text,
                     target_register_operand(X64_RAX),
-                    x64_eval_operand(&layout, 0)
+                    target_eval_operand(&layout, 0)
                 );
                 offsets_add(&returns, x64_local_jmp(text));
             }
@@ -6062,7 +6098,7 @@ static void x64_function_declaration(
             x64_move(
                 text,
                 target_register_operand(X64_RAX),
-                x64_eval_operand(&layout, 0)
+                target_eval_operand(&layout, 0)
             );
             /* A closing return falls straight into the epilogue. */
             if (!tail) offsets_add(&returns, x64_local_jmp(text));
@@ -6078,7 +6114,7 @@ static void x64_function_declaration(
             x64_move(
                 text,
                 target_register_operand(X64_RDI),
-                x64_eval_operand(&layout, 0)
+                target_eval_operand(&layout, 0)
             );
             byte(text, UINT8_C(0xe8));
             Offsets *calls =
@@ -6097,8 +6133,8 @@ static void x64_function_declaration(
             );
             x64_move(
                 text,
-                x64_value_operand(&layout, statement->slot),
-                x64_eval_operand(&layout, 0)
+                target_value_operand(&layout, statement->slot),
+                target_eval_operand(&layout, 0)
             );
         } else {
             /* The evaluated result is discarded. */
@@ -6813,7 +6849,6 @@ enum {
     A64_SCRATCH_REGISTERS = 4,    /* x12-x15 */
     A64_ALLOCATABLE_REGISTERS =
         A64_CALL_SAFE_REGISTERS + A64_SCRATCH_REGISTERS,
-    A64_MAX_VALUE_SLOTS = MAX_FUNCTION_FRAME_SLOTS,
     A64_NO_REGISTER = 32,
     A64_SCRATCH_A = 0, /* x0: the move scratch and the return register */
     A64_SCRATCH_B = 1, /* x1: the second operand of a spilled pair */
@@ -6835,29 +6870,40 @@ static const TargetRegisterFile a64_register_file = {
     A64_NO_REGISTER,
 };
 
-typedef struct {
-    size_t frame_slots;   /* parameters and locals, at their existing slots */
-    size_t spill_slots;   /* evaluation depths that did not get a register */
-    size_t eval_depth;    /* evaluation depths this body uses */
-    uint32_t frame_bytes; /* the whole frame, rounded to 16 bytes */
-    unsigned eval_register[A64_ALLOCATABLE_REGISTERS];
-    size_t eval_spill[A64_ALLOCATABLE_REGISTERS];
-    size_t deep_spill_base;
-    unsigned slot_register[A64_MAX_VALUE_SLOTS];
-    unsigned saved[A64_CALL_SAFE_REGISTERS];
-    size_t saved_count;
-} A64FrameLayout;
+/*
+ * A target that outgrows the shared arrays fails to compile here rather than
+ * writing past their end. These are the only places the widths are asserted,
+ * so a third target adds its two lines beside these.
+ */
+_Static_assert(
+    (size_t)X64_ALLOCATABLE_REGISTERS <= (size_t)MAX_TARGET_ALLOCATABLE,
+    "x86-64 allocatable registers exceed the shared frame layout"
+);
+_Static_assert(
+    (size_t)A64_ALLOCATABLE_REGISTERS <= (size_t)MAX_TARGET_ALLOCATABLE,
+    "AArch64 allocatable registers exceed the shared frame layout"
+);
+_Static_assert(
+    (size_t)X64_CALL_SAFE_REGISTERS <= (size_t)MAX_TARGET_CALL_SAFE,
+    "x86-64 call-safe registers exceed the shared frame layout"
+);
+_Static_assert(
+    (size_t)A64_CALL_SAFE_REGISTERS <= (size_t)MAX_TARGET_CALL_SAFE,
+    "AArch64 call-safe registers exceed the shared frame layout"
+);
 
-static A64FrameLayout a64_function_layout(
+
+static FrameLayout a64_function_layout(
     const FunctionDeclaration *function
 ) {
-    A64FrameLayout layout = {0};
+    FrameLayout layout = {0};
+    layout.target = &a64_register_file;
     layout.frame_slots =
         function->parameter_count + function->local_count;
-    if (layout.frame_slots > A64_MAX_VALUE_SLOTS) {
+    if (layout.frame_slots > MAX_TARGET_VALUE_SLOTS) {
         fatal("aarch64 Core function has too many bindings");
     }
-    for (size_t slot = 0; slot < A64_MAX_VALUE_SLOTS; ++slot) {
+    for (size_t slot = 0; slot < MAX_TARGET_VALUE_SLOTS; ++slot) {
         layout.slot_register[slot] = A64_NO_REGISTER;
     }
     for (size_t depth = 0; depth < A64_ALLOCATABLE_REGISTERS; ++depth) {
@@ -6919,39 +6965,10 @@ static A64FrameLayout a64_function_layout(
  */
 
 /* Where the value produced at `depth` lives: a register or a spill slot. */
-static Operand a64_eval_operand(
-    const A64FrameLayout *layout,
-    size_t depth
-) {
-    if (depth >= layout->eval_depth) {
-        fatal("aarch64 Core evaluation exceeds its analyzed depth");
-    }
-    if (depth < A64_ALLOCATABLE_REGISTERS &&
-        layout->eval_register[depth] != A64_NO_REGISTER) {
-        return target_register_operand(layout->eval_register[depth]);
-    }
-    size_t spill = depth < A64_ALLOCATABLE_REGISTERS
-        ? layout->eval_spill[depth]
-        : layout->deep_spill_base +
-            (depth - (size_t)A64_ALLOCATABLE_REGISTERS);
-    return target_slot_operand(layout->frame_slots + spill);
-}
 
 /* Where a parameter or local lives: a register or its existing frame slot. */
-static Operand a64_value_operand(
-    const A64FrameLayout *layout,
-    size_t slot
-) {
-    if (slot >= layout->frame_slots) {
-        fatal("aarch64 Core binding is outside its frame");
-    }
-    if (layout->slot_register[slot] != A64_NO_REGISTER) {
-        return target_register_operand(layout->slot_register[slot]);
-    }
-    return target_slot_operand(slot);
-}
 
-static size_t a64_saved_slot(const A64FrameLayout *layout, size_t index) {
+static size_t a64_saved_slot(const FrameLayout *layout, size_t index) {
     return layout->frame_slots + layout->spill_slots + index;
 }
 
@@ -7004,7 +7021,7 @@ static void a64_function_epilogue(Bytes *text) {
  */
 static void a64_function_epilogue_block(
     Bytes *text,
-    const A64FrameLayout *layout
+    const FrameLayout *layout
 ) {
     for (size_t index = layout->saved_count; index > 0; --index) {
         a64_load_slot(
@@ -7022,17 +7039,17 @@ static void a64_function_epilogue_block(
  */
 static void a64_function_compare(
     Bytes *text,
-    const A64FrameLayout *layout,
+    const FrameLayout *layout,
     size_t depth
 ) {
     unsigned left = a64_operand_register(
         text,
-        a64_eval_operand(layout, depth),
+        target_eval_operand(layout, depth),
         A64_SCRATCH_A
     );
     unsigned right = a64_operand_register(
         text,
-        a64_eval_operand(layout, depth + 1),
+        target_eval_operand(layout, depth + 1),
         A64_SCRATCH_B
     );
     /* cmp left, right : subs xzr, left, right */
@@ -7172,10 +7189,10 @@ static void a64_function_expression(
     Bytes *text,
     const FunctionExpression *expression,
     FunctionEmitter *emitter,
-    const A64FrameLayout *layout,
+    const FrameLayout *layout,
     size_t depth
 ) {
-    Operand result = a64_eval_operand(layout, depth);
+    Operand result = target_eval_operand(layout, depth);
     if (expression->kind == FUNCTION_LITERAL) {
         unsigned reg = result.in_register ? result.reg : A64_SCRATCH_A;
         a64_load_immediate(text, reg, expression->value);
@@ -7183,7 +7200,7 @@ static void a64_function_expression(
         return;
     }
     if (expression->kind == FUNCTION_PARAMETER) {
-        a64_move(text, result, a64_value_operand(layout, expression->slot));
+        a64_move(text, result, target_value_operand(layout, expression->slot));
         return;
     }
     if (expression->kind == FUNCTION_TEXT_LITERAL) {
@@ -7224,7 +7241,7 @@ static void a64_function_expression(
         a64_move(
             text,
             target_register_operand(1),
-            a64_eval_operand(layout, depth + 1)
+            target_eval_operand(layout, depth + 1)
         );
         a64_core_call_runtime(
             text,
@@ -7253,7 +7270,7 @@ static void a64_function_expression(
             a64_move(
                 text,
                 target_register_operand((unsigned)index),
-                a64_eval_operand(layout, depth + index)
+                target_eval_operand(layout, depth + index)
             );
         }
         a64_function_call(text, emitter, expression->function_index);
@@ -7296,7 +7313,7 @@ static void a64_function_expression(
         layout,
         depth + 1
     );
-    Operand right = a64_eval_operand(layout, depth + 1);
+    Operand right = target_eval_operand(layout, depth + 1);
     if (expression->kind == FUNCTION_FLOOR_DIVIDE ||
         expression->kind == FUNCTION_FLOOR_MODULO) {
         a64_function_divide(text, expression->kind, emitter, result, right);
@@ -7371,7 +7388,7 @@ static void a64_function_tail_call(
     Bytes *text,
     const FunctionExpression *call,
     FunctionEmitter *emitter,
-    const A64FrameLayout *layout,
+    const FrameLayout *layout,
     size_t self_index,
     size_t body_start
 ) {
@@ -7391,8 +7408,8 @@ static void a64_function_tail_call(
         for (size_t index = 0; index < call->argument_count; ++index) {
             a64_move(
                 text,
-                a64_value_operand(layout, index),
-                a64_eval_operand(layout, index)
+                target_value_operand(layout, index),
+                target_eval_operand(layout, index)
             );
         }
         size_t back = text->length;
@@ -7406,7 +7423,7 @@ static void a64_function_tail_call(
         a64_move(
             text,
             target_register_operand((unsigned)index),
-            a64_eval_operand(layout, index)
+            target_eval_operand(layout, index)
         );
     }
     /* The saved registers still live in frame slots, so they are reloaded
@@ -7435,7 +7452,7 @@ static void a64_function_declaration(
     size_t self_index,
     FunctionEmitter *emitter
 ) {
-    A64FrameLayout layout = a64_function_layout(function);
+    FrameLayout layout = a64_function_layout(function);
     a64_word(text, UINT32_C(0xa9bf7bfd)); /* stp x29, x30, [sp, #-16]! */
     a64_word(text, UINT32_C(0x910003fd)); /* mov x29, sp */
     if (layout.frame_bytes > 0) {
@@ -7454,7 +7471,7 @@ static void a64_function_declaration(
         }
         a64_move(
             text,
-            a64_value_operand(&layout, index),
+            target_value_operand(&layout, index),
             target_register_operand((unsigned)index)
         );
     }
@@ -7505,7 +7522,7 @@ static void a64_function_declaration(
                 );
                 unsigned condition = a64_operand_register(
                     text,
-                    a64_eval_operand(&layout, 0),
+                    target_eval_operand(&layout, 0),
                     A64_SCRATCH_A
                 );
                 skip = text->length;
@@ -7533,7 +7550,7 @@ static void a64_function_declaration(
                 a64_move(
                     text,
                     target_register_operand(0),
-                    a64_eval_operand(&layout, 0)
+                    target_eval_operand(&layout, 0)
                 );
                 offsets_add(&returns, text->length);
                 a64_word(text, UINT32_C(0x14000000)); /* b epilogue */
@@ -7565,7 +7582,7 @@ static void a64_function_declaration(
             a64_move(
                 text,
                 target_register_operand(0),
-                a64_eval_operand(&layout, 0)
+                target_eval_operand(&layout, 0)
             );
             /* A closing return falls straight into the epilogue. */
             if (!tail) {
@@ -7584,7 +7601,7 @@ static void a64_function_declaration(
             a64_move(
                 text,
                 target_register_operand(0),
-                a64_eval_operand(&layout, 0)
+                target_eval_operand(&layout, 0)
             );
             if (statement->value->value_kind == FUNCTION_VALUE_TEXT) {
                 offsets_add(&emitter->print_text_calls, text->length);
@@ -7602,8 +7619,8 @@ static void a64_function_declaration(
             );
             a64_move(
                 text,
-                a64_value_operand(&layout, statement->slot),
-                a64_eval_operand(&layout, 0)
+                target_value_operand(&layout, statement->slot),
+                target_eval_operand(&layout, 0)
             );
         } else {
             /* The evaluated result is discarded. */
