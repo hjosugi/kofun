@@ -206,7 +206,36 @@ assert_eq 'the fold excludes its high edge' "$(field 40)" '1'
 assert_eq 'the second past the fold maps through the new offset' \
     "$(field 41)" '2100'
 
-assert_num 'golden line count' "$(wc -l <"$expected" | tr -d ' ')" -eq 41
+# Provenance per result, not once per run. Fields 2 and 3 carry the version and
+# digest for the whole run; a caller holding one answer holds neither, and two
+# offsets computed under different rule versions are otherwise the same number.
+assert_eq 'a normal resolution carries zone, version, and digest' \
+    "$(field 42) $(field 43) $(field 44)" "7 1 $(field 3)"
+assert_eq 'the normal resolution is still Unique at the same instant' \
+    "$(field 45) $(field 46)" '1 1400'
+assert_eq 'a gap resolution carries zone, version, and digest' \
+    "$(field 47) $(field 48) $(field 49)" "7 1 $(field 3)"
+assert_eq 'the gap resolution is still Nonexistent with the same payload' \
+    "$(field 50) $(field 51)" '3 1000'
+assert_eq 'a fold resolution carries zone, version, and digest' \
+    "$(field 52) $(field 53) $(field 54)" "7 1 $(field 3)"
+assert_eq 'the fold resolution still packs both instants' \
+    "$(field 55) $(field 56)" '2 195002050'
+
+# Drift, observed rather than described. The same local reading is asked of two
+# rule sets differing only in when the first transition happens. Both answers
+# are correct for their own rules; without the digest travelling with them they
+# are indistinguishable.
+assert_eq 'the second rule set is the same zone and format version' \
+    "$(field 57) $(field 58)" '7 1'
+assert_ne 'moving a transition changes the digest every result carries' \
+    "$(field 59)" "$(field 3)"
+assert_eq 'the same local reading is an ordinary one under the moved rules' \
+    "$(field 60) $(field 61)" '1 1050'
+assert_ne 'and it is a different answer from the one the shipped rules give' \
+    "$(field 60)" "$(field 50)"
+
+assert_num 'golden line count' "$(wc -l <"$expected" | tr -d ' ')" -eq 61
 
 # A local reading and an instant are both one number. Keeping them apart is the
 # whole reason the resolution sum has anywhere to live, so the toolchain must
@@ -246,6 +275,8 @@ printf '%s\n' \
     'tzdb normal, gap, and fold resolution: PASS' \
     'tzdb malformed, version, digest, zone, truncation, trailing, overflow, size, and limit errors: PASS' \
     'tzdb gap and fold edges are half-open at the top: PASS' \
+    'tzdb every serialized resolution carries its zone, version, and digest: PASS' \
+    'tzdb two rule sets give different answers, told apart by the digest: PASS' \
     'tzdb local readings and instants cannot be confused: PASS' \
     'tzdb bytes do not move under a hostile TZ, locale, or an empty environment: PASS' \
     'tzdb reference and C11 backend observations: PASS'

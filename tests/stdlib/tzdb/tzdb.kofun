@@ -126,13 +126,38 @@ fn fixture(
     transition_count: Int,
     trailing: Int
 ) -> Bytes20 {
+    return fixture_rules(
+        length,
+        claimed_digest,
+        magic0,
+        version,
+        zone,
+        transition_count,
+        trailing,
+        1000
+    )
+}
+
+# The same fixture with the first transition moved. A second rule set is what
+# makes drift observable: the same question asked of both must be answerable,
+# and the two answers must be told apart by something a caller can see.
+fn fixture_rules(
+    length: Int,
+    claimed_digest: Int,
+    magic0: Int,
+    version: Int,
+    zone: Int,
+    transition_count: Int,
+    trailing: Int,
+    transition1_utc: Int
+) -> Bytes20 {
     let bytes: Bytes20 = Bytes20(
         length: length,
         claimed_digest: claimed_digest,
         word0: magic0 + 90 * 256,
         word1: version + zone * 256,
         word2: transition_count,
-        word3: 1000,
+        word3: transition1_utc,
         word4: 0,
         word5: 100,
         word6: 2000,
@@ -397,6 +422,18 @@ fn pack_instants(earlier: Int, later: Int) -> Int {
     return earlier * 100000 + later
 }
 
+# A resolution together with the rules that produced it. Serializing this
+# rather than a bare kind and payload is what lets a single value be
+# attributed: an offset computed under one rule version and one computed under
+# another are otherwise the same two numbers.
+type ResolvedLocal = {
+    zone_code: Int,
+    version: Int,
+    content_digest: Int,
+    kind: Int,
+    payload: Int,
+}
+
 fn resolve_local(db: Tzdb, local: LocalDateTime) -> LocalResolution {
     let gap_start = db.transition1_utc + db.transition1_before
     let gap_end = db.transition1_utc + db.transition1_after
@@ -464,6 +501,31 @@ fn resolution_payload(result: LocalResolution) -> Int {
         ResolutionFailed(value) => { payload = value },
     }
     return payload
+}
+
+# The provenance is read from the database the resolution was computed against,
+# inside the same call. A caller cannot resolve against one database and
+# serialize with another, because there is no second call to pass a different
+# one to.
+fn resolve_local_provenanced(db: Tzdb, local: LocalDateTime) -> ResolvedLocal {
+    let result: LocalResolution = resolve_local(db, local)
+    let resolved: ResolvedLocal = ResolvedLocal(
+        zone_code: db.zone_code,
+        version: db.version,
+        content_digest: db.content_digest,
+        kind: resolution_kind(result),
+        payload: resolution_payload(result)
+    )
+    return resolved
+}
+
+fn emit_resolved(resolved: ResolvedLocal) -> Int {
+    print(resolved.zone_code)
+    print(resolved.version)
+    print(resolved.content_digest)
+    print(resolved.kind)
+    print(resolved.payload)
+    return 0
 }
 
 fn load_failure_code(result: LoadResult) -> Int {
@@ -568,4 +630,40 @@ fn main() {
     let fold_high: LocalResolution = resolve_local(db, local_date_time(2100))
     print(resolution_kind(fold_high))
     print(resolution_payload(fold_high))
+
+    # Each answer serialized with the rules that produced it. Everything above
+    # prints a kind and a payload; a reader of those two numbers alone cannot
+    # say which rule set they came from, and the version and digest printed
+    # once at the top of the run do not travel with them.
+    let normal_at: LocalDateTime = local_date_time(1500)
+    let provenanced_normal: ResolvedLocal = resolve_local_provenanced(db, normal_at)
+    emit_resolved(provenanced_normal)
+    let gap_at: LocalDateTime = local_date_time(1050)
+    let provenanced_gap: ResolvedLocal = resolve_local_provenanced(db, gap_at)
+    emit_resolved(provenanced_gap)
+    let fold_at: LocalDateTime = local_date_time(2050)
+    let provenanced_fold: ResolvedLocal = resolve_local_provenanced(db, fold_at)
+    emit_resolved(provenanced_fold)
+
+    # Drift, made observable. The same local reading is asked of two rule sets
+    # that differ only in when the first transition happens. Under the shipped
+    # rules 1050 is inside the gap and names no instant; move the transition to
+    # 1200 and the same reading is an ordinary one. Both answers are correct
+    # for their own rules, and the digest is what tells them apart.
+    let moved_unsigned: Bytes20 = fixture_rules(18, 0, 75, 1, 7, 2, 0, 1200)
+    let moved_digest = content_digest(moved_unsigned)
+    let moved_bytes: Bytes20 = fixture_rules(
+        18,
+        moved_digest,
+        75,
+        1,
+        7,
+        2,
+        0,
+        1200
+    )
+    let moved_loaded: LoadResult = load_tzdb(moved_bytes)
+    let moved_db: Tzdb = load_result_tzdb(moved_loaded)
+    let under_moved: ResolvedLocal = resolve_local_provenanced(moved_db, gap_at)
+    emit_resolved(under_moved)
 }
