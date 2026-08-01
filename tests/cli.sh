@@ -12,7 +12,7 @@ rm -rf "$WORK"
 mkdir -p "$WORK"
 
 assert_eq "output of $KOFUN --version" \
-    "$("$KOFUN" --version)" "Kofun Stage 1 0.3.32-seed"
+    "$("$KOFUN" --version)" "Kofun Stage 1 0.3.33-seed"
 "$KOFUN" check "$FIXTURE" >/dev/null
 assert_eq "output of $KOFUN run $FIXTURE" "$("$KOFUN" run "$FIXTURE")" "42"
 
