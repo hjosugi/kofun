@@ -33,14 +33,12 @@ kofun_stage2_build "$ROOT" "$WORK/kofun-stage2"
     "$WORK/encoder.ir" \
     "$WORK/encoder.tokens" >/dev/null
 cmp "$NATIVE/encoder.kofun" "$WORK/encoder.kofun"
-grep '^function|elf64_core_answer_debug_image|0|' \
-    "$WORK/encoder.ir" >/dev/null
-grep '^function|dwarf_debug_strings_for|1|' \
-    "$WORK/encoder.ir" >/dev/null
-grep '^function|dwarf_debug_info_for|8|' \
-    "$WORK/encoder.ir" >/dev/null
-grep '^function|dwarf_debug_line_for|6|' \
-    "$WORK/encoder.ir" >/dev/null
+assert_grep "encoder.ir" \
+    '^function|elf64_core_answer_debug_image|0|' "$WORK/encoder.ir"
+assert_grep "encoder.ir" \
+    '^function|dwarf_debug_strings_for|1|' "$WORK/encoder.ir"
+assert_grep "encoder.ir" '^function|dwarf_debug_info_for|8|' "$WORK/encoder.ir"
+assert_grep "encoder.ir" '^function|dwarf_debug_line_for|6|' "$WORK/encoder.ir"
 
 expand_fixture() (
     fixture=$1
@@ -216,12 +214,20 @@ assert_absent "core_debug_lines_42-wasm32-debug.wasm" \
     "$WORK/core_debug_lines_42-wasm32-debug.wasm"
 assert_absent "core_list_index_42-aarch64-debug.elf" \
     "$WORK/core_list_index_42-aarch64-debug.elf"
-grep -q -- '-g requires --target x86_64-linux or --target aarch64-linux' \
+assert_grep "core_debug_lines_42-missing-target.stderr" \
+    -q \
+    -- \
+    '-g requires --target x86_64-linux or --target aarch64-linux' \
     "$WORK/core_debug_lines_42-missing-target.stderr"
-grep -q -- \
+assert_grep "core_debug_lines_42-wasm32-debug.stderr" \
+    -q \
+    -- \
     '-g currently requires --target x86_64-linux or --target aarch64-linux' \
     "$WORK/core_debug_lines_42-wasm32-debug.stderr"
-grep -q -- '-g for the AArch64 List/Text Core is not implemented yet' \
+assert_grep "core_list_index_42-aarch64-debug.stderr" \
+    -q \
+    -- \
+    '-g for the AArch64 List/Text Core is not implemented yet' \
     "$WORK/core_list_index_42-aarch64-debug.stderr"
 
 # Source formatting and debug mode must not perturb the release artifact.
@@ -259,12 +265,19 @@ for stem in exit_42 print_sum_42 core_answer core_answer_debug; do
     image="$WORK/$stem.elf"
     readelf -h "$image" >"$WORK/$stem.elf-header.txt"
     readelf -l "$image" >"$WORK/$stem.program-headers.txt"
-    grep -Eq 'Class:[[:space:]]+ELF64' "$WORK/$stem.elf-header.txt"
-    grep -Eq 'Machine:[[:space:]]+Advanced Micro Devices X86-64' \
+    assert_grep "$stem.elf-header.txt" \
+        -Eq 'Class:[[:space:]]+ELF64' "$WORK/$stem.elf-header.txt"
+    assert_grep "$stem.elf-header.txt" \
+        -Eq \
+        'Machine:[[:space:]]+Advanced Micro Devices X86-64' \
         "$WORK/$stem.elf-header.txt"
-    grep -Eq 'Entry point address:[[:space:]]+0x4000b0' \
+    assert_grep "$stem.elf-header.txt" \
+        -Eq \
+        'Entry point address:[[:space:]]+0x4000b0' \
         "$WORK/$stem.elf-header.txt"
-    grep -Eq 'Number of program headers:[[:space:]]+2' \
+    assert_grep "$stem.elf-header.txt" \
+        -Eq \
+        'Number of program headers:[[:space:]]+2' \
         "$WORK/$stem.elf-header.txt"
     assert_num "LOAD lines in $stem.program-headers.txt" \
         "$(grep -c 'LOAD' "$WORK/$stem.program-headers.txt")" -eq 2
@@ -272,9 +285,13 @@ done
 
 # Debug metadata is opt-in. The canonical 231-byte release image still has no
 # section headers, while `-g` appends a complete section table and DWARF v4.
-grep -Eq 'Number of section headers:[[:space:]]+0' \
+assert_grep "core_answer.elf-header.txt" \
+    -Eq \
+    'Number of section headers:[[:space:]]+0' \
     "$WORK/core_answer.elf-header.txt"
-grep -Eq 'Number of section headers:[[:space:]]+10' \
+assert_grep "core_answer_debug.elf-header.txt" \
+    -Eq \
+    'Number of section headers:[[:space:]]+10' \
     "$WORK/core_answer_debug.elf-header.txt"
 assert_num "size of core_answer.elf" \
     "$(wc -c <"$WORK/core_answer.elf" | tr -d ' ')" -eq 231
@@ -314,27 +331,34 @@ for section in \
     .strtab \
     .shstrtab
 do
-    grep -F "$section" "$WORK/core_answer_debug.sections.txt" >/dev/null
+    assert_grep "core_answer_debug.sections.txt" \
+        -F "$section" "$WORK/core_answer_debug.sections.txt"
 done
 
 readelf --wide --symbols "$WORK/core_answer_debug.elf" \
     >"$WORK/core_answer_debug.symbols.txt"
-grep -Eq '[[:space:]]FUNC[[:space:]]+GLOBAL.*[[:space:]]main$' \
+assert_grep "core_answer_debug.symbols.txt" \
+    -Eq \
+    '[[:space:]]FUNC[[:space:]]+GLOBAL.*[[:space:]]main$' \
     "$WORK/core_answer_debug.symbols.txt"
 
 readelf --wide --debug-dump=info "$WORK/core_answer_debug.elf" \
     >"$WORK/core_answer_debug.info.txt"
-grep -q 'DW_TAG_compile_unit' "$WORK/core_answer_debug.info.txt"
-grep -q 'DW_TAG_subprogram' "$WORK/core_answer_debug.info.txt"
-grep -Eq 'DW_AT_name[[:space:]]+:.*main$' \
-    "$WORK/core_answer_debug.info.txt"
+assert_grep "core_answer_debug.info.txt" \
+    -q 'DW_TAG_compile_unit' "$WORK/core_answer_debug.info.txt"
+assert_grep "core_answer_debug.info.txt" \
+    -q 'DW_TAG_subprogram' "$WORK/core_answer_debug.info.txt"
+assert_grep "core_answer_debug.info.txt" \
+    -Eq 'DW_AT_name[[:space:]]+:.*main$' "$WORK/core_answer_debug.info.txt"
 
 readelf --wide --debug-dump=decodedline "$WORK/core_answer_debug.elf" \
     >"$WORK/core_answer_debug.lines.txt"
-grep -Eq \
+assert_grep "core_answer_debug.lines.txt" \
+    -Eq \
     'bootstrap/native/fixtures/core_answer_debug.kofun[[:space:]]+2[[:space:]]+0x4000be' \
     "$WORK/core_answer_debug.lines.txt"
-grep -Eq \
+assert_grep "core_answer_debug.lines.txt" \
+    -Eq \
     'bootstrap/native/fixtures/core_answer_debug.kofun[[:space:]]+6[[:space:]]+0x4000e2' \
     "$WORK/core_answer_debug.lines.txt"
 
@@ -342,13 +366,19 @@ readelf -h "$WORK/core_return_42-aarch64.elf" \
     >"$WORK/core_return_42-aarch64.elf-header.txt"
 readelf -l "$WORK/core_return_42-aarch64.elf" \
     >"$WORK/core_return_42-aarch64.program-headers.txt"
-grep -Eq 'Class:[[:space:]]+ELF64' \
+assert_grep "core_return_42-aarch64.elf-header.txt" \
+    -Eq 'Class:[[:space:]]+ELF64' "$WORK/core_return_42-aarch64.elf-header.txt"
+assert_grep "core_return_42-aarch64.elf-header.txt" \
+    -Eq \
+    'Machine:[[:space:]]+AArch64' \
     "$WORK/core_return_42-aarch64.elf-header.txt"
-grep -Eq 'Machine:[[:space:]]+AArch64' \
+assert_grep "core_return_42-aarch64.elf-header.txt" \
+    -Eq \
+    'Entry point address:[[:space:]]+0x4000b0' \
     "$WORK/core_return_42-aarch64.elf-header.txt"
-grep -Eq 'Entry point address:[[:space:]]+0x4000b0' \
-    "$WORK/core_return_42-aarch64.elf-header.txt"
-grep -Eq 'Number of program headers:[[:space:]]+2' \
+assert_grep "core_return_42-aarch64.elf-header.txt" \
+    -Eq \
+    'Number of program headers:[[:space:]]+2' \
     "$WORK/core_return_42-aarch64.elf-header.txt"
 assert_num "LOAD lines in core_return_42-aarch64.program-headers.txt" \
     "$(grep -c 'LOAD' "$WORK/core_return_42-aarch64.program-headers.txt")" \
@@ -358,9 +388,13 @@ readelf -h "$WORK/core_debug_lines_42-release.elf" \
     >"$WORK/core_debug_lines_42-release.header.txt"
 readelf -h "$WORK/core_debug_lines_42-debug.elf" \
     >"$WORK/core_debug_lines_42-debug.header.txt"
-grep -Eq 'Number of section headers:[[:space:]]+0' \
+assert_grep "core_debug_lines_42-release.header.txt" \
+    -Eq \
+    'Number of section headers:[[:space:]]+0' \
     "$WORK/core_debug_lines_42-release.header.txt"
-grep -Eq 'Number of section headers:[[:space:]]+10' \
+assert_grep "core_debug_lines_42-debug.header.txt" \
+    -Eq \
+    'Number of section headers:[[:space:]]+10' \
     "$WORK/core_debug_lines_42-debug.header.txt"
 
 readelf --wide --sections "$WORK/core_debug_lines_42-debug.elf" \
@@ -376,34 +410,42 @@ for section in \
     .strtab \
     .shstrtab
 do
-    grep -F "$section" \
-        "$WORK/core_debug_lines_42-debug.sections.txt" >/dev/null
+    assert_grep "core_debug_lines_42-debug.sections.txt" \
+        -F "$section" "$WORK/core_debug_lines_42-debug.sections.txt"
 done
 
 readelf --wide --symbols "$WORK/core_debug_lines_42-debug.elf" \
     >"$WORK/core_debug_lines_42-debug.symbols.txt"
-grep -Eq '[[:space:]]FUNC[[:space:]]+GLOBAL.*[[:space:]]main$' \
+assert_grep "core_debug_lines_42-debug.symbols.txt" \
+    -Eq \
+    '[[:space:]]FUNC[[:space:]]+GLOBAL.*[[:space:]]main$' \
     "$WORK/core_debug_lines_42-debug.symbols.txt"
 
 readelf --wide --debug-dump=info \
     "$WORK/core_debug_lines_42-debug.elf" \
     >"$WORK/core_debug_lines_42-debug.info.txt"
-grep -q 'DW_TAG_compile_unit' \
+assert_grep "core_debug_lines_42-debug.info.txt" \
+    -q 'DW_TAG_compile_unit' "$WORK/core_debug_lines_42-debug.info.txt"
+assert_grep "core_debug_lines_42-debug.info.txt" \
+    -q 'DW_TAG_subprogram' "$WORK/core_debug_lines_42-debug.info.txt"
+assert_grep "core_debug_lines_42-debug.info.txt" \
+    -Eq \
+    'DW_AT_name[[:space:]]+:.*core_debug_lines_42.kofun$' \
     "$WORK/core_debug_lines_42-debug.info.txt"
-grep -q 'DW_TAG_subprogram' \
-    "$WORK/core_debug_lines_42-debug.info.txt"
-grep -Eq 'DW_AT_name[[:space:]]+:.*core_debug_lines_42.kofun$' \
-    "$WORK/core_debug_lines_42-debug.info.txt"
-grep -Eq 'DW_AT_name[[:space:]]+:.*main$' \
+assert_grep "core_debug_lines_42-debug.info.txt" \
+    -Eq \
+    'DW_AT_name[[:space:]]+:.*main$' \
     "$WORK/core_debug_lines_42-debug.info.txt"
 
 readelf --wide --debug-dump=decodedline \
     "$WORK/core_debug_lines_42-debug.elf" \
     >"$WORK/core_debug_lines_42-debug.lines.txt"
-grep -Eq \
+assert_grep "core_debug_lines_42-debug.lines.txt" \
+    -Eq \
     'bootstrap/native/fixtures/core_debug_lines_42.kofun[[:space:]]+3[[:space:]]+0x4000b0' \
     "$WORK/core_debug_lines_42-debug.lines.txt"
-grep -Eq \
+assert_grep "core_debug_lines_42-debug.lines.txt" \
+    -Eq \
     'bootstrap/native/fixtures/core_debug_lines_42.kofun[[:space:]]+4[[:space:]]+0x4000c1' \
     "$WORK/core_debug_lines_42-debug.lines.txt"
 
@@ -415,13 +457,21 @@ readelf -h "$WORK/core_debug_lines_42-aarch64-release.elf" \
     >"$WORK/core_debug_lines_42-aarch64-release.header.txt"
 readelf -h "$WORK/core_debug_lines_42-aarch64-debug.elf" \
     >"$WORK/core_debug_lines_42-aarch64-debug.header.txt"
-grep -Eq 'Machine:[[:space:]]+AArch64' \
+assert_grep "core_debug_lines_42-aarch64-debug.header.txt" \
+    -Eq \
+    'Machine:[[:space:]]+AArch64' \
     "$WORK/core_debug_lines_42-aarch64-debug.header.txt"
-grep -Eq 'Entry point address:[[:space:]]+0x4000b0' \
+assert_grep "core_debug_lines_42-aarch64-debug.header.txt" \
+    -Eq \
+    'Entry point address:[[:space:]]+0x4000b0' \
     "$WORK/core_debug_lines_42-aarch64-debug.header.txt"
-grep -Eq 'Number of section headers:[[:space:]]+0' \
+assert_grep "core_debug_lines_42-aarch64-release.header.txt" \
+    -Eq \
+    'Number of section headers:[[:space:]]+0' \
     "$WORK/core_debug_lines_42-aarch64-release.header.txt"
-grep -Eq 'Number of section headers:[[:space:]]+10' \
+assert_grep "core_debug_lines_42-aarch64-debug.header.txt" \
+    -Eq \
+    'Number of section headers:[[:space:]]+10' \
     "$WORK/core_debug_lines_42-aarch64-debug.header.txt"
 assert_num "size of core_debug_lines_42-aarch64-release.elf" \
     "$(wc -c <"$WORK/core_debug_lines_42-aarch64-release.elf" | tr -d ' ')" \
@@ -453,34 +503,42 @@ for section in \
     .strtab \
     .shstrtab
 do
-    grep -F "$section" \
-        "$WORK/core_debug_lines_42-aarch64-debug.sections.txt" >/dev/null
+    assert_grep "core_debug_lines_42-aarch64-debug.sections.txt" \
+        -F "$section" "$WORK/core_debug_lines_42-aarch64-debug.sections.txt"
 done
 
 readelf --wide --symbols "$WORK/core_debug_lines_42-aarch64-debug.elf" \
     >"$WORK/core_debug_lines_42-aarch64-debug.symbols.txt"
-grep -Eq '[[:space:]]FUNC[[:space:]]+GLOBAL.*[[:space:]]main$' \
+assert_grep "core_debug_lines_42-aarch64-debug.symbols.txt" \
+    -Eq \
+    '[[:space:]]FUNC[[:space:]]+GLOBAL.*[[:space:]]main$' \
     "$WORK/core_debug_lines_42-aarch64-debug.symbols.txt"
 
 readelf --wide --debug-dump=info \
     "$WORK/core_debug_lines_42-aarch64-debug.elf" \
     >"$WORK/core_debug_lines_42-aarch64-debug.info.txt"
-grep -q 'DW_TAG_compile_unit' \
+assert_grep "core_debug_lines_42-aarch64-debug.info.txt" \
+    -q 'DW_TAG_compile_unit' "$WORK/core_debug_lines_42-aarch64-debug.info.txt"
+assert_grep "core_debug_lines_42-aarch64-debug.info.txt" \
+    -q 'DW_TAG_subprogram' "$WORK/core_debug_lines_42-aarch64-debug.info.txt"
+assert_grep "core_debug_lines_42-aarch64-debug.info.txt" \
+    -Eq \
+    'DW_AT_name[[:space:]]+:.*core_debug_lines_42.kofun$' \
     "$WORK/core_debug_lines_42-aarch64-debug.info.txt"
-grep -q 'DW_TAG_subprogram' \
-    "$WORK/core_debug_lines_42-aarch64-debug.info.txt"
-grep -Eq 'DW_AT_name[[:space:]]+:.*core_debug_lines_42.kofun$' \
-    "$WORK/core_debug_lines_42-aarch64-debug.info.txt"
-grep -Eq 'DW_AT_name[[:space:]]+:.*main$' \
+assert_grep "core_debug_lines_42-aarch64-debug.info.txt" \
+    -Eq \
+    'DW_AT_name[[:space:]]+:.*main$' \
     "$WORK/core_debug_lines_42-aarch64-debug.info.txt"
 
 readelf --wide --debug-dump=decodedline \
     "$WORK/core_debug_lines_42-aarch64-debug.elf" \
     >"$WORK/core_debug_lines_42-aarch64-debug.lines.txt"
-grep -Eq \
+assert_grep "core_debug_lines_42-aarch64-debug.lines.txt" \
+    -Eq \
     'bootstrap/native/fixtures/core_debug_lines_42.kofun[[:space:]]+3[[:space:]]+0x4000b0' \
     "$WORK/core_debug_lines_42-aarch64-debug.lines.txt"
-grep -Eq \
+assert_grep "core_debug_lines_42-aarch64-debug.lines.txt" \
+    -Eq \
     'bootstrap/native/fixtures/core_debug_lines_42.kofun[[:space:]]+4[[:space:]]+0x4000bc' \
     "$WORK/core_debug_lines_42-aarch64-debug.lines.txt"
 # Every AArch64 debug row must land on a 4-byte instruction boundary.
@@ -591,13 +649,16 @@ if command -v gdb >/dev/null 2>&1; then
             -ex 'frame' \
             "$WORK/core_answer_debug.elf"
     ) >"$WORK/core_answer_debug.gdb.txt" 2>&1
-    grep -Eq \
+    assert_grep "core_answer_debug.gdb.txt" \
+        -Eq \
         'Breakpoint 1, main .*core_answer_debug.kofun:2' \
         "$WORK/core_answer_debug.gdb.txt"
-    grep -Eq \
+    assert_grep "core_answer_debug.gdb.txt" \
+        -Eq \
         '#0[[:space:]]+main .*core_answer_debug.kofun:2' \
         "$WORK/core_answer_debug.gdb.txt"
-    grep -Eq \
+    assert_grep "core_answer_debug.gdb.txt" \
+        -Eq \
         'main .*core_answer_debug.kofun:4' \
         "$WORK/core_answer_debug.gdb.txt"
 
@@ -613,13 +674,16 @@ if command -v gdb >/dev/null 2>&1; then
             -ex 'frame' \
             "$WORK/core_debug_lines_42-debug.elf"
     ) >"$WORK/core_debug_lines_42-debug.gdb.txt" 2>&1
-    grep -Eq \
+    assert_grep "core_debug_lines_42-debug.gdb.txt" \
+        -Eq \
         'Breakpoint 1, main .*core_debug_lines_42.kofun:3' \
         "$WORK/core_debug_lines_42-debug.gdb.txt"
-    grep -Eq \
+    assert_grep "core_debug_lines_42-debug.gdb.txt" \
+        -Eq \
         '#0[[:space:]]+main .*core_debug_lines_42.kofun:3' \
         "$WORK/core_debug_lines_42-debug.gdb.txt"
-    grep -Eq \
+    assert_grep "core_debug_lines_42-debug.gdb.txt" \
+        -Eq \
         'main .*core_debug_lines_42.kofun:4' \
         "$WORK/core_debug_lines_42-debug.gdb.txt"
     printf '%s\n' \
@@ -699,13 +763,16 @@ if test -n "$AARCH64_RUNNER" && test -n "$AARCH64_DEBUGGER"; then
     ) >"$WORK/core_debug_lines_42-aarch64-debug.gdb.txt" 2>&1
     wait "$gdbstub_pid" || true
     trap - 0 1 2 15
-    grep -Eq \
+    assert_grep "core_debug_lines_42-aarch64-debug.gdb.txt" \
+        -Eq \
         'Breakpoint 1, main .*core_debug_lines_42.kofun:3' \
         "$WORK/core_debug_lines_42-aarch64-debug.gdb.txt"
-    grep -Eq \
+    assert_grep "core_debug_lines_42-aarch64-debug.gdb.txt" \
+        -Eq \
         '#0[[:space:]]+main .*core_debug_lines_42.kofun:3' \
         "$WORK/core_debug_lines_42-aarch64-debug.gdb.txt"
-    grep -Eq \
+    assert_grep "core_debug_lines_42-aarch64-debug.gdb.txt" \
+        -Eq \
         'main .*core_debug_lines_42.kofun:4' \
         "$WORK/core_debug_lines_42-aarch64-debug.gdb.txt"
     printf '%s\n' \
@@ -784,7 +851,9 @@ assert_file_empty "fibonacci-native.stderr" "$WORK/fibonacci-native.stderr"
     -o "$WORK/fibonacci-native-aarch64.elf" >/dev/null
 readelf -h "$WORK/fibonacci-native-aarch64.elf" \
     >"$WORK/fibonacci-native-aarch64.elf-header.txt"
-grep -Eq 'Machine:[[:space:]]+AArch64' \
+assert_grep "fibonacci-native-aarch64.elf-header.txt" \
+    -Eq \
+    'Machine:[[:space:]]+AArch64' \
     "$WORK/fibonacci-native-aarch64.elf-header.txt"
 
 "$KOFUN" build "$NATIVE/fixtures/function_overflow.kofun" \
@@ -827,18 +896,20 @@ cmp "$WORK/function-overflow.expected" \
     "$WORK/function-overflow.stderr"
 assert_num "function unknown status" "$function_unknown_status" -eq 1
 assert_absent "function-unknown.elf" "$WORK/function-unknown.elf"
-grep 'unknown native Core function `missing`' \
-    "$WORK/function-unknown.stderr" >/dev/null
+assert_grep "function-unknown.stderr" \
+    'unknown native Core function `missing`' "$WORK/function-unknown.stderr"
 assert_num "function arity status" "$function_arity_status" -eq 1
 assert_absent "function-arity.elf" "$WORK/function-arity.elf"
-grep 'native Core function `add` expects 2 arguments, got 1' \
-    "$WORK/function-arity.stderr" >/dev/null
+assert_grep "function-arity.stderr" \
+    'native Core function `add` expects 2 arguments, got 1' \
+    "$WORK/function-arity.stderr"
 assert_num "function unknown aarch64 status" \
     "$function_unknown_aarch64_status" -eq 1
 assert_absent "function-unknown-aarch64.elf" \
     "$WORK/function-unknown-aarch64.elf"
-grep 'unknown native Core function `missing`' \
-    "$WORK/function-unknown-aarch64.stderr" >/dev/null
+assert_grep "function-unknown-aarch64.stderr" \
+    'unknown native Core function `missing`' \
+    "$WORK/function-unknown-aarch64.stderr"
 
 # AArch64 user-defined functions now execute. Under qemu the fibonacci example
 # and the checked-overflow fixture must match the x86-64 observations exactly:
@@ -955,11 +1026,14 @@ readelf -h "$WORK/function-text-direct.elf" \
     >"$WORK/function-text.header"
 readelf -l "$WORK/function-text-direct.elf" \
     >"$WORK/function-text.program-headers"
-grep -Eq 'Machine:[[:space:]]+Advanced Micro Devices X86-64' \
+assert_grep "function-text.header" \
+    -Eq \
+    'Machine:[[:space:]]+Advanced Micro Devices X86-64' \
     "$WORK/function-text.header"
 assert_num "LOAD lines in function-text.program-headers" \
     "$(grep -c 'LOAD' "$WORK/function-text.program-headers")" -eq 2
-! grep -Eq 'INTERP|DYNAMIC' "$WORK/function-text.program-headers"
+assert_not_grep "function-text.program-headers" \
+    -Eq 'INTERP|DYNAMIC' "$WORK/function-text.program-headers"
 
 # Every unsupported signature/body is diagnosed before artifact commit.
 expect_function_text_rejection() {
@@ -1081,12 +1155,12 @@ readelf -h "$WORK/function-text-aarch64.elf" \
     >"$WORK/function-text-aarch64.header"
 readelf -l "$WORK/function-text-aarch64.elf" \
     >"$WORK/function-text-aarch64.program-headers"
-grep -Eq 'Machine:[[:space:]]+AArch64' \
-    "$WORK/function-text-aarch64.header"
+assert_grep "function-text-aarch64.header" \
+    -Eq 'Machine:[[:space:]]+AArch64' "$WORK/function-text-aarch64.header"
 assert_num "LOAD lines in function-text-aarch64.program-headers" \
     "$(grep -c 'LOAD' "$WORK/function-text-aarch64.program-headers")" -eq 2
-! grep -Eq 'INTERP|DYNAMIC' \
-    "$WORK/function-text-aarch64.program-headers"
+assert_not_grep "function-text-aarch64.program-headers" \
+    -Eq 'INTERP|DYNAMIC' "$WORK/function-text-aarch64.program-headers"
 
 if test -n "$AARCH64_RUNNER"; then
     chmod +x "$WORK/function-text-aarch64.elf" \
@@ -1156,7 +1230,8 @@ while IFS='|' read -r kind path expected_digest; do
             ;;
     esac
 done <"$provenance"
-! grep -F "$WORK" "$provenance" >/dev/null
+assert_not_grep "work-directory path in the provenance file" \
+    -F "$WORK" "$provenance"
 
 # Value placement in the bounded x86-64 function profile is decided by a
 # compiled allocation pass instead of a native-stack machine. The leaf helper
@@ -1346,11 +1421,12 @@ for tail_case in function_tail_self function_tail_mutual; do
         "$WORK/$tail_case-aarch64.second.elf"
     readelf -h "$WORK/$tail_case-aarch64.elf" \
         >"$WORK/$tail_case-aarch64.header"
-    grep -Eq 'Machine:[[:space:]]+AArch64' "$WORK/$tail_case-aarch64.header"
+    assert_grep "$tail_case-aarch64.header" \
+        -Eq 'Machine:[[:space:]]+AArch64' "$WORK/$tail_case-aarch64.header"
     readelf -l "$WORK/$tail_case-aarch64.elf" \
         >"$WORK/$tail_case-aarch64.program-headers"
-    ! grep -Eq 'INTERP|DYNAMIC' \
-        "$WORK/$tail_case-aarch64.program-headers"
+    assert_not_grep "$tail_case-aarch64.program-headers" \
+        -Eq 'INTERP|DYNAMIC' "$WORK/$tail_case-aarch64.program-headers"
 done
 
 # The same depth with the call outside the returned position exhausts the
@@ -1530,8 +1606,8 @@ do
         "$WORK/$divide_case-aarch64.second.elf"
     readelf -h "$WORK/$divide_case-aarch64.elf" \
         >"$WORK/$divide_case-aarch64.header"
-    grep -Eq 'Machine:[[:space:]]+AArch64' \
-        "$WORK/$divide_case-aarch64.header"
+    assert_grep "$divide_case-aarch64.header" \
+        -Eq 'Machine:[[:space:]]+AArch64' "$WORK/$divide_case-aarch64.header"
 done
 
 if test -n "$AARCH64_RUNNER"; then
@@ -1628,9 +1704,10 @@ for int64_target in x86_64-linux aarch64-linux; do
     assert_absent "too large" "$too_large"
     assert_file_empty "function-int64-too-large-$int64_target.stdout" \
         "$WORK/function-int64-too-large-$int64_target.stdout"
-    grep -F \
+    assert_grep "function-int64-too-large-$int64_target.stderr" \
+        -F \
         "native Core integer literal exceeds 9223372036854775807" \
-        "$WORK/function-int64-too-large-$int64_target.stderr" >/dev/null
+        "$WORK/function-int64-too-large-$int64_target.stderr"
 done
 cmp \
     "$WORK/function-int64-too-large-x86_64-linux.stderr" \
@@ -1765,7 +1842,8 @@ answer_debug_status=$?
 set -e
 assert_num "answer debug status" "$answer_debug_status" -eq 1
 assert_absent "corpus-answer-debug.elf" "$WORK/corpus-answer-debug.elf"
-grep -F 'unsupported Core' "$WORK/corpus-answer-debug.stderr" >/dev/null
+assert_grep "corpus-answer-debug.stderr" \
+    -F 'unsupported Core' "$WORK/corpus-answer-debug.stderr"
 
 # List[Int] uses the same Core AST and value ABI on x86-64 and AArch64. An
 # independent C11 executable is the normative Python-free differential
@@ -1794,8 +1872,8 @@ run_native_list_differential() {
         "$WORK/$stem-aarch64.second.elf"
     readelf -h "$WORK/$stem-aarch64.elf" \
         >"$WORK/$stem-aarch64.header"
-    grep -Eq 'Machine:[[:space:]]+AArch64' \
-        "$WORK/$stem-aarch64.header"
+    assert_grep "$stem-aarch64.header" \
+        -Eq 'Machine:[[:space:]]+AArch64' "$WORK/$stem-aarch64.header"
     "$WORK/core-list-reference" "$mode" \
         >"$WORK/$stem-reference.stdout"
     "$WORK/$stem-x86_64.elf" \
@@ -1881,7 +1959,9 @@ cmp \
     "$WORK/core-list-variable-oob-aarch64.second.elf"
 readelf -h "$WORK/core-list-variable-oob-aarch64.elf" \
     >"$WORK/core-list-variable-oob-aarch64.header"
-grep -Eq 'Machine:[[:space:]]+AArch64' \
+assert_grep "core-list-variable-oob-aarch64.header" \
+    -Eq \
+    'Machine:[[:space:]]+AArch64' \
     "$WORK/core-list-variable-oob-aarch64.header"
 
 # At 2560 KiB the source and map output allocations both succeed. The chained
@@ -1966,8 +2046,8 @@ run_native_text_differential() {
         "$WORK/$stem-aarch64.second.elf"
     readelf -h "$WORK/$stem-aarch64.elf" \
         >"$WORK/$stem-aarch64.header"
-    grep -Eq 'Machine:[[:space:]]+AArch64' \
-        "$WORK/$stem-aarch64.header"
+    assert_grep "$stem-aarch64.header" \
+        -Eq 'Machine:[[:space:]]+AArch64' "$WORK/$stem-aarch64.header"
     "$WORK/core-text-reference" "$mode" \
         >"$WORK/$stem.reference"
     "$WORK/$stem.elf" \
@@ -2031,8 +2111,8 @@ cmp \
     "$WORK/core-text-oob-aarch64.second.elf"
 readelf -h "$WORK/core-text-oob-aarch64.elf" \
     >"$WORK/core-text-oob-aarch64.header"
-grep -Eq 'Machine:[[:space:]]+AArch64' \
-    "$WORK/core-text-oob-aarch64.header"
+assert_grep "core-text-oob-aarch64.header" \
+    -Eq 'Machine:[[:space:]]+AArch64' "$WORK/core-text-oob-aarch64.header"
 {
     printf 'fn main() {\n    print("'
     printf '\300\257'
@@ -2069,8 +2149,8 @@ printf 'kofun: text index out of range\n' \
 cmp "$WORK/core-text-oob.expected" "$WORK/core-text-oob.stderr"
 assert_num "text invalid utf8 status" "$text_invalid_utf8_status" -eq 1
 assert_absent "core-text-invalid-utf8.elf" "$WORK/core-text-invalid-utf8.elf"
-grep 'error\[EUNICODE001\]' \
-    "$WORK/core-text-invalid-utf8.stderr" >/dev/null
+assert_grep "core-text-invalid-utf8.stderr" \
+    'error\[EUNICODE001\]' "$WORK/core-text-invalid-utf8.stderr"
 assert_num "text oom status" "$text_oom_status" -eq 70
 assert_file_empty "core-text-oom.stdout" "$WORK/core-text-oom.stdout"
 printf 'kofun: out of memory\n' >"$WORK/core-text-oom.expected"
@@ -2114,16 +2194,24 @@ if command -v llvm-objdump >/dev/null 2>&1; then
     llvm-objdump -d --triple=aarch64 \
         "$WORK/core_return_42-aarch64.elf" \
         >"$WORK/core_return_42-aarch64.disassembly"
-    grep -Eq 'mov[[:space:]]+x0, #0x6' \
+    assert_grep "core_return_42-aarch64.disassembly" \
+        -Eq \
+        'mov[[:space:]]+x0, #0x6' \
         "$WORK/core_return_42-aarch64.disassembly"
-    grep -Eq 'add[[:space:]]+x0, x0, x1' \
+    assert_grep "core_return_42-aarch64.disassembly" \
+        -Eq \
+        'add[[:space:]]+x0, x0, x1' \
         "$WORK/core_return_42-aarch64.disassembly"
-    grep -Eq 'mul[[:space:]]+x0, x0, x1' \
+    assert_grep "core_return_42-aarch64.disassembly" \
+        -Eq \
+        'mul[[:space:]]+x0, x0, x1' \
         "$WORK/core_return_42-aarch64.disassembly"
-    grep -Eq 'udiv[[:space:]]+x4, x0, x3' \
+    assert_grep "core_return_42-aarch64.disassembly" \
+        -Eq \
+        'udiv[[:space:]]+x4, x0, x3' \
         "$WORK/core_return_42-aarch64.disassembly"
-    grep -Eq 'svc[[:space:]]+#0' \
-        "$WORK/core_return_42-aarch64.disassembly"
+    assert_grep "core_return_42-aarch64.disassembly" \
+        -Eq 'svc[[:space:]]+#0' "$WORK/core_return_42-aarch64.disassembly"
 fi
 
 unsupported="$WORK/unsupported-native-core.elf"
@@ -2136,7 +2224,8 @@ unsupported_status=$?
 set -e
 assert_num "unsupported status" "$unsupported_status" -eq 1
 assert_absent "unsupported" "$unsupported"
-grep 'unsupported Core' "$WORK/unsupported-native-core.stderr" >/dev/null
+assert_grep "unsupported-native-core.stderr" \
+    'unsupported Core' "$WORK/unsupported-native-core.stderr"
 
 if test -n "$AARCH64_RUNNER"; then
     text_summary="PASS: x86-64/AArch64 Text matched C11 UTF-8 semantics"
