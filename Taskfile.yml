@@ -335,6 +335,11 @@ tasks:
     cmds:
       - "sh tests/tooling/ownership-view/run.sh"
 
+  artifact-qualification:
+    desc: "Qualify KIF and typed-sidecar compatibility, trust, and budgets"
+    cmds:
+      - "sh tests/artifact-qualification/check.sh"
+
   lsp:
     desc: "Verify the stdio language server and editor client"
     cmds:
@@ -504,6 +509,7 @@ tasks:
             typed-sidecar-codec \
             typed-sidecar-projector \
             ownership-view \
+            artifact-qualification \
             tree-sitter \
             syntax \
             repository-check \

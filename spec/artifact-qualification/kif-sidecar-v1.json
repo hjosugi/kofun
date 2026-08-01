@@ -1,0 +1,147 @@
+{
+  "schema": "kofun.artifact-qualification/v1",
+  "artifacts": [
+    {
+      "id": "kif-v1",
+      "media_schema": "kofun.kif/v1",
+      "authority": "compiler",
+      "compatibility": {
+        "accept": [
+          1
+        ],
+        "migrate": [],
+        "unknown_future": "bounded-reject"
+      },
+      "limits": {
+        "document_bytes": 16777216,
+        "max_depth": 128
+      },
+      "budgets": {
+        "fixture_bytes": 1048576,
+        "cold_decode_ns": 250000000,
+        "warm_decode_p95_ns": 100000000,
+        "peak_rss_kib": 524288
+      },
+      "evidence": {
+        "authority-boundary": [
+          "bootstrap/stage2/kif_v1.h",
+          "tests/typed-sidecar/authority-boundary.sh"
+        ],
+        "atomic-newest-winner": [
+          "tests/conformance/incremental/run.sh",
+          "tests/conformance/modules/kif-v1/run.sh"
+        ],
+        "cold-warm-artifact-bytes": [
+          "tests/artifact-qualification/check.sh",
+          "tests/artifact-qualification/measure.mjs"
+        ],
+        "decode-project-latency": [
+          "tests/artifact-qualification/kif_measure.c",
+          "tests/artifact-qualification/measure.mjs"
+        ],
+        "determinism-source-order-path-remap": [
+          "tests/conformance/incremental/run.sh",
+          "tests/conformance/modules/kif-v1/run.sh"
+        ],
+        "disclosure": [
+          "tests/conformance/modules/kif-v1/run.sh",
+          "tests/conformance/modules/re-exports/run.sh"
+        ],
+        "malformed-corrupt-oversized-deep": [
+          "tests/conformance/modules/kif-v1/codec_test.c",
+          "tests/conformance/modules/kif-v1/run.sh"
+        ],
+        "peak-memory": [
+          "tests/artifact-qualification/kif_measure.c",
+          "tests/artifact-qualification/measure.mjs"
+        ],
+        "version-accept-migrate-reject": [
+          "bootstrap/stage2/kif_v1.c",
+          "tests/conformance/modules/kif-v1/codec_test.c"
+        ]
+      },
+      "gates": [
+        "incremental",
+        "kif-v1",
+        "re-exports",
+        "stage2-kif-producer"
+      ]
+    },
+    {
+      "id": "typed-sidecar-v1",
+      "media_schema": "kofun.typed-sidecar/v1",
+      "authority": "tooling-only",
+      "compatibility": {
+        "accept": [
+          1
+        ],
+        "migrate": [],
+        "unknown_future": "bounded-reject"
+      },
+      "limits": {
+        "document_bytes": 16777216,
+        "max_depth": 128
+      },
+      "budgets": {
+        "fixture_bytes": 1048576,
+        "cold_decode_ns": 250000000,
+        "warm_decode_p95_ns": 100000000,
+        "cold_project_ns": 250000000,
+        "warm_project_p95_ns": 100000000,
+        "peak_rss_kib": 524288
+      },
+      "evidence": {
+        "authority-boundary": [
+          "spec/tooling/typed-sidecar.md",
+          "tests/typed-sidecar/authority-boundary.sh"
+        ],
+        "atomic-newest-winner": [
+          "tests/typed-sidecar/atomic_write_test.mjs",
+          "tests/typed-sidecar/producer_races_test.mjs"
+        ],
+        "cold-warm-artifact-bytes": [
+          "tests/artifact-qualification/check.sh",
+          "tests/artifact-qualification/measure.mjs"
+        ],
+        "decode-project-latency": [
+          "tests/artifact-qualification/measure.mjs",
+          "tooling/typed-sidecar/ownership-view.mjs"
+        ],
+        "determinism-source-order-path-remap": [
+          "tests/tooling/ownership-view/ownership_view_test.mjs",
+          "tests/typed-sidecar/stage2_projector_test.mjs"
+        ],
+        "disclosure": [
+          "tests/tooling/ownership-view/ownership_view_test.mjs",
+          "tests/typed-sidecar/stage2_projector_test.mjs"
+        ],
+        "malformed-corrupt-oversized-deep": [
+          "tests/typed-sidecar/codec_test.mjs",
+          "tests/typed-sidecar/stage2_projector_test.mjs"
+        ],
+        "peak-memory": [
+          "tests/artifact-qualification/measure.mjs"
+        ],
+        "version-accept-migrate-reject": [
+          "spec/typed-sidecar/validate.mjs",
+          "tests/typed-sidecar/codec_test.mjs"
+        ]
+      },
+      "gates": [
+        "lsp",
+        "ownership-view",
+        "typed-sidecar-codec",
+        "typed-sidecar-projector",
+        "typed-sidecar-spec"
+      ],
+      "forbidden_authority_consumers": [
+        "build",
+        "cache",
+        "compiler",
+        "kif",
+        "linker",
+        "package"
+      ]
+    }
+  ]
+}
