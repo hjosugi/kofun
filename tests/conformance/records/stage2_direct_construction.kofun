@@ -1,0 +1,9 @@
+type Packet = {
+    count: Int,
+    enabled: Bool,
+}
+
+fn main() -> Int {
+    print(Packet(count: 1, enabled: true).count)
+    return 0
+}

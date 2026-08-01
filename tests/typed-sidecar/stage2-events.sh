@@ -395,7 +395,8 @@ for source in \
     "$ROOT/tests/conformance/syntax/issues_35_47/match_value.kofun" \
     "$ROOT/tests/conformance/syntax/issues_35_47/enum_match.kofun" \
     "$ROOT/tests/conformance/modules/shadowing/positive.kofun" \
-    "$ROOT/tests/conformance/modules/lexical-scopes/positive.kofun"
+    "$ROOT/tests/conformance/modules/lexical-scopes/positive.kofun" \
+    "$ROOT/tests/conformance/records/record_functions.kofun"
 do
     valid_index=$((valid_index + 1))
     "$WORK/plain/kofun-stage2" --compile-outcome \
@@ -409,7 +410,7 @@ do
         "$WORK/plain/valid-$valid_index.kse" 701
     "$WORK/plain/validate-events" "$WORK/plain/valid-$valid_index.kse"
 done
-test "$valid_index" -eq 7
+test "$valid_index" -eq 8
 
 set +e
 "$WORK/plain/kofun-stage2" --compile-outcome \

@@ -1,0 +1,33 @@
+type Packet = {
+    count: Int,
+    enabled: Bool,
+}
+
+fn score(packet: Packet) -> Int {
+    if packet.enabled {
+        return packet.count
+    }
+    return 0
+}
+
+fn make_packet(count: Int) -> Packet {
+    let packet: Packet = Packet(enabled: true, count: count)
+    return packet
+}
+
+fn main() -> Int {
+    let declared: Packet = Packet(count: 41, enabled: true)
+    print(score(declared))
+
+    let written: Packet = Packet(enabled: true, count: 41)
+    print(score(written))
+
+    let returned: Packet = make_packet(43)
+    print(returned.count)
+    if returned.enabled {
+        print(1)
+    } else {
+        print(0)
+    }
+    return 0
+}
