@@ -3,6 +3,8 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 WORK=${KOFUN_SEMANTIC_IDENTITY_WORK:-"$ROOT/build/semantic-identity"}
+ASSERT_CONTEXT="semantic-identity"
+. "$ROOT/tests/assertions/assert.sh"
 
 case $WORK in
     */semantic-identity|*/semantic-identity.*) ;;
@@ -15,4 +17,4 @@ node --check "$ROOT/spec/semantic-identity/model.mjs"
 node --check "$ROOT/spec/semantic-identity/independent-encoder.mjs"
 node --check "$ROOT/spec/semantic-identity/check.mjs"
 node "$ROOT/spec/semantic-identity/check.mjs" "$WORK"
-test -s "$WORK/measurements.json"
+assert_file_nonempty "benchmark measurements" "$WORK/measurements.json"
