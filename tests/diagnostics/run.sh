@@ -11,12 +11,12 @@ WORK=${KOFUN_DIAGNOSTIC_REGISTRY_WORK:-"$ROOT/build/diagnostic-registry"}
 rm -rf "$WORK"
 mkdir -p "$WORK"
 
-# Seven of the twelve adapters run a script that is also its own `make` target, and
-# each defaults to one shared work directory. Under `make -j` the two copies
-# interleave in that directory: the module-symbols pair appends to one module
-# inventory until it trips `E2S55: inventory exceeds 256 modules`. Give the
+# Seven of the twelve adapters run a script that is also its own task, and each
+# defaults to one shared work directory. Under a concurrent `task verify` the two
+# copies interleave in that directory: the module-symbols pair appends to one
+# module inventory until it trips `E2S55: inventory exceeds 256 modules`. Give the
 # adapter copies their own directories so the two invocations cannot meet. Each
-# runner already honours these overrides; the `make` targets keep the defaults.
+# runner already honours these overrides; the tasks keep the defaults.
 #
 # Five of the seven runners assert that their work directory ends in a fixed name
 # with an optional suffix, so each override keeps that name and adds a

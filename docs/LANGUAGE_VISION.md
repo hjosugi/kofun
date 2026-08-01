@@ -59,8 +59,10 @@ These decisions are subordinate to the current compiler path. The bounded
 user-defined call slice now runs under C11 and direct x86-64/AArch64
 ([#549](https://github.com/hjosugi/kofun/issues/549)). The first self-hosting
 profile deliberately keeps its current string-scanning representation, so
-heterogeneous records ([#546](https://github.com/hjosugi/kofun/issues/546))
-remain important but do not block the C11 fixed point. Syntax usability and
+heterogeneous records — accepted in [`spec/records-v1.md`](../spec/records-v1.md)
+and still awaiting the lowering tracked by
+[#783](https://github.com/hjosugi/kofun/issues/783) — remain important but do
+not block the C11 fixed point. Syntax usability and
 lawful composition are reviewed in
 [#624](https://github.com/hjosugi/kofun/issues/624) through
 [#626](https://github.com/hjosugi/kofun/issues/626). Reactive programming stays

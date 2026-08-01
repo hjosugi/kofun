@@ -34,13 +34,19 @@ native backends already execute bounded Int, function, `List[Int]`, and UTF-8
 `Text` profiles. The [implemented-status matrix](MVP_IMPLEMENTED.md) is the
 authority for their exact active boundary.
 
-Heterogeneous records ([#546](https://github.com/hjosugi/kofun/issues/546)),
-the concrete-first law system
-([#551](https://github.com/hjosugi/kofun/issues/551)), syntax decisions in
-[#624](https://github.com/hjosugi/kofun/issues/624) through
-[#626](https://github.com/hjosugi/kofun/issues/626), and the small-core
-reactive protocol in [#627](https://github.com/hjosugi/kofun/issues/627)
-remain important P1 work. None expands the frozen string-scanning profile
+The heterogeneous record design is settled, not pending: [#546](https://github.com/hjosugi/kofun/issues/546)
+closed once [`spec/records-v1.md`](../spec/records-v1.md) was accepted, and
+`task records` gates it. What stays open is lowering records past the bounded
+frontend ([#783](https://github.com/hjosugi/kofun/issues/783)).
+
+The concrete-first law system, `Result` sequencing, and the small-core reactive
+protocol are settled the same way, as DD-035, DD-036 and DD-037 in
+[Design decisions](DESIGN_DECISIONS.md); what remains for each is implementation
+rather than design. Function-call ergonomics
+([#625](https://github.com/hjosugi/kofun/issues/625)) is the syntax decision
+still open. Read `docs/DESIGN_DECISIONS.md` rather than an issue number for
+whether a design is settled — issues close as their decisions land, so a list of
+numbers here rots. None of this expands the frozen string-scanning profile
 before B4/B5. Advanced effects, dependent or refinement types, concurrency
 runtime implementation, and an optional second backend remain later. The
 evidence and keep/defer/reject decisions are indexed in the
@@ -273,7 +279,8 @@ L7  proof evidence ABI and law-aware optimizer         planned
 
 ## Backlog mapping
 
-The generated backlog uses:
+Every open issue carries one of these milestones, and the GitHub milestone of
+the same name is the tracker's copy of it:
 
 ```text
 M0-spec
@@ -283,4 +290,14 @@ M3-beta
 M4-1.0
 ```
 
-27 areas each contain 25 subjects. Every subject has a 20-step lifecycle from requirements through release acceptance. Total: 13,500 issues.
+The tracker holds curated issues only. A curated issue states its own `State`,
+`Priority`, `Size`, and `Kind`, so the milestone it sits in can be read as work
+rather than as a heading.
+
+The generated subject grid — 27 areas of 25 subjects, each with a 20-step
+lifecycle, 13,500 issues at full expansion — is not held open in the tracker.
+Its placeholders carried no state, size, priority, or kind, so they could not be
+picked up, estimated, or scheduled, and they outnumbered the curated issues
+roughly five to one. Expand a subject into a curated issue when the work is
+about to start; that is the point at which the fields above can be answered
+honestly.

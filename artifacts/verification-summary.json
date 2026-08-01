@@ -31,10 +31,5 @@
     "stage2_self_recompile": false,
     "full_self_hosting": false
   },
-  "backlog": {
-    "issues": 13500,
-    "areas": 27,
-    "unique_and_contiguous": true
-  },
   "verification_command": "task verify"
 }

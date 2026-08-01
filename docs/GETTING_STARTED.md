@@ -58,8 +58,8 @@ git status --short
 ```
 
 Run every command in this guide from the repository root, the directory that
-contains `Makefile`, `bin/`, `bootstrap/`, and `docs/`. A clean checkout prints
-nothing for `git status --short`.
+contains `Taskfile.yml`, `bin/`, `bootstrap/`, and `docs/`. A clean checkout
+prints nothing for `git status --short`.
 
 The project does not require a global `kofun` install. Use `./bin/kofun` so the
 command and the compiler sources always come from the same commit.
