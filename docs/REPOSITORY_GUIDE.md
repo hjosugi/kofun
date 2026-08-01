@@ -300,6 +300,23 @@ observation data to replay exactly.
 protocol, authority, replacement, position-encoding, security, and data
 integrity boundaries.
 
+### How a gate reports a failure
+
+`tests/assertions/assert.sh` is sourced, never run, and holds the assertion
+helpers a gate should use — `assert_eq`, `assert_num`, `assert_file_empty`,
+`assert_absent`, and the rest. Each takes a label first and prints one line
+naming the label, the expectation, and the observation.
+
+They exist because every gate runs under `set -eu`, where a bare
+`test "$a" = "$b"` that fails exits the script and prints **nothing**. #794
+records that costing real time — the native gate's digest check failing with an
+empty stderr — and #814 counted 460 assertions still in that shape.
+
+`tests/assertions/check.sh` (`task assertions`) counts them and holds every
+script to the budget recorded in `tests/assertions/budget.tsv`. It fails in
+both directions: over budget is a regression, and under budget means a fix was
+made without lowering the budget to record it.
+
 ## Standard library and frameworks
 
 Many `stdlib/` modules specify the intended Kofun API while their current gate

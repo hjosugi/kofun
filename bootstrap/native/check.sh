@@ -7,6 +7,8 @@ KOFUN="$ROOT/bin/kofun"
 WORK=${KOFUN_NATIVE_CHECK_WORK:-"$ROOT/build/${KOFUN_GATE_WORK_NAMESPACE:+$KOFUN_GATE_WORK_NAMESPACE/}native-check"}
 CC=${CC:-cc}
 . "$ROOT/bootstrap/stage2/build.sh"
+ASSERT_CONTEXT=native
+. "$ROOT/tests/assertions/assert.sh"
 
 AARCH64_RUNNER=${QEMU_AARCH64-}
 if test -n "$AARCH64_RUNNER" &&
@@ -89,7 +91,8 @@ expand_fixture() (
         printf '%s\n' "native-check: RLE stream ended without a run length" >&2
         exit 1
     }
-    test "$(wc -c <"$image" | tr -d ' ')" -eq "$expected_size"
+    assert_num "size of $image" \
+        "$(wc -c <"$image" | tr -d ' ')" -eq "$expected_size"
 )
 
 expand_fixture \
@@ -126,7 +129,8 @@ for target in x86_64-linux aarch64-linux; do
     "$KOFUN" build "$CORE_SOURCE" \
         --target "$target" -o "$WORK/$stem.second.elf" >/dev/null
     cmp "$WORK/$stem.elf" "$WORK/$stem.second.elf"
-    test "$(wc -c <"$WORK/$stem.elf" | tr -d ' ')" -eq 4099
+    assert_num "size of $stem.elf" \
+        "$(wc -c <"$WORK/$stem.elf" | tr -d ' ')" -eq 4099
 done
 
 DEBUG_SOURCE="bootstrap/native/fixtures/core_debug_lines_42.kofun"
@@ -202,12 +206,16 @@ wasm32_debug_status=$?
     2>"$WORK/core_list_index_42-aarch64-debug.stderr"
 aarch64_aggregate_debug_status=$?
 set -e
-test "$missing_target_status" -eq 2
-test "$wasm32_debug_status" -eq 2
-test "$aarch64_aggregate_debug_status" -eq 1
-test ! -e "$WORK/core_debug_lines_42-missing-target.elf"
-test ! -e "$WORK/core_debug_lines_42-wasm32-debug.wasm"
-test ! -e "$WORK/core_list_index_42-aarch64-debug.elf"
+assert_num "missing target status" "$missing_target_status" -eq 2
+assert_num "wasm32 debug status" "$wasm32_debug_status" -eq 2
+assert_num "aarch64 aggregate debug status" \
+    "$aarch64_aggregate_debug_status" -eq 1
+assert_absent "core_debug_lines_42-missing-target.elf" \
+    "$WORK/core_debug_lines_42-missing-target.elf"
+assert_absent "core_debug_lines_42-wasm32-debug.wasm" \
+    "$WORK/core_debug_lines_42-wasm32-debug.wasm"
+assert_absent "core_list_index_42-aarch64-debug.elf" \
+    "$WORK/core_list_index_42-aarch64-debug.elf"
 grep -q -- '-g requires --target x86_64-linux or --target aarch64-linux' \
     "$WORK/core_debug_lines_42-missing-target.stderr"
 grep -q -- \
@@ -220,10 +228,10 @@ grep -q -- '-g for the AArch64 List/Text Core is not implemented yet' \
 cmp \
     "$WORK/core_return_42-x86_64.elf" \
     "$WORK/core_debug_lines_42-release.elf"
-test "$(wc -c <"$WORK/core_debug_lines_42-release.elf" | tr -d ' ')" \
-    -eq 4099
-test "$(wc -c <"$WORK/core_debug_lines_42-debug.elf" | tr -d ' ')" \
-    -gt 4099
+assert_num "size of core_debug_lines_42-release.elf" \
+    "$(wc -c <"$WORK/core_debug_lines_42-release.elf" | tr -d ' ')" -eq 4099
+assert_num "size of core_debug_lines_42-debug.elf" \
+    "$(wc -c <"$WORK/core_debug_lines_42-debug.elf" | tr -d ' ')" -gt 4099
 
 # Apart from the ELF section-table fields in the first 64 bytes, the complete
 # loaded release image is byte-identical in the debug file.
@@ -258,7 +266,8 @@ for stem in exit_42 print_sum_42 core_answer core_answer_debug; do
         "$WORK/$stem.elf-header.txt"
     grep -Eq 'Number of program headers:[[:space:]]+2' \
         "$WORK/$stem.elf-header.txt"
-    test "$(grep -c 'LOAD' "$WORK/$stem.program-headers.txt")" -eq 2
+    assert_num "LOAD lines in $stem.program-headers.txt" \
+        "$(grep -c 'LOAD' "$WORK/$stem.program-headers.txt")" -eq 2
 done
 
 # Debug metadata is opt-in. The canonical 231-byte release image still has no
@@ -267,8 +276,10 @@ grep -Eq 'Number of section headers:[[:space:]]+0' \
     "$WORK/core_answer.elf-header.txt"
 grep -Eq 'Number of section headers:[[:space:]]+10' \
     "$WORK/core_answer_debug.elf-header.txt"
-test "$(wc -c <"$WORK/core_answer.elf" | tr -d ' ')" -eq 231
-test "$(wc -c <"$WORK/core_answer_debug.elf" | tr -d ' ')" -eq 1360
+assert_num "size of core_answer.elf" \
+    "$(wc -c <"$WORK/core_answer.elf" | tr -d ' ')" -eq 231
+assert_num "size of core_answer_debug.elf" \
+    "$(wc -c <"$WORK/core_answer_debug.elf" | tr -d ' ')" -eq 1360
 
 dd if="$WORK/core_answer.elf" \
     of="$WORK/core_answer.release-program-headers" \
@@ -339,8 +350,9 @@ grep -Eq 'Entry point address:[[:space:]]+0x4000b0' \
     "$WORK/core_return_42-aarch64.elf-header.txt"
 grep -Eq 'Number of program headers:[[:space:]]+2' \
     "$WORK/core_return_42-aarch64.elf-header.txt"
-test "$(grep -c 'LOAD' \
-    "$WORK/core_return_42-aarch64.program-headers.txt")" -eq 2
+assert_num "LOAD lines in core_return_42-aarch64.program-headers.txt" \
+    "$(grep -c 'LOAD' "$WORK/core_return_42-aarch64.program-headers.txt")" \
+    -eq 2
 
 readelf -h "$WORK/core_debug_lines_42-release.elf" \
     >"$WORK/core_debug_lines_42-release.header.txt"
@@ -411,9 +423,11 @@ grep -Eq 'Number of section headers:[[:space:]]+0' \
     "$WORK/core_debug_lines_42-aarch64-release.header.txt"
 grep -Eq 'Number of section headers:[[:space:]]+10' \
     "$WORK/core_debug_lines_42-aarch64-debug.header.txt"
-test "$(wc -c <"$WORK/core_debug_lines_42-aarch64-release.elf" | tr -d ' ')" \
+assert_num "size of core_debug_lines_42-aarch64-release.elf" \
+    "$(wc -c <"$WORK/core_debug_lines_42-aarch64-release.elf" | tr -d ' ')" \
     -eq 4099
-test "$(wc -c <"$WORK/core_debug_lines_42-aarch64-debug.elf" | tr -d ' ')" \
+assert_num "size of core_debug_lines_42-aarch64-debug.elf" \
+    "$(wc -c <"$WORK/core_debug_lines_42-aarch64-debug.elf" | tr -d ' ')" \
     -gt 4099
 
 dd if="$WORK/core_debug_lines_42-aarch64-release.elf" \
@@ -504,16 +518,16 @@ call_bytes=$(od -An -tu1 -j 176 -N 5 "$WORK/core_answer.elf" |
     awk '{$1=$1; print}')
 lea_bytes=$(od -An -tu1 -j 212 -N 7 "$WORK/core_answer.elf" |
     awk '{$1=$1; print}')
-test "$call_bytes" = "232 9 0 0 0"
-test "$lea_bytes" = "72 141 53 9 0 0 0"
+assert_eq "call bytes" "$call_bytes" "232 9 0 0 0"
+assert_eq "lea bytes" "$lea_bytes" "72 141 53 9 0 0 0"
 
 set +e
 "$WORK/exit_42.elf" >"$WORK/exit_42.stdout" 2>"$WORK/exit_42.stderr"
 status=$?
 set -e
-test "$status" -eq 42
-test ! -s "$WORK/exit_42.stdout"
-test ! -s "$WORK/exit_42.stderr"
+assert_num "exit_42 exit status" "$status" -eq 42
+assert_file_empty "exit_42.stdout" "$WORK/exit_42.stdout"
+assert_file_empty "exit_42.stderr" "$WORK/exit_42.stderr"
 
 set +e
 "$WORK/print_sum_42.elf" \
@@ -521,10 +535,10 @@ set +e
     2>"$WORK/print_sum_42.stderr"
 status=$?
 set -e
-test "$status" -eq 0
+assert_num "print_sum_42 exit status" "$status" -eq 0
 printf '42\n' >"$WORK/print_sum_42.expected"
 cmp "$WORK/print_sum_42.expected" "$WORK/print_sum_42.stdout"
-test ! -s "$WORK/print_sum_42.stderr"
+assert_file_empty "print_sum_42.stderr" "$WORK/print_sum_42.stderr"
 
 set +e
 "$WORK/core_answer.elf" \
@@ -532,10 +546,10 @@ set +e
     2>"$WORK/core_answer.stderr"
 status=$?
 set -e
-test "$status" -eq 42
+assert_num "core_answer exit status" "$status" -eq 42
 printf '42\n' >"$WORK/core_answer.expected"
 cmp "$WORK/core_answer.expected" "$WORK/core_answer.stdout"
-test ! -s "$WORK/core_answer.stderr"
+assert_file_empty "core_answer.stderr" "$WORK/core_answer.stderr"
 
 set +e
 "$WORK/core_answer_debug.elf" \
@@ -543,9 +557,9 @@ set +e
     2>"$WORK/core_answer_debug.stderr"
 status=$?
 set -e
-test "$status" -eq 42
+assert_num "core_answer_debug exit status" "$status" -eq 42
 cmp "$WORK/core_answer.expected" "$WORK/core_answer_debug.stdout"
-test ! -s "$WORK/core_answer_debug.stderr"
+assert_file_empty "core_answer_debug.stderr" "$WORK/core_answer_debug.stderr"
 
 for mode in release debug; do
     set +e
@@ -554,12 +568,13 @@ for mode in release debug; do
         2>"$WORK/core_debug_lines_42-$mode.stderr"
     status=$?
     set -e
-    test "$status" -eq 0
+    assert_num "core_debug_lines_42-$mode exit status" "$status" -eq 0
     printf '42\n' >"$WORK/core_debug_lines_42.expected"
     cmp \
         "$WORK/core_debug_lines_42.expected" \
         "$WORK/core_debug_lines_42-$mode.stdout"
-    test ! -s "$WORK/core_debug_lines_42-$mode.stderr"
+    assert_file_empty "core_debug_lines_42-$mode.stderr" \
+        "$WORK/core_debug_lines_42-$mode.stderr"
 done
 
 if command -v gdb >/dev/null 2>&1; then
@@ -629,7 +644,8 @@ if test -n "$AARCH64_RUNNER"; then
         2>"$WORK/core_debug_lines_42-aarch64-debug.stderr"
     aarch64_debug_run_status=$?
     set -e
-    test "$aarch64_debug_run_status" -eq "$aarch64_release_status"
+    assert_num "aarch64 debug run status" \
+        "$aarch64_debug_run_status" -eq "$aarch64_release_status"
     cmp \
         "$WORK/core_debug_lines_42.expected" \
         "$WORK/core_debug_lines_42-aarch64-release.stdout"
@@ -722,7 +738,7 @@ run_native_core_differential() (
         >"$WORK/$name-x86_64.stdout" \
         2>"$WORK/$name-x86_64.stderr"
     x86_status=$?
-    test "$x86_status" -eq "$reference_status"
+    assert_num "x86 status" "$x86_status" -eq "$reference_status"
     cmp "$WORK/$name-reference.stdout" "$WORK/$name-x86_64.stdout"
     cmp "$WORK/$name-reference.stderr" "$WORK/$name-x86_64.stderr"
 
@@ -731,7 +747,7 @@ run_native_core_differential() (
             >"$WORK/$name-aarch64.stdout" \
             2>"$WORK/$name-aarch64.stderr"
         aarch64_status=$?
-        test "$aarch64_status" -eq "$reference_status"
+        assert_num "aarch64 status" "$aarch64_status" -eq "$reference_status"
         cmp "$WORK/$name-reference.stdout" "$WORK/$name-aarch64.stdout"
         cmp "$WORK/$name-reference.stderr" "$WORK/$name-aarch64.stderr"
         printf '%s\n' "PASS: $name differential under qemu-aarch64"
@@ -761,7 +777,7 @@ run_native_core_differential \
     2>"$WORK/fibonacci-native.stderr"
 printf '6765\n' >"$WORK/fibonacci-native.expected"
 cmp "$WORK/fibonacci-native.expected" "$WORK/fibonacci-native.stdout"
-test ! -s "$WORK/fibonacci-native.stderr"
+assert_file_empty "fibonacci-native.stderr" "$WORK/fibonacci-native.stderr"
 
 "$KOFUN" build "$ROOT/examples/fibonacci_native.kofun" \
     --target aarch64-linux \
@@ -803,22 +819,24 @@ function_arity_status=$?
     2>"$WORK/function-unknown-aarch64.stderr"
 function_unknown_aarch64_status=$?
 set -e
-test "$function_overflow_status" -eq 1
-test ! -s "$WORK/function-overflow.stdout"
+assert_num "function overflow status" "$function_overflow_status" -eq 1
+assert_file_empty "function-overflow.stdout" "$WORK/function-overflow.stdout"
 printf 'error[R010]: integer overflow in operator `*`\n' \
     >"$WORK/function-overflow.expected"
 cmp "$WORK/function-overflow.expected" \
     "$WORK/function-overflow.stderr"
-test "$function_unknown_status" -eq 1
-test ! -e "$WORK/function-unknown.elf"
+assert_num "function unknown status" "$function_unknown_status" -eq 1
+assert_absent "function-unknown.elf" "$WORK/function-unknown.elf"
 grep 'unknown native Core function `missing`' \
     "$WORK/function-unknown.stderr" >/dev/null
-test "$function_arity_status" -eq 1
-test ! -e "$WORK/function-arity.elf"
+assert_num "function arity status" "$function_arity_status" -eq 1
+assert_absent "function-arity.elf" "$WORK/function-arity.elf"
 grep 'native Core function `add` expects 2 arguments, got 1' \
     "$WORK/function-arity.stderr" >/dev/null
-test "$function_unknown_aarch64_status" -eq 1
-test ! -e "$WORK/function-unknown-aarch64.elf"
+assert_num "function unknown aarch64 status" \
+    "$function_unknown_aarch64_status" -eq 1
+assert_absent "function-unknown-aarch64.elf" \
+    "$WORK/function-unknown-aarch64.elf"
 grep 'unknown native Core function `missing`' \
     "$WORK/function-unknown-aarch64.stderr" >/dev/null
 
@@ -831,7 +849,8 @@ if test -n "$AARCH64_RUNNER"; then
         2>"$WORK/fibonacci-native-aarch64.stderr"
     cmp "$WORK/fibonacci-native.expected" \
         "$WORK/fibonacci-native-aarch64.stdout"
-    test ! -s "$WORK/fibonacci-native-aarch64.stderr"
+    assert_file_empty "fibonacci-native-aarch64.stderr" \
+        "$WORK/fibonacci-native-aarch64.stderr"
 
     set +e
     "$AARCH64_RUNNER" "$WORK/function-overflow-aarch64.elf" \
@@ -839,8 +858,10 @@ if test -n "$AARCH64_RUNNER"; then
         2>"$WORK/function-overflow-aarch64.stderr"
     function_overflow_aarch64_status=$?
     set -e
-    test "$function_overflow_aarch64_status" -eq 1
-    test ! -s "$WORK/function-overflow-aarch64.stdout"
+    assert_num "function overflow aarch64 status" \
+        "$function_overflow_aarch64_status" -eq 1
+    assert_file_empty "function-overflow-aarch64.stdout" \
+        "$WORK/function-overflow-aarch64.stdout"
     cmp "$WORK/function-overflow.expected" \
         "$WORK/function-overflow-aarch64.stderr"
     printf '%s\n' \
@@ -900,8 +921,9 @@ cmp \
 cmp \
     "$WORK/function-text-reference.stdout" \
     "$WORK/function-text.stdout"
-test ! -s "$WORK/function-text-reference.stderr"
-test ! -s "$WORK/function-text.stderr"
+assert_file_empty "function-text-reference.stderr" \
+    "$WORK/function-text-reference.stderr"
+assert_file_empty "function-text.stderr" "$WORK/function-text.stderr"
 
 "$WORK/kofun-native-function-text" \
     "$FUNCTION_TEXT_UTF8_SOURCE" x86_64-linux \
@@ -925,8 +947,9 @@ cmp \
 cmp \
     "$WORK/function-text-utf8-reference.stdout" \
     "$WORK/function-text-utf8.stdout"
-test ! -s "$WORK/function-text-utf8-reference.stderr"
-test ! -s "$WORK/function-text-utf8.stderr"
+assert_file_empty "function-text-utf8-reference.stderr" \
+    "$WORK/function-text-utf8-reference.stderr"
+assert_file_empty "function-text-utf8.stderr" "$WORK/function-text-utf8.stderr"
 
 readelf -h "$WORK/function-text-direct.elf" \
     >"$WORK/function-text.header"
@@ -934,7 +957,8 @@ readelf -l "$WORK/function-text-direct.elf" \
     >"$WORK/function-text.program-headers"
 grep -Eq 'Machine:[[:space:]]+Advanced Micro Devices X86-64' \
     "$WORK/function-text.header"
-test "$(grep -c 'LOAD' "$WORK/function-text.program-headers")" -eq 2
+assert_num "LOAD lines in function-text.program-headers" \
+    "$(grep -c 'LOAD' "$WORK/function-text.program-headers")" -eq 2
 ! grep -Eq 'INTERP|DYNAMIC' "$WORK/function-text.program-headers"
 
 # Every unsupported signature/body is diagnosed before artifact commit.
@@ -996,7 +1020,8 @@ chmod +x "$WORK/function-text-two-locals.elf"
 cmp \
     "$NATIVE/fixtures/function_text_two_locals.stdout" \
     "$WORK/function-text-two-locals.stdout"
-test ! -s "$WORK/function-text-two-locals.stderr"
+assert_file_empty "function-text-two-locals.stderr" \
+    "$WORK/function-text-two-locals.stderr"
 expect_function_text_rejection \
     function_text_local_type_mismatch \
     'native Core local `label` is not Int'
@@ -1019,7 +1044,8 @@ printf '6\n' >"$WORK/function-local-frame.expected"
 cmp \
     "$WORK/function-local-frame.expected" \
     "$WORK/function-local-frame.stdout"
-test ! -s "$WORK/function-local-frame.stderr"
+assert_file_empty "function-local-frame.stderr" \
+    "$WORK/function-local-frame.stderr"
 if test -n "$AARCH64_RUNNER"; then
     "$AARCH64_RUNNER" "$WORK/function-local-frame-aarch64-linux.elf" \
         >"$WORK/function-local-frame-aarch64.stdout" \
@@ -1027,7 +1053,8 @@ if test -n "$AARCH64_RUNNER"; then
     cmp \
         "$WORK/function-local-frame.expected" \
         "$WORK/function-local-frame-aarch64.stdout"
-    test ! -s "$WORK/function-local-frame-aarch64.stderr"
+    assert_file_empty "function-local-frame-aarch64.stderr" \
+        "$WORK/function-local-frame-aarch64.stderr"
 fi
 expect_function_text_rejection \
     function_too_many_locals \
@@ -1056,8 +1083,8 @@ readelf -l "$WORK/function-text-aarch64.elf" \
     >"$WORK/function-text-aarch64.program-headers"
 grep -Eq 'Machine:[[:space:]]+AArch64' \
     "$WORK/function-text-aarch64.header"
-test "$(grep -c 'LOAD' \
-    "$WORK/function-text-aarch64.program-headers")" -eq 2
+assert_num "LOAD lines in function-text-aarch64.program-headers" \
+    "$(grep -c 'LOAD' "$WORK/function-text-aarch64.program-headers")" -eq 2
 ! grep -Eq 'INTERP|DYNAMIC' \
     "$WORK/function-text-aarch64.program-headers"
 
@@ -1070,14 +1097,16 @@ if test -n "$AARCH64_RUNNER"; then
     cmp \
         "$NATIVE/fixtures/function_text_helper.stdout" \
         "$WORK/function-text-aarch64.stdout"
-    test ! -s "$WORK/function-text-aarch64.stderr"
+    assert_file_empty "function-text-aarch64.stderr" \
+        "$WORK/function-text-aarch64.stderr"
     "$AARCH64_RUNNER" "$WORK/function-text-utf8-aarch64.elf" \
         >"$WORK/function-text-utf8-aarch64.stdout" \
         2>"$WORK/function-text-utf8-aarch64.stderr"
     cmp \
         "$NATIVE/fixtures/function_text_helper_utf8.stdout" \
         "$WORK/function-text-utf8-aarch64.stdout"
-    test ! -s "$WORK/function-text-utf8-aarch64.stderr"
+    assert_file_empty "function-text-utf8-aarch64.stderr" \
+        "$WORK/function-text-utf8-aarch64.stderr"
     printf '%s\n' \
         "PASS: function Text AArch64 differential under qemu-aarch64"
 else
@@ -1093,8 +1122,8 @@ set +e
     2>"$WORK/function-text-oom.stderr"
 function_text_oom_status=$?
 set -e
-test "$function_text_oom_status" -eq 70
-test ! -s "$WORK/function-text-oom.stdout"
+assert_num "function text oom status" "$function_text_oom_status" -eq 70
+assert_file_empty "function-text-oom.stdout" "$WORK/function-text-oom.stdout"
 printf 'kofun: out of memory\n' >"$WORK/function-text-oom.expected"
 cmp \
     "$WORK/function-text-oom.expected" \
@@ -1108,14 +1137,16 @@ while IFS='|' read -r kind path expected_digest; do
     case $kind in
         producer|source|reference|expected)
             actual_digest=$(sha256sum "$ROOT/$path" | awk '{ print $1 }')
-            test "$actual_digest" = "$expected_digest"
+            assert_eq "$kind digest for $path" \
+                "$actual_digest" "$expected_digest"
             ;;
         output)
             actual_digest=$(
                 sha256sum "$WORK/function-text-direct.elf" |
                     awk '{ print $1 }'
             )
-            test "$actual_digest" = "$expected_digest"
+            assert_eq "provenance output digest for function-text-direct.elf" \
+                "$actual_digest" "$expected_digest"
             ;;
         reproduce|'#'|'') ;;
         *)
@@ -1159,15 +1190,15 @@ printf '40\n' >"$WORK/function-regalloc.expected"
 cmp \
     "$WORK/function-regalloc.expected" \
     "$WORK/function-regalloc.stdout"
-test ! -s "$WORK/function-regalloc.stderr"
+assert_file_empty "function-regalloc.stderr" "$WORK/function-regalloc.stderr"
 
 # push rbp; mov rbp, rsp; sub rsp, 0x10; mov [rbp-0x10], rbx; mov rbx, rdi;
 # mov r10, rbx
 regalloc_leaf=$(od -An -v -tx1 -j 192 -N 18 \
     "$WORK/function-regalloc-direct.elf" |
     awk '{$1=$1; printf "%s%s", separator, $0; separator=" "} END{print ""}')
-test "$regalloc_leaf" = \
-    "55 48 89 e5 48 83 ec 10 48 89 5d f0 48 8b df 4c 8b d3"
+assert_eq "regalloc leaf" \
+    "$regalloc_leaf" "55 48 89 e5 48 83 ec 10 48 89 5d f0 48 8b df 4c 8b d3"
 
 for regalloc_image in \
     "$WORK/function-regalloc-direct.elf" \
@@ -1224,7 +1255,8 @@ done
 regalloc_leaf_aarch64=$(od -An -v -tx1 -j 192 -N 20 \
     "$WORK/function_register_allocation-regalloc-aarch64.elf" |
     awk '{$1=$1; printf "%s%s", separator, $0; separator=" "} END{print ""}')
-test "$regalloc_leaf_aarch64" = \
+assert_eq "regalloc leaf aarch64" \
+    "$regalloc_leaf_aarch64" \
     "fd 7b bf a9 fd 03 00 91 ff 43 00 d1 ee 03 00 aa ec 03 0e aa"
 
 if test -n "$AARCH64_RUNNER"; then
@@ -1235,7 +1267,8 @@ if test -n "$AARCH64_RUNNER"; then
     cmp \
         "$WORK/function-regalloc.expected" \
         "$WORK/function-regalloc-aarch64.stdout"
-    test ! -s "$WORK/function-regalloc-aarch64.stderr"
+    assert_file_empty "function-regalloc-aarch64.stderr" \
+        "$WORK/function-regalloc-aarch64.stderr"
     regalloc_summary="PASS: x86-64/AArch64 allocate values and ran identically"
 else
     printf '%s\n' \
@@ -1286,7 +1319,7 @@ for tail_case in function_tail_self function_tail_mutual; do
         "$WORK/$tail_case-direct.elf" \
         "$WORK/$tail_case.stdout" \
         "$WORK/$tail_case.stderr")
-    test "$tail_status" -eq 0
+    assert_num "tail status" "$tail_status" -eq 0
     case $tail_case in
         function_tail_self)
             printf '%s\n' "$tail_expected_self" \
@@ -1298,7 +1331,7 @@ for tail_case in function_tail_self function_tail_mutual; do
             ;;
     esac
     cmp "$WORK/$tail_case.expected" "$WORK/$tail_case.stdout"
-    test ! -s "$WORK/$tail_case.stderr"
+    assert_file_empty "$tail_case.stderr" "$WORK/$tail_case.stderr"
 
     # The AArch64 image for the same source is always built twice and audited;
     # only its execution depends on the emulator.
@@ -1330,8 +1363,9 @@ deep_non_tail_status=$(bounded_stack_status \
     "$WORK/function-deep-non-tail.elf" \
     "$WORK/function-deep-non-tail.stdout" \
     "$WORK/function-deep-non-tail.stderr")
-test "$deep_non_tail_status" -eq 139
-test ! -s "$WORK/function-deep-non-tail.stdout"
+assert_num "deep non tail status" "$deep_non_tail_status" -eq 139
+assert_file_empty "function-deep-non-tail.stdout" \
+    "$WORK/function-deep-non-tail.stdout"
 
 # The hand-off itself is pinned, so the constant-stack result above cannot come
 # from anything but the branch. On x86-64 the direct case reassigns both
@@ -1342,11 +1376,12 @@ test ! -s "$WORK/function-deep-non-tail.stdout"
 tail_self_edge=$(od -An -v -tx1 -j 280 -N 11 \
     "$WORK/function_tail_self-direct.elf" |
     awk '{$1=$1; printf "%s%s", separator, $0; separator=" "} END{print ""}')
-test "$tail_self_edge" = "4d 8b e2 4d 8b eb e9 b7 ff ff ff"
+assert_eq "tail self edge" "$tail_self_edge" "4d 8b e2 4d 8b eb e9 b7 ff ff ff"
 tail_mutual_edge=$(od -An -v -tx1 -j 257 -N 13 \
     "$WORK/function_tail_mutual-direct.elf" |
     awk '{$1=$1; printf "%s%s", separator, $0; separator=" "} END{print ""}')
-test "$tail_mutual_edge" = "49 8b fa 48 8b 5d f0 c9 e9 06 00 00 00"
+assert_eq "tail mutual edge" \
+    "$tail_mutual_edge" "49 8b fa 48 8b 5d f0 c9 e9 06 00 00 00"
 
 # AArch64 makes the same two hand-offs, now in registers rather than through
 # frame slots: the direct case reassigns both parameters with `mov` and
@@ -1356,11 +1391,13 @@ test "$tail_mutual_edge" = "49 8b fa 48 8b 5d f0 c9 e9 06 00 00 00"
 tail_self_edge_aarch64=$(od -An -v -tx1 -j 280 -N 12 \
     "$WORK/function_tail_self-aarch64.elf" |
     awk '{$1=$1; printf "%s%s", separator, $0; separator=" "} END{print ""}')
-test "$tail_self_edge_aarch64" = "f3 03 0c aa f4 03 0d aa ef ff ff 17"
+assert_eq "tail self edge aarch64" \
+    "$tail_self_edge_aarch64" "f3 03 0c aa f4 03 0d aa ef ff ff 17"
 tail_mutual_edge_aarch64=$(od -An -v -tx1 -j 256 -N 20 \
     "$WORK/function_tail_mutual-aarch64.elf" |
     awk '{$1=$1; printf "%s%s", separator, $0; separator=" "} END{print ""}')
-test "$tail_mutual_edge_aarch64" = \
+assert_eq "tail mutual edge aarch64" \
+    "$tail_mutual_edge_aarch64" \
     "e0 03 0c aa f3 07 40 f9 bf 03 00 91 fd 7b c1 a8 05 00 00 14"
 
 if test -n "$AARCH64_RUNNER"; then
@@ -1371,7 +1408,8 @@ if test -n "$AARCH64_RUNNER"; then
         cmp \
             "$WORK/$tail_case.expected" \
             "$WORK/$tail_case-aarch64.stdout"
-        test ! -s "$WORK/$tail_case-aarch64.stderr"
+        assert_file_empty "$tail_case-aarch64.stderr" \
+            "$WORK/$tail_case-aarch64.stderr"
     done
     tail_summary="PASS: x86-64/AArch64 returned calls branch and ran 3e6 deep"
 else
@@ -1404,10 +1442,12 @@ for slash_target in x86_64-linux aarch64-linux; do
         2>"$WORK/reject-slash-$slash_target.stderr"
     slash_status=$?
     set -e
-    test "$slash_status" -ne 0
-    test ! -s "$WORK/reject-slash-$slash_target.stdout"
+    assert_num "slash status" "$slash_status" -ne 0
+    assert_file_empty "reject-slash-$slash_target.stdout" \
+        "$WORK/reject-slash-$slash_target.stdout"
     cmp "$WORK/reject-slash.expected" "$WORK/reject-slash-$slash_target.stderr"
-    test ! -s "$WORK/reject-slash-$slash_target.elf"
+    assert_file_empty "reject-slash-$slash_target.elf" \
+        "$WORK/reject-slash-$slash_target.elf"
 done
 
 printf 'error[R010]: operator `//` failed: division by zero\n' \
@@ -1428,8 +1468,8 @@ do
         2>"$WORK/$divide_case.stderr"
     divide_status=$?
     set -e
-    test "$divide_status" -eq 1
-    test ! -s "$WORK/$divide_case.stdout"
+    assert_num "$divide_case exit status" "$divide_status" -eq 1
+    assert_file_empty "$divide_case.stdout" "$WORK/$divide_case.stdout"
     cmp "$WORK/$divide_case.expected" "$WORK/$divide_case.stderr"
 done
 
@@ -1452,8 +1492,8 @@ do
         2>"$WORK/$divide_case.stderr"
     divide_status=$?
     set -e
-    test "$divide_status" -eq 1
-    test ! -s "$WORK/$divide_case.stdout"
+    assert_num "$divide_case exit status" "$divide_status" -eq 1
+    assert_file_empty "$divide_case.stdout" "$WORK/$divide_case.stdout"
     cmp "$WORK/$divide_case.expected" "$WORK/$divide_case.stderr"
 done
 
@@ -1468,7 +1508,8 @@ printf '0\n' >"$WORK/function-floor-modulo-min.expected"
 cmp \
     "$WORK/function-floor-modulo-min.expected" \
     "$WORK/function-floor-modulo-min.stdout"
-test ! -s "$WORK/function-floor-modulo-min.stderr"
+assert_file_empty "function-floor-modulo-min.stderr" \
+    "$WORK/function-floor-modulo-min.stderr"
 
 # AArch64 divides with `sdiv`, which unlike `idiv` never faults: a zero divisor
 # silently yields zero there. Both guards therefore have to be emitted, and the
@@ -1504,8 +1545,9 @@ if test -n "$AARCH64_RUNNER"; then
             2>"$WORK/$divide_case-aarch64.stderr"
         divide_status=$?
         set -e
-        test "$divide_status" -eq 1
-        test ! -s "$WORK/$divide_case-aarch64.stdout"
+        assert_num "$divide_case exit status (aarch64)" "$divide_status" -eq 1
+        assert_file_empty "$divide_case-aarch64.stdout" \
+            "$WORK/$divide_case-aarch64.stdout"
         cmp \
             "$WORK/$divide_case.expected" \
             "$WORK/$divide_case-aarch64.stderr"
@@ -1519,8 +1561,9 @@ if test -n "$AARCH64_RUNNER"; then
             2>"$WORK/$divide_case-aarch64.stderr"
         divide_status=$?
         set -e
-        test "$divide_status" -eq 1
-        test ! -s "$WORK/$divide_case-aarch64.stdout"
+        assert_num "$divide_case exit status (aarch64)" "$divide_status" -eq 1
+        assert_file_empty "$divide_case-aarch64.stdout" \
+            "$WORK/$divide_case-aarch64.stdout"
         cmp \
             "$WORK/$divide_case.expected" \
             "$WORK/$divide_case-aarch64.stderr"
@@ -1531,7 +1574,8 @@ if test -n "$AARCH64_RUNNER"; then
     cmp \
         "$WORK/function-floor-modulo-min.expected" \
         "$WORK/function-floor-modulo-min-aarch64.stdout"
-    test ! -s "$WORK/function-floor-modulo-min-aarch64.stderr"
+    assert_file_empty "function-floor-modulo-min-aarch64.stderr" \
+        "$WORK/function-floor-modulo-min-aarch64.stderr"
     divide_summary="PASS: x86-64/AArch64 divide, floor, and reject zero/non-representable quotients alike"
 else
     printf '%s\n' \
@@ -1569,7 +1613,7 @@ printf '%s\n' \
     -4294967296 \
     >"$WORK/function-int64.expected"
 cmp "$WORK/function-int64.expected" "$WORK/function-int64.stdout"
-test ! -s "$WORK/function-int64.stderr"
+assert_file_empty "function-int64.stderr" "$WORK/function-int64.stderr"
 
 for int64_target in x86_64-linux aarch64-linux; do
     too_large="$WORK/function-int64-too-large-$int64_target.elf"
@@ -1580,9 +1624,10 @@ for int64_target in x86_64-linux aarch64-linux; do
         2>"$WORK/function-int64-too-large-$int64_target.stderr"
     too_large_status=$?
     set -e
-    test "$too_large_status" -eq 1
-    test ! -e "$too_large"
-    test ! -s "$WORK/function-int64-too-large-$int64_target.stdout"
+    assert_num "too large status" "$too_large_status" -eq 1
+    assert_absent "too large" "$too_large"
+    assert_file_empty "function-int64-too-large-$int64_target.stdout" \
+        "$WORK/function-int64-too-large-$int64_target.stdout"
     grep -F \
         "native Core integer literal exceeds 9223372036854775807" \
         "$WORK/function-int64-too-large-$int64_target.stderr" >/dev/null
@@ -1603,7 +1648,8 @@ if test -n "$AARCH64_RUNNER"; then
         >"$WORK/function-int64-aarch64.stdout" \
         2>"$WORK/function-int64-aarch64.stderr"
     cmp "$WORK/function-int64.expected" "$WORK/function-int64-aarch64.stdout"
-    test ! -s "$WORK/function-int64-aarch64.stderr"
+    assert_file_empty "function-int64-aarch64.stderr" \
+        "$WORK/function-int64-aarch64.stderr"
     int64_summary="PASS: x86-64/AArch64 carry wide Int64 values at every encoding boundary"
 else
     printf '%s\n' \
@@ -1656,10 +1702,10 @@ for trap_target in x86_64-linux aarch64-linux; do
         awk '$1 == "LOAD" && $7 == "RW" { print $5 }' \
             "$trap_image.program-headers"
     )
-    test -n "$trap_rx_size"
-    test -n "$trap_rw_size"
-    test "$((trap_rx_size))" -le 4096
-    test "$((trap_rw_size))" -le 4096
+    assert_nonempty "trap rx size" "$trap_rx_size"
+    assert_nonempty "trap rw size" "$trap_rw_size"
+    assert_num "$((trap_rx_size))" "$((trap_rx_size))" -le 4096
+    assert_num "$((trap_rw_size))" "$((trap_rw_size))" -le 4096
 done
 
 printf '42\n42\n42\n42\n42\n42\n' \
@@ -1669,7 +1715,7 @@ chmod +x "$WORK/function-all-traps-x86_64-linux.elf"
     >"$WORK/function-all-traps.stdout" \
     2>"$WORK/function-all-traps.stderr"
 cmp "$WORK/function-all-traps.expected" "$WORK/function-all-traps.stdout"
-test ! -s "$WORK/function-all-traps.stderr"
+assert_file_empty "function-all-traps.stderr" "$WORK/function-all-traps.stderr"
 
 if test -n "$AARCH64_RUNNER"; then
     "$AARCH64_RUNNER" "$WORK/function-all-traps-aarch64-linux.elf" \
@@ -1678,7 +1724,8 @@ if test -n "$AARCH64_RUNNER"; then
     cmp \
         "$WORK/function-all-traps.expected" \
         "$WORK/function-all-traps-aarch64.stdout"
-    test ! -s "$WORK/function-all-traps-aarch64.stderr"
+    assert_file_empty "function-all-traps-aarch64.stderr" \
+        "$WORK/function-all-traps-aarch64.stderr"
     trap_pressure_summary="PASS: all x86-64/AArch64 R010 traps fit and execute"
 else
     printf '%s\n' \
@@ -1704,7 +1751,7 @@ chmod +x "$WORK/corpus-answer-direct.elf"
 cmp \
     "$ROOT/bootstrap/selfhost/driver/corpus_answer.stdout" \
     "$WORK/corpus-answer.stdout"
-test ! -s "$WORK/corpus-answer.stderr"
+assert_file_empty "corpus-answer.stderr" "$WORK/corpus-answer.stderr"
 
 # Debug information belongs to the aggregate single-main profile. A source that
 # reaches the function profile only through fallback stays an explicit,
@@ -1716,8 +1763,8 @@ set +e
     2>"$WORK/corpus-answer-debug.stderr"
 answer_debug_status=$?
 set -e
-test "$answer_debug_status" -eq 1
-test ! -e "$WORK/corpus-answer-debug.elf"
+assert_num "answer debug status" "$answer_debug_status" -eq 1
+assert_absent "corpus-answer-debug.elf" "$WORK/corpus-answer-debug.elf"
 grep -F 'unsupported Core' "$WORK/corpus-answer-debug.stderr" >/dev/null
 
 # List[Int] uses the same Core AST and value ABI on x86-64 and AArch64. An
@@ -1849,7 +1896,8 @@ grep -Eq 'Machine:[[:space:]]+AArch64' \
 cmp \
     "$WORK/core-list-map-reference.stdout" \
     "$WORK/core-list-two-allocations.stdout"
-test ! -s "$WORK/core-list-two-allocations.stderr"
+assert_file_empty "core-list-two-allocations.stderr" \
+    "$WORK/core-list-two-allocations.stderr"
 
 set +e
 "$WORK/core-list-variable-oob-x86_64.elf" \
@@ -1869,18 +1917,19 @@ if test -n "$AARCH64_RUNNER"; then
 fi
 set -e
 
-test "$list_oob_status" -eq 1
-test ! -s "$WORK/core-list-oob.stdout"
+assert_num "list oob status" "$list_oob_status" -eq 1
+assert_file_empty "core-list-oob.stdout" "$WORK/core-list-oob.stdout"
 printf 'kofun: list index out of range\n' \
     >"$WORK/core-list-oob.expected"
 cmp "$WORK/core-list-oob.expected" "$WORK/core-list-oob.stderr"
-test "$list_oom_status" -eq 70
-test ! -s "$WORK/core-list-oom.stdout"
+assert_num "list oom status" "$list_oom_status" -eq 70
+assert_file_empty "core-list-oom.stdout" "$WORK/core-list-oom.stdout"
 printf 'kofun: out of memory\n' >"$WORK/core-list-oom.expected"
 cmp "$WORK/core-list-oom.expected" "$WORK/core-list-oom.stderr"
 if test -n "$AARCH64_RUNNER"; then
-    test "$list_oob_aarch64_status" -eq 1
-    test ! -s "$WORK/core-list-oob-aarch64.stdout"
+    assert_num "list oob aarch64 status" "$list_oob_aarch64_status" -eq 1
+    assert_file_empty "core-list-oob-aarch64.stdout" \
+        "$WORK/core-list-oob-aarch64.stdout"
     cmp \
         "$WORK/core-list-oob.expected" \
         "$WORK/core-list-oob-aarch64.stderr"
@@ -2013,22 +2062,23 @@ if test -n "$AARCH64_RUNNER"; then
 fi
 set -e
 
-test "$text_oob_status" -eq 1
-test ! -s "$WORK/core-text-oob.stdout"
+assert_num "text oob status" "$text_oob_status" -eq 1
+assert_file_empty "core-text-oob.stdout" "$WORK/core-text-oob.stdout"
 printf 'kofun: text index out of range\n' \
     >"$WORK/core-text-oob.expected"
 cmp "$WORK/core-text-oob.expected" "$WORK/core-text-oob.stderr"
-test "$text_invalid_utf8_status" -eq 1
-test ! -e "$WORK/core-text-invalid-utf8.elf"
+assert_num "text invalid utf8 status" "$text_invalid_utf8_status" -eq 1
+assert_absent "core-text-invalid-utf8.elf" "$WORK/core-text-invalid-utf8.elf"
 grep 'error\[EUNICODE001\]' \
     "$WORK/core-text-invalid-utf8.stderr" >/dev/null
-test "$text_oom_status" -eq 70
-test ! -s "$WORK/core-text-oom.stdout"
+assert_num "text oom status" "$text_oom_status" -eq 70
+assert_file_empty "core-text-oom.stdout" "$WORK/core-text-oom.stdout"
 printf 'kofun: out of memory\n' >"$WORK/core-text-oom.expected"
 cmp "$WORK/core-text-oom.expected" "$WORK/core-text-oom.stderr"
 if test -n "$AARCH64_RUNNER"; then
-    test "$text_oob_aarch64_status" -eq 1
-    test ! -s "$WORK/core-text-oob-aarch64.stdout"
+    assert_num "text oob aarch64 status" "$text_oob_aarch64_status" -eq 1
+    assert_file_empty "core-text-oob-aarch64.stdout" \
+        "$WORK/core-text-oob-aarch64.stdout"
     cmp \
         "$WORK/core-text-oob.expected" \
         "$WORK/core-text-oob-aarch64.stderr"
@@ -2055,8 +2105,9 @@ machine_bytes=$(od -An -tu1 -j 18 -N 2 \
 core_bytes=$(od -An -tu1 -j 176 -N 20 \
     "$WORK/core_return_42-aarch64.elf" |
     awk '{$1=$1; printf "%s%s", separator, $0; separator=" "} END{print ""}')
-test "$machine_bytes" = "183 0"
-test "$core_bytes" = \
+assert_eq "machine bytes" "$machine_bytes" "183 0"
+assert_eq "core bytes" \
+    "$core_bytes" \
     "192 0 128 210 33 0 128 210 0 0 1 139 193 0 128 210 0 124 1 155"
 
 if command -v llvm-objdump >/dev/null 2>&1; then
@@ -2083,8 +2134,8 @@ set +e
     2>"$WORK/unsupported-native-core.stderr"
 unsupported_status=$?
 set -e
-test "$unsupported_status" -eq 1
-test ! -e "$unsupported"
+assert_num "unsupported status" "$unsupported_status" -eq 1
+assert_absent "unsupported" "$unsupported"
 grep 'unsupported Core' "$WORK/unsupported-native-core.stderr" >/dev/null
 
 if test -n "$AARCH64_RUNNER"; then
