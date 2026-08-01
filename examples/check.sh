@@ -16,11 +16,6 @@ EXAMPLES="$ROOT/examples"
 README="$EXAMPLES/README.md"
 WORK=${KOFUN_EXAMPLES_WORK:-"$ROOT/build/examples-check"}
 
-# The one law-evidence artifact whose source binding is already broken. It is
-# named here, not repaired, because no producer exists to reproduce the result
-# it records. See the "Known evidence debt" section of examples/README.md.
-EVIDENCE_DEBT="artifacts/optional-bool-monad.evidence.json"
-
 fail() {
     printf '%s\n' "FAIL: $*" >&2
     exit 1
@@ -147,16 +142,19 @@ done
 printf 'PASS: every diagnostic code cited by an example is registered (%d)\n' "$cited"
 
 # -------------------------------------------------------------- evidence
-# An evidence artifact that records `source.sha256` for a file under
-# examples/ is claiming a result about exactly those bytes. Nothing compared
-# the two before, and one artifact had already drifted.
+# An evidence artifact that records `source.sha256` for a file under examples/
+# is claiming a result about exactly those bytes, and nothing compared the two
+# until `optional-bool-monad.evidence.json` was found bound to a hash it had
+# not matched since 2026-07-30 (#864). #875 repaired that one and
+# `examples/check-law-evidence.sh` holds its specific shape; this is the
+# general net, so the next artifact to drift is caught without waiting for
+# someone to notice it.
 cd "$ROOT"
-node - "$EVIDENCE_DEBT" <<'NODE'
+node <<'NODE'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 
-const debt = process.argv[2]
 const collect = (directory) =>
     readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
         const path = join(directory, entry.name)
@@ -166,7 +164,6 @@ const collect = (directory) =>
 
 const drifted = []
 let checked = 0
-let carried = 0
 
 for (const path of collect('artifacts')) {
     let evidence
@@ -187,14 +184,6 @@ for (const path of collect('artifacts')) {
         checked += 1
         continue
     }
-    if (path === debt) {
-        carried += 1
-        console.log(
-            `NOTE: ${path} still records a stale hash for ${source.path}; ` +
-                'carried as a named debt, see examples/README.md (#864)',
-        )
-        continue
-    }
     drifted.push(`${path}: ${source.path} hashes to ${actual}, not ${source.sha256}`)
 }
 
@@ -203,9 +192,16 @@ if (drifted.length > 0) {
     process.exit(1)
 }
 
+if (checked === 0) {
+    process.stderr.write(
+        'FAIL: no example-backed evidence artifact records a source.sha256; ' +
+            'this check silently passes on an empty set\n',
+    )
+    process.exit(1)
+}
+
 console.log(
-    `PASS: ${checked} example-backed evidence artifacts match their source, ` +
-        `${carried} carried as a named debt`,
+    `PASS: every example-backed evidence artifact matches its source (${checked})`,
 )
 NODE
 

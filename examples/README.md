@@ -64,18 +64,18 @@ Stage 2 Core path states for itself:
 | `pipeline.kofun` | `|>` is accepted design (DD-011); `map`, `filter`, and `sum` are not Core functions |
 | `science.kofun` | `linspace` and the numeric surface it uses are not Core functions |
 
-## Known evidence debt
+## Evidence binding
 
-`artifacts/optional-bool-monad.evidence.json` records
-`source.sha256 = 0adb5fea…` for `proven_optional_bool_monad.kofun`, whose
-current content hashes to `2e9da000…`. The example was edited and the evidence
-was not regenerated, and no gate compared the two. It is the only law-evidence
-artifact in the tree that binds itself to a source by hash.
+`artifacts/optional-bool-monad.evidence.json` records a `source.sha256` for
+`proven_optional_bool_monad.kofun`. It had not matched since 2026-07-30 — the
+example was edited and the evidence was not regenerated — and nothing compared
+the two, which is how an artifact went on reporting `status: passed`,
+`proven-finite`, and 264 of 264 cases for bytes that no longer existed. #875
+resolved it by reducing the artifact to what is still true (`unverified`, exact
+hash, no result asserted), and `examples/check-law-evidence.sh` holds that
+exact shape.
 
-The gate checks that binding for every example-backed evidence artifact and
-carries this one as a **named debt** rather than repairing it, because there is
-no producer to repair it with: `bin/kofun` has no `law` or `prove` command, so
-the recorded `proven-finite` result over 264 cases cannot be reproduced.
-Rewriting the hash would assert a proof that was never re-run. A new drift
-fails the gate; this one is listed, so it cannot be mistaken for a passing
-check. Tracked in #864.
+The gate here is the general net beside it: **any** artifact under `artifacts/`
+that binds itself by hash to a file under `examples/` must still match, and the
+check fails rather than passing quietly if no such artifact exists at all. The
+next one to drift is caught without waiting for someone to notice.

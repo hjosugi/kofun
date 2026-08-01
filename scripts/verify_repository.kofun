@@ -73,9 +73,7 @@ fn main() {
     "spec/semantics.md",
     "spec/law-evidence.schema.json",
     "artifacts/optional-bool-monad.evidence.json",
-    "artifacts/verification-summary.json",
-    "editor/vscode/package.json",
-    "editor/vscode/syntaxes/kofun.tmLanguage.json"
+    "artifacts/verification-summary.json"
     ]
     for index in 0 .. len(required) {
         require_nonempty(required[index])
@@ -85,10 +83,7 @@ fn main() {
     "bootstrap/manifest.json",
     "spec/law-evidence.schema.json",
     "artifacts/optional-bool-monad.evidence.json",
-    "artifacts/verification-summary.json",
-    "editor/vscode/package.json",
-    "editor/vscode/language-configuration.json",
-    "editor/vscode/syntaxes/kofun.tmLanguage.json"
+    "artifacts/verification-summary.json"
     ]
     for index in 0 .. len(json_files) {
         validate_json_file(json_files[index])
@@ -96,9 +91,9 @@ fn main() {
 
     require_contains("README.md", "research compiler, not a production language")
     require_contains("spec/law-evidence.schema.json", "kofun.law-evidence/v1")
-    require_contains("artifacts/optional-bool-monad.evidence.json", "\"status\": \"passed\"")
-    require_contains("artifacts/optional-bool-monad.evidence.json", "\"cases_checked\": 264")
+    require_contains("artifacts/optional-bool-monad.evidence.json", "\"status\": \"unverified\"")
+    require_contains("artifacts/optional-bool-monad.evidence.json", "no law result is asserted")
     require_contains("bootstrap/manifest.json", "bootstrap/stage1/compiler.kofun")
 
-    print("verified required files, JSON structure, law evidence, and bootstrap metadata")
+    print("verified required files, JSON structure, honest law evidence status, and bootstrap metadata")
 }

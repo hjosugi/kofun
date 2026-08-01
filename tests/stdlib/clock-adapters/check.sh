@@ -273,14 +273,30 @@ assert_num 'recorded decisions cover the whole golden' "$lines" -eq 66
 expect_rejected() {
     stem=$1
     reason=$2
+
+    # `check` must be enough. #848 asks for a compile-time error rather than a
+    # convention, and a mistake caught only once the backend runs is a weaker
+    # promise than one the frontend refuses.
+    if "$ROOT/bin/kofun" check "$CASES/$stem.kofun" \
+        >"$WORK/$stem.check.stdout" 2>"$WORK/$stem.check.stderr"
+    then
+        fail "$stem passed \`kofun check\`; the separate clock types did not stop it"
+    fi
+    require_line "$WORK/$stem.check.stderr" "$reason" \
+        "$stem was rejected by check for the wrong reason"
+
+    # And the whole toolchain must agree, so no later stage can accept what the
+    # frontend refused.
     if "$ROOT/bin/kofun" build "$CASES/$stem.kofun" -o "$WORK/$stem" \
         >"$WORK/$stem.stdout" 2>"$WORK/$stem.stderr"
     then
-        fail "$stem was accepted; the separate clock types did not stop it"
+        fail "$stem built after check refused it"
     fi
     require_line "$WORK/$stem.stderr" "$reason" \
-        "$stem was rejected for the wrong reason"
-    printf 'clock adapters: rejected as designed: %s\n' "$stem"
+        "$stem was rejected by build for the wrong reason"
+    assert_absent "$stem emitted a binary despite being refused" "$WORK/$stem"
+
+    printf 'clock adapters: refused by check and build: %s\n' "$stem"
 }
 
 expect_rejected mixed_instants \

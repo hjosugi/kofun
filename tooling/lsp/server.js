@@ -1051,6 +1051,20 @@ function publishSemanticDiagnostics(doc, diagnostics) {
   });
 }
 
+function logSemanticFallback(result) {
+  if (semanticLoadFailureLogged) return;
+  semanticLoadFailureLogged = true;
+  const detail = String(result?.detail || 'native semantic bridge could not load')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 512);
+  const message = `Kofun semantic bridge unavailable; using syntactic fallback: ${detail}`;
+  fs.writeSync(2, `kofun-lsp: ${message}\n`);
+  send({
+    jsonrpc: '2.0',
+    method: 'window/logMessage',
+    params: { type: 2, message }
+  });
+}
+
 function logicalPath(uri) {
   try {
     const parsed = new URL(uri);
@@ -1106,6 +1120,9 @@ async function runSemanticAnalysis(doc, captured, retry = 0) {
   if (!currentAnalysis(doc, captured) || result.cancelled) return;
   if (!result.ok) {
     if (result.code === 'ETS04') {
+      if (result.fallback === 'native-bridge-unavailable') {
+        logSemanticFallback(result);
+      }
       buildIndex(doc);
       collectAfterLargeReindex(doc);
       doc.analysisState = 'syntactic-fallback';
