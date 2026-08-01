@@ -1,0 +1,98 @@
+name: Pages
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+  issues: read
+  pages: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build verified site
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    env:
+      KOFUN_SOURCE_SHA: >-
+        ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      # The renderer is versioned separately from the language repository. Pin
+      # its current main commit so a Kofun commit always rebuilds the same site
+      # implementation, while the marker below records both source revisions.
+      - name: Check out the site renderer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: hjosugi/kofun-site
+          ref: b297ed31e8c6c741f5449309689f289d11d5d129
+          path: site
+          persist-credentials: false
+      - name: Check out the verified Kofun source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.KOFUN_SOURCE_SHA }}
+          path: site/kofun
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: Set up Pages
+        id: pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - name: Install site dependencies
+        working-directory: site
+        run: npm ci
+      - name: Refresh public tracker snapshots
+        working-directory: site
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          npm run sync:status
+          npm run sync:plan
+      - name: Verify the exact Pages export
+        working-directory: site
+        env:
+          KOFUN_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+        run: npm run verify:pages
+      - name: Record deployed source revisions
+        run: |
+          language_commit=$(git -C site/kofun rev-parse HEAD)
+          site_commit=$(git -C site rev-parse HEAD)
+          test "$language_commit" = "$KOFUN_SOURCE_SHA"
+          printf '%s\n' "$language_commit" > site/out/.kofun-source-commit
+          printf '%s\n' "$site_commit" > site/out/.kofun-site-commit
+          {
+            echo "Language source: $language_commit"
+            echo "Site renderer: $site_commit"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site/out
+
+  deploy:
+    name: Deploy verified site
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0

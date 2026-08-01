@@ -337,25 +337,33 @@ repository boundary exactly once:
 ```text
 docs/*.md or selected subsystem README      (this repository)
             |
-            v  read through the kofun/ submodule
+            v  checked out at the CI-verified main commit
 app/docs/docs-manifest.ts                   (hjosugi/kofun-site)
             |
             v
 app/docs/[slug]/page.tsx + ReactMarkdown
             |
             v
-Next.js build / static export
+Pages workflow + Next.js static export      (this repository)
             |
             v
 GitHub Pages, still served at hjosugi.github.io/kofun/
 ```
 
-The renderer, its tests, and the publishing workflow are all in
-[`hjosugi/kofun-site`](https://github.com/hjosugi/kofun-site) and documented in
-that repository's `site/README.md`. What this repository owes the site is only
-this: the documents named in the site's manifest must keep existing at their
-current paths, and their relative links must keep resolving. Moving or renaming
-a document under `docs/` is therefore a cross-repository change.
+The renderer and its tests live in
+[`hjosugi/kofun-site`](https://github.com/hjosugi/kofun-site) and are documented
+in that repository's `site/README.md`. This repository's
+`.github/workflows/pages.yml` pins a reviewed renderer commit, checks out the
+exact Kofun commit whose main CI passed, refreshes the public tracker snapshots,
+and deploys the verified static artifact directly with GitHub Pages Actions. No
+generated publication branch is part of that authority chain. The deployed
+artifact records both revisions in `.kofun-source-commit` and
+`.kofun-site-commit` for production read-back.
+
+What this repository owes the renderer is this: the documents named in the
+site's manifest must keep existing at their current paths, and their relative
+links must keep resolving. Moving or renaming a document under `docs/` is
+therefore a cross-repository change.
 
 Generated directories are ignored:
 
