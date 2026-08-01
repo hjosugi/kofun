@@ -553,4 +553,19 @@ fn main() {
     )
     print(resolution_kind(overflow))
     print(resolution_payload(overflow))
+
+    # The edges of the gap and the fold. Both intervals are half-open at the
+    # top, so the first local second of one is inside it and the first second
+    # after is not. Nothing above reads an edge, and an off-by-one here is the
+    # classic way an hour goes missing.
+    let gap_low: LocalResolution = resolve_local(db, local_date_time(1000))
+    print(resolution_kind(gap_low))
+    let gap_high: LocalResolution = resolve_local(db, local_date_time(1100))
+    print(resolution_kind(gap_high))
+    print(resolution_payload(gap_high))
+    let fold_low: LocalResolution = resolve_local(db, local_date_time(2000))
+    print(resolution_kind(fold_low))
+    let fold_high: LocalResolution = resolve_local(db, local_date_time(2100))
+    print(resolution_kind(fold_high))
+    print(resolution_payload(fold_high))
 }

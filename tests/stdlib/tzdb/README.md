@@ -37,3 +37,28 @@ sh tests/stdlib/tzdb/check.sh
 The gate checks and executes the Kofun producer with both the reference
 executor and emitted C11 backend, compares exact output bytes twice, audits the
 typed Stage 2 HIR and emitted C, and names every rejection class.
+
+## What the gate pins beyond the producer
+
+`stdlib/tzdb/tzdb.kofun` is the canonical surface: the `Bytes`, `List`,
+multi-payload and `Result` shapes the Core cannot lower yet. It is pinned the
+way `stdlib/clock/adapters.kofun` is — its declarations must survive, its
+`Ambiguous` and `Nonexistent` must keep carrying both offsets, and it must
+still stop at the documented compiler boundary. The executable evidence is the
+producer, not that file.
+
+Both edges of the gap and of the fold are read. The resolver gets them right —
+`local >= start && local < end` for both — so these are regression guards
+rather than fixes, but an off-by-one at an edge is the classic way an hour goes
+missing and nothing pinned it before.
+
+`mixed_local_instant.kofun` and `local_wall_seconds_on_instant.kofun` must be
+refused by `check` and by `build`. A local reading and an instant are both one
+number; keeping them apart is the whole reason the resolution sum has anywhere
+to live.
+
+Independence from ambient state is executed, not grepped for: the producer runs
+identically under `TZ=Pacific/Kiritimati`, under a `Sao_Paulo` zone with a
+`tr_TR` locale, and under `env -i`. The empty environment is there because a
+program that needed `TZ` would more likely fall back than fail, and a fallback
+would not show up as a difference between two hostile settings.
