@@ -15,7 +15,7 @@ done
 rm -rf "$WORK"
 mkdir -p "$WORK"
 
-for module in app compiler content runtime share check
+for module in app compiler content intelligence runtime share check
 do
     node --check "$ROOT/docs/tour/$module.mjs"
 done
@@ -33,7 +33,17 @@ grep -Fq \
 grep -Fq \
     'PASS: every editable tour step ran with deterministic observations' \
     "$WORK/check.stdout"
+grep -Fq \
+    "PASS: hover and completion answered from the compiler's own parse, in scope" \
+    "$WORK/check.stdout"
 grep -Fq 'data-editor' "$ROOT/docs/tour/index.html"
+# The editor intelligence is only reachable if its surfaces are in the page and
+# the mirror the pointer is resolved against is hidden from assistive tech.
+grep -Fq 'data-editor-mirror' "$ROOT/docs/tour/index.html"
+grep -Fq 'data-completion' "$ROOT/docs/tour/index.html"
+grep -Fq 'data-hover-card' "$ROOT/docs/tour/index.html"
+grep -Fq 'role="listbox"' "$ROOT/docs/tour/index.html"
+grep -Fq 'aria-autocomplete="list"' "$ROOT/docs/tour/index.html"
 grep -Fq 'data-direction' "$ROOT/docs/tour/index.html"
 grep -Fq 'aria-live="polite"' "$ROOT/docs/tour/index.html"
 grep -Fq 'inset-inline-start' "$ROOT/docs/tour/styles.css"
@@ -51,4 +61,5 @@ done
 printf '%s\n' \
     'PASS: static browser tour is editable, runnable, and URL-shareable' \
     'PASS: browser compiler matches the current deterministic wasm32 Core' \
-    'PASS: logical CSS and direction control cover RTL layout'
+    'PASS: logical CSS and direction control cover RTL layout' \
+    'PASS: editor hover and completion come from the audited browser compiler'

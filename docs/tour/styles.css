@@ -583,3 +583,125 @@ footer {
     min-block-size: 18rem;
   }
 }
+
+/* The mirror carries the same text, box, and typography as the textarea so a
+   pointer position can be resolved to a source offset. Every value that could
+   change wrapping is inherited rather than restated, because the two boxes
+   disagreeing would move hover to the wrong name. */
+.editor-surface {
+  position: relative;
+  isolation: isolate;
+}
+
+.editor-surface textarea {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
+
+.editor-mirror {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  padding: 1rem;
+  background: #151822;
+  /* Only the textarea's own text is painted; the mirror exists to be measured
+     and to carry the hover highlight behind it. */
+  color: transparent;
+  direction: ltr;
+  font-family: "SFMono-Regular", Consolas, ui-monospace, monospace;
+  line-height: 1.55;
+  tab-size: 4;
+  text-align: start;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  pointer-events: none;
+  user-select: none;
+}
+
+.editor-mirror mark {
+  border-radius: 0.2rem;
+  background: #3a4670;
+  color: transparent;
+}
+
+.completion {
+  position: absolute;
+  z-index: 3;
+  max-block-size: 12rem;
+  margin: 0;
+  padding: 0.25rem;
+  overflow-y: auto;
+  border: 1px solid #3a4159;
+  border-radius: 0.5rem;
+  background: #1e2233;
+  box-shadow: 0 0.6rem 1.4rem rgb(0 0 0 / 45%);
+  list-style: none;
+}
+
+.completion li {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+  padding-block: 0.3rem;
+  padding-inline: 0.5rem;
+  border-radius: 0.35rem;
+  color: #e7ebff;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.completion li[aria-selected="true"] {
+  background: #3a4670;
+}
+
+.completion .completion-label {
+  font-family: "SFMono-Regular", Consolas, ui-monospace, monospace;
+}
+
+.completion .completion-detail {
+  margin-inline-start: auto;
+  color: #9aa4c4;
+  font-size: 0.72rem;
+}
+
+.completion .completion-kind {
+  color: #7f8bb0;
+  font-size: 0.68rem;
+  text-transform: lowercase;
+}
+
+.hover-card {
+  position: absolute;
+  z-index: 2;
+  max-inline-size: 22rem;
+  padding-block: 0.45rem;
+  padding-inline: 0.7rem;
+  border: 1px solid #3a4159;
+  border-radius: 0.5rem;
+  background: #1e2233;
+  color: #e7ebff;
+  box-shadow: 0 0.5rem 1.2rem rgb(0 0 0 / 40%);
+  font-size: 0.78rem;
+  pointer-events: none;
+}
+
+.hover-card strong {
+  display: block;
+  font-family: "SFMono-Regular", Consolas, ui-monospace, monospace;
+}
+
+.hover-card span {
+  color: #9aa4c4;
+}
+
+.inspector {
+  margin: 0;
+  padding-block: 0.5rem;
+  padding-inline: 1rem;
+  border-block-start: 1px solid var(--line);
+  color: #5e6672;
+  font-size: 0.74rem;
+  min-block-size: 1.2rem;
+}
