@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kofun.dev/schema/upgrade-patch-v1.json",
+  "title": "Kofun typed upgrade patch v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "revision", "workspace", "provenance", "limits", "replacements", "conflicts", "subtypes"],
+  "properties": {
+    "schema": { "const": "kofun.upgrade-patch/v1" },
+    "revision": { "type": "integer", "minimum": 1 },
+    "workspace": { "$ref": "#/$defs/identity" },
+    "provenance": { "type": "string", "minLength": 1 },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxReplacements", "maxGraphNodes", "maxGraphEdges", "maxEdits", "maxTextBytes"],
+      "properties": {
+        "maxReplacements": { "type": "integer", "minimum": 1, "maximum": 1024 },
+        "maxGraphNodes": { "type": "integer", "minimum": 1, "maximum": 100000 },
+        "maxGraphEdges": { "type": "integer", "minimum": 0, "maximum": 500000 },
+        "maxEdits": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "maxTextBytes": { "type": "integer", "minimum": 1, "maximum": 16777216 }
+      }
+    },
+    "replacements": {
+      "type": "array",
+      "maxItems": 1024,
+      "items": { "$ref": "#/$defs/replacement" }
+    },
+    "conflicts": {
+      "type": "array",
+      "maxItems": 1024,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "subtypes": {
+      "type": "array",
+      "maxItems": 1024,
+      "items": {
+        "type": "array",
+        "prefixItems": [{ "type": "string", "minLength": 1 }, { "type": "string", "minLength": 1 }],
+        "items": false,
+        "minItems": 2,
+        "maxItems": 2
+      }
+    }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["symbolId", "termId"],
+      "properties": {
+        "symbolId": { "$ref": "#/$defs/digest" },
+        "termId": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "parameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "type"],
+      "properties": {
+        "mode": { "enum": ["read", "edit", "take"] },
+        "type": { "type": "string", "minLength": 1 }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["abi", "effects", "parameters", "result"],
+      "properties": {
+        "abi": { "type": "string", "minLength": 1 },
+        "effects": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "parameters": { "type": "array", "items": { "$ref": "#/$defs/parameter" } },
+        "result": { "type": "string", "minLength": 1 }
+      }
+    },
+    "replacement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "old", "new", "oldSignature", "newSignature", "relation", "provenance", "dependencies", "rewrite"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["term-replacement", "type-replacement", "deprecation"] },
+        "old": { "$ref": "#/$defs/identity" },
+        "new": { "$ref": "#/$defs/identity" },
+        "oldSignature": { "$ref": "#/$defs/signature" },
+        "newSignature": { "$ref": "#/$defs/signature" },
+        "relation": { "enum": ["exact-type", "safe-compatible", "ownership-changing", "effect-changing", "abi-changing", "incompatible"] },
+        "provenance": { "type": "string", "minLength": 1 },
+        "dependencies": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "rewrite": { "enum": ["rename-callee", "preview-only", "none"] },
+        "supersedes": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
