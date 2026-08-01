@@ -628,6 +628,31 @@
         "corpus_query": "git grep -nE 'RootAuthority|Environment(Capability|Authority)|Environment\\.(acquire|get)' -- '*.kofun' 'spec/**' 'stdlib/**'",
         "result": "0 matches across 763 tracked `.kofun` sources at e270143665789e452495ea1bdf13e17db9bbf779; grep exits 1 with no output, so no tracked source or named spec/stdlib path contains the pre-RFC authority surface."
       }
+    },
+    {
+      "id": "RFC-0003",
+      "title": "Scoped parallelism uses lexical spawn/join ownership",
+      "provenance": "rfc",
+      "state": "proposed",
+      "shepherd": "hjosugi",
+      "source": "rfcs/0003-scoped-parallelism.md",
+      "document": "rfcs/0003-scoped-parallelism.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/555",
+      "dates": {
+        "opened_on": "2026-08-02",
+        "review_closed_on": "2026-08-16",
+        "decided_on": "2026-08-16"
+      },
+      "normative_spec": [
+        "rfcs/0003-scoped-parallelism.md",
+        "spec/concurrency/scoped-parallelism-v1.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "The lexical `par` scope, direct scope-token `spawn`, consuming `join`, second-class task handles, ownership conflict classes, and bounded model are new target semantics. No released parser accepts the forms, no existing accepted program changes meaning, and no tracked Kofun source uses the proposed surface.",
+        "corpus_query": "git grep -nE '\\bpar[[:space:]]*\\||\\.spawn\\(|\\.join\\(' -- '*.kofun'",
+        "result": "0 matches across 799 tracked `.kofun` sources at 516e8fb3925088dd64b291e8cd749764a41891b1; grep exits 1 with no output, so no tracked source uses the proposed `par`, `.spawn(`, or `.join(` surface."
+      }
     }
   ]
 }
