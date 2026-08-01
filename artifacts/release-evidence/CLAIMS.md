@@ -38,7 +38,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `rust-crate-shim` | checkpoint | interop | One vendored Rust crate is reached through an audited C ABI shim, as a worked example. It is not a general Rust interop story. |
 | `self-recompile` | checkpoint | self-hosting | The frozen profile reaches a runnable compiler-produced compiler. The three-generation semantic fixed point is not reached and is not claimed. |
 | `selfhost-native-corpus` | checkpoint | self-hosting | The driver's five-`print` success corpus reaches a static ELF on both native targets and its output matches the self-host C11 path exactly. |
-| `source-extension` | implemented | tooling | `.kofun` is the only source extension in the repository, and the editor integration registers exactly that extension. |
+| `source-extension` | implemented | tooling | `.kofun` is the only source extension in the repository. The editor integration that registers it is hjosugi/kofun-vscode and is gated there, not here. |
 | `stable-diagnostics` | implemented | quality | Every diagnostic code has a canonical registry row and an executable family owner. Stage 2 retains 46 of 46 codes, with 3 span debts recorded rather than hidden. |
 | `stage2-core-lowering` | checkpoint | frontend | Stage 2 lexes, parses and lowers the integer Core. Sources outside that Core are refused with a diagnostic. |
 | `stage2-typed-sidecar` | checkpoint | tooling | Stage 2 projects compiler-derived semantic events one-way into typed-sidecar v1, for explicit single-file `kofun check` only. The sidecar is non-authoritative and compiler, KIF and cache consumers remain forbidden. |
@@ -46,5 +46,4 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `syscall-file-round-trip` | implemented | frameworks | A native ELF program opens, writes, reads back and closes a file through direct syscalls, and reports errno failures explicitly. |
 | `syscall-stdlib-api` | checkpoint | frameworks | The syscall and standard-library surface is a Kofun source contract for Linux x86-64. It is not a portable standard library. |
 | `test-skip-reporting` | implemented | tooling | `kofun test` reports skipped cases explicitly and counts them separately from passes. |
-| `tree-sitter-grammar` | implemented | tooling | A structural Tree-sitter grammar with editor queries and a recovery corpus, gated against the repository's own sources. |
 | `wasm32-arithmetic-core` | checkpoint | webassembly | Checked Int64 arithmetic lowers directly to wasm32 and runs in a lazily initialised browser host. Text and List values are outside the slice. |
