@@ -1,27 +1,11 @@
 {
-  "assurance_violations": [],
-  "compiler": {
-    "name": "Kofun",
-    "version": "0.2.0-bootstrap"
-  },
-  "diagnostics": [],
-  "reports": [
-    {
-      "assurance": "proven-finite",
-      "cases_checked": 264,
-      "cases_planned": 264,
-      "failures": [],
-      "family": "monad",
-      "model_digest": "2a14942cdc1b6c15",
-      "name": "OptionalBoolMonad",
-      "status": "passed"
-    }
+  "diagnostics": [
+    "No reproducible finite-model producer exists on main; no law result is asserted."
   ],
-  "required_assurance": "proven-finite",
   "schema": "kofun.law-evidence/v1",
   "source": {
     "path": "examples/proven_optional_bool_monad.kofun",
-    "sha256": "0adb5fea24c34657e63598c4ad01cbf7a9d38206e16eeeada839278a3009ece6"
+    "sha256": "2e9da000501d9b99fbbfd4cfea3aa483f1d7db68e14a6be8f7c012f87194739a"
   },
-  "status": "passed"
+  "status": "unverified"
 }
