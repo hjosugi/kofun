@@ -1,0 +1,10 @@
+{
+  "schema": "kofun.wasm-host-abi-case/v1",
+  "id": "wrong-abi-version-namespace",
+  "mutation": "abi-version-namespace",
+  "expect": "refused",
+  "diagnostic": "abi-version-mismatch",
+  "engine": "refused",
+  "engine_error": "TypeError",
+  "why": "A guest built against another revision imports from kofun:host-abi-v2. The version lives in the import namespace precisely so that a mismatch is a link failure rather than a runtime surprise."
+}

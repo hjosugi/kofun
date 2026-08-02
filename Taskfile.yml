@@ -403,6 +403,11 @@ tasks:
     cmds:
       - "sh spec/aggregate-layout-v1/check.sh"
 
+  wasm-host-abi:
+    desc: "Verify wasm32 host ABI v1 vectors and instantiation refusals"
+    cmds:
+      - "sh spec/wasm-host-abi-v1/check.sh"
+
   typed-sidecar-spec:
     desc: "Verify bounded complete/partial tooling artifacts"
     cmds:
@@ -635,6 +640,7 @@ tasks:
             visibility-access \
             re-exports-spec \
             aggregate-layout \
+            wasm-host-abi \
             typed-sidecar-spec \
             typed-sidecar-codec \
             typed-sidecar-projector \

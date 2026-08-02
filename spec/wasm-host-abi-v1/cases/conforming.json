@@ -1,0 +1,9 @@
+{
+  "schema": "kofun.wasm-host-abi-case/v1",
+  "id": "conforming",
+  "mutation": "none",
+  "expect": "accepted",
+  "diagnostic": null,
+  "engine": "accepted",
+  "why": "The baseline every other fixture differs from in exactly one respect. Instantiation binds the imports and applies the data segments, and stops there: no guest code runs until the host calls kofun_start."
+}
