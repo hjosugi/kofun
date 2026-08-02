@@ -639,7 +639,7 @@
     }
   ],
   "evidence_digests": {
-    "Taskfile.yml": "2688ecd18c32bd0b022e91368dd53516a4c90f55e9e76fbf4781b49a21efbebe",
+    "Taskfile.yml": "2f92e5d93526ea16c160f5c5d4e3944ac06da96ff01c49ba856c3e4ef7a94170",
     "bootstrap/native/check.sh": "fea94cb623757e1bf17e4497f43d656b1e8ff57a39a92ece871d8ff257c0f2ef",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/driver/corpus_builtin_rejects.tsv": "b1fa0b26247581aef797a81880554a94233a34109215530641706d76777087d4",
@@ -656,7 +656,7 @@
     "docs/GETTING_STARTED.md": "4a9a3bae70796c12216f7448e98898f0297926ab3bd80219234b21dc06cc1f95",
     "docs/LAW_SYSTEM.md": "81276192f86e03b94369d6d2342a5f681533e64e6df9d4eddd73f3f25de96f99",
     "docs/LINGUIST_RECOGNITION.md": "9d81df186a6a92b4b65850e4ca7fb0e9ba97ec705774b935466d2148865eab87",
-    "docs/MEMORY_MODEL.md": "b300a857bc7e7a6021fa66ae3ae23b16d17483891399585666651175dcf5e168",
+    "docs/MEMORY_MODEL.md": "03855363cf63c8bc7c7f262fea7e56783ccb4d1593637b4e725876d79abd3ec9",
     "docs/MVP_IMPLEMENTED.md": "738c5316fb178037803b63ce6513534f58b59d10077de5bce11450f579d75825",
     "docs/NATIVE_BACKEND.md": "ab16b7bc6ae59071f9ae73c6fafde44732c887d122bb711104eb231297680bfe",
     "docs/ROADMAP.md": "31d94eba2d40de326e29f7835b9244ace4073d1f482a23372ea2b11c6a873209",

@@ -344,6 +344,17 @@ implemented. It is written down here because a concurrency design decided later
 and separately would be one the ownership rules in this document cannot check,
 and because §1 promises a safety property that needs a precise name.
 
+This section is the reasoning, not the contract. The normative form of the v1
+rules — grammar, handle lifecycle, liveness, the exclusivity table, the closed
+set of disjointness proofs, scope-exit drain, and the required diagnostic
+classes — is
+[`spec/concurrency/scoped-parallelism-v1.md`](../spec/concurrency/scoped-parallelism-v1.md),
+checked by `task scoped-parallelism` and proposed as
+[`RFC-0003`](../rfcs/0003-scoped-parallelism.md) with review closing
+2026-08-16. Where this section and that contract disagree, the contract wins.
+Passing its gate is evidence about the contract, not about a compiler:
+production parsing, checking, scheduling, and lowering remain unwritten.
+
 ### Data-race freedom is not race-condition freedom
 
 What §1 promises is **data-race freedom**: in safe code, two tasks never touch
@@ -368,12 +379,16 @@ it exits:
 ```kofun
 fn total(read data: List[Int]) -> Int {
     par |s| {
-        let a = s.spawn(|| sum(data[0 .. mid]))
-        let b = s.spawn(|| sum(data[mid .. end]))
+        let a = s.spawn(fn() => sum(data[0 .. mid]))
+        let b = s.spawn(fn() => sum(data[mid .. end]))
         a.join() + b.join()
     }
 }
 ```
+
+The task body uses Kofun's `fn(...) => expression` lambda form from
+`spec/grammar.ebnf`. There is no Rust-style `|| body` closure spelling: `||` is
+the logical-or operator, so that form is not a closure here and does not parse.
 
 The rule is one sentence: **inside a `par` block, sibling tasks are treated as
 simultaneously live and §3's exclusivity rule applies unchanged.**
@@ -466,12 +481,47 @@ second-class references and no implemented concurrency; Scala's capture
 checking is experimental; Verona is research. There is no template to follow,
 which is both the opportunity and the risk.
 
+### Answered since this survey
+
+Two questions this section left open are now settled in
+[`spec/concurrency/scoped-parallelism-v1.md`](../spec/concurrency/scoped-parallelism-v1.md).
+
+**Unstructured concurrency takes Hylo's position for v1.** Safe v1 is lexical
+spawn/join only. Detached tasks, channels, actors, and behaviour-oriented
+concurrency are outside the contract and are not implicit extensions of it.
+Behaviour-oriented concurrency stays the preferred candidate if long-lived
+isolated state is ever needed, but it returns as a separate proposal rather
+than as a reading of this one.
+
+**There is no strict mode, so there are no defaults to get wrong.** Checking
+inside `par` is always on. The contract admits no optional mode, no runtime
+ownership lock, no unchecked escape hatch, and no trait whose conformance can
+override the exclusivity table. That closes the Swift failure this section
+warned about — `@unchecked Sendable` became the migration strategy because it
+was available and quiet — by not providing the hatch, rather than by choosing a
+default for it.
+
+Both answers are recorded in proposed
+[`RFC-0003`](../rfcs/0003-scoped-parallelism.md). Until its review closes on
+2026-08-16 they are a proposal under review, not an accepted decision.
+
 ### Still open
 
-Whether unstructured concurrency is answered by behaviour-oriented concurrency
-or by Hylo's spawn/join-only position is not decided. Defaults must be decided
-and written down before any strict mode ships — Swift's annotations were
-largely right and its defaults were not, and correcting them cost credibility.
+The decision itself: RFC-0003 is `proposed`, and a substantive change to any
+normative v1 rule restarts its review rather than being folded into
+implementation.
+
+Everything v1 deliberately excludes needs its own later proposal — detached
+tasks, long-lived isolated state, channels, actors, session types, a
+`Send`/`Sync`-style trait, dynamic and recursive spawning, and borrowed task
+results ([#571](https://github.com/hjosugi/kofun/issues/571)).
+
+The whole production path is unwritten. RFC-0003's implementation plan splits
+it into separately gated work: parser and HIR identities for the three forms,
+capture derivation from checked bodies, the liveness and place-overlap
+ownership checker, numeric allocation for the six diagnostic classes, a bounded
+scheduler with scope-exit drain, backend lowering, and only then capability and
+release evidence.
 
 ## 13. Historical Stage 0 and current boundary
 
