@@ -24,6 +24,7 @@ mkdir -p "$WORK"
     -DKOFUN_TEST_DIAGNOSTIC_FAULTS \
     "$ROOT/bootstrap/stage2/imports_selective.c" \
     "$ROOT/bootstrap/stage2/visibility_access.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$TOOL"
 
@@ -79,6 +80,59 @@ assert_grep "positive.hir" -F 'qualified-call|' "$WORK/positive.hir"
 assert_grep "positive.hir" -F 'type-reference|' "$WORK/positive.hir"
 assert_grep "positive.hir" -F '|reexport=false' "$WORK/positive.hir"
 assert_grep "positive.hir" -F '|interface=no|' "$WORK/positive.hir"
+
+# The product resolver checks the effective visible set after selective and
+# visibility filtering, before either requested artifact is published.
+write_inventory "$CASES/fixtures/confusable_local_import.kofun" \
+    "$CASES/fixtures/confusable_math.kofun" \
+    "$WORK/eunicode008.inventory"
+printf '%s\n' stale >"$WORK/eunicode008.hir"
+printf '%s\n' stale >"$WORK/eunicode008.c"
+set +e
+"$TOOL" "$WORK/eunicode008.inventory" "$WORK/eunicode008.hir" \
+    "$WORK/eunicode008.c" >"$WORK/eunicode008.stdout" \
+    2>"$WORK/eunicode008.stderr"
+eunicode008_status=$?
+set -e
+assert_num "EUNICODE008 status" "$eunicode008_status" -eq 1
+assert_file_empty "eunicode008.stderr" "$WORK/eunicode008.stderr"
+assert_grep "eunicode008.stdout" -F 'error[EUNICODE008]:' \
+    "$WORK/eunicode008.stdout"
+assert_grep "eunicode008.stdout" -F '`paypal`' "$WORK/eunicode008.stdout"
+assert_grep "eunicode008.stdout" -F '`pаypal`' "$WORK/eunicode008.stdout"
+assert_absent "eunicode008.hir" "$WORK/eunicode008.hir"
+assert_absent "eunicode008.c" "$WORK/eunicode008.c"
+
+# Reversing inventory discovery order does not perturb diagnostic bytes.
+sed -n '2p;1p' "$WORK/eunicode008.inventory" \
+    >"$WORK/eunicode008-reversed.inventory"
+set +e
+"$TOOL" "$WORK/eunicode008-reversed.inventory" \
+    "$WORK/eunicode008-reversed.hir" \
+    >"$WORK/eunicode008-reversed.stdout" \
+    2>"$WORK/eunicode008-reversed.stderr"
+reversed_status=$?
+set -e
+assert_num "reversed EUNICODE008 status" "$reversed_status" -eq 1
+assert_file_empty "eunicode008-reversed.stderr" \
+    "$WORK/eunicode008-reversed.stderr"
+cmp "$WORK/eunicode008.stdout" "$WORK/eunicode008-reversed.stdout"
+assert_absent "eunicode008-reversed.hir" "$WORK/eunicode008-reversed.hir"
+
+# Omitted/private spellings are absent from the vector; namespaces remain
+# semantic rather than skeleton-global.
+write_inventory "$CASES/fixtures/confusable_omitted.kofun" \
+    "$CASES/fixtures/confusable_math.kofun" \
+    "$WORK/eunicode008-omitted.inventory"
+"$TOOL" "$WORK/eunicode008-omitted.inventory" \
+    "$WORK/eunicode008-omitted.hir"
+assert_not_grep "omitted HIR does not disclose private dependency spelling" \
+    -F 'pаypal_private' "$WORK/eunicode008-omitted.hir"
+write_inventory "$CASES/fixtures/confusable_namespace_near_miss.kofun" \
+    "$CASES/fixtures/confusable_math.kofun" \
+    "$WORK/eunicode008-namespace.inventory"
+"$TOOL" "$WORK/eunicode008-namespace.inventory" \
+    "$WORK/eunicode008-namespace.hir"
 
 write_inventory "$CASES/fixtures/runtime.kofun" "$CASES/fixtures/math.kofun" \
     "$WORK/runtime.inventory"
@@ -210,6 +264,7 @@ if command -v clang >/dev/null 2>&1; then
     clang -std=c11 -Wall -Wextra -Werror -pedantic \
         "$ROOT/bootstrap/stage2/imports_selective.c" \
         "$ROOT/bootstrap/stage2/visibility_access.c" \
+        "$ROOT/unicode/kofun_unicode.c" \
         "$ROOT/bootstrap/stage2/sha256.c" \
         -o "$WORK/imports-selective-clang"
     "$WORK/imports-selective-clang" "$WORK/positive.inventory" "$WORK/clang.hir"
@@ -220,6 +275,7 @@ fi
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     "$ROOT/bootstrap/stage2/imports_selective.c" \
     "$ROOT/bootstrap/stage2/visibility_access.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$WORK/imports-selective-sanitized"
 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
@@ -231,6 +287,7 @@ cmp "$WORK/positive.hir" "$WORK/sanitized.hir"
 if "$CC" -std=c11 -O0 -Wall -Wextra -Werror -pedantic -fanalyzer \
     "$ROOT/bootstrap/stage2/imports_selective.c" \
     "$ROOT/bootstrap/stage2/visibility_access.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$WORK/imports-selective-analyzed" >/dev/null 2>&1
 then

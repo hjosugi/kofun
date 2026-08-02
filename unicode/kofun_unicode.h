@@ -7,6 +7,9 @@
 
 #define KOFUN_UNICODE_VERSION "17.0.0"
 #define KOFUN_UNICODE_ERROR_TEXT 256
+#define KOFUN_UNICODE_DATA_DIGEST \
+    "tables:af63aed46962d46368520ac39fb59057f025810e9cd2fe5e0bdb09f0563f5bac;" \
+    "utf8proc:950e549dbfc853c4304425f3af1875e72fa9fc9697c273c763400c2da4e380a7"
 
 typedef enum {
     KOFUN_UNICODE_OK = 0,
@@ -31,6 +34,19 @@ typedef struct {
 } KofunUnicodeError;
 
 const char *kofun_unicode_version(void);
+const char *kofun_unicode_data_digest(void);
+
+/*
+ * Returns the pinned UTS #39 skeleton used by source validation. The caller
+ * owns *skeleton and releases it with free(3). This exposes a computed value,
+ * not a second persisted Unicode authority.
+ */
+bool kofun_unicode_confusable_skeleton(
+    const uint8_t *identifier,
+    size_t length,
+    uint8_t **skeleton,
+    size_t *skeleton_length
+);
 
 bool kofun_unicode_decode(
     const uint8_t *bytes,
@@ -42,6 +58,12 @@ bool kofun_unicode_decode(
 
 bool kofun_unicode_is_xid_start(uint32_t codepoint);
 bool kofun_unicode_is_xid_continue(uint32_t codepoint);
+
+/* True only for one NFC-normalized XID identifier (underscore included). */
+bool kofun_unicode_identifier_is_canonical(
+    const uint8_t *identifier,
+    size_t length
+);
 
 bool kofun_unicode_validate_source(
     const uint8_t *source,

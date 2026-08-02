@@ -41,6 +41,7 @@ mkdir -p "$WORK"
     "$ROOT/bootstrap/stage2/re_exports.c" \
     "$ROOT/bootstrap/stage2/kif_v1.c" \
     "$ROOT/bootstrap/stage2/visibility_access.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$TOOL"
 
@@ -48,6 +49,7 @@ mkdir -p "$WORK"
     -I"$ROOT/bootstrap/stage2" \
     "$ROOT/bootstrap/stage2/kif_v1_tool.c" \
     "$ROOT/bootstrap/stage2/kif_v1.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$KIF_TOOL"
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
@@ -153,6 +155,23 @@ expected_value_map_binding=$(
 assert_eq "value map binding" \
     "$value_map_binding" "$expected_value_map_binding"
 
+# A facade's product path checks its final exported spelling together with
+# local bindings before HIR, KIF, or tooling publication.
+{
+    printf '%s|%s|%s|lib.collections|lib/collections.kofun|%s\n' \
+        "$PACKAGE_ID" "$COLLECTIONS_MODULE" "$COLLECTIONS_FILE" \
+        "$CASES/fixtures/confusable_collections.kofun"
+    printf '%s|%s|%s|api.collections|api/collections.kofun|%s\n' \
+        "$PACKAGE_ID" "$FACADE_MODULE" "$FACADE_FILE" \
+        "$CASES/fixtures/confusable_facade.kofun"
+} >"$WORK/eunicode008-facade.inventory"
+expect_failure EUNICODE008 eunicode008-facade api.collections \
+    "$WORK/eunicode008-facade.inventory"
+assert_grep "eunicode008-facade.log" -F '`paypal`' \
+    "$WORK/eunicode008-facade.log"
+assert_grep "eunicode008-facade.log" -F '`pаypal`' \
+    "$WORK/eunicode008-facade.log"
+
 "$KIF_TOOL" read "$WORK/positive.kif" "$WORK/positive.json"
 assert_num "\"kind\": \"export\" lines in positive.json" \
     "$(grep -c '"kind": "export"' "$WORK/positive.json")" -eq 5
@@ -203,6 +222,29 @@ assert_grep "ordinary-facade-same.hir" \
     -F '|view=package-internal|' "$WORK/ordinary-facade-same.hir"
 assert_grep "ordinary-facade-external.hir" \
     -F '|view=public|' "$WORK/ordinary-facade-external.hir"
+
+# The same decoded facade KIF contributes its effective export spelling to a
+# selective consumer's visible set. The original facade/target identities are
+# validated above; the collision must stop the consumer HIR transaction.
+set +e
+"$KIF_TOOL" resolve-visible "$WORK/positive.kif" \
+    "$PACKAGE_ID" "$SECOND_MODULE" api.collections \
+    "$CASES/fixtures/confusable_consumer.kofun" \
+    "$WORK/confusable-consumer.hir" \
+    >"$WORK/confusable-consumer.log" 2>"$WORK/confusable-consumer.stderr"
+confusable_consumer_status=$?
+set -e
+assert_num "facade consumer EUNICODE008 status" \
+    "$confusable_consumer_status" -eq 1
+assert_file_empty "confusable-consumer.stderr" \
+    "$WORK/confusable-consumer.stderr"
+assert_grep "confusable-consumer.log" -F 'error[EUNICODE008]:' \
+    "$WORK/confusable-consumer.log"
+assert_grep "confusable-consumer.log" -F '`Map`' \
+    "$WORK/confusable-consumer.log"
+assert_grep "confusable-consumer.log" -F '`Mаp`' \
+    "$WORK/confusable-consumer.log"
+assert_absent "confusable-consumer.hir" "$WORK/confusable-consumer.hir"
 
 # Source/inventory/path remapping cannot change authoritative interface bytes.
 write_inventory "$CASES/fixtures/facade_reordered.kofun" \
@@ -838,6 +880,7 @@ assert_grep "package-edges-over.log" \
     "$ROOT/bootstrap/stage2/re_exports.c" \
     "$ROOT/bootstrap/stage2/kif_v1.c" \
     "$ROOT/bootstrap/stage2/visibility_access.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$WORK/re-exports-low-work"
 set +e
@@ -1046,6 +1089,7 @@ if command -v clang >/dev/null 2>&1; then
         "$ROOT/bootstrap/stage2/re_exports.c" \
         "$ROOT/bootstrap/stage2/kif_v1.c" \
         "$ROOT/bootstrap/stage2/visibility_access.c" \
+        "$ROOT/unicode/kofun_unicode.c" \
         "$ROOT/bootstrap/stage2/sha256.c" \
         -o "$WORK/re-exports-clang"
     "$WORK/re-exports-clang" "$WORK/positive.inventory" api.collections \
@@ -1059,6 +1103,7 @@ fi
     "$ROOT/bootstrap/stage2/re_exports.c" \
     "$ROOT/bootstrap/stage2/kif_v1.c" \
     "$ROOT/bootstrap/stage2/visibility_access.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$WORK/re-exports-sanitized"
 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
@@ -1072,6 +1117,7 @@ if "$CC" -std=c11 -O0 -Wall -Wextra -Werror -pedantic -fanalyzer \
     "$ROOT/bootstrap/stage2/re_exports.c" \
     "$ROOT/bootstrap/stage2/kif_v1.c" \
     "$ROOT/bootstrap/stage2/visibility_access.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$WORK/re-exports-analyzed" >/dev/null 2>&1
 then

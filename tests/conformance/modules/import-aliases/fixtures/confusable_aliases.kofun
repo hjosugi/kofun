@@ -1,0 +1,7 @@
+module app.main
+import data.formats.delimited.reader as paypal
+import other.reader as pаypal
+
+fn main() -> Int {
+    return 0
+}

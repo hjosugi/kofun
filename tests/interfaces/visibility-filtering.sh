@@ -43,6 +43,7 @@ mkdir -p "$WORK"
     "$ROOT/bootstrap/stage2/kif_v1_tool.c" \
     "$ROOT/bootstrap/stage2/kif_v1.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
     -o "$KIF_TOOL"
 
 for fixture in visibility_ok visibility_ok_private_edit \
