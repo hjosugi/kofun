@@ -1,0 +1,15 @@
+fn main() {
+    print("")
+    let ascii: Text = "hello"
+    print(identity(ascii))
+    print(through_local("古墳"))
+}
+
+fn identity(value: Text) -> Text {
+    return value
+}
+
+fn through_local(value: Text) -> Text {
+    let copy: Text = value
+    return copy
+}

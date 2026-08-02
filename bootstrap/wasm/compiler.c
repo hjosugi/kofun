@@ -1791,17 +1791,6 @@ static Buffer emit_module(const Parser *parser) {
     return module;
 }
 
-/* `wasm32-hostabi1` deliberately accepts only an empty entry point in this
- * arena slice.  Accepting arithmetic and then omitting its observations would
- * be a silent fallback; Text and List enter in #1002 and #1004 instead. */
-static bool profile_source_is_empty(const Parser *parser) {
-    if (parser->function_count != 1 || parser->main_index != 0) return false;
-    const Function *main_function = &parser->functions[0];
-    return main_function->parameter_count == 0 &&
-           !main_function->returns_int &&
-           main_function->body < 0;
-}
-
 static void allocator_failure(Buffer *body) {
     byte(body, OP_I32_CONST);
     sleb(body, 0);
@@ -1893,6 +1882,8 @@ static Buffer emit_profile_allocator_body(void) {
     byte(&body, OP_END);
     return body;
 }
+
+#include "text_profile.h"
 
 static Buffer emit_profile_module(void) {
     Buffer module = {0};
@@ -2016,11 +2007,35 @@ int main(int argc, char **argv) {
     size_t length = 0;
     char *source = read_source(input, &length);
     if (source == NULL) return 1;
+    if (profile) {
+        ProfileParser *profile_parser = allocate(sizeof(*profile_parser));
+        memset(profile_parser, 0, sizeof(*profile_parser));
+        profile_parser->source = source;
+        profile_parser->length = length;
+        if (!profile_parse_program(profile_parser)) {
+            fprintf(stderr, "kofun wasm32: line %zu: %s\n",
+                    profile_parser->error_line,
+                    profile_parser->error == NULL
+                        ? "invalid wasm32-hostabi1 Text source"
+                        : profile_parser->error);
+            free(profile_parser);
+            free(source);
+            return 1;
+        }
+        Buffer profile_module = profile_program_is_empty(profile_parser)
+            ? emit_profile_module()
+            : emit_profile_text_module(profile_parser);
+        bool profile_written = write_module(output, &profile_module);
+        free(profile_module.data);
+        free(profile_parser);
+        free(source);
+        return profile_written ? 0 : 1;
+    }
     Parser *parser = allocate(sizeof(*parser));
     memset(parser, 0, sizeof(*parser));
     parser->source = source;
     parser->length = length;
-    bool parsed = parse_program(parser, !profile);
+    bool parsed = parse_program(parser, true);
     if (!parsed) {
         fprintf(stderr, "kofun wasm32: line %zu: %s\n",
                 parser->error_line,
@@ -2030,17 +2045,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (profile && !profile_source_is_empty(parser)) {
-        fprintf(
-            stderr,
-            "kofun wasm32: wasm32-hostabi1 currently supports only an empty fn main() arena program\n"
-        );
-        free(parser);
-        free(source);
-        return 1;
-    }
-
-    Buffer module = profile ? emit_profile_module() : emit_module(parser);
+    Buffer module = emit_module(parser);
     bool written = write_module(output, &module);
     free(module.data);
     free(parser);

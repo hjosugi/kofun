@@ -663,7 +663,7 @@
     "bootstrap/stage1/SHA256SUMS": "02f4c987697b281e83e593c623e9f1d1ec7a629f20077896c821411c1f4f2755",
     "bootstrap/stage2/fixtures/borrowed_move_text.kofun": "34502461891e7c8f42c9017e9fbfc857e54b10ca4fe59551be9ab9ab22d2c1b6",
     "bootstrap/wasm/fixtures/unsupported_text.kofun": "e0a45136410ddb85e9f5b3e5c39e7903d96da39aa53aaf3078d2555b4f383864",
-    "bootstrap/wasm/object_arena_check.sh": "749330c9ec99a9533e52fae44a691cba753635e1c6a75280cfc7a1d6798f0029",
+    "bootstrap/wasm/object_arena_check.sh": "da7938dfd6dc6a441e52f5f1adb262c4e65bd5a25b0fb8108140ccbc7eafdf9a",
     "docs/BUILD_SYSTEM.md": "d4a372fc97c53874cc2438f3de132289beb033ce2bf1e67518b702de796b05a8",
     "docs/COMPILER_ARCHITECTURE.md": "9ca8641a3d117d84be9ce7f311d26c5f7e8df3b1a5772f3be5b8db67808d56cc",
     "docs/DECIMAL.md": "901455a8ad89af0fa6fc7be449a98cbb5c16cf663a2e6814e239b2f51cc88c29",
