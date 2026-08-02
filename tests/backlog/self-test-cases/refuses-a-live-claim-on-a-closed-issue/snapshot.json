@@ -1,0 +1,16 @@
+{
+  "schema": "kofun.backlog-issue-state/v1",
+  "repository": "hjosugi/kofun",
+  "state_labels": ["ready", "blocked", "needs-detail", "needs-decision", "deferred", "in-progress"],
+  "open_issues": 0,
+  "issues": [{
+    "number": 7,
+    "title": "closed with stale ownership",
+    "issue_state": "closed",
+    "state_labels": [],
+    "state_line": null,
+    "blocked_by": [],
+    "evidence_commits": [],
+    "claims": [{"agent_id": "agent-closed", "status": "active"}]
+  }]
+}
