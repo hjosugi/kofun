@@ -69,6 +69,36 @@ instantiation, derives header/payload bounds from freshly recomputed wasm32
 vectors, decodes `text_out` fatally, compares observations with native x86-64,
 and checks deterministic and sanitized builds plus allocation exhaustion.
 
+## Bounded List profile
+
+List-bearing `wasm32-hostabi1` sources extend that reference slice with
+`List[Int]` and `List[Text]` literals, immutable locals, `len`, checked integer
+indexing, and zero-to-six direct reference parameters/results. Lists carry the
+same little-endian u64 header as Text. Their wasm32 payload stride is
+recomputed by AggregateLayout v1: 8 bytes for Int and 4 bytes for a Text
+reference. Empty lists are non-null objects and require an explicit element
+type when no surrounding signature supplies one.
+
+`print(List[Int])` and `print(List[Text])` borrow through `list_int_out` and
+`list_text_out`. Negative and upper-bound indices call `abort(1, index)` and
+then become unreachable, so a host that returns from `abort` still cannot
+read or publish a value. Append, mutation, nested lists, views, and host
+retention remain outside this bounded profile and fail before an artifact is
+written. The existing Text-only module keeps its smaller `abort`/`text_out`
+import surface, and bare `wasm32` keeps its pinned bytes.
+
+Run the focused List gate with:
+
+```sh
+sh tests/wasm-list-v1/check.sh
+```
+
+The gate derives headers, alignments, and strides from freshly recomputed
+wasm32 vectors; observes both list imports through a fatal UTF-8 reference
+host; compares `len` and valid indexing with native x86-64; and checks bounds
+aborts, deterministic/sanitized builds, transactional refusal, and legacy
+wasm32 bytes.
+
 Build and run the sample:
 
 ```sh
