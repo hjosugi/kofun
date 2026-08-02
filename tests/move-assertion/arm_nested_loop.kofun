@@ -1,0 +1,19 @@
+# Rejected: a loop stands between the assertion and the arm's `return`. The
+# arm does end in `return`, so byte order would accept it; this slice refuses
+# because it can prove nothing about a construct that may re-enter. Proving a
+# loop-local last use is #915. Reason: branch mismatch. #904.
+
+fn main() -> Int {
+    let banner: Text = "banner"
+    let flag = 1
+    if flag > 0 {
+        compiler.ensure_move(banner)
+        let mut tick = 0
+        while tick < 2 {
+            print("tick")
+            tick = tick + 1
+        }
+        return 0
+    }
+    return 1
+}

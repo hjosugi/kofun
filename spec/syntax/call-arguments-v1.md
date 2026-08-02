@@ -25,8 +25,29 @@ from Gleam's optional call-site labels: mandatory labels preserve the reversal
 protection that motivated the feature. It also differs from Kotlin's use of the
 internal parameter name and its overload filtering by names.
 
-The trailing form reuses Kofun's existing `fn` lambda syntax. There is no brace
-lambda, receiver lambda, implicit `it`, or second anonymous-function form.
+The trailing form reuses Kofun's canonical `fn` lambda syntax. There is no
+brace lambda, receiver lambda, implicit `it`, or alternate anonymous-function
+form in the trailing position.
+
+### Amendment: ordinary lambda spellings (#943)
+
+The accepted contract originally said there was no second anonymous-function
+form. That was too broad: the Stage 2 conformance gate already and deliberately
+accepts three spellings in ordinary expression position:
+
+```kofun
+fn(value: Int) => value * 2
+(left, right) => left + right
+value => value * 3
+```
+
+Issue #943 chooses to retain and document all three. Removing the two shorthand
+forms would break a checked-in capability without a language-level reason, and
+encoding the future trailing-call restriction in the general lambda grammar
+would put call attachment in the wrong layer; issue #880 owns that parser
+context. Call-arguments v1 remains narrower: only the canonical `fn(...)`
+spelling may follow a closed ordinary call. No new lambda spelling is
+introduced by this amendment.
 
 Primary comparisons:
 

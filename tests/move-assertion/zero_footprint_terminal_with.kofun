@@ -1,0 +1,22 @@
+# Zero-footprint witness for the terminal-arm acceptance path of #904. The
+# obligation is the same one the straight-line pair carries: the two files
+# differ by exactly the assertion line, produce identical stdout on both
+# executors, and lower to byte-identical C. Admitting a second acceptance
+# shape must not give the assertion a footprint the first one does not have.
+
+fn shout(label: Text) -> Int {
+    print(label)
+    return len(label)
+}
+
+fn main() -> Int {
+    let greeting: Text = "kofun"
+    let flag = 1
+    if flag > 0 {
+        print(shout(greeting))
+        compiler.ensure_move(greeting)
+        return 0
+    }
+    print("unreached")
+    return 1
+}
