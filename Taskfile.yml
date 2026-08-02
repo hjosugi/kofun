@@ -532,6 +532,20 @@ tasks:
   # The fast structural lane: does every published capability still join the
   # evidence that bounds it? This reads the repository and never runs a gate, so
   # it belongs beside the other cheap checks in `verify`.
+  backlog:
+    desc: "Bind each issue's state label to the State line in its body"
+    cmds:
+      - "sh tests/backlog/check.sh"
+
+  # The network lane. `backlog` reads only the committed snapshot; this
+  # regenerates it, and CI proves the committed copy still matches by
+  # regenerating and diffing — the same split release-evidence uses.
+  backlog-refresh:
+    desc: "Regenerate the committed backlog issue-state snapshot"
+    cmds:
+      - "node tests/backlog/refresh.mjs"
+      - "sh tests/backlog/check-stamps.sh"
+
   release-claims:
     desc: "Join published capability claims to their evidence"
     cmds:
@@ -661,6 +675,7 @@ tasks:
             task-help \
             repository-check \
             assertions \
+            backlog \
             release-claims \
             rfc-registry
       # `tests/lsp/performance_test.js` makes five measurements that a busy

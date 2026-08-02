@@ -1,0 +1,37 @@
+# Backlog debt. One row per issue whose state is not yet coherent, so the gate
+# can land green while every case stays countable and un-ignorable.
+#
+# `sh tests/backlog/check.sh` fails in BOTH directions, the way
+# tests/assertions/budget.tsv does: an unlisted problem is new drift, and a
+# listed row that no longer applies is an improvement that was not recorded.
+#
+# kind                 issue  detail                 title
+#
+# state-disagreement   the state label and the body's `State:` line disagree.
+#                      `detail` is label/state-line at the time it was
+#                      recorded, so a row that changes shape is caught rather
+#                      than silently reused. Most of these date from a bulk
+#                      relabel to `blocked` that did not update the bodies;
+#                      which side is right is a decision per issue, not
+#                      something this gate may guess.
+#
+# unstamped-ready      a `ready` issue with no 40-hex evidence stamp, so
+#                      docs/ISSUE_READINESS.md rule 2 cannot be checked on it.
+#                      Fix by measuring its current behavior and naming the
+#                      commit, then delete the row.
+state-disagreement	26	blocked/needs-detail	wasm32 target: extend the bounded arithmetic and browser checkpoint
+state-disagreement	30	blocked/needs-detail	General ADT match exhaustiveness beyond the bounded Bool slice
+state-disagreement	31	blocked/needs-detail	Generics and traits
+state-disagreement	289	blocked/needs-detail	Forward references: track declaration scopes, imports, and initialization
+state-disagreement	298	blocked/ready	Duplicate definitions: track namespace and binding-domain rules
+state-disagreement	543	blocked/needs-detail	Optional types: define representation, narrowing, matching, and propagation
+state-disagreement	555	blocked/ready	Scoped parallelism v1: specify spawn/join ownership semantics and executable model
+state-disagreement	618	blocked/needs-detail	Self-host profile: freeze the smallest honest compiler S and coverage manifest
+state-disagreement	624	blocked/needs-detail	Language UX: simple functional syntax with explicit ownership and lawful composition
+state-disagreement	710	blocked/needs-detail	Compiler-native Decimal: implement the accepted language design across all backends
+state-disagreement	868	blocked/needs-detail	Stage 2 C11 aggregate bridge: execute records with List[Int] and Text
+unstamped-ready	900	-	bindgen-c: sanitizer-backed generated-boundary gate
+unstamped-ready	901	-	bindgen-c: adversarial macro fuzzing and bounded Clang execution
+unstamped-ready	903	-	bindgen-c: verify calling conventions instead of recording a constant
+unstamped-ready	904	-	Stage 2 ensure_move v2: prove terminal branch and early-return last uses
+unverifiable-stamp	738	d1f58a6a9e20764b25ee28773df5355512213dfa	Time-series forecasting research: stamp names a commit on no branch
