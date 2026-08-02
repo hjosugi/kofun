@@ -83,18 +83,39 @@ const registered = new Set(
     .filter((line) => line.trim() !== "" && !line.startsWith("#"))
     .map((line) => line.split("\t")[0]),
 );
+// Factored out so the two halves can be exercised against synthetic sets
+// below. Asserting only the committed green case would let a later change
+// weaken or delete either half without CI noticing.
+function joinBackendSets(tabled, registered) {
+  const phantom = [...tabled].filter((id) => !registered.has(id)).sort();
+  const unstated = [...registered].filter((id) => !tabled.has(id)).sort();
+  assert.deepEqual(
+    phantom,
+    [],
+    `backends.json names ${phantom.join(", ")}, which tests/conformance/capabilities.tsv does not register; a record may not cite a backend that does not exist`,
+  );
+  assert.deepEqual(
+    unstated,
+    [],
+    `tests/conformance/capabilities.tsv registers ${unstated.join(", ")}, which backends.json does not state a reuse disposition for`,
+  );
+}
+
 const tabled = new Set(backends.backends.map((row) => row.id));
-const phantom = [...tabled].filter((id) => !registered.has(id)).sort();
-const unstated = [...registered].filter((id) => !tabled.has(id)).sort();
-assert.deepEqual(
-  phantom,
-  [],
-  `backends.json names ${phantom.join(", ")}, which tests/conformance/capabilities.tsv does not register; a record may not cite a backend that does not exist`,
+joinBackendSets(tabled, registered);
+
+// Both halves, proved to fire. A phantom row and an omitted registered row are
+// distinct failures with distinct messages, so each is pinned separately.
+assert.throws(
+  () => joinBackendSets(new Set([...tabled, "phantom-backend"]), registered),
+  /backends\.json names phantom-backend, which tests\/conformance\/capabilities\.tsv does not register/,
+  "an extra backend id must be refused; without this the join can be weakened to a one-way check",
 );
-assert.deepEqual(
-  unstated,
-  [],
-  `tests/conformance/capabilities.tsv registers ${unstated.join(", ")}, which backends.json does not state a reuse disposition for`,
+const omitted = [...registered][0];
+assert.throws(
+  () => joinBackendSets(new Set([...tabled].filter((id) => id !== omitted)), registered),
+  new RegExp(`capabilities\\.tsv registers ${omitted}, which backends\\.json does not state`),
+  "an omitted registered backend must be refused; the no-backend-honours-a-guarantee claim is only as strong as the set it ranges over",
 );
 
 assert.equal(
