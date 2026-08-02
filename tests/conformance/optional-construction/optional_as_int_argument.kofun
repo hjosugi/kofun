@@ -1,0 +1,12 @@
+# An `Int?` does not satisfy an `Int` parameter. The call site is a use like
+# any other, so it needs a proved edge.
+
+fn sink(value: Int) -> Int {
+    return value
+}
+
+fn main() -> Int {
+    let value: Int? = 1
+    print(sink(value))
+    return 0
+}

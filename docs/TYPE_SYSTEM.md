@@ -93,10 +93,28 @@ captured variables, interprocedural summaries, `match`, safe navigation,
 truthiness, user-defined equality, and general union narrowing. Narrowing
 chooses no runtime representation.
 
-**Implementation status:** frontend-only, in
+**Implementation status:** the analysis lives in
 `bootstrap/stage2/optional_frontend.c`, gated by
 `tests/conformance/optional-narrowing/run.sh` and
-`tests/fuzz/optional_narrowing.sh`. No backend lowering is claimed.
+`tests/fuzz/optional_narrowing.sh`.
+
+`Optional(Int)` is additionally **executable** through the Stage 2 C11 path
+(#924): present and absent values are constructed under the AggregateLayout v1
+`Optional[Int]` descriptor — explicit `tag_width` 1 at `tag_offset` 0 and an
+`Int` payload at offset 8, never a niche — they cross a same-typed argument and
+return with the tag intact, and each of the four recognized shapes plus the
+definitely-returning guard is lowered so the narrowed use runs. That slice is
+gated by `tests/conformance/optional-construction/run.sh`.
+
+Two bounds of the executable slice, stated so the claim is not read wider than
+it is. Every `Int?` binding it lowers is immutable — `let mut x: Int?` is
+refused — so the invalidation rules that need mutation are refused at the
+declaration rather than at the use; the frontend, which does admit a mutable
+`Int?`, still pins them. And no other optional type is executable: `Int?` is
+the whole backend claim.
+
+Coalescing, `?` propagation, safe navigation, Optional `match`, and every form
+of extraction remain unimplemented, and no force-unwrap operator exists.
 
 Planned pattern:
 

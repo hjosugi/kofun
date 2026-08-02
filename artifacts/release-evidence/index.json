@@ -620,7 +620,7 @@
     }
   ],
   "evidence_digests": {
-    "Taskfile.yml": "59fad15e15d8de295a7a6c5e24742146dc79af323dcd5345ccf9535cb938b493",
+    "Taskfile.yml": "77982eab52fa50497758ddd87da019792a19151bfb917132ed4ca4833a8fb30a",
     "bootstrap/native/check.sh": "fea94cb623757e1bf17e4497f43d656b1e8ff57a39a92ece871d8ff257c0f2ef",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/driver/corpus_builtin_rejects.tsv": "b1fa0b26247581aef797a81880554a94233a34109215530641706d76777087d4",
@@ -644,7 +644,7 @@
     "docs/SECURITY.md": "fa248ad07d6e426278831fdd72fa90d1c3e68d86a42795f7e8cb0719c71dffc8",
     "docs/SELF_HOSTING.md": "c786187cd44fdba04d89c6ff1fba5f0e791c4ca96ce31a99fa17380ffde347a5",
     "docs/SEMANTICS.md": "6e1d210890f5f53f281ea32fe28a0b4118b2804f5cb1caa4260a36c961b9cb92",
-    "docs/TYPE_SYSTEM.md": "7c7f90b9807656be7e42772d259c6afa360c9f52bb0797861f44429a1bebddfb",
+    "docs/TYPE_SYSTEM.md": "eeaa8d7727261ce44c6d1513a6ad05f83359184bc81520d8243f02f22971b257",
     "examples/rust-shim/check.sh": "4cffb7e16d964122e2dff480f533cff5eacd0bd939a35fe5a71f71b447139500",
     "spec/enum-match-exhaustiveness.md": "f37bf350b76ab939a9a06c9a7b7128f1b5a0c49ca378c090b311210e79ec4eb9",
     "spec/modules/module-identity.md": "87600e04ec9f39421c4993462dbbb1b07123c8757e7021844bbbaf23e03f4276",
@@ -667,7 +667,7 @@
     "tests/conformance/records/stage2_unsupported_field.kofun": "2ac9b2e9ca754689330a836304a349a49cdf9820be6523e3d02be8158fba4eae",
     "tests/conformance/syntax/issues_35_47/enum_payload_unsupported_field.kofun": "e1b4ce6cda998dac0a955ed016c8eb2f81a9effaed91b823011572cf68f6c59e",
     "tests/diagnostics/README.md": "456190836326c23c153118d53f085905e4da06eae11883432f39c24548447c12",
-    "tests/diagnostics/registry.tsv": "d5f16d46c38766fe9ce401fff919ed4e65221055bed0a2c4c32cf2167bc56517",
+    "tests/diagnostics/registry.tsv": "e6c0436049db4461dd0aea2de33c94af1238da0c515738fe9087cd348dd08eab",
     "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun": "664c4d3b0d4bcd9265fee34b3ae60d8bf0eb58c9ce5c2b504579c1249aa16f2d",
     "tests/diagnostics/visibility-api-leaks.sh": "d87ad383a90d32e88526c9833c1086aea6035796964ce4983a2cfbfd7d9683ff",
     "tests/docs/documentation_index_test.mjs": "249fd426d8f058fa487df75e16db8695bab882c1ee6ad4297bb1fbe61b3f8abe",
