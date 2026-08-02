@@ -13,8 +13,11 @@ let 合計 = 40 + 2
 Two distinct identifier spellings with the same UTS #39 confusable skeleton
 in one compilation unit are a hard error (`EUNICODE006`). This security check
 does not change identifier equality or name resolution. Cross-module
-confusable collision detection is not implemented and remains future module
-resolver work.
+confusable collision detection is not implemented. Its accepted resolver
+contract checks only each module's effective visible bindings, per semantic
+namespace, and will use the distinct hard-error code `EUNICODE008`; private or
+unselected dependency names do not participate. Implementation is tracked by
+#1018.
 
 ## Comments
 
