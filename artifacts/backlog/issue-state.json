@@ -636,14 +636,12 @@
       "number": 885,
       "title": "Typed upgrade patches slice 1: validate schema and compute the complete semantic frontier",
       "state_labels": [
-        "ready"
+        "blocked"
       ],
-      "state_line": "ready",
-      "blocked_by": [
-        740
-      ],
+      "state_line": "blocked",
+      "blocked_by": [],
       "evidence_commits": [
-        "f68e3470c80506a5d790a8724f654bde92080ad1"
+        "2a31329b50fe19974b1cfc6639eac753373ab744"
       ]
     },
     {
@@ -920,7 +918,7 @@
       "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
-        "6e8d96b32137d4ef0ba7e7869464ccd9bbb07746"
+        "2a31329b50fe19974b1cfc6639eac753373ab744"
       ]
     }
   ]
