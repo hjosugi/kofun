@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 74,
+  "open_issues": 73,
   "issues": [
     {
       "number": 26,
@@ -20,6 +20,7 @@
       "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
+        "564ab7bc932aab0da6dba370d0c699d196e182cf",
         "71d49724cced0f41b79ebc0f253f7570f23b1b14",
         "9f21980a7c77883ad3d91ce462a6857adc261f20"
       ]
@@ -688,8 +689,8 @@
         1038
       ],
       "evidence_commits": [
-        "b783e7697d3791ce26def31e7b58a51367c83036",
-        "b984cd7c5abf5b4b49bdd8ae12ae7db8426c32a9"
+        "564ab7bc932aab0da6dba370d0c699d196e182cf",
+        "b783e7697d3791ce26def31e7b58a51367c83036"
       ]
     },
     {
@@ -811,36 +812,11 @@
       "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
+        "564ab7bc932aab0da6dba370d0c699d196e182cf",
         "6e8d96b32137d4ef0ba7e7869464ccd9bbb07746",
         "71d49724cced0f41b79ebc0f253f7570f23b1b14",
-        "9f21980a7c77883ad3d91ce462a6857adc261f20"
-      ]
-    },
-    {
-      "number": 1004,
-      "title": "wasm32 List slice: List[Int]/List[Text] layout, len, index, and host output",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "71d49724cced0f41b79ebc0f253f7570f23b1b14",
-        "9f21980a7c77883ad3d91ce462a6857adc261f20"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-1004-wasm-list-slice-20260802",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-1004-wasm-list-slice-20260802",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-1004-wasm-list-slice-20260802",
-          "status": "active"
-        }
+        "9f21980a7c77883ad3d91ce462a6857adc261f20",
+        "b123e864b35755749ef70e7fadc963bdc27ee993"
       ]
     },
     {
