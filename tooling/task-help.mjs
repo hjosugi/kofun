@@ -51,7 +51,7 @@ export const GROUPS = Object.freeze([
             'package-roots', 'source-file-mapping', 'namespaces', 'module-identity',
             'semantic-identity',
             'visibility-spec', 'visibility-syntax', 'visibility-access',
-            're-exports-spec', 'aggregate-layout'
+            're-exports-spec', 'aggregate-layout', 'reuse-candidate'
         ]
     },
     {

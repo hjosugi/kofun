@@ -1,0 +1,7 @@
+# fixture	code	name
+no-state.json	RCV101	state-required
+two-states.json	RCV102	state-exclusive
+missing-reason.json	RCV103	reason-required
+unknown-reason.json	RCV104	reason-closed
+guaranteed-unproved.json	RCV105	uniqueness-unproved
+layout-contradiction.json	RCV106	layout-contradiction
