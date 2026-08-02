@@ -37,8 +37,10 @@ The adapter covers the current single-file subset:
 module root, functions, parameters, lexical scopes, immutable/mutable locals,
 flat ADTs and constructors, function/constructor calls, local references,
 value `if`/`match`, `Int`/`Bool`/`Text` facts, and the current borrowed
-collection ownership failure. Later import, generic, trait, macro, general
-effect, and recursive-ADT facts are not fabricated.
+collection ownership failure. Successful units additionally carry the bounded
+`pure < io` function summary defined in `../../spec/effects/pure-io-v1.md`;
+failed or cancelled units do not fabricate it. Later import, generic, trait,
+macro, general effect-row, and recursive-ADT facts are not fabricated.
 
 Identity inputs reuse the accepted repository contracts rather than C layout:
 
@@ -122,6 +124,8 @@ this fixed v1 public allowlist:
 - `visibility-restricted`
 - `unsupported-current-stage2-feature`
 - `cancelled-before-analysis`
+- `effect-io-root-print`
+- `effect-io-callee` (the fact dependency identifies the resolved callee)
 
 Names, source or checkout paths, inaccessible target values, rendered
 diagnostics, and other private text are therefore mechanically rejected at
