@@ -158,7 +158,7 @@ tasks:
       - "KOFUN_HM_LEVELS_CASES=128 sh tests/fuzz/hm_levels.sh"
 
   traits:
-    desc: "Verify the bounded trait declaration frontend"
+    desc: "Verify the bounded trait declaration frontend and dictionary shape"
     cmds:
       - "sh tests/conformance/traits/run.sh"
 
