@@ -51,7 +51,15 @@ for (const raw of readFileSync(debtPath, 'utf8').split('\n')) {
         continue
     }
     if (!OWNED_KINDS.has(kind)) continue
-    debt.set(`${kind}:${Number(number)}`, { kind, number: Number(number), detail })
+    const key = `${kind}:${Number(number)}`
+    // A duplicate row is a badly edited file, and storing it by key would
+    // silently keep the last one — so the ledger would report a smaller count
+    // than it holds and a stale copy could outlive the row that replaced it.
+    if (debt.has(key)) {
+        failures.push(`debt lists #${Number(number)} as ${kind} more than once`)
+        continue
+    }
+    debt.set(key, { kind, number: Number(number), detail })
 }
 const usedDebt = new Set()
 
