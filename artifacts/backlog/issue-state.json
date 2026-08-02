@@ -79,9 +79,7 @@
         "needs-decision"
       ],
       "state_line": "needs-decision",
-      "blocked_by": [
-        622
-      ],
+      "blocked_by": [],
       "evidence_commits": [
         "6f71b6df5cf54aa16542b89494d2194c4172a97e",
         "d3429207447e112f5230d5be38576959130d288e",
