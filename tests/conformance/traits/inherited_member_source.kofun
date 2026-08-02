@@ -1,0 +1,7 @@
+trait Base[T] {
+    fn show(value: T) -> Text
+}
+
+trait Derived[T] extends Base[T] {
+    fn show(value: T) -> Text
+}
