@@ -883,6 +883,10 @@
         {
           "agent_id": "codex-issue1038-optional-pair-20260802",
           "status": "active"
+        },
+        {
+          "agent_id": "codex-issue1038-optional-pair-20260802",
+          "status": "pr-open"
         }
       ]
     }
