@@ -490,6 +490,32 @@ alias graphs, or async capture.
 The current slice validates one diagnostic boundary. It is not a production
 memory-safety proof.
 
+### What refuses an ownership error today
+
+Three mechanisms exist. They share no diagnostic family, and none of them is on
+the path `bin/kofun build` takes.
+
+| Mechanism | What it refuses | Code | Gate |
+|---|---|---|---|
+| Stage 2 `--check-ownership` | a non-Copy element moved out of a borrowed `List` | `E007` | `sh bootstrap/stage2/check.sh` |
+| the record frontend | a record used after it was moved | `E2S123` | `sh tests/conformance/records/run.sh` |
+| `stdlib/clock` affine handles | a consumed clock handle used again | none; the type carries it | `task clock-adapters` |
+| the default `bin/kofun build` path | nothing | — | — |
+
+The first is an opt-in subcommand of the Stage 2 binary. The second is a
+separate frontend that emits `.ir`, `.layout`, and `.run` and does not lower to
+a backend. The third is a library type rather than a compiler pass. A program
+built the ordinary way is therefore subject to none of them, and `own`, `read`,
+and `take` are not keywords on that path — §3 and §4 describe the target
+language, not what the shipped driver parses.
+
+`E3xx` is not a live family. No `E3xx` code has ever been in
+`tests/diagnostics/registry.tsv`, and `examples/check.sh` fails any example
+citing a code the registry does not carry. Where the retired numbering still
+appears — the `E330` named above, and its mention in
+`rfcs/0001-allocator-capability.md` as the historical neighbour of `E340`–`E342`
+— it names history, not a diagnostic any compiler emits.
+
 ## 14. Semantic `take` versus optimization-only moves
 
 Recorded from [#572](https://github.com/hjosugi/kofun/issues/572), which
