@@ -4,7 +4,7 @@
 
 import { readFileSync } from 'node:fs'
 
-import { CLAIM_STATUSES, LIVE_CLAIM_STATUSES, STATE_LABELS } from './extract.mjs'
+import { CLAIM_STATUSES, STATE_LABELS, latestLiveClaimAgents } from './extract.mjs'
 
 const [snapshotPath, debtPath] = process.argv.slice(2)
 if (!snapshotPath || !debtPath) {
@@ -110,14 +110,12 @@ let claims = 0
 let liveClaims = 0
 
 const claimVocabulary = new Set(CLAIM_STATUSES)
-const liveVocabulary = new Set(LIVE_CLAIM_STATUSES)
 
 for (const issue of issues) {
     const where = `#${issue.number}`
 
     // Claims are append-only events. Validate every event, then let the latest
     // valid event for one agent decide whether that agent still owns the issue.
-    const latestByAgent = new Map()
     for (const claim of issue.claims ?? []) {
         claims += 1
         if (claim.agent_id === null || claim.agent_id === undefined || claim.agent_id === '') {
@@ -135,12 +133,8 @@ for (const issue of issues) {
             )
             continue
         }
-        latestByAgent.set(claim.agent_id, claim.status)
     }
-    const liveAgents = [...latestByAgent]
-        .filter(([, status]) => liveVocabulary.has(status))
-        .map(([agent]) => agent)
-        .sort()
+    const liveAgents = latestLiveClaimAgents(issue.claims)
     liveClaims += liveAgents.length
     if (liveAgents.length > 1) {
         failures.push(`${where} has ${liveAgents.length} live claims: ${liveAgents.join(', ')}`)
@@ -148,6 +142,7 @@ for (const issue of issues) {
     if ((issue.issue_state ?? 'open') === 'closed' && liveAgents.length > 0) {
         failures.push(`${where} is closed but still has live claims: ${liveAgents.join(', ')}`)
     }
+    if ((issue.issue_state ?? 'open') === 'closed') continue
 
     // 1. At most one state. Two state labels is not a stricter claim, it is an
     //    unreadable one.

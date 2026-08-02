@@ -31,6 +31,20 @@ export const CLAIM_STATUSES = Object.freeze([
 
 export const LIVE_CLAIM_STATUSES = Object.freeze(['active', 'pr-open'])
 
+export function latestLiveClaimAgents(claims) {
+    const latest = new Map()
+    for (const claim of claims ?? []) {
+        if (typeof claim.agent_id !== 'string' || !CLAIM_STATUSES.includes(claim.status)) {
+            continue
+        }
+        latest.set(claim.agent_id, claim.status)
+    }
+    return [...latest]
+        .filter(([, status]) => LIVE_CLAIM_STATUSES.includes(status))
+        .map(([agent]) => agent)
+        .sort()
+}
+
 // The first `- State: x` line of the Metadata block. Only the first, because a
 // body that quotes an earlier state — a refinement note saying what the issue
 // used to be — must not read as a second declaration.
@@ -133,7 +147,7 @@ export function buildSnapshot(repository, issues) {
         schema: 'kofun.backlog-issue-state/v1',
         repository,
         state_labels: [...STATE_LABELS],
-        open_issues: rows.length,
+        open_issues: rows.filter((issue) => (issue.issue_state ?? 'open') !== 'closed').length,
         issues: rows,
     }
 }

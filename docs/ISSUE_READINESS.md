@@ -73,6 +73,13 @@ latest statuses are live are an error, as is a live claim on a closed issue.
 Post `released` when a blocker or overlap makes you skip the issue; silence is
 not a release.
 
+The normal GitHub list request returns open issues only. To make an
+open-to-closed transition observable, refresh seeds a bounded follow-up from
+the prior committed snapshot: only issue numbers whose latest canonical claim
+was live and which disappeared from the open result are re-read by number with
+their comments. A closed row stays in the snapshot, without increasing
+`open_issues`, until that same agent posts `released` or `merged`.
+
 **`planning` is orthogonal too, and is not a state.** It marks a planning
 umbrella or generated catalogue — never directly implementation-ready — and the
 umbrella still has a state, because "this is an umbrella" and "this is waiting
@@ -238,8 +245,9 @@ demanding that a committed copy match live state would be permanently red and
 would teach everyone to ignore it.
 
 `task backlog-refresh` regenerates the snapshot from GitHub, including one
-bounded comment request per open issue, runs the same rules against live state,
-and verifies that every stamp names a commit reachable from `HEAD`. CI runs it
+bounded comment request per open issue and bounded transition probes seeded by
+prior live claims, runs the same rules against live state, and verifies that
+every stamp names a commit reachable from `HEAD`. CI runs it
 on `main` but **not** on pull requests: a
 `ready` issue somebody else opens mid-review would otherwise turn an unrelated
 PR red for a reason its author cannot fix. On `main` the same failure is a true

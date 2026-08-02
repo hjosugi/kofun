@@ -22,6 +22,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildSnapshot } from './extract.mjs'
+import { missingLiveClaimNumbers, shouldRetainClosedClaim } from './claim-refresh.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const OUTPUT = resolve(ROOT, 'artifacts/backlog/issue-state.json')
@@ -56,7 +57,19 @@ async function fetchClaimComments(issue, token) {
     return { ...issue, claim_comments: await response.json() }
 }
 
-async function fetchOpenIssues() {
+async function fetchIssue(number, token) {
+    const url = `https://api.github.com/repos/${OWNER}/${REPO}/issues/${number}`
+    const response = await fetch(url, { headers: headers(token) })
+    if (!response.ok) {
+        throw new Error(
+            `GitHub returned ${response.status} for claimed issue #${number}: ` +
+                `${(await response.text()).slice(0, 200)}`,
+        )
+    }
+    return response.json()
+}
+
+async function fetchOpenIssues(priorSnapshot) {
     const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN
     if (!token) {
         throw new Error('reading issue state needs GITHUB_TOKEN or GH_TOKEN')
@@ -80,6 +93,13 @@ async function fetchOpenIssues() {
             // cheap at this backlog size and avoids secondary-rate-limit bursts.
             for (const issue of issues) {
                 withComments.push(await fetchClaimComments(issue, token))
+            }
+            for (const number of missingLiveClaimNumbers(priorSnapshot, withComments)) {
+                const claimed = await fetchClaimComments(
+                    await fetchIssue(number, token),
+                    token,
+                )
+                if (shouldRetainClosedClaim(claimed)) withComments.push(claimed)
             }
             return withComments
         }
@@ -118,9 +138,10 @@ function readCapturedIssues(path) {
 }
 
 const fromJsonIndex = process.argv.indexOf('--from-json')
+const priorSnapshot = JSON.parse(readFileSync(OUTPUT, 'utf8'))
 const issues =
     fromJsonIndex === -1
-        ? await fetchOpenIssues()
+        ? await fetchOpenIssues(priorSnapshot)
         : readCapturedIssues(process.argv[fromJsonIndex + 1])
 
 const snapshot = buildSnapshot(`${OWNER}/${REPO}`, issues)
