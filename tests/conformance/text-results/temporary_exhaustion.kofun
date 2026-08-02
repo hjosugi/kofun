@@ -1,0 +1,12 @@
+fn exhaust(remaining: Int) -> Text {
+    let current = to_text(remaining)
+    if remaining == 0 {
+        return current
+    }
+    return exhaust(remaining - 1)
+}
+
+fn main() -> Int {
+    print(exhaust(4096))
+    return 0
+}
