@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 75,
+  "open_issues": 74,
   "issues": [
     {
       "number": 26,
@@ -493,14 +493,14 @@
       "number": 645,
       "title": "Date/time core: Gregorian values, checked arithmetic, and strict RFC 3339",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
-      "blocked_by": [
-        891
-      ],
+      "state_line": "ready",
+      "blocked_by": [],
       "evidence_commits": [
-        "97e50abe18e028093a186a7835e48c4d81a6dbd9"
+        "6b8d2064468d270f37a1d8dcfe8848dca91b9dc0",
+        "97e50abe18e028093a186a7835e48c4d81a6dbd9",
+        "b783e7697d3791ce26def31e7b58a51367c83036"
       ]
     },
     {
@@ -653,40 +653,6 @@
       ]
     },
     {
-      "number": 891,
-      "title": "Stage 2 Text values: return Text, convert Int, and concatenate without invalid C",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "b94cfc72cd63d0255ab914b365ca7910309fa7d2"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-issue891-text-results-20260802",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-issue891-text-results-20260802",
-          "status": "pr-open"
-        },
-        {
-          "agent_id": "codex-issue891-text-results-20260802",
-          "status": "pr-open"
-        },
-        {
-          "agent_id": "codex-issue891-text-results-20260802",
-          "status": "pr-open"
-        },
-        {
-          "agent_id": "codex-issue891-text-results-20260802",
-          "status": "pr-open"
-        }
-      ]
-    },
-    {
       "number": 902,
       "title": "bindgen-c: enforce a mechanical raw-binding import boundary",
       "state_labels": [
@@ -718,9 +684,12 @@
         "blocked"
       ],
       "state_line": "blocked",
-      "blocked_by": [],
+      "blocked_by": [
+        1038
+      ],
       "evidence_commits": [
-        "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
+        "b783e7697d3791ce26def31e7b58a51367c83036",
+        "b984cd7c5abf5b4b49bdd8ae12ae7db8426c32a9"
       ]
     },
     {
@@ -867,6 +836,10 @@
         {
           "agent_id": "codex-1004-wasm-list-slice-20260802",
           "status": "released"
+        },
+        {
+          "agent_id": "codex-1004-wasm-list-slice-20260802",
+          "status": "active"
         }
       ]
     },
@@ -923,13 +896,19 @@
       "number": 1038,
       "title": "Stage 2: restore Optional(Int) canonical compiler-pair symmetry",
       "state_labels": [
-        "blocked"
+        "in-progress"
       ],
-      "state_line": "blocked",
-      "blocked_by": [
-        891
+      "state_line": "in-progress",
+      "blocked_by": [],
+      "evidence_commits": [
+        "b783e7697d3791ce26def31e7b58a51367c83036"
       ],
-      "evidence_commits": []
+      "claims": [
+        {
+          "agent_id": "codex-issue1038-optional-pair-20260802",
+          "status": "active"
+        }
+      ]
     }
   ]
 }
