@@ -146,7 +146,8 @@ fn keyword(token: Text) -> Bool {
     token == "return" || token == "if" || token == "else" ||
     token == "while" || token == "for" || token == "in" ||
     token == "break" || token == "continue" || token == "true" ||
-    token == "false" || token == "match" || token == "type"
+    token == "false" || token == "match" || token == "type" ||
+    token == "par"
 }
 
 fn token_kind(source: Text, start: Int) -> Text {
@@ -7049,6 +7050,14 @@ fn build_scope_hir_mode(
         let mut unresolved_assignment = false
         cursor = skip_trivia(source, token_end(source, function_open))
         while cursor < function_close {
+            # See selfhost_parse_primary: stop at `par` so the walk never
+            # reaches the scope token between the bars and blames it as an
+            # unknown binding. The construct is refused, so its token is never
+            # a use.
+            if token_text(source, cursor) == "par" {
+                return "error[E2S154]: scoped parallelism `par` is specified " +
+                "but not implemented at byte " + to_text(cursor)
+            }
             if token_kind(source, cursor) == "identifier" {
                 let name = token_text(source, cursor)
                 let declaration_token = enum_declaration_syntax_token(
@@ -7771,6 +7780,12 @@ fn lower_body(
             to_text(cursor)
         }
         let statement = token_text(source, cursor)
+        # See selfhost_parse_primary: refuse `par` before the dispatch below can
+        # read the scope token as an ordinary binding and blame it instead.
+        if statement == "par" {
+            return "error[E2S154]: scoped parallelism `par` is specified " +
+            "but not implemented at byte " + to_text(cursor)
+        }
         if statement == "let" {
             cursor = skip_trivia(source, token_end(source, cursor))
             let mut mutable = false
@@ -10724,6 +10739,18 @@ fn selfhost_parse_primary(
     }
     let kind = token_kind(source, at)
     let end = token_end(source, at)
+    # Scoped parallelism v1 (#555) fixes `par` as target semantics in
+    # spec/concurrency/scoped-parallelism-v1.md. The lexer owns the keyword so
+    # this refusal names the construct instead of surfacing as an unknown
+    # binding, but ownership checking, scheduling, and lowering do not exist:
+    # the honest answer here is a refusal, not a partial acceptance.
+    if token_text(source, at) == "par" {
+        return selfhost_error(
+            "E2S154",
+            at,
+            "scoped parallelism `par` is specified but not implemented"
+        )
+    }
     if kind == "integer" {
         return selfhost_expression_result(
             skip_trivia(source, end),
@@ -11773,6 +11800,15 @@ fn selfhost_statement(
     scope_context: Text
 ) -> Text {
     let token = token_text(source, cursor)
+    # See selfhost_parse_primary: `par` in statement position is refused by name
+    # rather than falling through to the generic unsupported-statement code.
+    if token == "par" {
+        return selfhost_error(
+            "E2S154",
+            cursor,
+            "scoped parallelism `par` is specified but not implemented"
+        )
+    }
     if token == "let" {
         return selfhost_let_statement(
             source,
@@ -12205,9 +12241,16 @@ fn selfhost_document(source: Text, path: Text, digest: Text) -> Text {
     let mut document = header + "status|rejected\n" + "diagnostic|" +
     code + "|" + to_text(clamped) + "|" + to_text(span_end) + "|" +
     selfhost_escape(message) + "\n"
+    # hir-v1.md requires one `unsupported` record naming the construct family
+    # for every construct outside the frozen profile, so `par` carries its own
+    # family rather than being filed as a statement.
     if code == "E2S10" {
         document = document + "unsupported|" + to_text(clamped) + "|" +
         to_text(span_end) + "|statement\n"
+    }
+    if code == "E2S154" {
+        document = document + "unsupported|" + to_text(clamped) + "|" +
+        to_text(span_end) + "|scoped-parallelism\n"
     }
     return "rejected\n" + printed + "\n" + document
 }
