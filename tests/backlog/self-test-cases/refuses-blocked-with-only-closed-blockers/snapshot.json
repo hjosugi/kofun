@@ -1,0 +1,28 @@
+{
+  "schema": "kofun.backlog-issue-state/v1",
+  "repository": "hjosugi/kofun",
+  "state_labels": [
+    "ready",
+    "blocked",
+    "needs-detail",
+    "needs-decision",
+    "deferred",
+    "in-progress"
+  ],
+  "open_issues": 1,
+  "issues": [
+    {
+      "number": 101,
+      "title": "blocked after both dependencies closed",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        201,
+        202
+      ],
+      "evidence_commits": []
+    }
+  ]
+}

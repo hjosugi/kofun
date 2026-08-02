@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 79,
+  "open_issues": 77,
   "issues": [
     {
       "number": 26,
@@ -19,7 +19,9 @@
       ],
       "state_line": "blocked",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [
+        "71d49724cced0f41b79ebc0f253f7570f23b1b14"
+      ]
     },
     {
       "number": 27,
@@ -817,18 +819,6 @@
       ]
     },
     {
-      "number": 996,
-      "title": "Unicode security: cross-module confusable collisions are undetected and unowned",
-      "state_labels": [
-        "needs-decision"
-      ],
-      "state_line": "needs-decision",
-      "blocked_by": [],
-      "evidence_commits": [
-        "00ce08f093da2706156f88f80d8c2fb366006d35"
-      ]
-    },
-    {
       "number": 998,
       "title": "wasm32 Text/List lowering has no owner: #906 froze the contract, nothing implements it",
       "state_labels": [
@@ -837,30 +827,21 @@
       "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
-        "6e8d96b32137d4ef0ba7e7869464ccd9bbb07746"
-      ]
-    },
-    {
-      "number": 1001,
-      "title": "wasm32 object arena: linear memory, u64 headers, and bounded allocation",
-      "state_labels": [
-        "blocked"
-      ],
-      "state_line": "blocked",
-      "blocked_by": [],
-      "evidence_commits": [
-        "6e8d96b32137d4ef0ba7e7869464ccd9bbb07746"
+        "6e8d96b32137d4ef0ba7e7869464ccd9bbb07746",
+        "71d49724cced0f41b79ebc0f253f7570f23b1b14"
       ]
     },
     {
       "number": 1002,
       "title": "wasm32 Text slice: guest literals, references, and text_out execution",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
+      "state_line": "ready",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [
+        "71d49724cced0f41b79ebc0f253f7570f23b1b14"
+      ]
     },
     {
       "number": 1004,
@@ -870,7 +851,9 @@
       ],
       "state_line": "blocked",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [
+        "71d49724cced0f41b79ebc0f253f7570f23b1b14"
+      ]
     },
     {
       "number": 1008,
@@ -889,33 +872,34 @@
       "number": 1018,
       "title": "Stage 2 resolver: enforce cross-module confusable collisions as EUNICODE008",
       "state_labels": [
-        "blocked"
+        "in-progress"
       ],
-      "state_line": "blocked",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
-        "6e8d96b32137d4ef0ba7e7869464ccd9bbb07746"
+        "4ad2d657658a6d35e196ad070e3fbca1765d5d04"
       ]
     },
     {
       "number": 1021,
       "title": "backlog: `agent-claim:v1` is defined nowhere in the repository, so duplicate implementation is not detectable",
       "state_labels": [
-        "needs-detail"
+        "ready"
       ],
-      "state_line": "needs-detail",
+      "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
-        "6e8d96b32137d4ef0ba7e7869464ccd9bbb07746"
+        "8703abdc1625e6e63bb7d45113244418c085cc39",
+        "abc969f14cfb8d247e1c15a4b25e51cd753cba0a"
       ]
     },
     {
       "number": 1023,
       "title": "backlog: a `blocked` issue whose named blockers have all closed is never reported",
       "state_labels": [
-        "ready"
+        "in-progress"
       ],
-      "state_line": "ready",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
         "2a31329b50fe19974b1cfc6639eac753373ab744"
