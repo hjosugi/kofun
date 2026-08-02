@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 79,
+  "open_issues": 77,
   "issues": [
     {
       "number": 26,
@@ -408,31 +408,20 @@
       ]
     },
     {
-      "number": 584,
-      "title": "Visibility tooling: prevent macro, LSP, and sidecar access bypasses",
-      "state_labels": [
-        "needs-detail"
-      ],
-      "state_line": "needs-detail",
-      "blocked_by": [],
-      "evidence_commits": [
-        "0ba1682a605f31ce54e23b7d37edadfd80a79f5e",
-        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
-      ]
-    },
-    {
       "number": 585,
       "title": "Visibility stabilization: document API changes and migration",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
+      "state_line": "ready",
       "blocked_by": [
         301,
         583,
         584
       ],
-      "evidence_commits": []
+      "evidence_commits": [
+        "bbb6b0ffee24952016394dc6352499a89ec3e938"
+      ]
     },
     {
       "number": 622,
@@ -645,12 +634,18 @@
       "number": 891,
       "title": "Stage 2 Text values: return Text, convert Int, and concatenate without invalid C",
       "state_labels": [
-        "ready"
+        "in-progress"
       ],
-      "state_line": "ready",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
         "b94cfc72cd63d0255ab914b365ca7910309fa7d2"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-issue891-text-results-20260802",
+          "status": "active"
+        }
       ]
     },
     {
@@ -675,19 +670,6 @@
       "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
-        "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
-      ]
-    },
-    {
-      "number": 916,
-      "title": "Integer const generics v1: literal Int type arguments for Fixed[scale]",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "09a3229c33fd309f61a0a0ba407fd543f8c670e6",
         "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
       ]
     },
@@ -849,6 +831,10 @@
         {
           "agent_id": "codex-issue1002-wasm-text-20260802",
           "status": "pr-open"
+        },
+        {
+          "agent_id": "codex-issue1002-wasm-text-20260802",
+          "status": "pr-open"
         }
       ]
     },
@@ -900,42 +886,6 @@
       ]
     },
     {
-      "number": 1021,
-      "title": "backlog: `agent-claim:v1` is defined nowhere in the repository, so duplicate implementation is not detectable",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "8703abdc1625e6e63bb7d45113244418c085cc39",
-        "abc969f14cfb8d247e1c15a4b25e51cd753cba0a",
-        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-issue1021-agent-claim-v1-20260802",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-issue1021-agent-claim-v1-20260802",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-issue1021-agent-claim-v1-20260802",
-          "status": "pr-open"
-        },
-        {
-          "agent_id": "codex-issue1021-agent-claim-v1-20260802",
-          "status": "pr-open"
-        },
-        {
-          "agent_id": "codex-issue1021-agent-claim-v1-20260802",
-          "status": "pr-open"
-        }
-      ]
-    },
-    {
       "number": 1032,
       "title": "Self-host driver diagnostics: give A1's refusal a code and a span",
       "state_labels": [
@@ -963,9 +913,9 @@
       "number": 1034,
       "title": "Typed sidecars: revalidate visibility against the live caller context",
       "state_labels": [
-        "ready"
+        "in-progress"
       ],
-      "state_line": "ready",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
         "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
@@ -982,6 +932,18 @@
       "evidence_commits": [
         "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
       ]
+    },
+    {
+      "number": 1038,
+      "title": "Stage 2: restore Optional(Int) canonical compiler-pair symmetry",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        891
+      ],
+      "evidence_commits": []
     }
   ]
 }
