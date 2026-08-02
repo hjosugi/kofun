@@ -1,0 +1,10 @@
+type Token = {
+    text: Text,
+    start: Int,
+}
+
+fn twice(token: Token) -> Int {
+    take token
+    take token
+    return 0
+}
