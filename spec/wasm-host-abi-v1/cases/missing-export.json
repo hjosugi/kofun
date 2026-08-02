@@ -1,0 +1,9 @@
+{
+  "schema": "kofun.wasm-host-abi-case/v1",
+  "id": "missing-export",
+  "mutation": "missing-export",
+  "expect": "refused",
+  "diagnostic": "missing-export",
+  "engine": "accepted",
+  "why": "Without the memory export no boundary reference can be resolved at all. An engine links the module happily, so the contract refuses it first."
+}

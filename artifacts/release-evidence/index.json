@@ -620,7 +620,7 @@
     }
   ],
   "evidence_digests": {
-    "Taskfile.yml": "59fad15e15d8de295a7a6c5e24742146dc79af323dcd5345ccf9535cb938b493",
+    "Taskfile.yml": "1b27565293faa86311cb3f1d8b8ba8a33d2bf10d5f9fa8a791e693536f9705e8",
     "bootstrap/native/check.sh": "fea94cb623757e1bf17e4497f43d656b1e8ff57a39a92ece871d8ff257c0f2ef",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/driver/corpus_builtin_rejects.tsv": "b1fa0b26247581aef797a81880554a94233a34109215530641706d76777087d4",
@@ -646,11 +646,11 @@
     "docs/SEMANTICS.md": "6e1d210890f5f53f281ea32fe28a0b4118b2804f5cb1caa4260a36c961b9cb92",
     "docs/TYPE_SYSTEM.md": "7c7f90b9807656be7e42772d259c6afa360c9f52bb0797861f44429a1bebddfb",
     "examples/rust-shim/check.sh": "4cffb7e16d964122e2dff480f533cff5eacd0bd939a35fe5a71f71b447139500",
-    "spec/enum-match-exhaustiveness.md": "f37bf350b76ab939a9a06c9a7b7128f1b5a0c49ca378c090b311210e79ec4eb9",
+    "spec/enum-match-exhaustiveness.md": "e93a826fa3713ae41216daeaa941ba96a1a4ffadab70c8fc4809472d62370e43",
     "spec/modules/module-identity.md": "87600e04ec9f39421c4993462dbbb1b07123c8757e7021844bbbaf23e03f4276",
     "spec/modules/re-exports.md": "e1bd3964901cfbadd1f5675e3c0b5e14a9277198fe6252780381f92581ac2e46",
     "spec/modules/visibility.md": "40209bbc776037f0f397b169b428e3f6d9cf8a0536c2ba12c10988f20a7c0c22",
-    "spec/records-v1.md": "9020f6d70397d9e55ef2e33a9ec4cb13464a0120fec86dfeb56c4e1f5adbe4ef",
+    "spec/records-v1.md": "f194d068f72697548dc341e1c243864b84d3b277a6c1364a2b816c51298e4a50",
     "spec/semantics.md": "79909588ff01f3f48b79840d434ed2ccea9918d12ebe8a03fd87b60a054c67d3",
     "spec/tooling/typed-sidecar.md": "51f18b0fea3734ce73603bbcb43c048edf6a8309e48afb4bd588c386ec23dd92",
     "spec/typed-sidecar/kofun.typed-sidecar.v1.schema.json": "2574494144647b9e89ff45a126dc768ab947ed21a02044965ee22a0076f77460",

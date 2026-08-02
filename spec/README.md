@@ -85,6 +85,15 @@ executable bootstrap implementation.
   contract only; no backend lowers to it yet, and the shipped native `i64`
   headers are compared against it rather than governed by it.
 
+- `wasm-host-abi-v1.md`, its `wasm-host-abi-v1/` reference host, boundary
+  document, recomputed vectors, instantiation fixtures, and
+  `wasm-host-abi-v1/check.sh` define the accepted `kofun-wasm-host-abi-v1`
+  boundary: one ABI version, the import allowlist with exact wasm signatures,
+  the required exports, and the `Text`/`List` representation derived from the
+  `wasm32` layout target. It is the input contract for wasm32 `Text`/`List`
+  lowering; no backend emits it yet, and it does not describe WASI or a
+  supported-engine matrix.
+
 Design-only material in `docs/` is not normative until it is promoted here
 with conformance evidence. The specification is versioned independently from
 the implementation; the current draft is `0.3-bootstrap`.
