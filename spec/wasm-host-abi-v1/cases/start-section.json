@@ -1,0 +1,9 @@
+{
+  "schema": "kofun.wasm-host-abi-case/v1",
+  "id": "start-section",
+  "mutation": "start-section",
+  "expect": "refused",
+  "diagnostic": "start-section-forbidden",
+  "engine": "not-attempted",
+  "why": "The module declares a start function that puts a Text across the boundary. The engine is never asked, because instantiating it is the very thing this rule exists to prevent; the refusal is decided on the bytes."
+}
