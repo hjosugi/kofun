@@ -1,0 +1,22 @@
+# Deliberately failing kotest suite.  The gate runs this fixture and
+# asserts the nonzero exit code, the KOTEST-FAILED line, and the assertion
+# diagnostics — proving the framework cannot report red as green.
+
+fn test_equality_that_fails() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(2 + 2, 5)
+    return failures
+}
+
+fn test_text_that_fails() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_text("expected", "actual")
+    failures = failures + fail_now("deliberate fixture failure")
+    return failures
+}
+
+fn test_that_passes_beside_failures() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(1, 1)
+    return failures
+}

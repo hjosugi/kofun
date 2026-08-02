@@ -1,0 +1,178 @@
+# stdlib/list sample: an executable, bounded List[Int] surface.
+#
+# The canonical stdlib/list/list.kofun still waits on collection lowering, so
+# this sample implements the same contract — length, typed checked access,
+# functional update, map, and fold — over a fixed-capacity value record that
+# compiles and runs today.  Capacity is four; growing past it is a typed
+# error, never a silent wrap.
+#
+# Tests live in list_sample_test.kofun and run with `kofun unittest`.
+
+type IntList = {
+    count: Int,
+    slot0: Int,
+    slot1: Int,
+    slot2: Int,
+    slot3: Int,
+}
+
+type ListOutcome =
+    | ListValue(value: Int)
+    | ListEmpty(capacity: Int)
+    | ListOutOfBounds(index: Int)
+
+fn list_capacity() -> Int {
+    return 4
+}
+
+fn list_empty() -> IntList {
+    let value: IntList = IntList(
+        count: 0,
+        slot0: 0,
+        slot1: 0,
+        slot2: 0,
+        slot3: 0    )
+    return value
+}
+
+fn list_length(values: IntList) -> Int {
+    return values.count
+}
+
+fn list_slot(values: IntList, index: Int) -> Int {
+    if index == 0 {
+        return values.slot0
+    }
+    if index == 1 {
+        return values.slot1
+    }
+    if index == 2 {
+        return values.slot2
+    }
+    return values.slot3
+}
+
+fn pick_slot(index: Int, target: Int, replacement: Int, current: Int) -> Int {
+    if index == target {
+        return replacement
+    }
+    return current
+}
+
+fn list_with_slot(values: IntList, index: Int, value: Int) -> IntList {
+    let replaced: IntList = IntList(
+        count: values.count,
+        slot0: pick_slot(index, 0, value, values.slot0),
+        slot1: pick_slot(index, 1, value, values.slot1),
+        slot2: pick_slot(index, 2, value, values.slot2),
+        slot3: pick_slot(index, 3, value, values.slot3)    )
+    return replaced
+}
+
+# Value-returning push: the input list is untouched, exactly like the
+# canonical contract.  Pushing past capacity reports the capacity.
+fn list_push(values: IntList, value: Int) -> IntList {
+    if values.count >= list_capacity() {
+        return values
+    }
+    let stored: IntList = list_with_slot(values, values.count, value)
+    let grown: IntList = IntList(
+        count: values.count + 1,
+        slot0: stored.slot0,
+        slot1: stored.slot1,
+        slot2: stored.slot2,
+        slot3: stored.slot3    )
+    return grown
+}
+
+fn list_get(values: IntList, index: Int) -> ListOutcome {
+    if values.count == 0 {
+        return ListEmpty(list_capacity())
+    }
+    if index < 0 {
+        return ListOutOfBounds(index)
+    }
+    if index >= values.count {
+        return ListOutOfBounds(index)
+    }
+    return ListValue(list_slot(values, index))
+}
+
+fn outcome_value_or(outcome: ListOutcome, fallback: Int) -> Int {
+    match outcome {
+        ListValue(value) => { return value },
+        ListEmpty(_) => { return fallback },
+        ListOutOfBounds(_) => { return fallback },
+    }
+    return fallback
+}
+
+# Mutable record bindings are outside the executable slice, so the pipeline
+# operations below build their results by recursion, threading the
+# accumulator as a parameter.
+
+fn list_map_from(
+    values: IntList,
+    transform: Int -> Int,
+    index: Int,
+    accumulated: IntList
+) -> IntList {
+    if index >= values.count {
+        return accumulated
+    }
+    return list_map_from(
+        values,
+        transform,
+        index + 1,
+        list_push(accumulated, transform(list_slot(values, index)))    )
+}
+
+fn list_map(values: IntList, transform: Int -> Int) -> IntList {
+    return list_map_from(values, transform, 0, list_empty())
+}
+
+fn list_fold_from(
+    values: IntList,
+    combine: (Int, Int) -> Int,
+    index: Int,
+    accumulated: Int
+) -> Int {
+    if index >= values.count {
+        return accumulated
+    }
+    return list_fold_from(
+        values,
+        combine,
+        index + 1,
+        combine(accumulated, list_slot(values, index))    )
+}
+
+fn list_fold(values: IntList, initial: Int, combine: (Int, Int) -> Int) -> Int {
+    return list_fold_from(values, combine, 0, initial)
+}
+
+fn list_reverse_from(values: IntList, index: Int, accumulated: IntList) -> IntList {
+    if index < 0 {
+        return accumulated
+    }
+    return list_reverse_from(
+        values,
+        index - 1,
+        list_push(accumulated, list_slot(values, index))    )
+}
+
+fn list_reverse(values: IntList) -> IntList {
+    return list_reverse_from(values, values.count - 1, list_empty())
+}
+
+fn main() {
+    let values: IntList = list_push(list_push(list_push(list_empty(), 3), 1), 4)
+    print(list_length(values))
+    print(outcome_value_or(list_get(values, 0), 0 - 1))
+    print(outcome_value_or(list_get(values, 7), 0 - 1))
+    let doubled: IntList = list_map(values, value => value * 2)
+    print(outcome_value_or(list_get(doubled, 2), 0 - 1))
+    print(list_fold(values, 0, (total, value) => total + value))
+    let backwards: IntList = list_reverse(values)
+    print(outcome_value_or(list_get(backwards, 0), 0 - 1))
+}

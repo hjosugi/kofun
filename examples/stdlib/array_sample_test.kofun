@@ -1,0 +1,79 @@
+# kotest suite for array_sample.kofun; run with `kofun unittest`.
+
+fn test_fill_writes_every_cell() -> Int {
+    let mut failures = 0
+    let sevens: IntArray3 = array_filled(7)
+    failures = failures + expect_eq_int(array_value_or(array_get(sevens, 0), 0), 7)
+    failures = failures + expect_eq_int(array_value_or(array_get(sevens, 1), 0), 7)
+    failures = failures + expect_eq_int(array_value_or(array_get(sevens, 2), 0), 7)
+    failures = failures + expect_eq_int(array_total(sevens), 21)
+    return failures
+}
+
+fn test_index_boundaries_are_typed() -> Int {
+    let mut failures = 0
+    let base: IntArray3 = array_of(1, 2, 3)
+    let below: ArrayOutcome = array_get(base, 0 - 1)
+    match below {
+        ArrayIndexOutside(index) => {
+            failures = failures + expect_eq_int(index, 0 - 1)
+        },
+        _ => { failures = failures + fail_now("expected ArrayIndexOutside") },
+    }
+    let at_shape: ArrayOutcome = array_get(base, array_shape())
+    match at_shape {
+        ArrayIndexOutside(index) => {
+            failures = failures + expect_eq_int(index, 3)
+        },
+        _ => { failures = failures + fail_now("expected ArrayIndexOutside") },
+    }
+    let last: ArrayOutcome = array_get(base, array_shape() - 1)
+    match last {
+        ArrayValue(value) => {
+            failures = failures + expect_eq_int(value, 3)
+        },
+        _ => { failures = failures + fail_now("expected ArrayValue") },
+    }
+    return failures
+}
+
+fn test_transform_is_elementwise() -> Int {
+    let mut failures = 0
+    let base: IntArray3 = array_of(1, 2, 3)
+    let negated: IntArray3 = array_transform(base, value => 0 - value)
+    failures = failures + expect_eq_int(array_value_or(array_get(negated, 0), 0), 0 - 1)
+    failures = failures + expect_eq_int(array_value_or(array_get(negated, 1), 0), 0 - 2)
+    failures = failures + expect_eq_int(array_value_or(array_get(negated, 2), 0), 0 - 3)
+    failures = failures + expect_eq_int(array_total(base), 6)
+    return failures
+}
+
+fn test_add_is_pairwise_and_shape_preserving() -> Int {
+    let mut failures = 0
+    let left: IntArray3 = array_of(1, 2, 3)
+    let right: IntArray3 = array_of(10, 20, 30)
+    let merged: IntArray3 = array_add(left, right)
+    failures = failures + expect_eq_int(array_value_or(array_get(merged, 0), 0), 11)
+    failures = failures + expect_eq_int(array_value_or(array_get(merged, 1), 0), 22)
+    failures = failures + expect_eq_int(array_value_or(array_get(merged, 2), 0), 33)
+    return failures
+}
+
+fn test_minimum_scans_every_cell() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(array_minimum(array_of(3, 1, 4)), 1)
+    failures = failures + expect_eq_int(array_minimum(array_of(0 - 5, 9, 2)), 0 - 5)
+    failures = failures + expect_eq_int(array_minimum(array_of(7, 7, 0 - 1)), 0 - 1)
+    failures = failures + expect_eq_int(array_minimum(array_filled(4)), 4)
+    return failures
+}
+
+fn test_totals_track_arithmetic() -> Int {
+    let mut failures = 0
+    let base: IntArray3 = array_of(3, 1, 4)
+    let scaled: IntArray3 = array_transform(base, value => value * 10)
+    failures = failures + expect_eq_int(array_total(base), 8)
+    failures = failures + expect_eq_int(array_total(scaled), 80)
+    failures = failures + expect_eq_int(array_total(array_add(base, scaled)), 88)
+    return failures
+}

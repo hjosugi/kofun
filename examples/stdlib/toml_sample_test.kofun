@@ -1,0 +1,93 @@
+# kotest suite for toml_sample.kofun; run with `kofun unittest`.
+
+fn test_integer_values_parse_exactly() -> Int {
+    let mut failures = 0
+    let answer: TomlLine = toml_read_line("answer = 42")
+    match answer {
+        TomlIntegerValue(value) => { failures = failures + expect_eq_int(value, 42) },
+        _ => { failures = failures + fail_now("expected TomlIntegerValue") },
+    }
+    let zero: TomlLine = toml_read_line("zero = 0")
+    match zero {
+        TomlIntegerValue(value) => { failures = failures + expect_eq_int(value, 0) },
+        _ => { failures = failures + fail_now("expected TomlIntegerValue") },
+    }
+    let large: TomlLine = toml_read_line("big = 123456")
+    match large {
+        TomlIntegerValue(value) => {
+            failures = failures + expect_eq_int(value, 123456)
+        },
+        _ => { failures = failures + fail_now("expected TomlIntegerValue") },
+    }
+    return failures
+}
+
+fn test_word_values_report_their_length() -> Int {
+    let mut failures = 0
+    let mode: TomlLine = toml_read_line("mode = strict")
+    match mode {
+        TomlWordValue(length) => { failures = failures + expect_eq_int(length, 6) },
+        _ => { failures = failures + fail_now("expected TomlWordValue") },
+    }
+    return failures
+}
+
+fn test_missing_separator_is_typed() -> Int {
+    let mut failures = 0
+    let broken: TomlLine = toml_read_line("broken line")
+    match broken {
+        TomlMissingSeparator(position) => {
+            failures = failures + expect_eq_int(position, 11)
+        },
+        _ => { failures = failures + fail_now("expected TomlMissingSeparator") },
+    }
+    return failures
+}
+
+fn test_key_must_be_bare_lowercase() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(
+        toml_line_code(toml_read_line("Bad = 1")), 0 - 2)
+    failures = failures + expect_eq_int(
+        toml_line_code(toml_read_line("k2y = 1")), 0 - 2)
+    failures = failures + expect_eq_int(
+        toml_line_code(toml_read_line("= 1")), 0 - 2)
+    failures = failures + expect_eq_int(
+        toml_line_code(toml_read_line("ok = 1")), 1)
+    return failures
+}
+
+fn test_spacing_around_separator_is_strict() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(
+        toml_line_code(toml_read_line("tight=1")), 0 - 3)
+    failures = failures + expect_eq_int(
+        toml_line_code(toml_read_line("left =1")), 0 - 3)
+    failures = failures + expect_eq_int(
+        toml_line_code(toml_read_line("right= 1")), 0 - 3)
+    return failures
+}
+
+fn test_bad_values_carry_positions() -> Int {
+    let mut failures = 0
+    let empty: TomlLine = toml_read_line("trail = ")
+    match empty {
+        TomlBadValue(position) => {
+            failures = failures + expect_eq_int(position, 8)
+        },
+        _ => { failures = failures + fail_now("expected TomlBadValue") },
+    }
+    let mixed: TomlLine = toml_read_line("value = 4x2")
+    failures = failures + expect_eq_int(toml_line_code(mixed), 0 - 4)
+    return failures
+}
+
+fn test_digit_helper_covers_all_digits() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(toml_digit_value("0", 0), 0)
+    failures = failures + expect_eq_int(toml_digit_value("5", 0), 5)
+    failures = failures + expect_eq_int(toml_digit_value("9", 0), 9)
+    failures = failures + expect_eq_int(toml_digit_value("x", 0), 0 - 1)
+    failures = failures + expect_eq_int(toml_digit_value("7", 9), 0 - 1)
+    return failures
+}

@@ -27,7 +27,7 @@ csv	portable	implemented	task stdlib	bounded reader/writer
 toml	portable	implemented	task stdlib	baseline config format for the toolchain
 regex	portable	implemented	task stdlib	bounded engine; no backtracking-unbounded constructs
 logging	portable	implemented	task stdlib	structured fields, levels, sinks
-unit-testing	portable	implemented	task stdlib	assertions and fixtures; subprocess tests are not covered
+unit-testing	portable	implemented	task kotest	kotest: executable assertions, spies/stubs, and runner with watch/filter; canonical testing.kofun ADT surface still gated by `task stdlib`; subprocess tests are not covered
 clock-core	portable	implemented	task stdlib	deterministic Clock core, separate from calendar and time-zone data
 random-core	portable	implemented	task stdlib	deterministic core; the Linux entropy adapter is the only nondeterministic point
 filesystem-process-env	adapter	implemented	task stdlib	Linux x86-64 syscall seed: files, memory, process, env, sockets, time

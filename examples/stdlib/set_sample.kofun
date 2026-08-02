@@ -1,0 +1,153 @@
+# stdlib/set sample: SetInt with unique membership and total set algebra.
+#
+# The canonical stdlib/set/set.kofun contract: unique membership, insert and
+# remove as values, union/intersection/difference as total operations, and a
+# deterministic ascending traversal.  The executable representation is a
+# characteristic Int over the finite universe 0..29: bit v is set exactly
+# when v is a member.  Arithmetic (powers of two, quotient, remainder)
+# replaces bitwise operators, which are outside the executable slice.
+#
+# Tests live in set_sample_test.kofun and run with `kofun unittest`.
+
+fn set_universe() -> Int {
+    return 30
+}
+
+fn power_of_two(exponent: Int) -> Int {
+    if exponent <= 0 {
+        return 1
+    }
+    return 2 * power_of_two(exponent - 1)
+}
+
+fn set_empty() -> Int {
+    return 0
+}
+
+fn set_is_member(set: Int, value: Int) -> Int {
+    if value < 0 {
+        return 0
+    }
+    if value >= set_universe() {
+        return 0
+    }
+    return set // power_of_two(value) % 2
+}
+
+fn set_insert(set: Int, value: Int) -> Int {
+    if value < 0 {
+        return set
+    }
+    if value >= set_universe() {
+        return set
+    }
+    if set_is_member(set, value) == 1 {
+        return set
+    }
+    return set + power_of_two(value)
+}
+
+fn set_remove(set: Int, value: Int) -> Int {
+    if set_is_member(set, value) == 0 {
+        return set
+    }
+    return set - power_of_two(value)
+}
+
+fn set_size_from(set: Int, value: Int) -> Int {
+    if value >= set_universe() {
+        return 0
+    }
+    return set_is_member(set, value) + set_size_from(set, value + 1)
+}
+
+fn set_size(set: Int) -> Int {
+    return set_size_from(set, 0)
+}
+
+fn set_union_from(left: Int, right: Int, value: Int) -> Int {
+    if value >= set_universe() {
+        return 0
+    }
+    let rest = set_union_from(left, right, value + 1)
+    if set_is_member(left, value) == 1 {
+        return rest + power_of_two(value)
+    }
+    if set_is_member(right, value) == 1 {
+        return rest + power_of_two(value)
+    }
+    return rest
+}
+
+fn set_union(left: Int, right: Int) -> Int {
+    return set_union_from(left, right, 0)
+}
+
+fn set_intersection_from(left: Int, right: Int, value: Int) -> Int {
+    if value >= set_universe() {
+        return 0
+    }
+    let rest = set_intersection_from(left, right, value + 1)
+    if set_is_member(left, value) == 1 {
+        if set_is_member(right, value) == 1 {
+            return rest + power_of_two(value)
+        }
+    }
+    return rest
+}
+
+fn set_intersection(left: Int, right: Int) -> Int {
+    return set_intersection_from(left, right, 0)
+}
+
+fn set_difference_from(left: Int, right: Int, value: Int) -> Int {
+    if value >= set_universe() {
+        return 0
+    }
+    let rest = set_difference_from(left, right, value + 1)
+    if set_is_member(left, value) == 1 {
+        if set_is_member(right, value) == 0 {
+            return rest + power_of_two(value)
+        }
+    }
+    return rest
+}
+
+fn set_difference(left: Int, right: Int) -> Int {
+    return set_difference_from(left, right, 0)
+}
+
+# Deterministic ascending traversal: prints each member on its own line.
+fn set_print_ascending_from(set: Int, value: Int) -> Int {
+    if value >= set_universe() {
+        return 0
+    }
+    if set_is_member(set, value) == 1 {
+        print(value)
+    }
+    return set_print_ascending_from(set, value + 1)
+}
+
+fn set_print_ascending(set: Int) -> Int {
+    return set_print_ascending_from(set, 0)
+}
+
+fn set_of_three(first: Int, second: Int, third: Int) -> Int {
+    return set_insert(set_insert(set_insert(set_empty(), first), second), third)
+}
+
+fn main() {
+    let evens = set_of_three(2, 4, 6)
+    let low = set_of_three(1, 2, 3)
+    print(set_size(evens))
+    print(set_is_member(evens, 4))
+    print(set_is_member(evens, 5))
+    let ignored_dup = set_insert(evens, 4)
+    print(set_size(ignored_dup))
+    print(set_size(set_remove(evens, 4)))
+    print(set_size(set_union(evens, low)))
+    print(set_size(set_intersection(evens, low)))
+    print(set_size(set_difference(evens, low)))
+    let ignored_print = set_print_ascending(set_union(evens, low))
+    print(ignored_print)
+}

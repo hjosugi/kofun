@@ -1,0 +1,96 @@
+# kotest suite for json_sample.kofun; run with `kofun unittest`.
+
+fn test_balanced_documents_report_depth() -> Int {
+    let mut failures = 0
+    let flat: JsonScan = json_scan("[1, 2, 3]")
+    match flat {
+        JsonBalanced(depth) => { failures = failures + expect_eq_int(depth, 1) },
+        _ => { failures = failures + fail_now("expected JsonBalanced") },
+    }
+    let nested: JsonScan = json_scan("[1, [2, [3]]]")
+    match nested {
+        JsonBalanced(depth) => { failures = failures + expect_eq_int(depth, 3) },
+        _ => { failures = failures + fail_now("expected JsonBalanced") },
+    }
+    let empty: JsonScan = json_scan("")
+    match empty {
+        JsonBalanced(depth) => { failures = failures + expect_eq_int(depth, 0) },
+        _ => { failures = failures + fail_now("expected JsonBalanced") },
+    }
+    return failures
+}
+
+fn test_unbalanced_reports_first_bad_position() -> Int {
+    let mut failures = 0
+    let unclosed: JsonScan = json_scan("[1, 2")
+    match unclosed {
+        JsonUnbalanced(position) => {
+            failures = failures + expect_eq_int(position, 5)
+        },
+        _ => { failures = failures + fail_now("expected JsonUnbalanced") },
+    }
+    let stray: JsonScan = json_scan("1]")
+    match stray {
+        JsonUnbalanced(position) => {
+            failures = failures + expect_eq_int(position, 1)
+        },
+        _ => { failures = failures + fail_now("expected JsonUnbalanced") },
+    }
+    return failures
+}
+
+fn test_nesting_limit_is_enforced() -> Int {
+    let mut failures = 0
+    let at_limit: JsonScan = json_scan("[[[[[[[[0]]]]]]]]")
+    failures = failures + expect_eq_int(json_scan_code(at_limit), 0)
+    failures = failures + expect_eq_int(json_scan_detail(at_limit), json_max_nesting())
+    let beyond: JsonScan = json_scan("[[[[[[[[[0]]]]]]]]]")
+    match beyond {
+        JsonTooDeep(position) => {
+            failures = failures + expect_eq_int(position, json_max_nesting())
+        },
+        _ => { failures = failures + fail_now("expected JsonTooDeep") },
+    }
+    return failures
+}
+
+fn test_quotes_are_outside_this_profile() -> Int {
+    let mut failures = 0
+    let quoted: JsonScan = json_scan("[\"text\"]")
+    match quoted {
+        JsonOutsideProfile(position) => {
+            failures = failures + expect_eq_int(position, 1)
+        },
+        _ => { failures = failures + fail_now("expected JsonOutsideProfile") },
+    }
+    return failures
+}
+
+fn test_value_kind_classification() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(json_value_kind("{}"), 1)
+    failures = failures + expect_eq_int(json_value_kind("  [1]"), 2)
+    failures = failures + expect_eq_int(json_value_kind("42"), 3)
+    failures = failures + expect_eq_int(json_value_kind("-1"), 3)
+    failures = failures + expect_eq_int(json_value_kind("true"), 4)
+    failures = failures + expect_eq_int(json_value_kind("false"), 4)
+    failures = failures + expect_eq_int(json_value_kind("null"), 4)
+    failures = failures + expect_eq_int(json_value_kind(""), 0)
+    failures = failures + expect_eq_int(json_value_kind("   "), 0)
+    failures = failures + expect_eq_int(json_value_kind("?"), 0 - 1)
+    return failures
+}
+
+fn test_array_element_counting() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(json_array_element_count("[]"), 0)
+    failures = failures + expect_eq_int(json_array_element_count("[1]"), 1)
+    failures = failures + expect_eq_int(json_array_element_count("[1, 2, 3]"), 3)
+    # Nested containers hide their separators from the top level.
+    failures = failures + expect_eq_int(
+        json_array_element_count("[1, [2, 3], 4]"), 3)
+    failures = failures + expect_eq_int(
+        json_array_element_count("[[1, 2], [3, 4]]"), 2)
+    failures = failures + expect_eq_int(json_array_element_count("42"), 0 - 1)
+    return failures
+}

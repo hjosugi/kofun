@@ -62,6 +62,10 @@ usage:
   kofun check INPUT.kofun --emit-kif OUTPUT.kif
       KIF is an authoritative, source-free Stage 2 interface.
   kofun test [PATH]
+  kofun unittest [PATH ...] [--filter SUBSTRING] [--list] [--watch]
+                 [--no-color] [--keep-going]
+      Runs kotest unit-test suites (*_test.kofun and embedded fn test_*
+      functions); see tooling/kotest/README.md.
   kofun bootstrap
   kofun emit-c INPUT.kofun OUTPUT.c
   kofun bindgen-c HEADER.h --out-dir DIR [--module NAME]
@@ -1121,6 +1125,10 @@ $2"
         trap 'rm -rf "$work"' 0 1 2 15
         build_file "$2" "$work/program" "$work/program.c"
         "$work/program"
+        ;;
+    unittest)
+        shift
+        exec sh "$ROOT/tooling/kotest/run.sh" "$@"
         ;;
     test)
         test "$#" -le 2 || { usage >&2; exit 2; }
