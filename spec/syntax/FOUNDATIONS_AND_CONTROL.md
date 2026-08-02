@@ -21,7 +21,7 @@ compiler cannot yet produce the final diagnostic.
 | Issue | Subject | Current executable evidence | Status |
 | --- | --- | --- | --- |
 | #35 | keyword minimalism | Stage 2 recognizes the Core keywords used by the executable fixture | partial |
-| #36 | Unicode identifiers | Stage 1, Stage 2, and native Core share pinned XID/NFC/confusable/bidi validation; Japanese and Hangul execute | implemented for Core |
+| #36 | Unicode identifiers | Stage 1, Stage 2, and native Core share pinned XID/NFC/confusable/bidi validation; Japanese and Hangul execute; #996 defines but does not implement the cross-module visible-set rule | implemented for one compilation unit; cross-module design accepted |
 | #37 | function declarations | Stage 2 records top-level function names, arities, and spans; C lowering accepts only `fn main()` | partial |
 | #38 | automatic statement termination | newline-separated Core statements compile and execute | partial |
 | #39 | mutable bindings | Stage 2 Core executes mutable `Int` rebinding and rejects immutable or undeclared targets | implemented for Core |
@@ -166,6 +166,60 @@ identifier spelling. Two distinct identifier spellings with the same UTS #39
 confusable skeleton in one compilation unit are a hard error; confusable
 detection never changes name resolution.
 
+#### Cross-module visible-set rule
+
+The accepted cross-module v1 rule applies separately to each resolving module.
+After ordinary name resolution has applied visibility, selective imports,
+explicit aliases, and re-exports, the resolver must examine only that module's
+**effective visible binding set**. It must reject two distinct effective local
+spellings that have the same pinned UTS #39 confusable skeleton in the same
+semantic namespace. The comparison key is:
+
+```text
+(resolving ModuleId, NamespaceId, confusable skeleton of effective local spelling)
+```
+
+The rule does not scan a whole dependency closure or package export table.
+Private, inaccessible, unselected, and otherwise invisible declarations do not
+participate and must not be disclosed by the diagnostic. The same spelling in
+different namespaces remains legal under the namespace contract. Two
+scalar-for-scalar-equal spellings remain an ordinary duplicate/name-resolution
+case rather than a confusable collision.
+
+An explicit import alias is checked under its effective local spelling. An
+author can therefore resolve a dependency-created collision by omitting one
+selective import or by assigning one import a non-confusable alias. A re-export
+participates first in the facade's visible set under its exported spelling and
+again in each consumer's visible set under the spelling that consumer actually
+imports. Neither an alias nor a re-export changes the original target
+`SymbolId`.
+
+A cross-module collision is a hard error with the distinct diagnostic code
+`EUNICODE008`; same-compilation-unit `EUNICODE006` remains unchanged and
+`EUNICODE007` remains the Unicode resource-failure code. The local
+declaration/import/re-export site that makes the conflicting pair visible is
+the primary span. Related entries are ordered by stable namespace and binding
+identity, then canonical provenance. When disclosure permits, a related entry
+names the visible external declaration location. Otherwise it names only the
+disclosure-safe module/export identity and omits the hidden path and span. One
+diagnostic is emitted per comparison key with a bounded, ordered related list;
+the resolver must not emit every pair in a quadratic collision set.
+
+The resolver symbol table after visibility filtering is the execution
+authority. Source declarations and decoded KIF exports supply the effective
+NFC spelling; the resolver recomputes the skeleton with the same pinned Unicode
+implementation used for `EUNICODE006`. KIF v1 does not persist a second
+skeleton field or become a second Unicode authority. Incremental and cached
+resolution must key this result on the effective visible-binding vector and the
+pinned Unicode-data digest, and must recompute it when either changes.
+
+**Implementation status:** this cross-module rule is accepted design only.
+Current compilers enforce `EUNICODE006` within one compilation unit but do not
+emit `EUNICODE008`. Implementation child #1018 owns resolver/KIF fixtures
+for local-versus-imported, imported-versus-imported, alias remedy, selective
+omission, re-export, namespace near-miss, inaccessible-symbol non-disclosure,
+and cached-interface invalidation before any implementation claim is made.
+
 ```kofun
 # valid
 fn 面積(幅: Int, 高さ: Int) -> Int {
@@ -183,7 +237,8 @@ locale-independent Unicode 17 runtime. The executable corpus accepts Japanese,
 Hangul, Arabic, Hebrew, Hindi, and Thai XID names; rejects non-NFC spelling,
 UTS #39 skeleton collisions, invalid UTF-8, and bidi source controls; and
 mangles Stage 2 C output to ASCII-only symbols. Cross-module confusable
-collision detection remains tied to the future module resolver.
+collision detection has the accepted resolver contract above but remains
+unimplemented until #1018 lands.
 
 ## #37 — Function declarations
 
