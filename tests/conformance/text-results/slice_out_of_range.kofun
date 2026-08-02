@@ -1,0 +1,4 @@
+fn main() -> Int {
+    print(text_slice("abc", 0, 4))
+    return 0
+}

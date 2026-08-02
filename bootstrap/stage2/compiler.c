@@ -4119,6 +4119,12 @@ static const char *numeric_primary_type(
     int64_t function_open,
     int64_t start
 );
+static bool text_operand(
+    const char *source,
+    const char *hir,
+    int64_t function_open,
+    int64_t start
+);
 static char *numeric_conversion_at(const char *source, int64_t cursor);
 static const char *numeric_conversion_result(const char *conversion);
 static int64_t numeric_member_argument(
@@ -6264,6 +6270,12 @@ static char *emit_expression(
         function_open,
         start
     );
+    bool left_is_text = text_operand(
+        source,
+        hir,
+        function_open,
+        start
+    );
     int64_t operator_start = skip_trivia(source, cursor);
     while (operator_start < end) {
         char *operator_text = token_copy(source, operator_start);
@@ -6273,6 +6285,12 @@ static char *emit_expression(
         );
         int64_t right_end = product_end(source, right_start);
         char *right = emit_product(source, hir, right_start, right_end);
+        bool right_is_text = text_operand(
+            source,
+            hir,
+            function_open,
+            right_start
+        );
         /* Same rule as `emit_product`: a rejected operand must not be wrapped
          * into a call that looks like a valid expression. */
         if (strncmp(emitted, "error[", 6) == 0) {
@@ -6287,7 +6305,20 @@ static char *emit_expression(
         }
         char *combined = emitted;
         if (strcmp(operator_text, "+") == 0) {
-            if (strcmp(type, "Decimal") == 0) {
+            if (left_is_text || right_is_text) {
+                if (!left_is_text || !right_is_text) {
+                    free(emitted);
+                    free(right);
+                    free(operator_text);
+                    return lower_error(
+                        "E2S155",
+                        "operator `+` requires Text + Text or matching "
+                        "numeric operands",
+                        operator_start
+                    );
+                }
+                combined = format_two("kofun_text_concat", emitted, right);
+            } else if (strcmp(type, "Decimal") == 0) {
                 combined = format_two(
                     "kofun_decimal_value_add",
                     emitted,
@@ -6299,7 +6330,16 @@ static char *emit_expression(
                 combined = format_two("kofun_add", emitted, right);
             }
         } else if (strcmp(operator_text, "-") == 0) {
-            if (strcmp(type, "Decimal") == 0) {
+            if (left_is_text || right_is_text) {
+                free(emitted);
+                free(right);
+                free(operator_text);
+                return lower_error(
+                    "E2S155",
+                    "only operator `+` is defined on Text",
+                    operator_start
+                );
+            } else if (strcmp(type, "Decimal") == 0) {
                 combined = format_two(
                     "kofun_decimal_value_subtract",
                     emitted,
@@ -6315,6 +6355,7 @@ static char *emit_expression(
         free(right);
         free(operator_text);
         emitted = combined;
+        left_is_text = left_is_text && right_is_text;
         cursor = right_end;
         operator_start = skip_trivia(source, cursor);
     }
@@ -7246,45 +7287,12 @@ static bool primary_is_text(
     const char *hir,
     int64_t start
 ) {
-    int64_t cursor = skip_trivia(source, start);
-    while (token_equal(source, cursor, "(")) {
-        cursor = skip_trivia(source, token_end(source, cursor));
-    }
-    if (strcmp(token_kind(source, cursor), "string") == 0) return true;
-    if (strcmp(token_kind(source, cursor), "identifier") != 0) return false;
-    char *conversion = numeric_conversion_at(source, cursor);
-    bool text = strcmp(conversion, "Decimal.format") == 0;
-    free(conversion);
-    if (text) return true;
-    char *name = token_copy(source, cursor);
-    int64_t open = skip_trivia(source, token_end(source, cursor));
-    if (token_equal(source, open, "(")) {
-        char *declared = function_return_type(source, name);
-        text = strcmp(name, "text_slice") == 0 ||
-            strcmp(declared, "Text") == 0;
-        free(declared);
-        free(name);
-        return text;
-    }
-    char *binding_id = hir_use_binding_id(hir, cursor);
-    char *binding_type = hir_binding_field(hir, binding_id, 5);
-    text = strcmp(binding_type, "Text") == 0;
-    if (!text && token_equal(source, open, ".")) {
-        int64_t field_cursor = skip_trivia(source, token_end(source, open));
-        char *field = token_copy(source, field_cursor);
-        char *field_type = record_field_type_named(
-            source,
-            binding_type,
-            field
-        );
-        text = strcmp(field_type, "Text") == 0;
-        free(field_type);
-        free(field);
-    }
-    free(binding_type);
-    free(binding_id);
-    free(name);
-    return text;
+    return text_operand(
+        source,
+        hir,
+        enclosing_function_open(source, start),
+        start
+    );
 }
 
 static bool comparison_operator(const char *source, int64_t cursor) {
@@ -15110,9 +15118,11 @@ static char *lower_body(
                     &emitted,
                     "    {\n"
                     "        const char *kofun_value = %s;\n"
+                    "        if (kofun_failed) return %s;\n"
                     "        printf(\"%%s\\n\", kofun_value);\n"
                     "    }\n",
-                    value
+                    value,
+                    failure_result
                 );
             } else {
                 buffer_format(
@@ -16784,6 +16794,69 @@ static const char *numeric_primary_type(
 }
 
 /*
+ * Whether one primary is Text. This stays separate from
+ * `numeric_primary_type`: E2S100 consumes that helper and must continue to see
+ * Text as outside the numeric lattice.
+ */
+static bool text_operand(
+    const char *source,
+    const char *hir,
+    int64_t function_open,
+    int64_t start
+) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, start);
+    if (cursor >= length) return false;
+    while (token_equal(source, cursor, "(")) {
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    if (strcmp(token_kind(source, cursor), "string") == 0) return true;
+    if (strcmp(token_kind(source, cursor), "identifier") != 0) return false;
+
+    char *conversion = numeric_conversion_at(source, cursor);
+    bool result = strcmp(conversion, "Decimal.format") == 0;
+    free(conversion);
+    if (result) return true;
+
+    char *name = token_copy(source, cursor);
+    int64_t open = skip_trivia(source, token_end(source, cursor));
+    if (open < length && token_equal(source, open, "(")) {
+        char *declared = function_return_type(source, name);
+        const char *builtin = builtin_return_type(name);
+        result = strcmp(declared, "Text") == 0 ||
+            (builtin != NULL && strcmp(builtin, "Text") == 0);
+        free(declared);
+        free(name);
+        return result;
+    }
+
+    int64_t scope_open = parent_block_open(source, function_open, cursor);
+    char *scope_id = hir_scope_id_for_open(hir, scope_open);
+    char *binding_id = hir_resolve_binding(hir, scope_id, cursor, name);
+    free(scope_id);
+    char *binding_type = binding_id[0] == '\0'
+        ? owned_text("")
+        : hir_binding_field(hir, binding_id, 5);
+    result = strcmp(binding_type, "Text") == 0;
+    if (!result && token_equal(source, open, ".")) {
+        int64_t field_cursor = skip_trivia(source, token_end(source, open));
+        char *field = token_copy(source, field_cursor);
+        char *field_type = record_field_type_named(
+            source,
+            binding_type,
+            field
+        );
+        result = strcmp(field_type, "Text") == 0;
+        free(field_type);
+        free(field);
+    }
+    free(binding_type);
+    free(binding_id);
+    free(name);
+    return result;
+}
+
+/*
  * `Int`, `Decimal` and `Float` never receive implicit promotion (#710 frozen
  * decision 4), so an arithmetic expression mixing two of them is a type error
  * rather than a conversion.
@@ -18439,6 +18512,57 @@ static char *validate_struct_identity(const char *source) {
     return owned_text("");
 }
 
+/*
+ * Bound the number of syntactic Text-producing sites before writing C. The
+ * scan skips emitted C string literals: a Kofun string containing a helper's
+ * spelling is data, not a temporary site. Dynamic executions have a separate
+ * non-wrapping arena limit in the emitted runtime.
+ */
+static int64_t count_text_sites(const char *bodies) {
+    static const char *calls[] = {
+        "kofun_text_slice(",
+        "kofun_to_text(",
+        "kofun_text_concat(",
+    };
+    int64_t site_count = 0;
+    bool quoted = false;
+    bool escaped = false;
+    size_t cursor = 0;
+    while (bodies[cursor] != '\0') {
+        if (quoted) {
+            if (escaped) {
+                escaped = false;
+            } else if (bodies[cursor] == '\\') {
+                escaped = true;
+            } else if (bodies[cursor] == '"') {
+                quoted = false;
+            }
+            ++cursor;
+            continue;
+        }
+        if (bodies[cursor] == '"') {
+            quoted = true;
+            ++cursor;
+            continue;
+        }
+        size_t width = 0;
+        for (size_t index = 0; index < sizeof calls / sizeof calls[0]; ++index) {
+            size_t candidate = strlen(calls[index]);
+            if (strncmp(bodies + cursor, calls[index], candidate) == 0) {
+                width = candidate;
+                break;
+            }
+        }
+        if (width > 0) {
+            ++site_count;
+            cursor += width;
+        } else {
+            ++cursor;
+        }
+    }
+    return site_count;
+}
+
 static char *lower_c_body(const char *source, const char *hir) {
     int64_t length = source_length(source);
     char *identity_check = validate_struct_identity(source);
@@ -18707,6 +18831,16 @@ static char *lower_c_body(const char *source, const char *hir) {
             -1
         );
     }
+    int64_t text_site_count = count_text_sites(bodies.data);
+    if (text_site_count > 256) {
+        free(prototypes.data);
+        free(bodies.data);
+        return lower_error(
+            "E2S156",
+            "Text temporary site limit is 256",
+            -1
+        );
+    }
     Buffer output;
     buffer_init(&output);
     buffer_append(
@@ -18736,27 +18870,37 @@ static char *lower_c_body(const char *source, const char *hir) {
         "    if (!kofun_failed) { fputs(message, stderr); fputc('\\n', stderr); }\n"
         "    kofun_failed = true;\n"
         "}\n"
+    );
+    buffer_append(
+        &output,
+        "enum { KOFUN_TEXT_TEMPORARY_LIMIT = 4096 };\n"
+        "static char kofun_text_slots[KOFUN_TEXT_TEMPORARY_LIMIT][256];\n"
+        "static size_t kofun_text_next_slot;\n"
+        "static inline char *kofun_text_temporary(void) {\n"
+        "    if (kofun_text_next_slot >= KOFUN_TEXT_TEMPORARY_LIMIT) {\n"
+        "        kofun_error(\"error[R022]: bounded Text temporary limit is 4096\"); return NULL;\n"
+        "    }\n"
+        "    return kofun_text_slots[kofun_text_next_slot++];\n"
+        "}\n"
         "static inline const char *kofun_text_slice(const char *text, int64_t start, int64_t end) {\n"
-        "    static char slots[64][32]; static size_t next_slot;\n"
         "    size_t length = strlen(text);\n"
         "    if (start < 0 || end < start || (uint64_t)end > length || end - start > 31) {\n"
         "        kofun_error(\"error[R020]: bounded Text slice out of range\"); return \"\";\n"
         "    }\n"
-        "    char *slot = slots[next_slot++ % 64u]; size_t width = (size_t)(end - start);\n"
+        "    char *slot = kofun_text_temporary(); if (slot == NULL) return \"\";\n"
+        "    size_t width = (size_t)(end - start);\n"
         "    memcpy(slot, text + start, width); slot[width] = '\\0'; return slot;\n"
         "}\n"
         "static inline const char *kofun_to_text(int64_t value) {\n"
-        "    static char slots[64][24]; static size_t next_slot;\n"
-        "    char *slot = slots[next_slot++ % 64u];\n"
-        "    snprintf(slot, sizeof slots[0], \"%\" PRId64, value); return slot;\n"
+        "    char *slot = kofun_text_temporary(); if (slot == NULL) return \"\";\n"
+        "    snprintf(slot, 256, \"%\" PRId64, value); return slot;\n"
         "}\n"
         "static inline const char *kofun_text_concat(const char *left, const char *right) {\n"
-        "    static char slots[64][256]; static size_t next_slot;\n"
         "    size_t left_width = strlen(left), right_width = strlen(right);\n"
         "    if (left_width + right_width > 255) {\n"
         "        kofun_error(\"error[R021]: bounded Text concatenation exceeds 255 bytes\"); return \"\";\n"
         "    }\n"
-        "    char *slot = slots[next_slot++ % 64u];\n"
+        "    char *slot = kofun_text_temporary(); if (slot == NULL) return \"\";\n"
         "    memcpy(slot, left, left_width); memcpy(slot + left_width, right, right_width);\n"
         "    slot[left_width + right_width] = '\\0'; return slot;\n"
         "}\n"

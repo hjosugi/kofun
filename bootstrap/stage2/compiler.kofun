@@ -3371,6 +3371,12 @@ fn emit_expression(source: Text, hir: Text, start: Int, end: Int) -> Text {
         enclosing_function_open(source, start),
         start
     )
+    let mut left_is_text = text_operand(
+        source,
+        hir,
+        enclosing_function_open(source, start),
+        start
+    )
     let mut operator_start = skip_trivia(source, cursor)
     while operator_start < end {
         let operator = token_text(source, operator_start)
@@ -3380,6 +3386,12 @@ fn emit_expression(source: Text, hir: Text, start: Int, end: Int) -> Text {
         )
         let right_end = product_end(source, right_start)
         let right = emit_product(source, hir, right_start, right_end)
+        let right_is_text = text_operand(
+            source,
+            hir,
+            enclosing_function_open(source, start),
+            right_start
+        )
         # Same rule as `emit_product`: a rejected operand must not be wrapped
         # into a call that looks like a valid expression.
         if starts_with(emitted, "error[") {
@@ -3389,7 +3401,14 @@ fn emit_expression(source: Text, hir: Text, start: Int, end: Int) -> Text {
             return right
         }
         if operator == "+" {
-            if value_type == "Decimal" {
+            if left_is_text || right_is_text {
+                if !left_is_text || !right_is_text {
+                    return "error[E2S155]: operator `+` requires Text + Text " +
+                    "or matching numeric operands at byte " +
+                    to_text(operator_start)
+                }
+                emitted = "kofun_text_concat(" + emitted + ", " + right + ")"
+            } else if value_type == "Decimal" {
                 emitted = "kofun_decimal_value_add(" + emitted +
                 ", " + right + ")"
             } else if value_type == "Float" {
@@ -3399,7 +3418,10 @@ fn emit_expression(source: Text, hir: Text, start: Int, end: Int) -> Text {
                 emitted = "kofun_add(" + emitted + ", " + right + ")"
             }
         } else if operator == "-" {
-            if value_type == "Decimal" {
+            if left_is_text || right_is_text {
+                return "error[E2S155]: only operator `+` is defined on Text " +
+                "at byte " + to_text(operator_start)
+            } else if value_type == "Decimal" {
                 emitted = "kofun_decimal_value_subtract(" + emitted +
                 ", " + right + ")"
             } else if value_type == "Float" {
@@ -3409,6 +3431,7 @@ fn emit_expression(source: Text, hir: Text, start: Int, end: Int) -> Text {
                 emitted = "kofun_sub(" + emitted + ", " + right + ")"
             }
         }
+        left_is_text = left_is_text && right_is_text
         cursor = right_end
         operator_start = skip_trivia(source, cursor)
     }
@@ -4555,39 +4578,12 @@ fn call_argument_expected_type(source: Text, target: Int) -> Text {
 # `initializer_type` deliberately types an entire condition as Bool. Text
 # comparison lowering needs only the left primary's type.
 fn primary_is_text(source: Text, hir: Text, start: Int) -> Bool {
-    let mut cursor = skip_trivia(source, start)
-    while token_text(source, cursor) == "(" {
-        cursor = skip_trivia(source, token_end(source, cursor))
-    }
-    if token_kind(source, cursor) == "string" {
-        return true
-    }
-    if token_kind(source, cursor) != "identifier" {
-        return false
-    }
-    if numeric_conversion_at(source, cursor) == "Decimal.format" {
-        return true
-    }
-    let name = token_text(source, cursor)
-    let open = skip_trivia(source, token_end(source, cursor))
-    if token_text(source, open) == "(" {
-        return name == "text_slice" ||
-        function_return_type(source, name) == "Text"
-    }
-    let binding_id = hir_use_binding_id(hir, cursor)
-    let binding_type = hir_binding_field(hir, binding_id, 5)
-    if binding_type == "Text" {
-        return true
-    }
-    if token_text(source, open) == "." {
-        let field_cursor = skip_trivia(source, token_end(source, open))
-        return record_field_type_named(
-            source,
-            binding_type,
-            token_text(source, field_cursor)
-        ) == "Text"
-    }
-    return false
+    return text_operand(
+        source,
+        hir,
+        enclosing_function_open(source, start),
+        start
+    )
 }
 
 fn comparison_operator(token: Text) -> Bool {
@@ -8643,6 +8639,8 @@ fn lower_body(
                 } else if value_type == "Text" {
                     emitted = emitted + "    {\n" +
                     "        const char *kofun_value = " + value + ";\n" +
+                    "        if (kofun_failed) return " + failure_result +
+                    ";\n" +
                     "        printf(\"%s\\n\", kofun_value);\n" +
                     "    }\n"
                 } else {
@@ -9532,6 +9530,61 @@ fn numeric_primary_type(
     return numeric_name(hir_binding_field(hir, binding_id, 5))
 }
 
+# Whether one primary is Text. This stays separate from
+# `numeric_primary_type` so E2S100 continues to see only the numeric lattice.
+fn text_operand(
+    source: Text,
+    hir: Text,
+    function_open: Int,
+    start: Int
+) -> Bool {
+    let mut cursor = skip_trivia(source, start)
+    if cursor >= len(source) {
+        return false
+    }
+    while token_text(source, cursor) == "(" {
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    if token_kind(source, cursor) == "string" {
+        return true
+    }
+    if token_kind(source, cursor) != "identifier" {
+        return false
+    }
+    if numeric_conversion_at(source, cursor) == "Decimal.format" {
+        return true
+    }
+    let name = token_text(source, cursor)
+    let open = skip_trivia(source, token_end(source, cursor))
+    if open < len(source) && token_text(source, open) == "(" {
+        return function_return_type(source, name) == "Text" ||
+        builtin_return_type(name) == "Text"
+    }
+    let scope_open = parent_block_open(source, function_open, cursor)
+    let binding_id = hir_resolve_binding(
+        hir,
+        hir_scope_id_for_open(hir, scope_open),
+        cursor,
+        name
+    )
+    let mut binding_type = ""
+    if len(binding_id) > 0 {
+        binding_type = hir_binding_field(hir, binding_id, 5)
+    }
+    if binding_type == "Text" {
+        return true
+    }
+    if token_text(source, open) == "." {
+        let field_cursor = skip_trivia(source, token_end(source, open))
+        return record_field_type_named(
+            source,
+            binding_type,
+            token_text(source, field_cursor)
+        ) == "Text"
+    }
+    return false
+}
+
 fn numeric_name(name: Text) -> Text {
     if name == "Int" || name == "Decimal" || name == "Float" {
         return name
@@ -10261,6 +10314,50 @@ fn validate_struct_identity(source: Text) -> Text {
     return ""
 }
 
+# Bound syntactic Text-producing sites before writing C. Emitted C string
+# literals are skipped because a helper spelling inside user data is not a
+# temporary site. Dynamic executions use a separate non-wrapping arena limit.
+fn count_text_sites(bodies: Text) -> Int {
+    let mut count = 0
+    let mut cursor = 0
+    let mut quoted = false
+    let mut escaped = false
+    while cursor < len(bodies) {
+        let symbol = text_slice(bodies, cursor, cursor + 1)
+        if quoted {
+            if escaped {
+                escaped = false
+            } else if symbol == "\\" {
+                escaped = true
+            } else if symbol == "\"" {
+                quoted = false
+            }
+            cursor = cursor + 1
+        } else if symbol == "\"" {
+            quoted = true
+            cursor = cursor + 1
+        } else if cursor + 17 <= len(bodies) &&
+                  text_slice(bodies, cursor, cursor + 17) ==
+                  "kofun_text_slice(" {
+            count = count + 1
+            cursor = cursor + 17
+        } else if cursor + 14 <= len(bodies) &&
+                  text_slice(bodies, cursor, cursor + 14) ==
+                  "kofun_to_text(" {
+            count = count + 1
+            cursor = cursor + 14
+        } else if cursor + 18 <= len(bodies) &&
+                  text_slice(bodies, cursor, cursor + 18) ==
+                  "kofun_text_concat(" {
+            count = count + 1
+            cursor = cursor + 18
+        } else {
+            cursor = cursor + 1
+        }
+    }
+    return count
+}
+
 fn lower_c_body(source: Text, hir: Text) -> Text {
     let identity_check = validate_struct_identity(source)
     if len(identity_check) > 0 {
@@ -10391,6 +10488,10 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     if main_count != 1 {
         return "error[E2S15]: C11 Core requires exactly one `fn main()`"
     }
+    let text_site_count = count_text_sites(bodies)
+    if text_site_count > 256 {
+        return "error[E2S156]: Text temporary site limit is 256"
+    }
     let mut decimal_include = ""
     if fractional_values {
         decimal_include = "#include \"decimal_v1.c\"\n"
@@ -10412,27 +10513,34 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     "    if (!kofun_failed) { fputs(message, stderr); fputc('\\n', stderr); }\n" +
     "    kofun_failed = true;\n" +
     "}\n" +
+    "enum { KOFUN_TEXT_TEMPORARY_LIMIT = 4096 };\n" +
+    "static char kofun_text_slots[KOFUN_TEXT_TEMPORARY_LIMIT][256];\n" +
+    "static size_t kofun_text_next_slot;\n" +
+    "static inline char *kofun_text_temporary(void) {\n" +
+    "    if (kofun_text_next_slot >= KOFUN_TEXT_TEMPORARY_LIMIT) {\n" +
+    "        kofun_error(\"error[R022]: bounded Text temporary limit is 4096\"); return NULL;\n" +
+    "    }\n" +
+    "    return kofun_text_slots[kofun_text_next_slot++];\n" +
+    "}\n" +
     "static inline const char *kofun_text_slice(const char *text, int64_t start, int64_t end) {\n" +
-    "    static char slots[64][32]; static size_t next_slot;\n" +
     "    size_t length = strlen(text);\n" +
     "    if (start < 0 || end < start || (uint64_t)end > length || end - start > 31) {\n" +
     "        kofun_error(\"error[R020]: bounded Text slice out of range\"); return \"\";\n" +
     "    }\n" +
-    "    char *slot = slots[next_slot++ % 64u]; size_t width = (size_t)(end - start);\n" +
+    "    char *slot = kofun_text_temporary(); if (slot == NULL) return \"\";\n" +
+    "    size_t width = (size_t)(end - start);\n" +
     "    memcpy(slot, text + start, width); slot[width] = '\\0'; return slot;\n" +
     "}\n" +
     "static inline const char *kofun_to_text(int64_t value) {\n" +
-    "    static char slots[64][24]; static size_t next_slot;\n" +
-    "    char *slot = slots[next_slot++ % 64u];\n" +
-    "    snprintf(slot, sizeof slots[0], \"%\" PRId64, value); return slot;\n" +
+    "    char *slot = kofun_text_temporary(); if (slot == NULL) return \"\";\n" +
+    "    snprintf(slot, 256, \"%\" PRId64, value); return slot;\n" +
     "}\n" +
     "static inline const char *kofun_text_concat(const char *left, const char *right) {\n" +
-    "    static char slots[64][256]; static size_t next_slot;\n" +
     "    size_t left_width = strlen(left), right_width = strlen(right);\n" +
     "    if (left_width + right_width > 255) {\n" +
     "        kofun_error(\"error[R021]: bounded Text concatenation exceeds 255 bytes\"); return \"\";\n" +
     "    }\n" +
-    "    char *slot = slots[next_slot++ % 64u];\n" +
+    "    char *slot = kofun_text_temporary(); if (slot == NULL) return \"\";\n" +
     "    memcpy(slot, left, left_width); memcpy(slot + left_width, right, right_width);\n" +
     "    slot[left_width + right_width] = '\\0'; return slot;\n" +
     "}\n" +

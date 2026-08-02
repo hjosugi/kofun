@@ -188,6 +188,11 @@ tasks:
     cmds:
       - "sh tests/conformance/optional-construction/run.sh"
 
+  text-results:
+    desc: "Verify bounded Stage 2 Text results, conversion, and concatenation"
+    cmds:
+      - "sh tests/conformance/text-results/run.sh"
+
   adt-exhaustiveness:
     desc: "Verify resolved flat-ADT match diagnostics"
     cmds:
@@ -694,6 +699,7 @@ tasks:
             optional \
             optional-narrowing \
             optional-construction \
+            text-results \
             adt-exhaustiveness \
             enum-match-value \
             module-symbols \
