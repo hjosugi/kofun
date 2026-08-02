@@ -1,0 +1,8 @@
+on_change registered 0
+add 0 value 12
+callback invocations 1 seen 12
+short copy 3 length 10 untouched 1
+exact copy 0 length 10 text counter=12
+terminated 1
+null handle -1
+null length -1

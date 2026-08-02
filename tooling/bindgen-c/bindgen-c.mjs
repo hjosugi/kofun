@@ -12,6 +12,10 @@
 //
 // Guarantees this tool makes:
 //   - clang is invoked through a structured argv (execFileSync, no shell);
+//   - every clang subprocess carries an explicit deterministic wall-clock
+//     timeout and a bounded captured stdout/stderr, so a header that makes
+//     the preprocessor diverge or emit unbounded output is refused with a
+//     stable nonzero diagnostic instead of hanging or exhausting memory;
 //   - headers and the clang AST are treated as untrusted input: parsing is
 //     bounded, nothing is eval'd, nothing from the header reaches a shell;
 //   - the same inputs produce byte-identical outputs: declarations are
@@ -38,7 +42,15 @@ const TRUST = 'raw-trusted-foreign';
 
 // Bounds. The c_abi profile caps come from bootstrap/c_abi/compiler.c and
 // keep the generated module inside what the checked profile accepts.
+//
+// The clang bounds are the ones a hostile header can attack: expansion that
+// does not terminate, expansion whose output does not fit in memory, and
+// diagnostics that are themselves unbounded. Each is a fixed number, not a
+// function of the input, so the same header always meets the same bound.
 const MAX_AST_BYTES = 128 * 1024 * 1024;
+const MAX_PREPROCESSED_BYTES = 64 * 1024 * 1024;
+const CLANG_TIMEOUT_MS = 20000;
+const MAX_DIAGNOSTIC_BYTES = 4096;
 const MAX_TYPEDEF_DEPTH = 32;
 const MAX_DECLS = 4096;
 const MAX_IDENTIFIER = 128;
@@ -196,15 +208,38 @@ function recordedPath(candidate) {
   return candidate;
 }
 
-function runClang(clang, args, inputLabel) {
+// Every clang subprocess goes through here, so every one of them is bounded
+// the same way: a fixed wall-clock timeout, a fixed captured-output ceiling,
+// and a truncated diagnostic. Nothing from the header reaches a shell; the
+// argv is structured and stdin is closed.
+//
+// The three failure shapes are named separately because they are different
+// defects: a timeout is expansion that does not terminate, an output-limit
+// hit is expansion that does not fit, and a nonzero exit is clang refusing
+// the input. All three exit 2 with a diagnostic that names the bound, and
+// all three happen before the output directory exists, so a refused run
+// leaves no partial artifact behind.
+function runClang(clang, args, inputLabel, maxBytes = MAX_AST_BYTES) {
   try {
     return execFileSync(clang, args, {
       encoding: 'utf8',
-      maxBuffer: MAX_AST_BYTES,
+      maxBuffer: maxBytes,
+      timeout: CLANG_TIMEOUT_MS,
+      killSignal: 'SIGKILL',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   } catch (error) {
-    const detail = error.stderr ? String(error.stderr).slice(0, 4096) : String(error.message);
+    if (error.code === 'ETIMEDOUT' || error.killed === true) {
+      fail(`clang exceeded the ${CLANG_TIMEOUT_MS} ms bound on ${inputLabel}; ` +
+        'the input was refused and nothing was generated');
+    }
+    if (error.code === 'ENOBUFS') {
+      fail(`clang output exceeded the ${maxBytes} byte bound on ${inputLabel}; ` +
+        'the input was refused and nothing was generated');
+    }
+    const detail = error.stderr
+      ? String(error.stderr).slice(0, MAX_DIAGNOSTIC_BYTES)
+      : String(error.message).slice(0, MAX_DIAGNOSTIC_BYTES);
     fail(`clang failed on ${inputLabel}:\n${detail}`);
     return '';
   }
@@ -510,7 +545,11 @@ function main() {
   const preprocessed = runClang(
     options.clang,
     ['-E', '-dD', ...commonArgs, headerAsPassed],
-    headerRecorded);
+    headerRecorded,
+    MAX_PREPROCESSED_BYTES);
+  if (preprocessed.length > MAX_PREPROCESSED_BYTES) {
+    fail('clang preprocessor output exceeds the size bound');
+  }
 
   const declarations = collectTranslationUnit(ast, headerAsPassed);
 
