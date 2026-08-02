@@ -1,0 +1,4 @@
+# code	adapter	channel	exit	primary-span	secondary-span	artifact
+E2S147	module-constants	stdout	1	required	not-applicable	forbidden
+E2S148	module-constants	stdout	1	required	not-applicable	forbidden
+E2S149	module-constants	stdout	1	required	not-applicable	forbidden

@@ -1,0 +1,18 @@
+# A local binding of the same name shadows the module constant inside its own
+# scope only; the constant is unchanged everywhere else.
+let LIMIT = 7
+
+fn from_constant() -> Int {
+    return LIMIT
+}
+
+fn from_local() -> Int {
+    let LIMIT = 99
+    return LIMIT
+}
+
+fn main() {
+    print(from_constant())
+    print(from_local())
+    print(LIMIT)
+}

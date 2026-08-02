@@ -1,0 +1,9 @@
+type Choice =
+    | First
+    | Second
+
+let Choice = 1
+
+fn main() {
+    print(Choice)
+}

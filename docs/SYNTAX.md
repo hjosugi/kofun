@@ -252,6 +252,34 @@ offer a targeted rewrite from `Fn[A, R]` to `A -> R` and from historical
 multi-argument forms to a parenthesized fixed-arity domain. `Fn` is otherwise
 an ordinary identifier.
 
+## Module constants
+
+A top-level `let` declares an immutable module constant. The initializer is
+exactly one integer literal, with an optional leading `-`:
+
+```kofun
+let MAX_RETRIES = 3
+let ERROR_LOW = -4095
+```
+
+A constant is visible to every function in its compilation unit and lowers to
+one file-scope C constant, so it is not a lexical binding: a function-local
+`let` of the same name shadows it inside that scope only. Constants carry no
+visibility modifier in this slice, so they stay internal to their compilation
+unit and add nothing to KIF.
+
+Four shapes are refused, each naming the constant it is about:
+
+| Written | Diagnostic |
+|---|---|
+| `let LIMIT = 1 + 2` | `E2S147` — the initializer is not one integer literal |
+| `let helper = 1` beside `fn helper()` | `E2S147` — the name collides with a declaration |
+| `let LIMIT = 1` twice | `E2S148` — duplicate module constant |
+| `let mut LIMIT = 1` | `E2S149` — a top-level `let` is immutable |
+
+`task module-constants` is the gate. Mutable module state, non-`Int`
+constants, and constant expressions are outside this slice.
+
 ## ADT declarations
 
 The executable Stage 2 C11 checkpoint accepts concrete enums with zero or one

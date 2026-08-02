@@ -1,0 +1,9 @@
+let helper = 1
+
+fn helper() -> Int {
+    return 2
+}
+
+fn main() {
+    print(helper())
+}

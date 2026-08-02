@@ -16,7 +16,7 @@
 # parsed top-level form: docs/LAW_SYSTEM.md states plainly that the active
 # compiler "does not parse, type-check, evaluate, or emit evidence for this
 # design", and the refusal recorded by tests/usability/check.sh is the
-# generic "expected top-level `fn` or `type`" — the reader is not told that
+# generic "expected top-level `fn`, `type`, or `let`" — the reader is not told that
 # laws are a known future form.
 #
 # Note the deliberate absence of higher-kinded types. `A` and `MA` are

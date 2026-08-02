@@ -14,7 +14,8 @@ The frontend performs five concrete operations:
 1. lexical scanning that ignores comments and treats escaped strings as single
    tokens, producing a deterministic token-span tape;
 2. structural parsing of a compilation unit into textual function,
-   zero/one-`Int`-payload enum, and bounded nominal `Int`/`Bool` record IR,
+   immutable integer module-constant, zero/one-`Int`-payload enum, and
+   bounded nominal `Int`/`Bool` record IR,
    including names, constructor tags or declaration-order fields, arities,
    byte spans, and top-level function/type visibility metadata;
 3. an identity source projection gated by successful lexing and parsing.

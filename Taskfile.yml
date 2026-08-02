@@ -188,6 +188,11 @@ tasks:
     cmds:
       - "sh tests/enum-match-value/check.sh"
 
+  module-constants:
+    desc: "Verify top-level integer module constants and their refusals"
+    cmds:
+      - "sh tests/module-constants/check.sh"
+
   module-symbols:
     desc: "Verify stable top-level declaration collection"
     cmds:
@@ -619,6 +624,7 @@ tasks:
             optional-narrowing \
             adt-exhaustiveness \
             enum-match-value \
+            module-constants \
             module-symbols \
             imports-qualified \
             import-aliases \
