@@ -75,8 +75,10 @@ KOFUN_NATIVE_BUILD_DIR="$WORK/native-compiler" \
 assert_file_empty "native empty-program stdout" "$WORK/native.stdout"
 assert_file_empty "native empty-program stderr" "$WORK/native.stderr"
 
-# Non-empty source must be refused rather than silently compiled into the
-# arena-only no-op entry point, and an existing artifact must be preserved.
+# Source outside the bounded Text slice must be refused rather than silently
+# compiled into the host-ABI profile, and an existing artifact must be
+# preserved. The arithmetic fixture remains unsupported because its bindings
+# are Int; ordinary Text programs are covered by tests/wasm-text-v1/check.sh.
 cp "$WORK/cli.wasm" "$WORK/preserved.wasm"
 set +e
 KOFUN_WASM_BUILD_DIR="$WORK/cli-compiler" \
@@ -85,11 +87,11 @@ KOFUN_WASM_BUILD_DIR="$WORK/cli-compiler" \
     >"$WORK/refused.stdout" 2>"$WORK/refused.stderr"
 status=$?
 set -e
-assert_num "non-empty profile build status" "$status" -eq 1
+assert_num "unsupported profile build status" "$status" -eq 1
 cmp "$WORK/cli.wasm" "$WORK/preserved.wasm"
-assert_file_empty "non-empty profile stdout" "$WORK/refused.stdout"
-assert_grep "non-empty profile diagnostic" -Fxq \
-    'kofun wasm32: wasm32-hostabi1 currently supports only an empty fn main() arena program' \
+assert_file_empty "unsupported profile stdout" "$WORK/refused.stdout"
+assert_grep "unsupported profile diagnostic" -Fxq \
+    'kofun wasm32: line 5: wasm32-hostabi1 bindings must be Text' \
     "$WORK/refused.stderr"
 
 set +e
@@ -99,14 +101,14 @@ KOFUN_WASM_BUILD_DIR="$WORK/cli-compiler" \
     >"$WORK/cold-refused.stdout" 2>"$WORK/cold-refused.stderr"
 cold_status=$?
 set -e
-assert_num "cold non-empty profile build status" "$cold_status" -eq 1
+assert_num "cold unsupported profile build status" "$cold_status" -eq 1
 assert_absent "cold refused profile artifact" "$WORK/cold-refused.wasm"
-assert_file_empty "cold non-empty profile stdout" "$WORK/cold-refused.stdout"
-assert_grep "cold non-empty profile diagnostic" -Fxq \
-    'kofun wasm32: wasm32-hostabi1 currently supports only an empty fn main() arena program' \
+assert_file_empty "cold unsupported profile stdout" "$WORK/cold-refused.stdout"
+assert_grep "cold unsupported profile diagnostic" -Fxq \
+    'kofun wasm32: line 5: wasm32-hostabi1 bindings must be Text' \
     "$WORK/cold-refused.stderr"
 
 printf '%s\n' \
-    'PASS: empty-program semantics agree with native x86-64 and non-empty source fails without an artifact' \
+    'PASS: empty-program semantics agree with native x86-64 and unsupported Int source fails without an artifact' \
     'PASS: legacy wasm32 sample bytes retain their pre-profile digest' \
     'PASS: repeated and sanitized wasm32-hostabi1 builds are byte-identical'
