@@ -95,10 +95,82 @@ test "$selected" -eq 3 ||
 test "$(grep -c 'selected-implementation=none' "$WORK/positive.first.ir")" -eq 0 ||
     fail 'a bounded call left its implementation unresolved'
 
-# No runtime lowering is claimed: the IR names no dictionary and no
-# monomorphised instance.
-! grep -Eq 'dictionary|monomorph|vtable' "$WORK/positive.first.ir" ||
-    fail 'the frontend claimed a runtime lowering'
+# Dictionary elaboration (#923). The descriptor is a trait's static dictionary
+# layout, the dictionary value is what one admissible implementation produces,
+# the dictionary parameter is what a declared bound becomes, and the dictionary
+# argument is what a bounded call passes.
+grep -F 'kofun-traits-ir/v2' "$WORK/positive.first.ir" >/dev/null ||
+    fail 'the IR header version does not record the dictionary records'
+grep -F 'dictionary-descriptor|descriptor-id=dictionary-descriptor:abi1/trait:local:Equal|trait=trait:local:Equal|abi=abi1|slots=1|slot-methods=method:trait:local:Equal:0' \
+    "$WORK/positive.first.ir" >/dev/null ||
+    fail 'the Equal dictionary descriptor is missing its ordered slot table'
+descriptors=$(grep -c '^dictionary-descriptor|' "$WORK/positive.first.ir")
+traits=$(grep -c '^trait|' "$WORK/positive.first.ir")
+test "$descriptors" -eq "$traits" ||
+    fail "expected one descriptor per trait, found $descriptors for $traits"
+dictionaries=$(grep -c '^dictionary|' "$WORK/positive.first.ir")
+implementations=$(grep -c '^implementation|' "$WORK/positive.first.ir")
+test "$dictionaries" -eq "$implementations" ||
+    fail "expected one dictionary per implementation, found $dictionaries for $implementations"
+entries=$(grep -c '^dictionary-entry|' "$WORK/positive.first.ir")
+test "$entries" -eq "$dictionaries" ||
+    fail "expected one slot entry per one-method dictionary, found $entries for $dictionaries"
+
+# A DictionaryId is its ImplementationId with the `impl:` tag replaced and the
+# `/decl=N` ordinal dropped. Deriving one field from the other and comparing
+# makes that an exact check rather than a spot check, and dropping the ordinal
+# is what keeps the identity independent of declaration order.
+derive_dictionary_id() {
+    sed -e 's/\/decl=[0-9]*$//' -e 's/^impl:/dictionary:/'
+}
+grep '^dictionary|' "$WORK/positive.first.ir" |
+    sed -e 's/.*|implementation=\([^|]*\)|.*/\1/' |
+    derive_dictionary_id >"$WORK/dictionary.derived"
+grep '^dictionary|' "$WORK/positive.first.ir" |
+    sed -e 's/^dictionary|dictionary-id=\([^|]*\)|.*/\1/' \
+        >"$WORK/dictionary.declared"
+test -s "$WORK/dictionary.derived" ||
+    fail 'no DictionaryId derivations were compared'
+cmp "$WORK/dictionary.derived" "$WORK/dictionary.declared" ||
+    fail 'a DictionaryId is not derived from its ImplementationId'
+
+# `same` carries exactly one dictionary parameter, and it names the bound it
+# discharges rather than only the trait.
+grep -F 'dictionary-parameter|dictionary-parameter-id=dictionary-parameter:function:same:0|owner=function:same|index=0|descriptor=dictionary-descriptor:abi1/trait:local:Equal|discharges-bound=type-parameter:function:same:0|trait=trait:local:Equal' \
+    "$WORK/positive.first.ir" >/dev/null ||
+    fail 'same does not carry a dictionary parameter for its Equal bound'
+parameters=$(grep -c '^dictionary-parameter|' "$WORK/positive.first.ir")
+bounds=$(grep -c '^bound|' "$WORK/positive.first.ir")
+test "$parameters" -eq "$bounds" ||
+    fail "expected one dictionary parameter per bound, found $parameters for $bounds"
+
+# The trait method call inside `same` resolves to (dictionary parameter, slot).
+grep -F 'method-call|caller=function:same|method=method:trait:local:Equal:0|via-bound=type-parameter:function:same:0|dictionary-parameter=dictionary-parameter:function:same:0|method-slot=0' \
+    "$WORK/positive.first.ir" >/dev/null ||
+    fail 'the method call does not resolve to a dictionary parameter and slot'
+
+# Every bounded call passes the dictionary its recorded selection denotes.
+passed_dictionaries() {
+    grep '^call|' "$1" |
+        sed -e 's/.*|dictionary-arguments=\([^|]*\)|.*/\1/' >"$2"
+}
+grep '^call|' "$WORK/positive.first.ir" |
+    sed -e 's/.*|selected-implementation=\([^|]*\)|.*/\1/' |
+    derive_dictionary_id >"$WORK/call.derived"
+passed_dictionaries "$WORK/positive.first.ir" "$WORK/call.passed"
+test -s "$WORK/call.derived" ||
+    fail 'no call dictionaries were compared against their selection'
+cmp "$WORK/call.derived" "$WORK/call.passed" ||
+    fail 'a bounded call passed a dictionary its selection does not denote'
+test "$(grep -c 'dictionary-arguments=none' "$WORK/positive.first.ir")" -eq 0 ||
+    fail 'a bounded call left its dictionary argument unelaborated'
+test "$(grep -c 'dictionary-parameter=none' "$WORK/positive.first.ir")" -eq 0 ||
+    fail 'a bounded call or method call named no dictionary parameter'
+
+# Nothing below the dictionary is claimed: no monomorphised instance, no vtable
+# layout, and no runtime candidate search.
+! grep -Eq 'monomorph|vtable|search' "$WORK/positive.first.ir" ||
+    fail 'the frontend claimed a lowering below the dictionary'
 
 failures='
 blanket_implementation:E2S132
@@ -178,6 +250,24 @@ cmp "$WORK/declared.selection" "$WORK/reordered.selection" ||
 test -s "$WORK/declared.selection" ||
     fail 'no selections were compared for order independence'
 
+# The DictionaryId carries no declaration ordinal, so unlike the
+# ImplementationId it must survive reordering byte for byte — the set of
+# dictionaries and the dictionary each call passes both compare unstripped.
+dictionary_ids() {
+    grep '^dictionary|' "$1" |
+        sed -e 's/^dictionary|dictionary-id=\([^|]*\)|.*/\1/' |
+        sort >"$2"
+}
+dictionary_ids "$WORK/positive.first.ir" "$WORK/declared.dictionaries"
+dictionary_ids "$WORK/order.ir" "$WORK/reordered.dictionaries"
+cmp "$WORK/declared.dictionaries" "$WORK/reordered.dictionaries" ||
+    fail 'reordering the implementations changed a DictionaryId'
+test -s "$WORK/declared.dictionaries" ||
+    fail 'no DictionaryIds were compared for order independence'
+passed_dictionaries "$WORK/order.ir" "$WORK/reordered.passed"
+cmp "$WORK/call.passed" "$WORK/reordered.passed" ||
+    fail 'declaration order changed which dictionary a call passes'
+
 ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 \
     "$WORK/kofun-traits-sanitize" "$CASES/positive.kofun" \
     "$WORK/sanitize.ir" "$WORK/sanitize.tokens" \
@@ -232,4 +322,6 @@ printf '%s\n' \
     'PASS: TraitId, MethodId, and ImplementationId identities are stable' \
     'PASS: the #403 orphan rule admits and refuses exactly its cases' \
     'PASS: bound resolution yields one implementation or a stable diagnostic' \
+    'PASS: dictionary descriptors, values, parameters, and arguments elaborate' \
+    'PASS: each DictionaryId derives from its ImplementationId and ignores order' \
     'PASS: typed-only boundaries, GCC analyzer, and ASan/UBSan remain clean'
