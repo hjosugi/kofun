@@ -22,6 +22,8 @@
     "unsupported-current-stage2-feature"
 #define KOFUN_SEMANTIC_REASON_CANCELLED_BEFORE_ANALYSIS \
     "cancelled-before-analysis"
+#define KOFUN_SEMANTIC_REASON_EFFECT_IO_CALLEE "effect-io-callee"
+#define KOFUN_SEMANTIC_REASON_EFFECT_IO_ROOT_PRINT "effect-io-root-print"
 
 typedef struct {
     const uint8_t *bytes;

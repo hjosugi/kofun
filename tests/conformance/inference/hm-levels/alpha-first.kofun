@@ -1,0 +1,6 @@
+fn main() {
+    let identity = fn(value) => value
+    let answer = identity(42)
+    let selected = identity(true)
+    selected
+}

@@ -1,0 +1,5 @@
+fn main() {
+    let checked: (Int -> Int) = fn(value: Int) => value
+    let answer: Int = checked(42)
+    answer
+}

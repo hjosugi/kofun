@@ -1,0 +1,6 @@
+fn main() {
+    let constant = fn(x) => fn(y) => x
+    let identity = fn(x) => x
+    let answer = identity(42)
+    answer
+}

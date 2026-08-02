@@ -1,0 +1,1 @@
+error[HML006]: `effect` is outside the bounded HM frontend at byte 16..22

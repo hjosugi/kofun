@@ -1,0 +1,1 @@
+error[HML006]: named-function inference is outside this slice; expected `main` at byte 3..11

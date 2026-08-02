@@ -1,0 +1,1 @@
+error[HML003]: occurs check failed: a type cannot contain itself at byte 35..36; related byte 37..38

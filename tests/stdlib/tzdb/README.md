@@ -23,6 +23,52 @@ for one ambiguous value. `Ambiguous` packs its two bounded instants as
 `earlier * 100000 + later`, because the current Stage 2 enum profile carries
 one `Int` payload. The gate checks the packed value explicitly.
 
+Every result that leaves the resolver is also projected as a fixed five-field
+numeric serialization:
+
+1. zone code;
+2. fixture format version;
+3. content digest;
+4. closed resolution kind;
+5. closed resolution payload.
+
+`serialize_resolution` receives the `Tzdb` and local reading together, computes
+the resolution, and copies provenance from that same database. A caller never
+passes a zone, version, or digest beside an already-computed result. This is the
+bounded executable equivalent of the canonical `ResolvedLocal`/Text surface;
+it is not a claim that portable Text-returning serialization has landed.
+
+The gate creates a valid drift observation by moving transition 1 from `1000`
+to `1001`. That changes only byte 6 of the same v1 format. Normal, gap, and fold
+rows each carry the resulting new digest, so an isolated serialized value can
+be attributed without relying on a run-level header.
+
+## Explicit local-time policy
+
+Fold policy and gap policy are separate closed types. Their serialized codes
+are deliberately disjoint:
+
+- `1` FoldEarlier;
+- `2` FoldLater;
+- `3` FoldReject;
+- `4` GapShiftForward;
+- `5` GapReject.
+
+The executable constructors carry one ignored `Int` marker because the current
+Stage 2 ADT projection requires one bounded payload. The canonical surface uses
+payload-free constructors; the marker is not part of policy semantics.
+
+Applying a policy produces the selected instant or a typed refusal. Fold and
+gap refusal codes are `-10` and `-11`, outside the reader-error domain
+`-1` through `-9`. An applied row repeats the five resolution fields and adds
+policy code, outcome code, and outcome payload. Applying any policy to Unique
+keeps its instant while recording the policy; Reject only refuses an actual
+fold or gap.
+
+There is no default-policy overload. The focused gate derives a negative source
+from the authoritative producer by removing one FoldEarlier argument, then
+requires both `check` and `build` to reject it with `E2S17` and no binary.
+
 The digest is a versioned polynomial fixture digest modulo `1000000007`. It is
 content identity for this bounded format, not a cryptographic authenticity
 claim. No network, host zoneinfo, locale, ambient file, or ambient clock input

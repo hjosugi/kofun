@@ -151,6 +151,18 @@ tasks:
     cmds:
       - "sh tests/conformance/generics/run.sh"
 
+  hm-levels:
+    desc: "Verify bounded Algorithm J inference for local lambdas"
+    cmds:
+      - "sh tests/conformance/inference/hm-levels/run.sh"
+      - "KOFUN_HM_LEVELS_CASES=128 sh tests/fuzz/hm_levels.sh"
+
+  effect-inference:
+    desc: "Verify bounded pure/io inference across the Stage 2 call graph"
+    cmds:
+      - "sh tests/conformance/effects/pure-io/run.sh"
+      - "KOFUN_PURE_IO_CASES=96 sh tests/fuzz/pure_io.sh"
+
   traits:
     desc: "Verify the bounded trait declaration frontend"
     cmds:
@@ -590,6 +602,8 @@ tasks:
             adt \
             records \
             generics \
+            hm-levels \
+            effect-inference \
             traits \
             optional \
             optional-narrowing \

@@ -620,7 +620,7 @@
     }
   ],
   "evidence_digests": {
-    "Taskfile.yml": "41a46abddaae9d4933dc3fd1d005e87132ee4a1c2349ec725a853ffe257d6889",
+    "Taskfile.yml": "aa8c3fe3f0dde53226b2adc653a36dd66ee44daeaddb6ea32969759e56d67634",
     "bootstrap/native/check.sh": "fea94cb623757e1bf17e4497f43d656b1e8ff57a39a92ece871d8ff257c0f2ef",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/driver/corpus_builtin_rejects.tsv": "b1fa0b26247581aef797a81880554a94233a34109215530641706d76777087d4",
@@ -646,7 +646,7 @@
     "docs/SEMANTICS.md": "6e1d210890f5f53f281ea32fe28a0b4118b2804f5cb1caa4260a36c961b9cb92",
     "docs/TYPE_SYSTEM.md": "7c7f90b9807656be7e42772d259c6afa360c9f52bb0797861f44429a1bebddfb",
     "examples/rust-shim/check.sh": "4cffb7e16d964122e2dff480f533cff5eacd0bd939a35fe5a71f71b447139500",
-    "spec/enum-match-exhaustiveness.md": "f37bf350b76ab939a9a06c9a7b7128f1b5a0c49ca378c090b311210e79ec4eb9",
+    "spec/enum-match-exhaustiveness.md": "e93a826fa3713ae41216daeaa941ba96a1a4ffadab70c8fc4809472d62370e43",
     "spec/modules/module-identity.md": "87600e04ec9f39421c4993462dbbb1b07123c8757e7021844bbbaf23e03f4276",
     "spec/modules/re-exports.md": "e1bd3964901cfbadd1f5675e3c0b5e14a9277198fe6252780381f92581ac2e46",
     "spec/modules/visibility.md": "40209bbc776037f0f397b169b428e3f6d9cf8a0536c2ba12c10988f20a7c0c22",
@@ -667,7 +667,7 @@
     "tests/conformance/records/stage2_unsupported_field.kofun": "2ac9b2e9ca754689330a836304a349a49cdf9820be6523e3d02be8158fba4eae",
     "tests/conformance/syntax/issues_35_47/enum_payload_unsupported_field.kofun": "e1b4ce6cda998dac0a955ed016c8eb2f81a9effaed91b823011572cf68f6c59e",
     "tests/diagnostics/README.md": "456190836326c23c153118d53f085905e4da06eae11883432f39c24548447c12",
-    "tests/diagnostics/registry.tsv": "506f36c2a1786ea7cc87c09440130cbfb4d1bd61baeca7f7dbe4e6812f9bf69c",
+    "tests/diagnostics/registry.tsv": "d5f16d46c38766fe9ce401fff919ed4e65221055bed0a2c4c32cf2167bc56517",
     "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun": "664c4d3b0d4bcd9265fee34b3ae60d8bf0eb58c9ce5c2b504579c1249aa16f2d",
     "tests/diagnostics/visibility-api-leaks.sh": "d87ad383a90d32e88526c9833c1086aea6035796964ce4983a2cfbfd7d9683ff",
     "tests/docs/documentation_index_test.mjs": "249fd426d8f058fa487df75e16db8695bab882c1ee6ad4297bb1fbe61b3f8abe",
@@ -676,8 +676,8 @@
     "tests/http/check.sh": "b3fcbd128033bb7a3c0b7e4f89b679743e0e5e49e9eaa1bdc9573cbb5794aafd",
     "tests/lsp/performance_test.js": "9be9916dd14466b33b631fe1435ddcc038c44288f80c320e1458bcb16d2aab33",
     "tests/security/module-interface-artifact.sh": "0050bbe11ab21fe931bbf6d5043d9adccd4ff36afe26343c69a9ff5277307010",
-    "tests/stdlib/tzdb/README.md": "46806b302662a3195ba2be1bfecd1379032758d976583ef2b79a038f83081308",
-    "tests/stdlib/tzdb/tzdb.kofun": "a6bd03d5d075ae86f754f2855f72fd5e89fa95984f4b75c9fe4fa265d0528e55",
+    "tests/stdlib/tzdb/README.md": "a4e5a37be16b35a29cd07e3594c17ce1941713b57647c3c8fe6e6bcf21109580",
+    "tests/stdlib/tzdb/tzdb.kofun": "09fd0eac18879310a30be5b795a6a22b036c6b937700cfacf2b68ee133ee67a8",
     "tests/typed-sidecar/authority-boundary.sh": "dc97e4f38bf93297b9ff40f48a0c008121a4f6a9a3bd1c4aab7c5d5f121ec005"
   }
 }

@@ -35,7 +35,7 @@ export const GROUPS = Object.freeze([
             'move-assertion', 'usability-corpus', 'call-arguments-spec',
             'affine-resumption',
             'schedule-trace',
-            'generics', 'traits', 'optional', 'optional-narrowing',
+            'generics', 'hm-levels', 'effect-inference', 'traits', 'optional', 'optional-narrowing',
             'adt-exhaustiveness', 'decimal', 'decimal-arithmetic', 'date-time', 'syntax'
         ]
     },

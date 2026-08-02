@@ -1,0 +1,1 @@
+error[HML006]: record and row expressions are outside the bounded HM frontend at byte 26..27
