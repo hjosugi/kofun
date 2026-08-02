@@ -1,0 +1,15 @@
+# Issue #921. A guarded arm proves no static coverage, so a match whose only
+# arm for a constructor carries a guard is non-exhaustive.
+type Reply =
+    | Pending
+    | Ready(value: Int)
+
+fn main() -> Int {
+    let ready: Reply = Ready(1)
+    let scored: Int = match ready {
+        Pending => { 0 },
+        Ready(value) if value > 0 => { value },
+    }
+    print(scored)
+    return 0
+}

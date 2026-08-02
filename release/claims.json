@@ -85,13 +85,13 @@
       },
       "negative_boundary": {
         "kind": "rejection",
-        "evidence": "tests/compile-fail/use_after_take.kofun",
-        "observation": "Using a moved binding is refused at compile time."
+        "evidence": "bootstrap/stage2/fixtures/borrowed_move_text.kofun",
+        "observation": "`--check-ownership` refuses `E007` on the borrowed-`List[Text]` return, matching the pinned `borrowed_move_text.stderr` byte for byte."
       },
       "safety": {
         "classification": "memory-safety",
         "threat_model": "docs/MEMORY_MODEL.md",
-        "negative_test": "tests/compile-fail/use_after_take.kofun"
+        "negative_test": "bootstrap/stage2/fixtures/borrowed_move_text.kofun"
       },
       "performance": {
         "classification": "none"

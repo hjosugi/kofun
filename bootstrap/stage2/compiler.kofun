@@ -4348,7 +4348,12 @@ fn value_match_end(source: Text, start: Int) -> Int {
     let value_start = skip_trivia(source, token_end(source, cursor))
     let value_close = condition_end(source, value_start)
     if value_close < 0 {
-        return -1
+        # A concrete-enum scrutinee is one identifier, which is not a Bool
+        # condition, so `condition_end` cannot find its end. The arms still
+        # open at the `{` directly after it, which is the walk statement
+        # position already uses; `enum_match_end` still answers -1 when no
+        # `{` follows, so a genuinely malformed match is unchanged.
+        return enum_match_end(source, cursor)
     }
     let arms_open = skip_trivia(source, value_close)
     if arms_open >= len(source) || token_text(source, arms_open) != "{" {
@@ -4369,7 +4374,7 @@ fn value_end(source: Text, start: Int) -> Int {
     return expression_end(source, cursor)
 }
 
-fn validate_value_if(source: Text, start: Int) -> Text {
+fn validate_value_if(source: Text, hir: Text, start: Int) -> Text {
     let cursor = skip_trivia(source, start)
     if cursor >= len(source) || token_text(source, cursor) != "if" {
         return "error[E2S28]: expected value-position `if` at byte " +
@@ -4389,13 +4394,13 @@ fn validate_value_if(source: Text, start: Int) -> Text {
     let then_start = skip_trivia(source, token_end(source, then_open))
     let mut then_end = -1
     if token_text(source, then_start) == "if" {
-        let nested_result = validate_value_if(source, then_start)
+        let nested_result = validate_value_if(source, hir, then_start)
         if starts_with(nested_result, "error[") {
             return nested_result
         }
         then_end = value_if_end(source, then_start)
     } else if token_text(source, then_start) == "match" {
-        let nested_result = validate_value_match(source, then_start)
+        let nested_result = validate_value_match(source, hir, then_start)
         if starts_with(nested_result, "error[") {
             return nested_result
         }
@@ -4430,13 +4435,13 @@ fn validate_value_if(source: Text, start: Int) -> Text {
     let else_start = skip_trivia(source, token_end(source, else_open))
     let mut else_end = -1
     if token_text(source, else_start) == "if" {
-        let nested_result = validate_value_if(source, else_start)
+        let nested_result = validate_value_if(source, hir, else_start)
         if starts_with(nested_result, "error[") {
             return nested_result
         }
         else_end = value_if_end(source, else_start)
     } else if token_text(source, else_start) == "match" {
-        let nested_result = validate_value_match(source, else_start)
+        let nested_result = validate_value_match(source, hir, else_start)
         if starts_with(nested_result, "error[") {
             return nested_result
         }
@@ -4460,11 +4465,240 @@ fn validate_value_if(source: Text, start: Int) -> Text {
     return "ok"
 }
 
-fn validate_value_match(source: Text, start: Int) -> Text {
+# The enum a value-position `match` scrutinises, or "" when it does not
+# scrutinise one. The shape is the one statement position already recognises —
+# a single identifier directly followed by the arms `{` — and the type comes
+# from resolution rather than spelling, so a Bool or Int binding still falls
+# through to the Bool rules and earns exactly the diagnostic it earned before.
+fn value_match_enum_type(source: Text, hir: Text, start: Int) -> Text {
+    let value_start = skip_trivia(source, token_end(source, start))
+    if value_start >= len(source) ||
+       token_kind(source, value_start) != "identifier" {
+        return ""
+    }
+    let arms_open = skip_trivia(source, token_end(source, value_start))
+    if arms_open >= len(source) || token_text(source, arms_open) != "{" {
+        return ""
+    }
+    let binding_id = hir_use_binding_id(hir, value_start)
+    let binding_type = hir_binding_field(hir, binding_id, 5)
+    if len(binding_type) == 0 || binding_type == "Int" ||
+       enum_constructor_count(source, binding_type) < 0 {
+        return ""
+    }
+    return binding_type
+}
+
+# One arm block of a value-position `match` must hold exactly one final Int
+# expression, the same rule a value `if` branch follows. `E2S30` is the whole
+# vocabulary, so a Bool scrutinee and an enum scrutinee refuse identically.
+fn validate_value_arm(source: Text, hir: Text, arm_open: Int) -> Text {
+    let arm_start = skip_trivia(source, token_end(source, arm_open))
+    let mut arm_end = -1
+    if token_text(source, arm_start) == "if" {
+        let arm_result = validate_value_if(source, hir, arm_start)
+        if starts_with(arm_result, "error[") {
+            return arm_result
+        }
+        arm_end = value_if_end(source, arm_start)
+    } else if token_text(source, arm_start) == "match" {
+        let arm_result = validate_value_match(source, hir, arm_start)
+        if starts_with(arm_result, "error[") {
+            return arm_result
+        }
+        arm_end = value_match_end(source, arm_start)
+    } else {
+        if token_text(source, arm_start) == "print" {
+            return "error[E2S30]: value-position match arm must produce Int, not Void at byte " +
+            to_text(arm_start)
+        }
+        arm_end = expression_end(source, arm_start)
+        if arm_end < 0 {
+            return "error[E2S30]: value-position match arm must produce Int at byte " +
+            to_text(arm_start)
+        }
+    }
+    let arm_close = skip_trivia(source, arm_end)
+    if arm_close >= len(source) || token_text(source, arm_close) != "}" {
+        return "error[E2S30]: value-position match arm must contain one final Int expression at byte " +
+        to_text(arm_close)
+    }
+    return "ok"
+}
+
+# Value position for a concrete-enum scrutinee. The coverage rules are the ones
+# statement position already applies to the same declared constructor set —
+# `E2S25` for a missing constructor, `E2S26` for a duplicate or unreachable arm,
+# `E2S32` for a constructor that is not the scrutinee's, and a guarded arm
+# proving no coverage — and the arm rule is the value rule, `E2S30`. Nothing
+# here widens payloads or adds a pattern form.
+fn validate_value_enum_match(
+    source: Text,
+    hir: Text,
+    start: Int,
+    enum_type: Text
+) -> Text {
+    let value_start = skip_trivia(source, token_end(source, start))
+    let arms_open = skip_trivia(source, token_end(source, value_start))
+    if arms_open >= len(source) || token_text(source, arms_open) != "{" {
+        return "error[E2S24]: expected `{` after enum match scrutinee at byte " +
+        to_text(arms_open)
+    }
+    let mut arm_cursor = skip_trivia(source, token_end(source, arms_open))
+    let mut covered = "|"
+    let mut seen_catchall = false
+    while arm_cursor < len(source) && token_text(source, arm_cursor) != "}" {
+        let pattern_start = arm_cursor
+        let pattern_info = pattern_summary(source, pattern_start)
+        let pattern_kind = pattern_summary_kind(pattern_info)
+        let pattern = token_text(source, pattern_start)
+        let mut tag = -1
+        if pattern_kind == "NamePattern" ||
+           pattern_kind == "ConstructorPattern" {
+            tag = enum_constructor_index(source, enum_type, pattern)
+        }
+        let binding_catchall =
+            pattern_kind == "NamePattern" && tag < 0 &&
+            enum_binding_catchall_name(pattern)
+        let catchall =
+            pattern_kind == "WildcardPattern" || binding_catchall
+        if seen_catchall {
+            return "error[E2S26]: pattern after catch-all is unreachable at byte " +
+            to_text(pattern_start)
+        }
+        if catchall {
+            if enum_constructors_covered(source, enum_type, covered) {
+                return "error[E2S26]: catch-all pattern is unreachable at byte " +
+                to_text(pattern_start)
+            }
+        } else {
+            if pattern_kind != "NamePattern" &&
+               pattern_kind != "ConstructorPattern" {
+                return "error[E2S32]: enum pattern must name a constructor or `_` at byte " +
+                to_text(pattern_start)
+            }
+            if tag < 0 {
+                return "error[E2S32]: constructor `" + pattern +
+                "` does not belong to enum `" + enum_type + "` at byte " +
+                to_text(pattern_start)
+            }
+            if contains(covered, "|" + pattern + "|") {
+                return "error[E2S26]: duplicate enum constructor pattern `" +
+                pattern + "` is unreachable at byte " +
+                to_text(pattern_start)
+            }
+            let arity = enum_constructor_payload_arity(
+                source,
+                enum_type,
+                pattern
+            )
+            let applied = pattern_kind == "ConstructorPattern"
+            if arity < 0 {
+                return "error[E2S32]: constructor `" + pattern +
+                "` of enum `" + enum_type +
+                "` declares a payload outside this Core slice; one `Int` " +
+                "field is supported at byte " + to_text(pattern_start)
+            }
+            if applied != (arity == 1) {
+                let mut arity_message = "constructor pattern `" + pattern +
+                "` takes no payload"
+                if arity == 1 {
+                    arity_message = "constructor pattern `" + pattern +
+                    "` must bind its one `Int` payload or use `_`"
+                }
+                return "error[E2S32]: " + arity_message + " at byte " +
+                to_text(pattern_start)
+            }
+            if applied {
+                let open = skip_trivia(
+                    source,
+                    token_end(source, pattern_start)
+                )
+                let field = skip_trivia(source, token_end(source, open))
+                let mut close = len(source)
+                if field < len(source) {
+                    close = skip_trivia(source, token_end(source, field))
+                }
+                let wildcard = token_text(source, field) == "_"
+                let named = field < len(source) &&
+                token_kind(source, field) == "identifier" && !wildcard
+                if (!wildcard && !named) || close >= len(source) ||
+                   token_text(source, close) != ")" {
+                    return "error[E2S32]: constructor payload pattern must be one name or `_` at byte " +
+                    to_text(field)
+                }
+            }
+        }
+        let after_pattern = skip_trivia(
+            source,
+            pattern_summary_end(pattern_info)
+        )
+        let mut guarded = false
+        let mut arrow = after_pattern
+        if arrow < len(source) && token_text(source, arrow) == "if" {
+            guarded = true
+            let guard_start = skip_trivia(source, token_end(source, arrow))
+            let guard_end = condition_end(source, guard_start)
+            if guard_end < 0 {
+                return "error[E2S29]: match guard must be Bool or an Int comparison at byte " +
+                to_text(guard_start)
+            }
+            arrow = skip_trivia(source, guard_end)
+        }
+        if arrow >= len(source) || token_text(source, arrow) != "=>" {
+            return "error[E2S24]: expected `=>` after enum pattern at byte " +
+            to_text(arrow)
+        }
+        let arm_open = skip_trivia(source, token_end(source, arrow))
+        if arm_open >= len(source) || token_text(source, arm_open) != "{" {
+            return "error[E2S24]: bounded enum match arm must use a block at byte " +
+            to_text(arm_open)
+        }
+        let arm_result = validate_value_arm(source, hir, arm_open)
+        if starts_with(arm_result, "error[") {
+            return arm_result
+        }
+        let arm_start = skip_trivia(source, token_end(source, arm_open))
+        let arm_close = skip_trivia(source, value_end(source, arm_start))
+        if !guarded {
+            if catchall {
+                seen_catchall = true
+            } else {
+                covered = covered + pattern + "|"
+            }
+        }
+        arm_cursor = skip_trivia(source, token_end(source, arm_close))
+        if arm_cursor < len(source) && token_text(source, arm_cursor) == "," {
+            arm_cursor = skip_trivia(source, token_end(source, arm_cursor))
+        } else if arm_cursor >= len(source) ||
+                  token_text(source, arm_cursor) != "}" {
+            return "error[E2S24]: expected `,` between enum match arms at byte " +
+            to_text(arm_cursor)
+        }
+    }
+    if arm_cursor >= len(source) || token_text(source, arm_cursor) != "}" {
+        return "error[E2S24]: missing `}` after enum match arms at byte " +
+        to_text(arms_open)
+    }
+    if !seen_catchall &&
+       !enum_constructors_covered(source, enum_type, covered) {
+        return "error[E2S25]: non-exhaustive enum `" + enum_type +
+        "` match; missing constructors " +
+        enum_missing_constructors(source, enum_type, covered) +
+        " at byte " + to_text(start)
+    }
+    return "ok"
+}
+
+fn validate_value_match(source: Text, hir: Text, start: Int) -> Text {
     let cursor = skip_trivia(source, start)
     if cursor >= len(source) || token_text(source, cursor) != "match" {
         return "error[E2S30]: expected value-position `match` at byte " +
         to_text(cursor)
+    }
+    let enum_type = value_match_enum_type(source, hir, cursor)
+    if len(enum_type) > 0 {
+        return validate_value_enum_match(source, hir, cursor, enum_type)
     }
     let value_start = skip_trivia(source, token_end(source, cursor))
     let value_close = condition_end(source, value_start)
@@ -4536,36 +4770,12 @@ fn validate_value_match(source: Text, start: Int) -> Text {
             return "error[E2S24]: bounded Bool match arm must use a block at byte " +
             to_text(arm_open)
         }
+        let arm_result = validate_value_arm(source, hir, arm_open)
+        if starts_with(arm_result, "error[") {
+            return arm_result
+        }
         let arm_start = skip_trivia(source, token_end(source, arm_open))
-        let mut arm_end = -1
-        if token_text(source, arm_start) == "if" {
-            let arm_result = validate_value_if(source, arm_start)
-            if starts_with(arm_result, "error[") {
-                return arm_result
-            }
-            arm_end = value_if_end(source, arm_start)
-        } else if token_text(source, arm_start) == "match" {
-            let arm_result = validate_value_match(source, arm_start)
-            if starts_with(arm_result, "error[") {
-                return arm_result
-            }
-            arm_end = value_match_end(source, arm_start)
-        } else {
-            if token_text(source, arm_start) == "print" {
-                return "error[E2S30]: value-position match arm must produce Int, not Void at byte " +
-                to_text(arm_start)
-            }
-            arm_end = expression_end(source, arm_start)
-            if arm_end < 0 {
-                return "error[E2S30]: value-position match arm must produce Int at byte " +
-                to_text(arm_start)
-            }
-        }
-        let arm_close = skip_trivia(source, arm_end)
-        if arm_close >= len(source) || token_text(source, arm_close) != "}" {
-            return "error[E2S30]: value-position match arm must contain one final Int expression at byte " +
-            to_text(arm_close)
-        }
+        let arm_close = skip_trivia(source, value_end(source, arm_start))
         if !guarded {
             if pattern_true {
                 covered_true = true
@@ -4609,12 +4819,12 @@ fn value_control(token: Text) -> Bool {
     return token == "if" || token == "match"
 }
 
-fn validate_value_control(source: Text, start: Int) -> Text {
+fn validate_value_control(source: Text, hir: Text, start: Int) -> Text {
     let cursor = skip_trivia(source, start)
     if token_text(source, cursor) == "if" {
-        return validate_value_if(source, cursor)
+        return validate_value_if(source, hir, cursor)
     }
-    return validate_value_match(source, cursor)
+    return validate_value_match(source, hir, cursor)
 }
 
 fn emit_value_into(
@@ -4683,6 +4893,156 @@ fn emit_value_into(
     "    }\n"
 }
 
+# The dispatch statement position emits for a concrete enum, with the arm
+# bodies replaced by the value each arm produces. The scrutinee is read once
+# into `kofun_match_value` before any arm is tested, arms are tested in source
+# order, and `kofun_match_selected` stops the walk at the first arm that takes,
+# so only that arm's result expression runs and only it assigns `target`.
+fn emit_value_enum_match_into(
+    source: Text,
+    hir: Text,
+    start: Int,
+    end: Int,
+    target: Text,
+    failure_result: Text,
+    enum_type: Text
+) -> Text {
+    let value_start = skip_trivia(source, token_end(source, start))
+    let arms_open = skip_trivia(source, token_end(source, value_start))
+    let mut arm_cursor = skip_trivia(source, token_end(source, arms_open))
+    let mut dispatch = ""
+    while arm_cursor < end && token_text(source, arm_cursor) != "}" {
+        let pattern_start = arm_cursor
+        let pattern_info = pattern_summary(source, pattern_start)
+        let pattern_kind = pattern_summary_kind(pattern_info)
+        let pattern = token_text(source, pattern_start)
+        let mut tag = -1
+        if pattern_kind == "NamePattern" ||
+           pattern_kind == "ConstructorPattern" {
+            tag = enum_constructor_index(source, enum_type, pattern)
+        }
+        let binding_catchall =
+            pattern_kind == "NamePattern" && tag < 0 &&
+            enum_binding_catchall_name(pattern)
+        let catchall =
+            pattern_kind == "WildcardPattern" || binding_catchall
+        # `-1` means the arm binds no payload name.
+        let mut payload_name_start = -1
+        let mut catchall_name_start = -1
+        if binding_catchall {
+            catchall_name_start = pattern_start
+        }
+        if !catchall && pattern_kind == "ConstructorPattern" {
+            let open = skip_trivia(source, token_end(source, pattern_start))
+            let field = skip_trivia(source, token_end(source, open))
+            if token_text(source, field) != "_" {
+                payload_name_start = field
+            }
+        }
+        let mut arrow = skip_trivia(
+            source,
+            pattern_summary_end(pattern_info)
+        )
+        let mut guarded = false
+        let mut guard_start = -1
+        let mut guard_end = -1
+        if arrow < end && token_text(source, arrow) == "if" {
+            guarded = true
+            guard_start = skip_trivia(source, token_end(source, arrow))
+            guard_end = condition_end(source, guard_start)
+            arrow = skip_trivia(source, guard_end)
+        }
+        let arm_open = skip_trivia(source, token_end(source, arrow))
+        let arm_start = skip_trivia(source, token_end(source, arm_open))
+        let arm_end = value_end(source, arm_start)
+        let arm_close = skip_trivia(source, arm_end)
+        let mut pattern_condition = "true"
+        if !catchall {
+            pattern_condition = "kofun_match_value.tag == INT64_C(" +
+            to_text(tag) + ")"
+        }
+        # Declared before the guard, exactly as statement position declares it,
+        # so `Ready(value) if value > 5 => { value }` reads one local in the
+        # guard and in the result expression. It is a copy of the matched
+        # payload, so producing it duplicates no owned value.
+        let mut payload_declaration = ""
+        if payload_name_start >= 0 {
+            let payload_id = hir_definition_id_at(hir, payload_name_start)
+            if len(payload_id) == 0 {
+                return "error[E2S32]: constructor payload binding is unresolved at byte " +
+                to_text(payload_name_start)
+            }
+            payload_declaration = "            int64_t k_b" + payload_id +
+            " = kofun_match_value.payload;\n" +
+            "            (void)k_b" + payload_id + ";\n"
+        } else if catchall_name_start >= 0 {
+            let catchall_id = hir_definition_id_at(
+                hir,
+                catchall_name_start
+            )
+            if len(catchall_id) == 0 {
+                return "error[E2S32]: enum catch-all binding is unresolved at byte " +
+                to_text(catchall_name_start)
+            }
+            payload_declaration =
+            "            KofunEnumValue k_b" + catchall_id +
+            " = kofun_match_value;\n" +
+            "            (void)k_b" + catchall_id + ";\n"
+        }
+        let arm_body = emit_value_into(
+            source,
+            hir,
+            arm_start,
+            arm_end,
+            target,
+            failure_result
+        )
+        if starts_with(arm_body, "error[") {
+            return arm_body
+        }
+        if guarded {
+            dispatch = dispatch +
+            "        if (!kofun_match_selected && " +
+            pattern_condition + ") {\n" +
+            payload_declaration +
+            emit_condition_into(
+                source,
+                hir,
+                guard_start,
+                guard_end,
+                "kofun_match_guard",
+                failure_result,
+                "            "
+            ) +
+            "            if (kofun_match_guard) {\n" +
+            arm_body +
+            "                kofun_match_selected = true;\n" +
+            "            }\n" +
+            "        }\n"
+        } else {
+            dispatch = dispatch +
+            "        if (!kofun_match_selected && " +
+            pattern_condition + ") {\n" +
+            payload_declaration +
+            arm_body +
+            "            kofun_match_selected = true;\n" +
+            "        }\n"
+        }
+        arm_cursor = skip_trivia(source, token_end(source, arm_close))
+        if arm_cursor < end && token_text(source, arm_cursor) == "," {
+            arm_cursor = skip_trivia(source, token_end(source, arm_cursor))
+        }
+    }
+    let scrutinee_id = hir_use_binding_id(hir, value_start)
+    return "    {\n" +
+    "        KofunEnumValue kofun_match_value = k_b" + scrutinee_id +
+    ";\n" +
+    "        (void)kofun_match_value;\n" +
+    "        bool kofun_match_selected = false;\n" +
+    dispatch +
+    "    }\n"
+}
+
 fn emit_value_match_into(
     source: Text,
     hir: Text,
@@ -4692,6 +5052,18 @@ fn emit_value_match_into(
     failure_result: Text
 ) -> Text {
     let cursor = skip_trivia(source, start)
+    let enum_type = value_match_enum_type(source, hir, cursor)
+    if len(enum_type) > 0 {
+        return emit_value_enum_match_into(
+            source,
+            hir,
+            cursor,
+            end,
+            target,
+            failure_result,
+            enum_type
+        )
+    }
     let value_start = skip_trivia(source, token_end(source, cursor))
     let value_close = condition_end(source, value_start)
     let arms_open = skip_trivia(source, value_close)
@@ -7618,7 +7990,7 @@ fn lower_body(
                         -1,
                         lambda_initializer_open(source, value_start)))
             } else if value_control(token_text(source, value_start)) {
-                let value_check = validate_value_control(source, value_start)
+                let value_check = validate_value_control(source, hir, value_start)
                 if starts_with(value_check, "error[") {
                     return value_check
                 }
@@ -7689,7 +8061,7 @@ fn lower_body(
             }
             let value_start = skip_trivia(source, token_end(source, call_open))
             if value_control(token_text(source, value_start)) {
-                let value_check = validate_value_control(source, value_start)
+                let value_check = validate_value_control(source, hir, value_start)
                 if starts_with(value_check, "error[") {
                     return value_check
                 }
@@ -8185,7 +8557,7 @@ fn lower_body(
                 emitted = emitted + "    return 0;\n"
                 cursor = value_start
             } else if value_control(token_text(source, value_start)) {
-                let value_check = validate_value_control(source, value_start)
+                let value_check = validate_value_control(source, hir, value_start)
                 if starts_with(value_check, "error[") {
                     return value_check
                 }
@@ -8260,7 +8632,7 @@ fn lower_body(
                 }
                 let value_start = skip_trivia(source, token_end(source, equals))
                 if value_control(token_text(source, value_start)) {
-                    let value_check = validate_value_control(source, value_start)
+                    let value_check = validate_value_control(source, hir, value_start)
                     if starts_with(value_check, "error[") {
                         return value_check
                     }

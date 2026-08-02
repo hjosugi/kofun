@@ -6704,18 +6704,21 @@ typedef struct {
 
 static char *parse_value_if(
     const char *source,
+    const char *hir,
     int64_t start,
     ValueIfParts *parts
 );
 
 static char *parse_value_match(
     const char *source,
+    const char *hir,
     int64_t start,
     ValueMatchParts *parts
 );
 
 static char *value_if_branch_end(
     const char *source,
+    const char *hir,
     int64_t start,
     int64_t *end
 ) {
@@ -6729,7 +6732,7 @@ static char *value_if_branch_end(
     }
     if (token_equal(source, cursor, "if")) {
         ValueIfParts nested;
-        char *result = parse_value_if(source, cursor, &nested);
+        char *result = parse_value_if(source, hir, cursor, &nested);
         if (strncmp(result, "error[", 6) == 0) return result;
         free(result);
         *end = nested.end;
@@ -6737,7 +6740,7 @@ static char *value_if_branch_end(
     }
     if (token_equal(source, cursor, "match")) {
         ValueMatchParts nested;
-        char *result = parse_value_match(source, cursor, &nested);
+        char *result = parse_value_match(source, hir, cursor, &nested);
         if (strncmp(result, "error[", 6) == 0) return result;
         free(result);
         *end = nested.end;
@@ -6756,6 +6759,7 @@ static char *value_if_branch_end(
 
 static char *parse_value_if(
     const char *source,
+    const char *hir,
     int64_t start,
     ValueIfParts *parts
 ) {
@@ -6796,6 +6800,7 @@ static char *parse_value_if(
     );
     char *then_result = value_if_branch_end(
         source,
+        hir,
         parts->then_start,
         &parts->then_end
     );
@@ -6841,6 +6846,7 @@ static char *parse_value_if(
     );
     char *else_result = value_if_branch_end(
         source,
+        hir,
         parts->else_start,
         &parts->else_end
     );
@@ -6866,8 +6872,46 @@ static char *parse_value_if(
     return owned_text("ok");
 }
 
+/*
+ * The enum a value-position `match` scrutinises, or "" when it does not
+ * scrutinise one; and the value-position enum rules themselves, which live
+ * beside `lower_enum_match` because they read the same declared constructor
+ * set.
+ */
+static char *value_match_enum_type(
+    const char *source,
+    const char *hir,
+    int64_t start
+);
+
+static char *parse_value_arm(
+    const char *source,
+    const char *hir,
+    int64_t arm_open,
+    int64_t *arm_close
+);
+
+static char *parse_value_enum_match(
+    const char *source,
+    const char *hir,
+    int64_t start,
+    const char *enum_type,
+    ValueMatchParts *parts
+);
+
+static char *emit_value_enum_match_into(
+    const char *source,
+    const char *hir,
+    int64_t start,
+    int64_t end,
+    const char *target,
+    const char *failure_result,
+    const char *enum_type
+);
+
 static char *parse_value_match(
     const char *source,
+    const char *hir,
     int64_t start,
     ValueMatchParts *parts
 ) {
@@ -6880,6 +6924,20 @@ static char *parse_value_match(
             cursor
         );
     }
+
+    char *enum_type = value_match_enum_type(source, hir, cursor);
+    if (enum_type[0] != '\0') {
+        char *result = parse_value_enum_match(
+            source,
+            hir,
+            cursor,
+            enum_type,
+            parts
+        );
+        free(enum_type);
+        return result;
+    }
+    free(enum_type);
 
     parts->value_start = skip_trivia(source, token_end(source, cursor));
     parts->value_end = condition_end(source, parts->value_start);
@@ -6997,48 +7055,15 @@ static char *parse_value_match(
             );
         }
 
-        int64_t arm_start = skip_trivia(
+        int64_t arm_close = -1;
+        char *arm_result = parse_value_arm(
             source,
-            token_end(source, arm_open)
+            hir,
+            arm_open,
+            &arm_close
         );
-        int64_t arm_end = -1;
-        if (token_equal(source, arm_start, "if")) {
-            ValueIfParts nested;
-            char *result = parse_value_if(source, arm_start, &nested);
-            if (strncmp(result, "error[", 6) == 0) return result;
-            free(result);
-            arm_end = nested.end;
-        } else if (token_equal(source, arm_start, "match")) {
-            ValueMatchParts nested;
-            char *result = parse_value_match(source, arm_start, &nested);
-            if (strncmp(result, "error[", 6) == 0) return result;
-            free(result);
-            arm_end = nested.end;
-        } else {
-            if (token_equal(source, arm_start, "print")) {
-                return lower_error(
-                    "E2S30",
-                    "value-position match arm must produce Int, not Void",
-                    arm_start
-                );
-            }
-            arm_end = expression_end(source, arm_start);
-            if (arm_end < 0) {
-                return lower_error(
-                    "E2S30",
-                    "value-position match arm must produce Int",
-                    arm_start
-                );
-            }
-        }
-        int64_t arm_close = skip_trivia(source, arm_end);
-        if (arm_close >= length || !token_equal(source, arm_close, "}")) {
-            return lower_error(
-                "E2S30",
-                "value-position match arm must contain one final Int expression",
-                arm_close
-            );
-        }
+        if (strncmp(arm_result, "error[", 6) == 0) return arm_result;
+        free(arm_result);
 
         if (!guarded) {
             if (pattern_true) {
@@ -7119,19 +7144,20 @@ static bool value_control(const char *source, int64_t cursor) {
 
 static char *parse_value_control(
     const char *source,
+    const char *hir,
     int64_t start,
     int64_t *end
 ) {
     int64_t cursor = skip_trivia(source, start);
     if (token_equal(source, cursor, "if")) {
         ValueIfParts parts;
-        char *result = parse_value_if(source, cursor, &parts);
+        char *result = parse_value_if(source, hir, cursor, &parts);
         if (strncmp(result, "error[", 6) == 0) return result;
         *end = parts.end;
         return result;
     }
     ValueMatchParts parts;
-    char *result = parse_value_match(source, cursor, &parts);
+    char *result = parse_value_match(source, hir, cursor, &parts);
     if (strncmp(result, "error[", 6) == 0) return result;
     *end = parts.end;
     return result;
@@ -7182,7 +7208,7 @@ static char *emit_value_into(
     }
 
     ValueIfParts parts;
-    char *result = parse_value_if(source, cursor, &parts);
+    char *result = parse_value_if(source, hir, cursor, &parts);
     if (strncmp(result, "error[", 6) == 0) return result;
     free(result);
     char *condition = emit_condition_into(
@@ -7249,8 +7275,25 @@ static char *emit_value_match_into(
     const char *target,
     const char *failure_result
 ) {
+    int64_t match_start = skip_trivia(source, start);
+    char *scrutinee_enum = value_match_enum_type(source, hir, match_start);
+    if (scrutinee_enum[0] != '\0') {
+        char *emitted = emit_value_enum_match_into(
+            source,
+            hir,
+            match_start,
+            end,
+            target,
+            failure_result,
+            scrutinee_enum
+        );
+        free(scrutinee_enum);
+        return emitted;
+    }
+    free(scrutinee_enum);
+
     ValueMatchParts parts;
-    char *result = parse_value_match(source, start, &parts);
+    char *result = parse_value_match(source, hir, start, &parts);
     if (strncmp(result, "error[", 6) == 0) return result;
     free(result);
 
@@ -7289,6 +7332,7 @@ static char *emit_value_match_into(
         if (value_control(source, arm_start)) {
             char *arm_result = parse_value_control(
                 source,
+                hir,
                 arm_start,
                 &arm_end
             );
@@ -9741,6 +9785,7 @@ static char *build_scope_hir_mode(
                 if (value_control(source, initializer)) {
                     char *value_result = parse_value_control(
                         source,
+                        hir.data,
                         initializer,
                         &visible_start
                     );
@@ -11334,6 +11379,685 @@ static char *lower_enum_match(
     return emitted.data;
 }
 
+/*
+ * The enum a value-position `match` scrutinises, or "" when it does not
+ * scrutinise one.  The shape is the one statement position already recognises
+ * — a single identifier directly followed by the arms `{` — and the type comes
+ * from resolution rather than spelling, so a Bool or Int binding still falls
+ * through to the Bool rules and earns exactly the diagnostic it earned before.
+ */
+static char *value_match_enum_type(
+    const char *source,
+    const char *hir,
+    int64_t start
+) {
+    int64_t length = source_length(source);
+    int64_t value_start = skip_trivia(source, token_end(source, start));
+    if (
+        value_start >= length ||
+        strcmp(token_kind(source, value_start), "identifier") != 0
+    ) {
+        return owned_text("");
+    }
+    int64_t arms_open = skip_trivia(source, token_end(source, value_start));
+    if (arms_open >= length || !token_equal(source, arms_open, "{")) {
+        return owned_text("");
+    }
+    char *binding_id = hir_use_binding_id(hir, value_start);
+    char *binding_type = hir_binding_field(hir, binding_id, 5);
+    free(binding_id);
+    if (
+        binding_type[0] == '\0' ||
+        strcmp(binding_type, "Int") == 0 ||
+        enum_constructor_count(source, binding_type) < 0
+    ) {
+        free(binding_type);
+        return owned_text("");
+    }
+    return binding_type;
+}
+
+/*
+ * One arm block of a value-position `match` must hold exactly one final Int
+ * expression, the same rule a value `if` branch follows.  `E2S30` is the whole
+ * vocabulary, so a Bool scrutinee and an enum scrutinee refuse identically.
+ * `arm_close` is left on the arm's `}` for the caller's walk.
+ */
+static char *parse_value_arm(
+    const char *source,
+    const char *hir,
+    int64_t arm_open,
+    int64_t *arm_close
+) {
+    int64_t length = source_length(source);
+    int64_t arm_start = skip_trivia(source, token_end(source, arm_open));
+    int64_t arm_end = -1;
+    if (token_equal(source, arm_start, "if")) {
+        ValueIfParts nested;
+        char *result = parse_value_if(source, hir, arm_start, &nested);
+        if (strncmp(result, "error[", 6) == 0) return result;
+        free(result);
+        arm_end = nested.end;
+    } else if (token_equal(source, arm_start, "match")) {
+        ValueMatchParts nested;
+        char *result = parse_value_match(source, hir, arm_start, &nested);
+        if (strncmp(result, "error[", 6) == 0) return result;
+        free(result);
+        arm_end = nested.end;
+    } else {
+        if (token_equal(source, arm_start, "print")) {
+            return lower_error(
+                "E2S30",
+                "value-position match arm must produce Int, not Void",
+                arm_start
+            );
+        }
+        arm_end = expression_end(source, arm_start);
+        if (arm_end < 0) {
+            return lower_error(
+                "E2S30",
+                "value-position match arm must produce Int",
+                arm_start
+            );
+        }
+    }
+    *arm_close = skip_trivia(source, arm_end);
+    if (*arm_close >= length || !token_equal(source, *arm_close, "}")) {
+        return lower_error(
+            "E2S30",
+            "value-position match arm must contain one final Int expression",
+            *arm_close
+        );
+    }
+    return owned_text("ok");
+}
+
+static char *parse_value_enum_match_error(
+    Buffer *covered,
+    const char *code,
+    const char *message,
+    int64_t cursor
+) {
+    free(covered->data);
+    return lower_error(code, message, cursor);
+}
+
+/*
+ * Value position for a concrete-enum scrutinee.  The coverage rules are the
+ * ones statement position already applies to the same declared constructor set
+ * — `E2S25` for a missing constructor, `E2S26` for a duplicate or unreachable
+ * arm, `E2S32` for a constructor that is not the scrutinee's, and a guarded arm
+ * proving no coverage — and the arm rule is the value rule, `E2S30`.  Nothing
+ * here widens payloads or adds a pattern form.
+ */
+static char *parse_value_enum_match(
+    const char *source,
+    const char *hir,
+    int64_t start,
+    const char *enum_type,
+    ValueMatchParts *parts
+) {
+    int64_t length = source_length(source);
+    parts->value_start = skip_trivia(source, token_end(source, start));
+    parts->value_end = token_end(source, parts->value_start);
+    parts->arms_open = skip_trivia(source, parts->value_end);
+    Buffer covered;
+    buffer_init(&covered);
+    buffer_append(&covered, "|");
+    if (
+        parts->arms_open >= length ||
+        !token_equal(source, parts->arms_open, "{")
+    ) {
+        return parse_value_enum_match_error(
+            &covered,
+            "E2S24",
+            "expected `{` after enum match scrutinee",
+            parts->arms_open
+        );
+    }
+
+    int64_t arm_cursor = skip_trivia(
+        source,
+        token_end(source, parts->arms_open)
+    );
+    bool seen_catchall = false;
+    while (arm_cursor < length && !token_equal(source, arm_cursor, "}")) {
+        int64_t pattern_start = arm_cursor;
+        PatternSummary pattern_summary_value = pattern_summary(
+            source,
+            pattern_start
+        );
+        char *pattern = token_copy(source, pattern_start);
+        int64_t tag =
+            pattern_summary_value.kind == PATTERN_NAME ||
+            pattern_summary_value.kind == PATTERN_CONSTRUCTOR
+                ? enum_constructor_index(source, enum_type, pattern)
+                : -1;
+        bool binding_catchall =
+            pattern_summary_value.kind == PATTERN_NAME &&
+            tag < 0 &&
+            enum_binding_catchall_name(pattern);
+        bool catchall =
+            pattern_summary_value.kind == PATTERN_WILDCARD ||
+            binding_catchall;
+        if (seen_catchall) {
+            free(pattern);
+            return parse_value_enum_match_error(
+                &covered,
+                "E2S26",
+                "pattern after catch-all is unreachable",
+                pattern_start
+            );
+        }
+        if (catchall) {
+            if (enum_constructors_covered(source, enum_type, covered.data)) {
+                free(pattern);
+                return parse_value_enum_match_error(
+                    &covered,
+                    "E2S26",
+                    "catch-all pattern is unreachable",
+                    pattern_start
+                );
+            }
+        } else {
+            if (
+                pattern_summary_value.kind != PATTERN_NAME &&
+                pattern_summary_value.kind != PATTERN_CONSTRUCTOR
+            ) {
+                free(pattern);
+                return parse_value_enum_match_error(
+                    &covered,
+                    "E2S32",
+                    "enum pattern must name a constructor or `_`",
+                    pattern_start
+                );
+            }
+            if (tag < 0) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    "constructor `%s` does not belong to enum `%s`",
+                    pattern,
+                    enum_type
+                );
+                free(pattern);
+                char *error = parse_value_enum_match_error(
+                    &covered,
+                    "E2S32",
+                    message.data,
+                    pattern_start
+                );
+                free(message.data);
+                return error;
+            }
+            if (enum_name_covered(covered.data, pattern)) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    "duplicate enum constructor pattern `%s` is unreachable",
+                    pattern
+                );
+                free(pattern);
+                char *error = parse_value_enum_match_error(
+                    &covered,
+                    "E2S26",
+                    message.data,
+                    pattern_start
+                );
+                free(message.data);
+                return error;
+            }
+            int64_t arity = enum_constructor_payload_arity(
+                source,
+                enum_type,
+                pattern
+            );
+            bool applied =
+                pattern_summary_value.kind == PATTERN_CONSTRUCTOR;
+            if (arity < 0) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    "constructor `%s` of enum `%s` declares a payload outside "
+                    "this Core slice; one `Int` field is supported",
+                    pattern,
+                    enum_type
+                );
+                free(pattern);
+                char *error = parse_value_enum_match_error(
+                    &covered,
+                    "E2S32",
+                    message.data,
+                    pattern_start
+                );
+                free(message.data);
+                return error;
+            }
+            if (applied != (arity == 1)) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    arity == 1 ?
+                        "constructor pattern `%s` must bind its one `Int` "
+                        "payload or use `_`" :
+                        "constructor pattern `%s` takes no payload",
+                    pattern
+                );
+                free(pattern);
+                char *error = parse_value_enum_match_error(
+                    &covered,
+                    "E2S32",
+                    message.data,
+                    pattern_start
+                );
+                free(message.data);
+                return error;
+            }
+            if (applied) {
+                int64_t open = skip_trivia(
+                    source,
+                    token_end(source, pattern_start)
+                );
+                int64_t field = skip_trivia(
+                    source,
+                    token_end(source, open)
+                );
+                int64_t close = field >= length ?
+                    length :
+                    skip_trivia(source, token_end(source, field));
+                bool wildcard = token_equal(source, field, "_");
+                bool named =
+                    field < length &&
+                    strcmp(token_kind(source, field), "identifier") == 0 &&
+                    !wildcard;
+                if (
+                    (!wildcard && !named) ||
+                    close >= length ||
+                    !token_equal(source, close, ")")
+                ) {
+                    free(pattern);
+                    return parse_value_enum_match_error(
+                        &covered,
+                        "E2S32",
+                        "constructor payload pattern must be one name or `_`",
+                        field
+                    );
+                }
+            }
+        }
+
+        int64_t arrow = skip_trivia(source, pattern_summary_value.end);
+        bool guarded = false;
+        if (arrow < length && token_equal(source, arrow, "if")) {
+            guarded = true;
+            int64_t guard_start = skip_trivia(
+                source,
+                token_end(source, arrow)
+            );
+            int64_t guard_end = condition_end(source, guard_start);
+            if (guard_end < 0) {
+                free(pattern);
+                return parse_value_enum_match_error(
+                    &covered,
+                    "E2S29",
+                    "match guard must be Bool or an Int comparison",
+                    guard_start
+                );
+            }
+            arrow = skip_trivia(source, guard_end);
+        }
+        if (arrow >= length || !token_equal(source, arrow, "=>")) {
+            free(pattern);
+            return parse_value_enum_match_error(
+                &covered,
+                "E2S24",
+                "expected `=>` after enum pattern",
+                arrow
+            );
+        }
+        int64_t arm_open = skip_trivia(source, token_end(source, arrow));
+        if (arm_open >= length || !token_equal(source, arm_open, "{")) {
+            free(pattern);
+            return parse_value_enum_match_error(
+                &covered,
+                "E2S24",
+                "bounded enum match arm must use a block",
+                arm_open
+            );
+        }
+        int64_t arm_close = -1;
+        char *arm_result = parse_value_arm(
+            source,
+            hir,
+            arm_open,
+            &arm_close
+        );
+        if (strncmp(arm_result, "error[", 6) == 0) {
+            free(pattern);
+            free(covered.data);
+            return arm_result;
+        }
+        free(arm_result);
+
+        if (!guarded) {
+            if (catchall) {
+                seen_catchall = true;
+            } else {
+                buffer_append(&covered, pattern);
+                buffer_append(&covered, "|");
+            }
+        }
+        free(pattern);
+
+        arm_cursor = skip_trivia(source, token_end(source, arm_close));
+        if (arm_cursor < length && token_equal(source, arm_cursor, ",")) {
+            arm_cursor = skip_trivia(
+                source,
+                token_end(source, arm_cursor)
+            );
+        } else if (
+            arm_cursor >= length ||
+            !token_equal(source, arm_cursor, "}")
+        ) {
+            return parse_value_enum_match_error(
+                &covered,
+                "E2S24",
+                "expected `,` between enum match arms",
+                arm_cursor
+            );
+        }
+    }
+    if (arm_cursor >= length || !token_equal(source, arm_cursor, "}")) {
+        return parse_value_enum_match_error(
+            &covered,
+            "E2S24",
+            "missing `}` after enum match arms",
+            parts->arms_open
+        );
+    }
+    if (
+        !seen_catchall &&
+        !enum_constructors_covered(source, enum_type, covered.data)
+    ) {
+        char *missing = enum_missing_constructors(
+            source,
+            enum_type,
+            covered.data
+        );
+        Buffer message;
+        buffer_init(&message);
+        buffer_format(
+            &message,
+            "non-exhaustive enum `%s` match; missing constructors %s",
+            enum_type,
+            missing
+        );
+        free(missing);
+        char *error = parse_value_enum_match_error(
+            &covered,
+            "E2S25",
+            message.data,
+            start
+        );
+        free(message.data);
+        return error;
+    }
+
+    free(covered.data);
+    parts->end = token_end(source, arm_cursor);
+    stage2_semantic_observe(
+        "control|match|%" PRId64 "|%" PRId64 "|Int|%" PRId64
+        "|%" PRId64 "\n",
+        start,
+        parts->end,
+        parts->value_start,
+        parts->value_end
+    );
+    return owned_text("ok");
+}
+
+/*
+ * The dispatch statement position emits for a concrete enum, with the arm
+ * bodies replaced by the value each arm produces.  The scrutinee is read once
+ * into `kofun_match_value` before any arm is tested, arms are tested in source
+ * order, and `kofun_match_selected` stops the walk at the first arm that takes,
+ * so only that arm's result expression runs and only it assigns `target`.
+ */
+static char *emit_value_enum_match_into(
+    const char *source,
+    const char *hir,
+    int64_t start,
+    int64_t end,
+    const char *target,
+    const char *failure_result,
+    const char *enum_type
+) {
+    int64_t value_start = skip_trivia(source, token_end(source, start));
+    int64_t arms_open = skip_trivia(source, token_end(source, value_start));
+    Buffer dispatch;
+    buffer_init(&dispatch);
+    int64_t arm_cursor = skip_trivia(source, token_end(source, arms_open));
+    while (arm_cursor < end && !token_equal(source, arm_cursor, "}")) {
+        int64_t pattern_start = arm_cursor;
+        PatternSummary pattern_summary_value = pattern_summary(
+            source,
+            pattern_start
+        );
+        char *pattern = token_copy(source, pattern_start);
+        int64_t tag =
+            pattern_summary_value.kind == PATTERN_NAME ||
+            pattern_summary_value.kind == PATTERN_CONSTRUCTOR
+                ? enum_constructor_index(source, enum_type, pattern)
+                : -1;
+        bool binding_catchall =
+            pattern_summary_value.kind == PATTERN_NAME &&
+            tag < 0 &&
+            enum_binding_catchall_name(pattern);
+        bool catchall =
+            pattern_summary_value.kind == PATTERN_WILDCARD ||
+            binding_catchall;
+        /* `-1` means the arm binds no payload name. */
+        int64_t payload_name_start = -1;
+        int64_t catchall_name_start =
+            binding_catchall ? pattern_start : -1;
+        if (
+            !catchall &&
+            pattern_summary_value.kind == PATTERN_CONSTRUCTOR
+        ) {
+            int64_t open = skip_trivia(
+                source,
+                token_end(source, pattern_start)
+            );
+            int64_t field = skip_trivia(source, token_end(source, open));
+            if (!token_equal(source, field, "_")) payload_name_start = field;
+        }
+        free(pattern);
+
+        int64_t arrow = skip_trivia(source, pattern_summary_value.end);
+        bool guarded = false;
+        int64_t guard_start = -1;
+        int64_t guard_end = -1;
+        if (arrow < end && token_equal(source, arrow, "if")) {
+            guarded = true;
+            guard_start = skip_trivia(source, token_end(source, arrow));
+            guard_end = condition_end(source, guard_start);
+            arrow = skip_trivia(source, guard_end);
+        }
+        int64_t arm_open = skip_trivia(source, token_end(source, arrow));
+        int64_t arm_start = skip_trivia(source, token_end(source, arm_open));
+        int64_t arm_end = -1;
+        if (value_control(source, arm_start)) {
+            char *arm_result = parse_value_control(
+                source,
+                hir,
+                arm_start,
+                &arm_end
+            );
+            if (strncmp(arm_result, "error[", 6) == 0) {
+                free(dispatch.data);
+                return arm_result;
+            }
+            free(arm_result);
+        } else {
+            arm_end = expression_end(source, arm_start);
+        }
+        int64_t arm_close = skip_trivia(source, arm_end);
+
+        Buffer pattern_condition;
+        buffer_init(&pattern_condition);
+        if (catchall) {
+            buffer_append(&pattern_condition, "true");
+        } else {
+            buffer_format(
+                &pattern_condition,
+                "kofun_match_value.tag == INT64_C(%" PRId64 ")",
+                tag
+            );
+        }
+        /*
+         * Declared before the guard, exactly as statement position declares
+         * it, so `Ready(value) if value > 5 => { value }` reads one local in
+         * the guard and in the result expression.  It is a copy of the matched
+         * payload, so producing it duplicates no owned value.
+         */
+        Buffer payload_declaration;
+        buffer_init(&payload_declaration);
+        if (payload_name_start >= 0) {
+            char *payload_id = hir_definition_id_at(hir, payload_name_start);
+            if (payload_id[0] == '\0') {
+                free(payload_id);
+                free(payload_declaration.data);
+                free(pattern_condition.data);
+                free(dispatch.data);
+                return lower_error(
+                    "E2S32",
+                    "constructor payload binding is unresolved",
+                    payload_name_start
+                );
+            }
+            buffer_format(
+                &payload_declaration,
+                "            int64_t k_b%s = "
+                "kofun_match_value.payload;\n"
+                "            (void)k_b%s;\n",
+                payload_id,
+                payload_id
+            );
+            free(payload_id);
+        } else if (catchall_name_start >= 0) {
+            char *catchall_id = hir_definition_id_at(
+                hir,
+                catchall_name_start
+            );
+            if (catchall_id[0] == '\0') {
+                free(catchall_id);
+                free(payload_declaration.data);
+                free(pattern_condition.data);
+                free(dispatch.data);
+                return lower_error(
+                    "E2S32",
+                    "enum catch-all binding is unresolved",
+                    catchall_name_start
+                );
+            }
+            buffer_format(
+                &payload_declaration,
+                "            KofunEnumValue k_b%s = "
+                "kofun_match_value;\n"
+                "            (void)k_b%s;\n",
+                catchall_id,
+                catchall_id
+            );
+            free(catchall_id);
+        }
+        char *arm_body = emit_value_into(
+            source,
+            hir,
+            arm_start,
+            arm_end,
+            target,
+            failure_result
+        );
+        if (strncmp(arm_body, "error[", 6) == 0) {
+            free(payload_declaration.data);
+            free(pattern_condition.data);
+            free(dispatch.data);
+            return arm_body;
+        }
+        if (guarded) {
+            char *guard = emit_condition_into(
+                source,
+                hir,
+                guard_start,
+                guard_end,
+                "kofun_match_guard",
+                failure_result,
+                "            "
+            );
+            buffer_format(
+                &dispatch,
+                "        if (!kofun_match_selected && %s) {\n"
+                "%s"
+                "%s"
+                "            if (kofun_match_guard) {\n"
+                "%s"
+                "                kofun_match_selected = true;\n"
+                "            }\n"
+                "        }\n",
+                pattern_condition.data,
+                payload_declaration.data,
+                guard,
+                arm_body
+            );
+            free(guard);
+        } else {
+            buffer_format(
+                &dispatch,
+                "        if (!kofun_match_selected && %s) {\n"
+                "%s"
+                "%s"
+                "            kofun_match_selected = true;\n"
+                "        }\n",
+                pattern_condition.data,
+                payload_declaration.data,
+                arm_body
+            );
+        }
+        free(arm_body);
+        free(payload_declaration.data);
+        free(pattern_condition.data);
+
+        arm_cursor = skip_trivia(source, token_end(source, arm_close));
+        if (arm_cursor < end && token_equal(source, arm_cursor, ",")) {
+            arm_cursor = skip_trivia(
+                source,
+                token_end(source, arm_cursor)
+            );
+        }
+    }
+    char *binding_id = hir_use_binding_id(hir, value_start);
+    Buffer emitted;
+    buffer_init(&emitted);
+    buffer_format(
+        &emitted,
+        "    {\n"
+        "        KofunEnumValue kofun_match_value = k_b%s;\n"
+        "        (void)kofun_match_value;\n"
+        "        bool kofun_match_selected = false;\n"
+        "%s"
+        "    }\n",
+        binding_id,
+        dispatch.data
+    );
+    free(binding_id);
+    free(dispatch.data);
+    return emitted.data;
+}
+
 static char *assignment_error(
     const char *message,
     const char *name,
@@ -12125,6 +12849,7 @@ static char *lower_body(
                 int64_t value_end = -1;
                 char *result = parse_value_control(
                     source,
+                    hir,
                     value_start,
                     &value_end
                 );
@@ -12251,6 +12976,7 @@ static char *lower_body(
                 int64_t value_end = -1;
                 char *result = parse_value_control(
                     source,
+                    hir,
                     value_start,
                     &value_end
                 );
@@ -12408,7 +13134,7 @@ static char *lower_body(
                 );
             }
             ValueIfParts final_parts;
-            char *result = parse_value_if(source, cursor, &final_parts);
+            char *result = parse_value_if(source, hir, cursor, &final_parts);
             if (strncmp(result, "error[", 6) == 0) {
                 free(emitted.data);
                 return result;
@@ -13093,6 +13819,7 @@ static char *lower_body(
                 int64_t value_end = -1;
                 char *result = parse_value_control(
                     source,
+                    hir,
                     value_start,
                     &value_end
                 );
@@ -13226,6 +13953,7 @@ static char *lower_body(
                     int64_t value_end = -1;
                     char *result = parse_value_control(
                         source,
+                        hir,
                         value_start,
                         &value_end
                     );
