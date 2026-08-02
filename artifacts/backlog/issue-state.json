@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 72,
+  "open_issues": 71,
   "issues": [
     {
       "number": 26,
@@ -199,9 +199,9 @@
       "number": 314,
       "title": "Null coalescing: execute Optional(Int) ?? Int lazily",
       "state_labels": [
-        "ready"
+        "in-progress"
       ],
-      "state_line": "ready",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
         "f37c64f388a45bbe4108c467c49257038f3b2ae7"
@@ -582,9 +582,9 @@
       "number": 880,
       "title": "Call arguments v1 slice 1: parse labels and canonical trailing lambdas",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
+      "state_line": "ready",
       "blocked_by": [
         625
       ],
@@ -650,9 +650,9 @@
       "number": 891,
       "title": "Stage 2 Text values: return Text, convert Int, and concatenate without invalid C",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
+      "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
         "b94cfc72cd63d0255ab914b365ca7910309fa7d2"
@@ -707,9 +707,9 @@
       "number": 916,
       "title": "Integer const generics v1: literal Int type arguments for Fixed[scale]",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
+      "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
         "09a3229c33fd309f61a0a0ba407fd543f8c670e6",
@@ -720,9 +720,9 @@
       "number": 919,
       "title": "Stage 2 C11 List[Int] values: locals, len, and indexing",
       "state_labels": [
-        "ready"
+        "in-progress"
       ],
-      "state_line": "ready",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
         "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
@@ -800,18 +800,6 @@
       ],
       "evidence_commits": [
         "bc95dd5707be02c87fe4f2f49553c0876c4b4971"
-      ]
-    },
-    {
-      "number": 986,
-      "title": "backlog: synchronize live state after the #900/#901/#943 transitions",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "41b531f73e6b751f385c62b4ef689992f676afef"
       ]
     },
     {
