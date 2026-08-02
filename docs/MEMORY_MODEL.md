@@ -559,8 +559,14 @@ decide today:
 - the argument is an immutable local binding of managed type (`Text` or
   `List`), named directly — not a parameter, which the caller may retain
   (borrowed view, §3.1);
-- the assertion sits in the binding's own scope: an assertion inside a
-  conditional arm or loop that the binding outlives is rejected, not
+- the assertion sits in the binding's own scope, or in a conditional arm
+  that is **terminal** — every path after the assertion within that arm
+  leaves the function through `return`, so control cannot rejoin the outer
+  scope where the binding is still observable (#904). Terminality is decided
+  over statements, not source order: a nested `if` counts only when both of
+  its arms terminate, and a loop between the assertion and the arm's
+  `return` refuses outright, because it may re-enter. An assertion inside a
+  loop, or in an arm the binding outlives, is still rejected rather than
   analysed;
 - the binding has no use at any later byte and no use inside any lambda;
 - every earlier read is provably alias-free: an operand of `==`/`!=`, or an
@@ -576,7 +582,8 @@ warning and never falls back to another compiler: a source file that both
 contains the assertion and steps outside the Stage 2 slice is rejected by
 the seed compiler, which does not accept the syntax.
 
-The general inference — last-use over branches, loops, and aggregates,
-allocation counters, and optimization remarks — remains future work under
-#572, and the in-place ADT reuse built on top of this assertion is #576.
-The gate is `tests/move-assertion/check.sh`.
+The general inference — last-use over loops and aggregates, allocation
+counters, and optimization remarks — remains future work under #572; proving
+a loop-local last use rather than refusing every loop is #915, and the
+in-place ADT reuse built on top of this assertion is #576. The gate is
+`tests/move-assertion/check.sh`.

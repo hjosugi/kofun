@@ -1,0 +1,17 @@
+# Positive: the assertion sits in a conditional arm that terminates. Both
+# arms leave the function through `return`, so control never reaches a point
+# after the `if` where `banner` would still be observable, and the assertion
+# is the last use on the only path that reaches it. #904.
+
+fn main() -> Int {
+    let banner: Text = "banner"
+    let flag = 1
+    if flag > 0 {
+        print(banner)
+        compiler.ensure_move(banner)
+        return 0
+    } else {
+        print("other")
+        return 1
+    }
+}
