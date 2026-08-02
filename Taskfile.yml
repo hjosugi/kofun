@@ -547,6 +547,21 @@ tasks:
         silent: true
       - cmd: "printf '%s\\n' 'PASS: .kofun sources only; no Python implementation'"
         silent: true
+      # hjosugi/kofun#861 moved the editor surfaces to hjosugi/kofun-vscode and
+      # hjosugi/tree-sitter-kofun. Nothing stopped them coming back: #872, a
+      # pull request about examples, re-added three build outputs under
+      # editor/vscode/server/generated/ — two generated .mjs files and an
+      # x86-64 ELF shared object — because the path was not ignored and a
+      # `git add -A` swept them in. A split that only happens once is a move; a
+      # split that is checked is a boundary.
+      - cmd: |-
+          returned=$(git ls-files editor tree-sitter-kofun)
+          if test -n "$returned"; then
+            printf '%s\n' 'FAIL: these paths moved to their own repositories and came back:' "$returned" >&2
+            exit 1
+          fi
+          printf 'PASS: the editor and grammar surfaces stay in their own repositories\n'
+        silent: true
       # scripts/verify_repository.kofun cannot run: it is written against
       # read_text, which the Core does not implement. Nothing invoked it, so
       # its file list rotted twice unnoticed — a deleted Makefile, and then

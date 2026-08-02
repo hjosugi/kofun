@@ -176,6 +176,8 @@ failures='
 blanket_implementation:E2S132
 default_method:E2S132
 duplicate_trait:E2S127
+inherited_member_source:E2S127
+member_name_collision:E2S127
 method_arity_mismatch:E2S128
 method_name_mismatch:E2S127
 method_parameter_mismatch:E2S128
@@ -224,6 +226,38 @@ IFS=$previous_ifs
 grep -F 'nominal:foreign:Duration' \
     "$CASES/orphan_alias_ownership.stderr" >/dev/null ||
     fail 'the alias refusal did not resolve to the foreign type'
+
+# These two fixtures pin current behaviour in the member-scope domain. They
+# assert what this frontend does today and nothing about what it should do:
+# RFC-0005 (#995) is a proposal under review, not accepted semantics, so no
+# assertion here depends on its rule being adopted.
+#
+# `member_name_collision` declares one normalized member name twice under one
+# owner. #942 recorded that shape as refused by `E2S132` for carrying two
+# methods. It is not: the parameter table is keyed by the trait rather than by
+# the member, so the collision is refused first as a duplicate *parameter*.
+# The message names `left`, and names neither the colliding member `equal` nor
+# its owning trait `Equal` — the refusal lands in the parameter scope. That
+# observation stands on its own; RFC-0005 proposes `E370` to replace it, and
+# whether that happens is decided after review closes.
+grep -F "parameter 'left' is declared twice" \
+    "$CASES/member_name_collision.stderr" >/dev/null ||
+    fail 'a duplicate member is no longer refused in the parameter scope'
+! grep -F "'equal'" "$CASES/member_name_collision.stderr" >/dev/null ||
+    fail 'the duplicate-member refusal now names the colliding member'
+! grep -F 'Equal' "$CASES/member_name_collision.stderr" >/dev/null ||
+    fail 'the duplicate-member refusal now names the owning trait'
+
+# `inherited_member_source` is the inherited-member source shape a reader would
+# reach for. No inheritance edge exists to recognise it, so it is refused as
+# punctuation: the message names a delimiter and neither trait. RFC-0005
+# proposes keeping the refusal and giving it `E371`, so the reason is stated
+# rather than inferred from a parse position; that too awaits review.
+grep -F "expected '{'" \
+    "$CASES/inherited_member_source.stderr" >/dev/null ||
+    fail 'a supertrait clause is no longer refused as a delimiter'
+! grep -F 'Base' "$CASES/inherited_member_source.stderr" >/dev/null ||
+    fail 'the supertrait refusal now names the inherited member source'
 
 # Declaration order must not select between candidates. `order_independence`
 # is the positive program with every implementation declared in the opposite
@@ -324,4 +358,5 @@ printf '%s\n' \
     'PASS: bound resolution yields one implementation or a stable diagnostic' \
     'PASS: dictionary descriptors, values, parameters, and arguments elaborate' \
     'PASS: each DictionaryId derives from its ImplementationId and ignores order' \
+    'PASS: a member collision and an inherited member source are both refused' \
     'PASS: typed-only boundaries, GCC analyzer, and ASan/UBSan remain clean'

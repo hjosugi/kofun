@@ -31,6 +31,20 @@ blocker's issue number in `## Dependencies` and remove the `ready` label.
 `curated` is orthogonal: it marks an independently refinable working issue, and
 a `curated` issue may be in any state.
 
+**`planning` is orthogonal too, and is not a state.** It marks a planning
+umbrella or generated catalogue — never directly implementation-ready — and the
+umbrella still has a state, because "this is an umbrella" and "this is waiting
+on something" are different facts. Eleven of the twelve open `planning` issues
+already carry one: [#624](https://github.com/hjosugi/kofun/issues/624), #572,
+#543, #298, #289, #32, #31, #30, and #26 are `planning` + `blocked`, #532 is
+`planning` + `deferred`, and #276 is `planning` + `needs-decision`.
+
+The twelfth, [#998](https://github.com/hjosugi/kofun/issues/998), wrote `State:
+planning` in its `## Metadata` block. Putting an orthogonal marker in the state
+slot does not make the issue `planning`; it leaves the issue with no state at
+all, which is why nothing could tell whether it was startable. Its `State:` line
+now says `blocked`, matching its nine siblings.
+
 ## Definition of Ready
 
 An issue is `ready` when a contributor who has not seen the discussion can
@@ -146,9 +160,31 @@ never been written down. This document is where they now live.
 `task backlog` reads `artifacts/backlog/issue-state.json` and fails when:
 
 - an issue carries more than one state label;
+- a `State:` line names a word that is not a state above;
+- the snapshot declares a state vocabulary other than this one;
 - a state label and the body's `State:` line disagree;
 - a `ready` issue names an open blocker in `## Dependencies`;
 - a `ready` issue carries no evidence stamp.
+
+The vocabulary is closed, and the second and third rules are what close it.
+Labels cannot go wrong — the extraction keeps only labels drawn from the
+vocabulary, so a stray label is invisible rather than wrong — but the `State:`
+line is free text. Until those rules landed, a line naming a non-state passed
+whenever the issue had no state label: the agreement rule needs both sides, so a
+word with nothing to disagree with was never read.
+
+That is not a hypothetical typo. It is what an orthogonal label looks like when
+it lands in the state slot, and it costs the issue its state entirely —
+[#998](https://github.com/hjosugi/kofun/issues/998) said `State: planning`, and
+the gate reported agreement across the whole backlog without having looked at
+it. The label is real and the issue was self-consistent, which is exactly why
+nothing caught it.
+
+Adding a state is therefore an edit to this document *and* to `STATE_LABELS` in
+`tests/backlog/extract.mjs`, in that order. Widening the snapshot alone does not
+work: the checker compares the snapshot's declared vocabulary against the
+repository's and fails on either a word it adds or one it drops, so a
+hand-edited or stale snapshot cannot quietly grant itself a wider one.
 
 The committed snapshot is a **fixture**, not a claim about the backlog right
 now. Issues are filed here every few minutes and no commit can keep up, so

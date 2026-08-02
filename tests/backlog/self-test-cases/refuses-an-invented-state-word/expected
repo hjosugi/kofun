@@ -1,0 +1,1 @@
+FAIL: backlog: #1 has `State: planning`, which is not one of ready, blocked, needs-detail, needs-decision, deferred, in-progress; use a state docs/ISSUE_READINESS.md defines, or widen the vocabulary there first
