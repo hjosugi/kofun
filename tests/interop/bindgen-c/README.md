@@ -48,7 +48,7 @@ machine-readable report with a reason, and none may surface as a declaration
 in the module — skipped constructs never silently disappear, and never
 silently appear either.
 
-Two fixture files sit beside it, owned by the sanitizer gate:
+Four fixture files sit beside it, owned by the sanitizer gate:
 
 - [`fixture/kbfix_probe.c`](fixture/kbfix_probe.c) — the buffer+length and
   callback paths for #900. The checked C ABI profile cannot express a
@@ -57,8 +57,14 @@ Two fixture files sit beside it, owned by the sanitizer gate:
   those two contracts are exercised in C against the *same* sanitized
   library, and the gate requires every entry point it calls to be a bound
   symbol in the report;
-- [`fixture/kbfix_negative.c`](fixture/kbfix_negative.c) — the one negative
-  fixture, which must fail.
+- [`fixture/kbfix_negative.c`](fixture/kbfix_negative.c) — the
+  AddressSanitizer negative fixture, which must fail with the library-side
+  heap overflow;
+- [`fixture/kbfix_leak.c`](fixture/kbfix_leak.c) — the LeakSanitizer negative
+  fixture, which deliberately leaves a client-owned counter handle unfreed;
+- [`fixture/kbfix_undefined.c`](fixture/kbfix_undefined.c) — the
+  UndefinedBehaviorSanitizer negative fixture, which triggers signed overflow
+  inside the fixture library.
 
 ## What is proved here
 

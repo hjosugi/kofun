@@ -31,9 +31,11 @@ set -eu
 #     sanitized library by fixture/kbfix_probe.c, whose entry points must all
 #     be bound symbols in the audit report;
 #
-#   * one negative fixture, fixture/kbfix_negative.c, MUST fail with an
-#     AddressSanitizer report naming kbfix.c. Without it, every green run
-#     above would be equally green with the instrumentation switched off.
+#   * three arm-specific negative fixtures MUST fail: kbfix_negative.c with an
+#     AddressSanitizer report naming kbfix.c, kbfix_leak.c with a
+#     LeakSanitizer report, and kbfix_undefined.c with a library-side
+#     UndefinedBehaviorSanitizer report. Without those probes, a green run
+#     could survive with one or more configured sanitizer arms switched off.
 #
 # Offline: one committed header, one committed library source, clang.
 
