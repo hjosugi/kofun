@@ -18,6 +18,26 @@ parsing is bounded, nothing is evaluated, and no content from the header
 reaches a shell. The gate for all of this is
 [`tests/interop/bindgen-c/check.sh`](../../tests/interop/bindgen-c/check.sh).
 
+## Bounds on clang itself
+
+A hostile header attacks the compiler before it attacks the walker, so every
+clang subprocess — version query, target query, AST dump, and preprocessor
+run — carries the same two explicit constants:
+
+| Bound | Value |
+|---|---|
+| wall clock, per subprocess | 20 000 ms |
+| captured stdout, AST dump | 128 MiB |
+| captured stdout, preprocessor | 64 MiB |
+| relayed diagnostic | 4 KiB |
+
+None is derived from the input. Exceeding either the clock or the buffer is a
+refusal that names the bound and exits 2, and every one of them happens
+before the output directory is created — a refused run leaves no partial
+artifact to be mistaken for a generated one. The adversarial corpus that
+exercises this lives in
+[`tests/interop/bindgen-c/fuzz/`](../../tests/interop/bindgen-c/fuzz/).
+
 ## Outputs
 
 Two files in `--out-dir`, both deterministic — the same inputs produce
