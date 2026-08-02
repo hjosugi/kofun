@@ -32,7 +32,7 @@ tree-sitter` parses all twenty without an `ERROR` or `MISSING` node.
 | `api_server.kofun` | owned | `tests/http/check.sh` |
 | `broken_list_monad.kofun` | illustrative | `E2S02` |
 | `cli_tool.kofun` | owned | `framework/cli/check.sh` |
-| `coding_interview.kofun` | illustrative | `E2S17` |
+| `coding_interview.kofun` | illustrative | `E2S15` |
 | `fibonacci_native.kofun` | owned | `bootstrap/native/check.sh` |
 | `hello.kofun` | runs | `hello.expected` |
 | `lambdas.kofun` | owned | `tests/conformance/syntax/issues_35_47/run.sh` |

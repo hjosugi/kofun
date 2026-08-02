@@ -104,7 +104,7 @@ type LocalResolution =
     | Unique(instant: Int)
     | Ambiguous(packed_instants: Int)
     | Nonexistent(next_instant: Int)
-    | ResolutionFailed(error_code: Int)
+    | ResolutionFailed(operand: Int)
 
 # The executable Core cannot return Text yet, so serialization is a nominal,
 # fixed-width numeric projection. Field order is the byte-stable wire order the
@@ -503,12 +503,12 @@ fn resolve_fixed_offset(
     let minimum = (0 - 9223372036854775807) - 1
     if offset.seconds > 0 {
         if local.wall_seconds < minimum + offset.seconds {
-            return ResolutionFailed(code_arithmetic_overflow())
+            return ResolutionFailed(local.wall_seconds)
         }
     }
     if offset.seconds < 0 {
         if local.wall_seconds > maximum + offset.seconds {
-            return ResolutionFailed(code_arithmetic_overflow())
+            return ResolutionFailed(local.wall_seconds)
         }
     }
     return Unique(local.wall_seconds - offset.seconds)
@@ -520,7 +520,7 @@ fn resolution_kind(result: LocalResolution) -> Int {
         Unique(_) => { kind = 1 },
         Ambiguous(_) => { kind = 2 },
         Nonexistent(_) => { kind = 3 },
-        ResolutionFailed(code) => { kind = code },
+        ResolutionFailed(_) => { kind = code_arithmetic_overflow() },
     }
     return kind
 }
