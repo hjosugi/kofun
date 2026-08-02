@@ -22,6 +22,9 @@ mkdir -p "$WORK"
 
 "$WORK/unicode-test"
 
+KOFUN_CONFUSABLE_VISIBLE_SET_WORK="$WORK/confusable-visible-set" \
+    sh "$ROOT/tests/conformance/modules/confusable-visible-set/run.sh"
+
 kofun_stage2_build "$ROOT" "$WORK/kofun-stage2"
 
 "$WORK/kofun-stage2" \
@@ -72,19 +75,21 @@ assert_grep "confusable.stdout" \
 assert_grep "confusable.stdout" \
     -F 'confusable with `paypal`' "$WORK/confusable.stdout"
 
-# Keep the public guide aligned with the executable and normative boundary.
-# Same-unit collisions are hard errors; the future module resolver still owns
-# cross-module detection.  A warning claim here would overstate a surface that
-# neither this gate nor the compiler implements.
+# Keep same-unit behavior and the accepted resolver boundary explicit. The
+# focused visible-set gate above owns cross-module enforcement without routing
+# EUNICODE008 through the single-unit compiler frontend.
 assert_grep "syntax guide same-unit confusable hard error" \
     -F 'in one compilation unit are a hard error (`EUNICODE006`)' \
     "$ROOT/docs/SYNTAX.md"
 assert_grep "syntax guide preserves name resolution" \
     -F 'does not change identifier equality or name resolution' \
     "$ROOT/docs/SYNTAX.md"
-assert_grep "syntax guide leaves cross-module detection unimplemented" \
-    -F 'confusable collision detection is not implemented' \
-    "$ROOT/docs/SYNTAX.md"
+assert_grep "normative cross-module diagnostic is distinct" \
+    -F 'distinct diagnostic code' \
+    "$ROOT/spec/syntax/FOUNDATIONS_AND_CONTROL.md"
+assert_grep "normative cross-module code is EUNICODE008" \
+    -F '`EUNICODE008`' \
+    "$ROOT/spec/syntax/FOUNDATIONS_AND_CONTROL.md"
 assert_not_grep "syntax guide does not promise a public-API warning" \
     -F 'Confusable characters produce a warning in public APIs.' \
     "$ROOT/docs/SYNTAX.md"
@@ -114,4 +119,5 @@ assert_eq "output of stage1-identifiers" "$("$WORK/stage1-identifiers")" "42"
 printf '%s\n' \
     "PASS: Stage 2 lowered Japanese and Hangul identifiers through ASCII-safe C names" \
     "PASS: Stage 1 and native Core resolved Japanese and Hangul bindings" \
-    "PASS: Stage 2 rejected non-NFC and confusable identifiers with localized diagnostics"
+    "PASS: Stage 2 rejected non-NFC and same-unit confusable identifiers with localized diagnostics" \
+    "PASS: Stage 2 resolver rejected cross-module effective-visible-set collisions as EUNICODE008"

@@ -32,11 +32,13 @@ mkdir -p "$WORK"
     -DKOFUN_TEST_DIAGNOSTIC_FAULTS \
     "$ROOT/bootstrap/stage2/imports_qualified.c" \
     "$ROOT/bootstrap/stage2/visibility_access.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$TOOL"
 
 "$CC" -std=c11 -Wall -Wextra -Werror -pedantic \
     "$ROOT/bootstrap/stage2/module_symbols.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$WORK/module-symbols"
 

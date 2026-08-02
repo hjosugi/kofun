@@ -1,0 +1,6 @@
+module consumer.main
+from demo.confusable import safe
+
+fn paypal() -> Int {
+    return 1
+}

@@ -13,6 +13,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "confusable_visible_set.c"
+
 #define SELECTIVE_DECLARATIONS_PER_MODULE_LIMIT 256u
 #define SELECTIVE_NAMES_PER_DECLARATION_LIMIT 256u
 #define SELECTIVE_REQUEST_LIMIT 65536u
@@ -100,6 +102,8 @@ typedef struct {
     SelectiveTypeUse *type_uses;
     size_t type_use_count;
     size_t type_use_capacity;
+    uint8_t visible_confusable_cache_keys[MODULE_LIMIT][32];
+    bool visible_confusables_checked;
     uint64_t lookup_work;
 } SelectiveResolver;
 
@@ -1169,6 +1173,217 @@ static bool resolve_selective_type_uses(SelectiveResolver *resolver) {
     return true;
 }
 
+static void initialize_visible_binding(
+    KofunVisibleBinding *output,
+    const Module *resolving_module,
+    const uint8_t namespace_id[32],
+    const uint8_t binding_id[32],
+    const uint8_t target_symbol_id[32],
+    const char *spelling,
+    KofunVisibleSiteKind site_kind,
+    size_t start,
+    size_t end
+) {
+    memset(output, 0, sizeof(*output));
+    memcpy(output->resolving_module_id, resolving_module->module_id, 32u);
+    memcpy(output->namespace_id, namespace_id, 32u);
+    memcpy(output->binding_id, binding_id, 32u);
+    memcpy(output->target_symbol_id, target_symbol_id, 32u);
+    output->effective_spelling = (const uint8_t *)spelling;
+    output->effective_spelling_length = strlen(spelling);
+    output->site_kind = site_kind;
+    output->canonical_provenance = resolving_module->logical_path;
+    output->span_start = (uint32_t)start;
+    output->span_end = (uint32_t)end;
+    output->disclose_location = true;
+}
+
+static bool collect_selective_visible_bindings(
+    SelectiveResolver *resolver,
+    size_t module_index,
+    KofunVisibleBinding *visible,
+    size_t capacity,
+    size_t *count
+) {
+    ImportResolver *qualified = &resolver->qualified;
+    Program *program = &qualified->program;
+    const Module *module = &program->modules[module_index];
+    size_t index;
+    *count = 0u;
+    for (index = 0u; index < program->declaration_count; index += 1u) {
+        Declaration *declaration = &program->declarations[index];
+        if (declaration->module_index != module_index) continue;
+        if (*count >= capacity) return false;
+        initialize_visible_binding(&visible[(*count)++], module,
+            declaration->namespace_id, declaration->symbol_id,
+            declaration->symbol_id, declaration->name,
+            KOFUN_VISIBLE_SITE_LOCAL, declaration->name_start,
+            declaration->name_end);
+    }
+    for (index = 0u; index < qualified->import_count; index += 1u) {
+        ImportBinding *binding = &qualified->imports[index];
+        uint8_t target_symbol[32];
+        const uint8_t *effective_binding;
+        size_t start;
+        size_t end;
+        if (binding->importer_index != module_index ||
+            binding->form_tag != IMPORT_FORM_QUALIFIED) continue;
+        if (*count >= capacity) return false;
+        compute_symbol_hash(
+            program->modules[binding->target_index].module_id,
+            program->namespace_ids[2], "module",
+            qualified->modules[binding->target_index].declared_path,
+            target_symbol);
+        effective_binding = binding->has_alias
+            ? binding->alias_binding_id : binding->binding_id;
+        start = binding->has_alias ? binding->alias_start
+            : binding->components[binding->component_count - 1u].start;
+        end = binding->has_alias ? binding->alias_end
+            : binding->components[binding->component_count - 1u].end;
+        initialize_visible_binding(&visible[(*count)++], module,
+            program->namespace_ids[2], effective_binding, target_symbol,
+            binding->qualifier, KOFUN_VISIBLE_SITE_IMPORT, start, end);
+    }
+    for (index = 0u; index < resolver->binding_count; index += 1u) {
+        SelectiveBinding *binding = &resolver->bindings[index];
+        SelectiveDeclaration *selective =
+            &resolver->selectives[binding->declaration_index];
+        SelectiveName *name = &selective->names[binding->name_index];
+        Declaration *target = &program->declarations[binding->target_index];
+        if (selective->is_re_export ||
+            selective->importer_index != module_index) continue;
+        if (*count >= capacity) return false;
+        initialize_visible_binding(&visible[(*count)++], module,
+            target->namespace_id, binding->binding_id, target->symbol_id,
+            name->spelling, KOFUN_VISIBLE_SITE_IMPORT,
+            name->start, name->end);
+    }
+    return true;
+}
+
+static bool check_visible_binding_vector(
+    SelectiveResolver *resolver,
+    size_t module_index,
+    KofunVisibleBinding *visible,
+    size_t visible_count
+) {
+    ImportResolver *qualified = &resolver->qualified;
+    Program *program = &qualified->program;
+    KofunVisibleConfusableDiagnostic *diagnostics = NULL;
+    KofunVisibleConfusableResult result;
+    size_t diagnostic_index;
+    if (visible_count != 0u) {
+        diagnostics = calloc(visible_count, sizeof(*diagnostics));
+        if (diagnostics == NULL) {
+            set_error(program, "EUNICODE007",
+                "visible-set diagnostic allocation failed in `%s`",
+                program->modules[module_index].logical_path);
+            return false;
+        }
+    }
+    result = kofun_check_visible_confusables(visible, visible_count,
+        diagnostics, visible_count);
+    memcpy(resolver->visible_confusable_cache_keys[module_index],
+        result.cache_key, 32u);
+    if (result.status == KOFUN_VISIBLE_CONFUSABLE_OK) {
+        free(diagnostics);
+        return true;
+    }
+    if (result.status != KOFUN_VISIBLE_CONFUSABLE_COLLISION) {
+        free(diagnostics);
+        set_error(program,
+            result.status == KOFUN_VISIBLE_CONFUSABLE_RESOURCE_FAILURE
+                ? "EUNICODE007" : "E2S75",
+            "visible-set confusable check failed in `%s`: %s",
+            program->modules[module_index].logical_path,
+            kofun_visible_confusable_status_name(result.status));
+        return false;
+    }
+    {
+        TextBuffer text = {NULL, 0u, 0u};
+        for (diagnostic_index = 0u;
+             diagnostic_index < result.diagnostic_count;
+             diagnostic_index += 1u) {
+            KofunVisibleConfusableDiagnostic *diagnostic =
+                &diagnostics[diagnostic_index];
+            KofunVisibleBinding *primary =
+                &visible[diagnostic->primary_binding];
+            size_t related_index;
+            if (diagnostic_index != 0u) {
+                append_text(qualified, &text, "\n");
+            }
+            append_text(qualified, &text,
+                "error[EUNICODE008]: effective spelling `%.*s` in `%s` at bytes %u..%u is confusable in one visible namespace",
+                (int)primary->effective_spelling_length,
+                (const char *)primary->effective_spelling,
+                primary->canonical_provenance,
+                primary->span_start, primary->span_end);
+            for (related_index = 0u;
+                 related_index < diagnostic->related_count;
+                 related_index += 1u) {
+                KofunVisibleBinding *related =
+                    &visible[diagnostic->related_bindings[related_index]];
+                if (related->disclose_location) {
+                    append_text(qualified, &text,
+                        "; related `%.*s` at `%s` bytes %u..%u",
+                        (int)related->effective_spelling_length,
+                        (const char *)related->effective_spelling,
+                        related->canonical_provenance,
+                        related->span_start, related->span_end);
+                } else {
+                    append_text(qualified, &text,
+                        "; related `%.*s` has a disclosure-safe export identity; location withheld",
+                        (int)related->effective_spelling_length,
+                        (const char *)related->effective_spelling);
+                }
+            }
+            if (diagnostic->related_omitted != 0u) {
+                append_text(qualified, &text, "; %zu additional spellings omitted",
+                    diagnostic->related_omitted);
+            }
+        }
+        free(diagnostics);
+        if (program->failed) {
+            free(text.bytes);
+            return false;
+        }
+        set_error(program, "EUNICODE008", "visible-set collision");
+        free(qualified->expanded_error);
+        qualified->expanded_error = text.bytes;
+    }
+    return false;
+}
+
+static bool check_selective_visible_confusables(SelectiveResolver *resolver) {
+    Program *program = &resolver->qualified.program;
+    size_t capacity = program->declaration_count +
+        resolver->qualified.import_count + resolver->binding_count;
+    KofunVisibleBinding *visible = NULL;
+    size_t module_index;
+    if (capacity != 0u) {
+        visible = calloc(capacity, sizeof(*visible));
+        if (visible == NULL) {
+            set_error(program, "EUNICODE007",
+                "visible-binding vector allocation failed");
+            return false;
+        }
+    }
+    for (module_index = 0u; module_index < program->module_count;
+         module_index += 1u) {
+        size_t count = 0u;
+        if (!collect_selective_visible_bindings(resolver, module_index,
+                visible, capacity, &count) ||
+            !check_visible_binding_vector(resolver, module_index,
+                visible, count)) {
+            free(visible);
+            return false;
+        }
+    }
+    resolver->visible_confusables_checked = true;
+    free(visible);
+    return true;
+}
+
 static size_t selective_backend_target(
     void *context,
     size_t caller_index,
@@ -1733,6 +1948,7 @@ int main(int argc, char **argv) {
         !resolve_qualified_calls_for_selective(&resolver) ||
         !resolve_selective_value_uses(&resolver) ||
         !resolve_selective_type_uses(&resolver) ||
+        !check_selective_visible_confusables(&resolver) ||
         (argc == 4 && !emit_reference_c(qualified, artifacts[1].temporary_path)) ||
         !emit_selective_hir(&resolver, artifacts[0].temporary_path) ||
         !commit_output_artifacts(program, artifacts, artifact_count)) goto done;

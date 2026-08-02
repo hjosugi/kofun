@@ -54,6 +54,7 @@ export TMPDIR="$WORK/tmp"
     -I"$ROOT/bootstrap/stage2" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     "$ROOT/bootstrap/stage2/module_symbols.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
     -o "$WORK/kofun-module-symbols"
 
 sed -n 's/.*"\(E2S[0-9][0-9]*\)".*/\1/p' \
@@ -436,6 +437,7 @@ grep -F 'error[E2S55]:' "$WORK/depth_over.actual" >/dev/null ||
     -I"$ROOT/bootstrap/stage2" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     "$ROOT/bootstrap/stage2/module_symbols.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
     -o "$WORK/kofun-module-symbols-sanitized"
 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
 UBSAN_OPTIONS=halt_on_error=1 \
@@ -448,6 +450,7 @@ if "$CC" -std=c11 -O0 -Wall -Wextra -Werror -pedantic -fanalyzer \
     -I"$ROOT/bootstrap/stage2" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     "$ROOT/bootstrap/stage2/module_symbols.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
     -o "$WORK/kofun-module-symbols-analyzed" >/dev/null 2>&1
 then
     printf '%s\n' 'PASS: GCC analyzer accepts the declaration collector'

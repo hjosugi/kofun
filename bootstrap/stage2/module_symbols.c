@@ -1,5 +1,9 @@
 #include "sha256.h"
 
+/* Keep the bootstrap resolver on the same pinned Unicode implementation as
+ * the Stage 2 compiler without adding a host-library dependency. */
+#include "../../unicode/kofun_unicode.h"
+
 #include <ctype.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -364,6 +368,38 @@ static bool add_token(
     return true;
 }
 
+static bool identifier_start_at(
+    const Module *module,
+    size_t offset,
+    size_t *width
+) {
+    unsigned char byte = (unsigned char)module->source[offset];
+    uint32_t codepoint;
+    if (byte < 0x80u) {
+        *width = 1u;
+        return isalpha(byte) || byte == '_';
+    }
+    return kofun_unicode_decode((const uint8_t *)module->source,
+        module->source_length, offset, &codepoint, width) &&
+        kofun_unicode_is_xid_start(codepoint);
+}
+
+static bool identifier_continue_at(
+    const Module *module,
+    size_t offset,
+    size_t *width
+) {
+    unsigned char byte = (unsigned char)module->source[offset];
+    uint32_t codepoint;
+    if (byte < 0x80u) {
+        *width = 1u;
+        return isalnum(byte) || byte == '_';
+    }
+    return kofun_unicode_decode((const uint8_t *)module->source,
+        module->source_length, offset, &codepoint, width) &&
+        kofun_unicode_is_xid_continue(codepoint);
+}
+
 static bool tokenize(Program *program, Module *module) {
     size_t cursor = 0;
     bool line_break = false;
@@ -380,17 +416,13 @@ static bool tokenize(Program *program, Module *module) {
             continue;
         }
         start = cursor;
-        if (byte >= 0x80u) {
-            set_error(program, "E2S50", "non-ASCII bootstrap token in `%s` at bytes %zu..%zu",
-                module->logical_path, start, start + 1u);
-            return false;
-        }
-        if (isalpha(byte) || byte == '_') {
-            cursor += 1;
+        {
+            size_t width = 0u;
+            if (identifier_start_at(module, cursor, &width)) {
+            cursor += width;
             while (cursor < module->source_length) {
-                byte = (unsigned char)module->source[cursor];
-                if (!isalnum(byte) && byte != '_') break;
-                cursor += 1;
+                if (!identifier_continue_at(module, cursor, &width)) break;
+                cursor += width;
             }
             if (cursor - start > IDENTIFIER_LIMIT) {
                 set_error(program, "E2S55", "identifier in `%s` exceeds %u bytes at bytes %zu..%zu",
@@ -400,6 +432,18 @@ static bool tokenize(Program *program, Module *module) {
             if (!add_token(program, module, TOKEN_IDENTIFIER, start, cursor, line_break)) return false;
             line_break = false;
             continue;
+            }
+        }
+        if (byte >= 0x80u) {
+            uint32_t codepoint = 0u;
+            size_t width = 0u;
+            (void)kofun_unicode_decode((const uint8_t *)module->source,
+                module->source_length, cursor, &codepoint, &width);
+            set_error(program, "E2S50",
+                "invalid Unicode identifier scalar U+%04X in `%s` at bytes %zu..%zu",
+                (unsigned)codepoint, module->logical_path, start,
+                start + (width == 0u ? 1u : width));
+            return false;
         }
         if (isdigit(byte)) {
             cursor += 1;
