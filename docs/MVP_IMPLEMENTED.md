@@ -38,6 +38,7 @@
 | x86-64/AArch64 UTF-8 Text Core | checkpoint implemented; AArch64 executes under qemu | `bootstrap/native/check.sh`, `tests/conformance/text` | `native-utf8-text-core` |
 | general native lowering | open | unified types/control flow and additional target profiles | `general-native-lowering` |
 | C ABI `extern` / `repr(C)` profile | bounded host-C implementation | `bootstrap/c_abi/check.sh` | `c-abi-profile` |
+| audited raw C bindings from the Clang AST | bounded stage-1 generator; raw and trusted, not safe | `tests/interop/bindgen-c/check.sh` | `bindgen-c-stage1` |
 | vendored Rust crate through C ABI shim | implemented example | `examples/rust-shim/check.sh` | `rust-crate-shim` |
 | Linux HTTP/1.1 epoll framework through C ABI | bounded library implementation | `tests/http/check.sh` | `http-framework` |
 | Linux x86-64 native CLI application framework | bounded direct-static implementation | `framework/cli/check.sh` | `cli-framework` |
