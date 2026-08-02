@@ -36,6 +36,7 @@ SPEC="$ROOT/spec/wasm-host-profile-v1.md"
 ABI_SPEC="$ROOT/spec/wasm-host-abi-v1.md"
 TARGET_README="$ROOT/bootstrap/wasm/README.md"
 SAMPLE="$ROOT/examples/wasm_arithmetic.kofun"
+PROFILE_SOURCE="$ROOT/bootstrap/wasm/fixtures/hostabi1_empty.kofun"
 TEXT_SOURCE="$ROOT/bootstrap/wasm/fixtures/unsupported_text.kofun"
 
 # The three selectors this document is about: the shipped one, the one it
@@ -111,7 +112,7 @@ assert_grep "guest execution while identifying the conforming module" \
 #    of the migration.
 rm -f "$WORK/profile.wasm"
 set +e
-"$ROOT/bin/kofun" build "$SAMPLE" \
+"$ROOT/bin/kofun" build "$PROFILE_SOURCE" \
     --target "$PROFILE_TARGET" -o "$WORK/profile.wasm" \
     >"$WORK/profile.stdout" 2>"$WORK/profile.stderr"
 profile_status=$?

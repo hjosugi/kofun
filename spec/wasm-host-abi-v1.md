@@ -242,10 +242,10 @@ comparison to refuse it with `vector-drift`.
 
 ## What this document does not claim
 
-- **No code generation.** Nothing here lowers Kofun `Text` or `List` to wasm.
-  The fixture module in `spec/wasm-host-abi-v1/wasm.mjs` is a test artifact
-  assembled from the recomputed vectors, not a backend, and the compiler's
-  wasm output is unchanged.
+- **No code generation in this contract gate.** Nothing here lowers Kofun
+  `Text` or `List` to wasm. The fixture module in
+  `spec/wasm-host-abi-v1/wasm.mjs` is a test artifact assembled from the
+  recomputed vectors, not the separate arena backend implementation.
 - **No WASI.** No command, file, clock, or process capability is described.
 - **No engine matrix.** The reference host runs under one engine: the
   WebAssembly implementation in the Node build that runs the gate. Every
@@ -282,9 +282,10 @@ document touched it.
 That versioned change is now recorded. `spec/wasm-host-profile-v1.md` (#1000)
 decides that the host ABI is part of the target name: this contract is
 activated by **`--target wasm32-hostabi1`**, and bare `--target wasm32` stays
-on the bounded numeric binding, which is not deprecated. No backend emits the
-profile yet, so the name is refused with `kofun: unsupported target:` and no
-artifact — the correct answer from a toolchain that cannot produce it.
+on the bounded numeric binding, which is not deprecated. Toolchains before the
+arena implementation refuse the name with `kofun: unsupported target:` and no
+artifact. Current toolchains emit the required memory/export surface for an
+empty entry point while Text/List sources remain unsupported.
 
 Nothing in this document changes with that decision. It fixes the boundary; the
 profile document fixes which builds arrive at the boundary, what the older

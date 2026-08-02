@@ -8,9 +8,40 @@ it does not invoke Clang, LLVM, a C backend, or a text-to-Wasm assembler.
 only the first half: it selects the bounded numeric binding described below —
 `main(): void` against `kofun.print_i64` and `kofun.panic` — and it will keep
 selecting it. The accepted `kofun-wasm-host-abi-v1` aggregate binding is a
-different target name, `wasm32-hostabi1`, which no backend emits yet.
+different target name, `wasm32-hostabi1`. That profile now emits its checked
+object arena, but still refuses every non-empty program until the Text and List
+lowering slices land.
 `spec/wasm-host-profile-v1.md` decides that split and
 `sh spec/wasm-host-profile-v1/check.sh` holds this target to it.
+
+## Aggregate arena profile
+
+The first executable aggregate slice builds an empty entry point:
+
+```sh
+./bin/kofun build bootstrap/wasm/fixtures/hostabi1_empty.kofun \
+  --target wasm32-hostabi1 -o build/hostabi1-empty.wasm
+node spec/wasm-host-abi-v1/hostabi.mjs module \
+  build/hostabi1-empty.wasm
+```
+
+The module exports one fixed 64-KiB linear memory, immutable
+`kofun_abi_version = 1`, `kofun_start(i32)`, and
+`kofun_alloc(i32, i32) -> i32`. The arena begins at offset 1024, preserving
+zero as the failure/null reference and the lower region for compiler-owned
+objects. Allocation is a deterministic bump: positive power-of-two alignment
+is checked before rounding, size/address arithmetic is bounded before the
+cursor changes, and capacity exhaustion returns zero. Memory never grows and
+an allocation never writes or publishes an object by itself. A later lowering
+that requires an allocation is responsible for calling the v1 `abort(2,
+detail)` import when the zero result cannot be handled.
+
+`object_arena.h` contains the single little-endian u64 header encoder for both
+`Text.byte_length` and `List.length`. `object_arena_check.sh` compares it with
+every header in the recomputed wasm32 boundary vectors, exercises invalid and
+exhausting allocations under a real engine, and proves failures leave the
+cursor and memory unchanged. This slice lowers no Text or List value and makes
+no conformance capability claim.
 
 Build and run the sample:
 
@@ -105,8 +136,10 @@ task wasm
 
 ## Honest boundary
 
-This remains a bounded Int target. It has no linear-memory object layout, no
-Text or List lowering, no `else`, no loops, no mutation, no tables or indirect
+The legacy `wasm32` binding remains a bounded Int target and its module bytes
+are unchanged. The separate `wasm32-hostabi1` binding has the checked
+linear-memory arena described above, but no Text or List lowering. Neither
+profile has `else`, loops, mutation, tables or indirect
 calls, no closures or function values, no user-declared imports, no WASI
 profile, no general JavaScript value conversion, no direct DOM declarations in
 Kofun, no debug information, and no optimizer. Functions are bounded at six
@@ -136,9 +169,11 @@ How a build reaches it is decided too, and is no longer left to the reader:
 `spec/wasm-host-profile-v1.md` puts the host ABI in the target name. The
 aggregate profile is `--target wasm32-hostabi1`; bare `--target wasm32` stays
 on the numeric binding and is not deprecated, so nothing here has to migrate.
-A toolchain that cannot emit a profile refuses its name with
-`kofun: unsupported target:` and writes no module, which is what the reserved
-name does today. The two bindings are told apart on the module bytes before
+A toolchain predating the arena slice refuses the profile name with
+`kofun: unsupported target:` and writes no module. Current builds emit the
+arena-only module and refuse non-empty source until its value slices land. The
+two bindings are told apart on the module bytes before
 anything is instantiated — this one imports from `kofun` and exports one
-function, `main`; a v1 module imports from `kofun:host-abi-v1` and exports an
-immutable `kofun_abi_version` global. A module is never both.
+function, `main`; every import a v1 module has comes from
+`kofun:host-abi-v1`, while its immutable `kofun_abi_version` global identifies
+even the arena-only module that needs no import yet. A module is never both.
