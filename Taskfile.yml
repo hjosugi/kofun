@@ -480,6 +480,11 @@ tasks:
     cmds:
       - "sh bootstrap/wasm/object_arena_check.sh"
 
+  wasm-list-v1:
+    desc: "Verify bounded wasm32-hostabi1 List values, indexing, and host output"
+    cmds:
+      - "sh tests/wasm-list-v1/check.sh"
+
   typed-sidecar-spec:
     desc: "Verify bounded complete/partial tooling artifacts"
     cmds:
@@ -762,6 +767,7 @@ tasks:
             wasm-host-abi \
             wasm-host-profile \
             wasm-object-arena \
+            wasm-list-v1 \
             typed-sidecar-spec \
             typed-sidecar-codec \
             typed-sidecar-projector \

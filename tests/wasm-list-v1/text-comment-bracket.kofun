@@ -1,0 +1,4 @@
+# Documentation may mention List[Int] without activating the List frontend.
+fn main() {
+    print("text-only")
+}
