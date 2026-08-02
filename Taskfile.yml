@@ -430,6 +430,11 @@ tasks:
     cmds:
       - "sh spec/aggregate-layout-v1/check.sh"
 
+  reuse-candidate:
+    desc: "Verify ReuseCandidate v1 layout and uniqueness evidence"
+    cmds:
+      - "sh spec/reuse-candidate-v1/check.sh"
+
   wasm-host-abi:
     desc: "Verify wasm32 host ABI v1 vectors and instantiation refusals"
     cmds:
@@ -692,6 +697,7 @@ tasks:
             visibility-access \
             re-exports-spec \
             aggregate-layout \
+            reuse-candidate \
             wasm-host-abi \
             typed-sidecar-spec \
             typed-sidecar-codec \
