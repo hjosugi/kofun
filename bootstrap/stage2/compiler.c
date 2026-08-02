@@ -661,7 +661,8 @@ static char *token_copy(const char *source, int64_t start) {
 static bool keyword_token(const char *source, int64_t start) {
     static const char *keywords[] = {
         "fn", "let", "mut", "return", "if", "else", "while", "for",
-        "in", "break", "continue", "true", "false", "match", "type"
+        "in", "break", "continue", "true", "false", "match", "type",
+        "par"
     };
     size_t count = sizeof(keywords) / sizeof(keywords[0]);
     for (size_t index = 0; index < count; ++index) {
@@ -11360,6 +11361,28 @@ static char *build_scope_hir_mode(
         bool unresolved_assignment = false;
         cursor = skip_trivia(source, token_end(source, function_open));
         while (cursor < function_close) {
+            /* See sh_parse_primary: stop at `par` so the walk never reaches the
+             * scope token between the bars and blames it as an unknown
+             * binding. The construct is refused, so its token is never a use. */
+            if (token_equal(source, cursor, "par")) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    "error[E2S154]: scoped parallelism `par` is specified "
+                    "but not implemented at byte %" PRId64,
+                    cursor
+                );
+                stage2_diagnostic_set(
+                    "E2S154",
+                    cursor,
+                    token_end(source, cursor),
+                    true,
+                    message.data
+                );
+                free(hir.data);
+                return message.data;
+            }
             if (strcmp(token_kind(source, cursor), "identifier") == 0) {
                 char *name = token_copy(source, cursor);
                 bool declaration_token = enum_declaration_syntax_token(
@@ -13530,6 +13553,16 @@ static char *lower_body(
         if (returned) {
             free(emitted.data);
             return lower_error("E2S14", "statement follows `return`", cursor);
+        }
+        /* See sh_parse_primary: refuse `par` before the dispatch below can
+         * read the scope token as an ordinary binding and blame it instead. */
+        if (token_equal(source, cursor, "par")) {
+            free(emitted.data);
+            return lower_error(
+                "E2S154",
+                "scoped parallelism `par` is specified but not implemented",
+                cursor
+            );
         }
         if (move_assertion_head(source, cursor)) {
             /*
@@ -18558,6 +18591,17 @@ static ShExpr *sh_parse_primary(Sh *sh, int64_t *cursor) {
     }
     const char *kind = token_kind(sh->source, at);
     int64_t end = token_end(sh->source, at);
+    /* Scoped parallelism v1 (#555) fixes `par` as target semantics in
+     * spec/concurrency/scoped-parallelism-v1.md. The lexer owns the keyword so
+     * this refusal names the construct instead of surfacing as an unknown
+     * binding, but ownership checking, scheduling, and lowering do not exist:
+     * the honest answer here is a refusal, not a partial acceptance. */
+    if (token_equal(sh->source, at, "par")) {
+        sh_fail(sh, "E2S154",
+                "scoped parallelism `par` is specified but not implemented",
+                at);
+        return NULL;
+    }
     if (strcmp(kind, "integer") == 0) {
         ShExpr *expr = sh_expr_new("literal-int", at, end);
         snprintf(expr->type, sizeof(expr->type), "Int");
@@ -19029,6 +19073,14 @@ static ShStmt *sh_parse_stmt(
     const char *declared
 ) {
     int64_t at = *cursor;
+    /* See sh_parse_primary: `par` in statement position is refused by name
+     * rather than falling through to the generic unsupported-statement code. */
+    if (token_equal(sh->source, at, "par")) {
+        sh_fail(sh, "E2S154",
+                "scoped parallelism `par` is specified but not implemented",
+                at);
+        return NULL;
+    }
     if (token_equal(sh->source, at, "let")) {
         int64_t name = skip_trivia(sh->source, token_end(sh->source, at));
         bool is_mutable = false;
@@ -19976,12 +20028,19 @@ static char *emit_selfhost_hir_document(
         );
         sh_escaped(&document, sh.error_message);
         buffer_append(&document, "\n");
-        if (strcmp(sh.error_code, "E2S10") == 0) {
+        /* hir-v1.md requires one `unsupported` record naming the construct
+         * family for every construct outside the frozen profile, so `par`
+         * carries its own family rather than being filed as a statement. */
+        if (strcmp(sh.error_code, "E2S10") == 0 ||
+            strcmp(sh.error_code, "E2S154") == 0) {
             buffer_format(
                 &document,
-                "unsupported|%" PRId64 "|%" PRId64 "|statement\n",
+                "unsupported|%" PRId64 "|%" PRId64 "|%s\n",
                 at,
-                end
+                end,
+                strcmp(sh.error_code, "E2S154") == 0
+                    ? "scoped-parallelism"
+                    : "statement"
             );
         }
         puts(sh.error);
