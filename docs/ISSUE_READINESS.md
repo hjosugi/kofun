@@ -141,13 +141,48 @@ be advertised as startable while its own body names an open blocker.
 repository's issue conventions" — conventions that existed as practice and had
 never been written down. This document is where they now live.
 
-## Not yet enforced
+## What is enforced
 
-Nothing checks any of this. The natural gate would assert that the label and
-the `State:` line agree, that no `ready` issue names an open blocker, and that
-every evidence stamp is a real ancestor of `main` — but issue state lives on
-GitHub, and `task verify` is hermetic. The workable shape is the one
-`artifacts/release-evidence/` already uses: a committed snapshot that a
-separate refresh command regenerates, with the gate checking the snapshot is
-current. That is [#914](https://github.com/hjosugi/kofun/issues/914); until it
-lands, the checks above are manual.
+`task backlog` reads `artifacts/backlog/issue-state.json` and fails when:
+
+- an issue carries more than one state label;
+- a state label and the body's `State:` line disagree;
+- a `ready` issue names an open blocker in `## Dependencies`;
+- a `ready` issue carries no evidence stamp.
+
+The committed snapshot is a **fixture**, not a claim about the backlog right
+now. Issues are filed here every few minutes and no commit can keep up, so
+demanding that a committed copy match live state would be permanently red and
+would teach everyone to ignore it.
+
+`task backlog-refresh` regenerates the snapshot from GitHub, runs the same
+rules against live state, and verifies that every stamp names a commit
+reachable from `HEAD`. CI runs it on `main` but **not** on pull requests: a
+`ready` issue somebody else opens mid-review would otherwise turn an unrelated
+PR red for a reason its author cannot fix. On `main` the same failure is a true
+signal, owned by whoever can act on it.
+
+Refreshing may mean updating `tests/backlog/debt.tsv` in the same change. The
+ledger describes reality, and reality moves.
+
+The stamp check is not in `task verify` on purpose. It needs the history, and
+`actions/checkout` is shallow by default, so a version of it inside `verify`
+would either fail on every shallow clone or pass without looking. A check that
+passes because it could not look is the failure this gate exists to remove, so
+it refuses outright on a shallow clone instead.
+
+`tests/backlog/debt.tsv` records the cases that already existed when the gate
+landed, so it could go green without anyone pretending they were fixed. It
+fails in both directions, like `tests/assertions/budget.tsv`: an unlisted
+problem is new drift, and a listed row that no longer applies is an improvement
+that was not recorded. What it held on the day it landed:
+
+| Kind | Rows | What they are |
+|---|---:|---|
+| `state-disagreement` | 11 | mostly a bulk relabel to `blocked` that did not update the bodies; which side is right is a decision per issue, not something a gate may guess |
+| `unstamped-ready` | 4 | `ready` before rule 2 existed |
+| `unverifiable-stamp` | 1 | [#738](https://github.com/hjosugi/kofun/issues/738) names a commit that is on no branch, so its measurement cannot be re-run |
+
+One rule stays manual: whether an issue's `## Scope`, acceptance criteria, and
+`## Validation` actually meet the Definition of Ready. A gate can see that a
+stamp is present; it cannot see that a criterion is checkable.
