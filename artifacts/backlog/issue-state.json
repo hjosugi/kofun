@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 79,
+  "open_issues": 78,
   "issues": [
     {
       "number": 26,
@@ -346,9 +346,9 @@
       "number": 571,
       "title": "Austral/Nim: support zero-copy borrowed results without user-written lifetimes",
       "state_labels": [
-        "ready"
+        "blocked"
       ],
-      "state_line": "ready",
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
         "b6241acc8cd33819a4a1c92b1a301c02b46cd133"
@@ -643,14 +643,6 @@
       ]
     },
     {
-      "number": 886,
-      "title": "A pull request can sit with no CI run at all, and nothing stops it being merged",
-      "state_labels": [],
-      "state_line": null,
-      "blocked_by": [],
-      "evidence_commits": []
-    },
-    {
       "number": 891,
       "title": "Stage 2 Text values: return Text, convert Int, and concatenate without invalid C",
       "state_labels": [
@@ -734,28 +726,6 @@
       ]
     },
     {
-      "number": 911,
-      "title": "Forward-reference tracker re-audit: re-anchor #289's coverage rows to landed slices and named owners",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
-      ]
-    },
-    {
-      "number": 914,
-      "title": "backlog: bind the issue state label to the State line in the body",
-      "state_labels": [],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "e2200ef86b9ee537c34847b45970c13bdb0ac4ee"
-      ]
-    },
-    {
       "number": 915,
       "title": "Stage 2 ensure_move v3: prove loop-local last uses instead of rejecting every loop",
       "state_labels": [
@@ -796,9 +766,9 @@
       "number": 920,
       "title": "ReuseCandidate v1: a normative reuse-candidate record with layout/uniqueness evidence, remarks, and a validator",
       "state_labels": [
-        "ready"
+        "in-progress"
       ],
-      "state_line": "ready",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
         "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
@@ -893,6 +863,28 @@
       "evidence_commits": [
         "6f71b6df5cf54aa16542b89494d2194c4172a97e"
       ]
+    },
+    {
+      "number": 955,
+      "title": "modules: spec/grammar.ebnf admits a top-level `let` that Stage 2 refuses with E2S02",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": null,
+      "blocked_by": [],
+      "evidence_commits": [
+        "8ba3a57c0ae91c8ba3fa97396d698fb264a189cd"
+      ]
+    },
+    {
+      "number": 961,
+      "title": "Kofun unit testing v1: executable kotest runner and stdlib sample suites",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": null,
+      "blocked_by": [],
+      "evidence_commits": []
     }
   ]
 }

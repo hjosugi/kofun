@@ -15,7 +15,6 @@
 0	bootstrap/native/check.sh
 0	bootstrap/native/emit-fixture.sh
 0	bootstrap/selfhost/check-compiler-driver.sh
-1	bootstrap/selfhost/check-profile.sh
 0	bootstrap/stage1/check.sh
 0	bootstrap/stage2/check.sh
 0	bootstrap/wasm/check.sh
