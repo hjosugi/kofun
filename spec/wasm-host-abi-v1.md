@@ -277,6 +277,28 @@ adopting the host ABI is a versioned change to that target, recorded as one,
 and `sh bootstrap/wasm/check.sh` passes unchanged today because nothing in this
 document touched it.
 
+## Activation
+
+That versioned change is now recorded. `spec/wasm-host-profile-v1.md` (#1000)
+decides that the host ABI is part of the target name: this contract is
+activated by **`--target wasm32-hostabi1`**, and bare `--target wasm32` stays
+on the bounded numeric binding, which is not deprecated. No backend emits the
+profile yet, so the name is refused with `kofun: unsupported target:` and no
+artifact — the correct answer from a toolchain that cannot produce it.
+
+Nothing in this document changes with that decision. It fixes the boundary; the
+profile document fixes which builds arrive at the boundary, what the older
+binding's support state is, and which oracles measure a lowering against this
+contract once one exists.
+
+Identifying the binding needs no engine and no guest execution. The phase 1
+check above, run over bytes assembled elsewhere, is
+`node spec/wasm-host-abi-v1/hostabi.mjs module MODULE.wasm`: it decodes,
+applies the same rules in the same order, and answers with either an accepted
+verdict or one of the diagnostics named above. It links nothing and instantiates
+nothing, which is what makes the verdict usable *before* a host commits to
+supplying imports.
+
 ## Consumers
 
 wasm32 `Text`/`List` lowering depends on this artifact rather than on prose

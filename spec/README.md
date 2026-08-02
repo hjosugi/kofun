@@ -114,6 +114,16 @@ executable bootstrap implementation.
   lowering; no backend emits it yet, and it does not describe WASI or a
   supported-engine matrix.
 
+- `wasm-host-profile-v1.md` and `wasm-host-profile-v1/check.sh` decide how a
+  build reaches that contract: the host ABI is part of the target name, so
+  `--target wasm32` keeps the bounded numeric binding and
+  `--target wasm32-hostabi1` is reserved for `kofun-wasm-host-abi-v1`. It
+  records the legacy binding as supported rather than deprecated, names the
+  native x86-64 semantic oracle and the v1 byte-layout oracle the lowering will
+  be measured against, and states how a host tells the two bindings apart on
+  the module bytes before instantiation. It decides activation only: no wasm
+  bytes change, no capability row moves, and no backend emits the profile yet.
+
 Design-only material in `docs/` is not normative until it is promoted here
 with conformance evidence. The specification is versioned independently from
 the implementation; the current draft is `0.3-bootstrap`.
