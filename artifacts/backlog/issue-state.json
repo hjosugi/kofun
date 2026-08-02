@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 73,
+  "open_issues": 72,
   "issues": [
     {
       "number": 26,
@@ -199,14 +199,13 @@
       "number": 314,
       "title": "Null coalescing: execute Optional(Int) ?? Int lazily",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
-      "blocked_by": [
-        70,
-        120
-      ],
-      "evidence_commits": []
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "f37c64f388a45bbe4108c467c49257038f3b2ae7"
+      ]
     },
     {
       "number": 424,
@@ -693,16 +692,6 @@
       ]
     },
     {
-      "number": 904,
-      "title": "Stage 2 ensure_move v2: prove terminal branch and early-return last uses",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": null,
-      "blocked_by": [],
-      "evidence_commits": []
-    },
-    {
       "number": 915,
       "title": "Stage 2 ensure_move v3: prove loop-local last uses instead of rejecting every loop",
       "state_labels": [
@@ -731,9 +720,9 @@
       "number": 919,
       "title": "Stage 2 C11 List[Int] values: locals, len, and indexing",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
+      "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
         "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
