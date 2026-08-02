@@ -187,6 +187,20 @@ if (mode === "self-test") {
     "Kofun semantic dispatch missing: pre-lowering-validation",
   );
 
+  const unvalidatedC = cSource.replace(
+    "char *optional_use_check = validate_optional_uses(source);",
+    "char *optional_use_check = owned_text(\"ok\");",
+  );
+  assert.notEqual(
+    unvalidatedC,
+    cSource,
+    "C dispatch mutation did not apply",
+  );
+  requireFailure(
+    verifyPair(unvalidatedC, kofunSource),
+    "C semantic dispatch missing: pre-lowering-validation",
+  );
+
   console.log("PASS: pair drift mutations fail by missing member and dispatch name");
 }
 
