@@ -5936,6 +5936,24 @@ static char *emit_primary(
         }
         if (
             open < end && token_equal(source, open, "(") &&
+            strcmp(name, "to_text") == 0
+        ) {
+            int64_t value = skip_trivia(source, token_end(source, open));
+            char *emitted = emit_expression(
+                source,
+                hir,
+                value,
+                argument_end(source, value)
+            );
+            Buffer converted_text;
+            buffer_init(&converted_text);
+            buffer_format(&converted_text, "kofun_to_text(%s)", emitted);
+            free(emitted);
+            free(name);
+            return converted_text.data;
+        }
+        if (
+            open < end && token_equal(source, open, "(") &&
             strcmp(name, "text_slice") == 0
         ) {
             int64_t value = skip_trivia(source, token_end(source, open));
@@ -6377,6 +6395,7 @@ static int64_t builtin_arity(const char *name) {
         {"replace", 3},
         {"starts_with", 2},
         {"text_slice", 3},
+        {"to_text", 1},
         {"trim", 1},
         {"validate_unicode_source", 1},
         {"write_text", 2},
@@ -6442,6 +6461,7 @@ static const char *builtin_parameter_types(const char *name) {
         {"replace", "Text|Text|Text"},
         {"starts_with", "Text|Text"},
         {"text_slice", "Text|Int|Int"},
+        {"to_text", "Int"},
         {"trim", "Text"},
         {"validate_unicode_source", "Text"},
         {"write_text", "Text|Text"},
@@ -6978,7 +6998,8 @@ static char *validate_core_calls(const char *source, const char *hir) {
                     free(argument_error);
                     if (
                         strcmp(name, "len") == 0 ||
-                        strcmp(name, "text_slice") == 0
+                        strcmp(name, "text_slice") == 0 ||
+                        strcmp(name, "to_text") == 0
                     ) {
                         expected = builtin_expected;
                     } else {
@@ -9215,6 +9236,7 @@ static int64_t core_body_open(
         char *result_type = token_copy(source, cursor);
         bool supported_result =
             strcmp(result_type, "Int") == 0 ||
+            strcmp(result_type, "Text") == 0 ||
             enum_constructor_count(source, result_type) >= 0 ||
             record_declaration_start(source, result_type) >= 0;
         free(result_type);
@@ -10684,6 +10706,7 @@ static const char *builtin_return_type(const char *name) {
         {"replace", "Text"},
         {"starts_with", "Bool"},
         {"text_slice", "Text"},
+        {"to_text", "Text"},
         {"trim", "Text"},
         {"validate_unicode_source", "Text"},
         {"write_text", "Void"},
@@ -10853,6 +10876,16 @@ static bool function_result_is_record(
 ) {
     char *type = function_return_type(source, name);
     bool result = record_declaration_start(source, type) >= 0;
+    free(type);
+    return result;
+}
+
+/* A declared `-> Text` result.  Text values are borrowed `const char *` in the
+ * bounded profile, so this is what selects the C result type and the `return`
+ * lowering rather than the Int path. */
+static bool function_result_is_text(const char *source, const char *name) {
+    char *type = function_return_type(source, name);
+    bool result = strcmp(type, "Text") == 0;
     free(type);
     return result;
 }
@@ -14253,6 +14286,7 @@ static char *lower_body(
         record_declaration_start(source, body_result_type) >= 0;
     bool returns_optional_int =
         optional_int_result_containing(source, function_open);
+    bool returns_text = strcmp(body_result_type, "Text") == 0;
     char failure_record[512] = "";
     if (returns_record) {
         char *c_type = record_c_type_name(body_result_type);
@@ -14275,7 +14309,11 @@ static char *lower_body(
                          failure_record :
                          (returns_optional_int ?
                               "KOFUN_OPTIONAL_INT_NONE" :
-                              "0"))
+                              /* A failed Text result is the empty string
+                               * rather than NULL, so every consumer in the
+                               * bounded profile still receives a readable
+                               * value. */
+                              (returns_text ? "\"\"" : "0")))
             );
     while (cursor < length && !token_equal(source, cursor, "}")) {
         if (returned) {
@@ -15834,6 +15872,42 @@ static char *lower_body(
                     failure_result
                 );
                 free(c_type);
+                free(value);
+                cursor = skip_trivia(source, value_end);
+            } else if (returns_text) {
+                int64_t value_end = expression_end(source, value_start);
+                if (
+                    value_end < 0 ||
+                    value_start >= length ||
+                    token_equal(source, value_start, "}")
+                ) {
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S12",
+                        "Text return requires one value",
+                        value_start
+                    );
+                }
+                char *value = emit_expression(
+                    source,
+                    hir,
+                    value_start,
+                    value_end
+                );
+                if (strncmp(value, "error[", 6) == 0) {
+                    free(emitted.data);
+                    return value;
+                }
+                buffer_format(
+                    &emitted,
+                    "    {\n"
+                    "        const char *kofun_result = %s;\n"
+                    "        if (kofun_failed) return %s;\n"
+                    "        return kofun_result;\n"
+                    "    }\n",
+                    value,
+                    failure_result
+                );
                 free(value);
                 cursor = skip_trivia(source, value_end);
             } else if (
@@ -18504,6 +18578,8 @@ static char *lower_c_body(const char *source, const char *hir) {
             c_result = OPTIONAL_INT_C_TYPE;
         } else if (function_result_is_enum(source, name)) {
             c_result = "KofunEnumValue";
+        } else if (function_result_is_text(source, name)) {
+            c_result = "const char *";
         } else if (function_result_is_record(source, name)) {
             char *result_type = function_return_type(source, name);
             char *record_c_type = record_c_type_name(result_type);
@@ -18668,6 +18744,21 @@ static char *lower_c_body(const char *source, const char *hir) {
         "    }\n"
         "    char *slot = slots[next_slot++ % 64u]; size_t width = (size_t)(end - start);\n"
         "    memcpy(slot, text + start, width); slot[width] = '\\0'; return slot;\n"
+        "}\n"
+        "static inline const char *kofun_to_text(int64_t value) {\n"
+        "    static char slots[64][24]; static size_t next_slot;\n"
+        "    char *slot = slots[next_slot++ % 64u];\n"
+        "    snprintf(slot, sizeof slots[0], \"%\" PRId64, value); return slot;\n"
+        "}\n"
+        "static inline const char *kofun_text_concat(const char *left, const char *right) {\n"
+        "    static char slots[64][256]; static size_t next_slot;\n"
+        "    size_t left_width = strlen(left), right_width = strlen(right);\n"
+        "    if (left_width + right_width > 255) {\n"
+        "        kofun_error(\"error[R021]: bounded Text concatenation exceeds 255 bytes\"); return \"\";\n"
+        "    }\n"
+        "    char *slot = slots[next_slot++ % 64u];\n"
+        "    memcpy(slot, left, left_width); memcpy(slot + left_width, right, right_width);\n"
+        "    slot[left_width + right_width] = '\\0'; return slot;\n"
         "}\n"
         "static inline int64_t kofun_add(int64_t a, int64_t b) {\n"
         "    int64_t r; if (__builtin_add_overflow(a, b, &r)) {\n"

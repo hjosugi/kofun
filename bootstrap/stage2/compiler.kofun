@@ -3160,6 +3160,14 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
             return "((int64_t)strlen(" + emit_expression(
                 source, hir, value, argument_end(source, value)) + "))"
         }
+        # `to_text(Int)` lowers beside `len`, the other one-argument builtin
+        # the ordinary Core path emits directly.
+        if open < end && token_text(source, open) == "(" &&
+           name == "to_text" {
+            let value = skip_trivia(source, token_end(source, open))
+            return "kofun_to_text(" + emit_expression(
+                source, hir, value, argument_end(source, value)) + ")"
+        }
         if open < end && token_text(source, open) == "(" &&
            name == "text_slice" {
             let value = skip_trivia(source, token_end(source, open))
@@ -3460,7 +3468,8 @@ fn builtin_arity(name: Text) -> Int {
     }
     if name == "chars" || name == "is_digit" || name == "is_space" ||
        name == "is_xid_continue" || name == "len" || name == "read_text" ||
-       name == "trim" || name == "validate_unicode_source" {
+       name == "to_text" || name == "trim" ||
+       name == "validate_unicode_source" {
         return 1
     }
     if name == "contains" || name == "find" || name == "starts_with" ||
@@ -3497,6 +3506,9 @@ fn builtin_parameter_types(name: Text) -> Text {
     }
     if name == "text_slice" {
         return "Text|Int|Int"
+    }
+    if name == "to_text" {
+        return "Int"
     }
     return "none"
 }
@@ -3851,7 +3863,8 @@ fn validate_core_calls(source: Text, hir: Text) -> Text {
                     if len(argument_error) > 0 {
                         return argument_error
                     }
-                    if name == "len" || name == "text_slice" {
+                    if name == "len" || name == "text_slice" ||
+                       name == "to_text" {
                         expected = builtin_expected
                     } else {
                         return "error[E2S10]: unsupported Core builtin call `" +
@@ -5633,6 +5646,7 @@ fn core_body_open(
         cursor = skip_trivia(source, token_end(source, cursor))
         if cursor >= len(source) ||
            (token_text(source, cursor) != "Int" &&
+            token_text(source, cursor) != "Text" &&
             enum_constructor_count(
                 source,
                 token_text(source, cursor)
@@ -6641,7 +6655,8 @@ fn builtin_return_type(name: Text) -> Text {
         return "Int"
     }
     if name == "read_text" || name == "replace" || name == "text_slice" ||
-       name == "trim" || name == "validate_unicode_source" {
+       name == "to_text" || name == "trim" ||
+       name == "validate_unicode_source" {
         return "Text"
     }
     if name == "fail" || name == "write_text" {
@@ -6801,6 +6816,13 @@ fn function_result_is_record(source: Text, name: Text) -> Bool {
     ) >= 0
 }
 
+# A declared `-> Text` result. Text values are borrowed `const char *` in the
+# bounded profile, so this is what selects the C result type and the
+# `return` lowering rather than the Int path.
+fn function_result_is_text(source: Text, name: Text) -> Bool {
+    return function_return_type(source, name) == "Text"
+}
+
 # Bounded initializer typing for unannotated `let` bindings. Top-level
 # comparison and boolean operators make the value Bool; otherwise the
 # profile's operands are homogeneous, so the first primary decides:
@@ -6887,9 +6909,6 @@ fn initializer_type(
     }
     if kind == "float" {
         return "Float"
-    }
-    if kind == "string" {
-        return "Text"
     }
     let cursor_text = token_text(source, cursor)
     if cursor_text == "true" || cursor_text == "false" {
@@ -8234,6 +8253,7 @@ fn lower_body(
     let returns_enum = enum_constructor_count(source, result_type) >= 0
     let returns_record =
         record_declaration_start(source, result_type) >= 0
+    let returns_text = result_type == "Text"
     let mut failure_result = "0"
     if is_main {
         failure_result = "1"
@@ -8241,6 +8261,10 @@ fn lower_body(
         failure_result = "KOFUN_ENUM_ZERO"
     } else if returns_record {
         failure_result = "((" + record_c_type_name(result_type) + "){0})"
+    } else if returns_text {
+        # A failed Text result is the empty string rather than NULL, so every
+        # consumer in the bounded profile still receives a readable value.
+        failure_result = "\"\""
     }
     while cursor < len(source) && token_text(source, cursor) != "}" {
         if returned {
@@ -9031,6 +9055,29 @@ fn lower_body(
                 "    {\n" +
                 "        " + record_c_type_name(result_type) +
                 " kofun_result = " + value + ";\n" +
+                "        if (kofun_failed) return " + failure_result + ";\n" +
+                "        return kofun_result;\n" +
+                "    }\n"
+                cursor = skip_trivia(source, value_end)
+            } else if returns_text {
+                let value_end = expression_end(source, value_start)
+                if value_end < 0 || value_start >= len(source) ||
+                   token_text(source, value_start) == "}" {
+                    return "error[E2S12]: Text return requires one value at byte " +
+                    to_text(value_start)
+                }
+                let value = emit_expression(
+                    source,
+                    hir,
+                    value_start,
+                    value_end
+                )
+                if starts_with(value, "error[") {
+                    return value
+                }
+                emitted = emitted +
+                "    {\n" +
+                "        const char *kofun_result = " + value + ";\n" +
                 "        if (kofun_failed) return " + failure_result + ";\n" +
                 "        return kofun_result;\n" +
                 "    }\n"
@@ -10290,6 +10337,8 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
             c_result = record_c_type_name(
                 function_return_type(source, name)
             )
+        } else if function_result_is_text(source, name) {
+            c_result = "const char *"
         }
         let arity = parameter_count(source, cursor)
         let parameters = core_parameters(source, hir, cursor)
@@ -10371,6 +10420,21 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     "    }\n" +
     "    char *slot = slots[next_slot++ % 64u]; size_t width = (size_t)(end - start);\n" +
     "    memcpy(slot, text + start, width); slot[width] = '\\0'; return slot;\n" +
+    "}\n" +
+    "static inline const char *kofun_to_text(int64_t value) {\n" +
+    "    static char slots[64][24]; static size_t next_slot;\n" +
+    "    char *slot = slots[next_slot++ % 64u];\n" +
+    "    snprintf(slot, sizeof slots[0], \"%\" PRId64, value); return slot;\n" +
+    "}\n" +
+    "static inline const char *kofun_text_concat(const char *left, const char *right) {\n" +
+    "    static char slots[64][256]; static size_t next_slot;\n" +
+    "    size_t left_width = strlen(left), right_width = strlen(right);\n" +
+    "    if (left_width + right_width > 255) {\n" +
+    "        kofun_error(\"error[R021]: bounded Text concatenation exceeds 255 bytes\"); return \"\";\n" +
+    "    }\n" +
+    "    char *slot = slots[next_slot++ % 64u];\n" +
+    "    memcpy(slot, left, left_width); memcpy(slot + left_width, right, right_width);\n" +
+    "    slot[left_width + right_width] = '\\0'; return slot;\n" +
     "}\n" +
     "static inline int64_t kofun_add(int64_t a, int64_t b) {\n" +
     "    int64_t r; if (__builtin_add_overflow(a, b, &r)) {\n" +
