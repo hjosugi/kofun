@@ -87,15 +87,7 @@ count_file() {
             # not an assertion. spec/source-file-mapping/check.sh has the
             # second shape, and migrating it turned a predicate into a hard
             # failure until this rule existed.
-            #
-            # Both tests read `t`, the indentation-stripped line. A nested
-            # helper closes on `    }`, and reading `line` here missed it, so
-            # a predicate inside another function counted as an assertion.
-            # bootstrap/selfhost/check-profile.sh has the first file to nest
-            # one. Depth tracking is deliberately left reading `line`: it runs
-            # on every line including embedded awk bodies, where an indented
-            # `}` is not a shell function ending.
-            if (t ~ /^\}/ || t == "return") { pending = 0; return }
+            if (line ~ /^\}/ || t == "return") { pending = 0; return }
             n++
             pending = 0
         }
