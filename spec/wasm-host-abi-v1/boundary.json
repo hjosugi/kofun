@@ -1,0 +1,24 @@
+{
+  "schema": "kofun.aggregate-layout-document/v1",
+  "arenas": {
+    "guest": "512",
+    "host": "1024"
+  },
+  "types": [
+    { "id": "Int", "kind": "scalar", "scalar": "Int" },
+    { "id": "Text", "kind": "text" },
+    { "id": "List[Int]", "kind": "list", "element": "Int" },
+    { "id": "List[Text]", "kind": "list", "element": "Text" }
+  ],
+  "objects": [
+    { "id": "counts", "type": "List[Int]", "elements": 3, "arena": "guest",
+      "element_values": ["-1", "0", "9223372036854775807"] },
+    { "id": "empty-text", "type": "Text", "text": "", "arena": "guest" },
+    { "id": "empty-argv", "type": "List[Text]", "elements": 0, "arena": "guest",
+      "element_values": [] },
+    { "id": "argv-0", "type": "Text", "text": "ok", "arena": "host" },
+    { "id": "argv-1", "type": "Text", "text": "a日本語", "arena": "host" },
+    { "id": "argv", "type": "List[Text]", "elements": 2, "arena": "host",
+      "element_values": ["argv-0", "argv-1"] }
+  ]
+}

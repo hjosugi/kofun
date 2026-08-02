@@ -300,6 +300,16 @@ typedef struct {
     bool is_mut;
     bool moved;
     bool borrowed;
+    /*
+     * Where the value went, and where the binding came from. A use-after-move
+     * diagnostic that names only the use tells a reader the half they already
+     * had: they are looking at the use. The move is the part they have to find,
+     * and it is recorded here rather than discarded with the flag.
+     */
+    size_t move_start;
+    size_t move_end;
+    size_t decl_start;
+    size_t decl_end;
 } Local;
 
 typedef struct {
@@ -362,6 +372,49 @@ typedef struct {
     char error[1024];
     bool failed;
 } Frontend;
+
+/*
+ * A diagnostic with a second location.
+ *
+ * `record_frontend.c` is built standalone by tests/conformance/records/run.sh,
+ * so `stage2_diagnostic_related` — static inside compiler.c's translation unit
+ * — is not reachable from here. The second span is carried in the message,
+ * labelled, in the shape the HM diagnostics already use.
+ */
+static void set_error_related(
+    Frontend *frontend,
+    const char *code,
+    size_t start,
+    size_t end,
+    size_t related_start,
+    size_t related_end,
+    const char *related_label,
+    const char *format,
+    ...
+) {
+    char detail[768];
+    va_list arguments;
+
+    if (frontend->failed) return;
+    va_start(arguments, format);
+    if (vsnprintf(detail, sizeof(detail), format, arguments) < 0) {
+        detail[0] = '\0';
+    }
+    va_end(arguments);
+    snprintf(
+        frontend->error,
+        sizeof(frontend->error),
+        "error[%s]: %s at bytes %zu..%zu; %s at bytes %zu..%zu",
+        code,
+        detail,
+        start,
+        end,
+        related_label,
+        related_start,
+        related_end
+    );
+    frontend->failed = true;
+}
 
 static void set_error(
     Frontend *frontend,
@@ -1940,6 +1993,10 @@ static bool push_local(
     local->is_mut = is_mut;
     local->moved = false;
     local->borrowed = borrowed;
+    local->move_start = 0;
+    local->move_end = 0;
+    local->decl_start = start;
+    local->decl_end = end;
     frontend->local_count += 1;
     return true;
 }
@@ -2328,11 +2385,14 @@ static bool check_expr(Frontend *frontend, size_t expr_index, Type *output) {
             size_t variant;
             if (local != NONE) {
                 if (frontend->locals[local].moved) {
-                    set_error(
+                    set_error_related(
                         frontend,
                         "E2S123",
                         expr->start,
                         expr->end,
+                        frontend->locals[local].move_start,
+                        frontend->locals[local].move_end,
+                        "moved by `take`",
                         "`%s` was moved by `take` and cannot be used again",
                         expr->text
                     );
@@ -2760,19 +2820,27 @@ static bool check_statement(Frontend *frontend, size_t stmt_index) {
                 return false;
             }
             if (frontend->locals[local].borrowed) {
-                set_error(
+                set_error_related(
                     frontend, "E2S122", stmt->start, stmt->end,
+                    frontend->locals[local].decl_start,
+                    frontend->locals[local].decl_end,
+                    "bound by `read`",
                     "`%s` is borrowed by `read` and cannot be moved",
                     target->text);
                 return false;
             }
             if (frontend->locals[local].moved) {
-                set_error(
+                set_error_related(
                     frontend, "E2S123", stmt->start, stmt->end,
+                    frontend->locals[local].move_start,
+                    frontend->locals[local].move_end,
+                    "first moved by `take`",
                     "`%s` was already moved by `take`", target->text);
                 return false;
             }
             frontend->locals[local].moved = true;
+            frontend->locals[local].move_start = stmt->start;
+            frontend->locals[local].move_end = stmt->end;
             target->name_kind = NAME_LOCAL;
             target->decl = local;
             target->type = frontend->locals[local].type;

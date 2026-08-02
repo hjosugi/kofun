@@ -267,15 +267,16 @@ So the four `docs/tour/guides/*.md` files read as free and are not: `task tour`
 asserts each is non-empty and still contains that heading. Before moving a
 document out on the strength of a grep, check that no gate constructs its path.
 
-Four documents did leave, into `content/` in `hjosugi/kofun-site`. No resolver
-named them, and none of them was rendered even by the site:
+Four documents did leave, into `hjosugi/kofun-site`. No resolver named them,
+and none of them was rendered by the site at the time it took them. Where they
+sit now has since diverged, so the destination is worth naming per document:
 
-| Document | Why it left |
-|---|---|
-| `ISSUE_TRIAGE.md` | issue-workflow policy, cited from issues by URL; no gate reads it |
-| `ONE_DAY_TUTORIAL.md` | narrative walkthrough |
-| `CODING_INTERVIEW.md` | narrative comparison |
-| `SCIENTIFIC_COMPUTING.md` | long-range design with no implementation to gate |
+| Document | Where it is now | Why it left |
+|---|---|---|
+| `ISSUE_TRIAGE.md` | `content/ISSUE_TRIAGE.md`, still unrendered internal policy | issue-workflow policy, cited from issues by URL; no gate reads it |
+| `ONE_DAY_TUTORIAL.md` | `content/docs/`, since promoted to a rendered page | narrative walkthrough |
+| `SCIENTIFIC_COMPUTING.md` | `content/docs/`, since promoted to a rendered page | long-range design with no implementation to gate |
+| `CODING_INTERVIEW.md` | removed outright; neither repository carries it | narrative comparison |
 
 That is about 30 KB, 0.3% of tracked bytes — which is the finding, not a
 disappointment. The size was never in `docs/`; it was in the site and the

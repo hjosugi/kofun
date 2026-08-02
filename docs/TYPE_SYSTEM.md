@@ -455,10 +455,21 @@ orphan matrix and the overlap rule exactly as written, and records the selected
 implementation in typed IR. `sh tests/conformance/traits/run.sh` is the
 evidence.
 
-The boundary is that **no dictionary is elaborated, nothing is monomorphised,
-and no runtime search is emitted or implied**. The frontend records which
-implementation a call selected; it does not lower that selection. #471 carries
-dictionary elaboration and #256 the generic law propositions.
+The typed IR also carries the elaborated dictionary shape (#923): a
+`dictionary-descriptor` per trait giving the ABI schema version and one
+`MethodId` per slot in declaration order; a `dictionary` per admissible
+implementation whose `DictionaryId` is the `ImplementationId` with the `impl:`
+tag replaced and the `/decl=N` ordinal dropped, so it is the coherence key and
+is unchanged by declaration order; a `dictionary-parameter` per declared bound;
+and an explicit dictionary argument at each bounded call. A trait method call
+inside a generic body resolves to a (dictionary parameter, method slot) pair.
+
+The boundary is that **the dictionary is elaborated but not lowered: nothing is
+monomorphised, no vtable is laid out, and no runtime search is emitted or
+implied**. The frontend names the dictionary a bounded call passes; it does not
+execute it, and it emits no backend artifact. Backend execution of the
+elaborated dictionary is a separate follow-up, and #256 carries the generic law
+propositions.
 
 Overlap is refused where implementations are declared rather than where they
 are used, so no candidate set is ever ordered at a use site. The gate asserts

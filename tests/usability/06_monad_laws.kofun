@@ -1,0 +1,72 @@
+# Corpus item 6: a Monad instance plus stated left identity, right identity,
+# and associativity.
+#
+# Status: blocked-on #31.
+#
+# Written against the canonical source model in docs/LAW_SYSTEM.md, which is
+# the accepted design for DD-035. Every spelling below is copied from that
+# document's shape, not invented here: `law` with `operation` and `equation`
+# members, `impl Name: Family[...]` supplying the operations, and a named
+# `check laws` block fixing finite domains, equality, assurance, and budget.
+#
+# #31 ("Generics and traits") owns what is missing. Its scope names trait
+# declarations, implementations, bounds, and "generic law proposition IR and
+# evidence requirements"; its cross-child contract requires one trait, one
+# implementation, and one bounded call. Until that lands, `law` is not a
+# parsed top-level form: docs/LAW_SYSTEM.md states plainly that the active
+# compiler "does not parse, type-check, evaluate, or emit evidence for this
+# design", and the refusal recorded by tests/usability/check.sh is the
+# generic "expected top-level `fn` or `type`" — the reader is not told that
+# laws are a known future form.
+#
+# Note the deliberate absence of higher-kinded types. `A` and `MA` are
+# first-order law-schema slots and this instance grounds them at `Bool` and
+# `Bool?`, exactly as docs/LAW_SYSTEM.md requires. That is the property the
+# comparison file 06_monad_laws.rs cannot reproduce.
+
+law Monad[A, MA] {
+    operation pure(value: A) -> MA
+    operation bind(value: MA, next: A -> MA) -> MA
+
+    equation left_identity(
+        value: A in values,
+        next: A -> MA in functions,
+    ) = bind(pure(value), next) == next(value)
+
+    equation right_identity(
+        value: MA in monads,
+    ) = bind(value, pure) == value
+
+    equation associativity(
+        value: MA in monads,
+        first: A -> MA in functions,
+        second: A -> MA in functions,
+    ) = bind(bind(value, first), second)
+        == bind(value, fn(x: A) => bind(first(x), second))
+}
+
+fn optional_pure(value: Bool) -> Bool? {
+    return value
+}
+
+fn optional_bind(value: Bool?, next: Bool -> Bool?) -> Bool? {
+    match value {
+        null => { return null },
+        present => { return next(present) },
+    }
+}
+
+impl OptionalBoolMonad: Monad[Bool, Bool?] {
+    pure = optional_pure
+    bind = optional_bind
+}
+
+check laws OptionalBoolMonadEvidence {
+    instance = OptionalBoolMonad
+    domain values: Bool = all
+    domain monads: Bool? = all
+    domain functions: Bool -> Bool? = all_functions(values, monads)
+    equality Bool? = structural
+    require assurance = proven_finite
+    budget = standard
+}

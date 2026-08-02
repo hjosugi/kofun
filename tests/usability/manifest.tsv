@@ -1,0 +1,30 @@
+# Usability corpus v1 — machine-readable row index for #909.
+#
+# One line per numbered row of #624's "Required usability corpus". The gate
+# tests/usability/check.sh reads this file: it fails if a row is missing, if a
+# status is not one of the two permitted labels, if a blocked-on row does not
+# name exactly one issue, or if a named comparison file is absent.
+#
+# status      executable-today | blocked-on
+# owner       for executable-today: the runner key check.sh dispatches on.
+#             for blocked-on: exactly one open issue number, no `#`.
+# comparison  a file in this directory, or `-` when the `note` column records
+#             why no comparison applies.
+#
+# Issue states were audited on 2026-08-02 against
+# origin/main@69f9179560bf57886be5c1e3c74b78d936e32a54. #624 and #31 were both
+# open. Openness cannot be re-derived offline, so it is recorded here as a
+# dated claim rather than asserted by the gate; what the gate does assert is
+# that each blocked row is still genuinely refused by the toolchain, with the
+# recorded diagnostic. A row that starts compiling fails the gate and must be
+# relabelled.
+#
+# item	status	owner	source	comparison	language	note
+1	executable-today	native-x86_64	01_list_pipeline.kofun	01_list_pipeline.gleam	gleam	no gleam toolchain in CI; comparison is read, not run
+2	executable-today	stage2-run	02_parser_result.kofun	02_parser_result.rs	rust	-
+3	executable-today	record-frontend	03_ownership_modes.kofun	03_ownership_modes.rs	rust	edit mode is refused by DD-021, not missing work
+4	executable-today	stage2-run	04_adt_record_match.kofun	04_adt_record_match.kt	kotlin	no kotlinc in CI; comparison is read, not run
+5	blocked-on	624	05_higher_order.kofun	05_higher_order.kt	kotlin	no kotlinc in CI; comparison is read, not run
+6	blocked-on	31	06_monad_laws.kofun	06_monad_laws.rs	rust	comparison is deliberately not like-for-like; see its header
+7	executable-today	frozen-profile	07_self_host_profile.kofun	-	none	no comparison: rewriting a 3175-line self-hosting compiler idiomatically is not a bounded corpus item, and a fragment would be a strawman
+8	blocked-on	624	08_stream_pipeline.kofun	08_stream_pipeline.go	go	-

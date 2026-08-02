@@ -1,0 +1,15 @@
+# Issue #921. An arm block holds exactly one final `Int` expression; two leave
+# the arm without a single result.
+type Reply =
+    | Pending
+    | Ready(value: Int)
+
+fn main() -> Int {
+    let ready: Reply = Ready(1)
+    let scored: Int = match ready {
+        Pending => { 0 },
+        Ready(value) => { value value },
+    }
+    print(scored)
+    return 0
+}

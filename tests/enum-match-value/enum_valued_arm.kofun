@@ -1,0 +1,16 @@
+# Issue #921. The result join is `Int` only. An arm that produces the enum
+# value itself is refused by the landed match-only rule for enum bindings,
+# before any C is emitted.
+type Reply =
+    | Pending
+    | Ready(value: Int)
+
+fn main() -> Int {
+    let ready: Reply = Ready(5)
+    let escaped: Int = match ready {
+        Pending => { ready },
+        Ready(value) => { value },
+    }
+    print(escaped)
+    return 0
+}

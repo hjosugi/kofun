@@ -194,24 +194,24 @@ merge them into one generic error.
 
 | Condition | Bounded gate code |
 |---|---|
-| duplicate type or function name | `E2S107` |
-| duplicate field in a declaration | `E2S108` |
-| unknown field, parameter, or result type | `E2S109` |
-| generic record declaration | `E2S110` |
-| recursive record declaration | `E2S111` |
-| unknown name or record type | `E2S112` |
-| duplicate field in a construction | `E2S113` |
-| missing field in a construction | `E2S114` |
-| unknown field in a construction | `E2S115` |
-| wrong field type in a construction | `E2S116` |
-| positional construction, or labels on a call | `E2S117` |
-| `Name { ... }` brace construction | `E2S118` |
-| unknown field read, or a read on a non-record | `E2S119` |
-| field assignment or `edit` access | `E2S120` |
-| partial move | `E2S121` |
-| use after `take` | `E2S122` |
-| other type or arity mismatch | `E2S123` |
-| `{` in expression position, including a map literal | `E2S124` |
+| duplicate type or function name | `E2S108` |
+| duplicate field in a declaration | `E2S109` |
+| unknown field, parameter, or result type | `E2S110` |
+| generic record declaration | `E2S111` |
+| recursive record declaration | `E2S112` |
+| unknown name or record type | `E2S113` |
+| duplicate field in a construction | `E2S114` |
+| missing field in a construction | `E2S115` |
+| unknown field in a construction | `E2S116` |
+| wrong field type in a construction | `E2S117` |
+| positional construction, or labels on a call | `E2S118` |
+| `Name { ... }` brace construction | `E2S119` |
+| unknown field read, or a read on a non-record | `E2S120` |
+| field assignment or `edit` access | `E2S121` |
+| partial move | `E2S122` |
+| use after `take` | `E2S123` |
+| other type or arity mismatch | `E2S124` |
+| `{` in expression position, including a map literal | `E2S125` |
 
 The codes above are the bounded frontend's stable identifiers, registered in
 `tests/diagnostics/registry.tsv`. A production frontend inherits the

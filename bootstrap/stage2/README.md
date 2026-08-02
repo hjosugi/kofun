@@ -71,8 +71,12 @@ colliding bounded declarations and `E2S32` rejects unresolved or mismatched
 enum uses. Enum values use an internal tag-plus-Int-payload aggregate and may
 cross same-typed function arguments and returns; they cannot enter Int
 expressions. Payload bindings are visible to guards and arm bodies, and a
-binding catch-all may be re-matched. Generic enums, wider/nested payloads, and
-value-producing enum matches remain outside this executable slice.
+binding catch-all may be re-matched. A concrete-enum match also produces one
+`Int` in `let`, `print`, assignment, and `return`, under the same coverage
+rules and the same `E2S30` arm rule the Bool value match uses; the scrutinee is
+read once before any arm is tested and only the selected arm's result
+expression runs. Generic enums, wider/nested payloads, and enum-valued match
+results remain outside this executable slice.
 Record values are untagged per-type structs rather than the enum
 tag-plus-payload representation. Generated `offsetof`/`sizeof` assertions pin
 their LP64 layout to AggregateLayout v1. Direct construction is lowered only
@@ -572,10 +576,18 @@ that shape it is complete: it assigns `TraitId`, `MethodId`, and
 coherence and orphan rules `docs/TYPE_SYSTEM.md` records, and writes the
 implementation each call selected into typed IR.
 
-It lowers none of it. No dictionary is elaborated, nothing is monomorphised,
-and no runtime search is emitted — the gate asserts the IR names no dictionary,
-monomorphisation, or vtable. Recording which implementation a call selected is
-not the same claim as being able to call it.
+It also elaborates the dictionary that selection denotes (#923): a descriptor
+per trait, a dictionary value per admissible implementation with a
+`DictionaryId` derived from the `ImplementationId`, a dictionary parameter per
+declared bound, and an explicit dictionary argument at each bounded call.
+Elaboration runs last, only on the accepted path, so a refused program never
+gets one.
+
+It lowers none of it below that. Nothing is monomorphised, no vtable is laid
+out, and no runtime search is emitted — the gate asserts the IR names no
+monomorphisation, vtable, or search, and that no backend artifact is written.
+Naming the dictionary a call passes is not the same claim as being able to run
+it.
 
 `foreign` marks a declaration as belonging to another package. It is the
 synthetic stand-in that makes the orphan rule testable in one file while

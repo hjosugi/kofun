@@ -1,0 +1,20 @@
+# Issue #921. Constructor identity is nominal: a constructor of another enum
+# is not a pattern for this scrutinee, whatever it is spelled.
+type Reply =
+    | Pending
+    | Ready(value: Int)
+
+type Signal =
+    | Red
+    | Green
+
+fn main() -> Int {
+    let ready: Reply = Ready(1)
+    let scored: Int = match ready {
+        Pending => { 0 },
+        Red => { 1 },
+        Ready(value) => { value },
+    }
+    print(scored)
+    return 0
+}

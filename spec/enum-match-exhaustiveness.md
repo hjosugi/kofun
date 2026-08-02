@@ -88,8 +88,8 @@ scrutinee is a simple enum-binding name, including a same-typed parameter or
 binding catch-all. Normal lexical visibility allows a binding from an
 enclosing block to be matched in a nested block. A constructor may appear in
 an explicitly typed initializer, a same-typed function argument, or a
-same-typed return. Inferred enum bindings, mutation, enum values in Int
-expressions, and value-producing enum matches are rejected before C emission.
+same-typed return. Inferred enum bindings, mutation, and enum values in Int
+expressions are rejected before C emission.
 
 Each arm uses a constructor belonging to the scrutinee type, `_`, or a fresh
 binding catch-all. A one-payload constructor must use `C(name)` or `C(_)`; the
@@ -102,6 +102,27 @@ statement-position Core blocks. Guards use the existing bounded Bool grammar:
 a Bool literal or one checked Int comparison. The scrutinee is read once. Arms
 are tested in source order; a guard runs once only after its constructor
 matches; and the selected arm alone executes.
+
+## Value position
+
+A match over a concrete-enum scrutinee also appears in the four value
+positions the bounded Bool value match already occupies: a `let` initializer,
+a `print` argument, an assignment right-hand side, and a `return` value. The
+result type is one `Int`, joined by requiring every arm to produce it: each arm
+block holds exactly one final `Int` expression, and a `Void`, empty, or
+multi-value arm is rejected with `E2S30`, the same code and wording the Bool
+value match uses. There is no `Never` or diverging arm in this slice, so the
+join has no bottom case to absorb; an arm that produces an enum value rather
+than an `Int` stays rejected.
+
+Coverage, redundancy, guard conservatism, payload binding, and evaluation order
+are the statement-position rules unchanged: `E2S25` names the missing
+constructors, `E2S26` names a duplicate constructor pattern or an unreachable
+catch-all, `E2S32` refuses a constructor that does not belong to the scrutinee
+type, a guarded arm proves no static coverage, and a payload binding is visible
+to its arm's guard and to its result expression. The scrutinee is read once
+into one local before any arm is tested, arms are tested in source order, and
+only the selected arm's result expression runs and assigns the destination.
 
 ## Stable structural IR
 
@@ -161,13 +182,23 @@ two-word aggregate: its declaration-order `int64_t` tag and one `int64_t`
 payload slot. Payload-free constructors store zero in the unused slot.
 Same-typed functions pass and return this aggregate by value. This is not a
 public ABI.
+
+An exhaustive match over a payload-free enum lowers to one C `switch` on that
+tag when every arm names a constructor and no arm has a guard. Constructor
+tags are contiguous by the declaration-order rule above, and cases retain
+source order in the emitted C. A match with a guard, payload pattern, wildcard,
+or binding catch-all retains the ordered selected-arm lowering so guards and
+bindings preserve their existing observation order. The host C compiler owns
+the target-specific decision between indexed dispatch, lookup tables, and
+other equivalent non-linear forms.
+
 The direct native, wasm, and C ABI profiles do not gain enum support from this
 checkpoint and must reject these sources rather than selecting a different
 representation.
 
 Generic enums, payload types other than `Int`, more than one payload field,
 nested constructor patterns, or-patterns in the executable C11 path,
-value-producing enum matches, enum equality, serialization, ownership-aware
+enum-valued match results, enum equality, serialization, ownership-aware
 destructuring, and public layout stabilization remain open. In particular,
 Kofun optional values continue to use `T?` and `null`; this slice does not
 introduce `Option[T]`, `Some`, or `None` as a second optional-value model.

@@ -53,7 +53,7 @@ evidence in `frontend/` and the gate runs green inside `task verify`.
 The c11-text and c11-control gates are the matching #620/#621
 completion checks for the c11 cells owned by the Text/function slice
 and the mutation/loop/List slice. #622 completed the remaining host
-cells and every other evidence column: all 46 rows are `complete`, and
+cells and every other evidence column, and
 `check-compiler-driver.sh` proves the trusted seed compiles the frozen
 `S` into a runnable compiler whose Core-corpus behavior matches the
 audited Stage 1 seed byte for byte (`driver/`).
@@ -61,14 +61,48 @@ audited Stage 1 seed byte for byte (`driver/`).
 ## What the status columns mean
 
 Each profile row has evidence slots for the canonical source, typed frontend,
-C11 lowering, compiler-produced compiler, positive test, negative test, and
-differential test.
+C11 lowering, four separated compiler-evidence classes, positive test,
+negative test, and differential test.
 
 - a repository path means that evidence exists;
 - `planned:#NNN` names the issue that must supply the evidence;
 - `partial` means at least the frozen source evidence exists but the complete
   self-compile chain does not;
-- `complete` is allowed only when every evidence slot is a checked-in path.
+- `complete` requires every evidence class below to be **executed**, not
+  merely present.
+
+### The four compiler-evidence classes
+
+`kofun.selfhost-profile/v2` replaces the single `self_compiler` column, which
+held one path — `driver/S.c` — on all 46 rows and was checked by testing that
+the file existed. One path cannot distinguish four different facts, and file
+existence proves none of them. Each row now declares a prover per class, and
+`check-profile.sh` runs it:
+
+| Class | Cell | What runs |
+|---|---|---|
+| `used_by_s` | `inventory:S` | the feature must appear in the inventory the gate derives from the pinned canonical source |
+| `accepted_by_a1` | `a1-accept:<corpus>` | A1 compiles `driver/<corpus>.kofun`, exits zero, and writes no diagnostic |
+| `lowered_by_a1` | `a1-lower:<corpus>` | A1's emitted C is byte-identical to the reviewed `driver/<corpus>.c` |
+| `self_application` | `gate:selfhost-self-compile` | A1 compiles the canonical source into a nonempty `C2`, and the named task target runs `check-compiler-driver.sh` inside the aggregate verification |
+
+A row may not claim a corpus that does not use its feature: the gate derives
+the corpus's own inventory with the same detector it applies to `S` and
+requires the row's key to be in it. `A1` itself is built once from the reviewed
+`driver/S.c`; that file's correspondence to `S` is the self-compile gate's
+property, so this gate reads it rather than re-deriving it. Set
+`KOFUN_SELFHOST_A1` to reuse an already-built binary.
+
+The full self-compile proof — determinism, path independence, the audited
+hand-port differential, and the strict-C11 host boundary — stays in
+`check-compiler-driver.sh` and is not re-implemented here.
+
+41 of the 46 rows are `complete`. Five are `partial`: `builtin|fail`,
+`control|return-void`, `statement|assignment`, `statement|mutable-local`, and
+`syntax|function-parameter` are used by `S` but appear in no driver corpus, so
+A1 has never been run against a fixture containing them.
+[#947](https://github.com/hjosugi/kofun/issues/947) owns that corpus gap; until
+it lands, those rows claim `used_by_s` and `self_application` only.
 
 The profile gate derives built-in calls and the bounded syntax/type inventory
 from `S`, then compares it with the manifest. Changing `S` therefore requires

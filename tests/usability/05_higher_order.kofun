@@ -1,0 +1,31 @@
+# Corpus item 5: a higher-order API with two ordinary arguments and one
+# callback.
+#
+# Status: blocked-on #624.
+#
+# This is the shape #624 row 5 asks for, written against the accepted
+# callable-type spelling from the #624 decision comment (DD: "Callable types
+# (#552): fixed-arity arrow types with no implicit currying or partial
+# application") and docs/SYNTAX.md "Lambdas".
+#
+# No frontend on `main` accepts a function-typed parameter on a named
+# function. `map`, `filter`, and `fold` take `fn(...) => ...` lambdas, but
+# they are builtins of the native List Core: their callback parameter is
+# built into the compiler, not declared in Kofun. A user cannot write one.
+#
+# The refusal is recorded by tests/usability/check.sh. Note what the
+# diagnostic does *not* say: there is no "function types are unsupported"
+# message. The arrow type is read as a malformed parameter list instead,
+# which is the single worst diagnostic in this corpus and is scored as such
+# in rubric.md under "diagnostic quality".
+
+fn accumulate(start: Int, step: Int, combine: (Int, Int) -> Int) -> Int {
+    let first = combine(start, step)
+    let second = combine(first, step)
+    return second
+}
+
+fn main() -> Int {
+    print(accumulate(1, 2, fn(left: Int, right: Int) => left + right))
+    return 0
+}

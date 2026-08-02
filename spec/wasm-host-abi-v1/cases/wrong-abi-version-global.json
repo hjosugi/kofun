@@ -1,0 +1,9 @@
+{
+  "schema": "kofun.wasm-host-abi-case/v1",
+  "id": "wrong-abi-version-global",
+  "mutation": "abi-version-global",
+  "expect": "refused",
+  "diagnostic": "abi-version-mismatch",
+  "engine": "accepted",
+  "why": "The second version pin: the exported kofun_abi_version global reads 2. An engine has no opinion about the value of an exported global, which is exactly why the contract reads it out of the module bytes before instantiation instead of after."
+}

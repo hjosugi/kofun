@@ -545,3 +545,8 @@ done
 
 printf '%s\n' \
     "PASS: enum-match fuzz checked $CASES valid and $CASES invalid programs"
+
+# The focused structural lane catches a return to per-arm C dispatch. Keeping
+# it behind the ordinary enum fuzz task makes the codegen contract part of the
+# repository gate without overlapping the shared Taskfile.yml ownership.
+sh "$ROOT/tests/conformance/codegen/dense-enum-dispatch/run.sh"
