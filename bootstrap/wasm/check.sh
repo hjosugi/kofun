@@ -445,6 +445,10 @@ sh "$ROOT/tests/conformance/run.sh" \
 sh "$ROOT/tests/conformance/run.sh" \
     "$ROOT/tests/conformance/functions"
 
+# The v1 Text profile deliberately remains separate from the legacy numeric
+# corpus, but `task wasm` owns both wasm32 bindings and must not omit it.
+sh "$ROOT/tests/wasm-text-v1/check.sh"
+
 printf '%s\n' \
     'PASS: Kofun emitted deterministic, engine-validated WebAssembly' \
     'PASS: separate and mixed nesting accepted 256 levels and rejected 257 atomically' \

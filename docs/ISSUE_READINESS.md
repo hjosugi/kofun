@@ -38,6 +38,48 @@ ledger; do not leave a closed dependency advertising permanent blockage.
 `curated` is orthogonal: it marks an independently refinable working issue, and
 a `curated` issue may be in any state.
 
+## Agent claims
+
+An agent takes exclusive implementation ownership by posting one visible,
+top-level block in an issue comment. The wrapper and the two load-bearing keys
+are exact:
+
+```markdown
+### agent-claim:v1
+- agent_id: codex-example-123
+- status: active
+```
+
+The wrapper is the level-three heading `### agent-claim:v1`. `agent_id` and
+`status` are unquoted Markdown list keys spelled exactly as above; each must
+occur once. Extra list keys may document a baseline, scope, or PR, but the gate
+does not read them. HTML comments, fenced examples, the old bare
+`agent-claim:v1` line, and the old `- agent:` spelling are not claims. This
+keeps the canonical format visible in the rendered issue and leaves historical
+comments untouched.
+
+`status` has a closed vocabulary:
+
+| Status | Ownership |
+|---|---|
+| `active` | live; implementation or integration is in progress |
+| `pr-open` | live; a PR exists but has not merged or been abandoned |
+| `released` | not live; the agent deliberately stopped or skipped the work |
+| `merged` | not live; the implementation merged |
+
+Claims are an append-only event log. A later canonical block with the same
+`agent_id` supersedes that agent's earlier status. Two different agents whose
+latest statuses are live are an error, as is a live claim on a closed issue.
+Post `released` when a blocker or overlap makes you skip the issue; silence is
+not a release.
+
+The normal GitHub list request returns open issues only. To make an
+open-to-closed transition observable, refresh seeds a bounded follow-up from
+the prior committed snapshot: only issue numbers whose latest canonical claim
+was live and which disappeared from the open result are re-read by number with
+their comments. A closed row stays in the snapshot, without increasing
+`open_issues`, until that same agent posts `released` or `merged`.
+
 **`planning` is orthogonal too, and is not a state.** It marks a planning
 umbrella or generated catalogue — never directly implementation-ready — and the
 umbrella still has a state, because "this is an umbrella" and "this is waiting
@@ -172,7 +214,10 @@ never been written down. This document is where they now live.
 - a state label and the body's `State:` line disagree;
 - a `ready` issue names an open blocker in `## Dependencies`;
 - a `blocked` issue names blockers but none of them is still open;
-- a `ready` issue carries no evidence stamp.
+- a `ready` issue carries no evidence stamp;
+- a canonical claim uses a status outside the closed vocabulary;
+- two agents have a live claim on one open issue;
+- a closed issue still has a live claim.
 
 The vocabulary is closed, and the second and third rules are what close it.
 Labels cannot go wrong — the extraction keeps only labels drawn from the
@@ -199,9 +244,11 @@ now. Issues are filed here every few minutes and no commit can keep up, so
 demanding that a committed copy match live state would be permanently red and
 would teach everyone to ignore it.
 
-`task backlog-refresh` regenerates the snapshot from GitHub, runs the same
-rules against live state, and verifies that every stamp names a commit
-reachable from `HEAD`. CI runs it on `main` but **not** on pull requests: a
+`task backlog-refresh` regenerates the snapshot from GitHub, including one
+bounded comment request per open issue and bounded transition probes seeded by
+prior live claims, runs the same rules against live state, and verifies that
+every stamp names a commit reachable from `HEAD`. CI runs it
+on `main` but **not** on pull requests: a
 `ready` issue somebody else opens mid-review would otherwise turn an unrelated
 PR red for a reason its author cannot fix. On `main` the same failure is a true
 signal, owned by whoever can act on it.
