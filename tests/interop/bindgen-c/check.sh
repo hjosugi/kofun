@@ -22,7 +22,10 @@ set -eu
 #   5. the module is mechanically valid in the checked C ABI profile: with a
 #      driver appended it builds through `kofun build --backend c --c-abi`,
 #      links against the fixture library, runs, and reproduces the recorded
-#      decisions — and it is marked raw/trusted, loudly.
+#      decisions — and it is marked raw/trusted, loudly;
+#   6. that same crossing runs again with both sides rebuilt under
+#      AddressSanitizer and UndefinedBehaviorSanitizer, leak detection on,
+#      and three probes prove the instrumentation is actually armed.
 #
 # Nothing here fetches anything: clang parses one committed header, offline.
 
@@ -263,6 +266,100 @@ cmp "$CASES/driver.stdout" "$WORK/program.stdout" ||
 cmp "$WORK/program.stdout" "$WORK/program.second" ||
     fail 'the driver is not reproducible across runs'
 
+# ------------------------ the same crossing, under ASan and UBSan
+
+# The build above proves the boundary links, runs, and decides correctly. It
+# does not prove the crossing is free of the faults a generated binding is
+# most likely to have: a length that is right for the header and wrong for
+# the call, a signedness that silently wraps, an owner that frees twice.
+#
+# Both sides are rebuilt instrumented — the emitted boundary and the fixture
+# implementation it calls — so a fault on either side of the crossing is a
+# failure here rather than a value that happens to look right. The fixture is
+# compiled in directly instead of linked as the shared object above, because
+# an uninstrumented library would leave half the crossing unchecked.
+#
+# `-fno-sanitize-recover=all` is what makes this a gate: UndefinedBehaviorSanitizer
+# prints and continues by default, so a diagnosed program still exits 0 and a
+# check that only reads the exit status reports PASS.
+sanitized_clang() {
+    clang -std=c11 -O1 -g \
+        -fsanitize=address,undefined -fno-sanitize-recover=all \
+        -fno-omit-frame-pointer "$@"
+}
+
+sanitized_clang -DKBFIX_EXTRA=1 \
+    "$WORK/program.c" "$CASES/fixture/kbfix.c" \
+    -o "$WORK/program-sanitized" \
+    >"$WORK/sanitized-build.stdout" 2>"$WORK/sanitized-build.stderr" ||
+    fail "sanitized boundary did not build (is the clang sanitizer runtime installed?): $(cat "$WORK/sanitized-build.stderr")"
+
+if ! ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=print_stacktrace=1 \
+    "$WORK/program-sanitized" \
+    >"$WORK/sanitized.stdout" 2>"$WORK/sanitized.stderr"
+then
+    fail "the sanitized boundary exited nonzero: $(head -n 3 "$WORK/sanitized.stderr")"
+fi
+assert_file_empty 'sanitizer diagnostics crossing the generated boundary' \
+    "$WORK/sanitized.stderr"
+cmp "$CASES/driver.stdout" "$WORK/sanitized.stdout" ||
+    fail 'the sanitized boundary decided differently from the recorded golden'
+
+# A sanitizer that was never linked in is silent in exactly the way a clean
+# run is, so the section above cannot tell the two apart on its own. Each
+# probe is built with the same flags and must be caught by a different arm:
+# memory error, leak, and undefined behavior. If any probe survives, the
+# green result above proves nothing and this gate says so.
+probe_run() {
+    probe_name=$1
+    probe_expected=$2
+    sanitized_clang "$WORK/probe-$probe_name.c" -o "$WORK/probe-$probe_name" \
+        >"$WORK/probe-$probe_name-build.stdout" \
+        2>"$WORK/probe-$probe_name-build.stderr" ||
+        fail "the $probe_name sanitizer probe did not build: $(cat "$WORK/probe-$probe_name-build.stderr")"
+    if ASAN_OPTIONS=detect_leaks=1 "$WORK/probe-$probe_name" \
+        >"$WORK/probe-$probe_name.stdout" 2>"$WORK/probe-$probe_name.stderr"
+    then
+        fail "the $probe_name probe was not diagnosed: the sanitizers are not armed"
+    fi
+    require_line "$WORK/probe-$probe_name.stderr" "$probe_expected" \
+        "the $probe_name probe failed without a \`$probe_expected\` diagnostic"
+}
+
+cat >"$WORK/probe-use-after-free.c" <<'PROBE'
+#include <stdlib.h>
+
+int main(void) {
+    int *cells = malloc(sizeof *cells);
+    *cells = 1;
+    free(cells);
+    return *cells;
+}
+PROBE
+probe_run use-after-free 'AddressSanitizer: heap-use-after-free'
+
+cat >"$WORK/probe-leak.c" <<'PROBE'
+#include <stdlib.h>
+
+int main(void) {
+    volatile int *held = malloc(sizeof *held);
+    *held = 1;
+    return 0;
+}
+PROBE
+probe_run leak 'LeakSanitizer: detected memory leaks'
+
+cat >"$WORK/probe-overflow.c" <<'PROBE'
+#include <stdint.h>
+
+int main(void) {
+    volatile int32_t limit = INT32_MAX;
+    limit = limit + 1;
+    return (int)limit;
+}
+PROBE
+probe_run overflow 'signed integer overflow'
+
 # ---------------------------------------- rejection paths stay rejections
 
 printf '%s\n' 'this is not a C header {{{' >"$WORK/bad.h"
@@ -289,4 +386,5 @@ printf 'bindgen-c: preprocessor context invalidates and regenerates the artifact
 printf 'bindgen-c: C compiler agrees with recorded sizes, offsets, and enum values: PASS\n'
 printf 'bindgen-c: target-derived calling conventions match clang function types: PASS\n'
 printf 'bindgen-c: bindings build, link, and run in the checked C ABI profile: PASS\n'
+printf 'bindgen-c: the crossing is clean under ASan/UBSan with leak detection, and three probes prove it is armed: PASS\n'
 printf 'bindgen-c: raw-trusted marking is present; no safe facade is claimed: PASS\n'
