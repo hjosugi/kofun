@@ -107,10 +107,11 @@ const expectedFunctions = [
   'kbfix_label_copy',
   'kbfix_library_name',
   'kbfix_name_length',
+  'kbfix_scalar_roundtrip',
   'kbfix_stats_scale',
 ];
 check(JSON.stringify(functionNames) === JSON.stringify(expectedFunctions),
-  `bound functions are [${functionNames.join(', ')}], expected the pinned nine in sorted order`);
+  `bound functions are [${functionNames.join(', ')}], expected the pinned ten in sorted order`);
 const signatureOf = (name) =>
   (functions.find((fn) => fn.name === name) || {}).kofun_signature;
 check(signatureOf('kbfix_counter_new') ===
@@ -125,9 +126,23 @@ check(signatureOf('kbfix_stats_scale') ===
 check(signatureOf('kbfix_label_copy') ===
   'extern "C" fn kbfix_label_copy(counter: CBytes, buffer: CBytes, capacity: CULong, out_length: CBytes) -> CInt',
   'kbfix_label_copy signature drifted');
+check(signatureOf('kbfix_scalar_roundtrip') ===
+  'extern "C" fn kbfix_scalar_roundtrip(value: CLong) -> CLong',
+  'kbfix_scalar_roundtrip signature drifted');
 for (const fn of functions) {
   check(typeof fn.symbol === 'string' && fn.symbol !== '',
     `function ${fn.name} has no symbol`);
+  const convention = fn.calling_convention || {};
+  check(convention.id === 'sysv-x86_64',
+    `function ${fn.name} calling convention is ${String(convention.id)}`);
+  check(convention.name === 'System V AMD64',
+    `function ${fn.name} calling convention name is ${String(convention.name)}`);
+  check(convention.source === 'target-default',
+    `function ${fn.name} convention source is ${String(convention.source)}`);
+  check(convention.target_triple === triple,
+    `function ${fn.name} convention target is ${String(convention.target_triple)}`);
+  check(convention.clang_attribute === null,
+    `function ${fn.name} default convention has a clang attribute`);
 }
 
 const records = layout.records || [];
@@ -185,6 +200,17 @@ expectRow('kbfix_flags', 'bitfield', 'skipped', 'bitfield');
 expectRow('kbfix_message', 'flexible-array-member', 'skipped', 'flexible array');
 expectRow('kbfix_double', 'inline-function', 'skipped', 'inline');
 expectRow('kbfix_on_change', 'callback-typedef', 'review', 'lifetime');
+expectRow('kbfix_ms_abi_probe', 'function', 'skipped', 'ms-x64');
+const nondefaultConvention = audit.find((entry) =>
+  entry.name === 'kbfix_ms_abi_probe' && entry.category === 'skipped');
+if (nondefaultConvention !== undefined) {
+  check(nondefaultConvention.reason_code === 'unsupported-calling-convention',
+    `kbfix_ms_abi_probe reason code is ${String(nondefaultConvention.reason_code)}`);
+  const convention = nondefaultConvention.calling_convention || {};
+  check(convention.id === 'ms-x64' && convention.source === 'clang-attribute' &&
+    convention.clang_attribute === 'ms_abi' && convention.target_triple === triple,
+  'kbfix_ms_abi_probe lacks machine-readable clang convention evidence');
+}
 
 // Every bound function that traffics in raw pointers must carry an explicit
 // ownership review row; "generated" must never read as "reviewed".
