@@ -118,6 +118,104 @@ sh "$RUNNER" "$SAMPLES/list_sample_test.kofun" --list \
 grep -q 'list_sample_test.test_push_appends_in_order' "$WORK/list.out" ||
     fail '--list did not enumerate tests'
 
+# -------------------------------------------------------------- keep-going
+# `--keep-going` changes the handling of exactly one status: 2, a unit that
+# fails to *build*. That is a different path from the failing fixture above,
+# which compiles and then reports red assertions, so continuing past an
+# assertion failure proves nothing about this flag.
+KEEP="$WORK/keep-going"
+mkdir -p "$KEEP"
+cp "$ROOT/tests/stdlib/kotest/fixtures/build_fail_test.kofun" \
+    "$KEEP/aaa_build_fail_test.kofun"
+cat >"$KEEP/zzz_later_test.kofun" <<'SUITE'
+fn test_runs_after_the_broken_unit() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(1, 1)
+    return failures
+}
+SUITE
+
+set +e
+sh "$RUNNER" "$KEEP" --no-color >"$WORK/keep-off.out" 2>&1
+keep_off_status=$?
+set -e
+test "$keep_off_status" -eq 2 ||
+    fail "a build failure without --keep-going exited $keep_off_status, expected 2"
+grep -q 'BUILD FAIL' "$WORK/keep-off.out" ||
+    fail 'the stopped sweep did not report the build failure'
+grep -q 'zzz_later_test' "$WORK/keep-off.out" &&
+    fail 'the sweep ran past a build failure without --keep-going'
+
+set +e
+sh "$RUNNER" "$KEEP" --no-color --keep-going >"$WORK/keep-on.out" 2>&1
+keep_on_status=$?
+set -e
+test "$keep_on_status" -eq 1 ||
+    fail "--keep-going exited $keep_on_status, expected 1"
+grep -q 'BUILD FAIL' "$WORK/keep-on.out" ||
+    fail '--keep-going hid the build failure'
+grep -q 'zzz_later_test.test_runs_after_the_broken_unit' "$WORK/keep-on.out" ||
+    fail '--keep-going did not run the suite after the broken unit'
+
+# ------------------------------------------------------------------- watch
+# The watch loop re-runs the sweep, touches a stamp, then polls once a second
+# for a `.kofun` newer than that stamp. Every wait here is bounded and asserts
+# on an observed summary rather than on elapsed time, and the runner is killed
+# whatever happens: a gate that can hang is worse than the missing coverage.
+WATCH="$WORK/watch"
+mkdir -p "$WATCH"
+cat >"$WATCH/watched_test.kofun" <<'SUITE'
+fn test_watch_target() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(2, 2)
+    return failures
+}
+SUITE
+
+# `grep -c` prints the count and still exits 1 when that count is zero, so the
+# fallback has to replace the status rather than add a second line.
+watch_summaries() {
+    seen=$(grep -c 'suites)' "$WORK/watch.out" 2>/dev/null || :)
+    printf '%s\n' "${seen:-0}"
+}
+await_summaries() {
+    want=$1
+    waited=0
+    while test "$waited" -lt 60; do
+        if test "$(watch_summaries)" -ge "$want"; then
+            return 0
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+    return 1
+}
+stop_watch() {
+    kill "$watch_pid" 2>/dev/null || :
+    wait "$watch_pid" 2>/dev/null || :
+}
+
+: >"$WORK/watch.out"
+sh "$RUNNER" "$WATCH" --no-color --watch >"$WORK/watch.out" 2>&1 &
+watch_pid=$!
+
+if ! await_summaries 1; then
+    stop_watch
+    fail 'the watch run never produced a first summary'
+fi
+# The stamp is touched immediately after the summary is printed, so a change
+# made in that window is older than the stamp and is never seen. Let it
+# settle rather than racing it.
+sleep 2
+touch "$WATCH/watched_test.kofun"
+if ! await_summaries 2; then
+    stop_watch
+    fail 'touching a watched file did not re-run the sweep'
+fi
+stop_watch
+
 printf 'kotest framework and runner behaviour: PASS\n'
 printf 'kotest failing-suite detection and exit codes: PASS\n'
+printf 'kotest --keep-going continues past a build failure and stays red: PASS\n'
+printf 'kotest --watch re-runs the sweep when a watched source changes: PASS\n'
 printf 'kotest stdlib sample suites (%s tests): PASS\n' "$total"

@@ -1,0 +1,14 @@
+# Deliberately unbuildable kotest suite (#990).
+#
+# This fixture fails to *compile*, which is a different runner path from
+# fixtures/failing_test.kofun: that one builds and then reports red
+# assertions. A unit that cannot be built returns status 2, and status 2 is
+# the only status `--keep-going` changes the handling of — without the flag
+# the sweep stops at this suite, with it the remaining suites still run.
+#
+# The type error is deliberate and must stay one: a suite that fails for two
+# reasons cannot show which one the runner reacted to.
+
+fn test_returns_text_where_int_is_declared() -> Int {
+    return "not an int"
+}
