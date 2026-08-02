@@ -1,14 +1,14 @@
-(* Kofun Stage 0 grammar, draft 0.2-bootstrap. *)
+(* Kofun full-language grammar, draft 0.3-bootstrap. Executable bootstrap
+   coverage is tracked separately; this is not the removed Stage 0 profile. *)
 
-program          = separators, { declaration, separators }, EOF ;
+program          = separators, { top_level_declaration, separators }, EOF ;
 
-declaration      = law_family_decl
+top_level_declaration = law_family_decl
                  | law_impl_decl
                  | law_check_decl
                  | record_type_decl
                  | function_decl
-                 | meta_function_decl
-                 | statement ;
+                 | meta_function_decl ;
 
 (* Nominal records: see spec/records-v1.md. A record is constructed by the
    labelled call form below, never by `Name { ... }`, so no expression

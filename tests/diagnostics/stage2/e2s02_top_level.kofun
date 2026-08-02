@@ -1,4 +1,5 @@
 # diagnostic-mode: compile
 # expect-code: E2S02
-# expect-span: byte 71
+# contract: spec/grammar.ebnf top_level_declaration
+# expect-span: byte 124
 let answer = 42

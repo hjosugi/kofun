@@ -6,6 +6,25 @@ SUITE="$ROOT/tests/diagnostics/stage2"
 WORK=${KOFUN_DIAGNOSTIC_WORK:-"$ROOT/build/diagnostics-stage2"}
 . "$ROOT/bootstrap/stage2/build.sh"
 
+PROGRAM_PRODUCTION=$(sed -n '/^program[[:space:]]*=/p' "$ROOT/spec/grammar.ebnf")
+TOP_LEVEL_PRODUCTION=$(
+    sed -n '/^top_level_declaration[[:space:]]*=/,/;/p' \
+        "$ROOT/spec/grammar.ebnf"
+)
+printf '%s\n' "$PROGRAM_PRODUCTION" |
+    grep -Fq '{ top_level_declaration, separators }' || {
+        printf '%s\n' \
+            'diagnostics: grammar program no longer uses top_level_declaration' >&2
+        exit 1
+    }
+if printf '%s\n' "$TOP_LEVEL_PRODUCTION" |
+    grep -Eq '(^|[=|])[[:space:]]*statement([[:space:]]|;|$)'
+then
+    printf '%s\n' \
+        'diagnostics: grammar admits a top-level statement that Stage 2 rejects' >&2
+    exit 1
+fi
+
 rm -rf "$WORK"
 mkdir -p "$WORK"
 
