@@ -206,7 +206,19 @@ done
 cmp "$WORK/order-first.schemes" "$WORK/order-second.schemes" ||
     fail 'unrelated declaration order changed canonical let schemes'
 
-failures='occurs-check value-restriction level-escape recursion traits rows match effects ownership named-function mutable'
+run_positive alpha-first
+run_positive alpha-second
+for suffix in first second; do
+    sed \
+        -e 's/binding-id=[^|]*/binding-id=<id>/g' \
+        -e 's/name=[^|]*/name=<name>/g' \
+        -e 's/span=[0-9][0-9]*\.\.[0-9][0-9]*/span=<span>/g' \
+        "$WORK/alpha-$suffix.ir" >"$WORK/alpha-$suffix.normalized.ir"
+done
+cmp "$WORK/alpha-first.normalized.ir" "$WORK/alpha-second.normalized.ir" ||
+    fail 'alpha-renaming changed canonical schemes, use types, or result type'
+
+failures='syntax occurs-check value-restriction level-escape unknown-binding recursion traits rows match effects ownership named-function mutable'
 for stem in $failures; do
     set +e
     "$FRONTEND" "$CASES/$stem.kofun" \
@@ -302,6 +314,6 @@ test -z "$(find "$WORK" -type f \
 printf '%s\n' \
     'PASS: local lambda let-polymorphism instantiates at Int, Bool, and Text' \
     'PASS: captures, level lowering, shadow identities, and value restriction are exact' \
-    'PASS: schemes and typed IR are deterministic across order, path, and repetition' \
+    'PASS: schemes and typed IR are deterministic across alpha-renaming, order, path, and repetition' \
     'PASS: unsafe work/output aliases preserve sources and prior artifacts' \
     'PASS: unsupported forms refuse without artifacts; analyzer and sanitizers are clean'

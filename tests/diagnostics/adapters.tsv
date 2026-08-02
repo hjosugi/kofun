@@ -7,6 +7,7 @@ imports	tests/conformance/modules/imports-selective/run.sh	verify	tests/diagnost
 re-exports	tests/conformance/modules/re-exports/run.sh	verify	tests/diagnostics/reports/re-exports.tsv
 adt-exhaustiveness	tests/conformance/adt-exhaustiveness/run.sh	verify	tests/diagnostics/reports/adt-exhaustiveness.tsv
 generics	tests/conformance/generics/run.sh	verify	tests/diagnostics/reports/generics.tsv
+hm-levels	tests/conformance/inference/hm-levels/run.sh	verify	tests/diagnostics/reports/hm-levels.tsv
 optional-narrowing	tests/conformance/optional-narrowing/run.sh	verify	tests/diagnostics/reports/optional-narrowing.tsv
 visibility-api-leaks	tests/diagnostics/visibility-api-leaks.sh	verify	tests/diagnostics/reports/visibility-api-leaks.tsv
 unicode	tests/diagnostics/unicode/run.sh	verify	tests/diagnostics/reports/unicode.tsv

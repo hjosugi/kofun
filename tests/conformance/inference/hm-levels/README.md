@@ -26,16 +26,17 @@ fresh metavariables at the use level.
 
 The fixture set proves independent `Int`/`Bool`/`Text` instantiations, captured
 outer metavariables, stable shadowing identities, annotation checking,
-alpha-normalized schemes, source-order independence for unrelated bindings,
-path independence, the conservative value restriction, occurs checking, and
-level-escape refusal. Recursion, named-function inference, traits, rows,
+alpha-normalized schemes, an explicit alpha-renamed source pair, source-order
+independence for unrelated bindings, path independence, the conservative value
+restriction, occurs checking, and level-escape refusal. Recursion,
+named-function inference, traits, rows,
 records, `match`, effects, ownership modes, mutable locals, and backend
 lowering are explicit refusals with no partial artifact.
 
-The standalone `HML001`-`HML007` codes belong to this isolated frontend gate.
-They intentionally do not claim integration into the repository-wide Stage 2
-diagnostic registry yet; that shared-file step is deferred until the active
-compiler/diagnostic PR queue is clear.
+`HML001`-`HML007` are registered repository-wide with this focused gate as
+their executable owner. Syntax, unification, occurs-check, resolution,
+recursion, unsupported-feature, and resource-limit families all preserve the
+transactional no-artifact rule.
 
 Implementation limits are fixed: 65,536 source bytes, 4,096 tokens, 8,192
 type nodes, 1,024 bindings, 4,096 uses, 64 generalized variables per binding,
@@ -53,4 +54,6 @@ Run:
 ```sh
 sh tests/conformance/inference/hm-levels/run.sh
 KOFUN_HM_LEVELS_CASES=128 sh tests/fuzz/hm_levels.sh
+# or run both through the repository task
+task hm-levels
 ```

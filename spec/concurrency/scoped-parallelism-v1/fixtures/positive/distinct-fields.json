@@ -1,0 +1,18 @@
+{
+  "schema": "kofun.scoped-parallelism-model/v1",
+  "scope": {
+    "exit_step": 10,
+    "tasks": [
+      {
+        "id": "left",
+        "spawn_step": 1,
+        "captures": [{ "mode": "edit", "place": { "base": "pair", "path": [{ "field": "left" }] } }]
+      },
+      {
+        "id": "right",
+        "spawn_step": 2,
+        "captures": [{ "mode": "edit", "place": { "base": "pair", "path": [{ "field": "right" }] } }]
+      }
+    ]
+  }
+}
