@@ -47,6 +47,19 @@ compile_success() {
 }
 
 compile_success complete "$fixtures/complete.kofun"
+assert_file_nonempty "complete typed HIR" "$work/complete.ir"
+assert_grep \
+    "explicit List[Int] binding reaches typed HIR" \
+    -Fq "|explicit|immutable|List[Int]|gc|initialized|" \
+    "$work/complete.ir"
+assert_grep \
+    "inferred List[Int] binding reaches typed HIR" \
+    -Fq "|inferred|immutable|List[Int]|gc|initialized|" \
+    "$work/complete.ir"
+assert_grep \
+    "empty List[Int] binding reaches typed HIR" \
+    -Fq "|empty|immutable|List[Int]|gc|initialized|" \
+    "$work/complete.ir"
 node "$fixtures/layout-check.mjs" \
     "$work/aggregate-layout.json" "$work/complete.c"
 node "$fixtures/layout-check.mjs" \
