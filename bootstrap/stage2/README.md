@@ -681,8 +681,9 @@ completeness check cannot see codes emitted from a separate frontend.
 ### Executable `Optional(Int)` in the C11 slice (#924)
 
 The paragraphs above describe `optional_frontend.c`, which is still
-frontend-only. Separately, `compiler.c` now makes **one** optional type
-executable: `Optional(Int)`.
+frontend-only. Separately, the canonical `compiler.kofun` source and its
+audited `compiler.c` seed make **one** optional type executable:
+`Optional(Int)`.
 
 The representation is not chosen here. `spec/aggregate-layout-v1/examples/
 core.x86_64-linux.json` carries the accepted `Optional[Int]` descriptor —
@@ -727,4 +728,7 @@ and the frontend gate still pins those rules for the mutable spelling. And
 the loop-backedge *positive* is not expressible here. The gate is
 `tests/conformance/optional-construction/run.sh`, which recomputes the
 descriptor with `spec/aggregate-layout-v1/layout.mjs` rather than reading a
-checked-in copy, so a drift on either side fails it.
+checked-in copy, so a drift on either side fails it. The companion
+`tests/stage2/optional-pair/run.sh` gate derives the Optional semantic family
+from both canonical files, pins its load-bearing dispatch points, and mutates a
+member and validation call to prove that source/seed drift cannot pass silently.
