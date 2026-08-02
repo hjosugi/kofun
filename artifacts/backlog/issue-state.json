@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 76,
+  "open_issues": 77,
   "issues": [
     {
       "number": 26,
@@ -582,14 +582,14 @@
       "number": 880,
       "title": "Call arguments v1 slice 1: parse labels and canonical trailing lambdas",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
+      "state_line": "ready",
       "blocked_by": [
         625
       ],
       "evidence_commits": [
-        "f68e3470c80506a5d790a8724f654bde92080ad1"
+        "a50793ea6802411fd6f7c752578fd9421669236f"
       ]
     },
     {
@@ -636,9 +636,9 @@
       "number": 885,
       "title": "Typed upgrade patches slice 1: validate schema and compute the complete semantic frontier",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
+      "state_line": "ready",
       "blocked_by": [
         740
       ],
@@ -650,9 +650,9 @@
       "number": 891,
       "title": "Stage 2 Text values: return Text, convert Int, and concatenate without invalid C",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
+      "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
         "b94cfc72cd63d0255ab914b365ca7910309fa7d2"
@@ -825,7 +825,7 @@
       "state_line": "planning",
       "blocked_by": [],
       "evidence_commits": [
-        "00ce08f093da2706156f88f80d8c2fb366006d35"
+        "a50793ea6802411fd6f7c752578fd9421669236f"
       ]
     },
     {
@@ -881,6 +881,18 @@
       "evidence_commits": [
         "486d72deb17a6be11325a425e1138822d058121d",
         "6f71b6df5cf54aa16542b89494d2194c4172a97e"
+      ]
+    },
+    {
+      "number": 1016,
+      "title": "Repository boundary: remove reintroduced editor artifacts and prevent recurrence",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": "in-progress",
+      "blocked_by": [],
+      "evidence_commits": [
+        "a50793ea6802411fd6f7c752578fd9421669236f"
       ]
     }
   ]
