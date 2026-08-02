@@ -46,7 +46,7 @@ for setup, supported targets, examples, and the complete CLI guide.
 | Native | direct x86-64 and AArch64 checkpoints |
 | Quality | conformance, diagnostic, Unicode, and fuzz gates |
 | Self-hosting | runnable frozen profile; semantic fixed point remains open |
-| Tooling | LSP, typed sidecars, and editor grammars |
+| Tooling | LSP and typed sidecars |
 | WebAssembly | checked-Int64 wasm32 core and browser tour |
 
 These are bounded checkpoints, not a general parser, complete memory-safe
