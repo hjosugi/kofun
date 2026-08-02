@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 77,
+  "open_issues": 76,
   "issues": [
     {
       "number": 26,
@@ -700,9 +700,9 @@
       "number": 919,
       "title": "Stage 2 C11 List[Int] values: locals, len, and indexing",
       "state_labels": [
-        "blocked"
+        "in-progress"
       ],
-      "state_line": "blocked",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
         "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
@@ -867,16 +867,6 @@
         "blocked"
       ],
       "state_line": "blocked",
-      "blocked_by": [],
-      "evidence_commits": []
-    },
-    {
-      "number": 1006,
-      "title": "`task verify` is not a complete local predicate of CI: type-reduction-trace runs only as a standalone CI step",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": null,
       "blocked_by": [],
       "evidence_commits": []
     },
