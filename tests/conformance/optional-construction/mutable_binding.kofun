@@ -1,0 +1,9 @@
+# Every `Int?` binding this slice lowers is immutable, so the invalidation
+# rules that need mutation are refused at the declaration instead of at the
+# use. The frontend gate still pins them for the mutable spelling.
+
+fn main() -> Int {
+    let mut value: Int? = 1
+    print(0)
+    return 0
+}

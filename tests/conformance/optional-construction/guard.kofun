@@ -1,0 +1,42 @@
+# The definitely-returning guard: an `if` whose taken branch returns carries
+# the opposite edge past it, so the rest of the function is refined. The
+# nested case is here too, because the outer refinement has to dominate an
+# inner branch that establishes nothing of its own.
+
+fn describe(x: Int?) -> Int {
+    if x == null {
+        return -1
+    }
+    return x + 1
+}
+
+fn nested(x: Int?, flag: Int) -> Int {
+    if x != null {
+        if flag > 0 {
+            return x + 1
+        }
+        return x + 2
+    }
+    return -1
+}
+
+fn across_call(x: Int?) -> Int {
+    if x == null {
+        return -1
+    }
+    let doubled: Int = describe(x)
+    return doubled + x
+}
+
+fn main() -> Int {
+    let present: Int? = 41
+    let absent: Int? = null
+    print(describe(present))
+    print(describe(absent))
+    print(nested(present, 1))
+    print(nested(present, 0))
+    print(nested(absent, 1))
+    print(across_call(present))
+    print(across_call(absent))
+    return 0
+}

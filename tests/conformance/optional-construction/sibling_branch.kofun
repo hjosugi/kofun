@@ -1,0 +1,12 @@
+# A refinement never leaks to a sibling branch: `value != null` says nothing
+# on the edge where it was false.
+
+fn main() -> Int {
+    let value: Int? = 1
+    if value != null {
+        print(value)
+    } else {
+        print(value)
+    }
+    return 0
+}

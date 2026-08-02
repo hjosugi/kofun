@@ -1,0 +1,11 @@
+# An `if` that does not definitely return carries nothing past itself: the
+# condition may have been false, so the use after the branch is refused.
+
+fn main() -> Int {
+    let value: Int? = 1
+    if value != null {
+        print(value)
+    }
+    print(value)
+    return 0
+}

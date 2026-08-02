@@ -1,0 +1,53 @@
+# Present and absent `Optional(Int)` values, constructed and then carried
+# across a same-typed argument and return. Presence is observed only through a
+# narrowing branch: nothing here extracts a payload.
+
+fn presence(value: Int?) -> Int {
+    if value == null {
+        return 0
+    }
+    return 1
+}
+
+fn passthrough(value: Int?) -> Int? {
+    return value
+}
+
+fn boxed(value: Int) -> Int? {
+    return value
+}
+
+fn empty() -> Int? {
+    return null
+}
+
+fn main() -> Int {
+    let absent: Int? = null
+    let present: Int? = 7
+
+    print(presence(absent))
+    print(presence(present))
+
+    let carried_absent: Int? = passthrough(absent)
+    let carried_present: Int? = passthrough(present)
+    print(presence(carried_absent))
+    print(presence(carried_present))
+
+    if carried_present != null {
+        print(carried_present)
+    }
+
+    let injected: Int? = boxed(41)
+    if injected != null {
+        print(injected + 1)
+    }
+
+    let returned_absent: Int? = empty()
+    print(presence(returned_absent))
+
+    let copied: Int? = present
+    if copied != null {
+        print(copied)
+    }
+    return 0
+}

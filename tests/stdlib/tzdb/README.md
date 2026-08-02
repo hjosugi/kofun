@@ -38,6 +38,10 @@ passes a zone, version, or digest beside an already-computed result. This is the
 bounded executable equivalent of the canonical `ResolvedLocal`/Text surface;
 it is not a claim that portable Text-returning serialization has landed.
 
+Fixed-offset arithmetic failure keeps `-7` as the closed resolution kind and
+carries the offending `LocalDateTime.wall_seconds` as its payload. The kind and
+payload therefore answer different questions instead of repeating `-7` twice.
+
 The gate creates a valid drift observation by moving transition 1 from `1000`
 to `1001`. That changes only byte 6 of the same v1 format. Normal, gap, and fold
 rows each carry the resulting new digest, so an isolated serialized value can
