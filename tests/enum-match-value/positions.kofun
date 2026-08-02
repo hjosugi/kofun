@@ -1,0 +1,41 @@
+# Issue #921. A `match` over a concrete enum produces one `Int` result in the
+# four positions the landed Bool value-match already supports: `let`, `print`,
+# assignment, and `return`. The scrutinee is a payload-free constructor and an
+# `Int`-payload constructor, matched exhaustively without a catch-all.
+type Reply =
+    | Pending
+    | Ready(value: Int)
+
+fn describe(reply: Reply) -> Int {
+    return match reply {
+        Pending => { 7 },
+        Ready(value) => { value * 2 },
+    }
+}
+
+fn main() -> Int {
+    let ready: Reply = Ready(20)
+
+    let scored: Int = match ready {
+        Pending => { 1 },
+        Ready(value) => { value + 1 },
+    }
+    print(scored)
+
+    print(match ready {
+        Pending => { 2 },
+        Ready(value) => { value },
+    })
+
+    let mut replacement: Int = 0
+    replacement = match ready {
+        Ready(value) => { value - 5 },
+        Pending => { 3 },
+    }
+    print(replacement)
+
+    let pending: Reply = Pending
+    print(describe(pending))
+    print(describe(ready))
+    return 0
+}

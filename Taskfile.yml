@@ -183,6 +183,11 @@ tasks:
     cmds:
       - "sh tests/conformance/adt-exhaustiveness/run.sh"
 
+  enum-match-value:
+    desc: "Verify a concrete-enum match producing one Int in value position"
+    cmds:
+      - "sh tests/enum-match-value/check.sh"
+
   module-symbols:
     desc: "Verify stable top-level declaration collection"
     cmds:
@@ -613,6 +618,7 @@ tasks:
             optional \
             optional-narrowing \
             adt-exhaustiveness \
+            enum-match-value \
             module-symbols \
             imports-qualified \
             import-aliases \

@@ -1,0 +1,54 @@
+# Issue #921. Evaluation evidence for a value-position enum match.
+#
+# `probe` prints its argument, and the scrutinee binding's initializer is the
+# only place it is called: three matches over `ready` follow and the program
+# prints `3` exactly once, so nothing re-evaluates the scrutinee per arm.
+#
+# Every arm that must not run divides by zero. Stage 2 lowers `1 // 0` to a
+# checked division that fails the program, so a lowering that evaluated an
+# unselected arm's result expression — or kept walking after the selected arm
+# took — would exit non-zero instead of printing the expected line.
+type Reply =
+    | Pending
+    | Ready(value: Int)
+    | Failed(code: Int)
+
+fn probe(value: Int) -> Int {
+    print(value)
+    return value
+}
+
+fn main() -> Int {
+    let ready: Reply = Ready(probe(3))
+
+    # Arms and guards run in source order: the first guard fails, the second
+    # takes, and the two arms after it never produce their value.
+    let ordered: Int = match ready {
+        Ready(value) if value == 4 => { 1 // 0 },
+        Ready(value) if value == 3 => { value * 111 },
+        Ready(_) => { 1 // 0 },
+        Pending => { 1 // 0 },
+        Failed(_) => { 1 // 0 },
+    }
+    print(ordered)
+
+    # A payload binding stays visible to a nested value match in the same arm.
+    let nested: Int = match ready {
+        Pending => { 1 // 0 },
+        Ready(value) => {
+            match ready {
+                Ready(inner) => { inner + value },
+                _ => { 1 // 0 },
+            }
+        },
+        Failed(_) => { 1 // 0 },
+    }
+    print(nested)
+
+    let bound: Int = match ready {
+        Pending => { 1 // 0 },
+        other => { 8 },
+    }
+    print(bound)
+    return 0
+}

@@ -79,5 +79,6 @@ declaration-order tags, explicit coverage, ordered guards, selected-only
 evaluation, wildcard coverage, missing/duplicate arms, and constructor/type
 resolution failures. It also proves lexical visibility from nested blocks and
 rejects both enum-tag escape into Int expressions and constructor use without
-an explicitly typed enum initializer. Generic/payload constructors and
-value-producing enum matches remain unsupported.
+an explicitly typed enum initializer. Value-producing concrete-enum matches
+are covered separately by `tests/enum-match-value/check.sh` (#921); generic
+constructors and enum-valued match results remain unsupported.

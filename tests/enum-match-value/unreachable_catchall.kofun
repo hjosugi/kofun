@@ -1,0 +1,16 @@
+# Issue #921. Once every constructor is covered, a trailing catch-all in value
+# position is unreachable.
+type Reply =
+    | Pending
+    | Ready(value: Int)
+
+fn main() -> Int {
+    let ready: Reply = Ready(1)
+    let scored: Int = match ready {
+        Pending => { 0 },
+        Ready(value) => { value },
+        _ => { 9 },
+    }
+    print(scored)
+    return 0
+}
