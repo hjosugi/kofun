@@ -77,8 +77,9 @@ Two fixture files sit beside it, owned by the sanitizer gate:
 | raw is marked raw | the `.raw.` filename segment, the banner, `trust: raw-trusted-foreign` in module and report, and the instruction to import only behind a hand-reviewed safe façade are all asserted |
 | malformed input fails loudly | a garbage header and a missing header must be refused with errors that name the cause, creating no output |
 | neither side of the boundary hides a memory fault (#900) | `libkbfix.so` **and** the emitted C of the generated boundary are both rebuilt with ASan+UBSan and `-fno-sanitize-recover=all`; the gate asserts `__asan_` is present in both binaries before trusting a green run, and the driver must still reproduce `driver.stdout` with an empty stderr |
-| a leaked handle is caught, not tolerated (#900) | `detect_leaks=1`. The fixture's contract is client-owned handles, so LeakSanitizer is where a missing `kbfix_counter_free` is caught — see the falsification below |
-| the sanitizer gate is armed (#900) | [`fixture/kbfix_negative.c`](fixture/kbfix_negative.c) lies about a buffer's capacity so the fault lands *inside* `kbfix_label_copy`; it must fail with a `heap-buffer-overflow` report naming `kbfix.c` |
+| the AddressSanitizer arm is armed (#900) | [`fixture/kbfix_negative.c`](fixture/kbfix_negative.c) lies about a buffer's capacity so the fault lands *inside* `kbfix_label_copy`; it must fail with a `heap-buffer-overflow` report naming `kbfix.c` |
+| the LeakSanitizer arm is armed (#992) | with `detect_leaks=1`, [`fixture/kbfix_leak.c`](fixture/kbfix_leak.c) allocates through `kbfix_counter_new` and deliberately violates the client-owned handle contract; it must fail with `LeakSanitizer: detected memory leaks` |
+| the UndefinedBehaviorSanitizer arm is armed (#992) | [`fixture/kbfix_undefined.c`](fixture/kbfix_undefined.c) triggers a signed `long` overflow inside `kbfix_stats_scale`; it must fail with `runtime error: signed integer overflow` naming `kbfix.c` |
 | hostile macros are bounded, not survived (#901) | a committed corpus and a seeded mutation fuzzer, both described in [`fuzz/README.md`](fuzz/README.md); every case is either byte-identical twice or refused by name with no `--out-dir`, and a clang that never answers is refused by the wall-clock bound |
 
 ## What stage 1 deliberately does not claim
