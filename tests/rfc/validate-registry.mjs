@@ -243,11 +243,25 @@ export function validateRegistry(registry, schema, registryPath = REGISTRY_PATH)
             } else {
                 checkPath(report, subject, 'document', rfc.document, tracked)
             }
-            for (const field of ['opened_on', 'review_closed_on', 'decided_on']) {
+            // A proposal under review has not been decided. Requiring
+            // `decided_on` of it would force a date to be invented, and a
+            // scheduled date is indistinguishable from a real one once
+            // written down -- which is exactly the confusion this ledger
+            // exists to prevent.
+            for (const field of ['opened_on', 'review_closed_on']) {
                 if (dates[field] === undefined) {
                     report.fail(subject, `is a native RFC missing \`${field}\``,
-                        'a native RFC records when it opened, when review closed, and when it was decided')
+                        'a native RFC records when it opened and when review closed')
                 }
+            }
+            if (rfc.state === 'proposed') {
+                if (dates.decided_on !== undefined) {
+                    report.fail(subject, 'is `proposed` but records a decision date',
+                        'a proposal under review has no decision date; add `decided_on` when the decision is recorded')
+                }
+            } else if (dates.decided_on === undefined) {
+                report.fail(subject, `is \`${rfc.state}\` but records no \`decided_on\``,
+                    'a decided native RFC records the day it was decided')
             }
             if (dates.recorded_on !== undefined) {
                 report.fail(subject, 'is a native RFC carrying `recorded_on`',

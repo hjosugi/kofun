@@ -135,6 +135,15 @@ const MUTATIONS = {
             }
         },
     },
+    // A scheduled date and a real one look identical once written down, so a
+    // proposal that carries `decided_on` reads as decided to anything that
+    // joins on that field.
+    'proposed-claiming-a-decision-date': {
+        blame: 'RFC-0001',
+        apply(ledger) {
+            find(ledger, 'RFC-0001').dates.decided_on = '2026-08-15'
+        },
+    },
     'native-rfc-without-document': {
         blame: 'DD-013',
         apply(ledger) {
