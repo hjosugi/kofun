@@ -22,11 +22,18 @@ else, and it had already happened: see *Measured evidence* below.
 | `needs-detail` | Outcome known; scope or validation needs refinement | the Definition of Ready below is satisfied |
 | `needs-decision` | Blocked on an explicit design or product decision | the decision is recorded in the issue or a `spec/` document |
 | `ready` | Definition of Ready is satisfied | the work is done and its gate is green |
-| `blocked` | — | the named blocker closes |
+| `blocked` | — | a named blocker remains open |
 
 `blocked` has no label. An issue whose body says `State: blocked` while
 carrying the `ready` label is not ready, whatever the label says. Use the
 blocker's issue number in `## Dependencies` and remove the `ready` label.
+
+A `blocked` issue with a nonempty blocker list must be re-refined when every
+named blocker has closed. Closure does not prove the blocked work is now
+`ready` — a blocker can close as not planned, or expose a missing split — but
+it does prove that the recorded dependency list and state no longer explain
+why the issue cannot start. Update the issue or record the drift in the debt
+ledger; do not leave a closed dependency advertising permanent blockage.
 
 `curated` is orthogonal: it marks an independently refinable working issue, and
 a `curated` issue may be in any state.
@@ -164,6 +171,7 @@ never been written down. This document is where they now live.
 - the snapshot declares a state vocabulary other than this one;
 - a state label and the body's `State:` line disagree;
 - a `ready` issue names an open blocker in `## Dependencies`;
+- a `blocked` issue names blockers but none of them is still open;
 - a `ready` issue carries no evidence stamp.
 
 The vocabulary is closed, and the second and third rules are what close it.
@@ -216,6 +224,7 @@ that was not recorded. What it held on the day it landed:
 | Kind | Rows | What they are |
 |---|---:|---|
 | `state-disagreement` | 11 | mostly a bulk relabel to `blocked` that did not update the bodies; which side is right is a decision per issue, not something a gate may guess |
+| `closed-blockers` | 1 | [#584](https://github.com/hjosugi/kofun/issues/584) still names completed #583; closure means the dependency record is stale, not that the gate may choose its replacement state |
 | `unstamped-ready` | 4 | `ready` before rule 2 existed |
 | `unverifiable-stamp` | 1 | [#738](https://github.com/hjosugi/kofun/issues/738) names a commit that is on no branch, so its measurement cannot be re-run |
 

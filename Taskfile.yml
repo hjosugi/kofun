@@ -460,6 +460,11 @@ tasks:
     cmds:
       - "sh spec/wasm-host-profile-v1/check.sh"
 
+  wasm-object-arena:
+    desc: "Verify the bounded wasm32-hostabi1 object arena and u64 headers"
+    cmds:
+      - "sh bootstrap/wasm/object_arena_check.sh"
+
   typed-sidecar-spec:
     desc: "Verify bounded complete/partial tooling artifacts"
     cmds:
@@ -738,6 +743,7 @@ tasks:
             reuse-candidate \
             wasm-host-abi \
             wasm-host-profile \
+            wasm-object-arena \
             typed-sidecar-spec \
             typed-sidecar-codec \
             typed-sidecar-projector \

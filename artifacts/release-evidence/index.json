@@ -2,12 +2,12 @@
   "schema": "kofun.release-evidence/v1",
   "manifest_version": 1,
   "inputs": {
-    "release/claims.json": "08e34ba7e8336b756dd0fafcf336c416224a9af556197b969ef5a28c5566345b",
+    "release/claims.json": "cb3f284d35beb41ea65f57c982cc74771c952de13637881c01dbc9b76d81a189",
     "spec/release-claim.schema.json": "8cf649858ac955e79ef2e05a5cd01d5234b6b1d87b2fd64a998e2a9ec6af3485"
   },
   "states": {
     "implemented": 9,
-    "checkpoint": 32,
+    "checkpoint": 33,
     "design": 1,
     "open": 3
   },
@@ -636,10 +636,24 @@
       "prerequisites": [
         "node"
       ]
+    },
+    {
+      "id": "wasm32-hostabi1-object-arena",
+      "state": "checkpoint",
+      "area": "webassembly",
+      "targets": [
+        "wasm32-hostabi1"
+      ],
+      "positive_gate": "sh bootstrap/wasm/object_arena_check.sh",
+      "negative_boundary": "examples/wasm_arithmetic.kofun",
+      "reproduction": "task wasm-object-arena",
+      "prerequisites": [
+        "node"
+      ]
     }
   ],
   "evidence_digests": {
-    "Taskfile.yml": "5169897b1ebd322a8546e23b19a5363c55106f9bcf801be9e2f581d9231345b7",
+    "Taskfile.yml": "ed701a03e2f298a4215e3e6104a228e7f8bf8723af138a9e9aeb24246869cf40",
     "bootstrap/native/check.sh": "fea94cb623757e1bf17e4497f43d656b1e8ff57a39a92ece871d8ff257c0f2ef",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/driver/corpus_builtin_rejects.tsv": "b1fa0b26247581aef797a81880554a94233a34109215530641706d76777087d4",
@@ -649,6 +663,7 @@
     "bootstrap/stage1/SHA256SUMS": "02f4c987697b281e83e593c623e9f1d1ec7a629f20077896c821411c1f4f2755",
     "bootstrap/stage2/fixtures/borrowed_move_text.kofun": "34502461891e7c8f42c9017e9fbfc857e54b10ca4fe59551be9ab9ab22d2c1b6",
     "bootstrap/wasm/fixtures/unsupported_text.kofun": "e0a45136410ddb85e9f5b3e5c39e7903d96da39aa53aaf3078d2555b4f383864",
+    "bootstrap/wasm/object_arena_check.sh": "749330c9ec99a9533e52fae44a691cba753635e1c6a75280cfc7a1d6798f0029",
     "docs/BUILD_SYSTEM.md": "d4a372fc97c53874cc2438f3de132289beb033ce2bf1e67518b702de796b05a8",
     "docs/COMPILER_ARCHITECTURE.md": "9ca8641a3d117d84be9ce7f311d26c5f7e8df3b1a5772f3be5b8db67808d56cc",
     "docs/DECIMAL.md": "901455a8ad89af0fa6fc7be449a98cbb5c16cf663a2e6814e239b2f51cc88c29",
@@ -656,8 +671,8 @@
     "docs/GETTING_STARTED.md": "4a9a3bae70796c12216f7448e98898f0297926ab3bd80219234b21dc06cc1f95",
     "docs/LAW_SYSTEM.md": "81276192f86e03b94369d6d2342a5f681533e64e6df9d4eddd73f3f25de96f99",
     "docs/LINGUIST_RECOGNITION.md": "9d81df186a6a92b4b65850e4ca7fb0e9ba97ec705774b935466d2148865eab87",
-    "docs/MEMORY_MODEL.md": "244c236e69b7e1dadd80eaa19cf77e6ba4d8630dd3a534265308e2bde5dfd0f5",
-    "docs/MVP_IMPLEMENTED.md": "738c5316fb178037803b63ce6513534f58b59d10077de5bce11450f579d75825",
+    "docs/MEMORY_MODEL.md": "03855363cf63c8bc7c7f262fea7e56783ccb4d1593637b4e725876d79abd3ec9",
+    "docs/MVP_IMPLEMENTED.md": "6c78d7c8cac20966d07f1987d177740d43974b6022f621f6c2efe30c8684f99a",
     "docs/NATIVE_BACKEND.md": "ab16b7bc6ae59071f9ae73c6fafde44732c887d122bb711104eb231297680bfe",
     "docs/ROADMAP.md": "31d94eba2d40de326e29f7835b9244ace4073d1f482a23372ea2b11c6a873209",
     "docs/RUST_CRATE_SHIMS.md": "4365b064cbc9a05733710d3a609c1db2623b28cb9ed4ba0e48536e35f9d58c47",
@@ -666,6 +681,7 @@
     "docs/SEMANTICS.md": "6e1d210890f5f53f281ea32fe28a0b4118b2804f5cb1caa4260a36c961b9cb92",
     "docs/TYPE_SYSTEM.md": "2eb27179eb5fb6c548adc649992ddc8b785bd7fc7a7bb77b73fe77990327c287",
     "examples/rust-shim/check.sh": "4cffb7e16d964122e2dff480f533cff5eacd0bd939a35fe5a71f71b447139500",
+    "examples/wasm_arithmetic.kofun": "ea73b3ee6b5172a4c8080ed5b4540fb23288d31000dd6ccd59a473e97836c246",
     "spec/enum-match-exhaustiveness.md": "ac383d5cdc76a3d0817bc7cacb12a473c4b18d099551d2e9a098928cc4980f43",
     "spec/modules/module-identity.md": "87600e04ec9f39421c4993462dbbb1b07123c8757e7021844bbbaf23e03f4276",
     "spec/modules/re-exports.md": "e1bd3964901cfbadd1f5675e3c0b5e14a9277198fe6252780381f92581ac2e46",
@@ -674,6 +690,8 @@
     "spec/semantics.md": "79909588ff01f3f48b79840d434ed2ccea9918d12ebe8a03fd87b60a054c67d3",
     "spec/tooling/typed-sidecar.md": "51f18b0fea3734ce73603bbcb43c048edf6a8309e48afb4bd588c386ec23dd92",
     "spec/typed-sidecar/kofun.typed-sidecar.v1.schema.json": "2574494144647b9e89ff45a126dc768ab947ed21a02044965ee22a0076f77460",
+    "spec/wasm-host-abi-v1.md": "b49538b8b8bbdd29c36faa7b8bcd07e34c1dc14fb86cb654f1dbe6c93f25beaf",
+    "spec/wasm-host-profile-v1.md": "2be1f00805f0851b84b334f46a470155d24edc8dc320e80255dc4b4901d62ad0",
     "stdlib/decimal/README.md": "1eb69b7696c0c7a5ae1f41497e6c0db89c644dec93ffb8303f0b610af034f200",
     "stdlib/tests/verify.sh": "3c9056344a95b957792a6ab38e42f81a2ff86786b5ade6680cf8dc9d31edc5dd",
     "tests/cli.sh": "72aff8e52acb330d5be247f46ad3bfe875677c2f6d53bb823ed69fb3b9795d20",
@@ -686,7 +704,7 @@
     "tests/conformance/records/stage2_unsupported_field.kofun": "2ac9b2e9ca754689330a836304a349a49cdf9820be6523e3d02be8158fba4eae",
     "tests/conformance/syntax/issues_35_47/enum_payload_unsupported_field.kofun": "e1b4ce6cda998dac0a955ed016c8eb2f81a9effaed91b823011572cf68f6c59e",
     "tests/diagnostics/README.md": "456190836326c23c153118d53f085905e4da06eae11883432f39c24548447c12",
-    "tests/diagnostics/registry.tsv": "ba9f7f2107908bb40f0a3fd88466e7e8800988b19c13a7ceb8f45f45ed6c06b9",
+    "tests/diagnostics/registry.tsv": "24b2d862bacead9c32dec83c3dfa0bbc1e5b49569f972123a6fe55dbdf63a7d7",
     "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun": "664c4d3b0d4bcd9265fee34b3ae60d8bf0eb58c9ce5c2b504579c1249aa16f2d",
     "tests/diagnostics/visibility-api-leaks.sh": "d87ad383a90d32e88526c9833c1086aea6035796964ce4983a2cfbfd7d9683ff",
     "tests/docs/documentation_index_test.mjs": "249fd426d8f058fa487df75e16db8695bab882c1ee6ad4297bb1fbe61b3f8abe",
