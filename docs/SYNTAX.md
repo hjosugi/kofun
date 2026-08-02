@@ -69,12 +69,14 @@ use `->`.
 
 ## Lambdas
 
+Kofun accepts three lambda spellings. The canonical form starts with `fn`:
+
 ```kofun
 fn(x) => x + 1
 fn(x: Int, y: Int) => x + y
 ```
 
-block lambda:
+Only the canonical form has a block-body spelling:
 
 ```kofun
 fn(x: Int) {
@@ -82,6 +84,20 @@ fn(x: Int) {
     return squared + 1
 }
 ```
+
+An expression-body lambda may omit `fn`. Parentheses remain available for
+multiple parameters or annotations; a bare lambda has exactly one unannotated
+parameter:
+
+```kofun
+(x, y) => x + y
+value => value * 2
+```
+
+`x => expression` is a lambda in expression position and a match arm at an arm
+boundary. The parser uses that position, rather than token shape alone, to keep
+the two meanings distinct. Call-arguments v1 additionally restricts the lambda
+written after a closed call to the canonical `fn(...)` spelling.
 
 ## Conditionals
 
