@@ -11,7 +11,27 @@ RUNNER="$ROOT/tooling/kotest/run.sh"
 KOTEST_LIB="$ROOT/stdlib/testing/kotest.kofun"
 SAMPLES="$ROOT/examples/stdlib"
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/kofun-kotest-gate.XXXXXX")
-trap 'rm -rf "$WORK"' 0 1 2 15
+watch_pid=''
+
+stop_watch() {
+    [ -n "$watch_pid" ] || return 0
+    if kill -0 "$watch_pid" 2>/dev/null; then
+        kill "$watch_pid" 2>/dev/null || :
+        sleep 1
+        kill -KILL "$watch_pid" 2>/dev/null || :
+    fi
+    wait "$watch_pid" 2>/dev/null || :
+    watch_pid=''
+}
+
+cleanup() {
+    status=$?
+    trap - 0 1 2 15
+    stop_watch
+    rm -rf "$WORK"
+    exit "$status"
+}
+trap cleanup 0 1 2 15
 
 fail() {
     printf 'kotest gate: FAIL: %s\n' "$*" >&2
@@ -82,6 +102,10 @@ grep -q 'KOTEST-ASSERT-FAIL kotest' "$WORK/pass.out" &&
 grep -Eq 'Tests  [0-9]+ passed \([0-9]+ total, [0-9]+ suites\)' "$WORK/pass.out" ||
     fail 'passing sweep did not print the green summary'
 grep -q '✗' "$WORK/pass.out" && fail 'passing sweep contains a failed test'
+escape=$(printf '\033')
+if grep -q "$escape" "$WORK/pass.out" "$WORK/pass.err"; then
+    fail '--no-color output contains an ANSI escape byte'
+fi
 total=$(sed -n 's/^Tests  \([0-9][0-9]*\) passed.*/\1/p' "$WORK/pass.out")
 test "$total" -ge 100 ||
     fail "passing sweep ran only $total tests; the samples are not all wired"
@@ -118,6 +142,129 @@ sh "$RUNNER" "$SAMPLES/list_sample_test.kofun" --list \
 grep -q 'list_sample_test.test_push_appends_in_order' "$WORK/list.out" ||
     fail '--list did not enumerate tests'
 
+# -------------------------------------------------------------- keep-going
+# A compiler error in the first suite must not prevent the later suite from
+# running when --keep-going is set.  The overall command still has to fail.
+mkdir -p "$WORK/keep-going"
+cat >"$WORK/keep-going/a_broken_test.kofun" <<'KOFUN'
+fn test_build_failure() -> Int {
+    return function_that_does_not_exist()
+}
+KOFUN
+cat >"$WORK/keep-going/z_after_test.kofun" <<'KOFUN'
+fn test_after_build_failure() -> Int {
+    return expect_eq_int(1, 1)
+}
+KOFUN
+
+# The default is fail-fast for build failures: prove the later suite is not
+# reached before proving that --keep-going changes that behavior.
+set +e
+sh "$RUNNER" "$WORK/keep-going" --no-color \
+    >"$WORK/fail-fast.out" 2>"$WORK/fail-fast.err"
+fail_fast_status=$?
+set -e
+test "$fail_fast_status" -ne 0 ||
+    fail 'default build-failure handling exited zero'
+grep -q 'kotest: BUILD FAIL .*a_broken_test.kofun' "$WORK/fail-fast.out" ||
+    fail 'default build-failure handling lost the compiler failure'
+if grep -q 'z_after_test.test_after_build_failure' "$WORK/fail-fast.out"; then
+    fail 'default build-failure handling ran the later suite'
+fi
+
+set +e
+sh "$RUNNER" "$WORK/keep-going" --keep-going --no-color \
+    >"$WORK/keep-going.out" 2>"$WORK/keep-going.err"
+keep_status=$?
+set -e
+test "$keep_status" -ne 0 ||
+    fail '--keep-going hid the earlier build failure'
+grep -q 'kotest: BUILD FAIL .*a_broken_test.kofun' "$WORK/keep-going.out" ||
+    fail '--keep-going did not report the earlier build failure'
+grep -q '✓ z_after_test.test_after_build_failure' "$WORK/keep-going.out" ||
+    fail '--keep-going did not run the later valid suite'
+
+# ------------------------------------------------------------------- watch
+# Watch mode must complete one run, observe a source change, and complete a
+# second run.  Repeated bounded writes avoid racing the watch stamp; cleanup
+# always reaps the background runner, with SIGKILL only as a final fallback.
+mkdir -p "$WORK/watch" "$WORK/watch-tmp"
+cat >"$WORK/watch/z_watch_test.kofun" <<'KOFUN'
+fn test_watch_rerun() -> Int {
+    return expect_eq_int(1, 1)
+}
+KOFUN
+
+exercise_watch() {
+    watch_mode=$1
+    watch_out="$WORK/watch-$watch_mode.out"
+    watch_err="$WORK/watch-$watch_mode.err"
+    if [ "$watch_mode" = no-color ]; then
+        TMPDIR="$WORK/watch-tmp" sh "$RUNNER" "$WORK/watch" \
+            --watch --no-color >"$watch_out" 2>"$watch_err" &
+    else
+        TMPDIR="$WORK/watch-tmp" sh "$RUNNER" "$WORK/watch" \
+            --watch >"$watch_out" 2>"$watch_err" &
+    fi
+    watch_pid=$!
+
+    watch_runs() {
+        awk '/^Tests  / { count += 1 } END { print count + 0 }' "$watch_out"
+    }
+
+    attempt=0
+    while [ "$(watch_runs)" -lt 1 ] && [ "$attempt" -lt 20 ]; do
+        kill -0 "$watch_pid" 2>/dev/null || {
+            cat "$watch_out" "$watch_err" >&2
+            fail "--watch $watch_mode exited before its initial run"
+        }
+        sleep 1
+        attempt=$((attempt + 1))
+    done
+    test "$(watch_runs)" -ge 1 || {
+        cat "$watch_out" "$watch_err" >&2
+        fail "--watch $watch_mode initial run timed out"
+    }
+
+    attempt=0
+    while [ "$(watch_runs)" -lt 2 ] && [ "$attempt" -lt 20 ]; do
+        printf '\n' >>"$WORK/watch/z_watch_test.kofun"
+        sleep 1
+        attempt=$((attempt + 1))
+    done
+    test "$(watch_runs)" -ge 2 || {
+        cat "$watch_out" "$watch_err" >&2
+        fail "--watch $watch_mode did not rerun after a source change"
+    }
+    stop_watch
+    if grep -q "$escape" "$watch_out" "$watch_err"; then
+        fail "--watch $watch_mode output contains an ANSI escape byte"
+    fi
+    watch_summaries=$(grep -c '^Tests  1 passed (1 total, 1 suites)$' \
+        "$watch_out" || :)
+    test "$watch_summaries" -ge 2 || {
+        cat "$watch_out" "$watch_err" >&2
+        fail "--watch $watch_mode did not complete two successful runs"
+    }
+    watch_green=$(grep -c '✓ z_watch_test.test_watch_rerun' \
+        "$watch_out" || :)
+    test "$watch_green" -ge 2 || {
+        cat "$watch_out" "$watch_err" >&2
+        fail "--watch $watch_mode did not report the fixture green twice"
+    }
+    if grep -Eq '✗|BUILD FAIL|KOTEST-FAILED' "$watch_out"; then
+        fail "--watch $watch_mode output contains a failed run"
+    fi
+    if [ -s "$watch_err" ]; then
+        cat "$watch_err" >&2
+        fail "--watch $watch_mode emitted unexpected stderr"
+    fi
+}
+
+exercise_watch no-color
+exercise_watch redirected-auto
+
 printf 'kotest framework and runner behaviour: PASS\n'
 printf 'kotest failing-suite detection and exit codes: PASS\n'
+printf 'kotest no-color, keep-going, and watch options: PASS\n'
 printf 'kotest stdlib sample suites (%s tests): PASS\n' "$total"

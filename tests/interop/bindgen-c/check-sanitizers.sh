@@ -31,9 +31,11 @@ set -eu
 #     sanitized library by fixture/kbfix_probe.c, whose entry points must all
 #     be bound symbols in the audit report;
 #
-#   * one negative fixture, fixture/kbfix_negative.c, MUST fail with an
-#     AddressSanitizer report naming kbfix.c. Without it, every green run
-#     above would be equally green with the instrumentation switched off.
+#   * three arm-specific negative fixtures MUST fail: kbfix_negative.c with an
+#     AddressSanitizer report naming kbfix.c, kbfix_leak.c with a
+#     LeakSanitizer report, and kbfix_undefined.c with a library-side
+#     UndefinedBehaviorSanitizer report. Without those probes, a green run
+#     could survive with one or more configured sanitizer arms switched off.
 #
 # Offline: one committed header, one committed library source, clang.
 
@@ -55,6 +57,8 @@ assert_regular_file 'pinned fixture implementation' "$CASES/fixture/kbfix.c"
 assert_regular_file 'sanitizer probe source' "$CASES/fixture/kbfix_probe.c"
 assert_regular_file 'sanitizer probe golden' "$CASES/fixture/kbfix_probe.stdout"
 assert_regular_file 'sanitizer negative fixture' "$CASES/fixture/kbfix_negative.c"
+assert_regular_file 'LeakSanitizer negative fixture' "$CASES/fixture/kbfix_leak.c"
+assert_regular_file 'UndefinedBehaviorSanitizer negative fixture' "$CASES/fixture/kbfix_undefined.c"
 assert_regular_file 'driver golden' "$CASES/driver.stdout"
 
 SANITIZE='-fsanitize=address,undefined -fno-sanitize-recover=all'
@@ -207,7 +211,52 @@ assert_grep 'the negative fixture failed without attributing the fault to the fi
 assert_grep 'the negative fixture is not the heap overflow it claims to be' \
     -Fq -- 'heap-buffer-overflow' "$WORK/negative.err"
 
+# ------------------------------- every configured sanitizer arm must fail
+
+# A clean run cannot distinguish an armed sanitizer from a missing one. Each
+# remaining arm therefore gets one isolated fault built with the exact flags
+# and fixture library used above. The leak crosses the library's documented
+# client-owned handle boundary; the signed overflow occurs inside kbfix.c.
+run_sanitizer_arm_probe() {
+    probe_name=$1
+    fixture_source=$2
+    expected_diagnostic=$3
+
+    # shellcheck disable=SC2086
+    "$SAN_CC" $WARN $SANITIZE $HARDEN -I "$CASES/fixture" \
+        "$fixture_source" "$library" -o "$WORK/$probe_name" \
+        2>"$WORK/$probe_name.build.err" ||
+        assert_fail "the $probe_name fixture did not compile: $(cat "$WORK/$probe_name.build.err")"
+    status=0
+    "$WORK/$probe_name" >"$WORK/$probe_name.out" \
+        2>"$WORK/$probe_name.err" || status=$?
+    if test "$status" -eq 0; then
+        assert_fail "the $probe_name fixture exited zero; its sanitizer arm is not proven armed"
+    fi
+    assert_grep "$probe_name fixture failed without its arm-specific diagnostic" \
+        -Fq -- "$expected_diagnostic" "$WORK/$probe_name.err"
+}
+
+run_sanitizer_arm_probe \
+    leak "$CASES/fixture/kbfix_leak.c" \
+    'LeakSanitizer: detected memory leaks'
+run_sanitizer_arm_probe \
+    undefined "$CASES/fixture/kbfix_undefined.c" \
+    'runtime error: signed integer overflow'
+assert_not_grep 'the leak fixture also triggered UndefinedBehaviorSanitizer' \
+    -Fq -- 'runtime error:' "$WORK/leak.err"
+assert_not_grep 'the leak fixture also triggered AddressSanitizer' \
+    -Fq -- 'ERROR: AddressSanitizer' "$WORK/leak.err"
+assert_not_grep 'the undefined-behavior fixture also triggered AddressSanitizer' \
+    -Fq -- 'ERROR: AddressSanitizer' "$WORK/undefined.err"
+assert_not_grep 'the undefined-behavior fixture also triggered LeakSanitizer' \
+    -Fq -- 'LeakSanitizer:' "$WORK/undefined.err"
+assert_grep 'the undefined-behavior fixture did not fault inside the fixture library' \
+    -Fq -- 'kbfix.c' "$WORK/undefined.err"
+
 printf 'bindgen-c: fixture library and generated boundary are both sanitizer-instrumented: PASS\n'
 printf 'bindgen-c: the sanitized boundary reproduces its golden with no diagnostic (%s, detect_leaks=1): PASS\n' "$SAN_CC"
 printf 'bindgen-c: buffer/length and callback paths run clean against the sanitized library: PASS\n'
 printf 'bindgen-c: the negative fixture still faults inside the library, so the gate is armed: PASS\n'
+printf 'bindgen-c: a leaked client-owned handle proves LeakSanitizer is armed: PASS\n'
+printf 'bindgen-c: a library-side signed overflow proves UndefinedBehaviorSanitizer is armed: PASS\n'
