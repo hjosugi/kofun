@@ -455,6 +455,11 @@ tasks:
     cmds:
       - "sh spec/wasm-host-abi-v1/check.sh"
 
+  wasm-host-profile:
+    desc: "Verify wasm32 host-profile activation and legacy ABI identification"
+    cmds:
+      - "sh spec/wasm-host-profile-v1/check.sh"
+
   typed-sidecar-spec:
     desc: "Verify bounded complete/partial tooling artifacts"
     cmds:
@@ -732,6 +737,7 @@ tasks:
             aggregate-layout \
             reuse-candidate \
             wasm-host-abi \
+            wasm-host-profile \
             typed-sidecar-spec \
             typed-sidecar-codec \
             typed-sidecar-projector \

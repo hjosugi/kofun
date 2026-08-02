@@ -4,6 +4,14 @@ This directory is an executable first slice of issue #26. The seed compiler
 parses Kofun source and writes a standard WebAssembly binary module directly;
 it does not invoke Clang, LLVM, a C backend, or a text-to-Wasm assembler.
 
+`--target wasm32` names an architecture *and* a host binding, and the name says
+only the first half: it selects the bounded numeric binding described below —
+`main(): void` against `kofun.print_i64` and `kofun.panic` — and it will keep
+selecting it. The accepted `kofun-wasm-host-abi-v1` aggregate binding is a
+different target name, `wasm32-hostabi1`, which no backend emits yet.
+`spec/wasm-host-profile-v1.md` decides that split and
+`sh spec/wasm-host-profile-v1/check.sh` holds this target to it.
+
 Build and run the sample:
 
 ```sh
@@ -123,3 +131,14 @@ a host may not retain a guest pointer past the call it was passed to. That is
 a different, later host binding than the two imports above: this target still
 exports `main(): void` and imports `kofun.print_i64` and `kofun.panic`, and
 nothing in that contract changes what this directory emits today.
+
+How a build reaches it is decided too, and is no longer left to the reader:
+`spec/wasm-host-profile-v1.md` puts the host ABI in the target name. The
+aggregate profile is `--target wasm32-hostabi1`; bare `--target wasm32` stays
+on the numeric binding and is not deprecated, so nothing here has to migrate.
+A toolchain that cannot emit a profile refuses its name with
+`kofun: unsupported target:` and writes no module, which is what the reserved
+name does today. The two bindings are told apart on the module bytes before
+anything is instantiated — this one imports from `kofun` and exports one
+function, `main`; a v1 module imports from `kofun:host-abi-v1` and exports an
+immutable `kofun_abi_version` global. A module is never both.
