@@ -32,6 +32,4 @@ state-disagreement	543	blocked/needs-detail	Optional types: define representatio
 state-disagreement	624	blocked/needs-detail	Language UX: simple functional syntax with explicit ownership and lawful composition
 state-disagreement	710	blocked/needs-detail	Compiler-native Decimal: implement the accepted language design across all backends
 state-disagreement	868	blocked/needs-detail	Stage 2 C11 aggregate bridge: execute records with List[Int] and Text
-closed-blockers	32	#618	Stage 2 fixed point: Kofun compiles Kofun
-closed-blockers	622	#618	Self-host compiler driver: args, file I/O, and compiling S to deterministic C11
 unverifiable-stamp	738	d1f58a6a9e20764b25ee28773df5355512213dfa	Time-series forecasting research: stamp names a commit on no branch

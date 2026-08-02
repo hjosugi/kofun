@@ -63,11 +63,13 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        618
+        271,
+        622
       ],
       "evidence_commits": [
-        "4d40f7e5c5315a06a1643ba80485648b8882f899",
-        "aeee501f7f28aa33c328a764abe3e3a5cf65d71b"
+        "6f71b6df5cf54aa16542b89494d2194c4172a97e",
+        "d3429207447e112f5230d5be38576959130d288e",
+        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
       ]
     },
     {
@@ -435,15 +437,14 @@
       "number": 622,
       "title": "Self-host compiler driver: args, file I/O, and compiling S to deterministic C11",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
-      "blocked_by": [
-        618
-      ],
+      "state_line": "ready",
+      "blocked_by": [],
       "evidence_commits": [
-        "4d40f7e5c5315a06a1643ba80485648b8882f899",
-        "aeee501f7f28aa33c328a764abe3e3a5cf65d71b"
+        "6f71b6df5cf54aa16542b89494d2194c4172a97e",
+        "d3429207447e112f5230d5be38576959130d288e",
+        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
       ]
     },
     {
@@ -891,6 +892,10 @@
         {
           "agent_id": "codex-issue1021-agent-claim-v1-20260802",
           "status": "active"
+        },
+        {
+          "agent_id": "codex-issue1021-agent-claim-v1-20260802",
+          "status": "pr-open"
         },
         {
           "agent_id": "codex-issue1021-agent-claim-v1-20260802",
