@@ -72,6 +72,23 @@ assert_grep "confusable.stdout" \
 assert_grep "confusable.stdout" \
     -F 'confusable with `paypal`' "$WORK/confusable.stdout"
 
+# Keep the public guide aligned with the executable and normative boundary.
+# Same-unit collisions are hard errors; the future module resolver still owns
+# cross-module detection.  A warning claim here would overstate a surface that
+# neither this gate nor the compiler implements.
+assert_grep "syntax guide same-unit confusable hard error" \
+    -F 'in one compilation unit are a hard error (`EUNICODE006`)' \
+    "$ROOT/docs/SYNTAX.md"
+assert_grep "syntax guide preserves name resolution" \
+    -F 'does not change identifier equality or name resolution' \
+    "$ROOT/docs/SYNTAX.md"
+assert_grep "syntax guide leaves cross-module detection unimplemented" \
+    -F 'confusable collision detection is not implemented' \
+    "$ROOT/docs/SYNTAX.md"
+assert_not_grep "syntax guide does not promise a public-API warning" \
+    -F 'Confusable characters produce a warning in public APIs.' \
+    "$ROOT/docs/SYNTAX.md"
+
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
     "$ROOT/bootstrap/native/core_compiler.c" \
     -o "$WORK/kofun-native-core"
