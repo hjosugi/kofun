@@ -5,7 +5,9 @@
 //
 //   PROBE.c     a C program that includes the real fixture header and prints
 //               the host C compiler's sizeof/alignof/offsetof/enum-constant
-//               facts for every type the report claims to know;
+//               facts for every type the report claims to know and uses
+//               clang type compatibility to verify every function calling
+//               convention against the real declaration;
 //   EXPECTED    the same lines derived from the report's recorded layout.
 //
 // The gate compiles PROBE.c with clang, runs it, and compares its output to
@@ -51,7 +53,8 @@ if (report.schema !== 'kofun.bindgen-c.report/v1') {
   fail(`unexpected report schema: ${String(report.schema)}`);
 }
 const layout = report.layout;
-if (!layout || !Array.isArray(layout.records) || !Array.isArray(layout.enums)) {
+if (!layout || !Array.isArray(layout.records) || !Array.isArray(layout.enums) ||
+    !Array.isArray(layout.functions)) {
   fail('report carries no layout section');
 }
 
@@ -81,6 +84,44 @@ probe.push(`#include "${headerInclude}"`);
 probe.push('#include <stddef.h>');
 probe.push('#include <stdio.h>');
 probe.push('');
+
+const conventions = [];
+for (let index = 0; index < layout.functions.length; index += 1) {
+  const fn = layout.functions[index];
+  const name = requireIdentifier(fn.name, 'function name');
+  const convention = fn.calling_convention;
+  if (convention === null || typeof convention !== 'object' || Array.isArray(convention)) {
+    fail(`function ${name} calling convention data is not an object`);
+  }
+  if (convention.id !== 'sysv-x86_64') {
+    fail(`function ${name} has unsupported calling convention id: ${String(convention.id)}`);
+  }
+  if (convention.target_triple !== report.context.target_triple) {
+    fail(`function ${name} calling convention target disagrees with report context`);
+  }
+  const target = convention.target_triple.toLowerCase();
+  if (!/^(x86_64|amd64)-/.test(target) || !target.includes('-linux-')) {
+    fail(`function ${name} claims sysv-x86_64 on non-x86_64-linux target ${target}`);
+  }
+  if (convention.source === 'target-default') {
+    if (convention.clang_attribute !== null) {
+      fail(`function ${name} target-default convention carries a clang attribute`);
+    }
+  } else if (convention.source === 'clang-attribute') {
+    if (convention.clang_attribute !== 'sysv_abi') {
+      fail(`function ${name} explicit convention is not clang sysv_abi`);
+    }
+  } else {
+    fail(`function ${name} has unknown calling convention source: ${String(convention.source)}`);
+  }
+
+  const typedefName = `kofun_expected_cc_${index}`;
+  probe.push(`typedef __typeof__(${name}) ${typedefName} __attribute__((sysv_abi));`);
+  probe.push(`_Static_assert(__builtin_types_compatible_p(__typeof__(${name}), ${typedefName}),`);
+  probe.push(`    "calling convention mismatch: ${name}");`);
+  conventions.push({ name, id: convention.id });
+}
+probe.push('');
 probe.push('int main(void) {');
 
 const emitFormatted = (format, cArguments, expectedLine) => {
@@ -93,6 +134,12 @@ emitFormatted(
   'sizeof(void *), _Alignof(void *)',
   `pointer size ${requireNumber(layout.pointer.size, 'pointer size')} ` +
   `alignment ${requireNumber(layout.pointer.alignment, 'pointer alignment')}`);
+
+for (const convention of conventions) {
+  const line = `function ${convention.name} calling convention ${convention.id}`;
+  probe.push(`    puts("${line}");`);
+  expected.push(line);
+}
 
 for (const record of layout.records) {
   const cType = requireTagType(record.c_type, 'record c_type');

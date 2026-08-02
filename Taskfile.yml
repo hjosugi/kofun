@@ -549,6 +549,26 @@ tasks:
     cmds:
       - "sh tests/assertions/check.sh"
 
+  # An issue's state is carried twice, as a label and as the `State:` line in
+  # its body, and nothing held the two together until this. Reads the committed
+  # snapshot only, so it stays hermetic and belongs in `verify`.
+  backlog:
+    desc: "Bind each issue's state label to the State line in its body"
+    cmds:
+      - "sh tests/backlog/check.sh"
+
+  # The network lane: refresh the snapshot from GitHub and run the same rules
+  # against live issue state, plus the evidence stamps, which need the full git
+  # history. The committed snapshot is a fixture, not a claim about now —
+  # issues change every few minutes, so requiring a commit to match them would
+  # be permanently red.
+  backlog-refresh:
+    desc: "Refresh the backlog snapshot and check the live backlog"
+    cmds:
+      - "node tests/backlog/refresh.mjs"
+      - "sh tests/backlog/check.sh"
+      - "sh tests/backlog/check-stamps.sh"
+
   # The fast structural lane: does every published capability still join the
   # evidence that bounds it? This reads the repository and never runs a gate, so
   # it belongs beside the other cheap checks in `verify`.
@@ -685,6 +705,7 @@ tasks:
             task-help \
             repository-check \
             assertions \
+            backlog \
             release-claims \
             rfc-registry
       # `tests/lsp/performance_test.js` makes five measurements that a busy

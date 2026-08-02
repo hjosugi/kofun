@@ -4447,6 +4447,36 @@ static int64_t primary_end(const char *source, int64_t start) {
     int64_t cursor = skip_trivia(source, start);
     if (cursor >= length) return -1;
     const char *kind = token_kind(source, cursor);
+    /*
+     * A bracketed list literal. Spanning it is not the same as supporting it:
+     * `List[Int]` is still not a Core binding type, and the type check refuses
+     * the value further on. But a span that stops here makes `argument_end`
+     * return -1, and a call whose argument cannot be measured is reported as
+     * `expects 1 arguments, got -1` — a shape the source never had. Measuring
+     * the literal lets the refusal name the real boundary instead.
+     */
+    if (token_equal(source, cursor, "[")) {
+        int64_t element = skip_trivia(source, token_end(source, cursor));
+        if (element < length && token_equal(source, element, "]")) {
+            return field_postfix_end(source, token_end(source, element));
+        }
+        while (element < length) {
+            int64_t bound = expression_end(source, element);
+            int64_t separator;
+            if (bound < 0) return -1;
+            separator = skip_trivia(source, bound);
+            if (separator >= length) return -1;
+            if (token_equal(source, separator, "]")) {
+                return field_postfix_end(
+                    source,
+                    token_end(source, separator)
+                );
+            }
+            if (!token_equal(source, separator, ",")) return -1;
+            element = skip_trivia(source, token_end(source, separator));
+        }
+        return -1;
+    }
     if (
         strcmp(kind, "integer") == 0 ||
         strcmp(kind, "decimal") == 0 ||

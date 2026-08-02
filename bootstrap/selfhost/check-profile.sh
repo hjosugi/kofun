@@ -158,6 +158,17 @@ done < "$tmp_dir/evidence-paths"
 # v2 applies this to any source, not only to S: the same detector run over a
 # driver corpus is what proves a row may claim that corpus as its acceptance
 # fixture. A row cannot name a fixture that does not use its feature.
+#
+# `has` and `keep` stay at this level rather than inside the function: a bare
+# silenced `grep` is only exempt from the #814 assertion budget when it is the
+# last command of a function body, and tests/assertions/check.sh recognises
+# that end by a `}` in the first column.
+has() {
+    grep -Eq "$1" "$inventory_work/outer-source"
+}
+keep() {
+    printf '%s\n' "$1" >> "$inventory_work/keys"
+}
 derive_inventory() {
     inventory_source=$1
     inventory_out=$2
@@ -197,13 +208,6 @@ derive_inventory() {
 
     LC_ALL=C comm -23 "$inventory_work/calls" "$inventory_work/functions" |
         sed 's/^/builtin|/' > "$inventory_work/keys"
-
-    has() {
-        grep -Eq "$1" "$inventory_work/outer-source"
-    }
-    keep() {
-        printf '%s\n' "$1" >> "$inventory_work/keys"
-    }
 
     has '^[[:space:]]*} else if[[:space:]]' && keep 'control|else-if'
     has '^[[:space:]]*for[[:space:]].*[[:space:]]in[[:space:]].*\.\.' &&

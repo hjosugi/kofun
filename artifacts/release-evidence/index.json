@@ -620,7 +620,7 @@
     }
   ],
   "evidence_digests": {
-    "Taskfile.yml": "1d58a82b5ae9d200c13b2bcae57b989966f99c5e672390389f49cedfc47ba6bf",
+    "Taskfile.yml": "458baafb1a9d861ec2118f929df4494c4ca992adb157c4a11f98c30593c8be40",
     "bootstrap/native/check.sh": "fea94cb623757e1bf17e4497f43d656b1e8ff57a39a92ece871d8ff257c0f2ef",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/driver/corpus_builtin_rejects.tsv": "b1fa0b26247581aef797a81880554a94233a34109215530641706d76777087d4",
@@ -676,8 +676,8 @@
     "tests/http/check.sh": "b3fcbd128033bb7a3c0b7e4f89b679743e0e5e49e9eaa1bdc9573cbb5794aafd",
     "tests/lsp/performance_test.js": "9be9916dd14466b33b631fe1435ddcc038c44288f80c320e1458bcb16d2aab33",
     "tests/security/module-interface-artifact.sh": "0050bbe11ab21fe931bbf6d5043d9adccd4ff36afe26343c69a9ff5277307010",
-    "tests/stdlib/tzdb/README.md": "a4e5a37be16b35a29cd07e3594c17ce1941713b57647c3c8fe6e6bcf21109580",
-    "tests/stdlib/tzdb/tzdb.kofun": "09fd0eac18879310a30be5b795a6a22b036c6b937700cfacf2b68ee133ee67a8",
+    "tests/stdlib/tzdb/README.md": "3ebada786546085ecd463e11f35740e9f304e0c873d9c66fd648c758e9f32848",
+    "tests/stdlib/tzdb/tzdb.kofun": "a3bbfa3966f6cbde4c3bb3263147f7a89ce31416b6a8d19e3d0cfff3a6b6b379",
     "tests/typed-sidecar/authority-boundary.sh": "dc97e4f38bf93297b9ff40f48a0c008121a4f6a9a3bd1c4aab7c5d5f121ec005"
   }
 }
