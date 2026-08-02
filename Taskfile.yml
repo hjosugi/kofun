@@ -151,6 +151,11 @@ tasks:
     cmds:
       - "sh tests/conformance/generics/run.sh"
 
+  const-generics:
+    desc: "Verify literal Int type arguments and their per-literal identity"
+    cmds:
+      - "sh tests/conformance/const-generics/run.sh"
+
   hm-levels:
     desc: "Verify bounded Algorithm J inference for local lambdas"
     cmds:
@@ -682,6 +687,7 @@ tasks:
             adt \
             records \
             generics \
+            const-generics \
             hm-levels \
             effect-inference \
             traits \

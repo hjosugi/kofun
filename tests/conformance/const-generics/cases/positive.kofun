@@ -1,0 +1,37 @@
+# The shared positive. This source type-checks in the bounded const generic
+# frontend *and* through the ordinary compile path the CLI takes, so the two
+# agree on what a literal `Int` type argument means rather than one of them
+# accepting a surface the other silently flattens.
+type Fixed[const scale: Int] = {
+    significand: Int,
+}
+
+type Money = {
+    amount: Int,
+}
+
+fn keep_cents(value: Fixed[2]) -> Fixed[2] {
+    let same: Fixed[2] = value
+    return same
+}
+
+fn keep_mills(value: Fixed[3]) -> Fixed[3] {
+    return value
+}
+
+# `Fixed[02]` normalizes by value, not by digits, so it is the same type as
+# `Fixed[2]` and folds into the same monomorphization.
+fn round_trip(cents: Fixed[02]) -> Fixed[2] {
+    let kept: Fixed[2] = keep_cents(cents)
+    return kept
+}
+
+# `Money` is used before it is declared above, so a nominal identity never
+# depends on declaration order.
+fn plain(amount: Money) -> Money {
+    return amount
+}
+
+fn main() {
+    print(0)
+}

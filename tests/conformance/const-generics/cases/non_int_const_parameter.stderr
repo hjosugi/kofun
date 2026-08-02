@@ -1,0 +1,1 @@
+error[E2S148]: const parameter `label` of `Tagged` has type `Text`; only `Int` const parameters exist in this slice at bytes 25..29

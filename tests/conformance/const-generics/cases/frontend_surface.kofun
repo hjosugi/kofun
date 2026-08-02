@@ -1,0 +1,40 @@
+# The bounded frontend's own wider surface, and the boundary marker for what
+# the ordinary compile path does *not* accept.
+#
+# `Boxed[T]` is an ordinary type parameter: modelling it here is what lets the
+# frontend refuse a literal where a type is expected and a type where a literal
+# is expected, in both directions. The product path refuses this whole source
+# by name — an ordinary type parameter needs field substitution and
+# per-instantiation layout, neither of which #916 builds — and `run.sh` pins
+# that refusal rather than assuming it.
+type Fixed[const scale: Int] = {
+    significand: Int,
+}
+
+type Boxed[T] = {
+    value: T,
+}
+
+type Money = {
+    amount: Int,
+}
+
+fn unbox(box: Boxed[Int]) -> Boxed[Int] {
+    return box
+}
+
+fn wrap_money(box: Boxed[Money]) -> Boxed[Money] {
+    return box
+}
+
+# `Ledger` is used before it is declared, so a nominal identity never depends
+# on declaration order.
+fn ledger(entry: Ledger) -> Ledger {
+    print(0)
+    return entry
+}
+
+type Ledger = {
+    balance: Fixed[2],
+    label: Text,
+}
