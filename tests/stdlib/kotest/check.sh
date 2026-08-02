@@ -194,61 +194,75 @@ fn test_watch_rerun() -> Int {
     return expect_eq_int(1, 1)
 }
 KOFUN
-TMPDIR="$WORK/watch-tmp" sh "$RUNNER" "$WORK/watch" --watch --no-color \
-    >"$WORK/watch.out" 2>"$WORK/watch.err" &
-watch_pid=$!
 
-watch_runs() {
-    awk '/^Tests  / { count += 1 } END { print count + 0 }' "$WORK/watch.out"
-}
+exercise_watch() {
+    watch_mode=$1
+    watch_out="$WORK/watch-$watch_mode.out"
+    watch_err="$WORK/watch-$watch_mode.err"
+    if [ "$watch_mode" = no-color ]; then
+        TMPDIR="$WORK/watch-tmp" sh "$RUNNER" "$WORK/watch" \
+            --watch --no-color >"$watch_out" 2>"$watch_err" &
+    else
+        TMPDIR="$WORK/watch-tmp" sh "$RUNNER" "$WORK/watch" \
+            --watch >"$watch_out" 2>"$watch_err" &
+    fi
+    watch_pid=$!
 
-attempt=0
-while [ "$(watch_runs)" -lt 1 ] && [ "$attempt" -lt 20 ]; do
-    kill -0 "$watch_pid" 2>/dev/null || {
-        cat "$WORK/watch.out" "$WORK/watch.err" >&2
-        fail '--watch exited before its initial run'
+    watch_runs() {
+        awk '/^Tests  / { count += 1 } END { print count + 0 }' "$watch_out"
     }
-    sleep 1
-    attempt=$((attempt + 1))
-done
-test "$(watch_runs)" -ge 1 || {
-    cat "$WORK/watch.out" "$WORK/watch.err" >&2
-    fail '--watch initial run timed out'
+
+    attempt=0
+    while [ "$(watch_runs)" -lt 1 ] && [ "$attempt" -lt 20 ]; do
+        kill -0 "$watch_pid" 2>/dev/null || {
+            cat "$watch_out" "$watch_err" >&2
+            fail "--watch $watch_mode exited before its initial run"
+        }
+        sleep 1
+        attempt=$((attempt + 1))
+    done
+    test "$(watch_runs)" -ge 1 || {
+        cat "$watch_out" "$watch_err" >&2
+        fail "--watch $watch_mode initial run timed out"
+    }
+
+    attempt=0
+    while [ "$(watch_runs)" -lt 2 ] && [ "$attempt" -lt 20 ]; do
+        printf '\n' >>"$WORK/watch/z_watch_test.kofun"
+        sleep 1
+        attempt=$((attempt + 1))
+    done
+    test "$(watch_runs)" -ge 2 || {
+        cat "$watch_out" "$watch_err" >&2
+        fail "--watch $watch_mode did not rerun after a source change"
+    }
+    stop_watch
+    if grep -q "$escape" "$watch_out" "$watch_err"; then
+        fail "--watch $watch_mode output contains an ANSI escape byte"
+    fi
+    watch_summaries=$(grep -c '^Tests  1 passed (1 total, 1 suites)$' \
+        "$watch_out" || :)
+    test "$watch_summaries" -ge 2 || {
+        cat "$watch_out" "$watch_err" >&2
+        fail "--watch $watch_mode did not complete two successful runs"
+    }
+    watch_green=$(grep -c '✓ z_watch_test.test_watch_rerun' \
+        "$watch_out" || :)
+    test "$watch_green" -ge 2 || {
+        cat "$watch_out" "$watch_err" >&2
+        fail "--watch $watch_mode did not report the fixture green twice"
+    }
+    if grep -Eq '✗|BUILD FAIL|KOTEST-FAILED' "$watch_out"; then
+        fail "--watch $watch_mode output contains a failed run"
+    fi
+    if [ -s "$watch_err" ]; then
+        cat "$watch_err" >&2
+        fail "--watch $watch_mode emitted unexpected stderr"
+    fi
 }
 
-attempt=0
-while [ "$(watch_runs)" -lt 2 ] && [ "$attempt" -lt 20 ]; do
-    printf '\n' >>"$WORK/watch/z_watch_test.kofun"
-    sleep 1
-    attempt=$((attempt + 1))
-done
-test "$(watch_runs)" -ge 2 || {
-    cat "$WORK/watch.out" "$WORK/watch.err" >&2
-    fail '--watch did not rerun after a source change'
-}
-stop_watch
-if grep -q "$escape" "$WORK/watch.out" "$WORK/watch.err"; then
-    fail '--watch --no-color output contains an ANSI escape byte'
-fi
-watch_summaries=$(grep -c '^Tests  1 passed (1 total, 1 suites)$' \
-    "$WORK/watch.out" || :)
-test "$watch_summaries" -ge 2 || {
-    cat "$WORK/watch.out" "$WORK/watch.err" >&2
-    fail '--watch did not complete two successful one-test runs'
-}
-watch_green=$(grep -c '✓ z_watch_test.test_watch_rerun' \
-    "$WORK/watch.out" || :)
-test "$watch_green" -ge 2 || {
-    cat "$WORK/watch.out" "$WORK/watch.err" >&2
-    fail '--watch did not report the fixture green twice'
-}
-if grep -Eq '✗|BUILD FAIL|KOTEST-FAILED' "$WORK/watch.out"; then
-    fail '--watch output contains a failed run'
-fi
-if [ -s "$WORK/watch.err" ]; then
-    cat "$WORK/watch.err" >&2
-    fail '--watch emitted unexpected stderr'
-fi
+exercise_watch no-color
+exercise_watch redirected-auto
 
 printf 'kotest framework and runner behaviour: PASS\n'
 printf 'kotest failing-suite detection and exit codes: PASS\n'

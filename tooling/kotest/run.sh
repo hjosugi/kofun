@@ -327,7 +327,7 @@ if $watch; then
     trap 'exit 130' 2
     trap 'exit 143' 15
     while :; do
-        if [ "$color" != never ] && [ -z "${NO_COLOR:-}" ]; then
+        if [ -n "$C_OFF" ]; then
             clear 2>/dev/null || printf '\033[2J\033[H'
         fi
         printf '%skotest watch%s %s(re-runs on change, Ctrl-C quits)%s\n\n' \
