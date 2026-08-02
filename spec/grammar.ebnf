@@ -10,6 +10,29 @@ declaration      = law_family_decl
                  | meta_function_decl
                  | statement ;
 
+(* What the active compiler lowers is narrower than what this grammar admits,
+   and the difference is deliberate rather than a disagreement.
+
+   Stage 2 accepts `function_decl` and `record_type_decl` at program level and
+   refuses everything else with
+
+       error[E2S02]: expected top-level `fn` or `type`
+
+   A top-level `let` is the case that matters: fifteen canonical standard
+   library surfaces write module constants that way — `stdlib/clock/adapters.kofun`,
+   `stdlib/tzdb/tzdb.kofun` and the rest — and three gates pin exactly that
+   E2S02 message as the boundary those files must still stop at
+   (`tests/stdlib/clock-adapters/check.sh`, `tests/stdlib/tzdb/check.sh`,
+   `tests/diagnostics/stage2/e2s02_top_level.stderr`). Removing `statement`
+   from `declaration` would make those fifteen files ungrammatical, which is
+   not what their gates say about them: they are ahead of the compiler, not
+   outside the language.
+
+   So a reader should take a program-level form outside `function_decl` and
+   `record_type_decl` as written in the language and not yet lowered, and
+   should not take E2S02 as evidence that the grammar is wrong. When a form is
+   genuinely not in the language, it is absent here rather than refused there. *)
+
 (* Nominal records: see spec/records-v1.md. A record is constructed by the
    labelled call form below, never by `Name { ... }`, so no expression
    production begins with `{`. *)
