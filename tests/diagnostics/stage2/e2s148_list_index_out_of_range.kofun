@@ -1,0 +1,8 @@
+# diagnostic-mode: compile
+# expect-code: E2S148
+# expect-span: byte 139
+fn main() -> Int {
+    let values = [10, 20, 30]
+    print(values[3])
+    return 0
+}

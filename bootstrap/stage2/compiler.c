@@ -3918,6 +3918,17 @@ static char *emit_primary(
     int64_t start,
     int64_t end
 );
+static char *initializer_type(
+    const char *source,
+    const char *hir,
+    int64_t function_open,
+    int64_t initializer
+);
+static int64_t hir_binding_declaration_start(
+    const char *hir,
+    const char *binding_id
+);
+static bool source_has_list_int_local(const char *source);
 static char *lower_error(
     const char *code,
     const char *message,
@@ -3930,6 +3941,7 @@ static char *lower_error(
  * `condition_end`.
  */
 #define OPTIONAL_INT_C_TYPE "KofunOptionalInt"
+#define LIST_INT_CAPACITY 64
 
 /*
  * `Int` followed by exactly one `?`, which is the only optional type this
@@ -4431,6 +4443,12 @@ static int64_t field_postfix_end(
 ) {
     int64_t length = (int64_t)strlen(source);
     int64_t dot = skip_trivia(source, primary);
+    if (
+        dot < length && token_equal(source, dot, "[") &&
+        source_has_list_int_local(source)
+    ) {
+        return balanced_end(source, dot, "[", "]");
+    }
     if (dot >= length || !token_equal(source, dot, ".")) return primary;
     int64_t field = skip_trivia(source, token_end(source, dot));
     if (
@@ -4440,6 +4458,168 @@ static int64_t field_postfix_end(
         return -1;
     }
     return token_end(source, field);
+}
+
+/* `List[Int]` is one binding type, never the three unrelated tokens that the
+ * historical single-token reader exposed to lexical resolution. */
+static int64_t list_int_type_end(const char *source, int64_t type_start) {
+    int64_t length = source_length(source);
+    if (type_start >= length || !token_equal(source, type_start, "List")) {
+        return -1;
+    }
+    int64_t open = skip_trivia(source, token_end(source, type_start));
+    int64_t element = skip_trivia(source, token_end(source, open));
+    int64_t close = skip_trivia(source, token_end(source, element));
+    if (
+        open >= length || !token_equal(source, open, "[") ||
+        element >= length || !token_equal(source, element, "Int") ||
+        close >= length || !token_equal(source, close, "]")
+    ) {
+        return -1;
+    }
+    return token_end(source, close);
+}
+
+static bool source_has_list_int_local(const char *source) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < length) {
+        if (token_equal(source, cursor, "let")) {
+            int64_t name = skip_trivia(source, token_end(source, cursor));
+            if (token_equal(source, name, "mut")) {
+                name = skip_trivia(source, token_end(source, name));
+            }
+            int64_t after = skip_trivia(source, token_end(source, name));
+            if (after < length && token_equal(source, after, ":")) {
+                int64_t type_start = skip_trivia(
+                    source,
+                    token_end(source, after)
+                );
+                int64_t type_finish = list_int_type_end(source, type_start);
+                if (type_finish >= 0) return true;
+                after = skip_trivia(source, token_end(source, type_start));
+            }
+            if (after < length && token_equal(source, after, "=")) {
+                int64_t value = skip_trivia(
+                    source,
+                    token_end(source, after)
+                );
+                if (value < length && token_equal(source, value, "[")) {
+                    return true;
+                }
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return false;
+}
+
+/* Count the elements in one bracketed literal. Each element is one bounded
+ * expression; semantic element typing is checked after the scope HIR exists. */
+static int64_t list_int_literal_count(
+    const char *source,
+    int64_t open,
+    int64_t *bad
+) {
+    int64_t length = source_length(source);
+    int64_t element = skip_trivia(source, token_end(source, open));
+    int64_t count = 0;
+    if (bad != NULL) *bad = open;
+    if (open >= length || !token_equal(source, open, "[")) return -1;
+    if (element < length && token_equal(source, element, "]")) return 0;
+    while (element < length) {
+        int64_t bound = expression_end(source, element);
+        if (bound < 0) {
+            if (bad != NULL) *bad = element;
+            return -1;
+        }
+        ++count;
+        int64_t separator = skip_trivia(source, bound);
+        if (separator >= length) {
+            if (bad != NULL) *bad = separator;
+            return -1;
+        }
+        if (token_equal(source, separator, "]")) return count;
+        if (!token_equal(source, separator, ",")) {
+            if (bad != NULL) *bad = separator;
+            return -1;
+        }
+        element = skip_trivia(source, token_end(source, separator));
+    }
+    return -1;
+}
+
+/* `List` and `Int` in a local annotation are declaration syntax, not lexical
+ * reads. Keeping this local-only preserves #919's boundary: parameters and
+ * results still reach their existing unsupported type diagnostics. */
+static bool list_int_local_type_token(
+    const char *source,
+    int64_t target
+) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor <= target && cursor < length) {
+        if (token_equal(source, cursor, "let")) {
+            int64_t name = skip_trivia(source, token_end(source, cursor));
+            if (token_equal(source, name, "mut")) {
+                name = skip_trivia(source, token_end(source, name));
+            }
+            int64_t colon = skip_trivia(source, token_end(source, name));
+            if (colon < length && token_equal(source, colon, ":")) {
+                int64_t type_start = skip_trivia(
+                    source,
+                    token_end(source, colon)
+                );
+                int64_t type_finish = list_int_type_end(source, type_start);
+                if (type_finish >= 0) {
+                    int64_t open = skip_trivia(
+                        source,
+                        token_end(source, type_start)
+                    );
+                    int64_t element = skip_trivia(
+                        source,
+                        token_end(source, open)
+                    );
+                    if (target == type_start || target == element) return true;
+                    cursor = skip_trivia(source, type_finish);
+                }
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return false;
+}
+
+static char *validate_list_int_local_annotations(const char *source) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < length) {
+        if (token_equal(source, cursor, "let")) {
+            int64_t name = skip_trivia(source, token_end(source, cursor));
+            if (token_equal(source, name, "mut")) {
+                name = skip_trivia(source, token_end(source, name));
+            }
+            int64_t colon = skip_trivia(source, token_end(source, name));
+            if (colon < length && token_equal(source, colon, ":")) {
+                int64_t type_start = skip_trivia(
+                    source,
+                    token_end(source, colon)
+                );
+                if (
+                    token_equal(source, type_start, "List") &&
+                    list_int_type_end(source, type_start) < 0
+                ) {
+                    return lower_error(
+                        "E2S148",
+                        "Stage 2 local lists require exactly List[Int]",
+                        type_start
+                    );
+                }
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return owned_text("ok");
 }
 
 static int64_t primary_end(const char *source, int64_t start) {
@@ -4985,6 +5165,33 @@ static char *emit_argument(
         free(expected_type);
         return value;
     }
+    char *actual_type = initializer_type(
+        source,
+        hir,
+        enclosing_function_open(source, start),
+        start
+    );
+    if (
+        strcmp(actual_type, "List[Int]") == 0 &&
+        strcmp(expected_type, "List[Int]") != 0
+    ) {
+        Buffer message;
+        buffer_init(&message);
+        buffer_format(
+            &message,
+            "Core function `%s` expects %s for argument %" PRId64
+            ", got List[Int]",
+            callee,
+            expected_type,
+            argument_index + 1
+        );
+        free(actual_type);
+        free(expected_type);
+        char *error = lower_error("E2S15", message.data, start);
+        free(message.data);
+        return error;
+    }
+    free(actual_type);
     free(expected_type);
     /* An arrow lambda argument is the address of the function it was lifted
      * to. */
@@ -5041,6 +5248,142 @@ static char *emit_argument(
     return emit_expression(source, hir, start, end);
 }
 
+static int64_t list_int_binding_literal_count(
+    const char *source,
+    const char *hir,
+    int64_t use_start
+) {
+    char *binding_id = hir_use_binding_id(hir, use_start);
+    if (binding_id[0] == '\0') {
+        free(binding_id);
+        return -1;
+    }
+    int64_t declaration = hir_binding_declaration_start(hir, binding_id);
+    free(binding_id);
+    if (declaration < 0) return -1;
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(
+        source,
+        token_end(source, declaration)
+    );
+    if (cursor < length && token_equal(source, cursor, ":")) {
+        int64_t type_start = skip_trivia(
+            source,
+            token_end(source, cursor)
+        );
+        int64_t type_finish = list_int_type_end(source, type_start);
+        if (type_finish < 0) return -1;
+        cursor = skip_trivia(source, type_finish);
+    }
+    if (cursor >= length || !token_equal(source, cursor, "=")) return -1;
+    int64_t literal = skip_trivia(source, token_end(source, cursor));
+    return list_int_literal_count(source, literal, NULL);
+}
+
+static bool list_int_constant_index(
+    const char *source,
+    int64_t start,
+    int64_t end,
+    int64_t *value
+) {
+    int64_t cursor = skip_trivia(source, start);
+    int64_t sign = 1;
+    if (
+        token_equal(source, cursor, "-") ||
+        token_equal(source, cursor, "+")
+    ) {
+        if (token_equal(source, cursor, "-")) sign = -1;
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    if (
+        strcmp(token_kind(source, cursor), "integer") != 0 ||
+        token_end(source, cursor) != end
+    ) {
+        return false;
+    }
+    char *literal = source_slice(
+        source,
+        cursor,
+        token_end(source, cursor)
+    );
+    Buffer digits;
+    buffer_init(&digits);
+    for (size_t index = 0; literal[index] != '\0'; ++index) {
+        if (literal[index] != '_') {
+            char one[2] = {literal[index], '\0'};
+            buffer_append(&digits, one);
+        }
+    }
+    free(literal);
+    *value = sign * (int64_t)strtoll(digits.data, NULL, 10);
+    free(digits.data);
+    return true;
+}
+
+static char *emit_list_int_literal(
+    const char *source,
+    const char *hir,
+    int64_t open
+) {
+    int64_t bad = open;
+    int64_t count = list_int_literal_count(source, open, &bad);
+    if (count < 0) {
+        return lower_error("E2S148", "malformed List[Int] literal", bad);
+    }
+    if (count > LIST_INT_CAPACITY) {
+        return lower_error(
+            "E2S148",
+            "List[Int] literal capacity is 64 elements",
+            open
+        );
+    }
+    Buffer output;
+    buffer_init(&output);
+    buffer_format(
+        &output,
+        "((KofunIntList){INT64_C(%" PRId64 "), {",
+        count
+    );
+    int64_t element = skip_trivia(source, token_end(source, open));
+    for (int64_t index = 0; index < count; ++index) {
+        int64_t bound = expression_end(source, element);
+        char *actual = initializer_type(
+            source,
+            hir,
+            enclosing_function_open(source, element),
+            element
+        );
+        if (strcmp(actual, "Int") != 0) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(
+                &message,
+                "List[Int] element must have type Int, got %s",
+                actual
+            );
+            free(actual);
+            free(output.data);
+            char *error = lower_error("E2S148", message.data, element);
+            free(message.data);
+            return error;
+        }
+        free(actual);
+        char *value = emit_expression(source, hir, element, bound);
+        if (strncmp(value, "error[", 6) == 0) {
+            free(output.data);
+            return value;
+        }
+        if (index > 0) buffer_append(&output, ", ");
+        buffer_append(&output, value);
+        free(value);
+        int64_t separator = skip_trivia(source, bound);
+        element = skip_trivia(source, token_end(source, separator));
+    }
+    if (count == 0) buffer_append(&output, "INT64_C(0)");
+    buffer_append(&output, "}})");
+    return output.data;
+}
+
 static char *emit_primary(
     const char *source,
     const char *hir,
@@ -5049,6 +5392,9 @@ static char *emit_primary(
 ) {
     int64_t cursor = skip_trivia(source, start);
     const char *kind = token_kind(source, cursor);
+    if (token_equal(source, cursor, "[")) {
+        return emit_list_int_literal(source, hir, cursor);
+    }
     if (strcmp(kind, "decimal") == 0) {
         char *literal = source_slice(source, cursor, token_end(source, cursor));
         Buffer output;
@@ -5211,15 +5557,27 @@ static char *emit_primary(
             strcmp(name, "len") == 0
         ) {
             int64_t value = skip_trivia(source, token_end(source, open));
+            int64_t value_end = argument_end(source, value);
             char *emitted = emit_expression(
                 source,
                 hir,
                 value,
-                argument_end(source, value)
+                value_end
+            );
+            char *actual = initializer_type(
+                source,
+                hir,
+                enclosing_function_open(source, value),
+                value
             );
             Buffer length;
             buffer_init(&length);
-            buffer_format(&length, "((int64_t)strlen(%s))", emitted);
+            if (strcmp(actual, "List[Int]") == 0) {
+                buffer_format(&length, "(%s).length", emitted);
+            } else {
+                buffer_format(&length, "((int64_t)strlen(%s))", emitted);
+            }
+            free(actual);
             free(emitted);
             free(name);
             return length.data;
@@ -5268,6 +5626,141 @@ static char *emit_primary(
         buffer_init(&output);
         if (open >= end || !token_equal(source, open, "(")) {
             char *binding_id = hir_use_binding_id(hir, cursor);
+            if (open < end && token_equal(source, open, "[")) {
+                char *binding_type = hir_binding_field(
+                    hir,
+                    binding_id,
+                    5
+                );
+                if (strcmp(binding_type, "List[Int]") != 0) {
+                    Buffer message;
+                    buffer_init(&message);
+                    buffer_format(
+                        &message,
+                        "indexing requires List[Int], got %s",
+                        binding_type
+                    );
+                    free(binding_type);
+                    free(binding_id);
+                    free(name);
+                    free(output.data);
+                    char *error = lower_error(
+                        "E2S148",
+                        message.data,
+                        cursor
+                    );
+                    free(message.data);
+                    return error;
+                }
+                free(binding_type);
+                int64_t index_start = skip_trivia(
+                    source,
+                    token_end(source, open)
+                );
+                int64_t index_end = expression_end(source, index_start);
+                int64_t close = index_end < 0
+                    ? -1
+                    : skip_trivia(source, index_end);
+                if (
+                    index_end < 0 ||
+                    close >= source_length(source) ||
+                    !token_equal(source, close, "]")
+                ) {
+                    free(binding_id);
+                    free(name);
+                    free(output.data);
+                    return lower_error(
+                        "E2S148",
+                        "malformed List[Int] index",
+                        open
+                    );
+                }
+                char *index_type = initializer_type(
+                    source,
+                    hir,
+                    enclosing_function_open(source, index_start),
+                    index_start
+                );
+                if (strcmp(index_type, "Int") != 0) {
+                    Buffer message;
+                    buffer_init(&message);
+                    buffer_format(
+                        &message,
+                        "List[Int] index must have type Int, got %s",
+                        index_type
+                    );
+                    free(index_type);
+                    free(binding_id);
+                    free(name);
+                    free(output.data);
+                    char *error = lower_error(
+                        "E2S148",
+                        message.data,
+                        index_start
+                    );
+                    free(message.data);
+                    return error;
+                }
+                free(index_type);
+                int64_t constant = 0;
+                int64_t literal_count = list_int_binding_literal_count(
+                    source,
+                    hir,
+                    cursor
+                );
+                if (
+                    literal_count >= 0 &&
+                    list_int_constant_index(
+                        source,
+                        index_start,
+                        index_end,
+                        &constant
+                    ) &&
+                    (constant < -literal_count || constant >= literal_count)
+                ) {
+                    Buffer message;
+                    buffer_init(&message);
+                    buffer_format(
+                        &message,
+                        "List[Int] index %" PRId64
+                        " is out of range for length %" PRId64,
+                        constant,
+                        literal_count
+                    );
+                    free(binding_id);
+                    free(name);
+                    free(output.data);
+                    char *error = lower_error(
+                        "E2S148",
+                        message.data,
+                        index_start
+                    );
+                    free(message.data);
+                    return error;
+                }
+                char *index_value = emit_expression(
+                    source,
+                    hir,
+                    index_start,
+                    index_end
+                );
+                if (strncmp(index_value, "error[", 6) == 0) {
+                    free(binding_id);
+                    free(name);
+                    free(output.data);
+                    return index_value;
+                }
+                buffer_format(
+                    &output,
+                    "kofun_list_int_index(&k_b%s, %s)",
+                    binding_id,
+                    index_value
+                );
+                free(index_value);
+                free(binding_id);
+                free(name);
+                return output.data;
+            }
             if (open < end && token_equal(source, open, ".")) {
                 int64_t field_cursor = skip_trivia(
                     source,
@@ -5812,7 +6305,8 @@ static char *builtin_argument_check(
             bool matches;
             if (strncmp(expected, "TextOrList", expected_length) == 0) {
                 matches = strcmp(actual, "Text") == 0 ||
-                    strcmp(actual, "List") == 0;
+                    strcmp(actual, "List") == 0 ||
+                    strcmp(actual, "List[Int]") == 0;
             } else {
                 matches =
                     strlen(actual) == expected_length &&
@@ -10208,6 +10702,9 @@ static char *initializer_type(
         cursor = skip_trivia(source, token_end(source, cursor));
     }
     if (cursor >= end) return owned_text("Int");
+    if (token_equal(source, cursor, "[")) {
+        return owned_text("List[Int]");
+    }
     {
         char *conversion = numeric_conversion_at(source, cursor);
         const char *result = numeric_conversion_result(conversion);
@@ -10300,10 +10797,14 @@ static char *initializer_type(
                     }
                     free(field_type);
                 }
-                /* Indexing the profile's List[Text] yields its Text
-                 * element. */
                 bool indexed =
                     open < length && token_equal(source, open, "[");
+                if (indexed && strcmp(type, "List[Int]") == 0) {
+                    free(type);
+                    return owned_text("Int");
+                }
+                /* Indexing the profile's List[Text] yields its Text
+                 * element. */
                 if (indexed && strcmp(type, "List") == 0) {
                     free(type);
                     return owned_text("Text");
@@ -10423,6 +10924,11 @@ static char *build_scope_hir_mode(
     char *notation_check = validate_removed_callable_notation(source);
     if (strncmp(notation_check, "error[", 6) == 0) return notation_check;
     free(notation_check);
+    char *list_annotation_check = validate_list_int_local_annotations(source);
+    if (strncmp(list_annotation_check, "error[", 6) == 0) {
+        return list_annotation_check;
+    }
+    free(list_annotation_check);
     Buffer hir;
     buffer_init(&hir);
     buffer_append(&hir, "kofun-scope-hir/v1\n");
@@ -10898,14 +11404,22 @@ static char *build_scope_hir_mode(
                         source,
                         type_cursor
                     );
+                    int64_t list_end = list_int_type_end(
+                        source,
+                        type_cursor
+                    );
                     binding_type = optional_end >= 0
                         ? owned_text("Int?")
-                        : token_copy(source, type_cursor);
+                        : (list_end >= 0
+                            ? owned_text("List[Int]")
+                            : token_copy(source, type_cursor));
                     after_name = skip_trivia(
                         source,
                         optional_end >= 0
                             ? optional_end
-                            : token_end(source, type_cursor)
+                            : (list_end >= 0
+                                ? list_end
+                                : token_end(source, type_cursor))
                     );
                 }
                 int64_t initializer = skip_trivia(
@@ -11002,7 +11516,8 @@ static char *build_scope_hir_mode(
                 }
                 const char *ownership =
                     strcmp(binding_type, "Text") == 0 ||
-                    strcmp(binding_type, "List") == 0 ? "gc" : "copy";
+                    strcmp(binding_type, "List") == 0 ||
+                    strcmp(binding_type, "List[Int]") == 0 ? "gc" : "copy";
                 buffer_format(
                     &hir,
                     "binding|%" PRId64 "|%s|%s|%s|%s|%s|initialized|"
@@ -11391,6 +11906,7 @@ static char *build_scope_hir_mode(
                     !declaration_token && !record_token &&
                     !initializer_token &&
                     !pattern_token && !lambda_token &&
+                    !list_int_local_type_token(source, cursor) &&
                     !numeric_conversion_head(source, cursor) &&
                     !move_assertion_head(source, cursor) &&
                     !decimal_rounding_mode_name(name) &&
@@ -13575,6 +14091,7 @@ static char *lower_body(
             char *enum_type = NULL;
             char *record_type = NULL;
             bool optional_int = false;
+            bool list_int = false;
             cursor = skip_trivia(source, token_end(source, cursor));
             if (cursor < length && token_equal(source, cursor, ":")) {
                 cursor = skip_trivia(source, token_end(source, cursor));
@@ -13604,10 +14121,26 @@ static char *lower_body(
                         return lower_error("E2S11", "expected `=`", cursor);
                     }
                 }
+                int64_t list_end = list_int_type_end(source, cursor);
+                if (!optional_int && list_end >= 0) {
+                    list_int = true;
+                    cursor = skip_trivia(source, list_end);
+                    if (cursor >= length || !token_equal(source, cursor, "=")) {
+                        free(binding_id);
+                        free(name);
+                        free(emitted.data);
+                        return lower_error("E2S11", "expected `=`", cursor);
+                    }
+                }
                 char *declared_type = optional_int
                     ? owned_text("Int")
-                    : token_copy(source, cursor);
-                if (!optional_int && strcmp(declared_type, "Int") != 0) {
+                    : (list_int
+                        ? owned_text("List[Int]")
+                        : token_copy(source, cursor));
+                if (
+                    !optional_int && !list_int &&
+                    strcmp(declared_type, "Int") != 0
+                ) {
                     if (
                         strcmp(declared_type, "Text") == 0 ||
                         strcmp(declared_type, "Decimal") == 0 ||
@@ -13646,7 +14179,7 @@ static char *lower_body(
                 } else {
                     free(declared_type);
                 }
-                if (!optional_int) {
+                if (!optional_int && !list_int) {
                     cursor = skip_trivia(source, token_end(source, cursor));
                 }
             }
@@ -14157,6 +14690,20 @@ static char *lower_body(
                 c_type = "KofunDecimalResult *";
             } else if (strcmp(binding_type, "Text") == 0) {
                 c_type = "const char *";
+            } else if (strcmp(binding_type, "List[Int]") == 0) {
+                c_type = "KofunIntList";
+            }
+            if (mutable && strcmp(binding_type, "List[Int]") == 0) {
+                free(binding_type);
+                free(value);
+                free(binding_id);
+                free(name);
+                free(emitted.data);
+                return lower_error(
+                    "E2S148",
+                    "mutable List[Int] bindings are outside this lowering slice",
+                    value_start
+                );
             }
             if (mutable && strcmp(binding_type, "Int") != 0) {
                 free(binding_type);
@@ -17769,10 +18316,22 @@ static char *lower_c(const char *source, const char *hir) {
         "} KofunEnumValue;\n"
         "#define KOFUN_ENUM_ZERO "
         "((KofunEnumValue){INT64_C(0), INT64_C(0)})\n\n"
+        "#define KOFUN_LIST_INT_CAPACITY 64\n"
+        "typedef struct {\n"
+        "    int64_t length;\n"
+        "    int64_t elements[KOFUN_LIST_INT_CAPACITY];\n"
+        "} KofunIntList;\n\n"
         "static bool kofun_failed;\n"
         "static inline void kofun_error(const char *message) {\n"
         "    if (!kofun_failed) { fputs(message, stderr); fputc('\\n', stderr); }\n"
         "    kofun_failed = true;\n"
+        "}\n"
+        "static inline int64_t kofun_list_int_index(const KofunIntList *list, int64_t index) {\n"
+        "    if (index < 0) index += list->length;\n"
+        "    if (index < 0 || index >= list->length) {\n"
+        "        kofun_error(\"error[R021]: bounded List[Int] index out of range\"); return 0;\n"
+        "    }\n"
+        "    return list->elements[index];\n"
         "}\n"
         "static inline const char *kofun_text_slice(const char *text, int64_t start, int64_t end) {\n"
         "    static char slots[64][32]; static size_t next_slot;\n"
