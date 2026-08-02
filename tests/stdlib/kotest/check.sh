@@ -156,6 +156,22 @@ fn test_after_build_failure() -> Int {
     return expect_eq_int(1, 1)
 }
 KOFUN
+
+# The default is fail-fast for build failures: prove the later suite is not
+# reached before proving that --keep-going changes that behavior.
+set +e
+sh "$RUNNER" "$WORK/keep-going" --no-color \
+    >"$WORK/fail-fast.out" 2>"$WORK/fail-fast.err"
+fail_fast_status=$?
+set -e
+test "$fail_fast_status" -ne 0 ||
+    fail 'default build-failure handling exited zero'
+grep -q 'kotest: BUILD FAIL .*a_broken_test.kofun' "$WORK/fail-fast.out" ||
+    fail 'default build-failure handling lost the compiler failure'
+if grep -q 'z_after_test.test_after_build_failure' "$WORK/fail-fast.out"; then
+    fail 'default build-failure handling ran the later suite'
+fi
+
 set +e
 sh "$RUNNER" "$WORK/keep-going" --keep-going --no-color \
     >"$WORK/keep-going.out" 2>"$WORK/keep-going.err"
@@ -211,6 +227,28 @@ test "$(watch_runs)" -ge 2 || {
     fail '--watch did not rerun after a source change'
 }
 stop_watch
+if grep -q "$escape" "$WORK/watch.out" "$WORK/watch.err"; then
+    fail '--watch --no-color output contains an ANSI escape byte'
+fi
+watch_summaries=$(grep -c '^Tests  1 passed (1 total, 1 suites)$' \
+    "$WORK/watch.out" || :)
+test "$watch_summaries" -ge 2 || {
+    cat "$WORK/watch.out" "$WORK/watch.err" >&2
+    fail '--watch did not complete two successful one-test runs'
+}
+watch_green=$(grep -c '✓ z_watch_test.test_watch_rerun' \
+    "$WORK/watch.out" || :)
+test "$watch_green" -ge 2 || {
+    cat "$WORK/watch.out" "$WORK/watch.err" >&2
+    fail '--watch did not report the fixture green twice'
+}
+if grep -Eq '✗|BUILD FAIL|KOTEST-FAILED' "$WORK/watch.out"; then
+    fail '--watch output contains a failed run'
+fi
+if [ -s "$WORK/watch.err" ]; then
+    cat "$WORK/watch.err" >&2
+    fail '--watch emitted unexpected stderr'
+fi
 
 printf 'kotest framework and runner behaviour: PASS\n'
 printf 'kotest failing-suite detection and exit codes: PASS\n'

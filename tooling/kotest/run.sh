@@ -322,9 +322,14 @@ run_pass() {
 # -------------------------------------------------------------------- watch
 if $watch; then
     stamp=$(mktemp "${TMPDIR:-/tmp}/kotest-stamp.XXXXXX")
-    trap 'rm -f "$stamp"' 0 1 2 15
+    trap 'rm -f "$stamp"' 0
+    trap 'exit 129' 1
+    trap 'exit 130' 2
+    trap 'exit 143' 15
     while :; do
-        clear 2>/dev/null || printf '\033[2J\033[H'
+        if [ "$color" != never ] && [ -z "${NO_COLOR:-}" ]; then
+            clear 2>/dev/null || printf '\033[2J\033[H'
+        fi
         printf '%skotest watch%s %s(re-runs on change, Ctrl-C quits)%s\n\n' \
             "$C_BOLD" "$C_OFF" "$C_DIM" "$C_OFF"
         if run_pass; then :; else :; fi
