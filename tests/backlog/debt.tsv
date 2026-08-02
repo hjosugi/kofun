@@ -19,6 +19,11 @@
 #                      docs/ISSUE_READINESS.md rule 2 cannot be checked on it.
 #                      Fix by measuring its current behavior and naming the
 #                      commit, then delete the row.
+#
+# closed-blockers      a `blocked` issue whose nonempty `Blocked by:` list
+#                      contains no open issue. `detail` is the exact blocker
+#                      number list, so adding, removing, or reopening one makes
+#                      the row fail instead of excusing a different state.
 state-disagreement	30	blocked/needs-detail	General ADT match exhaustiveness beyond the bounded Bool slice
 state-disagreement	31	blocked/needs-detail	Generics and traits
 state-disagreement	289	blocked/needs-detail	Forward references: track declaration scopes, imports, and initialization
@@ -28,4 +33,5 @@ state-disagreement	618	blocked/needs-detail	Self-host profile: freeze the smalle
 state-disagreement	624	blocked/needs-detail	Language UX: simple functional syntax with explicit ownership and lawful composition
 state-disagreement	710	blocked/needs-detail	Compiler-native Decimal: implement the accepted language design across all backends
 state-disagreement	868	blocked/needs-detail	Stage 2 C11 aggregate bridge: execute records with List[Int] and Text
+closed-blockers	584	#583	Visibility tooling: prevent macro, LSP, and sidecar access bypasses
 unverifiable-stamp	738	d1f58a6a9e20764b25ee28773df5355512213dfa	Time-series forecasting research: stamp names a commit on no branch

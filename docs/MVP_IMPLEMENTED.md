@@ -34,6 +34,7 @@
 | general ownership and law checking | open | no active general pass | `general-ownership-checking` |
 | ELF64/x86-64 native image writer | checkpoint implemented | `bootstrap/native/check.sh` | `elf64-image-writer` |
 | wasm32 Int64 arithmetic Core + lazy browser host | executable checkpoint | `bootstrap/wasm/check.sh`, `tests/conformance/numeric`, `examples/wasm-browser` | `wasm32-arithmetic-core` |
+| wasm32 host ABI v1 bounded object arena | executable checkpoint | `task wasm-object-arena` | `wasm32-hostabi1-object-arena` |
 | x86-64/AArch64 List[Int] Core | checkpoint implemented; AArch64 executes under qemu | `bootstrap/native/check.sh`, `tests/conformance/list` | `native-list-int-core` |
 | x86-64/AArch64 UTF-8 Text Core | checkpoint implemented; AArch64 executes under qemu | `bootstrap/native/check.sh`, `tests/conformance/text` | `native-utf8-text-core` |
 | general native lowering | open | unified types/control flow and additional target profiles | `general-native-lowering` |
