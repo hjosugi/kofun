@@ -1,0 +1,51 @@
+# Corpus item 1: a pure list pipeline with map, filter, and fold.
+#
+# Status: executable-today.
+# Run: ./bin/kofun build tests/usability/01_list_pipeline.kofun \
+#          --target x86_64-linux -o BIN && BIN     # prints 38
+#
+# This is the one corpus row that runs on the direct native backend rather
+# than the Stage 2 C11 path. `tests/conformance/capabilities.tsv` records
+# `c11-stage2  list  unsupported`, so `./bin/kofun check` on this same file
+# refuses it with "unknown Core function `filter`". Which backend a program
+# runs on is not visible anywhere in the program; rubric.md scores that under
+# "semantic surprises".
+#
+# `map`, `filter`, and `fold` are compiler builtins of the native List Core,
+# not library functions, and their `fn(value: Int) => ...` callbacks are the
+# only callbacks the language has. Corpus item 5 writes the same shape by
+# hand and does not compile.
+#
+# There is no `|>` here, on either backend. Naming a function without
+# calling it is not an expression, so a pipeline stage has nothing to be:
+#
+#   readings |> filter   native backend: "unsupported Core at byte 31:
+#                        expected Int expression in native Core function"
+#   3 |> double          Stage 2: "error[E2S35]: unknown lexical binding
+#                        `double`"
+#
+# The subject-first pipeline #624 lists among its existing decisions (#49)
+# therefore has no executable form on `main`, and neither message says so.
+# Named intermediate bindings are what is left. They read top-to-bottom,
+# which is the point of the comparison in 01_list_pipeline.gleam.
+#
+# The lambda parameter annotations below are optional. `fn(value) => value >
+# 6` builds and prints the same 38; they are written out because the
+# checked-in conformance corpus writes them. rubric.md records this row's
+# "required annotations" measure as a tie rather than a win.
+#
+# The single `print` is deliberate: the aggregate native Core promises
+# exactly one known Int print in 10..99 (tests/conformance/list/README.md),
+# and this corpus stays inside every promise it relies on. A fold result
+# above that range is not refused — it prints wrong. `[3, 12, 7, 20, 5, 18]`
+# folds to 114 and the program prints `;4`. That is outside this child's
+# scope to fix, and the corpus stays inside the promise rather than
+# demonstrating it.
+
+fn main() {
+    let readings = [3, 12, 7, 5]
+    let above_threshold = filter(readings, fn(value: Int) => value > 6)
+    let scaled = map(above_threshold, fn(value: Int) => value * 2)
+    let total = fold(scaled, 0, fn(sum: Int, value: Int) => sum + value)
+    print(total)
+}

@@ -1,0 +1,86 @@
+# Corpus item 4: an ADT, a record, and an exhaustive match.
+#
+# Status: executable-today.
+# Run: ./bin/kofun check tests/usability/04_adt_record_match.kofun
+#      ./bin/kofun build tests/usability/04_adt_record_match.kofun -o BIN && BIN
+#      # prints 10, 7, 0
+#
+# This is the row that works best. The three features #624 asks for compose
+# without ceremony: a payload-carrying ADT, a nominal record, and a `match`
+# that the compiler requires to cover every constructor. There is no
+# annotation on `width`, no cast between the ADT and the record, and the
+# `match` needs no default arm — dropping `Empty =>` is a compile error, not
+# a runtime surprise.
+#
+# Construction is the parenthesised labelled call form and nothing else:
+# `Extent { width: 10, filled: true }` is rejected on purpose so that `{`
+# never begins an expression (spec/records-v1.md). Fields are written in any
+# order and read by name.
+#
+# Two annotations are load-bearing and neither is obvious:
+#
+#   * `let circle: Shape = Circle(5)` — without the annotation the binding is
+#     refused with "concrete enum constructor `Circle` is only valid in an
+#     explicitly typed enum initializer or match pattern" (E2S32). A
+#     constructor does not determine its own type. A *function call* that
+#     returns the same type does: `let digits = step_digits(source)` in
+#     corpus item 2 needs no annotation. Two ways to produce one type, one of
+#     which must be annotated and one of which must not — rubric.md scores
+#     that under "semantic surprises", and it is the finding that survives
+#     from writing the corpus.
+#
+#   * the intermediate `let circle_width` — inlining it as
+#     `Extent(width: extent_of(Circle(5)), filled: true)` passes
+#     `./bin/kofun check` and then fails in the C backend, which emits the
+#     diagnostic text into the generated C and hands it to the C compiler.
+#     A program that checks and does not build is the sharpest "hidden
+#     control flow / diagnostic quality" observation in this corpus, and
+#     rubric.md scores it.
+#
+# The comparison is 04_adt_record_match.kt: Kotlin needs `sealed`, `data`,
+# and an explicitly typed `when` to get the same exhaustiveness.
+
+type Shape =
+    | Circle(radius: Int)
+    | Square(side: Int)
+    | Empty
+
+type Extent = {
+    width: Int,
+    filled: Bool,
+}
+
+fn extent_of(shape: Shape) -> Int {
+    let mut width = 0
+    match shape {
+        Circle(radius) => { width = radius * 2 },
+        Square(side) => { width = side },
+        Empty => { width = 0 },
+    }
+    return width
+}
+
+fn describe(extent: Extent) -> Int {
+    if extent.filled {
+        return extent.width
+    }
+    return 0
+}
+
+fn main() -> Int {
+    let circle: Shape = Circle(5)
+    let circle_width = extent_of(circle)
+    let circle_extent: Extent = Extent(width: circle_width, filled: true)
+    print(describe(circle_extent))
+
+    let square: Shape = Square(7)
+    let square_width = extent_of(square)
+    let square_extent: Extent = Extent(width: square_width, filled: true)
+    print(describe(square_extent))
+
+    let empty: Shape = Empty
+    let empty_width = extent_of(empty)
+    let empty_extent: Extent = Extent(width: empty_width, filled: false)
+    print(describe(empty_extent))
+    return 0
+}

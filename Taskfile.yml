@@ -338,6 +338,11 @@ tasks:
     cmds:
       - "sh tests/move-assertion/check.sh"
 
+  usability-corpus:
+    desc: "Verify the usability comparison corpus and its review rubric"
+    cmds:
+      - "sh tests/usability/check.sh"
+
   capabilities:
     desc: "Verify the standard library capability matrix states and evidence"
     cmds:
@@ -622,6 +627,7 @@ tasks:
             example-law-evidence \
             benchmark-summary \
             move-assertion \
+            usability-corpus \
             capabilities \
             build-system \
             packages \
