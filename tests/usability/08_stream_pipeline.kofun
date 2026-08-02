@@ -1,0 +1,71 @@
+# Corpus item 8: a cancellable reactive pipeline with bounded demand and an
+# explicit scheduler boundary.
+#
+# Status: blocked-on #624.
+#
+# Written against docs/stdlib/stream-protocol.md, the accepted contract for
+# DD-037. Everything below follows that document rather than inventing a
+# surface: `Stream[T, E]` delivers `Next` zero or more times and terminates
+# with exactly one of `Error(E)` or `Complete`; `Subscription` is an affine
+# (`take`) handle whose cancellation is deterministic and idempotent; demand
+# is an explicit typed credit `request(n)` so every queue has a known bound;
+# a `Scheduler` is always an explicit argument and never ambient; and the v1
+# operator set is `map`, `filter`, `filter_map`, `scan`, `take`, `concat`,
+# `merge`, `flat_map`, `subscribe` plus channel adapters.
+#
+# Nothing here is implemented. The contract itself says so: "No stream
+# library is implemented; acceptance fixes the protocol". DD-037's own
+# corpus query in rfcs/index.json records the same fact — zero tracked Kofun
+# files mention `Stream`. This file is the ninth, and it does not compile.
+#
+# #624 is the owner. Its 2026-07-25 product decision comment commits, as
+# refinement item 2, to linking a separate "Stream conformance" child; that
+# child does not exist on `main` yet, so #624 is the one open issue whose
+# completion puts an owner on this row. It is also the reason the corpus is
+# useful: this row is the evidence that the child is still missing.
+#
+# Two independent language gaps stack up here, and the recorded diagnostic
+# only names the first of them: `Stream[T, E]` is a generic nominal type
+# (#31), and `Subscription` needs an affine `take` handle that the Stage 2
+# path does not lower. The rubric scores this row on the specification, not
+# on an implementation, and says so.
+
+type StreamError =
+    | SourceClosed
+    | Overflowed
+
+type Reading = {
+    sensor: Int,
+    value: Int,
+}
+
+# The scheduler is an ordinary argument. There is no ambient executor, no
+# implicit thread, and no keyword: an async boundary is visible in the
+# signature or it does not exist.
+fn observe_readings(
+    read source: Stream[Reading, StreamError],
+    read scheduler: Scheduler,
+    take budget: Int,
+) -> Subscription {
+    return source
+        |> stream.filter(fn(reading: Reading) => reading.value > 0)
+        |> stream.map(fn(reading: Reading) => reading.value)
+        |> stream.take(budget)
+        |> stream.subscribe_on(scheduler)
+        |> stream.subscribe(fn(value: Int) => print(value))
+}
+
+# Cancellation is deterministic and idempotent, and the handle is affine:
+# `take` consumes it, so a second cancel is a compile error rather than a
+# silently ignored call. Dropping the subscription would cancel it too.
+fn stop(take subscription: Subscription) -> Int {
+    take subscription
+    return 0
+}
+
+fn main() -> Int {
+    let readings: Stream[Reading, StreamError] = stream.empty()
+    let scheduler: Scheduler = scheduler.immediate()
+    let subscription: Subscription = observe_readings(readings, scheduler, 100)
+    return stop(subscription)
+}

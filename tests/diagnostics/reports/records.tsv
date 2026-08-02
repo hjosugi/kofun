@@ -16,7 +16,7 @@ E2S119	records	stdout	1	required	not-applicable	forbidden
 E2S120	records	stdout	1	required	not-applicable	forbidden
 E2S121	records	stdout	1	required	not-applicable	forbidden
 E2S122	records	stdout	1	required	not-applicable	forbidden
-E2S123	records	stdout	1	required	not-applicable	forbidden
+E2S123	records	stdout	1	required	required	forbidden
 E2S124	records	stdout	1	required	not-applicable	forbidden
 E2S125	records	stdout	1	required	not-applicable	forbidden
 E2S126	records	stdout	1	required	not-applicable	forbidden

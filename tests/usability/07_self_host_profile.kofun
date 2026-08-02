@@ -1,0 +1,53 @@
+# Corpus item 7: the frozen self-host compiler profile from #618.
+#
+# Status: executable-today.
+# Run: ./bin/kofun check bootstrap/stage1/compiler.kofun     # the reviewed program
+#      ./bin/kofun check tests/usability/07_self_host_profile.kofun
+#      ./bin/kofun build tests/usability/07_self_host_profile.kofun -o BIN && BIN
+#      # prints 3175 then 15
+#
+# THE REVIEWED PROGRAM IS NOT IN THIS DIRECTORY. It is:
+#
+#     bootstrap/stage1/compiler.kofun
+#
+# 3,175 lines, frozen, and pinned by SHA256 in bootstrap/stage1/SHA256SUMS.
+# #909 requires this row to reference that path rather than copy it, so that
+# the corpus cannot drift from the profile digest, and tests/usability/check.sh
+# enforces both halves: the digest still matches, and no file in this
+# directory is a copy of the frozen source.
+#
+# This file is the marker for the row, in the same style as
+# tests/conformance/list/expectations.kofun — a Kofun source whose values are
+# the facts the gate checks. If the frozen source changes by one line, this
+# file stops agreeing with it and check.sh fails naming the row.
+#
+# What the row contributes to the review is the only large Kofun program that
+# exists. It is the honest answer to "what does this language feel like at
+# scale", and the answer is bounded: the profile is nested-block and looping
+# Int/Bool/Text/List[Text] Core with 15 typed builtins
+# (docs/MVP_IMPLEMENTED.md, `compiler-seed`). It has no records, no ADT
+# payloads, no generics, no ownership modes, and no callbacks — the frozen
+# compiler is written in a strictly smaller language than corpus items 2, 3,
+# and 4 use. rubric.md scores this row on what 3,175 lines of that subset
+# cost: the "required annotations" and "delimiter/indentation load" measures
+# are counted here rather than estimated.
+#
+# No comparison implementation is written for this row. The recorded reason:
+# rewriting a 3,175-line self-hosting compiler idiomatically in Go, Gleam,
+# Kotlin, or Rust is not a bounded corpus item, and a fragment of one would
+# be a strawman rather than a comparison. #624 names four comparison
+# languages, not four compilers.
+
+fn reviewed_source_lines() -> Int {
+    return 3175
+}
+
+fn profile_builtin_count() -> Int {
+    return 15
+}
+
+fn main() -> Int {
+    print(reviewed_source_lines())
+    print(profile_builtin_count())
+    return 0
+}

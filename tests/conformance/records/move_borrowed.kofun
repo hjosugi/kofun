@@ -1,0 +1,9 @@
+type Token = {
+    text: Text,
+    start: Int,
+}
+
+fn steal(read token: Token) -> Int {
+    take token
+    return 0
+}
