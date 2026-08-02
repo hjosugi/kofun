@@ -1,0 +1,42 @@
+{
+  "schema": "kofun.backlog-issue-state/v1",
+  "repository": "hjosugi/kofun",
+  "state_labels": [
+    "ready",
+    "blocked",
+    "needs-detail",
+    "needs-decision",
+    "deferred",
+    "in-progress"
+  ],
+  "open_issues": 3,
+  "issues": [
+    {
+      "number": 1,
+      "title": "two labels",
+      "state_labels": [
+        "ready",
+        "blocked"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 2,
+      "title": "a blocked issue",
+      "state_labels": [],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 3,
+      "title": "an untriaged issue",
+      "state_labels": [],
+      "state_line": null,
+      "blocked_by": [],
+      "evidence_commits": []
+    }
+  ]
+}

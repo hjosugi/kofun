@@ -1,0 +1,2 @@
+FAIL: backlog: debt row for #1 has unknown kind `state-mismatch`
+FAIL: backlog: #1 label says `ready` and its State line says `blocked`

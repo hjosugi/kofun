@@ -33,6 +33,35 @@ export const PROVENANCES = Object.freeze([
   "unproved",
 ]);
 
+export const OBSERVERS = Object.freeze([
+  "borrowed_view",
+  "closure_capture",
+  "weak_reference",
+  "foreign_pointer",
+  "alias",
+]);
+
+export const OBSERVER_REASONS = Object.freeze({
+  "borrowed-view": "borrowed_view",
+  "closure-capture": "closure_capture",
+  "weakly-referenced": "weak_reference",
+  "ffi-exposed": "foreign_pointer",
+  "possible-alias": "alias",
+});
+
+export const WRITE_ORDERINGS = Object.freeze([
+  "evaluate-all-then-write",
+  "interleaved",
+  "unknown",
+]);
+
+export const DISPOSITIONS = Object.freeze([
+  "honour",
+  "reject-program",
+  "weaken-to-allocation",
+  "not-applicable",
+]);
+
 export const REMARKS = Object.freeze({
   guaranteed: "reuse guaranteed: compatible constructor storage and proved uniqueness",
   "incompatible-size": "reuse refused: source and target allocation sizes differ",
@@ -50,6 +79,9 @@ export const REMARKS = Object.freeze({
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const AGGREGATE_ROOT = resolve(HERE, "../aggregate-layout-v1");
+const BACKEND_TABLE = resolve(HERE, "backends.json");
+const OBSERVER_STATES = new Set(["absent", "live", "unknown"]);
+const SUPPORT_STATES = new Set(["unsupported", "honours-guarantee"]);
 const LIMITS = Object.freeze({ inputBytes: 65_536, textBytes: 128, pointers: 64 });
 const IDENTIFIER = /^[A-Za-z][A-Za-z0-9_.:\[\]-]*$/;
 const QUANTITY = /^(0|[1-9][0-9]*)$/;
@@ -240,6 +272,78 @@ function uniquenessEvidence(value) {
   return Object.freeze({ proof: source.proof, provenance: source.provenance, evidence_id: evidenceId });
 }
 
+function observers(value) {
+  const source = object(value, "$input.observers");
+  exactKeys(source, new Set(OBSERVERS), "$input.observers");
+  requiredKeys(source, OBSERVERS, "$input.observers");
+  const result = {};
+  for (const observer of OBSERVERS) {
+    if (!OBSERVER_STATES.has(source[observer])) {
+      reject("RCV002", "invalid-field",
+        `observers.${observer} must be absent, live, or unknown`);
+    }
+    result[observer] = source[observer];
+  }
+  return Object.freeze(result);
+}
+
+function writeOrdering(value) {
+  if (!WRITE_ORDERINGS.includes(value)) {
+    reject("RCV002", "invalid-field", "write_ordering is not a v1 ordering");
+  }
+  return value;
+}
+
+function loadBackends() {
+  let table;
+  try {
+    table = JSON.parse(readFileSync(BACKEND_TABLE, "utf8"));
+  } catch {
+    reject("RCV112", "backend-unknown", "backend support table is unavailable or invalid");
+  }
+  if (table.schema !== "kofun.reuse-backend-support/v1" || !Array.isArray(table.backends)) {
+    reject("RCV112", "backend-unknown", "backend support table identity is invalid");
+  }
+  return table;
+}
+
+function backendSupport(value) {
+  const source = object(value, "$input.backend_support");
+  exactKeys(source, new Set(["backend_id", "reuse_support", "guarantee_disposition"]),
+    "$input.backend_support");
+  requiredKeys(source, ["backend_id", "reuse_support", "guarantee_disposition"],
+    "$input.backend_support");
+  if (!SUPPORT_STATES.has(source.reuse_support)) {
+    reject("RCV002", "invalid-field", "backend_support.reuse_support is not a v1 support state");
+  }
+  if (!DISPOSITIONS.includes(source.guarantee_disposition)) {
+    reject("RCV002", "invalid-field",
+      "backend_support.guarantee_disposition is not a v1 disposition");
+  }
+  return Object.freeze({
+    backend_id: text(source.backend_id, "$input.backend_support.backend_id", { stable: true }),
+    reuse_support: source.reuse_support,
+    guarantee_disposition: source.guarantee_disposition,
+  });
+}
+
+function validateBackend(support, targetDataLayout) {
+  const table = loadBackends();
+  const row = table.backends.find((candidate) => candidate.id === support.backend_id);
+  if (row === undefined) {
+    reject("RCV112", "backend-unknown", "backend_id names no registered backend");
+  }
+  if (!Array.isArray(row.data_layouts) || !row.data_layouts.includes(targetDataLayout)) {
+    reject("RCV112", "backend-unknown",
+      "backend_id has no committed AggregateLayout v1 descriptor for target_data_layout");
+  }
+  if (row.reuse_support !== support.reuse_support) {
+    reject("RCV113", "backend-support-contradiction",
+      "declared reuse_support differs from the committed backend support table");
+  }
+  return row;
+}
+
 function eligibility(value) {
   const source = object(value, "$input.eligibility");
   exactKeys(source, new Set([...STATES, "reason"]), "$input.eligibility");
@@ -338,6 +442,45 @@ function structuralReason(source, target) {
   return null;
 }
 
+function validateGuaranteeConditions(watchers, ordering, support, decision) {
+  const guaranteed = decision.reuse_statically_guaranteed;
+  if (decision.reason !== null && Object.hasOwn(OBSERVER_REASONS, decision.reason) &&
+      watchers[OBSERVER_REASONS[decision.reason]] === "absent") {
+    reject("RCV118", "observer-reason-contradiction",
+      `reason ${decision.reason} contradicts observers.${OBSERVER_REASONS[decision.reason]} absent`);
+  }
+  if (guaranteed) {
+    const live = OBSERVERS.filter((observer) => watchers[observer] !== "absent");
+    if (live.length > 0) {
+      reject("RCV117", "observer-live",
+        `a static guarantee requires every observer absent; ${live[0]} is ${watchers[live[0]]}`);
+    }
+    if (ordering !== "evaluate-all-then-write") {
+      reject("RCV119", "write-ordering-unsafe",
+        "a static guarantee requires evaluate-all-then-write ordering");
+    }
+  }
+  if (support.guarantee_disposition === "weaken-to-allocation") {
+    reject("RCV115", "guarantee-weakened",
+      "a backend must not silently weaken a reuse state to allocation");
+  }
+  if (guaranteed === (support.guarantee_disposition === "not-applicable")) {
+    reject("RCV116", "disposition-inapplicable",
+      guaranteed
+        ? "a static guarantee requires honour or reject-program"
+        : "only a static guarantee carries a backend disposition");
+  }
+  if (guaranteed && support.guarantee_disposition === "honour" &&
+      support.reuse_support !== "honours-guarantee") {
+    reject("RCV114", "guarantee-unhonourable",
+      "a backend that does not honour reuse guarantees cannot honour this record");
+  }
+  if (decision.reason === "backend-limitation" && support.reuse_support !== "unsupported") {
+    reject("RCV113", "backend-support-contradiction",
+      "backend-limitation contradicts a backend that honours reuse guarantees");
+  }
+}
+
 function validateDecision(layout, uniqueness, decision, remark) {
   const structural = structuralReason(layout.source_layout, layout.target_layout);
   if (decision.reuse_statically_guaranteed && uniqueness.proof !== "proved") {
@@ -366,14 +509,13 @@ function validateDecision(layout, uniqueness, decision, remark) {
 
 export function validateRecord(input) {
   const root = object(input, "$input");
-  exactKeys(root, new Set([
+  const fields = [
     "schema", "candidate_id", "file_id", "matched_source", "constructed_target",
-    "layout_evidence", "uniqueness_evidence", "eligibility", "remark",
-  ]), "$input");
-  requiredKeys(root, [
-    "schema", "candidate_id", "file_id", "matched_source", "constructed_target",
-    "layout_evidence", "uniqueness_evidence", "eligibility", "remark",
-  ], "$input");
+    "layout_evidence", "uniqueness_evidence", "observers", "write_ordering",
+    "backend_support", "eligibility", "remark",
+  ];
+  exactKeys(root, new Set(fields), "$input");
+  requiredKeys(root, fields, "$input");
   if (root.schema !== SCHEMA) {
     reject("RCV004", "unknown-schema", `schema must be ${SCHEMA}`);
   }
@@ -381,10 +523,15 @@ export function validateRecord(input) {
   const constructedTarget = constructor(root.constructed_target, "$input.constructed_target");
   const layout = layoutEvidence(root.layout_evidence);
   const uniqueness = uniquenessEvidence(root.uniqueness_evidence);
+  const watchers = observers(root.observers);
+  const ordering = writeOrdering(root.write_ordering);
+  const support = backendSupport(root.backend_support);
   const decision = eligibility(root.eligibility);
   const remark = text(root.remark, "$input.remark");
   validateLayout(layout, matchedSource, constructedTarget);
+  validateBackend(support, layout.target_data_layout);
   validateDecision(layout, uniqueness, decision, remark);
+  validateGuaranteeConditions(watchers, ordering, support, decision);
   return Object.freeze({
     schema: SCHEMA,
     candidate_id: text(root.candidate_id, "$input.candidate_id", { stable: true }),
@@ -393,6 +540,9 @@ export function validateRecord(input) {
     constructed_target: constructedTarget,
     layout_evidence: layout,
     uniqueness_evidence: uniqueness,
+    observers: watchers,
+    write_ordering: ordering,
+    backend_support: support,
     eligibility: decision,
     remark,
   });

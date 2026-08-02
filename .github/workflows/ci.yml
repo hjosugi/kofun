@@ -22,8 +22,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends qemu-user
       - run: task verify
-      - name: Verify the bounded type-level programming contract
-        run: sh spec/type-reduction-trace/check.sh
       - name: Build and run Kofun Core
         run: |
           ./bin/kofun build bootstrap/fixtures/answer.kofun -o build/answer

@@ -47,6 +47,19 @@
     "provenance": "runtime-uniqueness-check",
     "evidence_id": "check:runtime-unique"
   },
+  "observers": {
+    "borrowed_view": "absent",
+    "closure_capture": "absent",
+    "weak_reference": "absent",
+    "foreign_pointer": "absent",
+    "alias": "unknown"
+  },
+  "write_ordering": "evaluate-all-then-write",
+  "backend_support": {
+    "backend_id": "c11-stage2",
+    "reuse_support": "unsupported",
+    "guarantee_disposition": "not-applicable"
+  },
   "eligibility": {
     "ordinary_allocation": false,
     "reuse_candidate": true,

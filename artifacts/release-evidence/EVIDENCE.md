@@ -5,6 +5,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | Claim | Positive gate | Observation |
 |---|---|---|
 | `arithmetic-core` | `sh tests/cli.sh` | The arithmetic Core validates and emits without a diagnostic. |
+| `bindgen-c-stage1` | `sh tests/interop/bindgen-c/check.sh` | The pinned fixture header generates byte-identical bindings and an audit report twice; the C compiler confirms the recorded sizes, offsets, enum values, and calling convention; and the bindings build, link, and run against the fixture library under AddressSanitizer and UndefinedBehaviorSanitizer with leak detection on. |
 | `borrowed-list-ownership` | `sh bootstrap/stage2/check.sh` | The borrowed-List Copy/move checkpoint passes. |
 | `bounded-tzdb-producer` | `sh tests/stdlib/tzdb/check.sh` | Typed HIR, emitted C11, the reference executor, and two repeated backend runs agree on exact normal/gap/fold, provenance, malformed, and resource-limit observations. |
 | `c-abi-profile` | `sh bootstrap/c_abi/check.sh` | The C ABI profile builds and round-trips through host C. |

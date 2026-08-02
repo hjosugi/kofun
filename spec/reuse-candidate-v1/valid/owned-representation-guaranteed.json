@@ -47,6 +47,19 @@
     "provenance": "owned-or-rc-specialized-representation",
     "evidence_id": "proof:owned-representation-contract"
   },
+  "observers": {
+    "borrowed_view": "absent",
+    "closure_capture": "absent",
+    "weak_reference": "absent",
+    "foreign_pointer": "absent",
+    "alias": "absent"
+  },
+  "write_ordering": "evaluate-all-then-write",
+  "backend_support": {
+    "backend_id": "native-x86_64",
+    "reuse_support": "unsupported",
+    "guarantee_disposition": "reject-program"
+  },
   "eligibility": {
     "ordinary_allocation": false,
     "reuse_candidate": false,
