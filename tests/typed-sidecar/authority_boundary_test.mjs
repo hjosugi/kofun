@@ -113,8 +113,9 @@ assert.equal(removedResult.ok, true, removedResult.error?.message);
 assert.deepEqual(removedResult.index.entries, []);
 safeResult(removedResult);
 
-// A removed export or replaced SymbolId must be present in the live KIF. The
-// old sidecar cannot satisfy that exact join and therefore produces no index.
+// Removal produces the same safe empty public projection. A replacement with
+// a different SymbolId makes the required current projection incomplete, so
+// the old sidecar cannot produce an index at all.
 const replacedVisibility = visibilityProjection([
   functionFact(LIVE_SYMBOL_ID, "pub", "current_api"),
 ], "7");
