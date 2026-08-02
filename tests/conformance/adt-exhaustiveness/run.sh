@@ -27,6 +27,7 @@ mkdir -p "$WORK"
     "$ROOT/bootstrap/stage2/compiler.c" -o "$STAGE2"
 "$CC" -std=c11 -Wall -Wextra -Werror -pedantic \
     "$ROOT/bootstrap/stage2/module_symbols.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" -o "$SYMBOLS"
 "$CC" -std=c11 -Wall -Wextra -Werror -pedantic \
     "$ROOT/bootstrap/stage2/adt_exhaustiveness.c" -o "$TOOL"

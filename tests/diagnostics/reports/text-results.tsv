@@ -1,0 +1,6 @@
+# code	adapter	channel	exit	primary-span	secondary-span	artifact
+E2S155	text-results	stdout	1	required	not-applicable	forbidden
+E2S156	text-results	stdout	1	not-applicable	not-applicable	forbidden
+R020	text-results	stderr	1	not-applicable	not-applicable	required
+R021	text-results	stderr	1	not-applicable	not-applicable	required
+R022	text-results	stderr	1	not-applicable	not-applicable	required

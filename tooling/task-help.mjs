@@ -39,6 +39,7 @@ export const GROUPS = Object.freeze([
             'generics', 'const-generics', 'hm-levels', 'effect-inference', 'traits',
             'optional', 'optional-narrowing',
             'optional-construction',
+            'text-results',
             'adt-exhaustiveness', 'enum-match-value', 'decimal', 'decimal-arithmetic',
             'date-time', 'syntax'
         ]

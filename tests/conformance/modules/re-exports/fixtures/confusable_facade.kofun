@@ -1,0 +1,7 @@
+module api.collections
+
+pub from lib.collections import pаypal
+
+fn paypal() -> Int {
+    return 1
+}

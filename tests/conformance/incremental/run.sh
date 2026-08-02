@@ -59,6 +59,7 @@ build_tool() {
         "$ROOT/bootstrap/stage2/incremental_graph.c" \
         "$ROOT/bootstrap/stage2/kif_v1.c" \
         "$ROOT/bootstrap/stage2/visibility_access.c" \
+        "$ROOT/unicode/kofun_unicode.c" \
         "$ROOT/bootstrap/stage2/sha256.c" \
         -o "$output"
 }
@@ -68,6 +69,7 @@ build_tool "$CC" "$TOOL" -O2
     -I"$ROOT/bootstrap/stage2" \
     "$ROOT/bootstrap/stage2/kif_v1_tool.c" \
     "$ROOT/bootstrap/stage2/kif_v1.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$KIF_TOOL"
 
@@ -705,6 +707,7 @@ if "$CC" -std=c11 -O0 -Wall -Wextra -Werror -pedantic -fanalyzer \
     "$ROOT/bootstrap/stage2/incremental_graph.c" \
     "$ROOT/bootstrap/stage2/kif_v1.c" \
     "$ROOT/bootstrap/stage2/visibility_access.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$WORK/incremental-analyzed" >/dev/null 2>&1
 then
