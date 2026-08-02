@@ -4,7 +4,7 @@
 
 import { readFileSync } from 'node:fs'
 
-import { STATE_LABELS } from './extract.mjs'
+import { CLAIM_STATUSES, LIVE_CLAIM_STATUSES, STATE_LABELS } from './extract.mjs'
 
 const [snapshotPath, debtPath] = process.argv.slice(2)
 if (!snapshotPath || !debtPath) {
@@ -43,11 +43,16 @@ const issues = snapshot.issues ?? []
 if (issues.length === 0) {
     failures.push('snapshot holds no open issues; the gate would pass without checking anything')
 }
-if (issues.length !== snapshot.open_issues) {
-    failures.push(`snapshot says ${snapshot.open_issues} open issues but carries ${issues.length}`)
+const openIssueCount = issues.filter(
+    (issue) => (issue.issue_state ?? 'open') !== 'closed',
+).length
+if (openIssueCount !== snapshot.open_issues) {
+    failures.push(`snapshot says ${snapshot.open_issues} open issues but carries ${openIssueCount}`)
 }
 
-const open = new Set(issues.map((issue) => issue.number))
+const open = new Set(
+    issues.filter((issue) => (issue.issue_state ?? 'open') !== 'closed').map((issue) => issue.number),
+)
 const byNumber = new Map(issues.map((issue) => [issue.number, issue]))
 
 // Recorded debt. Both directions matter: an unlisted problem is new drift, and
@@ -101,9 +106,48 @@ let blockedWithNamedBlockers = 0
 let stamped = 0
 let readyCount = 0
 let stated = 0
+let claims = 0
+let liveClaims = 0
+
+const claimVocabulary = new Set(CLAIM_STATUSES)
+const liveVocabulary = new Set(LIVE_CLAIM_STATUSES)
 
 for (const issue of issues) {
     const where = `#${issue.number}`
+
+    // Claims are append-only events. Validate every event, then let the latest
+    // valid event for one agent decide whether that agent still owns the issue.
+    const latestByAgent = new Map()
+    for (const claim of issue.claims ?? []) {
+        claims += 1
+        if (claim.agent_id === null || claim.agent_id === undefined || claim.agent_id === '') {
+            failures.push(`${where} has an agent-claim:v1 without exactly one \`agent_id\``)
+            continue
+        }
+        if (claim.status === null || claim.status === undefined || claim.status === '') {
+            failures.push(`${where} claim for \`${claim.agent_id}\` has no single \`status\``)
+            continue
+        }
+        if (!claimVocabulary.has(claim.status)) {
+            failures.push(
+                `${where} claim for \`${claim.agent_id}\` has status \`${claim.status}\`, ` +
+                    `not one of ${CLAIM_STATUSES.join(', ')}`,
+            )
+            continue
+        }
+        latestByAgent.set(claim.agent_id, claim.status)
+    }
+    const liveAgents = [...latestByAgent]
+        .filter(([, status]) => liveVocabulary.has(status))
+        .map(([agent]) => agent)
+        .sort()
+    liveClaims += liveAgents.length
+    if (liveAgents.length > 1) {
+        failures.push(`${where} has ${liveAgents.length} live claims: ${liveAgents.join(', ')}`)
+    }
+    if ((issue.issue_state ?? 'open') === 'closed' && liveAgents.length > 0) {
+        failures.push(`${where} is closed but still has live claims: ${liveAgents.join(', ')}`)
+    }
 
     // 1. At most one state. Two state labels is not a stricter claim, it is an
     //    unreadable one.
@@ -207,7 +251,9 @@ if (failures.length > 0) {
 }
 
 process.stdout.write(
-    `PASS: ${stated} State lines name a state in the vocabulary\n` +
+    `PASS: ${claims} canonical claim events use the closed status vocabulary\n` +
+        `PASS: ${liveClaims} live claims are unique per open issue and absent from closed issues\n` +
+        `PASS: ${stated} State lines name a state in the vocabulary\n` +
         `PASS: ${agreeing} issues agree between their state label and their State line\n` +
         `PASS: ${blockedWithNamedBlockers} blocked issues with named blockers still have an open blocker or recorded debt\n` +
         `PASS: no ready issue names an open blocker (${readyCount} ready)\n` +

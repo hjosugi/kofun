@@ -11,8 +11,9 @@
 //       read open issues from the API; needs GITHUB_TOKEN or GH_TOKEN
 //
 //   node tests/backlog/refresh.mjs --from-json PAYLOAD
-//       build the same snapshot from a captured `GET /issues` payload, for an
-//       environment that can reach the API only through a tool
+//       build the same snapshot from a captured payload whose issue objects
+//       carry `claim_comments`, or whose top level carries
+//       `comments_by_issue: { "123": [...] }`
 //
 // Both paths run the same extraction, so a snapshot produced one way is
 // reproducible the other way.
@@ -28,6 +29,33 @@ const OUTPUT = resolve(ROOT, 'artifacts/backlog/issue-state.json')
 const OWNER = process.env.KOFUN_BACKLOG_OWNER ?? 'hjosugi'
 const REPO = process.env.KOFUN_BACKLOG_REPO ?? 'kofun'
 
+function headers(token) {
+    return {
+        accept: 'application/vnd.github+json',
+        authorization: `Bearer ${token}`,
+        'user-agent': 'kofun-backlog-refresh',
+    }
+}
+
+async function fetchClaimComments(issue, token) {
+    if ((issue.comments ?? 0) > 100) {
+        throw new Error(
+            `#${issue.number} has ${issue.comments} comments; the bounded one-call ` +
+                'claim refresh supports at most 100',
+        )
+    }
+    const response = await fetch(`${issue.comments_url}?per_page=100`, {
+        headers: headers(token),
+    })
+    if (!response.ok) {
+        throw new Error(
+            `GitHub returned ${response.status} for #${issue.number} comments: ` +
+                `${(await response.text()).slice(0, 200)}`,
+        )
+    }
+    return { ...issue, claim_comments: await response.json() }
+}
+
 async function fetchOpenIssues() {
     const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN
     if (!token) {
@@ -38,13 +66,7 @@ async function fetchOpenIssues() {
         const url =
             `https://api.github.com/repos/${OWNER}/${REPO}/issues` +
             `?state=open&per_page=100&page=${page}`
-        const response = await fetch(url, {
-            headers: {
-                accept: 'application/vnd.github+json',
-                authorization: `Bearer ${token}`,
-                'user-agent': 'kofun-backlog-refresh',
-            },
-        })
+        const response = await fetch(url, { headers: headers(token) })
         if (!response.ok) {
             throw new Error(
                 `GitHub returned ${response.status} for page ${page}: ` +
@@ -52,8 +74,16 @@ async function fetchOpenIssues() {
             )
         }
         const batch = await response.json()
-        if (batch.length === 0) return issues
-        issues.push(...batch)
+        if (batch.length === 0) {
+            const withComments = []
+            // Intentionally sequential: one bounded request per open issue is
+            // cheap at this backlog size and avoids secondary-rate-limit bursts.
+            for (const issue of issues) {
+                withComments.push(await fetchClaimComments(issue, token))
+            }
+            return withComments
+        }
+        issues.push(...batch.filter((issue) => issue.pull_request === undefined))
     }
     throw new Error('more than 2000 open issues; raise the page bound deliberately')
 }
@@ -63,10 +93,28 @@ async function fetchOpenIssues() {
 // than making the caller reshape evidence by hand.
 function readCapturedIssues(path) {
     const payload = JSON.parse(readFileSync(path, 'utf8'))
-    if (Array.isArray(payload)) return payload
-    if (Array.isArray(payload.issues)) return payload.issues
-    if (Array.isArray(payload.items)) return payload.items
-    throw new Error(`${path} holds no issue array`)
+    const issues = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload.issues)
+          ? payload.issues
+          : Array.isArray(payload.items)
+            ? payload.items
+            : null
+    if (issues === null) throw new Error(`${path} holds no issue array`)
+
+    const commentsByIssue = payload.comments_by_issue ?? {}
+    return issues.map((issue) => {
+        const claimComments =
+            issue.claim_comments ??
+            (Array.isArray(issue.comments) ? issue.comments : commentsByIssue[issue.number])
+        if (claimComments === undefined && Number(issue.comments ?? 0) > 0) {
+            throw new Error(
+                `${path} has no captured comments for #${issue.number}; add ` +
+                    '`claim_comments` or top-level `comments_by_issue`',
+            )
+        }
+        return { ...issue, claim_comments: claimComments ?? [] }
+    })
 }
 
 const fromJsonIndex = process.argv.indexOf('--from-json')

@@ -33,5 +33,4 @@ state-disagreement	618	blocked/needs-detail	Self-host profile: freeze the smalle
 state-disagreement	624	blocked/needs-detail	Language UX: simple functional syntax with explicit ownership and lawful composition
 state-disagreement	710	blocked/needs-detail	Compiler-native Decimal: implement the accepted language design across all backends
 state-disagreement	868	blocked/needs-detail	Stage 2 C11 aggregate bridge: execute records with List[Int] and Text
-closed-blockers	584	#583	Visibility tooling: prevent macro, LSP, and sidecar access bypasses
 unverifiable-stamp	738	d1f58a6a9e20764b25ee28773df5355512213dfa	Time-series forecasting research: stamp names a commit on no branch

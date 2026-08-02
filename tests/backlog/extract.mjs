@@ -19,6 +19,18 @@ export const STATE_LABELS = Object.freeze([
     'in-progress',
 ])
 
+// A claim is an append-only event log. `active` and `pr-open` still own the
+// issue; `released` and `merged` release it. Keeping this vocabulary here, next
+// to the state vocabulary, gives the hermetic checker one closed authority.
+export const CLAIM_STATUSES = Object.freeze([
+    'active',
+    'pr-open',
+    'released',
+    'merged',
+])
+
+export const LIVE_CLAIM_STATUSES = Object.freeze(['active', 'pr-open'])
+
 // The first `- State: x` line of the Metadata block. Only the first, because a
 // body that quotes an earlier state — a refinement note saying what the issue
 // used to be — must not read as a second declaration.
@@ -56,11 +68,45 @@ export function evidenceCommits(body) {
     return [...found].sort()
 }
 
+// Canonical claims are deliberately distinguishable from the three historical
+// dialects: a visible level-three Markdown heading is the wrapper, and the two
+// load-bearing keys are exact list items. Fenced examples and HTML comments are
+// removed before matching so documentation and invisible legacy claims cannot
+// acquire ownership by accident.
+export function claimEvents(comments) {
+    const events = []
+    for (const comment of comments ?? []) {
+        const body = (comment.body ?? '')
+            .replace(/<!--[^]*?-->/g, '')
+            .replace(/^(```|~~~)[^\n]*\n[^]*?^\1\s*$/gm, '')
+        const lines = body.split('\n')
+        for (let index = 0; index < lines.length; index += 1) {
+            if (lines[index].trimEnd() !== '### agent-claim:v1') continue
+
+            const values = new Map()
+            const duplicates = new Set()
+            for (index += 1; index < lines.length; index += 1) {
+                const line = lines[index]
+                if (/^#{1,6}\s/.test(line) || line.trim() === '') break
+                const match = /^- (agent_id|status):\s*(\S(?:.*\S)?)\s*$/.exec(line)
+                if (match === null) continue
+                if (values.has(match[1])) duplicates.add(match[1])
+                values.set(match[1], match[2])
+            }
+            events.push({
+                agent_id: duplicates.has('agent_id') ? null : (values.get('agent_id') ?? null),
+                status: duplicates.has('status') ? null : (values.get('status') ?? null),
+            })
+        }
+    }
+    return events
+}
+
 export function snapshotIssue(issue) {
     const labels = (issue.labels ?? []).map((label) =>
         typeof label === 'string' ? label : label.name,
     )
-    return {
+    const row = {
         number: issue.number,
         title: issue.title,
         state_labels: STATE_LABELS.filter((name) => labels.includes(name)),
@@ -68,6 +114,10 @@ export function snapshotIssue(issue) {
         blocked_by: blockedBy(issue.body),
         evidence_commits: evidenceCommits(issue.body),
     }
+    const claims = claimEvents(issue.claim_comments)
+    if (claims.length > 0) row.claims = claims
+    if (issue.state === 'closed') row.issue_state = 'closed'
+    return row
 }
 
 // The snapshot is a pure function of the issues. It carries no timestamp and

@@ -27,6 +27,8 @@ ASSERT_CONTEXT=backlog-self-test
 CASES="$ROOT/tests/backlog/self-test-cases"
 assert_dir 'backlog checker rule cases' "$CASES"
 
+node "$ROOT/tests/backlog/extract-self-test.mjs"
+
 WORK=${TMPDIR:-/tmp}/kofun-backlog-rules.$$
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 mkdir -p "$WORK"

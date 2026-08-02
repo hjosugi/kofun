@@ -408,13 +408,14 @@
       "number": 584,
       "title": "Visibility tooling: prevent macro, LSP, and sidecar access bypasses",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
-      "state_line": "blocked",
-      "blocked_by": [
-        583
-      ],
-      "evidence_commits": []
+      "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": [
+        "0ba1682a605f31ce54e23b7d37edadfd80a79f5e",
+        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
+      ]
     },
     {
       "number": 585,
@@ -891,19 +892,25 @@
       "evidence_commits": [
         "8703abdc1625e6e63bb7d45113244418c085cc39",
         "abc969f14cfb8d247e1c15a4b25e51cd753cba0a"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-issue1021-agent-claim-v1-20260802",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-issue1021-agent-claim-v1-20260802",
+          "status": "active"
+        }
       ]
     },
     {
-      "number": 1023,
-      "title": "backlog: a `blocked` issue whose named blockers have all closed is never reported",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
+      "number": 1030,
+      "title": "Scoped parallelism: own `par` in the Stage 2 lexer and refuse it by name",
+      "state_labels": [],
+      "state_line": null,
       "blocked_by": [],
-      "evidence_commits": [
-        "2a31329b50fe19974b1cfc6639eac753373ab744"
-      ]
+      "evidence_commits": []
     }
   ]
 }
