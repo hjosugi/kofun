@@ -23,7 +23,7 @@ require_text() {
     grep -Fq "$needle" "$file" || fail "$file lacks required text: $needle"
 }
 
-for command in awk cmp dd grep sha256sum sort tr wc xxd
+for command in awk cmp dd grep od sha256sum sort tr wc
 do
     command -v "$command" >/dev/null 2>&1 || fail "$command is required"
 done
@@ -154,6 +154,27 @@ field_byte() {
     printf "\\$(printf '%03o' "$value")"
 }
 
+hex_to_bytes() (
+    hex_bytes_input=$1
+    case $hex_bytes_input in
+        ''|*[!0123456789abcdefABCDEF]*)
+            fail "invalid hexadecimal byte string"
+            ;;
+    esac
+    test $((${#hex_bytes_input} % 2)) -eq 0 ||
+        fail "hexadecimal byte string has odd length"
+
+    while test -n "$hex_bytes_input"
+    do
+        hex_bytes_rest=${hex_bytes_input#??}
+        hex_bytes_pair=${hex_bytes_input%"$hex_bytes_rest"}
+        hex_bytes_value=$((0x$hex_bytes_pair))
+        hex_bytes_octal=$(printf '%03o' "$hex_bytes_value")
+        printf "\\$hex_bytes_octal"
+        hex_bytes_input=$hex_bytes_rest
+    done
+)
+
 framed_hash() {
     domain=$1
     payload=$2
@@ -165,17 +186,17 @@ framed_hash() {
         u32be "$(byte_count "$payload")"
         dd if="$payload" bs=4096 2>/dev/null
     } >"$output.preimage"
-    sha256sum "$output.preimage" | awk '{ print $1 }' |
-        xxd -r -p >"$output"
+    digest=$(sha256sum "$output.preimage" | awk '{ print $1 }')
+    hex_to_bytes "$digest" >"$output"
     test "$(byte_count "$output")" -eq 32 || fail "invalid hash width: $domain"
 }
 
 hex_of() {
-    xxd -p -c 256 "$1" | tr -d '\n'
+    od -An -v -tx1 "$1" | tr -d ' \n'
 }
 
-printf '%064d' 11 | xxd -r -p >"$WORK/exporting.module"
-printf '%064d' 22 | xxd -r -p >"$WORK/target.module"
+hex_to_bytes "$(printf '%064d' 11)" >"$WORK/exporting.module"
+hex_to_bytes "$(printf '%064d' 22)" >"$WORK/target.module"
 
 printf '%s\n' \
     'kofun.namespace-id/v1' 'tag=2' 'name=module' \

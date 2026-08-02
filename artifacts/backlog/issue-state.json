@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 76,
+  "open_issues": 73,
   "issues": [
     {
       "number": 26,
@@ -115,11 +115,15 @@
       "number": 276,
       "title": "Reduce boilerplate: derive, and generated members",
       "state_labels": [
-        "needs-detail"
+        "needs-decision"
       ],
-      "state_line": null,
-      "blocked_by": [],
-      "evidence_commits": []
+      "state_line": "needs-decision",
+      "blocked_by": [
+        988
+      ],
+      "evidence_commits": [
+        "41b531f73e6b751f385c62b4ef689992f676afef"
+      ]
     },
     {
       "number": 277,
@@ -692,7 +696,7 @@
       "number": 904,
       "title": "Stage 2 ensure_move v2: prove terminal branch and early-return last uses",
       "state_labels": [
-        "ready"
+        "in-progress"
       ],
       "state_line": null,
       "blocked_by": [],
@@ -727,19 +731,9 @@
       "number": 919,
       "title": "Stage 2 C11 List[Int] values: locals, len, and indexing",
       "state_labels": [
-        "ready"
+        "blocked"
       ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
-      ]
-    },
-    {
-      "number": 920,
-      "title": "ReuseCandidate v1: a normative reuse-candidate record with layout/uniqueness evidence, remarks, and a validator",
-      "state_labels": [],
-      "state_line": "verification-pending",
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
         "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
@@ -752,16 +746,6 @@
         "blocked"
       ],
       "state_line": "blocked",
-      "blocked_by": [],
-      "evidence_commits": [
-        "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
-      ]
-    },
-    {
-      "number": 924,
-      "title": "Executable Optional(Int): AggregateLayout v1 construction and lowered direct narrowing in Stage 2",
-      "state_labels": [],
-      "state_line": "verification-pending",
       "blocked_by": [],
       "evidence_commits": [
         "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
@@ -788,18 +772,6 @@
       "evidence_commits": []
     },
     {
-      "number": 943,
-      "title": "Lambda spelling drift: Stage 2 accepts `(a, b) => e` and `x => e`, the grammar and SYNTAX.md describe neither",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "7cdecd68dd42504da5881c6253e8f3d091636064"
-      ]
-    },
-    {
       "number": 946,
       "title": "The production frontend has no move analysis, so E2S122/E2S123 never reach an editor",
       "state_labels": [],
@@ -823,17 +795,7 @@
       "number": 961,
       "title": "Kofun unit testing v1: executable kotest runner and stdlib sample suites",
       "state_labels": [
-        "in-progress"
-      ],
-      "state_line": null,
-      "blocked_by": [],
-      "evidence_commits": []
-    },
-    {
-      "number": 974,
-      "title": "gates: `xxd` is an undocumented hard prerequisite, and it is not coreutils",
-      "state_labels": [
-        "in-progress"
+        "blocked"
       ],
       "state_line": null,
       "blocked_by": [],
@@ -858,6 +820,18 @@
         "in-progress"
       ],
       "state_line": "in-progress",
+      "blocked_by": [],
+      "evidence_commits": [
+        "41b531f73e6b751f385c62b4ef689992f676afef"
+      ]
+    },
+    {
+      "number": 988,
+      "title": "RFC: choose the derive v1 expansion authority and inspection contract",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
       "blocked_by": [],
       "evidence_commits": [
         "41b531f73e6b751f385c62b4ef689992f676afef"

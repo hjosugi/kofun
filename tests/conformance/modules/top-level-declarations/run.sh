@@ -19,9 +19,29 @@ fail() {
     exit 1
 }
 
+hex_to_bytes() (
+    hex_bytes_input=$1
+    case $hex_bytes_input in
+        ''|*[!0123456789abcdefABCDEF]*)
+            fail "invalid hexadecimal byte string"
+            ;;
+    esac
+    test $((${#hex_bytes_input} % 2)) -eq 0 ||
+        fail "hexadecimal byte string has odd length"
+
+    while test -n "$hex_bytes_input"
+    do
+        hex_bytes_rest=${hex_bytes_input#??}
+        hex_bytes_pair=${hex_bytes_input%"$hex_bytes_rest"}
+        hex_bytes_value=$((0x$hex_bytes_pair))
+        hex_bytes_octal=$(printf '%03o' "$hex_bytes_value")
+        printf "\\$hex_bytes_octal"
+        hex_bytes_input=$hex_bytes_rest
+    done
+)
+
 command -v "$CC" >/dev/null 2>&1 || fail 'a C11 compiler is required'
 command -v sha256sum >/dev/null 2>&1 || fail 'sha256sum is required'
-command -v xxd >/dev/null 2>&1 || fail 'xxd is required'
 case $WORK in
     */module-symbols|*/module-symbols.*) ;;
     *) fail "work directory must end in module-symbols[.suffix]: $WORK" ;;
@@ -136,10 +156,10 @@ value_namespace=$(framed_hash kofun.id.namespace/v1 \
 {
     u16be 32769
     u32be 32
-    printf '%s' "$ALPHA_MODULE" | xxd -r -p
+    hex_to_bytes "$ALPHA_MODULE"
     u16be 32770
     u32be 32
-    printf '%s' "$value_namespace" | xxd -r -p
+    hex_to_bytes "$value_namespace"
     u16be 32771
     u32be 8
     printf '%s' function

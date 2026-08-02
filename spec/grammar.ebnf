@@ -135,8 +135,17 @@ list             = "[", elements, "]" ;
 tuple_or_group   = "(", [ expression, [ ",", elements ] ], ")" ;
 if_expr          = "if", expression, block,
                    [ separators, "else", separators, ( if_expr | block ) ] ;
-lambda           = "fn", "(", parameters, ")",
+(* All three lambda spellings are intentional. The bare form is a lambda in
+   expression position; at a match-arm boundary, the same IDENT "=>" prefix
+   belongs to the arm pattern instead. The two shorthand forms have expression
+   bodies only. See #943. *)
+lambda           = canonical_lambda
+                 | parenthesized_lambda
+                 | bare_lambda ;
+canonical_lambda = "fn", "(", parameters, ")",
                    ( "=>", expression | block ) ;
+parenthesized_lambda = "(", parameters, ")", "=>", expression ;
+bare_lambda      = identifier, "=>", expression ;
 
 separators       = { NEWLINE | ";" } ;
 identifier       = IDENT ;
