@@ -2,15 +2,15 @@
 
 Status: accepted. Owner: repository maintainer. Issue: #1000. Parent: #998 / #26.
 
-Two wasm32 host bindings now exist, and a module cannot carry both. One is
-shipped and executes; the other is an accepted contract that nothing emits.
-This document decides which binding a build gets, what happens to the older
-one, and which oracles measure the newer one when it is implemented.
+Two wasm32 host bindings now exist, and a module cannot carry both. The legacy
+binding executes its bounded numeric slice; the aggregate binding emits its
+checked arena and empty entry point while later Text/List lowering remains
+unsupported. This document decides which binding a build gets, what happens to
+the older one, and which oracles measure the newer one.
 
-It decides **activation only**. No code generation changes with it.
-`bootstrap/wasm/compiler.c` emits the same bytes after this document as before,
-`sh bootstrap/wasm/check.sh` passes unchanged, and the wasm32 backend gains no
-capability: `tests/conformance/capabilities.tsv` still records `wasm32-node` as
+It decides **activation only**. The later arena implementation does not amend
+that decision, and the wasm32 backend gains no Text/List capability:
+`tests/conformance/capabilities.tsv` still records `wasm32-node` as
 `unsupported` for `text` and for `list`.
 
 Its normative input is `spec/wasm-host-abi-v1.md`, which this document does not
@@ -49,8 +49,7 @@ it fails against the tree, not against a row.
 
 **The host ABI is part of the target name.** `--target wasm32` keeps the
 bounded numeric binding it has today, byte for byte; `kofun-wasm-host-abi-v1`
-is reached only through the separate target name **`wasm32-hostabi1`**, which
-no backend emits yet.
+is reached only through the separate target name **`wasm32-hostabi1`**.
 
 ## What is true today
 
@@ -58,7 +57,8 @@ Every claim below was read off the tree rather than off an issue body.
 
 | Fact | Where |
 |---|---|
-| The shipped module has five sections — type, import, function, export, code. No memory, no global, no start, no data. | `bootstrap/wasm/compiler.c`, the `section(&module, …)` calls |
+| The legacy module has five sections — type, import, function, export, code. No memory, no global, no start, no data. | `bootstrap/wasm/compiler.c`, the legacy `emit_module` section writers |
+| The aggregate arena module has one fixed memory and the four required v1 exports, but accepts only an empty entry point. | `bootstrap/wasm/compiler.c`, `emit_profile_module`; `bootstrap/wasm/object_arena_check.sh` |
 | It imports exactly `kofun.print_i64` and `kofun.panic`, and exports exactly one function, `main`. | `bootstrap/wasm/compiler.c`, the import and export section writers |
 | `--target` takes one value from a closed set; an unknown value exits 2 with `kofun: unsupported target:`. There is no profile or ABI option. | `bin/kofun`, the `--target` case and the build option loop |
 | `wasm32-node` is `supported` for `numeric` and `functions`, and `unsupported` for `text`, `list`, and `decimal-arithmetic`. | `tests/conformance/capabilities.tsv` |
@@ -94,9 +94,9 @@ Three properties follow, and they are the reason for the choice:
   writes nothing, rather than falling back to a binding the caller did not ask
   for. That is DD-012 applied to the selector rather than to lowering.
 
-The name is reserved by this document. Until #1001 lands it resolves to
-`kofun: unsupported target: wasm32-hostabi1`, which is the correct answer for a
-toolchain that cannot emit the profile.
+The name is reserved by this document. Toolchains before #1001 resolve it to
+`kofun: unsupported target: wasm32-hostabi1`; current toolchains emit the
+arena-only module and continue refusing source outside that implemented slice.
 
 ## Decision 2 — compatibility, and how a host tells them apart
 
@@ -108,8 +108,9 @@ condition is stated rather than implied: the v1 profile must first execute the
 `numeric` and `functions` corpora and the browser sample that
 `sh bootstrap/wasm/check.sh` proves today.
 
-**The v1 aggregate ABI is accepted and unimplemented.** No backend emits it.
-Its state changes when #1001, #1002, and #1004 land, and not before.
+**The v1 aggregate ABI is accepted and partially implemented.** #1001 owns the
+arena and required export surface; Text/List source values remain fail-closed
+until #1002 and #1004 land.
 
 **A host identifies the binding on the module bytes, before instantiation.**
 The two surfaces are disjoint, and neither test needs an engine to run guest
@@ -265,8 +266,8 @@ of them owns it:
 
 ## What this document does not claim
 
-- **No code generation.** Nothing here lowers `Text` or `List`, and no wasm
-  bytes change. #1001, #1002 and #1004 own the lowering.
+- **No value code generation.** Nothing here lowers `Text` or `List`. #1001,
+  #1002 and #1004 own the implementation slices.
 - **No capability.** `wasm32-node` supports what it supported before. No row in
   `tests/conformance/capabilities.tsv` moves, and no claim in
   `release/claims.json` is added or widened.

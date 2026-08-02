@@ -56,3 +56,4 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `syscall-stdlib-api` | limit | `tests/conformance/capabilities.tsv` | Targets outside Linux x86-64 are recorded as unsupported with a stated reason. |
 | `test-skip-reporting` | skip | `tests/cli.sh` | A skipped case is reported as skipped and never folded into the pass count. |
 | `wasm32-arithmetic-core` | rejection | `bootstrap/wasm/fixtures/unsupported_text.kofun` | `Text` values are refused by the wasm32 backend rather than partially lowered. |
+| `wasm32-hostabi1-object-arena` | rejection | `examples/wasm_arithmetic.kofun` | A non-empty source is refused with no artifact instead of being silently compiled to the empty entry point. |
