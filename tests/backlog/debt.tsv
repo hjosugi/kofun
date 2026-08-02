@@ -19,13 +19,11 @@
 #                      docs/ISSUE_READINESS.md rule 2 cannot be checked on it.
 #                      Fix by measuring its current behavior and naming the
 #                      commit, then delete the row.
-state-disagreement	26	blocked/needs-detail	wasm32 target: extend the bounded arithmetic and browser checkpoint
 state-disagreement	30	blocked/needs-detail	General ADT match exhaustiveness beyond the bounded Bool slice
 state-disagreement	31	blocked/needs-detail	Generics and traits
 state-disagreement	289	blocked/needs-detail	Forward references: track declaration scopes, imports, and initialization
 state-disagreement	298	blocked/ready	Duplicate definitions: track namespace and binding-domain rules
 state-disagreement	543	blocked/needs-detail	Optional types: define representation, narrowing, matching, and propagation
-state-disagreement	555	blocked/ready	Scoped parallelism v1: specify spawn/join ownership semantics and executable model
 state-disagreement	618	blocked/needs-detail	Self-host profile: freeze the smallest honest compiler S and coverage manifest
 state-disagreement	624	blocked/needs-detail	Language UX: simple functional syntax with explicit ownership and lawful composition
 state-disagreement	710	blocked/needs-detail	Compiler-native Decimal: implement the accepted language design across all backends

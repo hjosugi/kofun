@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 71,
+  "open_issues": 77,
   "issues": [
     {
       "number": 26,
@@ -17,7 +17,7 @@
       "state_labels": [
         "blocked"
       ],
-      "state_line": "needs-detail",
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -315,7 +315,7 @@
       "state_labels": [
         "blocked"
       ],
-      "state_line": "ready",
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
         "b55d56101add13bedee87a589ea4d8db9801277c"
@@ -467,9 +467,9 @@
       "number": 637,
       "title": "Discovery query v1: project inferred types and callable operations from semantic facts",
       "state_labels": [
-        "in-progress"
+        "blocked"
       ],
-      "state_line": "in-progress",
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -582,9 +582,9 @@
       "number": 880,
       "title": "Call arguments v1 slice 1: parse labels and canonical trailing lambdas",
       "state_labels": [
-        "ready"
+        "blocked"
       ],
-      "state_line": "ready",
+      "state_line": "blocked",
       "blocked_by": [
         625
       ],
@@ -650,33 +650,13 @@
       "number": 891,
       "title": "Stage 2 Text values: return Text, convert Int, and concatenate without invalid C",
       "state_labels": [
-        "ready"
+        "blocked"
       ],
-      "state_line": "ready",
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
         "b94cfc72cd63d0255ab914b365ca7910309fa7d2"
       ]
-    },
-    {
-      "number": 900,
-      "title": "bindgen-c: sanitizer-backed generated-boundary gate",
-      "state_labels": [
-        "blocked"
-      ],
-      "state_line": null,
-      "blocked_by": [],
-      "evidence_commits": []
-    },
-    {
-      "number": 901,
-      "title": "bindgen-c: adversarial macro fuzzing and bounded Clang execution",
-      "state_labels": [
-        "blocked"
-      ],
-      "state_line": null,
-      "blocked_by": [],
-      "evidence_commits": []
     },
     {
       "number": 902,
@@ -707,9 +687,9 @@
       "number": 916,
       "title": "Integer const generics v1: literal Int type arguments for Fixed[scale]",
       "state_labels": [
-        "ready"
+        "blocked"
       ],
-      "state_line": "ready",
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
         "09a3229c33fd309f61a0a0ba407fd543f8c670e6",
@@ -720,9 +700,9 @@
       "number": 919,
       "title": "Stage 2 C11 List[Int] values: locals, len, and indexing",
       "state_labels": [
-        "in-progress"
+        "blocked"
       ],
-      "state_line": "in-progress",
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
         "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
@@ -755,18 +735,26 @@
     {
       "number": 942,
       "title": "Member-scope duplicates: methods, associated values, and inherited or default members",
-      "state_labels": [],
-      "state_line": "needs-detail",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [
+        "00ce08f093da2706156f88f80d8c2fb366006d35"
+      ]
     },
     {
       "number": 946,
       "title": "The production frontend has no move analysis, so E2S122/E2S123 never reach an editor",
-      "state_labels": [],
-      "state_line": "needs-detail",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [
+        "00ce08f093da2706156f88f80d8c2fb366006d35"
+      ]
     },
     {
       "number": 955,
@@ -781,19 +769,11 @@
       ]
     },
     {
-      "number": 961,
-      "title": "Kofun unit testing v1: executable kotest runner and stdlib sample suites",
-      "state_labels": [
-        "blocked"
-      ],
-      "state_line": null,
-      "blocked_by": [],
-      "evidence_commits": []
-    },
-    {
       "number": 975,
       "title": "backlog: decide whether a planning umbrella waiting on children is `blocked`",
-      "state_labels": [],
+      "state_labels": [
+        "needs-decision"
+      ],
       "state_line": "needs-decision",
       "blocked_by": [
         618
@@ -812,6 +792,105 @@
       "blocked_by": [],
       "evidence_commits": [
         "41b531f73e6b751f385c62b4ef689992f676afef"
+      ]
+    },
+    {
+      "number": 995,
+      "title": "Trait member override v1: inherited and default member collision contract",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "00ce08f093da2706156f88f80d8c2fb366006d35"
+      ]
+    },
+    {
+      "number": 996,
+      "title": "Unicode security: cross-module confusable collisions are undetected and unowned",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "00ce08f093da2706156f88f80d8c2fb366006d35"
+      ]
+    },
+    {
+      "number": 998,
+      "title": "wasm32 Text/List lowering has no owner: #906 froze the contract, nothing implements it",
+      "state_labels": [],
+      "state_line": "planning",
+      "blocked_by": [],
+      "evidence_commits": [
+        "00ce08f093da2706156f88f80d8c2fb366006d35"
+      ]
+    },
+    {
+      "number": 1000,
+      "title": "wasm32 aggregate activation v1: choose host-profile migration and differential oracle",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "00ce08f093da2706156f88f80d8c2fb366006d35"
+      ]
+    },
+    {
+      "number": 1001,
+      "title": "wasm32 object arena: linear memory, u64 headers, and bounded allocation",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 1002,
+      "title": "wasm32 Text slice: guest literals, references, and text_out execution",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 1004,
+      "title": "wasm32 List slice: List[Int]/List[Text] layout, len, index, and host output",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 1006,
+      "title": "`task verify` is not a complete local predicate of CI: type-reduction-trace runs only as a standalone CI step",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": null,
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 1008,
+      "title": "Stage 2: execute immutable Int module constants after authority decision",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": [
+        "486d72deb17a6be11325a425e1138822d058121d",
+        "6f71b6df5cf54aa16542b89494d2194c4172a97e"
       ]
     }
   ]
