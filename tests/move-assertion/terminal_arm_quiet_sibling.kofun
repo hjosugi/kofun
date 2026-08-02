@@ -1,0 +1,16 @@
+# Positive: only the asserting arm terminates, and the path that skips it
+# never names `banner`. Termination is what carries the proof — the fall-
+# through path exists, but it cannot observe the binding, and the arm that
+# can observe it returns before the `if` rejoins. #904.
+
+fn main() -> Int {
+    let banner: Text = "banner"
+    let flag = 1
+    if flag > 0 {
+        print(banner)
+        compiler.ensure_move(banner)
+        return 0
+    }
+    print("quiet")
+    return 1
+}
