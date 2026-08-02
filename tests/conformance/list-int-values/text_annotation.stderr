@@ -1,1 +1,1 @@
-error[E2S148]: `List[Int]` is the only list element type this lowering slice carries; `List[Text]` is not lowered at byte 35
+error[E2S153]: `List[Int]` is the only list element type this lowering slice carries; `List[Text]` is not lowered at byte 35

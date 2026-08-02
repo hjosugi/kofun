@@ -1,2 +1,2 @@
 # code	adapter	channel	exit	primary-span	secondary-span	artifact
-E2S148	list-int-values	stdout	1	required	not-applicable	forbidden
+E2S153	list-int-values	stdout	1	required	not-applicable	forbidden

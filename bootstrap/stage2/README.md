@@ -740,7 +740,7 @@ What executes: `let v: List[Int] = [1, 2, 3]` and the unannotated `let v =
 folded constant, and `v[0]` reads the element. Elements may be any `Int`
 expression the slice already lowers, not only literals.
 
-Refusals carry `E2S148`, registered under the `list-int-values` adapter: a
+Refusals carry `E2S153`, registered under the `list-int-values` adapter: a
 literal past the capacity bound, an index outside the declaring literal's
 range, an index this slice cannot check against that range, a non-`Int`
 element, a `List` of anything but `Int`, a literal in argument or result

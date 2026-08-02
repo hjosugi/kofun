@@ -5218,7 +5218,7 @@ static char *emit_primary(
      */
     if (token_equal(source, cursor, "[")) {
         return lower_error(
-            "E2S148",
+            "E2S153",
             "a `List[Int]` literal is bound by `let` in this lowering slice; "
             "it does not cross a Core call or result boundary",
             cursor
@@ -5469,7 +5469,7 @@ static char *emit_primary(
                     free(name);
                     free(output.data);
                     return lower_error(
-                        "E2S148",
+                        "E2S153",
                         "index reads are lowered on a bounded `List[Int]` "
                         "binding in this lowering slice",
                         cursor
@@ -5504,7 +5504,7 @@ static char *emit_primary(
                     free(name);
                     free(output.data);
                     return lower_error(
-                        "E2S148",
+                        "E2S153",
                         "a bounded `List[Int]` index is an integer literal "
                         "this lowering slice can check against the list's "
                         "length",
@@ -5534,7 +5534,7 @@ static char *emit_primary(
                     free(name);
                     free(output.data);
                     char *error = lower_error(
-                        "E2S148",
+                        "E2S153",
                         message.data,
                         index_start
                     );
@@ -5620,7 +5620,7 @@ static char *emit_primary(
                 free(name);
                 free(output.data);
                 return lower_error(
-                    "E2S148",
+                    "E2S153",
                     "a bounded `List[Int]` binding is read by `len` or by a "
                     "checked index in this lowering slice; it has no whole "
                     "value form",
@@ -10844,7 +10844,7 @@ static char *emit_list_int_elements(
         if (bound < 0) {
             free(output.data);
             return lower_error(
-                "E2S148",
+                "E2S153",
                 "malformed `List[Int]` literal element",
                 element
             );
@@ -10867,7 +10867,7 @@ static char *emit_list_int_elements(
             );
             free(element_type);
             free(output.data);
-            char *error = lower_error("E2S148", message.data, element);
+            char *error = lower_error("E2S153", message.data, element);
             free(message.data);
             return error;
         }
@@ -14202,7 +14202,7 @@ static char *lower_body(
                         free(name);
                         free(emitted.data);
                         char *error = lower_error(
-                            "E2S148",
+                            "E2S153",
                             message.data,
                             cursor
                         );
@@ -14299,7 +14299,7 @@ static char *lower_body(
                     free(name);
                     free(emitted.data);
                     return lower_error(
-                        "E2S148",
+                        "E2S153",
                         "mutable `List[Int]` bindings are outside this "
                         "lowering slice; declare `let` and construct a new "
                         "list instead",
@@ -14311,7 +14311,7 @@ static char *lower_body(
                     free(name);
                     free(emitted.data);
                     return lower_error(
-                        "E2S148",
+                        "E2S153",
                         "a `List[Int]` binding is initialized by a bracketed "
                         "list literal in this lowering slice",
                         value_start
@@ -14323,7 +14323,7 @@ static char *lower_body(
                     free(name);
                     free(emitted.data);
                     return lower_error(
-                        "E2S148",
+                        "E2S153",
                         "malformed `List[Int]` literal",
                         value_start
                     );
@@ -14342,7 +14342,7 @@ static char *lower_body(
                     free(name);
                     free(emitted.data);
                     char *error = lower_error(
-                        "E2S148",
+                        "E2S153",
                         message.data,
                         value_start
                     );

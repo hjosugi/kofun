@@ -304,22 +304,22 @@ assert_eq 'the stored representation matches the recomputed descriptor' \
 #
 # Each refusal names the rule it pins and the code that pins it.
 #
-# `list_parameter` and `list_result` carry `E2S15` rather than `E2S148` on
+# `list_parameter` and `list_result` carry `E2S15` rather than `E2S153` on
 # purpose: they are increment 3 of #868, and they already state their own
 # boundary truthfully in the position they stand at. Pinning them here is
 # what will notice when increment 3 moves them.
 
 negatives='
-oversized:E2S148
-index_above_range:E2S148
-index_below_range:E2S148
-index_empty_list:E2S148
-index_not_literal:E2S148
-text_element:E2S148
-text_annotation:E2S148
-literal_argument:E2S148
-mutable_binding:E2S148
-whole_value_use:E2S148
+oversized:E2S153
+index_above_range:E2S153
+index_below_range:E2S153
+index_empty_list:E2S153
+index_not_literal:E2S153
+text_element:E2S153
+text_annotation:E2S153
+literal_argument:E2S153
+mutable_binding:E2S153
+whole_value_use:E2S153
 list_parameter:E2S15
 list_result:E2S15
 '
@@ -409,11 +409,11 @@ assert_not_grep 'the emitted list translation unit allocates' \
     -Eq -- 'malloc|calloc|realloc' "$emitted"
 
 # The registered identity has to stay registered.
-assert_grep 'E2S148 is a registered diagnostic identity' \
-    -Fq -- 'E2S148	list-int-values	frontend' \
+assert_grep 'E2S153 is a registered diagnostic identity' \
+    -Fq -- 'E2S153	list-int-values	frontend' \
     "$ROOT/tests/diagnostics/registry.tsv"
-assert_grep 'E2S148 has an adapter report row' \
-    -Fq -- 'E2S148	list-int-values' \
+assert_grep 'E2S153 has an adapter report row' \
+    -Fq -- 'E2S153	list-int-values' \
     "$ROOT/tests/diagnostics/reports/list-int-values.tsv"
 
 printf '%s\n' \

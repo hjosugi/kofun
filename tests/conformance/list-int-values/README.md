@@ -14,7 +14,7 @@ the boundary was. #868 measured all three; this corpus pins each one.
 |---|---|---|
 | `let v: List[Int] = [1, 2]` | `E2S35` unknown lexical binding `Int` | binds and runs (`locals.kofun`) |
 | `let v = [1, 2]` then `len(v)` | `E2S15` `len` expects `TextOrList`, got `Int` | binds and runs (`inferred.kofun`) |
-| `f([1, 2, 3])` | `E2S17` arity `got -1`, then C that did not compile | `E2S148`, naming the boundary (`literal_argument.kofun`) |
+| `f([1, 2, 3])` | `E2S17` arity `got -1`, then C that did not compile | `E2S153`, naming the boundary (`literal_argument.kofun`) |
 
 The third row is worth stating plainly. After #959 made the literal spannable,
 the arity stopped being `-1` — and the call then lowered to `kofun_fn_f()`
@@ -112,23 +112,23 @@ for byte.
 
 | Fixture | Code | Rule |
 |---|---|---|
-| `oversized.kofun` | `E2S148` | 65 elements exceeds the capacity bound |
-| `index_above_range.kofun` | `E2S148` | `values[3]` on three elements |
-| `index_below_range.kofun` | `E2S148` | `values[-1]` |
-| `index_empty_list.kofun` | `E2S148` | `values[0]` on an empty list |
-| `index_not_literal.kofun` | `E2S148` | an index this slice cannot check |
-| `text_element.kofun` | `E2S148` | a `Text` in a `List[Int]` literal |
-| `text_annotation.kofun` | `E2S148` | `List[Text]`, an element type this slice does not carry |
-| `literal_argument.kofun` | `E2S148` | a literal in argument position |
-| `mutable_binding.kofun` | `E2S148` | `let mut` on a list |
-| `whole_value_use.kofun` | `E2S148` | a list read as a whole value |
+| `oversized.kofun` | `E2S153` | 65 elements exceeds the capacity bound |
+| `index_above_range.kofun` | `E2S153` | `values[3]` on three elements |
+| `index_below_range.kofun` | `E2S153` | `values[-1]` |
+| `index_empty_list.kofun` | `E2S153` | `values[0]` on an empty list |
+| `index_not_literal.kofun` | `E2S153` | an index this slice cannot check |
+| `text_element.kofun` | `E2S153` | a `Text` in a `List[Int]` literal |
+| `text_annotation.kofun` | `E2S153` | `List[Text]`, an element type this slice does not carry |
+| `literal_argument.kofun` | `E2S153` | a literal in argument position |
+| `mutable_binding.kofun` | `E2S153` | `let mut` on a list |
+| `whole_value_use.kofun` | `E2S153` | a list read as a whole value |
 | `list_parameter.kofun` | `E2S15` | `List[Int]` in parameter position |
 | `list_result.kofun` | `E2S15` | `List[Int]` in result position |
 
 Every refusal exits 1, writes nothing to internal stderr, and leaves no `.c`
 behind.
 
-The last two carry `E2S15` rather than `E2S148` on purpose. They are increment
+The last two carry `E2S15` rather than `E2S153` on purpose. They are increment
 3 of #868, and each already states its own boundary truthfully in the position
 it stands at — the same `E2S15` `examples/coding_interview.kofun` is pinned
 to. They are in this corpus so that increment 3 moving them is visible.

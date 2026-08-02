@@ -1,1 +1,1 @@
-error[E2S148]: a bounded `List[Int]` binding is read by `len` or by a checked index in this lowering slice; it has no whole value form at byte 67
+error[E2S153]: a bounded `List[Int]` binding is read by `len` or by a checked index in this lowering slice; it has no whole value form at byte 67

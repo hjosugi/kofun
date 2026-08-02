@@ -1,1 +1,1 @@
-error[E2S148]: mutable `List[Int]` bindings are outside this lowering slice; declare `let` and construct a new list instead at byte 51
+error[E2S153]: mutable `List[Int]` bindings are outside this lowering slice; declare `let` and construct a new list instead at byte 51
