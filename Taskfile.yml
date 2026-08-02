@@ -164,7 +164,7 @@ tasks:
       - "KOFUN_PURE_IO_CASES=96 sh tests/fuzz/pure_io.sh"
 
   traits:
-    desc: "Verify the bounded trait declaration frontend"
+    desc: "Verify the bounded trait declaration frontend and dictionary shape"
     cmds:
       - "sh tests/conformance/traits/run.sh"
 

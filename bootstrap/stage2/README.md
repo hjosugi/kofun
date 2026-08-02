@@ -572,10 +572,18 @@ that shape it is complete: it assigns `TraitId`, `MethodId`, and
 coherence and orphan rules `docs/TYPE_SYSTEM.md` records, and writes the
 implementation each call selected into typed IR.
 
-It lowers none of it. No dictionary is elaborated, nothing is monomorphised,
-and no runtime search is emitted — the gate asserts the IR names no dictionary,
-monomorphisation, or vtable. Recording which implementation a call selected is
-not the same claim as being able to call it.
+It also elaborates the dictionary that selection denotes (#923): a descriptor
+per trait, a dictionary value per admissible implementation with a
+`DictionaryId` derived from the `ImplementationId`, a dictionary parameter per
+declared bound, and an explicit dictionary argument at each bounded call.
+Elaboration runs last, only on the accepted path, so a refused program never
+gets one.
+
+It lowers none of it below that. Nothing is monomorphised, no vtable is laid
+out, and no runtime search is emitted — the gate asserts the IR names no
+monomorphisation, vtable, or search, and that no backend artifact is written.
+Naming the dictionary a call passes is not the same claim as being able to run
+it.
 
 `foreign` marks a declaration as belonging to another package. It is the
 synthetic stand-in that makes the orphan rule testable in one file while
