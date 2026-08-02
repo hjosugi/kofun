@@ -318,12 +318,12 @@
       "number": 555,
       "title": "Scoped parallelism v1: specify spawn/join ownership semantics and executable model",
       "state_labels": [
-        "blocked"
+        "needs-decision"
       ],
-      "state_line": "blocked",
+      "state_line": "needs-decision",
       "blocked_by": [],
       "evidence_commits": [
-        "b55d56101add13bedee87a589ea4d8db9801277c"
+        "b297880239f0db9cb832df50de379f5f678abf6c"
       ]
     },
     {
@@ -462,11 +462,13 @@
       "number": 637,
       "title": "Discovery query v1: project inferred types and callable operations from semantic facts",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
-      "state_line": "blocked",
+      "state_line": "needs-detail",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [
+        "b297880239f0db9cb832df50de379f5f678abf6c"
+      ]
     },
     {
       "number": 644,
@@ -680,9 +682,9 @@
       "number": 916,
       "title": "Integer const generics v1: literal Int type arguments for Fixed[scale]",
       "state_labels": [
-        "blocked"
+        "in-progress"
       ],
-      "state_line": "blocked",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
         "09a3229c33fd309f61a0a0ba407fd543f8c670e6",
@@ -843,6 +845,10 @@
         {
           "agent_id": "codex-issue1002-wasm-text-20260802",
           "status": "pr-open"
+        },
+        {
+          "agent_id": "codex-issue1002-wasm-text-20260802",
+          "status": "pr-open"
         }
       ]
     },
@@ -886,6 +892,10 @@
         {
           "agent_id": "codex-issue1018-eunicode008-20260802",
           "status": "active"
+        },
+        {
+          "agent_id": "codex-issue1018-eunicode008-20260802",
+          "status": "active"
         }
       ]
     },
@@ -918,6 +928,10 @@
         {
           "agent_id": "codex-issue1021-agent-claim-v1-20260802",
           "status": "pr-open"
+        },
+        {
+          "agent_id": "codex-issue1021-agent-claim-v1-20260802",
+          "status": "pr-open"
         }
       ]
     },
@@ -925,12 +939,12 @@
       "number": 1032,
       "title": "Self-host driver diagnostics: give A1's refusal a code and a span",
       "state_labels": [
-        "needs-detail"
+        "blocked"
       ],
-      "state_line": "needs-detail",
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
-        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
+        "b297880239f0db9cb832df50de379f5f678abf6c"
       ]
     },
     {
