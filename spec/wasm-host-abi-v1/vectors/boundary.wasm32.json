@@ -1,0 +1,224 @@
+{
+  "schema": "kofun.wasm-host-abi/v1",
+  "abi_version": "kofun-wasm-host-abi-v1",
+  "abi_revision": "1",
+  "import_module": "kofun:host-abi-v1",
+  "derived_from": {
+    "layout_abi_version": "aggregate-layout-v1",
+    "computer": "spec/aggregate-layout-v1/layout.mjs",
+    "target": "spec/aggregate-layout-v1/targets/wasm32.json",
+    "boundary_document": "spec/wasm-host-abi-v1/boundary.json",
+    "agrees_with": "spec/aggregate-layout-v1/examples/core.wasm32.json",
+    "shared_types": "4",
+    "shared_objects": "5"
+  },
+  "target": {
+    "name": "wasm32",
+    "endianness": "little",
+    "pointer_size": "4",
+    "pointer_align": "4",
+    "max_object_size": "4294967296"
+  },
+  "boundary": {
+    "reference_width": "4",
+    "reference_align": "4",
+    "int_size": "8",
+    "text": {
+      "value_size": "4",
+      "value_align": "4",
+      "header": [
+        {
+          "name": "byte_length",
+          "type": "u64",
+          "offset": "0",
+          "size": "8"
+        }
+      ],
+      "payload_offset": "8",
+      "encoding": "utf-8",
+      "capacity_field": false
+    },
+    "list": {
+      "value_size": "4",
+      "value_align": "4",
+      "header": [
+        {
+          "name": "length",
+          "type": "u64",
+          "offset": "0",
+          "size": "8"
+        }
+      ],
+      "payload_offset": "8",
+      "capacity_field": false,
+      "elements": [
+        {
+          "type": "Int",
+          "size": "8",
+          "align": "8"
+        },
+        {
+          "type": "Text",
+          "size": "4",
+          "align": "4"
+        }
+      ]
+    }
+  },
+  "imports": [
+    {
+      "module": "kofun:host-abi-v1",
+      "field": "abort",
+      "signature": "(func (param i32 i32))"
+    },
+    {
+      "module": "kofun:host-abi-v1",
+      "field": "text_out",
+      "signature": "(func (param i32))"
+    },
+    {
+      "module": "kofun:host-abi-v1",
+      "field": "list_int_out",
+      "signature": "(func (param i32))"
+    },
+    {
+      "module": "kofun:host-abi-v1",
+      "field": "list_text_out",
+      "signature": "(func (param i32))"
+    }
+  ],
+  "exports": [
+    {
+      "name": "memory",
+      "kind": "memory",
+      "signature": "(memory 1)"
+    },
+    {
+      "name": "kofun_abi_version",
+      "kind": "global",
+      "signature": "(global i32 = 1)"
+    },
+    {
+      "name": "kofun_start",
+      "kind": "func",
+      "signature": "(func (param i32))"
+    },
+    {
+      "name": "kofun_alloc",
+      "kind": "func",
+      "signature": "(func (param i32 i32) (result i32))"
+    }
+  ],
+  "abort_codes": [
+    {
+      "name": "bounds",
+      "code": "1"
+    },
+    {
+      "name": "allocation",
+      "code": "2"
+    }
+  ],
+  "arenas": {
+    "guest": {
+      "address": "512",
+      "span": "48"
+    },
+    "host": {
+      "address": "1024",
+      "span": "56"
+    }
+  },
+  "objects": [
+    {
+      "id": "counts",
+      "type": "List[Int]",
+      "kind": "list",
+      "arena": "guest",
+      "address": "512",
+      "align": "8",
+      "size": "32",
+      "payload_offset": "8",
+      "payload_size": "24",
+      "length": "3",
+      "element_type": "Int",
+      "element_size": "8",
+      "element_align": "8",
+      "image": "0300000000000000ffffffffffffffff0000000000000000ffffffffffffff7f"
+    },
+    {
+      "id": "empty-text",
+      "type": "Text",
+      "kind": "text",
+      "arena": "guest",
+      "address": "544",
+      "align": "8",
+      "size": "8",
+      "payload_offset": "8",
+      "payload_size": "0",
+      "byte_length": "0",
+      "image": "0000000000000000"
+    },
+    {
+      "id": "empty-argv",
+      "type": "List[Text]",
+      "kind": "list",
+      "arena": "guest",
+      "address": "552",
+      "align": "8",
+      "size": "8",
+      "payload_offset": "8",
+      "payload_size": "0",
+      "length": "0",
+      "element_type": "Text",
+      "element_size": "4",
+      "element_align": "4",
+      "image": "0000000000000000"
+    },
+    {
+      "id": "argv-0",
+      "type": "Text",
+      "kind": "text",
+      "arena": "host",
+      "address": "1024",
+      "align": "8",
+      "size": "10",
+      "payload_offset": "8",
+      "payload_size": "2",
+      "byte_length": "2",
+      "image": "02000000000000006f6b"
+    },
+    {
+      "id": "argv-1",
+      "type": "Text",
+      "kind": "text",
+      "arena": "host",
+      "address": "1040",
+      "align": "8",
+      "size": "18",
+      "payload_offset": "8",
+      "payload_size": "10",
+      "byte_length": "10",
+      "image": "0a0000000000000061e697a5e69cace8aa9e"
+    },
+    {
+      "id": "argv",
+      "type": "List[Text]",
+      "kind": "list",
+      "arena": "host",
+      "address": "1064",
+      "align": "8",
+      "size": "16",
+      "payload_offset": "8",
+      "payload_size": "8",
+      "length": "2",
+      "element_type": "Text",
+      "element_size": "4",
+      "element_align": "4",
+      "image": "02000000000000000004000010040000"
+    }
+  ],
+  "fixture": {
+    "conforming_guest_sha256": "54c14ff40889254b14f9689006cad073230d554debd21b0def398e2aa3c5428b"
+  }
+}

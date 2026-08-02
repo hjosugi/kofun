@@ -1,0 +1,10 @@
+{
+  "schema": "kofun.wasm-host-abi-case/v1",
+  "id": "missing-import",
+  "mutation": "missing-import",
+  "expect": "refused",
+  "diagnostic": "missing-import",
+  "engine": "refused",
+  "engine_error": "LinkError",
+  "why": "The guest asks kofun:host-abi-v1 for a field that is not on the allowlist. The host cannot supply it, so the module never links, and the engine agrees with a LinkError."
+}
