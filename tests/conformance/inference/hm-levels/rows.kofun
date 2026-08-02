@@ -1,0 +1,4 @@
+fn main() {
+    let row = { value: 1 }
+    row
+}

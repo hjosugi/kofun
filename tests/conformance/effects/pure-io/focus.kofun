@@ -1,0 +1,59 @@
+fn direct_pure() -> Int {
+    return 1
+}
+
+fn direct_io() -> Int {
+    print(1)
+    return 0
+}
+
+fn one_hop() -> Int {
+    return direct_io()
+}
+
+fn middle() -> Int {
+    return direct_io()
+}
+
+fn multi_hop() -> Int {
+    return middle()
+}
+
+fn self_pure(value: Int) -> Int {
+    if value < 1 {
+        return 0
+    }
+    return self_pure(value - 1)
+}
+
+fn pure_cycle_a(value: Int) -> Int {
+    if value < 1 {
+        return 0
+    }
+    return pure_cycle_b(value - 1)
+}
+
+fn pure_cycle_b(value: Int) -> Int {
+    if value < 1 {
+        return 0
+    }
+    return pure_cycle_a(value - 1)
+}
+
+fn impure_cycle_a(value: Int) -> Int {
+    if value < 1 {
+        return direct_io()
+    }
+    return impure_cycle_b(value - 1)
+}
+
+fn impure_cycle_b(value: Int) -> Int {
+    if value < 1 {
+        return 0
+    }
+    return impure_cycle_a(value - 1)
+}
+
+fn main() -> Int {
+    return direct_pure()
+}

@@ -6,6 +6,7 @@
  */
 #include "semantic_producer.h"
 #include "sha256.h"
+#include "effect_inference.h"
 
 #define main kofun_stage2_embedded_seed_main
 #define KOFUN_STAGE2_AUTHORITY_API 1
@@ -1563,6 +1564,118 @@ static ProducerFunction *producer_function_for_offset(
         }
     }
     return NULL;
+}
+
+static ProducerFunction *producer_function_for_node(
+    Producer *producer,
+    const KofunSemanticId *node_id
+) {
+    size_t index;
+    for (index = 0u; index < producer->function_count; index += 1u) {
+        ProducerFunction *function = &producer->functions[index];
+        if (memcmp(
+                function->node.bytes,
+                node_id->bytes,
+                KOFUN_SEMANTIC_ID_BYTES) == 0) {
+            return function;
+        }
+    }
+    return NULL;
+}
+
+static bool producer_function_has_print(
+    const Producer *producer,
+    const ProducerFunction *function
+) {
+    int64_t cursor = skip_trivia(producer->source, function->body_open);
+    while (cursor >= 0 && cursor < function->end) {
+        int64_t next = token_end(producer->source, cursor);
+        if (token_equal(producer->source, cursor, "print")) {
+            int64_t open = skip_trivia(producer->source, next);
+            if (open < function->end &&
+                token_equal(producer->source, open, "(")) {
+                return true;
+            }
+        }
+        if (next <= cursor) return false;
+        cursor = skip_trivia(producer->source, next);
+    }
+    return false;
+}
+
+static bool producer_add_effect_facts(Producer *producer) {
+    KofunEffectGraph graph;
+    KofunEffectResult result;
+    size_t function_index;
+    size_t node_index;
+    memset(&graph, 0, sizeof(graph));
+    graph.function_count = producer->function_count;
+    if (graph.function_count == 0u ||
+        graph.function_count > KOFUN_EFFECT_MAX_FUNCTIONS) {
+        return false;
+    }
+    for (function_index = 0u;
+         function_index < graph.function_count;
+         function_index += 1u) {
+        ProducerFunction *function = &producer->functions[function_index];
+        graph.names[function_index] = function->name;
+        graph.direct_io[function_index] =
+            producer_function_has_print(producer, function);
+    }
+    for (node_index = 0u;
+         node_index < producer->node_count;
+         node_index += 1u) {
+        ProducerNode *call = &producer->nodes[node_index];
+        ProducerFunction *caller;
+        uint16_t dependency_index;
+        if (call->value.kind != KOFUN_SEMANTIC_NODE_CALL) continue;
+        caller = producer_function_for_offset(
+            producer,
+            (int64_t)call->value.span.start
+        );
+        if (caller == NULL) return false;
+        for (dependency_index = 0u;
+             dependency_index < call->value.dependency_count;
+             dependency_index += 1u) {
+            ProducerFunction *callee = producer_function_for_node(
+                producer,
+                &call->dependencies[dependency_index]
+            );
+            if (callee != NULL) {
+                size_t caller_index = (size_t)(caller - producer->functions);
+                size_t callee_index = (size_t)(callee - producer->functions);
+                graph.calls[caller_index][callee_index] = true;
+            }
+        }
+    }
+    if (!kofun_effect_infer(&graph, &result)) return false;
+    for (function_index = 0u;
+         function_index < graph.function_count;
+         function_index += 1u) {
+        ProducerFunction *function = &producer->functions[function_index];
+        bool direct = graph.direct_io[function_index];
+        size_t callee_index = result.forcing_callee[function_index];
+        ProducerFact *fact = producer_add_fact(
+            producer,
+            function->node,
+            KOFUN_SEMANTIC_FACT_EFFECT,
+            KOFUN_SEMANTIC_VALIDATED,
+            result.effects[function_index] == KOFUN_EFFECT_IO ? "io" : "pure",
+            result.effects[function_index] == KOFUN_EFFECT_PURE ? "" :
+                (direct ? KOFUN_SEMANTIC_REASON_EFFECT_IO_ROOT_PRINT :
+                    KOFUN_SEMANTIC_REASON_EFFECT_IO_CALLEE)
+        );
+        if (fact == NULL) return false;
+        if (!direct && result.effects[function_index] == KOFUN_EFFECT_IO) {
+            if (callee_index >= graph.function_count ||
+                !producer_fact_add_dependency(
+                    fact,
+                    &producer->functions[callee_index].node)) {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 static bool producer_collect_scopes_and_bindings(Producer *producer) {
@@ -3512,6 +3625,16 @@ static bool producer_run(
         producer_set_tooling_error(
             result, "ETS04", 0u, PRODUCER_EVENT_NONE,
             "semantic diagnostic projection failed"
+        );
+        return false;
+    }
+    if (authority.exit_class == 0u &&
+        !producer_add_effect_facts(&producer)) {
+        stage2_authority_result_destroy(&authority);
+        free(owned_source);
+        producer_set_tooling_error(
+            result, "ETS04", 0u, PRODUCER_EVENT_NONE,
+            "bounded effect inference failed"
         );
         return false;
     }

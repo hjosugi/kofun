@@ -6983,6 +6983,8 @@ fn lower_enum_match(
     let mut covered = "|"
     let mut seen_catchall = false
     let mut dispatch = ""
+    let mut dense_dispatch = ""
+    let mut dense_eligible = true
     let mut failure_result = "0"
     if is_main {
         failure_result = "1"
@@ -7007,6 +7009,9 @@ fn lower_enum_match(
             enum_binding_catchall_name(pattern)
         let catchall =
             pattern_kind == "WildcardPattern" || binding_catchall
+        if catchall {
+            dense_eligible = false
+        }
         if seen_catchall {
             return "error[E2S26]: pattern after catch-all is unreachable at byte " +
             to_text(pattern_start)
@@ -7049,6 +7054,9 @@ fn lower_enum_match(
                 "` of enum `" + enum_type +
                 "` declares a payload outside this Core slice; one `Int` " +
                 "field is supported at byte " + to_text(pattern_start)
+            }
+            if arity != 0 {
+                dense_eligible = false
             }
             if applied != (arity == 1) {
                 let mut arity_message = "constructor pattern `" + pattern +
@@ -7093,6 +7101,7 @@ fn lower_enum_match(
         let mut arrow = after_pattern
         if arrow < len(source) && token_text(source, arrow) == "if" {
             guarded = true
+            dense_eligible = false
             guard_start = skip_trivia(source, token_end(source, arrow))
             guard_end = condition_end(source, guard_start)
             if guard_end < 0 {
@@ -7125,6 +7134,13 @@ fn lower_enum_match(
         )
         if starts_with(arm_body, "error[") {
             return arm_body
+        }
+        if !catchall && !guarded && payload_name_start < 0 {
+            dense_dispatch = dense_dispatch +
+            "            case INT64_C(" + to_text(tag) + "): {\n" +
+            arm_body +
+            "                break;\n" +
+            "            }\n"
         }
         let mut pattern_condition = "true"
         if !catchall {
@@ -7213,6 +7229,16 @@ fn lower_enum_match(
         " at byte " + to_text(match_start)
     }
     let scrutinee_id = hir_use_binding_id(hir, value_start)
+    if dense_eligible && !seen_catchall {
+        return "    {\n" +
+        "        KofunEnumValue kofun_match_value = k_b" + scrutinee_id +
+        ";\n" +
+        "        (void)kofun_match_value;\n" +
+        "        switch (kofun_match_value.tag) {\n" +
+        dense_dispatch +
+        "        }\n" +
+        "    }\n"
+    }
     return "    {\n" +
     "        KofunEnumValue kofun_match_value = k_b" + scrutinee_id +
     ";\n" +

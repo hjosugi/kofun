@@ -1,0 +1,9 @@
+fn main() {
+    let outer = fn(x) => {
+        let captured = fn(y) => x
+        let as_int: Int = captured(1)
+        let as_bool: Bool = captured(true)
+        as_bool
+    }
+    outer
+}

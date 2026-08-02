@@ -104,6 +104,26 @@ type Resolution =
     | Ambiguous(earlier: UtcOffset, later: UtcOffset)
     | Nonexistent(before: UtcOffset, after: UtcOffset)
 
+# Choosing an instant is caller policy, not lookup policy. Fold and gap choices
+# stay separate so enabling one decision cannot silently enable the other.
+type FoldPolicy =
+    | FoldEarlier
+    | FoldLater
+    | FoldReject
+
+type GapPolicy =
+    | GapShiftForward
+    | GapReject
+
+# The normalized policy is stored in an applied result after the distinct
+# input policy types have made an invalid fold/gap combination unrepresentable.
+type ResolutionPolicy =
+    | AppliedFoldEarlier
+    | AppliedFoldLater
+    | AppliedFoldReject
+    | AppliedGapShiftForward
+    | AppliedGapReject
+
 # A resolution together with what produced it. Serializing this rather than a
 # bare offset is what makes rule-version drift visible in recorded output.
 type ResolvedLocal = {
@@ -112,6 +132,17 @@ type ResolvedLocal = {
     resolution: Resolution,
     version: Int,
     digest: Int,
+}
+
+type ResolutionPolicyError =
+    | FoldPolicyRefused(resolved: ResolvedLocal)
+    | GapPolicyRefused(resolved: ResolvedLocal)
+    | PolicyNotApplicable(resolved: ResolvedLocal)
+
+type AppliedResolution = {
+    resolved: ResolvedLocal,
+    policy: ResolutionPolicy,
+    instant: Instant,
 }
 
 # The sum over bytes 0 .. n-2, modulo TZDB_DIGEST_MODULUS. The declared digest
@@ -153,6 +184,32 @@ fn tzdb_resolve_local(
     ...
 }
 
+# Binds the raw resolution to the database that produced it. Zone, version,
+# and digest are not caller-supplied serialization parameters.
+fn tzdb_resolved_local(
+    database: Tzdb,
+    local: LocalDateTime
+) -> Result[ResolvedLocal, TzdbError] {
+    ...
+}
+
+# Neither operation has a policy-free overload. Unique is returned unchanged
+# while still recording the supplied policy; Reject is a typed policy failure,
+# separate from every TzdbError raised while reading or resolving rules.
+fn tzdb_apply_fold(
+    resolved: ResolvedLocal,
+    policy: FoldPolicy
+) -> Result[AppliedResolution, ResolutionPolicyError] {
+    ...
+}
+
+fn tzdb_apply_gap(
+    resolved: ResolvedLocal,
+    policy: GapPolicy
+) -> Result[AppliedResolution, ResolutionPolicyError] {
+    ...
+}
+
 # An instant already names one point on the UTC time line, so exactly one
 # offset is in force there and the result is an offset rather than a sum.
 fn tzdb_resolve_instant(
@@ -175,5 +232,10 @@ fn tzdb_local_from_instant(
 # every offset it names, and the version and digest of the rules that produced
 # it. Byte-identical for identical inputs.
 fn tzdb_serialize(resolved: ResolvedLocal) -> Text {
+    ...
+}
+
+# The same provenance plus the explicit policy and its selected instant.
+fn tzdb_serialize_applied(applied: AppliedResolution) -> Text {
     ...
 }

@@ -1,0 +1,10 @@
+{
+  "schema": "kofun.scoped-parallelism-model/v1",
+  "scope": {
+    "exit_step": 5,
+    "tasks": [],
+    "parent_actions": [
+      { "step": 5, "mode": "read", "place": { "base": "value" } }
+    ]
+  }
+}

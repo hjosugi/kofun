@@ -1,0 +1,7 @@
+fn main() {
+    let value = 1
+    let first = value
+    let value = true
+    let second = value
+    second
+}
