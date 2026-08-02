@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 78,
+  "open_issues": 76,
   "issues": [
     {
       "number": 26,
@@ -298,9 +298,9 @@
       "number": 554,
       "title": "Stage 2: lower contiguous payload-free enum matches to C switch",
       "state_labels": [
-        "ready"
+        "blocked"
       ],
-      "state_line": "ready",
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
         "b55d56101add13bedee87a589ea4d8db9801277c"
@@ -322,9 +322,9 @@
       "number": 569,
       "title": "RFC: define affine authority capabilities for environment access",
       "state_labels": [
-        "ready"
+        "blocked"
       ],
-      "state_line": "ready",
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
         "59a75a60fd6bbe407f29929555d907abf06cfa0a"
@@ -339,7 +339,8 @@
       "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
-        "b6241acc8cd33819a4a1c92b1a301c02b46cd133"
+        "78626dcabfe4765beaff38f59a7b29ba3f8013bd",
+        "c153beb3526e2d21c4844a3db01c52823a5f27f5"
       ]
     },
     {
@@ -578,9 +579,9 @@
       "number": 880,
       "title": "Call arguments v1 slice 1: parse labels and canonical trailing lambdas",
       "state_labels": [
-        "ready"
+        "blocked"
       ],
-      "state_line": "ready",
+      "state_line": "blocked",
       "blocked_by": [
         625
       ],
@@ -646,27 +647,19 @@
       "number": 891,
       "title": "Stage 2 Text values: return Text, convert Int, and concatenate without invalid C",
       "state_labels": [
-        "ready"
+        "blocked"
       ],
-      "state_line": "ready",
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
         "b94cfc72cd63d0255ab914b365ca7910309fa7d2"
       ]
     },
     {
-      "number": 893,
-      "title": "tzdb: the arithmetic-overflow payload is a copy of its own discriminant",
-      "state_labels": [],
-      "state_line": null,
-      "blocked_by": [],
-      "evidence_commits": []
-    },
-    {
       "number": 900,
       "title": "bindgen-c: sanitizer-backed generated-boundary gate",
       "state_labels": [
-        "ready"
+        "blocked"
       ],
       "state_line": null,
       "blocked_by": [],
@@ -676,7 +669,7 @@
       "number": 901,
       "title": "bindgen-c: adversarial macro fuzzing and bounded Clang execution",
       "state_labels": [
-        "ready"
+        "blocked"
       ],
       "state_line": null,
       "blocked_by": [],
@@ -686,21 +679,14 @@
       "number": 902,
       "title": "bindgen-c: enforce a mechanical raw-binding import boundary",
       "state_labels": [
-        "needs-detail"
+        "needs-decision"
       ],
-      "state_line": null,
+      "state_line": "needs-decision",
       "blocked_by": [],
-      "evidence_commits": []
-    },
-    {
-      "number": 903,
-      "title": "bindgen-c: verify calling conventions instead of recording a constant",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": null,
-      "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [
+        "356931b8c8f8d399d7b8d3aa84421bcec99578f6",
+        "41b531f73e6b751f385c62b4ef689992f676afef"
+      ]
     },
     {
       "number": 904,
@@ -711,19 +697,6 @@
       "state_line": null,
       "blocked_by": [],
       "evidence_commits": []
-    },
-    {
-      "number": 907,
-      "title": "RFC: structural ownership-kind classification for ADTs, tuples, and generic instantiation",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "7ce5cb15a3c078eb7c787718dd876fe03504f03b",
-        "e2200ef86b9ee537c34847b45970c13bdb0ac4ee"
-      ]
     },
     {
       "number": 915,
@@ -741,9 +714,9 @@
       "number": 916,
       "title": "Integer const generics v1: literal Int type arguments for Fixed[scale]",
       "state_labels": [
-        "ready"
+        "blocked"
       ],
-      "state_line": "ready",
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
         "09a3229c33fd309f61a0a0ba407fd543f8c670e6",
@@ -765,10 +738,8 @@
     {
       "number": 920,
       "title": "ReuseCandidate v1: a normative reuse-candidate record with layout/uniqueness evidence, remarks, and a validator",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
+      "state_labels": [],
+      "state_line": "verification-pending",
       "blocked_by": [],
       "evidence_commits": [
         "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
@@ -778,21 +749,9 @@
       "number": 922,
       "title": "Stage 2: record the move site and attach it to the use-after-move diagnostic",
       "state_labels": [
-        "ready"
+        "blocked"
       ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
-      ]
-    },
-    {
-      "number": 923,
-      "title": "Dictionary elaboration v1: emit the explicit dictionary value and passing shape for same[Int] via Equal[Int]",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
         "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
@@ -801,10 +760,8 @@
     {
       "number": 924,
       "title": "Executable Optional(Int): AggregateLayout v1 construction and lowered direct narrowing in Stage 2",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
+      "state_labels": [],
+      "state_line": "verification-pending",
       "blocked_by": [],
       "evidence_commits": [
         "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
@@ -834,9 +791,9 @@
       "number": 943,
       "title": "Lambda spelling drift: Stage 2 accepts `(a, b) => e` and `x => e`, the grammar and SYNTAX.md describe neither",
       "state_labels": [
-        "needs-decision"
+        "in-progress"
       ],
-      "state_line": "needs-decision",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
         "7cdecd68dd42504da5881c6253e8f3d091636064"
@@ -851,24 +808,10 @@
       "evidence_commits": []
     },
     {
-      "number": 947,
-      "title": "Self-host driver corpus: five S features have no fixture that A1 ever compiles",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [
-        908
-      ],
-      "evidence_commits": [
-        "6f71b6df5cf54aa16542b89494d2194c4172a97e"
-      ]
-    },
-    {
       "number": 955,
       "title": "modules: spec/grammar.ebnf admits a top-level `let` that Stage 2 refuses with E2S02",
       "state_labels": [
-        "ready"
+        "blocked"
       ],
       "state_line": null,
       "blocked_by": [],
@@ -885,6 +828,40 @@
       "state_line": null,
       "blocked_by": [],
       "evidence_commits": []
+    },
+    {
+      "number": 974,
+      "title": "gates: `xxd` is an undocumented hard prerequisite, and it is not coreutils",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": null,
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 975,
+      "title": "backlog: decide whether a planning umbrella waiting on children is `blocked`",
+      "state_labels": [],
+      "state_line": "needs-decision",
+      "blocked_by": [
+        618
+      ],
+      "evidence_commits": [
+        "bc95dd5707be02c87fe4f2f49553c0876c4b4971"
+      ]
+    },
+    {
+      "number": 986,
+      "title": "backlog: synchronize live state after the #900/#901/#943 transitions",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": "in-progress",
+      "blocked_by": [],
+      "evidence_commits": [
+        "41b531f73e6b751f385c62b4ef689992f676afef"
+      ]
     }
   ]
 }
