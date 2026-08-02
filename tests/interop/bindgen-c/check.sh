@@ -16,9 +16,9 @@ set -eu
 #      target triple are read back, and changing one preprocessor define
 #      changes both artifacts and adds the conditional declaration;
 #   4. the recorded ABI facts agree with the C compiler itself: a generated
-#      probe prints sizeof/alignof/offsetof/enum values from the real header
-#      and must match the report, and every bound symbol exists in the
-#      fixture library;
+#      probe type-checks every reported calling convention, prints the
+#      convention plus sizeof/alignof/offsetof/enum facts from the real
+#      header, and must match the report; every bound symbol exists too;
 #   5. the module is mechanically valid in the checked C ABI profile: with a
 #      driver appended it builds through `kofun build --backend c --c-abi`,
 #      links against the fixture library, runs, and reproduces the recorded
@@ -136,6 +136,7 @@ node "$CASES/check-report.mjs" verify "$report" "$module" \
 # Skipped constructs are reported, and only reported: none may surface as a
 # declaration in the module.
 for name in kbfix_log kbfix_word kbfix_flags kbfix_message kbfix_double \
+    kbfix_ms_abi_probe \
     KBFIX_MAX_LABEL KBFIX_CLAMP
 do
     assert_not_grep "skipped construct $name leaked into the module as a function" \
@@ -174,7 +175,53 @@ clang -std=c11 -O2 -Wall -Wextra -Werror "$WORK/probe.c" -o "$WORK/probe" ||
     fail 'ABI probe did not compile against the fixture header'
 "$WORK/probe" >"$WORK/probe.actual"
 cmp "$WORK/probe.expected" "$WORK/probe.actual" ||
-    fail 'the C compiler disagrees with the recorded sizes, offsets, or enum values'
+    fail 'the C compiler disagrees with the recorded calling conventions or layout facts'
+
+# Missing and invented convention data are fatal before a C probe is written.
+for corruption in missing unknown; do
+    node - "$report" "$WORK/report-$corruption-cc.json" "$corruption" <<'NODE'
+const { readFileSync, writeFileSync } = require('node:fs');
+const [input, output, corruption] = process.argv.slice(2);
+const report = JSON.parse(readFileSync(input, 'utf8'));
+if (corruption === 'missing') delete report.layout.functions[0].calling_convention;
+else report.layout.functions[0].calling_convention.id = 'invented-convention';
+writeFileSync(output, `${JSON.stringify(report)}\n`, 'utf8');
+NODE
+    if node "$CASES/make-abi-probe.mjs" \
+        "$WORK/report-$corruption-cc.json" "$CASES/fixture/kbfix.h" \
+        "$WORK/rejected-$corruption.c" "$WORK/rejected-$corruption.expected" \
+        >"$WORK/rejected-$corruption.stdout" \
+        2>"$WORK/rejected-$corruption.stderr"
+    then
+        fail "$corruption calling-convention evidence was accepted"
+    fi
+    require_line "$WORK/rejected-$corruption.stderr" 'calling convention' \
+        "$corruption convention refusal does not name the failed boundary"
+done
+
+# A structurally plausible report that assigns the accepted SysV convention
+# to the fixture's real ms_abi declaration reaches Clang and fails its type
+# compatibility check. This is the independent disagreement path.
+node - "$report" "$WORK/report-mismatched-cc.json" <<'NODE'
+const { readFileSync, writeFileSync } = require('node:fs');
+const [input, output] = process.argv.slice(2);
+const report = JSON.parse(readFileSync(input, 'utf8'));
+report.layout.functions[0].name = 'kbfix_ms_abi_probe';
+writeFileSync(output, `${JSON.stringify(report)}\n`, 'utf8');
+NODE
+node "$CASES/make-abi-probe.mjs" \
+    "$WORK/report-mismatched-cc.json" "$CASES/fixture/kbfix.h" \
+    "$WORK/mismatched-cc.c" "$WORK/mismatched-cc.expected" \
+    >"$WORK/mismatched-cc.stdout" 2>"$WORK/mismatched-cc.stderr" ||
+    fail 'mismatched convention report did not reach the independent C probe'
+if clang -std=c11 -O2 -Wall -Wextra -Werror "$WORK/mismatched-cc.c" \
+    -o "$WORK/mismatched-cc" >"$WORK/mismatched-cc-clang.stdout" \
+    2>"$WORK/mismatched-cc-clang.stderr"
+then
+    fail 'the C compiler accepted a report/header calling-convention disagreement'
+fi
+require_line "$WORK/mismatched-cc-clang.stderr" 'attributes are not compatible' \
+    'the C-side disagreement does not identify incompatible ABI attributes'
 
 # ------------------------------- every bound symbol exists in the library
 
@@ -240,5 +287,6 @@ printf 'bindgen-c: raw module and audit report are deterministic and context-pin
 printf 'bindgen-c: unsupported constructs are reported with reasons, never bound: PASS\n'
 printf 'bindgen-c: preprocessor context invalidates and regenerates the artifact: PASS\n'
 printf 'bindgen-c: C compiler agrees with recorded sizes, offsets, and enum values: PASS\n'
+printf 'bindgen-c: target-derived calling conventions match clang function types: PASS\n'
 printf 'bindgen-c: bindings build, link, and run in the checked C ABI profile: PASS\n'
 printf 'bindgen-c: raw-trusted marking is present; no safe facade is claimed: PASS\n'

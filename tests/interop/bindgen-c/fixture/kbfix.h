@@ -13,8 +13,9 @@
  *
  *   audit-only   a macro constant, a function-like macro, a variadic
  *                function, a union, a bitfield, a flexible array member, and
- *                an inline function. These must appear in the audit report
- *                with reasons and must not appear in the generated module.
+ *                an inline function, and a non-default calling convention.
+ *                These must appear in the audit report with reasons and must
+ *                not appear in the generated module.
  */
 #ifndef KBFIX_H
 #define KBFIX_H
@@ -84,6 +85,14 @@ const char *kbfix_library_name(void);
 /* Length of a NUL-terminated string; lets a caller that cannot dereference
  * pointers observe the library-owned string above. */
 long kbfix_name_length(const char *name);
+
+/* Scalar-only round trip through the target-default calling convention. */
+long kbfix_scalar_roundtrip(long value);
+
+/* audit-only: a real non-default convention on the pinned x86_64 target. */
+#if defined(__x86_64__)
+long __attribute__((ms_abi)) kbfix_ms_abi_probe(long value);
+#endif
 
 /* audit-only: variadic function. */
 int kbfix_log(const char *format, ...);

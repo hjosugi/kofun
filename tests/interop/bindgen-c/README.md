@@ -29,7 +29,8 @@ passed and returned by value.
 
 Audit-only, deliberately: an object-like macro constant, a function-like
 macro, a variadic function, a union, a bitfield struct, a flexible array
-member, and a `static inline` function. Each must appear in the
+member, a `static inline` function, and an x86_64 `ms_abi` declaration. Each
+must appear in the
 machine-readable report with a reason, and none may surface as a declaration
 in the module — skipped constructs never silently disappear, and never
 silently appear either.
@@ -43,9 +44,10 @@ silently appear either.
 | the interpretation context is captured | the module and report must record the clang version, effective target triple, language standard, defines, include paths, sysroot, and the header's sha256, which the gate recomputes with `sha256sum` |
 | context changes invalidate the artifact | regenerating with `-D KBFIX_EXTRA=1` must change both artifacts and must add `kbfix_extra_probe`, a declaration that exists only under that define — the define provably reached clang |
 | recorded ABI facts are the C compiler's facts | [`make-abi-probe.mjs`](make-abi-probe.mjs) generates a C program from the report; clang compiles it against the real header; its `sizeof`/`_Alignof`/`offsetof`/enum-constant output must equal the report's numbers byte for byte |
+| calling conventions are checked, not asserted | each accepted function records a target- and AST-derived convention; the generated C probe compares its real function type with an explicitly attributed type, while missing/unknown data and the fixture's non-default `ms_abi` declaration must be rejected with machine-readable reasons |
 | bound symbols exist | every `layout.functions[].symbol` must appear in `readelf --dyn-syms` of the fixture library |
 | the module is mechanically valid | concatenated with [`driver.kofun`](driver.kofun), it builds through `kofun build --backend c --c-abi --link-library`, where the independent c_abi compiler re-derives the record layout and `_Static_assert`s it into the emitted C |
-| the bindings actually work | the driver runs against `libkbfix.so` and must reproduce [`driver.stdout`](driver.stdout): accepted and refused status codes, an unchanged counter after refusal, a by-value record round trip, and the library-owned string observed through the boundary |
+| the bindings actually work | the driver runs against `libkbfix.so` and must reproduce [`driver.stdout`](driver.stdout): scalar-only, pointer-bearing, and by-value record calls, accepted and refused status codes, an unchanged counter after refusal, and the library-owned string observed through the boundary |
 | unsupported constructs are audited | [`check-report.mjs`](check-report.mjs) requires one row per deliberate construct, with kind, category, and a non-empty reason, in sorted order |
 | raw is marked raw | the `.raw.` filename segment, the banner, `trust: raw-trusted-foreign` in module and report, and the instruction to import only behind a hand-reviewed safe façade are all asserted |
 | malformed input fails loudly | a garbage header and a missing header must be refused with errors that name the cause, creating no output |
