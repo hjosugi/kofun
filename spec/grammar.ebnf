@@ -142,8 +142,16 @@ if_expr          = "if", expression, block,
 lambda           = canonical_lambda
                  | parenthesized_lambda
                  | bare_lambda ;
-canonical_lambda = "fn", "(", parameters, ")",
-                   ( "=>", expression | block ) ;
+(* A block body for the canonical form is planned and is NOT derived here,
+   because this grammar states what Stage 2 accepts (#943). Measured on
+   `bin/kofun check`: `fn(x) { return x + 1 }` and `fn(x: Int) { ... }` both
+   fail, and neither fails by name — the parameter list is not recognised as
+   one, so the parameter never binds and `E2S35` reports an unknown lexical
+   binding for a symbol the author did not write. The accepted design contract
+   for the block body is `spec/syntax/call-arguments-v1.md`; the current
+   boundary is pinned by `unsupported_block_lambda` in
+   `tests/conformance/syntax/issues_35_47/run.sh`. *)
+canonical_lambda = "fn", "(", parameters, ")", "=>", expression ;
 parenthesized_lambda = "(", parameters, ")", "=>", expression ;
 bare_lambda      = identifier, "=>", expression ;
 
