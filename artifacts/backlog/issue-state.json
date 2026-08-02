@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 78,
+  "open_issues": 77,
   "issues": [
     {
       "number": 26,
@@ -19,7 +19,9 @@
       ],
       "state_line": "blocked",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [
+        "71d49724cced0f41b79ebc0f253f7570f23b1b14"
+      ]
     },
     {
       "number": 27,
@@ -825,30 +827,21 @@
       "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
-        "6e8d96b32137d4ef0ba7e7869464ccd9bbb07746"
-      ]
-    },
-    {
-      "number": 1001,
-      "title": "wasm32 object arena: linear memory, u64 headers, and bounded allocation",
-      "state_labels": [
-        "blocked"
-      ],
-      "state_line": "blocked",
-      "blocked_by": [],
-      "evidence_commits": [
-        "6e8d96b32137d4ef0ba7e7869464ccd9bbb07746"
+        "6e8d96b32137d4ef0ba7e7869464ccd9bbb07746",
+        "71d49724cced0f41b79ebc0f253f7570f23b1b14"
       ]
     },
     {
       "number": 1002,
       "title": "wasm32 Text slice: guest literals, references, and text_out execution",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
+      "state_line": "ready",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [
+        "71d49724cced0f41b79ebc0f253f7570f23b1b14"
+      ]
     },
     {
       "number": 1004,
@@ -858,7 +851,9 @@
       ],
       "state_line": "blocked",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [
+        "71d49724cced0f41b79ebc0f253f7570f23b1b14"
+      ]
     },
     {
       "number": 1008,
@@ -877,9 +872,9 @@
       "number": 1018,
       "title": "Stage 2 resolver: enforce cross-module confusable collisions as EUNICODE008",
       "state_labels": [
-        "ready"
+        "in-progress"
       ],
-      "state_line": "ready",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
         "4ad2d657658a6d35e196ad070e3fbca1765d5d04"
