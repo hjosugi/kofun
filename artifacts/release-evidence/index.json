@@ -2,7 +2,7 @@
   "schema": "kofun.release-evidence/v1",
   "manifest_version": 1,
   "inputs": {
-    "release/claims.json": "b913be717f84b2d92df1de6635f1e0191ff19001a70e7ad740944a447dc02033",
+    "release/claims.json": "87462aea7cca526f84aa4648418d20156d132968bf3ebab8eaf71de1c6026667",
     "spec/release-claim.schema.json": "8cf649858ac955e79ef2e05a5cd01d5234b6b1d87b2fd64a998e2a9ec6af3485"
   },
   "states": {
@@ -33,7 +33,7 @@
         "stage2"
       ],
       "positive_gate": "sh bootstrap/stage2/check.sh",
-      "negative_boundary": "bootstrap/stage2/fixtures/borrowed_move_text.kofun",
+      "negative_boundary": "tests/compile-fail/use_after_take.kofun",
       "reproduction": "task stage2",
       "prerequisites": []
     },
@@ -628,7 +628,6 @@
     "bootstrap/selfhost/driver/corpus_reject.stdout": "fe12ce5f6d708d7a23b60d98cacb06a45bbdbe047309260774ae3f95a1330fcf",
     "bootstrap/stage1/README.md": "e4f5444bab201f25fbe4d4fe9d7273dc0a6d374771787084b8300d4b0e31a9af",
     "bootstrap/stage1/SHA256SUMS": "02f4c987697b281e83e593c623e9f1d1ec7a629f20077896c821411c1f4f2755",
-    "bootstrap/stage2/fixtures/borrowed_move_text.kofun": "34502461891e7c8f42c9017e9fbfc857e54b10ca4fe59551be9ab9ab22d2c1b6",
     "bootstrap/wasm/fixtures/unsupported_text.kofun": "e0a45136410ddb85e9f5b3e5c39e7903d96da39aa53aaf3078d2555b4f383864",
     "docs/BUILD_SYSTEM.md": "d4a372fc97c53874cc2438f3de132289beb033ce2bf1e67518b702de796b05a8",
     "docs/COMPILER_ARCHITECTURE.md": "9ca8641a3d117d84be9ce7f311d26c5f7e8df3b1a5772f3be5b8db67808d56cc",
@@ -637,7 +636,7 @@
     "docs/GETTING_STARTED.md": "4a9a3bae70796c12216f7448e98898f0297926ab3bd80219234b21dc06cc1f95",
     "docs/LAW_SYSTEM.md": "81276192f86e03b94369d6d2342a5f681533e64e6df9d4eddd73f3f25de96f99",
     "docs/LINGUIST_RECOGNITION.md": "9d81df186a6a92b4b65850e4ca7fb0e9ba97ec705774b935466d2148865eab87",
-    "docs/MEMORY_MODEL.md": "604072ba01e805333081699022dc01b122e66cb843b041c6807f91c8d17bd080",
+    "docs/MEMORY_MODEL.md": "bc3add7dd5703cb241cf66771351fb072fff9c2015026cb6b3cedcae389c3185",
     "docs/MVP_IMPLEMENTED.md": "a90d0400777d52f5240b8d7cc8a8bd46fb139bf786ae36ba39ca493cc1ccca40",
     "docs/NATIVE_BACKEND.md": "ab16b7bc6ae59071f9ae73c6fafde44732c887d122bb711104eb231297680bfe",
     "docs/ROADMAP.md": "31d94eba2d40de326e29f7835b9244ace4073d1f482a23372ea2b11c6a873209",
@@ -659,6 +658,7 @@
     "stdlib/tests/verify.sh": "3c9056344a95b957792a6ab38e42f81a2ff86786b5ade6680cf8dc9d31edc5dd",
     "tests/cli.sh": "72aff8e52acb330d5be247f46ad3bfe875677c2f6d53bb823ed69fb3b9795d20",
     "tests/cli_stage2_outcomes.sh": "9f84a95495afab023a1572b37a2508a4ee02a3a89881df14b887c209a628a9a7",
+    "tests/compile-fail/use_after_take.kofun": "c190d3a19eef35d4c33e1798604bce227251326cbc8531a19e6b0b88e8ba5054",
     "tests/conformance/capabilities.tsv": "30acd606796aa6214b63dac906a6a41d1ad1fd1011537a81c2840f2418eef7e1",
     "tests/conformance/functions/division_floor_signs.kofun": "6bfd48679ebcf604305c78271b80e803866a64d8e9c8f732f5b1884d4d0d67b0",
     "tests/conformance/modules/re-exports/run.sh": "6cda1b8df5fa2778912e3b378d166cc4df461e0fa4cc505cb81b28235bb5c803",

@@ -16,7 +16,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | Claim | Kind | Evidence | Observation |
 |---|---|---|---|
 | `arithmetic-core` | rejection | `tests/conformance/numeric/reject_slash_operator.kofun` | `/` on `Int` is refused with one diagnostic instead of being lowered. |
-| `borrowed-list-ownership` | rejection | `bootstrap/stage2/fixtures/borrowed_move_text.kofun` | `--check-ownership` refuses `E007` on the borrowed-`List[Text]` return, matching the pinned `borrowed_move_text.stderr` byte for byte. |
+| `borrowed-list-ownership` | rejection | `tests/compile-fail/use_after_take.kofun` | Using a moved binding is refused at compile time. |
 | `bounded-tzdb-producer` | rejection | `tests/stdlib/tzdb/tzdb.kofun` | Malformed magic, unsupported version, digest mismatch, invalid zone, truncation, trailing bytes, arithmetic overflow, oversized input, and transition-limit exhaustion are distinct closed values. |
 | `c-abi-profile` | limit | `tests/conformance/capabilities.tsv` | Backends outside the host-C profile are recorded as unsupported with a stated reason. |
 | `c11-function-calls` | rejection | `tests/diagnostics/stage2/e2s10_unsupported_statement.kofun` | Statements outside the lowered slice are refused with `E2S10` rather than mis-lowered. |
