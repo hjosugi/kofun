@@ -820,7 +820,7 @@ and constructor limits, structural IR, and diagnostics are specified in
 `spec/enum-match-exhaustiveness.md`.
 
 General arm type unification, generic or wider/nested payload execution,
-value-producing enum matches, and ownership-aware destructuring remain open.
+enum-valued match results, and ownership-aware destructuring remain open.
 The syntax tree deliberately does not claim those semantic or backend
 capabilities.
 

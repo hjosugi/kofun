@@ -1,0 +1,15 @@
+# Issue #921. Every arm of a value-position match must produce an `Int`; a
+# `print` arm produces nothing.
+type Reply =
+    | Pending
+    | Ready(value: Int)
+
+fn main() -> Int {
+    let ready: Reply = Ready(1)
+    let scored: Int = match ready {
+        Pending => { 0 },
+        Ready(value) => { print(value) },
+    }
+    print(scored)
+    return 0
+}

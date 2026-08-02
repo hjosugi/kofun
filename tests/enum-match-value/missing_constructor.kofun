@@ -1,0 +1,14 @@
+# Issue #921. A value-position enum match that omits a constructor is refused
+# by the landed coverage analysis, naming the missing constructor.
+type Reply =
+    | Pending
+    | Ready(value: Int)
+
+fn main() -> Int {
+    let ready: Reply = Ready(1)
+    let scored: Int = match ready {
+        Ready(value) => { value },
+    }
+    print(scored)
+    return 0
+}

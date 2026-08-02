@@ -71,8 +71,12 @@ colliding bounded declarations and `E2S32` rejects unresolved or mismatched
 enum uses. Enum values use an internal tag-plus-Int-payload aggregate and may
 cross same-typed function arguments and returns; they cannot enter Int
 expressions. Payload bindings are visible to guards and arm bodies, and a
-binding catch-all may be re-matched. Generic enums, wider/nested payloads, and
-value-producing enum matches remain outside this executable slice.
+binding catch-all may be re-matched. A concrete-enum match also produces one
+`Int` in `let`, `print`, assignment, and `return`, under the same coverage
+rules and the same `E2S30` arm rule the Bool value match uses; the scrutinee is
+read once before any arm is tested and only the selected arm's result
+expression runs. Generic enums, wider/nested payloads, and enum-valued match
+results remain outside this executable slice.
 Record values are untagged per-type structs rather than the enum
 tag-plus-payload representation. Generated `offsetof`/`sizeof` assertions pin
 their LP64 layout to AggregateLayout v1. Direct construction is lowered only

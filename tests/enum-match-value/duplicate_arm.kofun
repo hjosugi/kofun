@@ -1,0 +1,16 @@
+# Issue #921. A constructor already covered by an earlier arm makes the later
+# arm unreachable, in value position exactly as in statement position.
+type Reply =
+    | Pending
+    | Ready(value: Int)
+
+fn main() -> Int {
+    let ready: Reply = Ready(1)
+    let scored: Int = match ready {
+        Ready(value) => { value },
+        Pending => { 0 },
+        Ready(other) => { other },
+    }
+    print(scored)
+    return 0
+}

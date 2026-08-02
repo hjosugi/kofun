@@ -1,0 +1,14 @@
+# Issue #921. An empty arm block produces no value.
+type Reply =
+    | Pending
+    | Ready(value: Int)
+
+fn main() -> Int {
+    let ready: Reply = Ready(1)
+    let scored: Int = match ready {
+        Pending => { },
+        Ready(value) => { value },
+    }
+    print(scored)
+    return 0
+}
