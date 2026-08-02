@@ -1,0 +1,99 @@
+# Corpus item 2: a parser returning Result through three fallible steps.
+#
+# Status: executable-today.
+# Run: ./bin/kofun check tests/usability/02_parser_result.kofun
+#      ./bin/kofun build tests/usability/02_parser_result.kofun -o BIN && BIN
+#      # prints 420 then -2
+#
+# What runs here is the explicit baseline the #624 decision comment promises
+# always remains available: "exhaustive `match`, subject-first pipelines,
+# `result.map`/`flat_map`, and ordinary callbacks".
+#
+# What does *not* run is the sugar and the generic type:
+#
+#   * `Result[T, E]` is a generic ADT. `type Result[T, E] = | Ok(T) | Err(E)`
+#     is refused with "generic ADTs are unsupported in this frontend slice"
+#     (E2S45, tests/conformance/adt/generic_unsupported.kofun). So this file
+#     declares a monomorphic, purpose-built `ParseResult` instead. Every
+#     fallible type in a real program would need its own copy.
+#
+#   * Postfix `?` — DD-036, spec/result-propagation-v1.md — is not
+#     implemented. That spec says so itself: "No parser, type checker, or
+#     backend implements this syntax". The three-step version with `?` is
+#     four lines; the version below is thirty-one, and the nesting is the
+#     whole reason #624 wants the comparison.
+#
+# The rightward drift is not a style choice. `match` arms are statements, so
+# each fallible step opens a new block one level deeper, and the error case
+# is repeated verbatim at every level. 02_parser_result.rs is the same parser
+# with `?`, flat.
+#
+# The accumulator is an `Int` rather than a `ParseResult` because
+# `let mut outcome: ParseResult` is refused with "concrete enum binding
+# `outcome` is match-only in this Core slice" (E2S32) — an enum binding can
+# be matched but not reassigned. #921 owns that.
+#
+# The three `: ParseResult` annotations look redundant and are not. Delete
+# them and `./bin/kofun check` still says `ok`; `./bin/kofun build` then
+# fails inside the generated C with
+#
+#     error: invalid initializer
+#         KofunEnumValue kofun_match_value = k_b11;
+#
+# `check` passing is not evidence that a program builds. This corpus found
+# that twice — here and in corpus item 4 — and rubric.md scores it under
+# "diagnostic quality", because the second failure is reported by the host C
+# compiler against generated code the author never wrote.
+
+type ParseResult =
+    | Parsed(value: Int)
+    | Failed(code: Int)
+
+fn step_digits(source: Int) -> ParseResult {
+    if source < 0 {
+        return Failed(1)
+    }
+    return Parsed(source)
+}
+
+fn step_range(value: Int) -> ParseResult {
+    if value > 999 {
+        return Failed(2)
+    }
+    return Parsed(value)
+}
+
+fn step_checksum(value: Int) -> ParseResult {
+    if value % 2 == 1 {
+        return Failed(3)
+    }
+    return Parsed(value * 10)
+}
+
+fn parse(source: Int) -> Int {
+    let mut code = 0
+    let digits: ParseResult = step_digits(source)
+    match digits {
+        Failed(reason) => { code = 0 - reason },
+        Parsed(number) => {
+            let ranged: ParseResult = step_range(number)
+            match ranged {
+                Failed(reason) => { code = 0 - reason },
+                Parsed(bounded) => {
+                    let checked: ParseResult = step_checksum(bounded)
+                    match checked {
+                        Failed(reason) => { code = 0 - reason },
+                        Parsed(value) => { code = value },
+                    }
+                },
+            }
+        },
+    }
+    return code
+}
+
+fn main() -> Int {
+    print(parse(42))
+    print(parse(1000))
+    return 0
+}

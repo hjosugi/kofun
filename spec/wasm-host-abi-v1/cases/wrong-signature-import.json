@@ -1,0 +1,10 @@
+{
+  "schema": "kofun.wasm-host-abi-case/v1",
+  "id": "wrong-signature-import",
+  "mutation": "import-signature-mismatch",
+  "expect": "refused",
+  "diagnostic": "import-signature-mismatch",
+  "engine": "refused",
+  "engine_error": "LinkError",
+  "why": "text_out is imported as (func (param i32 i32)) where the contract pins (func (param i32)). The engine refuses it too, because the host publishes its allowlist as typed wasm exports rather than as JavaScript functions, which are coerced to whatever signature the importer declared."
+}

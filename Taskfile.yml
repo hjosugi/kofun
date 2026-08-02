@@ -164,7 +164,7 @@ tasks:
       - "KOFUN_PURE_IO_CASES=96 sh tests/fuzz/pure_io.sh"
 
   traits:
-    desc: "Verify the bounded trait declaration frontend"
+    desc: "Verify the bounded trait declaration frontend and dictionary shape"
     cmds:
       - "sh tests/conformance/traits/run.sh"
 
@@ -350,6 +350,11 @@ tasks:
     cmds:
       - "sh tests/move-assertion/check.sh"
 
+  usability-corpus:
+    desc: "Verify the usability comparison corpus and its review rubric"
+    cmds:
+      - "sh tests/usability/check.sh"
+
   capabilities:
     desc: "Verify the standard library capability matrix states and evidence"
     cmds:
@@ -414,6 +419,11 @@ tasks:
     desc: "Verify AggregateLayout v1 descriptors and vectors"
     cmds:
       - "sh spec/aggregate-layout-v1/check.sh"
+
+  wasm-host-abi:
+    desc: "Verify wasm32 host ABI v1 vectors and instantiation refusals"
+    cmds:
+      - "sh spec/wasm-host-abi-v1/check.sh"
 
   typed-sidecar-spec:
     desc: "Verify bounded complete/partial tooling artifacts"
@@ -650,6 +660,7 @@ tasks:
             example-law-evidence \
             benchmark-summary \
             move-assertion \
+            usability-corpus \
             capabilities \
             build-system \
             packages \
@@ -663,6 +674,7 @@ tasks:
             visibility-access \
             re-exports-spec \
             aggregate-layout \
+            wasm-host-abi \
             typed-sidecar-spec \
             typed-sidecar-codec \
             typed-sidecar-projector \

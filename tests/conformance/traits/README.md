@@ -1,9 +1,10 @@
 # Bounded trait declaration and implementation frontend
 
-Executable evidence for #332. `bootstrap/stage2/traits_frontend.c` parses
-one-method traits with one type parameter, concrete implementations, and
+Executable evidence for #332 and #923. `bootstrap/stage2/traits_frontend.c`
+parses one-method traits with one type parameter, concrete implementations, and
 generic functions carrying exactly one explicit bound; it assigns
-TraitId/MethodId/ImplementationId identities and emits typed IR.
+TraitId/MethodId/ImplementationId identities, elaborates the dictionary shape,
+and emits typed IR.
 
 Run:
 
@@ -13,10 +14,12 @@ sh tests/conformance/traits/run.sh
 
 ## Frontend-only boundary
 
-This slice lowers nothing. No dictionary is elaborated, nothing is
-monomorphised, and no runtime search is emitted or implied — the gate asserts
-the IR names no dictionary, monomorphisation, or vtable. #471 carries the
-dictionary elaboration that follows.
+The dictionary is elaborated; nothing below it is. Nothing is monomorphised, no
+vtable is laid out, and no runtime search is emitted or implied — the gate
+asserts the IR names no monomorphisation, vtable, or search, and that no
+backend artifact is written. Executing an elaborated dictionary is a separate
+follow-up, so this corpus is still evidence about typed IR and not about a
+running program.
 
 ## What `foreign` means here
 
@@ -38,6 +41,48 @@ type the alias resolves to rather than the alias.
   the normalized concrete type arguments, the outer nominal self-type identity,
   and the implementation declaration.
 
+## The elaborated dictionary (#923)
+
+The typed IR is `kofun-traits-ir/v2`. Four record kinds were added, and every
+v1 record kept its shape:
+
+- `dictionary-descriptor` — one per declared trait: the ABI schema version, the
+  TraitId, the slot count, and one `MethodId` per slot in declaration order.
+  Every dictionary for that trait has this layout.
+- `dictionary` — one per admissible implementation, with the
+  `dictionary-entry` records that fill its slots. Each entry pairs the
+  descriptor's slot `MethodId` with the implementation method that supplies it.
+- `dictionary-parameter` — one per bound a generic function declares, in
+  declaration order, recorded with the bound it discharges. `same` carries
+  exactly one, for its `Equal[T]` bound.
+- `dictionary-arguments` and `dictionary-parameter` on `call` — the dictionary a
+  bounded call passes and the callee parameter it fills.
+
+`method-call` gained `dictionary-parameter` and `method-slot`, so a trait method
+call inside a generic body resolves to a (dictionary parameter, slot) pair
+rather than through the bound alone.
+
+### The DictionaryId is derived, not assigned
+
+A `DictionaryId` is its `ImplementationId` with the `impl:` tag replaced by
+`dictionary:` and the trailing `/decl=N` declaration ordinal dropped:
+
+```
+impl:abi1/package:local/trait:local:Equal/args=builtin:Int/self=builtin:Int/decl=0
+dictionary:abi1/package:local/trait:local:Equal/args=builtin:Int/self=builtin:Int
+```
+
+Dropping the ordinal is the point. What remains is exactly the coherence key —
+ABI version, package, trait, normalized arguments, self-type — which overlap
+refusal already makes unique per admissible implementation. So unlike the
+`ImplementationId`, a `DictionaryId` is unchanged by declaration order, and
+`order_independence.kofun` compares the dictionary set and the dictionary each
+call passes with no stripping at all.
+
+The gate derives one field from the other and compares, rather than matching a
+fixed string, so a dictionary that stopped agreeing with its implementation or
+with the selection at its call site fails the gate.
+
 ## Resolution admits exactly one candidate
 
 Overlap is refused where implementations are *declared*, not where they are
@@ -53,7 +98,9 @@ than a claim.
 
 Every fixture with a `.stderr` golden is a refusal, and the gate asserts its
 own list is the same size as the glob, so a fixture added without a gate entry
-stops the build (DD-022).
+stops the build (DD-022). Elaboration runs last, only after every check has
+passed, so none of these programs gets a dictionary: the gate requires each to
+exit 1 with its exact diagnostic and to write no IR file at all.
 
 | Fixture | Code | Refuses |
 |---|---|---|

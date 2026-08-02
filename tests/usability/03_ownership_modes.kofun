@@ -1,0 +1,67 @@
+# Corpus item 3: a resource function showing read / edit / take, with no
+# use-after-move.
+#
+# Status: executable-today, on the bounded record frontend.
+# Run: cc -std=c11 -O2 bootstrap/stage2/record_frontend.c -o FRONTEND
+#      FRONTEND tests/usability/03_ownership_modes.kofun OUT.ir OUT.layout OUT.run
+#      # OUT.run records: call|function=lifecycle|result=14
+#
+# Two of the three modes run. The third does not exist, and that is a
+# decision rather than missing work.
+#
+#   read  — a borrowed view. `handle_of` below is called twice on the same
+#           binding and neither call consumes it.
+#   take  — a move. `release` consumes the session; the caller cannot use it
+#           again, and the checker proves that rather than trusting a naming
+#           convention.
+#   edit  — refused. `fn shift(edit token: Token)` is rejected with
+#           "error[E2S121]: `edit` access to a record is unsupported in v1;
+#           record fields are immutable"
+#           (tests/conformance/records/edit_parameter.kofun). This is DD-021:
+#           records are immutable, whole-value, and #909 does not reopen it.
+#           tests/usability/check.sh asserts that refusal so the row cannot
+#           quietly become wrong if the boundary moves.
+#
+# The mode keywords are frontend-specific, which is the finding rubric.md
+# scores under "semantic surprises". `read` and `take` parameters are
+# understood by the bounded record frontend
+# (bootstrap/stage2/record_frontend.c) and by nothing else. Run this same
+# file through `./bin/kofun check` and it is refused — here on the `Text`
+# field, which Stage 2 reaches first: "record `Session` has a field type
+# outside the Stage 2 Int/Bool slice" (E2S32). Remove the `Text` field and
+# Stage 2 gets one step further and then reports "unknown lexical binding
+# `session`", because it has parsed `read session: Session` as a parameter
+# named `read` and never bound `session` at all. The word that makes
+# ownership explicit is not merely unsupported on the production path; it is
+# silently reinterpreted as an identifier. check.sh pins both refusals.
+#
+# There is no use-after-move here, by construction. The refusal that proves
+# the checker would catch one is already checked in at
+# tests/conformance/records/use_after_move.kofun, which reports
+# "error[E2S123]: `token` was moved by `take` and cannot be used again".
+# This corpus references that fixture rather than copying it; check.sh runs
+# it.
+
+type Session = {
+    handle: Int,
+    label: Text,
+}
+
+# read: a borrowed view. The caller keeps the session.
+fn handle_of(read session: Session) -> Int {
+    return session.handle
+}
+
+# take: a move. The session is consumed and cannot be used again.
+fn release(take session: Session) -> Int {
+    take session
+    return 0
+}
+
+# Two reads of one binding, neither of which consumes it.
+fn lifecycle() -> Int {
+    let session = Session(handle: 7, label: "primary")
+    let first = handle_of(session)
+    let second = handle_of(session)
+    return first + second
+}

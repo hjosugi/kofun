@@ -114,3 +114,12 @@ references and 8-byte `u64` object headers, with golden vectors in
 `spec/aggregate-layout-v1/examples/core.wasm32.json`. That contract exists
 specifically so this target is not given 64-bit references to match the
 native backend's bytes; `Int` stays signed 64-bit here as everywhere.
+
+The host boundary those objects will cross is decided too:
+`spec/wasm-host-abi-v1.md` pins `kofun-wasm-host-abi-v1` — the import
+allowlist with exact wasm signatures, the required exports, the `Text` and
+`List` representations recomputed from the layout target, and the rule that
+a host may not retain a guest pointer past the call it was passed to. That is
+a different, later host binding than the two imports above: this target still
+exports `main(): void` and imports `kofun.print_i64` and `kofun.panic`, and
+nothing in that contract changes what this directory emits today.

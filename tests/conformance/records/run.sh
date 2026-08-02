@@ -188,6 +188,8 @@ expect_failure field_assignment E2S121
 expect_failure edit_parameter E2S121
 expect_failure partial_move E2S122
 expect_failure use_after_move E2S123
+expect_failure double_take E2S123
+expect_failure move_borrowed E2S122
 expect_failure argument_type_mismatch E2S124
 expect_failure map_literal E2S125
 expect_failure evaluation_failure E2S126
@@ -295,6 +297,30 @@ expect_stage2_failure stage2_argument_in_return
 expect_stage2_failure stage2_argument_in_arithmetic
 expect_stage2_failure stage2_argument_in_condition
 
+# spec/records-v1.md tells an implementer which code each condition raises, so
+# it is wrong in the way that matters if it disagrees with the registry the
+# compiler is actually gated against. The table drifted by one once already,
+# silently, because nothing compared the two.
+#
+# E2S106 and E2S107 are excluded by name: they are limits of the bounded
+# frontend surface (input length, unparseable token), not conditions of the
+# record semantics the document specifies.
+SPEC_TABLE="$ROOT/spec/records-v1.md"
+REGISTRY="$ROOT/tests/diagnostics/registry.tsv"
+grep -oE '\| `E2S[0-9]+` \|' "$SPEC_TABLE" | tr -d '|` ' >"$WORK/spec-codes"
+awk -F'\t' '$2 == "record" { print $1 }' "$REGISTRY" \
+    | grep -vxE 'E2S10[67]' >"$WORK/registry-codes"
+if ! cmp -s "$WORK/spec-codes" "$WORK/registry-codes"; then
+    row=$(cmp "$WORK/spec-codes" "$WORK/registry-codes" 2>/dev/null \
+        | sed -n 's/.*line \([0-9]*\).*/\1/p')
+    row=${row:-1}
+    fail "spec/records-v1.md disagrees with tests/diagnostics/registry.tsv at table row $row: \
+the document says $(sed -n "${row}p" "$WORK/spec-codes" || echo 'nothing'), \
+the registry gates $(sed -n "${row}p" "$WORK/registry-codes" || echo 'nothing')
+      the table must list every record-family code except E2S106 and E2S107, in
+      registry order; update the table, or register the code the compiler emits"
+fi
+
 printf '%s\n' \
     'PASS: Token-shaped records construct, pass, return, and read' \
     'PASS: written field order is free and storage follows declaration order' \
@@ -304,4 +330,5 @@ printf '%s\n' \
     'PASS: duplicate, missing, unknown, wrong-type, mutation, and move diagnostics are exact' \
     'PASS: Stage 2 executes nominal Int/Bool records in AggregateLayout order' \
     'PASS: a rejected record argument fails the compile instead of reaching the C' \
-    'PASS: the rejection survives let, return, arithmetic, and condition positions'
+    'PASS: the rejection survives let, return, arithmetic, and condition positions' \
+    'PASS: the specification names the same diagnostic codes the registry gates'
