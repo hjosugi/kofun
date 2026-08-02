@@ -1,0 +1,11 @@
+type Fixed[const scale: Int] = {
+    significand: Int,
+}
+
+fn cents(value: Fixed[-1]) -> Int {
+    return 0
+}
+
+fn main() {
+    print(0)
+}

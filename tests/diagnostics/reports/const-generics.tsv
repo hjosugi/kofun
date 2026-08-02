@@ -1,0 +1,7 @@
+# code	adapter	channel	exit	primary-span	secondary-span	artifact
+E2S148	const-generics	stdout	1	required	not-applicable	forbidden
+E2S149	const-generics	stdout	1	required	not-applicable	forbidden
+E2S150	const-generics	stdout	1	required	required	forbidden
+E2S151	const-generics	stdout	1	required	not-applicable	forbidden
+E2S152	const-generics	stdout	1	required	not-applicable	forbidden
+E2S153	const-generics	stdout	1	required	not-applicable	forbidden

@@ -1,0 +1,1 @@
+error[E2S150]: type `Money` declares no parameter and does not accept arguments; declaration at bytes 0..33; remove the argument list at bytes 54..55

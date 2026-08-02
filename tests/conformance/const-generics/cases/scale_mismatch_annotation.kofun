@@ -1,0 +1,12 @@
+type Fixed[const scale: Int] = {
+    significand: Int,
+}
+
+fn mills(value: Fixed[3]) -> Fixed[3] {
+    return value
+}
+
+fn cents(value: Fixed[3]) -> Fixed[2] {
+    let narrowed: Fixed[2] = mills(value)
+    return narrowed
+}

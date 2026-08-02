@@ -1,0 +1,12 @@
+# A const parameter is admissible on a nominal record only. A concrete enum
+# has no field list to key an instantiation against, so the parameter list is
+# refused where it is written rather than parsed and ignored.
+type Scaled[const scale: Int] = | Small | Large
+
+fn pick(value: Scaled[2]) -> Int {
+    return 0
+}
+
+fn main() {
+    print(0)
+}

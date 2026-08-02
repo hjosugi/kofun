@@ -1,0 +1,19 @@
+# Executable manifest for kofun.backend-differential/v1.
+
+fn corpus_name() -> Text {
+    return "const-generics"
+}
+
+fn expected_cases() -> Int {
+    return 1
+}
+
+fn case_names() -> List[Text] {
+    return [
+        "fixed_scale_instantiation.kofun"
+    ]
+}
+
+fn observations_sha256() -> Text {
+    return "3b90f2c044a1934dc8de2b5e4111288a6c53b52537b2d87790f6608f45c3687e"
+}
