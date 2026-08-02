@@ -20,7 +20,8 @@ Kofun has no out-parameters, so `optional_int_condition_binding` carries that
 second result. The gate excludes only that named shape difference and still
 requires both consumers.
 
-The self-test renames one member on each side and disconnects the Kofun
-pre-lowering validation call. Each mutation must apply and fail with the named
-missing member or dispatch. This is not whole-file textual equality and it does
-not replace the executable Optional construction/narrowing corpora.
+The self-test renames one member on each side and independently disconnects
+the pre-lowering validation call on both sides. Each mutation must apply and
+fail with the named missing member or dispatch. This is not whole-file textual
+equality and it does not replace the executable Optional
+construction/narrowing corpora.
