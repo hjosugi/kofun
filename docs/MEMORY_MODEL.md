@@ -386,9 +386,9 @@ fn total(read data: List[Int]) -> Int {
 }
 ```
 
-The task body uses Kofun's ordinary `fn(...) => expression` lambda from
-`spec/grammar.ebnf`. There is no second closure spelling: `||` is the logical-or
-operator, so a Rust-style `|| body` is not a closure here and does not parse.
+The task body uses Kofun's `fn(...) => expression` lambda form from
+`spec/grammar.ebnf`. There is no Rust-style `|| body` closure spelling: `||` is
+the logical-or operator, so that form is not a closure here and does not parse.
 
 The rule is one sentence: **inside a `par` block, sibling tasks are treated as
 simultaneously live and §3's exclusivity rule applies unchanged.**
