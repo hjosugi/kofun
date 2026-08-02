@@ -1,7 +1,7 @@
 {
   "schema": "kofun.reuse-candidate/v1",
-  "candidate_id": "candidate:different-layout",
-  "file_id": "fixture:different-layout",
+  "candidate_id": "candidate:backend-limitation-allocation",
+  "file_id": "fixture:backend-limitation-allocation",
   "matched_source": {
     "type_id": "Maybe",
     "constructor": "Present",
@@ -11,8 +11,8 @@
     }
   },
   "constructed_target": {
-    "type_id": "Shape",
-    "constructor": "Handle",
+    "type_id": "Maybe",
+    "constructor": "Present",
     "span": {
       "start": 40,
       "end": 52
@@ -20,7 +20,7 @@
   },
   "layout_evidence": {
     "contract": "kofun.aggregate-layout/v1",
-    "target_data_layout": "x86_64-linux",
+    "target_data_layout": "wasm32",
     "source_layout": {
       "layout_id": "Maybe",
       "size": "16",
@@ -32,15 +32,13 @@
       }
     },
     "target_layout": {
-      "layout_id": "Shape",
+      "layout_id": "Maybe",
       "size": "16",
       "align": "8",
       "field_count": 1,
       "scanning_shape": {
-        "pointers": [
-          "8"
-        ],
-        "drop": "managed"
+        "pointers": [],
+        "drop": "trivial"
       }
     }
   },
@@ -56,9 +54,9 @@
     "foreign_pointer": "absent",
     "alias": "absent"
   },
-  "write_ordering": "unknown",
+  "write_ordering": "evaluate-all-then-write",
   "backend_support": {
-    "backend_id": "c11-stage2",
+    "backend_id": "wasm32-node",
     "reuse_support": "unsupported",
     "guarantee_disposition": "not-applicable"
   },
@@ -66,7 +64,7 @@
     "ordinary_allocation": true,
     "reuse_candidate": false,
     "reuse_statically_guaranteed": false,
-    "reason": "incompatible-layout"
+    "reason": "backend-limitation"
   },
-  "remark": "reuse refused: source and target field or scanning layouts differ"
+  "remark": "reuse refused: selected backend cannot implement this candidate"
 }
