@@ -8,9 +8,8 @@ it does not invoke Clang, LLVM, a C backend, or a text-to-Wasm assembler.
 only the first half: it selects the bounded numeric binding described below —
 `main(): void` against `kofun.print_i64` and `kofun.panic` — and it will keep
 selecting it. The accepted `kofun-wasm-host-abi-v1` aggregate binding is a
-different target name, `wasm32-hostabi1`. That profile now emits its checked
-object arena, but still refuses every non-empty program until the Text and List
-lowering slices land.
+different target name, `wasm32-hostabi1`. That profile emits its checked
+object arena and the bounded Text slice below; List lowering remains separate.
 `spec/wasm-host-profile-v1.md` decides that split and
 `sh spec/wasm-host-profile-v1/check.sh` holds this target to it.
 
@@ -40,8 +39,35 @@ detail)` import when the zero result cannot be handled.
 `Text.byte_length` and `List.length`. `object_arena_check.sh` compares it with
 every header in the recomputed wasm32 boundary vectors, exercises invalid and
 exhausting allocations under a real engine, and proves failures leave the
-cursor and memory unchanged. This slice lowers no Text or List value and makes
-no conformance capability claim.
+cursor and memory unchanged. The allocator itself makes no value capability
+claim; Text lowering consumes it without adding a second arena.
+
+## Bounded Text profile
+
+`wasm32-hostabi1` accepts a deliberately small Text-only function language:
+UTF-8 literals, immutable local bindings, zero-to-six direct `Text`
+parameters, direct `Text` results, and `print(Text)` observation through the
+v1 `text_out` import. Empty and non-ASCII literals are ordinary non-null
+objects. Each evaluation requests exactly `8 + byte_length` bytes with
+alignment 8 from the checked arena above, writes the little-endian u64 header,
+then writes the UTF-8 payload. A zero allocation calls
+`abort(2, object_size)`; no partial reference is published.
+
+The slice has no escapes, concatenation, indexing, mutation, interning,
+indirect calls, or implicit conversion. Invalid UTF-8 and every unsupported
+operation are compile failures and leave no artifact. Bare `wasm32` does not
+enter this frontend and retains its pinned legacy bytes.
+
+Run its focused gate with:
+
+```sh
+sh tests/wasm-text-v1/check.sh
+```
+
+The gate validates the module with the accepted host contract before
+instantiation, derives header/payload bounds from freshly recomputed wasm32
+vectors, decodes `text_out` fatally, compares observations with native x86-64,
+and checks deterministic and sanitized builds plus allocation exhaustion.
 
 Build and run the sample:
 
@@ -138,7 +164,8 @@ task wasm
 
 The legacy `wasm32` binding remains a bounded Int target and its module bytes
 are unchanged. The separate `wasm32-hostabi1` binding has the checked
-linear-memory arena described above, but no Text or List lowering. Neither
+linear-memory arena and bounded Text lowering described above, but no List
+lowering. Neither
 profile has `else`, loops, mutation, tables or indirect
 calls, no closures or function values, no user-declared imports, no WASI
 profile, no general JavaScript value conversion, no direct DOM declarations in
@@ -161,19 +188,21 @@ The host boundary those objects will cross is decided too:
 allowlist with exact wasm signatures, the required exports, the `Text` and
 `List` representations recomputed from the layout target, and the rule that
 a host may not retain a guest pointer past the call it was passed to. That is
-a different, later host binding than the two imports above: this target still
-exports `main(): void` and imports `kofun.print_i64` and `kofun.panic`, and
-nothing in that contract changes what this directory emits today.
+a different host binding than the two imports above. Bare `wasm32` still
+exports `main(): void` and imports `kofun.print_i64` and `kofun.panic`; the
+separately named profile consumes the accepted contract without changing that
+legacy surface.
 
 How a build reaches it is decided too, and is no longer left to the reader:
 `spec/wasm-host-profile-v1.md` puts the host ABI in the target name. The
 aggregate profile is `--target wasm32-hostabi1`; bare `--target wasm32` stays
 on the numeric binding and is not deprecated, so nothing here has to migrate.
 A toolchain predating the arena slice refuses the profile name with
-`kofun: unsupported target:` and writes no module. Current builds emit the
-arena-only module and refuse non-empty source until its value slices land. The
-two bindings are told apart on the module bytes before
-anything is instantiated — this one imports from `kofun` and exports one
-function, `main`; every import a v1 module has comes from
+`kofun: unsupported target:` and writes no module. Current builds preserve the
+import-free arena-only module for an empty source; Text-bearing sources add
+only the v1 `abort` and `text_out` imports. The two bindings are told apart on
+the module bytes before anything is instantiated: legacy modules import from
+`kofun` and export one function, `main`, while every import a v1 module has
+comes from
 `kofun:host-abi-v1`, while its immutable `kofun_abi_version` global identifies
 even the arena-only module that needs no import yet. A module is never both.

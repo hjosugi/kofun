@@ -1,0 +1,7 @@
+fn wrong(value: Int) -> Text {
+    return "wrong"
+}
+
+fn main() {
+    print(wrong("value"))
+}
