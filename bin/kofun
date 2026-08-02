@@ -26,7 +26,6 @@ STAGE2_KIF_BUILD_DIR=${KOFUN_STAGE2_KIF_BUILD_DIR:-"$ROOT/build/stage2-kif-cli"}
 STAGE2_KIF_COMPILER="$STAGE2_KIF_BUILD_DIR/kofun-stage2-kif"
 STAGE2_KIF_SOURCE="$ROOT/bootstrap/stage2/stage2_kif_producer.c"
 STAGE2_KIF_CODEC="$ROOT/bootstrap/stage2/kif_v1.c"
-STAGE2_KIF_UNICODE="$ROOT/unicode/kofun_unicode.c"
 TYPED_SIDECAR_EMITTER="$ROOT/tooling/typed-sidecar/emit-stage2.mjs"
 C_ABI_BUILD_DIR=${KOFUN_C_ABI_BUILD_DIR:-"$ROOT/build/c-abi"}
 C_ABI_SEED_C="$ROOT/bootstrap/c_abi/compiler.c"
@@ -165,7 +164,6 @@ ensure_stage2_kif_compiler() {
        [ "$STAGE2_EVENTS_SOURCE" -nt "$STAGE2_KIF_COMPILER" ] ||
        [ "$STAGE2_EVENTS_CODEC" -nt "$STAGE2_KIF_COMPILER" ] ||
        [ "$STAGE2_KIF_CODEC" -nt "$STAGE2_KIF_COMPILER" ] ||
-       [ "$STAGE2_KIF_UNICODE" -nt "$STAGE2_KIF_COMPILER" ] ||
        [ "$STAGE2_EVENTS_SHA256" -nt "$STAGE2_KIF_COMPILER" ] ||
        [ "$STAGE2_SEED_C" -nt "$STAGE2_KIF_COMPILER" ]
     then
@@ -176,7 +174,6 @@ ensure_stage2_kif_compiler() {
             "$STAGE2_EVENTS_SOURCE" \
             "$STAGE2_EVENTS_CODEC" \
             "$STAGE2_KIF_CODEC" \
-            "$STAGE2_KIF_UNICODE" \
             "$STAGE2_EVENTS_SHA256" \
             -o "$STAGE2_KIF_COMPILER"
     fi

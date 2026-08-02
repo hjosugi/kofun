@@ -34,7 +34,6 @@ mkdir -p "$WORK/remap-a" "$WORK/remap-b" "$WORK/cli-build"
     "$ROOT/bootstrap/stage2/semantic_producer.c" \
     "$ROOT/bootstrap/stage2/semantic_events.c" \
     "$ROOT/bootstrap/stage2/kif_v1.c" \
-    "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$PRODUCER"
 
