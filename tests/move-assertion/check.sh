@@ -67,7 +67,9 @@ require_line "$ROOT/tests/diagnostics/reports/stage2.tsv" 'E2S146	stage2' \
 
 # --------------------------------------------------- provable last uses
 
-for stem in last_use scoped_last_use; do
+for stem in last_use scoped_last_use terminal_both_arms \
+    terminal_arm_quiet_sibling
+do
     source="$CASES/$stem.kofun"
     expected="$CASES/$stem.stdout"
     assert_regular_file "positive source $stem" "$source"
@@ -105,40 +107,46 @@ done
 # is the strongest erasure evidence this gate can state: no counter, no
 # helper, no reordering — nothing.
 
-with="$CASES/zero_footprint_with.kofun"
-without="$CASES/zero_footprint_without.kofun"
-expected="$CASES/zero_footprint.stdout"
-assert_regular_file 'zero-footprint with-assertion source' "$with"
-assert_regular_file 'zero-footprint without-assertion source' "$without"
-assert_regular_file 'zero-footprint golden' "$expected"
+# Every accepted shape owes this evidence, not just the straight-line one:
+# #904 admits a second acceptance path, so the terminal-arm pair is checked
+# the same way.
+for pair in zero_footprint zero_footprint_terminal; do
+    with="$CASES/${pair}_with.kofun"
+    without="$CASES/${pair}_without.kofun"
+    expected="$CASES/$pair.stdout"
+    assert_regular_file "$pair with-assertion source" "$with"
+    assert_regular_file "$pair without-assertion source" "$without"
+    assert_regular_file "$pair golden" "$expected"
 
-grep -v 'compiler\.ensure_move' "$with" >"$WORK/with.stripped"
-cmp "$WORK/with.stripped" "$without" ||
-    fail 'the zero-footprint pair differ by more than the assertion line'
-grep -c 'compiler\.ensure_move' "$with" >"$WORK/with.count" || true
-assert_eq 'exactly one assertion line in the with-version' \
-    "$(cat "$WORK/with.count")" '1'
+    grep -v 'compiler\.ensure_move' "$with" >"$WORK/$pair.stripped"
+    cmp "$WORK/$pair.stripped" "$without" ||
+        fail "the $pair pair differ by more than the assertion line"
+    grep -c 'compiler\.ensure_move' "$with" >"$WORK/$pair.count" || true
+    assert_eq "exactly one assertion line in $pair with-version" \
+        "$(cat "$WORK/$pair.count")" '1'
 
-for variant in with without; do
-    eval "source=\$$variant"
-    "$ROOT/bin/kofun" build "$source" -o "$WORK/zf_$variant" \
-        --emit-c "$WORK/zf_$variant.c" \
-        >"$WORK/zf_$variant.build.stdout" 2>"$WORK/zf_$variant.build.stderr" ||
-        fail "zero-footprint $variant did not build"
-    "$WORK/zf_$variant" >"$WORK/zf_$variant.stdout"
-    cmp "$expected" "$WORK/zf_$variant.stdout" ||
-        fail "zero-footprint $variant: backend output differs from the golden"
-    "$ROOT/bin/kofun" run "$source" >"$WORK/zf_$variant.reference" \
-        2>"$WORK/zf_$variant.run.stderr" ||
-        fail "zero-footprint $variant did not run on the reference executor"
-    cmp "$expected" "$WORK/zf_$variant.reference" ||
-        fail "zero-footprint $variant: executors disagree"
+    for variant in with without; do
+        eval "source=\$$variant"
+        "$ROOT/bin/kofun" build "$source" -o "$WORK/${pair}_$variant" \
+            --emit-c "$WORK/${pair}_$variant.c" \
+            >"$WORK/${pair}_$variant.build.stdout" \
+            2>"$WORK/${pair}_$variant.build.stderr" ||
+            fail "$pair $variant did not build"
+        "$WORK/${pair}_$variant" >"$WORK/${pair}_$variant.stdout"
+        cmp "$expected" "$WORK/${pair}_$variant.stdout" ||
+            fail "$pair $variant: backend output differs from the golden"
+        "$ROOT/bin/kofun" run "$source" >"$WORK/${pair}_$variant.reference" \
+            2>"$WORK/${pair}_$variant.run.stderr" ||
+            fail "$pair $variant did not run on the reference executor"
+        cmp "$expected" "$WORK/${pair}_$variant.reference" ||
+            fail "$pair $variant: executors disagree"
+    done
+
+    cmp "$WORK/${pair}_with.c" "$WORK/${pair}_without.c" ||
+        fail "$pair: the assertion left a trace: emitted C is not identical"
+    assert_not_grep "$pair: the emitted C names the assertion" -qE -- \
+        'ensure_move|compiler' "$WORK/${pair}_with.c"
 done
-
-cmp "$WORK/zf_with.c" "$WORK/zf_without.c" ||
-    fail 'the assertion left a trace: emitted C is not byte-identical'
-assert_not_grep 'the emitted C names the assertion' -qE -- \
-    'ensure_move|compiler' "$WORK/zf_with.c"
 
 # -------------------------------------------------- explained rejections
 #
@@ -171,6 +179,12 @@ expect_rejected possible_alias 'possible alias' \
     'error[E2S146]: unstable `compiler.ensure_move`: the read of `banner` at byte 296 may create an alias (possible alias) at byte 328'
 expect_rejected branch_mismatch 'branch mismatch' \
     'error[E2S146]: unstable `compiler.ensure_move`: the assertion is inside a conditional arm that `banner` outlives (branch mismatch) at byte 346'
+expect_rejected arm_fallthrough 'branch mismatch' \
+    'error[E2S146]: unstable `compiler.ensure_move`: the assertion is inside a conditional arm that `banner` outlives (branch mismatch) at byte 401'
+expect_rejected sibling_arm_later_use 'later use' \
+    'error[E2S146]: unstable `compiler.ensure_move`: `banner` is used again at byte 405 (later use) at byte 353'
+expect_rejected arm_nested_loop 'branch mismatch' \
+    'error[E2S146]: unstable `compiler.ensure_move`: the assertion is inside a conditional arm that `banner` outlives (branch mismatch) at byte 410'
 expect_rejected escaping_capture 'escaping capture' \
     'error[E2S146]: unstable `compiler.ensure_move`: `banner` is captured by a lambda at byte 263 (escaping capture) at byte 304'
 expect_rejected borrowed_parameter 'possible alias' \
