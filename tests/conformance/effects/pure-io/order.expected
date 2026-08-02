@@ -1,0 +1,4 @@
+alpha|io|effect-io-callee|beta
+beta|io|effect-io-callee|root
+main|pure|-|-
+root|io|effect-io-root-print|print

@@ -232,6 +232,14 @@ static bool valid_public_reason(KofunSemanticBytes reason) {
         semantic_bytes_equal_cstr(
             reason,
             KOFUN_SEMANTIC_REASON_CANCELLED_BEFORE_ANALYSIS
+        ) ||
+        semantic_bytes_equal_cstr(
+            reason,
+            KOFUN_SEMANTIC_REASON_EFFECT_IO_CALLEE
+        ) ||
+        semantic_bytes_equal_cstr(
+            reason,
+            KOFUN_SEMANTIC_REASON_EFFECT_IO_ROOT_PRINT
         );
 }
 

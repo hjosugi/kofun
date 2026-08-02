@@ -1,0 +1,16 @@
+fn main() -> Int {
+    return 1
+}
+
+fn root() -> Int {
+    print(1)
+    return 0
+}
+
+fn beta() -> Int {
+    return root()
+}
+
+fn alpha() -> Int {
+    return beta()
+}
