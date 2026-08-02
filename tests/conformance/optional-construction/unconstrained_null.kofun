@@ -1,0 +1,7 @@
+# `null` is contextually typed and never injects into a concrete `Int`.
+
+fn main() -> Int {
+    let value: Int = null
+    print(value)
+    return 0
+}

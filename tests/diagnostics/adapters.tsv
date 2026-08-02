@@ -9,6 +9,7 @@ adt-exhaustiveness	tests/conformance/adt-exhaustiveness/run.sh	verify	tests/diag
 generics	tests/conformance/generics/run.sh	verify	tests/diagnostics/reports/generics.tsv
 hm-levels	tests/conformance/inference/hm-levels/run.sh	verify	tests/diagnostics/reports/hm-levels.tsv
 optional-narrowing	tests/conformance/optional-narrowing/run.sh	verify	tests/diagnostics/reports/optional-narrowing.tsv
+optional-construction	tests/conformance/optional-construction/run.sh	verify	tests/diagnostics/reports/optional-construction.tsv
 visibility-api-leaks	tests/diagnostics/visibility-api-leaks.sh	verify	tests/diagnostics/reports/visibility-api-leaks.tsv
 unicode	tests/diagnostics/unicode/run.sh	verify	tests/diagnostics/reports/unicode.tsv
 native	tests/diagnostics/native/run.sh	verify	tests/diagnostics/reports/native.tsv

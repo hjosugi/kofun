@@ -1,0 +1,10 @@
+fn advance(value: Int) {
+    let mut result = value
+    result = result + 1
+    print(result)
+    return
+}
+
+fn main() {
+    advance(41)
+}

@@ -35,8 +35,9 @@ under the working directory recorded relative to it):
   interpretation context (clang version, effective target triple, language
   standard, defines, include paths, sysroot, sha256 of the input header,
   and a digest over all of it), per-declaration layout facts (sizes,
-  alignments, field offsets, enum constants, symbol names, calling
-  convention, and the original C type of every parameter and result), and
+  alignments, field offsets, enum constants, symbol names, a structured
+  calling-convention classification derived from Clang's function type and
+  the effective target, and the original C type of every parameter and result), and
   the audit — every skipped or review-required declaration with a reason.
 
 ## Type mapping
@@ -66,9 +67,19 @@ function-like), variadic functions, unions, bitfields, flexible array
 members, `static`/`inline` functions, global variables, functions without
 prototypes, nested declarators (function-pointer results), records with
 pointer or array fields, enums that do not fit `int`, attribute-carrying
-records and non-default calling conventions, and anything past the checked
+records, unsupported function attributes, non-default calling conventions,
+and anything past the checked
 profile's capacity limits (16 structs, 16 fields, 64 functions, 16
 parameters).
+
+For the pinned x86_64 Linux profile, an attribute-free Clang function type
+is recorded as `sysv-x86_64` with source `target-default`. An explicit
+`sysv_abi` spelling resolves to the same supported convention. Other
+conventions are skipped with `reason_code: unsupported-calling-convention`
+and their Clang attribute and effective convention remain in the audit row.
+The gate turns every accepted report row back into an explicitly attributed
+C function type and asks Clang to prove it compatible with the real header;
+missing, unknown, or contradictory convention data is a hard failure.
 
 ## What generated code does not claim
 

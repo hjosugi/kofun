@@ -114,6 +114,10 @@ long kbfix_name_length(const char *name) {
     return (long)strlen(name);
 }
 
+long kbfix_scalar_roundtrip(long value) {
+    return value + 1;
+}
+
 int kbfix_log(const char *format, ...) {
     va_list arguments;
     int written;

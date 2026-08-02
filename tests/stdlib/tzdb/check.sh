@@ -121,6 +121,11 @@ assert_grep 'typed HIR carries fold policy application' \
     -Fq -- 'function|apply_fold_policy|2|' "$WORK/tzdb.ir"
 assert_grep 'typed HIR carries gap policy application' \
     -Fq -- 'function|apply_gap_policy|2|' "$WORK/tzdb.ir"
+assert_eq 'both arithmetic guards carry the offending local operand' \
+    "$(grep -Fc -- 'return ResolutionFailed(local.wall_seconds)' "$producer")" '2'
+assert_grep 'arithmetic failure kind stays distinct from its payload' \
+    -Fq -- 'ResolutionFailed(_) => { kind = code_arithmetic_overflow() }' \
+    "$producer"
 
 "$cc" -std=c11 -O2 -Wall -Wextra -Werror \
     "$WORK/tzdb.c" -o "$WORK/tzdb" ||
@@ -221,7 +226,8 @@ assert_eq 'oversized input length' "$(field 31)" '21'
 assert_eq 'transition limit error code' "$(field 32)" '-9'
 assert_eq 'transition limit detail' "$(field 33)" '3'
 assert_eq 'arithmetic overflow error code' "$(field 34)" '-7'
-assert_eq 'arithmetic overflow payload' "$(field 35)" '-7'
+assert_eq 'arithmetic overflow reports the offending local operand' \
+    "$(field 35)" '-9223372036854775808'
 
 # The edges of the gap and the fold. Nothing above reads one: the resolver gets
 # them right — `local >= start && local < end` for both — but an off-by-one at

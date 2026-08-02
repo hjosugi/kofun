@@ -1,0 +1,18 @@
+# Recognized shape 2: `null != x` refines the true edge. Operand order is the
+# only difference from shape 1, and it may not be the difference between a
+# narrowing and an error.
+
+fn observed(x: Int?) -> Int {
+    if null != x {
+        return x + 1
+    }
+    return -1
+}
+
+fn main() -> Int {
+    let present: Int? = 41
+    let absent: Int? = null
+    print(observed(present))
+    print(observed(absent))
+    return 0
+}

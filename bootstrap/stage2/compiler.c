@@ -3923,6 +3923,91 @@ static char *lower_error(
     const char *message,
     int64_t cursor
 );
+/*
+ * #924: the Optional(Int) spelling test, plus the two judgements
+ * `emit_primary` needs. The section that answers them — and the
+ * AggregateLayout v1 descriptor it reads its bytes from — is below
+ * `condition_end`.
+ */
+#define OPTIONAL_INT_C_TYPE "KofunOptionalInt"
+
+/*
+ * `Int` followed by exactly one `?`, which is the only optional type this
+ * slice lowers. Returns the byte after the `?`, or -1. `Int??` leaves the
+ * second `?` where the caller's own grammar reports it, so a second layer is
+ * refused rather than silently collapsed.
+ */
+static int64_t optional_int_type_end(const char *source, int64_t type_start) {
+    int64_t length = source_length(source);
+    if (type_start >= length) return -1;
+    if (!token_equal(source, type_start, "Int")) return -1;
+    int64_t suffix = skip_trivia(source, token_end(source, type_start));
+    if (suffix >= length || !token_equal(source, suffix, "?")) return -1;
+    return token_end(source, suffix);
+}
+
+/*
+ * Whether any declaration in the program annotates `Int` with a `?` suffix.
+ * The layered spelling counts too — `??` is one token, so `Int??` would
+ * otherwise look like a program with no optional in it, and the refusal that
+ * names it would never be reached.
+ */
+static bool scan_optional_int_annotation(const char *source) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < length) {
+        if (
+            token_equal(source, cursor, ":") ||
+            token_equal(source, cursor, "->")
+        ) {
+            int64_t type_start = skip_trivia(
+                source,
+                token_end(source, cursor)
+            );
+            if (token_equal(source, type_start, "Int")) {
+                int64_t suffix = skip_trivia(
+                    source,
+                    token_end(source, type_start)
+                );
+                if (
+                    token_equal(source, suffix, "?") ||
+                    token_equal(source, suffix, "??")
+                ) {
+                    return true;
+                }
+            }
+        }
+        int64_t next = token_end(source, cursor);
+        if (next <= cursor) break;
+        cursor = skip_trivia(source, next);
+    }
+    return false;
+}
+
+/* Memoized on the source address, exactly as `source_length` is: every
+ * Optional judgement below starts by asking it, so a program with no `Int?`
+ * in it pays one token scan for the whole compilation instead of one per
+ * binding read. */
+static const char *optional_int_source_text;
+static bool optional_int_source_value;
+static bool optional_int_source_known;
+
+static bool source_uses_optional_int(const char *source) {
+    if (optional_int_source_known && source == optional_int_source_text) {
+        return optional_int_source_value;
+    }
+    optional_int_source_text = source;
+    optional_int_source_value = scan_optional_int_annotation(source);
+    optional_int_source_known = true;
+    return optional_int_source_value;
+}
+
+static bool optional_int_binding(
+    const char *source,
+    int64_t position,
+    const char *name
+);
+static bool optional_int_carrier_position(const char *source, int64_t at);
 static char *hir_use_binding_id(const char *hir, int64_t use_start);
 static char *hir_definition_id_at(
     const char *hir,
@@ -4362,6 +4447,36 @@ static int64_t primary_end(const char *source, int64_t start) {
     int64_t cursor = skip_trivia(source, start);
     if (cursor >= length) return -1;
     const char *kind = token_kind(source, cursor);
+    /*
+     * A bracketed list literal. Spanning it is not the same as supporting it:
+     * `List[Int]` is still not a Core binding type, and the type check refuses
+     * the value further on. But a span that stops here makes `argument_end`
+     * return -1, and a call whose argument cannot be measured is reported as
+     * `expects 1 arguments, got -1` — a shape the source never had. Measuring
+     * the literal lets the refusal name the real boundary instead.
+     */
+    if (token_equal(source, cursor, "[")) {
+        int64_t element = skip_trivia(source, token_end(source, cursor));
+        if (element < length && token_equal(source, element, "]")) {
+            return field_postfix_end(source, token_end(source, element));
+        }
+        while (element < length) {
+            int64_t bound = expression_end(source, element);
+            int64_t separator;
+            if (bound < 0) return -1;
+            separator = skip_trivia(source, bound);
+            if (separator >= length) return -1;
+            if (token_equal(source, separator, "]")) {
+                return field_postfix_end(
+                    source,
+                    token_end(source, separator)
+                );
+            }
+            if (!token_equal(source, separator, ",")) return -1;
+            element = skip_trivia(source, token_end(source, separator));
+        }
+        return -1;
+    }
     if (
         strcmp(kind, "integer") == 0 ||
         strcmp(kind, "decimal") == 0 ||
@@ -5200,7 +5315,19 @@ static char *emit_primary(
                 free(name);
                 return output.data;
             }
-            buffer_format(&output, "k_b%s", binding_id);
+            /* #924: a bare `Optional(Int)` name is its payload wherever it is
+             * read as `Int`. `validate_optional_uses` has already proved the
+             * tag was tested on a dominating edge, so this is the projection
+             * of a checked refinement and not an extraction operator. The
+             * whole value travels only where the callee declares `Int?`. */
+            if (
+                optional_int_binding(source, cursor, name) &&
+                !optional_int_carrier_position(source, cursor)
+            ) {
+                buffer_format(&output, "k_b%s.payload", binding_id);
+            } else {
+                buffer_format(&output, "k_b%s", binding_id);
+            }
             free(binding_id);
             free(name);
             return output.data;
@@ -6293,6 +6420,18 @@ static char *core_parameters(
                 pointer_name.data
             );
             free(pointer_name.data);
+        } else if (optional_int_type_end(source, type_cursor) >= 0) {
+            /* #924: a same-typed `Int?` argument crosses by value, tag and
+             * payload together. */
+            type_end = optional_int_type_end(source, type_cursor);
+            Buffer optional;
+            buffer_init(&optional);
+            buffer_format(
+                &optional,
+                OPTIONAL_INT_C_TYPE " k_b%s",
+                binding_id
+            );
+            declarator = optional.data;
         } else if (token_equal(source, type_cursor, "Int")) {
             type_end = token_end(source, type_cursor);
             Buffer plain;
@@ -6452,6 +6591,871 @@ static int64_t condition_end(const char *source, int64_t start) {
     return expression_end(source, right_start);
 }
 
+/*
+ * #924: `Optional(Int)` as an executable value.
+ *
+ * The bytes are not invented here. `spec/aggregate-layout-v1/examples/
+ * core.x86_64-linux.json` carries the accepted `Optional[Int]` descriptor —
+ * `kind` optional, `size` 16, `align` 8, `tag_width` 1 at `tag_offset` 0,
+ * `payload_offset` 8, `payload_size` 8, constructors `None` at tag 0 with no
+ * payload and `Some` at tag 1 carrying the `Int` — and the C struct below is
+ * that descriptor written as a type. `spec/aggregate-layout-v1.md` says the
+ * tag is explicit and that "no backend may invent its own niche
+ * optimization", so the discriminant is a byte of its own rather than a spare
+ * bit pattern, and the six generated `_Static_assert`s fail the translation
+ * unit if any quantity drifts from the descriptor.
+ *
+ * What executes: construction from `null` and, under an explicit `Int?`
+ * annotation, from an `Int`; a value crossing a same-typed argument and
+ * return without losing its tag; and the four recognized narrowing shapes of
+ * `docs/TYPE_SYSTEM.md` plus the definitely-returning guard, lowered so the
+ * narrowed use runs. Presence is observed by printing the narrowed `Int`.
+ *
+ * What is deliberately absent: `??`, `?` propagation, safe navigation,
+ * Optional `match`, and any extraction or force unwrap. No operation here
+ * reads the payload without the tag having been tested on a dominating edge —
+ * `validate_optional_uses` refuses every use that is not on one, so the
+ * projection in `emit_primary` is a consequence of a proof rather than an
+ * assumption.
+ *
+ * Every `Optional(Int)` binding in this slice is immutable: parameters are
+ * by-value and `let mut x: Int?` is refused. The invalidation rules that need
+ * mutation — reassignment, an `edit`/`own`/unknown-effect call on a mutable
+ * binding, and a loop backedge that is not loop-invariant — therefore cannot
+ * arise here, because the declaration that would create one is refused first.
+ * `tests/conformance/optional-narrowing/run.sh` continues to pin those rules
+ * for the frontend, which does admit a mutable `Int?`.
+ */
+
+typedef enum {
+    OPTIONAL_CONDITION_NONE,
+    OPTIONAL_CONDITION_PRESENT, /* `!=`: refined on the true edge */
+    OPTIONAL_CONDITION_ABSENT   /* `==`: refined on the false edge */
+} OptionalCondition;
+
+/* The `fn` token of the function containing `position`, or -1. */
+static int64_t optional_int_function_start(
+    const char *source,
+    int64_t position
+) {
+    int64_t length = source_length(source);
+    int64_t cursor = next_function_start(source, 0);
+    while (cursor < length) {
+        int64_t end = function_end(source, cursor);
+        if (position >= cursor && position < end) return cursor;
+        if (end <= cursor) break;
+        cursor = next_function_start(source, end);
+    }
+    return -1;
+}
+
+/* Declared result `Int?` of the function starting at `function_start`. */
+static bool optional_int_result_at(
+    const char *source,
+    int64_t function_start
+) {
+    int64_t length = source_length(source);
+    int64_t open = parameter_open(source, function_start);
+    if (open < 0) return false;
+    int64_t close = balanced_end(source, open, "(", ")");
+    if (close < 0) return false;
+    int64_t arrow = skip_trivia(source, close);
+    if (arrow >= length || !token_equal(source, arrow, "->")) return false;
+    return optional_int_type_end(
+               source,
+               skip_trivia(source, token_end(source, arrow))
+           ) >= 0;
+}
+
+static bool optional_int_result(const char *source, const char *wanted) {
+    int64_t length = source_length(source);
+    int64_t cursor = next_function_start(source, 0);
+    while (cursor < length) {
+        char *name = function_name(source, cursor);
+        bool match = strcmp(name, wanted) == 0;
+        free(name);
+        if (match) return optional_int_result_at(source, cursor);
+        int64_t end = function_end(source, cursor);
+        if (end <= cursor) break;
+        cursor = next_function_start(source, end);
+    }
+    return false;
+}
+
+static bool optional_int_result_containing(
+    const char *source,
+    int64_t position
+) {
+    int64_t function_start = optional_int_function_start(source, position);
+    return function_start >= 0 &&
+           optional_int_result_at(source, function_start);
+}
+
+/*
+ * Whether the `wanted`-th declared parameter of `callee` is `Int?`. A
+ * parameter type this walk cannot step over as one token — a callable or a
+ * bracketed type — stops the walk and answers `false`, so an uncertain
+ * position is never reported as a carrier.
+ */
+static bool optional_int_parameter(
+    const char *source,
+    const char *callee,
+    int64_t wanted
+) {
+    int64_t length = source_length(source);
+    int64_t cursor = next_function_start(source, 0);
+    while (cursor < length) {
+        char *name = function_name(source, cursor);
+        bool match = strcmp(name, callee) == 0;
+        free(name);
+        if (!match) {
+            int64_t end = function_end(source, cursor);
+            if (end <= cursor) break;
+            cursor = next_function_start(source, end);
+            continue;
+        }
+        int64_t open = parameter_open(source, cursor);
+        if (open < 0) return false;
+        int64_t close = balanced_end(source, open, "(", ")");
+        if (close < 0) return false;
+        int64_t parameter = skip_trivia(source, token_end(source, open));
+        int64_t index = 0;
+        while (parameter < close && !token_equal(source, parameter, ")")) {
+            int64_t colon = skip_trivia(source, token_end(source, parameter));
+            if (colon >= close || !token_equal(source, colon, ":")) break;
+            int64_t type_start = skip_trivia(source, token_end(source, colon));
+            int64_t type_end = optional_int_type_end(source, type_start);
+            if (index == wanted) return type_end >= 0;
+            if (type_end < 0) type_end = token_end(source, type_start);
+            int64_t separator = skip_trivia(source, type_end);
+            if (separator >= close || !token_equal(source, separator, ",")) {
+                break;
+            }
+            parameter = skip_trivia(source, token_end(source, separator));
+            ++index;
+        }
+        return false;
+    }
+    return false;
+}
+
+/*
+ * An `Optional(Int)` binding of the function containing `position`: a
+ * parameter declared `Int?`, or a `let` annotated `Int?`. Nothing else in
+ * this slice carries that type, so the judgement is a scan of the declaring
+ * text rather than a second type environment.
+ */
+static bool optional_int_binding(
+    const char *source,
+    int64_t position,
+    const char *name
+) {
+    if (!source_uses_optional_int(source)) return false;
+    int64_t function_start = optional_int_function_start(source, position);
+    if (function_start < 0) return false;
+    int64_t open = parameter_open(source, function_start);
+    if (open < 0) return false;
+    int64_t close = balanced_end(source, open, "(", ")");
+    if (close < 0) return false;
+    int64_t parameter = skip_trivia(source, token_end(source, open));
+    while (parameter < close && !token_equal(source, parameter, ")")) {
+        int64_t colon = skip_trivia(source, token_end(source, parameter));
+        if (colon >= close || !token_equal(source, colon, ":")) break;
+        int64_t type_start = skip_trivia(source, token_end(source, colon));
+        int64_t type_end = optional_int_type_end(source, type_start);
+        if (type_end >= 0 && token_equal(source, parameter, name)) return true;
+        if (type_end < 0) type_end = token_end(source, type_start);
+        int64_t separator = skip_trivia(source, type_end);
+        if (separator >= close || !token_equal(source, separator, ",")) break;
+        parameter = skip_trivia(source, token_end(source, separator));
+    }
+    int64_t function_close = function_end(source, function_start);
+    int64_t cursor = skip_trivia(source, close);
+    while (cursor < function_close) {
+        if (token_equal(source, cursor, "let")) {
+            int64_t binding = skip_trivia(source, token_end(source, cursor));
+            if (token_equal(source, binding, "mut")) {
+                binding = skip_trivia(source, token_end(source, binding));
+            }
+            int64_t colon = skip_trivia(source, token_end(source, binding));
+            if (
+                token_equal(source, colon, ":") &&
+                optional_int_type_end(
+                    source,
+                    skip_trivia(source, token_end(source, colon))
+                ) >= 0 &&
+                token_equal(source, binding, name)
+            ) {
+                return true;
+            }
+        }
+        int64_t next = token_end(source, cursor);
+        if (next <= cursor) break;
+        cursor = skip_trivia(source, next);
+    }
+    return false;
+}
+
+/*
+ * The one position where a bare `Optional(Int)` name lowers to the whole
+ * value rather than to its payload: an argument whose declared parameter is
+ * `Int?`. `return`, a `let` initializer, and the null comparison of a
+ * narrowing condition are each lowered by their own statement path and never
+ * reach `emit_primary`, so they need no case here.
+ */
+static bool optional_int_carrier_position(const char *source, int64_t at) {
+    if (!source_uses_optional_int(source)) return false;
+    int64_t function_start = optional_int_function_start(source, at);
+    if (function_start < 0) return false;
+    int64_t function_close = function_end(source, function_start);
+    int64_t cursor = skip_trivia(source, function_start);
+    while (cursor < function_close) {
+        int64_t open = skip_trivia(source, token_end(source, cursor));
+        if (
+            strcmp(token_kind(source, cursor), "identifier") == 0 &&
+            open < function_close && token_equal(source, open, "(")
+        ) {
+            int64_t arguments_end = balanced_end(source, open, "(", ")");
+            if (arguments_end > 0) {
+                char *callee = token_copy(source, cursor);
+                int64_t argument = skip_trivia(source, token_end(source, open));
+                int64_t index = 0;
+                bool carrier = false;
+                while (
+                    argument < arguments_end &&
+                    !token_equal(source, argument, ")")
+                ) {
+                    int64_t bound = argument_end(source, argument);
+                    if (bound < 0) break;
+                    if (argument == at) {
+                        carrier =
+                            skip_trivia(source, token_end(source, at)) >=
+                                bound &&
+                            optional_int_parameter(source, callee, index);
+                        break;
+                    }
+                    int64_t separator = skip_trivia(source, bound);
+                    if (
+                        separator >= arguments_end ||
+                        !token_equal(source, separator, ",")
+                    ) {
+                        break;
+                    }
+                    argument = skip_trivia(
+                        source,
+                        token_end(source, separator)
+                    );
+                    ++index;
+                }
+                free(callee);
+                if (carrier) return true;
+            }
+        }
+        int64_t next = token_end(source, cursor);
+        if (next <= cursor) break;
+        cursor = skip_trivia(source, next);
+    }
+    return false;
+}
+
+/*
+ * One of the four recognized shapes — `x != null`, `null != x`, `x == null`,
+ * `null == x` — over a direct `Optional(Int)` binding, spanning the whole of
+ * `[start, end)`. Anything longer is a compound condition: still a legal
+ * `Bool`, but it refines nothing.
+ */
+static OptionalCondition optional_int_condition(
+    const char *source,
+    int64_t start,
+    int64_t end,
+    int64_t *binding_at
+) {
+    int64_t left = skip_trivia(source, start);
+    if (left >= end) return OPTIONAL_CONDITION_NONE;
+    int64_t operator_start = skip_trivia(source, token_end(source, left));
+    if (operator_start >= end) return OPTIONAL_CONDITION_NONE;
+    bool present = token_equal(source, operator_start, "!=");
+    if (!present && !token_equal(source, operator_start, "==")) {
+        return OPTIONAL_CONDITION_NONE;
+    }
+    int64_t right = skip_trivia(source, token_end(source, operator_start));
+    if (right >= end) return OPTIONAL_CONDITION_NONE;
+    if (skip_trivia(source, token_end(source, right)) < end) {
+        return OPTIONAL_CONDITION_NONE;
+    }
+    int64_t name_at = -1;
+    if (token_equal(source, left, "null")) {
+        name_at = right;
+    } else if (token_equal(source, right, "null")) {
+        name_at = left;
+    }
+    if (name_at < 0 || token_equal(source, name_at, "null")) {
+        return OPTIONAL_CONDITION_NONE;
+    }
+    if (strcmp(token_kind(source, name_at), "identifier") != 0) {
+        return OPTIONAL_CONDITION_NONE;
+    }
+    char *name = token_copy(source, name_at);
+    bool optional = optional_int_binding(source, name_at, name);
+    free(name);
+    if (!optional) return OPTIONAL_CONDITION_NONE;
+    if (binding_at != NULL) *binding_at = name_at;
+    return present ? OPTIONAL_CONDITION_PRESENT : OPTIONAL_CONDITION_ABSENT;
+}
+
+/*
+ * A block that definitely returns. A `return` at the block's own statement
+ * level always runs once the block is entered, because `E2S14` already
+ * refuses any statement after it.
+ */
+static bool optional_int_block_returns(
+    const char *source,
+    int64_t block_open
+) {
+    int64_t close = balanced_end(source, block_open, "{", "}");
+    if (close < 0) return false;
+    int64_t depth = 0;
+    int64_t cursor = skip_trivia(source, token_end(source, block_open));
+    while (cursor < close) {
+        if (token_equal(source, cursor, "{")) {
+            ++depth;
+        } else if (token_equal(source, cursor, "}")) {
+            --depth;
+        } else if (depth == 0 && token_equal(source, cursor, "return")) {
+            return true;
+        }
+        int64_t next = token_end(source, cursor);
+        if (next <= cursor) break;
+        cursor = skip_trivia(source, next);
+    }
+    return false;
+}
+
+/*
+ * Whether the use of `name` at byte `at` sits on an edge that proved the tag.
+ * `x != null` refines its `if` branch; `x == null` refines its `else`; and an
+ * `x == null` guard whose branch definitely returns carries the false edge
+ * past the guard to the end of the enclosing function. A nested branch is
+ * covered because it lies inside the dominating branch's span, and a sibling
+ * branch is not, because it does not.
+ */
+static bool optional_int_refined(
+    const char *source,
+    const char *name,
+    int64_t at
+) {
+    int64_t function_start = optional_int_function_start(source, at);
+    if (function_start < 0) return false;
+    int64_t function_close = function_end(source, function_start);
+    int64_t cursor = skip_trivia(source, function_start);
+    while (cursor < function_close) {
+        if (token_equal(source, cursor, "if")) {
+            int64_t condition_start = skip_trivia(
+                source,
+                token_end(source, cursor)
+            );
+            int64_t condition_close = condition_end(source, condition_start);
+            int64_t name_at = -1;
+            OptionalCondition kind = condition_close < 0
+                ? OPTIONAL_CONDITION_NONE
+                : optional_int_condition(
+                      source,
+                      condition_start,
+                      condition_close,
+                      &name_at
+                  );
+            if (
+                kind != OPTIONAL_CONDITION_NONE &&
+                token_equal(source, name_at, name)
+            ) {
+                int64_t branch_open = skip_trivia(source, condition_close);
+                int64_t branch_close =
+                    branch_open < function_close &&
+                    token_equal(source, branch_open, "{")
+                        ? balanced_end(source, branch_open, "{", "}")
+                        : -1;
+                if (branch_close > 0) {
+                    int64_t after = skip_trivia(
+                        source,
+                        token_end(source, branch_close)
+                    );
+                    bool has_else = after < function_close &&
+                                    token_equal(source, after, "else");
+                    int64_t else_open = has_else
+                        ? skip_trivia(source, token_end(source, after))
+                        : -1;
+                    int64_t else_close =
+                        else_open >= 0 && else_open < function_close &&
+                        token_equal(source, else_open, "{")
+                            ? balanced_end(source, else_open, "{", "}")
+                            : -1;
+                    if (kind == OPTIONAL_CONDITION_PRESENT) {
+                        if (at > branch_open && at < branch_close) return true;
+                    } else {
+                        if (
+                            else_close > 0 &&
+                            at > else_open && at < else_close
+                        ) {
+                            return true;
+                        }
+                        if (
+                            !has_else &&
+                            optional_int_block_returns(source, branch_open) &&
+                            at >= token_end(source, branch_close)
+                        ) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        int64_t next = token_end(source, cursor);
+        if (next <= cursor) break;
+        cursor = skip_trivia(source, next);
+    }
+    return false;
+}
+
+/*
+ * The three positions where `null` is contextually typed as `Optional(Int)`:
+ * the whole initializer of a `let ...: Int? =`, an operand of a recognized
+ * null comparison, and the whole value of a `return` in a function declared
+ * `Int?`. Everywhere else `null` names nothing and stays the unknown lexical
+ * binding it was before this slice existed, so no program that compiles today
+ * changes its verdict.
+ */
+static bool optional_int_null_context(const char *source, int64_t at) {
+    if (!token_equal(source, at, "null")) return false;
+    int64_t function_start = optional_int_function_start(source, at);
+    if (function_start < 0) return false;
+    int64_t function_close = function_end(source, function_start);
+    bool optional_result = optional_int_result_at(source, function_start);
+    int64_t cursor = skip_trivia(source, function_start);
+    while (cursor < function_close) {
+        if (token_equal(source, cursor, "let")) {
+            int64_t binding = skip_trivia(source, token_end(source, cursor));
+            if (token_equal(source, binding, "mut")) {
+                binding = skip_trivia(source, token_end(source, binding));
+            }
+            int64_t colon = skip_trivia(source, token_end(source, binding));
+            int64_t annotation_end = token_equal(source, colon, ":")
+                ? optional_int_type_end(
+                      source,
+                      skip_trivia(source, token_end(source, colon))
+                  )
+                : -1;
+            int64_t assign = annotation_end < 0
+                ? -1
+                : skip_trivia(source, annotation_end);
+            if (assign >= 0 && token_equal(source, assign, "=")) {
+                int64_t value = skip_trivia(
+                    source,
+                    token_end(source, assign)
+                );
+                if (
+                    value == at &&
+                    skip_trivia(source, token_end(source, at)) >=
+                        expression_end(source, value)
+                ) {
+                    return true;
+                }
+            }
+        } else if (
+            token_equal(source, cursor, "if") ||
+            token_equal(source, cursor, "while")
+        ) {
+            int64_t condition_start = skip_trivia(
+                source,
+                token_end(source, cursor)
+            );
+            int64_t condition_close = condition_end(source, condition_start);
+            int64_t name_at = -1;
+            if (
+                condition_close >= 0 &&
+                optional_int_condition(
+                    source,
+                    condition_start,
+                    condition_close,
+                    &name_at
+                ) != OPTIONAL_CONDITION_NONE &&
+                at >= condition_start && at < condition_close &&
+                at != name_at
+            ) {
+                return true;
+            }
+        } else if (optional_result && token_equal(source, cursor, "return")) {
+            int64_t value = skip_trivia(source, token_end(source, cursor));
+            if (
+                value == at &&
+                skip_trivia(source, token_end(source, at)) >=
+                    expression_end(source, value)
+            ) {
+                return true;
+            }
+        }
+        int64_t next = token_end(source, cursor);
+        if (next <= cursor) break;
+        cursor = skip_trivia(source, next);
+    }
+    return false;
+}
+
+/*
+ * The `Optional[Int]` descriptor of `spec/aggregate-layout-v1/examples/
+ * core.x86_64-linux.json`, emitted as a C type whose every quantity is
+ * asserted. The asserts are the drift detector: a tag widened to `int64_t`, a
+ * payload moved, or a niche packed into the tag all stop the translation unit
+ * instead of quietly meaning different bytes than the descriptor.
+ */
+static char *emit_optional_int_c_declarations(void) {
+    return owned_text(
+        "typedef struct {\n"
+        "    uint8_t tag;\n"
+        "    int64_t payload;\n"
+        "} " OPTIONAL_INT_C_TYPE ";\n"
+        "_Static_assert(offsetof(" OPTIONAL_INT_C_TYPE ", tag) == 0,\n"
+        "    \"AggregateLayout Optional[Int] tag offset\");\n"
+        "_Static_assert(sizeof(((" OPTIONAL_INT_C_TYPE " *)0)->tag) == 1,\n"
+        "    \"AggregateLayout Optional[Int] tag width\");\n"
+        "_Static_assert(offsetof(" OPTIONAL_INT_C_TYPE ", payload) == 8,\n"
+        "    \"AggregateLayout Optional[Int] payload offset\");\n"
+        "_Static_assert(sizeof(((" OPTIONAL_INT_C_TYPE " *)0)->payload) == 8,\n"
+        "    \"AggregateLayout Optional[Int] payload size\");\n"
+        "_Static_assert(sizeof(" OPTIONAL_INT_C_TYPE ") == 16,\n"
+        "    \"AggregateLayout Optional[Int] size\");\n"
+        "_Static_assert(_Alignof(" OPTIONAL_INT_C_TYPE ") == 8,\n"
+        "    \"AggregateLayout Optional[Int] alignment\");\n"
+        "#define KOFUN_OPTIONAL_INT_NONE_TAG UINT8_C(0)\n"
+        "#define KOFUN_OPTIONAL_INT_SOME_TAG UINT8_C(1)\n"
+        "#define KOFUN_OPTIONAL_INT_NONE "
+        "((" OPTIONAL_INT_C_TYPE "){KOFUN_OPTIONAL_INT_NONE_TAG, INT64_C(0)})\n"
+        "#define KOFUN_OPTIONAL_INT_SOME(value) "
+        "((" OPTIONAL_INT_C_TYPE "){KOFUN_OPTIONAL_INT_SOME_TAG, (value)})\n\n"
+    );
+}
+
+/*
+ * How many times the function containing `position` declares `name`, as a
+ * parameter or as a `let`. `optional_int_binding` reads declaring text rather
+ * than a scope environment, so a name declared twice in one function could
+ * make it answer for the wrong declaration; two declarations are refused
+ * instead.
+ */
+static int64_t optional_int_declaration_count(
+    const char *source,
+    int64_t position,
+    const char *name
+) {
+    int64_t function_start = optional_int_function_start(source, position);
+    if (function_start < 0) return 0;
+    int64_t open = parameter_open(source, function_start);
+    if (open < 0) return 0;
+    int64_t close = balanced_end(source, open, "(", ")");
+    if (close < 0) return 0;
+    int64_t count = 0;
+    int64_t parameter = skip_trivia(source, token_end(source, open));
+    while (parameter < close && !token_equal(source, parameter, ")")) {
+        if (token_equal(source, parameter, name)) ++count;
+        int64_t colon = skip_trivia(source, token_end(source, parameter));
+        if (colon >= close || !token_equal(source, colon, ":")) break;
+        int64_t type_start = skip_trivia(source, token_end(source, colon));
+        int64_t type_end = optional_int_type_end(source, type_start);
+        if (type_end < 0) type_end = token_end(source, type_start);
+        int64_t separator = skip_trivia(source, type_end);
+        if (separator >= close || !token_equal(source, separator, ",")) break;
+        parameter = skip_trivia(source, token_end(source, separator));
+    }
+    int64_t function_close = function_end(source, function_start);
+    int64_t cursor = skip_trivia(source, close);
+    while (cursor < function_close) {
+        if (token_equal(source, cursor, "let")) {
+            int64_t binding = skip_trivia(source, token_end(source, cursor));
+            if (token_equal(source, binding, "mut")) {
+                binding = skip_trivia(source, token_end(source, binding));
+            }
+            if (token_equal(source, binding, name)) ++count;
+        }
+        int64_t next = token_end(source, cursor);
+        if (next <= cursor) break;
+        cursor = skip_trivia(source, next);
+    }
+    return count;
+}
+
+/*
+ * Every use of an `Optional(Int)` binding must be one the slice can lower:
+ * the named operand of a recognized null comparison, an argument declared
+ * `Int?`, the whole value of a `return` or `let` that is itself `Int?`, or a
+ * use on an edge that already proved the tag. Everything else is refused
+ * here, before a single byte of C exists — which is what lets `emit_primary`
+ * project the payload without re-deciding the question.
+ */
+static char *validate_optional_uses(const char *source) {
+    int64_t length = source_length(source);
+    if (!source_uses_optional_int(source)) return owned_text("ok");
+    /*
+     * One optional layer, as the source contract fixes it. `Int??` is refused
+     * by name here rather than left to desynchronise the type grammar into a
+     * diagnostic about the `=` that follows it.
+     */
+    int64_t scan = skip_trivia(source, 0);
+    while (scan < length) {
+        if (
+            token_equal(source, scan, ":") ||
+            token_equal(source, scan, "->")
+        ) {
+            int64_t type_start = skip_trivia(source, token_end(source, scan));
+            int64_t type_end = optional_int_type_end(source, type_start);
+            /* `??` is one token, so `Int??` never reaches the single-suffix
+             * spelling and has to be recognized by the pair as well. */
+            int64_t after_type = type_end >= 0
+                ? skip_trivia(source, type_end)
+                : (token_equal(source, type_start, "Int")
+                       ? skip_trivia(source, token_end(source, type_start))
+                       : -1);
+            if (
+                after_type >= 0 &&
+                (token_equal(source, after_type, "?") ||
+                 token_equal(source, after_type, "??"))
+            ) {
+                return lower_error(
+                    "E2S147",
+                    "one optional layer is supported; `Int??` is not a type "
+                    "in this contract",
+                    type_start
+                );
+            }
+        }
+        int64_t step = token_end(source, scan);
+        if (step <= scan) break;
+        scan = skip_trivia(source, step);
+    }
+    int64_t function_start = next_function_start(source, 0);
+    while (function_start < length) {
+        int64_t function_close = function_end(source, function_start);
+        int64_t parameters = parameter_open(source, function_start);
+        int64_t parameters_close = parameters < 0
+            ? -1
+            : balanced_end(source, parameters, "(", ")");
+        if (parameters_close < 0) {
+            if (function_close <= function_start) break;
+            function_start = next_function_start(source, function_close);
+            continue;
+        }
+        int64_t body_open = skip_trivia(source, parameters_close);
+        while (
+            body_open < function_close &&
+            !token_equal(source, body_open, "{")
+        ) {
+            int64_t step = token_end(source, body_open);
+            if (step <= body_open) break;
+            body_open = skip_trivia(source, step);
+        }
+        /*
+         * One pending carrier byte is enough: each statement that names one
+         * records it before the walk reaches it, and reaches it before the
+         * next statement records another. `null` needs no slot — it is not a
+         * binding, and `optional_int_null_context` has already decided its
+         * positions in the scope HIR.
+         */
+        int64_t carrier = -1;
+        int64_t cursor = body_open < function_close
+            ? skip_trivia(source, token_end(source, body_open))
+            : function_close;
+        while (cursor < function_close) {
+            if (token_equal(source, cursor, "let")) {
+                int64_t binding = skip_trivia(
+                    source,
+                    token_end(source, cursor)
+                );
+                bool mutable = token_equal(source, binding, "mut");
+                if (mutable) {
+                    binding = skip_trivia(source, token_end(source, binding));
+                }
+                int64_t colon = skip_trivia(source, token_end(source, binding));
+                int64_t annotation = token_equal(source, colon, ":")
+                    ? skip_trivia(source, token_end(source, colon))
+                    : -1;
+                int64_t annotation_end = annotation < 0
+                    ? -1
+                    : optional_int_type_end(source, annotation);
+                if (annotation_end >= 0) {
+                    if (mutable) {
+                        return lower_error(
+                            "E2S147",
+                            "mutable `Int?` bindings are outside this "
+                            "lowering slice; declare `let` and construct a "
+                            "new value instead",
+                            binding
+                        );
+                    }
+                    char *declared = token_copy(source, binding);
+                    int64_t declarations = optional_int_declaration_count(
+                        source,
+                        binding,
+                        declared
+                    );
+                    free(declared);
+                    if (declarations > 1) {
+                        return lower_error(
+                            "E2S147",
+                            "an `Int?` binding may not be declared twice in "
+                            "one function in this lowering slice",
+                            binding
+                        );
+                    }
+                    int64_t assign = skip_trivia(source, annotation_end);
+                    int64_t value = token_equal(source, assign, "=")
+                        ? skip_trivia(source, token_end(source, assign))
+                        : -1;
+                    if (
+                        value >= 0 &&
+                        strcmp(token_kind(source, value), "identifier") == 0
+                    ) {
+                        carrier = value;
+                    }
+                    cursor = value >= 0 ? value : skip_trivia(source, colon);
+                    continue;
+                }
+            }
+            if (
+                token_equal(source, cursor, "if") ||
+                token_equal(source, cursor, "while")
+            ) {
+                int64_t condition_start = skip_trivia(
+                    source,
+                    token_end(source, cursor)
+                );
+                int64_t condition_close = condition_end(
+                    source,
+                    condition_start
+                );
+                int64_t name_at = -1;
+                if (
+                    condition_close >= 0 &&
+                    optional_int_condition(
+                        source,
+                        condition_start,
+                        condition_close,
+                        &name_at
+                    ) != OPTIONAL_CONDITION_NONE
+                ) {
+                    carrier = name_at;
+                }
+            } else if (
+                token_equal(source, cursor, "return") &&
+                optional_int_result_containing(source, function_start)
+            ) {
+                int64_t value = skip_trivia(source, token_end(source, cursor));
+                if (
+                    value < function_close &&
+                    strcmp(token_kind(source, value), "identifier") == 0
+                ) {
+                    carrier = value;
+                }
+            } else if (strcmp(token_kind(source, cursor), "identifier") == 0) {
+                char *name = token_copy(source, cursor);
+                int64_t after = skip_trivia(source, token_end(source, cursor));
+                bool call = after < function_close &&
+                            token_equal(source, after, "(");
+                bool optional = !call &&
+                                optional_int_binding(source, cursor, name);
+                char *failure = NULL;
+                if (call && optional_int_result(source, name)) {
+                    /* An `Int?` result travels whole or not at all: it may
+                     * initialize an `Int?` binding or be returned from a
+                     * function declared `Int?`, and nothing else. */
+                    if (cursor != carrier) {
+                        failure = lower_error(
+                            "E2S147",
+                            "an `Int?` result is used whole; bind it with "
+                            "`let ...: Int?` or return it from a function "
+                            "declared `Int?`",
+                            cursor
+                        );
+                    }
+                } else if (optional) {
+                    if (optional_int_declaration_count(source, cursor, name) > 1) {
+                        failure = lower_error(
+                            "E2S147",
+                            "an `Int?` binding may not be declared twice in "
+                            "one function in this lowering slice",
+                            cursor
+                        );
+                    } else if (
+                        after < function_close &&
+                        token_equal(source, after, "=")
+                    ) {
+                        failure = lower_error(
+                            "E2S147",
+                            "an `Int?` binding is immutable in this lowering "
+                            "slice and cannot be assigned",
+                            cursor
+                        );
+                    } else if (
+                        after < function_close &&
+                        token_equal(source, after, "??")
+                    ) {
+                        /* Coalescing stays with #314: it has a
+                         * single-evaluation and lazy-right-side contract this
+                         * slice does not implement, and guessing at it here
+                         * would be the wrong place to decide it. */
+                        failure = lower_error(
+                            "E2S147",
+                            "`??` coalescing is not part of this lowering "
+                            "slice; narrow with a `null` comparison instead",
+                            cursor
+                        );
+                    } else if (
+                        after < function_close &&
+                        (token_equal(source, after, ".") ||
+                         token_equal(source, after, "["))
+                    ) {
+                        failure = lower_error(
+                            "E2S147",
+                            "property and index paths on an `Int?` binding "
+                            "are not narrowed; only a direct `null` "
+                            "comparison is recognized",
+                            cursor
+                        );
+                    } else if (
+                        cursor != carrier &&
+                        !optional_int_carrier_position(source, cursor) &&
+                        !optional_int_refined(source, name, cursor)
+                    ) {
+                        /* One name, not three: the structured diagnostic
+                         * carries a 160-byte fallback, and a message that
+                         * grew with the binding name would be truncated
+                         * there while the printed one was not. */
+                        Buffer message;
+                        buffer_init(&message);
+                        buffer_format(
+                            &message,
+                            "`%s` is `Int?`; narrow it with a `null` "
+                            "comparison before using it as `Int`",
+                            name
+                        );
+                        failure = lower_error(
+                            "E2S147",
+                            message.data,
+                            cursor
+                        );
+                        free(message.data);
+                    }
+                }
+                free(name);
+                if (failure != NULL) return failure;
+            }
+            int64_t next = token_end(source, cursor);
+            if (next <= cursor) break;
+            cursor = skip_trivia(source, next);
+        }
+        if (function_close <= function_start) break;
+        function_start = next_function_start(source, function_close);
+    }
+    return owned_text("ok");
+}
+
 static char *emit_condition_into(
     const char *source,
     const char *hir,
@@ -6478,6 +7482,33 @@ static char *emit_condition_into(
         );
         free(literal);
         return output.data;
+    }
+    {
+        /* #924: a recognized null comparison is a tag test, and the tag is
+         * the only thing it reads. `null` names no binding, so this has to be
+         * decided before the operand grammar sees it. */
+        int64_t binding_at = -1;
+        OptionalCondition optional = optional_int_condition(
+            source,
+            cursor,
+            end,
+            &binding_at
+        );
+        if (optional != OPTIONAL_CONDITION_NONE) {
+            char *binding_id = hir_use_binding_id(hir, binding_at);
+            Buffer output;
+            buffer_init(&output);
+            buffer_format(
+                &output,
+                "%sbool %s = (k_b%s.tag %s KOFUN_OPTIONAL_INT_NONE_TAG);\n",
+                indent,
+                target,
+                binding_id,
+                optional == OPTIONAL_CONDITION_PRESENT ? "!=" : "=="
+            );
+            free(binding_id);
+            return output.data;
+        }
     }
     int64_t left_end = expression_end(source, cursor);
     int64_t operator_start = skip_trivia(source, left_end);
@@ -7457,6 +8488,15 @@ static int64_t core_body_open(
     if (cursor < length && token_equal(source, cursor, "->")) {
         cursor = skip_trivia(source, token_end(source, cursor));
         if (cursor >= length) return -1;
+        /* #924: `-> Int?` spans two tokens, so the suffix is consumed here
+         * rather than left for the body scan to trip over. */
+        int64_t optional_end = optional_int_type_end(source, cursor);
+        if (optional_end >= 0) {
+            cursor = skip_trivia(source, optional_end);
+            return cursor < length && token_equal(source, cursor, "{")
+                ? cursor
+                : -1;
+        }
         char *result_type = token_copy(source, cursor);
         bool supported_result =
             strcmp(result_type, "Int") == 0 ||
@@ -9289,6 +10329,79 @@ static char *initializer_type(
     return owned_text("Int");
 }
 
+/*
+ * #924: the C text of an `Int?` value, in every position that constructs or
+ * carries one. Four forms and no others: `null` is the absent value; a bare
+ * `Int?` binding and a call declared `Int?` carry an existing value whole; and
+ * anything typed `Int` becomes `Some`, which is #70's injection rule reaching
+ * the backend. Nothing here reads a payload, so no path through this function
+ * can turn an absent value into an `Int`.
+ */
+static char *optional_int_value(
+    const char *source,
+    const char *hir,
+    int64_t start,
+    int64_t end
+) {
+    int64_t cursor = skip_trivia(source, start);
+    bool single = skip_trivia(source, token_end(source, cursor)) >= end;
+    if (single && token_equal(source, cursor, "null")) {
+        return owned_text("KOFUN_OPTIONAL_INT_NONE");
+    }
+    if (strcmp(token_kind(source, cursor), "identifier") == 0) {
+        char *name = token_copy(source, cursor);
+        if (single && optional_int_binding(source, cursor, name)) {
+            char *binding_id = hir_use_binding_id(hir, cursor);
+            Buffer output;
+            buffer_init(&output);
+            buffer_format(&output, "k_b%s", binding_id);
+            free(binding_id);
+            free(name);
+            return output.data;
+        }
+        int64_t open = skip_trivia(source, token_end(source, cursor));
+        bool optional_call = open < end &&
+                             token_equal(source, open, "(") &&
+                             optional_int_result(source, name);
+        free(name);
+        if (optional_call) {
+            int64_t close = balanced_end(source, open, "(", ")");
+            if (close < 0 || skip_trivia(source, close) < end) {
+                return lower_error(
+                    "E2S147",
+                    "an `Int?` call result is used whole; it takes part in no "
+                    "arithmetic in this lowering slice",
+                    cursor
+                );
+            }
+            return emit_expression(source, hir, start, end);
+        }
+    }
+    int64_t function_open = enclosing_function_open(source, cursor);
+    char *value_type = initializer_type(source, hir, function_open, cursor);
+    /* A compound expression is `Int` by construction: every `Int?` operand in
+     * it has already been proved narrowed, so its recorded declared type says
+     * nothing about the value the arithmetic produces. */
+    bool present = strcmp(value_type, "Int") == 0 ||
+                   (!single && strcmp(value_type, "Int?") == 0);
+    free(value_type);
+    if (!present) {
+        return lower_error(
+            "E2S147",
+            "an `Int?` value is `null`, an `Int`, another `Int?` binding, or "
+            "a call returning `Int?`",
+            cursor
+        );
+    }
+    char *inner = emit_expression(source, hir, start, end);
+    if (strncmp(inner, "error[", 6) == 0) return inner;
+    Buffer output;
+    buffer_init(&output);
+    buffer_format(&output, "KOFUN_OPTIONAL_INT_SOME(%s)", inner);
+    free(inner);
+    return output.data;
+}
+
 static char *scope_hir_error(
     Buffer *hir,
     const char *message,
@@ -9580,12 +10693,20 @@ static char *build_scope_hir_mode(
              * after it would never be bound and their uses would be reported
              * as unknown lexical bindings. */
             int64_t callable_end = callable_type_end(source, type_cursor);
+            /* #924: `Int?` is two tokens and one type. Recording it as `Int?`
+             * keeps the declared type optional in the typed IR, so nothing
+             * downstream mistakes the parameter for an `Int`. */
+            int64_t optional_end = optional_int_type_end(source, type_cursor);
             int64_t type_end = callable_end >= 0
                 ? callable_end
-                : token_end(source, type_cursor);
+                : (optional_end >= 0
+                       ? optional_end
+                       : token_end(source, type_cursor));
             char *type_text = callable_end >= 0
                 ? owned_text("Fn")
-                : token_copy(source, type_cursor);
+                : (optional_end >= 0
+                       ? owned_text("Int?")
+                       : token_copy(source, type_cursor));
             buffer_format(
                 &hir,
                 "binding|%" PRId64 "|%" PRId64 "|%s|immutable|%s|copy|"
@@ -9771,10 +10892,20 @@ static char *build_scope_hir_mode(
                         token_end(source, after_name)
                     );
                     free(binding_type);
-                    binding_type = token_copy(source, type_cursor);
+                    /* #924: `Int?` is two tokens and one type; the suffix is
+                     * consumed here so the initializer walk starts at `=`. */
+                    int64_t optional_end = optional_int_type_end(
+                        source,
+                        type_cursor
+                    );
+                    binding_type = optional_end >= 0
+                        ? owned_text("Int?")
+                        : token_copy(source, type_cursor);
                     after_name = skip_trivia(
                         source,
-                        token_end(source, type_cursor)
+                        optional_end >= 0
+                            ? optional_end
+                            : token_end(source, type_cursor)
                     );
                 }
                 int64_t initializer = skip_trivia(
@@ -10263,6 +11394,11 @@ static char *build_scope_hir_mode(
                     !numeric_conversion_head(source, cursor) &&
                     !move_assertion_head(source, cursor) &&
                     !decimal_rounding_mode_name(name) &&
+                    /* #924: in an `Int?` context `null` is the absence
+                     * literal, not a name, and reporting it as an unknown
+                     * binding would make the only spelling of absence an
+                     * error. Everywhere else it stays exactly what it was. */
+                    !optional_int_null_context(source, cursor) &&
                     !token_equal(source, cursor, "print") &&
                     !token_equal(source, cursor, "_")
                 ) {
@@ -12364,6 +13500,8 @@ static char *lower_body(
         enum_constructor_count(source, body_result_type) >= 0;
     bool returns_record =
         record_declaration_start(source, body_result_type) >= 0;
+    bool returns_optional_int =
+        optional_int_result_containing(source, function_open);
     char failure_record[512] = "";
     if (returns_record) {
         char *c_type = record_c_type_name(body_result_type);
@@ -12382,7 +13520,11 @@ static char *lower_body(
             (
                 returns_enum ?
                     "KOFUN_ENUM_ZERO" :
-                    (returns_record ? failure_record : "0")
+                    (returns_record ?
+                         failure_record :
+                         (returns_optional_int ?
+                              "KOFUN_OPTIONAL_INT_NONE" :
+                              "0"))
             );
     while (cursor < length && !token_equal(source, cursor, "}")) {
         if (returned) {
@@ -12432,6 +13574,7 @@ static char *lower_body(
             char *binding_id = hir_definition_id_at(hir, cursor);
             char *enum_type = NULL;
             char *record_type = NULL;
+            bool optional_int = false;
             cursor = skip_trivia(source, token_end(source, cursor));
             if (cursor < length && token_equal(source, cursor, ":")) {
                 cursor = skip_trivia(source, token_end(source, cursor));
@@ -12448,8 +13591,23 @@ static char *lower_body(
                         cursor
                     );
                 }
-                char *declared_type = token_copy(source, cursor);
-                if (strcmp(declared_type, "Int") != 0) {
+                /* #924: `Int?` is checked before the single-token types,
+                 * because its first token is exactly `Int`. */
+                int64_t optional_end = optional_int_type_end(source, cursor);
+                if (optional_end >= 0) {
+                    optional_int = true;
+                    cursor = skip_trivia(source, optional_end);
+                    if (cursor >= length || !token_equal(source, cursor, "=")) {
+                        free(binding_id);
+                        free(name);
+                        free(emitted.data);
+                        return lower_error("E2S11", "expected `=`", cursor);
+                    }
+                }
+                char *declared_type = optional_int
+                    ? owned_text("Int")
+                    : token_copy(source, cursor);
+                if (!optional_int && strcmp(declared_type, "Int") != 0) {
                     if (
                         strcmp(declared_type, "Text") == 0 ||
                         strcmp(declared_type, "Decimal") == 0 ||
@@ -12488,7 +13646,9 @@ static char *lower_body(
                 } else {
                     free(declared_type);
                 }
-                cursor = skip_trivia(source, token_end(source, cursor));
+                if (!optional_int) {
+                    cursor = skip_trivia(source, token_end(source, cursor));
+                }
             }
             if (cursor >= length || !token_equal(source, cursor, "=")) {
                 free(record_type);
@@ -12499,6 +13659,66 @@ static char *lower_body(
                 return lower_error("E2S11", "expected `=`", cursor);
             }
             int64_t value_start = skip_trivia(source, token_end(source, cursor));
+            if (optional_int) {
+                /*
+                 * #924: the four initializer forms this slice constructs, and
+                 * nothing else. `null` is the absent value; an `Int` is the
+                 * present one under #70's injection rule; an `Int?` binding
+                 * or a call declared `Int?` carries an existing value with
+                 * its tag intact. There is no form here that turns an
+                 * `Int?` into an `Int`.
+                 */
+                if (mutable) {
+                    free(binding_id);
+                    free(name);
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S147",
+                        "mutable `Int?` bindings are outside this lowering "
+                        "slice; declare `let` and construct a new value "
+                        "instead",
+                        value_start
+                    );
+                }
+                int64_t value_end = expression_end(source, value_start);
+                if (value_start >= length || value_end < 0) {
+                    free(binding_id);
+                    free(name);
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S147",
+                        "an `Int?` binding is initialized by `null`, an "
+                        "`Int`, another `Int?` binding, or a call returning "
+                        "`Int?`",
+                        value_start
+                    );
+                }
+                char *value = optional_int_value(
+                    source,
+                    hir,
+                    value_start,
+                    value_end
+                );
+                if (strncmp(value, "error[", 6) == 0) {
+                    free(binding_id);
+                    free(name);
+                    free(emitted.data);
+                    return value;
+                }
+                buffer_format(
+                    &emitted,
+                    "    " OPTIONAL_INT_C_TYPE " k_b%s = %s;\n"
+                    "    if (kofun_failed) return %s;\n",
+                    binding_id,
+                    value,
+                    failure_result
+                );
+                free(value);
+                free(binding_id);
+                free(name);
+                cursor = skip_trivia(source, value_end);
+                continue;
+            }
             if (record_type != NULL) {
                 if (mutable) {
                     free(record_type);
@@ -13722,7 +14942,47 @@ static char *lower_body(
             }
         } else if (token_equal(source, cursor, "return")) {
             int64_t value_start = skip_trivia(source, token_end(source, cursor));
-            if (returns_enum) {
+            if (returns_optional_int) {
+                /* #924: an `Int?` result carries the tag out of the function
+                 * exactly as it was constructed. */
+                int64_t value_end = expression_end(source, value_start);
+                if (
+                    value_end < 0 ||
+                    value_start >= length ||
+                    token_equal(source, value_start, "}")
+                ) {
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S147",
+                        "an `Int?` result requires one value: `null`, an "
+                        "`Int`, an `Int?` binding, or a call returning "
+                        "`Int?`",
+                        value_start
+                    );
+                }
+                char *value = optional_int_value(
+                    source,
+                    hir,
+                    value_start,
+                    value_end
+                );
+                if (strncmp(value, "error[", 6) == 0) {
+                    free(emitted.data);
+                    return value;
+                }
+                buffer_format(
+                    &emitted,
+                    "    {\n"
+                    "        " OPTIONAL_INT_C_TYPE " kofun_result = %s;\n"
+                    "        if (kofun_failed) return "
+                    "KOFUN_OPTIONAL_INT_NONE;\n"
+                    "        return kofun_result;\n"
+                    "    }\n",
+                    value
+                );
+                free(value);
+                cursor = skip_trivia(source, value_end);
+            } else if (returns_enum) {
                 int64_t value_end = expression_end(source, value_start);
                 if (
                     value_end < 0 ||
@@ -16175,6 +17435,13 @@ static char *lower_c(const char *source, const char *hir) {
         return record_use_check;
     }
     free(record_use_check);
+    /* #924: before any C exists, so an `Int?` read without a proved tag is a
+     * refusal here rather than a payload the backend was free to invent. */
+    char *optional_use_check = validate_optional_uses(source);
+    if (strncmp(optional_use_check, "error[", 6) == 0) {
+        return optional_use_check;
+    }
+    free(optional_use_check);
     char *type_check = validate_core_types(source, hir);
     if (strncmp(type_check, "error[", 6) == 0) return type_check;
     free(type_check);
@@ -16246,7 +17513,9 @@ static char *lower_c(const char *source, const char *hir) {
         bool is_main = strcmp(name, "main") == 0;
         char c_result_record[512] = "";
         const char *c_result = "int64_t";
-        if (function_result_is_enum(source, name)) {
+        if (optional_int_result(source, name)) {
+            c_result = OPTIONAL_INT_C_TYPE;
+        } else if (function_result_is_enum(source, name)) {
             c_result = "KofunEnumValue";
         } else if (function_result_is_record(source, name)) {
             char *result_type = function_return_type(source, name);
@@ -16454,6 +17723,11 @@ static char *lower_c(const char *source, const char *hir) {
         "    return r;\n"
         "}\n\n"
     );
+    if (source_uses_optional_int(source)) {
+        char *optional_declarations = emit_optional_int_c_declarations();
+        buffer_append(&output, optional_declarations);
+        free(optional_declarations);
+    }
     char *record_declarations = emit_record_c_declarations(source);
     buffer_append(&output, record_declarations);
     free(record_declarations);

@@ -24,6 +24,10 @@ filename or hash special case.
   a non-main function with an explicit result type lowers byte-identically
   through the compiler built from `S.c` and the audited hand-port, then its
   ordinary call from `main` reproduces the pinned output.
+- `corpus_profile_complete.kofun` / `.c` / `.stdout` — closes four profile
+  evidence gaps in one bounded source: a parameterized Void helper owns a
+  mutable local, assigns it, prints the result, and exits through a bare
+  return. Both compilers reproduce the reviewed C and pinned `42` output.
 - `corpus_bool.kofun` / `.c` / `.stdout` — the comparison/Bool corpus:
   all six comparisons, Bool literals and bindings, `!`, `&&` and `||`
   lower identically through both seeds. Its skipped short-circuit operands
@@ -65,6 +69,9 @@ filename or hash special case.
   `corpus_trap_text_index.kofun` / `.stderr` — well-typed out-of-bounds
   programs compile identically, then exit 1 with the exact receiver-specific
   `R010` diagnostic and no stdout.
+- `corpus_trap_fail.kofun` / `.c` / `.stdout` / `.stderr` — the zero-arity
+  `fail()` builtin compiles to reviewed C through both compiler paths, then
+  exits 1 with empty stdout and stderr, matching the pinned empty goldens.
 - `corpus_reject.kofun` / `.stdout` — the failure corpus: both
   compilers refuse an out-of-Core source with the same diagnostic bytes
   and write nothing.

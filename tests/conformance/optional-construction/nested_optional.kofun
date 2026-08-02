@@ -1,0 +1,7 @@
+# One optional layer. `Int??` is not a type in the accepted contract.
+
+fn main() -> Int {
+    let value: Int?? = 1
+    print(0)
+    return 0
+}

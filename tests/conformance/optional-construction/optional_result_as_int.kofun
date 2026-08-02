@@ -1,0 +1,12 @@
+# A call declared `Int?` yields an `Int?`, so its result cannot stand where an
+# `Int` is expected either.
+
+fn empty() -> Int? {
+    return null
+}
+
+fn main() -> Int {
+    let value: Int = empty()
+    print(value)
+    return 0
+}

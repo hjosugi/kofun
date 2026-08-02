@@ -47,6 +47,9 @@ const CABI_MAX_FIELDS = 16;
 const CABI_MAX_FUNCTIONS = 64;
 const CABI_MAX_PARAMS = 16;
 
+const SIMPLE_FUNCTION_ATTRIBUTE =
+  /__attribute__\(\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)\)/g;
+
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const KOFUN_PRIMITIVES = new Set([
   'Unit', 'Bool', 'I8', 'I16', 'I32', 'I64', 'U8', 'U16', 'U32', 'U64',
@@ -209,6 +212,81 @@ function runClang(clang, args, inputLabel) {
 
 function sha256(buffer) {
   return createHash('sha256').update(buffer).digest('hex');
+}
+
+// The checked C ABI compiler currently emits the platform-default C calling
+// convention. Bindgen therefore accepts a declaration only when clang's
+// function type resolves to that convention for the effective target. The
+// absence of an attribute is evidence from the AST, not a guessed constant;
+// the target mapping supplies the convention that "default" means.
+function targetDefaultCallingConvention(targetTriple) {
+  const target = targetTriple.toLowerCase();
+  if (/^(x86_64|amd64)-/.test(target) && target.includes('-linux-')) {
+    return {
+      id: 'sysv-x86_64',
+      name: 'System V AMD64',
+      source: 'target-default',
+      target_triple: targetTriple,
+      clang_attribute: null,
+    };
+  }
+  return null;
+}
+
+function classifyFunctionCallingConvention(prototype, targetDefault) {
+  const attributes = [...prototype.matchAll(SIMPLE_FUNCTION_ATTRIBUTE)]
+    .map((match) => match[1]);
+  const unparsedAttributes = prototype
+    .replace(SIMPLE_FUNCTION_ATTRIBUTE, '')
+    .includes('__attribute__');
+  if (unparsedAttributes) {
+    return {
+      unsupported: 'function type carries an unparsed clang attribute',
+      reasonCode: 'unsupported-function-type-attribute',
+      convention: null,
+    };
+  }
+
+  const conventionAttributes = attributes.filter((attribute) =>
+    attribute === 'sysv_abi' || attribute === 'ms_abi');
+  const otherAttributes = attributes.filter((attribute) =>
+    attribute !== 'sysv_abi' && attribute !== 'ms_abi');
+  if (otherAttributes.length > 0) {
+    return {
+      unsupported: `function type attribute(s) ${otherAttributes.join(', ')} are not modeled`,
+      reasonCode: 'unsupported-function-type-attribute',
+      convention: null,
+    };
+  }
+  if (conventionAttributes.length > 1) {
+    return {
+      unsupported: `multiple calling convention attributes are not modeled: ${conventionAttributes.join(', ')}`,
+      reasonCode: 'ambiguous-calling-convention',
+      convention: null,
+    };
+  }
+  if (conventionAttributes.length === 0) {
+    return { unsupported: null, reasonCode: null, convention: { ...targetDefault } };
+  }
+
+  const clangAttribute = conventionAttributes[0];
+  const id = clangAttribute === 'sysv_abi' ? 'sysv-x86_64' : 'ms-x64';
+  const convention = {
+    id,
+    name: clangAttribute === 'sysv_abi' ? 'System V AMD64' : 'Microsoft x64',
+    source: 'clang-attribute',
+    target_triple: targetDefault.target_triple,
+    clang_attribute: clangAttribute,
+  };
+  if (id !== targetDefault.id) {
+    return {
+      unsupported: `calling convention ${id} from clang attribute ${clangAttribute} ` +
+        `differs from checked target default ${targetDefault.id}`,
+      reasonCode: 'unsupported-calling-convention',
+      convention,
+    };
+  }
+  return { unsupported: null, reasonCode: null, convention };
 }
 
 // ---------------------------------------------------------------- AST walk
@@ -411,6 +489,11 @@ function main() {
     runClang(options.clang, ['--version'], 'version query').split('\n')[0].trim();
   const targetTriple =
     runClang(options.clang, [...commonArgs, '-print-effective-triple'], 'triple query').trim();
+  const targetDefaultConvention = targetDefaultCallingConvention(targetTriple);
+  if (targetDefaultConvention === null) {
+    fail(`effective target ${targetTriple} has no checked default calling convention; ` +
+      'bindgen-c currently supports x86_64 Linux only');
+  }
 
   const astText = runClang(
     options.clang,
@@ -437,11 +520,11 @@ function main() {
   const universe = new TypeUniverse();
   const audit = [];
   const auditKeys = new Set();
-  const report = (name, kind, category, reason) => {
+  const report = (name, kind, category, reason, details = {}) => {
     const key = `${kind} ${name} ${reason}`;
     if (auditKeys.has(key)) return;
     auditKeys.add(key);
-    audit.push({ name, kind, category, reason });
+    audit.push({ name, kind, category, reason, ...details });
   };
 
   let anonymousCounter = 0;
@@ -659,9 +742,15 @@ function main() {
           'variadic functions are not representable in the checked C ABI profile');
         continue;
       }
-      if (prototype.includes('__attribute__')) {
-        report(name, 'function', 'skipped',
-          'non-default calling convention or attribute is not modeled');
+      const callingConvention =
+        classifyFunctionCallingConvention(prototype, targetDefaultConvention);
+      if (callingConvention.unsupported !== null) {
+        report(name, 'function', 'skipped', callingConvention.unsupported, {
+          reason_code: callingConvention.reasonCode,
+          ...(callingConvention.convention === null
+            ? {}
+            : { calling_convention: callingConvention.convention }),
+        });
         continue;
       }
       if (/\(\s*\)\s*$/.test(prototype) && !prototype.endsWith('(void)')) {
@@ -743,6 +832,7 @@ function main() {
         parameters,
         result: { cType: normalizeCType(resultSpelling), kofun: mappedResult.kofun },
         reviews,
+        callingConvention: callingConvention.convention,
       });
     } else if (kind === 'VarDecl') {
       report(String(node.name), 'global-variable', 'skipped',
@@ -955,6 +1045,8 @@ function main() {
   for (const fn of sortedFunctions) {
     push('');
     push(`# C: ${fn.prototype.replace(/ ?\(/, ` ${fn.name}(`)}`);
+    push(`# ABI: ${fn.callingConvention.id} (${fn.callingConvention.source}; ` +
+      `clang attribute: ${fn.callingConvention.clang_attribute || 'none'})`);
     for (const review of fn.reviews) {
       push(`# REVIEW ${review.reason}: ${review.detail}`);
     }
@@ -1002,7 +1094,7 @@ function main() {
       functions: sortedFunctions.map((fn) => ({
         name: fn.name,
         symbol: fn.symbol,
-        calling_convention: 'default (System V AMD64 on the pinned target)',
+        calling_convention: fn.callingConvention,
         c_prototype: fn.prototype,
         kofun_signature: kofunSignature(fn),
         parameters: fn.parameters.map((parameter) => ({
