@@ -1,0 +1,7 @@
+type Money = {
+    amount: Int,
+}
+
+fn use(value: Money[2]) -> Int {
+    return 0
+}

@@ -1,0 +1,21 @@
+# The falsification of the premise that lets one struct be shared by every
+# instantiation: a const argument contributes no storage.
+#
+# A field typed by an instantiation puts the argument inside a struct, so the
+# premise stops holding and the shared lowering would span two distinct types.
+# The guard fires here instead.
+type Fixed[const scale: Int] = {
+    significand: Int,
+}
+
+type Ledger = {
+    balance: Fixed[2],
+}
+
+fn keep(entry: Ledger) -> Ledger {
+    return entry
+}
+
+fn main() {
+    print(0)
+}

@@ -2429,6 +2429,78 @@ static int64_t after_optional_module_header(
 );
 static char *owned_text(const char *text);
 static bool enum_name_covered(const char *covered, const char *name);
+static char *const_type_base(const char *annotation);
+static char *const_generic_refusal(Buffer *error);
+
+/* The `[` of a `type NAME[...]` parameter list, or -1 when there is none.
+ *
+ * #916 admits exactly one shape here, `[const NAME: Int]`. An ordinary type
+ * parameter needs field substitution and per-instantiation layout, neither of
+ * which this slice builds, so it is refused by name rather than half-parsed. */
+static int64_t type_parameter_open(const char *source, int64_t start) {
+    int64_t length = source_length(source);
+    if (!token_equal(source, start, "type")) return -1;
+    int64_t name = skip_trivia(source, token_end(source, start));
+    if (
+        name >= length ||
+        strcmp(token_kind(source, name), "identifier") != 0
+    ) {
+        return -1;
+    }
+    int64_t bracket = skip_trivia(source, token_end(source, name));
+    if (bracket < length && token_equal(source, bracket, "[")) return bracket;
+    return -1;
+}
+
+/* The `=` of a type declaration, skipping an optional parameter list. `-1`
+ * when the parameter brackets do not close. */
+static int64_t type_equals_token(const char *source, int64_t start) {
+    int64_t name = skip_trivia(source, token_end(source, start));
+    int64_t bracket = type_parameter_open(source, start);
+    if (bracket < 0) return skip_trivia(source, token_end(source, name));
+    int64_t close = balanced_end(source, bracket, "[", "]");
+    if (close < 0) return -1;
+    return skip_trivia(source, close);
+}
+
+/* The declared const parameter of `type NAME[const P: Int]`, or "" when the
+ * declaration has no parameter list or the list is not that shape. */
+static char *const_parameter_name(const char *source, int64_t start) {
+    int64_t length = source_length(source);
+    int64_t bracket = type_parameter_open(source, start);
+    if (bracket < 0) return owned_text("");
+    int64_t keyword = skip_trivia(source, token_end(source, bracket));
+    if (keyword >= length || !token_equal(source, keyword, "const")) {
+        return owned_text("");
+    }
+    int64_t parameter = skip_trivia(source, token_end(source, keyword));
+    if (
+        parameter >= length ||
+        strcmp(token_kind(source, parameter), "identifier") != 0
+    ) {
+        return owned_text("");
+    }
+    return token_copy(source, parameter);
+}
+
+/* The const parameter declared by the type named `wanted`, or "". */
+static char *const_parameter_of_type(const char *source, const char *wanted) {
+    int64_t length = source_length(source);
+    int64_t cursor = after_optional_module_header(source, 0);
+    while (cursor < length) {
+        int64_t type_start = type_declaration_start(source, cursor);
+        if (type_start >= 0) {
+            char *name = type_name(source, type_start);
+            bool matched = strcmp(name, wanted) == 0;
+            free(name);
+            if (matched) return const_parameter_name(source, type_start);
+        }
+        int64_t end = top_level_end(source, cursor);
+        if (end <= cursor) return owned_text("");
+        cursor = skip_trivia(source, end);
+    }
+    return owned_text("");
+}
 
 static int64_t type_declaration_end(const char *source, int64_t start) {
     int64_t length = source_length(source);
@@ -2438,9 +2510,10 @@ static int64_t type_declaration_end(const char *source, int64_t start) {
     free(name_text);
     if (!valid_start) return -1;
 
-    int64_t name = skip_trivia(source, token_end(source, start));
-    int64_t equals = skip_trivia(source, token_end(source, name));
-    if (equals >= length || !token_equal(source, equals, "=")) return -1;
+    int64_t equals = type_equals_token(source, start);
+    if (equals < 0 || equals >= length || !token_equal(source, equals, "=")) {
+        return -1;
+    }
     int64_t pipe = skip_trivia(source, token_end(source, equals));
     if (pipe < length && token_equal(source, pipe, "{")) {
         int64_t close = balanced_end(source, pipe, "{", "}");
@@ -2491,18 +2564,23 @@ static int64_t type_declaration_end(const char *source, int64_t start) {
 
 static bool record_declaration_at(const char *source, int64_t start) {
     if (!token_equal(source, start, "type")) return false;
-    int64_t name = skip_trivia(source, token_end(source, start));
-    int64_t equals = skip_trivia(source, token_end(source, name));
+    int64_t equals = type_equals_token(source, start);
+    if (equals < 0) return false;
     int64_t open = skip_trivia(source, token_end(source, equals));
     return token_equal(source, equals, "=") &&
            token_equal(source, open, "{");
 }
 
+/* The declaration a record type identity names. A const argument selects no
+ * separate declaration — it is part of the *type*, never of the *declaration* —
+ * so it is dropped here, and this is the single lookup funnel that makes every
+ * field, layout, and C-name consumer agree on that without knowing about it. */
 static int64_t record_declaration_start(
     const char *source,
-    const char *wanted
+    const char *identity
 ) {
     int64_t length = (int64_t)strlen(source);
+    char *wanted = const_type_base(identity);
     int64_t cursor = after_optional_module_header(source, 0);
     while (cursor < length) {
         int64_t type_start = type_declaration_start(source, cursor);
@@ -2513,12 +2591,19 @@ static int64_t record_declaration_start(
             char *name = type_name(source, type_start);
             bool found = strcmp(name, wanted) == 0;
             free(name);
-            if (found) return type_start;
+            if (found) {
+                free(wanted);
+                return type_start;
+            }
         }
         int64_t end = top_level_end(source, cursor);
-        if (end <= cursor) return -1;
+        if (end <= cursor) {
+            free(wanted);
+            return -1;
+        }
         cursor = skip_trivia(source, end);
     }
+    free(wanted);
     return -1;
 }
 
@@ -2534,8 +2619,8 @@ static int64_t record_field_count(
 ) {
     int64_t declaration = record_declaration_start(source, record_type);
     if (declaration < 0) return -1;
-    int64_t name = skip_trivia(source, token_end(source, declaration));
-    int64_t equals = skip_trivia(source, token_end(source, name));
+    int64_t equals = type_equals_token(source, declaration);
+    if (equals < 0) return -3;
     int64_t open = skip_trivia(source, token_end(source, equals));
     int64_t close = balanced_end(source, open, "{", "}");
     if (close < 0) return -3;
@@ -2604,8 +2689,8 @@ static char *record_field_text(
 ) {
     int64_t declaration = record_declaration_start(source, record_type);
     if (declaration < 0) return owned_text("");
-    int64_t name = skip_trivia(source, token_end(source, declaration));
-    int64_t equals = skip_trivia(source, token_end(source, name));
+    int64_t equals = type_equals_token(source, declaration);
+    if (equals < 0) return owned_text("");
     int64_t open = skip_trivia(source, token_end(source, equals));
     int64_t close = balanced_end(source, open, "{", "}");
     int64_t cursor = skip_trivia(source, token_end(source, open));
@@ -2908,6 +2993,114 @@ static char *enum_missing_constructors(
     return missing.data;
 }
 
+/* "" when a parameterized `type` declares exactly `[const NAME: Int]`, and the
+ * diagnostic that refuses it otherwise. Ordinary type parameters on a nominal
+ * type are named here rather than reported as a malformed declaration. */
+static char *type_parameter_list_error(const char *source, int64_t start) {
+    int64_t bracket = type_parameter_open(source, start);
+    if (bracket < 0) return owned_text("");
+    char *name = type_name(source, start);
+    Buffer error;
+    buffer_init(&error);
+    if (balanced_end(source, bracket, "[", "]") < 0) {
+        buffer_format(
+            &error,
+            "error[E2S148]: type `%s` has an unterminated parameter list "
+            "at byte %" PRId64,
+            name,
+            bracket
+        );
+        free(name);
+        return const_generic_refusal(&error);
+    }
+    int64_t keyword = skip_trivia(source, token_end(source, bracket));
+    if (!token_equal(source, keyword, "const")) {
+        buffer_format(
+            &error,
+            "error[E2S148]: type parameters on a nominal type are "
+            "unsupported; `%s` may declare `[const NAME: Int]` only "
+            "at byte %" PRId64,
+            name,
+            keyword
+        );
+        free(name);
+        return const_generic_refusal(&error);
+    }
+    int64_t parameter = skip_trivia(source, token_end(source, keyword));
+    if (strcmp(token_kind(source, parameter), "identifier") != 0) {
+        buffer_format(
+            &error,
+            "error[E2S148]: const parameter of `%s` must be named "
+            "at byte %" PRId64,
+            name,
+            parameter
+        );
+        free(name);
+        return const_generic_refusal(&error);
+    }
+    char *parameter_name = token_copy(source, parameter);
+    int64_t colon = skip_trivia(source, token_end(source, parameter));
+    if (!token_equal(source, colon, ":")) {
+        buffer_format(
+            &error,
+            "error[E2S148]: const parameter `%s` of `%s` requires a "
+            "`: Int` annotation at byte %" PRId64,
+            parameter_name,
+            name,
+            colon
+        );
+        free(parameter_name);
+        free(name);
+        return const_generic_refusal(&error);
+    }
+    int64_t annotation = skip_trivia(source, token_end(source, colon));
+    if (!token_equal(source, annotation, "Int")) {
+        char *annotation_text = token_copy(source, annotation);
+        buffer_format(
+            &error,
+            "error[E2S148]: const parameter `%s` of `%s` has type `%s`; "
+            "only `Int` const parameters exist at byte %" PRId64,
+            parameter_name,
+            name,
+            annotation_text,
+            annotation
+        );
+        free(annotation_text);
+        free(parameter_name);
+        free(name);
+        return const_generic_refusal(&error);
+    }
+    int64_t after = skip_trivia(source, token_end(source, annotation));
+    if (!token_equal(source, after, "]")) {
+        buffer_format(
+            &error,
+            "error[E2S148]: type `%s` declares more than one parameter; "
+            "exactly one const parameter is admissible at byte %" PRId64,
+            name,
+            after
+        );
+        free(parameter_name);
+        free(name);
+        return const_generic_refusal(&error);
+    }
+    if (!record_declaration_at(source, start)) {
+        buffer_format(
+            &error,
+            "error[E2S148]: const parameters are admissible on a nominal "
+            "record only; `%s` is not one at byte %" PRId64,
+            name,
+            bracket
+        );
+        free(parameter_name);
+        free(name);
+        return const_generic_refusal(&error);
+    }
+    free(parameter_name);
+    free(name);
+    free(error.data);
+    return owned_text("");
+}
+
 static bool reserved_type_name(const char *name) {
     return strcmp(name, "Int") == 0 || strcmp(name, "Bool") == 0 ||
            strcmp(name, "Float") == 0 || strcmp(name, "Unit") == 0 ||
@@ -2926,7 +3119,23 @@ static char *function_parameter_type(
     int64_t index
 );
 
+static char *validate_const_arguments(const char *source);
+static char *validate_const_erasure(const char *source);
+
 static char *parse_program(const char *source) {
+    /* Const generic surface (#916). Both checks run before any declaration is
+     * recorded, so a refused source never reaches layout, IR, or an
+     * artifact. */
+    char *const_argument_check = validate_const_arguments(source);
+    if (strncmp(const_argument_check, "error[", 6) == 0) {
+        return const_argument_check;
+    }
+    free(const_argument_check);
+    char *const_erasure_check = validate_const_erasure(source);
+    if (strncmp(const_erasure_check, "error[", 6) == 0) {
+        return const_erasure_check;
+    }
+    free(const_erasure_check);
     Buffer ir;
     Buffer declared_types;
     Buffer declared_constructors;
@@ -2961,6 +3170,18 @@ static char *parse_program(const char *source) {
             int64_t modifier_start = explicit_visibility ? declaration_start : -1;
             int64_t modifier_end = explicit_visibility ?
                 token_end(source, declaration_start) : -1;
+            char *parameter_list_error = type_parameter_list_error(
+                source,
+                type_start
+            );
+            if (parameter_list_error[0] != '\0') {
+                free(name);
+                free(declared_types.data);
+                free(declared_constructors.data);
+                free(ir.data);
+                return parameter_list_error;
+            }
+            free(parameter_list_error);
             if (record_declaration_at(source, type_start)) {
                 int64_t fields = record_field_count(source, name);
                 Buffer error;
@@ -3044,7 +3265,7 @@ static char *parse_program(const char *source) {
                     free(declared_types.data);
                     free(declared_constructors.data);
                     free(ir.data);
-                    return error.data;
+                    return const_generic_refusal(&error);
                 }
                 free(error.data);
                 buffer_append(&declared_types, name);
@@ -3154,7 +3375,7 @@ static char *parse_program(const char *source) {
                 free(declared_types.data);
                 free(declared_constructors.data);
                 free(ir.data);
-                return error.data;
+                return const_generic_refusal(&error);
             }
             ++types;
             if (types > 32) {
@@ -3199,7 +3420,7 @@ static char *parse_program(const char *source) {
                 free(declared_types.data);
                 free(declared_constructors.data);
                 free(ir.data);
-                return error.data;
+                return const_generic_refusal(&error);
             }
             if (enum_name_covered(declared_constructors.data, name)) {
                 Buffer error;
@@ -3222,7 +3443,7 @@ static char *parse_program(const char *source) {
                 free(declared_types.data);
                 free(declared_constructors.data);
                 free(ir.data);
-                return error.data;
+                return const_generic_refusal(&error);
             }
             buffer_append(&declared_types, name);
             buffer_append(&declared_types, "|");
@@ -3256,7 +3477,7 @@ static char *parse_program(const char *source) {
                 free(declared_types.data);
                 free(declared_constructors.data);
                 free(ir.data);
-                return error.data;
+                return const_generic_refusal(&error);
             }
             buffer_format(
                 &ir,
@@ -3308,7 +3529,7 @@ static char *parse_program(const char *source) {
                     free(declared_types.data);
                     free(declared_constructors.data);
                     free(ir.data);
-                    return error.data;
+                    return const_generic_refusal(&error);
                 }
                 if (
                     enum_name_covered(
@@ -3337,7 +3558,7 @@ static char *parse_program(const char *source) {
                     free(declared_types.data);
                     free(declared_constructors.data);
                     free(ir.data);
-                    return error.data;
+                    return const_generic_refusal(&error);
                 }
                 if (enum_name_covered(declared_types.data, constructor_name)) {
                     Buffer error;
@@ -3361,7 +3582,7 @@ static char *parse_program(const char *source) {
                     free(declared_types.data);
                     free(declared_constructors.data);
                     free(ir.data);
-                    return error.data;
+                    return const_generic_refusal(&error);
                 }
                 buffer_append(&declared_constructors, constructor_name);
                 buffer_append(&declared_constructors, "|");
@@ -4236,6 +4457,378 @@ static char *removed_callable_rewrite(const char *source, int64_t open) {
  * `Fn[...]` is the callable notation #552 removed. `Fn` stays an ordinary
  * identifier, so only `Fn` immediately followed by `[` is the removed type.
  */
+/* Records the structured form of a const generic refusal before returning it.
+ *
+ * The semantic producer must agree with the authority on the diagnostic as
+ * well as on the exit class; a refusal that skipped this made the producer
+ * report a tooling failure instead of the error the compiler printed. Both the
+ * code and the byte are read back out of the formatted message, so the
+ * structured diagnostic and the printed one cannot disagree. */
+static char *const_generic_refusal(Buffer *error) {
+    char code[32];
+    const char *close;
+    const char *marker;
+    size_t width;
+    int64_t position = -1;
+    if (error->data == NULL || strncmp(error->data, "error[", 6) != 0) {
+        return error->data;
+    }
+    close = strchr(error->data, ']');
+    if (close == NULL) return error->data;
+    width = (size_t)(close - (error->data + 6));
+    if (width == 0 || width >= sizeof(code)) return error->data;
+    memcpy(code, error->data + 6, width);
+    code[width] = '\0';
+    marker = strstr(error->data, " at byte ");
+    if (marker != NULL) {
+        position = (int64_t)strtoll(marker + 9, NULL, 10);
+    }
+    stage2_diagnostic_set(
+        code,
+        position,
+        position,
+        position >= 0,
+        error->data
+    );
+    return error->data;
+}
+
+/* The leading-zero-stripped digits of a const argument. Normalization is by
+ * value, not by digits, so `Fixed[02]` and `Fixed[2]` are one type. */
+static char *const_argument_digits(const char *literal) {
+    size_t width = strlen(literal);
+    size_t index = 0;
+    while (index + 1 < width && literal[index] == '0') ++index;
+    return owned_text(literal + index);
+}
+
+static bool const_digit_greater(char actual, char allowed) {
+    const char *digits = "0123456789";
+    const char *found_actual = strchr(digits, actual);
+    const char *found_allowed = strchr(digits, allowed);
+    if (found_actual == NULL || found_allowed == NULL) return false;
+    return found_actual > found_allowed;
+}
+
+/* A const parameter is a type-level integer, not a machine integer, so its
+ * budget is a declared ceiling rather than a host width. Exceeding it is
+ * refused and never wrapped, clamped, or truncated. Comparing equal-width
+ * digit strings position by position is exactly numeric comparison, which is
+ * why no integer parse is needed here. */
+static bool const_argument_over_budget(const char *digits) {
+    const char *limit = "65535";
+    size_t width = strlen(digits);
+    size_t limit_width = strlen(limit);
+    if (width > limit_width) return true;
+    if (width < limit_width) return false;
+    for (size_t index = 0; index < width; ++index) {
+        if (digits[index] != limit[index]) {
+            return const_digit_greater(digits[index], limit[index]);
+        }
+    }
+    return false;
+}
+
+/* The text of a type annotation, carrying its normalized const argument when
+ * the head names a const-parameterized type.
+ *
+ * Returning only the head token here is what would erase `Fixed[2]` into
+ * `Fixed`, making every scale one type. This is the single place an
+ * instantiation becomes a type identity, so every comparison downstream
+ * distinguishes the scales without knowing they exist. */
+static char *annotation_type_text(const char *source, int64_t type_start) {
+    int64_t length = source_length(source);
+    char *head = token_copy(source, type_start);
+    char *parameter = const_parameter_of_type(source, head);
+    bool parameterized = parameter[0] != '\0';
+    free(parameter);
+    if (!parameterized) return head;
+    int64_t bracket = skip_trivia(source, token_end(source, type_start));
+    if (bracket >= length || !token_equal(source, bracket, "[")) return head;
+    int64_t argument = skip_trivia(source, token_end(source, bracket));
+    if (
+        argument >= length ||
+        strcmp(token_kind(source, argument), "integer") != 0
+    ) {
+        return head;
+    }
+    char *literal = token_copy(source, argument);
+    char *digits = const_argument_digits(literal);
+    Buffer text;
+    buffer_init(&text);
+    buffer_format(&text, "%s[%s]", head, digits);
+    free(digits);
+    free(literal);
+    free(head);
+    return text.data;
+}
+
+/* The end offset of a type annotation, including its const argument. Walking
+ * past only the head token here is what would leave `[2]` in the stream for
+ * the next parser step to trip over. */
+static int64_t annotation_type_end(const char *source, int64_t type_start) {
+    int64_t length = source_length(source);
+    char *head = token_copy(source, type_start);
+    char *parameter = const_parameter_of_type(source, head);
+    bool parameterized = parameter[0] != '\0';
+    free(parameter);
+    free(head);
+    if (!parameterized) return token_end(source, type_start);
+    int64_t bracket = skip_trivia(source, token_end(source, type_start));
+    if (bracket >= length || !token_equal(source, bracket, "[")) {
+        return token_end(source, type_start);
+    }
+    int64_t close = balanced_end(source, bracket, "[", "]");
+    if (close < 0) return token_end(source, type_start);
+    return close;
+}
+
+/* The declaration a type identity names, with any const argument removed. */
+static char *const_type_base(const char *annotation) {
+    const char *bracket = strchr(annotation, '[');
+    if (bracket == NULL) return owned_text(annotation);
+    size_t width = (size_t)(bracket - annotation);
+    char *base = allocate(width + 1);
+    memcpy(base, annotation, width);
+    base[width] = '\0';
+    return base;
+}
+
+/* True at the type name of the declaration itself, which is the one position
+ * where a const-parameterized name legitimately carries no argument. */
+static bool const_generic_declaration_head(
+    const char *source,
+    int64_t position
+) {
+    int64_t length = source_length(source);
+    int64_t cursor = after_optional_module_header(source, 0);
+    while (cursor < length) {
+        int64_t type_start = type_declaration_start(source, cursor);
+        if (
+            type_start >= 0 &&
+            skip_trivia(source, token_end(source, type_start)) == position
+        ) {
+            return true;
+        }
+        int64_t end = top_level_end(source, cursor);
+        if (end <= cursor) return false;
+        cursor = skip_trivia(source, end);
+    }
+    return false;
+}
+
+/* Every `NAME[...]` whose head is a const-parameterized type must supply one
+ * non-negative integer literal inside the declared budget. Const expressions,
+ * const inference, and arithmetic on a type-level value are out of scope, so a
+ * non-literal argument is refused here rather than partially resolved. */
+static char *validate_const_arguments(const char *source) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < length) {
+        if (strcmp(token_kind(source, cursor), "identifier") == 0) {
+            char *head = token_copy(source, cursor);
+            char *parameter = const_parameter_of_type(source, head);
+            int64_t bracket = skip_trivia(source, token_end(source, cursor));
+            Buffer error;
+            buffer_init(&error);
+            if (
+                parameter[0] != '\0' &&
+                const_generic_declaration_head(source, cursor)
+            ) {
+                /* The declaration's own parameter list is a binder, not an
+                 * argument; `type_parameter_list_error` owns its shape. */
+                free(error.data);
+                free(parameter);
+                free(head);
+                cursor = skip_trivia(source, token_end(source, cursor));
+                continue;
+            }
+            if (
+                parameter[0] != '\0' &&
+                bracket < length &&
+                token_equal(source, bracket, "[")
+            ) {
+                int64_t close = balanced_end(source, bracket, "[", "]");
+                if (close < 0) {
+                    buffer_format(
+                        &error,
+                        "error[E2S150]: unterminated const argument list "
+                        "for `%s` at byte %" PRId64,
+                        head,
+                        bracket
+                    );
+                    free(parameter);
+                    free(head);
+                    return const_generic_refusal(&error);
+                }
+                int64_t argument = skip_trivia(
+                    source,
+                    token_end(source, bracket)
+                );
+                if (token_equal(source, argument, "-")) {
+                    buffer_format(
+                        &error,
+                        "error[E2S149]: const argument to `%s` is negative; "
+                        "`%s: Int` admits `0`..`65535` only "
+                        "at byte %" PRId64,
+                        head,
+                        parameter,
+                        argument
+                    );
+                    free(parameter);
+                    free(head);
+                    return const_generic_refusal(&error);
+                }
+                if (strcmp(token_kind(source, argument), "integer") != 0) {
+                    buffer_format(
+                        &error,
+                        "error[E2S149]: const argument to `%s` is not an "
+                        "integer literal; const expressions are out of "
+                        "scope at byte %" PRId64,
+                        head,
+                        argument
+                    );
+                    free(parameter);
+                    free(head);
+                    return const_generic_refusal(&error);
+                }
+                char *literal = token_copy(source, argument);
+                char *digits = const_argument_digits(literal);
+                bool over = const_argument_over_budget(digits);
+                free(digits);
+                free(literal);
+                if (over) {
+                    buffer_format(
+                        &error,
+                        "error[E2S149]: const argument to `%s` exceeds the budget "
+                        "`0`..`65535`; it is refused, not wrapped "
+                        "at byte %" PRId64,
+                        head,
+                        argument
+                    );
+                    free(parameter);
+                    free(head);
+                    return const_generic_refusal(&error);
+                }
+                int64_t after = skip_trivia(
+                    source,
+                    token_end(source, argument)
+                );
+                if (!token_equal(source, after, "]")) {
+                    buffer_format(
+                        &error,
+                        "error[E2S150]: `%s` declares one const parameter "
+                        "and accepts exactly one argument at byte %" PRId64,
+                        head,
+                        after
+                    );
+                    free(parameter);
+                    free(head);
+                    return const_generic_refusal(&error);
+                }
+                cursor = skip_trivia(source, close);
+                free(error.data);
+                free(parameter);
+                free(head);
+                continue;
+            }
+            if (
+                parameter[0] != '\0' &&
+                !const_generic_declaration_head(source, cursor)
+            ) {
+                buffer_format(
+                    &error,
+                    "error[E2S150]: `%s` expects one const argument; write "
+                    "`%s[...]` at byte %" PRId64,
+                    head,
+                    head,
+                    cursor
+                );
+                free(parameter);
+                free(head);
+                return const_generic_refusal(&error);
+            }
+            free(error.data);
+            free(parameter);
+            free(head);
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return owned_text("ok");
+}
+
+/* The executable form of the premise that lets every instantiation of one
+ * declaration share a single lowering: a const argument contributes no
+ * storage, so it must never reach layout or code generation.
+ *
+ * A record field typed by an instantiation is the route that would break it —
+ * the field would put the argument inside a struct, and one shared struct
+ * would then be a miscompile across two types the checker has already made
+ * distinct. Refusing it here means the premise fails loudly the day it stops
+ * holding, instead of a struct being quietly shared. */
+static char *validate_const_erasure(const char *source) {
+    int64_t length = source_length(source);
+    int64_t cursor = after_optional_module_header(source, 0);
+    while (cursor < length) {
+        int64_t type_start = type_declaration_start(source, cursor);
+        if (type_start >= 0 && record_declaration_at(source, type_start)) {
+            int64_t equals = type_equals_token(source, type_start);
+            int64_t open = skip_trivia(source, token_end(source, equals));
+            int64_t close = balanced_end(source, open, "{", "}");
+            if (close < 0) return owned_text("ok");
+            int64_t field = skip_trivia(source, token_end(source, open));
+            while (field < close && !token_equal(source, field, "}")) {
+                int64_t colon = skip_trivia(source, token_end(source, field));
+                int64_t field_type = skip_trivia(
+                    source,
+                    token_end(source, colon)
+                );
+                if (field_type < close) {
+                    char *field_type_text = token_copy(source, field_type);
+                    char *parameter = const_parameter_of_type(
+                        source,
+                        field_type_text
+                    );
+                    bool parameterized = parameter[0] != '\0';
+                    free(parameter);
+                    free(field_type_text);
+                    if (parameterized) {
+                        char *field_name = token_copy(source, field);
+                        char *owner = type_name(source, type_start);
+                        Buffer error;
+                        buffer_init(&error);
+                        buffer_format(
+                            &error,
+                            "error[E2S148]: field `%s` of `%s` is a const generic "
+                            "instantiation; a const argument must not "
+                            "reach layout at byte %" PRId64,
+                            field_name,
+                            owner,
+                            field_type
+                        );
+                        free(owner);
+                        free(field_name);
+                        return const_generic_refusal(&error);
+                    }
+                }
+                int64_t separator = skip_trivia(
+                    source,
+                    token_end(source, field_type)
+                );
+                if (separator < close && token_equal(source, separator, ",")) {
+                    field = skip_trivia(source, token_end(source, separator));
+                } else {
+                    field = separator;
+                }
+            }
+        }
+        int64_t end = top_level_end(source, cursor);
+        if (end <= cursor) return owned_text("ok");
+        cursor = skip_trivia(source, end);
+    }
+    return owned_text("ok");
+}
+
 static char *validate_removed_callable_notation(const char *source) {
     int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, 0);
@@ -4660,13 +5253,101 @@ static char *c_identifier_name(const char *identifier) {
     return output.data;
 }
 
+/* The const argument of a type identity, or "" when it has none. */
+static char *const_argument_of(const char *identity) {
+    const char *open = strchr(identity, '[');
+    size_t width;
+    char *argument;
+    if (open == NULL) return owned_text("");
+    width = strlen(open + 1);
+    if (width == 0) return owned_text("");
+    argument = allocate(width);
+    memcpy(argument, open + 1, width - 1);
+    argument[width - 1] = '\0';
+    return argument;
+}
+
+/* The single funnel from a type identity to a C struct name, and the place
+ * per-literal monomorphization actually happens: one emitted struct per
+ * distinct literal, so `Fixed[2]` and `Fixed[3]` are two C types.
+ *
+ * An earlier revision dropped the argument here and justified it in a comment —
+ * a const parameter contributes no storage, so one struct was said to be safe.
+ * That was a true statement about miscompiles standing in for an untrue one
+ * about the backend's capability: it made the C type system stop separating
+ * what the Kofun type system had already separated, while
+ * `tests/conformance/capabilities.tsv` claimed the backend did not support the
+ * construct at all. `validate_struct_identity` now refuses that collapse
+ * instead of a comment asserting it is fine. */
 static char *record_c_type_name(const char *record_type) {
-    char *name = c_identifier_name(record_type);
+    char *base = const_type_base(record_type);
+    char *argument = const_argument_of(record_type);
+    char *name = c_identifier_name(base);
     Buffer output;
     buffer_init(&output);
-    buffer_format(&output, "KofunRecord_%s", name);
+    if (argument[0] == '\0') {
+        buffer_format(&output, "KofunRecord_%s", name);
+    } else {
+        buffer_format(&output, "KofunRecord_%s__%s", name, argument);
+    }
     free(name);
+    free(argument);
+    free(base);
     return output.data;
+}
+
+/* The `index`-th distinct instantiation of `wanted`, in first-use order, or
+ * "". This is the monomorphization set the emitter walks. */
+static char *const_instantiation_at(
+    const char *source,
+    const char *wanted,
+    int64_t wanted_index
+) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    int64_t count = 0;
+    Buffer seen;
+    buffer_init(&seen);
+    buffer_append(&seen, "|");
+    while (cursor < length) {
+        if (
+            strcmp(token_kind(source, cursor), "identifier") == 0 &&
+            token_equal(source, cursor, wanted) &&
+            !const_generic_declaration_head(source, cursor)
+        ) {
+            char *identity = annotation_type_text(source, cursor);
+            if (
+                strcmp(identity, wanted) != 0 &&
+                !enum_name_covered(seen.data, identity)
+            ) {
+                if (count == wanted_index) {
+                    free(seen.data);
+                    return identity;
+                }
+                buffer_append(&seen, identity);
+                buffer_append(&seen, "|");
+                ++count;
+            }
+            free(identity);
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    free(seen.data);
+    return owned_text("");
+}
+
+static int64_t const_instantiation_count(
+    const char *source,
+    const char *wanted
+) {
+    int64_t count = 0;
+    for (;;) {
+        char *identity = const_instantiation_at(source, wanted, count);
+        bool present = identity[0] != '\0';
+        free(identity);
+        if (!present) return count;
+        ++count;
+    }
 }
 
 static char *record_c_field_name(const char *field) {
@@ -4732,6 +5413,34 @@ static char *emit_record_value(
             binding_id[0] == '\0' ||
             strcmp(binding_type, record_type) != 0
         ) {
+            /* Two instantiations of one const generic declaration are not a
+             * generic record mismatch, they are a mismatch *in the const
+             * argument*, so they say which scales disagreed. */
+            if (binding_id[0] != '\0') {
+                char *actual_base = const_type_base(binding_type);
+                char *wanted_base = const_type_base(record_type);
+                bool same_declaration =
+                    strcmp(actual_base, wanted_base) == 0;
+                free(wanted_base);
+                free(actual_base);
+                if (same_declaration) {
+                    Buffer detail;
+                    buffer_init(&detail);
+                    buffer_format(
+                        &detail,
+                        "`%s` is not `%s`; instantiations differing only in "
+                        "their const argument are different types",
+                        binding_type,
+                        record_type
+                    );
+                    free(binding_type);
+                    free(binding_id);
+                    free(name);
+                    char *message = lower_error("E2S151", detail.data, cursor);
+                    free(detail.data);
+                    return message;
+                }
+            }
             free(binding_type);
             free(binding_id);
             free(name);
@@ -5840,7 +6549,7 @@ static char *builtin_argument_check(
                     error.data
                 );
                 free(actual);
-                return error.data;
+                return const_generic_refusal(&error);
             }
             free(actual);
         }
@@ -5949,7 +6658,7 @@ static char *validate_core_types(const char *source, const char *hir) {
                         );
                         free(name);
                         free(declared);
-                        return error.data;
+                        return const_generic_refusal(&error);
                     }
                 }
             }
@@ -6005,7 +6714,7 @@ static char *validate_core_types(const char *source, const char *hir) {
                         free(value_type);
                         free(name);
                         free(declared);
-                        return error.data;
+                        return const_generic_refusal(&error);
                     }
                     free(value_type);
                 }
@@ -6461,8 +7170,13 @@ static char *core_parameters(
             } else if (
                 record_declaration_start(source, parameter_type) >= 0
             ) {
-                type_end = token_end(source, type_cursor);
-                char *c_type = record_c_type_name(parameter_type);
+                type_end = annotation_type_end(source, type_cursor);
+                char *parameter_identity = annotation_type_text(
+                    source,
+                    type_cursor
+                );
+                char *c_type = record_c_type_name(parameter_identity);
+                free(parameter_identity);
                 Buffer aggregate;
                 buffer_init(&aggregate);
                 buffer_format(
@@ -8504,7 +9218,7 @@ static int64_t core_body_open(
             record_declaration_start(source, result_type) >= 0;
         free(result_type);
         if (!supported_result) return -1;
-        cursor = skip_trivia(source, token_end(source, cursor));
+        cursor = skip_trivia(source, annotation_type_end(source, cursor));
     } else if (!is_main) {
         return -1;
     }
@@ -10000,7 +10714,7 @@ static char *function_return_type_at(
             token_end(source, after)
         );
         if (type_cursor < length) {
-            return token_copy(source, type_cursor);
+            return annotation_type_text(source, type_cursor);
         }
         return owned_text("");
     }
@@ -10055,7 +10769,9 @@ static char *function_parameter_type_at(
         }
         int64_t type_start = skip_trivia(source, token_end(source, colon));
         if (type_start >= parameters_end) return owned_text("");
-        if (index == wanted_index) return token_copy(source, type_start);
+        if (index == wanted_index) {
+            return annotation_type_text(source, type_start);
+        }
 
         int64_t type_end = callable_type_end(source, type_start);
         if (type_end < 0) {
@@ -10697,16 +11413,21 @@ static char *build_scope_hir_mode(
              * keeps the declared type optional in the typed IR, so nothing
              * downstream mistakes the parameter for an `Int`. */
             int64_t optional_end = optional_int_type_end(source, type_cursor);
+            /* #916: a parameter binding records the annotation's full
+             * identity, so a const argument reaches the scope HIR instead of
+             * being flattened to its head. Recording `Fixed` here would make
+             * every scale one binding type and silently accept a scale
+             * mismatch. */
             int64_t type_end = callable_end >= 0
                 ? callable_end
                 : (optional_end >= 0
                        ? optional_end
-                       : token_end(source, type_cursor));
+                       : annotation_type_end(source, type_cursor));
             char *type_text = callable_end >= 0
                 ? owned_text("Fn")
                 : (optional_end >= 0
                        ? owned_text("Int?")
-                       : token_copy(source, type_cursor));
+                       : annotation_type_text(source, type_cursor));
             buffer_format(
                 &hir,
                 "binding|%" PRId64 "|%" PRId64 "|%s|immutable|%s|copy|"
@@ -10898,14 +11619,17 @@ static char *build_scope_hir_mode(
                         source,
                         type_cursor
                     );
+                    /* #916: an annotated local records the annotation's full
+                     * identity, so `let kept: Fixed[2]` binds `Fixed[2]` and
+                     * not `Fixed`. */
                     binding_type = optional_end >= 0
                         ? owned_text("Int?")
-                        : token_copy(source, type_cursor);
+                        : annotation_type_text(source, type_cursor);
                     after_name = skip_trivia(
                         source,
                         optional_end >= 0
                             ? optional_end
-                            : token_end(source, type_cursor)
+                            : annotation_type_end(source, type_cursor)
                     );
                 }
                 int64_t initializer = skip_trivia(
@@ -11431,9 +12155,13 @@ static char *build_scope_hir_mode(
                         cursor,
                         name
                     );
+                    /* A const generic construction head is `Name[N](`, so
+                     * the token that decides call-versus-use is the one after
+                     * the argument list. Stopping at `Name` would resolve the
+                     * type as a lexical binding and report it unknown. */
                     int64_t after = skip_trivia(
                         source,
-                        token_end(source, cursor)
+                        annotation_type_end(source, cursor)
                     );
                     const char *role = token_equal(source, after, "=") ?
                         "assign" : "read";
@@ -13258,7 +13986,7 @@ static char *lower_record_binding(
             value_start
         );
     }
-    char *constructor = token_copy(source, value_start);
+    char *constructor = annotation_type_text(source, value_start);
     if (strcmp(constructor, record_type) != 0) {
         Buffer message;
         buffer_init(&message);
@@ -13276,7 +14004,7 @@ static char *lower_record_binding(
     free(constructor);
     int64_t open = skip_trivia(
         source,
-        token_end(source, value_start)
+        annotation_type_end(source, value_start)
     );
     if (open >= length || !token_equal(source, open, "(")) {
         return lower_error(
@@ -13604,9 +14332,12 @@ static char *lower_body(
                         return lower_error("E2S11", "expected `=`", cursor);
                     }
                 }
+                /* #916: an annotated local records the annotation's full
+                 * identity, so `let kept: Fixed[2]` is not flattened to
+                 * `Fixed`. */
                 char *declared_type = optional_int
                     ? owned_text("Int")
-                    : token_copy(source, cursor);
+                    : annotation_type_text(source, cursor);
                 if (!optional_int && strcmp(declared_type, "Int") != 0) {
                     if (
                         strcmp(declared_type, "Text") == 0 ||
@@ -13647,7 +14378,10 @@ static char *lower_body(
                     free(declared_type);
                 }
                 if (!optional_int) {
-                    cursor = skip_trivia(source, token_end(source, cursor));
+                    cursor = skip_trivia(
+                        source,
+                        annotation_type_end(source, cursor)
+                    );
                 }
             }
             if (cursor >= length || !token_equal(source, cursor, "=")) {
@@ -13736,7 +14470,7 @@ static char *lower_body(
                     value_start < length &&
                     strcmp(token_kind(source, value_start), "identifier") == 0
                 ) {
-                    char *initializer_name = token_copy(
+                    char *initializer_name = annotation_type_text(
                         source,
                         value_start
                     );
@@ -16745,19 +17479,19 @@ static int64_t record_align_up(int64_t value, int64_t alignment) {
     return remainder == 0 ? value : value + alignment - remainder;
 }
 
-static char *emit_record_c_declarations(const char *source) {
-    int64_t length = (int64_t)strlen(source);
-    int64_t cursor = after_optional_module_header(source, 0);
+/* The struct, its field offsets, and its size for one emitted type. The field
+ * list comes from the declaration, so every instantiation of one declaration
+ * has the same layout — which is exactly why `validate_const_erasure` must
+ * keep a const argument out of a field type. */
+static char *emit_record_c_declaration(
+    const char *source,
+    const char *record_type,
+    const char *c_type
+) {
     Buffer declarations;
     buffer_init(&declarations);
-    while (cursor < length) {
-        int64_t type_start = type_declaration_start(source, cursor);
-        if (
-            type_start >= 0 &&
-            record_declaration_at(source, type_start)
-        ) {
-            char *record_type = type_name(source, type_start);
-            char *c_type = record_c_type_name(record_type);
+    {
+        {
             int64_t fields = record_field_count(source, record_type);
             int64_t extent = 0;
             int64_t record_alignment = 1;
@@ -16839,7 +17573,58 @@ static char *emit_record_c_declarations(const char *source) {
                 c_type,
                 extent
             );
-            free(c_type);
+        }
+    }
+    return declarations.data;
+}
+
+/* One struct per emitted type. A const-parameterized declaration produces one
+ * per distinct literal, which is the specialization itself; every other record
+ * produces exactly one, as before. */
+static char *emit_record_c_declarations(const char *source) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = after_optional_module_header(source, 0);
+    Buffer declarations;
+    buffer_init(&declarations);
+    while (cursor < length) {
+        int64_t type_start = type_declaration_start(source, cursor);
+        if (
+            type_start >= 0 &&
+            record_declaration_at(source, type_start)
+        ) {
+            char *record_type = type_name(source, type_start);
+            char *parameter = const_parameter_name(source, type_start);
+            if (parameter[0] != '\0') {
+                int64_t total = const_instantiation_count(source, record_type);
+                for (int64_t instance = 0; instance < total; ++instance) {
+                    char *identity = const_instantiation_at(
+                        source,
+                        record_type,
+                        instance
+                    );
+                    char *c_type = record_c_type_name(identity);
+                    char *emitted = emit_record_c_declaration(
+                        source,
+                        record_type,
+                        c_type
+                    );
+                    buffer_append(&declarations, emitted);
+                    free(emitted);
+                    free(c_type);
+                    free(identity);
+                }
+            } else {
+                char *c_type = record_c_type_name(record_type);
+                char *emitted = emit_record_c_declaration(
+                    source,
+                    record_type,
+                    c_type
+                );
+                buffer_append(&declarations, emitted);
+                free(emitted);
+                free(c_type);
+            }
+            free(parameter);
             free(record_type);
         }
         int64_t end = top_level_end(source, cursor);
@@ -17482,8 +18267,76 @@ static char *validate_move_assertions(const char *source, const char *hir) {
     return owned_text("ok");
 }
 
-static char *lower_c(const char *source, const char *hir) {
+/* The proposition that failed once, now with a gate instead of a comment.
+ *
+ * Distinct type identities must reach distinct emitted structs. `Fixed[2]` and
+ * `Fixed[3]` are different Kofun types, so if they lowered to one C struct the
+ * C type system would stop separating what the Kofun type system had already
+ * separated — which is exactly what an earlier revision did, under a comment
+ * arguing it was safe because a const parameter carries no storage. That
+ * argument was about miscompiles; this is about identity, and only one of the
+ * two was ever checked.
+ *
+ * It also catches the collision from the other direction: a declared record
+ * whose own name is the C name some instantiation generates. */
+static char *validate_struct_identity(const char *source) {
     int64_t length = source_length(source);
+    int64_t cursor = after_optional_module_header(source, 0);
+    Buffer names;
+    buffer_init(&names);
+    buffer_append(&names, "|");
+    while (cursor < length) {
+        int64_t type_start = type_declaration_start(source, cursor);
+        if (type_start >= 0 && record_declaration_at(source, type_start)) {
+            char *record_type = type_name(source, type_start);
+            char *parameter = const_parameter_name(source, type_start);
+            bool parameterized = parameter[0] != '\0';
+            int64_t total = parameterized
+                ? const_instantiation_count(source, record_type)
+                : 1;
+            free(parameter);
+            for (int64_t instance = 0; instance < total; ++instance) {
+                char *identity = parameterized
+                    ? const_instantiation_at(source, record_type, instance)
+                    : owned_text(record_type);
+                char *c_type = record_c_type_name(identity);
+                if (enum_name_covered(names.data, c_type)) {
+                    Buffer error;
+                    buffer_init(&error);
+                    buffer_format(
+                        &error,
+                        "error[E2S153]: `%s` lowers to `%s`, which another "
+                        "type already lowers to at byte %" PRId64,
+                        identity,
+                        c_type,
+                        type_start
+                    );
+                    free(c_type);
+                    free(identity);
+                    free(record_type);
+                    free(names.data);
+                    return const_generic_refusal(&error);
+                }
+                buffer_append(&names, c_type);
+                buffer_append(&names, "|");
+                free(c_type);
+                free(identity);
+            }
+            free(record_type);
+        }
+        int64_t end = top_level_end(source, cursor);
+        if (end <= cursor) break;
+        cursor = skip_trivia(source, end);
+    }
+    free(names.data);
+    return owned_text("");
+}
+
+static char *lower_c_body(const char *source, const char *hir) {
+    int64_t length = source_length(source);
+    char *identity_check = validate_struct_identity(source);
+    if (identity_check[0] != '\0') return identity_check;
+    free(identity_check);
     bool fractional_values = source_uses_fractional_values(source);
     /* First, before every other validator: a program that asks for the
      * move guarantee must hear the assertion's own verdict, not a
@@ -17838,6 +18691,10 @@ static char *lower_c(const char *source, const char *hir) {
     free(prototypes.data);
     free(bodies.data);
     return output.data;
+}
+
+static char *lower_c(const char *source, const char *hir) {
+    return lower_c_body(source, hir);
 }
 
 static bool ends_with(const char *value, const char *suffix) {
