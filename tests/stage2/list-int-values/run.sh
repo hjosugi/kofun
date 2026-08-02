@@ -89,6 +89,11 @@ assert_grep \
 "$work/complete" >"$work/complete.stdout" 2>"$work/complete.stderr"
 cmp "$fixtures/complete.stdout" "$work/complete.stdout"
 assert_file_empty "complete runtime stderr" "$work/complete.stderr"
+"$work/complete" \
+    >"$work/complete-repeat.stdout" \
+    2>"$work/complete-repeat.stderr"
+cmp "$work/complete.stdout" "$work/complete-repeat.stdout"
+cmp "$work/complete.stderr" "$work/complete-repeat.stderr"
 
 # The native Core C reference is independent of the Stage 2 lowerer. Its
 # binding observation and the emitted C11 program must agree byte for byte.
@@ -118,10 +123,23 @@ do
     assert_file_empty \
         "$directory compiler stderr" \
         "$work/$directory/compile.stderr"
+    "$compiler" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+        -I"$root/bootstrap/stage2" \
+        "$work/$directory/case.c" \
+        -o "$work/$directory/case"
+    "$work/$directory/case" \
+        >"$work/$directory/runtime.stdout" \
+        2>"$work/$directory/runtime.stderr"
+    cmp "$fixtures/complete.stdout" "$work/$directory/runtime.stdout"
+    assert_file_empty \
+        "$directory runtime stderr" \
+        "$work/$directory/runtime.stderr"
 done
 cmp "$work/normalized-a/case.c" "$work/normalized-b/case.c"
 cmp "$work/normalized-a/case.ir" "$work/normalized-b/case.ir"
 cmp "$work/normalized-a/case.tokens" "$work/normalized-b/case.tokens"
+cmp "$work/normalized-a/runtime.stdout" "$work/normalized-b/runtime.stdout"
+cmp "$work/normalized-a/runtime.stderr" "$work/normalized-b/runtime.stderr"
 
 # A dynamic index is checked by the generated runtime before printing.
 compile_success dynamic-out-of-range "$fixtures/dynamic_out_of_range.kofun"
