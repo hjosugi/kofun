@@ -105,6 +105,7 @@ differential_corpus() {
 differential_trap_corpus() {
     stem=$1
     label=$2
+    checked_c=${3:-no}
     source=bootstrap/selfhost/driver/$stem.kofun
     left=$temporary/$stem-left
     right=$temporary/$stem-right
@@ -123,8 +124,12 @@ differential_trap_corpus() {
         fail "compiler-from-S and the audited seed differ on $label compile stdout"
     cmp "$left/stderr.txt" "$right/stderr.txt" ||
         fail "compiler-from-S and the audited seed differ on $label compile stderr"
+    if test "$checked_c" = yes; then
+        cmp "bootstrap/selfhost/driver/$stem.c" "$left/output.c" ||
+            fail "$label corpus emission differs from the checked-in evidence"
+    fi
 
-    "$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$compiler" -std=c11 -O2 -Wall -Wextra -Werror -I unicode \
         "$left/output.c" -o "$temporary/$stem-program"
     set +e
     "$temporary/$stem-program" \
@@ -133,8 +138,14 @@ differential_trap_corpus() {
     set -e
     test "$status" -eq 1 ||
         fail "$label program must exit 1"
-    test ! -s "$temporary/$stem.stdout" ||
-        fail "$label program wrote unexpected stdout"
+    if test "$checked_c" = yes; then
+        cmp "bootstrap/selfhost/driver/$stem.stdout" \
+            "$temporary/$stem.stdout" ||
+            fail "$label stdout differs from the pinned golden"
+    else
+        test ! -s "$temporary/$stem.stdout" ||
+            fail "$label program wrote unexpected stdout"
+    fi
     cmp "bootstrap/selfhost/driver/$stem.stderr" "$temporary/$stem.stderr" ||
         fail "$label runtime diagnostic differs from the pinned golden"
 }
@@ -147,6 +158,12 @@ differential_corpus corpus_answer arithmetic
 # explicit result type must lower identically through the generated compiler
 # and the audited hand-port, then execute with its pinned result.
 differential_corpus corpus_function function-declaration
+
+# One compact fixture closes four source-profile gaps: a parameterized Void
+# helper owns a mutable local, assigns it, and exits through a bare return.
+# Both independently-derived compilers must emit the reviewed bytes and the
+# program must reproduce its pinned output.
+differential_corpus corpus_profile_complete profile-completion
 
 # The Bool/comparison slice: all six comparisons, Bool literals and bindings,
 # `!`, precedence, and the nested left-associative `&&`/`||` shape. Executing it
@@ -230,6 +247,11 @@ test "$(sha256sum bootstrap/selfhost/driver/corpus_answer.c |
 # kinds to exit 1 with one exact R010 diagnostic and no stdout.
 differential_trap_corpus corpus_trap_list_index List-Text-index-trap
 differential_trap_corpus corpus_trap_text_index Text-index-trap
+
+# `fail()` is accepted and lowered like an ordinary zero-arity Void builtin,
+# then terminates at runtime with exit 1 and no output. Unlike the older bounds
+# traps, this fixture also supplies reviewed C because it closes a profile row.
+differential_trap_corpus corpus_trap_fail fail-builtin-trap yes
 
 # Path remapping: compiling the same relative input from two different
 # directories produces byte-identical C — no absolute-path leakage.
