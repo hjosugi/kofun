@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 81,
+  "open_issues": 79,
   "issues": [
     {
       "number": 26,
@@ -199,7 +199,6 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        39,
         70,
         120
       ],
@@ -443,7 +442,6 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        39,
         618
       ],
       "evidence_commits": [
@@ -551,9 +549,7 @@
         "needs-decision"
       ],
       "state_line": "needs-decision",
-      "blocked_by": [
-        39
-      ],
+      "blocked_by": [],
       "evidence_commits": []
     },
     {
@@ -586,7 +582,6 @@
       ],
       "state_line": "ready",
       "blocked_by": [
-        39,
         625
       ],
       "evidence_commits": [
@@ -739,20 +734,8 @@
       ]
     },
     {
-      "number": 908,
-      "title": "Self-host coverage manifest v2: prove used-by-S, accepted-by-A1, lowered-by-A1, and self-application separately",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
-      ]
-    },
-    {
       "number": 911,
-      "title": "Forward-reference tracker re-audit: re-anchor #289&#39;s coverage rows to landed slices and named owners",
+      "title": "Forward-reference tracker re-audit: re-anchor #289's coverage rows to landed slices and named owners",
       "state_labels": [
         "ready"
       ],
@@ -879,7 +862,7 @@
     },
     {
       "number": 943,
-      "title": "Lambda spelling drift: Stage 2 accepts `(a, b) =&gt; e` and `x =&gt; e`, the grammar and SYNTAX.md describe neither",
+      "title": "Lambda spelling drift: Stage 2 accepts `(a, b) => e` and `x => e`, the grammar and SYNTAX.md describe neither",
       "state_labels": [
         "needs-decision"
       ],
@@ -901,25 +884,15 @@
       "number": 947,
       "title": "Self-host driver corpus: five S features have no fixture that A1 ever compiles",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
+      "state_line": "ready",
       "blocked_by": [
         908
       ],
       "evidence_commits": [
-        "7cdecd68dd42504da5881c6253e8f3d091636064"
+        "6f71b6df5cf54aa16542b89494d2194c4172a97e"
       ]
-    },
-    {
-      "number": 949,
-      "title": "Ownership evidence cleanup: map live refusal paths and retire stale E3xx fixtures",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": null,
-      "blocked_by": [],
-      "evidence_commits": []
     }
   ]
 }
