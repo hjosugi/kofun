@@ -650,29 +650,6 @@
         "corpus_query": "git grep -nE '\\bpar[[:space:]]*\\||\\.spawn\\(|\\.join\\(' -- '*.kofun'",
         "result": "0 matches across 799 tracked `.kofun` sources at 516e8fb3925088dd64b291e8cd749764a41891b1; grep exits 1 with no output, so no tracked source uses the proposed `par`, `.spawn(`, or `.join(` surface."
       }
-    },
-    {
-      "id": "RFC-0004",
-      "title": "Ownership kind is computed structurally from contents",
-      "provenance": "rfc",
-      "state": "proposed",
-      "shepherd": "hjosugi",
-      "source": "rfcs/0004-structural-ownership-kind.md",
-      "document": "rfcs/0004-structural-ownership-kind.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/570",
-      "dates": {
-        "opened_on": "2026-08-02",
-        "review_closed_on": "2026-08-16"
-      },
-      "normative_spec": [
-        "rfcs/0004-structural-ownership-kind.md"
-      ],
-      "compatibility": {
-        "category": "additive",
-        "statement": "Everything proposed is new refusal surface over shapes the compiler does not accept today: the structural ownership-kind join, the ADT inhabitant rule, generic substitution propagation, the owned-list boundary, and diagnostics E360-E365. The Copy set, the record rule of spec/records-v1.md, and `share` keep their meaning, so no tracked program changes meaning or stops compiling.",
-        "corpus_query": "git ls-files '*.kofun' | wc -l; git grep -nE '\\\\blet[[:space:]]+own\\\\b' -- '*.kofun' | wc -l; git grep -nE '\\\\bshare\\\\(' -- '*.kofun' | wc -l; git grep -nE '^[[:space:]]*[a-z_]+:[[:space:]]*own\\\\b' -- '*.kofun' | wc -l",
-        "result": "831 tracked `.kofun` sources; 5 use `let own` and all five bind a scalar resource directly; 0 call `share(`; 0 declare an owned field. No tracked source constructs a record, tuple, ADT, list, or generic instantiation containing an owned value, so every refusal this RFC introduces has an empty blast radius on the current corpus."
-      }
     }
   ]
 }
