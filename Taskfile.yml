@@ -350,6 +350,11 @@ tasks:
     cmds:
       - "sh spec/concurrency/schedule-trace/check.sh"
 
+  type-reduction-trace:
+    desc: "Verify deterministic type-level reduction traces and replay"
+    cmds:
+      - "sh spec/type-reduction-trace/check.sh"
+
   affine-resumption:
     desc: "Verify the one-shot affine-resumption contract and runtime backstop"
     cmds:
@@ -691,6 +696,7 @@ tasks:
             clock-adapters \
             scoped-parallelism \
             schedule-trace \
+            type-reduction-trace \
             affine-resumption \
             example-law-evidence \
             benchmark-summary \
