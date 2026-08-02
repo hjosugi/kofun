@@ -1,0 +1,1 @@
+error[E2S147]: property and index paths on an `Int?` binding are not narrowed; only a direct `null` comparison is recognized at byte 193

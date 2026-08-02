@@ -1,0 +1,9 @@
+# Reassignment would discard a refinement. There is no assignable `Int?` in
+# this slice, so the assignment itself is refused.
+
+fn main() -> Int {
+    let value: Int? = 1
+    value = 2
+    print(0)
+    return 0
+}

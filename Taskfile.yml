@@ -178,6 +178,11 @@ tasks:
     cmds:
       - "sh tests/conformance/optional-narrowing/run.sh"
 
+  optional-construction:
+    desc: "Verify executable Optional(Int) construction and lowered narrowing"
+    cmds:
+      - "sh tests/conformance/optional-construction/run.sh"
+
   adt-exhaustiveness:
     desc: "Verify resolved flat-ADT match diagnostics"
     cmds:
@@ -637,6 +642,7 @@ tasks:
             traits \
             optional \
             optional-narrowing \
+            optional-construction \
             adt-exhaustiveness \
             enum-match-value \
             module-symbols \
