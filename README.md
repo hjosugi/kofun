@@ -26,6 +26,7 @@ checking remain open work.
 ./bin/kofun --version
 ./bin/kofun check bootstrap/fixtures/answer.kofun
 ./bin/kofun run bootstrap/fixtures/answer.kofun
+mkdir -p build
 ./bin/kofun build bootstrap/fixtures/answer.kofun -o build/answer
 ./build/answer
 ```
