@@ -638,8 +638,7 @@
       "proposal": "https://github.com/hjosugi/kofun/issues/555",
       "dates": {
         "opened_on": "2026-08-02",
-        "review_closed_on": "2026-08-16",
-        "decided_on": "2026-08-16"
+        "review_closed_on": "2026-08-16"
       },
       "normative_spec": [
         "rfcs/0003-scoped-parallelism.md",
