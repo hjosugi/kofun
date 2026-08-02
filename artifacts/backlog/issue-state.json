@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 77,
+  "open_issues": 75,
   "issues": [
     {
       "number": 26,
@@ -20,7 +20,8 @@
       "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
-        "71d49724cced0f41b79ebc0f253f7570f23b1b14"
+        "71d49724cced0f41b79ebc0f253f7570f23b1b14",
+        "9f21980a7c77883ad3d91ce462a6857adc261f20"
       ]
     },
     {
@@ -197,7 +198,7 @@
       "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
+        "2c10cf6a14b5a928c257c3ce6656e187c886bedf"
       ]
     },
     {
@@ -506,18 +507,23 @@
       ],
       "state_line": "needs-detail",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [
+        "bbb6b0ffee24952016394dc6352499a89ec3e938"
+      ]
     },
     {
       "number": 725,
       "title": "Decimal slice 6: state scale guarantees truthfully now, and add Fixed[scale] when const generics exist",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
-      "state_line": null,
+      "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "09a3229c33fd309f61a0a0ba407fd543f8c670e6"
+        "09a3229c33fd309f61a0a0ba407fd543f8c670e6",
+        "bbb6b0ffee24952016394dc6352499a89ec3e938",
+        "d742788e2b98aeda4a33acf9620f37b68add87ca",
+        "fc79ec1dc804bba20bd955706e851ed108127396"
       ]
     },
     {
@@ -645,6 +651,18 @@
         {
           "agent_id": "codex-issue891-text-results-20260802",
           "status": "active"
+        },
+        {
+          "agent_id": "codex-issue891-text-results-20260802",
+          "status": "pr-open"
+        },
+        {
+          "agent_id": "codex-issue891-text-results-20260802",
+          "status": "pr-open"
+        },
+        {
+          "agent_id": "codex-issue891-text-results-20260802",
+          "status": "pr-open"
         }
       ]
     },
@@ -805,49 +823,31 @@
       "blocked_by": [],
       "evidence_commits": [
         "6e8d96b32137d4ef0ba7e7869464ccd9bbb07746",
-        "71d49724cced0f41b79ebc0f253f7570f23b1b14"
-      ]
-    },
-    {
-      "number": 1002,
-      "title": "wasm32 Text slice: guest literals, references, and text_out execution",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "71d49724cced0f41b79ebc0f253f7570f23b1b14"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-issue1002-wasm-text-20260802",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-issue1002-wasm-text-20260802",
-          "status": "pr-open"
-        },
-        {
-          "agent_id": "codex-issue1002-wasm-text-20260802",
-          "status": "pr-open"
-        },
-        {
-          "agent_id": "codex-issue1002-wasm-text-20260802",
-          "status": "pr-open"
-        }
+        "71d49724cced0f41b79ebc0f253f7570f23b1b14",
+        "9f21980a7c77883ad3d91ce462a6857adc261f20"
       ]
     },
     {
       "number": 1004,
       "title": "wasm32 List slice: List[Int]/List[Text] layout, len, index, and host output",
       "state_labels": [
-        "blocked"
+        "in-progress"
       ],
-      "state_line": "blocked",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
-        "71d49724cced0f41b79ebc0f253f7570f23b1b14"
+        "71d49724cced0f41b79ebc0f253f7570f23b1b14",
+        "9f21980a7c77883ad3d91ce462a6857adc261f20"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-1004-wasm-list-slice-20260802",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-1004-wasm-list-slice-20260802",
+          "status": "released"
+        }
       ]
     },
     {
@@ -861,28 +861,6 @@
       "evidence_commits": [
         "486d72deb17a6be11325a425e1138822d058121d",
         "6f71b6df5cf54aa16542b89494d2194c4172a97e"
-      ]
-    },
-    {
-      "number": 1018,
-      "title": "Stage 2 resolver: enforce cross-module confusable collisions as EUNICODE008",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "4ad2d657658a6d35e196ad070e3fbca1765d5d04"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-issue1018-eunicode008-20260802",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-issue1018-eunicode008-20260802",
-          "status": "active"
-        }
       ]
     },
     {
@@ -919,6 +897,16 @@
       "blocked_by": [],
       "evidence_commits": [
         "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-issue1034-sidecar-live-authority-20260802",
+          "status": "pr-open"
+        },
+        {
+          "agent_id": "codex-issue1034-sidecar-live-authority-20260802",
+          "status": "active"
+        }
       ]
     },
     {
