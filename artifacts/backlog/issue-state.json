@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 72,
+  "open_issues": 71,
   "issues": [
     {
       "number": 26,
@@ -585,7 +585,10 @@
       ],
       "state_line": "needs-detail",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [
+        "0a209468da3698a31cf6177b863284fd04c9a374",
+        "b783e7697d3791ce26def31e7b58a51367c83036"
+      ]
     },
     {
       "number": 880,
@@ -682,15 +685,16 @@
       "number": 919,
       "title": "Stage 2 C11 List[Int] values: locals, len, and indexing",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
+      "state_line": "ready",
       "blocked_by": [
-        1038
+        1038,
+        1045
       ],
       "evidence_commits": [
-        "564ab7bc932aab0da6dba370d0c699d196e182cf",
-        "b783e7697d3791ce26def31e7b58a51367c83036"
+        "0a209468da3698a31cf6177b863284fd04c9a374",
+        "b05cb9e65007747c20c98182bbfa3fdc49a4cda3"
       ]
     },
     {
@@ -850,28 +854,6 @@
       "blocked_by": [],
       "evidence_commits": [
         "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
-      ]
-    },
-    {
-      "number": 1038,
-      "title": "Stage 2: restore Optional(Int) canonical compiler-pair symmetry",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "b783e7697d3791ce26def31e7b58a51367c83036"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-issue1038-optional-pair-20260802",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-issue1038-optional-pair-20260802",
-          "status": "pr-open"
-        }
       ]
     }
   ]
