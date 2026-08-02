@@ -5,3 +5,12 @@ missing-reason.json	RCV103	reason-required
 unknown-reason.json	RCV104	reason-closed
 guaranteed-unproved.json	RCV105	uniqueness-unproved
 layout-contradiction.json	RCV106	layout-contradiction
+guaranteed-runtime-check.json	RCV108	provenance-inconsistent
+reuse-scanning-mismatch.json	RCV110	layout-incompatible
+ensure-move-cited.json	RCV111	insufficient-evidence
+backend-support-contradiction.json	RCV113	backend-support-contradiction
+guaranteed-backend-cannot-honour.json	RCV114	guarantee-unhonourable
+guaranteed-silently-weakened.json	RCV115	guarantee-weakened
+guaranteed-live-borrowed-view.json	RCV117	observer-live
+reason-observer-contradiction.json	RCV118	observer-reason-contradiction
+guaranteed-interleaved-writes.json	RCV119	write-ordering-unsafe

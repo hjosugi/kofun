@@ -23,6 +23,12 @@ Every record has exactly these fields:
   target facts;
 - `uniqueness_evidence`: proof state, proof provenance, and a stable evidence
   identity when evidence exists;
+- `observers`: the five observer classes that could witness partial mutation,
+  each `absent`, `live`, or `unknown`;
+- `write_ordering`: whether every fallible or effectful new-field expression is
+  evaluated before the first destructive write;
+- `backend_support`: the backend the state is claimed against, that backend's
+  committed reuse support, and what the backend does with a guarantee;
 - `eligibility`: the three state flags and the single disqualifying reason;
 - `remark`: the exact unstable text selected below.
 
@@ -97,6 +103,106 @@ that the constructor storage named by `matched_source` has no alias. A future
 producer may cite a stronger analysis that includes that fact, but MUST NOT
 upgrade the existing assertion by name alone.
 
+The gap is precise, and naming it is the point. `E2S146` fires under a
+deliberately narrow rule — an immutable local of managed type, named directly,
+asserted in its own scope, no later use, no lambda capture, every earlier read
+alias-free. Its conclusion is *this binding is not read again*. A reuse
+candidate needs *this storage has no other reference*, which is a statement
+about the heap object rather than about one name for it. Two bindings can each
+be at their last use while both denote the same storage. Citing
+`compiler.ensure_move` as `evidence_id` under
+`compile-time-ownership-escape-last-use` is therefore refused outright
+(`RCV111`), rather than being silently accepted as the stronger proposition.
+
+## Observers and write ordering
+
+A guarantee is unsound if anything can watch the storage change. `observers`
+records the five classes #576 names, each `absent` (proved that none exists),
+`live` (one exists), or `unknown` (not analysed):
+
+- `borrowed_view`;
+- `closure_capture`;
+- `weak_reference`;
+- `foreign_pointer`;
+- `alias`.
+
+`unknown` is not a weaker `absent`. It says the producer did not look, and it
+disqualifies a guarantee exactly as `live` does.
+
+`write_ordering` is `evaluate-all-then-write`, `interleaved`, or `unknown`.
+`evaluate-all-then-write` means every fallible or effectful new-field
+expression is evaluated before the first destructive write, which is what makes
+a panic between two writes impossible to observe.
+
+`reuse_statically_guaranteed` requires every observer `absent` **and**
+`write_ordering: evaluate-all-then-write`. Together these mean that
+**no observer can witness a partially rewritten node** — no half-updated
+storage, no torn value, and no alias reading a node that is neither the old
+value nor the new one. A record that fails either condition is refused
+(`RCV117`, `RCV119`); it may still be a `reuse_candidate`, because a candidate
+promises nothing.
+
+The five observer classes and five disqualifying reasons correspond one to one.
+A record whose reason is `borrowed-view`, `closure-capture`,
+`weakly-referenced`, `ffi-exposed`, or `possible-alias` MUST NOT declare the
+matching observer `absent`; a reason its own evidence denies is refused
+(`RCV118`). The converse is not required: the single-reason rule stays
+diagnostic provenance, so a live observer does not force the matching reason
+when a structural conflict was reported first.
+
+## Backend support is evidence, not an assumption
+
+`backend_support` names the backend a state is claimed against.
+`spec/reuse-candidate-v1/backends.json` is the committed table, keyed by the
+backend ids registered in `tests/conformance/capabilities.tsv`, and it is
+authoritative: `backend_id` MUST appear in it, its `data_layouts` MUST include
+`layout_evidence.target_data_layout`, and the record's `reuse_support` MUST
+equal the table's (`RCV112`, `RCV113`).
+
+`guarantee_disposition` states what the named backend does with a static
+guarantee:
+
+| Disposition | Meaning |
+| --- | --- |
+| `honour` | the backend implements the reuse. Requires `reuse_support: honours-guarantee`. |
+| `reject-program` | the backend cannot implement it and refuses to compile the program. |
+| `weaken-to-allocation` | never valid. See below. |
+| `not-applicable` | the state is not a guarantee, so no backend obligation exists. |
+
+Only `reuse_statically_guaranteed` carries a disposition; every other state
+requires `not-applicable`, and a guarantee requires something other than
+`not-applicable` (`RCV116`).
+
+A backend MUST NOT silently weaken a guarantee to allocation. That is the
+distinction #576 asks the three states to preserve: a missed candidate is
+inspectable, whereas a guarantee quietly turned into an allocation is a proof
+that was never checked. `weaken-to-allocation` is therefore rejected on sight
+(`RCV115`), for every state. A producer that wants the allocation path emits
+`ordinary_allocation` with the `backend-limitation` reason, which is a recorded
+decision rather than a silent one, and which contradicts a backend the table
+says honours guarantees (`RCV113`).
+
+**No backend in the committed table honours a reuse guarantee.** At
+`00ce08f093da2706156f88f80d8c2fb366006d35` every registered backend is
+`unsupported`, because no reuse rewrite exists anywhere in the tree: the
+generated Stage 2 prelude includes no `<stdlib.h>`, Core enums are by-value
+`KofunEnumValue {tag, payload}`, and the only `kofun_rt_alloc` lives in the
+selfhost-C11 lane's prelude. Two consequences are normative rather than
+incidental:
+
+1. Every record that claims `reuse_statically_guaranteed` today MUST carry
+   `guarantee_disposition: reject-program`. Claiming `honour` is refused
+   (`RCV114`) — that is a guarantee no backend can keep.
+2. `valid/backend-limitation-allocation.json` is the honest shape of a
+   candidate at this commit: reusable layout, proved uniqueness, no live
+   observer, safe ordering — and `ordinary_allocation`, because the backend
+   cannot do it.
+
+A backend row changes to `honours-guarantee` only in the change that implements
+the rewrite, together with the tests that show it. Editing the table ahead of
+that is how a guarantee gets claimed without a proof, and the gate refuses a
+committed valid vector that claims an honouring backend.
+
 ## Closed disqualifying reasons
 
 The reason vocabulary is closed in v1:
@@ -164,7 +270,17 @@ Required rejection identities include:
 | `RCV104 reason-closed` | The reason is outside the closed vocabulary. |
 | `RCV105 uniqueness-unproved` | Static guarantee lacks proved uniqueness. |
 | `RCV106 layout-contradiction` | Copied layout evidence differs from AggregateLayout v1. |
+| `RCV108 provenance-inconsistent` | Proof state and provenance disagree, including a runtime check spelled as proof. |
+| `RCV110 layout-incompatible` | A reuse state is carried over source and target layouts that differ. |
 | `RCV111 insufficient-evidence` | `compiler.ensure_move` alone is cited as constructor-storage proof. |
+| `RCV112 backend-unknown` | The backend is unregistered, or has no committed layout descriptor for the target. |
+| `RCV113 backend-support-contradiction` | Declared or implied backend support differs from the committed table. |
+| `RCV114 guarantee-unhonourable` | A guarantee is claimed honoured by a backend that does not honour guarantees. |
+| `RCV115 guarantee-weakened` | A backend silently weakens a reuse state to allocation. |
+| `RCV116 disposition-inapplicable` | A disposition is carried by a non-guarantee, or omitted by a guarantee. |
+| `RCV117 observer-live` | A guarantee is claimed while an observer is live or unanalysed. |
+| `RCV118 observer-reason-contradiction` | A reason is contradicted by its own observer evidence. |
+| `RCV119 write-ordering-unsafe` | A guarantee is claimed without evaluate-all-then-write ordering. |
 
 Run the complete gate with:
 
@@ -173,5 +289,34 @@ sh spec/reuse-candidate-v1/check.sh
 ```
 
 The gate validates all committed positive and negative vectors, runs twice in
-fresh work directories, and also runs the AggregateLayout v1 gate. It does not
-read, execute, or modify compiler/runtime code.
+fresh work directories, refuses a hand-edited and a reformatted golden, and also
+runs the AggregateLayout v1 gate. It does not read, execute, or modify
+compiler/runtime code.
+
+## What the vectors do not cover
+
+Stating the holes is part of the contract, because a rejection nobody exercises
+is a claim rather than a check.
+
+`incompatible-size` and `incompatible-alignment` are specified and enforced, but
+no committed vector reaches them. Every constructor type in the committed
+AggregateLayout v1 corpus — `Maybe`, `Shape`, `Optional[Int]`, on both targets —
+is 16 bytes with 8-byte alignment, so no two of them disagree on size or
+alignment, and a record that asserted such a disagreement would be refused by
+`RCV106` for contradicting the descriptor before `RCV110` could apply. Both
+branches are exercised in `check.mjs` against synthetic mutations instead. When
+the corpus gains a constructor type of a different size, they become
+vector-covered without a schema change.
+
+Nothing here is produced by a compiler. There is no pass, no IR carrying this
+record, no reuse rewrite, and no allocation to count. Every committed vector is
+a hand-written document asserting what a future producer must be able to say.
+
+## Compatibility of this strengthening
+
+The observer, ordering, and backend-support groups were added to v1 rather than
+to a v2. The schema name is unchanged because there is nothing to be compatible
+with: no compiler stage, tool, or IR emits a `kofun.reuse-candidate/v1` record,
+so the committed vectors in this directory are the complete population, and they
+are updated in the same change. A v2 becomes the right instrument once a
+producer exists.
