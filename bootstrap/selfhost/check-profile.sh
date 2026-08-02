@@ -200,6 +200,7 @@ derive_inventory() {
 
     has() {
         grep -Eq "$1" "$inventory_work/outer-source"
+        return
     }
     keep() {
         printf '%s\n' "$1" >> "$inventory_work/keys"
