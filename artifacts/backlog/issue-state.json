@@ -870,6 +870,12 @@
       "blocked_by": [],
       "evidence_commits": [
         "4ad2d657658a6d35e196ad070e3fbca1765d5d04"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-issue1018-eunicode008-20260802",
+          "status": "active"
+        }
       ]
     },
     {
