@@ -9,7 +9,9 @@ only the first half: it selects the bounded numeric binding described below —
 `main(): void` against `kofun.print_i64` and `kofun.panic` — and it will keep
 selecting it. The accepted `kofun-wasm-host-abi-v1` aggregate binding is a
 different target name, `wasm32-hostabi1`. That profile emits its checked
-object arena and the bounded Text slice below; List lowering remains separate.
+object arena and the bounded Text/List slices below. List-bearing sources use
+the separate bounded frontend documented here without changing bare `wasm32`
+or the Text-only module bytes.
 `spec/wasm-host-profile-v1.md` decides that split and
 `sh spec/wasm-host-profile-v1/check.sh` holds this target to it.
 
@@ -194,8 +196,7 @@ task wasm
 
 The legacy `wasm32` binding remains a bounded Int target and its module bytes
 are unchanged. The separate `wasm32-hostabi1` binding has the checked
-linear-memory arena and bounded Text lowering described above, but no List
-lowering. Neither
+linear-memory arena and bounded Text/List lowering described above. Neither
 profile has `else`, loops, mutation, tables or indirect
 calls, no closures or function values, no user-declared imports, no WASI
 profile, no general JavaScript value conversion, no direct DOM declarations in
@@ -230,9 +231,9 @@ on the numeric binding and is not deprecated, so nothing here has to migrate.
 A toolchain predating the arena slice refuses the profile name with
 `kofun: unsupported target:` and writes no module. Current builds preserve the
 import-free arena-only module for an empty source; Text-bearing sources add
-only the v1 `abort` and `text_out` imports. The two bindings are told apart on
-the module bytes before anything is instantiated: legacy modules import from
-`kofun` and export one function, `main`, while every import a v1 module has
-comes from
+only the v1 `abort` and `text_out` imports, while List-bearing sources import
+those plus `list_int_out` and `list_text_out`. The two bindings are told apart on the module
+bytes before anything is instantiated: legacy modules import from `kofun` and
+export one function, `main`, while every import a v1 module has comes from
 `kofun:host-abi-v1`, while its immutable `kofun_abi_version` global identifies
 even the arena-only module that needs no import yet. A module is never both.
