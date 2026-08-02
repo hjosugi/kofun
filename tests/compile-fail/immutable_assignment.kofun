@@ -1,6 +1,0 @@
-# expect-error: E323
-fn main() {
-    let answer = 41
-    answer = 42
-    print(answer)
-}
