@@ -1,0 +1,5 @@
+# The aggregate native profile currently admits one observable expression per
+# source. This file is the independent valid-index oracle for element zero.
+fn main() {
+    print([10, 42, 99][0])
+}

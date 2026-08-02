@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 75,
+  "open_issues": 73,
   "issues": [
     {
       "number": 26,
@@ -20,6 +20,7 @@
       "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
+        "564ab7bc932aab0da6dba370d0c699d196e182cf",
         "71d49724cced0f41b79ebc0f253f7570f23b1b14",
         "9f21980a7c77883ad3d91ce462a6857adc261f20"
       ]
@@ -409,16 +410,32 @@
       ]
     },
     {
+      "number": 584,
+      "title": "Visibility tooling: prevent macro, LSP, and sidecar access bypasses",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": [
+        "0ba1682a605f31ce54e23b7d37edadfd80a79f5e",
+        "2d54aeb7c705ee69c770b6a8d3a9f0383b833c0c",
+        "cbaa8721f21f2eb5fdead71f35740faaac3fabd8",
+        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
+      ]
+    },
+    {
       "number": 585,
       "title": "Visibility stabilization: document API changes and migration",
       "state_labels": [
-        "ready"
+        "blocked"
       ],
-      "state_line": "ready",
+      "state_line": "blocked",
       "blocked_by": [
-        301,
-        583,
-        584
+        584,
+        1033,
+        1034,
+        1035
       ],
       "evidence_commits": [
         "bbb6b0ffee24952016394dc6352499a89ec3e938"
@@ -477,14 +494,14 @@
       "number": 645,
       "title": "Date/time core: Gregorian values, checked arithmetic, and strict RFC 3339",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
-      "blocked_by": [
-        891
-      ],
+      "state_line": "ready",
+      "blocked_by": [],
       "evidence_commits": [
-        "97e50abe18e028093a186a7835e48c4d81a6dbd9"
+        "6b8d2064468d270f37a1d8dcfe8848dca91b9dc0",
+        "97e50abe18e028093a186a7835e48c4d81a6dbd9",
+        "b783e7697d3791ce26def31e7b58a51367c83036"
       ]
     },
     {
@@ -637,36 +654,6 @@
       ]
     },
     {
-      "number": 891,
-      "title": "Stage 2 Text values: return Text, convert Int, and concatenate without invalid C",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "b94cfc72cd63d0255ab914b365ca7910309fa7d2"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-issue891-text-results-20260802",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-issue891-text-results-20260802",
-          "status": "pr-open"
-        },
-        {
-          "agent_id": "codex-issue891-text-results-20260802",
-          "status": "pr-open"
-        },
-        {
-          "agent_id": "codex-issue891-text-results-20260802",
-          "status": "pr-open"
-        }
-      ]
-    },
-    {
       "number": 902,
       "title": "bindgen-c: enforce a mechanical raw-binding import boundary",
       "state_labels": [
@@ -698,9 +685,12 @@
         "blocked"
       ],
       "state_line": "blocked",
-      "blocked_by": [],
+      "blocked_by": [
+        1038
+      ],
       "evidence_commits": [
-        "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
+        "564ab7bc932aab0da6dba370d0c699d196e182cf",
+        "b783e7697d3791ce26def31e7b58a51367c83036"
       ]
     },
     {
@@ -822,32 +812,11 @@
       "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
+        "564ab7bc932aab0da6dba370d0c699d196e182cf",
         "6e8d96b32137d4ef0ba7e7869464ccd9bbb07746",
         "71d49724cced0f41b79ebc0f253f7570f23b1b14",
-        "9f21980a7c77883ad3d91ce462a6857adc261f20"
-      ]
-    },
-    {
-      "number": 1004,
-      "title": "wasm32 List slice: List[Int]/List[Text] layout, len, index, and host output",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "71d49724cced0f41b79ebc0f253f7570f23b1b14",
-        "9f21980a7c77883ad3d91ce462a6857adc261f20"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-1004-wasm-list-slice-20260802",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-1004-wasm-list-slice-20260802",
-          "status": "released"
-        }
+        "9f21980a7c77883ad3d91ce462a6857adc261f20",
+        "b123e864b35755749ef70e7fadc963bdc27ee993"
       ]
     },
     {
@@ -888,28 +857,6 @@
       ]
     },
     {
-      "number": 1034,
-      "title": "Typed sidecars: revalidate visibility against the live caller context",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-issue1034-sidecar-live-authority-20260802",
-          "status": "pr-open"
-        },
-        {
-          "agent_id": "codex-issue1034-sidecar-live-authority-20260802",
-          "status": "active"
-        }
-      ]
-    },
-    {
       "number": 1035,
       "title": "Visibility fuzz: bound malformed identities, re-export chains, and stale artifacts",
       "state_labels": [
@@ -925,13 +872,23 @@
       "number": 1038,
       "title": "Stage 2: restore Optional(Int) canonical compiler-pair symmetry",
       "state_labels": [
-        "blocked"
+        "in-progress"
       ],
-      "state_line": "blocked",
-      "blocked_by": [
-        891
+      "state_line": "in-progress",
+      "blocked_by": [],
+      "evidence_commits": [
+        "b783e7697d3791ce26def31e7b58a51367c83036"
       ],
-      "evidence_commits": []
+      "claims": [
+        {
+          "agent_id": "codex-issue1038-optional-pair-20260802",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-issue1038-optional-pair-20260802",
+          "status": "pr-open"
+        }
+      ]
     }
   ]
 }

@@ -1,0 +1,4 @@
+fn main() {
+    let values: List[Int] = [1]
+    print(append(values, 2))
+}

@@ -1,0 +1,4 @@
+fn main() {
+    let values: List[Int] = [10]
+    print([values[-1]])
+}

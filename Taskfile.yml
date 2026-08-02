@@ -188,6 +188,16 @@ tasks:
     cmds:
       - "sh tests/conformance/optional-construction/run.sh"
 
+  optional-pair:
+    desc: "Require Optional(Int) semantic-family parity in the canonical compiler pair"
+    cmds:
+      - "sh tests/stage2/optional-pair/run.sh"
+
+  text-results:
+    desc: "Verify bounded Stage 2 Text results, conversion, and concatenation"
+    cmds:
+      - "sh tests/conformance/text-results/run.sh"
+
   adt-exhaustiveness:
     desc: "Verify resolved flat-ADT match diagnostics"
     cmds:
@@ -470,6 +480,11 @@ tasks:
     cmds:
       - "sh bootstrap/wasm/object_arena_check.sh"
 
+  wasm-list-v1:
+    desc: "Verify bounded wasm32-hostabi1 List values, indexing, and host output"
+    cmds:
+      - "sh tests/wasm-list-v1/check.sh"
+
   typed-sidecar-spec:
     desc: "Verify bounded complete/partial tooling artifacts"
     cmds:
@@ -694,6 +709,8 @@ tasks:
             optional \
             optional-narrowing \
             optional-construction \
+            optional-pair \
+            text-results \
             adt-exhaustiveness \
             enum-match-value \
             module-symbols \
@@ -750,6 +767,7 @@ tasks:
             wasm-host-abi \
             wasm-host-profile \
             wasm-object-arena \
+            wasm-list-v1 \
             typed-sidecar-spec \
             typed-sidecar-codec \
             typed-sidecar-projector \

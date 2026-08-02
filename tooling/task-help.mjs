@@ -25,7 +25,7 @@ export const GROUPS = Object.freeze([
             'selfhost-frontend', 'selfhost-c11', 'selfhost-c11-control',
             'selfhost-native', 'stage2', 'stage2-events', 'native', 'wasm',
             'wasm-host-abi', 'wasm-host-profile', 'wasm-object-arena',
-            'c-abi', 'bindgen-c'
+            'wasm-list-v1', 'c-abi', 'bindgen-c'
         ]
     },
     {
@@ -38,7 +38,8 @@ export const GROUPS = Object.freeze([
             'scoped-parallelism', 'schedule-trace', 'type-reduction-trace',
             'generics', 'const-generics', 'hm-levels', 'effect-inference', 'traits',
             'optional', 'optional-narrowing',
-            'optional-construction',
+            'optional-construction', 'optional-pair',
+            'text-results',
             'adt-exhaustiveness', 'enum-match-value', 'decimal', 'decimal-arithmetic',
             'date-time', 'syntax'
         ]
