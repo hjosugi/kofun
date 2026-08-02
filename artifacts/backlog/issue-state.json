@@ -901,21 +901,24 @@
       "number": 1021,
       "title": "backlog: `agent-claim:v1` is defined nowhere in the repository, so duplicate implementation is not detectable",
       "state_labels": [
-        "needs-detail"
+        "ready"
       ],
-      "state_line": "needs-detail",
-      "blocked_by": [],
+      "state_line": "ready",
+      "blocked_by": [
+        1025
+      ],
       "evidence_commits": [
-        "6e8d96b32137d4ef0ba7e7869464ccd9bbb07746"
+        "8703abdc1625e6e63bb7d45113244418c085cc39",
+        "abc969f14cfb8d247e1c15a4b25e51cd753cba0a"
       ]
     },
     {
       "number": 1023,
       "title": "backlog: a `blocked` issue whose named blockers have all closed is never reported",
       "state_labels": [
-        "ready"
+        "in-progress"
       ],
-      "state_line": "ready",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
         "2a31329b50fe19974b1cfc6639eac753373ab744"

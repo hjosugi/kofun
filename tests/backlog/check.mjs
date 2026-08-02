@@ -57,7 +57,7 @@ const byNumber = new Map(issues.map((issue) => [issue.number, issue]))
 // tests/backlog/check-stamps.mjs owns it and this reader must not report those
 // rows as unused. A kind neither reader claims is a typo that would otherwise
 // sit in the file excusing nothing.
-const OWNED_KINDS = new Set(['state-disagreement', 'unstamped-ready'])
+const OWNED_KINDS = new Set(['state-disagreement', 'unstamped-ready', 'closed-blockers'])
 const KNOWN_KINDS = new Set([...OWNED_KINDS, 'unverifiable-stamp'])
 
 const debt = new Map()
@@ -97,6 +97,7 @@ function owedDebt(kind, number, detail) {
 }
 
 let agreeing = 0
+let blockedWithNamedBlockers = 0
 let stamped = 0
 let readyCount = 0
 let stated = 0
@@ -140,10 +141,26 @@ for (const issue of issues) {
         }
     }
 
+    // 4. The mirror of a ready issue naming an open blocker: a blocked issue
+    //    whose nonempty dependency list is entirely closed is advertised as
+    //    unstartable after its own stated reason has disappeared. Issues with
+    //    no named blockers are deliberately outside this rule; they may be
+    //    waiting on a decision or another condition the extractor cannot see.
+    if (label === 'blocked' && issue.blocked_by.length > 0) {
+        blockedWithNamedBlockers += 1
+        const openBlockers = issue.blocked_by.filter((number) => open.has(number))
+        if (openBlockers.length === 0) {
+            const detail = issue.blocked_by.map((number) => `#${number}`).join(', ')
+            if (!owedDebt('closed-blockers', issue.number, detail)) {
+                failures.push(`${where} is blocked but all named blockers are closed: ${detail}`)
+            }
+        }
+    }
+
     if (label !== 'ready') continue
     readyCount += 1
 
-    // 4. A `ready` issue naming an open blocker is advertised as startable
+    // 5. A `ready` issue naming an open blocker is advertised as startable
     //    while its own body says it is not. This one has no debt escape: it is
     //    the drift that costs a contributor their afternoon.
     const openBlockers = issue.blocked_by.filter((number) => open.has(number))
@@ -154,7 +171,7 @@ for (const issue of issues) {
         failures.push(`${where} is ready but names open blockers: ${detail}`)
     }
 
-    // 5. Definition of Ready rule 2: a current-behavior claim names the commit
+    // 6. Definition of Ready rule 2: a current-behavior claim names the commit
     //    it was measured on. Without a stamp nobody can tell whether the
     //    premise still holds without re-deriving it, so nobody does.
     if (issue.evidence_commits.length === 0) {
@@ -192,6 +209,7 @@ if (failures.length > 0) {
 process.stdout.write(
     `PASS: ${stated} State lines name a state in the vocabulary\n` +
         `PASS: ${agreeing} issues agree between their state label and their State line\n` +
+        `PASS: ${blockedWithNamedBlockers} blocked issues with named blockers still have an open blocker or recorded debt\n` +
         `PASS: no ready issue names an open blocker (${readyCount} ready)\n` +
         `PASS: ${stamped} ready issues carry an evidence stamp\n` +
         `PASS: ${debt.size} recorded debt rows all still describe the issue they name\n`,
