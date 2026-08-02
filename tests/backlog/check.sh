@@ -31,3 +31,9 @@ assert_regular_file 'backlog issue-state snapshot' "$SNAPSHOT"
 assert_regular_file 'backlog debt ledger' "$DEBT"
 
 node "$ROOT/tests/backlog/check.mjs" "$SNAPSHOT" "$DEBT"
+
+# The run above proves the rules pass on a snapshot that is green. It cannot
+# tell a rule that holds from a rule that is gone: both are silent. self-test.sh
+# runs each rule against a case it must refuse, so an absent rule is red here
+# rather than a pass nobody checked.
+sh "$ROOT/tests/backlog/self-test.sh"

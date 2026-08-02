@@ -833,8 +833,10 @@
     {
       "number": 998,
       "title": "wasm32 Text/List lowering has no owner: #906 froze the contract, nothing implements it",
-      "state_labels": [],
-      "state_line": "planning",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
         "6e8d96b32137d4ef0ba7e7869464ccd9bbb07746"
