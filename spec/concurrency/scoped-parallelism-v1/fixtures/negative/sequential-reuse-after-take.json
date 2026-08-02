@@ -1,0 +1,20 @@
+{
+  "schema": "kofun.scoped-parallelism-model/v1",
+  "scope": {
+    "exit_step": 8,
+    "tasks": [
+      {
+        "id": "owner",
+        "spawn_step": 1,
+        "join_step": 3,
+        "captures": [{ "mode": "take", "place": { "base": "resource" } }]
+      },
+      {
+        "id": "reuse",
+        "spawn_step": 4,
+        "join_step": 6,
+        "captures": [{ "mode": "read", "place": { "base": "resource" } }]
+      }
+    ]
+  }
+}

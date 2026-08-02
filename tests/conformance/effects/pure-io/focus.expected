@@ -1,0 +1,11 @@
+direct_io|io|effect-io-root-print|print
+direct_pure|pure|-|-
+impure_cycle_a|io|effect-io-callee|direct_io
+impure_cycle_b|io|effect-io-callee|impure_cycle_a
+main|pure|-|-
+middle|io|effect-io-callee|direct_io
+multi_hop|io|effect-io-callee|middle
+one_hop|io|effect-io-callee|direct_io
+pure_cycle_a|pure|-|-
+pure_cycle_b|pure|-|-
+self_pure|pure|-|-

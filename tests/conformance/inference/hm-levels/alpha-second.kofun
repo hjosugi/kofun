@@ -1,0 +1,6 @@
+fn main() {
+    let mirror = fn(item) => item
+    let count = mirror(42)
+    let chosen = mirror(true)
+    chosen
+}

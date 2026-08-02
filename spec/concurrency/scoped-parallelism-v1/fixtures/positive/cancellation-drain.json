@@ -1,0 +1,11 @@
+{
+  "schema": "kofun.scoped-parallelism-model/v1",
+  "scope": {
+    "exit_step": 12,
+    "cancellation_step": 4,
+    "tasks": [
+      { "id": "observed", "spawn_step": 1, "captures": [], "outcome": "cancelled" },
+      { "id": "finished", "spawn_step": 2, "captures": [], "outcome": "success" }
+    ]
+  }
+}

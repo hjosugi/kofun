@@ -151,6 +151,12 @@ tasks:
     cmds:
       - "sh tests/conformance/generics/run.sh"
 
+  hm-levels:
+    desc: "Verify bounded Algorithm J inference for local lambdas"
+    cmds:
+      - "sh tests/conformance/inference/hm-levels/run.sh"
+      - "KOFUN_HM_LEVELS_CASES=128 sh tests/fuzz/hm_levels.sh"
+
   traits:
     desc: "Verify the bounded trait declaration frontend"
     cmds:
@@ -585,6 +591,7 @@ tasks:
             adt \
             records \
             generics \
+            hm-levels \
             traits \
             optional \
             optional-narrowing \
