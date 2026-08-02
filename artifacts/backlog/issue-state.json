@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 78,
+  "open_issues": 79,
   "issues": [
     {
       "number": 26,
@@ -904,6 +904,18 @@
         "needs-detail"
       ],
       "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": [
+        "6e8d96b32137d4ef0ba7e7869464ccd9bbb07746"
+      ]
+    },
+    {
+      "number": 1023,
+      "title": "backlog: a `blocked` issue whose named blockers have all closed is never reported",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
         "6e8d96b32137d4ef0ba7e7869464ccd9bbb07746"
