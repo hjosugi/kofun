@@ -19,7 +19,7 @@ report a pass it did not observe.
 | `cargo` | `rust-crate-shim` |
 | `cc` | `bindgen-c-stage1`, `bounded-tzdb-producer`, `c-abi-profile`, `c11-function-calls`, `compiled-visibility-interfaces`, `compiler-seed`, `decimal-arithmetic-v1`, `deterministic-fuzzing`, `documentation-index`, `enum-matching`, `http-framework`, `nominal-records`, `reproducible-bootstrap`, `self-recompile`, `stage2-core-lowering` |
 | `clang` | `bindgen-c-stage1` |
-| `node` | `bindgen-c-stage1`, `compiled-visibility-interfaces`, `documentation-index`, `stage2-typed-sidecar`, `stdio-language-server`, `wasm32-arithmetic-core` |
+| `node` | `bindgen-c-stage1`, `compiled-visibility-interfaces`, `documentation-index`, `stage2-typed-sidecar`, `stdio-language-server`, `wasm32-arithmetic-core`, `wasm32-hostabi1-object-arena` |
 | `qemu-aarch64` | `native-aarch64-function-calls`, `native-list-int-core`, `native-text-returning-calls`, `native-utf8-text-core`, `selfhost-native-corpus` |
 | `readelf` | `bindgen-c-stage1` |
 | `sha256sum` | `bindgen-c-stage1`, `compiler-seed`, `reproducible-bootstrap` |
@@ -73,3 +73,4 @@ report a pass it did not observe.
 | `syscall-stdlib-api` | `task stdlib` |
 | `test-skip-reporting` | `task test` |
 | `wasm32-arithmetic-core` | `task wasm` |
+| `wasm32-hostabi1-object-arena` | `task wasm-object-arena` |
