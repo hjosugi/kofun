@@ -46,6 +46,15 @@ sidecar emits only the validated matching prefix. Package/module disagreement,
 duplicate identities, unsupported KIF facts, and malformed inputs produce no
 new index.
 
+Every projection repeats that join against the KIF visibility projection and
+caller package supplied for the current request. A previously public sidecar
+identity therefore disappears when the live KIF makes it internal, and a
+removed or replaced identity fails the complete join. Replaying an old sidecar,
+forging a caller/package/symbol identity, or changing a path-remap root cannot
+restore access or expose sidecar paths, source content, or spans. Failed
+requests have no index to publish, so an already committed safe result remains
+unchanged.
+
 ## Operating procedure
 
 Build or obtain the repository's bounded KIF v1 reader, then supply a KIF and

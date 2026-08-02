@@ -2,8 +2,16 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+WORK=${KOFUN_TYPED_SIDECAR_AUTHORITY_WORK:-"$ROOT/build/${KOFUN_GATE_WORK_NAMESPACE:+$KOFUN_GATE_WORK_NAMESPACE/}typed-sidecar-authority"}
 ASSERT_CONTEXT='typed-sidecar authority'
 . "$ROOT/tests/assertions/assert.sh"
+
+case $WORK in
+    */typed-sidecar-authority|*/typed-sidecar-authority.*) ;;
+    *) printf '%s\n' "FAIL: work directory must end in typed-sidecar-authority[.suffix]: $WORK" >&2; exit 1 ;;
+esac
+rm -rf "$WORK"
+mkdir -p "$WORK"
 
 # POSIX `grep -r`, not `rg`. CI does not install ripgrep, and the two negative
 # checks below are `if <search>; then FAIL; fi` — with `rg` missing, the search
@@ -47,6 +55,12 @@ assert_grep "tooling/typed-sidecar/from-stage2.mjs" \
     "$ROOT/tooling/typed-sidecar/from-stage2.mjs"
 assert_grep "tooling/typed-sidecar/from-stage2.mjs" \
     -q 'authoritative: false' "$ROOT/tooling/typed-sidecar/from-stage2.mjs"
+
+node --check "$ROOT/tests/typed-sidecar/authority_boundary_test.mjs"
+(
+    cd "$ROOT"
+    node tests/typed-sidecar/authority_boundary_test.mjs "$WORK"
+)
 
 printf '%s\n' \
     'PASS: check invokes one output-only emitter; compiler, build, package, linker, KIF, and cache paths cannot read sidecars'
