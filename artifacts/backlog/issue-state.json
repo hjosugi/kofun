@@ -199,9 +199,9 @@
       "number": 314,
       "title": "Null coalescing: execute Optional(Int) ?? Int lazily",
       "state_labels": [
-        "in-progress"
+        "blocked"
       ],
-      "state_line": "in-progress",
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
         "f37c64f388a45bbe4108c467c49257038f3b2ae7"
