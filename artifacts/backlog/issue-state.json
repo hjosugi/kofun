@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 76,
+  "open_issues": 78,
   "issues": [
     {
       "number": 26,
@@ -745,6 +745,18 @@
       ]
     },
     {
+      "number": 943,
+      "title": "Lambda spelling drift: Stage 2 accepts `(a, b) => e` and `x => e`, the grammar and SYNTAX.md describe neither",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "7cdecd68dd42504da5881c6253e8f3d091636064"
+      ]
+    },
+    {
       "number": 946,
       "title": "The production frontend has no move analysis, so E2S122/E2S123 never reach an editor",
       "state_labels": [
@@ -883,6 +895,18 @@
       "blocked_by": [],
       "evidence_commits": [
         "a50793ea6802411fd6f7c752578fd9421669236f"
+      ]
+    },
+    {
+      "number": 1018,
+      "title": "Stage 2 resolver: enforce cross-module confusable collisions as EUNICODE008",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": [
+        "6e8d96b32137d4ef0ba7e7869464ccd9bbb07746"
       ]
     }
   ]
