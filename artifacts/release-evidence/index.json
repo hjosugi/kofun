@@ -667,7 +667,7 @@
     "docs/BUILD_SYSTEM.md": "d4a372fc97c53874cc2438f3de132289beb033ce2bf1e67518b702de796b05a8",
     "docs/COMPILER_ARCHITECTURE.md": "9ca8641a3d117d84be9ce7f311d26c5f7e8df3b1a5772f3be5b8db67808d56cc",
     "docs/DECIMAL.md": "901455a8ad89af0fa6fc7be449a98cbb5c16cf663a2e6814e239b2f51cc88c29",
-    "docs/DOCUMENTATION_INDEX.md": "82d6ef91e36f8c9acb729a72a314f58f5d5d48bf646036f5efe3424658b75b5b",
+    "docs/DOCUMENTATION_INDEX.md": "a98ac6985bef3b3095cd4a7744f7ff8d485781e1af09f5de81b56888b2a84b4d",
     "docs/GETTING_STARTED.md": "4a9a3bae70796c12216f7448e98898f0297926ab3bd80219234b21dc06cc1f95",
     "docs/LAW_SYSTEM.md": "81276192f86e03b94369d6d2342a5f681533e64e6df9d4eddd73f3f25de96f99",
     "docs/LINGUIST_RECOGNITION.md": "9d81df186a6a92b4b65850e4ca7fb0e9ba97ec705774b935466d2148865eab87",
@@ -716,7 +716,7 @@
     "tests/security/module-interface-artifact.sh": "fb701197367db3654f075c769ac6cfd1260d9f0083cbaab28dbf3fb186b7823a",
     "tests/stdlib/tzdb/README.md": "3ebada786546085ecd463e11f35740e9f304e0c873d9c66fd648c758e9f32848",
     "tests/stdlib/tzdb/tzdb.kofun": "a3bbfa3966f6cbde4c3bb3263147f7a89ce31416b6a8d19e3d0cfff3a6b6b379",
-    "tests/typed-sidecar/authority-boundary.sh": "dc97e4f38bf93297b9ff40f48a0c008121a4f6a9a3bd1c4aab7c5d5f121ec005",
+    "tests/typed-sidecar/authority-boundary.sh": "4348a011bae0f9c6ac5d3f0730f9a4a6db2a757a1368ac65bf35d75ae77b0052",
     "tooling/bindgen-c/README.md": "0cd476fb24fb5018cd538a09af5b418b4087c7d6322d847e25a8b198ce2b29af"
   }
 }
