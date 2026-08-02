@@ -844,9 +844,9 @@
       "number": 1001,
       "title": "wasm32 object arena: linear memory, u64 headers, and bounded allocation",
       "state_labels": [
-        "ready"
+        "blocked"
       ],
-      "state_line": "ready",
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
         "6e8d96b32137d4ef0ba7e7869464ccd9bbb07746"
@@ -886,24 +886,24 @@
       ]
     },
     {
-      "number": 1016,
-      "title": "Repository boundary: remove reintroduced editor artifacts and prevent recurrence",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "a50793ea6802411fd6f7c752578fd9421669236f"
-      ]
-    },
-    {
       "number": 1018,
       "title": "Stage 2 resolver: enforce cross-module confusable collisions as EUNICODE008",
       "state_labels": [
         "blocked"
       ],
       "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": [
+        "6e8d96b32137d4ef0ba7e7869464ccd9bbb07746"
+      ]
+    },
+    {
+      "number": 1021,
+      "title": "backlog: `agent-claim:v1` is defined nowhere in the repository, so duplicate implementation is not detectable",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
         "6e8d96b32137d4ef0ba7e7869464ccd9bbb07746"
