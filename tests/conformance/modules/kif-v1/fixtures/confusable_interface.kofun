@@ -1,0 +1,9 @@
+module demo.confusable
+
+pub fn pаypal() -> Int {
+    return 42
+}
+
+pub fn safe() -> Int {
+    return 7
+}

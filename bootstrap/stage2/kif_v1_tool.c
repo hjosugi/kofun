@@ -4,6 +4,7 @@
 
 #define KOFUN_MODULE_SYMBOLS_NO_MAIN
 #include "module_symbols.c"
+#include "confusable_visible_set.c"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -1037,6 +1038,321 @@ done:
     return status;
 }
 
+static KofunKifFactKind visible_target_kind(const KofunKifFact *fact) {
+    if (fact->kind != KOFUN_KIF_FACT_EXPORT) return fact->kind;
+    switch (fact->export_target_kind) {
+        case KOFUN_KIF_EXPORT_TARGET_FUNCTION:
+            return KOFUN_KIF_FACT_FUNCTION;
+        case KOFUN_KIF_EXPORT_TARGET_ADT:
+            return KOFUN_KIF_FACT_ADT;
+        case KOFUN_KIF_EXPORT_TARGET_CONSTRUCTOR:
+            return KOFUN_KIF_FACT_CONSTRUCTOR;
+        case KOFUN_KIF_EXPORT_TARGET_MODULE:
+            return KOFUN_KIF_FACT_EXPORT;
+    }
+    return 0;
+}
+
+static const uint8_t *visible_target_symbol(const KofunKifFact *fact) {
+    return fact->kind == KOFUN_KIF_FACT_EXPORT
+        ? fact->target_symbol_id : fact->symbol_id;
+}
+
+static bool append_kif_visible_binding(
+    Program *program,
+    KofunVisibleBinding *visible,
+    size_t capacity,
+    size_t *count,
+    const uint8_t namespace_id[32],
+    const uint8_t binding_id[32],
+    const uint8_t target_symbol_id[32],
+    const Token *name,
+    KofunVisibleSiteKind site_kind
+) {
+    Module *module = &program->modules[0];
+    KofunVisibleBinding *binding;
+    if (*count >= capacity || name->end - name->start > IDENTIFIER_LIMIT) {
+        set_error(program, "E2S68",
+            "KIF visible-binding vector exceeds its exact bound");
+        return false;
+    }
+    binding = &visible[(*count)++];
+    memset(binding, 0, sizeof(*binding));
+    memcpy(binding->resolving_module_id, module->module_id, 32u);
+    memcpy(binding->namespace_id, namespace_id, 32u);
+    memcpy(binding->binding_id, binding_id, 32u);
+    memcpy(binding->target_symbol_id, target_symbol_id, 32u);
+    binding->effective_spelling = (const uint8_t *)module->source + name->start;
+    binding->effective_spelling_length = name->end - name->start;
+    binding->site_kind = site_kind;
+    binding->canonical_provenance = module->logical_path;
+    binding->span_start = (uint32_t)name->start;
+    binding->span_end = (uint32_t)name->end;
+    binding->disclose_location = true;
+    return true;
+}
+
+static bool collect_kif_visible_bindings(
+    Program *program,
+    const KofunKifInterface *interface,
+    bool package_internal,
+    const char *dependency_path,
+    KofunVisibleBinding *visible,
+    size_t capacity,
+    size_t *count
+) {
+    Module *module = &program->modules[0];
+    size_t cursor = 0u;
+    size_t brace_depth = 0u;
+    *count = 0u;
+    while (cursor < module->token_count) {
+        Token *token = &module->tokens[cursor];
+        if (punctuation_equals(module, token, '{')) {
+            brace_depth += 1u;
+            cursor += 1u;
+            continue;
+        }
+        if (punctuation_equals(module, token, '}')) {
+            if (brace_depth != 0u) brace_depth -= 1u;
+            cursor += 1u;
+            continue;
+        }
+        if (brace_depth == 0u &&
+            (token_equals(module, token, "fn") ||
+             token_equals(module, token, "type"))) {
+            Token *name;
+            unsigned namespace_tag = token_equals(module, token, "type")
+                ? 1u : 0u;
+            uint8_t symbol_id[32];
+            if (cursor + 1u >= module->token_count ||
+                module->tokens[cursor + 1u].kind != TOKEN_IDENTIFIER) {
+                set_error(program, "E2S50",
+                    "KIF consumer has malformed local declaration");
+                return false;
+            }
+            name = &module->tokens[cursor + 1u];
+            {
+                char spelling[IDENTIFIER_LIMIT + 1u];
+                size_t length = name->end - name->start;
+                memcpy(spelling, module->source + name->start, length);
+                spelling[length] = '\0';
+                compute_symbol_hash(module->module_id,
+                    program->namespace_ids[namespace_tag],
+                    namespace_tag == 0u ? "function" : "adt",
+                    spelling, symbol_id);
+            }
+            if (!append_kif_visible_binding(program, visible, capacity,
+                    count, program->namespace_ids[namespace_tag], symbol_id,
+                    symbol_id, name, KOFUN_VISIBLE_SITE_LOCAL)) return false;
+            cursor += 2u;
+            continue;
+        }
+        if (brace_depth == 0u && token_equals(module, token, "from")) {
+            char path[HOST_PATH_LIMIT + 1u];
+            size_t path_length = 0u;
+            size_t current = cursor + 1u;
+            bool expect_identifier = true;
+            while (current < module->token_count &&
+                   !module->tokens[current].line_break_before) {
+                Token *part = &module->tokens[current];
+                if (!expect_identifier && token_equals(module, part, "import")) {
+                    current += 1u;
+                    break;
+                }
+                if (expect_identifier) {
+                    size_t length;
+                    if (part->kind != TOKEN_IDENTIFIER) break;
+                    length = part->end - part->start;
+                    if (path_length != 0u) path[path_length++] = '.';
+                    if (path_length + length > HOST_PATH_LIMIT) break;
+                    memcpy(path + path_length,
+                        module->source + part->start, length);
+                    path_length += length;
+                } else if (!punctuation_equals(module, part, '.')) {
+                    break;
+                }
+                expect_identifier = !expect_identifier;
+                current += 1u;
+            }
+            path[path_length] = '\0';
+            if (path_length == 0u || strcmp(path, dependency_path) != 0) {
+                set_error(program, "E2S60",
+                    "KIF selective consumer has no supplied interface for `%s`",
+                    path);
+                return false;
+            }
+            while (current < module->token_count &&
+                   !module->tokens[current].line_break_before) {
+                Token *name = &module->tokens[current];
+                bool found = false;
+                size_t index;
+                if (name->kind != TOKEN_IDENTIFIER ||
+                    token_equals(module, name, "as")) {
+                    set_error(program, "E2S59",
+                        "malformed KIF selective import list");
+                    return false;
+                }
+                for (index = 0u; index < interface->public_fact_count +
+                        (package_internal ? interface->internal_fact_count : 0u);
+                     index += 1u) {
+                    const KofunKifFact *fact =
+                        index < interface->public_fact_count
+                        ? &interface->public_facts[index]
+                        : &interface->internal_facts[
+                            index - interface->public_fact_count];
+                    KofunKifFactKind kind;
+                    if (!token_text_equals(module, name, fact->name)) continue;
+                    kind = visible_target_kind(fact);
+                    if (kind != KOFUN_KIF_FACT_FUNCTION &&
+                        kind != KOFUN_KIF_FACT_ADT &&
+                        kind != KOFUN_KIF_FACT_CONSTRUCTOR) continue;
+                    if (!append_kif_visible_binding(program, visible,
+                            capacity, count, fact->namespace_id,
+                            fact->symbol_id, visible_target_symbol(fact),
+                            name, KOFUN_VISIBLE_SITE_IMPORT)) return false;
+                    found = true;
+                }
+                if (!found) {
+                    set_error(program, "E2S65",
+                        "compiled interface has no accessible selective binding `%.*s`",
+                        (int)(name->end - name->start),
+                        module->source + name->start);
+                    return false;
+                }
+                current += 1u;
+                if (current >= module->token_count ||
+                    module->tokens[current].line_break_before) break;
+                if (!punctuation_equals(module,
+                        &module->tokens[current], ',')) {
+                    set_error(program, "E2S59",
+                        "KIF selective names require commas");
+                    return false;
+                }
+                current += 1u;
+            }
+            cursor = current;
+            continue;
+        }
+        cursor += 1u;
+    }
+    return true;
+}
+
+static int resolve_visible_mode(
+    const char *input_path,
+    const char *consumer_package_text,
+    const char *consumer_module_text,
+    const char *dependency_path,
+    const char *consumer_path,
+    const char *output_path
+) {
+    uint8_t *bytes = NULL;
+    size_t length = 0u;
+    uint8_t consumer_package[32];
+    uint8_t consumer_module[32];
+    KifReadResult read;
+    Program program;
+    Module *module = &program.modules[0];
+    KofunVisibleBinding *visible = NULL;
+    KofunVisibleConfusableDiagnostic *diagnostics = NULL;
+    size_t visible_count = 0u;
+    size_t capacity;
+    bool package_internal;
+    KofunVisibleConfusableResult result;
+    int status = 1;
+    memset(&program, 0, sizeof(program));
+    program.module_count = 1u;
+    if (!parse_identity(consumer_package_text, consumer_package) ||
+        !parse_identity(consumer_module_text, consumer_module)) {
+        printf("error[KIF-resolve-visible]: consumer PackageId and ModuleId must be canonical\n");
+        return 1;
+    }
+    if (!reject_resolution_path_alias(&program, input_path, output_path) ||
+        !reject_resolution_path_alias(&program, consumer_path, output_path)) {
+        printf("%s\n", program.error);
+        destroy_program(&program);
+        return 1;
+    }
+    if (!read_kif_file(input_path, &bytes, &length)) {
+        printf("error[KIF-io-commit-failure]: cannot read bounded KIF input\n");
+        return 1;
+    }
+    read = kofun_kif_read(bytes, length, kofun_kif_default_limits());
+    free(bytes);
+    if (read.status != KOFUN_KIF_OK) {
+        printf("error[KIF-%s]: %s\n",
+            kofun_kif_status_name(read.status), read.message);
+        return 1;
+    }
+    package_internal = memcmp(consumer_package, read.interface->package_id,
+        KOFUN_KIF_ID_BYTES) == 0;
+    memcpy(module->package_id, consumer_package, 32u);
+    memcpy(module->module_id, consumer_module, 32u);
+    memcpy(module->logical_path, "kif-consumer.kofun",
+        sizeof("kif-consumer.kofun"));
+    if (strlen(consumer_path) > HOST_PATH_LIMIT) {
+        set_error(&program, "E2S48", "KIF consumer path exceeds adapter limit");
+        goto done;
+    }
+    memcpy(module->host_path, consumer_path, strlen(consumer_path) + 1u);
+    if (!read_source(&program, module) || !tokenize(&program, module)) goto done;
+    compute_identities(&program);
+    capacity = module->token_count + read.interface->public_fact_count +
+        read.interface->internal_fact_count;
+    visible = calloc(capacity == 0u ? 1u : capacity, sizeof(*visible));
+    diagnostics = calloc(capacity == 0u ? 1u : capacity,
+        sizeof(*diagnostics));
+    if (visible == NULL || diagnostics == NULL) {
+        set_error(&program, "EUNICODE007",
+            "KIF visible-set allocation failed");
+        goto done;
+    }
+    if (!collect_kif_visible_bindings(&program, read.interface,
+            package_internal, dependency_path, visible, capacity,
+            &visible_count)) goto done;
+    result = kofun_check_visible_confusables(visible, visible_count,
+        diagnostics, capacity);
+    if (result.status == KOFUN_VISIBLE_CONFUSABLE_COLLISION) {
+        KofunVisibleConfusableDiagnostic *diagnostic = &diagnostics[0];
+        KofunVisibleBinding *primary = &visible[diagnostic->primary_binding];
+        KofunVisibleBinding *related =
+            &visible[diagnostic->related_bindings[0]];
+        printf("error[EUNICODE008]: effective spelling `%.*s` in `%s` at bytes %u..%u is confusable in one visible namespace; related `%.*s` at `%s` bytes %u..%u\n",
+            (int)primary->effective_spelling_length,
+            (const char *)primary->effective_spelling,
+            primary->canonical_provenance,
+            primary->span_start, primary->span_end,
+            (int)related->effective_spelling_length,
+            (const char *)related->effective_spelling,
+            related->canonical_provenance,
+            related->span_start, related->span_end);
+        goto done;
+    }
+    if (result.status != KOFUN_VISIBLE_CONFUSABLE_OK) {
+        set_error(&program,
+            result.status == KOFUN_VISIBLE_CONFUSABLE_RESOURCE_FAILURE
+                ? "EUNICODE007" : "E2S68",
+            "KIF visible-set check failed: %s",
+            kofun_visible_confusable_status_name(result.status));
+        goto done;
+    }
+    if (!emit_kif_resolution(read.interface, package_internal,
+            dependency_path, "selective-visible", NULL, 0u,
+            output_path)) {
+        set_error(&program, "E2S68",
+            "cannot commit KIF selective-visible HIR");
+        goto done;
+    }
+    status = 0;
+done:
+    if (program.failed) printf("%s\n", program.error);
+    free(diagnostics);
+    free(visible);
+    destroy_program(&program);
+    kofun_kif_destroy(read.interface);
+    return status;
+}
+
 int main(int argc, char **argv) {
     /* Keep the included collector's standalone projection compiled and audited. */
     (void)emit_output;
@@ -1063,10 +1379,21 @@ int main(int argc, char **argv) {
         }
         return resolve_mode(argv[2], argv[3], argv[4], argv[5], argv[6]);
     }
+    if (argc >= 2 && strcmp(argv[1], "resolve-visible") == 0) {
+        if (argc != 8) {
+            fprintf(stderr,
+                "usage: %s resolve-visible KIF CONSUMER_PACKAGE_ID CONSUMER_MODULE_ID DEPENDENCY_PATH CONSUMER OUTPUT_HIR\n",
+                argv[0]);
+            return 2;
+        }
+        return resolve_visible_mode(argv[2], argv[3], argv[4], argv[5],
+            argv[6], argv[7]);
+    }
     fprintf(stderr,
         "usage: %s write INVENTORY MODULE_ID EDITION OUTPUT [DUMP]\n"
         "       %s read INPUT [DUMP]\n"
-        "       %s resolve KIF CONSUMER_PACKAGE_ID DEPENDENCY_PATH CONSUMER OUTPUT_HIR\n",
-        argv[0], argv[0], argv[0]);
+        "       %s resolve KIF CONSUMER_PACKAGE_ID DEPENDENCY_PATH CONSUMER OUTPUT_HIR\n"
+        "       %s resolve-visible KIF CONSUMER_PACKAGE_ID CONSUMER_MODULE_ID DEPENDENCY_PATH CONSUMER OUTPUT_HIR\n",
+        argv[0], argv[0], argv[0], argv[0]);
     return 2;
 }

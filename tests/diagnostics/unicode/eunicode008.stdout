@@ -1,0 +1,1 @@
+error[EUNICODE008]: effective value spelling `pаypal` at `app/main.kofun` bytes 20..27 is confusable with `paypal`; related `app/main.kofun` bytes 4..10

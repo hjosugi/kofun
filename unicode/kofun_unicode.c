@@ -44,6 +44,10 @@ const char *kofun_unicode_version(void) {
     return utf8proc_unicode_version();
 }
 
+const char *kofun_unicode_data_digest(void) {
+    return KOFUN_UNICODE_DATA_DIGEST;
+}
+
 static bool kofun_range_contains(
     const KofunUnicodeRange *ranges,
     size_t count,
@@ -487,7 +491,53 @@ static bool kofun_normalize(
     return true;
 }
 
-static bool kofun_confusable_skeleton(
+bool kofun_unicode_identifier_is_canonical(
+    const uint8_t *identifier,
+    size_t length
+) {
+    uint8_t *normalized = NULL;
+    size_t normalized_length = 0u;
+    size_t offset = 0u;
+    bool first = true;
+
+    if (identifier == NULL || length == 0u ||
+        !kofun_normalize(
+            identifier,
+            length,
+            UTF8PROC_COMPOSE,
+            &normalized,
+            &normalized_length)) {
+        return false;
+    }
+    if (normalized_length != length ||
+        memcmp(normalized, identifier, length) != 0) {
+        free(normalized);
+        return false;
+    }
+    free(normalized);
+
+    while (offset < length) {
+        uint32_t codepoint = 0u;
+        size_t width = 0u;
+        if (!kofun_unicode_decode(
+                identifier,
+                length,
+                offset,
+                &codepoint,
+                &width) ||
+            (first ?
+                (codepoint != (uint32_t)'_' &&
+                 !kofun_unicode_is_xid_start(codepoint)) :
+                !kofun_unicode_is_xid_continue(codepoint))) {
+            return false;
+        }
+        first = false;
+        offset += width;
+    }
+    return true;
+}
+
+bool kofun_unicode_confusable_skeleton(
     const uint8_t *identifier,
     size_t length,
     uint8_t **skeleton,
@@ -629,7 +679,7 @@ static bool kofun_record_identifier(
 
     uint8_t *skeleton = NULL;
     size_t skeleton_length = 0;
-    if (!kofun_confusable_skeleton(
+    if (!kofun_unicode_confusable_skeleton(
             source + offset,
             length,
             &skeleton,

@@ -1,0 +1,6 @@
+module consumer.app
+from api.collections import Map
+
+fn Mаp() -> Int {
+    return 1
+}

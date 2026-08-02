@@ -1,0 +1,13 @@
+module lib.math
+
+pub fn pаypal() -> Int {
+    return 42
+}
+
+pub fn safe() -> Int {
+    return 7
+}
+
+private fn pаypal_private() -> Int {
+    return 0
+}

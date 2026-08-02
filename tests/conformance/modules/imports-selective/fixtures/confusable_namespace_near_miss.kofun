@@ -1,0 +1,10 @@
+module app.main
+from lib.math import pаypal
+
+type paypal =
+    | Ready
+    | Waiting
+
+fn main() -> Int {
+    return pаypal()
+}
