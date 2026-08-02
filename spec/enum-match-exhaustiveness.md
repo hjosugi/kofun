@@ -161,6 +161,16 @@ two-word aggregate: its declaration-order `int64_t` tag and one `int64_t`
 payload slot. Payload-free constructors store zero in the unused slot.
 Same-typed functions pass and return this aggregate by value. This is not a
 public ABI.
+
+An exhaustive match over a payload-free enum lowers to one C `switch` on that
+tag when every arm names a constructor and no arm has a guard. Constructor
+tags are contiguous by the declaration-order rule above, and cases retain
+source order in the emitted C. A match with a guard, payload pattern, wildcard,
+or binding catch-all retains the ordered selected-arm lowering so guards and
+bindings preserve their existing observation order. The host C compiler owns
+the target-specific decision between indexed dispatch, lookup tables, and
+other equivalent non-linear forms.
+
 The direct native, wasm, and C ABI profiles do not gain enum support from this
 checkpoint and must reject these sources rather than selecting a different
 representation.

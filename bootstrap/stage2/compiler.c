@@ -10771,12 +10771,14 @@ static char *lower_body(
 static char *lower_enum_match_error(
     Buffer *covered,
     Buffer *dispatch,
+    Buffer *dense_dispatch,
     const char *code,
     const char *message,
     int64_t cursor
 ) {
     free(covered->data);
     free(dispatch->data);
+    free(dense_dispatch->data);
     return lower_error(code, message, cursor);
 }
 
@@ -10796,13 +10798,16 @@ static char *lower_enum_match(
     int64_t arms_open = skip_trivia(source, token_end(source, value_start));
     Buffer covered;
     Buffer dispatch;
+    Buffer dense_dispatch;
     buffer_init(&covered);
     buffer_init(&dispatch);
+    buffer_init(&dense_dispatch);
     buffer_append(&covered, "|");
     if (arms_open >= length || !token_equal(source, arms_open, "{")) {
         return lower_enum_match_error(
             &covered,
             &dispatch,
+            &dense_dispatch,
             "E2S24",
             "expected `{` after enum match scrutinee",
             arms_open
@@ -10814,6 +10819,7 @@ static char *lower_enum_match(
         token_end(source, arms_open)
     );
     bool seen_catchall = false;
+    bool dense_eligible = true;
     char *match_result_type = function_return_type_containing(
         source,
         function_open
@@ -10843,11 +10849,13 @@ static char *lower_enum_match(
         bool catchall =
             pattern_summary_value.kind == PATTERN_WILDCARD ||
             binding_catchall;
+        if (catchall) dense_eligible = false;
         if (seen_catchall) {
             free(pattern);
             return lower_enum_match_error(
                 &covered,
                 &dispatch,
+                &dense_dispatch,
                 "E2S26",
                 "pattern after catch-all is unreachable",
                 pattern_start
@@ -10867,6 +10875,7 @@ static char *lower_enum_match(
                 return lower_enum_match_error(
                     &covered,
                     &dispatch,
+                    &dense_dispatch,
                     "E2S26",
                     "catch-all pattern is unreachable",
                     pattern_start
@@ -10881,6 +10890,7 @@ static char *lower_enum_match(
                 return lower_enum_match_error(
                     &covered,
                     &dispatch,
+                    &dense_dispatch,
                     "E2S32",
                     "enum pattern must name a constructor or `_`",
                     pattern_start
@@ -10899,6 +10909,7 @@ static char *lower_enum_match(
                 char *error = lower_enum_match_error(
                     &covered,
                     &dispatch,
+                    &dense_dispatch,
                     "E2S32",
                     message.data,
                     pattern_start
@@ -10918,6 +10929,7 @@ static char *lower_enum_match(
                 char *error = lower_enum_match_error(
                     &covered,
                     &dispatch,
+                    &dense_dispatch,
                     "E2S26",
                     message.data,
                     pattern_start
@@ -10946,6 +10958,7 @@ static char *lower_enum_match(
                 char *error = lower_enum_match_error(
                     &covered,
                     &dispatch,
+                    &dense_dispatch,
                     "E2S32",
                     message.data,
                     pattern_start
@@ -10953,6 +10966,7 @@ static char *lower_enum_match(
                 free(message.data);
                 return error;
             }
+            if (arity != 0) dense_eligible = false;
             if (applied != (arity == 1)) {
                 Buffer message;
                 buffer_init(&message);
@@ -10968,6 +10982,7 @@ static char *lower_enum_match(
                 char *error = lower_enum_match_error(
                     &covered,
                     &dispatch,
+                    &dense_dispatch,
                     "E2S32",
                     message.data,
                     pattern_start
@@ -11001,6 +11016,7 @@ static char *lower_enum_match(
                     return lower_enum_match_error(
                         &covered,
                         &dispatch,
+                        &dense_dispatch,
                         "E2S32",
                         "constructor payload pattern must be one name or `_`",
                         field
@@ -11019,6 +11035,7 @@ static char *lower_enum_match(
         int64_t guard_end = -1;
         if (arrow < length && token_equal(source, arrow, "if")) {
             guarded = true;
+            dense_eligible = false;
             guard_start = skip_trivia(source, token_end(source, arrow));
             guard_end = condition_end(source, guard_start);
             if (guard_end < 0) {
@@ -11026,6 +11043,7 @@ static char *lower_enum_match(
                 return lower_enum_match_error(
                     &covered,
                     &dispatch,
+                    &dense_dispatch,
                     "E2S29",
                     "match guard must be Bool or an Int comparison",
                     guard_start
@@ -11038,6 +11056,7 @@ static char *lower_enum_match(
             return lower_enum_match_error(
                 &covered,
                 &dispatch,
+                &dense_dispatch,
                 "E2S24",
                 "expected `=>` after enum pattern",
                 arrow
@@ -11049,6 +11068,7 @@ static char *lower_enum_match(
             return lower_enum_match_error(
                 &covered,
                 &dispatch,
+                &dense_dispatch,
                 "E2S24",
                 "bounded enum match arm must use a block",
                 arm_open
@@ -11060,6 +11080,7 @@ static char *lower_enum_match(
             return lower_enum_match_error(
                 &covered,
                 &dispatch,
+                &dense_dispatch,
                 "E2S24",
                 "missing `}` after enum match arm",
                 arm_open
@@ -11077,7 +11098,19 @@ static char *lower_enum_match(
             free(pattern);
             free(covered.data);
             free(dispatch.data);
+            free(dense_dispatch.data);
             return arm_body;
+        }
+        if (!catchall && !guarded && payload_name_start < 0) {
+            buffer_format(
+                &dense_dispatch,
+                "            case INT64_C(%" PRId64 "): {\n"
+                "%s"
+                "                break;\n"
+                "            }\n",
+                tag,
+                arm_body
+            );
         }
 
         Buffer pattern_condition;
@@ -11110,6 +11143,7 @@ static char *lower_enum_match(
                 return lower_enum_match_error(
                     &covered,
                     &dispatch,
+                    &dense_dispatch,
                     "E2S32",
                     "constructor payload binding is unresolved",
                     payload_name_start
@@ -11138,6 +11172,7 @@ static char *lower_enum_match(
                 return lower_enum_match_error(
                     &covered,
                     &dispatch,
+                    &dense_dispatch,
                     "E2S32",
                     "enum catch-all binding is unresolved",
                     catchall_name_start
@@ -11216,6 +11251,7 @@ static char *lower_enum_match(
             return lower_enum_match_error(
                 &covered,
                 &dispatch,
+                &dense_dispatch,
                 "E2S24",
                 "expected `,` between enum match arms",
                 arm_cursor
@@ -11226,6 +11262,7 @@ static char *lower_enum_match(
         return lower_enum_match_error(
             &covered,
             &dispatch,
+            &dense_dispatch,
             "E2S24",
             "missing `}` after enum match arms",
             arms_open
@@ -11252,6 +11289,7 @@ static char *lower_enum_match(
         char *error = lower_enum_match_error(
             &covered,
             &dispatch,
+            &dense_dispatch,
             "E2S25",
             message.data,
             match_start
@@ -11263,20 +11301,36 @@ static char *lower_enum_match(
     char *binding_id = hir_use_binding_id(hir, value_start);
     Buffer emitted;
     buffer_init(&emitted);
-    buffer_format(
-        &emitted,
-        "    {\n"
-        "        KofunEnumValue kofun_match_value = k_b%s;\n"
-        "        (void)kofun_match_value;\n"
-        "        bool kofun_match_selected = false;\n"
-        "%s"
-        "    }\n",
-        binding_id,
-        dispatch.data
-    );
+    if (dense_eligible && !seen_catchall) {
+        buffer_format(
+            &emitted,
+            "    {\n"
+            "        KofunEnumValue kofun_match_value = k_b%s;\n"
+            "        (void)kofun_match_value;\n"
+            "        switch (kofun_match_value.tag) {\n"
+            "%s"
+            "        }\n"
+            "    }\n",
+            binding_id,
+            dense_dispatch.data
+        );
+    } else {
+        buffer_format(
+            &emitted,
+            "    {\n"
+            "        KofunEnumValue kofun_match_value = k_b%s;\n"
+            "        (void)kofun_match_value;\n"
+            "        bool kofun_match_selected = false;\n"
+            "%s"
+            "    }\n",
+            binding_id,
+            dispatch.data
+        );
+    }
     free(binding_id);
     free(covered.data);
     free(dispatch.data);
+    free(dense_dispatch.data);
     return emitted.data;
 }
 
