@@ -3,7 +3,14 @@ set -eu
 
 # bindgen-c stage-1 gate for #574.
 #
-# Five things are checked, in this order:
+# Six things are checked here, in this order, and two sibling gates run after
+# them — each owns one ready child of #574 and prints its own PASS lines, so
+# a reviewer can tell which issue an assertion belongs to:
+#
+#   check-sanitizers.sh   #900  the boundary under ASan+UBSan, both sides
+#   check-fuzz.sh         #901  adversarial macros and bounded clang
+#
+# What this script checks itself:
 #
 #   1. `kofun bindgen-c` turns the pinned fixture header into a raw bindings
 #      module and an audit report deterministically: two runs, identical
@@ -290,3 +297,12 @@ printf 'bindgen-c: C compiler agrees with recorded sizes, offsets, and enum valu
 printf 'bindgen-c: target-derived calling conventions match clang function types: PASS\n'
 printf 'bindgen-c: bindings build, link, and run in the checked C ABI profile: PASS\n'
 printf 'bindgen-c: raw-trusted marking is present; no safe facade is claimed: PASS\n'
+
+# ------------------------------------------------------- the sibling gates
+#
+# Run last and in their own scripts. Each is runnable on its own — that is
+# what "focused gate" means in #900 and #901 — and each prints PASS lines
+# naming what it proved, so the evidence for one issue can be read without
+# untangling it from the other.
+sh "$CASES/check-sanitizers.sh"
+sh "$CASES/check-fuzz.sh"

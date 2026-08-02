@@ -1,0 +1,94 @@
+# kotest suite for testing_sample.kofun; run with `kofun unittest`.
+#
+# This suite is the mock/stub/spy showcase: every collaborator of the code
+# under test is replaced the same way Mockito or vitest would — scripted
+# stubs for programmed answers, kotest's stub_unreachable for forbidden
+# calls, and spy arithmetic for call counting.
+
+fn test_subtotal_with_the_real_catalog() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(line_subtotal(catalog_price, 1, 4), 1000)
+    failures = failures + expect_eq_int(line_subtotal(catalog_price, 3, 2), 150)
+    failures = failures + expect_eq_int(line_subtotal(catalog_price, 9, 5), 0)
+    return failures
+}
+
+fn test_subtotal_with_a_stubbed_price() -> Int {
+    let mut failures = 0
+    # A Mockito-style stub: every product costs 100 cents, no catalog
+    # involved.  The seam is the callable parameter.
+    let flat_price = product => 100 + product * 0
+    failures = failures + expect_eq_int(line_subtotal(flat_price, 7, 3), 300)
+    return failures
+}
+
+fn test_zero_and_negative_quantities_never_price() -> Int {
+    let mut failures = 0
+    # The price book must not even be consulted: inject the framework's
+    # unreachable stub, whose call would print a failure diagnostic and
+    # poison the result with the sentinel.
+    failures = failures + expect_eq_int(line_subtotal(stub_unreachable, 1, 0), 0)
+    failures = failures + expect_eq_int(line_subtotal(stub_unreachable, 1, 0 - 5), 0)
+    return failures
+}
+
+fn test_order_total_applies_the_discount_once() -> Int {
+    let mut failures = 0
+    # 4 x 250 + 4 x 75 = 1300, under the threshold: no discount.
+    failures = failures + expect_eq_int(
+        order_total(catalog_price, standard_discount, 1, 4, 3, 4), 1300)
+    # 2 x 1000 + 4 x 250 = 3000, 10% off: 2700.
+    failures = failures + expect_eq_int(
+        order_total(catalog_price, standard_discount, 2, 2, 1, 4), 2700)
+    return failures
+}
+
+fn test_order_total_with_stubbed_discount_policy() -> Int {
+    let mut failures = 0
+    # The discount collaborator is replaced by scripted stubs: first a
+    # policy that always takes 500 cents, then one that never discounts.
+    let flat_discount = subtotal => 500 + subtotal * 0
+    failures = failures + expect_eq_int(
+        order_total(catalog_price, flat_discount, 2, 1, 1, 2), 1000)
+    let no_discount = subtotal => 0 * subtotal
+    failures = failures + expect_eq_int(
+        order_total(catalog_price, no_discount, 2, 1, 1, 2), 1500)
+    return failures
+}
+
+fn test_probe_mock_scripts_the_ready_attempt() -> Int {
+    let mut failures = 0
+    # A scripted mock by attempt number: ready exactly on the third call.
+    let ready_on_third = attempt => attempt // 3
+    failures = failures + expect_eq_int(calls_until_ready(ready_on_third, 5), 3)
+    # Immediately ready: one call.
+    let always_ready = attempt => 1 + attempt * 0
+    failures = failures + expect_eq_int(calls_until_ready(always_ready, 5), 1)
+    # Never ready: the helper stops at the attempt budget.
+    let never_ready = attempt => 0 * attempt
+    failures = failures + expect_eq_int(calls_until_ready(never_ready, 4), 4)
+    return failures
+}
+
+fn test_spy_pattern_counts_recorded_calls() -> Int {
+    let mut failures = 0
+    # The spy state helpers from kotest: production code designed for
+    # spying threads this state through explicitly.
+    let mut spy = spy_init()
+    spy = spy_record(spy, catalog_price(1))
+    spy = spy_record(spy, catalog_price(2))
+    spy = spy_record(spy, catalog_price(3))
+    failures = failures + verify_called_times(spy, 3)
+    failures = failures + verify_last_argument(spy, 75)
+    failures = failures + expect_eq_int(spy_last(spy), catalog_price(3))
+    return failures
+}
+
+fn test_unreachable_sentinel_poisons_results() -> Int {
+    let mut failures = 0
+    # When a forbidden collaborator IS called, the sentinel makes the
+    # failure visible in the arithmetic, not just in the log.
+    let poisoned = line_subtotal(stub_unreachable, 1, 2)
+    failures = failures + expect_eq_int(poisoned, unreachable_sentinel() * 2)
+    return failures
+}

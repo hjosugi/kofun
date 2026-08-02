@@ -49,6 +49,19 @@
     "provenance": "compile-time-ownership-escape-last-use",
     "evidence_id": "proof:constructor-storage-unique"
   },
+  "observers": {
+    "borrowed_view": "absent",
+    "closure_capture": "absent",
+    "weak_reference": "absent",
+    "foreign_pointer": "absent",
+    "alias": "absent"
+  },
+  "write_ordering": "unknown",
+  "backend_support": {
+    "backend_id": "c11-stage2",
+    "reuse_support": "unsupported",
+    "guarantee_disposition": "not-applicable"
+  },
   "eligibility": {
     "ordinary_allocation": true,
     "reuse_candidate": false,

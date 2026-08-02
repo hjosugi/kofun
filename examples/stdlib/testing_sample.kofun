@@ -1,0 +1,87 @@
+# stdlib/testing sample: designing code for kotest — dependency injection,
+# stubs, and functional spies.
+#
+# This is the consumer-side companion of stdlib/testing/kotest.kofun: a
+# small order-pricing module written so every collaborator arrives as a
+# callable parameter.  Production wires real functions; tests inject
+# scripted stubs and spies without any framework magic, exactly the shape
+# JUnit and Mockito reach with constructor injection.
+#
+# Tests live in testing_sample_test.kofun and run with `kofun unittest`.
+
+# --- production collaborators -------------------------------------------
+
+# The real price book: unit prices in cents by product code.
+fn catalog_price(product: Int) -> Int {
+    if product == 1 {
+        return 250
+    }
+    if product == 2 {
+        return 1000
+    }
+    if product == 3 {
+        return 75
+    }
+    return 0
+}
+
+# The real discount policy: 10% off subtotals of 20.00 or more.
+fn standard_discount(subtotal: Int) -> Int {
+    if subtotal >= 2000 {
+        return subtotal // 10
+    }
+    return 0
+}
+
+# --- code under test -----------------------------------------------------
+
+# Subtotal of a quantity of one product, with the price book injected.
+fn line_subtotal(price_of: Int -> Int, product: Int, quantity: Int) -> Int {
+    if quantity <= 0 {
+        return 0
+    }
+    return price_of(product) * quantity
+}
+
+# An order of two lines, with both collaborators injected: the price book
+# and the discount policy.  Returns the payable total in cents.
+fn order_total(
+    price_of: Int -> Int,
+    discount_of: Int -> Int,
+    first_product: Int,
+    first_quantity: Int,
+    second_product: Int,
+    second_quantity: Int
+) -> Int {
+    let subtotal = line_subtotal(price_of, first_product, first_quantity) +
+        line_subtotal(price_of, second_product, second_quantity)
+    return subtotal - discount_of(subtotal)
+}
+
+# A retry helper under test: asks the injected probe until it reports
+# ready (1) or attempts run out, and returns the number of calls made.
+# The probe receives the 1-based attempt number — which also makes it a
+# natural seam for a scripted mock.
+fn calls_until_ready(probe: Int -> Int, attempts: Int) -> Int {
+    return calls_until_ready_from(probe, attempts, 1)
+}
+
+fn calls_until_ready_from(probe: Int -> Int, attempts: Int, attempt: Int) -> Int {
+    if attempt > attempts {
+        return attempts
+    }
+    if probe(attempt) == 1 {
+        return attempt
+    }
+    return calls_until_ready_from(probe, attempts, attempt + 1)
+}
+
+fn main() {
+    print(line_subtotal(catalog_price, 1, 4))
+    print(line_subtotal(catalog_price, 9, 4))
+    print(line_subtotal(catalog_price, 2, 0 - 1))
+    print(order_total(catalog_price, standard_discount, 1, 4, 3, 4))
+    print(order_total(catalog_price, standard_discount, 2, 2, 1, 4))
+    print(calls_until_ready(attempt => attempt // 3, 5))
+    print(calls_until_ready(attempt => 0 * attempt, 4))
+}

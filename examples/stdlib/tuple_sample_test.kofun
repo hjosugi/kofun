@@ -1,0 +1,78 @@
+# kotest suite for tuple_sample.kofun; run with `kofun unittest`.
+
+fn test_construction_and_access() -> Int {
+    let mut failures = 0
+    let pair: Pair = pair_make(7, 9)
+    failures = failures + expect_eq_int(pair_first(pair), 7)
+    failures = failures + expect_eq_int(pair_second(pair), 9)
+    return failures
+}
+
+fn test_swap_exchanges_positions() -> Int {
+    let mut failures = 0
+    let pair: Pair = pair_swap(pair_make(1, 2))
+    failures = failures + expect_eq_int(pair_first(pair), 2)
+    failures = failures + expect_eq_int(pair_second(pair), 1)
+    let twice: Pair = pair_swap(pair_swap(pair_make(5, 6)))
+    failures = failures + expect_eq_int(pair_equal(twice, pair_make(5, 6)), 1)
+    return failures
+}
+
+fn test_transforms_touch_only_their_position() -> Int {
+    let mut failures = 0
+    let base: Pair = pair_make(10, 20)
+    let left: Pair = pair_transform_first(base, value => value + 1)
+    failures = failures + expect_eq_int(pair_first(left), 11)
+    failures = failures + expect_eq_int(pair_second(left), 20)
+    let right: Pair = pair_transform_second(base, value => value + 1)
+    failures = failures + expect_eq_int(pair_first(right), 10)
+    failures = failures + expect_eq_int(pair_second(right), 21)
+    let both: Pair = pair_transform_both(base, value => value * 3)
+    failures = failures + expect_eq_int(pair_first(both), 30)
+    failures = failures + expect_eq_int(pair_second(both), 60)
+    return failures
+}
+
+fn test_combine_folds_both_values() -> Int {
+    let mut failures = 0
+    let pair: Pair = pair_make(6, 7)
+    failures = failures + expect_eq_int(pair_combine(pair, (a, b) => a * b), 42)
+    failures = failures + expect_eq_int(pair_combine(pair, (a, b) => a - b), 0 - 1)
+    return failures
+}
+
+fn test_compare_is_lexicographic() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(
+        pair_compare(pair_make(1, 9), pair_make(2, 0)), 0 - 1)
+    failures = failures + expect_eq_int(
+        pair_compare(pair_make(2, 0), pair_make(1, 9)), 1)
+    failures = failures + expect_eq_int(
+        pair_compare(pair_make(1, 2), pair_make(1, 3)), 0 - 1)
+    failures = failures + expect_eq_int(
+        pair_compare(pair_make(1, 3), pair_make(1, 2)), 1)
+    failures = failures + expect_eq_int(
+        pair_compare(pair_make(4, 4), pair_make(4, 4)), 0)
+    return failures
+}
+
+fn test_equality_via_compare() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(pair_equal(pair_make(0, 0), pair_make(0, 0)), 1)
+    failures = failures + expect_eq_int(pair_equal(pair_make(0, 1), pair_make(1, 0)), 0)
+    failures = failures + expect_eq_int(
+        pair_compare(pair_make(0 - 5, 3), pair_make(5, 3)), 0 - 1)
+    return failures
+}
+
+fn test_input_pairs_are_never_mutated() -> Int {
+    let mut failures = 0
+    let base: Pair = pair_make(8, 9)
+    let ignored_swap: Pair = pair_swap(base)
+    let ignored_both: Pair = pair_transform_both(base, value => 0)
+    failures = failures + expect_eq_int(pair_first(base), 8)
+    failures = failures + expect_eq_int(pair_second(base), 9)
+    failures = failures + expect_eq_int(pair_first(ignored_swap), 9)
+    failures = failures + expect_eq_int(pair_first(ignored_both), 0)
+    return failures
+}

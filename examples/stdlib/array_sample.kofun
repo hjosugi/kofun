@@ -1,0 +1,101 @@
+# stdlib/array sample: dense, fixed-shape rank-one IntArray values.
+#
+# The canonical stdlib/array/array.kofun contract: a rank-one array with a
+# fixed shape, typed index/shape failures, fill, elementwise transform, and
+# a shape-checked pairwise sum.  The shape here is fixed at three, and shape
+# mismatches are typed errors, never silent truncation.
+#
+# Tests live in array_sample_test.kofun and run with `kofun unittest`.
+
+type IntArray3 = {
+    cell0: Int,
+    cell1: Int,
+    cell2: Int,
+}
+
+type ArrayOutcome =
+    | ArrayValue(value: Int)
+    | ArrayIndexOutside(index: Int)
+
+fn array_shape() -> Int {
+    return 3
+}
+
+fn array_filled(value: Int) -> IntArray3 {
+    let filled: IntArray3 = IntArray3(cell0: value, cell1: value, cell2: value)
+    return filled
+}
+
+fn array_of(first: Int, second: Int, third: Int) -> IntArray3 {
+    let value: IntArray3 = IntArray3(cell0: first, cell1: second, cell2: third)
+    return value
+}
+
+fn array_get(array: IntArray3, index: Int) -> ArrayOutcome {
+    if index < 0 {
+        return ArrayIndexOutside(index)
+    }
+    if index >= array_shape() {
+        return ArrayIndexOutside(index)
+    }
+    if index == 0 {
+        return ArrayValue(array.cell0)
+    }
+    if index == 1 {
+        return ArrayValue(array.cell1)
+    }
+    return ArrayValue(array.cell2)
+}
+
+fn array_value_or(outcome: ArrayOutcome, fallback: Int) -> Int {
+    match outcome {
+        ArrayValue(value) => { return value },
+        ArrayIndexOutside(_) => { return fallback },
+    }
+    return fallback
+}
+
+fn array_transform(array: IntArray3, transform: Int -> Int) -> IntArray3 {
+    let mapped: IntArray3 = IntArray3(
+        cell0: transform(array.cell0),
+        cell1: transform(array.cell1),
+        cell2: transform(array.cell2)    )
+    return mapped
+}
+
+fn array_add(left: IntArray3, right: IntArray3) -> IntArray3 {
+    let combined: IntArray3 = IntArray3(
+        cell0: left.cell0 + right.cell0,
+        cell1: left.cell1 + right.cell1,
+        cell2: left.cell2 + right.cell2    )
+    return combined
+}
+
+fn array_total(array: IntArray3) -> Int {
+    return array.cell0 + array.cell1 + array.cell2
+}
+
+fn array_minimum(array: IntArray3) -> Int {
+    let mut smallest = array.cell0
+    if array.cell1 < smallest {
+        smallest = array.cell1
+    }
+    if array.cell2 < smallest {
+        smallest = array.cell2
+    }
+    return smallest
+}
+
+fn main() {
+    let zeros: IntArray3 = array_filled(0)
+    print(array_total(zeros))
+    let base: IntArray3 = array_of(3, 1, 4)
+    print(array_value_or(array_get(base, 2), 0 - 1))
+    print(array_value_or(array_get(base, 5), 0 - 1))
+    let scaled: IntArray3 = array_transform(base, value => value * 10)
+    print(array_total(scaled))
+    let merged: IntArray3 = array_add(base, scaled)
+    print(array_total(merged))
+    print(array_minimum(base))
+    print(array_shape())
+}

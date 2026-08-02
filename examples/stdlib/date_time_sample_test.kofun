@@ -1,0 +1,95 @@
+# kotest suite for date_time_sample.kofun; run with `kofun unittest`.
+
+fn test_leap_year_rules() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(leap_year(2024), 1)
+    failures = failures + expect_eq_int(leap_year(2025), 0)
+    failures = failures + expect_eq_int(leap_year(1900), 0)
+    failures = failures + expect_eq_int(leap_year(2000), 1)
+    failures = failures + expect_eq_int(leap_year(2100), 0)
+    return failures
+}
+
+fn test_month_lengths() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(days_in_month(2024, 2), 29)
+    failures = failures + expect_eq_int(days_in_month(2025, 2), 28)
+    failures = failures + expect_eq_int(days_in_month(2025, 1), 31)
+    failures = failures + expect_eq_int(days_in_month(2025, 4), 30)
+    failures = failures + expect_eq_int(days_in_month(2025, 6), 30)
+    failures = failures + expect_eq_int(days_in_month(2025, 9), 30)
+    failures = failures + expect_eq_int(days_in_month(2025, 11), 30)
+    failures = failures + expect_eq_int(days_in_month(2025, 12), 31)
+    return failures
+}
+
+fn test_validation_reports_the_failing_field() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(
+        date_is_valid(date_make(2024, 2, 29)), 1)
+    let bad_day: DateOutcome = date_validate(date_make(2025, 2, 29))
+    match bad_day {
+        DateBadDay(day) => { failures = failures + expect_eq_int(day, 29) },
+        _ => { failures = failures + fail_now("expected DateBadDay") },
+    }
+    let bad_month: DateOutcome = date_validate(date_make(2025, 0, 1))
+    match bad_month {
+        DateBadMonth(month) => { failures = failures + expect_eq_int(month, 0) },
+        _ => { failures = failures + fail_now("expected DateBadMonth") },
+    }
+    let bad_year: DateOutcome = date_validate(date_make(10000, 1, 1))
+    match bad_year {
+        DateBadYear(year) => { failures = failures + expect_eq_int(year, 10000) },
+        _ => { failures = failures + fail_now("expected DateBadYear") },
+    }
+    return failures
+}
+
+fn test_day_of_week_known_anchors() -> Int {
+    let mut failures = 0
+    # Zeller encoding: 0 Saturday, 1 Sunday, 2 Monday, .. 6 Friday.
+    # 2000-01-01 was a Saturday.
+    failures = failures + expect_eq_int(day_of_week(date_make(2000, 1, 1)), 0)
+    # 2024-02-29 was a Thursday.
+    failures = failures + expect_eq_int(day_of_week(date_make(2024, 2, 29)), 5)
+    # 1970-01-01 was a Thursday.
+    failures = failures + expect_eq_int(day_of_week(date_make(1970, 1, 1)), 5)
+    # 2026-08-02 is a Sunday.
+    failures = failures + expect_eq_int(day_of_week(date_make(2026, 8, 2)), 1)
+    return failures
+}
+
+fn test_next_day_rolls_over_months_and_years() -> Int {
+    let mut failures = 0
+    let leap_roll: CivilDate = date_next_day(date_make(2024, 2, 28))
+    failures = failures + expect_eq_int(date_equal(leap_roll, date_make(2024, 2, 29)), 1)
+    let month_roll: CivilDate = date_next_day(date_make(2024, 2, 29))
+    failures = failures + expect_eq_int(date_equal(month_roll, date_make(2024, 3, 1)), 1)
+    let plain_roll: CivilDate = date_next_day(date_make(2025, 2, 28))
+    failures = failures + expect_eq_int(date_equal(plain_roll, date_make(2025, 3, 1)), 1)
+    let year_roll: CivilDate = date_next_day(date_make(2025, 12, 31))
+    failures = failures + expect_eq_int(date_equal(year_roll, date_make(2026, 1, 1)), 1)
+    return failures
+}
+
+fn test_add_days_is_exact_iteration() -> Int {
+    let mut failures = 0
+    let same: CivilDate = date_add_days(date_make(2025, 6, 15), 0)
+    failures = failures + expect_eq_int(date_equal(same, date_make(2025, 6, 15)), 1)
+    let across_leap: CivilDate = date_add_days(date_make(2024, 2, 27), 4)
+    failures = failures + expect_eq_int(date_equal(across_leap, date_make(2024, 3, 2)), 1)
+    let across_year: CivilDate = date_add_days(date_make(2025, 12, 25), 10)
+    failures = failures + expect_eq_int(date_equal(across_year, date_make(2026, 1, 4)), 1)
+    let negative: CivilDate = date_add_days(date_make(2025, 6, 15), 0 - 3)
+    failures = failures + expect_eq_int(date_equal(negative, date_make(2025, 6, 15)), 1)
+    return failures
+}
+
+fn test_weekday_advances_by_one_per_day() -> Int {
+    let mut failures = 0
+    let today: CivilDate = date_make(2026, 8, 2)
+    let tomorrow: CivilDate = date_next_day(today)
+    failures = failures + expect_eq_int(
+        day_of_week(tomorrow), (day_of_week(today) + 1) % 7)
+    return failures
+}

@@ -329,11 +329,21 @@ tasks:
     cmds:
       - "sh stdlib/tests/verify.sh"
 
+  kotest:
+    desc: "Verify the kotest unit-test framework, runner, and stdlib samples"
+    cmds:
+      - "sh tests/stdlib/kotest/check.sh"
+
   clock-adapters:
     desc: "Verify explicit clock identities, fake time, and Linux integration"
     cmds:
       - "sh tests/stdlib/clock-adapters/check.sh"
       - "sh tests/stdlib/clock-adapters/check-linux-x86_64.sh"
+
+  scoped-parallelism:
+    desc: "Verify the scoped spawn/join ownership contract and its bounded model"
+    cmds:
+      - "sh spec/concurrency/scoped-parallelism-v1/check.sh"
 
   schedule-trace:
     desc: "Verify deterministic scoped-concurrency schedule traces and replay"
@@ -677,7 +687,9 @@ tasks:
             cli-framework \
             tui-framework \
             stdlib \
+            kotest \
             clock-adapters \
+            scoped-parallelism \
             schedule-trace \
             affine-resumption \
             example-law-evidence \

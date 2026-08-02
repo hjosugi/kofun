@@ -1,0 +1,77 @@
+# kotest suite for csv_sample.kofun; run with `kofun unittest`.
+
+fn test_field_count_of_plain_records() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(csv_field_count("a,b,c"), 3)
+    failures = failures + expect_eq_int(csv_field_count("solo"), 1)
+    failures = failures + expect_eq_int(csv_field_count(""), 0)
+    failures = failures + expect_eq_int(csv_field_count(",,"), 3)
+    return failures
+}
+
+fn test_field_spans_are_half_open() -> Int {
+    let mut failures = 0
+    let line = "kofun,42,compiler"
+    let first: CsvSpan = csv_field_span(line, 0)
+    failures = failures + expect_eq_int(first.found, 1)
+    failures = failures + expect_eq_int(first.start, 0)
+    failures = failures + expect_eq_int(first.end, 5)
+    let second: CsvSpan = csv_field_span(line, 1)
+    failures = failures + expect_eq_int(second.start, 6)
+    failures = failures + expect_eq_int(second.end, 8)
+    let third: CsvSpan = csv_field_span(line, 2)
+    failures = failures + expect_eq_int(third.end, len(line))
+    return failures
+}
+
+fn test_out_of_range_field_is_typed_missing() -> Int {
+    let mut failures = 0
+    let line = "a,b"
+    let outside: CsvSpan = csv_field_span(line, 2)
+    failures = failures + expect_eq_int(outside.found, 0)
+    let negative: CsvSpan = csv_field_span(line, 0 - 1)
+    failures = failures + expect_eq_int(negative.found, 0)
+    let empty_line: CsvSpan = csv_field_span("", 0)
+    failures = failures + expect_eq_int(empty_line.found, 0)
+    failures = failures + expect_eq_int(csv_field_length(line, 5), 0 - 1)
+    return failures
+}
+
+fn test_empty_fields_have_zero_width() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(csv_field_length("a,,b", 1), 0)
+    failures = failures + expect_eq_int(csv_field_length(",x", 0), 0)
+    failures = failures + expect_eq_int(csv_field_length("x,", 1), 0)
+    failures = failures + expect_eq_int(csv_field_equals("a,,b", 1, ""), 1)
+    return failures
+}
+
+fn test_field_content_comparison() -> Int {
+    let mut failures = 0
+    let line = "kofun,42,compiler"
+    failures = failures + expect_eq_int(csv_field_equals(line, 0, "kofun"), 1)
+    failures = failures + expect_eq_int(csv_field_equals(line, 1, "42"), 1)
+    failures = failures + expect_eq_int(csv_field_equals(line, 2, "compiler"), 1)
+    failures = failures + expect_eq_int(csv_field_equals(line, 1, "43"), 0)
+    failures = failures + expect_eq_int(csv_field_equals(line, 9, "kofun"), 0)
+    return failures
+}
+
+fn test_quoted_lines_are_outside_the_profile() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(csv_line_in_profile("plain,line"), 1)
+    failures = failures + expect_eq_int(csv_line_in_profile("say,\"hi\""), 0)
+    failures = failures + expect_eq_int(csv_line_in_profile("\""), 0)
+    failures = failures + expect_eq_int(csv_line_in_profile(""), 1)
+    return failures
+}
+
+fn test_span_slicing_round_trips() -> Int {
+    let mut failures = 0
+    let line = "alpha,beta"
+    let span: CsvSpan = csv_field_span(line, 1)
+    failures = failures + expect_eq_int(span.found, 1)
+    failures = failures + expect_eq_text(
+        text_slice(line, span.start, span.end), "beta")
+    return failures
+}

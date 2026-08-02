@@ -16904,7 +16904,8 @@ static bool move_assertion_scope_reaches(
     const char *to_scope,
     bool *crosses_lambda,
     bool *crosses_branch,
-    bool *crosses_block
+    bool *crosses_block,
+    char **innermost_branch
 ) {
     char *scope = owned_text(from_scope);
     while (scope[0] != '\0' && strcmp(scope, "-1") != 0) {
@@ -16920,6 +16921,9 @@ static bool move_assertion_scope_reaches(
             strcmp(kind, "if-else") == 0 ||
             strcmp(kind, "match-arm") == 0
         ) {
+            if (innermost_branch != NULL && *innermost_branch == NULL) {
+                *innermost_branch = owned_text(scope);
+            }
             *crosses_branch = true;
         } else if (strcmp(kind, "block") == 0) {
             *crosses_block = true;
@@ -16930,6 +16934,79 @@ static bool move_assertion_scope_reaches(
         scope = parent;
     }
     free(scope);
+    return false;
+}
+
+/*
+ * #904: true when every path from `after` to `limit` leaves the function
+ * through `return`, so control cannot fall out of the enclosing arm's closing
+ * brace and reach a point where the outer binding is still observable.
+ *
+ * The walk is over statements rather than bytes, because source order alone
+ * proves nothing here: a `return` that is merely the textually last thing in
+ * the arm is not a terminator when an `if` without a terminal `else` can still
+ * reach the brace, and a `return` nested inside such an `if` is not the arm's
+ * terminator at all. An `if` terminates only when both of its arms do, which
+ * is the same obligation `sl_emit_statement` discharges on the self-host path.
+ *
+ * Loops are refused outright rather than analysed. A loop can re-enter the arm
+ * and read the binding again, and proving a loop-local last use is #915, not
+ * this slice. A bare block is refused for the same reason in miniature: this
+ * slice can say nothing about what follows it.
+ */
+static bool move_assertion_arm_terminates(
+    const char *source,
+    int64_t after,
+    int64_t limit
+) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, after);
+    while (cursor < length && cursor < limit) {
+        if (token_equal(source, cursor, "}")) return false;
+        if (token_equal(source, cursor, "return")) return true;
+        if (
+            token_equal(source, cursor, "while") ||
+            token_equal(source, cursor, "for") ||
+            token_equal(source, cursor, "{")
+        ) {
+            return false;
+        }
+        if (token_equal(source, cursor, "if")) {
+            int64_t then_close = if_then_branch_end(source, cursor);
+            int64_t whole = if_statement_end(source, cursor);
+            if (
+                then_close < 0 ||
+                whole < 0 ||
+                !if_has_else(source, cursor)
+            ) {
+                return false;
+            }
+            int64_t condition_start = skip_trivia(
+                source,
+                token_end(source, cursor)
+            );
+            int64_t then_open = skip_trivia(
+                source,
+                condition_end(source, condition_start)
+            );
+            int64_t else_keyword = skip_trivia(source, then_close);
+            int64_t else_open = skip_trivia(
+                source,
+                token_end(source, else_keyword)
+            );
+            return move_assertion_arm_terminates(
+                       source,
+                       token_end(source, then_open),
+                       then_close
+                   ) &&
+                   move_assertion_arm_terminates(
+                       source,
+                       token_end(source, else_open),
+                       whole
+                   );
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
     return false;
 }
 
@@ -17221,7 +17298,8 @@ static char *validate_move_assertions(const char *source, const char *hir) {
                         binding_scope,
                         &lambda,
                         &branch,
-                        &block
+                        &block,
+                        NULL
                     );
                     if (lambda) {
                         buffer_format(
@@ -17253,14 +17331,37 @@ static char *validate_move_assertions(const char *source, const char *hir) {
                 bool lambda = false;
                 bool branch = false;
                 bool block = false;
+                char *branch_scope = NULL;
                 move_assertion_scope_reaches(
                     hir,
                     use_scope,
                     binding_scope,
                     &lambda,
                     &branch,
-                    &block
+                    &block,
+                    &branch_scope
                 );
+                /*
+                 * #904: an assertion inside a conditional arm is sound when
+                 * that arm is terminal, because control then leaves the
+                 * function rather than returning to a point where the outer
+                 * binding is still observable. A loop anywhere on the scope
+                 * chain still refuses: it can re-enter the arm.
+                 */
+                if (branch && !block && branch_scope != NULL) {
+                    char *arm_close = hir_scope_field(hir, branch_scope, 5);
+                    if (
+                        move_assertion_arm_terminates(
+                            source,
+                            token_end(source, close),
+                            decimal_value(arm_close)
+                        )
+                    ) {
+                        branch = false;
+                    }
+                    free(arm_close);
+                }
+                free(branch_scope);
                 if (branch) {
                     buffer_format(
                         &message,

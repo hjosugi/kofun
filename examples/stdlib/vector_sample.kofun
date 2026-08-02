@@ -1,0 +1,143 @@
+# stdlib/vector sample: an immutable, ordered IntVector reference surface.
+#
+# The canonical stdlib/vector/vector.kofun contract: construction, length,
+# checked indexing with a typed failure, functional update (with_value),
+# ordered map, and pairwise combination.  Executable today on a bounded
+# three-slot value record; every operation returns a fresh vector.
+#
+# Tests live in vector_sample_test.kofun and run with `kofun unittest`.
+
+type IntVector = {
+    size: Int,
+    item0: Int,
+    item1: Int,
+    item2: Int,
+}
+
+type VectorOutcome =
+    | VectorValue(value: Int)
+    | VectorIndexOutside(index: Int)
+
+fn vector_capacity() -> Int {
+    return 3
+}
+
+fn vector_of(first: Int, second: Int, third: Int) -> IntVector {
+    let value: IntVector = IntVector(
+        size: 3,
+        item0: first,
+        item1: second,
+        item2: third    )
+    return value
+}
+
+fn vector_empty() -> IntVector {
+    let value: IntVector = IntVector(size: 0, item0: 0, item1: 0, item2: 0)
+    return value
+}
+
+fn vector_length(vector: IntVector) -> Int {
+    return vector.size
+}
+
+fn vector_item(vector: IntVector, index: Int) -> Int {
+    if index == 0 {
+        return vector.item0
+    }
+    if index == 1 {
+        return vector.item1
+    }
+    return vector.item2
+}
+
+fn vector_get(vector: IntVector, index: Int) -> VectorOutcome {
+    if index < 0 {
+        return VectorIndexOutside(index)
+    }
+    if index >= vector.size {
+        return VectorIndexOutside(index)
+    }
+    return VectorValue(vector_item(vector, index))
+}
+
+fn vector_value_or(outcome: VectorOutcome, fallback: Int) -> Int {
+    match outcome {
+        VectorValue(value) => { return value },
+        VectorIndexOutside(_) => { return fallback },
+    }
+    return fallback
+}
+
+fn keep_or_replace(index: Int, target: Int, replacement: Int, current: Int) -> Int {
+    if index == target {
+        return replacement
+    }
+    return current
+}
+
+# Functional update: a fresh vector with one position replaced.  An index
+# outside the vector returns the input unchanged, matching the checked
+# contract (the caller sees the failure through vector_get).
+fn vector_with_value(vector: IntVector, index: Int, value: Int) -> IntVector {
+    if index < 0 {
+        return vector
+    }
+    if index >= vector.size {
+        return vector
+    }
+    let updated: IntVector = IntVector(
+        size: vector.size,
+        item0: keep_or_replace(0, index, value, vector.item0),
+        item1: keep_or_replace(1, index, value, vector.item1),
+        item2: keep_or_replace(2, index, value, vector.item2)    )
+    return updated
+}
+
+fn vector_map(vector: IntVector, transform: Int -> Int) -> IntVector {
+    let mapped: IntVector = IntVector(
+        size: vector.size,
+        item0: transform(vector.item0),
+        item1: transform(vector.item1),
+        item2: transform(vector.item2)    )
+    return mapped
+}
+
+fn vector_zip_with(
+    left: IntVector,
+    right: IntVector,
+    combine: (Int, Int) -> Int
+) -> IntVector {
+    let zipped: IntVector = IntVector(
+        size: left.size,
+        item0: combine(left.item0, right.item0),
+        item1: combine(left.item1, right.item1),
+        item2: combine(left.item2, right.item2)    )
+    return zipped
+}
+
+fn vector_sum_from(vector: IntVector, index: Int, total: Int) -> Int {
+    if index >= vector.size {
+        return total
+    }
+    return vector_sum_from(vector, index + 1, total + vector_item(vector, index))
+}
+
+fn vector_sum(vector: IntVector) -> Int {
+    return vector_sum_from(vector, 0, 0)
+}
+
+fn main() {
+    let base: IntVector = vector_of(3, 1, 4)
+    print(vector_length(base))
+    print(vector_value_or(vector_get(base, 1), 0 - 1))
+    print(vector_value_or(vector_get(base, 9), 0 - 1))
+    let updated: IntVector = vector_with_value(base, 1, 10)
+    print(vector_value_or(vector_get(updated, 1), 0 - 1))
+    print(vector_value_or(vector_get(base, 1), 0 - 1))
+    let doubled: IntVector = vector_map(base, value => value * 2)
+    print(vector_sum(doubled))
+    let dotted: IntVector = vector_zip_with(base, doubled, (a, b) => a * b)
+    print(vector_sum(dotted))
+    print(vector_length(vector_empty()))
+    print(vector_capacity())
+}

@@ -34,7 +34,7 @@ export const GROUPS = Object.freeze([
             'diagnostics', 'fuzz', 'unicode', 'patterns', 'adt', 'records',
             'move-assertion', 'usability-corpus', 'call-arguments-spec',
             'affine-resumption',
-            'schedule-trace',
+            'scoped-parallelism', 'schedule-trace',
             'generics', 'hm-levels', 'effect-inference', 'traits', 'optional', 'optional-narrowing',
             'optional-construction',
             'adt-exhaustiveness', 'enum-match-value', 'decimal', 'decimal-arithmetic',
@@ -68,8 +68,8 @@ export const GROUPS = Object.freeze([
         title: 'Runtime and standard library',
         hint: 'Host integration, measured costs, and the executable standard-library capability surface.',
         tasks: [
-            'rust-shim', 'http', 'stdlib', 'tzdb', 'clock-adapters', 'benchmark-summary',
-            'capabilities'
+            'rust-shim', 'http', 'stdlib', 'kotest', 'tzdb', 'clock-adapters',
+            'benchmark-summary', 'capabilities'
         ]
     },
     {

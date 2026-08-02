@@ -1,0 +1,226 @@
+# stdlib/map sample: an immutable Int-to-Int map with typed missing-key
+# lookup, value-returning upsert and removal, and deterministic
+# ascending-key traversal — the canonical stdlib/map/map.kofun contract on
+# a bounded three-entry value record.
+#
+# Tests live in map_sample_test.kofun and run with `kofun unittest`.
+
+type MapIntInt = {
+    entries: Int,
+    key0: Int,
+    value0: Int,
+    key1: Int,
+    value1: Int,
+    key2: Int,
+    value2: Int,
+}
+
+type MapOutcome =
+    | MapValue(value: Int)
+    | MapMissingKey(key: Int)
+
+fn map_capacity() -> Int {
+    return 3
+}
+
+fn map_empty() -> MapIntInt {
+    let value: MapIntInt = MapIntInt(
+        entries: 0,
+        key0: 0,
+        value0: 0,
+        key1: 0,
+        value1: 0,
+        key2: 0,
+        value2: 0    )
+    return value
+}
+
+fn map_size(map: MapIntInt) -> Int {
+    return map.entries
+}
+
+fn map_key_at(map: MapIntInt, position: Int) -> Int {
+    if position == 0 {
+        return map.key0
+    }
+    if position == 1 {
+        return map.key1
+    }
+    return map.key2
+}
+
+fn map_value_at(map: MapIntInt, position: Int) -> Int {
+    if position == 0 {
+        return map.value0
+    }
+    if position == 1 {
+        return map.value1
+    }
+    return map.value2
+}
+
+fn map_position_of_from(map: MapIntInt, key: Int, position: Int) -> Int {
+    if position >= map.entries {
+        return 0 - 1
+    }
+    if map_key_at(map, position) == key {
+        return position
+    }
+    return map_position_of_from(map, key, position + 1)
+}
+
+fn map_position_of(map: MapIntInt, key: Int) -> Int {
+    return map_position_of_from(map, key, 0)
+}
+
+fn map_contains(map: MapIntInt, key: Int) -> Int {
+    if map_position_of(map, key) >= 0 {
+        return 1
+    }
+    return 0
+}
+
+fn map_get(map: MapIntInt, key: Int) -> MapOutcome {
+    let position = map_position_of(map, key)
+    if position < 0 {
+        return MapMissingKey(key)
+    }
+    return MapValue(map_value_at(map, position))
+}
+
+fn map_get_or(map: MapIntInt, key: Int, fallback: Int) -> Int {
+    let outcome: MapOutcome = map_get(map, key)
+    match outcome {
+        MapValue(value) => { return value },
+        MapMissingKey(_) => { return fallback },
+    }
+    return fallback
+}
+
+fn replace_at(position: Int, target: Int, replacement: Int, current: Int) -> Int {
+    if position == target {
+        return replacement
+    }
+    return current
+}
+
+fn map_rebuild(
+    entries: Int,
+    k0: Int,
+    v0: Int,
+    k1: Int,
+    v1: Int,
+    k2: Int,
+    v2: Int
+) -> MapIntInt {
+    let value: MapIntInt = MapIntInt(
+        entries: entries,
+        key0: k0,
+        value0: v0,
+        key1: k1,
+        value1: v1,
+        key2: k2,
+        value2: v2    )
+    return value
+}
+
+# Value-returning upsert: an existing key gets the new value, a new key is
+# appended when capacity allows, and a full map is returned unchanged for an
+# unknown key (the caller distinguishes the cases through map_contains).
+fn map_insert(map: MapIntInt, key: Int, value: Int) -> MapIntInt {
+    let position = map_position_of(map, key)
+    if position >= 0 {
+        return map_rebuild(
+            map.entries,
+            map.key0,
+            replace_at(position, 0, value, map.value0),
+            map.key1,
+            replace_at(position, 1, value, map.value1),
+            map.key2,
+            replace_at(position, 2, value, map.value2)        )
+    }
+    if map.entries >= map_capacity() {
+        return map
+    }
+    if map.entries == 0 {
+        return map_rebuild(1, key, value, map.key1, map.value1, map.key2, map.value2)
+    }
+    if map.entries == 1 {
+        return map_rebuild(2, map.key0, map.value0, key, value, map.key2, map.value2)
+    }
+    return map_rebuild(3, map.key0, map.value0, map.key1, map.value1, key, value)
+}
+
+# Value-returning removal by key: entries after the removed position shift
+# left, preserving insertion order for the survivors.
+fn map_remove(map: MapIntInt, key: Int) -> MapIntInt {
+    let position = map_position_of(map, key)
+    if position < 0 {
+        return map
+    }
+    if position == 0 {
+        return map_rebuild(
+            map.entries - 1,
+            map.key1, map.value1, map.key2, map.value2, 0, 0)
+    }
+    if position == 1 {
+        return map_rebuild(
+            map.entries - 1,
+            map.key0, map.value0, map.key2, map.value2, 0, 0)
+    }
+    return map_rebuild(
+        map.entries - 1,
+        map.key0, map.value0, map.key1, map.value1, 0, 0)
+}
+
+fn smallest_key_at_least(map: MapIntInt, lower_bound: Int, position: Int, best: Int) -> Int {
+    if position >= map.entries {
+        return best
+    }
+    let candidate = map_key_at(map, position)
+    if candidate >= lower_bound {
+        if best == 0 - 1 {
+            return smallest_key_at_least(map, lower_bound, position + 1, candidate)
+        }
+        if candidate < best {
+            return smallest_key_at_least(map, lower_bound, position + 1, candidate)
+        }
+    }
+    return smallest_key_at_least(map, lower_bound, position + 1, best)
+}
+
+# Deterministic ascending-key traversal: prints key then value per entry.
+# Keys must be non-negative for this bounded printer.
+fn map_print_ascending_from(map: MapIntInt, lower_bound: Int, remaining: Int) -> Int {
+    if remaining <= 0 {
+        return 0
+    }
+    let key = smallest_key_at_least(map, lower_bound, 0, 0 - 1)
+    if key == 0 - 1 {
+        return 0
+    }
+    print(key)
+    print(map_get_or(map, key, 0 - 1))
+    return map_print_ascending_from(map, key + 1, remaining - 1)
+}
+
+fn map_print_ascending(map: MapIntInt) -> Int {
+    return map_print_ascending_from(map, 0, map.entries)
+}
+
+fn main() {
+    let ages: MapIntInt = map_insert(map_insert(map_insert(
+        map_empty(), 7, 70), 3, 30), 5, 50)
+    print(map_size(ages))
+    print(map_get_or(ages, 3, 0 - 1))
+    print(map_get_or(ages, 8, 0 - 1))
+    print(map_contains(ages, 5))
+    let updated: MapIntInt = map_insert(ages, 3, 31)
+    print(map_get_or(updated, 3, 0 - 1))
+    print(map_size(updated))
+    let trimmed: MapIntInt = map_remove(ages, 7)
+    print(map_size(trimmed))
+    print(map_contains(trimmed, 7))
+    let ignored = map_print_ascending(ages)
+    print(ignored)
+}

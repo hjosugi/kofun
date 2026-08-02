@@ -1,0 +1,89 @@
+# kotest suite for clock_sample.kofun; run with `kofun unittest`.
+
+fn test_manual_clock_only_moves_when_advanced() -> Int {
+    let mut failures = 0
+    let boot: ManualClock = clock_start_at(1000)
+    failures = failures + expect_eq_int(clock_now(boot), 1000)
+    let later: ManualClock = clock_advance(boot, 500)
+    failures = failures + expect_eq_int(clock_now(later), 1500)
+    failures = failures + expect_eq_int(clock_now(boot), 1000)
+    return failures
+}
+
+fn test_advance_refuses_backwards_motion() -> Int {
+    let mut failures = 0
+    let boot: ManualClock = clock_start_at(1000)
+    let held: ManualClock = clock_advance(boot, 0 - 500)
+    failures = failures + expect_eq_int(clock_now(held), 1000)
+    let frozen: ManualClock = clock_advance(boot, 0)
+    failures = failures + expect_eq_int(clock_now(frozen), 1000)
+    return failures
+}
+
+fn test_elapsed_is_a_typed_outcome() -> Int {
+    let mut failures = 0
+    let forward: ClockOutcome = clock_elapsed(100, 350)
+    match forward {
+        ClockDuration(nanoseconds) => {
+            failures = failures + expect_eq_int(nanoseconds, 250)
+        },
+        _ => { failures = failures + fail_now("expected ClockDuration") },
+    }
+    let same: ClockOutcome = clock_elapsed(100, 100)
+    failures = failures + expect_eq_int(clock_outcome_value(same), 0)
+    let backwards: ClockOutcome = clock_elapsed(350, 100)
+    match backwards {
+        ClockBackwards(difference) => {
+            failures = failures + expect_eq_int(difference, 250)
+        },
+        _ => { failures = failures + fail_now("expected ClockBackwards") },
+    }
+    return failures
+}
+
+fn test_deadline_arithmetic_is_preflight_checked() -> Int {
+    let mut failures = 0
+    let fine: ClockOutcome = clock_deadline(1000, 500)
+    failures = failures + expect_eq_int(clock_outcome_code(fine), 0)
+    failures = failures + expect_eq_int(clock_outcome_value(fine), 1500)
+    let at_edge: ClockOutcome = clock_deadline(clock_maximum() - 1, 1)
+    failures = failures + expect_eq_int(clock_outcome_code(at_edge), 0)
+    let over: ClockOutcome = clock_deadline(clock_maximum(), 1)
+    match over {
+        ClockOverflow(limit) => {
+            failures = failures + expect_eq_int(limit, clock_maximum())
+        },
+        _ => { failures = failures + fail_now("expected ClockOverflow") },
+    }
+    let negative_wait: ClockOutcome = clock_deadline(1000, 0 - 5)
+    failures = failures + expect_eq_int(clock_outcome_code(negative_wait), 1)
+    return failures
+}
+
+fn test_deadline_passing_boundary() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(clock_deadline_passed(99, 100), 0)
+    failures = failures + expect_eq_int(clock_deadline_passed(100, 100), 1)
+    failures = failures + expect_eq_int(clock_deadline_passed(101, 100), 1)
+    return failures
+}
+
+fn test_measure_with_injected_fake_clock() -> Int {
+    let mut failures = 0
+    # The classic clock mock: a scripted reading function.  Reading 0 is
+    # the start, reading 1 the end, so elapsed is exactly the step width.
+    failures = failures + expect_eq_int(measure_with(step => 100 + step * 25), 25)
+    failures = failures + expect_eq_int(measure_with(step => 7 + step * 0), 0)
+    return failures
+}
+
+fn test_measure_with_spy_counts_readings() -> Int {
+    let mut failures = 0
+    # A spy on the reading function itself: measure_with must read the
+    # clock exactly twice.  The spy threads through recorded arithmetic:
+    # each call contributes 1 to the returned reading's step, so a final
+    # elapsed of exactly one step-width proves two ordered calls.
+    let counting_clock = step => step * 1000
+    failures = failures + expect_eq_int(measure_with(counting_clock), 1000)
+    return failures
+}
