@@ -833,6 +833,12 @@
       "blocked_by": [],
       "evidence_commits": [
         "71d49724cced0f41b79ebc0f253f7570f23b1b14"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-issue1002-wasm-text-20260802",
+          "status": "active"
+        }
       ]
     },
     {
