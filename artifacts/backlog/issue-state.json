@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 77,
+  "open_issues": 79,
   "issues": [
     {
       "number": 26,
@@ -39,7 +39,7 @@
       "number": 30,
       "title": "General ADT match exhaustiveness beyond the bounded Bool slice",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
       "state_line": "needs-detail",
       "blocked_by": [],
@@ -49,7 +49,7 @@
       "number": 31,
       "title": "Generics and traits",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
       "state_line": "needs-detail",
       "blocked_by": [],
@@ -182,7 +182,7 @@
       "number": 289,
       "title": "Forward references: track declaration scopes, imports, and initialization",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
       "state_line": "needs-detail",
       "blocked_by": [],
@@ -192,11 +192,13 @@
       "number": 298,
       "title": "Duplicate definitions: track namespace and binding-domain rules",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
-      "state_line": "ready",
+      "state_line": "needs-detail",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [
+        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
+      ]
     },
     {
       "number": 314,
@@ -294,7 +296,7 @@
       "number": 543,
       "title": "Optional types: define representation, narrowing, matching, and propagation",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
       "state_line": "needs-detail",
       "blocked_by": [],
@@ -450,7 +452,7 @@
       "number": 624,
       "title": "Language UX: simple functional syntax with explicit ownership and lawful composition",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
       "state_line": "needs-detail",
       "blocked_by": [],
@@ -509,7 +511,7 @@
       "number": 710,
       "title": "Compiler-native Decimal: implement the accepted language design across all backends",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
       "state_line": "needs-detail",
       "blocked_by": [],
@@ -565,7 +567,7 @@
       "number": 868,
       "title": "Stage 2 C11 aggregate bridge: execute records with List[Int] and Text",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
       "state_line": "needs-detail",
       "blocked_by": [],
@@ -837,6 +839,10 @@
         {
           "agent_id": "codex-issue1002-wasm-text-20260802",
           "status": "active"
+        },
+        {
+          "agent_id": "codex-issue1002-wasm-text-20260802",
+          "status": "pr-open"
         }
       ]
     },
@@ -916,24 +922,48 @@
       ]
     },
     {
-      "number": 1030,
-      "title": "Scoped parallelism: own `par` in the Stage 2 lexer and refuse it by name",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
-      ]
-    },
-    {
       "number": 1032,
       "title": "Self-host driver diagnostics: give A1's refusal a code and a span",
       "state_labels": [
         "needs-detail"
       ],
       "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": [
+        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
+      ]
+    },
+    {
+      "number": 1033,
+      "title": "LSP visibility: filter completion and navigation by caller context",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
+      ]
+    },
+    {
+      "number": 1034,
+      "title": "Typed sidecars: revalidate visibility against the live caller context",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
+      ]
+    },
+    {
+      "number": 1035,
+      "title": "Visibility fuzz: bound malformed identities, re-export chains, and stale artifacts",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
         "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
