@@ -14,7 +14,7 @@ sh spec/reuse-candidate-v1/check.sh
 | `validate.mjs` | The validator. `validate.mjs RECORD.json` writes the canonical record to stdout, or exits 1 with one named error on stderr and no partial output. |
 | `check.mjs` | In-process closure checks over the state, reason, provenance, observer, ordering, and remark vocabularies, plus mutations that must fail closed. |
 | `check.sh` | The gate. Runs every vector twice from clean work directories, refuses hand-edited goldens, and runs the AggregateLayout v1 gate. |
-| `backends.json` | The committed backend support table. A record's backend claim is checked against it. |
+| `backends.json` | The committed backend support table. A record's backend claim is checked against it, and the table's own id set is joined to `tests/conformance/capabilities.tsv` in both directions: an id here that is not registered is refused, and a registered backend with no row here is refused. Without that join the table could name a backend that does not exist and every other assertion would still pass. |
 | `valid/` | Records the validator MUST accept. Each is byte-identical to its own canonical validated form. |
 | `invalid/` | Records the validator MUST reject, with `invalid/expected.tsv` pinning each one's error identity. |
 

@@ -66,6 +66,37 @@ assert.equal(
   0,
   "no registered backend honours a reuse guarantee at the audited commit; a row that claims one must arrive with the rewrite that implements it",
 );
+// The table claims to be keyed by the registered backends. That claim is only
+// worth making if it is joined: without this, a phantom backend can be added
+// here and cited by a valid vector, and every assertion below still passes.
+// The join is an exact set equality in both directions -- an id here that is
+// not registered is a backend that does not exist, and a registered backend
+// missing here is a backend whose reuse disposition nobody has stated.
+const capabilities = readFileSync(
+  new URL("../../tests/conformance/capabilities.tsv", import.meta.url),
+  "utf8",
+);
+const registered = new Set(
+  capabilities
+    .split("\n")
+    .slice(1)
+    .filter((line) => line.trim() !== "" && !line.startsWith("#"))
+    .map((line) => line.split("\t")[0]),
+);
+const tabled = new Set(backends.backends.map((row) => row.id));
+const phantom = [...tabled].filter((id) => !registered.has(id)).sort();
+const unstated = [...registered].filter((id) => !tabled.has(id)).sort();
+assert.deepEqual(
+  phantom,
+  [],
+  `backends.json names ${phantom.join(", ")}, which tests/conformance/capabilities.tsv does not register; a record may not cite a backend that does not exist`,
+);
+assert.deepEqual(
+  unstated,
+  [],
+  `tests/conformance/capabilities.tsv registers ${unstated.join(", ")}, which backends.json does not state a reuse disposition for`,
+);
+
 assert.equal(
   new Set(backends.backends.map((row) => row.id)).size,
   backends.backends.length,
