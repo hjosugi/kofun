@@ -24,6 +24,11 @@ state-disagreement	30	blocked/needs-detail	General ADT match exhaustiveness beyo
 state-disagreement	31	blocked/needs-detail	Generics and traits
 state-disagreement	289	blocked/needs-detail	Forward references: track declaration scopes, imports, and initialization
 state-disagreement	298	blocked/ready	Duplicate definitions: track namespace and binding-domain rules
+state-disagreement	26	blocked/needs-detail	wasm32 target: extend the bounded arithmetic and browser checkpoint
+state-disagreement	30	blocked/needs-detail	General ADT match exhaustiveness beyond the bounded Bool slice
+state-disagreement	31	blocked/needs-detail	Generics and traits
+state-disagreement	289	blocked/needs-detail	Forward references: track declaration scopes, imports, and initialization
+state-disagreement	298	blocked/ready	Duplicate definitions: track namespace and binding-domain rules
 state-disagreement	543	blocked/needs-detail	Optional types: define representation, narrowing, matching, and propagation
 state-disagreement	555	blocked/ready	Scoped parallelism v1: specify spawn/join ownership semantics and executable model
 state-disagreement	618	blocked/needs-detail	Self-host profile: freeze the smallest honest compiler S and coverage manifest
@@ -32,6 +37,6 @@ state-disagreement	710	blocked/needs-detail	Compiler-native Decimal: implement t
 state-disagreement	868	blocked/needs-detail	Stage 2 C11 aggregate bridge: execute records with List[Int] and Text
 unstamped-ready	900	-	bindgen-c: sanitizer-backed generated-boundary gate
 unstamped-ready	901	-	bindgen-c: adversarial macro fuzzing and bounded Clang execution
-unstamped-ready	903	-	bindgen-c: verify calling conventions instead of recording a constant
 unstamped-ready	904	-	Stage 2 ensure_move v2: prove terminal branch and early-return last uses
+unstamped-ready	949	-	Ownership evidence cleanup: map live refusal paths and retire stale E3xx fixtures
 unverifiable-stamp	738	d1f58a6a9e20764b25ee28773df5355512213dfa	Time-series forecasting research: stamp names a commit on no branch

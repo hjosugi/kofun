@@ -150,10 +150,20 @@ never been written down. This document is where they now live.
 - a `ready` issue names an open blocker in `## Dependencies`;
 - a `ready` issue carries no evidence stamp.
 
-`task backlog-refresh` regenerates the snapshot from GitHub and verifies that
-every stamp names a commit reachable from `HEAD`. CI runs it in its own lane
-and requires the committed snapshot to match, so a stale snapshot cannot
-quietly satisfy the gate — the same split `artifacts/release-evidence/` uses.
+The committed snapshot is a **fixture**, not a claim about the backlog right
+now. Issues are filed here every few minutes and no commit can keep up, so
+demanding that a committed copy match live state would be permanently red and
+would teach everyone to ignore it.
+
+`task backlog-refresh` regenerates the snapshot from GitHub, runs the same
+rules against live state, and verifies that every stamp names a commit
+reachable from `HEAD`. CI runs it on `main` but **not** on pull requests: a
+`ready` issue somebody else opens mid-review would otherwise turn an unrelated
+PR red for a reason its author cannot fix. On `main` the same failure is a true
+signal, owned by whoever can act on it.
+
+Refreshing may mean updating `tests/backlog/debt.tsv` in the same change. The
+ledger describes reality, and reality moves.
 
 The stamp check is not in `task verify` on purpose. It needs the history, and
 `actions/checkout` is shallow by default, so a version of it inside `verify`
