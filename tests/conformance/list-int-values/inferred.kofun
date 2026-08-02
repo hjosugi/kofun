@@ -1,0 +1,14 @@
+fn main() -> Int {
+    let values = [3, 5, 8]
+    print(len(values))
+    print(values[2])
+
+    let base = 100
+    let derived = [base, base + 1, base * 2]
+    print(len(derived))
+    print(derived[0])
+    print(derived[1])
+    print(derived[2])
+
+    return 0
+}

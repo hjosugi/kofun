@@ -1,0 +1,8 @@
+fn total(count: Int) -> Int {
+    return count
+}
+
+fn main() -> Int {
+    print(total([1, 2, 3]))
+    return 0
+}

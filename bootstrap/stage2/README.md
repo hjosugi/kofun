@@ -699,3 +699,58 @@ the loop-backedge *positive* is not expressible here. The gate is
 `tests/conformance/optional-construction/run.sh`, which recomputes the
 descriptor with `spec/aggregate-layout-v1/layout.mjs` rather than reading a
 checked-in copy, so a drift on either side fails it.
+
+### Bounded `List[Int]` values in the C11 slice (#919)
+
+`compiler.c` also makes **one** list type executable, as a local binding:
+`List[Int]`. This is increment 2 of #868's five; parameters, results, and
+record fields are increments 3-5 and are refused where they are written.
+
+The representation is not chosen here either. `spec/aggregate-layout-v1/
+examples/core.x86_64-linux.json` carries the accepted `List[Int]` layout —
+`kind` list, `size` 8, `align` 8, one pointer at offset 0 — and its
+`list-int-three` object vector says what the pointee is: a `u64 length` header
+at offset 0, elements from `payload_offset` 8, `element_size` and
+`element_align` 8, so three elements make a 32-byte object. The lowering emits
+exactly that as
+
+```c
+#define KOFUN_LIST_INT_CAPACITY 64
+typedef struct {
+    uint64_t length;
+    int64_t elements[KOFUN_LIST_INT_CAPACITY];
+} KofunListIntObject;
+typedef struct {
+    const KofunListIntObject *object;
+} KofunListInt;
+```
+
+with nine generated `_Static_assert`s pinning the header offset and size, the
+payload offset, the element size and alignment, the object's total size, the
+pointer offset, and the value's size and alignment.
+
+`KOFUN_LIST_INT_CAPACITY` is the explicit capacity bound: the object carries
+its elements inline, so there is no allocator to grow and a longer literal is
+refused before any C exists. The object has automatic storage in the declaring
+frame, which is sound here precisely because this slice gives the value no way
+out of one.
+
+What executes: `let v: List[Int] = [1, 2, 3]` and the unannotated `let v =
+[1, 2, 3]` both bind, `len(v)` reads the object's own header rather than a
+folded constant, and `v[0]` reads the element. Elements may be any `Int`
+expression the slice already lowers, not only literals.
+
+Refusals carry `E2S148`, registered under the `list-int-values` adapter: a
+literal past the capacity bound, an index outside the declaring literal's
+range, an index this slice cannot check against that range, a non-`Int`
+element, a `List` of anything but `Int`, a literal in argument or result
+position, a mutable list binding, and a list read as a whole value.
+
+One bound is worth stating rather than leaving to be discovered. An index is
+checked at compile time against the declaring literal's element count, which
+is what lets an out-of-range index be a refusal with no artifact rather than a
+trap the emitted program has to carry; a dynamic index consequently has no
+checked form in this slice and is refused by name. The gate is
+`tests/conformance/list-int-values/run.sh`, which recomputes the descriptor
+with `spec/aggregate-layout-v1/layout.mjs` rather than reading a checked-in
+copy, so a drift on either side fails it.

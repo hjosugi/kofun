@@ -1,0 +1,8 @@
+fn first(values: List[Int]) -> Int {
+    return values[0]
+}
+
+fn main() -> Int {
+    print(first([1, 2, 3]))
+    return 0
+}

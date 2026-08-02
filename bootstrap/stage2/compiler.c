@@ -4009,6 +4009,153 @@ static bool optional_int_binding(
 );
 static bool optional_int_carrier_position(const char *source, int64_t at);
 static char *hir_use_binding_id(const char *hir, int64_t use_start);
+static char *emit_list_int_elements(
+    const char *source,
+    const char *hir,
+    int64_t open
+);
+static int64_t list_int_binding_literal(
+    const char *source,
+    const char *hir,
+    const char *binding_id
+);
+static bool list_int_binding_use(
+    const char *source,
+    const char *hir,
+    int64_t use
+);
+static int64_t decimal_value(const char *value);
+
+/*
+ * #919: the bounded `List[Int]` spelling tests. The representation the two
+ * emitters below build from them is the `List[Int]` descriptor of
+ * `spec/aggregate-layout-v1/examples/core.x86_64-linux.json` — a pointer at
+ * offset 0, to an object whose `length` header is a `u64` at offset 0 and
+ * whose elements start at offset 8 and are 8 bytes each.
+ */
+#define LIST_INT_C_TYPE "KofunListInt"
+#define LIST_INT_OBJECT_C_TYPE "KofunListIntObject"
+/*
+ * The explicit capacity bound of the lowered representation, in elements.
+ * The object carries its elements inline, so the bound is a property of the
+ * emitted type and not of an allocator: a longer literal is refused before
+ * any C exists rather than growing storage the descriptor never described.
+ * 64 is the same bound the Stage 2 block-statement and enum-constructor
+ * limits use.
+ */
+#define LIST_INT_CAPACITY 64
+
+/*
+ * `List` `[` IDENT `]`, which is the only list type spelling this slice
+ * reads. Returns the byte after `]`, or -1. The element token is left for
+ * `list_type_element` so `List[Text]` is refused by name rather than
+ * collapsing into "not a list at all".
+ */
+static int64_t list_type_end(const char *source, int64_t type_start) {
+    int64_t length = source_length(source);
+    if (type_start >= length) return -1;
+    if (!token_equal(source, type_start, "List")) return -1;
+    int64_t open = skip_trivia(source, token_end(source, type_start));
+    if (open >= length || !token_equal(source, open, "[")) return -1;
+    int64_t element = skip_trivia(source, token_end(source, open));
+    if (
+        element >= length ||
+        strcmp(token_kind(source, element), "identifier") != 0
+    ) {
+        return -1;
+    }
+    int64_t close = skip_trivia(source, token_end(source, element));
+    if (close >= length || !token_equal(source, close, "]")) return -1;
+    return token_end(source, close);
+}
+
+/* The element type named inside a `List[...]` spelling, or empty text. */
+static char *list_type_element(const char *source, int64_t type_start) {
+    if (list_type_end(source, type_start) < 0) return owned_text("");
+    int64_t open = skip_trivia(source, token_end(source, type_start));
+    return token_copy(source, skip_trivia(source, token_end(source, open)));
+}
+
+/*
+ * Whether any `let` in the program declares a list: annotated `List[...]`,
+ * or initialized by a bracketed literal. Both spellings reach the same
+ * binding, so both have to turn the representation on.
+ */
+static bool scan_list_int_binding(const char *source) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < length) {
+        if (token_equal(source, cursor, "let")) {
+            int64_t name = skip_trivia(source, token_end(source, cursor));
+            if (token_equal(source, name, "mut")) {
+                name = skip_trivia(source, token_end(source, name));
+            }
+            int64_t after = skip_trivia(source, token_end(source, name));
+            if (token_equal(source, after, ":")) {
+                int64_t type_start = skip_trivia(
+                    source,
+                    token_end(source, after)
+                );
+                int64_t type_end = list_type_end(source, type_start);
+                if (type_end >= 0) return true;
+                after = skip_trivia(
+                    source,
+                    type_end >= 0 ? type_end : token_end(source, type_start)
+                );
+            }
+            if (token_equal(source, after, "=")) {
+                int64_t value = skip_trivia(source, token_end(source, after));
+                if (value < length && token_equal(source, value, "[")) {
+                    return true;
+                }
+            }
+        }
+        int64_t next = token_end(source, cursor);
+        if (next <= cursor) break;
+        cursor = skip_trivia(source, next);
+    }
+    return false;
+}
+
+/* Memoized on the source address, exactly as the Optional scan is. */
+static const char *list_int_source_text;
+static bool list_int_source_value;
+static bool list_int_source_known;
+
+static bool source_uses_list_int(const char *source) {
+    if (list_int_source_known && source == list_int_source_text) {
+        return list_int_source_value;
+    }
+    list_int_source_text = source;
+    list_int_source_value = scan_list_int_binding(source);
+    list_int_source_known = true;
+    return list_int_source_value;
+}
+
+/*
+ * Elements of the bracketed literal opening at `open`, or -1 when the
+ * brackets are not balanced. An empty literal counts zero.
+ */
+static int64_t list_literal_count(const char *source, int64_t open) {
+    int64_t length = source_length(source);
+    if (open >= length || !token_equal(source, open, "[")) return -1;
+    int64_t close = balanced_end(source, open, "[", "]");
+    if (close < 0) return -1;
+    int64_t element = skip_trivia(source, token_end(source, open));
+    if (element < length && token_equal(source, element, "]")) return 0;
+    int64_t count = 0;
+    while (element < length) {
+        int64_t bound = expression_end(source, element);
+        if (bound < 0) return -1;
+        ++count;
+        int64_t separator = skip_trivia(source, bound);
+        if (separator >= length) return -1;
+        if (token_equal(source, separator, "]")) return count;
+        if (!token_equal(source, separator, ",")) return -1;
+        element = skip_trivia(source, token_end(source, separator));
+    }
+    return -1;
+}
 static char *hir_definition_id_at(
     const char *hir,
     int64_t declaration_start
@@ -4431,6 +4578,18 @@ static int64_t field_postfix_end(
 ) {
     int64_t length = (int64_t)strlen(source);
     int64_t dot = skip_trivia(source, primary);
+    /*
+     * #919: an index read is a postfix on the value it reads, so the span has
+     * to cover it for the same reason #959 made the literal spannable. A span
+     * that stops at `[` makes `print(v[0])` report `expected `)`` — a shape
+     * the source never had. Measuring it lets the refusal, or the lowering,
+     * name what the index actually is.
+     */
+    if (dot < length && token_equal(source, dot, "[")) {
+        int64_t close = balanced_end(source, dot, "[", "]");
+        if (close < 0) return -1;
+        return field_postfix_end(source, close);
+    }
     if (dot >= length || !token_equal(source, dot, ".")) return primary;
     int64_t field = skip_trivia(source, token_end(source, dot));
     if (
@@ -5049,6 +5208,22 @@ static char *emit_primary(
 ) {
     int64_t cursor = skip_trivia(source, start);
     const char *kind = token_kind(source, cursor);
+    /*
+     * #919: a bracketed literal outside a `let` initializer. #959 made the
+     * span measurable so the call site stopped reporting `got -1`; the
+     * argument still has nowhere to go, and saying so is the correction that
+     * table row was waiting for. Before this, `f([1, 2, 3])` emitted
+     * `kofun_fn_f()` against a one-parameter prototype — C that does not
+     * compile.
+     */
+    if (token_equal(source, cursor, "[")) {
+        return lower_error(
+            "E2S148",
+            "a `List[Int]` literal is bound by `let` in this lowering slice; "
+            "it does not cross a Core call or result boundary",
+            cursor
+        );
+    }
     if (strcmp(kind, "decimal") == 0) {
         char *literal = source_slice(source, cursor, token_end(source, cursor));
         Buffer output;
@@ -5211,6 +5386,18 @@ static char *emit_primary(
             strcmp(name, "len") == 0
         ) {
             int64_t value = skip_trivia(source, token_end(source, open));
+            /* #919: `len` on a bounded `List[Int]` reads the object's own
+             * `length` header, which is the descriptor's `u64` at offset 0.
+             * `strlen` would read the pointer as text. */
+            if (list_int_binding_use(source, hir, value)) {
+                char *binding_id = hir_use_binding_id(hir, value);
+                Buffer length;
+                buffer_init(&length);
+                buffer_format(&length, "KOFUN_LIST_INT_LEN(k_b%s)", binding_id);
+                free(binding_id);
+                free(name);
+                return length.data;
+            }
             char *emitted = emit_expression(
                 source,
                 hir,
@@ -5268,6 +5455,103 @@ static char *emit_primary(
         buffer_init(&output);
         if (open >= end || !token_equal(source, open, "(")) {
             char *binding_id = hir_use_binding_id(hir, cursor);
+            /*
+             * #919: a bounded index read. The bound is the declaring
+             * literal's own element count, and it is checked here, before
+             * any C exists — an out-of-range index is a refusal with no
+             * artifact rather than a read the emitted program has to trap.
+             * A non-constant index therefore has no checked form in this
+             * slice and is refused as well.
+             */
+            if (open < end && token_equal(source, open, "[")) {
+                if (!list_int_binding_use(source, hir, cursor)) {
+                    free(binding_id);
+                    free(name);
+                    free(output.data);
+                    return lower_error(
+                        "E2S148",
+                        "index reads are lowered on a bounded `List[Int]` "
+                        "binding in this lowering slice",
+                        cursor
+                    );
+                }
+                int64_t index_start = skip_trivia(
+                    source,
+                    token_end(source, open)
+                );
+                /* A negative index is a literal too, so it is reported as the
+                 * out-of-range value it is rather than as an unreadable
+                 * index. */
+                bool negative = token_equal(source, index_start, "-");
+                int64_t digits = negative
+                    ? skip_trivia(source, token_end(source, index_start))
+                    : index_start;
+                int64_t close = balanced_end(source, open, "[", "]");
+                int64_t literal = list_int_binding_literal(
+                    source,
+                    hir,
+                    binding_id
+                );
+                int64_t count = literal < 0
+                    ? -1
+                    : list_literal_count(source, literal);
+                if (
+                    close < 0 || count < 0 ||
+                    strcmp(token_kind(source, digits), "integer") != 0 ||
+                    skip_trivia(source, token_end(source, digits)) >= close
+                ) {
+                    free(binding_id);
+                    free(name);
+                    free(output.data);
+                    return lower_error(
+                        "E2S148",
+                        "a bounded `List[Int]` index is an integer literal "
+                        "this lowering slice can check against the list's "
+                        "length",
+                        index_start
+                    );
+                }
+                char *index_text = source_slice(
+                    source,
+                    index_start,
+                    token_end(source, digits)
+                );
+                int64_t index = decimal_value(index_text + (negative ? 1 : 0));
+                if (negative) index = -index;
+                if (index < 0 || index >= count) {
+                    Buffer message;
+                    buffer_init(&message);
+                    buffer_format(
+                        &message,
+                        "index %s is outside the bounded `List[Int]` "
+                        "binding `%s`, which has %" PRId64 " elements",
+                        index_text,
+                        name,
+                        count
+                    );
+                    free(index_text);
+                    free(binding_id);
+                    free(name);
+                    free(output.data);
+                    char *error = lower_error(
+                        "E2S148",
+                        message.data,
+                        index_start
+                    );
+                    free(message.data);
+                    return error;
+                }
+                buffer_format(
+                    &output,
+                    "KOFUN_LIST_INT_AT(k_b%s, %s)",
+                    binding_id,
+                    index_text
+                );
+                free(index_text);
+                free(binding_id);
+                free(name);
+                return output.data;
+            }
             if (open < end && token_equal(source, open, ".")) {
                 int64_t field_cursor = skip_trivia(
                     source,
@@ -5327,6 +5611,21 @@ static char *emit_primary(
                 buffer_format(&output, "k_b%s.payload", binding_id);
             } else {
                 buffer_format(&output, "k_b%s", binding_id);
+            }
+            /* #919: a whole bounded `List[Int]` has no value form outside
+             * `len` and a checked index in this slice — carrying one across
+             * a call boundary or rendering it is increment 3 of #868. */
+            if (list_int_binding_use(source, hir, cursor)) {
+                free(binding_id);
+                free(name);
+                free(output.data);
+                return lower_error(
+                    "E2S148",
+                    "a bounded `List[Int]` binding is read by `len` or by a "
+                    "checked index in this lowering slice; it has no whole "
+                    "value form",
+                    cursor
+                );
             }
             free(binding_id);
             free(name);
@@ -5811,8 +6110,12 @@ static char *builtin_argument_check(
             );
             bool matches;
             if (strncmp(expected, "TextOrList", expected_length) == 0) {
+                /* #919: the bounded `List[Int]` counts as a List here, and
+                 * says so by name; a list of anything else reaches the
+                 * lowering refusal rather than being counted. */
                 matches = strcmp(actual, "Text") == 0 ||
-                    strcmp(actual, "List") == 0;
+                    strcmp(actual, "List") == 0 ||
+                    strncmp(actual, "List[", 5) == 0;
             } else {
                 matches =
                     strlen(actual) == expected_length &&
@@ -7131,6 +7434,59 @@ static char *emit_optional_int_c_declarations(void) {
         "((" OPTIONAL_INT_C_TYPE "){KOFUN_OPTIONAL_INT_NONE_TAG, INT64_C(0)})\n"
         "#define KOFUN_OPTIONAL_INT_SOME(value) "
         "((" OPTIONAL_INT_C_TYPE "){KOFUN_OPTIONAL_INT_SOME_TAG, (value)})\n\n"
+    );
+}
+
+/*
+ * The `List[Int]` descriptor of `spec/aggregate-layout-v1/examples/
+ * core.x86_64-linux.json`, emitted as a C pair whose every quantity is
+ * asserted. The layout entry says the value is 8 bytes, 8-aligned, and holds
+ * one pointer at offset 0; the `list-int-three` object says the pointee
+ * carries a `u64 length` header at offset 0 and its elements from offset 8,
+ * 8 bytes and 8-aligned each. The asserts are the drift detector: a length
+ * narrowed to `uint32_t`, elements moved off offset 8, or padding introduced
+ * between the header and the payload all stop the translation unit instead
+ * of quietly meaning different bytes than the descriptor.
+ *
+ * The object carries its elements inline up to `KOFUN_LIST_INT_CAPACITY`,
+ * which is the explicit capacity bound: no allocator is introduced by this
+ * slice, and a literal longer than the bound is refused before any C exists.
+ */
+static char *emit_list_int_c_declarations(void) {
+    return owned_text(
+        "#define KOFUN_LIST_INT_CAPACITY 64\n"
+        "typedef struct {\n"
+        "    uint64_t length;\n"
+        "    int64_t elements[KOFUN_LIST_INT_CAPACITY];\n"
+        "} " LIST_INT_OBJECT_C_TYPE ";\n"
+        "_Static_assert(offsetof(" LIST_INT_OBJECT_C_TYPE ", length) == 0,\n"
+        "    \"AggregateLayout List[Int] length header offset\");\n"
+        "_Static_assert(sizeof(((" LIST_INT_OBJECT_C_TYPE
+        " *)0)->length) == 8,\n"
+        "    \"AggregateLayout List[Int] length header size\");\n"
+        "_Static_assert(offsetof(" LIST_INT_OBJECT_C_TYPE
+        ", elements) == 8,\n"
+        "    \"AggregateLayout List[Int] payload offset\");\n"
+        "_Static_assert(sizeof(((" LIST_INT_OBJECT_C_TYPE
+        " *)0)->elements[0]) == 8,\n"
+        "    \"AggregateLayout List[Int] element size\");\n"
+        "_Static_assert(_Alignof(" LIST_INT_OBJECT_C_TYPE ") == 8,\n"
+        "    \"AggregateLayout List[Int] element alignment\");\n"
+        "_Static_assert(sizeof(" LIST_INT_OBJECT_C_TYPE ") ==\n"
+        "    8 + KOFUN_LIST_INT_CAPACITY * 8,\n"
+        "    \"AggregateLayout List[Int] object is header plus elements\");\n"
+        "typedef struct {\n"
+        "    const " LIST_INT_OBJECT_C_TYPE " *object;\n"
+        "} " LIST_INT_C_TYPE ";\n"
+        "_Static_assert(offsetof(" LIST_INT_C_TYPE ", object) == 0,\n"
+        "    \"AggregateLayout List[Int] pointer offset\");\n"
+        "_Static_assert(sizeof(" LIST_INT_C_TYPE ") == 8,\n"
+        "    \"AggregateLayout List[Int] size\");\n"
+        "_Static_assert(_Alignof(" LIST_INT_C_TYPE ") == 8,\n"
+        "    \"AggregateLayout List[Int] alignment\");\n"
+        "#define KOFUN_LIST_INT_LEN(list) ((int64_t)(list).object->length)\n"
+        "#define KOFUN_LIST_INT_AT(list, index) "
+        "((list).object->elements[(index)])\n\n"
     );
 }
 
@@ -8939,9 +9295,21 @@ static bool enum_declaration_syntax_token(
                     token_end(source, colon)
                 );
                 if (type_cursor == target) return true;
+                /* #919: `List[Int]` is four tokens and one type. Every token
+                 * inside it is annotation syntax, so the element name is not
+                 * a lexical use — which is why `let v: List[Int] = [1]` used
+                 * to report `unknown lexical binding `Int``, blaming a type
+                 * that is perfectly good. */
+                int64_t list_end = list_type_end(source, type_cursor);
+                if (
+                    list_end >= 0 &&
+                    target >= type_cursor && target < list_end
+                ) {
+                    return true;
+                }
                 int64_t equals = skip_trivia(
                     source,
-                    token_end(source, type_cursor)
+                    list_end >= 0 ? list_end : token_end(source, type_cursor)
                 );
                 int64_t initializer = skip_trivia(
                     source,
@@ -10157,6 +10525,45 @@ static char *initializer_type(
     int64_t length = source_length(source);
     int64_t end = expression_end(source, initializer);
     if (end < 0) end = token_end(source, initializer);
+    /*
+     * #919: a bracketed literal is a list, and its element type is the join
+     * of what it holds. Falling through to the historical Int default is
+     * what made `let v = [1, 2]` followed by `len(v)` report `expects
+     * TextOrList, got Int` — a type the source never wrote.
+     */
+    int64_t literal = skip_trivia(source, initializer);
+    if (literal < length && token_equal(source, literal, "[")) {
+        int64_t close = balanced_end(source, literal, "[", "]");
+        int64_t element = skip_trivia(source, token_end(source, literal));
+        if (close < 0) return owned_text("List[Int]");
+        char *joined = owned_text("Int");
+        while (element < close && !token_equal(source, element, "]")) {
+            int64_t bound = expression_end(source, element);
+            if (bound < 0) break;
+            char *element_type = initializer_type(
+                source,
+                hir,
+                function_open,
+                element
+            );
+            if (strcmp(element_type, joined) != 0) {
+                free(joined);
+                joined = element_type;
+                break;
+            }
+            free(element_type);
+            int64_t separator = skip_trivia(source, bound);
+            if (separator >= close || !token_equal(source, separator, ",")) {
+                break;
+            }
+            element = skip_trivia(source, token_end(source, separator));
+        }
+        Buffer spelled;
+        buffer_init(&spelled);
+        buffer_format(&spelled, "List[%s]", joined);
+        free(joined);
+        return spelled.data;
+    }
     bool exact_decimal_division = false;
     /* The operator scan covers the whole initializer line: it ends at the
      * first newline outside parentheses, not at the bounded arithmetic
@@ -10301,12 +10708,21 @@ static char *initializer_type(
                     free(field_type);
                 }
                 /* Indexing the profile's List[Text] yields its Text
-                 * element. */
+                 * element; #919's bounded `List[Int]` yields its Int one. */
                 bool indexed =
                     open < length && token_equal(source, open, "[");
                 if (indexed && strcmp(type, "List") == 0) {
                     free(type);
                     return owned_text("Text");
+                }
+                if (indexed && strncmp(type, "List[", 5) == 0) {
+                    char *element = owned_text(type + 5);
+                    size_t width = strlen(element);
+                    if (width > 0 && element[width - 1] == ']') {
+                        element[width - 1] = '\0';
+                    }
+                    free(type);
+                    return element;
                 }
                 if (
                     exact_decimal_division &&
@@ -10400,6 +10816,124 @@ static char *optional_int_value(
     buffer_format(&output, "KOFUN_OPTIONAL_INT_SOME(%s)", inner);
     free(inner);
     return output.data;
+}
+
+/*
+ * #919: the initializer list of a bounded `List[Int]` object, comma
+ * separated. Every element has to be an `Int` — the element type is the
+ * one quantity the AggregateLayout descriptor fixes at 8 bytes, so a `Text`
+ * or a `Decimal` in the literal is refused by name rather than written into
+ * a slot that cannot hold it. An empty literal still needs one initializer
+ * for the C array, and a zero is the only value it can carry.
+ */
+static char *emit_list_int_elements(
+    const char *source,
+    const char *hir,
+    int64_t open
+) {
+    int64_t length = source_length(source);
+    int64_t close = balanced_end(source, open, "[", "]");
+    int64_t function_open = enclosing_function_open(source, open);
+    int64_t element = skip_trivia(source, token_end(source, open));
+    Buffer output;
+    buffer_init(&output);
+    int64_t written = 0;
+    while (element < length && element < close) {
+        if (token_equal(source, element, "]")) break;
+        int64_t bound = expression_end(source, element);
+        if (bound < 0) {
+            free(output.data);
+            return lower_error(
+                "E2S148",
+                "malformed `List[Int]` literal element",
+                element
+            );
+        }
+        char *element_type = initializer_type(
+            source,
+            hir,
+            function_open,
+            element
+        );
+        bool integer = strcmp(element_type, "Int") == 0;
+        if (!integer) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(
+                &message,
+                "a bounded `List[Int]` element is an `Int`; this element is "
+                "`%s`",
+                element_type
+            );
+            free(element_type);
+            free(output.data);
+            char *error = lower_error("E2S148", message.data, element);
+            free(message.data);
+            return error;
+        }
+        free(element_type);
+        char *value = emit_expression(source, hir, element, bound);
+        if (strncmp(value, "error[", 6) == 0) {
+            free(output.data);
+            return value;
+        }
+        if (written > 0) buffer_append(&output, ", ");
+        buffer_append(&output, value);
+        free(value);
+        ++written;
+        int64_t separator = skip_trivia(source, bound);
+        if (separator >= close || !token_equal(source, separator, ",")) break;
+        element = skip_trivia(source, token_end(source, separator));
+    }
+    if (written == 0) buffer_append(&output, "INT64_C(0)");
+    return output.data;
+}
+
+/*
+ * The declaring `[` of the bounded list `binding_id` was initialized by, or
+ * -1. The bound an index is checked against is the literal's own element
+ * count, so the check reads the declaration rather than trusting the use.
+ */
+static int64_t list_int_binding_literal(
+    const char *source,
+    const char *hir,
+    const char *binding_id
+) {
+    if (binding_id == NULL || binding_id[0] == '\0') return -1;
+    char *declaration = hir_binding_field(hir, binding_id, 8);
+    int64_t name = decimal_value(declaration);
+    bool absent = declaration[0] == '\0';
+    free(declaration);
+    if (absent) return -1;
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, token_end(source, name));
+    if (cursor < length && token_equal(source, cursor, ":")) {
+        int64_t type_start = skip_trivia(source, token_end(source, cursor));
+        int64_t type_end = list_type_end(source, type_start);
+        cursor = skip_trivia(
+            source,
+            type_end >= 0 ? type_end : token_end(source, type_start)
+        );
+    }
+    if (cursor >= length || !token_equal(source, cursor, "=")) return -1;
+    int64_t value = skip_trivia(source, token_end(source, cursor));
+    if (value >= length || !token_equal(source, value, "[")) return -1;
+    return value;
+}
+
+/* Whether the identifier at `use` resolves to a bounded `List[Int]`. */
+static bool list_int_binding_use(
+    const char *source,
+    const char *hir,
+    int64_t use
+) {
+    if (!source_uses_list_int(source)) return false;
+    char *binding_id = hir_use_binding_id(hir, use);
+    char *type = hir_binding_field(hir, binding_id, 5);
+    bool list = strcmp(type, "List[Int]") == 0;
+    free(type);
+    free(binding_id);
+    return list;
 }
 
 static char *scope_hir_error(
@@ -10697,16 +11231,36 @@ static char *build_scope_hir_mode(
              * keeps the declared type optional in the typed IR, so nothing
              * downstream mistakes the parameter for an `Int`. */
             int64_t optional_end = optional_int_type_end(source, type_cursor);
+            /* #919: `List[T]` is four tokens and one type, for the same
+             * reason. Recording only `List` made an indexed `List[Int]`
+             * parameter read as the profile's `List[Text]` element, so the
+             * function was reported as returning `Text` instead of hearing
+             * the parameter boundary it actually stands at. */
+            int64_t list_end = callable_end >= 0 || optional_end >= 0
+                ? -1
+                : list_type_end(source, type_cursor);
             int64_t type_end = callable_end >= 0
                 ? callable_end
                 : (optional_end >= 0
                        ? optional_end
-                       : token_end(source, type_cursor));
-            char *type_text = callable_end >= 0
-                ? owned_text("Fn")
-                : (optional_end >= 0
-                       ? owned_text("Int?")
-                       : token_copy(source, type_cursor));
+                       : (list_end >= 0
+                              ? list_end
+                              : token_end(source, type_cursor)));
+            char *type_text;
+            if (callable_end >= 0) {
+                type_text = owned_text("Fn");
+            } else if (optional_end >= 0) {
+                type_text = owned_text("Int?");
+            } else if (list_end >= 0) {
+                char *element = list_type_element(source, type_cursor);
+                Buffer spelled;
+                buffer_init(&spelled);
+                buffer_format(&spelled, "List[%s]", element);
+                free(element);
+                type_text = spelled.data;
+            } else {
+                type_text = token_copy(source, type_cursor);
+            }
             buffer_format(
                 &hir,
                 "binding|%" PRId64 "|%" PRId64 "|%s|immutable|%s|copy|"
@@ -10893,19 +11447,37 @@ static char *build_scope_hir_mode(
                     );
                     free(binding_type);
                     /* #924: `Int?` is two tokens and one type; the suffix is
-                     * consumed here so the initializer walk starts at `=`. */
+                     * consumed here so the initializer walk starts at `=`.
+                     * #919: `List[Int]` is four tokens and one type, and it
+                     * is recorded whole so the element type reaches the
+                     * lowering rather than being read back off a bare
+                     * `List`. */
                     int64_t optional_end = optional_int_type_end(
                         source,
                         type_cursor
                     );
-                    binding_type = optional_end >= 0
-                        ? owned_text("Int?")
-                        : token_copy(source, type_cursor);
+                    int64_t list_end = optional_end >= 0
+                        ? -1
+                        : list_type_end(source, type_cursor);
+                    if (optional_end >= 0) {
+                        binding_type = owned_text("Int?");
+                    } else if (list_end >= 0) {
+                        char *element = list_type_element(source, type_cursor);
+                        Buffer spelled;
+                        buffer_init(&spelled);
+                        buffer_format(&spelled, "List[%s]", element);
+                        free(element);
+                        binding_type = spelled.data;
+                    } else {
+                        binding_type = token_copy(source, type_cursor);
+                    }
                     after_name = skip_trivia(
                         source,
                         optional_end >= 0
                             ? optional_end
-                            : token_end(source, type_cursor)
+                            : (list_end >= 0
+                                ? list_end
+                                : token_end(source, type_cursor))
                     );
                 }
                 int64_t initializer = skip_trivia(
@@ -13575,6 +14147,7 @@ static char *lower_body(
             char *enum_type = NULL;
             char *record_type = NULL;
             bool optional_int = false;
+            bool list_int = false;
             cursor = skip_trivia(source, token_end(source, cursor));
             if (cursor < length && token_equal(source, cursor, ":")) {
                 cursor = skip_trivia(source, token_end(source, cursor));
@@ -13604,10 +14177,55 @@ static char *lower_body(
                         return lower_error("E2S11", "expected `=`", cursor);
                     }
                 }
-                char *declared_type = optional_int
+                /* #919: `List[T]` is four tokens and one type, so it is read
+                 * whole here too. Only `List[Int]` lowers; every other
+                 * element type is named in its own refusal rather than
+                 * reaching the initializer as a bare `List`. */
+                int64_t list_end = optional_int
+                    ? -1
+                    : list_type_end(source, cursor);
+                if (list_end >= 0) {
+                    char *element = list_type_element(source, cursor);
+                    bool integer = strcmp(element, "Int") == 0;
+                    if (!integer) {
+                        Buffer message;
+                        buffer_init(&message);
+                        buffer_format(
+                            &message,
+                            "`List[Int]` is the only list element type this "
+                            "lowering slice carries; `List[%s]` is not "
+                            "lowered",
+                            element
+                        );
+                        free(element);
+                        free(binding_id);
+                        free(name);
+                        free(emitted.data);
+                        char *error = lower_error(
+                            "E2S148",
+                            message.data,
+                            cursor
+                        );
+                        free(message.data);
+                        return error;
+                    }
+                    free(element);
+                    list_int = true;
+                    cursor = skip_trivia(source, list_end);
+                    if (cursor >= length || !token_equal(source, cursor, "=")) {
+                        free(binding_id);
+                        free(name);
+                        free(emitted.data);
+                        return lower_error("E2S11", "expected `=`", cursor);
+                    }
+                }
+                char *declared_type = optional_int || list_int
                     ? owned_text("Int")
                     : token_copy(source, cursor);
-                if (!optional_int && strcmp(declared_type, "Int") != 0) {
+                if (
+                    !optional_int && !list_int &&
+                    strcmp(declared_type, "Int") != 0
+                ) {
                     if (
                         strcmp(declared_type, "Text") == 0 ||
                         strcmp(declared_type, "Decimal") == 0 ||
@@ -13646,7 +14264,7 @@ static char *lower_body(
                 } else {
                     free(declared_type);
                 }
-                if (!optional_int) {
+                if (!optional_int && !list_int) {
                     cursor = skip_trivia(source, token_end(source, cursor));
                 }
             }
@@ -13659,6 +14277,109 @@ static char *lower_body(
                 return lower_error("E2S11", "expected `=`", cursor);
             }
             int64_t value_start = skip_trivia(source, token_end(source, cursor));
+            /* An unannotated `let` initialized by a bracketed literal is a
+             * list binding too; the scope HIR already typed it as one. */
+            if (
+                !optional_int && enum_type == NULL && record_type == NULL &&
+                value_start < length && token_equal(source, value_start, "[")
+            ) {
+                list_int = true;
+            }
+            if (list_int) {
+                /*
+                 * #919: a bounded `List[Int]` binding is a literal and
+                 * nothing else. The object has automatic storage in the
+                 * declaring frame, which is sound here precisely because
+                 * this slice gives the value no way out of it: parameters,
+                 * results, and record fields are increments 3-5 of #868 and
+                 * are refused where they are written.
+                 */
+                if (mutable) {
+                    free(binding_id);
+                    free(name);
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S148",
+                        "mutable `List[Int]` bindings are outside this "
+                        "lowering slice; declare `let` and construct a new "
+                        "list instead",
+                        value_start
+                    );
+                }
+                if (!token_equal(source, value_start, "[")) {
+                    free(binding_id);
+                    free(name);
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S148",
+                        "a `List[Int]` binding is initialized by a bracketed "
+                        "list literal in this lowering slice",
+                        value_start
+                    );
+                }
+                int64_t count = list_literal_count(source, value_start);
+                if (count < 0) {
+                    free(binding_id);
+                    free(name);
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S148",
+                        "malformed `List[Int]` literal",
+                        value_start
+                    );
+                }
+                if (count > LIST_INT_CAPACITY) {
+                    Buffer message;
+                    buffer_init(&message);
+                    buffer_format(
+                        &message,
+                        "bounded `List[Int]` literal limit is %d elements; "
+                        "this literal has %" PRId64,
+                        LIST_INT_CAPACITY,
+                        count
+                    );
+                    free(binding_id);
+                    free(name);
+                    free(emitted.data);
+                    char *error = lower_error(
+                        "E2S148",
+                        message.data,
+                        value_start
+                    );
+                    free(message.data);
+                    return error;
+                }
+                char *elements = emit_list_int_elements(
+                    source,
+                    hir,
+                    value_start
+                );
+                if (strncmp(elements, "error[", 6) == 0) {
+                    free(binding_id);
+                    free(name);
+                    free(emitted.data);
+                    return elements;
+                }
+                buffer_format(
+                    &emitted,
+                    "    " LIST_INT_OBJECT_C_TYPE " kofun_list_b%s = "
+                    "{UINT64_C(%" PRId64 "), {%s}};\n"
+                    "    " LIST_INT_C_TYPE " k_b%s = {&kofun_list_b%s};\n"
+                    "    if (kofun_failed) return %s;\n",
+                    binding_id,
+                    count,
+                    elements,
+                    binding_id,
+                    binding_id,
+                    failure_result
+                );
+                free(elements);
+                int64_t literal_end = balanced_end(source, value_start, "[", "]");
+                free(binding_id);
+                free(name);
+                cursor = skip_trivia(source, literal_end);
+                continue;
+            }
             if (optional_int) {
                 /*
                  * #924: the four initializer forms this slice constructs, and
@@ -17828,6 +18549,11 @@ static char *lower_c(const char *source, const char *hir) {
         char *optional_declarations = emit_optional_int_c_declarations();
         buffer_append(&output, optional_declarations);
         free(optional_declarations);
+    }
+    if (source_uses_list_int(source)) {
+        char *list_declarations = emit_list_int_c_declarations();
+        buffer_append(&output, list_declarations);
+        free(list_declarations);
     }
     char *record_declarations = emit_record_c_declarations(source);
     buffer_append(&output, record_declarations);

@@ -1,0 +1,23 @@
+fn main() -> Int {
+    let empty: List[Int] = []
+    print(len(empty))
+
+    let one: List[Int] = [7]
+    print(len(one))
+    print(one[0])
+
+    let many: List[Int] = [10, 20, 30, 40]
+    print(len(many))
+    print(many[0])
+    print(many[1])
+    print(many[2])
+    print(many[3])
+
+    let total = many[0] + many[3]
+    print(total)
+
+    let negatives: List[Int] = [-1, -2]
+    print(negatives[0] + negatives[1])
+
+    return 0
+}

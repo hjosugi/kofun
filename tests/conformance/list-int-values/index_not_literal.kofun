@@ -1,0 +1,6 @@
+fn main() -> Int {
+    let values: List[Int] = [1, 2, 3]
+    let at = 1
+    print(values[at])
+    return 0
+}

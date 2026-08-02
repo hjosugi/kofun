@@ -183,6 +183,11 @@ tasks:
     cmds:
       - "sh tests/conformance/optional-construction/run.sh"
 
+  list-int-values:
+    desc: "Verify executable bounded List[Int] locals, len, and indexing"
+    cmds:
+      - "sh tests/conformance/list-int-values/run.sh"
+
   adt-exhaustiveness:
     desc: "Verify resolved flat-ADT match diagnostics"
     cmds:
@@ -653,6 +658,7 @@ tasks:
             optional \
             optional-narrowing \
             optional-construction \
+            list-int-values \
             adt-exhaustiveness \
             enum-match-value \
             module-symbols \

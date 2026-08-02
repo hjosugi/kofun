@@ -620,7 +620,7 @@
     }
   ],
   "evidence_digests": {
-    "Taskfile.yml": "2688ecd18c32bd0b022e91368dd53516a4c90f55e9e76fbf4781b49a21efbebe",
+    "Taskfile.yml": "0fc13722a6384ae762403db414576b4592dda8c47692b177bfdb630e9be4c01e",
     "bootstrap/native/check.sh": "fea94cb623757e1bf17e4497f43d656b1e8ff57a39a92ece871d8ff257c0f2ef",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/driver/corpus_builtin_rejects.tsv": "b1fa0b26247581aef797a81880554a94233a34109215530641706d76777087d4",
@@ -667,7 +667,7 @@
     "tests/conformance/records/stage2_unsupported_field.kofun": "2ac9b2e9ca754689330a836304a349a49cdf9820be6523e3d02be8158fba4eae",
     "tests/conformance/syntax/issues_35_47/enum_payload_unsupported_field.kofun": "e1b4ce6cda998dac0a955ed016c8eb2f81a9effaed91b823011572cf68f6c59e",
     "tests/diagnostics/README.md": "456190836326c23c153118d53f085905e4da06eae11883432f39c24548447c12",
-    "tests/diagnostics/registry.tsv": "24b2d862bacead9c32dec83c3dfa0bbc1e5b49569f972123a6fe55dbdf63a7d7",
+    "tests/diagnostics/registry.tsv": "d105a7befdbd1c885b4b8205b02755ebd6677a68255ad6fee10b00448aa4a9e1",
     "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun": "664c4d3b0d4bcd9265fee34b3ae60d8bf0eb58c9ce5c2b504579c1249aa16f2d",
     "tests/diagnostics/visibility-api-leaks.sh": "d87ad383a90d32e88526c9833c1086aea6035796964ce4983a2cfbfd7d9683ff",
     "tests/docs/documentation_index_test.mjs": "249fd426d8f058fa487df75e16db8695bab882c1ee6ad4297bb1fbe61b3f8abe",

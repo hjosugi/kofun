@@ -1,0 +1,9 @@
+fn build() -> List[Int] {
+    let values: List[Int] = [1, 2, 3]
+    return values
+}
+
+fn main() -> Int {
+    print(len(build()))
+    return 0
+}

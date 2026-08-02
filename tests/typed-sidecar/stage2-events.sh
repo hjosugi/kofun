@@ -390,8 +390,8 @@ do
             ;;
     esac
 done <"$WORK/plain/repository-error-companions"
-test "$repository_error_cases" -eq 254 ||
-    fail "expected all 254 repository error companions, saw $repository_error_cases"
+test "$repository_error_cases" -eq 266 ||
+    fail "expected all 266 repository error companions, saw $repository_error_cases"
 
 # Project-owned valid Stage 2 profiles cover functions, value control, concrete
 # enums, nested lexical scopes, and shadowing.  Producer and compiler must both

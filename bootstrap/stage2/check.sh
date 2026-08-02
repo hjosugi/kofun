@@ -935,8 +935,12 @@ assert_absent "$temporary/selfhost-S.c" "$temporary/selfhost-S.c"
 assert_grep "selfhost-S.scopes" \
     '^binding|2|3|symbols|immutable|List|gc|initialized|890|897|911$' \
     "$temporary/selfhost-S.scopes"
+# `let symbol = symbols[cursor]`. The visible byte is 2527, after the closing
+# bracket, because #919 made an index read a postfix of the expression it
+# indexes. It used to be 2519 — the end of `symbols` — which said the binding
+# was already in scope inside its own initializer.
 assert_grep "selfhost-S.scopes" \
-    '^binding|21|22|symbol|immutable|Text|gc|initialized|2503|2509|2519$' \
+    '^binding|21|22|symbol|immutable|Text|gc|initialized|2503|2509|2527$' \
     "$temporary/selfhost-S.scopes"
 assert_grep "selfhost-S.scopes" \
     '^binding|303|347|marker|immutable|Text|gc|initialized|40600|40606|40617$' \

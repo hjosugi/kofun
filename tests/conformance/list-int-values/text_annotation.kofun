@@ -1,0 +1,5 @@
+fn main() -> Int {
+    let values: List[Text] = ["a", "b"]
+    print(len(values))
+    return 0
+}
