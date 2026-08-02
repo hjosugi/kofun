@@ -341,7 +341,7 @@ RFC.
 Recorded from the survey in
 [#555](https://github.com/hjosugi/kofun/issues/555). None of these semantics is
 implemented: the compiler owns `par` as a keyword and refuses the construct by
-name with `E2S148`, but no capture derivation, ownership checking, scheduling,
+name with `E2S154`, but no capture derivation, ownership checking, scheduling,
 or lowering exists. It is written down here because a concurrency design decided later
 and separately would be one the ownership rules in this document cannot check,
 and because §1 promises a safety property that needs a precise name.

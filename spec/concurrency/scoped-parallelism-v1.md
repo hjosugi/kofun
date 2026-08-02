@@ -265,7 +265,7 @@ The first production slice is landed and is a refusal, not an acceptance: the
 Stage 2 lexer owns `par` as a keyword, `spec/grammar.ebnf` carries the
 `par_expr` production, and every entry point — structural lowering, the
 scope-HIR walk, and the typed frontend — refuses the construct by name with
-`E2S148` plus an `unsupported|START|END|scoped-parallelism` record, as
+`E2S154` plus an `unsupported|START|END|scoped-parallelism` record, as
 `bootstrap/selfhost/hir-v1.md` requires of any construct outside the frozen
 profile. Naming the construct replaces an incidental `E2S35 unknown lexical
 binding` blamed on the scope token. Representing `par` in the typed HIR would

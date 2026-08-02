@@ -1,5 +1,5 @@
 # diagnostic-mode: compile
-# expect-code: E2S148
+# expect-code: E2S154
 # expect-span: byte 88
 fn main() {
     par |scope| {

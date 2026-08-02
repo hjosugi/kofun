@@ -7055,7 +7055,7 @@ fn build_scope_hir_mode(
             # unknown binding. The construct is refused, so its token is never
             # a use.
             if token_text(source, cursor) == "par" {
-                return "error[E2S148]: scoped parallelism `par` is specified " +
+                return "error[E2S154]: scoped parallelism `par` is specified " +
                 "but not implemented at byte " + to_text(cursor)
             }
             if token_kind(source, cursor) == "identifier" {
@@ -7783,7 +7783,7 @@ fn lower_body(
         # See selfhost_parse_primary: refuse `par` before the dispatch below can
         # read the scope token as an ordinary binding and blame it instead.
         if statement == "par" {
-            return "error[E2S148]: scoped parallelism `par` is specified " +
+            return "error[E2S154]: scoped parallelism `par` is specified " +
             "but not implemented at byte " + to_text(cursor)
         }
         if statement == "let" {
@@ -10746,7 +10746,7 @@ fn selfhost_parse_primary(
     # the honest answer here is a refusal, not a partial acceptance.
     if token_text(source, at) == "par" {
         return selfhost_error(
-            "E2S148",
+            "E2S154",
             at,
             "scoped parallelism `par` is specified but not implemented"
         )
@@ -11804,7 +11804,7 @@ fn selfhost_statement(
     # rather than falling through to the generic unsupported-statement code.
     if token == "par" {
         return selfhost_error(
-            "E2S148",
+            "E2S154",
             cursor,
             "scoped parallelism `par` is specified but not implemented"
         )
@@ -12248,7 +12248,7 @@ fn selfhost_document(source: Text, path: Text, digest: Text) -> Text {
         document = document + "unsupported|" + to_text(clamped) + "|" +
         to_text(span_end) + "|statement\n"
     }
-    if code == "E2S148" {
+    if code == "E2S154" {
         document = document + "unsupported|" + to_text(clamped) + "|" +
         to_text(span_end) + "|scoped-parallelism\n"
     }

@@ -1,5 +1,5 @@
 schema|kofun.selfhost-hir/v1
 source|bootstrap/selfhost/frontend/reject_unsupported_par.kofun|57c7afc516640f51c0efefe9024ef17542e0f65c9e3f1f51eda69c6ec0f6d097
 status|rejected
-diagnostic|E2S148|16|19|scoped parallelism `par` is specified but not implemented
+diagnostic|E2S154|16|19|scoped parallelism `par` is specified but not implemented
 unsupported|16|19|scoped-parallelism

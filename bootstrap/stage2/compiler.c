@@ -11369,12 +11369,12 @@ static char *build_scope_hir_mode(
                 buffer_init(&message);
                 buffer_format(
                     &message,
-                    "error[E2S148]: scoped parallelism `par` is specified "
+                    "error[E2S154]: scoped parallelism `par` is specified "
                     "but not implemented at byte %" PRId64,
                     cursor
                 );
                 stage2_diagnostic_set(
-                    "E2S148",
+                    "E2S154",
                     cursor,
                     token_end(source, cursor),
                     true,
@@ -13559,7 +13559,7 @@ static char *lower_body(
         if (token_equal(source, cursor, "par")) {
             free(emitted.data);
             return lower_error(
-                "E2S148",
+                "E2S154",
                 "scoped parallelism `par` is specified but not implemented",
                 cursor
             );
@@ -18597,7 +18597,7 @@ static ShExpr *sh_parse_primary(Sh *sh, int64_t *cursor) {
      * binding, but ownership checking, scheduling, and lowering do not exist:
      * the honest answer here is a refusal, not a partial acceptance. */
     if (token_equal(sh->source, at, "par")) {
-        sh_fail(sh, "E2S148",
+        sh_fail(sh, "E2S154",
                 "scoped parallelism `par` is specified but not implemented",
                 at);
         return NULL;
@@ -19076,7 +19076,7 @@ static ShStmt *sh_parse_stmt(
     /* See sh_parse_primary: `par` in statement position is refused by name
      * rather than falling through to the generic unsupported-statement code. */
     if (token_equal(sh->source, at, "par")) {
-        sh_fail(sh, "E2S148",
+        sh_fail(sh, "E2S154",
                 "scoped parallelism `par` is specified but not implemented",
                 at);
         return NULL;
@@ -20032,13 +20032,13 @@ static char *emit_selfhost_hir_document(
          * family for every construct outside the frozen profile, so `par`
          * carries its own family rather than being filed as a statement. */
         if (strcmp(sh.error_code, "E2S10") == 0 ||
-            strcmp(sh.error_code, "E2S148") == 0) {
+            strcmp(sh.error_code, "E2S154") == 0) {
             buffer_format(
                 &document,
                 "unsupported|%" PRId64 "|%" PRId64 "|%s\n",
                 at,
                 end,
-                strcmp(sh.error_code, "E2S148") == 0
+                strcmp(sh.error_code, "E2S154") == 0
                     ? "scoped-parallelism"
                     : "statement"
             );
