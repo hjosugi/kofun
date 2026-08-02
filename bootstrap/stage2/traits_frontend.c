@@ -4,8 +4,15 @@
  * This slice is frontend-only. It parses one-method traits with one type
  * parameter, concrete implementations, and generic functions carrying exactly
  * one explicit bound; it assigns stable TraitId/MethodId/ImplementationId
- * identities and emits typed IR. It lowers nothing: no dictionary elaboration,
- * no monomorphisation, and no runtime search is emitted or implied.
+ * identities and emits typed IR.
+ *
+ * #923 adds dictionary elaboration to that typed IR: a descriptor per trait, a
+ * dictionary value per admissible implementation, a dictionary parameter per
+ * declared bound, and an explicit dictionary argument at every bounded call.
+ * Elaboration is still frontend-only. It runs after every check has passed, so
+ * a refused program never reaches it, and it emits no backend artifact: nothing
+ * is monomorphised, no vtable is laid out, and no runtime search is emitted or
+ * implied. Executing an elaborated dictionary is a separate follow-up.
  *
  * The orphan rule is the one #403 accepted and `docs/TYPE_SYSTEM.md` records:
  * an implementation is admissible when the trait is local *or* the outer
@@ -47,9 +54,16 @@
 #define COMPONENT_LIMIT 96u
 /* An ImplementationId assembles several components, so it gets its own room. */
 #define IMPLEMENTATION_IDENTITY_LIMIT 1024u
+/* A DictionaryId is an ImplementationId with one component removed and a
+ * longer tag, so it gets the same room plus that tag's growth. */
+#define DICTIONARY_IDENTITY_LIMIT (IMPLEMENTATION_IDENTITY_LIMIT + 16u)
 
 /* The ABI schema version the ImplementationId carries. */
 #define IMPLEMENTATION_ABI "abi1"
+/* The ImplementationId tag a DictionaryId is derived from, and the declaration
+ * ordinal that derivation drops. */
+#define IMPLEMENTATION_TAG "impl:"
+#define IMPLEMENTATION_DECLARATION "/decl="
 
 typedef enum {
     TOKEN_IDENTIFIER,
@@ -186,6 +200,10 @@ typedef struct {
     size_t argument_count;
     TypeRef result;
     ptrdiff_t selected_implementation;
+    /* The dictionary the selected implementation produces, and the callee
+     * parameter it fills. Both are -1 for an unbounded callee. */
+    ptrdiff_t dictionary_argument;
+    ptrdiff_t dictionary_parameter;
     size_t start;
     size_t end;
 } Call;
@@ -195,11 +213,44 @@ typedef struct {
     size_t trait_index;
     size_t method_slot;
     size_t via_type_parameter;
+    /* The caller's dictionary parameter the method is looked up in. A method
+     * call without one is refused before elaboration, so this is never -1 in
+     * a program that reaches the IR. */
+    ptrdiff_t dictionary_parameter;
     size_t argument_count;
     TypeRef result;
     size_t start;
     size_t end;
 } MethodCall;
+
+/*
+ * The dictionary shape #923 elaborates.
+ *
+ * A descriptor is a trait's static dictionary layout: the ABI schema version,
+ * the TraitId, and one MethodId per slot in declaration order. Every dictionary
+ * for that trait has exactly this shape.
+ */
+typedef struct {
+    size_t trait_index;
+    size_t method_start;
+    size_t slot_count;
+} DictionaryDescriptor;
+
+/* A dictionary value: what one admissible implementation produces. Its
+ * DictionaryId is derived from the ImplementationId. */
+typedef struct {
+    size_t implementation;
+    size_t descriptor;
+} Dictionary;
+
+/* A dictionary parameter: one per bound a generic function declares, in
+ * declaration order, recorded with the bound it discharges. */
+typedef struct {
+    size_t owner_function;
+    size_t bound;
+    size_t descriptor;
+    size_t ordinal;
+} DictionaryParameter;
 
 typedef struct {
     Token tokens[TOKEN_LIMIT];
@@ -224,6 +275,15 @@ typedef struct {
     size_t call_count;
     MethodCall method_calls[METHOD_CALL_LIMIT];
     size_t method_call_count;
+    /* Elaborated dictionary shape. Each array is filled one entry per already
+     * bounded declaration — a trait, an admissible implementation, a declared
+     * bound — so the counts cannot exceed limits their sources already hold. */
+    DictionaryDescriptor descriptors[TRAIT_LIMIT];
+    size_t descriptor_count;
+    Dictionary dictionaries[IMPLEMENTATION_LIMIT];
+    size_t dictionary_count;
+    DictionaryParameter dictionary_parameters[BOUND_LIMIT];
+    size_t dictionary_parameter_count;
     char error[1536];
     bool failed;
 } Frontend;
@@ -1012,6 +1072,78 @@ static void implementation_id(
     );
 }
 
+/* A dictionary descriptor is keyed by the ABI schema version and the TraitId:
+ * every dictionary for one trait shares one layout. */
+static void dictionary_descriptor_id(
+    const Frontend *frontend,
+    size_t trait_index,
+    char *output,
+    size_t size
+) {
+    char owner[COMPONENT_LIMIT];
+    trait_id(frontend, trait_index, owner, sizeof(owner));
+    snprintf(
+        output,
+        size,
+        "dictionary-descriptor:%s/%s",
+        IMPLEMENTATION_ABI,
+        owner
+    );
+}
+
+/*
+ * The DictionaryId is derived from the ImplementationId by two mechanical
+ * edits: the `impl:` tag becomes `dictionary:`, and the trailing `/decl=N`
+ * declaration ordinal is dropped.
+ *
+ * Dropping the ordinal is what makes the identity independent of declaration
+ * order, which is the property the dictionary needs: overlap is already refused
+ * where implementations are declared, so the surviving components — the ABI
+ * schema version, the package, the TraitId, the normalized type arguments, and
+ * the self-type — are exactly the coherence key and are unique per admissible
+ * implementation. Reordering the declarations moves the ImplementationId's
+ * ordinal and leaves every DictionaryId untouched.
+ */
+static void dictionary_id(
+    const Frontend *frontend,
+    size_t implementation_index,
+    char *output,
+    size_t size
+) {
+    char implementation[IMPLEMENTATION_IDENTITY_LIMIT];
+    char *ordinal;
+
+    implementation_id(
+        frontend, implementation_index, implementation, sizeof(implementation));
+    ordinal = strstr(implementation, IMPLEMENTATION_DECLARATION);
+    if (ordinal != NULL) *ordinal = '\0';
+    snprintf(
+        output,
+        size,
+        "dictionary:%s",
+        implementation + (sizeof(IMPLEMENTATION_TAG) - 1u)
+    );
+}
+
+/* A dictionary parameter is keyed by its owning function and its declaration
+ * order within that function, exactly like a type parameter. */
+static void dictionary_parameter_id(
+    const Frontend *frontend,
+    size_t parameter_index,
+    char *output,
+    size_t size
+) {
+    const DictionaryParameter *parameter =
+        &frontend->dictionary_parameters[parameter_index];
+    snprintf(
+        output,
+        size,
+        "dictionary-parameter:function:%s:%zu",
+        frontend->functions[parameter->owner_function].name,
+        parameter->ordinal
+    );
+}
+
 /* An implementation is admissible when the trait is local, or when the outer
  * nominal self-type is local. #403 accepted exactly this rule. */
 static bool implementation_is_admissible(
@@ -1651,6 +1783,7 @@ static bool parse_method_call(
     call->trait_index = trait_index;
     call->method_slot = method->slot;
     call->via_type_parameter = frontend->bounds[function->bound].type_parameter;
+    call->dictionary_parameter = -1;
     call->argument_count = arguments;
     call->result = method->result;
     call->start = start;
@@ -1681,6 +1814,8 @@ static bool parse_generic_call(
     call->caller = function_index;
     call->callee = callee_index;
     call->selected_implementation = -1;
+    call->dictionary_argument = -1;
+    call->dictionary_parameter = -1;
     call->start = start;
     *cursor += 1;  /* the callee name */
 
@@ -1913,6 +2048,111 @@ static bool type_function_bodies(Frontend *frontend) {
     return true;
 }
 
+static ptrdiff_t find_dictionary(
+    const Frontend *frontend,
+    size_t implementation_index
+) {
+    for (size_t index = 0; index < frontend->dictionary_count; ++index) {
+        if (frontend->dictionaries[index].implementation ==
+            implementation_index) {
+            return (ptrdiff_t)index;
+        }
+    }
+    return -1;
+}
+
+static ptrdiff_t find_dictionary_parameter(
+    const Frontend *frontend,
+    size_t function_index,
+    size_t bound_index
+) {
+    for (size_t index = 0;
+        index < frontend->dictionary_parameter_count;
+        ++index) {
+        const DictionaryParameter *parameter =
+            &frontend->dictionary_parameters[index];
+        if (parameter->owner_function != function_index) continue;
+        if (parameter->bound != bound_index) continue;
+        return (ptrdiff_t)index;
+    }
+    return -1;
+}
+
+/*
+ * Elaborates the dictionary shape (#923).
+ *
+ * This runs only after tokenizing, declaration collection, implementation
+ * checking, and body typing have all succeeded, so no dictionary is ever
+ * constructed for a program that is refused — every unsupported form (a second
+ * bound, a blanket implementation, a default method, a recursive bound, a
+ * two-parameter trait, an orphan or overlapping implementation, an unsatisfied
+ * bound) has already stopped the run with its own diagnostic.
+ *
+ * Nothing here searches for a candidate. Selection already happened at the call
+ * site and produced exactly one ImplementationId; this pass names the
+ * dictionary that identity denotes and the parameter it is passed in.
+ */
+static void elaborate_dictionaries(Frontend *frontend) {
+    for (size_t index = 0; index < frontend->trait_count; ++index) {
+        const Trait *trait = &frontend->traits[index];
+        DictionaryDescriptor *descriptor =
+            &frontend->descriptors[frontend->descriptor_count];
+        descriptor->trait_index = index;
+        descriptor->method_start = trait->method_start;
+        descriptor->slot_count = trait->method_count;
+        frontend->descriptor_count += 1;
+    }
+    /* Every implementation that reaches this pass is admissible, and overlap
+     * was refused where they were declared, so one dictionary per
+     * implementation is also one dictionary per coherence key. */
+    for (size_t index = 0; index < frontend->implementation_count; ++index) {
+        Dictionary *dictionary =
+            &frontend->dictionaries[frontend->dictionary_count];
+        dictionary->implementation = index;
+        dictionary->descriptor =
+            frontend->implementations[index].trait_index;
+        frontend->dictionary_count += 1;
+    }
+    /* One dictionary parameter per declared bound, in declaration order. */
+    for (size_t index = 0; index < frontend->bound_count; ++index) {
+        const Bound *bound = &frontend->bounds[index];
+        size_t slot = frontend->dictionary_parameter_count;
+        DictionaryParameter *parameter = &frontend->dictionary_parameters[slot];
+        size_t ordinal = 0;
+        for (size_t earlier = 0; earlier < index; ++earlier) {
+            if (frontend->bounds[earlier].owner_function ==
+                bound->owner_function) {
+                ordinal += 1;
+            }
+        }
+        parameter->owner_function = bound->owner_function;
+        parameter->bound = index;
+        parameter->descriptor = bound->trait_index;
+        parameter->ordinal = ordinal;
+        frontend->dictionary_parameter_count += 1;
+    }
+    /* A bounded call passes the dictionary its selected implementation
+     * produces, into the callee parameter that discharges the bound. */
+    for (size_t index = 0; index < frontend->call_count; ++index) {
+        Call *call = &frontend->calls[index];
+        const Function *callee = &frontend->functions[call->callee];
+        if (call->selected_implementation < 0 || callee->bound < 0) continue;
+        call->dictionary_argument =
+            find_dictionary(frontend, (size_t)call->selected_implementation);
+        call->dictionary_parameter = find_dictionary_parameter(
+            frontend, call->callee, (size_t)callee->bound);
+    }
+    /* A trait method call inside a generic body is a lookup in the caller's
+     * dictionary parameter at the method's slot. */
+    for (size_t index = 0; index < frontend->method_call_count; ++index) {
+        MethodCall *call = &frontend->method_calls[index];
+        const Function *caller = &frontend->functions[call->caller];
+        if (caller->bound < 0) continue;
+        call->dictionary_parameter = find_dictionary_parameter(
+            frontend, call->caller, (size_t)caller->bound);
+    }
+}
+
 static char *read_source(const char *path, size_t *length_output) {
     FILE *file = fopen(path, "rb");
     char *buffer;
@@ -1962,10 +2202,44 @@ static void write_type_list(
     }
 }
 
+/* The descriptor's ordered slot table: one MethodId per slot, in trait
+ * declaration order. */
+static void write_slot_methods(
+    const Frontend *frontend,
+    const DictionaryDescriptor *descriptor,
+    char *output,
+    size_t size
+) {
+    size_t written = 0;
+    output[0] = '\0';
+    for (size_t slot = 0; slot < descriptor->slot_count; ++slot) {
+        const Method *method =
+            &frontend->methods[descriptor->method_start + slot];
+        char identity[IDENTITY_LIMIT];
+        int printed;
+        method_id(
+            frontend, method->owner_trait, method->slot, identity,
+            sizeof(identity));
+        printed = snprintf(
+            output + written,
+            size - written,
+            "%s%s",
+            slot == 0 ? "" : ",",
+            identity
+        );
+        if (printed < 0) return;
+        written += (size_t)printed;
+        if (written >= size) return;
+    }
+}
+
 static bool write_ir(const Frontend *frontend, const char *path) {
     FILE *file = fopen(path, "wb");
     if (file == NULL) return false;
-    fprintf(file, "kofun-traits-ir/v1\n");
+    /* v2 adds the dictionary descriptor, value, entry, and parameter records,
+     * the dictionary argument on `call`, and the dictionary parameter and
+     * method slot on `method-call` (#923). Every v1 record is unchanged. */
+    fprintf(file, "kofun-traits-ir/v2\n");
 
     for (size_t index = 0; index < frontend->trait_count; ++index) {
         const Trait *trait = &frontend->traits[index];
@@ -2059,6 +2333,29 @@ static bool write_ir(const Frontend *frontend, const char *path) {
             method->end
         );
     }
+    for (size_t index = 0; index < frontend->descriptor_count; ++index) {
+        const DictionaryDescriptor *descriptor = &frontend->descriptors[index];
+        const Trait *trait = &frontend->traits[descriptor->trait_index];
+        char identity[IDENTITY_LIMIT];
+        char owner[IDENTITY_LIMIT];
+        char slots[IDENTITY_LIMIT];
+        dictionary_descriptor_id(
+            frontend, descriptor->trait_index, identity, sizeof(identity));
+        trait_id(frontend, descriptor->trait_index, owner, sizeof(owner));
+        write_slot_methods(frontend, descriptor, slots, sizeof(slots));
+        fprintf(
+            file,
+            "dictionary-descriptor|descriptor-id=%s|trait=%s|abi=%s"
+            "|slots=%zu|slot-methods=%s|span=%zu..%zu\n",
+            identity,
+            owner,
+            IMPLEMENTATION_ABI,
+            descriptor->slot_count,
+            slots,
+            trait->start,
+            trait->end
+        );
+    }
     for (size_t index = 0; index < frontend->implementation_count; ++index) {
         const Implementation *implementation = &frontend->implementations[index];
         char identity[IMPLEMENTATION_IDENTITY_LIMIT];
@@ -2087,6 +2384,68 @@ static bool write_ir(const Frontend *frontend, const char *path) {
             implementation->start,
             implementation->end
         );
+    }
+    for (size_t index = 0; index < frontend->dictionary_count; ++index) {
+        const Dictionary *dictionary = &frontend->dictionaries[index];
+        const DictionaryDescriptor *descriptor =
+            &frontend->descriptors[dictionary->descriptor];
+        const Implementation *implementation =
+            &frontend->implementations[dictionary->implementation];
+        char identity[DICTIONARY_IDENTITY_LIMIT];
+        char shape[IDENTITY_LIMIT];
+        char source[IMPLEMENTATION_IDENTITY_LIMIT];
+        char owner[IDENTITY_LIMIT];
+        char self[IDENTITY_LIMIT];
+        dictionary_id(
+            frontend, dictionary->implementation, identity, sizeof(identity));
+        dictionary_descriptor_id(
+            frontend, descriptor->trait_index, shape, sizeof(shape));
+        implementation_id(
+            frontend, dictionary->implementation, source, sizeof(source));
+        trait_id(frontend, implementation->trait_index, owner, sizeof(owner));
+        type_id(frontend, implementation->self_type, self, sizeof(self));
+        fprintf(
+            file,
+            "dictionary|dictionary-id=%s|descriptor=%s|implementation=%s"
+            "|trait=%s|self-type=%s|slots=%zu|span=%zu..%zu\n",
+            identity,
+            shape,
+            source,
+            owner,
+            self,
+            descriptor->slot_count,
+            implementation->start,
+            implementation->end
+        );
+    }
+    for (size_t index = 0; index < frontend->dictionary_count; ++index) {
+        const Dictionary *dictionary = &frontend->dictionaries[index];
+        const DictionaryDescriptor *descriptor =
+            &frontend->descriptors[dictionary->descriptor];
+        const Implementation *implementation =
+            &frontend->implementations[dictionary->implementation];
+        char identity[DICTIONARY_IDENTITY_LIMIT];
+        dictionary_id(
+            frontend, dictionary->implementation, identity, sizeof(identity));
+        for (size_t slot = 0; slot < descriptor->slot_count; ++slot) {
+            const Method *method =
+                &frontend->methods[descriptor->method_start + slot];
+            char declared[IDENTITY_LIMIT];
+            method_id(
+                frontend, method->owner_trait, method->slot, declared,
+                sizeof(declared));
+            fprintf(
+                file,
+                "dictionary-entry|dictionary=%s|slot=%zu|method=%s"
+                "|implementation-method=%s|span=%zu..%zu\n",
+                identity,
+                slot,
+                declared,
+                implementation->method_name,
+                implementation->method_start,
+                implementation->method_end
+            );
+        }
     }
     for (size_t index = 0; index < frontend->function_count; ++index) {
         const Function *function = &frontend->functions[index];
@@ -2136,11 +2495,47 @@ static bool write_ir(const Frontend *frontend, const char *path) {
             bound->end
         );
     }
+    for (size_t index = 0;
+        index < frontend->dictionary_parameter_count;
+        ++index) {
+        const DictionaryParameter *parameter =
+            &frontend->dictionary_parameters[index];
+        const Bound *bound = &frontend->bounds[parameter->bound];
+        TypeRef reference;
+        char identity[IDENTITY_LIMIT];
+        char shape[IDENTITY_LIMIT];
+        char discharged[IDENTITY_LIMIT];
+        char owner[IDENTITY_LIMIT];
+        dictionary_parameter_id(frontend, index, identity, sizeof(identity));
+        dictionary_descriptor_id(
+            frontend, parameter->descriptor, shape, sizeof(shape));
+        reference.kind = TYPE_PARAMETER;
+        reference.index = bound->type_parameter;
+        reference.start = bound->start;
+        reference.end = bound->end;
+        type_id(frontend, reference, discharged, sizeof(discharged));
+        trait_id(frontend, bound->trait_index, owner, sizeof(owner));
+        fprintf(
+            file,
+            "dictionary-parameter|dictionary-parameter-id=%s|owner=function:%s"
+            "|index=%zu|descriptor=%s|discharges-bound=%s|trait=%s"
+            "|span=%zu..%zu\n",
+            identity,
+            frontend->functions[parameter->owner_function].name,
+            parameter->ordinal,
+            shape,
+            discharged,
+            owner,
+            bound->start,
+            bound->end
+        );
+    }
     for (size_t index = 0; index < frontend->method_call_count; ++index) {
         const MethodCall *call = &frontend->method_calls[index];
         TypeRef reference;
         char identity[IDENTITY_LIMIT];
         char parameter[IDENTITY_LIMIT];
+        char dictionary[IDENTITY_LIMIT];
         char result[IDENTITY_LIMIT];
         method_id(frontend, call->trait_index, call->method_slot, identity,
             sizeof(identity));
@@ -2149,14 +2544,27 @@ static bool write_ir(const Frontend *frontend, const char *path) {
         reference.start = call->start;
         reference.end = call->end;
         type_id(frontend, reference, parameter, sizeof(parameter));
+        if (call->dictionary_parameter >= 0) {
+            dictionary_parameter_id(
+                frontend,
+                (size_t)call->dictionary_parameter,
+                dictionary,
+                sizeof(dictionary)
+            );
+        } else {
+            snprintf(dictionary, sizeof(dictionary), "none");
+        }
         type_id(frontend, call->result, result, sizeof(result));
         fprintf(
             file,
             "method-call|caller=function:%s|method=%s|via-bound=%s"
+            "|dictionary-parameter=%s|method-slot=%zu"
             "|value-arguments=%zu|result=%s|use-span=%zu..%zu\n",
             frontend->functions[call->caller].name,
             identity,
             parameter,
+            dictionary,
+            call->method_slot,
             call->argument_count,
             result,
             call->start,
@@ -2169,6 +2577,8 @@ static bool write_ir(const Frontend *frontend, const char *path) {
         char arguments[IDENTITY_LIMIT];
         char result[IDENTITY_LIMIT];
         char selected[IMPLEMENTATION_IDENTITY_LIMIT];
+        char passed[DICTIONARY_IDENTITY_LIMIT];
+        char parameter[IDENTITY_LIMIT];
         write_type_list(
             frontend,
             call->type_arguments,
@@ -2187,10 +2597,35 @@ static bool write_ir(const Frontend *frontend, const char *path) {
         } else {
             snprintf(selected, sizeof(selected), "none");
         }
+        /* The dictionary argument is the dictionary the selected
+         * implementation produces; the two fields are one derivation apart, so
+         * a call that passed anything else is visible on this line. */
+        if (call->dictionary_argument >= 0) {
+            dictionary_id(
+                frontend,
+                frontend->dictionaries[
+                    (size_t)call->dictionary_argument].implementation,
+                passed,
+                sizeof(passed)
+            );
+        } else {
+            snprintf(passed, sizeof(passed), "none");
+        }
+        if (call->dictionary_parameter >= 0) {
+            dictionary_parameter_id(
+                frontend,
+                (size_t)call->dictionary_parameter,
+                parameter,
+                sizeof(parameter)
+            );
+        } else {
+            snprintf(parameter, sizeof(parameter), "none");
+        }
         fprintf(
             file,
             "call|caller=function:%s|callee=function:%s|type-arguments=%s"
             "|value-arguments=%zu|result=%s|selected-implementation=%s"
+            "|dictionary-arguments=%s|dictionary-parameter=%s"
             "|use-span=%zu..%zu|declaration-span=%zu..%zu\n",
             frontend->functions[call->caller].name,
             callee->name,
@@ -2198,6 +2633,8 @@ static bool write_ir(const Frontend *frontend, const char *path) {
             call->argument_count,
             result,
             selected,
+            passed,
+            parameter,
             call->start,
             call->end,
             callee->start,
@@ -2254,6 +2691,9 @@ int main(int argc, char **argv) {
         collect_declarations(frontend) &&
         check_implementations(frontend) &&
         type_function_bodies(frontend)) {
+        /* Last, and only on the accepted path: a refused program never gets a
+         * dictionary. */
+        elaborate_dictionaries(frontend);
         if (!write_ir(frontend, argv[2]) || !write_tokens(frontend, argv[3])) {
             fprintf(stderr, "kofun-traits-frontend: cannot write output\n");
             status = 2;
