@@ -1884,6 +1884,7 @@ static Buffer emit_profile_allocator_body(void) {
 }
 
 #include "text_profile.h"
+#include "list_profile.h"
 
 static Buffer emit_profile_module(void) {
     Buffer module = {0};
@@ -2007,6 +2008,28 @@ int main(int argc, char **argv) {
     size_t length = 0;
     char *source = read_source(input, &length);
     if (source == NULL) return 1;
+    if (profile && profile_source_uses_list(source, length)) {
+        ListProfileParser *list_parser = allocate(sizeof(*list_parser));
+        memset(list_parser, 0, sizeof(*list_parser));
+        list_parser->source = source;
+        list_parser->length = length;
+        if (!list_profile_parse_program(list_parser)) {
+            fprintf(stderr, "kofun wasm32: line %zu: %s\n",
+                    list_parser->error_line,
+                    list_parser->error == NULL
+                        ? "invalid wasm32-hostabi1 List source"
+                        : list_parser->error);
+            free(list_parser);
+            free(source);
+            return 1;
+        }
+        Buffer profile_module = emit_profile_list_module(list_parser);
+        bool profile_written = write_module(output, &profile_module);
+        free(profile_module.data);
+        free(list_parser);
+        free(source);
+        return profile_written ? 0 : 1;
+    }
     if (profile) {
         ProfileParser *profile_parser = allocate(sizeof(*profile_parser));
         memset(profile_parser, 0, sizeof(*profile_parser));

@@ -1,0 +1,22 @@
+fn ints_through(values: List[Int]) -> List[Int] {
+    return values
+}
+
+fn texts_through(values: List[Text]) -> List[Text] {
+    return values
+}
+
+fn main() {
+    let no_ints: List[Int] = []
+    print(no_ints)
+    let ints: List[Int] = ints_through([10, 42, 99])
+    print(ints)
+    print([len(ints), ints[0], ints[1]])
+
+    let no_texts: List[Text] = []
+    print(no_texts)
+    let texts: List[Text] = texts_through(["古墳", "hello"])
+    print(texts)
+    print([len(texts)])
+    print([texts[1], texts[0]])
+}
