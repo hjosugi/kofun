@@ -1,0 +1,417 @@
+# kotest: the executable Kofun unit-test framework.
+#
+# Unlike stdlib/testing/testing.kofun (the canonical ADT specification, which
+# is still ahead of Stage 2 codegen), every declaration in this file compiles
+# and runs through `kofun emit-c` and a C11 compiler today.  The runner at
+# tooling/kotest/run.sh concatenates this file with a test source, generates a
+# harness `fn main` the same way the Rust test harness collects `#[test]`
+# functions, builds the unit, and renders the line protocol below.
+#
+# Conventions:
+#   - a test is `fn test_<name>() -> Int` and returns its failed-assertion
+#     count; `0` means the test passed.
+#   - assertions return `0` on pass and `1` on failure, so a test body
+#     accumulates them with `+`.  This mirrors JUnit's assertion style with
+#     the failure channel made explicit, because the executable slice has no
+#     exceptions and no global mutable state.
+#   - every diagnostic is printed on its own line.  The runner owns colour,
+#     alignment, and symbols; this file owns facts.
+#
+# Line protocol (parsed by tooling/kotest/run.sh):
+#   KOTEST-ASSERT-FAIL <assertion>   one failed assertion, details follow
+#   KOTEST-SUMMARY                   summary block start
+#
+# The `KOTEST-RUN/OK/FAILED <test>` lines are printed by the generated
+# harness, because only the generator knows the test names: the executable
+# slice has no reflection and no Text concatenation, exactly like the Rust
+# harness knows `#[test]` names at generation time.
+
+# ---------------------------------------------------------------------------
+# Int assertions
+# ---------------------------------------------------------------------------
+
+fn expect_eq_int(actual: Int, expected: Int) -> Int {
+    if actual == expected {
+        return 0
+    }
+    print("KOTEST-ASSERT-FAIL expect_eq_int")
+    print("  expected:")
+    print(expected)
+    print("  actual:")
+    print(actual)
+    return 1
+}
+
+fn expect_ne_int(actual: Int, forbidden: Int) -> Int {
+    if actual != forbidden {
+        return 0
+    }
+    print("KOTEST-ASSERT-FAIL expect_ne_int")
+    print("  both sides:")
+    print(actual)
+    return 1
+}
+
+fn expect_lt_int(actual: Int, bound: Int) -> Int {
+    if actual < bound {
+        return 0
+    }
+    print("KOTEST-ASSERT-FAIL expect_lt_int")
+    print("  exclusive upper bound:")
+    print(bound)
+    print("  actual:")
+    print(actual)
+    return 1
+}
+
+fn expect_le_int(actual: Int, bound: Int) -> Int {
+    if actual <= bound {
+        return 0
+    }
+    print("KOTEST-ASSERT-FAIL expect_le_int")
+    print("  inclusive upper bound:")
+    print(bound)
+    print("  actual:")
+    print(actual)
+    return 1
+}
+
+fn expect_gt_int(actual: Int, bound: Int) -> Int {
+    if actual > bound {
+        return 0
+    }
+    print("KOTEST-ASSERT-FAIL expect_gt_int")
+    print("  exclusive lower bound:")
+    print(bound)
+    print("  actual:")
+    print(actual)
+    return 1
+}
+
+fn expect_ge_int(actual: Int, bound: Int) -> Int {
+    if actual >= bound {
+        return 0
+    }
+    print("KOTEST-ASSERT-FAIL expect_ge_int")
+    print("  inclusive lower bound:")
+    print(bound)
+    print("  actual:")
+    print(actual)
+    return 1
+}
+
+fn expect_between_int(actual: Int, low: Int, high: Int) -> Int {
+    if actual < low {
+        print("KOTEST-ASSERT-FAIL expect_between_int")
+        print("  inclusive low:")
+        print(low)
+        print("  actual:")
+        print(actual)
+        return 1
+    }
+    if actual > high {
+        print("KOTEST-ASSERT-FAIL expect_between_int")
+        print("  inclusive high:")
+        print(high)
+        print("  actual:")
+        print(actual)
+        return 1
+    }
+    return 0
+}
+
+# vitest's `toSatisfy` / Hamcrest's `assertThat`: the predicate returns 1 for
+# an acceptable value and 0 for anything else, because Bool is outside the
+# executable function-signature slice.
+fn expect_that_int(value: Int, predicate: Int -> Int) -> Int {
+    if predicate(value) == 1 {
+        return 0
+    }
+    print("KOTEST-ASSERT-FAIL expect_that_int")
+    print("  predicate rejected:")
+    print(value)
+    return 1
+}
+
+# ---------------------------------------------------------------------------
+# Text assertions
+# ---------------------------------------------------------------------------
+
+fn expect_eq_text(actual: Text, expected: Text) -> Int {
+    if actual == expected {
+        return 0
+    }
+    print("KOTEST-ASSERT-FAIL expect_eq_text")
+    print("  expected:")
+    print(expected)
+    print("  actual:")
+    print(actual)
+    return 1
+}
+
+fn expect_ne_text(actual: Text, forbidden: Text) -> Int {
+    if actual != forbidden {
+        return 0
+    }
+    print("KOTEST-ASSERT-FAIL expect_ne_text")
+    print("  both sides:")
+    print(actual)
+    return 1
+}
+
+fn expect_text_len(actual: Text, expected_length: Int) -> Int {
+    if len(actual) == expected_length {
+        return 0
+    }
+    print("KOTEST-ASSERT-FAIL expect_text_len")
+    print("  expected length:")
+    print(expected_length)
+    print("  actual text:")
+    print(actual)
+    print("  actual length:")
+    print(len(actual))
+    return 1
+}
+
+# `starts_with` and `contains` are host builtins outside this lowering slice,
+# so both predicates are implemented here with `len` and `text_slice` only.
+fn text_has_prefix(actual: Text, prefix: Text) -> Int {
+    if len(prefix) > len(actual) {
+        return 0
+    }
+    if text_slice(actual, 0, len(prefix)) == prefix {
+        return 1
+    }
+    return 0
+}
+
+fn text_contains_at(actual: Text, fragment: Text, position: Int) -> Int {
+    if position + len(fragment) > len(actual) {
+        return 0
+    }
+    if text_slice(actual, position, position + len(fragment)) == fragment {
+        return 1
+    }
+    return text_contains_at(actual, fragment, position + 1)
+}
+
+fn text_has_fragment(actual: Text, fragment: Text) -> Int {
+    return text_contains_at(actual, fragment, 0)
+}
+
+fn expect_text_starts_with(actual: Text, prefix: Text) -> Int {
+    if text_has_prefix(actual, prefix) == 1 {
+        return 0
+    }
+    print("KOTEST-ASSERT-FAIL expect_text_starts_with")
+    print("  expected prefix:")
+    print(prefix)
+    print("  actual:")
+    print(actual)
+    return 1
+}
+
+fn expect_text_contains(actual: Text, fragment: Text) -> Int {
+    if text_has_fragment(actual, fragment) == 1 {
+        return 0
+    }
+    print("KOTEST-ASSERT-FAIL expect_text_contains")
+    print("  expected fragment:")
+    print(fragment)
+    print("  actual:")
+    print(actual)
+    return 1
+}
+
+# JUnit's `fail()`: an unconditional failure with a reason.
+fn fail_now(reason: Text) -> Int {
+    print("KOTEST-ASSERT-FAIL fail_now")
+    print("  reason:")
+    print(reason)
+    return 1
+}
+
+# ---------------------------------------------------------------------------
+# JUnit-style aliases
+# ---------------------------------------------------------------------------
+# JUnit spells equality assertions `assertEquals(expected, actual)`.  These
+# aliases keep that argument order for people arriving from JUnit; the
+# expect_* forms above keep vitest's `expect(actual)` order.
+
+fn assert_equals_int(expected: Int, actual: Int) -> Int {
+    return expect_eq_int(actual, expected)
+}
+
+fn assert_not_equals_int(forbidden: Int, actual: Int) -> Int {
+    return expect_ne_int(actual, forbidden)
+}
+
+fn assert_equals_text(expected: Text, actual: Text) -> Int {
+    return expect_eq_text(actual, expected)
+}
+
+# ---------------------------------------------------------------------------
+# Mocks, stubs, and spies
+# ---------------------------------------------------------------------------
+# The executable slice has no mutable capture, so a Mockito-style recording
+# proxy cannot exist.  What does exist, and is enough for dependency-injected
+# designs, is:
+#
+#   - stubs: any lambda or named function passed to a callable parameter.
+#         let clock = tick => 1700000000 + tick
+#         let result = format_deadline(clock, 30)
+#   - spies: an Int accumulator threaded through the code under test.  The
+#     helpers below pack (call count, last argument) into one Int so a
+#     function under test can carry its spy state without records.
+#   - guards: `stub_unreachable` is a named function whose call is itself the
+#     failure signal, for dependencies a test expects never to be used.
+#
+# Spy packing: state = count * SPY_BASE + (last + SPY_OFFSET).  The recorded
+# argument must stay inside -999999 .. 999999; recording a wider value fails
+# loudly instead of silently corrupting the count.
+
+fn spy_base() -> Int {
+    return 2000000
+}
+
+fn spy_offset() -> Int {
+    return 1000000
+}
+
+fn spy_init() -> Int {
+    return 0
+}
+
+fn spy_record(state: Int, argument: Int) -> Int {
+    if argument <= 0 - spy_offset() {
+        print("KOTEST-ASSERT-FAIL spy_record")
+        print("  argument below spy range:")
+        print(argument)
+        return state
+    }
+    if argument >= spy_offset() {
+        print("KOTEST-ASSERT-FAIL spy_record")
+        print("  argument above spy range:")
+        print(argument)
+        return state
+    }
+    let count = state // spy_base()
+    return (count + 1) * spy_base() + argument + spy_offset()
+}
+
+fn spy_count(state: Int) -> Int {
+    return state // spy_base()
+}
+
+fn spy_last(state: Int) -> Int {
+    if spy_count(state) == 0 {
+        return 0
+    }
+    return state % spy_base() - spy_offset()
+}
+
+fn verify_called_times(state: Int, expected: Int) -> Int {
+    if spy_count(state) == expected {
+        return 0
+    }
+    print("KOTEST-ASSERT-FAIL verify_called_times")
+    print("  expected calls:")
+    print(expected)
+    print("  recorded calls:")
+    print(spy_count(state))
+    return 1
+}
+
+fn verify_last_argument(state: Int, expected: Int) -> Int {
+    if spy_count(state) == 0 {
+        print("KOTEST-ASSERT-FAIL verify_last_argument")
+        print("  no call was recorded")
+        return 1
+    }
+    if spy_last(state) == expected {
+        return 0
+    }
+    print("KOTEST-ASSERT-FAIL verify_last_argument")
+    print("  expected last argument:")
+    print(expected)
+    print("  recorded last argument:")
+    print(spy_last(state))
+    return 1
+}
+
+# A dependency the test expects to stay untouched.  Passing this where an
+# `Int -> Int` collaborator is expected turns any call into a loud, checkable
+# sentinel: the call prints immediately, and the sentinel value poisons the
+# result so a later expect_* also fails.
+fn stub_unreachable(argument: Int) -> Int {
+    print("KOTEST-ASSERT-FAIL stub_unreachable")
+    print("  unexpected call with:")
+    print(argument)
+    return 0 - 1970170001
+}
+
+fn unreachable_sentinel() -> Int {
+    return 0 - 1970170001
+}
+
+# ---------------------------------------------------------------------------
+# Reporting
+# ---------------------------------------------------------------------------
+
+# Collapse a test's failed-assertion count to a 0/1 test verdict.
+fn kotest_case(failures: Int) -> Int {
+    if failures == 0 {
+        return 0
+    }
+    return 1
+}
+
+# Print the machine-readable summary and produce the process exit code.
+fn kotest_summary(total: Int, failed: Int) -> Int {
+    print("KOTEST-SUMMARY")
+    print("tests total:")
+    print(total)
+    print("tests passed:")
+    print(total - failed)
+    print("tests failed:")
+    print(failed)
+    if failed == 0 {
+        return 0
+    }
+    return 1
+}
+
+# Executed once by every generated harness before the summary: proves, inside
+# the test binary itself, that the framework's passing paths are silent and
+# its spy arithmetic is exact.  A nonzero result is a framework defect, which
+# the harness reports as its own failure line.
+fn kotest_selfcheck() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(42, 42)
+    failures = failures + expect_ne_int(1, 2)
+    failures = failures + expect_lt_int(1, 2)
+    failures = failures + expect_le_int(2, 2)
+    failures = failures + expect_gt_int(3, 2)
+    failures = failures + expect_ge_int(2, 2)
+    failures = failures + expect_between_int(5, 1, 9)
+    failures = failures + expect_eq_text("kofun", "kofun")
+    failures = failures + expect_ne_text("a", "b")
+    failures = failures + expect_text_len("abc", 3)
+    failures = failures + expect_text_starts_with("kofun", "ko")
+    failures = failures + expect_text_contains("kofun", "ofu")
+    failures = failures + expect_that_int(4, value => 1 - value % 2)
+    failures = failures + assert_equals_int(7, 7)
+    failures = failures + assert_not_equals_int(7, 8)
+    failures = failures + assert_equals_text("x", "x")
+    let mut spy = spy_init()
+    failures = failures + verify_called_times(spy, 0)
+    spy = spy_record(spy, 41)
+    spy = spy_record(spy, 0 - 7)
+    failures = failures + verify_called_times(spy, 2)
+    failures = failures + verify_last_argument(spy, 0 - 7)
+    failures = failures + expect_eq_int(spy_count(spy), 2)
+    failures = failures + expect_eq_int(unreachable_sentinel(), 0 - 1970170001)
+    failures = failures + expect_eq_int(kotest_case(0), 0)
+    failures = failures + expect_eq_int(kotest_case(9), 1)
+    return failures
+}

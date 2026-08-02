@@ -1,0 +1,99 @@
+# kotest suite for set_sample.kofun; run with `kofun unittest`.
+
+fn test_empty_set_has_no_members() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(set_size(set_empty()), 0)
+    failures = failures + expect_eq_int(set_is_member(set_empty(), 0), 0)
+    failures = failures + expect_eq_int(set_is_member(set_empty(), 29), 0)
+    return failures
+}
+
+fn test_insert_is_idempotent() -> Int {
+    let mut failures = 0
+    let once = set_insert(set_empty(), 7)
+    let twice = set_insert(once, 7)
+    failures = failures + expect_eq_int(set_size(once), 1)
+    failures = failures + expect_eq_int(twice, once)
+    failures = failures + expect_eq_int(set_is_member(twice, 7), 1)
+    return failures
+}
+
+fn test_membership_respects_universe_bounds() -> Int {
+    let mut failures = 0
+    let unchanged_low = set_insert(set_empty(), 0 - 1)
+    let unchanged_high = set_insert(set_empty(), set_universe())
+    failures = failures + expect_eq_int(unchanged_low, set_empty())
+    failures = failures + expect_eq_int(unchanged_high, set_empty())
+    failures = failures + expect_eq_int(set_is_member(set_empty(), 0 - 1), 0)
+    failures = failures + expect_eq_int(set_is_member(set_empty(), 99), 0)
+    let edge = set_insert(set_empty(), set_universe() - 1)
+    failures = failures + expect_eq_int(set_is_member(edge, set_universe() - 1), 1)
+    return failures
+}
+
+fn test_remove_deletes_exactly_one_member() -> Int {
+    let mut failures = 0
+    let base = set_of_three(1, 2, 3)
+    let removed = set_remove(base, 2)
+    failures = failures + expect_eq_int(set_size(removed), 2)
+    failures = failures + expect_eq_int(set_is_member(removed, 2), 0)
+    failures = failures + expect_eq_int(set_is_member(removed, 1), 1)
+    failures = failures + expect_eq_int(set_is_member(removed, 3), 1)
+    failures = failures + expect_eq_int(set_remove(base, 9), base)
+    return failures
+}
+
+fn test_union_covers_both_sides() -> Int {
+    let mut failures = 0
+    let left = set_of_three(1, 2, 3)
+    let right = set_of_three(3, 4, 5)
+    let joined = set_union(left, right)
+    failures = failures + expect_eq_int(set_size(joined), 5)
+    failures = failures + expect_eq_int(set_is_member(joined, 1), 1)
+    failures = failures + expect_eq_int(set_is_member(joined, 3), 1)
+    failures = failures + expect_eq_int(set_is_member(joined, 5), 1)
+    failures = failures + expect_eq_int(set_union(left, set_empty()), left)
+    return failures
+}
+
+fn test_intersection_keeps_only_shared_members() -> Int {
+    let mut failures = 0
+    let left = set_of_three(1, 2, 3)
+    let right = set_of_three(2, 3, 4)
+    let shared = set_intersection(left, right)
+    failures = failures + expect_eq_int(set_size(shared), 2)
+    failures = failures + expect_eq_int(set_is_member(shared, 2), 1)
+    failures = failures + expect_eq_int(set_is_member(shared, 3), 1)
+    failures = failures + expect_eq_int(set_is_member(shared, 1), 0)
+    failures = failures + expect_eq_int(
+        set_intersection(left, set_empty()), set_empty())
+    return failures
+}
+
+fn test_difference_subtracts_the_right_side() -> Int {
+    let mut failures = 0
+    let left = set_of_three(1, 2, 3)
+    let right = set_of_three(2, 9, 10)
+    let rest = set_difference(left, right)
+    failures = failures + expect_eq_int(set_size(rest), 2)
+    failures = failures + expect_eq_int(set_is_member(rest, 1), 1)
+    failures = failures + expect_eq_int(set_is_member(rest, 3), 1)
+    failures = failures + expect_eq_int(set_is_member(rest, 2), 0)
+    failures = failures + expect_eq_int(set_difference(left, left), set_empty())
+    return failures
+}
+
+fn test_algebra_laws_on_samples() -> Int {
+    let mut failures = 0
+    let a = set_of_three(0, 5, 9)
+    let b = set_of_three(5, 9, 12)
+    # Commutativity of union and intersection on concrete values.
+    failures = failures + expect_eq_int(set_union(a, b), set_union(b, a))
+    failures = failures + expect_eq_int(
+        set_intersection(a, b), set_intersection(b, a))
+    # A \ B and A ∩ B partition A.
+    failures = failures + expect_eq_int(
+        set_size(set_difference(a, b)) + set_size(set_intersection(a, b)),
+        set_size(a))
+    return failures
+}

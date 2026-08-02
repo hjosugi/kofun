@@ -1,0 +1,205 @@
+# stdlib/toml sample: a strict flat `key = value` line reader.
+#
+# The canonical stdlib/toml/toml.kofun contract: a strict TOML 1.0 flat
+# profile with typed scalar classification and deterministic errors.  This
+# executable profile validates one line: exactly one `=`, a non-empty bare
+# key of lowercase letters, single spaces around `=`, and an integer or
+# bare-word value.  Everything else is a typed error with a byte position.
+#
+# Tests live in toml_sample_test.kofun and run with `kofun unittest`.
+
+type TomlLine =
+    | TomlIntegerValue(value: Int)
+    | TomlWordValue(length: Int)
+    | TomlMissingSeparator(position: Int)
+    | TomlBadKey(position: Int)
+    | TomlBadSpacing(position: Int)
+    | TomlBadValue(position: Int)
+
+fn toml_char_is(line: Text, position: Int, expected: Text) -> Int {
+    if position < 0 {
+        return 0
+    }
+    if position >= len(line) {
+        return 0
+    }
+    if text_slice(line, position, position + 1) == expected {
+        return 1
+    }
+    return 0
+}
+
+fn toml_is_lower_letter(line: Text, position: Int) -> Int {
+    if position >= len(line) {
+        return 0
+    }
+    let letters = "abcdefghijklmnopqrstuvwxyz"
+    return toml_letter_scan(line, position, letters, 0)
+}
+
+fn toml_letter_scan(line: Text, position: Int, letters: Text, index: Int) -> Int {
+    if index >= len(letters) {
+        return 0
+    }
+    if text_slice(line, position, position + 1) == text_slice(letters, index, index + 1) {
+        return 1
+    }
+    return toml_letter_scan(line, position, letters, index + 1)
+}
+
+fn toml_digit_value(line: Text, position: Int) -> Int {
+    if toml_char_is(line, position, "0") == 1 {
+        return 0
+    }
+    if toml_char_is(line, position, "1") == 1 {
+        return 1
+    }
+    if toml_char_is(line, position, "2") == 1 {
+        return 2
+    }
+    if toml_char_is(line, position, "3") == 1 {
+        return 3
+    }
+    if toml_char_is(line, position, "4") == 1 {
+        return 4
+    }
+    if toml_char_is(line, position, "5") == 1 {
+        return 5
+    }
+    if toml_char_is(line, position, "6") == 1 {
+        return 6
+    }
+    if toml_char_is(line, position, "7") == 1 {
+        return 7
+    }
+    if toml_char_is(line, position, "8") == 1 {
+        return 8
+    }
+    if toml_char_is(line, position, "9") == 1 {
+        return 9
+    }
+    return 0 - 1
+}
+
+fn toml_separator_position_from(line: Text, position: Int) -> Int {
+    if position >= len(line) {
+        return 0 - 1
+    }
+    if toml_char_is(line, position, "=") == 1 {
+        return position
+    }
+    return toml_separator_position_from(line, position + 1)
+}
+
+fn toml_separator_position(line: Text) -> Int {
+    return toml_separator_position_from(line, 0)
+}
+
+fn toml_key_is_bare_from(line: Text, position: Int, end: Int) -> Int {
+    if position >= end {
+        return 1
+    }
+    if toml_is_lower_letter(line, position) == 0 {
+        return 0
+    }
+    return toml_key_is_bare_from(line, position + 1, end)
+}
+
+fn toml_parse_integer_from(line: Text, position: Int, accumulated: Int) -> Int {
+    if position >= len(line) {
+        return accumulated
+    }
+    let digit = toml_digit_value(line, position)
+    if digit < 0 {
+        return 0 - 1
+    }
+    return toml_parse_integer_from(line, position + 1, accumulated * 10 + digit)
+}
+
+fn toml_value_is_word_from(line: Text, position: Int) -> Int {
+    if position >= len(line) {
+        return 1
+    }
+    if toml_is_lower_letter(line, position) == 0 {
+        return 0
+    }
+    return toml_value_is_word_from(line, position + 1)
+}
+
+# Strict single-line reader.  `key = value` with one space on each side of
+# the separator; the value is a non-negative integer or a bare lowercase
+# word.  Every rejection carries the first offending byte position.
+fn toml_read_line(line: Text) -> TomlLine {
+    let separator = toml_separator_position(line)
+    if separator < 0 {
+        return TomlMissingSeparator(len(line))
+    }
+    if separator < 2 {
+        return TomlBadKey(0)
+    }
+    let key_end = separator - 1
+    if toml_char_is(line, key_end, " ") == 0 {
+        return TomlBadSpacing(key_end)
+    }
+    if toml_key_is_bare_from(line, 0, key_end) == 0 {
+        return TomlBadKey(0)
+    }
+    if toml_char_is(line, separator + 1, " ") == 0 {
+        return TomlBadSpacing(separator + 1)
+    }
+    let value_start = separator + 2
+    if value_start >= len(line) {
+        return TomlBadValue(value_start)
+    }
+    let integer = toml_parse_integer_from(line, value_start, 0)
+    if integer >= 0 {
+        return TomlIntegerValue(integer)
+    }
+    if toml_value_is_word_from(line, value_start) == 1 {
+        return TomlWordValue(len(line) - value_start)
+    }
+    return TomlBadValue(value_start)
+}
+
+fn toml_line_code(outcome: TomlLine) -> Int {
+    match outcome {
+        TomlIntegerValue(_) => { return 1 },
+        TomlWordValue(_) => { return 2 },
+        TomlMissingSeparator(_) => { return 0 - 1 },
+        TomlBadKey(_) => { return 0 - 2 },
+        TomlBadSpacing(_) => { return 0 - 3 },
+        TomlBadValue(_) => { return 0 - 4 },
+    }
+    return 0
+}
+
+fn toml_line_detail(outcome: TomlLine) -> Int {
+    match outcome {
+        TomlIntegerValue(value) => { return value },
+        TomlWordValue(length) => { return length },
+        TomlMissingSeparator(position) => { return position },
+        TomlBadKey(position) => { return position },
+        TomlBadSpacing(position) => { return position },
+        TomlBadValue(position) => { return position },
+    }
+    return 0
+}
+
+fn toml_report(line: Text) -> Int {
+    let outcome: TomlLine = toml_read_line(line)
+    print(toml_line_code(outcome))
+    print(toml_line_detail(outcome))
+    return toml_line_code(outcome)
+}
+
+fn main() {
+    let ignored0 = toml_report("answer = 42")
+    let ignored1 = toml_report("mode = strict")
+    let ignored2 = toml_report("broken line")
+    let ignored3 = toml_report("Bad = 1")
+    let ignored4 = toml_report("tight=1")
+    let ignored5 = toml_report("trail = ")
+    let ignored6 = toml_report("value = 4x2")
+    print(ignored0 + ignored1 + ignored2 + ignored3 +
+          ignored4 + ignored5 + ignored6)
+}

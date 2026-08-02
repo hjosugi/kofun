@@ -1,0 +1,84 @@
+# kotest suite for regex_sample.kofun; run with `kofun unittest`.
+
+fn test_literal_patterns_match_exactly() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(regex_full_match("kofun", "kofun"), 1)
+    failures = failures + expect_eq_int(regex_full_match("kofun", "kofan"), 0)
+    failures = failures + expect_eq_int(regex_full_match("kofun", "kofunx"), 0)
+    failures = failures + expect_eq_int(regex_full_match("kofun", "kofu"), 0)
+    failures = failures + expect_eq_int(regex_full_match("", ""), 1)
+    failures = failures + expect_eq_int(regex_full_match("", "a"), 0)
+    return failures
+}
+
+fn test_wildcard_matches_any_single_character() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(regex_full_match("k.fun", "kofun"), 1)
+    failures = failures + expect_eq_int(regex_full_match("k.fun", "kafun"), 1)
+    failures = failures + expect_eq_int(regex_full_match("k.fun", "kfun"), 0)
+    failures = failures + expect_eq_int(regex_full_match("...", "abc"), 1)
+    failures = failures + expect_eq_int(regex_full_match("...", "ab"), 0)
+    return failures
+}
+
+fn test_star_repeats_zero_or_more() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(regex_full_match("ko*fun", "kfun"), 1)
+    failures = failures + expect_eq_int(regex_full_match("ko*fun", "kofun"), 1)
+    failures = failures + expect_eq_int(regex_full_match("ko*fun", "kooooofun"), 1)
+    failures = failures + expect_eq_int(regex_full_match("ko*fun", "kafun"), 0)
+    failures = failures + expect_eq_int(regex_full_match("a*", ""), 1)
+    failures = failures + expect_eq_int(regex_full_match("a*", "aaaa"), 1)
+    failures = failures + expect_eq_int(regex_full_match("a*", "aaab"), 0)
+    return failures
+}
+
+fn test_dot_star_backtracks() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(regex_full_match(".*", "anything"), 1)
+    failures = failures + expect_eq_int(regex_full_match(".*", ""), 1)
+    # The engine must give characters back so the trailing literal matches.
+    failures = failures + expect_eq_int(regex_full_match(".*n", "kofun"), 1)
+    failures = failures + expect_eq_int(regex_full_match(".*z", "kofun"), 0)
+    failures = failures + expect_eq_int(regex_full_match("a*b*c*", "aabcc"), 1)
+    failures = failures + expect_eq_int(regex_full_match("a*b*c*", ""), 1)
+    failures = failures + expect_eq_int(regex_full_match("a*b*c*", "cba"), 0)
+    return failures
+}
+
+fn test_compile_rejects_dangling_star() -> Int {
+    let mut failures = 0
+    let dangling: RegexCompile = regex_compile("*oops")
+    match dangling {
+        RegexDanglingStar(position) => {
+            failures = failures + expect_eq_int(position, 0)
+        },
+        _ => { failures = failures + fail_now("expected RegexDanglingStar") },
+    }
+    failures = failures + expect_eq_int(regex_full_match("*oops", "oops"), 0)
+    return failures
+}
+
+fn test_compile_rejects_doubled_star() -> Int {
+    let mut failures = 0
+    let doubled: RegexCompile = regex_compile("a**")
+    match doubled {
+        RegexDoubledStar(position) => {
+            failures = failures + expect_eq_int(position, 2)
+        },
+        _ => { failures = failures + fail_now("expected RegexDoubledStar") },
+    }
+    return failures
+}
+
+fn test_compile_accepts_valid_patterns() -> Int {
+    let mut failures = 0
+    let ready: RegexCompile = regex_compile("k.*fun")
+    match ready {
+        RegexReady(length) => { failures = failures + expect_eq_int(length, 6) },
+        _ => { failures = failures + fail_now("expected RegexReady") },
+    }
+    failures = failures + expect_eq_int(regex_compile_ok(""), 1)
+    failures = failures + expect_eq_int(regex_compile_ok("a*b*"), 1)
+    return failures
+}

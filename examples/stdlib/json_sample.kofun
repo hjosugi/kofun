@@ -1,0 +1,228 @@
+# stdlib/json sample: a strict, bounded JSON structural scanner.
+#
+# The canonical stdlib/json/json.kofun contract: typed failures, bounded
+# nesting, and no guessed recovery.  This executable profile scans one JSON
+# text and reports its top-level value kind, verifies bracket/brace balance
+# with an explicit nesting resource limit, and counts top-level array
+# elements.  Strings with escapes and full member parsing remain with the
+# canonical source; this scanner treats a quote-free subset honestly and
+# rejects texts containing quotes.
+#
+# Tests live in json_sample_test.kofun and run with `kofun unittest`.
+
+type JsonScan =
+    | JsonBalanced(depth: Int)
+    | JsonUnbalanced(position: Int)
+    | JsonTooDeep(position: Int)
+    | JsonOutsideProfile(position: Int)
+
+fn json_max_nesting() -> Int {
+    return 8
+}
+
+fn char_is(text: Text, position: Int, expected: Text) -> Int {
+    if position < 0 {
+        return 0
+    }
+    if position >= len(text) {
+        return 0
+    }
+    if text_slice(text, position, position + 1) == expected {
+        return 1
+    }
+    return 0
+}
+
+fn char_is_open(text: Text, position: Int) -> Int {
+    if char_is(text, position, "{") == 1 {
+        return 1
+    }
+    return char_is(text, position, "[")
+}
+
+fn char_is_close(text: Text, position: Int) -> Int {
+    if char_is(text, position, "}") == 1 {
+        return 1
+    }
+    return char_is(text, position, "]")
+}
+
+fn json_scan_from(text: Text, position: Int, depth: Int, deepest: Int) -> JsonScan {
+    if position >= len(text) {
+        if depth == 0 {
+            return JsonBalanced(deepest)
+        }
+        return JsonUnbalanced(position)
+    }
+    if char_is(text, position, "\"") == 1 {
+        return JsonOutsideProfile(position)
+    }
+    if char_is_open(text, position) == 1 {
+        if depth + 1 > json_max_nesting() {
+            return JsonTooDeep(position)
+        }
+        if depth + 1 > deepest {
+            return json_scan_from(text, position + 1, depth + 1, depth + 1)
+        }
+        return json_scan_from(text, position + 1, depth + 1, deepest)
+    }
+    if char_is_close(text, position) == 1 {
+        if depth == 0 {
+            return JsonUnbalanced(position)
+        }
+        return json_scan_from(text, position + 1, depth - 1, deepest)
+    }
+    return json_scan_from(text, position + 1, depth, deepest)
+}
+
+# Structural scan: balanced containers within the nesting limit, or the
+# first offending byte position in a typed failure.
+fn json_scan(text: Text) -> JsonScan {
+    return json_scan_from(text, 0, 0, 0)
+}
+
+fn json_scan_code(outcome: JsonScan) -> Int {
+    match outcome {
+        JsonBalanced(_) => { return 0 },
+        JsonUnbalanced(_) => { return 1 },
+        JsonTooDeep(_) => { return 2 },
+        JsonOutsideProfile(_) => { return 3 },
+    }
+    return 0 - 1
+}
+
+fn json_scan_detail(outcome: JsonScan) -> Int {
+    match outcome {
+        JsonBalanced(depth) => { return depth },
+        JsonUnbalanced(position) => { return position },
+        JsonTooDeep(position) => { return position },
+        JsonOutsideProfile(position) => { return position },
+    }
+    return 0 - 1
+}
+
+fn json_skip_spaces(text: Text, position: Int) -> Int {
+    if position >= len(text) {
+        return position
+    }
+    if char_is(text, position, " ") == 1 {
+        return json_skip_spaces(text, position + 1)
+    }
+    return position
+}
+
+# Top-level value kind: 1 object, 2 array, 3 number, 4 literal word
+# (true/false/null start), 0 empty, -1 unrecognized.
+fn json_value_kind(text: Text) -> Int {
+    let start = json_skip_spaces(text, 0)
+    if start >= len(text) {
+        return 0
+    }
+    if char_is(text, start, "{") == 1 {
+        return 1
+    }
+    if char_is(text, start, "[") == 1 {
+        return 2
+    }
+    if char_is(text, start, "-") == 1 {
+        return 3
+    }
+    if is_digit_character(text, start) == 1 {
+        return 3
+    }
+    if char_is(text, start, "t") == 1 {
+        return 4
+    }
+    if char_is(text, start, "f") == 1 {
+        return 4
+    }
+    if char_is(text, start, "n") == 1 {
+        return 4
+    }
+    return 0 - 1
+}
+
+fn is_digit_character(text: Text, position: Int) -> Int {
+    if char_is(text, position, "0") == 1 {
+        return 1
+    }
+    if char_is(text, position, "1") == 1 {
+        return 1
+    }
+    if char_is(text, position, "2") == 1 {
+        return 1
+    }
+    if char_is(text, position, "3") == 1 {
+        return 1
+    }
+    if char_is(text, position, "4") == 1 {
+        return 1
+    }
+    if char_is(text, position, "5") == 1 {
+        return 1
+    }
+    if char_is(text, position, "6") == 1 {
+        return 1
+    }
+    if char_is(text, position, "7") == 1 {
+        return 1
+    }
+    if char_is(text, position, "8") == 1 {
+        return 1
+    }
+    return char_is(text, position, "9")
+}
+
+fn json_array_elements_from(text: Text, position: Int, depth: Int, seen: Int) -> Int {
+    if position >= len(text) {
+        return seen
+    }
+    if char_is_open(text, position) == 1 {
+        return json_array_elements_from(text, position + 1, depth + 1, seen)
+    }
+    if char_is_close(text, position) == 1 {
+        return json_array_elements_from(text, position + 1, depth - 1, seen)
+    }
+    if depth == 1 {
+        if char_is(text, position, ",") == 1 {
+            return json_array_elements_from(text, position + 1, depth, seen + 1)
+        }
+    }
+    return json_array_elements_from(text, position + 1, depth, seen)
+}
+
+# Element count of a top-level array: separators at depth one plus one, or
+# zero for an empty array body.  The text must already scan as balanced.
+fn json_array_element_count(text: Text) -> Int {
+    if json_value_kind(text) != 2 {
+        return 0 - 1
+    }
+    let start = json_skip_spaces(text, 0)
+    let body_end = json_skip_spaces(text, start + 1)
+    if char_is(text, body_end, "]") == 1 {
+        return 0
+    }
+    return json_array_elements_from(text, start + 1, 1, 1)
+}
+
+fn main() {
+    let document = "[1, 2, [3, 4], 5]"
+    let scan: JsonScan = json_scan(document)
+    print(json_scan_code(scan))
+    print(json_scan_detail(scan))
+    print(json_value_kind(document))
+    print(json_array_element_count(document))
+    let object_scan: JsonScan = json_scan("{[]}")
+    print(json_scan_code(object_scan))
+    let broken: JsonScan = json_scan("[1, 2")
+    print(json_scan_code(broken))
+    print(json_scan_detail(broken))
+    let closed_early: JsonScan = json_scan("]")
+    print(json_scan_code(closed_early))
+    let deep: JsonScan = json_scan("[[[[[[[[[0]]]]]]]]]")
+    print(json_scan_code(deep))
+    print(json_value_kind("  42"))
+    print(json_value_kind("true"))
+    print(json_value_kind(""))
+    print(json_array_element_count("[]"))
+}

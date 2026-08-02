@@ -1,0 +1,169 @@
+# stdlib/date_time sample: the bounded civil-calendar core.
+#
+# The canonical stdlib/date_time/date_time.kofun producer already executes
+# through Stage 2; this sample carries the same calendar rules in a compact,
+# test-owned shape: proleptic Gregorian leap years, exact month lengths,
+# closed date validation, day-of-week, and checked day arithmetic with
+# month and year rollover.  No host time is read anywhere.
+#
+# Tests live in date_time_sample_test.kofun and run with `kofun unittest`.
+
+type CivilDate = {
+    year: Int,
+    month: Int,
+    day: Int,
+}
+
+type DateOutcome =
+    | DateOk(code: Int)
+    | DateBadYear(year: Int)
+    | DateBadMonth(month: Int)
+    | DateBadDay(day: Int)
+
+fn date_make(year: Int, month: Int, day: Int) -> CivilDate {
+    let value: CivilDate = CivilDate(year: year, month: month, day: day)
+    return value
+}
+
+fn leap_year(year: Int) -> Int {
+    if year % 400 == 0 {
+        return 1
+    }
+    if year % 100 == 0 {
+        return 0
+    }
+    if year % 4 == 0 {
+        return 1
+    }
+    return 0
+}
+
+fn days_in_month(year: Int, month: Int) -> Int {
+    if month == 2 {
+        return 28 + leap_year(year)
+    }
+    if month == 4 {
+        return 30
+    }
+    if month == 6 {
+        return 30
+    }
+    if month == 9 {
+        return 30
+    }
+    if month == 11 {
+        return 30
+    }
+    return 31
+}
+
+# Closed validation over the supported window 1 .. 9999.
+fn date_validate(date: CivilDate) -> DateOutcome {
+    if date.year < 1 {
+        return DateBadYear(date.year)
+    }
+    if date.year > 9999 {
+        return DateBadYear(date.year)
+    }
+    if date.month < 1 {
+        return DateBadMonth(date.month)
+    }
+    if date.month > 12 {
+        return DateBadMonth(date.month)
+    }
+    if date.day < 1 {
+        return DateBadDay(date.day)
+    }
+    if date.day > days_in_month(date.year, date.month) {
+        return DateBadDay(date.day)
+    }
+    return DateOk(0)
+}
+
+fn date_is_valid(date: CivilDate) -> Int {
+    let outcome: DateOutcome = date_validate(date)
+    match outcome {
+        DateOk(_) => { return 1 },
+        DateBadYear(_) => { return 0 },
+        DateBadMonth(_) => { return 0 },
+        DateBadDay(_) => { return 0 },
+    }
+    return 0
+}
+
+fn date_outcome_code(outcome: DateOutcome) -> Int {
+    match outcome {
+        DateOk(_) => { return 0 },
+        DateBadYear(_) => { return 1 },
+        DateBadMonth(_) => { return 2 },
+        DateBadDay(_) => { return 3 },
+    }
+    return 0 - 1
+}
+
+# Zeller's congruence: 0 Saturday, 1 Sunday, .. 6 Friday.
+fn day_of_week(date: CivilDate) -> Int {
+    let mut month = date.month
+    let mut year = date.year
+    if month < 3 {
+        month = month + 12
+        year = year - 1
+    }
+    let century = year // 100
+    let year_of_century = year % 100
+    let term = date.day + (13 * (month + 1)) // 5 + year_of_century +
+        year_of_century // 4 + century // 4 + 5 * century
+    return term % 7
+}
+
+# One day forward with month and year rollover; the input must be valid.
+fn date_next_day(date: CivilDate) -> CivilDate {
+    if date.day < days_in_month(date.year, date.month) {
+        return date_make(date.year, date.month, date.day + 1)
+    }
+    if date.month < 12 {
+        return date_make(date.year, date.month + 1, 1)
+    }
+    return date_make(date.year + 1, 1, 1)
+}
+
+# Checked forward day arithmetic by iteration: exact rollover, no
+# epoch-count shortcuts to drift away from the month table.
+fn date_add_days(date: CivilDate, days: Int) -> CivilDate {
+    if days <= 0 {
+        return date
+    }
+    return date_add_days(date_next_day(date), days - 1)
+}
+
+fn date_equal(left: CivilDate, right: CivilDate) -> Int {
+    if left.year != right.year {
+        return 0
+    }
+    if left.month != right.month {
+        return 0
+    }
+    if left.day != right.day {
+        return 0
+    }
+    return 1
+}
+
+fn main() {
+    print(leap_year(2024))
+    print(leap_year(1900))
+    print(leap_year(2000))
+    print(days_in_month(2024, 2))
+    print(days_in_month(2025, 2))
+    print(date_is_valid(date_make(2024, 2, 29)))
+    print(date_is_valid(date_make(2025, 2, 29)))
+    print(date_outcome_code(date_validate(date_make(2025, 13, 1))))
+    print(date_outcome_code(date_validate(date_make(0, 1, 1))))
+    print(day_of_week(date_make(2026, 8, 2)))
+    let rolled: CivilDate = date_add_days(date_make(2024, 2, 28), 2)
+    print(rolled.month)
+    print(rolled.day)
+    let crossed: CivilDate = date_add_days(date_make(2025, 12, 30), 3)
+    print(crossed.year)
+    print(date_equal(crossed, date_make(2026, 1, 2)))
+}

@@ -1,0 +1,152 @@
+# stdlib/csv sample: a bounded, deterministic CSV line reader.
+#
+# The canonical stdlib/csv/csv.kofun contract: deterministic field
+# boundaries, typed out-of-range access, and explicit malformed boundaries.
+# This executable profile reads one unquoted record line: fields are
+# separated by commas, an empty line holds no fields, and field content is
+# addressed by span so the caller slices the original text.  Quoted fields
+# are outside this profile and are reported, never guessed at.
+#
+# Tests live in csv_sample_test.kofun and run with `kofun unittest`.
+
+type CsvSpan = {
+    found: Int,
+    start: Int,
+    end: Int,
+}
+
+fn character_at_is(line: Text, position: Int, expected: Text) -> Int {
+    if position < 0 {
+        return 0
+    }
+    if position >= len(line) {
+        return 0
+    }
+    if text_slice(line, position, position + 1) == expected {
+        return 1
+    }
+    return 0
+}
+
+# The unquoted profile boundary: a line containing a double quote anywhere
+# is outside this reader and must be rejected by the caller.
+fn csv_line_in_profile_from(line: Text, position: Int) -> Int {
+    if position >= len(line) {
+        return 1
+    }
+    if character_at_is(line, position, "\"") == 1 {
+        return 0
+    }
+    return csv_line_in_profile_from(line, position + 1)
+}
+
+fn csv_line_in_profile(line: Text) -> Int {
+    return csv_line_in_profile_from(line, 0)
+}
+
+fn csv_field_count_from(line: Text, position: Int, seen: Int) -> Int {
+    if position >= len(line) {
+        return seen
+    }
+    if character_at_is(line, position, ",") == 1 {
+        return csv_field_count_from(line, position + 1, seen + 1)
+    }
+    return csv_field_count_from(line, position + 1, seen)
+}
+
+# An empty line has no fields; otherwise fields = separators + 1.
+fn csv_field_count(line: Text) -> Int {
+    if len(line) == 0 {
+        return 0
+    }
+    return csv_field_count_from(line, 0, 1)
+}
+
+fn csv_span_missing() -> CsvSpan {
+    let missing: CsvSpan = CsvSpan(found: 0, start: 0, end: 0)
+    return missing
+}
+
+fn csv_span_at(found_start: Int, found_end: Int) -> CsvSpan {
+    let span: CsvSpan = CsvSpan(found: 1, start: found_start, end: found_end)
+    return span
+}
+
+fn csv_field_span_from(
+    line: Text,
+    index: Int,
+    position: Int,
+    field_start: Int
+) -> CsvSpan {
+    if position >= len(line) {
+        if index == 0 {
+            return csv_span_at(field_start, len(line))
+        }
+        return csv_span_missing()
+    }
+    if character_at_is(line, position, ",") == 1 {
+        if index == 0 {
+            return csv_span_at(field_start, position)
+        }
+        return csv_field_span_from(line, index - 1, position + 1, position + 1)
+    }
+    return csv_field_span_from(line, index, position + 1, field_start)
+}
+
+# The half-open [start, end) span of one field, or found=0 when the index
+# is outside the record.
+fn csv_field_span(line: Text, index: Int) -> CsvSpan {
+    if len(line) == 0 {
+        return csv_span_missing()
+    }
+    if index < 0 {
+        return csv_span_missing()
+    }
+    return csv_field_span_from(line, index, 0, 0)
+}
+
+fn csv_field_length(line: Text, index: Int) -> Int {
+    let span: CsvSpan = csv_field_span(line, index)
+    if span.found == 0 {
+        return 0 - 1
+    }
+    return span.end - span.start
+}
+
+fn csv_field_equals(line: Text, index: Int, expected: Text) -> Int {
+    let span: CsvSpan = csv_field_span(line, index)
+    if span.found == 0 {
+        return 0
+    }
+    if text_slice(line, span.start, span.end) == expected {
+        return 1
+    }
+    return 0
+}
+
+fn csv_print_field(line: Text, index: Int) -> Int {
+    let span: CsvSpan = csv_field_span(line, index)
+    if span.found == 0 {
+        print("<missing>")
+        return 0
+    }
+    print(text_slice(line, span.start, span.end))
+    return 1
+}
+
+fn main() {
+    let line = "kofun,42,compiler"
+    print(csv_field_count(line))
+    let ignored0 = csv_print_field(line, 0)
+    let ignored1 = csv_print_field(line, 1)
+    let ignored2 = csv_print_field(line, 2)
+    let ignored3 = csv_print_field(line, 3)
+    print(csv_field_length(line, 1))
+    print(csv_field_equals(line, 0, "kofun"))
+    print(csv_field_count(""))
+    print(csv_field_count("a,,b"))
+    print(csv_field_length("a,,b", 1))
+    print(csv_line_in_profile(line))
+    print(csv_line_in_profile("say,\"hi\""))
+    print(ignored0 + ignored1 + ignored2 + ignored3)
+}
