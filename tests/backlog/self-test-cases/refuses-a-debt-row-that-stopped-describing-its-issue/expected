@@ -1,0 +1,1 @@
+FAIL: backlog: #1 is recorded as state-disagreement ready/needs-detail but is now ready/blocked; update tests/backlog/debt.tsv so the row still describes the issue
