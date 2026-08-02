@@ -97,12 +97,12 @@ The full self-compile proof — determinism, path independence, the audited
 hand-port differential, and the strict-C11 host boundary — stays in
 `check-compiler-driver.sh` and is not re-implemented here.
 
-41 of the 46 rows are `complete`. Five are `partial`: `builtin|fail`,
-`control|return-void`, `statement|assignment`, `statement|mutable-local`, and
-`syntax|function-parameter` are used by `S` but appear in no driver corpus, so
-A1 has never been run against a fixture containing them.
-[#947](https://github.com/hjosugi/kofun/issues/947) owns that corpus gap; until
-it lands, those rows claim `used_by_s` and `self_application` only.
+All 46 rows are `complete`. The final five rows are exercised by the #947
+driver fixtures: `corpus_profile_complete` covers a parameterized declaration,
+mutable local, assignment, and bare return, while `corpus_trap_fail` compiles
+the zero-arity `fail()` builtin and pins its exit-1 runtime behavior. Both
+fixtures carry reviewed emitted C, so their acceptance and lowering evidence
+is executed rather than inferred from `S`.
 
 The profile gate derives built-in calls and the bounded syntax/type inventory
 from `S`, then compares it with the manifest. Changing `S` therefore requires

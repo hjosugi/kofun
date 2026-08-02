@@ -178,6 +178,11 @@ tasks:
     cmds:
       - "sh tests/conformance/optional-narrowing/run.sh"
 
+  optional-construction:
+    desc: "Verify executable Optional(Int) construction and lowered narrowing"
+    cmds:
+      - "sh tests/conformance/optional-construction/run.sh"
+
   adt-exhaustiveness:
     desc: "Verify resolved flat-ADT match diagnostics"
     cmds:
@@ -425,6 +430,11 @@ tasks:
     cmds:
       - "sh spec/aggregate-layout-v1/check.sh"
 
+  reuse-candidate:
+    desc: "Verify ReuseCandidate v1 layout and uniqueness evidence"
+    cmds:
+      - "sh spec/reuse-candidate-v1/check.sh"
+
   wasm-host-abi:
     desc: "Verify wasm32 host ABI v1 vectors and instantiation refusals"
     cmds:
@@ -544,6 +554,26 @@ tasks:
     cmds:
       - "sh tests/assertions/check.sh"
 
+  # An issue's state is carried twice, as a label and as the `State:` line in
+  # its body, and nothing held the two together until this. Reads the committed
+  # snapshot only, so it stays hermetic and belongs in `verify`.
+  backlog:
+    desc: "Bind each issue's state label to the State line in its body"
+    cmds:
+      - "sh tests/backlog/check.sh"
+
+  # The network lane: refresh the snapshot from GitHub and run the same rules
+  # against live issue state, plus the evidence stamps, which need the full git
+  # history. The committed snapshot is a fixture, not a claim about now —
+  # issues change every few minutes, so requiring a commit to match them would
+  # be permanently red.
+  backlog-refresh:
+    desc: "Refresh the backlog snapshot and check the live backlog"
+    cmds:
+      - "node tests/backlog/refresh.mjs"
+      - "sh tests/backlog/check.sh"
+      - "sh tests/backlog/check-stamps.sh"
+
   # The fast structural lane: does every published capability still join the
   # evidence that bounds it? This reads the repository and never runs a gate, so
   # it belongs beside the other cheap checks in `verify`.
@@ -617,6 +647,7 @@ tasks:
             traits \
             optional \
             optional-narrowing \
+            optional-construction \
             adt-exhaustiveness \
             enum-match-value \
             module-symbols \
@@ -666,6 +697,7 @@ tasks:
             visibility-access \
             re-exports-spec \
             aggregate-layout \
+            reuse-candidate \
             wasm-host-abi \
             typed-sidecar-spec \
             typed-sidecar-codec \
@@ -679,6 +711,7 @@ tasks:
             task-help \
             repository-check \
             assertions \
+            backlog \
             release-claims \
             rfc-registry
       # `tests/lsp/performance_test.js` makes five measurements that a busy

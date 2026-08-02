@@ -10,7 +10,11 @@ UTF-8 is the standard, and identifiers may use Unicode.
 let 合計 = 40 + 2
 ```
 
-Confusable characters produce a warning in public APIs.
+Two distinct identifier spellings with the same UTS #39 confusable skeleton
+in one compilation unit are a hard error (`EUNICODE006`). This security check
+does not change identifier equality or name resolution. Cross-module
+confusable collision detection is not implemented and remains future module
+resolver work.
 
 ## Comments
 

@@ -1,0 +1,57 @@
+{
+  "schema": "kofun.reuse-candidate/v1",
+  "candidate_id": "candidate:same-size-unique",
+  "file_id": "fixture:same-size-unique",
+  "matched_source": {
+    "type_id": "Maybe",
+    "constructor": "Present",
+    "span": {
+      "start": 12,
+      "end": 24
+    }
+  },
+  "constructed_target": {
+    "type_id": "Maybe",
+    "constructor": "Present",
+    "span": {
+      "start": 40,
+      "end": 52
+    }
+  },
+  "layout_evidence": {
+    "contract": "kofun.aggregate-layout/v1",
+    "target_data_layout": "x86_64-linux",
+    "source_layout": {
+      "layout_id": "Maybe",
+      "size": "16",
+      "align": "8",
+      "field_count": 1,
+      "scanning_shape": {
+        "pointers": [],
+        "drop": "trivial"
+      }
+    },
+    "target_layout": {
+      "layout_id": "Maybe",
+      "size": "16",
+      "align": "8",
+      "field_count": 1,
+      "scanning_shape": {
+        "pointers": [],
+        "drop": "trivial"
+      }
+    }
+  },
+  "uniqueness_evidence": {
+    "proof": "proved",
+    "provenance": "compile-time-ownership-escape-last-use",
+    "evidence_id": "proof:constructor-storage-unique"
+  },
+  "eligibility": {
+    "ordinary_allocation": false,
+    "reuse_candidate": false,
+    "reuse_statically_guaranteed": true,
+    "reason": null
+  },
+  "remark": "reuse guaranteed: compatible constructor storage and proved uniqueness"
+}

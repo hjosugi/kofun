@@ -1,0 +1,8 @@
+# `Optional(Int)` is not `Int`. Without a narrowing edge the payload is not
+# proved to exist, so the arithmetic is refused rather than lowered.
+
+fn main() -> Int {
+    let value: Int? = 1
+    print(value + 1)
+    return 0
+}
