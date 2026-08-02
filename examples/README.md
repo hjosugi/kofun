@@ -23,7 +23,14 @@ file starts checking cleanly, which is the signal to move it to `runs` and give
 it an expected output. None of these files uses retired syntax — every
 construct in them traces to a current entry in
 [`docs/DESIGN_DECISIONS.md`](../docs/DESIGN_DECISIONS.md), and `task
-tree-sitter` parses all twenty without an `ERROR` or `MISSING` node.
+tree-sitter` parses the twenty files outside `stdlib/` without an `ERROR` or
+`MISSING` node.
+
+The `stdlib/` subdirectory holds the executable standard-library samples:
+for every stdlib module, `stdlib/<module>_sample.kofun` runs today with a
+committed golden, and `stdlib/<module>_sample_test.kofun` is its kotest unit
+suite (see [`tooling/kotest/README.md`](../tooling/kotest/README.md)), run by
+`kofun unittest` and owned by `tests/stdlib/kotest/check.sh` (`task kotest`).
 
 ## Examples
 
@@ -46,6 +53,40 @@ tree-sitter` parses all twenty without an `ERROR` or `MISSING` node.
 | `proven_optional_bool_monad.kofun` | illustrative | `E2S02` |
 | `rust-shim/graphemes.kofun` | owned | `examples/rust-shim/check.sh` |
 | `science.kofun` | illustrative | `E2S16` |
+| `stdlib/array_sample.kofun` | runs | `stdlib/array_sample.expected` |
+| `stdlib/array_sample_test.kofun` | owned | `tests/stdlib/kotest/check.sh` |
+| `stdlib/binary_heap_sample.kofun` | runs | `stdlib/binary_heap_sample.expected` |
+| `stdlib/binary_heap_sample_test.kofun` | owned | `tests/stdlib/kotest/check.sh` |
+| `stdlib/clock_sample.kofun` | runs | `stdlib/clock_sample.expected` |
+| `stdlib/clock_sample_test.kofun` | owned | `tests/stdlib/kotest/check.sh` |
+| `stdlib/csv_sample.kofun` | runs | `stdlib/csv_sample.expected` |
+| `stdlib/csv_sample_test.kofun` | owned | `tests/stdlib/kotest/check.sh` |
+| `stdlib/date_time_sample.kofun` | runs | `stdlib/date_time_sample.expected` |
+| `stdlib/date_time_sample_test.kofun` | owned | `tests/stdlib/kotest/check.sh` |
+| `stdlib/decimal_sample.kofun` | runs | `stdlib/decimal_sample.expected` |
+| `stdlib/decimal_sample_test.kofun` | owned | `tests/stdlib/kotest/check.sh` |
+| `stdlib/json_sample.kofun` | runs | `stdlib/json_sample.expected` |
+| `stdlib/json_sample_test.kofun` | owned | `tests/stdlib/kotest/check.sh` |
+| `stdlib/list_sample.kofun` | runs | `stdlib/list_sample.expected` |
+| `stdlib/list_sample_test.kofun` | owned | `tests/stdlib/kotest/check.sh` |
+| `stdlib/logging_sample.kofun` | runs | `stdlib/logging_sample.expected` |
+| `stdlib/logging_sample_test.kofun` | owned | `tests/stdlib/kotest/check.sh` |
+| `stdlib/map_sample.kofun` | runs | `stdlib/map_sample.expected` |
+| `stdlib/map_sample_test.kofun` | owned | `tests/stdlib/kotest/check.sh` |
+| `stdlib/random_sample.kofun` | runs | `stdlib/random_sample.expected` |
+| `stdlib/random_sample_test.kofun` | owned | `tests/stdlib/kotest/check.sh` |
+| `stdlib/regex_sample.kofun` | runs | `stdlib/regex_sample.expected` |
+| `stdlib/regex_sample_test.kofun` | owned | `tests/stdlib/kotest/check.sh` |
+| `stdlib/set_sample.kofun` | runs | `stdlib/set_sample.expected` |
+| `stdlib/set_sample_test.kofun` | owned | `tests/stdlib/kotest/check.sh` |
+| `stdlib/testing_sample.kofun` | runs | `stdlib/testing_sample.expected` |
+| `stdlib/testing_sample_test.kofun` | owned | `tests/stdlib/kotest/check.sh` |
+| `stdlib/toml_sample.kofun` | runs | `stdlib/toml_sample.expected` |
+| `stdlib/toml_sample_test.kofun` | owned | `tests/stdlib/kotest/check.sh` |
+| `stdlib/tuple_sample.kofun` | runs | `stdlib/tuple_sample.expected` |
+| `stdlib/tuple_sample_test.kofun` | owned | `tests/stdlib/kotest/check.sh` |
+| `stdlib/vector_sample.kofun` | runs | `stdlib/vector_sample.expected` |
+| `stdlib/vector_sample_test.kofun` | owned | `tests/stdlib/kotest/check.sh` |
 | `tui_dashboard.kofun` | owned | `framework/tui/check.sh` |
 | `wasm-browser/app.kofun` | owned | `docs/tour/check.sh` |
 | `wasm_arithmetic.kofun` | owned | `bootstrap/wasm/check.sh` |

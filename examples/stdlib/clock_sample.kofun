@@ -1,0 +1,118 @@
+# stdlib/clock sample: clock-tagged instants, non-negative durations,
+# checked elapsed/deadline arithmetic, and an explicit manual clock — the
+# canonical stdlib/clock/clock.kofun contract with no host time anywhere.
+#
+# Instants are nanosecond counts on an explicit manual clock; elapsed time
+# between two readings is a typed outcome (a backwards pair is an error,
+# never a negative duration); and deadline arithmetic is preflight-checked
+# against overflow.  Time only advances when the owner advances it.
+#
+# Tests live in clock_sample_test.kofun and run with `kofun unittest`.
+
+type ManualClock = {
+    now_nanoseconds: Int,
+}
+
+type ClockOutcome =
+    | ClockDuration(nanoseconds: Int)
+    | ClockBackwards(difference: Int)
+    | ClockOverflow(limit: Int)
+
+fn clock_maximum() -> Int {
+    return 1000000000000
+}
+
+fn clock_start_at(nanoseconds: Int) -> ManualClock {
+    let clock: ManualClock = ManualClock(now_nanoseconds: nanoseconds)
+    return clock
+}
+
+fn clock_now(clock: ManualClock) -> Int {
+    return clock.now_nanoseconds
+}
+
+# Advancing by a negative amount is refused: the clock never runs backwards.
+fn clock_advance(clock: ManualClock, nanoseconds: Int) -> ManualClock {
+    if nanoseconds <= 0 {
+        return clock
+    }
+    return clock_start_at(clock.now_nanoseconds + nanoseconds)
+}
+
+# Elapsed time from an earlier reading to a later one.  A backwards pair is
+# the typed failure carrying how far backwards it went.
+fn clock_elapsed(earlier: Int, later: Int) -> ClockOutcome {
+    if later < earlier {
+        return ClockBackwards(earlier - later)
+    }
+    return ClockDuration(later - earlier)
+}
+
+# Preflight-checked deadline: reading + wait, refused before it overflows
+# the clock's representable range.
+fn clock_deadline(reading: Int, wait_nanoseconds: Int) -> ClockOutcome {
+    if wait_nanoseconds < 0 {
+        return ClockBackwards(0 - wait_nanoseconds)
+    }
+    if reading > clock_maximum() - wait_nanoseconds {
+        return ClockOverflow(clock_maximum())
+    }
+    return ClockDuration(reading + wait_nanoseconds)
+}
+
+fn clock_outcome_code(outcome: ClockOutcome) -> Int {
+    match outcome {
+        ClockDuration(_) => { return 0 },
+        ClockBackwards(_) => { return 1 },
+        ClockOverflow(_) => { return 2 },
+    }
+    return 0 - 1
+}
+
+fn clock_outcome_value(outcome: ClockOutcome) -> Int {
+    match outcome {
+        ClockDuration(nanoseconds) => { return nanoseconds },
+        ClockBackwards(difference) => { return difference },
+        ClockOverflow(limit) => { return limit },
+    }
+    return 0 - 1
+}
+
+# A deadline has passed when the current reading is at or past it.
+fn clock_deadline_passed(reading: Int, deadline: Int) -> Int {
+    if reading >= deadline {
+        return 1
+    }
+    return 0
+}
+
+# Dependency injection: code that needs time takes a reading function, so
+# tests substitute a scripted clock and production wires the real adapter.
+fn measure_with(read_clock: Int -> Int) -> Int {
+    let before = read_clock(0)
+    let after = read_clock(1)
+    let outcome: ClockOutcome = clock_elapsed(before, after)
+    return clock_outcome_value(outcome)
+}
+
+fn main() {
+    let boot: ManualClock = clock_start_at(1000)
+    print(clock_now(boot))
+    let later: ManualClock = clock_advance(boot, 500)
+    print(clock_now(later))
+    let held: ManualClock = clock_advance(later, 0 - 99)
+    print(clock_now(held))
+    let elapsed: ClockOutcome = clock_elapsed(clock_now(boot), clock_now(later))
+    print(clock_outcome_code(elapsed))
+    print(clock_outcome_value(elapsed))
+    let backwards: ClockOutcome = clock_elapsed(clock_now(later), clock_now(boot))
+    print(clock_outcome_code(backwards))
+    print(clock_outcome_value(backwards))
+    let deadline: ClockOutcome = clock_deadline(clock_now(later), 250)
+    print(clock_outcome_value(deadline))
+    print(clock_deadline_passed(1750, 1750))
+    print(clock_deadline_passed(1749, 1750))
+    let overflow: ClockOutcome = clock_deadline(clock_maximum(), 1)
+    print(clock_outcome_code(overflow))
+    print(measure_with(step => 100 + step * 25))
+}

@@ -329,6 +329,11 @@ tasks:
     cmds:
       - "sh stdlib/tests/verify.sh"
 
+  kotest:
+    desc: "Verify the kotest unit-test framework, runner, and stdlib samples"
+    cmds:
+      - "sh tests/stdlib/kotest/check.sh"
+
   clock-adapters:
     desc: "Verify explicit clock identities, fake time, and Linux integration"
     cmds:
@@ -682,6 +687,7 @@ tasks:
             cli-framework \
             tui-framework \
             stdlib \
+            kotest \
             clock-adapters \
             scoped-parallelism \
             schedule-trace \

@@ -1,0 +1,140 @@
+# stdlib/regex sample: a bounded Regex v1 matcher, executable today.
+#
+# The canonical stdlib/regex/regex.kofun contract: literals, the `.`
+# wildcard, `*` repetition with explicit backtracking, and typed compile
+# errors.  This profile implements exactly that surface with a classic
+# recursive matcher (the shape of the matcher in Kernighan and Pike): a
+# pattern is literal characters and `.`; a trailing `*` repeats the
+# preceding element zero or more times.  Matches are anchored to the whole
+# subject, and compile validation rejects a dangling or doubled `*` with
+# its byte position instead of guessing.
+#
+# Tests live in regex_sample_test.kofun and run with `kofun unittest`.
+
+type RegexCompile =
+    | RegexReady(length: Int)
+    | RegexDanglingStar(position: Int)
+    | RegexDoubledStar(position: Int)
+
+fn regex_char_is(text: Text, position: Int, expected: Text) -> Int {
+    if position < 0 {
+        return 0
+    }
+    if position >= len(text) {
+        return 0
+    }
+    if text_slice(text, position, position + 1) == expected {
+        return 1
+    }
+    return 0
+}
+
+fn regex_validate_from(pattern: Text, position: Int) -> RegexCompile {
+    if position >= len(pattern) {
+        return RegexReady(len(pattern))
+    }
+    if regex_char_is(pattern, position, "*") == 1 {
+        if position == 0 {
+            return RegexDanglingStar(0)
+        }
+        if regex_char_is(pattern, position - 1, "*") == 1 {
+            return RegexDoubledStar(position)
+        }
+    }
+    return regex_validate_from(pattern, position + 1)
+}
+
+# Typed compile validation: `*` must follow a literal or `.`.
+fn regex_compile(pattern: Text) -> RegexCompile {
+    return regex_validate_from(pattern, 0)
+}
+
+fn regex_compile_ok(pattern: Text) -> Int {
+    let outcome: RegexCompile = regex_compile(pattern)
+    match outcome {
+        RegexReady(_) => { return 1 },
+        RegexDanglingStar(_) => { return 0 },
+        RegexDoubledStar(_) => { return 0 },
+    }
+    return 0
+}
+
+# One pattern element matches one subject character: itself, or `.` for any.
+fn regex_element_matches(pattern: Text, position: Int, subject: Text, at: Int) -> Int {
+    if at >= len(subject) {
+        return 0
+    }
+    if regex_char_is(pattern, position, ".") == 1 {
+        return 1
+    }
+    if text_slice(pattern, position, position + 1) == text_slice(subject, at, at + 1) {
+        return 1
+    }
+    return 0
+}
+
+fn regex_next_is_star(pattern: Text, position: Int) -> Int {
+    return regex_char_is(pattern, position + 1, "*")
+}
+
+# Anchored recursive matcher with explicit backtracking for `*`: try the
+# empty repetition first, then consume one matching character and retry.
+fn regex_match_here(pattern: Text, position: Int, subject: Text, at: Int) -> Int {
+    if position >= len(pattern) {
+        if at >= len(subject) {
+            return 1
+        }
+        return 0
+    }
+    if regex_next_is_star(pattern, position) == 1 {
+        return regex_match_star(pattern, position, subject, at)
+    }
+    if regex_element_matches(pattern, position, subject, at) == 1 {
+        return regex_match_here(pattern, position + 1, subject, at + 1)
+    }
+    return 0
+}
+
+fn regex_match_star(pattern: Text, position: Int, subject: Text, at: Int) -> Int {
+    if regex_match_here(pattern, position + 2, subject, at) == 1 {
+        return 1
+    }
+    if regex_element_matches(pattern, position, subject, at) == 1 {
+        return regex_match_star(pattern, position, subject, at + 1)
+    }
+    return 0
+}
+
+# Whole-subject match of a validated pattern; an invalid pattern never
+# matches (the caller distinguishes the cases through regex_compile).
+fn regex_full_match(pattern: Text, subject: Text) -> Int {
+    if regex_compile_ok(pattern) == 0 {
+        return 0
+    }
+    return regex_match_here(pattern, 0, subject, 0)
+}
+
+fn regex_report(pattern: Text, subject: Text) -> Int {
+    print(regex_full_match(pattern, subject))
+    return 0
+}
+
+fn main() {
+    let ignored0 = regex_report("kofun", "kofun")
+    let ignored1 = regex_report("kofun", "kofan")
+    let ignored2 = regex_report("k.fun", "kofun")
+    let ignored3 = regex_report("ko*fun", "kfun")
+    let ignored4 = regex_report("ko*fun", "kooooofun")
+    let ignored5 = regex_report(".*", "anything")
+    let ignored6 = regex_report("a*b*c*", "aabcc")
+    let ignored7 = regex_report("abc", "ab")
+    print(regex_compile_ok("*oops"))
+    print(regex_compile_ok("a**"))
+    let doubled: RegexCompile = regex_compile("a**")
+    match doubled {
+        RegexDoubledStar(position) => { print(position) },
+        _ => { print(0 - 1) },
+    }
+    print(ignored0 + ignored1 + ignored2 + ignored3 +
+          ignored4 + ignored5 + ignored6 + ignored7)
+}

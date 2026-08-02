@@ -1,0 +1,96 @@
+# kotest suite for random_sample.kofun; run with `kofun unittest`.
+
+fn test_same_seed_same_sequence() -> Int {
+    let mut failures = 0
+    let seed = random_seed(42)
+    let first_run = random_digit_sum(seed, 8)
+    let second_run = random_digit_sum(seed, 8)
+    failures = failures + expect_eq_int(first_run, second_run)
+    failures = failures + expect_eq_int(
+        random_next_state(seed), random_next_state(seed))
+    return failures
+}
+
+fn test_different_seeds_diverge() -> Int {
+    let mut failures = 0
+    failures = failures + expect_ne_int(
+        random_digit_sum(random_seed(1), 8),
+        random_digit_sum(random_seed(2), 8))
+    return failures
+}
+
+fn test_seed_folds_into_range() -> Int {
+    let mut failures = 0
+    failures = failures + expect_between_int(
+        random_seed(0 - 42), 0, random_modulus() - 1)
+    failures = failures + expect_between_int(
+        random_seed(42), 0, random_modulus() - 1)
+    failures = failures + expect_eq_int(random_seed(42), 42)
+    failures = failures + expect_eq_int(
+        random_seed(random_modulus() + 7), 7)
+    return failures
+}
+
+fn test_states_stay_in_range() -> Int {
+    let mut failures = 0
+    let seed = random_seed(99)
+    let first = random_next_state(seed)
+    let second = random_next_state(first)
+    let third = random_next_state(second)
+    failures = failures + expect_between_int(first, 0, random_modulus() - 1)
+    failures = failures + expect_between_int(second, 0, random_modulus() - 1)
+    failures = failures + expect_between_int(third, 0, random_modulus() - 1)
+    return failures
+}
+
+fn test_bounded_draws_respect_their_bound() -> Int {
+    let mut failures = 0
+    let seed = random_seed(7)
+    failures = failures + expect_between_int(random_bounded(seed, 10), 0, 9)
+    failures = failures + expect_between_int(random_bounded(seed, 6), 0, 5)
+    failures = failures + expect_between_int(random_bounded(seed, 2), 0, 1)
+    # A draw with the same seed and bound is reproducible.
+    failures = failures + expect_eq_int(
+        random_bounded(seed, 10), random_bounded(seed, 10))
+    return failures
+}
+
+fn test_bounded_rejects_impossible_bounds() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(random_bounded(random_seed(7), 0), 0 - 1)
+    failures = failures + expect_eq_int(
+        random_bounded(random_seed(7), 0 - 3), 0 - 1)
+    return failures
+}
+
+fn test_rejection_limit_is_unbiased() -> Int {
+    let mut failures = 0
+    let draw_range = random_modulus() // 65536
+    failures = failures + expect_eq_int(random_rejection_limit(1), draw_range)
+    failures = failures + expect_eq_int(random_rejection_limit(7) % 7, 0)
+    failures = failures + expect_le_int(random_rejection_limit(7), draw_range)
+    failures = failures + expect_gt_int(
+        random_rejection_limit(7), draw_range - 7)
+    return failures
+}
+
+fn test_dice_with_scripted_stepper_mock() -> Int {
+    let mut failures = 0
+    # The stepper mock advances by exactly one draw unit per call, so both
+    # dice read deterministic scripted values: draw(65536)=1 → 1%6=1 and
+    # draw(131072)=2 → 2%6=2, so the roll is 1+2+2 = 5.
+    failures = failures + expect_eq_int(
+        roll_two_dice(state => state + 65536, 0), 5)
+    # The real stepper stays reproducible through the same entry point.
+    failures = failures + expect_eq_int(
+        roll_two_dice(state => random_next_state(state), random_seed(42)),
+        roll_two_dice(state => random_next_state(state), random_seed(42)))
+    return failures
+}
+
+fn test_dice_range_with_real_generator() -> Int {
+    let mut failures = 0
+    let roll = roll_two_dice(state => random_next_state(state), random_seed(3))
+    failures = failures + expect_between_int(roll, 2, 12)
+    return failures
+}

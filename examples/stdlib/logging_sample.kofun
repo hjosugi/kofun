@@ -1,0 +1,160 @@
+# stdlib/logging sample: structured records, explicit level thresholds, and
+# typed field validation — the canonical stdlib/logging/logging.kofun
+# contract with no ambient clock, global logger, or sink.
+#
+# Levels are ordered Int codes (10 debug, 20 info, 30 warn, 40 error); a
+# record carries a level, an event code, and one structured Int field; and
+# rendering is deterministic: a threshold either admits a record or drops
+# it, and field keys are validated with typed errors, never coerced.
+#
+# Tests live in logging_sample_test.kofun and run with `kofun unittest`.
+
+type LogRecord = {
+    level: Int,
+    event: Int,
+    field_key: Int,
+    field_value: Int,
+}
+
+type FieldCheck =
+    | FieldAccepted(key: Int)
+    | FieldKeyOutOfRange(key: Int)
+    | FieldValueOutOfRange(value: Int)
+
+fn log_level_debug() -> Int {
+    return 10
+}
+
+fn log_level_info() -> Int {
+    return 20
+}
+
+fn log_level_warn() -> Int {
+    return 30
+}
+
+fn log_level_error() -> Int {
+    return 40
+}
+
+fn log_level_is_known(level: Int) -> Int {
+    if level == log_level_debug() {
+        return 1
+    }
+    if level == log_level_info() {
+        return 1
+    }
+    if level == log_level_warn() {
+        return 1
+    }
+    if level == log_level_error() {
+        return 1
+    }
+    return 0
+}
+
+# Threshold admission: a record passes when its level is at least the
+# threshold and both levels are known.
+fn log_should_emit(threshold: Int, level: Int) -> Int {
+    if log_level_is_known(threshold) == 0 {
+        return 0
+    }
+    if log_level_is_known(level) == 0 {
+        return 0
+    }
+    if level >= threshold {
+        return 1
+    }
+    return 0
+}
+
+# Structured field keys are a closed registry 1..99; values must stay in
+# a bounded, renderable range.  Violations are typed, never truncated.
+fn log_validate_field(key: Int, value: Int) -> FieldCheck {
+    if key < 1 {
+        return FieldKeyOutOfRange(key)
+    }
+    if key > 99 {
+        return FieldKeyOutOfRange(key)
+    }
+    if value < 0 - 999999 {
+        return FieldValueOutOfRange(value)
+    }
+    if value > 999999 {
+        return FieldValueOutOfRange(value)
+    }
+    return FieldAccepted(key)
+}
+
+fn log_field_check_code(outcome: FieldCheck) -> Int {
+    match outcome {
+        FieldAccepted(_) => { return 0 },
+        FieldKeyOutOfRange(_) => { return 1 },
+        FieldValueOutOfRange(_) => { return 2 },
+    }
+    return 0 - 1
+}
+
+fn log_make_record(level: Int, event: Int, field_key: Int, field_value: Int) -> LogRecord {
+    let record: LogRecord = LogRecord(
+        level: level,
+        event: event,
+        field_key: field_key,
+        field_value: field_value    )
+    return record
+}
+
+fn log_print_level_label(level: Int) -> Int {
+    if level == log_level_debug() {
+        print("DEBUG")
+        return 1
+    }
+    if level == log_level_info() {
+        print("INFO")
+        return 1
+    }
+    if level == log_level_warn() {
+        print("WARN")
+        return 1
+    }
+    if level == log_level_error() {
+        print("ERROR")
+        return 1
+    }
+    print("UNKNOWN")
+    return 0
+}
+
+# Deterministic renderer: label line, event line, then key and value lines,
+# but only when the threshold admits the record and its field validates.
+# The return value reports what happened: 1 emitted, 0 dropped by
+# threshold, -1 invalid field.
+fn log_emit(threshold: Int, record: LogRecord) -> Int {
+    let check: FieldCheck = log_validate_field(record.field_key, record.field_value)
+    if log_field_check_code(check) != 0 {
+        return 0 - 1
+    }
+    if log_should_emit(threshold, record.level) == 0 {
+        return 0
+    }
+    let ignored = log_print_level_label(record.level)
+    print(record.event)
+    print(record.field_key)
+    print(record.field_value)
+    return 1 + ignored * 0
+}
+
+fn main() {
+    let boot: LogRecord = log_make_record(log_level_info(), 7001, 42, 250)
+    print(log_emit(log_level_debug(), boot))
+    let noisy: LogRecord = log_make_record(log_level_debug(), 7002, 8, 1)
+    print(log_emit(log_level_warn(), noisy))
+    let failure: LogRecord = log_make_record(log_level_error(), 7003, 9, 0 - 5)
+    print(log_emit(log_level_warn(), failure))
+    let broken: LogRecord = log_make_record(log_level_info(), 7004, 500, 1)
+    print(log_emit(log_level_debug(), broken))
+    print(log_should_emit(log_level_info(), log_level_info()))
+    print(log_should_emit(log_level_info(), 25))
+    let ignored = log_print_level_label(99)
+    print(ignored)
+}

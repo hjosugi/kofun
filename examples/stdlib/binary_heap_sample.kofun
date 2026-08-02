@@ -1,0 +1,186 @@
+# stdlib/binary_heap sample: a value-returning BinaryHeapInt min-heap.
+#
+# The canonical stdlib/binary_heap/binary_heap.kofun contract: push and
+# pop-min as value-returning operations, a typed empty failure, and
+# deterministic ascending drain order (duplicates preserved).  The bounded
+# executable representation stores up to four values in a real array-heap
+# layout (root at slot 0) with genuine sift-up and sift-down.
+#
+# Tests live in binary_heap_sample_test.kofun and run with `kofun unittest`.
+
+type BinaryHeapInt = {
+    count: Int,
+    node0: Int,
+    node1: Int,
+    node2: Int,
+    node3: Int,
+}
+
+type HeapOutcome =
+    | HeapValue(value: Int)
+    | HeapEmpty(count: Int)
+
+fn heap_capacity() -> Int {
+    return 4
+}
+
+fn heap_empty() -> BinaryHeapInt {
+    let value: BinaryHeapInt = BinaryHeapInt(
+        count: 0,
+        node0: 0,
+        node1: 0,
+        node2: 0,
+        node3: 0    )
+    return value
+}
+
+fn heap_size(heap: BinaryHeapInt) -> Int {
+    return heap.count
+}
+
+fn heap_node(heap: BinaryHeapInt, position: Int) -> Int {
+    if position == 0 {
+        return heap.node0
+    }
+    if position == 1 {
+        return heap.node1
+    }
+    if position == 2 {
+        return heap.node2
+    }
+    return heap.node3
+}
+
+fn node_pick(position: Int, target: Int, replacement: Int, current: Int) -> Int {
+    if position == target {
+        return replacement
+    }
+    return current
+}
+
+fn heap_with_node(heap: BinaryHeapInt, position: Int, value: Int) -> BinaryHeapInt {
+    let updated: BinaryHeapInt = BinaryHeapInt(
+        count: heap.count,
+        node0: node_pick(0, position, value, heap.node0),
+        node1: node_pick(1, position, value, heap.node1),
+        node2: node_pick(2, position, value, heap.node2),
+        node3: node_pick(3, position, value, heap.node3)    )
+    return updated
+}
+
+fn heap_with_count(heap: BinaryHeapInt, count: Int) -> BinaryHeapInt {
+    let updated: BinaryHeapInt = BinaryHeapInt(
+        count: count,
+        node0: heap.node0,
+        node1: heap.node1,
+        node2: heap.node2,
+        node3: heap.node3    )
+    return updated
+}
+
+fn heap_swap(heap: BinaryHeapInt, left: Int, right: Int) -> BinaryHeapInt {
+    let left_value = heap_node(heap, left)
+    let right_value = heap_node(heap, right)
+    return heap_with_node(heap_with_node(heap, left, right_value), right, left_value)
+}
+
+# Restore the min-heap invariant upward from `position`.
+fn heap_sift_up(heap: BinaryHeapInt, position: Int) -> BinaryHeapInt {
+    if position == 0 {
+        return heap
+    }
+    let parent = (position - 1) // 2
+    if heap_node(heap, position) < heap_node(heap, parent) {
+        return heap_sift_up(heap_swap(heap, position, parent), parent)
+    }
+    return heap
+}
+
+fn heap_smaller_child(heap: BinaryHeapInt, position: Int) -> Int {
+    let left = position * 2 + 1
+    let right = position * 2 + 2
+    if left >= heap.count {
+        return 0 - 1
+    }
+    if right >= heap.count {
+        return left
+    }
+    if heap_node(heap, right) < heap_node(heap, left) {
+        return right
+    }
+    return left
+}
+
+# Restore the min-heap invariant downward from `position`.
+fn heap_sift_down(heap: BinaryHeapInt, position: Int) -> BinaryHeapInt {
+    let child = heap_smaller_child(heap, position)
+    if child < 0 {
+        return heap
+    }
+    if heap_node(heap, child) < heap_node(heap, position) {
+        return heap_sift_down(heap_swap(heap, position, child), child)
+    }
+    return heap
+}
+
+# Value-returning push; a full heap is returned unchanged (the caller sees
+# the boundary through heap_size against heap_capacity).
+fn heap_push(heap: BinaryHeapInt, value: Int) -> BinaryHeapInt {
+    if heap.count >= heap_capacity() {
+        return heap
+    }
+    let placed: BinaryHeapInt = heap_with_node(heap, heap.count, value)
+    let grown: BinaryHeapInt = heap_with_count(placed, heap.count + 1)
+    return heap_sift_up(grown, heap.count)
+}
+
+fn heap_peek(heap: BinaryHeapInt) -> HeapOutcome {
+    if heap.count == 0 {
+        return HeapEmpty(0)
+    }
+    return HeapValue(heap.node0)
+}
+
+# The heap after removing its minimum; popping an empty heap is the typed
+# failure surfaced by heap_peek, and the empty heap is returned unchanged.
+fn heap_drop_min(heap: BinaryHeapInt) -> BinaryHeapInt {
+    if heap.count == 0 {
+        return heap
+    }
+    let moved: BinaryHeapInt = heap_with_node(
+        heap, 0, heap_node(heap, heap.count - 1))
+    let shrunk: BinaryHeapInt = heap_with_count(moved, heap.count - 1)
+    return heap_sift_down(shrunk, 0)
+}
+
+fn heap_value_or(outcome: HeapOutcome, fallback: Int) -> Int {
+    match outcome {
+        HeapValue(value) => { return value },
+        HeapEmpty(_) => { return fallback },
+    }
+    return fallback
+}
+
+fn heap_of_four(a: Int, b: Int, c: Int, d: Int) -> BinaryHeapInt {
+    return heap_push(heap_push(heap_push(heap_push(heap_empty(), a), b), c), d)
+}
+
+# Deterministic ascending drain: prints every value in sorted order.
+fn heap_print_drain(heap: BinaryHeapInt) -> Int {
+    if heap.count == 0 {
+        return 0
+    }
+    print(heap_value_or(heap_peek(heap), 0 - 1))
+    return heap_print_drain(heap_drop_min(heap))
+}
+
+fn main() {
+    let heap: BinaryHeapInt = heap_of_four(9, 4, 7, 1)
+    print(heap_size(heap))
+    print(heap_value_or(heap_peek(heap), 0 - 1))
+    let ignored_drain = heap_print_drain(heap)
+    print(heap_value_or(heap_peek(heap_empty()), 0 - 1))
+    print(heap_size(heap_drop_min(heap_empty())))
+    print(heap_capacity())
+    print(ignored_drain)
+}

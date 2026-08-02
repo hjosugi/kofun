@@ -1,5 +1,16 @@
 # Deterministic testing API checkpoint
 
+This directory now holds two layers:
+
+- [`kotest.kofun`](kotest.kofun) — the **executable** unit-test framework:
+  assertions, spies/stubs, and reporting that compile and run through the
+  Stage 2 C11 path today.  `./bin/kofun unittest` runs suites with it; see
+  [`tooling/kotest/README.md`](../../tooling/kotest/README.md) and its gate
+  `task kotest`.  Its own suite is
+  [`tests/kotest_selfcheck_test.kofun`](tests/kotest_selfcheck_test.kofun).
+- [`testing.kofun`](testing.kofun) — the canonical ADT specification below,
+  still ahead of Stage 2 codegen and gated by an Int-Core projection.
+
 [`testing.kofun`](testing.kofun) defines a small, pure testing surface. Each
 assertion has a case name and returns `TestResult`; it does not abort, print,
 read a clock, use randomness, or mutate global state. A runner can therefore

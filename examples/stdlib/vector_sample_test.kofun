@@ -1,0 +1,89 @@
+# kotest suite for vector_sample.kofun; run with `kofun unittest`.
+
+fn test_length_and_checked_access() -> Int {
+    let mut failures = 0
+    let vector: IntVector = vector_of(5, 6, 7)
+    failures = failures + expect_eq_int(vector_length(vector), 3)
+    failures = failures + expect_eq_int(vector_value_or(vector_get(vector, 0), 0 - 1), 5)
+    failures = failures + expect_eq_int(vector_value_or(vector_get(vector, 2), 0 - 1), 7)
+    failures = failures + expect_eq_int(vector_length(vector_empty()), 0)
+    return failures
+}
+
+fn test_out_of_range_is_a_typed_failure() -> Int {
+    let mut failures = 0
+    let vector: IntVector = vector_of(5, 6, 7)
+    let low: VectorOutcome = vector_get(vector, 0 - 1)
+    match low {
+        VectorIndexOutside(index) => {
+            failures = failures + expect_eq_int(index, 0 - 1)
+        },
+        _ => { failures = failures + fail_now("expected VectorIndexOutside") },
+    }
+    let high: VectorOutcome = vector_get(vector, 3)
+    match high {
+        VectorIndexOutside(index) => {
+            failures = failures + expect_eq_int(index, 3)
+        },
+        _ => { failures = failures + fail_now("expected VectorIndexOutside") },
+    }
+    let empty_read: VectorOutcome = vector_get(vector_empty(), 0)
+    match empty_read {
+        VectorIndexOutside(index) => {
+            failures = failures + expect_eq_int(index, 0)
+        },
+        _ => { failures = failures + fail_now("expected VectorIndexOutside") },
+    }
+    return failures
+}
+
+fn test_with_value_is_functional() -> Int {
+    let mut failures = 0
+    let base: IntVector = vector_of(1, 2, 3)
+    let updated: IntVector = vector_with_value(base, 1, 20)
+    failures = failures + expect_eq_int(vector_value_or(vector_get(updated, 0), 0), 1)
+    failures = failures + expect_eq_int(vector_value_or(vector_get(updated, 1), 0), 20)
+    failures = failures + expect_eq_int(vector_value_or(vector_get(updated, 2), 0), 3)
+    failures = failures + expect_eq_int(vector_value_or(vector_get(base, 1), 0), 2)
+    return failures
+}
+
+fn test_with_value_outside_returns_input() -> Int {
+    let mut failures = 0
+    let base: IntVector = vector_of(1, 2, 3)
+    let unchanged: IntVector = vector_with_value(base, 9, 99)
+    failures = failures + expect_eq_int(vector_sum(unchanged), 6)
+    let negative: IntVector = vector_with_value(base, 0 - 1, 99)
+    failures = failures + expect_eq_int(vector_sum(negative), 6)
+    return failures
+}
+
+fn test_map_preserves_order_and_size() -> Int {
+    let mut failures = 0
+    let base: IntVector = vector_of(2, 4, 6)
+    let halved: IntVector = vector_map(base, value => value // 2)
+    failures = failures + expect_eq_int(vector_length(halved), 3)
+    failures = failures + expect_eq_int(vector_value_or(vector_get(halved, 0), 0), 1)
+    failures = failures + expect_eq_int(vector_value_or(vector_get(halved, 1), 0), 2)
+    failures = failures + expect_eq_int(vector_value_or(vector_get(halved, 2), 0), 3)
+    return failures
+}
+
+fn test_zip_with_combines_pairwise() -> Int {
+    let mut failures = 0
+    let left: IntVector = vector_of(1, 2, 3)
+    let right: IntVector = vector_of(10, 20, 30)
+    let sums: IntVector = vector_zip_with(left, right, (a, b) => a + b)
+    failures = failures + expect_eq_int(vector_value_or(vector_get(sums, 0), 0), 11)
+    failures = failures + expect_eq_int(vector_value_or(vector_get(sums, 1), 0), 22)
+    failures = failures + expect_eq_int(vector_value_or(vector_get(sums, 2), 0), 33)
+    let dot: IntVector = vector_zip_with(left, right, (a, b) => a * b)
+    failures = failures + expect_eq_int(vector_sum(dot), 140)
+    return failures
+}
+
+fn test_sum_of_empty_is_zero() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(vector_sum(vector_empty()), 0)
+    return failures
+}

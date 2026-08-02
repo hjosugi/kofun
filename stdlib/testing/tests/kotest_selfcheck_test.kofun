@@ -1,0 +1,139 @@
+# kotest exercising kotest.  Every test here must pass; the deliberately
+# failing paths live in tests/stdlib/kotest/fixtures/failing_test.kofun where
+# the gate asserts the nonzero exit and the diagnostic lines.
+
+fn test_int_assertions_pass_silently() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(6 * 7, 42)
+    failures = failures + expect_ne_int(6 * 7, 41)
+    failures = failures + expect_lt_int(41, 42)
+    failures = failures + expect_le_int(42, 42)
+    failures = failures + expect_gt_int(43, 42)
+    failures = failures + expect_ge_int(42, 42)
+    failures = failures + expect_between_int(0, 0 - 5, 5)
+    return failures
+}
+
+fn test_failing_assertions_count_once_each() -> Int {
+    let mut failures = 0
+    # A failing assertion returns exactly 1; feed deliberately wrong values
+    # into a scratch total and assert on that total instead of the harness
+    # channel.  The printed diagnostics are expected output of this test.
+    let mut scratch = 0
+    scratch = scratch + expect_eq_int(1, 2)
+    scratch = scratch + expect_ne_int(3, 3)
+    scratch = scratch + expect_between_int(9, 0, 5)
+    failures = failures + expect_eq_int(scratch, 3)
+    return failures
+}
+
+fn test_text_assertions() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_text("kofun", "kofun")
+    failures = failures + expect_ne_text("kofun", "kotlin")
+    failures = failures + expect_text_len("", 0)
+    failures = failures + expect_text_len("kofun", 5)
+    failures = failures + expect_text_starts_with("kotest", "ko")
+    failures = failures + expect_text_starts_with("kotest", "kotest")
+    failures = failures + expect_text_contains("unit testing", "t t")
+    failures = failures + expect_text_contains("unit testing", "unit")
+    failures = failures + expect_text_contains("unit testing", "sting")
+    return failures
+}
+
+fn test_text_predicate_boundaries() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(text_has_prefix("ko", "kofun"), 0)
+    failures = failures + expect_eq_int(text_has_fragment("kofun", "fux"), 0)
+    failures = failures + expect_eq_int(text_has_fragment("aaa", "aa"), 1)
+    failures = failures + expect_eq_int(text_has_fragment("", ""), 1)
+    return failures
+}
+
+fn is_even_flag(value: Int) -> Int {
+    if value % 2 == 0 {
+        return 1
+    }
+    return 0
+}
+
+fn test_predicate_assertion() -> Int {
+    let mut failures = 0
+    failures = failures + expect_that_int(8, value => 1 - value % 2)
+    failures = failures + expect_that_int(10, is_even_flag)
+    let mut scratch = 0
+    scratch = scratch + expect_that_int(7, is_even_flag)
+    failures = failures + expect_eq_int(scratch, 1)
+    return failures
+}
+
+fn test_junit_aliases_share_behavior() -> Int {
+    let mut failures = 0
+    failures = failures + assert_equals_int(42, 42)
+    failures = failures + assert_not_equals_int(41, 42)
+    failures = failures + assert_equals_text("a", "a")
+    let mut scratch = 0
+    scratch = scratch + assert_equals_int(1, 2)
+    failures = failures + expect_eq_int(scratch, 1)
+    return failures
+}
+
+fn test_spy_records_count_and_last_argument() -> Int {
+    let mut failures = 0
+    let mut spy = spy_init()
+    failures = failures + expect_eq_int(spy_count(spy), 0)
+    failures = failures + expect_eq_int(spy_last(spy), 0)
+    spy = spy_record(spy, 11)
+    spy = spy_record(spy, 0 - 22)
+    spy = spy_record(spy, 999999)
+    failures = failures + verify_called_times(spy, 3)
+    failures = failures + verify_last_argument(spy, 999999)
+    spy = spy_record(spy, 0 - 999999)
+    failures = failures + verify_last_argument(spy, 0 - 999999)
+    failures = failures + expect_eq_int(spy_count(spy), 4)
+    return failures
+}
+
+fn test_spy_rejects_out_of_range_arguments() -> Int {
+    let mut failures = 0
+    let mut spy = spy_init()
+    # Out-of-range recordings print a diagnostic and leave the state alone.
+    spy = spy_record(spy, 1000000)
+    spy = spy_record(spy, 0 - 1000000)
+    failures = failures + verify_called_times(spy, 0)
+    return failures
+}
+
+fn test_stub_unreachable_returns_sentinel() -> Int {
+    let mut failures = 0
+    # Calling the stub prints its diagnostic; the sentinel makes the failure
+    # visible to result assertions in the code under test.
+    let poisoned = stub_unreachable(7)
+    failures = failures + expect_eq_int(poisoned, unreachable_sentinel())
+    return failures
+}
+
+fn test_mock_stub_via_callable_parameter() -> Int {
+    let mut failures = 0
+    # Dependency injection: the "production" collaborator is replaced by a
+    # scripted lambda, exactly like a Mockito stub with a programmed return.
+    let fake_clock = tick => 1700000000 + tick
+    failures = failures + expect_eq_int(deadline_after(fake_clock, 30), 1700000030)
+    let frozen_clock = tick => 5 + tick * 0
+    failures = failures + expect_eq_int(deadline_after(frozen_clock, 60), 65)
+    return failures
+}
+
+# A tiny piece of "production" code under test: computes a deadline from an
+# injected clock, so tests never touch host time.
+fn deadline_after(clock: Int -> Int, seconds: Int) -> Int {
+    return clock(0) + seconds
+}
+
+fn test_case_collapse_and_summary_codes() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(kotest_case(0), 0)
+    failures = failures + expect_eq_int(kotest_case(1), 1)
+    failures = failures + expect_eq_int(kotest_case(17), 1)
+    return failures
+}
