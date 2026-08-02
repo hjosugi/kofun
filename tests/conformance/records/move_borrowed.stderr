@@ -1,0 +1,1 @@
+error[E2S122]: `token` is borrowed by `read` and cannot be moved at bytes 91..101; bound by `read` at bytes 59..76

@@ -188,6 +188,8 @@ expect_failure field_assignment E2S121
 expect_failure edit_parameter E2S121
 expect_failure partial_move E2S122
 expect_failure use_after_move E2S123
+expect_failure double_take E2S123
+expect_failure move_borrowed E2S122
 expect_failure argument_type_mismatch E2S124
 expect_failure map_literal E2S125
 expect_failure evaluation_failure E2S126
