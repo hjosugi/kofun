@@ -28,11 +28,13 @@ mkdir -p "$WORK"
 "$CC" -std=c11 -Wall -Wextra -Werror -pedantic \
     "$ROOT/bootstrap/stage2/imports_qualified.c" \
     "$ROOT/bootstrap/stage2/visibility_access.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$TOOL"
 "$CC" -std=c11 -Wall -Wextra -Werror -pedantic \
     "$ROOT/bootstrap/stage2/imports_selective.c" \
     "$ROOT/bootstrap/stage2/visibility_access.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$SELECTIVE_TOOL"
 "$CC" -std=c11 -Wall -Wextra -Werror -pedantic \
@@ -146,6 +148,42 @@ SELECTIVE_STATUS=$?
 set -e
 assert_num "SELECTIVE STATUS" "$SELECTIVE_STATUS" -eq 42
 
+# Alias spellings enter the actual module namespace visible set only after
+# ordinary import resolution. A safe alias resolves the collision; a
+# confusable alias fails before either HIR or backend output is published.
+write_collision_inventory "$FIXTURES/non_confusable_aliases.kofun" \
+    "$WORK/non-confusable-aliases.inventory"
+"$SELECTIVE_TOOL" "$WORK/non-confusable-aliases.inventory" \
+    "$WORK/non-confusable-aliases.hir" \
+    "$WORK/non-confusable-aliases.c"
+assert_grep "non-confusable-aliases.hir" -F '|local=paypal|' \
+    "$WORK/non-confusable-aliases.hir"
+assert_grep "non-confusable-aliases.hir" -F '|local=other_reader|' \
+    "$WORK/non-confusable-aliases.hir"
+
+write_collision_inventory "$FIXTURES/confusable_aliases.kofun" \
+    "$WORK/confusable-aliases.inventory"
+printf '%s\n' stale >"$WORK/confusable-aliases.hir"
+printf '%s\n' stale >"$WORK/confusable-aliases.c"
+set +e
+"$SELECTIVE_TOOL" "$WORK/confusable-aliases.inventory" \
+    "$WORK/confusable-aliases.hir" "$WORK/confusable-aliases.c" \
+    >"$WORK/confusable-aliases.stdout" \
+    2>"$WORK/confusable-aliases.stderr"
+confusable_alias_status=$?
+set -e
+assert_num "confusable alias status" "$confusable_alias_status" -eq 1
+assert_file_empty "confusable-aliases.stderr" \
+    "$WORK/confusable-aliases.stderr"
+assert_grep "confusable-aliases.stdout" -F 'error[EUNICODE008]:' \
+    "$WORK/confusable-aliases.stdout"
+assert_grep "confusable-aliases.stdout" -F '`paypal`' \
+    "$WORK/confusable-aliases.stdout"
+assert_grep "confusable-aliases.stdout" -F '`pаypal`' \
+    "$WORK/confusable-aliases.stdout"
+assert_absent "confusable-aliases.hir" "$WORK/confusable-aliases.hir"
+assert_absent "confusable-aliases.c" "$WORK/confusable-aliases.c"
+
 run_program "$FIXTURES/main_table.kofun" table
 assert_ne "import binding ids in csv.hir and table.hir" \
     "$(sed -n 's/^import|binding=\([0-9a-f]*\)|.*/\1/p' "$WORK/csv.hir")" \
@@ -204,6 +242,7 @@ expect_failure E2S65 "$FIXTURES/default_qualifier.kofun" default-qualifier \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     "$ROOT/bootstrap/stage2/imports_qualified.c" \
     "$ROOT/bootstrap/stage2/visibility_access.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$WORK/imports-qualified-sanitized"
 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \

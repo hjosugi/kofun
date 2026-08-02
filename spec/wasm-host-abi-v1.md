@@ -242,10 +242,10 @@ comparison to refuse it with `vector-drift`.
 
 ## What this document does not claim
 
-- **No code generation.** Nothing here lowers Kofun `Text` or `List` to wasm.
-  The fixture module in `spec/wasm-host-abi-v1/wasm.mjs` is a test artifact
-  assembled from the recomputed vectors, not a backend, and the compiler's
-  wasm output is unchanged.
+- **No code generation in this contract gate.** Nothing here lowers Kofun
+  `Text` or `List` to wasm. The fixture module in
+  `spec/wasm-host-abi-v1/wasm.mjs` is a test artifact assembled from the
+  recomputed vectors, not the separate arena backend implementation.
 - **No WASI.** No command, file, clock, or process capability is described.
 - **No engine matrix.** The reference host runs under one engine: the
   WebAssembly implementation in the Node build that runs the gate. Every
@@ -276,6 +276,29 @@ this contract does not retroactively re-specify it. A module cannot be both:
 adopting the host ABI is a versioned change to that target, recorded as one,
 and `sh bootstrap/wasm/check.sh` passes unchanged today because nothing in this
 document touched it.
+
+## Activation
+
+That versioned change is now recorded. `spec/wasm-host-profile-v1.md` (#1000)
+decides that the host ABI is part of the target name: this contract is
+activated by **`--target wasm32-hostabi1`**, and bare `--target wasm32` stays
+on the bounded numeric binding, which is not deprecated. Toolchains before the
+arena implementation refuse the name with `kofun: unsupported target:` and no
+artifact. Current toolchains emit the required memory/export surface for an
+empty entry point while Text/List sources remain unsupported.
+
+Nothing in this document changes with that decision. It fixes the boundary; the
+profile document fixes which builds arrive at the boundary, what the older
+binding's support state is, and which oracles measure a lowering against this
+contract once one exists.
+
+Identifying the binding needs no engine and no guest execution. The phase 1
+check above, run over bytes assembled elsewhere, is
+`node spec/wasm-host-abi-v1/hostabi.mjs module MODULE.wasm`: it decodes,
+applies the same rules in the same order, and answers with either an accepted
+verdict or one of the diagnostics named above. It links nothing and instantiates
+nothing, which is what makes the verdict usable *before* a host commits to
+supplying imports.
 
 ## Consumers
 

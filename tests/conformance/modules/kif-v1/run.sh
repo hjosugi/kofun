@@ -41,6 +41,7 @@ compile_tool() {
         -I"$ROOT/bootstrap/stage2" "$@" \
         "$ROOT/bootstrap/stage2/kif_v1_tool.c" \
         "$ROOT/bootstrap/stage2/kif_v1.c" \
+        "$ROOT/unicode/kofun_unicode.c" \
         "$ROOT/bootstrap/stage2/sha256.c" \
         -o "$output"
 }
@@ -50,6 +51,7 @@ compile_tool "$CC" "$TOOL"
     -I"$ROOT/bootstrap/stage2" \
     "$CASES/codec_test.c" \
     "$ROOT/bootstrap/stage2/kif_v1.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$WORK/codec-test"
 
@@ -135,6 +137,43 @@ assert_grep "source-free.hir" \
     -F '|qualifier=api|name=exported|' "$WORK/source-free.hir"
 assert_grep "source-free.hir" \
     -F '|arity=1|signature=fn(1:Int)->Int|' "$WORK/source-free.hir"
+
+# The decoded-KIF selective-visible adapter receives the canonical consumer
+# ModuleId, recomputes skeletons from decoded fact names, and checks the same
+# effective vector before atomic HIR publication.
+write_inventory demo/confusable.kofun \
+    "$CASES/fixtures/confusable_interface.kofun" \
+    "$WORK/confusable-interface.inventory"
+"$TOOL" write "$WORK/confusable-interface.inventory" "$MODULE_ID" \
+    edition-1 "$WORK/confusable-interface.kif"
+"$TOOL" resolve-visible "$WORK/confusable-interface.kif" \
+    "$PACKAGE_ID" "$FACADE_MODULE" demo.confusable \
+    "$CASES/fixtures/consumer_visible_safe.kofun" \
+    "$WORK/visible-safe.hir"
+assert_grep "visible-safe.hir" -Fx 'kofun-imports-qualified/v1' \
+    "$WORK/visible-safe.hir"
+printf '%s\n' stale >"$WORK/visible-collision.hir"
+rm "$WORK/visible-collision.hir"
+set +e
+"$TOOL" resolve-visible "$WORK/confusable-interface.kif" \
+    "$PACKAGE_ID" "$FACADE_MODULE" demo.confusable \
+    "$CASES/fixtures/consumer_visible_collision.kofun" \
+    "$WORK/visible-collision.hir" \
+    >"$WORK/visible-collision.stdout" \
+    2>"$WORK/visible-collision.stderr"
+visible_collision_status=$?
+set -e
+assert_num "decoded KIF EUNICODE008 status" \
+    "$visible_collision_status" -eq 1
+assert_file_empty "visible-collision.stderr" \
+    "$WORK/visible-collision.stderr"
+assert_grep "visible-collision.stdout" -F 'error[EUNICODE008]:' \
+    "$WORK/visible-collision.stdout"
+assert_grep "visible-collision.stdout" -F '`paypal`' \
+    "$WORK/visible-collision.stdout"
+assert_grep "visible-collision.stdout" -F '`pаypal`' \
+    "$WORK/visible-collision.stdout"
+assert_absent "visible-collision.hir" "$WORK/visible-collision.hir"
 
 "$TOOL" resolve "$WORK/interface.kif" "$PACKAGE_ID" demo.api \
     "$CASES/fixtures/consumer_internal.kofun" "$WORK/internal.hir"
@@ -321,6 +360,7 @@ fi
     -I"$ROOT/bootstrap/stage2" \
     "$CASES/codec_test.c" \
     "$ROOT/bootstrap/stage2/kif_v1.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$WORK/codec-test-sanitized"
 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
@@ -331,6 +371,7 @@ if "$CC" -std=c11 -O0 -Wall -Wextra -Werror -pedantic -fanalyzer \
     -I"$ROOT/bootstrap/stage2" \
     "$ROOT/bootstrap/stage2/kif_v1_tool.c" \
     "$ROOT/bootstrap/stage2/kif_v1.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$WORK/kofun-kif-v1-analyzed" >/dev/null 2>&1
 then

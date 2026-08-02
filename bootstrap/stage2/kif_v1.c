@@ -2,6 +2,7 @@
 
 #include "kif_v1.h"
 #include "sha256.h"
+#include "../../unicode/kofun_unicode.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -267,6 +268,15 @@ static bool ascii_identifier(const char *text, size_t length) {
     return true;
 }
 
+static bool canonical_identifier(const char *text, size_t length) {
+    return text != NULL && length != 0u &&
+        length <= KOFUN_KIF_MAX_NAME_BYTES &&
+        kofun_unicode_identifier_is_canonical(
+            (const uint8_t *)text,
+            length
+        );
+}
+
 static bool ascii_module_path(const char *text, size_t length) {
     size_t component_start = 0u;
     size_t index;
@@ -463,7 +473,7 @@ static KofunKifStatus validate_fact(
     unsigned namespace_tag;
     const char *namespace_name;
     if (fact == NULL || fact->visibility != expected_visibility ||
-        !ascii_identifier(fact->name, fact->name_length) ||
+        !canonical_identifier(fact->name, fact->name_length) ||
         fact->name[fact->name_length] != '\0' ||
         strlen(fact->name) != fact->name_length ||
         fact_kind_schema_name(fact->kind) == NULL) return KOFUN_KIF_NONCANONICAL;
@@ -1341,7 +1351,9 @@ static KofunKifStatus parse_fact_record(
     fact->kind = (KofunKifFactKind)fields[2].value.bytes[0];
     fact->visibility = (KofunKifVisibility)fields[4].value.bytes[0];
     if (fact->visibility != expected_visibility ||
-        !ascii_identifier((const char *)fields[3].value.bytes, fields[3].value.length)) {
+        !canonical_identifier(
+            (const char *)fields[3].value.bytes,
+            fields[3].value.length)) {
         return KOFUN_KIF_NONCANONICAL;
     }
     fact->name = malloc(fields[3].value.length + 1u);

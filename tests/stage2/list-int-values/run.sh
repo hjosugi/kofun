@@ -22,6 +22,11 @@ fi
 
 . "$root/bootstrap/stage2/build.sh"
 kofun_stage2_build "$root" "$work/kofun-stage2"
+node --check "$fixtures/layout-check.mjs"
+node "$root/spec/aggregate-layout-v1/layout.mjs" describe \
+    "$root/spec/aggregate-layout-v1/targets/x86_64-linux.json" \
+    "$root/spec/aggregate-layout-v1/vectors/core.json" \
+    >"$work/aggregate-layout.json"
 
 compile_success() {
     stem=$1
@@ -35,20 +40,46 @@ compile_success() {
         2>"$work/$stem.compile.stderr"
     assert_file_nonempty "$stem generated C" "$work/$stem.c"
     assert_file_empty "$stem compiler stderr" "$work/$stem.compile.stderr"
-    "$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$compiler" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
         -I"$root/bootstrap/stage2" \
         "$work/$stem.c" \
         -o "$work/$stem"
 }
 
 compile_success complete "$fixtures/complete.kofun"
+node "$fixtures/layout-check.mjs" \
+    "$work/aggregate-layout.json" "$work/complete.c"
+node "$fixtures/layout-check.mjs" \
+    "$work/aggregate-layout.json" "$work/complete.c" mutate-payload \
+    >"$work/layout-drift.c"
+if cmp -s "$work/complete.c" "$work/layout-drift.c"; then
+    fail "descriptor-derived payload mutation did not change emitted C"
+fi
+set +e
+"$compiler" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+    -I"$root/bootstrap/stage2" \
+    "$work/layout-drift.c" \
+    -o "$work/layout-drift" \
+    >"$work/layout-drift.stdout" \
+    2>"$work/layout-drift.stderr"
+layout_status=$?
+set -e
+assert_num "descriptor-derived layout drift status" "$layout_status" -ne 0
+assert_absent "descriptor-derived layout drift binary" "$work/layout-drift"
+assert_file_empty \
+    "descriptor-derived layout drift stdout" \
+    "$work/layout-drift.stdout"
+assert_grep \
+    "descriptor-derived layout drift diagnostic" \
+    -Fq "AggregateLayout List[Int] payload offset" \
+    "$work/layout-drift.stderr"
 "$work/complete" >"$work/complete.stdout" 2>"$work/complete.stderr"
 cmp "$fixtures/complete.stdout" "$work/complete.stdout"
 assert_file_empty "complete runtime stderr" "$work/complete.stderr"
 
 # The native Core C reference is independent of the Stage 2 lowerer. Its
 # binding observation and the emitted C11 program must agree byte for byte.
-"$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
+"$compiler" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
     "$root/bootstrap/native/fixtures/list_int_reference.c" \
     -o "$work/list-int-reference"
 "$work/list-int-reference" binding >"$work/reference.native.stdout"

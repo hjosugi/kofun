@@ -1,0 +1,7 @@
+type Tagged[const label: Text] = {
+    significand: Int,
+}
+
+fn use(value: Tagged[2]) -> Int {
+    return 0
+}

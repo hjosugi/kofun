@@ -26,7 +26,8 @@
     "selfhost",
     "stage1",
     "stage2",
-    "wasm32"
+    "wasm32",
+    "wasm32-hostabi1"
   ],
   "claims": [
     {
@@ -1642,6 +1643,45 @@
       },
       "reproduction": {
         "command": "task wasm",
+        "prerequisites": [
+          "node"
+        ]
+      }
+    },
+    {
+      "id": "wasm32-hostabi1-object-arena",
+      "public_wording": "wasm32 host ABI v1 bounded object arena",
+      "public_status": "executable checkpoint",
+      "state": "checkpoint",
+      "area": "webassembly",
+      "bounded_capability": "The wasm32-hostabi1 target emits one fixed-page linear memory, the v1 export surface, a checked transactional bump allocator, and the recomputed u64 object header encoder for an empty entry point. Text and List lowering remain outside the slice.",
+      "targets": [
+        "wasm32-hostabi1"
+      ],
+      "specification": [
+        "spec/wasm-host-abi-v1.md",
+        "spec/wasm-host-profile-v1.md"
+      ],
+      "compatibility": "Bare wasm32 retains its exact legacy module bytes; wasm32-hostabi1 refuses non-empty source until the value-lowering children land.",
+      "positive_gate": {
+        "command": "sh bootstrap/wasm/object_arena_check.sh",
+        "observation": "The module passes v1 identification and its allocator/header implementation agrees with independent runtime and layout oracles."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "examples/wasm_arithmetic.kofun",
+        "observation": "A non-empty source is refused with no artifact instead of being silently compiled to the empty entry point."
+      },
+      "safety": {
+        "classification": "refusal-boundary",
+        "threat_model": "docs/SECURITY.md",
+        "negative_test": "bootstrap/wasm/object_arena_check.sh"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "task wasm-object-arena",
         "prerequisites": [
           "node"
         ]

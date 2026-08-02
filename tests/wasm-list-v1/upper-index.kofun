@@ -1,0 +1,4 @@
+fn main() {
+    let values: List[Text] = ["only"]
+    print([values[1]])
+}

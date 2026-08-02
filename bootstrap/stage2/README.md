@@ -200,6 +200,35 @@ monomorphization, dictionary selection, layout, or backend emission. The main
 CLI does not route ordinary builds through it. Run its analyzer- and
 sanitizer-backed gate with `task generics`.
 
+`bootstrap/stage2/const_generics_frontend.c` is the separate typed-only
+checkpoint for integer const generics (#916). It accepts a nominal type
+declared with one `const NAME: Int` parameter, gives every instantiation an
+identity keyed by the *value* of its literal argument — so `Fixed[2]` and
+`Fixed[3]` are different types and `Fixed[02]` is the same type as `Fixed[2]`
+— and records one monomorphization row per distinct instantiation in
+`kofun-const-generics-ir/v1`. A const argument normalizes into its own
+`const:Int:N` namespace, disjoint from the `builtin:`/`nominal:` namespaces a
+type argument keeps, so an enclosing identity that embeds a normalized
+argument stays injective. `E2S148`–`E2S152` freeze the declaration, argument,
+arity, instantiation-mismatch, and resource diagnostics. This helper performs
+no const expressions, const inference, const parameters on functions, generic
+functions, dictionary selection, layout, or backend emission.
+
+The same surface is reachable through the ordinary compile path, because a
+frontend-only fact does not complete #916. `compiler.kofun` and `compiler.c`
+accept a `[const NAME: Int]` parameter list on a nominal record, carry the
+normalized argument inside the annotation's type text so `Fixed[2]` and
+`Fixed[3]` never compare equal, and **specialize per distinct literal**: each
+instantiation reaches its own emitted C struct, so a const generic value can be
+constructed, passed, returned, and run. `validate_struct_identity` refuses any
+collapse of two distinct identities onto one struct with `E2S153` before any C
+is written, and `validate_const_erasure` separately keeps a const argument out
+of a field type so it never reaches layout. Ordinary type parameters on a
+nominal record stay unbuilt and are refused by name; only the C11 Stage 2
+backend specializes, and every other declared backend records its gap in
+`tests/conformance/capabilities.tsv`. Run the analyzer- and sanitizer-backed
+gate for both paths with `task const-generics`.
+
 `bootstrap/stage2/hm_levels_frontend.c` is the separate typed-only checkpoint
 for bounded Algorithm J inference over immutable local lambda bindings. It
 owns mutable metavariables, occurs checking with level lowering, conservative
@@ -652,8 +681,9 @@ completeness check cannot see codes emitted from a separate frontend.
 ### Executable `Optional(Int)` in the C11 slice (#924)
 
 The paragraphs above describe `optional_frontend.c`, which is still
-frontend-only. Separately, `compiler.c` now makes **one** optional type
-executable: `Optional(Int)`.
+frontend-only. Separately, the canonical `compiler.kofun` source and its
+audited `compiler.c` seed make **one** optional type executable:
+`Optional(Int)`.
 
 The representation is not chosen here. `spec/aggregate-layout-v1/examples/
 core.x86_64-linux.json` carries the accepted `Optional[Int]` descriptor —
@@ -698,4 +728,7 @@ and the frontend gate still pins those rules for the mutable spelling. And
 the loop-backedge *positive* is not expressible here. The gate is
 `tests/conformance/optional-construction/run.sh`, which recomputes the
 descriptor with `spec/aggregate-layout-v1/layout.mjs` rather than reading a
-checked-in copy, so a drift on either side fails it.
+checked-in copy, so a drift on either side fails it. The companion
+`tests/stage2/optional-pair/run.sh` gate derives the Optional semantic family
+from both canonical files, pins its load-bearing dispatch points, and mutates a
+member and validation call to prove that source/seed drift cannot pass silently.

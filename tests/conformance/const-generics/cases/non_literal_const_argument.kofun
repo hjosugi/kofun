@@ -1,0 +1,7 @@
+type Fixed[const scale: Int] = {
+    significand: Int,
+}
+
+fn use(value: Fixed[scale]) -> Int {
+    return 0
+}

@@ -661,7 +661,8 @@ static char *token_copy(const char *source, int64_t start) {
 static bool keyword_token(const char *source, int64_t start) {
     static const char *keywords[] = {
         "fn", "let", "mut", "return", "if", "else", "while", "for",
-        "in", "break", "continue", "true", "false", "match", "type"
+        "in", "break", "continue", "true", "false", "match", "type",
+        "par"
     };
     size_t count = sizeof(keywords) / sizeof(keywords[0]);
     for (size_t index = 0; index < count; ++index) {
@@ -2429,6 +2430,78 @@ static int64_t after_optional_module_header(
 );
 static char *owned_text(const char *text);
 static bool enum_name_covered(const char *covered, const char *name);
+static char *const_type_base(const char *annotation);
+static char *const_generic_refusal(Buffer *error);
+
+/* The `[` of a `type NAME[...]` parameter list, or -1 when there is none.
+ *
+ * #916 admits exactly one shape here, `[const NAME: Int]`. An ordinary type
+ * parameter needs field substitution and per-instantiation layout, neither of
+ * which this slice builds, so it is refused by name rather than half-parsed. */
+static int64_t type_parameter_open(const char *source, int64_t start) {
+    int64_t length = source_length(source);
+    if (!token_equal(source, start, "type")) return -1;
+    int64_t name = skip_trivia(source, token_end(source, start));
+    if (
+        name >= length ||
+        strcmp(token_kind(source, name), "identifier") != 0
+    ) {
+        return -1;
+    }
+    int64_t bracket = skip_trivia(source, token_end(source, name));
+    if (bracket < length && token_equal(source, bracket, "[")) return bracket;
+    return -1;
+}
+
+/* The `=` of a type declaration, skipping an optional parameter list. `-1`
+ * when the parameter brackets do not close. */
+static int64_t type_equals_token(const char *source, int64_t start) {
+    int64_t name = skip_trivia(source, token_end(source, start));
+    int64_t bracket = type_parameter_open(source, start);
+    if (bracket < 0) return skip_trivia(source, token_end(source, name));
+    int64_t close = balanced_end(source, bracket, "[", "]");
+    if (close < 0) return -1;
+    return skip_trivia(source, close);
+}
+
+/* The declared const parameter of `type NAME[const P: Int]`, or "" when the
+ * declaration has no parameter list or the list is not that shape. */
+static char *const_parameter_name(const char *source, int64_t start) {
+    int64_t length = source_length(source);
+    int64_t bracket = type_parameter_open(source, start);
+    if (bracket < 0) return owned_text("");
+    int64_t keyword = skip_trivia(source, token_end(source, bracket));
+    if (keyword >= length || !token_equal(source, keyword, "const")) {
+        return owned_text("");
+    }
+    int64_t parameter = skip_trivia(source, token_end(source, keyword));
+    if (
+        parameter >= length ||
+        strcmp(token_kind(source, parameter), "identifier") != 0
+    ) {
+        return owned_text("");
+    }
+    return token_copy(source, parameter);
+}
+
+/* The const parameter declared by the type named `wanted`, or "". */
+static char *const_parameter_of_type(const char *source, const char *wanted) {
+    int64_t length = source_length(source);
+    int64_t cursor = after_optional_module_header(source, 0);
+    while (cursor < length) {
+        int64_t type_start = type_declaration_start(source, cursor);
+        if (type_start >= 0) {
+            char *name = type_name(source, type_start);
+            bool matched = strcmp(name, wanted) == 0;
+            free(name);
+            if (matched) return const_parameter_name(source, type_start);
+        }
+        int64_t end = top_level_end(source, cursor);
+        if (end <= cursor) return owned_text("");
+        cursor = skip_trivia(source, end);
+    }
+    return owned_text("");
+}
 
 static int64_t type_declaration_end(const char *source, int64_t start) {
     int64_t length = source_length(source);
@@ -2438,9 +2511,10 @@ static int64_t type_declaration_end(const char *source, int64_t start) {
     free(name_text);
     if (!valid_start) return -1;
 
-    int64_t name = skip_trivia(source, token_end(source, start));
-    int64_t equals = skip_trivia(source, token_end(source, name));
-    if (equals >= length || !token_equal(source, equals, "=")) return -1;
+    int64_t equals = type_equals_token(source, start);
+    if (equals < 0 || equals >= length || !token_equal(source, equals, "=")) {
+        return -1;
+    }
     int64_t pipe = skip_trivia(source, token_end(source, equals));
     if (pipe < length && token_equal(source, pipe, "{")) {
         int64_t close = balanced_end(source, pipe, "{", "}");
@@ -2491,18 +2565,23 @@ static int64_t type_declaration_end(const char *source, int64_t start) {
 
 static bool record_declaration_at(const char *source, int64_t start) {
     if (!token_equal(source, start, "type")) return false;
-    int64_t name = skip_trivia(source, token_end(source, start));
-    int64_t equals = skip_trivia(source, token_end(source, name));
+    int64_t equals = type_equals_token(source, start);
+    if (equals < 0) return false;
     int64_t open = skip_trivia(source, token_end(source, equals));
     return token_equal(source, equals, "=") &&
            token_equal(source, open, "{");
 }
 
+/* The declaration a record type identity names. A const argument selects no
+ * separate declaration — it is part of the *type*, never of the *declaration* —
+ * so it is dropped here, and this is the single lookup funnel that makes every
+ * field, layout, and C-name consumer agree on that without knowing about it. */
 static int64_t record_declaration_start(
     const char *source,
-    const char *wanted
+    const char *identity
 ) {
     int64_t length = (int64_t)strlen(source);
+    char *wanted = const_type_base(identity);
     int64_t cursor = after_optional_module_header(source, 0);
     while (cursor < length) {
         int64_t type_start = type_declaration_start(source, cursor);
@@ -2513,12 +2592,19 @@ static int64_t record_declaration_start(
             char *name = type_name(source, type_start);
             bool found = strcmp(name, wanted) == 0;
             free(name);
-            if (found) return type_start;
+            if (found) {
+                free(wanted);
+                return type_start;
+            }
         }
         int64_t end = top_level_end(source, cursor);
-        if (end <= cursor) return -1;
+        if (end <= cursor) {
+            free(wanted);
+            return -1;
+        }
         cursor = skip_trivia(source, end);
     }
+    free(wanted);
     return -1;
 }
 
@@ -2534,8 +2620,8 @@ static int64_t record_field_count(
 ) {
     int64_t declaration = record_declaration_start(source, record_type);
     if (declaration < 0) return -1;
-    int64_t name = skip_trivia(source, token_end(source, declaration));
-    int64_t equals = skip_trivia(source, token_end(source, name));
+    int64_t equals = type_equals_token(source, declaration);
+    if (equals < 0) return -3;
     int64_t open = skip_trivia(source, token_end(source, equals));
     int64_t close = balanced_end(source, open, "{", "}");
     if (close < 0) return -3;
@@ -2604,8 +2690,8 @@ static char *record_field_text(
 ) {
     int64_t declaration = record_declaration_start(source, record_type);
     if (declaration < 0) return owned_text("");
-    int64_t name = skip_trivia(source, token_end(source, declaration));
-    int64_t equals = skip_trivia(source, token_end(source, name));
+    int64_t equals = type_equals_token(source, declaration);
+    if (equals < 0) return owned_text("");
     int64_t open = skip_trivia(source, token_end(source, equals));
     int64_t close = balanced_end(source, open, "{", "}");
     int64_t cursor = skip_trivia(source, token_end(source, open));
@@ -2908,6 +2994,114 @@ static char *enum_missing_constructors(
     return missing.data;
 }
 
+/* "" when a parameterized `type` declares exactly `[const NAME: Int]`, and the
+ * diagnostic that refuses it otherwise. Ordinary type parameters on a nominal
+ * type are named here rather than reported as a malformed declaration. */
+static char *type_parameter_list_error(const char *source, int64_t start) {
+    int64_t bracket = type_parameter_open(source, start);
+    if (bracket < 0) return owned_text("");
+    char *name = type_name(source, start);
+    Buffer error;
+    buffer_init(&error);
+    if (balanced_end(source, bracket, "[", "]") < 0) {
+        buffer_format(
+            &error,
+            "error[E2S148]: type `%s` has an unterminated parameter list "
+            "at byte %" PRId64,
+            name,
+            bracket
+        );
+        free(name);
+        return const_generic_refusal(&error);
+    }
+    int64_t keyword = skip_trivia(source, token_end(source, bracket));
+    if (!token_equal(source, keyword, "const")) {
+        buffer_format(
+            &error,
+            "error[E2S148]: type parameters on a nominal type are "
+            "unsupported; `%s` may declare `[const NAME: Int]` only "
+            "at byte %" PRId64,
+            name,
+            keyword
+        );
+        free(name);
+        return const_generic_refusal(&error);
+    }
+    int64_t parameter = skip_trivia(source, token_end(source, keyword));
+    if (strcmp(token_kind(source, parameter), "identifier") != 0) {
+        buffer_format(
+            &error,
+            "error[E2S148]: const parameter of `%s` must be named "
+            "at byte %" PRId64,
+            name,
+            parameter
+        );
+        free(name);
+        return const_generic_refusal(&error);
+    }
+    char *parameter_name = token_copy(source, parameter);
+    int64_t colon = skip_trivia(source, token_end(source, parameter));
+    if (!token_equal(source, colon, ":")) {
+        buffer_format(
+            &error,
+            "error[E2S148]: const parameter `%s` of `%s` requires a "
+            "`: Int` annotation at byte %" PRId64,
+            parameter_name,
+            name,
+            colon
+        );
+        free(parameter_name);
+        free(name);
+        return const_generic_refusal(&error);
+    }
+    int64_t annotation = skip_trivia(source, token_end(source, colon));
+    if (!token_equal(source, annotation, "Int")) {
+        char *annotation_text = token_copy(source, annotation);
+        buffer_format(
+            &error,
+            "error[E2S148]: const parameter `%s` of `%s` has type `%s`; "
+            "only `Int` const parameters exist at byte %" PRId64,
+            parameter_name,
+            name,
+            annotation_text,
+            annotation
+        );
+        free(annotation_text);
+        free(parameter_name);
+        free(name);
+        return const_generic_refusal(&error);
+    }
+    int64_t after = skip_trivia(source, token_end(source, annotation));
+    if (!token_equal(source, after, "]")) {
+        buffer_format(
+            &error,
+            "error[E2S148]: type `%s` declares more than one parameter; "
+            "exactly one const parameter is admissible at byte %" PRId64,
+            name,
+            after
+        );
+        free(parameter_name);
+        free(name);
+        return const_generic_refusal(&error);
+    }
+    if (!record_declaration_at(source, start)) {
+        buffer_format(
+            &error,
+            "error[E2S148]: const parameters are admissible on a nominal "
+            "record only; `%s` is not one at byte %" PRId64,
+            name,
+            bracket
+        );
+        free(parameter_name);
+        free(name);
+        return const_generic_refusal(&error);
+    }
+    free(parameter_name);
+    free(name);
+    free(error.data);
+    return owned_text("");
+}
+
 static bool reserved_type_name(const char *name) {
     return strcmp(name, "Int") == 0 || strcmp(name, "Bool") == 0 ||
            strcmp(name, "Float") == 0 || strcmp(name, "Unit") == 0 ||
@@ -2926,7 +3120,23 @@ static char *function_parameter_type(
     int64_t index
 );
 
+static char *validate_const_arguments(const char *source);
+static char *validate_const_erasure(const char *source);
+
 static char *parse_program(const char *source) {
+    /* Const generic surface (#916). Both checks run before any declaration is
+     * recorded, so a refused source never reaches layout, IR, or an
+     * artifact. */
+    char *const_argument_check = validate_const_arguments(source);
+    if (strncmp(const_argument_check, "error[", 6) == 0) {
+        return const_argument_check;
+    }
+    free(const_argument_check);
+    char *const_erasure_check = validate_const_erasure(source);
+    if (strncmp(const_erasure_check, "error[", 6) == 0) {
+        return const_erasure_check;
+    }
+    free(const_erasure_check);
     Buffer ir;
     Buffer declared_types;
     Buffer declared_constructors;
@@ -2961,6 +3171,18 @@ static char *parse_program(const char *source) {
             int64_t modifier_start = explicit_visibility ? declaration_start : -1;
             int64_t modifier_end = explicit_visibility ?
                 token_end(source, declaration_start) : -1;
+            char *parameter_list_error = type_parameter_list_error(
+                source,
+                type_start
+            );
+            if (parameter_list_error[0] != '\0') {
+                free(name);
+                free(declared_types.data);
+                free(declared_constructors.data);
+                free(ir.data);
+                return parameter_list_error;
+            }
+            free(parameter_list_error);
             if (record_declaration_at(source, type_start)) {
                 int64_t fields = record_field_count(source, name);
                 Buffer error;
@@ -3044,7 +3266,7 @@ static char *parse_program(const char *source) {
                     free(declared_types.data);
                     free(declared_constructors.data);
                     free(ir.data);
-                    return error.data;
+                    return const_generic_refusal(&error);
                 }
                 free(error.data);
                 buffer_append(&declared_types, name);
@@ -3154,7 +3376,7 @@ static char *parse_program(const char *source) {
                 free(declared_types.data);
                 free(declared_constructors.data);
                 free(ir.data);
-                return error.data;
+                return const_generic_refusal(&error);
             }
             ++types;
             if (types > 32) {
@@ -3199,7 +3421,7 @@ static char *parse_program(const char *source) {
                 free(declared_types.data);
                 free(declared_constructors.data);
                 free(ir.data);
-                return error.data;
+                return const_generic_refusal(&error);
             }
             if (enum_name_covered(declared_constructors.data, name)) {
                 Buffer error;
@@ -3222,7 +3444,7 @@ static char *parse_program(const char *source) {
                 free(declared_types.data);
                 free(declared_constructors.data);
                 free(ir.data);
-                return error.data;
+                return const_generic_refusal(&error);
             }
             buffer_append(&declared_types, name);
             buffer_append(&declared_types, "|");
@@ -3256,7 +3478,7 @@ static char *parse_program(const char *source) {
                 free(declared_types.data);
                 free(declared_constructors.data);
                 free(ir.data);
-                return error.data;
+                return const_generic_refusal(&error);
             }
             buffer_format(
                 &ir,
@@ -3308,7 +3530,7 @@ static char *parse_program(const char *source) {
                     free(declared_types.data);
                     free(declared_constructors.data);
                     free(ir.data);
-                    return error.data;
+                    return const_generic_refusal(&error);
                 }
                 if (
                     enum_name_covered(
@@ -3337,7 +3559,7 @@ static char *parse_program(const char *source) {
                     free(declared_types.data);
                     free(declared_constructors.data);
                     free(ir.data);
-                    return error.data;
+                    return const_generic_refusal(&error);
                 }
                 if (enum_name_covered(declared_types.data, constructor_name)) {
                     Buffer error;
@@ -3361,7 +3583,7 @@ static char *parse_program(const char *source) {
                     free(declared_types.data);
                     free(declared_constructors.data);
                     free(ir.data);
-                    return error.data;
+                    return const_generic_refusal(&error);
                 }
                 buffer_append(&declared_constructors, constructor_name);
                 buffer_append(&declared_constructors, "|");
@@ -3897,6 +4119,12 @@ static const char *numeric_primary_type(
     int64_t function_open,
     int64_t start
 );
+static bool text_operand(
+    const char *source,
+    const char *hir,
+    int64_t function_open,
+    int64_t start
+);
 static char *numeric_conversion_at(const char *source, int64_t cursor);
 static const char *numeric_conversion_result(const char *conversion);
 static int64_t numeric_member_argument(
@@ -4248,6 +4476,378 @@ static char *removed_callable_rewrite(const char *source, int64_t open) {
  * `Fn[...]` is the callable notation #552 removed. `Fn` stays an ordinary
  * identifier, so only `Fn` immediately followed by `[` is the removed type.
  */
+/* Records the structured form of a const generic refusal before returning it.
+ *
+ * The semantic producer must agree with the authority on the diagnostic as
+ * well as on the exit class; a refusal that skipped this made the producer
+ * report a tooling failure instead of the error the compiler printed. Both the
+ * code and the byte are read back out of the formatted message, so the
+ * structured diagnostic and the printed one cannot disagree. */
+static char *const_generic_refusal(Buffer *error) {
+    char code[32];
+    const char *close;
+    const char *marker;
+    size_t width;
+    int64_t position = -1;
+    if (error->data == NULL || strncmp(error->data, "error[", 6) != 0) {
+        return error->data;
+    }
+    close = strchr(error->data, ']');
+    if (close == NULL) return error->data;
+    width = (size_t)(close - (error->data + 6));
+    if (width == 0 || width >= sizeof(code)) return error->data;
+    memcpy(code, error->data + 6, width);
+    code[width] = '\0';
+    marker = strstr(error->data, " at byte ");
+    if (marker != NULL) {
+        position = (int64_t)strtoll(marker + 9, NULL, 10);
+    }
+    stage2_diagnostic_set(
+        code,
+        position,
+        position,
+        position >= 0,
+        error->data
+    );
+    return error->data;
+}
+
+/* The leading-zero-stripped digits of a const argument. Normalization is by
+ * value, not by digits, so `Fixed[02]` and `Fixed[2]` are one type. */
+static char *const_argument_digits(const char *literal) {
+    size_t width = strlen(literal);
+    size_t index = 0;
+    while (index + 1 < width && literal[index] == '0') ++index;
+    return owned_text(literal + index);
+}
+
+static bool const_digit_greater(char actual, char allowed) {
+    const char *digits = "0123456789";
+    const char *found_actual = strchr(digits, actual);
+    const char *found_allowed = strchr(digits, allowed);
+    if (found_actual == NULL || found_allowed == NULL) return false;
+    return found_actual > found_allowed;
+}
+
+/* A const parameter is a type-level integer, not a machine integer, so its
+ * budget is a declared ceiling rather than a host width. Exceeding it is
+ * refused and never wrapped, clamped, or truncated. Comparing equal-width
+ * digit strings position by position is exactly numeric comparison, which is
+ * why no integer parse is needed here. */
+static bool const_argument_over_budget(const char *digits) {
+    const char *limit = "65535";
+    size_t width = strlen(digits);
+    size_t limit_width = strlen(limit);
+    if (width > limit_width) return true;
+    if (width < limit_width) return false;
+    for (size_t index = 0; index < width; ++index) {
+        if (digits[index] != limit[index]) {
+            return const_digit_greater(digits[index], limit[index]);
+        }
+    }
+    return false;
+}
+
+/* The text of a type annotation, carrying its normalized const argument when
+ * the head names a const-parameterized type.
+ *
+ * Returning only the head token here is what would erase `Fixed[2]` into
+ * `Fixed`, making every scale one type. This is the single place an
+ * instantiation becomes a type identity, so every comparison downstream
+ * distinguishes the scales without knowing they exist. */
+static char *annotation_type_text(const char *source, int64_t type_start) {
+    int64_t length = source_length(source);
+    char *head = token_copy(source, type_start);
+    char *parameter = const_parameter_of_type(source, head);
+    bool parameterized = parameter[0] != '\0';
+    free(parameter);
+    if (!parameterized) return head;
+    int64_t bracket = skip_trivia(source, token_end(source, type_start));
+    if (bracket >= length || !token_equal(source, bracket, "[")) return head;
+    int64_t argument = skip_trivia(source, token_end(source, bracket));
+    if (
+        argument >= length ||
+        strcmp(token_kind(source, argument), "integer") != 0
+    ) {
+        return head;
+    }
+    char *literal = token_copy(source, argument);
+    char *digits = const_argument_digits(literal);
+    Buffer text;
+    buffer_init(&text);
+    buffer_format(&text, "%s[%s]", head, digits);
+    free(digits);
+    free(literal);
+    free(head);
+    return text.data;
+}
+
+/* The end offset of a type annotation, including its const argument. Walking
+ * past only the head token here is what would leave `[2]` in the stream for
+ * the next parser step to trip over. */
+static int64_t annotation_type_end(const char *source, int64_t type_start) {
+    int64_t length = source_length(source);
+    char *head = token_copy(source, type_start);
+    char *parameter = const_parameter_of_type(source, head);
+    bool parameterized = parameter[0] != '\0';
+    free(parameter);
+    free(head);
+    if (!parameterized) return token_end(source, type_start);
+    int64_t bracket = skip_trivia(source, token_end(source, type_start));
+    if (bracket >= length || !token_equal(source, bracket, "[")) {
+        return token_end(source, type_start);
+    }
+    int64_t close = balanced_end(source, bracket, "[", "]");
+    if (close < 0) return token_end(source, type_start);
+    return close;
+}
+
+/* The declaration a type identity names, with any const argument removed. */
+static char *const_type_base(const char *annotation) {
+    const char *bracket = strchr(annotation, '[');
+    if (bracket == NULL) return owned_text(annotation);
+    size_t width = (size_t)(bracket - annotation);
+    char *base = allocate(width + 1);
+    memcpy(base, annotation, width);
+    base[width] = '\0';
+    return base;
+}
+
+/* True at the type name of the declaration itself, which is the one position
+ * where a const-parameterized name legitimately carries no argument. */
+static bool const_generic_declaration_head(
+    const char *source,
+    int64_t position
+) {
+    int64_t length = source_length(source);
+    int64_t cursor = after_optional_module_header(source, 0);
+    while (cursor < length) {
+        int64_t type_start = type_declaration_start(source, cursor);
+        if (
+            type_start >= 0 &&
+            skip_trivia(source, token_end(source, type_start)) == position
+        ) {
+            return true;
+        }
+        int64_t end = top_level_end(source, cursor);
+        if (end <= cursor) return false;
+        cursor = skip_trivia(source, end);
+    }
+    return false;
+}
+
+/* Every `NAME[...]` whose head is a const-parameterized type must supply one
+ * non-negative integer literal inside the declared budget. Const expressions,
+ * const inference, and arithmetic on a type-level value are out of scope, so a
+ * non-literal argument is refused here rather than partially resolved. */
+static char *validate_const_arguments(const char *source) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < length) {
+        if (strcmp(token_kind(source, cursor), "identifier") == 0) {
+            char *head = token_copy(source, cursor);
+            char *parameter = const_parameter_of_type(source, head);
+            int64_t bracket = skip_trivia(source, token_end(source, cursor));
+            Buffer error;
+            buffer_init(&error);
+            if (
+                parameter[0] != '\0' &&
+                const_generic_declaration_head(source, cursor)
+            ) {
+                /* The declaration's own parameter list is a binder, not an
+                 * argument; `type_parameter_list_error` owns its shape. */
+                free(error.data);
+                free(parameter);
+                free(head);
+                cursor = skip_trivia(source, token_end(source, cursor));
+                continue;
+            }
+            if (
+                parameter[0] != '\0' &&
+                bracket < length &&
+                token_equal(source, bracket, "[")
+            ) {
+                int64_t close = balanced_end(source, bracket, "[", "]");
+                if (close < 0) {
+                    buffer_format(
+                        &error,
+                        "error[E2S150]: unterminated const argument list "
+                        "for `%s` at byte %" PRId64,
+                        head,
+                        bracket
+                    );
+                    free(parameter);
+                    free(head);
+                    return const_generic_refusal(&error);
+                }
+                int64_t argument = skip_trivia(
+                    source,
+                    token_end(source, bracket)
+                );
+                if (token_equal(source, argument, "-")) {
+                    buffer_format(
+                        &error,
+                        "error[E2S149]: const argument to `%s` is negative; "
+                        "`%s: Int` admits `0`..`65535` only "
+                        "at byte %" PRId64,
+                        head,
+                        parameter,
+                        argument
+                    );
+                    free(parameter);
+                    free(head);
+                    return const_generic_refusal(&error);
+                }
+                if (strcmp(token_kind(source, argument), "integer") != 0) {
+                    buffer_format(
+                        &error,
+                        "error[E2S149]: const argument to `%s` is not an "
+                        "integer literal; const expressions are out of "
+                        "scope at byte %" PRId64,
+                        head,
+                        argument
+                    );
+                    free(parameter);
+                    free(head);
+                    return const_generic_refusal(&error);
+                }
+                char *literal = token_copy(source, argument);
+                char *digits = const_argument_digits(literal);
+                bool over = const_argument_over_budget(digits);
+                free(digits);
+                free(literal);
+                if (over) {
+                    buffer_format(
+                        &error,
+                        "error[E2S149]: const argument to `%s` exceeds the budget "
+                        "`0`..`65535`; it is refused, not wrapped "
+                        "at byte %" PRId64,
+                        head,
+                        argument
+                    );
+                    free(parameter);
+                    free(head);
+                    return const_generic_refusal(&error);
+                }
+                int64_t after = skip_trivia(
+                    source,
+                    token_end(source, argument)
+                );
+                if (!token_equal(source, after, "]")) {
+                    buffer_format(
+                        &error,
+                        "error[E2S150]: `%s` declares one const parameter "
+                        "and accepts exactly one argument at byte %" PRId64,
+                        head,
+                        after
+                    );
+                    free(parameter);
+                    free(head);
+                    return const_generic_refusal(&error);
+                }
+                cursor = skip_trivia(source, close);
+                free(error.data);
+                free(parameter);
+                free(head);
+                continue;
+            }
+            if (
+                parameter[0] != '\0' &&
+                !const_generic_declaration_head(source, cursor)
+            ) {
+                buffer_format(
+                    &error,
+                    "error[E2S150]: `%s` expects one const argument; write "
+                    "`%s[...]` at byte %" PRId64,
+                    head,
+                    head,
+                    cursor
+                );
+                free(parameter);
+                free(head);
+                return const_generic_refusal(&error);
+            }
+            free(error.data);
+            free(parameter);
+            free(head);
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return owned_text("ok");
+}
+
+/* The executable form of the premise that lets every instantiation of one
+ * declaration share a single lowering: a const argument contributes no
+ * storage, so it must never reach layout or code generation.
+ *
+ * A record field typed by an instantiation is the route that would break it —
+ * the field would put the argument inside a struct, and one shared struct
+ * would then be a miscompile across two types the checker has already made
+ * distinct. Refusing it here means the premise fails loudly the day it stops
+ * holding, instead of a struct being quietly shared. */
+static char *validate_const_erasure(const char *source) {
+    int64_t length = source_length(source);
+    int64_t cursor = after_optional_module_header(source, 0);
+    while (cursor < length) {
+        int64_t type_start = type_declaration_start(source, cursor);
+        if (type_start >= 0 && record_declaration_at(source, type_start)) {
+            int64_t equals = type_equals_token(source, type_start);
+            int64_t open = skip_trivia(source, token_end(source, equals));
+            int64_t close = balanced_end(source, open, "{", "}");
+            if (close < 0) return owned_text("ok");
+            int64_t field = skip_trivia(source, token_end(source, open));
+            while (field < close && !token_equal(source, field, "}")) {
+                int64_t colon = skip_trivia(source, token_end(source, field));
+                int64_t field_type = skip_trivia(
+                    source,
+                    token_end(source, colon)
+                );
+                if (field_type < close) {
+                    char *field_type_text = token_copy(source, field_type);
+                    char *parameter = const_parameter_of_type(
+                        source,
+                        field_type_text
+                    );
+                    bool parameterized = parameter[0] != '\0';
+                    free(parameter);
+                    free(field_type_text);
+                    if (parameterized) {
+                        char *field_name = token_copy(source, field);
+                        char *owner = type_name(source, type_start);
+                        Buffer error;
+                        buffer_init(&error);
+                        buffer_format(
+                            &error,
+                            "error[E2S148]: field `%s` of `%s` is a const generic "
+                            "instantiation; a const argument must not "
+                            "reach layout at byte %" PRId64,
+                            field_name,
+                            owner,
+                            field_type
+                        );
+                        free(owner);
+                        free(field_name);
+                        return const_generic_refusal(&error);
+                    }
+                }
+                int64_t separator = skip_trivia(
+                    source,
+                    token_end(source, field_type)
+                );
+                if (separator < close && token_equal(source, separator, ",")) {
+                    field = skip_trivia(source, token_end(source, separator));
+                } else {
+                    field = separator;
+                }
+            }
+        }
+        int64_t end = top_level_end(source, cursor);
+        if (end <= cursor) return owned_text("ok");
+        cursor = skip_trivia(source, end);
+    }
+    return owned_text("ok");
+}
+
 static char *validate_removed_callable_notation(const char *source) {
     int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, 0);
@@ -4610,7 +5210,7 @@ static char *validate_list_int_local_annotations(const char *source) {
                     list_int_type_end(source, type_start) < 0
                 ) {
                     return lower_error(
-                        "E2S148",
+                        "E2S157",
                         "Stage 2 local lists require exactly List[Int]",
                         type_start
                     );
@@ -4840,13 +5440,101 @@ static char *c_identifier_name(const char *identifier) {
     return output.data;
 }
 
+/* The const argument of a type identity, or "" when it has none. */
+static char *const_argument_of(const char *identity) {
+    const char *open = strchr(identity, '[');
+    size_t width;
+    char *argument;
+    if (open == NULL) return owned_text("");
+    width = strlen(open + 1);
+    if (width == 0) return owned_text("");
+    argument = allocate(width);
+    memcpy(argument, open + 1, width - 1);
+    argument[width - 1] = '\0';
+    return argument;
+}
+
+/* The single funnel from a type identity to a C struct name, and the place
+ * per-literal monomorphization actually happens: one emitted struct per
+ * distinct literal, so `Fixed[2]` and `Fixed[3]` are two C types.
+ *
+ * An earlier revision dropped the argument here and justified it in a comment —
+ * a const parameter contributes no storage, so one struct was said to be safe.
+ * That was a true statement about miscompiles standing in for an untrue one
+ * about the backend's capability: it made the C type system stop separating
+ * what the Kofun type system had already separated, while
+ * `tests/conformance/capabilities.tsv` claimed the backend did not support the
+ * construct at all. `validate_struct_identity` now refuses that collapse
+ * instead of a comment asserting it is fine. */
 static char *record_c_type_name(const char *record_type) {
-    char *name = c_identifier_name(record_type);
+    char *base = const_type_base(record_type);
+    char *argument = const_argument_of(record_type);
+    char *name = c_identifier_name(base);
     Buffer output;
     buffer_init(&output);
-    buffer_format(&output, "KofunRecord_%s", name);
+    if (argument[0] == '\0') {
+        buffer_format(&output, "KofunRecord_%s", name);
+    } else {
+        buffer_format(&output, "KofunRecord_%s__%s", name, argument);
+    }
     free(name);
+    free(argument);
+    free(base);
     return output.data;
+}
+
+/* The `index`-th distinct instantiation of `wanted`, in first-use order, or
+ * "". This is the monomorphization set the emitter walks. */
+static char *const_instantiation_at(
+    const char *source,
+    const char *wanted,
+    int64_t wanted_index
+) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    int64_t count = 0;
+    Buffer seen;
+    buffer_init(&seen);
+    buffer_append(&seen, "|");
+    while (cursor < length) {
+        if (
+            strcmp(token_kind(source, cursor), "identifier") == 0 &&
+            token_equal(source, cursor, wanted) &&
+            !const_generic_declaration_head(source, cursor)
+        ) {
+            char *identity = annotation_type_text(source, cursor);
+            if (
+                strcmp(identity, wanted) != 0 &&
+                !enum_name_covered(seen.data, identity)
+            ) {
+                if (count == wanted_index) {
+                    free(seen.data);
+                    return identity;
+                }
+                buffer_append(&seen, identity);
+                buffer_append(&seen, "|");
+                ++count;
+            }
+            free(identity);
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    free(seen.data);
+    return owned_text("");
+}
+
+static int64_t const_instantiation_count(
+    const char *source,
+    const char *wanted
+) {
+    int64_t count = 0;
+    for (;;) {
+        char *identity = const_instantiation_at(source, wanted, count);
+        bool present = identity[0] != '\0';
+        free(identity);
+        if (!present) return count;
+        ++count;
+    }
 }
 
 static char *record_c_field_name(const char *field) {
@@ -4912,6 +5600,34 @@ static char *emit_record_value(
             binding_id[0] == '\0' ||
             strcmp(binding_type, record_type) != 0
         ) {
+            /* Two instantiations of one const generic declaration are not a
+             * generic record mismatch, they are a mismatch *in the const
+             * argument*, so they say which scales disagreed. */
+            if (binding_id[0] != '\0') {
+                char *actual_base = const_type_base(binding_type);
+                char *wanted_base = const_type_base(record_type);
+                bool same_declaration =
+                    strcmp(actual_base, wanted_base) == 0;
+                free(wanted_base);
+                free(actual_base);
+                if (same_declaration) {
+                    Buffer detail;
+                    buffer_init(&detail);
+                    buffer_format(
+                        &detail,
+                        "`%s` is not `%s`; instantiations differing only in "
+                        "their const argument are different types",
+                        binding_type,
+                        record_type
+                    );
+                    free(binding_type);
+                    free(binding_id);
+                    free(name);
+                    char *message = lower_error("E2S151", detail.data, cursor);
+                    free(detail.data);
+                    return message;
+                }
+            }
             free(binding_type);
             free(binding_id);
             free(name);
@@ -5328,20 +6044,30 @@ static char *emit_list_int_literal(
     int64_t bad = open;
     int64_t count = list_int_literal_count(source, open, &bad);
     if (count < 0) {
-        return lower_error("E2S148", "malformed List[Int] literal", bad);
+        return lower_error("E2S157", "malformed List[Int] literal", bad);
     }
     if (count > LIST_INT_CAPACITY) {
         return lower_error(
-            "E2S148",
+            "E2S157",
             "List[Int] literal capacity is 64 elements",
             open
         );
     }
     Buffer output;
     buffer_init(&output);
+    if (count == 0) {
+        buffer_append(
+            &output,
+            "((KofunIntList)(const void *)&(const struct { "
+            "uint64_t length; }){UINT64_C(0)})"
+        );
+        return output.data;
+    }
     buffer_format(
         &output,
-        "((KofunIntList){INT64_C(%" PRId64 "), {",
+        "((KofunIntList)(const void *)&(const struct { uint64_t length; "
+        "int64_t elements[%" PRId64 "]; }){UINT64_C(%" PRId64 "), {",
+        count,
         count
     );
     int64_t element = skip_trivia(source, token_end(source, open));
@@ -5363,7 +6089,7 @@ static char *emit_list_int_literal(
             );
             free(actual);
             free(output.data);
-            char *error = lower_error("E2S148", message.data, element);
+            char *error = lower_error("E2S157", message.data, element);
             free(message.data);
             return error;
         }
@@ -5379,7 +6105,6 @@ static char *emit_list_int_literal(
         int64_t separator = skip_trivia(source, bound);
         element = skip_trivia(source, token_end(source, separator));
     }
-    if (count == 0) buffer_append(&output, "INT64_C(0)");
     buffer_append(&output, "}})");
     return output.data;
 }
@@ -5573,7 +6298,11 @@ static char *emit_primary(
             Buffer length;
             buffer_init(&length);
             if (strcmp(actual, "List[Int]") == 0) {
-                buffer_format(&length, "(%s).length", emitted);
+                buffer_format(
+                    &length,
+                    "((int64_t)kofun_list_int_length(%s))",
+                    emitted
+                );
             } else {
                 buffer_format(&length, "((int64_t)strlen(%s))", emitted);
             }
@@ -5581,6 +6310,24 @@ static char *emit_primary(
             free(emitted);
             free(name);
             return length.data;
+        }
+        if (
+            open < end && token_equal(source, open, "(") &&
+            strcmp(name, "to_text") == 0
+        ) {
+            int64_t value = skip_trivia(source, token_end(source, open));
+            char *emitted = emit_expression(
+                source,
+                hir,
+                value,
+                argument_end(source, value)
+            );
+            Buffer converted_text;
+            buffer_init(&converted_text);
+            buffer_format(&converted_text, "kofun_to_text(%s)", emitted);
+            free(emitted);
+            free(name);
+            return converted_text.data;
         }
         if (
             open < end && token_equal(source, open, "(") &&
@@ -5645,7 +6392,7 @@ static char *emit_primary(
                     free(name);
                     free(output.data);
                     char *error = lower_error(
-                        "E2S148",
+                        "E2S157",
                         message.data,
                         cursor
                     );
@@ -5670,7 +6417,7 @@ static char *emit_primary(
                     free(name);
                     free(output.data);
                     return lower_error(
-                        "E2S148",
+                        "E2S157",
                         "malformed List[Int] index",
                         open
                     );
@@ -5694,7 +6441,7 @@ static char *emit_primary(
                     free(name);
                     free(output.data);
                     char *error = lower_error(
-                        "E2S148",
+                        "E2S157",
                         message.data,
                         index_start
                     );
@@ -5731,7 +6478,7 @@ static char *emit_primary(
                     free(name);
                     free(output.data);
                     char *error = lower_error(
-                        "E2S148",
+                        "E2S157",
                         message.data,
                         index_start
                     );
@@ -5752,7 +6499,7 @@ static char *emit_primary(
                 }
                 buffer_format(
                     &output,
-                    "kofun_list_int_index(&k_b%s, %s)",
+                    "kofun_list_int_index(k_b%s, %s)",
                     binding_id,
                     index_value
                 );
@@ -6029,6 +6776,12 @@ static char *emit_expression(
         function_open,
         start
     );
+    bool left_is_text = text_operand(
+        source,
+        hir,
+        function_open,
+        start
+    );
     int64_t operator_start = skip_trivia(source, cursor);
     while (operator_start < end) {
         char *operator_text = token_copy(source, operator_start);
@@ -6038,6 +6791,12 @@ static char *emit_expression(
         );
         int64_t right_end = product_end(source, right_start);
         char *right = emit_product(source, hir, right_start, right_end);
+        bool right_is_text = text_operand(
+            source,
+            hir,
+            function_open,
+            right_start
+        );
         /* Same rule as `emit_product`: a rejected operand must not be wrapped
          * into a call that looks like a valid expression. */
         if (strncmp(emitted, "error[", 6) == 0) {
@@ -6052,7 +6811,20 @@ static char *emit_expression(
         }
         char *combined = emitted;
         if (strcmp(operator_text, "+") == 0) {
-            if (strcmp(type, "Decimal") == 0) {
+            if (left_is_text || right_is_text) {
+                if (!left_is_text || !right_is_text) {
+                    free(emitted);
+                    free(right);
+                    free(operator_text);
+                    return lower_error(
+                        "E2S155",
+                        "operator `+` requires Text + Text or matching "
+                        "numeric operands",
+                        operator_start
+                    );
+                }
+                combined = format_two("kofun_text_concat", emitted, right);
+            } else if (strcmp(type, "Decimal") == 0) {
                 combined = format_two(
                     "kofun_decimal_value_add",
                     emitted,
@@ -6064,7 +6836,16 @@ static char *emit_expression(
                 combined = format_two("kofun_add", emitted, right);
             }
         } else if (strcmp(operator_text, "-") == 0) {
-            if (strcmp(type, "Decimal") == 0) {
+            if (left_is_text || right_is_text) {
+                free(emitted);
+                free(right);
+                free(operator_text);
+                return lower_error(
+                    "E2S155",
+                    "only operator `+` is defined on Text",
+                    operator_start
+                );
+            } else if (strcmp(type, "Decimal") == 0) {
                 combined = format_two(
                     "kofun_decimal_value_subtract",
                     emitted,
@@ -6080,6 +6861,7 @@ static char *emit_expression(
         free(right);
         free(operator_text);
         emitted = combined;
+        left_is_text = left_is_text && right_is_text;
         cursor = right_end;
         operator_start = skip_trivia(source, cursor);
     }
@@ -6160,6 +6942,7 @@ static int64_t builtin_arity(const char *name) {
         {"replace", 3},
         {"starts_with", 2},
         {"text_slice", 3},
+        {"to_text", 1},
         {"trim", 1},
         {"validate_unicode_source", 1},
         {"write_text", 2},
@@ -6225,6 +7008,7 @@ static const char *builtin_parameter_types(const char *name) {
         {"replace", "Text|Text|Text"},
         {"starts_with", "Text|Text"},
         {"text_slice", "Text|Int|Int"},
+        {"to_text", "Int"},
         {"trim", "Text"},
         {"validate_unicode_source", "Text"},
         {"write_text", "Text|Text"},
@@ -6334,7 +7118,7 @@ static char *builtin_argument_check(
                     error.data
                 );
                 free(actual);
-                return error.data;
+                return const_generic_refusal(&error);
             }
             free(actual);
         }
@@ -6443,7 +7227,7 @@ static char *validate_core_types(const char *source, const char *hir) {
                         );
                         free(name);
                         free(declared);
-                        return error.data;
+                        return const_generic_refusal(&error);
                     }
                 }
             }
@@ -6499,7 +7283,7 @@ static char *validate_core_types(const char *source, const char *hir) {
                         free(value_type);
                         free(name);
                         free(declared);
-                        return error.data;
+                        return const_generic_refusal(&error);
                     }
                     free(value_type);
                 }
@@ -6762,7 +7546,8 @@ static char *validate_core_calls(const char *source, const char *hir) {
                     free(argument_error);
                     if (
                         strcmp(name, "len") == 0 ||
-                        strcmp(name, "text_slice") == 0
+                        strcmp(name, "text_slice") == 0 ||
+                        strcmp(name, "to_text") == 0
                     ) {
                         expected = builtin_expected;
                     } else {
@@ -6955,8 +7740,13 @@ static char *core_parameters(
             } else if (
                 record_declaration_start(source, parameter_type) >= 0
             ) {
-                type_end = token_end(source, type_cursor);
-                char *c_type = record_c_type_name(parameter_type);
+                type_end = annotation_type_end(source, type_cursor);
+                char *parameter_identity = annotation_type_text(
+                    source,
+                    type_cursor
+                );
+                char *c_type = record_c_type_name(parameter_identity);
+                free(parameter_identity);
                 Buffer aggregate;
                 buffer_init(&aggregate);
                 buffer_format(
@@ -7004,45 +7794,12 @@ static bool primary_is_text(
     const char *hir,
     int64_t start
 ) {
-    int64_t cursor = skip_trivia(source, start);
-    while (token_equal(source, cursor, "(")) {
-        cursor = skip_trivia(source, token_end(source, cursor));
-    }
-    if (strcmp(token_kind(source, cursor), "string") == 0) return true;
-    if (strcmp(token_kind(source, cursor), "identifier") != 0) return false;
-    char *conversion = numeric_conversion_at(source, cursor);
-    bool text = strcmp(conversion, "Decimal.format") == 0;
-    free(conversion);
-    if (text) return true;
-    char *name = token_copy(source, cursor);
-    int64_t open = skip_trivia(source, token_end(source, cursor));
-    if (token_equal(source, open, "(")) {
-        char *declared = function_return_type(source, name);
-        text = strcmp(name, "text_slice") == 0 ||
-            strcmp(declared, "Text") == 0;
-        free(declared);
-        free(name);
-        return text;
-    }
-    char *binding_id = hir_use_binding_id(hir, cursor);
-    char *binding_type = hir_binding_field(hir, binding_id, 5);
-    text = strcmp(binding_type, "Text") == 0;
-    if (!text && token_equal(source, open, ".")) {
-        int64_t field_cursor = skip_trivia(source, token_end(source, open));
-        char *field = token_copy(source, field_cursor);
-        char *field_type = record_field_type_named(
-            source,
-            binding_type,
-            field
-        );
-        text = strcmp(field_type, "Text") == 0;
-        free(field_type);
-        free(field);
-    }
-    free(binding_type);
-    free(binding_id);
-    free(name);
-    return text;
+    return text_operand(
+        source,
+        hir,
+        enclosing_function_open(source, start),
+        start
+    );
 }
 
 static bool comparison_operator(const char *source, int64_t cursor) {
@@ -8994,11 +9751,12 @@ static int64_t core_body_open(
         char *result_type = token_copy(source, cursor);
         bool supported_result =
             strcmp(result_type, "Int") == 0 ||
+            strcmp(result_type, "Text") == 0 ||
             enum_constructor_count(source, result_type) >= 0 ||
             record_declaration_start(source, result_type) >= 0;
         free(result_type);
         if (!supported_result) return -1;
-        cursor = skip_trivia(source, token_end(source, cursor));
+        cursor = skip_trivia(source, annotation_type_end(source, cursor));
     } else if (!is_main) {
         return -1;
     }
@@ -10463,6 +11221,7 @@ static const char *builtin_return_type(const char *name) {
         {"replace", "Text"},
         {"starts_with", "Bool"},
         {"text_slice", "Text"},
+        {"to_text", "Text"},
         {"trim", "Text"},
         {"validate_unicode_source", "Text"},
         {"write_text", "Void"},
@@ -10494,7 +11253,7 @@ static char *function_return_type_at(
             token_end(source, after)
         );
         if (type_cursor < length) {
-            return token_copy(source, type_cursor);
+            return annotation_type_text(source, type_cursor);
         }
         return owned_text("");
     }
@@ -10549,7 +11308,9 @@ static char *function_parameter_type_at(
         }
         int64_t type_start = skip_trivia(source, token_end(source, colon));
         if (type_start >= parameters_end) return owned_text("");
-        if (index == wanted_index) return token_copy(source, type_start);
+        if (index == wanted_index) {
+            return annotation_type_text(source, type_start);
+        }
 
         int64_t type_end = callable_type_end(source, type_start);
         if (type_end < 0) {
@@ -10630,6 +11391,16 @@ static bool function_result_is_record(
 ) {
     char *type = function_return_type(source, name);
     bool result = record_declaration_start(source, type) >= 0;
+    free(type);
+    return result;
+}
+
+/* A declared `-> Text` result.  Text values are borrowed `const char *` in the
+ * bounded profile, so this is what selects the C result type and the `return`
+ * lowering rather than the Int path. */
+static bool function_result_is_text(const char *source, const char *name) {
+    char *type = function_return_type(source, name);
+    bool result = strcmp(type, "Text") == 0;
     free(type);
     return result;
 }
@@ -11203,16 +11974,21 @@ static char *build_scope_hir_mode(
              * keeps the declared type optional in the typed IR, so nothing
              * downstream mistakes the parameter for an `Int`. */
             int64_t optional_end = optional_int_type_end(source, type_cursor);
+            /* #916: a parameter binding records the annotation's full
+             * identity, so a const argument reaches the scope HIR instead of
+             * being flattened to its head. Recording `Fixed` here would make
+             * every scale one binding type and silently accept a scale
+             * mismatch. */
             int64_t type_end = callable_end >= 0
                 ? callable_end
                 : (optional_end >= 0
                        ? optional_end
-                       : token_end(source, type_cursor));
+                       : annotation_type_end(source, type_cursor));
             char *type_text = callable_end >= 0
                 ? owned_text("Fn")
                 : (optional_end >= 0
                        ? owned_text("Int?")
-                       : token_copy(source, type_cursor));
+                       : annotation_type_text(source, type_cursor));
             buffer_format(
                 &hir,
                 "binding|%" PRId64 "|%" PRId64 "|%s|immutable|%s|copy|"
@@ -11404,22 +12180,24 @@ static char *build_scope_hir_mode(
                         source,
                         type_cursor
                     );
-                    int64_t list_end = list_int_type_end(
-                        source,
-                        type_cursor
-                    );
+                    int64_t list_end = optional_end >= 0
+                        ? -1
+                        : list_int_type_end(source, type_cursor);
+                    /* #916: an annotated local records the annotation's full
+                     * identity, so `let kept: Fixed[2]` binds `Fixed[2]` and
+                     * not `Fixed`. */
                     binding_type = optional_end >= 0
                         ? owned_text("Int?")
                         : (list_end >= 0
                             ? owned_text("List[Int]")
-                            : token_copy(source, type_cursor));
+                            : annotation_type_text(source, type_cursor));
                     after_name = skip_trivia(
                         source,
                         optional_end >= 0
                             ? optional_end
                             : (list_end >= 0
                                 ? list_end
-                                : token_end(source, type_cursor))
+                                : annotation_type_end(source, type_cursor))
                     );
                 }
                 int64_t initializer = skip_trivia(
@@ -11875,6 +12653,28 @@ static char *build_scope_hir_mode(
         bool unresolved_assignment = false;
         cursor = skip_trivia(source, token_end(source, function_open));
         while (cursor < function_close) {
+            /* See sh_parse_primary: stop at `par` so the walk never reaches the
+             * scope token between the bars and blames it as an unknown
+             * binding. The construct is refused, so its token is never a use. */
+            if (token_equal(source, cursor, "par")) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    "error[E2S154]: scoped parallelism `par` is specified "
+                    "but not implemented at byte %" PRId64,
+                    cursor
+                );
+                stage2_diagnostic_set(
+                    "E2S154",
+                    cursor,
+                    token_end(source, cursor),
+                    true,
+                    message.data
+                );
+                free(hir.data);
+                return message.data;
+            }
             if (strcmp(token_kind(source, cursor), "identifier") == 0) {
                 char *name = token_copy(source, cursor);
                 bool declaration_token = enum_declaration_syntax_token(
@@ -11947,9 +12747,13 @@ static char *build_scope_hir_mode(
                         cursor,
                         name
                     );
+                    /* A const generic construction head is `Name[N](`, so
+                     * the token that decides call-versus-use is the one after
+                     * the argument list. Stopping at `Name` would resolve the
+                     * type as a lexical binding and report it unknown. */
                     int64_t after = skip_trivia(
                         source,
-                        token_end(source, cursor)
+                        annotation_type_end(source, cursor)
                     );
                     const char *role = token_equal(source, after, "=") ?
                         "assign" : "read";
@@ -13774,7 +14578,7 @@ static char *lower_record_binding(
             value_start
         );
     }
-    char *constructor = token_copy(source, value_start);
+    char *constructor = annotation_type_text(source, value_start);
     if (strcmp(constructor, record_type) != 0) {
         Buffer message;
         buffer_init(&message);
@@ -13792,7 +14596,7 @@ static char *lower_record_binding(
     free(constructor);
     int64_t open = skip_trivia(
         source,
-        token_end(source, value_start)
+        annotation_type_end(source, value_start)
     );
     if (open >= length || !token_equal(source, open, "(")) {
         return lower_error(
@@ -14018,6 +14822,7 @@ static char *lower_body(
         record_declaration_start(source, body_result_type) >= 0;
     bool returns_optional_int =
         optional_int_result_containing(source, function_open);
+    bool returns_text = strcmp(body_result_type, "Text") == 0;
     char failure_record[512] = "";
     if (returns_record) {
         char *c_type = record_c_type_name(body_result_type);
@@ -14040,12 +14845,26 @@ static char *lower_body(
                          failure_record :
                          (returns_optional_int ?
                               "KOFUN_OPTIONAL_INT_NONE" :
-                              "0"))
+                              /* A failed Text result is the empty string
+                               * rather than NULL, so every consumer in the
+                               * bounded profile still receives a readable
+                               * value. */
+                              (returns_text ? "\"\"" : "0")))
             );
     while (cursor < length && !token_equal(source, cursor, "}")) {
         if (returned) {
             free(emitted.data);
             return lower_error("E2S14", "statement follows `return`", cursor);
+        }
+        /* See sh_parse_primary: refuse `par` before the dispatch below can
+         * read the scope token as an ordinary binding and blame it instead. */
+        if (token_equal(source, cursor, "par")) {
+            free(emitted.data);
+            return lower_error(
+                "E2S154",
+                "scoped parallelism `par` is specified but not implemented",
+                cursor
+            );
         }
         if (move_assertion_head(source, cursor)) {
             /*
@@ -14121,22 +14940,23 @@ static char *lower_body(
                         return lower_error("E2S11", "expected `=`", cursor);
                     }
                 }
-                int64_t list_end = list_int_type_end(source, cursor);
-                if (!optional_int && list_end >= 0) {
-                    list_int = true;
-                    cursor = skip_trivia(source, list_end);
-                    if (cursor >= length || !token_equal(source, cursor, "=")) {
-                        free(binding_id);
-                        free(name);
-                        free(emitted.data);
-                        return lower_error("E2S11", "expected `=`", cursor);
-                    }
-                }
+                /* #916: an annotated local records the annotation's full
+                 * identity, so `let kept: Fixed[2]` is not flattened to
+                 * `Fixed`. */
+                int64_t list_end = optional_int
+                    ? -1
+                    : list_int_type_end(source, cursor);
                 char *declared_type = optional_int
                     ? owned_text("Int")
-                    : (list_int
+                    : (list_end >= 0
                         ? owned_text("List[Int]")
-                        : token_copy(source, cursor));
+                        : annotation_type_text(source, cursor));
+                if (
+                    !optional_int &&
+                    strcmp(declared_type, "List[Int]") == 0
+                ) {
+                    list_int = true;
+                }
                 if (
                     !optional_int && !list_int &&
                     strcmp(declared_type, "Int") != 0
@@ -14179,8 +14999,13 @@ static char *lower_body(
                 } else {
                     free(declared_type);
                 }
-                if (!optional_int && !list_int) {
-                    cursor = skip_trivia(source, token_end(source, cursor));
+                if (!optional_int) {
+                    cursor = skip_trivia(
+                        source,
+                        list_end >= 0
+                            ? list_end
+                            : annotation_type_end(source, cursor)
+                    );
                 }
             }
             if (cursor >= length || !token_equal(source, cursor, "=")) {
@@ -14269,7 +15094,7 @@ static char *lower_body(
                     value_start < length &&
                     strcmp(token_kind(source, value_start), "identifier") == 0
                 ) {
-                    char *initializer_name = token_copy(
+                    char *initializer_name = annotation_type_text(
                         source,
                         value_start
                     );
@@ -14700,7 +15525,7 @@ static char *lower_body(
                 free(name);
                 free(emitted.data);
                 return lower_error(
-                    "E2S148",
+                    "E2S157",
                     "mutable List[Int] bindings are outside this lowering slice",
                     value_start
                 );
@@ -14852,9 +15677,11 @@ static char *lower_body(
                     &emitted,
                     "    {\n"
                     "        const char *kofun_value = %s;\n"
+                    "        if (kofun_failed) return %s;\n"
                     "        printf(\"%%s\\n\", kofun_value);\n"
                     "    }\n",
-                    value
+                    value,
+                    failure_result
                 );
             } else {
                 buffer_format(
@@ -15614,6 +16441,42 @@ static char *lower_body(
                     failure_result
                 );
                 free(c_type);
+                free(value);
+                cursor = skip_trivia(source, value_end);
+            } else if (returns_text) {
+                int64_t value_end = expression_end(source, value_start);
+                if (
+                    value_end < 0 ||
+                    value_start >= length ||
+                    token_equal(source, value_start, "}")
+                ) {
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S12",
+                        "Text return requires one value",
+                        value_start
+                    );
+                }
+                char *value = emit_expression(
+                    source,
+                    hir,
+                    value_start,
+                    value_end
+                );
+                if (strncmp(value, "error[", 6) == 0) {
+                    free(emitted.data);
+                    return value;
+                }
+                buffer_format(
+                    &emitted,
+                    "    {\n"
+                    "        const char *kofun_result = %s;\n"
+                    "        if (kofun_failed) return %s;\n"
+                    "        return kofun_result;\n"
+                    "    }\n",
+                    value,
+                    failure_result
+                );
                 free(value);
                 cursor = skip_trivia(source, value_end);
             } else if (
@@ -16490,6 +17353,69 @@ static const char *numeric_primary_type(
 }
 
 /*
+ * Whether one primary is Text. This stays separate from
+ * `numeric_primary_type`: E2S100 consumes that helper and must continue to see
+ * Text as outside the numeric lattice.
+ */
+static bool text_operand(
+    const char *source,
+    const char *hir,
+    int64_t function_open,
+    int64_t start
+) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, start);
+    if (cursor >= length) return false;
+    while (token_equal(source, cursor, "(")) {
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    if (strcmp(token_kind(source, cursor), "string") == 0) return true;
+    if (strcmp(token_kind(source, cursor), "identifier") != 0) return false;
+
+    char *conversion = numeric_conversion_at(source, cursor);
+    bool result = strcmp(conversion, "Decimal.format") == 0;
+    free(conversion);
+    if (result) return true;
+
+    char *name = token_copy(source, cursor);
+    int64_t open = skip_trivia(source, token_end(source, cursor));
+    if (open < length && token_equal(source, open, "(")) {
+        char *declared = function_return_type(source, name);
+        const char *builtin = builtin_return_type(name);
+        result = strcmp(declared, "Text") == 0 ||
+            (builtin != NULL && strcmp(builtin, "Text") == 0);
+        free(declared);
+        free(name);
+        return result;
+    }
+
+    int64_t scope_open = parent_block_open(source, function_open, cursor);
+    char *scope_id = hir_scope_id_for_open(hir, scope_open);
+    char *binding_id = hir_resolve_binding(hir, scope_id, cursor, name);
+    free(scope_id);
+    char *binding_type = binding_id[0] == '\0'
+        ? owned_text("")
+        : hir_binding_field(hir, binding_id, 5);
+    result = strcmp(binding_type, "Text") == 0;
+    if (!result && token_equal(source, open, ".")) {
+        int64_t field_cursor = skip_trivia(source, token_end(source, open));
+        char *field = token_copy(source, field_cursor);
+        char *field_type = record_field_type_named(
+            source,
+            binding_type,
+            field
+        );
+        result = strcmp(field_type, "Text") == 0;
+        free(field_type);
+        free(field);
+    }
+    free(binding_type);
+    free(binding_id);
+    free(name);
+    return result;
+}
+
+/*
  * `Int`, `Decimal` and `Float` never receive implicit promotion (#710 frozen
  * decision 4), so an arithmetic expression mixing two of them is a type error
  * rather than a conversion.
@@ -17292,19 +18218,19 @@ static int64_t record_align_up(int64_t value, int64_t alignment) {
     return remainder == 0 ? value : value + alignment - remainder;
 }
 
-static char *emit_record_c_declarations(const char *source) {
-    int64_t length = (int64_t)strlen(source);
-    int64_t cursor = after_optional_module_header(source, 0);
+/* The struct, its field offsets, and its size for one emitted type. The field
+ * list comes from the declaration, so every instantiation of one declaration
+ * has the same layout — which is exactly why `validate_const_erasure` must
+ * keep a const argument out of a field type. */
+static char *emit_record_c_declaration(
+    const char *source,
+    const char *record_type,
+    const char *c_type
+) {
     Buffer declarations;
     buffer_init(&declarations);
-    while (cursor < length) {
-        int64_t type_start = type_declaration_start(source, cursor);
-        if (
-            type_start >= 0 &&
-            record_declaration_at(source, type_start)
-        ) {
-            char *record_type = type_name(source, type_start);
-            char *c_type = record_c_type_name(record_type);
+    {
+        {
             int64_t fields = record_field_count(source, record_type);
             int64_t extent = 0;
             int64_t record_alignment = 1;
@@ -17386,7 +18312,58 @@ static char *emit_record_c_declarations(const char *source) {
                 c_type,
                 extent
             );
-            free(c_type);
+        }
+    }
+    return declarations.data;
+}
+
+/* One struct per emitted type. A const-parameterized declaration produces one
+ * per distinct literal, which is the specialization itself; every other record
+ * produces exactly one, as before. */
+static char *emit_record_c_declarations(const char *source) {
+    int64_t length = (int64_t)strlen(source);
+    int64_t cursor = after_optional_module_header(source, 0);
+    Buffer declarations;
+    buffer_init(&declarations);
+    while (cursor < length) {
+        int64_t type_start = type_declaration_start(source, cursor);
+        if (
+            type_start >= 0 &&
+            record_declaration_at(source, type_start)
+        ) {
+            char *record_type = type_name(source, type_start);
+            char *parameter = const_parameter_name(source, type_start);
+            if (parameter[0] != '\0') {
+                int64_t total = const_instantiation_count(source, record_type);
+                for (int64_t instance = 0; instance < total; ++instance) {
+                    char *identity = const_instantiation_at(
+                        source,
+                        record_type,
+                        instance
+                    );
+                    char *c_type = record_c_type_name(identity);
+                    char *emitted = emit_record_c_declaration(
+                        source,
+                        record_type,
+                        c_type
+                    );
+                    buffer_append(&declarations, emitted);
+                    free(emitted);
+                    free(c_type);
+                    free(identity);
+                }
+            } else {
+                char *c_type = record_c_type_name(record_type);
+                char *emitted = emit_record_c_declaration(
+                    source,
+                    record_type,
+                    c_type
+                );
+                buffer_append(&declarations, emitted);
+                free(emitted);
+                free(c_type);
+            }
+            free(parameter);
             free(record_type);
         }
         int64_t end = top_level_end(source, cursor);
@@ -18029,8 +19006,127 @@ static char *validate_move_assertions(const char *source, const char *hir) {
     return owned_text("ok");
 }
 
-static char *lower_c(const char *source, const char *hir) {
+/* The proposition that failed once, now with a gate instead of a comment.
+ *
+ * Distinct type identities must reach distinct emitted structs. `Fixed[2]` and
+ * `Fixed[3]` are different Kofun types, so if they lowered to one C struct the
+ * C type system would stop separating what the Kofun type system had already
+ * separated — which is exactly what an earlier revision did, under a comment
+ * arguing it was safe because a const parameter carries no storage. That
+ * argument was about miscompiles; this is about identity, and only one of the
+ * two was ever checked.
+ *
+ * It also catches the collision from the other direction: a declared record
+ * whose own name is the C name some instantiation generates. */
+static char *validate_struct_identity(const char *source) {
     int64_t length = source_length(source);
+    int64_t cursor = after_optional_module_header(source, 0);
+    Buffer names;
+    buffer_init(&names);
+    buffer_append(&names, "|");
+    while (cursor < length) {
+        int64_t type_start = type_declaration_start(source, cursor);
+        if (type_start >= 0 && record_declaration_at(source, type_start)) {
+            char *record_type = type_name(source, type_start);
+            char *parameter = const_parameter_name(source, type_start);
+            bool parameterized = parameter[0] != '\0';
+            int64_t total = parameterized
+                ? const_instantiation_count(source, record_type)
+                : 1;
+            free(parameter);
+            for (int64_t instance = 0; instance < total; ++instance) {
+                char *identity = parameterized
+                    ? const_instantiation_at(source, record_type, instance)
+                    : owned_text(record_type);
+                char *c_type = record_c_type_name(identity);
+                if (enum_name_covered(names.data, c_type)) {
+                    Buffer error;
+                    buffer_init(&error);
+                    buffer_format(
+                        &error,
+                        "error[E2S153]: `%s` lowers to `%s`, which another "
+                        "type already lowers to at byte %" PRId64,
+                        identity,
+                        c_type,
+                        type_start
+                    );
+                    free(c_type);
+                    free(identity);
+                    free(record_type);
+                    free(names.data);
+                    return const_generic_refusal(&error);
+                }
+                buffer_append(&names, c_type);
+                buffer_append(&names, "|");
+                free(c_type);
+                free(identity);
+            }
+            free(record_type);
+        }
+        int64_t end = top_level_end(source, cursor);
+        if (end <= cursor) break;
+        cursor = skip_trivia(source, end);
+    }
+    free(names.data);
+    return owned_text("");
+}
+
+/*
+ * Bound the number of syntactic Text-producing sites before writing C. The
+ * scan skips emitted C string literals: a Kofun string containing a helper's
+ * spelling is data, not a temporary site. Dynamic executions have a separate
+ * non-wrapping arena limit in the emitted runtime.
+ */
+static int64_t count_text_sites(const char *bodies) {
+    static const char *calls[] = {
+        "kofun_text_slice(",
+        "kofun_to_text(",
+        "kofun_text_concat(",
+    };
+    int64_t site_count = 0;
+    bool quoted = false;
+    bool escaped = false;
+    size_t cursor = 0;
+    while (bodies[cursor] != '\0') {
+        if (quoted) {
+            if (escaped) {
+                escaped = false;
+            } else if (bodies[cursor] == '\\') {
+                escaped = true;
+            } else if (bodies[cursor] == '"') {
+                quoted = false;
+            }
+            ++cursor;
+            continue;
+        }
+        if (bodies[cursor] == '"') {
+            quoted = true;
+            ++cursor;
+            continue;
+        }
+        size_t width = 0;
+        for (size_t index = 0; index < sizeof calls / sizeof calls[0]; ++index) {
+            size_t candidate = strlen(calls[index]);
+            if (strncmp(bodies + cursor, calls[index], candidate) == 0) {
+                width = candidate;
+                break;
+            }
+        }
+        if (width > 0) {
+            ++site_count;
+            cursor += width;
+        } else {
+            ++cursor;
+        }
+    }
+    return site_count;
+}
+
+static char *lower_c_body(const char *source, const char *hir) {
+    int64_t length = source_length(source);
+    char *identity_check = validate_struct_identity(source);
+    if (identity_check[0] != '\0') return identity_check;
+    free(identity_check);
     bool fractional_values = source_uses_fractional_values(source);
     /* First, before every other validator: a program that asks for the
      * move guarantee must hear the assertion's own verdict, not a
@@ -18165,6 +19261,8 @@ static char *lower_c(const char *source, const char *hir) {
             c_result = OPTIONAL_INT_C_TYPE;
         } else if (function_result_is_enum(source, name)) {
             c_result = "KofunEnumValue";
+        } else if (function_result_is_text(source, name)) {
+            c_result = "const char *";
         } else if (function_result_is_record(source, name)) {
             char *result_type = function_return_type(source, name);
             char *record_c_type = record_c_type_name(result_type);
@@ -18292,6 +19390,16 @@ static char *lower_c(const char *source, const char *hir) {
             -1
         );
     }
+    int64_t text_site_count = count_text_sites(bodies.data);
+    if (text_site_count > 256) {
+        free(prototypes.data);
+        free(bodies.data);
+        return lower_error(
+            "E2S156",
+            "Text temporary site limit is 256",
+            -1
+        );
+    }
     Buffer output;
     buffer_init(&output);
     buffer_append(
@@ -18316,31 +19424,74 @@ static char *lower_c(const char *source, const char *hir) {
         "} KofunEnumValue;\n"
         "#define KOFUN_ENUM_ZERO "
         "((KofunEnumValue){INT64_C(0), INT64_C(0)})\n\n"
-        "#define KOFUN_LIST_INT_CAPACITY 64\n"
-        "typedef struct {\n"
-        "    int64_t length;\n"
-        "    int64_t elements[KOFUN_LIST_INT_CAPACITY];\n"
-        "} KofunIntList;\n\n"
+        "typedef const unsigned char *KofunIntList;\n"
+        "enum {\n"
+        "    KOFUN_LIST_INT_LENGTH_OFFSET = 0,\n"
+        "    KOFUN_LIST_INT_PAYLOAD_OFFSET = 8,\n"
+        "    KOFUN_LIST_INT_ELEMENT_SIZE = 8\n"
+        "};\n"
+        "typedef struct { uint64_t length; int64_t first_element; } KofunIntListLayoutProbe;\n"
+        "_Static_assert(sizeof(KofunIntList) == 8, \"AggregateLayout List[Int] reference size\");\n"
+        "_Static_assert(sizeof(uint64_t) == 8, \"AggregateLayout List[Int] header width\");\n"
+        "_Static_assert(sizeof(int64_t) == 8, \"AggregateLayout List[Int] element width\");\n\n"
+        "_Static_assert(offsetof(KofunIntListLayoutProbe, length) == KOFUN_LIST_INT_LENGTH_OFFSET, \"AggregateLayout List[Int] length offset\");\n"
+        "_Static_assert(offsetof(KofunIntListLayoutProbe, first_element) == KOFUN_LIST_INT_PAYLOAD_OFFSET, \"AggregateLayout List[Int] payload offset\");\n"
+        "_Static_assert(sizeof(((KofunIntListLayoutProbe *)0)->first_element) == KOFUN_LIST_INT_ELEMENT_SIZE, \"AggregateLayout List[Int] element size\");\n"
+        "_Static_assert(_Alignof(KofunIntListLayoutProbe) == 8, \"AggregateLayout List[Int] object alignment\");\n\n"
         "static bool kofun_failed;\n"
         "static inline void kofun_error(const char *message) {\n"
         "    if (!kofun_failed) { fputs(message, stderr); fputc('\\n', stderr); }\n"
         "    kofun_failed = true;\n"
         "}\n"
-        "static inline int64_t kofun_list_int_index(const KofunIntList *list, int64_t index) {\n"
-        "    if (index < 0) index += list->length;\n"
-        "    if (index < 0 || index >= list->length) {\n"
-        "        kofun_error(\"error[R021]: bounded List[Int] index out of range\"); return 0;\n"
+        "static inline uint64_t kofun_list_int_length(KofunIntList list) {\n"
+        "    uint64_t length = UINT64_C(0);\n"
+        "    memcpy(&length, list + KOFUN_LIST_INT_LENGTH_OFFSET, sizeof length);\n"
+        "    return length;\n"
+        "}\n"
+        "static inline int64_t kofun_list_int_index(KofunIntList list, int64_t index) {\n"
+        "    uint64_t length = kofun_list_int_length(list);\n"
+        "    if (index < 0) index += (int64_t)length;\n"
+        "    if (index < 0 || (uint64_t)index >= length) {\n"
+        "        kofun_error(\"error[R023]: bounded List[Int] index out of range\"); return 0;\n"
         "    }\n"
-        "    return list->elements[index];\n"
+        "    int64_t value = INT64_C(0);\n"
+        "    size_t offset = KOFUN_LIST_INT_PAYLOAD_OFFSET +\n"
+        "        (size_t)index * KOFUN_LIST_INT_ELEMENT_SIZE;\n"
+        "    memcpy(&value, list + offset, sizeof value); return value;\n"
+        "}\n"
+    );
+    buffer_append(
+        &output,
+        "enum { KOFUN_TEXT_TEMPORARY_LIMIT = 4096 };\n"
+        "static char kofun_text_slots[KOFUN_TEXT_TEMPORARY_LIMIT][256];\n"
+        "static size_t kofun_text_next_slot;\n"
+        "static inline char *kofun_text_temporary(void) {\n"
+        "    if (kofun_text_next_slot >= KOFUN_TEXT_TEMPORARY_LIMIT) {\n"
+        "        kofun_error(\"error[R022]: bounded Text temporary limit is 4096\"); return NULL;\n"
+        "    }\n"
+        "    return kofun_text_slots[kofun_text_next_slot++];\n"
         "}\n"
         "static inline const char *kofun_text_slice(const char *text, int64_t start, int64_t end) {\n"
-        "    static char slots[64][32]; static size_t next_slot;\n"
         "    size_t length = strlen(text);\n"
         "    if (start < 0 || end < start || (uint64_t)end > length || end - start > 31) {\n"
         "        kofun_error(\"error[R020]: bounded Text slice out of range\"); return \"\";\n"
         "    }\n"
-        "    char *slot = slots[next_slot++ % 64u]; size_t width = (size_t)(end - start);\n"
+        "    char *slot = kofun_text_temporary(); if (slot == NULL) return \"\";\n"
+        "    size_t width = (size_t)(end - start);\n"
         "    memcpy(slot, text + start, width); slot[width] = '\\0'; return slot;\n"
+        "}\n"
+        "static inline const char *kofun_to_text(int64_t value) {\n"
+        "    char *slot = kofun_text_temporary(); if (slot == NULL) return \"\";\n"
+        "    snprintf(slot, 256, \"%\" PRId64, value); return slot;\n"
+        "}\n"
+        "static inline const char *kofun_text_concat(const char *left, const char *right) {\n"
+        "    size_t left_width = strlen(left), right_width = strlen(right);\n"
+        "    if (left_width + right_width > 255) {\n"
+        "        kofun_error(\"error[R021]: bounded Text concatenation exceeds 255 bytes\"); return \"\";\n"
+        "    }\n"
+        "    char *slot = kofun_text_temporary(); if (slot == NULL) return \"\";\n"
+        "    memcpy(slot, left, left_width); memcpy(slot + left_width, right, right_width);\n"
+        "    slot[left_width + right_width] = '\\0'; return slot;\n"
         "}\n"
         "static inline int64_t kofun_add(int64_t a, int64_t b) {\n"
         "    int64_t r; if (__builtin_add_overflow(a, b, &r)) {\n"
@@ -18397,6 +19548,10 @@ static char *lower_c(const char *source, const char *hir) {
     free(prototypes.data);
     free(bodies.data);
     return output.data;
+}
+
+static char *lower_c(const char *source, const char *hir) {
+    return lower_c_body(source, hir);
 }
 
 static bool ends_with(const char *value, const char *suffix) {
@@ -19117,6 +20272,17 @@ static ShExpr *sh_parse_primary(Sh *sh, int64_t *cursor) {
     }
     const char *kind = token_kind(sh->source, at);
     int64_t end = token_end(sh->source, at);
+    /* Scoped parallelism v1 (#555) fixes `par` as target semantics in
+     * spec/concurrency/scoped-parallelism-v1.md. The lexer owns the keyword so
+     * this refusal names the construct instead of surfacing as an unknown
+     * binding, but ownership checking, scheduling, and lowering do not exist:
+     * the honest answer here is a refusal, not a partial acceptance. */
+    if (token_equal(sh->source, at, "par")) {
+        sh_fail(sh, "E2S154",
+                "scoped parallelism `par` is specified but not implemented",
+                at);
+        return NULL;
+    }
     if (strcmp(kind, "integer") == 0) {
         ShExpr *expr = sh_expr_new("literal-int", at, end);
         snprintf(expr->type, sizeof(expr->type), "Int");
@@ -19588,6 +20754,14 @@ static ShStmt *sh_parse_stmt(
     const char *declared
 ) {
     int64_t at = *cursor;
+    /* See sh_parse_primary: `par` in statement position is refused by name
+     * rather than falling through to the generic unsupported-statement code. */
+    if (token_equal(sh->source, at, "par")) {
+        sh_fail(sh, "E2S154",
+                "scoped parallelism `par` is specified but not implemented",
+                at);
+        return NULL;
+    }
     if (token_equal(sh->source, at, "let")) {
         int64_t name = skip_trivia(sh->source, token_end(sh->source, at));
         bool is_mutable = false;
@@ -20535,12 +21709,19 @@ static char *emit_selfhost_hir_document(
         );
         sh_escaped(&document, sh.error_message);
         buffer_append(&document, "\n");
-        if (strcmp(sh.error_code, "E2S10") == 0) {
+        /* hir-v1.md requires one `unsupported` record naming the construct
+         * family for every construct outside the frozen profile, so `par`
+         * carries its own family rather than being filed as a statement. */
+        if (strcmp(sh.error_code, "E2S10") == 0 ||
+            strcmp(sh.error_code, "E2S154") == 0) {
             buffer_format(
                 &document,
-                "unsupported|%" PRId64 "|%" PRId64 "|statement\n",
+                "unsupported|%" PRId64 "|%" PRId64 "|%s\n",
                 at,
-                end
+                end,
+                strcmp(sh.error_code, "E2S154") == 0
+                    ? "scoped-parallelism"
+                    : "statement"
             );
         }
         puts(sh.error);

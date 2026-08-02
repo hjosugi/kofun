@@ -16,6 +16,7 @@
  *   node hostabi.mjs derive TARGET.json     recompute against another target
  *   node hostabi.mjs compare GOLDEN.json    recompute and reject drift
  *   node hostabi.mjs case CASE.json         run one instantiation fixture
+ *   node hostabi.mjs module MODULE.wasm     phase 1 over bytes from elsewhere
  *   node hostabi.mjs run                    the end-to-end boundary scenario
  *   node hostabi.mjs lifetime MODE          conforming | retained
  *   node hostabi.mjs self-test              the checks with no fixture
@@ -1015,6 +1016,34 @@ function main(argv) {
     case "case": {
       if (rest.length !== 1) refuse("input-unreadable", "usage: hostabi.mjs case CASE.json");
       return canonical(runCase(path.resolve(rest[0])));
+    }
+    /* The same phase-1 validator the fixtures run, pointed at bytes this file
+     * did not assemble -- a compiler artifact, say. It answers one question:
+     * is this module `kofun-wasm-host-abi-v1`? Nothing is linked and no engine
+     * is asked for an instance, so a verdict costs no guest execution, which
+     * is what lets a host decide which ABI it is holding before calling into
+     * it. A module that is not v1 leaves through the usual refusal path with
+     * the contract's own diagnostic name. */
+    case "module": {
+      if (rest.length !== 1) refuse("input-unreadable", "usage: hostabi.mjs module MODULE.wasm");
+      const file = path.resolve(rest[0]);
+      let bytes;
+      try {
+        bytes = fs.readFileSync(file);
+      } catch (error) {
+        return refuse("input-unreadable", `${relative(file)}: ${error.message}`);
+      }
+      validateModule(bytes);
+      return canonical({
+        schema: "kofun.wasm-host-abi-module/v1",
+        abi_version: ABI_VERSION,
+        module: relative(file),
+        bytes: BigInt(bytes.length),
+        contract: "accepted",
+        instantiated: false,
+        host_calls: BigInt(0),
+        guest_ran: false,
+      });
     }
     case "run": {
       const { host, vectors } = runScenario();

@@ -1,0 +1,32 @@
+fn identity(value: Text) -> Text {
+    return value
+}
+
+fn render(value: Int) -> Text {
+    return to_text(value)
+}
+
+fn nested(value: Int) -> Text {
+    return identity(render(value))
+}
+
+fn main() -> Int {
+    print(identity("ok"))
+    print(render(0))
+    print(render(42))
+    print(render(0 - 42))
+    print(render(9223372036854775807))
+    print(render((0 - 9223372036854775807) - 1))
+    print(render(1) + render(2))
+    print("" + "nonempty")
+    print(("a" + "b") + "c")
+    print(20 + 22)
+    print(nested(73))
+    print(text_slice(render(1234), 1, 3))
+    print("kofun_to_text(kofun_text_concat(kofun_text_slice(")
+    let first = render(81)
+    let second = render(92)
+    print(first)
+    print(second)
+    return 0
+}

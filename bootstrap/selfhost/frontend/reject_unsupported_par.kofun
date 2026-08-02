@@ -1,0 +1,6 @@
+fn main() {
+    par |scope| {
+        let left = scope.spawn(fn() => 1)
+        print(left.join())
+    }
+}

@@ -89,6 +89,16 @@ cannot run, and still rot silently. Treat the script as an aspiration rather
 than a gate until the Core supports reading files, at which point it should
 move into `verify` whole.
 
+`repository-check` holds two more things of the same shape — something that was
+true once, with nothing keeping it true. Every task that runs a check script
+must be named in the list `verify` invokes: `tests/stdlib/tzdb/check.sh` was
+defined as a task, never enrolled, and never ran for the whole of #888, while
+`release/claims.json` pointed at it as the evidence for a published claim. And
+the editor and grammar surfaces that moved to their own repositories in #861
+must stay gone: #872, a pull request about examples, re-added three build
+outputs under `editor/vscode/server/generated/`, one of them an x86-64 shared
+object, because the path was not ignored and a `git add -A` swept them in.
+
 What is deliberately not here, and where it lives instead:
 
 | what | repository |

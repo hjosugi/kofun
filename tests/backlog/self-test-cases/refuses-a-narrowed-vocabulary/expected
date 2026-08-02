@@ -1,0 +1,1 @@
+FAIL: backlog: snapshot declares a different state vocabulary than tests/backlog/extract.mjs; it omits deferred; regenerate it with tests/backlog/refresh.mjs

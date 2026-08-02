@@ -49,3 +49,4 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `syscall-stdlib-api` | checkpoint | frameworks | The syscall and standard-library surface is a Kofun source contract for Linux x86-64. It is not a portable standard library. |
 | `test-skip-reporting` | implemented | tooling | `kofun test` reports skipped cases explicitly and counts them separately from passes. |
 | `wasm32-arithmetic-core` | checkpoint | webassembly | Checked Int64 arithmetic lowers directly to wasm32 and runs in a lazily initialised browser host. Text and List values are outside the slice. |
+| `wasm32-hostabi1-object-arena` | checkpoint | webassembly | The wasm32-hostabi1 target emits one fixed-page linear memory, the v1 export surface, a checked transactional bump allocator, and the recomputed u64 object header encoder for an empty entry point. Text and List lowering remain outside the slice. |

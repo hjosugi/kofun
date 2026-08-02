@@ -146,7 +146,8 @@ fn keyword(token: Text) -> Bool {
     token == "return" || token == "if" || token == "else" ||
     token == "while" || token == "for" || token == "in" ||
     token == "break" || token == "continue" || token == "true" ||
-    token == "false" || token == "match" || token == "type"
+    token == "false" || token == "match" || token == "type" ||
+    token == "par"
 }
 
 fn token_kind(source: Text, start: Int) -> Text {
@@ -1523,13 +1524,84 @@ fn type_name(source: Text, start: Int) -> Text {
     return token_text(source, name)
 }
 
+# The `[` of a `type NAME[...]` parameter list, or -1 when there is none.
+#
+# #916 admits exactly one shape here, `[const NAME: Int]`. An ordinary type
+# parameter needs field substitution and per-instantiation layout, neither of
+# which this slice builds, so it is refused by name rather than half-parsed.
+fn type_parameter_open(source: Text, start: Int) -> Int {
+    if token_text(source, start) != "type" {
+        return -1
+    }
+    let name = skip_trivia(source, token_end(source, start))
+    if name >= len(source) || token_kind(source, name) != "identifier" {
+        return -1
+    }
+    let bracket = skip_trivia(source, token_end(source, name))
+    if bracket < len(source) && token_text(source, bracket) == "[" {
+        return bracket
+    }
+    return -1
+}
+
+# The `=` of a type declaration, skipping an optional parameter list. `-1`
+# when the parameter brackets do not close.
+fn type_equals_token(source: Text, start: Int) -> Int {
+    let name = skip_trivia(source, token_end(source, start))
+    let bracket = type_parameter_open(source, start)
+    if bracket < 0 {
+        return skip_trivia(source, token_end(source, name))
+    }
+    let close = balanced_end(source, bracket, "[", "]")
+    if close < 0 {
+        return -1
+    }
+    return skip_trivia(source, close)
+}
+
+# The declared const parameter of `type NAME[const P: Int]`, or "" when the
+# declaration has no parameter list or the list is not that shape.
+fn const_parameter_name(source: Text, start: Int) -> Text {
+    let bracket = type_parameter_open(source, start)
+    if bracket < 0 {
+        return ""
+    }
+    let keyword = skip_trivia(source, token_end(source, bracket))
+    if keyword >= len(source) || token_text(source, keyword) != "const" {
+        return ""
+    }
+    let parameter = skip_trivia(source, token_end(source, keyword))
+    if parameter >= len(source) ||
+       token_kind(source, parameter) != "identifier" {
+        return ""
+    }
+    return token_text(source, parameter)
+}
+
+# The const parameter declared by the type named `wanted`, or "".
+fn const_parameter_of_type(source: Text, wanted: Text) -> Text {
+    let mut cursor = after_optional_module_header(source, 0)
+    while cursor < len(source) {
+        let type_start = type_declaration_start(source, cursor)
+        if type_start >= 0 && type_name(source, type_start) == wanted {
+            return const_parameter_name(source, type_start)
+        }
+        let end = top_level_end(source, cursor)
+        if end <= cursor {
+            return ""
+        }
+        cursor = skip_trivia(source, end)
+    }
+    return ""
+}
+
 fn type_declaration_end(source: Text, start: Int) -> Int {
     if token_text(source, start) != "type" || len(type_name(source, start)) == 0 {
         return -1
     }
-    let name = skip_trivia(source, token_end(source, start))
-    let equals = skip_trivia(source, token_end(source, name))
-    if equals >= len(source) || token_text(source, equals) != "=" {
+    let equals = type_equals_token(source, start)
+    if equals < 0 || equals >= len(source) ||
+       token_text(source, equals) != "=" {
         return -1
     }
     let mut pipe = skip_trivia(source, token_end(source, equals))
@@ -1584,14 +1656,21 @@ fn record_declaration_at(source: Text, start: Int) -> Bool {
     if token_text(source, start) != "type" {
         return false
     }
-    let name = skip_trivia(source, token_end(source, start))
-    let equals = skip_trivia(source, token_end(source, name))
+    let equals = type_equals_token(source, start)
+    if equals < 0 {
+        return false
+    }
     let open = skip_trivia(source, token_end(source, equals))
     return token_text(source, equals) == "=" &&
     token_text(source, open) == "{"
 }
 
-fn record_declaration_start(source: Text, wanted: Text) -> Int {
+# The declaration a record type identity names. A const argument selects no
+# separate declaration — it is part of the *type*, never of the *declaration* —
+# so it is dropped here, and this is the single lookup funnel that makes every
+# field, layout, and C-name consumer agree on that without knowing about it.
+fn record_declaration_start(source: Text, identity: Text) -> Int {
+    let wanted = const_type_base(identity)
     let mut cursor = after_optional_module_header(source, 0)
     while cursor < len(source) {
         let type_start = type_declaration_start(source, cursor)
@@ -1616,8 +1695,10 @@ fn record_field_count(source: Text, record_type: Text) -> Int {
     if declaration < 0 {
         return -1
     }
-    let name = skip_trivia(source, token_end(source, declaration))
-    let equals = skip_trivia(source, token_end(source, name))
+    let equals = type_equals_token(source, declaration)
+    if equals < 0 {
+        return -3
+    }
     let open = skip_trivia(source, token_end(source, equals))
     let close = balanced_end(source, open, "{", "}")
     if close < 0 {
@@ -1678,8 +1759,10 @@ fn record_field_text(
     if declaration < 0 {
         return ""
     }
-    let name = skip_trivia(source, token_end(source, declaration))
-    let equals = skip_trivia(source, token_end(source, name))
+    let equals = type_equals_token(source, declaration)
+    if equals < 0 {
+        return ""
+    }
     let open = skip_trivia(source, token_end(source, equals))
     let close = balanced_end(source, open, "{", "}")
     let mut cursor = skip_trivia(source, token_end(source, open))
@@ -2052,12 +2135,73 @@ fn enum_missing_constructors(
     return missing
 }
 
+# "" when a parameterized `type` declares exactly `[const NAME: Int]`, and the
+# diagnostic that refuses it otherwise. Ordinary type parameters on a nominal
+# type are named here rather than reported as a malformed declaration.
+fn type_parameter_list_error(source: Text, start: Int) -> Text {
+    let bracket = type_parameter_open(source, start)
+    if bracket < 0 {
+        return ""
+    }
+    let name = type_name(source, start)
+    if balanced_end(source, bracket, "[", "]") < 0 {
+        return "error[E2S148]: type `" + name +
+        "` has an unterminated parameter list at byte " + to_text(bracket)
+    }
+    let keyword = skip_trivia(source, token_end(source, bracket))
+    if token_text(source, keyword) != "const" {
+        return "error[E2S148]: type parameters on a nominal type are unsupported; `" +
+        name +
+        "` may declare `[const NAME: Int]` only at byte " + to_text(keyword)
+    }
+    let parameter = skip_trivia(source, token_end(source, keyword))
+    if token_kind(source, parameter) != "identifier" {
+        return "error[E2S148]: const parameter of `" + name +
+        "` must be named at byte " + to_text(parameter)
+    }
+    let colon = skip_trivia(source, token_end(source, parameter))
+    if token_text(source, colon) != ":" {
+        return "error[E2S148]: const parameter `" +
+        token_text(source, parameter) + "` of `" + name +
+        "` requires a `: Int` annotation at byte " + to_text(colon)
+    }
+    let annotation = skip_trivia(source, token_end(source, colon))
+    if token_text(source, annotation) != "Int" {
+        return "error[E2S148]: const parameter `" +
+        token_text(source, parameter) + "` of `" + name + "` has type `" +
+        token_text(source, annotation) +
+        "`; only `Int` const parameters exist at byte " +
+        to_text(annotation)
+    }
+    let after = skip_trivia(source, token_end(source, annotation))
+    if token_text(source, after) != "]" {
+        return "error[E2S148]: type `" + name +
+        "` declares more than one parameter; exactly one const parameter is admissible at byte " +
+        to_text(after)
+    }
+    if !record_declaration_at(source, start) {
+        return "error[E2S148]: const parameters are admissible on a nominal record only; `" +
+        name + "` is not one at byte " + to_text(bracket)
+    }
+    return ""
+}
+
 fn reserved_type_name(name: Text) -> Bool {
     return name == "Int" || name == "Bool" || name == "Float" ||
     name == "Unit" || name == "Text" || name == "List" || name == "_"
 }
 
 fn parse_program(source: Text) -> Text {
+    # Const generic surface (#916). Both checks run before any declaration is
+    # recorded, so a refused source never reaches layout, IR, or an artifact.
+    let const_argument_check = validate_const_arguments(source)
+    if starts_with(const_argument_check, "error[") {
+        return const_argument_check
+    }
+    let const_erasure_check = validate_const_erasure(source)
+    if starts_with(const_erasure_check, "error[") {
+        return const_erasure_check
+    }
     let mut ir = "kofun-stage2-ir/v1\nsource-bytes|" +
     to_text(len(source)) + "\n"
     let mut cursor = skip_trivia(source, 0)
@@ -2085,6 +2229,13 @@ fn parse_program(source: Text) -> Text {
                 origin = "explicit"
                 modifier_start = declaration_start
                 modifier_end = token_end(source, declaration_start)
+            }
+            let parameter_list_error = type_parameter_list_error(
+                source,
+                type_start
+            )
+            if len(parameter_list_error) > 0 {
+                return parameter_list_error
             }
             if record_declaration_at(source, type_start) {
                 let fields = record_field_count(source, name)
@@ -2624,7 +2775,7 @@ fn validate_list_int_local_annotations(source: Text) -> Text {
                 )
                 if token_text(source, type_start) == "List" &&
                    list_int_type_end(source, type_start) < 0 {
-                    return "error[E2S148]: Stage 2 local lists require exactly List[Int] at byte " +
+                    return "error[E2S157]: Stage 2 local lists require exactly List[Int] at byte " +
                     to_text(type_start)
                 }
             }
@@ -2903,8 +3054,69 @@ fn emit_enum_value(
     to_text(cursor)
 }
 
+# The const argument of a type identity, or "" when it has none.
+fn const_argument_of(identity: Text) -> Text {
+    let open = find(identity, "[")
+    if open < 0 {
+        return ""
+    }
+    return text_slice(identity, open + 1, len(identity) - 1)
+}
+
+# The single funnel from a type identity to a C struct name, and the place
+# per-literal monomorphization actually happens: one emitted struct per
+# distinct literal, so `Fixed[2]` and `Fixed[3]` are two C types.
+#
+# An earlier revision dropped the argument here and justified it in a comment —
+# a const parameter contributes no storage, so one struct was said to be safe.
+# That was a true statement about miscompiles standing in for an untrue one
+# about the backend's capability: it made the C type system stop separating
+# what the Kofun type system had already separated, while
+# `tests/conformance/capabilities.tsv` claimed the backend did not support the
+# construct at all. `validate_struct_identity` now refuses that collapse
+# instead of a comment asserting it is fine.
 fn record_c_type_name(record_type: Text) -> Text {
-    return "KofunRecord_" + record_type
+    let argument = const_argument_of(record_type)
+    if len(argument) == 0 {
+        return "KofunRecord_" + record_type
+    }
+    return "KofunRecord_" + const_type_base(record_type) + "__" + argument
+}
+
+# The `index`-th distinct instantiation of `wanted`, in first-use order, or
+# "". This is the monomorphization set the emitter walks.
+fn const_instantiation_at(
+    source: Text,
+    wanted: Text,
+    wanted_index: Int
+) -> Text {
+    let mut seen = "|"
+    let mut count = 0
+    let mut cursor = skip_trivia(source, 0)
+    while cursor < len(source) {
+        if token_kind(source, cursor) == "identifier" &&
+           token_text(source, cursor) == wanted &&
+           !const_generic_declaration_head(source, cursor) {
+            let identity = annotation_type_text(source, cursor)
+            if identity != wanted && !contains(seen, "|" + identity + "|") {
+                if count == wanted_index {
+                    return identity
+                }
+                seen = seen + identity + "|"
+                count = count + 1
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return ""
+}
+
+fn const_instantiation_count(source: Text, wanted: Text) -> Int {
+    let mut count = 0
+    while len(const_instantiation_at(source, wanted, count)) > 0 {
+        count = count + 1
+    }
+    return count
 }
 
 fn record_c_field_name(field: Text) -> Text {
@@ -2950,6 +3162,17 @@ fn emit_record_value(
         let binding_id = hir_use_binding_id(hir, cursor)
         if len(binding_id) == 0 ||
            hir_binding_field(hir, binding_id, 5) != record_type {
+            # Two instantiations of one const generic declaration are not a
+            # generic record mismatch, they are a mismatch *in the const
+            # argument*, so they say which scales disagreed.
+            let actual = hir_binding_field(hir, binding_id, 5)
+            if len(binding_id) > 0 &&
+               const_type_base(actual) == const_type_base(record_type) {
+                return "error[E2S151]: `" + actual + "` is not `" +
+                record_type +
+                "`; instantiations differing only in their const argument are different types at byte " +
+                to_text(cursor)
+            }
             return "error[E2S32]: nominal record binding has the wrong type at byte " +
             to_text(cursor)
         }
@@ -3111,14 +3334,20 @@ fn emit_list_int_literal(
 ) -> Text {
     let count = list_int_literal_count(source, open)
     if count < 0 {
-        return "error[E2S148]: malformed List[Int] literal at byte " +
+        return "error[E2S157]: malformed List[Int] literal at byte " +
         to_text(open)
     }
     if count > 64 {
-        return "error[E2S148]: List[Int] literal capacity is 64 elements at byte " +
+        return "error[E2S157]: List[Int] literal capacity is 64 elements at byte " +
         to_text(open)
     }
-    let mut emitted = "((KofunIntList){INT64_C(" + to_text(count) + "), {"
+    if count == 0 {
+        return "((KofunIntList)(const void *)&(const struct { " +
+        "uint64_t length; }){UINT64_C(0)})"
+    }
+    let mut emitted = "((KofunIntList)(const void *)&(const struct { " +
+    "uint64_t length; int64_t elements[" + to_text(count) +
+    "]; }){UINT64_C(" + to_text(count) + "), {"
     let mut element = skip_trivia(source, token_end(source, open))
     let mut index = 0
     while index < count {
@@ -3130,7 +3359,7 @@ fn emit_list_int_literal(
             element
         )
         if actual != "Int" {
-            return "error[E2S148]: List[Int] element must have type Int, got " +
+            return "error[E2S157]: List[Int] element must have type Int, got " +
             actual + " at byte " + to_text(element)
         }
         let value = emit_expression(source, hir, element, bound)
@@ -3144,9 +3373,6 @@ fn emit_list_int_literal(
         index = index + 1
         let separator = skip_trivia(source, bound)
         element = skip_trivia(source, token_end(source, separator))
-    }
-    if count == 0 {
-        emitted = emitted + "INT64_C(0)"
     }
     return emitted + "}})"
 }
@@ -3233,15 +3459,23 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
                 enclosing_function_open(source, value),
                 value
             ) == "List[Int]" {
-                return "(" + emit_expression(
+                return "((int64_t)kofun_list_int_length(" + emit_expression(
                     source,
                     hir,
                     value,
                     value_end
-                ) + ").length"
+                ) + "))"
             }
             return "((int64_t)strlen(" + emit_expression(
                 source, hir, value, value_end) + "))"
+        }
+        # `to_text(Int)` lowers beside `len`, the other one-argument builtin
+        # the ordinary Core path emits directly.
+        if open < end && token_text(source, open) == "(" &&
+           name == "to_text" {
+            let value = skip_trivia(source, token_end(source, open))
+            return "kofun_to_text(" + emit_expression(
+                source, hir, value, argument_end(source, value)) + ")"
         }
         if open < end && token_text(source, open) == "(" &&
            name == "text_slice" {
@@ -3272,7 +3506,7 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
                     5
                 )
                 if binding_type != "List[Int]" {
-                    return "error[E2S148]: indexing requires List[Int], got " +
+                    return "error[E2S157]: indexing requires List[Int], got " +
                     binding_type + " at byte " + to_text(cursor)
                 }
                 let index_start = skip_trivia(
@@ -3286,7 +3520,7 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
                 }
                 if index_end < 0 || close >= len(source) ||
                    token_text(source, close) != "]" {
-                    return "error[E2S148]: malformed List[Int] index at byte " +
+                    return "error[E2S157]: malformed List[Int] index at byte " +
                     to_text(open)
                 }
                 let index_type = initializer_type(
@@ -3296,7 +3530,7 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
                     index_start
                 )
                 if index_type != "Int" {
-                    return "error[E2S148]: List[Int] index must have type Int, got " +
+                    return "error[E2S157]: List[Int] index must have type Int, got " +
                     index_type + " at byte " + to_text(index_start)
                 }
                 let constant = list_int_constant_index(
@@ -3312,7 +3546,7 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
                 if len(constant) > 0 && literal_count >= 0 {
                     let numeric = decimal_value(constant)
                     if numeric < 0 - literal_count || numeric >= literal_count {
-                        return "error[E2S148]: List[Int] index " + constant +
+                        return "error[E2S157]: List[Int] index " + constant +
                         " is out of range for length " +
                         to_text(literal_count) + " at byte " +
                         to_text(index_start)
@@ -3327,7 +3561,7 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
                 if starts_with(index_value, "error[") {
                     return index_value
                 }
-                return "kofun_list_int_index(&k_b" + binding_id +
+                return "kofun_list_int_index(k_b" + binding_id +
                 ", " + index_value + ")"
             }
             if open < end && token_text(source, open) == "." {
@@ -3352,6 +3586,10 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
                 }
                 return "k_b" + binding_id + "." +
                 record_c_field_name(field)
+            }
+            if optional_int_binding(source, cursor, name) &&
+               !optional_int_carrier_position(source, cursor) {
+                return "k_b" + binding_id + ".payload"
             }
             return "k_b" + binding_id
         }
@@ -3511,6 +3749,12 @@ fn emit_expression(source: Text, hir: Text, start: Int, end: Int) -> Text {
         enclosing_function_open(source, start),
         start
     )
+    let mut left_is_text = text_operand(
+        source,
+        hir,
+        enclosing_function_open(source, start),
+        start
+    )
     let mut operator_start = skip_trivia(source, cursor)
     while operator_start < end {
         let operator = token_text(source, operator_start)
@@ -3520,6 +3764,12 @@ fn emit_expression(source: Text, hir: Text, start: Int, end: Int) -> Text {
         )
         let right_end = product_end(source, right_start)
         let right = emit_product(source, hir, right_start, right_end)
+        let right_is_text = text_operand(
+            source,
+            hir,
+            enclosing_function_open(source, start),
+            right_start
+        )
         # Same rule as `emit_product`: a rejected operand must not be wrapped
         # into a call that looks like a valid expression.
         if starts_with(emitted, "error[") {
@@ -3529,7 +3779,14 @@ fn emit_expression(source: Text, hir: Text, start: Int, end: Int) -> Text {
             return right
         }
         if operator == "+" {
-            if value_type == "Decimal" {
+            if left_is_text || right_is_text {
+                if !left_is_text || !right_is_text {
+                    return "error[E2S155]: operator `+` requires Text + Text " +
+                    "or matching numeric operands at byte " +
+                    to_text(operator_start)
+                }
+                emitted = "kofun_text_concat(" + emitted + ", " + right + ")"
+            } else if value_type == "Decimal" {
                 emitted = "kofun_decimal_value_add(" + emitted +
                 ", " + right + ")"
             } else if value_type == "Float" {
@@ -3539,7 +3796,10 @@ fn emit_expression(source: Text, hir: Text, start: Int, end: Int) -> Text {
                 emitted = "kofun_add(" + emitted + ", " + right + ")"
             }
         } else if operator == "-" {
-            if value_type == "Decimal" {
+            if left_is_text || right_is_text {
+                return "error[E2S155]: only operator `+` is defined on Text " +
+                "at byte " + to_text(operator_start)
+            } else if value_type == "Decimal" {
                 emitted = "kofun_decimal_value_subtract(" + emitted +
                 ", " + right + ")"
             } else if value_type == "Float" {
@@ -3549,6 +3809,7 @@ fn emit_expression(source: Text, hir: Text, start: Int, end: Int) -> Text {
                 emitted = "kofun_sub(" + emitted + ", " + right + ")"
             }
         }
+        left_is_text = left_is_text && right_is_text
         cursor = right_end
         operator_start = skip_trivia(source, cursor)
     }
@@ -3608,7 +3869,8 @@ fn builtin_arity(name: Text) -> Int {
     }
     if name == "chars" || name == "is_digit" || name == "is_space" ||
        name == "is_xid_continue" || name == "len" || name == "read_text" ||
-       name == "trim" || name == "validate_unicode_source" {
+       name == "to_text" || name == "trim" ||
+       name == "validate_unicode_source" {
         return 1
     }
     if name == "contains" || name == "find" || name == "starts_with" ||
@@ -3645,6 +3907,9 @@ fn builtin_parameter_types(name: Text) -> Text {
     }
     if name == "text_slice" {
         return "Text|Int|Int"
+    }
+    if name == "to_text" {
+        return "Int"
     }
     return "none"
 }
@@ -4000,7 +4265,8 @@ fn validate_core_calls(source: Text, hir: Text) -> Text {
                     if len(argument_error) > 0 {
                         return argument_error
                     }
-                    if name == "len" || name == "text_slice" {
+                    if name == "len" || name == "text_slice" ||
+                       name == "to_text" {
                         expected = builtin_expected
                     } else {
                         return "error[E2S10]: unsupported Core builtin call `" +
@@ -4063,6 +4329,10 @@ fn core_parameters(
                 type_cursor,
                 "k_b" + hir_definition_id_at(hir, cursor)
             )
+        } else if optional_int_type_end(source, type_cursor) >= 0 {
+            type_end = optional_int_type_end(source, type_cursor)
+            declarator = "KofunOptionalInt k_b" +
+                hir_definition_id_at(hir, cursor)
         } else if token_text(source, type_cursor) == "Int" {
             type_end = token_end(source, type_cursor)
             declarator = "int64_t k_b" + hir_definition_id_at(hir, cursor)
@@ -4081,9 +4351,9 @@ fn core_parameters(
             source,
             token_text(source, type_cursor)
         ) >= 0 {
-            type_end = token_end(source, type_cursor)
+            type_end = annotation_type_end(source, type_cursor)
             declarator = record_c_type_name(
-                token_text(source, type_cursor)
+                annotation_type_text(source, type_cursor)
             ) + " k_b" + hir_definition_id_at(hir, cursor)
         }
         if type_end < 0 {
@@ -4309,6 +4579,241 @@ fn removed_callable_rewrite(source: Text, open: Int) -> Text {
     return "(" + domain + ") -> " + result
 }
 
+# The leading-zero-stripped digits of a const argument. Normalization is by
+# value, not by digits, so `Fixed[02]` and `Fixed[2]` are one type.
+fn const_argument_digits(literal: Text) -> Text {
+    let mut index = 0
+    while index + 1 < len(literal) &&
+          text_slice(literal, index, index + 1) == "0" {
+        index = index + 1
+    }
+    return text_slice(literal, index, len(literal))
+}
+
+fn const_digit_greater(actual: Text, allowed: Text) -> Bool {
+    let digits = "0123456789"
+    return find(digits, actual) > find(digits, allowed)
+}
+
+# A const parameter is a type-level integer, not a machine integer, so its
+# budget is a declared ceiling rather than a host width. Exceeding it is
+# refused and never wrapped, clamped, or truncated. Comparing equal-width
+# digit strings position by position is exactly numeric comparison, which is
+# why no integer parse is needed here.
+fn const_argument_over_budget(digits: Text) -> Bool {
+    let limit = "65535"
+    let width = len(digits)
+    if width > len(limit) {
+        return true
+    }
+    if width < len(limit) {
+        return false
+    }
+    let mut index = 0
+    while index < width {
+        let actual = text_slice(digits, index, index + 1)
+        let allowed = text_slice(limit, index, index + 1)
+        if actual != allowed {
+            return const_digit_greater(actual, allowed)
+        }
+        index = index + 1
+    }
+    return false
+}
+
+# The text of a type annotation, carrying its normalized const argument when
+# the head names a const-parameterized type.
+#
+# Returning only the head token here is what would erase `Fixed[2]` into
+# `Fixed`, making every scale one type. This is the single place an
+# instantiation becomes a type identity, so every comparison downstream
+# distinguishes the scales without knowing they exist.
+fn annotation_type_text(source: Text, type_start: Int) -> Text {
+    let head = token_text(source, type_start)
+    if len(const_parameter_of_type(source, head)) == 0 {
+        return head
+    }
+    let bracket = skip_trivia(source, token_end(source, type_start))
+    if bracket >= len(source) || token_text(source, bracket) != "[" {
+        return head
+    }
+    let argument = skip_trivia(source, token_end(source, bracket))
+    if argument >= len(source) ||
+       token_kind(source, argument) != "integer" {
+        return head
+    }
+    return head + "[" +
+    const_argument_digits(token_text(source, argument)) + "]"
+}
+
+# The end offset of a type annotation, including its const argument. Walking
+# past only the head token here is what would leave `[2]` in the stream for
+# the next parser step to trip over.
+fn annotation_type_end(source: Text, type_start: Int) -> Int {
+    let head = token_text(source, type_start)
+    if len(const_parameter_of_type(source, head)) == 0 {
+        return token_end(source, type_start)
+    }
+    let bracket = skip_trivia(source, token_end(source, type_start))
+    if bracket >= len(source) || token_text(source, bracket) != "[" {
+        return token_end(source, type_start)
+    }
+    let close = balanced_end(source, bracket, "[", "]")
+    if close < 0 {
+        return token_end(source, type_start)
+    }
+    return close
+}
+
+# The declaration a type identity names, with any const argument removed.
+fn const_type_base(annotation: Text) -> Text {
+    let bracket = find(annotation, "[")
+    if bracket < 0 {
+        return annotation
+    }
+    return text_slice(annotation, 0, bracket)
+}
+
+# Every `NAME[...]` whose head is a const-parameterized type must supply one
+# non-negative integer literal inside the declared budget. Const expressions,
+# const inference, and arithmetic on a type-level value are out of scope, so a
+# non-literal argument is refused here rather than partially resolved.
+fn validate_const_arguments(source: Text) -> Text {
+    let mut cursor = skip_trivia(source, 0)
+    while cursor < len(source) {
+        if token_kind(source, cursor) == "identifier" {
+            let head = token_text(source, cursor)
+            let parameter = const_parameter_of_type(source, head)
+            let bracket = skip_trivia(source, token_end(source, cursor))
+            if len(parameter) > 0 &&
+               const_generic_declaration_head(source, cursor) {
+                # The declaration's own parameter list is a binder, not an
+                # argument; `type_parameter_list_error` owns its shape.
+                cursor = skip_trivia(source, token_end(source, cursor))
+                continue
+            }
+            if len(parameter) > 0 && bracket < len(source) &&
+               token_text(source, bracket) == "[" {
+                let close = balanced_end(source, bracket, "[", "]")
+                if close < 0 {
+                    return "error[E2S150]: unterminated const argument list for `" +
+                    head + "` at byte " + to_text(bracket)
+                }
+                let argument = skip_trivia(source, token_end(source, bracket))
+                if token_text(source, argument) == "-" {
+                    return "error[E2S149]: const argument to `" + head +
+                    "` is negative; `" + parameter +
+                    ": Int` admits `0`..`65535` only at byte " +
+                    to_text(argument)
+                }
+                if token_kind(source, argument) != "integer" {
+                    return "error[E2S149]: const argument to `" + head +
+                    "` is not an integer literal; const expressions are out of scope at byte " +
+                    to_text(argument)
+                }
+                let digits = const_argument_digits(
+                    token_text(source, argument)
+                )
+                if const_argument_over_budget(digits) {
+                    return "error[E2S149]: const argument to `" + head +
+                    "` exceeds the budget `0`..`65535`; it is refused, not wrapped at byte " +
+                    to_text(argument)
+                }
+                let after = skip_trivia(source, token_end(source, argument))
+                if token_text(source, after) != "]" {
+                    return "error[E2S150]: `" + head +
+                    "` declares one const parameter and accepts exactly one argument at byte " +
+                    to_text(after)
+                }
+                cursor = skip_trivia(source, close)
+                continue
+            }
+            if len(parameter) > 0 &&
+               !const_generic_declaration_head(source, cursor) {
+                return "error[E2S150]: `" + head +
+                "` expects one const argument; write `" + head +
+                "[...]` at byte " + to_text(cursor)
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return "ok"
+}
+
+# True at the type name of the declaration itself, which is the one position
+# where a const-parameterized name legitimately carries no argument.
+fn const_generic_declaration_head(source: Text, position: Int) -> Bool {
+    let mut cursor = after_optional_module_header(source, 0)
+    while cursor < len(source) {
+        let type_start = type_declaration_start(source, cursor)
+        if type_start >= 0 &&
+           skip_trivia(source, token_end(source, type_start)) == position {
+            return true
+        }
+        let end = top_level_end(source, cursor)
+        if end <= cursor {
+            return false
+        }
+        cursor = skip_trivia(source, end)
+    }
+    return false
+}
+
+# The executable form of the premise that lets every instantiation of one
+# declaration share a single lowering: a const argument contributes no
+# storage, so it must never reach layout or code generation.
+#
+# A record field typed by an instantiation is the route that would break it —
+# the field would put the argument inside a struct, and one shared struct
+# would then be a miscompile across two types the checker has already made
+# distinct. Refusing it here means the premise fails loudly the day it stops
+# holding, instead of a struct being quietly shared.
+fn validate_const_erasure(source: Text) -> Text {
+    let mut cursor = after_optional_module_header(source, 0)
+    while cursor < len(source) {
+        let type_start = type_declaration_start(source, cursor)
+        if type_start >= 0 && record_declaration_at(source, type_start) {
+            let equals = type_equals_token(source, type_start)
+            let open = skip_trivia(source, token_end(source, equals))
+            let close = balanced_end(source, open, "{", "}")
+            if close < 0 {
+                return "ok"
+            }
+            let mut field = skip_trivia(source, token_end(source, open))
+            while field < close && token_text(source, field) != "}" {
+                let colon = skip_trivia(source, token_end(source, field))
+                let field_type = skip_trivia(source, token_end(source, colon))
+                if field_type < close &&
+                   len(const_parameter_of_type(
+                       source,
+                       token_text(source, field_type)
+                   )) > 0 {
+                    return "error[E2S148]: field `" +
+                    token_text(source, field) + "` of `" +
+                    type_name(source, type_start) +
+                    "` is a const generic instantiation; a const argument must not reach layout at byte " +
+                    to_text(field_type)
+                }
+                let separator = skip_trivia(
+                    source,
+                    token_end(source, field_type)
+                )
+                if separator < close && token_text(source, separator) == "," {
+                    field = skip_trivia(source, token_end(source, separator))
+                } else {
+                    field = separator
+                }
+            }
+        }
+        let end = top_level_end(source, cursor)
+        if end <= cursor {
+            return "ok"
+        }
+        cursor = skip_trivia(source, end)
+    }
+    return "ok"
+}
+
 # `Fn[...]` is the callable notation #552 removed. `Fn` stays an ordinary
 # identifier, so only `Fn` immediately followed by `[` is the removed type.
 fn validate_removed_callable_notation(source: Text) -> Text {
@@ -4453,42 +4958,882 @@ fn call_argument_expected_type(source: Text, target: Int) -> Text {
     return ""
 }
 
+# #924 Optional(Int) source judgements. The C seed memoizes the annotation
+# scan by source address; canonical Kofun has no process-global cache, so it
+# performs the same bounded token walk directly.
+fn optional_int_type_end(source: Text, type_start: Int) -> Int {
+    if type_start >= len(source) || token_text(source, type_start) != "Int" {
+        return -1
+    }
+    let suffix = skip_trivia(source, token_end(source, type_start))
+    if suffix >= len(source) || token_text(source, suffix) != "?" {
+        return -1
+    }
+    return token_end(source, suffix)
+}
+
+fn scan_optional_int_annotation(source: Text) -> Bool {
+    let mut cursor = skip_trivia(source, 0)
+    while cursor < len(source) {
+        if token_text(source, cursor) == ":" ||
+           token_text(source, cursor) == "->" {
+            let type_start = skip_trivia(source, token_end(source, cursor))
+            if token_text(source, type_start) == "Int" {
+                let suffix = skip_trivia(source, token_end(source, type_start))
+                if token_text(source, suffix) == "?" ||
+                   token_text(source, suffix) == "??" {
+                    return true
+                }
+            }
+        }
+        let next = token_end(source, cursor)
+        if next <= cursor {
+            break
+        }
+        cursor = skip_trivia(source, next)
+    }
+    return false
+}
+
+fn source_uses_optional_int(source: Text) -> Bool {
+    return scan_optional_int_annotation(source)
+}
+
+fn optional_int_function_start(source: Text, position: Int) -> Int {
+    let mut cursor = next_function_start(source, 0)
+    while cursor < len(source) {
+        let end = function_end(source, cursor)
+        if position >= cursor && position < end {
+            return cursor
+        }
+        if end <= cursor {
+            break
+        }
+        cursor = next_function_start(source, end)
+    }
+    return -1
+}
+
+fn optional_int_result_at(source: Text, function_start: Int) -> Bool {
+    let open = parameter_open(source, function_start)
+    if open < 0 {
+        return false
+    }
+    let close = balanced_end(source, open, "(", ")")
+    if close < 0 {
+        return false
+    }
+    let arrow = skip_trivia(source, close)
+    if arrow >= len(source) || token_text(source, arrow) != "->" {
+        return false
+    }
+    return optional_int_type_end(
+        source,
+        skip_trivia(source, token_end(source, arrow))
+    ) >= 0
+}
+
+fn optional_int_result(source: Text, wanted: Text) -> Bool {
+    let mut cursor = next_function_start(source, 0)
+    while cursor < len(source) {
+        if function_name(source, cursor) == wanted {
+            return optional_int_result_at(source, cursor)
+        }
+        let end = function_end(source, cursor)
+        if end <= cursor {
+            break
+        }
+        cursor = next_function_start(source, end)
+    }
+    return false
+}
+
+fn optional_int_result_containing(source: Text, position: Int) -> Bool {
+    let function_start = optional_int_function_start(source, position)
+    return function_start >= 0 &&
+           optional_int_result_at(source, function_start)
+}
+
+fn optional_int_parameter(source: Text, callee: Text, wanted: Int) -> Bool {
+    let mut cursor = next_function_start(source, 0)
+    while cursor < len(source) {
+        if function_name(source, cursor) != callee {
+            let end = function_end(source, cursor)
+            if end <= cursor {
+                break
+            }
+            cursor = next_function_start(source, end)
+            continue
+        }
+        let open = parameter_open(source, cursor)
+        if open < 0 {
+            return false
+        }
+        let close = balanced_end(source, open, "(", ")")
+        if close < 0 {
+            return false
+        }
+        let mut parameter = skip_trivia(source, token_end(source, open))
+        let mut index = 0
+        while parameter < close && token_text(source, parameter) != ")" {
+            let colon = skip_trivia(source, token_end(source, parameter))
+            if colon >= close || token_text(source, colon) != ":" {
+                break
+            }
+            let type_start = skip_trivia(source, token_end(source, colon))
+            let mut type_end = optional_int_type_end(source, type_start)
+            if index == wanted {
+                return type_end >= 0
+            }
+            if type_end < 0 {
+                type_end = token_end(source, type_start)
+            }
+            let separator = skip_trivia(source, type_end)
+            if separator >= close || token_text(source, separator) != "," {
+                break
+            }
+            parameter = skip_trivia(source, token_end(source, separator))
+            index = index + 1
+        }
+        return false
+    }
+    return false
+}
+
+fn optional_int_binding(source: Text, position: Int, name: Text) -> Bool {
+    if !source_uses_optional_int(source) {
+        return false
+    }
+    let function_start = optional_int_function_start(source, position)
+    if function_start < 0 {
+        return false
+    }
+    let open = parameter_open(source, function_start)
+    if open < 0 {
+        return false
+    }
+    let close = balanced_end(source, open, "(", ")")
+    if close < 0 {
+        return false
+    }
+    let mut parameter = skip_trivia(source, token_end(source, open))
+    while parameter < close && token_text(source, parameter) != ")" {
+        let colon = skip_trivia(source, token_end(source, parameter))
+        if colon >= close || token_text(source, colon) != ":" {
+            break
+        }
+        let type_start = skip_trivia(source, token_end(source, colon))
+        let mut type_end = optional_int_type_end(source, type_start)
+        if type_end >= 0 && token_text(source, parameter) == name {
+            return true
+        }
+        if type_end < 0 {
+            type_end = token_end(source, type_start)
+        }
+        let separator = skip_trivia(source, type_end)
+        if separator >= close || token_text(source, separator) != "," {
+            break
+        }
+        parameter = skip_trivia(source, token_end(source, separator))
+    }
+    let function_close = function_end(source, function_start)
+    let mut cursor = skip_trivia(source, close)
+    while cursor < function_close {
+        if token_text(source, cursor) == "let" {
+            let mut binding = skip_trivia(source, token_end(source, cursor))
+            if token_text(source, binding) == "mut" {
+                binding = skip_trivia(source, token_end(source, binding))
+            }
+            let colon = skip_trivia(source, token_end(source, binding))
+            if token_text(source, colon) == ":" &&
+               optional_int_type_end(
+                   source,
+                   skip_trivia(source, token_end(source, colon))
+               ) >= 0 && token_text(source, binding) == name {
+                return true
+            }
+        }
+        let next = token_end(source, cursor)
+        if next <= cursor {
+            break
+        }
+        cursor = skip_trivia(source, next)
+    }
+    return false
+}
+
+fn optional_int_carrier_position(source: Text, at: Int) -> Bool {
+    if !source_uses_optional_int(source) {
+        return false
+    }
+    let function_start = optional_int_function_start(source, at)
+    if function_start < 0 {
+        return false
+    }
+    let function_close = function_end(source, function_start)
+    let mut cursor = skip_trivia(source, function_start)
+    while cursor < function_close {
+        let open = skip_trivia(source, token_end(source, cursor))
+        if token_kind(source, cursor) == "identifier" &&
+           open < function_close && token_text(source, open) == "(" {
+            let arguments_end = balanced_end(source, open, "(", ")")
+            if arguments_end > 0 {
+                let callee = token_text(source, cursor)
+                let mut argument = skip_trivia(source, token_end(source, open))
+                let mut index = 0
+                while argument < arguments_end &&
+                      token_text(source, argument) != ")" {
+                    let bound = argument_end(source, argument)
+                    if bound < 0 {
+                        break
+                    }
+                    if argument == at {
+                        return skip_trivia(source, token_end(source, at)) >=
+                                   bound &&
+                               optional_int_parameter(source, callee, index)
+                    }
+                    let separator = skip_trivia(source, bound)
+                    if separator >= arguments_end ||
+                       token_text(source, separator) != "," {
+                        break
+                    }
+                    argument = skip_trivia(
+                        source,
+                        token_end(source, separator)
+                    )
+                    index = index + 1
+                }
+            }
+        }
+        let next = token_end(source, cursor)
+        if next <= cursor {
+            break
+        }
+        cursor = skip_trivia(source, next)
+    }
+    return false
+}
+
+# Kofun returns the binding position separately because this source profile
+# has no out-parameters. The C transliteration's OptionalCondition values map
+# to 0 (none), 1 (present on the true edge), and 2 (absent on the true edge).
+fn optional_int_condition_binding(source: Text, start: Int, end: Int) -> Int {
+    let left = skip_trivia(source, start)
+    if left >= end {
+        return -1
+    }
+    let operator_start = skip_trivia(source, token_end(source, left))
+    if operator_start >= end ||
+       (token_text(source, operator_start) != "!=" &&
+        token_text(source, operator_start) != "==") {
+        return -1
+    }
+    let right = skip_trivia(source, token_end(source, operator_start))
+    if right >= end || skip_trivia(source, token_end(source, right)) < end {
+        return -1
+    }
+    let mut name_at = -1
+    if token_text(source, left) == "null" {
+        name_at = right
+    } else {
+        if token_text(source, right) == "null" {
+            name_at = left
+        }
+    }
+    if name_at < 0 || token_text(source, name_at) == "null" ||
+       token_kind(source, name_at) != "identifier" {
+        return -1
+    }
+    let name = token_text(source, name_at)
+    if !optional_int_binding(source, name_at, name) {
+        return -1
+    }
+    return name_at
+}
+
+fn optional_int_condition(source: Text, start: Int, end: Int) -> Int {
+    if optional_int_condition_binding(source, start, end) < 0 {
+        return 0
+    }
+    let left = skip_trivia(source, start)
+    let operator_start = skip_trivia(source, token_end(source, left))
+    if token_text(source, operator_start) == "!=" {
+        return 1
+    }
+    return 2
+}
+
+fn optional_int_block_returns(source: Text, block_open: Int) -> Bool {
+    let close = balanced_end(source, block_open, "{", "}")
+    if close < 0 {
+        return false
+    }
+    let mut depth = 0
+    let mut cursor = skip_trivia(source, token_end(source, block_open))
+    while cursor < close {
+        if token_text(source, cursor) == "{" {
+            depth = depth + 1
+        } else {
+            if token_text(source, cursor) == "}" {
+                depth = depth - 1
+            } else {
+                if depth == 0 && token_text(source, cursor) == "return" {
+                    return true
+                }
+            }
+        }
+        let next = token_end(source, cursor)
+        if next <= cursor {
+            break
+        }
+        cursor = skip_trivia(source, next)
+    }
+    return false
+}
+
+fn optional_int_refined(source: Text, name: Text, at: Int) -> Bool {
+    let function_start = optional_int_function_start(source, at)
+    if function_start < 0 {
+        return false
+    }
+    let function_close = function_end(source, function_start)
+    let mut cursor = skip_trivia(source, function_start)
+    while cursor < function_close {
+        if token_text(source, cursor) == "if" {
+            let condition_start = skip_trivia(
+                source,
+                token_end(source, cursor)
+            )
+            let condition_close = condition_end(source, condition_start)
+            let mut kind = 0
+            let mut name_at = -1
+            if condition_close >= 0 {
+                kind = optional_int_condition(
+                    source,
+                    condition_start,
+                    condition_close
+                )
+                name_at = optional_int_condition_binding(
+                    source,
+                    condition_start,
+                    condition_close
+                )
+            }
+            if kind != 0 && token_text(source, name_at) == name {
+                let branch_open = skip_trivia(source, condition_close)
+                let mut branch_close = -1
+                if branch_open < function_close &&
+                   token_text(source, branch_open) == "{" {
+                    branch_close = balanced_end(
+                        source,
+                        branch_open,
+                        "{",
+                        "}"
+                    )
+                }
+                if branch_close > 0 {
+                    let after = skip_trivia(source, token_end(source, branch_close))
+                    let has_else = after < function_close &&
+                                   token_text(source, after) == "else"
+                    let mut else_open = -1
+                    if has_else {
+                        else_open = skip_trivia(source, token_end(source, after))
+                    }
+                    let mut else_close = -1
+                    if else_open >= 0 && else_open < function_close &&
+                       token_text(source, else_open) == "{" {
+                        else_close = balanced_end(source, else_open, "{", "}")
+                    }
+                    if kind == 1 {
+                        if at > branch_open && at < branch_close {
+                            return true
+                        }
+                    } else {
+                        if else_close > 0 && at > else_open && at < else_close {
+                            return true
+                        }
+                        if !has_else &&
+                           optional_int_block_returns(source, branch_open) &&
+                           at >= token_end(source, branch_close) {
+                            return true
+                        }
+                    }
+                }
+            }
+        }
+        let next = token_end(source, cursor)
+        if next <= cursor {
+            break
+        }
+        cursor = skip_trivia(source, next)
+    }
+    return false
+}
+
+fn optional_int_null_context(source: Text, at: Int) -> Bool {
+    if token_text(source, at) != "null" {
+        return false
+    }
+    let function_start = optional_int_function_start(source, at)
+    if function_start < 0 {
+        return false
+    }
+    let function_close = function_end(source, function_start)
+    let optional_result = optional_int_result_at(source, function_start)
+    let mut cursor = skip_trivia(source, function_start)
+    while cursor < function_close {
+        if token_text(source, cursor) == "let" {
+            let mut binding = skip_trivia(source, token_end(source, cursor))
+            if token_text(source, binding) == "mut" {
+                binding = skip_trivia(source, token_end(source, binding))
+            }
+            let colon = skip_trivia(source, token_end(source, binding))
+            let mut annotation_end = -1
+            if token_text(source, colon) == ":" {
+                annotation_end = optional_int_type_end(
+                    source,
+                    skip_trivia(source, token_end(source, colon))
+                )
+            }
+            let mut assign = -1
+            if annotation_end >= 0 {
+                assign = skip_trivia(source, annotation_end)
+            }
+            if assign >= 0 && token_text(source, assign) == "=" {
+                let value = skip_trivia(source, token_end(source, assign))
+                if value == at &&
+                   skip_trivia(source, token_end(source, at)) >=
+                       expression_end(source, value) {
+                    return true
+                }
+            }
+        } else {
+            if token_text(source, cursor) == "if" ||
+               token_text(source, cursor) == "while" {
+                let condition_start = skip_trivia(
+                    source,
+                    token_end(source, cursor)
+                )
+                let condition_close = condition_end(source, condition_start)
+                let name_at = optional_int_condition_binding(
+                    source,
+                    condition_start,
+                    condition_close
+                )
+                if condition_close >= 0 && name_at >= 0 &&
+                   at >= condition_start && at < condition_close &&
+                   at != name_at {
+                    return true
+                }
+            } else {
+                if optional_result && token_text(source, cursor) == "return" {
+                    let value = skip_trivia(source, token_end(source, cursor))
+                    if value == at &&
+                       skip_trivia(source, token_end(source, at)) >=
+                           expression_end(source, value) {
+                        return true
+                    }
+                }
+            }
+        }
+        let next = token_end(source, cursor)
+        if next <= cursor {
+            break
+        }
+        cursor = skip_trivia(source, next)
+    }
+    return false
+}
+
+fn emit_optional_int_c_declarations() -> Text {
+    return "typedef struct {\n" +
+        "    uint8_t tag;\n" +
+        "    int64_t payload;\n" +
+        "} KofunOptionalInt;\n" +
+        "_Static_assert(offsetof(KofunOptionalInt, tag) == 0,\n" +
+        "    \"AggregateLayout Optional[Int] tag offset\");\n" +
+        "_Static_assert(sizeof(((KofunOptionalInt *)0)->tag) == 1,\n" +
+        "    \"AggregateLayout Optional[Int] tag width\");\n" +
+        "_Static_assert(offsetof(KofunOptionalInt, payload) == 8,\n" +
+        "    \"AggregateLayout Optional[Int] payload offset\");\n" +
+        "_Static_assert(sizeof(((KofunOptionalInt *)0)->payload) == 8,\n" +
+        "    \"AggregateLayout Optional[Int] payload size\");\n" +
+        "_Static_assert(sizeof(KofunOptionalInt) == 16,\n" +
+        "    \"AggregateLayout Optional[Int] size\");\n" +
+        "_Static_assert(_Alignof(KofunOptionalInt) == 8,\n" +
+        "    \"AggregateLayout Optional[Int] alignment\");\n" +
+        "#define KOFUN_OPTIONAL_INT_NONE_TAG UINT8_C(0)\n" +
+        "#define KOFUN_OPTIONAL_INT_SOME_TAG UINT8_C(1)\n" +
+        "#define KOFUN_OPTIONAL_INT_NONE " +
+        "((KofunOptionalInt){KOFUN_OPTIONAL_INT_NONE_TAG, INT64_C(0)})\n" +
+        "#define KOFUN_OPTIONAL_INT_SOME(value) " +
+        "((KofunOptionalInt){KOFUN_OPTIONAL_INT_SOME_TAG, (value)})\n\n"
+}
+
+fn optional_int_declaration_count(
+    source: Text,
+    position: Int,
+    name: Text
+) -> Int {
+    let function_start = optional_int_function_start(source, position)
+    if function_start < 0 {
+        return 0
+    }
+    let open = parameter_open(source, function_start)
+    if open < 0 {
+        return 0
+    }
+    let close = balanced_end(source, open, "(", ")")
+    if close < 0 {
+        return 0
+    }
+    let mut count = 0
+    let mut parameter = skip_trivia(source, token_end(source, open))
+    while parameter < close && token_text(source, parameter) != ")" {
+        if token_text(source, parameter) == name {
+            count = count + 1
+        }
+        let colon = skip_trivia(source, token_end(source, parameter))
+        if colon >= close || token_text(source, colon) != ":" {
+            break
+        }
+        let type_start = skip_trivia(source, token_end(source, colon))
+        let mut type_end = optional_int_type_end(source, type_start)
+        if type_end < 0 {
+            type_end = token_end(source, type_start)
+        }
+        let separator = skip_trivia(source, type_end)
+        if separator >= close || token_text(source, separator) != "," {
+            break
+        }
+        parameter = skip_trivia(source, token_end(source, separator))
+    }
+    let function_close = function_end(source, function_start)
+    let mut cursor = skip_trivia(source, close)
+    while cursor < function_close {
+        if token_text(source, cursor) == "let" {
+            let mut binding = skip_trivia(source, token_end(source, cursor))
+            if token_text(source, binding) == "mut" {
+                binding = skip_trivia(source, token_end(source, binding))
+            }
+            if token_text(source, binding) == name {
+                count = count + 1
+            }
+        }
+        let next = token_end(source, cursor)
+        if next <= cursor {
+            break
+        }
+        cursor = skip_trivia(source, next)
+    }
+    return count
+}
+
+fn validate_optional_uses(source: Text) -> Text {
+    if !source_uses_optional_int(source) {
+        return "ok"
+    }
+    let mut scan = skip_trivia(source, 0)
+    while scan < len(source) {
+        if token_text(source, scan) == ":" ||
+           token_text(source, scan) == "->" {
+            let type_start = skip_trivia(source, token_end(source, scan))
+            let type_end = optional_int_type_end(source, type_start)
+            let mut after_type = -1
+            if type_end >= 0 {
+                after_type = skip_trivia(source, type_end)
+            } else {
+                if token_text(source, type_start) == "Int" {
+                    after_type = skip_trivia(
+                        source,
+                        token_end(source, type_start)
+                    )
+                }
+            }
+            if after_type >= 0 &&
+               (token_text(source, after_type) == "?" ||
+                token_text(source, after_type) == "??") {
+                return lower_error(
+                    "E2S147",
+                    "one optional layer is supported; `Int??` is not a " +
+                    "type in this contract",
+                    type_start
+                )
+            }
+        }
+        let step = token_end(source, scan)
+        if step <= scan {
+            break
+        }
+        scan = skip_trivia(source, step)
+    }
+    let mut function_start = next_function_start(source, 0)
+    while function_start < len(source) {
+        let function_close = function_end(source, function_start)
+        let parameters = parameter_open(source, function_start)
+        let mut parameters_close = -1
+        if parameters >= 0 {
+            parameters_close = balanced_end(source, parameters, "(", ")")
+        }
+        if parameters_close < 0 {
+            if function_close <= function_start {
+                break
+            }
+            function_start = next_function_start(source, function_close)
+            continue
+        }
+        let mut body_open = skip_trivia(source, parameters_close)
+        while body_open < function_close &&
+              token_text(source, body_open) != "{" {
+            let step = token_end(source, body_open)
+            if step <= body_open {
+                break
+            }
+            body_open = skip_trivia(source, step)
+        }
+        let mut carrier = -1
+        let mut cursor = function_close
+        if body_open < function_close {
+            cursor = skip_trivia(source, token_end(source, body_open))
+        }
+        while cursor < function_close {
+            if token_text(source, cursor) == "let" {
+                let mut binding = skip_trivia(source, token_end(source, cursor))
+                let mutable = token_text(source, binding) == "mut"
+                if mutable {
+                    binding = skip_trivia(source, token_end(source, binding))
+                }
+                let colon = skip_trivia(source, token_end(source, binding))
+                let mut annotation = -1
+                if token_text(source, colon) == ":" {
+                    annotation = skip_trivia(source, token_end(source, colon))
+                }
+                let mut annotation_end = -1
+                if annotation >= 0 {
+                    annotation_end = optional_int_type_end(source, annotation)
+                }
+                if annotation_end >= 0 {
+                    if mutable {
+                        return lower_error(
+                            "E2S147",
+                            "mutable `Int?` bindings are outside this " +
+                            "lowering slice; declare `let` and construct a " +
+                            "new value instead",
+                            binding
+                        )
+                    }
+                    let declared = token_text(source, binding)
+                    if optional_int_declaration_count(
+                        source,
+                        binding,
+                        declared
+                    ) > 1 {
+                        return lower_error(
+                            "E2S147",
+                            "an `Int?` binding may not be declared twice " +
+                            "in one function in this lowering slice",
+                            binding
+                        )
+                    }
+                    let assign = skip_trivia(source, annotation_end)
+                    let mut value = -1
+                    if token_text(source, assign) == "=" {
+                        value = skip_trivia(source, token_end(source, assign))
+                    }
+                    if value >= 0 &&
+                       token_kind(source, value) == "identifier" {
+                        carrier = value
+                    }
+                    if value >= 0 {
+                        cursor = value
+                    } else {
+                        cursor = skip_trivia(source, colon)
+                    }
+                    continue
+                }
+            }
+            if token_text(source, cursor) == "if" ||
+               token_text(source, cursor) == "while" {
+                let condition_start = skip_trivia(
+                    source,
+                    token_end(source, cursor)
+                )
+                let condition_close = condition_end(source, condition_start)
+                if condition_close >= 0 && optional_int_condition(
+                    source,
+                    condition_start,
+                    condition_close
+                ) != 0 {
+                    carrier = optional_int_condition_binding(
+                        source,
+                        condition_start,
+                        condition_close
+                    )
+                }
+            } else {
+                if token_text(source, cursor) == "return" &&
+                   optional_int_result_containing(source, function_start) {
+                    let value = skip_trivia(source, token_end(source, cursor))
+                    if value < function_close &&
+                       token_kind(source, value) == "identifier" {
+                        carrier = value
+                    }
+                } else {
+                    if token_kind(source, cursor) == "identifier" {
+                        let name = token_text(source, cursor)
+                        let after = skip_trivia(source, token_end(source, cursor))
+                        let call = after < function_close &&
+                                   token_text(source, after) == "("
+                        let optional = !call &&
+                            optional_int_binding(source, cursor, name)
+                        if call && optional_int_result(source, name) {
+                            if cursor != carrier {
+                                return lower_error(
+                                    "E2S147",
+                                    "an `Int?` result is used whole; bind " +
+                                    "it with `let ...: Int?` or return it " +
+                                    "from a function declared `Int?`",
+                                    cursor
+                                )
+                            }
+                        } else {
+                            if optional {
+                                if optional_int_declaration_count(
+                                    source,
+                                    cursor,
+                                    name
+                                ) > 1 {
+                                    return lower_error(
+                                        "E2S147",
+                                        "an `Int?` binding may not be " +
+                                        "declared twice in one function in " +
+                                        "this lowering slice",
+                                        cursor
+                                    )
+                                }
+                                if after < function_close &&
+                                   token_text(source, after) == "=" {
+                                    return lower_error(
+                                        "E2S147",
+                                        "an `Int?` binding is immutable in " +
+                                        "this lowering slice and cannot be " +
+                                        "assigned",
+                                        cursor
+                                    )
+                                }
+                                if after < function_close &&
+                                   token_text(source, after) == "??" {
+                                    return lower_error(
+                                        "E2S147",
+                                        "`??` coalescing is not part of " +
+                                        "this lowering slice; narrow with " +
+                                        "a `null` comparison instead",
+                                        cursor
+                                    )
+                                }
+                                if after < function_close &&
+                                   (token_text(source, after) == "." ||
+                                    token_text(source, after) == "[") {
+                                    return lower_error(
+                                        "E2S147",
+                                        "property and index paths on an " +
+                                        "`Int?` binding are not narrowed; " +
+                                        "only a direct `null` comparison " +
+                                        "is recognized",
+                                        cursor
+                                    )
+                                }
+                                if cursor != carrier &&
+                                   !optional_int_carrier_position(
+                                       source,
+                                       cursor
+                                   ) &&
+                                   !optional_int_refined(source, name, cursor) {
+                                    return lower_error(
+                                        "E2S147",
+                                        "`" + name + "` is `Int?`; narrow " +
+                                        "it with a `null` comparison before " +
+                                        "using it as `Int`",
+                                        cursor
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            let next = token_end(source, cursor)
+            if next <= cursor {
+                break
+            }
+            cursor = skip_trivia(source, next)
+        }
+        if function_close <= function_start {
+            break
+        }
+        function_start = next_function_start(source, function_close)
+    }
+    return "ok"
+}
+
+fn optional_int_value(
+    source: Text,
+    hir: Text,
+    start: Int,
+    end: Int
+) -> Text {
+    let cursor = skip_trivia(source, start)
+    let single = skip_trivia(source, token_end(source, cursor)) >= end
+    if single && token_text(source, cursor) == "null" {
+        return "KOFUN_OPTIONAL_INT_NONE"
+    }
+    if token_kind(source, cursor) == "identifier" {
+        let name = token_text(source, cursor)
+        if single && optional_int_binding(source, cursor, name) {
+            return "k_b" + hir_use_binding_id(hir, cursor)
+        }
+        let open = skip_trivia(source, token_end(source, cursor))
+        if open < end && token_text(source, open) == "(" &&
+           optional_int_result(source, name) {
+            let close = balanced_end(source, open, "(", ")")
+            if close < 0 || skip_trivia(source, close) < end {
+                return lower_error(
+                    "E2S147",
+                    "an `Int?` call result is used whole; it takes part in " +
+                    "no arithmetic in this lowering slice",
+                    cursor
+                )
+            }
+            return emit_expression(source, hir, start, end)
+        }
+    }
+    let function_open = enclosing_function_open(source, cursor)
+    let value_type = initializer_type(source, hir, function_open, cursor)
+    let present = value_type == "Int" || (!single && value_type == "Int?")
+    if !present {
+        return lower_error(
+            "E2S147",
+            "an `Int?` value is `null`, an `Int`, another `Int?` binding, " +
+            "or a call returning `Int?`",
+            cursor
+        )
+    }
+    let inner = emit_expression(source, hir, start, end)
+    if starts_with(inner, "error[") {
+        return inner
+    }
+    return "KOFUN_OPTIONAL_INT_SOME(" + inner + ")"
+}
+
 # `initializer_type` deliberately types an entire condition as Bool. Text
 # comparison lowering needs only the left primary's type.
 fn primary_is_text(source: Text, hir: Text, start: Int) -> Bool {
-    let mut cursor = skip_trivia(source, start)
-    while token_text(source, cursor) == "(" {
-        cursor = skip_trivia(source, token_end(source, cursor))
-    }
-    if token_kind(source, cursor) == "string" {
-        return true
-    }
-    if token_kind(source, cursor) != "identifier" {
-        return false
-    }
-    if numeric_conversion_at(source, cursor) == "Decimal.format" {
-        return true
-    }
-    let name = token_text(source, cursor)
-    let open = skip_trivia(source, token_end(source, cursor))
-    if token_text(source, open) == "(" {
-        return name == "text_slice" ||
-        function_return_type(source, name) == "Text"
-    }
-    let binding_id = hir_use_binding_id(hir, cursor)
-    let binding_type = hir_binding_field(hir, binding_id, 5)
-    if binding_type == "Text" {
-        return true
-    }
-    if token_text(source, open) == "." {
-        let field_cursor = skip_trivia(source, token_end(source, open))
-        return record_field_type_named(
-            source,
-            binding_type,
-            token_text(source, field_cursor)
-        ) == "Text"
-    }
-    return false
+    return text_operand(
+        source,
+        hir,
+        enclosing_function_open(source, start),
+        start
+    )
 }
 
 fn comparison_operator(token: Text) -> Bool {
@@ -4535,6 +5880,17 @@ fn emit_condition_into(
     let first = token_text(source, cursor)
     if first == "true" || first == "false" {
         return indent + "bool " + target + " = " + first + ";\n"
+    }
+    let optional = optional_int_condition(source, cursor, end)
+    if optional != 0 {
+        let binding_at = optional_int_condition_binding(source, cursor, end)
+        let mut operator = "=="
+        if optional == 1 {
+            operator = "!="
+        }
+        return indent + "bool " + target + " = (k_b" +
+        hir_use_binding_id(hir, binding_at) + ".tag " + operator +
+        " KOFUN_OPTIONAL_INT_NONE_TAG);\n"
     }
     let left_end = expression_end(source, cursor)
     let operator_start = skip_trivia(source, left_end)
@@ -5545,8 +6901,17 @@ fn core_body_open(
     let mut cursor = skip_trivia(source, parameters_end)
     if cursor < len(source) && token_text(source, cursor) == "->" {
         cursor = skip_trivia(source, token_end(source, cursor))
+        let optional_end = optional_int_type_end(source, cursor)
+        if optional_end >= 0 {
+            cursor = skip_trivia(source, optional_end)
+            if cursor >= len(source) || token_text(source, cursor) != "{" {
+                return -1
+            }
+            return cursor
+        }
         if cursor >= len(source) ||
            (token_text(source, cursor) != "Int" &&
+            token_text(source, cursor) != "Text" &&
             enum_constructor_count(
                 source,
                 token_text(source, cursor)
@@ -5557,7 +6922,7 @@ fn core_body_open(
             ) < 0) {
             return -1
         }
-        cursor = skip_trivia(source, token_end(source, cursor))
+        cursor = skip_trivia(source, annotation_type_end(source, cursor))
     } else if !is_main {
         return -1
     }
@@ -6555,7 +7920,8 @@ fn builtin_return_type(name: Text) -> Text {
         return "Int"
     }
     if name == "read_text" || name == "replace" || name == "text_slice" ||
-       name == "trim" || name == "validate_unicode_source" {
+       name == "to_text" || name == "trim" ||
+       name == "validate_unicode_source" {
         return "Text"
     }
     if name == "fail" || name == "write_text" {
@@ -6585,7 +7951,7 @@ fn function_return_type(source: Text, wanted: Text) -> Text {
                     token_end(source, after)
                 )
                 if type_cursor < len(source) {
-                    return token_text(source, type_cursor)
+                    return annotation_type_text(source, type_cursor)
                 }
                 return ""
             }
@@ -6642,7 +8008,7 @@ fn function_parameter_type(
                     return ""
                 }
                 if index == wanted_index {
-                    return token_text(source, type_start)
+                    return annotation_type_text(source, type_start)
                 }
                 let mut type_end = callable_type_end(source, type_start)
                 if type_end < 0 {
@@ -6713,6 +8079,13 @@ fn function_result_is_record(source: Text, name: Text) -> Bool {
         source,
         function_return_type(source, name)
     ) >= 0
+}
+
+# A declared `-> Text` result. Text values are borrowed `const char *` in the
+# bounded profile, so this is what selects the C result type and the
+# `return` lowering rather than the Int path.
+fn function_result_is_text(source: Text, name: Text) -> Bool {
+    return function_return_type(source, name) == "Text"
 }
 
 # Bounded initializer typing for unannotated `let` bindings. Top-level
@@ -6804,9 +8177,6 @@ fn initializer_type(
     }
     if kind == "float" {
         return "Float"
-    }
-    if kind == "string" {
-        return "Text"
     }
     let cursor_text = token_text(source, cursor)
     if cursor_text == "true" || cursor_text == "false" {
@@ -7030,11 +8400,18 @@ fn build_scope_hir_mode(
             # after it would never be bound and their uses would be reported
             # as unknown lexical bindings.
             let callable_end = callable_type_end(source, type_cursor)
-            let mut type_end = token_end(source, type_cursor)
-            let mut binding_type = token_text(source, type_cursor)
+            # A parameter binding records the annotation's full identity, so a
+            # const argument reaches the scope HIR instead of being flattened
+            # to its head. Recording `Fixed` here would make every scale one
+            # binding type and silently accept a scale mismatch.
+            let mut type_end = annotation_type_end(source, type_cursor)
+            let mut binding_type = annotation_type_text(source, type_cursor)
             if callable_end >= 0 {
                 type_end = callable_end
                 binding_type = "Fn"
+            } else if optional_int_type_end(source, type_cursor) >= 0 {
+                type_end = optional_int_type_end(source, type_cursor)
+                binding_type = "Int?"
             }
             let first_declaration = hir_same_scope_declaration(
                 hir,
@@ -7167,20 +8544,33 @@ fn build_scope_hir_mode(
                         source,
                         token_end(source, after_name)
                     )
-                    let list_end = list_int_type_end(source, type_cursor)
-                    if list_end >= 0 {
-                        binding_type = "List[Int]"
-                    } else {
-                        binding_type = token_text(source, type_cursor)
-                    }
-                    after_name = skip_trivia(
+                    # An annotated local records the annotation's full
+                    # identity, so `let kept: Fixed[2]` binds `Fixed[2]` and
+                    # not `Fixed`.
+                    let optional_end = optional_int_type_end(
                         source,
-                        if list_end >= 0 {
-                            list_end
-                        } else {
-                            token_end(source, type_cursor)
-                        }
+                        type_cursor
                     )
+                    let mut list_end = -1
+                    if optional_end < 0 {
+                        list_end = list_int_type_end(source, type_cursor)
+                    }
+                    if optional_end >= 0 {
+                        binding_type = "Int?"
+                        after_name = skip_trivia(source, optional_end)
+                    } else if list_end >= 0 {
+                        binding_type = "List[Int]"
+                        after_name = skip_trivia(source, list_end)
+                    } else {
+                        binding_type = annotation_type_text(
+                            source,
+                            type_cursor
+                        )
+                        after_name = skip_trivia(
+                            source,
+                            annotation_type_end(source, type_cursor)
+                        )
+                    }
                 }
                 let initializer = skip_trivia(
                     source,
@@ -7442,6 +8832,14 @@ fn build_scope_hir_mode(
         let mut unresolved_assignment = false
         cursor = skip_trivia(source, token_end(source, function_open))
         while cursor < function_close {
+            # See selfhost_parse_primary: stop at `par` so the walk never
+            # reaches the scope token between the bars and blames it as an
+            # unknown binding. The construct is refused, so its token is never
+            # a use.
+            if token_text(source, cursor) == "par" {
+                return "error[E2S154]: scoped parallelism `par` is specified " +
+                "but not implemented at byte " + to_text(cursor)
+            }
             if token_kind(source, cursor) == "identifier" {
                 let name = token_text(source, cursor)
                 let declaration_token = enum_declaration_syntax_token(
@@ -7474,6 +8872,7 @@ fn build_scope_hir_mode(
                    !pattern_token && !lambda_token &&
                    !list_int_local_type_token(source, cursor) &&
                    !numeric_conversion_head(source, cursor) &&
+                   !optional_int_null_context(source, cursor) &&
                    !decimal_rounding_mode_name(name) &&
                    name != "print" && name != "_" {
                     let mut scope_open = lambda_scope_open(
@@ -7502,9 +8901,13 @@ fn build_scope_hir_mode(
                         cursor,
                         name
                     )
+                    # A const generic construction head is `Name[N](`, so
+                    # the token that decides call-versus-use is the one after
+                    # the argument list. Stopping at `Name` would resolve the
+                    # type as a lexical binding and report it unknown.
                     let after = skip_trivia(
                         source,
-                        token_end(source, cursor)
+                        annotation_type_end(source, cursor)
                     )
                     let mut role = "read"
                     if token_text(source, after) == "=" {
@@ -8029,13 +9432,13 @@ fn lower_record_binding(
         return "error[E2S32]: nominal record initializer must name its record type at byte " +
         to_text(value_start)
     }
-    let constructor = token_text(source, value_start)
+    let constructor = annotation_type_text(source, value_start)
     if constructor != record_type {
         return "error[E2S32]: record constructor `" + constructor +
         "` does not construct `" + record_type + "` at byte " +
         to_text(value_start)
     }
-    let open = skip_trivia(source, token_end(source, value_start))
+    let open = skip_trivia(source, annotation_type_end(source, value_start))
     if open >= len(source) || token_text(source, open) != "(" {
         return "error[E2S32]: nominal record construction requires labelled fields at byte " +
         to_text(value_start)
@@ -8151,6 +9554,11 @@ fn lower_body(
     let returns_enum = enum_constructor_count(source, result_type) >= 0
     let returns_record =
         record_declaration_start(source, result_type) >= 0
+    let returns_optional_int = optional_int_result_containing(
+        source,
+        function_open
+    )
+    let returns_text = result_type == "Text"
     let mut failure_result = "0"
     if is_main {
         failure_result = "1"
@@ -8158,6 +9566,12 @@ fn lower_body(
         failure_result = "KOFUN_ENUM_ZERO"
     } else if returns_record {
         failure_result = "((" + record_c_type_name(result_type) + "){0})"
+    } else if returns_optional_int {
+        failure_result = "KOFUN_OPTIONAL_INT_NONE"
+    } else if returns_text {
+        # A failed Text result is the empty string rather than NULL, so every
+        # consumer in the bounded profile still receives a readable value.
+        failure_result = "\"\""
     }
     while cursor < len(source) && token_text(source, cursor) != "}" {
         if returned {
@@ -8165,6 +9579,12 @@ fn lower_body(
             to_text(cursor)
         }
         let statement = token_text(source, cursor)
+        # See selfhost_parse_primary: refuse `par` before the dispatch below can
+        # read the scope token as an ordinary binding and blame it instead.
+        if statement == "par" {
+            return "error[E2S154]: scoped parallelism `par` is specified " +
+            "but not implemented at byte " + to_text(cursor)
+        }
         if statement == "let" {
             cursor = skip_trivia(source, token_end(source, cursor))
             let mut mutable = false
@@ -8189,13 +9609,21 @@ fn lower_body(
                     return "error[E2S11]: expected Core binding type at byte " +
                     to_text(cursor)
                 }
-                let list_finish = list_int_type_end(source, cursor)
-                if list_finish >= 0 {
-                    binding_type = "List[Int]"
+                let optional_end = optional_int_type_end(source, cursor)
+                let mut list_end = -1
+                if optional_end >= 0 {
+                    binding_type = "Int?"
+                    cursor = skip_trivia(source, optional_end)
                 } else {
-                    binding_type = token_text(source, cursor)
+                    list_end = list_int_type_end(source, cursor)
+                    if list_end >= 0 {
+                        binding_type = "List[Int]"
+                    } else {
+                        binding_type = annotation_type_text(source, cursor)
+                    }
                 }
                 if binding_type != "Int" &&
+                   binding_type != "Int?" &&
                    binding_type != "Text" &&
                    binding_type != "List[Int]" &&
                    binding_type != "Decimal" &&
@@ -8206,20 +9634,48 @@ fn lower_body(
                     return "error[E2S32]: unknown supported aggregate type `" +
                     binding_type + "` at byte " + to_text(cursor)
                 }
-                cursor = skip_trivia(
-                    source,
-                    if list_finish >= 0 {
-                        list_finish
-                    } else {
-                        token_end(source, cursor)
-                    }
-                )
+                if optional_end < 0 {
+                    cursor = skip_trivia(
+                        source,
+                        if list_end >= 0 {
+                            list_end
+                        } else {
+                            annotation_type_end(source, cursor)
+                        }
+                    )
+                }
             }
             if cursor >= len(source) || token_text(source, cursor) != "=" {
                 return "error[E2S11]: expected `=` at byte " + to_text(cursor)
             }
             let value_start = skip_trivia(source, token_end(source, cursor))
-            if binding_type != "Int" &&
+            if binding_type == "Int?" {
+                if mutable {
+                    return "error[E2S147]: mutable `Int?` bindings are " +
+                    "outside this lowering slice; declare `let` and " +
+                    "construct a new value instead at byte " +
+                    to_text(value_start)
+                }
+                let value_end = expression_end(source, value_start)
+                if value_start >= len(source) || value_end < 0 {
+                    return "error[E2S147]: an `Int?` binding is initialized " +
+                    "by `null`, an `Int`, another `Int?` binding, or a call " +
+                    "returning `Int?` at byte " + to_text(value_start)
+                }
+                let value = optional_int_value(
+                    source,
+                    hir,
+                    value_start,
+                    value_end
+                )
+                if starts_with(value, "error[") {
+                    return value
+                }
+                emitted = emitted + "    KofunOptionalInt " + storage +
+                " = " + value + ";\n" +
+                "    if (kofun_failed) return " + failure_result + ";\n"
+                cursor = skip_trivia(source, value_end)
+            } else if binding_type != "Int" &&
                binding_type != "Text" &&
                binding_type != "Decimal" &&
                binding_type != "Float" &&
@@ -8233,7 +9689,7 @@ fn lower_body(
                         return "error[E2S32]: nominal record initializer must name its record type at byte " +
                         to_text(value_start)
                     }
-                    let initializer = token_text(source, value_start)
+                    let initializer = annotation_type_text(source, value_start)
                     if initializer != binding_type {
                         let value_end = expression_end(source, value_start)
                         let value = emit_record_value(
@@ -8267,7 +9723,7 @@ fn lower_body(
                         emitted = emitted + record_body
                         let record_open = skip_trivia(
                             source,
-                            token_end(source, value_start)
+                            annotation_type_end(source, value_start)
                         )
                         cursor = skip_trivia(
                             source,
@@ -8453,7 +9909,7 @@ fn lower_body(
                     c_type = "KofunIntList"
                 }
                 if mutable && inferred_type == "List[Int]" {
-                    return "error[E2S148]: mutable List[Int] bindings are outside this lowering slice at byte " +
+                    return "error[E2S157]: mutable List[Int] bindings are outside this lowering slice at byte " +
                     to_text(value_start)
                 }
                 if mutable && inferred_type != "Int" {
@@ -8549,6 +10005,8 @@ fn lower_body(
                 } else if value_type == "Text" {
                     emitted = emitted + "    {\n" +
                     "        const char *kofun_value = " + value + ";\n" +
+                    "        if (kofun_failed) return " + failure_result +
+                    ";\n" +
                     "        printf(\"%s\\n\", kofun_value);\n" +
                     "    }\n"
                 } else {
@@ -8916,7 +10374,31 @@ fn lower_body(
             }
         } else if statement == "return" {
             let value_start = skip_trivia(source, token_end(source, cursor))
-            if returns_enum {
+            if returns_optional_int {
+                let value_end = expression_end(source, value_start)
+                if value_end < 0 || value_start >= len(source) ||
+                   token_text(source, value_start) == "}" {
+                    return "error[E2S147]: an `Int?` result requires one " +
+                    "value: `null`, an `Int`, an `Int?` binding, or a call " +
+                    "returning `Int?` at byte " + to_text(value_start)
+                }
+                let value = optional_int_value(
+                    source,
+                    hir,
+                    value_start,
+                    value_end
+                )
+                if starts_with(value, "error[") {
+                    return value
+                }
+                emitted = emitted +
+                "    {\n" +
+                "        KofunOptionalInt kofun_result = " + value + ";\n" +
+                "        if (kofun_failed) return KOFUN_OPTIONAL_INT_NONE;\n" +
+                "        return kofun_result;\n" +
+                "    }\n"
+                cursor = skip_trivia(source, value_end)
+            } else if returns_enum {
                 let value_end = expression_end(source, value_start)
                 if value_end < 0 || value_start >= len(source) ||
                    token_text(source, value_start) == "}" {
@@ -8961,6 +10443,29 @@ fn lower_body(
                 "    {\n" +
                 "        " + record_c_type_name(result_type) +
                 " kofun_result = " + value + ";\n" +
+                "        if (kofun_failed) return " + failure_result + ";\n" +
+                "        return kofun_result;\n" +
+                "    }\n"
+                cursor = skip_trivia(source, value_end)
+            } else if returns_text {
+                let value_end = expression_end(source, value_start)
+                if value_end < 0 || value_start >= len(source) ||
+                   token_text(source, value_start) == "}" {
+                    return "error[E2S12]: Text return requires one value at byte " +
+                    to_text(value_start)
+                }
+                let value = emit_expression(
+                    source,
+                    hir,
+                    value_start,
+                    value_end
+                )
+                if starts_with(value, "error[") {
+                    return value
+                }
+                emitted = emitted +
+                "    {\n" +
+                "        const char *kofun_result = " + value + ";\n" +
                 "        if (kofun_failed) return " + failure_result + ";\n" +
                 "        return kofun_result;\n" +
                 "    }\n"
@@ -9413,6 +10918,61 @@ fn numeric_primary_type(
         return ""
     }
     return numeric_name(hir_binding_field(hir, binding_id, 5))
+}
+
+# Whether one primary is Text. This stays separate from
+# `numeric_primary_type` so E2S100 continues to see only the numeric lattice.
+fn text_operand(
+    source: Text,
+    hir: Text,
+    function_open: Int,
+    start: Int
+) -> Bool {
+    let mut cursor = skip_trivia(source, start)
+    if cursor >= len(source) {
+        return false
+    }
+    while token_text(source, cursor) == "(" {
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    if token_kind(source, cursor) == "string" {
+        return true
+    }
+    if token_kind(source, cursor) != "identifier" {
+        return false
+    }
+    if numeric_conversion_at(source, cursor) == "Decimal.format" {
+        return true
+    }
+    let name = token_text(source, cursor)
+    let open = skip_trivia(source, token_end(source, cursor))
+    if open < len(source) && token_text(source, open) == "(" {
+        return function_return_type(source, name) == "Text" ||
+        builtin_return_type(name) == "Text"
+    }
+    let scope_open = parent_block_open(source, function_open, cursor)
+    let binding_id = hir_resolve_binding(
+        hir,
+        hir_scope_id_for_open(hir, scope_open),
+        cursor,
+        name
+    )
+    let mut binding_type = ""
+    if len(binding_id) > 0 {
+        binding_type = hir_binding_field(hir, binding_id, 5)
+    }
+    if binding_type == "Text" {
+        return true
+    }
+    if token_text(source, open) == "." {
+        let field_cursor = skip_trivia(source, token_end(source, open))
+        return record_field_type_named(
+            source,
+            binding_type,
+            token_text(source, field_cursor)
+        ) == "Text"
+    }
+    return false
 }
 
 fn numeric_name(name: Text) -> Text {
@@ -9969,6 +11529,9 @@ fn record_align_up(value: Int, alignment: Int) -> Int {
     return value + alignment - remainder
 }
 
+# One struct per emitted type. A const-parameterized declaration produces one
+# per distinct literal, which is the specialization itself; every other record
+# produces exactly one, as before.
 fn emit_record_c_declarations(source: Text) -> Text {
     let mut declarations = ""
     let mut cursor = after_optional_module_header(source, 0)
@@ -9976,72 +11539,30 @@ fn emit_record_c_declarations(source: Text) -> Text {
         let type_start = type_declaration_start(source, cursor)
         if type_start >= 0 && record_declaration_at(source, type_start) {
             let record_type = type_name(source, type_start)
-            let c_type = record_c_type_name(record_type)
-            let fields = record_field_count(source, record_type)
-            let mut extent = 0
-            let mut record_alignment = 1
-            declarations = declarations + "typedef struct {\n"
-            let mut index = 0
-            while index < fields {
-                let field = record_field_text(
+            if len(const_parameter_name(source, type_start)) > 0 {
+                let total = const_instantiation_count(source, record_type)
+                let mut instance = 0
+                while instance < total {
+                    declarations = declarations + emit_record_c_declaration(
+                        source,
+                        record_type,
+                        record_c_type_name(
+                            const_instantiation_at(
+                                source,
+                                record_type,
+                                instance
+                            )
+                        )
+                    )
+                    instance = instance + 1
+                }
+            } else {
+                declarations = declarations + emit_record_c_declaration(
                     source,
                     record_type,
-                    index,
-                    false
+                    record_c_type_name(record_type)
                 )
-                let field_type = record_field_text(
-                    source,
-                    record_type,
-                    index,
-                    true
-                )
-                let mut c_field_type = "int64_t"
-                let mut field_size = 8
-                if field_type == "Bool" {
-                    c_field_type = "bool"
-                    field_size = 1
-                }
-                let offset = record_align_up(extent, field_size)
-                if field_size > record_alignment {
-                    record_alignment = field_size
-                }
-                extent = offset + field_size
-                declarations = declarations + "    " + c_field_type +
-                " " + record_c_field_name(field) + ";\n"
-                index = index + 1
             }
-            declarations = declarations + "} " + c_type + ";\n"
-            extent = record_align_up(extent, record_alignment)
-            let mut running = 0
-            index = 0
-            while index < fields {
-                let field = record_field_text(
-                    source,
-                    record_type,
-                    index,
-                    false
-                )
-                let field_type = record_field_text(
-                    source,
-                    record_type,
-                    index,
-                    true
-                )
-                let mut field_size = 8
-                if field_type == "Bool" {
-                    field_size = 1
-                }
-                let offset = record_align_up(running, field_size)
-                declarations = declarations +
-                "_Static_assert(offsetof(" + c_type + ", " +
-                record_c_field_name(field) + ") == " + to_text(offset) +
-                ", \"AggregateLayout field offset\");\n"
-                running = offset + field_size
-                index = index + 1
-            }
-            declarations = declarations +
-            "_Static_assert(sizeof(" + c_type + ") == " + to_text(extent) +
-            ", \"AggregateLayout record size\");\n\n"
         }
         let end = top_level_end(source, cursor)
         if end <= cursor {
@@ -10052,7 +11573,186 @@ fn emit_record_c_declarations(source: Text) -> Text {
     return declarations
 }
 
-fn lower_c(source: Text, hir: Text) -> Text {
+# The struct, its field offsets, and its size for one emitted type. The field
+# list comes from the declaration, so every instantiation of one declaration
+# has the same layout — which is exactly why `validate_const_erasure` must keep
+# a const argument out of a field type.
+fn emit_record_c_declaration(
+    source: Text,
+    record_type: Text,
+    c_type: Text
+) -> Text {
+    let mut declarations = ""
+    let fields = record_field_count(source, record_type)
+    let mut extent = 0
+    let mut record_alignment = 1
+    declarations = declarations + "typedef struct {\n"
+    let mut index = 0
+    while index < fields {
+        let field = record_field_text(
+            source,
+            record_type,
+            index,
+            false
+        )
+        let field_type = record_field_text(
+            source,
+            record_type,
+            index,
+            true
+        )
+        let mut c_field_type = "int64_t"
+        let mut field_size = 8
+        if field_type == "Bool" {
+            c_field_type = "bool"
+            field_size = 1
+        }
+        let offset = record_align_up(extent, field_size)
+        if field_size > record_alignment {
+            record_alignment = field_size
+        }
+        extent = offset + field_size
+        declarations = declarations + "    " + c_field_type +
+        " " + record_c_field_name(field) + ";\n"
+        index = index + 1
+    }
+    declarations = declarations + "} " + c_type + ";\n"
+    extent = record_align_up(extent, record_alignment)
+    let mut running = 0
+    index = 0
+    while index < fields {
+        let field = record_field_text(
+            source,
+            record_type,
+            index,
+            false
+        )
+        let field_type = record_field_text(
+            source,
+            record_type,
+            index,
+            true
+        )
+        let mut field_size = 8
+        if field_type == "Bool" {
+            field_size = 1
+        }
+        let offset = record_align_up(running, field_size)
+        declarations = declarations +
+        "_Static_assert(offsetof(" + c_type + ", " +
+        record_c_field_name(field) + ") == " + to_text(offset) +
+        ", \"AggregateLayout field offset\");\n"
+        running = offset + field_size
+        index = index + 1
+    }
+    declarations = declarations +
+    "_Static_assert(sizeof(" + c_type + ") == " + to_text(extent) +
+    ", \"AggregateLayout record size\");\n\n"
+    return declarations
+}
+
+# The proposition that failed once, now with a gate instead of a comment.
+#
+# Distinct type identities must reach distinct emitted structs. `Fixed[2]` and
+# `Fixed[3]` are different Kofun types, so if they lowered to one C struct the
+# C type system would stop separating what the Kofun type system had already
+# separated — which is exactly what an earlier revision did, under a comment
+# arguing it was safe because a const parameter carries no storage. That
+# argument was about miscompiles; this is about identity, and only one of the
+# two was ever checked.
+#
+# It also catches the collision from the other direction: a declared record
+# whose own name is the C name some instantiation generates.
+fn validate_struct_identity(source: Text) -> Text {
+    let mut names = "|"
+    let mut cursor = after_optional_module_header(source, 0)
+    while cursor < len(source) {
+        let type_start = type_declaration_start(source, cursor)
+        if type_start >= 0 && record_declaration_at(source, type_start) {
+            let record_type = type_name(source, type_start)
+            let mut total = 1
+            if len(const_parameter_name(source, type_start)) > 0 {
+                total = const_instantiation_count(source, record_type)
+            }
+            let mut instance = 0
+            while instance < total {
+                let mut identity = record_type
+                if len(const_parameter_name(source, type_start)) > 0 {
+                    identity = const_instantiation_at(
+                        source,
+                        record_type,
+                        instance
+                    )
+                }
+                let c_type = record_c_type_name(identity)
+                if contains(names, "|" + c_type + "|") {
+                    return "error[E2S153]: `" + identity +
+                    "` lowers to `" + c_type +
+                    "`, which another type already lowers to at byte " +
+                    to_text(type_start)
+                }
+                names = names + c_type + "|"
+                instance = instance + 1
+            }
+        }
+        let end = top_level_end(source, cursor)
+        if end <= cursor {
+            return ""
+        }
+        cursor = skip_trivia(source, end)
+    }
+    return ""
+}
+
+# Bound syntactic Text-producing sites before writing C. Emitted C string
+# literals are skipped because a helper spelling inside user data is not a
+# temporary site. Dynamic executions use a separate non-wrapping arena limit.
+fn count_text_sites(bodies: Text) -> Int {
+    let mut count = 0
+    let mut cursor = 0
+    let mut quoted = false
+    let mut escaped = false
+    while cursor < len(bodies) {
+        let symbol = text_slice(bodies, cursor, cursor + 1)
+        if quoted {
+            if escaped {
+                escaped = false
+            } else if symbol == "\\" {
+                escaped = true
+            } else if symbol == "\"" {
+                quoted = false
+            }
+            cursor = cursor + 1
+        } else if symbol == "\"" {
+            quoted = true
+            cursor = cursor + 1
+        } else if cursor + 17 <= len(bodies) &&
+                  text_slice(bodies, cursor, cursor + 17) ==
+                  "kofun_text_slice(" {
+            count = count + 1
+            cursor = cursor + 17
+        } else if cursor + 14 <= len(bodies) &&
+                  text_slice(bodies, cursor, cursor + 14) ==
+                  "kofun_to_text(" {
+            count = count + 1
+            cursor = cursor + 14
+        } else if cursor + 18 <= len(bodies) &&
+                  text_slice(bodies, cursor, cursor + 18) ==
+                  "kofun_text_concat(" {
+            count = count + 1
+            cursor = cursor + 18
+        } else {
+            cursor = cursor + 1
+        }
+    }
+    return count
+}
+
+fn lower_c_body(source: Text, hir: Text) -> Text {
+    let identity_check = validate_struct_identity(source)
+    if len(identity_check) > 0 {
+        return identity_check
+    }
     let fractional_values = source_uses_fractional_values(source)
     # A mixed-type expression is reported before operator lowering, so
     # `1 + 1.5` names the missing explicit conversion.
@@ -10090,6 +11790,10 @@ fn lower_c(source: Text, hir: Text) -> Text {
     if starts_with(record_use_check, "error[") {
         return record_use_check
     }
+    let optional_use_check = validate_optional_uses(source)
+    if starts_with(optional_use_check, "error[") {
+        return optional_use_check
+    }
     let type_check = validate_core_types(source, hir)
     if starts_with(type_check, "error[") {
         return type_check
@@ -10118,12 +11822,16 @@ fn lower_c(source: Text, hir: Text) -> Text {
         }
         let is_main = name == "main"
         let mut c_result = "int64_t"
-        if function_result_is_enum(source, name) {
+        if optional_int_result(source, name) {
+            c_result = "KofunOptionalInt"
+        } else if function_result_is_enum(source, name) {
             c_result = "KofunEnumValue"
         } else if function_result_is_record(source, name) {
             c_result = record_c_type_name(
                 function_return_type(source, name)
             )
+        } else if function_result_is_text(source, name) {
+            c_result = "const char *"
         }
         let arity = parameter_count(source, cursor)
         let parameters = core_parameters(source, hir, cursor)
@@ -10176,9 +11884,17 @@ fn lower_c(source: Text, hir: Text) -> Text {
     if main_count != 1 {
         return "error[E2S15]: C11 Core requires exactly one `fn main()`"
     }
+    let text_site_count = count_text_sites(bodies)
+    if text_site_count > 256 {
+        return "error[E2S156]: Text temporary site limit is 256"
+    }
     let mut decimal_include = ""
     if fractional_values {
         decimal_include = "#include \"decimal_v1.c\"\n"
+    }
+    let mut optional_declarations = ""
+    if source_uses_optional_int(source) {
+        optional_declarations = emit_optional_int_c_declarations()
     }
     return "/* Generated by the Kofun-written Stage 2 Core lowerer. */\n" +
     "#include <inttypes.h>\n" +
@@ -10192,31 +11908,71 @@ fn lower_c(source: Text, hir: Text) -> Text {
     "    int64_t payload;\n" +
     "} KofunEnumValue;\n" +
     "#define KOFUN_ENUM_ZERO ((KofunEnumValue){INT64_C(0), INT64_C(0)})\n\n" +
-    "#define KOFUN_LIST_INT_CAPACITY 64\n" +
-    "typedef struct {\n" +
-    "    int64_t length;\n" +
-    "    int64_t elements[KOFUN_LIST_INT_CAPACITY];\n" +
-    "} KofunIntList;\n\n" +
+    "typedef const unsigned char *KofunIntList;\n" +
+    "enum {\n" +
+    "    KOFUN_LIST_INT_LENGTH_OFFSET = 0,\n" +
+    "    KOFUN_LIST_INT_PAYLOAD_OFFSET = 8,\n" +
+    "    KOFUN_LIST_INT_ELEMENT_SIZE = 8\n" +
+    "};\n" +
+    "typedef struct { uint64_t length; int64_t first_element; } KofunIntListLayoutProbe;\n" +
+    "_Static_assert(sizeof(KofunIntList) == 8, \"AggregateLayout List[Int] reference size\");\n" +
+    "_Static_assert(sizeof(uint64_t) == 8, \"AggregateLayout List[Int] header width\");\n" +
+    "_Static_assert(sizeof(int64_t) == 8, \"AggregateLayout List[Int] element width\");\n" +
+    "_Static_assert(offsetof(KofunIntListLayoutProbe, length) == KOFUN_LIST_INT_LENGTH_OFFSET, \"AggregateLayout List[Int] length offset\");\n" +
+    "_Static_assert(offsetof(KofunIntListLayoutProbe, first_element) == KOFUN_LIST_INT_PAYLOAD_OFFSET, \"AggregateLayout List[Int] payload offset\");\n" +
+    "_Static_assert(sizeof(((KofunIntListLayoutProbe *)0)->first_element) == KOFUN_LIST_INT_ELEMENT_SIZE, \"AggregateLayout List[Int] element size\");\n" +
+    "_Static_assert(_Alignof(KofunIntListLayoutProbe) == 8, \"AggregateLayout List[Int] object alignment\");\n\n" +
     "static bool kofun_failed;\n" +
     "static inline void kofun_error(const char *message) {\n" +
     "    if (!kofun_failed) { fputs(message, stderr); fputc('\\n', stderr); }\n" +
     "    kofun_failed = true;\n" +
     "}\n" +
-    "static inline int64_t kofun_list_int_index(const KofunIntList *list, int64_t index) {\n" +
-    "    if (index < 0) index += list->length;\n" +
-    "    if (index < 0 || index >= list->length) {\n" +
-    "        kofun_error(\"error[R021]: bounded List[Int] index out of range\"); return 0;\n" +
+    "static inline uint64_t kofun_list_int_length(KofunIntList list) {\n" +
+    "    uint64_t length = UINT64_C(0);\n" +
+    "    memcpy(&length, list + KOFUN_LIST_INT_LENGTH_OFFSET, sizeof length);\n" +
+    "    return length;\n" +
+    "}\n" +
+    "static inline int64_t kofun_list_int_index(KofunIntList list, int64_t index) {\n" +
+    "    uint64_t length = kofun_list_int_length(list);\n" +
+    "    if (index < 0) index += (int64_t)length;\n" +
+    "    if (index < 0 || (uint64_t)index >= length) {\n" +
+    "        kofun_error(\"error[R023]: bounded List[Int] index out of range\"); return 0;\n" +
     "    }\n" +
-    "    return list->elements[index];\n" +
+    "    int64_t value = INT64_C(0);\n" +
+    "    size_t offset = KOFUN_LIST_INT_PAYLOAD_OFFSET +\n" +
+    "        (size_t)index * KOFUN_LIST_INT_ELEMENT_SIZE;\n" +
+    "    memcpy(&value, list + offset, sizeof value); return value;\n" +
+    "}\n" +
+    "enum { KOFUN_TEXT_TEMPORARY_LIMIT = 4096 };\n" +
+    "static char kofun_text_slots[KOFUN_TEXT_TEMPORARY_LIMIT][256];\n" +
+    "static size_t kofun_text_next_slot;\n" +
+    "static inline char *kofun_text_temporary(void) {\n" +
+    "    if (kofun_text_next_slot >= KOFUN_TEXT_TEMPORARY_LIMIT) {\n" +
+    "        kofun_error(\"error[R022]: bounded Text temporary limit is 4096\"); return NULL;\n" +
+    "    }\n" +
+    "    return kofun_text_slots[kofun_text_next_slot++];\n" +
     "}\n" +
     "static inline const char *kofun_text_slice(const char *text, int64_t start, int64_t end) {\n" +
-    "    static char slots[64][32]; static size_t next_slot;\n" +
     "    size_t length = strlen(text);\n" +
     "    if (start < 0 || end < start || (uint64_t)end > length || end - start > 31) {\n" +
     "        kofun_error(\"error[R020]: bounded Text slice out of range\"); return \"\";\n" +
     "    }\n" +
-    "    char *slot = slots[next_slot++ % 64u]; size_t width = (size_t)(end - start);\n" +
+    "    char *slot = kofun_text_temporary(); if (slot == NULL) return \"\";\n" +
+    "    size_t width = (size_t)(end - start);\n" +
     "    memcpy(slot, text + start, width); slot[width] = '\\0'; return slot;\n" +
+    "}\n" +
+    "static inline const char *kofun_to_text(int64_t value) {\n" +
+    "    char *slot = kofun_text_temporary(); if (slot == NULL) return \"\";\n" +
+    "    snprintf(slot, 256, \"%\" PRId64, value); return slot;\n" +
+    "}\n" +
+    "static inline const char *kofun_text_concat(const char *left, const char *right) {\n" +
+    "    size_t left_width = strlen(left), right_width = strlen(right);\n" +
+    "    if (left_width + right_width > 255) {\n" +
+    "        kofun_error(\"error[R021]: bounded Text concatenation exceeds 255 bytes\"); return \"\";\n" +
+    "    }\n" +
+    "    char *slot = kofun_text_temporary(); if (slot == NULL) return \"\";\n" +
+    "    memcpy(slot, left, left_width); memcpy(slot + left_width, right, right_width);\n" +
+    "    slot[left_width + right_width] = '\\0'; return slot;\n" +
     "}\n" +
     "static inline int64_t kofun_add(int64_t a, int64_t b) {\n" +
     "    int64_t r; if (__builtin_add_overflow(a, b, &r)) {\n" +
@@ -10257,8 +12013,12 @@ fn lower_c(source: Text, hir: Text) -> Text {
     "    int64_t r = a % b;\n" +
     "    if (r != 0 && ((r < 0) != (b < 0))) { r += b; }\n" +
     "    return r;\n" +
-    "}\n\n" + emit_record_c_declarations(source) +
+    "}\n\n" + optional_declarations + emit_record_c_declarations(source) +
     prototypes + "\n" + bodies
+}
+
+fn lower_c(source: Text, hir: Text) -> Text {
+    return lower_c_body(source, hir)
 }
 
 fn emit_kofun(source: Text, ir: Text) -> Text {
@@ -11149,6 +12909,18 @@ fn selfhost_parse_primary(
     }
     let kind = token_kind(source, at)
     let end = token_end(source, at)
+    # Scoped parallelism v1 (#555) fixes `par` as target semantics in
+    # spec/concurrency/scoped-parallelism-v1.md. The lexer owns the keyword so
+    # this refusal names the construct instead of surfacing as an unknown
+    # binding, but ownership checking, scheduling, and lowering do not exist:
+    # the honest answer here is a refusal, not a partial acceptance.
+    if token_text(source, at) == "par" {
+        return selfhost_error(
+            "E2S154",
+            at,
+            "scoped parallelism `par` is specified but not implemented"
+        )
+    }
     if kind == "integer" {
         return selfhost_expression_result(
             skip_trivia(source, end),
@@ -12198,6 +13970,15 @@ fn selfhost_statement(
     scope_context: Text
 ) -> Text {
     let token = token_text(source, cursor)
+    # See selfhost_parse_primary: `par` in statement position is refused by name
+    # rather than falling through to the generic unsupported-statement code.
+    if token == "par" {
+        return selfhost_error(
+            "E2S154",
+            cursor,
+            "scoped parallelism `par` is specified but not implemented"
+        )
+    }
     if token == "let" {
         return selfhost_let_statement(
             source,
@@ -12630,9 +14411,16 @@ fn selfhost_document(source: Text, path: Text, digest: Text) -> Text {
     let mut document = header + "status|rejected\n" + "diagnostic|" +
     code + "|" + to_text(clamped) + "|" + to_text(span_end) + "|" +
     selfhost_escape(message) + "\n"
+    # hir-v1.md requires one `unsupported` record naming the construct family
+    # for every construct outside the frozen profile, so `par` carries its own
+    # family rather than being filed as a statement.
     if code == "E2S10" {
         document = document + "unsupported|" + to_text(clamped) + "|" +
         to_text(span_end) + "|statement\n"
+    }
+    if code == "E2S154" {
+        document = document + "unsupported|" + to_text(clamped) + "|" +
+        to_text(span_end) + "|scoped-parallelism\n"
     }
     return "rejected\n" + printed + "\n" + document
 }
