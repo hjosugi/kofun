@@ -45,3 +45,4 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `syscall-stdlib-api` | `sh stdlib/tests/verify.sh` | The declared syscall and stdlib contracts check and execute. |
 | `test-skip-reporting` | `sh tests/cli.sh` | Skipped cases appear in the report with their own count. |
 | `wasm32-arithmetic-core` | `sh bootstrap/wasm/check.sh` | wasm32 modules are emitted and execute to the expected values. |
+| `wasm32-hostabi1-object-arena` | `sh bootstrap/wasm/object_arena_check.sh` | The module passes v1 identification and its allocator/header implementation agrees with independent runtime and layout oracles. |
