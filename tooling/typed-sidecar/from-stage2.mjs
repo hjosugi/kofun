@@ -21,6 +21,8 @@ const MAX_SAFE_INTEGER = BigInt(Number.MAX_SAFE_INTEGER);
 const ZERO_ID = "0".repeat(64);
 const PUBLIC_REASONS = new Set([
   "cancelled-before-analysis",
+  "effect-io-callee",
+  "effect-io-root-print",
   "move-after-borrow",
   "type-not-available-in-current-subset",
   "unresolved-current-stage2-reference",
