@@ -1,0 +1,14 @@
+{
+  "schema": "kofun.backlog-issue-state/v1",
+  "repository": "hjosugi/kofun",
+  "state_labels": [
+    "ready",
+    "blocked",
+    "needs-detail",
+    "needs-decision",
+    "deferred",
+    "in-progress"
+  ],
+  "open_issues": 0,
+  "issues": []
+}

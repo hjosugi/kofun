@@ -4,6 +4,8 @@
 
 import { readFileSync } from 'node:fs'
 
+import { STATE_LABELS } from './extract.mjs'
+
 const [snapshotPath, debtPath] = process.argv.slice(2)
 if (!snapshotPath || !debtPath) {
     throw new Error('usage: check.mjs SNAPSHOT DEBT')
@@ -14,6 +16,23 @@ const failures = []
 
 if (snapshot.schema !== 'kofun.backlog-issue-state/v1') {
     failures.push(`snapshot schema is ${snapshot.schema}, not kofun.backlog-issue-state/v1`)
+}
+
+// The vocabulary is carried twice — here as the repository's definition, and in
+// the snapshot as the one its writer used. Reading only the snapshot's copy
+// would let a stale or hand-edited file widen the vocabulary and then satisfy
+// every rule below against its own wider version.
+const vocabulary = new Set(STATE_LABELS)
+const declared = snapshot.state_labels ?? []
+const unexpected = declared.filter((name) => !vocabulary.has(name))
+const missing = STATE_LABELS.filter((name) => !declared.includes(name))
+if (unexpected.length > 0 || missing.length > 0) {
+    failures.push(
+        `snapshot declares a different state vocabulary than tests/backlog/extract.mjs` +
+            `${unexpected.length > 0 ? `; it adds ${unexpected.join(', ')}` : ''}` +
+            `${missing.length > 0 ? `; it omits ${missing.join(', ')}` : ''}` +
+            '; regenerate it with tests/backlog/refresh.mjs',
+    )
 }
 
 const issues = snapshot.issues ?? []
@@ -80,6 +99,7 @@ function owedDebt(kind, number, detail) {
 let agreeing = 0
 let stamped = 0
 let readyCount = 0
+let stated = 0
 
 for (const issue of issues) {
     const where = `#${issue.number}`
@@ -94,7 +114,22 @@ for (const issue of issues) {
     const label = issue.state_labels[0] ?? null
     const line = issue.state_line ?? null
 
-    // 2. Label and body agree when both are present. An issue with neither is
+    // 2. A State line names a state. The label side cannot go wrong — the
+    //    extraction only keeps labels drawn from the vocabulary — but the line
+    //    is free text, so an issue can invent a word. Rule 3 below never sees
+    //    it: an invented word on an issue with no label has nothing to
+    //    disagree with, so the gate reported agreement it had not checked.
+    //    #998 carried `State: planning` this way.
+    if (line !== null && !vocabulary.has(line)) {
+        failures.push(
+            `${where} has \`State: ${line}\`, which is not one of ${STATE_LABELS.join(', ')}; ` +
+                'use a state docs/ISSUE_READINESS.md defines, or widen the vocabulary there first',
+        )
+        continue
+    }
+    if (line !== null) stated += 1
+
+    // 3. Label and body agree when both are present. An issue with neither is
     //    untriaged, which is a different problem and not this gate's.
     if (label !== null && line !== null) {
         if (label === line) {
@@ -108,7 +143,7 @@ for (const issue of issues) {
     if (label !== 'ready') continue
     readyCount += 1
 
-    // 3. A `ready` issue naming an open blocker is advertised as startable
+    // 4. A `ready` issue naming an open blocker is advertised as startable
     //    while its own body says it is not. This one has no debt escape: it is
     //    the drift that costs a contributor their afternoon.
     const openBlockers = issue.blocked_by.filter((number) => open.has(number))
@@ -119,7 +154,7 @@ for (const issue of issues) {
         failures.push(`${where} is ready but names open blockers: ${detail}`)
     }
 
-    // 4. Definition of Ready rule 2: a current-behavior claim names the commit
+    // 5. Definition of Ready rule 2: a current-behavior claim names the commit
     //    it was measured on. Without a stamp nobody can tell whether the
     //    premise still holds without re-deriving it, so nobody does.
     if (issue.evidence_commits.length === 0) {
@@ -155,7 +190,8 @@ if (failures.length > 0) {
 }
 
 process.stdout.write(
-    `PASS: ${agreeing} issues agree between their state label and their State line\n` +
+    `PASS: ${stated} State lines name a state in the vocabulary\n` +
+        `PASS: ${agreeing} issues agree between their state label and their State line\n` +
         `PASS: no ready issue names an open blocker (${readyCount} ready)\n` +
         `PASS: ${stamped} ready issues carry an evidence stamp\n` +
         `PASS: ${debt.size} recorded debt rows all still describe the issue they name\n`,
