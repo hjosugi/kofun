@@ -7,6 +7,7 @@ export LC_ALL
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 SUITE="$ROOT/tests/diagnostics/unicode"
 WORK=${KOFUN_UNICODE_DIAGNOSTIC_WORK:-"$ROOT/build/diagnostics-unicode"}
+CC=${CC:-cc}
 . "$ROOT/bootstrap/stage2/build.sh"
 ASSERT_CONTEXT='diagnostics unicode'
 . "$ROOT/tests/assertions/assert.sh"
@@ -39,5 +40,21 @@ assert_absent "confusable.c" "$WORK/confusable.c"
 cmp "$SUITE/eunicode005.stdout" "$WORK/non-nfc.stdout"
 cmp "$SUITE/eunicode006.stdout" "$WORK/confusable.stdout"
 
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+    -I"$ROOT/bootstrap/stage2" \
+    "$ROOT/bootstrap/stage2/confusable_visible_set.c" \
+    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
+    "$ROOT/tests/conformance/modules/confusable-visible-set/driver.c" \
+    -o "$WORK/confusable-visible-set"
+set +e
+"$WORK/confusable-visible-set" --diagnostic \
+    >"$WORK/eunicode008.stdout" 2>"$WORK/eunicode008.stderr"
+visible_status=$?
+set -e
+assert_num "visible-set status" "$visible_status" -eq 1
+assert_file_empty "eunicode008.stderr" "$WORK/eunicode008.stderr"
+cmp "$SUITE/eunicode008.stdout" "$WORK/eunicode008.stdout"
+
 printf '%s\n' \
-    "PASS: localized Unicode diagnostics preserve stdout, status, spans, and artifacts"
+    "PASS: localized and visible-set Unicode diagnostics preserve stdout, status, spans, and artifacts"

@@ -454,6 +454,13 @@ static bool compute_edge_digest(
     }
     kofun_sha256_init(&context);
     hash_framed(&context, (const uint8_t *)domain, sizeof(domain) - 1u);
+    if (!graph->resolver.imports.visible_confusables_checked) {
+        free(edges);
+        return false;
+    }
+    hash_framed(&context,
+        graph->resolver.imports.visible_confusable_cache_keys[module_index],
+        32u);
     for (index = 0u; index < edge_count; index += 1u) {
         OutgoingEdge *edge = &edges[index];
         uint8_t tags[2];
@@ -1137,7 +1144,8 @@ int main(int argc, char **argv) {
     if (!validate_ordinary_import_cycles(resolver)) goto done;
     canonicalize_import_graph_edges(&resolver->imports);
     if (!resolve_selective_bindings(&resolver->imports)) goto done;
-    if (!build_re_export_requests(resolver) || !resolve_re_exports(resolver)) {
+    if (!build_re_export_requests(resolver) || !resolve_re_exports(resolver) ||
+        !check_re_export_visible_confusables(resolver)) {
         goto done;
     }
     if (program->module_count == 0u) {

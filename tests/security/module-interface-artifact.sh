@@ -25,6 +25,7 @@ mkdir -p "$WORK"
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
     -I"$ROOT/bootstrap/stage2" \
     "$ROOT/tests/security/module_interface_artifact_test.c" \
+    "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$WORK/module-interface-artifact-test"
 
