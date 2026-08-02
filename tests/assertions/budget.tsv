@@ -27,6 +27,7 @@
 0	spec/typed-sidecar/check.sh
 0	spec/visibility/check.sh
 0	spec/wasm-host-abi-v1/check.sh
+0	spec/wasm-host-profile-v1/check.sh
 0	tests/build_system.sh
 0	tests/cli.sh
 0	tests/conformance/adt-exhaustiveness/run.sh
