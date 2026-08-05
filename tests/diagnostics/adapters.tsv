@@ -12,6 +12,7 @@ hm-levels	tests/conformance/inference/hm-levels/run.sh	verify	tests/diagnostics/
 optional-narrowing	tests/conformance/optional-narrowing/run.sh	verify	tests/diagnostics/reports/optional-narrowing.tsv
 optional-construction	tests/conformance/optional-construction/run.sh	verify	tests/diagnostics/reports/optional-construction.tsv
 text-results	tests/conformance/text-results/run.sh	verify	tests/diagnostics/reports/text-results.tsv
+list-int-values	tests/stage2/list-int-values/run.sh	verify	tests/diagnostics/reports/list-int-values.tsv
 visibility-api-leaks	tests/diagnostics/visibility-api-leaks.sh	verify	tests/diagnostics/reports/visibility-api-leaks.tsv
 unicode	tests/diagnostics/unicode/run.sh	verify	tests/diagnostics/reports/unicode.tsv
 native	tests/diagnostics/native/run.sh	verify	tests/diagnostics/reports/native.tsv

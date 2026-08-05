@@ -198,6 +198,11 @@ tasks:
     cmds:
       - "sh tests/conformance/text-results/run.sh"
 
+  list-int-values:
+    desc: "Verify bounded Stage 2 List[Int] locals, len, and indexing"
+    cmds:
+      - "sh tests/stage2/list-int-values/run.sh"
+
   adt-exhaustiveness:
     desc: "Verify resolved flat-ADT match diagnostics"
     cmds:
@@ -711,6 +716,7 @@ tasks:
             optional-construction \
             optional-pair \
             text-results \
+            list-int-values \
             adt-exhaustiveness \
             enum-match-value \
             module-symbols \

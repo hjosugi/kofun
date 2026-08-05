@@ -1,0 +1,6 @@
+fn main() -> Int {
+    let values = [10, 20, 30]
+    let index = 3
+    print(values[index])
+    return 0
+}

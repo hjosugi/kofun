@@ -685,9 +685,9 @@
       "number": 919,
       "title": "Stage 2 C11 List[Int] values: locals, len, and indexing",
       "state_labels": [
-        "ready"
+        "in-progress"
       ],
-      "state_line": "ready",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
         "0a209468da3698a31cf6177b863284fd04c9a374",
