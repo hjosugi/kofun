@@ -745,7 +745,7 @@
       "number": 955,
       "title": "modules: spec/grammar.ebnf admits a top-level `let` that Stage 2 refuses with E2S02",
       "state_labels": [
-        "blocked"
+        "in-progress"
       ],
       "state_line": null,
       "blocked_by": [],
@@ -795,9 +795,9 @@
       "number": 1008,
       "title": "Stage 2: execute immutable Int module constants after authority decision",
       "state_labels": [
-        "blocked"
+        "in-progress"
       ],
-      "state_line": "blocked",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
         "486d72deb17a6be11325a425e1138822d058121d",
