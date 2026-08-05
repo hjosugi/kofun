@@ -1,3 +1,4 @@
 # code	adapter	channel	exit	primary-span	secondary-span	artifact
 EUNICODE005	unicode	stdout	1	required	not-applicable	forbidden
 EUNICODE006	unicode	stdout	1	required	required	forbidden
+EUNICODE008	unicode	stdout	1	required	required	forbidden

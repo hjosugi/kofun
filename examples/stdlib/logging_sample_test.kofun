@@ -1,0 +1,81 @@
+# kotest suite for logging_sample.kofun; run with `kofun unittest`.
+
+fn test_levels_are_strictly_ordered() -> Int {
+    let mut failures = 0
+    failures = failures + expect_lt_int(log_level_debug(), log_level_info())
+    failures = failures + expect_lt_int(log_level_info(), log_level_warn())
+    failures = failures + expect_lt_int(log_level_warn(), log_level_error())
+    return failures
+}
+
+fn test_threshold_admits_at_or_above() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(
+        log_should_emit(log_level_info(), log_level_info()), 1)
+    failures = failures + expect_eq_int(
+        log_should_emit(log_level_info(), log_level_error()), 1)
+    failures = failures + expect_eq_int(
+        log_should_emit(log_level_info(), log_level_debug()), 0)
+    failures = failures + expect_eq_int(
+        log_should_emit(log_level_error(), log_level_warn()), 0)
+    return failures
+}
+
+fn test_unknown_levels_never_emit() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(log_should_emit(25, log_level_error()), 0)
+    failures = failures + expect_eq_int(log_should_emit(log_level_info(), 25), 0)
+    failures = failures + expect_eq_int(log_level_is_known(0), 0)
+    failures = failures + expect_eq_int(log_level_is_known(log_level_warn()), 1)
+    return failures
+}
+
+fn test_field_validation_is_typed() -> Int {
+    let mut failures = 0
+    let good: FieldCheck = log_validate_field(42, 100)
+    match good {
+        FieldAccepted(key) => { failures = failures + expect_eq_int(key, 42) },
+        _ => { failures = failures + fail_now("expected FieldAccepted") },
+    }
+    let low_key: FieldCheck = log_validate_field(0, 100)
+    match low_key {
+        FieldKeyOutOfRange(key) => { failures = failures + expect_eq_int(key, 0) },
+        _ => { failures = failures + fail_now("expected FieldKeyOutOfRange") },
+    }
+    let high_key: FieldCheck = log_validate_field(100, 100)
+    failures = failures + expect_eq_int(log_field_check_code(high_key), 1)
+    let wide_value: FieldCheck = log_validate_field(42, 1000000)
+    match wide_value {
+        FieldValueOutOfRange(value) => {
+            failures = failures + expect_eq_int(value, 1000000)
+        },
+        _ => { failures = failures + fail_now("expected FieldValueOutOfRange") },
+    }
+    let wide_negative: FieldCheck = log_validate_field(42, 0 - 1000000)
+    failures = failures + expect_eq_int(log_field_check_code(wide_negative), 2)
+    return failures
+}
+
+fn test_emit_admits_and_prints_exactly_once() -> Int {
+    let mut failures = 0
+    # This record is admitted: the renderer prints its four lines as
+    # expected output of this test, and log_emit reports 1.
+    let record: LogRecord = log_make_record(log_level_warn(), 9001, 3, 14)
+    failures = failures + expect_eq_int(log_emit(log_level_info(), record), 1)
+    return failures
+}
+
+fn test_emit_drops_below_threshold_silently() -> Int {
+    let mut failures = 0
+    let record: LogRecord = log_make_record(log_level_debug(), 9002, 3, 14)
+    failures = failures + expect_eq_int(log_emit(log_level_error(), record), 0)
+    return failures
+}
+
+fn test_emit_rejects_invalid_fields_before_threshold() -> Int {
+    let mut failures = 0
+    # An invalid field is a typed rejection even when the level would pass.
+    let record: LogRecord = log_make_record(log_level_error(), 9003, 0, 14)
+    failures = failures + expect_eq_int(log_emit(log_level_debug(), record), 0 - 1)
+    return failures
+}

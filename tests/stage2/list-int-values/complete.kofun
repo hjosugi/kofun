@@ -1,0 +1,13 @@
+fn main() -> Int {
+    let explicit: List[Int] = [40, 1, 1]
+    let inferred = [7, 8, 9]
+    let empty: List[Int] = []
+    let index = 1
+    print(len(explicit))
+    print(explicit[0] + explicit[1] + explicit[2])
+    print(len(inferred))
+    print(inferred[index])
+    print(explicit[-2])
+    print(len(empty))
+    return 0
+}

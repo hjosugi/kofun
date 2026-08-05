@@ -1,0 +1,1 @@
+error[E2S148]: const parameters are admissible on a nominal record only; `Scaled` is not one at byte 227

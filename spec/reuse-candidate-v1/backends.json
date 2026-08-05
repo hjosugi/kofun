@@ -1,0 +1,37 @@
+{
+  "schema": "kofun.reuse-backend-support/v1",
+  "audited_against": "00ce08f093da2706156f88f80d8c2fb366006d35",
+  "note": "Backend ids are the registered backends of tests/conformance/capabilities.tsv. reuse_support records whether the backend can honour a reuse_statically_guaranteed record. No backend honours one at the audited commit: no reuse rewrite exists in the tree. data_layouts lists the committed AggregateLayout v1 targets whose descriptor a record may cite for this backend; it is a join over committed descriptors, not a claim about which triples the backend can emit.",
+  "backends": [
+    {
+      "id": "c11-stage1",
+      "data_layouts": ["x86_64-linux"],
+      "reuse_support": "unsupported",
+      "reason": "No reuse rewrite exists. The Stage 1 C11 Core lowers no heap-allocated constructor node."
+    },
+    {
+      "id": "c11-stage2",
+      "data_layouts": ["x86_64-linux"],
+      "reuse_support": "unsupported",
+      "reason": "No reuse rewrite exists. The generated Stage 2 prelude includes no <stdlib.h> and Core enums are by-value KofunEnumValue {tag, payload}."
+    },
+    {
+      "id": "native-x86_64",
+      "data_layouts": ["x86_64-linux"],
+      "reuse_support": "unsupported",
+      "reason": "No reuse rewrite exists."
+    },
+    {
+      "id": "native-aarch64",
+      "data_layouts": [],
+      "reuse_support": "unsupported",
+      "reason": "No reuse rewrite exists, and no committed AggregateLayout v1 descriptor covers this backend."
+    },
+    {
+      "id": "wasm32-node",
+      "data_layouts": ["wasm32"],
+      "reuse_support": "unsupported",
+      "reason": "No reuse rewrite exists."
+    }
+  ]
+}

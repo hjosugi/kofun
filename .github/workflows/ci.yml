@@ -22,12 +22,40 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends qemu-user
       - run: task verify
-      - name: Verify the bounded type-level programming contract
-        run: sh spec/type-reduction-trace/check.sh
       - name: Build and run Kofun Core
         run: |
           ./bin/kofun build bootstrap/fixtures/answer.kofun -o build/answer
           test "$(./build/answer)" = "42"
+
+  # The committed snapshot is a fixture. `task backlog`, inside `task verify`,
+  # checks it on every pull request and is deterministic: it fails only when
+  # the change breaks the rules or the ledger.
+  #
+  # This lane checks the *live* backlog, and deliberately does not run on pull
+  # requests. Issues are filed here every few minutes, so a `ready` issue
+  # opened by someone else while a PR is in review would turn that PR red for a
+  # reason its author cannot fix. On `main` the same failure is a true signal
+  # that the backlog needs attention, and it is actionable by whoever owns it.
+  #
+  # It also verifies the evidence stamps, which needs the full history that the
+  # shallow default checkout does not have.
+  backlog:
+    name: Backlog issue state
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Install go-task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Refresh from GitHub and check the live backlog
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: task backlog-refresh
 
   # The structural lane above (`task release-claims`, inside `task verify`) only
   # reads the repository. This lane proves the stronger property: a checkout

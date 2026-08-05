@@ -44,11 +44,11 @@ declaration next to the constant.
 | `values.kofun` | small, negative, and both Int64 bounds reach the backend intact |
 | `ordering.kofun` | constants interleave with a record and an enum in either order |
 | `shadowing.kofun` | a local binding shadows the constant in its own scope only |
-| `non_literal.kofun` | `E2S147` — the initializer is not one integer literal |
-| `function_clash.kofun` | `E2S147` — the name collides with a function |
-| `type_clash.kofun` | `E2S147` — the name collides with a type |
-| `duplicate.kofun` | `E2S148` — the same constant is declared twice |
-| `mutable.kofun` | `E2S149` — `let mut` is refused as mutable module state |
+| `non_literal.kofun` | `E2S158` — the initializer is not one integer literal |
+| `function_clash.kofun` | `E2S158` — the name collides with a function |
+| `type_clash.kofun` | `E2S158` — the name collides with a type |
+| `duplicate.kofun` | `E2S159` — the same constant is declared twice |
+| `mutable.kofun` | `E2S160` — `let mut` is refused as mutable module state |
 
 Every refusal is checked for its exact golden, a nonzero exit, and the absence
 of a backend artifact, so a constant that fails to parse can never leave a

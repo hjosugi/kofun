@@ -1,0 +1,109 @@
+# kotest suite for list_sample.kofun; run with `kofun unittest`.
+
+fn test_empty_list_has_length_zero() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(list_length(list_empty()), 0)
+    return failures
+}
+
+fn test_push_appends_in_order() -> Int {
+    let mut failures = 0
+    let values: IntList = list_push(list_push(list_empty(), 10), 20)
+    failures = failures + expect_eq_int(list_length(values), 2)
+    failures = failures + expect_eq_int(outcome_value_or(list_get(values, 0), 0 - 1), 10)
+    failures = failures + expect_eq_int(outcome_value_or(list_get(values, 1), 0 - 1), 20)
+    return failures
+}
+
+fn test_push_beyond_capacity_is_ignored() -> Int {
+    let mut failures = 0
+    let full: IntList = list_push(list_push(list_push(list_push(
+        list_empty(), 1), 2), 3), 4)
+    let overflow: IntList = list_push(full, 5)
+    failures = failures + expect_eq_int(list_length(overflow), list_capacity())
+    failures = failures + expect_eq_int(
+        outcome_value_or(list_get(overflow, 3), 0 - 1), 4)
+    return failures
+}
+
+fn test_get_reports_typed_failures() -> Int {
+    let mut failures = 0
+    let empty_outcome: ListOutcome = list_get(list_empty(), 0)
+    match empty_outcome {
+        ListEmpty(capacity) => {
+            failures = failures + expect_eq_int(capacity, list_capacity())
+        },
+        _ => { failures = failures + fail_now("expected ListEmpty") },
+    }
+    let values: IntList = list_push(list_empty(), 7)
+    let outside: ListOutcome = list_get(values, 3)
+    match outside {
+        ListOutOfBounds(index) => {
+            failures = failures + expect_eq_int(index, 3)
+        },
+        _ => { failures = failures + fail_now("expected ListOutOfBounds") },
+    }
+    let negative: ListOutcome = list_get(values, 0 - 2)
+    match negative {
+        ListOutOfBounds(index) => {
+            failures = failures + expect_eq_int(index, 0 - 2)
+        },
+        _ => { failures = failures + fail_now("expected ListOutOfBounds") },
+    }
+    return failures
+}
+
+fn test_map_transforms_every_slot() -> Int {
+    let mut failures = 0
+    let values: IntList = list_push(list_push(list_push(list_empty(), 3), 1), 4)
+    let squared: IntList = list_map(values, value => value * value)
+    failures = failures + expect_eq_int(list_length(squared), 3)
+    failures = failures + expect_eq_int(outcome_value_or(list_get(squared, 0), 0 - 1), 9)
+    failures = failures + expect_eq_int(outcome_value_or(list_get(squared, 1), 0 - 1), 1)
+    failures = failures + expect_eq_int(outcome_value_or(list_get(squared, 2), 0 - 1), 16)
+    return failures
+}
+
+fn test_map_on_empty_is_empty() -> Int {
+    let mut failures = 0
+    let mapped: IntList = list_map(list_empty(), value => value + 1)
+    failures = failures + expect_eq_int(list_length(mapped), 0)
+    return failures
+}
+
+fn test_fold_is_ordered_left_to_right() -> Int {
+    let mut failures = 0
+    let values: IntList = list_push(list_push(list_push(list_empty(), 2), 3), 4)
+    # Subtraction is order-sensitive, so it proves traversal order:
+    # ((100 - 2) - 3) - 4 = 91.
+    failures = failures + expect_eq_int(
+        list_fold(values, 100, (total, value) => total - value), 91)
+    failures = failures + expect_eq_int(
+        list_fold(list_empty(), 42, (total, value) => total + value), 42)
+    return failures
+}
+
+fn test_reverse_reverses_and_preserves_length() -> Int {
+    let mut failures = 0
+    let values: IntList = list_push(list_push(list_push(list_empty(), 1), 2), 3)
+    let backwards: IntList = list_reverse(values)
+    failures = failures + expect_eq_int(list_length(backwards), 3)
+    failures = failures + expect_eq_int(outcome_value_or(list_get(backwards, 0), 0), 3)
+    failures = failures + expect_eq_int(outcome_value_or(list_get(backwards, 2), 0), 1)
+    return failures
+}
+
+fn test_operations_never_mutate_their_input() -> Int {
+    let mut failures = 0
+    let values: IntList = list_push(list_push(list_empty(), 5), 6)
+    let ignored_map: IntList = list_map(values, value => value * 10)
+    let ignored_rev: IntList = list_reverse(values)
+    let ignored_push: IntList = list_push(values, 7)
+    failures = failures + expect_eq_int(list_length(values), 2)
+    failures = failures + expect_eq_int(outcome_value_or(list_get(values, 0), 0), 5)
+    failures = failures + expect_eq_int(outcome_value_or(list_get(values, 1), 0), 6)
+    failures = failures + expect_eq_int(list_length(ignored_map), 2)
+    failures = failures + expect_eq_int(list_length(ignored_rev), 2)
+    failures = failures + expect_eq_int(list_length(ignored_push), 3)
+    return failures
+}

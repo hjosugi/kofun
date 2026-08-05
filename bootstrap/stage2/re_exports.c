@@ -1483,6 +1483,63 @@ static bool resolve_re_exports(ReExportResolver *resolver) {
     return true;
 }
 
+static bool check_re_export_visible_confusables(ReExportResolver *resolver) {
+    SelectiveResolver *selective = &resolver->imports;
+    Program *program = &selective->qualified.program;
+    size_t capacity = program->declaration_count +
+        selective->qualified.import_count + selective->binding_count +
+        resolver->export_count;
+    KofunVisibleBinding *visible = NULL;
+    size_t module_index;
+    if (capacity != 0u) {
+        visible = calloc(capacity, sizeof(*visible));
+        if (visible == NULL) {
+            set_error(program, "EUNICODE007",
+                "re-export visible-binding vector allocation failed");
+            return false;
+        }
+    }
+    for (module_index = 0u; module_index < program->module_count;
+         module_index += 1u) {
+        size_t count = 0u;
+        size_t export_index;
+        if (!collect_selective_visible_bindings(selective, module_index,
+                visible, capacity, &count)) {
+            free(visible);
+            set_error(program, "E2S90",
+                "re-export visible-binding vector exceeds its exact bound");
+            return false;
+        }
+        for (export_index = 0u; export_index < resolver->export_count;
+             export_index += 1u) {
+            ResolvedExport *export = &resolver->exports[export_index];
+            ReExportDeclaration *source =
+                &resolver->declarations[export->declaration_index];
+            if (source->exporter_index != module_index) continue;
+            if (count >= capacity) {
+                free(visible);
+                set_error(program, "E2S90",
+                    "re-export visible-binding vector exceeds its exact bound");
+                return false;
+            }
+            initialize_visible_binding(&visible[count++],
+                &program->modules[module_index],
+                program->namespace_ids[export->namespace_tag],
+                export->export_binding_id, export->target_symbol_id,
+                export->name, KOFUN_VISIBLE_SITE_RE_EXPORT,
+                export->name_span_start, export->name_span_end);
+        }
+        if (!check_visible_binding_vector(selective, module_index,
+                visible, count)) {
+            free(visible);
+            return false;
+        }
+    }
+    selective->visible_confusables_checked = true;
+    free(visible);
+    return true;
+}
+
 static int compare_resolved_exports(const void *left, const void *right) {
     size_t left_index = *(const size_t *)left;
     size_t right_index = *(const size_t *)right;
@@ -2104,7 +2161,8 @@ int main(int argc, char **argv) {
     canonicalize_import_graph_edges(&resolver.imports);
     if (!resolve_selective_bindings(&resolver.imports)) goto done;
     if (!build_re_export_requests(&resolver) ||
-        !resolve_re_exports(&resolver)) goto done;
+        !resolve_re_exports(&resolver) ||
+        !check_re_export_visible_confusables(&resolver)) goto done;
 #if defined(KOFUN_TEST_DIAGNOSTIC_FAULTS)
     if (diagnostic_fault_requested("re-export-chain")) {
         set_error(program, "E2S94",

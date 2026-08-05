@@ -1,0 +1,108 @@
+# stdlib/random sample: a deterministic core generator with explicit state.
+#
+# The canonical stdlib/random/random.kofun contract: the core is fully
+# deterministic — the only nondeterministic point is the separate Linux
+# entropy adapter, which never appears here.  The generator is a linear
+# congruential step over a 2^31 modulus with explicit state threading:
+# the same seed always yields the same sequence, and bounded draws use
+# rejection below the largest unbiased multiple, never a biased remainder.
+#
+# Tests live in random_sample_test.kofun and run with `kofun unittest`.
+
+fn random_modulus() -> Int {
+    return 2147483648
+}
+
+fn random_multiplier() -> Int {
+    return 1103515245
+}
+
+fn random_increment() -> Int {
+    return 12345
+}
+
+# One generator step: the next state from a state.  States are 0 ..
+# modulus-1; a caller-provided seed is folded into range first.
+fn random_next_state(state: Int) -> Int {
+    let held = state % random_modulus()
+    let folded = held + random_modulus()
+    let normalized = folded % random_modulus()
+    return (random_multiplier() * normalized + random_increment()) % random_modulus()
+}
+
+fn random_seed(value: Int) -> Int {
+    let folded = value % random_modulus() + random_modulus()
+    return folded % random_modulus()
+}
+
+# The draw a state represents: the high-entropy upper bits of the state.
+fn random_value(state: Int) -> Int {
+    return state // 65536
+}
+
+# Largest multiple of `bound` not exceeding the draw range; draws at or
+# above it are rejected so every value below is exactly equally likely.
+fn random_rejection_limit(bound: Int) -> Int {
+    let draw_range = random_modulus() // 65536
+    return draw_range - draw_range % bound
+}
+
+# A bounded draw in 0 .. bound-1 by rejection: step the state until the
+# draw falls under the unbiased limit, then reduce.  Returns the value;
+# the caller re-derives the state by stepping the same way.
+fn random_bounded_from(state: Int, bound: Int, remaining: Int) -> Int {
+    if bound <= 0 {
+        return 0 - 1
+    }
+    if remaining <= 0 {
+        return 0 - 2
+    }
+    let stepped = random_next_state(state)
+    let draw = random_value(stepped)
+    if draw < random_rejection_limit(bound) {
+        return draw % bound
+    }
+    return random_bounded_from(stepped, bound, remaining - 1)
+}
+
+fn random_bounded(state: Int, bound: Int) -> Int {
+    return random_bounded_from(state, bound, 64)
+}
+
+# Sum of `count` sequential draws in 0..9 — a deterministic sequence
+# fingerprint used by tests and the demo below.
+fn random_digit_sum(state: Int, count: Int) -> Int {
+    if count <= 0 {
+        return 0
+    }
+    let stepped = random_next_state(state)
+    return random_value(stepped) % 10 + random_digit_sum(stepped, count - 1)
+}
+
+# Dependency injection point: code that needs randomness takes a stepper
+# function, so tests substitute a scripted sequence.
+fn roll_two_dice(stepper: Int -> Int, state: Int) -> Int {
+    let first_state = stepper(state)
+    let second_state = stepper(first_state)
+    return random_value(first_state) % 6 + random_value(second_state) % 6 + 2
+}
+
+fn main() {
+    let seed = random_seed(42)
+    print(seed)
+    let first = random_next_state(seed)
+    let second = random_next_state(first)
+    print(random_value(first))
+    print(random_value(second))
+    if random_next_state(seed) == first {
+        print(1)
+    } else {
+        print(0)
+    }
+    print(random_bounded(seed, 10))
+    print(random_bounded(seed, 0))
+    print(random_digit_sum(seed, 5))
+    print(roll_two_dice(state => random_next_state(state), seed))
+    print(roll_two_dice(state => state + 65536, 0))
+    print(random_seed(0 - 42))
+}

@@ -1,0 +1,25 @@
+{
+  "schema": "kofun.backlog-issue-state/v1",
+  "repository": "hjosugi/kofun",
+  "state_labels": [
+    "ready",
+    "blocked",
+    "needs-detail",
+    "needs-decision",
+    "deferred",
+    "in-progress"
+  ],
+  "open_issues": 1,
+  "issues": [
+    {
+      "number": 101,
+      "title": "blocked on an unnamed decision",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": []
+    }
+  ]
+}

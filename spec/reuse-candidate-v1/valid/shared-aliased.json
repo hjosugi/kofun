@@ -1,0 +1,70 @@
+{
+  "schema": "kofun.reuse-candidate/v1",
+  "candidate_id": "candidate:shared-aliased",
+  "file_id": "fixture:shared-aliased",
+  "matched_source": {
+    "type_id": "Maybe",
+    "constructor": "Present",
+    "span": {
+      "start": 12,
+      "end": 24
+    }
+  },
+  "constructed_target": {
+    "type_id": "Maybe",
+    "constructor": "Present",
+    "span": {
+      "start": 40,
+      "end": 52
+    }
+  },
+  "layout_evidence": {
+    "contract": "kofun.aggregate-layout/v1",
+    "target_data_layout": "x86_64-linux",
+    "source_layout": {
+      "layout_id": "Maybe",
+      "size": "16",
+      "align": "8",
+      "field_count": 1,
+      "scanning_shape": {
+        "pointers": [],
+        "drop": "trivial"
+      }
+    },
+    "target_layout": {
+      "layout_id": "Maybe",
+      "size": "16",
+      "align": "8",
+      "field_count": 1,
+      "scanning_shape": {
+        "pointers": [],
+        "drop": "trivial"
+      }
+    }
+  },
+  "uniqueness_evidence": {
+    "proof": "unproved",
+    "provenance": "unproved",
+    "evidence_id": null
+  },
+  "observers": {
+    "borrowed_view": "absent",
+    "closure_capture": "absent",
+    "weak_reference": "absent",
+    "foreign_pointer": "absent",
+    "alias": "live"
+  },
+  "write_ordering": "unknown",
+  "backend_support": {
+    "backend_id": "c11-stage2",
+    "reuse_support": "unsupported",
+    "guarantee_disposition": "not-applicable"
+  },
+  "eligibility": {
+    "ordinary_allocation": false,
+    "reuse_candidate": true,
+    "reuse_statically_guaranteed": false,
+    "reason": "possible-alias"
+  },
+  "remark": "reuse refused: source storage may have another live alias"
+}

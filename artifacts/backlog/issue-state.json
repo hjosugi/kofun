@@ -1,0 +1,857 @@
+{
+  "schema": "kofun.backlog-issue-state/v1",
+  "repository": "hjosugi/kofun",
+  "state_labels": [
+    "ready",
+    "blocked",
+    "needs-detail",
+    "needs-decision",
+    "deferred",
+    "in-progress"
+  ],
+  "open_issues": 71,
+  "issues": [
+    {
+      "number": 26,
+      "title": "wasm32 target: extend the bounded arithmetic and browser checkpoint",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": [
+        "564ab7bc932aab0da6dba370d0c699d196e182cf",
+        "71d49724cced0f41b79ebc0f253f7570f23b1b14",
+        "9f21980a7c77883ad3d91ce462a6857adc261f20"
+      ]
+    },
+    {
+      "number": 27,
+      "title": "Sample: end-to-end JSON API service",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "b6241acc8cd33819a4a1c92b1a301c02b46cd133"
+      ]
+    },
+    {
+      "number": 30,
+      "title": "General ADT match exhaustiveness beyond the bounded Bool slice",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 31,
+      "title": "Generics and traits",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 32,
+      "title": "Stage 2 fixed point: Kofun compiles Kofun",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        271,
+        622
+      ],
+      "evidence_commits": [
+        "6f71b6df5cf54aa16542b89494d2194c4172a97e",
+        "d3429207447e112f5230d5be38576959130d288e",
+        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
+      ]
+    },
+    {
+      "number": 271,
+      "title": "Bootstrap: produce C1/A1 and self-compile S into C2/A2",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "6f71b6df5cf54aa16542b89494d2194c4172a97e",
+        "d3429207447e112f5230d5be38576959130d288e",
+        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
+      ]
+    },
+    {
+      "number": 272,
+      "title": "Bootstrap fixed point: produce C3/A3, compare three generations, close B4/B5",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        271
+      ],
+      "evidence_commits": [
+        "aeee501f7f28aa33c328a764abe3e3a5cf65d71b"
+      ]
+    },
+    {
+      "number": 274,
+      "title": "Reproducible bootstrap B6: independent clean builder reproduces the fixed point",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        272
+      ],
+      "evidence_commits": [
+        "aeee501f7f28aa33c328a764abe3e3a5cf65d71b"
+      ]
+    },
+    {
+      "number": 276,
+      "title": "Reduce boilerplate: derive, and generated members",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [
+        988
+      ],
+      "evidence_commits": [
+        "41b531f73e6b751f385c62b4ef689992f676afef"
+      ]
+    },
+    {
+      "number": 277,
+      "title": "Freestanding target: run with no operating system",
+      "state_labels": [
+        "deferred"
+      ],
+      "state_line": null,
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 278,
+      "title": "ARM Cortex-M backend (thumb2)",
+      "state_labels": [
+        "deferred"
+      ],
+      "state_line": null,
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 279,
+      "title": "Memory-mapped I/O, volatile access, and interrupt handlers",
+      "state_labels": [
+        "deferred"
+      ],
+      "state_line": null,
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 280,
+      "title": "No-heap mode: static allocation only",
+      "state_labels": [
+        "deferred"
+      ],
+      "state_line": null,
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 281,
+      "title": "Position paper: what replacing C and Rust actually requires",
+      "state_labels": [],
+      "state_line": null,
+      "blocked_by": [],
+      "evidence_commits": [
+        "205cdbe72ec2a49a648ef4c296414a983c5e53f9"
+      ]
+    },
+    {
+      "number": 289,
+      "title": "Forward references: track declaration scopes, imports, and initialization",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 298,
+      "title": "Duplicate definitions: track namespace and binding-domain rules",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": [
+        "2c10cf6a14b5a928c257c3ce6656e187c886bedf"
+      ]
+    },
+    {
+      "number": 314,
+      "title": "Null coalescing: execute Optional(Int) ?? Int lazily",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": [
+        "f37c64f388a45bbe4108c467c49257038f3b2ae7"
+      ]
+    },
+    {
+      "number": 424,
+      "title": "Hot reload at function granularity, via micro-partition",
+      "state_labels": [
+        "deferred"
+      ],
+      "state_line": null,
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 532,
+      "title": "Scientific computing: arrays, linear algebra, statistics, dataframes, plotting",
+      "state_labels": [
+        "deferred"
+      ],
+      "state_line": null,
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 533,
+      "title": "Show where ownership goes: LSP hover, inlay hints, and diagnostics",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": null,
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 536,
+      "title": "ndarray: n-dimensional arrays with views, strides, and broadcasting",
+      "state_labels": [
+        "deferred"
+      ],
+      "state_line": null,
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 537,
+      "title": "Linear algebra: matmul, decompositions, solvers, and BLAS/LAPACK binding",
+      "state_labels": [
+        "deferred"
+      ],
+      "state_line": null,
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 538,
+      "title": "Signal and image processing: FFT, convolution, filtering",
+      "state_labels": [
+        "deferred"
+      ],
+      "state_line": null,
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 539,
+      "title": "Statistics: distributions, tests, regression, optimisation, integration",
+      "state_labels": [
+        "deferred"
+      ],
+      "state_line": null,
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 540,
+      "title": "Dataframes: typed columnar tables with group-by and join",
+      "state_labels": [
+        "deferred"
+      ],
+      "state_line": null,
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 543,
+      "title": "Optional types: define representation, narrowing, matching, and propagation",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 554,
+      "title": "Stage 2: lower contiguous payload-free enum matches to C switch",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": [
+        "b55d56101add13bedee87a589ea4d8db9801277c"
+      ]
+    },
+    {
+      "number": 555,
+      "title": "Scoped parallelism v1: specify spawn/join ownership semantics and executable model",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "b297880239f0db9cb832df50de379f5f678abf6c"
+      ]
+    },
+    {
+      "number": 569,
+      "title": "RFC: define affine authority capabilities for environment access",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": [
+        "59a75a60fd6bbe407f29929555d907abf06cfa0a"
+      ]
+    },
+    {
+      "number": 570,
+      "title": "Austral: propagate ownership kind structurally through generics and ADTs",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": [
+        "78626dcabfe4765beaff38f59a7b29ba3f8013bd",
+        "c153beb3526e2d21c4844a3db01c52823a5f27f5"
+      ]
+    },
+    {
+      "number": 571,
+      "title": "Austral/Nim: support zero-copy borrowed results without user-written lifetimes",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": [
+        "b6241acc8cd33819a4a1c92b1a301c02b46cd133"
+      ]
+    },
+    {
+      "number": 572,
+      "title": "Nim: infer last-use moves and add a compile-time move assertion",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": null,
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 573,
+      "title": "Odin: make allocator choice a scoped, effect-tracked capability",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": [
+        "b6241acc8cd33819a4a1c92b1a301c02b46cd133"
+      ]
+    },
+    {
+      "number": 574,
+      "title": "V: generate audited C bindings from Clang AST before attempting source translation",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": null,
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 576,
+      "title": "Koka: reuse matched ADT constructors in place when storage is unique",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": [
+        "b6241acc8cd33819a4a1c92b1a301c02b46cd133"
+      ]
+    },
+    {
+      "number": 584,
+      "title": "Visibility tooling: prevent macro, LSP, and sidecar access bypasses",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": [
+        "0ba1682a605f31ce54e23b7d37edadfd80a79f5e",
+        "2d54aeb7c705ee69c770b6a8d3a9f0383b833c0c",
+        "cbaa8721f21f2eb5fdead71f35740faaac3fabd8",
+        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
+      ]
+    },
+    {
+      "number": 585,
+      "title": "Visibility stabilization: document API changes and migration",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        584,
+        1033,
+        1034,
+        1035
+      ],
+      "evidence_commits": [
+        "bbb6b0ffee24952016394dc6352499a89ec3e938"
+      ]
+    },
+    {
+      "number": 622,
+      "title": "Self-host compiler driver: args, file I/O, and compiling S to deterministic C11",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "6f71b6df5cf54aa16542b89494d2194c4172a97e",
+        "d3429207447e112f5230d5be38576959130d288e",
+        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
+      ]
+    },
+    {
+      "number": 624,
+      "title": "Language UX: simple functional syntax with explicit ownership and lawful composition",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 637,
+      "title": "Discovery query v1: project inferred types and callable operations from semantic facts",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": [
+        "b297880239f0db9cb832df50de379f5f678abf6c"
+      ]
+    },
+    {
+      "number": 644,
+      "title": "HTTP/1.1 client core: bounded request and response state machine over scripted transport",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": [
+        "09e03fb96597aa1f48abce7ad95171d3184730d0",
+        "b5ea9ec9241e832b87705c468818b4fd2684146d"
+      ]
+    },
+    {
+      "number": 645,
+      "title": "Date/time core: Gregorian values, checked arithmetic, and strict RFC 3339",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "6b8d2064468d270f37a1d8dcfe8848dca91b9dc0",
+        "97e50abe18e028093a186a7835e48c4d81a6dbd9",
+        "b783e7697d3791ce26def31e7b58a51367c83036"
+      ]
+    },
+    {
+      "number": 646,
+      "title": "Benchmark report v1: canonical raw-sample codec and deterministic summaries",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": [
+        "801204407ec864c58a9c1613bca33c204be78b35"
+      ]
+    },
+    {
+      "number": 710,
+      "title": "Compiler-native Decimal: implement the accepted language design across all backends",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": [
+        "bbb6b0ffee24952016394dc6352499a89ec3e938"
+      ]
+    },
+    {
+      "number": 725,
+      "title": "Decimal slice 6: state scale guarantees truthfully now, and add Fixed[scale] when const generics exist",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": [
+        "09a3229c33fd309f61a0a0ba407fd543f8c670e6",
+        "bbb6b0ffee24952016394dc6352499a89ec3e938",
+        "d742788e2b98aeda4a33acf9620f37b68add87ca",
+        "fc79ec1dc804bba20bd955706e851ed108127396"
+      ]
+    },
+    {
+      "number": 738,
+      "title": "Time-series forecasting research: rolling-origin backtests, uncertainty, and estimator boundaries",
+      "state_labels": [
+        "deferred"
+      ],
+      "state_line": "deferred",
+      "blocked_by": [],
+      "evidence_commits": [
+        "d1f58a6a9e20764b25ee28773df5355512213dfa"
+      ]
+    },
+    {
+      "number": 784,
+      "title": "ownership: an affine handle whose owned state cannot be duplicated (#644)",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 847,
+      "title": "Benchmark report producer: canonical v1 bytes and deterministic summaries in Kofun",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": [
+        "801204407ec864c58a9c1613bca33c204be78b35"
+      ]
+    },
+    {
+      "number": 868,
+      "title": "Stage 2 C11 aggregate bridge: execute records with List[Int] and Text",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": [
+        "0a209468da3698a31cf6177b863284fd04c9a374",
+        "b783e7697d3791ce26def31e7b58a51367c83036"
+      ]
+    },
+    {
+      "number": 880,
+      "title": "Call arguments v1 slice 1: parse labels and canonical trailing lambdas",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [
+        625
+      ],
+      "evidence_commits": [
+        "a50793ea6802411fd6f7c752578fd9421669236f"
+      ]
+    },
+    {
+      "number": 881,
+      "title": "Call arguments v1 slice 2: bind labels in HIR, type checking, and KIF identity",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": null,
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 882,
+      "title": "Call arguments v1 slice 3: lower labelled and trailing calls without reorder or allocation",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": null,
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 883,
+      "title": "Typed upgrade patches slice 3: opt-in atomic exact-type rename with durable undo",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": null,
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 884,
+      "title": "Typed upgrade patches slice 2: deterministic read-only CLI and LSP preview",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": null,
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 885,
+      "title": "Typed upgrade patches slice 1: validate schema and compute the complete semantic frontier",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": [
+        "2a31329b50fe19974b1cfc6639eac753373ab744"
+      ]
+    },
+    {
+      "number": 902,
+      "title": "bindgen-c: enforce a mechanical raw-binding import boundary",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "356931b8c8f8d399d7b8d3aa84421bcec99578f6",
+        "41b531f73e6b751f385c62b4ef689992f676afef"
+      ]
+    },
+    {
+      "number": 915,
+      "title": "Stage 2 ensure_move v3: prove loop-local last uses instead of rejecting every loop",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": [
+        "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
+      ]
+    },
+    {
+      "number": 919,
+      "title": "Stage 2 C11 List[Int] values: locals, len, and indexing",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": "in-progress",
+      "blocked_by": [],
+      "evidence_commits": [
+        "0a209468da3698a31cf6177b863284fd04c9a374",
+        "b05cb9e65007747c20c98182bbfa3fdc49a4cda3"
+      ]
+    },
+    {
+      "number": 922,
+      "title": "Stage 2: record the move site and attach it to the use-after-move diagnostic",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": [
+        "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
+      ]
+    },
+    {
+      "number": 930,
+      "title": "Allocator seed: canonical `stdlib/alloc` contract and pinned Stage 2 projection (RFC-0001 stage 1)",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": [
+        "b6241acc8cd33819a4a1c92b1a301c02b46cd133"
+      ]
+    },
+    {
+      "number": 942,
+      "title": "Member-scope duplicates: methods, associated values, and inherited or default members",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": [
+        "00ce08f093da2706156f88f80d8c2fb366006d35"
+      ]
+    },
+    {
+      "number": 943,
+      "title": "Lambda spelling drift: Stage 2 accepts `(a, b) => e` and `x => e`, the grammar and SYNTAX.md describe neither",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "7cdecd68dd42504da5881c6253e8f3d091636064"
+      ]
+    },
+    {
+      "number": 946,
+      "title": "The production frontend has no move analysis, so E2S122/E2S123 never reach an editor",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": [
+        "00ce08f093da2706156f88f80d8c2fb366006d35"
+      ]
+    },
+    {
+      "number": 955,
+      "title": "modules: spec/grammar.ebnf admits a top-level `let` that Stage 2 refuses with E2S02",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": null,
+      "blocked_by": [],
+      "evidence_commits": [
+        "8ba3a57c0ae91c8ba3fa97396d698fb264a189cd"
+      ]
+    },
+    {
+      "number": 975,
+      "title": "backlog: decide whether a planning umbrella waiting on children is `blocked`",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [
+        618
+      ],
+      "evidence_commits": [
+        "bc95dd5707be02c87fe4f2f49553c0876c4b4971"
+      ]
+    },
+    {
+      "number": 988,
+      "title": "RFC: choose the derive v1 expansion authority and inspection contract",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "41b531f73e6b751f385c62b4ef689992f676afef"
+      ]
+    },
+    {
+      "number": 995,
+      "title": "Trait member override v1: inherited and default member collision contract",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "00ce08f093da2706156f88f80d8c2fb366006d35"
+      ]
+    },
+    {
+      "number": 1008,
+      "title": "Stage 2: execute immutable Int module constants after authority decision",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": [
+        "486d72deb17a6be11325a425e1138822d058121d",
+        "6f71b6df5cf54aa16542b89494d2194c4172a97e"
+      ]
+    },
+    {
+      "number": 1032,
+      "title": "Self-host driver diagnostics: give A1's refusal a code and a span",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [],
+      "evidence_commits": [
+        "b297880239f0db9cb832df50de379f5f678abf6c"
+      ]
+    },
+    {
+      "number": 1033,
+      "title": "LSP visibility: filter completion and navigation by caller context",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
+      ]
+    },
+    {
+      "number": 1035,
+      "title": "Visibility fuzz: bound malformed identities, re-export chains, and stale artifacts",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
+      ]
+    }
+  ]
+}

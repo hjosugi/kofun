@@ -5,6 +5,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | Claim | Positive gate | Observation |
 |---|---|---|
 | `arithmetic-core` | `sh tests/cli.sh` | The arithmetic Core validates and emits without a diagnostic. |
+| `bindgen-c-stage1` | `sh tests/interop/bindgen-c/check.sh` | The pinned fixture header generates byte-identical bindings and an audit report twice; the C compiler confirms the recorded sizes, offsets, enum values, and calling convention; and the bindings build, link, and run against the fixture library under AddressSanitizer and UndefinedBehaviorSanitizer with leak detection on. |
 | `borrowed-list-ownership` | `sh bootstrap/stage2/check.sh` | The borrowed-List Copy/move checkpoint passes. |
 | `bounded-tzdb-producer` | `sh tests/stdlib/tzdb/check.sh` | Typed HIR, emitted C11, the reference executor, and two repeated backend runs agree on exact normal/gap/fold, provenance, malformed, and resource-limit observations. |
 | `c-abi-profile` | `sh bootstrap/c_abi/check.sh` | The C ABI profile builds and round-trips through host C. |
@@ -44,3 +45,4 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `syscall-stdlib-api` | `sh stdlib/tests/verify.sh` | The declared syscall and stdlib contracts check and execute. |
 | `test-skip-reporting` | `sh tests/cli.sh` | Skipped cases appear in the report with their own count. |
 | `wasm32-arithmetic-core` | `sh bootstrap/wasm/check.sh` | wasm32 modules are emitted and execute to the expected values. |
+| `wasm32-hostabi1-object-arena` | `sh bootstrap/wasm/object_arena_check.sh` | The module passes v1 identification and its allocator/header implementation agrees with independent runtime and layout oracles. |

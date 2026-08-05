@@ -1,0 +1,116 @@
+# stdlib/decimal sample: the compiler-native Decimal surface in use.
+#
+# Decimal is a language type (bootstrap/stage2/decimal_v1.c); the canonical
+# stdlib/decimal/decimal.kofun checkpoint proves the arithmetic laws.  This
+# sample shows the working surface in ordinary code: exact literals, the
+# parse/format round-trip, signed rounding modes, and explicit rounded
+# division — a ledger line computing tax without binary floating point.
+# Decimal values cannot cross function boundaries in this slice, so every
+# observation is a self-contained function returning Int or printing.
+#
+# Tests live in decimal_sample_test.kofun and run with `kofun unittest`.
+
+# Exact decimal arithmetic: 0.1 + 0.2 is exactly 0.3 — the binary-float
+# counterexample this type exists to remove.
+fn decimal_sum_is_exact() -> Int {
+    let sum = 0.1 + 0.2
+    if sum == 0.3 {
+        return 1
+    }
+    return 0
+}
+
+# Each rounding mode on the same midpoint value 2.345 at two places.
+# Returns 1 when the mode produces its documented result.
+fn round_half_up_is_235() -> Int {
+    if Decimal.round(2.345, 2, HalfUp) == 2.35 {
+        return 1
+    }
+    return 0
+}
+
+fn round_toward_zero_is_234() -> Int {
+    if Decimal.round(2.345, 2, TowardZero) == 2.34 {
+        return 1
+    }
+    return 0
+}
+
+fn round_floor_of_negative_midpoint() -> Int {
+    if Decimal.round(-1.5, 0, Floor) == -2.0 {
+        return 1
+    }
+    return 0
+}
+
+fn round_ceiling_of_negative_midpoint() -> Int {
+    if Decimal.round(-1.5, 0, Ceiling) == -1.0 {
+        return 1
+    }
+    return 0
+}
+
+fn round_half_even_breaks_ties_to_even() -> Int {
+    if Decimal.round(0.125, 2, HalfEven) != 0.12 {
+        return 0
+    }
+    if Decimal.round(0.135, 2, HalfEven) != 0.14 {
+        return 0
+    }
+    return 1
+}
+
+# Explicit rounded division: no hidden scale, no repeating tail.
+fn divide_to_documented_scale() -> Int {
+    if Decimal.divide(1.0, 8.0, 2, HalfEven) != 0.12 {
+        return 0
+    }
+    if Decimal.divide(1.0, 3.0, 4, HalfEven) != 0.3333 {
+        return 0
+    }
+    return 1
+}
+
+# Parse round-trip: text in, exact value.
+fn parse_reads_signed_scale() -> Int {
+    if Decimal.parse("-1.20") == -1.2 {
+        return 1
+    }
+    return 0
+}
+
+# A ledger line: net 12.34 with 8% tax, the tax explicitly rounded to
+# cents with HalfUp, gross checked against its exact expected value.
+fn ledger_line_balances() -> Int {
+    let net = 12.34
+    let tax = Decimal.round(net * 0.08, 2, HalfUp)
+    if tax != 0.99 {
+        return 0
+    }
+    let gross = net + tax
+    if gross == 13.33 {
+        return 1
+    }
+    return 0
+}
+
+fn print_format_examples() -> Int {
+    print(Decimal.format(Decimal.parse("2.5"), 2))
+    print(Decimal.format(Decimal.round(2.345, 2, HalfUp), 2))
+    print(Decimal.format(Decimal.divide(1.0, 3.0, 4, HalfEven), 4))
+    return 0
+}
+
+fn main() {
+    print(decimal_sum_is_exact())
+    print(round_half_up_is_235())
+    print(round_toward_zero_is_234())
+    print(round_floor_of_negative_midpoint())
+    print(round_ceiling_of_negative_midpoint())
+    print(round_half_even_breaks_ties_to_even())
+    print(divide_to_documented_scale())
+    print(parse_reads_signed_scale())
+    print(ledger_line_balances())
+    let ignored = print_format_examples()
+    print(ignored)
+}

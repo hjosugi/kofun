@@ -10,7 +10,14 @@ UTF-8 is the standard, and identifiers may use Unicode.
 let 合計 = 40 + 2
 ```
 
-Confusable characters produce a warning in public APIs.
+Two distinct identifier spellings with the same UTS #39 confusable skeleton
+in one compilation unit are a hard error (`EUNICODE006`). This security check
+does not change identifier equality or name resolution. Cross-module
+confusable collision detection is not implemented. Its accepted resolver
+contract checks only each module's effective visible bindings, per semantic
+namespace, and will use the distinct hard-error code `EUNICODE008`; private or
+unselected dependency names do not participate. Implementation is tracked by
+#1018.
 
 ## Comments
 
@@ -65,12 +72,15 @@ use `->`.
 
 ## Lambdas
 
+Kofun accepts three lambda spellings. The canonical form starts with `fn`:
+
 ```kofun
 fn(x) => x + 1
 fn(x: Int, y: Int) => x + y
 ```
 
-block lambda:
+A block body is planned for the canonical form, and the active compiler does
+not parse one:
 
 ```kofun
 fn(x: Int) {
@@ -78,6 +88,28 @@ fn(x: Int) {
     return squared + 1
 }
 ```
+
+Every lambda the compiler accepts today has an expression body introduced by
+`=>`. A block body is not rejected by name — the parameter list is not
+recognised as one, so the parameter never binds and the reader is told about a
+symbol instead: `fn(x) { return x + 1 }` reports
+``error[E2S35]: unknown lexical binding `x` ``, and the annotated spelling
+above reports the same for `Int`. An implementation owes a named refusal here
+before it owes the feature.
+
+An expression-body lambda may omit `fn`. Parentheses remain available for
+multiple parameters or annotations; a bare lambda has exactly one unannotated
+parameter:
+
+```kofun
+(x, y) => x + y
+value => value * 2
+```
+
+`x => expression` is a lambda in expression position and a match arm at an arm
+boundary. The parser uses that position, rather than token shape alone, to keep
+the two meanings distinct. Call-arguments v1 additionally restricts the lambda
+written after a closed call to the canonical `fn(...)` spelling.
 
 ## Conditionals
 
@@ -272,10 +304,10 @@ Four shapes are refused, each naming the constant it is about:
 
 | Written | Diagnostic |
 |---|---|
-| `let LIMIT = 1 + 2` | `E2S147` — the initializer is not one integer literal |
-| `let helper = 1` beside `fn helper()` | `E2S147` — the name collides with a declaration |
-| `let LIMIT = 1` twice | `E2S148` — duplicate module constant |
-| `let mut LIMIT = 1` | `E2S149` — a top-level `let` is immutable |
+| `let LIMIT = 1 + 2` | `E2S158` — the initializer is not one integer literal |
+| `let helper = 1` beside `fn helper()` | `E2S158` — the name collides with a declaration |
+| `let LIMIT = 1` twice | `E2S159` — duplicate module constant |
+| `let mut LIMIT = 1` | `E2S160` — a top-level `let` is immutable |
 
 `task module-constants` is the gate. Mutable module state, non-`Int`
 constants, and constant expressions are outside this slice.

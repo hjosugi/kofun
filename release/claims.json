@@ -26,7 +26,8 @@
     "selfhost",
     "stage1",
     "stage2",
-    "wasm32"
+    "wasm32",
+    "wasm32-hostabi1"
   ],
   "claims": [
     {
@@ -63,6 +64,47 @@
       "reproduction": {
         "command": "task test",
         "prerequisites": []
+      }
+    },
+    {
+      "id": "bindgen-c-stage1",
+      "public_wording": "audited raw C bindings from the Clang AST",
+      "public_status": "bounded stage-1 generator; raw and trusted, not safe",
+      "state": "checkpoint",
+      "area": "interop",
+      "bounded_capability": "One self-contained C header becomes raw `extern \"C\"` declarations in the checked C ABI profile plus a machine-readable audit report, deterministically and with the interpretation context pinned by a digest. Sizes, alignments, field offsets, enum values, and the calling convention are verified against the C compiler rather than recorded from the generator's own arithmetic. Constructs outside the profile — macros, variadics, unions, bitfields, flexible arrays, inline functions, explicit calling conventions — are reported with a reason and never bound. Generated code is marked `raw-trusted-foreign` and is not safe: pointer ownership, lifetime, thread affinity, callback duration, and error conventions are recorded as unreviewed review rows, not checked. Arbitrary C is not supported, a safe facade is hand-written reviewed work, and `kofun migrate-c` does not exist.",
+      "targets": [
+        "host-c",
+        "linux-x86_64"
+      ],
+      "specification": [
+        "tooling/bindgen-c/README.md"
+      ],
+      "compatibility": "An artifact is pinned to the recorded clang version, effective target triple, language standard, defines, include paths, sysroot, and header hash. Changing any of them is a regeneration, not a compatible update, and the recorded digests make a stale artifact detectable.",
+      "positive_gate": {
+        "command": "sh tests/interop/bindgen-c/check.sh",
+        "observation": "The pinned fixture header generates byte-identical bindings and an audit report twice; the C compiler confirms the recorded sizes, offsets, enum values, and calling convention; and the bindings build, link, and run against the fixture library under AddressSanitizer and UndefinedBehaviorSanitizer with leak detection on."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "tests/interop/bindgen-c/fuzz/corpus/partial-declaration.h",
+        "observation": "A header whose macros expand to an unbalanced declaration is refused with the cause named and no output directory; the same holds for expansion past the declaration and captured-output bounds, and for a clang that never answers."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "task bindgen-c",
+        "prerequisites": [
+          "cc",
+          "clang",
+          "node",
+          "readelf",
+          "sha256sum"
+        ]
       }
     },
     {
@@ -1601,6 +1643,45 @@
       },
       "reproduction": {
         "command": "task wasm",
+        "prerequisites": [
+          "node"
+        ]
+      }
+    },
+    {
+      "id": "wasm32-hostabi1-object-arena",
+      "public_wording": "wasm32 host ABI v1 bounded object arena",
+      "public_status": "executable checkpoint",
+      "state": "checkpoint",
+      "area": "webassembly",
+      "bounded_capability": "The wasm32-hostabi1 target emits one fixed-page linear memory, the v1 export surface, a checked transactional bump allocator, and the recomputed u64 object header encoder for an empty entry point. Text and List lowering remain outside the slice.",
+      "targets": [
+        "wasm32-hostabi1"
+      ],
+      "specification": [
+        "spec/wasm-host-abi-v1.md",
+        "spec/wasm-host-profile-v1.md"
+      ],
+      "compatibility": "Bare wasm32 retains its exact legacy module bytes; wasm32-hostabi1 refuses non-empty source until the value-lowering children land.",
+      "positive_gate": {
+        "command": "sh bootstrap/wasm/object_arena_check.sh",
+        "observation": "The module passes v1 identification and its allocator/header implementation agrees with independent runtime and layout oracles."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "examples/wasm_arithmetic.kofun",
+        "observation": "A non-empty source is refused with no artifact instead of being silently compiled to the empty entry point."
+      },
+      "safety": {
+        "classification": "refusal-boundary",
+        "threat_model": "docs/SECURITY.md",
+        "negative_test": "bootstrap/wasm/object_arena_check.sh"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "task wasm-object-arena",
         "prerequisites": [
           "node"
         ]

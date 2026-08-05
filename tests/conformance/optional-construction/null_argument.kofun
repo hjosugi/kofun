@@ -1,0 +1,15 @@
+# Construction from `null` happens under an explicit `Int?` annotation. A
+# bare `null` in argument position has no annotation to read, so it is
+# refused rather than guessed at.
+
+fn presence(value: Int?) -> Int {
+    if value == null {
+        return 0
+    }
+    return 1
+}
+
+fn main() -> Int {
+    print(presence(null))
+    return 0
+}

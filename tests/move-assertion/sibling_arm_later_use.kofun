@@ -1,0 +1,16 @@
+# Rejected: the asserting arm terminates, but its sibling reads `banner`
+# afterwards. Terminality of one arm says nothing about what another arm may
+# observe, and the read is a real later use of the storage. Reason: later
+# use. #904.
+
+fn main() -> Int {
+    let banner: Text = "banner"
+    let flag = 1
+    if flag > 0 {
+        compiler.ensure_move(banner)
+        return 0
+    } else {
+        print(banner)
+        return 1
+    }
+}

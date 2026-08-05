@@ -129,14 +129,41 @@ primary          = integer
                  | list
                  | tuple_or_group
                  | if_expr
+                 | par_expr
                  | lambda ;
 
 list             = "[", elements, "]" ;
 tuple_or_group   = "(", [ expression, [ ",", elements ] ], ")" ;
 if_expr          = "if", expression, block,
                    [ separators, "else", separators, ( if_expr | block ) ] ;
-lambda           = "fn", "(", parameters, ")",
-                   ( "=>", expression | block ) ;
+(* Scoped parallelism v1: spec/concurrency/scoped-parallelism-v1.md, proposed
+   RFC-0003 (#555). `par` is the only keyword this feature adds. A spawn and a
+   join need no production of their own: `scope.spawn(fn() => body)` and
+   `handle.join()` are already the postfix member-call form above, and are
+   recognised by their receiver rather than by syntax. The scope token and task
+   handles are second-class affine values, so the parser binds them lexically
+   and refuses any use that would let one escape its block. *)
+par_expr         = "par", "|", identifier, "|", block ;
+
+(* All three lambda spellings are intentional. The bare form is a lambda in
+   expression position; at a match-arm boundary, the same IDENT "=>" prefix
+   belongs to the arm pattern instead. The two shorthand forms have expression
+   bodies only. See #943. *)
+lambda           = canonical_lambda
+                 | parenthesized_lambda
+                 | bare_lambda ;
+(* A block body for the canonical form is planned and is NOT derived here,
+   because this grammar states what Stage 2 accepts (#943). Measured on
+   `bin/kofun check`: `fn(x) { return x + 1 }` and `fn(x: Int) { ... }` both
+   fail, and neither fails by name — the parameter list is not recognised as
+   one, so the parameter never binds and `E2S35` reports an unknown lexical
+   binding for a symbol the author did not write. The accepted design contract
+   for the block body is `spec/syntax/call-arguments-v1.md`; the current
+   boundary is pinned by `unsupported_block_lambda` in
+   `tests/conformance/syntax/issues_35_47/run.sh`. *)
+canonical_lambda = "fn", "(", parameters, ")", "=>", expression ;
+parenthesized_lambda = "(", parameters, ")", "=>", expression ;
+bare_lambda      = identifier, "=>", expression ;
 
 separators       = { NEWLINE | ";" } ;
 identifier       = IDENT ;

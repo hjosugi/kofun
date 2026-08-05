@@ -1,0 +1,5 @@
+fn main() -> Int {
+    let mut values: List[Int] = [1, 2, 3]
+    print(len(values))
+    return 0
+}

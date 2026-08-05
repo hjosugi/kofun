@@ -151,6 +151,11 @@ tasks:
     cmds:
       - "sh tests/conformance/generics/run.sh"
 
+  const-generics:
+    desc: "Verify literal Int type arguments and their per-literal identity"
+    cmds:
+      - "sh tests/conformance/const-generics/run.sh"
+
   hm-levels:
     desc: "Verify bounded Algorithm J inference for local lambdas"
     cmds:
@@ -177,6 +182,26 @@ tasks:
     desc: "Verify flow-sensitive narrowing of direct Optional bindings"
     cmds:
       - "sh tests/conformance/optional-narrowing/run.sh"
+
+  optional-construction:
+    desc: "Verify executable Optional(Int) construction and lowered narrowing"
+    cmds:
+      - "sh tests/conformance/optional-construction/run.sh"
+
+  optional-pair:
+    desc: "Require Optional(Int) semantic-family parity in the canonical compiler pair"
+    cmds:
+      - "sh tests/stage2/optional-pair/run.sh"
+
+  text-results:
+    desc: "Verify bounded Stage 2 Text results, conversion, and concatenation"
+    cmds:
+      - "sh tests/conformance/text-results/run.sh"
+
+  list-int-values:
+    desc: "Verify bounded Stage 2 List[Int] locals, len, and indexing"
+    cmds:
+      - "sh tests/stage2/list-int-values/run.sh"
 
   adt-exhaustiveness:
     desc: "Verify resolved flat-ADT match diagnostics"
@@ -329,16 +354,31 @@ tasks:
     cmds:
       - "sh stdlib/tests/verify.sh"
 
+  kotest:
+    desc: "Verify the kotest unit-test framework, runner, and stdlib samples"
+    cmds:
+      - "sh tests/stdlib/kotest/check.sh"
+
   clock-adapters:
     desc: "Verify explicit clock identities, fake time, and Linux integration"
     cmds:
       - "sh tests/stdlib/clock-adapters/check.sh"
       - "sh tests/stdlib/clock-adapters/check-linux-x86_64.sh"
 
+  scoped-parallelism:
+    desc: "Verify the scoped spawn/join ownership contract and its bounded model"
+    cmds:
+      - "sh spec/concurrency/scoped-parallelism-v1/check.sh"
+
   schedule-trace:
     desc: "Verify deterministic scoped-concurrency schedule traces and replay"
     cmds:
       - "sh spec/concurrency/schedule-trace/check.sh"
+
+  type-reduction-trace:
+    desc: "Verify deterministic type-level reduction traces and replay"
+    cmds:
+      - "sh spec/type-reduction-trace/check.sh"
 
   affine-resumption:
     desc: "Verify the one-shot affine-resumption contract and runtime backstop"
@@ -430,10 +470,30 @@ tasks:
     cmds:
       - "sh spec/aggregate-layout-v1/check.sh"
 
+  reuse-candidate:
+    desc: "Verify ReuseCandidate v1 layout and uniqueness evidence"
+    cmds:
+      - "sh spec/reuse-candidate-v1/check.sh"
+
   wasm-host-abi:
     desc: "Verify wasm32 host ABI v1 vectors and instantiation refusals"
     cmds:
       - "sh spec/wasm-host-abi-v1/check.sh"
+
+  wasm-host-profile:
+    desc: "Verify wasm32 host-profile activation and legacy ABI identification"
+    cmds:
+      - "sh spec/wasm-host-profile-v1/check.sh"
+
+  wasm-object-arena:
+    desc: "Verify the bounded wasm32-hostabi1 object arena and u64 headers"
+    cmds:
+      - "sh bootstrap/wasm/object_arena_check.sh"
+
+  wasm-list-v1:
+    desc: "Verify bounded wasm32-hostabi1 List values, indexing, and host output"
+    cmds:
+      - "sh tests/wasm-list-v1/check.sh"
 
   typed-sidecar-spec:
     desc: "Verify bounded complete/partial tooling artifacts"
@@ -522,6 +582,21 @@ tasks:
         silent: true
       - cmd: "printf '%s\\n' 'PASS: .kofun sources only; no Python implementation'"
         silent: true
+      # hjosugi/kofun#861 moved the editor surfaces to hjosugi/kofun-vscode and
+      # hjosugi/tree-sitter-kofun. Nothing stopped them coming back: #872, a
+      # pull request about examples, re-added three build outputs under
+      # editor/vscode/server/generated/ — two generated .mjs files and an
+      # x86-64 ELF shared object — because the path was not ignored and a
+      # `git add -A` swept them in. A split that only happens once is a move; a
+      # split that is checked is a boundary.
+      - cmd: |-
+          returned=$(git ls-files editor tree-sitter-kofun)
+          if test -n "$returned"; then
+            printf '%s\n' 'FAIL: these paths moved to their own repositories and came back:' "$returned" >&2
+            exit 1
+          fi
+          printf 'PASS: the editor and grammar surfaces stay in their own repositories\n'
+        silent: true
       # scripts/verify_repository.kofun cannot run: it is written against
       # read_text, which the Core does not implement. Nothing invoked it, so
       # its file list rotted twice unnoticed — a deleted Makefile, and then
@@ -548,6 +623,26 @@ tasks:
     desc: "Hold every gate to its recorded silent-assertion budget"
     cmds:
       - "sh tests/assertions/check.sh"
+
+  # An issue's state is carried twice, as a label and as the `State:` line in
+  # its body, and nothing held the two together until this. Reads the committed
+  # snapshot only, so it stays hermetic and belongs in `verify`.
+  backlog:
+    desc: "Bind each issue's state label to the State line in its body"
+    cmds:
+      - "sh tests/backlog/check.sh"
+
+  # The network lane: refresh the snapshot from GitHub and run the same rules
+  # against live issue state, plus the evidence stamps, which need the full git
+  # history. The committed snapshot is a fixture, not a claim about now —
+  # issues change every few minutes, so requiring a commit to match them would
+  # be permanently red.
+  backlog-refresh:
+    desc: "Refresh the backlog snapshot and check the live backlog"
+    cmds:
+      - "node tests/backlog/refresh.mjs"
+      - "sh tests/backlog/check.sh"
+      - "sh tests/backlog/check-stamps.sh"
 
   # The fast structural lane: does every published capability still join the
   # evidence that bounds it? This reads the repository and never runs a gate, so
@@ -617,11 +712,16 @@ tasks:
             adt \
             records \
             generics \
+            const-generics \
             hm-levels \
             effect-inference \
             traits \
             optional \
             optional-narrowing \
+            optional-construction \
+            optional-pair \
+            text-results \
+            list-int-values \
             adt-exhaustiveness \
             enum-match-value \
             module-constants \
@@ -652,8 +752,11 @@ tasks:
             cli-framework \
             tui-framework \
             stdlib \
+            kotest \
             clock-adapters \
+            scoped-parallelism \
             schedule-trace \
+            type-reduction-trace \
             affine-resumption \
             example-law-evidence \
             benchmark-summary \
@@ -672,7 +775,11 @@ tasks:
             visibility-access \
             re-exports-spec \
             aggregate-layout \
+            reuse-candidate \
             wasm-host-abi \
+            wasm-host-profile \
+            wasm-object-arena \
+            wasm-list-v1 \
             typed-sidecar-spec \
             typed-sidecar-codec \
             typed-sidecar-projector \
@@ -685,6 +792,7 @@ tasks:
             task-help \
             repository-check \
             assertions \
+            backlog \
             release-claims \
             rfc-registry
       # `tests/lsp/performance_test.js` makes five measurements that a busy

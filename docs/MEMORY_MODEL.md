@@ -339,10 +339,23 @@ RFC.
 ## 12. Concurrency stance
 
 Recorded from the survey in
-[#555](https://github.com/hjosugi/kofun/issues/555). None of this is
-implemented. It is written down here because a concurrency design decided later
+[#555](https://github.com/hjosugi/kofun/issues/555). None of these semantics is
+implemented: the compiler owns `par` as a keyword and refuses the construct by
+name with `E2S154`, but no capture derivation, ownership checking, scheduling,
+or lowering exists. It is written down here because a concurrency design decided later
 and separately would be one the ownership rules in this document cannot check,
 and because §1 promises a safety property that needs a precise name.
+
+This section is the reasoning, not the contract. The normative form of the v1
+rules — grammar, handle lifecycle, liveness, the exclusivity table, the closed
+set of disjointness proofs, scope-exit drain, and the required diagnostic
+classes — is
+[`spec/concurrency/scoped-parallelism-v1.md`](../spec/concurrency/scoped-parallelism-v1.md),
+checked by `task scoped-parallelism` and proposed as
+[`RFC-0003`](../rfcs/0003-scoped-parallelism.md) with review closing
+2026-08-16. Where this section and that contract disagree, the contract wins.
+Passing its gate is evidence about the contract, not about a compiler:
+production parsing, checking, scheduling, and lowering remain unwritten.
 
 ### Data-race freedom is not race-condition freedom
 
@@ -368,12 +381,16 @@ it exits:
 ```kofun
 fn total(read data: List[Int]) -> Int {
     par |s| {
-        let a = s.spawn(|| sum(data[0 .. mid]))
-        let b = s.spawn(|| sum(data[mid .. end]))
+        let a = s.spawn(fn() => sum(data[0 .. mid]))
+        let b = s.spawn(fn() => sum(data[mid .. end]))
         a.join() + b.join()
     }
 }
 ```
+
+The task body uses Kofun's `fn(...) => expression` lambda form from
+`spec/grammar.ebnf`. There is no Rust-style `|| body` closure spelling: `||` is
+the logical-or operator, so that form is not a closure here and does not parse.
 
 The rule is one sentence: **inside a `par` block, sibling tasks are treated as
 simultaneously live and §3's exclusivity rule applies unchanged.**
@@ -466,12 +483,47 @@ second-class references and no implemented concurrency; Scala's capture
 checking is experimental; Verona is research. There is no template to follow,
 which is both the opportunity and the risk.
 
+### Answered since this survey
+
+Two questions this section left open are now settled in
+[`spec/concurrency/scoped-parallelism-v1.md`](../spec/concurrency/scoped-parallelism-v1.md).
+
+**Unstructured concurrency takes Hylo's position for v1.** Safe v1 is lexical
+spawn/join only. Detached tasks, channels, actors, and behaviour-oriented
+concurrency are outside the contract and are not implicit extensions of it.
+Behaviour-oriented concurrency stays the preferred candidate if long-lived
+isolated state is ever needed, but it returns as a separate proposal rather
+than as a reading of this one.
+
+**There is no strict mode, so there are no defaults to get wrong.** Checking
+inside `par` is always on. The contract admits no optional mode, no runtime
+ownership lock, no unchecked escape hatch, and no trait whose conformance can
+override the exclusivity table. That closes the Swift failure this section
+warned about — `@unchecked Sendable` became the migration strategy because it
+was available and quiet — by not providing the hatch, rather than by choosing a
+default for it.
+
+Both answers are recorded in proposed
+[`RFC-0003`](../rfcs/0003-scoped-parallelism.md). Until its review closes on
+2026-08-16 they are a proposal under review, not an accepted decision.
+
 ### Still open
 
-Whether unstructured concurrency is answered by behaviour-oriented concurrency
-or by Hylo's spawn/join-only position is not decided. Defaults must be decided
-and written down before any strict mode ships — Swift's annotations were
-largely right and its defaults were not, and correcting them cost credibility.
+The decision itself: RFC-0003 is `proposed`, and a substantive change to any
+normative v1 rule restarts its review rather than being folded into
+implementation.
+
+Everything v1 deliberately excludes needs its own later proposal — detached
+tasks, long-lived isolated state, channels, actors, session types, a
+`Send`/`Sync`-style trait, dynamic and recursive spawning, and borrowed task
+results ([#571](https://github.com/hjosugi/kofun/issues/571)).
+
+The whole production path is unwritten. RFC-0003's implementation plan splits
+it into separately gated work: parser and HIR identities for the three forms,
+capture derivation from checked bodies, the liveness and place-overlap
+ownership checker, numeric allocation for the six diagnostic classes, a bounded
+scheduler with scope-exit drain, backend lowering, and only then capability and
+release evidence.
 
 ## 13. Historical Stage 0 and current boundary
 
@@ -559,8 +611,14 @@ decide today:
 - the argument is an immutable local binding of managed type (`Text` or
   `List`), named directly — not a parameter, which the caller may retain
   (borrowed view, §3.1);
-- the assertion sits in the binding's own scope: an assertion inside a
-  conditional arm or loop that the binding outlives is rejected, not
+- the assertion sits in the binding's own scope, or in a conditional arm
+  that is **terminal** — every path after the assertion within that arm
+  leaves the function through `return`, so control cannot rejoin the outer
+  scope where the binding is still observable (#904). Terminality is decided
+  over statements, not source order: a nested `if` counts only when both of
+  its arms terminate, and a loop between the assertion and the arm's
+  `return` refuses outright, because it may re-enter. An assertion inside a
+  loop, or in an arm the binding outlives, is still rejected rather than
   analysed;
 - the binding has no use at any later byte and no use inside any lambda;
 - every earlier read is provably alias-free: an operand of `==`/`!=`, or an
@@ -576,7 +634,8 @@ warning and never falls back to another compiler: a source file that both
 contains the assertion and steps outside the Stage 2 slice is rejected by
 the seed compiler, which does not accept the syntax.
 
-The general inference — last-use over branches, loops, and aggregates,
-allocation counters, and optimization remarks — remains future work under
-#572, and the in-place ADT reuse built on top of this assertion is #576.
-The gate is `tests/move-assertion/check.sh`.
+The general inference — last-use over loops and aggregates, allocation
+counters, and optimization remarks — remains future work under #572; proving
+a loop-local last use rather than refusing every loop is #915, and the
+in-place ADT reuse built on top of this assertion is #576. The gate is
+`tests/move-assertion/check.sh`.

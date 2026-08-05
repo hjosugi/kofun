@@ -1,0 +1,1 @@
+error[E2S148]: type `Pair` declares more than one parameter; exactly one type or const parameter is admissible in this slice at bytes 11..12

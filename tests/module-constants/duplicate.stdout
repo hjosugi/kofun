@@ -1,1 +1,1 @@
-error[E2S148]: duplicate module constant `LIMIT` at byte 0
+error[E2S159]: duplicate module constant `LIMIT` at byte 0

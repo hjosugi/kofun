@@ -650,6 +650,53 @@
         "corpus_query": "git grep -nE '\\bpar[[:space:]]*\\||\\.spawn\\(|\\.join\\(' -- '*.kofun'",
         "result": "0 matches across 799 tracked `.kofun` sources at 516e8fb3925088dd64b291e8cd749764a41891b1; grep exits 1 with no output, so no tracked source uses the proposed `par`, `.spawn(`, or `.join(` surface."
       }
+    },
+    {
+      "id": "RFC-0004",
+      "title": "Ownership kind is classified structurally through ADTs, tuples, and generic instantiation",
+      "provenance": "rfc",
+      "state": "proposed",
+      "shepherd": "hjosugi",
+      "source": "rfcs/0004-ownership-kind-classification.md",
+      "document": "rfcs/0004-ownership-kind-classification.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/907",
+      "dates": {
+        "opened_on": "2026-08-02",
+        "review_closed_on": "2026-08-16"
+      },
+      "normative_spec": [
+        "rfcs/0004-ownership-kind-classification.md"
+      ],
+      "compatibility": {
+        "category": "conditional",
+        "statement": "The proposal adds refusals to types that already exist, so it is not purely additive. The breaking shape is stated exactly: a program that places an owned value inside a record, tuple, ADT constructor payload, closure capture, `Optional`, `List`, or generic instantiation, and then uses that composite where a managed kind is required (`E360`-`E364`). The two-point Managed/Owned lattice, the structural join, the K-SUBST/K-PARAM generic rules, the `List[T]` owned-element refusal, and the four kind constraints are otherwise new surface. The owned domain does not parse in any compiler slice today, so no tracked program can express the refused shape yet.",
+        "corpus_query": "git grep -lE '^[[:space:]]*let[[:space:]]+own[[:space:]]' -- '*.kofun' | wc -l; git grep -nE '\\b(trait|impl)[[:space:]]+(Copy|Managed|Owned)\\b|:[[:space:]]*(Copy|Managed|Owned)\\b' -- '*.kofun' | wc -l; git ls-files -- '*.kofun' | wc -l",
+        "result": "5, 0 and 824 at 6f71b6df5cf54aa16542b89494d2194c4172a97e. Five of 824 tracked `.kofun` sources bind an owned value, and all five were read: examples/ownership.kofun, stdlib/tests/file_roundtrip.kofun, tests/conformance/syntax/issues_35_47/structural_surface.kofun, tests/conformance/syntax/issues_35_47/unsupported_owned_binding.kofun, and tests/kofun/ownership.kofun. None places its owned binding in a record, tuple, ADT payload, list, closure capture, or generic instantiation, so the count of tracked programs carrying the refused shape is 0. The second query returns 0: no tracked source declares or bounds on `Copy`, `Managed`, or `Owned`; `Copy` occurs in tracked `.kofun` sources only inside comments and one E007 message string."
+      }
+    },
+    {
+      "id": "RFC-0005",
+      "title": "A trait or type member scope is closed under direct declaration",
+      "provenance": "rfc",
+      "state": "proposed",
+      "shepherd": "hjosugi",
+      "source": "rfcs/0005-trait-member-scope-closure.md",
+      "document": "rfcs/0005-trait-member-scope-closure.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/995",
+      "dates": {
+        "opened_on": "2026-08-02",
+        "review_closed_on": "2026-08-16"
+      },
+      "normative_spec": [
+        "rfcs/0005-trait-member-scope-closure.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "Every shape the rule refuses is already refused, so only the message changes: `E370` replaces a parameter-scope refusal, `E371` replaces a delimiter parse error, and `E372` replaces a slice-boundary message. New surface is the member key (owner identity, namespace, normalized name), the closure rule, the statement that a field collides with an associated value under one type owner but never with a trait method, and the three codes. No accepted program changes meaning and none stops compiling: a member scope with no inherited and no default member has no collision an accepted program could already contain.",
+        "corpus_query": "git ls-files -- '*.kofun' | wc -l; git grep -nwE 'extends|override' -- '*.kofun' | wc -l; git grep -nE '^(trait|foreign trait|impl)|^    fn ' -- '*.kofun' | awk -F: '{ sub(/^[^:]*:[^:]*:/, \"\") } $0 ~ /^(trait|foreign trait|impl)/ { if (n > 1) m++; n = 0; b++; next } { n++ } END { if (n > 1) m++; print b, m + 0 }'",
+        "result": "`888`, `0`, and `42 0` at 727f9dac442ba8db56e8344dbd1e29112ea1e64d, the audited commit. Of 888 tracked `.kofun` sources, 0 name an inheritance edge or an override marker, and of the 42 trait and implementation member scopes they declare, 0 declare more than one member. So the count of tracked programs this rule refuses that are accepted today is 0, and the count that would need an override marker is 0. The same query returns `890`, `1`, and `45 1` after this change, and both differences are the two negative fixtures it adds: tests/conformance/traits/inherited_member_source.kofun is the one source spelling `extends`, and tests/conformance/traits/member_name_collision.kofun is the one owner declaring two members. Both are refused by the frontend today and pinned by byte-exact goldens, so the count of *accepted* programs in either shape stays 0.",
+        "evidence": "tests/conformance/traits/member_name_collision.stderr"
+      }
     }
   ]
 }

@@ -7,6 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "object_arena.h"
+
 enum {
     MAX_SOURCE_BYTES = 1024 * 1024,
     MAX_BINDINGS = 128,
@@ -1225,12 +1227,12 @@ static bool parse_bodies(Parser *parser) {
     return parser->error == NULL;
 }
 
-static bool parse_program(Parser *parser) {
+static bool parse_program(Parser *parser, bool require_print) {
     parser->main_index = -1;
     parser->current = -1;
     if (!scan_declarations(parser)) return false;
     if (!parse_bodies(parser)) return false;
-    if (parser->print_count == 0) {
+    if (require_print && parser->print_count == 0) {
         parse_error_at(
             parser,
             "wasm32 Core program must print at least one Int",
@@ -1250,9 +1252,13 @@ enum {
     OP_DROP = 0x1a,
     OP_LOCAL_GET = 0x20,
     OP_LOCAL_SET = 0x21,
+    OP_GLOBAL_GET = 0x23,
+    OP_GLOBAL_SET = 0x24,
     OP_I32_CONST = 0x41,
     OP_I64_CONST = 0x42,
     OP_I32_EQZ = 0x45,
+    OP_I32_GT_U = 0x4b,
+    OP_I32_LE_S = 0x4c,
     OP_I32_NE = 0x47,
     OP_I64_EQZ = 0x50,
     OP_I64_EQ = 0x51,
@@ -1263,6 +1269,8 @@ enum {
     OP_I64_GE_S = 0x59,
     OP_I32_AND = 0x71,
     OP_I32_OR = 0x72,
+    OP_I32_ADD = 0x6a,
+    OP_I32_SUB = 0x6b,
     OP_I64_ADD = 0x7c,
     OP_I64_SUB = 0x7d,
     OP_I64_MUL = 0x7e,
@@ -1783,6 +1791,190 @@ static Buffer emit_module(const Parser *parser) {
     return module;
 }
 
+static void allocator_failure(Buffer *body) {
+    byte(body, OP_I32_CONST);
+    sleb(body, 0);
+    byte(body, OP_RETURN);
+}
+
+static void reject_when(Buffer *body, uint8_t comparison) {
+    byte(body, comparison);
+    begin_if(body);
+    allocator_failure(body);
+    byte(body, OP_END);
+}
+
+/* Fixed, checked bump allocation:
+ *
+ *   aligned = (cursor + align - 1) & -align
+ *   end     = aligned + size
+ *
+ * Inputs are bounded before either addition, so i32 wraparound cannot become
+ * an apparently in-range address.  The cursor is published only after every
+ * check succeeds; every refusal returns the ABI's null result without
+ * changing memory or allocator state. */
+static Buffer emit_profile_allocator_body(void) {
+    enum { LOCAL_SIZE = 0, LOCAL_ALIGN = 1, LOCAL_ALIGNED = 2, LOCAL_END = 3 };
+    Buffer body = {0};
+
+    /* Two i32 locals: aligned and end. */
+    uleb(&body, 1);
+    uleb(&body, 2);
+    byte(&body, 0x7f);
+
+    instruction_index(&body, OP_LOCAL_GET, LOCAL_SIZE);
+    byte(&body, OP_I32_CONST);
+    sleb(&body, 0);
+    reject_when(&body, OP_I32_LE_S);
+
+    instruction_index(&body, OP_LOCAL_GET, LOCAL_ALIGN);
+    byte(&body, OP_I32_CONST);
+    sleb(&body, 0);
+    reject_when(&body, OP_I32_LE_S);
+
+    instruction_index(&body, OP_LOCAL_GET, LOCAL_SIZE);
+    byte(&body, OP_I32_CONST);
+    sleb(&body, KOFUN_WASM_PAGE_BYTES);
+    reject_when(&body, OP_I32_GT_U);
+
+    instruction_index(&body, OP_LOCAL_GET, LOCAL_ALIGN);
+    byte(&body, OP_I32_CONST);
+    sleb(&body, KOFUN_WASM_PAGE_BYTES);
+    reject_when(&body, OP_I32_GT_U);
+
+    /* align must be a power of two. */
+    instruction_index(&body, OP_LOCAL_GET, LOCAL_ALIGN);
+    instruction_index(&body, OP_LOCAL_GET, LOCAL_ALIGN);
+    byte(&body, OP_I32_CONST);
+    sleb(&body, 1);
+    byte(&body, OP_I32_SUB);
+    byte(&body, OP_I32_AND);
+    begin_if(&body);
+    allocator_failure(&body);
+    byte(&body, OP_END);
+
+    instruction_index(&body, OP_GLOBAL_GET, 1);
+    instruction_index(&body, OP_LOCAL_GET, LOCAL_ALIGN);
+    byte(&body, OP_I32_CONST);
+    sleb(&body, 1);
+    byte(&body, OP_I32_SUB);
+    byte(&body, OP_I32_ADD);
+    byte(&body, OP_I32_CONST);
+    sleb(&body, 0);
+    instruction_index(&body, OP_LOCAL_GET, LOCAL_ALIGN);
+    byte(&body, OP_I32_SUB);
+    byte(&body, OP_I32_AND);
+    instruction_index(&body, OP_LOCAL_SET, LOCAL_ALIGNED);
+
+    instruction_index(&body, OP_LOCAL_GET, LOCAL_ALIGNED);
+    instruction_index(&body, OP_LOCAL_GET, LOCAL_SIZE);
+    byte(&body, OP_I32_ADD);
+    instruction_index(&body, OP_LOCAL_SET, LOCAL_END);
+
+    instruction_index(&body, OP_LOCAL_GET, LOCAL_END);
+    byte(&body, OP_I32_CONST);
+    sleb(&body, KOFUN_WASM_PAGE_BYTES);
+    reject_when(&body, OP_I32_GT_U);
+
+    instruction_index(&body, OP_LOCAL_GET, LOCAL_END);
+    instruction_index(&body, OP_GLOBAL_SET, 1);
+    instruction_index(&body, OP_LOCAL_GET, LOCAL_ALIGNED);
+    byte(&body, OP_END);
+    return body;
+}
+
+#include "text_profile.h"
+#include "list_profile.h"
+
+static Buffer emit_profile_module(void) {
+    Buffer module = {0};
+    static const uint8_t header[] = {
+        0x00, 0x61, 0x73, 0x6d,
+        0x01, 0x00, 0x00, 0x00
+    };
+    bytes(&module, header, sizeof(header));
+
+    /* t0: (i32) -> (), t1: (i32, i32) -> i32. */
+    Buffer types = {0};
+    uleb(&types, 2);
+    byte(&types, 0x60);
+    uleb(&types, 1);
+    byte(&types, 0x7f);
+    uleb(&types, 0);
+    byte(&types, 0x60);
+    uleb(&types, 2);
+    byte(&types, 0x7f);
+    byte(&types, 0x7f);
+    uleb(&types, 1);
+    byte(&types, 0x7f);
+    section(&module, 1, &types);
+
+    Buffer functions = {0};
+    uleb(&functions, 2);
+    uleb(&functions, 0);
+    uleb(&functions, 1);
+    section(&module, 3, &functions);
+
+    Buffer memory = {0};
+    uleb(&memory, 1);
+    byte(&memory, 0x01); /* min and max are present: the arena never grows. */
+    uleb(&memory, 1);
+    uleb(&memory, 1);
+    section(&module, 5, &memory);
+
+    Buffer globals = {0};
+    uleb(&globals, 2);
+    byte(&globals, 0x7f);
+    byte(&globals, 0x00);
+    byte(&globals, OP_I32_CONST);
+    sleb(&globals, KOFUN_WASM_HOST_ABI_REVISION);
+    byte(&globals, OP_END);
+    byte(&globals, 0x7f);
+    byte(&globals, 0x01);
+    byte(&globals, OP_I32_CONST);
+    sleb(&globals, KOFUN_WASM_ARENA_BASE);
+    byte(&globals, OP_END);
+    section(&module, 6, &globals);
+
+    Buffer exports = {0};
+    uleb(&exports, 4);
+    wasm_string(&exports, "memory");
+    byte(&exports, 0x02);
+    uleb(&exports, 0);
+    wasm_string(&exports, "kofun_abi_version");
+    byte(&exports, 0x03);
+    uleb(&exports, 0);
+    wasm_string(&exports, "kofun_start");
+    byte(&exports, 0x00);
+    uleb(&exports, 0);
+    wasm_string(&exports, "kofun_alloc");
+    byte(&exports, 0x00);
+    uleb(&exports, 1);
+    section(&module, 7, &exports);
+
+    Buffer code = {0};
+    uleb(&code, 2);
+    Buffer start = {0};
+    uleb(&start, 0);
+    byte(&start, OP_END);
+    uleb(&code, start.length);
+    bytes(&code, start.data, start.length);
+    Buffer allocator = emit_profile_allocator_body();
+    uleb(&code, allocator.length);
+    bytes(&code, allocator.data, allocator.length);
+    section(&module, 10, &code);
+
+    free(types.data);
+    free(functions.data);
+    free(memory.data);
+    free(globals.data);
+    free(exports.data);
+    free(start.data);
+    free(allocator.data);
+    free(code.data);
+    return module;
+}
+
 static bool write_module(const char *path, const Buffer *module) {
     FILE *file = fopen(path, "wb");
     if (file == NULL) {
@@ -1801,19 +1993,72 @@ static bool write_module(const char *path, const Buffer *module) {
 }
 
 int main(int argc, char **argv) {
-    if (argc != 3) {
-        fprintf(stderr, "usage: kofun-wasm-core INPUT.kofun OUTPUT.wasm\n");
+    bool profile = argc == 4 && strcmp(argv[1], "--hostabi1") == 0;
+    if ((!profile && argc != 3) || (profile && argc != 4)) {
+        fprintf(
+            stderr,
+            "usage: kofun-wasm-core [--hostabi1] INPUT.kofun OUTPUT.wasm\n"
+        );
         return 2;
     }
 
+    const char *input = argv[profile ? 2 : 1];
+    const char *output = argv[profile ? 3 : 2];
+
     size_t length = 0;
-    char *source = read_source(argv[1], &length);
+    char *source = read_source(input, &length);
     if (source == NULL) return 1;
+    if (profile && profile_source_uses_list(source, length)) {
+        ListProfileParser *list_parser = allocate(sizeof(*list_parser));
+        memset(list_parser, 0, sizeof(*list_parser));
+        list_parser->source = source;
+        list_parser->length = length;
+        if (!list_profile_parse_program(list_parser)) {
+            fprintf(stderr, "kofun wasm32: line %zu: %s\n",
+                    list_parser->error_line,
+                    list_parser->error == NULL
+                        ? "invalid wasm32-hostabi1 List source"
+                        : list_parser->error);
+            free(list_parser);
+            free(source);
+            return 1;
+        }
+        Buffer profile_module = emit_profile_list_module(list_parser);
+        bool profile_written = write_module(output, &profile_module);
+        free(profile_module.data);
+        free(list_parser);
+        free(source);
+        return profile_written ? 0 : 1;
+    }
+    if (profile) {
+        ProfileParser *profile_parser = allocate(sizeof(*profile_parser));
+        memset(profile_parser, 0, sizeof(*profile_parser));
+        profile_parser->source = source;
+        profile_parser->length = length;
+        if (!profile_parse_program(profile_parser)) {
+            fprintf(stderr, "kofun wasm32: line %zu: %s\n",
+                    profile_parser->error_line,
+                    profile_parser->error == NULL
+                        ? "invalid wasm32-hostabi1 Text source"
+                        : profile_parser->error);
+            free(profile_parser);
+            free(source);
+            return 1;
+        }
+        Buffer profile_module = profile_program_is_empty(profile_parser)
+            ? emit_profile_module()
+            : emit_profile_text_module(profile_parser);
+        bool profile_written = write_module(output, &profile_module);
+        free(profile_module.data);
+        free(profile_parser);
+        free(source);
+        return profile_written ? 0 : 1;
+    }
     Parser *parser = allocate(sizeof(*parser));
     memset(parser, 0, sizeof(*parser));
     parser->source = source;
     parser->length = length;
-    bool parsed = parse_program(parser);
+    bool parsed = parse_program(parser, true);
     if (!parsed) {
         fprintf(stderr, "kofun wasm32: line %zu: %s\n",
                 parser->error_line,
@@ -1824,7 +2069,7 @@ int main(int argc, char **argv) {
     }
 
     Buffer module = emit_module(parser);
-    bool written = write_module(argv[2], &module);
+    bool written = write_module(output, &module);
     free(module.data);
     free(parser);
     free(source);

@@ -1,0 +1,10 @@
+# Property and index paths are not narrowed. Only a direct comparison of a
+# name against `null` is recognized.
+
+fn main() -> Int {
+    let value: Int? = 1
+    if value != null {
+        print(value.count)
+    }
+    return 0
+}

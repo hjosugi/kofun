@@ -1,0 +1,1 @@
+error[E2S149]: `Boxed` declares the type parameter `T`, so an integer literal is not admissible; declare `Boxed[const T: Int]` to take a const argument at bytes 53..54

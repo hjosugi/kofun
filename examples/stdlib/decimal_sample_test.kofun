@@ -1,0 +1,47 @@
+# kotest suite for decimal_sample.kofun; run with `kofun unittest`.
+
+fn test_exact_sum_flag() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(decimal_sum_is_exact(), 1)
+    return failures
+}
+
+fn test_all_five_rounding_modes() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(round_half_up_is_235(), 1)
+    failures = failures + expect_eq_int(round_toward_zero_is_234(), 1)
+    failures = failures + expect_eq_int(round_floor_of_negative_midpoint(), 1)
+    failures = failures + expect_eq_int(round_ceiling_of_negative_midpoint(), 1)
+    failures = failures + expect_eq_int(round_half_even_breaks_ties_to_even(), 1)
+    return failures
+}
+
+fn test_rounded_division() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(divide_to_documented_scale(), 1)
+    return failures
+}
+
+fn test_parse_round_trip() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(parse_reads_signed_scale(), 1)
+    return failures
+}
+
+fn test_format_produces_exact_text() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_text(Decimal.format(Decimal.parse("2.5"), 2), "2.50")
+    failures = failures + expect_eq_text(
+        Decimal.format(Decimal.round(2.345, 2, HalfUp), 2), "2.35")
+    failures = failures + expect_eq_text(
+        Decimal.format(Decimal.divide(1.0, 3.0, 4, HalfEven), 4), "0.3333")
+    failures = failures + expect_eq_text(
+        Decimal.format(Decimal.round(-1.5, 0, Floor), 0), "-2")
+    return failures
+}
+
+fn test_ledger_line() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(ledger_line_balances(), 1)
+    return failures
+}

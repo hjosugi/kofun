@@ -16,6 +16,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | Claim | Kind | Evidence | Observation |
 |---|---|---|---|
 | `arithmetic-core` | rejection | `tests/conformance/numeric/reject_slash_operator.kofun` | `/` on `Int` is refused with one diagnostic instead of being lowered. |
+| `bindgen-c-stage1` | rejection | `tests/interop/bindgen-c/fuzz/corpus/partial-declaration.h` | A header whose macros expand to an unbalanced declaration is refused with the cause named and no output directory; the same holds for expansion past the declaration and captured-output bounds, and for a clang that never answers. |
 | `borrowed-list-ownership` | rejection | `bootstrap/stage2/fixtures/borrowed_move_text.kofun` | `--check-ownership` refuses `E007` on the borrowed-`List[Text]` return, matching the pinned `borrowed_move_text.stderr` byte for byte. |
 | `bounded-tzdb-producer` | rejection | `tests/stdlib/tzdb/tzdb.kofun` | Malformed magic, unsupported version, digest mismatch, invalid zone, truncation, trailing bytes, arithmetic overflow, oversized input, and transition-limit exhaustion are distinct closed values. |
 | `c-abi-profile` | limit | `tests/conformance/capabilities.tsv` | Backends outside the host-C profile are recorded as unsupported with a stated reason. |
@@ -55,3 +56,4 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `syscall-stdlib-api` | limit | `tests/conformance/capabilities.tsv` | Targets outside Linux x86-64 are recorded as unsupported with a stated reason. |
 | `test-skip-reporting` | skip | `tests/cli.sh` | A skipped case is reported as skipped and never folded into the pass count. |
 | `wasm32-arithmetic-core` | rejection | `bootstrap/wasm/fixtures/unsupported_text.kofun` | `Text` values are refused by the wasm32 backend rather than partially lowered. |
+| `wasm32-hostabi1-object-arena` | rejection | `examples/wasm_arithmetic.kofun` | A non-empty source is refused with no artifact instead of being silently compiled to the empty entry point. |

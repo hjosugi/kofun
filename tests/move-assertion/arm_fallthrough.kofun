@@ -1,0 +1,14 @@
+# Rejected: the arm does not terminate. Statements follow the assertion and
+# the arm falls out of its closing brace, so control rejoins the outer scope
+# with `banner` still in it. Source order says the assertion is last; control
+# flow says it is not. Reason: branch mismatch. #904.
+
+fn main() -> Int {
+    let banner: Text = "banner"
+    let flag = 1
+    if flag > 0 {
+        compiler.ensure_move(banner)
+        print("after")
+    }
+    return 0
+}

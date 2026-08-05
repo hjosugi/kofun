@@ -1,0 +1,70 @@
+{
+  "schema": "kofun.reuse-candidate/v1",
+  "candidate_id": "candidate:pinned-node",
+  "file_id": "fixture:pinned-node",
+  "matched_source": {
+    "type_id": "Maybe",
+    "constructor": "Present",
+    "span": {
+      "start": 12,
+      "end": 24
+    }
+  },
+  "constructed_target": {
+    "type_id": "Maybe",
+    "constructor": "Present",
+    "span": {
+      "start": 40,
+      "end": 52
+    }
+  },
+  "layout_evidence": {
+    "contract": "kofun.aggregate-layout/v1",
+    "target_data_layout": "x86_64-linux",
+    "source_layout": {
+      "layout_id": "Maybe",
+      "size": "16",
+      "align": "8",
+      "field_count": 1,
+      "scanning_shape": {
+        "pointers": [],
+        "drop": "trivial"
+      }
+    },
+    "target_layout": {
+      "layout_id": "Maybe",
+      "size": "16",
+      "align": "8",
+      "field_count": 1,
+      "scanning_shape": {
+        "pointers": [],
+        "drop": "trivial"
+      }
+    }
+  },
+  "uniqueness_evidence": {
+    "proof": "proved",
+    "provenance": "compile-time-ownership-escape-last-use",
+    "evidence_id": "proof:constructor-storage-unique"
+  },
+  "observers": {
+    "borrowed_view": "absent",
+    "closure_capture": "absent",
+    "weak_reference": "absent",
+    "foreign_pointer": "absent",
+    "alias": "absent"
+  },
+  "write_ordering": "unknown",
+  "backend_support": {
+    "backend_id": "c11-stage1",
+    "reuse_support": "unsupported",
+    "guarantee_disposition": "not-applicable"
+  },
+  "eligibility": {
+    "ordinary_allocation": true,
+    "reuse_candidate": false,
+    "reuse_statically_guaranteed": false,
+    "reason": "pinned"
+  },
+  "remark": "reuse refused: source storage is pinned"
+}

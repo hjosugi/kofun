@@ -10,6 +10,9 @@ NATIVE_SEED_C="$ROOT/bootstrap/native/core_compiler.c"
 NATIVE_COMPILER="$NATIVE_BUILD_DIR/kofun-native-core"
 WASM_BUILD_DIR=${KOFUN_WASM_BUILD_DIR:-"$ROOT/build/wasm-core"}
 WASM_SEED_C="$ROOT/bootstrap/wasm/compiler.c"
+WASM_OBJECT_ARENA_H="$ROOT/bootstrap/wasm/object_arena.h"
+WASM_TEXT_PROFILE_H="$ROOT/bootstrap/wasm/text_profile.h"
+WASM_LIST_PROFILE_H="$ROOT/bootstrap/wasm/list_profile.h"
 WASM_COMPILER="$WASM_BUILD_DIR/kofun-wasm-core"
 STAGE2_BUILD_DIR=${KOFUN_STAGE2_BUILD_DIR:-"$ROOT/build/stage2"}
 STAGE2_SEED_C="$ROOT/bootstrap/stage2/compiler.c"
@@ -49,7 +52,7 @@ usage:
               [--backend c --c-abi [--link-library FILE|--package NAME]...]
               [--offline]
               [--framework cli]
-              [--target x86_64-linux|aarch64-linux|wasm32] [-g]
+              [--target x86_64-linux|aarch64-linux|wasm32|wasm32-hostabi1] [-g]
   kofun build [TARGET...] [FROST_OPTIONS]  # with ./kofun.toml
   kofun package lock
   kofun package fetch [--offline]
@@ -62,6 +65,10 @@ usage:
   kofun check INPUT.kofun --emit-kif OUTPUT.kif
       KIF is an authoritative, source-free Stage 2 interface.
   kofun test [PATH]
+  kofun unittest [PATH ...] [--filter SUBSTRING] [--list] [--watch]
+                 [--no-color] [--keep-going]
+      Runs kotest unit-test suites (*_test.kofun and embedded fn test_*
+      functions); see tooling/kotest/README.md.
   kofun bootstrap
   kofun emit-c INPUT.kofun OUTPUT.c
   kofun bindgen-c HEADER.h --out-dir DIR [--module NAME]
@@ -109,7 +116,10 @@ ensure_native_compiler() {
 ensure_wasm_compiler() {
     mkdir -p "$WASM_BUILD_DIR"
     if [ ! -x "$WASM_COMPILER" ] ||
-       [ "$WASM_SEED_C" -nt "$WASM_COMPILER" ]
+       [ "$WASM_SEED_C" -nt "$WASM_COMPILER" ] ||
+       [ "$WASM_OBJECT_ARENA_H" -nt "$WASM_COMPILER" ] ||
+       [ "$WASM_TEXT_PROFILE_H" -nt "$WASM_COMPILER" ] ||
+       [ "$WASM_LIST_PROFILE_H" -nt "$WASM_COMPILER" ]
     then
         "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
             "$WASM_SEED_C" -o "$WASM_COMPILER"
@@ -747,7 +757,11 @@ build_wasm_file() (
     ensure_wasm_compiler
     temporary="$2.tmp.$$"
     trap 'rm -f "$temporary"' 0 1 2 15
-    "$WASM_COMPILER" "$1" "$temporary"
+    if test "$3" = hostabi1; then
+        "$WASM_COMPILER" --hostabi1 "$1" "$temporary"
+    else
+        "$WASM_COMPILER" "$1" "$temporary"
+    fi
     test -s "$temporary"
     mv "$temporary" "$2"
 )
@@ -1082,7 +1096,10 @@ $2"
             mkdir -p "$(dirname "$output")"
             case "$target" in
                 wasm32)
-                    build_wasm_file "$input" "$output"
+                    build_wasm_file "$input" "$output" legacy
+                    ;;
+                wasm32-hostabi1)
+                    build_wasm_file "$input" "$output" hostabi1
                     ;;
                 x86_64-linux|aarch64-linux)
                     build_native_file "$input" "$output" "$target" "$debug"
@@ -1121,6 +1138,10 @@ $2"
         trap 'rm -rf "$work"' 0 1 2 15
         build_file "$2" "$work/program" "$work/program.c"
         "$work/program"
+        ;;
+    unittest)
+        shift
+        exec sh "$ROOT/tooling/kotest/run.sh" "$@"
         ;;
     test)
         test "$#" -le 2 || { usage >&2; exit 2; }

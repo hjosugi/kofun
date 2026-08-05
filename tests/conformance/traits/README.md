@@ -107,6 +107,8 @@ exit 1 with its exact diagnostic and to write no IR file at all.
 | `blanket_implementation` | E2S132 | a generic or blanket implementation |
 | `default_method` | E2S132 | a default method body in a trait |
 | `duplicate_trait` | E2S127 | two traits with the same name |
+| `inherited_member_source` | E2S127 | a trait naming a supertrait as an inherited member source |
+| `member_name_collision` | E2S127 | one normalized member name declared twice under one owner |
 | `method_arity_mismatch` | E2S128 | an implementation with the wrong parameter count |
 | `method_name_mismatch` | E2S127 | an implementation of a method the trait does not declare |
 | `method_parameter_mismatch` | E2S128 | a parameter type that differs after substitution |
@@ -122,3 +124,30 @@ exit 1 with its exact diagnostic and to write no IR file at all.
 | `unbounded_method_call` | E2S129 | a trait method called without a bound providing it |
 
 The frontend owns `E2S127`–`E2S133`.
+
+## The two member-scope fixtures are pinned current behaviour, not a rule
+
+`member_name_collision` and `inherited_member_source` were added alongside
+[RFC-0005](../../../rfcs/0005-trait-member-scope-closure.md), the #995 proposal
+to close a trait member scope under direct declaration. **That proposal is under
+review and is not accepted semantics**, so these fixtures assert nothing about
+it. They record what this frontend does today, and each refuses in a scope that
+is not the member scope:
+
+- `member_name_collision` declares one normalized member name twice under one
+  owner. #942 recorded that shape as refused by `E2S132` for carrying two
+  methods. It is not — the parameter table is keyed by the trait rather than by
+  the member, so the duplicate *parameter* is found first. The message names
+  `left`, and names neither the colliding member nor its owning trait.
+- `inherited_member_source` names a supertrait. No inheritance edge exists, so
+  the clause is refused as punctuation and the message names a delimiter.
+
+The gate asserts both of those facts positively *and* asserts that neither
+message has started naming the member, the trait, or the inherited source — so
+these goldens cannot be re-blessed into looking like member-scope diagnostics
+without the assertions failing first.
+
+If RFC-0005 is accepted after its review window closes, #942 owns replacing
+these messages with member-scope diagnostics and relaxing the assertions that
+currently require them to name nothing. Until then the fixtures stand as an
+observation about the frontend and nothing more.

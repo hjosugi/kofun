@@ -1,0 +1,79 @@
+# kotest suite for binary_heap_sample.kofun; run with `kofun unittest`.
+
+fn test_empty_heap_reports_typed_failure() -> Int {
+    let mut failures = 0
+    failures = failures + expect_eq_int(heap_size(heap_empty()), 0)
+    let outcome: HeapOutcome = heap_peek(heap_empty())
+    match outcome {
+        HeapEmpty(count) => { failures = failures + expect_eq_int(count, 0) },
+        _ => { failures = failures + fail_now("expected HeapEmpty") },
+    }
+    let dropped: BinaryHeapInt = heap_drop_min(heap_empty())
+    failures = failures + expect_eq_int(heap_size(dropped), 0)
+    return failures
+}
+
+fn test_push_keeps_minimum_at_root() -> Int {
+    let mut failures = 0
+    let heap: BinaryHeapInt = heap_push(heap_push(heap_empty(), 9), 3)
+    failures = failures + expect_eq_int(heap_value_or(heap_peek(heap), 0 - 1), 3)
+    let lower: BinaryHeapInt = heap_push(heap, 1)
+    failures = failures + expect_eq_int(heap_value_or(heap_peek(lower), 0 - 1), 1)
+    let higher: BinaryHeapInt = heap_push(heap, 100)
+    failures = failures + expect_eq_int(heap_value_or(heap_peek(higher), 0 - 1), 3)
+    return failures
+}
+
+fn test_drain_is_ascending() -> Int {
+    let mut failures = 0
+    let heap: BinaryHeapInt = heap_of_four(9, 4, 7, 1)
+    failures = failures + expect_eq_int(heap_value_or(heap_peek(heap), 0 - 1), 1)
+    let second: BinaryHeapInt = heap_drop_min(heap)
+    failures = failures + expect_eq_int(heap_value_or(heap_peek(second), 0 - 1), 4)
+    let third: BinaryHeapInt = heap_drop_min(second)
+    failures = failures + expect_eq_int(heap_value_or(heap_peek(third), 0 - 1), 7)
+    let fourth: BinaryHeapInt = heap_drop_min(third)
+    failures = failures + expect_eq_int(heap_value_or(heap_peek(fourth), 0 - 1), 9)
+    failures = failures + expect_eq_int(heap_size(heap_drop_min(fourth)), 0)
+    return failures
+}
+
+fn test_duplicates_are_preserved() -> Int {
+    let mut failures = 0
+    let heap: BinaryHeapInt = heap_of_four(5, 2, 5, 2)
+    failures = failures + expect_eq_int(heap_size(heap), 4)
+    failures = failures + expect_eq_int(heap_value_or(heap_peek(heap), 0 - 1), 2)
+    let second: BinaryHeapInt = heap_drop_min(heap)
+    failures = failures + expect_eq_int(heap_value_or(heap_peek(second), 0 - 1), 2)
+    let third: BinaryHeapInt = heap_drop_min(second)
+    failures = failures + expect_eq_int(heap_value_or(heap_peek(third), 0 - 1), 5)
+    return failures
+}
+
+fn test_negative_values_order_correctly() -> Int {
+    let mut failures = 0
+    let heap: BinaryHeapInt = heap_of_four(0, 0 - 3, 8, 0 - 1)
+    failures = failures + expect_eq_int(heap_value_or(heap_peek(heap), 99), 0 - 3)
+    let second: BinaryHeapInt = heap_drop_min(heap)
+    failures = failures + expect_eq_int(heap_value_or(heap_peek(second), 99), 0 - 1)
+    return failures
+}
+
+fn test_push_beyond_capacity_returns_input() -> Int {
+    let mut failures = 0
+    let full: BinaryHeapInt = heap_of_four(1, 2, 3, 4)
+    let overflow: BinaryHeapInt = heap_push(full, 0)
+    failures = failures + expect_eq_int(heap_size(overflow), heap_capacity())
+    failures = failures + expect_eq_int(heap_value_or(heap_peek(overflow), 0 - 1), 1)
+    return failures
+}
+
+fn test_operations_are_value_returning() -> Int {
+    let mut failures = 0
+    let base: BinaryHeapInt = heap_of_four(4, 3, 2, 1)
+    let ignored: BinaryHeapInt = heap_drop_min(base)
+    failures = failures + expect_eq_int(heap_size(base), 4)
+    failures = failures + expect_eq_int(heap_value_or(heap_peek(base), 0 - 1), 1)
+    failures = failures + expect_eq_int(heap_size(ignored), 3)
+    return failures
+}

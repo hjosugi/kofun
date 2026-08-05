@@ -24,7 +24,8 @@ export const GROUPS = Object.freeze([
             'compiler', 'bootstrap', 'selfhost-profile', 'selfhost-self-compile',
             'selfhost-frontend', 'selfhost-c11', 'selfhost-c11-control',
             'selfhost-native', 'stage2', 'stage2-events', 'native', 'wasm',
-            'wasm-host-abi', 'c-abi', 'bindgen-c'
+            'wasm-host-abi', 'wasm-host-profile', 'wasm-object-arena',
+            'wasm-list-v1', 'c-abi', 'bindgen-c'
         ]
     },
     {
@@ -34,9 +35,13 @@ export const GROUPS = Object.freeze([
             'diagnostics', 'fuzz', 'unicode', 'patterns', 'adt', 'records',
             'move-assertion', 'usability-corpus', 'call-arguments-spec',
             'affine-resumption',
-            'schedule-trace',
-            'generics', 'hm-levels', 'effect-inference', 'traits', 'optional', 'optional-narrowing',
-            'adt-exhaustiveness', 'enum-match-value', 'module-constants', 'decimal', 'decimal-arithmetic',
+            'scoped-parallelism', 'schedule-trace', 'type-reduction-trace',
+            'generics', 'const-generics', 'hm-levels', 'effect-inference', 'traits',
+            'optional', 'optional-narrowing',
+            'optional-construction', 'optional-pair',
+            'text-results', 'list-int-values',
+            'adt-exhaustiveness', 'enum-match-value', 'module-constants',
+            'decimal', 'decimal-arithmetic',
             'date-time', 'syntax'
         ]
     },
@@ -50,7 +55,7 @@ export const GROUPS = Object.freeze([
             'package-roots', 'source-file-mapping', 'namespaces', 'module-identity',
             'semantic-identity',
             'visibility-spec', 'visibility-syntax', 'visibility-access',
-            're-exports-spec', 'aggregate-layout'
+            're-exports-spec', 'aggregate-layout', 'reuse-candidate'
         ]
     },
     {
@@ -67,8 +72,8 @@ export const GROUPS = Object.freeze([
         title: 'Runtime and standard library',
         hint: 'Host integration, measured costs, and the executable standard-library capability surface.',
         tasks: [
-            'rust-shim', 'http', 'stdlib', 'tzdb', 'clock-adapters', 'benchmark-summary',
-            'capabilities'
+            'rust-shim', 'http', 'stdlib', 'kotest', 'tzdb', 'clock-adapters',
+            'benchmark-summary', 'capabilities'
         ]
     },
     {
@@ -76,6 +81,7 @@ export const GROUPS = Object.freeze([
         hint: 'Repository policy, claim/evidence joins, decisions, generated evidence, and cleanup.',
         tasks: [
             'repository-check', 'assertions', 'example-law-evidence',
+            'backlog', 'backlog-refresh',
             'release-claims', 'release-evidence', 'rfc-registry', 'clean'
         ]
     }

@@ -63,6 +63,26 @@ executable bootstrap implementation.
   opaque `Issues[E]`, and an O(N) issue-accumulation bound. The design is
   accepted and its five open questions are decided; no library or compiler
   implements it, and its named gate does not exist yet.
+- `concurrency/scoped-parallelism-v1.md` fixes the v1 spawn/join ownership
+  contract for issue #555: the three `par`/`spawn`/`join` source forms, the
+  second-class scope token and affine task handles, semantic liveness from
+  spawn to join, `read`/`edit`/`take` capture exclusivity, the closed set of
+  place-disjointness proofs, scope-exit drain with deterministic panic and
+  cancellation precedence, and six required diagnostic classes. Its bounded
+  executable model, fixtures, and `concurrency/scoped-parallelism-v1/check.sh`
+  are gated by `task scoped-parallelism`. The document is a normative input to
+  proposed `RFC-0003`, whose review closes 2026-08-16; no parser, ownership
+  checker, scheduler, or backend implements it, so passing the gate is evidence
+  about the contract only.
+- `concurrency/schedule-trace-v1.md` is the accepted deterministic testing
+  contract for issue #736: stable scope/task identities, the canonical
+  `kofun.schedule-trace/v1` and `kofun.schedule-witness/v1` bytes, FIFO, seeded,
+  replay, and bounded exhaustive policies over one task model, and the strict
+  rejection codes that refuse a stale or drifted trace. Its model and the
+  `tests/concurrency/schedule-replay/` corpus are gated by `task
+  schedule-trace`. It supplies reproduction evidence for the scoped contract
+  above; neither model is authority for the other, and Kofun has no production
+  scheduler.
 - `type-reduction-trace/kofun.type-reduction-trace.v1.schema.json`, its
   alias, type-function, and failure vectors in `examples/`, and
   `type-reduction-trace/check.sh` define the executable
@@ -93,6 +113,16 @@ executable bootstrap implementation.
   `wasm32` layout target. It is the input contract for wasm32 `Text`/`List`
   lowering; no backend emits it yet, and it does not describe WASI or a
   supported-engine matrix.
+
+- `wasm-host-profile-v1.md` and `wasm-host-profile-v1/check.sh` decide how a
+  build reaches that contract: the host ABI is part of the target name, so
+  `--target wasm32` keeps the bounded numeric binding and
+  `--target wasm32-hostabi1` is reserved for `kofun-wasm-host-abi-v1`. It
+  records the legacy binding as supported rather than deprecated, names the
+  native x86-64 semantic oracle and the v1 byte-layout oracle the lowering will
+  be measured against, and states how a host tells the two bindings apart on
+  the module bytes before instantiation. It decides activation only: no wasm
+  bytes change, no capability row moves, and no backend emits the profile yet.
 
 Design-only material in `docs/` is not normative until it is promoted here
 with conformance evidence. The specification is versioned independently from

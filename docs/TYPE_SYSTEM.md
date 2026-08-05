@@ -93,10 +93,28 @@ captured variables, interprocedural summaries, `match`, safe navigation,
 truthiness, user-defined equality, and general union narrowing. Narrowing
 chooses no runtime representation.
 
-**Implementation status:** frontend-only, in
+**Implementation status:** the analysis lives in
 `bootstrap/stage2/optional_frontend.c`, gated by
 `tests/conformance/optional-narrowing/run.sh` and
-`tests/fuzz/optional_narrowing.sh`. No backend lowering is claimed.
+`tests/fuzz/optional_narrowing.sh`.
+
+`Optional(Int)` is additionally **executable** through the Stage 2 C11 path
+(#924): present and absent values are constructed under the AggregateLayout v1
+`Optional[Int]` descriptor — explicit `tag_width` 1 at `tag_offset` 0 and an
+`Int` payload at offset 8, never a niche — they cross a same-typed argument and
+return with the tag intact, and each of the four recognized shapes plus the
+definitely-returning guard is lowered so the narrowed use runs. That slice is
+gated by `tests/conformance/optional-construction/run.sh`.
+
+Two bounds of the executable slice, stated so the claim is not read wider than
+it is. Every `Int?` binding it lowers is immutable — `let mut x: Int?` is
+refused — so the invalidation rules that need mutation are refused at the
+declaration rather than at the use; the frontend, which does admit a mutable
+`Int?`, still pins them. And no other optional type is executable: `Int?` is
+the whole backend claim.
+
+Coalescing, `?` propagation, safe navigation, Optional `match`, and every form
+of extraction remain unimplemented, and no force-unwrap operator exists.
 
 Planned pattern:
 
@@ -245,6 +263,26 @@ arguments, and preserves the original declaration identity and source spans
 in typed IR. The checkpoint does not infer omitted arguments, accept generic
 nominal types or bounds, select trait dictionaries, monomorphize, or emit
 backend code; see `tests/conformance/generics/README.md`.
+
+Integer const generics: a nominal record may be declared
+`type Fixed[const scale: Int]` and written `Fixed[2]` in a declaration or an
+annotation, on the ordinary compile path as well as in a second bounded Stage 2
+frontend. The literal is normalized by value, giving each instantiation its own
+identity: `Fixed[2]` and `Fixed[3]` are different types, `Fixed[02]` is the same
+type as `Fixed[2]`, and a mismatch is refused at compile time. A const parameter
+is not a type and not a value: it may not be a field type or an expression, so it
+cannot be erased into a runtime field, and it propagates no ownership kind, so
+every instantiation of one declaration classifies identically while staying a
+distinct type. The ordinary compile path specializes per distinct literal:
+`Fixed[2]` and `Fixed[3]` reach different emitted structs, so a const generic
+value can be constructed and run, and collapsing two identities onto one struct
+is refused with `E2S153`. A record field typed by an instantiation is
+separately refused, so a const argument never reaches layout. Const
+expressions, const inference,
+const parameters on functions, arithmetic on type-level values, ordinary type
+parameters on a nominal record, construction of a const generic value, and
+per-literal specialization on any backend all remain unimplemented; see
+`tests/conformance/const-generics/README.md`.
 
 ## Algebraic data types
 
