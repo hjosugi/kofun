@@ -79,7 +79,8 @@ fn(x) => x + 1
 fn(x: Int, y: Int) => x + y
 ```
 
-Only the canonical form has a block-body spelling:
+A block body is planned for the canonical form, and the active compiler does
+not parse one:
 
 ```kofun
 fn(x: Int) {
@@ -87,6 +88,14 @@ fn(x: Int) {
     return squared + 1
 }
 ```
+
+Every lambda the compiler accepts today has an expression body introduced by
+`=>`. A block body is not rejected by name — the parameter list is not
+recognised as one, so the parameter never binds and the reader is told about a
+symbol instead: `fn(x) { return x + 1 }` reports
+``error[E2S35]: unknown lexical binding `x` ``, and the annotated spelling
+above reports the same for `Int`. An implementation owes a named refusal here
+before it owes the feature.
 
 An expression-body lambda may omit `fn`. Parentheses remain available for
 multiple parameters or annotations; a bare lambda has exactly one unannotated

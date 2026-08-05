@@ -91,6 +91,16 @@ the parenthesis, writes one space, and then writes the trailing `fn` expression.
 Expression lambdas stay on the same line when they fit. Block lambdas use the
 existing block formatter and are not rewritten into expression lambdas.
 
+**The block body is accepted design, not current capability.** Stage 2 parses
+no block-body lambda in any spelling, so every rule above that mentions one
+describes the contract an implementation owes rather than behaviour a reader
+can rely on today. `spec/grammar.ebnf` therefore does not derive it, per #943,
+and the current boundary is pinned executably by `unsupported_block_lambda` in
+`tests/conformance/syntax/issues_35_47/run.sh`. That fixture also records that
+the present failure is a misparse rather than a named refusal: the parameter
+list is not recognised, so `E2S35` reports an unknown lexical binding for a
+symbol the author did not write. A named refusal is owed before the feature is.
+
 ```kofun
 items.fold(initial: 0) fn(acc, item) => acc + item
 

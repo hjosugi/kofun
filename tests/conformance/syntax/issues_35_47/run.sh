@@ -648,6 +648,27 @@ expect_stage2_unsupported "$CASES/unsupported_else_if.kofun"
 expect_stage2_unsupported "$CASES/unsupported_for.kofun"
 expect_stage2_unsupported "$CASES/unsupported_while.kofun"
 
+# The block-body lambda, which `spec/syntax/call-arguments-v1.md` states as
+# accepted design and `spec/grammar.ebnf` deliberately does not derive. Pinning
+# it keeps those two surfaces and the compiler from drifting apart silently.
+#
+# It is not a #35-#47 subject and is deliberately absent from the coverage line
+# below; it lives here because this is the gate that already builds Stage 2 and
+# owns `expect_stage2_unsupported`. The `call-arguments` gate cannot host it:
+# that one checks a JavaScript model and never runs the compiler, which is
+# exactly why the disagreement survived.
+#
+# The exact diagnostic is asserted, not just that some `E2S` code fires,
+# because the current one is wrong in an informative way: the parameter list is
+# not recognised, so `value` never binds and the reader is told about a symbol
+# they did not write. A named refusal would change this line, and it should.
+expect_stage2_unsupported "$CASES/unsupported_block_lambda.kofun"
+grep -Fq 'error[E2S35]: unknown lexical binding `value`' \
+    "$WORK/unsupported_block_lambda.stdout" ||
+    fail 'unsupported_block_lambda: the pinned misparse diagnostic changed; if a named block-body refusal landed, update this assertion and spec/grammar.ebnf together'
+printf '%s\n' \
+    'PASS unsupported: block-body lambda is refused, by misparse, and pinned'
+
 set +e
 "$WORK/kofun-stage2" \
     "$CASES/invalid_if_condition.kofun" \
