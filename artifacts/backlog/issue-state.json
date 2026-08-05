@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 71,
+  "open_issues": 70,
   "issues": [
     {
       "number": 26,
@@ -679,19 +679,6 @@
       "blocked_by": [],
       "evidence_commits": [
         "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
-      ]
-    },
-    {
-      "number": 919,
-      "title": "Stage 2 C11 List[Int] values: locals, len, and indexing",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "0a209468da3698a31cf6177b863284fd04c9a374",
-        "b05cb9e65007747c20c98182bbfa3fdc49a4cda3"
       ]
     },
     {
