@@ -34,6 +34,7 @@ export const GROUPS = Object.freeze([
         tasks: [
             'diagnostics', 'fuzz', 'unicode', 'patterns', 'adt', 'records',
             'move-assertion', 'usability-corpus', 'call-arguments-spec',
+            'call-arguments-surface',
             'affine-resumption',
             'scoped-parallelism', 'schedule-trace', 'type-reduction-trace',
             'generics', 'const-generics', 'hm-levels', 'effect-inference', 'traits',

@@ -1,0 +1,245 @@
+{
+  "schema": "kofun.call-arguments-surface/v1",
+  "note": "The ambiguity corpus for issue #880. `declarations` is ordinary Kofun source, parsed by the same parser under test, so the signature environment every case resolves against is itself evidence that declaration external labels parse. Cases in `accept` state the surface kind, how many trailing lambdas attached, and the canonical text; cases in `reject` state the diagnostic category. Entries with \"format\": false say why they are not formatted.",
+  "declarations": "fn fold(values: List[Int], initial start: Int, combine: Int -> Int) -> Int {\n    return start\n}\n\nfn visit(items: List[Int], order ordering: Int, action: Int -> Int) -> Int {\n    return 0\n}\n\nfn outer(value: Int, action: Int -> Int) -> Int {\n    return value\n}\n\nfn inner(action: Int -> Int) -> Int {\n    return 0\n}\n\nfn transaction(action: Int -> Int) -> Int {\n    return 0\n}\n\nfn replace(in text: Text, from old: Text, to replacement: Text) -> Text {\n    return text\n}\n\nfn write(take into file: Int, bytes data: Int) -> Int {\n    return data\n}\n\nfn draw(width w: Int, height h: Int, filled fill: Int) -> Int {\n    return w\n}\n\nfn consume(value: Int) -> Int {\n    return value\n}\n\nfn commit(handle: Int) -> Int {\n    return handle\n}\n\nfn abs(value: Int) -> Int {\n    return value\n}\n",
+
+  "declarationSurface": [
+    {
+      "name": "external label and internal name are distinct",
+      "function": "replace",
+      "parameters": [
+        { "mode": "read", "external": "in", "internal": "text", "type": "Text" },
+        { "mode": "read", "external": "from", "internal": "old", "type": "Text" },
+        { "mode": "read", "external": "to", "internal": "replacement", "type": "Text" }
+      ],
+      "canonical": "fn replace(in text: Text, from old: Text, to replacement: Text) -> Text"
+    },
+    {
+      "name": "ownership mode precedes the external label",
+      "function": "write",
+      "parameters": [
+        { "mode": "take", "external": "into", "internal": "file", "type": "Int" },
+        { "mode": "read", "external": "bytes", "internal": "data", "type": "Int" }
+      ],
+      "canonical": "fn write(take into file: Int, bytes data: Int) -> Int"
+    },
+    {
+      "name": "a parameter without an external label is positional",
+      "function": "abs",
+      "parameters": [
+        { "mode": "read", "external": null, "internal": "value", "type": "Int" }
+      ],
+      "canonical": "fn abs(value: Int) -> Int"
+    },
+    {
+      "name": "a functional final parameter is what admits a trailing lambda",
+      "function": "fold",
+      "parameters": [
+        { "mode": "read", "external": null, "internal": "values", "type": "List[Int]" },
+        { "mode": "read", "external": "initial", "internal": "start", "type": "Int" },
+        { "mode": "read", "external": null, "internal": "combine", "type": "Int -> Int" }
+      ],
+      "canonical": "fn fold(values: List[Int], initial start: Int, combine: Int -> Int) -> Int"
+    }
+  ],
+
+  "accept": [
+    {
+      "name": "short trailing",
+      "source": "items.fold(initial: 0) fn(acc, item) => acc + item",
+      "kind": "trailing-call",
+      "trailing": 1,
+      "canonical": "items.fold(initial: 0) fn(acc, item) => acc + item"
+    },
+    {
+      "name": "comment between the parenthesis and fn is trivia",
+      "source": "items.fold(initial: 0) # keep attached\nfn(acc, item) => acc + item",
+      "kind": "trailing-call",
+      "trailing": 1,
+      "format": false,
+      "reason": "the surface tree does not carry comment text, so formatting this source would delete the comment; see the header of format.mjs"
+    },
+    {
+      "name": "newline between the parenthesis and fn is trivia",
+      "source": "items.fold(initial: 0)\nfn(acc, item) => acc + item",
+      "kind": "trailing-call",
+      "trailing": 1,
+      "canonical": "items.fold(initial: 0) fn(acc, item) => acc + item"
+    },
+    {
+      "name": "pipeline trailing",
+      "source": "items |> fold(initial: 0) fn(acc, item) => acc + item",
+      "kind": "pipeline-trailing-call",
+      "trailing": 1,
+      "canonical": "items |> fold(initial: 0) fn(acc, item) => acc + item"
+    },
+    {
+      "name": "nested trailing associates with the nearest unresolved call",
+      "source": "outer(inner() fn(x) => x) fn(y) => y",
+      "kind": "trailing-call",
+      "trailing": 2,
+      "canonical": "outer(inner() fn(x) => x) fn(y) => y"
+    },
+    {
+      "name": "block trailing",
+      "source": "items.visit(order: depth_first) fn(item) { consume(item) }",
+      "kind": "trailing-call",
+      "trailing": 1,
+      "canonical": "items.visit(order: depth_first) fn(item) {\n    consume(item)\n}"
+    },
+    {
+      "name": "parentheses remain when the lambda is the only argument",
+      "source": "transaction() fn(tx) => commit(tx)",
+      "kind": "trailing-call",
+      "trailing": 1,
+      "canonical": "transaction() fn(tx) => commit(tx)"
+    },
+    {
+      "name": "named declaration follows",
+      "source": "consume(value)\nfn next(value: Int) -> Int {\n    return value\n}",
+      "kind": "separate-declaration",
+      "trailing": 0,
+      "canonical": "consume(value)\nfn next(value: Int) -> Int {\n    return value\n}"
+    },
+    {
+      "name": "expression-bodied declaration follows a call",
+      "source": "consume(value)\nfn next(value: Int) = value",
+      "kind": "separate-declaration",
+      "trailing": 0,
+      "canonical": "consume(value)\nfn next(value: Int) = value"
+    },
+    {
+      "name": "automatic termination puts an anonymous fn in the next statement",
+      "source": "consume(value)\nfn(item) => item",
+      "kind": "statement-sequence",
+      "trailing": 0,
+      "canonical": "consume(value)\nfn(item) => item"
+    },
+    {
+      "name": "ordinary labelled call",
+      "source": "replace(in: source, from: old, to: new)",
+      "kind": "ordinary-call",
+      "trailing": 0,
+      "canonical": "replace(in: source, from: old, to: new)"
+    },
+    {
+      "name": "labels may appear in any source order",
+      "source": "replace(to: c, in: a, from: b)",
+      "kind": "ordinary-call",
+      "trailing": 0,
+      "canonical": "replace(to: c, in: a, from: b)"
+    },
+    {
+      "name": "positional arguments may precede labelled arguments",
+      "source": "fold(values, initial: 0)",
+      "kind": "ordinary-call",
+      "trailing": 0,
+      "canonical": "fold(values, initial: 0)"
+    },
+    {
+      "name": "pipeline without a trailing lambda",
+      "source": "source |> replace(from: old, to: new)",
+      "kind": "pipeline-call",
+      "trailing": 0,
+      "canonical": "source |> replace(from: old, to: new)"
+    },
+    {
+      "name": "one obvious argument stays positional",
+      "source": "abs(value)",
+      "kind": "ordinary-call",
+      "trailing": 0,
+      "canonical": "abs(value)"
+    }
+  ],
+
+  "reject": [
+    {
+      "name": "a trailing lambda needs the call's parentheses",
+      "source": "transaction fn(tx) => commit(tx)",
+      "category": "trailing-lambda-requires-parentheses"
+    },
+    {
+      "name": "there is no brace lambda in the trailing position",
+      "source": "items.visit(order: depth_first) { consume(item) }",
+      "category": "trailing-brace-lambda"
+    },
+    {
+      "name": "a second trailing lambda is always rejected",
+      "source": "outer(0) fn(x) => x fn(y) => y",
+      "category": "second-trailing-lambda"
+    },
+    {
+      "name": "the final functional slot was already supplied inside the parentheses",
+      "source": "outer(0, fn(x) => x) fn(y) => y",
+      "category": "trailing-lambda-slot-taken"
+    },
+    {
+      "name": "a callee whose final formal is not functional takes no trailing lambda",
+      "source": "consume(value) fn(item) => item",
+      "category": "trailing-lambda-not-functional"
+    },
+    {
+      "name": "an unresolved callee never gets a trailing lambda inserted",
+      "source": "mystery() fn(x) => x",
+      "category": "trailing-callee-unresolved"
+    },
+    {
+      "name": "a lambda without a parameter list is not the canonical spelling",
+      "source": "transaction() fn => 1",
+      "category": "lambda-missing-parameter-list"
+    },
+    {
+      "name": "a positional argument may not follow a labelled one",
+      "source": "draw(width: 10, 20)",
+      "category": "positional-after-labelled"
+    },
+    {
+      "name": "a label may not repeat in one call",
+      "source": "replace(in: a, in: b, to: c)",
+      "category": "duplicate-label"
+    },
+    {
+      "name": "an argument list may not end with a comma",
+      "source": "replace(in: a, from: b, to: c,)",
+      "category": "trailing-comma"
+    }
+  ],
+
+  "rejectDeclarations": [
+    {
+      "name": "an external label may not be declared twice",
+      "source": "fn f(at a: Int, at b: Int) -> Int {\n    return a\n}\n",
+      "category": "duplicate-external-label"
+    },
+    {
+      "name": "an ownership mode may not be spelled as an external label",
+      "source": "fn f(take read file: Int) -> Int {\n    return file\n}\n",
+      "category": "mode-spelled-as-label"
+    },
+    {
+      "name": "a parameter has at most a mode, a label, and a name",
+      "source": "fn f(take a b c: Int) -> Int {\n    return c\n}\n",
+      "category": "malformed-parameter"
+    },
+    {
+      "name": "a parameter list may not end with a comma",
+      "source": "fn f(a: Int,) -> Int {\n    return a\n}\n",
+      "category": "trailing-comma"
+    }
+  ],
+
+  "width": [
+    {
+      "name": "an expression lambda that does not fit breaks after the arrow, keeping ) fn( intact",
+      "source": "items.fold(initial: accumulator_seed) fn(accumulator, element) => accumulator + element",
+      "columns": 60,
+      "canonical": "items.fold(initial: accumulator_seed) fn(accumulator, element) =>\n    accumulator + element"
+    },
+    {
+      "name": "a block lambda is never rewritten into an expression lambda to fit",
+      "source": "items.visit(order: depth_first) fn(item) { consume(item) }",
+      "columns": 200,
+      "canonical": "items.visit(order: depth_first) fn(item) {\n    consume(item)\n}"
+    }
+  ]
+}

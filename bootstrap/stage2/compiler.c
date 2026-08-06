@@ -3123,7 +3123,195 @@ static char *function_parameter_type(
 static char *validate_const_arguments(const char *source);
 static char *validate_const_erasure(const char *source);
 
+/*
+ * The call-arguments v1 surface boundary (#880).
+ *
+ * `spec/syntax/call-arguments-v1.md` accepts two forms this profile cannot
+ * lower: a declaration external label (`fn write(take into file: File, ...)`)
+ * and a trailing lambda (`items.fold(initial: 0) fn(acc, item) => ...`). #881
+ * owns binding them and #882 owns lowering them; until then Stage 2 owes a
+ * refusal.
+ *
+ * It was not refusing them. It was *reinterpreting* them. Both fixtures this
+ * check now owns, run against the compiler on the parent commit:
+ *
+ *     $ ./kofun-stage2-parent \
+ *         tests/diagnostics/stage2/e2s158_declaration_external_label.kofun ...
+ *     error[E2S35]: unknown lexical binding `base` at byte 601
+ *
+ *     $ ./kofun-stage2-parent \
+ *         tests/diagnostics/stage2/e2s158_trailing_lambda.kofun ...
+ *     error[E2S17]: Core function `apply` expects 2 arguments, got 1 at byte 655
+ *
+ * The parameter list was read as `to: <type base>`, so `base` never bound and
+ * the author was told that a name they *did* write, in the position the
+ * contract gives it, does not exist. The trailing lambda was worse: it fell
+ * outside the call entirely, so the compiler counted one argument and blamed
+ * the author for an arity they had not got wrong. That is the failure mode
+ * #880's last acceptance criterion names: a profile that cannot lower a form
+ * must reject it rather than reinterpret it, with a named diagnostic.
+ *
+ * Deliberately not covered: `edit token: Token` — an ownership mode and an
+ * internal name, with no external label. That two-word shape predates this
+ * contract and its boundary belongs to the ownership work (E2S121 and the
+ * `edit_parameter` fixture), so touching it here would move a line this issue
+ * does not own.
+ *
+ * The span is the external label itself, which is word one of `to base` and
+ * word two of `take into file` — the mode shifts everything right. Blaming the
+ * internal name instead would repeat the defect this check exists to remove,
+ * one token over.
+ */
+static bool ownership_mode_token(const char *source, int64_t cursor) {
+    return token_equal(source, cursor, "read") ||
+           token_equal(source, cursor, "edit") ||
+           token_equal(source, cursor, "take");
+}
+
+static char *call_argument_surface_refusal(
+    const char *source,
+    const char *what,
+    int64_t cursor
+) {
+    Buffer error;
+    buffer_init(&error);
+    buffer_format(
+        &error,
+        "error[E2S158]: %s is specified by call-arguments v1 but not "
+        "implemented at byte %" PRId64,
+        what,
+        cursor
+    );
+    stage2_diagnostic_set(
+        "E2S158",
+        cursor,
+        token_end(source, cursor),
+        true,
+        error.data
+    );
+    return error.data;
+}
+
+static char *validate_call_argument_surface(const char *source) {
+    int64_t length = source_length(source);
+
+    int64_t function_start = next_function_start(source, 0);
+    while (function_start < length) {
+        int64_t open = parameter_open(source, function_start);
+        int64_t close = open < 0 ? -1 : balanced_end(source, open, "(", ")");
+        if (open >= 0 && close >= 0) {
+            int64_t cursor = skip_trivia(source, token_end(source, open));
+            int64_t depth = 0;
+            int64_t words = 0;
+            int64_t first_word = -1;
+            int64_t second_word = -1;
+            bool mode_first = false;
+            bool before_colon = true;
+            while (cursor < close) {
+                if (
+                    token_equal(source, cursor, "(") ||
+                    token_equal(source, cursor, "[")
+                ) {
+                    ++depth;
+                } else if (token_equal(source, cursor, "]")) {
+                    --depth;
+                } else if (token_equal(source, cursor, ")")) {
+                    if (depth == 0) break;
+                    --depth;
+                } else if (depth == 0 && token_equal(source, cursor, ",")) {
+                    words = 0;
+                    first_word = -1;
+                    second_word = -1;
+                    mode_first = false;
+                    before_colon = true;
+                } else if (
+                    depth == 0 &&
+                    before_colon &&
+                    token_equal(source, cursor, ":")
+                ) {
+                    before_colon = false;
+                    if (words == 2 && !mode_first) {
+                        return call_argument_surface_refusal(
+                            source,
+                            "a declaration external label",
+                            first_word
+                        );
+                    }
+                    if (words == 3 && mode_first) {
+                        return call_argument_surface_refusal(
+                            source,
+                            "a declaration external label",
+                            second_word
+                        );
+                    }
+                } else if (
+                    depth == 0 &&
+                    before_colon &&
+                    strcmp(token_kind(source, cursor), "identifier") == 0
+                ) {
+                    ++words;
+                    if (words == 1) {
+                        first_word = cursor;
+                        mode_first = ownership_mode_token(source, cursor);
+                    }
+                    if (words == 2) second_word = cursor;
+                }
+                cursor = skip_trivia(source, token_end(source, cursor));
+            }
+        }
+        function_start = next_function_start(
+            source,
+            function_end(source, function_start)
+        );
+    }
+
+    /*
+     * `) fn(` is the trailing form and nothing else in this profile's grammar.
+     * A named declaration is `fn` and an identifier, so requiring `(` after
+     * `fn` leaves `call()` followed by `fn next(...)` alone — which is the
+     * boundary the contract draws in the same words. Measured on `dddffe0c`,
+     * `grep -c ') fn(' bootstrap/stage1/compiler.kofun
+     * bootstrap/stage2/compiler.kofun` is 0 in both, so no source this
+     * compiler already accepts contains the shape.
+     */
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < length) {
+        if (token_equal(source, cursor, ")")) {
+            int64_t keyword = skip_trivia(source, token_end(source, cursor));
+            if (keyword < length && token_equal(source, keyword, "fn")) {
+                int64_t parameters = skip_trivia(
+                    source,
+                    token_end(source, keyword)
+                );
+                if (
+                    parameters < length &&
+                    token_equal(source, parameters, "(")
+                ) {
+                    return call_argument_surface_refusal(
+                        source,
+                        "a trailing lambda",
+                        keyword
+                    );
+                }
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+
+    return owned_text("");
+}
+
 static char *parse_program(const char *source) {
+    /* Before every other check, because it is the only one that can name the
+     * form the author actually wrote. Once a declaration external label has
+     * been read as a type, every later diagnostic is about a program nobody
+     * wrote — which is how `fn add(to base: Int, ...)` came to report an
+     * unknown binding for `base`. */
+    char *surface_check = validate_call_argument_surface(source);
+    if (strncmp(surface_check, "error[", 6) == 0) {
+        return surface_check;
+    }
+    free(surface_check);
     /* Const generic surface (#916). Both checks run before any declaration is
      * recorded, so a refused source never reaches layout, IR, or an
      * artifact. */
