@@ -96,7 +96,7 @@ tasks:
       - "sh bootstrap/selfhost/c11/check-c11.sh"
 
   selfhost-self-compile:
-    desc: "Compile canonical S with A1 and verify deterministic strict-C11 C2"
+    desc: "Compile canonical S with A1, verify deterministic strict-C11 C2, and sanitize its host boundary"
     cmds:
       - "sh bootstrap/selfhost/check-compiler-driver.sh"
 
