@@ -54,6 +54,22 @@ normal and sanitized generated C programs must produce the expected output.
 The invalid corpus also crosses the 256-occurrence per-function enum-use bound
 and requires `E2S32` without a C artifact.
 
+`visibility-artifacts.sh` generates the visibility artifacts themselves — the
+re-export resolver's inventory input and the KIF sidecar every source-free
+consumer reads — rather than Kofun source. Five families each get an accepted
+case *at* a declared budget and a refused case one past it: facade chain depth
+and re-export declarations per module (both read out of
+`bootstrap/stage2/re_exports.c`, so a changed limit regenerates the fixtures
+and a deleted one fails the gate), malformed 32-byte identity spellings,
+provenance cycles, and seeded single-byte and truncation mutants of a published
+KIF. Every refusal must exit 1, name its code on stdout with an empty stderr,
+publish no HIR/KIF/tooling/dump, disclose neither the checkout path nor a
+private declaration name, and print the same bytes twice. The accepted chain is
+then rebuilt under a different absolute prefix, from differently named sources,
+with the inventory lines reversed, and every published byte must be identical.
+Envelope-size and graph-work budgets are out of its runtime budget and it says
+so on stdout rather than leaving a green run to imply otherwise.
+
 The valid observable portions of `value_if.sh`, `match_guard.sh`,
 `match_value.sh`, and `enum_match.sh` use the same normalized result records.
 Their shell generators are the accepted bounded models, and the Stage 2 C11
