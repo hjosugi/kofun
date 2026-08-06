@@ -570,6 +570,24 @@ test ! -e "$temporary/no-fallback.c" ||
 # The memory-error and undefined-behavior arms stay on, and each is proven
 # armed by its own probe below.
 
+# That reason is a claim about S.c, so it is asserted rather than assumed. A
+# reason nobody rechecks outlives its truth silently: if a deallocation path is
+# ever added, `detect_leaks=0` stops being a description of the design and
+# becomes a suppression, and the run below would keep passing while covering
+# less. Failing here forces that conversation instead.
+#
+# The check is for a deallocation *entry point*, not for the token `free(`.
+# `grep -c 'free(' bootstrap/selfhost/driver/S.c` returns 2 on a correct tree,
+# because both occurrences sit inside string literals A1 emits into the
+# programs it compiles — the compiled output frees, the compiler does not.
+for deallocator in kofun_rt_free kofun_rt_dealloc kofun_rt_release
+do
+    ! grep -qE "^[a-zA-Z].*$deallocator" bootstrap/selfhost/driver/S.c ||
+        fail "S.c defines $deallocator, so A1 no longer never-frees; re-enable detect_leaks rather than keeping this gate's justification"
+done
+grep -q '^void \*kofun_rt_alloc(' bootstrap/selfhost/driver/S.c ||
+    fail "S.c no longer defines kofun_rt_alloc; the allocation model this gate reasons about has changed"
+
 # Clang is tried first, but it can only link the sanitizer runtimes when
 # compiler-rt is installed beside it, which is a packaging choice of the host.
 # So the gate probes for a compiler that can actually link the arms and names
@@ -648,6 +666,38 @@ do
         fail "sanitized A1 emitted different C for $stem"
 done
 
+# The refusal paths, instrumented. The corpus above only walks inputs that
+# succeed, and an accept-only corpus cannot reach the shape that matters here:
+# a refusal abandons an allocation mid-flight, on a path that unwinds rather
+# than runs to completion. Both cases exit 1 by design, so the assertion is not
+# "exited 0" — it is that stdout still matches byte for byte and stderr is
+# still empty, because on these two paths the diagnostic goes to stdout and
+# anything on stderr is therefore a sanitizer report.
+sanitized_refusal() {
+    label=$1
+    source_path=$2
+    expected_stdout=$3
+
+    set +e
+    "$temporary/kofun-a1-san" "$source_path" "$temporary/$label-san.c" \
+        >"$temporary/$label-san.stdout" 2>"$temporary/$label-san.stderr"
+    refusal_status=$?
+    set -e
+    test "$refusal_status" -eq 1 ||
+        fail "sanitized A1 exited $refusal_status on the $label refusal, expected 1: $(head -c 2048 "$temporary/$label-san.stderr")"
+    test ! -s "$temporary/$label-san.stderr" ||
+        fail "sanitized A1 produced a diagnostic on the $label refusal: $(head -c 2048 "$temporary/$label-san.stderr")"
+    cmp "$expected_stdout" "$temporary/$label-san.stdout" ||
+        fail "sanitized A1 changed the $label refusal diagnostic"
+    test ! -e "$temporary/$label-san.c" ||
+        fail "the sanitized $label refusal produced C"
+}
+
+sanitized_refusal invalid-utf8 "$temporary/invalid-utf8.kofun" \
+    "$temporary/utf8.stdout"
+sanitized_refusal reject bootstrap/selfhost/driver/corpus_reject.kofun \
+    bootstrap/selfhost/driver/corpus_reject.stdout
+
 # Then the real load: A1(S) -> C2, the run that exercises the boundary hardest
 # and the only one that reaches every path S.c has. The virtual-memory ceiling
 # the unsanitized self-compile applies is deliberately NOT applied here —
@@ -705,14 +755,24 @@ sanitizer_arm_probe() {
         fail "the $probe_name probe failed without its arm-specific diagnostic: $(head -c 2048 "$temporary/$probe_name.err")"
 }
 
-# The allocation size is volatile, and that is load-bearing rather than
-# stylistic. `-fsanitize=undefined` includes the object-size check, and with a
-# literal `malloc(4)` the compiler knows the object size at the access site, so
-# UBSan reports "insufficient space for an object" and returns before ASan's
-# redzone is ever consulted. The probe still fails, but it fails on the wrong
-# arm — it would vouch for AddressSanitizer while proving only that UBSan
-# works, which is the exact substitution the isolation checks below exist to
-# catch. Hiding the size behind volatile leaves the fault to ASan.
+# The volatile on `block` is load-bearing, and it is the *pointer* that has to
+# be volatile — not the size. `-fsanitize=undefined` includes an object-size
+# check that reports a heap overflow before ASan's redzone is consulted
+# whenever it can trace the allocation through the pointer. The probe still
+# fails, but on the wrong arm: it would vouch for AddressSanitizer while
+# proving only that UBSan works, which is the exact substitution the isolation
+# checks below exist to catch.
+#
+# Measured with these flags, because the intuitive fix is the one that does not
+# work:
+#
+#   volatile size, plain pointer  -> 0 heap-buffer-overflow, 1 UBSan report
+#   plain size, volatile pointer  -> 2 heap-buffer-overflow, 0 UBSan reports
+#
+# Hiding the size changes nothing; the check resolves the object through the
+# pointer, so the pointer is what must lose its provenance. Anyone
+# "simplifying" the volatile off `block` reverts this probe to proving the
+# wrong arm, and the isolation assertions below are what would catch it.
 #
 # argc keeps the index out of reach of constant folding, so -Werror does not
 # reject the probe at compile time instead of the sanitizer catching it at run
@@ -720,12 +780,12 @@ sanitizer_arm_probe() {
 cat >"$temporary/asan-probe.c" <<'PROBE'
 #include <stdlib.h>
 int main(int argc, char **argv) {
-    size_t volatile size = 4;
-    char *volatile heap = malloc(size);
+    volatile size_t size = 8;
+    char *volatile block = malloc(size);
     (void)argv;
-    if (heap == NULL) return 2;
-    heap[size + (size_t)argc + 7] = 'x';
-    return (int)heap[0];
+    if (block == NULL) return 2;
+    block[size + (size_t)argc + 7] = 'x';
+    return (int)block[0];
 }
 PROBE
 sanitizer_arm_probe asan-probe "$temporary/asan-probe.c" \
@@ -763,4 +823,7 @@ printf '%s\n' \
     "PASS: emission is deterministic, path-independent, and failure-preserving" \
     "PASS: A1 compiles canonical S into deterministic C2 that matches the hand-port and compiles as strict C11" \
     "PASS: invalid UTF-8 and an unwritable output are refused at their pinned diagnostics, preserving prior output" \
-    "PASS: the A1 host boundary runs the corpus and A1(S) clean under AddressSanitizer and UndefinedBehaviorSanitizer ($sanitizer_cc), each arm proven armed"
+    "PASS: S.c still defines kofun_rt_alloc and no deallocation entry point, so detect_leaks=0 describes the design rather than suppressing a defect" \
+    "PASS: the binary that ran carries __asan_ instrumentation ($sanitizer_cc)" \
+    "PASS: each sanitizer arm is proven armed by an isolated fault that trips it and not the other" \
+    "PASS: the A1 host boundary runs the corpus, both refusal paths, and A1(S) clean under AddressSanitizer and UndefinedBehaviorSanitizer"
