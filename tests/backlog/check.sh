@@ -9,6 +9,26 @@ set -eu
 # this repository already gates. It had drifted: #648, #880, and #885 all
 # carried `ready` while their bodies named an open blocker.
 #
+# It also reports its own coverage. Every rule here is keyed on the `State:`
+# line, so an issue whose body has none was skipped by all of them without
+# reducing the count printed at the end: `PASS: 51 State lines name a state`
+# was 51 of 71. Measured 2026-08-07, the 20 it never reached included #955,
+# whose label says `blocked` while its body says `State: in-progress.` — a
+# disagreement one of these rules exists to catch and structurally could not
+# see. An unreadable state is now a failure, recorded in debt.tsv as
+# `unreadable-state` while it is being fixed, or as `stateless-tracker` for an
+# issue that carries no state by design.
+#
+# The same treatment now covers the blocker rule. `blockedBy()` needs a
+# `Blocked by:` line, so a blocker stated in prose yields an empty dependency
+# list and the closed-blocker rule skips the issue without reducing its count.
+# Measured 2026-08-07, that count was 4 of 28. Among the 24 it never reached
+# was #314, whose own body says `Unblock condition: **fulfilled.**` and cites
+# the green run while the issue is still labelled `blocked`. A blocked issue
+# that names no blocker the gate can read is now a failure, recorded as
+# `unnamed-blocker` while it is being fixed, or as `capability-blocker` when
+# the thing it waits on is not an issue at all.
+#
 # This reads only artifacts/backlog/issue-state.json, so it needs no network
 # and runs inside `task verify`. `task backlog-refresh` regenerates that
 # snapshot, and CI proves the committed copy still matches by regenerating and

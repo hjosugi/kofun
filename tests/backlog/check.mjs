@@ -62,7 +62,15 @@ const byNumber = new Map(issues.map((issue) => [issue.number, issue]))
 // tests/backlog/check-stamps.mjs owns it and this reader must not report those
 // rows as unused. A kind neither reader claims is a typo that would otherwise
 // sit in the file excusing nothing.
-const OWNED_KINDS = new Set(['state-disagreement', 'unstamped-ready', 'closed-blockers'])
+const OWNED_KINDS = new Set([
+    'state-disagreement',
+    'unstamped-ready',
+    'closed-blockers',
+    'unreadable-state',
+    'stateless-tracker',
+    'unnamed-blocker',
+    'capability-blocker',
+])
 const KNOWN_KINDS = new Set([...OWNED_KINDS, 'unverifiable-stamp'])
 
 const debt = new Map()
@@ -103,9 +111,13 @@ function owedDebt(kind, number, detail) {
 
 let agreeing = 0
 let blockedWithNamedBlockers = 0
+let unnamedBlockers = 0
+let capabilityBlockers = 0
 let stamped = 0
 let readyCount = 0
 let stated = 0
+let unreadableState = 0
+let statelessTrackers = 0
 let claims = 0
 let liveClaims = 0
 
@@ -169,6 +181,39 @@ for (const issue of issues) {
     }
     if (line !== null) stated += 1
 
+    // 2b. Coverage. Every rule below rule 2 is keyed on the State line, so an
+    //     issue whose body has none is skipped by all of them — silently, and
+    //     without reducing the count the gate reports. `PASS: 51 State lines
+    //     name a state` read as complete while it was 51 of 71, and the 20 it
+    //     never reached included #955, whose label says `blocked` while its
+    //     body says `State: in-progress.` — a disagreement rule 3 exists to
+    //     catch and structurally could not see, because an unprefixed line
+    //     extracts as null and rule 3 needs two values to compare.
+    //
+    //     So an unreadable state is now a failure like any other, with the two
+    //     ledger kinds separating the two things it can mean. `unreadable-state`
+    //     is drift with a fix — write the `- State:` line — and its detail is
+    //     the label that supplies the answer, so relabelling the issue makes
+    //     the row fail rather than quietly excuse a different state.
+    //     `stateless-tracker` is a deliberate exemption for an issue that
+    //     carries no state by design; recording it separately is what keeps it
+    //     from being indistinguishable from drift.
+    if (line === null) {
+        const label = issue.state_labels[0] ?? '-'
+        if (owedDebt('stateless-tracker', issue.number, label)) {
+            statelessTrackers += 1
+        } else if (owedDebt('unreadable-state', issue.number, label)) {
+            unreadableState += 1
+        } else {
+            failures.push(
+                `${where} carries no \`State:\` line the gate can read, so every rule keyed on it ` +
+                    'skips this issue; add `- State: <state>` to its body, or record it in ' +
+                    'tests/backlog/debt.tsv as `unreadable-state` or `stateless-tracker`',
+            )
+            continue
+        }
+    }
+
     // 3. Label and body agree when both are present. An issue with neither is
     //    untriaged, which is a different problem and not this gate's.
     if (label !== null && line !== null) {
@@ -182,9 +227,7 @@ for (const issue of issues) {
 
     // 4. The mirror of a ready issue naming an open blocker: a blocked issue
     //    whose nonempty dependency list is entirely closed is advertised as
-    //    unstartable after its own stated reason has disappeared. Issues with
-    //    no named blockers are deliberately outside this rule; they may be
-    //    waiting on a decision or another condition the extractor cannot see.
+    //    unstartable after its own stated reason has disappeared.
     if (label === 'blocked' && issue.blocked_by.length > 0) {
         blockedWithNamedBlockers += 1
         const openBlockers = issue.blocked_by.filter((number) => open.has(number))
@@ -193,6 +236,39 @@ for (const issue of issues) {
             if (!owedDebt('closed-blockers', issue.number, detail)) {
                 failures.push(`${where} is blocked but all named blockers are closed: ${detail}`)
             }
+        }
+    }
+
+    // 4b. Coverage for rule 4. `blockedBy()` needs a `Blocked by:` line; a
+    //     blocker stated in prose yields `blocked_by: []`, so rule 4 skips the
+    //     issue silently and its count reads as a total when it is a sample.
+    //     Measured 2026-08-07: 4 of 28 blocked issues were reached, and the
+    //     24 it missed included #314, whose own body says `Unblock condition:
+    //     **fulfilled.**` and cites the green run, while still labelled
+    //     `blocked`. That is work sitting idle behind a sentence no rule reads.
+    //
+    //     So an unreachable blocker is now a failure, with two kinds
+    //     separating the two things it means. `unnamed-blocker` is drift with
+    //     a fix — write `Blocked by: #N` — and the row retires itself, because
+    //     an issue that gains the line stops reaching this branch and its row
+    //     then fails as unused. `capability-blocker` is an exemption for an
+    //     issue blocked on something no issue number can express: #26 waits on
+    //     an unowned WASI capability profile and #570 on a Stage 2 parse
+    //     capability. Both are honest and current, and both are permanently
+    //     invisible to a rule that only understands issue numbers. Recording
+    //     them separately is what keeps an exemption from reading as drift.
+    if (label === 'blocked' && issue.blocked_by.length === 0) {
+        if (owedDebt('capability-blocker', issue.number, '-')) {
+            capabilityBlockers += 1
+        } else if (owedDebt('unnamed-blocker', issue.number, '-')) {
+            unnamedBlockers += 1
+        } else {
+            failures.push(
+                `${where} is blocked but names no blocker where the gate reads one, so the ` +
+                    'closed-blocker rule skips it; add a `Blocked by: #N` line to its body, or ' +
+                    'record it in tests/backlog/debt.tsv as `unnamed-blocker` or ' +
+                    '`capability-blocker`',
+            )
         }
     }
 
@@ -249,8 +325,10 @@ process.stdout.write(
     `PASS: ${claims} canonical claim events use the closed status vocabulary\n` +
         `PASS: ${liveClaims} live claims are unique per open issue and absent from closed issues\n` +
         `PASS: ${stated} State lines name a state in the vocabulary\n` +
+        `PASS: ${stated} of ${stated + unreadableState + statelessTrackers} open issues carry a State line the gate reads; ${unreadableState} recorded as unreadable, ${statelessTrackers} exempt by design\n` +
         `PASS: ${agreeing} issues agree between their state label and their State line\n` +
         `PASS: ${blockedWithNamedBlockers} blocked issues with named blockers still have an open blocker or recorded debt\n` +
+        `PASS: ${blockedWithNamedBlockers} of ${blockedWithNamedBlockers + unnamedBlockers + capabilityBlockers} blocked issues name their blockers where the gate reads them; ${unnamedBlockers} recorded as unnamed, ${capabilityBlockers} exempt by design\n` +
         `PASS: no ready issue names an open blocker (${readyCount} ready)\n` +
         `PASS: ${stamped} ready issues carry an evidence stamp\n` +
         `PASS: ${debt.size} recorded debt rows all still describe the issue they name\n`,

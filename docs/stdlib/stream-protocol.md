@@ -3,7 +3,7 @@
 ## Status
 
 This document is the accepted contract for GitHub issue
-[#627](https://github.com/hjosugi/kofun/issues/627). No stream library is
+[#627](https://github.com/kofun-lang/kofun/issues/627). No stream library is
 implemented; acceptance fixes the protocol — `Stream`, `Subscription`,
 demand, termination, and overflow semantics — so that implementation
 children (protocol/types, deterministic test scheduler, core operators, I/O

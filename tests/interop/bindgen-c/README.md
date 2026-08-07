@@ -1,7 +1,7 @@
 # bindgen-c stage-1 corpus
 
 The executable gate for stage 1 of
-[#574](https://github.com/hjosugi/kofun/issues/574): `kofun bindgen-c`
+[#574](https://github.com/kofun-lang/kofun/issues/574): `kofun bindgen-c`
 generates audited raw C bindings from the Clang AST, before any C-to-Kofun
 source translation exists.
 
@@ -15,11 +15,11 @@ can tell which issue an assertion belongs to:
 
 | Gate | Issue | What it owns |
 |---|---|---|
-| [`check-sanitizers.sh`](check-sanitizers.sh) | [#900](https://github.com/hjosugi/kofun/issues/900) | the boundary under AddressSanitizer and UndefinedBehaviorSanitizer, on both sides |
-| [`check-fuzz.sh`](check-fuzz.sh) | [#901](https://github.com/hjosugi/kofun/issues/901) | adversarial macro expansion and bounded clang execution — corpus and README in [`fuzz/`](fuzz/) |
+| [`check-sanitizers.sh`](check-sanitizers.sh) | [#900](https://github.com/kofun-lang/kofun/issues/900) | the boundary under AddressSanitizer and UndefinedBehaviorSanitizer, on both sides |
+| [`check-fuzz.sh`](check-fuzz.sh) | [#901](https://github.com/kofun-lang/kofun/issues/901) | adversarial macro expansion and bounded clang execution — corpus and README in [`fuzz/`](fuzz/) |
 
 `task bindgen-c` runs those two after the stage-1 checks. Calling-convention
-verification ([#903](https://github.com/hjosugi/kofun/issues/903)) lives in
+verification ([#903](https://github.com/kofun-lang/kofun/issues/903)) lives in
 `check.sh` itself, alongside the ABI probe it extends.
 
 The tool itself lives in [`tooling/bindgen-c/`](../../../tooling/bindgen-c/)

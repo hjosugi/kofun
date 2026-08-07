@@ -3,7 +3,7 @@
 ## Status
 
 This document is the accepted contract for GitHub issue
-[#640](https://github.com/hjosugi/kofun/issues/640). No public harness is
+[#640](https://github.com/kofun-lang/kofun/issues/640). No public harness is
 implemented: `benchmarks/` scripts are repository evidence, not a library
 contract. The first slice is #646 — the canonical raw-sample report,
 deterministic summaries, and explicit unavailable metrics — before any live

@@ -11,7 +11,7 @@ Kofun advances milestones by correctness gate, not by feature count.
 - do not call the project "self-hosting complete" before the Stage 2 fixed point
 
 A milestone is advanced by evidence, not by a decision having been accepted.
-The [RFC process](https://hjosugi.github.io/kofun/docs/rfc-process/) records
+The [RFC process](https://kofun-lang.github.io/kofun/docs/rfc-process/) records
 public semantic decisions and keeps `accepted` separate from `implemented`;
 an accepted RFC carries no schedule and moves no milestone until
 [`release/claims.json`](../release/claims.json) evidences the capability. The
@@ -25,9 +25,9 @@ lowering, and the first runnable compiler-produced compiler are active. The
 remaining fixed-point path is intentionally short:
 
 1. use the generated compiler to produce `C2/A2` and `C3/A3`
-   ([#271](https://github.com/hjosugi/kofun/issues/271)); and
+   ([#271](https://github.com/kofun-lang/kofun/issues/271)); and
 2. require equivalent C sources and executables across the three generations
-   ([#272](https://github.com/hjosugi/kofun/issues/272)).
+   ([#272](https://github.com/kofun-lang/kofun/issues/272)).
 
 That gate may use one declared, normalized host C11 compiler. Direct x86-64
 and AArch64 compiler reproduction is a separate strengthening track; both
@@ -35,16 +35,16 @@ native backends already execute bounded Int, function, `List[Int]`, and UTF-8
 `Text` profiles. The [implemented-status matrix](MVP_IMPLEMENTED.md) is the
 authority for their exact active boundary.
 
-The heterogeneous record design is settled, not pending: [#546](https://github.com/hjosugi/kofun/issues/546)
+The heterogeneous record design is settled, not pending: [#546](https://github.com/kofun-lang/kofun/issues/546)
 closed once [`spec/records-v1.md`](../spec/records-v1.md) was accepted, and
 `task records` gates it. What stays open is lowering records past the bounded
-frontend ([#783](https://github.com/hjosugi/kofun/issues/783)).
+frontend ([#783](https://github.com/kofun-lang/kofun/issues/783)).
 
 The concrete-first law system, `Result` sequencing, and the small-core reactive
 protocol are settled the same way, as DD-035, DD-036 and DD-037 in
 [Design decisions](DESIGN_DECISIONS.md); what remains for each is implementation
 rather than design. Function-call ergonomics
-([#625](https://github.com/hjosugi/kofun/issues/625)) is the syntax decision
+([#625](https://github.com/kofun-lang/kofun/issues/625)) is the syntax decision
 still open. Read `docs/DESIGN_DECISIONS.md` rather than an issue number for
 whether a design is settled — issues close as their decisions land, so a list of
 numbers here rots. None of this expands the frozen string-scanning profile
@@ -86,7 +86,7 @@ Current foundation:
 - affine ownership prototype; the general checker remains design work
 - historical bounded-Monad examples, finite-model artifacts, and JSON schema;
   active compiler integration remains open in
-  [#551](https://github.com/hjosugi/kofun/issues/551)
+  [#551](https://github.com/kofun-lang/kofun/issues/551)
 
 ## M1 — Bootstrap compiler
 
