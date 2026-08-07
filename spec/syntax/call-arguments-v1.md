@@ -1,8 +1,19 @@
 # Call arguments v1
 
-Status: accepted design contract for issue #625. Parser, HIR, checker, KIF,
-formatter, and backend support are follow-up implementation work. This document
-does not claim that the current compiler accepts the surface below.
+Status: accepted design contract for issue #625. HIR, checker, KIF, and backend
+support are follow-up implementation work. This document does not claim that the
+current compiler accepts the surface below.
+
+The surface layer landed with #880: `spec/syntax/call-arguments/parser.mjs` and
+`format.mjs` implement the grammar, the ambiguity boundary, and the canonical
+form, and `check-surface.sh` holds them to `surface-corpus.json`. That is a
+parser and a formatter, not a compiler front end — nothing below it binds a
+label or lowers a call. The compiler profiles now *refuse* the two forms by
+name rather than misreading them, as `E2S158` in `bootstrap/stage2/compiler.c`
+and `bootstrap/stage2/compiler.kofun`. Before that refusal existed,
+`fn add(to base: Int, ...)` reported an unknown lexical binding for `base`,
+because the parameter list was read as `to: <type base>` and the internal name
+never bound.
 
 The words MUST, MUST NOT, SHOULD, SHOULD NOT, and MAY are normative.
 
@@ -220,11 +231,24 @@ taxing every call or admitting optional style drift.
 
 The decision deliberately separates follow-up work:
 
-1. #880: parser plus canonical formatter surface and ambiguity corpus;
+1. #880: parser plus canonical formatter surface and ambiguity corpus — landed,
+   gated by `task call-arguments-surface`;
 2. #881: HIR/type checking, binding diagnostics, callable identity, and KIF
    digest;
 3. #882: pipeline/trailing lowering plus C11/direct-native differential
    evidence.
 
 Those children must retain this document's unsupported-current-compiler
-boundary until their own executable gates land.
+boundary until their own executable gates land. #880 does not lift it: a
+compiler profile still refuses both forms, and the parser it added deliberately
+stops short of binding. What changed is that the refusal now names the form, so
+`E2S158` is what a reader of #881's and #882's work will find where the
+misparse used to be.
+
+The one place the surface parser touches a signature is trailing-lambda
+attachment, because this document requires it to: the callee's resolved
+signature must establish that the final parameter is functional before the
+grammar may insert a lambda. `parser.mjs` reads that single fact and refuses —
+as `trailing-callee-unresolved` — when it cannot. Everything else about
+binding, including whether a label is known or mandatory, stays with #881 and
+its `bindCall` in `spec/syntax/call-arguments/model.mjs`.
