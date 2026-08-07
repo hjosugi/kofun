@@ -793,6 +793,222 @@ fn offset_date_time_to_instant(value: OffsetDateTime) -> DateTimeOutcome {
     return ArithmeticOverflow(3)
 }
 
+# ---- Versioned portable serialization ----
+#
+# Two identities, both spelled in the text, so a reader never has to infer
+# which time line a value belongs to:
+#
+#     posix-v1:<seconds>.<exactly nine nanosecond digits>
+#     gregorian-v1:YYYY-MM-DD
+#
+# The grammar is canonical, not merely accepted. Seconds carry no leading
+# zero, no explicit `+`, and no negative zero; the fraction is always nine
+# digits. A noncanonical spelling is refused rather than normalized, because
+# two texts for one value would make the identity useless for comparison — the
+# whole reason for carrying a version in the first place.
+#
+# Field ids continue the `validate_parts` numbering: `9` is the identity
+# prefix, `10` the seconds field, `11` the fraction.
+
+fn text_equal(left: Text, right: Text) -> Int {
+    if left == right { return 1 }
+    return 0
+}
+
+fn nanoseconds_text(value: Int) -> Text {
+    if value < 10 { return "00000000" + to_text(value) }
+    if value < 100 { return "0000000" + to_text(value) }
+    if value < 1000 { return "000000" + to_text(value) }
+    if value < 10000 { return "00000" + to_text(value) }
+    if value < 100000 { return "0000" + to_text(value) }
+    if value < 1000000 { return "000" + to_text(value) }
+    if value < 10000000 { return "00" + to_text(value) }
+    if value < 100000000 { return "0" + to_text(value) }
+    return to_text(value)
+}
+
+fn year_text(value: Int) -> Text {
+    if value < 10 { return "000" + to_text(value) }
+    if value < 100 { return "00" + to_text(value) }
+    if value < 1000 { return "0" + to_text(value) }
+    return to_text(value)
+}
+
+fn two_digit_text(value: Int) -> Text {
+    if value < 10 { return "0" + to_text(value) }
+    return to_text(value)
+}
+
+fn serialize_instant(value: Instant) -> Text {
+    return "posix-v1:" + to_text(value.seconds) + "."
+        + nanoseconds_text(value.nanoseconds)
+}
+
+fn serialize_date(value: Date) -> Text {
+    return "gregorian-v1:" + year_text(value.year) + "-"
+        + two_digit_text(value.month) + "-" + two_digit_text(value.day)
+}
+
+# Zero has one spelling, and so does every other value: `-0`, `+5`, and `05`
+# are refused even though a lenient reader could resolve all three.
+fn canonical_seconds(text: Text, start: Int, end: Int) -> DateTimeOutcome {
+    if end <= start { return InvalidField(10) }
+    let first = text_slice(text, start, start + 1)
+    if text_equal(first, "+") == 1 { return InvalidField(10) }
+    let mut digits_start = start
+    if text_equal(first, "-") == 1 {
+        digits_start = start + 1
+        if end <= digits_start { return InvalidField(10) }
+        if text_equal(text_slice(text, digits_start, digits_start + 1), "0") == 1 {
+            return InvalidField(10)
+        }
+    }
+    if text_equal(text_slice(text, digits_start, digits_start + 1), "0") == 1 {
+        if end - digits_start > 1 { return InvalidField(10) }
+    }
+    let magnitude: DateTimeOutcome = parse_digits(text, digits_start, end, 0)
+    match magnitude {
+        DateTimeOk(value) => {
+            if text_equal(first, "-") == 1 { return DateTimeOk(0 - value) }
+            return DateTimeOk(value)
+        },
+        other => { return other },
+    }
+    return InvalidField(10)
+}
+
+# `posix-v1:` is nine bytes, the fraction is always ten more (a point and nine
+# digits), and the seconds field needs at least one, so twenty is the shortest
+# text that can be canonical.
+#
+# The identity is checked before the length. Reporting a truncated fraction as
+# an identity fault would name the wrong field, and a caller fixing what the
+# diagnostic named would not fix the text.
+fn serialized_instant_seconds(text: Text) -> DateTimeOutcome {
+    let length = len(text)
+    if length < 9 { return InvalidField(9) }
+    if text_equal(text_slice(text, 0, 9), "posix-v1:") == 0 {
+        return InvalidField(9)
+    }
+    if length < 20 { return InvalidField(11) }
+    let point = length - 10
+    if text_equal(text_slice(text, point, point + 1), ".") == 0 {
+        return InvalidField(11)
+    }
+    let fraction: DateTimeOutcome = parse_digits(text, point + 1, length, 0)
+    match fraction {
+        DateTimeOk(_) => {},
+        other => { return other },
+    }
+    return canonical_seconds(text, 9, point)
+}
+
+fn serialized_instant_nanoseconds(text: Text) -> DateTimeOutcome {
+    let length = len(text)
+    if length < 20 { return InvalidField(11) }
+    let value: DateTimeOutcome = parse_digits(text, length - 9, length, 0)
+    match value {
+        DateTimeOk(nanoseconds) => {
+            if nanoseconds > 999999999 { return InvalidField(11) }
+            return DateTimeOk(nanoseconds)
+        },
+        other => { return other },
+    }
+    return InvalidField(11)
+}
+
+# `gregorian-v1:` is thirteen bytes and the date is exactly ten more, so the
+# canonical text has one length and one shape.
+fn serialized_date_status(text: Text) -> DateTimeOutcome {
+    let length = len(text)
+    if length < 13 { return InvalidField(9) }
+    if text_equal(text_slice(text, 0, 13), "gregorian-v1:") == 0 {
+        return InvalidField(9)
+    }
+    # Past the identity, a wrong length is a shape fault at the first date
+    # byte, not an identity fault.
+    if length != 23 { return ParsePosition(13) }
+    if text_equal(text_slice(text, 17, 18), "-") == 0 { return ParsePosition(17) }
+    if text_equal(text_slice(text, 20, 21), "-") == 0 { return ParsePosition(20) }
+    let year: DateTimeOutcome = parse_digits(text, 13, 17, 0)
+    match year {
+        DateTimeOk(y) => {
+            let month: DateTimeOutcome = parse_digits(text, 18, 20, 0)
+            match month {
+                DateTimeOk(m) => {
+                    let day: DateTimeOutcome = parse_digits(text, 21, 23, 0)
+                    match day {
+                        DateTimeOk(d) => {
+                            return validate_parts(y, m, d, 0, 0, 0, 0)
+                        },
+                        other => { return other },
+                    }
+                },
+                other => { return other },
+            }
+        },
+        other => { return other },
+    }
+    return ParsePosition(13)
+}
+
+fn instant_round_trip(seconds: Int, nanoseconds: Int) -> Int {
+    let value: Instant = make_instant(seconds, nanoseconds)
+    let text: Text = serialize_instant(value)
+    let restored_seconds: DateTimeOutcome = serialized_instant_seconds(text)
+    let restored_nanoseconds: DateTimeOutcome = serialized_instant_nanoseconds(text)
+    match restored_seconds {
+        DateTimeOk(back_seconds) => {
+            match restored_nanoseconds {
+                DateTimeOk(back_nanoseconds) => {
+                    return same_instant(
+                        make_instant(back_seconds, back_nanoseconds),
+                        value                    )
+                },
+                other => { return 0 },
+            }
+        },
+        other => { return 0 },
+    }
+    return 0
+}
+
+fn date_round_trip(year: Int, month: Int, day: Int) -> Int {
+    let value: Date = make_date(year, month, day)
+    let text: Text = serialize_date(value)
+    let status: DateTimeOutcome = serialized_date_status(text)
+    match status {
+        DateTimeOk(_) => {
+            let restored_year: DateTimeOutcome = parse_digits(text, 13, 17, 0)
+            match restored_year {
+                DateTimeOk(y) => {
+                    let restored_month: DateTimeOutcome = parse_digits(text, 18, 20, 0)
+                    match restored_month {
+                        DateTimeOk(m) => {
+                            let restored_day: DateTimeOutcome = parse_digits(text, 21, 23, 0)
+                            match restored_day {
+                                DateTimeOk(d) => {
+                                    return same_date(make_date(y, m, d), value)
+                                },
+                                other => { return 0 },
+                            }
+                        },
+                        other => { return 0 },
+                    }
+                },
+                other => { return 0 },
+            }
+        },
+        other => { return 0 },
+    }
+    return 0
+}
+
+# A Monotonic reading is not serializable by contract. There is no Monotonic
+# record here to serialize, which is the enforcement: the contract's rule is
+# that the type has no constructor from numbers, so this producer cannot
+# express the mistake even to test it. Stated rather than silently absent.
+
 fn observe(outcome: DateTimeOutcome) -> Int {
     let mut result = 0
     match outcome {
@@ -948,5 +1164,52 @@ fn main() -> Int {
     print(observe(parse_rfc3339("1900-02-29T12:34:56Z")))
     print(observe(parse_rfc3339("2100-02-29T12:34:56Z")))
     print(observe(parse_rfc3339("2000-02-29T12:34:56Z")))
+
+    # Serialization carries its identity in the text.
+    print(serialize_instant(make_instant(0, 0)))
+    print(serialize_instant(make_instant(1709210096, 123456789)))
+    print(serialize_instant(make_instant(0 - 5, 3)))
+    print(serialize_date(make_date(2024, 2, 29)))
+    print(serialize_date(make_date(1, 1, 1)))
+    print(serialize_date(make_date(9999, 12, 31)))
+
+    # Round-trip, including the subsecond and negative-seconds edges.
+    print(instant_round_trip(0, 0))
+    print(instant_round_trip(1709210096, 123456789))
+    print(instant_round_trip(0 - 5, 3))
+    print(instant_round_trip(0 - 9223372036854775807, 999999999))
+    print(date_round_trip(2024, 2, 29))
+    print(date_round_trip(1, 1, 1))
+    print(date_round_trip(9999, 12, 31))
+    print(date_round_trip(2000, 2, 29))
+
+    # Malformed serialized text is refused.
+    print(observe(serialized_instant_seconds("posix-v1:5")))
+    print(observe(serialized_instant_seconds("posix-v2:5.000000000")))
+    print(observe(serialized_instant_seconds("POSIX-V1:5.000000000")))
+    print(observe(serialized_instant_seconds("5.000000000")))
+    print(observe(serialized_instant_seconds("posix-v1:5,000000000")))
+    print(observe(serialized_instant_seconds("posix-v1:x.000000000")))
+
+    # Noncanonical spellings are refused even though a lenient reader could
+    # resolve every one of them.
+    print(observe(serialized_instant_seconds("posix-v1:+5.000000000")))
+    print(observe(serialized_instant_seconds("posix-v1:05.000000000")))
+    print(observe(serialized_instant_seconds("posix-v1:-0.000000000")))
+    print(observe(serialized_instant_seconds("posix-v1:00.000000000")))
+    print(observe(serialized_instant_seconds("posix-v1:5.00000000")))
+    print(observe(serialized_instant_seconds("posix-v1:5.0000000000")))
+    # Canonical zero and canonical negative both survive that rule.
+    print(observe(serialized_instant_seconds("posix-v1:0.000000000")))
+    print(observe(serialized_instant_seconds("posix-v1:-5.000000000")))
+
+    # The Gregorian identity refuses the same class of drift.
+    print(observe(serialized_date_status("gregorian-v1:2024-02-29")))
+    print(observe(serialized_date_status("gregorian-v1:2024-2-29")))
+    print(observe(serialized_date_status("gregorian-v2:2024-02-29")))
+    print(observe(serialized_date_status("gregorian-v1:2024/02/29")))
+    print(observe(serialized_date_status("gregorian-v1:1900-02-29")))
+    print(observe(serialized_date_status("gregorian-v1:0000-01-01")))
+    print(observe(serialized_date_status("2024-02-29")))
     return 0
 }

@@ -185,6 +185,70 @@ require_value 81 203 '1900-02-29 is rejected because 1900 is common'
 require_value 82 203 '2100-02-29 is rejected because 2100 is common'
 require_value 83 100 '2000-02-29 is accepted because 2000 is leap'
 
+# Serialization carries its identity in the text.
+require_value 84 'posix-v1:0.000000000' 'the epoch serializes canonically'
+require_value 85 'posix-v1:1709210096.123456789' 'subsecond serialization'
+require_value 86 'posix-v1:-5.000000003' 'negative seconds serialize canonically'
+require_value 87 'gregorian-v1:2024-02-29' 'a civil date carries the Gregorian identity'
+require_value 88 'gregorian-v1:0001-01-01' 'the lower year end pads to four digits'
+require_value 89 'gregorian-v1:9999-12-31' 'the upper year end'
+
+for line in 90 91 92 93 94 95 96 97
+do
+    require_value "$line" 1 "serialization round-trip at line $line"
+done
+
+# Malformed serialized text names the field that is actually wrong.
+require_value 98 211 'a missing fraction is InvalidField(11), not an identity fault'
+require_value 99 209 'a wrong identity version is InvalidField(9)'
+require_value 100 209 'an upper-case identity is InvalidField(9)'
+require_value 101 209 'a missing identity is InvalidField(9)'
+require_value 102 211 'a comma fraction separator is InvalidField(11)'
+require_value 103 309 'a non-digit seconds field fails at byte 9'
+
+# Noncanonical spellings are refused, not normalized: one value, one text.
+require_value 104 210 'an explicit plus sign is InvalidField(10)'
+require_value 105 210 'a leading zero is InvalidField(10)'
+require_value 106 210 'negative zero is InvalidField(10)'
+require_value 107 210 'a zero-padded zero is InvalidField(10)'
+require_value 108 211 'eight fractional digits is InvalidField(11)'
+require_value 109 211 'ten fractional digits is InvalidField(11)'
+require_value 110 100 'canonical zero survives the leading-zero rule'
+require_value 111 95 'canonical negative seconds survive the negative-zero rule'
+
+require_value 112 100 'a canonical Gregorian identity is accepted'
+require_value 113 313 'an unpadded month is a shape fault at byte 13'
+require_value 114 209 'a wrong Gregorian identity version is InvalidField(9)'
+require_value 115 317 'slash separators fail at byte 17'
+require_value 116 203 '1900-02-29 is refused by the calendar, not by the shape'
+require_value 117 201 'year 0000 is InvalidField(1)'
+require_value 118 209 'a bare date carries no identity'
+
+# Reference interpretation and the executable backend must agree on the whole
+# corpus. tests/reference.mjs is a second implementation, not a reader of the
+# golden: it recomputes every observation from the contract and shares no code
+# with the producer. A golden compared against itself proves determinism, which
+# was never in doubt; two implementations agreeing is what makes the corpus
+# evidence of correctness. This already earned its place — it caught a real
+# disagreement on a negative instant while it was being written.
+if command -v node >/dev/null 2>&1
+then
+    node "$date_time_dir/tests/reference.mjs" >"$work/reference.stdout" ||
+        fail 'the reference interpretation did not run'
+    cmp "$work/reference.stdout" "$work/date_time.stdout" ||
+        fail 'the reference interpretation and the Stage 2 C11 backend disagree'
+    differential='date/time reference and C11 backend agree on the full corpus: PASS'
+
+    # The comparison must be able to fail, or agreement proves nothing.
+    sed '1s/.*/999999/' "$work/reference.stdout" >"$work/reference.mutated"
+    if cmp -s "$work/reference.mutated" "$work/date_time.stdout"
+    then
+        fail 'the differential cannot detect a disagreeing reference'
+    fi
+else
+    differential='date/time reference differential: SKIPPED (node is not installed)'
+fi
+
 # The contract's separated types are enforced by the compiler, not by a lint:
 # passing a Duration where an Instant is required must not compile.
 mix=$work/mixed_types.kofun
@@ -240,4 +304,6 @@ printf '%s\n' \
     'date/time RFC 3339 zero-to-nine fractional digits: PASS' \
     'date/time RFC 3339 rejection matrix at exact positions: PASS' \
     'date/time Duration and Instant cannot be mixed implicitly: PASS' \
-    'date/time reads no ambient clock, zone, or locale: PASS'
+    'date/time reads no ambient clock, zone, or locale: PASS' \
+    'date/time versioned serialization round-trips and refuses noncanonical text: PASS' \
+    "$differential"

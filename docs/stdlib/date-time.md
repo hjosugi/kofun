@@ -12,10 +12,15 @@ the complete public library: `stdlib/linux_x86_64/time.kofun` and
 `stdlib/clock` remain the syscall-level seed, and `clock_gettime` is not
 evidence of calendar or time-zone support.
 
-Two portable items stay open inside #645 because the current Stage 2 surface
-cannot express them: versioned serialization and the independent
-reference-oracle differential corpus both need Text formatting. Explicit clock
-adapters (#647) and versioned time-zone data (#648) remain separately owned.
+Versioned serialization and the reference/backend differential corpus have
+since landed as well, so the portable half of this contract is executable in
+full. Explicit clock adapters (#647) and versioned time-zone data (#648) remain
+separately owned.
+
+Serialization spells its identity in the text — `posix-v1:<seconds>.<nine
+digits>` and `gregorian-v1:YYYY-MM-DD` — and the grammar is canonical: one
+value has one text, so `+5`, `05`, `-0`, and a fraction of any width other than
+nine are refused rather than normalized.
 
 Under the standard-library charter: civil types belong to the **portable
 standard library**, clock capabilities are **platform adapters**, and
@@ -132,6 +137,8 @@ scheduling/cron, network time synchronization, and leap-second arithmetic.
 | Portable core | `sh stdlib/date_time/tests/verify.sh` | centuries, month boundaries, civil round-trip, checked arithmetic bounds, offset-to-instant, and the RFC 3339 accept/reject matrix pass on exact goldens |
 | Separated types | same gate | a `Duration` passed where an `Instant` is required is refused with `E2S32` |
 | No ambient access | same gate | the generated C11 calls no host clock, zone, or locale routine |
+| Serialization | same gate | both identities round-trip, and noncanonical spellings are refused rather than normalized |
+| Independent agreement | same gate | `stdlib/date_time/tests/reference.mjs` and the Stage 2 C11 artifact are byte-identical across the full corpus |
 | Golden corpus | #645 fixtures | deterministic results, host-independent |
 | Clock adapters | `sh tests/stdlib/clock-adapters/check.sh` | distinct monotonic/system identities, affine handles, deterministic fake time and waiters; no host clock read |
 | Linux clock integration | `sh tests/stdlib/clock-adapters/check-linux-x86_64.sh` | Linux `timespec` units, raw `-EINVAL`, and zero-duration sleep match the adapter boundary |
