@@ -81,6 +81,7 @@ tasks:
       - "sh tests/fuzz/match_value_invalid.sh"
       - "sh tests/fuzz/enum_match.sh"
       - "sh tests/fuzz/optional_narrowing.sh"
+      - "sh tests/fuzz/visibility-artifacts.sh"
 
   unicode:
     desc: "Verify Unicode identifiers, security, text, and width"
