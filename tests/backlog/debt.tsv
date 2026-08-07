@@ -31,11 +31,11 @@
 #                     or `-` when the issue has none, so relabelling makes the
 #                     row fail rather than excuse a different state. Fix by
 #                     writing `- State: <state>` into the body, then delete the
-#                     row. Measured 2026-08-07 across all 71 open issues: 19
-#                     rows here plus one `stateless-tracker`, of which exactly
-#                     one (#955) has an unprefixed `State:` line and eighteen
-#                     have none at all — so widening the extractor's regex
-#                     instead would have reached 1 of 20.
+#                     row. Re-measured 2026-08-07 across all 70 open issues after
+#                     eighteen bodies gained a `State:` line: 1 row here plus one
+#                     `stateless-tracker`. The one left (#955) carries an
+#                     unprefixed `State:` line, so widening the extractor's
+#                     regex would now reach 1 of 2.
 #
 # stateless-tracker   an open issue that carries no state by design, so it is
 #                     exempt rather than owed a fix. Recorded separately from
@@ -44,23 +44,5 @@
 #                     drift, and would be "fixed" by someone fabricating a
 #                     state for it.
 unverifiable-stamp	738	d1f58a6a9e20764b25ee28773df5355512213dfa	Time-series forecasting research: stamp names a commit on no branch
-unreadable-state	277	deferred	Freestanding target: run with no operating system
-unreadable-state	278	deferred	ARM Cortex-M backend (thumb2)
-unreadable-state	279	deferred	Memory-mapped I/O, volatile access, and interrupt handlers
-unreadable-state	280	deferred	No-heap mode: static allocation only
 stateless-tracker	281	-	Position paper: what replacing C and Rust actually requires
-unreadable-state	424	deferred	Hot reload at function granularity, via micro-partition
-unreadable-state	532	deferred	Scientific computing: arrays, linear algebra, statistics, d...
-unreadable-state	533	blocked	Show where ownership goes: LSP hover, inlay hints, and diag...
-unreadable-state	536	deferred	ndarray: n-dimensional arrays with views, strides, and broa...
-unreadable-state	537	deferred	Linear algebra: matmul, decompositions, solvers, and BLAS/L...
-unreadable-state	538	deferred	Signal and image processing: FFT, convolution, filtering
-unreadable-state	539	deferred	Statistics: distributions, tests, regression, optimisation,...
-unreadable-state	540	deferred	Dataframes: typed columnar tables with group-by and join
-unreadable-state	572	blocked	Nim: infer last-use moves and add a compile-time move asser...
-unreadable-state	574	blocked	V: generate audited C bindings from Clang AST before attemp...
-unreadable-state	881	blocked	Call arguments v1 slice 2: bind labels in HIR, type checkin...
-unreadable-state	882	blocked	Call arguments v1 slice 3: lower labelled and trailing call...
-unreadable-state	883	blocked	Typed upgrade patches slice 3: opt-in atomic exact-type ren...
-unreadable-state	884	blocked	Typed upgrade patches slice 2: deterministic read-only CLI ...
 unreadable-state	955	in-progress	modules: spec/grammar.ebnf admits a top-level `let` that St...
