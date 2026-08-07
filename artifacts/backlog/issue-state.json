@@ -827,15 +827,15 @@
       ]
     },
     {
-      "number": 1057,
-      "title": "backlog: pay down the eighteen transcribable unreadable-state rows",
+      "number": 1060,
+      "title": "backlog: 24 of 28 blocked issues name their blockers where the gate cannot read them",
       "state_labels": [
-        "ready"
+        "needs-decision"
       ],
-      "state_line": "ready",
+      "state_line": "needs-decision",
       "blocked_by": [],
       "evidence_commits": [
-        "d7433eb59f95d547be6ed3fdbf05c3121718bda9"
+        "03d8a7099fa14c62c0fa8d250c0d5d8c2c3ffc38"
       ]
     }
   ]
