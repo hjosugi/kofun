@@ -11,6 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const { fileURLToPath } = require('url');
+const { accessible, declaredVisibility } = require('./visibility.js');
 
 const documents = new Map();
 const MAX_HEADER_BYTES = 8 * 1024;
@@ -40,6 +41,11 @@ let input = Buffer.alloc(0);
 let shutdownRequested = false;
 let framingFailed = false;
 let workspaceRoot = null;
+// The session's package identity, decided once at `initialize` and fixed for
+// the whole session, exactly as `spec/modules/package-roots.md` requires of an
+// invocation: "Root selection occurs before source discovery and remains fixed
+// for the whole invocation."
+let workspacePackageId = null;
 let sessionSequence = 0;
 let semanticAdapter = null;
 let semanticLoadFailureLogged = false;
@@ -284,6 +290,56 @@ function inferType(doc, tokenIndex, incomplete) {
     ? '<unknown: incomplete edit>' : '<unknown: inference unavailable>';
 }
 
+// The visibility modifier immediately preceding a top-level declaration, at the
+// same nesting depth. `spec/modules/visibility.md`: "At most one visibility
+// modifier is accepted", and every declaration without one is private — so a
+// missing modifier and an unreadable one give the same answer, and
+// `declaredVisibility` in visibility.js is what turns text into that answer.
+//
+// Depth matters. A `pub` inside a nested block is not this declaration's
+// modifier, and reading it as one would widen an API because of where a brace
+// happened to fall.
+function declaredVisibilityBefore(doc, declarationIndex) {
+  const tokens = doc.tokens;
+  const previous = tokens[declarationIndex - 1];
+  if (!previous || previous.kind !== 'id') return 'private';
+  if (previous.depth !== tokens[declarationIndex].depth) return 'private';
+  // The token must be in a *modifier position*, and depth alone does not
+  // establish that. `spec/modules/visibility.md` is explicit: "`pub`,
+  // `internal`, and `private` are contextual declaration modifiers. The lexer
+  // continues to emit ordinary identifier tokens outside a position where a
+  // declaration or member may begin."
+  //
+  // Without this check, a file with no modifier anywhere disclosed its private
+  // declarations, because the ordinary identifier ending a header was read as
+  // one:
+  //
+  //     module demo.internal
+  //
+  //     fn leaked(value: Int) -> Int { ... }   // offered to other files
+  //
+  // The same happened for `import demo.internal` and for a path ending in
+  // `pub`. The worst part is which programs it hit: the default, most
+  // conservative way to write a private declaration is to write no modifier at
+  // all, so writing `private` explicitly was what protected a file.
+  //
+  // A declaration begins a line, so a modifier is one only when a newline
+  // separates it from whatever came before — or when nothing did. A path
+  // segment never satisfies that, because `.` binds it to the header.
+  if (!firstOnItsLine(doc, previous)) return 'private';
+  return declaredVisibility(tokenText(doc, previous));
+}
+
+// Whether a token is the first on its line, which is what makes it eligible to
+// begin a declaration. Deliberately conservative: two declarations crammed onto
+// one line lose the modifier and fall back to private, which errs toward
+// hiding rather than disclosing.
+function firstOnItsLine(doc, token) {
+  const before = doc.tokens[doc.tokens.indexOf(token) - 1];
+  if (!before) return true;
+  return doc.text.slice(before.end, token.start).includes('\n');
+}
+
 function buildIndex(doc) {
   const scanned = tokenize(doc);
   doc.tokens = scanned.tokens;
@@ -374,7 +430,8 @@ function buildIndex(doc) {
       parameters, returnType,
       bodyStart: functionScopeStart, bodyEnd: functionScopeEnd,
       mode: '', scopeStart: 0, scopeEnd: doc.text.length,
-      depth: tokens[i].depth
+      depth: tokens[i].depth,
+      visibility: declaredVisibilityBefore(doc, i)
     });
   }
 
@@ -387,7 +444,8 @@ function buildIndex(doc) {
         start: tokens[i + 1].start, end: tokens[i + 1].end,
         type: `type ${tokenText(doc, tokens[i + 1])}`,
         mode: '', scopeStart: 0, scopeEnd: doc.text.length,
-        depth: tokens[i].depth
+        depth: tokens[i].depth,
+        visibility: declaredVisibilityBefore(doc, i)
       });
     }
   }
@@ -581,6 +639,88 @@ function visibleSymbols(doc, offset) {
   return visible;
 }
 
+// Top-level declarations in *other* open documents that this caller may reach.
+//
+// The session's open documents are the bounded workspace view: no directory
+// walk, no filesystem read, and nothing a closed file can inject. Every
+// candidate goes through `accessible` with caller context built from transport
+// state, so the default — a declaration with no modifier, which the spec makes
+// private — never leaves its own file.
+//
+// Ordering is by logical path and then by declaration offset, both of which are
+// properties of the source rather than of the session. Iterating `documents`
+// directly would order by didOpen, so the same workspace would answer
+// differently depending on which file the editor happened to restore first.
+function reachableForeignSymbols(doc) {
+  const caller = callerContext(doc);
+  const found = new Map();
+  // Sorted by display path first so the order is the one a reader would
+  // predict, then by URI so it is *total* — `logicalPath` is not injective, and
+  // a comparator that returns 0 for two different documents would leave their
+  // relative order up to the engine's sort stability and the session's open
+  // order, which is the determinism this is here to remove.
+  const others = [...documents.values()]
+    .filter((other) => other !== doc && typeof other.uri === 'string')
+    .sort((left, right) => {
+      const leftPath = typeof left.logicalPath === 'string' ? left.logicalPath : '';
+      const rightPath = typeof right.logicalPath === 'string' ? right.logicalPath : '';
+      if (leftPath !== rightPath) return leftPath < rightPath ? -1 : 1;
+      return left.uri < right.uri ? -1 : left.uri > right.uri ? 1 : 0;
+    });
+  for (const other of others) {
+    // `completionIndex`, not `other.symbols`: on the semantic path a document
+    // never populates `symbols` at all — the bounded index lives in a detached
+    // `lexicalIndex` view, built on demand and memoised per text. Reading the
+    // field directly silently found nothing for exactly the documents a real
+    // editor session has, which is the quietest possible way for this whole
+    // feature to do nothing.
+    if (other.analysisState !== 'semantic' &&
+        other.analysisState !== 'syntactic-fallback') continue;
+    const index = completionIndex(other);
+    if (!index || !Array.isArray(index.symbols)) continue;
+    const declarations = index.symbols
+      .filter((symbol) => symbol.kind === 'function' || symbol.kind === 'type')
+      .sort((left, right) => left.start - right.start);
+    for (const symbol of declarations) {
+      if (!accessible(declarationContext(other, symbol), caller)) continue;
+      // A name the caller's own file declares always wins: its own private
+      // helper is not shadowed by a public one imported from elsewhere, and
+      // completion must offer the declaration that definition would reach.
+      if (!found.has(symbol.name)) found.set(symbol.name, { symbol, doc: other });
+    }
+  }
+  return found;
+}
+
+// Navigation's half of the same rule.
+//
+// Returns a location only when the caller may reach the declaration. An
+// inaccessible name and an absent one produce the identical answer — `null` —
+// on purpose: a distinguishable "exists but you may not see it" would disclose
+// that the name exists, which file declares it, and by elimination roughly
+// where. The spec calls access "a compile-time name-resolution and interface
+// rule", so a name the caller cannot resolve simply does not resolve.
+// Whether any other open document is still analysing, so the cross-file half
+// of a completion list is provisional rather than short.
+function foreignAnalysisPending(doc) {
+  for (const other of documents.values()) {
+    if (other === doc) continue;
+    if (other.analysisState !== "semantic" &&
+        other.analysisState !== "syntactic-fallback") return true;
+  }
+  return false;
+}
+
+function foreignDefinition(doc, name) {
+  if (typeof name !== 'string' || name === '') return null;
+  const found = reachableForeignSymbols(doc).get(name);
+  if (!found) return null;
+  return {
+    uri: found.doc.uri,
+    range: range(found.doc, found.symbol.start, found.symbol.end)
+  };
+}
+
 // LSP CompletionItemKind: Function, Variable, Class, Keyword.
 const COMPLETION_KIND = Object.freeze({
   function: 3, parameter: 6, binding: 6, type: 7, keyword: 14
@@ -609,7 +749,11 @@ function completionPrefix(doc, offset) {
   return doc.text.slice(start, offset);
 }
 
-function completionItems(doc, offset, facts) {
+// `doc` here is the bounded *index* — on the semantic path that is a detached
+// view with no URI and no session identity, which is why the owning document is
+// passed separately rather than recovered from it. The cross-file query needs
+// the caller's transport identity, and the view does not carry one.
+function completionItems(doc, offset, facts, owner) {
   const prefix = completionPrefix(doc, offset).toLowerCase();
   const taken = new Set();
   function item(label, kind, detail, group, provenance) {
@@ -657,6 +801,31 @@ function completionItems(doc, offset, facts) {
     const value = item(symbol.name, COMPLETION_KIND[symbol.kind] ?? 6, detail, group,
       fact ? 'validated-sidecar' : 'syntactic-fallback');
     if (value) declarations.push(value);
+  }
+
+  // Declarations reachable from other open files, after the caller's own — a
+  // name the caller declares itself is offered from its own file, so an
+  // imported public name never displaces a local one. `item` drops duplicates
+  // by label, which is what enforces that here.
+  //
+  // `truncated` is deliberately checked again rather than reused: a list that
+  // filled up on local declarations must not silently drop the foreign ones
+  // without the client being told the list is incomplete.
+  if (!truncated && owner) {
+    for (const { symbol, doc: origin } of reachableForeignSymbols(owner).values()) {
+      if (declarations.length >= MAX_COMPLETION_ITEMS - reserved) {
+        truncated = true;
+        break;
+      }
+      // The detail carries the declaring file, because a name that came from
+      // somewhere else should say so. This discloses nothing: the caller was
+      // already allowed to reach this declaration, or it would not be here.
+      const detail = `${symbol.type}  (${origin.logicalPath})`;
+      const group = symbol.kind === 'function' ? '2' : '3';
+      const value = item(symbol.name, COMPLETION_KIND[symbol.kind] ?? 6, detail, group,
+        'cross-file-visible');
+      if (value) declarations.push(value);
+    }
   }
 
   const vocabulary = [];
@@ -1087,6 +1256,114 @@ function logicalPath(uri) {
   return 'editor-buffer.kofun';
 }
 
+// The session's package identity, per `spec/modules/package-roots.md`.
+//
+// Rule 2 there is the only one an editor can apply: "Argument-free `kofun
+// build` requires `./kofun.toml`. The directory containing that exact file is
+// the package root." There is no source operand in an editor session, so rule 1
+// does not apply, and rule 4 forbids the nearest-ancestor search that would
+// otherwise be the obvious thing to reach for — "Kofun v1 performs no
+// nearest-ancestor manifest search".
+//
+// With no manifest, every open file is an anonymous single-file package, which
+// that document defines as non-importable. `accessible` turns a null package
+// identity into exactly that, so a workspace the LSP cannot identify offers
+// nothing across files rather than everything. Fail closed is the only safe
+// default for a rule whose failure mode is disclosure.
+//
+// The identity is the manifest's package-relative location, never an absolute
+// filesystem path: "A canonical or absolute filesystem path is not a package
+// identity." That is also what makes the result stable under a path remap — two
+// checkouts of one project at different absolute paths produce the same value.
+function resolveWorkspacePackageId() {
+  if (!workspaceRoot) return null;
+  try {
+    if (!fs.statSync(path.join(workspaceRoot, 'kofun.toml')).isFile()) return null;
+  } catch {
+    return null;
+  }
+  return 'workspace-manifest';
+}
+
+// Caller context for the visibility decision.
+//
+// The identity is the document *URI*, and the two rejected alternatives are
+// both worth naming, because each looks correct and is not.
+//
+// Not `doc.fileId`: that is assigned from `result.snapshot.fileId`, so it comes
+// out of the *sidecar* — analysis of the very file whose access is being
+// decided. `spec/modules/visibility.md` closes that door by name: "Imports,
+// generated declarations, macros, and sidecar readers cannot bypass access by
+// constructing an ID directly." A file that could name its own caller identity
+// could grant itself access to every other file in the session.
+//
+// Not `doc.logicalPath` either, which was the first thing tried here and is
+// wrong for a quieter reason: it is a display path, not an identity, and it is
+// not injective. `logicalPath` falls back to the basename for a file outside
+// the workspace root, and to the constant `editor-buffer.kofun` for an untitled
+// or custom-scheme buffer. So two scratch buffers, or `a/util.kofun` and
+// `b/util.kofun` opened from outside the root, collapse to one identity — and
+// the same-file clause in `accessible` then hands each of them the other's
+// private declarations. The disclosure this whole file exists to prevent, via
+// the field that looked most like an identity.
+//
+// A URI is unique by construction: it is the key of the `documents` map, so two
+// distinct open documents cannot share one. It is transport state the editor
+// owns and the buffer's content cannot reach. Only equality is ever asked of
+// it, so its absolute prefix never leaks into a decision — two checkouts of one
+// project at different paths still agree on which declarations are offered.
+// A document's package identity, which is a property of the *document* and not
+// of the session.
+//
+// Returning the session-wide `workspacePackageId` for every document made
+// `declaration.packageId === caller.packageId` unconditionally true whenever a
+// manifest existed, so the `internal` branch could never refuse anything. A
+// neighbouring checkout with its own `kofun.toml` exchanged `internal`
+// declarations with the workspace in both directions, and an untitled buffer —
+// an anonymous, non-importable package — both saw and was seen.
+//
+// `spec/modules/package-roots.md`: root selection is fixed for the invocation
+// and covers the sources *that root selected*. A file outside the workspace
+// root was never selected by it, so it belongs to its own anonymous
+// single-file package, which that document defines as non-importable. `null`
+// is how `accessible` spells that, and two distinct anonymous packages never
+// compare equal because the same-file check has already run by then.
+function documentPackageId(doc) {
+  if (workspacePackageId === null) return null;
+  return doc.insideWorkspace === true ? workspacePackageId : null;
+}
+
+// Whether a document lives under the selected package root. Computed from the
+// URI at didOpen — transport state, not anything the buffer can claim.
+function insideWorkspaceRoot(uri) {
+  if (!workspaceRoot) return false;
+  try {
+    const parsed = new URL(uri);
+    if (parsed.protocol !== 'file:') return false;
+    const filename = fileURLToPath(parsed);
+    const relative = path.relative(workspaceRoot, filename);
+    return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+  } catch {
+    return false;
+  }
+}
+
+function callerContext(doc) {
+  return { fileId: doc.uri, packageId: documentPackageId(doc) };
+}
+
+// A declaration's identity for the same decision. `visibility` is read from the
+// source text by `declaredVisibilityBefore` at index time — which is correct,
+// because a declaration's *own* modifier is exactly what its file gets to say.
+// What a file may not say is who is asking.
+function declarationContext(doc, symbol) {
+  return {
+    fileId: doc.uri,
+    packageId: documentPackageId(doc),
+    visibility: declaredVisibility(symbol.visibility)
+  };
+}
+
 function currentAnalysis(doc, captured) {
   return documents.get(doc.uri) === doc &&
     doc.version === captured.version &&
@@ -1203,6 +1480,7 @@ function handle(message) {
           workspaceRoot = null;
         }
       }
+      workspacePackageId = resolveWorkspacePackageId();
       response(message.id, {
         capabilities: {
           positionEncoding: 'utf-16',
@@ -1259,6 +1537,7 @@ function handle(message) {
         uri: item.uri, version: Number.isInteger(item.version) ? item.version : 0,
         text: item.text, lines: lineStarts(item.text),
         logicalPath: logicalPath(item.uri),
+        insideWorkspace: insideWorkspaceRoot(item.uri),
         sessionEpoch: ++sessionSequence,
         generation: 0,
         fileId: null,
@@ -1295,23 +1574,42 @@ function handle(message) {
     case 'textDocument/definition': {
       const item = params.textDocument;
       const doc = item && documents.get(item.uri);
+      // The name under the caret, resolved from the caller's own tokens. It is
+      // needed on both paths below, because a declaration this file does not
+      // hold may still live in another open file the caller may reach.
+      const definitionOffset = doc ? positionToOffset(doc, params.position) : null;
+      // A caret sitting *on* a declaration this file owns is already at the
+      // definition, so there is nothing to look up elsewhere. Without this the
+      // fallback fired — the semantic adapter answers null on a declaration
+      // site by design — and go-to-definition on a parameter's own name jumped
+      // to an unrelated file that happened to declare the same word.
+      const definitionName = doc && definitionOffset !== null
+        ? (() => {
+            const index = completionIndex(doc);
+            const at = tokenIndexAt(index, definitionOffset);
+            const token = tokenAt(index, definitionOffset);
+            if (!token || token.kind !== 'id') return null;
+            if (index.declarations && index.declarations.has(at)) return null;
+            return tokenText(index, token);
+          })()
+        : null;
       if (doc && doc.analysisState === 'semantic' &&
           doc.validatedSidecar && semanticAdapter) {
-        response(message.id, semanticAdapter.definitionAt(
-          doc.validatedSidecar, params.position));
+        const local = semanticAdapter.definitionAt(
+          doc.validatedSidecar, params.position);
+        response(message.id, local || foreignDefinition(doc, definitionName));
         break;
       }
       if (!doc || doc.analysisState !== 'syntactic-fallback') {
         response(message.id, null);
         break;
       }
-      const offset = doc ? positionToOffset(doc, params.position) : null;
-      const token = offset === null || !doc ? null : tokenAt(doc, offset);
+      const token = definitionOffset === null ? null : tokenAt(doc, definitionOffset);
       const symbol = token ? resolve(doc, token) : null;
       response(message.id, symbol ? {
         uri: doc.uri,
         range: range(doc, symbol.start, symbol.end)
-      } : null);
+      } : foreignDefinition(doc, definitionName));
       break;
     }
     case 'textDocument/semanticTokens/full': {
@@ -1523,11 +1821,17 @@ function handle(message) {
           if (resolved[at]) facts.set(symbol.start, resolved[at]);
         }
       }
-      const completion = completionItems(index, offset, facts);
+      const completion = completionItems(index, offset, facts, doc);
       response(message.id, {
         // A bounded list must say so, or the client caches it and stops asking
         // as the prefix narrows to names that were cut.
-        isIncomplete: completion.truncated,
+        // Also incomplete while another open document is still analysing.
+        // `reachableForeignSymbols` skips any document that has not settled, so
+        // a keystroke in one split pane emptied the cross-file completions in
+        // the other — and `isIncomplete: false` told the client to cache that
+        // empty list and stop asking. The same rationale the truncation flag
+        // already carries, applied to the other reason the list can be short.
+        isIncomplete: completion.truncated || foreignAnalysisPending(doc),
         items: completion.items
       });
       break;
