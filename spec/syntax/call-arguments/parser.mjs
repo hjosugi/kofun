@@ -304,6 +304,7 @@ class Parser {
 
             parameters.push({
                 mode: mode ? mode.value : "read",
+                modeWritten: mode !== null,
                 external: external ? external.value : null,
                 internal: internal.value,
                 type: this.parseType(),
@@ -325,12 +326,48 @@ class Parser {
     }
 
     // type = name [ "[" type { "," type } "]" ] [ "->" type ]
+    // A parenthesised head is three different things, and reading it as only
+    // the middle one made two normative spellings unparseable:
+    //
+    //     () -> Int            an empty callable domain
+    //     (Int, Int) -> Int    a multi-argument callable domain
+    //     (Int -> Int) -> Int  an ordinary grouping around a function type
+    //
+    // `spec/grammar.ebnf` derives all three, and the first two are live in the
+    // repository today — `tests/conformance/syntax/issues_35_47/
+    // lambda_argument.kofun` compiles both through Stage 2. Missing them was
+    // not cosmetic: `finalParameterIsFunctional` reads the final formal's type
+    // to decide whether a trailing lambda may attach, so an unparseable
+    // functional type is a signature the trailing rule cannot be applied to.
+    // It showed up in this slice's own corpus, which had to declare `fold`
+    // with a *unary* combiner while its headline case passes a two-parameter
+    // lambda.
+    //
+    // The grouping case keeps no marker: `formatType` recovers the parentheses
+    // structurally, because a function type in domain position always needs
+    // them and never needs them anywhere else.
     parseType() {
         let left;
         if (this.at("(")) {
             this.next();
-            left = this.parseType();
-            this.expect(")", "expected-type-close");
+            if (this.at(")")) {
+                this.next();
+                left = { kind: "tuple", elements: [] };
+            } else {
+                const first = this.parseType();
+                if (this.at(",")) {
+                    const elements = [first];
+                    while (this.at(",")) {
+                        this.next();
+                        elements.push(this.parseType());
+                    }
+                    this.expect(")", "expected-type-close");
+                    left = { kind: "tuple", elements };
+                } else {
+                    this.expect(")", "expected-type-close");
+                    left = first;
+                }
+            }
         } else {
             const name = this.expectIdentifier("expected-type", "a type name");
             left = { kind: "name", name: name.value, arguments: [] };
@@ -682,8 +719,25 @@ class Parser {
         this.trailingDepth -= 1;
         call.signature = signature.name;
 
+        // A second `fn(` is only a second *trailing lambda* when it could have
+        // attached to this call. Once the first one is bound the final formal
+        // is supplied, so the contract's other clause takes over: "Otherwise
+        // `fn` begins the next expression or declaration according to the
+        // ordinary grammar." The guard below therefore honours the same trivia
+        // rule its sibling does — without it,
+        //
+        //     outer(0) fn(x) => x
+        //     fn(y) => y
+        //
+        // was refused as a second trailing lambda when it is two statements,
+        // which is the shape the corpus already pins as `statement-sequence`.
         const second = this.peek();
-        if (second.value === "fn" && this.peek(1).value === "(") {
+        if (
+            second.value === "fn" &&
+            this.peek(1).value === "(" &&
+            !second.newlineBefore &&
+            !second.commentBefore
+        ) {
             fail("second-trailing-lambda",
                 "a call takes at most one trailing lambda",
                 second.offset);

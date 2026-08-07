@@ -60,6 +60,30 @@ for (const expected of corpus.declarationSurface ?? []) {
     const signature = formatDeclaration({ ...declaration, body: null });
     assert.equal(signature, expected.canonical,
         `declaration surface case ${JSON.stringify(expected.name)}: canonical signature is ${JSON.stringify(signature)}`);
+
+    // Reparse the printed signature and compare the *tree*, not the text.
+    //
+    // Text idempotence is not enough, and the gap is not theoretical: dropping
+    // the parentheses from `(Int -> Int) -> Int` produced `Int -> Int -> Int`,
+    // which is a different type — a function returning a function rather than
+    // one taking a function — and then formatted to itself forever. A stable
+    // wrong fixed point passes every idempotence check there is. Comparing the
+    // reparsed tree is what refuses it.
+    const reparsed = parseProgram(`${signature} {\n    return 0\n}\n`).declarations[0];
+    assert.deepEqual(
+        reparsed.parameters.map((parameter) => ({
+            mode: parameter.mode,
+            external: parameter.external,
+            internal: parameter.internal,
+            type: parameter.type,
+        })),
+        declaration.parameters.map((parameter) => ({
+            mode: parameter.mode,
+            external: parameter.external,
+            internal: parameter.internal,
+            type: parameter.type,
+        })),
+        `declaration surface case ${JSON.stringify(expected.name)}: formatting changed what the parameters mean; ${JSON.stringify(signature)} reparses to a different tree`);
 }
 console.log(
     `call-arguments-surface: ${(corpus.declarationSurface ?? []).length} declaration shapes parse with mode, external label, and internal name distinct: PASS`);
@@ -130,8 +154,16 @@ const emitted = corpus.accept
     .map((testCase) => testCase.canonical)
     .concat((corpus.width ?? []).map((testCase) => testCase.canonical))
     .join("\n");
-assert.ok(!/\)\s*\{/.test(emitted.replace(/\)\s+fn\([^)]*\)\s\{/g, ")"))
-    , "the formatter emitted a brace directly after a call's parentheses, which is the brace-lambda spelling v1 does not have");
+// A brace lambda is a `{` where a call's closing parenthesis is followed by a
+// block with no `fn` between them. Every legitimate `{` in this surface is
+// preceded by a lambda's own parameter list, so removing `fn(...) {` wherever
+// it appears leaves only the illegitimate ones. Removing only the *trailing*
+// `) fn(...) {` was too narrow: a block lambda in argument position —
+// `outer(0, fn(x) { ... })` — kept its `) {` and read as the very spelling
+// this assertion forbids.
+const withoutLambdaHeads = emitted.replace(/\bfn\([^)]*\)\s*\{/g, "");
+assert.ok(!/\)\s*\{/.test(withoutLambdaHeads),
+    "the formatter emitted a brace directly after a call's parentheses, which is the brace-lambda spelling v1 does not have");
 assert.ok(!/\bit\b/.test(emitted),
     "the formatter emitted an implicit `it` parameter, which v1 does not have");
 // Every `fn` the formatter emits is either a named declaration — `fn next(` —

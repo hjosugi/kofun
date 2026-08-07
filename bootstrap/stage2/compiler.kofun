@@ -2204,6 +2204,18 @@ fn ownership_mode_token(source: Text, cursor: Int) -> Bool {
     return token == "read" || token == "edit" || token == "take"
 }
 
+# A word in a parameter head, which is an identifier *or* a keyword. `in` is a
+# keyword here, so counting only identifiers made the contract's own headline
+# example `fn replace(in text: Text, ...)` read as one word: no refusal fired
+# and the misparse this check removes came back as
+# `error[E2S35]: unknown lexical binding \`text\``. See the C profile for the
+# measurement. `read`, `edit`, and `take` are not keywords, so the ownership
+# modes were already counted.
+fn parameter_word_token(source: Text, cursor: Int) -> Bool {
+    let kind = token_kind(source, cursor)
+    return kind == "identifier" || kind == "keyword"
+}
+
 fn call_argument_surface_refusal(what: Text, cursor: Int) -> Text {
     return "error[E2S158]: " + what + " is specified by call-arguments v1 " +
     "but not implemented at byte " + to_text(cursor)
@@ -2262,7 +2274,7 @@ fn validate_call_argument_surface(source: Text) -> Text {
                         )
                     }
                 } else if depth == 0 && before_colon &&
-                    token_kind(source, cursor) == "identifier" {
+                    parameter_word_token(source, cursor) {
                     words = words + 1
                     if words == 1 {
                         first_word = cursor

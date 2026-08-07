@@ -3168,6 +3168,34 @@ static bool ownership_mode_token(const char *source, int64_t cursor) {
            token_equal(source, cursor, "take");
 }
 
+/*
+ * A word in a parameter head, which is an identifier *or* a keyword.
+ *
+ * The keyword half is not a nicety. `token_kind` returns "keyword" for the 16
+ * words in `keyword_token`, and `in` is one of them — so counting only
+ * identifiers made `fn replace(in text: Text, ...)` read as a single word and
+ * no refusal fired. That signature is the contract's headline example, quoted
+ * verbatim in `spec/syntax/call-arguments-v1.md`, and it reproduced the exact
+ * misparse this check exists to remove:
+ *
+ *     error[E2S35]: unknown lexical binding `text` at byte 45
+ *
+ * `spec/modules/visibility.md` describes the same class of token for
+ * visibility: these are contextual words, ordinary identifiers outside the
+ * position that gives them meaning. A parameter head is such a position, so
+ * `in`, `for`, `match` and the rest are legal external labels there — which is
+ * also what `spec/syntax/call-arguments/parser.mjs` decides, and the two
+ * profiles disagreeing about the spec's own example is the bug.
+ *
+ * The ownership modes are unaffected: `read`, `edit`, and `take` are not in
+ * `keyword_token`, so they were already counted and `ownership_mode_token`
+ * compares text rather than kind.
+ */
+static bool parameter_word_token(const char *source, int64_t cursor) {
+    const char *kind = token_kind(source, cursor);
+    return strcmp(kind, "identifier") == 0 || strcmp(kind, "keyword") == 0;
+}
+
 static char *call_argument_surface_refusal(
     const char *source,
     const char *what,
@@ -3247,7 +3275,7 @@ static char *validate_call_argument_surface(const char *source) {
                 } else if (
                     depth == 0 &&
                     before_colon &&
-                    strcmp(token_kind(source, cursor), "identifier") == 0
+                    parameter_word_token(source, cursor)
                 ) {
                     ++words;
                     if (words == 1) {

@@ -1,16 +1,30 @@
 {
   "schema": "kofun.call-arguments-surface/v1",
   "note": "The ambiguity corpus for issue #880. `declarations` is ordinary Kofun source, parsed by the same parser under test, so the signature environment every case resolves against is itself evidence that declaration external labels parse. Cases in `accept` state the surface kind, how many trailing lambdas attached, and the canonical text; cases in `reject` state the diagnostic category. Entries with \"format\": false say why they are not formatted.",
-  "declarations": "fn fold(values: List[Int], initial start: Int, combine: Int -> Int) -> Int {\n    return start\n}\n\nfn visit(items: List[Int], order ordering: Int, action: Int -> Int) -> Int {\n    return 0\n}\n\nfn outer(value: Int, action: Int -> Int) -> Int {\n    return value\n}\n\nfn inner(action: Int -> Int) -> Int {\n    return 0\n}\n\nfn transaction(action: Int -> Int) -> Int {\n    return 0\n}\n\nfn replace(in text: Text, from old: Text, to replacement: Text) -> Text {\n    return text\n}\n\nfn write(take into file: Int, bytes data: Int) -> Int {\n    return data\n}\n\nfn draw(width w: Int, height h: Int, filled fill: Int) -> Int {\n    return w\n}\n\nfn consume(value: Int) -> Int {\n    return value\n}\n\nfn commit(handle: Int) -> Int {\n    return handle\n}\n\nfn abs(value: Int) -> Int {\n    return value\n}\n",
-
+  "declarations": "fn fold(values: List[Int], initial start: Int, combine: (Int, Int) -> Int) -> Int {\n    return start\n}\n\nfn visit(items: List[Int], order ordering: Int, action: Int -> Int) -> Int {\n    return 0\n}\n\nfn outer(value: Int, action: Int -> Int) -> Int {\n    return value\n}\n\nfn inner(action: Int -> Int) -> Int {\n    return 0\n}\n\nfn transaction(action: Int -> Int) -> Int {\n    return 0\n}\n\nfn replace(in text: Text, from old: Text, to replacement: Text) -> Text {\n    return text\n}\n\nfn write(take into file: Int, bytes data: Int) -> Int {\n    return data\n}\n\nfn draw(width w: Int, height h: Int, filled fill: Int) -> Int {\n    return w\n}\n\nfn consume(value: Int) -> Int {\n    return value\n}\n\nfn commit(handle: Int) -> Int {\n    return handle\n}\n\nfn abs(value: Int) -> Int {\n    return value\n}\n\nfn compose(outer: (Int -> Int) -> Int, thunk: () -> Int) -> Int {\n    return 0\n}\n\nfn keep(read value: Int, edit slot: Int, take thing: Int) -> Int {\n    return value\n}\n",
   "declarationSurface": [
     {
       "name": "external label and internal name are distinct",
       "function": "replace",
       "parameters": [
-        { "mode": "read", "external": "in", "internal": "text", "type": "Text" },
-        { "mode": "read", "external": "from", "internal": "old", "type": "Text" },
-        { "mode": "read", "external": "to", "internal": "replacement", "type": "Text" }
+        {
+          "mode": "read",
+          "external": "in",
+          "internal": "text",
+          "type": "Text"
+        },
+        {
+          "mode": "read",
+          "external": "from",
+          "internal": "old",
+          "type": "Text"
+        },
+        {
+          "mode": "read",
+          "external": "to",
+          "internal": "replacement",
+          "type": "Text"
+        }
       ],
       "canonical": "fn replace(in text: Text, from old: Text, to replacement: Text) -> Text"
     },
@@ -18,8 +32,18 @@
       "name": "ownership mode precedes the external label",
       "function": "write",
       "parameters": [
-        { "mode": "take", "external": "into", "internal": "file", "type": "Int" },
-        { "mode": "read", "external": "bytes", "internal": "data", "type": "Int" }
+        {
+          "mode": "take",
+          "external": "into",
+          "internal": "file",
+          "type": "Int"
+        },
+        {
+          "mode": "read",
+          "external": "bytes",
+          "internal": "data",
+          "type": "Int"
+        }
       ],
       "canonical": "fn write(take into file: Int, bytes data: Int) -> Int"
     },
@@ -27,7 +51,12 @@
       "name": "a parameter without an external label is positional",
       "function": "abs",
       "parameters": [
-        { "mode": "read", "external": null, "internal": "value", "type": "Int" }
+        {
+          "mode": "read",
+          "external": null,
+          "internal": "value",
+          "type": "Int"
+        }
       ],
       "canonical": "fn abs(value: Int) -> Int"
     },
@@ -35,14 +64,72 @@
       "name": "a functional final parameter is what admits a trailing lambda",
       "function": "fold",
       "parameters": [
-        { "mode": "read", "external": null, "internal": "values", "type": "List[Int]" },
-        { "mode": "read", "external": "initial", "internal": "start", "type": "Int" },
-        { "mode": "read", "external": null, "internal": "combine", "type": "Int -> Int" }
+        {
+          "mode": "read",
+          "external": null,
+          "internal": "values",
+          "type": "List[Int]"
+        },
+        {
+          "mode": "read",
+          "external": "initial",
+          "internal": "start",
+          "type": "Int"
+        },
+        {
+          "mode": "read",
+          "external": null,
+          "internal": "combine",
+          "type": "(Int, Int) -> Int"
+        }
       ],
-      "canonical": "fn fold(values: List[Int], initial start: Int, combine: Int -> Int) -> Int"
+      "canonical": "fn fold(values: List[Int], initial start: Int, combine: (Int, Int) -> Int) -> Int"
+    },
+    {
+      "name": "a function type in domain position keeps its parentheses",
+      "function": "compose",
+      "parameters": [
+        {
+          "mode": "read",
+          "external": null,
+          "internal": "outer",
+          "type": "(Int -> Int) -> Int"
+        },
+        {
+          "mode": "read",
+          "external": null,
+          "internal": "thunk",
+          "type": "() -> Int"
+        }
+      ],
+      "canonical": "fn compose(outer: (Int -> Int) -> Int, thunk: () -> Int) -> Int"
+    },
+    {
+      "name": "an explicitly written read survives formatting",
+      "function": "keep",
+      "parameters": [
+        {
+          "mode": "read",
+          "external": null,
+          "internal": "value",
+          "type": "Int"
+        },
+        {
+          "mode": "edit",
+          "external": null,
+          "internal": "slot",
+          "type": "Int"
+        },
+        {
+          "mode": "take",
+          "external": null,
+          "internal": "thing",
+          "type": "Int"
+        }
+      ],
+      "canonical": "fn keep(read value: Int, edit slot: Int, take thing: Int) -> Int"
     }
   ],
-
   "accept": [
     {
       "name": "short trailing",
@@ -149,9 +236,22 @@
       "kind": "ordinary-call",
       "trailing": 0,
       "canonical": "abs(value)"
+    },
+    {
+      "name": "a block lambda in argument position formats instead of raising",
+      "source": "outer(0, fn(x) { consume(x) })",
+      "kind": "ordinary-call",
+      "trailing": 0,
+      "canonical": "outer(0, fn(x) {\n    consume(x)\n})"
+    },
+    {
+      "name": "a newline after a bound trailing lambda starts the next statement",
+      "source": "outer(0) fn(x) => x\nfn(y) => y",
+      "kind": "statement-sequence",
+      "trailing": 1,
+      "canonical": "outer(0) fn(x) => x\nfn(y) => y"
     }
   ],
-
   "reject": [
     {
       "name": "a trailing lambda needs the call's parentheses",
@@ -204,7 +304,6 @@
       "category": "trailing-comma"
     }
   ],
-
   "rejectDeclarations": [
     {
       "name": "an external label may not be declared twice",
@@ -227,7 +326,6 @@
       "category": "trailing-comma"
     }
   ],
-
   "width": [
     {
       "name": "an expression lambda that does not fit breaks after the arrow, keeping ) fn( intact",

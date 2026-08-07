@@ -39,22 +39,48 @@ function pad(depth) {
     return INDENT.repeat(depth);
 }
 
+// `->` is right-associative, so a function type in *domain* position must keep
+// its parentheses or the printer changes what the type means:
+//
+//     (Int -> Int) -> Int      a function taking a function
+//     Int -> Int -> Int        a function returning a function
+//
+// Dropping them was the worst kind of formatter bug, because the result is a
+// *stable* fixed point: it reparses to the second tree and then formats to
+// itself forever, so an idempotence check cannot see it. What catches it is
+// comparing the reparsed tree to the original, which `check-surface.mjs` now
+// does. `spec/grammar.ebnf` derives the parenthesised form as
+// `primary_type = "(", type_ref, ")"`.
+//
+// Only the domain needs them; a function type in result position is exactly
+// what the bare spelling already means.
 export function formatType(type) {
     if (type === null) return "";
     if (type.kind === "function") {
-        return `${formatType(type.domain)} -> ${formatType(type.result)}`;
+        const domain = type.domain.kind === "function"
+            ? `(${formatType(type.domain)})`
+            : formatType(type.domain);
+        return `${domain} -> ${formatType(type.result)}`;
+    }
+    if (type.kind === "tuple") {
+        return `(${type.elements.map(formatType).join(", ")})`;
     }
     if (type.arguments.length === 0) return type.name;
     return `${type.name}[${type.arguments.map(formatType).join(", ")}]`;
 }
 
 // `take into file: File` — mode, then external label, then internal name, in
-// the declaration order the contract fixes. `read` is the default and is
-// printed only when the source wrote it, which the parser records by keeping
-// the token rather than the resolved mode.
+// the declaration order the contract fixes.
+//
+// `read` is the default, and the source may write it anyway. Deciding on the
+// resolved mode — "print it unless it is `read`" — deleted an explicitly
+// written `read` while `edit` and `take` survived, so the printer silently
+// edited the declaration it was asked to format. `modeWritten` is what the
+// parser records for exactly this, because the resolved mode cannot tell an
+// omitted modifier from a written one.
 function formatParameter(parameter) {
     const words = [];
-    if (parameter.mode && parameter.mode !== "read") words.push(parameter.mode);
+    if (parameter.mode && parameter.modeWritten !== false) words.push(parameter.mode);
     if (parameter.external) words.push(parameter.external);
     words.push(parameter.internal);
     return `${words.join(" ")}: ${formatType(parameter.type)}`;
@@ -139,13 +165,26 @@ function multiline(node, depth, width) {
     if (node.kind === "Pipeline") {
         return `${formatExpression(node.subject, depth, width)} |> ${formatExpression(node.call, depth, width)}`;
     }
+    // A block lambda that is not in the trailing position still has to print.
+    // The parser accepts one anywhere an expression may appear — `outer(0,
+    // fn(x) { consume(x) })`, `let r: Int = fn(x) { consume(x) }` — and
+    // `inline` throws on it by design, so routing arguments through `inline`
+    // here turned every such program into an uncaught `FormatError`. That is
+    // not a `SurfaceError`, so it would kill the gate with a stack trace
+    // instead of a named assertion, which is exactly what this gate says it
+    // exists to prevent.
+    if (node.kind === "Lambda" && node.body === "block") {
+        return `fn(${formatLambdaParameters(node.parameters)}) ${formatBlock(node.block, depth, width)}`;
+    }
     if (node.kind !== "Call") return inline(node);
 
+    // Arguments go through `formatExpression`, not `inline`, so an argument
+    // that has no single-line form gets its multi-line one rather than raising.
     const args = node.arguments
         .map((argument) =>
             argument.label === null
-                ? inline(argument.expression)
-                : `${argument.label}: ${inline(argument.expression)}`)
+                ? formatExpression(argument.expression, depth, width)
+                : `${argument.label}: ${formatExpression(argument.expression, depth, width)}`)
         .join(", ");
     const head = `${inline(node.callee)}(${args})`;
     if (node.trailing === null) return head;
