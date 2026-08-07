@@ -347,6 +347,8 @@ fn validate_parts(
     second: Int,
     nanosecond: Int
 ) -> DateTimeOutcome {
+    if year < 1 { return InvalidField(1) }
+    if year > 9999 { return InvalidField(1) }
     if month < 1 { return InvalidField(2) }
     if month > 12 { return InvalidField(2) }
     if day < 1 { return InvalidField(3) }
@@ -570,6 +572,227 @@ fn parse_rfc3339(text: Text) -> DateTimeOutcome {
     return parse_year(text, length)
 }
 
+# Every month length of one year, checked against the proleptic Gregorian
+# table rather than a sum.  A sum would let two compensating errors pass.
+fn month_boundaries_ok(year: Int, expected_february: Int) -> Int {
+    if days_in_month(year, 1) != 31 { return 0 }
+    if days_in_month(year, 2) != expected_february { return 0 }
+    if days_in_month(year, 3) != 31 { return 0 }
+    if days_in_month(year, 4) != 30 { return 0 }
+    if days_in_month(year, 5) != 31 { return 0 }
+    if days_in_month(year, 6) != 30 { return 0 }
+    if days_in_month(year, 7) != 31 { return 0 }
+    if days_in_month(year, 8) != 31 { return 0 }
+    if days_in_month(year, 9) != 30 { return 0 }
+    if days_in_month(year, 10) != 31 { return 0 }
+    if days_in_month(year, 11) != 30 { return 0 }
+    if days_in_month(year, 12) != 31 { return 0 }
+    return 1
+}
+
+# Days since 1970-01-01, era-based.  `validate_parts` bounds years to
+# 0001..9999, so `y` is never negative here and `//` — which floors — agrees
+# with the truncating division the published algorithm assumes.
+fn days_from_civil(year: Int, month: Int, day: Int) -> Int {
+    let mut y = year
+    if month <= 2 { y = y - 1 }
+    let era = y // 400
+    let yoe = y - (era * 400)
+    let mut mp = month - 3
+    if month <= 2 { mp = month + 9 }
+    let doy = (((153 * mp) + 2) // 5) + (day - 1)
+    let doe = (((yoe * 365) + (yoe // 4)) - (yoe // 100)) + doy
+    return ((era * 146097) + doe) - 719468
+}
+
+# The inverse.  `days + 719468` is non-negative for every year this contract
+# admits — 0001-01-01 maps to 306 — so the era division again never floors a
+# negative numerator.
+fn civil_from_days(days: Int) -> Date {
+    let z = days + 719468
+    let era = z // 146097
+    let doe = z - (era * 146097)
+    let yoe = (((doe - (doe // 1460)) + (doe // 36524)) - (doe // 146096)) // 365
+    let year_of_era = yoe + (era * 400)
+    let doy = doe - (((365 * yoe) + (yoe // 4)) - (yoe // 100))
+    let mp = ((5 * doy) + 2) // 153
+    let day = (doy - (((153 * mp) + 2) // 5)) + 1
+    let mut month = mp + 3
+    if mp >= 10 { month = mp - 9 }
+    let mut year = year_of_era
+    if month <= 2 { year = year_of_era + 1 }
+    return make_date(year, month, day)
+}
+
+fn civil_round_trip(year: Int, month: Int, day: Int) -> Int {
+    let days = days_from_civil(year, month, day)
+    let restored: Date = civil_from_days(days)
+    return same_date(restored, make_date(year, month, day))
+}
+
+fn absolute(value: Int) -> Int {
+    if value < 0 { return 0 - value }
+    return value
+}
+
+fn same_sign(left: Int, right: Int) -> Int {
+    if left < 0 {
+        if right < 0 { return 1 }
+        return 0
+    }
+    if right < 0 { return 0 }
+    return 1
+}
+
+# Operation ids: `1` addition, `2` subtraction, `3` multiplication.
+fn checked_sub(left: Int, right: Int) -> DateTimeOutcome {
+    let maximum = 9223372036854775807
+    let minimum = (0 - 9223372036854775807) - 1
+    if right < 0 {
+        if left > maximum + right { return ArithmeticOverflow(2) }
+    }
+    if right > 0 {
+        if left < minimum + right { return ArithmeticOverflow(2) }
+    }
+    return DateTimeOk(left - right)
+}
+
+# The guard compares magnitudes so the bound division never takes a negative
+# numerator: `//` floors, and a floored negative quotient rounds away from
+# zero, which would reject representable products.
+fn checked_mul(left: Int, right: Int) -> DateTimeOutcome {
+    if left == 0 { return DateTimeOk(0) }
+    if right == 0 { return DateTimeOk(0) }
+    let maximum = 9223372036854775807
+    let minimum = (0 - 9223372036854775807) - 1
+    # `minimum` has no positive magnitude, so it survives only multiplied by 1.
+    if left == minimum {
+        if right == 1 { return DateTimeOk(minimum) }
+        return ArithmeticOverflow(3)
+    }
+    if right == minimum {
+        if left == 1 { return DateTimeOk(minimum) }
+        return ArithmeticOverflow(3)
+    }
+    let left_magnitude = absolute(left)
+    let right_magnitude = absolute(right)
+    if left_magnitude > (maximum // right_magnitude) {
+        # One product past `maximum` is still representable: `minimum` itself.
+        # Reaching it needs opposite signs and magnitudes whose product is
+        # exactly `maximum + 1`, which these two equalities decide without ever
+        # computing the overflowing product.
+        if same_sign(left, right) == 0 {
+            if left_magnitude == (maximum // right_magnitude) + 1 {
+                if (maximum % right_magnitude) == right_magnitude - 1 {
+                    return DateTimeOk(minimum)
+                }
+            }
+        }
+        return ArithmeticOverflow(3)
+    }
+    return DateTimeOk(left * right)
+}
+
+# `observe` cannot report the negative bound distinguishably — adding 100 to it
+# is itself an overflow — so this asks the narrower question directly.
+fn checked_mul_equals_minimum(left: Int, right: Int) -> Int {
+    let minimum = (0 - 9223372036854775807) - 1
+    let product: DateTimeOutcome = checked_mul(left, right)
+    match product {
+        DateTimeOk(value) => {
+            if value == minimum { return 1 }
+            return 0
+        },
+        other => { return 0 },
+    }
+    return 0
+}
+
+fn duration_total_nanoseconds(value: Duration) -> DateTimeOutcome {
+    let scaled: DateTimeOutcome = checked_mul(value.seconds, 1000000000)
+    match scaled {
+        DateTimeOk(seconds) => { return checked_add(seconds, value.nanoseconds) },
+        other => { return other },
+    }
+    return ArithmeticOverflow(3)
+}
+
+fn duration_is_canonical(value: Duration) -> Int {
+    if value.nanoseconds < 0 { return 0 }
+    if value.nanoseconds >= 1000000000 { return 0 }
+    return 1
+}
+
+# Normalization must move the subsecond field into `0..999_999_999` without
+# changing the span the value denotes.
+fn duration_round_trip(seconds: Int, nanoseconds: Int) -> Int {
+    let normalized: Duration = normalize_duration(seconds, nanoseconds)
+    if duration_is_canonical(normalized) == 0 { return 0 }
+    let before: DateTimeOutcome = duration_total_nanoseconds(
+        make_duration(seconds, nanoseconds)    )
+    let after: DateTimeOutcome = duration_total_nanoseconds(normalized)
+    match before {
+        DateTimeOk(left) => {
+            match after {
+                DateTimeOk(right) => {
+                    if left == right { return 1 }
+                    return 0
+                },
+                other => { return 0 },
+            }
+        },
+        other => { return 0 },
+    }
+    return 0
+}
+
+# The contract bounds a fixed offset to -18h..+18h.  Field id `8` is the
+# offset, continuing the `validate_parts` numbering.
+fn validate_offset(offset_seconds: Int) -> DateTimeOutcome {
+    if offset_seconds < (0 - 64800) { return InvalidField(8) }
+    if offset_seconds > 64800 { return InvalidField(8) }
+    return DateTimeOk(offset_seconds)
+}
+
+# An OffsetDateTime denotes exactly one Instant.  The offset is subtracted,
+# never added, and every step is checked, so a representable civil value with
+# an unrepresentable instant is a typed error rather than a wrapped number.
+fn offset_date_time_to_instant(value: OffsetDateTime) -> DateTimeOutcome {
+    let offset: DateTimeOutcome = validate_offset(value.offset_seconds)
+    match offset {
+        DateTimeOk(_) => {},
+        other => { return other },
+    }
+    let parts: DateTimeOutcome = validate_parts(
+        value.year,
+        value.month,
+        value.day,
+        value.hour,
+        value.minute,
+        value.second,
+        value.nanosecond    )
+    match parts {
+        DateTimeOk(_) => {},
+        other => { return other },
+    }
+    let days = days_from_civil(value.year, value.month, value.day)
+    let day_seconds: DateTimeOutcome = checked_mul(days, 86400)
+    match day_seconds {
+        DateTimeOk(base) => {
+            let clock = ((value.hour * 3600) + (value.minute * 60)) + value.second
+            let local: DateTimeOutcome = checked_add(base, clock)
+            match local {
+                DateTimeOk(civil) => {
+                    return checked_sub(civil, value.offset_seconds)
+                },
+                other => { return other },
+            }
+        },
+        other => { return other },
+    }
+    return ArithmeticOverflow(3)
+}
+
 fn observe(outcome: DateTimeOutcome) -> Int {
     let mut result = 0
     match outcome {
@@ -627,5 +850,103 @@ fn main() -> Int {
     print(observe(parse_rfc3339("2024-02-29T12:34:X6Z")))
     print(observe(nanos_to_millis(1000001)))
     print(observe(parse_rfc3339("2024-02-29T12:34:56.123456789Z")))
+
+    # Centuries. 1900 and 2100 are common; 2000 is leap. Every month length of
+    # each is checked individually.
+    print(month_boundaries_ok(1900, 28))
+    print(month_boundaries_ok(2000, 29))
+    print(month_boundaries_ok(2100, 28))
+    print(month_boundaries_ok(2024, 29))
+    print(month_boundaries_ok(2023, 28))
+
+    # Day-count vectors against the POSIX epoch.
+    print(days_from_civil(1970, 1, 1))
+    print(days_from_civil(2024, 2, 29))
+    print(days_from_civil(1900, 3, 1))
+    print(days_from_civil(2000, 3, 1))
+    print(days_from_civil(2100, 3, 1))
+    print(days_from_civil(1, 1, 1))
+    print(days_from_civil(9999, 12, 31))
+
+    # Civil round-trip across the boundaries that break naive algorithms.
+    print(civil_round_trip(1970, 1, 1))
+    print(civil_round_trip(2024, 2, 29))
+    print(civil_round_trip(1900, 2, 28))
+    print(civil_round_trip(2000, 2, 29))
+    print(civil_round_trip(2100, 3, 1))
+    print(civil_round_trip(1, 1, 1))
+    print(civil_round_trip(9999, 12, 31))
+    print(civil_round_trip(2023, 12, 31))
+
+    # Duration normalization keeps the span and reaches canonical form.
+    print(duration_round_trip(0, -1))
+    print(duration_round_trip(0, 1000000000))
+    print(duration_round_trip(5, -999999999))
+    print(duration_round_trip(-3, 1500000000))
+
+    # Every arithmetic path is checked, including the negative bound.
+    print(observe(checked_sub((0 - 9223372036854775807) - 1, 1)))
+    print(observe(checked_sub(0, 9223372036854775807)))
+    print(observe(checked_mul(9223372036854775807, 2)))
+    print(observe(checked_mul(4611686018427387904, 2)))
+    # The one product past `maximum` that is still representable.
+    print(checked_mul_equals_minimum(0 - 4611686018427387904, 2))
+    print(checked_mul_equals_minimum(2, 0 - 4611686018427387904))
+    print(observe(checked_mul(0, 9223372036854775807)))
+    print(observe(checked_mul(3, 7)))
+
+    # An OffsetDateTime denotes exactly one Instant.
+    print(observe(offset_date_time_to_instant(
+        make_offset_date_time(1970, 1, 1, 0, 0, 0, 0, 0)    )))
+    print(observe(offset_date_time_to_instant(
+        make_offset_date_time(2024, 2, 29, 12, 34, 56, 0, 0)    )))
+    print(observe(offset_date_time_to_instant(
+        make_offset_date_time(2024, 2, 29, 12, 34, 56, 0, 32400)    )))
+    print(observe(offset_date_time_to_instant(
+        make_offset_date_time(2024, 2, 29, 12, 34, 56, 0, 0 - 18000)    )))
+    # +18:00 and -18:00 are the representable extremes; one second past is not.
+    print(observe(offset_date_time_to_instant(
+        make_offset_date_time(2024, 2, 29, 12, 34, 56, 0, 64800)    )))
+    print(observe(offset_date_time_to_instant(
+        make_offset_date_time(2024, 2, 29, 12, 34, 56, 0, 0 - 64800)    )))
+    print(observe(offset_date_time_to_instant(
+        make_offset_date_time(2024, 2, 29, 12, 34, 56, 0, 64801)    )))
+    print(observe(offset_date_time_to_instant(
+        make_offset_date_time(2024, 2, 29, 12, 34, 56, 0, 0 - 64801)    )))
+    # Year 0 is outside the proleptic range this contract admits.
+    print(observe(offset_date_time_to_instant(
+        make_offset_date_time(0, 1, 1, 0, 0, 0, 0, 0)    )))
+
+    # RFC 3339: 0..9 fractional digits all parse to canonical nanoseconds.
+    print(observe(parse_rfc3339("2024-02-29T12:34:56Z")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56.1Z")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56.12Z")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56.123Z")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56.1234Z")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56.12345Z")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56.123456Z")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56.1234567Z")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56.12345678Z")))
+
+    # RFC 3339 rejection matrix. Each form fails at an exact byte position or
+    # an exact field id; none is accepted by a lenient path.
+    print(observe(parse_rfc3339("2024-02-29t12:34:56Z")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56z")))
+    print(observe(parse_rfc3339("2024-02-29 12:34:56Z")))
+    print(observe(parse_rfc3339("2024-02-29T12:34Z")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56,123Z")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56.1234567890Z")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56.Z")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56-00:00")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56+0900")))
+    print(observe(parse_rfc3339(" 2024-02-29T12:34:56Z")))
+    print(observe(parse_rfc3339("2024-02-29T24:00:00Z")))
+    print(observe(parse_rfc3339("2024-02-29T12:60:56Z")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:60Z")))
+    print(observe(parse_rfc3339("2024-13-29T12:34:56Z")))
+    print(observe(parse_rfc3339("2024-02-00T12:34:56Z")))
+    print(observe(parse_rfc3339("1900-02-29T12:34:56Z")))
+    print(observe(parse_rfc3339("2100-02-29T12:34:56Z")))
+    print(observe(parse_rfc3339("2000-02-29T12:34:56Z")))
     return 0
 }
