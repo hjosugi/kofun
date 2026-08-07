@@ -29,6 +29,17 @@ set -eu
 # `unnamed-blocker` while it is being fixed, or as `capability-blocker` when
 # the thing it waits on is not an issue at all.
 #
+# The claim rules got the same treatment. Both are quantified over the claims
+# that exist, so with none anywhere they passed without checking anything:
+# measured 2026-08-07, `PASS: 0 live claims` across all 70 open issues while
+# four of them had an open pull request implementing them. Worse, every
+# `agent-claim:v1` comment on the tracker used a wrapped or prose shape that
+# `claimEvents()` strips — ten such comments on #645 extract to zero events —
+# so their authors believed they had published ownership. `in-progress` is the
+# one ownership assertion this offline snapshot can check, so an `in-progress`
+# issue with no live claim is now a failure, recorded as `unclaimed-progress`
+# until its owner posts a canonical claim.
+#
 # This reads only artifacts/backlog/issue-state.json, so it needs no network
 # and runs inside `task verify`. `task backlog-refresh` regenerates that
 # snapshot, and CI proves the committed copy still matches by regenerating and
