@@ -1,19 +1,36 @@
 {
   "schema": "kofun.backlog-issue-state/v1",
   "repository": "kofun-lang/kofun",
-  "state_labels": ["ready", "blocked", "needs-detail", "needs-decision", "deferred", "in-progress"],
+  "state_labels": [
+    "ready",
+    "blocked",
+    "needs-detail",
+    "needs-decision",
+    "deferred",
+    "in-progress"
+  ],
   "open_issues": 1,
-  "issues": [{
-    "number": 8,
-    "title": "duplicate ownership",
-    "issue_state": "open",
-    "state_labels": [],
-    "state_line": null,
-    "blocked_by": [],
-    "evidence_commits": [],
-    "claims": [
-      {"agent_id": "agent-b", "status": "pr-open"},
-      {"agent_id": "agent-a", "status": "active"}
-    ]
-  }]
+  "issues": [
+    {
+      "number": 8,
+      "title": "duplicate ownership",
+      "issue_state": "open",
+      "state_labels": [
+        "deferred"
+      ],
+      "state_line": "deferred",
+      "blocked_by": [],
+      "evidence_commits": [],
+      "claims": [
+        {
+          "agent_id": "agent-b",
+          "status": "pr-open"
+        },
+        {
+          "agent_id": "agent-a",
+          "status": "active"
+        }
+      ]
+    }
+  ]
 }

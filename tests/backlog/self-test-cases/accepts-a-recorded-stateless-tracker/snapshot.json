@@ -9,15 +9,19 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 3,
+  "open_issues": 4,
   "issues": [
     {
       "number": 1,
-      "title": "invents a state",
-      "state_labels": [],
-      "state_line": "planning",
+      "title": "a startable issue",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ]
     },
     {
       "number": 2,
@@ -34,6 +38,16 @@
         "deferred"
       ],
       "state_line": "deferred",
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 4,
+      "title": "a state the gate cannot read",
+      "state_labels": [
+        "deferred"
+      ],
+      "state_line": null,
       "blocked_by": [],
       "evidence_commits": []
     }

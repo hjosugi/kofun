@@ -62,7 +62,13 @@ const byNumber = new Map(issues.map((issue) => [issue.number, issue]))
 // tests/backlog/check-stamps.mjs owns it and this reader must not report those
 // rows as unused. A kind neither reader claims is a typo that would otherwise
 // sit in the file excusing nothing.
-const OWNED_KINDS = new Set(['state-disagreement', 'unstamped-ready', 'closed-blockers'])
+const OWNED_KINDS = new Set([
+    'state-disagreement',
+    'unstamped-ready',
+    'closed-blockers',
+    'unreadable-state',
+    'stateless-tracker',
+])
 const KNOWN_KINDS = new Set([...OWNED_KINDS, 'unverifiable-stamp'])
 
 const debt = new Map()
@@ -106,6 +112,8 @@ let blockedWithNamedBlockers = 0
 let stamped = 0
 let readyCount = 0
 let stated = 0
+let unreadableState = 0
+let statelessTrackers = 0
 let claims = 0
 let liveClaims = 0
 
@@ -168,6 +176,39 @@ for (const issue of issues) {
         continue
     }
     if (line !== null) stated += 1
+
+    // 2b. Coverage. Every rule below rule 2 is keyed on the State line, so an
+    //     issue whose body has none is skipped by all of them — silently, and
+    //     without reducing the count the gate reports. `PASS: 51 State lines
+    //     name a state` read as complete while it was 51 of 71, and the 20 it
+    //     never reached included #955, whose label says `blocked` while its
+    //     body says `State: in-progress.` — a disagreement rule 3 exists to
+    //     catch and structurally could not see, because an unprefixed line
+    //     extracts as null and rule 3 needs two values to compare.
+    //
+    //     So an unreadable state is now a failure like any other, with the two
+    //     ledger kinds separating the two things it can mean. `unreadable-state`
+    //     is drift with a fix — write the `- State:` line — and its detail is
+    //     the label that supplies the answer, so relabelling the issue makes
+    //     the row fail rather than quietly excuse a different state.
+    //     `stateless-tracker` is a deliberate exemption for an issue that
+    //     carries no state by design; recording it separately is what keeps it
+    //     from being indistinguishable from drift.
+    if (line === null) {
+        const label = issue.state_labels[0] ?? '-'
+        if (owedDebt('stateless-tracker', issue.number, label)) {
+            statelessTrackers += 1
+        } else if (owedDebt('unreadable-state', issue.number, label)) {
+            unreadableState += 1
+        } else {
+            failures.push(
+                `${where} carries no \`State:\` line the gate can read, so every rule keyed on it ` +
+                    'skips this issue; add `- State: <state>` to its body, or record it in ' +
+                    'tests/backlog/debt.tsv as `unreadable-state` or `stateless-tracker`',
+            )
+            continue
+        }
+    }
 
     // 3. Label and body agree when both are present. An issue with neither is
     //    untriaged, which is a different problem and not this gate's.
@@ -249,6 +290,7 @@ process.stdout.write(
     `PASS: ${claims} canonical claim events use the closed status vocabulary\n` +
         `PASS: ${liveClaims} live claims are unique per open issue and absent from closed issues\n` +
         `PASS: ${stated} State lines name a state in the vocabulary\n` +
+        `PASS: ${stated} of ${stated + unreadableState + statelessTrackers} open issues carry a State line the gate reads; ${unreadableState} recorded as unreadable, ${statelessTrackers} exempt by design\n` +
         `PASS: ${agreeing} issues agree between their state label and their State line\n` +
         `PASS: ${blockedWithNamedBlockers} blocked issues with named blockers still have an open blocker or recorded debt\n` +
         `PASS: no ready issue names an open blocker (${readyCount} ready)\n` +
