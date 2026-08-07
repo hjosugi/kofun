@@ -50,6 +50,7 @@
 0	tests/fuzz/adapters/arithmetic-wasm32-node.sh
 0	tests/fuzz/fixtures/protocol-adapter.sh
 0	tests/fuzz/semantic_protocol_test.sh
+0	tests/fuzz/visibility-artifacts.sh
 0	tests/http/check.sh
 0	tests/lsp/check.sh
 0	tests/package_manager.sh
