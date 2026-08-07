@@ -9,6 +9,16 @@ set -eu
 # this repository already gates. It had drifted: #648, #880, and #885 all
 # carried `ready` while their bodies named an open blocker.
 #
+# It also reports its own coverage. Every rule here is keyed on the `State:`
+# line, so an issue whose body has none was skipped by all of them without
+# reducing the count printed at the end: `PASS: 51 State lines name a state`
+# was 51 of 71. Measured 2026-08-07, the 20 it never reached included #955,
+# whose label says `blocked` while its body says `State: in-progress.` — a
+# disagreement one of these rules exists to catch and structurally could not
+# see. An unreadable state is now a failure, recorded in debt.tsv as
+# `unreadable-state` while it is being fixed, or as `stateless-tracker` for an
+# issue that carries no state by design.
+#
 # This reads only artifacts/backlog/issue-state.json, so it needs no network
 # and runs inside `task verify`. `task backlog-refresh` regenerates that
 # snapshot, and CI proves the committed copy still matches by regenerating and
