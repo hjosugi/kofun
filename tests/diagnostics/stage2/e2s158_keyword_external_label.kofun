@@ -1,0 +1,26 @@
+# diagnostic-mode: compile
+# expect-code: E2S158
+# expect-span: byte 994
+# The contract's headline example, `spec/syntax/call-arguments-v1.md`:
+#
+#     fn replace(in text: Text, from old: Text, to replacement: Text) -> Text
+#
+# `in` is one of the sixteen words `keyword_token` classifies as a keyword, so
+# a parameter scan that counted only `identifier` tokens read `in text:` as a
+# single word and refused nothing. This exact signature therefore reproduced the
+# misparse E2S158 exists to remove — `error[E2S35]: unknown lexical binding
+# `text`` — while `spec/syntax/call-arguments/parser.mjs` reported the same
+# parameter as `{"external": "in", "internal": "text"}`. The two halves of the
+# slice disagreed about the spec's own example.
+#
+# The span must be the FIRST label. Before the fix the three-parameter form did
+# eventually fire, but on `from` — the first label spelled as an ordinary
+# identifier — so the diagnostic pointed past the one the author would fix.
+fn replace(in text: Int, from old: Int, to replacement: Int) -> Int {
+    return text + old + replacement
+}
+
+fn main() -> Int {
+    print(replace(1, 2, 3))
+    return 0
+}

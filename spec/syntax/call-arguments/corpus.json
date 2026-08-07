@@ -6,7 +6,7 @@
     { "name": "pipeline trailing", "source": "items |> fold(initial: 0) fn(acc, item) => acc + item", "kind": "pipeline-trailing-call" },
     { "name": "nested trailing", "source": "outer(inner() fn(x) => x) fn(y) => y", "kind": "trailing-call" },
     { "name": "block trailing", "source": "items.visit(order: depth_first) fn(item) { consume(item) }", "kind": "trailing-call" },
-    { "name": "named declaration follows", "source": "consume(value)\nfn next(value: Int) => value", "kind": "separate-declaration" },
+    { "name": "named declaration follows", "source": "consume(value)\nfn next(value: Int) = value", "kind": "separate-declaration" },
     { "name": "ordinary", "source": "replace(in: source, from: old, to: new)", "kind": "ordinary-call" }
   ],
   "usability": [
