@@ -59,6 +59,15 @@ unsupported boundary. `task release-claims` fails when those disagree.
 
 ## Repository
 
+Looking for the compiler itself? It is
+[`bootstrap/stage2/compiler.kofun`](bootstrap/stage2/compiler.kofun), the
+canonical front end written in Kofun, paired with
+[`bootstrap/stage2/compiler.c`](bootstrap/stage2/compiler.c), the audited C11
+seed that actually executes when you run the CLI.
+[Compiler architecture](docs/COMPILER_ARCHITECTURE.md#where-the-compiler-actually-is)
+explains which file runs when, and why a feature-named file under
+`bootstrap/stage2/` does not mean that feature compiles.
+
 | Path | Owns |
 |---|---|
 | [`bootstrap/`](bootstrap/) | compiler stages, self-hosting, native, wasm32, and C ABI checkpoints |

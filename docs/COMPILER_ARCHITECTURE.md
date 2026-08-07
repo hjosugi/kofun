@@ -1,6 +1,106 @@
 # Compiler architecture
 
+## Where the compiler actually is
+
+Two files answer almost every version of "where is the language implemented".
+
+| File | What it is |
+|---|---|
+| `bootstrap/stage2/compiler.kofun` | the canonical front end, written in Kofun |
+| `bootstrap/stage2/compiler.c` | the audited C11 seed that actually executes today |
+
+They are the same compiler twice. The Kofun file is the source of truth for what
+the language does; the C file is a transliteration of it that exists only until
+the bootstrap path can lower the complete Stage 2 source, and it is the one
+`cc` compiles when you run the CLI. Change both together — `bootstrap/stage2/SHA256SUMS`
+pins each, and `task stage2` fails when a digest moves without its pair.
+
+Everything under `bootstrap/stage2/` that is *not* one of those two files is a
+separate bounded checkpoint. See [Checkpoints are not the compiler](#checkpoints-are-not-the-compiler)
+before concluding that a feature works because a file for it exists.
+
+### What runs when you type a command
+
+`./bin/kofun build` and `./bin/kofun check` reach Stage 2 first, not Stage 1:
+
+```text
+source.kofun
+    |
+    v  bin/kofun  emit_c()
+bootstrap/stage2/compiler.c          exit 0  -> generated C11 -> cc -> executable
+    |
+    |  exit 3 only: "well-formed but this profile cannot lower it"
+    v
+bootstrap/stage1/compiler.c          exit 0  -> generated C11 -> cc -> executable
+```
+
+Stage 1 is the fallback, and only for exit status 3. Any other nonzero status is
+Stage 2's refusal and is reported as such — the CLI does not retry a program
+Stage 2 rejected. `--target x86_64-linux` and `--target aarch64-linux` leave this
+path entirely and use `bootstrap/native/core_compiler.c`; wasm32 uses
+`bootstrap/wasm/compiler.c`. Those are independent compilers over their own
+bounded Cores, not backends behind a shared front end.
+
+### Checkpoints are not the compiler
+
+Nine files in `bootstrap/stage2/` are named for language features and none of
+them is linked into `compiler.c`. Measured on `de4ffaa2`:
+
+```text
+standalone adt_frontend.c            standalone optional_frontend.c
+standalone const_generics_frontend.c standalone record_frontend.c
+standalone generics_frontend.c       standalone traits_frontend.c
+standalone hm_levels_frontend.c      standalone module_symbols.c
+standalone re_exports.c
+```
+
+Each is built and executed by its own gate, and each proves a bounded claim
+about a feature in isolation. None of them is reachable from `./bin/kofun`.
+
+The consequence is worth stating flatly, because the file listing implies the
+opposite. `bootstrap/stage2/generics_frontend.c` is 59 KB and `task generics`
+passes, and yet:
+
+```console
+$ cat generic.kofun
+fn identity[T](value: T) -> T {
+    return value
+}
+
+fn main() -> Int {
+    print(identity(42))
+    return 0
+}
+
+$ ./bin/kofun check generic.kofun
+error[E2S03]: malformed function at byte 0
+```
+
+So "a frontend exists for X" and "X compiles" are different claims, and this
+repository deliberately makes only the first one for these nine. A feature is
+usable through the CLI when `bootstrap/stage2/compiler.kofun` and its C seed
+implement it — not when a checkpoint for it exists.
+
+There is no single integrated compiler core yet. `docs/MVP_IMPLEMENTED.md` is
+the exact capability matrix, and `task release-claims` fails when it and
+`release/claims.json` disagree.
+
+### Reading order
+
+```text
+1. bin/kofun                          ensure_stage2_compiler, emit_c, build_native_file
+2. bootstrap/stage2/compiler.kofun    canonical front end
+3. bootstrap/stage2/compiler.c        what executes today
+4. bootstrap/stage1/compiler.kofun    the smaller bootstrap Core
+5. bootstrap/native/core_compiler.c   the direct x86-64 / AArch64 backend
+```
+
 ## Implemented bootstrap
+
+The Stage 1 path below is the *fallback*, reached only on Stage 2 exit status 3.
+It is described first because it is the smaller and older of the two, not
+because it is what a `./bin/kofun build` normally runs — see
+[What runs when you type a command](#what-runs-when-you-type-a-command).
 
 ```text
 bootstrap/stage1/compiler.kofun
@@ -59,6 +159,9 @@ Core profile; it does not yet share a general typed IR with the native targets.
 
 ## Target pipeline
 
+This is the intended shape, and it is **not** what the three backends share
+today:
+
 ```text
 UTF-8 source
   -> lexer
@@ -69,6 +172,19 @@ UTF-8 source
   -> optimization
   -> native / C11 / wasm backend
 ```
+
+Read the last line as a goal rather than a description. There is no typed IR
+common to the three targets: the C11 path runs Stage 2's own lowering, the
+native path parses again in `bootstrap/native/core_compiler.c`, and wasm32
+parses again in `bootstrap/wasm/compiler.c`. Each accepts a different bounded
+Core, which is why a program that builds for one target can be refused by
+another rather than merely running slower. The self-hosting note above says the
+same thing narrowly — wasm32 "does not yet share a general typed IR with the
+native targets" — and it holds for the native/C11 pair too.
+
+A single front end feeding three backends is the direction; the executable
+state is three front ends. Nothing in this repository gates the unified
+pipeline, so it is stated here as intent and nowhere as a capability.
 
 Future compiler components must be implemented in `.kofun`. Generated
 bootstrap artifacts require canonical Kofun source, a reproduction command, and
