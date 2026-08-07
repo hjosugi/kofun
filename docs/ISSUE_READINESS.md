@@ -84,11 +84,11 @@ their comments. A closed row stays in the snapshot, without increasing
 umbrella or generated catalogue — never directly implementation-ready — and the
 umbrella still has a state, because "this is an umbrella" and "this is waiting
 on something" are different facts. Eleven of the twelve open `planning` issues
-already carry one: [#624](https://github.com/hjosugi/kofun/issues/624), #572,
+already carry one: [#624](https://github.com/kofun-lang/kofun/issues/624), #572,
 #543, #298, #289, #32, #31, #30, and #26 are `planning` + `blocked`, #532 is
 `planning` + `deferred`, and #276 is `planning` + `needs-decision`.
 
-The twelfth, [#998](https://github.com/hjosugi/kofun/issues/998), wrote `State:
+The twelfth, [#998](https://github.com/kofun-lang/kofun/issues/998), wrote `State:
 planning` in its `## Metadata` block. Putting an orthogonal marker in the state
 slot does not make the issue `planning`; it leaves the issue with no state at
 all, which is why nothing could tell whether it was startable. Its `State:` line
@@ -162,11 +162,11 @@ evidence` against current `main`. Then either confirm the stamp or update it,
 fill the gaps above, and change the label *and* the `State:` line together.
 
 Re-measurement is not a formality. In one afternoon it found that
-[#772](https://github.com/hjosugi/kofun/issues/772)'s stated premise was
+[#772](https://github.com/kofun-lang/kofun/issues/772)'s stated premise was
 already false, that
-[#848](https://github.com/hjosugi/kofun/issues/848)'s first acceptance
+[#848](https://github.com/kofun-lang/kofun/issues/848)'s first acceptance
 criterion did not hold for a reason unrelated to clocks, and that
-[#868](https://github.com/hjosugi/kofun/issues/868)'s "profile split" was four
+[#868](https://github.com/kofun-lang/kofun/issues/868)'s "profile split" was four
 splits rather than one. None of those were visible from reading the issues.
 
 **To demote,** say what changed. An issue that goes back to `needs-detail`
@@ -194,7 +194,7 @@ Taken on `main` at `e2200ef86b9ee537c34847b45970c13bdb0ac4ee`.
 |---|---|
 | "Definition of Ready" anywhere in the tree | absent — the label references a document that did not exist |
 | the state vocabulary in any `.md` | absent — `needs-detail` and friends appear only in issue bodies and label descriptions |
-| issues labelled `ready` whose body says `State: blocked` | 2 — [#648](https://github.com/hjosugi/kofun/issues/648) and [#880](https://github.com/hjosugi/kofun/issues/880) |
+| issues labelled `ready` whose body says `State: blocked` | 2 — [#648](https://github.com/kofun-lang/kofun/issues/648) and [#880](https://github.com/kofun-lang/kofun/issues/880) |
 | issues labelled `needs-detail` whose body says `State: ready` | 0 |
 
 The disagreement runs one way, which is the direction that costs: an issue can
@@ -228,7 +228,7 @@ word with nothing to disagree with was never read.
 
 That is not a hypothetical typo. It is what an orthogonal label looks like when
 it lands in the state slot, and it costs the issue its state entirely —
-[#998](https://github.com/hjosugi/kofun/issues/998) said `State: planning`, and
+[#998](https://github.com/kofun-lang/kofun/issues/998) said `State: planning`, and
 the gate reported agreement across the whole backlog without having looked at
 it. The label is real and the issue was self-consistent, which is exactly why
 nothing caught it.
@@ -271,9 +271,9 @@ that was not recorded. What it held on the day it landed:
 | Kind | Rows | What they are |
 |---|---:|---|
 | `state-disagreement` | 11 | mostly a bulk relabel to `blocked` that did not update the bodies; which side is right is a decision per issue, not something a gate may guess |
-| `closed-blockers` | 1 | [#584](https://github.com/hjosugi/kofun/issues/584) still names completed #583; closure means the dependency record is stale, not that the gate may choose its replacement state |
+| `closed-blockers` | 1 | [#584](https://github.com/kofun-lang/kofun/issues/584) still names completed #583; closure means the dependency record is stale, not that the gate may choose its replacement state |
 | `unstamped-ready` | 4 | `ready` before rule 2 existed |
-| `unverifiable-stamp` | 1 | [#738](https://github.com/hjosugi/kofun/issues/738) names a commit that is on no branch, so its measurement cannot be re-run |
+| `unverifiable-stamp` | 1 | [#738](https://github.com/kofun-lang/kofun/issues/738) names a commit that is on no branch, so its measurement cannot be re-run |
 
 One rule stays manual: whether an issue's `## Scope`, acceptance criteria, and
 `## Validation` actually meet the Definition of Ready. A gate can see that a

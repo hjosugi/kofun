@@ -1,7 +1,7 @@
 # Move-assertion corpus
 
 The bounded first artifact for
-[#572](https://github.com/hjosugi/kofun/issues/572): the written distinction
+[#572](https://github.com/kofun-lang/kofun/issues/572): the written distinction
 between semantic `take` and optimization-only managed moves
 (docs/MEMORY_MODEL.md §14), and the unstable compile-time assertion
 `compiler.ensure_move(value)` with its explained failures.
@@ -106,5 +106,5 @@ Deliberately not in this artifact, per the bounded first slice of #572:
   vocabulary, unreachable while the slice can express no foreign call;
 - `take`-parameter handoff — `take` is not yet expressible in the Stage 2
   slice, so the borrowed-parameter rejection stands in its place;
-- [#576](https://github.com/hjosugi/kofun/issues/576)'s constructor reuse
+- [#576](https://github.com/kofun-lang/kofun/issues/576)'s constructor reuse
   analysis, which builds on this assertion once it exists.

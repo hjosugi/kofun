@@ -4,7 +4,7 @@
 - Opened: 2026-08-01
 - Status: proposed
 
-Proposal for [#573](https://github.com/hjosugi/kofun/issues/573). Review is
+Proposal for [#573](https://github.com/kofun-lang/kofun/issues/573). Review is
 scheduled to close on 2026-08-15, the ledger's 14-day minimum.
 
 ## Summary
@@ -64,7 +64,7 @@ implicitness, for three reasons that are already recorded decisions here:
   allocation policy — exactly what #569 removes for environment, filesystem,
   and network access, and what the charter's "No ambient authority" rule
   forbids for the standard library.
-- **Effect visibility (#556).** The language vision document (moved to `hjosugi/kofun-site` by #874)
+- **Effect visibility (#556).** The language vision document (moved to `kofun-lang/kofun-site` by #874)
   commits to inferred effects "visible at the API boundaries that need them"
   and to a two-point `pure`/`io` lattice "designed as a degenerate row so it
   can widen later". A dynamically scoped context is invisible to that
@@ -591,7 +591,7 @@ Acceptance criterion 1 of #573 — an RFC separating effect, authority,
 ownership, and region lifetime — is this document. The remaining criteria
 map to future gates as follows; on implementation these become the ledger's
 `implementation` record and its capability claims in `release/claims.json`
-per the [public RFC process](https://hjosugi.github.io/kofun/docs/rfc-process/) §6.
+per the [public RFC process](https://kofun-lang.github.io/kofun/docs/rfc-process/) §6.
 
 | # | #573 criterion | Future gate | Fixture and boundary proof |
 |---|---|---|---|

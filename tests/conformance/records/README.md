@@ -1,6 +1,6 @@
 # Bounded nominal record frontend
 
-This issue [#546](https://github.com/hjosugi/kofun/issues/546) gate implements
+This issue [#546](https://github.com/kofun-lang/kofun/issues/546) gate implements
 the accepted v1 record decision recorded in
 [`spec/records-v1.md`](../../../spec/records-v1.md) over one deliberately small
 Stage 2 surface:

@@ -3,7 +3,7 @@
 ## Status
 
 This document is the accepted contract for GitHub issue
-[#639](https://github.com/hjosugi/kofun/issues/639). The bounded portable
+[#639](https://github.com/kofun-lang/kofun/issues/639). The bounded portable
 producer in `stdlib/date_time` now executes the minimum value shapes, typed
 failures, checked addition, duration normalization, and canonical RFC 3339 UTC
 parsing required by #846. It is not the complete public library:

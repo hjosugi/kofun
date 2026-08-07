@@ -5,12 +5,12 @@
 Kofun is an experimental programming language with a Kofun-written bootstrap
 and direct ELF64 backends for x86-64 and AArch64. Source files use `.kofun`.
 
-[Website](https://hjosugi.github.io/kofun/) ·
-[Documentation](https://hjosugi.github.io/kofun/docs/) ·
-[Playground](https://hjosugi.github.io/kofun/#playground) ·
-[Implemented status](https://hjosugi.github.io/kofun/docs/implemented-status/) ·
+[Website](https://kofun-lang.github.io/kofun/) ·
+[Documentation](https://kofun-lang.github.io/kofun/docs/) ·
+[Playground](https://kofun-lang.github.io/kofun/#playground) ·
+[Implemented status](https://kofun-lang.github.io/kofun/docs/implemented-status/) ·
 [GitHub Project](https://github.com/users/hjosugi/projects/3) ·
-[Releases](https://github.com/hjosugi/kofun/releases)
+[Releases](https://github.com/kofun-lang/kofun/releases)
 
 > **Project status:** research compiler, not a production language. “Active”
 > means an executable gate exists in this repository. Design documents and open
@@ -31,7 +31,7 @@ mkdir -p build
 ./build/answer
 ```
 
-See [Getting started](https://hjosugi.github.io/kofun/docs/getting-started/)
+See [Getting started](https://kofun-lang.github.io/kofun/docs/getting-started/)
 for setup, supported targets, examples, and the complete CLI guide.
 
 ## Current boundary
@@ -52,7 +52,7 @@ for setup, supported targets, examples, and the complete CLI guide.
 These are bounded checkpoints, not a general parser, complete memory-safe
 runtime, production toolchain, or semantic self-hosting fixed point.
 
-The [implemented-status matrix](https://hjosugi.github.io/kofun/docs/implemented-status/)
+The [implemented-status matrix](https://kofun-lang.github.io/kofun/docs/implemented-status/)
 is the source of exact capability claims. Each row names a stable claim from
 [`release/claims.json`](release/claims.json), its executable gate, and its
 unsupported boundary. `task release-claims` fails when those disagree.
@@ -69,9 +69,9 @@ unsupported boundary. `task release-claims` fails when those disagree.
 | [`docs/`](docs/) | source documents rendered by the official site |
 
 The site, docs renderer, playground, and delivery snapshots live in
-[`hjosugi/kofun-site`](https://github.com/hjosugi/kofun-site), which reads this
+[`kofun-lang/kofun-site`](https://github.com/kofun-lang/kofun-site), which reads this
 repository as a submodule. Use the
-[repository guide](https://hjosugi.github.io/kofun/docs/repository-guide/) for
+[repository guide](https://kofun-lang.github.io/kofun/docs/repository-guide/) for
 the full source/gate map.
 
 ## Verify
@@ -91,10 +91,10 @@ report themselves explicitly; they must not silently fall back.
 
 ## Contributing
 
-Read the [contribution workflow](https://hjosugi.github.io/kofun/docs/contributing/).
+Read the [contribution workflow](https://kofun-lang.github.io/kofun/docs/contributing/).
 Good starting points carry both
-[`curated`](https://github.com/hjosugi/kofun/issues?q=is%3Aopen+label%3Acurated)
-and [`ready`](https://github.com/hjosugi/kofun/issues?q=is%3Aopen+label%3Aready).
+[`curated`](https://github.com/kofun-lang/kofun/issues?q=is%3Aopen+label%3Acurated)
+and [`ready`](https://github.com/kofun-lang/kofun/issues?q=is%3Aopen+label%3Aready).
 
 ## License
 

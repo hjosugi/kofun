@@ -34,10 +34,10 @@ if (!shouldRetainClosedClaim(closedActive)) {
     throw new Error('a newly closed live claim was not retained')
 }
 equal(
-    buildSnapshot('hjosugi/kofun', [closedActive]),
+    buildSnapshot('kofun-lang/kofun', [closedActive]),
     {
         schema: 'kofun.backlog-issue-state/v1',
-        repository: 'hjosugi/kofun',
+        repository: 'kofun-lang/kofun',
         state_labels: ['ready', 'blocked', 'needs-detail', 'needs-decision', 'deferred', 'in-progress'],
         open_issues: 0,
         issues: [

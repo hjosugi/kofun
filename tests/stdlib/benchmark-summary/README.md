@@ -1,7 +1,7 @@
 # Deterministic benchmark-summary fixture
 
 This is the executable summary slice tracked by
-[#859](https://github.com/hjosugi/kofun/issues/859), split from #847. It proves
+[#859](https://github.com/kofun-lang/kofun/issues/859), split from #847. It proves
 the six v1 summary calculations without claiming that Stage 2 can already
 execute the canonical `List[Int]` and `Text` report producer.
 
