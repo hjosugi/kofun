@@ -1,7 +1,7 @@
 # Kofun RFCs
 
 This directory is the durable record of public semantic decisions. The process
-is the [public RFC process](https://hjosugi.github.io/kofun/docs/rfc-process/).
+is the [public RFC process](https://kofun-lang.github.io/kofun/docs/rfc-process/).
 
 | File | Role |
 |---|---|
@@ -14,8 +14,8 @@ is the [public RFC process](https://hjosugi.github.io/kofun/docs/rfc-process/).
 ## What this is not
 
 It is not the work tracker. Issues own work state, scheduling and evidence, and
-[`ISSUE_TRIAGE.md`](https://github.com/hjosugi/kofun-site/blob/main/content/ISSUE_TRIAGE.md)
-in `hjosugi/kofun-site` governs them. The ledger owns
+[`ISSUE_TRIAGE.md`](https://github.com/kofun-lang/kofun-site/blob/main/content/ISSUE_TRIAGE.md)
+in `kofun-lang/kofun-site` governs them. The ledger owns
 one thing issues cannot: the durable statement of what was decided about the
 language, separated from whether anything was built.
 

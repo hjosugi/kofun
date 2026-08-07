@@ -42,9 +42,9 @@ library API being lowerable.
 ### 2. Choose independently refinable work
 
 Good starting issues carry both the
-[`curated`](https://github.com/hjosugi/kofun/issues?q=is%3Aopen+label%3Acurated)
+[`curated`](https://github.com/kofun-lang/kofun/issues?q=is%3Aopen+label%3Acurated)
 and
-[`ready`](https://github.com/hjosugi/kofun/issues?q=is%3Aopen+label%3Aready)
+[`ready`](https://github.com/kofun-lang/kofun/issues?q=is%3Aopen+label%3Aready)
 labels. Read the entire issue, linked contract, and recent discussion before
 coding. Planning or umbrella issues describe outcomes but may not be an
 independently mergeable unit.
@@ -257,7 +257,7 @@ task lsp
 
 ### Tree-sitter
 
-The grammar is [`hjosugi/tree-sitter-kofun`](https://github.com/hjosugi/tree-sitter-kofun)
+The grammar is [`kofun-lang/tree-sitter-kofun`](https://github.com/kofun-lang/tree-sitter-kofun)
 and is gated there. A syntax change that reaches the compiler usually needs a
 matching change in that repository; nothing here builds or tests it, and no
 npm project remains in this repository.
@@ -288,7 +288,7 @@ that source at build time; do not copy it into a React component.
 
 Adding a first-class docs page is a two-repository change. Add the Markdown
 source here, then add one entry to `app/docs/docs-manifest.ts` in
-[`hjosugi/kofun-site`](https://github.com/hjosugi/kofun-site), choosing the
+[`kofun-lang/kofun-site`](https://github.com/kofun-lang/kofun-site), choosing the
 correct navigation section and linking it from an existing starting point when
 it changes the reading path. That repository's `site/README.md` documents the
 manifest, the link test, and the layout checks.
@@ -326,7 +326,7 @@ there. The site copies the directory at build time and owns no part of it.
 | HTTP/CLI/TUI | matching framework target | `task verify` |
 | LSP | `task lsp` | `task verify` |
 | the browser tour | `task tour` | `task verify` |
-| docs Markdown | the `spec/*/check.sh` reading it, if any | `task verify`, plus `npm run test:docs` in `hjosugi/kofun-site` when the site renders it |
+| docs Markdown | the `spec/*/check.sh` reading it, if any | `task verify`, plus `npm run test:docs` in `kofun-lang/kofun-site` when the site renders it |
 
 The final full suite is not a substitute for the focused test. The narrow gate
 produces readable evidence for the changed contract; the full gate detects

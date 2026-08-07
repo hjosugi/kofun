@@ -42,6 +42,7 @@ node --check "$ROOT/tests/lsp/performance_test.js"
 node --check "$ROOT/tests/lsp/bridge_fallback_test.js"
 node --expose-gc "$ROOT/tests/lsp/semantic_sidecar_test.mjs"
 node "$ROOT/tests/lsp/protocol_test.js" "$SERVER"
+sh "$ROOT/tests/lsp/visibility.sh"
 KOFUN_LSP_REVISION="$REVISION" \
     node "$ROOT/tests/lsp/performance_test.js" "$SERVER" "$RESULTS"
 

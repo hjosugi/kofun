@@ -1,0 +1,17 @@
+# diagnostic-mode: compile
+# expect-code: E2S158
+# expect-span: byte 548
+# The declaration external label of `spec/syntax/call-arguments-v1.md` (#880).
+# Before E2S158 this reported `error[E2S35]: unknown lexical binding `base``,
+# because the parameter list was read as `to: <type base>` — so the author was
+# told that a name they did write, in the position the contract gives it, does
+# not exist. #881 binds this form and #882 lowers it; until then the refusal
+# has to name the form rather than blame the program it was mistaken for.
+fn add(to base: Int, amount delta: Int) -> Int {
+    return base + delta
+}
+
+fn main() -> Int {
+    print(add(1, 2))
+    return 0
+}

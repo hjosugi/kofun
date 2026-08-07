@@ -339,7 +339,7 @@ RFC.
 ## 12. Concurrency stance
 
 Recorded from the survey in
-[#555](https://github.com/hjosugi/kofun/issues/555). None of these semantics is
+[#555](https://github.com/kofun-lang/kofun/issues/555). None of these semantics is
 implemented: the compiler owns `par` as a keyword and refuses the construct by
 name with `E2S154`, but no capture derivation, ownership checking, scheduling,
 or lowering exists. It is written down here because a concurrency design decided later
@@ -516,7 +516,7 @@ implementation.
 Everything v1 deliberately excludes needs its own later proposal — detached
 tasks, long-lived isolated state, channels, actors, session types, a
 `Send`/`Sync`-style trait, dynamic and recursive spawning, and borrowed task
-results ([#571](https://github.com/hjosugi/kofun/issues/571)).
+results ([#571](https://github.com/kofun-lang/kofun/issues/571)).
 
 The whole production path is unwritten. RFC-0003's implementation plan splits
 it into separately gated work: parser and HIR identities for the three forms,
@@ -570,7 +570,7 @@ appears — the `E330` named above, and its mention in
 
 ## 14. Semantic `take` versus optimization-only moves
 
-Recorded from [#572](https://github.com/hjosugi/kofun/issues/572), which
+Recorded from [#572](https://github.com/kofun-lang/kofun/issues/572), which
 follows Nim's `sink`/`ensureMove` design. Two things are both called "moves"
 and must never be confused.
 

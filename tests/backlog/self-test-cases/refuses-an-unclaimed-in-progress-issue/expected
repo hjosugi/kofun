@@ -1,0 +1,1 @@
+FAIL: backlog: #110 is in-progress with no live claim, so nothing records who owns it; post a `### agent-claim:v1` comment in the canonical form docs/ISSUE_READINESS.md defines, or record it in tests/backlog/debt.tsv as `unclaimed-progress`

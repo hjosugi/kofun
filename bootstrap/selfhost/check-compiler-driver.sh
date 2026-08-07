@@ -468,6 +468,73 @@ grep -F 'Kofun runtime error: cannot open input file' \
 printf 'previous output\n' | cmp - "$temporary/preserved.c" ||
     fail "a failed compile must preserve the previous output"
 
+# UTF-8 failure: the corpus above proves the audited Unicode validator is
+# *linked*; nothing proved it *refuses*. `EUNICODE001` is registered for the
+# native backend only (tests/diagnostics/registry.tsv), so this is the one
+# place the self-host boundary pins it, and the whole diagnostic is compared
+# rather than grepped so the line, column and byte offset are pinned too — a
+# span that silently became 0 would still contain the code.
+#
+# The bytes use octal escapes because POSIX printf specifies `\ooo` and does
+# not specify `\xHH`. Under a shell whose printf lacks `\x` the fixture would
+# become the literal characters, stop being invalid UTF-8, compile fine, and
+# the case would pass while testing nothing.
+printf 'fn main() {\n    print(0) // \377\376 bad\n}\n' \
+    >"$temporary/invalid-utf8.kofun"
+printf 'previous output\n' >"$temporary/utf8-preserved.c"
+set +e
+"$temporary/kofun-a1" "$temporary/invalid-utf8.kofun" \
+    "$temporary/utf8-preserved.c" \
+    >"$temporary/utf8.stdout" 2>"$temporary/utf8.stderr"
+utf8_status=$?
+"$temporary/kofun-stage1" "$temporary/invalid-utf8.kofun" \
+    "$temporary/utf8-seed.c" \
+    >"$temporary/utf8-seed.stdout" 2>"$temporary/utf8-seed.stderr"
+utf8_seed_status=$?
+set -e
+test "$utf8_status" -eq 1 || fail "invalid UTF-8 input must exit 1"
+printf 'error[EUNICODE001] at line 2, column 17 (byte 28): invalid UTF-8\n' |
+    cmp - "$temporary/utf8.stdout" ||
+    fail "the invalid-UTF-8 refusal differs from its pinned diagnostic"
+test ! -s "$temporary/utf8.stderr" ||
+    fail "the invalid-UTF-8 refusal wrote unexpected stderr"
+printf 'previous output\n' | cmp - "$temporary/utf8-preserved.c" ||
+    fail "an invalid-UTF-8 refusal must preserve the previous output"
+
+# The audited seed refuses the same bytes with the same 65-byte message on the
+# *other* stream: the compiler from S writes it to stdout, the seed to stderr.
+# Every other refusal in this gate agrees on both streams and is asserted
+# equal; asserting equality here would fail. The divergence is real, predates
+# this gate, and is invisible precisely because no case covered this path, so
+# each side is pinned separately instead — either one moving is a failure, and
+# the day they agree this block is what says so.
+test "$utf8_seed_status" -eq 1 ||
+    fail "the audited seed must also exit 1 on invalid UTF-8"
+cmp "$temporary/utf8.stdout" "$temporary/utf8-seed.stderr" ||
+    fail "the two compilers no longer agree on the invalid-UTF-8 message text"
+test ! -s "$temporary/utf8-seed.stdout" ||
+    fail "the audited seed's invalid-UTF-8 refusal moved to stdout"
+test ! -e "$temporary/utf8-seed.c" ||
+    fail "an invalid-UTF-8 refusal must not produce C through the audited seed"
+
+# Write failure: an output path that cannot be opened fails before any compile
+# output exists, so there is nothing to preserve here — what must hold is the
+# bounded runtime diagnostic and a nonzero exit rather than a silent success
+# that reports a file it never wrote.
+set +e
+"$temporary/kofun-a1" bootstrap/selfhost/driver/corpus_answer.kofun \
+    "$temporary/no-such-directory/out.c" \
+    >"$temporary/unwritable.stdout" 2>"$temporary/unwritable.stderr"
+unwritable_status=$?
+set -e
+test "$unwritable_status" -eq 1 ||
+    fail "an unwritable output path must exit 1"
+printf 'Kofun runtime error: cannot open output file\n' |
+    cmp - "$temporary/unwritable.stderr" ||
+    fail "the unwritable-output diagnostic differs from its pinned golden"
+test ! -s "$temporary/unwritable.stdout" ||
+    fail "the unwritable-output refusal wrote unexpected stdout"
+
 # The driver never falls back: an out-of-profile source is rejected by
 # the frontend before any lowering, with exit 1 and no C written.
 set +e
@@ -485,6 +552,265 @@ grep '^error\[E2S10\]' "$temporary/no-fallback.stdout" >/dev/null ||
 test ! -e "$temporary/no-fallback.c" ||
     fail "a rejected source must not produce C"
 
+# The A1 host boundary under AddressSanitizer and UndefinedBehaviorSanitizer.
+#
+# S.c carries the one hand-written C surface in the self-host chain — argv
+# decoding, file bytes and allocation — and every run above is uninstrumented.
+# An out-of-bounds read in that shim, or a signed overflow in the generated
+# body, emits the right C2 bytes and exits 0, so all ten PASS lines below
+# would still print. `grep -ril fsanitize bootstrap/ tests/ Taskfile.yml`
+# named no selfhost file before this block existed.
+#
+# detect_leaks is deliberately OFF, which is the opposite of the choice
+# tests/interop/bindgen-c/check-sanitizers.sh makes, for the opposite reason.
+# That fixture's contract is client-owned handles, so a leak is the defect
+# there. A1's runtime has no reclamation path at all by design — kofun_rt_alloc
+# never frees, and reclamation is an open design item rather than a regression
+# this gate owns — so LeakSanitizer reports the intended behavior as a failure.
+# The memory-error and undefined-behavior arms stay on, and each is proven
+# armed by its own probe below.
+
+# That reason is a claim about S.c, so it is asserted rather than assumed. A
+# reason nobody rechecks outlives its truth silently: if a deallocation path is
+# ever added, `detect_leaks=0` stops being a description of the design and
+# becomes a suppression, and the run below would keep passing while covering
+# less. Failing here forces that conversation instead.
+#
+# The check is for a deallocation *entry point*, not for the token `free(`.
+# `grep -c 'free(' bootstrap/selfhost/driver/S.c` returns 2 on a correct tree,
+# because both occurrences sit inside string literals A1 emits into the
+# programs it compiles — the compiled output frees, the compiler does not.
+for deallocator in kofun_rt_free kofun_rt_dealloc kofun_rt_release
+do
+    ! grep -qE "^[a-zA-Z].*$deallocator" bootstrap/selfhost/driver/S.c ||
+        fail "S.c defines $deallocator, so A1 no longer never-frees; re-enable detect_leaks rather than keeping this gate's justification"
+done
+grep -q '^void \*kofun_rt_alloc(' bootstrap/selfhost/driver/S.c ||
+    fail "S.c no longer defines kofun_rt_alloc; the allocation model this gate reasons about has changed"
+
+# Clang is tried first, but it can only link the sanitizer runtimes when
+# compiler-rt is installed beside it, which is a packaging choice of the host.
+# So the gate probes for a compiler that can actually link the arms and names
+# the one it used. An environment where none can is a failure, not a skip.
+printf 'int main(void) { return 0; }\n' >"$temporary/link-probe.c"
+sanitizer_cc=
+for candidate in ${KOFUN_SANITIZER_CC:-} clang gcc cc
+do
+    command -v "$candidate" >/dev/null 2>&1 || continue
+    if "$candidate" -std=c11 -O1 -Wall -Wextra -Werror \
+        -fsanitize=address,undefined -fno-sanitize-recover=all \
+        "$temporary/link-probe.c" -o "$temporary/link-probe" \
+        >"$temporary/link-probe.log" 2>&1
+    then
+        sanitizer_cc=$candidate
+        break
+    fi
+done
+test -n "$sanitizer_cc" ||
+    fail "no available C compiler can link -fsanitize=address,undefined; last attempt said: $(cat "$temporary/link-probe.log")"
+
+# One definition of the arms, so a probe cannot drift from the binary it is
+# supposed to vouch for. Written as a function rather than a variable because
+# unquoted expansion of a flag string is how a flag silently stops applying.
+sanitized_compile() {
+    "$sanitizer_cc" -std=c11 -O1 -Wall -Wextra -Werror \
+        -fsanitize=address,undefined -fno-sanitize-recover=all \
+        -fno-omit-frame-pointer -g "$@"
+}
+
+command -v readelf >/dev/null 2>&1 ||
+    fail "readelf is required to prove the sanitized binary is instrumented"
+
+sanitized_compile -I unicode "$temporary/S.c" -o "$temporary/kofun-a1-san" \
+    2>"$temporary/a1-san.build.err" ||
+    fail "A1 did not compile under sanitizers: $(cat "$temporary/a1-san.build.err")"
+
+# A green run from an uninstrumented binary proves nothing, and the build above
+# succeeding does not prove the arms were linked. Both symbol tables are read
+# because -static-libasan leaves .dynsym empty while a stripped binary leaves
+# .symtab empty; requiring either one alone turns a packaging choice into a
+# false failure or a false pass.
+readelf --wide --syms --dyn-syms "$temporary/kofun-a1-san" \
+    >"$temporary/a1-san.syms" 2>/dev/null
+grep -F '__asan_' "$temporary/a1-san.syms" >/dev/null ||
+    fail "the sanitized A1 carries no AddressSanitizer instrumentation"
+
+ASAN_OPTIONS=detect_leaks=0:halt_on_error=1:detect_stack_use_after_return=1:strict_string_checks=1
+UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1
+export ASAN_OPTIONS UBSAN_OPTIONS
+
+# The corpus first: every accept fixture through the instrumented boundary.
+# These are the inputs that exercise argv, read_text, write_text and the
+# allocator, which is the surface this block exists to cover.
+for fixture in bootstrap/selfhost/driver/corpus_answer.kofun \
+    bootstrap/selfhost/driver/corpus_function.kofun \
+    bootstrap/selfhost/driver/corpus_profile_complete.kofun \
+    bootstrap/selfhost/driver/corpus_bool.kofun \
+    bootstrap/selfhost/driver/corpus_branch.kofun \
+    bootstrap/selfhost/driver/corpus_loop.kofun \
+    bootstrap/selfhost/driver/corpus_text.kofun \
+    bootstrap/selfhost/driver/corpus_list_text.kofun \
+    bootstrap/selfhost/driver/corpus_builtins.kofun
+do
+    stem=$(basename "$fixture" .kofun)
+    set +e
+    "$temporary/kofun-a1-san" "$fixture" "$temporary/$stem-san.c" \
+        >"$temporary/$stem-san.stdout" 2>"$temporary/$stem-san.stderr"
+    san_status=$?
+    set -e
+    test "$san_status" -eq 0 ||
+        fail "sanitized A1 exited $san_status on $stem: $(head -c 2048 "$temporary/$stem-san.stderr")"
+    test ! -s "$temporary/$stem-san.stderr" ||
+        fail "sanitized A1 produced a diagnostic on $stem: $(head -c 2048 "$temporary/$stem-san.stderr")"
+    cmp "bootstrap/selfhost/driver/$stem.c" "$temporary/$stem-san.c" ||
+        fail "sanitized A1 emitted different C for $stem"
+done
+
+# The refusal paths, instrumented. The corpus above only walks inputs that
+# succeed, and an accept-only corpus cannot reach the shape that matters here:
+# a refusal abandons an allocation mid-flight, on a path that unwinds rather
+# than runs to completion. Both cases exit 1 by design, so the assertion is not
+# "exited 0" — it is that stdout still matches byte for byte and stderr is
+# still empty, because on these two paths the diagnostic goes to stdout and
+# anything on stderr is therefore a sanitizer report.
+sanitized_refusal() {
+    label=$1
+    source_path=$2
+    expected_stdout=$3
+
+    set +e
+    "$temporary/kofun-a1-san" "$source_path" "$temporary/$label-san.c" \
+        >"$temporary/$label-san.stdout" 2>"$temporary/$label-san.stderr"
+    refusal_status=$?
+    set -e
+    test "$refusal_status" -eq 1 ||
+        fail "sanitized A1 exited $refusal_status on the $label refusal, expected 1: $(head -c 2048 "$temporary/$label-san.stderr")"
+    test ! -s "$temporary/$label-san.stderr" ||
+        fail "sanitized A1 produced a diagnostic on the $label refusal: $(head -c 2048 "$temporary/$label-san.stderr")"
+    cmp "$expected_stdout" "$temporary/$label-san.stdout" ||
+        fail "sanitized A1 changed the $label refusal diagnostic"
+    test ! -e "$temporary/$label-san.c" ||
+        fail "the sanitized $label refusal produced C"
+}
+
+sanitized_refusal invalid-utf8 "$temporary/invalid-utf8.kofun" \
+    "$temporary/utf8.stdout"
+sanitized_refusal reject bootstrap/selfhost/driver/corpus_reject.kofun \
+    bootstrap/selfhost/driver/corpus_reject.stdout
+
+# Then the real load: A1(S) -> C2, the run that exercises the boundary hardest
+# and the only one that reaches every path S.c has. The virtual-memory ceiling
+# the unsanitized self-compile applies is deliberately NOT applied here —
+# AddressSanitizer reserves a shadow mapping far larger than that bound, so
+# `ulimit -v` would abort the run before it began and the failure would look
+# like a memory-safety fault instead of a harness mistake.
+mkdir -p "$temporary/self-san"
+cp bootstrap/stage1/compiler.kofun "$temporary/self-san/source-san.kofun"
+set +e
+(
+    cd "$temporary/self-san"
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "${selfhost_timeout_seconds}s" \
+            "$temporary/kofun-a1-san" source-san.kofun C2.c \
+            >stdout.txt 2>stderr.txt
+    else
+        "$temporary/kofun-a1-san" source-san.kofun C2.c \
+            >stdout.txt 2>stderr.txt
+    fi
+)
+self_san_status=$?
+set -e
+test "$self_san_status" -eq 0 ||
+    fail "sanitized A1(S) exited $self_san_status: $(head -c 2048 "$temporary/self-san/stderr.txt")"
+test ! -s "$temporary/self-san/stderr.txt" ||
+    fail "sanitized A1(S) produced a diagnostic: $(head -c 2048 "$temporary/self-san/stderr.txt")"
+
+# Instrumentation must not change the answer. If the sanitized and ordinary
+# builds emitted different C2, one of them is wrong and a clean sanitizer run
+# would be vouching for a binary that is not the one shipped.
+cmp "$temporary/self-a/C2.c" "$temporary/self-san/C2.c" ||
+    fail "sanitized A1 emits different C2 bytes than the ordinary build"
+
+# Each arm gets one isolated fault, built with the exact flags used above. A
+# clean run cannot tell an armed sanitizer from a missing one, and both arms
+# have a way to be silently absent: UBSan without -fno-sanitize-recover=all
+# prints and still exits 0, and a compiler that accepts -fsanitize=address
+# without linking its runtime produces a binary that never reports.
+sanitizer_arm_probe() {
+    probe_name=$1
+    probe_source=$2
+    expected_diagnostic=$3
+
+    sanitized_compile "$probe_source" -o "$temporary/$probe_name" \
+        2>"$temporary/$probe_name.build.err" ||
+        fail "the $probe_name probe did not compile: $(cat "$temporary/$probe_name.build.err")"
+    set +e
+    "$temporary/$probe_name" >"$temporary/$probe_name.out" \
+        2>"$temporary/$probe_name.err"
+    probe_status=$?
+    set -e
+    test "$probe_status" -ne 0 ||
+        fail "the $probe_name probe exited zero; its arm is not armed and every clean run above proves nothing"
+    grep -F "$expected_diagnostic" "$temporary/$probe_name.err" >/dev/null ||
+        fail "the $probe_name probe failed without its arm-specific diagnostic: $(head -c 2048 "$temporary/$probe_name.err")"
+}
+
+# The volatile on `block` is load-bearing, and it is the *pointer* that has to
+# be volatile — not the size. `-fsanitize=undefined` includes an object-size
+# check that reports a heap overflow before ASan's redzone is consulted
+# whenever it can trace the allocation through the pointer. The probe still
+# fails, but on the wrong arm: it would vouch for AddressSanitizer while
+# proving only that UBSan works, which is the exact substitution the isolation
+# checks below exist to catch.
+#
+# Measured with these flags, because the intuitive fix is the one that does not
+# work:
+#
+#   volatile size, plain pointer  -> 0 heap-buffer-overflow, 1 UBSan report
+#   plain size, volatile pointer  -> 2 heap-buffer-overflow, 0 UBSan reports
+#
+# Hiding the size changes nothing; the check resolves the object through the
+# pointer, so the pointer is what must lose its provenance. Anyone
+# "simplifying" the volatile off `block` reverts this probe to proving the
+# wrong arm, and the isolation assertions below are what would catch it.
+#
+# argc keeps the index out of reach of constant folding, so -Werror does not
+# reject the probe at compile time instead of the sanitizer catching it at run
+# time.
+cat >"$temporary/asan-probe.c" <<'PROBE'
+#include <stdlib.h>
+int main(int argc, char **argv) {
+    volatile size_t size = 8;
+    char *volatile block = malloc(size);
+    (void)argv;
+    if (block == NULL) return 2;
+    block[size + (size_t)argc + 7] = 'x';
+    return (int)block[0];
+}
+PROBE
+sanitizer_arm_probe asan-probe "$temporary/asan-probe.c" \
+    'heap-buffer-overflow'
+grep -F 'AddressSanitizer' "$temporary/asan-probe.err" >/dev/null ||
+    fail "the AddressSanitizer probe faulted without an AddressSanitizer report"
+
+cat >"$temporary/ubsan-probe.c" <<'PROBE'
+#include <limits.h>
+int main(int argc, char **argv) {
+    volatile int large = INT_MAX;
+    (void)argv;
+    return (int)(large + argc);
+}
+PROBE
+sanitizer_arm_probe ubsan-probe "$temporary/ubsan-probe.c" \
+    'runtime error: signed integer overflow'
+
+# Each probe must prove its own arm, not borrow the other's. Without this a
+# single working arm would satisfy both checks above.
+! grep -F 'runtime error:' "$temporary/asan-probe.err" >/dev/null ||
+    fail "the AddressSanitizer probe also triggered UndefinedBehaviorSanitizer"
+! grep -F 'ERROR: AddressSanitizer' "$temporary/ubsan-probe.err" >/dev/null ||
+    fail "the UndefinedBehaviorSanitizer probe also triggered AddressSanitizer"
+
 printf '%s\n' \
     "PASS: the trusted seed compiles the frozen S into a runnable compiler" \
     "PASS: the compiler from S matches the audited Stage 1 seed byte for byte on the corpus" \
@@ -495,4 +821,9 @@ printf '%s\n' \
     "PASS: List[Text] construction, length, indexing and bounds traps agree across both seeds" \
     "PASS: all 15 profile builtins and all 30 arity/type refusals agree across both seeds" \
     "PASS: emission is deterministic, path-independent, and failure-preserving" \
-    "PASS: A1 compiles canonical S into deterministic C2 that matches the hand-port and compiles as strict C11"
+    "PASS: A1 compiles canonical S into deterministic C2 that matches the hand-port and compiles as strict C11" \
+    "PASS: invalid UTF-8 and an unwritable output are refused at their pinned diagnostics, preserving prior output" \
+    "PASS: S.c still defines kofun_rt_alloc and no deallocation entry point, so detect_leaks=0 describes the design rather than suppressing a defect" \
+    "PASS: the binary that ran carries __asan_ instrumentation ($sanitizer_cc)" \
+    "PASS: each sanitizer arm is proven armed by an isolated fault that trips it and not the other" \
+    "PASS: the A1 host boundary runs the corpus, both refusal paths, and A1(S) clean under AddressSanitizer and UndefinedBehaviorSanitizer"

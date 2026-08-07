@@ -3,7 +3,7 @@
 Status: normative contract and bounded executable model; production parsing,
 checking, lowering, and scheduling are not implemented.
 
-Issue: [#555](https://github.com/hjosugi/kofun/issues/555)
+Issue: [#555](https://github.com/kofun-lang/kofun/issues/555)
 
 ## 1. Promise and boundary
 
@@ -199,7 +199,7 @@ binding name.
 ## 9. Semantic anchors for schedule tracing
 
 The semantics expose these logical anchors to the separate trace layer owned by
-[#736](https://github.com/hjosugi/kofun/issues/736):
+[#736](https://github.com/kofun-lang/kofun/issues/736):
 
 - `scope.enter`
 - `task.spawn`

@@ -68,8 +68,8 @@ representation or a maximum length.
 ## Relationship to scientific arrays
 
 The long-term design in
-[`SCIENTIFIC_COMPUTING.md`](https://github.com/hjosugi/kofun-site/blob/main/content/docs/SCIENTIFIC_COMPUTING.md),
-in `hjosugi/kofun-site`, uses `Array[T, Rank]` with contiguous specialized storage, multidimensional
+[`SCIENTIFIC_COMPUTING.md`](https://github.com/kofun-lang/kofun-site/blob/main/content/docs/SCIENTIFIC_COMPUTING.md),
+in `kofun-lang/kofun-site`, uses `Array[T, Rank]` with contiguous specialized storage, multidimensional
 shapes, slicing, broadcasting, and numerical kernels. `IntArray1` fixes rank
 to one and specializes the element type so this checkpoint can state honest
 ownership and shape rules now. It does not implement or revise the broader
