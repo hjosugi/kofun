@@ -31,11 +31,11 @@
 #                     or `-` when the issue has none, so relabelling makes the
 #                     row fail rather than excuse a different state. Fix by
 #                     writing `- State: <state>` into the body, then delete the
-#                     row. Measured 2026-08-07 across all 71 open issues: 19
-#                     rows here plus one `stateless-tracker`, of which exactly
-#                     one (#955) has an unprefixed `State:` line and eighteen
-#                     have none at all — so widening the extractor's regex
-#                     instead would have reached 1 of 20.
+#                     row. Re-measured 2026-08-07 across all 70 open issues after
+#                     eighteen bodies gained a `State:` line: 1 row here plus one
+#                     `stateless-tracker`. The one left (#955) carries an
+#                     unprefixed `State:` line, so widening the extractor's
+#                     regex would now reach 1 of 2.
 #
 # stateless-tracker   an open issue that carries no state by design, so it is
 #                     exempt rather than owed a fix. Recorded separately from
