@@ -21,3 +21,9 @@ node_modules/
 
 # Moved to hjosugi/kofun-vscode and hjosugi/tree-sitter-kofun by #861.
 /editor/
+.claude/skills/graphify/
+.claude/settings.local.json
+.copilot/skills/graphify/
+.codex/skills/graphify/
+.codex/hooks.json
+graphify-out/

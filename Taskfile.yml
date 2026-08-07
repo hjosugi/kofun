@@ -15,6 +15,16 @@ vars:
 
 tasks:
 
+  graphify-setup:
+    desc: "Install graphify and register its skill with Claude, Copilot and Codex"
+    cmds:
+      - "sh scripts/graphify.sh setup"
+
+  graphify-update:
+    desc: "Upgrade graphify, refresh the skill, and update the knowledge graph"
+    cmds:
+      - "sh scripts/graphify.sh update"
+
   # `default` deliberately has no desc, so the official `task --list` does not
   # show a redundant alias. The task-help gate permits this one hidden row and
   # requires every visible task to have a description and exactly one group.
