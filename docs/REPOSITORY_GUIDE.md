@@ -161,7 +161,21 @@ Stage 2 contains the broadest collection of semantic frontend checkpoints:
 - `build.sh`, sourced rather than run, which is the single definition of how a
   Stage 2 compiler binary is produced for a gate that needs one.
 
-Not every focused helper is routed through ordinary `./bin/kofun` commands.
+**No focused feature frontend is routed through ordinary `./bin/kofun`
+commands.** Measured on `de4ffaa2`, none of `adt_frontend.c`,
+`const_generics_frontend.c`, `generics_frontend.c`, `hm_levels_frontend.c`,
+`optional_frontend.c`, `record_frontend.c`, `traits_frontend.c`,
+`module_symbols.c`, or `re_exports.c` is included by `compiler.c`; each is built
+and run only by its own gate. So a file named for a feature is evidence that a
+bounded claim about it is checked, not that the feature compiles:
+`generics_frontend.c` is 59 KB with a passing `task generics`, while
+`./bin/kofun check` on `fn identity[T](value: T) -> T` reports
+`error[E2S03]: malformed function at byte 0`.
+
+The two files that *are* the user-facing compiler are `compiler.kofun`
+(canonical) and `compiler.c` (the audited seed that executes). See
+[`docs/COMPILER_ARCHITECTURE.md`](COMPILER_ARCHITECTURE.md#where-the-compiler-actually-is).
+
 The detailed [`bootstrap/stage2/README.md`](../bootstrap/stage2/README.md)
 states whether a capability is user-facing, typed-only, reference lowering, or
 tooling projection. Preserve those qualifiers in code, tests, docs, and release
