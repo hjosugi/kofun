@@ -70,6 +70,7 @@ const OWNED_KINDS = new Set([
     'stateless-tracker',
     'unnamed-blocker',
     'capability-blocker',
+    'unclaimed-progress',
 ])
 const KNOWN_KINDS = new Set([...OWNED_KINDS, 'unverifiable-stamp'])
 
@@ -120,6 +121,9 @@ let unreadableState = 0
 let statelessTrackers = 0
 let claims = 0
 let liveClaims = 0
+let inProgressCount = 0
+let claimedProgress = 0
+let unclaimedProgress = 0
 
 const claimVocabulary = new Set(CLAIM_STATUSES)
 
@@ -214,8 +218,15 @@ for (const issue of issues) {
         }
     }
 
-    // 3. Label and body agree when both are present. An issue with neither is
-    //    untriaged, which is a different problem and not this gate's.
+    // 3. Label and body agree when both are present.
+    //
+    //    This used to add "an issue with neither is untriaged, which is a
+    //    different problem and not this gate's". That carve-out is gone: rule
+    //    2b refuses an unreadable state before this point, so an issue with
+    //    neither a label nor a line now fails there unless it is recorded as
+    //    `stateless-tracker`. The sentence stayed behind and described a
+    //    branch that could no longer be reached, which is the kind of comment
+    //    this file is otherwise careful not to leave.
     if (label !== null && line !== null) {
         if (label === line) {
             agreeing += 1
@@ -272,6 +283,40 @@ for (const issue of issues) {
         }
     }
 
+    // 6b. `in-progress` asserts that someone is working on the issue right
+    //     now. The claim protocol exists so a second agent can see that before
+    //     starting, and both rules above are quantified over the claims that
+    //     exist — so with none anywhere they pass without checking anything.
+    //     Measured 2026-08-07: `PASS: 0 live claims` across all 70 open
+    //     issues, while four of them had an open pull request implementing
+    //     them. The protocol was gated, documented, and unused.
+    //
+    //     `in-progress` is the one ownership assertion this offline snapshot
+    //     can check, so it is the one the gate enforces: an issue that says
+    //     work is underway and carries no live claim is an assertion nobody
+    //     signed. `unclaimed-progress` records the ones being corrected.
+    //
+    //     Note what this cannot see. An inert claim — a wrapped HTML comment,
+    //     or the marker followed by prose keys — extracts as nothing, so it is
+    //     indistinguishable here from never having claimed. That is the worse
+    //     failure of the two, because its author believes the signal is
+    //     published. docs/ISSUE_READINESS.md names the canonical form.
+    if (label === 'in-progress') {
+        inProgressCount += 1
+        if (liveAgents.length > 0) {
+            claimedProgress += 1
+        } else if (owedDebt('unclaimed-progress', issue.number, '-')) {
+            unclaimedProgress += 1
+        } else {
+            failures.push(
+                `${where} is in-progress with no live claim, so nothing records who owns it; ` +
+                    'post a `### agent-claim:v1` comment in the canonical form ' +
+                    'docs/ISSUE_READINESS.md defines, or record it in tests/backlog/debt.tsv ' +
+                    'as `unclaimed-progress`',
+            )
+        }
+    }
+
     if (label !== 'ready') continue
     readyCount += 1
 
@@ -324,6 +369,7 @@ if (failures.length > 0) {
 process.stdout.write(
     `PASS: ${claims} canonical claim events use the closed status vocabulary\n` +
         `PASS: ${liveClaims} live claims are unique per open issue and absent from closed issues\n` +
+        `PASS: ${claimedProgress} of ${inProgressCount} in-progress issues carry a live claim; ${unclaimedProgress} recorded as unclaimed\n` +
         `PASS: ${stated} State lines name a state in the vocabulary\n` +
         `PASS: ${stated} of ${stated + unreadableState + statelessTrackers} open issues carry a State line the gate reads; ${unreadableState} recorded as unreadable, ${statelessTrackers} exempt by design\n` +
         `PASS: ${agreeing} issues agree between their state label and their State line\n` +

@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 70,
+  "open_issues": 67,
   "issues": [
     {
       "number": 26,
@@ -497,7 +497,9 @@
         "blocked"
       ],
       "state_line": "blocked",
-      "blocked_by": [],
+      "blocked_by": [
+        847
+      ],
       "evidence_commits": [
         "801204407ec864c58a9c1613bca33c204be78b35"
       ]
@@ -577,20 +579,6 @@
       ]
     },
     {
-      "number": 880,
-      "title": "Call arguments v1 slice 1: parse labels and canonical trailing lambdas",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [
-        625
-      ],
-      "evidence_commits": [
-        "a50793ea6802411fd6f7c752578fd9421669236f"
-      ]
-    },
-    {
       "number": 881,
       "title": "Call arguments v1 slice 2: bind labels in HIR, type checking, and KIF identity",
       "state_labels": [
@@ -607,7 +595,9 @@
         "blocked"
       ],
       "state_line": "blocked",
-      "blocked_by": [],
+      "blocked_by": [
+        881
+      ],
       "evidence_commits": []
     },
     {
@@ -803,18 +793,6 @@
       ]
     },
     {
-      "number": 1033,
-      "title": "LSP visibility: filter completion and navigation by caller context",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
-      ]
-    },
-    {
       "number": 1035,
       "title": "Visibility fuzz: bound malformed identities, re-export chains, and stale artifacts",
       "state_labels": [
@@ -824,18 +802,6 @@
       "blocked_by": [],
       "evidence_commits": [
         "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
-      ]
-    },
-    {
-      "number": 1060,
-      "title": "backlog: 24 of 28 blocked issues name their blockers where the gate cannot read them",
-      "state_labels": [
-        "needs-decision"
-      ],
-      "state_line": "needs-decision",
-      "blocked_by": [],
-      "evidence_commits": [
-        "03d8a7099fa14c62c0fa8d250c0d5d8c2c3ffc38"
       ]
     }
   ]

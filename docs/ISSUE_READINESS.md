@@ -83,10 +83,19 @@ their comments. A closed row stays in the snapshot, without increasing
 **`planning` is orthogonal too, and is not a state.** It marks a planning
 umbrella or generated catalogue — never directly implementation-ready — and the
 umbrella still has a state, because "this is an umbrella" and "this is waiting
-on something" are different facts. Eleven of the twelve open `planning` issues
-already carry one: [#624](https://github.com/kofun-lang/kofun/issues/624), #572,
-#543, #298, #289, #32, #31, #30, and #26 are `planning` + `blocked`, #532 is
-`planning` + `deferred`, and #276 is `planning` + `needs-decision`.
+on something" are different facts.
+
+Measured 2026-08-07: all eleven open `planning` issues carry a state, and they
+do not share one — [#26](https://github.com/kofun-lang/kofun/issues/26) and #32
+are `blocked`, #532 is `deferred`, #276 is `needs-decision`, and the rest are
+`needs-detail`. The spread is the point: `planning` says nothing about whether
+the umbrella is waiting, so it cannot substitute for a state.
+
+That sentence carries a date because the version before it did not. It listed
+nine issues as `planning` + `blocked`, and by the time anyone read it six of
+them had moved to `needs-detail` while the total had fallen from twelve to
+eleven — an enumeration with no date reads as current forever. Prefer stating
+the invariant and dating the count.
 
 The twelfth, [#998](https://github.com/kofun-lang/kofun/issues/998), wrote `State:
 planning` in its `## Metadata` block. Putting an orthogonal marker in the state
@@ -217,7 +226,13 @@ never been written down. This document is where they now live.
 - a `ready` issue carries no evidence stamp;
 - a canonical claim uses a status outside the closed vocabulary;
 - two agents have a live claim on one open issue;
-- a closed issue still has a live claim.
+- a closed issue still has a live claim;
+- an issue's body carries no `State:` line the extractor can read;
+- a `blocked` issue names no blocker where the gate reads one;
+- an `in-progress` issue carries no live claim.
+
+The last three are recorded rather than fixed when the fix is not the gate's to
+make; `tests/backlog/debt.tsv` below says which kind covers which case.
 
 The vocabulary is closed, and the second and third rules are what close it.
 Labels cannot go wrong — the extraction keeps only labels drawn from the
@@ -274,6 +289,48 @@ that was not recorded. What it held on the day it landed:
 | `closed-blockers` | 1 | [#584](https://github.com/kofun-lang/kofun/issues/584) still names completed #583; closure means the dependency record is stale, not that the gate may choose its replacement state |
 | `unstamped-ready` | 4 | `ready` before rule 2 existed |
 | `unverifiable-stamp` | 1 | [#738](https://github.com/kofun-lang/kofun/issues/738) names a commit that is on no branch, so its measurement cannot be re-run |
+
+That table is the ledger as it landed and is left alone. The kinds added since
+each pair a drift with an exemption, because an exemption folded into the drift
+ledger is indistinguishable from drift and would be "fixed" by someone
+inventing the missing value:
+
+| Kind | Covers | Retires when |
+|---|---|---|
+| `unreadable-state` | an issue whose body declares no state the extractor reads, so every rule keyed on that line skips it | its body gains a `- State:` line; the row's detail is the state label, so relabelling it fails the row rather than excusing a different state |
+| `stateless-tracker` | an issue that carries no state **by design** — [#281](https://github.com/kofun-lang/kofun/issues/281) is the recurring position paper | never, unless the issue gains a state |
+| `unnamed-blocker` | a `blocked` issue whose blocker is stated in prose, so `blockedBy()` reads an empty list and the closed-blocker rule skips it | its body gains a `Blocked by: #N` line, after which the issue stops reaching that branch and the row fails as unused |
+| `capability-blocker` | a `blocked` issue waiting on something no issue number can express — an unowned capability, an unratified RFC, a predecessor nobody has filed. It arrives two ways: with no `Blocked by:` line, or **with a correct one that names a non-issue**, since `blockedBy()` reads issue numbers and returns empty either way | the thing it waits on becomes an issue it can name |
+| `unclaimed-progress` | an `in-progress` issue with no live claim, so nothing records who owns work the label says is underway | its owner posts a canonical claim; nobody else may, because a third-party claim is a false ownership signal |
+
+## Coverage, not only hits
+
+Each of those three rules replaced a count that read as a total with one that
+reports its own reach:
+
+```
+PASS: 68 of 70 open issues carry a State line the gate reads
+PASS: 4 of 28 blocked issues name their blockers where the gate reads them
+PASS: 0 of 2 in-progress issues carry a live claim
+```
+
+Before them the same lines said `51 State lines name a state` when it was 51 of
+71, `4 blocked issues with named blockers` when it was 4 of 28, and `0 live
+claims` over an empty set. None of those was wrong; each was unreadable. A
+reader could not tell a rule that held from a rule that had never reached
+anything, which is the failure this whole gate exists to remove.
+
+Two of the three were hiding real drift.
+[#314](https://github.com/kofun-lang/kofun/issues/314) says in its own body that
+its unblock condition is fulfilled and cites the green run, and is still
+labelled `blocked`; the rule that would have caught it needs a `Blocked by:`
+line the issue does not have. Every `agent-claim:v1` comment on the tracker used
+a shape `claimEvents()` strips, so ten such comments on
+[#645](https://github.com/kofun-lang/kofun/issues/645) extract to zero events
+and their authors believed they had published ownership.
+
+**A rule added here is expected to report its reach.** A count without a
+denominator is the shape this document keeps having to correct.
 
 One rule stays manual: whether an issue's `## Scope`, acceptance criteria, and
 `## Validation` actually meet the Definition of Ready. A gate can see that a
