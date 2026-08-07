@@ -700,6 +700,17 @@ function reachableForeignSymbols(doc) {
 // that the name exists, which file declares it, and by elimination roughly
 // where. The spec calls access "a compile-time name-resolution and interface
 // rule", so a name the caller cannot resolve simply does not resolve.
+// Whether any other open document is still analysing, so the cross-file half
+// of a completion list is provisional rather than short.
+function foreignAnalysisPending(doc) {
+  for (const other of documents.values()) {
+    if (other === doc) continue;
+    if (other.analysisState !== "semantic" &&
+        other.analysisState !== "syntactic-fallback") return true;
+  }
+  return false;
+}
+
 function foreignDefinition(doc, name) {
   if (typeof name !== 'string' || name === '') return null;
   const found = reachableForeignSymbols(doc).get(name);
@@ -1567,11 +1578,19 @@ function handle(message) {
       // needed on both paths below, because a declaration this file does not
       // hold may still live in another open file the caller may reach.
       const definitionOffset = doc ? positionToOffset(doc, params.position) : null;
+      // A caret sitting *on* a declaration this file owns is already at the
+      // definition, so there is nothing to look up elsewhere. Without this the
+      // fallback fired — the semantic adapter answers null on a declaration
+      // site by design — and go-to-definition on a parameter's own name jumped
+      // to an unrelated file that happened to declare the same word.
       const definitionName = doc && definitionOffset !== null
         ? (() => {
             const index = completionIndex(doc);
+            const at = tokenIndexAt(index, definitionOffset);
             const token = tokenAt(index, definitionOffset);
-            return token && token.kind === 'id' ? tokenText(index, token) : null;
+            if (!token || token.kind !== 'id') return null;
+            if (index.declarations && index.declarations.has(at)) return null;
+            return tokenText(index, token);
           })()
         : null;
       if (doc && doc.analysisState === 'semantic' &&
@@ -1806,7 +1825,13 @@ function handle(message) {
       response(message.id, {
         // A bounded list must say so, or the client caches it and stops asking
         // as the prefix narrows to names that were cut.
-        isIncomplete: completion.truncated,
+        // Also incomplete while another open document is still analysing.
+        // `reachableForeignSymbols` skips any document that has not settled, so
+        // a keystroke in one split pane emptied the cross-file completions in
+        // the other — and `isIncomplete: false` told the client to cache that
+        // empty list and stop asking. The same rationale the truncation flag
+        // already carries, applied to the other reason the list can be short.
+        isIncomplete: completion.truncated || foreignAnalysisPending(doc),
         items: completion.items
       });
       break;

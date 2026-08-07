@@ -341,6 +341,53 @@ async function scenarioPackageIdentityIsPerDocument() {
   await session.stop();
 }
 
+// Go-to-definition on a declaration this file owns must stay put. The semantic
+// adapter answers null on a declaration site by design, and the cross-file
+// fallback then fired on the bare identifier — so the caret on a parameter's
+// own name jumped to an unrelated file that happened to declare the same word.
+async function scenarioDefinitionOnDeclarationStaysPut() {
+  const root = makeWorkspace(true);
+  const session = new Session(root);
+  await session.start();
+  const dep = 'pub fn shared(value: Int) -> Int {\n    return value\n}\n';
+  const caller = 'fn probe(shared: Int) -> Int {\n    return shared\n}\n';
+  const depUri = await session.open('demo/dep.kofun', dep);
+  const callerUri = await session.open('demo/caller.kofun', caller);
+
+  const onDeclaration = await session.request('textDocument/definition',
+    { textDocument: { uri: callerUri }, position: { line: 0, character: 9 } });
+  assert.ok(!onDeclaration || onDeclaration.uri !== depUri,
+    `go-to-definition on a parameter's own declaration jumped to another file: ${JSON.stringify(onDeclaration)}`);
+
+  await session.stop();
+}
+
+// A cross-file list that is short only because another document has not
+// finished analysing must not be reported as complete, or the client caches the
+// empty list and stops asking.
+async function scenarioPendingAnalysisIsIncomplete() {
+  const root = makeWorkspace(true);
+  const session = new Session(root);
+  await session.start();
+  const caller = 'fn caller() -> Int {\n    return dep\n}\n';
+  const callerUri = await session.open('demo/caller.kofun', caller);
+
+  // Opened without awaiting its diagnostics, so it is still analysing.
+  const depUri = `file://${root}/demo/dep.kofun`;
+  session.client.send({ jsonrpc: '2.0', method: 'textDocument/didOpen', params: {
+    textDocument: { uri: depUri, languageId: 'kofun', version: 1, text: DEPENDENCY } } });
+  const line = caller.split('\n').indexOf(DEP_PREFIX_LINE);
+  const result = await session.request('textDocument/completion',
+    { textDocument: { uri: callerUri }, position: { line, character: DEP_PREFIX_COLUMN } });
+  const items = ((result && result.items) || []).map((entry) => entry.label);
+  if (items.length === 0) {
+    assert.strictEqual(result.isIncomplete, true,
+      'a completion list emptied by another document still analysing was reported as complete, so the client would cache it');
+  }
+
+  await session.stop();
+}
+
 // Two checkouts of one project at different absolute paths, and one workspace
 // whose files arrive in the opposite order, must answer identically. Package
 // identity is semantic; `spec/modules/package-roots.md` says so directly: "A
@@ -387,6 +434,10 @@ async function scenarioDeterminism(expected) {
   console.log("PASS visibility: a path segment spelled like a modifier is not a modifier");
   await scenarioPackageIdentityIsPerDocument();
   console.log("PASS visibility: package identity is per document, so internal does not cross a checkout");
+  await scenarioDefinitionOnDeclarationStaysPut();
+  console.log("PASS visibility: go-to-definition on a declaration this file owns stays put");
+  await scenarioPendingAnalysisIsIncomplete();
+  console.log("PASS visibility: a list shortened by pending analysis is reported incomplete");
   await scenarioDeterminism(baseline);
   console.log('PASS visibility: path remap and open order produce identical results');
 })().catch((error) => {
