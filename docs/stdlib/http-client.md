@@ -3,7 +3,7 @@
 ## Status
 
 This document is the accepted contract for GitHub issue
-[#638](https://github.com/hjosugi/kofun/issues/638). No client is implemented:
+[#638](https://github.com/kofun-lang/kofun/issues/638). No client is implemented:
 acceptance settles what the first portable, first-party HTTP client must be,
 not that anything ships. The first bounded implementation slice is #644 — the
 HTTP/1.1 core over the deterministic scripted transport — and live DNS,

@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 71,
+  "open_issues": 70,
   "issues": [
     {
       "number": 26,
@@ -136,7 +136,7 @@
       "state_labels": [
         "deferred"
       ],
-      "state_line": null,
+      "state_line": "deferred",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -146,7 +146,7 @@
       "state_labels": [
         "deferred"
       ],
-      "state_line": null,
+      "state_line": "deferred",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -156,7 +156,7 @@
       "state_labels": [
         "deferred"
       ],
-      "state_line": null,
+      "state_line": "deferred",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -166,7 +166,7 @@
       "state_labels": [
         "deferred"
       ],
-      "state_line": null,
+      "state_line": "deferred",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -220,7 +220,7 @@
       "state_labels": [
         "deferred"
       ],
-      "state_line": null,
+      "state_line": "deferred",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -230,7 +230,7 @@
       "state_labels": [
         "deferred"
       ],
-      "state_line": null,
+      "state_line": "deferred",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -240,7 +240,7 @@
       "state_labels": [
         "blocked"
       ],
-      "state_line": null,
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -250,7 +250,7 @@
       "state_labels": [
         "deferred"
       ],
-      "state_line": null,
+      "state_line": "deferred",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -260,7 +260,7 @@
       "state_labels": [
         "deferred"
       ],
-      "state_line": null,
+      "state_line": "deferred",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -270,7 +270,7 @@
       "state_labels": [
         "deferred"
       ],
-      "state_line": null,
+      "state_line": "deferred",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -280,7 +280,7 @@
       "state_labels": [
         "deferred"
       ],
-      "state_line": null,
+      "state_line": "deferred",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -290,7 +290,7 @@
       "state_labels": [
         "deferred"
       ],
-      "state_line": null,
+      "state_line": "deferred",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -371,7 +371,7 @@
       "state_labels": [
         "blocked"
       ],
-      "state_line": null,
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -393,7 +393,7 @@
       "state_labels": [
         "blocked"
       ],
-      "state_line": null,
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -488,20 +488,6 @@
       "evidence_commits": [
         "09e03fb96597aa1f48abce7ad95171d3184730d0",
         "b5ea9ec9241e832b87705c468818b4fd2684146d"
-      ]
-    },
-    {
-      "number": 645,
-      "title": "Date/time core: Gregorian values, checked arithmetic, and strict RFC 3339",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "6b8d2064468d270f37a1d8dcfe8848dca91b9dc0",
-        "97e50abe18e028093a186a7835e48c4d81a6dbd9",
-        "b783e7697d3791ce26def31e7b58a51367c83036"
       ]
     },
     {
@@ -610,7 +596,7 @@
       "state_labels": [
         "blocked"
       ],
-      "state_line": null,
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -620,7 +606,7 @@
       "state_labels": [
         "blocked"
       ],
-      "state_line": null,
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -630,7 +616,7 @@
       "state_labels": [
         "blocked"
       ],
-      "state_line": null,
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -640,7 +626,7 @@
       "state_labels": [
         "blocked"
       ],
-      "state_line": null,
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -679,19 +665,6 @@
       "blocked_by": [],
       "evidence_commits": [
         "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
-      ]
-    },
-    {
-      "number": 919,
-      "title": "Stage 2 C11 List[Int] values: locals, len, and indexing",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "0a209468da3698a31cf6177b863284fd04c9a374",
-        "b05cb9e65007747c20c98182bbfa3fdc49a4cda3"
       ]
     },
     {
@@ -746,19 +719,19 @@
       "number": 946,
       "title": "The production frontend has no move analysis, so E2S122/E2S123 never reach an editor",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
+      "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
-        "00ce08f093da2706156f88f80d8c2fb366006d35"
+        "2b7581ffbe0c224f1a69f7f564dfa9a4fa6ace4f"
       ]
     },
     {
       "number": 955,
       "title": "modules: spec/grammar.ebnf admits a top-level `let` that Stage 2 refuses with E2S02",
       "state_labels": [
-        "blocked"
+        "in-progress"
       ],
       "state_line": null,
       "blocked_by": [],
@@ -808,9 +781,9 @@
       "number": 1008,
       "title": "Stage 2: execute immutable Int module constants after authority decision",
       "state_labels": [
-        "blocked"
+        "in-progress"
       ],
-      "state_line": "blocked",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
         "486d72deb17a6be11325a425e1138822d058121d",
@@ -851,6 +824,18 @@
       "blocked_by": [],
       "evidence_commits": [
         "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
+      ]
+    },
+    {
+      "number": 1057,
+      "title": "backlog: pay down the eighteen transcribable unreadable-state rows",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "d7433eb59f95d547be6ed3fdbf05c3121718bda9"
       ]
     }
   ]

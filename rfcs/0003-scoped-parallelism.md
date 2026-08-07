@@ -4,7 +4,7 @@
 - Opened: 2026-08-02
 - Status: proposed
 
-Proposal for [#555](https://github.com/hjosugi/kofun/issues/555). Review is
+Proposal for [#555](https://github.com/kofun-lang/kofun/issues/555). Review is
 scheduled to close on 2026-08-16, the ledger's 14-day minimum. This proposal
 records target semantics only. Production parsing, checking, lowering,
 scheduling, diagnostics, backend support, and release capability remain
@@ -174,7 +174,7 @@ not immediate interruption.
 ### Trace boundary
 
 The ownership semantics expose only these logical anchors to the separate
-trace/replay work in [#736](https://github.com/hjosugi/kofun/issues/736):
+trace/replay work in [#736](https://github.com/kofun-lang/kofun/issues/736):
 
 - `scope.enter`
 - `task.spawn`

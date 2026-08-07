@@ -71,7 +71,7 @@ year. A PR submitted before that threshold is likely to be closed immediately.
 Linguist requires a TextMate grammar hosted in its own GitHub repository, which
 `script/add-grammar` pins as a git submodule. That is now satisfied without a
 purpose-built repository: the grammar moved to
-[`hjosugi/kofun-vscode`](https://github.com/hjosugi/kofun-vscode) with the rest
+[`kofun-lang/kofun-vscode`](https://github.com/kofun-lang/kofun-vscode) with the rest
 of the VS Code extension, at `syntaxes/kofun.tmLanguage.json`. A VS Code
 extension repository is the shape most Linguist grammar submodules already
 take, so no separate `kofun-language` repository is needed.
@@ -82,12 +82,12 @@ than a move. The grammar must carry a Linguist-approved open-source licence;
 
 ### Acceptance criteria
 
-- [x] A public repository holds the grammar on its own: `hjosugi/kofun-vscode`.
+- [x] A public repository holds the grammar on its own: `kofun-lang/kofun-vscode`.
 - [x] `syntaxes/kofun.tmLanguage.json` is present and valid JSON.
 - [x] `package.json` identifies the grammar scope `source.kofun`.
 - [x] Approved open-source licence files are present (`LICENSE-APACHE`,
   `LICENSE-MIT`).
-- [ ] `script/add-grammar https://github.com/hjosugi/kofun-vscode` runs
+- [ ] `script/add-grammar https://github.com/kofun-lang/kofun-vscode` runs
   without error in a local Linguist checkout.
 
 ---
@@ -170,7 +170,7 @@ description.
 ### Summary
 
 Publishing the VS Code extension, now
-[`hjosugi/kofun-vscode`](https://github.com/hjosugi/kofun-vscode), to the
+[`kofun-lang/kofun-vscode`](https://github.com/kofun-lang/kofun-vscode), to the
 [VS Code Marketplace](https://marketplace.visualstudio.com/) provides:
 
 1. Discoverability — developers searching for Kofun find it immediately.
@@ -258,7 +258,7 @@ users create their own repositories.
 
 ### Summary
 
-A reusable GitHub Actions workflow (`hjosugi/kofun/.github/workflows/kofun.yml`
+A reusable GitHub Actions workflow (`kofun-lang/kofun/.github/workflows/kofun.yml`
 or a dedicated `hjosugi/setup-kofun` action) lets any project add Kofun CI
 with a two-line workflow. When developers use it in their own repositories,
 they commit `.kofun` files that count towards the Linguist threshold.
@@ -303,7 +303,7 @@ zero-install path for:
 - Playground / online REPL deployments
 - Contributors on non-Linux hosts
 
-Publish `hjosugi/kofun:latest` and `hjosugi/kofun:<version>` tags built from
+Publish `kofun-lang/kofun:latest` and `kofun-lang/kofun:<version>` tags built from
 the release artefact on each tag push. The image should contain
 `/usr/local/bin/kofun` and the standard library.
 

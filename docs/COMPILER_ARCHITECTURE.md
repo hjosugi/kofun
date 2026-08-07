@@ -77,7 +77,7 @@ a recorded digest.
 ## Backend strategy
 
 Recorded from the survey in
-[#554](https://github.com/hjosugi/kofun/issues/554). This section states what
+[#554](https://github.com/kofun-lang/kofun/issues/554). This section states what
 was decided and the measurements that decided it, so the question is not
 reopened from marketing material. It describes direction, not implemented
 behavior; the implemented boundary is the section above.

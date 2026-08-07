@@ -80,7 +80,7 @@ written in Kofun against `read_text`, which the current Core does not implement
 one-line `main`). No task invokes it, so nothing reported the breakage, and its
 assertions went stale unnoticed twice: first a deleted `Makefile` and a README
 string the README no longer carries, then three `editor/vscode/` paths that
-outlived the move to `hjosugi/kofun-vscode`.
+outlived the move to `kofun-lang/kofun-vscode`.
 
 `repository-check` now holds the file list to the tree: every path the script
 names must exist here and be non-empty. That is the half of it a gate can check
@@ -103,9 +103,9 @@ What is deliberately not here, and where it lives instead:
 
 | what | repository |
 |---|---|
-| official site, docs renderer, browser playground, delivery-planning snapshots, long-range issue catalogue | [`hjosugi/kofun-site`](https://github.com/hjosugi/kofun-site) |
-| VS Code extension: metadata, TextMate highlighting, snippets, packaging | [`hjosugi/kofun-vscode`](https://github.com/hjosugi/kofun-vscode) |
-| Tree-sitter grammar, editor queries, recovery corpus | [`hjosugi/tree-sitter-kofun`](https://github.com/hjosugi/tree-sitter-kofun) |
+| official site, docs renderer, browser playground, delivery-planning snapshots, long-range issue catalogue | [`kofun-lang/kofun-site`](https://github.com/kofun-lang/kofun-site) |
+| VS Code extension: metadata, TextMate highlighting, snippets, packaging | [`kofun-lang/kofun-vscode`](https://github.com/kofun-lang/kofun-vscode) |
+| Tree-sitter grammar, editor queries, recovery corpus | [`kofun-lang/tree-sitter-kofun`](https://github.com/kofun-lang/tree-sitter-kofun) |
 
 Each reads this repository, never the other way. No gate here reads anything
 from them, and `task verify` needs no npm, Next.js, or Cloudflare toolchain —
@@ -244,7 +244,7 @@ Measured on this tree, of the thirty-three tracked `.md` files under `docs/`:
 - **thirty-one are resolved by one of the four.** Moving any of them would not
   lose prose, it would break a gate.
 - **one is resolved only by `app/docs/docs-manifest.ts`** in
-  [`hjosugi/kofun-site`](https://github.com/hjosugi/kofun-site), which renders
+  [`kofun-lang/kofun-site`](https://github.com/kofun-lang/kofun-site), which renders
   `CONTRIBUTING.md` out of the submodule. It stays because it describes this
   source tree and its contribution gates.
 - **three public project documents moved to `kofun-site`:** language vision,
@@ -277,7 +277,7 @@ So the four `docs/tour/guides/*.md` files read as free and are not: `task tour`
 asserts each is non-empty and still contains that heading. Before moving a
 document out on the strength of a grep, check that no gate constructs its path.
 
-Four documents did leave, into `hjosugi/kofun-site`. No resolver named them,
+Four documents did leave, into `kofun-lang/kofun-site`. No resolver named them,
 and none of them was rendered by the site at the time it took them. Where they
 sit now has since diverged, so the destination is worth naming per document:
 
@@ -378,9 +378,9 @@ One developer-tool surface lives here, and two do not:
    exactly, and only this repository can prove that.
 2. The VS Code extension — metadata, TextMate highlighting, snippets,
    packaging — is
-   [`hjosugi/kofun-vscode`](https://github.com/hjosugi/kofun-vscode).
+   [`kofun-lang/kofun-vscode`](https://github.com/kofun-lang/kofun-vscode).
 3. The structural grammar and editor queries are
-   [`hjosugi/tree-sitter-kofun`](https://github.com/hjosugi/tree-sitter-kofun).
+   [`kofun-lang/tree-sitter-kofun`](https://github.com/kofun-lang/tree-sitter-kofun).
 
 Changing syntax can require updates in all three, and they do not share one
 parser or one semantic authority. `task lsp` covers the part that lives here;
@@ -404,11 +404,11 @@ app/docs/[slug]/page.tsx + ReactMarkdown
 Pages workflow + Next.js static export      (this repository)
             |
             v
-GitHub Pages, still served at hjosugi.github.io/kofun/
+GitHub Pages, still served at kofun-lang.github.io/kofun/
 ```
 
 The renderer and its tests live in
-[`hjosugi/kofun-site`](https://github.com/hjosugi/kofun-site) and are documented
+[`kofun-lang/kofun-site`](https://github.com/kofun-lang/kofun-site) and are documented
 in that repository's `site/README.md`. This repository's
 `.github/workflows/pages.yml` pins a reviewed renderer commit, checks out the
 exact Kofun commit whose main CI passed, refreshes the public tracker snapshots,
@@ -444,12 +444,12 @@ Never make a source fix only inside one of these directories.
 | a standard-library contract | matching `stdlib/<name>/` | module README | its `tests/verify.sh` |
 | HTTP, CLI, or TUI framework | matching `framework/<name>/` | subsystem README | matching task target |
 | LSP behavior | `tooling/lsp/`, `tests/lsp/` | LSP README | `task lsp` |
-| structural editor parsing | `hjosugi/tree-sitter-kofun` | that repository's README | its own gate |
-| VS Code packaging or metadata | `hjosugi/kofun-vscode` | that repository's README | its own gate |
+| structural editor parsing | `kofun-lang/tree-sitter-kofun` | that repository's README | its own gate |
+| VS Code packaging or metadata | `kofun-lang/kofun-vscode` | that repository's README | its own gate |
 | language contract | `spec/` | spec index and conformance owner | matching spec/conformance gate |
 | explanatory docs | `docs/` | this guide | the `spec/*/check.sh` that reads the document, if any |
 | the browser tour | `docs/tour/` | `docs/tour/README.md` | `task tour` |
-| docs UI, playground, or delivery snapshots | `hjosugi/kofun-site` | that repository's `site/README.md` | `npm run verify:site` there |
+| docs UI, playground, or delivery snapshots | `kofun-lang/kofun-site` | that repository's `site/README.md` | `npm run verify:site` there |
 
 ## What to read on your first day
 
@@ -467,7 +467,7 @@ Choose the shortest path for your work:
 - **Docs contributor:** [Contributing](CONTRIBUTING.md), then the document you
   are changing. If it is one the site renders, check
   `app/docs/docs-manifest.ts` in
-  [`hjosugi/kofun-site`](https://github.com/hjosugi/kofun-site) before moving or
+  [`kofun-lang/kofun-site`](https://github.com/kofun-lang/kofun-site) before moving or
   renaming it.
 
 The next practical step for every route is

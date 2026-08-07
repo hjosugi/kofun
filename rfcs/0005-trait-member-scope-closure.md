@@ -21,9 +21,9 @@ that do not: a duplicate member stops being reported as a duplicate
 
 ## Motivation
 
-[#942](https://github.com/hjosugi/kofun/issues/942) cannot implement a truthful
+[#942](https://github.com/kofun-lang/kofun/issues/942) cannot implement a truthful
 member-scope duplicate diagnostic until this decision exists, and
-[#995](https://github.com/hjosugi/kofun/issues/995) is the decision it waits
+[#995](https://github.com/kofun-lang/kofun/issues/995) is the decision it waits
 for. The cost is not hypothetical: every shape in that domain is refused today
 by a diagnostic that blames a scope the author did not write in.
 

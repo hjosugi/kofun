@@ -24,4 +24,25 @@
 #                      contains no open issue. `detail` is the exact blocker
 #                      number list, so adding, removing, or reopening one makes
 #                      the row fail instead of excusing a different state.
+#
+# unreadable-state    an open issue whose body carries no `State:` line the
+#                     extractor reads, so every rule keyed on that line skips
+#                     it. `detail` is the state label that supplies the answer,
+#                     or `-` when the issue has none, so relabelling makes the
+#                     row fail rather than excuse a different state. Fix by
+#                     writing `- State: <state>` into the body, then delete the
+#                     row. Re-measured 2026-08-07 across all 70 open issues after
+#                     eighteen bodies gained a `State:` line: 1 row here plus one
+#                     `stateless-tracker`. The one left (#955) carries an
+#                     unprefixed `State:` line, so widening the extractor's
+#                     regex would now reach 1 of 2.
+#
+# stateless-tracker   an open issue that carries no state by design, so it is
+#                     exempt rather than owed a fix. Recorded separately from
+#                     `unreadable-state` for exactly that reason: an exemption
+#                     folded into the drift ledger is indistinguishable from
+#                     drift, and would be "fixed" by someone fabricating a
+#                     state for it.
 unverifiable-stamp	738	d1f58a6a9e20764b25ee28773df5355512213dfa	Time-series forecasting research: stamp names a commit on no branch
+stateless-tracker	281	-	Position paper: what replacing C and Rust actually requires
+unreadable-state	955	in-progress	modules: spec/grammar.ebnf admits a top-level `let` that St...

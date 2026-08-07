@@ -1,7 +1,7 @@
 # bindgen-c adversarial macro corpus
 
 The committed inputs and the seeded mutation fuzzer behind
-[#901](https://github.com/hjosugi/kofun/issues/901). Everything here is data:
+[#901](https://github.com/kofun-lang/kofun/issues/901). Everything here is data:
 no case is generated at run time from a clock, a PID, or an entropy source,
 and nothing is fetched.
 

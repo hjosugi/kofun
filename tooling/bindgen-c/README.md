@@ -1,6 +1,6 @@
 # kofun bindgen-c
 
-Stage 1 of [#574](https://github.com/hjosugi/kofun/issues/574): generate
+Stage 1 of [#574](https://github.com/kofun-lang/kofun/issues/574): generate
 audited, raw C bindings from the Clang AST — before, and separate from, any
 C-to-Kofun source translation.
 
