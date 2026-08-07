@@ -560,7 +560,9 @@
         "blocked"
       ],
       "state_line": "blocked",
-      "blocked_by": [],
+      "blocked_by": [
+        868
+      ],
       "evidence_commits": [
         "801204407ec864c58a9c1613bca33c204be78b35"
       ]
