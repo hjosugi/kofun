@@ -322,6 +322,13 @@
       "kind": "statement-sequence",
       "trailing": 0,
       "canonical": "mystery()\nfn(y) => y"
+    },
+    {
+      "name": "a filled final slot then a newline is two statements",
+      "source": "outer(0, fn(x) => x)\nfn(y) => y",
+      "kind": "statement-sequence",
+      "trailing": 0,
+      "canonical": "outer(0, fn(x) => x)\nfn(y) => y"
     }
   ],
   "reject": [
@@ -384,6 +391,11 @@
       "name": "an optional functional final formal takes no trailing lambda",
       "source": "maybe_apply(1) fn(x) => x",
       "category": "trailing-lambda-not-functional"
+    },
+    {
+      "name": "a nested unresolved callee keeps its named rule rather than a stray token",
+      "source": "outer(mystery()\nfn(x) => x)",
+      "category": "trailing-callee-unresolved"
     }
   ],
   "rejectDeclarations": [
@@ -431,6 +443,26 @@
       "name": "a callable domain cannot be made optional",
       "source": "fn f(x: ()?) -> Int {\n    return 0\n}\n",
       "category": "callable-domain-without-arrow"
+    },
+    {
+      "name": "a parenthesised mode is still not a callable domain",
+      "source": "fn f(x: (take Int)) -> Int {\n    return 0\n}\n",
+      "category": "mode-outside-callable-domain"
+    },
+    {
+      "name": "a doubly parenthesised parameter list is still a domain",
+      "source": "fn f(x: ((Int, Int))) -> Int {\n    return 0\n}\n",
+      "category": "callable-domain-without-arrow"
+    },
+    {
+      "name": "parenthesising an empty domain does not make it optional",
+      "source": "fn f(x: (())?) -> Int {\n    return 0\n}\n",
+      "category": "callable-domain-without-arrow"
+    },
+    {
+      "name": "a mode inside a generic argument is still outside a domain",
+      "source": "fn f(x: List[(take Int)]) -> Int {\n    return 0\n}\n",
+      "category": "mode-outside-callable-domain"
     }
   ],
   "width": [

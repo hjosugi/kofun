@@ -43,6 +43,15 @@ export class SurfaceError extends Error {
     }
 }
 
+// A node that can only be a `callable_domain`: a mode prefix or a
+// parenthesised parameter list, at any depth of `?` wrapping. Both are legal
+// only immediately left of `->`.
+function bareCallableDomain(node) {
+    if (node.kind === "moded" || node.kind === "tuple") return true;
+    if (node.kind === "optional") return bareCallableDomain(node.inner);
+    return false;
+}
+
 const fail = (category, message, offset) => {
     throw new SurfaceError(category, message, offset);
 };
@@ -50,6 +59,16 @@ const fail = (category, message, offset) => {
 // Every token carries whether a newline or a comment preceded it, because the
 // trailing-lambda rule is stated in terms of that trivia and nothing else can
 // recover it after lexing.
+//
+// `commentBefore` is, in practice, always implied by `newlineBefore`: a comment
+// runs to end of line and the loop then consumes that newline, so no token
+// except the final `end` can carry one without the other. Every
+// `newlineBefore || commentBefore` test below is therefore effectively a test
+// of `newlineBefore` alone. Both are kept and named because the contract states
+// the rule as "a newline or comment", and a later block-comment syntax would
+// make the second disjunct load-bearing without anyone having to notice this
+// paragraph — but nothing today depends on it, and a reader should not assume
+// the comment half is exercised.
 export function tokenize(source) {
     const tokens = [];
     let index = 0;
@@ -171,6 +190,11 @@ class Parser {
         // is still on the stack. Inside a trailing body the guard therefore
         // defers and lets that rule report.
         this.trailingDepth = 0;
+        // Open argument lists. The trivia escape below hands `fn` to "the next
+        // expression or declaration", and inside an argument list there is no
+        // next statement for it to begin — the escape there produced a stray
+        // `expected-call-close` instead of the rule that actually applied.
+        this.callDepth = 0;
     }
 
     peek(ahead = 0) {
@@ -382,7 +406,7 @@ class Parser {
             mode = this.next().value;
         }
         if (this.at("(")) {
-            this.next();
+            const open = this.next();
             if (this.at(")")) {
                 this.next();
                 left = { kind: "tuple", elements: [] };
@@ -417,6 +441,32 @@ class Parser {
                     wasTuple = true;
                 } else {
                     this.expect(")", "expected-type-close");
+                    // No comma arrived, so this was the grouping form
+                    // `primary_type = "(", type_ref, ")"` — and a `type_ref`
+                    // is not a bare callable domain. `first` was parsed under
+                    // domain rules a moment ago, because nothing distinguishes
+                    // the two until the comma does or does not appear, so the
+                    // domain-only shapes have to be refused here instead.
+                    //
+                    // Without this, one extra pair of parentheses defeated both
+                    // refusals the outer level added — `(take Int)`,
+                    // `((Int, Int))`, `(())?` — and the formatter then printed
+                    // exactly the text the corpus pins as rejected, which did
+                    // not reparse. Exhaustively over every type string of ten
+                    // tokens or fewer that was 4043 round-trip breaks.
+                    //
+                    // The guard belongs at the level that *learns* the answer.
+                    // Placing it only at the outer level was the same mistake
+                    // as parenthesising only a `function` domain: correct for
+                    // the shape in front of it, escaped by the next one out.
+                    if (bareCallableDomain(first)) {
+                        fail(
+                            first.kind === "tuple" || first.kind === "optional"
+                                ? "callable-domain-without-arrow"
+                                : "mode-outside-callable-domain",
+                            "a parenthesised type is an ordinary type, not a callable domain; a domain needs its `->`",
+                            open.offset);
+                    }
                     left = first;
                 }
             }
@@ -690,6 +740,7 @@ class Parser {
     //               | labelled { "," labelled }
     parseCall(callee) {
         const open = this.expect("(", "expected-call-open").offset;
+        this.callDepth += 1;
         const args = [];
         const labels = new Set();
         let sawLabel = false;
@@ -730,6 +781,7 @@ class Parser {
             break;
         }
         this.expect(")", "expected-call-close");
+        this.callDepth -= 1;
         const call = {
             kind: "Call",
             callee,
@@ -790,7 +842,7 @@ class Parser {
             // Without this, knowing *less* about a callee produced the stricter
             // parse: `consume(1)` then a newline then `fn(y) => y` was two
             // statements, while `mystery()` in the same shape was refused.
-            if (token.newlineBefore || token.commentBefore) return;
+            if ((token.newlineBefore || token.commentBefore) && this.callDepth === 0) return;
             fail("trailing-callee-unresolved",
                 `cannot attach a trailing lambda: the signature of ${name === null ? "this callee" : JSON.stringify(name)} is not known here`,
                 token.offset);
@@ -815,6 +867,17 @@ class Parser {
             // slot is taken exactly when the positional count reaches it.
             call.arguments.filter((argument) => argument.label === null).length > finalIndex;
         if (alreadySupplied) {
+            // Same trivia rule as the not-functional case above, and for the
+            // same reason: a filled final slot means the call does not "still
+            // need its final functional parameter", so the contract's
+            // "Otherwise `fn` begins the next expression" clause applies.
+            //
+            // This was left trivia-blind while its two siblings were fixed, so
+            // `outer(0, fn(x) => x)` followed by a newline and another lambda
+            // was refused where the identically shaped `consume(value)` case
+            // was accepted as two statements. A false refusal, which is the
+            // worse direction.
+            if (token.newlineBefore || token.commentBefore) return;
             fail("trailing-lambda-slot-taken",
                 `the final parameter of ${JSON.stringify(signature.name)} is already supplied inside the parentheses`,
                 token.offset);
