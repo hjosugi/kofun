@@ -841,6 +841,10 @@
         {
           "agent_id": "claude-20260807-1062-claim-coverage",
           "status": "active"
+        },
+        {
+          "agent_id": "claude-20260807-1062-claim-coverage",
+          "status": "pr-open"
         }
       ]
     }
