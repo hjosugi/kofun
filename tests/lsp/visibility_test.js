@@ -264,6 +264,83 @@ async function scenarioCollidingDisplayPaths() {
   await session.stop();
 }
 
+// A visibility modifier is contextual: `spec/modules/visibility.md` says the
+// lexer keeps emitting ordinary identifier tokens outside a position where a
+// declaration may begin. A module or import path whose last segment happens to
+// be `internal` or `pub` is such a position, and reading it as a modifier
+// disclosed the private declarations of a file that carries no modifier at all
+// — the default, most conservative way to write one.
+async function scenarioModifierPositionIsContextual() {
+  const root = makeWorkspace(true);
+  const session = new Session(root);
+  await session.start();
+
+  // No modifier anywhere in this file. Every declaration is private by default.
+  for (const [name, header] of [
+    ['module', 'module demo.internal'],
+    ['import', 'import demo.internal'],
+    ['pub-segment', 'module demo.pub'],
+  ]) {
+    const dep = `${header}\n\nfn hidden_${name.replace('-', '_')}(value: Int) -> Int {\n    return value\n}\n`;
+    await session.open(`demo/dep_${name}.kofun`, dep);
+  }
+  const probe = 'fn probe() -> Int {\n    return hidden\n}\n';
+  const probeUri = await session.open('demo/probe.kofun', probe);
+
+  const labels = await session.completionLabels(probeUri, probe, '    return hidden', 17);
+  assert.deepStrictEqual(labels, [],
+    `a path segment spelled like a modifier must not make a file's unmarked declarations public; completion offered ${JSON.stringify(labels)}`);
+
+  // The control: a real modifier, at the start of its own line, still works.
+  const marked = 'module demo.core\n\ninternal fn marked_visible(value: Int) -> Int {\n    return value\n}\n';
+  await session.open('demo/marked.kofun', marked);
+  const markedLabels = await session.completionLabels(probeUri, probe, '    return hidden', 11);
+  assert.ok(markedLabels.includes('marked_visible'),
+    `an \`internal\` modifier in declaration position must still be honoured; completion offered ${JSON.stringify(markedLabels)}`);
+
+  await session.stop();
+}
+
+// `internal` means one package. A neighbouring checkout with its own manifest
+// is a different package, and an untitled buffer is an anonymous single-file
+// package that `spec/modules/package-roots.md` defines as non-importable.
+// Deriving package identity from the session rather than from the document made
+// every comparison trivially equal, so `internal` restricted nothing beyond the
+// same-file clause.
+async function scenarioPackageIdentityIsPerDocument() {
+  const root = makeWorkspace(true);
+  const neighbour = makeWorkspace(true);
+  const session = new Session(root);
+  await session.start();
+
+  const foreign = 'internal fn neighbour_internal(value: Int) -> Int {\n    return value\n}\n';
+  const neighbourUri = `file://${neighbour}/demo/lib.kofun`;
+  session.client.send({ jsonrpc: '2.0', method: 'textDocument/didOpen', params: {
+    textDocument: { uri: neighbourUri, languageId: 'kofun', version: 1, text: foreign } } });
+  await session.client.waitFor((m) => m.method === 'textDocument/publishDiagnostics' &&
+    m.params.uri === neighbourUri && m.params.version === 1);
+
+  const probe = 'fn probe() -> Int {\n    return neighbour\n}\n';
+  const probeUri = await session.open('demo/probe.kofun', probe);
+  const labels = await session.completionLabels(probeUri, probe, '    return neighbour', 20);
+  assert.deepStrictEqual(labels, [],
+    `a neighbouring checkout with its own manifest is a different package, so its internal API must not cross; completion offered ${JSON.stringify(labels)}`);
+
+  // And the workspace's own internal API must not leak outward into an
+  // anonymous buffer either.
+  const scratch = 'fn scratch() -> Int {\n    return probe\n}\n';
+  const scratchUri = 'untitled:Untitled-7';
+  session.client.send({ jsonrpc: '2.0', method: 'textDocument/didOpen', params: {
+    textDocument: { uri: scratchUri, languageId: 'kofun', version: 1, text: scratch } } });
+  await session.client.waitFor((m) => m.method === 'textDocument/publishDiagnostics' &&
+    m.params.uri === scratchUri && m.params.version === 1);
+  const outward = await session.completionLabels(scratchUri, scratch, '    return probe', 16);
+  assert.deepStrictEqual(outward, [],
+    `an untitled buffer is a non-importable anonymous package, so the workspace's declarations must not reach it; completion offered ${JSON.stringify(outward)}`);
+
+  await session.stop();
+}
+
 // Two checkouts of one project at different absolute paths, and one workspace
 // whose files arrive in the opposite order, must answer identically. Package
 // identity is semantic; `spec/modules/package-roots.md` says so directly: "A
@@ -306,6 +383,10 @@ async function scenarioDeterminism(expected) {
   console.log('PASS visibility: caller identity comes from the request, not from document content');
   await scenarioCollidingDisplayPaths();
   console.log('PASS visibility: documents sharing a display path are still separate files');
+  await scenarioModifierPositionIsContextual();
+  console.log("PASS visibility: a path segment spelled like a modifier is not a modifier");
+  await scenarioPackageIdentityIsPerDocument();
+  console.log("PASS visibility: package identity is per document, so internal does not cross a checkout");
   await scenarioDeterminism(baseline);
   console.log('PASS visibility: path remap and open order produce identical results');
 })().catch((error) => {

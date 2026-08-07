@@ -304,7 +304,40 @@ function declaredVisibilityBefore(doc, declarationIndex) {
   const previous = tokens[declarationIndex - 1];
   if (!previous || previous.kind !== 'id') return 'private';
   if (previous.depth !== tokens[declarationIndex].depth) return 'private';
+  // The token must be in a *modifier position*, and depth alone does not
+  // establish that. `spec/modules/visibility.md` is explicit: "`pub`,
+  // `internal`, and `private` are contextual declaration modifiers. The lexer
+  // continues to emit ordinary identifier tokens outside a position where a
+  // declaration or member may begin."
+  //
+  // Without this check, a file with no modifier anywhere disclosed its private
+  // declarations, because the ordinary identifier ending a header was read as
+  // one:
+  //
+  //     module demo.internal
+  //
+  //     fn leaked(value: Int) -> Int { ... }   // offered to other files
+  //
+  // The same happened for `import demo.internal` and for a path ending in
+  // `pub`. The worst part is which programs it hit: the default, most
+  // conservative way to write a private declaration is to write no modifier at
+  // all, so writing `private` explicitly was what protected a file.
+  //
+  // A declaration begins a line, so a modifier is one only when a newline
+  // separates it from whatever came before — or when nothing did. A path
+  // segment never satisfies that, because `.` binds it to the header.
+  if (!firstOnItsLine(doc, previous)) return 'private';
   return declaredVisibility(tokenText(doc, previous));
+}
+
+// Whether a token is the first on its line, which is what makes it eligible to
+// begin a declaration. Deliberately conservative: two declarations crammed onto
+// one line lose the modifier and fall back to private, which errs toward
+// hiding rather than disclosing.
+function firstOnItsLine(doc, token) {
+  const before = doc.tokens[doc.tokens.indexOf(token) - 1];
+  if (!before) return true;
+  return doc.text.slice(before.end, token.start).includes('\n');
 }
 
 function buildIndex(doc) {
@@ -1268,8 +1301,44 @@ function resolveWorkspacePackageId() {
 // owns and the buffer's content cannot reach. Only equality is ever asked of
 // it, so its absolute prefix never leaks into a decision — two checkouts of one
 // project at different paths still agree on which declarations are offered.
+// A document's package identity, which is a property of the *document* and not
+// of the session.
+//
+// Returning the session-wide `workspacePackageId` for every document made
+// `declaration.packageId === caller.packageId` unconditionally true whenever a
+// manifest existed, so the `internal` branch could never refuse anything. A
+// neighbouring checkout with its own `kofun.toml` exchanged `internal`
+// declarations with the workspace in both directions, and an untitled buffer —
+// an anonymous, non-importable package — both saw and was seen.
+//
+// `spec/modules/package-roots.md`: root selection is fixed for the invocation
+// and covers the sources *that root selected*. A file outside the workspace
+// root was never selected by it, so it belongs to its own anonymous
+// single-file package, which that document defines as non-importable. `null`
+// is how `accessible` spells that, and two distinct anonymous packages never
+// compare equal because the same-file check has already run by then.
+function documentPackageId(doc) {
+  if (workspacePackageId === null) return null;
+  return doc.insideWorkspace === true ? workspacePackageId : null;
+}
+
+// Whether a document lives under the selected package root. Computed from the
+// URI at didOpen — transport state, not anything the buffer can claim.
+function insideWorkspaceRoot(uri) {
+  if (!workspaceRoot) return false;
+  try {
+    const parsed = new URL(uri);
+    if (parsed.protocol !== 'file:') return false;
+    const filename = fileURLToPath(parsed);
+    const relative = path.relative(workspaceRoot, filename);
+    return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+  } catch {
+    return false;
+  }
+}
+
 function callerContext(doc) {
-  return { fileId: doc.uri, packageId: workspacePackageId };
+  return { fileId: doc.uri, packageId: documentPackageId(doc) };
 }
 
 // A declaration's identity for the same decision. `visibility` is read from the
@@ -1279,7 +1348,7 @@ function callerContext(doc) {
 function declarationContext(doc, symbol) {
   return {
     fileId: doc.uri,
-    packageId: workspacePackageId,
+    packageId: documentPackageId(doc),
     visibility: declaredVisibility(symbol.visibility)
   };
 }
@@ -1457,6 +1526,7 @@ function handle(message) {
         uri: item.uri, version: Number.isInteger(item.version) ? item.version : 0,
         text: item.text, lines: lineStarts(item.text),
         logicalPath: logicalPath(item.uri),
+        insideWorkspace: insideWorkspaceRoot(item.uri),
         sessionEpoch: ++sessionSequence,
         generation: 0,
         fileId: null,
