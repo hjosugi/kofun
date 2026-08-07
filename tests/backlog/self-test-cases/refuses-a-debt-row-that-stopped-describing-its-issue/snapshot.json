@@ -30,7 +30,9 @@
         "blocked"
       ],
       "state_line": "blocked",
-      "blocked_by": [],
+      "blocked_by": [
+        1
+      ],
       "evidence_commits": []
     },
     {
