@@ -1,3 +1,30 @@
+## Working the backlog
+
+[`docs/ISSUE_READINESS.md`](docs/ISSUE_READINESS.md) is the contract: the state
+vocabulary, the Definition of Ready, what `task backlog` enforces, and the debt
+ledger. Read it before changing an issue's state or opening a pull request
+against one.
+
+Claim an issue before you start, so a second agent can see it is taken. The
+form is load-bearing — `tests/backlog/extract.mjs` strips every HTML comment
+before it looks, so a wrapped block extracts to nothing:
+
+```
+### agent-claim:v1
+- agent_id: your-agent-id
+- status: active
+```
+
+`status` moves `active` → `pr-open` → `merged` (or `released` if you stop).
+**Close the claim out.** `active` and `pr-open` are live, and a live claim on a
+closed issue fails the gate — closing the issue is not what ends a claim, the
+`merged` event is.
+
+Do not copy the shape from a neighbouring comment. Every `agent-claim:v1`
+comment written before 2026-08-07 uses a form the parser ignores, so copying
+one produces a claim that looks official and is invisible; that is how the
+protocol went unused while appearing to be followed.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
