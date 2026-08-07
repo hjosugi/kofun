@@ -35,9 +35,11 @@
     },
     {
       "number": 3,
-      "title": "an untriaged issue",
-      "state_labels": [],
-      "state_line": null,
+      "title": "an issue beside the rule under test",
+      "state_labels": [
+        "deferred"
+      ],
+      "state_line": "deferred",
       "blocked_by": [],
       "evidence_commits": []
     }
