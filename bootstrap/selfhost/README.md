@@ -124,8 +124,8 @@ Direct-native compiler reproduction is a separate strengthening track; it does
 not block this first C11 fixed point.
 
 The implementation order is
-[#619](https://github.com/hjosugi/kofun/issues/619) through
-[#622](https://github.com/hjosugi/kofun/issues/622), followed by the executable
+[#619](https://github.com/kofun-lang/kofun/issues/619) through
+[#622](https://github.com/kofun-lang/kofun/issues/622), followed by the executable
 generation gates in
-[#271](https://github.com/hjosugi/kofun/issues/271) and
-[#272](https://github.com/hjosugi/kofun/issues/272).
+[#271](https://github.com/kofun-lang/kofun/issues/271) and
+[#272](https://github.com/kofun-lang/kofun/issues/272).

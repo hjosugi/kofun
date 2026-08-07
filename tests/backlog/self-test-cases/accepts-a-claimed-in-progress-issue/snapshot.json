@@ -1,0 +1,31 @@
+{
+  "schema": "kofun.backlog-issue-state/v1",
+  "repository": "kofun-lang/kofun",
+  "state_labels": [
+    "ready",
+    "blocked",
+    "needs-detail",
+    "needs-decision",
+    "deferred",
+    "in-progress"
+  ],
+  "open_issues": 1,
+  "issues": [
+    {
+      "number": 110,
+      "title": "work underway with nobody named",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": "in-progress",
+      "blocked_by": [],
+      "evidence_commits": [],
+      "claims": [
+        {
+          "agent_id": "agent-owner",
+          "status": "active"
+        }
+      ]
+    }
+  ]
+}

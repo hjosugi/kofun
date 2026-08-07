@@ -10,7 +10,7 @@
       "state": "implemented",
       "shepherd": "hjosugi",
       "source": "docs/DESIGN_DECISIONS.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/687",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/687",
       "dates": {
         "recorded_on": "2026-07-26"
       },
@@ -27,7 +27,7 @@
         "evidence": "tests/conformance/numeric/reject_slash_operator.kofun"
       },
       "implementation": {
-        "change": "https://github.com/hjosugi/kofun/issues/687",
+        "change": "https://github.com/kofun-lang/kofun/issues/687",
         "enablement": "Enabled unconditionally, with no flag. The frontend refuses `/` on `Int` before lowering, and the native x86-64, native AArch64, wasm32 and self-host C11 paths each carry their own refusal fixture so no backend can quietly give the operator a meaning.",
         "gate": "sh tests/conformance/run.sh",
         "claims": [
@@ -39,7 +39,7 @@
         {
           "id": "A01",
           "recorded_on": "2026-07-26",
-          "change": "https://github.com/hjosugi/kofun/issues/687",
+          "change": "https://github.com/kofun-lang/kofun/issues/687",
           "delta": "`/` is no longer an `Int` operator at all. It is reserved and refused with one diagnostic rather than returning a fractional value, because no fractional type exists to return. `//` is unchanged and remains floor division.",
           "original_semantics": "`/` returns floating division. `//` performs integer/floor division.",
           "compatibility": {
@@ -59,7 +59,7 @@
       "state": "implemented",
       "shepherd": "hjosugi",
       "source": "docs/DESIGN_DECISIONS.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/666",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/666",
       "dates": {
         "recorded_on": "2026-07-26"
       },
@@ -73,7 +73,7 @@
         "evidence": "tests/conformance/capabilities.tsv"
       },
       "implementation": {
-        "change": "https://github.com/hjosugi/kofun/issues/666",
+        "change": "https://github.com/kofun-lang/kofun/issues/666",
         "enablement": "Enabled for every registered backend/corpus pair. `tests/conformance/capabilities.tsv` is the closed manifest of supported and unsupported pairs; adapters no longer carry an independently authoritative corpus list, so a backend cannot declare its own coverage.",
         "gate": "sh tests/conformance/check-capabilities.sh",
         "claims": [
@@ -108,7 +108,7 @@
       "state": "accepted",
       "shepherd": "hjosugi",
       "source": "docs/DESIGN_DECISIONS.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/551",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/551",
       "dates": {
         "recorded_on": "2026-07-26"
       },
@@ -131,7 +131,7 @@
       "state": "accepted",
       "shepherd": "hjosugi",
       "source": "docs/DESIGN_DECISIONS.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/551",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/551",
       "dates": {
         "recorded_on": "2026-07-26"
       },
@@ -170,7 +170,7 @@
       "state": "implemented",
       "shepherd": "hjosugi",
       "source": "docs/DESIGN_DECISIONS.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/546",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/546",
       "dates": {
         "recorded_on": "2026-07-27"
       },
@@ -185,7 +185,7 @@
         "evidence": "tests/conformance/records/README.md"
       },
       "implementation": {
-        "change": "https://github.com/hjosugi/kofun/pull/756",
+        "change": "https://github.com/kofun-lang/kofun/pull/756",
         "enablement": "Enabled only in the bounded record frontend invoked by `task records`. Module visibility, generic records, the main compiler, and backend lowering remain outside the checkpoint.",
         "gate": "task records",
         "claims": [
@@ -200,7 +200,7 @@
       "state": "accepted",
       "shepherd": "hjosugi",
       "source": "docs/DESIGN_DECISIONS.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/290",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/290",
       "dates": {
         "recorded_on": "2026-07-22"
       },
@@ -219,7 +219,7 @@
       "state": "accepted",
       "shepherd": "hjosugi",
       "source": "docs/DESIGN_DECISIONS.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/300",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/300",
       "dates": {
         "recorded_on": "2026-07-22"
       },
@@ -240,7 +240,7 @@
       "state": "accepted",
       "shepherd": "hjosugi",
       "source": "docs/DESIGN_DECISIONS.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/303",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/303",
       "dates": {
         "recorded_on": "2026-07-22"
       },
@@ -259,7 +259,7 @@
       "state": "implemented",
       "shepherd": "hjosugi",
       "source": "docs/DESIGN_DECISIONS.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/287",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/287",
       "dates": {
         "recorded_on": "2026-07-23"
       },
@@ -274,7 +274,7 @@
         "evidence": "tests/conformance/modules/re-exports/run.sh"
       },
       "implementation": {
-        "change": "https://github.com/hjosugi/kofun/issues/602",
+        "change": "https://github.com/kofun-lang/kofun/issues/602",
         "enablement": "Same-package `pub import` and `pub from` in the Stage 2 frontend, with non-widening `ExportBindingId` edges and the stated bounds: 64-edge chains, 1,024 bindings per module, 65,536 edges per package. There is no `internal` re-export form, and cross-package re-export is outside the checkpoint.",
         "gate": "task re-exports",
         "claims": [
@@ -289,7 +289,7 @@
       "state": "implemented",
       "shepherd": "hjosugi",
       "source": "docs/DESIGN_DECISIONS.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/601",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/601",
       "dates": {
         "recorded_on": "2026-07-23"
       },
@@ -303,7 +303,7 @@
         "evidence": "tests/typed-sidecar/authority-boundary.sh"
       },
       "implementation": {
-        "change": "https://github.com/hjosugi/kofun/pull/714",
+        "change": "https://github.com/kofun-lang/kofun/pull/714",
         "enablement": "Stage 2 projects compiler-derived semantic events one-way into typed-sidecar v1 for an explicit single-file `kofun check`. The document is non-authoritative, and compiler, KIF, and cache consumers are refused by the authority-boundary gate.",
         "gate": "task typed-sidecar-projector",
         "claims": [
@@ -318,7 +318,7 @@
       "state": "accepted",
       "shepherd": "hjosugi",
       "source": "docs/DESIGN_DECISIONS.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/635",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/635",
       "dates": {
         "recorded_on": "2026-07-25"
       },
@@ -337,7 +337,7 @@
       "state": "accepted",
       "shepherd": "hjosugi",
       "source": "docs/DESIGN_DECISIONS.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/545",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/545",
       "dates": {
         "recorded_on": "2026-07-26"
       },
@@ -358,7 +358,7 @@
       "state": "accepted",
       "shepherd": "hjosugi",
       "source": "docs/DESIGN_DECISIONS.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/657",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/657",
       "dates": {
         "recorded_on": "2026-07-26"
       },
@@ -379,7 +379,7 @@
       "state": "accepted",
       "shepherd": "hjosugi",
       "source": "docs/DESIGN_DECISIONS.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/403",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/403",
       "dates": {
         "recorded_on": "2026-07-26"
       },
@@ -401,7 +401,7 @@
       "state": "accepted",
       "shepherd": "hjosugi",
       "source": "docs/DESIGN_DECISIONS.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/120",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/120",
       "dates": {
         "recorded_on": "2026-07-27"
       },
@@ -421,7 +421,7 @@
       "state": "accepted",
       "shepherd": "hjosugi",
       "source": "docs/DESIGN_DECISIONS.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/742",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/742",
       "dates": {
         "recorded_on": "2026-07-28"
       },
@@ -442,7 +442,7 @@
       "state": "accepted",
       "shepherd": "hjosugi",
       "source": "docs/DESIGN_DECISIONS.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/551",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/551",
       "dates": {
         "recorded_on": "2026-07-31"
       },
@@ -464,7 +464,7 @@
       "state": "accepted",
       "shepherd": "hjosugi",
       "source": "docs/DESIGN_DECISIONS.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/626",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/626",
       "dates": {
         "recorded_on": "2026-07-31"
       },
@@ -485,7 +485,7 @@
       "state": "accepted",
       "shepherd": "hjosugi",
       "source": "docs/DESIGN_DECISIONS.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/627",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/627",
       "dates": {
         "recorded_on": "2026-07-31"
       },
@@ -506,7 +506,7 @@
       "state": "accepted",
       "shepherd": "hjosugi",
       "source": "docs/DESIGN_DECISIONS.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/636",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/636",
       "dates": {
         "recorded_on": "2026-07-31"
       },
@@ -525,7 +525,7 @@
       "state": "accepted",
       "shepherd": "hjosugi",
       "source": "docs/DESIGN_DECISIONS.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/638",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/638",
       "dates": {
         "recorded_on": "2026-07-31"
       },
@@ -546,7 +546,7 @@
       "state": "accepted",
       "shepherd": "hjosugi",
       "source": "docs/DESIGN_DECISIONS.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/639",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/639",
       "dates": {
         "recorded_on": "2026-07-31"
       },
@@ -567,7 +567,7 @@
       "state": "accepted",
       "shepherd": "hjosugi",
       "source": "docs/DESIGN_DECISIONS.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/640",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/640",
       "dates": {
         "recorded_on": "2026-07-31"
       },
@@ -589,7 +589,7 @@
       "shepherd": "hjosugi",
       "source": "rfcs/0001-allocator-capability.md",
       "document": "rfcs/0001-allocator-capability.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/573",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/573",
       "dates": {
         "opened_on": "2026-08-01",
         "review_closed_on": "2026-08-15"
@@ -612,7 +612,7 @@
       "shepherd": "hjosugi",
       "source": "rfcs/0002-environment-authority.md",
       "document": "rfcs/0002-environment-authority.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/569",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/569",
       "dates": {
         "opened_on": "2026-08-02",
         "review_closed_on": "2026-08-16"
@@ -635,7 +635,7 @@
       "shepherd": "hjosugi",
       "source": "rfcs/0003-scoped-parallelism.md",
       "document": "rfcs/0003-scoped-parallelism.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/555",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/555",
       "dates": {
         "opened_on": "2026-08-02",
         "review_closed_on": "2026-08-16"
@@ -659,7 +659,7 @@
       "shepherd": "hjosugi",
       "source": "rfcs/0004-ownership-kind-classification.md",
       "document": "rfcs/0004-ownership-kind-classification.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/907",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/907",
       "dates": {
         "opened_on": "2026-08-02",
         "review_closed_on": "2026-08-16"
@@ -682,7 +682,7 @@
       "shepherd": "hjosugi",
       "source": "rfcs/0005-trait-member-scope-closure.md",
       "document": "rfcs/0005-trait-member-scope-closure.md",
-      "proposal": "https://github.com/hjosugi/kofun/issues/995",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/995",
       "dates": {
         "opened_on": "2026-08-02",
         "review_closed_on": "2026-08-16"

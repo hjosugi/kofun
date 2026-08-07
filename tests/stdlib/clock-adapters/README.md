@@ -1,8 +1,8 @@
 # Clock adapter corpus
 
 The executable producer for
-[#848](https://github.com/hjosugi/kofun/issues/848), the bounded child of
-[#647](https://github.com/hjosugi/kofun/issues/647): explicit monotonic and
+[#848](https://github.com/kofun-lang/kofun/issues/848), the bounded child of
+[#647](https://github.com/kofun-lang/kofun/issues/647): explicit monotonic and
 system clock identities, a closed clock error, affine clock and sleeper
 handles, and a deterministic fake clock with a scripted waiter.
 

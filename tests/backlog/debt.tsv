@@ -24,4 +24,94 @@
 #                      contains no open issue. `detail` is the exact blocker
 #                      number list, so adding, removing, or reopening one makes
 #                      the row fail instead of excusing a different state.
+#
+# unreadable-state    an open issue whose body carries no `State:` line the
+#                     extractor reads, so every rule keyed on that line skips
+#                     it. `detail` is the state label that supplies the answer,
+#                     or `-` when the issue has none, so relabelling makes the
+#                     row fail rather than excuse a different state. Fix by
+#                     writing `- State: <state>` into the body, then delete the
+#                     row. Re-measured 2026-08-07 across all 70 open issues after
+#                     eighteen bodies gained a `State:` line: 1 row here plus one
+#                     `stateless-tracker`. The one left (#955) carries an
+#                     unprefixed `State:` line, so widening the extractor's
+#                     regex would now reach 1 of 2.
+#
+# stateless-tracker   an open issue that carries no state by design, so it is
+#                     exempt rather than owed a fix. Recorded separately from
+#                     `unreadable-state` for exactly that reason: an exemption
+#                     folded into the drift ledger is indistinguishable from
+#                     drift, and would be "fixed" by someone fabricating a
+#                     state for it.
+#
+# unnamed-blocker     an open issue labelled `blocked` whose body names no
+#                     blocker where `blockedBy()` reads one, so the
+#                     closed-blocker rule skips it. Fix by writing
+#                     `Blocked by: #N` into the body; the row then retires
+#                     itself, because an issue that gains the line stops
+#                     reaching that branch and its row fails as unused.
+#                     Measured 2026-08-07 across 28 blocked issues: the rule
+#                     reached 4. Of the 24 it missed, three name a blocker that
+#                     has since closed — #314, whose own body says its unblock
+#                     condition is fulfilled, plus #915 and #576 — which is the
+#                     class this ledger exists to keep countable, arriving
+#                     through the one door the gate did not watch.
+#
+# capability-blocker  an open issue blocked on something no issue number can
+#                     express, so it is exempt rather than owed a fix. #26
+#                     waits on an unowned WASI capability profile and #570 on a
+#                     Stage 2 parse capability; both bodies are current and
+#                     honest. Recorded separately from `unnamed-blocker` for
+#                     the same reason `stateless-tracker` is separate from
+#                     `unreadable-state`: an exemption folded into the drift
+#                     ledger is indistinguishable from drift, and would be
+#                     "fixed" by someone inventing an issue number for it.
+#
+# unclaimed-progress  an open issue labelled `in-progress` that carries no live
+#                     claim, so nothing records who owns work the label says is
+#                     underway. Fix by posting a canonical claim — the
+#                     level-three heading form docs/ISSUE_READINESS.md defines
+#                     — after which the row retires itself, because a claimed
+#                     issue stops reaching that branch and its row fails as
+#                     unused. Only the owner can do that; recording it here is
+#                     not a substitute for claiming, and no third party may
+#                     claim on someone else's behalf.
+#
+#                     Measured 2026-08-07: the gate reported `PASS: 0 live
+#                     claims` across all 70 open issues while four of them had
+#                     an open pull request implementing them, so both claim
+#                     rules were quantified over an empty set. Every
+#                     `agent-claim:v1` comment on the tracker used a wrapped or
+#                     prose shape that `claimEvents()` strips — ten such
+#                     comments on #645 extract to zero events. An inert claim
+#                     is worse than none: its author believes the signal is
+#                     published.
 unverifiable-stamp	738	d1f58a6a9e20764b25ee28773df5355512213dfa	Time-series forecasting research: stamp names a commit on no branch
+stateless-tracker	281	-	Position paper: what replacing C and Rust actually requires
+unreadable-state	955	in-progress	modules: spec/grammar.ebnf admits a top-level `let` that St...
+capability-blocker	26	-	wasm32 target: extend the bounded arithmetic and browser c
+unnamed-blocker	314	-	Null coalescing: execute Optional(Int) ?? Int lazily
+unnamed-blocker	533	-	Show where ownership goes: LSP hover, inlay hints, and dia
+unnamed-blocker	554	-	Stage 2: lower contiguous payload-free enum matches to C s
+unnamed-blocker	569	-	RFC: define affine authority capabilities for environment 
+capability-blocker	570	-	Austral: propagate ownership kind structurally through gen
+unnamed-blocker	571	-	Austral/Nim: support zero-copy borrowed results without us
+unnamed-blocker	572	-	Nim: infer last-use moves and add a compile-time move asse
+unnamed-blocker	573	-	Odin: make allocator choice a scoped, effect-tracked capab
+unnamed-blocker	574	-	V: generate audited C bindings from Clang AST before attem
+unnamed-blocker	576	-	Koka: reuse matched ADT constructors in place when storage
+unnamed-blocker	644	-	HTTP/1.1 client core: bounded request and response state m
+unnamed-blocker	646	-	Benchmark report v1: canonical raw-sample codec and determ
+unnamed-blocker	847	-	Benchmark report producer: canonical v1 bytes and determin
+unnamed-blocker	881	-	Call arguments v1 slice 2: bind labels in HIR, type checki
+unnamed-blocker	882	-	Call arguments v1 slice 3: lower labelled and trailing cal
+unnamed-blocker	883	-	Typed upgrade patches slice 3: opt-in atomic exact-type re
+unnamed-blocker	884	-	Typed upgrade patches slice 2: deterministic read-only CLI
+unnamed-blocker	885	-	Typed upgrade patches slice 1: validate schema and compute
+unnamed-blocker	915	-	Stage 2 ensure_move v3: prove loop-local last uses instead
+unnamed-blocker	922	-	Stage 2: record the move site and attach it to the use-aft
+unnamed-blocker	930	-	Allocator seed: canonical `stdlib/alloc` contract and pinn
+unnamed-blocker	942	-	Member-scope duplicates: methods, associated values, and i
+unnamed-blocker	1032	-	Self-host driver diagnostics: give A1's refusal a code and
+unclaimed-progress	955	-	modules: spec/grammar.ebnf admits a top-level `let` that St...
+unclaimed-progress	1008	-	Stage 2: execute immutable Int module constants after autho...

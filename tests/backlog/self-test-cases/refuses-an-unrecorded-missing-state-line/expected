@@ -1,0 +1,1 @@
+FAIL: backlog: #4 carries no `State:` line the gate can read, so every rule keyed on it skips this issue; add `- State: <state>` to its body, or record it in tests/backlog/debt.tsv as `unreadable-state` or `stateless-tracker`

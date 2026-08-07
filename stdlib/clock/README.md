@@ -6,7 +6,7 @@ clock. [`linux_x86_64.kofun`](linux_x86_64.kofun) is the explicit system-read
 adapter.
 
 [`adapters.kofun`](adapters.kofun) is the successor surface for
-[#647](https://github.com/hjosugi/kofun/issues/647), with
+[#647](https://github.com/kofun-lang/kofun/issues/647), with
 [`adapters_linux_x86_64.kofun`](adapters_linux_x86_64.kofun) as its platform
 adapter. Where `clock.kofun` gives both domains one `Clock` tag, the adapter
 surface gives each its own type — `MonotonicInstant` carries a

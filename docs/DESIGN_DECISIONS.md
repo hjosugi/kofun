@@ -7,7 +7,7 @@ or built only in someone's head.
 [`rfcs/index.json`](../rfcs/index.json) is the machine-checked ledger that says
 which. A decision indexed there carries its state, the evidence that bounds it,
 and any amendment; the
-[public RFC process](https://hjosugi.github.io/kofun/docs/rfc-process/)
+[public RFC process](https://kofun-lang.github.io/kofun/docs/rfc-process/)
 describes how entries move between states. Decisions that predate the ledger
 are migrated into it as they become relevant, so absence from the ledger means
 "not yet indexed", not "not decided".
