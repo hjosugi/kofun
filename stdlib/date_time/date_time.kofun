@@ -1,7 +1,8 @@
 # Bounded executable producer for the portable date/time contract.  This is
 # intentionally the Stage 2 Core subset: nominal Int records, a closed
-# one-payload outcome, checked arithmetic, and a strict canonical RFC 3339 UTC
-# parser.  Host time, host calendar routines, and host parsing are never used.
+# one-payload outcome, checked arithmetic, and a strict RFC 3339 parser that
+# accepts `Z` and fixed `+HH:MM` / `-HH:MM` offsets.  Host time, host calendar
+# routines, and host parsing are never used.
 
 type Duration = {
     seconds: Int,
@@ -270,7 +271,14 @@ fn nanos_to_millis(nanoseconds: Int) -> DateTimeOutcome {
     return DateTimeOk(nanoseconds // 1000000)
 }
 
-fn digit_at(text: Text, position: Int) -> DateTimeOutcome {
+# Every byte read in this file funnels through `digit_at` or `require_character`
+# so the end-of-input check happens exactly once per read.  The measured reason:
+# the backend lowers `text_slice` to `kofun_text_slice`, which aborts the process
+# with `error[R020]: bounded Text slice out of range` when `end` passes the
+# input.  The gate compares an empty stderr golden, so an unguarded read past the
+# end is a gate failure, not a typed rejection.
+fn digit_at(text: Text, position: Int, length: Int) -> DateTimeOutcome {
+    if position >= length { return ParsePosition(position) }
     let symbol = text_slice(text, position, position + 1)
     if symbol == "0" { return DateTimeOk(0) }
     if symbol == "1" { return DateTimeOk(1) }
@@ -289,30 +297,38 @@ fn parse_digits(
     text: Text,
     position: Int,
     end: Int,
+    length: Int,
     value: Int
 ) -> DateTimeOutcome {
     if position == end {
         return DateTimeOk(value)
     }
-    let digit: DateTimeOutcome = digit_at(text, position)
+    let digit: DateTimeOutcome = digit_at(text, position, length)
     match digit {
         DateTimeOk(number) => {
             return parse_digits(
                 text,
                 position + 1,
                 end,
-                value * 10 + number            )
+                length,
+                value * 10 + number
+            )
         },
         other => { return other },
     }
     return ParsePosition(position)
 }
 
+# A mismatch is reported at `position` rather than at the start of the field, so
+# the caller can hand the same byte to another rule.  `parse_second` relies on
+# that: a failed `.` probe is not an error, it just means byte 19 is the offset.
 fn require_character(
     text: Text,
     position: Int,
+    length: Int,
     expected: Text
 ) -> DateTimeOutcome {
+    if position >= length { return ParsePosition(position) }
     if text_slice(text, position, position + 1) == expected {
         return DateTimeOk(0)
     }
@@ -338,6 +354,22 @@ fn days_in_month(year: Int, month: Int) -> Int {
     return 31
 }
 
+# The calendar rule is the only one that needs more than one field at once, so
+# it is factored out and shared by both failure vocabularies below.
+fn validate_date(year: Int, month: Int, day: Int) -> DateTimeOutcome {
+    if month < 1 { return InvalidField(2) }
+    if month > 12 { return InvalidField(2) }
+    if day < 1 { return InvalidField(3) }
+    if day > days_in_month(year, month) { return InvalidField(3) }
+    return DateTimeOk(day)
+}
+
+# Two deliberately different vocabularies.  A value built from Ints has no bytes
+# to point at, so `validate_parts` reports a field ordinal; text parsed from
+# RFC 3339 does have bytes, so the parser reports the exact byte instead.  The
+# parser therefore range-checks `time-hour`, `time-minute`, and `time-second`
+# itself and never reaches the ordinals 4..7 here; those remain the contract for
+# the constructed-value path and are exercised directly from `main`.
 fn validate_parts(
     year: Int,
     month: Int,
@@ -347,10 +379,11 @@ fn validate_parts(
     second: Int,
     nanosecond: Int
 ) -> DateTimeOutcome {
-    if month < 1 { return InvalidField(2) }
-    if month > 12 { return InvalidField(2) }
-    if day < 1 { return InvalidField(3) }
-    if day > days_in_month(year, month) { return InvalidField(3) }
+    let date: DateTimeOutcome = validate_date(year, month, day)
+    match date {
+        DateTimeOk(_) => {},
+        other => { return other },
+    }
     if hour < 0 { return InvalidField(4) }
     if hour > 23 { return InvalidField(4) }
     if minute < 0 { return InvalidField(5) }
@@ -367,82 +400,227 @@ fn scale_fraction(value: Int, digits: Int) -> Int {
     return scale_fraction(value * 10, digits + 1)
 }
 
-fn parse_fraction(
+# `DateTimeOutcome` carries exactly one Int, and a successful parse produces two
+# numbers worth observing: the nanosecond of the second and the UTC offset in
+# seconds.  Packing both into one Int would make both unreadable in the golden
+# (a signed offset scaled by 1e9 plus a nanosecond), so the walk instead carries
+# a `projection` selector: `0` yields the nanosecond, `1` yields offset seconds.
+# The selector never influences parsing, only which number the success carries.
+fn project_parse(
+    nanosecond: Int,
+    offset_seconds: Int,
+    projection: Int
+) -> DateTimeOutcome {
+    if projection == 1 { return DateTimeOk(offset_seconds) }
+    return DateTimeOk(nanosecond)
+}
+
+# `position` is the first digit of the offset minute, so the sign byte sits four
+# bytes earlier in `sHH:MM`.
+fn parse_offset_minute(
     text: Text,
     length: Int,
-    year: Int,
-    month: Int,
-    day: Int,
+    position: Int,
+    sign: Int,
     hour: Int,
-    minute: Int,
-    second: Int
+    nanosecond: Int,
+    projection: Int
 ) -> DateTimeOutcome {
-    if length < 22 { return ParsePosition(20) }
-    if length > 30 { return ParsePosition(30) }
-    let terminator: DateTimeOutcome = require_character(text, length - 1, "Z")
-    match terminator {
-        DateTimeOk(_) => {},
-        other => { return other },
-    }
-    let fraction: DateTimeOutcome = parse_digits(text, 20, length - 1, 0)
-    match fraction {
-        DateTimeOk(value) => {
-            return validate_parts(
-                year,
-                month,
-                day,
-                hour,
-                minute,
-                second,
-                scale_fraction(value, (length - 1) - 20)            )
+    let result: DateTimeOutcome = parse_digits(
+        text,
+        position,
+        position + 2,
+        length,
+        0
+    )
+    match result {
+        DateTimeOk(minute) => {
+            if minute > 59 { return ParsePosition(position) }
+            if length != position + 2 { return ParsePosition(position + 2) }
+            # RFC 3339 section 4.3 gives `-00:00` the distinct meaning "the
+            # offset to local time is unknown".  This profile has no value for
+            # that, so it is refused at the sign byte instead of being silently
+            # read as UTC.  `+00:00` stays accepted; it does mean UTC.
+            if sign < 0 {
+                if hour == 0 {
+                    if minute == 0 { return ParsePosition(position - 4) }
+                }
+            }
+            return project_parse(
+                nanosecond,
+                sign * (hour * 3600 + minute * 60),
+                projection
+            )
         },
         other => { return other },
     }
-    return ParsePosition(20)
+    return ParsePosition(position)
+}
+
+# `position` is the first digit of the offset hour.  RFC 3339 spells the
+# separator as a literal `:`, so `+0100` is refused at the byte where the colon
+# was required rather than accepted as the ISO 8601 basic format.
+fn parse_offset_hour(
+    text: Text,
+    length: Int,
+    position: Int,
+    sign: Int,
+    nanosecond: Int,
+    projection: Int
+) -> DateTimeOutcome {
+    let result: DateTimeOutcome = parse_digits(
+        text,
+        position,
+        position + 2,
+        length,
+        0
+    )
+    match result {
+        DateTimeOk(hour) => {
+            if hour > 23 { return ParsePosition(position) }
+            let separator: DateTimeOutcome = require_character(
+                text,
+                position + 2,
+                length,
+                ":"
+            )
+            match separator {
+                DateTimeOk(_) => {
+                    return parse_offset_minute(
+                        text,
+                        length,
+                        position + 3,
+                        sign,
+                        hour,
+                        nanosecond,
+                        projection
+                    )
+                },
+                other => { return other },
+            }
+        },
+        other => { return other },
+    }
+    return ParsePosition(position)
+}
+
+# `position` is the first byte of RFC 3339 `time-offset`.  The grammar admits
+# only `Z`, `+HH:MM`, and `-HH:MM`; a lowercase `z`, a comma left over from an
+# ISO 8601 decimal separator, and a missing terminator all land here and are all
+# refused at this byte.
+fn parse_offset(
+    text: Text,
+    length: Int,
+    position: Int,
+    nanosecond: Int,
+    projection: Int
+) -> DateTimeOutcome {
+    if position >= length { return ParsePosition(position) }
+    let symbol = text_slice(text, position, position + 1)
+    if symbol == "Z" {
+        # Nothing may follow the terminator, so trailing whitespace is refused
+        # at the first extra byte rather than ignored.
+        if length != position + 1 { return ParsePosition(position + 1) }
+        return project_parse(nanosecond, 0, projection)
+    }
+    if symbol == "+" {
+        return parse_offset_hour(
+            text,
+            length,
+            position + 1,
+            1,
+            nanosecond,
+            projection
+        )
+    }
+    if symbol == "-" {
+        return parse_offset_hour(
+            text,
+            length,
+            position + 1,
+            0 - 1,
+            nanosecond,
+            projection
+        )
+    }
+    return ParsePosition(position)
+}
+
+# RFC 3339 `time-secfrac` is `"." 1*DIGIT`.  Precision stops at the nanosecond
+# the `Instant` representation actually carries, so a tenth digit is refused at
+# that exact byte instead of being truncated silently; and a point with no digit
+# after it is refused at the byte where the first digit was required.
+fn parse_fraction(
+    text: Text,
+    length: Int,
+    position: Int,
+    digits: Int,
+    value: Int,
+    projection: Int
+) -> DateTimeOutcome {
+    if digits == 9 {
+        let extra: DateTimeOutcome = digit_at(text, position, length)
+        match extra {
+            DateTimeOk(_) => { return ParsePosition(position) },
+            other => {
+                return parse_offset(
+                    text,
+                    length,
+                    position,
+                    value,
+                    projection
+                )
+            },
+        }
+    }
+    let digit: DateTimeOutcome = digit_at(text, position, length)
+    match digit {
+        DateTimeOk(number) => {
+            return parse_fraction(
+                text,
+                length,
+                position + 1,
+                digits + 1,
+                value * 10 + number,
+                projection
+            )
+        },
+        other => {
+            if digits == 0 { return ParsePosition(position) }
+            return parse_offset(
+                text,
+                length,
+                position,
+                scale_fraction(value, digits),
+                projection
+            )
+        },
+    }
+    return ParsePosition(position)
 }
 
 fn parse_second(
     text: Text,
     length: Int,
-    year: Int,
-    month: Int,
-    day: Int,
-    hour: Int,
-    minute: Int
+    projection: Int
 ) -> DateTimeOutcome {
-    let result: DateTimeOutcome = parse_digits(text, 17, 19, 0)
+    let result: DateTimeOutcome = parse_digits(text, 17, 19, length, 0)
     match result {
         DateTimeOk(second) => {
-            if length == 20 {
-                let terminator: DateTimeOutcome = require_character(text, 19, "Z")
-                match terminator {
-                    DateTimeOk(_) => {
-                        return validate_parts(
-                            year,
-                            month,
-                            day,
-                            hour,
-                            minute,
-                            second,
-                            0                        )
-                    },
-                    other => { return other },
-                }
-            }
-            let point: DateTimeOutcome = require_character(text, 19, ".")
+            # RFC 3339 admits `60` only for a leap second, and the contract
+            # states leap seconds are not representable, so `:60` is refused at
+            # byte 17 where `time-second` begins.
+            if second > 59 { return ParsePosition(17) }
+            let point: DateTimeOutcome = require_character(text, 19, length, ".")
             match point {
                 DateTimeOk(_) => {
-                    return parse_fraction(
-                        text,
-                        length,
-                        year,
-                        month,
-                        day,
-                        hour,
-                        minute,
-                        second                    )
+                    return parse_fraction(text, length, 20, 0, 0, projection)
                 },
-                other => { return other },
+                other => {
+                    # A failed probe is not an error: byte 19 is simply not a
+                    # fraction, so it must be the offset.
+                    return parse_offset(text, length, 19, 0, projection)
+                },
             }
         },
         other => { return other },
@@ -453,25 +631,21 @@ fn parse_second(
 fn parse_minute(
     text: Text,
     length: Int,
-    year: Int,
-    month: Int,
-    day: Int,
-    hour: Int
+    projection: Int
 ) -> DateTimeOutcome {
-    let result: DateTimeOutcome = parse_digits(text, 14, 16, 0)
+    let result: DateTimeOutcome = parse_digits(text, 14, 16, length, 0)
     match result {
         DateTimeOk(minute) => {
-            let separator: DateTimeOutcome = require_character(text, 16, ":")
+            if minute > 59 { return ParsePosition(14) }
+            let separator: DateTimeOutcome = require_character(
+                text,
+                16,
+                length,
+                ":"
+            )
             match separator {
                 DateTimeOk(_) => {
-                    return parse_second(
-                        text,
-                        length,
-                        year,
-                        month,
-                        day,
-                        hour,
-                        minute                    )
+                    return parse_second(text, length, projection)
                 },
                 other => { return other },
             }
@@ -484,23 +658,24 @@ fn parse_minute(
 fn parse_hour(
     text: Text,
     length: Int,
-    year: Int,
-    month: Int,
-    day: Int
+    projection: Int
 ) -> DateTimeOutcome {
-    let result: DateTimeOutcome = parse_digits(text, 11, 13, 0)
+    let result: DateTimeOutcome = parse_digits(text, 11, 13, length, 0)
     match result {
         DateTimeOk(hour) => {
-            let separator: DateTimeOutcome = require_character(text, 13, ":")
+            # `24:00` is a legal ISO 8601 end-of-day spelling and an illegal
+            # RFC 3339 `time-hour`; it is refused at byte 11, where the field
+            # begins, not at the input's end.
+            if hour > 23 { return ParsePosition(11) }
+            let separator: DateTimeOutcome = require_character(
+                text,
+                13,
+                length,
+                ":"
+            )
             match separator {
                 DateTimeOk(_) => {
-                    return parse_minute(
-                        text,
-                        length,
-                        year,
-                        month,
-                        day,
-                        hour                    )
+                    return parse_minute(text, length, projection)
                 },
                 other => { return other },
             }
@@ -514,15 +689,28 @@ fn parse_day(
     text: Text,
     length: Int,
     year: Int,
-    month: Int
+    month: Int,
+    projection: Int
 ) -> DateTimeOutcome {
-    let result: DateTimeOutcome = parse_digits(text, 8, 10, 0)
+    let result: DateTimeOutcome = parse_digits(text, 8, 10, length, 0)
     match result {
         DateTimeOk(day) => {
-            let separator: DateTimeOutcome = require_character(text, 10, "T")
+            let date: DateTimeOutcome = validate_date(year, month, day)
+            match date {
+                DateTimeOk(_) => {},
+                other => { return other },
+            }
+            # Only an uppercase `T` separates date from time; a space and a
+            # lowercase `t` are both refused at byte 10.
+            let separator: DateTimeOutcome = require_character(
+                text,
+                10,
+                length,
+                "T"
+            )
             match separator {
                 DateTimeOk(_) => {
-                    return parse_hour(text, length, year, month, day)
+                    return parse_hour(text, length, projection)
                 },
                 other => { return other },
             }
@@ -532,14 +720,24 @@ fn parse_day(
     return ParsePosition(8)
 }
 
-fn parse_month(text: Text, length: Int, year: Int) -> DateTimeOutcome {
-    let result: DateTimeOutcome = parse_digits(text, 5, 7, 0)
+fn parse_month(
+    text: Text,
+    length: Int,
+    year: Int,
+    projection: Int
+) -> DateTimeOutcome {
+    let result: DateTimeOutcome = parse_digits(text, 5, 7, length, 0)
     match result {
         DateTimeOk(month) => {
-            let separator: DateTimeOutcome = require_character(text, 7, "-")
+            let separator: DateTimeOutcome = require_character(
+                text,
+                7,
+                length,
+                "-"
+            )
             match separator {
                 DateTimeOk(_) => {
-                    return parse_day(text, length, year, month)
+                    return parse_day(text, length, year, month, projection)
                 },
                 other => { return other },
             }
@@ -549,13 +747,20 @@ fn parse_month(text: Text, length: Int, year: Int) -> DateTimeOutcome {
     return ParsePosition(5)
 }
 
-fn parse_year(text: Text, length: Int) -> DateTimeOutcome {
-    let result: DateTimeOutcome = parse_digits(text, 0, 4, 0)
+fn parse_year(text: Text, length: Int, projection: Int) -> DateTimeOutcome {
+    let result: DateTimeOutcome = parse_digits(text, 0, 4, length, 0)
     match result {
         DateTimeOk(year) => {
-            let separator: DateTimeOutcome = require_character(text, 4, "-")
+            let separator: DateTimeOutcome = require_character(
+                text,
+                4,
+                length,
+                "-"
+            )
             match separator {
-                DateTimeOk(_) => { return parse_month(text, length, year) },
+                DateTimeOk(_) => {
+                    return parse_month(text, length, year, projection)
+                },
                 other => { return other },
             }
         },
@@ -564,10 +769,24 @@ fn parse_year(text: Text, length: Int) -> DateTimeOutcome {
     return ParsePosition(0)
 }
 
+# The accepted grammar is exactly
+# `YYYY-MM-DDTHH:MM:SS[.1..9 digits](Z | (+|-)HH:MM)`.
+#
+# There is deliberately no length precheck any more.  The previous version
+# refused anything under 20 bytes with `ParsePosition(length)`, which reported
+# the input's end rather than the defect: `2024-02-29T12:34Z` blamed byte 17
+# when the missing `:` is at byte 16.  Bounds-checking each read instead lets
+# the walk fail at the first byte that violates the grammar, whatever the
+# length.  On success this carries the nanosecond of the second.
 fn parse_rfc3339(text: Text) -> DateTimeOutcome {
-    let length = len(text)
-    if length < 20 { return ParsePosition(length) }
-    return parse_year(text, length)
+    return parse_year(text, len(text), 0)
+}
+
+# The same walk over the same grammar, carrying the parsed UTC offset in seconds
+# on success.  `Z` and `+00:00` both yield 0; a negative offset yields a negative
+# number, which is why it cannot share the payload with the nanosecond.
+fn parse_rfc3339_offset(text: Text) -> DateTimeOutcome {
+    return parse_year(text, len(text), 1)
 }
 
 fn observe(outcome: DateTimeOutcome) -> Int {
@@ -627,5 +846,52 @@ fn main() -> Int {
     print(observe(parse_rfc3339("2024-02-29T12:34:X6Z")))
     print(observe(nanos_to_millis(1000001)))
     print(observe(parse_rfc3339("2024-02-29T12:34:56.123456789Z")))
+
+    # Accepted `time-offset` forms.  Each offset string is observed twice: once
+    # through the nanosecond projection to show the parse succeeded, and once
+    # through the offset projection to show which offset it decoded to.  A
+    # "did not fail" observation alone would not distinguish `+09:00` from
+    # `-05:30`.
+    print(observe(parse_rfc3339("2024-02-29T12:34:56+09:00")))
+    print(observe(parse_rfc3339_offset("2024-02-29T12:34:56+09:00")))
+    print(observe(parse_rfc3339_offset("2024-02-29T12:34:56-05:30")))
+    print(observe(parse_rfc3339_offset("2024-02-29T12:34:56+00:00")))
+    print(observe(parse_rfc3339_offset("2024-02-29T12:34:56Z")))
+    print(observe(parse_rfc3339_offset("2024-02-29T12:34:56+23:59")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56.5-05:30")))
+    print(observe(parse_rfc3339_offset("2024-02-29T12:34:56.5-05:30")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56.123456789+09:00")))
+    print(observe(parse_rfc3339_offset("2024-02-29T12:34:56.123456789+09:00")))
+
+    # The rejection matrix.  Every line is a form the strict profile must refuse
+    # at one exact byte, and `observe` reports that byte as `300 + position`.
+    print(observe(parse_rfc3339(" 2024-02-29T12:34:56Z")))
+    print(observe(parse_rfc3339("2024-02-29 12:34:56Z")))
+    print(observe(parse_rfc3339("2024-02-29t12:34:56Z")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56z")))
+    print(observe(parse_rfc3339("2024-02-29T12:34Z")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56,123Z")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56.1234567890Z")))
+    print(observe(parse_rfc3339("2024-02-29T24:00:00Z")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:60Z")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56+0100")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56-00:00")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56Z ")))
+
+    # Neighbouring defects that share the same code paths, kept so a fix to one
+    # matrix row cannot quietly move another row's byte.
+    print(observe(parse_rfc3339("2024-02-29T12:34:56.Z")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56+24:00")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56+00:60")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56+09:0")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56+09:00Z")))
+    print(observe(parse_rfc3339("2024-02-29T12:34:56")))
+    print(observe(parse_rfc3339("2024")))
+
+    # The constructed-value path keeps the field-ordinal vocabulary: a tuple of
+    # Ints has no byte to point at, so hour 24 is `InvalidField(4)` here while
+    # the same value in text is a byte position.
+    print(observe(validate_parts(2024, 2, 29, 12, 34, 56, 789)))
+    print(observe(validate_parts(2024, 2, 29, 24, 0, 0, 0)))
     return 0
 }
