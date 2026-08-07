@@ -108,10 +108,8 @@ unnamed-blocker	573	-	Odin: make allocator choice a scoped, effect-tracked capab
 unnamed-blocker	574	-	V: generate audited C bindings from Clang AST before attem
 unnamed-blocker	576	-	Koka: reuse matched ADT constructors in place when storage
 unnamed-blocker	644	-	HTTP/1.1 client core: bounded request and response state m
-unnamed-blocker	646	-	Benchmark report v1: canonical raw-sample codec and determ
 unnamed-blocker	847	-	Benchmark report producer: canonical v1 bytes and determin
 unnamed-blocker	881	-	Call arguments v1 slice 2: bind labels in HIR, type checki
-unnamed-blocker	882	-	Call arguments v1 slice 3: lower labelled and trailing cal
 unnamed-blocker	883	-	Typed upgrade patches slice 3: opt-in atomic exact-type re
 unnamed-blocker	884	-	Typed upgrade patches slice 2: deterministic read-only CLI
 capability-blocker	885	-	Typed upgrade patches slice 1: validate schema and compute
