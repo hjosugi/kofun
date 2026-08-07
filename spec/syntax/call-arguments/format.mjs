@@ -39,38 +39,65 @@ function pad(depth) {
     return INDENT.repeat(depth);
 }
 
-// `->` is right-associative, so a function type in *domain* position must keep
-// its parentheses or the printer changes what the type means:
+// Type printing is precedence-driven rather than case-driven, and the reason is
+// that the case-driven version was wrong twice in the same way.
 //
-//     (Int -> Int) -> Int      a function taking a function
-//     Int -> Int -> Int        a function returning a function
+// The first version dropped the parentheses in `(Int -> Int) -> Int`, printing
+// a function *returning* a function where the source had one *taking* a
+// function. That was fixed with a single special case — parenthesise the domain
+// when it is a function. Then `optional` and `moded` were added, which are two
+// more ways for a function type to sit inside a node whose kind is not
+// `function`, and the same class of bug came straight back:
 //
-// Dropping them was the worst kind of formatter bug, because the result is a
-// *stable* fixed point: it reparses to the second tree and then formats to
-// itself forever, so an idempotence check cannot see it. What catches it is
-// comparing the reparsed tree to the original, which `check-surface.mjs` now
-// does. `spec/grammar.ebnf` derives the parenthesised form as
-// `primary_type = "(", type_ref, ")"`.
+//     (Int?)?                   ->  Int??                    does not reparse
+//     (Int -> Int)?             ->  Int -> Int?              different type
+//     take (Int -> Int) -> Int  ->  take Int -> Int -> Int   different type
 //
-// Only the domain needs them; a function type in result position is exactly
-// what the bare spelling already means.
-export function formatType(type) {
+// A grammar-restricted generator put 29% of well-formed types through that.
+//
+// It is not only cosmetic: `typeIsFunctional` decides trailing-lambda
+// attachment, so `op: (Int -> Int)?` — which refuses a trailing lambda —
+// printed as `op: Int -> Int?`, which accepts one. Running the formatter over a
+// declaration changed whether its callers were allowed to write a trailing
+// lambda.
+//
+// So each kind now declares how tightly it binds, and a child is parenthesised
+// exactly when it binds looser than its position allows. `spec/grammar.ebnf`
+// 67-75 is the source of the ordering: `?` binds tightest, then a mode prefix,
+// then `->` (right-associative, so only its domain is restricted).
+const TYPE_PRECEDENCE = Object.freeze({
+    name: 0, tuple: 0, optional: 1, moded: 2, function: 3,
+});
+
+function formatTypeAt(type, looseness) {
     if (type === null) return "";
+    const text = renderType(type);
+    const bound = TYPE_PRECEDENCE[type.kind] ?? 0;
+    return bound > looseness ? `(${text})` : text;
+}
+
+function renderType(type) {
     if (type.kind === "function") {
-        const domain = type.domain.kind === "function"
-            ? `(${formatType(type.domain)})`
-            : formatType(type.domain);
-        return `${domain} -> ${formatType(type.result)}`;
+        // The domain may be anything up to a mode prefix; a function there
+        // needs parentheses or `->` reassociates.
+        return `${formatTypeAt(type.domain, 2)} -> ${formatTypeAt(type.result, 3)}`;
+    }
+    if (type.kind === "moded") {
+        return `${type.mode} ${formatTypeAt(type.inner, 1)}`;
+    }
+    if (type.kind === "optional") {
+        // `?` attaches to a primary type only, so anything looser is wrapped.
+        return `${formatTypeAt(type.inner, 0)}?`;
     }
     if (type.kind === "tuple") {
-        return `(${type.elements.map(formatType).join(", ")})`;
+        return `(${type.elements.map((element) => formatTypeAt(element, 3)).join(", ")})`;
     }
-    // `optional_type = primary_type, [ "?" ]` and the mode prefix a callable
-    // domain may carry. Both print back exactly as written.
-    if (type.kind === "optional") return `${formatType(type.inner)}?`;
-    if (type.kind === "moded") return `${type.mode} ${formatType(type.inner)}`;
     if (type.arguments.length === 0) return type.name;
-    return `${type.name}[${type.arguments.map(formatType).join(", ")}]`;
+    return `${type.name}[${type.arguments.map((argument) => formatTypeAt(argument, 3)).join(", ")}]`;
+}
+
+export function formatType(type) {
+    return type === null ? "" : formatTypeAt(type, 3);
 }
 
 // `take into file: File` — mode, then external label, then internal name, in
@@ -177,8 +204,13 @@ function multiline(node, depth, width) {
     // not a `SurfaceError`, so it would kill the gate with a stack trace
     // instead of a named assertion, which is exactly what this gate says it
     // exists to prevent.
-    if (node.kind === "Lambda" && node.body === "block") {
-        return `fn(${formatLambdaParameters(node.parameters)}) ${formatBlock(node.block, depth, width)}`;
+    if (node.kind === "Lambda") {
+        // The block case was handled here; the expression case was not, so an
+        // expression lambda whose *body* holds a block lambda fell through to
+        // `inline` and raised. 789 of 21209 generated expressions hit it.
+        return node.body === "block"
+            ? `fn(${formatLambdaParameters(node.parameters)}) ${formatBlock(node.block, depth, width)}`
+            : `fn(${formatLambdaParameters(node.parameters)}) => ${formatExpression(node.expression, depth, width)}`;
     }
     // Every remaining kind has to recurse through `formatExpression`, not
     // `inline`. A first attempt added only the `Lambda` branch above and left

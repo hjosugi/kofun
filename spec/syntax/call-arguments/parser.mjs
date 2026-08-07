@@ -125,6 +125,21 @@ export function tokenize(source) {
 // source, or the bare marker `Function` that model.mjs and the decision corpus
 // already use for the same idea. Both spellings resolve to the same fact, so a
 // signature written either way answers the trailing question identically.
+// An ownership mode does not change whether a domain is callable, so
+// `take Int -> Int` is still a function type — the `moded` node sits *inside*
+// the domain and the outer node is `function`, which this already answers.
+//
+// An *optional* function is deliberately not functional here. `(Int -> Int)?`
+// is a value that may be absent, and attaching a trailing lambda to it would
+// mean the parser inventing the wrapping that turns a lambda into the present
+// case. The contract says a trailing lambda "binds only the final functional
+// parameter" and describes no such conversion, so this refuses rather than
+// guesses — the same rule the unresolved-callee case follows.
+//
+// This is a boundary the contract does not state outright, so it is recorded
+// here rather than left to fall out of the node shapes: if #881 decides an
+// optional functional parameter should accept a trailing lambda, this is the
+// one line that has to change.
 function typeIsFunctional(type) {
     return type.kind === "function" || (type.kind === "name" && type.name === "Function");
 }
@@ -350,8 +365,10 @@ class Parser {
     // The grouping case keeps no marker: `formatType` recovers the parentheses
     // structurally, because a function type in domain position always needs
     // them and never needs them anywhere else.
-    parseType() {
+    parseType(insideCallableDomain = false) {
         let left;
+        let wasTuple = false;
+        let optionalApplied = false;
         // `callable_domain = [ "read" | "edit" | "take" ], optional_type` and
         // the same prefix on each `callable_parameter`. A mode word is only a
         // mode when a type can follow it; `read -> Int` is a domain named
@@ -369,19 +386,35 @@ class Parser {
             if (this.at(")")) {
                 this.next();
                 left = { kind: "tuple", elements: [] };
+                wasTuple = true;
             } else {
-                const first = this.parseType();
+                const first = this.parseType(true);
                 if (this.at(",")) {
                     const elements = [first];
                     while (this.at(",")) {
-                        this.next();
-                        // `[ "," ]` — the production allows a trailing comma
-                        // before the close, which the first pass dropped.
-                        if (this.at(")")) break;
-                        elements.push(this.parseType());
+                        const comma = this.next();
+                        // `[ "," ]` — a trailing comma is allowed, but only on
+                        // the production that has one. The grammar's third
+                        // `callable_domain` alternative requires *two*
+                        // parameters before `{ "," ... }, [ "," ]`, so `(Int,)`
+                        // is not derivable at any arity below two. Accepting it
+                        // produced a one-element tuple with no printable form:
+                        // it came back out as `(Int)` and reparsed to a bare
+                        // name. `parseCall` and `parseParameterList` both refuse
+                        // a trailing comma by name, and so does this now.
+                        if (this.at(")")) {
+                            if (elements.length < 2) {
+                                fail("trailing-comma",
+                                    "a one-element parenthesised type may not end with a comma",
+                                    comma.offset);
+                            }
+                            break;
+                        }
+                        elements.push(this.parseType(true));
                     }
                     this.expect(")", "expected-type-close");
                     left = { kind: "tuple", elements };
+                    wasTuple = true;
                 } else {
                     this.expect(")", "expected-type-close");
                     left = first;
@@ -413,9 +446,41 @@ class Parser {
         if (this.at("?")) {
             this.next();
             left = { kind: "optional", inner: left };
+            optionalApplied = true;
         }
         if (mode !== null) left = { kind: "moded", mode, inner: left };
-        if (this.at("->")) {
+
+        // A mode prefix and the parenthesised multi-parameter form both belong
+        // to `callable_domain` alone, so both are only legal immediately left
+        // of `->`. Reading them anywhere a type may appear accepted five shapes
+        // the grammar does not derive — `take Int` as a parameter type,
+        // `Int -> take Int` in result position, `List[take Int]` as a generic
+        // argument, `(Int, Int)` standing alone, and `()?`.
+        //
+        // Deciding this after the fact rather than by passing a flag down is
+        // what the grammar's own shape forces: nothing distinguishes a domain
+        // from an ordinary type until the `->` shows up, so the check has to
+        // wait until it either does or does not.
+        const arrow = this.at("->");
+        // Inside a parenthesised domain each element is a `callable_parameter`,
+        // which carries its own optional mode and is not itself followed by
+        // `->` — the enclosing domain is. So the two checks below apply only
+        // where a full `type_ref` was requested.
+        if (!insideCallableDomain) {
+            if (!arrow && mode !== null) {
+                fail("mode-outside-callable-domain",
+                    `an ownership mode belongs to a callable domain, so ${JSON.stringify(mode)} may not prefix an ordinary type`,
+                    this.peek().offset);
+            }
+            // `wasTuple` rather than `left.kind`, because a `?` has already
+            // wrapped it by now and `()?` would slip through the kind check.
+            if (wasTuple && (!arrow || optionalApplied)) {
+                fail("callable-domain-without-arrow",
+                    "a parenthesised parameter list is a callable domain, so it must be followed by `->` and cannot be made optional",
+                    this.peek().offset);
+            }
+        }
+        if (arrow) {
             this.next();
             return { kind: "function", domain: left, result: this.parseType() };
         }
@@ -716,6 +781,16 @@ class Parser {
         const name = this.calleeName(call.callee);
         const signature = name === null ? null : this.signatures.get(name);
         if (!signature) {
+            // Trivia first, exactly as the resolved-but-not-functional case
+            // below does it. The contract makes the newline trivia only "when
+            // the resolved call still needs its final functional parameter",
+            // and an unresolved callee cannot satisfy that condition — so the
+            // "otherwise" clause applies and this is two statements.
+            //
+            // Without this, knowing *less* about a callee produced the stricter
+            // parse: `consume(1)` then a newline then `fn(y) => y` was two
+            // statements, while `mystery()` in the same shape was refused.
+            if (token.newlineBefore || token.commentBefore) return;
             fail("trailing-callee-unresolved",
                 `cannot attach a trailing lambda: the signature of ${name === null ? "this callee" : JSON.stringify(name)} is not known here`,
                 token.offset);
