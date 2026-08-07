@@ -218,8 +218,15 @@ for (const issue of issues) {
         }
     }
 
-    // 3. Label and body agree when both are present. An issue with neither is
-    //    untriaged, which is a different problem and not this gate's.
+    // 3. Label and body agree when both are present.
+    //
+    //    This used to add "an issue with neither is untriaged, which is a
+    //    different problem and not this gate's". That carve-out is gone: rule
+    //    2b refuses an unreadable state before this point, so an issue with
+    //    neither a label nor a line now fails there unless it is recorded as
+    //    `stateless-tracker`. The sentence stayed behind and described a
+    //    branch that could no longer be reached, which is the kind of comment
+    //    this file is otherwise careful not to leave.
     if (label !== null && line !== null) {
         if (label === line) {
             agreeing += 1
