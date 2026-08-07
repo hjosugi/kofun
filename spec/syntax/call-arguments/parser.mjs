@@ -31,7 +31,7 @@ const KEYWORDS = new Set(["fn", "let", "return"]);
 const PUNCTUATION = [
     "|>", "=>", "->", "==", "!=", "<=", ">=",
     "(", ")", "{", "}", "[", "]", ",", ":", ".",
-    "+", "-", "*", "/", "%", "<", ">", "=",
+    "+", "-", "*", "/", "%", "<", ">", "=", "?",
 ];
 
 export class SurfaceError extends Error {
@@ -325,7 +325,11 @@ class Parser {
         return parameters;
     }
 
-    // type = name [ "[" type { "," type } "]" ] [ "->" type ]
+    // type_ref  = function_type
+    // function_type = optional_type | callable_domain, "->", function_type
+    // callable_domain / callable_parameter = [ "read" | "edit" | "take" ], optional_type
+    // optional_type = primary_type, [ "?" ]
+    // primary_type  = nominal_type | "(", type_ref, ")" | "(", ")" | tuple domain
     // A parenthesised head is three different things, and reading it as only
     // the middle one made two normative spellings unparseable:
     //
@@ -348,6 +352,18 @@ class Parser {
     // them and never needs them anywhere else.
     parseType() {
         let left;
+        // `callable_domain = [ "read" | "edit" | "take" ], optional_type` and
+        // the same prefix on each `callable_parameter`. A mode word is only a
+        // mode when a type can follow it; `read -> Int` is a domain named
+        // `read`, so the lookahead decides rather than the spelling.
+        let mode = null;
+        if (
+            OWNERSHIP_MODES.has(this.peek().value) &&
+            this.peek().kind === "identifier" &&
+            (this.peek(1).kind === "identifier" || this.peek(1).value === "(")
+        ) {
+            mode = this.next().value;
+        }
         if (this.at("(")) {
             this.next();
             if (this.at(")")) {
@@ -359,6 +375,9 @@ class Parser {
                     const elements = [first];
                     while (this.at(",")) {
                         this.next();
+                        // `[ "," ]` — the production allows a trailing comma
+                        // before the close, which the first pass dropped.
+                        if (this.at(")")) break;
                         elements.push(this.parseType());
                     }
                     this.expect(")", "expected-type-close");
@@ -384,6 +403,18 @@ class Parser {
                 this.expect("]", "expected-type-argument-close");
             }
         }
+        // `optional_type = primary_type, [ "?" ]`. This was missing entirely
+        // and failed in the *tokenizer* — `?` was not in PUNCTUATION, so a
+        // signature carrying one died with `unknown-character` rather than any
+        // parse category. `examples/proven_optional_bool_monad.kofun` has
+        // `fn optional_bind(value: Bool?, next: Bool -> Bool?) -> Bool?`, whose
+        // final formal is functional, so it is exactly the shape
+        // `finalParameterIsFunctional` has to read.
+        if (this.at("?")) {
+            this.next();
+            left = { kind: "optional", inner: left };
+        }
+        if (mode !== null) left = { kind: "moded", mode, inner: left };
         if (this.at("->")) {
             this.next();
             return { kind: "function", domain: left, result: this.parseType() };
@@ -719,25 +750,34 @@ class Parser {
         this.trailingDepth -= 1;
         call.signature = signature.name;
 
-        // A second `fn(` is only a second *trailing lambda* when it could have
-        // attached to this call. Once the first one is bound the final formal
-        // is supplied, so the contract's other clause takes over: "Otherwise
-        // `fn` begins the next expression or declaration according to the
-        // ordinary grammar." The guard below therefore honours the same trivia
-        // rule its sibling does — without it,
+        // The contract states this one without qualification — "A second
+        // trailing lambda is always rejected" — so it is applied without
+        // qualification, whatever trivia separates the two.
         //
-        //     outer(0) fn(x) => x
-        //     fn(y) => y
+        // Making it trivia-sensitive was tried and reverted. It reads the same
+        // relation in opposite directions two lines apart:
         //
-        // was refused as a second trailing lambda when it is two statements,
-        // which is the shape the corpus already pins as `statement-sequence`.
+        //     items.fold(initial: 0)
+        //     fn(acc, item) => acc + item      <- newline is trivia, attaches
+        //     fn(a, b) => a + b                <- newline ends the statement?
+        //
+        // Both `fn`s stand in an identical relation to what precedes them, and
+        // the first one attaching is itself a pinned corpus case. Under the
+        // trivia-sensitive rule the second became an orphan expression
+        // statement and the author was told nothing, while the same text on one
+        // line was still refused — so an unqualified sentence in the contract
+        // came to depend on whitespace.
+        //
+        // The contract does also say that `fn` "begins the next expression or
+        // declaration" once the call no longer needs its final functional
+        // parameter, which is true after the first lambda binds. The two
+        // clauses genuinely conflict here. Refusing is the recoverable side:
+        // an author can add whatever the resolution turns out to be, whereas a
+        // silently accepted orphan cannot be un-accepted. #625 owns the
+        // contract and #881 the binding layer; one of them should say which
+        // clause wins.
         const second = this.peek();
-        if (
-            second.value === "fn" &&
-            this.peek(1).value === "(" &&
-            !second.newlineBefore &&
-            !second.commentBefore
-        ) {
+        if (second.value === "fn" && this.peek(1).value === "(") {
             fail("second-trailing-lambda",
                 "a call takes at most one trailing lambda",
                 second.offset);

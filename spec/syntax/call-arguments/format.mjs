@@ -65,6 +65,10 @@ export function formatType(type) {
     if (type.kind === "tuple") {
         return `(${type.elements.map(formatType).join(", ")})`;
     }
+    // `optional_type = primary_type, [ "?" ]` and the mode prefix a callable
+    // domain may carry. Both print back exactly as written.
+    if (type.kind === "optional") return `${formatType(type.inner)}?`;
+    if (type.kind === "moded") return `${type.mode} ${formatType(type.inner)}`;
     if (type.arguments.length === 0) return type.name;
     return `${type.name}[${type.arguments.map(formatType).join(", ")}]`;
 }
@@ -176,6 +180,22 @@ function multiline(node, depth, width) {
     if (node.kind === "Lambda" && node.body === "block") {
         return `fn(${formatLambdaParameters(node.parameters)}) ${formatBlock(node.block, depth, width)}`;
     }
+    // Every remaining kind has to recurse through `formatExpression`, not
+    // `inline`. A first attempt added only the `Lambda` branch above and left
+    // this line as `return inline(node)`, which meant a block lambda inside a
+    // group, a binary operand, a member subject, or a callee still reached the
+    // raise it was supposed to remove — including `let r: Int = (fn(x) { ... })`,
+    // one paren away from a shape the fix claimed to handle. A generative
+    // round-trip over 16000 format attempts hit it 1772 times.
+    if (node.kind === "Group") {
+        return `(${formatExpression(node.expression, depth, width)})`;
+    }
+    if (node.kind === "Binary") {
+        return `${formatExpression(node.left, depth, width)} ${node.operator} ${formatExpression(node.right, depth, width)}`;
+    }
+    if (node.kind === "Member") {
+        return `${formatExpression(node.subject, depth, width)}.${node.member}`;
+    }
     if (node.kind !== "Call") return inline(node);
 
     // Arguments go through `formatExpression`, not `inline`, so an argument
@@ -186,7 +206,9 @@ function multiline(node, depth, width) {
                 ? formatExpression(argument.expression, depth, width)
                 : `${argument.label}: ${formatExpression(argument.expression, depth, width)}`)
         .join(", ");
-    const head = `${inline(node.callee)}(${args})`;
+    // The callee too: a block lambda can sit in callee position, as
+    // `fn(x) { consume(x) }(1)`.
+    const head = `${formatExpression(node.callee, depth, width)}(${args})`;
     if (node.trailing === null) return head;
 
     const lambda = node.trailing;
