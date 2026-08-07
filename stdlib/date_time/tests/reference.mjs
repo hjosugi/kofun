@@ -173,42 +173,107 @@ const digitsAt = (t, from, to) => {
     return { value: v }
 }
 
+// RFC 3339 section 5.6, walked as the grammar itself is written:
+//
+//     date-time     = full-date "T" full-time
+//     full-date     = 4DIGIT "-" 2DIGIT "-" 2DIGIT
+//     full-time     = partial-time time-offset
+//     partial-time  = 2DIGIT ":" 2DIGIT ":" 2DIGIT [time-secfrac]
+//     time-secfrac  = "." 1*DIGIT
+//     time-offset   = "Z" / time-numoffset
+//     time-numoffset = ("+" / "-") 2DIGIT ":" 2DIGIT
+//
+// Derived from that production, not from the Kofun parser. The two exist to
+// disagree when one of them is wrong, so this walks the grammar's own terminals
+// and reports the first position where the required one is absent; it does not
+// mirror the other implementation's control flow, its helper names, or its
+// bounds strategy.
+//
+// The two field classes report differently, and the split is the
+// implementation's, not this file's invention: the *time* fields the rejection
+// matrix names — hour 24, minute 60, second 60 — report the position of the
+// offending digits, because the matrix requires those forms to "fail at exact
+// positions". The *date* fields go through `validateParts` and keep their field
+// ordinals, which is also what values built from integers get, since there is
+// no byte to blame in those.
+//
+// Writing this the other way round is what the first draft of this reference
+// did, and the differential gate refused it — a day of February 29 in a common
+// year came back as position 8 here and InvalidField(3) there. That is the gate
+// working: two implementations, one of them wrong, and the disagreement
+// surfaced rather than being assumed away.
+const at = (t, i) => (i < t.length ? t[i] : '')
+
 const parseRfc3339 = (t) => {
     const n = t.length
-    if (n < 20) return parsePosition(BigInt(n))
 
     const year = digitsAt(t, 0, 4)
     if (year.error) return year.error
-    if (t[4] !== '-') return parsePosition(4n)
+    if (at(t, 4) !== '-') return parsePosition(4n)
     const month = digitsAt(t, 5, 7)
     if (month.error) return month.error
-    if (t[7] !== '-') return parsePosition(7n)
+    if (at(t, 7) !== '-') return parsePosition(7n)
     const day = digitsAt(t, 8, 10)
     if (day.error) return day.error
-    if (t[10] !== 'T') return parsePosition(10n)
+    if (at(t, 10) !== 'T') return parsePosition(10n)
+
     const hour = digitsAt(t, 11, 13)
     if (hour.error) return hour.error
-    if (t[13] !== ':') return parsePosition(13n)
+    if (hour.value > 23n) return parsePosition(11n)
+    if (at(t, 13) !== ':') return parsePosition(13n)
     const minute = digitsAt(t, 14, 16)
     if (minute.error) return minute.error
-    if (t[16] !== ':') return parsePosition(16n)
+    if (minute.value > 59n) return parsePosition(14n)
+    if (at(t, 16) !== ':') return parsePosition(16n)
     const second = digitsAt(t, 17, 19)
     if (second.error) return second.error
+    if (second.value > 59n) return parsePosition(17n)
 
-    if (n === 20) {
-        if (t[19] !== 'Z') return parsePosition(19n)
-        return validateParts(year.value, month.value, day.value, hour.value, minute.value, second.value, 0n)
+    // time-secfrac is optional; when present it is "." then one to nine
+    // digits. A tenth digit is refused where that digit sits.
+    let cursor = 19
+    let nanosecond = 0n
+    if (at(t, cursor) === '.') {
+        cursor += 1
+        const first = cursor
+        let scale = 100000000n
+        while (cursor < n && isDigit(t[cursor])) {
+            if (cursor - first >= 9) return parsePosition(BigInt(cursor))
+            nanosecond += BigInt(t.charCodeAt(cursor) - 48) * scale
+            scale /= 10n
+            cursor += 1
+        }
+        if (cursor === first) return parsePosition(BigInt(first))
     }
-    if (t[19] !== '.') return parsePosition(19n)
-    if (n < 22) return parsePosition(20n)
-    if (n > 30) return parsePosition(30n)
-    if (t[n - 1] !== 'Z') return parsePosition(BigInt(n - 1))
-    const fraction = digitsAt(t, 20, n - 1)
-    if (fraction.error) return fraction.error
-    // Scale to nanoseconds by the digit count the text actually carried.
-    let scaled = fraction.value
-    for (let d = n - 1 - 20; d < 9; d += 1) scaled *= 10n
-    return validateParts(year.value, month.value, day.value, hour.value, minute.value, second.value, scaled)
+
+    // time-offset
+    const sign = at(t, cursor)
+    if (sign === 'Z') {
+        if (n !== cursor + 1) return parsePosition(BigInt(cursor + 1))
+        return validateParts(year.value, month.value, day.value,
+            hour.value, minute.value, second.value, nanosecond)
+    }
+    if (sign !== '+' && sign !== '-') return parsePosition(BigInt(cursor))
+    const signAt = cursor
+    cursor += 1
+    const offsetHour = digitsAt(t, cursor, cursor + 2)
+    if (offsetHour.error) return offsetHour.error
+    if (offsetHour.value > 23n) return parsePosition(BigInt(cursor))
+    cursor += 2
+    if (at(t, cursor) !== ':') return parsePosition(BigInt(cursor))
+    cursor += 1
+    const offsetMinute = digitsAt(t, cursor, cursor + 2)
+    if (offsetMinute.error) return offsetMinute.error
+    if (offsetMinute.value > 59n) return parsePosition(BigInt(cursor))
+    cursor += 2
+    if (n !== cursor) return parsePosition(BigInt(cursor))
+    // Section 4.3 gives "-00:00" the distinct meaning "offset unknown", which
+    // this profile cannot represent, so it is refused at the sign.
+    if (sign === '-' && offsetHour.value === 0n && offsetMinute.value === 0n) {
+        return parsePosition(BigInt(signAt))
+    }
+    return validateParts(year.value, month.value, day.value,
+        hour.value, minute.value, second.value, nanosecond)
 }
 
 // ---- serialization ----
@@ -423,5 +488,55 @@ emit(serializedDateStatus('gregorian-v1:2024/02/29'))
 emit(serializedDateStatus('gregorian-v1:1900-02-29'))
 emit(serializedDateStatus('gregorian-v1:0000-01-01'))
 emit(serializedDateStatus('2024-02-29'))
+
+// 119-149: the offset grammar and the rejection matrix.
+//
+// `parseRfc3339` folds the nanosecond out of a success; the offset projection
+// re-walks the same string for its signed offset seconds, because the closed
+// outcome carries one integer and a success has two numbers worth observing.
+const offsetSecondsOf = (t) => {
+    const outcome = parseRfc3339(t)
+    if (outcome.kind !== 'ok') return outcome
+    const z = t.lastIndexOf('Z')
+    if (z === t.length - 1 && z >= 0) return ok(0n)
+    const sign = t[t.length - 6] === '-' ? -1n : 1n
+    const hh = BigInt(t.slice(t.length - 5, t.length - 3))
+    const mm = BigInt(t.slice(t.length - 2))
+    return ok(sign * (hh * 3600n + mm * 60n))
+}
+
+emit(observe(parseRfc3339('2024-02-29T12:34:56+09:00')))
+emit(observe(offsetSecondsOf('2024-02-29T12:34:56+09:00')))
+emit(observe(offsetSecondsOf('2024-02-29T12:34:56-05:30')))
+emit(observe(offsetSecondsOf('2024-02-29T12:34:56+00:00')))
+emit(observe(offsetSecondsOf('2024-02-29T12:34:56Z')))
+emit(observe(offsetSecondsOf('2024-02-29T12:34:56+23:59')))
+emit(observe(parseRfc3339('2024-02-29T12:34:56.5-05:30')))
+emit(observe(offsetSecondsOf('2024-02-29T12:34:56.5-05:30')))
+emit(observe(parseRfc3339('2024-02-29T12:34:56.123456789+09:00')))
+emit(observe(offsetSecondsOf('2024-02-29T12:34:56.123456789+09:00')))
+for (const form of [
+    ' 2024-02-29T12:34:56Z',
+    '2024-02-29 12:34:56Z',
+    '2024-02-29t12:34:56Z',
+    '2024-02-29T12:34:56z',
+    '2024-02-29T12:34Z',
+    '2024-02-29T12:34:56,123Z',
+    '2024-02-29T12:34:56.1234567890Z',
+    '2024-02-29T24:00:00Z',
+    '2024-02-29T12:34:60Z',
+    '2024-02-29T12:34:56+0100',
+    '2024-02-29T12:34:56-00:00',
+    '2024-02-29T12:34:56Z ',
+    '2024-02-29T12:34:56.Z',
+    '2024-02-29T12:34:56+24:00',
+    '2024-02-29T12:34:56+00:60',
+    '2024-02-29T12:34:56+09:0',
+    '2024-02-29T12:34:56+09:00Z',
+    '2024-02-29T12:34:56',
+    '2024',
+]) emit(observe(parseRfc3339(form)))
+emit(observe(validateParts(2024n, 2n, 29n, 12n, 34n, 56n, 789n)))
+emit(observe(validateParts(2024n, 2n, 29n, 24n, 0n, 0n, 0n)))
 
 process.stdout.write(out.join('\n') + '\n')

@@ -51,9 +51,10 @@ executor and the C11 backend and proves no host clock is read.
 
 The platform-independent [`date_time/`](date_time/) producer executes seven
 nominal civil/instant shapes, a closed typed outcome, preflight-checked
-arithmetic, duration normalization, and a recursive canonical RFC 3339 UTC
-parser directly through Stage 2 C11. It is the bounded core producer, not a
-clock adapter or time-zone implementation.
+arithmetic, duration normalization, and a recursive strict RFC 3339 parser that
+accepts `Z` and fixed `+HH:MM`/`-HH:MM` offsets directly through Stage 2 C11.
+Its gate pins a nineteen-form rejection matrix to exact byte positions. It is
+the bounded core producer, not a clock adapter or time-zone implementation.
 
 The platform-independent [`list/`](list/) checkpoint defines an eager,
 value-returning `List[Int]` surface with typed empty/index failures and ordered
