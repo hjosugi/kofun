@@ -827,15 +827,21 @@
       ]
     },
     {
-      "number": 1060,
-      "title": "backlog: 24 of 28 blocked issues name their blockers where the gate cannot read them",
+      "number": 1062,
+      "title": "backlog: the agent-claim protocol is gated but unused, so both claim rules pass over an empty set",
       "state_labels": [
-        "needs-decision"
+        "ready"
       ],
-      "state_line": "needs-decision",
+      "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
         "03d8a7099fa14c62c0fa8d250c0d5d8c2c3ffc38"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-20260807-1062-claim-coverage",
+          "status": "active"
+        }
       ]
     }
   ]
