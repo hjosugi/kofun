@@ -42,13 +42,38 @@ seconds as nanoseconds.
   `E2S32`, so the contract's central distinction is enforced by the compiler
   rather than by review.
 
-## Not yet implemented here
+- **Serialization.** Two identities are spelled in the text itself —
+  `posix-v1:<seconds>.<nine digits>` and `gregorian-v1:YYYY-MM-DD` — and the
+  grammar is canonical rather than merely accepted. `+5`, `05`, `-0`, an
+  eight-digit fraction, and a ten-digit fraction are each refused instead of
+  normalized, because two spellings of one value would defeat the point of
+  carrying a version.
+- **Independent agreement.** `tests/reference.mjs` is a second implementation
+  of the whole corpus. It shares no code with the producer and never reads the
+  golden; the gate requires its output and the compiled C11 artifact to be
+  byte-identical.
 
-Versioned portable serialization and the independent reference-oracle
-differential corpus remain open: both need Text formatting that the current
-Stage 2 surface does not express. Clock adapters (#647) and time-zone data
-(#648) stay owned by their own issues, and no leap-second handling exists by
-contract.
+## Why a reference interpretation, not just a golden
+
+A golden compared against itself proves the program is deterministic, which was
+never in question. Two independent implementations agreeing is what makes the
+corpus evidence of correctness — and this one earned its place immediately: it
+caught a real disagreement on a negative instant while it was being written.
+The cause was worth keeping. `observe` folds a closed outcome into one integer
+for printing, and that fold is not injective: `DateTimeOk(-5)` prints as `95`,
+which a consumer branching on the number reads as an error. The producer
+matches on the closed outcome and was right; the reference compared against
+`100` and was wrong. Match on the outcome, encode only to print.
+
+Both directions of the differential are load-bearing. Mutating the reference
+turns the gate red, and so does mutating the producer.
+
+## Not implemented here
+
+Clock adapters (#647) and time-zone data (#648) stay owned by their own issues,
+and no leap-second handling exists by contract. `Monotonic` has no record in
+this producer at all: the contract says it has no constructor from numbers, so
+the mistake of serializing one cannot be written here even to test it.
 
 Run the focused gate with:
 
