@@ -207,6 +207,12 @@ numeric and function differential corpora are executable, and the sample
 renders Kofun output in a page. Wider language coverage should be tracked
 independently rather than implied here.
 
+`spec/wasi-command-profile-v1.md` now reserves
+`wasm32-wasi-command1` and makes its command-capability boundary executable as
+a reference model. That is an implementation input, not an emitted profile:
+this backend continues to reject the target with no artifact, imports no
+`wasi_snapshot_preview1` function, and claims no WASI capability.
+
 When linear-memory objects do arrive, their byte layout is already decided:
 `spec/aggregate-layout-v1.md` defines the `wasm32` target with 4-byte
 references and 8-byte `u64` object headers, with golden vectors in

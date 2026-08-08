@@ -124,6 +124,15 @@ executable bootstrap implementation.
   the module bytes before instantiation. It decides activation only: no wasm
   bytes change, no capability row moves, and no backend emits the profile yet.
 
+- `wasi-command-profile-v1.md`, its closed import/capability vocabulary,
+  reference model, canonical vectors, refusal mutations, and Node-executed
+  fixture in `wasi-command-profile-v1/` define the accepted implementation
+  input for the reserved `wasm32-wasi-command1` target. The profile is a
+  bounded `wasi_snapshot_preview1` core-module subset with explicit authority,
+  borrowed guest-pointer lifetimes, read-only preopens, and no ambient access.
+  It is not a language RFC or a capability claim: the shipped CLI still
+  refuses the target and no backend emits it.
+
 Design-only material in `docs/` is not normative until it is promoted here
 with conformance evidence. The specification is versioned independently from
 the implementation; the current draft is `0.3-bootstrap`.

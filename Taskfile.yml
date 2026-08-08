@@ -507,6 +507,11 @@ tasks:
     cmds:
       - "sh spec/wasm-host-profile-v1/check.sh"
 
+  wasi-command-profile:
+    desc: "Verify the reserved WASI command capability profile and reference host"
+    cmds:
+      - "sh spec/wasi-command-profile-v1/check.sh"
+
   wasm-object-arena:
     desc: "Verify the bounded wasm32-hostabi1 object arena and u64 headers"
     cmds:
@@ -822,6 +827,7 @@ tasks:
             reuse-candidate \
             wasm-host-abi \
             wasm-host-profile \
+            wasi-command-profile \
             wasm-object-arena \
             wasm-list-v1 \
             typed-sidecar-spec \
