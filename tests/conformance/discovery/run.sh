@@ -42,6 +42,18 @@ fail() {
     "$CASES/discovery_provider_test.c" \
     -o "$WORK/discovery-provider-test"
 
+"$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
+    -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
+    -I"$ROOT/bootstrap/stage2" \
+    "$ROOT/bootstrap/stage2/semantic_producer.c" \
+    "$ROOT/bootstrap/stage2/semantic_events.c" \
+    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$ROOT/bootstrap/stage2/discovery_v1.c" \
+    "$ROOT/bootstrap/stage2/discovery_provider.c" \
+    "$ROOT/bootstrap/stage2/discovery_query.c" \
+    "$CASES/live_query_test.c" \
+    -o "$WORK/live-query-test"
+
 golden() {
     name=$1
     shift
@@ -107,6 +119,35 @@ provider_golden type type
 # so an omission cannot be read as a count of what was withheld.
 provider_golden operations operations
 
+# The live boundary: one real Stage 2 ownership analysis over a List[Text]
+# occurrence, followed by the same provider projection used above.  The
+# current producer has no committed TypeId for that recovery-profile
+# occurrence, so the pinned answer is deliberately partial rather than an
+# invented validated type.  Direct function/constructor rows still carry the
+# producer's stable SymbolIds, while the private function becomes only an
+# aggregate omission.
+"$WORK/live-query-test" "$CASES/live_list_text.kofun" \
+    >"$WORK/live_query.observed" 2>&1
+cmp "$CASES/live_query.golden" "$WORK/live_query.observed" ||
+    fail "live Stage 2 discovery observation changed"
+printf '%s\n' "PASS: live-query"
+
+# Discovery is a tooling-only library.  The release Stage 2 sources must still
+# match their pinned pre-adapter bytes, and enabling a no-op discovery-disabled
+# build flag must produce the exact same compiler artifact.
+(
+    cd "$ROOT"
+    sha256sum -c bootstrap/stage2/SHA256SUMS >/dev/null
+)
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$ROOT/bootstrap/stage2/compiler.c" -o "$WORK/stage2-release"
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    -DKOFUN_DISCOVERY_DISABLED=1 \
+    "$ROOT/bootstrap/stage2/compiler.c" -o "$WORK/stage2-release-disabled"
+cmp "$WORK/stage2-release" "$WORK/stage2-release-disabled" ||
+    fail "discovery-disabled Stage 2 artifact changed"
+printf '%s\n' "PASS: discovery-disabled-artifact"
+
 # Every rejection path above walks the parser over deliberately malformed
 # bytes, which is exactly where an off-by-one reads past the end. Run the same
 # cases under the sanitizers so a refusal that is "correct" but reads out of
@@ -138,6 +179,24 @@ then
         UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
             "$WORK/discovery-provider-sanitized" "$mode" >/dev/null
     done
+    "$CC" -std=c11 -O1 -g -Wall -Wextra -Werror -pedantic \
+        -fno-omit-frame-pointer -fsanitize=address,undefined \
+        -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
+        -I"$ROOT/bootstrap/stage2" \
+        "$ROOT/bootstrap/stage2/semantic_producer.c" \
+        "$ROOT/bootstrap/stage2/semantic_events.c" \
+        "$ROOT/bootstrap/stage2/sha256.c" \
+        "$ROOT/bootstrap/stage2/discovery_v1.c" \
+        "$ROOT/bootstrap/stage2/discovery_provider.c" \
+        "$ROOT/bootstrap/stage2/discovery_query.c" \
+        "$CASES/live_query_test.c" \
+        -o "$WORK/live-query-sanitized"
+    ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+    UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+        "$WORK/live-query-sanitized" "$CASES/live_list_text.kofun" \
+        >"$WORK/live_query.sanitized" 2>&1
+    cmp "$CASES/live_query.golden" "$WORK/live_query.sanitized" ||
+        fail "sanitized live Stage 2 discovery observation changed"
     printf '%s\n' "PASS: AddressSanitizer and UndefinedBehaviorSanitizer"
 else
     printf '%s\n' "SKIP: sanitizers unavailable"

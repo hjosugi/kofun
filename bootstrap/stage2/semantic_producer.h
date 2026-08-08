@@ -79,6 +79,69 @@ typedef struct {
     size_t type_reference_count;
 } KofunStage2InterfaceSnapshot;
 
+/*
+ * Copied, bounded records for the in-process discovery provider (#1080).
+ *
+ * This is deliberately not the compiler's internal Producer layout.  Every
+ * pointer-bearing semantic record is flattened into storage owned by this
+ * snapshot before the compiler authority is destroyed, so a discovery client
+ * cannot retain an arena pointer or infer a missing fact from rendered output.
+ */
+enum {
+    KOFUN_STAGE2_DISCOVERY_MAX_EXPRESSIONS = 512,
+    KOFUN_STAGE2_DISCOVERY_MAX_CANDIDATES = 192,
+    KOFUN_STAGE2_DISCOVERY_FACT_TEXT_BYTES = 160,
+    KOFUN_STAGE2_DISCOVERY_MODULE_NAME_BYTES = 64,
+    KOFUN_STAGE2_DISCOVERY_QUALIFIED_NAME_BYTES = 322
+};
+
+typedef struct {
+    KofunSemanticNode node;
+    bool has_type_identity;
+    KofunSemanticIdentity type_identity;
+    bool has_type_fact;
+    KofunSemanticStatus type_status;
+    char type_display[KOFUN_STAGE2_DISCOVERY_FACT_TEXT_BYTES];
+    char type_reason[KOFUN_STAGE2_DISCOVERY_FACT_TEXT_BYTES];
+} KofunStage2DiscoveryExpression;
+
+typedef enum {
+    KOFUN_STAGE2_DISCOVERY_FUNCTION = 1,
+    KOFUN_STAGE2_DISCOVERY_CONSTRUCTOR = 2
+} KofunStage2DiscoveryCandidateKind;
+
+typedef struct {
+    KofunStage2DiscoveryCandidateKind kind;
+    KofunSemanticId symbol_id;
+    KofunSemanticId module_id;
+    KofunSemanticStatus status;
+    KofunStage2InterfaceVisibility visibility;
+    char display_name[KOFUN_STAGE2_INTERFACE_NAME_BYTES];
+    char qualified_name[KOFUN_STAGE2_DISCOVERY_QUALIFIED_NAME_BYTES];
+    char module_name[KOFUN_STAGE2_DISCOVERY_MODULE_NAME_BYTES];
+    char signature[KOFUN_STAGE2_DISCOVERY_FACT_TEXT_BYTES];
+} KofunStage2DiscoveryCandidate;
+
+typedef struct {
+    bool committed;
+    KofunSourceStatus source_status;
+    KofunCompleteness completeness;
+    KofunSemanticId package_id;
+    KofunSemanticId module_id;
+    KofunSemanticId file_id;
+    uint64_t source_bytes;
+    uint8_t source_sha256[KOFUN_SEMANTIC_ID_BYTES];
+    uint64_t caller_generation;
+    char semantic_compatibility[65];
+    KofunStage2DiscoveryExpression
+        expressions[KOFUN_STAGE2_DISCOVERY_MAX_EXPRESSIONS];
+    size_t expression_count;
+    KofunStage2DiscoveryCandidate
+        candidates[KOFUN_STAGE2_DISCOVERY_MAX_CANDIDATES];
+    size_t candidate_count;
+    bool hidden_candidate_present;
+} KofunStage2DiscoverySnapshot;
+
 bool kofun_stage2_produce_semantic_events(
     const KofunStage2SemanticInput *input,
     KofunSemanticSink *sink,
@@ -91,6 +154,12 @@ bool kofun_stage2_compile_interface(
     KofunSemanticBytes edition,
     bool cancellation_observed_after_commit,
     KofunStage2InterfaceSnapshot *snapshot,
+    KofunStage2SemanticResult *result
+);
+
+bool kofun_stage2_analyze_discovery(
+    const KofunStage2SemanticInput *input,
+    KofunStage2DiscoverySnapshot *snapshot,
     KofunStage2SemanticResult *result
 );
 
