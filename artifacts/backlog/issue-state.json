@@ -15,14 +15,22 @@
       "number": 26,
       "title": "wasm32 target: extend the bounded arithmetic and browser checkpoint",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
-      "state_line": "blocked",
+      "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "564ab7bc932aab0da6dba370d0c699d196e182cf",
-        "71d49724cced0f41b79ebc0f253f7570f23b1b14",
-        "9f21980a7c77883ad3d91ce462a6857adc261f20"
+        "b8bcaa9b24281ad8ec4e1300c8a444cffe352331"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-refresh-26-wasm-roadmap-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-refresh-26-wasm-roadmap-20260808",
+          "status": "released"
+        }
       ]
     },
     {
@@ -89,13 +97,20 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        271,
-        622
+        271
       ],
       "evidence_commits": [
-        "6f71b6df5cf54aa16542b89494d2194c4172a97e",
-        "d3429207447e112f5230d5be38576959130d288e",
-        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
+        "b8bcaa9b24281ad8ec4e1300c8a444cffe352331"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-32-fixed-point-parent-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-32-fixed-point-parent-audit-20260808",
+          "status": "released"
+        }
       ]
     },
     {
@@ -133,7 +148,17 @@
         271
       ],
       "evidence_commits": [
-        "aeee501f7f28aa33c328a764abe3e3a5cf65d71b"
+        "b8bcaa9b24281ad8ec4e1300c8a444cffe352331"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-refresh-272-fixed-point-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-refresh-272-fixed-point-20260808",
+          "status": "released"
+        }
       ]
     },
     {
@@ -147,7 +172,17 @@
         272
       ],
       "evidence_commits": [
-        "aeee501f7f28aa33c328a764abe3e3a5cf65d71b"
+        "b8bcaa9b24281ad8ec4e1300c8a444cffe352331"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-274-b6-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-274-b6-audit-20260808",
+          "status": "released"
+        }
       ]
     },
     {
@@ -428,12 +463,23 @@
       "number": 554,
       "title": "Stage 2: lower contiguous payload-free enum matches to C switch",
       "state_labels": [
-        "blocked"
+        "needs-decision"
       ],
-      "state_line": "blocked",
+      "state_line": "needs-decision",
       "blocked_by": [],
       "evidence_commits": [
-        "b55d56101add13bedee87a589ea4d8db9801277c"
+        "7cdecd68dd42504da5881c6253e8f3d091636064",
+        "b8bcaa9b24281ad8ec4e1300c8a444cffe352331"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-refresh-554-enum-capacity-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-refresh-554-enum-capacity-20260808",
+          "status": "released"
+        }
       ]
     },
     {
@@ -492,8 +538,18 @@
       "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
-        "78626dcabfe4765beaff38f59a7b29ba3f8013bd",
+        "b8bcaa9b24281ad8ec4e1300c8a444cffe352331",
         "c153beb3526e2d21c4844a3db01c52823a5f27f5"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-570-ownership-kind-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-570-ownership-kind-audit-20260808",
+          "status": "released"
+        }
       ]
     },
     {
@@ -505,7 +561,17 @@
       "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
-        "b6241acc8cd33819a4a1c92b1a301c02b46cd133"
+        "b8bcaa9b24281ad8ec4e1300c8a444cffe352331"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-571-borrowed-results-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-571-borrowed-results-audit-20260808",
+          "status": "released"
+        }
       ]
     },
     {
@@ -515,8 +581,24 @@
         "blocked"
       ],
       "state_line": "blocked",
-      "blocked_by": [],
-      "evidence_commits": []
+      "blocked_by": [
+        915
+      ],
+      "evidence_commits": [
+        "7ce5cb15a3c078eb7c787718dd876fe03504f03b",
+        "b8bcaa9b24281ad8ec4e1300c8a444cffe352331",
+        "d6ff27b8b6f6a785f0be4fc7928eb7df11fd7f60"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-572-last-use-planning-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-572-last-use-planning-audit-20260808",
+          "status": "released"
+        }
+      ]
     },
     {
       "number": 573,
@@ -648,10 +730,24 @@
         "blocked"
       ],
       "state_line": "blocked",
-      "blocked_by": [],
+      "blocked_by": [
+        784
+      ],
       "evidence_commits": [
+        "041816f714eb82ed72e4a773c0112ed87f71b93b",
         "09e03fb96597aa1f48abce7ad95171d3184730d0",
-        "b5ea9ec9241e832b87705c468818b4fd2684146d"
+        "b5ea9ec9241e832b87705c468818b4fd2684146d",
+        "b8bcaa9b24281ad8ec4e1300c8a444cffe352331"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-644-http-client-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-644-http-client-audit-20260808",
+          "status": "released"
+        }
       ]
     },
     {
@@ -875,8 +971,23 @@
         "blocked"
       ],
       "state_line": "blocked",
-      "blocked_by": [],
-      "evidence_commits": []
+      "blocked_by": [
+        885
+      ],
+      "evidence_commits": [
+        "041816f714eb82ed72e4a773c0112ed87f71b93b",
+        "b8bcaa9b24281ad8ec4e1300c8a444cffe352331"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-884-upgrade-preview-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-884-upgrade-preview-audit-20260808",
+          "status": "released"
+        }
+      ]
     },
     {
       "number": 885,

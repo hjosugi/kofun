@@ -91,15 +91,10 @@
 #                     published.
 unverifiable-stamp	738	d1f58a6a9e20764b25ee28773df5355512213dfa	Time-series forecasting research: stamp names a commit on no branch
 stateless-tracker	281	-	Position paper: what replacing C and Rust actually requires
-capability-blocker	26	-	wasm32 target: extend the bounded arithmetic and browser c
-capability-blocker	554	-	Stage 2: lower contiguous payload-free enum matches to C s
 unnamed-blocker	569	-	RFC: define affine authority capabilities for environment 
 capability-blocker	570	-	Austral: propagate ownership kind structurally through gen
 capability-blocker	571	-	Austral/Nim: support zero-copy borrowed results without us
-unnamed-blocker	572	-	Nim: infer last-use moves and add a compile-time move asse
 unnamed-blocker	574	-	V: generate audited C bindings from Clang AST before attem
 unnamed-blocker	576	-	Koka: reuse matched ADT constructors in place when storage
-unnamed-blocker	644	-	HTTP/1.1 client core: bounded request and response state m
 unnamed-blocker	883	-	Typed upgrade patches slice 3: opt-in atomic exact-type re
-unnamed-blocker	884	-	Typed upgrade patches slice 2: deterministic read-only CLI
 capability-blocker	885	-	Typed upgrade patches slice 1: validate schema and compute
