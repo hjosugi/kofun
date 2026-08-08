@@ -170,6 +170,9 @@ terminology**. A row that can only be explained with it scores at most 1.
 Recorded 2026-08-02 against `origin/main@69f9179`. This is a first pass by
 one reviewer; the procedures above exist so a second reviewer can reproduce
 or contest each number. Counted columns carry their measurement in brackets.
+Row 7 was re-reviewed 2026-08-08 after
+`695b863c87a194c98143d866666d8ada8a435759` expanded the audited Stage 1
+source to 3,523 lines; its M7 score and measured `b11, d1, c3` remain unchanged.
 
 | # | Item | M1 surprises | M2 annotations | M3 delimiters | M4 hidden flow | M5 diagnostics | M6 formatter | M7 beginner |
 |---|---|---|---|---|---|---|---|---|
