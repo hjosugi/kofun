@@ -208,7 +208,7 @@ the resolver must not emit every pair in a quadratic collision set.
 The resolver symbol table after visibility filtering is the execution
 authority. Source declarations and decoded KIF exports supply the effective
 NFC spelling; the resolver recomputes the skeleton with the same pinned Unicode
-implementation used for `EUNICODE006`. KIF v1 does not persist a second
+implementation used for `EUNICODE006`. KIF v2 does not persist a second
 skeleton field or become a second Unicode authority. Incremental and cached
 resolution must key this result on the effective visible-binding vector and the
 pinned Unicode-data digest, and must recompute it when either changes.

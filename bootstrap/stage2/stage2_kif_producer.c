@@ -39,7 +39,8 @@ static bool semantic_id_is_nonzero(const KofunSemanticId *id) {
 static void project_fact(
     const KofunStage2InterfaceSnapshot *snapshot,
     const KofunStage2InterfaceFact *source,
-    KofunKifFact *destination
+    KofunKifFact *destination,
+    KofunKifParameterLabel *parameter_labels
 ) {
     memset(destination, 0, sizeof(*destination));
     memcpy(destination->namespace_id, source->namespace_id.bytes,
@@ -56,6 +57,19 @@ static void project_fact(
             destination->parameter_type_symbol_ids =
                 (uint8_t *)snapshot->type_reference_symbol_ids[
                     source->parameter_type_start].bytes;
+            destination->parameter_labels = parameter_labels +
+                source->parameter_label_start;
+            for (size_t index = 0u;
+                 index < source->parameter_count;
+                 index += 1u) {
+                size_t label_index = source->parameter_label_start + index;
+                if (snapshot->parameter_label_lengths[label_index] != 0u) {
+                    destination->parameter_labels[index].bytes =
+                        (char *)snapshot->parameter_labels[label_index];
+                    destination->parameter_labels[index].length =
+                        snapshot->parameter_label_lengths[label_index];
+                }
+            }
         }
         memcpy(
             destination->result_type_symbol_id,
@@ -93,6 +107,8 @@ bool kofun_stage2_publish_kif(
     size_t internal_count = 0u;
     size_t public_output = 0u;
     size_t internal_output = 0u;
+    KofunKifParameterLabel parameter_labels[
+        KOFUN_STAGE2_INTERFACE_MAX_TYPE_REFERENCES];
     size_t index;
     if (result == NULL) return false;
     memset(result, 0, sizeof(*result));
@@ -117,6 +133,7 @@ bool kofun_stage2_publish_kif(
         }
     }
     memset(&interface, 0, sizeof(interface));
+    memset(parameter_labels, 0, sizeof(parameter_labels));
     if (public_count != 0u) {
         interface.public_facts = calloc(
             public_count, sizeof(*interface.public_facts));
@@ -143,7 +160,12 @@ bool kofun_stage2_publish_kif(
         } else {
             destination_fact = &interface.internal_facts[internal_output++];
         }
-        project_fact(&snapshot, source, destination_fact);
+        project_fact(
+            &snapshot,
+            source,
+            destination_fact,
+            parameter_labels
+        );
     }
     interface.public_fact_count = public_output;
     interface.internal_fact_count = internal_output;
@@ -242,7 +264,7 @@ int main(int argc, char **argv) {
         }
         return 3;
     }
-    (void)printf("ok: %s (authoritative KIF v1)\n", argv[offset]);
+    (void)printf("ok: %s (authoritative KIF v2)\n", argv[offset]);
     free(source);
     return 0;
 }

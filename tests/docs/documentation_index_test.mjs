@@ -25,6 +25,9 @@ assert.equal(visibilityResult.ok, true, visibilityResult.error?.message);
 const visibility = visibilityResult.projection;
 assert.ok(visibility.facts.some((fact) => fact.visibility === "pub"));
 assert.ok(visibility.facts.some((fact) => fact.visibility === "internal"));
+assert.ok(visibility.facts.filter((fact) => fact.kind === "function")
+  .every((fact) =>
+    fact.signature.parameter_labels.length === fact.signature.parameters.length));
 
 function completeDocument(sequence = 17) {
   const nodes = visibility.facts.map((fact, index) => ({
@@ -153,6 +156,10 @@ assert.equal(publicIndex.entries.length,
   visibility.facts.filter((fact) => fact.visibility === "pub").length);
 assert.ok(publicIndex.entries.every((entry) => entry.visibility === "public"));
 assert.ok(publicIndex.entries.every((entry) => entry.status === "validated"));
+for (const entry of publicIndex.entries.filter((item) => item.kind === "function")) {
+  const fact = visibility.facts.find((item) => item.symbol_id === entry.declaration_id);
+  assert.deepEqual(entry.signature.parameter_labels, fact.signature.parameter_labels);
+}
 
 const publicBytes = canonicalDocumentationIndexBytes(publicIndex);
 for (const forbidden of [

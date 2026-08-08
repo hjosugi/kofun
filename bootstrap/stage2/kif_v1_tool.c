@@ -110,25 +110,60 @@ static bool project_signature(
             !find_closing(program, module, open, '(', ')', &close)) return false;
         cursor = open + 1u;
         while (cursor < close) {
-            if (cursor + 2u >= close ||
-                module->tokens[cursor].kind != TOKEN_IDENTIFIER ||
-                !punctuation_equals(module, &module->tokens[cursor + 1u], ':') ||
-                !token_equals(module, &module->tokens[cursor + 2u], "Int")) {
+            size_t internal = cursor;
+            size_t type = cursor + 2u;
+            bool labelled = cursor + 3u < close &&
+                module->tokens[cursor].kind == TOKEN_IDENTIFIER &&
+                module->tokens[cursor + 1u].kind == TOKEN_IDENTIFIER &&
+                punctuation_equals(module, &module->tokens[cursor + 2u], ':');
+            if (labelled) {
+                internal = cursor + 1u;
+                type = cursor + 3u;
+            }
+            if (type >= close ||
+                module->tokens[internal].kind != TOKEN_IDENTIFIER ||
+                !punctuation_equals(
+                    module,
+                    &module->tokens[internal + 1u],
+                    ':'
+                ) ||
+                !token_equals(module, &module->tokens[type], "Int")) {
                 set_error(program, "E2S70",
-                    "KIF v1 function `%s` requires only Int parameter types", declaration->name);
+                    "KIF v2 function `%s` requires only Int parameter types", declaration->name);
                 return false;
             }
             if (parameter_count >= 256u) {
                 set_error(program, "E2S70",
-                    "KIF v1 function `%s` has too many parameters", declaration->name);
+                    "KIF v2 function `%s` has too many parameters", declaration->name);
                 return false;
             }
+            {
+                KofunKifParameterLabel *labels = realloc(
+                    fact->parameter_labels,
+                    ((size_t)parameter_count + 1u) *
+                        sizeof(*fact->parameter_labels)
+                );
+                if (labels == NULL) {
+                    set_error(program, "E2S71", "KIF parameter-label allocation failed");
+                    return false;
+                }
+                fact->parameter_labels = labels;
+                memset(&fact->parameter_labels[parameter_count], 0,
+                    sizeof(*fact->parameter_labels));
+                if (labelled) {
+                    const Token *external = &module->tokens[cursor];
+                    fact->parameter_labels[parameter_count].bytes =
+                        module->source + external->start;
+                    fact->parameter_labels[parameter_count].length =
+                        (uint16_t)(external->end - external->start);
+                }
+            }
             parameter_count += 1u;
-            cursor += 3u;
+            cursor = type + 1u;
             if (cursor < close) {
                 if (!punctuation_equals(module, &module->tokens[cursor], ',')) {
                     set_error(program, "E2S70",
-                        "KIF v1 function `%s` has a malformed parameter list", declaration->name);
+                        "KIF v2 function `%s` has a malformed parameter list", declaration->name);
                     return false;
                 }
                 cursor += 1u;
@@ -138,7 +173,7 @@ static bool project_signature(
             module->tokens[close + 1u].kind != TOKEN_ARROW ||
             !token_equals(module, &module->tokens[close + 2u], "Int")) {
             set_error(program, "E2S70",
-                "KIF v1 function `%s` requires an Int result type", declaration->name);
+                "KIF v2 function `%s` requires an Int result type", declaration->name);
             return false;
         }
         fact->parameter_count = parameter_count;
@@ -153,7 +188,7 @@ static bool project_signature(
                 !punctuation_equals(module, &module->tokens[next + 2u], ':') ||
                 !token_equals(module, &module->tokens[next + 3u], "Int")) {
                 set_error(program, "E2S70",
-                    "KIF v1 constructor `%s` requires zero or one Int payload",
+                    "KIF v2 constructor `%s` requires zero or one Int payload",
                     declaration->name);
                 return false;
             }
@@ -187,12 +222,16 @@ static bool append_projected_fact(
         owner = &program->declarations[declaration->owner_index];
         memcpy(fact->owner_symbol_id, owner->symbol_id, KOFUN_KIF_ID_BYTES);
         if (declaration->constructor_index > UINT32_MAX) {
-            set_error(program, "E2S70", "constructor ordinal exceeds KIF v1");
+            set_error(program, "E2S70", "constructor ordinal exceeds KIF v2");
             return false;
         }
         fact->constructor_ordinal = (uint32_t)declaration->constructor_index;
     }
-    if (!project_signature(program, declaration, fact)) return false;
+    if (!project_signature(program, declaration, fact)) {
+        free(fact->parameter_labels);
+        fact->parameter_labels = NULL;
+        return false;
+    }
     *count += 1u;
     return true;
 }
@@ -219,7 +258,7 @@ static bool build_interface(
         return false;
     }
     if (strlen(edition) == 0u || strlen(edition) > KOFUN_KIF_MAX_EDITION_BYTES) {
-        set_error(program, "E2S69", "edition is outside the KIF v1 bound");
+        set_error(program, "E2S69", "edition is outside the KIF v2 bound");
         return false;
     }
     for (index = 0u; index < program->declaration_count; index += 1u) {
@@ -259,6 +298,13 @@ static bool build_interface(
 }
 
 static void destroy_writer_interface(KofunKifInterface *interface) {
+    size_t index;
+    for (index = 0u; index < interface->public_fact_count; index += 1u) {
+        free(interface->public_facts[index].parameter_labels);
+    }
+    for (index = 0u; index < interface->internal_fact_count; index += 1u) {
+        free(interface->internal_facts[index].parameter_labels);
+    }
     free(interface->public_facts);
     free(interface->internal_facts);
     memset(interface, 0, sizeof(*interface));
@@ -343,6 +389,19 @@ static bool emit_dump(const KofunKifInterface *interface, const char *path) {
                         parameter_index * KOFUN_KIF_ID_BYTES;
                 if (parameter_index != 0u) fputs(", ", output);
                 emit_type_reference(output, type_id);
+            }
+            fputs("], \"parameter_labels\": [", output);
+            for (parameter_index = 0u;
+                 parameter_index < fact->parameter_count;
+                 parameter_index += 1u) {
+                const KofunKifParameterLabel *label = fact->parameter_labels == NULL
+                    ? NULL : &fact->parameter_labels[parameter_index];
+                if (parameter_index != 0u) fputs(", ", output);
+                if (label == NULL || label->bytes == NULL) {
+                    fputs("\"unlabelled\"", output);
+                } else {
+                    fprintf(output, "\"%.*s\"", (int)label->length, label->bytes);
+                }
             }
             fputs("], \"result\": ", output);
             emit_type_reference(output, fact->result_type_symbol_id);
@@ -799,6 +858,23 @@ static void emit_resolution_signature(
     }
 }
 
+static void emit_resolution_labels(
+    FILE *output,
+    const KofunKifFact *fact
+) {
+    size_t index;
+    for (index = 0u; index < fact->parameter_count; index += 1u) {
+        const KofunKifParameterLabel *label = fact->parameter_labels == NULL
+            ? NULL : &fact->parameter_labels[index];
+        if (index != 0u) fputc(',', output);
+        if (label == NULL || label->bytes == NULL) {
+            fputs("unlabelled", output);
+        } else {
+            fprintf(output, "%.*s", (int)label->length, label->bytes);
+        }
+    }
+}
+
 static bool emit_kif_resolution(
     const KofunKifInterface *interface,
     bool package_internal,
@@ -864,12 +940,14 @@ static bool emit_kif_resolution(
             fprintf(output,
                 "qualified-call|qualifier=%s|name=%s|binding-module=%s|"
                 "export-binding=%s|target-module=%s|target-symbol=%s|"
-                "arity=%zu|signature=fn(%u:Int)->Int|span=%zu..%zu|"
-                "chain=%zu|chain-ids=",
+                "arity=%zu|signature=fn(%u:Int)->Int|labels=",
                 qualifier, fact->name, module_hex, export_hex,
                 target_module_hex, symbol_hex, calls[index].arity,
-                (unsigned)fact->parameter_count, calls[index].start,
-                calls[index].end, fact->export_chain_count);
+                (unsigned)fact->parameter_count);
+            emit_resolution_labels(output, fact);
+            fprintf(output, "|span=%zu..%zu|chain=%zu|chain-ids=",
+                calls[index].start, calls[index].end,
+                fact->export_chain_count);
             for (chain_index = 0u;
                  chain_index < fact->export_chain_count;
                  chain_index += 1u) {
@@ -889,6 +967,8 @@ static bool emit_kif_resolution(
                 qualifier, fact->name, module_hex, symbol_hex,
                 calls[index].arity);
             emit_resolution_signature(output, fact);
+            fputs("|labels=", output);
+            emit_resolution_labels(output, fact);
             fprintf(output, "|span=%zu..%zu\n",
                 calls[index].start, calls[index].end);
         }

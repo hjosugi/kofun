@@ -103,10 +103,10 @@ Writing it surfaced things that were not written down anywhere:
 - **A constructor application needs an explicit type annotation; a function
   call returning the same type does not.** `let circle: Shape = Circle(5)` is
   required, `let digits = step_digits(source)` is not.
-- **Ownership mode keywords are understood by one bounded frontend and
-  silently reparsed as identifiers by the production path.** Row 8's
-  diagnostic is `duplicate binding 'read' in lexical scope` — the parser has
-  taken `read` for a parameter name.
+- **Ownership modes now reach the production parameter parser, but generic
+  nominal parameter types do not.** Row 8 advances past `read` and stops at
+  `Stream[Reading, StreamError]` with `malformed parameter head at byte 2141`;
+  the diagnostic still does not name the unsupported generic type.
 - **The worst diagnostic in the corpus is row 5's**: `Core function
   'accumulate' expects 3 arguments, got -1`, an argument count that cannot
   exist.

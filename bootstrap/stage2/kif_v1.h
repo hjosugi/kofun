@@ -53,6 +53,12 @@ typedef enum {
 } KofunKifTypeTag;
 
 typedef struct {
+    /* NULL plus zero length is the explicit canonical `unlabelled` marker. */
+    char *bytes;
+    uint16_t length;
+} KofunKifParameterLabel;
+
+typedef struct {
     uint8_t namespace_id[KOFUN_KIF_ID_BYTES];
     uint8_t symbol_id[KOFUN_KIF_ID_BYTES];
     KofunKifFactKind kind;
@@ -67,6 +73,7 @@ typedef struct {
      */
     uint16_t parameter_count;
     uint8_t *parameter_type_symbol_ids;
+    KofunKifParameterLabel *parameter_labels;
     KofunKifTypeTag result_type;
     uint8_t result_type_symbol_id[KOFUN_KIF_ID_BYTES];
 

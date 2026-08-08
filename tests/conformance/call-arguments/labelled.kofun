@@ -1,0 +1,8 @@
+fn replace(in text: Int, from old: Int, to replacement: Int) -> Int {
+    return text + old + replacement
+}
+
+fn main() -> Int {
+    print(replace(to: 3, in: 1, from: 2))
+    return 0
+}

@@ -4,7 +4,7 @@ The documentation index is a bounded, non-authoritative view for documentation
 renderers and local developer tools. It joins two independently validated
 inputs:
 
-- the compiler-authoritative KIF binary, decoded by the bounded KIF v1 reader;
+- the compiler-authoritative KIF binary, decoded by the bounded KIF v2 reader;
 - the matching non-authoritative typed sidecar, used only to establish whether
   each stable declaration identity was validated in the current check.
 
@@ -57,7 +57,7 @@ an already committed safe result remains unchanged.
 
 ## Operating procedure
 
-Build or obtain the repository's bounded KIF v1 reader, then supply a KIF and
+Build or obtain the repository's bounded KIF v2 reader, then supply a KIF and
 typed sidecar produced for the same package, module, and source generation.
 For a public view:
 
@@ -127,9 +127,10 @@ Malformed old files, symlink/directory destinations, races, cancellation, or
 any failure before rename preserve the old bytes and clean up only files whose
 device/inode still match those created by this writer.
 
-This slice intentionally supports the facts present in bounded KIF v1.1:
-functions, flat ADTs, zero/one-payload constructors, and re-export bindings with
-`Int` or flat nominal type references. It does not publish documentation
+This slice intentionally supports the facts present in bounded KIF v2:
+functions with their declaration-order external-label/unlabelled vectors, flat
+ADTs, zero/one-payload constructors, and re-export bindings with `Int` or flat
+nominal type references. It does not publish documentation
 comments, records, generics, effects, ownership annotations, arbitrary source
 locations, or a site search format. Those require canonical KIF facts and a
 separately reviewed schema change; sidecar display text is never a fallback.

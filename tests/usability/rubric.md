@@ -215,8 +215,9 @@ against source that no toolchain accepts would be scoring a wish.
   reports an argument count that cannot exist.
 - **6.M5 = 1.** `expected top-level 'fn' or 'type'` names the location and
   does not say that `law` is a known, accepted, unimplemented form.
-- **8.M5 = 1.** `duplicate binding 'read' in lexical scope` — the parser has
-  silently reinterpreted the ownership mode keyword as a parameter name.
+- **8.M5 = 1.** `malformed parameter head at byte 2141` — ownership modes are
+  recognized, but the diagnostic does not name the unsupported generic
+  nominal parameter type `Stream[Reading, StreamError]` or a remedy.
 - **7.M7 = 3.** 3,175 lines that a reader can follow without the spec is the
   strongest readability evidence in the corpus, and it is evidence about a
   deliberately small subset: no records, no ADT payloads, no generics, no

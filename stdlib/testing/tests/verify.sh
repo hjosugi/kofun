@@ -75,7 +75,7 @@ canonical_status=$?
 set -e
 [ "$canonical_status" -ne 0 ] ||
     fail 'canonical ADT source unexpectedly claimed executable codegen'
-grep -Fq 'error[E2S35]: unknown lexical binding `result`' \
+grep -Fq 'error[E2S35]: unknown lexical binding `TestSummary` at byte 1904' \
     "$work/canonical.check.stderr" ||
     fail 'canonical ADT source did not expose the documented compiler boundary'
 

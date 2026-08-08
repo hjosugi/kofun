@@ -358,7 +358,7 @@ expect_refused 05_higher_order \
 expect_refused 06_monad_laws \
     'error[E2S02]: expected top-level `fn`, `type`, or `let`'
 expect_refused 08_stream_pipeline \
-    'error[E2S47]: duplicate binding `read` in lexical scope'
+    'error[E2S35]: malformed parameter head at byte 2141'
 
 # ------------------------------------------------------------- the rubric
 

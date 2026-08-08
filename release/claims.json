@@ -367,10 +367,10 @@
     {
       "id": "compiled-visibility-interfaces",
       "public_wording": "compiled visibility interfaces",
-      "public_status": "bounded Stage 2 KIF v1.1: exact resolved flat-nominal function/payload refs; public/internal/private leak rejection; atomic public/internal filtering",
+      "public_status": "bounded Stage 2 KIF v2: exact resolved flat-nominal function/payload refs and parameter labels; public/internal/private leak rejection; atomic public/internal filtering",
       "state": "checkpoint",
       "area": "frontend",
-      "bounded_capability": "The normal Stage 2 compiler publishes committed Int and flat nominal ADT parameter, result, and constructor-payload identities into canonical public and package-internal KIF views. Public facts may reference only public ADTs; internal facts may reference public or internal ADTs; private and absent identities fail closed. Records, generics, effects, and ownership signature components remain explicit unsupported-publication boundaries.",
+      "bounded_capability": "The normal Stage 2 compiler publishes committed Int and flat nominal ADT parameter, result, constructor-payload, and external-label/unlabelled-vector identities into canonical public and package-internal KIF views. Public facts may reference only public ADTs; internal facts may reference public or internal ADTs; private and absent identities fail closed. Records, generics, effects, and ownership signature components remain explicit unsupported-publication boundaries.",
       "targets": [
         "stage2"
       ],
@@ -379,10 +379,10 @@
         "spec/modules/module-identity.md",
         "docs/SECURITY.md"
       ],
-      "compatibility": "KIF major version 1 keeps existing Int-only bytes unchanged and advertises nominal type references with minor version 1. Readers reject unknown, missing, or less-visible semantic identities before exposing facts.",
+      "compatibility": "KIF major version 2 canonically encodes one external-label or explicit unlabelled marker per function parameter and excludes internal parameter names. Readers reject older or unknown envelopes and unknown, missing, or less-visible semantic identities before exposing facts.",
       "positive_gate": {
-        "command": "sh tests/interfaces/visibility-filtering.sh",
-        "observation": "Compiler-produced nominal parameter, result, and payload identities round-trip exactly; public/internal views and edit-sensitive digests match the visibility matrix."
+        "command": "sh tests/conformance/modules/stage2-kif-producer/run.sh",
+        "observation": "Compiler-produced label vectors round-trip source-free; internal-name renames remain stable while external-label renames invalidate the affected public and package-internal digests."
       },
       "negative_boundary": {
         "kind": "rejection",

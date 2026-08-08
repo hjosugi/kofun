@@ -3271,49 +3271,17 @@ static char *function_parameter_type(
     const char *wanted,
     int64_t index
 );
+static int64_t function_start_named(const char *source, const char *wanted);
+static bool source_tokens_equal(
+    const char *source,
+    int64_t left,
+    int64_t right
+);
 
 static char *validate_const_arguments(const char *source);
 static char *validate_const_erasure(const char *source);
 
-/*
- * The call-arguments v1 surface boundary (#880).
- *
- * `spec/syntax/call-arguments-v1.md` accepts two forms this profile cannot
- * lower: a declaration external label (`fn write(take into file: File, ...)`)
- * and a trailing lambda (`items.fold(initial: 0) fn(acc, item) => ...`). #881
- * owns binding them and #882 owns lowering them; until then Stage 2 owes a
- * refusal.
- *
- * It was not refusing them. It was *reinterpreting* them. Both fixtures this
- * check now owns, run against the compiler on the parent commit:
- *
- *     $ ./kofun-stage2-parent \
- *         tests/diagnostics/stage2/e2s158_declaration_external_label.kofun ...
- *     error[E2S35]: unknown lexical binding `base` at byte 601
- *
- *     $ ./kofun-stage2-parent \
- *         tests/diagnostics/stage2/e2s158_trailing_lambda.kofun ...
- *     error[E2S17]: Core function `apply` expects 2 arguments, got 1 at byte 655
- *
- * The parameter list was read as `to: <type base>`, so `base` never bound and
- * the author was told that a name they *did* write, in the position the
- * contract gives it, does not exist. The trailing lambda was worse: it fell
- * outside the call entirely, so the compiler counted one argument and blamed
- * the author for an arity they had not got wrong. That is the failure mode
- * #880's last acceptance criterion names: a profile that cannot lower a form
- * must reject it rather than reinterpret it, with a named diagnostic.
- *
- * Deliberately not covered: `edit token: Token` — an ownership mode and an
- * internal name, with no external label. That two-word shape predates this
- * contract and its boundary belongs to the ownership work (E2S121 and the
- * `edit_parameter` fixture), so touching it here would move a line this issue
- * does not own.
- *
- * The span is the external label itself, which is word one of `to base` and
- * word two of `take into file` — the mode shifts everything right. Blaming the
- * internal name instead would repeat the defect this check exists to remove,
- * one token over.
- */
+/* Ownership mode is the optional first component of a parameter head. */
 static bool ownership_mode_token(const char *source, int64_t cursor) {
     return token_equal(source, cursor, "read") ||
            token_equal(source, cursor, "edit") ||
@@ -3348,18 +3316,102 @@ static bool parameter_word_token(const char *source, int64_t cursor) {
     return strcmp(kind, "identifier") == 0 || strcmp(kind, "keyword") == 0;
 }
 
-static char *call_argument_surface_refusal(
+/* Parse one call-arguments-v1 parameter head without allocating. Every
+ * semantic reader uses these offsets so ownership mode, external label, and
+ * internal binding cannot drift between HIR, checking, and ABI projection. */
+static int64_t parameter_internal_start(
     const char *source,
-    const char *what,
-    int64_t cursor
+    int64_t cursor,
+    int64_t limit
 ) {
+    int64_t first = cursor;
+    if (ownership_mode_token(source, first)) {
+        first = skip_trivia(source, token_end(source, first));
+    }
+    if (first >= limit || !parameter_word_token(source, first)) return -1;
+    int64_t after_first = skip_trivia(source, token_end(source, first));
+    if (after_first < limit && token_equal(source, after_first, ":")) {
+        return first;
+    }
+    if (after_first >= limit || !parameter_word_token(source, after_first)) {
+        return -1;
+    }
+    int64_t colon = skip_trivia(source, token_end(source, after_first));
+    return colon < limit && token_equal(source, colon, ":")
+        ? after_first : -1;
+}
+
+/* The declared external label, or -1 for an unlabelled parameter. */
+static int64_t parameter_external_start(
+    const char *source,
+    int64_t cursor,
+    int64_t limit
+) {
+    int64_t first = ownership_mode_token(source, cursor)
+        ? skip_trivia(source, token_end(source, cursor)) : cursor;
+    int64_t internal = parameter_internal_start(source, cursor, limit);
+    return internal >= 0 && first != internal ? first : -1;
+}
+
+static int64_t parameter_type_start(
+    const char *source,
+    int64_t cursor,
+    int64_t limit
+) {
+    int64_t internal = parameter_internal_start(source, cursor, limit);
+    if (internal < 0) return -1;
+    int64_t colon = skip_trivia(source, token_end(source, internal));
+    if (colon >= limit || !token_equal(source, colon, ":")) return -1;
+    int64_t type = skip_trivia(source, token_end(source, colon));
+    return type < limit ? type : -1;
+}
+
+/* The ownership slice predates general generic parameters but has a real
+ * `List[Text]` parameter surface. Treat that bounded list annotation as one
+ * type so a correct parameter-head parser does not stop at its `[` token. */
+static int64_t parameter_list_type_end(
+    const char *source,
+    int64_t type,
+    int64_t limit
+) {
+    if (type < 0 || !token_equal(source, type, "List")) return -1;
+    int64_t open = skip_trivia(source, token_end(source, type));
+    int64_t element = open < limit
+        ? skip_trivia(source, token_end(source, open)) : -1;
+    int64_t close = element >= 0 && element < limit
+        ? skip_trivia(source, token_end(source, element)) : -1;
+    return open < limit && token_equal(source, open, "[") &&
+        element >= 0 && element < limit &&
+        parameter_word_token(source, element) &&
+        close >= 0 && close < limit && token_equal(source, close, "]")
+        ? token_end(source, close) : -1;
+}
+
+static char *parameter_list_type_text(
+    const char *source,
+    int64_t type,
+    int64_t limit
+) {
+    if (parameter_list_type_end(source, type, limit) < 0) {
+        return owned_text("");
+    }
+    int64_t open = skip_trivia(source, token_end(source, type));
+    int64_t element = skip_trivia(source, token_end(source, open));
+    char *element_text = token_copy(source, element);
+    Buffer text;
+    buffer_init(&text);
+    buffer_format(&text, "List[%s]", element_text);
+    free(element_text);
+    return text.data;
+}
+
+static char *trailing_lambda_refusal(const char *source, int64_t cursor) {
     Buffer error;
     buffer_init(&error);
     buffer_format(
         &error,
-        "error[E2S158]: %s is specified by call-arguments v1 but not "
+        "error[E2S158]: a trailing lambda is specified by call-arguments v1 but not "
         "implemented at byte %" PRId64,
-        what,
         cursor
     );
     stage2_diagnostic_set(
@@ -3372,78 +3424,8 @@ static char *call_argument_surface_refusal(
     return error.data;
 }
 
-static char *validate_call_argument_surface(const char *source) {
+static char *validate_trailing_lambda_surface(const char *source) {
     int64_t length = source_length(source);
-
-    int64_t function_start = next_function_start(source, 0);
-    while (function_start < length) {
-        int64_t open = parameter_open(source, function_start);
-        int64_t close = open < 0 ? -1 : balanced_end(source, open, "(", ")");
-        if (open >= 0 && close >= 0) {
-            int64_t cursor = skip_trivia(source, token_end(source, open));
-            int64_t depth = 0;
-            int64_t words = 0;
-            int64_t first_word = -1;
-            int64_t second_word = -1;
-            bool mode_first = false;
-            bool before_colon = true;
-            while (cursor < close) {
-                if (
-                    token_equal(source, cursor, "(") ||
-                    token_equal(source, cursor, "[")
-                ) {
-                    ++depth;
-                } else if (token_equal(source, cursor, "]")) {
-                    --depth;
-                } else if (token_equal(source, cursor, ")")) {
-                    if (depth == 0) break;
-                    --depth;
-                } else if (depth == 0 && token_equal(source, cursor, ",")) {
-                    words = 0;
-                    first_word = -1;
-                    second_word = -1;
-                    mode_first = false;
-                    before_colon = true;
-                } else if (
-                    depth == 0 &&
-                    before_colon &&
-                    token_equal(source, cursor, ":")
-                ) {
-                    before_colon = false;
-                    if (words == 2 && !mode_first) {
-                        return call_argument_surface_refusal(
-                            source,
-                            "a declaration external label",
-                            first_word
-                        );
-                    }
-                    if (words == 3 && mode_first) {
-                        return call_argument_surface_refusal(
-                            source,
-                            "a declaration external label",
-                            second_word
-                        );
-                    }
-                } else if (
-                    depth == 0 &&
-                    before_colon &&
-                    parameter_word_token(source, cursor)
-                ) {
-                    ++words;
-                    if (words == 1) {
-                        first_word = cursor;
-                        mode_first = ownership_mode_token(source, cursor);
-                    }
-                    if (words == 2) second_word = cursor;
-                }
-                cursor = skip_trivia(source, token_end(source, cursor));
-            }
-        }
-        function_start = next_function_start(
-            source,
-            function_end(source, function_start)
-        );
-    }
 
     /*
      * `) fn(` is the trailing form and nothing else in this profile's grammar.
@@ -3467,11 +3449,7 @@ static char *validate_call_argument_surface(const char *source) {
                     parameters < length &&
                     token_equal(source, parameters, "(")
                 ) {
-                    return call_argument_surface_refusal(
-                        source,
-                        "a trailing lambda",
-                        keyword
-                    );
+                    return trailing_lambda_refusal(source, keyword);
                 }
             }
         }
@@ -3482,12 +3460,9 @@ static char *validate_call_argument_surface(const char *source) {
 }
 
 static char *parse_program(const char *source) {
-    /* Before every other check, because it is the only one that can name the
-     * form the author actually wrote. Once a declaration external label has
-     * been read as a type, every later diagnostic is about a program nobody
-     * wrote — which is how `fn add(to base: Int, ...)` came to report an
-     * unknown binding for `base`. */
-    char *surface_check = validate_call_argument_surface(source);
+    /* #882 owns attachment/lowering; refuse before ordinary call analysis can
+     * reinterpret the trailing lambda as a separate expression. */
+    char *surface_check = validate_trailing_lambda_surface(source);
     if (strncmp(surface_check, "error[", 6) == 0) {
         return surface_check;
     }
@@ -4408,29 +4383,25 @@ static char *borrowed_collection_check(const char *source) {
             !token_equal(source, parameter_cursor, ")")
         ) {
             if (token_equal(source, parameter_cursor, "read")) {
-                int64_t name_cursor = skip_trivia(
+                int64_t name_cursor = parameter_internal_start(
                     source,
-                    token_end(source, parameter_cursor)
+                    parameter_cursor,
+                    parameters_end
                 );
-                int64_t colon_cursor = skip_trivia(
+                int64_t list_cursor = parameter_type_start(
                     source,
-                    token_end(source, name_cursor)
+                    parameter_cursor,
+                    parameters_end
                 );
-                int64_t list_cursor = skip_trivia(
-                    source,
-                    token_end(source, colon_cursor)
-                );
-                int64_t bracket_cursor = skip_trivia(
-                    source,
-                    token_end(source, list_cursor)
-                );
-                int64_t element_cursor = skip_trivia(
-                    source,
-                    token_end(source, bracket_cursor)
-                );
+                int64_t bracket_cursor = list_cursor < 0 ? -1
+                    : skip_trivia(source, token_end(source, list_cursor));
+                int64_t element_cursor = bracket_cursor < 0 ? -1
+                    : skip_trivia(source, token_end(source, bracket_cursor));
                 if (
+                    name_cursor >= 0 &&
+                    list_cursor >= 0 && bracket_cursor >= 0 &&
+                    element_cursor >= 0 &&
                     strcmp(token_kind(source, name_cursor), "identifier") == 0 &&
-                    token_equal(source, colon_cursor, ":") &&
                     token_equal(source, list_cursor, "List") &&
                     token_equal(source, bracket_cursor, "[") &&
                     strcmp(token_kind(source, element_cursor), "identifier") == 0
@@ -5418,7 +5389,7 @@ static int64_t argument_end(const char *source, int64_t start) {
     int64_t lambda_end = lambda_parameters_end(source, -1, start);
     if (lambda_end >= 0) return lambda_end;
     int64_t label = skip_trivia(source, start);
-    if (strcmp(token_kind(source, label), "identifier") == 0) {
+    if (parameter_word_token(source, label)) {
         int64_t colon = skip_trivia(source, token_end(source, label));
         if (token_equal(source, colon, ":")) {
             int64_t value = skip_trivia(source, token_end(source, colon));
@@ -5432,6 +5403,32 @@ static int64_t argument_end(const char *source, int64_t start) {
         }
     }
     return expression_end(source, start);
+}
+
+/* Label binding is complete in checked HIR, but ABI-temporary lowering is the
+ * downstream #882 slice. Keep that backend boundary explicit. */
+static bool call_has_labelled_argument(const char *source, int64_t open) {
+    int64_t close = balanced_end(source, open, "(", ")");
+    if (close < 0) return false;
+    int64_t argument = skip_trivia(source, token_end(source, open));
+    while (argument < close && !token_equal(source, argument, ")")) {
+        if (parameter_word_token(source, argument)) {
+            int64_t colon = skip_trivia(
+                source,
+                token_end(source, argument)
+            );
+            if (colon < close && token_equal(source, colon, ":")) return true;
+        }
+        int64_t end = argument_end(source, argument);
+        if (end < 0) return false;
+        int64_t separator = skip_trivia(source, end);
+        if (separator < close && token_equal(source, separator, ",")) {
+            argument = skip_trivia(source, token_end(source, separator));
+        } else {
+            return false;
+        }
+    }
+    return false;
 }
 
 /*
@@ -5463,17 +5460,114 @@ static char *call_argument_expected_type(
                         source,
                         token_end(source, open)
                     );
-                    int64_t index = 0;
+                    int64_t positional_index = 0;
                     while (
                         argument < close &&
                         !token_equal(source, argument, ")")
                     ) {
-                        if (argument == target) {
+                        int64_t label = -1;
+                        int64_t value = argument;
+                        if (parameter_word_token(source, argument)) {
+                            int64_t colon = skip_trivia(
+                                source,
+                                token_end(source, argument)
+                            );
+                            if (colon < close && token_equal(source, colon, ":")) {
+                                label = argument;
+                                value = skip_trivia(
+                                    source,
+                                    token_end(source, colon)
+                                );
+                            }
+                        }
+                        if (argument == target || value == target) {
                             char *callee = token_copy(source, cursor);
+                            int64_t slot = positional_index;
+                            if (label >= 0) {
+                                int64_t declaration = function_start_named(
+                                    source,
+                                    callee
+                                );
+                                int64_t parameters = parameter_open(
+                                    source,
+                                    declaration
+                                );
+                                int64_t parameters_end = parameters < 0
+                                    ? -1 : balanced_end(
+                                        source,
+                                        parameters,
+                                        "(",
+                                        ")"
+                                    );
+                                int64_t parameter = parameters < 0
+                                    ? -1 : skip_trivia(
+                                        source,
+                                        token_end(source, parameters)
+                                    );
+                                slot = 0;
+                                while (
+                                    parameter >= 0 &&
+                                    parameter < parameters_end &&
+                                    !token_equal(source, parameter, ")")
+                                ) {
+                                    int64_t external = parameter_external_start(
+                                        source,
+                                        parameter,
+                                        parameters_end
+                                    );
+                                    if (
+                                        external >= 0 &&
+                                        source_tokens_equal(
+                                            source,
+                                            label,
+                                            external
+                                        )
+                                    ) {
+                                        break;
+                                    }
+                                    int64_t type = parameter_type_start(
+                                        source,
+                                        parameter,
+                                        parameters_end
+                                    );
+                                    int64_t type_end = callable_type_end(
+                                        source,
+                                        type
+                                    );
+                                    int64_t optional_end =
+                                        optional_int_type_end(source, type);
+                                    int64_t list_end = parameter_list_type_end(
+                                        source,
+                                        type,
+                                        parameters_end
+                                    );
+                                    if (type_end < 0) type_end =
+                                        optional_end >= 0 ? optional_end
+                                            : (list_end >= 0 ? list_end
+                                                : annotation_type_end(
+                                                    source,
+                                                    type
+                                                ));
+                                    if (type_end <= parameter) break;
+                                    int64_t separator = skip_trivia(
+                                        source,
+                                        type_end
+                                    );
+                                    int64_t next = separator < parameters_end &&
+                                        token_equal(source, separator, ",")
+                                        ? skip_trivia(
+                                            source,
+                                            token_end(source, separator)
+                                        ) : separator;
+                                    if (next <= parameter) break;
+                                    parameter = next;
+                                    ++slot;
+                                }
+                            }
                             char *type = function_parameter_type(
                                 source,
                                 callee,
-                                index
+                                slot
                             );
                             free(callee);
                             return type;
@@ -5489,7 +5583,7 @@ static char *call_argument_expected_type(
                                 source,
                                 token_end(source, separator)
                             );
-                            ++index;
+                            if (label < 0) ++positional_index;
                         } else {
                             break;
                         }
@@ -7075,6 +7169,15 @@ static char *emit_primary(
         /* A callee the scope HIR resolved to a binding is either a lifted
          * lambda or a callable-typed parameter; anything else is a top-level
          * function looked up by name. */
+        if (call_has_labelled_argument(source, open)) {
+            free(name);
+            return lower_error(
+                "E2S158",
+                "labelled-call ABI lowering is owned by #882; fixed-slot "
+                "checked HIR is available",
+                cursor
+            );
+        }
         char *callee_binding = hir_use_binding_id(hir, cursor);
         int64_t lambda_open =
             callee_binding[0] == '\0'
@@ -7799,31 +7902,293 @@ static char *validate_core_types(const char *source, const char *hir) {
     return owned_text("ok");
 }
 
-static bool call_has_labelled_argument(
+static int64_t function_start_named(const char *source, const char *wanted) {
+    int64_t cursor = next_function_start(source, 0);
+    int64_t length = source_length(source);
+    while (cursor < length) {
+        char *name = function_name(source, cursor);
+        bool match = strcmp(name, wanted) == 0;
+        free(name);
+        if (match) return cursor;
+        cursor = next_function_start(source, function_end(source, cursor));
+    }
+    return -1;
+}
+
+static bool source_tokens_equal(
     const char *source,
+    int64_t left,
+    int64_t right
+) {
+    char *left_text = token_copy(source, left);
+    char *right_text = token_copy(source, right);
+    bool equal = strcmp(left_text, right_text) == 0;
+    free(right_text);
+    free(left_text);
+    return equal;
+}
+
+static char *call_binding_failure(
+    const char *source,
+    const char *code,
+    const char *message,
+    int64_t primary,
+    int64_t related
+) {
+    Buffer error;
+    buffer_init(&error);
+    buffer_format(
+        &error,
+        "error[%s]: %s at byte %" PRId64,
+        code,
+        message,
+        primary
+    );
+    stage2_diagnostic_set(
+        code,
+        primary,
+        token_end(source, primary),
+        true,
+        error.data
+    );
+    if (related >= 0) {
+        stage2_diagnostic_related(
+            related,
+            token_end(source, related),
+            "declared parameter"
+        );
+    }
+    stage2_diagnostic_affected(
+        STAGE2_DIAGNOSTIC_AFFECTED_CALL,
+        primary,
+        token_end(source, primary)
+    );
+    return error.data;
+}
+
+/* Bind one already-selected named call to fixed declaration-order slots.
+ * Argument expressions stay in source order; only the slot vector changes. */
+static char *validate_declared_call_arguments(
+    const char *source,
+    const char *callee,
+    int64_t call_start,
     int64_t open
 ) {
+    int64_t declaration = function_start_named(source, callee);
+    if (declaration < 0) return owned_text("");
+    int64_t parameters = parameter_open(source, declaration);
+    int64_t parameters_end = parameters < 0
+        ? -1 : balanced_end(source, parameters, "(", ")");
     int64_t close = balanced_end(source, open, "(", ")");
-    if (close < 0) return false;
+    if (parameters_end < 0 || close < 0) return owned_text("");
+
+    int64_t parameter_starts[8];
+    int64_t parameter_external[8];
+    int64_t parameter_internal[8];
+    int64_t parameter_types[8];
+    int64_t bound_argument[8];
+    int64_t parameter_count_value = 0;
+    bool has_external_parameter = false;
+    int64_t parameter = skip_trivia(source, token_end(source, parameters));
+    while (parameter < parameters_end && !token_equal(source, parameter, ")")) {
+        if (parameter_count_value >= 8) break;
+        int64_t internal = parameter_internal_start(
+            source,
+            parameter,
+            parameters_end
+        );
+        int64_t type = parameter_type_start(source, parameter, parameters_end);
+        if (internal < 0 || type < 0) return owned_text("");
+        parameter_starts[parameter_count_value] = parameter;
+        parameter_external[parameter_count_value] = parameter_external_start(
+            source,
+            parameter,
+            parameters_end
+        );
+        parameter_internal[parameter_count_value] = internal;
+        has_external_parameter = has_external_parameter ||
+            parameter_external[parameter_count_value] >= 0;
+        parameter_types[parameter_count_value] = type;
+        bound_argument[parameter_count_value] = -1;
+        ++parameter_count_value;
+        int64_t type_end = callable_type_end(source, type);
+        int64_t list_end = parameter_list_type_end(
+            source,
+            type,
+            parameters_end
+        );
+        if (type_end < 0) type_end = list_end >= 0
+            ? list_end : annotation_type_end(source, type);
+        int64_t separator = skip_trivia(source, type_end);
+        parameter = separator < parameters_end &&
+            token_equal(source, separator, ",")
+            ? skip_trivia(source, token_end(source, separator)) : separator;
+    }
+    if (!has_external_parameter &&
+        !call_has_labelled_argument(source, open)) {
+        return owned_text("");
+    }
+
+    bool saw_label = false;
+    int64_t next_positional = 0;
+    int64_t source_index = 0;
     int64_t argument = skip_trivia(source, token_end(source, open));
     while (argument < close && !token_equal(source, argument, ")")) {
-        if (strcmp(token_kind(source, argument), "identifier") == 0) {
-            int64_t colon = skip_trivia(
-                source,
-                token_end(source, argument)
-            );
-            if (token_equal(source, colon, ":")) return true;
+        int64_t label = -1;
+        int64_t value = argument;
+        if (parameter_word_token(source, argument)) {
+            int64_t colon = skip_trivia(source, token_end(source, argument));
+            if (colon < close && token_equal(source, colon, ":")) {
+                label = argument;
+                value = skip_trivia(source, token_end(source, colon));
+            }
         }
-        int64_t end = argument_end(source, argument);
-        if (end < 0) return false;
-        int64_t separator = skip_trivia(source, end);
-        if (separator < close && token_equal(source, separator, ",")) {
-            argument = skip_trivia(source, token_end(source, separator));
+        int64_t slot = -1;
+        if (label >= 0) {
+            saw_label = true;
+            for (int64_t index = 0; index < parameter_count_value; ++index) {
+                if (parameter_external[index] >= 0 &&
+                    source_tokens_equal(source, label, parameter_external[index])) {
+                    slot = index;
+                    break;
+                }
+            }
+            if (slot < 0) {
+                int64_t related = -1;
+                for (int64_t index = 0; index < parameter_count_value; ++index) {
+                    if (source_tokens_equal(source, label, parameter_internal[index])) {
+                        related = parameter_internal[index];
+                        break;
+                    }
+                }
+                char *label_text = token_copy(source, label);
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    related >= 0
+                        ? "label `%s` names an internal or unlabelled parameter"
+                        : "unknown call label `%s`",
+                    label_text
+                );
+                free(label_text);
+                char *error = call_binding_failure(
+                    source,
+                    related >= 0 ? "E2S166" : "E2S162",
+                    message.data,
+                    label,
+                    related
+                );
+                free(message.data);
+                return error;
+            }
+            if (bound_argument[slot] >= 0) {
+                char *label_text = token_copy(source, label);
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(&message, "duplicate call label `%s`", label_text);
+                free(label_text);
+                char *error = call_binding_failure(
+                    source,
+                    "E2S163",
+                    message.data,
+                    label,
+                    parameter_external[slot]
+                );
+                free(message.data);
+                return error;
+            }
         } else {
-            break;
+            if (saw_label) {
+                return call_binding_failure(
+                    source,
+                    "E2S165",
+                    "positional argument follows a labelled argument",
+                    argument,
+                    -1
+                );
+            }
+            while (next_positional < parameter_count_value &&
+                   bound_argument[next_positional] >= 0) {
+                ++next_positional;
+            }
+            if (next_positional >= parameter_count_value) break;
+            slot = next_positional++;
+            if (parameter_external[slot] >= 0) {
+                return call_binding_failure(
+                    source,
+                    "E2S164",
+                    "labelled parameter requires its external label",
+                    argument,
+                    parameter_external[slot]
+                );
+            }
+        }
+        bound_argument[slot] = argument;
+        char *external = parameter_external[slot] >= 0
+            ? token_copy(source, parameter_external[slot])
+            : owned_text("unlabelled");
+        char *internal = token_copy(source, parameter_internal[slot]);
+        char *type = parameter_list_type_end(
+                source,
+                parameter_types[slot],
+                parameters_end
+            ) >= 0
+            ? parameter_list_type_text(
+                source,
+                parameter_types[slot],
+                parameters_end
+            )
+            : annotation_type_text(source, parameter_types[slot]);
+        char *mode = ownership_mode_token(source, parameter_starts[slot])
+            ? token_copy(source, parameter_starts[slot])
+            : owned_text("copy");
+        stage2_semantic_observe(
+            "call-argument|%s|%" PRId64 "|%" PRId64
+            "|%" PRId64 "|%" PRId64 "|%s|%s|%s|%s\n",
+            callee,
+            slot,
+            source_index,
+            argument,
+            value,
+            external,
+            internal,
+            type,
+            mode
+        );
+        free(mode);
+        free(type);
+        free(internal);
+        free(external);
+        ++source_index;
+        int64_t end = argument_end(source, argument);
+        if (end < 0) break;
+        int64_t separator = skip_trivia(source, end);
+        argument = separator < close && token_equal(source, separator, ",")
+            ? skip_trivia(source, token_end(source, separator)) : separator;
+    }
+
+    for (int64_t slot = 0; slot < parameter_count_value; ++slot) {
+        if (bound_argument[slot] < 0) {
+            int64_t declared = parameter_external[slot] >= 0
+                ? parameter_external[slot] : parameter_internal[slot];
+            char *name = token_copy(source, declared);
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(&message, "missing argument `%s`", name);
+            free(name);
+            char *error = call_binding_failure(
+                source,
+                "E2S164",
+                message.data,
+                call_start,
+                declared
+            );
+            free(message.data);
+            return error;
         }
     }
-    return false;
+    return owned_text("");
 }
 
 static char *validate_record_uses(const char *source) {
@@ -7918,28 +8283,21 @@ static char *validate_core_calls(const char *source, const char *hir) {
                 open < length &&
                 token_equal(source, open, "(")
             ) {
-                if (call_has_labelled_argument(source, open)) {
-                    Buffer error;
-                    buffer_init(&error);
-                    buffer_format(
-                        &error,
-                        "error[E2S32]: ordinary function `%s` does not "
-                        "accept labelled arguments at byte %" PRId64,
-                        name,
-                        cursor
-                    );
-                    stage2_diagnostic_set(
-                        "E2S32",
-                        cursor,
-                        token_end(source, cursor),
-                        true,
-                        error.data
-                    );
-                    free(name);
-                    free(previous);
-                    return error.data;
-                }
                 int64_t expected = function_arity(source, name);
+                if (expected >= 0) {
+                    char *binding_error = validate_declared_call_arguments(
+                        source,
+                        name,
+                        cursor,
+                        open
+                    );
+                    if (binding_error[0] != '\0') {
+                        free(name);
+                        free(previous);
+                        return binding_error;
+                    }
+                    free(binding_error);
+                }
                 if (expected == -2) {
                     Buffer error;
                     buffer_init(&error);
@@ -8157,7 +8515,18 @@ static char *core_parameters(
     buffer_init(&emitted);
     int64_t count = 0;
     while (cursor < parameters_end && !token_equal(source, cursor, ")")) {
-        if (strcmp(token_kind(source, cursor), "identifier") != 0) {
+        int64_t name_at = parameter_internal_start(
+            source,
+            cursor,
+            parameters_end
+        );
+        int64_t type_cursor = parameter_type_start(
+            source,
+            cursor,
+            parameters_end
+        );
+        if (name_at < 0 || type_cursor < 0 ||
+            strcmp(token_kind(source, name_at), "identifier") != 0) {
             free(emitted.data);
             return lower_error(
                 "E2S15",
@@ -8165,14 +8534,8 @@ static char *core_parameters(
                 cursor
             );
         }
-        char *name = token_copy(source, cursor);
-        int64_t colon = skip_trivia(source, token_end(source, cursor));
-        int64_t type_cursor = skip_trivia(source, token_end(source, colon));
-        if (
-            colon >= parameters_end ||
-            !token_equal(source, colon, ":") ||
-            type_cursor >= parameters_end
-        ) {
+        char *name = token_copy(source, name_at);
+        if (type_cursor >= parameters_end) {
             free(name);
             free(emitted.data);
             return lower_error(
@@ -8187,7 +8550,7 @@ static char *core_parameters(
          * like `f: Int` and only the `->` after it tells them apart. */
         int64_t callable_end = callable_type_end(source, type_cursor);
         int64_t type_end = -1;
-        char *binding_id = hir_definition_id_at(hir, cursor);
+        char *binding_id = hir_definition_id_at(hir, name_at);
         char *declarator = NULL;
         if (callable_end >= 0 && callable_end <= parameters_end) {
             type_end = callable_end;
@@ -8224,6 +8587,33 @@ static char *core_parameters(
             buffer_init(&plain);
             buffer_format(&plain, "const char *k_b%s", binding_id);
             declarator = plain.data;
+        } else if (
+            ownership_mode_token(source, cursor) &&
+            parameter_list_type_end(source, type_cursor, parameters_end) >= 0
+        ) {
+            char *list_type = parameter_list_type_text(
+                source,
+                type_cursor,
+                parameters_end
+            );
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(
+                &message,
+                "unsupported Core parameter type %s",
+                list_type
+            );
+            char *error = lower_error(
+                "E2S10",
+                message.data,
+                type_cursor
+            );
+            free(message.data);
+            free(list_type);
+            free(binding_id);
+            free(name);
+            free(emitted.data);
+            return error;
         } else if (
             strcmp(token_kind(source, type_cursor), "identifier") == 0
         ) {
@@ -8444,54 +8834,6 @@ static bool optional_int_result_containing(
 }
 
 /*
- * Whether the `wanted`-th declared parameter of `callee` is `Int?`. A
- * parameter type this walk cannot step over as one token — a callable or a
- * bracketed type — stops the walk and answers `false`, so an uncertain
- * position is never reported as a carrier.
- */
-static bool optional_int_parameter(
-    const char *source,
-    const char *callee,
-    int64_t wanted
-) {
-    int64_t length = source_length(source);
-    int64_t cursor = next_function_start(source, 0);
-    while (cursor < length) {
-        char *name = function_name(source, cursor);
-        bool match = strcmp(name, callee) == 0;
-        free(name);
-        if (!match) {
-            int64_t end = function_end(source, cursor);
-            if (end <= cursor) break;
-            cursor = next_function_start(source, end);
-            continue;
-        }
-        int64_t open = parameter_open(source, cursor);
-        if (open < 0) return false;
-        int64_t close = balanced_end(source, open, "(", ")");
-        if (close < 0) return false;
-        int64_t parameter = skip_trivia(source, token_end(source, open));
-        int64_t index = 0;
-        while (parameter < close && !token_equal(source, parameter, ")")) {
-            int64_t colon = skip_trivia(source, token_end(source, parameter));
-            if (colon >= close || !token_equal(source, colon, ":")) break;
-            int64_t type_start = skip_trivia(source, token_end(source, colon));
-            int64_t type_end = optional_int_type_end(source, type_start);
-            if (index == wanted) return type_end >= 0;
-            if (type_end < 0) type_end = token_end(source, type_start);
-            int64_t separator = skip_trivia(source, type_end);
-            if (separator >= close || !token_equal(source, separator, ",")) {
-                break;
-            }
-            parameter = skip_trivia(source, token_end(source, separator));
-            ++index;
-        }
-        return false;
-    }
-    return false;
-}
-
-/*
  * An `Optional(Int)` binding of the function containing `position`: a
  * parameter declared `Int?`, or a `let` annotated `Int?`. Nothing else in
  * this slice carries that type, so the judgement is a scan of the declaring
@@ -8557,57 +8899,10 @@ static bool optional_int_binding(
  */
 static bool optional_int_carrier_position(const char *source, int64_t at) {
     if (!source_uses_optional_int(source)) return false;
-    int64_t function_start = optional_int_function_start(source, at);
-    if (function_start < 0) return false;
-    int64_t function_close = function_end(source, function_start);
-    int64_t cursor = skip_trivia(source, function_start);
-    while (cursor < function_close) {
-        int64_t open = skip_trivia(source, token_end(source, cursor));
-        if (
-            strcmp(token_kind(source, cursor), "identifier") == 0 &&
-            open < function_close && token_equal(source, open, "(")
-        ) {
-            int64_t arguments_end = balanced_end(source, open, "(", ")");
-            if (arguments_end > 0) {
-                char *callee = token_copy(source, cursor);
-                int64_t argument = skip_trivia(source, token_end(source, open));
-                int64_t index = 0;
-                bool carrier = false;
-                while (
-                    argument < arguments_end &&
-                    !token_equal(source, argument, ")")
-                ) {
-                    int64_t bound = argument_end(source, argument);
-                    if (bound < 0) break;
-                    if (argument == at) {
-                        carrier =
-                            skip_trivia(source, token_end(source, at)) >=
-                                bound &&
-                            optional_int_parameter(source, callee, index);
-                        break;
-                    }
-                    int64_t separator = skip_trivia(source, bound);
-                    if (
-                        separator >= arguments_end ||
-                        !token_equal(source, separator, ",")
-                    ) {
-                        break;
-                    }
-                    argument = skip_trivia(
-                        source,
-                        token_end(source, separator)
-                    );
-                    ++index;
-                }
-                free(callee);
-                if (carrier) return true;
-            }
-        }
-        int64_t next = token_end(source, cursor);
-        if (next <= cursor) break;
-        cursor = skip_trivia(source, next);
-    }
-    return false;
+    char *expected = call_argument_expected_type(source, at);
+    bool carrier = strcmp(expected, "Int?") == 0;
+    free(expected);
+    return carrier;
 }
 
 /*
@@ -11781,9 +12076,8 @@ static char *function_return_type(const char *source, const char *wanted) {
 /*
  * Declared type of one named function parameter.  The bounded enum C11 slice
  * needs this at call lowering time because an enum value is a two-word
- * aggregate rather than an Int expression.  Callable and bracketed parameter
- * types are skipped as one type while walking to the requested index, so the
- * helper does not change the existing higher-order parameter grammar.
+ * aggregate rather than an Int expression. Full annotation spans are skipped
+ * while walking, including callable, optional, and bracketed types.
  */
 static char *function_parameter_type_at(
     const char *source,
@@ -11800,32 +12094,34 @@ static char *function_parameter_type_at(
         cursor < parameters_end &&
         !token_equal(source, cursor, ")")
     ) {
-        int64_t colon = skip_trivia(source, token_end(source, cursor));
-        if (
-            colon >= parameters_end ||
-            !token_equal(source, colon, ":")
-        ) {
+        int64_t type_start = parameter_type_start(
+            source,
+            cursor,
+            parameters_end
+        );
+        if (type_start < 0 || type_start >= parameters_end) {
             return owned_text("");
         }
-        int64_t type_start = skip_trivia(source, token_end(source, colon));
-        if (type_start >= parameters_end) return owned_text("");
-        if (index == wanted_index) {
-            return annotation_type_text(source, type_start);
-        }
+        int64_t optional_end = optional_int_type_end(source, type_start);
+        int64_t list_end = parameter_list_type_end(
+            source,
+            type_start,
+            parameters_end
+        );
+        if (index == wanted_index) return optional_end >= 0
+            ? owned_text("Int?")
+            : (list_end >= 0
+                ? parameter_list_type_text(
+                    source,
+                    type_start,
+                    parameters_end
+                )
+                : annotation_type_text(source, type_start));
 
         int64_t type_end = callable_type_end(source, type_start);
-        if (type_end < 0) {
-            type_end = token_end(source, type_start);
-            int64_t bracket = skip_trivia(source, type_end);
-            if (
-                bracket < parameters_end &&
-                token_equal(source, bracket, "[")
-            ) {
-                int64_t close = balanced_end(source, bracket, "[", "]");
-                if (close < 0) return owned_text("");
-                type_end = close;
-            }
-        }
+        if (type_end < 0) type_end = optional_end >= 0
+            ? optional_end : (list_end >= 0
+                ? list_end : annotation_type_end(source, type_start));
         int64_t separator = skip_trivia(source, type_end);
         if (
             separator < parameters_end &&
@@ -12399,12 +12695,23 @@ static char *build_scope_hir_mode(
             parameter_cursor < parameters_close &&
             !token_equal(source, parameter_cursor, ")")
         ) {
-            int64_t name = parameter_cursor;
-            int64_t colon = skip_trivia(source, token_end(source, name));
-            int64_t type_cursor = skip_trivia(
+            int64_t name = parameter_internal_start(
                 source,
-                token_end(source, colon)
+                parameter_cursor,
+                parameters_close
             );
+            int64_t type_cursor = parameter_type_start(
+                source,
+                parameter_cursor,
+                parameters_close
+            );
+            if (name < 0 || type_cursor < 0) {
+                return scope_hir_error(
+                    &hir,
+                    "malformed parameter head",
+                    parameter_cursor
+                );
+            }
             char *name_text = token_copy(source, name);
             char parameter_scope_text[32];
             snprintf(
@@ -12475,6 +12782,11 @@ static char *build_scope_hir_mode(
              * keeps the declared type optional in the typed IR, so nothing
              * downstream mistakes the parameter for an `Int`. */
             int64_t optional_end = optional_int_type_end(source, type_cursor);
+            int64_t list_end = parameter_list_type_end(
+                source,
+                type_cursor,
+                parameters_close
+            );
             /* #916: a parameter binding records the annotation's full
              * identity, so a const argument reaches the scope HIR instead of
              * being flattened to its head. Recording `Fixed` here would make
@@ -12484,25 +12796,38 @@ static char *build_scope_hir_mode(
                 ? callable_end
                 : (optional_end >= 0
                        ? optional_end
-                       : annotation_type_end(source, type_cursor));
+                       : (list_end >= 0
+                            ? list_end
+                            : annotation_type_end(source, type_cursor)));
             char *type_text = callable_end >= 0
                 ? owned_text("Fn")
                 : (optional_end >= 0
                        ? owned_text("Int?")
-                       : annotation_type_text(source, type_cursor));
+                       : (list_end >= 0
+                            ? parameter_list_type_text(
+                                source,
+                                type_cursor,
+                                parameters_close
+                            )
+                            : annotation_type_text(source, type_cursor)));
+            char *ownership = ownership_mode_token(source, parameter_cursor)
+                ? token_copy(source, parameter_cursor)
+                : owned_text("copy");
             buffer_format(
                 &hir,
-                "binding|%" PRId64 "|%" PRId64 "|%s|immutable|%s|copy|"
+                "binding|%" PRId64 "|%" PRId64 "|%s|immutable|%s|%s|"
                 "initialized|%" PRId64 "|%" PRId64 "|%" PRId64 "\n",
                 next_binding_id++,
                 parameter_scope,
                 name_text,
                 type_text,
+                ownership,
                 name,
                 token_end(source, name),
                 token_end(source, name)
             );
             stage2_scope_prefix_observe(&hir);
+            free(ownership);
             free(name_text);
             free(type_text);
             int64_t separator = skip_trivia(source, type_end);
@@ -19277,13 +19602,10 @@ static void move_finding_keep(MoveFinding *best, MoveFinding candidate) {
  * `compiler.ensure_move` remains the way to demand the guarantee.
  *
  * Three of the standalone record frontend's four ownership refusals are
- * reproduced here, with its exact wording: partial move and second move and
- * use-after-move. The fourth, `E2S122` for moving a `read` binding, is not
- * representable in this frontend — an ownership-mode parameter registers no
- * binding at all, so `fn peek(read token: Token)` already refuses every
- * mention of `token` with `E2S35` whether or not a `take` follows. That
- * boundary predates this rule and #922 owns it; see
- * `tests/conformance/records/README.md`.
+ * reproduced here, with its exact wording: partial move, second move, and
+ * use-after-move. E2S122 for moving a `read` binding remains outside this
+ * bounded source-order validator; ownership-mode parameters themselves now
+ * bind through the production HIR and lowering path (#881).
  */
 static char *validate_move_uses(const char *source) {
     int64_t length = source_length(source);
@@ -20401,15 +20723,27 @@ static bool unsupported_lowering_error(const char *diagnostic) {
                "error[E2S10]: unsupported Core statement",
                strlen("error[E2S10]: unsupported Core statement")
            ) == 0 ||
-           strncmp(
-               diagnostic,
-               "error[E2S10]: unsupported Core builtin call ",
-               strlen("error[E2S10]: unsupported Core builtin call ")
+        strncmp(
+            diagnostic,
+            "error[E2S10]: unsupported Core builtin call ",
+            strlen("error[E2S10]: unsupported Core builtin call ")
+        ) == 0 ||
+        strncmp(
+            diagnostic,
+            "error[E2S10]: unsupported Core parameter type ",
+            strlen("error[E2S10]: unsupported Core parameter type ")
+        ) == 0 ||
+        strncmp(
+            diagnostic,
+            "error[E2S24]: general pattern syntax is parsed ",
+               strlen("error[E2S24]: general pattern syntax is parsed ")
            ) == 0 ||
            strncmp(
                diagnostic,
-               "error[E2S24]: general pattern syntax is parsed ",
-               strlen("error[E2S24]: general pattern syntax is parsed ")
+               "error[E2S158]: labelled-call ABI lowering is owned by #882",
+               strlen(
+                   "error[E2S158]: labelled-call ABI lowering is owned by #882"
+               )
            ) == 0;
 }
 
@@ -22181,18 +22515,12 @@ static bool sh_parse_signature(Sh *sh, int64_t function_start) {
             sh_fail(sh, "E2S17", "parameter limit is 8", cursor);
             return false;
         }
-        int64_t colon = skip_trivia(
+        int64_t type_at = parameter_type_start(
             sh->source,
-            token_end(sh->source, cursor)
+            cursor,
+            parameters_close
         );
-        int64_t type_at = skip_trivia(
-            sh->source,
-            token_end(sh->source, colon)
-        );
-        if (
-            colon >= parameters_close ||
-            !token_equal(sh->source, colon, ":")
-        ) {
+        if (type_at < 0) {
             sh_fail(sh, "E2S15", "parameter needs `: TYPE`", cursor);
             return false;
         }
@@ -22442,25 +22770,31 @@ static char *emit_selfhost_hir_document(
             cursor < parameters_close &&
             !token_equal(source, cursor, ")")
         ) {
-            char *name_text = token_copy(source, cursor);
+            int64_t name_at = parameter_internal_start(
+                source,
+                cursor,
+                parameters_close
+            );
+            int64_t type_at = parameter_type_start(
+                source,
+                cursor,
+                parameters_close
+            );
+            if (name_at < 0 || type_at < 0) {
+                sh_fail(&sh, "E2S15", "malformed parameter head", cursor);
+                break;
+            }
+            char *name_text = token_copy(source, name_at);
             sh_bind(
                 &sh,
                 name_text,
                 sh.functions[index].parameters[parameter_index],
                 false,
                 "parameter",
-                cursor,
-                token_end(source, cursor)
+                name_at,
+                token_end(source, name_at)
             );
             free(name_text);
-            int64_t colon = skip_trivia(
-                source,
-                token_end(source, cursor)
-            );
-            int64_t type_at = skip_trivia(
-                source,
-                token_end(source, colon)
-            );
             cursor = skip_trivia(source, token_end(source, type_at));
             if (
                 strcmp(

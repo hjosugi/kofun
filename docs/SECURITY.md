@@ -51,7 +51,7 @@ shell while emitting the final ELF.
 
 KIF inputs are untrusted semantic cache material. A public fact must not gain
 authority by naming an internal, private, absent, or wrong-kind identity. The
-bounded KIF v1.1 reader resolves every nominal function and constructor-payload
+bounded KIF v2 reader resolves every nominal function and constructor-payload
 reference against the validated fact set before exposing any fact. Public
 references require public ADTs; package-internal references accept public or
 internal ADTs; private facts never enter either view. Failure returns the

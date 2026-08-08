@@ -1,7 +1,7 @@
 /*
  * Persisted compiler semantic dependency graph (#301).
  *
- * This helper is the semantic-invalidation layer that sits above the KIF v1
+ * This helper is the semantic-invalidation layer that sits above the KIF v2
  * interface digests. It resolves one package inventory, derives each module's
  * public and package-internal semantic digests, persists nodes and edges under
  * a cache directory, and on a later run decides which modules must be executed

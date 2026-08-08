@@ -1,0 +1,11 @@
+pub fn replace(in source: Int, from needle: Int) -> Int {
+    return source + needle
+}
+
+internal fn adjust(by amount: Int) -> Int {
+    return amount
+}
+
+fn main() -> Int {
+    return 0
+}

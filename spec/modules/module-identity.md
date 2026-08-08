@@ -9,10 +9,9 @@ visibility contracts from #284, #300, #290, and #285 respectively.
 
 The words **must**, **must not**, **should**, and **may** are normative.
 
-The focused Stage 2 declaration collector now executes the production
-`NamespaceId` and `SymbolId` framing for bounded functions, ADTs, and
-constructors. KIF interface emission and the three semantic/ABI digest views
-remain specification-only at this checkpoint.
+The focused Stage 2 path executes the production `NamespaceId` and `SymbolId`
+framing and emits compiler-authoritative KIF for bounded functions, ADTs,
+constructors, and re-exports. The active label-aware envelope is KIF v2.
 
 ## Decisions
 
@@ -68,6 +67,18 @@ The v1 domains are:
 | public semantic digest | `kofun.digest.public-semantic/v1` |
 | package-internal semantic digest | `kofun.digest.package-internal/v1` |
 | target ABI digest | `kofun.digest.target-abi/v1` |
+
+KIF v2 preserves all v1 declaration and binding identity domains. It changes
+the two semantic interface domains because the external-label vector is a new
+required type-checking input:
+
+| Identity/value | Domain |
+| --- | --- |
+| public semantic digest | `kofun.digest.public-semantic/v2` |
+| package-internal semantic digest | `kofun.digest.package-internal/v2` |
+
+V1 and v2 semantic digests are different protocols. A reader must not compare
+or substitute a digest across those domains.
 
 Domains are protocol constants. They are not user-provided text and cannot be
 aliased. Changing field meaning or canonical encoding requires a new domain.
@@ -151,6 +162,8 @@ order.
 
 ## Canonical KIF binary
 
+The historical v1 envelope is:
+
 The compiler-authoritative compiled-interface envelope is:
 
 ~~~text
@@ -181,6 +194,27 @@ V1 requires these fields:
 | `0x8008` | claimed raw public semantic digest |
 | `0x8009` | claimed raw package-internal semantic digest |
 
+The active v2 envelope changes the major to `00 02` and requires schema text
+`kofun.interface/v2` plus compatibility text `semantic-compatibility-2`; the
+field tags and defensive envelope limits remain unchanged. A v1 reader must
+reject v2 as rebuild-required rather than interpret its function signatures.
+
+In a v2 function signature, `parameter_count:u16be` is followed in declaration
+order by one canonical type reference and one label entry per parameter. A
+label entry is exactly one of:
+
+~~~text
+00                              explicit unlabelled marker
+01 length:u16be bytes:length    external label
+~~~
+
+Label bytes are a non-empty canonical identifier, at most 256 bytes. Unknown
+markers, zero-length labelled entries, invalid UTF-8/NFC, truncated lengths,
+and bytes outside the containing signature are non-canonical. Internal
+parameter names are excluded. Thus an internal-name rename preserves both
+semantic digests, while an external-label/unlabelled change invalidates the
+affected public and package-internal views. Labels never enter a runtime ABI.
+
 A vector is `count:u32be` followed by `count` length-prefixed records. Record
 fields use the same strictly increasing TLV rule. Sets/maps are sorted by raw
 stable identity bytes and then canonical record bytes. Lists are ordered only
@@ -209,6 +243,8 @@ generic binders and constraints, trait/implementation identities, effect row,
 ownership modes, and semantic constant/default values required to type-check a
 consumer. Export facts include `ExportBindingId`, exported name and namespace,
 target identity, effective visibility, and canonical re-export chain.
+KIF v2 function signatures also include each external label or the explicit
+unlabelled marker in declaration order; internal parameter names remain local.
 
 The first executable export-fact record uses declaration-fact kind tag `4`.
 Its base `symbol_id` field is the `ExportBindingId`, never the target
@@ -370,11 +406,13 @@ rebuild instructions are safe compatibility behavior.
 
 ## Implementation status and non-goals
 
-`spec/module-identity/check.sh` exercises framed production hashes, binary KIF
+`spec/module-identity/check.sh` exercises the historical v1 decision model's
+framed hashes, binary KIF
 ordering, path/source-order stability, all invalidation rows, structural
 corruption, claimed-digest rejection, collision handling, and resource limits.
-It is reference decision evidence. The active compiler does not yet emit a
-general compiled interface or semantic module graph.
+The active bounded compiler additionally emits and defensively reads KIF v2;
+its executable label-vector and v2-domain evidence lives in the focused Stage
+2 KIF conformance gates. A general semantic module graph remains future work.
 
 This contract does not define import syntax, dependency solving, cache
 eviction, optimizer invalidation below semantic interfaces, linker format,

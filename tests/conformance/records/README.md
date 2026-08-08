@@ -96,15 +96,14 @@ is why the fixtures beside them cannot be reused.
 | `production_partial_move.kofun` | `E2S122`, the whole `take value.field` statement |
 | `production_double_take.kofun` | `E2S123` *already moved*, both spans whole statements |
 | `production_use_after_move.kofun` | `E2S123` *cannot be used again*, use site primary, move site related |
-| `production_read_parameter.kofun` | `E2S35` — see below |
+| `production_read_parameter.kofun` | accepted `read` parameter, lowered, built, and run |
 
 Three of the standalone frontend's four ownership refusals are reproduced.
-The fourth, `E2S122` for moving a `read` binding, is **not representable** in
-the production frontend: an ownership-mode parameter registers no binding
-there, so `fn peek(read token: Token)` refuses every mention of `token` with
-`E2S35` whether or not a `take` follows. That boundary predates the move rule
-and is older than #946; #922 owns it. `production_read_parameter.kofun` pins it
-so the gap is asserted rather than assumed, and fails the day the mode lands.
+The fourth, `E2S122` for moving a `read` binding, remains outside the bounded
+production move validator. #881 did retire the older prerequisite boundary:
+`fn peek(read token: Token)` now binds `token` in HIR, lowers its record field
+read, builds under `-Werror`, and runs. `production_read_parameter.kofun` pins
+that accepted path rather than retaining the obsolete E2S35 refusal helper.
 
 Everything else the standalone frontend decides — loops, branches, inferred
 moves, partial-move state, `Text` — stays out of the production rule. A moved

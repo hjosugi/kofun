@@ -61,6 +61,7 @@ typedef struct {
     char name[KOFUN_STAGE2_INTERFACE_NAME_BYTES];
     uint16_t parameter_count;
     uint16_t parameter_type_start;
+    uint16_t parameter_label_start;
     KofunSemanticId result_type_symbol_id;
     uint8_t constructor_payload_count;
     KofunSemanticId constructor_payload_type_symbol_id;
@@ -75,6 +76,10 @@ typedef struct {
     KofunStage2InterfaceFact facts[KOFUN_STAGE2_INTERFACE_MAX_FACTS];
     size_t fact_count;
     KofunSemanticId type_reference_symbol_ids[
+        KOFUN_STAGE2_INTERFACE_MAX_TYPE_REFERENCES];
+    char parameter_labels[KOFUN_STAGE2_INTERFACE_MAX_TYPE_REFERENCES]
+        [KOFUN_STAGE2_INTERFACE_NAME_BYTES];
+    uint16_t parameter_label_lengths[
         KOFUN_STAGE2_INTERFACE_MAX_TYPE_REFERENCES];
     size_t type_reference_count;
 } KofunStage2InterfaceSnapshot;
