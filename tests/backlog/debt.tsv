@@ -89,8 +89,5 @@
 #                     comments on #645 extract to zero events. An inert claim
 #                     is worse than none: its author believes the signal is
 #                     published.
-stateless-tracker	281	-	Position paper: what replacing C and Rust actually requires
 unnamed-blocker	569	-	RFC: define affine authority capabilities for environment 
-capability-blocker	570	-	Austral: propagate ownership kind structurally through gen
-capability-blocker	571	-	Austral/Nim: support zero-copy borrowed results without us
 capability-blocker	885	-	Typed upgrade patches slice 1: validate schema and compute
