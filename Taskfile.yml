@@ -577,6 +577,11 @@ tasks:
     cmds:
       - "sh spec/syntax/call-arguments/check.sh"
 
+  call-arguments:
+    desc: "Verify labelled-call binding and source-ordered C11 Int lowering"
+    cmds:
+      - "sh tests/conformance/call-arguments/run.sh"
+
   # Split from `call-arguments-spec` on purpose. That gate holds the accepted
   # decision to what #625 chose and must stay runnable with no implementation
   # behind it; this one holds a parser and formatter to the grammar, the
@@ -827,6 +832,7 @@ tasks:
             ownership-view \
             artifact-qualification \
             syntax \
+            call-arguments \
             call-arguments-spec \
             call-arguments-surface \
             task-help \

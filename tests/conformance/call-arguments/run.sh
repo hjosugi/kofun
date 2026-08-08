@@ -8,7 +8,9 @@ temporary=${TMPDIR:-/tmp}/kofun-call-arguments.$$
 trap 'rm -rf "$temporary"' EXIT HUP INT TERM
 mkdir -p "$temporary"
 
-${CC:-cc} -std=c11 -O2 -Wall -Wextra -Werror \
+compiler=${CC:-cc}
+
+"$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
     "$cases/observer_test.c" -o "$temporary/observer"
 
 fail() {
@@ -82,5 +84,69 @@ printf '%s\n' "$duplicate" |
     "$diagnostics/e2s166_internal_name_as_label.kofun" E2S166 text ||
     fail 'E2S166 declaration-related span changed'
 
+# #1097: compile the canonical Stage 2 seed itself, then make source order
+# disagree with declaration order. C11's comma operator must assign the
+# fixed temporaries as written before the ABI-ordered call runs.
+"$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$root/bootstrap/stage2/compiler.c" -o "$temporary/stage2"
+"$temporary/stage2" "$cases/source_order_int.kofun" \
+    "$temporary/source-order.c" "$temporary/source-order.ir" \
+    "$temporary/source-order.tokens" >"$temporary/source-order.compiler"
+"$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$temporary/source-order.c" -o "$temporary/source-order"
+"$temporary/source-order" >"$temporary/source-order.stdout"
+cmp "$cases/source_order_int.stdout" "$temporary/source-order.stdout" ||
+    fail 'labelled Int call did not evaluate once in source order'
+
+temporary_count=$(grep -c 'int64_t kofun_call_arg_[0-9][0-9]*_[01] = INT64_C(0);' \
+    "$temporary/source-order.c")
+test "$temporary_count" -eq 2 ||
+    fail 'labelled Int call did not reserve exactly two fixed temporaries'
+grep -E 'kofun_call_arg_[0-9]+_1 = .*kofun_call_arg_[0-9]+_0 = .*kofun_fn_combine\(kofun_call_arg_[0-9]+_0, kofun_call_arg_[0-9]+_1\)' \
+    "$temporary/source-order.c" >/dev/null ||
+    fail 'generated C did not sequence source order before ABI order'
+if grep -E 'as_first|as_second|label_(map|dictionary)|malloc|calloc|realloc' \
+    "$temporary/source-order.c" >/dev/null; then
+    fail 'generated C retained labels, runtime dispatch, or allocation'
+fi
+
+# Wider carriers and lexical callable bindings remain explicit unsupported
+# lowering. They may retain parsed IR/tokens, but must not commit C. The
+# shadow case is particularly important: spelling alone must never redirect a
+# callable parameter to a same-named top-level function.
+unsupported_case() {
+    source=$1
+    expected=$2
+    label=$3
+    rm -f "$temporary/unsupported.c" "$temporary/unsupported.ir" \
+        "$temporary/unsupported.tokens" "$temporary/unsupported.stdout" \
+        "$temporary/unsupported.stderr"
+    set +e
+    "$temporary/stage2" "$source" \
+        "$temporary/unsupported.c" "$temporary/unsupported.ir" \
+        "$temporary/unsupported.tokens" \
+        >"$temporary/unsupported.stdout" 2>"$temporary/unsupported.stderr"
+    unsupported_status=$?
+    set -e
+    test "$unsupported_status" -eq 1 ||
+        fail "$label did not retain its exact refusal status"
+    test ! -s "$temporary/unsupported.stderr" ||
+        fail "$label wrote stderr"
+    test "$(cat "$temporary/unsupported.stdout")" = "$expected" ||
+        fail "$label diagnostic changed"
+    test ! -e "$temporary/unsupported.c" ||
+        fail "$label committed C"
+}
+
+unsupported_case "$cases/reordered_optional.kofun" \
+    'error[E2S158]: labelled-call ABI lowering is owned by #882; fixed-slot checked HIR is available at byte 138' \
+    'unsupported labelled carrier'
+unsupported_case "$cases/shadowed_callable.kofun" \
+    'error[E2S158]: labelled-call ABI lowering is owned by #882; fixed-slot checked HIR is available at byte 212' \
+    'shadowed callable parameter'
+unsupported_case "$cases/lifted_lambda_call.kofun" \
+    'error[E2S158]: labelled-call ABI lowering is owned by #882; fixed-slot checked HIR is available at byte 140' \
+    'labelled call inside a lifted lambda'
+
 printf '%s\n' \
-    'PASS: labelled calls bind once in source order to typed, owned declaration slots; #882 remains the ABI boundary'
+    'PASS: labelled calls bind fixed HIR slots and the all-Int C11 slice evaluates once in source order; #882 retains wider carriers and backends'

@@ -1,0 +1,9 @@
+fn combine(as_first left: Int, as_second right: Int) -> Int {
+    return left * 10 + right
+}
+
+fn main() -> Int {
+    let deferred = fn() => combine(as_second: 2, as_first: 1)
+    print(deferred())
+    return 0
+}

@@ -34,7 +34,8 @@ export const GROUPS = Object.freeze([
         hint: 'Syntax, typing, diagnostics, data types, numerics, and deterministic fuzzing.',
         tasks: [
             'diagnostics', 'fuzz', 'unicode', 'patterns', 'adt', 'records',
-            'move-assertion', 'usability-corpus', 'call-arguments-spec',
+            'move-assertion', 'usability-corpus', 'call-arguments',
+            'call-arguments-spec',
             'call-arguments-surface',
             'affine-resumption',
             'scoped-parallelism', 'schedule-trace', 'type-reduction-trace',

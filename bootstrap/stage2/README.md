@@ -38,6 +38,9 @@ one zero-argument `fn main()` plus zero or more `Int` Core functions and lowers:
 - `Int` parameters and returns;
 - direct calls in value or statement position, including forward references
   and recursion;
+- direct top-level labelled calls whose parameters and result are all `Int`;
+  written arguments are sequenced once into function-local C11 temporaries
+  before declaration-order ABI placement;
 - statement-position `if` with mandatory braces, optional `else`, nesting,
   Bool literals, and integer `==`, `!=`, `<`, `<=`, `>`, `>=` conditions;
 - bounded Int-valued `if` in `let`, `print`, assignment, and `return`, with

@@ -3661,6 +3661,233 @@ fn emit_argument(
     return emit_expression(source, hir, start, end)
 }
 
+# #1097 deliberately lowers only the first executable labelled-call profile:
+# a direct top-level function whose parameters and result are all Int.  The
+# fixed-slot binding pass has already rejected unknown/duplicate/missing
+# labels; this predicate keeps every wider carrier and backend shape at the
+# explicit E2S158 boundary owned by #882.
+fn labelled_int_call_supported(
+    source: Text,
+    hir: Text,
+    call_start: Int,
+    callee: Text,
+    open: Int
+) -> Bool {
+    if !call_has_labelled_argument(source, open) {
+        return false
+    }
+    # A lexical callable may shadow a top-level declaration with the same
+    # spelling. Only an unresolved callee name denotes the direct top-level
+    # function this bounded ABI slice can lower.
+    if len(hir_use_binding_id(hir, call_start)) > 0 {
+        return false
+    }
+    # Lifted lambdas are emitted as separate C functions. Their call-site
+    # temporaries therefore cannot live in the enclosing source function;
+    # keep that independently reviewable lowering at #882's E2S158 boundary.
+    let function_open = enclosing_function_open(source, call_start)
+    if function_open >= 0 &&
+       lambda_scope_open(source, function_open, call_start) >= 0 {
+        return false
+    }
+    let declaration = function_start_named(source, callee)
+    if declaration < 0 || function_return_type(source, callee) != "Int" {
+        return false
+    }
+    let count = parameter_count(source, declaration)
+    if count < 1 || count > 8 {
+        return false
+    }
+    let mut index = 0
+    while index < count {
+        if function_parameter_type(source, callee, index) != "Int" {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+# Map a source-order argument back to the declaration/ABI slot that #881
+# validated. Positional arguments form a prefix, so their source index is
+# already their slot; labelled arguments compare against external names.
+fn labelled_int_argument_slot(
+    source: Text,
+    callee: Text,
+    argument: Int,
+    source_index: Int
+) -> Int {
+    let colon = skip_trivia(source, token_end(source, argument))
+    if token_kind(source, argument) != "identifier" &&
+       token_kind(source, argument) != "keyword" ||
+       token_text(source, colon) != ":" {
+        return source_index
+    }
+    let declaration = function_start_named(source, callee)
+    let parameters = parameter_open(source, declaration)
+    let close = balanced_end(source, parameters, "(", ")")
+    let mut parameter = skip_trivia(
+        source,
+        token_end(source, parameters)
+    )
+    let mut slot = 0
+    while parameter < close && token_text(source, parameter) != ")" {
+        let external = parameter_external_start(
+            source,
+            parameter,
+            close
+        )
+        if external >= 0 &&
+           token_text(source, external) == token_text(source, argument) {
+            return slot
+        }
+        let type_start = parameter_type_start(source, parameter, close)
+        let mut type_end = callable_type_end(source, type_start)
+        let list_end = parameter_list_type_end(
+            source,
+            type_start,
+            close
+        )
+        if type_end < 0 {
+            if list_end >= 0 {
+                type_end = list_end
+            } else {
+                type_end = annotation_type_end(source, type_start)
+            }
+        }
+        let separator = skip_trivia(source, type_end)
+        if separator < close && token_text(source, separator) == "," {
+            parameter = skip_trivia(source, token_end(source, separator))
+        } else {
+            parameter = separator
+        }
+        slot = slot + 1
+    }
+    return -1
+}
+
+fn labelled_int_argument_value(source: Text, argument: Int) -> Int {
+    let colon = skip_trivia(source, token_end(source, argument))
+    if (token_kind(source, argument) == "identifier" ||
+        token_kind(source, argument) == "keyword") &&
+       token_text(source, colon) == ":" {
+        return skip_trivia(source, token_end(source, colon))
+    }
+    return argument
+}
+
+# C11 leaves ordinary function-argument evaluation order unspecified.  A
+# comma expression is sequenced, so assign source-order values first and only
+# then invoke the declaration-order ABI vector.  Temporary names contain no
+# source labels and are declared once at the containing function scope.
+fn emit_labelled_int_call(
+    source: Text,
+    hir: Text,
+    call_start: Int,
+    open: Int,
+    end: Int,
+    callee: Text
+) -> Text {
+    let declaration = function_start_named(source, callee)
+    let parameter_count_value = parameter_count(source, declaration)
+    let mut emitted = "("
+    let mut argument = skip_trivia(source, token_end(source, open))
+    let mut source_index = 0
+    while argument < end && token_text(source, argument) != ")" {
+        let bound = argument_end(source, argument)
+        let slot = labelled_int_argument_slot(
+            source,
+            callee,
+            argument,
+            source_index
+        )
+        if slot < 0 || slot >= parameter_count_value {
+            return "error[E2S158]: labelled-call fixed-slot projection failed at byte " +
+            to_text(argument)
+        }
+        let value_start = labelled_int_argument_value(source, argument)
+        let value = emit_argument(
+            source,
+            hir,
+            value_start,
+            bound,
+            callee,
+            slot
+        )
+        if starts_with(value, "error[") {
+            return value
+        }
+        emitted = emitted + "(kofun_call_arg_" +
+            to_text(call_start) + "_" + to_text(slot) + " = " + value +
+            "), "
+        source_index = source_index + 1
+        let separator = skip_trivia(source, bound)
+        if separator < end && token_text(source, separator) == "," {
+            argument = skip_trivia(source, token_end(source, separator))
+        } else {
+            argument = separator
+        }
+    }
+    emitted = emitted + "kofun_fn_" + callee + "("
+    let mut slot = 0
+    while slot < parameter_count_value {
+        if slot > 0 {
+            emitted = emitted + ", "
+        }
+        emitted = emitted + "kofun_call_arg_" +
+            to_text(call_start) + "_" + to_text(slot)
+        slot = slot + 1
+    }
+    return emitted + "))"
+}
+
+# Reserve the fixed Int slots before any statement in the containing function.
+# The call-start byte makes nested and repeated call sites distinct without
+# carrying an external label into generated artifacts.
+fn emit_labelled_int_call_temporaries(
+    source: Text,
+    hir: Text,
+    function_open: Int
+) -> Text {
+    let close = balanced_end(source, function_open, "{", "}")
+    if close < 0 {
+        return ""
+    }
+    let mut emitted = ""
+    let mut cursor = skip_trivia(source, token_end(source, function_open))
+    while cursor < close {
+        if token_kind(source, cursor) == "identifier" {
+            let open = skip_trivia(source, token_end(source, cursor))
+            if open < close && token_text(source, open) == "(" {
+                let callee = token_text(source, cursor)
+                if labelled_int_call_supported(
+                    source,
+                    hir,
+                    cursor,
+                    callee,
+                    open
+                ) {
+                    let declaration = function_start_named(source, callee)
+                    let count = parameter_count(source, declaration)
+                    let mut slot = 0
+                    while slot < count {
+                        emitted = emitted + "    int64_t kofun_call_arg_" +
+                            to_text(cursor) + "_" + to_text(slot) +
+                            " = INT64_C(0);\n"
+                        slot = slot + 1
+                    }
+                }
+            }
+        }
+        let next = token_end(source, cursor)
+        if next <= cursor {
+            break
+        }
+        cursor = skip_trivia(source, next)
+    }
+    return emitted
+}
+
 fn list_int_binding_literal_count(
     source: Text,
     hir: Text,
@@ -3991,6 +4218,22 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
         # A callee the scope HIR resolved to a binding is either a lifted
         # lambda or a callable-typed parameter; anything else is a top-level
         # function looked up by name.
+        if labelled_int_call_supported(
+            source,
+            hir,
+            cursor,
+            name,
+            open
+        ) {
+            return emit_labelled_int_call(
+                source,
+                hir,
+                cursor,
+                open,
+                end,
+                name
+            )
+        }
         if call_has_labelled_argument(source, open) {
             return "error[E2S158]: labelled-call ABI lowering is owned by #882; fixed-slot checked HIR is available at byte " +
             to_text(cursor)
@@ -10497,6 +10740,11 @@ fn lower_body(
     if open == function_open {
         emitted = emit_optional_int_coalescing_temporaries(
             source,
+            function_open
+        )
+        emitted = emitted + emit_labelled_int_call_temporaries(
+            source,
+            hir,
             function_open
         )
     }

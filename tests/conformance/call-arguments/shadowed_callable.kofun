@@ -1,0 +1,16 @@
+fn target(as_first left: Int, as_second right: Int) -> Int {
+    return 99
+}
+
+fn alternate(left: Int, right: Int) -> Int {
+    return left * 10 + right
+}
+
+fn invoke(target: (Int, Int) -> Int) -> Int {
+    return target(as_second: 2, as_first: 1)
+}
+
+fn main() -> Int {
+    print(invoke(alternate))
+    return 0
+}

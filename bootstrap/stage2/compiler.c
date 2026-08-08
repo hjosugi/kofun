@@ -3277,6 +3277,11 @@ static bool source_tokens_equal(
     int64_t left,
     int64_t right
 );
+static int64_t lambda_scope_open(
+    const char *source,
+    int64_t function_open,
+    int64_t target
+);
 
 static char *validate_const_arguments(const char *source);
 static char *validate_const_erasure(const char *source);
@@ -6637,6 +6642,251 @@ static char *emit_argument(
     return emit_expression(source, hir, start, end);
 }
 
+/* #1097 deliberately lowers only the first executable labelled-call profile:
+ * a direct top-level function whose parameters and result are all Int. The
+ * fixed-slot binding pass has already rejected unknown/duplicate/missing
+ * labels; this predicate keeps every wider carrier and backend shape at the
+ * explicit E2S158 boundary owned by #882. */
+static bool labelled_int_call_supported(
+    const char *source,
+    const char *hir,
+    int64_t call_start,
+    const char *callee,
+    int64_t open
+) {
+    if (!call_has_labelled_argument(source, open)) return false;
+    char *callee_binding = hir_use_binding_id(hir, call_start);
+    bool direct = callee_binding[0] == '\0';
+    free(callee_binding);
+    if (!direct) return false;
+    int64_t function_open = enclosing_function_open(source, call_start);
+    if (
+        function_open >= 0 &&
+        lambda_scope_open(source, function_open, call_start) >= 0
+    ) {
+        return false;
+    }
+    int64_t declaration = function_start_named(source, callee);
+    char *result = function_return_type(source, callee);
+    bool returns_int = strcmp(result, "Int") == 0;
+    free(result);
+    if (declaration < 0 || !returns_int) return false;
+    int64_t count = parameter_count(source, declaration);
+    if (count < 1 || count > 8) return false;
+    for (int64_t index = 0; index < count; ++index) {
+        char *type = function_parameter_type(source, callee, index);
+        bool is_int = strcmp(type, "Int") == 0;
+        free(type);
+        if (!is_int) return false;
+    }
+    return true;
+}
+
+/* Map a source-order argument back to the declaration/ABI slot that #881
+ * validated. Positional arguments form a prefix, so their source index is
+ * already their slot; labelled arguments compare against external names. */
+static int64_t labelled_int_argument_slot(
+    const char *source,
+    const char *callee,
+    int64_t argument,
+    int64_t source_index
+) {
+    int64_t colon = skip_trivia(source, token_end(source, argument));
+    if (
+        !parameter_word_token(source, argument) ||
+        !token_equal(source, colon, ":")
+    ) {
+        return source_index;
+    }
+    int64_t declaration = function_start_named(source, callee);
+    int64_t parameters = parameter_open(source, declaration);
+    int64_t close = balanced_end(source, parameters, "(", ")");
+    int64_t parameter = skip_trivia(
+        source,
+        token_end(source, parameters)
+    );
+    int64_t slot = 0;
+    while (parameter < close && !token_equal(source, parameter, ")")) {
+        int64_t external = parameter_external_start(
+            source,
+            parameter,
+            close
+        );
+        if (
+            external >= 0 &&
+            source_tokens_equal(source, external, argument)
+        ) {
+            return slot;
+        }
+        int64_t type_start = parameter_type_start(
+            source,
+            parameter,
+            close
+        );
+        int64_t type_end = callable_type_end(source, type_start);
+        int64_t list_end = parameter_list_type_end(
+            source,
+            type_start,
+            close
+        );
+        if (type_end < 0) {
+            type_end = list_end >= 0
+                ? list_end : annotation_type_end(source, type_start);
+        }
+        int64_t separator = skip_trivia(source, type_end);
+        parameter = separator < close && token_equal(source, separator, ",")
+            ? skip_trivia(source, token_end(source, separator))
+            : separator;
+        ++slot;
+    }
+    return -1;
+}
+
+static int64_t labelled_int_argument_value(
+    const char *source,
+    int64_t argument
+) {
+    int64_t colon = skip_trivia(source, token_end(source, argument));
+    if (
+        parameter_word_token(source, argument) &&
+        token_equal(source, colon, ":")
+    ) {
+        return skip_trivia(source, token_end(source, colon));
+    }
+    return argument;
+}
+
+/* C11 leaves ordinary function-argument evaluation order unspecified. A
+ * comma expression is sequenced, so assign source-order values first and only
+ * then invoke the declaration-order ABI vector. Temporary names contain no
+ * source labels and are declared once at the containing function scope. */
+static char *emit_labelled_int_call(
+    const char *source,
+    const char *hir,
+    int64_t call_start,
+    int64_t open,
+    int64_t end,
+    const char *callee
+) {
+    int64_t declaration = function_start_named(source, callee);
+    int64_t parameter_count_value = parameter_count(source, declaration);
+    Buffer output;
+    buffer_init(&output);
+    buffer_append(&output, "(");
+    int64_t argument = skip_trivia(source, token_end(source, open));
+    int64_t source_index = 0;
+    while (argument < end && !token_equal(source, argument, ")")) {
+        int64_t bound = argument_end(source, argument);
+        int64_t slot = labelled_int_argument_slot(
+            source,
+            callee,
+            argument,
+            source_index
+        );
+        if (slot < 0 || slot >= parameter_count_value) {
+            free(output.data);
+            return lower_error(
+                "E2S158",
+                "labelled-call fixed-slot projection failed",
+                argument
+            );
+        }
+        int64_t value_start = labelled_int_argument_value(source, argument);
+        char *value = emit_argument(
+            source,
+            hir,
+            value_start,
+            bound,
+            callee,
+            slot
+        );
+        if (strncmp(value, "error[", 6) == 0) {
+            free(output.data);
+            return value;
+        }
+        buffer_format(
+            &output,
+            "(kofun_call_arg_%" PRId64 "_%" PRId64 " = %s), ",
+            call_start,
+            slot,
+            value
+        );
+        free(value);
+        ++source_index;
+        int64_t separator = skip_trivia(source, bound);
+        argument = separator < end && token_equal(source, separator, ",")
+            ? skip_trivia(source, token_end(source, separator))
+            : separator;
+    }
+    char *c_name = c_identifier_name(callee);
+    buffer_format(&output, "kofun_fn_%s(", c_name);
+    free(c_name);
+    for (int64_t slot = 0; slot < parameter_count_value; ++slot) {
+        if (slot > 0) buffer_append(&output, ", ");
+        buffer_format(
+            &output,
+            "kofun_call_arg_%" PRId64 "_%" PRId64,
+            call_start,
+            slot
+        );
+    }
+    buffer_append(&output, "))");
+    return output.data;
+}
+
+/* Reserve the fixed Int slots before any statement in the containing
+ * function. The call-start byte makes nested and repeated call sites distinct
+ * without carrying an external label into generated artifacts. */
+static char *emit_labelled_int_call_temporaries(
+    const char *source,
+    const char *hir,
+    int64_t function_open
+) {
+    int64_t close = balanced_end(source, function_open, "{", "}");
+    Buffer output;
+    buffer_init(&output);
+    if (close < 0) return output.data;
+    int64_t cursor = skip_trivia(
+        source,
+        token_end(source, function_open)
+    );
+    while (cursor < close) {
+        if (strcmp(token_kind(source, cursor), "identifier") == 0) {
+            int64_t open = skip_trivia(source, token_end(source, cursor));
+            if (open < close && token_equal(source, open, "(")) {
+                char *callee = token_copy(source, cursor);
+                if (labelled_int_call_supported(
+                    source,
+                    hir,
+                    cursor,
+                    callee,
+                    open
+                )) {
+                    int64_t declaration = function_start_named(
+                        source,
+                        callee
+                    );
+                    int64_t count = parameter_count(source, declaration);
+                    for (int64_t slot = 0; slot < count; ++slot) {
+                        buffer_format(
+                            &output,
+                            "    int64_t kofun_call_arg_%" PRId64
+                            "_%" PRId64 " = INT64_C(0);\n",
+                            cursor,
+                            slot
+                        );
+                    }
+                }
+                free(callee);
+            }
+        }
+        int64_t next = token_end(source, cursor);
+        if (next <= cursor) break;
+        cursor = skip_trivia(source, next);
+    }
+    return output.data;
+}
+
 static int64_t list_int_binding_literal_count(
     const char *source,
     const char *hir,
@@ -7259,6 +7509,25 @@ static char *emit_primary(
         /* A callee the scope HIR resolved to a binding is either a lifted
          * lambda or a callable-typed parameter; anything else is a top-level
          * function looked up by name. */
+        if (labelled_int_call_supported(
+            source,
+            hir,
+            cursor,
+            name,
+            open
+        )) {
+            char *labelled = emit_labelled_int_call(
+                source,
+                hir,
+                cursor,
+                open,
+                end,
+                name
+            );
+            free(name);
+            free(output.data);
+            return labelled;
+        }
         if (call_has_labelled_argument(source, open)) {
             free(name);
             return lower_error(
@@ -16020,6 +16289,13 @@ static char *lower_body(
     if (open == function_open) {
         char *temporaries = emit_optional_int_coalescing_temporaries(
             source,
+            function_open
+        );
+        buffer_append(&emitted, temporaries);
+        free(temporaries);
+        temporaries = emit_labelled_int_call_temporaries(
+            source,
+            hir,
             function_open
         );
         buffer_append(&emitted, temporaries);
