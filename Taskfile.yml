@@ -703,18 +703,25 @@ tasks:
   verify:
     desc: "Run every available gate"
     cmds:
-      # Every gate here is independent, so they run concurrently — but
-      # *bounded*, the way `make -j$(nproc)` bounded them. go-task runs
-      # `deps:` with no concurrency limit, and 57 gates each starting a C
-      # compiler is not the same workload on a 2-core runner as on a
-      # 12-core laptop: it exhausted the CI runner and a gate died with
-      # exit 126 on a binary it had just built. So `verify` re-invokes
-      # `task` with a limit, exactly as the Makefile re-invoked `make`.
+      # Every gate here is independent, so run them concurrently — but
+      # *bounded*. `-C` only limits concurrency; go-task needs `--parallel`
+      # to execute multiple command-line tasks concurrently at all. Three
+      # workers keep the previous resource-exhaustion failure bounded while
+      # allowing the long diagnostics, Stage 2, and fuzz gates to overlap.
       #
       # Override with `VERIFY_JOBS=1 task verify` to bisect a failure
       # without interleaved output.
       - cmd: |-
-          task -C "${VERIFY_JOBS:-$(nproc 2>/dev/null || echo 4)}" \
+          verify_stage2=${KOFUN_STAGE2_COMPILER:-}
+          if test -z "$verify_stage2"; then
+            verify_stage2="$PWD/build/verify/kofun-stage2"
+            rm -rf "$PWD/build/verify"
+            mkdir -p "$PWD/build/verify"
+            . "$PWD/bootstrap/stage2/build.sh"
+            kofun_stage2_build "$PWD" "$verify_stage2"
+          fi
+          KOFUN_STAGE2_COMPILER="$verify_stage2" \
+            task --parallel --failfast -C "${VERIFY_JOBS:-3}" \
             test \
             diagnostics \
             fuzz \
@@ -817,13 +824,7 @@ tasks:
             backlog \
             release-claims \
             rfc-registry
-      # `tests/lsp/performance_test.js` makes five measurements that a busy
-      # machine perturbs: four latency percentiles (diagnostic p95/max,
-      # definition p95, hover p95) and the resident-set growth ratio. Run
-      # alone they hold; run beside seven other gates the diagnostic p95
-      # reaches 108ms against a 100ms budget. So they go last and by
-      # themselves, and the budgets stay as written. `roadmap` is here for the
-      # same reason, not for its own sake:
-      # spec/roadmap-31-34/verify-current-gates.sh calls tests/lsp/check.sh.
-      - task: lsp
+      # `roadmap` owns the LSP gate, whose five performance measurements are
+      # perturbed by a busy machine. Keep that single invocation last and by
+      # itself; running `lsp` here too only measured the same gate twice.
       - task: roadmap
