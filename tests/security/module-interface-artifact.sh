@@ -36,3 +36,5 @@ if grep -aEq 'PublicWrap|hidden semantic dependency|visibility-leak' \
     "$WORK/interface.kif"; then
     fail 'failed validation appended diagnostic material to the artifact'
 fi
+
+sh "$ROOT/tests/security/generated-meta-access.sh"

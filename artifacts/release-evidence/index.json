@@ -713,7 +713,7 @@
     "tests/http/check.sh": "b3fcbd128033bb7a3c0b7e4f89b679743e0e5e49e9eaa1bdc9573cbb5794aafd",
     "tests/interop/bindgen-c/fuzz/corpus/partial-declaration.h": "c5dce5c70ff456a593e7fa33db772a3c2430905340c4b44e9a79f0be681e50e2",
     "tests/lsp/performance_test.js": "9be9916dd14466b33b631fe1435ddcc038c44288f80c320e1458bcb16d2aab33",
-    "tests/security/module-interface-artifact.sh": "fb701197367db3654f075c769ac6cfd1260d9f0083cbaab28dbf3fb186b7823a",
+    "tests/security/module-interface-artifact.sh": "f84c338ae61fc66ac2e8738d209049e53ad4274f31e42e2d4dd52d60fc44ddb7",
     "tests/stdlib/tzdb/README.md": "3ebada786546085ecd463e11f35740e9f304e0c873d9c66fd648c758e9f32848",
     "tests/stdlib/tzdb/tzdb.kofun": "a3bbfa3966f6cbde4c3bb3263147f7a89ce31416b6a8d19e3d0cfff3a6b6b379",
     "tests/typed-sidecar/authority-boundary.sh": "4348a011bae0f9c6ac5d3f0730f9a4a6db2a757a1368ac65bf35d75ae77b0052",
