@@ -18,19 +18,20 @@ mkdir -p "$WORK"
 # adapter copies their own directories so the two invocations cannot meet. Each
 # runner already honours these overrides; the tasks keep the defaults.
 #
-# Five of the seven runners assert that their work directory ends in a fixed name
-# with an optional suffix, so each override keeps that name and adds a
-# `.diagnostics` suffix rather than inventing a new one.
+# Runners that validate a fixed work-directory basename accept an optional
+# suffix, so each override keeps that name and adds `.diagnostics` rather than
+# inventing a new one.
 KOFUN_ADT_FRONTEND_WORK="$WORK/adt-frontend.diagnostics"
 KOFUN_RECORD_FRONTEND_WORK="$WORK/record-frontend.diagnostics"
 KOFUN_GENERICS_FRONTEND_WORK="$WORK/generics-frontend.diagnostics"
+KOFUN_CONST_GENERICS_FRONTEND_WORK="$WORK/const-generics-frontend.diagnostics"
 KOFUN_HM_LEVELS_WORK="$ROOT/build/hm-levels.diagnostics"
 KOFUN_ADT_EXHAUSTIVENESS_WORK="$WORK/adt-exhaustiveness.diagnostics"
 KOFUN_MODULE_SYMBOLS_WORK="$WORK/module-symbols.diagnostics"
 KOFUN_IMPORTS_SELECTIVE_WORK="$WORK/imports-selective.diagnostics"
 KOFUN_RE_EXPORTS_WORK="$WORK/re-exports.diagnostics"
 export KOFUN_ADT_FRONTEND_WORK KOFUN_RECORD_FRONTEND_WORK
-export KOFUN_GENERICS_FRONTEND_WORK
+export KOFUN_GENERICS_FRONTEND_WORK KOFUN_CONST_GENERICS_FRONTEND_WORK
 export KOFUN_HM_LEVELS_WORK
 export KOFUN_ADT_EXHAUSTIVENESS_WORK KOFUN_MODULE_SYMBOLS_WORK
 export KOFUN_IMPORTS_SELECTIVE_WORK KOFUN_RE_EXPORTS_WORK
@@ -56,6 +57,23 @@ while IFS='	' read -r adapter command bless report; do
         { print }
     ' "$ROOT/$report" >>"$WORK/observed.tsv"
 done <"$ADAPTERS"
+
+# The const-generics runner is also a top-level verify task. Pin evidence that
+# this adapter consumed the exported override instead of racing the direct
+# task in build/const-generics-frontend.
+expected_const_generics_work="$WORK/const-generics-frontend.diagnostics"
+test "$KOFUN_CONST_GENERICS_FRONTEND_WORK" = "$expected_const_generics_work" || {
+    printf '%s\n' \
+        'diagnostic registry: const-generics adapter work directory is not isolated' \
+        >&2
+    exit 1
+}
+test -f "$expected_const_generics_work/backends.stdout" || {
+    printf '%s\n' \
+        'diagnostic registry: const-generics adapter did not use its isolated work directory' \
+        >&2
+    exit 1
+}
 
 KOFUN_DIAGNOSTIC_OBSERVED="$WORK/observed.tsv" \
     sh "$ROOT/tests/diagnostics/check.sh"
