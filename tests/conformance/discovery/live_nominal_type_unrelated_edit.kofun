@@ -1,0 +1,15 @@
+pub fn unrelated_beta() -> Int {
+    return 7
+}
+
+pub type Choice =
+    | First
+    | Second(value: Int)
+
+pub fn exposed(value: Choice) -> Choice {
+    return value
+}
+
+fn main() {
+    print(0)
+}
