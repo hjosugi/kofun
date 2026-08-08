@@ -1,6 +1,6 @@
 {
   "schema": "kofun.backlog-issue-state/v1",
-  "repository": "hjosugi/kofun",
+  "repository": "kofun-lang/kofun",
   "state_labels": [
     "ready",
     "blocked",
@@ -31,7 +31,13 @@
       ],
       "state_line": "in-progress",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [],
+      "claims": [
+        {
+          "agent_id": "agent-owner",
+          "status": "active"
+        }
+      ]
     }
   ]
 }

@@ -34,6 +34,7 @@ export const GROUPS = Object.freeze([
         tasks: [
             'diagnostics', 'fuzz', 'unicode', 'patterns', 'adt', 'records',
             'move-assertion', 'usability-corpus', 'call-arguments-spec',
+            'call-arguments-surface',
             'affine-resumption',
             'scoped-parallelism', 'schedule-trace', 'type-reduction-trace',
             'generics', 'const-generics', 'hm-levels', 'effect-inference', 'traits',
@@ -65,7 +66,8 @@ export const GROUPS = Object.freeze([
             'task-help', 'discovery', 'cli-framework', 'tui-framework', 'build-system',
             'packages', 'typed-sidecar-spec', 'typed-sidecar-codec',
             'typed-sidecar-projector', 'upgrade-patch', 'documentation-index', 'ownership-view',
-            'artifact-qualification', 'lsp', 'roadmap'
+            'artifact-qualification', 'lsp', 'roadmap',
+            'graphify-setup', 'graphify-update'
         ]
     },
     {

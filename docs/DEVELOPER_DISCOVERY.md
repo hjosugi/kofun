@@ -4,7 +4,7 @@ Status: accepted design for the first tooling slice. No discovery query,
 command, editor integration, REPL integration, or runtime reflection profile
 is implemented.
 
-Issue: [#635](https://github.com/hjosugi/kofun/issues/635).
+Issue: [#635](https://github.com/kofun-lang/kofun/issues/635).
 
 The words **must**, **must not**, **should**, and **may** are normative.
 
@@ -557,8 +557,8 @@ The provider computes the result at the exact source position:
 9. close fact status/dependencies, filter disclosure, bound work, and
    serialize in canonical identity order.
 
-[#293](https://github.com/hjosugi/kofun/issues/293) and
-[#316](https://github.com/hjosugi/kofun/issues/316) remain planning issues.
+[#293](https://github.com/kofun-lang/kofun/issues/293) and
+[#316](https://github.com/kofun-lang/kofun/issues/316) remain planning issues.
 This document does not select their extension scope, coherence, or
 method-resolution semantics. Until those rules are accepted and executable, a
 provider reports the corresponding work as `unsupported-in-profile`; it must
@@ -649,7 +649,7 @@ normal release artifact must be byte-identical to the same build without
 discovery support. The implementation gate must compare those bytes.
 
 Runtime reflection remains blocked on
-[#454](https://github.com/hjosugi/kofun/issues/454). If that issue later accepts
+[#454](https://github.com/kofun-lang/kofun/issues/454). If that issue later accepts
 runtime `TypeInfo`:
 
 - retention is selected by an explicit build profile;
@@ -663,20 +663,20 @@ No runtime adapter is authorized by this document.
 
 ## Issue ownership and reverse links
 
-- [#194](https://github.com/hjosugi/kofun/issues/194) owns REPL presentation,
+- [#194](https://github.com/kofun-lang/kofun/issues/194) owns REPL presentation,
   not a second semantic lookup.
-- [#293](https://github.com/hjosugi/kofun/issues/293) owns the future extension
+- [#293](https://github.com/kofun-lang/kofun/issues/293) owns the future extension
   scope decision.
-- [#316](https://github.com/hjosugi/kofun/issues/316) owns the future
+- [#316](https://github.com/kofun-lang/kofun/issues/316) owns the future
   method/trait candidate-resolution decision.
-- [#454](https://github.com/hjosugi/kofun/issues/454) owns optional runtime
+- [#454](https://github.com/kofun-lang/kofun/issues/454) owns optional runtime
   metadata.
-- [#605](https://github.com/hjosugi/kofun/issues/605) and
-  [#608](https://github.com/hjosugi/kofun/issues/608) own semantic-fact
+- [#605](https://github.com/kofun-lang/kofun/issues/605) and
+  [#608](https://github.com/kofun-lang/kofun/issues/608) own semantic-fact
   production.
-- [#600](https://github.com/hjosugi/kofun/issues/600),
-  [#601](https://github.com/hjosugi/kofun/issues/601), and
-  [#604](https://github.com/hjosugi/kofun/issues/604) own KIF and sidecar
+- [#600](https://github.com/kofun-lang/kofun/issues/600),
+  [#601](https://github.com/kofun-lang/kofun/issues/601), and
+  [#604](https://github.com/kofun-lang/kofun/issues/604) own KIF and sidecar
   validity/storage boundaries.
 
 After this document lands on `main`, #194, #293, #316, #454, #605, and #608

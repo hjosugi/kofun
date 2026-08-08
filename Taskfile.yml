@@ -15,6 +15,16 @@ vars:
 
 tasks:
 
+  graphify-setup:
+    desc: "Install graphify and register its skill with Claude, Copilot and Codex"
+    cmds:
+      - "sh scripts/graphify.sh setup"
+
+  graphify-update:
+    desc: "Upgrade graphify, refresh the skill, and update the knowledge graph"
+    cmds:
+      - "sh scripts/graphify.sh update"
+
   # `default` deliberately has no desc, so the official `task --list` does not
   # show a redundant alias. The task-help gate permits this one hidden row and
   # requires every visible task to have a description and exactly one group.
@@ -71,6 +81,7 @@ tasks:
       - "sh tests/fuzz/match_value_invalid.sh"
       - "sh tests/fuzz/enum_match.sh"
       - "sh tests/fuzz/optional_narrowing.sh"
+      - "sh tests/fuzz/visibility-artifacts.sh"
 
   unicode:
     desc: "Verify Unicode identifiers, security, text, and width"
@@ -557,6 +568,16 @@ tasks:
     cmds:
       - "sh spec/syntax/call-arguments/check.sh"
 
+  # Split from `call-arguments-spec` on purpose. That gate holds the accepted
+  # decision to what #625 chose and must stay runnable with no implementation
+  # behind it; this one holds a parser and formatter to the grammar, the
+  # ambiguity boundary, and the canonical shape. Merging them would mean the
+  # next contract that lands ahead of its implementation has nowhere to live.
+  call-arguments-surface:
+    desc: "Verify the call-argument parser, canonical formatter, and ambiguity corpus"
+    cmds:
+      - "sh spec/syntax/call-arguments/check-surface.sh"
+
   # The only recipe that is not a verbatim copy of its Makefile original, and
   # the reason is a real shell difference rather than a preference. go-task
   # runs commands through mvdan/sh, which does not negate a *pipeline* with a
@@ -789,6 +810,7 @@ tasks:
             artifact-qualification \
             syntax \
             call-arguments-spec \
+            call-arguments-surface \
             task-help \
             repository-check \
             assertions \

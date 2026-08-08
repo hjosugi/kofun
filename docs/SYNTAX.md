@@ -304,10 +304,10 @@ Four shapes are refused, each naming the constant it is about:
 
 | Written | Diagnostic |
 |---|---|
-| `let LIMIT = 1 + 2` | `E2S158` — the initializer is not one integer literal |
-| `let helper = 1` beside `fn helper()` | `E2S158` — the name collides with a declaration |
-| `let LIMIT = 1` twice | `E2S159` — duplicate module constant |
-| `let mut LIMIT = 1` | `E2S160` — a top-level `let` is immutable |
+| `let LIMIT = 1 + 2` | `E2S159` — the initializer is not one integer literal |
+| `let helper = 1` beside `fn helper()` | `E2S159` — the name collides with a declaration |
+| `let LIMIT = 1` twice | `E2S160` — duplicate module constant |
+| `let mut LIMIT = 1` | `E2S161` — a top-level `let` is immutable |
 
 `task module-constants` is the gate. Mutable module state, non-`Int`
 constants, and constant expressions are outside this slice.

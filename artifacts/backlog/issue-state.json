@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 70,
+  "open_issues": 67,
   "issues": [
     {
       "number": 26,
@@ -136,7 +136,7 @@
       "state_labels": [
         "deferred"
       ],
-      "state_line": null,
+      "state_line": "deferred",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -146,7 +146,7 @@
       "state_labels": [
         "deferred"
       ],
-      "state_line": null,
+      "state_line": "deferred",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -156,7 +156,7 @@
       "state_labels": [
         "deferred"
       ],
-      "state_line": null,
+      "state_line": "deferred",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -166,7 +166,7 @@
       "state_labels": [
         "deferred"
       ],
-      "state_line": null,
+      "state_line": "deferred",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -220,7 +220,7 @@
       "state_labels": [
         "deferred"
       ],
-      "state_line": null,
+      "state_line": "deferred",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -230,7 +230,7 @@
       "state_labels": [
         "deferred"
       ],
-      "state_line": null,
+      "state_line": "deferred",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -240,7 +240,7 @@
       "state_labels": [
         "blocked"
       ],
-      "state_line": null,
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -250,7 +250,7 @@
       "state_labels": [
         "deferred"
       ],
-      "state_line": null,
+      "state_line": "deferred",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -260,7 +260,7 @@
       "state_labels": [
         "deferred"
       ],
-      "state_line": null,
+      "state_line": "deferred",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -270,7 +270,7 @@
       "state_labels": [
         "deferred"
       ],
-      "state_line": null,
+      "state_line": "deferred",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -280,7 +280,7 @@
       "state_labels": [
         "deferred"
       ],
-      "state_line": null,
+      "state_line": "deferred",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -290,7 +290,7 @@
       "state_labels": [
         "deferred"
       ],
-      "state_line": null,
+      "state_line": "deferred",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -371,7 +371,7 @@
       "state_labels": [
         "blocked"
       ],
-      "state_line": null,
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -393,7 +393,7 @@
       "state_labels": [
         "blocked"
       ],
-      "state_line": null,
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -491,27 +491,15 @@
       ]
     },
     {
-      "number": 645,
-      "title": "Date/time core: Gregorian values, checked arithmetic, and strict RFC 3339",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "6b8d2064468d270f37a1d8dcfe8848dca91b9dc0",
-        "97e50abe18e028093a186a7835e48c4d81a6dbd9",
-        "b783e7697d3791ce26def31e7b58a51367c83036"
-      ]
-    },
-    {
       "number": 646,
       "title": "Benchmark report v1: canonical raw-sample codec and deterministic summaries",
       "state_labels": [
         "blocked"
       ],
       "state_line": "blocked",
-      "blocked_by": [],
+      "blocked_by": [
+        847
+      ],
       "evidence_commits": [
         "801204407ec864c58a9c1613bca33c204be78b35"
       ]
@@ -572,7 +560,9 @@
         "blocked"
       ],
       "state_line": "blocked",
-      "blocked_by": [],
+      "blocked_by": [
+        868
+      ],
       "evidence_commits": [
         "801204407ec864c58a9c1613bca33c204be78b35"
       ]
@@ -591,26 +581,12 @@
       ]
     },
     {
-      "number": 880,
-      "title": "Call arguments v1 slice 1: parse labels and canonical trailing lambdas",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [
-        625
-      ],
-      "evidence_commits": [
-        "a50793ea6802411fd6f7c752578fd9421669236f"
-      ]
-    },
-    {
       "number": 881,
       "title": "Call arguments v1 slice 2: bind labels in HIR, type checking, and KIF identity",
       "state_labels": [
         "blocked"
       ],
-      "state_line": null,
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -620,8 +596,10 @@
       "state_labels": [
         "blocked"
       ],
-      "state_line": null,
-      "blocked_by": [],
+      "state_line": "blocked",
+      "blocked_by": [
+        881
+      ],
       "evidence_commits": []
     },
     {
@@ -630,7 +608,7 @@
       "state_labels": [
         "blocked"
       ],
-      "state_line": null,
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -640,7 +618,7 @@
       "state_labels": [
         "blocked"
       ],
-      "state_line": null,
+      "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": []
     },
@@ -733,12 +711,12 @@
       "number": 946,
       "title": "The production frontend has no move analysis, so E2S122/E2S123 never reach an editor",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
+      "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
-        "00ce08f093da2706156f88f80d8c2fb366006d35"
+        "2b7581ffbe0c224f1a69f7f564dfa9a4fa6ace4f"
       ]
     },
     {
@@ -814,18 +792,6 @@
       "blocked_by": [],
       "evidence_commits": [
         "b297880239f0db9cb832df50de379f5f678abf6c"
-      ]
-    },
-    {
-      "number": 1033,
-      "title": "LSP visibility: filter completion and navigation by caller context",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
       ]
     },
     {

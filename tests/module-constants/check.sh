@@ -16,9 +16,9 @@ set -eu
 #   4. a local binding of the same name shadows the constant inside its own
 #      scope only;
 #   5. every named failure mode is refused before a backend artifact exists,
-#      with the exact diagnostic — `E2S158` for a non-literal initializer and
-#      for a name that collides with a function or type, `E2S159` for a
-#      duplicate constant, and `E2S160` for `let mut`.
+#      with the exact diagnostic — `E2S159` for a non-literal initializer and
+#      for a name that collides with a function or type, `E2S160` for a
+#      duplicate constant, and `E2S161` for `let mut`.
 #
 # Constants carry no visibility modifier in this slice, so they stay internal
 # to their compilation unit and add nothing to KIF.
@@ -157,11 +157,11 @@ expect_refused() {
     printf 'module constants: refused as designed: %s (%s)\n' "$stem" "$code"
 }
 
-expect_refused non_literal E2S158
-expect_refused function_clash E2S158
-expect_refused type_clash E2S158
-expect_refused duplicate E2S159
-expect_refused mutable E2S160
+expect_refused non_literal E2S159
+expect_refused function_clash E2S159
+expect_refused type_clash E2S159
+expect_refused duplicate E2S160
+expect_refused mutable E2S161
 
 # Each refusal names the constant it is about, not merely its code.
 assert_grep 'duplicate names the repeated constant' -Fq -- \

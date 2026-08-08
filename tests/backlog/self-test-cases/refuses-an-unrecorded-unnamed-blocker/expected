@@ -1,0 +1,1 @@
+FAIL: backlog: #101 is blocked but names no blocker where the gate reads one, so the closed-blocker rule skips it; add a `Blocked by: #N` line to its body, or record it in tests/backlog/debt.tsv as `unnamed-blocker` or `capability-blocker`

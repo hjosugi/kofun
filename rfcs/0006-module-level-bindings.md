@@ -115,12 +115,12 @@ Three stable codes, each naming the constant it is about:
 
 | Written | Code | Message |
 |---|---|---|
-| `let LIMIT = 1 + 2` | `E2S158` | ``module constant must be `let NAME = <integer literal>` `` |
-| `let helper = 1` beside `fn helper()` | `E2S158` | ``module constant `helper` conflicts with a declaration of the same name`` |
-| `let LIMIT = 1` twice | `E2S159` | ``duplicate module constant `LIMIT` `` |
-| `let mut LIMIT = 1` | `E2S160` | ``module constant `LIMIT` cannot be `mut`; a top-level `let` is immutable`` |
+| `let LIMIT = 1 + 2` | `E2S159` | ``module constant must be `let NAME = <integer literal>` `` |
+| `let helper = 1` beside `fn helper()` | `E2S159` | ``module constant `helper` conflicts with a declaration of the same name`` |
+| `let LIMIT = 1` twice | `E2S160` | ``duplicate module constant `LIMIT` `` |
+| `let mut LIMIT = 1` | `E2S161` | ``module constant `LIMIT` cannot be `mut`; a top-level `let` is immutable`` |
 
-`E2S158` covers both the initializer shape and the namespace collision because
+`E2S159` covers both the initializer shape and the namespace collision because
 both say the same thing to an author: this name cannot be a module constant
 here. They are distinguished by the message and the span, not by the code.
 
@@ -131,7 +131,7 @@ part of it is unsupported. A refusal that names `mut` is actionable; `E2S02`
 is not.
 
 `let own NAME = ...` at module level has no code of its own in v1 and is
-refused by `E2S158` as an initializer that is not a single integer literal. That
+refused by `E2S159` as an initializer that is not a single integer literal. That
 is honest but not informative, and it is recorded as an unresolved question
 below rather than presented as a designed refusal.
 
@@ -242,7 +242,7 @@ as a confusing diagnostic about the declaration *next to* the constant; and
 own scope only.
 
 The negative fixture proving the boundary is `mutable.kofun`: `let mut LIMIT = 1`
-must be refused with `E2S160` and must not be accepted as mutable module state.
+must be refused with `E2S161` and must not be accepted as mutable module state.
 `non_literal.kofun`, `function_clash.kofun`, `type_clash.kofun` and
 `duplicate.kofun` pin the other four refusals to their exact codes.
 
@@ -253,7 +253,7 @@ not when this RFC is accepted.
 ## Unresolved questions
 
 **`let own` at module level has no diagnostic of its own.** It falls into
-`E2S158`, which reports a bad initializer for what is really an unsupported
+`E2S159`, which reports a bad initializer for what is really an unsupported
 ownership form. Settling it means deciding whether module-scope resources exist
 at all, which is [RFC-0002](0002-environment-authority.md)'s and
 [#569](https://github.com/hjosugi/kofun/issues/569)'s territory; until then a

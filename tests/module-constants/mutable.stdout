@@ -1,1 +1,1 @@
-error[E2S160]: module constant `LIMIT` cannot be `mut`; a top-level `let` is immutable at byte 0
+error[E2S161]: module constant `LIMIT` cannot be `mut`; a top-level `let` is immutable at byte 0

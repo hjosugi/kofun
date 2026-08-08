@@ -4,8 +4,8 @@
 - Opened: 2026-08-02
 - Status: proposed
 
-Proposal for [#907](https://github.com/hjosugi/kofun/issues/907), the bounded
-child of [#570](https://github.com/hjosugi/kofun/issues/570). Review is
+Proposal for [#907](https://github.com/kofun-lang/kofun/issues/907), the bounded
+child of [#570](https://github.com/kofun-lang/kofun/issues/570). Review is
 scheduled to close on 2026-08-16, the ledger's 14-day minimum. This proposal
 records target semantics only. No parser, checker, classifier, diagnostic,
 backend, standard-library type, or release capability is implemented by it, and

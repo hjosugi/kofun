@@ -2334,7 +2334,142 @@ fn reserved_type_name(name: Text) -> Bool {
     name == "Unit" || name == "Text" || name == "List" || name == "_"
 }
 
+# The call-arguments v1 surface boundary (#880). The mirror of
+# `validate_call_argument_surface` in bootstrap/stage2/compiler.c, and it is
+# here for the reason the issue's last acceptance criterion is plural:
+# *profiles* that cannot lower the new form must reject it. A refusal that
+# existed only in the C profile would leave the self-hosted one still reading
+# `fn add(to base: Int, ...)` as `to: <type base>` and reporting an unknown
+# binding for a name the author did write. See that file for the measurement
+# and for why the mode-only shape (`edit token: Token`) is left alone.
+fn ownership_mode_token(source: Text, cursor: Int) -> Bool {
+    let token = token_text(source, cursor)
+    return token == "read" || token == "edit" || token == "take"
+}
+
+# A word in a parameter head, which is an identifier *or* a keyword. `in` is a
+# keyword here, so counting only identifiers made the contract's own headline
+# example `fn replace(in text: Text, ...)` read as one word: no refusal fired
+# and the misparse this check removes came back as
+# `error[E2S35]: unknown lexical binding \`text\``. See the C profile for the
+# measurement. `read`, `edit`, and `take` are not keywords, so the ownership
+# modes were already counted.
+fn parameter_word_token(source: Text, cursor: Int) -> Bool {
+    let kind = token_kind(source, cursor)
+    return kind == "identifier" || kind == "keyword"
+}
+
+fn call_argument_surface_refusal(what: Text, cursor: Int) -> Text {
+    return "error[E2S158]: " + what + " is specified by call-arguments v1 " +
+    "but not implemented at byte " + to_text(cursor)
+}
+
+fn validate_call_argument_surface(source: Text) -> Text {
+    let mut function_start = next_function_start(source, 0)
+    while function_start < len(source) {
+        let open = parameter_open(source, function_start)
+        let mut close = -1
+        if open >= 0 {
+            close = balanced_end(source, open, "(", ")")
+        }
+        if open >= 0 && close >= 0 {
+            let mut cursor = skip_trivia(source, token_end(source, open))
+            let mut depth = 0
+            let mut words = 0
+            let mut first_word = -1
+            let mut second_word = -1
+            let mut mode_first = false
+            let mut before_colon = true
+            let mut stop = false
+            while cursor < close && !stop {
+                let token = token_text(source, cursor)
+                if token == "(" || token == "[" {
+                    depth = depth + 1
+                } else if token == "]" {
+                    depth = depth - 1
+                } else if token == ")" {
+                    if depth == 0 {
+                        stop = true
+                    } else {
+                        depth = depth - 1
+                    }
+                } else if token == "," && depth == 0 {
+                    words = 0
+                    first_word = -1
+                    second_word = -1
+                    mode_first = false
+                    before_colon = true
+                } else if token == ":" && depth == 0 && before_colon {
+                    before_colon = false
+                    # The span is the external label itself: word one of
+                    # `to base`, word two of `take into file`, because the mode
+                    # shifts everything right.
+                    if words == 2 && !mode_first {
+                        return call_argument_surface_refusal(
+                            "a declaration external label",
+                            first_word
+                        )
+                    }
+                    if words == 3 && mode_first {
+                        return call_argument_surface_refusal(
+                            "a declaration external label",
+                            second_word
+                        )
+                    }
+                } else if depth == 0 && before_colon &&
+                    parameter_word_token(source, cursor) {
+                    words = words + 1
+                    if words == 1 {
+                        first_word = cursor
+                        mode_first = ownership_mode_token(source, cursor)
+                    }
+                    if words == 2 {
+                        second_word = cursor
+                    }
+                }
+                if !stop {
+                    cursor = skip_trivia(source, token_end(source, cursor))
+                }
+            }
+        }
+        function_start = next_function_start(
+            source,
+            function_end(source, function_start)
+        )
+    }
+
+    # `) fn(` is the trailing form and nothing else in this profile's grammar.
+    # A named declaration is `fn` and an identifier, so requiring `(` after
+    # `fn` leaves `call()` followed by `fn next(...)` alone.
+    let mut scan = skip_trivia(source, 0)
+    while scan < len(source) {
+        if token_text(source, scan) == ")" {
+            let keyword_at = skip_trivia(source, token_end(source, scan))
+            if keyword_at < len(source) && token_text(source, keyword_at) == "fn" {
+                let parameters = skip_trivia(source, token_end(source, keyword_at))
+                if parameters < len(source) && token_text(source, parameters) == "(" {
+                    return call_argument_surface_refusal(
+                        "a trailing lambda",
+                        keyword_at
+                    )
+                }
+            }
+        }
+        scan = skip_trivia(source, token_end(source, scan))
+    }
+
+    return ""
+}
+
 fn parse_program(source: Text) -> Text {
+    # Before every other check, because it is the only one that can name the
+    # form the author actually wrote. Once a declaration external label has
+    # been read as a type, every later diagnostic is about a program nobody
+    # wrote.
+    let surface_check = validate_call_argument_surface(source)
+    if starts_with(surface_check, "error[") {
+        return surface_check
+    }
     # Const generic surface (#916). Both checks run before any declaration is
     # recorded, so a refused source never reaches layout, IR, or an artifact.
     let const_argument_check = validate_const_arguments(source)
@@ -2550,7 +2685,7 @@ fn parse_program(source: Text) -> Text {
             if constant_close < 0 {
                 let after_let = skip_trivia(source, token_end(source, cursor))
                 if token_text(source, after_let) == "mut" {
-                    return "error[E2S160]: module constant `" +
+                    return "error[E2S161]: module constant `" +
                     token_text(
                         source,
                         skip_trivia(source, token_end(source, after_let))
@@ -2558,18 +2693,18 @@ fn parse_program(source: Text) -> Text {
                     "` cannot be `mut`; a top-level `let` is immutable at byte " +
                     to_text(cursor)
                 }
-                return "error[E2S158]: module constant must be `let NAME = " +
+                return "error[E2S159]: module constant must be `let NAME = " +
                 "<integer literal>` at byte " + to_text(cursor)
             }
             let constant = constant_name(source, cursor)
             if constant_declaration_count(source, constant) > 1 {
-                return "error[E2S159]: duplicate module constant `" +
+                return "error[E2S160]: duplicate module constant `" +
                 constant + "` at byte " + to_text(cursor)
             }
             if contains(declared_types, "|" + constant + "|") ||
                contains(declared_constructors, "|" + constant + "|") ||
                function_arity(source, constant) >= 0 {
-                return "error[E2S158]: module constant `" + constant +
+                return "error[E2S159]: module constant `" + constant +
                 "` conflicts with a declaration of the same name at byte " +
                 to_text(cursor)
             }

@@ -4,7 +4,7 @@
 - Opened: 2026-08-02
 - Status: proposed
 
-Proposal for [#569](https://github.com/hjosugi/kofun/issues/569). Review is
+Proposal for [#569](https://github.com/kofun-lang/kofun/issues/569). Review is
 scheduled to close on 2026-08-16, the ledger's 14-day minimum. This document
 specifies target semantics only. It does not claim that the compiler,
 runtime, standard library, package tooling, or documentation generator

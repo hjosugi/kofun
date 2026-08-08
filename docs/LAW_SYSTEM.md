@@ -3,7 +3,7 @@
 ## Status
 
 This document is the accepted target design for issue
-[#551](https://github.com/hjosugi/kofun/issues/551). The active compiler does
+[#551](https://github.com/kofun-lang/kofun/issues/551). The active compiler does
 **not** parse, type-check, evaluate, or emit evidence for this design.
 `./bin/kofun check` currently rejects the checked-in `law monad` examples with
 `E2S02`; no counterexample is computed and no law result participates in a
@@ -367,7 +367,7 @@ and it is not an input to the reusable evaluation result.
 
 ## What the level above `proven-finite` would cost
 
-Recorded from [#558](https://github.com/hjosugi/kofun/issues/558). This section
+Recorded from [#558](https://github.com/kofun-lang/kofun/issues/558). This section
 exists because `proven` is deliberately unreachable today, and the reason has
 to be a measured one rather than a shrug. Every figure below is from a paper
 read directly unless marked otherwise.

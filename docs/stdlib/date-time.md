@@ -3,14 +3,24 @@
 ## Status
 
 This document is the accepted contract for GitHub issue
-[#639](https://github.com/hjosugi/kofun/issues/639). The bounded portable
-producer in `stdlib/date_time` now executes the minimum value shapes, typed
-failures, checked addition, duration normalization, and canonical RFC 3339 UTC
-parsing required by #846. It is not the complete public library:
-`stdlib/linux_x86_64/time.kofun` and `stdlib/clock` remain the syscall-level
-seed, and `clock_gettime` is not evidence of calendar or time-zone support.
-Wider implementation remains split into core calendar arithmetic and RFC 3339
-(#645), explicit clock adapters (#647), and versioned time-zone data (#648).
+[#639](https://github.com/kofun-lang/kofun/issues/639). The portable core in
+`stdlib/date_time` now executes the value shapes, typed failures, checked
+addition/subtraction/multiplication, duration normalization, proleptic
+Gregorian day arithmetic in both directions, fixed-offset to instant mapping,
+and the strict RFC 3339 UTC accept/reject matrix required by #645. It is not
+the complete public library: `stdlib/linux_x86_64/time.kofun` and
+`stdlib/clock` remain the syscall-level seed, and `clock_gettime` is not
+evidence of calendar or time-zone support.
+
+Versioned serialization and the reference/backend differential corpus have
+since landed as well, so the portable half of this contract is executable in
+full. Explicit clock adapters (#647) and versioned time-zone data (#648) remain
+separately owned.
+
+Serialization spells its identity in the text — `posix-v1:<seconds>.<nine
+digits>` and `gregorian-v1:YYYY-MM-DD` — and the grammar is canonical: one
+value has one text, so `+5`, `05`, `-0`, and a fraction of any width other than
+nine are refused rather than normalized.
 
 Under the standard-library charter: civil types belong to the **portable
 standard library**, clock capabilities are **platform adapters**, and
@@ -124,6 +134,11 @@ scheduling/cron, network time synchronization, and leap-second arithmetic.
 | Check | Artifact | Expected result |
 |---|---|---|
 | Contract review | this document | every type, range, conversion, failure explicit |
+| Portable core | `sh stdlib/date_time/tests/verify.sh` | centuries, month boundaries, civil round-trip, checked arithmetic bounds, offset-to-instant, and the RFC 3339 accept/reject matrix pass on exact goldens |
+| Separated types | same gate | a `Duration` passed where an `Instant` is required is refused with `E2S32` |
+| No ambient access | same gate | the generated C11 calls no host clock, zone, or locale routine |
+| Serialization | same gate | both identities round-trip, and noncanonical spellings are refused rather than normalized |
+| Independent agreement | same gate | `stdlib/date_time/tests/reference.mjs` and the Stage 2 C11 artifact are byte-identical across the full corpus |
 | Golden corpus | #645 fixtures | deterministic results, host-independent |
 | Clock adapters | `sh tests/stdlib/clock-adapters/check.sh` | distinct monotonic/system identities, affine handles, deterministic fake time and waiters; no host clock read |
 | Linux clock integration | `sh tests/stdlib/clock-adapters/check-linux-x86_64.sh` | Linux `timespec` units, raw `-EINVAL`, and zero-duration sleep match the adapter boundary |

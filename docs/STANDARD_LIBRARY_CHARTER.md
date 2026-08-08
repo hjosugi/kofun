@@ -1,7 +1,7 @@
 # Standard library charter
 
 Status: accepted policy for GitHub issue
-[#636](https://github.com/hjosugi/kofun/issues/636). This document decides what
+[#636](https://github.com/kofun-lang/kofun/issues/636). This document decides what
 ships, who owns it, and how it is versioned. It does **not** claim that every
 capability below is implemented — the matrix says which are, and the checker
 refuses a matrix that overstates.

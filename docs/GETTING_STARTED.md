@@ -52,7 +52,7 @@ verified.
 ## 2. Get the repository
 
 ```sh
-git clone https://github.com/hjosugi/kofun.git
+git clone https://github.com/kofun-lang/kofun.git
 cd kofun
 git status --short
 ```
@@ -240,7 +240,7 @@ test command mapped to each repository area.
 ## 7. Run the documentation site
 
 The official website lives in
-[`hjosugi/kofun-site`](https://github.com/hjosugi/kofun-site), not here. It is a
+[`kofun-lang/kofun-site`](https://github.com/kofun-lang/kofun-site), not here. It is a
 Next.js application that checks this repository out as a submodule and renders
 selected Markdown from it at build time. This repository needs no npm
 toolchain: `task verify` never touches one.
@@ -248,7 +248,7 @@ toolchain: `task verify` never touches one.
 To run it:
 
 ```sh
-git clone https://github.com/hjosugi/kofun-site
+git clone https://github.com/kofun-lang/kofun-site
 cd kofun-site
 git submodule update --init
 npm ci
@@ -272,7 +272,7 @@ A documentation-only first contribution is a good way to learn the gates:
 2. edit the authoritative Markdown under `docs/`;
 3. run the `spec/*/check.sh` that reads it, if any, then `task verify`;
 4. if it should become a first-class documentation page, add it to
-   `app/docs/docs-manifest.ts` in `hjosugi/kofun-site` and run `npm run
+   `app/docs/docs-manifest.ts` in `kofun-lang/kofun-site` and run `npm run
    test:docs` there;
 5. inspect `git diff --check` and `git status --short`; and
 6. commit only the intended files.
@@ -316,7 +316,7 @@ or timing that becomes invalid under the repository's parallel verification.
 
 The site copies `docs/tour/` at build time, so a stale copy means the site was
 built against an older submodule pointer. Change the tour here, run `make
-tour`, then advance the submodule in `hjosugi/kofun-site`.
+tour`, then advance the submodule in `kofun-lang/kofun-site`.
 
 ### A diagnostic changed unexpectedly
 

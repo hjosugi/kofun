@@ -34,7 +34,7 @@ const MUTATIONS = {
         blame: 'DD-013',
         apply(ledger) {
             find(ledger, 'DD-013').implementation = {
-                change: 'https://github.com/hjosugi/kofun/issues/687',
+                change: 'https://github.com/kofun-lang/kofun/issues/687',
                 enablement: 'Enabled everywhere.',
                 gate: 'task verify',
                 claims: ['checked-int64-contract'],

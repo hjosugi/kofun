@@ -11,7 +11,7 @@ program          = separators, { declaration, separators }, EOF ;
    Stage 2 implements one shape of it — `let NAME = <integer literal>`,
    immutable, `Int`, internal to its compilation unit. Every other module-level
    `let_stmt` the production spells, including `own`, `mut`, a type annotation
-   and a non-literal initializer, is refused by name (`E2S158`-`E2S160`) rather
+   and a non-literal initializer, is refused by name (`E2S159`-`E2S161`) rather
    than derived. So an accepted program is a strict subset of what this
    production admits at program level, and the gap is a slice boundary owned by
    #1008, not a drift. `tests/module-constants/check.sh` pins both halves. *)
