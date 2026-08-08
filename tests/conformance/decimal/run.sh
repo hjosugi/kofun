@@ -204,7 +204,7 @@ grep -qF 'no static scale safety' "$ROOT/docs/DECIMAL.md" ||
 # The implementation side. Slice 5 exposes scale only as an explicit runtime
 # argument. It must not publish either a fake Fixed[scale] guarantee or the old
 # Int64-significand placeholder beside the compiler-native Decimal type.
-if grep -nE '^type (Decimal|Fixed)(\[[^]]+\])?[[:space:]]*=' \
+if grep -nE '^[[:space:]]*((pub|internal|private)[[:space:]]+)?type[[:space:]]+(Decimal|Fixed)(\[[^]]+\])?[[:space:]]*=' \
     "$ROOT/stdlib/decimal/decimal.kofun" >/dev/null 2>&1
 then
     fail "stdlib Decimal source redeclares Decimal or implements a Fixed value"
