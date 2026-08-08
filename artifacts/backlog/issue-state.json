@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 63,
+  "open_issues": 62,
   "issues": [
     {
       "number": 26,
@@ -429,45 +429,25 @@
       ]
     },
     {
-      "number": 584,
-      "title": "Visibility tooling: prevent macro, LSP, and sidecar access bypasses",
+      "number": 585,
+      "title": "Visibility stabilization: document API changes and migration",
       "state_labels": [
         "needs-detail"
       ],
       "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "0ba1682a605f31ce54e23b7d37edadfd80a79f5e",
-        "2d54aeb7c705ee69c770b6a8d3a9f0383b833c0c",
-        "cbaa8721f21f2eb5fdead71f35740faaac3fabd8",
-        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
+        "a362295356d5ddbfa6d0d3d7216126a25ae8c801"
       ],
       "claims": [
         {
-          "agent_id": "codex-584-generated-meta-refinement-20260808",
+          "agent_id": "codex-585-unblock-audit-20260808",
           "status": "active"
         },
         {
-          "agent_id": "codex-584-generated-meta-refinement-20260808",
+          "agent_id": "codex-585-unblock-audit-20260808",
           "status": "released"
         }
-      ]
-    },
-    {
-      "number": 585,
-      "title": "Visibility stabilization: document API changes and migration",
-      "state_labels": [
-        "blocked"
-      ],
-      "state_line": "blocked",
-      "blocked_by": [
-        584,
-        1033,
-        1034,
-        1035
-      ],
-      "evidence_commits": [
-        "bbb6b0ffee24952016394dc6352499a89ec3e938"
       ]
     },
     {
@@ -864,6 +844,10 @@
         {
           "agent_id": "codex-1079-batch-integration-20260808",
           "status": "released"
+        },
+        {
+          "agent_id": "codex-1079-batch-integration-20260808",
+          "status": "released"
         }
       ]
     },
@@ -882,6 +866,10 @@
         {
           "agent_id": "codex-637-live-stage2-discovery-20260808",
           "status": "active"
+        },
+        {
+          "agent_id": "codex-637-live-stage2-discovery-20260808",
+          "status": "pr-open"
         },
         {
           "agent_id": "codex-637-live-stage2-discovery-20260808",
