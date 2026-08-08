@@ -177,6 +177,9 @@ int main(int argc, char **argv) {
     size_t first_length;
     size_t second_length;
     KofunStage2DiscoveryCandidate *answer;
+    KofunStage2DiscoveryCandidate *count;
+    KofunStage2DiscoveryCandidate *scan;
+    KofunStage2DiscoveryCandidate *double_value;
     KofunStage2InterfaceVisibility saved_visibility;
     KofunStage2DiscoveryCandidateKind saved_kind;
     KofunSemanticStatus saved_status;
@@ -321,11 +324,31 @@ int main(int argc, char **argv) {
         fail("non-analyzed source buffer was accepted");
     }
     answer = candidate_named(&analysis, "answer");
-    if (answer == NULL) {
+    count = candidate_named(&analysis, "Count");
+    scan = candidate_named(&analysis, "scan");
+    double_value = candidate_named(&analysis, "double");
+    if (answer == NULL || count == NULL || scan == NULL ||
+        double_value == NULL) {
         free(first);
         free(second);
         free(source);
-        fail("fixture has no answer candidate");
+        fail("fixture is missing a required operation candidate");
+    }
+    if (count->kind != KOFUN_STAGE2_DISCOVERY_CONSTRUCTOR ||
+        count->status != KOFUN_SEMANTIC_VALIDATED ||
+        strcmp(count->signature, "Int -> LiveChoice") != 0) {
+        free(first);
+        free(second);
+        free(source);
+        fail("unary Int constructor is not an exact validated candidate");
+    }
+    if (scan->status != KOFUN_SEMANTIC_PROVISIONAL ||
+        double_value->status != KOFUN_SEMANTIC_PROVISIONAL ||
+        scan->signature[0] != '\0' || double_value->signature[0] != '\0') {
+        free(first);
+        free(second);
+        free(source);
+        fail("unrelated incomplete function facts were upgraded");
     }
     require_unterminated_refused(
         &analysis,

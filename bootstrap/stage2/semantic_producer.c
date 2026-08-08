@@ -4000,7 +4000,15 @@ static bool producer_build_discovery_snapshot(
                 "%s -> %s",
                 constructor->payload_type,
                 constructor->result_type);
-        status = constructor->payload_count == 0u ?
+        /*
+         * The current compiler-owned IR fully fixes a nullary constructor and
+         * the one supported builtin payload shape.  Other payload spellings
+         * still need an identity-bearing dependency closure, so keep them
+         * provisional instead of validating a rendered signature.
+         */
+        status = constructor->payload_count == 0u ||
+                (constructor->payload_count == 1u &&
+                 strcmp(constructor->payload_type, "Int") == 0) ?
             KOFUN_SEMANTIC_VALIDATED : KOFUN_SEMANTIC_PROVISIONAL;
         if (written < 0 || (size_t)written >= sizeof(signature) ||
             constructor->payload_count > 1u ||

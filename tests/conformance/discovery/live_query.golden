@@ -4,7 +4,7 @@ source-sha256=aede30ee5317620c21fa2a94729606d9d7a96bfbca039feccbc9564da1338f66
 generation=19
 expression=122..128
 expressions=5 candidates=5 hidden=yes
-result-bytes=5774 repeated=identical
+result-bytes=5745 repeated=identical
 stale=stale-source span=invalid-position source-buffer=refused
 invalid-visibility-kind-status=hidden
 unterminated-snapshot-text=refused
@@ -127,7 +127,7 @@ unterminated-snapshot-text=refused
       "visibility": "pub"
     },
     {
-      "availability": "unavailable",
+      "availability": "callable",
       "dependencies": [],
       "diagnostic_ids": [],
       "display_name": "Count",
@@ -146,18 +146,16 @@ unterminated-snapshot-text=refused
           "kind": "ModuleId",
           "value": "5db3d8a33be4661e3887b6197d5ccce073f37e0e3a103a458e6f9a8a7369afd9"
         },
-        "status": "provisional",
+        "status": "validated",
         "trait": null,
         "trait_identity": null
       },
       "qualified_name": "synthetic-root.Count",
       "receiver_mode": "none",
-      "rejection_reasons": [
-        "incomplete-analysis"
-      ],
-      "signature": null,
+      "rejection_reasons": [],
+      "signature": "Int -> LiveChoice",
       "source": null,
-      "status": "provisional",
+      "status": "validated",
       "visibility": "pub"
     },
     {

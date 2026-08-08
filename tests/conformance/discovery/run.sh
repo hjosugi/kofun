@@ -136,8 +136,10 @@ provider_golden operations operations
 # current producer has no committed TypeId for that recovery-profile
 # occurrence, so the pinned answer carries a provisional `List[Text]` display
 # rather than inventing a validated identity. Direct function/constructor rows
-# still carry the producer's stable SymbolIds, while the private function
-# becomes only an aggregate omission.
+# still carry the producer's stable SymbolIds. The exact unary `Int`
+# constructor row is validated from committed compiler IR; unrelated
+# signature/effect-incomplete functions remain provisional, and the private
+# function becomes only an aggregate omission.
 "$WORK/live-query-test" "$CASES/live_list_text.kofun" \
     >"$WORK/live_query.observed" 2>&1
 cmp "$CASES/live_query.golden" "$WORK/live_query.observed" ||
