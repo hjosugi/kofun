@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 29,
+  "open_issues": 27,
   "issues": [
     {
       "number": 26,
@@ -202,78 +202,6 @@
         {
           "agent_id": "codex-274-b6-audit-20260808",
           "status": "released"
-        }
-      ]
-    },
-    {
-      "number": 314,
-      "title": "Null coalescing: execute Optional(Int) ?? Int lazily",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [
-        70,
-        120,
-        312,
-        919,
-        924
-      ],
-      "evidence_commits": [
-        "bcdab5d2d5edd0ad0af8ad65505c54c52a1fc4a3"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-314-readiness-audit-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-314-readiness-audit-20260808",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-batch20-ledger-314-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-batch20-ledger-314-20260808",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-314-closeability-audit-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-314-closeability-audit-20260808",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-314-optional-coalescing-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-314-optional-coalescing-20260808",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-314-optional-coalescing-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-314-optional-coalescing-20260808",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-314-optional-coalescing-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-314-optional-coalescing-20260808",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-root-314-integrate-20260808",
-          "status": "active"
         }
       ]
     },
@@ -794,68 +722,6 @@
         {
           "agent_id": "codex-refresh-995-20260808",
           "status": "released"
-        }
-      ]
-    },
-    {
-      "number": 1032,
-      "title": "Self-host driver diagnostics: give A1's refusal a code and a span",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "70ff1b2b35fbdf1cc3084b96d283bc07e84f35de"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-1032-readiness-audit-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-1032-readiness-audit-20260808",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-1032-debt-retire-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-1032-debt-retire-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-1032-debt-retire-20260808",
-          "status": "pr-open"
-        },
-        {
-          "agent_id": "codex-1032-debt-retire-20260808",
-          "status": "pr-open"
-        },
-        {
-          "agent_id": "codex-1032-debt-retire-20260808",
-          "status": "merged"
-        },
-        {
-          "agent_id": "codex-1032-a1-diagnostics-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-1032-a1-diagnostics-20260808",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-root-1032-integrate-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-root-1032-integrate-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-root-1032-integrate-20260808",
-          "status": "pr-open"
         }
       ]
     }
