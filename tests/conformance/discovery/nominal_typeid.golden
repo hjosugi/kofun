@@ -1,0 +1,5 @@
+nominal-type-id=4f41a9bb1b7ad8e4f903682bc0daad3dadaab838d84492beb6542969c96391a1
+type=validated display=Choice identity=TypeId
+source-span-shift=identical
+unrelated-rename-reorder=identical
+query=validated-type exact-value=present

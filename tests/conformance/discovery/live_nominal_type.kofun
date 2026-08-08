@@ -1,0 +1,15 @@
+pub type Choice =
+    | First
+    | Second(value: Int)
+
+pub fn exposed(value: Choice) -> Choice {
+    return value
+}
+
+pub fn unrelated_alpha() -> Int {
+    return 7
+}
+
+fn main() {
+    print(0)
+}

@@ -54,6 +54,18 @@ fail() {
     "$CASES/live_query_test.c" \
     -o "$WORK/live-query-test"
 
+"$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
+    -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
+    -I"$ROOT/bootstrap/stage2" \
+    "$ROOT/bootstrap/stage2/semantic_producer.c" \
+    "$ROOT/bootstrap/stage2/semantic_events.c" \
+    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$ROOT/bootstrap/stage2/discovery_v1.c" \
+    "$ROOT/bootstrap/stage2/discovery_provider.c" \
+    "$ROOT/bootstrap/stage2/discovery_query.c" \
+    "$CASES/nominal_typeid_test.c" \
+    -o "$WORK/nominal-typeid-test"
+
 golden() {
     name=$1
     shift
@@ -132,6 +144,13 @@ cmp "$CASES/live_query.golden" "$WORK/live_query.observed" ||
     fail "live Stage 2 discovery observation changed"
 printf '%s\n' "PASS: live-query"
 
+"$WORK/nominal-typeid-test" "$CASES/live_nominal_type.kofun" \
+    "$CASES/live_nominal_type_unrelated_edit.kofun" \
+    >"$WORK/nominal_typeid.observed" 2>&1
+cmp "$CASES/nominal_typeid.golden" "$WORK/nominal_typeid.observed" ||
+    fail "nominal TypeId observation changed"
+printf '%s\n' "PASS: nominal-typeid"
+
 # Discovery is a tooling-only library.  The release Stage 2 sources must still
 # match their pinned pre-adapter bytes, and enabling a no-op discovery-disabled
 # build flag must produce the exact same compiler artifact.
@@ -191,12 +210,33 @@ then
         "$ROOT/bootstrap/stage2/discovery_query.c" \
         "$CASES/live_query_test.c" \
         -o "$WORK/live-query-sanitized"
+    "$CC" -std=c11 -O1 -g -Wall -Wextra -Werror -pedantic \
+        -fno-omit-frame-pointer -fsanitize=address,undefined \
+        -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
+        -I"$ROOT/bootstrap/stage2" \
+        "$ROOT/bootstrap/stage2/semantic_producer.c" \
+        "$ROOT/bootstrap/stage2/semantic_events.c" \
+        "$ROOT/bootstrap/stage2/sha256.c" \
+        "$ROOT/bootstrap/stage2/discovery_v1.c" \
+        "$ROOT/bootstrap/stage2/discovery_provider.c" \
+        "$ROOT/bootstrap/stage2/discovery_query.c" \
+        "$CASES/nominal_typeid_test.c" \
+        -o "$WORK/nominal-typeid-sanitized"
     ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
     UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
         "$WORK/live-query-sanitized" "$CASES/live_list_text.kofun" \
         >"$WORK/live_query.sanitized" 2>&1
     cmp "$CASES/live_query.golden" "$WORK/live_query.sanitized" ||
         fail "sanitized live Stage 2 discovery observation changed"
+    ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+    UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+        "$WORK/nominal-typeid-sanitized" \
+        "$CASES/live_nominal_type.kofun" \
+        "$CASES/live_nominal_type_unrelated_edit.kofun" \
+        >"$WORK/nominal_typeid.sanitized" 2>&1
+    cmp "$CASES/nominal_typeid.golden" \
+        "$WORK/nominal_typeid.sanitized" ||
+        fail "sanitized nominal TypeId observation changed"
     printf '%s\n' "PASS: AddressSanitizer and UndefinedBehaviorSanitizer"
 else
     printf '%s\n' "SKIP: sanitizers unavailable"

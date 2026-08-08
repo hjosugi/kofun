@@ -44,9 +44,11 @@ typedef struct {
     KofunSemanticNode value;
     KofunSemanticId dependencies[KOFUN_SEMANTIC_MAX_RELATIONS];
     KofunSemanticId diagnostic;
+    KofunSemanticId discovery_type_identity;
     char name[PRODUCER_IDENTIFIER_CAPACITY];
     char type[PRODUCER_IDENTIFIER_CAPACITY];
     bool is_declaration;
+    bool has_discovery_type_identity;
 } ProducerNode;
 
 typedef struct {
@@ -124,8 +126,10 @@ typedef struct {
     char ownership[32];
     KofunSemanticId node;
     KofunSemanticId binding;
+    KofunSemanticId type_identity;
     int64_t function_start;
     int64_t declaration_start;
+    bool has_type_identity;
 } ProducerBinding;
 
 typedef struct {
@@ -1752,6 +1756,8 @@ static bool producer_collect_scopes_and_bindings(Producer *producer) {
             producer,
             start
         );
+        ProducerBinding *binding = NULL;
+        ProducerType *nominal_type = NULL;
         KofunSemanticNodeKind node_kind =
             strcmp(scope_kind, "parameters") == 0 ?
                 KOFUN_SEMANTIC_NODE_PARAMETER :
@@ -1767,8 +1773,8 @@ static bool producer_collect_scopes_and_bindings(Producer *producer) {
             strlen(name) < PRODUCER_IDENTIFIER_CAPACITY &&
             strlen(type_name) < PRODUCER_IDENTIFIER_CAPACITY &&
             strlen(ownership) < 32u;
-        if (!valid ||
-            producer_add_hir_binding(
+        if (valid) {
+            binding = producer_add_hir_binding(
                 producer,
                 function,
                 binding_id,
@@ -1777,7 +1783,10 @@ static bool producer_collect_scopes_and_bindings(Producer *producer) {
                 ownership,
                 start,
                 end,
-                node_kind) == NULL) {
+                node_kind
+            );
+        }
+        if (!valid || binding == NULL) {
             free(binding_id);
             free(scope_id);
             free(name);
@@ -1787,6 +1796,35 @@ static bool producer_collect_scopes_and_bindings(Producer *producer) {
             free(end_text);
             free(scope_kind);
             return false;
+        }
+        nominal_type = producer_find_type(producer, type_name);
+        if (nominal_type != NULL &&
+            nominal_type->kind == KOFUN_STAGE2_INTERFACE_ADT) {
+            ProducerNode *binding_node = producer_find_node_by_id(
+                producer,
+                &binding->node
+            );
+            if (binding_node == NULL) {
+                free(binding_id);
+                free(scope_id);
+                free(name);
+                free(type_name);
+                free(ownership);
+                free(start_text);
+                free(end_text);
+                free(scope_kind);
+                return false;
+            }
+            /*
+             * The semantic identity record stays uniquely owned by the type
+             * declaration. Discovery copies that compiler-issued value into
+             * its caller-owned snapshot; emitting a second identity record
+             * for the binding would give one stable identity two owners.
+             */
+            binding->has_type_identity = true;
+            binding->type_identity = nominal_type->symbol;
+            binding_node->has_discovery_type_identity = true;
+            binding_node->discovery_type_identity = nominal_type->symbol;
         }
         free(binding_id);
         free(scope_id);
@@ -2037,6 +2075,10 @@ static bool producer_collect_references(Producer *producer) {
             free(end_text);
             free(binding_id);
             return false;
+        }
+        if (binding->has_type_identity) {
+            use->has_discovery_type_identity = true;
+            use->discovery_type_identity = binding->type_identity;
         }
         if (!producer_node_add_dependency(use, &binding->node) ||
             !producer_fact_add_dependency(type_fact, &binding->node)) {
@@ -3782,14 +3824,23 @@ static bool producer_build_discovery_snapshot(
         expression->node.dependency_count = 0u;
         expression->node.diagnostic_ids = NULL;
         expression->node.diagnostic_count = 0u;
-        type_identity = producer_find_identity(
-            producer,
-            &node->value.node_id,
-            KOFUN_SEMANTIC_ID_TYPE
-        );
-        if (type_identity != NULL) {
+        if (node->has_discovery_type_identity) {
             expression->has_type_identity = true;
-            expression->type_identity = type_identity->value;
+            expression->type_identity.owner_node_id = node->value.node_id;
+            expression->type_identity.kind = KOFUN_SEMANTIC_ID_TYPE;
+            expression->type_identity.status = KOFUN_SEMANTIC_VALIDATED;
+            expression->type_identity.value =
+                node->discovery_type_identity;
+        } else {
+            type_identity = producer_find_identity(
+                producer,
+                &node->value.node_id,
+                KOFUN_SEMANTIC_ID_TYPE
+            );
+            if (type_identity != NULL) {
+                expression->has_type_identity = true;
+                expression->type_identity = type_identity->value;
+            }
         }
         type_fact = producer_find_fact(
             producer,
