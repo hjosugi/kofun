@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 59,
+  "open_issues": 61,
   "issues": [
     {
       "number": 26,
@@ -207,7 +207,17 @@
       ],
       "state_line": "needs-detail",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [],
+      "claims": [
+        {
+          "agent_id": "codex-289-module-constant-forward-refine-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-289-module-constant-forward-refine-20260808",
+          "status": "released"
+        }
+      ]
     },
     {
       "number": 298,
@@ -218,19 +228,54 @@
       "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "2c10cf6a14b5a928c257c3ce6656e187c886bedf"
+        "2c10cf6a14b5a928c257c3ce6656e187c886bedf",
+        "c20a03d69ebc7f65ce83ef284869825184960b7a"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-298-owner-refresh-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-298-owner-refresh-20260808",
+          "status": "released"
+        }
       ]
     },
     {
       "number": 314,
       "title": "Null coalescing: execute Optional(Int) ?? Int lazily",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
-      "blocked_by": [],
+      "state_line": "ready",
+      "blocked_by": [
+        70,
+        120,
+        312,
+        919,
+        924
+      ],
       "evidence_commits": [
-        "f37c64f388a45bbe4108c467c49257038f3b2ae7"
+        "c20a03d69ebc7f65ce83ef284869825184960b7a"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-314-readiness-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-314-readiness-audit-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-batch20-ledger-314-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-batch20-ledger-314-20260808",
+          "status": "released"
+        }
       ]
     },
     {
@@ -260,8 +305,30 @@
         "blocked"
       ],
       "state_line": "blocked",
-      "blocked_by": [],
-      "evidence_commits": []
+      "blocked_by": [
+        922
+      ],
+      "evidence_commits": [
+        "c20a03d69ebc7f65ce83ef284869825184960b7a"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-533-blocker-metadata-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-533-blocker-metadata-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-batch20-ledger-533-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-batch20-ledger-533-20260808",
+          "status": "released"
+        }
+      ]
     },
     {
       "number": 536,
@@ -321,7 +388,19 @@
       ],
       "state_line": "needs-detail",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [
+        "c20a03d69ebc7f65ce83ef284869825184960b7a"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-543-current-boundary-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-543-current-boundary-20260808",
+          "status": "released"
+        }
+      ]
     },
     {
       "number": 554,
@@ -458,7 +537,19 @@
       ],
       "state_line": "needs-detail",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [
+        "c20a03d69ebc7f65ce83ef284869825184960b7a"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-624-topology-refresh-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-624-topology-refresh-20260808",
+          "status": "released"
+        }
+      ]
     },
     {
       "number": 637,
@@ -508,7 +599,17 @@
       "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "bbb6b0ffee24952016394dc6352499a89ec3e938"
+        "c20a03d69ebc7f65ce83ef284869825184960b7a"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-audit-710-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-audit-710-20260808",
+          "status": "released"
+        }
       ]
     },
     {
@@ -572,7 +673,19 @@
       "blocked_by": [],
       "evidence_commits": [
         "0a209468da3698a31cf6177b863284fd04c9a374",
-        "b783e7697d3791ce26def31e7b58a51367c83036"
+        "1be32d5b9b7cdd9dbcb4532b6c1b094ec5b5f779",
+        "b783e7697d3791ce26def31e7b58a51367c83036",
+        "c20a03d69ebc7f65ce83ef284869825184960b7a"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-868-boundary-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-868-boundary-audit-20260808",
+          "status": "released"
+        }
       ]
     },
     {
@@ -740,6 +853,10 @@
         {
           "agent_id": "codex-922-debt-retire-20260808",
           "status": "merged"
+        },
+        {
+          "agent_id": "codex-922-lsp-move-hover-20260808",
+          "status": "active"
         }
       ]
     },
@@ -830,6 +947,42 @@
         {
           "agent_id": "codex-1032-debt-retire-20260808",
           "status": "merged"
+        }
+      ]
+    },
+    {
+      "number": 1088,
+      "title": "Module constants: pin a later declaration referenced by an earlier function",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "c20a03d69ebc7f65ce83ef284869825184960b7a"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-1088-module-constant-forward-20260808",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "number": 1089,
+      "title": "Docs: refresh the Optional syntax current-status boundary after #924",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "c20a03d69ebc7f65ce83ef284869825184960b7a"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-1089-optional-syntax-doc-20260808",
+          "status": "active"
         }
       ]
     }

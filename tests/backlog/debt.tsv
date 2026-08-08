@@ -48,12 +48,10 @@
 #                     `Blocked by: #N` into the body; the row then retires
 #                     itself, because an issue that gains the line stops
 #                     reaching that branch and its row fails as unused.
-#                     Measured 2026-08-07 across 28 blocked issues: the rule
-#                     reached 4. Of the 24 it missed, three name a blocker that
-#                     has since closed — #314, whose own body says its unblock
-#                     condition is fulfilled, plus #915 and #576 — which is the
-#                     class this ledger exists to keep countable, arriving
-#                     through the one door the gate did not watch.
+#                     Re-measured 2026-08-08 after the live issue audit. #314
+#                     now agrees on `ready`, and #533 now names open blocker
+#                     #922, so both stale exemptions were retired. Remaining
+#                     rows continue to name unresolved issues explicitly.
 #
 # capability-blocker  an open issue blocked on something no issue number can
 #                     express, so it is exempt rather than owed a fix. #26
@@ -94,8 +92,6 @@
 unverifiable-stamp	738	d1f58a6a9e20764b25ee28773df5355512213dfa	Time-series forecasting research: stamp names a commit on no branch
 stateless-tracker	281	-	Position paper: what replacing C and Rust actually requires
 capability-blocker	26	-	wasm32 target: extend the bounded arithmetic and browser c
-unnamed-blocker	314	-	Null coalescing: execute Optional(Int) ?? Int lazily
-unnamed-blocker	533	-	Show where ownership goes: LSP hover, inlay hints, and dia
 capability-blocker	554	-	Stage 2: lower contiguous payload-free enum matches to C s
 unnamed-blocker	569	-	RFC: define affine authority capabilities for environment 
 capability-blocker	570	-	Austral: propagate ownership kind structurally through gen
