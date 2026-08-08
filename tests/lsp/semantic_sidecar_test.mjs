@@ -91,6 +91,8 @@ async function main() {
   const referencePosition = byteToPosition(completeSnapshot, 61);
   const completeHover = hoverAt(completeSnapshot, referencePosition);
   assert.match(completeHover.contents.value, /type: MaybeInt/);
+  assert.doesNotMatch(completeHover.contents.value, /last move:/,
+    "a binding without a linked move diagnostic gained a move line");
   const completeDefinition = definitionAt(completeSnapshot, referencePosition);
   assert.deepEqual(completeDefinition.range, {
     start: byteToPosition(completeSnapshot, 30),
@@ -174,6 +176,41 @@ async function main() {
     metadata(fixtureSource, 43), new AbortController().signal);
   assert.equal(recovered.ok, true, recovered.detail);
   assert.deepEqual(publishDiagnostics(recovered.snapshot), []);
+
+  // The production compiler's use-after-move path, not a hand-built sidecar:
+  // E2S123 owns the use span and carries the original `take` span as related
+  // information. Hover must render that same validated location rather than
+  // reconstructing one from the fallback diagnostic text.
+  const moveFixturePath = path.join(
+    ROOT, "tests/conformance/records/production_use_after_move.kofun");
+  const moveSource = fs.readFileSync(moveFixturePath, "utf8");
+  const moveResult = await analyzeDocument(metadata(moveSource, 44, {
+    uri: "file:///workspace/use-after-move.kofun",
+    logicalPath: "src/use-after-move.kofun",
+  }), new AbortController().signal);
+  assert.equal(moveResult.ok, true, moveResult.detail);
+  const moveDiagnostics = publishDiagnostics(moveResult.snapshot);
+  assert.equal(moveDiagnostics.length, 1);
+  assert.equal(moveDiagnostics[0].code, "E2S123");
+  assert.deepEqual(moveDiagnostics[0].range, {
+    start: { line: 19, character: 11 },
+    end: { line: 19, character: 16 },
+  });
+  assert.deepEqual(moveDiagnostics[0].relatedInformation, [{
+    location: {
+      uri: "file:///workspace/use-after-move.kofun",
+      range: {
+        start: { line: 18, character: 4 },
+        end: { line: 18, character: 14 },
+      },
+    },
+    message: "moved-by-take",
+  }]);
+  const moveHover = hoverAt(
+    moveResult.snapshot, { line: 19, character: 12 });
+  assert.deepEqual(moveHover.range, moveDiagnostics[0].range);
+  assert.match(moveHover.contents.value,
+    /last move: line 19, characters 5-15 \(moved-by-take\)/);
 
   const decodeMilliseconds = [];
   for (let sample = 0; sample < 120; sample += 1) {
