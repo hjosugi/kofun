@@ -76,6 +76,52 @@ dropped record state exists.
 A rejected source produces the diagnostic on stdout, exit status 1, no
 artifact, and nothing on stderr.
 
+## The same ownership rule in the compiler a user runs
+
+The table above is the standalone `bootstrap/stage2/record_frontend.c`, which
+is not linked into `bootstrap/stage2/compiler.c`. Before
+[#946](https://github.com/kofun-lang/kofun/issues/946) none of it reached
+`bin/kofun check`: the production frontend read `take` as a name nobody
+declared and answered `E2S35`.
+
+The canonical `compiler.kofun`/`compiler.c` pair now carries the whole-binding
+slice of that rule, with the wording above rather than a paraphrase of it. The
+`production_*.kofun` fixtures gate it, and are Int-only because the Stage 2
+slice refuses a `Text` field with `E2S32` before ownership is consulted — which
+is why the fixtures beside them cannot be reused.
+
+| Fixture | Result |
+|---|---|
+| `production_take_accepted.kofun` | accepted, lowered, built under `-Werror`, and run |
+| `production_partial_move.kofun` | `E2S122`, the whole `take value.field` statement |
+| `production_double_take.kofun` | `E2S123` *already moved*, both spans whole statements |
+| `production_use_after_move.kofun` | `E2S123` *cannot be used again*, use site primary, move site related |
+| `production_read_parameter.kofun` | `E2S35` — see below |
+
+Three of the standalone frontend's four ownership refusals are reproduced.
+The fourth, `E2S122` for moving a `read` binding, is **not representable** in
+the production frontend: an ownership-mode parameter registers no binding
+there, so `fn peek(read token: Token)` refuses every mention of `token` with
+`E2S35` whether or not a `take` follows. That boundary predates the move rule
+and is older than #946; #922 owns it. `production_read_parameter.kofun` pins it
+so the gap is asserted rather than assumed, and fails the day the mode lands.
+
+Everything else the standalone frontend decides — loops, branches, inferred
+moves, partial-move state, `Text` — stays out of the production rule. A moved
+binding is refused where it is mentioned again in the same function body, in
+source order; nothing about control flow is guessed at.
+
+Compiling all 979 checked-in `.kofun` sources with the compiler before and
+after the rule found **one** difference outside these fixtures, and it is a
+diagnostic rather than a program:
+`tests/conformance/inference/hm-levels/ownership.kofun` is `fn main() { take
+value }`, with no `value` in scope. It used to be refused as
+`E2S35: unknown lexical binding \`take\``, blaming the statement's own keyword;
+it is now refused as `E2S35: unknown lexical binding \`value\``, blaming the
+name that is actually missing. Its owning gate reads that file with
+`bootstrap/stage2/hm_levels_frontend.c` against an `HML006` golden, which is
+unchanged. No accepted program's emitted C, IR, or token tape moved.
+
 Run:
 
 ```sh

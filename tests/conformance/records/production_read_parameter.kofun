@@ -1,0 +1,24 @@
+# The boundary the production move rule does not cross (#946).
+#
+# `move_borrowed.kofun` beside this file asks the standalone
+# `bootstrap/stage2/record_frontend.c` to refuse `take` on a `read` binding, and
+# it answers with E2S122. The compiler a user runs cannot reach that question:
+# an ownership-mode parameter registers no binding at all here, so every
+# mention of `token` is already an unknown lexical binding — with or without a
+# `take` anywhere in the function. This file has no `take` in it, which is the
+# point: the refusal below is about `read`, not about moves.
+#
+# Recorded as a fixture rather than as prose so the day the mode is implemented
+# this gate fails and someone has to decide what the production E2S122 says.
+# #922 owns that.
+type Token = {
+    start: Int,
+}
+
+fn peek(read token: Token) -> Int {
+    return token.start
+}
+
+fn main() -> Int {
+    return 0
+}

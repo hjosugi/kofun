@@ -9194,6 +9194,7 @@ fn build_scope_hir_mode(
                    !pattern_token && !lambda_token &&
                    !list_int_local_type_token(source, cursor) &&
                    !numeric_conversion_head(source, cursor) &&
+                   !move_statement_head(source, cursor) &&
                    !optional_int_null_context(source, cursor) &&
                    !decimal_rounding_mode_name(name) &&
                    name != "print" && name != "_" {
@@ -9910,6 +9911,27 @@ fn lower_body(
         if statement == "par" {
             return "error[E2S154]: scoped parallelism `par` is specified " +
             "but not implemented at byte " + to_text(cursor)
+        }
+        if move_statement_head(source, cursor) {
+            # #946: the whole-binding move statement. `validate_move_uses` has
+            # already refused every use that outlives it, so nothing is left to
+            # check here and nothing is left to run: this slice's values are
+            # Int/Bool nominal records, which have no destructor and no drop,
+            # so a move is a fact about names rather than an operation.
+            #
+            # The binding is still spelled once, as a cast to void. A `let`
+            # that is constructed and then only moved would otherwise be set
+            # and never read, and the gates build the emitted C with
+            # `-Wall -Wextra -Werror`. Without this line the move statement
+            # would compile the program that contains it and fail the one
+            # beside it, which is not a boundary a user could predict.
+            let moved = skip_trivia(source, token_end(source, cursor))
+            let moved_id = hir_use_binding_id(hir, moved)
+            if len(moved_id) > 0 {
+                emitted = emitted + "    (void)k_b" + moved_id + ";\n"
+            }
+            cursor = skip_trivia(source, token_end(source, moved))
+            continue
         }
         if statement == "let" {
             cursor = skip_trivia(source, token_end(source, cursor))
@@ -12074,10 +12096,230 @@ fn count_text_sites(bodies: Text) -> Int {
     return count
 }
 
+# `take <binding>`, the whole-binding move statement (#946).
+#
+# `take` is a contextual word: an ownership mode inside a parameter list, a
+# move statement at the head of one. The scope walk did not know that, and
+# reported the statement's own keyword as a name nobody declared. Measured on
+# the compiler a user runs, before this recognition existed:
+#
+#     $ ./bin/kofun check uam.kofun
+#     error[E2S35]: unknown lexical binding `take` at byte 70
+#
+# So this frontend never reached the ownership rule, and E2S122 and E2S123 —
+# which `bootstrap/stage2/record_frontend.c` has implemented all along — could
+# not be produced by the compiler a user runs. That standalone frontend is a
+# separate program; see docs/COMPILER_ARCHITECTURE.md.
+#
+# The colon separates the two spellings: `take name: Type` is a parameter,
+# `take name` is a move. `take` remains a legal binding name, so anything else
+# following it is left to the ordinary grammar.
+fn move_statement_head(source: Text, cursor: Int) -> Bool {
+    if token_text(source, cursor) != "take" {
+        return false
+    }
+    let target = skip_trivia(source, token_end(source, cursor))
+    if target >= len(source) {
+        return false
+    }
+    if token_kind(source, target) != "identifier" {
+        return false
+    }
+    let after = skip_trivia(source, token_end(source, target))
+    return after >= len(source) || token_text(source, after) != ":"
+}
+
+# True when the `take` whose target begins at `target` names a field rather
+# than the binding: `take value.field`, the partial move v1 refuses.
+fn move_statement_partial(source: Text, target: Int) -> Bool {
+    let after = skip_trivia(source, token_end(source, target))
+    return after < len(source) && token_text(source, after) == "."
+}
+
+# End of the `take` statement whose target begins at `target`. The whole
+# statement is what the move diagnostics underline, so a partial move
+# underlines the field access it refuses rather than stopping at the record.
+fn move_statement_end(source: Text, target: Int) -> Int {
+    if !move_statement_partial(source, target) {
+        return token_end(source, target)
+    }
+    let after = skip_trivia(source, token_end(source, target))
+    let field = skip_trivia(source, token_end(source, after))
+    if field >= len(source) {
+        return token_end(source, after)
+    }
+    return token_end(source, field)
+}
+
+# True when the identifier at `cursor`, whose preceding token began at
+# `previous`, reads the value a binding holds.
+#
+# Two spellings mention a name without reading it: `. name` is a field of some
+# other value, and `name :` introduces one — either a `let` that declares a
+# fresh binding or a labelled argument that names a field. Neither is a use, so
+# neither may be blamed on a move.
+fn move_use_position(source: Text, previous: Int, cursor: Int) -> Bool {
+    if token_kind(source, cursor) != "identifier" {
+        return false
+    }
+    if previous >= 0 && token_text(source, previous) == "." {
+        return false
+    }
+    let next = skip_trivia(source, token_end(source, cursor))
+    return next >= len(source) || token_text(source, next) != ":"
+}
+
+# Whole-binding move analysis for the compiler a user actually runs (#946).
+#
+# The bounded slice this issue scopes: `take <binding>`, the move's own span
+# recorded, and any later mention of that binding refused with the use site
+# primary and the move site named. Loops, branches, and inferred moves stay
+# out — #915 and #922 own those, and a rule that guessed at control flow would
+# refuse programs this one has no business refusing.
+#
+# Conservative in the other direction too: a binding moved on one path and used
+# on another is not proved safe here, it is simply not this slice's subject.
+# `compiler.ensure_move` remains the way to demand the guarantee, and lives in
+# the C seed only.
+#
+# Three of the standalone record frontend's four ownership refusals are
+# reproduced, with its exact wording: partial move, second move, and
+# use-after-move. The fourth, E2S122 for moving a `read` binding, is not
+# representable here — an ownership-mode parameter registers no binding at all,
+# so `fn peek(read token: Token)` already refuses every mention of `token` with
+# E2S35 whether or not a `take` follows. That boundary predates this rule and
+# #922 owns it; `tests/conformance/records/production_read_parameter.kofun`
+# pins it.
+#
+# The walk visits each `take` and then scans forward for the mention that move
+# invalidates, so its findings do not arrive in source order. Keeping the one
+# with the lowest primary span reorders them back: primary spans of distinct
+# statements cannot overlap, so the lowest is the one a statement walk would
+# have reached first — which is what the standalone frontend reports.
+fn validate_move_uses(source: Text) -> Text {
+    let mut function_start = next_function_start(source, 0)
+    while function_start < len(source) {
+        let function_close = function_end(source, function_start)
+        let parameters = parameter_open(source, function_start)
+        let mut parameters_close = -1
+        if parameters >= 0 {
+            parameters_close = balanced_end(source, parameters, "(", ")")
+        }
+        if function_close < 0 || parameters_close < 0 {
+            return "ok"
+        }
+        let mut body = skip_trivia(source, parameters_close)
+        while body < function_close && token_text(source, body) != "{" {
+            body = skip_trivia(source, token_end(source, body))
+        }
+        let mut best_message = ""
+        let mut best_start = 0
+        let mut scan = skip_trivia(source, token_end(source, body))
+        while scan < function_close {
+            if move_statement_head(source, scan) {
+                let target = skip_trivia(source, token_end(source, scan))
+                let move_start = scan
+                let move_end = move_statement_end(source, target)
+                if move_statement_partial(source, target) {
+                    let dot = skip_trivia(source, token_end(source, target))
+                    let field = token_text(
+                        source,
+                        skip_trivia(source, token_end(source, dot))
+                    )
+                    let partial = "error[E2S122]: partial move `take value." +
+                    field + "` is rejected in v1; move the whole record " +
+                    "instead at bytes " + to_text(move_start) + ".." +
+                    to_text(move_end)
+                    if len(best_message) == 0 || move_start < best_start {
+                        best_message = partial
+                        best_start = move_start
+                    }
+                } else {
+                    let moved = token_text(source, target)
+                    let mut previous = -1
+                    let mut use_at = skip_trivia(source, move_end)
+                    while use_at < function_close {
+                        if move_statement_head(source, use_at) {
+                            let again = skip_trivia(
+                                source,
+                                token_end(source, use_at)
+                            )
+                            # A partial move is refused for being partial
+                            # before anything asks whether its record still
+                            # holds a value, so this scan leaves that
+                            # statement to the E2S122 branch above rather
+                            # than claiming it.
+                            if move_statement_partial(source, again) {
+                                break
+                            }
+                            if token_text(source, again) == moved {
+                                let again_end = move_statement_end(
+                                    source,
+                                    again
+                                )
+                                let second = "error[E2S123]: `" + moved +
+                                "` was already moved by `take` at bytes " +
+                                to_text(use_at) + ".." + to_text(again_end) +
+                                "; first moved by `take` at bytes " +
+                                to_text(move_start) + ".." + to_text(move_end)
+                                if len(best_message) == 0 ||
+                                   use_at < best_start {
+                                    best_message = second
+                                    best_start = use_at
+                                }
+                                break
+                            }
+                            previous = again
+                            use_at = skip_trivia(
+                                source,
+                                token_end(source, again)
+                            )
+                        } else if move_use_position(source, previous, use_at) &&
+                                  token_text(source, use_at) == moved {
+                            let use_end = token_end(source, use_at)
+                            let after_move = "error[E2S123]: `" + moved +
+                            "` was moved by `take` and cannot be used again " +
+                            "at bytes " + to_text(use_at) + ".." +
+                            to_text(use_end) + "; moved by `take` at bytes " +
+                            to_text(move_start) + ".." + to_text(move_end)
+                            if len(best_message) == 0 || use_at < best_start {
+                                best_message = after_move
+                                best_start = use_at
+                            }
+                            break
+                        } else {
+                            previous = use_at
+                            use_at = skip_trivia(
+                                source,
+                                token_end(source, use_at)
+                            )
+                        }
+                    }
+                }
+                scan = skip_trivia(source, move_end)
+            } else {
+                scan = skip_trivia(source, token_end(source, scan))
+            }
+        }
+        if len(best_message) > 0 {
+            return best_message
+        }
+        function_start = next_function_start(source, function_close)
+    }
+    return "ok"
+}
+
 fn lower_c_body(source: Text, hir: Text) -> Text {
     let identity_check = validate_struct_identity(source)
     if len(identity_check) > 0 {
         return identity_check
+    }
+    # #946: the move rule runs before every other validator, so a
+    # use-after-move is reported as itself rather than as whatever the
+    # statement it invalidates happens to contain.
+    let move_use_check = validate_move_uses(source)
+    if starts_with(move_use_check, "error[") {
+        return move_use_check
     }
     let fractional_values = source_uses_fractional_values(source)
     # A mixed-type expression is reported before operator lowering, so

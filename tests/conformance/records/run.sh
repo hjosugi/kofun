@@ -276,6 +276,64 @@ expect_stage2_failure stage2_unsupported_field
 expect_stage2_failure stage2_direct_construction
 expect_stage2_failure stage2_labelled_call
 
+# #946: the whole-binding move rule reaching the compiler a user runs. The
+# fixtures beside these — `use_after_move.kofun`, `double_take.kofun`, and
+# `partial_move.kofun` — carry a `Text` field and are refused earlier by the
+# Int/Bool slice, so they cannot gate the production path; these are Int-only
+# for exactly that reason, and pin the standalone frontend's wording so the two
+# producers stay one language.
+#
+# The fourth standalone refusal, E2S122 for moving a `read` binding, has no
+# production mirror: an ownership-mode parameter registers no binding in this
+# frontend, so `fn peek(read token: Token)` already refuses every mention of
+# `token` with E2S35 whether or not a `take` follows. That boundary predates
+# the move rule; #922 owns it. `expect_read_parameter_unsupported` pins it so
+# the gap is asserted rather than assumed.
+expect_stage2_failure production_use_after_move
+expect_stage2_failure production_double_take
+expect_stage2_failure production_partial_move
+
+expect_read_parameter_unsupported() {
+    set +e
+    "$WORK/kofun-stage2" \
+        "$CASES/production_read_parameter.kofun" \
+        "$WORK/production_read_parameter.c" \
+        "$WORK/production_read_parameter.stage2.ir" \
+        "$WORK/production_read_parameter.tokens" \
+        >"$WORK/production_read_parameter.stage2.actual" \
+        2>/dev/null
+    read_parameter_status=$?
+    set -e
+    test "$read_parameter_status" -eq 1 ||
+        fail "production_read_parameter exited $read_parameter_status, not 1"
+    grep -q '^error\[E2S35\]' \
+        "$WORK/production_read_parameter.stage2.actual" ||
+        fail "production_read_parameter no longer reports the E2S35 boundary"
+}
+
+expect_read_parameter_unsupported
+
+# The accepted half of the move rule. A rule that refuses every `take` is
+# indistinguishable from having no rule at all, so one legal whole-binding move
+# is compiled, built under the same -Wall -Wextra -Werror as every other
+# accepted record program, and run.
+"$WORK/kofun-stage2" \
+    "$CASES/production_take_accepted.kofun" \
+    "$WORK/production_take_accepted.c" \
+    "$WORK/production_take_accepted.stage2.ir" \
+    "$WORK/production_take_accepted.tokens" >/dev/null
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+    "$WORK/production_take_accepted.c" \
+    -o "$WORK/production_take_accepted"
+"$WORK/production_take_accepted" \
+    >"$WORK/production_take_accepted.stdout" \
+    2>"$WORK/production_take_accepted.stderr"
+cmp "$CASES/production_take_accepted.stdout" \
+    "$WORK/production_take_accepted.stdout" ||
+    fail 'accepted whole-binding move output differs'
+test ! -s "$WORK/production_take_accepted.stderr" ||
+    fail 'accepted whole-binding move wrote unexpected stderr'
+
 # A record argument that is not a whole record binding.  Each of these three
 # once exited 0 and wrote the diagnostic text into the emitted C as if it were
 # an expression, so `kofun check` reported `ok:` and only `cc` failed.  The
@@ -331,4 +389,7 @@ printf '%s\n' \
     'PASS: Stage 2 executes nominal Int/Bool records in AggregateLayout order' \
     'PASS: a rejected record argument fails the compile instead of reaching the C' \
     'PASS: the rejection survives let, return, arithmetic, and condition positions' \
+    'PASS: the compiler a user runs accepts, lowers, and runs a whole-binding move' \
+    'PASS: partial move, second move, and use after move refuse with the standalone wording' \
+    'PASS: a read parameter still refuses before ownership, and is recorded as that gap' \
     'PASS: the specification names the same diagnostic codes the registry gates'
