@@ -161,37 +161,53 @@ for undecided in floor_div floordiv modulo remainder truncate_div; do
 done
 printf '%s\n' "PASS: Decimal // and % remain undecided and unimplemented"
 
-# `Fixed[scale]` does not exist, because const-generic integer parameters do
-# not. #710 requires the language to state its scale guarantees truthfully
-# either by delivering the type or by naming an interim profile; #725 Part A
-# takes the second route and names it `runtime-scale/v1`.
+# #916 now makes a literal const argument part of a nominal type's identity:
+# the shipped CLI refuses `Fixed[3]` where `Fixed[2]` is required. That is the
+# type-system foundation for #725 Part B, not a Decimal-backed `Fixed` value.
+# Native Decimal still takes destination and display scales as runtime Int
+# arguments, so #725 Part A's `runtime-scale/v1` name remains the truthful
+# profile for the operations this gate executes.
 #
-# Two halves are asserted, because either alone drifts:
+# Three parts are asserted, because any one can drift on its own:
 #
-#   1. the documents must carry the name and the disclaimer, so a reader is
+#   1. the type checker must retain const-generic scale identity;
+#   2. the documents must carry the name and the disclaimer, so a reader is
 #      told what the guarantee is rather than left to infer it;
-#   2. the implementation must still match that description, so the sentence
+#   3. native Decimal must still match that description, so the sentence
 #      cannot go on being printed after it stops being true.
 #
-# The second half is the one that bites. Landing `Fixed[scale]` while leaving
-# "no static scale safety" in `docs/DECIMAL.md` would make the document false,
-# and the document has no other reader that would notice.
+# Reuse the product-path erasure sentinel instead of inventing a second
+# mismatch fixture. `task const-generics` owns its full corpus; this focused
+# observation ties that established type identity to Decimal's scale profile.
 PROFILE='runtime-scale/v1'
+SCALE_MISMATCH="$ROOT/tests/conformance/const-generics/product/scale_mismatch"
+
+set +e
+"$ROOT/bin/kofun" check "$SCALE_MISMATCH.kofun" \
+    >"$WORK/scale-mismatch.stdout" 2>"$WORK/scale-mismatch.stderr"
+scale_mismatch_status=$?
+set -e
+test "$scale_mismatch_status" -eq 1 ||
+    fail "Fixed[3] to Fixed[2] mismatch exited $scale_mismatch_status instead of 1"
+test ! -s "$WORK/scale-mismatch.stdout" ||
+    fail "Fixed scale mismatch wrote stdout"
+cmp "$SCALE_MISMATCH.stdout" "$WORK/scale-mismatch.stderr" ||
+    fail "Fixed scale mismatch diagnostic differs from E2S151 product evidence"
 
 for doc in docs/DECIMAL.md stdlib/decimal/README.md; do
     grep -qF "$PROFILE" "$ROOT/$doc" ||
         fail "$doc does not name the interim scale profile $PROFILE"
 done
 grep -qF 'no static scale safety' "$ROOT/docs/DECIMAL.md" ||
-    fail "docs/DECIMAL.md stopped stating that static scale safety is absent"
+    fail "docs/DECIMAL.md stopped stating that runtime Decimal has no static scale safety"
 
 # The implementation side. Slice 5 exposes scale only as an explicit runtime
 # argument. It must not publish either a fake Fixed[scale] guarantee or the old
 # Int64-significand placeholder beside the compiler-native Decimal type.
-if grep -nE '^type (Decimal|Fixed)[[:space:]]*=' \
+if grep -nE '^[[:space:]]*((pub|internal|private)[[:space:]]+)?type[[:space:]]+(Decimal|Fixed)(\[[^]]+\])?[[:space:]]*=' \
     "$ROOT/stdlib/decimal/decimal.kofun" >/dev/null 2>&1
 then
-    fail "stdlib Decimal source still redeclares a native numeric type"
+    fail "stdlib Decimal source redeclares Decimal or implements a Fixed value"
 fi
 if grep -nF 'significand: Int' "$ROOT/stdlib/decimal/decimal.kofun" \
     >/dev/null 2>&1
@@ -201,6 +217,8 @@ fi
 grep -qF 'destination_scale' "$ROOT/stdlib/decimal/decimal.kofun" ||
     fail "stdlib Decimal source does not expose explicit runtime scale"
 printf '%s\n' "PASS: scale guarantees are stated as $PROFILE and still true"
+printf '%s\n' \
+    "PASS: const-generic scale identity exists; Decimal-backed Fixed semantics do not"
 
 # --- exact arithmetic (slice 4 of #710, issue #723) ------------------------
 
