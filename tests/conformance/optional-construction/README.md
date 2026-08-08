@@ -71,7 +71,6 @@ emit no backend artifact.
 | `mutable_binding.kofun` | `E2S147` | `let mut x: Int?` is outside this slice |
 | `assignment.kofun` | `E2S147` | an `Int?` binding cannot be reassigned here |
 | `nested_optional.kofun` | `E2S147` | one optional layer; `Int??` is not a type |
-| `coalescing.kofun` | `E2S147` | `??` is not part of this change |
 | `property_path.kofun` | `E2S147` | property and index paths are not narrowed |
 | `optional_as_int_argument.kofun` | `E2S147` | an `Int?` does not satisfy an `Int` parameter |
 | `optional_result_as_int.kofun` | `E2S147` | an `Int?` result does not satisfy an `Int` binding |
@@ -89,9 +88,9 @@ of programs this change is not about.
 
 ## What this slice deliberately does not do
 
-- **`??` coalescing** stays with #314. It has a single-evaluation and
-  lazy-right-side contract that is that issue's work to decide, and guessing at
-  it here would be the wrong place to decide it.
+- **`??` coalescing** is owned by the sibling
+  `tests/conformance/optional-coalescing` corpus. Construction still owns the
+  explicit AggregateLayout v1 carrier and narrowed observation used there.
 - **Optional `match`** stays sequenced behind the general match engine (#30),
   so that exhaustiveness is checked once rather than by a second Optional-only
   algorithm.

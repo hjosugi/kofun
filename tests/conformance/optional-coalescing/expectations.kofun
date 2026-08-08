@@ -1,0 +1,29 @@
+# Executable manifest for kofun.backend-differential/v1.
+
+fn corpus_name() -> Text {
+    return "optional-coalescing"
+}
+
+fn expected_cases() -> Int {
+    return 11
+}
+
+fn case_names() -> List[Text] {
+    return [
+        "behavior.kofun",
+        "chained.kofun",
+        "comparison_precedence.kofun",
+        "left_checked_error.kofun",
+        "missing_operand.kofun",
+        "non_int_fallback.kofun",
+        "non_optional_left.kofun",
+        "optional_fallback.kofun",
+        "parenthesized_left.kofun",
+        "selected_fallback_error.kofun",
+        "unsupported_payload.kofun"
+    ]
+}
+
+fn observations_sha256() -> Text {
+    return "0030af58b7e2a3f25dd515282e27d33b37a768555601974a09504d1c28d431fc"
+}

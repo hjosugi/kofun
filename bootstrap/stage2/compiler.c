@@ -4563,6 +4563,10 @@ static char *borrowed_collection_check(const char *source) {
 }
 
 static int64_t expression_end(const char *source, int64_t start);
+static int64_t arithmetic_expression_end(
+    const char *source,
+    int64_t start
+);
 static int64_t enclosing_function_open(const char *source, int64_t position);
 static const char *numeric_primary_type(
     const char *source,
@@ -4585,7 +4589,19 @@ static int64_t numeric_member_argument(
 );
 static bool decimal_rounding_mode_name(const char *name);
 static const char *decimal_rounding_c_name(const char *name);
+static char *emit_arithmetic_expression(
+    const char *source,
+    const char *hir,
+    int64_t start,
+    int64_t end
+);
 static char *emit_expression(
+    const char *source,
+    const char *hir,
+    int64_t start,
+    int64_t end
+);
+static char *optional_int_value(
     const char *source,
     const char *hir,
     int64_t start,
@@ -4647,6 +4663,7 @@ static bool scan_optional_int_annotation(const char *source) {
     int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, 0);
     while (cursor < length) {
+        if (token_equal(source, cursor, "??")) return true;
         if (
             token_equal(source, cursor, ":") ||
             token_equal(source, cursor, "->")
@@ -5951,7 +5968,10 @@ static int64_t product_end(const char *source, int64_t start) {
     return cursor;
 }
 
-static int64_t expression_end(const char *source, int64_t start) {
+static int64_t arithmetic_expression_end(
+    const char *source,
+    int64_t start
+) {
     int64_t length = source_length(source);
     int64_t cursor = product_end(source, start);
     if (cursor < 0) return -1;
@@ -5970,6 +5990,76 @@ static int64_t expression_end(const char *source, int64_t start) {
         operator_start = skip_trivia(source, cursor);
     }
     return cursor;
+}
+
+/* The bounded coalescing operator has lower precedence than arithmetic. The
+ * operator byte is also the deterministic identity of its function-local C
+ * carrier. */
+static int64_t optional_int_coalescing_operator(
+    const char *source,
+    int64_t start,
+    int64_t end
+) {
+    int64_t left_end = arithmetic_expression_end(source, start);
+    if (left_end < 0) return -1;
+    int64_t operator_start = skip_trivia(source, left_end);
+    return operator_start < end && token_equal(source, operator_start, "??")
+        ? operator_start
+        : -1;
+}
+
+static int64_t expression_end(const char *source, int64_t start) {
+    int64_t length = source_length(source);
+    int64_t left_end = arithmetic_expression_end(source, start);
+    if (left_end < 0) return -1;
+    int64_t operator_start = skip_trivia(source, left_end);
+    if (
+        operator_start >= length ||
+        !token_equal(source, operator_start, "??")
+    ) {
+        return left_end;
+    }
+    int64_t right_start = skip_trivia(
+        source,
+        token_end(source, operator_start)
+    );
+    return arithmetic_expression_end(source, right_start);
+}
+
+/* Strip only parentheses enclosing the complete left expression. Returning
+ * either inner bound keeps the accepted shapes exact while making ordinary
+ * primary-expression parentheses transparent. */
+static int64_t optional_int_coalescing_transparent_bound(
+    const char *source,
+    int64_t start,
+    int64_t end,
+    bool want_start
+) {
+    int64_t cursor = skip_trivia(source, start);
+    int64_t bound = end;
+    bool scanning = true;
+    while (
+        scanning && cursor < bound && token_equal(source, cursor, "(")
+    ) {
+        int64_t inner_start = skip_trivia(
+            source,
+            token_end(source, cursor)
+        );
+        int64_t inner_end = expression_end(source, inner_start);
+        int64_t close = inner_end < 0 ? -1 : skip_trivia(source, inner_end);
+        if (
+            inner_end < 0 ||
+            close >= bound ||
+            !token_equal(source, close, ")") ||
+            skip_trivia(source, token_end(source, close)) < bound
+        ) {
+            scanning = false;
+        } else {
+            cursor = inner_start;
+            bound = inner_end;
+        }
+    }
+    return want_start ? cursor : bound;
 }
 
 static char *source_slice(const char *source, int64_t start, int64_t end) {
@@ -7364,7 +7454,7 @@ static char *emit_product(
     return emitted;
 }
 
-static char *emit_expression(
+static char *emit_arithmetic_expression(
     const char *source,
     const char *hir,
     int64_t start,
@@ -7469,6 +7559,60 @@ static char *emit_expression(
         operator_start = skip_trivia(source, cursor);
     }
     return emitted;
+}
+
+/* One C expression serves let, print, return, and argument position. The
+ * function-local carrier stores the left exactly once; C11's conditional
+ * operator makes the fallback selected-only. A failed left selects neither
+ * payload nor fallback until the surrounding statement observes failure. */
+static char *emit_expression(
+    const char *source,
+    const char *hir,
+    int64_t start,
+    int64_t end
+) {
+    int64_t operator_start = optional_int_coalescing_operator(
+        source,
+        start,
+        end
+    );
+    if (operator_start < 0) {
+        return emit_arithmetic_expression(source, hir, start, end);
+    }
+    int64_t right_start = skip_trivia(
+        source,
+        token_end(source, operator_start)
+    );
+    char *left = optional_int_value(source, hir, start, operator_start);
+    if (strncmp(left, "error[", 6) == 0) return left;
+    char *right = emit_arithmetic_expression(
+        source,
+        hir,
+        right_start,
+        end
+    );
+    if (strncmp(right, "error[", 6) == 0) {
+        free(left);
+        return right;
+    }
+    Buffer output;
+    buffer_init(&output);
+    buffer_format(
+        &output,
+        "((kofun_optional_int_coalesce_%" PRId64 " = %s), "
+        "(kofun_failed ? INT64_C(0) : "
+        "(kofun_optional_int_coalesce_%" PRId64
+        ".tag != KOFUN_OPTIONAL_INT_NONE_TAG ? "
+        "kofun_optional_int_coalesce_%" PRId64 ".payload : %s)))",
+        operator_start,
+        left,
+        operator_start,
+        operator_start,
+        right
+    );
+    free(left);
+    free(right);
+    return output.data;
 }
 
 static char *lower_error(
@@ -9071,8 +9215,52 @@ static bool optional_int_refined(
  * binding it was before this slice existed, so no program that compiles today
  * changes its verdict.
  */
+static bool optional_int_coalescing_left_site(
+    const char *source,
+    int64_t at
+) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor <= at && cursor < length) {
+        int64_t left_end = arithmetic_expression_end(source, cursor);
+        if (left_end >= 0) {
+            int64_t operator_start = skip_trivia(source, left_end);
+            if (
+                operator_start < length &&
+                token_equal(source, operator_start, "??")
+            ) {
+                int64_t inner_start =
+                    optional_int_coalescing_transparent_bound(
+                        source,
+                        cursor,
+                        left_end,
+                        true
+                    );
+                if (inner_start == at) {
+                    return true;
+                }
+            }
+        }
+        int64_t next = token_end(source, cursor);
+        if (next <= cursor) break;
+        cursor = skip_trivia(source, next);
+    }
+    return false;
+}
+
+static bool optional_int_coalescing_null_context(
+    const char *source,
+    int64_t at
+) {
+    return token_equal(source, at, "null") &&
+        optional_int_coalescing_left_site(source, at);
+}
+
 static bool optional_int_null_context(const char *source, int64_t at) {
     if (!token_equal(source, at, "null")) return false;
+    if (optional_int_coalescing_null_context(source, at)) {
+        return true;
+    }
     int64_t function_start = optional_int_function_start(source, at);
     if (function_start < 0) return false;
     int64_t function_close = function_end(source, function_start);
@@ -9412,7 +9600,10 @@ static char *validate_optional_uses(const char *source) {
                     /* An `Int?` result travels whole or not at all: it may
                      * initialize an `Int?` binding or be returned from a
                      * function declared `Int?`, and nothing else. */
-                    if (cursor != carrier) {
+                    if (
+                        cursor != carrier &&
+                        !optional_int_coalescing_left_site(source, cursor)
+                    ) {
                         failure = lower_error(
                             "E2S147",
                             "an `Int?` result is used whole; bind it with "
@@ -9441,20 +9632,6 @@ static char *validate_optional_uses(const char *source) {
                         );
                     } else if (
                         after < function_close &&
-                        token_equal(source, after, "??")
-                    ) {
-                        /* Coalescing stays with #314: it has a
-                         * single-evaluation and lazy-right-side contract this
-                         * slice does not implement, and guessing at it here
-                         * would be the wrong place to decide it. */
-                        failure = lower_error(
-                            "E2S147",
-                            "`??` coalescing is not part of this lowering "
-                            "slice; narrow with a `null` comparison instead",
-                            cursor
-                        );
-                    } else if (
-                        after < function_close &&
                         (token_equal(source, after, ".") ||
                          token_equal(source, after, "["))
                     ) {
@@ -9467,6 +9644,7 @@ static char *validate_optional_uses(const char *source) {
                         );
                     } else if (
                         cursor != carrier &&
+                        !optional_int_coalescing_left_site(source, cursor) &&
                         !optional_int_carrier_position(source, cursor) &&
                         !optional_int_refined(source, name, cursor)
                     ) {
@@ -12210,15 +12388,47 @@ static bool function_result_is_text(const char *source, const char *name) {
  * by their resolved binding, bare enum constructors by their owner. The
  * conservative fallback is the historical Int default, never an error.
  */
+static char *initializer_type_bounded(
+    const char *source,
+    const char *hir,
+    int64_t function_open,
+    int64_t initializer,
+    int64_t bounded_end
+);
+
 static char *initializer_type(
     const char *source,
     const char *hir,
     int64_t function_open,
     int64_t initializer
 ) {
+    return initializer_type_bounded(
+        source,
+        hir,
+        function_open,
+        initializer,
+        -1
+    );
+}
+
+/* Bounded classification keeps operators after one subexpression from
+ * changing that subexpression's type. */
+static char *initializer_type_bounded(
+    const char *source,
+    const char *hir,
+    int64_t function_open,
+    int64_t initializer,
+    int64_t bounded_end
+) {
     int64_t length = source_length(source);
     int64_t end = expression_end(source, initializer);
-    if (end < 0) end = token_end(source, initializer);
+    if (bounded_end >= 0) {
+        end = bounded_end;
+    } else if (end < 0) {
+        end = token_end(source, initializer);
+    }
+    bool optional_coalescing =
+        optional_int_coalescing_operator(source, initializer, end) >= 0;
     bool exact_decimal_division = false;
     /* The operator scan covers the whole initializer line: it ends at the
      * first newline outside parentheses, not at the bounded arithmetic
@@ -12227,7 +12437,7 @@ static char *initializer_type(
     int64_t depth = 0;
     int64_t walk = initializer;
     int64_t previous_end = initializer;
-    while (walk < length) {
+    while (walk < length && (bounded_end < 0 || walk < bounded_end)) {
         bool newline = false;
         for (int64_t at = previous_end; at < walk; ++at) {
             if (source[at] == '\n') {
@@ -12260,6 +12470,7 @@ static char *initializer_type(
         previous_end = token_end(source, walk);
         walk = skip_trivia(source, previous_end);
     }
+    if (optional_coalescing) return owned_text("Int");
     int64_t cursor = skip_trivia(source, initializer);
     while (
         cursor < end &&
@@ -12412,8 +12623,20 @@ static char *optional_int_value(
     int64_t start,
     int64_t end
 ) {
-    int64_t cursor = skip_trivia(source, start);
-    bool single = skip_trivia(source, token_end(source, cursor)) >= end;
+    int64_t cursor = optional_int_coalescing_transparent_bound(
+        source,
+        start,
+        end,
+        true
+    );
+    int64_t value_end = optional_int_coalescing_transparent_bound(
+        source,
+        start,
+        end,
+        false
+    );
+    bool single =
+        skip_trivia(source, token_end(source, cursor)) >= value_end;
     if (single && token_equal(source, cursor, "null")) {
         return owned_text("KOFUN_OPTIONAL_INT_NONE");
     }
@@ -12429,13 +12652,13 @@ static char *optional_int_value(
             return output.data;
         }
         int64_t open = skip_trivia(source, token_end(source, cursor));
-        bool optional_call = open < end &&
+        bool optional_call = open < value_end &&
                              token_equal(source, open, "(") &&
                              optional_int_result(source, name);
         free(name);
         if (optional_call) {
             int64_t close = balanced_end(source, open, "(", ")");
-            if (close < 0 || skip_trivia(source, close) < end) {
+            if (close < 0 || skip_trivia(source, close) < value_end) {
                 return lower_error(
                     "E2S147",
                     "an `Int?` call result is used whole; it takes part in no "
@@ -12443,7 +12666,7 @@ static char *optional_int_value(
                     cursor
                 );
             }
-            return emit_expression(source, hir, start, end);
+            return emit_expression(source, hir, cursor, value_end);
         }
     }
     int64_t function_open = enclosing_function_open(source, cursor);
@@ -12462,12 +12685,165 @@ static char *optional_int_value(
             cursor
         );
     }
-    char *inner = emit_expression(source, hir, start, end);
+    char *inner = emit_expression(source, hir, cursor, value_end);
     if (strncmp(inner, "error[", 6) == 0) return inner;
     Buffer output;
     buffer_init(&output);
     buffer_format(&output, "KOFUN_OPTIONAL_INT_SOME(%s)", inner);
     free(inner);
+    return output.data;
+}
+
+static bool optional_int_coalescing_left(
+    const char *source,
+    int64_t start,
+    int64_t end
+) {
+    int64_t cursor = optional_int_coalescing_transparent_bound(
+        source,
+        start,
+        end,
+        true
+    );
+    int64_t value_end = optional_int_coalescing_transparent_bound(
+        source,
+        start,
+        end,
+        false
+    );
+    bool single =
+        skip_trivia(source, token_end(source, cursor)) >= value_end;
+    if (single && token_equal(source, cursor, "null")) return true;
+    if (strcmp(token_kind(source, cursor), "identifier") != 0) return false;
+    char *name = token_copy(source, cursor);
+    if (single && optional_int_binding(source, cursor, name)) {
+        free(name);
+        return true;
+    }
+    int64_t open = skip_trivia(source, token_end(source, cursor));
+    bool optional_call = open < value_end &&
+                         token_equal(source, open, "(") &&
+                         optional_int_result(source, name);
+    free(name);
+    if (!optional_call) return false;
+    int64_t close = balanced_end(source, open, "(", ")");
+    return close >= 0 && skip_trivia(source, close) >= value_end;
+}
+
+static char *validate_optional_int_coalescing(
+    const char *source,
+    const char *hir
+) {
+    int64_t length = source_length(source);
+    int64_t last_operator = -1;
+    int64_t cursor = skip_trivia(source, 0);
+    int64_t previous = -1;
+    while (cursor < length) {
+        int64_t left_end = arithmetic_expression_end(source, cursor);
+        int64_t operator_start =
+            left_end < 0 ? -1 : skip_trivia(source, left_end);
+        bool type_position = previous >= 0 &&
+            (token_equal(source, previous, ":") ||
+             token_equal(source, previous, "->"));
+        if (
+            !type_position &&
+            operator_start >= 0 &&
+            operator_start < length &&
+            operator_start != last_operator &&
+            token_equal(source, operator_start, "??")
+        ) {
+            last_operator = operator_start;
+            if (!optional_int_coalescing_left(source, cursor, left_end)) {
+                return lower_error(
+                    "E2S147",
+                    "left operand of `??` must be `Int?`; this slice accepts "
+                    "`null`, a direct `Int?` binding, or a call returning "
+                    "`Int?`",
+                    cursor
+                );
+            }
+            int64_t right_start = skip_trivia(
+                source,
+                token_end(source, operator_start)
+            );
+            int64_t right_end = arithmetic_expression_end(
+                source,
+                right_start
+            );
+            if (right_end < 0) {
+                return lower_error(
+                    "E2S147",
+                    "`??` requires one `Int` fallback expression",
+                    operator_start
+                );
+            }
+            int64_t after = skip_trivia(source, right_end);
+            if (after < length && token_equal(source, after, "??")) {
+                return lower_error(
+                    "E2S147",
+                    "chained `??` is outside the Optional(Int) coalescing "
+                    "slice; bind the first result before coalescing again",
+                    after
+                );
+            }
+            char *right_type = initializer_type_bounded(
+                source,
+                hir,
+                enclosing_function_open(source, right_start),
+                right_start,
+                right_end
+            );
+            if (strcmp(right_type, "Int") != 0) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    "right operand of `??` must be `Int`, got `%s`",
+                    right_type
+                );
+                free(right_type);
+                char *error = lower_error(
+                    "E2S147",
+                    message.data,
+                    right_start
+                );
+                free(message.data);
+                return error;
+            }
+            free(right_type);
+        }
+        int64_t next = token_end(source, cursor);
+        if (next <= cursor) break;
+        previous = cursor;
+        cursor = skip_trivia(source, next);
+    }
+    return owned_text("ok");
+}
+
+static char *emit_optional_int_coalescing_temporaries(
+    const char *source,
+    int64_t function_open
+) {
+    int64_t close = balanced_end(source, function_open, "{", "}");
+    Buffer output;
+    buffer_init(&output);
+    if (close < 0) return output.data;
+    int64_t cursor = skip_trivia(
+        source,
+        token_end(source, function_open)
+    );
+    while (cursor < close) {
+        if (token_equal(source, cursor, "??")) {
+            buffer_format(
+                &output,
+                "    KofunOptionalInt kofun_optional_int_coalesce_%" PRId64 " = KOFUN_OPTIONAL_INT_NONE;\n",
+                cursor
+            );
+        }
+        int64_t next = token_end(source, cursor);
+        if (next <= cursor) break;
+        cursor = skip_trivia(source, next);
+    }
     return output.data;
 }
 
@@ -15641,6 +16017,14 @@ static char *lower_body(
     int64_t length = source_length(source);
     Buffer emitted;
     buffer_init(&emitted);
+    if (open == function_open) {
+        char *temporaries = emit_optional_int_coalescing_temporaries(
+            source,
+            function_open
+        );
+        buffer_append(&emitted, temporaries);
+        free(temporaries);
+    }
     int64_t cursor = skip_trivia(source, token_end(source, open));
     bool returned = false;
     char *body_result_type = function_return_type_containing(
@@ -20310,6 +20694,14 @@ static char *lower_c_body(const char *source, const char *hir) {
         return record_use_check;
     }
     free(record_use_check);
+    char *optional_coalescing_check = validate_optional_int_coalescing(
+        source,
+        hir
+    );
+    if (strncmp(optional_coalescing_check, "error[", 6) == 0) {
+        return optional_coalescing_check;
+    }
+    free(optional_coalescing_check);
     /* #924: before any C exists, so an `Int?` read without a proved tag is a
      * refusal here rather than a payload the backend was free to invent. */
     char *optional_use_check = validate_optional_uses(source);

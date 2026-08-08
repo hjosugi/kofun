@@ -1,0 +1,11 @@
+# contract: kofun.backend-differential/v1
+# expect-reject: Optional payloads other than Int are unsupported
+
+fn text_value() -> Text? {
+    return "x"
+}
+
+fn main() -> Int {
+    print(text_value() ?? 0)
+    return 0
+}

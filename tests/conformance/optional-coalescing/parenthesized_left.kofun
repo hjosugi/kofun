@@ -1,0 +1,16 @@
+# contract: kofun.backend-differential/v1
+# expect-stdout: 0
+# expect-stdout: -5
+# expect-stdout: 1
+
+fn optional_value() -> Int? {
+    return -5
+}
+
+fn main() -> Int {
+    let value: Int? = 0
+    print((value) ?? 1)
+    print((optional_value()) ?? 1)
+    print((null) ?? 1)
+    return 0
+}

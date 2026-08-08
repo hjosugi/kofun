@@ -204,6 +204,12 @@ tasks:
     cmds:
       - "sh tests/conformance/optional-construction/run.sh"
 
+  optional-coalescing:
+    desc: "Verify lazy Optional(Int) coalescing in the Stage 2 C11 backend"
+    cmds:
+      - "sh tests/conformance/run.sh tests/conformance/optional-coalescing"
+      - "sh tests/conformance/optional-coalescing/run.sh"
+
   optional-pair:
     desc: "Require Optional(Int) semantic-family parity in the canonical compiler pair"
     cmds:
@@ -751,6 +757,7 @@ tasks:
             optional \
             optional-narrowing \
             optional-construction \
+            optional-coalescing \
             optional-pair \
             text-results \
             list-int-values \

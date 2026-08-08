@@ -113,8 +113,20 @@ declaration rather than at the use; the frontend, which does admit a mutable
 `Int?`, still pins them. And no other optional type is executable: `Int?` is
 the whole backend claim.
 
-Coalescing, `?` propagation, safe navigation, Optional `match`, and every form
-of extraction remain unimplemented, and no force-unwrap operator exists.
+The Stage 2 C11 path also executes the bounded coalescing form
+`Optional(Int) ?? Int -> Int` (#314). The left is evaluated once; its explicit
+tag selects either the present payload or a lazily evaluated fallback. The form
+works in let, print, return, and function-argument position, and checked errors
+propagate only from the selected evaluation. Parentheses are transparent around
+the exact binding/call/null left shapes; arithmetic binds inside the fallback
+and comparison remains outside the complete coalescing expression. The
+executable contract and its
+strict C11/determinism checks live in
+`tests/conformance/optional-coalescing/run.sh`.
+
+Generic optional payloads, chained `??`, `?` propagation, safe navigation,
+Optional `match`, and every form of extraction remain unimplemented, and no
+force-unwrap operator exists.
 
 Planned pattern:
 

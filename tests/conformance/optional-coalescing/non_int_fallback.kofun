@@ -1,0 +1,9 @@
+# contract: kofun.backend-differential/v1
+# expect-reject: a plain non-Int fallback is outside the bounded operator
+
+fn main() -> Int {
+    let value: Int? = null
+    let fallback: Bool = true
+    print(value ?? fallback)
+    return 0
+}

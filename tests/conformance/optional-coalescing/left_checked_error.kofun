@@ -1,0 +1,18 @@
+# contract: kofun.backend-differential/v1
+# expect-exit: 1
+# expect-stderr: error[R010]: integer overflow in operator `+`
+
+fn failing_left() -> Int? {
+    let maximum = 9223372036854775807
+    return maximum + 1
+}
+
+fn forbidden_fallback() -> Int {
+    print(99)
+    return 0
+}
+
+fn main() -> Int {
+    print(failing_left() ?? forbidden_fallback())
+    return 0
+}

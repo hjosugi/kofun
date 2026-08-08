@@ -1,0 +1,61 @@
+# contract: kofun.backend-differential/v1
+# expect-stdout: 10
+# expect-stdout: -4
+# expect-stdout: 20
+# expect-stdout: 21
+# expect-stdout: 0
+# expect-stdout: 30
+# expect-stdout: 7
+# expect-stdout: -9
+# expect-stdout: 0
+# expect-stdout: 42
+# expect-stdout: 50
+# expect-stdout: 6
+
+# Optional(Int) coalescing in let, print, return, and argument position.
+# Marker prints make left-once and selected-only fallback evaluation observable.
+
+fn present(mark: Int, value: Int) -> Int? {
+    print(mark)
+    return value
+}
+
+fn absent(mark: Int) -> Int? {
+    print(mark)
+    return null
+}
+
+fn fallback(mark: Int, value: Int) -> Int {
+    print(mark)
+    return value
+}
+
+fn identity(value: Int) -> Int {
+    return value
+}
+
+fn checked_failure() -> Int {
+    let maximum = 9223372036854775807
+    return maximum + 1
+}
+
+fn choose(value: Int?) -> Int {
+    return value ?? -9
+}
+
+fn main() -> Int {
+    let from_present = present(10, -4) ?? fallback(11, 99)
+    print(from_present)
+
+    print(absent(20) ?? fallback(21, 0))
+    print(identity(present(30, 7) ?? fallback(31, 8)))
+
+    let empty: Int? = null
+    print(choose(empty))
+
+    let zero: Int? = 0
+    print(zero ?? 8)
+    print(null ?? 40 + 2)
+    print(present(50, 6) ?? checked_failure())
+    return 0
+}

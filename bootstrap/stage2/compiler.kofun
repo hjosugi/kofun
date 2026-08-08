@@ -3244,7 +3244,7 @@ fn product_end(source: Text, start: Int) -> Int {
     return cursor
 }
 
-fn expression_end(source: Text, start: Int) -> Int {
+fn arithmetic_expression_end(source: Text, start: Int) -> Int {
     let mut cursor = product_end(source, start)
     if cursor < 0 {
         return -1
@@ -3264,6 +3264,77 @@ fn expression_end(source: Text, start: Int) -> Int {
         operator_start = skip_trivia(source, cursor)
     }
     return cursor
+}
+
+# The one bounded coalescing operator has lower precedence than arithmetic.
+# Returning the operator byte separately keeps typing and lowering keyed to the
+# same source site, which is also the deterministic identity of its C local.
+fn optional_int_coalescing_operator(
+    source: Text,
+    start: Int,
+    end: Int
+) -> Int {
+    let left_end = arithmetic_expression_end(source, start)
+    if left_end < 0 {
+        return -1
+    }
+    let operator_start = skip_trivia(source, left_end)
+    if operator_start < end && token_text(source, operator_start) == "??" {
+        return operator_start
+    }
+    return -1
+}
+
+fn expression_end(source: Text, start: Int) -> Int {
+    let left_end = arithmetic_expression_end(source, start)
+    if left_end < 0 {
+        return -1
+    }
+    let operator_start = skip_trivia(source, left_end)
+    if operator_start >= len(source) ||
+       token_text(source, operator_start) != "??" {
+        return left_end
+    }
+    let right_start = skip_trivia(
+        source,
+        token_end(source, operator_start)
+    )
+    return arithmetic_expression_end(source, right_start)
+}
+
+# Strip only parentheses that enclose the complete left expression. A caller
+# asks for either the inner start or inner end; keeping both calculations in
+# one helper makes `(binding)`, `(call())`, and `(null)` transparent without
+# accepting arithmetic or another Optional shape as a coalescing left.
+fn optional_int_coalescing_transparent_bound(
+    source: Text,
+    start: Int,
+    end: Int,
+    want_start: Bool
+) -> Int {
+    let mut cursor = skip_trivia(source, start)
+    let mut bound = end
+    let mut scanning = true
+    while scanning && cursor < bound && token_text(source, cursor) == "(" {
+        let inner_start = skip_trivia(source, token_end(source, cursor))
+        let inner_end = expression_end(source, inner_start)
+        let mut close = -1
+        if inner_end >= 0 {
+            close = skip_trivia(source, inner_end)
+        }
+        if inner_end < 0 || close >= bound ||
+           token_text(source, close) != ")" ||
+           skip_trivia(source, token_end(source, close)) < bound {
+            scanning = false
+        } else {
+            cursor = inner_start
+            bound = inner_end
+        }
+    }
+    if want_start {
+        return cursor
+    }
+    return bound
 }
 
 # The lifted name of an arrow lambda written directly in argument position.
@@ -4068,7 +4139,12 @@ fn emit_product(source: Text, hir: Text, start: Int, end: Int) -> Text {
     return emitted
 }
 
-fn emit_expression(source: Text, hir: Text, start: Int, end: Int) -> Text {
+fn emit_arithmetic_expression(
+    source: Text,
+    hir: Text,
+    start: Int,
+    end: Int
+) -> Text {
     let mut cursor = product_end(source, start)
     let mut emitted = emit_product(source, hir, start, cursor)
     let value_type = numeric_primary_type(
@@ -4142,6 +4218,41 @@ fn emit_expression(source: Text, hir: Text, start: Int, end: Int) -> Text {
         operator_start = skip_trivia(source, cursor)
     }
     return emitted
+}
+
+# A coalescing expression is still one C expression, so it works unchanged in
+# let, print, return, and argument position. The function-local carrier named
+# by the operator byte stores the left exactly once. C11's conditional operator
+# then selects the payload or evaluates the fallback, while a failed left
+# suppresses both branches until the surrounding statement observes
+# `kofun_failed`.
+fn emit_expression(source: Text, hir: Text, start: Int, end: Int) -> Text {
+    let operator_start = optional_int_coalescing_operator(
+        source,
+        start,
+        end
+    )
+    if operator_start < 0 {
+        return emit_arithmetic_expression(source, hir, start, end)
+    }
+    let right_start = skip_trivia(
+        source,
+        token_end(source, operator_start)
+    )
+    let left = optional_int_value(source, hir, start, operator_start)
+    if starts_with(left, "error[") {
+        return left
+    }
+    let right = emit_arithmetic_expression(source, hir, right_start, end)
+    if starts_with(right, "error[") {
+        return right
+    }
+    let temporary = "kofun_optional_int_coalesce_" +
+        to_text(operator_start)
+    return "((" + temporary + " = " + left + "), " +
+        "(kofun_failed ? INT64_C(0) : (" + temporary +
+        ".tag != KOFUN_OPTIONAL_INT_NONE_TAG ? " + temporary +
+        ".payload : " + right + ")))"
 }
 
 fn function_arity(source: Text, wanted: Text) -> Int {
@@ -5656,6 +5767,9 @@ fn optional_int_type_end(source: Text, type_start: Int) -> Int {
 fn scan_optional_int_annotation(source: Text) -> Bool {
     let mut cursor = skip_trivia(source, 0)
     while cursor < len(source) {
+        if token_text(source, cursor) == "??" {
+            return true
+        }
         if token_text(source, cursor) == ":" ||
            token_text(source, cursor) == "->" {
             let type_start = skip_trivia(source, token_end(source, cursor))
@@ -5960,9 +6074,45 @@ fn optional_int_refined(source: Text, name: Text, at: Int) -> Bool {
     return false
 }
 
+fn optional_int_coalescing_left_site(source: Text, at: Int) -> Bool {
+    let mut cursor = skip_trivia(source, 0)
+    while cursor <= at && cursor < len(source) {
+        let left_end = arithmetic_expression_end(source, cursor)
+        if left_end >= 0 {
+            let operator_start = skip_trivia(source, left_end)
+            if operator_start < len(source) &&
+               token_text(source, operator_start) == "??" {
+                let inner_start = optional_int_coalescing_transparent_bound(
+                    source,
+                    cursor,
+                    left_end,
+                    true
+                )
+                if inner_start == at {
+                    return true
+                }
+            }
+        }
+        let next = token_end(source, cursor)
+        if next <= cursor {
+            break
+        }
+        cursor = skip_trivia(source, next)
+    }
+    return false
+}
+
+fn optional_int_coalescing_null_context(source: Text, at: Int) -> Bool {
+    return token_text(source, at) == "null" &&
+        optional_int_coalescing_left_site(source, at)
+}
+
 fn optional_int_null_context(source: Text, at: Int) -> Bool {
     if token_text(source, at) != "null" {
         return false
+    }
+    if optional_int_coalescing_null_context(source, at) {
+        return true
     }
     let function_start = optional_int_function_start(source, at)
     if function_start < 0 {
@@ -6277,7 +6427,11 @@ fn validate_optional_uses(source: Text) -> Text {
                         let optional = !call &&
                             optional_int_binding(source, cursor, name)
                         if call && optional_int_result(source, name) {
-                            if cursor != carrier {
+                            if cursor != carrier &&
+                               !optional_int_coalescing_left_site(
+                                   source,
+                                   cursor
+                               ) {
                                 return lower_error(
                                     "E2S147",
                                     "an `Int?` result is used whole; bind " +
@@ -6312,16 +6466,6 @@ fn validate_optional_uses(source: Text) -> Text {
                                     )
                                 }
                                 if after < function_close &&
-                                   token_text(source, after) == "??" {
-                                    return lower_error(
-                                        "E2S147",
-                                        "`??` coalescing is not part of " +
-                                        "this lowering slice; narrow with " +
-                                        "a `null` comparison instead",
-                                        cursor
-                                    )
-                                }
-                                if after < function_close &&
                                    (token_text(source, after) == "." ||
                                     token_text(source, after) == "[") {
                                     return lower_error(
@@ -6334,6 +6478,10 @@ fn validate_optional_uses(source: Text) -> Text {
                                     )
                                 }
                                 if cursor != carrier &&
+                                   !optional_int_coalescing_left_site(
+                                       source,
+                                       cursor
+                                   ) &&
                                    !optional_int_carrier_position(
                                        source,
                                        cursor
@@ -6372,8 +6520,19 @@ fn optional_int_value(
     start: Int,
     end: Int
 ) -> Text {
-    let cursor = skip_trivia(source, start)
-    let single = skip_trivia(source, token_end(source, cursor)) >= end
+    let cursor = optional_int_coalescing_transparent_bound(
+        source,
+        start,
+        end,
+        true
+    )
+    let value_end = optional_int_coalescing_transparent_bound(
+        source,
+        start,
+        end,
+        false
+    )
+    let single = skip_trivia(source, token_end(source, cursor)) >= value_end
     if single && token_text(source, cursor) == "null" {
         return "KOFUN_OPTIONAL_INT_NONE"
     }
@@ -6383,10 +6542,10 @@ fn optional_int_value(
             return "k_b" + hir_use_binding_id(hir, cursor)
         }
         let open = skip_trivia(source, token_end(source, cursor))
-        if open < end && token_text(source, open) == "(" &&
+        if open < value_end && token_text(source, open) == "(" &&
            optional_int_result(source, name) {
             let close = balanced_end(source, open, "(", ")")
-            if close < 0 || skip_trivia(source, close) < end {
+            if close < 0 || skip_trivia(source, close) < value_end {
                 return lower_error(
                     "E2S147",
                     "an `Int?` call result is used whole; it takes part in " +
@@ -6394,7 +6553,7 @@ fn optional_int_value(
                     cursor
                 )
             }
-            return emit_expression(source, hir, start, end)
+            return emit_expression(source, hir, cursor, value_end)
         }
     }
     let function_open = enclosing_function_open(source, cursor)
@@ -6408,11 +6567,147 @@ fn optional_int_value(
             cursor
         )
     }
-    let inner = emit_expression(source, hir, start, end)
+    let inner = emit_expression(source, hir, cursor, value_end)
     if starts_with(inner, "error[") {
         return inner
     }
     return "KOFUN_OPTIONAL_INT_SOME(" + inner + ")"
+}
+
+fn optional_int_coalescing_left(
+    source: Text,
+    start: Int,
+    end: Int
+) -> Bool {
+    let cursor = optional_int_coalescing_transparent_bound(
+        source,
+        start,
+        end,
+        true
+    )
+    let value_end = optional_int_coalescing_transparent_bound(
+        source,
+        start,
+        end,
+        false
+    )
+    let single = skip_trivia(source, token_end(source, cursor)) >= value_end
+    if single && token_text(source, cursor) == "null" {
+        return true
+    }
+    if token_kind(source, cursor) != "identifier" {
+        return false
+    }
+    let name = token_text(source, cursor)
+    if single && optional_int_binding(source, cursor, name) {
+        return true
+    }
+    let open = skip_trivia(source, token_end(source, cursor))
+    if open >= value_end || token_text(source, open) != "(" ||
+       !optional_int_result(source, name) {
+        return false
+    }
+    let close = balanced_end(source, open, "(", ")")
+    return close >= 0 && skip_trivia(source, close) >= value_end
+}
+
+fn validate_optional_int_coalescing(source: Text, hir: Text) -> Text {
+    let mut last_operator = -1
+    let mut cursor = skip_trivia(source, 0)
+    let mut previous = -1
+    while cursor < len(source) {
+        let left_end = arithmetic_expression_end(source, cursor)
+        let mut operator_start = -1
+        if left_end >= 0 {
+            operator_start = skip_trivia(source, left_end)
+        }
+        let type_position = previous >= 0 &&
+            (token_text(source, previous) == ":" ||
+             token_text(source, previous) == "->")
+        if !type_position &&
+           operator_start >= 0 && operator_start < len(source) &&
+           operator_start != last_operator &&
+           token_text(source, operator_start) == "??" {
+            last_operator = operator_start
+            if !optional_int_coalescing_left(source, cursor, left_end) {
+                return lower_error(
+                    "E2S147",
+                    "left operand of `??` must be `Int?`; this slice " +
+                    "accepts `null`, a direct `Int?` binding, or a call " +
+                    "returning `Int?`",
+                    cursor
+                )
+            }
+            let right_start = skip_trivia(
+                source,
+                token_end(source, operator_start)
+            )
+            let right_end = arithmetic_expression_end(source, right_start)
+            if right_end < 0 {
+                return lower_error(
+                    "E2S147",
+                    "`??` requires one `Int` fallback expression",
+                    operator_start
+                )
+            }
+            let after = skip_trivia(source, right_end)
+            if after < len(source) && token_text(source, after) == "??" {
+                return lower_error(
+                    "E2S147",
+                    "chained `??` is outside the Optional(Int) coalescing " +
+                    "slice; bind the first result before coalescing again",
+                    after
+                )
+            }
+            let right_type = initializer_type_bounded(
+                source,
+                hir,
+                enclosing_function_open(source, right_start),
+                right_start,
+                right_end
+            )
+            if right_type != "Int" {
+                return lower_error(
+                    "E2S147",
+                    "right operand of `??` must be `Int`, got `" +
+                    right_type + "`",
+                    right_start
+                )
+            }
+        }
+        let next = token_end(source, cursor)
+        if next <= cursor {
+            break
+        }
+        previous = cursor
+        cursor = skip_trivia(source, next)
+    }
+    return "ok"
+}
+
+fn emit_optional_int_coalescing_temporaries(
+    source: Text,
+    function_open: Int
+) -> Text {
+    let close = balanced_end(source, function_open, "{", "}")
+    if close < 0 {
+        return ""
+    }
+    let mut emitted = ""
+    let mut cursor = skip_trivia(source, token_end(source, function_open))
+    while cursor < close {
+        if token_text(source, cursor) == "??" {
+            emitted = emitted + "    KofunOptionalInt " +
+                "kofun_optional_int_coalesce_" + to_text(cursor) +
+                " = KOFUN_OPTIONAL_INT_NONE;\n"
+        }
+        let next = token_end(source, cursor)
+        if next <= cursor {
+            break
+        }
+        cursor = skip_trivia(source, next)
+    }
+    return emitted
 }
 
 # `initializer_type` deliberately types an entire condition as Bool. Text
@@ -8692,10 +8987,36 @@ fn initializer_type(
     function_open: Int,
     initializer: Int
 ) -> Text {
+    return initializer_type_bounded(
+        source,
+        hir,
+        function_open,
+        initializer,
+        -1
+    )
+}
+
+# The same initializer classification with an explicit token bound. This is
+# what keeps a comparison after `Optional(Int) ?? Int` from being mistaken for
+# part of the fallback's type.
+fn initializer_type_bounded(
+    source: Text,
+    hir: Text,
+    function_open: Int,
+    initializer: Int,
+    bounded_end: Int
+) -> Text {
     let mut end = expression_end(source, initializer)
-    if end < 0 {
+    if bounded_end >= 0 {
+        end = bounded_end
+    } else if end < 0 {
         end = token_end(source, initializer)
     }
+    let optional_coalescing = optional_int_coalescing_operator(
+        source,
+        initializer,
+        end
+    ) >= 0
     # The operator scan covers the whole initializer line: it ends at the
     # first newline outside parentheses, not at the bounded arithmetic
     # expression end, so `1 < 2` and multi-line parenthesized calls are
@@ -8705,7 +9026,8 @@ fn initializer_type(
     let mut previous_end = initializer
     let mut scanning = true
     let mut exact_decimal_division = false
-    while scanning && walk < len(source) {
+    while scanning && walk < len(source) &&
+          (bounded_end < 0 || walk < bounded_end) {
         if depth == 0 &&
            contains(text_slice(source, previous_end, walk), "\n") {
             scanning = false
@@ -8730,6 +9052,9 @@ fn initializer_type(
             previous_end = token_end(source, walk)
             walk = skip_trivia(source, previous_end)
         }
+    }
+    if optional_coalescing {
+        return "Int"
     }
     let mut cursor = skip_trivia(source, initializer)
     while cursor < end &&
@@ -10169,6 +10494,12 @@ fn lower_body(
     function_open: Int
 ) -> Text {
     let mut emitted = ""
+    if open == function_open {
+        emitted = emit_optional_int_coalescing_temporaries(
+            source,
+            function_open
+        )
+    }
     let mut cursor = skip_trivia(source, token_end(source, open))
     let mut returned = false
     let result_type = function_return_type_containing(
@@ -12651,6 +12982,13 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     let record_use_check = validate_record_uses(source)
     if starts_with(record_use_check, "error[") {
         return record_use_check
+    }
+    let optional_coalescing_check = validate_optional_int_coalescing(
+        source,
+        hir
+    )
+    if starts_with(optional_coalescing_check, "error[") {
+        return optional_coalescing_check
     }
     let optional_use_check = validate_optional_uses(source)
     if starts_with(optional_use_check, "error[") {

@@ -1,0 +1,8 @@
+# contract: kofun.backend-differential/v1
+# expect-reject: coalescing requires one fallback operand
+
+fn main() -> Int {
+    let value: Int? = null
+    print(value ??)
+    return 0
+}

@@ -37,6 +37,13 @@ const minimumCalls = new Map([
   ["optional_int_null_context", 2],
   ["optional_int_declaration_count", 3],
   ["optional_int_value", 3],
+  ["optional_int_coalescing_operator", 3],
+  ["optional_int_coalescing_transparent_bound", 6],
+  ["optional_int_coalescing_left_site", 4],
+  ["optional_int_coalescing_null_context", 2],
+  ["optional_int_coalescing_left", 2],
+  ["validate_optional_int_coalescing", 2],
+  ["emit_optional_int_coalescing_temporaries", 2],
   ["validate_optional_uses", 2],
   ["emit_optional_int_c_declarations", 2],
 ]);
@@ -46,6 +53,26 @@ const semanticAnchors = [
     id: "pre-lowering-validation",
     c: "char *optional_use_check = validate_optional_uses(source);",
     kofun: "let optional_use_check = validate_optional_uses(source)",
+  },
+  {
+    id: "pre-lowering-coalescing-validation",
+    c: "char *optional_coalescing_check = validate_optional_int_coalescing( source, hir );",
+    kofun: "let optional_coalescing_check = validate_optional_int_coalescing( source, hir )",
+  },
+  {
+    id: "function-local-coalescing-carriers",
+    c: "char *temporaries = emit_optional_int_coalescing_temporaries( source, function_open );",
+    kofun: "emitted = emit_optional_int_coalescing_temporaries( source, function_open )",
+  },
+  {
+    id: "transparent-left-reaches-lowering",
+    c: "int64_t value_end = optional_int_coalescing_transparent_bound( source, start, end, false );",
+    kofun: "let value_end = optional_int_coalescing_transparent_bound( source, start, end, false )",
+  },
+  {
+    id: "fallback-type-stops-at-right-end",
+    c: "char *right_type = initializer_type_bounded( source, hir, enclosing_function_open(source, right_start), right_start, right_end );",
+    kofun: "let right_type = initializer_type_bounded( source, hir, enclosing_function_open(source, right_start), right_start, right_end )",
   },
   {
     id: "whole-result-c-type",
@@ -131,6 +158,8 @@ function verifyPair(cText, kofunText) {
     ["carrier representation", "KofunOptionalInt"],
     ["absence value", "KOFUN_OPTIONAL_INT_NONE"],
     ["present injection", "KOFUN_OPTIONAL_INT_SOME("],
+    ["coalescing carrier identity", "kofun_optional_int_coalesce_"],
+    ["lazy coalescing tag selection", ".tag != KOFUN_OPTIONAL_INT_NONE_TAG"],
     ["proved payload projection", ".payload"],
     ["stable refusal", "E2S147"],
   ]) {
@@ -163,9 +192,9 @@ if (mode === "self-test") {
     "missing Kofun function: optional_int_type_end",
   );
 
-  const renamedC = cSource.replace(
-    "static char *optional_int_value(",
-    "static char *removed_value(",
+  const renamedC = cSource.replaceAll(
+    "optional_int_value(",
+    "removed_value(",
   );
   assert.notEqual(renamedC, cSource, "C member mutation did not apply");
   requireFailure(
@@ -199,6 +228,20 @@ if (mode === "self-test") {
   requireFailure(
     verifyPair(unvalidatedC, kofunSource),
     "C semantic dispatch missing: pre-lowering-validation",
+  );
+
+  const unvalidatedCoalescingKofun = kofunSource.replace(
+    "let optional_coalescing_check = validate_optional_int_coalescing(",
+    "let optional_coalescing_check = disabled_optional_int_coalescing(",
+  );
+  assert.notEqual(
+    unvalidatedCoalescingKofun,
+    kofunSource,
+    "Kofun coalescing dispatch mutation did not apply",
+  );
+  requireFailure(
+    verifyPair(cSource, unvalidatedCoalescingKofun),
+    "Kofun semantic dispatch missing: pre-lowering-coalescing-validation",
   );
 
   console.log("PASS: pair drift mutations fail by missing member and dispatch name");

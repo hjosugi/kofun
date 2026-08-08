@@ -1,0 +1,9 @@
+# contract: kofun.backend-differential/v1
+# expect-reject: an Optional(Int) fallback is outside the bounded operator
+
+fn main() -> Int {
+    let left: Int? = null
+    let right: Int? = 2
+    print(left ?? right)
+    return 0
+}

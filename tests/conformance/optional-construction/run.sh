@@ -12,7 +12,7 @@ set -eu
 #     returning guard executes its narrowed use;
 #   - every shape the slice does not lower is refused with an exact
 #     diagnostic and leaves no backend artifact;
-#   - no extraction, coalescing, or force-unwrap spelling exists.
+#   - no extraction or force-unwrap spelling exists.
 #
 # Presence is observed by printing the narrowed `Int`. There is deliberately
 # no operator here that reads a payload without a tag test dominating it.
@@ -277,7 +277,6 @@ non_dominating_guard:E2S147
 mutable_binding:E2S147
 assignment:E2S147
 nested_optional:E2S147
-coalescing:E2S147
 property_path:E2S147
 optional_as_int_argument:E2S147
 optional_result_as_int:E2S147
@@ -348,11 +347,6 @@ assert_not_grep 'Stage 2 introduced an extraction spelling' \
     -E -- 'KOFUN_OPTIONAL_INT_UNWRAP|optional_int_unwrap|force_unwrap' \
     "$ROOT/bootstrap/stage2/compiler.c"
 
-# Coalescing stays with #314: this change may not have started implementing it.
-assert_not_grep 'Stage 2 began lowering `??`' \
-    -Fq -- 'KOFUN_OPTIONAL_INT_COALESCE' \
-    "$ROOT/bootstrap/stage2/compiler.c"
-
 # The registered identity has to stay registered.
 assert_grep 'E2S147 is a registered diagnostic identity' \
     -Fq -- 'E2S147	optional-construction	frontend' \
@@ -367,4 +361,4 @@ printf '%s\n' \
     'PASS: the emitted representation is the recomputed AggregateLayout v1 one' \
     'PASS: every recognized narrowing shape executes its narrowed use' \
     'PASS: unsupported shapes stay exact refusals with no backend artifact' \
-    'PASS: no extraction, coalescing, or force-unwrap spelling exists'
+    'PASS: no extraction or force-unwrap spelling exists'

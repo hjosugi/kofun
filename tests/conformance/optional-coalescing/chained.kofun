@@ -1,0 +1,9 @@
+# contract: kofun.backend-differential/v1
+# expect-reject: chained coalescing is outside the bounded operator
+
+fn main() -> Int {
+    let first: Int? = null
+    let second: Int? = 2
+    print(first ?? second ?? 3)
+    return 0
+}

@@ -1,0 +1,15 @@
+# contract: kofun.backend-differential/v1
+# expect-stdout: 42
+# expect-stdout: 7
+
+fn main() -> Int {
+    let absent: Int? = null
+    if absent ?? 0 == 0 {
+        print(42)
+    }
+    let present: Int? = 5
+    if present ?? 0 == 5 {
+        print(7)
+    }
+    return 0
+}

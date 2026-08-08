@@ -717,13 +717,27 @@ recognized narrowing shapes plus the definitely-returning guard are lowered, so
 test and a narrowed use lowers to the payload — and only because
 `validate_optional_uses` has already proved, before any C exists, that every
 such use sits on an edge that tested the tag. There is no extraction operator,
-no coalescing, and no force unwrap.
+and no force unwrap.
+
+The same exact carrier now supports the bounded coalescing form
+`Optional(Int) ?? Int -> Int` (#314). `??` binds below arithmetic and above
+comparison, so `value ?? 0 == 0` is `(value ?? 0) == 0`. Balanced ordinary
+parentheses are transparent around the exact accepted binding/call/null left
+shapes. A
+function-local `KofunOptionalInt` carrier keyed by the operator source byte
+stores the left exactly once; C11's conditional operator tests its tag and
+evaluates the fallback only for `None`. A failed left suppresses the fallback,
+while a failure in a selected fallback propagates through the existing checked
+runtime path. The expression works without special statement lowering in let,
+print, return, and function-argument position.
 
 Refusals carry `E2S147`, registered under the `optional-construction` adapter:
 an unnarrowed use, a sibling-branch or non-dominating-guard use, a mutable
-`Int?`, an assignment to one, `Int??`, `??`, a `null` with no expected `Int?`
-to type it, a property or index path, an `Int?` where an `Int` is expected, and
-an `Int?` result used anywhere but whole.
+`Int?`, an assignment to one, `Int??`, a `null` with no expected `Int?` to type
+it, a property or index path, an `Int?` where an `Int` is expected, and an
+`Int?` result used anywhere but whole. Coalescing additionally refuses a
+non-`Int?` left, a non-`Int` fallback, optional payloads other than `Int`, and
+chaining before emitting a backend artifact.
 
 Two bounds are worth stating rather than leaving to be discovered. Every `Int?`
 binding this slice lowers is immutable, so the invalidation rules that need
@@ -734,6 +748,9 @@ the loop-backedge *positive* is not expressible here. The gate is
 `tests/conformance/optional-construction/run.sh`, which recomputes the
 descriptor with `spec/aggregate-layout-v1/layout.mjs` rather than reading a
 checked-in copy, so a drift on either side fails it. The companion
+`tests/conformance/optional-coalescing/run.sh` gate makes evaluation order,
+selected checked failures, expression positions, signed payloads, refusal
+boundaries, strict C11, and deterministic emission executable. The companion
 `tests/stage2/optional-pair/run.sh` gate derives the Optional semantic family
 from both canonical files, pins its load-bearing dispatch points, and mutates a
 member and validation call to prove that source/seed drift cannot pass silently.

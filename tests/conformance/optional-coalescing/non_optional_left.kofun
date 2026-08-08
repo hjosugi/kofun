@@ -1,0 +1,7 @@
+# contract: kofun.backend-differential/v1
+# expect-reject: the left operand is not Optional(Int)
+
+fn main() -> Int {
+    print(1 ?? 2)
+    return 0
+}
