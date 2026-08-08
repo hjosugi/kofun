@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 60,
+  "open_issues": 63,
   "issues": [
     {
       "number": 26,
@@ -177,7 +177,26 @@
       "state_line": null,
       "blocked_by": [],
       "evidence_commits": [
-        "205cdbe72ec2a49a648ef4c296414a983c5e53f9"
+        "205cdbe72ec2a49a648ef4c296414a983c5e53f9",
+        "6fa8b9a037dd9a4436078cf8b1244d15b337c584"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-281-position-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-281-position-audit-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-281-position-refresh-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-281-position-refresh-20260808",
+          "status": "released"
+        }
       ]
     },
     {
@@ -422,6 +441,16 @@
         "2d54aeb7c705ee69c770b6a8d3a9f0383b833c0c",
         "cbaa8721f21f2eb5fdead71f35740faaac3fabd8",
         "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-584-generated-meta-refinement-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-584-generated-meta-refinement-20260808",
+          "status": "released"
+        }
       ]
     },
     {
@@ -570,11 +599,28 @@
       "number": 881,
       "title": "Call arguments v1 slice 2: bind labels in HIR, type checking, and KIF identity",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
+      "state_line": "ready",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [
+        "60d0af56f2e37a5ce4750544b005eb72f1b73154",
+        "c7f8f01456ce4c4442325b350eb6f73d237b5d1a"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-881-readiness-audit-20260808-1529",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-881-readiness-audit-20260808-1529",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-881-debt-retire-20260808",
+          "status": "active"
+        }
+      ]
     },
     {
       "number": 882,
@@ -617,7 +663,18 @@
       "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
-        "2a31329b50fe19974b1cfc6639eac753373ab744"
+        "2a31329b50fe19974b1cfc6639eac753373ab744",
+        "60d0af56f2e37a5ce4750544b005eb72f1b73154"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-885-readiness-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-885-readiness-audit-20260808",
+          "status": "released"
+        }
       ]
     },
     {
@@ -637,24 +694,61 @@
       "number": 915,
       "title": "Stage 2 ensure_move v3: prove loop-local last uses instead of rejecting every loop",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
-      "state_line": "blocked",
+      "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
+        "60d0af56f2e37a5ce4750544b005eb72f1b73154"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-915-loop-readiness-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-915-loop-readiness-audit-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-915-debt-retire-20260808",
+          "status": "active"
+        }
       ]
     },
     {
       "number": 922,
-      "title": "Stage 2: record the move site and attach it to the use-after-move diagnostic",
+      "title": "LSP: surface Stage 2 move sites in diagnostics and hover",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
+      "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
-        "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
+        "60d0af56f2e37a5ce4750544b005eb72f1b73154",
+        "6fa8b9a037dd9a4436078cf8b1244d15b337c584"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-922-blocker-reaudit-20260808-1502",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-922-blocker-reaudit-20260808-1502",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-922-readiness-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-922-readiness-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-922-debt-retire-20260808",
+          "status": "active"
+        }
       ]
     },
     {
@@ -709,12 +803,112 @@
       "number": 1032,
       "title": "Self-host driver diagnostics: give A1's refusal a code and a span",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
-      "state_line": "blocked",
+      "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "b297880239f0db9cb832df50de379f5f678abf6c"
+        "8dc8f641fccdef3f6d2e5b0209fc56c329cd836c"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-1032-readiness-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-1032-readiness-audit-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-1032-debt-retire-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-1032-debt-retire-20260808",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "number": 1079,
+      "title": "Decimal scale profile gate: distinguish const-generic identity from Fixed semantics",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "8dc8f641fccdef3f6d2e5b0209fc56c329cd836c"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-1079-decimal-scale-boundary-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-1079-decimal-scale-boundary-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-1079-batch-integration-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-1079-decimal-scale-finish-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-1079-decimal-scale-finish-20260808",
+          "status": "pr-open"
+        },
+        {
+          "agent_id": "codex-1079-batch-integration-20260808",
+          "status": "released"
+        }
+      ]
+    },
+    {
+      "number": 1080,
+      "title": "Discovery query: bridge live Stage 2 semantic facts into the v1 provider",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "8dc8f641fccdef3f6d2e5b0209fc56c329cd836c"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-637-live-stage2-discovery-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-637-live-stage2-discovery-20260808",
+          "status": "pr-open"
+        },
+        {
+          "agent_id": "codex-637-live-stage2-discovery-20260808",
+          "status": "pr-open"
+        }
+      ]
+    },
+    {
+      "number": 1086,
+      "title": "LSP selective imports: require a valid caller module header",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "a362295356d5ddbfa6d0d3d7216126a25ae8c801"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-lsp-module-header-reachability-20260808",
+          "status": "active"
+        }
       ]
     }
   ]
