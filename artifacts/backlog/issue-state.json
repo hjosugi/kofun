@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 57,
+  "open_issues": 51,
   "issues": [
     {
       "number": 26,
@@ -42,7 +42,17 @@
       "state_line": "needs-decision",
       "blocked_by": [],
       "evidence_commits": [
-        "b6241acc8cd33819a4a1c92b1a301c02b46cd133"
+        "bcdab5d2d5edd0ad0af8ad65505c54c52a1fc4a3"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-close-audit-27-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-close-audit-27-20260808",
+          "status": "released"
+        }
       ]
     },
     {
@@ -210,46 +220,6 @@
       ]
     },
     {
-      "number": 277,
-      "title": "Freestanding target: run with no operating system",
-      "state_labels": [
-        "deferred"
-      ],
-      "state_line": "deferred",
-      "blocked_by": [],
-      "evidence_commits": []
-    },
-    {
-      "number": 278,
-      "title": "ARM Cortex-M backend (thumb2)",
-      "state_labels": [
-        "deferred"
-      ],
-      "state_line": "deferred",
-      "blocked_by": [],
-      "evidence_commits": []
-    },
-    {
-      "number": 279,
-      "title": "Memory-mapped I/O, volatile access, and interrupt handlers",
-      "state_labels": [
-        "deferred"
-      ],
-      "state_line": "deferred",
-      "blocked_by": [],
-      "evidence_commits": []
-    },
-    {
-      "number": 280,
-      "title": "No-heap mode: static allocation only",
-      "state_labels": [
-        "deferred"
-      ],
-      "state_line": "deferred",
-      "blocked_by": [],
-      "evidence_commits": []
-    },
-    {
       "number": 281,
       "title": "Position paper: what replacing C and Rust actually requires",
       "state_labels": [],
@@ -257,7 +227,8 @@
       "blocked_by": [],
       "evidence_commits": [
         "205cdbe72ec2a49a648ef4c296414a983c5e53f9",
-        "6fa8b9a037dd9a4436078cf8b1244d15b337c584"
+        "6fa8b9a037dd9a4436078cf8b1244d15b337c584",
+        "bcdab5d2d5edd0ad0af8ad65505c54c52a1fc4a3"
       ],
       "claims": [
         {
@@ -274,6 +245,14 @@
         },
         {
           "agent_id": "codex-281-position-refresh-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-close-audit-281-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-close-audit-281-20260808",
           "status": "released"
         }
       ]
@@ -287,7 +266,7 @@
       "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "9fc27d8da59aa4d5ba92e24d7e76bd05be575257"
+        "bcdab5d2d5edd0ad0af8ad65505c54c52a1fc4a3"
       ],
       "claims": [
         {
@@ -304,6 +283,14 @@
         },
         {
           "agent_id": "codex-289-after-1088-refresh-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-289-stale-topology-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-289-stale-topology-audit-20260808",
           "status": "released"
         }
       ]
@@ -346,7 +333,7 @@
         924
       ],
       "evidence_commits": [
-        "c20a03d69ebc7f65ce83ef284869825184960b7a"
+        "bcdab5d2d5edd0ad0af8ad65505c54c52a1fc4a3"
       ],
       "claims": [
         {
@@ -364,18 +351,16 @@
         {
           "agent_id": "codex-batch20-ledger-314-20260808",
           "status": "released"
+        },
+        {
+          "agent_id": "codex-314-closeability-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-314-closeability-audit-20260808",
+          "status": "released"
         }
       ]
-    },
-    {
-      "number": 424,
-      "title": "Hot reload at function granularity, via micro-partition",
-      "state_labels": [
-        "deferred"
-      ],
-      "state_line": "deferred",
-      "blocked_by": [],
-      "evidence_commits": []
     },
     {
       "number": 532,
@@ -510,8 +495,8 @@
       "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "6c77b707c7f1795deaef71b8b9238d2ac6877750",
-        "9300e4c3c53f5b5e225cbf8f875cf7d5d4ec96e3"
+        "9300e4c3c53f5b5e225cbf8f875cf7d5d4ec96e3",
+        "bcdab5d2d5edd0ad0af8ad65505c54c52a1fc4a3"
       ],
       "claims": [
         {
@@ -528,6 +513,14 @@
         },
         {
           "agent_id": "codex-543-optional-parent-audit-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-543-stale-topology-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-543-stale-topology-audit-20260808",
           "status": "released"
         }
       ]
@@ -755,7 +748,7 @@
       "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "9fc27d8da59aa4d5ba92e24d7e76bd05be575257"
+        "bcdab5d2d5edd0ad0af8ad65505c54c52a1fc4a3"
       ],
       "claims": [
         {
@@ -772,6 +765,14 @@
         },
         {
           "agent_id": "codex-585-visibility-refresh-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-close-audit-585-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-close-audit-585-20260808",
           "status": "released"
         }
       ]
@@ -785,7 +786,8 @@
       "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "c20a03d69ebc7f65ce83ef284869825184960b7a"
+        "4a722890e30ad8827e05028d6cd8aedd5d3d104d",
+        "bcdab5d2d5edd0ad0af8ad65505c54c52a1fc4a3"
       ],
       "claims": [
         {
@@ -794,6 +796,14 @@
         },
         {
           "agent_id": "codex-624-topology-refresh-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-624-stale-topology-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-624-stale-topology-audit-20260808",
           "status": "released"
         }
       ]
@@ -808,7 +818,7 @@
       "blocked_by": [],
       "evidence_commits": [
         "10780c2ff4fd7ba97b4beba245d38d0fac7a3c25",
-        "9fc27d8da59aa4d5ba92e24d7e76bd05be575257"
+        "bcdab5d2d5edd0ad0af8ad65505c54c52a1fc4a3"
       ],
       "claims": [
         {
@@ -817,6 +827,14 @@
         },
         {
           "agent_id": "codex-637-post-1080-audit-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-637-closeability-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-637-closeability-audit-20260808",
           "status": "released"
         }
       ]
@@ -1016,51 +1034,27 @@
       ]
     },
     {
-      "number": 881,
-      "title": "Call arguments v1 slice 2: bind labels in HIR, type checking, and KIF identity",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "60d0af56f2e37a5ce4750544b005eb72f1b73154",
-        "c7f8f01456ce4c4442325b350eb6f73d237b5d1a"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-881-readiness-audit-20260808-1529",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-881-readiness-audit-20260808-1529",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-881-debt-retire-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-881-debt-retire-20260808",
-          "status": "merged"
-        },
-        {
-          "agent_id": "codex-881-call-argument-semantics-20260808",
-          "status": "active"
-        }
-      ]
-    },
-    {
       "number": 882,
       "title": "Call arguments v1 slice 3: lower labelled and trailing calls without reorder or allocation",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
-      "state_line": "blocked",
-      "blocked_by": [
-        881
+      "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": [
+        "4a722890e30ad8827e05028d6cd8aedd5d3d104d",
+        "bcdab5d2d5edd0ad0af8ad65505c54c52a1fc4a3"
       ],
-      "evidence_commits": []
+      "claims": [
+        {
+          "agent_id": "codex-882-closeability-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-882-closeability-audit-20260808",
+          "status": "released"
+        }
+      ]
     },
     {
       "number": 883,
