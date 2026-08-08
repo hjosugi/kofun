@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 64,
+  "open_issues": 60,
   "issues": [
     {
       "number": 26,
@@ -429,45 +429,25 @@
       ]
     },
     {
-      "number": 584,
-      "title": "Visibility tooling: prevent macro, LSP, and sidecar access bypasses",
+      "number": 585,
+      "title": "Visibility stabilization: document API changes and migration",
       "state_labels": [
         "needs-detail"
       ],
       "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "0ba1682a605f31ce54e23b7d37edadfd80a79f5e",
-        "2d54aeb7c705ee69c770b6a8d3a9f0383b833c0c",
-        "cbaa8721f21f2eb5fdead71f35740faaac3fabd8",
-        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
+        "a362295356d5ddbfa6d0d3d7216126a25ae8c801"
       ],
       "claims": [
         {
-          "agent_id": "codex-584-generated-meta-refinement-20260808",
+          "agent_id": "codex-585-unblock-audit-20260808",
           "status": "active"
         },
         {
-          "agent_id": "codex-584-generated-meta-refinement-20260808",
+          "agent_id": "codex-585-unblock-audit-20260808",
           "status": "released"
         }
-      ]
-    },
-    {
-      "number": 585,
-      "title": "Visibility stabilization: document API changes and migration",
-      "state_labels": [
-        "blocked"
-      ],
-      "state_line": "blocked",
-      "blocked_by": [
-        584,
-        1033,
-        1034,
-        1035
-      ],
-      "evidence_commits": [
-        "bbb6b0ffee24952016394dc6352499a89ec3e938"
       ]
     },
     {
@@ -826,106 +806,32 @@
         {
           "agent_id": "codex-1032-debt-retire-20260808",
           "status": "active"
-        }
-      ]
-    },
-    {
-      "number": 1077,
-      "title": "Stage 0 generated/meta access: pin unsupported producers fail closed",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "6fa8b9a037dd9a4436078cf8b1244d15b337c584"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-1077-generated-meta-boundary-20260808",
-          "status": "active"
         },
         {
-          "agent_id": "codex-1077-generated-meta-boundary-20260808",
-          "status": "active"
+          "agent_id": "codex-1032-debt-retire-20260808",
+          "status": "pr-open"
         },
         {
-          "agent_id": "codex-1077-generated-meta-boundary-20260808",
+          "agent_id": "codex-1032-debt-retire-20260808",
           "status": "pr-open"
         }
       ]
     },
     {
-      "number": 1079,
-      "title": "Decimal scale profile gate: distinguish const-generic identity from Fixed semantics",
+      "number": 1086,
+      "title": "LSP selective imports: require a valid caller module header",
       "state_labels": [
         "ready"
       ],
       "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
-        "8dc8f641fccdef3f6d2e5b0209fc56c329cd836c"
+        "a362295356d5ddbfa6d0d3d7216126a25ae8c801"
       ],
       "claims": [
         {
-          "agent_id": "codex-1079-decimal-scale-boundary-20260808",
+          "agent_id": "codex-lsp-module-header-reachability-20260808",
           "status": "active"
-        },
-        {
-          "agent_id": "codex-1079-decimal-scale-boundary-20260808",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-1079-batch-integration-20260808",
-          "status": "active"
-        }
-      ]
-    },
-    {
-      "number": 1080,
-      "title": "Discovery query: bridge live Stage 2 semantic facts into the v1 provider",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "8dc8f641fccdef3f6d2e5b0209fc56c329cd836c"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-637-live-stage2-discovery-20260808",
-          "status": "active"
-        }
-      ]
-    },
-    {
-      "number": 1081,
-      "title": "LSP visibility: require selective-import reachability for foreign symbols",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "8dc8f641fccdef3f6d2e5b0209fc56c329cd836c"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-lsp-import-reachability-20260808-1438",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-lsp-import-reachability-20260808-1438",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-lsp-import-reachability-20260808-1438",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-lsp-import-reachability-20260808-1438",
-          "status": "pr-open"
         }
       ]
     }
