@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 67,
+  "open_issues": 60,
   "issues": [
     {
       "number": 26,
@@ -442,20 +442,6 @@
       ]
     },
     {
-      "number": 622,
-      "title": "Self-host compiler driver: args, file I/O, and compiling S to deterministic C11",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "6f71b6df5cf54aa16542b89494d2194c4172a97e",
-        "d3429207447e112f5230d5be38576959130d288e",
-        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
-      ]
-    },
-    {
       "number": 624,
       "title": "Language UX: simple functional syntax with explicit ownership and lawful composition",
       "state_labels": [
@@ -696,56 +682,6 @@
       ]
     },
     {
-      "number": 943,
-      "title": "Lambda spelling drift: Stage 2 accepts `(a, b) => e` and `x => e`, the grammar and SYNTAX.md describe neither",
-      "state_labels": [
-        "needs-decision"
-      ],
-      "state_line": "needs-decision",
-      "blocked_by": [],
-      "evidence_commits": [
-        "7cdecd68dd42504da5881c6253e8f3d091636064"
-      ]
-    },
-    {
-      "number": 946,
-      "title": "The production frontend has no move analysis, so E2S122/E2S123 never reach an editor",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "2b7581ffbe0c224f1a69f7f564dfa9a4fa6ace4f"
-      ]
-    },
-    {
-      "number": 955,
-      "title": "modules: spec/grammar.ebnf admits a top-level `let` that Stage 2 refuses with E2S02",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": null,
-      "blocked_by": [],
-      "evidence_commits": [
-        "8ba3a57c0ae91c8ba3fa97396d698fb264a189cd"
-      ]
-    },
-    {
-      "number": 975,
-      "title": "backlog: decide whether a planning umbrella waiting on children is `blocked`",
-      "state_labels": [
-        "needs-decision"
-      ],
-      "state_line": "needs-decision",
-      "blocked_by": [
-        618
-      ],
-      "evidence_commits": [
-        "bc95dd5707be02c87fe4f2f49553c0876c4b4971"
-      ]
-    },
-    {
       "number": 988,
       "title": "RFC: choose the derive v1 expansion authority and inspection contract",
       "state_labels": [
@@ -770,19 +706,6 @@
       ]
     },
     {
-      "number": 1008,
-      "title": "Stage 2: execute immutable Int module constants after authority decision",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "486d72deb17a6be11325a425e1138822d058121d",
-        "6f71b6df5cf54aa16542b89494d2194c4172a97e"
-      ]
-    },
-    {
       "number": 1032,
       "title": "Self-host driver diagnostics: give A1's refusal a code and a span",
       "state_labels": [
@@ -792,18 +715,6 @@
       "blocked_by": [],
       "evidence_commits": [
         "b297880239f0db9cb832df50de379f5f678abf6c"
-      ]
-    },
-    {
-      "number": 1035,
-      "title": "Visibility fuzz: bound malformed identities, re-export chains, and stale artifacts",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
       ]
     }
   ]
