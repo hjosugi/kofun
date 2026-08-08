@@ -230,9 +230,13 @@ let legacy = nil         # nil is an identifier, not an absence literal
 ### Current status
 
 The Stage 0 grammar and semantic draft contain `null`, optional values, and
-coalescing. The current Stage 2 scanner does not yet classify `null` as a
-keyword and the executable integer Core has no optional representation.
-Complete frontend and backend support remains open.
+coalescing. Stage 2 now contextually types `null` into `Optional(TypeId)`, and
+the executable #924 slice constructs present and absent `Optional(Int)` values
+with AggregateLayout v1, carries them through same-typed arguments and
+returns, and narrows a direct immutable binding after a `null` comparison.
+`??` coalescing remains an exact E2S147 refusal. Generic Optional payloads,
+mutable refinement, propagation, safe navigation, matching, and force unwrap
+remain outside this bounded backend slice.
 
 ## Issue 51: optional type suffix
 
@@ -296,9 +300,13 @@ Void?
 ### Current status
 
 The Stage 0 grammar accepts one suffix and the semantic draft represents `T?`
-as `T` or `Null`. Stage 2 can tokenize `?` punctuation but its Core only
-recognizes `Int` annotations and return types. Full type-tree representation,
-checking, and lowering remain open.
+as `T` or `Null`. The bounded Stage 2 frontend now represents one postfix `?`
+structurally, including the distinction between `List[Int]?` and `List[Int?]`.
+The executable #924 backend slice is narrower: it constructs and carries
+`Optional(Int)` and narrows direct immutable bindings after a `null`
+comparison. `??` coalescing remains an exact E2S147 refusal; generic Optional
+payloads, nested optionals, mutable refinement, optional ownership modes, and
+the other broader Optional features are not implemented by this slice.
 
 ## Issue 52: tuple literals
 
