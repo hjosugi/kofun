@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 62,
+  "open_issues": 60,
   "issues": [
     {
       "number": 26,
@@ -806,77 +806,13 @@
         {
           "agent_id": "codex-1032-debt-retire-20260808",
           "status": "active"
-        }
-      ]
-    },
-    {
-      "number": 1079,
-      "title": "Decimal scale profile gate: distinguish const-generic identity from Fixed semantics",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "8dc8f641fccdef3f6d2e5b0209fc56c329cd836c"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-1079-decimal-scale-boundary-20260808",
-          "status": "active"
         },
         {
-          "agent_id": "codex-1079-decimal-scale-boundary-20260808",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-1079-batch-integration-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-1079-decimal-scale-finish-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-1079-decimal-scale-finish-20260808",
+          "agent_id": "codex-1032-debt-retire-20260808",
           "status": "pr-open"
         },
         {
-          "agent_id": "codex-1079-batch-integration-20260808",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-1079-batch-integration-20260808",
-          "status": "released"
-        }
-      ]
-    },
-    {
-      "number": 1080,
-      "title": "Discovery query: bridge live Stage 2 semantic facts into the v1 provider",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "8dc8f641fccdef3f6d2e5b0209fc56c329cd836c"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-637-live-stage2-discovery-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-637-live-stage2-discovery-20260808",
-          "status": "pr-open"
-        },
-        {
-          "agent_id": "codex-637-live-stage2-discovery-20260808",
-          "status": "pr-open"
-        },
-        {
-          "agent_id": "codex-637-live-stage2-discovery-20260808",
+          "agent_id": "codex-1032-debt-retire-20260808",
           "status": "pr-open"
         }
       ]
