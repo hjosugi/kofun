@@ -63,8 +63,9 @@ filename or hash special case.
   preserved rather than silently closed on one side.
 - `corpus_builtin_rejects.tsv` — one wrong-arity and one wrong-type source line
   for each of the 15 builtins. The two gates expand all 30 rows into full
-  sources, require identical nonzero refusal from both seeds, and require that
-  no C artifact is written.
+  sources, join them one-to-one to `goldens/builtin-<label>.stdout`, require
+  identical nonzero refusal from both seeds, and require that no C artifact is
+  written. The focused gate rejects a missing or orphaned matrix golden.
 - `corpus_trap_list_index.kofun` / `.stderr` and
   `corpus_trap_text_index.kofun` / `.stderr` — well-typed out-of-bounds
   programs compile identically, then exit 1 with the exact receiver-specific
@@ -72,9 +73,13 @@ filename or hash special case.
 - `corpus_trap_fail.kofun` / `.c` / `.stdout` / `.stderr` — the zero-arity
   `fail()` builtin compiles to reviewed C through both compiler paths, then
   exits 1 with empty stdout and stderr, matching the pinned empty goldens.
-- `corpus_reject.kofun` / `.stdout` — the failure corpus: both
-  compilers refuse an out-of-Core source with the same diagnostic bytes
-  and write nothing.
+- `corpus_reject.kofun` / `.stdout` and every same-stem
+  `corpus_reject_*.kofun` / `.stdout` pair — the 32 file refusals. Together
+  with the 30 builtin rows they pin `EA101` unsupported constructs, `EA102`
+  syntax, `EA103` type/scope errors, `EA104` builtin arity, and `EA105`
+  builtin argument type. Each golden records the exact 1-based line/column and
+  0-based UTF-8 byte anchor; both compilers emit those stdout bytes, exit 1,
+  leave stderr empty, and write no C.
 - `corpus_reject_bool_*.kofun`, `corpus_reject_logical_int.kofun`,
   `corpus_reject_not_int.kofun`, and `corpus_reject_single_pipe.kofun` — the
   typed boundary: Bool in arithmetic or `print`, explicit annotation mismatch
@@ -98,6 +103,11 @@ filename or hash special case.
   exactly the element it pins. Assignment is not a Core statement yet, so the
   assignment fixture is refused as an unknown structural line; it is checked in
   now so the mutable-local slice cannot make a loop bound assignable silently.
+
+Run `task selfhost-driver-diagnostics` for the focused 62-case differential,
+golden-completeness, routing, and artifact gate. The aggregate
+`task selfhost-self-compile` retains the same checks inside the full fixed-point
+and sanitizer proof.
 - `corpus_reject_text_*.kofun` — the Text boundary: `Text + Int`,
   `Int + Text`, both operand orders of mixed equality, an unsupported escape,
   and ordered Text comparison all fail identically and write no C.

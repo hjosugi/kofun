@@ -15,6 +15,7 @@ optional-construction	tests/conformance/optional-construction/run.sh	verify	test
 text-results	tests/conformance/text-results/run.sh	verify	tests/diagnostics/reports/text-results.tsv
 list-int-values	tests/stage2/list-int-values/run.sh	verify	tests/diagnostics/reports/list-int-values.tsv
 visibility-api-leaks	tests/diagnostics/visibility-api-leaks.sh	verify	tests/diagnostics/reports/visibility-api-leaks.tsv
+selfhost-a1	tests/diagnostics/selfhost-a1/run.sh	verify	tests/diagnostics/reports/selfhost-a1.tsv
 unicode	tests/diagnostics/unicode/run.sh	verify	tests/diagnostics/reports/unicode.tsv
 native	tests/diagnostics/native/run.sh	verify	tests/diagnostics/reports/native.tsv
 c-abi	tests/diagnostics/c-abi/run.sh	verify	tests/diagnostics/reports/c-abi.tsv

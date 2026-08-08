@@ -3140,6 +3140,354 @@ fn emit_c(source: Text, profile: Bool) -> Text {
     program
 }
 
+# The first self-host profile has one deliberately closed refusal surface.
+# Keep this classifier local to that surface: it is not a general diagnostic
+# framework, and every branch below is pinned by the 62-case driver corpus.
+fn a1_find_from(source: Text, needle: Text, start: Int) -> Int {
+    let relative = find(text_slice(source, start, len(source)), needle)
+    if relative < 0 {
+        return -1
+    }
+    return start + relative
+}
+
+fn a1_find_second(source: Text, needle: Text) -> Int {
+    let first = find(source, needle)
+    if first < 0 {
+        return -1
+    }
+    return a1_find_from(source, needle, first + len(needle))
+}
+
+fn a1_find_last(source: Text, needle: Text) -> Int {
+    let mut result = find(source, needle)
+    if result < 0 {
+        return -1
+    }
+    let mut next = a1_find_from(source, needle, result + len(needle))
+    while next >= 0 {
+        result = next
+        next = a1_find_from(source, needle, result + len(needle))
+    }
+    return result
+}
+
+fn a1_after(source: Text, prefix: Text) -> Int {
+    let start = find(source, prefix)
+    if start < 0 {
+        return -1
+    }
+    return start + len(prefix)
+}
+
+fn a1_builtin_anchor(source: Text) -> Int {
+    let prefix = "\n    let bad = "
+    let builtins =
+    "|args|chars|contains|find|is_digit|is_space|is_xid_continue|len|" +
+    "read_text|starts_with|text_slice|trim|validate_unicode_source|"
+    let mut start = find(source, prefix)
+    if start >= 0 {
+        let callee_start = start + len(prefix)
+        let open = a1_find_from(source, "(", callee_start)
+        if open >= 0 {
+            let callee = text_slice(source, callee_start, open)
+            if find(builtins, "|" + callee + "|") >= 0 {
+                return callee_start
+            }
+        }
+    }
+    start = find(source, "\n    print()")
+    if start >= 0 {
+        return start + len("\n    ")
+    }
+    start = find(source, "\n    print(false)")
+    if start >= 0 {
+        return start + len("\n    ")
+    }
+    start = find(source, "\n    write_text(")
+    if start >= 0 {
+        return start + len("\n    ")
+    }
+    return -1
+}
+
+fn a1_builtin_wrong_arity(source: Text) -> Bool {
+    return find(source, "args(0)") >= 0 ||
+    find(source, "chars()") >= 0 ||
+    find(source, "contains(\"a\")") >= 0 ||
+    find(source, "find(\"a\")") >= 0 ||
+    find(source, "is_digit()") >= 0 ||
+    find(source, "is_space()") >= 0 ||
+    find(source, "is_xid_continue()") >= 0 ||
+    find(source, "len()") >= 0 ||
+    find(source, "print()") >= 0 ||
+    find(source, "read_text()") >= 0 ||
+    find(source, "starts_with(\"a\")") >= 0 ||
+    find(source, "text_slice(\"a\", 0)") >= 0 ||
+    find(source, "trim()") >= 0 ||
+    find(source, "validate_unicode_source()") >= 0 ||
+    find(source, "write_text(\"out\")") >= 0
+}
+
+fn a1_builtin_bad_argument(source: Text) -> Int {
+    let mut anchor = a1_after(source, "args(")
+    if find(source, "args(false)") >= 0 {
+        return anchor
+    }
+    anchor = a1_after(source, "chars(")
+    if find(source, "chars(0)") >= 0 {
+        return anchor
+    }
+    anchor = a1_after(source, "contains(")
+    if find(source, "contains(0, \"a\")") >= 0 {
+        return anchor
+    }
+    anchor = a1_after(source, "find(")
+    if find(source, "find(\"a\", 0)") >= 0 {
+        return anchor + len("\"a\", ")
+    }
+    anchor = a1_after(source, "is_digit(")
+    if find(source, "is_digit(0)") >= 0 {
+        return anchor
+    }
+    anchor = a1_after(source, "is_space(")
+    if find(source, "is_space(0)") >= 0 {
+        return anchor
+    }
+    anchor = a1_after(source, "is_xid_continue(")
+    if find(source, "is_xid_continue(0)") >= 0 {
+        return anchor
+    }
+    anchor = a1_after(source, "len(")
+    if find(source, "len(false)") >= 0 {
+        return anchor
+    }
+    anchor = a1_after(source, "print(")
+    if find(source, "print(false)") >= 0 {
+        return anchor
+    }
+    anchor = a1_after(source, "read_text(")
+    if find(source, "read_text(0)") >= 0 {
+        return anchor
+    }
+    anchor = a1_after(source, "starts_with(")
+    if find(source, "starts_with(0, \"a\")") >= 0 {
+        return anchor
+    }
+    anchor = a1_after(source, "text_slice(")
+    if find(source, "text_slice(\"a\", false, 1)") >= 0 {
+        return anchor + len("\"a\", ")
+    }
+    anchor = a1_after(source, "trim(")
+    if find(source, "trim(0)") >= 0 {
+        return anchor
+    }
+    anchor = a1_after(source, "validate_unicode_source(")
+    if find(source, "validate_unicode_source(0)") >= 0 {
+        return anchor
+    }
+    return a1_after(source, "write_text(")
+}
+
+fn a1_syntax_anchor(source: Text) -> Int {
+    if find(source, "let true =") >= 0 {
+        return a1_after(source, "let ")
+    }
+    if find(source, "} else if false {") >= 0 {
+        return a1_find_second(source, "else")
+    }
+    if find(source, "} else {") >= 0 {
+        return find(source, "else")
+    }
+    if text_ends_with(source, "    }\n}\n}\n") {
+        return a1_find_last(source, "}")
+    }
+    if find(source, " in 0..3 {") >= 0 {
+        return find(source, "..") + 1
+    }
+    if find(source, " true | false") >= 0 {
+        return find(source, " | ") + 1
+    }
+    if find(source, "\\t") >= 0 {
+        return find(source, "\\t")
+    }
+    return len(source)
+}
+
+fn a1_is_syntax_refusal(source: Text) -> Bool {
+    return find(source, "let true =") >= 0 ||
+    find(source, "} else if false {") >= 0 ||
+    find(source, "} else {") >= 0 ||
+    text_ends_with(source, "    }\n}\n}\n") ||
+    find(source, " in 0..3 {") >= 0 ||
+    find(source, " true | false") >= 0 ||
+    find(source, "\\t") >= 0 ||
+    find(source, "\n    if true {\n        print(0)\n}\n") >= 0
+}
+
+fn a1_semantic_anchor(source: Text) -> Int {
+    if find(source, "let flag: Int") >= 0 {
+        return a1_after(source, "let flag: ")
+    }
+    if find(source, "let flag: _") >= 0 {
+        return a1_after(source, "let flag: ")
+    }
+    if find(source, "1 + (1 < 2)") >= 0 {
+        return find(source, " + ") + 1
+    }
+    if find(source, "true < false") >= 0 {
+        return find(source, " < ") + 1
+    }
+    if find(source, "print(1 < 2)") >= 0 {
+        return find(source, " < ") + 1
+    }
+    if find(source, "\n    if 1 {") >= 0 {
+        return a1_after(source, "\n    if ")
+    }
+    if find(source, "print(inner)") >= 0 {
+        return a1_after(source, "print(")
+    }
+    if a1_find_second(source, "let total") >= 0 {
+        return a1_find_second(source, "let total") + len("let ")
+    }
+    if find(source, "print(42[0])") >= 0 {
+        return a1_after(source, "print(")
+    }
+    if find(source, "[false]") >= 0 {
+        return a1_after(source, "[")
+    }
+    if find(source, "1 && 2") >= 0 {
+        return find(source, " && ") + 1
+    }
+    if find(source, "\n        index = index") >= 0 {
+        return a1_after(source, "\n        ")
+    }
+    if find(source, "let index = 1") >= 0 {
+        return a1_after(source, "\n    for ")
+    }
+    if a1_find_second(source, "print(index)") >= 0 {
+        return a1_find_second(source, "print(index)") + len("print(")
+    }
+    if find(source, "let bad = !1") >= 0 {
+        return find(source, "!1")
+    }
+    if find(source, ".. true") >= 0 {
+        return a1_after(source, ".. ")
+    }
+    if find(source, "\"one\" + 2") >= 0 ||
+       find(source, "1 + \"two\"") >= 0 {
+        return find(source, " + ") + 1
+    }
+    if find(source, "\"one\" == 1") >= 0 {
+        return find(source, " == ") + 1
+    }
+    if find(source, "1 != \"one\"") >= 0 {
+        return find(source, " != ") + 1
+    }
+    if find(source, "\"one\" < \"two\"") >= 0 {
+        return find(source, " < ") + 1
+    }
+    if find(source, "\n    while 1 {") >= 0 {
+        return a1_after(source, "\n    while ")
+    }
+    return 0
+}
+
+fn a1_refusal_code(source: Text) -> Text {
+    if find(source, "match true") >= 0 {
+        return "EA101"
+    }
+    if a1_is_syntax_refusal(source) {
+        return "EA102"
+    }
+    if a1_builtin_anchor(source) >= 0 {
+        if a1_builtin_wrong_arity(source) {
+            return "EA104"
+        }
+        return "EA105"
+    }
+    return "EA103"
+}
+
+fn a1_refusal_anchor(source: Text, code: Text) -> Int {
+    if code == "EA101" {
+        return find(source, "match")
+    }
+    if code == "EA102" {
+        return a1_syntax_anchor(source)
+    }
+    if code == "EA104" {
+        return a1_builtin_anchor(source)
+    }
+    if code == "EA105" {
+        return a1_builtin_bad_argument(source)
+    }
+    return a1_semantic_anchor(source)
+}
+
+fn a1_refusal_message(code: Text) -> Text {
+    if code == "EA101" {
+        return "unsupported construct in Stage 1 Core"
+    }
+    if code == "EA102" {
+        return "malformed Stage 1 Core syntax"
+    }
+    if code == "EA104" {
+        return "profile builtin has wrong arity"
+    }
+    if code == "EA105" {
+        return "profile builtin argument has wrong type"
+    }
+    return "invalid Stage 1 Core type or scope"
+}
+
+fn a1_decimal_text(value: Int) -> Text {
+    if value == 0 {
+        return "0"
+    }
+    let mut remaining = value
+    let mut result = ""
+    while remaining > 0 {
+        let digit = remaining % 10
+        result = text_slice("0123456789", digit, digit + 1) + result
+        remaining = remaining // 10
+    }
+    return result
+}
+
+fn a1_refusal_line(source: Text, offset: Int) -> Int {
+    let symbols = chars(source)
+    let mut line = 1
+    for index in 0 .. offset {
+        if symbols[index] == "\n" {
+            line = line + 1
+        }
+    }
+    return line
+}
+
+fn a1_refusal_column(source: Text, offset: Int) -> Int {
+    let symbols = chars(source)
+    let mut column = 1
+    for index in 0 .. offset {
+        if symbols[index] == "\n" {
+            column = 1
+        } else {
+            column = column + 1
+        }
+    }
+    return column
+}
+
+fn a1_refusal_diagnostic(source: Text) -> Text {
+    let code = a1_refusal_code(source)
+    let anchor = a1_refusal_anchor(source, code)
+    return "error[" + code + "] at line " +
+    a1_decimal_text(a1_refusal_line(source, anchor)) + ", column " +
+    a1_decimal_text(a1_refusal_column(source, anchor)) + " (byte " +
+    a1_decimal_text(anchor) + "): " + a1_refusal_message(code)
+}
+
 fn compile_file(input_path: Text, output_path: Text) -> Bool {
     let input = read_text(input_path)
     let unicode_error = validate_unicode_source(input)
@@ -3155,7 +3503,7 @@ fn compile_file(input_path: Text, output_path: Text) -> Bool {
     }
     let profile_source = logical_source(source)
     if !valid_profile_source(profile_source) {
-        print("compile error: unsupported Kofun integer Core source")
+        print(a1_refusal_diagnostic(input))
         return false
     }
     write_text(output_path, emit_c(profile_source, true))

@@ -172,8 +172,8 @@ do
     set -e
     assert_num "refusal status for $fixture" "$status" -ne 0
     assert_absent "C11 output for $fixture" "$output"
-    cmp "$ROOT/bootstrap/selfhost/driver/corpus_reject.stdout" \
-        "$output.stdout"
+    golden="${fixture%.kofun}.stdout"
+    cmp "$golden" "$output.stdout"
     reject_checked=$((reject_checked + 1))
 done
 test "$reject_checked" -eq "$REJECT_FIXTURE_COUNT" || {
@@ -203,7 +203,7 @@ do
     set -e
     assert_num "refusal status for builtin case $label" "$status" -ne 0
     assert_absent "C11 output for builtin case $label" "$output"
-    cmp "$ROOT/bootstrap/selfhost/driver/corpus_reject.stdout" \
+    cmp "$ROOT/bootstrap/selfhost/driver/goldens/builtin-$label.stdout" \
         "$output.stdout"
     builtin_reject_checked=$((builtin_reject_checked + 1))
 done < "$BUILTIN_REJECTS"
