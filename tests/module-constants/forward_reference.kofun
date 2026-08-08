@@ -1,0 +1,11 @@
+# The reader deliberately precedes the constant declaration. Module constant
+# names are collected before function bodies are resolved.
+fn read_later() -> Int {
+    return LATER_VALUE
+}
+
+let LATER_VALUE = 42
+
+fn main() {
+    print(read_later())
+}

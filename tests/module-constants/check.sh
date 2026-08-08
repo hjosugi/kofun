@@ -3,7 +3,7 @@ set -eu
 
 # Top-level `let NAME = <integer literal>` module constants.
 #
-# Five things are checked, in this order:
+# Six things are checked, in this order:
 #
 #   1. every accepted initializer shape — small, negative, and both Int64
 #      bounds — reaches the backend and prints its golden;
@@ -13,9 +13,11 @@ set -eu
 #   3. constants interleave with a record and an enum in either order, which
 #      is what proves every top-level walker steps over a constant rather
 #      than mistaking it for the declaration next to it;
-#   4. a local binding of the same name shadows the constant inside its own
+#   4. an earlier function resolves a constant declared later in source, while
+#      lowering still emits C in a declaration-safe order;
+#   5. a local binding of the same name shadows the constant inside its own
 #      scope only;
-#   5. every named failure mode is refused before a backend artifact exists,
+#   6. every named failure mode is refused before a backend artifact exists,
 #      with the exact diagnostic — `E2S159` for a non-literal initializer and
 #      for a name that collides with a function or type, `E2S160` for a
 #      duplicate constant, and `E2S161` for `let mut`.
@@ -83,6 +85,7 @@ compile_and_run() {
 
 compile_and_run values
 compile_and_run ordering
+compile_and_run forward_reference
 compile_and_run shadowing
 
 # ------------------------------------------- constants are file-scope C
@@ -113,14 +116,29 @@ assert_not_grep 'a constant was lowered as a lexical binding' -qE -- \
     'k_b[0-9]*_?(MAX_RETRIES|ERROR_LOW|INT_MAX|INT_MIN_PLUS_ONE)' \
     "$WORK/values.c"
 
-# Declaration order in C follows source order, so a constant is always declared
-# before the functions that read it.
+# Constants are emitted before the functions that read them.
 awk '
     /^static const int64_t kofun_k_MAX_RETRIES/ { first = NR }
     /kofun_fn_remaining/ { if (!use) use = NR }
     END { if (!first || !use || first > use) exit 1 }
 ' "$WORK/values.c" ||
     fail 'a constant is declared after the function that reads it'
+
+# The forward-reference fixture pins both sides of the ordering boundary: the
+# Kofun reader precedes the declaration, but valid C must declare the file-scope
+# constant before the lowered reader.
+awk '
+    /^fn read_later/ { reader = NR }
+    /^let LATER_VALUE/ { constant = NR }
+    END { if (!reader || !constant || reader >= constant) exit 1 }
+' "$CASES/forward_reference.kofun" ||
+    fail 'forward_reference does not place its reader before the constant'
+awk '
+    /^static const int64_t kofun_k_LATER_VALUE/ { constant = NR }
+    /kofun_fn_read_later\(/ { if (!reader) reader = NR }
+    END { if (!reader || !constant || constant >= reader) exit 1 }
+' "$WORK/forward_reference.c" ||
+    fail 'the later source constant is not emitted before its C reader'
 
 # ---------------------------------------------------- shadowing is local
 
@@ -195,5 +213,6 @@ assert_grep 'the IR reports no module constants for a local-only program' \
 printf 'every accepted initializer shape reaches the backend: PASS\n'
 printf 'a constant is one file-scope C constant, not a binding: PASS\n'
 printf 'constants interleave with records and enums in either order: PASS\n'
+printf 'an earlier function resolves a later module constant: PASS\n'
 printf 'a local binding shadows a constant in its own scope only: PASS\n'
 printf 'every named failure mode is refused with its exact code: PASS\n'

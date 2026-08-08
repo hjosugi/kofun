@@ -15,6 +15,17 @@ Constants carry no visibility modifier here. They stay internal to their
 compilation unit, so this form adds nothing to KIF and does not interact with
 the visibility gates.
 
+## Forward declaration discovery
+
+Module constant names and integer literals are collected before function
+bodies are resolved. An earlier function can therefore read a constant written
+later in the same source file. Lowering emits the file-scope C constant before
+the consuming C function even when their Kofun source order is the reverse.
+
+`forward_reference.kofun` pins that declaration-discovery rule. It does not
+define general initializer sequencing: the supported initializer is one
+integer literal, so there is no expression to evaluate, order, or cycle.
+
 ## Why the parser needed more than one change
 
 The blocker was never only the top-level parse branch. Kofun's frontend has
@@ -43,6 +54,7 @@ declaration next to the constant.
 |---|---|
 | `values.kofun` | small, negative, and both Int64 bounds reach the backend intact |
 | `ordering.kofun` | constants interleave with a record and an enum in either order |
+| `forward_reference.kofun` | an earlier function resolves a constant declared later in source |
 | `shadowing.kofun` | a local binding shadows the constant in its own scope only |
 | `non_literal.kofun` | `E2S159` — the initializer is not one integer literal |
 | `function_clash.kofun` | `E2S159` — the name collides with a function |
