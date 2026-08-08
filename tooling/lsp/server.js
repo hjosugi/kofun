@@ -764,10 +764,16 @@ function visibleSymbols(doc, offset) {
 function reachableForeignSymbols(doc) {
   const caller = callerContext(doc);
   const callerIndex = completionIndex(doc);
+  const found = new Map();
+  // A manifest-selected source is importable only after its own module header
+  // establishes the package-relative module identity.  Keeping imports from a
+  // headerless or malformed buffer would let the editor expose bindings that
+  // the compiler cannot commit for that source.
+  if (documentPackageId(doc) !== null &&
+      (!callerIndex || callerIndex.modulePath === null)) return found;
   const imports = callerIndex && callerIndex.selectiveImports instanceof Map
     ? [...callerIndex.selectiveImports.values()]
     : [];
-  const found = new Map();
   if (imports.length === 0) return found;
   // Key the caller's imports by their declaration target once. One target may
   // have several local aliases, so each value is an insertion-ordered array;

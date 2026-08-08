@@ -272,6 +272,35 @@ async function scenarioInvalidImportsFailClosed() {
   await session.stop();
 }
 
+async function scenarioMissingOrInvalidModuleFailsClosed() {
+  const root = makeWorkspace(true);
+  const session = new Session(root);
+  await session.start();
+  await session.open('demo/dep.kofun', DEPENDENCY);
+  const cases = [
+    ['missing-module', []],
+    ['invalid-module', ['module demo.bad-path']]
+  ];
+  for (const [name, header] of cases) {
+    const caller = [
+      ...header,
+      'from demo.dep import dep_public', '',
+      'fn caller() -> Int {', '    return dep', '}', '',
+      'fn reaches_public() -> Int {', '    return dep_public(1)', '}', ''
+    ].join('\n');
+    const uri = await session.open(`demo/${name}.kofun`, caller);
+    const labels = await session.completionLabels(
+      uri, caller, DEP_PREFIX_LINE, DEP_PREFIX_COLUMN);
+    assert.deepStrictEqual(labels, [],
+      `${name} caller exposed a selective import without a valid module identity: ${JSON.stringify(labels)}`);
+    const definition = await session.definitionAt(
+      uri, caller, '    return dep_public(1)', 13);
+    assert.strictEqual(definition, null,
+      `${name} caller navigated through an import the compiler cannot commit: ${JSON.stringify(definition)}`);
+  }
+  await session.stop();
+}
+
 async function scenarioAnonymousPackage() {
   const root = makeWorkspace(false);
   const session = new Session(root);
@@ -580,6 +609,8 @@ async function scenarioDeterminism(expected) {
   console.log('PASS visibility: selective aliases expose only their accessible local spelling');
   await scenarioInvalidImportsFailClosed();
   console.log('PASS visibility: wrong-target, wildcard, malformed, and late imports fail closed');
+  await scenarioMissingOrInvalidModuleFailsClosed();
+  console.log('PASS visibility: manifest packages require a valid caller module header');
   await scenarioAnonymousPackage();
   console.log('PASS visibility: without a manifest every file is an anonymous package and nothing crosses');
   await scenarioNavigationDoesNotDisclose();
