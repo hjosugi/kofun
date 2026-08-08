@@ -113,4 +113,3 @@ unnamed-blocker	915	-	Stage 2 ensure_move v3: prove loop-local last uses instead
 unnamed-blocker	922	-	Stage 2: record the move site and attach it to the use-aft
 capability-blocker	930	-	Allocator seed: canonical `stdlib/alloc` contract and pinn
 unnamed-blocker	942	-	Member-scope duplicates: methods, associated values, and i
-unnamed-blocker	1032	-	Self-host driver diagnostics: give A1's refusal a code and
