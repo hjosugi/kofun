@@ -222,8 +222,8 @@ function encodedSource(sourceText) {
   return bytes;
 }
 
-function linkedDiagnosticCodes(state, root) {
-  const codes = new Set();
+function linkedDiagnostics(state, root) {
+  const diagnostics = new Map();
   const visited = new Set();
   const pendingNodes = [root];
   while (pendingNodes.length > 0) {
@@ -231,12 +231,49 @@ function linkedDiagnosticCodes(state, root) {
     if (!node || visited.has(node.id)) continue;
     visited.add(node.id);
     for (const id of node.diagnostic_ids) {
-      const code = state.diagnosticsById.get(id)?.code;
-      if (code) codes.add(code);
+      const diagnostic = state.diagnosticsById.get(id);
+      if (diagnostic) diagnostics.set(diagnostic.id, diagnostic);
     }
     for (const id of node.depends_on) pendingNodes.push(state.nodesById.get(id));
   }
-  return [...codes].sort();
+  return [...diagnostics.values()].sort((left, right) =>
+    left.id.localeCompare(right.id, "en"));
+}
+
+function linkedDiagnosticCodes(diagnostics) {
+  return [...new Set(diagnostics.map((diagnostic) => diagnostic.code))].sort();
+}
+
+function linkedLastMove(state, snapshot, diagnostics) {
+  let last = null;
+  for (const diagnostic of diagnostics) {
+    if (diagnostic.code !== "E2S123" ||
+        diagnostic.primary.file_id !== snapshot.fileId) continue;
+    for (const related of diagnostic.related) {
+      if (!related.location || related.location.file_id !== snapshot.fileId ||
+          (related.relation !== "moved-by-take" &&
+           related.relation !== "first-moved-by-take")) continue;
+      if (related.location.span.end > diagnostic.primary.span.start) return false;
+      const range = state.utf8.spanToRange(related.location.span);
+      if (!range) return false;
+      if (!last || related.location.span.start > last.span.start ||
+          (related.location.span.start === last.span.start &&
+           related.location.span.end > last.span.end)) {
+        last = { relation: related.relation, range, span: related.location.span };
+      }
+    }
+  }
+  return last;
+}
+
+function moveRangeText(range) {
+  const startLine = range.start.line + 1;
+  const startCharacter = range.start.character + 1;
+  const endLine = range.end.line + 1;
+  const endCharacter = range.end.character + 1;
+  return startLine === endLine ?
+    `line ${startLine}, characters ${startCharacter}-${endCharacter}` :
+    `line ${startLine}, character ${startCharacter} to line ${endLine}, character ${endCharacter}`;
 }
 
 export function semanticSnapshotFromBytes(metadata, sidecarBytes) {
@@ -425,7 +462,10 @@ export function hoverAt(snapshot, utf16Position) {
   if (!node || !["validated", "provisional", "error", "unavailable"].includes(node.status)) {
     return null;
   }
-  const codes = linkedDiagnosticCodes(state, node);
+  const diagnostics = linkedDiagnostics(state, node);
+  const codes = linkedDiagnosticCodes(diagnostics);
+  const lastMove = linkedLastMove(state, snapshot, diagnostics);
+  if (lastMove === false) return null;
   const lines = [];
   for (const field of FACT_FIELDS) {
     const fact = node[field];
@@ -438,6 +478,11 @@ export function hoverAt(snapshot, utf16Position) {
       line += ` **provisional**${codes.length > 0 ? ` (${codes.map(escapeMarkdown).join(", ")})` : ""}`;
     }
     lines.push(line);
+  }
+  if (lastMove) {
+    lines.push(
+      `last move: ${moveRangeText(lastMove.range)} (${lastMove.relation})`,
+    );
   }
   if (lines.length === 1 && node.origin &&
       (node.kind === "module.root" || node.kind === "lexical.scope")) {
