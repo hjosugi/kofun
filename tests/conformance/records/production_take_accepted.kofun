@@ -1,0 +1,40 @@
+# One legal whole-binding move through the compiler a user runs (#946).
+#
+# The refusals beside this file are only half the claim. A move rule that never
+# accepts anything is indistinguishable from a rule that refuses `take`
+# outright, which is what the production frontend did before #946: `take` was
+# reported as a name nobody declared, so no program containing one could reach
+# a backend at all.
+#
+# So this fixture is compiled *and run*. `consume` moves its parameter and
+# never mentions it again; `main` moves one of two locals and keeps using the
+# other. Both are legal, and the emitted C must build under the same
+# `-Wall -Wextra -Werror` the gate applies to every other accepted record
+# program — a moved binding that is constructed and then never read again is
+# exactly the shape `-Wunused-but-set-variable` would otherwise reject.
+#
+# Int/Bool fields on purpose: the Stage 2 slice refuses a `Text` field with
+# E2S32 before ownership is ever consulted.
+type Token = {
+    start: Int,
+    ready: Bool,
+}
+
+fn consume(token: Token) -> Int {
+    take token
+    return 7
+}
+
+fn score(token: Token) -> Int {
+    return token.start
+}
+
+fn main() -> Int {
+    let first: Token = Token(start: 41, ready: true)
+    let second: Token = Token(ready: false, start: 1)
+    let third: Token = Token(start: 2, ready: true)
+    take first
+    print(consume(second))
+    print(score(third))
+    return 0
+}

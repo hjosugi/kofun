@@ -111,6 +111,15 @@ producer_type_status=$?
     "$ROOT/bootstrap/stage2/fixtures/borrowed_move_text.kofun" \
     src/borrowed.kofun "$WORK/plain/producer-ownership.kse" 45
 producer_ownership_status=$?
+# #946: the whole-binding move rule reaching the compiler a user runs. The
+# records gate pins its public message; what matters here is the second span.
+# A use-after-move that says only "you cannot use this" leaves the reader to
+# find the line that took it, so the move site travels as a labelled related
+# location — and it has to survive the codec to be worth emitting.
+"$WORK/plain/kofun-stage2-semantic-events" \
+    "$ROOT/tests/conformance/records/production_use_after_move.kofun" \
+    src/use-after-move.kofun "$WORK/plain/producer-use-after-move.kse" 49
+producer_use_after_move_status=$?
 "$WORK/plain/kofun-stage2-semantic-events" \
     "$ROOT/bootstrap/stage2/malformed.kofun" \
     src/malformed.kofun "$WORK/plain/producer-recovery.kse" 46
@@ -127,6 +136,8 @@ set -e
 assert_num "producer unknown status" "$producer_unknown_status" -eq 1
 assert_num "producer type status" "$producer_type_status" -eq 1
 assert_num "producer ownership status" "$producer_ownership_status" -eq 1
+assert_num "producer use-after-move status" \
+    "$producer_use_after_move_status" -eq 1
 assert_num "producer recovery status" "$producer_recovery_status" -eq 1
 assert_num "producer cancelled status" "$producer_cancelled_status" -eq 1
 assert_num "producer early status" "$producer_early_status" -eq 1
@@ -136,6 +147,7 @@ for stream in \
     "$WORK/plain/producer-unknown.kse" \
     "$WORK/plain/producer-type-error.kse" \
     "$WORK/plain/producer-ownership.kse" \
+    "$WORK/plain/producer-use-after-move.kse" \
     "$WORK/plain/producer-recovery.kse" \
     "$WORK/plain/producer-cancelled.kse"
 do
@@ -149,6 +161,12 @@ assert_grep "plain/producer-type-error.kse" \
     -a -q 'E2S15' "$WORK/plain/producer-type-error.kse"
 assert_grep "plain/producer-ownership.kse" \
     -a -q 'E007' "$WORK/plain/producer-ownership.kse"
+assert_grep "plain/producer-use-after-move.kse" \
+    -a -q 'E2S123' "$WORK/plain/producer-use-after-move.kse"
+# The related location, not just the code: the move site is the half of this
+# diagnostic that a fallback string alone cannot deliver to an editor.
+assert_grep "plain/producer-use-after-move.kse" \
+    -a -qF 'moved by `take`' "$WORK/plain/producer-use-after-move.kse"
 assert_grep "plain/producer-recovery.kse" \
     -a -q 'E2S03' "$WORK/plain/producer-recovery.kse"
 

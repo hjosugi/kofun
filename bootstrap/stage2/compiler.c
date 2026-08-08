@@ -7474,6 +7474,7 @@ static bool numeric_conversion_head(const char *source, int64_t cursor);
 /* Defined beside the move-assertion validator; declared here because the
  * scope walk must not resolve the `compiler` head as a lexical binding. */
 static bool move_assertion_head(const char *source, int64_t cursor);
+static bool move_statement_head(const char *source, int64_t cursor);
 static bool newline_between(
     const char *source,
     int64_t start,
@@ -13209,6 +13210,7 @@ static char *build_scope_hir_mode(
                     !list_int_local_type_token(source, cursor) &&
                     !numeric_conversion_head(source, cursor) &&
                     !move_assertion_head(source, cursor) &&
+                    !move_statement_head(source, cursor) &&
                     !decimal_rounding_mode_name(name) &&
                     /* #924: in an `Int?` context `null` is the absence
                      * literal, not a name, and reporting it as an unknown
@@ -15393,6 +15395,30 @@ static char *lower_body(
                 );
             }
             cursor = skip_trivia(source, close_end);
+            continue;
+        }
+        if (move_statement_head(source, cursor)) {
+            /*
+             * #946: the whole-binding move statement. `validate_move_uses` has
+             * already refused every use that outlives it, so nothing is left
+             * to check here and nothing is left to run: this slice's values
+             * are Int/Bool nominal records, which have no destructor and no
+             * drop, so a move is a fact about names rather than an operation.
+             *
+             * The binding is still spelled once, as a cast to void. A `let`
+             * that is constructed and then only moved would otherwise be set
+             * and never read, and the gates build the emitted C with
+             * `-Wall -Wextra -Werror`. Without this line the move statement
+             * would compile the program that contains it and fail the one
+             * beside it, which is not a boundary a user could predict.
+             */
+            int64_t moved = skip_trivia(source, token_end(source, cursor));
+            char *binding_id = hir_use_binding_id(hir, moved);
+            if (binding_id[0] != '\0') {
+                buffer_format(&emitted, "    (void)k_b%s;\n", binding_id);
+            }
+            free(binding_id);
+            cursor = skip_trivia(source, token_end(source, moved));
             continue;
         }
         if (token_equal(source, cursor, "let")) {
@@ -17671,6 +17697,37 @@ static bool move_assertion_head(const char *source, int64_t cursor) {
     return member < length && token_equal(source, member, "ensure_move");
 }
 
+/*
+ * `take <binding>`, the whole-binding move statement (#946).
+ *
+ * `take` is a contextual word: an ownership mode inside a parameter list, a
+ * move statement at the head of one. The scope walk did not know that, and
+ * reported the statement's own keyword as a name nobody declared. Measured on
+ * `origin/main`:
+ *
+ *     $ ./bin/kofun check uam.kofun
+ *     error[E2S35]: unknown lexical binding `take` at byte 70
+ *
+ * So the production frontend never reached the ownership rule, and E2S122 and
+ * E2S123 — which `bootstrap/stage2/record_frontend.c` has implemented all
+ * along — could not be produced by the compiler a user runs. That standalone
+ * frontend is not linked into this one; see docs/COMPILER_ARCHITECTURE.md.
+ *
+ * The colon separates the two spellings: `take name: Type` is a parameter,
+ * `take name` is a move. `take` remains a legal binding name, so anything else
+ * following it is left to the ordinary grammar.
+ */
+static bool move_statement_head(const char *source, int64_t cursor) {
+    if (!token_equal(source, cursor, "take")) return false;
+    int64_t length = source_length(source);
+    int64_t target = skip_trivia(source, token_end(source, cursor));
+    if (target >= length) return false;
+    if (strcmp(token_kind(source, target), "identifier") != 0) return false;
+    int64_t after = skip_trivia(source, token_end(source, target));
+    if (after < length && token_equal(source, after, ":")) return false;
+    return true;
+}
+
 /* Start of the zero-based argument in a validated numeric member call. */
 static int64_t numeric_member_argument(
     const char *source,
@@ -19132,6 +19189,248 @@ static bool move_assertion_read_is_alias_free(
     return alias_free_stack[depth - 1];
 }
 
+/* True when the `take` whose target begins at `target` names a field rather
+ * than the binding: `take value.field`, the partial move v1 refuses. */
+static bool move_statement_partial(const char *source, int64_t target) {
+    int64_t after = skip_trivia(source, token_end(source, target));
+    return after < source_length(source) && token_equal(source, after, ".");
+}
+
+/* End of the `take` statement whose target begins at `target`. The whole
+ * statement is what the move diagnostics underline, so a partial move
+ * underlines the field access it refuses rather than stopping at the record. */
+static int64_t move_statement_end(const char *source, int64_t target) {
+    int64_t after;
+    int64_t field;
+    if (!move_statement_partial(source, target)) {
+        return token_end(source, target);
+    }
+    after = skip_trivia(source, token_end(source, target));
+    field = skip_trivia(source, token_end(source, after));
+    if (field >= source_length(source)) return token_end(source, after);
+    return token_end(source, field);
+}
+
+/* True when the identifier at `cursor`, whose preceding token began at
+ * `previous`, reads the value a binding holds.
+ *
+ * Two spellings mention a name without reading it: `. name` is a field of some
+ * other value, and `name :` introduces one — either a `let` that declares a
+ * fresh binding or a labelled argument that names a field. Neither is a use, so
+ * neither may be blamed on a move. */
+static bool move_use_position(
+    const char *source,
+    int64_t previous,
+    int64_t cursor
+) {
+    int64_t next;
+    if (strcmp(token_kind(source, cursor), "identifier") != 0) return false;
+    if (previous >= 0 && token_equal(source, previous, ".")) return false;
+    next = skip_trivia(source, token_end(source, cursor));
+    if (next < source_length(source) && token_equal(source, next, ":")) {
+        return false;
+    }
+    return true;
+}
+
+/*
+ * The earliest ownership finding in one function, in source order.
+ *
+ * The standalone record frontend refuses the first statement whose check
+ * fails. This walk instead visits each `take` and then scans forward for the
+ * mention that move invalidates, so its findings do not arrive in source
+ * order. Keeping the one with the lowest primary span reorders them back:
+ * primary spans of distinct statements cannot overlap, so the lowest is the
+ * one the statement walk would have reached first.
+ */
+typedef struct {
+    bool present;
+    const char *code;
+    int64_t primary_start;
+    int64_t primary_end;
+    int64_t related_start;
+    int64_t related_end;
+    const char *related_label;
+    char *message;
+} MoveFinding;
+
+static void move_finding_keep(MoveFinding *best, MoveFinding candidate) {
+    if (best->present && best->primary_start <= candidate.primary_start) {
+        free(candidate.message);
+        return;
+    }
+    free(best->message);
+    *best = candidate;
+}
+
+/*
+ * Whole-binding move analysis for the compiler a user actually runs (#946).
+ *
+ * The bounded slice this issue scopes: `take <binding>`, the move's own span
+ * recorded, and any later mention of that binding refused with the use site
+ * primary and the move site attached. Loops, branches, and inferred moves stay
+ * out — #915 and #922 own those, and a rule that guessed at control flow would
+ * refuse programs this one has no business refusing.
+ *
+ * Conservative in the other direction too: a binding moved on one path and used
+ * on another is not proved safe here, it is simply not this slice's subject.
+ * `compiler.ensure_move` remains the way to demand the guarantee.
+ *
+ * Three of the standalone record frontend's four ownership refusals are
+ * reproduced here, with its exact wording: partial move and second move and
+ * use-after-move. The fourth, `E2S122` for moving a `read` binding, is not
+ * representable in this frontend — an ownership-mode parameter registers no
+ * binding at all, so `fn peek(read token: Token)` already refuses every
+ * mention of `token` with `E2S35` whether or not a `take` follows. That
+ * boundary predates this rule and #922 owns it; see
+ * `tests/conformance/records/README.md`.
+ */
+static char *validate_move_uses(const char *source) {
+    int64_t length = source_length(source);
+    int64_t function_start = next_function_start(source, 0);
+    while (function_start < length) {
+        MoveFinding best;
+        int64_t function_close = function_end(source, function_start);
+        int64_t parameters = parameter_open(source, function_start);
+        int64_t parameters_close = parameters < 0 ? -1 :
+            balanced_end(source, parameters, "(", ")");
+        if (function_close < 0 || parameters_close < 0) break;
+        memset(&best, 0, sizeof(best));
+        int64_t body = skip_trivia(source, parameters_close);
+        while (body < function_close && !token_equal(source, body, "{")) {
+            body = skip_trivia(source, token_end(source, body));
+        }
+        int64_t scan = skip_trivia(source, token_end(source, body));
+        while (scan < function_close) {
+            if (move_statement_head(source, scan)) {
+                int64_t target = skip_trivia(source, token_end(source, scan));
+                int64_t move_start = scan;
+                int64_t move_end = move_statement_end(source, target);
+                char *moved;
+                if (move_statement_partial(source, target)) {
+                    int64_t dot = skip_trivia(source, token_end(source, target));
+                    char *field = token_copy(
+                        source, skip_trivia(source, token_end(source, dot))
+                    );
+                    MoveFinding candidate;
+                    Buffer error;
+                    memset(&candidate, 0, sizeof(candidate));
+                    buffer_init(&error);
+                    buffer_format(
+                        &error,
+                        "error[E2S122]: partial move `take value.%s` is "
+                        "rejected in v1; move the whole record instead at "
+                        "bytes %" PRId64 "..%" PRId64,
+                        field, move_start, move_end
+                    );
+                    candidate.present = true;
+                    candidate.code = "E2S122";
+                    candidate.primary_start = move_start;
+                    candidate.primary_end = move_end;
+                    candidate.message = error.data;
+                    move_finding_keep(&best, candidate);
+                    free(field);
+                    scan = skip_trivia(source, move_end);
+                    continue;
+                }
+                moved = token_copy(source, target);
+                int64_t previous = -1;
+                int64_t use = skip_trivia(source, move_end);
+                while (use < function_close) {
+                    if (move_statement_head(source, use)) {
+                        int64_t again = skip_trivia(
+                            source, token_end(source, use)
+                        );
+                        /* A partial move is refused for being partial before
+                         * anything asks whether its record still holds a
+                         * value, so this scan leaves that statement to the
+                         * `E2S122` branch above rather than claiming it. */
+                        if (move_statement_partial(source, again)) break;
+                        if (token_equal(source, again, moved)) {
+                            MoveFinding candidate;
+                            Buffer error;
+                            int64_t again_end =
+                                move_statement_end(source, again);
+                            memset(&candidate, 0, sizeof(candidate));
+                            buffer_init(&error);
+                            buffer_format(
+                                &error,
+                                "error[E2S123]: `%s` was already moved by "
+                                "`take` at bytes %" PRId64 "..%" PRId64
+                                "; first moved by `take` at bytes %" PRId64
+                                "..%" PRId64,
+                                moved, use, again_end, move_start, move_end
+                            );
+                            candidate.present = true;
+                            candidate.code = "E2S123";
+                            candidate.primary_start = use;
+                            candidate.primary_end = again_end;
+                            candidate.related_start = move_start;
+                            candidate.related_end = move_end;
+                            candidate.related_label = "first moved by `take`";
+                            candidate.message = error.data;
+                            move_finding_keep(&best, candidate);
+                            break;
+                        }
+                        previous = again;
+                        use = skip_trivia(source, token_end(source, again));
+                        continue;
+                    }
+                    if (move_use_position(source, previous, use) &&
+                        token_equal(source, use, moved)) {
+                        MoveFinding candidate;
+                        Buffer error;
+                        memset(&candidate, 0, sizeof(candidate));
+                        buffer_init(&error);
+                        buffer_format(
+                            &error,
+                            "error[E2S123]: `%s` was moved by `take` and "
+                            "cannot be used again at bytes %" PRId64
+                            "..%" PRId64 "; moved by `take` at bytes %"
+                            PRId64 "..%" PRId64,
+                            moved, use, token_end(source, use),
+                            move_start, move_end
+                        );
+                        candidate.present = true;
+                        candidate.code = "E2S123";
+                        candidate.primary_start = use;
+                        candidate.primary_end = token_end(source, use);
+                        candidate.related_start = move_start;
+                        candidate.related_end = move_end;
+                        candidate.related_label = "moved by `take`";
+                        candidate.message = error.data;
+                        move_finding_keep(&best, candidate);
+                        break;
+                    }
+                    previous = use;
+                    use = skip_trivia(source, token_end(source, use));
+                }
+                free(moved);
+                scan = skip_trivia(source, move_end);
+                continue;
+            }
+            scan = skip_trivia(source, token_end(source, scan));
+        }
+        if (best.present) {
+            stage2_diagnostic_set(
+                best.code, best.primary_start, best.primary_end,
+                true, best.message
+            );
+            /* The move site turns "you cannot use this" into "you cannot use
+             * this *because of that line*". The registry records the secondary
+             * span as required for E2S123 and not-applicable for E2S122. */
+            if (best.related_label != NULL) {
+                stage2_diagnostic_related(
+                    best.related_start, best.related_end, best.related_label
+                );
+            }
+            return best.message;
+        }
+        function_start = next_function_start(source, function_close);
+    }
+    return owned_text("ok");
+}
+
 static char *validate_move_assertions(const char *source, const char *hir) {
     int64_t length = source_length(source);
     int64_t function_start = next_function_start(source, 0);
@@ -19632,7 +19931,13 @@ static char *lower_c_body(const char *source, const char *hir) {
     if (identity_check[0] != '\0') return identity_check;
     free(identity_check);
     bool fractional_values = source_uses_fractional_values(source);
-    /* First, before every other validator: a program that asks for the
+    /* #946: the move rule runs before the assertion, so a use-after-move is
+     * reported as itself rather than as whatever the erased statement leaves
+     * behind. */
+    char *move_use_check = validate_move_uses(source);
+    if (strncmp(move_use_check, "error[", 6) == 0) return move_use_check;
+    free(move_use_check);
+    /* Before every remaining validator: a program that asks for the
      * move guarantee must hear the assertion's own verdict, not a
      * diagnostic about tokens the erased statement happens to contain. */
     char *move_check = validate_move_assertions(source, hir);

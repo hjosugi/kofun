@@ -1,0 +1,27 @@
+# The whole-binding move rule reaching the compiler a user runs (#946).
+#
+# `bootstrap/stage2/record_frontend.c` has implemented E2S122/E2S123 all along
+# and is not linked into `compiler.c`, so neither could be produced by
+# `./bin/kofun check`. The production frontend did not even reach the rule:
+# `take` was reported as a name nobody declared. Measured before this fixture
+# existed:
+#
+#     error[E2S35]: unknown lexical binding `take` at byte 70
+#
+# An Int-only record on purpose. The records suite's own `use_after_move.kofun`
+# carries a `Text` field, which the Stage 2 Int/Bool slice refuses earlier with
+# E2S32 — so it cannot be reused to gate this path, as the issue records.
+type Token = {
+    start: Int,
+}
+
+fn twice(token: Token) -> Int {
+    take token
+    return token.start
+}
+
+fn main() -> Int {
+    let first: Token = Token(start: 1)
+    print(twice(first))
+    return 0
+}

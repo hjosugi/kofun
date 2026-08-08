@@ -1,0 +1,28 @@
+# A second move refused by the compiler a user runs (#946).
+#
+# The mirror of `double_take.kofun`, which makes the same claim against the
+# standalone `bootstrap/stage2/record_frontend.c` and cannot gate this path
+# because its `Token` carries a `Text` field the Stage 2 Int/Bool slice refuses
+# with E2S32 first.
+#
+# Moving twice and reading after a move are one condition and two sentences.
+# The second `take` is not a use of the value, so it is not reported as one:
+# both spans underline a whole `take token` statement, and the message says
+# `already moved` rather than `cannot be used again`. The distinction is the
+# standalone frontend's, and repeating it here is what keeps the two producers
+# one language rather than two dialects.
+type Token = {
+    start: Int,
+}
+
+fn twice(token: Token) -> Int {
+    take token
+    take token
+    return 0
+}
+
+fn main() -> Int {
+    let first: Token = Token(start: 1)
+    print(twice(first))
+    return 0
+}

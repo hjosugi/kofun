@@ -11,6 +11,14 @@ diagnostic identities. Each row records:
 6. one executable fixture owner, fixture, and exact or inline golden; and
 7. the adapter that reports the observation.
 
+A code with more than one active producer lists them `;`-separated, most
+reachable first — the form eighteen rows already used before it was written
+down here. `E2S122` and `E2S123` are emitted both by the compiler a user runs
+and by the standalone record frontend, and naming only one of the two would
+send a reader to the file that did not print the message they are holding.
+Fixture ownership stays singular: one adapter owns the evidence for a code
+however many producers agree on it.
+
 Span policy is `required`, `not-applicable`, or a named `debt(...)`. The three
 pre-existing Stage 2 omissions remain
 `debt(stage2-no-source-position)` and therefore cannot be counted as precise.
