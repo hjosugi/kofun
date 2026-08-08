@@ -356,7 +356,7 @@ expect_refused() {
 expect_refused 05_higher_order \
     'error[E2S17]: Core function `accumulate` expects 3 arguments, got -1'
 expect_refused 06_monad_laws \
-    'error[E2S02]: expected top-level `fn` or `type`'
+    'error[E2S02]: expected top-level `fn`, `type`, or `let`'
 expect_refused 08_stream_pipeline \
     'error[E2S47]: duplicate binding `read` in lexical scope'
 

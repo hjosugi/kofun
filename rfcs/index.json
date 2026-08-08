@@ -697,6 +697,30 @@
         "result": "`888`, `0`, and `42 0` at 727f9dac442ba8db56e8344dbd1e29112ea1e64d, the audited commit. Of 888 tracked `.kofun` sources, 0 name an inheritance edge or an override marker, and of the 42 trait and implementation member scopes they declare, 0 declare more than one member. So the count of tracked programs this rule refuses that are accepted today is 0, and the count that would need an override marker is 0. The same query returns `890`, `1`, and `45 1` after this change, and both differences are the two negative fixtures it adds: tests/conformance/traits/inherited_member_source.kofun is the one source spelling `extends`, and tests/conformance/traits/member_name_collision.kofun is the one owner declaring two members. Both are refused by the frontend today and pinned by byte-exact goldens, so the count of *accepted* programs in either shape stays 0.",
         "evidence": "tests/conformance/traits/member_name_collision.stderr"
       }
+    },
+    {
+      "id": "RFC-0006",
+      "title": "A module-level binding is language surface, and v1 is the immutable integer constant",
+      "provenance": "rfc",
+      "state": "proposed",
+      "shepherd": "hjosugi",
+      "source": "rfcs/0006-module-level-bindings.md",
+      "document": "rfcs/0006-module-level-bindings.md",
+      "proposal": "https://github.com/hjosugi/kofun/issues/955",
+      "dates": {
+        "opened_on": "2026-08-05",
+        "review_closed_on": "2026-08-19"
+      },
+      "normative_spec": [
+        "rfcs/0006-module-level-bindings.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "Every shape v1 admits is refused today by `E2S02`, so no program that compiles changes meaning and none stops compiling. New surface is the module constant declaration `let NAME = <integer literal>`, the rule that it is not a lexical binding and is therefore shadowed rather than redefined by a function-local `let` of the same name, its lowering to one file-scope `static const int64_t`, and the three codes E2S159, E2S160 and E2S161. Those three sit in a free range: E2S147 belongs to optional-construction, E2S148 through E2S153 to const-generics, E2S154 through E2S157 to the Stage 2 parser, Text and List[Int] slices, and E2S158 to the call-arguments surface, and none is touched. The RFC narrows no production in spec/grammar.ebnf, so no currently-grammatical program becomes ungrammatical.",
+        "corpus_query": "git grep -hE '^let ' -- '*.kofun' | wc -l; git grep -lE '^let ' -- '*.kofun' | wc -l; git grep -hE '^let ' -- '*.kofun' | grep -vcE '^let [A-Za-z_][A-Za-z0-9_]* = -?[0-9]+$'",
+        "result": "`75`, `23` and `2` at 2b7581ff, the audited commit. Of 75 top-level `let` declarations across 23 tracked `.kofun` sources, 73 are exactly `let NAME = <integer literal>` and are admitted by v1. The 2 exceptions are `let mut LIMIT = 1` and `let LIMIT = 1 + 2`, which are the refusal fixtures this slice adds, so the count of tracked sources outside the new fixtures requiring migration is 0. Restricted to the standard library the same query returns 61 declarations across 15 sources, all of them admitted.",
+        "evidence": "tests/module-constants/mutable.stdout"
+      }
     }
   ]
 }

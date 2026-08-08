@@ -2,6 +2,19 @@
 
 program          = separators, { declaration, separators }, EOF ;
 
+(* `declaration` reaching `let_stmt` through `statement` is intentional, and
+   this grammar is the authority on it: RFC-0006 records that a module-level
+   binding is language surface and that `E2S02` on a top-level `let` was an
+   implementation gap, not a statement about Kofun. The production is therefore
+   NOT narrowed here.
+
+   Stage 2 implements one shape of it — `let NAME = <integer literal>`,
+   immutable, `Int`, internal to its compilation unit. Every other module-level
+   `let_stmt` the production spells, including `own`, `mut`, a type annotation
+   and a non-literal initializer, is refused by name (`E2S159`-`E2S161`) rather
+   than derived. So an accepted program is a strict subset of what this
+   production admits at program level, and the gap is a slice boundary owned by
+   #1008, not a drift. `tests/module-constants/check.sh` pins both halves. *)
 declaration      = law_family_decl
                  | law_impl_decl
                  | law_check_decl

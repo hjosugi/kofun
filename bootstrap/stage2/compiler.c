@@ -2430,6 +2430,7 @@ static int64_t after_optional_module_header(
 );
 static char *owned_text(const char *text);
 static bool enum_name_covered(const char *covered, const char *name);
+static int64_t function_arity(const char *source, const char *wanted);
 static char *const_type_base(const char *annotation);
 static char *const_generic_refusal(Buffer *error);
 
@@ -2524,6 +2525,7 @@ static int64_t type_declaration_end(const char *source, int64_t start) {
             next < length &&
             !token_equal(source, next, "fn") &&
             !token_equal(source, next, "type") &&
+            !token_equal(source, next, "let") &&
             !visibility_prefix_candidate(source, next)
         ) {
             return -1;
@@ -2556,11 +2558,144 @@ static int64_t type_declaration_end(const char *source, int64_t start) {
         pipe < length &&
         !token_equal(source, pipe, "fn") &&
         !token_equal(source, pipe, "type") &&
+        !token_equal(source, pipe, "let") &&
         !visibility_prefix_candidate(source, pipe)
     ) {
         return -1;
     }
     return last_end;
+}
+
+/* A top-level `let NAME = <integer literal>` module constant.  Constants carry
+ * no visibility modifier in this slice, so a declaration always starts at the
+ * `let` keyword itself and stays internal to its compilation unit. */
+static int64_t constant_declaration_end(const char *source, int64_t start) {
+    int64_t length = source_length(source);
+    if (!token_equal(source, start, "let")) return -1;
+    int64_t name = skip_trivia(source, token_end(source, start));
+    if (
+        name >= length ||
+        strcmp(token_kind(source, name), "identifier") != 0
+    ) {
+        return -1;
+    }
+    int64_t equals = skip_trivia(source, token_end(source, name));
+    if (equals >= length || !token_equal(source, equals, "=")) return -1;
+    int64_t value = skip_trivia(source, token_end(source, equals));
+    if (value < length && token_equal(source, value, "-")) {
+        value = skip_trivia(source, token_end(source, value));
+    }
+    if (
+        value >= length ||
+        strcmp(token_kind(source, value), "integer") != 0
+    ) {
+        return -1;
+    }
+    /* The initializer is the whole declaration. Requiring the next token to
+     * open another top-level declaration keeps `let A = 1 + 2` a constant
+     * diagnostic instead of an unexpected-token one at the operator. */
+    int64_t close = token_end(source, value);
+    int64_t next = skip_trivia(source, close);
+    if (
+        next < length &&
+        !token_equal(source, next, "fn") &&
+        !token_equal(source, next, "type") &&
+        !token_equal(source, next, "let") &&
+        !visibility_prefix_candidate(source, next)
+    ) {
+        return -1;
+    }
+    return close;
+}
+
+static char *constant_name(const char *source, int64_t start) {
+    if (constant_declaration_end(source, start) < 0) {
+        return owned_text("");
+    }
+    return token_copy(source, skip_trivia(source, token_end(source, start)));
+}
+
+/* The constant's value as C source: the integer literal text with its optional
+ * `-` restored. */
+static char *constant_value_text(const char *source, int64_t start) {
+    if (constant_declaration_end(source, start) < 0) {
+        return owned_text("");
+    }
+    int64_t name = skip_trivia(source, token_end(source, start));
+    int64_t equals = skip_trivia(source, token_end(source, name));
+    int64_t value = skip_trivia(source, token_end(source, equals));
+    bool negative = token_equal(source, value, "-");
+    if (negative) {
+        value = skip_trivia(source, token_end(source, value));
+    }
+    char *digits = token_copy(source, value);
+    if (!negative) return digits;
+    Buffer out;
+    buffer_init(&out);
+    buffer_append(&out, "-");
+    buffer_append(&out, digits);
+    free(digits);
+    return out.data;
+}
+
+/* Walk to the next top-level constant at or after `from`.  Type and function
+ * bodies are stepped over, so a `let` statement inside a body is never mistaken
+ * for a module constant. */
+static int64_t next_constant_start(const char *source, int64_t from) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, from);
+    while (cursor < length) {
+        int64_t type_start = type_declaration_start(source, cursor);
+        if (type_start >= 0) {
+            int64_t type_close = type_declaration_end(source, type_start);
+            if (type_close < 0) return length;
+            cursor = skip_trivia(source, type_close);
+        } else {
+            int64_t function_start = function_declaration_start(source, cursor);
+            if (function_start >= 0) {
+                int64_t function_close = function_end(source, function_start);
+                if (function_close < 0) return length;
+                cursor = skip_trivia(source, function_close);
+            } else if (token_equal(source, cursor, "let")) {
+                return cursor;
+            } else {
+                return length;
+            }
+        }
+    }
+    return length;
+}
+
+static int64_t constant_declaration_count(
+    const char *source,
+    const char *wanted
+) {
+    int64_t length = source_length(source);
+    int64_t cursor = next_constant_start(source, 0);
+    int64_t found = 0;
+    while (cursor < length) {
+        char *name = constant_name(source, cursor);
+        if (strcmp(name, wanted) == 0) ++found;
+        free(name);
+        int64_t close = constant_declaration_end(source, cursor);
+        if (close < 0) return found;
+        cursor = next_constant_start(source, close);
+    }
+    return found;
+}
+
+static bool constant_is_declared(const char *source, const char *wanted) {
+    return constant_declaration_count(source, wanted) > 0;
+}
+
+/* The C name a module constant lowers to.  Constants share one prefix that no
+ * lowered function, record, or local binding uses. */
+static char *constant_c_name(const char *name) {
+    Buffer out;
+    buffer_init(&out);
+    buffer_append(&out, "kofun_k_");
+    buffer_append(&out, name);
+    return out.data;
 }
 
 static bool record_declaration_at(const char *source, int64_t start) {
@@ -2739,6 +2874,11 @@ static int64_t top_level_end(const char *source, int64_t start) {
     if (type_start >= 0) {
         return type_declaration_end(source, type_start);
     }
+    /* Module constants are top-level declarations too, so every walker that
+     * steps over one declaration at a time has to step over them as well. */
+    if (token_equal(source, start, "let")) {
+        return constant_declaration_end(source, start);
+    }
     int64_t function_start = function_declaration_start(source, start);
     if (function_start < 0) return -1;
     return function_end(source, function_start);
@@ -2776,11 +2916,23 @@ static int64_t next_function_start(const char *source, int64_t start) {
      * rejected position ends the walk instead. */
     if (start < 0) return length;
     int64_t cursor = after_optional_module_header(source, start);
-    while (cursor < length && type_declaration_start(source, cursor) >= 0) {
-        int64_t type_start = type_declaration_start(source, cursor);
-        int64_t end = type_declaration_end(source, type_start);
-        if (end <= cursor) return length;
-        cursor = skip_trivia(source, end);
+    /* Types and module constants both precede the functions that read them, so
+     * the walk steps over either kind before it looks for `fn`. */
+    bool advanced = true;
+    while (cursor < length && advanced) {
+        advanced = false;
+        if (type_declaration_start(source, cursor) >= 0) {
+            int64_t type_start = type_declaration_start(source, cursor);
+            int64_t end = type_declaration_end(source, type_start);
+            if (end <= cursor) return length;
+            cursor = skip_trivia(source, end);
+            advanced = true;
+        } else if (token_equal(source, cursor, "let")) {
+            int64_t constant_close = constant_declaration_end(source, cursor);
+            if (constant_close <= cursor) return length;
+            cursor = skip_trivia(source, constant_close);
+            advanced = true;
+        }
     }
     int64_t function_start = function_declaration_start(source, cursor);
     return function_start < 0 ? cursor : function_start;
@@ -3369,6 +3521,7 @@ static char *parse_program(const char *source) {
     int64_t types = 0;
     int64_t records = 0;
     int64_t record_fields = 0;
+    int64_t constants = 0;
     while (cursor < length) {
         char *visibility_error = visibility_prefix_error(source, cursor);
         if (visibility_error[0] != '\0') {
@@ -3852,6 +4005,116 @@ static char *parse_program(const char *source) {
             stage2_parse_prefix_observe(&ir);
             free(name);
             cursor = skip_trivia(source, end);
+        } else if (token_equal(source, cursor, "let")) {
+            int64_t constant_close = constant_declaration_end(source, cursor);
+            if (constant_close < 0) {
+                int64_t after_let = skip_trivia(source, token_end(source, cursor));
+                bool mutable_constant = token_equal(source, after_let, "mut");
+                char *mutable_name = mutable_constant
+                    ? token_copy(
+                          source,
+                          skip_trivia(source, token_end(source, after_let))
+                      )
+                    : owned_text("");
+                free(declared_types.data);
+                free(declared_constructors.data);
+                ir.length = 0;
+                ir.data[0] = '\0';
+                if (mutable_constant) {
+                    buffer_format(
+                        &ir,
+                        "error[E2S161]: module constant `%s` cannot be `mut`; "
+                        "a top-level `let` is immutable at byte %" PRId64,
+                        mutable_name,
+                        cursor
+                    );
+                    stage2_diagnostic_set(
+                        "E2S161",
+                        cursor,
+                        token_end(source, cursor),
+                        true,
+                        ir.data
+                    );
+                } else {
+                    buffer_format(
+                        &ir,
+                        "error[E2S159]: module constant must be "
+                        "`let NAME = <integer literal>` at byte %" PRId64,
+                        cursor
+                    );
+                    stage2_diagnostic_set(
+                        "E2S159",
+                        cursor,
+                        token_end(source, cursor),
+                        true,
+                        ir.data
+                    );
+                }
+                free(mutable_name);
+                return ir.data;
+            }
+            char *constant = constant_name(source, cursor);
+            bool duplicate = constant_declaration_count(source, constant) > 1;
+            bool clashes = false;
+            if (!duplicate) {
+                clashes =
+                    enum_name_covered(declared_types.data, constant) ||
+                    enum_name_covered(declared_constructors.data, constant) ||
+                    function_arity(source, constant) >= 0;
+            }
+            if (duplicate || clashes) {
+                ir.length = 0;
+                ir.data[0] = '\0';
+                if (duplicate) {
+                    buffer_format(
+                        &ir,
+                        "error[E2S160]: duplicate module constant `%s` "
+                        "at byte %" PRId64,
+                        constant,
+                        cursor
+                    );
+                    stage2_diagnostic_set(
+                        "E2S160",
+                        cursor,
+                        token_end(source, cursor),
+                        true,
+                        ir.data
+                    );
+                } else {
+                    buffer_format(
+                        &ir,
+                        "error[E2S159]: module constant `%s` conflicts with a "
+                        "declaration of the same name at byte %" PRId64,
+                        constant,
+                        cursor
+                    );
+                    stage2_diagnostic_set(
+                        "E2S159",
+                        cursor,
+                        token_end(source, cursor),
+                        true,
+                        ir.data
+                    );
+                }
+                free(constant);
+                free(declared_types.data);
+                free(declared_constructors.data);
+                return ir.data;
+            }
+            char *constant_value = constant_value_text(source, cursor);
+            ++constants;
+            buffer_format(
+                &ir,
+                "constant|%s|%s|%" PRId64 "|%" PRId64 "\n",
+                constant,
+                constant_value,
+                cursor,
+                constant_close
+            );
+            stage2_parse_prefix_observe(&ir);
+            free(constant_value);
+            free(constant);
+            cursor = skip_trivia(source, constant_close);
         } else if (function_declaration_start(source, cursor) < 0) {
             free(declared_types.data);
             free(declared_constructors.data);
@@ -3859,7 +4122,7 @@ static char *parse_program(const char *source) {
             ir.data[0] = '\0';
             buffer_format(
                 &ir,
-                "error[E2S02]: expected top-level `fn` or `type` "
+                "error[E2S02]: expected top-level `fn`, `type`, or `let` "
                 "at byte %" PRId64,
                 cursor
             );
@@ -3964,6 +4227,7 @@ static char *parse_program(const char *source) {
         return ir.data;
     }
     buffer_format(&ir, "function-count|%" PRId64 "\n", functions);
+    buffer_format(&ir, "constant-count|%" PRId64 "\n", constants);
     char *patterns = parse_pattern_trees(source);
     char *pattern_error = pattern_first_error(patterns);
     if (pattern_error[0] != '\0') {
@@ -6173,6 +6437,15 @@ static char *emit_argument(
                 free(value_binding);
                 return output.data;
             }
+            /* A module constant lowers to its own file-scope C constant. */
+            if (constant_is_declared(source, name)) {
+                char *c_name = c_identifier_name(name);
+                char *lowered = constant_c_name(c_name);
+                free(c_name);
+                free(name);
+                free(value_binding);
+                return lowered;
+            }
             free(name);
         }
         free(value_binding);
@@ -6770,6 +7043,17 @@ static char *emit_primary(
                 free(binding_id);
                 free(name);
                 return output.data;
+            }
+            /* A module constant has no lexical binding of its own, so it
+             * lowers to the file-scope C constant instead of `k_b`. */
+            if (binding_id[0] == '\0' && constant_is_declared(source, name)) {
+                char *identifier = c_identifier_name(name);
+                char *lowered = constant_c_name(identifier);
+                free(identifier);
+                free(binding_id);
+                free(name);
+                free(output.data);
+                return lowered;
             }
             /* #924: a bare `Optional(Int)` name is its payload wherever it is
              * read as `Int`. `validate_optional_uses` has already proved the
@@ -13143,8 +13427,12 @@ static char *build_scope_hir_mode(
                          * named function an error. Anywhere but argument
                          * position it stays unknown, so a function name in
                          * arithmetic is still this diagnostic. */
+                        /* A module constant is not a lexical binding either: it
+                         * is declared once at top level and is visible to every
+                         * function, so no scope entry resolves it here. */
                         if (
                             owner[0] == '\0' &&
+                            !constant_is_declared(source, name) &&
                             !(function_arity(source, name) >= 0 &&
                               call_argument_position(source, cursor))
                         ) {
@@ -19416,6 +19704,31 @@ static char *lower_c_body(const char *source, const char *hir) {
     Buffer bodies;
     buffer_init(&prototypes);
     buffer_init(&bodies);
+    /* Module constants come first: every function may read them, and a C file
+     * scope constant must be declared before its first use. */
+    int64_t constant_cursor = next_constant_start(source, 0);
+    while (constant_cursor < length) {
+        char *declared = constant_name(source, constant_cursor);
+        char *identifier = c_identifier_name(declared);
+        char *lowered = constant_c_name(identifier);
+        char *value = constant_value_text(source, constant_cursor);
+        buffer_format(
+            &prototypes,
+            "static const int64_t %s = %s;\n",
+            lowered,
+            value
+        );
+        free(value);
+        free(lowered);
+        free(identifier);
+        free(declared);
+        int64_t constant_close = constant_declaration_end(
+            source,
+            constant_cursor
+        );
+        if (constant_close < 0) break;
+        constant_cursor = next_constant_start(source, constant_close);
+    }
     /* Lifted lambdas come first so a Core function can call one that a later
      * function binds. */
     char *lifted = emit_lifted_lambdas(source, hir, &prototypes, &bodies);

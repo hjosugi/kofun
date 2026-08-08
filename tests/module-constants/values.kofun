@@ -1,0 +1,29 @@
+# Every accepted initializer shape: small, negative, and the Int64 bounds.
+let MAX_RETRIES = 3
+let ERROR_LOW = -4095
+let INT_MAX = 9223372036854775807
+let INT_MIN_PLUS_ONE = -9223372036854775807
+
+fn remaining(attempt: Int) -> Int {
+    return MAX_RETRIES - attempt
+}
+
+# A constant reads the same inside a condition as it does in arithmetic.
+fn kernel_error_rank(raw: Int) -> Int {
+    if raw >= ERROR_LOW {
+        if raw < 0 {
+            return 1
+        }
+    }
+    return 0
+}
+
+fn main() {
+    print(MAX_RETRIES)
+    print(ERROR_LOW)
+    print(INT_MAX)
+    print(INT_MIN_PLUS_ONE)
+    print(remaining(1))
+    print(kernel_error_rank(0 - 2))
+    print(kernel_error_rank(7))
+}

@@ -1,0 +1,32 @@
+# Constants interleaved with a record and an enum. Every top-level walker has
+# to step over a constant, so a constant on either side of a type declaration
+# must not disturb the declaration next to it.
+let BEFORE_TYPES = 1
+
+type Pair = {
+    left: Int,
+    right: Int,
+}
+
+let BETWEEN_TYPES = 2
+
+type Choice =
+    | First
+    | Second(value: Int)
+
+let AFTER_TYPES = 3
+
+fn tag(choice: Choice) -> Int {
+    return match choice {
+        First => { AFTER_TYPES },
+        Second(value) => { value + BETWEEN_TYPES },
+    }
+}
+
+fn main() {
+    let first: Choice = First
+    let second: Choice = Second(9)
+    print(BEFORE_TYPES)
+    print(tag(first))
+    print(tag(second))
+}

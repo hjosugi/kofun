@@ -38,7 +38,7 @@
 //!     a comment. `all_functions(values, monads)` in the Kofun file is a
 //!     declared domain the checker is responsible for.
 //!   * Neither compiles today. Rust's version runs; the Kofun version is
-//!     refused with `error[E2S02]: expected top-level `fn` or `type``, which
+//!     refused with `error[E2S02]: expected top-level `fn`, `type`, or `let``, which
 //!     does not tell the reader that `law` is a known future form. Corpus
 //!     item 6 is blocked-on #31.
 

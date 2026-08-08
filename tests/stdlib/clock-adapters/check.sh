@@ -124,16 +124,24 @@ assert_not_grep 'Linux clock adapter bypasses the standard Linux ABI boundary' \
 
 # Both canonical files are still ahead of the compiler. Pinning that keeps
 # the corpus honest: the executable evidence is the producer below, not these.
-for source in "$canonical" "$adapter"; do
+# The two files stop at different boundaries now that top-level constants
+# parse, so each is pinned to its own rather than to one shared message.
+canonical_boundary() {
+    source=$1
+    expected=$2
     if "$ROOT/bin/kofun" check "$source" \
         >"$WORK/canonical.stdout" 2>"$WORK/canonical.stderr"
     then
         fail "canonical source unexpectedly claimed executable codegen: $source"
     fi
-    require_line "$WORK/canonical.stderr" \
-        'error[E2S02]: expected top-level `fn` or `type`' \
+    require_line "$WORK/canonical.stderr" "$expected" \
         "canonical source did not stop at the documented compiler boundary: $source"
-done
+}
+
+canonical_boundary "$canonical" \
+    'error[E2S32]: record `ClockIdentity` has a field type outside the Stage 2 Int/Bool slice'
+canonical_boundary "$adapter" \
+    'error[E2S02]: expected top-level `fn`, `type`, or `let`'
 
 # ------------------------------------------------------------- producer
 

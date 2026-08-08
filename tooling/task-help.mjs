@@ -41,7 +41,8 @@ export const GROUPS = Object.freeze([
             'optional', 'optional-narrowing',
             'optional-construction', 'optional-pair',
             'text-results', 'list-int-values',
-            'adt-exhaustiveness', 'enum-match-value', 'decimal', 'decimal-arithmetic',
+            'adt-exhaustiveness', 'enum-match-value', 'module-constants',
+            'decimal', 'decimal-arithmetic',
             'date-time', 'syntax'
         ]
     },

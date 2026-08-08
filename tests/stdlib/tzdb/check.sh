@@ -70,7 +70,7 @@ then
     fail "canonical source unexpectedly claimed executable codegen: $canonical"
 fi
 assert_grep 'canonical source did not stop at the documented compiler boundary' \
-    -Fq -- 'error[E2S02]: expected top-level `fn` or `type`' \
+    -Fq -- 'error[E2S32]: record `ZoneId` has a field type outside the Stage 2 Int/Bool slice' \
     "$WORK/canonical.stderr"
 
 assert_regular_file 'Kofun tzdb producer' "$producer"

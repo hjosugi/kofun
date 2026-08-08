@@ -1,0 +1,5 @@
+let mut LIMIT = 1
+
+fn main() {
+    print(LIMIT)
+}
