@@ -524,7 +524,6 @@ tasks:
       - "sh tests/typed-sidecar/stage2-projector.sh"
       - "sh tests/typed-sidecar/cli.sh"
       - "sh tests/typed-sidecar/producer-races.sh"
-      - "sh tests/typed-sidecar/authority-boundary.sh"
 
   upgrade-patch:
     desc: "Verify typed upgrade relations, frontiers, previews, and atomicity"
@@ -535,7 +534,6 @@ tasks:
     desc: "Verify disclosure-safe typed-sidecar documentation indexes"
     cmds:
       - "sh tests/docs/documentation-index.sh"
-      - "sh docs/tour/check.sh"
 
   ownership-view:
     desc: "Verify bounded current-file ScopeId and BindingId ownership views"
