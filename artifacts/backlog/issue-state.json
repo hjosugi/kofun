@@ -599,11 +599,28 @@
       "number": 881,
       "title": "Call arguments v1 slice 2: bind labels in HIR, type checking, and KIF identity",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
+      "state_line": "ready",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [
+        "60d0af56f2e37a5ce4750544b005eb72f1b73154",
+        "c7f8f01456ce4c4442325b350eb6f73d237b5d1a"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-881-readiness-audit-20260808-1529",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-881-readiness-audit-20260808-1529",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-881-debt-retire-20260808",
+          "status": "active"
+        }
+      ]
     },
     {
       "number": 882,
@@ -646,7 +663,18 @@
       "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
-        "2a31329b50fe19974b1cfc6639eac753373ab744"
+        "2a31329b50fe19974b1cfc6639eac753373ab744",
+        "60d0af56f2e37a5ce4750544b005eb72f1b73154"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-885-readiness-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-885-readiness-audit-20260808",
+          "status": "released"
+        }
       ]
     },
     {
@@ -666,24 +694,61 @@
       "number": 915,
       "title": "Stage 2 ensure_move v3: prove loop-local last uses instead of rejecting every loop",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
-      "state_line": "blocked",
+      "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
+        "60d0af56f2e37a5ce4750544b005eb72f1b73154"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-915-loop-readiness-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-915-loop-readiness-audit-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-915-debt-retire-20260808",
+          "status": "active"
+        }
       ]
     },
     {
       "number": 922,
-      "title": "Stage 2: record the move site and attach it to the use-after-move diagnostic",
+      "title": "LSP: surface Stage 2 move sites in diagnostics and hover",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
+      "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
-        "7ce5cb15a3c078eb7c787718dd876fe03504f03b"
+        "60d0af56f2e37a5ce4750544b005eb72f1b73154",
+        "6fa8b9a037dd9a4436078cf8b1244d15b337c584"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-922-blocker-reaudit-20260808-1502",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-922-blocker-reaudit-20260808-1502",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-922-readiness-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-922-readiness-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-922-debt-retire-20260808",
+          "status": "active"
+        }
       ]
     },
     {
@@ -757,6 +822,10 @@
         {
           "agent_id": "codex-1032-debt-retire-20260808",
           "status": "active"
+        },
+        {
+          "agent_id": "codex-1032-debt-retire-20260808",
+          "status": "active"
         }
       ]
     },
@@ -779,6 +848,10 @@
         {
           "agent_id": "codex-1077-generated-meta-boundary-20260808",
           "status": "active"
+        },
+        {
+          "agent_id": "codex-1077-generated-meta-boundary-20260808",
+          "status": "pr-open"
         }
       ]
     },
@@ -801,6 +874,10 @@
         {
           "agent_id": "codex-1079-decimal-scale-boundary-20260808",
           "status": "released"
+        },
+        {
+          "agent_id": "codex-1079-batch-integration-20260808",
+          "status": "active"
         }
       ]
     },
@@ -841,6 +918,14 @@
         {
           "agent_id": "codex-lsp-import-reachability-20260808-1438",
           "status": "active"
+        },
+        {
+          "agent_id": "codex-lsp-import-reachability-20260808-1438",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-lsp-import-reachability-20260808-1438",
+          "status": "pr-open"
         }
       ]
     }

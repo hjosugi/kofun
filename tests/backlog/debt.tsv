@@ -105,11 +105,8 @@ unnamed-blocker	573	-	Odin: make allocator choice a scoped, effect-tracked capab
 unnamed-blocker	574	-	V: generate audited C bindings from Clang AST before attem
 unnamed-blocker	576	-	Koka: reuse matched ADT constructors in place when storage
 unnamed-blocker	644	-	HTTP/1.1 client core: bounded request and response state m
-unnamed-blocker	881	-	Call arguments v1 slice 2: bind labels in HIR, type checki
 unnamed-blocker	883	-	Typed upgrade patches slice 3: opt-in atomic exact-type re
 unnamed-blocker	884	-	Typed upgrade patches slice 2: deterministic read-only CLI
 capability-blocker	885	-	Typed upgrade patches slice 1: validate schema and compute
-unnamed-blocker	915	-	Stage 2 ensure_move v3: prove loop-local last uses instead
-unnamed-blocker	922	-	Stage 2: record the move site and attach it to the use-aft
 capability-blocker	930	-	Allocator seed: canonical `stdlib/alloc` contract and pinn
 unnamed-blocker	942	-	Member-scope duplicates: methods, associated values, and i
