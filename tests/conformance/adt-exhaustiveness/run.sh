@@ -281,4 +281,10 @@ then
     printf '%s\n' 'PASS: GCC analyzer accepts the ADT exhaustiveness adapter'
 fi
 
+# #1099 is a standalone resolved-matrix checkpoint, but it is part of the
+# lasting ADT exhaustiveness capability. Keep its dedicated runner reachable
+# from this existing `task verify` edge without adding another Taskfile row.
+KOFUN_ADT_NESTED_USEFULNESS_WORK="$WORK/adt-nested-usefulness" \
+    sh "$ROOT/tests/conformance/adt-nested-usefulness/run.sh"
+
 printf '%s\n' 'PASS: resolved ADT identities drive exhaustive, redundant, guarded, and bounded match diagnostics'
