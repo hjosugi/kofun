@@ -1,1 +1,1 @@
-compile error: unsupported Kofun integer Core source
+error[EA101] at line 2, column 5 (byte 16): unsupported construct in Stage 1 Core

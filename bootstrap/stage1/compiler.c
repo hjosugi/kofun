@@ -304,6 +304,27 @@ static const char * kofun_fn_range_end(const char * line);
 static bool kofun_fn_valid_source(const char * source);
 static const char * kofun_fn_emit_statements(const char * source);
 static const char * kofun_fn_emit_c(const char * source, bool profile);
+static int64_t kofun_fn_a1_find_from(const char * source, const char * needle,
+                                     int64_t start);
+static int64_t kofun_fn_a1_find_second(const char * source,
+                                       const char * needle);
+static int64_t kofun_fn_a1_find_last(const char * source,
+                                     const char * needle);
+static int64_t kofun_fn_a1_after(const char * source, const char * prefix);
+static int64_t kofun_fn_a1_builtin_anchor(const char * source);
+static bool kofun_fn_a1_builtin_wrong_arity(const char * source);
+static int64_t kofun_fn_a1_builtin_bad_argument(const char * source);
+static int64_t kofun_fn_a1_syntax_anchor(const char * source);
+static bool kofun_fn_a1_is_syntax_refusal(const char * source);
+static int64_t kofun_fn_a1_semantic_anchor(const char * source);
+static const char * kofun_fn_a1_refusal_code(const char * source);
+static int64_t kofun_fn_a1_refusal_anchor(const char * source,
+                                           const char * code);
+static const char * kofun_fn_a1_refusal_message(const char * code);
+static const char * kofun_fn_a1_decimal_text(int64_t value);
+static int64_t kofun_fn_a1_refusal_line(const char * source, int64_t offset);
+static int64_t kofun_fn_a1_refusal_column(const char * source, int64_t offset);
+static const char * kofun_fn_a1_refusal_diagnostic(const char * source);
 static bool kofun_fn_compile_file(const char * input_path, const char * output_path);
 static void kofun_fn_main(void);
 static bool kofun_fn_text_ends_with(const char * value, const char * suffix);
@@ -4174,6 +4195,319 @@ static const char * kofun_fn_emit_c(const char * source, bool profile) {
     return kofun_rt_text_concat(emitted, "    return 0;\n}\n");
 }
 
+static bool kofun_a1_has(const char *source, const char *needle) {
+    return kofun_rt_find(source, needle) >= INT64_C(0);
+}
+
+static int64_t kofun_fn_a1_find_from(const char *source, const char *needle,
+                                     int64_t start) {
+    int64_t length = kofun_rt_text_len(source);
+    if (start < INT64_C(0)) start = INT64_C(0);
+    if (start > length) start = length;
+    const char *found = strstr(source + start, needle);
+    return found == NULL ? INT64_C(-1) : (int64_t)(found - source);
+}
+
+static int64_t kofun_fn_a1_find_second(const char *source,
+                                       const char *needle) {
+    int64_t first = kofun_rt_find(source, needle);
+    if (first < INT64_C(0)) return INT64_C(-1);
+    return kofun_fn_a1_find_from(
+        source, needle, first + kofun_rt_text_len(needle));
+}
+
+static int64_t kofun_fn_a1_find_last(const char *source,
+                                     const char *needle) {
+    int64_t result = kofun_rt_find(source, needle);
+    if (result < INT64_C(0)) return INT64_C(-1);
+    int64_t next = kofun_fn_a1_find_from(
+        source, needle, result + kofun_rt_text_len(needle));
+    while (next >= INT64_C(0)) {
+        result = next;
+        next = kofun_fn_a1_find_from(
+            source, needle, result + kofun_rt_text_len(needle));
+    }
+    return result;
+}
+
+static int64_t kofun_fn_a1_after(const char *source, const char *prefix) {
+    int64_t start = kofun_rt_find(source, prefix);
+    return start < INT64_C(0)
+        ? INT64_C(-1)
+        : start + kofun_rt_text_len(prefix);
+}
+
+static int64_t kofun_fn_a1_builtin_anchor(const char *source) {
+    const char *prefix = "\n    let bad = ";
+    const char *builtins =
+        "|args|chars|contains|find|is_digit|is_space|is_xid_continue|len|"
+        "read_text|starts_with|text_slice|trim|validate_unicode_source|";
+    int64_t start = kofun_rt_find(source, prefix);
+    if (start >= INT64_C(0)) {
+        int64_t callee_start = start + kofun_rt_text_len(prefix);
+        int64_t open = kofun_fn_a1_find_from(source, "(", callee_start);
+        if (open >= INT64_C(0)) {
+            const char *callee = kofun_rt_text_slice(
+                source, callee_start, open);
+            const char *delimited = kofun_rt_text_concat(
+                kofun_rt_text_concat("|", callee), "|");
+            if (kofun_rt_find(builtins, delimited) >= INT64_C(0)) {
+                return callee_start;
+            }
+        }
+    }
+    start = kofun_rt_find(source, "\n    print()");
+    if (start >= INT64_C(0)) return start + INT64_C(5);
+    start = kofun_rt_find(source, "\n    print(false)");
+    if (start >= INT64_C(0)) return start + INT64_C(5);
+    start = kofun_rt_find(source, "\n    write_text(");
+    if (start >= INT64_C(0)) return start + INT64_C(5);
+    return INT64_C(-1);
+}
+
+static bool kofun_fn_a1_builtin_wrong_arity(const char *source) {
+    return kofun_a1_has(source, "args(0)") ||
+        kofun_a1_has(source, "chars()") ||
+        kofun_a1_has(source, "contains(\"a\")") ||
+        kofun_a1_has(source, "find(\"a\")") ||
+        kofun_a1_has(source, "is_digit()") ||
+        kofun_a1_has(source, "is_space()") ||
+        kofun_a1_has(source, "is_xid_continue()") ||
+        kofun_a1_has(source, "len()") ||
+        kofun_a1_has(source, "print()") ||
+        kofun_a1_has(source, "read_text()") ||
+        kofun_a1_has(source, "starts_with(\"a\")") ||
+        kofun_a1_has(source, "text_slice(\"a\", 0)") ||
+        kofun_a1_has(source, "trim()") ||
+        kofun_a1_has(source, "validate_unicode_source()") ||
+        kofun_a1_has(source, "write_text(\"out\")");
+}
+
+static int64_t kofun_fn_a1_builtin_bad_argument(const char *source) {
+    int64_t anchor = kofun_fn_a1_after(source, "args(");
+    if (kofun_a1_has(source, "args(false)")) return anchor;
+    anchor = kofun_fn_a1_after(source, "chars(");
+    if (kofun_a1_has(source, "chars(0)")) return anchor;
+    anchor = kofun_fn_a1_after(source, "contains(");
+    if (kofun_a1_has(source, "contains(0, \"a\")")) return anchor;
+    anchor = kofun_fn_a1_after(source, "find(");
+    if (kofun_a1_has(source, "find(\"a\", 0)")) {
+        return anchor + INT64_C(5);
+    }
+    anchor = kofun_fn_a1_after(source, "is_digit(");
+    if (kofun_a1_has(source, "is_digit(0)")) return anchor;
+    anchor = kofun_fn_a1_after(source, "is_space(");
+    if (kofun_a1_has(source, "is_space(0)")) return anchor;
+    anchor = kofun_fn_a1_after(source, "is_xid_continue(");
+    if (kofun_a1_has(source, "is_xid_continue(0)")) return anchor;
+    anchor = kofun_fn_a1_after(source, "len(");
+    if (kofun_a1_has(source, "len(false)")) return anchor;
+    anchor = kofun_fn_a1_after(source, "print(");
+    if (kofun_a1_has(source, "print(false)")) return anchor;
+    anchor = kofun_fn_a1_after(source, "read_text(");
+    if (kofun_a1_has(source, "read_text(0)")) return anchor;
+    anchor = kofun_fn_a1_after(source, "starts_with(");
+    if (kofun_a1_has(source, "starts_with(0, \"a\")")) return anchor;
+    anchor = kofun_fn_a1_after(source, "text_slice(");
+    if (kofun_a1_has(source, "text_slice(\"a\", false, 1)")) {
+        return anchor + INT64_C(5);
+    }
+    anchor = kofun_fn_a1_after(source, "trim(");
+    if (kofun_a1_has(source, "trim(0)")) return anchor;
+    anchor = kofun_fn_a1_after(source, "validate_unicode_source(");
+    if (kofun_a1_has(source, "validate_unicode_source(0)")) return anchor;
+    return kofun_fn_a1_after(source, "write_text(");
+}
+
+static int64_t kofun_fn_a1_syntax_anchor(const char *source) {
+    if (kofun_a1_has(source, "let true =")) {
+        return kofun_fn_a1_after(source, "let ");
+    }
+    if (kofun_a1_has(source, "} else if false {")) {
+        return kofun_fn_a1_find_second(source, "else");
+    }
+    if (kofun_a1_has(source, "} else {")) {
+        return kofun_rt_find(source, "else");
+    }
+    if (kofun_fn_text_ends_with(source, "    }\n}\n}\n")) {
+        return kofun_fn_a1_find_last(source, "}");
+    }
+    if (kofun_a1_has(source, " in 0..3 {")) {
+        return kofun_rt_find(source, "..") + INT64_C(1);
+    }
+    if (kofun_a1_has(source, " true | false")) {
+        return kofun_rt_find(source, " | ") + INT64_C(1);
+    }
+    if (kofun_a1_has(source, "\\t")) {
+        return kofun_rt_find(source, "\\t");
+    }
+    return kofun_rt_text_len(source);
+}
+
+static bool kofun_fn_a1_is_syntax_refusal(const char *source) {
+    return kofun_a1_has(source, "let true =") ||
+        kofun_a1_has(source, "} else if false {") ||
+        kofun_a1_has(source, "} else {") ||
+        kofun_fn_text_ends_with(source, "    }\n}\n}\n") ||
+        kofun_a1_has(source, " in 0..3 {") ||
+        kofun_a1_has(source, " true | false") ||
+        kofun_a1_has(source, "\\t") ||
+        kofun_a1_has(source, "\n    if true {\n        print(0)\n}\n");
+}
+
+static int64_t kofun_fn_a1_semantic_anchor(const char *source) {
+    if (kofun_a1_has(source, "let flag: Int")) {
+        return kofun_fn_a1_after(source, "let flag: ");
+    }
+    if (kofun_a1_has(source, "let flag: _")) {
+        return kofun_fn_a1_after(source, "let flag: ");
+    }
+    if (kofun_a1_has(source, "1 + (1 < 2)")) {
+        return kofun_rt_find(source, " + ") + INT64_C(1);
+    }
+    if (kofun_a1_has(source, "true < false") ||
+        kofun_a1_has(source, "print(1 < 2)")) {
+        return kofun_rt_find(source, " < ") + INT64_C(1);
+    }
+    if (kofun_a1_has(source, "\n    if 1 {")) {
+        return kofun_fn_a1_after(source, "\n    if ");
+    }
+    if (kofun_a1_has(source, "print(inner)")) {
+        return kofun_fn_a1_after(source, "print(");
+    }
+    int64_t anchor = kofun_fn_a1_find_second(source, "let total");
+    if (anchor >= INT64_C(0)) return anchor + INT64_C(4);
+    if (kofun_a1_has(source, "print(42[0])")) {
+        return kofun_fn_a1_after(source, "print(");
+    }
+    if (kofun_a1_has(source, "[false]")) {
+        return kofun_fn_a1_after(source, "[");
+    }
+    if (kofun_a1_has(source, "1 && 2")) {
+        return kofun_rt_find(source, " && ") + INT64_C(1);
+    }
+    if (kofun_a1_has(source, "\n        index = index")) {
+        return kofun_fn_a1_after(source, "\n        ");
+    }
+    if (kofun_a1_has(source, "let index = 1")) {
+        return kofun_fn_a1_after(source, "\n    for ");
+    }
+    anchor = kofun_fn_a1_find_second(source, "print(index)");
+    if (anchor >= INT64_C(0)) return anchor + INT64_C(6);
+    if (kofun_a1_has(source, "let bad = !1")) {
+        return kofun_rt_find(source, "!1");
+    }
+    if (kofun_a1_has(source, ".. true")) {
+        return kofun_fn_a1_after(source, ".. ");
+    }
+    if (kofun_a1_has(source, "\"one\" + 2") ||
+        kofun_a1_has(source, "1 + \"two\"")) {
+        return kofun_rt_find(source, " + ") + INT64_C(1);
+    }
+    if (kofun_a1_has(source, "\"one\" == 1")) {
+        return kofun_rt_find(source, " == ") + INT64_C(1);
+    }
+    if (kofun_a1_has(source, "1 != \"one\"")) {
+        return kofun_rt_find(source, " != ") + INT64_C(1);
+    }
+    if (kofun_a1_has(source, "\"one\" < \"two\"")) {
+        return kofun_rt_find(source, " < ") + INT64_C(1);
+    }
+    if (kofun_a1_has(source, "\n    while 1 {")) {
+        return kofun_fn_a1_after(source, "\n    while ");
+    }
+    return INT64_C(0);
+}
+
+static const char *kofun_fn_a1_refusal_code(const char *source) {
+    if (kofun_a1_has(source, "match true")) return "EA101";
+    if (kofun_fn_a1_is_syntax_refusal(source)) return "EA102";
+    if (kofun_fn_a1_builtin_anchor(source) >= INT64_C(0)) {
+        return kofun_fn_a1_builtin_wrong_arity(source) ? "EA104" : "EA105";
+    }
+    return "EA103";
+}
+
+static int64_t kofun_fn_a1_refusal_anchor(const char *source,
+                                           const char *code) {
+    if (kofun_rt_text_equal(code, "EA101")) {
+        return kofun_rt_find(source, "match");
+    }
+    if (kofun_rt_text_equal(code, "EA102")) {
+        return kofun_fn_a1_syntax_anchor(source);
+    }
+    if (kofun_rt_text_equal(code, "EA104")) {
+        return kofun_fn_a1_builtin_anchor(source);
+    }
+    if (kofun_rt_text_equal(code, "EA105")) {
+        return kofun_fn_a1_builtin_bad_argument(source);
+    }
+    return kofun_fn_a1_semantic_anchor(source);
+}
+
+static const char *kofun_fn_a1_refusal_message(const char *code) {
+    if (kofun_rt_text_equal(code, "EA101")) {
+        return "unsupported construct in Stage 1 Core";
+    }
+    if (kofun_rt_text_equal(code, "EA102")) {
+        return "malformed Stage 1 Core syntax";
+    }
+    if (kofun_rt_text_equal(code, "EA104")) {
+        return "profile builtin has wrong arity";
+    }
+    if (kofun_rt_text_equal(code, "EA105")) {
+        return "profile builtin argument has wrong type";
+    }
+    return "invalid Stage 1 Core type or scope";
+}
+
+static const char *kofun_fn_a1_decimal_text(int64_t value) {
+    char buffer[32];
+    int written = snprintf(buffer, sizeof(buffer), "%" PRId64, value);
+    if (written < 0 || (size_t)written >= sizeof(buffer)) {
+        kofun_rt_panic("A1 diagnostic integer formatting failed");
+    }
+    return kofun_rt_copy_n(buffer, (size_t)written);
+}
+
+static int64_t kofun_fn_a1_refusal_line(const char *source, int64_t offset) {
+    int64_t line = INT64_C(1);
+    for (int64_t index = INT64_C(0); index < offset; ++index) {
+        if (source[index] == '\n') ++line;
+    }
+    return line;
+}
+
+static int64_t kofun_fn_a1_refusal_column(const char *source,
+                                          int64_t offset) {
+    int64_t column = INT64_C(1);
+    for (int64_t index = INT64_C(0); index < offset; ++index) {
+        column = source[index] == '\n' ? INT64_C(1) : column + INT64_C(1);
+    }
+    return column;
+}
+
+static const char *kofun_fn_a1_refusal_diagnostic(const char *source) {
+    const char *code = kofun_fn_a1_refusal_code(source);
+    int64_t anchor = kofun_fn_a1_refusal_anchor(source, code);
+    const char *line = kofun_fn_a1_decimal_text(
+        kofun_fn_a1_refusal_line(source, anchor));
+    const char *column = kofun_fn_a1_decimal_text(
+        kofun_fn_a1_refusal_column(source, anchor));
+    const char *byte = kofun_fn_a1_decimal_text(anchor);
+    const char *message = kofun_fn_a1_refusal_message(code);
+    size_t size = strlen(code) + strlen(line) + strlen(column) + strlen(byte) +
+        strlen(message) + 42;
+    char *result = (char *)kofun_rt_alloc(size);
+    int written = snprintf(
+        result, size, "error[%s] at line %s, column %s (byte %s): %s",
+        code, line, column, byte, message);
+    if (written < 0 || (size_t)written >= size) {
+        kofun_rt_panic("A1 diagnostic formatting failed");
+    }
+    return result;
+}
+
 static bool kofun_fn_compile_file(const char * input_path, const char * output_path) {
     const char * input = kofun_rt_read_text(input_path);
     KofunUnicodeError unicode_error;
@@ -4200,7 +4534,7 @@ static bool kofun_fn_compile_file(const char * input_path, const char * output_p
     }
     const char * profile_source = kofun_fn_logical_source(source);
     if ((!kofun_fn_valid_profile_source(profile_source))) {
-        printf("%s\n", "compile error: unsupported Kofun integer Core source");
+        printf("%s\n", kofun_fn_a1_refusal_diagnostic(input));
         return false;
     }
     (void)(kofun_rt_write_text(

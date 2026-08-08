@@ -390,7 +390,7 @@ do
         fail "$stem status diverges from the audited seed"
     test "$a1_status" -ne 0 ||
         fail "$stem must exit nonzero"
-    cmp bootstrap/selfhost/driver/corpus_reject.stdout \
+    cmp "bootstrap/selfhost/driver/$stem.stdout" \
         "$temporary/$stem.stdout" ||
         fail "$stem diagnostic differs from the pinned refusal"
     cmp "$temporary/$stem.stdout" "$temporary/$stem-seed.stdout" ||
@@ -435,7 +435,7 @@ do
         fail "$label builtin refusal status diverges from the audited seed"
     test "$a1_status" -ne 0 ||
         fail "$label builtin refusal must exit nonzero"
-    cmp bootstrap/selfhost/driver/corpus_reject.stdout \
+    cmp "bootstrap/selfhost/driver/goldens/builtin-$label.stdout" \
         "$temporary/builtin-reject-$label.stdout" ||
         fail "$label builtin refusal diagnostic differs from the pinned refusal"
     cmp "$temporary/builtin-reject-$label.stdout" \

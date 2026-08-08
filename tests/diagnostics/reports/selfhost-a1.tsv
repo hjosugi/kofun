@@ -1,0 +1,6 @@
+# code	adapter	channel	exit	primary-span	secondary-span	artifact
+EA101	selfhost-a1	stdout	1	required	not-applicable	forbidden
+EA102	selfhost-a1	stdout	1	required	not-applicable	forbidden
+EA103	selfhost-a1	stdout	1	required	not-applicable	forbidden
+EA104	selfhost-a1	stdout	1	required	not-applicable	forbidden
+EA105	selfhost-a1	stdout	1	required	not-applicable	forbidden

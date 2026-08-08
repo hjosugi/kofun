@@ -111,6 +111,11 @@ tasks:
     cmds:
       - "sh bootstrap/selfhost/check-compiler-driver.sh"
 
+  selfhost-driver-diagnostics:
+    desc: "Gate the 62-case Stage 1/A1 refusal contract"
+    cmds:
+      - "sh bootstrap/selfhost/check-driver-diagnostics.sh"
+
   selfhost-frontend:
     desc: "Gate #619 typed-frontend evidence (all 46 cells)"
     cmds:
@@ -728,6 +733,7 @@ tasks:
             bootstrap \
             selfhost-profile \
             selfhost-self-compile \
+            selfhost-driver-diagnostics \
             selfhost-frontend \
             selfhost-c11 \
             selfhost-c11-control \
