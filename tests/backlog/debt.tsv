@@ -105,4 +105,3 @@ unnamed-blocker	883	-	Typed upgrade patches slice 3: opt-in atomic exact-type re
 unnamed-blocker	884	-	Typed upgrade patches slice 2: deterministic read-only CLI
 capability-blocker	885	-	Typed upgrade patches slice 1: validate schema and compute
 capability-blocker	930	-	Allocator seed: canonical `stdlib/alloc` contract and pinn
-unnamed-blocker	942	-	Member-scope duplicates: methods, associated values, and i

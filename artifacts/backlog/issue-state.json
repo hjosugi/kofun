@@ -45,7 +45,19 @@
       ],
       "state_line": "needs-detail",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [
+        "9fc27d8da59aa4d5ba92e24d7e76bd05be575257"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-refresh-30-topology-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-refresh-30-topology-20260808",
+          "status": "released"
+        }
+      ]
     },
     {
       "number": 31,
@@ -55,7 +67,19 @@
       ],
       "state_line": "needs-detail",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [
+        "9fc27d8da59aa4d5ba92e24d7e76bd05be575257"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-31-topology-refresh-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-31-topology-refresh-20260808",
+          "status": "released"
+        }
+      ]
     },
     {
       "number": 32,
@@ -84,8 +108,18 @@
       "blocked_by": [],
       "evidence_commits": [
         "6f71b6df5cf54aa16542b89494d2194c4172a97e",
-        "d3429207447e112f5230d5be38576959130d288e",
-        "f7c3cfa3f21632a6f0ce18fb94745922e2b47e31"
+        "9fc27d8da59aa4d5ba92e24d7e76bd05be575257",
+        "d3429207447e112f5230d5be38576959130d288e"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-271-boundary-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-271-boundary-audit-20260808",
+          "status": "released"
+        }
       ]
     },
     {
@@ -127,7 +161,17 @@
         988
       ],
       "evidence_commits": [
-        "41b531f73e6b751f385c62b4ef689992f676afef"
+        "9fc27d8da59aa4d5ba92e24d7e76bd05be575257"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-276-topology-refresh-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-276-topology-refresh-20260808",
+          "status": "released"
+        }
       ]
     },
     {
@@ -207,7 +251,9 @@
       ],
       "state_line": "needs-detail",
       "blocked_by": [],
-      "evidence_commits": [],
+      "evidence_commits": [
+        "9fc27d8da59aa4d5ba92e24d7e76bd05be575257"
+      ],
       "claims": [
         {
           "agent_id": "codex-289-module-constant-forward-refine-20260808",
@@ -215,6 +261,14 @@
         },
         {
           "agent_id": "codex-289-module-constant-forward-refine-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-289-after-1088-refresh-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-289-after-1088-refresh-20260808",
           "status": "released"
         }
       ]
@@ -484,7 +538,7 @@
       "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "a362295356d5ddbfa6d0d3d7216126a25ae8c801"
+        "9fc27d8da59aa4d5ba92e24d7e76bd05be575257"
       ],
       "claims": [
         {
@@ -493,6 +547,14 @@
         },
         {
           "agent_id": "codex-585-unblock-audit-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-585-visibility-refresh-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-585-visibility-refresh-20260808",
           "status": "released"
         }
       ]
@@ -528,7 +590,18 @@
       "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "b297880239f0db9cb832df50de379f5f678abf6c"
+        "10780c2ff4fd7ba97b4beba245d38d0fac7a3c25",
+        "9fc27d8da59aa4d5ba92e24d7e76bd05be575257"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-637-post-1080-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-637-post-1080-audit-20260808",
+          "status": "released"
+        }
       ]
     },
     {
@@ -590,9 +663,19 @@
       "blocked_by": [],
       "evidence_commits": [
         "09a3229c33fd309f61a0a0ba407fd543f8c670e6",
+        "9fc27d8da59aa4d5ba92e24d7e76bd05be575257",
         "bbb6b0ffee24952016394dc6352499a89ec3e938",
-        "d742788e2b98aeda4a33acf9620f37b68add87ca",
-        "fc79ec1dc804bba20bd955706e851ed108127396"
+        "bbf7af74862a23019cbbb73ade3b39b8aac605fa"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-725-topology-refresh-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-725-topology-refresh-20260808",
+          "status": "released"
+        }
       ]
     },
     {
@@ -808,9 +891,22 @@
         "blocked"
       ],
       "state_line": "blocked",
-      "blocked_by": [],
+      "blocked_by": [
+        31,
+        995
+      ],
       "evidence_commits": [
-        "00ce08f093da2706156f88f80d8c2fb366006d35"
+        "9fc27d8da59aa4d5ba92e24d7e76bd05be575257"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-refresh-942-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-refresh-942-20260808",
+          "status": "released"
+        }
       ]
     },
     {
@@ -834,7 +930,17 @@
       "state_line": "needs-decision",
       "blocked_by": [],
       "evidence_commits": [
-        "00ce08f093da2706156f88f80d8c2fb366006d35"
+        "9fc27d8da59aa4d5ba92e24d7e76bd05be575257"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-refresh-995-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-refresh-995-20260808",
+          "status": "released"
+        }
       ]
     },
     {
