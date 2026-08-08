@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 61,
+  "open_issues": 57,
   "issues": [
     {
       "number": 26,
@@ -297,38 +297,6 @@
       "state_line": "deferred",
       "blocked_by": [],
       "evidence_commits": []
-    },
-    {
-      "number": 533,
-      "title": "Show where ownership goes: LSP hover, inlay hints, and diagnostics",
-      "state_labels": [
-        "blocked"
-      ],
-      "state_line": "blocked",
-      "blocked_by": [
-        922
-      ],
-      "evidence_commits": [
-        "c20a03d69ebc7f65ce83ef284869825184960b7a"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-533-blocker-metadata-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-533-blocker-metadata-20260808",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-batch20-ledger-533-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-batch20-ledger-533-20260808",
-          "status": "released"
-        }
-      ]
     },
     {
       "number": 536,
@@ -716,6 +684,10 @@
         {
           "agent_id": "codex-881-debt-retire-20260808",
           "status": "merged"
+        },
+        {
+          "agent_id": "codex-881-call-argument-semantics-20260808",
+          "status": "active"
         }
       ]
     },
@@ -818,49 +790,6 @@
       ]
     },
     {
-      "number": 922,
-      "title": "LSP: surface Stage 2 move sites in diagnostics and hover",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "60d0af56f2e37a5ce4750544b005eb72f1b73154",
-        "6fa8b9a037dd9a4436078cf8b1244d15b337c584"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-922-blocker-reaudit-20260808-1502",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-922-blocker-reaudit-20260808-1502",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-922-readiness-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-922-readiness-20260808",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-922-debt-retire-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-922-debt-retire-20260808",
-          "status": "merged"
-        },
-        {
-          "agent_id": "codex-922-lsp-move-hover-20260808",
-          "status": "active"
-        }
-      ]
-    },
-    {
       "number": 930,
       "title": "Allocator seed: canonical `stdlib/alloc` contract and pinned Stage 2 projection (RFC-0001 stage 1)",
       "state_labels": [
@@ -947,42 +876,6 @@
         {
           "agent_id": "codex-1032-debt-retire-20260808",
           "status": "merged"
-        }
-      ]
-    },
-    {
-      "number": 1088,
-      "title": "Module constants: pin a later declaration referenced by an earlier function",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "c20a03d69ebc7f65ce83ef284869825184960b7a"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-1088-module-constant-forward-20260808",
-          "status": "active"
-        }
-      ]
-    },
-    {
-      "number": 1089,
-      "title": "Docs: refresh the Optional syntax current-status boundary after #924",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "c20a03d69ebc7f65ce83ef284869825184960b7a"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-1089-optional-syntax-doc-20260808",
-          "status": "active"
         }
       ]
     }
