@@ -128,6 +128,38 @@ static KofunStage2DiscoveryCandidate *candidate_named(
     return NULL;
 }
 
+static void require_unterminated_refused(
+    KofunStage2DiscoveryAnalysis *analysis,
+    const uint8_t *source,
+    size_t source_length,
+    const char *request,
+    size_t request_length,
+    char *output,
+    char *field,
+    size_t field_capacity
+) {
+    char saved[KOFUN_STAGE2_DISCOVERY_QUALIFIED_NAME_BYTES];
+    size_t observed;
+    if (field_capacity > sizeof(saved)) {
+        fail("snapshot text field exceeds mutation buffer");
+    }
+    memcpy(saved, field, field_capacity);
+    memset(field, 'x', field_capacity);
+    observed = kofun_stage2_discovery_query(
+        analysis,
+        source,
+        source_length,
+        request,
+        request_length,
+        output,
+        KOFUN_DISCOVERY_MAX_RESULT_BYTES
+    );
+    memcpy(field, saved, field_capacity);
+    if (observed != 0u) {
+        fail("unterminated snapshot text was accepted");
+    }
+}
+
 int main(int argc, char **argv) {
     uint8_t *source;
     size_t source_length = 0u;
@@ -295,6 +327,76 @@ int main(int argc, char **argv) {
         free(source);
         fail("fixture has no answer candidate");
     }
+    require_unterminated_refused(
+        &analysis,
+        source,
+        source_length,
+        request,
+        request_length,
+        second,
+        analysis.semantic.semantic_compatibility,
+        sizeof(analysis.semantic.semantic_compatibility)
+    );
+    require_unterminated_refused(
+        &analysis,
+        source,
+        source_length,
+        request,
+        request_length,
+        second,
+        analysis.semantic.expressions[0].type_display,
+        sizeof(analysis.semantic.expressions[0].type_display)
+    );
+    require_unterminated_refused(
+        &analysis,
+        source,
+        source_length,
+        request,
+        request_length,
+        second,
+        analysis.semantic.expressions[0].type_reason,
+        sizeof(analysis.semantic.expressions[0].type_reason)
+    );
+    require_unterminated_refused(
+        &analysis,
+        source,
+        source_length,
+        request,
+        request_length,
+        second,
+        answer->display_name,
+        sizeof(answer->display_name)
+    );
+    require_unterminated_refused(
+        &analysis,
+        source,
+        source_length,
+        request,
+        request_length,
+        second,
+        answer->qualified_name,
+        sizeof(answer->qualified_name)
+    );
+    require_unterminated_refused(
+        &analysis,
+        source,
+        source_length,
+        request,
+        request_length,
+        second,
+        answer->module_name,
+        sizeof(answer->module_name)
+    );
+    require_unterminated_refused(
+        &analysis,
+        source,
+        source_length,
+        request,
+        request_length,
+        second,
+        answer->signature,
+        sizeof(answer->signature)
+    );
     saved_visibility = answer->visibility;
     answer->visibility = (KofunStage2InterfaceVisibility)99;
     probe_length = kofun_stage2_discovery_query(
@@ -364,6 +466,7 @@ int main(int argc, char **argv) {
     printf("result-bytes=%zu repeated=identical\n", first_length);
     printf("stale=stale-source span=invalid-position source-buffer=refused\n");
     printf("invalid-visibility-kind-status=hidden\n");
+    printf("unterminated-snapshot-text=refused\n");
     if (fwrite(first, 1u, first_length, stdout) != first_length) {
         free(first);
         free(second);

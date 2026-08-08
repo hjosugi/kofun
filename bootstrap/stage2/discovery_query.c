@@ -5,11 +5,68 @@
 #include <stdlib.h>
 #include <string.h>
 
-static KofunSemanticBytes query_bytes(const char *text) {
-    KofunSemanticBytes value;
-    value.bytes = (const uint8_t *)text;
-    value.length = (uint32_t)strlen(text);
-    return value;
+static bool query_bytes(
+    const char *text,
+    size_t capacity,
+    KofunSemanticBytes *out
+) {
+    const char *terminator;
+    if (text == NULL || out == NULL) return false;
+    terminator = memchr(text, '\0', capacity);
+    if (terminator == NULL) return false;
+    out->bytes = (const uint8_t *)text;
+    out->length = (uint32_t)(terminator - text);
+    return true;
+}
+
+static bool query_snapshot_strings_are_bounded(
+    const KofunStage2DiscoverySnapshot *snapshot
+) {
+    KofunSemanticBytes ignored;
+    size_t index;
+    if (!query_bytes(
+            snapshot->semantic_compatibility,
+            sizeof(snapshot->semantic_compatibility),
+            &ignored)) {
+        return false;
+    }
+    for (index = 0u; index < snapshot->expression_count; index += 1u) {
+        const KofunStage2DiscoveryExpression *expression =
+            &snapshot->expressions[index];
+        if (!query_bytes(
+                expression->type_display,
+                sizeof(expression->type_display),
+                &ignored) ||
+            !query_bytes(
+                expression->type_reason,
+                sizeof(expression->type_reason),
+                &ignored)) {
+            return false;
+        }
+    }
+    for (index = 0u; index < snapshot->candidate_count; index += 1u) {
+        const KofunStage2DiscoveryCandidate *candidate =
+            &snapshot->candidates[index];
+        if (!query_bytes(
+                candidate->display_name,
+                sizeof(candidate->display_name),
+                &ignored) ||
+            !query_bytes(
+                candidate->qualified_name,
+                sizeof(candidate->qualified_name),
+                &ignored) ||
+            !query_bytes(
+                candidate->module_name,
+                sizeof(candidate->module_name),
+                &ignored) ||
+            !query_bytes(
+                candidate->signature,
+                sizeof(candidate->signature),
+                &ignored)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static KofunDiscoveryVisibility query_visibility(
@@ -42,25 +99,28 @@ static bool query_visible_candidate(
     return valid_kind && valid_status && visible;
 }
 
-static KofunSemanticSource query_source(
-    const KofunStage2DiscoverySnapshot *snapshot
+static bool query_source(
+    const KofunStage2DiscoverySnapshot *snapshot,
+    KofunSemanticSource *source
 ) {
-    KofunSemanticSource source;
-    memset(&source, 0, sizeof(source));
-    source.package_id = snapshot->package_id;
-    source.module_id = snapshot->module_id;
-    source.file_id = snapshot->file_id;
-    source.source_bytes = snapshot->source_bytes;
+    memset(source, 0, sizeof(*source));
+    source->package_id = snapshot->package_id;
+    source->module_id = snapshot->module_id;
+    source->file_id = snapshot->file_id;
+    source->source_bytes = snapshot->source_bytes;
     memcpy(
-        source.source_sha256,
+        source->source_sha256,
         snapshot->source_sha256,
-        sizeof(source.source_sha256)
+        sizeof(source->source_sha256)
     );
-    source.semantic_compatibility = query_bytes(
-        snapshot->semantic_compatibility
-    );
-    source.caller_generation = snapshot->caller_generation;
-    return source;
+    if (!query_bytes(
+            snapshot->semantic_compatibility,
+            sizeof(snapshot->semantic_compatibility),
+            &source->semantic_compatibility)) {
+        return false;
+    }
+    source->caller_generation = snapshot->caller_generation;
+    return true;
 }
 
 bool kofun_stage2_discovery_analyze(
@@ -76,7 +136,7 @@ bool kofun_stage2_discovery_analyze(
         !analysis->semantic.committed) {
         return false;
     }
-    source = query_source(&analysis->semantic);
+    if (!query_source(&analysis->semantic, &source)) return false;
     return kofun_discovery_analysis_key_from_source(
         &source,
         interface_set_sha256_hex,
@@ -122,8 +182,16 @@ static bool query_type(
         fact.owner_node_id = expression->node.node_id;
         fact.kind = KOFUN_SEMANTIC_FACT_TYPE;
         fact.status = expression->type_status;
-        fact.display = query_bytes(expression->type_display);
-        fact.reason = query_bytes(expression->type_reason);
+        if (!query_bytes(
+                expression->type_display,
+                sizeof(expression->type_display),
+                &fact.display) ||
+            !query_bytes(
+                expression->type_reason,
+                sizeof(expression->type_reason),
+                &fact.reason)) {
+            return false;
+        }
         facts = &fact;
         fact_count = 1u;
     }
@@ -170,6 +238,7 @@ size_t kofun_stage2_discovery_query(
         snapshot->completeness != KOFUN_SEMANTIC_COMPLETE ||
         snapshot->expression_count > KOFUN_STAGE2_DISCOVERY_MAX_EXPRESSIONS ||
         snapshot->candidate_count > KOFUN_STAGE2_DISCOVERY_MAX_CANDIDATES ||
+        !query_snapshot_strings_are_bounded(snapshot) ||
         !query_exact_source(snapshot, source, source_length)) {
         return 0u;
     }
@@ -258,10 +327,27 @@ size_t kofun_stage2_discovery_query(
             record = &records[record_count++];
             record->symbol_id = candidate->symbol_id;
             record->module_id = candidate->module_id;
-            record->display_name = query_bytes(candidate->display_name);
-            record->qualified_name = query_bytes(candidate->qualified_name);
-            record->module_name = query_bytes(candidate->module_name);
-            record->signature = query_bytes(candidate->signature);
+            if (!query_bytes(
+                    candidate->display_name,
+                    sizeof(candidate->display_name),
+                    &record->display_name) ||
+                !query_bytes(
+                    candidate->qualified_name,
+                    sizeof(candidate->qualified_name),
+                    &record->qualified_name) ||
+                !query_bytes(
+                    candidate->module_name,
+                    sizeof(candidate->module_name),
+                    &record->module_name) ||
+                !query_bytes(
+                    candidate->signature,
+                    sizeof(candidate->signature),
+                    &record->signature)) {
+                free(records);
+                free(operations);
+                free(omissions);
+                return 0u;
+            }
             record->status = candidate->status;
             record->receiver_mode = KOFUN_DISCOVERY_RECEIVER_NONE;
             record->visibility = query_visibility(candidate->visibility);

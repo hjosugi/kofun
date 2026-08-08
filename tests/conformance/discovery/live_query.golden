@@ -7,6 +7,7 @@ expressions=5 candidates=5 hidden=yes
 result-bytes=5783 repeated=identical
 stale=stale-source span=invalid-position source-buffer=refused
 invalid-visibility-kind-status=hidden
+unterminated-snapshot-text=refused
 {
   "analysis": {
     "file_id": "ea013a9fe35938746c6b4b97b14c96f2be7c5ab90352e7fc9fce90a25dfbe784",
